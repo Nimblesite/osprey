@@ -78,5 +78,5 @@ module ManifestJson {
     export fn canonical(manifest) = Canonical::serialize(toJson(manifest))
 
     /// `H("osprey.manifest.v1", manifest)`.
-    export fn digest(manifest) = Checked::andThen(canonical(manifest), fn(value) => Success { value: Digests::hashText(Domains::manifestDomain(), value) })
+    export fn digest(manifest) = andThen(canonical(manifest), fn(value) => Success { value: Digests::hashText(Domains::manifestDomain(), value) })
 }

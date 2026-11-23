@@ -50,7 +50,7 @@ module JsonScan {
         splitBlock(text, i, budget, intDiv(budget, 2))
     }
 
-    fn splitBlock(text, i, budget, leftBudget) = Checked::andThen(scanBlock(text, i, leftBudget), fn(value) => appendBlock(text, value, budget - leftBudget))
+    fn splitBlock(text, i, budget, leftBudget) = andThen(scanBlock(text, i, leftBudget), fn(value) => appendBlock(text, value, budget - leftBudget))
 
     fn appendBlock(text, first, rest) = if first.complete { Success { value: first } } else {
         match scanBlock(text, first.cursor, rest) {

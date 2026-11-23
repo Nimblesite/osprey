@@ -10,10 +10,6 @@ namespace backends
 
 (** The statically selected tensor dialect used by both interpretations. *)
 module Backends
-    (** [FAILURE-EXPLICIT] Continue only after Success; preserve the original Error. *)
-    export andThen (result, next) = match result
-        Success value => next value
-        Error message => Error(message = message)
     (** The dense-tensor dialect a model is written in. `B` is the buffer
         representation an interpretation chooses; the model leaves it to
         inference everywhere. *)
@@ -106,11 +102,11 @@ paramRows () = [
     [width, 3, 5, 1, 2], [width, 5, 7, 3, 4], [width * qkvWidth, 7, 11, 5, 8], [qkvWidth, 3, 7, 3, 8], [width * width, 5, 13, 6, 8], [width, 7, 5, 2, 4],
     [width, 7, 9, 4, 4], [width, 2, 5, 2, 8], [width * mlpWidth, 11, 13, 6, 8], [mlpWidth, 5, 11, 5, 8], [mlpWidth * width, 13, 17, 8, 16], [width, 3, 7, 3, 4]
 ]
-buildParams rows = foldList rows (Success(value = [])) (\(acc, row) => Backends::andThen(acc, \built => Backends::andThen(rowWeight row, \value => Success(value = listAppend built value))))
+buildParams rows = foldList rows (Success(value = [])) (\(acc, row) => andThen(acc, \built => andThen(rowWeight row, \value => Success(value = listAppend built value))))
 unpackParams ws = match ws
     [ln1gain, ln1bias, qkvWeight, qkvBias, projWeight, projBias, ln2gain, ln2bias, fcWeight, fcBias, outWeight, outBias] => Success(value = { ln1gain = ln1gain, ln1bias = ln1bias, qkvWeight = qkvWeight, qkvBias = qkvBias, projWeight = projWeight, projBias = projBias, ln2gain = ln2gain, ln2bias = ln2bias, fcWeight = fcWeight, fcBias = fcBias, outWeight = outWeight, outBias = outBias })
     _ => Error(message = "twelve block parameters")
-blockParams () = Backends::andThen(buildParams (paramRows ()), unpackParams)
+blockParams () = andThen(buildParams (paramRows ()), unpackParams)
 
 sumRange (x, start, n) = range start (start + n) |> fold 0.0 (\(a, i) => a + at (x, i))
 squaredDeviation (x, start, n, mean) = range start (start + n) |> fold 0.0 (\(a, i) => a + (at (x, i) - mean) * (at (x, i) - mean))
@@ -120,13 +116,13 @@ normalised (x, means, variances, g, b, i) = (at (x, i) - at (means, intDiv i wid
 
 (** LayerNorm over each of the t rows of x [t, width]. *)
 layerNorm (x, t, g, b) =
-    Backends::andThen(rowMeans(x, t),
-        \means => Backends::andThen(rowVariances(x, t, means),
+    andThen(rowMeans(x, t),
+        \means => andThen(rowVariances(x, t, means),
             \variances => perform Backends::Tensor.build (t * width) (\i => normalised(x, means, variances, g, b, i))))
 
 (** x [rows, inner] times w [inner, cols], plus the bias on every row. *)
 linear (x, rows, inner, cols, w, bias) =
-    Backends::andThen(product(x, w, rows, inner, cols),
+    andThen(product(x, w, rows, inner, cols),
         \value => perform Backends::Tensor.build (rows * cols) (\i => at(value, i) + at(bias, i % cols)))
 
 (** Element d of head h of row r, in the q, k or v slice at `offset`. *)
@@ -143,40 +139,40 @@ weighted (probs, qkv, t, r, h, d) = range 0 (r + 1) |> fold 0.0 (\(a, c) => a + 
 
 (** Softmax of every causal row of the [heads, t, t] scores. *)
 probsOf (scores, t) =
-    Backends::andThen(perform Backends::Tensor.build (heads * t) (\row => rowMax(scores, row, t)),
-        \peaks => Backends::andThen(perform Backends::Tensor.build (heads * t * t) (\i => causalWeight(scores, peaks, t, i)),
-            \weights => Backends::andThen(perform Backends::Tensor.build (heads * t) (\row => sumRange(weights, row * t, t)),
+    andThen(perform Backends::Tensor.build (heads * t) (\row => rowMax(scores, row, t)),
+        \peaks => andThen(perform Backends::Tensor.build (heads * t * t) (\i => causalWeight(scores, peaks, t, i)),
+            \weights => andThen(perform Backends::Tensor.build (heads * t) (\row => sumRange(weights, row * t, t)),
                 \sums => perform Backends::Tensor.build (heads * t * t) (\i => at(weights, i) / at(sums, intDiv(i, t))))))
 
 (** Causal multi-head self-attention over qkv [t, qkvWidth], as [t, width]. *)
 attention (qkv, t) =
-    Backends::andThen(perform Backends::Tensor.build (heads * t * t) (\i => causalScore(qkv, intDiv(i, t * t), intDiv(i % (t * t), t), i % t)),
-        \scores => Backends::andThen(probsOf(scores, t),
+    andThen(perform Backends::Tensor.build (heads * t * t) (\i => causalScore(qkv, intDiv(i, t * t), intDiv(i % (t * t), t), i % t)),
+        \scores => andThen(probsOf(scores, t),
             \probs => perform Backends::Tensor.build (t * width) (\i => weighted(probs, qkv, t, intDiv(i, width), intDiv(i % width, headWidth), i % headWidth))))
 
 subLayer (x, gain, bias, body, t) =
-    Backends::andThen(layerNorm(x, t, gain, bias),
-        \normed => Backends::andThen(body (normed, t),
+    andThen(layerNorm(x, t, gain, bias),
+        \normed => andThen(body (normed, t),
             \out => perform Backends::Tensor.zipWith (x) (out) (addF)))
 (** A linear map into `wide` columns, `mid` answering `midOut` columns, then a
     linear map back to `width` columns, plus the bias on every row. *)
 mappedLinear (x, t, wide, midOut, inW, inB, mid, outW, outB) =
-    Backends::andThen(linear(x, t, width, wide, inW, inB),
-        \grown => Backends::andThen(mid grown,
+    andThen(linear(x, t, width, wide, inW, inB),
+        \grown => andThen(mid grown,
             \hidden => linear(hidden, t, midOut, width, outW, outB)))
 attended (x, w, t) = mappedLinear(x, t, qkvWidth, width, w.qkvWeight, w.qkvBias, \qkv => attention(qkv, t), w.projWeight, w.projBias)
 feedForward (x, w, t) = mappedLinear(x, t, mlpWidth, mlpWidth, w.fcWeight, w.fcBias, smoothed, w.outWeight, w.outBias)
 (** One pre-norm block: attention and MLP, each with a residual. *)
-block (x, t) = Backends::andThen(blockParams(),
-    \w => Backends::andThen(subLayer (x, w.ln1gain, w.ln1bias, \(v, n) => attended (v, w, n), t),
+block (x, t) = andThen(blockParams(),
+    \w => andThen(subLayer (x, w.ln1gain, w.ln1bias, \(v, n) => attended (v, w, n), t),
         \x2 => subLayer (x2, w.ln2gain, w.ln2bias, \(v, n) => feedForward (v, w, n), t)))
 
 (** Token plus position embeddings of the host-side ids, [t, width]. *)
 embed (tokens, positions, ids, t) = perform Backends::Tensor.build (t * width) (\i => at (tokens, (listGet ids (intDiv i width) ?: 0) * width + i % width) + at (positions, i))
 blockOutput () =
-    Backends::andThen(weight (vocab * width, 9, 17, 8, 4.0),
-        \tokens => Backends::andThen(weight (3 * width, 4, 9, 4, 8.0),
-            \positions => Backends::andThen(embed(tokens, positions, [3, 1], 2),
+    andThen(weight (vocab * width, 9, 17, 8, 4.0),
+        \tokens => andThen(weight (3 * width, 4, 9, 4, 8.0),
+            \positions => andThen(embed(tokens, positions, [3, 1], 2),
                 \x => block(x, 2))))
 rendered y = range 0 (size y) |> fold "" (\(acc, i) => acc + " " + toString (at (y, i)))
 
@@ -190,7 +186,7 @@ oracleRow y = range 0 (listLength oracle) |> fold true (\(held, i) => held && or
 
 (** The oracle values of the block, plus which interpretation answered. *)
 blockChecks (name, expectedDevice) =
-    Backends::andThen(blockOutput(),
+    andThen(blockOutput(),
         \y =>
             checkAll(name, [ size(y) == 8, device() == expectedDevice, oracleRow y, tensorSatisfies(total(y), \grand => near(grand, 2.8121518161640227)) ])
             Success(value = 0) )
@@ -201,11 +197,11 @@ gpuCase () = settled (Backends::onGpu (\() => blockChecks ("the same block over 
 (** Both interpretations print every element identically: the products
     accumulate in the same order, so the answers are the same doubles. *)
 listsText () =
-    Backends::andThen(blockOutput(),
+    andThen(blockOutput(),
         \y => Success(value = rendered(y)))
 agreementCase () =
-    Backends::andThen(Backends::onLists(listsText),
-        \lists => Backends::andThen(Backends::onGpu(listsText),
+    andThen(Backends::onLists(listsText),
+        \lists => andThen(Backends::onGpu(listsText),
             \gpu =>
                 checkAll("both interpretations compute the same doubles", [ lists == gpu, lists != "", length(lists) > 8 * 4 ])
                 Success(value = 0) ))
@@ -247,12 +243,12 @@ forwardedKernelCase () =
 firstOf (a, b) = perform Backends::Tensor.zipWith a b (\(g, _x) => g)
 secondDoubled (a, b) = perform Backends::Tensor.zipWith a b (\(_g, x) => x * 2.0)
 declaredTypes () =
-    Backends::andThen(doubled(3),
-        \first => Backends::andThen(scaled(3, 3.0),
-            \second => Backends::andThen(firstOf(first, second),
-                \heads => Backends::andThen(total(heads),
-                    \headTotal => Backends::andThen(secondDoubled(first, second),
-                        \doubles => Backends::andThen(total(doubles),
+    andThen(doubled(3),
+        \first => andThen(scaled(3, 3.0),
+            \second => andThen(firstOf(first, second),
+                \heads => andThen(total(heads),
+                    \headTotal => andThen(secondDoubled(first, second),
+                        \doubles => andThen(total(doubles),
                             \doubleTotal => Success(value = "${headTotal} ${doubleTotal}")))))))
 (** Both interpretations of `work` must render the same `expected` text. *)
 bothRender (work, expected) = settledText (Backends::onGpu(work)) == expected && settledText (Backends::onLists(work)) == expected

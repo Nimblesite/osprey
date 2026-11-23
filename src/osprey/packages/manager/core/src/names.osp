@@ -46,7 +46,7 @@ module Names {
     /// Parse a display key such as `@finch/ledger` into its canonical parts.
     export fn parse(text) = match startsWith(text, "@") {
         false => Error { message: "name.missing-at" }
-        true => Checked::andThen(split(drop(text, 1)), fn(value) => validate(value))
+        true => andThen(split(drop(text, 1)), fn(value) => validate(value))
     }
 
     /// The display form `@scope/name`.

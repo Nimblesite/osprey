@@ -13,7 +13,7 @@ module Listing {
     let epochCode = "listing.unknown-epoch"
 
     /// Every release the registry lists, in listing order.
-    export fn fetch(base) = Checked::andThen(Fetch::getBody(base, Fetch::packagesListingPath), fn(value) => Fetch::parsePackages(value))
+    export fn fetch(base) = andThen(Fetch::getBody(base, Fetch::packagesListingPath), fn(value) => Fetch::parsePackages(value))
 
     fn ofKey(listing, key) = filterList(listing, fn(r) => Names::same(Identity::keyOf(r), key))
 

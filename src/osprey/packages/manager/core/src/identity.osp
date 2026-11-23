@@ -47,9 +47,9 @@ module Identity {
     /// `[epoch, ordinal]` from their decimal spellings: positive, no sign, no
     /// leading zero; otherwise `release.epoch` or `release.ordinal`. Shared by
     /// every textual form of a release version.
-    export fn numbers(epochText, ordinalText) = Checked::andThen(positive(epochText, firstEpoch, "release.epoch"), fn(value) => ordinalWith(value, ordinalText))
+    export fn numbers(epochText, ordinalText) = andThen(positive(epochText, firstEpoch, "release.epoch"), fn(value) => ordinalWith(value, ordinalText))
 
-    fn ordinalWith(epoch, text) = Checked::andThen(positive(text, firstOrdinal, "release.ordinal"), fn(value) => Success { value: [epoch, value] })
+    fn ordinalWith(epoch, text) = andThen(positive(text, firstOrdinal, "release.ordinal"), fn(value) => Success { value: [epoch, value] })
 
     fn assemble(key, numbers, digest) = ReleaseId {
         key: key,
@@ -63,9 +63,9 @@ module Identity {
         Success { value } => withParts(take(head, value + 1), drop(head, value + 2), digest)
     }
 
-    fn withParts(keyText, versionText, digest) = Checked::andThen(Names::parse(keyText), fn(value) => withVersion(value, versionText, digest))
+    fn withParts(keyText, versionText, digest) = andThen(Names::parse(keyText), fn(value) => withVersion(value, versionText, digest))
 
-    fn withVersion(key, versionText, digest) = Checked::andThen(version(versionText), fn(value) => Success { value: assemble(key, value, digest) })
+    fn withVersion(key, versionText, digest) = andThen(version(versionText), fn(value) => Success { value: assemble(key, value, digest) })
 
     /// Parse a display form; failures are reason codes.
     export fn parse(text) = match split(text, "#") {
@@ -79,7 +79,7 @@ module Identity {
         true => apply(listGet(parts, 0) ?: "", listGet(parts, 1) ?: "")
     }
 
-    fn parseHalves(head, digestText) = Checked::andThen(Digests::parse(digestText), fn(value) => withKey(head, value))
+    fn parseHalves(head, digestText) = andThen(Digests::parse(digestText), fn(value) => withKey(head, value))
 
     /// Canonical `(package, epoch, ordinal, digest)` order.
     export fn compare(a: ReleaseId, b: ReleaseId) = Order::thenCompare(Names::compare(a.key, b.key),

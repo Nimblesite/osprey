@@ -43,33 +43,33 @@ module TomlParser {
     /// A header's key path, its closing bracket(s), its line tail, and the
     /// table `define` creates for the header's segments.
     fn headerChain(doc, c, start, closer, define) =
-        Checked::andThen(TomlValues::parseKeyPath(c), fn(path) =>
-            Checked::andThen(closer(path.at), fn(close) =>
-                Checked::andThen(TomlLexer::skipLineTail(close), fn(tail) =>
-                    Checked::andThen(define(doc, headerSegs(path.segs, start)), fn(defined) =>
+        andThen(TomlValues::parseKeyPath(c), fn(path) =>
+            andThen(closer(path.at), fn(close) =>
+                andThen(TomlLexer::skipLineTail(close), fn(tail) =>
+                    andThen(define(doc, headerSegs(path.segs, start)), fn(defined) =>
                         Success { value: Step { doc: defined, at: tail } }))))
 
-    fn parseKeyValue(doc, c) = Checked::andThen(TomlValues::parseKeyPath(c), fn(value) => kvEquals(doc, value))
+    fn parseKeyValue(doc, c) = andThen(TomlValues::parseKeyPath(c), fn(value) => kvEquals(doc, value))
 
-    fn kvEquals(doc, path) = Checked::andThen(TomlValues::expectEquals(path.at), fn(value) => kvValue(doc, path, value))
+    fn kvEquals(doc, path) = andThen(TomlValues::expectEquals(path.at), fn(value) => kvValue(doc, path, value))
 
     fn kvValue(doc, path, eq) = {
         let c1 = TomlLexer::skipSpaces(eq)
         match TomlValues::missingValueAt(c1) {
             true => Error { message: Toml::fail(c1, "toml.expected-value") }
-            false => Checked::andThen(TomlValues::parseValue(c1), fn(value) => kvTail(doc, path, value))
+            false => andThen(TomlValues::parseValue(c1), fn(value) => kvTail(doc, path, value))
         }
     }
 
-    fn kvTail(doc, path, v) = Checked::andThen(TomlLexer::skipLineTail(v.at), fn(value) => kvInsert(doc, path, v.value, value))
+    fn kvTail(doc, path, v) = andThen(TomlLexer::skipLineTail(v.at), fn(value) => kvInsert(doc, path, v.value, value))
 
-    fn kvInsert(doc, path, val, tail) = Checked::andThen(TomlTree::insertAtFocus(doc, path.segs, val), fn(value) => Success { value: Step { doc: value, at: tail } })
+    fn kvInsert(doc, path, val, tail) = andThen(TomlTree::insertAtFocus(doc, path.segs, val), fn(value) => Success { value: Step { doc: value, at: tail } })
 
     fn parseDocument(doc, c) = {
         let c1 = TomlLexer::skipTrivia(c)
         match TomlLexer::eof(c1) {
             true => Success { value: doc.root }
-            false => Checked::andThen(parseStatement(doc, c1), fn(value) => parseDocument(value.doc, value.at))
+            false => andThen(parseStatement(doc, c1), fn(value) => parseDocument(value.doc, value.at))
         }
     }
 

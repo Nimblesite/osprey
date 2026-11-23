@@ -92,12 +92,12 @@ module TomlValues {
     }
 
     /// Parse a (possibly dotted) key path from the cursor. [PACKAGE-MANIFEST]
-    export fn parseKeyPath(c) = Checked::andThen(parseKeySeg(c), fn(value) => keyPathTail(value.at, [value.seg]))
+    export fn parseKeyPath(c) = andThen(parseKeySeg(c), fn(value) => keyPathTail(value.at, [value.seg]))
 
     // Self-recursive: codegen needs the return type spelled out.
     fn keyPathTail(c, segs) -> Result<Path, string> = match TomlLexer::cur(c) == byteDot {
         false => Success { value: Path { segs: segs, at: c } }
-        true => Checked::andThen(parseKeySeg(TomlLexer::advance(c)), fn(value) => keyPathTail(value.at, listAppend(segs, value.seg)))
+        true => andThen(parseKeySeg(TomlLexer::advance(c)), fn(value) => keyPathTail(value.at, listAppend(segs, value.seg)))
     }
 
     // -- values -------------------------------------------------------------
@@ -146,10 +146,10 @@ module TomlValues {
     /// open a multiline string is refused.
     fn quotedValue(c, quoteByte, scan) = match TomlLexer::peek(c, 1) == quoteByte && TomlLexer::peek(c, 2) == quoteByte {
         true => Error { message: Toml::fail(c, "toml.unsupported-multiline-string") }
-        false => Checked::andThen(scan(c), fn(value) => Success { value: Val { value: Toml::Str { text: value.text }, at: value.at } })
+        false => andThen(scan(c), fn(value) => Success { value: Val { value: Toml::Str { text: value.text }, at: value.at } })
     }
 
-    fn parseNumber(c) = Checked::andThen(TomlLexer::scanBare(c), fn(value) => classifyNumber(value.token, value.at, c))
+    fn parseNumber(c) = andThen(TomlLexer::scanBare(c), fn(value) => classifyNumber(value.token, value.at, c))
 
     fn classifyNumber(token, after, start) = match intShape(token) {
         "" => match parseInt(stripUnderscores(token)) {
@@ -214,7 +214,7 @@ module TomlValues {
         true => arrayUnterminated(start)
         false => match TomlLexer::cur(c) == byteRBracket {
             true => closedArr(c, items)
-            false => Checked::andThen(parseValue(c), fn(value) => parseArrayNext(value.at, listAppend(items, value.value), start))
+            false => andThen(parseValue(c), fn(value) => parseArrayNext(value.at, listAppend(items, value.value), start))
         }
     }
 
@@ -266,13 +266,13 @@ module TomlValues {
         }
     }
 
-    fn parseInlineEntry(c, pairs, start) = Checked::andThen(parseKeySeg(c), fn(value) => inlineValue(value.seg, value.at, pairs, start))
+    fn parseInlineEntry(c, pairs, start) = andThen(parseKeySeg(c), fn(value) => inlineValue(value.seg, value.at, pairs, start))
 
-    fn inlineValue(seg, keyAt, pairs, start) = Checked::andThen(expectEquals(keyAt), fn(value) => inlineEqValue(seg, value, pairs, start))
+    fn inlineValue(seg, keyAt, pairs, start) = andThen(expectEquals(keyAt), fn(value) => inlineEqValue(seg, value, pairs, start))
 
-    fn inlineEqValue(seg, eq, pairs, start) = Checked::andThen(parseValue(skipInlineSpaces(eq)), fn(value) => inlineTail(seg, value, pairs, start))
+    fn inlineEqValue(seg, eq, pairs, start) = andThen(parseValue(skipInlineSpaces(eq)), fn(value) => inlineTail(seg, value, pairs, start))
 
-    fn inlineTail(seg, v, pairs, start) = Checked::andThen(inlineAdd(pairs, seg, v.value), fn(value) => inlineAfterComma(v.at, value, start))
+    fn inlineTail(seg, v, pairs, start) = andThen(inlineAdd(pairs, seg, v.value), fn(value) => inlineAfterComma(v.at, value, start))
 
     fn inlineAdd(pairs, seg, val) = match TomlTree::findPair(pairs, seg.name) >= 0 {
         true => Error { message: Toml::failSpan(seg.span, "toml.duplicate-key") }

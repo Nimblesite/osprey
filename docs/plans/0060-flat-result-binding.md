@@ -192,7 +192,8 @@ The binder is on the left of every step, and the answer is the last line.
   - Bind through the prelude `andThen`.
   - Update the specs, and the LSP's hover and highlighting.
 - [ ] **3. Rewrite every pyramid.** Work through the 46 files, deepest first:
-  - Rewrite each pyramid with `use`, and delete every module-local `andThen` (such as `Checked::andThen`).
+  - Rewrite each pyramid with `use`.
+  - [x] Delete every module-local `andThen`. Done 2026-11-24: `Checked::andThen` (316 calls in 36 manager files) and the tensor tests' `Backends::andThen` (60 calls) were copies of the prelude `andThen`; every caller now uses the prelude one. Manager suites 521/521 under GC, tensor twins match their golden under GC and ARC.
   - Remove the lambda type annotations the rewrite makes unnecessary.
   - Import `registry::Governance as G`.
   - Flatten the nested `match bool` ladders (`withinHold`, `stillCurrent`)

@@ -125,7 +125,7 @@ module Governance {
 
     /// The live human principal behind a membership: the actor every
     /// organizational decision is signed by.
-    export fn humanMemberOf(registry, m: Membership) = Checked::andThen(principalOf(registry, m.principal), fn(p: Principal) => humanPrincipal(p))
+    export fn humanMemberOf(registry, m: Membership) = andThen(principalOf(registry, m.principal), fn(p: Principal) => humanPrincipal(p))
 
     /// Package writes need a writable lifecycle status
     /// [PACKAGE-OWNERSHIP-MAINTENANCE]; each refusal names its status.
@@ -182,12 +182,12 @@ module Governance {
     /// other organizations' admins and workflows all fail here.
     export fn requireAdmin(registry, pkg: Package, proof, statement) = match proof.membership == pkg.admin {
         false => Error { message: "governance.admin.not-current" }
-        true => Checked::andThen(membershipOf(registry, proof.membership), fn(m: Membership) =>
-            Checked::andThen(activeMemberOf(m), fn(_) =>
-                Checked::andThen(principalOf(registry, m.principal), fn(p: Principal) =>
-                    Checked::andThen(livePrincipal(p), fn(_) =>
-                        Checked::andThen(humanPrincipal(p), fn(_) =>
-                            Checked::andThen(requireHumanCeremony(proof), fn(_) =>
+        true => andThen(membershipOf(registry, proof.membership), fn(m: Membership) =>
+            andThen(activeMemberOf(m), fn(_) =>
+                andThen(principalOf(registry, m.principal), fn(p: Principal) =>
+                    andThen(livePrincipal(p), fn(_) =>
+                        andThen(humanPrincipal(p), fn(_) =>
+                            andThen(requireHumanCeremony(proof), fn(_) =>
                                 requireProof(proof, m.principal, m.id, statement)))))))
     }
 

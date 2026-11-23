@@ -27,7 +27,7 @@ module Maybe {
     }
 
     /// `Present` of a successful result, or the failure unchanged.
-    export fn ofResult(result) = Checked::andThen(result, fn(value) => Success { value: Present { value: value } })
+    export fn ofResult(result) = andThen(result, fn(value) => Success { value: Present { value: value } })
 
     /// A present value.
     export fn some(value) = Present { value: value }

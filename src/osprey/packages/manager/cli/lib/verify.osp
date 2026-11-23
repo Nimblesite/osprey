@@ -86,7 +86,7 @@ module Verify {
     /// A locked package's member of the uv project, from its installed tree or checkout.
     fn packageMember(project, lock, pkg) = {
         let dir = Project::treeDirAt(project, lock, pkg)
-        Checked::andThen(Manifest::accepted(Manifest::parse(readOr("${dir}/osprey.toml"))), fn(value) => PythonPlane::memberOf(value, pythonPathFor(lock, pkg), readOr("${dir}/pyproject.toml")))
+        andThen(Manifest::accepted(Manifest::parse(readOr("${dir}/osprey.toml"))), fn(value) => PythonPlane::memberOf(value, pythonPathFor(lock, pkg), readOr("${dir}/pyproject.toml")))
     }
 
     fn members(project, lock, manifest) = PythonPlane::membersOver(Lockfile::packagesOf(lock), PythonPlane::memberOf(manifest, "../..", readOr(Project::pathAt(project, "pyproject.toml"))), fn(p) => packageMember(project, lock, p))

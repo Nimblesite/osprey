@@ -117,8 +117,8 @@ module Build {
 
     fn derivedText(manifest, pms) = join(projectLines(manifest, pms), "\n")
 
-    fn writeDerived(cmd: CommandLine, manifest, pms) = Checked::andThen(perform Host::Tree.ensure(Project::pathAt(cmd.project, buildDir)),
-        fn(_dir) => Checked::andThen(perform Host::Files.write(Project::pathAt(cmd.project, buildManifest), derivedText(manifest, pms)), fn(_written) => Success { value: 0 }))
+    fn writeDerived(cmd: CommandLine, manifest, pms) = andThen(perform Host::Tree.ensure(Project::pathAt(cmd.project, buildDir)),
+        fn(_dir) => andThen(perform Host::Files.write(Project::pathAt(cmd.project, buildManifest), derivedText(manifest, pms)), fn(_written) => Success { value: 0 }))
 
     /// The compiler invocation, every variable word shell-quoted ([PACKAGE-HARDENING] C6).
     fn command(cmd: CommandLine, manifest) = if cmd.run {

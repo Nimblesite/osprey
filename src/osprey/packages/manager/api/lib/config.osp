@@ -25,15 +25,15 @@ module Config {
         Error => Error { message: "config.port" }
     }
 
-    fn withPort(document, root, address) = Checked::andThen(port(document), fn(value) => Success { value: Settings { root: root, address: address, port: value } })
+    fn withPort(document, root, address) = andThen(port(document), fn(value) => Success { value: Settings { root: root, address: address, port: value } })
 
-    fn withAddress(document, root) = Checked::andThen(text(document, "address"), fn(value) => withPort(document, root, value))
+    fn withAddress(document, root) = andThen(text(document, "address"), fn(value) => withPort(document, root, value))
 
-    fn settingsOf(document) = Checked::andThen(text(document, "root"), fn(value) => withAddress(document, value))
+    fn settingsOf(document) = andThen(text(document, "root"), fn(value) => withAddress(document, value))
 
     /// Settings from configuration text, or a `config.*` / `json.*` code.
-    export fn parse(source) = Checked::andThen(Checked::mapError(Json::parse(source), Json::describe), settingsOf)
+    export fn parse(source) = andThen(Checked::mapError(Json::parse(source), Json::describe), settingsOf)
 
     /// Settings read through `Host::Files`, or the reason they are unusable.
-    export fn load() = Checked::andThen(Checked::mapError(perform Host::Files.read(fileName), fn(message) => "config.unreadable: ${fileName}: ${message}"), parse)
+    export fn load() = andThen(Checked::mapError(perform Host::Files.read(fileName), fn(message) => "config.unreadable: ${fileName}: ${message}"), parse)
 }
