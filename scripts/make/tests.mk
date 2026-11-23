@@ -568,6 +568,11 @@ _test_agent:
 	set -o pipefail && $(BIN) src/osprey/examples/agent/test --run --quiet --no-warnings | awk '{print; last = $$0} END {exit last !~ / 0 failed$$/}'
 	$(BIN) src/osprey/examples/agent/test-app --run --quiet --no-warnings
 
+.PHONY: _test_cleanarch
+# The Clean Architecture todo port's use cases, multi-shot handlers included, under GC and ARC. [EXAMPLE-CLEANARCH-INV-TESTS]
+_test_cleanarch:
+	for memory in gc arc; do $(BIN) test src/osprey/examples/cleanarch_todo/test --memory=$$memory || exit 1; done
+
 .PHONY: _test_python_app_ports
 
 _test_python_app_ports:

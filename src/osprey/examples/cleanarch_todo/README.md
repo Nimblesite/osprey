@@ -34,6 +34,8 @@ osprey test src/osprey/examples/cleanarch_todo/test --memory=arc
 
 Expected from each: `# tests=100 passed=100 failed=0 skipped=0`.
 
+`make -C src/toolchain/targets/tests cleanarch` runs both, and CI runs the same pair.
+
 The same suite builds for WebAssembly and runs under Node's WASI. Every multi-shot resumption
 gives the same answer there as it does natively ([MULTI-WASM-MANY]):
 

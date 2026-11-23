@@ -1141,6 +1141,9 @@ jobs:
       - name: Osprey Agent suites
         run: make _test_agent
 
+      - name: Clean Architecture todo suite (GC and ARC)
+        run: make _test_cleanarch
+
       - name: Install bank e2e dependencies
         run: npm ci
         working-directory: ./src/osprey/examples/talon/playwright-e2e-tests
