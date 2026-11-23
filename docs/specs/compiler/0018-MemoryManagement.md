@@ -260,7 +260,9 @@ below isn't enforced yet.
 **What is refused.** A value needs a second owner, and the program is
 refused, when:
 
-- a value another binding, parameter or field owns is given a new name;
+- a value read out of a temporary, a `mut` binding or a file-scope binding is
+  given a name (anything else borrows, see
+  [MEM-OWNERSHIP-STATIC-BORROWS](#inferred-borrows-mem-ownership-static-borrows));
 - it is stored in a record, union, list, closure or cell while its owner keeps
   it;
 - a function returns a parameter, a field of one, or a file-scope binding;
@@ -275,13 +277,31 @@ value when one does, and which of these applies:
 main.osp: 6:4: ownership: `made` needs a second owner in `main`: it is stored in a new value while its owner keeps it [MEM-OWNERSHIP-STATIC]
 ```
 
-A fresh value passed straight to its use is moved and never refused. A
+A fresh value passed straight to its use is moved and never refused. A binding
+read exactly once by a statement, on a path that runs once, and never read
+after it gives its value to the record, list, closure or binding that takes
+it there. A
 function parameter is a borrow: the caller keeps the value alive for the
 call, so reading a parameter or passing it on costs nothing. A function
 result is owned by the caller. The acyclic heap ([MEM-ACYCLIC]) makes a
 single-owner tree sufficient. Collection stays unobservable ([MEM-OPAQUE]):
 the backend decides which programs compile and when memory is freed, never a
 compiled program's output.
+
+### Inferred borrows [MEM-OWNERSHIP-STATIC-BORROWS]
+
+A `let` that names a value another binding owns, such as a field of a record
+or an alias of a parameter, borrows it: the new binding holds no reference and
+frees nothing. Every binding the value was read from stays alive until the
+borrower's last read, so the owner is freed after the borrower, never before.
+
+A binding can't borrow in two cases, and is refused as needing a second
+owner. The first is a value read out of something the statement itself made,
+as in `let left = make(1).left`: that temporary dies when the statement ends.
+The second is a value read from a `mut` binding or a file-scope binding,
+which can be replaced while the borrower still reads it. A borrower can be
+read and passed to functions. Storing it, returning it or handing it to a
+fiber needs an owner and is refused.
 
 ### Rules for shared values [MEM-OWNERSHIP-STATIC-RULES]
 

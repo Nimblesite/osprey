@@ -220,7 +220,7 @@ fn finish_binding(cg: &mut Codegen, name: &str, source: &Expr, value: Value, dec
     }
     cg.emit_debug_binding(name, &value, declaration);
     // Move ownership out of the statement region [GC-ARC-PERCEUS].
-    crate::arc::bind_owned(cg, name, &value);
+    crate::arc::bind_let(cg, name, source, &value);
     cg.bind(name.to_string(), value);
 }
 

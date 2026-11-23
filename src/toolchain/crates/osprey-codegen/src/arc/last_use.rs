@@ -32,6 +32,7 @@ pub(super) fn live_after<S: std::borrow::Borrow<Stmt>>(
     // over alive, though the continuation never names those captures.
     live.extend(crate::closure::reach(cg, &live));
     live.extend(crate::iter::stage_aliases(cg));
+    super::borrows::keep_lenders(cg, &mut live);
     live
 }
 

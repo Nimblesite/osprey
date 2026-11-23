@@ -16,8 +16,10 @@
 use crate::builder::Codegen;
 use crate::llty::Value;
 
+mod borrows;
 mod moves;
 mod ownership;
+pub(crate) use borrows::{bind_let, note_rebound};
 mod phi;
 pub(crate) use moves::{
     begin as begin_moves, begin_statement as begin_statement_moves, end as end_moves,
@@ -65,6 +67,8 @@ pub(crate) struct ArcLedger {
     cond_floors: Vec<(usize, usize)>,
     /// Bindings the statement being lowered may move at their last use.
     movable: moves::Movable,
+    /// Bindings that borrow, and what they borrow from [MEM-OWNERSHIP-STATIC-BORROWS].
+    borrows: borrows::Borrows,
 }
 
 impl ArcLedger {
@@ -74,6 +78,7 @@ impl ArcLedger {
             kinds: vec![FrameKind::Scope],
             cond_floors: Vec::new(),
             movable: moves::Movable::default(),
+            borrows: borrows::Borrows::default(),
         }
     }
 }
@@ -289,21 +294,31 @@ fn release_entries(cg: &mut Codegen, entries: &[Entry]) {
 /// borrow (field load, unwrap payload, alias, phi of arm-owned values) is
 /// retained so the binding survives its source. Non-candidates are untouched.
 pub(crate) fn bind_owned(cg: &mut Codegen, name: &str, v: &Value) {
-    if !managed(cg, v) {
-        return;
+    if managed(cg, v) && !adopt(cg, name, v) {
+        bind_counted(cg, name, v);
     }
+}
+
+/// Give `name` the reference `v` already has: the one the closing statement
+/// owns, or the one a binding at its last use gives up. False when neither.
+fn adopt(cg: &mut Codegen, name: &str, v: &Value) -> bool {
     if let Some(mut e) = take_entry(cg, &v.operand) {
         e.name = Some(name.to_string());
         e.binding_scope = cg.scope_id();
         push_parent(cg, e);
-        return;
+        return true;
     }
     // An alias made at the last use of its source takes the source's reference.
-    if let Some(mut e) = moves::take(cg, &v.operand) {
-        e.name = Some(name.to_string());
-        push_parent(cg, e);
-        return;
-    }
+    let Some(mut e) = moves::take(cg, &v.operand) else {
+        return false;
+    };
+    e.name = Some(name.to_string());
+    push_parent(cg, e);
+    true
+}
+
+/// Bind a value something else owns: count a reference of its own for `name`.
+fn bind_counted(cg: &mut Codegen, name: &str, v: &Value) {
     second_owner(cg, &v.operand, Some(name), Need::Bound);
     retain_val(cg, v);
     let ptr = as_i8ptr(cg, v);

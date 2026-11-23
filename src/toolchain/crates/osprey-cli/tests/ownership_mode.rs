@@ -17,6 +17,8 @@ fn run(name: &str, source: &str, memory: &str) -> std::io::Result<Output> {
         .arg(&path)
         .args(["--run", &format!("--memory={memory}")])
         .env("OSPREY_ARC_DEBUG", "1")
+        // Freed memory is overwritten, so reading a freed value shows.
+        .env("MallocScribble", "1")
         .output();
     let _ = std::fs::remove_file(&path);
     output
@@ -91,6 +93,29 @@ fn main() = {
     let points = [Point { x: 1, y: 2 }, Point { x: 7, y: 4 }, Point { x: 3, y: 9 }]
     let names = ["a${toString(1)}", "b${toString(2)}"]
     print("${toString(first(points))} ${toString(listLength(names))}")
+}
+"#;
+
+// A binding that names part of a live value borrows it, and keeps the value it
+// was read from alive until the borrower's own last read.
+const BORROWED_BINDINGS: &str = r#"type Box = { text: string }
+type Pair = { left: Box, right: Box }
+
+fn churn(n) = "x${toString(n)}${toString(n)}${toString(n)}"
+
+fn describe(pair) = {
+    let left = pair.left
+    let text = left.text
+    "${text}/${pair.right.text}"
+}
+
+fn main() = {
+    let pair = Pair { left: Box { text: "left${toString(1)}" }, right: Box { text: "right${toString(2)}" } }
+    let shown = describe(pair)
+    let left = pair.left
+    let same = left
+    let noise = [churn(7), churn(8), churn(9)]
+    print("${shown} ${same.text} ${toString(listLength(noise))} ${left.text}")
 }
 "#;
 
@@ -174,9 +199,12 @@ fn a_program_whose_values_each_have_one_owner_runs_and_frees_everything() -> std
     assert_accepted("errors", FRESH_ERRORS)?;
     assert_accepted("captured", CAPTURED_AT_LAST_USE)?;
     assert_accepted("variants", STATIC_VARIANTS)?;
+    assert_accepted("borrowed", BORROWED_BINDINGS)?;
+    assert_accepted("second_name", SECOND_NAME)?;
     assert_accepted("fresh", FRESH_VALUES)
 }
 
+// A second name for a live value borrows it.
 const SECOND_NAME: &str = r#"type Box = { text: string }
 
 fn main() = {
@@ -193,6 +221,18 @@ fn main() = {
     let made = Box { text: "a${toString(1)}" }
     let pair = Pair { left: made, right: made }
     print("${pair.left.text}${pair.right.text}")
+}
+"#;
+
+// Read out of a value the statement itself made, which dies with the statement.
+const BORROWED_FROM_A_TEMPORARY: &str = r#"type Box = { text: string }
+type Pair = { left: Box, right: Box }
+
+fn make(n) = Pair { left: Box { text: "left${toString(n)}" }, right: Box { text: "right${toString(n)}" } }
+
+fn main() = {
+    let left = make(1).left
+    print(left.text)
 }
 "#;
 
@@ -237,14 +277,14 @@ fn main() = {
 #[test]
 fn a_value_that_needs_a_second_owner_is_refused_by_name_and_place() -> std::io::Result<()> {
     assert_refused(
-        "second_name",
-        SECOND_NAME,
-        &["`again`", " 5:4: ownership", "second owner"],
-    )?;
-    assert_refused(
         "stored_twice",
         STORED_TWICE,
         &["`made`", " 6:4: ownership", "second owner"],
+    )?;
+    assert_refused(
+        "borrowed_from_a_temporary",
+        BORROWED_FROM_A_TEMPORARY,
+        &["`left`", " 7:4: ownership", "bound to a new name"],
     )?;
     assert_refused(
         "stored_then_read",
