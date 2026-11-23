@@ -65,7 +65,7 @@ module Grains
     interpolated (source, cursor, region) = Outcomes::whole (floor cursor, \index => tapped (source, cursor, region, index))
 
     tapped (source, cursor, region, index) = match listGet source index
-        Error _ => Error(message = MissingResource(detail = "index out of bounds"))
+        Error _ => Error(message = Outcomes::indexOutOfBounds)
         Success a =>
             following = match index == satSub region.limit 1
                 true => match region.boundary
@@ -73,7 +73,7 @@ module Grains
                     OneShotSource => index
                 false => satAdd index 1
             match listGet source following
-                Error _ => Error(message = MissingResource(detail = "index out of bounds"))
+                Error _ => Error(message = Outcomes::indexOutOfBounds)
                 Success b => match sourceSample a && sourceSample b
                     false => Error(message = NumericalFailure(detail = "A grain read a nonfinite or unnormalised source sample."))
                     true => Success(value = Interpolation::linear (a, b, GrainMath::fraction cursor))

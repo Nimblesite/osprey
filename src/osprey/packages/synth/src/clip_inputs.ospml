@@ -15,7 +15,7 @@ module ClipInputs
 
     (** Append a checked audio sample to an interleaved or extracted channel. *)
     export appended (values, outcome) = match outcome
-        Error _ => Error(message = MissingResource(detail = "index out of bounds"))
+        Error _ => Error(message = Outcomes::indexOutOfBounds)
         Success sample => Success(value = listAppend values sample)
 
     filterIndexedChannel (clip, outlet) = foldList (toList (range (0, intDiv (length clip.clipSamples) clip.clipChannels)), Success(value = []), \(result, frame) =>
@@ -60,7 +60,7 @@ module ClipInputs
     export sourceChannel (graph, cable, channel) = match Graphs::node (graph, cable.source)
         Invalid _ => Error(message = MissingResource(detail = "The routed source is missing."))
         Valid n => match listGet n.outputs cable.outlet
-            Error _ => Error(message = MissingResource(detail = "index out of bounds"))
+            Error _ => Error(message = Outcomes::indexOutOfBounds)
             Success port => match port.rate
                 Control => Success(value = 0)
                 Audio => match n.processor
@@ -85,7 +85,7 @@ module ClipInputs
         Success port => port.rate == rate
 
     source (graph, clips, n, rate) = match listGet (filterList (toList (range (0, length n.inputs)), \index => matchingRate (n, rate, index))) 0
-        Error _ => Error(message = MissingResource(detail = "index out of bounds"))
+        Error _ => Error(message = Outcomes::indexOutOfBounds)
         Success inlet => routed (graph, clips, n.identity, inlet)
 
     audioInput (graph, clips, n) = match length (filterList (n.inputs, \p => p.rate == Audio)) == 0
