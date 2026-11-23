@@ -72,7 +72,8 @@ impl Checker {
             }
         }
         // A closed-domain witness names its missing constructor. Erased values always need a catch-all.
-        let witness = self.useful_in(&rows, &[Space::Any], erased)
+        let witness = self
+            .useful_in(&rows, &[Space::Any], erased)
             .filter(|witness| erased || !matches!(witness.first(), Some(Space::Any)));
         if let Some(witness) = witness {
             let message = if erased {
@@ -142,10 +143,12 @@ impl Checker {
             Pattern::Or(alternatives) => Space::Or(
                 alternatives
                     .iter()
-                    .flat_map(|alternative| match self.pattern_space(alternative, erased) {
-                        Space::Or(nested) => nested,
-                        single => vec![single],
-                    })
+                    .flat_map(
+                        |alternative| match self.pattern_space(alternative, erased) {
+                            Space::Or(nested) => nested,
+                            single => vec![single],
+                        },
+                    )
                     .collect(),
             ),
         }

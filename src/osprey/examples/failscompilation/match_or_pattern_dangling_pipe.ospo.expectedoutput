@@ -1,1 +1,3 @@
 7:9: missing identifier
+13:0: syntax error near `fn lead(c) = match c {`
+14:4: syntax error near `|`

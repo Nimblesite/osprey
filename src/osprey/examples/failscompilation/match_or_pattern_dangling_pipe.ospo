@@ -9,3 +9,8 @@ fn trail(c) = match c {
 }
 
 print(trail(Red))
+
+fn lead(c) = match c {
+    | Blue => 1
+    _ => 0
+}
