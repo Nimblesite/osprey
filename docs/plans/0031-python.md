@@ -39,7 +39,7 @@ Constraints:
 ## Phase D — project, editor and target integration
 
 - [x] [FLAVOR-PYTHON-SELECT] [FLAVOR-PYTHON-VERIFICATION] All 27 assignments of Default, ML and Python to the entry, ledger model and effect policy produce identical checked ASTs, public contracts and LLVM IR. Eight additional native-flavor assignments retain the abstract signature coverage. All 31 cross-flavor IR tests passed on 2026-11-23.
-- [ ] [FLAVOR-PYTHON-VERIFICATION] Wire remaining tooling to the Python flavor: test discovery, docs examples, formatter beyond indentation (`src/toolchain/crates/osprey-fmt/src/python.rs`), annotation edits, LSP completion/hover/signature/rename, debugger locations, VS Code language config (`src/toolchain/vscode-extension/`), web compiler selection (`src/toolchain/website/src/js/wasm-studio.js`), corpus backends (`src/toolchain/crates/corpus_backends.sh` has no `run_python`), caches, CI/release classification. Acceptance: a Python helper edit never masquerades as a language fixture; opted-in Python sources trigger their real compiler/test lanes; `make ci` passes.
+- [ ] [FLAVOR-PYTHON-VERIFICATION] Verified marked Python suite discovery under native GC/ARC and wasm32, manifest and marker selection in VS Code, annotation edits, f-string references, and inferred effect requirements in hover, completion and signature help. Native debugger checks cover Python file names and bound, argument and foreign-call lambda scopes. Remaining checks include formatter coverage beyond indentation, rename, web compiler selection, cache/CI/release routing and green `make ci`.
 
 ## Phase E — GPT-2 edge checks and sampling-boundary record
 

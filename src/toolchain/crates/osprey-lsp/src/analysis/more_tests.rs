@@ -28,7 +28,7 @@ fn assert_doc_value(json: &serde_json::Value, pointer: &str, expected: &str) {
 
 /// [LSP-EFFECT-REQUIREMENTS] Inferred requirements are distinct from written bounds.
 #[test]
-fn symbols_publish_transitive_effect_requirements_in_both_flavors() -> Result<(), String> {
+fn symbols_publish_transitive_effect_requirements_in_all_three_flavors() -> Result<(), String> {
     for (source, flavor, ..) in EFFECT_REQUIREMENT_SOURCES {
         let program = parse_ok_flavored(source, flavor);
         assert_eq!(
@@ -62,9 +62,10 @@ fn symbols_publish_transitive_effect_requirements_in_both_flavors() -> Result<()
     Ok(())
 }
 
-const EFFECT_REQUIREMENT_SOURCES: [(&str, osprey_syntax::Flavor, &str, u32, u32); 2] = [
+const EFFECT_REQUIREMENT_SOURCES: [(&str, osprey_syntax::Flavor, &str, u32, u32); 3] = [
     ("effect Read { get: fn() -> int }\nfn leaf() = perform Read.get()\nfn relay() = leaf()\nfn safe() = {\n handle Read { get => 42 }\n relay()\n}\n", osprey_syntax::Flavor::Default, "file:///requirements.osp", 2, 4),
     ("effect Read\n    get : Unit => int\nleaf () = perform Read.get ()\nrelay () = leaf ()\nsafe () =\n    handle Read\n        get => 42\n    relay ()\n", osprey_syntax::Flavor::Ml, "file:///requirements.ospml", 3, 1),
+    ("# osprey: flavor=python\n@effect\nclass Read:\n    def get() -> int: ...\ndef leaf():\n    return perform(Read.get())\ndef relay():\n    return leaf()\n@handler(Read)\nclass answer:\n    def get():\n        return 42\ndef safe():\n    return answer(relay)\n", osprey_syntax::Flavor::Python, "file:///requirements.py", 6, 5),
 ];
 
 #[test]
