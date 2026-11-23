@@ -21,6 +21,8 @@ pub(crate) struct Resolution {
     /// Whether the program declares an opaque alias, and so needs a second,
     /// transparent assembly for the backend.
     pub opaque_aliases: bool,
+    /// The import bindings resolution used, per contribution ([MODULES-IMPORT-UNUSED]).
+    pub used_imports: BTreeSet<(usize, String)>,
 }
 
 #[derive(Debug, Clone)]
@@ -71,6 +73,9 @@ pub(crate) struct Resolver<'a> {
     entry_locals: Locals,
     entry_main_count: usize,
     extern_names: BTreeMap<String, SymbolKey>,
+    /// Each `(contribution, binding)` an import introduced that some name
+    /// resolved through ([MODULES-IMPORT-UNUSED]).
+    pub used_imports: BTreeSet<(usize, String)>,
 }
 
 pub(crate) fn flatten(
@@ -104,6 +109,7 @@ pub(crate) fn flatten(
         entry_locals: Locals::default(),
         entry_main_count: 0,
         extern_names: BTreeMap::new(),
+        used_imports: BTreeSet::new(),
     };
     resolver.classify_constants();
     for (index, contribution) in contributions.iter().enumerate() {
@@ -173,6 +179,7 @@ impl Resolver<'_> {
             source_names: self.source_names,
             errors: self.errors,
             opaque_aliases: self.aliases.values().any(|alias| alias.opaque),
+            used_imports: self.used_imports,
         }
     }
 

@@ -334,7 +334,7 @@ fn edit_distance(left: &str, right: &str) -> usize {
     row.last().copied().unwrap_or_default()
 }
 
-fn whole_alias(import: &ImportDecl) -> Option<String> {
+pub(crate) fn whole_alias(import: &ImportDecl) -> Option<String> {
     if let Some(alias) = &import.alias {
         return Some(alias.clone());
     }

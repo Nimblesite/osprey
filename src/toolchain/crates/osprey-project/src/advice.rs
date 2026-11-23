@@ -92,8 +92,14 @@ pub(crate) fn warnings(
     graph: &ProjectGraph,
     sources: &[SourceMetadata],
     boundaries: &[StateBoundary],
+    used_imports: &BTreeSet<(usize, String)>,
 ) -> Vec<ProjectWarning> {
     let mut warnings = namespace_warnings(config, contributions, sources);
+    warnings.extend(crate::unused_imports::warnings(
+        contributions,
+        used_imports,
+        sources,
+    ));
     if !config.published_library {
         warnings.extend(graph.modules.iter().filter(|(key, _)| key.path.len() > 3)
             .map(|(key, module)| ProjectWarning {
@@ -161,7 +167,11 @@ fn reverse_domain(name: &str) -> bool {
     ) && parts.iter().all(|part| !part.is_empty())
 }
 
-fn position(at: Option<Position>, source: usize, sources: &[SourceMetadata]) -> Position {
+pub(crate) fn position(
+    at: Option<Position>,
+    source: usize,
+    sources: &[SourceMetadata],
+) -> Position {
     match at {
         Some(at) => at,
         None => Position {

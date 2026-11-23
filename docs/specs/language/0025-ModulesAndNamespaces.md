@@ -166,6 +166,10 @@ module is an error.
 
 A payload-free variant used as a pattern (`Dry => "dry"`) is the constructor whatever the flavor's parser spelled it as: the Default parser yields a binding named `Dry`, and the resolver links a binding that names a declared constructor to that constructor's renamed declaration, so the match sees the same variant the type declares. `src/osprey/tests/regressions/basics/types/type_equality_comprehensive` pins it through assembly in both flavors.
 
+### Unused Imports `[MODULES-IMPORT-UNUSED]`
+
+An import no name resolves through is a project warning, `unused-import`, at the `import`, spelled as written: `` import `billing::Idle::{never as nope}` is never used ``. A name uses an import when resolution takes it through that import's alias or member: a qualified path (`Tax::add`), a bare member (`flat()`), an aliased type (`T::Rate`) or a method-style call. Because a module of the importing namespace resolves before any import ([MODULES-RESOLUTION]), an import of one is reported too, except from a Python-flavor file, which names a sibling module only through an import, as Python does. A wildcard import binds names nobody wrote and is never reported. Implemented in `osprey-project/src/unused_imports.rs`; resolution records each used binding in `name_resolve.rs`.
+
 ## Exports and Visibility `[MODULES-EXPORTS]`
 
 Namespace declarations are visible across their namespace graph. Module items
