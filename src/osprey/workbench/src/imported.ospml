@@ -108,20 +108,28 @@ module ProofNotation
         mixedInstance ("instHAdd", "Add", "Add.add", "Add.mk", "HAdd", "HAdd.mk"),
         Decl(name = "outParam", params = ["u"], ty = Pi "x" (Sort (Param "u")) (Sort (Param "u")), body = Definition (Lam "x" (Sort (Param "u")) (BVar 0)))
     ]
+    (** `Pi` over each binder in turn, outermost first, then `body`; `lams` is the same with `Lam`. *)
+    pis (binders, body) = foldList (listReverse binders, body, \(inner, b) => Pi "x" b inner)
+    lams (binders, body) = foldList (listReverse binders, body, \(inner, b) => Lam "x" b inner)
+    applied (head, args) = foldList (args, head, \(f, a) => App f a)
+    lifted u = Sort (Succ (Param u))
+
+    (** A one-constructor structure: its type former and its constructor `mk`. *)
+    structure (name, params, mk, ty) = Decl(name = name, params = params, ty = ty, body = TypeFormer (Family(familyParams = listLength params, familyIndices = 0, familyCtors = [mk], familyRecursive = false, familyReflexive = false, familyAll = [name], familyNested = 0)))
+    constructor (name, params, mk, fields, ty) = Decl(name = mk, params = params, ty = ty, body = Constructor (Ctor(ctorFamily = name, ctorIndex = 0, ctorParams = listLength params, ctorFields = fields)))
+
     (** Each operator family is one pinned tree: its type former, its binary
         function and its constructor, renamed per operator. *)
-    operatorGroup (name, fn, mk) = [
-        Decl(name = name, params = ["u"], ty = Pi "x" (Sort (Succ (Param "u"))) (Sort (Succ (Param "u"))), body = TypeFormer (Family(familyParams = 1, familyIndices = 0, familyCtors = [mk], familyRecursive = false, familyReflexive = false, familyAll = [name], familyNested = 0))),
-        Decl(name = fn, params = ["u"], ty = Pi "x" (Sort (Succ (Param "u"))) (Pi "x" (App (Const name [Param "u"]) (BVar 0)) (Pi "x" (BVar 1) (Pi "x" (BVar 2) (BVar 3)))), body = Definition (Lam "x" (Sort (Succ (Param "u"))) (Lam "x" (App (Const name [Param "u"]) (BVar 0)) (Proj name 0 (BVar 0))))),
-        Decl(name = mk, params = ["u"], ty = Pi "x" (Sort (Succ (Param "u"))) (Pi "x" (Pi "x" (BVar 0) (Pi "x" (BVar 1) (BVar 2))) (App (Const name [Param "u"]) (BVar 1))), body = Constructor (Ctor(ctorFamily = name, ctorIndex = 0, ctorParams = 1, ctorFields = 1)))
-    ]
+    operatorGroup (name, fn, mk) =
+        u = lifted "u"
+        self = App (Const name [Param "u"]) (BVar 0)
+        [structure (name, ["u"], mk, pis ([u], u)), Decl(name = fn, params = ["u"], ty = pis ([u, self, BVar 1, BVar 2], BVar 3), body = Definition (lams ([u, self], Proj name 0 (BVar 0)))), constructor (name, ["u"], mk, 1, pis ([u, pis ([BVar 0, BVar 1], BVar 2)], App (Const name [Param "u"]) (BVar 1)))]
 
     (** A heterogeneous operator over three universes and an outParam result. *)
-    mixedGroup (name, fn, mk) = [
-        Decl(name = name, params = ["u", "v", "w"], ty = Pi "x" (Sort (Succ (Param "u"))) (Pi "x" (Sort (Succ (Param "v"))) (Pi "x" (App (Const "outParam" [Succ (Succ (Param "w"))]) (Sort (Succ (Param "w")))) (Sort (Max (Max (Succ (Param "u")) (Succ (Param "v"))) (Succ (Param "w")))))), body = TypeFormer (Family(familyParams = 3, familyIndices = 0, familyCtors = [mk], familyRecursive = false, familyReflexive = false, familyAll = [name], familyNested = 0))),
-        Decl(name = fn, params = ["u", "v", "w"], ty = Pi "x" (Sort (Succ (Param "u"))) (Pi "x" (Sort (Succ (Param "v"))) (Pi "x" (App (Const "outParam" [Succ (Succ (Param "w"))]) (Sort (Succ (Param "w")))) (Pi "x" (App (App (App (Const name [Param "u", Param "v", Param "w"]) (BVar 2)) (BVar 1)) (BVar 0)) (Pi "x" (BVar 3) (Pi "x" (BVar 3) (BVar 3)))))), body = Definition (Lam "x" (Sort (Succ (Param "u"))) (Lam "x" (Sort (Succ (Param "v"))) (Lam "x" (App (Const "outParam" [Succ (Succ (Param "w"))]) (Sort (Succ (Param "w")))) (Lam "x" (App (App (App (Const name [Param "u", Param "v", Param "w"]) (BVar 2)) (BVar 1)) (BVar 0)) (Proj name 0 (BVar 0))))))),
-        Decl(name = mk, params = ["u", "v", "w"], ty = Pi "x" (Sort (Succ (Param "u"))) (Pi "x" (Sort (Succ (Param "v"))) (Pi "x" (App (Const "outParam" [Succ (Succ (Param "w"))]) (Sort (Succ (Param "w")))) (Pi "x" (Pi "x" (BVar 2) (Pi "x" (BVar 2) (BVar 2))) (App (App (App (Const name [Param "u", Param "v", Param "w"]) (BVar 3)) (BVar 2)) (BVar 1))))), body = Constructor (Ctor(ctorFamily = name, ctorIndex = 0, ctorParams = 3, ctorFields = 1)))
-    ]
+    mixedGroup (name, fn, mk) =
+        universes = [lifted "u", lifted "v", App (Const "outParam" [Succ (Succ (Param "w"))]) (Sort (Succ (Param "w")))]
+        self = \k => applied (Const name [Param "u", Param "v", Param "w"], [BVar (k + 2), BVar (k + 1), BVar k])
+        [structure (name, ["u", "v", "w"], mk, pis (universes, Sort (Max (Max (Succ (Param "u")) (Succ (Param "v"))) (Succ (Param "w"))))), Decl(name = fn, params = ["u", "v", "w"], ty = pis (listConcat (universes, [self 0, BVar 3, BVar 3]), BVar 3), body = Definition (lams (listConcat (universes, [self 0]), Proj name 0 (BVar 0)))), constructor (name, ["u", "v", "w"], mk, 1, pis (listConcat (universes, [pis ([BVar 2, BVar 2], BVar 2)]), self 1))]
 
     (** The `Nat` instance of an operator: `instAddNat`, `instMulNat`. *)
     natInstance (name, op, mk, natFn) = Decl(name = name, params = [], ty = App (Const op [Zero]) (Const "Nat" []), body = Definition (App (App (Const mk [Zero]) (Const "Nat" [])) (Const natFn [])))
@@ -134,11 +142,10 @@ module ProofNotation
     // Presentation identity only: these do not alter kernel reduction gates.
     extraProducts () = listConcat (mixedGroup ("HMul", "HMul.hMul", "HMul.mk"), listConcat (operatorGroup ("Mul", "Mul.mul", "Mul.mk"), listConcat (prodTrees (), prodInstances ())))
 
-    prodTrees () = [
-        Decl(name = "Prod", params = ["u", "v"], ty = Pi "x" (Sort (Succ (Param "u"))) (Pi "x" (Sort (Succ (Param "v"))) (Sort (Max (Succ (Param "u")) (Succ (Param "v"))))), body = TypeFormer (Family(familyParams = 2, familyIndices = 0, familyCtors = ["Prod.mk"], familyRecursive = false, familyReflexive = false, familyAll = ["Prod"], familyNested = 0))),
-        Decl(name = "Prod.mk", params = ["u", "v"], ty = Pi "x" (Sort (Succ (Param "u"))) (Pi "x" (Sort (Succ (Param "v"))) (Pi "x" (BVar 1) (Pi "x" (BVar 1) (App (App (Const "Prod" [Param "u", Param "v"]) (BVar 3)) (BVar 2))))), body = Constructor (Ctor(ctorFamily = "Prod", ctorIndex = 0, ctorParams = 2, ctorFields = 2))),
-        Decl(name = "Prod.snd", params = ["u", "v"], ty = Pi "x" (Sort (Succ (Param "u"))) (Pi "x" (Sort (Succ (Param "v"))) (Pi "x" (App (App (Const "Prod" [Param "u", Param "v"]) (BVar 1)) (BVar 0)) (BVar 1))), body = Definition (Lam "x" (Sort (Succ (Param "u"))) (Lam "x" (Sort (Succ (Param "v"))) (Lam "x" (App (App (Const "Prod" [Param "u", Param "v"]) (BVar 1)) (BVar 0)) (Proj "Prod" 1 (BVar 0))))))
-    ]
+    prodTrees () =
+        binders = [lifted "u", lifted "v"]
+        pair = listConcat (binders, [applied (Const "Prod" [Param "u", Param "v"], [BVar 1, BVar 0])])
+        [structure ("Prod", ["u", "v"], "Prod.mk", pis (binders, Sort (Max (Succ (Param "u")) (Succ (Param "v"))))), constructor ("Prod", ["u", "v"], "Prod.mk", 2, pis (listConcat (binders, [BVar 1, BVar 1]), applied (Const "Prod" [Param "u", Param "v"], [BVar 3, BVar 2]))), Decl(name = "Prod.snd", params = ["u", "v"], ty = pis (pair, BVar 1), body = Definition (lams (pair, Proj "Prod" 1 (BVar 0))))]
 
     prodInstances () = [
         mixedInstance ("instHMul", "Mul", "Mul.mul", "Mul.mk", "HMul", "HMul.mk"),
