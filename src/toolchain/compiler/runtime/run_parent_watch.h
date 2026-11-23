@@ -8,6 +8,7 @@
 #define OSPREY_RUN_PARENT_WATCH_H
 
 #if (defined(__APPLE__) || defined(__linux__)) && !defined(OSP_SYMBOLIC)
+#include <errno.h>
 #include <signal.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -51,8 +52,8 @@ static void run_parent_watch(void) {
   (void)unsetenv("OSPREY_RUN_PARENT"); // a process this program starts has another parent
   if (getppid() == (pid_t)runner) {
     run_parent_arm((pid_t)runner);
-  } else if (kill((pid_t)runner, 0) == 0) {
-    return; // the name was inherited from a runner that is not this program's parent
+  } else if (kill((pid_t)runner, 0) == 0 || errno != ESRCH) {
+    return; // the named runner exists (even one this user may not signal) and is not this program's parent
   }
   if (getppid() != (pid_t)runner) {
     run_parent_died(NULL); // the runner died before the watch was armed

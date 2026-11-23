@@ -63,6 +63,7 @@ fn executable(cli: &Cli, input: &CompilationInput) -> Result<(Command, Option<Pa
         native_executable(input, crate::native::NativeOptions::from_cli(cli)).map_err(failed)?;
     let mut command = Command::new(&path);
     crate::toolchain::ends_with_this_process(&mut command);
+    crate::toolchain::runner_alive().map_err(|error| error.to_string())?;
     Ok((command, temporary.then_some(path)))
 }
 
