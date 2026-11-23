@@ -115,19 +115,10 @@ function matchIntegerCase() {
 }
 
 // The shape of each `{ name, work }` registration below.
-interface Case {
-  readonly name: string;
-  readonly work: () => Unit;
-}
-
 // Register the literal-match tour scenario.
-testCases([
-  { name: "literal matching retains every printed arm", work: matchTourCase } satisfies Case,
-  // Register the boolean-scrutinee scenario.
-  { name: "boolean matching covers thresholds and parity", work: matchBooleanCase } satisfies Case,
-  // Register the integer literal-and-wildcard scenario.
-  { name: "integer matching covers literals and wildcard", work: matchIntegerCase } satisfies Case,
-]);
+test("literal matching retains every printed arm", matchTourCase);
+test("boolean matching covers thresholds and parity", matchBooleanCase);
+test("integer matching covers literals and wildcard", matchIntegerCase);
 
 /** [PATTERN-BINDING-SCOPE] Every pattern introduces names in its own arm. */
 type Choice = { readonly kind: "pick"; readonly value: int } | { readonly kind: "other" };
@@ -240,11 +231,9 @@ function capturedPatternCase() {
   ]);
 }
 
-testCases([
-  { name: "catch-all bindings remain inside their arm", work: bindingScope } satisfies Case,
-  { name: "pattern arms retain their own lexical bindings", work: siblingScopeCase } satisfies Case,
-  { name: "escaping closures retain pattern bindings", work: capturedPatternCase } satisfies Case,
-]);
+test("catch-all bindings remain inside their arm", bindingScope);
+test("pattern arms retain their own lexical bindings", siblingScopeCase);
+test("escaping closures retain pattern bindings", capturedPatternCase);
 
 function nestedPatternCase() {
   const value = 100;
@@ -289,10 +278,8 @@ function mutablePatternCase() {
   });
 }
 
-testCases([
-  { name: "nested matches restore enclosing pattern bindings", work: nestedPatternCase } satisfies Case,
-  { name: "pattern bindings shadow captured mutable cells", work: mutablePatternCase } satisfies Case,
-]);
+test("nested matches restore enclosing pattern bindings", nestedPatternCase);
+test("pattern bindings shadow captured mutable cells", mutablePatternCase);
 
 type CallChoice = { readonly kind: "apply"; readonly f: (n: int) => int } | { readonly kind: "absent" };
 interface IntOperation {
