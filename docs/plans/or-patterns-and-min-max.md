@@ -41,7 +41,7 @@ This is a language gap that blocks top tier, ranked with the gaps in [generic er
 - [x] `osprey-ast`: add `Pattern::Or(Vec<Pattern>)` in `src/pattern.rs`. Every flavor lowers to it. No frontend copies an arm
 - [x] Tree-sitter grammar (`src/toolchain/tree-sitter-osprey/grammar/patterns.js`): `pattern` takes `sep1('|', …)` at the lowest precedence; inside `(…)`, `{…}` and `[…]` slots the alternatives end at `,` or the closing delimiter
 - [x] Grammar test proving `|` after a pattern never starts the lambda form `|x| => body`, including an arm whose body is such a lambda followed by an or-pattern arm
-- [ ] Default parser (`osprey-syntax/src/default`): build `Pattern::Or`; reject a leading or trailing `|`
+- [x] Default parser (`osprey-syntax/src/default`): build `Pattern::Or`; reject a leading or trailing `|` (`failscompilation/match_or_pattern_dangling_pipe.ospo`)
 - [x] ML parser (`osprey-syntax/src/ml`): the same at arm level; a nested or-pattern in a juxtaposed slot needs parentheses; `|` in a type declaration stays a variant separator
 - [ ] Python parser (`osprey-syntax/src/python`): `case A() | B():` to `Pattern::Or`
 - [x] TypeScript parser (`osprey-syntax/src/typescript`): adjacent `case` labels with no statements between them to `Pattern::Or`; fallthrough out of a case with statements stays rejected
