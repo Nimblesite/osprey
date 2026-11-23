@@ -292,6 +292,26 @@ fn negative_argument_spacing_preserves_calls_and_subtraction() {
     }
 }
 
+#[test]
+fn block_use_keeps_binders_and_tight_comparisons_distinct() {
+    let source = "work x =\n    use a, b <- both (x, x)\n    use <- scoped a\n    use _ <- guard b\n    x<-1\nvalue = identity<int> 5\n";
+    let tree = parse(source);
+    let uses = counted(tree.root_node(), "use_statement", 3);
+    assert_eq!(
+        uses.iter()
+            .map(|node| node
+                .child_by_field_name("binders")
+                .map(|n| &source[n.byte_range()]))
+            .collect::<Vec<_>>(),
+        [Some("a, b"), None, Some("_")]
+    );
+    assert_eq!(sole_slice(source, "binary_expression"), "x<-1");
+    assert_eq!(sole_slice(source, "unary_expression"), "-1");
+    assert!(nodes(tree.root_node(), "call_expression")
+        .iter()
+        .any(|node| &source[node.byte_range()] == "identity<int> 5"));
+}
+
 fn ranges(tree: &Tree) -> Vec<(String, std::ops::Range<usize>, Point, Point)> {
     nodes(tree.root_node(), "")
         .into_iter()
