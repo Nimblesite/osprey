@@ -31,7 +31,7 @@ int64_t osprey_gpu_len(void *buffer);
 int64_t osprey_gpu_get(void *buffer, int64_t index);
 void osprey_gpu_set(void *buffer, int64_t index, int64_t word);
 void osprey_gpu_iota_fill(void *buffer);
-int32_t osprey_gpu_in_bounds(void *buffer, int64_t index);
+int32_t osprey_gpu_readable(void *buffer, int64_t index);
 void osprey_gpu_take(void *buffer, int64_t count);
 void *osprey_gpu_matmul(void *left, void *right, int64_t rows, int64_t inner, int64_t cols, int64_t elem_bytes);
 void *osprey_gpu_load_f32(const char *path, int64_t offset, int64_t count);
@@ -61,10 +61,10 @@ static void t_alloc_zero_filled(void) {
   CHECK(osprey_gpu_len(b) == SMALL_LEN);
   for (int64_t i = 0; i < SMALL_LEN; i++) {
     CHECK(osprey_gpu_get(b, i) == 0);
-    CHECK(osprey_gpu_in_bounds(b, i) == 1);
+    CHECK(osprey_gpu_readable(b, i) == 1);
   }
-  CHECK(osprey_gpu_in_bounds(b, SMALL_LEN) == 0);
-  CHECK(osprey_gpu_in_bounds(b, -1) == 0);
+  CHECK(osprey_gpu_readable(b, SMALL_LEN) == 0);
+  CHECK(osprey_gpu_readable(b, -1) == 0);
 }
 
 // A store outside a buffer's published range lands nowhere: the read stays 0.
@@ -88,7 +88,7 @@ static void t_alloc_refuses_invalid(void) {
     CHECK(b == NULL);
     CHECK(strstr(osp_io_error(), i < 2 ? "negative element count" : "overflows the byte size") != NULL);
     CHECK(osprey_gpu_len(b) == 0);
-    CHECK(osprey_gpu_in_bounds(b, 0) == 0);
+    CHECK(osprey_gpu_readable(b, 0) == 0);
     CHECK(osprey_gpu_get(b, 0) == 0);
     store_ignored(b, 0, 99); // ignored, not a wild store
   }
@@ -105,7 +105,7 @@ static void t_alloc_failure_is_error(void) {
   CHECK(b == NULL);
   CHECK(strstr(osp_io_error(), "out of memory") != NULL);
   CHECK(osprey_gpu_len(b) == 0);
-  CHECK(osprey_gpu_in_bounds(b, 0) == 0);
+  CHECK(osprey_gpu_readable(b, 0) == 0);
   store_ignored(b, 0, 7);
 }
 
@@ -113,7 +113,7 @@ static void t_alloc_failure_is_error(void) {
 static void t_null_safety(void) {
   CHECK(osprey_gpu_len(NULL) == 0);
   CHECK(osprey_gpu_get(NULL, 0) == 0);
-  CHECK(osprey_gpu_in_bounds(NULL, 0) == 0);
+  CHECK(osprey_gpu_readable(NULL, 0) == 0);
   osprey_gpu_set(NULL, 0, 1);
   take_publishes(NULL, 3, 0);
 }
@@ -178,12 +178,12 @@ static void t_take_shrinks_only(void) {
   for (int64_t i = 0; i < 7; i++) {
     CHECK(osprey_gpu_get(b, i) == 100 + i);
   }
-  CHECK(osprey_gpu_in_bounds(b, 7) == 0);
+  CHECK(osprey_gpu_readable(b, 7) == 0);
   CHECK(osprey_gpu_get(b, 7) == 0);
   osprey_gpu_set(b, 7, 55); // past the published length: ignored
   take_publishes(b, 7, 7);  // idempotent at the same count
   take_publishes(b, -3, 0); // negative clamps to zero: fully compacted away
-  CHECK(osprey_gpu_in_bounds(b, 0) == 0);
+  CHECK(osprey_gpu_readable(b, 0) == 0);
 }
 
 // --- float words and the io_error channel --------------------------------------
@@ -415,8 +415,8 @@ static void t_dense_word_roundtrip(void) {
     uint64_t mask = width == 8 ? UINT64_MAX : (UINT64_C(1) << (width * 8)) - 1;
     for (int64_t i = 0; i < 5; i++) osprey_gpu_set(buffer, i, values[i]);
     for (int64_t i = 0; i < 5; i++) CHECK((uint64_t)osprey_gpu_get(buffer, i) == ((uint64_t)values[i] & mask));
-    CHECK(!osprey_gpu_in_bounds(buffer, 5));
-    CHECK(!osprey_gpu_in_bounds(buffer, -1));
+    CHECK(!osprey_gpu_readable(buffer, 5));
+    CHECK(!osprey_gpu_readable(buffer, -1));
   }
 }
 
@@ -434,7 +434,7 @@ static void t_uint8_million_allocates_one_megabyte(void) {
   // A store wider than one byte truncates and never touches its neighbour.
   osprey_gpu_set(buffer, 999998, 0x1FF);
   CHECK(data[999998] == 255 && data[999999] == 255 && osprey_gpu_get(buffer, 999998) == 255);
-  CHECK(osprey_gpu_in_bounds(buffer, 1000000) == 0);
+  CHECK(osprey_gpu_readable(buffer, 1000000) == 0);
 }
 
 int main(int argc, char **argv) {
