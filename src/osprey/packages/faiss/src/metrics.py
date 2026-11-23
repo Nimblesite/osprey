@@ -21,7 +21,17 @@ __all__ = ["Topk", "l2sqr", "inner_product", "topk", "map_indexed"]
 
 
 def map_indexed(xs, read):
-    """`xs` rebuilt with its indices: element `i` of the result is `read(i)`."""
+    """`xs` rebuilt with its indices: element `i` of the result is `read(i)`.
+
+    # Examples
+    ```osprey
+    from faiss import Metrics
+    print(toString(Metrics.map_indexed(["a", "b", "c"], lambda i: i * 10)))
+    ```
+    ```output
+    [0, 10, 20]
+    ```
+    """
     return toList(map(range(len(xs)), read))
 
 
@@ -35,12 +45,32 @@ class Topk:
 
 
 def l2sqr(a, b):
-    """Squared L2 distance between two equal-length vectors: sum((a_i - b_i)^2)."""
+    """Squared L2 distance between two equal-length vectors: sum((a_i - b_i)^2).
+
+    # Examples
+    ```osprey
+    from faiss import Metrics
+    print(f"[{Metrics.l2sqr([1.0, 2.0], [4.0, 6.0])}] [{Metrics.l2sqr([0.5], [0.5])}]")
+    ```
+    ```output
+    [25.0] [0.0]
+    ```
+    """
     return fold(range(len(a)), 0.0, lambda acc, i: acc + sq(unwrap_or(listGet(a, i), 0.0) - unwrap_or(listGet(b, i), 0.0)))
 
 
 def inner_product(a, b):
-    """Dot product between two equal-length vectors: sum(a_i * b_i)."""
+    """Dot product between two equal-length vectors: sum(a_i * b_i).
+
+    # Examples
+    ```osprey
+    from faiss import Metrics
+    print(f"[{Metrics.inner_product([1.0, 2.0], [4.0, 6.0])}] [{Metrics.inner_product([0.5, -1.0], [2.0, 1.0])}]")
+    ```
+    ```output
+    [16.0] [0.0]
+    ```
+    """
     return fold(range(len(a)), 0.0, lambda acc, i: acc + unwrap_or(listGet(a, i), 0.0) * unwrap_or(listGet(b, i), 0.0))
 
 
