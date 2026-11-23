@@ -306,7 +306,7 @@ mod tests {
             assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
             assert_checks_clean(&parsed.program);
             let input = CompilationInput::script("pyramid.osp", source.clone(), parsed.program);
-            let warnings = super::collect(&input, false);
+            let warnings = super::collect(&input, false, None);
             let runs: Vec<_> = warnings
                 .iter()
                 .filter(|w| w.rule == "closing-run")
