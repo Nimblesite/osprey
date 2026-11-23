@@ -1,4 +1,4 @@
-// The parser spike of plan 0061 ([FLAVOR-TS-CST]): run the pinned
+// The TypeScript parser conformance check ([FLAVOR-TS-CST]): run the pinned
 // `oxc_parser` and the pinned `tsc` 7 over TypeScript's own parser
 // conformance corpus, and record how often they agree that a file is
 // syntactically valid. It also proves the TypeScript-flavor frontend never
@@ -20,7 +20,7 @@ const SUITES = { parser: "tests/cases/conformance/parser", compiler: "tests/case
 const tsc = path.join(here, "node_modules/.bin/tsc");
 const oxc = path.join(root, "target/release/examples/ts_conformance");
 /**
- * The second parser the plan compares: `tsrs_parser`, the published Rust port
+ * The second parser the conformance check compares: `tsrs_parser`, the published Rust port
  * of the TypeScript 7 parser. It is built here, outside the workspace, so the
  * compiler never depends on it.
  */
@@ -38,7 +38,7 @@ tsrs_parser = "=7.1.0-beta.tsrs1"
 tsrs_ast = "=7.1.0-beta.tsrs1"
 tsrs_core = "=7.1.0-beta.tsrs1"
 `;
-const PROBE_MAIN = `//! The plan 0061 parser spike's second parser: \`tsrs_parser\`, a Rust port of
+const PROBE_MAIN = `//! The conformance check's second parser: \`tsrs_parser\`, a Rust port of
 //! the TypeScript 7 parser. Prints \`path<TAB>accept|reject\` for each file
 //! named on stdin.
 use std::io::{BufRead, Write};

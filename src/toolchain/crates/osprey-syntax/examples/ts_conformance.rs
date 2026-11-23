@@ -1,4 +1,4 @@
-//! The parser spike of plan 0061 ([FLAVOR-TS-CST]): for each TypeScript file
+//! The TypeScript parser conformance check ([FLAVOR-TS-CST]): for each TypeScript file
 //! named on stdin, print whether the pinned `oxc_parser` accepts it and
 //! whether the TypeScript-flavor frontend lowered it without panicking, as one
 //! tab-separated line. `scripts/typescript/conformance.mjs` compares the

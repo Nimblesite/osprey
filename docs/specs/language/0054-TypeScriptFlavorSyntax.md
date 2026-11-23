@@ -1,6 +1,6 @@
 # TypeScript Flavor Syntax
 
-**Status: partly implemented.** [Plan 0061](../../plans/0061-typescript-flavor.md) owns delivery and records what is done. Implemented today: source selection, the `oxc_parser` frontend, functions and arrow functions, interfaces, `kind`-discriminated unions, object literals in a typed context, `switch` on `kind`, the program entry, receiver statements, ES imports and exports, documentation comments, and the first slice of the Express port, which serves the Express README example unchanged. Not implemented yet: effects and handlers other than `Requires` on a field, fibers, reassigned `let`, and editor support. Each section below says which of its rules are not implemented.
+**Status: implemented.** Source selection, the `oxc_parser` frontend, functions and arrow functions, reassigned `let`, interfaces, `kind`-discriminated unions, object literals in a typed context, `switch` on `kind`, the program entry, receiver statements, effects and handlers, fibers, ES imports and exports between all four flavors, documentation comments, editor support beside the editor's own TypeScript service, and the Express port with its oracle and bench. Open gap: an object literal with no declared type is still rejected where a record is expected ([TYPE-RECORD-ANON], [issue 405](https://github.com/Nimblesite/osprey/issues/405)).
 
 This specification adds a surface to [Language Flavors](0023-LanguageFlavors.md), not a JavaScript runtime. Its first package port is Express, so that HTTP servers written in the TypeScript flavor run natively on Osprey.
 

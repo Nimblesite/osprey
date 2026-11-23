@@ -82,7 +82,7 @@ test: build _build_c_runtime_tests
 ## job cannot block a merge.
 lint: _deslop _lint
 
-## typescript-conformance: The parser spike of plan 0061. Runs the pinned
+## typescript-conformance: TypeScript parser conformance. Runs the pinned
 ##   oxc_parser, the published tsrs_parser and the pinned tsc 7 over
 ##   TypeScript's parser and compiler conformance corpus (fetched into
 ##   target/ts-conformance at the commit tsc 7.0.2 pins), prints the agreement
