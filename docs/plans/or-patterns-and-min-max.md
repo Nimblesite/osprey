@@ -69,7 +69,7 @@ This is a language gap that blocks top tier, ranked with the gaps in [generic er
 ### Tooling
 
 - [ ] Formatter (`osprey-fmt`): one space each side of `|`; an or-pattern too long for the line breaks before each `|`
-- [ ] LSP (`osprey-lsp`): hover, go-to-definition and rename on a binder that appears in every alternative act on all of its occurrences. Done: go-to-definition and references (547a6bb39). Open: hover is not checked, and the server has no rename yet
+- [ ] LSP (`osprey-lsp`): hover, go-to-definition and rename on a binder that appears in every alternative act on all of its occurrences. Done: go-to-definition and references (547a6bb39) and hover (each alternative and the body). Open: the server has no rename yet
 - [ ] Flavor conversion ([plan 0057](0057-flavor-conversion.md)): an or-pattern converts between all four spellings and back without change
 - [ ] Symbolic execution ([plan 0034](0034-symbolic-execution.md)) explores each alternative as its own path
 - [ ] Debugger and profiler line tables point at the alternative that matched
