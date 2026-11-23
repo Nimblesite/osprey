@@ -376,8 +376,8 @@ fn fold_transfers_owned_callback_results_but_retains_borrowed_accumulators() {
     let ir = module("type Box = { n: int }\nfn fresh() = fold(range(0, 3), Box { n: 7 }, fn(b, _) => Box { n: b.n })\nfn borrowed() = fold(range(0, 3), Box { n: 7 }, fn(b, _) => b)\n");
     let fresh = function_body(&ir, "define internal i8* @fresh()");
     let borrowed = function_body(&ir, "define internal i8* @borrowed()");
-    assert_eq!(fresh.matches("call void @osp_retain(").count(), 1, "only the seed needs a retain; a newly owned callback result transfers to the loop slot:\n{fresh}");
-    assert_eq!(borrowed.matches("call void @osp_retain(").count(), 2, "a borrowed callback result must be retained before the old accumulator is released:\n{borrowed}");
+    assert_eq!(fresh.matches("call void @osp_retain(").count(), 0, "a fresh seed and each newly owned callback result move into the loop slot:\n{fresh}");
+    assert_eq!(borrowed.matches("call void @osp_retain(").count(), 1, "the fresh seed moves, but a borrowed callback result must be retained before the old accumulator is released:\n{borrowed}");
 }
 
 #[test]

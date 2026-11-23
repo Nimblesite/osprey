@@ -186,8 +186,9 @@ pub(crate) fn acc_init(
     let initial = initial_value(cg, args, numeric)?;
     // The slot escapes: materialize flat literals once before retaining it.
     let initial = crate::listlit::escaping(cg, initial);
-    // Retain pointer accumulators across iteration scopes [GC-ARC-PERCEUS].
-    crate::arc::escape_retain(cg, &initial);
+    // Move a fresh seed into the slot; retain only a borrowed one, as each step
+    // does [GC-ARC-PERCEUS] [MEM-OWNERSHIP-STATIC].
+    crate::arc::transfer_or_retain(cg, &initial);
     let tmpl = initial.clone();
     let boxed = box_to_i64(cg, initial);
     let acc = cg.hoist_slot("i64");

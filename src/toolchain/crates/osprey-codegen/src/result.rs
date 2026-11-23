@@ -312,22 +312,25 @@ pub(crate) fn make_result_if_err_because(
         Some(m) => cg.string_constant(m).operand,
         None => NO_MSG.to_string(),
     };
-    let chosen = match reason {
+    let errmsg = match reason {
+        // The slot holds the runtime's reason whenever it gave one, else the
+        // static text or null, so the slot takes the reason's one reference
+        // instead of counting a second [MEM-OWNERSHIP-STATIC].
         Some(r) => {
             let given = cg.emit_reg(format!("icmp ne i8* {r}, null"));
-            cg.emit_reg(format!("select i1 {given}, i8* {r}, i8* {fallback}"))
+            let chosen = cg.emit_reg(format!("select i1 {given}, i8* {r}, i8* {fallback}"));
+            let kept = cg.emit_reg(format!("or i1 {is_err}, {given}"));
+            let selected = cg.emit_reg(format!("select i1 {kept}, i8* {chosen}, i8* null"));
+            crate::arc::same_value(cg, &selected, r);
+            selected
         }
-        None => fallback,
-    };
-    let errmsg = if chosen == NO_MSG {
-        NO_MSG.to_string()
-    } else {
-        let selected = cg.emit_reg(format!("select i1 {is_err}, i8* {chosen}, i8* null"));
-        // With no runtime reason the message is the static text or null.
-        if reason.is_none() {
+        None if fallback == NO_MSG => NO_MSG.to_string(),
+        None => {
+            let selected = cg.emit_reg(format!("select i1 {is_err}, i8* {fallback}, i8* null"));
+            // With no runtime reason the message is the static text or null.
             cg.mark_rodata(&selected);
+            selected
         }
-        selected
     };
     make_result(cg, value, inner, &disc, &errmsg)
 }

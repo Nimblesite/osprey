@@ -153,8 +153,10 @@ pub(super) fn caps_from_names(cg: &Codegen, mut names: BTreeSet<String>) -> Vec<
 
 /// Allocate the region's environment cell and store each capture into it,
 /// returning its `i8*` handle and the struct type. A capture-free region uses a
-/// `null` env (the arms ignore it).
-pub(super) fn build_env(cg: &mut Codegen, caps: &[ArmCap]) -> (String, String) {
+/// `null` env (the arms ignore it). A `lending` env holds its captures without
+/// owning them: they outlive the region, which releases the env at its end
+/// [MEM-OWNERSHIP-STATIC-CLOSURES].
+pub(super) fn build_env(cg: &mut Codegen, caps: &[ArmCap], lending: bool) -> (String, String) {
     if caps.is_empty() {
         return ("null".to_string(), String::new());
     }
@@ -166,10 +168,11 @@ pub(super) fn build_env(cg: &mut Codegen, caps: &[ArmCap]) -> (String, String) {
             .join(", ")
     );
     // Layout word: cell captures are `i8*` pointers to heap mut-cells, value
-    // captures mark themselves by slot type ([`crate::meta`]).
+    // captures mark themselves by slot type ([`crate::meta`]); a lent pointer
+    // is one the drop walk leaves alone.
     let mf: Vec<_> = caps
         .iter()
-        .map(|c| crate::meta::MetaField::of_slot_ty(&c.slot_ty()))
+        .map(|c| crate::closure::capture_meta(&c.slot_ty(), lending))
         .collect();
     let meta = cg.struct_meta(&mf);
     let cell = cg.malloc_struct(&env_ty, meta);
@@ -179,8 +182,10 @@ pub(super) fn build_env(cg: &mut Codegen, caps: &[ArmCap]) -> (String, String) {
             "getelementptr {env_ty}, {env_ty}* {cell}, i32 0, i32 {i}"
         ));
         let operand = store_operand(cg, c);
-        // The env's drop mask releases each captured pointer [GC-ARC-PERCEUS].
-        crate::arc::dup_store(cg, &slot_ty, &operand);
+        // The env's drop mask releases each captured pointer it owns [GC-ARC-PERCEUS].
+        if !lending {
+            crate::arc::dup_store(cg, &slot_ty, &operand);
+        }
         cg.emit(format!("store {slot_ty} {operand}, {slot_ty}* {p}"));
     }
     let env = cg.emit_reg(format!("bitcast {env_ty}* {cell} to i8*"));

@@ -323,7 +323,9 @@ fn gen_activation(
     // [EFFECTS-GENERIC-RUNTIME].
     let key = crate::effect_generics::runtime_effect_key(effect, &site_ops.effect_args)?;
     let caps = capture_list(cg, arms);
-    let (env, env_ty) = build_env(cg, &caps);
+    // The region ends inside the scope that owns every capture, so under
+    // ownership its env only lends them [MEM-OWNERSHIP-STATIC-CLOSURES].
+    let (env, env_ty) = build_env(cg, &caps, cg.ownership.on);
     let activation = cg.call("i32", "__osprey_handler_depth", "", &[]);
     for arm in arms {
         let sig = op_sig_for(cg, effect, &arm.operation)?;

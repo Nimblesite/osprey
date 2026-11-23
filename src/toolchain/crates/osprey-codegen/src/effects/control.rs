@@ -92,7 +92,7 @@ pub(super) fn gen_resuming_handler(
     let key = crate::effect_generics::runtime_effect_key(effect, &site_ops.effect_args)?;
 
     let caps = capture_list_resuming(cg, arms, body, return_clause);
-    let (env, env_ty) = build_env(cg, &caps);
+    let (env, env_ty) = build_env(cg, &caps, false);
     let id = cg.next_handler_id();
     let body_fn = format!("__resume_body_{effect}_{id}");
     let drive_fn = format!("__resume_drive_{effect}_{id}");

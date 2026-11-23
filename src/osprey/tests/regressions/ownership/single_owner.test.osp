@@ -8,6 +8,11 @@ type Pair = { left: Box, right: Box }
 type Named = { label: (int) -> string }
 type Fault = DivZero | Overflow { by: int }
 
+effect Note {
+    /// Report `text`; the handler answers how many reports it has seen.
+    hit: fn(string) -> int
+}
+
 /// A file-scope binding hands its value to the module, which every function
 /// then reads.
 let shared = Box { text: "shared${toString(1)}" }
@@ -228,4 +233,39 @@ fn borrows() = {
     "borrows ${shown} ${same.text} ${toString(listLength(noise))} ${left.text}"
 }
 
-print("${fileScope(1)} ${shared.text}\n${spans()}\n${elements()}\n${collections()}\n${lastUses()}\n${paths()}\n${owned()}\n${literals()}\n${errors()}\n${captures()}\n${lends()}\n${lentLists()}\n${reads()}\n${borrows()}")
+/// A fold seeded with a fresh list moves the seed into its accumulator, and
+/// each step moves its fresh result there.
+fn folded(n) = range(0, n) |> fold(List(), |acc, i| => listAppend(acc, "f${toString(i)}"))
+
+/// A runtime call that fails gives its Result the reason it recorded; on
+/// success the Result holds no message.
+fn drawn(bound) = match randomBelow(bound) {
+    Success { value } => value < bound ? "drawn" : "out of range"
+    Error { message } => "refused: ${message}"
+}
+
+fn tally(n) = match n {
+    0 => 0
+    _ => wrapAdd(perform Note.hit("note${toString(n)}"), tally(wrapSub(n, 1)))
+}
+
+/// A handler lends the cells and values it captures: they outlive its region.
+/// A value `perform` lends is copied before a cell keeps it.
+fn noted(n) = {
+    mut last = ""
+    mut count = 0
+    let prefix = "seen${toString(n)}"
+    handle Note {
+        hit text => {
+            last = "${prefix}:${text}"
+            count = wrapAdd(count, 1)
+            count
+        }
+    }
+    let sum = tally(n)
+    "noted ${toString(sum)} ${last} ${prefix}"
+}
+
+fn effects() = "${toString(listLength(folded(4)))} ${toString(listLength(folded(0)))} ${drawn(10)} ${drawn(0)} ${noted(3)}"
+
+print("${fileScope(1)} ${shared.text}\n${spans()}\n${elements()}\n${collections()}\n${lastUses()}\n${paths()}\n${owned()}\n${literals()}\n${errors()}\n${captures()}\n${lends()}\n${lentLists()}\n${reads()}\n${borrows()}\n${effects()}")

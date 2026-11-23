@@ -92,7 +92,7 @@ pub(crate) fn bind_params_from(
 
 /// The layout word of one capture slot: a managed pointer the cell releases,
 /// or, in a cell that only borrows its captures, one it leaves alone.
-fn capture_meta(slot_ty: &str, lending: bool) -> crate::meta::MetaField {
+pub(crate) fn capture_meta(slot_ty: &str, lending: bool) -> crate::meta::MetaField {
     match crate::meta::MetaField::of_slot_ty(slot_ty) {
         crate::meta::MetaField::PtrManaged if lending => crate::meta::MetaField::PtrOpaque,
         field => field,
