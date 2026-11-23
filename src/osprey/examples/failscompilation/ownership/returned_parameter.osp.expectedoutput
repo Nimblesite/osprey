@@ -1,0 +1,1 @@
+8:4: ownership: `box` needs a second owner in `pick`: one arm of a `match` yields it while another arm yields a new value [MEM-OWNERSHIP-STATIC]

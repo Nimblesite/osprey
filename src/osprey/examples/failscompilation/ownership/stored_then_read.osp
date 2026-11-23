@@ -1,0 +1,10 @@
+// [MEM-OWNERSHIP-STATIC] Runs under the collector; `--memory=ownership` refuses it.
+// Read again after it is stored: the store is not the binding's last use.
+type Box = { text: string }
+type Wrap = { inner: Box }
+
+fn main() = {
+    let made = Box { text: "a${toString(1)}" }
+    let wrap = Wrap { inner: made }
+    print("${wrap.inner.text}${made.text}")
+}

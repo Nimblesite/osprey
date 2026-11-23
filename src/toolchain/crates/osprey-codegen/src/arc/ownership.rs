@@ -21,7 +21,7 @@ pub fn set_ownership_check(on: bool) {
 /// Why a value needs a reference beyond the one its owner holds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Need {
-    /// A value something else owns is given a name of its own.
+    /// It is read out of a temporary or a replaceable binding and given a name.
     Bound,
     /// It is stored in a new value while its owner keeps it.
     Stored,
@@ -38,7 +38,7 @@ pub enum Need {
 impl Need {
     fn reason(self) -> &'static str {
         match self {
-            Need::Bound => "it is bound to a new name while another value owns it",
+            Need::Bound => "it is bound to a name that can outlive the value it was read from",
             Need::Stored => "it is stored in a new value while its owner keeps it",
             Need::Returned => "it is returned while another value owns it",
             Need::Kept => "it is handed to a fiber, channel, handler or collection that keeps it",

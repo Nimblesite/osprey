@@ -1,0 +1,1 @@
+9:4: ownership: `left` needs a second owner in `main`: it is bound to a name that can outlive the value it was read from [MEM-OWNERSHIP-STATIC]

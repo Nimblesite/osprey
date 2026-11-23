@@ -1,0 +1,11 @@
+// [MEM-OWNERSHIP-STATIC] Runs under the collector; `--memory=ownership` refuses it.
+// Read out of a value the statement itself made, which dies with the statement.
+type Box = { text: string }
+type Pair = { left: Box, right: Box }
+
+fn make(n) = Pair { left: Box { text: "left${toString(n)}" }, right: Box { text: "right${toString(n)}" } }
+
+fn main() = {
+    let left = make(1).left
+    print(left.text)
+}

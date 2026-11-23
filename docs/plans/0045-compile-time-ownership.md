@@ -26,7 +26,8 @@ Contract: [MEM-OWNERSHIP-STATIC](../specs/compiler/0018-MemoryManagement.md#comp
 - [ ] Accept `--memory=ownership` in `parse_memory` (src/toolchain/crates/osprey-cli/src/invocation.rs) and in the usage strings; run the ownership ledger in checking mode and report every value that would need a run-time retain.
   - Built: the flag, the checking mode in src/toolchain/crates/osprey-codegen/src/arc/ownership.rs and src/toolchain/crates/osprey-cli/tests/ownership_mode.rs. Open: the diagnostic names the value and the use that needs a second owner, not yet the owner's other use.
 - Acceptance: `osprey --memory=ownership` compiles a simple program; an unprovable program fails with a diagnostic naming the value and both uses; `parse_memory("ownership")` returns Ok and the tests in src/toolchain/crates/osprey-cli/src/tests/execution.rs cover it.
-- [ ] Add `src/osprey/examples/failscompilation/*.ospo` programs for each rejected pattern and `src/osprey/tests/regressions/` programs that must be accepted under `ownership`.
+- [x] Add `src/osprey/examples/failscompilation/*.ospo` programs for each rejected pattern and `src/osprey/tests/regressions/` programs that must be accepted under `ownership`.
+  - Refused: `src/osprey/examples/failscompilation/ownership/*.osp`, each beside its exact diagnostics. They are `.osp`, not `.ospo`, because every one compiles and runs under the collector; only `--memory=ownership` refuses them. Accepted: `src/osprey/tests/regressions/ownership/single_owner.test.osp`, which the corpus also runs under GC, ARC and wasm32. Both sets are driven by src/toolchain/crates/osprey-cli/tests/ownership_mode.rs.
 - Acceptance: the check rejects every failscompilation program with a precise diagnostic and accepts the regression set.
 - [x] Measure how much of `src/osprey/tests/` and `src/osprey/examples/` passes the check unchanged; record numbers only.
 - Acceptance: a passing-fraction number is recorded.

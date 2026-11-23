@@ -1,0 +1,13 @@
+// [MEM-OWNERSHIP-STATIC] Runs under the collector; `--memory=ownership` refuses it.
+// Stored on one path only: on the other path the binding still owns it.
+type Box = { text: string }
+type Wrap = { inner: Box }
+
+fn main() = {
+    let made = Box { text: "a${toString(1)}" }
+    let wrap = match made.text {
+        "a1" => Wrap { inner: made }
+        _ => Wrap { inner: Box { text: "other" } }
+    }
+    print(wrap.inner.text)
+}

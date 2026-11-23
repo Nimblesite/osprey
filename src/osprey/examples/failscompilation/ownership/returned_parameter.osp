@@ -1,0 +1,14 @@
+// [MEM-OWNERSHIP-STATIC] Runs under the collector; `--memory=ownership` refuses it.
+// One arm returns the caller's value, the other a new one: the caller cannot
+// tell whether it owns the result.
+type Box = { text: string }
+
+fn pick(box, n) = match n {
+    0 => box
+    _ => Box { text: "none${toString(n)}" }
+}
+
+fn main() = {
+    let made = Box { text: "a${toString(1)}" }
+    print("${pick(made, 0).text}${pick(made, 3).text}")
+}

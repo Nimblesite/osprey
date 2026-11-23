@@ -1,0 +1,102 @@
+// [MEM-OWNERSHIP-STATIC] Every value here has one owner the compiler can
+// prove, so `--memory=ownership` accepts the program and frees every block.
+
+type Point = { x: int, y: int }
+type Shape = Dot { at: Point } | Line { from: Point, to: Point }
+type Box = { text: string }
+type Pair = { left: Box, right: Box }
+type Named = { label: (int) -> string }
+type Fault = DivZero | Overflow { by: int }
+
+/// Fresh values go straight to what takes them.
+fn span(shape) = match shape {
+    Dot { at } => at.x
+    Line { from, to } => wrapSub(to.x, from.x)
+}
+
+fn spans() = {
+    let line = Line { from: Point { x: 1, y: 2 }, to: Point { x: 9, y: 4 } }
+    let dot = Dot { at: Point { x: 5, y: 5 } }
+    "spans ${span(line)} ${span(dot)} ${toString(wrapAdd(span(line), span(dot)))}"
+}
+
+fn firstX(points) = match points {
+    [head, ..._] => head.x
+    [] => 0
+}
+
+fn elements() = {
+    let points = [Point { x: 1, y: 2 }, Point { x: 7, y: 4 }, Point { x: 3, y: 9 }]
+    let names = ["a${toString(1)}", "b${toString(2)}"]
+    "elements ${toString(firstX(points))} ${toString(listLength(names))}"
+}
+
+/// A binding read once, and never again, gives its value to what takes it.
+fn build(n) = {
+    let left = Box { text: "l${toString(n)}" }
+    let right = Box { text: "r${toString(n)}" }
+    Pair { left: left, right: right }
+}
+
+fn lastUses() = {
+    let made = Box { text: "a${toString(1)}" }
+    let again = made
+    let boxes = [again, Box { text: "b" }]
+    let pair = build(7)
+    "last uses ${pair.left.text}${pair.right.text}${toString(listLength(boxes))}"
+}
+
+/// An Error owns its message once and joins a Success without a copy; a
+/// variant with no fields is one static value.
+fn find(n) = match n {
+    0 => Error { message: "no ${toString(n)}" }
+    _ => Success { value: n }
+}
+
+fn found(outcome) = match outcome {
+    Success { value } => "found ${toString(value)}"
+    Error { message } => "missing: ${message}"
+}
+
+fn divide(a, b) = match b {
+    0 => Error { message: DivZero }
+    _ => Success { value: wrapAdd(a, b) }
+}
+
+fn divided(outcome) = match outcome {
+    Success { value } => "ok ${toString(value)}"
+    Error => "bad"
+}
+
+fn errors() = "errors ${found(find(0))}, ${found(find(4))}, ${divided(divide(6, 0))}, ${divided(divide(6, 1))}"
+
+/// A closure takes what it captures when the capture is that binding's last use.
+fn apply(f, n) = f(n)
+
+fn captures() = {
+    let made = Box { text: "a${toString(1)}" }
+    let suffix = "z${toString(2)}"
+    let named = Named { label: |n| => "${made.text}${toString(n)}" }
+    "captures ${named.label(3)}${apply(|n| => "${suffix}${toString(n)}", 4)}"
+}
+
+/// A binding that names part of a live value borrows it, and the value it was
+/// read from stays alive until the borrower's own last read.
+fn churn(n) = "x${toString(n)}${toString(n)}${toString(n)}"
+
+fn describe(pair) = {
+    let left = pair.left
+    let text = left.text
+    "${text}/${pair.right.text}"
+}
+
+fn borrows() = {
+    let pair = Pair { left: Box { text: "left${toString(1)}" }, right: Box { text: "right${toString(2)}" } }
+    let shown = describe(pair)
+    let left = pair.left
+    let same = left
+    let noise = [churn(7), churn(8), churn(9)]
+    "borrows ${shown} ${same.text} ${toString(listLength(noise))} ${left.text}"
+}
+
+print("${spans()}\n${elements()}\n${lastUses()}\n${errors()}\n${captures()}\n${borrows()}")

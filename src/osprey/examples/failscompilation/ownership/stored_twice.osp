@@ -1,0 +1,10 @@
+// [MEM-OWNERSHIP-STATIC] Runs under the collector; `--memory=ownership` refuses it.
+// One value is stored in two fields: only one of them can own it.
+type Box = { text: string }
+type Pair = { left: Box, right: Box }
+
+fn main() = {
+    let made = Box { text: "a${toString(1)}" }
+    let pair = Pair { left: made, right: made }
+    print("${pair.left.text}${pair.right.text}")
+}
