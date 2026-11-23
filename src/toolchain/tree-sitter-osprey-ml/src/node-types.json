@@ -565,18 +565,29 @@
     }
   },
   {
-    "type": "field_pattern",
+    "type": "field_slot",
     "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "identifier",
-          "named": true
-        }
-      ]
+    "fields": {
+      "field": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      },
+      "pattern": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "pattern",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
@@ -2112,10 +2123,6 @@
           "named": true
         },
         {
-          "type": "field_pattern",
-          "named": true
-        },
-        {
           "type": "float",
           "named": true
         },
@@ -2137,6 +2144,10 @@
         },
         {
           "type": "pattern",
+          "named": true
+        },
+        {
+          "type": "slot_pattern",
           "named": true
         },
         {
@@ -2472,6 +2483,21 @@
     }
   },
   {
+    "type": "slot_pattern",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "field_slot",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "source_file",
     "named": true,
     "root": true,
@@ -2609,7 +2635,7 @@
       "required": true,
       "types": [
         {
-          "type": "field_pattern",
+          "type": "slot_pattern",
           "named": true
         }
       ]
@@ -2654,11 +2680,7 @@
         "required": true,
         "types": [
           {
-            "type": "_",
-            "named": false
-          },
-          {
-            "type": "identifier",
+            "type": "pattern",
             "named": true
           }
         ]
@@ -3170,11 +3192,13 @@
   },
   {
     "type": "block_comment",
-    "named": true
+    "named": true,
+    "extra": true
   },
   {
     "type": "doc_comment",
-    "named": true
+    "named": true,
+    "extra": true
   },
   {
     "type": "effect",
@@ -3242,7 +3266,8 @@
   },
   {
     "type": "line_comment",
-    "named": true
+    "named": true,
+    "extra": true
   },
   {
     "type": "many",

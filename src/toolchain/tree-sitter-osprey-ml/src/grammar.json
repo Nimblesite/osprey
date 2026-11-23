@@ -1164,20 +1164,25 @@
           "type": "CHOICE",
           "members": [
             {
-              "type": "SYMBOL",
-              "name": "operation_mode"
-            },
-            {
-              "type": "BLANK"
-            }
-          ]
-        },
-        {
-          "type": "CHOICE",
-          "members": [
-            {
-              "type": "SYMBOL",
-              "name": "multiplicity"
+              "type": "SEQ",
+              "members": [
+                {
+                  "type": "SYMBOL",
+                  "name": "operation_mode"
+                },
+                {
+                  "type": "CHOICE",
+                  "members": [
+                    {
+                      "type": "SYMBOL",
+                      "name": "multiplicity"
+                    },
+                    {
+                      "type": "BLANK"
+                    }
+                  ]
+                }
+              ]
             },
             {
               "type": "BLANK"
@@ -4470,7 +4475,7 @@
                 },
                 {
                   "type": "SYMBOL",
-                  "name": "field_pattern"
+                  "name": "slot_pattern"
                 },
                 {
                   "type": "ALIAS",
@@ -4574,7 +4579,7 @@
                 },
                 {
                   "type": "SYMBOL",
-                  "name": "field_pattern"
+                  "name": "slot_pattern"
                 },
                 {
                   "type": "ALIAS",
@@ -4675,7 +4680,7 @@
         },
         {
           "type": "SYMBOL",
-          "name": "field_pattern"
+          "name": "slot_pattern"
         },
         {
           "type": "CHOICE",
@@ -4725,17 +4730,8 @@
           "type": "FIELD",
           "name": "element",
           "content": {
-            "type": "CHOICE",
-            "members": [
-              {
-                "type": "SYMBOL",
-                "name": "identifier"
-              },
-              {
-                "type": "STRING",
-                "value": "_"
-              }
-            ]
+            "type": "SYMBOL",
+            "name": "pattern"
           }
         },
         {
@@ -4751,17 +4747,8 @@
                 "type": "FIELD",
                 "name": "element",
                 "content": {
-                  "type": "CHOICE",
-                  "members": [
-                    {
-                      "type": "SYMBOL",
-                      "name": "identifier"
-                    },
-                    {
-                      "type": "STRING",
-                      "value": "_"
-                    }
-                  ]
+                  "type": "SYMBOL",
+                  "name": "pattern"
                 }
               }
             ]
@@ -4893,6 +4880,69 @@
               }
             ]
           }
+        }
+      ]
+    },
+    "slot_pattern": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "field_slot"
+        },
+        {
+          "type": "REPEAT",
+          "content": {
+            "type": "SEQ",
+            "members": [
+              {
+                "type": "STRING",
+                "value": ","
+              },
+              {
+                "type": "SYMBOL",
+                "name": "field_slot"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "field_slot": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "FIELD",
+          "name": "field",
+          "content": {
+            "type": "SYMBOL",
+            "name": "identifier"
+          }
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SEQ",
+              "members": [
+                {
+                  "type": "STRING",
+                  "value": ":"
+                },
+                {
+                  "type": "FIELD",
+                  "name": "pattern",
+                  "content": {
+                    "type": "SYMBOL",
+                    "name": "pattern"
+                  }
+                }
+              ]
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
         }
       ]
     },
@@ -6853,6 +6903,9 @@
       "field_pattern"
     ],
     [
+      "slot_pattern"
+    ],
+    [
       "ternary_expression",
       "match_arm"
     ],
@@ -7043,5 +7096,6 @@
     }
   ],
   "inline": [],
-  "supertypes": []
+  "supertypes": [],
+  "reserved": {}
 }

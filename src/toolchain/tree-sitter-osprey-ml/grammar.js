@@ -77,7 +77,7 @@ module.exports = grammar(base, {
     effect_declaration: $ => seq(optional($.static_stage), 'effect', $.identifier,
       repeat($.type_parameter), $._indent,
       repeat1(choice($.operation_declaration, $._newline)), $._dedent),
-    operation_declaration: $ => seq(optional($.operation_mode), optional($.multiplicity),
+    operation_declaration: $ => seq(optional(seq($.operation_mode, optional($.multiplicity))),
       optional($.replayable), choice($.identifier, alias($.operation_mode, $.identifier),
         alias($.multiplicity, $.identifier), alias($.replayable, $.identifier)), ':', $._type, $._statement_break),
     module_declaration: $ => seq(choice('module', 'state'), $.symbol_path,

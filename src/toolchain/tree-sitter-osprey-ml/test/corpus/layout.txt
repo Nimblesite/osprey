@@ -4,9 +4,43 @@ ML bindings preserve operator expressions
 double x = x * 2
 describe value = "${value + 1}"
 ------------------
+
 (source_file
-  (statement (function_declaration name: (identifier) parameters: (ml_parameters (parameter name: (identifier))) body: (expression (binary_expression left: (expression (primary_expression (identifier))) right: (expression (primary_expression (literal (integer))))))))
-  (statement (function_declaration name: (identifier) parameters: (ml_parameters (parameter name: (identifier))) body: (expression (primary_expression (literal (interpolated_string (interpolation expression: (expression (binary_expression left: (expression (primary_expression (identifier))) right: (expression (primary_expression (literal (integer))))))))))))))
+  (statement
+    (function_declaration
+      name: (identifier)
+      parameters: (ml_parameters
+        (parameter
+          name: (identifier)))
+      body: (expression
+        (binary_expression
+          left: (expression
+            (primary_expression
+              (identifier)))
+          right: (expression
+            (primary_expression
+              (literal
+                (integer))))))))
+  (statement
+    (function_declaration
+      name: (identifier)
+      parameters: (ml_parameters
+        (parameter
+          name: (identifier)))
+      body: (expression
+        (primary_expression
+          (literal
+            (interpolated_string
+              (interpolation
+                expression: (expression
+                  (binary_expression
+                    left: (expression
+                      (primary_expression
+                        (identifier)))
+                    right: (expression
+                      (primary_expression
+                        (literal
+                          (integer))))))))))))))
 
 ==================
 ML concurrency keywords retain operation identity
@@ -15,7 +49,104 @@ waiter = await fiber
 sender = send channel value
 receiver = recv channel
 ------------------
+
 (source_file
-  (statement (function_declaration (identifier) (expression (primary_expression (await_expression (ml_postfix (primary_expression (identifier))))))))
-  (statement (function_declaration (identifier) (expression (primary_expression (send_expression (ml_postfix (primary_expression (identifier))) (ml_postfix (primary_expression (identifier))))))))
-  (statement (function_declaration (identifier) (expression (primary_expression (recv_expression (ml_postfix (primary_expression (identifier)))))))))
+  (statement
+    (function_declaration
+      (identifier)
+      (expression
+        (primary_expression
+          (await_expression
+            (ml_postfix
+              (primary_expression
+                (identifier))))))))
+  (statement
+    (function_declaration
+      (identifier)
+      (expression
+        (primary_expression
+          (send_expression
+            (ml_postfix
+              (primary_expression
+                (identifier)))
+            (ml_postfix
+              (primary_expression
+                (identifier))))))))
+  (statement
+    (function_declaration
+      (identifier)
+      (expression
+        (primary_expression
+          (recv_expression
+            (ml_postfix
+              (primary_expression
+                (identifier)))))))))
+
+==================
+[MULTI-DECL] A multiplicity marker requires control
+:error
+==================
+effect Choice
+    many op : int => int
+------------------
+
+
+
+==================
+[MULTI-DECL] Markers and contextual operation names
+==================
+effect Choice
+    control many pick : int => int
+    control once replayable choose : int => int
+    control abort stop : int => int
+    many : int => int
+    control once : int => int
+------------------
+
+(source_file
+  (statement
+    (effect_declaration
+      (identifier)
+      (operation_declaration
+        (operation_mode)
+        (multiplicity)
+        (identifier)
+        (function_type
+          (type_identifier
+            (identifier))
+          (type_identifier
+            (identifier))))
+      (operation_declaration
+        (operation_mode)
+        (multiplicity)
+        (replayable)
+        (identifier)
+        (function_type
+          (type_identifier
+            (identifier))
+          (type_identifier
+            (identifier))))
+      (operation_declaration
+        (operation_mode)
+        (multiplicity)
+        (identifier)
+        (function_type
+          (type_identifier
+            (identifier))
+          (type_identifier
+            (identifier))))
+      (operation_declaration
+        (identifier)
+        (function_type
+          (type_identifier
+            (identifier))
+          (type_identifier
+            (identifier))))
+      (operation_declaration
+        (operation_mode)
+        (identifier)
+        (function_type
+          (type_identifier
+            (identifier))
+          (type_identifier
+            (identifier)))))))
