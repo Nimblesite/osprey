@@ -78,13 +78,13 @@ This is a language gap that blocks top tier, ranked with the gaps in [generic er
 
 Expand existing suites. Add no new test file.
 
-- [ ] `src/osprey/tests/flavors/matching/matching.test` in both flavors, loaded with permutations: payload-free variants, literals (`int`, `float`, `string`, `bool`), constructor payloads, `Success` and `Error`, tuples, lists with a rest binder, rows, and or-patterns nested three levels deep, each asserted for every alternative and for the values that reach no alternative
+- [x] `src/osprey/tests/flavors/matching/matching.test` in both flavors, loaded with permutations: payload-free variants, literals (`int`, `float`, `string`, `bool`), constructor payloads, `Success` and `Error`, tuples, lists with a rest binder, rows, and or-patterns nested three levels deep, each asserted for every alternative and for the values that reach no alternative
 - [x] Binding cases: the same binder taken from each alternative, a function-valued binder, a closure that captures the binder and escapes the arm, a binder shadowing a `mut` cell ([PATTERN-BINDING-SCOPE])
 - [x] Order cases: overlapping alternatives where only the first can supply the binding ([PATTERN-OR-ORDER])
 - [ ] Multi-shot: an or-pattern arm whose body performs a `control many` operation, resumed two and three times, in `osprey-cli/tests/common/many_permutations.rs` and the multi-shot corpus, with identical output under GC, ARC and wasm32
-- [ ] Python and TypeScript twins share the Default golden
-- [ ] `src/osprey/examples/failscompilation/`: an alternative that omits a binder, binders of two types, an unreachable alternative after an earlier arm, an alternative repeated inside one pattern, a leading `|`, a trailing `|`, an alternative of another union, and a non-exhaustive match whose witness is shown. Expand `match_not_exhaustive` and `match_unreachable_after_catch_all`
-- [ ] Regression in `src/osprey/tests/regressions/` for the grammar's lambda case
+- [x] Python and TypeScript twins share the Default golden (the TypeScript matching twin; the Python twin of osprey_mega_showcase, as matching has no Python twin)
+- [x] `src/osprey/examples/failscompilation/`: an alternative that omits a binder, binders of two types, an unreachable alternative after an earlier arm, an alternative repeated inside one pattern, a leading `|`, a trailing `|`, an alternative of another union, and a non-exhaustive match whose witness is shown. Expand `match_not_exhaustive` and `match_unreachable_after_catch_all`
+- [x] Regression in `src/osprey/tests/regressions/` for the grammar's lambda case (`pattern_matching_complete`)
 - [ ] Corpus runs through `src/toolchain/crates/run_test_corpus.sh` under GC, ARC and wasm32
 
 ### Use it
