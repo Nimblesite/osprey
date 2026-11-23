@@ -168,7 +168,7 @@ pub(crate) fn gen_map_literal(cg: &mut Codegen, entries: &[osprey_ast::MapEntry]
         // The map stores both key and value: dup before the i64 erasure, and
         // hand the value's kind over so the sealed map walks it on death
         // (see stored_boxed_arg) [GC-ARC-PERCEUS].
-        crate::arc::escape_retain(cg, &k);
+        crate::arc::transfer_or_retain(cg, &k);
         let k = box_to_i64(cg, k);
         // Stored, so a nested literal escapes into its slot for the same
         // reason it does in [`unboxed_arg`].
@@ -185,7 +185,7 @@ pub(crate) fn gen_map_literal(cg: &mut Codegen, entries: &[osprey_ast::MapEntry]
         let established = elem.as_deref().and_then(crate::llty::sized_of_spelling);
         let v = crate::conv::fit_literal(cg, v, established)?;
         let managed = managed_flag(&v);
-        crate::arc::escape_retain(cg, &v);
+        crate::arc::transfer_or_retain(cg, &v);
         elem = crate::llty::elem_spelling(&v);
         let v = box_to_i64(cg, v);
         cg.call_void(

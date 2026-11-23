@@ -275,7 +275,8 @@ fn stored_element(cg: &mut Codegen, v: Value) -> Result<(Value, &'static str)> {
         ));
     }
     let flag = managed_flag(&v);
-    crate::arc::escape_retain(cg, &v);
+    // A fresh element, or a binding at its last use, moves into the container.
+    crate::arc::transfer_or_retain(cg, &v);
     Ok((box_to_i64(cg, v), flag))
 }
 

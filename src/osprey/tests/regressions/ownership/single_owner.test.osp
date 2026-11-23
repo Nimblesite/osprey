@@ -31,6 +31,13 @@ fn elements() = {
     "elements ${toString(firstX(points))} ${toString(listLength(names))}"
 }
 
+/// A fresh element moves into the list it is added to.
+fn collections() = {
+    let base = listAppend([], "t${toString(1)}")
+    let more = listAppend(base, "t${toString(2)}")
+    "collections ${toString(listLength(more))}"
+}
+
 /// A binding read once, and never again, gives its value to what takes it.
 fn build(n) = {
     let left = Box { text: "l${toString(n)}" }
@@ -99,4 +106,4 @@ fn borrows() = {
     "borrows ${shown} ${same.text} ${toString(listLength(noise))} ${left.text}"
 }
 
-print("${spans()}\n${elements()}\n${lastUses()}\n${errors()}\n${captures()}\n${borrows()}")
+print("${spans()}\n${elements()}\n${collections()}\n${lastUses()}\n${errors()}\n${captures()}\n${borrows()}")

@@ -20,6 +20,7 @@ use std::collections::BTreeSet;
 pub(crate) fn gen_local_stmt(cg: &mut Codegen, stmt: &Stmt) -> Result<()> {
     crate::arc::push_frame(cg, crate::arc::FrameKind::Statement);
     crate::arc::note_rebound(cg, stmt);
+    cg.ownership.at(stmt_position(stmt));
     let lowered = gen_stmt_kind(cg, stmt);
     crate::arc::pop_frame(cg);
     lowered
