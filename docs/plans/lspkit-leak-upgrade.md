@@ -32,5 +32,6 @@ Fix: keep only the projects that loaded the open file (its `project_roots`), plu
 - [x] Rust pinned to 1.100.0 everywhere ([TOOLCHAIN-RUST-PIN]), the version lspkit builds with
 - [x] `live_profiler_lsp` found queued requests ignored `$/cancelRequest`; fixed with `work/pending.rs`
 - [x] `cargo test -p osprey-lsp` (261 passed), `-p lsp-profiler-osprey` (21 passed) and `--test live_profiler_lsp` (5 passed), 2026-11-23 at `4f3215fa8` + `0c5725f73`
-- [ ] The VS Code extension LSP suite (`make _test_vscode_extension`), then `make ci`. Run 2026-11-23 (worktree at `b48f3089e` + peers' uncommitted edits): 963 passed, 2 failed: `package workspace in-memory WASI` (stdout 471 bytes, expected 470, `package-workspace-wasi-guests.test.js:230`) and `CHUNKY: skip-warning edit lifecycle` (LSP condition unmet after 40 tries at step 1, `extension.test.ts:1426`)
+- [x] `make _test_vscode_extension` passed on 2026-11-23 with 986 development-host tests and 170 installed VSIX tests. `make _coverage_check_vscode_extension` passed all four thresholds.
+- [ ] Run `make ci` on the exact push commit.
 - [ ] Push under the TMC lock `PUSH-<branch>` once `make ci` is green
