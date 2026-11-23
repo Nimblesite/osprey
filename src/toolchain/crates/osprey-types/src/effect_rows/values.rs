@@ -447,6 +447,11 @@ impl Analyzer<'_> {
                             .unwrap_or_else(Value::unknown_value),
                     );
                 }
+                if stage.is_compile_time() {
+                    if let Some(value) = &mut merged {
+                        self.mark_static_result(&site, value);
+                    }
+                }
                 merged
             }
             Expr::Block {

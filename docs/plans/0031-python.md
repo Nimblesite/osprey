@@ -33,7 +33,7 @@ Constraints:
 ## Phase C — effects, fibers, signals; shared handler-state repair
 
 - [x] [FLAVOR-PYTHON-HANDLER] The Python reactive-signals twin exercises known and unknown dependencies, branch changes, no-op revisions, independently owned values and cached closures. Default, ML and Python share one 10-case golden, including every factory and build call. The CLI enforces zero ARC live objects; all three twins also match the golden on wasm32.
-- [ ] [FLAVOR-PYTHON-HANDLER] Add Python twins for staged multiplicity/hygiene and deferred static operations escaping construction handlers (lazy iterators) in `src/toolchain/crates/osprey-cli/tests/staged_multiplicity.rs`/`staged_hygiene.rs`. Acceptance: rejection behavior identical to Default/ML.
+- [x] [FLAVOR-PYTHON-HANDLER] Default, ML and Python reject once/abort/static multiplicity violations, non-replayable callbacks and lazy iterators escaping reusable static handlers. Staged hygiene checks compare locally consumed values and lexical shadowing under GC and ARC. Verified 2026-11-23 in the staged CLI and effect-row suites.
 - [ ] [EFFECTS-HANDLER-STATE] The shared module cell now survives inlined handler calls in Default and ML. The real CLI checks a shadowing parameter, two writes, self-assignment and retained snapshots under GC and ARC. Remaining: a Python twin that writes the originating outer binding.
 
 ## Phase D — project, editor and target integration

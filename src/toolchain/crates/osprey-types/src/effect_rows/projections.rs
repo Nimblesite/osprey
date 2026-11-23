@@ -85,6 +85,9 @@ impl Analyzer<'_> {
                     self.project_call_return(value, *arguments.clone())
                 }
                 Projection::Handled(answers) => Some(Self::resolve_handled_value(value, answers)),
+                Projection::StaticEscape(boundary) => {
+                    Some(self.resolve_static_escape(value, boundary))
+                }
                 Projection::Element => project_element(value),
                 Projection::SuccessValue => project_success_value(value),
                 Projection::FiberValue => project_fiber_value(value),

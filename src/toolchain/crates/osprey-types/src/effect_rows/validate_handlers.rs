@@ -100,7 +100,7 @@ fn validate_static_escape(
     } = expression
     {
         if !escaped.is_empty() {
-            errors.push(TypeError::new(format!("static handler `{effect}` returns deferred work requiring {}; escaping static work requires invocation-time specialization, which is not implemented", escaped.join(", "))).with_pos(*position));
+            errors.push(escape_error(effect, &escaped, *position));
         }
     }
 }
@@ -134,6 +134,155 @@ fn escaping_operations(
         })
         .map(|required| super::requirement_name(&required))
         .collect()
+}
+
+/// A reusable handler may receive its computation only at a later call site.
+/// Carry the handler's boundary through symbolic return projections until
+/// substitution reveals the actual closure, iterator, or aggregate.
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub(super) struct StaticEscape {
+    effect: String,
+    location: (u32, u32),
+    pub(super) operations: super::Requirements,
+}
+
+impl Analyzer<'_> {
+    pub(super) fn record_replay_bounds(
+        &self,
+        mut row: super::Summary,
+        effect: &str,
+        arms: &[osprey_ast::HandlerArm],
+    ) -> super::Summary {
+        if row.parameter_uses.is_empty() {
+            return row;
+        }
+        for arm in arms {
+            if self
+                .index
+                .operations
+                .multiplicity_of(effect, &arm.operation)
+                == osprey_ast::Multiplicity::Many
+            {
+                let at = arm.position.map_or((0, 0), |p| (p.line, p.column));
+                row = row.under(&super::Scope::Replay {
+                    effect: effect.into(),
+                    operation: arm.operation.clone(),
+                    at,
+                });
+            }
+        }
+        row
+    }
+
+    pub(super) fn validate_callback_scopes(
+        &self,
+        row: super::Summary,
+        scopes: &[super::Scope],
+    ) -> super::Summary {
+        scopes.iter().fold(row, |row, scope| {
+            if let super::Scope::Replay {
+                effect,
+                operation,
+                at,
+            } = scope
+            {
+                if let Some(message) = crate::multiplicity::non_replayable_entry(
+                    &self.index.operations,
+                    effect,
+                    operation,
+                    &operation_pairs(&row),
+                ) {
+                    self.record_deferred_error(*at, TypeError::new(message));
+                }
+            }
+            row.in_scope(scope)
+        })
+    }
+
+    fn record_deferred_error(&self, (line, column): (u32, u32), error: TypeError) {
+        let key = (line, column, error.message.clone());
+        let _ = self
+            .index
+            .deferred_errors
+            .borrow_mut()
+            .insert(key, error.with_pos(Some(super::Position { line, column })));
+    }
+
+    pub(super) fn mark_static_result(
+        &self,
+        site: &super::handlers::HandlerSite<'_>,
+        value: &mut super::Value,
+    ) {
+        let Some(pos) = site.position else { return };
+        let args = self.instance_arguments(
+            site.effect,
+            site.position,
+            &self.instances.handlers,
+            "handler",
+        );
+        let operations = site
+            .arms
+            .iter()
+            .map(|arm| super::Requirement::new(site.effect, &arm.operation, args.clone()))
+            .collect();
+        mark_symbolic_result(
+            value,
+            &StaticEscape {
+                effect: site.effect.to_owned(),
+                location: (pos.line, pos.column),
+                operations,
+            },
+        );
+    }
+
+    pub(super) fn resolve_static_escape(
+        &self,
+        mut value: super::Value,
+        boundary: &StaticEscape,
+    ) -> super::Value {
+        let escaped: Vec<_> = latent_operations(&value)
+            .iter()
+            .filter(|required| boundary.operations.contains(&required.unmasked()))
+            .map(super::requirement_name)
+            .collect();
+        if !escaped.is_empty() {
+            self.record_deferred_error(
+                boundary.location,
+                escape_error(&boundary.effect, &escaped, None),
+            );
+        }
+        mark_symbolic_result(&mut value, boundary);
+        value
+    }
+}
+
+fn mark_symbolic_result(value: &mut super::Value, boundary: &StaticEscape) {
+    for child in value.container_children_mut() {
+        mark_symbolic_result(child, boundary);
+    }
+    match &mut value.callable {
+        Some(super::Callable::Parameter { projection, .. }) => {
+            let step = super::Projection::StaticEscape(Box::new(boundary.clone()));
+            if projection.last() != Some(&step) {
+                projection.push(step);
+            }
+        }
+        Some(super::Callable::Alternatives(choices)) => {
+            super::provenance::map_alternatives(choices, |branch| {
+                mark_symbolic_result(branch, boundary);
+            });
+        }
+        Some(super::Callable::Known(known)) => {
+            if let Some(returned) = &mut known.returned {
+                mark_symbolic_result(returned, boundary);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn escape_error(effect: &str, escaped: &[String], position: Option<super::Position>) -> TypeError {
+    TypeError::new(format!("static handler `{effect}` returns deferred work requiring {}; escaping static work requires invocation-time specialization, which is not implemented", escaped.join(", "))).with_pos(position)
 }
 
 fn latent_operations(value: &super::Value) -> super::Requirements {

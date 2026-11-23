@@ -272,6 +272,50 @@ fn main() = {
     ),
 ];
 
+/// [FLAVOR-PYTHON-HANDLER] All three frontends must name the same operation
+/// and reject it for the same reason, including through a named handler.
+#[test]
+fn multiplicity_rejections_agree_across_three_flavors() {
+    for (case, sources) in [
+        ("once", [
+            "effect Choose { control pick: fn() -> int }\nfn trial() = {\nhandle Choose { pick => satAdd(resume(1), resume(2)) }\nperform Choose.pick()\n}\nprint(trial())\n",
+            "effect Choose\n    control pick : Unit => int\ntrial () =\n    handle Choose\n        pick => satAdd (resume 1) (resume 2)\n    perform Choose.pick ()\nprint (trial ())\n",
+            "@effect\nclass Choose:\n    @control\n    def pick() -> int: ...\n@handler(Choose)\nclass choose:\n    def pick():\n        return satAdd(resume(1), resume(2))\nprint(choose(lambda: perform(Choose.pick())))\n",
+        ]),
+        ("abort", [
+            "effect Fail { control abort stop: fn() -> int }\nfn trial() = {\nhandle Fail { stop => resume(1) }\nperform Fail.stop()\n}\nprint(trial())\n",
+            "effect Fail\n    control abort stop : Unit => int\ntrial () =\n    handle Fail\n        stop => resume 1\n    perform Fail.stop ()\nprint (trial ())\n",
+            "@effect\nclass Fail:\n    @control\n    @abort\n    def stop() -> int: ...\n@handler(Fail)\nclass fail:\n    def stop():\n        return resume(1)\nprint(fail(lambda: perform(Fail.stop())))\n",
+        ]),
+        ("static", [
+            "static effect Choice { control once pick: fn() -> int }\nfn trial() = {\nhandle static Choice { pick => 3 }\nperform Choice.pick()\n}\nprint(trial())\n",
+            "static effect Choice\n    control once pick : Unit => int\ntrial () =\n    handle static Choice\n        pick => 3\n    perform Choice.pick ()\nprint (trial ())\n",
+            "@static_effect\nclass Choice:\n    @control\n    @once\n    def pick() -> int: ...\n@static_handler(Choice)\nclass choose:\n    def pick():\n        return 3\nprint(choose(lambda: perform(Choice.pick())))\n",
+        ]),
+        ("replay", [
+            "effect Choice { control many pick: fn() -> int }\neffect Audit { write: fn(int) -> Unit }\nfn work() = { let n = perform Choice.pick()\nperform Audit.write(n)\nn }\nfn trial() = { handle Audit { write n => print(n) }\nhandle Choice { pick => resume(1) }\nwork() }\nprint(trial())\n",
+            "effect Choice\n    control many pick : Unit => int\neffect Audit\n    write : int => Unit\nwork () =\n    n = perform Choice.pick ()\n    perform Audit.write n\n    n\ntrial () =\n    handle Audit\n        write n => print n\n    handle Choice\n        pick => resume 1\n    work ()\nprint (trial ())\n",
+            "@effect\nclass Choice:\n    @control\n    @many\n    def pick() -> int: ...\n@effect\nclass Audit:\n    def write(n: int) -> None: ...\n@handler(Choice)\nclass choose:\n    def pick():\n        return resume(1)\n@handler(Audit)\nclass silent:\n    def write(n):\n        print(n)\ndef work():\n    n = perform(Choice.pick())\n    perform(Audit.write(n))\n    return n\nprint(silent(lambda: choose(work)))\n",
+        ]),
+    ] {
+        let [default, ml, python] = sources;
+        if case == "replay" {
+            for valid in [
+                python.replace("    def write(n: int)", "    @replayable\n    def write(n: int)"),
+                python.replace("silent(lambda: choose(work))", "choose(lambda: silent(work))"),
+            ] {
+                let errors = staging::diagnostics(&valid, Flavor::Python);
+                assert!(errors.is_empty(), "{errors}");
+            }
+        }
+        let expected = staging::diagnostics(default, Flavor::Default);
+        assert!(!expected.is_empty(), "{case}: Default accepted the invalid use");
+        for (source, flavor) in [(ml, Flavor::Ml), (python, Flavor::Python)] {
+            assert_eq!(staging::diagnostics(source, flavor), expected, "{case}: {flavor}");
+        }
+    }
+}
+
 #[test]
 fn every_multiplicity_violation_is_rejected_naming_its_operation() {
     for (source, needles, why) in REJECTED {

@@ -19,7 +19,7 @@ impl Requirement {
     }
 
     /// The same request with no mask over it — the identity a handler answers.
-    fn unmasked(&self) -> Self {
+    pub(super) fn unmasked(&self) -> Self {
         Self {
             masked: 0,
             ..self.clone()
@@ -41,6 +41,9 @@ impl Requirement {
 impl ParameterUse {
     /// Record one more enclosing layer, merging adjacent handlers.
     fn under(&mut self, scope: Scope) {
+        if matches!(scope, Scope::Replay { .. }) && self.scopes.contains(&scope) {
+            return;
+        }
         match (self.scopes.last_mut(), scope) {
             (Some(Scope::Handled(inner)), Scope::Handled(outer)) => {
                 for (requirement, count) in outer {
@@ -204,7 +207,7 @@ impl Summary {
     }
 
     /// Record `scope` as one more layer over every symbolic callback use.
-    fn under(mut self, scope: &Scope) -> Self {
+    pub(super) fn under(mut self, scope: &Scope) -> Self {
         self.parameter_uses = std::mem::take(&mut self.parameter_uses)
             .into_iter()
             .map(|mut use_| {
@@ -217,11 +220,17 @@ impl Summary {
 
     /// Apply a callback use's recorded layers, innermost first, to the
     /// callback's own summary.
+    #[cfg(test)]
     pub(super) fn within(self, scopes: &[Scope]) -> Self {
-        scopes.iter().fold(self, |summary, scope| match scope {
-            Scope::Handled(excluded) => summary.excluding(excluded),
-            Scope::Masked { effect, arguments } => summary.masked(effect, arguments),
-        })
+        scopes.iter().fold(self, Self::in_scope)
+    }
+
+    pub(super) fn in_scope(self, scope: &Scope) -> Self {
+        match scope {
+            Scope::Handled(excluded) => self.excluding(excluded),
+            Scope::Masked { effect, arguments } => self.masked(effect, arguments),
+            Scope::Replay { .. } => self.under(scope),
+        }
     }
 
     fn excluding(self, excluded: &BTreeMap<Requirement, u32>) -> Self {
@@ -289,7 +298,10 @@ pub(super) fn bounded_parameter_use(use_: &ParameterUse, depth: usize) -> bool {
                 && !use_.projection.iter().any(|part| {
                     matches!(
                         part,
-                        Projection::Method(_) | Projection::Returned(_) | Projection::Handled(_)
+                        Projection::Method(_)
+                            | Projection::Returned(_)
+                            | Projection::Handled(_)
+                            | Projection::StaticEscape(_)
                     )
                 })))
 }

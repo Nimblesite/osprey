@@ -55,11 +55,6 @@ impl OperationAxis {
     pub(crate) fn multiplicity_of(&self, effect: &str, operation: &str) -> Multiplicity {
         self.table.multiplicity_of(effect, operation)
     }
-
-    /// Whether re-performing `effect.operation` is acceptable ([MULTI-REPLAY]).
-    pub(crate) fn is_replayable(&self, effect: &str, operation: &str) -> bool {
-        self.table.is_replayable(effect, operation)
-    }
 }
 
 /// Every name bound with `mut` in `program`, at any nesting depth.
@@ -146,7 +141,7 @@ fn many_message(
     handled_row: &BTreeSet<(String, String)>,
     fibered: Option<&str>,
 ) -> Option<String> {
-    non_replayable_entry(axis, effect, &arm.operation, handled_row)
+    non_replayable_entry(&axis.table, effect, &arm.operation, handled_row)
         .or_else(|| captured_state(axis, effect, arm))
         .or_else(|| fiber_boundary(effect, &arm.operation, fibered))
 }
@@ -163,8 +158,8 @@ fn handled_opening(effect: &str, operation: &str) -> String {
 /// a request however often it is re-performed is that declaration's stated
 /// semantics, so a re-issued request is not duplicated external work.
 /// Implements [MULTI-REPLAY-CHECK], [MULTI-HANDLE-MANY].
-fn non_replayable_entry(
-    axis: &OperationAxis,
+pub(crate) fn non_replayable_entry(
+    axis: &OperationTable,
     effect: &str,
     operation: &str,
     handled_row: &BTreeSet<(String, String)>,
@@ -186,7 +181,7 @@ non-replayable work outside the region"
 /// Whether re-performing `effect.operation` is acceptable: the written
 /// `replayable` promise, or a `many` declaration that answers every
 /// re-issued request.
-fn replayable(axis: &OperationAxis, effect: &str, operation: &str) -> bool {
+fn replayable(axis: &OperationTable, effect: &str, operation: &str) -> bool {
     axis.is_replayable(effect, operation)
         || axis.multiplicity_of(effect, operation) == Multiplicity::Many
 }

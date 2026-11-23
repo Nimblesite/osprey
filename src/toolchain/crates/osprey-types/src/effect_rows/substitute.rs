@@ -32,10 +32,8 @@ impl Analyzer<'_> {
                         .callable
                 });
                 if let Some(callback) = callback {
-                    summary.union(
-                        self.invoke_with_arguments(callback, use_.arguments)
-                            .within(&use_.scopes),
-                    );
+                    let invoked = self.invoke_with_arguments(callback, use_.arguments);
+                    summary.union(self.validate_callback_scopes(invoked, &use_.scopes));
                 } else if use_.index >= arguments.len() {
                     // No argument occupies this slot yet — the call is still
                     // under-applied, so the parameter stays symbolic for an
