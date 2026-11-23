@@ -39,6 +39,15 @@ Contract: [MEM-OWNERSHIP-STATIC](../specs/compiler/0018-MemoryManagement.md#comp
 
 ## Phase 2 — codegen and runtime
 
+Found while building phase 1, each a place where an accepted program still counts a reference at run time and so blocks an allocate-and-free-only runtime:
+
+- The helpers the compiler synthesises for rendering and structural equality (`osp.any.*`) box a borrowed payload and retain it for the life of the helper. They need a box that lends.
+- The list runtime duplicates the elements it copies (`osprey_list_builder_push_borrowed`) and shares structure between versions, in C. The sharing rule [MEM-OWNERSHIP-STATIC-SHARING] has to be enforced at compile time before those counts can go.
+- A collection read (`mapGet`, `listGet`, an index) wraps a borrowed element in a Result that retains it.
+- `spawn`, `await`, channel sends and handler environments retain what crosses them ([MEM-OWNERSHIP-STATIC-FIBERS]).
+- A file-scope binding read by a function is published with its own reference.
+
+
 - [ ] Emit direct frees at proved last uses and region exits in src/toolchain/crates/osprey-codegen/src/arc.rs and arc/last_use.rs; no `@osp_retain`/`@osp_release` calls survive in `ownership` IR.
 - Acceptance: `ownership` IR contains frees only, no retain/release calls.
 - [ ] Add `src/toolchain/compiler/runtime/memory_ownership.c` with allocation and free only; implement the remaining [MEM-BACKENDS-CUSTOM] hooks as no-ops.
