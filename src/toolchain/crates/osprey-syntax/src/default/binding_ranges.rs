@@ -157,6 +157,7 @@ fn pattern_ranges(
         matches!(
             child.kind(),
             "pattern"
+                | "or_pattern"
                 | "list_pattern"
                 | "structural_pattern"
                 | "slot_pattern"
@@ -177,7 +178,7 @@ fn bare_pattern(node: Node<'_>) -> bool {
     let mut cursor = node.walk();
     let has_children = node
         .named_children(&mut cursor)
-        .any(|child| matches!(child.kind(), "pattern" | "slot_pattern"));
+        .any(|child| matches!(child.kind(), "pattern" | "slot_pattern" | "or_pattern"));
     !has_children
 }
 
@@ -236,6 +237,31 @@ mod tests {
             [
                 source.find("item)").unwrap_or_default(),
                 source.rfind("item)").unwrap_or_default()
+            ]
+        );
+    }
+
+    #[test]
+    fn a_binder_in_every_or_pattern_alternative_is_found_in_each() {
+        // [PATTERN-OR-BINDINGS] The editor renames and hovers a binder taken
+        // from either alternative, so each alternative's occurrence is a range.
+        let source = "fn text(g) = match g {\n Letter { c: s } | Word { w: s } => s\n Digit { d: 0 | 1 } => \"bit\"\n _ => \"\"\n}\n";
+        let found: Vec<_> = ranges(source)
+            .into_iter()
+            .filter(|b| b.kind == BindingKind::PatternBinding)
+            .collect();
+        assert_eq!(
+            found
+                .iter()
+                .map(|b| (b.name.as_str(), &source[b.range.clone()]))
+                .collect::<Vec<_>>(),
+            [("s", "s"), ("s", "s")]
+        );
+        assert_eq!(
+            found.iter().map(|b| b.range.start).collect::<Vec<_>>(),
+            [
+                source.find("s }").unwrap_or_default(),
+                source.rfind("s }").unwrap_or_default()
             ]
         );
     }

@@ -24,6 +24,26 @@ fn nested_bindings_end_at_their_lexical_scope() {
 }
 
 #[test]
+fn a_binder_of_every_or_pattern_alternative_is_one_binding() {
+    // [PATTERN-OR-BINDINGS] `s` comes from whichever alternative matched, so
+    // a use goes to both binders and either binder finds the use.
+    let src = "type G = Letter { c: string } | Word { w: string }\nfn text(g) = match g {\n    Letter { c: s } | Word { w: s } => {\n        s\n    }\n}\n";
+    let uri = "file:///alternatives.osp";
+    let first = word_span(src, (2, "s }"));
+    let second = word_span(src, (2, "s } =>"));
+    let used = word_span(src, (3, "s"));
+    assert_eq!(definitions_at(src, uri, (3, "s")), vec![first, second]);
+    assert_eq!(
+        reference_spans(src, uri, 3, "s", true),
+        vec![first, second, used]
+    );
+    assert_eq!(
+        reference_spans(src, uri, 2, "s } =>", true),
+        vec![first, second, used]
+    );
+}
+
+#[test]
 fn layout_bindings_end_at_their_lexical_scope() {
     for (src, uri, last) in [
         (
