@@ -131,8 +131,12 @@ pub fn get_slice(key: &str) -> Option<String> {
 /// A borrowed string from this export's snapshot; ABI 1 copies it synchronously.
 /// Missing, null and invalid UTF-8 keys return empty. The pointer stays pinned
 /// until the enclosing export returns, even while background writers publish.
+///
+/// # Safety
+///
+/// `key` is null or a NUL-terminated string that stays valid for the call.
 #[no_mangle]
-pub extern "C" fn native_slice(key: *const c_char) -> *const c_char {
+pub unsafe extern "C" fn native_slice(key: *const c_char) -> *const c_char {
     if key.is_null() {
         return absent().as_ptr();
     }
@@ -252,11 +256,11 @@ fn sealed(result: Result<i64, String>, event: bool) -> Result<Shown, String> {
 // These drive the bridge of a statically linked runtime with fake application exports; on Windows
 // the application is a DLL that exports only its boundary, so its tests drive that boundary instead.
 #[cfg(all(test, not(windows)))]
-#[path = "ffi_tests.rs"]
+#[path = "../gpui/src/ffi_tests.rs"]
 mod tests;
 
 #[cfg(all(test, not(windows)))]
-#[path = "ffi_test_support.rs"]
+#[path = "../gpui/src/ffi_test_support.rs"]
 pub(crate) mod test_support;
 
 #[cfg(all(test, windows))]

@@ -18,19 +18,23 @@
 
 pub mod adapters;
 mod app;
+#[path = "../gpui/src/events.rs"]
 pub mod events;
 pub mod ffi;
 mod frame;
 pub mod host;
+#[path = "../gpui/src/regions.rs"]
 pub mod regions;
 // Both desktop renderers consume the same checked native scene protocol.
 #[path = "../gpui/src/rows.rs"]
 pub mod rows;
 pub mod scene;
+#[path = "../gpui/src/store.rs"]
 pub mod store;
 pub mod surface;
 pub mod symbols;
 pub mod theme;
+#[path = "../gpui/src/tree.rs"]
 pub mod tree;
 pub mod view;
 

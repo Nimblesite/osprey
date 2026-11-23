@@ -352,5 +352,17 @@ fn forward(
     window: &mut Window,
     cx: &mut Context<HostView>,
 ) {
-    view.send(Touch::control(binding.ordinal, &value.words()), window, cx);
+    view.send(Touch::control(binding.ordinal, &words(value)), window, cx);
+}
+
+/// The words a control event carries for this value: nothing, text, a flag or a whole number.
+fn words(value: &Tree) -> String {
+    match value {
+        Tree::Text(text) => text.clone(),
+        Tree::Bool(on) => on.to_string(),
+        Tree::Whole(whole) => whole.to_string(),
+        Tree::Real(real) if real.fract() == 0. && real.abs() < 9e15 => (*real as i64).to_string(),
+        Tree::Real(real) => real.to_string(),
+        Tree::Null | Tree::Items(_) | Tree::Record(_) => String::new(),
+    }
 }

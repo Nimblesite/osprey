@@ -87,3 +87,9 @@ fn test_child(name: &str) -> std::process::Output {
         .output()
         .expect("launch isolated storage regression")
 }
+
+/// `native_slice` on a test key: null, or a NUL-terminated string the caller holds past the call.
+pub(super) fn slice(key: *const std::ffi::c_char) -> *const std::ffi::c_char {
+    // SAFETY: every test passes null or a NUL-terminated buffer that outlives the call.
+    unsafe { super::native_slice(key) }
+}

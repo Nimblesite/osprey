@@ -13,7 +13,6 @@ use crate::events::{self, Touch};
 use crate::ffi::Library;
 use crate::rows::{Ask, Shown};
 use crate::screen::Screen;
-use crate::store;
 
 #[path = "smoke_checks.rs"]
 mod checks;
@@ -353,6 +352,15 @@ fn answer_one(shown: &mut Shown, now: i64, ask: &Ask) -> Result<(), String> {
     answer_all(shown, now, &requests)
 }
 
+/// The smoke run keeps no store, so every read answers as a missing entry does.
+fn missing_entry(ask: &Ask) -> Result<String, String> {
+    ask.fields
+        .iter()
+        .find(|argument| argument.field == 1)
+        .map(|argument| format!("no such store entry {}", argument.text))
+        .ok_or_else(|| format!("{} has no valid name", ask.kind()))
+}
+
 /// Builds the generic smoke answer for one supported capability.
 fn completion(ask: &Ask) -> Result<Touch, String> {
     if matches!(ask.kind(), "run" | "host-call")
@@ -363,7 +371,7 @@ fn completion(ask: &Ask) -> Result<Touch, String> {
     let outcome = match ask.kind() {
         "animate" | "store-write" => Ok(String::new()),
         "run" => Ok(r#"{"status":0,"stderr":""}"#.to_owned()),
-        "store-read" => Err(store::missing_read(ask)?),
+        "store-read" => Err(missing_entry(ask)?),
         kind => {
             return Err(format!(
                 "unsupported capability {kind} under {}",
