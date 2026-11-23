@@ -48,6 +48,12 @@ printf 'gpu\n' | OSPREY_GPU=metal OSPREY_GPU_TRACE=1 target/gpt2-check
 
 On 2026-11-23 the three runs printed the same 48,687 binary32 values across 24 tensors. The Apple M4 Max completed 84 Metal dispatches. ARC reported zero live objects after each run. These figures cover the checkpoint-free fixture. [Fixture source](check/check.py)
 
+With the real checkpoint installed, run this test from the repository root to compare the Default and Python generators byte for byte. On macOS both produced identical output for 20 tokens from the France prompt on host, Metal and OpenCL, and for one token from the Melbourne prompt on lists.
+
+```sh
+cargo test --manifest-path src/toolchain/Cargo.toml -p osprey-cli --test cross_flavor_equiv python_gpt2_generator_output_is_byte_identical_to_the_default_generator -- --ignored
+```
+
 ## Port notes
 
 The independent reference uses Python. The Osprey compiler builds the marked `.py` modules in this directory. The port keeps the reference’s tensor order and uses the same checkpoint as the Default generator. [Python reference](../reference.py) · [Python flavor guide](https://www.ospreylang.dev/docs/python/flavor/)
