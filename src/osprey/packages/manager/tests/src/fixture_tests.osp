@@ -7,7 +7,6 @@ import registry::Source
 import registry::Digests
 import registry::Bytes
 import registry::Png
-import registry_tests::Fixtures
 
 /// The declarative fixtures under src/osprey/packages/manager/tests/fixtures, read through the
 /// Osprey JSON parser and asserted case by case. A fixture is the normative

@@ -6,7 +6,6 @@ import registry::Domains
 import registry::TufCheck
 import registry::SchemaCheck
 import registry::TypeDiagram
-import registry_tests::Fixtures
 
 /// The TUF 1.0 client-workflow vector tables and the release-status state
 /// machine, asserted through the pure decisions of TufCheck. Fixtures carry

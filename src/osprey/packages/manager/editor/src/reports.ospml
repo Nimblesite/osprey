@@ -1,5 +1,4 @@
 namespace registry_editor
-import ui::Doc
 import ui::Lists
 import registry::Checked
 

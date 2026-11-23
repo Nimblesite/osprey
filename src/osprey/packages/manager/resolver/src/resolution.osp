@@ -1,8 +1,4 @@
 namespace registry;
-import registry::Names
-import registry::Identity
-import registry::ManifestModel
-import registry::Order
 
 /// The package-resolution domain types under [PACKAGE-RESOLUTION]. Dependency
 /// requirements and edges are `ManifestModel::Requirement` and

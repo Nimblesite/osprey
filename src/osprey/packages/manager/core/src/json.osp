@@ -1,7 +1,4 @@
 namespace registry;
-import registry::Checked
-import registry::Bytes
-import registry::JsonScan
 
 /// Strict RFC 8259 parsing into the registry's integer-only JSON model:
 /// integers, strings, booleans, null, arrays and objects. Every failure is a

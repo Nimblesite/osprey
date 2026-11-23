@@ -1,7 +1,6 @@
 // [SYNTH-ADVANCED-TABLES] Graph adapters for wavetable and additive sources over the shared kernel state.
 namespace synth
 
-import synth::RenderInputs
 
 (** Sources read declared parameters each sample; state lives in the kernel's phase and storage. *)
 module TableKernels

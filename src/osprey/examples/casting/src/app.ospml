@@ -10,7 +10,6 @@ import ui::Inputs
 import ui::Values
 import ui::Templates
 import ui::Keyed
-import casting::Link
 module App
     specified arguments = ui::Lists::position (arguments, \a => a == "--skin") >= 0
     export documentPath arguments = ui::Lists::after (arguments, "--machine", "src/osprey/examples/casting/player.machine.json")

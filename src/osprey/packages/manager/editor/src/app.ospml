@@ -3,9 +3,7 @@
 // changed, and the palette is the theme every region is drawn with.
 namespace registry_editor
 import ui::Doc
-import ui::Runtime
 import ui::Keyed
-import vscode::Editor
 
 module App
     slice () = perform Signal<PackageState>.read ()

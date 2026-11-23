@@ -1,6 +1,4 @@
 namespace registry;
-import registry::Bytes
-import registry::Sha256
 
 /// RFC 2104 HMAC-SHA256 over bytes, used for GitHub's raw-body signature.
 /// Implements [PACKAGE-HOSTED-AUTH]. Signature validation never grants

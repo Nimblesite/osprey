@@ -1,5 +1,4 @@
 namespace registry;
-import registry::Policy
 
 /// Canonical integer arithmetic for scores: unsigned basis points where
 /// 10,000 is 100.00, round-half-up division, bounded ramps, ratios, weighted

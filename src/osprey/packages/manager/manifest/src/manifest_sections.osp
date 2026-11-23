@@ -1,14 +1,4 @@
 namespace registry;
-import registry::Checked
-import registry::Toml
-import registry::Names
-import registry::Paths
-import registry::Spdx
-import registry::Utf8
-import registry::Order
-import registry::Maybe
-import registry::ManifestModel
-import registry::Bytes
 
 /// `[project]`, `[modules]` and `[package]` as `[PACKAGE-MANIFEST]` and the
 /// canonical-manifest rule of [PACKAGE-TYPE-INVARIANTS] define them. Each

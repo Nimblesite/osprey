@@ -1,26 +1,18 @@
 namespace uitests
 
 import ui::Ui
-import ui::Doc
 import ui::Lists
 import ui::Messages
 import ui::Inputs
 import ui::Requests
 import ui::Runtime
 import ui::Keyed
-import ui::Signals
-import ui::Splitters
-import ui::Themes
-import ui::Maths
 import ui::Scenes
 import ui::Symbols
 import ui::Pick
-import ui::Views
-import ui::Streams
 import ui::Surfaces
 import ui::Tell
 import ui::Tellings
-import uitests::Probes
 
 // One scene row as its numbers and text, so a table can hold exactly what a host reads.
 // Row `index` of `rows`, or a row with no code when there is none.

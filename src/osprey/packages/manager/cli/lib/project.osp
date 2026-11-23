@@ -1,8 +1,6 @@
 namespace registry_cli;
 import registry::Checked
 import registry_host::Host
-import registry_cli::Fetch
-import registry_cli::Lockfile
 import registry::Manifest
 
 /// The local project files a command consumes: `./osprey.toml` through

@@ -1,6 +1,4 @@
 namespace registry;
-import registry::Checked
-import registry::Bytes
 
 /// Character-level scanning for the TOML subset Osprey manifests use: a byte
 /// cursor with 1-based byte line/column, whitespace/comment trivia, bare-token

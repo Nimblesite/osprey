@@ -1,7 +1,6 @@
 // [SYNTH-ADVANCED-PHYSICAL-INTEGRATION] Graph adapters: physical primitives over the shared kernel state.
 namespace synth
 
-import synth::RenderInputs
 
 (** Each adapter reads its declared parameters, runs the standalone module and stores its state. *)
 module PhysicalKernels

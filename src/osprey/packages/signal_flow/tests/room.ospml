@@ -4,9 +4,7 @@
 // more grid; a window smaller than the design spares none.
 namespace signalflowtests
 
-import ui::Canvases
 import uitest::Drive
-import uitest::Semantics
 
 viewed (width, height) = post (\d => Drive::viewed (d, width, height))
 

@@ -6,7 +6,6 @@ import registry::Digests
 import registry::Bytes
 import registry::Sha256
 import registry::Domains
-import registry_tests::Fixtures
 
 /// Byte-exact canonical forms of every serialized model object, and the
 /// digest bindings between them. Each fixture under fixtures/canonical holds

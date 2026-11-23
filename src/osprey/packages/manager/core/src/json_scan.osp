@@ -1,6 +1,4 @@
 namespace registry;
-import registry::Checked
-import registry::Bytes
 
 /// JSON string decoding with balanced scan budgets and chunk concatenation. The traversal stops at the first closing quote or error without relying on tail calls. Implements [PACKAGE-PUBLISH].
 module JsonScan {

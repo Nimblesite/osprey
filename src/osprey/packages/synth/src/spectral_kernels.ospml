@@ -1,7 +1,6 @@
 // [SYNTH-ADVANCED-SPECTRAL-MODULES] Keep the spectral stream in the graph between samples.
 namespace synth
 
-import synth::RenderInputs
 
 (** The graph adapter retains each channel’s FFT state across render blocks. *)
 module SpectralKernels

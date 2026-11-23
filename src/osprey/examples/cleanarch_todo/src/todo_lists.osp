@@ -3,9 +3,6 @@
 
 namespace todo;
 
-import todo::TodoDomain
-import todo::TodoItems
-import todo::TodoRequest
 
 /// The todo-list use cases.
 module TodoLists {

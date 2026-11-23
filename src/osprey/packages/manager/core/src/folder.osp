@@ -1,6 +1,4 @@
 namespace registry;
-import registry::Release
-import registry::Source
 
 /// Groups the files found under a folder-registry root into release
 /// directories `@scope/name/<epoch>.<ordinal>`. Pure: the walk itself is a

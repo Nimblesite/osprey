@@ -2,7 +2,6 @@ namespace registry_web;
 import registry::Governance
 import registry::Maybe
 import registry::Names
-import registry_web::Model
 
 /// Website fixtures: two organizations sharing one leaf name, warned and
 /// clean packages, missing evidence, an administrator without a publishing

@@ -1,7 +1,5 @@
 namespace registry_web;
 import registry::Order
-import registry_web::Html
-import registry_web::Model
 
 /// Security-warning markup shared by every screen that shows a package:
 /// the worst-severity-first list, or the explicit no-warnings statement.

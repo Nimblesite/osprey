@@ -1,11 +1,4 @@
 namespace registry;
-import registry::Checked
-import registry::Json
-import registry::Canonical
-import registry::Digests
-import registry::Domains
-import registry::Maybe
-import registry::ManifestModel
 
 /// The canonical JSON projection of a manifest and its `manifestDigest`.
 /// Records become objects, unions one-member objects, absent options vanish.

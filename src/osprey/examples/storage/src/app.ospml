@@ -9,9 +9,6 @@ import ui::Messages
 import ui::Pick
 import ui::Requests
 import ui::Runtime
-import storage::Disk
-import storage::Measured
-import storage::View
 
 (** Where the person is: the platform whose words and paths apply, their home folder, the open folder and the folders they chose. *)
 type Place =

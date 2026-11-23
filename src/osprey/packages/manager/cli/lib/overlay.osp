@@ -1,7 +1,6 @@
 namespace registry_cli;
 import registry::Checked
 import registry_host::Host
-import registry_cli::Project
 import registry::Identity
 import registry::ManifestSections
 import registry::Maybe

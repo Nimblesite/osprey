@@ -1,7 +1,4 @@
 namespace registry_web;
-import registry_web::Browse
-import registry_web::PackageView
-import registry_web::WebFixtures
 
 /// The org-scoped browse screen: organization identity beside every
 /// result, warnings surfaced, same leaf names across organizations kept

@@ -3,7 +3,6 @@ import registry::Governance
 import registry::GovernanceTransitions
 import registry::Maybe
 import registry::Names
-import registry_tests::Fixture
 
 /// Exactly one administrator per package [PACKAGE-OWNERSHIP-ADMIN]: creation
 /// needs the nominee's fresh acceptance, only that administrator manages

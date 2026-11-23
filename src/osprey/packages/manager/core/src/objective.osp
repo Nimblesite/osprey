@@ -1,8 +1,4 @@
 namespace registry;
-import registry::Arithmetic
-import registry::Identity
-import registry::Names
-import registry::Order
 
 /// The resolver's lexicographic objective: per-candidate signed integer cost
 /// facts and the graph tuple `(sum V, sum D, sum U, sum E, changedIdentities,

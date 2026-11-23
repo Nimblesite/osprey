@@ -1,8 +1,4 @@
 namespace registry;
-import registry::Checked
-import registry::Governance
-import registry::Names
-import registry::Maybe
 
 /// The pure governance status transitions: organizations and memberships
 /// [PACKAGE-OWNERSHIP-MODEL], the single administrator [PACKAGE-OWNERSHIP-ADMIN],

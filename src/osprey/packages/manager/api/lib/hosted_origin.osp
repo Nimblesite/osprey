@@ -1,5 +1,4 @@
 namespace registry_api;
-import registry_api::HostedHeaders
 
 /// Origin validation for credentialed browser requests and CSRF token
 /// checks. The Origin header is a request attribute, never authentication;

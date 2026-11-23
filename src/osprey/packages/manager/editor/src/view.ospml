@@ -1,6 +1,5 @@
 namespace registry_editor
 import ui::Ui
-import ui::Lists
 
 // Implements [PACKAGE-EDITOR-WORKSPACE]: the package workspace is a screen,
 // not a picker. Every value shown comes from the canonical graph or catalog,

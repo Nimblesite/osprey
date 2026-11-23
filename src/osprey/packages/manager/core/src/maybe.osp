@@ -1,5 +1,4 @@
 namespace registry;
-import registry::Checked
 
 /// An optional value, the `Option<T>` of the typeDiagram model. A field that
 /// is `Absent` is omitted from canonical JSON and is never `null`

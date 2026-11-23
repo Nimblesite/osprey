@@ -1,7 +1,6 @@
 // [SYNTH-ADVANCED-CORE-PORTS] Live graph edits: keep surviving state, start new components fresh.
 namespace synth
 
-import synth::RenderInputs
 
 (** Preparing a replacement graph never touches the running state: `rebased` returns a new state for the
     edited graph, or an error that leaves the caller on its previous graph and state. Surviving components

@@ -1,7 +1,4 @@
 namespace registry;
-import registry::Checked
-import registry::Identity
-import registry::Names
 
 /// Release directory paths `@scope/name/<epoch>.<ordinal>` relative to the
 /// registry root. The key reuses [PACKAGE-NAMES]; the version is the epoch

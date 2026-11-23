@@ -1,7 +1,4 @@
 namespace registry;
-import registry::Checked
-import registry::Names
-import registry::Maybe
 
 /// The hosted governance domain: organizations, memberships, the single
 /// package administrator, explicit per-package grants, authority epochs,

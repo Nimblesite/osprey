@@ -1,9 +1,4 @@
 namespace registry;
-import registry::Checked
-import registry::TomlLexer
-import registry::Toml
-import registry::TomlTree
-import registry::Bytes
 
 /// Keys, values, numbers, arrays and inline tables of the TOML subset: parses
 /// a key path into `KeySeg`s, a value into the typed `Value` union, and

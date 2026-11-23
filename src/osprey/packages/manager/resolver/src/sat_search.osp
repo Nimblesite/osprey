@@ -1,5 +1,4 @@
 namespace registry;
-import registry::SatClauses
 
 /// Deterministic conflict-driven clause learning over immutable solver-state
 /// records — the propositional engine under [PACKAGE-RESOLUTION]. It knows

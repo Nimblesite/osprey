@@ -4,7 +4,6 @@
 
 namespace todo;
 
-import todo::TodoDomain
 
 /// One transaction. `begin` is `many` ([MULTI-DECL]): a lost commit resumes the SAME
 /// request from here ([EXAMPLE-CLEANARCH-MULTISHOT-RETRY]).

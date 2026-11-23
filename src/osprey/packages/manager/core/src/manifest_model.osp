@@ -1,6 +1,4 @@
 namespace registry;
-import registry::Names
-import registry::Maybe
 
 /// The canonical manifest: the typeDiagram `PackageManifest` and its parts,
 /// as `osprey.toml` projects onto them. Field names follow

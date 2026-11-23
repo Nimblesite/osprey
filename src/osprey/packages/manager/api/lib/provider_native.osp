@@ -1,5 +1,4 @@
 namespace registry_api;
-import registry_api::Supabase
 
 /// Native provider transport; all provider URLs originate in validated,
 /// deployment-pinned OAuth configuration. Implements [PACKAGE-HOSTED-AUTH].

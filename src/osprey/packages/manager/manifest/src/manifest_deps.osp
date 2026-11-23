@@ -1,13 +1,4 @@
 namespace registry;
-import registry::Checked
-import registry::Toml
-import registry::Names
-import registry::Paths
-import registry::Digests
-import registry::Order
-import registry::ManifestModel
-import registry::ManifestSections
-import registry::Bytes
 
 /// `[dependencies]`, `[build-dependencies]`, `[test-dependencies]`,
 /// `[system.*]` and `[[assets]]`. A dependency names one epoch and a minimum

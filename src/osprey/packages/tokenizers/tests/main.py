@@ -28,7 +28,6 @@ from tokenizers.HfJson import load_qwen_tokenizer
 from tokenizers import GgufVocab, NfcData
 from tokenizers.Models import BpeModel, build_bpe, bpe_tokenize, Token as ModelToken
 from tokenizers.Nfc import HANGUL_SBASE, HANGUL_SCOUNT, canonical_order, combining_class, compose, composite, decompose, decompose_cp, nfc_cps, nfc_text, nfd_cps, nfd_text
-from tokenizers.Normalizers import nfc_normalize
 from tokenizers.PreTokenizers import BYTE_CHARS, QWEN_PATTERN, byte_of_char, bytelevel_piece, bytelevel_raw, bytelevel_text, qwen_piece_len, qwen_pretokenize, qwen_split
 from tokenizers.Decoders import bytelevel_decode
 from tokenizers.Tokenizer import AddedToken, QwenTokenizer, qwen_decode, qwen_encode

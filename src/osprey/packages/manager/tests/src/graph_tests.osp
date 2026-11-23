@@ -5,10 +5,6 @@ import registry::Identity
 import registry::Names
 import registry::Resolve
 import registry::Resolution
-import registry_tests::GraphModel
-import registry_tests::GraphGen
-import registry_tests::GraphOracle
-import registry_tests::Fixtures
 
 /// Every bounded dependency-graph fixture is solved by both the real CDCL
 /// resolver and the exhaustive oracle, and each result is compared, byte for

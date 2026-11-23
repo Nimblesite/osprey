@@ -1,7 +1,4 @@
 namespace registry;
-import registry::Json
-import registry::SetOrder
-import registry::TypeDiagram
 
 /// The list rules of a schema-valid value: walks the value by its typeDiagram
 /// type and applies `SetOrder` to every list field it reaches, naming the

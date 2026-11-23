@@ -1,7 +1,4 @@
 namespace registry;
-import registry::Checked
-import registry::Governance
-import registry::Maybe
 
 /// Administrator handover [PACKAGE-OWNERSHIP-ADMIN] as pure transitions: one
 /// live proposal per package, a 24-hour hold, the recipient's fresh

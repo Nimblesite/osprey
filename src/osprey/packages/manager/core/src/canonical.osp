@@ -1,8 +1,4 @@
 namespace registry;
-import registry::Bytes
-import registry::Checked
-import registry::Json
-import registry::Order
 
 /// RFC 8785 (JSON Canonicalization Scheme) over Json values: no whitespace,
 /// object members ordered by their keys' UTF-16 code unit sequences, and only

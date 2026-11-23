@@ -1,7 +1,4 @@
 namespace registry;
-import registry::Order
-import registry::Release
-import registry::Bytes
 
 /// The capability surface of a release ([PACKAGE-CAPABILITY-CONFINEMENT]):
 /// the ambient capabilities whose builtins its source names, plus its

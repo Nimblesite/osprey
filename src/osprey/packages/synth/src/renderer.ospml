@@ -1,8 +1,6 @@
 // [SYNTH-RENDER] Allocation-using, deterministic reference renderer. Not an audio callback backend.
 namespace synth
 
-import synth::RenderInputs
-import synth::RenderKernels
 
 (** Execute the prepared mono graph with explicit state across arbitrary block partitions. *)
 module Renderer

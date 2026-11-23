@@ -1,6 +1,4 @@
 namespace registry;
-import registry::Checked
-import registry::Bytes
 
 /// Canonical package keys `@scope/name`. Components are lowercase ASCII
 /// letters, digits and interior hyphens; a scope is 1-39 bytes and a name is

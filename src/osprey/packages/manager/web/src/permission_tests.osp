@@ -1,7 +1,4 @@
 namespace registry_web;
-import registry_web::PackageView
-import registry_web::Permissions
-import registry_web::WebFixtures
 
 /// The organization/permission surfaces: the single administrator seat,
 /// explicit grants only, and the admin-without-publish warning the website

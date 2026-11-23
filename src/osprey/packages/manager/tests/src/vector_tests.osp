@@ -6,7 +6,6 @@ import registry::Canonical
 import registry::Merkle
 import registry::Dsse
 import registry::Json
-import registry_tests::Fixtures
 
 /// Primary-specification vectors — FIPS 180-4 SHA-256, RFC 8785 JCS, DSSE
 /// PAE with the spec 0030 WebAuthn challenge and EnvelopeDigest, digest

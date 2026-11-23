@@ -1,8 +1,6 @@
 namespace registry_cli;
 import registry::Checked
 import registry_host::Host
-import registry_cli::Lockfile
-import registry_cli::PythonMirror
 import registry::Bytes
 import registry::Digests
 import registry::ManifestModel

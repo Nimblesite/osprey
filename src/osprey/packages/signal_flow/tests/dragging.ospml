@@ -5,7 +5,6 @@
 namespace signalflowtests
 
 import ui::Canvases
-import ui::Machines
 import uitest::Semantics
 
 near (actual, expected) = expect (actual - expected < 0.01 && expected - actual < 0.01, true)

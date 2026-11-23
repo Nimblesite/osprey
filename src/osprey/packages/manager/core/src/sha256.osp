@@ -1,5 +1,4 @@
 namespace registry;
-import registry::Bytes
 
 /// SHA-256 over byte lists, per FIPS 180-4, producing the 32 digest bytes
 /// behind every `sha256:` envelope. Words stay in 0..2^32-1; bitwise

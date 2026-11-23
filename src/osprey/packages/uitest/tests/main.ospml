@@ -18,7 +18,6 @@ import ui::Surfaces
 import ui::Tellings
 import ui::Templates
 import ui::Values
-import ui::Views
 import ui::Ui
 import ui::Scenes
 import uitest::Drive

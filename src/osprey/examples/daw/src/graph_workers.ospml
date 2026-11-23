@@ -2,7 +2,6 @@
 namespace synth
 
 import ui::Requests
-import ui::Doc
 
 (** Bounded native session calls. *)
 module GraphWorkers

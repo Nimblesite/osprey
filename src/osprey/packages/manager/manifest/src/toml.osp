@@ -1,7 +1,4 @@
 namespace registry;
-import registry::TomlLexer
-import registry::TomlTree
-import registry::TomlParser
 
 /// The public TOML value model for the subset Osprey manifests use: document
 /// tables, arrays, strings, integers and booleans, each leaf with a 1-based

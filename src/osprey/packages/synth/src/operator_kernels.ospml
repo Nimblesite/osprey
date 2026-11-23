@@ -1,7 +1,6 @@
 // [SYNTH-ADVANCED-PHASE] Graph adapter for phase operators with optional modulation and sync inputs.
 namespace synth
 
-import synth::RenderInputs
 
 (** Phase holds the ramp, integrators the feedback history; storage the last sync value and decimator. *)
 module OperatorKernels

@@ -1,5 +1,4 @@
 namespace registry;
-import registry::Json
 
 /// Total readers over trusted, already-validated Json values: a missing
 /// member reads as `Json::Null`, and a value of the wrong kind reads as the

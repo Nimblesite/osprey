@@ -1,20 +1,4 @@
 namespace registry_cli;
-import registry_cli::Flags
-import registry_cli::Fetch
-import registry_cli::Reports
-import registry_cli::Doctor
-import registry_cli::Init
-import registry_cli::Add
-import registry_cli::Remove
-import registry_cli::Update
-import registry_cli::Use
-import registry_cli::Publish
-import registry_cli::Install
-import registry_cli::Verify
-import registry_cli::Build
-import registry_cli::Lock
-import registry_cli::Tree
-import registry_cli::Why
 
 /// Command routing for the Osprey package frontend. Implements the command
 /// surface of [PACKAGE-API] one command at a time: a command the

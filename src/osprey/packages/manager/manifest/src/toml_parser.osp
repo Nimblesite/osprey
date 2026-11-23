@@ -1,9 +1,4 @@
 namespace registry;
-import registry::Checked
-import registry::TomlLexer
-import registry::Toml
-import registry::TomlTree
-import registry::TomlValues
 
 /// Statements of the TOML subset: `[table]` and `[[array-of-tables]]`
 /// headers, key/value lines, and the document loop that folds them into a

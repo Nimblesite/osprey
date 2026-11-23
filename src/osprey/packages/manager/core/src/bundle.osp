@@ -1,12 +1,4 @@
 namespace registry;
-import registry::Checked
-import registry::Canonical
-import registry::Identity
-import registry::Json
-import registry::Names
-import registry::Release
-import registry::ReleaseFiles
-import registry::ReleasePath
 
 /// The source bundle: one RFC 8785 canonical JSON document carrying a
 /// release's key, epoch, ordinal, digest and every file as UTF-8 text. Decode

@@ -2,7 +2,6 @@ namespace registry_tests;
 import registry::Json
 import registry::TypeDiagram
 import registry::SchemaCheck
-import registry_tests::Fixtures
 
 /// The typeDiagram schema validator, exercised through the declarative
 /// fixtures under src/osprey/packages/manager/tests/fixtures/schema and .../time. `SchemaCheck`

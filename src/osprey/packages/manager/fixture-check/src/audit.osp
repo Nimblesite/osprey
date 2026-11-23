@@ -1,11 +1,7 @@
 namespace registry_fixture_check;
 import registry::Json
 import registry::JsonRead
-import registry::SchemaCheck
-import registry::SchemaOrder
 import registry::TypeDiagram
-import registry_fixture_check::Citations
-import registry_fixture_check::SchemaMap
 
 /// Fixture and citation audit. Fixtures are data only, parse as strict JSON,
 /// cite spec sections that exist, are listed by their folder's index, and

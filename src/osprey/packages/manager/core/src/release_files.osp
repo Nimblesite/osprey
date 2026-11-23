@@ -1,12 +1,4 @@
 namespace registry;
-import registry::Checked
-import registry::Bytes
-import registry::Identity
-import registry::Order
-import registry::Release
-import registry::ReleasePath
-import registry::Source
-import registry::Surface
 
 /// Assembles a release directory into the served, digest-pinned form the
 /// catalog and source bundle share. Files arrive in any order; the digest is

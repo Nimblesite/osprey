@@ -1,6 +1,5 @@
 namespace registry_tests;
 import registry::SetOrder
-import registry_tests::Fixtures
 
 /// Every list order and duplicate rule of spec 0031, one fixture row per
 /// sorted, swapped and same-key case. Implements the list rules of

@@ -1,8 +1,5 @@
 namespace registry_cli;
 import registry_host::Host
-import registry_cli::Flags
-import registry_cli::Reports
-import registry_cli::Project
 
 /// `osprey-pkg package init [--name <project>] [--project <dir>]`: write the
 /// smallest accepted manifest, `[project]` with a name and `source_roots =

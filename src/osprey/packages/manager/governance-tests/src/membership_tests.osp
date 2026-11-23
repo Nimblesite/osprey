@@ -2,7 +2,6 @@ namespace registry_tests;
 import registry::Governance
 import registry::GovernanceTransitions
 import registry::Maybe
-import registry_tests::Fixture
 
 /// Organization enrollment, custodian quorum, membership revocation, rejoin
 /// and suspension [PACKAGE-OWNERSHIP-MODEL]: governance roles are never

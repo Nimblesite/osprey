@@ -8,7 +8,6 @@ import ui::MachineDocs
 import ui::Values
 import ui::Templates
 import ui::Keyed
-import signalflow::Flow
 
 (** The application exported through the two-function C boundary. *)
 module App

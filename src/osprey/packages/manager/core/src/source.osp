@@ -1,11 +1,4 @@
 namespace registry;
-import registry::Checked
-import registry::Bytes
-import registry::Digests
-import registry::Paths
-import registry::Order
-import registry::Sha256
-import registry::Domains
 
 /// The canonical source envelope hashed into `SourceDigest`:
 /// `entry = u32be(length(path)) || path || 0x00 || u64be(length(file)) || SHA256(file)`

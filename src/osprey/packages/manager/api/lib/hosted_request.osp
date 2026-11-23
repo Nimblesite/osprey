@@ -1,7 +1,4 @@
 namespace registry_api;
-import registry_api::HostedHeaders
-import registry_api::HostedCookies
-import registry_api::HostedOrigin
 import registry::Bytes
 
 /// The hosted-request admission gate, evaluated in the order required by

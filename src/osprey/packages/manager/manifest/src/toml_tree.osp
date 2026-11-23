@@ -1,7 +1,4 @@
 namespace registry;
-import registry::Checked
-import registry::Toml
-import registry::TomlValues
 
 /// Tree navigation over a parsed TOML `Table`: pair lookup, focus-aware table
 /// and array-of-tables insertion, and the key-path definition rules that turn

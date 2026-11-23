@@ -4,7 +4,6 @@ import ui::Ui
 import ui::Doc
 import ui::Lists
 import ui::Contrast
-import ui::Messages
 import ui::Requests
 import ui::Runtime
 import ui::Signals
@@ -19,9 +18,6 @@ import ui::Keyed
 import ui::Boards
 import ui::Scenes
 import ui::Symbols
-import uitests::Probes
-import uitests::AdditionCases
-import uitests::Extras
 
 type Ranked =
     name : string

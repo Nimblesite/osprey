@@ -1,5 +1,4 @@
 namespace registry_host;
-import registry_host::Host
 
 /// Operating-system handlers for `Host`, built only on Osprey builtins.
 /// Process output is captured through shell redirection into `.osprey/scratch`

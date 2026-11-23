@@ -2,8 +2,6 @@ namespace registry_api;
 import registry::Policy
 import registry_host::Host
 import registry_host::Native
-import registry_api::Config
-import registry_api::Server
 
 /// `osprey-registry`: serve the folder registry named by `registry-server.json`
 /// in the working directory. Implements [PACKAGE-FOLDER-REGISTRY].

@@ -15,8 +15,6 @@ import agent::Engine
 import agent::Highlight
 import agent::McpClient
 import agent::Transcript
-import agentapp::McpModel
-import agentapp::Model
 
 (** Frame recipes: this application's whole visual language. *)
 module Look

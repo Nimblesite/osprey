@@ -1,13 +1,4 @@
 namespace registry;
-import registry::Names
-import registry::Order
-import registry::Identity
-import registry::Objective
-import registry::Sat
-import registry::SatClauses
-import registry::Candidates
-import registry::Clauses
-import registry::Resolution
 
 /// Lexicographic minimisation of the objective components the fixtures and
 /// the folder registry carry — V, D, U and E are zero, so the search freezes

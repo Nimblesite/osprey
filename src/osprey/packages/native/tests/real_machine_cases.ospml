@@ -7,7 +7,6 @@ import ui::Doc
 import ui::MachineDocs
 import ui::Machines
 import ui::Runtime
-import ui::Templates
 import ui::Values
 
 realMachine path = match MachineDocs::load (readFile path ?: "")

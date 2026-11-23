@@ -1,7 +1,6 @@
 namespace registry_cli;
 import registry::Checked
 import registry_host::Host
-import registry_cli::Reports
 import registry::Bundle
 import registry::Bytes
 import registry::Source

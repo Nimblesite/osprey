@@ -1,6 +1,5 @@
 namespace registry_host;
 import registry::Bytes
-import registry_host::Host
 
 /// PostgreSQL transport through the platform's psql 16+ extended protocol.
 /// SQL comes only from reviewed application code; request values are hex-bound

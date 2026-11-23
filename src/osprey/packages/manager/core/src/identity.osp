@@ -1,8 +1,4 @@
 namespace registry;
-import registry::Checked
-import registry::Names
-import registry::Order
-import registry::Digests
 
 /// Release identity `@scope/name@e3.r42#sha256:…`: a registry-assigned
 /// compatibility epoch, a package-wide strictly increasing ordinal and the

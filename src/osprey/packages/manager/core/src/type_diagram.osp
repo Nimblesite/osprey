@@ -1,5 +1,4 @@
 namespace registry;
-import registry::Bytes
 
 /// Parses a typeDiagram document — `typeDiagram`, then `alias X = T`,
 /// `type X { ... }`, and `union X { Variant { ... } ... }` declarations whose

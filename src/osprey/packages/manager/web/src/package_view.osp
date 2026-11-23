@@ -1,9 +1,6 @@
 namespace registry_web;
 import registry::Governance
 import registry::Names
-import registry_web::Html
-import registry_web::Model
-import registry_web::Warnings
 
 /// The package page: public identity, lifecycle, maintenance, the
 /// evidence-backed review and the security warnings. An organization member

@@ -1,5 +1,4 @@
 namespace registry_editor
-import ui::Doc
 
 // The editor reads every command and registry document through these typed
 // readers, so a missing or mistyped member names the document and the member

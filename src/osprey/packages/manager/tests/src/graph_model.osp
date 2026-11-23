@@ -4,7 +4,6 @@ import registry::Names
 import registry::Identity
 import registry::ManifestModel
 import registry::Resolution
-import registry_tests::Fixtures
 
 /// The parsed declarative form of one bounded dependency-graph fixture: the
 /// target, granted capabilities, the root's dependency edges, an optional
