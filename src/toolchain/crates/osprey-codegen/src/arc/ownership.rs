@@ -104,6 +104,7 @@ impl OwnershipCheck {
 }
 
 /// The ledger is about to count a reference to `operand`: record it.
+#[track_caller]
 pub(crate) fn second_owner(cg: &mut Codegen, operand: &str, name: Option<&str>, need: Need) {
     if !cg.ownership.on || !operand.starts_with('%') || cg.is_rodata(operand) {
         return;
@@ -111,7 +112,7 @@ pub(crate) fn second_owner(cg: &mut Codegen, operand: &str, name: Option<&str>, 
     let value = name.map(str::to_owned).or_else(|| cg.name_of(operand));
     let found = SecondOwner {
         position: cg.ownership.position,
-        function: osprey_ast::symbol::demangle_message(&cg.ownership.function).into_owned(),
+        function: format!("{}#{}", std::panic::Location::caller().file(), std::panic::Location::caller().line()),
         value,
         need,
     };

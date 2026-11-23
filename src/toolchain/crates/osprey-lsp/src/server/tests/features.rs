@@ -254,6 +254,8 @@ async fn watched_changes_recheck_only_the_projects_they_affect(
     const PROJECTS: usize = 8;
     // The sweep reports a closed file's cheap advice, never the redundancy proof.
     const WARNED: &str = "double x =\n    spare = 1\n    x * 2\n";
+    // Opened, a file is proved too: its annotation is redundant.
+    const PROVABLE: &str = "triple : int -> int\ntriple x =\n    spare = 1\n    x * 3\n";
     let root = std::env::temp_dir().join(format!("osprey sweep cpu {}", std::process::id()));
     let mut mains = Vec::new();
     for index in 0..PROJECTS {
@@ -308,7 +310,6 @@ async fn watched_changes_recheck_only_the_projects_they_affect(
     only_published(&reports, &[closed_uri], "a tab close");
 
     let extra = root.join("p2/src/extra.ospml");
-    const PROVABLE: &str = "triple : int -> int\ntriple x =\n    spare = 1\n    x * 3\n";
     std::fs::write(&extra, PROVABLE)?;
     let extra_uri = sweep_uri(&extra)?;
     let created = json!({"changes":[{"uri":extra_uri,"type":1}]});
