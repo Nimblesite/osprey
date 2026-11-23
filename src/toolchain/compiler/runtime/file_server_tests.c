@@ -226,7 +226,7 @@ static void *fetch_thread(void *arg) {
 void write_text(const char *folder, const char *name, const char *text) {
   char path[512];
   snprintf(path, sizeof path, "%s/%s", folder, name);
-  FILE *file = fopen(path, "w");
+  FILE *file = fopen(path, "wb");
   assert(file != NULL);
   assert(fputs(text, file) >= 0);
   fclose(file);
