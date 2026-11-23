@@ -90,7 +90,11 @@ mix (buf, n) = repeatStep (buf, n, (\b => gpuMap(b, stir)))
 lowerTimes (buf, n) = repeatStep (buf, n, (\b => gpuMap(b, lower)))
 rebuild (buf, n) = match n
     0 => Success(value = buf)
-    _ => andThen (gpuMap (buf, bump), \mapped => andThen (fromGpu (mapped), \back => andThen (toGpu (back), \again => rebuild (again, n - 1))))
+    _ =>
+        use mapped <- andThen (gpuMap (buf, bump))
+        use back <- andThen (fromGpu (mapped))
+        use again <- andThen (toGpu (back))
+        rebuild (again, n - 1)
 (** [GPU-FOLD] with tally: `b` from `seed` totals `expected`. *)
 sumsTo (b, seed, expected) = gpuEquals(gpuFold(b, seed, tally), expected)
 (** sumsTo from the zero seed. *)
