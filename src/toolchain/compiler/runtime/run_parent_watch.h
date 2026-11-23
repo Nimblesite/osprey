@@ -37,9 +37,9 @@ static void run_parent_died(void *unused) {
 // once this process is no longer the runner's child.
 static void *run_parent_poll(void *named) {
   pid_t runner = (pid_t)(intptr_t)named;
-  const struct timespec pause = {0, OSP_RUN_POLL_NSEC};
+  const struct timespec interval = {0, OSP_RUN_POLL_NSEC};
   while (getppid() == runner) {
-    (void)nanosleep(&pause, NULL);
+    (void)nanosleep(&interval, NULL);
   }
   run_parent_died(NULL);
   return NULL;
