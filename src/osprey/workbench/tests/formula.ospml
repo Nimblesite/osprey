@@ -43,22 +43,22 @@ module FormulaCases
 
     (** [WORKBENCH-FORMULA]: `↔` loosest, `→` right associative, `∧` tightest, parentheses override. *)
     export precedence () =
-        FixtureFiles::bind (formula "p → q → r", \associative =>
-        FixtureFiles::bind (formula "(p → q) → r", \grouped =>
-        FixtureFiles::bind (formula "p ∧ q ∨ r", \tightest =>
-        FixtureFiles::bind (formula "p ∧ (q ∨ r)", \overridden =>
-        FixtureFiles::bind (formula "¬(p ∧ q)", \negated =>
-        FixtureFiles::bind (formula "p ↔ q → r", \loosest =>
-        FixtureFiles::bind (formula "((p))", \redundant =>
-        FixtureFiles::bind (formula "(∀ p, p) ∧ q", \scoped =>
-            expect (Formulas::show associative, "p → q → r")
-            expect (Formulas::show grouped, "(p → q) → r")
-            expect (Formulas::show tightest, "p ∧ q ∨ r")
-            expect (Formulas::show overridden, "p ∧ (q ∨ r)")
-            expect (Formulas::show negated, "¬(p ∧ q)")
-            expect (Formulas::show loosest, "p ↔ q → r")
-            expect (Formulas::show redundant, "p")
-            FixtureFiles::ok (expect (Formulas::show scoped, "(∀ p, p) ∧ q"))))))))))
+        use associative <- FixtureFiles::bind (formula "p → q → r")
+        use grouped <- FixtureFiles::bind (formula "(p → q) → r")
+        use tightest <- FixtureFiles::bind (formula "p ∧ q ∨ r")
+        use overridden <- FixtureFiles::bind (formula "p ∧ (q ∨ r)")
+        use negated <- FixtureFiles::bind (formula "¬(p ∧ q)")
+        use loosest <- FixtureFiles::bind (formula "p ↔ q → r")
+        use redundant <- FixtureFiles::bind (formula "((p))")
+        use scoped <- FixtureFiles::bind (formula "(∀ p, p) ∧ q")
+        expect (Formulas::show associative, "p → q → r")
+        expect (Formulas::show grouped, "(p → q) → r")
+        expect (Formulas::show tightest, "p ∧ q ∨ r")
+        expect (Formulas::show overridden, "p ∧ (q ∨ r)")
+        expect (Formulas::show negated, "¬(p ∧ q)")
+        expect (Formulas::show loosest, "p ↔ q → r")
+        expect (Formulas::show redundant, "p")
+        FixtureFiles::ok (expect (Formulas::show scoped, "(∀ p, p) ∧ q"))
 
     (** [WORKBENCH-FORMULA]: a fault names the column and the shortest fix. *)
     export faults () =
@@ -95,22 +95,22 @@ module FormulaCases
 
     (** [WORKBENCH-MATH]: connective trees preserve grouping and binder scope. *)
     export typesetting () =
-        FixtureFiles::bind (layout "(p → q) ∧ (q ∨ p)", \tree =>
-        FixtureFiles::bind (layout "(∀ p, p) ∧ q", \forall =>
-        FixtureFiles::bind (layout "p → ∀ q, q", \withBinder =>
-        FixtureFiles::bind (layout "p → q → p", \arrow =>
-        FixtureFiles::bind (layout "⊤", \top =>
-        FixtureFiles::bind (layout "⊥", \bottom =>
-        FixtureFiles::bind (layout "α₁", \alpha =>
-            trailing = Doc::field (withBinder, "right")
-            expect (Doc::text (tree, "symbol"), "∧")
-            expect (Doc::text (Doc::field (tree, "left"), "kind"), "paren")
-            expect (Doc::text (Doc::field (tree, "right"), "kind"), "paren")
-            expect (Doc::text (Doc::field (Doc::field (forall, "left"), "body"), "kind"), "binder")
-            expect (Doc::text (trailing, "kind"), "binder")
-            expect (Doc::text (trailing, "symbol"), "∀")
-            expect (Doc::text (listGet (Doc::items (Doc::field (trailing, "names"))) 0 ?: JsonNull, "text"), "q")
-            expect (Doc::text (Doc::field (arrow, "right"), "symbol"), "→")
-            expect (Doc::text (top, "text"), "⊤")
-            expect (Doc::text (bottom, "text"), "⊥")
-            FixtureFiles::ok (expect (Doc::text (alpha, "text"), "α₁")))))))))
+        use tree <- FixtureFiles::bind (layout "(p → q) ∧ (q ∨ p)")
+        use forall <- FixtureFiles::bind (layout "(∀ p, p) ∧ q")
+        use withBinder <- FixtureFiles::bind (layout "p → ∀ q, q")
+        use arrow <- FixtureFiles::bind (layout "p → q → p")
+        use top <- FixtureFiles::bind (layout "⊤")
+        use bottom <- FixtureFiles::bind (layout "⊥")
+        use alpha <- FixtureFiles::bind (layout "α₁")
+        trailing = Doc::field (withBinder, "right")
+        expect (Doc::text (tree, "symbol"), "∧")
+        expect (Doc::text (Doc::field (tree, "left"), "kind"), "paren")
+        expect (Doc::text (Doc::field (tree, "right"), "kind"), "paren")
+        expect (Doc::text (Doc::field (Doc::field (forall, "left"), "body"), "kind"), "binder")
+        expect (Doc::text (trailing, "kind"), "binder")
+        expect (Doc::text (trailing, "symbol"), "∀")
+        expect (Doc::text (listGet (Doc::items (Doc::field (trailing, "names"))) 0 ?: JsonNull, "text"), "q")
+        expect (Doc::text (Doc::field (arrow, "right"), "symbol"), "→")
+        expect (Doc::text (top, "text"), "⊤")
+        expect (Doc::text (bottom, "text"), "⊥")
+        FixtureFiles::ok (expect (Doc::text (alpha, "text"), "α₁"))

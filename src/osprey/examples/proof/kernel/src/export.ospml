@@ -46,7 +46,12 @@ module Export
     (** The header must name format version 3.1.0, whatever the exporter. *)
     metaLine (current, text) = wrapped (1, metaVersion (counted (current), jsonDecode text))
 
-    metaVersion (next, outcome) = Terms::upon (outcome, \json => Terms::upon (ExportJson::fieldIn (json, "meta"), \meta => Terms::upon (ExportJson::fieldIn (meta, "format"), \format => Terms::upon (ExportJson::textIn (format, "version"), \version => versionOk (next, version)))))
+    metaVersion (next, outcome) =
+        use json <- Terms::upon (outcome)
+        use meta <- Terms::upon (ExportJson::fieldIn (json, "meta"))
+        use format <- Terms::upon (ExportJson::fieldIn (meta, "format"))
+        use version <- Terms::upon (ExportJson::textIn (format, "version"))
+        versionOk (next, version)
 
     versionOk (next, version) = match version == "3.1.0"
         true => Success(value = next)
@@ -152,7 +157,12 @@ module Export
         true => nameStr (reading, json, index)
         false => nameNum (reading, json, index)
 
-    nameStr (reading, json, index) = Terms::upon (ExportJson::fieldIn (json, "str"), \str => Terms::upon (ExportJson::intIn (str, "pre"), \parent => Terms::upon (ExportJson::textIn (str, "str"), \leaf => Terms::upon (stringName leaf, \name => nameDone (reading, index, parent, name)))))
+    nameStr (reading, json, index) =
+        use str <- Terms::upon (ExportJson::fieldIn (json, "str"))
+        use parent <- Terms::upon (ExportJson::intIn (str, "pre"))
+        use leaf <- Terms::upon (ExportJson::textIn (str, "str"))
+        use name <- Terms::upon (stringName leaf)
+        nameDone (reading, index, parent, name)
 
     (** Implements [PROOF-EXPORT]: JSON-quoted ambiguous string components
         preserve Lean Name identity; numeric components keep decimal spelling. *)
@@ -171,7 +181,11 @@ module Export
         Error _ => false
 
     (** A `num` leaf is rendered in the table's one spelling. *)
-    nameNum (reading, json, index) = Terms::upon (ExportJson::fieldIn (json, "num"), \num => Terms::upon (ExportJson::intIn (num, "pre"), \parent => Terms::upon (ExportJson::intIn (num, "i"), \value => numericName (reading, index, parent, value))))
+    nameNum (reading, json, index) =
+        use num <- Terms::upon (ExportJson::fieldIn (json, "num"))
+        use parent <- Terms::upon (ExportJson::intIn (num, "pre"))
+        use value <- Terms::upon (ExportJson::intIn (num, "i"))
+        numericName (reading, index, parent, value)
 
     numericName (reading, index, parent, value) = match value >= 0
         true => nameDone (reading, index, parent, toString value)
@@ -235,21 +249,44 @@ module Export
 
     (** Projections retain their family and field index for kernel checking;
         reading one never substitutes an unchecked field. [PROOF-KERNEL-THEORY] *)
-    projected (reading, json, index) = Terms::upon (ExportJson::fieldIn (json, "proj"), \proj => Terms::upon (ExportJson::intIn (proj, "typeName"), \ref => Terms::upon (ExportJson::nameOf (reading.tables, ref), \name => Terms::upon (ExportJson::intIn (proj, "idx"), \field => Terms::upon (ExportJson::intIn (proj, "struct"), \target => Terms::upon (ExportJson::exprOf (reading.tables, target), \term => Success(value = setExpr (reading, index, Proj name field term))))))))
+    projected (reading, json, index) =
+        use proj <- Terms::upon (ExportJson::fieldIn (json, "proj"))
+        use ref <- Terms::upon (ExportJson::intIn (proj, "typeName"))
+        use name <- Terms::upon (ExportJson::nameOf (reading.tables, ref))
+        use field <- Terms::upon (ExportJson::intIn (proj, "idx"))
+        use target <- Terms::upon (ExportJson::intIn (proj, "struct"))
+        use term <- Terms::upon (ExportJson::exprOf (reading.tables, target))
+        Success(value = setExpr (reading, index, Proj name field term))
 
     sorted (reading, json, index) = Terms::upon (ExportJson::intIn (json, "sort"), \ref => Terms::upon (ExportJson::levelOf (reading.tables, ref), \level => Success(value = setExpr (reading, index, Sort level))))
 
     varred (reading, json, index) = Terms::upon (ExportJson::intIn (json, "bvar"), \depth => Success(value = setExpr (reading, index, BVar depth)))
 
     (** A constant names its head and carries its level arguments. *)
-    consted (reading, json, index) = Terms::upon (ExportJson::fieldIn (json, "const"), \c => Terms::upon (ExportJson::intIn (c, "name"), \ref => Terms::upon (ExportJson::nameOf (reading.tables, ref), \name => Terms::upon (ExportJson::arrayIn (c, "us"), \items => Terms::upon (levelList (reading.tables, items), \levels => Success(value = setExpr (reading, index, Const name levels)))))))
+    consted (reading, json, index) =
+        use c <- Terms::upon (ExportJson::fieldIn (json, "const"))
+        use ref <- Terms::upon (ExportJson::intIn (c, "name"))
+        use name <- Terms::upon (ExportJson::nameOf (reading.tables, ref))
+        use items <- Terms::upon (ExportJson::arrayIn (c, "us"))
+        use levels <- Terms::upon (levelList (reading.tables, items))
+        Success(value = setExpr (reading, index, Const name levels))
 
     (** Every element of a level-argument list, in order. *)
     levelList (tables, items) = match items
         [] => Success(value = [])
-        [first, ...rest] => Terms::upon (ExportJson::intAs (first, "level argument"), \ref => Terms::upon (ExportJson::levelOf (tables, ref), \level => Terms::upon (levelList (tables, rest), \levels => Success(value = listPrepend (levels, level)))))
+        [first, ...rest] =>
+            use ref <- Terms::upon (ExportJson::intAs (first, "level argument"))
+            use level <- Terms::upon (ExportJson::levelOf (tables, ref))
+            use levels <- Terms::upon (levelList (tables, rest))
+            Success(value = listPrepend (levels, level))
 
-    applied (reading, json, index) = Terms::upon (ExportJson::fieldIn (json, "app"), \a => Terms::upon (ExportJson::intIn (a, "fn"), \head => Terms::upon (ExportJson::intIn (a, "arg"), \arg => Terms::upon (ExportJson::exprOf (reading.tables, head), \caller => Terms::upon (ExportJson::exprOf (reading.tables, arg), \value => Success(value = setExpr (reading, index, App caller value)))))))
+    applied (reading, json, index) =
+        use a <- Terms::upon (ExportJson::fieldIn (json, "app"))
+        use head <- Terms::upon (ExportJson::intIn (a, "fn"))
+        use arg <- Terms::upon (ExportJson::intIn (a, "arg"))
+        use caller <- Terms::upon (ExportJson::exprOf (reading.tables, head))
+        use value <- Terms::upon (ExportJson::exprOf (reading.tables, arg))
+        Success(value = setExpr (reading, index, App caller value))
 
     (** `lam` and `forallE` differ only in the constructor; `binderInfo`
         is validated and dropped, and the name is kept for printing. *)
@@ -263,7 +300,14 @@ module Export
         true => boundName (reading, index, binder, lambda)
         false => Error(message = "bad binderInfo ${info}")
 
-    boundName (reading, index, binder, lambda) = Terms::upon (ExportJson::intIn (binder, "name"), \ref => Terms::upon (ExportJson::nameOf (reading.tables, ref), \name => Terms::upon (ExportJson::intIn (binder, "type"), \ty => Terms::upon (ExportJson::exprOf (reading.tables, ty), \domain => Terms::upon (ExportJson::intIn (binder, "body"), \body => Terms::upon (ExportJson::exprOf (reading.tables, body), \inner => Success(value = setExpr (reading, index, boundForm (lambda, name, domain, inner)))))))))
+    boundName (reading, index, binder, lambda) =
+        use ref <- Terms::upon (ExportJson::intIn (binder, "name"))
+        use name <- Terms::upon (ExportJson::nameOf (reading.tables, ref))
+        use ty <- Terms::upon (ExportJson::intIn (binder, "type"))
+        use domain <- Terms::upon (ExportJson::exprOf (reading.tables, ty))
+        use body <- Terms::upon (ExportJson::intIn (binder, "body"))
+        use inner <- Terms::upon (ExportJson::exprOf (reading.tables, body))
+        Success(value = setExpr (reading, index, boundForm (lambda, name, domain, inner)))
 
     boundForm (lambda, name, domain, inner) = match lambda
         true => Lam name domain inner
@@ -271,7 +315,15 @@ module Export
 
     (** A let carries name, type, value and body; `nondep` is a hint and
         is dropped. *)
-    letted (reading, json, index) = Terms::upon (ExportJson::fieldIn (json, "letE"), \letE => Terms::upon (ExportJson::intIn (letE, "name"), \nref => Terms::upon (ExportJson::nameOf (reading.tables, nref), \name => Terms::upon (ExportJson::intIn (letE, "type"), \tref => Terms::upon (ExportJson::exprOf (reading.tables, tref), \domain => Terms::upon (ExportJson::intIn (letE, "value"), \vref => Terms::upon (ExportJson::exprOf (reading.tables, vref), \value => letBody (reading, index, letE, name, domain, value))))))))
+    letted (reading, json, index) =
+        use letE <- Terms::upon (ExportJson::fieldIn (json, "letE"))
+        use nref <- Terms::upon (ExportJson::intIn (letE, "name"))
+        use name <- Terms::upon (ExportJson::nameOf (reading.tables, nref))
+        use tref <- Terms::upon (ExportJson::intIn (letE, "type"))
+        use domain <- Terms::upon (ExportJson::exprOf (reading.tables, tref))
+        use vref <- Terms::upon (ExportJson::intIn (letE, "value"))
+        use value <- Terms::upon (ExportJson::exprOf (reading.tables, vref))
+        letBody (reading, index, letE, name, domain, value)
 
     letBody (reading, index, letE, name, domain, value) = Terms::upon (ExportJson::intIn (letE, "body"), \bref => Terms::upon (ExportJson::exprOf (reading.tables, bref), \inner => Success(value = setExpr (reading, index, Let name domain value inner))))
 
@@ -289,7 +341,12 @@ module Export
         "quot" => quotiented (reading, json)
         other => refusal (other, false)
 
-    quotiented (reading, json) = Terms::upon (ExportJson::fieldIn (json, "quot"), \raw => Terms::upon (quotientShape raw, \data => Terms::upon (ExportJson::textIn (data, "kind"), \kind => Terms::upon (quotientKind kind, \tag => quotientDeclaration (reading, data, tag)))))
+    quotiented (reading, json) =
+        use raw <- Terms::upon (ExportJson::fieldIn (json, "quot"))
+        use data <- Terms::upon (quotientShape raw)
+        use kind <- Terms::upon (ExportJson::textIn (data, "kind"))
+        use tag <- Terms::upon (quotientKind kind)
+        quotientDeclaration (reading, data, tag)
 
     quotientShape raw = match raw
         JsonObject members => Terms::upon (quotientMembers members, \ok => quotientCount (raw, listLength members))
@@ -314,7 +371,11 @@ module Export
         "ind" => Success(value = QuotInd)
         other => Error(message = "unsupported quotient kind: ${other}")
 
-    quotientDeclaration (reading, data, kind) = Terms::upon (ExportJson::declName (reading.tables, data), \name => Terms::upon (ExportJson::paramsOf (reading.tables, data), \params => Terms::upon (ExportJson::typedOf (reading.tables, data), \ty => Success(value = addItem (reading, Single (Decl(name = name, params = params, ty = ty, body = Quotient kind)))))))
+    quotientDeclaration (reading, data, kind) =
+        use name <- Terms::upon (ExportJson::declName (reading.tables, data))
+        use params <- Terms::upon (ExportJson::paramsOf (reading.tables, data))
+        use ty <- Terms::upon (ExportJson::typedOf (reading.tables, data))
+        Success(value = addItem (reading, Single (Decl(name = name, params = params, ty = ty, body = Quotient kind))))
 
     (** Opaque declarations require an explicit false `isUnsafe` flag before reading their type and value. *)
     opaqued (reading, json) = Terms::upon (ExportJson::fieldIn (json, "opaque"), \opq => Terms::upon (ExportJson::boolIn (opq, "isUnsafe"), \unsafe => opaqueSafety (reading, opq, unsafe)))
@@ -329,9 +390,20 @@ module Export
 
     (** Theorem, definition and opaque bodies share the same checked table
         reads; only their reduction and reporting semantics differ. *)
-    valuedDeclaration (reading, raw, body) = Terms::upon (ExportJson::declName (reading.tables, raw), \name => Terms::upon (ExportJson::paramsOf (reading.tables, raw), \params => Terms::upon (ExportJson::typedOf (reading.tables, raw), \ty => Terms::upon (ExportJson::intIn (raw, "value"), \vref => Terms::upon (ExportJson::exprOf (reading.tables, vref), \value => Success(value = addItem (reading, Single (Decl(name = name, params = params, ty = ty, body = body value)))))))))
+    valuedDeclaration (reading, raw, body) =
+        use name <- Terms::upon (ExportJson::declName (reading.tables, raw))
+        use params <- Terms::upon (ExportJson::paramsOf (reading.tables, raw))
+        use ty <- Terms::upon (ExportJson::typedOf (reading.tables, raw))
+        use vref <- Terms::upon (ExportJson::intIn (raw, "value"))
+        use value <- Terms::upon (ExportJson::exprOf (reading.tables, vref))
+        Success(value = addItem (reading, Single (Decl(name = name, params = params, ty = ty, body = body value))))
 
-    axiomed (reading, json) = Terms::upon (ExportJson::safeField (json, "axiom"), \ax => Terms::upon (ExportJson::declName (reading.tables, ax), \name => Terms::upon (ExportJson::paramsOf (reading.tables, ax), \params => Terms::upon (ExportJson::typedOf (reading.tables, ax), \ty => Success(value = addItem (reading, Single (Decl(name = name, params = params, ty = ty, body = Axiom))))))))
+    axiomed (reading, json) =
+        use ax <- Terms::upon (ExportJson::safeField (json, "axiom"))
+        use name <- Terms::upon (ExportJson::declName (reading.tables, ax))
+        use params <- Terms::upon (ExportJson::paramsOf (reading.tables, ax))
+        use ty <- Terms::upon (ExportJson::typedOf (reading.tables, ax))
+        Success(value = addItem (reading, Single (Decl(name = name, params = params, ty = ty, body = Axiom))))
 
     (** One inductive line is one block: the type former, its constructors
         and its recursor, each read exactly like a theorem's name,
