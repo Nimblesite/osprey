@@ -1,7 +1,7 @@
-// [BLOCK-USE-REJECT] `try` passes one value to its callback, so binding two
+// [BLOCK-USE-REJECT] `andThen` passes one value to its callback, so binding two
 // names to it is rejected with the counts and the fix.
 fn pair() = {
-    use a, b <- try(Success { value: 1 })
+    use a, b <- andThen(Success { value: 1 })
     Success { value: a + b }
 }
 

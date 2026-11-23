@@ -11,15 +11,15 @@ const ML_STEP: &str = "step (i, x) = match x < 100\n    true => Success(value = 
 const CASES: [(&str, &str, Flavor, &str); 6] = [
     (
         "three binds",
-        "fn chain(n) = {\n    use a <- try(step(1, n))\n    use b <- try(step(2, a))\n    use c <- try(step(3, b))\n    Success { value: a + b + c }\n}\n",
+        "fn chain(n) = {\n    use a <- andThen(step(1, n))\n    use b <- andThen(step(2, a))\n    use c <- andThen(step(3, b))\n    Success { value: a + b + c }\n}\n",
         Flavor::Default,
-        "fn chain(n) = try(step(1, n), fn(a) => try(step(2, a), fn(b) => try(step(3, b), fn(c) => Success { value: a + b + c })))\n",
+        "fn chain(n) = andThen(step(1, n), fn(a) => andThen(step(2, a), fn(b) => andThen(step(3, b), fn(c) => Success { value: a + b + c })))\n",
     ),
     (
         "guards",
-        "fn chain(n) = {\n    use _ <- try(step(1, n))\n    use b <- try(step(2, n))\n    Success { value: b }\n}\n",
+        "fn chain(n) = {\n    use _ <- andThen(step(1, n))\n    use b <- andThen(step(2, n))\n    Success { value: b }\n}\n",
         Flavor::Default,
-        "fn chain(n) = try(step(1, n), fn(_) => try(step(2, n), fn(b) => Success { value: b }))\n",
+        "fn chain(n) = andThen(step(1, n), fn(_) => andThen(step(2, n), fn(b) => Success { value: b }))\n",
     ),
     (
         "binder-less and two binders",
@@ -29,15 +29,15 @@ const CASES: [(&str, &str, Flavor, &str); 6] = [
     ),
     (
         "ML three binds",
-        "chain n =\n    use a <- try (step (1, n))\n    use b <- try (step (2, a))\n    use c <- try (step (3, b))\n    Success(value = a + b + c)\n",
+        "chain n =\n    use a <- andThen (step (1, n))\n    use b <- andThen (step (2, a))\n    use c <- andThen (step (3, b))\n    Success(value = a + b + c)\n",
         Flavor::Ml,
-        "fn chain(n) = try(step(1, n), fn(a) => try(step(2, a), fn(b) => try(step(3, b), fn(c) => Success { value: a + b + c })))\n",
+        "fn chain(n) = andThen(step(1, n), fn(a) => andThen(step(2, a), fn(b) => andThen(step(3, b), fn(c) => Success { value: a + b + c })))\n",
     ),
     (
         "ML guards",
-        "chain n =\n    use _ <- try (step (1, n))\n    use b <- try (step (2, n))\n    Success(value = b)\n",
+        "chain n =\n    use _ <- andThen (step (1, n))\n    use b <- andThen (step (2, n))\n    Success(value = b)\n",
         Flavor::Ml,
-        "fn chain(n) = try(step(1, n), fn(_) => try(step(2, n), fn(b) => Success { value: b }))\n",
+        "fn chain(n) = andThen(step(1, n), fn(_) => andThen(step(2, n), fn(b) => Success { value: b }))\n",
     ),
     (
         "ML binder-less and two binders",

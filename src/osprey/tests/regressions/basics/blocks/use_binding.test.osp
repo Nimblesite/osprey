@@ -1,7 +1,7 @@
 // Cross-contract oracle for [BLOCK-USE], [BLOCK-USE-RESULT], [ERR-PAYLOAD] and
 // [EFFECTS-HANDLE-REST]. Each `use p <- f(a)` is the rest of its block passed to
 // `f(a, fn(p) => ...)`: the chains below read one step per line, the prelude's
-// `try` passes every Error through with its payload unchanged, and the output is
+// `andThen` passes every Error through with its payload unchanged, and the output is
 // the same as the hand-written pyramid it replaces.
 
 /// Step `i` adds `i` to `x`, or fails with a payload naming the step and input.
@@ -28,48 +28,48 @@ fn shown(result) = match result {
 }
 
 fn one(failAt) = {
-    use a <- try(step(1, 0, failAt))
+    use a <- andThen(step(1, 0, failAt))
     Success { value: a }
 }
 
 fn two(failAt) = {
-    use a <- try(step(1, 0, failAt))
-    use b <- try(step(2, a, failAt))
+    use a <- andThen(step(1, 0, failAt))
+    use b <- andThen(step(2, a, failAt))
     Success { value: a * 10 + b }
 }
 
 fn eight(failAt) = {
-    use a <- try(step(1, 0, failAt))
-    use b <- try(step(2, a, failAt))
-    use c <- try(step(3, b, failAt))
-    use d <- try(step(4, c, failAt))
-    use e <- try(step(5, d, failAt))
-    use f <- try(step(6, e, failAt))
-    use g <- try(step(7, f, failAt))
-    use h <- try(step(8, g, failAt))
+    use a <- andThen(step(1, 0, failAt))
+    use b <- andThen(step(2, a, failAt))
+    use c <- andThen(step(3, b, failAt))
+    use d <- andThen(step(4, c, failAt))
+    use e <- andThen(step(5, d, failAt))
+    use f <- andThen(step(6, e, failAt))
+    use g <- andThen(step(7, f, failAt))
+    use h <- andThen(step(8, g, failAt))
     Success { value: h * 100 + a }
 }
 
 fn twelve(failAt) = {
-    use a <- try(step(1, 0, failAt))
-    use b <- try(step(2, a, failAt))
-    use c <- try(step(3, b, failAt))
-    use d <- try(step(4, c, failAt))
-    use e <- try(step(5, d, failAt))
-    use f <- try(step(6, e, failAt))
-    use g <- try(step(7, f, failAt))
-    use h <- try(step(8, g, failAt))
-    use i <- try(step(9, h, failAt))
-    use j <- try(step(10, i, failAt))
-    use k <- try(step(11, j, failAt))
-    use l <- try(step(12, k, failAt))
+    use a <- andThen(step(1, 0, failAt))
+    use b <- andThen(step(2, a, failAt))
+    use c <- andThen(step(3, b, failAt))
+    use d <- andThen(step(4, c, failAt))
+    use e <- andThen(step(5, d, failAt))
+    use f <- andThen(step(6, e, failAt))
+    use g <- andThen(step(7, f, failAt))
+    use h <- andThen(step(8, g, failAt))
+    use i <- andThen(step(9, h, failAt))
+    use j <- andThen(step(10, i, failAt))
+    use k <- andThen(step(11, j, failAt))
+    use l <- andThen(step(12, k, failAt))
     Success { value: l + b }
 }
 
 /// `_` guards: the checked value is discarded, a failure still stops the chain.
 fn guarded(x) = {
-    use _ <- try(atLeast(x, 3))
-    use _ <- try(atLeast(x * 2, 10))
+    use _ <- andThen(atLeast(x, 3))
+    use _ <- andThen(atLeast(x * 2, 10))
     Success { value: x * 7 }
 }
 
@@ -84,8 +84,8 @@ fn framed(x) = {
 /// `use` inside a match arm.
 fn byKind(kind, n) = match kind {
     "chain" => {
-        use v <- try(step(1, n, 9))
-        use _ <- try(atLeast(v, 2))
+        use v <- andThen(step(1, n, 9))
+        use _ <- andThen(atLeast(v, 2))
         Success { value: v * v }
     }
     _ => Error { message: "unknown kind ${kind}" }
@@ -109,7 +109,7 @@ fn audit() = {
         handle Audit {
             check n => {
                 let outcome = {
-                    use v <- try(atLeast(n, 2))
+                    use v <- andThen(atLeast(n, 2))
                     Success { value: v * 3 }
                 }
                 seen = "${seen}[${shown(outcome)}]"
@@ -126,8 +126,8 @@ fn everyFailure(chain, positions) = join(mapList(positions, fn(k) => shown(chain
 /// `use` inside a lambda.
 fn lifted() = mapList([0, 1, 4], fn(n) => {
     let outcome = {
-        use v <- try(step(1, n, 2))
-        use w <- try(atLeast(v, 2))
+        use v <- andThen(step(1, n, 2))
+        use w <- andThen(atLeast(v, 2))
         Success { value: w + 100 }
     }
     shown(outcome)

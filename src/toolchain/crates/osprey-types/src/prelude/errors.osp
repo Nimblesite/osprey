@@ -1,12 +1,4 @@
-//! The error types built-ins fail with, and the one `Result` bind. Implements
-//! [BUILTIN-LIST-GET] and [BLOCK-USE-RESULT].
+//! The error types built-ins fail with. Implements [BUILTIN-LIST-GET].
 
 /// A list read outside `0 <= index < length`.
 type IndexOutOfBounds = { index: int, length: int }
-
-/// The `Result` bind `use` names: a Success passes its value to `next`, and an
-/// Error comes back with its payload unchanged ([ERR-PAYLOAD]).
-fn try(result, next) = match result {
-    Success { value } => next(value)
-    Error { message } => Error { message: message }
-}

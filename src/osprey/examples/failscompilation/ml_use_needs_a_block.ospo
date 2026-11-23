@@ -1,5 +1,5 @@
 // osprey: flavor=ml
 // [BLOCK-USE-REJECT] The ML half of `use_needs_a_block.ospo`: a top-level `use`
 // has no enclosing block.
-use a <- try (Success(value = 1))
+use a <- andThen (Success(value = 1))
 print "${toString a}"

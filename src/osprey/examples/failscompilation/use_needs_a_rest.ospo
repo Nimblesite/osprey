@@ -1,7 +1,7 @@
 // [BLOCK-USE-REJECT] A `use` passes the rest of its block as a callback, so a
 // `use` on the last line of a block has no callback body.
 fn first() = {
-    use a <- try(Success { value: 1 })
+    use a <- andThen(Success { value: 1 })
 }
 
 print("${toString(first())}")

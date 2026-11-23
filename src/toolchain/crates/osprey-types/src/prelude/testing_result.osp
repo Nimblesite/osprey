@@ -1,10 +1,10 @@
 //! The Result helpers programs share: `andThen` chaining and a
 //! Result-returning division. Its own unit, so a program that declares its
 //! own `Success` still gets the testing policy without it. Implements
-//! [FAILURE-EXPLICIT].
+//! [FAILURE-EXPLICIT] and [BLOCK-USE-RESULT].
 
-/// `next` applied to `result`'s value, or `result`'s error passed through
-/// unchanged.
+/// The one `Result` bind, the one `use` names: `next` applied to `result`'s
+/// value, or `result`'s error passed through unchanged ([ERR-PAYLOAD]).
 fn andThen(result, next) = match result {
     Success { value } => next(value)
     Error { message } => Error { message: message }
