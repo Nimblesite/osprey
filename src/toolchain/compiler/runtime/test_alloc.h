@@ -57,6 +57,7 @@ static _Atomic long osp_alloc_live_blocks;
 static void *(*osp_real_malloc)(size_t);
 static void *(*osp_real_calloc)(size_t, size_t);
 static void *(*osp_real_realloc)(void *, size_t);
+static int (*osp_real_memalign)(void **, size_t, size_t);
 static void (*osp_real_free)(void *);
 static int osp_alloc_resolving;
 
@@ -107,6 +108,7 @@ OSP_ALLOC_ENTRY static inline void osp_resolve_real_allocators(void) {
   osp_real_malloc = (void *(*)(size_t))dlsym(RTLD_NEXT, "malloc");
   osp_real_calloc = (void *(*)(size_t, size_t))dlsym(RTLD_NEXT, "calloc");
   osp_real_realloc = (void *(*)(void *, size_t))dlsym(RTLD_NEXT, "realloc");
+  osp_real_memalign = (int (*)(void **, size_t, size_t))dlsym(RTLD_NEXT, "posix_memalign");
   osp_real_free = (void (*)(void *))dlsym(RTLD_NEXT, "free");
   osp_alloc_resolving = 0;
 }
@@ -215,6 +217,20 @@ OSP_ALLOC_ENTRY void *realloc(void *at, size_t bytes) {
     atomic_fetch_add(&osp_alloc_live_blocks, 1); // realloc(NULL, n) is a malloc
   }
   return grown;
+}
+
+// Aligned blocks come back through `free` like any other, so they are counted
+// and refusable like any other: the collector takes its size-class pages this way.
+OSP_ALLOC_ENTRY int posix_memalign(void **out, size_t alignment, size_t bytes) {
+  osp_resolve_real_allocators();
+  if (osp_real_memalign == NULL || osp_alloc_should_fail(bytes)) {
+    return ENOMEM;
+  }
+  int failed = osp_real_memalign(out, alignment, bytes);
+  if (!failed) {
+    atomic_fetch_add(&osp_alloc_live_blocks, 1);
+  }
+  return failed;
 }
 
 // strdup allocates too, and libc's own copy of it does NOT route through the
