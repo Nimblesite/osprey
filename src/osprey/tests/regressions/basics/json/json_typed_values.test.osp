@@ -90,13 +90,14 @@ fn encodingIsCompactAndOrdered() = {
         JsonMember("flags", JsonArray([JsonBool(true), JsonBool(false), JsonNull]))
     ])
     let text = encoded(document)
+    let threeDeep = JsonArray([JsonArray([JsonArray([])])])
     print("encoded: ${text}")
     checkAll("members keep their order, floats keep their point", [
         text == "{\"name\":\"osprey\",\"tags\":[\"fast\",\"typed\"],\"version\":3,\"ratio\":0.25,\"whole\":2.0,\"nested\":{\"empty\":[],\"none\":{}},\"flags\":[true,false,null]}",
         structuralEquals([encoded(JsonNull), encoded(JsonInt(-9223372036854775807))], ["null", "-9223372036854775807"]),
         encoded(JsonFloat(parseFloat("1e300") ?: 0.0)) == "1e+300",
         structuralEquals([encoded(JsonFloat(-0.5)), encoded(JsonArray([]))], ["-0.5", "[]"]),
-        structuralEquals([encoded(JsonObject([])), encoded(JsonArray([JsonArray([JsonArray([])])]))], ["{}", "[[[]]]"])
+        structuralEquals([encoded(JsonObject([])), encoded(threeDeep)], ["{}", "[[[]]]"])
     ])
 }
 
