@@ -238,6 +238,7 @@ fn capture_helper(statement: Stmt, locals: &std::collections::BTreeSet<String>) 
     }
 }
 
+/// Implements [DOC-DOCTEST-WRAPPER-DEPTH].
 /// The wrapper at `depth` levels above the example. Every level has its own
 /// name: a project's `default_namespace` can move the outermost wrapper into the
 /// namespace that already holds an inner one.

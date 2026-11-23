@@ -33,6 +33,15 @@ significant. A failure names the source, declaration, and example ordinal;
 the command exits unsuccessfully if any example fails or any examples section
 holds an orphaned `output` fence.
 
+### Wrapper names `[DOC-DOCTEST-WRAPPER-DEPTH]`
+
+The harness wraps each example in one generated function per enclosing namespace
+or module, and the wrapper at depth *n* has its own name,
+`$documentation_example<n>` (`doctests/synthesize.rs`, `runner`). The same name
+never appears twice in one namespace, wherever a project's `default_namespace`
+places the outermost wrapper, so a package whose default namespace is its own
+runs its examples at namespace and module depth in every flavor.
+
 Native examples default to `gc` and support `--memory=gc|arc|none`; ARC execution additionally
 requires exactly one zero-live-object exit sentinel. `wasm32` defaults to ARC, rejects tracing GC, and uses `OSPREY_WASM_RUN` (default `wasmtime`) as its executable host.
 Each runnable example has a 30-second execution limit, configurable through a
@@ -41,7 +50,9 @@ positive `OSPREY_DOCTEST_TIMEOUT_MS`. Compilation is outside this execution limi
 The existing corpus harness runs documentation examples in its native allocator
 passes and its WASM pass. It visits every file holding an example fence under any
 accepted label or an `output` fence, rejects malformed result summaries and output
-drift, and requires at least six successful examples across the two source flavors.
+drift. It also runs, as a project, every package under `src/osprey/packages/`
+whose sources hold such a fence, and requires at least 28 successful examples in
+all (`corpus_doctests.sh`).
 
 ## Markdown rendering `[DOC-EXPORT]`
 

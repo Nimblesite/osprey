@@ -33,20 +33,10 @@ below are added to those specs when this plan is implemented.
 
 ## Rules
 
-### `[DOC-DOCTEST-WRAPPER-DEPTH]` Each nesting level has its own wrapper
-
-The wrapper the harness generates at nesting depth *n* is named
-`$documentation_example<n>`. The same name never appears twice in one
-namespace, wherever `default_namespace` places the outermost wrapper.
-
-### `[DOC-PYTHON-DOCSTRING-CLEAN]` Docstrings are cleaned as PEP 257 does
-
-A Python docstring is cleaned the way `inspect.cleandoc` cleans it:
-
-- the first line is trimmed;
-- every later line loses the indentation that all later non-blank lines share.
-
-A fenced example keeps only its own relative indentation.
+The built rules now live in the specs:
+[`[DOC-DOCTEST-WRAPPER-DEPTH]`](../specs/tooling/DocumentationTools.md#wrapper-names-doc-doctest-wrapper-depth)
+and [`[DOC-PYTHON-DOCSTRING-CLEAN]`](../specs/language/0026-DocumentationComments.md#python-docstrings-doc-python-docstring-clean).
+The two below move there when they are built.
 
 ### `[DOC-EXAMPLE-FLAVORS]` A fence label picks the example's flavor
 
@@ -118,4 +108,4 @@ declaration with its module path, just as `undocumented-export` does.
 - [x] The corpus doctest pass covers `src/osprey/packages/` (`corpus_doctests.sh` runs each package with an example as a project; floor 28)
 - [ ] `[DOC-EXAMPLE-FLAVORS]` parser, harness, exporter, website tabs, relabelling
 - [ ] `[DOC-EXPORT-EXAMPLE-REQUIRED]` warning, examples in every package, warning promoted to an error
-- [ ] Spec sections added to 0026 and DocumentationTools, with IDs cited in the code and tests
+- [ ] Spec sections added to 0026 and DocumentationTools, with IDs cited in the code and tests (done for WRAPPER-DEPTH and DOCSTRING-CLEAN; FLAVORS and EXAMPLE-REQUIRED move when built)

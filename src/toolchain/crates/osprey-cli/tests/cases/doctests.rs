@@ -199,6 +199,8 @@ const PACKAGE_SOURCES: [(&str, &str); 4] = [
     ),
 ];
 
+// [DOC-DOCTEST-WRAPPER-DEPTH] at namespace and module depth;
+// [DOC-PYTHON-DOCSTRING-CLEAN] for the example in an indented docstring.
 #[test]
 fn doctests_run_in_packages_whose_default_namespace_is_their_own_in_every_flavor() {
     let root = temp_dir("documentation_package");

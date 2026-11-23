@@ -47,6 +47,13 @@ comments. An unterminated documentation comment is a syntax error.
 
 Each prose line drops its leading whitespace and one optional `*` continuation marker. A line inside a fenced code block drops only the margin its opening fence carried, so an example keeps the indentation ML layout depends on.
 
+## Python docstrings `[DOC-PYTHON-DOCSTRING-CLEAN]`
+
+A Python-flavor docstring is cleaned as PEP 257 `inspect.cleandoc` cleans it:
+the first line is trimmed, and every later line loses the indentation that all
+later non-blank lines share. A fenced example inside an indented docstring keeps
+only its own relative indentation (`python/documents.rs`, `clean_docstring`).
+
 ## Inner sigil `[DOC-SIGIL-INNER]`
 
 `//!` documents the scope that encloses it rather than the declaration that
