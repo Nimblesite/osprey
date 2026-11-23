@@ -416,7 +416,7 @@ fn an_exported_module_members_signature_is_never_reported_redundant() {
         "contract-warnings",
         &[
             ("osprey.toml", "[project]\nname = \"exp\"\nsource_roots = [\"src\", \"main.ospml\"]\ndefault_namespace = \"app\"\nentry = \"main.ospml\"\n"),
-            ("src/flow.ospml", "namespace lib\n\n(** Loud text. *)\nmodule Flow\n    (** `text`, shouted. *)\n    export shout : string -> string\n    shout text = loud text\n    loud : string -> string\n    loud text = text + \"!\"\n"),
+            ("src/flow.ospml", "namespace lib\n\n(** Loud text. *)\nmodule Flow\n    (** `text`, shouted.\n    # Examples\n    ```osprey\n    print (Flow::shout \"hi\")\n    ```\n    *)\n    export shout : string -> string\n    shout text = loud text\n    loud : string -> string\n    loud text = text + \"!\"\n"),
             ("main.ospml", "namespace app\n\nimport lib::Flow\n\nprint (Flow::shout \"hi\")\n"),
         ],
     );

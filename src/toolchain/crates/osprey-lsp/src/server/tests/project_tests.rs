@@ -8,15 +8,15 @@ async fn state_advice_tracks_unsaved_edits_and_never_survives_errors(
     for (extension, state, plain, invalid) in [
         (
             "osp",
-            "/// Counts.\nstate module Store { /// Zero.\n export fn zero() = 0 }\n",
-            "/// Counts.\nmodule Store { /// Zero.\n export fn zero() = 0 }\n",
-            "/// Counts.\nstate module Store { /// Zero.\n export fn zero() = missing }\n",
+            "/// Counts.\nstate module Store { /// Zero.\n /// # Examples\n /// ```osprey\n /// print(Store::zero())\n /// ```\n export fn zero() = 0 }\n",
+            "/// Counts.\nmodule Store { /// Zero.\n /// # Examples\n /// ```osprey\n /// print(Store::zero())\n /// ```\n export fn zero() = 0 }\n",
+            "/// Counts.\nstate module Store { /// Zero.\n /// # Examples\n /// ```osprey\n /// print(Store::zero())\n /// ```\n export fn zero() = missing }\n",
         ),
         (
             "ospml",
-            "(** Counts. *)\nstate Store\n    (** Zero. *)\n    export zero () = 0\n",
-            "(** Counts. *)\nmodule Store\n    (** Zero. *)\n    export zero () = 0\n",
-            "(** Counts. *)\nstate Store\n    (** Zero. *)\n    export zero () = missing\n",
+            "(** Counts. *)\nstate Store\n    (** Zero.\n    # Examples\n    ```osprey\n    print (Store::zero ())\n    ```\n    *)\n    export zero () = 0\n",
+            "(** Counts. *)\nmodule Store\n    (** Zero.\n    # Examples\n    ```osprey\n    print (Store::zero ())\n    ```\n    *)\n    export zero () = 0\n",
+            "(** Counts. *)\nstate Store\n    (** Zero.\n    # Examples\n    ```osprey\n    print (Store::zero ())\n    ```\n    *)\n    export zero () = missing\n",
         ),
     ] {
         for removed_from_disk in [false, true] {
