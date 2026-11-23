@@ -28,9 +28,11 @@ pub(crate) const TYPED_ERROR: &str = "2";
 /// its own box; anything else is boxed whole at its type.
 pub(crate) fn make_error(cg: &mut Codegen, payload: Value) -> Result<Value> {
     if payload.ty == LType::Str && payload.result_inner.is_none() {
-        let message = payload.operand.clone();
+        // Slot 2 holds the message and owns it; no reader takes an Error's
+        // slot 0, so it stays empty and the text has one reference.
         let inner = payload.ty;
-        return make_result(cg, payload, inner, "1", &message);
+        let empty = Value::new(crate::llty::zero_literal(inner), inner);
+        return make_result(cg, empty, inner, "1", &payload.operand);
     }
     let boxed = match payload.ty {
         LType::Any => payload,
@@ -305,7 +307,12 @@ pub(crate) fn make_result_if_err_because(
     let errmsg = if chosen == NO_MSG {
         NO_MSG.to_string()
     } else {
-        cg.emit_reg(format!("select i1 {is_err}, i8* {chosen}, i8* null"))
+        let selected = cg.emit_reg(format!("select i1 {is_err}, i8* {chosen}, i8* null"));
+        // With no runtime reason the message is the static text or null.
+        if reason.is_none() {
+            cg.mark_rodata(&selected);
+        }
+        selected
     };
     make_result(cg, value, inner, &disc, &errmsg)
 }
@@ -447,13 +454,16 @@ pub(crate) fn map_payload(
     inner: LType,
     convert: impl FnOnce(&mut Codegen, Value) -> Result<Value>,
 ) -> Result<Value> {
-    let errmsg = load_errmsg(cg, value);
     if value.result_inner_is_placeholder {
-        // Only Error constructors contribute this placeholder layout.
-        let zero = Value::new(crate::llty::zero_literal(inner), inner);
-        let disc = load_disc(cg, value);
-        return make_result(cg, zero, inner, &disc, &errmsg.operand);
+        // Only Error constructors contribute this placeholder layout. Their
+        // block holds nothing in slot 0 and every payload type shares one
+        // physical block, so the same block serves `inner` as it is.
+        let mut same = value.clone();
+        same.result_inner = Some(inner);
+        same.result_inner_is_placeholder = false;
+        return Ok(same);
     }
+    let errmsg = load_errmsg(cg, value);
     let disc = load_disc(cg, value);
     let (_, error, end) = open_result_branch(cg, value);
     let loaded = load_value(cg, value);

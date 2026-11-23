@@ -94,6 +94,20 @@ fn main() = {
 }
 "#;
 
+// An Error owns its message once and joins a Success without a copy.
+const FRESH_ERRORS: &str = r#"fn find(n) = match n {
+    0 => Error { message: "no ${toString(n)}" }
+    _ => Success { value: n }
+}
+
+fn show(found) = match found {
+    Success { value } => "found ${toString(value)}"
+    Error { message } => "missing: ${message}"
+}
+
+fn main() = print("${show(find(0))}, ${show(find(4))}")
+"#;
+
 // A binding read once, and never again, gives its value to what takes it.
 const LAST_USE_MOVES: &str = r#"type Box = { text: string }
 type Pair = { left: Box, right: Box }
@@ -127,6 +141,7 @@ fn a_program_whose_values_each_have_one_owner_runs_and_frees_everything() -> std
     assert_accepted("scalars", SCALARS_AND_TEXT)?;
     assert_accepted("elements", FRESH_ELEMENTS)?;
     assert_accepted("last_use", LAST_USE_MOVES)?;
+    assert_accepted("errors", FRESH_ERRORS)?;
     assert_accepted("fresh", FRESH_VALUES)
 }
 

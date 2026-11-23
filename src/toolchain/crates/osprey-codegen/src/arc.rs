@@ -19,7 +19,9 @@ use crate::llty::Value;
 mod moves;
 mod ownership;
 mod phi;
-pub(crate) use moves::{begin as begin_moves, begin_statement as begin_statement_moves, end as end_moves};
+pub(crate) use moves::{
+    begin as begin_moves, begin_statement as begin_statement_moves, end as end_moves,
+};
 pub(crate) use ownership::{second_owner, verdict as ownership_verdict, OwnershipCheck};
 pub use ownership::{set_ownership_check, Need, SecondOwner};
 pub(crate) use phi::{borrowed_phi_arms, move_phi_owners, promote_phi_arm};
@@ -366,7 +368,6 @@ fn push_parent(cg: &mut Codegen, entry: Entry) {
 /// form, so a caller that pairs it with a release cannot go out of balance for
 /// a value spelled as a constant. Both hooks are null-safe and ignore pointers
 /// the heap never registered (rodata), so an unconditional pair is correct.
-#[track_caller]
 pub(crate) fn retain_operand(cg: &mut Codegen, operand: &str) {
     second_owner(cg, operand, None, Need::Shared);
     ownership_call(cg, RETAIN_DECL, "retain", operand);
@@ -397,7 +398,6 @@ fn retain_val(cg: &mut Codegen, v: &Value) {
 /// Dup-on-store: retain `operand` when it is a register-carried pointer being
 /// stored into a heap slot spelled `slot_ty` (the owning block's drop mask
 /// releases it, so the store is a new reference). [GC-ARC-PERCEUS]
-#[track_caller]
 pub(crate) fn dup_store(cg: &mut Codegen, slot_ty: &str, operand: &str) {
     if slot_ty.ends_with('*') && operand.starts_with('%') {
         if !slot_ty.contains('(') {
@@ -439,7 +439,6 @@ pub(crate) fn epilogue(cg: &mut Codegen, ret: Option<&Value>) {
 /// A candidate value is about to escape boxed as an `i64` across a fiber /
 /// effect / channel boundary where the pointer-ness is erased: dup it so the
 /// receiving side owns +1 (the boundary's structural release lands in M5).
-#[track_caller]
 pub(crate) fn escape_retain(cg: &mut Codegen, v: &Value) {
     if managed(cg, v) {
         second_owner(cg, &v.operand, None, Need::Kept);
