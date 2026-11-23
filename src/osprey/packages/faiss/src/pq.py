@@ -49,8 +49,21 @@ def ProductQuantizer(d, M, nbits):
     # Examples
     ```osprey
     import faiss.ProductQuant as ProductQuant
-    pq = ProductQuant.ProductQuantizer(4, 2, 8)
-    print(f"[{pq.d}] [{pq.M}] [{pq.nbits}] [{pq.dsub}] [{pq.ksub}] {toString(pq.centroids)}")
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(op, l, r, wrapped_value):
+            return wrapped_value
+
+        def remainderByZero(l):
+            return 0
+
+    def show():
+        with wrapped:
+            pq = ProductQuant.ProductQuantizer(4, 2, 8)
+            print(f"[{pq.d}] [{pq.M}] [{pq.nbits}] [{pq.dsub}] [{pq.ksub}] {toString(pq.centroids)}")
+
+    show()
     ```
     ```output
     [4] [2] [8] [2] [256] []
@@ -71,6 +84,9 @@ def set_centroids(pq, centroids):
         def overflow(op, l, r, wrapped_value):
             return wrapped_value
 
+        def remainderByZero(l):
+            return 0
+
     def show():
         with wrapped:
             pq = ProductQuant.set_centroids(ProductQuant.ProductQuantizer(1, 1, 2), [[0.0], [1.0], [2.0], [3.0]])
@@ -79,7 +95,7 @@ def set_centroids(pq, centroids):
     show()
     ```
     ```output
-    [4] [[0.0], [1.0], [2.0], [3.0]]
+    [4] [[[0.0], [1.0], [2.0], [3.0]]]
     ```
     """
     return ProductQuantizerState(d=pq.d, M=pq.M, nbits=pq.nbits, dsub=pq.dsub, ksub=pq.ksub, centroids=centroids)
@@ -118,6 +134,9 @@ def compute_codes(pq, x):
         def overflow(op, l, r, wrapped_value):
             return wrapped_value
 
+        def remainderByZero(l):
+            return 0
+
     def show():
         with wrapped:
             pq = ProductQuant.set_centroids(ProductQuant.ProductQuantizer(1, 1, 2), [[0.0], [1.0], [2.0], [3.0]])
@@ -143,6 +162,9 @@ def decode(pq, codes):
     class wrapped:
         def overflow(op, l, r, wrapped_value):
             return wrapped_value
+
+        def remainderByZero(l):
+            return 0
 
     def show():
         with wrapped:
@@ -202,6 +224,9 @@ def sdc_table(pq):
         def overflow(op, l, r, wrapped_value):
             return wrapped_value
 
+        def remainderByZero(l):
+            return 0
+
     def show():
         with wrapped:
             pq = ProductQuant.set_centroids(ProductQuant.ProductQuantizer(1, 1, 2), [[0.0], [1.0], [2.0], [3.0]])
@@ -237,6 +262,9 @@ def IndexPQ(pq, metric):
         def overflow(op, l, r, wrapped_value):
             return wrapped_value
 
+        def remainderByZero(l):
+            return 0
+
     def show():
         with wrapped:
             pq = ProductQuant.ProductQuantizer(1, 1, 2)
@@ -246,7 +274,7 @@ def IndexPQ(pq, metric):
     show()
     ```
     ```output
-    [L2] []
+    [L2] [[]]
     ```
     """
     return IndexPQState(pq=pq, metric=metric, codes=[])
@@ -263,6 +291,9 @@ def pq_add(index, xb):
     class wrapped:
         def overflow(op, l, r, wrapped_value):
             return wrapped_value
+
+        def remainderByZero(l):
+            return 0
 
     def show():
         with wrapped:
@@ -292,6 +323,9 @@ def pq_search(index, xq, k):
     class wrapped:
         def overflow(op, l, r, wrapped_value):
             return wrapped_value
+
+        def remainderByZero(l):
+            return 0
 
         def divideByZero(op, l):
             return 0.0

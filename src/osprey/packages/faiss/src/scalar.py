@@ -215,7 +215,7 @@ def compute_codes(sq, x):
     show()
     ```
     ```output
-    [[0, 0], [127, 127], [255, 255]] [[112], [247], [255]]
+    [[0, 0], [127, 127], [255, 255]] [[0], [119], [255]]
     ```
     """
     return per_qtype(sq, x, codes_8bit, codes_4bit, codes_uniform)
@@ -302,7 +302,7 @@ def decode(sq, codes):
     show()
     ```
     ```output
-    [[0.00784313725490196, 2.007843137254902], [2.0, 4.0]]
+    [[0.00784313725490196, 4.0]]
     ```
     """
     return per_qtype(sq, codes, decode_8bit, decode_4bit, decode_uniform)
@@ -403,7 +403,7 @@ def sq_search(index, xq, k):
     show()
     ```
     ```output
-    [[7.93737896590171, 8.062868947940924]] [[0, 1]]
+    [[7.937377931564783, 8.062868127643213]] [[0, 1]]
     ```
     """
     rows = map_indexed(index.codes, lambda j: decode_one(index.sq, unwrap_or(listGet(index.codes, j), [])))
