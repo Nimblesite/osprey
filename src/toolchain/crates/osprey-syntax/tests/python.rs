@@ -282,6 +282,11 @@ fn python_expressions_and_builtins_equal_default_ast() {
             "let xs = toList(map(items, fn(x) => f(x)))\nlet ys = toList(map(filter(items, fn(x) => p(x)), fn(x) => f(x)))\nlet zs = toList(map(range(0, length(xs)), fn(i) => i))\n",
             "xs = [f(x) for x in items]\nys = [f(x) for x in items if p(x)]\nzs = [i for i in range(len(xs))]\n",
         ),
+        // [PATTERN-OR-SYNTAX] Wildcard slots have no named CST child.
+        (
+            "fn axis(p) = match p { Pt(0, _) | Pt(_, 0) => 1\n _ => 0 }\n",
+            "def axis(p):\n    match p:\n        case Pt(0, _) | Pt(_, 0):\n            return 1\n        case _:\n            return 0\n",
+        ),
         // [BUILTIN-JSON-TYPED], [FLAVOR-PYTHON-EXPRESSIONS]: the built-in `Json`
         // union has positional payloads, so `JsonObject([...])` and `JsonInt(3)` are
         // saturated constructor applications kept as calls for assembly to fold,
