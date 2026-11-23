@@ -96,15 +96,6 @@ static void close_pipe_pair(const int fds[2]) {
   close(fds[1]);
 }
 
-// Caller holds process_mutex; no monitor can see this half-built record.
-static int64_t abandon_process(ProcessResult *proc, int64_t code) {
-  free(proc->command);
-  pthread_mutex_destroy(&proc->mutex);
-  free(proc);
-  pthread_mutex_unlock(&process_mutex);
-  return code;
-}
-
 static ProcessResult *create_process(int64_t id, ProcessEventHandler handler) {
   ProcessResult *proc = malloc(sizeof(ProcessResult));
   if (!proc)
