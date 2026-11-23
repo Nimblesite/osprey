@@ -117,6 +117,9 @@ pub(crate) struct OwnershipCheck {
     pub(crate) found: Vec<SecondOwner>,
     /// Which parameters each function owns [MEM-OWNERSHIP-STATIC-PARAMETERS].
     pub(crate) owned_parameters: super::OwnedParameters,
+    /// Where each closure that lends its captures is written, as line and
+    /// column [MEM-OWNERSHIP-STATIC-CLOSURES].
+    pub(crate) lent_closures: std::collections::BTreeSet<(u32, u32)>,
     /// Where each suspended function's nested function began in `found`.
     nested: Vec<usize>,
 }
@@ -130,6 +133,7 @@ impl OwnershipCheck {
             function: String::new(),
             found: Vec::new(),
             owned_parameters: super::OwnedParameters::new(),
+            lent_closures: std::collections::BTreeSet::new(),
             nested: Vec::new(),
         }
     }

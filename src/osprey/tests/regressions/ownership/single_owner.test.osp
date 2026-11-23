@@ -131,6 +131,18 @@ fn captures() = {
     "captures ${named.label(3)}${apply(|n| => "${suffix}${toString(n)}", 4)}"
 }
 
+/// A closure passed straight to a function borrows what it captures: the
+/// captured binding is still read afterwards.
+fn twice(f, n) = "${f(n)}${f(wrapAdd(n, 1))}"
+
+fn lends() = {
+    let made = Box { text: "made${toString(1)}" }
+    let first = apply(|n| => "${made.text}${toString(n)}", 2)
+    let noise = [churn(1), churn(2)]
+    let second = twice(|n| => "${made.text}${toString(n)}", 3)
+    "lends ${first} ${second} ${made.text} ${toString(listLength(noise))}"
+}
+
 /// A binding that names part of a live value borrows it, and the value it was
 /// read from stays alive until the borrower's own last read.
 fn churn(n) = "x${toString(n)}${toString(n)}${toString(n)}"
@@ -150,4 +162,4 @@ fn borrows() = {
     "borrows ${shown} ${same.text} ${toString(listLength(noise))} ${left.text}"
 }
 
-print("${spans()}\n${elements()}\n${collections()}\n${lastUses()}\n${paths()}\n${owned()}\n${errors()}\n${captures()}\n${borrows()}")
+print("${spans()}\n${elements()}\n${collections()}\n${lastUses()}\n${paths()}\n${owned()}\n${errors()}\n${captures()}\n${lends()}\n${borrows()}")

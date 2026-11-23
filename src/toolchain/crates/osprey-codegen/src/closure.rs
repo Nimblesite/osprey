@@ -90,6 +90,15 @@ pub(crate) fn bind_params_from(
     crate::cast::bind_params(cg, parameters, param_tys, std::iter::repeat(None), first)
 }
 
+/// The layout word of one capture slot: a managed pointer the cell releases,
+/// or, in a cell that only borrows its captures, one it leaves alone.
+fn capture_meta(slot_ty: &str, lending: bool) -> crate::meta::MetaField {
+    match crate::meta::MetaField::of_slot_ty(slot_ty) {
+        crate::meta::MetaField::PtrManaged if lending => crate::meta::MetaField::PtrOpaque,
+        field => field,
+    }
+}
+
 /// Build the cell and hand back its `i8*` handle. Capture-free closures share
 /// one private constant global; capturing ones `malloc` a cell and store the
 /// fnptr plus each captured value.
@@ -112,11 +121,11 @@ pub(crate) fn cell_value(
     }
     // Layout word: the leading fnptr is a CODE pointer (never released); each
     // capture marks itself by its slot type ([`crate::meta`]).
+    // A lent cell owns none of its captures, so its pointer slots are ones
+    // the drop walk leaves alone [MEM-OWNERSHIP-STATIC-CLOSURES].
+    let lending = crate::arc::lending(cg);
     let mut mf = vec![crate::meta::MetaField::PtrOpaque];
-    mf.extend(
-        caps.iter()
-            .map(|c| crate::meta::MetaField::of_slot_ty(&c.val.llvm_ty())),
-    );
+    mf.extend(caps.iter().map(|c| capture_meta(&c.val.llvm_ty(), lending)));
     let meta = cg.struct_meta(&mf);
     let cell = cg.malloc_struct(cell_ty, meta);
     let fpp = cg.emit_reg(format!(
@@ -128,7 +137,9 @@ pub(crate) fn cell_value(
         let lty = c.val.llvm_ty();
         // Each captured pointer is a new reference the cell's drop releases —
         // including the same variable captured by two closures [GC-ARC-PERCEUS].
-        crate::arc::store_owned(cg, &lty, &c.val.operand);
+        if !lending {
+            crate::arc::store_owned(cg, &lty, &c.val.operand);
+        }
         let p = cg.emit_reg(format!(
             "getelementptr {cell_ty}, {cell_ty}* {cell}, i32 0, i32 {slot}"
         ));

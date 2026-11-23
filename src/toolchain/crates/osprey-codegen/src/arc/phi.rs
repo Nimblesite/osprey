@@ -73,7 +73,7 @@ fn take_phi_slots(cg: &mut Codegen, incoming: &[String], mark: usize) -> Vec<Str
     let (moved, kept): (Vec<_>, Vec<_>) = frame
         .split_off(mark.min(frame.len()))
         .into_iter()
-        .partition(|e| e.name.is_none() && incoming.contains(&e.operand));
+        .partition(|e| e.name.is_none() && !e.lent && incoming.contains(&e.operand));
     frame.extend(kept);
     moved.into_iter().map(|e| e.slot).collect()
 }
@@ -88,7 +88,7 @@ fn incoming_owners_match(
         incoming.iter().all(|op| {
             f.iter()
                 .skip(mark)
-                .any(|e| e.operand == *op && e.name.is_none() && accepts(e))
+                .any(|e| e.operand == *op && e.name.is_none() && !e.lent && accepts(e))
         })
     })
 }

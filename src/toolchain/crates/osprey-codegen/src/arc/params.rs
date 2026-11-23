@@ -142,6 +142,7 @@ pub(crate) fn own_parameter(cg: &mut Codegen, function: &str, index: usize, name
         binding_scope: cg.scope_id(),
         slot,
         pure_scalar: false,
+        lent: false,
     };
     cg.arc.unscoped_parameters.push(name.to_owned());
     super::push_parent(cg, entry);

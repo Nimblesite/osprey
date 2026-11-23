@@ -52,7 +52,7 @@ fn take_owner(cg: &mut Codegen, operand: &str) -> Option<String> {
     let fresh = cg.arc.frames.last_mut().and_then(|frame| {
         frame
             .iter()
-            .rposition(|e| e.operand == operand && e.name.is_none())
+            .rposition(|e| e.operand == operand && e.name.is_none() && !e.lent)
             .filter(|at| *at >= floor)
             .map(|at| frame.remove(at).slot)
     });

@@ -117,16 +117,27 @@ fn owned_closure(
 ) -> Result<Value> {
     let caps = closure_captures(cg, definition.parameters, definition.body);
     let key = key.filter(|_| caps.is_empty());
-    let v = match key.as_deref().and_then(|k| cg.fnval_cells.get(k).cloned()) {
-        Some(cell) => Value::new(
+    let lends = !caps.is_empty() && crate::arc::lends(cg, definition.position);
+    let shared = key.as_deref().and_then(|k| cg.fnval_cells.get(k).cloned());
+    let v = if let Some(cell) = shared {
+        Value::new(
             cg.emit_reg(format!("bitcast {{ i8* }}* {cell} to i8*")),
             LType::Ptr,
-        ),
-        None => emit_fresh_closure(cg, &caps, definition, key)?,
+        )
+    } else {
+        // A closure passed straight to a checked callee borrows what it
+        // captures [MEM-OWNERSHIP-STATIC-CLOSURES].
+        crate::arc::set_lending(cg, lends);
+        let fresh = emit_fresh_closure(cg, &caps, definition, key);
+        crate::arc::set_lending(cg, false);
+        fresh?
     };
     // The cell is a fresh +1 producer here; a spawn's cell instead transfers
     // to the fiber runtime (fiber.rs calls `cell_value` directly).
     crate::arc::own(cg, &v);
+    if lends {
+        crate::arc::mark_lent(cg, &v);
+    }
     Ok(v)
 }
 

@@ -354,7 +354,12 @@ refused"; the rest are the contract the remaining phases build.
 - **Closures and effects [MEM-OWNERSHIP-STATIC-CLOSURES].** A closure that
   outlives the scope it is written in owns the managed values it captures, so
   capturing is a move and must be the captured binding's last use. A closure
-  applied only inside that scope borrows them. A handler owns its state.
+  applied only inside that scope borrows them. Built: a closure written as an
+  argument of a call to an Osprey function borrows what it captures. Its cell
+  dies with the calling statement and the callee can't keep a parameter, so
+  the cell owns none of its captures; binding, storing or returning it is
+  refused. A closure inside a list that is passed, and one bound to a name
+  before it is passed, still own their captures. A handler owns its state.
   `perform` lends its arguments to the handler until it resumes, and the
   resumed value moves to the performer. A continuation that owns managed
   values is resumed at most once.

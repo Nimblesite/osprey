@@ -1,0 +1,13 @@
+// [MEM-OWNERSHIP-STATIC] Runs under the collector; `--memory=ownership` refuses it.
+// `hold` stores the closure it is given, but a parameter is only borrowed for
+// the call: the record would outlive what the closure captures.
+type Box = { text: string }
+type Holder = { run: (int) -> string }
+
+fn hold(f) = Holder { run: f }
+
+fn main() = {
+    let made = Box { text: "made${toString(1)}" }
+    let holder = hold(|n| => "${made.text}${toString(n)}")
+    print("${holder.run(2)} ${made.text}")
+}

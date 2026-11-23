@@ -74,6 +74,7 @@ fn kept(reads: &Reads, live: &BTreeSet<String>) -> BTreeMap<String, OtherUse> {
 /// it ([`take`]), so the rest of that block is all that can read it again.
 /// The enclosing statement's state waits on a stack for [`end`] to put back.
 pub(crate) fn begin(cg: &mut Codegen, value: &Expr, live: &BTreeSet<String>) {
+    super::lends::note_lent_closures(cg, value);
     let reads = reads_of(cg, value);
     // What the enclosing statement knows about a binding still holds inside it.
     let mut known = cg.arc.movable.kept.clone();

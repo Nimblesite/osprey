@@ -55,6 +55,9 @@ struct Entry {
     binding_scope: Option<usize>,
     slot: String,
     pure_scalar: bool,
+    /// A closure cell holding borrowed captures [MEM-OWNERSHIP-STATIC-CLOSURES]:
+    /// it dies with its statement, so no binding, store or return takes it.
+    lent: bool,
 }
 
 /// The per-function ownership ledger: a stack of frames (function body,
@@ -77,6 +80,8 @@ pub(crate) struct ArcLedger {
     enclosing: Vec<moves::Movable>,
     /// Owned parameters still waiting for the body block that scopes them.
     unscoped_parameters: Vec<String>,
+    /// Whether the closure cell being built lends its captures.
+    lending: bool,
     /// Bindings that borrow, and what they borrow from [MEM-OWNERSHIP-STATIC-BORROWS].
     borrows: borrows::Borrows,
 }
@@ -90,6 +95,7 @@ impl ArcLedger {
             movable: moves::Movable::default(),
             enclosing: Vec::new(),
             unscoped_parameters: Vec::new(),
+            lending: false,
             borrows: borrows::Borrows::default(),
         }
     }
@@ -158,6 +164,7 @@ fn register(cg: &mut Codegen, v: &Value, beyond_stmt: bool) {
         binding_scope: None,
         slot,
         pure_scalar: false,
+        lent: false,
     };
     if beyond_stmt {
         push_parent(cg, entry);
@@ -344,6 +351,7 @@ fn bind_counted(cg: &mut Codegen, name: &str, v: &Value) {
             binding_scope: cg.scope_id(),
             slot,
             pure_scalar: false,
+            lent: false,
         },
     );
 }
@@ -357,7 +365,10 @@ fn take_owner_anywhere(cg: &mut Codegen, v: &Value) -> bool {
         return false;
     }
     for frame in &mut cg.arc.frames {
-        if let Some(at) = frame.iter().rposition(|e| e.operand == v.operand) {
+        if let Some(at) = frame
+            .iter()
+            .rposition(|e| e.operand == v.operand && !e.lent)
+        {
             let _ = frame.remove(at);
             return true;
         }
@@ -368,7 +379,9 @@ fn take_owner_anywhere(cg: &mut Codegen, v: &Value) -> bool {
 /// Remove and return the innermost-frame entry registered under `operand`.
 fn take_entry(cg: &mut Codegen, operand: &str) -> Option<Entry> {
     let frame = cg.arc.frames.last_mut()?;
-    let at = frame.iter().rposition(|e| e.operand == operand)?;
+    let at = frame
+        .iter()
+        .rposition(|e| e.operand == operand && !e.lent)?;
     Some(frame.remove(at))
 }
 
@@ -476,6 +489,8 @@ pub(crate) fn escape_retain(cg: &mut Codegen, v: &Value) {
 
 mod constructors;
 mod last_use;
+mod lends;
+pub(crate) use lends::{lending, lends, mark_lent, set_lending};
 mod unwind;
 pub(crate) use constructors::{consume_into_store, store_owned, transfer_or_retain};
 pub(crate) use last_use::release_dead_after;

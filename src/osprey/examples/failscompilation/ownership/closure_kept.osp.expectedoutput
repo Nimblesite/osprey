@@ -1,0 +1,1 @@
+7:3: ownership: `f` needs a second owner in `hold`: it is stored in a new value while its owner keeps it [MEM-OWNERSHIP-STATIC]
