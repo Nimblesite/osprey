@@ -4,13 +4,6 @@
 // and a judge answer when it agrees with the kernel's verdict, decided then.
 namespace workbench
 
-import workbench::Formulas
-import workbench::Statements
-import workbench::Steps
-import workbench::Verdicts
-import workbench::Closing
-import workbench::Propositions
-import workbench::Preludes
 import proof::Infer
 import proof::Reduce
 

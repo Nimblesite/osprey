@@ -1,7 +1,5 @@
 namespace proof
 
-import proof::Levels
-import proof::Naturals
 
 (** A term of the Pi fragment of [PROOF-KERNEL-THEORY] with de Bruijn
     indices: `BVar 0` is the innermost binder. Binder names are kept for

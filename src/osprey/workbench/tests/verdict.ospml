@@ -2,12 +2,6 @@
 // agreement between the goal engine and the kernel, and the unchecked holes.
 namespace workbenchtests
 
-import workbench::Statements
-import workbenchtests::StatementCases
-import workbench::Steps
-import workbench::Verdicts
-import workbench::Goals
-import workbench::Preludes
 
 (** The kernel-verdict cases of [WORKBENCH-VERIFICATION]. *)
 module VerdictCases

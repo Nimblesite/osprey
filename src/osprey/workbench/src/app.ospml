@@ -3,19 +3,9 @@
 // challenge region refreshes only when its own attempt changed.
 namespace workbench
 
-import ui::Runtime
 import ui::Keyed
 import ui::Lists
 import proof::CachedImports
-import workbench::Benches
-import workbench::Update
-import workbench::Shelves
-import workbench::WorkViews
-import workbench::GoalViews
-import workbench::LearnViews
-import workbench::Palettes
-import workbench::Lessons
-import workbench::Blocks
 
 (** The signal identities each region depends on, compared slice by slice ([UI-SIGNALS]). *)
 module Changes

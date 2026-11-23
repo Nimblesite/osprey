@@ -4,7 +4,6 @@
 
 namespace todo;
 
-import todo::TodoHarness
 
 /// The GetTodos priority lookup, as the C# enum order produces it.
 fn priorityLookup() = [

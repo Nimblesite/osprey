@@ -3,8 +3,6 @@
 // wrong submission; a mark always describes the answer on screen.
 namespace workbench
 
-import workbench::Judge
-import workbench::Blocks
 import ui::Doc
 import ui::Lists
 

@@ -4,14 +4,6 @@
 // input is refused visibly and changes nothing ([WORKBENCH-BOARD]).
 namespace workbench
 
-import workbench::Benches
-import workbench::Reviews
-import workbench::Coach
-import workbench::ProofLibraries
-import workbench::BundledLibraries
-import workbench::Workspaces
-import workbench::Statements
-import workbench::Steps
 import ui::Runtime
 import ui::Messages
 import ui::Splitters

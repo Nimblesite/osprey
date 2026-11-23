@@ -6,7 +6,6 @@ import proof::Checked
 import proof::Fixtures
 import proof::Infer
 import proof::Reduce
-import prooftests::Support
 import proof
     Proj BVar Const App Sort Succ Zero Param Binder
 

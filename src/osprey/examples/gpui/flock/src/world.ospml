@@ -4,7 +4,6 @@ namespace flock
 import ui::Doc
 import ui::Lists
 import ui::Pick
-import flock::Steering
 import ui::Requests
 import ui::Runtime
 

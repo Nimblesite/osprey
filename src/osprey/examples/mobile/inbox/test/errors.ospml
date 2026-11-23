@@ -6,8 +6,6 @@ import mobile::Model
 import mobile::Storage
 import mobile::View
 import mobile::Annotations
-import inboxtests::Support
-import inboxtests::TriageSupport
 
 controlRoundTrip code = match code >= 32
     true => true

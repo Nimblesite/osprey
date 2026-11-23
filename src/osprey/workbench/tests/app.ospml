@@ -12,9 +12,7 @@ import ui::Lists
 import ui::Hosting
 import ui::Maths
 import ui::Surfaces
-import ui::Runtime
 import ui::Views
-import ui::Ui
 import uitest::Drive
 import uitest::Read
 

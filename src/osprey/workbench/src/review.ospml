@@ -4,9 +4,6 @@
 // underline lands on the line the writer wrote the step on.
 namespace workbench
 
-import workbench::Statements
-import workbench::Steps
-import workbench::Verdicts
 import ui::Lists
 
 (** The kernel's verdicts on a document, line by line ([WORKBENCH-VERDICT]). *)

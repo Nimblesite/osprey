@@ -1,6 +1,4 @@
 namespace registry_tests;
-import registry_tests::Fixture
-import registry_tests::RegistryFixture
 import registry::Identity
 import registry::Release
 

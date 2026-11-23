@@ -3,9 +3,6 @@
 // unknown step a visible `sorry` hole, so the generated module always parses.
 namespace workbench
 
-import workbench::Formulas
-import workbench::Steps
-import workbench::Lists
 
 (** One declaration as the writer phrased it: its statement and its steps in order. *)
 type Proof =

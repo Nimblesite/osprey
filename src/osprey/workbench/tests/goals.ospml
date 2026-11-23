@@ -5,7 +5,6 @@ namespace workbenchtests
 import workbench::Formulas
 import workbench::Goals
 import workbench::Lists
-import workbenchtests::FixtureFiles
 
 (** The goal-engine cases of [WORKBENCH-VERIFICATION]. *)
 module GoalCases

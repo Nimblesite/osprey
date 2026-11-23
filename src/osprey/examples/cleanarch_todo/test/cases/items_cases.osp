@@ -4,7 +4,6 @@
 
 namespace todo;
 
-import todo::TodoHarness
 
 /// One page's expected shape, for brevity in the pagination cases.
 fn pageOf(rows, total, hasPrevious, hasNext) = Success { value: ItemsPageView {

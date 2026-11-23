@@ -9,10 +9,6 @@
 
 namespace todo;
 
-import todo::TodoDomain
-import todo::TodoHarness
-import todo::TodoItems
-import todo::TodoProbe
 
 /// Two seeded lists, ids 1 and 2: `withStore` starts `nextList` at 3.
 fn authzTwoLists() = [TodoHarness::seedList(1, "Shopping", "#78909C"), TodoHarness::seedList(2, "Banking", "#AB47BC")]

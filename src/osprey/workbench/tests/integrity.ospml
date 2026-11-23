@@ -3,7 +3,6 @@
 // and every media file exists.
 namespace workbenchtests
 
-import workbenchtests::FixtureFiles
 import workbench::Lessons
 import workbench::Blocks
 import workbench::Catalogues

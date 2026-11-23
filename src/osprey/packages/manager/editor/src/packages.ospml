@@ -1,7 +1,6 @@
 namespace registry_editor
 import ui::Doc
 import ui::Lists
-import registry::Checked
 import registry::Names
 
 // Implements [PACKAGE-EDITOR-GRAPH]: the editor consumes the canonical

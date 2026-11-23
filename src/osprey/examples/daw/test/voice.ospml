@@ -4,7 +4,6 @@
 import uitest::Drive
 import uitest::Semantics
 import uitest::Views
-import ui::Lists
 import synth::Synth
 import synth::Voice
 

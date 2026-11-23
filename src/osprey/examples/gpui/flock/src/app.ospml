@@ -5,8 +5,6 @@ import ui::Runtime
 import ui::Requests
 import ui::Messages
 import ui::Inputs
-import flock::Simulation
-import flock::View
 
 (** The application exported through Flock's two-function C boundary. *)
 module App

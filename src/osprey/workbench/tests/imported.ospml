@@ -1,7 +1,5 @@
 namespace workbenchtests
 
-import workbenchtests::Drive
-import workbenchtests::AppCases
 import workbench::Benches
 import workbench::BundledLibraries
 import ui::Doc
@@ -10,7 +8,6 @@ import proof::ImportedProofs
 import proof::CachedImports
 import proof::Fixtures
 import proof::Trust
-import workbenchtests::ProofTermCases
 
 (** Current imported source is checked by the shared kernel, including
     refusals and assumptions. Implements [WORKBENCH-VERDICT]. *)

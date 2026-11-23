@@ -5,13 +5,6 @@ import ui::Ui
 import ui::Maths
 import ui::Frames
     plain
-import workbench::WorkViews
-import workbench::Statements
-import workbench::Reviews
-import workbench::Goals
-import workbench::Formulas
-import workbench::Steps
-import workbench::Lists
 
 module GoalViews
     caretRow text = satSub (length (lines (take text.draftText text.caret))) 1

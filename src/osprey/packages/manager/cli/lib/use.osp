@@ -1,5 +1,4 @@
 namespace registry_cli;
-import registry::Checked
 import registry_host::Host
 import registry::Identity
 import registry::Manifest

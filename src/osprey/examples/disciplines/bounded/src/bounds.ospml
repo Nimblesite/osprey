@@ -1,6 +1,5 @@
 namespace bounded
 
-import bounded::Words
 
 (** Inclusive integer intervals, each operation refusing to invent a bound. *)
 module Bounds

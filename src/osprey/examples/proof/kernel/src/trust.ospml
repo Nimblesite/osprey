@@ -1,7 +1,5 @@
 namespace proof
 
-import proof::Terms
-import proof::Environment
 
 (** Per-root trust reporting ([PROOF-KERNEL-AXIOMS]): the assumptions one
     declaration actually rests on, not every axiom the checked file happens to

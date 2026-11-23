@@ -1,8 +1,6 @@
 namespace registry_tests;
 import registry_cli::Init
 import registry_cli::ManifestEdit
-import registry_tests::Fixture
-import registry_tests::RegistryFixture
 import registry::Names
 
 /// `package init`, `add`, `remove` and `update` against the fixture registry:

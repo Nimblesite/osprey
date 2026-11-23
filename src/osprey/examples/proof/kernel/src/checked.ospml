@@ -1,10 +1,5 @@
 namespace proof
 
-import proof::Environment
-import proof::Infer
-import proof::Export
-import proof::Inductive
-import proof::Quotients
 
 (** Adding declarations to an environment through the kernel: a theorem or
     definition is checked against its statement, an axiom's statement must

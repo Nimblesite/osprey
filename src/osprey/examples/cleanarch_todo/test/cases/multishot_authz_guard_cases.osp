@@ -3,10 +3,6 @@
 
 namespace todo;
 
-import todo::TodoDomain
-import todo::TodoHarness
-import todo::TodoItems
-import todo::TodoProbe
 
 /// Authorization what-if over pages, the purge rules and the starting principal ([EXAMPLE-CLEANARCH-MULTISHOT-AUTHZ], [MULTI-REPLAY]).
 module MultishotAuthzGuardCases {

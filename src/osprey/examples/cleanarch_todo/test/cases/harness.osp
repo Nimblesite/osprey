@@ -5,11 +5,6 @@
 
 namespace todo;
 
-import todo::EdgeTodo
-import todo::TodoDispatch
-import todo::TodoHost
-import todo::TodoProbe
-import todo::TodoReplay
 
 /// One what-if question for `TodoHarness::probed`.
 type Question =

@@ -1,11 +1,5 @@
 namespace proof
 
-import proof::Terms
-import proof::Environment
-import proof::Naturals
-import proof::Reduce
-import proof::NumericCanonical
-import proof::DeclarationBodies
 
 (** One numeric fast-path outcome: the checked term a candidate step reduces
     to, or no rule, leaving the ordinary reduction unchanged. Shared by the

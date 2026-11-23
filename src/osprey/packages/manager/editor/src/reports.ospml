@@ -1,6 +1,5 @@
 namespace registry_editor
 import ui::Lists
-import registry::Checked
 
 // Implements [PACKAGE-EDITOR-COMPLETIONS]: host envelopes carry bounded raw
 // output; semantic success comes only from the CLI report, never exit code 0.

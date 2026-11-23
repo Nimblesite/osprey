@@ -4,7 +4,6 @@
 
 namespace todo;
 
-import todo::TodoHarness
 
 module EdgeCases {
     /// POST /api/TodoLists: 201, a Location header, the bare new id.

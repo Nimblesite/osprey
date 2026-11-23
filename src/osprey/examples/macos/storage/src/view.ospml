@@ -4,7 +4,6 @@
 namespace storage
 
 import bank::Json
-import storage::Disk
 
 module Native
     export field key value = Json::strField key value

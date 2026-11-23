@@ -8,8 +8,6 @@
 
 namespace todo;
 
-import todo::TodoHarness
-import todo::TodoProbe
 
 /// The seeded stores every matrix crosses: empty, one row each, the usual
 /// pair, and a wider store whose ids and titles are out of order.

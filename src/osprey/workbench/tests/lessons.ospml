@@ -3,17 +3,12 @@
 namespace workbenchtests
 
 import workbench::Lessons
-import workbench::Blocks
 import workbench::Judge
 import workbench::Tutors
 import workbench::Catalogues
 import workbench::Tries
-import workbenchtests::AppCases
-import workbenchtests::Drive
-import workbenchtests::FixtureFiles
 import workbench::FormulaKeys
 import ui::Doc
-import ui::Ui
 
 (** The lesson reader, judge and tutor cases of [LESSONS-VERIFICATION]. *)
 module LessonCases

@@ -1,9 +1,7 @@
 // [WORKBENCH-EMIT] cases: the and_swap golden, binders, holes and layout.
 namespace workbenchtests
 
-import workbench::Formulas
 import workbench::Emit
-import workbenchtests::FixtureFiles
 
 (** The emitter cases of [WORKBENCH-VERIFICATION]. *)
 module EmitCases

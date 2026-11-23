@@ -4,8 +4,6 @@ namespace painting
 import ui::Runtime
 import ui::Messages
 import ui::Inputs
-import painting::Drawing
-import painting::View
 
 (** The application exported through the painting port's two-function C boundary. *)
 module App

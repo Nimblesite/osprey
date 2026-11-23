@@ -5,7 +5,6 @@ import registry_cli::Fetch
 import registry_cli::Lockfile
 import registry_cli::Reports
 import registry_cli::Project
-import registry_tests::Fixture
 import registry::ManifestJson
 
 /// `build [--run]` against fixture hosts: the offline verify must pass before

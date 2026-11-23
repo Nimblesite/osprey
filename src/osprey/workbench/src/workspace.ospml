@@ -12,11 +12,6 @@ import ui::Lists
 import ui::Doc
 import ui::Requests
 import ui::Runtime
-import workbench::Reviews
-import workbench::Statements
-import workbench::Steps
-import workbench::Emit
-import workbench::ProofTerms
 
 (** Explicit save, open and source export over the same bounded host capabilities on every platform. *)
 module Workspaces

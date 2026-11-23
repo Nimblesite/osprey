@@ -12,7 +12,6 @@ as a judge whether the final message honestly describes what happened. Reads
 """
 from pydantic_ai import Agent
 from pydantic_ai import Exceptions as E
-from pydantic_ai import Messages as M
 from pydantic_ai import ModelsOpenai
 from pydantic_ai import ProvidersHttp
 from pydantic_ai import Tools

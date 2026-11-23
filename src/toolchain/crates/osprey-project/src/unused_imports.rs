@@ -6,7 +6,9 @@
 //! method-style call), so an import none of whose bindings was used is
 //! reported, spelled as written. A module of the importing namespace resolves
 //! before any import, so importing it is also reported, except from a
-//! Python-flavor file, which names a sibling module only through an import. A wildcard import
+//! Python-flavor file, which names a sibling module only through an import.
+//! A project with a discipline is not reported at all: the discipline's
+//! checker reads every file's imports directly. A wildcard import
 //! binds names nobody wrote, so it is never reported.
 
 use std::collections::BTreeSet;
@@ -26,6 +28,13 @@ pub(crate) fn warnings(
     used: &BTreeSet<(usize, String)>,
     sources: &[SourceMetadata],
 ) -> Vec<ProjectWarning> {
+    // A discipline's checker reads imports itself: each importing file's
+    // checker receives the imported modules' export signatures
+    // ([TYPES-DISCIPLINE-REGISTRY]), so in a project with a discipline every
+    // import is used whether or not a name resolves through it.
+    if sources.iter().any(|source| source.discipline.is_some()) {
+        return Vec::new();
+    }
     contributions
         .iter()
         .enumerate()

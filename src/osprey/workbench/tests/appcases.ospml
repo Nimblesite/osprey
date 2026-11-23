@@ -2,9 +2,7 @@
 // each a sequence of real host events through `App::respond`.
 namespace workbenchtests
 
-import workbenchtests::Drive
 import ui::Doc
-import workbench::App
 import workbench::Benches
 import workbench::Drafts
 

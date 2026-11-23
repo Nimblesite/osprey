@@ -1,9 +1,5 @@
 namespace bounded
 
-import bounded::Arguments
-import bounded::Chars
-import bounded::Intervals
-import bounded::Words
 
 (** Reading `// @bound` annotations and the definition lines they precede. *)
 module Annotations

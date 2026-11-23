@@ -17,8 +17,6 @@
 
 namespace todo;
 
-import todo::TodoHarness
-import todo::TodoProbe
 
 /// Three seeded lists, list 2 titled with 250 x characters.
 fn fixLongSeeds() = [TodoHarness::seedList(1, "Shopping", "#78909C"), TodoHarness::seedList(2, retryWide(250), "#D98B2B"), TodoHarness::seedList(3, "Banking", "#AB47BC")]

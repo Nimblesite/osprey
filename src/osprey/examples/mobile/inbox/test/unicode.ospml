@@ -4,8 +4,6 @@ import bank::Json
 import mobile::App
 import mobile::Model
 import mobile::Storage
-import inboxtests::Support
-import inboxtests::TriageSupport
 
 unicodeBodyCase () =
     waiting = Support::awaiting ()

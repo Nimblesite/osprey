@@ -7,7 +7,6 @@ import mobile::Storage
 import mobile::Update
 import mobile::View
 import mobile::App
-import inboxtests::Support
 
 jsonControlCase () =
     source = "line one\nline two\t\r" + (fromCodePoint 1 ?: "")

@@ -1,12 +1,5 @@
 namespace proof
 
-import proof::Levels
-import proof::Terms
-import proof::Environment
-import proof::Naturals
-import proof::Infer
-import proof::Surface
-import proof::Numeric
 
 (** A consumed lambda prefix. Values are collected innermost first;
     arguments after that prefix remain to be applied. *)

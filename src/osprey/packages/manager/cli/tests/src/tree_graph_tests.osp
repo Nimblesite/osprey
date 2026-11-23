@@ -1,8 +1,6 @@
 namespace registry_tests;
 import registry_cli::Fetch
 import registry_cli::Lockfile
-import registry_tests::Fixture
-import registry_tests::RegistryFixture
 import registry::Json
 import registry::JsonRead
 import registry::ManifestJson

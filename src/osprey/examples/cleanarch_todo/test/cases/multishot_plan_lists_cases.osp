@@ -3,8 +3,6 @@
 
 namespace todo;
 
-import todo::TodoHarness
-import todo::TodoProbe
 
 fn wideOrder(answers, count, shape, first, last) = {
     let widths = planWidths(first, last)

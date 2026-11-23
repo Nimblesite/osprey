@@ -3,14 +3,6 @@
 // `Tutors`, which asks the kernel; a right answer is saved as progress.
 namespace workbench
 
-import workbench::Lessons
-import workbench::Blocks
-import workbench::Tutors
-import workbench::Shelves
-import workbench::Drafts
-import workbench::ProofLibraries
-import workbench::BundledLibraries
-import workbench::Workspaces
 import ui::Runtime
 import ui::Lists
 

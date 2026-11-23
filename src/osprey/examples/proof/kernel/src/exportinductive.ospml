@@ -1,7 +1,5 @@
 namespace proof
 
-import proof::Environment
-import proof::ExportJson
 
 (** Reading the `inductive` line of [PROOF-EXPORT]: one line carries a whole
     group — its type formers, its constructors and its recursors, one per

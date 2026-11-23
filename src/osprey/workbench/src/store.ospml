@@ -5,8 +5,6 @@
 namespace workbench
 
 import ui::Doc
-import workbench::Tutors
-import workbench::Tries
 
 (** Which side of the application leads: the proof workbench or Learn mode ([LESSONS-MODE]). *)
 type Mode = Working | Learning | ReadingPage

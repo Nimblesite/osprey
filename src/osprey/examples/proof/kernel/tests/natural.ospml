@@ -1,7 +1,6 @@
 namespace prooftests
 
 import proof::Naturals
-import prooftests::Support
 import proof
     Natural
 

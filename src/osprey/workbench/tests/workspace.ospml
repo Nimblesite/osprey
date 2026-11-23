@@ -4,7 +4,6 @@ namespace workbenchtests
 import workbench::Benches
 import workbench::Workspaces
 import ui::Doc
-import workbenchtests::Drive
 
 (** Current document persistence and mathematical editing through the real application. *)
 module WorkspaceCases

@@ -9,8 +9,6 @@
 
 namespace todo;
 
-import todo::TodoHarness
-import todo::TodoProbe
 
 /// `size` copies of "x": the title whose sort rank is its length ("x" < "xx" < "xxx").
 fn planWide(size) = foldList(range(0, size) |> toList, "", fn(built, _i) => built + "x")

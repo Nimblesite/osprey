@@ -8,7 +8,6 @@ import proof::Terms
 import proof
     Single Theorem Const App NatLit Succ Zero
 import proof::Naturals
-import prooftests::Support
 
 (** String export literals retain every Unicode scalar by expanding into
     ordinary checked constructor applications. Implements [PROOF-EXPORT]. *)

@@ -3,26 +3,6 @@
 // because a test statement is only legal in the entry source.
 namespace workbenchtests
 
-import workbenchtests::NotationCases
-import workbenchtests::StepCases
-import workbenchtests::CorpusCases
-import workbenchtests::GoalCases
-import workbenchtests::EmitCases
-import workbenchtests::StatementCases
-import workbenchtests::WorkspaceCases
-import workbenchtests::ThemeCases
-import workbenchtests::TypesetCases
-import workbenchtests::VerdictCases
-import workbenchtests::AppCases
-import workbenchtests::WorkflowCases
-import workbenchtests::ImportedCases
-import workbenchtests::ImportMemoCases
-import workbenchtests::ImportedFlowCases
-import workbenchtests::ProofTermCases
-import workbenchtests::FixtureFiles
-import workbenchtests::FormulaCases
-import workbenchtests::LessonCases
-import workbenchtests::IntegrityCases
 
 (** One case the harness reports, with the name it reports. *)
 entry name run = { name = name, run = run }

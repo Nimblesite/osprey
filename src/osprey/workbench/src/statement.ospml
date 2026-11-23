@@ -4,8 +4,6 @@
 // that an undeclared atom raises.
 namespace workbench
 
-import workbench::Formulas
-import workbench::Lexer
 
 (** A theorem heading: its name, whether the writer named it, the variables `For all` binds, and the claim ([WORKBENCH-STATEMENT]). *)
 type Statement =

@@ -9,8 +9,6 @@
 
 namespace todo;
 
-import todo::TodoHarness
-import todo::TodoProbe
 
 /// The titles of the two seeded lists, in id order.
 let seededTitles = ["Shopping", "Banking"]

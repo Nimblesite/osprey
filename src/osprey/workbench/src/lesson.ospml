@@ -3,7 +3,6 @@
 // the rule it breaks, and an unsafe media path never leaves this module.
 namespace workbench
 
-import workbench::Formulas
 import ui::Lists
 import ui::Doc
 import ui::Maths

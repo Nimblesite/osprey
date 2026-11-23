@@ -4,7 +4,6 @@
 // so each outcome carries typed progress, a mismatch, or unsupported wording.
 namespace workbench
 
-import workbench::Formulas
 
 (** A named hypothesis in a goal's context. *)
 type Hypothesis =

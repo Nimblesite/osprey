@@ -9,12 +9,6 @@ import ui::Editors
 import ui::Media
 import ui::Maths
 import ui::Lists
-import workbench::Lessons
-import workbench::Blocks
-import workbench::Tutors
-import workbench::Formulas
-import workbench::Notation
-import workbench::Reviews
 
 (** The completed challenge keys as their own signal, so typing an answer does not refresh the catalogue ([LESSONS-STORE]). *)
 type Achieved =

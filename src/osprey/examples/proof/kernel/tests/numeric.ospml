@@ -10,7 +10,6 @@ import proof
     Const App Lam BVar NatLit Natural NumericReduced NoNumericRule Definition Constructor Ctor Recursor Env Succ Zero
 
 import proof::Fixtures
-import prooftests::Support
 
 (** Exact numeric reductions and forged/malformed controls. Implements [PROOF-KERNEL-THEORY]. *)
 module NumericTests

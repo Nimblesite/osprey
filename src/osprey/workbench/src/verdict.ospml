@@ -4,12 +4,6 @@
 // A proof with an unknown step or an open goal is never sent to the kernel.
 namespace workbench
 
-import workbench::Formulas
-import workbench::Goals
-import workbench::Lists
-import workbench::Closing
-import workbench::Propositions
-import workbench::Preludes
 import proof::Infer
 
 (** What the kernel said about one declaration: checked, rejected at a step (`-1` for the statement) with the kernel's reason, or not checked and why. *)

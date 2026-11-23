@@ -1,7 +1,6 @@
 namespace mobile
 
 import bank::Json
-import mobile::Text
 
 type LocalNote =
     note : string

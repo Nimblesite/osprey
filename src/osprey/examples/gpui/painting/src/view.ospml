@@ -5,8 +5,6 @@ namespace painting
 import ui::Ui
 import ui::Keyed
 import ui::Scenes
-import painting::Drawing
-import painting::Logo
 
 (** The header, the canvas and the theme of the painting port. *)
 module View

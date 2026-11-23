@@ -2,7 +2,6 @@
 namespace workbenchtests
 
 import workbench::Formulas
-import workbenchtests::CorpusCases
 import workbench::ProofTerms
 import proof::Terms
 import proof::Naturals

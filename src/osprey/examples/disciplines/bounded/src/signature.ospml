@@ -1,7 +1,5 @@
 namespace bounded
 
-import bounded::Chars
-import bounded::Words
 
 (** The export signature of the erased module, from the compiler that will
 check it: an erased module must satisfy the signature it was given. *)

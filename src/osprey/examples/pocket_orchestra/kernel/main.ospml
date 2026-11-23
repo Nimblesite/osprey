@@ -1,7 +1,6 @@
 // [ORCHESTRA-EFFECTS] The desktop worker alone calls this boundary; networking and devices stay in the host.
 namespace orchestra
 
-import orchestra::Sessions
 import synth::Waves
 import synth::Performance
 

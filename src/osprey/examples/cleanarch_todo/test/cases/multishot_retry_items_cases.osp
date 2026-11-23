@@ -3,7 +3,6 @@
 
 namespace todo;
 
-import todo::TodoHarness
 
 module MultishotRetryItemsCases {
     /// CreateItem: rivals only burn list ids, so the item id is the seed

@@ -5,7 +5,6 @@
 
 namespace todo;
 
-import todo::TodoHarness
 
 module PipelineCases {
     /// LoggingBehaviour writes one structured line naming the request and

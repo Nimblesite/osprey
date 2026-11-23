@@ -4,7 +4,6 @@ import proof::Environment
 import proof::Infer
 import proof
     Zero Succ Sort BVar Const App Lam Pi Binder
-import prooftests::Support
 
 (** Typed definitional equality: proof arguments are interchangeable only
     when their types are the *same* proposition, never when they are merely

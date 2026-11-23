@@ -1,9 +1,5 @@
 namespace proof
 
-import proof::ExportJson
-import proof::ExportInductive
-import proof::Naturals
-import proof::Literals
 
 (** The reader's state: the tables so far, the items in file order, and the
     number of the line being read, `1` being the meta header. *)

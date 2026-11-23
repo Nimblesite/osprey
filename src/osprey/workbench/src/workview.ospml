@@ -10,17 +10,6 @@ import ui::Maths
 import ui::Frames
     plain
     text
-import workbench::Statements
-import workbench::Steps
-import workbench::Goals
-import workbench::Formulas
-import workbench::Emit
-import workbench::Reviews
-import workbench::Lists
-import workbench::Notation
-import workbench::Drafts
-import workbench::ProofLibraries
-import workbench::Palettes
 
 (** The Work regions of [WORKBENCH-REGIONS] and the root that holds every region. *)
 module WorkViews

@@ -4,7 +4,6 @@
 
 namespace todo;
 
-import todo::TodoHarness
 
 module AccessCases {
     /// GetTodos demands a signed-in user: anonymous is Unauthorized, any

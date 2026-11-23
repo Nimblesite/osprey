@@ -4,7 +4,6 @@ namespace workbenchtests
 import workbench::Formulas
 import ui::Maths
 import ui::Doc
-import workbenchtests::FixtureFiles
 
 (** The formula cases of [WORKBENCH-VERIFICATION]. *)
 module FormulaCases

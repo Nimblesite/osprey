@@ -2,7 +2,6 @@
 namespace mobile
 
 import bank::Json
-import mobile::Markdown
 
 module Ui
     value doc path fallback = jsonGet doc path ?: fallback

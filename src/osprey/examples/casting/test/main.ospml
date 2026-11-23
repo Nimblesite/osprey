@@ -4,7 +4,6 @@
 // device: a handler for the port's `Wire` effect that reads every frame the sender writes and
 // answers as a Default Media Receiver does; receiver keys follow [CAST-MOBILE-RECEIVER-IDENTITY].
 import ui::Doc
-import ui::Canvases
 import ui::Requests
 import ui::Themes
 import ui::Templates

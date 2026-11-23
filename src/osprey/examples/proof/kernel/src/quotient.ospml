@@ -1,10 +1,5 @@
 namespace proof
 
-import proof::Environment
-import proof::Terms
-import proof::Levels
-import proof::Infer
-import proof::DeclarationBodies
 
 (** Authenticate the standard choice basis against its derived Nonempty
     family and signature. Other assumptions retain their explicit names;

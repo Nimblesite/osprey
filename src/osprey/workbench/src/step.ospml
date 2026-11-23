@@ -3,8 +3,6 @@
 // `Unknown` and is kept, underlined, never sent to a checker.
 namespace workbench
 
-import workbench::Formulas
-import workbench::Lexer
 
 (** A proof step as phrased by the writer ([WORKBENCH-STEPS]). *)
 type Step = Assume string Formula | Cases string (List<string>) | Split | Left | Right | Exact string | Apply string | Absurd string string | Done | Unknown string

@@ -3,8 +3,6 @@ namespace prooftests
 import proof::Checked
 import proof::Environment
 import proof::Fixtures
-import prooftests::Support
-import prooftests::Shapes
 import proof
     Sort Zero BVar Const App Pi
 

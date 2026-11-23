@@ -1,10 +1,5 @@
 namespace proof
 
-import proof::Levels
-import proof::Terms
-import proof::Environment
-import proof::Reduce
-import proof::Naturals
 
 (** Type inference and checking of [PROOF-KERNEL-THEORY]. The context is
     the list of binders entered (`Binder`: name and type, the type as it was

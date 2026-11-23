@@ -3,20 +3,6 @@
 
 namespace todo;
 
-import todo::AccessCases
-import todo::EdgeCases
-import todo::ItemsCases
-import todo::ListsCases
-import todo::MultishotAuthzCases
-import todo::MultishotAuthzGuardCases
-import todo::MultishotCases
-import todo::MultishotMatrixCases
-import todo::MultishotPlanCases
-import todo::MultishotPlanListsCases
-import todo::MultishotRetryCases
-import todo::MultishotRetryItemsCases
-import todo::MultishotValidateCases
-import todo::PipelineCases
 
 test("create answers the id and GetTodos shows the list", ListsCases::createRoundTripCase)
 test("every supported colour round-trips; unsupported colours are typed faults", ListsCases::colourPermutationsCase)
