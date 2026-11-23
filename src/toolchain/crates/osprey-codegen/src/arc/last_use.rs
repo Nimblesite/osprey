@@ -16,13 +16,23 @@ pub(crate) fn release_dead_after<S: std::borrow::Borrow<Stmt>>(
     if cg.arc.frames.len() != 1 {
         return;
     }
+    let live = live_after(cg, rest, value);
+    release_dead(cg, &live);
+}
+
+/// The names still read once the continuation `rest`, then `value`, runs.
+pub(super) fn live_after<S: std::borrow::Borrow<Stmt>>(
+    cg: &Codegen,
+    rest: &[S],
+    value: Option<&Expr>,
+) -> std::collections::BTreeSet<String> {
     let mut live = std::collections::BTreeSet::new();
     osprey_ast::freevars::free_idents_of_stmts(rest, value, &mut live);
     // An inline lambda the continuation can still apply keeps what it closes
     // over alive, though the continuation never names those captures.
     live.extend(crate::closure::reach(cg, &live));
     live.extend(crate::iter::stage_aliases(cg));
-    release_dead(cg, &live);
+    live
 }
 
 fn release_dead(cg: &mut Codegen, live: &std::collections::BTreeSet<String>) {

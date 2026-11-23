@@ -214,7 +214,7 @@ fn own_result(cg: &mut Codegen, value: &Value, inner: LType, errmsg: &str) {
 }
 
 fn store_payload(cg: &mut Codegen, object: &str, value: &Value) {
-    crate::arc::dup_store(cg, value.ty.as_str(), &value.operand);
+    crate::arc::store_owned(cg, value.ty.as_str(), &value.operand);
     let bits = crate::conv::box_to_i64(cg, value.clone());
     crate::aggregate::store_field(cg, RESULT_STRUCT, object, 0, LType::I64, &bits.operand);
 }

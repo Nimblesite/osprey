@@ -52,13 +52,26 @@ fn gen_block_contents(
     // A child scope preserves outer bindings across nested blocks [BLOCK-SCOPE].
     cg.with_local_scope(|cg| {
         for (i, s) in statements.iter().enumerate() {
-            crate::stmt::gen_local_stmt(cg, s)?;
+            let rest = statements.get(i + 1..).unwrap_or(&[]);
+            crate::arc::begin_statement_moves(cg, s, rest, value);
+            let lowered = crate::stmt::gen_local_stmt(cg, s);
+            crate::arc::end_moves(cg);
+            lowered?;
             // Last-use drops: names the continuation no longer references die
             // here, not at function end [GC-ARC-PERCEUS].
-            crate::arc::release_dead_after(cg, statements.get(i + 1..).unwrap_or(&[]), value);
+            crate::arc::release_dead_after(cg, rest, value);
         }
         let previous = cg.set_debug_position(position);
-        let result = value.map_or_else(|| Ok(Value::unit()), |e| tail(cg, e));
+        let result = value.map_or_else(
+            || Ok(Value::unit()),
+            |e| {
+                // Nothing in this block is read after its tail [GC-ARC-PERCEUS].
+                crate::arc::begin_moves(cg, e, &std::collections::BTreeSet::new());
+                let result = tail(cg, e);
+                crate::arc::end_moves(cg);
+                result
+            },
+        );
         cg.restore_debug_position(previous);
         result
     })

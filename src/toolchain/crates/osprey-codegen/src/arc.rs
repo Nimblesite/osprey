@@ -16,8 +16,10 @@
 use crate::builder::Codegen;
 use crate::llty::Value;
 
+mod moves;
 mod ownership;
 mod phi;
+pub(crate) use moves::{begin as begin_moves, begin_statement as begin_statement_moves, end as end_moves};
 pub(crate) use ownership::{second_owner, verdict as ownership_verdict, OwnershipCheck};
 pub use ownership::{set_ownership_check, Need, SecondOwner};
 pub(crate) use phi::{borrowed_phi_arms, move_phi_owners, promote_phi_arm};
@@ -59,6 +61,8 @@ pub(crate) struct ArcLedger {
     /// entry recorded here is the high-water mark of owners that existed BEFORE
     /// the branch — those must survive to region end. [GC-ARC-PERCEUS]
     cond_floors: Vec<(usize, usize)>,
+    /// Bindings the statement being lowered may move at their last use.
+    movable: moves::Movable,
 }
 
 impl ArcLedger {
@@ -67,6 +71,7 @@ impl ArcLedger {
             frames: vec![Vec::new()],
             kinds: vec![FrameKind::Scope],
             cond_floors: Vec::new(),
+            movable: moves::Movable::default(),
         }
     }
 }
@@ -291,6 +296,12 @@ pub(crate) fn bind_owned(cg: &mut Codegen, name: &str, v: &Value) {
         push_parent(cg, e);
         return;
     }
+    // An alias made at the last use of its source takes the source's reference.
+    if let Some(mut e) = moves::take(cg, &v.operand) {
+        e.name = Some(name.to_string());
+        push_parent(cg, e);
+        return;
+    }
     second_owner(cg, &v.operand, Some(name), Need::Bound);
     retain_val(cg, v);
     let ptr = as_i8ptr(cg, v);
@@ -436,6 +447,6 @@ pub(crate) fn escape_retain(cg: &mut Codegen, v: &Value) {
 mod constructors;
 mod last_use;
 mod unwind;
-pub(crate) use constructors::{consume_into_store, transfer_or_retain};
+pub(crate) use constructors::{consume_into_store, store_owned, transfer_or_retain};
 pub(crate) use last_use::release_dead_after;
 pub(crate) use unwind::instrument as instrument_unwind;

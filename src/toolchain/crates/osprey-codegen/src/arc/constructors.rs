@@ -26,6 +26,17 @@ pub(crate) fn transfer_or_retain(cg: &mut Codegen, value: &Value) {
 /// owner live in an outer frame and are likewise excluded. A borrow (parameter,
 /// field load, phi) was never registered, so it is not found and the caller
 /// dups it as before. Returns true when it consumed an owner.
+/// Store `operand` into a heap slot spelled `slot_ty` whose block releases it at
+/// its death: a fresh owner moves in, anything else gains a reference
+/// [GC-ARC-PERCEUS].
+pub(crate) fn store_owned(cg: &mut Codegen, slot_ty: &str, operand: &str) {
+    let moved =
+        slot_ty.ends_with('*') && operand.starts_with('%') && consume_into_store(cg, operand);
+    if !moved {
+        super::dup_store(cg, slot_ty, operand);
+    }
+}
+
 pub(crate) fn consume_into_store(cg: &mut Codegen, operand: &str) -> bool {
     match take_owner(cg, operand) {
         Some(slot) => {
@@ -38,13 +49,15 @@ pub(crate) fn consume_into_store(cg: &mut Codegen, operand: &str) -> bool {
 
 fn take_owner(cg: &mut Codegen, operand: &str) -> Option<String> {
     let floor = conditional_floor(cg);
-    cg.arc.frames.last_mut().and_then(|frame| {
+    let fresh = cg.arc.frames.last_mut().and_then(|frame| {
         frame
             .iter()
             .rposition(|e| e.operand == operand && e.name.is_none())
             .filter(|at| *at >= floor)
             .map(|at| frame.remove(at).slot)
-    })
+    });
+    // Else a binding at its last use gives up the reference it holds.
+    fresh.or_else(|| super::moves::take(cg, operand).map(|e| e.slot))
 }
 
 #[cfg(test)]

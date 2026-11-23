@@ -79,6 +79,40 @@ fn main() = {
 }
 "#;
 
+// A fresh value moves into the list or record that takes it.
+const FRESH_ELEMENTS: &str = r#"type Point = { x: int, y: int }
+
+fn first(points) = match points {
+    [head, ..._] => head.x
+    [] => 0
+}
+
+fn main() = {
+    let points = [Point { x: 1, y: 2 }, Point { x: 7, y: 4 }, Point { x: 3, y: 9 }]
+    let names = ["a${toString(1)}", "b${toString(2)}"]
+    print("${toString(first(points))} ${toString(listLength(names))}")
+}
+"#;
+
+// A binding read once, and never again, gives its value to what takes it.
+const LAST_USE_MOVES: &str = r#"type Box = { text: string }
+type Pair = { left: Box, right: Box }
+
+fn build(n) = {
+    let left = Box { text: "l${toString(n)}" }
+    let right = Box { text: "r${toString(n)}" }
+    Pair { left: left, right: right }
+}
+
+fn main() = {
+    let made = Box { text: "a${toString(1)}" }
+    let again = made
+    let boxes = [again, Box { text: "b" }]
+    let pair = build(7)
+    print("${pair.left.text}${pair.right.text}${toString(listLength(boxes))}")
+}
+"#;
+
 const SCALARS_AND_TEXT: &str = r#"fn twice(n) = wrapMul(n, 2)
 fn greet(name) = "hello ${name}"
 
@@ -91,6 +125,8 @@ fn main() = {
 #[test]
 fn a_program_whose_values_each_have_one_owner_runs_and_frees_everything() -> std::io::Result<()> {
     assert_accepted("scalars", SCALARS_AND_TEXT)?;
+    assert_accepted("elements", FRESH_ELEMENTS)?;
+    assert_accepted("last_use", LAST_USE_MOVES)?;
     assert_accepted("fresh", FRESH_VALUES)
 }
 
@@ -110,6 +146,31 @@ fn main() = {
     let made = Box { text: "a${toString(1)}" }
     let pair = Pair { left: made, right: made }
     print("${pair.left.text}${pair.right.text}")
+}
+"#;
+
+// Read again after it is stored: the store is not the last use.
+const STORED_THEN_READ: &str = r#"type Box = { text: string }
+type Wrap = { inner: Box }
+
+fn main() = {
+    let made = Box { text: "a${toString(1)}" }
+    let wrap = Wrap { inner: made }
+    print("${wrap.inner.text}${made.text}")
+}
+"#;
+
+// Stored on one path only: the other path still owns it.
+const STORED_ON_ONE_PATH: &str = r#"type Box = { text: string }
+type Wrap = { inner: Box }
+
+fn main() = {
+    let made = Box { text: "a${toString(1)}" }
+    let wrap = match made.text {
+        "a1" => Wrap { inner: made }
+        _ => Wrap { inner: Box { text: "other" } }
+    }
+    print(wrap.inner.text)
 }
 "#;
 
@@ -137,6 +198,16 @@ fn a_value_that_needs_a_second_owner_is_refused_by_name_and_place() -> std::io::
         "stored_twice",
         STORED_TWICE,
         &["`made`", " 6:4: ownership", "second owner"],
+    )?;
+    assert_refused(
+        "stored_then_read",
+        STORED_THEN_READ,
+        &["`made`", " 6:4: ownership"],
+    )?;
+    assert_refused(
+        "stored_on_one_path",
+        STORED_ON_ONE_PATH,
+        &["`made`", "second owner"],
     )?;
     assert_refused(
         "returned_borrow",

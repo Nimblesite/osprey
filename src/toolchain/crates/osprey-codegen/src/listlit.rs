@@ -178,7 +178,7 @@ pub(crate) fn gen_list(
         let v = coerce_to(cg, v, elem)?;
         // The header's drop releases pointer elements, so each store is a new
         // reference [GC-ARC-PERCEUS].
-        crate::arc::dup_store(cg, elem.as_str(), &v.operand);
+        crate::arc::store_owned(cg, elem.as_str(), &v.operand);
         let slot = cg.emit_reg(format!(
             "getelementptr {}, {}* {arr}, i64 {i}",
             elem.as_str(),
