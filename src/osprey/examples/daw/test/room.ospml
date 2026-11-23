@@ -588,6 +588,15 @@ loudest side = foldList (side, 0.0, \(high, value) => synth::TableMath::larger (
 // A side that sounds: its loudest sample clears the noise floor.
 audible side = expect (loudest side > 0.01, true)
 
+// A stereo block silent on both sides, or sounding on both.
+bothSilent pair =
+    expect (loudest pair.left, 0.0)
+    expect (loudest pair.right, 0.0)
+
+bothAudible pair =
+    audible pair.left
+    audible pair.right
+
 sidesDiffer (one, other) = length (filterList (toList (range (0, length one)), \i => abs ((listGet one i ?: 0.0) - (listGet other i ?: 0.0)) > 0.000001)) > 0
 
 liveDialBlock (place, stream, check) = succeeds (daw::LiveControls::receive ("${place}/knobs/live/controls", stream), \applied =>
@@ -615,8 +624,7 @@ liveDialJourney () =
                 succeeds (daw::Playback::step (score, initial, 512), \first =>
                     stream = daw::LiveStream(playing = first.playing, controlVersion = 0, controlScore = score, noteFolders = [])
                     liveDialBlock (place, stream, \(quiet, muted) =>
-                        expect (loudest quiet.left, 0.0)
-                        expect (loudest quiet.right, 0.0)
+                        bothSilent quiet
                         louder = dialPointer (moving, x, y - 60.0, true, false)
                         expect ((Drive::holding louder).dial != synth::DialIdle, true)
                         reads (dialOf (louder, "Gain"), \raised =>
@@ -650,8 +658,7 @@ liveKnobJourney () =
                     expect (abs ((listGet reference.left 0 ?: 1.0) - (listGet changed.left 0 ?: -1.0)) < 0.02, true)
                     expect (sidesDiffer (reference.left, changed.left), true)))
             succeeds (daw::Playback::step (quiet, first.playing, 128), \silent =>
-                expect (loudest silent.left, 0.0)
-                expect (loudest silent.right, 0.0)
+                bothSilent silent
                 succeeds (daw::Playback::step (score, silent.playing, 128), \again =>
                     expect (again.playing.cursor, 768)
                     audible again.left))))

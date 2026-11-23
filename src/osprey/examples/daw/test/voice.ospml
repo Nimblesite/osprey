@@ -588,14 +588,12 @@ liveMixHistory (place, released, muted) =
     expect ((Drive::holding undone).songTicket, (Drive::holding released).songTicket)
     liveDialBlock (place, muted, \(loud, heard) =>
         expect (heard.controlVersion > muted.controlVersion, true)
-        audible loud.left
-        audible loud.right
+        bothAudible loud
         redone = Drive::press (undone, "Redo")
         liveDialBlock (place, heard, \(quiet, again) =>
             expect (again.controlVersion > heard.controlVersion, true)
             expect (again.playing.cursor, 640)
-            expect (loudest quiet.left, 0.0)
-            expect (loudest quiet.right, 0.0)))
+            bothSilent quiet))
 
 liveMixJourney group =
     place = ui::Pick::either (group, "target/daw-tests/live-group", "target/daw-tests/live-mixer")
@@ -611,8 +609,7 @@ liveMixJourney group =
         expect (synth::DawSession::holding (Drive::holding down), true)
         heardStream (score, 448, \stream => liveDialBlock (place, stream, \(quiet, muted) =>
             // The held note crosses into the second note at frame 480 while the fader is still down.
-            expect (loudest quiet.left, 0.0)
-            expect (loudest quiet.right, 0.0)
+            bothSilent quiet
             up = Drive::pointer (down, point.pointX, point.pointY, false)
             expect (synth::DawSession::holding (Drive::holding up), false)
             liveMixHistory (place, up, muted))))
@@ -633,8 +630,7 @@ liveSendJourney () =
         viewShows (panel, "Send level (%)", true)
         muted = Drive::choose (panel, "Send level (%)", "0")
         heardStream (score, 512, \stream => liveDialBlock (place, stream, \(quiet, applied) =>
-            expect (loudest quiet.left, 0.0)
-            expect (loudest quiet.right, 0.0)
+            bothSilent quiet
             invalid = Drive::choose (muted, "Send level (%)", "101")
             liveDialBlock (place, applied, \(still, retained) =>
                 expect (retained.controlVersion, applied.controlVersion)
@@ -642,7 +638,6 @@ liveSendJourney () =
                 cancelled = Drive::press (invalid, "Cancel")
                 liveDialBlock (place, retained, \(restored, last) =>
                     expect (last.controlVersion > retained.controlVersion, true)
-                    audible restored.left
-                    audible restored.right
+                    bothAudible restored
                     expect ((Drive::holding cancelled).songTicket, (Drive::holding started).songTicket)
                     succeeds (readFile source, \saved => succeeds (daw::SongFiles::decode saved, \disk => expect (structuralEquals (disk, score), true))))))))
