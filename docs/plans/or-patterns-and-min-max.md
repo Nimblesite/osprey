@@ -85,7 +85,7 @@ Expand existing suites. Add no new test file.
 - [ ] Python and TypeScript twins share the Default golden
 - [x] `src/osprey/examples/failscompilation/`: an alternative that omits a binder, binders of two types, an unreachable alternative after an earlier arm, an alternative repeated inside one pattern, a leading `|`, a trailing `|`, an alternative of another union, and a non-exhaustive match whose witness is shown. Expand `match_not_exhaustive` and `match_unreachable_after_catch_all`
 - [x] The lambda generic-uses regression executes a lambda arm followed by an or-pattern arm, calls the returned functions for both alternatives and the fallback, and matches its golden under GC, ARC and wasm32.
-- [ ] Corpus runs through `src/toolchain/crates/run_test_corpus.sh` under GC, ARC and wasm32
+- [x] Full corpus passed under GC and ARC (337 goldens each) and wasm32 (253 goldens, 84 declared capability exclusions). All 22 alternate GPU runs passed on each backend. Documentation checks passed (94 GC, 93 ARC, 94 wasm32).
 
 ### Use it
 
