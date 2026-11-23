@@ -166,6 +166,9 @@ pub(crate) fn gen_list(
     let n = elements.len();
     let data = cg.heap_alloc(&(n * 8).to_string());
     let arr = cg.emit_reg(format!("bitcast i8* {data} to {}*", elem.as_str()));
+    // A list passed straight to a checked callee holds its elements without
+    // owning them [MEM-OWNERSHIP-STATIC-CLOSURES].
+    let lent = crate::arc::lends_list(cg, position);
     for (i, v) in vals.into_iter().enumerate() {
         let v = crate::cast::erase_result(cg, v);
         // [TYPE-NUMERIC-WORD] coerce to the published element BEFORE boxing: a
@@ -178,7 +181,9 @@ pub(crate) fn gen_list(
         let v = coerce_to(cg, v, elem)?;
         // The header's drop releases pointer elements, so each store is a new
         // reference [GC-ARC-PERCEUS].
-        crate::arc::store_owned(cg, elem.as_str(), &v.operand);
+        if !lent {
+            crate::arc::store_owned(cg, elem.as_str(), &v.operand);
+        }
         let slot = cg.emit_reg(format!(
             "getelementptr {}, {}* {arr}, i64 {i}",
             elem.as_str(),
@@ -193,7 +198,7 @@ pub(crate) fn gen_list(
     }
     // The header's kind tells the ARC drop walk whether data[0..len) holds
     // managed pointers (string/handle elements) or scalars ([`crate::meta`]).
-    let elems_are_ptrs = elem.is_managed_ptr();
+    let elems_are_ptrs = elem.is_managed_ptr() && !lent;
     let obj = cg.malloc_struct(LIST_STRUCT, crate::meta::list_hdr_meta(elems_are_ptrs));
     crate::aggregate::store_field(cg, LIST_STRUCT, &obj, 0, LType::I64, &n.to_string());
     // The data array is the header's OWN allocation (the LIST_HDR drop frees
@@ -204,6 +209,9 @@ pub(crate) fn gen_list(
     cg.emit(format!("store i8* {data}, i8** {dp}"));
     let v = Value::handle(obj, lit_owner(&Value::new("", elem).with_owner(elem_owner)));
     crate::arc::own(cg, &v);
+    if lent {
+        crate::arc::mark_lent(cg, &v);
+    }
     Ok(v)
 }
 
@@ -270,10 +278,16 @@ pub(crate) fn to_runtime_list(cg: &mut Codegen, v: Value) -> Value {
 /// literal consumed in the scope that built it, `toGpu([1, 2, 3])`) and pays
 /// for the runtime layout only when the value outlives that knowledge.
 pub(crate) fn escaping(cg: &mut Codegen, v: Value) -> Value {
-    if is_lit(&v) {
-        return to_runtime_list(cg, v);
+    if !is_lit(&v) {
+        return v;
     }
-    v
+    // The runtime copy of a list of lent closures lends as well.
+    let lent = crate::arc::is_lent(cg, &v);
+    let list = to_runtime_list(cg, v);
+    if lent {
+        crate::arc::mark_lent(cg, &list);
+    }
+    list
 }
 
 /// A string list (`lines`/`words`/`split`) reaching a NAME is converted to the

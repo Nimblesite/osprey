@@ -34,8 +34,8 @@ Contract: [MEM-OWNERSHIP-STATIC](../specs/compiler/0018-MemoryManagement.md#comp
   - 2026-11-23, single-file `.osp` programs compiled with `--llvm --memory=ownership`: tests 17 of 180 accepted (4,954 refusals: 3,624 stored, 407 bound, 304 kept, 295 joined, 239 returned, 85 shared); examples 7 of the 29 that compile alone. First run the same day, before any move was added: tests 15 of 180, 5,956 refusals.
   - 2026-11-24, after path moves, inferred borrows and owned parameters: tests 18 of 181 accepted, 4,699 refusals (3,744 stored, 237 returned, 207 kept, 197 bound, 180 joined, 85 shared, 49 given). Every accepted test and example prints its collector output with zero live blocks and freed memory scribbled.
   - Open, found on everyday idioms rather than the corpus: a collection read (`mapGet(m, k) ?: d`) whose Result should lend its payload instead of owning it; a record update whose base is read again, which shares every field it does not replace; a field moved out of a value at its last use. Accumulators and identity functions are accepted since owned parameters.
-  - 2026-11-24, with lent closures: tests 18 of 181 accepted, 3,200 refusals.
-  - Largest open class in the corpus: a list of closures passed to a function while what they capture is read again (the test harness idiom `checkAll(name, [|| ...])`). A closure written directly as an argument lends its captures since lent closures; one inside a list does not yet.
+  - 2026-11-24, with lent closures and lent argument lists: tests 18 of 181 accepted, 2,996 refusals (2,043 stored, 248 kept, 237 returned, 199 bound, 173 joined, 85 shared, 11 given).
+  - Largest open class in the corpus: values stored in a record, Result or collection that is then only read, where the stored value has another reader. Closures and list literals written as arguments lend since lent closures.
 
 ## Phase 2 — codegen and runtime
 

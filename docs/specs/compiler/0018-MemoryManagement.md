@@ -358,8 +358,9 @@ refused"; the rest are the contract the remaining phases build.
   argument of a call to an Osprey function borrows what it captures. Its cell
   dies with the calling statement and the callee can't keep a parameter, so
   the cell owns none of its captures; binding, storing or returning it is
-  refused. A closure inside a list that is passed, and one bound to a name
-  before it is passed, still own their captures. A handler owns its state.
+  refused. A list literal written as an argument lends the same way: it holds
+  its elements, closures included, without owning them. A closure bound to a
+  name before it is passed still owns its captures. A handler owns its state.
   `perform` lends its arguments to the handler until it resumes, and the
   resumed value moves to the performer. A continuation that owns managed
   values is resumed at most once.

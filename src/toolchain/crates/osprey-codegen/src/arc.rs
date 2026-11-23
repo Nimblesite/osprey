@@ -490,7 +490,7 @@ pub(crate) fn escape_retain(cg: &mut Codegen, v: &Value) {
 mod constructors;
 mod last_use;
 mod lends;
-pub(crate) use lends::{lending, lends, mark_lent, set_lending};
+pub(crate) use lends::{is_lent, lending, lends, lends_list, mark_lent, set_lending};
 mod unwind;
 pub(crate) use constructors::{consume_into_store, store_owned, transfer_or_retain};
 pub(crate) use last_use::release_dead_after;

@@ -143,6 +143,32 @@ fn lends() = {
     "lends ${first} ${second} ${made.text} ${toString(listLength(noise))}"
 }
 
+/// A list written as an argument holds its elements without owning them, and
+/// so do the closures in it: every binding named there is still read afterwards.
+fn runAll(checks) = match checks {
+    [] => 0
+    [check, ...rest] => wrapAdd(match check() {
+            true => 1
+            false => 0
+        }, runAll(rest))
+}
+
+fn longest(boxes) = match boxes {
+    [] => 0
+    [box, ...rest] => match length(box.text) > longest(rest) {
+        true => length(box.text)
+        false => longest(rest)
+    }
+}
+
+fn lentLists() = {
+    let made = Box { text: "made${toString(1)}" }
+    let other = Box { text: "other${toString(22)}" }
+    let passed = runAll([|| => made.text == "made1", || => other.text == "nope", || => made.text != other.text])
+    let size = longest([made, other, Box { text: churn(3) }])
+    "lent lists ${toString(passed)} ${toString(size)} ${made.text} ${other.text}"
+}
+
 /// A binding that names part of a live value borrows it, and the value it was
 /// read from stays alive until the borrower's own last read.
 fn churn(n) = "x${toString(n)}${toString(n)}${toString(n)}"
@@ -162,4 +188,4 @@ fn borrows() = {
     "borrows ${shown} ${same.text} ${toString(listLength(noise))} ${left.text}"
 }
 
-print("${spans()}\n${elements()}\n${collections()}\n${lastUses()}\n${paths()}\n${owned()}\n${errors()}\n${captures()}\n${lends()}\n${borrows()}")
+print("${spans()}\n${elements()}\n${collections()}\n${lastUses()}\n${paths()}\n${owned()}\n${errors()}\n${captures()}\n${lends()}\n${lentLists()}\n${borrows()}")
