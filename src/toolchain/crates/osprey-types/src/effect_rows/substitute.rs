@@ -18,7 +18,13 @@ impl Analyzer<'_> {
             });
             if use_.level == target_level {
                 let argument = arguments.get(use_.index).and_then(Option::as_ref);
-                if argument.is_some_and(|value| self.projection_absent(value, &use_.projection)) {
+                if argument.is_some_and(|value| {
+                    if target_level == 0 {
+                        self.projection_absent(value, &use_.projection)
+                    } else {
+                        self.projection_absent_before_lift(value, &use_.projection)
+                    }
+                }) {
                     continue;
                 }
                 // The callback is caller provenance, but the arguments this
