@@ -396,16 +396,23 @@ static void t_input_allocation_failure(void) {
 // setup allocates a new thread's TLS with this malloc and then asserts
 // `errno == ENOMEM` on NULL, so a refusal that leaves errno alone aborts the
 // whole binary from inside pthread_create instead of failing that one spawn.
+// Each result lands in a volatile slot: GCC deletes a malloc whose result is
+// only compared with NULL and folds the comparison to false, so the refusal
+// under test would never be asked for.
 static void t_injected_refusals_report_enomem(void) {
+  void *volatile got;
   errno = 0;
   osp_alloc_fail_next();
-  CHECK(malloc(64) == NULL && errno == ENOMEM);
+  got = malloc(64);
+  CHECK(got == NULL && errno == ENOMEM);
   errno = 0;
   osp_alloc_fail_next();
-  CHECK(calloc(4, 16) == NULL && errno == ENOMEM);
+  got = calloc(4, 16);
+  CHECK(got == NULL && errno == ENOMEM);
   errno = 0;
   volatile size_t huge = (size_t)-1; // read at run time: an overflow, not a constant
-  CHECK(calloc(huge, 16) == NULL && errno == ENOMEM);
+  got = calloc(huge, 16);
+  CHECK(got == NULL && errno == ENOMEM);
   void *held = malloc(8);
   errno = 0;
   osp_alloc_fail_next();
@@ -414,7 +421,8 @@ static void t_injected_refusals_report_enomem(void) {
   free(grown == NULL ? held : grown);
   errno = 0;
   osp_alloc_fail_size(48);
-  CHECK(malloc(48) == NULL && errno == ENOMEM);
+  got = malloc(48);
+  CHECK(got == NULL && errno == ENOMEM);
   osp_alloc_fail_off();
 }
 
