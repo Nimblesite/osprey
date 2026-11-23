@@ -152,5 +152,9 @@ Extends the current video to the full four steps using
       in VS Code).
 - [x] Update each watch page with the package links and the commands it runs.
 - [x] Re-measure durations with `make -C src/toolchain/website video-metadata`.
-- [ ] Add the rules to the docs specs, and cite their IDs in the tests and
-      the video script.
+- [x] Add the rules to the docs specs ([Tutorial videos](../specs/tooling/DocumentationTools.md#tutorial-videos));
+      `videos.spec.js` cites `KIND`, `LENGTH` and `FINISHED`, and the film
+      scripts cite `EXPLAIN`.
+- [ ] Cite `CODE` and `FRESH` in the website tests once those tests exist. They
+      need the factory to publish each film's code scenes (file, line range,
+      start and end time) beside its chapters, so the site can check them.
