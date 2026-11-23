@@ -453,6 +453,7 @@ int main(int argc, char **argv) {
   t_finalizer_at_sweep();
   t_debug_reports(argv[0]);
   t_heap_ceiling(argv[0]);
+  t_runner_poll_ends_an_orphan();
   t_scanned_blocks_are_roots();
   t_threads_collect_together();
   t_parked_thread_stays_a_root();
