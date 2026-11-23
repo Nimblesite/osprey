@@ -104,6 +104,8 @@ Modules with a browser dispatcher retain their initialized globals after the WAS
 
 ## Target Capability Checking [WASM-TARGET-CAPABILITIES]
 
+Child processes are outside the portable `wasm32-wasip1` target contract. Its [WASI Preview 1 interface](https://github.com/WebAssembly/WASI/blob/fae981bae14809d91f9bc2d63852d461f331d161/preview1/witx/wasi_snapshot_preview1.witx) has no operation to start or wait for a child process. The compiler permanently rejects `spawnProcess`, `awaitProcess` and `cleanupProcess` on this target.
+
 Before LLVM emission, the compiler checks the complete program for unsupported target constructs, including inside otherwise unused helper functions. `--check`, `--compile`, `--run`, and `--llvm` enforce the same rules. Diagnostics name `wasm32`, the offending operation or construct, and the unavailable capability. Native debugger and profiler flags are rejected for this target, including with `--check` and `--llvm`.
 
 Fibers/channels and their scheduling operations, process APIs, built-in HTTP/WebSocket operations, terminal APIs, and arbitrary host FFI are rejected at compile time. Multi-shot (`many`) continuations are always available and are never rejected ([WASM-TARGET-EFFECTS-MANY](#multi-shot-continuations-wasm-target-effects-many)); other effect constructs require the capabilities specified by [MULTI-WASM](../language/0017-AlgebraicEffects.md). Runtime-provided browser bridge imports remain supported. File, random, and input operations use their portable runtime implementations; access still depends on the WASI host. An unavailable capability must produce a compile error, never a link-time surprise. Removing a rejection requires a working runtime implementation and target tests.

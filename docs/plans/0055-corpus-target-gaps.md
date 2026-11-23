@@ -302,7 +302,7 @@ Continuation reasons below end with `(wasm32 acquires one-shot continuations whe
 | `src/osprey/tests/regressions/fiber/many_handles.test.osp` | fiber concurrency |
 | `src/osprey/tests/regressions/fiber/many_handles.test.ospml` | fiber concurrency |
 
-- [ ] Decide whether `spawnProcess` exists on wasm32, since it needs fork/exec. Acceptance: implemented with rows deleted, or the rows state that it is permanent. (4 rows)
+- [x] Child process spawning is permanently unavailable on the portable `wasm32-wasip1` target. The manifest identifies the four permanent rows. On 2026-11-23, compiling both programs in Default and ML with `--check --target=wasm32` rejected all four with their pinned diagnostic. See [the target contract](../specs/compiler/0022-WebAssemblyTarget.md#target-capability-checking-wasm-target-capabilities).
 
 | Program | Reason |
 | --- | --- |
