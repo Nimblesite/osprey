@@ -368,8 +368,10 @@ static void t_sweep_reseats_survivors(void) {
 // live set at each collection made the next cycle regrow it, rehashing every
 // block at each doubling. It is given back once a cycle peaks below it. The
 // blocks are past the largest size class, the only ones the table tracks, and
-// each cycle allocates under the 1 MiB budget. Run in a fresh process so
-// unrelated objects retained by conservative roots cannot use that budget.
+// a 64 MiB budget leaves each 0.9 MiB cycle far below it, so only osp_collect
+// collects here: at 1 MiB a few blocks a stale stack word kept alive tipped a
+// cycle over and collected mid-churn on Linux. Run in a fresh process so
+// unrelated objects retained by conservative roots stay out of it.
 #define STEADY_BLOCKS 900
 #define STEADY_BYTES 1040
 #define STEADY_CYCLES 5
@@ -452,7 +454,7 @@ int main(int argc, char **argv) {
   t_root_keeps_alive();
   t_interior_pointer();
   t_sweep_reseats_survivors();
-  gc_test_child_prints(argv[0], "OSPREY_GC_HEAP_MB=1", "--steady-table", "steady table\n");
+  gc_test_child_prints(argv[0], "OSPREY_GC_HEAP_MB=64", "--steady-table", "steady table\n");
   t_many_rooted_survive();
   t_size_class_pages(argv[0]);
   t_finalizer_at_sweep();
