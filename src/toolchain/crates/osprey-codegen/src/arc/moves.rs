@@ -18,6 +18,17 @@ pub(crate) struct Movable {
     conditionals: usize,
 }
 
+/// Operators that always evaluate both operands, each once.
+const STRICT: [&str; 11] = ["+", "-", "*", "/", "%", "==", "!=", "<", "<=", ">", ">="];
+
+/// The expression an interpolated part embeds, if it embeds one.
+fn embedded(part: &osprey_ast::InterpolatedPart) -> Option<&Expr> {
+    match part {
+        osprey_ast::InterpolatedPart::Expr(e) => Some(e),
+        osprey_ast::InterpolatedPart::Text(_) => None,
+    }
+}
+
 /// How often a statement reads each name.
 #[derive(Default)]
 struct Reads {
@@ -32,6 +43,15 @@ impl Reads {
         }
     }
 
+    /// Each name the lambda `e` closes over is read once, by its capture.
+    fn captures(&mut self, e: &Expr) {
+        let mut free = BTreeSet::new();
+        osprey_ast::freevars::free_idents(e, &mut free);
+        for name in &free {
+            self.read(name);
+        }
+    }
+
     /// Every name `e` mentions is read some unknown number of times.
     fn unknown(&mut self, e: &Expr) {
         let mut free = BTreeSet::new();
@@ -39,14 +59,29 @@ impl Reads {
         self.more.extend(free);
     }
 
-    /// Count reads through the forms whose operands each run exactly once:
-    /// constructor fields, list elements and call arguments. Anything else may
-    /// branch, loop or defer, so what it mentions isn't counted as one read.
+    /// Count reads through the forms whose operands each run exactly once.
+    /// Anything else may branch, loop or defer, so what it mentions isn't
+    /// counted as one read.
     fn visit(&mut self, e: &Expr) {
         match e {
             Expr::Integer(_) | Expr::Float(_) | Expr::Str(_) | Expr::Bool(_) => {}
             Expr::Identifier(name) => self.read(name),
+            // A closure cell is built once and takes each capture once.
+            Expr::Lambda { .. } => self.captures(e),
             Expr::List(items, _) => self.visit_all(items),
+            Expr::InterpolatedStr(parts) => self.visit_all(parts.iter().filter_map(embedded)),
+            Expr::FieldAccess { target, .. } => self.visit(target),
+            Expr::Unary { operand, .. } => self.visit(operand),
+            Expr::Binary {
+                op, left, right, ..
+            } if STRICT.contains(&op.as_str()) => self.visit_all([&**left, &**right]),
+            _ => self.visit_application(e),
+        }
+    }
+
+    /// A constructor or a call: every field and argument runs once.
+    fn visit_application(&mut self, e: &Expr) {
+        match e {
             Expr::TypeConstructor { name, fields, .. } => {
                 let _ = self.more.insert(name.clone());
                 self.visit_all(fields.iter().map(|field| &field.value));

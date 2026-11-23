@@ -128,7 +128,7 @@ pub(crate) fn cell_value(
         let lty = c.val.llvm_ty();
         // Each captured pointer is a new reference the cell's drop releases —
         // including the same variable captured by two closures [GC-ARC-PERCEUS].
-        crate::arc::dup_store(cg, &lty, &c.val.operand);
+        crate::arc::store_owned(cg, &lty, &c.val.operand);
         let p = cg.emit_reg(format!(
             "getelementptr {cell_ty}, {cell_ty}* {cell}, i32 0, i32 {slot}"
         ));

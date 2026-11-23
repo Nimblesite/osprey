@@ -94,6 +94,20 @@ fn main() = {
 }
 "#;
 
+// A closure takes what it captures when the capture is that binding's last use.
+const CAPTURED_AT_LAST_USE: &str = r#"type Box = { text: string }
+type Named = { label: (int) -> string }
+
+fn apply(f, n) = f(n)
+
+fn main() = {
+    let made = Box { text: "a${toString(1)}" }
+    let suffix = "z${toString(2)}"
+    let named = Named { label: |n| => "${made.text}${toString(n)}" }
+    print("${named.label(3)}${apply(|n| => "${suffix}${toString(n)}", 4)}")
+}
+"#;
+
 // An Error owns its message once and joins a Success without a copy.
 const FRESH_ERRORS: &str = r#"fn find(n) = match n {
     0 => Error { message: "no ${toString(n)}" }
@@ -142,6 +156,7 @@ fn a_program_whose_values_each_have_one_owner_runs_and_frees_everything() -> std
     assert_accepted("elements", FRESH_ELEMENTS)?;
     assert_accepted("last_use", LAST_USE_MOVES)?;
     assert_accepted("errors", FRESH_ERRORS)?;
+    assert_accepted("captured", CAPTURED_AT_LAST_USE)?;
     assert_accepted("fresh", FRESH_VALUES)
 }
 
