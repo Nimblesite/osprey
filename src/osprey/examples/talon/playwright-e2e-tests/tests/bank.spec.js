@@ -18,7 +18,20 @@ const MALFORMED_MUTATIONS = [
   ['/api/accounts', {}, 'owner name required'],
 ];
 
-const INVALID_AMOUNTS = ['-0.50', '1..2', '1.001', '1.00evil', '12,34', '$'];
+const INVALID_AMOUNTS = ['-0.50', '1..2', '1.001', '1.00evil', '12,34', '$', '0', '9223372036854775807.50'];
+
+async function journal(request) {
+  return (await request.get(API + '/api/activity')).json();
+}
+
+function counted(feed, kind) {
+  return feed.filter((entry) => entry.kind === kind).length;
+}
+
+function formattedTotal(accounts) {
+  const cents = accounts.reduce((sum, account) => sum + account.cents, 0);
+  return `$${(cents / 100).toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+}
 
 async function accountById(request, id) {
   const accounts = await (await request.get(API + '/api/accounts')).json();
@@ -103,6 +116,17 @@ async function rejectsMalformedMutations({ request }) {
   expect(await (await request.get(API + '/api/accounts')).json()).toEqual(before);
 }
 
+async function refusesOverdrafts({ request }) {
+  const before = await accountById(request, 3);
+  const reply = await request.post(API + '/api/withdraw', {
+    data: { account: 3, cents: 99999999, note: 'API protected refusal' },
+  });
+  expect(reply.status()).toBe(422);
+  expect(await reply.json()).toEqual({ error: 'insufficient funds' });
+  expect((await journal(request))[0]).toMatchObject({ account: 3, kind: 'refused', cents: 99999999, note: 'API protected refusal' });
+  expect(await accountById(request, 3)).toEqual(before);
+}
+
 async function servesHostAnd404s({ request }) {
   const page = await request.get('/');
   expect(page.headers()['content-type']).toContain('text/html');
@@ -163,6 +187,10 @@ async function filtersAndSearchesActivity({ page }) {
   await expect(page.getByText('dinner split')).toHaveCount(0);
   await page.getByRole('textbox', { name: 'Search' }).fill('nobody at all');
   await expect(page.getByText('No matching activity')).toBeVisible();
+  await page.getByRole('textbox', { name: 'Search' }).fill('vintage synthesizer');
+  await expect(page.getByText('vintage synthesizer')).toHaveCount(1);
+  await expect(page.getByText('Marcus Webb').first()).toBeVisible();
+  await expect(page.getByText('API protected refusal')).toHaveCount(0);
 }
 
 async function depositsAndTransfersAtomically({ page, request }) {
@@ -209,7 +237,7 @@ async function opensAnAccount({ page, request }) {
   await page.getByRole('button', { name: 'Create account' }).click();
   await noticed(page, 'Account opened');
   const accounts = await (await request.get(API + '/api/accounts')).json();
-  expect(accounts.at(-1).owner).toBe('<img src=x onerror=alert(1)> Ada');
+  expect(accounts.at(-1)).toMatchObject({ owner: '<img src=x onerror=alert(1)> Ada', cents: 0, balance: '$0.00' });
   await goToPage(page, 'Accounts');
   await expect(page.getByText('<img src=x onerror=alert(1)> Ada').first()).toBeVisible();
   await expect(page.locator('#osprey-root img[src="x"]')).toHaveCount(0);
@@ -223,10 +251,83 @@ async function fitsAPhone({ page }) {
   expect(overflow).toBeLessThanOrEqual(0);
 }
 
+async function tellerMove(page, mode, account, amount, note) {
+  const field = mode === 'Deposit' ? 'Deposit to' : 'Withdraw from';
+  const confirm = mode === 'Deposit' ? 'Confirm deposit' : 'Confirm withdrawal';
+  await moveMoney(page, mode, { choose: [[field, String(account)]], amount, note, confirm });
+}
+
+async function expectTellerJournal(request, startJournal) {
+  const feed = await journal(request);
+  expect(feed).toHaveLength(startJournal + 3);
+  expect(feed.slice(0, 3).map(({ kind, note }) => ({ kind, note }))).toEqual([
+    { kind: 'refused', note: 'yacht deposit' },
+    { kind: 'debit', note: 'atm cash' },
+    { kind: 'credit', note: 'payroll top-up' },
+  ]);
+  return feed;
+}
+
+async function expectTellerActivity(page, feed) {
+  await goToPage(page, 'Activity');
+  await expect(page.getByRole('button', { name: `All ${feed.length}`, exact: true })).toBeVisible();
+  await page.getByRole('textbox', { name: 'Search' }).fill('yacht deposit');
+  await expect(page.getByText('yacht deposit')).toHaveCount(1);
+  await expect(page.getByText('Marcus Webb').first()).toBeVisible();
+  await expect(page.getByText('atm cash')).toHaveCount(0);
+  await page.getByRole('textbox', { name: 'Search' }).fill('');
+  await page.getByRole('button', { name: `In ${counted(feed, 'credit')}`, exact: true }).click();
+  await expect(page.getByText('payroll top-up')).toBeVisible();
+  await expect(page.getByText('atm cash')).toHaveCount(0);
+}
+
+async function runsAFullTellerSession({ page, request }) {
+  // The overdraft's 422 is logged by the browser as a failed resource; only script errors count here.
+  const errors = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  const one = await accountById(request, 1);
+  const two = await accountById(request, 2);
+  const startJournal = (await journal(request)).length;
+  await openApp(page);
+  await tellerMove(page, 'Deposit', 1, '150.00', 'payroll top-up');
+  await noticed(page, 'Deposit complete');
+  await tellerMove(page, 'Withdraw', 2, '17.85', 'atm cash');
+  await noticed(page, 'Withdrawal complete');
+  await tellerMove(page, 'Withdraw', 2, '50000.00', 'yacht deposit');
+  await noticed(page, 'insufficient funds');
+  const credited = await accountById(request, 1);
+  expect(credited.cents).toBe(one.cents + 15000);
+  expect((await accountById(request, 2)).cents).toBe(two.cents - 1785);
+  const feed = await expectTellerJournal(request, startJournal);
+  await goToPage(page, 'Accounts');
+  await expect(page.getByText(credited.balance).first()).toBeVisible();
+  await expectTellerActivity(page, feed);
+  expect(errors).toEqual([]);
+}
+
+async function keepsTheOverviewConsistent({ page, request }) {
+  const accounts = await (await request.get(API + '/api/accounts')).json();
+  const feed = await journal(request);
+  await openApp(page);
+  await expect(page.getByText(formattedTotal(accounts)).first()).toBeVisible();
+  await expect(page.getByText(`Across ${accounts.length} protected client accounts`)).toBeVisible();
+  await goToPage(page, 'Accounts');
+  for (const { owner, balance } of accounts) {
+    await expect(page.getByText(owner).first()).toBeVisible();
+    await expect(page.getByText(balance).first()).toBeVisible();
+  }
+  await goToPage(page, 'Activity');
+  for (const name of [`All ${feed.length}`, `In ${counted(feed, 'credit')}`, `Out ${counted(feed, 'debit')}`, `Declined ${counted(feed, 'refused')}`]) {
+    await expect(page.getByRole('button', { name, exact: true })).toBeVisible();
+  }
+  for (const name of ['Security', 'Move', 'Accounts', 'Overview']) await goToPage(page, name);
+}
+
 test.describe('Talon Bank JSON API', () => {
   test('lists seeded accounts with exact machine and display money', listsSeededAccounts);
   test('serves a newest-first, double-entry activity journal', servesActivityJournal);
   test('rejects malformed mutations without changing balances', rejectsMalformedMutations);
+  test('refuses overdrafts and journals the attempt', refusesOverdrafts);
   test('serves the web client apart from the API, with CORS and proper 404 statuses', servesHostAnd404s);
 });
 
@@ -239,4 +340,6 @@ test.describe('Talon Bank as an Osprey Native app in the browser', () => {
   test('refuses malformed money before it reaches the ledger', refusesMalformedMoney);
   test('opens an account and shows hostile text as text', opensAnAccount);
   test('fits a phone screen without horizontal overflow', fitsAPhone);
+  test('runs a full teller session kept in lock-step across UI, API, and journal', runsAFullTellerSession);
+  test('keeps the overview totals consistent while navigating every page', keepsTheOverviewConsistent);
 });

@@ -107,6 +107,10 @@ test ("typed amounts read as whole cents, and anything else as zero", \() =>
     expect (Amounts::cents "1.234", 0)
     expect (Amounts::cents "1.", 0)
     expect (Amounts::cents "abc", 0)
+    expect (Amounts::cents "9223372036854775807.50", 0)
+    expect (Amounts::cents "92233720368547758.08", 0)
+    expect (Amounts::cents "92233720368547758.07", 9223372036854775807)
+    expect (Amounts::cents "99999999999999999999", 0)
     expect (Amounts::cents "", 0))
 test ("a launch asks for both listings from the demo server and shows progress", \() => bench (\() =>
     launchWith []
