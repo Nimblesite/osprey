@@ -9,6 +9,7 @@ import {
 } from "../../client/src/module-explorer";
 import { runFrontendCommand } from "../../client/src/package-frontend";
 import { extensionRoot, resolveBuiltOsprey, uriPath, writeStubExecutable } from "./osprey-test-env";
+import { activateWithServer, connectEditorBrowser } from "./profiler-kit";
 
 const labels = (nodes: readonly ModuleNode[]) => nodes.map((node) => node.label);
 
@@ -45,6 +46,36 @@ suite("Module Explorer [EDITOR-MODULE-EXPLORER]", () => {
       trusted: () => true,
       ...overrides,
     });
+
+  test("keyboard navigation selects projects, expands groups and returns to the parent", async function () {
+    this.timeout(60000);
+    await activateWithServer();
+    const browser = await connectEditorBrowser();
+    try {
+      await vscode.commands.executeCommand("osprey.moduleExplorer.focus");
+      const page = browser.contexts().flatMap(context => context.pages()).find(page => page.url().includes("workbench"));
+      assert.ok(page, "real VS Code workbench");
+      const first = page.getByRole("treeitem", { name: /^first(?:,| |$)/ });
+      const second = page.getByRole("treeitem", { name: /^second(?:,| |$)/ });
+      await first.waitFor();
+      await page.keyboard.press("Home");
+      await page.keyboard.press("ArrowDown");
+      await second.and(page.locator(".focused")).waitFor();
+      await page.keyboard.press("ArrowUp");
+      await first.and(page.locator(".focused")).waitFor();
+      await page.keyboard.press("ArrowRight");
+      await first.and(page.locator('[aria-expanded="true"]')).waitFor();
+      const tree = page.getByRole("tree").filter({ has: first });
+      const children = tree.getByRole("treeitem", { level: 2 });
+      await children.first().waitFor({ timeout: 15000 });
+      await page.keyboard.press("ArrowDown");
+      await children.and(page.locator(".focused")).waitFor();
+      await page.keyboard.press("ArrowLeft");
+      await first.and(page.locator(".focused")).waitFor();
+      await page.keyboard.press("ArrowLeft");
+      await first.and(page.locator('[aria-expanded="false"]')).waitFor();
+    } finally { await browser.close(); }
+  });
 
   test("the real compiler's modules, shared namespaces and sources across flavors, with navigation", async () => {
     const root = project({

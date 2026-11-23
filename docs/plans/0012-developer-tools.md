@@ -99,7 +99,7 @@ Depends on: lspkit shared profiler + memory contracts ([`LSP-PROFILER-SPEC.md`](
 
 ## Module explorer
 
-- [ ] Add an automated keyboard test for the module explorer; the view is VS Code's native tree, whose keyboard operation is not separately exercised today [EDITOR-MODULE-EXPLORER]. Check: `src/toolchain/vscode-extension/test/suite/module-explorer.test.ts` exercises keyboard navigation and passes.
+- [x] The real VS Code module explorer responds to Home and the arrow keys across two project roots. The test checks focus, expansion, parent traversal and collapse in the native tree [EDITOR-MODULE-EXPLORER]. All seven module-explorer tests passed on 2026-11-23.
 
 ## Zed integration [EDITOR-ZED]
 
