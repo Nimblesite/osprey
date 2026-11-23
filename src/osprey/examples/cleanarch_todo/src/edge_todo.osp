@@ -28,33 +28,27 @@ module EdgeTodo {
     /// The route table of both endpoint groups. A PUT or PATCH by id is a 400
     /// unless the url id is the payload id: `if (id != command.Id) return BadRequest()`.
     fn routed(route, query, doc) = match route {
-        ["GET", "api", "TodoLists"] => Ask { request: GetTodos, status: 200, location: "" }
-        ["POST", "api", "TodoLists"] => Ask {
-            request: CreateList { list: NewList { title: Doc::text(doc, "title"), colour: Doc::text(doc, "colour") } },
-            status: 201,
-            location: "/api/TodoLists"
-        }
-        [_, "api", "TodoLists", "purge"] => Ask { request: PurgeTodoLists, status: 200, location: "" }
+        ["GET", "api", "TodoLists"] => routeTo(GetTodos, 200, "")
+        ["POST", "api", "TodoLists"] => routeTo(CreateList {
+            list: NewList { title: Doc::text(doc, "title"), colour: Doc::text(doc, "colour") }
+        }, 201, "/api/TodoLists")
+        [_, "api", "TodoLists", "purge"] => routeTo(PurgeTodoLists, 200, "")
         ["PUT", "api", "TodoLists", id] => byId(id, Doc::number(doc, "id"), UpdateList { edit: ListEdit {
             id: Doc::number(doc, "id"),
             title: Doc::text(doc, "title"),
             colour: Doc::text(doc, "colour")
         } })
         ["DELETE", "api", "TodoLists", id] => byId(id, parseInt(id) ?: 0, DeleteList { id: parseInt(id) ?: 0 })
-        ["GET", "api", "TodoItems"] => Ask {
-            request: ItemsWithPagination { query: ItemQuery {
+        ["GET", "api", "TodoItems"] => routeTo(ItemsWithPagination {
+            query: ItemQuery {
                 listId: asked(query, "listId", 0),
                 pageNumber: asked(query, "pageNumber", 1),
                 pageSize: asked(query, "pageSize", 10)
-            } },
-            status: 200,
-            location: ""
-        }
-        ["POST", "api", "TodoItems"] => Ask {
-            request: CreateItem { item: NewItem { listId: Doc::number(doc, "listId"), title: Doc::text(doc, "title") } },
-            status: 201,
-            location: "/api/TodoItems"
-        }
+            }
+        }, 200, "")
+        ["POST", "api", "TodoItems"] => routeTo(CreateItem {
+            item: NewItem { listId: Doc::number(doc, "listId"), title: Doc::text(doc, "title") }
+        }, 201, "/api/TodoItems")
         ["PUT", "api", "TodoItems", id] => byId(id, Doc::number(doc, "id"), UpdateItem { edit: ItemEdit {
             id: Doc::number(doc, "id"),
             title: Doc::text(doc, "title"),
@@ -69,16 +63,17 @@ module EdgeTodo {
             }
         })
         ["DELETE", "api", "TodoItems", id] => byId(id, parseInt(id) ?: 0, DeleteItem { id: parseInt(id) ?: 0 })
-        [_, "api", "TodoLists"] => Refuse { status: 405, why: "method not allowed" }
-        [_, "api", "TodoItems"] => Refuse { status: 405, why: "method not allowed" }
+        [_, "api", "TodoLists" | "TodoItems"] => Refuse { status: 405, why: "method not allowed" }
         _ => Refuse { status: 404, why: "no such route" }
     }
+
+    fn routeTo(request, status, location) = Ask { request: request, status: status, location: location }
 
     /// `request` with a 204, when url segment `id` is the number `expected`.
     fn byId(id, expected, request) = match parseInt(id) {
         Error { message } => Refuse { status: 400, why: message }
         Success { value: found } => match found == expected {
-            true => Ask { request: request, status: 204, location: "" }
+            true => routeTo(request, 204, "")
             false => Refuse { status: 400, why: "the id in the url must match the id in the payload" }
         }
     }

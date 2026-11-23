@@ -164,7 +164,7 @@ The port is half the size of the C# it reproduces, counted two ways.
 | | Files | Lines | Code lines |
 | --- | --- | --- | --- |
 | C# files the port reproduces | 54 | 1,675 | 1,252 |
-| Osprey port | 10 | 836 | 624 |
+| Osprey port | 11 | 837 | 620 |
 | Osprey only: retry and rollback, [todo_replay.osp](src/todo_replay.osp) | 1 | 124 | 93 |
 | Osprey only: what-if probes, [todo_probe.osp](src/todo_probe.osp) | 1 | 119 | 80 |
 
@@ -176,7 +176,7 @@ The pipeline itself shrinks the most:
 | --- | --- | --- | --- |
 | LoggingBehaviour.cs | 35 | 1 | One line of `dispatch` |
 | UnhandledExceptionBehaviour.cs | 30 | 11 | The `Fail` handler and `logUnhandled` |
-| AuthorizationBehaviour.cs | 80 | 17 | `authorize`, `allows`, `denial`, `inAnyRole` |
+| AuthorizationBehaviour.cs | 80 | 16 | `authorize`, `allows`, `denial` |
 | ValidationBehaviour.cs | 34 | 8 | `validated` |
 | PerformanceBehaviour.cs | 54 | 9 | Two lines of `dispatch` and `warnWhenSlow` |
 | DependencyInjection.cs | 25 | 0 | The order of the lines in `dispatch` |
