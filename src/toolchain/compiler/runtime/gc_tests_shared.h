@@ -82,6 +82,7 @@ void scrub_stack(void);
 
 // memory_gc_page_tests.c
 void pages_off_child(void);
+void mark_stack_refused_child(void);
 void t_size_class_pages(const char *self);
 
 #endif

@@ -71,8 +71,10 @@ managed value boxed into a channel is likewise retained for the receiving side.
 The runtime may therefore co-own managed allocations across fiber threads.
 Before creating the first pthread-backed fiber it calls
 `osp_mem_notify_multithreaded`: ARC switches from its single-threaded fast path
-to synchronized retain/release operations, while the conservative GC disables
-collection after a second allocator thread appears. Deterministic fiber mode
+to synchronized retain/release operations, while the conservative GC takes its heap lock on every allocation and
+collection from then on. A fiber or effect thread registers with the collector
+and keeps collection on; the first allocation from a thread that never
+registered turns collection off for the rest of the run ([MEM-EFFECT-BATON]). Deterministic fiber mode
 runs the same ownership protocol without creating a thread.
 
 Under the planned compile-time ownership backend
@@ -89,7 +91,7 @@ GC makes ordinary `osp_retain` and `osp_release` calls no-ops, reclaiming unreac
 
 The tradeoff is delayed reclamation, conservative retention and collection pauses. Choose `--memory=arc` when prompt reclamation or avoiding tracing pauses matters, then measure the application. Both backends are automatic and require no ownership annotations. Files, sockets and other external resources still need explicit cleanup under either backend.
 
-The current GC is supported on Apple and glibc-Linux, not Windows, and stops collecting after a second allocator thread appears. Use ARC on Windows and for native programs that need reclamation across allocating fiber threads. WebAssembly, mobile and Python-library targets default to ARC and reject explicit tracing GC. Their managed runtime selection never falls back to unmanaged allocation. Exported host-library globals remain alive for later calls; `--entry-only` programs release globals on return, and native, WASM and mobile differential suites require zero live ARC allocations.
+The current GC is supported on Apple and glibc-Linux, not Windows. It stops collecting once a thread that never registered with it allocates ([MEM-EFFECT-BATON]). Use ARC on Windows and for native programs whose own threads allocate. WebAssembly, mobile and Python-library targets default to ARC and reject explicit tracing GC. Their managed runtime selection never falls back to unmanaged allocation. Exported host-library globals remain alive for later calls; `--entry-only` programs release globals on return, and native, WASM and mobile differential suites require zero live ARC allocations.
 
 All code-generated heap allocation sites use the same IR symbols, so native
 backend selection only changes the runtime archive passed to the linker:
@@ -101,6 +103,9 @@ backend selection only changes the runtime archive passed to the linker:
 The C runtime memory tests exercise each backend directly. The differential
 conformance targets exercise compiled Osprey programs and compare their output;
 the ARC target additionally checks its live-allocation counter at process exit.
+`OSPREY_ARC_DEBUG=1` arms that counter and prints the count of blocks still
+live when the program exits; `OSPREY_ARC_DEBUG=2` also lists each survivor with
+its kind, size and reference count. Unset, ARC keeps no counters.
 
 ### Tracing Heap Layout [MEM-BACKENDS-GC-HEAP]
 
@@ -185,9 +190,15 @@ are still not scanned, so the GC backend is **not part of the supported
 Windows contract** until global-root discovery and its required Windows
 regression are implemented. Windows native callers should select `--memory=arc` explicitly.
 
-Collection is restricted to the initial allocator thread. The first allocation
-from another thread permanently disables collection, while allocation-table
-access remains synchronized.
+Any registered thread may collect once every other registered thread is parked
+([MEM-GC-SAFEPOINT]). The first allocation from a thread that never registered
+permanently disables collection, while heap access remains synchronized.
+
+The trace keeps its pending blocks on a stack that grows on demand. When that
+stack cannot get memory, the block that found no room is already marked, and the
+collector scans every marked block again until a pass drops nothing. Running out
+of memory during a collection therefore slows it and never frees a reachable
+block (`mark_stack_refused_child` in `memory_gc_page_tests.c`).
 
 #### Leaf blocks are marked, never scanned [GC-TRACE-LEAF]
 

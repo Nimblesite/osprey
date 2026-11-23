@@ -103,4 +103,16 @@ static void gc_scan_pinned(void) {
   gc_pages_scan_pinned();
 }
 
+// Scan every marked table block and page cell again: the recovery pass of
+// gc_trace for entries the mark stack dropped.
+static void gc_rescan_marked(void) {
+  for (size_t i = 0; i < g_cap; i++) {
+    const OspGcMeta *meta = &g_tab[i].meta;
+    if (g_tab[i].base != 0 && (meta->mark & (GC_MARKED | GC_LEAF)) == GC_MARKED) {
+      gc_scan_range(g_tab[i].base, g_tab[i].base + meta->size);
+    }
+  }
+  gc_pages_rescan_marked();
+}
+
 #endif
