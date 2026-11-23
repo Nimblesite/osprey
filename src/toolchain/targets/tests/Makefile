@@ -7,7 +7,7 @@ else
 override ROOT := .
 include Makefile
 
-.PHONY: agent bank bank-app casting cleanarch flock inbox painting python-app-ports qwen qwen-pull-headless signal-flow storage synth tally workbench workbench-proof-assets
+.PHONY: agent bank bank-app casting cleanarch flock inbox painting python-app-ports qwen qwen-pull-headless signal-flow storage synth tally web-host workbench workbench-proof-assets
 
 ## agent: Osprey Agent's turn logic and its real update path, with scripted completions.
 agent: _runtime
@@ -99,6 +99,10 @@ pocket-orchestra:
 ## synth: The Prism synth, driven by accessible label. [UI-MACHINE-TEST]
 synth:
 	$(MAKE) -C $(ROOT) _app-suite SUITES=src/osprey/examples/daw/test
+
+## web-host: The browser host's WASI imports and bounded `http` capability, with no browser.
+web-host:
+	node --test src/toolchain/hosts/web/test/host.test.ts
 
 ## workbench: The Proof Workbench's imported-mathematics cases under GC and ARC.
 workbench: build

@@ -1144,6 +1144,9 @@ jobs:
       - name: Clean Architecture todo suite (GC and ARC)
         run: make _test_cleanarch
 
+      - name: Web host WASI and http boundaries
+        run: make -C src/toolchain/targets/tests web-host
+
       - name: Install bank e2e dependencies
         run: npm ci
         working-directory: ./src/osprey/examples/talon/playwright-e2e-tests
