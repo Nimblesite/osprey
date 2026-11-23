@@ -96,12 +96,45 @@ def rule4(cps):
 
 
 def tokenize_none(line):
-    """`NoneTokenizer`: the identity tokenizer."""
+    """`NoneTokenizer`: the identity tokenizer.
+
+    # Examples
+    ```osprey
+    from sacrebleu import Tokenizer
+    kept = Tokenizer.tokenize_none("a b")
+    print(f"[{kept}] [{Tokenizer.tokenize_none("")}]")
+    ```
+    ```output
+    [a b] []
+    ```
+    """
     return line
 
 
 def tokenize_char(line):
-    """`TokenizerChar`: every codepoint separated by one space, nothing else."""
+    """`TokenizerChar`: every codepoint separated by one space, nothing else.
+
+    # Examples
+    ```osprey
+    from sacrebleu import Tokenizer
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped):
+            return wrapped
+
+    def show():
+        with wrapped:
+            spaced = Tokenizer.tokenize_char("ab")
+            accented = Tokenizer.tokenize_char("aé")
+            print(f"[{spaced}] [{accented}] [{Tokenizer.tokenize_char("")}]")
+
+    show()
+    ```
+    ```output
+    [a b] [a é] []
+    ```
+    """
     return join(mapList(codepoints(line), lambda cp: unwrap_or(fromCodePoint(cp), "")), " ")
 
 
@@ -122,14 +155,62 @@ def decode_entities(line):
 
 
 def tokenize_13a(line):
-    """`Tokenizer13a`: mteval-v13a tokenization of one line."""
+    """`Tokenizer13a`: mteval-v13a tokenization of one line.
+
+    # Examples
+    ```osprey
+    from sacrebleu import Tokenizer
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped):
+            return wrapped
+
+    def show():
+        with wrapped:
+            punctuated = Tokenizer.tokenize_13a("a.b")
+            number = Tokenizer.tokenize_13a("3.5")
+            decoded = Tokenizer.tokenize_13a("&quot;x&quot; &amp;")
+            skipped = Tokenizer.tokenize_13a("<skipped>")
+            print(f"[{punctuated}] [{number}] [{decoded}] [{skipped}]")
+
+    show()
+    ```
+    ```output
+    [a . b] [3.5] [" x " &] []
+    ```
+    """
     cleaned = decode_entities(replace13a(line))
     cps = codepoints(" " + cleaned + " ")
     return collapse_whitespace(from_codepoints(rule4(rule3(rule2(rule1(cps))))))
 
 
 def tokenize(text, kind):
-    """Tokenize `text` with the named tokenizer: `none`, `13a` or `char`."""
+    """Tokenize `text` with the named tokenizer: `none`, `13a` or `char`.
+    An unknown kind selects `none`.
+
+    # Examples
+    ```osprey
+    from sacrebleu import Tokenizer
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped):
+            return wrapped
+
+    def show():
+        with wrapped:
+            mteval = Tokenizer.tokenize("a.b", "13a")
+            chars = Tokenizer.tokenize("a.b", "char")
+            unknown = Tokenizer.tokenize("a.b", "intl")
+            print(f"[{mteval}] [{chars}] [{unknown}]")
+
+    show()
+    ```
+    ```output
+    [a . b] [a . b] [a.b]
+    ```
+    """
     if kind == "13a":
         return tokenize_13a(text)
     elif kind == "char":
