@@ -300,6 +300,21 @@ impl<'s> Lowerer<'s> {
         Ok(())
     }
 
+    /// The innermost scope's bindings, so each or-pattern alternative binds
+    /// from the same scope ([PATTERN-OR-BINDINGS]).
+    pub(super) fn binding_snapshot(&self) -> BTreeMap<String, bool> {
+        self.scopes
+            .last()
+            .map_or_default(|scope| scope.bindings.clone())
+    }
+
+    /// Put back bindings taken by [`Self::binding_snapshot`].
+    pub(super) fn restore_bindings(&mut self, bindings: BTreeMap<String, bool>) {
+        if let Some(scope) = self.scopes.last_mut() {
+            scope.bindings = bindings;
+        }
+    }
+
     pub(super) fn declaration_name<'t>(&mut self, node: Node<'t>) -> Result<Node<'t>> {
         let name = Self::field(node, "name")?;
         self.bind(name, false)?;

@@ -43,7 +43,7 @@ This is a language gap that blocks top tier, ranked with the gaps in [generic er
 - [x] Grammar test proving `|` after a pattern never starts the lambda form `|x| => body`, including an arm whose body is such a lambda followed by an or-pattern arm
 - [x] Default parser (`osprey-syntax/src/default`): build `Pattern::Or`; reject a leading or trailing `|` (`failscompilation/match_or_pattern_dangling_pipe.ospo`)
 - [x] ML parser (`osprey-syntax/src/ml`): the same at arm level; a nested or-pattern in a juxtaposed slot needs parentheses; `|` in a type declaration stays a variant separator
-- [ ] Python parser (`osprey-syntax/src/python`): `case A() | B():` to `Pattern::Or`
+- [x] Python parser (`osprey-syntax/src/python`): `case A() | B():` to `Pattern::Or` (`union_pattern`; `osprey_mega_showcase` twins)
 - [x] TypeScript parser (`osprey-syntax/src/typescript`): adjacent `case` labels with no statements between them to `Pattern::Or`; fallthrough out of a case with statements stays rejected
 - [ ] Highlight queries and the VS Code grammar colour `|` in a pattern as an operator
 
