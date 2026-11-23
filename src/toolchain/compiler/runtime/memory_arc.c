@@ -72,6 +72,8 @@ static OspArcHdr *arc_hdr(void *body) {
 #define OSP_ARC_TOMB ((uintptr_t)1)
 
 #include "heap_lock.h"
+#include "memory_heap_limit.h"
+#include "run_parent_watch.h"
 
 #include "memory_arc_registry.h"
 
@@ -80,6 +82,9 @@ static size_t g_live_bytes = 0;
 static size_t g_peak_bytes =
     0; // high-water mark of g_live_bytes (spike goldens)
 static int g_debug_armed = 0;
+// Bytes held from the system allocator, live and parked alike [MEM-HEAP-CEILING].
+// It moves only where malloc and free are called, never on the recycling path.
+static size_t g_arc_resident = 0;
 
 // Live-object accounting for the leak report [GC-ARC-PERCEUS], armed only by
 // OSPREY_ARC_DEBUG (arc_arm_debug). The two counters feed arc_report_leaks
@@ -187,6 +192,7 @@ static void arc_report_leaks(void) {
 static void arc_arm_debug(void) {
   if (!g_debug_armed) {
     g_debug_armed = 1;
+    heap_limit_arm();
     if (getenv("OSPREY_ARC_DEBUG")) {
       g_arc_track = 1; // gate the hot-path live counters on (arc_live_inc/dec)
       (void)atexit(arc_report_leaks);
@@ -212,6 +218,7 @@ void osp_mem_set_finalizer(void (*finalize)(void *body)) {
 // lazy arming on first alloc left an allocation-free program with no report,
 // which the corpus harness cannot tell apart from a crashed exit path.
 void osp_mem_boot(void) {
+  run_parent_watch();
   heap_lock();
   arc_arm_debug();
   heap_unlock();

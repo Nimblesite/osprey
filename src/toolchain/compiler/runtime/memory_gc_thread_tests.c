@@ -5,6 +5,7 @@
 // gc_tests_shared.h.
 #include "gc_tests_shared.h"
 #include "memory_parked_wait.h"
+#include <sys/wait.h>
 
 static void *mt_alloc(void *arg) {
   for (int i = 0; i < 2000; i++) {
@@ -217,4 +218,85 @@ void t_debug_reports(const char *self) {
   }
   CHECK(pclose(child) == 0);
   CHECK(collected && disabled);
+}
+
+// --- [MEM-HEAP-CEILING] the managed heap has a ceiling ------------------------
+#define CEILING_BYTES ((size_t)8 << 20)
+#define CEILING_BLOCK ((size_t)64 << 10)
+#define CEILING_ROUNDS ((int)(8 * CEILING_BYTES / CEILING_BLOCK)) // eight ceilings' worth
+#define HEAP_EXHAUSTED_STATUS 71
+
+static void *g_kept; // head of the chain that keeps every block of a retaining fill
+
+static void ceiling_fill(int keep) {
+  for (int i = 0; i < CEILING_ROUNDS; i++) {
+    void *block = osp_alloc((int64_t)CEILING_BLOCK);
+    CHECK(block != NULL);
+    put(block, 0, g_kept);
+    g_kept = keep ? block : NULL;
+  }
+}
+
+// One program per case, run under a ceiling the parent sets: `retained` keeps
+// all it allocates, `churn` keeps nothing, `off` churns after a thread outside
+// the baton turned collection off, and `oversized` asks for single blocks no
+// heap under the ceiling could hold before churning.
+void ceiling_child(const char *mode) {
+  size_t too_big = 2 * CEILING_BYTES;
+  printf("filling\n");
+  if (strcmp(mode, "off") == 0) {
+    debug_stats_child();
+  }
+  if (strcmp(mode, "oversized") == 0) {
+    void *small = osp_gc_malloc(WORD);
+    CHECK(osp_alloc((int64_t)too_big) == NULL && osp_gc_malloc(too_big) == NULL);
+    CHECK(osp_gc_calloc(too_big, 1) == NULL && osp_gc_calloc(SIZE_MAX, 1) == NULL);
+    CHECK(small != NULL && osp_gc_realloc(small, too_big) == NULL);
+  }
+  ceiling_fill(strcmp(mode, "retained") == 0);
+  printf("survived\n");
+}
+
+typedef struct {
+  const char *limit_mb; // OSPREY_HEAP_MAX_MB as the child sees it
+  const char *mode;
+  int dies;
+} CeilingCase;
+
+// A run that dies names the limit, a peak within one block of it and the request
+// it refused, exits with the heap status and still delivers what it printed. A
+// run that fits, or whose knob is not a size, finishes untouched.
+static void check_ceiling_case(const char *self, const CeilingCase *c) {
+  char command[4096], line[256];
+  int length = snprintf(command, sizeof command, "OSPREY_GC_HEAP_MB=1 OSPREY_HEAP_MAX_MB='%s' '%s' --ceiling %s 2>&1",
+                        c->limit_mb, self, c->mode);
+  CHECK(length > 0 && (size_t)length < sizeof command);
+  FILE *child = popen(command, "r");
+  CHECK(child != NULL);
+  int filling = 0, survived = 0, records = 0;
+  size_t limit = 0, peak = 0, request = 0;
+  while (fgets(line, sizeof line, child)) {
+    filling += strcmp(line, "filling\n") == 0;
+    survived += strcmp(line, "survived\n") == 0;
+    records += sscanf(line, "osprey: heap limit exceeded: backend=gc limit_bytes=%zu peak_bytes=%zu request_bytes=%zu",
+                      &limit, &peak, &request) == 3;
+  }
+  int status = pclose(child);
+  CHECK(WIFEXITED(status) && WEXITSTATUS(status) == (c->dies ? HEAP_EXHAUSTED_STATUS : 0));
+  CHECK(filling == 1 && survived == !c->dies && records == c->dies);
+  if (c->dies) {
+    CHECK(limit == CEILING_BYTES && request == CEILING_BLOCK);
+    CHECK(peak <= limit && peak > limit - CEILING_BLOCK);
+  }
+}
+
+void t_heap_ceiling(const char *self) {
+  const CeilingCase cases[] = {
+      {"8", "retained", 1}, {"8", "off", 1},       {"8", "churn", 0},        {"8", "oversized", 0},
+      {"", "retained", 0},  {"0", "retained", 0},  {"-8", "retained", 0},    {"junk", "retained", 0},
+      {"99999999999999999999", "retained", 0},     {"1024", "retained", 0},  {"1024", "off", 0},
+  };
+  for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
+    check_ceiling_case(self, &cases[i]);
+  }
 }

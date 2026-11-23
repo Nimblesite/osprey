@@ -30,6 +30,37 @@ static void arc_init_body(void *body, int64_t meta, size_t size, int zero) {
   arc_live_inc(size);
 }
 
+// Hand a registered block back to the system: its slot leaves the registry with it.
+static void arc_return_block(void *body) {
+  OspArcHdr *h = arc_hdr(body);
+  uintptr_t *slot = arc_find((uintptr_t)body);
+  if (slot) {
+    arc_remove(slot);
+  }
+  g_arc_resident -= OSP_ARC_HDR + osp_pool_cap(h->size);
+  free(h);
+}
+
+// [MEM-HEAP-CEILING] `block` more bytes would take the heap past its ceiling. A
+// block no heap under the ceiling could hold is refused: 0, and the caller
+// answers NULL. Otherwise every dead block parked for reuse goes back to the
+// system, and a heap still full of live blocks ends the run. Returns 1 once
+// the request fits.
+static int arc_make_room(size_t size, size_t block) {
+  if (heap_never_fits(block)) {
+    return 0;
+  }
+  for (size_t cap = OSP_POOL_GRAIN; cap <= OSP_POOL_MAX_CAP; cap += OSP_POOL_GRAIN) {
+    for (void *parked = osp_pool_pop(&g_arc_pool, cap); parked; parked = osp_pool_pop(&g_arc_pool, cap)) {
+      arc_return_block(parked);
+    }
+  }
+  if (heap_over_limit(g_arc_resident, block)) {
+    heap_exhausted("arc", g_arc_resident, size);
+  }
+  return 1;
+}
+
 // Header'd, registered allocation. Callers hold g_lock. Recycles a same-sized
 // pooled block when one is parked (no malloc, no registry insert); otherwise
 // mallocs the ROUNDED capacity so the block is reusable by any request in its
@@ -48,10 +79,16 @@ static void *arc_alloc_locked(size_t size, int64_t meta, int zero) {
       return body;
     }
   }
-  OspArcHdr *h = (OspArcHdr *)malloc(OSP_ARC_HDR + cap);
+  size_t block = OSP_ARC_HDR + cap;
+  if (heap_over_limit(g_arc_resident, block) && !arc_make_room(size, block)) {
+    return NULL;
+  }
+  OspArcHdr *h = (OspArcHdr *)malloc(block);
   if (!h) {
     return NULL;
   }
+  g_arc_resident += block;
+  heap_note_peak(g_arc_resident);
   void *body = (char *)h + OSP_ARC_HDR;
   arc_insert((uintptr_t)body);
   arc_init_body(body, meta, size, zero);

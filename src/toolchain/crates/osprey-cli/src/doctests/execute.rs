@@ -61,7 +61,9 @@ fn executable(cli: &Cli, input: &CompilationInput) -> Result<(Command, Option<Pa
     }
     let (path, temporary) =
         native_executable(input, crate::native::NativeOptions::from_cli(cli)).map_err(failed)?;
-    Ok((Command::new(&path), temporary.then_some(path)))
+    let mut command = Command::new(&path);
+    crate::toolchain::ends_with_this_process(&mut command);
+    Ok((command, temporary.then_some(path)))
 }
 
 fn wasm_executable(input: &CompilationInput) -> Result<(Command, Option<PathBuf>), String> {

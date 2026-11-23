@@ -14,12 +14,6 @@ pub(crate) struct Budget {
     pub(crate) deadline: Duration,
 }
 
-/// The budget for one test program.
-pub(crate) const PROGRAM_BUDGET: Budget = Budget {
-    memory_mb: 1024,
-    deadline: Duration::from_secs(120),
-};
-
 const POLL: Duration = Duration::from_millis(50);
 
 pub(crate) struct Bounded {
@@ -28,15 +22,12 @@ pub(crate) struct Bounded {
     pub(crate) code: Option<i32>,
     /// Why the group was killed, when it was.
     pub(crate) stopped: Option<String>,
-    #[allow(dead_code)] // Read by the package matrix through `summary`.
     pub(crate) peak_mb: u64,
-    #[allow(dead_code)] // Read by the package matrix through `summary`.
     pub(crate) elapsed: Duration,
 }
 
 impl Bounded {
     /// One line naming the run's exit, peak memory and time.
-    #[allow(dead_code)] // The program suites assert on fields, not this line.
     pub(crate) fn summary(&self) -> String {
         let exit = self
             .code
@@ -109,22 +100,4 @@ pub(crate) fn run_command(mut command: Command, stem: &str, budget: Budget) -> i
         peak_mb,
         elapsed: started.elapsed(),
     })
-}
-
-/// Runs `source` as `<name>.osp` with `args` under [`PROGRAM_BUDGET`].
-#[allow(dead_code)] // Used by the program suites; the package matrix uses only `run_command`.
-pub(crate) fn run_within_budget(
-    name: &str,
-    source: &str,
-    args: &[&str],
-    envs: &[(&str, &str)],
-) -> io::Result<Bounded> {
-    let stem = format!("osprey_bounded_{}_{name}", std::process::id());
-    let path = std::env::temp_dir().join(format!("{stem}.osp"));
-    std::fs::write(&path, source)?;
-    let mut command = Command::new(env!("CARGO_BIN_EXE_osprey"));
-    let _ = command.arg(&path).args(args).envs(envs.iter().copied());
-    let run = run_command(command, &stem, PROGRAM_BUDGET);
-    std::fs::remove_file(&path)?;
-    run
 }

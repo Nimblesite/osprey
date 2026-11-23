@@ -12,6 +12,17 @@
 // allocation, each time further away, which costs memory rather than progress.
 #ifndef OSPREY_GC_SAFEPOINT_H
 #define OSPREY_GC_SAFEPOINT_H
+#ifdef OSP_SYMBOLIC
+// Symbolic runs have one thread, so nothing is ever waited for.
+static const int g_collection_wanted = 0;
+static const size_t g_retry_at = 0;
+static void gc_safepoint(void) {
+  if (gc_may_collect()) {
+    gc_collect_locked();
+  }
+}
+static void gc_wake_safepoint(void) {}
+#else
 #include <errno.h>
 #include <setjmp.h>
 #include <time.h>
@@ -87,5 +98,26 @@ static void gc_wake_safepoint(void) {
   if (g_collection_wanted) {
     pthread_cond_broadcast(&g_safepoint);
   }
+}
+#endif
+
+// [MEM-HEAP-CEILING] `size` more bytes would take the heap past its ceiling. A
+// block no heap under the ceiling could hold is refused: 0, and the caller
+// answers NULL. Otherwise garbage is collected first, asking again while other
+// threads are slow to park, and a heap still full after a collection ends the
+// run. Returns 1 once the request fits.
+#define OSP_GC_CEILING_ASKS 100
+static int gc_make_room(size_t size) {
+  if (heap_never_fits(size)) {
+    return 0;
+  }
+  size_t collections = g_ncollect;
+  for (int asks = 0; asks < OSP_GC_CEILING_ASKS && g_ncollect == collections && !g_off && gc_my_baton(); asks++) {
+    gc_safepoint();
+  }
+  if (heap_over_limit(g_bytes, size)) {
+    heap_exhausted("gc", g_bytes, size);
+  }
+  return 1;
 }
 #endif
