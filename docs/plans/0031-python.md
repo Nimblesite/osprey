@@ -27,7 +27,7 @@ Constraints:
 
 ## Phase B — core-lowering triples and LLVM equivalence
 
-- [ ] [FLAVOR-PYTHON-BOUNDARY] Extend `src/toolchain/crates/osprey-cli/tests/cross_flavor_ir_equiv.rs` (and its `gpu.rs`/`device.rs` helpers) so equal flat-call Default/ML/Python triples emit byte-identical LLVM IR. Acceptance: canonical AST equal after scrubbing positions, IR identical for each triple.
+- [x] [FLAVOR-PYTHON-BOUNDARY] Flat-call triples for host reductions, device kernels and record-held Result values compare their position-free canonical AST and full LLVM module in Default, ML and Python. The device case also requires a real launch site and extracted kernel source.
 - [ ] [FLAVOR-PYTHON-TYPING] [FLAVOR-PYTHON-EXPRESSIONS] Complete positive/rejection triples in `src/toolchain/crates/osprey-syntax/tests/python.rs` for the remaining surface: PEP 484/526/585/591/695 edge forms; unsupported tuple/slice/generator syntax, default/variadic arguments, class bodies/bases/dunders, early/partial returns, attribute/index mutation, and `try`/`except`/`raise`/coroutine machinery. Acceptance: exact rejection spans/messages shared with the Default/ML convention.
 
 ## Phase C — effects, fibers, signals; shared handler-state repair
@@ -38,7 +38,7 @@ Constraints:
 
 ## Phase D — project, editor and target integration
 
-- [ ] [FLAVOR-PYTHON-SELECT] [FLAVOR-PYTHON-VERIFICATION] Replace the 2^3 Default/ML gate with the full 27-configuration gate in `src/toolchain/crates/osprey-cli/tests/cross_flavor_ir_equiv.rs::mixed_flavor_project_graphs_emit_identical_ir` (every Default/ML/Python assignment over the three-file graph), comparing canonical contracts and LLVM IR.
+- [x] [FLAVOR-PYTHON-SELECT] [FLAVOR-PYTHON-VERIFICATION] All 27 assignments of Default, ML and Python to the entry, ledger model and effect policy produce identical checked ASTs, public contracts and LLVM IR. Eight additional native-flavor assignments retain the abstract signature coverage. All 31 cross-flavor IR tests passed on 2026-11-23.
 - [ ] [FLAVOR-PYTHON-VERIFICATION] Wire remaining tooling to the Python flavor: test discovery, docs examples, formatter beyond indentation (`src/toolchain/crates/osprey-fmt/src/python.rs`), annotation edits, LSP completion/hover/signature/rename, debugger locations, VS Code language config (`src/toolchain/vscode-extension/`), web compiler selection (`src/toolchain/website/src/js/wasm-studio.js`), corpus backends (`src/toolchain/crates/corpus_backends.sh` has no `run_python`), caches, CI/release classification. Acceptance: a Python helper edit never masquerades as a language fixture; opted-in Python sources trigger their real compiler/test lanes; `make ci` passes.
 
 ## Phase E — GPT-2 edge checks and sampling-boundary record

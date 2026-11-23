@@ -262,3 +262,20 @@ fn generic_record_parameters_keep_their_field_types_in_debug_metadata() -> Resul
     }
     Ok(())
 }
+
+/// [MODULES-ABI] Debugger names are source identities; linkage stays encoded.
+#[test]
+fn module_debug_frames_keep_source_names_in_both_flavors() -> Result<(), String> {
+    for (source, flavor) in [
+        ("namespace \"billing/api\";\nmodule Tax { export fn add(n) = satAdd(n, 1) }\nfn main() = print(Tax::add(41))", Flavor::Default),
+        ("namespace \"billing/api\"\nmodule Tax\n    export add n = satAdd n 1\nmain () = print (Tax::add 41)", Flavor::Ml),
+    ] {
+        let program = super::assembled_if_module_aware(parsed_source(source, flavor, "debug.osp")?)?;
+        let ir = osprey_codegen::compile_program_debug(&program, osprey_codegen::DebugSource::from_path("debug.osp"))
+            .map_err(|error| format!("{flavor}: {error}"))?;
+        let linkage = osprey_ast::symbol::mangle(["billing/api", "Tax", "add"]);
+        assert!(ir.contains("!DISubprogram(name: \"billing/api::Tax::add\", scope:"), "{flavor}: {ir}");
+        assert!(ir.contains(&format!("define internal i64 @{linkage}(")), "preserve native ABI");
+    }
+    Ok(())
+}

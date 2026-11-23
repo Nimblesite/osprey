@@ -182,12 +182,18 @@ nestedPatternCase () =
 
 effect PatternCounter
     set : int => int
+    readAfterWrite : Unit => int
 mutablePatternCase () =
     mut value = 100
     handle PatternCounter
         set next =>
             value := next
             value
+        readAfterWrite =>
+            mut local = 7
+            read = \() => local
+            local := 11
+            read ()
     readOuter = \() => value
     selectedReader = match Pick 2
         Pick value => \() => value
@@ -195,7 +201,8 @@ mutablePatternCase () =
     selected = selectedReader ()
     updated = perform PatternCounter.set 101
     checkAll ("pattern values shadow cell storage without changing it", [
-        selected == 2, selectedReader () == 2, updated == 101, value == 101, readOuter () == 101
+        selected == 2, selectedReader () == 2, updated == 101, value == 101, readOuter () == 101,
+        perform PatternCounter.readAfterWrite () == 11
     ])
 
 test ("nested matches restore enclosing pattern bindings", nestedPatternCase)
@@ -325,6 +332,12 @@ axisPair (x, y) = match Pt x y
 tailSize xs = match xs
     [0, ...rest] | [1, ...rest] => listLength rest
     _ => -1
+(** [PATTERN-OR-BODY] List tails and borrowed list elements share the arm binder. *)
+type Box = Wrap (List<int>) | Boxed (List<int>) | Nest (List<List<int>>) | Hollow
+tailLen b = match b
+    Wrap [_, ...xs] | Boxed [_, _, ...xs] | Nest [xs] => listLength xs
+    _ => 0 - 1
+
 rowSize (r : Sized) = match r
     { kind = "s", n } | { kind = "m", n } => n
     _ => 0
@@ -347,6 +360,8 @@ orStructureCase () = checkAll ("or-pattern Result, payload, list, row and nested
     axisPair (0, 8) == 8, axisPair (9, 0) == 9, axisPair (2, 3) == -1,
     tailSize [0] == 0, tailSize [1, 8, 9] == 2, tailSize [2, 9] == -1, tailSize [] == -1,
     shortList [] == "short", shortList [9] == "short", shortList [1, 2, 3, 4] == "long 5",
+    tailLen (Wrap [1, 2, 3]) == 2, tailLen (Boxed [1, 2, 3]) == 1, tailLen (Nest [[4, 5, 6, 7]]) == 4,
+    tailLen (Wrap []) == 0 - 1, tailLen (Nest [[1], [2]]) == 0 - 1, tailLen Hollow == 0 - 1,
     rowSize (Sized(kind = "s", n = 3)) == 3, rowSize (Sized(kind = "m", n = 4)) == 4,
     rowSize (Sized(kind = "l", n = 5)) == 0,
     openBand (Sized(kind = "old", n = 2)) == 1, openBand (Sized(kind = "m", n = 2)) == 2,
