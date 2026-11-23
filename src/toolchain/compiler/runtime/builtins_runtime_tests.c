@@ -404,12 +404,14 @@ static void t_injected_refusals_report_enomem(void) {
   osp_alloc_fail_next();
   CHECK(calloc(4, 16) == NULL && errno == ENOMEM);
   errno = 0;
-  CHECK(calloc((size_t)-1, 16) == NULL && errno == ENOMEM);
+  volatile size_t huge = (size_t)-1; // read at run time: an overflow, not a constant
+  CHECK(calloc(huge, 16) == NULL && errno == ENOMEM);
   void *held = malloc(8);
   errno = 0;
   osp_alloc_fail_next();
-  CHECK(realloc(held, 128) == NULL && errno == ENOMEM);
-  free(held);
+  void *grown = realloc(held, 128);
+  CHECK(grown == NULL && errno == ENOMEM);
+  free(grown == NULL ? held : grown);
   errno = 0;
   osp_alloc_fail_size(48);
   CHECK(malloc(48) == NULL && errno == ENOMEM);
