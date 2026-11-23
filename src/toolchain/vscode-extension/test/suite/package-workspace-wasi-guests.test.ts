@@ -7,6 +7,7 @@ import { spawnSync } from "node:child_process";
 import { EventEmitter } from "node:events";
 import * as fs from "node:fs";
 import * as os from "node:os";
+import * as path from "node:path";
 import threads = require("node:worker_threads");
 import * as sinon from "sinon";
 import { compileWasi, createWasi, wasiImports } from "../../client/src/osprey-ui/wasi";
@@ -173,13 +174,22 @@ suite("package workspace in-memory WASI", () => {
   });
 
   test("stdin is the host frame and stdout is captured without temporary files", async () => {
-    const before = fs.readdirSync(os.tmpdir()).length;
-    await withStub({}, async (runtime) => {
-      const frame = await runtime.open(open);
-      assert.deepStrictEqual([frame.status, frame.runs.views.byteLength, frame.runs.asks.byteLength], [0, 0, 0]);
-      assert.ok(frame.runs.text instanceof ArrayBuffer, "the frame is copied out of linear memory");
-    });
-    assert.strictEqual(fs.readdirSync(os.tmpdir()).length, before);
+    const temporary = fs.mkdtempSync(path.join(os.tmpdir(), "osprey-wasi-io-"));
+    const variable = process.platform === "win32" ? "TEMP" : "TMPDIR";
+    const previous = process.env[variable];
+    process.env[variable] = temporary;
+    try {
+      await withStub({}, async (runtime) => {
+        const frame = await runtime.open(open);
+        assert.deepStrictEqual([frame.status, frame.runs.views.byteLength, frame.runs.asks.byteLength], [0, 0, 0]);
+        assert.ok(frame.runs.text instanceof ArrayBuffer, "the frame is copied out of linear memory");
+        assert.deepStrictEqual(fs.readdirSync(temporary), [], "the WASI host did not stage the frame in a temporary file");
+      });
+    } finally {
+      if (previous === undefined) delete process.env[variable];
+      else process.env[variable] = previous;
+      fs.rmSync(temporary, { recursive: true, force: true });
+    }
   });
 
   test("stdin is the host frame and stdout is captured without temporary files (extra: an application's status rides its frame)", async () => {
