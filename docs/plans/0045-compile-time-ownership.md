@@ -28,8 +28,10 @@ Contract: [MEM-OWNERSHIP-STATIC](../specs/compiler/0018-MemoryManagement.md#comp
 - Acceptance: `osprey --memory=ownership` compiles a simple program; an unprovable program fails with a diagnostic naming the value and both uses; `parse_memory("ownership")` returns Ok and the tests in src/toolchain/crates/osprey-cli/src/tests/execution.rs cover it.
 - [ ] Add `src/osprey/examples/failscompilation/*.ospo` programs for each rejected pattern and `src/osprey/tests/regressions/` programs that must be accepted under `ownership`.
 - Acceptance: the check rejects every failscompilation program with a precise diagnostic and accepts the regression set.
-- [ ] Measure how much of `src/osprey/tests/` and `src/osprey/examples/` passes the check unchanged; record numbers only.
+- [x] Measure how much of `src/osprey/tests/` and `src/osprey/examples/` passes the check unchanged; record numbers only.
 - Acceptance: a passing-fraction number is recorded.
+  - 2026-11-23, single-file `.osp` programs compiled with `--llvm --memory=ownership`: tests 17 of 180 accepted (4,954 refusals: 3,624 stored, 407 bound, 304 kept, 295 joined, 239 returned, 85 shared); examples 7 of the 29 that compile alone. First run the same day, before any move was added: tests 15 of 180, 5,956 refusals.
+  - Largest open classes: a closure or list that only lends what it captures to a call (a borrow, not a second owner), a binding that names a field of a live value, and a function that returns its parameter.
 
 ## Phase 2 — codegen and runtime
 

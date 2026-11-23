@@ -399,7 +399,8 @@ fn retain_val(cg: &mut Codegen, v: &Value) {
 /// stored into a heap slot spelled `slot_ty` (the owning block's drop mask
 /// releases it, so the store is a new reference). [GC-ARC-PERCEUS]
 pub(crate) fn dup_store(cg: &mut Codegen, slot_ty: &str, operand: &str) {
-    if slot_ty.ends_with('*') && operand.starts_with('%') {
+    // A literal or an immortal singleton holds no count to raise.
+    if slot_ty.ends_with('*') && operand.starts_with('%') && !cg.is_rodata(operand) {
         if !slot_ty.contains('(') {
             second_owner(cg, operand, None, Need::Stored);
         }

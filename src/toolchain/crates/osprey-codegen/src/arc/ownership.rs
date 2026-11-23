@@ -9,6 +9,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 static REQUESTED: AtomicBool = AtomicBool::new(false);
 
+/// The symbol prefix of every helper function the compiler synthesises.
+const SYNTHESISED: &str = "osp.";
+
 /// Refuse, from the next compilation on, every program that needs a second
 /// owner for a managed value [MEM-OWNERSHIP-STATIC].
 pub fn set_ownership_check(on: bool) {
@@ -84,6 +87,8 @@ pub(crate) struct OwnershipCheck {
     pub(crate) position: Option<Position>,
     pub(crate) function: String,
     pub(crate) found: Vec<SecondOwner>,
+    /// Where each suspended function's nested function began in `found`.
+    nested: Vec<usize>,
 }
 
 impl OwnershipCheck {
@@ -94,6 +99,22 @@ impl OwnershipCheck {
             position: None,
             function: String::new(),
             found: Vec::new(),
+            nested: Vec::new(),
+        }
+    }
+
+    /// A nested function starts: what it reports is judged when it ends.
+    pub(crate) fn enter_nested(&mut self) {
+        self.nested.push(self.found.len());
+    }
+
+    /// The nested function `name` ended. A helper the compiler synthesises
+    /// counts references among its own temporaries, which no source value
+    /// needs, so what it reported is dropped.
+    pub(crate) fn leave_nested(&mut self, name: &str) {
+        let start = self.nested.pop().unwrap_or(self.found.len());
+        if name.starts_with(SYNTHESISED) {
+            self.found.truncate(start);
         }
     }
 

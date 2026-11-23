@@ -94,6 +94,22 @@ fn main() = {
 }
 "#;
 
+// A variant with no fields is one static value: storing it counts nothing.
+const STATIC_VARIANTS: &str = r#"type Fault = DivZero | Overflow { by: int }
+
+fn divide(a, b) = match b {
+    0 => Error { message: DivZero }
+    _ => Success { value: wrapAdd(a, b) }
+}
+
+fn show(outcome) = match outcome {
+    Success { value } => "ok ${toString(value)}"
+    Error { message } => "bad"
+}
+
+fn main() = print("${show(divide(6, 0))} ${show(divide(6, 1))}")
+"#;
+
 // A closure takes what it captures when the capture is that binding's last use.
 const CAPTURED_AT_LAST_USE: &str = r#"type Box = { text: string }
 type Named = { label: (int) -> string }
@@ -157,6 +173,7 @@ fn a_program_whose_values_each_have_one_owner_runs_and_frees_everything() -> std
     assert_accepted("last_use", LAST_USE_MOVES)?;
     assert_accepted("errors", FRESH_ERRORS)?;
     assert_accepted("captured", CAPTURED_AT_LAST_USE)?;
+    assert_accepted("variants", STATIC_VARIANTS)?;
     assert_accepted("fresh", FRESH_VALUES)
 }
 

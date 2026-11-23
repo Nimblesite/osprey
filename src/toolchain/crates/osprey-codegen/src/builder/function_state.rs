@@ -97,6 +97,7 @@ impl Codegen {
     /// hand back to [`Codegen::exit_nested_fn`]. The new function gets its own
     /// SSA/label counters and an isolated scope stack (handlers capture nothing).
     pub(crate) fn enter_nested_fn(&mut self) -> SavedFn {
+        self.ownership.enter_nested();
         let saved = SavedFn {
             expression_type: self.expression_type.take(),
             lines: std::mem::take(&mut self.cur_lines),
@@ -143,6 +144,7 @@ impl Codegen {
         params: &[(LType, String)],
     ) {
         self.finish_function(ret, name, params);
+        self.ownership.leave_nested(name);
         self.restore_function(saved);
     }
 
@@ -155,6 +157,7 @@ impl Codegen {
     ) {
         let signature = format!("{}{}", self.c_scalar_extension(ret.1), ret.0);
         self.finish_function_with_abi(&signature, name, params, true);
+        self.ownership.leave_nested(name);
         self.restore_function(saved);
     }
 

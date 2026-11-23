@@ -247,8 +247,11 @@ tracked by [plan 0045](../../plans/0045-compile-time-ownership.md).
 **What is built.** The ledger runs in a checking mode. Wherever it would count
 a reference at run time, because it cannot move the one reference that exists,
 it reports the value instead, and a program with any report isn't compiled.
-An accepted program therefore counts no reference in compiled code: each value
-is freed at the single release the ledger emits for its owner. Until the
+An accepted program therefore counts no reference to a source value: each one
+is freed at the single release the ledger emits for its owner. The helper
+functions the compiler synthesises for rendering and structural equality
+still count references among their own temporaries; they keep no value
+alive past their return. Until the
 backend has a runtime of its own, an accepted program links the reference
 counting runtime, where that single release frees the value. Runtime
 collections still count the elements two versions share; the sharing rule
