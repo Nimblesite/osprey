@@ -39,9 +39,9 @@ impl Sources {
         };
         let current = self
             .files
-            .iter()
-            .position(|file| same_path(&file.path, &path));
-        if current.is_some_and(|i| self.files[i].source == text) {
+            .iter_mut()
+            .find(|file| same_path(&file.path, &path));
+        if current.as_ref().is_some_and(|file| file.source == text) {
             return;
         }
         let Ok(flavor) = osprey_syntax::resolve_flavor(self.config.flavor, uri, text) else {
@@ -55,8 +55,8 @@ impl Sources {
             flavor,
             discipline: None,
         };
-        if let Some(i) = current {
-            self.files[i] = recovered;
+        if let Some(file) = current {
+            *file = recovered;
         } else {
             self.files.push(recovered);
         }

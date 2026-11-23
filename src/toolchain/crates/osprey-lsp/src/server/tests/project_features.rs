@@ -448,7 +448,7 @@ async fn a_consumer_completes_dependency_fields_and_patterns() -> Fallible {
     std::fs::write(manifest, config)?;
     let _shapes = package.write(
         "shapes",
-        "namespace geo;\ntype Point = { x: int, label: string }\ntype Shade = Light | Dark\n",
+        "namespace geo;\ntype Point = { x: int, label: string }\ntype Shade = Light | Dark\nmodule Palette {\n    export opaque type Pigment = Ochre | Indigo\n    type Stock = Empty | Full\n}\n",
     )?;
     let saved = "let origin = geo::Point { x: 4, label: \"here\" }\nlet axis = origin.x\nfn tone(s) = match s {\n    _ => axis\n}\n";
     let uri = app.write("main", saved)?;
@@ -460,6 +460,14 @@ async fn a_consumer_completes_dependency_fields_and_patterns() -> Fallible {
     let items = completion_items(&patterns);
     for label in ["geo::Light", "geo::Dark", "_"] {
         assert!(items.iter().any(|item| item["label"] == label), "{items:?}");
+    }
+    for hidden in ["Ochre", "Indigo", "Empty", "Full"] {
+        assert!(
+            items.iter().all(|item| !item["label"]
+                .as_str()
+                .is_some_and(|label| label.ends_with(hidden))),
+            "{items:?}"
+        );
     }
     let incomplete = saved
         .replace("origin", "cursor")
