@@ -335,7 +335,7 @@ mod tests {
         };
         checker.constrain_structural_equals(Some("structuralEquals"), &[list_of_union(scalar())]);
         checker.validate_builtin_uses();
-        assert!(checker.errors.is_empty());
+        assert_eq!(checker.errors, Vec::new());
 
         let callable = Type::fun(vec![scalar()], scalar());
         checker.constrain_structural_equals(Some("structuralEquals"), &[list_of_union(callable)]);

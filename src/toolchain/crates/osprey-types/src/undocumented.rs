@@ -116,8 +116,15 @@ fn unexampled(declaration: &Stmt, owner: &str, warnings: &mut Vec<TypeWarning>) 
     } = declaration
     {
         let effect = qualified(owner, name);
-        for operation in operations.iter().filter(|op| !shows_example(op.doc.as_ref())) {
-            warnings.push(no_example("operation", &format!("{effect}.{}", operation.name), operation.position));
+        for operation in operations
+            .iter()
+            .filter(|op| !shows_example(op.doc.as_ref()))
+        {
+            warnings.push(no_example(
+                "operation",
+                &format!("{effect}.{}", operation.name),
+                operation.position,
+            ));
         }
         return;
     }
@@ -127,7 +134,11 @@ fn unexampled(declaration: &Stmt, owner: &str, warnings: &mut Vec<TypeWarning>) 
     let callable = matches!(declared.kind, "Function" | "Value" | "Extern");
     if callable && declared.doc.is_some() && !shows_example(declared.doc) {
         let kind = declared.kind.to_lowercase();
-        warnings.push(no_example(&kind, &qualified(owner, declared.name), declared.position));
+        warnings.push(no_example(
+            &kind,
+            &qualified(owner, declared.name),
+            declared.position,
+        ));
     }
 }
 

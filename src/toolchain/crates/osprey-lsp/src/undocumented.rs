@@ -46,7 +46,8 @@ mod tests {
 
     #[test]
     fn a_documented_export_without_an_example_is_an_editor_warning_on_its_line() {
-        let source = "(** Doubling. *)\nmodule Api\n    (** Twice `x`. *)\n    export double x = x * 2\n";
+        let source =
+            "(** Doubling. *)\nmodule Api\n    (** Twice `x`. *)\n    export double x = x * 2\n";
         assert_eq!(codes(source), [("unexampled-export".to_owned(), 3)]);
     }
 
