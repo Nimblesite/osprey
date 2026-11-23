@@ -1,59 +1,56 @@
 # GPT-2 in the Python flavor
 
-The whole program is Osprey source in the Python flavor: no `.osp` module is imported and the project's one source root holds none. These `.py` files start with `# osprey: flavor=python` and are compiled by `osprey`; they are not Python, and CPython cannot run them. The real Python in this example is [reference.py](../reference.py), the independent oracle. [backends.py](backends.py) declares the `Tensor` static effect and spells the arithmetic policy with a `Fault` effect, two handler classes and `with`. [cpu.py](cpu.py) answers `Tensor` over host lists and [gpu.py](gpu.py) over GPU buffers. [tokenizer.py](tokenizer.py) is the byte-level BPE tokenizer. [model.py](model.py) holds the constants, the records, the checkpoint loader, the forward pass and the KV-cached step. [generate.py](generate/generate.py) is the Default sampler in the Python flavor. The [Python flavor guide](https://www.ospreylang.dev/docs/python/flavor/) explains the flavor and how it differs from Python.
+The GPT-2 model asks the `Tensor` effect to multiply matrices. The sampler selects a handler to run that multiplication. These excerpts show the same operation in the effect and its two handlers. [Effect declaration](backends.py) · [Host lists](cpu.py) · [GPU buffers](gpu.py)
 
 ```python
-# osprey: flavor=python
 # backends.py
 @static_effect
 class Tensor[B]:
-    def build(size: int, kernel: Kernel) -> B: ...
-    def mat_mul(a: B, b: B, rows: int, inner: int, cols: int) -> B: ...
+    def mat_mul(a: B, b: B, rows: int, inner: int, cols: int) -> Result[B, str]: ...
 
+# cpu.py
+@static_handler(Tensor[list[float32]])
+class on_lists:
+    def mat_mul(a, b, rows, inner, cols):
+        return product_of(a, b, rows, inner, cols) if len(a) == rows * inner and len(b) == inner * cols else misfit(a, b, rows, inner, cols)
 
 # gpu.py
-@static_handler(Tensor[GpuBuffer[float]])
+@static_handler(Tensor[GpuBuffer[float32]])
 class on_gpu:
-    def build(n, f):
-        match gpuIota(n):
-            case Success(value=value):
-                return Success(value=gpuMap(value, f))
-            case Error(message=message):
-                return Error(message=toString(message))
-
     def mat_mul(a, b, rows, inner, cols):
         return answered(gpuMatMul(a, b, rows, inner, cols))
-
-
-# model.py
-def product(a, b, rows, inner, cols):
-    return perform(Tensor.mat_mul(a, b, rows, inner, cols))
 ```
 
-From the repository root:
+Tokenization, checkpoint file reads and the loop that chooses each new token run on the CPU. A selected GPU receives a dense buffer on its first kernel use. Later kernels can reuse that buffer. A host read can bring the result back. Set `OSPREY_GPU_TRACE=1` to see completed dispatches with their kernel names and thread counts. [Tokenizer](tokenizer.py) · [Forward pass](model.py) · [Sampler](generate/generate.py) · [GPU dispatch and residency](../../../../../../docs/specs/runtime/0034-GPUComputation.md#device-resident-buffers--gpu-buffer-resident)
+
+## Run the model
+
+From the repository root, these commands fetch the published weights and tokenizer merges on first use. The first uses Metal. The second runs the list handler on the CPU.
 
 ```sh
 make -C src/toolchain/targets/llms gpt2 FLAVOR=python GPU=metal PROMPT="The capital of France is" TOKENS=20
 make -C src/toolchain/targets/llms gpt2 FLAVOR=python BACKEND=lists PROMPT="The capital of France is" TOKENS=1
 ```
 
-The output is byte for byte the Default example's output for the same stdin: the banner naming the device, the prompt and token lines, the generated count, the decoded text, and the `generation stopped:` and unknown-backend messages. `GPU=auto`, `GPU=metal` and `GPU=opencl` select the existing device adapters; a missing adapter stops execution with an error. The prompt takes one full forward pass and every later token one `forward_step` over the blocks' cached qkv rows, as in the Default sampler.
+The sampler prints the device, prompt token IDs, generated count and decoded text. It runs one forward pass for the prompt and reuses each block’s cached state on subsequent tokens. The training example uses the Default flavor. [Training project](../train) · [Target definitions](../../../../../toolchain/targets/llms/Makefile)
 
-The E2E compiler test compares every element of 24 deterministic tensors against the independent [Python reference](../reference.py), at the real embedding width and sequence lengths 1/2/3, under both handlers and GC/ARC memory, including all intermediate values from a transformer block. Memory variants compile concurrently, then all handler variants run concurrently. Run it directly with an existing compiler:
+## Check the handlers without model weights
+
+Compile the fixture once. It prints each tensor’s name and elements for matrix multiplication, normalization, attention and a transformer block. Run the last command on a Metal-capable Mac.
 
 ```sh
-python3 scripts/tests/check-python-gpt2.py --compiler target/debug/osprey
+cargo build --manifest-path src/toolchain/Cargo.toml -p osprey-cli --bin osprey
+target/debug/osprey src/osprey/examples/llms/gpt2/python/check --compile --memory=arc -o target/gpt2-check
+printf 'lists\n' | target/gpt2-check
+printf 'gpu\n' | OSPREY_GPU=host target/gpt2-check
+printf 'gpu\n' | OSPREY_GPU=metal OSPREY_GPU_TRACE=1 target/gpt2-check
 ```
 
-Pass `--device metal`, `--device opencl` or `--device auto` for a strict hardware comparison. That mode requires an adapter identity and completed device dispatches. Host arithmetic compares exactly; only values downstream of `exp`/`tanh` use the existing GPU precision bound.
-
-The generator comparison itself is `python_gpt2_generator_output_is_byte_identical_to_the_default_generator` in `src/toolchain/crates/osprey-cli/tests/cross_flavor_equiv.rs`. It needs the downloaded checkpoint, so it runs with `cargo test --manifest-path src/toolchain/Cargo.toml -p osprey-cli --test cross_flavor_equiv -- --ignored`; the checkpoint-free message comparison and the no-`.osp` check run in every suite.
-
-Only generation is ported. The [training program](../train) is not being ported at the moment and stays Default-only; `make -C src/toolchain/targets/llms gpt2-train` rejects `FLAVOR=python`.
+On 2026-11-23 the three runs printed the same 48,687 binary32 values across 24 tensors. The Apple M4 Max completed 84 Metal dispatches. ARC reported zero live objects after each run. These figures cover the checkpoint-free fixture. [Fixture source](check/check.py)
 
 ## Port notes
 
-The authored sources live in [`src/osprey/examples/llms/gpt2/python`](README.md). They are self-contained Python-flavor modules: the `Tensor` static effect and its two static handlers, the arithmetic policy, the tokenizer, the checkpoint loader, the records, the forward pass, the KV-cached step and the sampler. The project imports no `.osp` module and its source root holds none. [Plan 0031](../../../../../../docs/plans/0031-python.md) tracks the complete flavor. Training is not being ported at the moment; the Osprey trainer in `src/osprey/examples/llms/gpt2/train` stays Default-only.
+The independent reference uses Python. The Osprey compiler builds the marked `.py` modules in this directory. The port keeps the reference’s tensor order and uses the same checkpoint as the Default generator. [Python reference](../reference.py) · [Python flavor guide](https://www.ospreylang.dev/docs/python/flavor/)
 
 | Reference Python | Osprey Python flavor |
 | --- | --- |
@@ -70,6 +67,43 @@ The authored sources live in [`src/osprey/examples/llms/gpt2/python`](README.md)
 | Recomputing the whole sequence per token | The Default example's KV-cached `forward_step` over each block's cached qkv rows |
 | `sys.argv`/`__main__` | Three-line stdin contract and Osprey `main` |
 
-`Tensor.build` appears directly at each kernel construction site so static specialization receives the actual lambda. A handler class lowers to a named handler function, the module idiom `fn on_gpu(work) = { handle static Tensor<GpuBuffer<float>> { … }\n work() }`, because a module `let` must be a compile-time constant. `strictly` nests two `with` suites; each suite is a closure, so its Result type is pinned by the one return annotation in the port.
+## Sampling checks
 
-Native compiler validation compares every element of 24 tensors to the unchanged reference: three sequence lengths for LayerNorm and causal attention, small matrix/transpose/linear/residual/GELU cases, and every intermediate activation in one block. Both handlers pass under default, GC and ARC; ARC exits retain no live objects. The generator comparison runs both the Default and the Python projects with the same stdin and asserts identical stdout bytes on host, Metal and OpenCL, and over host lists; it needs the downloaded checkpoint, so it is an `--ignored` test, while the checkpoint-free message comparison and the no-`.osp` check run in every suite.
+On 2026-11-23 the ARC generator ran both prompts with budgets of 0, 1, 20 and 50 tokens on `host`, `metal:0` and `opencl:0` on an Apple M4 Max. The checkpoint SHA-256 was `248dfc3911869ec493c76e65bf2fcf7f615828b0254c12b473182f0f81d3a707`. All 24 processes exited 0. Each backend produced the same token IDs and decoded bytes for each prompt and budget.
+
+The France prompt was `The capital of France is` (IDs `464 3139 286 4881 318`). The Melbourne prompt was `Melbourne is the capital of` (IDs `21102 12544 318 262 3139 286`). Append the UTF-8 text in the last column to the prompt to recover the decoded output. JSON quotes make the leading space and any line breaks visible.
+
+| Prompt | Budget | Generated token IDs | Decoded continuation |
+| --- | ---: | --- | --- |
+| France | 0 | `[]` | `""` |
+| France | 1 | `[262]` | `" the"` |
+| France | 20 | `[262, 3139, 286, 262, 4141, 2066, 11, 290, 262, 3139, 286, 262, 4141, 2066, 318, 262, 3139, 286, 262, 4141]` | `" the capital of the French Republic, and the capital of the French Republic is the capital of the French"` |
+| France | 50 | `[262, 3139, 286, 262, 4141, 2066, 11, 290, 262, 3139, 286, 262, 4141, 2066, 318, 262, 3139, 286, 262, 4141, 2066, 13, 198, 198, 464, 4141, 2066, 318, 262, 3139, 286, 262, 4141, 2066, 13, 198, 198, 464, 4141, 2066, 318, 262, 3139, 286, 262, 4141, 2066, 13, 198, 198]` | `" the capital of the French Republic, and the capital of the French Republic is the capital of the French Republic.\n\nThe French Republic is the capital of the French Republic.\n\nThe French Republic is the capital of the French Republic.\n\n"` |
+| Melbourne | 0 | `[]` | `""` |
+| Melbourne | 1 | `[262]` | `" the"` |
+| Melbourne | 20 | `[262, 6638, 9747, 25219, 13, 198, 198, 464, 1748, 318, 1363, 284, 262, 4387, 1271, 286, 661, 287, 262, 995]` | `" the Australian Capital Territory.\n\nThe city is home to the largest number of people in the world"` |
+| Melbourne | 50 | `[262, 6638, 9747, 25219, 13, 198, 198, 464, 1748, 318, 1363, 284, 262, 4387, 1271, 286, 661, 287, 262, 995, 11, 351, 517, 621, 352, 13, 20, 1510, 661, 2877, 287, 262, 1748, 13, 198, 198, 464, 1748, 318, 635, 1363, 284, 262, 4387, 1271, 286, 661, 287, 262, 995]` | `" the Australian Capital Territory.\n\nThe city is home to the largest number of people in the world, with more than 1.5 million people living in the city.\n\nThe city is also home to the largest number of people in the world"` |
+
+Every sample used its full budget. A separate control supplied logits `[1, 9, 9]` to the sampler’s `Model.index_of(logits, Model.peak(logits))` expression. All three backends selected index 1. In two copies of the sampler, forcing the first prediction to `END_OF_TEXT` (50256) produced zero new tokens, and forcing the next prediction to `END_OF_TEXT` produced one. All nine control processes exited 0.
+
+To repeat the matrix from the repository root, use the weights and merges downloaded by the `gpt2` target. The sampler prints decoded text and prompt IDs. The second binary adds one output line containing the IDs it passed to the decoder. Removing this line reproduced the first binary’s full output byte for byte on all 24 runs.
+
+```sh
+src=src/osprey/examples/llms/gpt2/python
+work=$(mktemp -d)
+cp -R "$src" "$work/trace"
+awk '{print} /^    print\(f"generated / {print "    print(f\"@ids:{Tokenizer.ids_text(out)}\")"}' \
+  "$src/generate/generate.py" > "$work/trace/generate/generate.py"
+shasum -a 256 src/osprey/examples/llms/gpt2/weights/model.safetensors
+target/debug/osprey "$src/generate" --compile --memory=arc -o "$work/generate"
+target/debug/osprey "$work/trace/generate" --compile --memory=arc -o "$work/ids"
+for app in "$work/generate" "$work/ids"; do
+  for device in host metal opencl; do
+    for count in 0 1 20 50; do
+      for prompt in 'The capital of France is' 'Melbourne is the capital of'; do
+        printf '%s\n%s\ngpu\n' "$prompt" "$count" | OSPREY_GPU="$device" "$app" || exit 1
+      done
+    done
+  done
+done
+```

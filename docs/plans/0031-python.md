@@ -44,7 +44,7 @@ Constraints:
 ## Phase E — GPT-2 edge checks and sampling-boundary record
 
 - [ ] [FLAVOR-PYTHON-GPU] Extend `scripts/tests/check-python-gpt2.py` with weight-download-free tiny-tensor edge checks: ordered reductions, final projection, first-index tie, EOS, malformed tensor/shape errors, empty/overlong prompts, zero/negative token counts, one-token prompt, context exhaustion, unavailable devices. Acceptance: runs in the ordinary corpus; a device case without an actual adapter is ignored, never green.
-- [ ] [FLAVOR-PYTHON-GPU] [GPU-DEVICE] Record the real-checkpoint sampling boundary (token IDs plus decoded bytes, EOS/tie behavior, process status, weights hash `248dfc3911869ec493c76e65bf2fcf7f615828b0254c12b473182f0f81d3a707`, exact commands) for `The capital of France is` and `Melbourne is the capital of` at 0/1/20/50 tokens on host/Metal/OpenCL.
+- [x] [FLAVOR-PYTHON-GPU] [GPU-DEVICE] Both prompts matched across host, Metal and OpenCL at 0/1/20/50 tokens. Verified 24 production runs, 24 token-ID traces and nine EOS/tie controls on 2026-11-23. [Exact IDs, decoded bytes, checkpoint, commands and process results](../../src/osprey/examples/llms/gpt2/python/README.md#sampling-checks)
 
 ## Phase F — backward pass and training (deferred)
 
@@ -52,7 +52,7 @@ Constraints:
 
 ## Phase G — publication and measurements
 
-- [ ] [FLAVOR-PYTHON-VERIFICATION] Publish the tested `.py` sources with a concise reference-to-Osprey change guide and reproducible commands (`src/osprey/examples/llms/gpt2/python/README.md#port-notes`); demonstrate an effect and both handlers first; state tokenizer/loading/orchestration stay on CPU; describe transfer/dispatch per spec 0034.
+- [x] [FLAVOR-PYTHON-VERIFICATION] The reference-to-Osprey guide shows `Tensor.mat_mul` and the actual list and GPU handler arms, explains CPU loading and dispatch, and includes reproducible checkpoint-free and real-weight runs. [Port notes](../../src/osprey/examples/llms/gpt2/python/README.md#port-notes)
 - [ ] [FLAVOR-PYTHON-VERIFICATION] Measure generation with identical KV-cache mode on both sides (same checkpoint/prompts/options/loading/precision); record cold/warm timings, repeated samples, device/CPU details, failures. No speedup inference.
 
 ## Python interoperability — spec 0042
