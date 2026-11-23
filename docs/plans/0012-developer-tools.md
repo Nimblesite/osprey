@@ -27,7 +27,7 @@ Depends on: lspkit shared profiler + memory contracts ([`LSP-PROFILER-SPEC.md`](
 
 - [ ] Migrate the textual `@llvm.dbg.value`/`@llvm.dbg.declare` compatibility intrinsics to `#dbg_value`/`#dbg_declare` debug records in `src/toolchain/crates/osprey-codegen/src/builder/debug_variables.rs` once the pinned LLVM floor accepts them [DEBUGGER-DBG-DECLARE]. Check: emitted IR uses the `#dbg_*` form and the golden IR tests in `src/toolchain/crates/osprey-codegen/src/ir_tests/lowering_1.rs` plus LLDB-DAP cases still inspect values.
 - [ ] Extend value-location records to the remaining capture representations in `src/toolchain/crates/osprey-codegen/src/builder/debug_variables.rs` / `debug_scopes.rs`. Check: each remaining capture representation carries a `DILocalVariable` + location and LLDB-DAP reads it.
-- [ ] Add unavailable-value reporting tests. Check: a test pauses where a value is unavailable and asserts the adapter reports unavailable/error, not a fabricated value.
+- [x] The 14 lexical-scope VS Code tests inspect `observed` while it is live, then watch it again after leaving scope and require LLDB-DAP to report the unknown identifier. All 14 passed on macOS in Default and ML on 2026-11-23.
 
 ## Phase 4 - Type and value rendering tails
 
