@@ -110,7 +110,7 @@ fn megaShowcaseCase() = {
         structuralEquals([badge(tier(499)), badge(tier(500)), badge(tier(1999))], ["🟢 STARTER", "🔵 SOLID", "🔵 SOLID"]),
         structuralEquals([badge(tier(2000)), badge(Starter)], ["🟣 EPIC", "🟢 STARTER"]),
         structuralEquals([badge(Solid), badge(Epic)], ["🔵 SOLID", "🟣 EPIC"]),
-        upgradable(Starter), upgradable(tier(500)), !upgradable(Epic), !upgradable(tier(2000))
+        upgradable(Starter), upgradable(tier(500)), upgradable(Epic) == false, upgradable(tier(2000)) == false
     ])
 }
 
