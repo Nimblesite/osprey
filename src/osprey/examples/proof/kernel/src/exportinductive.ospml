@@ -17,11 +17,16 @@ module ExportInductive
     (** The block the line states, or why it cannot be read. *)
     export blocked (tables, json) = Terms::upon (ExportJson::fieldIn (json, "inductive"), \group => Terms::upon (strict (group, groupMembers (), "inductive"), \known => grouped (tables, group)))
 
+    (** Each reads one export field and continues with it, or stops at the first failure. *)
+    intAt (json, key, next) = Terms::upon (ExportJson::intIn (json, key), next)
+    boolAt (json, key, next) = Terms::upon (ExportJson::boolIn (json, key), next)
+    arrayAt (json, key, next) = Terms::upon (ExportJson::arrayIn (json, key), next)
+
     grouped (tables, group) =
-        use types <- Terms::upon (ExportJson::arrayIn (group, "types"))
+        use types <- arrayAt (group, "types")
         use families <- Terms::upon (nonEmpty (types, "type"))
-        use ctors <- Terms::upon (ExportJson::arrayIn (group, "ctors"))
-        use recs <- Terms::upon (ExportJson::arrayIn (group, "recs"))
+        use ctors <- arrayAt (group, "ctors")
+        use recs <- arrayAt (group, "recs")
         use eliminators <- Terms::upon (nonEmpty (recs, "recursor"))
         groupedAs (tables, families, ctors, eliminators)
 
@@ -46,9 +51,9 @@ module ExportInductive
     familyOf (tables, json) = Terms::upon (ExportJson::intIn (json, "numParams"), \params => Terms::upon (ExportJson::intIn (json, "numIndices"), \indices => familyFlags (tables, json, params, indices)))
 
     familyFlags (tables, json, params, indices) =
-        use recursive <- Terms::upon (ExportJson::boolIn (json, "isRec"))
-        use reflexive <- Terms::upon (ExportJson::boolIn (json, "isReflexive"))
-        use nested <- Terms::upon (ExportJson::intIn (json, "numNested"))
+        use recursive <- boolAt (json, "isRec")
+        use reflexive <- boolAt (json, "isReflexive")
+        use nested <- intAt (json, "numNested")
         use all <- Terms::upon (allOf (tables, json))
         use ctors <- Terms::upon (ctorNames (tables, json))
         Success(value = Family(familyParams = params, familyIndices = indices, familyCtors = ctors, familyRecursive = recursive, familyReflexive = reflexive, familyAll = all, familyNested = nested))
@@ -66,17 +71,17 @@ module ExportInductive
         Success(value = decl)
 
     ctorOf (tables, json) =
-        use family <- Terms::upon (ExportJson::intIn (json, "induct"))
+        use family <- intAt (json, "induct")
         use familyName <- Terms::upon (ExportJson::nameOf (tables, family))
-        use index <- Terms::upon (ExportJson::intIn (json, "cidx"))
-        use params <- Terms::upon (ExportJson::intIn (json, "numParams"))
-        use fields <- Terms::upon (ExportJson::intIn (json, "numFields"))
+        use index <- intAt (json, "cidx")
+        use params <- intAt (json, "numParams")
+        use fields <- intAt (json, "numFields")
         Success(value = Ctor(ctorFamily = familyName, ctorIndex = index, ctorParams = params, ctorFields = fields))
 
     recursorOf (tables, json) =
         use known <- Terms::upon (strict (json, recMembers (), "recursor"))
         use safe <- Terms::upon (clean (json))
-        use motives <- Terms::upon (ExportJson::intIn (json, "numMotives"))
+        use motives <- intAt (json, "numMotives")
         use elim <- Terms::upon (elimOf (tables, json))
         use decl <- Terms::upon (declared (tables, json, Recursor elim))
         Success(value = decl)
@@ -84,12 +89,12 @@ module ExportInductive
     elimOf (tables, json) =
         use name <- Terms::upon (ExportJson::declName (tables, json))
         use all <- Terms::upon (allOf (tables, json))
-        use params <- Terms::upon (ExportJson::intIn (json, "numParams"))
-        use indices <- Terms::upon (ExportJson::intIn (json, "numIndices"))
-        use minors <- Terms::upon (ExportJson::intIn (json, "numMinors"))
-        use motives <- Terms::upon (ExportJson::intIn (json, "numMotives"))
+        use params <- intAt (json, "numParams")
+        use indices <- intAt (json, "numIndices")
+        use minors <- intAt (json, "numMinors")
+        use motives <- intAt (json, "numMotives")
         use rules <- Terms::upon (rulesOf (tables, json))
-        use k <- Terms::upon (ExportJson::boolIn (json, "k"))
+        use k <- boolAt (json, "k")
         Success(value = Eliminator(elimFamily = eliminatorFamily (name, all), elimAll = all, elimMotives = motives, elimParams = params, elimIndices = indices, elimMinors = minors, elimRules = rules, elimK = k))
 
     (** The family a recursor's claim names as its own: the group member
@@ -113,10 +118,10 @@ module ExportInductive
 
     ruleOf (tables, json) =
         use known <- Terms::upon (strict (json, ruleMembers (), "rule"))
-        use ref <- Terms::upon (ExportJson::intIn (json, "ctor"))
+        use ref <- intAt (json, "ctor")
         use name <- Terms::upon (ExportJson::nameOf (tables, ref))
-        use fields <- Terms::upon (ExportJson::intIn (json, "nfields"))
-        use rhs <- Terms::upon (ExportJson::intIn (json, "rhs"))
+        use fields <- intAt (json, "nfields")
+        use rhs <- intAt (json, "rhs")
         use term <- Terms::upon (ExportJson::exprOf (tables, rhs))
         Success(value = Rule(ruleCtor = name, ruleFields = fields, ruleRhs = term))
 
