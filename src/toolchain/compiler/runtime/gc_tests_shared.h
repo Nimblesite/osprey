@@ -81,6 +81,7 @@ void t_heap_ceiling(const char *self);
 void scrub_stack(void);
 
 // memory_gc_page_tests.c
+void gc_test_child_prints(const char *self, const char *setup, const char *flag, const char *want);
 void pages_off_child(void);
 void mark_stack_refused_child(void);
 void t_size_class_pages(const char *self);
