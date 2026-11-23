@@ -244,6 +244,20 @@ mod tests {
     }
 
     #[test]
+    fn only_pattern_pipes_are_operators() {
+        let captures = highlight_captures("type C = A | B\nlet f = match c { A | B => |x| => x }");
+        for (name, count) in [("operator", 1), ("punctuation.delimiter", 3)] {
+            assert_eq!(
+                captures
+                    .iter()
+                    .filter(|(scope, text)| scope == name && text == "|")
+                    .count(),
+                count
+            );
+        }
+    }
+
+    #[test]
     fn string_scanning_preserves_newline_continuation_operators() {
         let source = "let s = 1\n* \"x\"\n";
         let tree = parse(source);

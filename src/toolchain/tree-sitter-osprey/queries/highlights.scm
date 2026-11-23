@@ -38,7 +38,11 @@
 
 ; --- Punctuation ---
 [ "(" ")" "{" "}" "[" "]" ] @punctuation.bracket
-[ "," "." ";" "|" ] @punctuation.delimiter
+[ "," "." ";" ] @punctuation.delimiter
+(union_type "|" @punctuation.delimiter)
+(effect_set "|" @punctuation.delimiter)
+(lambda_expression "|" @punctuation.delimiter)
+(or_pattern "|" @operator)
 
 ; --- Declarations & names ---
 (function_declaration name: (identifier) @function)

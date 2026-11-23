@@ -45,7 +45,7 @@ This is a language gap that blocks top tier, ranked with the gaps in [generic er
 - [x] ML parser (`osprey-syntax/src/ml`): the same at arm level; a nested or-pattern in a juxtaposed slot needs parentheses; `|` in a type declaration stays a variant separator
 - [ ] Python parser (`osprey-syntax/src/python`): `case A() | B():` to `Pattern::Or`
 - [x] TypeScript parser (`osprey-syntax/src/typescript`): adjacent `case` labels with no statements between them to `Pattern::Or`; fallthrough out of a case with statements stays rejected
-- [ ] Highlight queries and the VS Code grammar colour `|` in a pattern as an operator
+- [x] Highlight queries and both VS Code grammars colour `|` in a pattern as an operator. The Tree-sitter capture test and TextMate token tests distinguish pattern operators from union and lambda delimiters.
 
 ### Checker
 
