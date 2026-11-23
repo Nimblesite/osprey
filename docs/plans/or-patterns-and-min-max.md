@@ -83,7 +83,7 @@ Expand existing suites. Add no new test file.
 - [ ] Multi-shot: an or-pattern arm whose body performs a `control many` operation, resumed two and three times, in `osprey-cli/tests/common/many_permutations.rs` and the multi-shot corpus, with identical output under GC, ARC and wasm32
 - [ ] Python and TypeScript twins share the Default golden
 - [ ] `src/osprey/examples/failscompilation/`: an alternative that omits a binder, binders of two types, an unreachable alternative after an earlier arm, an alternative repeated inside one pattern, a leading `|`, a trailing `|`, an alternative of another union, and a non-exhaustive match whose witness is shown. Expand `match_not_exhaustive` and `match_unreachable_after_catch_all`
-- [ ] Regression in `src/osprey/tests/regressions/` for the grammar's lambda case
+- [x] The lambda generic-uses regression executes a lambda arm followed by an or-pattern arm, calls the returned functions for both alternatives and the fallback, and matches its golden under GC, ARC and wasm32.
 - [ ] Corpus runs through `src/toolchain/crates/run_test_corpus.sh` under GC, ARC and wasm32
 
 ### Use it
