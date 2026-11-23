@@ -209,14 +209,9 @@ fn add_default(
     ty: tree_sitter::Node<'_>,
     out: &mut Vec<AnnotationEdit>,
 ) {
-    let Some(marker) = std::iter::successors(ty.prev_sibling(), tree_sitter::Node::prev_sibling)
-        .find(|n| matches!(n.kind(), ":" | "->"))
-    else {
+    let Some((highlight, edits)) = written_annotation(source, ty) else {
         return;
     };
-    let highlight = marker.start_byte()..ty.end_byte();
-    let mut tokens = vec![marker.byte_range()];
-    terminal_ranges(ty, &mut tokens);
     let owner_node = match owner.kind() {
         "function_declaration" => owner.child_by_field_name("name"),
         "let_declaration" => owner.child_by_field_name("keyword"),
@@ -228,8 +223,21 @@ fn add_default(
         owner_position: point(owner_node),
         target,
         highlight,
-        edits: token_edits(source, &tokens, false),
+        edits,
     });
+}
+
+/// Preserve comments between the marker and type tokens in either CST.
+pub(crate) fn written_annotation(
+    source: &str,
+    ty: tree_sitter::Node<'_>,
+) -> Option<(Range<usize>, Vec<SourceEdit>)> {
+    let marker = std::iter::successors(ty.prev_sibling(), tree_sitter::Node::prev_sibling)
+        .find(|n| matches!(n.kind(), ":" | "->"))?;
+    let highlight = marker.start_byte()..ty.end_byte();
+    let mut tokens = vec![marker.byte_range()];
+    terminal_ranges(ty, &mut tokens);
+    Some((highlight, token_edits(source, &tokens, false)))
 }
 
 fn terminal_ranges(node: tree_sitter::Node<'_>, out: &mut Vec<Range<usize>>) {

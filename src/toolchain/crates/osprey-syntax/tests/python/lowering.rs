@@ -349,3 +349,70 @@ fn search_expr<T>(expr: &Expr, find: &dyn Fn(&Expr) -> Option<T>) -> Option<T> {
         _ => None,
     })
 }
+
+/// [FLAVOR-PYTHON-CST] Every recovery position addresses the original buffer.
+#[test]
+fn recovery_locations_survive_unicode_and_crlf() -> Result<(), String> {
+    for (source, at, message) in [
+        (
+            "def café(x):\r\n    return f\"😀é{}\"\r\n",
+            (2, 20),
+            "missing Python identifier",
+        ),
+        ("def f(:\n    return 1\n", (1, 6), "missing Python )"),
+        (
+            "x = \"😀é\"; y = (1 + )\r\n",
+            (1, 21),
+            "invalid Python syntax near `+`",
+        ),
+        (
+            "x = \"😀é\"; y = [1 2]\r\n",
+            (1, 21),
+            "invalid Python syntax near `2`",
+        ),
+        (
+            "# café 😀\r\nif True:\r\n    x = 1\r\n  y = 2\r\n",
+            (4, 2),
+            "this line's indentation does not match its enclosing block",
+        ),
+        (
+            "x = \"😀é\"\r\ndef f():\r\n \treturn 1\r\n",
+            (3, 1),
+            "tabs are not allowed in Python-flavor indentation",
+        ),
+        (
+            "x = \"😀é\"; y =",
+            (1, 0),
+            "invalid Python syntax near `x = \"😀é\"; y =`",
+        ),
+        (
+            "def café(x: int = 1):\r\n    return x\r\n",
+            (1, 10),
+            "Python `x: int = 1` has no supported Osprey lowering",
+        ),
+    ] {
+        let errors = parse(source).errors;
+        let error = errors.iter().find(|error| error.message == message);
+        assert_eq!(
+            error.map(|e| (e.position.line, e.position.column)),
+            Some(at),
+            "{source:?}: {errors:?}"
+        );
+        for error in errors {
+            let line = source
+                .lines()
+                .nth(usize::try_from(error.position.line - 1).map_err(|e| e.to_string())?)
+                .expect("source line");
+            assert!(
+                line.is_char_boundary(
+                    usize::try_from(error.position.column).map_err(|e| e.to_string())?
+                ),
+                "{error:?}"
+            );
+            if let Some(quoted) = error.message.split('`').nth(1) {
+                assert!(source.contains(quoted), "{error:?}");
+            }
+        }
+    }
+    Ok(())
+}

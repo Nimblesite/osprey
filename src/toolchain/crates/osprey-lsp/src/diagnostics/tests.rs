@@ -249,6 +249,24 @@ fn a_typescript_flavor_document_gets_osprey_diagnostics_in_utf16() {
     assert!(clean.is_empty(), "{clean:?}");
 }
 
+/// [FLAVOR-PYTHON-CST] A missing f-string expression has an empty byte span
+/// immediately after its opening brace, after a surrogate pair and an accent.
+#[test]
+fn python_recovery_uses_the_negotiated_encoding() {
+    let source = "# osprey: flavor=python\r\ndef café():\r\n    return f\"😀é{}\"\r\n";
+    for (encoding, column) in [(U16, 17), (PositionEncoding::Utf8, 20)] {
+        let diagnostics = compute(source, "file:///ranges.py", encoding);
+        let missing = diagnostics
+            .iter()
+            .find(|d| d.message == "missing Python identifier");
+        assert_eq!(
+            missing.map(|d| (d.range.0, d.range.1)),
+            Some((2, column)),
+            "{diagnostics:?}"
+        );
+    }
+}
+
 #[cfg(unix)]
 #[path = "project_tests.rs"]
 mod project_tests;

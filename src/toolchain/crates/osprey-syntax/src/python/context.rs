@@ -7,7 +7,7 @@ use tree_sitter::Node;
 pub(super) type Result<T> = std::result::Result<T, SyntaxError>;
 
 pub(super) struct Lowerer<'s> {
-    source: &'s str,
+    pub(super) source: &'s str,
     scopes: Vec<Scope>,
     generated: usize,
     pub(super) errors: Vec<SyntaxError>,
