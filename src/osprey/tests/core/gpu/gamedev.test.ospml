@@ -148,7 +148,12 @@ fixedPointCaseUploaded (input0, input1) =
         gpuSatisfies(gpuMap(scaled, halveFp), \half => sumIs(gpuMap(half, halveFp), 640)), gpuLengthIs(scaled, 4), gpuSatisfies(gpuMap(input1, doubleFp), \empty => gpuLength(empty) == 0)
     ]))
 (** vectorCase does 2D algebra across four parallel component buffers; dot and cross each combine two zipped products, and a . perp a and a x a vanish. *)
-vectorCase () = withBuffer(toGpu ([1024, 2048, 0, 1024]), \input0 => withBuffer(toGpu ([0, 0, 3072, 1024]), \input1 => withBuffer(toGpu ([1024, 512, 0, 0]), \input2 => withBuffer(toGpu ([0, 1024, 1024, 2048]), \input3 => vectorCaseUploaded(input0, input1, input2, input3)))))
+vectorCase () =
+    use input0 <- withBuffer (toGpu ([1024, 2048, 0, 1024]))
+    use input1 <- withBuffer (toGpu ([0, 0, 3072, 1024]))
+    use input2 <- withBuffer (toGpu ([1024, 512, 0, 0]))
+    use input3 <- withBuffer (toGpu ([0, 1024, 1024, 2048]))
+    vectorCaseUploaded(input0, input1, input2, input3)
 vectorCaseUploaded (input0, input1, input2, input3) =
     ax = input0
     ay = input1
@@ -180,7 +185,11 @@ integrationCaseUploaded (input0, input1) =
         floatTotalIs(tick1, 144.0), floatTotalIs(tick4, 142.5), floatTotalIs(vel, 0.0 - 5.0), gpuLengthIs(tick4, 4)
     ])))))
 (** eulerCase advances position, velocity and acceleration together, matching the closed forms v(n) = v0 + n*a and p(n) = p0 + n*v0 + a*n*(n+1)/2. *)
-eulerCase () = withBuffer(toGpu ([0, 100, negFp 50]), \input0 => withBuffer(toGpu ([10, 0, 20]), \input1 => withBuffer(toGpu ([negFp 2, 3, 0]), \input2 => eulerCaseUploaded(input0, input1, input2))))
+eulerCase () =
+    use input0 <- withBuffer (toGpu ([0, 100, negFp 50]))
+    use input1 <- withBuffer (toGpu ([10, 0, 20]))
+    use input2 <- withBuffer (toGpu ([negFp 2, 3, 0]))
+    eulerCaseUploaded(input0, input1, input2)
 eulerCaseUploaded (input0, input1, input2) =
     pos = input0
     vel = input1
@@ -198,12 +207,14 @@ dragCaseUploaded (input0) =
         elementsFrom (three, 0, 0, [1728, negFp(864), 432]), at(three, 3, 1) == 0, speedIs(identity, 7168), speedIs(stopped, 0), speedIs(unmoved, 7168), gpuLengthIs(three, 4)
     ])))))))
 (** aabbCase builds a box from four folds. The sentinel seeds are the empty-world contract: [GPU-FOLD] returns the seed, so the box comes back inverted. *)
-aabbCase () = withBuffer(toGpu ([30, negFp 10, 75, 12, 0]),
-    \input0 => withBuffer(toGpu ([5, 60, negFp 20, 60, 0]),
-    \input1 => withBuffer(toGpu ([7]),
-    \input2 => withBuffer(toGpu ([7]),
-    \input3 => withBuffer(toGpu ([]),
-    \input4 => withBuffer(toGpu ([]), \input5 => aabbCaseUploaded(input0, input1, input2, input3, input4, input5)))))))
+aabbCase () =
+    use input0 <- withBuffer (toGpu ([30, negFp 10, 75, 12, 0]))
+    use input1 <- withBuffer (toGpu ([5, 60, negFp 20, 60, 0]))
+    use input2 <- withBuffer (toGpu ([7]))
+    use input3 <- withBuffer (toGpu ([7]))
+    use input4 <- withBuffer (toGpu ([]))
+    use input5 <- withBuffer (toGpu ([]))
+    aabbCaseUploaded(input0, input1, input2, input3, input4, input5)
 aabbCaseUploaded (input0, input1, input2, input3, input4, input5) =
     xs = input0
     ys = input1
@@ -215,7 +226,12 @@ aabbCaseUploaded (input0, input1, input2, input3, input4, input5) =
         (intDiv((loY + hiY) , 2) ) == 20, keptIs(gpuFilter(xs, \x => x >= loX && x <= hiX), 5), singleLo == 7, singleHi == 7, emptyLo == 9999, emptyHi == negFp(9999)
     ])))))))))
 (** overlapCase is the four-buffer interval test every broadphase runs: two inclusive comparisons zipped into one flag buffer. Touching edges collide. *)
-overlapCase () = withBuffer(toGpu ([0, 100, 0, 10]), \input0 => withBuffer(toGpu ([10, 110, 100, 20]), \input1 => withBuffer(toGpu ([15, 50, 300, 30]), \input2 => withBuffer(toGpu ([5, 0, 200, 20]), \input3 => overlapCaseUploaded(input0, input1, input2, input3)))))
+overlapCase () =
+    use input0 <- withBuffer (toGpu ([0, 100, 0, 10]))
+    use input1 <- withBuffer (toGpu ([10, 110, 100, 20]))
+    use input2 <- withBuffer (toGpu ([15, 50, 300, 30]))
+    use input3 <- withBuffer (toGpu ([5, 0, 200, 20]))
+    overlapCaseUploaded(input0, input1, input2, input3)
 overlapCaseUploaded (input0, input1, input2, input3) =
     aLo = input0
     aHi = input1
@@ -225,22 +241,33 @@ overlapCaseUploaded (input0, input1, input2, input3) =
         leqI(4, 3) == false, bothOf(true, false) == false, bothOf(true, true) == true
     ]))))))
 (** circleCase combines six buffers — two positions, two radii, a squared distance and a squared reach; circles that exactly touch count as a hit. *)
-circleCase () = withBuffer(toGpu ([0, 0, 3000, 0]),
-    \input0 => withBuffer(toGpu ([0, 3000, 0, 6000]),
-    \input1 => withBuffer(toGpu ([0, 4000, 4000, 0]),
-    \input2 => withBuffer(toGpu ([0, 0, 0, 8000]),
-    \input3 => withBuffer(toGpu ([100, 2000, 6000, 1000]),
-    \input4 => withBuffer(toGpu ([100, 3000, 1000, 1000]), \input5 => circleCaseUploaded(input0, input1, input2, input3, input4, input5)))))))
+circleCase () =
+    use input0 <- withBuffer (toGpu ([0, 0, 3000, 0]))
+    use input1 <- withBuffer (toGpu ([0, 3000, 0, 6000]))
+    use input2 <- withBuffer (toGpu ([0, 4000, 4000, 0]))
+    use input3 <- withBuffer (toGpu ([0, 0, 0, 8000]))
+    use input4 <- withBuffer (toGpu ([100, 2000, 6000, 1000]))
+    use input5 <- withBuffer (toGpu ([100, 3000, 1000, 1000]))
+    circleCaseUploaded(input0, input1, input2, input3, input4, input5)
 circleCaseUploaded (input0, input1, input2, input3, input4, input5) =
-    withBuffer(gpuZipWith(input0, input1, subInts),
-        \dx => withBuffer(gpuZipWith(input2, input3, subInts), \dy => withBuffer(gpuZipWith(dx, dy, addSquares), \dist2 => withBuffer(gpuZipWith(input4, input5, sumInts),
-        \reach => withBuffer(gpuMap(reach, sqrOf), \thresh => withBuffer(gpuZipWith(dist2, thresh, leqI), \hit => checkAll("circle broadphase", [
+    use dx <- withBuffer (gpuZipWith(input0, input1, subInts))
+    use dy <- withBuffer (gpuZipWith(input2, input3, subInts))
+    use dist2 <- withBuffer (gpuZipWith(dx, dy, addSquares))
+    use reach <- withBuffer (gpuZipWith(input4, input5, sumInts))
+    use thresh <- withBuffer (gpuMap(reach, sqrOf))
+    use hit <- withBuffer (gpuZipWith(dist2, thresh, leqI))
+    checkAll("circle broadphase", [
         at(dist2, 0, 1) == 0, elementsFrom (dist2, 1, 0, [25000000, 25000000, 100000000]), totalIs(dist2, 150000000),
         elementsFrom (thresh, 0, 0, [40000, 25000000]), elementsFrom (hit, 0, false, [true, true, true]), at(hit, 3, true) == false,
         gpuLengthIs(hit, 4), sumIs(gpuMap(hit, hitCost), 3), addSquares(3, 4) == 25, addSquares(0, 0) == 0
-    ])))))))
+    ])
 (** cullCase draws only entities inside the view distance, in draw order, and pins that compaction publishes exactly the kept prefix. *)
-cullCase () = withBuffer(toGpu ([12.5, 250.0, 99.9, 100.0, 3.0, 0.0]), \input0 => withBuffer(toGpu ([500.0, 900.0]), \input1 => withBuffer(toGpu ([1.0, 2.0]), \input2 => withBuffer(toGpu ([100.0]), \input3 => cullCaseUploaded(input0, input1, input2, input3)))))
+cullCase () =
+    use input0 <- withBuffer (toGpu ([12.5, 250.0, 99.9, 100.0, 3.0, 0.0]))
+    use input1 <- withBuffer (toGpu ([500.0, 900.0]))
+    use input2 <- withBuffer (toGpu ([1.0, 2.0]))
+    use input3 <- withBuffer (toGpu ([100.0]))
+    cullCaseUploaded(input0, input1, input2, input3)
 cullCaseUploaded (input0, input1, input2, input3) =
     dists = input0
     withBuffer(gpuFilter(dists, visible), \drawn => withBuffer(gpuFilter(input1, visible), \far => withBuffer(gpuFilter(input2, visible), \close => withBuffer(gpuFilter(input3, visible), \edge => checkAll("distance culling", [
@@ -256,7 +283,11 @@ damageCaseUploaded (input0, input1) =
         elementsFrom (survivors, 0, 0, [70, 75]), totalIs(survivors, 145), totalIs(after, 145), gpuLengthIs(cleared, 0), totalIs(wiped, 0), gpuLengthIs(wiped, 5)
     ])))))
 (** easingCase eases a camera rig toward its targets and normalizes a channel buffer; a value already at its target is a fixed point of the ease. *)
-easingCase () = withBuffer(toGpu ([4.0, 0.0, 1.0, 1.0]), \input0 => withBuffer(toGpu ([0.0, 8.0, 1.0, 0.0]), \input1 => withBuffer(toGpu ([0.0 - 0.5, 0.25, 1.75, 1.0, 0.0]), \input2 => easingCaseUploaded(input0, input1, input2))))
+easingCase () =
+    use input0 <- withBuffer (toGpu ([4.0, 0.0, 1.0, 1.0]))
+    use input1 <- withBuffer (toGpu ([0.0, 8.0, 1.0, 0.0]))
+    use input2 <- withBuffer (toGpu ([0.0 - 0.5, 0.25, 1.75, 1.0, 0.0]))
+    easingCaseUploaded(input0, input1, input2)
 easingCaseUploaded (input0, input1, input2) =
     target = input0
     withBuffer(gpuZipWith(input1, target, lerpQuarter), \eased => withBuffer(gpuZipWith(eased, target, lerpQuarter), \twice => withBuffer(gpuMap(input2, clamp01), \safe => checkAll("easing and clamping", [
@@ -264,7 +295,11 @@ easingCaseUploaded (input0, input1, input2) =
         floatTotalIs(safe, 2.25), at(safe, 0, 9.9) == 0.0, elementsFrom (safe, 1, 0.0, [0.25, 1.0, 1.0]), at(safe, 4, 9.9) == 0.0, gpuLengthIs(safe, 5)
     ]))))
 (** packCase meets three channel buffers in two passes and unpacks them again; an out-of-range channel clamps rather than bleeding into its neighbour. *)
-packCase () = withBuffer(toGpu ([255, 0, 18, 300]), \input0 => withBuffer(toGpu ([0, 255, 52, 128]), \input1 => withBuffer(toGpu ([0, 0, 86, negFp 20]), \input2 => packCaseUploaded(input0, input1, input2))))
+packCase () =
+    use input0 <- withBuffer (toGpu ([255, 0, 18, 300]))
+    use input1 <- withBuffer (toGpu ([0, 255, 52, 128]))
+    use input2 <- withBuffer (toGpu ([0, 0, 86, negFp 20]))
+    packCaseUploaded(input0, input1, input2)
 packCaseUploaded (input0, input1, input2) =
     withBuffer(gpuZipWith(input0, input1, packRG), \rg => withBuffer(gpuZipWith(rg, input2, packRGB), \packed => checkAll("colour packing", [
         elementsFrom (packed, 0, 0, [red(), green(), 1193046, 16744448]),
@@ -275,7 +310,11 @@ packCaseUploaded (input0, input1, input2) =
         clampChannel(negFp(1)) == 0, luminance(white()) == 255, luminance(black()) == 0, luminance(red()) == 76
     ])))
 (** blendCase composites two colour layers through a coverage buffer. Coverage 0 keeps the base and 256 takes the layer exactly, with no rounding drift. *)
-blendCase () = withBuffer(toGpu ([0, 128, 256, 64]), \input0 => withBuffer(toGpu ([white (), red (), black (), green ()]), \input1 => withBuffer(toGpu ([black (), green (), white (), red ()]), \input2 => blendCaseUploaded(input0, input1, input2))))
+blendCase () =
+    use input0 <- withBuffer (toGpu ([0, 128, 256, 64]))
+    use input1 <- withBuffer (toGpu ([white (), red (), black (), green ()]))
+    use input2 <- withBuffer (toGpu ([black (), green (), white (), red ()]))
+    blendCaseUploaded(input0, input1, input2)
 blendCaseUploaded (input0, input1, input2) =
     alpha = input0
     withBuffer(gpuMap(alpha, invAlpha), \inverse => withBuffer(gpuZipWith(input1, inverse, scaleColor), \base => withBuffer(gpuZipWith(input2, alpha, scaleColor), \layer => withBuffer(gpuZipWith(base, layer, sumInts), \blended => checkAll("alpha blending", [
@@ -324,7 +363,11 @@ stencilWithUploaded (indices5, input0, input1) =
         elementsAt (plateau, 0, [0, 4], [7, 7]), clampIdx(negFp(9), 5) == 0, clampIdx(99, 5) == 4, clampIdx(2, 5) == 2
     ])))
 (** budgetCase pins [GPU-SCAN] as an inclusive seeded prefix: the last element equals the fold, a carried budget shifts every prefix, max gives the peak. *)
-budgetCase () = withBuffer(toGpu ([3, 5, 2, 7, 1, 9]), \input0 => withBuffer(toGpu ([3]), \input1 => withBuffer(toGpu ([]), \input2 => budgetCaseUploaded(input0, input1, input2))))
+budgetCase () =
+    use input0 <- withBuffer (toGpu ([3, 5, 2, 7, 1, 9]))
+    use input1 <- withBuffer (toGpu ([3]))
+    use input2 <- withBuffer (toGpu ([]))
+    budgetCaseUploaded(input0, input1, input2)
 budgetCaseUploaded (input0, input1, input2) =
     costs = input0
     withBuffer(gpuScan(costs, 0, sumInts), \running => withBuffer(gpuScan(costs, 100, sumInts), \carried => withBuffer(gpuScan(costs, 0, boundMax), \peak => withBuffer(gpuScan(input1, 0, sumInts), \one => withBuffer(gpuScan(input2, 0, sumInts), \empty => checkAll("frame budget", [
@@ -333,7 +376,13 @@ budgetCaseUploaded (input0, input1, input2) =
     ]))))))
 (** emptyWorldCase is the degenerate frame: maps and filters stay empty, a fold returns its seed untouched, and a read is an Error, never a zero. *)
 emptyWorldCase () = withIndices (0, \indices0 => emptyWorldWith (indices0))
-emptyWorldWith (indices0) = withBuffer(toGpu ([]), \input0 => withBuffer(toGpu ([1, 2, 3]), \input1 => withBuffer(toGpu ([1, 2, 3]), \input2 => withBuffer(toGpu ([1, 2]), \input3 => withBuffer(toGpu ([9]), \input4 => emptyWorldWithUploaded(indices0, input0, input1, input2, input3, input4))))))
+emptyWorldWith (indices0) =
+    use input0 <- withBuffer (toGpu ([]))
+    use input1 <- withBuffer (toGpu ([1, 2, 3]))
+    use input2 <- withBuffer (toGpu ([1, 2, 3]))
+    use input3 <- withBuffer (toGpu ([1, 2]))
+    use input4 <- withBuffer (toGpu ([9]))
+    emptyWorldWithUploaded(indices0, input0, input1, input2, input3, input4)
 emptyWorldWithUploaded (indices0, input0, input1, input2, input3, input4) =
     none = input0
     idx = indices0
@@ -347,7 +396,12 @@ emptyWorldWithUploaded (indices0, input0, input1, input2, input3, input4) =
         at(none, 0, negFp(1)) == negFp(1), at(idx, 0, negFp(1)) == negFp(1), gpuLengthIs(gathered, 0)
     ]))))))))))))
 (** raggedCase pins [GPU-ZIPWITH] truncation: a three-buffer step narrows to its shortest stream instead of reading past the end. *)
-raggedCase () = withBuffer(toGpu ([1, 2, 3, 4, 5]), \input0 => withBuffer(toGpu ([10, 20, 30]), \input1 => withBuffer(toGpu ([100, 200]), \input2 => withBuffer(toGpu ([1]), \input3 => raggedCaseUploaded(input0, input1, input2, input3)))))
+raggedCase () =
+    use input0 <- withBuffer (toGpu ([1, 2, 3, 4, 5]))
+    use input1 <- withBuffer (toGpu ([10, 20, 30]))
+    use input2 <- withBuffer (toGpu ([100, 200]))
+    use input3 <- withBuffer (toGpu ([1]))
+    raggedCaseUploaded(input0, input1, input2, input3)
 raggedCaseUploaded (input0, input1, input2, input3) =
     pos = input0
     vel = input1

@@ -103,7 +103,10 @@ rowVariances (x, means, grid0) = gpuMap (grid0, \r => squaredDeviation (x, r * w
 normalised (x, means, variances, g, b, i) = (at (x, i) - at (means, intDiv (i, width))) / sqrt (at (variances, intDiv (i, width)) + epsilon) * at (g, i % width) + at (b, i % width)
 (** LayerNorm over each of the t rows of x [t, width], with gain g and bias b. *)
 layerNorm (x, g, b, grid0, grid1) =
-    andThen(rowMeans(x, grid0), \means => andThen(rowVariances(x, means, grid0), \variances => gpuMap(grid1, \i => normalised(x, means, variances, g, b, i))))
+    use means <- andThen (rowMeans(x, grid0))
+    use variances <- andThen (rowVariances(x, means, grid0))
+    use i <- gpuMap (grid1)
+    normalised(x, means, variances, g, b, i)
 
 (** x [rows, inner] times w [inner, cols], plus the bias on every row. *)
 linear (x, rows, inner, cols, w, bias, grid0) = andThen (product (x, w, rows, inner, cols), \value => gpuMap (grid0, \i => at (value, i) + at (bias, i % cols)))
@@ -134,7 +137,10 @@ probsOf (scores, t, n, first, grid0, grid1) =
 (** Causal multi-head self-attention for positions first..t-1 of qkv [t, qkvWidth],
     as [t - first, width]. *)
 attentionFrom (qkv, t, first, grid0, grid1, grid2) =
-    andThen(scoresFrom(qkv, t, first, grid0), \scores => andThen(probsOf(scores, t, t - first, first, grid1, grid0), \probs => gpuMap(grid2, \i => weighted(probs, qkv, t, t - first, first, intDiv(i, width), intDiv(i % width, headWidth), i % headWidth))))
+    use scores <- andThen (scoresFrom(qkv, t, first, grid0))
+    use probs <- andThen (probsOf(scores, t, t - first, first, grid1, grid0))
+    use i <- gpuMap (grid2)
+    weighted(probs, qkv, t, t - first, first, intDiv(i, width), intDiv(i % width, headWidth), i % headWidth)
 attention (qkv, t, grid0, grid1, grid2) = attentionFrom(qkv, t, 0, grid0, grid1, grid2)
 (** One pre-norm block: attention and MLP, each with a residual. *)
 block (x, t, grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7, grid8, grid9, grid10, grid11) =
@@ -175,16 +181,16 @@ tensorFailure (path, name) = failureOf (gpuLoadTensor (path, name))
 twoFloats (xs, ys, next) = withBuffer (floats (xs), \a => withBuffer (floats (ys), \b => next (a, b)))
 matMulExactCase () = twoFloats ([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], [7.0, 8.0, 9.0, 10.0, 11.0, 12.0], matMulExactCaseUploaded)
 matMulExactCaseUploaded (left, right) =
-    withBuffer (product (left, right, 2, 3, 2),
-        \square => twoFloats ([2.0, 3.0], [5.0, 7.0],
-        \(uploaded27, uploaded28) => withBuffer (product (uploaded27, uploaded28, 2, 1, 2),
-        \outer => twoFloats ([], [],
-        \(uploaded29, uploaded30) => withBuffer (product (uploaded29, uploaded30, 2, 0, 2),
-        \hollow => checkAll "gpuMatMul forms the row-major product of the stated shapes" [
+    use square <- withBuffer (product (left, right, 2, 3, 2))
+    use uploaded27, uploaded28 <- twoFloats ([2.0, 3.0], [5.0, 7.0])
+    use outer <- withBuffer (product (uploaded27, uploaded28, 2, 1, 2))
+    use uploaded29, uploaded30 <- twoFloats ([], [])
+    use hollow <- withBuffer (product (uploaded29, uploaded30, 2, 0, 2))
+    checkAll "gpuMatMul forms the row-major product of the stated shapes" [
             gpuLength square == 4, atsFrom(square, 0, [58.0, 64.0, 139.0, 154.0]), atsFrom(outer, 0, [10.0, 14.0, 15.0, 21.0]),
             gpuLength hollow == 4, gpuSatisfies (gpuFold (hollow, 0.0, addF), \total => exact (total, 0.0)),
             gpuSatisfies (toGpu ([]), \uploaded26 => gpuSatisfies (product (uploaded26, right, 0, 3, 2), \uploaded34 => gpuLength (uploaded34) == 0))
-        ])))))
+        ]
 (** 2^24 + 1 - 2^24 is 0.0 in binary32 k order and 1.0 in any other association; the last pin is 3 units in the last place only when the product is rounded before it is
     added — a fused multiply-add keeps one more bit. *)
 matMulOrderCase () =
@@ -213,40 +219,49 @@ matMulShapeCaseUploaded (four, three) =
         matMulFailure (four, four, 2, 2, 2) == "no error"
     ]
 mathKernelsCase () =
-    withBuffer(floats([0.0, 1.0, 2.25, 0.0625, 10000000000000000.0, -1.0]),
-        \rootInputs => withBuffer(floats([0.0, 1.0, -1000.0, 1000.0]),
-        \expInputs => withBuffer(floats([1.0, 0.0, 10.0, -1.0]),
-        \lnInputs => withBuffer(floats([0.0, 1000.0, -1000.0, 0.5]),
-        \tanhInputs => withBuffer(gpuMap(rootInputs, sqrt),
-        \roots => withBuffer(gpuMap(expInputs, exp),
-        \grown => withBuffer(gpuMap(lnInputs, ln),
-        \logs => withBuffer(gpuMap(tanhInputs, tanh),
-        \squashed => checkAll("sqrt, exp, ln and tanh are total kernels over IEEE binary32 values", [
+    use rootInputs <- withBuffer (floats([0.0, 1.0, 2.25, 0.0625, 10000000000000000.0, -1.0]))
+    use expInputs <- withBuffer (floats([0.0, 1.0, -1000.0, 1000.0]))
+    use lnInputs <- withBuffer (floats([1.0, 0.0, 10.0, -1.0]))
+    use tanhInputs <- withBuffer (floats([0.0, 1000.0, -1000.0, 0.5]))
+    use roots <- withBuffer (gpuMap(rootInputs, sqrt))
+    use grown <- withBuffer (gpuMap(expInputs, exp))
+    use logs <- withBuffer (gpuMap(lnInputs, ln))
+    use squashed <- withBuffer (gpuMap(tanhInputs, tanh))
+    checkAll("sqrt, exp, ln and tanh are total kernels over IEEE binary32 values", [
         atsFrom(roots, 0, [0.0, 1.0, 1.5, 0.25, 100000000.0]), at(roots, 5) != at(roots, 5),
         atIs(grown,  0,  1.0), nearAt(grown,  1,  2.718281828459045), atIs(grown,  2,  0.0), at(grown, 3) > toFloat32(1000000000000000000.0),
         atIs(logs,  0,  0.0), at(logs, 1) < toFloat32(-1000000000000000000.0), nearAt(logs,  2,  2.302585092994046), at(logs, 3) != at(logs, 3),
         atsFrom(squashed, 0, [0.0, 1.0, -1.0]), nearAt(squashed,  3,  0.46211715726000974),
         near(ln(exp(toFloat32(2.0))), 2.0), exact(sqrt(toFloat32(2.0)) * sqrt(toFloat32(2.0)), 1.9999998807907104)
-    ])))))))))
+    ])
 (** gelu(x) - gelu(-x) is x: the tanh term cancels. *)
 geluCase () =
-    withBuffer(floats([0.0, 1.0, -1.0, 2.0, -3.0]), \inputs => withBuffer(gpuMap(inputs, gelu), \outputs => withBuffer(gpuMap(inputs, \x => gelu(toFloat32(0.0) - x)), \negated => withBuffer(gpuZipWith(outputs, negated, subF), \odd => checkAll("gelu is the tanh approximation GPT-2 was trained with", [
+    use inputs <- withBuffer (floats([0.0, 1.0, -1.0, 2.0, -3.0]))
+    use outputs <- withBuffer (gpuMap(inputs, gelu))
+    use negated <- withBuffer (gpuMap(inputs, \x => gelu(toFloat32(0.0) - x)))
+    use odd <- withBuffer (gpuZipWith(outputs, negated, subF))
+    checkAll("gelu is the tanh approximation GPT-2 was trained with", [
         atIs(outputs,  0,  0.0), nearsFrom(outputs, 1, [0.8411920070648193, -0.15880799293518066, 1.9545977115631104, -0.0036374330520629883]),
         nearAt(odd,  1,  1.0), nearAt(odd,  3,  2.0), nearAt(odd,  4,  -3.0)
-    ])))))
+    ])
 (** Only the four operations and sqrt are involved, so every digit is pinned. *)
-layerNormCase () = withIndices (2, \grid0 => withIndices (8, \grid1 => withIndices (1, \grid2 => withIndices (4, \grid3 => layerNormWith (grid0, grid1, grid2, grid3)))))
+layerNormCase () =
+    use grid0 <- withIndices (2)
+    use grid1 <- withIndices (8)
+    use grid2 <- withIndices (1)
+    use grid3 <- withIndices (4)
+    layerNormWith (grid0, grid1, grid2, grid3)
 layerNormWith (grid0, grid1, grid2, grid3) = withBuffer(floats ([2.0, 1.0, 0.5, 1.0]), \gain => withBuffer(floats ([0.5, 0.0, -0.5, 0.0]), \bias => layerNormWithUploaded(grid0, grid1, grid2, grid3, gain, bias)))
 layerNormWithUploaded (grid0, grid1, grid2, grid3, gain, bias) =
-    withBuffer(floats([1.0, 2.0, 3.0, 4.0, 0.0, 0.0, 6.0, 6.0]),
-        \uploaded14 => withBuffer(layerNorm(uploaded14, gain, bias, grid0, grid1),
-        \rows => withBuffer(floats([7.0, 7.0, 7.0, 7.0]),
-        \uploaded15 => withBuffer(layerNorm(uploaded15, gain, bias, grid2, grid3),
-        \flat => checkAll("layerNorm normalises each row and applies the column gain and bias", [
+    use uploaded14 <- withBuffer (floats([1.0, 2.0, 3.0, 4.0, 0.0, 0.0, 6.0, 6.0]))
+    use rows <- withBuffer (layerNorm(uploaded14, gain, bias, grid0, grid1))
+    use uploaded15 <- withBuffer (floats([7.0, 7.0, 7.0, 7.0]))
+    use flat <- withBuffer (layerNorm(uploaded15, gain, bias, grid2, grid3))
+    checkAll("layerNorm normalises each row and applies the column gain and bias", [
         gpuLength(rows) == 8,
         atsFrom(rows, 0, [-2.1832709312438965, -0.4472118318080902, -0.2763940691947937, 1.3416354656219482, -1.499998927116394, -0.999999463558197, -0.0000002682209014892578, 0.999999463558197]),
         atsFrom(flat, 0, [0.5, 0.0, -0.5, 0.0])
-    ])))))
+    ])
 (** Two heads, three positions: a lone score is certain, equal scores split evenly, [1, 2, 3] and its reverse are the textbook row, masked columns are 0. *)
 softmaxCase () = withIndices (6, \grid0 => withIndices (18, \grid1 => softmaxWith (grid0, grid1)))
 softmaxWith (grid0, grid1) =
@@ -267,18 +282,26 @@ pairQkv () = floats ([
     2.0, 3.0, 4.0, 5.0, 1.0, 1.0, 2.0, 2.0, 5.0, 6.0, 7.0, 8.0
 ])
 (** A lone token attends only to itself, so attention returns its value columns; a second token whose keys equal the first's averages the values. *)
-attentionExactCase () = withIndices (2, \grid0 => withIndices (4, \grid1 => withIndices (8, \grid2 => attentionExactWith (grid0, grid1, grid2))))
+attentionExactCase () =
+    use grid0 <- withIndices (2)
+    use grid1 <- withIndices (4)
+    use grid2 <- withIndices (8)
+    attentionExactWith (grid0, grid1, grid2)
 attentionExactWith (grid0, grid1, grid2) =
-    withBuffer(floats([0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0]),
-        \uploaded11 => withBuffer(attention(uploaded11, 1, grid0, grid0, grid1),
-        \single => withBuffer(pairQkv(),
-        \uploaded12 => withBuffer(attention(uploaded12, 2, grid2, grid1, grid2),
-        \pair => checkAll("attention returns a lone token's value and averages equal keys", [
+    use uploaded11 <- withBuffer (floats([0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0]))
+    use single <- withBuffer (attention(uploaded11, 1, grid0, grid0, grid1))
+    use uploaded12 <- withBuffer (pairQkv())
+    use pair <- withBuffer (attention(uploaded12, 2, grid2, grid1, grid2))
+    checkAll("attention returns a lone token's value and averages equal keys", [
         gpuLength(single) == 4, atsFrom(single, 0, [8.0, 9.0, 10.0, 11.0]),
         gpuLength(pair) == 8, atsFrom(pair, 0, [1.0, 2.0, 3.0, 4.0, 3.0, 4.0, 5.0, 6.0])
-    ])))))
+    ])
 (** The index grids every embedded-pair case allocates, innermost last: the attention cases extend them to grid6, the block cases to grid8. *)
-withEmbedGrids (next) = withIndices (20, \grid0 => withIndices (12, \grid1 => withIndices (8, \grid2 => next (grid0, grid1, grid2))))
+withEmbedGrids (next) =
+    use grid0 <- withIndices (20)
+    use grid1 <- withIndices (12)
+    use grid2 <- withIndices (8)
+    next (grid0, grid1, grid2)
 withPairGrids (next) = withEmbedGrids (\(grid0, grid1, grid2) => withIndices (4, \grid3 => withIndices (2, \grid4 => withIndices (48, \grid5 => withIndices (24, \grid6 => next (grid0, grid1, grid2, grid3, grid4, grid5, grid6))))))
 withBlockGrids (next) = withPairGrids (\(grid0, grid1, grid2, grid3, grid4, grid5, grid6) => withIndices (16, \grid7 => withIndices (32, \grid8 => next (grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7, grid8))))
 embedCase () = withEmbedGrids (embedWith)
@@ -289,7 +312,13 @@ embedWith (grid0, grid1, grid2) =
 attentionCase () = withPairGrids (attentionWith)
 (** The embedded pair through its qkv product: the prefix the full pass and the cached step share. *)
 withEmbeddedQkv (grid0, grid1, grid2, grid3, grid4, grid5, grid6, next) =
-    withBuffer(miniTokens(), \tokens => withBuffer(embedOf(grid0, grid1, tokens, grid2), \x => withBuffer(lnParams(grid3), \ln => withBuffer(qkvParams(grid5, grid1), \qkvW1 => withBuffer(layerNorm(x, ln.gain, ln.bias, grid4, grid2), \normed => withBuffer(linear(normed, 2, width, qkvWidth, qkvW1.weight, qkvW1.bias, grid6), \qkv => next(x, ln, qkvW1, normed, qkv)))))))
+    use tokens <- withBuffer (miniTokens())
+    use x <- withBuffer (embedOf(grid0, grid1, tokens, grid2))
+    use ln <- withBuffer (lnParams(grid3))
+    use qkvW1 <- withBuffer (qkvParams(grid5, grid1))
+    use normed <- withBuffer (layerNorm(x, ln.gain, ln.bias, grid4, grid2))
+    use qkv <- withBuffer (linear(normed, 2, width, qkvWidth, qkvW1.weight, qkvW1.bias, grid6))
+    next(x, ln, qkvW1, normed, qkv)
 attentionWith (grid0, grid1, grid2, grid3, grid4, grid5, grid6) =
     withEmbeddedQkv(grid0, grid1, grid2, grid3, grid4, grid5, grid6, \(_x, _ln, _qkvW1, _normed, qkv) => withBuffer(attention(qkv, 2, grid2, grid3, grid2),
         \a => checkAll("attention over the embedded pair matches the reference pass", [
@@ -303,25 +332,29 @@ cachedStepCase () = withPairGrids (\(grid0, grid1, grid2, grid3, grid4, grid5, g
 rowOf (x, r, n, grid0) = grid0 |> gpuMap (\c => at (x, r * n + c))
 sameRow (single, rows, r, n) = range (0, n) |> fold true (\(ok, c) => ok && at (single, c) == at (rows, r * n + c))
 cachedStepWith (grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7) =
-    withEmbeddedQkv(grid0, grid1, grid2, grid3, grid4, grid5, grid6, \(x, ln, qkvW1, normed, qkv) => withBuffer(attentionFrom(qkv, 2, 1, grid3, grid4, grid3),
-        \newest => withBuffer(pairQkv(),
-        \uploaded8 => withBuffer(attentionFrom(uploaded8, 2, 1, grid3, grid4, grid3),
-        \pairStep => withBuffer(attention(qkv, 2, grid2, grid3, grid2),
-        \full => withBuffer(rowOf(x, 1, width, grid3),
-        \row => withBuffer(layerNorm(row, ln.gain, ln.bias, grid7, grid3),
-        \rowNormed => withBuffer(rowOf(normed, 1, width, grid3),
-        \normedRow => withBuffer(linear(normedRow, 1, width, qkvWidth, qkvW1.weight, qkvW1.bias, grid1),
-        \oneRow => checkAll("the newest position attends through the cache exactly as the full pass does", [
+    use x, ln, qkvW1, normed, qkv <- withEmbeddedQkv (grid0, grid1, grid2, grid3, grid4, grid5, grid6)
+    use newest <- withBuffer (attentionFrom(qkv, 2, 1, grid3, grid4, grid3))
+    use uploaded8 <- withBuffer (pairQkv())
+    use pairStep <- withBuffer (attentionFrom(uploaded8, 2, 1, grid3, grid4, grid3))
+    use full <- withBuffer (attention(qkv, 2, grid2, grid3, grid2))
+    use row <- withBuffer (rowOf(x, 1, width, grid3))
+    use rowNormed <- withBuffer (layerNorm(row, ln.gain, ln.bias, grid7, grid3))
+    use normedRow <- withBuffer (rowOf(normed, 1, width, grid3))
+    use oneRow <- withBuffer (linear(normedRow, 1, width, qkvWidth, qkvW1.weight, qkvW1.bias, grid1))
+    checkAll("the newest position attends through the cache exactly as the full pass does", [
         gpuLength(newest) == width, sameRow(newest, full, 1, width),
         nearAt(newest,  0,  -0.06741555035114288), nearAt(newest,  3,  1.3210810422897339),
         gpuLength(pairStep) == width, atsFrom(pairStep, 0, [3.0, 4.0, 5.0, 6.0]),
         sameRow(rowNormed, normed, 1, width),
         sameRow(oneRow, qkv, 1, qkvWidth)
-    ]))))))))))
+    ])
 blockCase () = withBlockGrids (blockWith)
 (** The embedded pair through one pre-norm block: the prefix blockCase and nextTokenCase share. *)
 withBlockedPair (grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7, grid8, next) =
-    withBuffer(miniTokens(), \tokens => withBuffer(embedOf(grid0, grid1, tokens, grid2), \x => withBuffer(block(x, 2, grid3, grid4, grid2, grid5, grid1, grid6, grid2, grid3, grid7, grid8, grid2, grid7), \y => next(y))))
+    use tokens <- withBuffer (miniTokens())
+    use x <- withBuffer (embedOf(grid0, grid1, tokens, grid2))
+    use y <- withBuffer (block(x, 2, grid3, grid4, grid2, grid5, grid1, grid6, grid2, grid3, grid7, grid8, grid2, grid7))
+    next(y)
 blockWith (grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7, grid8) =
     withBlockedPair(grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7, grid8, \y => withBuffer(gpuFold(y, 0.0, addF),
         \total => checkAll("one pre-norm block matches the reference pass", [
@@ -331,16 +364,17 @@ blockWith (grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7, grid8) =
     ])))
 nextTokenCase () = withBlockGrids (\(grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7, grid8) => withIndices (5, \grid9 => nextTokenWith (grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7, grid8, grid9)))
 nextTokenWith (grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7, grid8, grid9) =
-    withBlockedPair(grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7, grid8, \y => withBuffer(lnParams(grid3),
-        \ln => withBuffer(layerNorm(y, ln.gain, ln.bias, grid4, grid2),
-        \normed => withBuffer(param(12, grid0),
-        \table => withBuffer(logitsOf(normed, 2, table, grid3, grid0, grid9),
-        \logits => withBuffer(argmax(logits, grid9),
-        \token => checkAll("the tied readout scores every token row and argmax picks the first peak", [
+    use y <- withBlockedPair (grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7, grid8)
+    use ln <- withBuffer (lnParams(grid3))
+    use normed <- withBuffer (layerNorm(y, ln.gain, ln.bias, grid4, grid2))
+    use table <- withBuffer (param(12, grid0))
+    use logits <- withBuffer (logitsOf(normed, 2, table, grid3, grid0, grid9))
+    use token <- withBuffer (argmax(logits, grid9))
+    checkAll("the tied readout scores every token row and argmax picks the first peak", [
         gpuLength(logits) == vocab,
         nearsFrom(logits, 0, [1.2843501567840576, 2.434096336364746, 3.5838427543640137, 4.733589172363281, -4.4127888679504395]),
         token == 3, gpuSatisfies(floats([1.0, 9.0, 9.0, 2.0]), \uploaded4 => gpuEquals(argmax(uploaded4, grid3), 1))
-    ])))))))
+    ])
 (** "ABCDEFGHIJKL" is three little-endian binary32 words; every failure names the operation, the path and the reason. *)
 loadCase () =
     raw = scratch + "_raw.bin"
