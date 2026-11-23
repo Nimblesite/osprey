@@ -123,7 +123,10 @@ fn parse_examples(content: &str) -> (Vec<DocExample>, Vec<String>) {
     let mut lines = content.lines().peekable();
     while let Some(line) = lines.next() {
         match fence_label(line) {
-            Some(label) if EXAMPLE_LABELS.contains(&label) => examples.push(example(&mut lines)),
+            Some(DocExample::NATIVE_FENCE) => examples.push(example(&mut lines, true)),
+            Some(label) if EXAMPLE_LABELS.contains(&label) => {
+                examples.push(example(&mut lines, false));
+            }
             Some(label) => {
                 let _ = collect_fence(&mut lines);
                 if label == "output" {
@@ -138,13 +141,17 @@ fn parse_examples(content: &str) -> (Vec<DocExample>, Vec<String>) {
 
 /// One example whose opening fence was just read, with the output fence that
 /// belongs to it.
-fn example<'a, I: Iterator<Item = &'a str>>(lines: &mut std::iter::Peekable<I>) -> DocExample {
+fn example<'a, I: Iterator<Item = &'a str>>(
+    lines: &mut std::iter::Peekable<I>,
+    native_only: bool,
+) -> DocExample {
     let code = collect_fence(lines);
     let expected_output = output_after(lines);
     DocExample {
         run: expected_output.is_some(),
         code,
         expected_output,
+        native_only,
     }
 }
 

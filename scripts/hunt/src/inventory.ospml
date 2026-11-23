@@ -10,7 +10,7 @@ import fs::Walk
 (** The corpus the hunt sweeps and the programs listed as unportable. *)
 module Inventory
     ROOTS = ["src/osprey/tests", "src/osprey/examples", "docs/book/examples", "src/osprey/packages", "src/toolchain/benchmarks"]
-    (** The manifest of programs the hunt marks with a reason instead of hunting. *)
+    (** The programs the hunt sweeps but cannot port, each with its reason. *)
     export UNPORTABLE = "src/osprey/tests/HUNT_UNPORTABLE.txt"
     (** The hunt fixtures are the hunt's own controls, gated by their own targets. *)
     OWN = "src/osprey/tests/hunt"

@@ -43,8 +43,6 @@ module LockTests {
     /// A current lock over `@demo/one` e1.r1 read beside `served`.
     fn priorReads(floor, served) = RegistryFixture::readsWithLock(rootManifest(floor), previousLock(one(), two()), served)
 
-    fn lockedReads(served) = priorReads(1, served)
-
     fn lockedRun(served) = priorRun(1, served)
 
     /// A run beside a lock that still names a dropped `@demo/three` e1.r3.

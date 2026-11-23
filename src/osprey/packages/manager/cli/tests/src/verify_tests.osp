@@ -10,8 +10,6 @@ import registry::Release
 /// the network is never touched. Each stable code is asserted by name.
 /// Implements [PACKAGE-FOLDER-REGISTRY] offline-audit tests.
 module VerifyTests {
-    let rootDigest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-
     type Attempt = { report: Reports::Report }
 
     fn runVerify(reads, walks, args) = Attempt { report: RegistryFixture::runReadOnly(reads, walks, listConcat(["verify"], args), "verify") }

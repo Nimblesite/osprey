@@ -372,12 +372,6 @@ sameHeld (one, other, read) = expect (read (Drive::holding one) == read (Drive::
 // The driven state's message, which must mention `text`.
 mentions (driven, text) = expect (contains (Drive::holding driven).message text, true)
 
-// A control pressed; the host must be asked `count` times.
-pressedFor (driven, label, count) =
-    pressed = Drive::press (driven, label)
-    askedOf (pressed, count)
-    pressed
-
 // The first typed host request of the last step, checked by `check`.
 firstAsk (driven, check) =
     match listGet driven.drivenSurface.surfaceAsked 0
@@ -422,12 +416,8 @@ told (driven, ticket, body) = Drive::completed (driven, ticket, true, body)
 // A host completion acknowledged with an empty success receipt.
 receipt (driven, ticket) = told (driven, ticket, "{\"status\":0,\"stderr\":\"\"}")
 
-// A host completion acknowledged with a `session` receipt.
-sessioned (driven, ticket, session) = told (driven, ticket, "{\"status\":0,\"session\":\"${session}\"}")
-
 // A host completion acknowledged with a failing receipt.
 failedWith (driven, ticket, stderr) = Drive::completed (driven, ticket, true, "{\"status\":1,\"stderr\":\"${stderr}\"}")
-
 
 nodesOf (driven, count) = countOf ((Drive::holding driven).graph.nodes, count)
 

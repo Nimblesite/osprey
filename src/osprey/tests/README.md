@@ -1,8 +1,7 @@
 # Osprey language test corpus
 
 This directory contains executable, assertion-driven tests for core Osprey
-language behavior. `osprey test` runs every `*.test.osp` and `*.test.ospml` file and the
-assertions inspect values produced inside the program.
+language behavior. The corpus runs Default, ML, TypeScript and opted-in Python suites against shared output goldens. The assertions inspect values produced inside each program.
 
 - `core/` groups foundational arithmetic, collections, strings, types, and
   mixed-feature behavior by language concept.

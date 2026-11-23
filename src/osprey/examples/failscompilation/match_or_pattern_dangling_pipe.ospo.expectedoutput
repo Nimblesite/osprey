@@ -1,13 +1,3 @@
 7:9: missing identifier
-11:0: syntax error near `fn lead(c) = match c {`
-11:21: syntax error near `{`
-12:4: syntax error near `| Green => "`
-12:15: syntax error near `"`
-12:17: syntax error near `"`
-13:9: syntax error near `"`
-13:11: syntax error near `"`
-16:7: syntax error near `${trail(Red)} $`
-16:7: syntax error near `$`
-16:14: syntax error near `(Red)`
-16:21: syntax error near `$`
-16:35: syntax error near `"`
+13:0: syntax error near `fn lead(c) = match c {`
+14:4: syntax error near `|`

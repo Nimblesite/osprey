@@ -5,7 +5,7 @@
 //!
 //! `path` (default `.`) is a single file run as-is, a project directory (one
 //! holding `osprey.toml`) run as one suite, or a directory searched
-//! recursively for `*.test.osp` / `*.test.ospml`, sorted for determinism,
+//! recursively for the flavor suites in [TESTING-FILE-CONVENTION], sorted for determinism,
 //! skipping hidden, `target`, and `node_modules` directories. Each file
 //! compiles and runs like `osprey <file> --run --quiet --no-warnings`: a suite is
 //! executed, not reviewed, and the warning pass re-infers the whole program

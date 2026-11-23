@@ -60,6 +60,10 @@ partialValue =
             first => 20
         pairTotal ())
 
+(** [PATTERN-OR-BODY] A staged operation reads the payload of either variant. *)
+stagedPair input = match input
+    Success n | Error n => satAdd n (perform Pair.second ())
+
 firstOnly () =
     handle Pair
         first => 2
@@ -82,7 +86,9 @@ stagedValue =
                 first => 2
             pairTotal ()
         installer = firstOnly ()
-        "${direct}|${helper}|${installer}")
+        left = stagedPair (Success(value = 3))
+        right = stagedPair (Error(message = 9))
+        "${direct}|${helper}|${installer}|${left}|${right}")
 
 effect Stash T
     (** Store `value` in the stash for a later `take`. *)
@@ -102,5 +108,5 @@ genericValue =
 test "inferred effect rows discharge only under matching handlers" (\() => exactArithmetic ((\() => checkAll "static discharge values" [
     structuralEquals [directValue, transitiveValue, callbackValue] [7, 11, 13],
     structuralEquals [delayedValue, partialValue, genericValue] [17, 42, 19],
-    stagedValue == "42|42|42"
+    stagedValue == "42|42|42|43|49"
 ])))

@@ -19,4 +19,6 @@ main () =
     direct = Ids::Id(value = 3)
     taken = match (Ids::make 4)
         Ids::Id value => value
-    print "${Ids::value direct} ${taken}"
+    wrapped = match (Success(value = Ids::make 5))
+        Success (Ids::Id n) | Error (Ids::Id n) => n
+    print "${Ids::value direct} ${taken} ${wrapped}"

@@ -226,8 +226,3 @@ def call_of(call):
 def not_found(name):
     """A 404 for a model the server does not serve, naming it."""
     return Wire.failed(404, f"model '{name}' not found")
-
-
-def method_not_allowed(allowed):
-    """A 405 for a route that exists under another method, naming the method."""
-    return Wire.failed(405, f"method not allowed; {allowed}")

@@ -228,7 +228,10 @@ pub(super) fn terminal_callable(callable: Callable, deferred: &mut Summary) -> C
             if projection.iter().any(|part| {
                 matches!(
                     part,
-                    Projection::Method(_) | Projection::Returned(_) | Projection::Handled(_)
+                    Projection::Method(_)
+                        | Projection::Returned(_)
+                        | Projection::Handled(_)
+                        | Projection::StaticEscape(_)
                 )
             }) =>
         {

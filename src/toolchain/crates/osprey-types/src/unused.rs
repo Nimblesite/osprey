@@ -110,6 +110,13 @@ pub fn unused_symbols(program: &Program) -> Vec<UnusedSymbol> {
     let Ok(types) = infer_checked(program) else {
         return Vec::new();
     };
+    unused_symbols_with_types(program, &types)
+}
+
+pub(crate) fn unused_symbols_with_types(
+    program: &Program,
+    types: &crate::info::ProgramTypes,
+) -> Vec<UnusedSymbol> {
     let mut analysis = Analysis {
         bindings: Vec::new(),
         scope: Vec::new(),

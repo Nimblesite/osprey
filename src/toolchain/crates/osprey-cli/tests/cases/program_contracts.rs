@@ -341,6 +341,22 @@ fn warnings_as_errors_fails_only_on_opt_in_and_keeps_the_diagnostics() {
         !Path::new(output).exists(),
         "a refused build writes nothing"
     );
+
+    // [DOC-EXPORT-EXAMPLE-REQUIRED] Check documentation coverage while it is
+    // being completed, and keep strict code generation for other warnings.
+    let staged = temp_osp(
+        "strict_staged_documentation",
+        "namespace app;\n/// Public API.\nmodule Api {\n    /// Returns the answer.\n    export fn answer() = 42\n}\nprint(Api::answer())\n",
+    );
+    let missing_example = "exported function `Api::answer` has no example";
+    accepted(&staged, "--check", &[]).expect_stderr(0, &[missing_example], &[]);
+    run_file(&staged, &["--check", "--warnings-as-errors"]).expect_rejected(&[missing_example]);
+    let strict_ir = accepted(&staged, "--llvm", &["--warnings-as-errors"]);
+    assert!(
+        !strict_ir.stderr.contains(missing_example),
+        "{}",
+        strict_ir.stderr
+    );
 }
 
 #[test]

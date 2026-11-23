@@ -373,7 +373,7 @@
           "match": "\\."
         },
         {
-          "name": "punctuation.separator.union.osprey-ml",
+          "name": "keyword.operator.pattern.osprey-ml",
           "match": "\\|"
         },
         {

@@ -231,6 +231,9 @@ fn static_snapshot_callables_never_capture_the_construction_handler_silently() {
 #[test]
 fn static_snapshot_iterators_never_capture_the_construction_handler_silently() {
     for (flavor, source) in [
+        (osprey_syntax::Flavor::Default, "static effect Signal { read: fn() -> int }\nfn answers(work) = { handle static Signal { read => 1 }\nwork() }\nlet deferred = answers(|| => map(range(0, 2), fn(_i) => perform Signal.read()))\nprint(length(toList(deferred)))\n"),
+        (osprey_syntax::Flavor::Ml, "static effect Signal\n    read : Unit => int\nanswers work =\n    handle static Signal\n        read => 1\n    work ()\ndeferred = answers (\\() => range 0 2 |> map (\\_i => perform Signal.read ()))\nprint (length (toList deferred))\n"),
+        (osprey_syntax::Flavor::Python, "@static_effect\nclass Signal:\n    def read() -> int: ...\n@static_handler(Signal)\nclass answers:\n    def read():\n        return 1\ndef deferred():\n    return map(range(0, 2), lambda _i: perform(Signal.read()))\nvalues = answers(deferred)\nprint(len(toList(values)))\n"),
         (osprey_syntax::Flavor::Default, "static effect Signal { read: fn() -> int }\nlet cached = { handle static Signal { read => 1 }\nsignalSnapshot(|| => range(0, 2) |> map(fn(_i) => perform Signal.read())) }\nlet values = { handle static Signal { read => 2 }\ncached.value |> toList() }\nprint(length(values))\n"),
         (osprey_syntax::Flavor::Ml, "static effect Signal\n    read : Unit => int\ncached =\n    handle static Signal\n        read => 1\n    signalSnapshot (\\() => range 0 2 |> map (\\_i => perform Signal.read ()))\nvalues =\n    handle static Signal\n        read => 2\n    cached.value |> toList\nprint (length values)\n"),
     ] {

@@ -85,11 +85,9 @@ matchIntegerCase () =
         matchLabel 100 == "many"
     ]
 
-testCases [
-    { name = "literal matching retains every printed arm", work = matchTourCase },
-    { name = "boolean matching covers thresholds and parity", work = matchBooleanCase },
-    { name = "integer matching covers literals and wildcard", work = matchIntegerCase }
-]
+test ("literal matching retains every printed arm", matchTourCase)
+test ("boolean matching covers thresholds and parity", matchBooleanCase)
+test ("integer matching covers literals and wildcard", matchIntegerCase)
 
 (** [PATTERN-BINDING-SCOPE] Every pattern introduces names in its own arm. *)
 type Choice = Pick int | Other
@@ -167,11 +165,9 @@ capturedPatternCase () = checkAll ("closures retain the selected arm's binding",
     capturedPattern Other == "100:100"
 ])
 
-testCases [
-    { name = "catch-all bindings remain inside their arm", work = bindingScope },
-    { name = "pattern arms retain their own lexical bindings", work = siblingScopeCase },
-    { name = "escaping closures retain pattern bindings", work = capturedPatternCase }
-]
+test ("catch-all bindings remain inside their arm", bindingScope)
+test ("pattern arms retain their own lexical bindings", siblingScopeCase)
+test ("escaping closures retain pattern bindings", capturedPatternCase)
 
 nestedPatternCase () =
     value = 100
@@ -186,12 +182,18 @@ nestedPatternCase () =
 
 effect PatternCounter
     set : int => int
+    readAfterWrite : Unit => int
 mutablePatternCase () =
     mut value = 100
     handle PatternCounter
         set next =>
             value := next
             value
+        readAfterWrite =>
+            mut local = 7
+            read = \() => local
+            local := 11
+            read ()
     readOuter = \() => value
     selectedReader = match Pick 2
         Pick value => \() => value
@@ -199,13 +201,12 @@ mutablePatternCase () =
     selected = selectedReader ()
     updated = perform PatternCounter.set 101
     checkAll ("pattern values shadow cell storage without changing it", [
-        selected == 2, selectedReader () == 2, updated == 101, value == 101, readOuter () == 101
+        selected == 2, selectedReader () == 2, updated == 101, value == 101, readOuter () == 101,
+        perform PatternCounter.readAfterWrite () == 11
     ])
 
-testCases [
-    { name = "nested matches restore enclosing pattern bindings", work = nestedPatternCase },
-    { name = "pattern bindings shadow captured mutable cells", work = mutablePatternCase }
-]
+test ("nested matches restore enclosing pattern bindings", nestedPatternCase)
+test ("pattern bindings shadow captured mutable cells", mutablePatternCase)
 
 type CallChoice = Apply (int -> int) | Absent
 type IntOperation =
@@ -325,15 +326,25 @@ onAxis p = match p
 shortList xs = match xs
     [] | [_] => "short"
     [a, b, ...rest] => "long ${wrapAdd (wrapAdd (a, b), listLength rest)}"
-
-(** A binder that is a list tail (+1) in one alternative and a borrowed
-    element or another tail in the next: ARC releases it exactly once. *)
-type Box = Wrap (List int) | Boxed (List int) | Nest (List (List int)) | Hollow
+axisPair (x, y) = match Pt x y
+    (0, n) | (n, 0) => n
+    _ => -1
+tailSize xs = match xs
+    [0, ...rest] | [1, ...rest] => listLength rest
+    _ => -1
+(** [PATTERN-OR-BODY] List tails and borrowed list elements share the arm binder. *)
+type Box = Wrap (List<int>) | Boxed (List<int>) | Nest (List<List<int>>) | Hollow
 tailLen b = match b
     Wrap [_, ...xs] | Boxed [_, _, ...xs] | Nest [xs] => listLength xs
     _ => 0 - 1
+
 rowSize (r : Sized) = match r
     { kind = "s", n } | { kind = "m", n } => n
+    _ => 0
+
+openBand (r : Sized) = match r
+    { kind = "old", .. } => 1
+    { n = 2 | 3, kind = "s" | "m", .. } => 2
     _ => 0
 
 (** Three levels: a Result holding a cell whose slots are or-patterns. *)
@@ -346,11 +357,15 @@ orStructureCase () = checkAll ("or-pattern Result, payload, list, row and nested
     resultText (Success(value = "a")) == "got a", resultText (Error(message = "b")) == "got b",
     onAxis (Pt 0 5) == "axis", onAxis (Pt 5 0) == "axis", onAxis (Pt 0 0) == "axis",
     onAxis (Pt 2 3) == "plane",
+    axisPair (0, 8) == 8, axisPair (9, 0) == 9, axisPair (2, 3) == -1,
+    tailSize [0] == 0, tailSize [1, 8, 9] == 2, tailSize [2, 9] == -1, tailSize [] == -1,
     shortList [] == "short", shortList [9] == "short", shortList [1, 2, 3, 4] == "long 5",
     tailLen (Wrap [1, 2, 3]) == 2, tailLen (Boxed [1, 2, 3]) == 1, tailLen (Nest [[4, 5, 6, 7]]) == 4,
     tailLen (Wrap []) == 0 - 1, tailLen (Nest [[1], [2]]) == 0 - 1, tailLen Hollow == 0 - 1,
     rowSize (Sized(kind = "s", n = 3)) == 3, rowSize (Sized(kind = "m", n = 4)) == 4,
     rowSize (Sized(kind = "l", n = 5)) == 0,
+    openBand (Sized(kind = "old", n = 2)) == 1, openBand (Sized(kind = "m", n = 2)) == 2,
+    openBand (Sized(kind = "s", n = 3)) == 2, openBand (Sized(kind = "s", n = 4)) == 0,
     deepBlank (Success(value = Cell Space 0)) == "deep blank",
     deepBlank (Success(value = Cell Tab 1)) == "deep blank",
     deepBlank (Error(message = "blank")) == "deep blank",

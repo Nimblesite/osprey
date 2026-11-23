@@ -1,6 +1,6 @@
 //! Python annotation spelling with the shared canonical type representation.
 use super::context::{children, position, Lowerer, Result};
-use crate::{AnnotationEdit, AnnotationTarget, BindingKind, SourceEdit};
+use crate::{AnnotationEdit, AnnotationTarget, BindingKind};
 use osprey_ast::{Parameter, TypeExpr};
 use tree_sitter::Node;
 
@@ -108,19 +108,17 @@ impl Lowerer<'_> {
     }
 
     pub(super) fn annotation(&mut self, node: Node<'_>, owner: Node<'_>, target: AnnotationTarget) {
-        let before = node
-            .prev_sibling()
-            .filter(|sibling| matches!(sibling.kind(), ":" | "->"));
-        let start = before.map_or(node.start_byte(), |token| token.start_byte());
+        let Some((highlight, edits)) =
+            crate::annotation_edits::written_annotation(self.source, node)
+        else {
+            return;
+        };
         self.annotations.push(AnnotationEdit {
             position: position(node),
             owner_position: position(owner),
             target,
-            highlight: node.byte_range(),
-            edits: vec![SourceEdit {
-                range: start..node.end_byte(),
-                new_text: String::new(),
-            }],
+            highlight,
+            edits,
         });
     }
 }

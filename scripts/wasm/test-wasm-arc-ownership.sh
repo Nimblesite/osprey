@@ -8,10 +8,12 @@ trap 'rm -rf -- "$TEST_DIR"' EXIT
 compile_ownership() {
   local name=$1
   shift
+  # The sysroot's libc needs __multi3, which the Osprey runtime supplies.
   "${WASM_CC:-clang}" --target=wasm32-wasip1 --sysroot="${WASI_SYSROOT:?WASI_SYSROOT is required}" \
     -O2 -std=c11 -Wall -Wextra -Werror -nodefaultlibs -lc "$@" \
     -I"$ROOT/src/toolchain/compiler/runtime" \
     "$ROOT/src/toolchain/compiler/runtime/memory_arc_ownership_wasm_tests.c" \
+    "$ROOT/src/toolchain/compiler/runtime/wasm_builtins_runtime.c" \
     "$ROOT/src/toolchain/compiler/runtime/memory_arc.c" -o "$TEST_DIR/$name.wasm"
 }
 

@@ -431,7 +431,20 @@ suite("Installed VSIX compiler warnings and signature edits", () => {
   // reported as redundant and no removal is offered ([TYPE-ANNOTATION-REDUNDANT]).
   test("an exported signature is never reported as redundant", async () => {
     const body = '    greet name = "hi " + name\n';
-    const source = `namespace warnings\n(** Greetings. *)\nmodule M\n    (** Says hi to \`name\`. *)\n    export ${greetHeader}\n${body}`;
+    const source = `namespace warnings
+(** Greetings. *)
+module M
+    (** Says hi to \`name\`.
+    # Examples
+    \`\`\`osprey
+    print (M::greet "Ada")
+    \`\`\`
+    \`\`\`output
+    hi Ada
+    \`\`\`
+    *)
+    export ${greetHeader}
+${body}`;
     const editor = await openSource("exported-header.ospml", source);
     await diagnostics(editor.document, []);
     await assertNoActions(

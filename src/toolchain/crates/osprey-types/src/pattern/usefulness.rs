@@ -5,6 +5,11 @@
 //! means some value reaches no arm — the witness shows one. Implements
 //! [PATTERN-NESTED] and [TYPE-MATCH-EXHAUSTIVE].
 
+mod matrix;
+use matrix::{
+    alternative_checks, column_heads, default_rows, expand, prepend, rebuild, specialize,
+};
+
 use super::is_result_variant;
 use crate::check::Checker;
 use crate::error::TypeError;
@@ -28,7 +33,8 @@ type Row = Vec<Space>;
 
 /// The constructor name a closed row pattern is analysed under: its fields,
 /// sorted, so `{ x, y }` and `{ y, x }` are one shape.
-const ROW_OPEN: &str = "{";
+const ROW: &str = "{";
+const OPEN_ROW: &str = "..{";
 
 /// The two list constructors the analysis reads `[…]` patterns as.
 const LIST_NIL: &str = "[]";
@@ -50,48 +56,50 @@ pub(super) fn nested(pattern: &Pattern) -> bool {
 impl Checker {
     /// Reject each arm earlier arms already cover, then a match some value
     /// escapes, naming one such value.
-    pub(super) fn check_nested_match(&mut self, arms: &[MatchArm]) {
+    pub(super) fn check_nested_match(&mut self, arms: &[MatchArm], erased: bool) {
         let rows: Vec<Row> = arms
             .iter()
-            .map(|arm| vec![self.space(&arm.pattern)])
+            .map(|arm| vec![self.pattern_space(&arm.pattern, erased)])
             .collect();
         for (index, row) in rows.iter().enumerate() {
             let earlier = rows.get(..index).unwrap_or_default();
-            if self.useful(earlier, row).is_none() {
+            if self.useful_in(earlier, row, erased).is_none() {
                 self.errors.push(TypeError::new(format!(
                     "unreachable match arm: earlier arms cover every value `{}` matches",
                     self.render_row(row)
                 )));
             } else {
-                self.check_alternatives(earlier, row);
+                self.check_alternatives(earlier, row, erased);
             }
         }
-        // A witness that is `_` at the top names no constructor: the scrutinee is
-        // an open domain (a number, a string, an open row), whose exhaustiveness
-        // the compiler does not prove ([TYPE-MATCH-EXHAUSTIVE]), as for a match
-        // without or-patterns.
+        // A closed-domain witness names its missing constructor. Erased values always need a catch-all.
         let witness = self
-            .useful(&rows, &[Space::Any])
-            .filter(|witness| !matches!(witness.first(), Some(Space::Any)));
+            .useful_in(&rows, &[Space::Any], erased)
+            .filter(|witness| erased || !matches!(witness.first(), Some(Space::Any)));
         if let Some(witness) = witness {
-            self.errors.push(TypeError::new(format!(
-                "non-exhaustive match: no arm matches `{}`",
-                self.render_row(&witness)
-            )));
+            let message = if erased {
+                super::ERASED_CATCH_ALL.to_owned()
+            } else {
+                format!(
+                    "non-exhaustive match: no arm matches `{}`",
+                    self.render_row(&witness)
+                )
+            };
+            self.errors.push(TypeError::new(message));
         }
     }
 
     /// Reject each alternative of a reachable arm that the earlier arms, or
     /// the earlier alternatives of the same or-pattern, already cover; the
     /// diagnostic names that alternative, not the whole arm.
-    fn check_alternatives(&mut self, earlier: &[Row], row: &[Space]) {
+    fn check_alternatives(&mut self, earlier: &[Row], row: &[Space], erased: bool) {
         let Some(space) = row.first() else {
             return;
         };
         for (vector, before, shown) in alternative_checks(space) {
             let mut rows = earlier.to_vec();
             rows.extend(before.into_iter().map(|space| vec![space]));
-            if self.useful(&rows, &[vector]).is_none() {
+            if self.useful_in(&rows, &[vector], erased).is_none() {
                 self.errors.push(TypeError::new(format!(
                     "unreachable alternative: earlier arms or alternatives cover every value `{}` matches",
                     self.render(&shown)
@@ -107,12 +115,20 @@ impl Checker {
 
     /// The value space of one pattern.
     fn space(&self, pattern: &Pattern) -> Space {
+        self.pattern_space(pattern, false)
+    }
+
+    fn pattern_space(&self, pattern: &Pattern, erased: bool) -> Space {
         match pattern {
             Pattern::Binding(name) if is_result_variant(name) => {
                 Space::Ctor(name.clone(), vec![Space::Any])
             }
             Pattern::Binding(name) if self.names_variant(name) => {
                 Space::Ctor(name.clone(), vec![Space::Any; self.arity(name)])
+            }
+            Pattern::TypeAnnotated { name, ty } if erased => {
+                // An invalid annotation provides no coverage of an erased domain.
+                Space::Opaque(format!("{pattern:p}"), format!("{name}: {}", ty.name))
             }
             Pattern::Wildcard | Pattern::TypeAnnotated { .. } | Pattern::Binding(_) => Space::Any,
             Pattern::Literal(literal) => literal_space(literal),
@@ -122,16 +138,18 @@ impl Checker {
                 fields,
                 sub_patterns,
             } => self.constructor_space(name, fields, sub_patterns),
-            Pattern::Structural { fields, open } => self.row_space(pattern, fields, *open),
+            Pattern::Structural { fields, open } => self.row_space(fields, *open),
             // An or-pattern directly inside another is spliced in, so every
             // alternative is checked in its own context ([PATTERN-OR-EXHAUSTIVE]).
             Pattern::Or(alternatives) => Space::Or(
                 alternatives
                     .iter()
-                    .flat_map(|alternative| match self.space(alternative) {
-                        Space::Or(nested) => nested,
-                        single => vec![single],
-                    })
+                    .flat_map(
+                        |alternative| match self.pattern_space(alternative, erased) {
+                            Space::Or(nested) => nested,
+                            single => vec![single],
+                        },
+                    )
                     .collect(),
             ),
         }
@@ -179,12 +197,8 @@ impl Checker {
         Space::Ctor(name.to_owned(), args)
     }
 
-    /// A closed row is the one shape of its record; an open row selects by a
-    /// subset of fields, so it is analysed as a value of its own.
-    fn row_space(&self, pattern: &Pattern, fields: &[(String, Pattern)], open: bool) -> Space {
-        if open {
-            return Space::Opaque(format!("{pattern:p}"), "{ .. }".to_owned());
-        }
+    /// Sorted field names align structural slots regardless of their source order.
+    fn row_space(&self, fields: &[(String, Pattern)], open: bool) -> Space {
         let mut sorted: Vec<&(String, Pattern)> = fields.iter().collect();
         sorted.sort_by(|a, b| a.0.cmp(&b.0));
         let name = sorted
@@ -193,7 +207,8 @@ impl Checker {
             .collect::<Vec<_>>()
             .join(",");
         let args = sorted.iter().map(|(_, slot)| self.space(slot)).collect();
-        Space::Ctor(format!("{ROW_OPEN}{name}"), args)
+        let prefix = if open { OPEN_ROW } else { ROW };
+        Space::Ctor(format!("{prefix}{name}"), args)
     }
 
     fn arity(&self, name: &str) -> usize {
@@ -215,7 +230,7 @@ impl Checker {
         if name == LIST_NIL || name == LIST_CONS {
             return Some(vec![(LIST_NIL.to_owned(), 0), (LIST_CONS.to_owned(), 2)]);
         }
-        if let Some(row) = name.strip_prefix(ROW_OPEN) {
+        if let Some(row) = name.strip_prefix(ROW) {
             return Some(vec![(name.to_owned(), row.split(',').count())]);
         }
         let info = self.ctors.get(name)?;
@@ -235,6 +250,10 @@ impl Checker {
     /// The witness extending `vector` that no row of `matrix` matches, or
     /// `None` when every value `vector` matches some row matches first.
     fn useful(&self, matrix: &[Row], vector: &[Space]) -> Option<Row> {
+        self.useful_in(matrix, vector, false)
+    }
+
+    fn useful_in(&self, matrix: &[Row], vector: &[Space], erased: bool) -> Option<Row> {
         let expanded = expand(matrix);
         let matrix = expanded.as_slice();
         let Some((head, rest)) = vector.split_first() else {
@@ -250,9 +269,12 @@ impl Checker {
                 let witness = self.useful(&specialize(matrix, key, 0), rest)?;
                 Some(prepend(Space::Any, witness))
             }
+            Space::Any if erased => self
+                .useful(&default_rows(matrix), rest)
+                .map(|row| prepend(Space::Any, row)),
             Space::Any => self.useful_any(matrix, rest),
             Space::Or(alternatives) => alternatives.iter().find_map(|alternative| {
-                self.useful(matrix, &prepend(alternative.clone(), rest.to_vec()))
+                self.useful_in(matrix, &prepend(alternative.clone(), rest.to_vec()), erased)
             }),
         }
     }
@@ -318,11 +340,14 @@ impl Checker {
         let shown: Vec<String> = args.iter().map(|arg| self.render(arg)).collect();
         match name.as_str() {
             LIST_CONS => render_list(space, &|space| self.render(space)),
+            _ if let Some(fields) = name.strip_prefix(OPEN_ROW) => {
+                labelled("", fields.split(',').map(str::to_owned), &shown, true)
+            }
             _ if args.is_empty() => name.clone(),
             names::SUCCESS => format!("Success {{ value: {} }}", shown.join(", ")),
             "Error" => format!("Error {{ message: {} }}", shown.join(", ")),
-            _ => match name.strip_prefix(ROW_OPEN) {
-                Some(row) => labelled("", row.split(',').map(str::to_owned), &shown),
+            _ => match name.strip_prefix(ROW) {
+                Some(row) => labelled("", row.split(',').map(str::to_owned), &shown, false),
                 None => self.render_ctor(name, &shown),
             },
         }
@@ -338,7 +363,7 @@ impl Checker {
         {
             return format!("{name}({})", shown.join(", "));
         }
-        labelled(&format!("{name} "), declared.into_iter(), shown)
+        labelled(&format!("{name} "), declared.into_iter(), shown, false)
     }
 }
 
@@ -369,10 +394,16 @@ fn render_list(space: &Space, render: &dyn Fn(&Space) -> String) -> String {
 }
 
 /// `Name { a: x, b: y }`, or `{ a: x }` for a bare row.
-fn labelled(prefix: &str, fields: impl Iterator<Item = String>, shown: &[String]) -> String {
+fn labelled(
+    prefix: &str,
+    fields: impl Iterator<Item = String>,
+    shown: &[String],
+    open: bool,
+) -> String {
     let slots: Vec<String> = fields
         .zip(shown)
         .map(|(field, value)| format!("{field}: {value}"))
+        .chain(open.then(|| "..".to_owned()))
         .collect();
     format!("{prefix}{{ {} }}", slots.join(", "))
 }
@@ -386,120 +417,4 @@ fn literal_space(literal: &Expr) -> Space {
         _ => "_".to_owned(),
     };
     Space::Opaque(format!("{literal:?}"), shown)
-}
-
-/// The constructors heading a column's rows, first seen first.
-fn column_heads(matrix: &[Row]) -> Vec<String> {
-    let mut heads: Vec<String> = Vec::new();
-    for row in matrix {
-        if let Some(Space::Ctor(name, _)) = row.first() {
-            if !heads.contains(name) {
-                heads.push(name.clone());
-            }
-        }
-    }
-    heads
-}
-
-/// The rows that match constructor `name` in the first column, with its
-/// slots in place of that column.
-fn specialize(matrix: &[Row], name: &str, arity: usize) -> Vec<Row> {
-    matrix
-        .iter()
-        .filter_map(|row| {
-            let (head, rest) = row.split_first()?;
-            let args = match head {
-                Space::Ctor(head, args) if head == name => args.clone(),
-                Space::Opaque(key, _) if key == name => Vec::new(),
-                Space::Any => vec![Space::Any; arity],
-                _ => return None,
-            };
-            Some([args.as_slice(), rest].concat())
-        })
-        .collect()
-}
-
-/// Each row headed by an or-pattern as one row per alternative, in order:
-/// `A | B => body` is the rows `A` and `B` ([PATTERN-OR-EXHAUSTIVE]).
-fn expand(matrix: &[Row]) -> Vec<Row> {
-    matrix
-        .iter()
-        .flat_map(|row| match row.split_first() {
-            Some((Space::Or(alternatives), rest)) => expand(
-                &alternatives
-                    .iter()
-                    .map(|alternative| prepend(alternative.clone(), rest.to_vec()))
-                    .collect::<Vec<_>>(),
-            ),
-            _ => vec![row.clone()],
-        })
-        .collect()
-}
-
-/// One check per alternative of every or-pattern in `space`, outermost first:
-/// the space with that or-pattern narrowed to the alternative, the spaces it
-/// narrows to at each earlier alternative (which the check counts as earlier
-/// rows), and the alternative alone, for the diagnostic.
-fn alternative_checks(space: &Space) -> Vec<(Space, Vec<Space>, Space)> {
-    match space {
-        Space::Or(alternatives) => alternatives
-            .iter()
-            .enumerate()
-            .flat_map(|(index, alternative)| {
-                let earlier: Vec<Space> = alternatives.iter().take(index).cloned().collect();
-                let own = (alternative.clone(), earlier.clone(), alternative.clone());
-                let nested = alternative_checks(alternative).into_iter().map(
-                    move |(vector, mut before, shown)| {
-                        before.extend(earlier.iter().cloned());
-                        (vector, before, shown)
-                    },
-                );
-                std::iter::once(own).chain(nested).collect::<Vec<_>>()
-            })
-            .collect(),
-        Space::Ctor(name, args) => args
-            .iter()
-            .enumerate()
-            .flat_map(|(column, arg)| {
-                alternative_checks(arg)
-                    .into_iter()
-                    .map(move |(vector, before, shown)| {
-                        let with = |slot: Space| {
-                            let mut slots = args.clone();
-                            if let Some(target) = slots.get_mut(column) {
-                                *target = slot;
-                            }
-                            Space::Ctor(name.clone(), slots)
-                        };
-                        (with(vector), before.into_iter().map(with).collect(), shown)
-                    })
-            })
-            .collect(),
-        Space::Any | Space::Opaque(..) => Vec::new(),
-    }
-}
-
-/// The rows whose first column matches anything, without that column.
-fn default_rows(matrix: &[Row]) -> Vec<Row> {
-    matrix
-        .iter()
-        .filter_map(|row| match row.split_first() {
-            Some((Space::Any, rest)) => Some(rest.to_vec()),
-            _ => None,
-        })
-        .collect()
-}
-
-/// `name` applied to the first `arity` spaces of a witness, then the rest.
-fn rebuild(name: &str, arity: usize, witness: &[Space]) -> Row {
-    let split = arity.min(witness.len());
-    let (args, rest) = witness.split_at(split);
-    prepend(Space::Ctor(name.to_owned(), args.to_vec()), rest.to_vec())
-}
-
-fn prepend(head: Space, rest: Row) -> Row {
-    let mut row = Vec::with_capacity(rest.len() + 1);
-    row.push(head);
-    row.extend(rest);
-    row
 }

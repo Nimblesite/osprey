@@ -354,6 +354,7 @@
     },
     "type-expression": {
       "patterns": [
+        { "name": "punctuation.separator.union.osprey", "match": "\\|" },
         { "include": "#comments" },
         {
           "name": "meta.type.record.osprey",
@@ -414,7 +415,7 @@
         { "name": "keyword.operator.logical.osprey", "match": "!" },
         { "name": "keyword.operator.arithmetic.osprey", "match": "[+\\-*/%]" },
         { "name": "keyword.operator.ternary.osprey", "match": "\\?" },
-        { "name": "punctuation.separator.union.osprey", "match": "\\|" },
+        { "name": "keyword.operator.pattern.osprey", "match": "\\|" },
         { "name": "punctuation.separator.osprey", "match": "[,;:]" },
         {
           "name": "punctuation.definition.group.osprey",

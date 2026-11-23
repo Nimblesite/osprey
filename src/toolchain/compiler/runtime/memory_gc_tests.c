@@ -368,12 +368,14 @@ static void t_sweep_reseats_survivors(void) {
 // live set at each collection made the next cycle regrow it, rehashing every
 // block at each doubling. It is given back once a cycle peaks below it. The
 // blocks are past the largest size class, the only ones the table tracks, and
-// each cycle allocates under the 1 MiB budget, so only osp_collect collects here.
+// a 64 MiB budget leaves each 0.9 MiB cycle far below it, so only osp_collect
+// collects here: at 1 MiB a few blocks a stale stack word kept alive tipped a
+// cycle over and collected mid-churn on Linux. Run in a fresh process so
+// unrelated objects retained by conservative roots stay out of it.
 #define STEADY_BLOCKS 900
 #define STEADY_BYTES 1040
 #define STEADY_CYCLES 5
 static void t_table_keeps_capacity(void) {
-  osp_collect();
   (void)alloc_churn(STEADY_BLOCKS, STEADY_BYTES);
   osp_collect(); // warm-up cycle: the table now fits one cycle's blocks
   size_t steady = osp_gc_table_capacity();
@@ -387,6 +389,7 @@ static void t_table_keeps_capacity(void) {
   }
   osp_collect(); // an idle cycle: nothing was allocated since the last sweep
   CHECK(osp_gc_table_capacity() < steady && osp_gc_live_objects() < 1000);
+  puts("steady table");
 }
 
 // Volume: many rooted blocks all survive one collection intact — exercises the
@@ -424,6 +427,10 @@ int main(int argc, char **argv) {
     mark_stack_refused_child();
     return 0;
   }
+  if (argc == 2 && strcmp(argv[1], "--steady-table") == 0) {
+    t_table_keeps_capacity();
+    return 0;
+  }
   if (argc == 3 && strcmp(argv[1], "--ceiling") == 0) {
     ceiling_child(argv[2]);
     return 0;
@@ -447,7 +454,7 @@ int main(int argc, char **argv) {
   t_root_keeps_alive();
   t_interior_pointer();
   t_sweep_reseats_survivors();
-  t_table_keeps_capacity();
+  gc_test_child_prints(argv[0], "OSPREY_GC_HEAP_MB=64", "--steady-table", "steady table\n");
   t_many_rooted_survive();
   t_size_class_pages(argv[0]);
   t_finalizer_at_sweep();

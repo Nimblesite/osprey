@@ -27,6 +27,7 @@ import {
   clearDebugBreakpoints,
   continueExecution,
   type DapStop,
+  evaluate,
   readFrameVariables,
   setSourceBreakpoints,
   stepIn,
@@ -389,6 +390,11 @@ suite("Osprey Debugger E2E Workflows", function () {
           (variable) => variable.name === "observed",
         ),
         "inner locals leave scope after the expression",
+      );
+      await assert.rejects(
+        evaluate(session, "observed", frame),
+        /undeclared identifier 'observed'|unknown identifier.*observed/i,
+        "watching a local after its scope ends reports the missing binding",
       );
       await finishSession(session, outside.threadId);
     });

@@ -3,3 +3,5 @@ unreachable match arm: earlier arms cover every value `Node(Leaf, Leaf)` matches
 unreachable match arm: earlier arms cover every value `Error { message: Success { value: 7 } }` matches
 unreachable alternative: earlier arms or alternatives cover every value `Red` matches
 unreachable alternative: earlier arms or alternatives cover every value `Blue` matches
+unreachable alternative: earlier arms or alternatives cover every value `"old"` matches
+unreachable alternative: earlier arms or alternatives cover every value `"new"` matches

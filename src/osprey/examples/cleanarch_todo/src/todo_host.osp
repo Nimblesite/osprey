@@ -45,12 +45,35 @@ module TodoHost {
         work()
     }
 
-    /// IUser: the signed-in party, answered once per request.
-    export fn withAuth(principal, work) = {
+    /// IUser: the signed-in party, answered once per request. `who` is `many`, so the
+    /// request's log lines are held inside the region and logged once it settles.
+    export fn withAuth(principal, work) = relog({
         handle Auth {
             who => resume(principal)
         }
-        work()
+        holdingLog(work)
+    })
+
+    /// `work` with its log lines held: `{ settled, lines }`. A multi-shot region that
+    /// runs it logs nothing itself, so a replay cannot log twice ([MULTI-REPLAY-CHECK]).
+    export fn holdingLog(work) = {
+        mut lines: List<LogLine> = []
+        handle Log {
+            info message => { lines = listAppend(lines, LogInfo { message: message }) }
+            warn message => { lines = listAppend(lines, LogWarn { message: message }) }
+            error message => { lines = listAppend(lines, LogError { message: message }) }
+        }
+        { settled: work(), lines: lines }
+    }
+
+    /// Logs what `holdingLog` held, once and in order, and answers what it settled.
+    export fn relog(held) = {
+        forEachList(held.lines, fn(line) => match line {
+            LogInfo { message } => perform Log.info(message)
+            LogWarn { message } => perform Log.warn(message)
+            LogError { message } => perform Log.error(message)
+        })
+        held.settled
     }
 
     /// INotification delivery, buffered: a rewound attempt publishes nothing.

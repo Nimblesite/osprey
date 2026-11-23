@@ -44,7 +44,7 @@ import { runCompiler } from "./test-explorer-process";
 import { publishSkipState, disposeSkipWarnings } from "./test-explorer-skips";
 
 /** Every Osprey source: a module change can change the suites importing it. */
-const SOURCE_GLOB = "**/*.{osp,ospml}";
+const SOURCE_GLOB = "**/{*.osp,*.ospml,*.test.py,*.test.ts,osprey.toml}";
 
 const CONTROLLER_ID = "ospreyTests";
 const CONTROLLER_LABEL = "Osprey Tests";

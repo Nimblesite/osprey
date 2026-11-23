@@ -152,6 +152,12 @@ fn describeAny(v: any) = match v {
     _            => "other=${v}"
 }
 
+/// [PATTERN-OR-TYPE] Either named shape selects the arm; scalars reach the fallback.
+fn rowLabel(v: any) = match v {
+    { held: n, tag: _ } | { value: n } => toString(n)
+    _ => "other"
+}
+
 /// Narrowing is stable: the same box selects the same arm every time.
 fn describeTwice(v) = "${describeAny(v)}/${describeAny(v)}"
 
@@ -243,6 +249,8 @@ fn anyTypeBehaviorCase() = {
         describeAny(Boxed { held: "dyn" + "amic", tag: 9 }) == "held=dynamic",
         describeAny(TestType { value: "via row" }) == "value=via row",
         describeAny(Pair(7, "seven")) == "pair=7:seven",
+        rowLabel(Boxed { held: "box", tag: 1 }) == "box",
+        rowLabel(object) == "payload", rowLabel(42) == "other",
         describeAny(42) == "other=42",
         describeAny(forward("still" + "erased")) == "other=stillerased",
         erasedKinds() == "1.75|true|Green|Circle { radius: 3 }|Success(5)|[1]|<map>",

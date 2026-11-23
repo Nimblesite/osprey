@@ -70,6 +70,9 @@ fn bank_warnings() -> Vec<(&'static str, &'static str, crate::model::Span)> {
             (90, 29, 90, 36),
         ),
         ("unused-variable", "unused variable `seen`", (91, 4, 91, 8)),
+        ("repeated-literal", "the literal `\"/api/accounts\"` is written 4 times in this file; name it once as a constant", (25, 4, 25, 82)),
+        ("repeated-literal", "the literal `\"/api/deposit\"` is written 3 times in this file; name it once as a constant", (28, 4, 28, 131)),
+        ("consecutive-print", "4 `print` calls in a row: join them into one interpolated `print`", (34, 4, 34, 141)),
     ]
 }
 
@@ -95,12 +98,12 @@ fn module_bearing_files_outside_project_roots_are_assembled_standalone() {
     // private helper, so warning identity and source mapping stay exact. The
     // exported member's signature is API and is never reported
     // ([TYPE-ANNOTATION-REDUNDANT]).
-    let source = "namespace test\n\n(** Amounts. *)\nmodule Money\n    (** Whether `cents` is above zero. *)\n    export positive : int -> bool\n    positive cents = above cents\n    above : int -> bool\n    above cents = cents > 0\n\ntest \"positive\" (\\() => expect (Money::positive 1) true)\n";
+    let source = "namespace test\n\n(** Amounts. *)\nmodule Money\n    (** Whether `cents` is above zero.\n    # Examples\n    ```osprey\n    print (Money::positive 1)\n    ```\n    *)\n    export positive : int -> bool\n    positive cents = above cents\n    above : int -> bool\n    above cents = cents > 0\n\ntest \"positive\" (\\() => expect (Money::positive 1) true)\n";
     assert_redundant_annotations(
         &compute(source, uri, U16),
         &[(
             "redundant type signature on `test::Money::above`: inference derives `(int) -> bool` without it",
-            (7, 4, 7, 23),
+            (12, 4, 12, 23),
         )],
     );
     let inferred = source

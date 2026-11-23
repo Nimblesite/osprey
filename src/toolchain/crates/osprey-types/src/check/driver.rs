@@ -56,6 +56,19 @@ impl CheckedProgram {
         &self.types
     }
 
+    /// Read the source's unused symbols after its effects have been proved.
+    /// The source may differ from the lowered program, so infer the source's
+    /// method targets without repeating its effect proof when they are settled.
+    #[must_use]
+    pub fn unused_symbols(&self) -> Vec<crate::UnusedSymbol> {
+        match infer_annotation_trial(&self.source, None) {
+            Ok(Some((types, false))) => {
+                crate::unused::unused_symbols_with_types(&self.source, &types)
+            }
+            _ => crate::unused_symbols(&self.source),
+        }
+    }
+
     /// What each function needs discharged were a host to call it directly.
     #[must_use]
     pub fn library_exports(&self) -> &LibraryExports {
@@ -318,6 +331,35 @@ pub(super) fn finish_data_contracts(checker: &mut Checker, program: &Program) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn structural_equality_checks_each_type_in_a_resolved_union() {
+        use crate::ty::{names, Type};
+        let mut checker = Checker::new();
+        let scalar = || Type::con(names::STRING, vec![]);
+        let list_of_union = |second| {
+            Type::con(
+                names::LIST,
+                vec![Type::Union {
+                    name: "Selection".into(),
+                    variants: vec![scalar(), second],
+                }],
+            )
+        };
+        checker.constrain_structural_equals(Some("structuralEquals"), &[list_of_union(scalar())]);
+        checker.validate_builtin_uses();
+        assert_eq!(checker.errors, Vec::new());
+
+        let callable = Type::fun(vec![scalar()], scalar());
+        checker.constrain_structural_equals(Some("structuralEquals"), &[list_of_union(callable)]);
+        checker.validate_builtin_uses();
+        let messages: Vec<_> = checker
+            .errors
+            .iter()
+            .map(|error| error.message.as_str())
+            .collect();
+        assert_eq!(messages, ["cannot compare `List<Selection>` with `structuralEquals`: list element is a function, whose equality is not decided"]);
+    }
 
     fn program(source: &str) -> Program {
         let parsed = osprey_syntax::parse_program(source);

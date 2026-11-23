@@ -189,6 +189,121 @@ fn main() = {
         &["`send`", "replays"],
         "a channel operation inside the captured remainder is replayed per branch and must be rejected",
     ),
+    (
+        // [MULTI-REPLAY-CHECK] A fiber spawned and awaited after the request
+        // would start once per branch: both are named.
+        r#"
+effect Choice { control many pick: fn(int) -> int }
+fn work() = 4
+fn main() = {
+    let all = {
+        handle Choice {
+            pick _b => satAdd(resume(1), resume(2))
+        }
+        {
+            let c = perform Choice.pick(0)
+            let f = spawn work()
+            satAdd(c, await(f))
+        }
+    }
+    print("${all}")
+}
+"#,
+        &["`spawn`", "`await`", "replays"],
+        "a fiber started in the replayed remainder would start once per branch",
+    ),
+    (
+        // [MULTI-REPLAY-CHECK] A recv and a select after the request would
+        // take one message per branch.
+        r#"
+effect Choice { control many pick: fn(int) -> int }
+fn main() = {
+    let box = Channel(4)
+    let all = {
+        handle Choice {
+            pick _b => satAdd(resume(1), resume(2))
+        }
+        {
+            let c = perform Choice.pick(0)
+            let _taken = recv(box)
+            let _either = select { v = recv(box) => v timeout(5) => 0 }
+            c
+        }
+    }
+    print("${all}")
+}
+"#,
+        &["`recv`", "`select`", "replays"],
+        "a receive in the replayed remainder would take one message per branch",
+    ),
+    (
+        // [MULTI-REPLAY-CHECK] A mask in the replayed remainder would skip a
+        // handler once per branch.
+        r#"
+effect Choice { control many pick: fn(int) -> int }
+effect Store { replayable get: fn(string) -> int }
+fn main() = {
+    let all = {
+        handle Store { get _k => 5 }
+        {
+            handle Store { get _k => 6 }
+            handle Choice {
+                pick _b => satAdd(resume(1), resume(2))
+            }
+            {
+                let c = perform Choice.pick(0)
+                satAdd(c, mask Store { perform Store.get("k") })
+            }
+        }
+    }
+    print("${all}")
+}
+"#,
+        &["`mask`", "replays"],
+        "a mask in the replayed remainder is repeated per branch",
+    ),
+    (
+        // A request inside a mask body has no continuation the region can
+        // capture: the mask is a boundary the closure cannot span.
+        r#"
+effect Choice { control many pick: fn(int) -> int }
+fn main() = {
+    let all = {
+        handle Choice {
+            pick _b => satAdd(resume(1), resume(2))
+        }
+        {
+            handle Choice { pick n => resume(n) }
+            mask Choice { perform Choice.pick(1) }
+        }
+    }
+    print("${all}")
+}
+"#,
+        &["cannot span a fiber, channel or mask operation"],
+        "a captured request inside a mask has no continuation to capture",
+    ),
+    (
+        // A capturing function reached through a local alias cannot be followed.
+        r#"
+effect Choice { control many pick: fn(int) -> int }
+fn ask(n) = perform Choice.pick(n)
+fn main() = {
+    let all = {
+        handle Choice {
+            pick _b => satAdd(resume(1), resume(2))
+        }
+        {
+            let f = ask
+            f(2)
+        }
+    }
+    print("${all}")
+}
+"#,
+        &["`ask`", "cannot cross"],
+        "a capturing function called through an alias cannot be followed",
+    ),
 ];
 
 #[test]

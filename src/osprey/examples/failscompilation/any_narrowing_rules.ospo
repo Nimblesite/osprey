@@ -75,3 +75,9 @@ fn viaAlternatives(v: any) = match v {
 let viaAnon: any = { x: 1, y: 2 }
 
 print("${viaLiteral()} ${viaAnnotation()} ${viaVariant()} ${noCatchAll()} ${shadowed()} ${viaOperator()} ${viaField()} ${viaAnon} ${viaAlternatives(viaAnon)}")
+
+// [PATTERN-OR-TYPE] Every annotated alternative checks the erased scrutinee.
+// Even together the annotations require a catch-all.
+fn annotatedAlternatives(input: any) = match input {
+    item: string | item: int => 1
+}

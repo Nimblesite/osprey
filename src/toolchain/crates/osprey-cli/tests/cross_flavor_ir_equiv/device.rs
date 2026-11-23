@@ -293,3 +293,16 @@ fn a_callers_binding_never_shadows_a_name_in_a_helper_it_inlines() -> Result<(),
     );
     Ok(())
 }
+
+/// [FLAVOR-PYTHON-BOUNDARY] Preserve the host launch and extracted device code.
+#[test]
+fn flat_device_map_matches_across_three_flavors() -> Result<(), String> {
+    let ir = super::flat_triple("device-map", [
+        "fn twice(values) = gpuMap(values, fn(x) => x * 2.0)\nfn main() = match toGpu([1.0, 3.0]) { Success { value } => twice(value) Error { message } => Error { message: message } }\n",
+        "twice values = gpuMap (values, \\x => x * 2.0)\nmain () = match toGpu [1.0, 3.0]\n    Success value => twice value\n    Error message => Error(message = message)\n",
+        "def twice(values):\n    return gpuMap(values, lambda x: x * 2.0)\ndef main():\n    match toGpu([1.0, 3.0]):\n        case Success(value=value):\n            return twice(value)\n        case Error(message=message):\n            return Error(message=message)\n",
+    ])?;
+    assert_eq!(count(&ir, "call i32 @osprey_gpu_launch("), 1);
+    assert_ne!(kernel_source(&ir), "");
+    Ok(())
+}

@@ -7,6 +7,7 @@ import { spawnSync } from "node:child_process";
 import { EventEmitter } from "node:events";
 import * as fs from "node:fs";
 import * as os from "node:os";
+import * as path from "node:path";
 import threads = require("node:worker_threads");
 import * as sinon from "sinon";
 import { compileWasi, createWasi, wasiImports } from "../../client/src/osprey-ui/wasi";
@@ -175,22 +176,19 @@ suite("package workspace in-memory WASI", () => {
   });
 
   test("stdin is the host frame and stdout is captured without temporary files", async () => {
-    // A temporary folder of its own: the machine's is shared with every other process, so
-    // counting its entries fails whenever anything else on the machine writes one.
-    const scratch = fs.mkdtempSync(`${os.tmpdir()}/osprey-wasi-stdout-`);
-    const shared = TEMP_VARIABLES.map((name) => [name, process.env[name]] as const);
-    for (const name of TEMP_VARIABLES) process.env[name] = scratch;
+    const temporary = fs.mkdtempSync(path.join(os.tmpdir(), "osprey-wasi-io-"));
+    const previous = TEMP_VARIABLES.map((name) => [name, process.env[name]] as const);
+    for (const name of TEMP_VARIABLES) process.env[name] = temporary;
     try {
-      assert.strictEqual(os.tmpdir(), scratch);
       await withStub({}, async (runtime) => {
         const frame = await runtime.open(open);
         assert.deepStrictEqual([frame.status, frame.runs.views.byteLength, frame.runs.asks.byteLength], [0, 0, 0]);
         assert.ok(frame.runs.text instanceof ArrayBuffer, "the frame is copied out of linear memory");
+        assert.deepStrictEqual(fs.readdirSync(temporary), [], "the WASI host did not stage the frame in a temporary file");
       });
-      assert.deepStrictEqual(fs.readdirSync(scratch), [], "the runtime wrote a temporary file");
     } finally {
-      for (const [name, value] of shared) if (value === undefined) delete process.env[name]; else process.env[name] = value;
-      fs.rmSync(scratch, { recursive: true, force: true });
+      for (const [name, value] of previous) if (value === undefined) delete process.env[name]; else process.env[name] = value;
+      fs.rmSync(temporary, { recursive: true, force: true });
     }
   });
 

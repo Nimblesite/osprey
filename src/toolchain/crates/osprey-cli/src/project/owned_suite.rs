@@ -16,16 +16,13 @@ impl CompilationInput {
         if !is_test_file(file) {
             return None;
         }
-        let root = file
-            .parent()?
-            .ancestors()
-            .find(|directory| directory.join("osprey.toml").is_file())?;
-        let (config, _) = osprey_project::discover(root).ok()?;
-        if !config.contains_source(root, file) {
+        let root = osprey_project::project_root(file)?;
+        let (config, _) = osprey_project::discover(&root).ok()?;
+        if !config.contains_source(&root, file) {
             return None;
         }
         let suite = canonical(file);
-        Some(Self::load_suite(path, root, &suite))
+        Some(Self::load_suite(path, &root, &suite))
     }
 
     fn load_suite(path: &str, root: &Path, suite: &Path) -> Result<Self, Vec<ProjectError>> {

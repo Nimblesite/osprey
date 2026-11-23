@@ -270,6 +270,10 @@
           "named": true
         },
         {
+          "type": "extern_declaration",
+          "named": true
+        },
+        {
           "type": "function_declaration",
           "named": true
         },
@@ -565,18 +569,29 @@
     }
   },
   {
-    "type": "field_pattern",
+    "type": "field_slot",
     "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "identifier",
-          "named": true
-        }
-      ]
+    "fields": {
+      "field": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      },
+      "pattern": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "pattern",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
@@ -1543,11 +1558,43 @@
       "required": true,
       "types": [
         {
+          "type": "boolean",
+          "named": true
+        },
+        {
+          "type": "float",
+          "named": true
+        },
+        {
           "type": "identifier",
           "named": true
         },
         {
+          "type": "integer",
+          "named": true
+        },
+        {
+          "type": "list_pattern",
+          "named": true
+        },
+        {
+          "type": "ml_parenthesized_pattern",
+          "named": true
+        },
+        {
+          "type": "ml_pattern_field",
+          "named": true
+        },
+        {
           "type": "qualified_path",
+          "named": true
+        },
+        {
+          "type": "string",
+          "named": true
+        },
+        {
+          "type": "structural_pattern",
           "named": true
         }
       ]
@@ -1640,10 +1687,40 @@
           "named": true
         },
         {
+          "type": "or_pattern",
+          "named": true
+        },
+        {
           "type": "string",
           "named": true
         }
       ]
+    }
+  },
+  {
+    "type": "ml_pattern_field",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      },
+      "pattern": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "pattern",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
@@ -1974,6 +2051,22 @@
     }
   },
   {
+    "type": "or_pattern",
+    "named": true,
+    "fields": {
+      "alternative": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "pattern",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "parameter",
     "named": true,
     "fields": {
@@ -2112,10 +2205,6 @@
           "named": true
         },
         {
-          "type": "field_pattern",
-          "named": true
-        },
-        {
           "type": "float",
           "named": true
         },
@@ -2136,7 +2225,15 @@
           "named": true
         },
         {
+          "type": "or_pattern",
+          "named": true
+        },
+        {
           "type": "pattern",
+          "named": true
+        },
+        {
+          "type": "slot_pattern",
           "named": true
         },
         {
@@ -2351,6 +2448,62 @@
     }
   },
   {
+    "type": "select_arm",
+    "named": true,
+    "fields": {
+      "binding": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "_",
+            "named": false
+          },
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      },
+      "body": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "assignment",
+            "named": true
+          },
+          {
+            "type": "block",
+            "named": true
+          },
+          {
+            "type": "expression",
+            "named": true
+          }
+        ]
+      },
+      "operation": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "recv_expression",
+            "named": true
+          },
+          {
+            "type": "select_timeout",
+            "named": true
+          },
+          {
+            "type": "send_expression",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "select_expression",
     "named": true,
     "fields": {},
@@ -2359,7 +2512,22 @@
       "required": false,
       "types": [
         {
-          "type": "match_arm",
+          "type": "select_arm",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "select_timeout",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "ml_postfix",
           "named": true
         }
       ]
@@ -2472,6 +2640,21 @@
     }
   },
   {
+    "type": "slot_pattern",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "field_slot",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "source_file",
     "named": true,
     "root": true,
@@ -2577,6 +2760,10 @@
         {
           "type": "type_declaration",
           "named": true
+        },
+        {
+          "type": "use_statement",
+          "named": true
         }
       ]
     }
@@ -2609,7 +2796,7 @@
       "required": true,
       "types": [
         {
-          "type": "field_pattern",
+          "type": "slot_pattern",
           "named": true
         }
       ]
@@ -2654,11 +2841,7 @@
         "required": true,
         "types": [
           {
-            "type": "_",
-            "named": false
-          },
-          {
-            "type": "identifier",
+            "type": "pattern",
             "named": true
           }
         ]
@@ -2983,6 +3166,47 @@
     }
   },
   {
+    "type": "use_binders",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "identifier",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "use_statement",
+    "named": true,
+    "fields": {
+      "binders": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "use_binders",
+            "named": true
+          }
+        ]
+      },
+      "call": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "expression",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "variant",
     "named": true,
     "fields": {},
@@ -3113,6 +3337,10 @@
     "named": false
   },
   {
+    "type": "<-",
+    "named": false
+  },
+  {
     "type": "<=",
     "named": false
   },
@@ -3170,11 +3398,13 @@
   },
   {
     "type": "block_comment",
-    "named": true
+    "named": true,
+    "extra": true
   },
   {
     "type": "doc_comment",
-    "named": true
+    "named": true,
+    "extra": true
   },
   {
     "type": "effect",
@@ -3242,7 +3472,8 @@
   },
   {
     "type": "line_comment",
-    "named": true
+    "named": true,
+    "extra": true
   },
   {
     "type": "many",
@@ -3333,11 +3564,19 @@
     "named": true
   },
   {
+    "type": "timeout",
+    "named": false
+  },
+  {
     "type": "true",
     "named": false
   },
   {
     "type": "type",
+    "named": false
+  },
+  {
+    "type": "use",
     "named": false
   },
   {

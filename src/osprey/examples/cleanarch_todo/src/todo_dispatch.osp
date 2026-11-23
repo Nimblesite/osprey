@@ -38,7 +38,8 @@ module TodoDispatch {
 
     fn allows(principal, rule) = match rule {
         MustSignIn => principal.name != ""
-        InRole { names } => inAnyRole(principal, names)
+        InRole { names } => foldList(names, false, fn(held, role) =>
+            held || listContains(principal.roles, role))
         HoldsPolicy { name } => listContains(principal.policies, name)
     }
 
@@ -47,9 +48,6 @@ module TodoDispatch {
         InRole _ => Forbidden { why: "not in role" }
         HoldsPolicy { name } => Forbidden { why: "policy ${name} not held" }
     }
-
-    fn inAnyRole(principal, roles) = foldList(roles, false, fn(held, role) =>
-        held || listContains(principal.roles, role))
 
     /// ValidationBehaviour: every validator runs, every failure is collected.
     fn validated(request) = {

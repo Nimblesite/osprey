@@ -109,10 +109,6 @@ char *osp_io_error_take(void) {
 
 // --- reading ----------------------------------------------------------------
 
-// Starting capacity, then doubling. Sized so ordinary source and config files
-// are read in a single fread with no reallocation.
-#define FILE_READ_CHUNK_BYTES 65536
-
 // Double `*cap`, or report failure. The NUL terminator lives in the capacity,
 // so the caller's usable room is always `*cap - 1`.
 static char *grow_buffer(char *buf, size_t *cap) {
@@ -137,7 +133,8 @@ static char *read_stream(FILE *file, const char *filename) {
   // the whole array to the solver. No modeled file exceeds its stream cap.
   size_t cap = osp_hunt_file_buffer_capacity();
 #else
-  size_t cap = FILE_READ_CHUNK_BYTES;
+  // Read an ordinary source or config file in one allocation, then grow as needed.
+  size_t cap = 64U * 1024U;
 #endif
   size_t len = 0;
   char *content = malloc(cap);

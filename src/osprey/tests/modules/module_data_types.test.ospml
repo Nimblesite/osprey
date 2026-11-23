@@ -75,6 +75,18 @@ module Ids
 
     export value id = id.value
 
+    (** Read the ID carried by either result variant.
+    # Examples
+    ```osprey
+    print (Ids::resultValue (Error(message = Ids::make 9)))
+    ```
+    ```output
+    9
+    ```
+    *)
+    export resultValue r = match r
+        Success (Id n) | Error (Id n) => n
+
     export next id = match id
         Id value =>
             Id
@@ -182,6 +194,8 @@ genericModuleCase () = checkAll ("generic module functions specialise per site",
 
 (** An opaque record is built, read and rebuilt only by its own module. *)
 opaqueCase () = checkAll ("opaque records are reached through their module", [
+    Ids::resultValue (Success(value = Ids::make 3)) == 3,
+    Ids::resultValue (Error(message = Ids::make 9)) == 9,
     structuralEquals [Ids::value (Ids::make 7), Ids::value (Ids::next (Ids::make 7))] [7, 8],
     Ids::value (Ids::next (Ids::next (Ids::make 0))) == 2
 ])

@@ -19,3 +19,72 @@ receiver = recv channel
   (statement (function_declaration (identifier) (expression (primary_expression (await_expression (ml_postfix (primary_expression (identifier))))))))
   (statement (function_declaration (identifier) (expression (primary_expression (send_expression (ml_postfix (primary_expression (identifier))) (ml_postfix (primary_expression (identifier))))))))
   (statement (function_declaration (identifier) (expression (primary_expression (recv_expression (ml_postfix (primary_expression (identifier)))))))))
+
+==================
+[MULTI-DECL] A multiplicity marker requires control
+:error
+==================
+effect Choice
+    many op : int => int
+------------------
+
+
+
+==================
+[MULTI-DECL] Markers and contextual operation names
+==================
+effect Choice
+    control many pick : int => int
+    control once replayable choose : int => int
+    control abort stop : int => int
+    many : int => int
+    control once : int => int
+------------------
+
+(source_file
+  (statement
+    (effect_declaration
+      (identifier)
+      (operation_declaration
+        (operation_mode)
+        (multiplicity)
+        (identifier)
+        (function_type
+          (type_identifier
+            (identifier))
+          (type_identifier
+            (identifier))))
+      (operation_declaration
+        (operation_mode)
+        (multiplicity)
+        (replayable)
+        (identifier)
+        (function_type
+          (type_identifier
+            (identifier))
+          (type_identifier
+            (identifier))))
+      (operation_declaration
+        (operation_mode)
+        (multiplicity)
+        (identifier)
+        (function_type
+          (type_identifier
+            (identifier))
+          (type_identifier
+            (identifier))))
+      (operation_declaration
+        (identifier)
+        (function_type
+          (type_identifier
+            (identifier))
+          (type_identifier
+            (identifier))))
+      (operation_declaration
+        (operation_mode)
+        (identifier)
+        (function_type
+          (type_identifier
+            (identifier))
+          (type_identifier
+            (identifier)))))))

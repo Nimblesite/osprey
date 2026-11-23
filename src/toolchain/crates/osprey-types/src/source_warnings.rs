@@ -2,9 +2,9 @@
 //! flattens its modules away: undocumented and unexampled exports
 //! ([DOC-EXPORT-REQUIRED], [DOC-EXPORT-EXAMPLE-REQUIRED]), repeated literals
 //! ([TYPE-WARNINGS-REPEATED-LITERAL]), consecutive prints
-//! ([TYPE-WARNINGS-CONSECUTIVE-PRINT]) and callback pyramids
-//! ([LINT-NESTING-LAMBDA]). The compiler and the editor both ask here, so a
-//! file gets the same advice in each.
+//! ([TYPE-WARNINGS-CONSECUTIVE-PRINT]), callback pyramids ([LINT-NESTING-LAMBDA])
+//! and unread private module members ([TYPE-WARNINGS-UNUSED-PRIVATE]). The
+//! compiler and the editor both ask here, so a file gets the same advice in each.
 
 use osprey_ast::Program;
 use osprey_syntax::Flavor;
@@ -22,6 +22,7 @@ pub fn source_warnings(program: &Program, source: &str, flavor: Flavor) -> Vec<T
     warnings.extend(crate::repeated_literals(program));
     warnings.extend(crate::consecutive_prints(program));
     warnings.extend(closing_runs(source, flavor));
+    warnings.extend(crate::unused_privates(program));
     warnings
 }
 

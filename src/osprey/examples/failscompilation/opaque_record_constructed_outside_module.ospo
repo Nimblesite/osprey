@@ -1,7 +1,7 @@
 // [MODULES-OPAQUE-TYPES] An opaque record's constructor belongs to the module
 // that declares it: a client can neither build the representation nor take it
 // apart with a constructor pattern. The owning module keeps both freely, so
-// `make` and `value` below are fine and the two uses in `main` are not.
+// `make` and `value` below are fine while the direct and nested uses in `main` are rejected.
 namespace opq;
 
 module Ids {
@@ -17,5 +17,8 @@ fn main() = {
     let taken = match Ids::make(4) {
         Ids::Id { value } => value
     }
-    print("${Ids::value(direct)} ${taken}")
+    let wrapped = match Success { value: Ids::make(5) } {
+        Success { value: Ids::Id { value: n } } | Error { message: Ids::Id { value: n } } => n
+    }
+    print("${Ids::value(direct)} ${taken} ${wrapped}")
 }

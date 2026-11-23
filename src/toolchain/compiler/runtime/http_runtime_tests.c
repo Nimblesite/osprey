@@ -228,6 +228,7 @@ static HttpResponse *live_handler(char *method, char *path, char *headers,
 // through these out-of-line symbols (same pattern as http_test_server_handler).
 void test_alloc_fail_off(void) { osp_alloc_fail_off(); }
 void test_alloc_fail_size(size_t bytes) { osp_alloc_fail_size(bytes); }
+void test_alloc_fail_after(long successes) { osp_alloc_fail_after(successes); }
 long test_alloc_live(void) { return osp_alloc_live(); }
 
 void test_live_loopback_exchange(void) {
@@ -380,6 +381,7 @@ void run_all_http_tests(void) {
   test_stop_server_with_client_connected(); // foreign stop tears the client down
   // The three below burn finite id spaces and are permanent for the process.
   test_spawn_with_handlers_survives_every_failed_allocation();
+  test_spawn_refused_by_a_full_handle_table_frees_the_handler_copy();
   test_listener_spawn_failure_is_reported(); // burns the FIBER id space
   test_client_handle_exhaustion();           // burns the shared HTTP id space
   test_server_handle_exhaustion();           // observes that same exhaustion

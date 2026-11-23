@@ -2,6 +2,20 @@ namespace synth
 
 (** The one Result chain the synth modules share: errors pass through unchanged. *)
 module Outcomes
+    (** The fault raised when a required resource index is outside its bounds.
+    # Examples
+    ```osprey
+    detail = match Outcomes::indexOutOfBounds
+        MissingResource message => message
+        _ => "unexpected fault"
+    print detail
+    ```
+    ```output
+    index out of bounds
+    ```
+    *)
+    export indexOutOfBounds = MissingResource(detail = "index out of bounds")
+
     (** An Error passes through; a Success payload continues into `step`. *)
     export carried (outcome, step) = match outcome
         Error why => Error(message = why)

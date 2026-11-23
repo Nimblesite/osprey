@@ -106,7 +106,7 @@ module RenderKernels
             PhaseOperator => OperatorKernels::process (plan, rate, snapshot, frame, held, scheduled.phase)
             Bowed capacity => PhysicalKernels::bowed (rate, snapshot, frame, held, capacity)
             Delay _ => match listGet held.delay 0
-                Error _ => Error(message = MissingResource(detail = "index out of bounds"))
+                Error _ => Error(message = Outcomes::indexOutOfBounds)
                 Success previous => Success(value = RenderInputs::output (frame, held.identity, previous))
             _ => Outcomes::carried (RenderInputs::input (plan, frame, held.identity, 0), \input => processor (plan, rate, snapshot, frame, held, scheduled, input))
 
@@ -160,7 +160,7 @@ module RenderKernels
                 true => scheduled.controls
                 false => current
             match listGet frame.states scheduled.slot
-                Error _ => Error(message = MissingResource(detail = "index out of bounds"))
+                Error _ => Error(message = Outcomes::indexOutOfBounds)
                 Success held => match scheduled.switchable
                     false => selected (plan, rate, snapshot, frame, held, scheduled)
                     true => match RenderInputs::parameter (snapshot, held.identity, "enabled")

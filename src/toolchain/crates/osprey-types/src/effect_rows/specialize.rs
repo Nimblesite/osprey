@@ -60,6 +60,7 @@ fn specialize_answers<A>(
 
 fn specialize_scope(scope: &mut Scope, bindings: &HashMap<String, String>) {
     match scope {
+        Scope::Replay { .. } => {}
         Scope::Handled(answers) => specialize_answers(answers, bindings),
         Scope::Masked { arguments, .. } => {
             for argument in arguments {
@@ -98,8 +99,12 @@ pub(super) fn specialize_value(value: &mut Value, bindings: &HashMap<String, Str
     specialize_requirements(&mut value.performed, bindings);
     if let Some(Callable::Parameter { projection, .. }) = &mut value.callable {
         for part in projection.iter_mut() {
-            if let Projection::Handled(answers) = part {
-                specialize_answers(answers, bindings);
+            match part {
+                Projection::Handled(answers) => specialize_answers(answers, bindings),
+                Projection::StaticEscape(boundary) => {
+                    specialize_requirements(&mut boundary.operations, bindings);
+                }
+                _ => {}
             }
         }
         map_projection_values(projection, |value| specialize_value(value, bindings));

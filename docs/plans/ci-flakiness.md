@@ -61,7 +61,7 @@ Root-cause fixes only: no retries, no wider timeouts used to hide a race, no ski
 
 ## CI runtime
 
-- [ ] `Check: every Osprey program compiles` is the longest job (17 min; 994 s for the step in run 45027767330). It ran 600+ compiles in batches of 16, and each batch waited for its slowest member. `scripts/ci/check-programs.py` now keeps 16 in flight through an `xargs -P` pool, and each job writes its own exit code: 607 programs, 0 failed, in 4 min 55 s locally. Compare its CI time with that run. Split the programs across runners only if the pool alone does not bring the job under the Rust workspace's 17 min.
+- [x] Compared the 16-worker pool with the [batched baseline](https://github.com/Nimblesite/osprey/actions/runs/45027767330) (17m23s for the job, 16m34s compiling). The four completed checks after the change all passed. Whole-job times in order were [12m26s](https://github.com/Nimblesite/osprey/actions/runs/45067066085), [15m27s](https://github.com/Nimblesite/osprey/actions/runs/45138676397), [14m59s](https://github.com/Nimblesite/osprey/actions/runs/45140038913) and [17m58s](https://github.com/Nimblesite/osprey/actions/runs/45143088617). Compilation took 11m24s to 16m39s. Keep one runner given the 15m13s median against the 17-minute target.
 - [ ] `Tests: Rust workspace (rest)` (17 min) and WinUI (16 min) are the next critical paths. macOS jobs also wait for runners: iOS Inbox started 13 min late.
 
 ## Runtime test-suite flakiness review (read-only)

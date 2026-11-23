@@ -369,9 +369,7 @@ The filter is the single mechanism behind "run one test" in every front end
 
 ## File naming convention
 
-**`[TESTING-FILE-CONVENTION]`** Test files are named `*.test.osp` (Default)
-or `*.test.ospml` (ML). The convention is what `osprey test` directory
-discovery and the VS Code Test Explorer glob use. It is a convention, not a
+**`[TESTING-FILE-CONVENTION]`** The CLI discovers `*.test.osp` (Default), `*.test.ospml` (ML), `*.test.ts` (TypeScript) and opted-in `*.test.py` (Python). A Python suite opts in through its leading Osprey marker or its project manifest. The VS Code Test Explorer discovers all four flavors. Python and TypeScript suites opt in through a leading flavor marker or the nearest project manifest. It is a convention, not a
 gate — any Osprey program may call the testing built-ins.
 
 ## Runtime

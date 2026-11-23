@@ -3,6 +3,25 @@
 use crate::{ProjectConfig, ProjectError};
 use std::path::{Path, PathBuf};
 
+/// The nearest manifest above a source file.
+#[must_use]
+pub fn project_root(file: &Path) -> Option<PathBuf> {
+    file.parent()?
+        .ancestors()
+        .find(|directory| directory.join("osprey.toml").is_file())
+        .map(Path::to_path_buf)
+}
+
+/// A Python file opts in with its source marker or the enclosing manifest.
+#[must_use]
+pub fn python_source(path: &Path) -> bool {
+    std::fs::read_to_string(path)
+        .is_ok_and(|text| osprey_syntax::flavor_marker(&text) == Some("python"))
+        || project_root(path).is_some_and(|root| {
+            crate::discover(&root).is_ok_and(|(config, _)| config.contains_source(&root, path))
+        })
+}
+
 /// Discover Osprey sources and explicitly selected Python- and TypeScript-flavor files.
 pub(crate) fn discover(root: &Path, config: &ProjectConfig) -> Result<Vec<PathBuf>, ProjectError> {
     let mut paths = Vec::new();

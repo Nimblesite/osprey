@@ -66,6 +66,17 @@ suite("TextMate grammars", () => {
     assertScoped(tokens, "match", "keyword.control");
   });
 
+  test("or-pattern pipes are operators in both flavors", async () => {
+    for (const scope of ["source.osprey", "source.osprey-ml"]) {
+      const grammar = await grammarFor(scope);
+      const tokens = tokenize(grammar, '    Space | Tab | Digit(0 | 1) => 1');
+      assertEveryScoped(tokens, "|", "keyword.operator");
+      assertScoped(tokenize(grammar, "type Glyph = Space | Tab"), "|", "punctuation.separator");
+    }
+    const grammar = await grammarFor("source.osprey");
+    assertScoped(tokenize(grammar, "let f = |x| => x"), "|", "punctuation.definition.parameters");
+  });
+
   test("ML `?:` is one error-propagation operator", async () => {
     const grammar = await grammarFor("source.osprey-ml");
     const tokens = tokenize(grammar, "doc = jsonParse source ?: 0");

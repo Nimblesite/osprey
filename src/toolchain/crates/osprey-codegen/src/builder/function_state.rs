@@ -99,6 +99,13 @@ impl Codegen {
         id
     }
 
+    /// Start a lifted source body with its own captured mutable locals.
+    pub(crate) fn enter_nested_body(&mut self, body: &osprey_ast::Expr) -> SavedFn {
+        let saved = self.enter_nested_fn();
+        self.cell_vars = crate::effects::captured_mut_vars(body);
+        saved
+    }
+
     /// Suspend the in-progress function and start a fresh one (a handler function
     /// emitted while lowering its enclosing `handle`). Returns the saved state to
     /// hand back to [`Codegen::exit_nested_fn`]. The new function gets its own

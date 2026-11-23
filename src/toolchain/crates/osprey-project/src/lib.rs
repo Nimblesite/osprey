@@ -30,6 +30,7 @@ mod resolve;
 mod rewrite;
 mod signature_collect;
 mod source;
+pub use source::{project_root, python_source};
 mod source_dependencies;
 pub use source_dependencies::SourceDependency;
 mod state;
@@ -189,6 +190,19 @@ pub struct AssembledProject {
 }
 
 impl AssembledProject {
+    /// The program that editor and documentation queries check, including inlined source bindings.
+    #[must_use]
+    pub fn source_program(&self) -> std::borrow::Cow<'_, osprey_ast::Program> {
+        let mut program = std::borrow::Cow::Borrowed(&self.program);
+        if !self.documentation_bindings.is_empty() {
+            program
+                .to_mut()
+                .statements
+                .extend_from_slice(&self.documentation_bindings);
+        }
+        program
+    }
+
     /// The program code generation lowers.
     #[must_use]
     pub fn backend_program(&self) -> &osprey_ast::Program {

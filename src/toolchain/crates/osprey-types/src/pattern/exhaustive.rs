@@ -12,31 +12,25 @@ use osprey_ast::Pattern;
 use std::collections::BTreeSet;
 use std::collections::HashSet;
 
-/// An erased value's row is not known until run time, so no set of
-/// structural arms covers it ([TYPE-ANY], [TYPE-MATCH-EXHAUSTIVE]).
-const ANY_NEVER_EXHAUSTIVE: &str = "a match over `any` is never exhaustive: add a catch-all arm";
-
 impl Checker {
-    /// A match over an erased `any` needs a catch-all however its arms are
-    /// spelled, or-patterns and nested patterns included.
-    pub(super) fn check_any_catch_all(&mut self, disc: &Type, arms: &[MatchArm]) {
-        let caught = arms.iter().any(|arm| self.is_catch_all(&arm.pattern));
-        if !caught && self.ctx.apply(disc).is_named(names::ANY) {
-            self.errors.push(TypeError::new(ANY_NEVER_EXHAUSTIVE));
-        }
-    }
-
     /// Enforce exhaustiveness where it is unambiguous: `bool` needs both
     /// constructors; a known union/`Result` needs every variant — unless a
     /// catch-all arm is present.
     pub(super) fn check_exhaustive(&mut self, disc: &Type, arms: &[MatchArm]) {
-        if arms.iter().any(|a| self.is_catch_all(&a.pattern)) {
+        let dp = self.ctx.apply(disc);
+        if arms
+            .iter()
+            .any(|a| self.is_catch_all(&a.pattern, dp.is_named(names::ANY)))
+        {
             return;
         }
-        let dp = self.ctx.apply(disc);
         match &dp {
             t if t.is_named(names::BOOL) => self.check_bool_exhaustive(arms),
-            t if t.is_named(names::ANY) => self.errors.push(TypeError::new(ANY_NEVER_EXHAUSTIVE)),
+            // An erased value's row is not known until run time, so no set of
+            // structural arms can cover it ([TYPE-ANY], [TYPE-MATCH-EXHAUSTIVE]).
+            t if t.is_named(names::ANY) => {
+                self.errors.push(TypeError::new(super::ERASED_CATCH_ALL));
+            }
             Type::Con { name, .. } if self.union_variants.contains_key(name) => {
                 let all = self.union_variants.get(name).cloned().unwrap_or_default();
                 let covered: HashSet<String> = arms
@@ -138,9 +132,10 @@ impl Checker {
     /// so it is not flagged non-exhaustive), or a genuine variable binding. A
     /// capitalised bare name is a (possibly mis-spelled) constructor attempt — not
     /// a catch-all — so the missing/unknown-variant path reports it.
-    fn is_catch_all(&self, pattern: &Pattern) -> bool {
+    fn is_catch_all(&self, pattern: &Pattern, erased: bool) -> bool {
         match pattern {
-            Pattern::Wildcard | Pattern::TypeAnnotated { .. } => true,
+            Pattern::Wildcard => true,
+            Pattern::TypeAnnotated { .. } => !erased,
             Pattern::Binding(name) => self.is_variable_binding(name),
             _ => false,
         }

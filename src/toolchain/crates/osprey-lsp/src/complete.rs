@@ -9,7 +9,6 @@
 //! ([`crate::workspace`], [LSP-WORKSPACE]).
 
 use lspkit::vfs::PositionEncoding;
-use osprey_ast::Program;
 use osprey_syntax::Flavor;
 use osprey_types::numeric::Numeric;
 use osprey_types::{names, ProgramTypes, Type};
@@ -17,6 +16,7 @@ use osprey_types::{names, ProgramTypes, Type};
 use crate::analysis::{collect_all_symbols, inferred_symbols, SymbolInfo, SymbolKind};
 use crate::context::{self, Cursor};
 use crate::features::best_match;
+use crate::inferred::{Inferred, Typed};
 use crate::keywords::keyword_items;
 use crate::mlrender;
 use crate::model::{CompletionItem, CompletionKind};
@@ -63,19 +63,23 @@ pub(crate) fn completion(
     if cursor == Cursor::Binder {
         return Vec::new();
     }
-    if let Cursor::Member(receiver) = &cursor {
-        return member_items(receiver, &program, line);
+    let doc = project.typed(text, &program);
+    if cursor == Cursor::Pattern {
+        return pattern_items(&doc, project);
     }
-    let symbols = visible_symbols(&project.typed(text, &program), project);
+    if let Cursor::Member(receiver) = &cursor {
+        return member_items(receiver, &doc, line);
+    }
+    let symbols = visible_symbols(&doc, project);
     keyword_items(flavor, &cursor)
         .into_iter()
-        .chain(symbol_items(&cursor, &symbols, &program, flavor))
+        .chain(symbol_items(&cursor, &symbols, flavor))
         .collect()
 }
 
 /// Every symbol the open document can name: its own declarations plus those of
 /// every sibling file the project links with it. Implements [LSP-WORKSPACE].
-fn visible_symbols(doc: &crate::inferred::Typed<'_>, project: &workspace::View) -> Vec<SymbolInfo> {
+fn visible_symbols(doc: &Typed<'_>, project: &workspace::View) -> Vec<SymbolInfo> {
     // Inferred, because a completion item SHOWS the symbol's type
     // ([`inferred_symbols`]) — a deleted annotation must not empty it.
     let mut symbols = inferred_symbols(doc);
@@ -91,21 +95,15 @@ fn visible_symbols(doc: &crate::inferred::Typed<'_>, project: &workspace::View) 
 }
 
 /// The declared symbols legal at `cursor`.
-fn symbol_items(
-    cursor: &Cursor,
-    symbols: &[SymbolInfo],
-    program: &Program,
-    flavor: Flavor,
-) -> Vec<CompletionItem> {
+fn symbol_items(cursor: &Cursor, symbols: &[SymbolInfo], flavor: Flavor) -> Vec<CompletionItem> {
     match cursor {
         // A written type takes type names only — a function or a binding there
         // is not merely unhelpful, it does not parse.
         Cursor::Type => type_items(symbols, flavor),
-        Cursor::Pattern => pattern_items(program),
         Cursor::Value | Cursor::Declaration => {
             symbols.iter().map(|s| symbol_item(s, flavor)).collect()
         }
-        Cursor::Member(_) | Cursor::Binder => Vec::new(),
+        Cursor::Member(_) | Cursor::Binder | Cursor::Pattern => Vec::new(),
     }
 }
 
@@ -128,20 +126,43 @@ fn type_items(symbols: &[SymbolInfo], flavor: Flavor) -> Vec<CompletionItem> {
 /// The constructors a `match` arm can destructure, plus the wildcard. Sorted:
 /// the checker keys constructors by hash, and a completion list that reshuffles
 /// between keystrokes is unusable.
-fn pattern_items(program: &Program) -> Vec<CompletionItem> {
-    let types = osprey_types::infer_program(program);
-    let mut items: Vec<CompletionItem> = types
+fn pattern_items(doc: &Typed<'_>, view: &workspace::View) -> Vec<CompletionItem> {
+    let local = Inferred::file(doc.program);
+    let mut options: std::collections::BTreeMap<_, _> = local
+        .types
         .ctors
         .iter()
-        .map(|(name, layout)| CompletionItem {
-            label: name.clone(),
+        .map(|(name, layout)| (name.clone(), layout.owner.clone()))
+        .collect();
+    if let (Some(inferred), Some(project)) = (
+        &doc.project,
+        view.checked
+            .as_ref()
+            .and_then(|checked| checked.assembled.as_ref().ok()),
+    ) {
+        for (linkage, layout) in inferred.types.ctors.iter() {
+            if let (Some(name), Some(owner)) = (
+                osprey_ast::symbol::demangle(linkage),
+                osprey_ast::symbol::demangle(&layout.owner),
+            ) {
+                if project.public_api.get(&owner) == Some(&false)
+                    && project.public_api.contains_key(&name)
+                {
+                    let _ = options.insert(name, owner);
+                }
+            }
+        }
+    }
+    let mut items: Vec<_> = options
+        .into_iter()
+        .map(|(label, owner)| CompletionItem {
+            label,
             kind: CompletionKind::Type,
-            detail: Some(layout.owner.clone()),
+            detail: Some(owner),
             documentation: None,
             insert_text: None,
         })
         .collect();
-    items.sort_by(|left, right| left.label.cmp(&right.label));
     items.push(CompletionItem {
         label: WILDCARD.to_owned(),
         kind: CompletionKind::Keyword,
@@ -159,18 +180,20 @@ fn pattern_items(program: &Program) -> Vec<CompletionItem> {
 /// An unknown receiver yields nothing rather than the whole symbol table:
 /// `origin.` is a promise that only `origin`'s fields follow.
 /// Implements [LSP-COMPLETION-MEMBER].
-fn member_items(receiver: &str, program: &Program, line: u32) -> Vec<CompletionItem> {
-    let symbols = collect_all_symbols(program);
+fn member_items(receiver: &str, doc: &Typed<'_>, line: u32) -> Vec<CompletionItem> {
+    let symbols = collect_all_symbols(doc.program);
     let Some(symbol) = best_match(&symbols, receiver, line) else {
         return Vec::new();
     };
-    let types = osprey_types::infer_program(program);
+    let inferred = doc.inferred();
+    let types = &inferred.types;
+    let receiver_ty = inferred.record_type(symbol.position);
     // The RECEIVER's own type first: `let b = Box { value: 1 }` infers
     // `Box<int>`, so `b.value` is an `int` and saying anything else is a lie.
     // The constructor layout is the generic DECLARATION (`value: T`) and is
     // only the fallback, for a receiver whose fields inference did not reach.
-    inferred_fields(symbol, &types)
-        .or_else(|| receiver_type_name(symbol, &types).map(|owner| fields_of(&types, &owner)))
+    inferred_fields(receiver_ty, types)
+        .or_else(|| receiver_type_name(symbol, receiver_ty).map(|owner| fields_of(types, &owner)))
         .unwrap_or_default()
 }
 
@@ -183,8 +206,8 @@ fn member_items(receiver: &str, program: &Program, line: u32) -> Vec<CompletionI
 /// that variable politely as `_` still withheld a type the checker had proved —
 /// the same defect as the old `-> Unit` fallback, one surface along
 /// ([TYPE-RENDER-HOLES]).
-fn inferred_fields(symbol: &SymbolInfo, types: &ProgramTypes) -> Option<Vec<CompletionItem>> {
-    let Type::Record { name, fields } = types.let_type(None, symbol.position)? else {
+fn inferred_fields(receiver: Option<&Type>, types: &ProgramTypes) -> Option<Vec<CompletionItem>> {
+    let Type::Record { name, fields } = receiver? else {
         return None;
     };
     if fields.is_empty() {
@@ -219,7 +242,7 @@ fn field_item(name: &str, ty: &Type) -> CompletionItem {
         // A field whose type inference genuinely left open is shown as a hole;
         // `t0` is the checker's private name and means nothing to a reader
         // ([TYPE-RENDER-HOLES]).
-        detail: Some(osprey_types::render_with_holes(ty)),
+        detail: Some(Inferred::rendered(ty)),
         documentation: None,
         insert_text: None,
     }
@@ -231,11 +254,11 @@ fn field_item(name: &str, ty: &Type) -> CompletionItem {
 /// The inferred type is read *structurally* rather than through its rendering:
 /// a record Displays as `{ x: int, y: int }`, which names no type at all, so
 /// rendering first and parsing back would lose exactly the case that matters.
-fn receiver_type_name(symbol: &SymbolInfo, types: &ProgramTypes) -> Option<String> {
+fn receiver_type_name(symbol: &SymbolInfo, receiver: Option<&Type>) -> Option<String> {
     if !symbol.ty.is_empty() {
         return Some(bare_type_name(&symbol.ty));
     }
-    match types.let_type(None, symbol.position)? {
+    match receiver? {
         Type::Record { name, .. } | Type::Con { name, .. } | Type::Union { name, .. } => {
             Some(name.clone())
         }

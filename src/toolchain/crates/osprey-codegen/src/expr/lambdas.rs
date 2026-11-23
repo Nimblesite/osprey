@@ -81,9 +81,7 @@ fn bind_and_emit<T>(
     cg.push_scope();
     let saved_fn_ptrs = cg.fn_ptr_locals.clone();
     for global in globals {
-        if let Some(value) = crate::globals::read(cg, &global) {
-            cg.bind(global, value);
-        }
+        crate::globals::bind_capture(cg, &global);
     }
     bind_lambda_prefix(cg, prefix);
     let result = emit(cg);

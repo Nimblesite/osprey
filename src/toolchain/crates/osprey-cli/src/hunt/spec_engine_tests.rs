@@ -386,7 +386,9 @@ fn golden_programs(directory: &Path, found: &mut Vec<String>) {
         );
         if path.is_dir() {
             golden_programs(&path, found);
-        } else if path.extension().is_some_and(|e| e == "osp" || e == "ospml")
+        } else if path
+            .extension()
+            .is_some_and(|ext| ext == "osp" || ext == "ospml")
             && Path::new(&golden).is_file()
         {
             found.push(text);
@@ -439,7 +441,7 @@ fn klee_corpus_parses_with_pinned_llvm() {
     assert!(
         programs
             .iter()
-            .any(|p| Path::new(p).extension().is_some_and(|e| e == "ospml")),
+            .any(|p| Path::new(p).extension().is_some_and(|ext| ext == "ospml")),
         "ML twins are in the corpus"
     );
     let scratch =

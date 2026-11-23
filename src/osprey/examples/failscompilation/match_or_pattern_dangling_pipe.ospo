@@ -8,9 +8,9 @@ fn trail(c) = match c {
     _ => "?"
 }
 
-fn lead(c) = match c {
-    | Green => "g"
-    _ => "?"
-}
+print(trail(Red))
 
-print("${trail(Red)} ${lead(Green)}")
+fn lead(c) = match c {
+    | Blue => 1
+    _ => 0
+}

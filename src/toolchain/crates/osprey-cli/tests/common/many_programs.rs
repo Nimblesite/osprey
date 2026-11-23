@@ -352,4 +352,117 @@ fn main() = {
 "#,
         "total=12 lists=10,20|10,70|60,20|60,70 kept=20402 walked=done+done+done+done log=v7 v8 v0 v0 v8 v0 \n",
     ),
+    (
+        // A capturing function called with named arguments keeps their names
+        // once the call is split, so each branch binds the same parameters.
+        "a capturing call with named arguments keeps them across the split",
+        r#"
+effect Choice { control many pick: fn(int) -> int }
+fn ask(seed, scale) = satMul(perform Choice.pick(seed), scale)
+fn main() = {
+    let all = {
+        handle Choice {
+            pick bound => satAdd(resume(bound), resume(7))
+        }
+        ask(scale: 10, seed: 2)
+    }
+    print("all=${all}")
+}
+"#,
+        "all=90\n",
+    ),
+    (
+        // A named function applied to the request, and an arm that resumes
+        // inside its own nested handler and through a local lambda: the
+        // nested handler's arms resume their own continuation, not the arm's.
+        "a named call, a nested handler and a lambda inside the arm",
+        r#"
+effect Choice { control many pick: fn(int) -> int }
+effect Note { replayable say: fn(int) -> int }
+fn double(n) = satMul(n, 2)
+fn main() = {
+    let all = {
+        handle Choice {
+            pick n => {
+                let left = {
+                    handle Note { say k => satAdd(k, 1) }
+                    satAdd(resume(n), perform Note.say(0))
+                }
+                let scale = fn(x) => satMul(x, 3)
+                satAdd(left, scale(resume(satAdd(n, 1))))
+            }
+        }
+        double(perform Choice.pick(1))
+    }
+    print("all=${all}")
+}
+"#,
+        "all=15\n",
+    ),
+    (
+        // The inner handler answers `pick` only, so `other` passes out to the
+        // outer one from every branch; the inner region is not closed.
+        "a handler that answers some operations passes the rest outward",
+        r#"
+effect Choice {
+    control many pick: fn(int) -> int
+    control many other: fn(int) -> int
+}
+fn main() = {
+    let found = {
+        handle Choice {
+            pick bound => resume(satAdd(bound, 100))
+            other bound => resume(bound)
+        }
+        let inner = {
+            handle Choice {
+                pick bound => {
+                    let low = resume(bound)
+                    let high = resume(satAdd(bound, 1))
+                    "${low}+${high}"
+                }
+            }
+            let a = perform Choice.pick(1)
+            let b = perform Choice.other(a)
+            "${a}.${b}"
+        }
+        inner
+    }
+    print("found=${found}")
+}
+"#,
+        "found=1.1+2.2\n",
+    ),
+    (
+        // The same split with the outer handler answering only the passed operation.
+        "an outer handler answers only the operation an inner one passes",
+        r#"
+effect Choice {
+    control many pick: fn(int) -> int
+    control many other: fn(int) -> int
+}
+fn main() = {
+    let found = {
+        handle Choice {
+            other bound => resume(satMul(bound, 10))
+        }
+        let inner = {
+            handle Choice {
+                pick bound => {
+                    let low = resume(bound)
+                    let high = resume(satAdd(bound, 1))
+                    "${low}+${high}"
+                }
+            }
+            let a = perform Choice.pick(1)
+            let b = perform Choice.other(a)
+            "${a}.${b}"
+        }
+        inner
+    }
+    print("found=${found}")
+}
+"#,
+        "found=1.10+2.20\n",
+    ),
 ];

@@ -169,6 +169,12 @@ struct ParameterUse {
 /// One layer a callback invocation sits under.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 enum Scope {
+    /// Check the substituted callback row before this many arm (or its parent) discharges it.
+    Replay {
+        effect: String,
+        operation: String,
+        at: (u32, u32),
+    },
     /// Handlers answering these requirements: how many answering activations
     /// each passes, saturating at [`MASK_LIMIT`].
     Handled(BTreeMap<Requirement, u32>),
@@ -191,6 +197,7 @@ enum Projection {
     /// inside a handler. The callback was constructed outside this scope, so
     /// its result cannot be resolved until its actual call is projected.
     Handled(BTreeMap<Requirement, Value>),
+    StaticEscape(Box<validate_handlers::StaticEscape>),
     Element,
     SuccessValue,
     FiberValue,
@@ -280,6 +287,7 @@ struct Index<'a> {
     constructors: HashMap<String, Vec<String>>,
     field_rows: field_rows::FieldRows<'a>,
     deferred_gpu_kernel: std::cell::Cell<bool>,
+    deferred_errors: RefCell<BTreeMap<(u32, u32, String), TypeError>>,
 }
 
 #[derive(Clone)]

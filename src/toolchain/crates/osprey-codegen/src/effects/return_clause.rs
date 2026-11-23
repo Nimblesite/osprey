@@ -42,7 +42,7 @@ pub(super) fn emit(
     caps: &[ArmCap],
     env_ty: &str,
 ) -> Result<AnswerShape> {
-    let saved = cg.enter_nested_fn();
+    let saved = cg.enter_nested_body(clause);
     reload_env(cg, caps, env_ty);
     let value = input.restore(cg, "%__value");
     crate::arc::own(cg, &value);

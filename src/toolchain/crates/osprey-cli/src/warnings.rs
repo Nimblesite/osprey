@@ -21,9 +21,13 @@ type Listing = Vec<(String, String)>;
 
 /// Compiler warnings share one terminal listing and never affect exit status.
 /// `analyse` adds the redundant-annotation analyser's findings to the cheap advice.
-pub(crate) fn collect(input: &CompilationInput, analyse: bool) -> Vec<TypeWarning> {
+pub(crate) fn collect(
+    input: &CompilationInput,
+    analyse: bool,
+    checked: Option<&osprey_types::CheckedProgram>,
+) -> Vec<TypeWarning> {
     let contract = |symbol: &str| input.exported_member(symbol);
-    let mut warnings = of(input.program(), &contract, analyse);
+    let mut warnings = of(input.program(), &contract, analyse, checked);
     warnings.extend(input.source_warnings());
     in_source_order(&mut warnings);
     warnings
@@ -48,17 +52,18 @@ fn of(
     program: &osprey_ast::Program,
     contract: &dyn Fn(&str) -> bool,
     analyse: bool,
+    checked: Option<&osprey_types::CheckedProgram>,
 ) -> Vec<TypeWarning> {
     let mut warnings = if analyse {
         analysed(program, contract)
     } else {
         Vec::new()
     };
-    warnings.extend(
-        osprey_types::unused_symbols(program)
-            .into_iter()
-            .map(|symbol| symbol.warning),
+    let unused = checked.map_or_else(
+        || osprey_types::unused_symbols(program),
+        osprey_types::CheckedProgram::unused_symbols,
     );
+    warnings.extend(unused.into_iter().map(|symbol| symbol.warning));
     in_source_order(&mut warnings);
     warnings
 }
@@ -256,7 +261,7 @@ mod tests {
         let parsed = osprey_syntax::parse_program(source);
         assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
         assert_checks_clean(&parsed.program);
-        let warnings = super::of(&parsed.program, &|_| false, true);
+        let warnings = super::of(&parsed.program, &|_| false, true, None);
         let input = CompilationInput::script("mixed.osp", source.to_owned(), parsed.program);
         assert_eq!(render(&input, &warnings), Some(
             "\nmixed.osp\n  1:3  warning: unused parameter `ignored`\n  2:1  warning: redundant type annotation on `spare`: inference derives `int` without it\n  2:1  warning: unused variable `spare`\n\n3 warnings (redundant-annotation, unused-parameter, unused-variable)".to_owned()
@@ -269,7 +274,7 @@ mod tests {
             "fn work() = 41\nfn relay(callback) = callback()\nlet answer = relay(fn() => work())\n";
         let parsed = osprey_syntax::parse_program(source);
         assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
-        let warnings = super::of(&parsed.program, &|_| false, true);
+        let warnings = super::of(&parsed.program, &|_| false, true, None);
         assert_eq!(warnings.len(), 1, "{warnings:?}");
         let input = CompilationInput::script("callback.osp", source.to_owned(), parsed.program);
         assert_eq!(render(&input, &warnings), Some(
@@ -328,7 +333,7 @@ mod tests {
             osprey_syntax::Flavor::Ml,
         );
         assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
-        let warnings = super::of(&parsed.program, &|_| false, true);
+        let warnings = super::of(&parsed.program, &|_| false, true, None);
         assert_eq!(
             unused_warnings(&warnings),
             [("unused-parameter", "unused parameter `unused`")]
@@ -347,7 +352,7 @@ mod tests {
         let parsed = osprey_syntax::parse_program("fn broken(unused) = missing\n");
         assert_eq!(parsed.errors, Vec::<osprey_syntax::SyntaxError>::new());
         assert_eq!(
-            super::of(&parsed.program, &|_| false, true),
+            super::of(&parsed.program, &|_| false, true, None),
             Vec::<TypeWarning>::new()
         );
         assert_eq!(
@@ -371,7 +376,7 @@ mod tests {
             parsed.program,
         )
         .unwrap_or_else(|errors| panic!("{errors:?}"));
-        let warnings = super::collect(&input, true);
+        let warnings = super::collect(&input, true, None);
         assert_eq!(
             unused_warnings(&warnings),
             [(
@@ -400,7 +405,7 @@ mod tests {
             let parsed = osprey_syntax::parse_program_with_flavor(source, flavor);
             assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
             assert_checks_clean(&parsed.program);
-            let warnings = super::of(&parsed.program, &|_| false, true);
+            let warnings = super::of(&parsed.program, &|_| false, true, None);
             let input = CompilationInput::script("top-level", source.to_owned(), parsed.program);
             assert_eq!(render(&input, &warnings), Some("\ntop-level\n  1:0  warning: unused pattern binding `unused`\n\n1 warning (unused-pattern-binding)".to_owned()));
         }
