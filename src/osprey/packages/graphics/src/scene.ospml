@@ -126,31 +126,107 @@ type Paint =
 
 (** Builds scene primitives and packs their colours ([UI-SCENE]). Positions and sizes are in the scene's unit space, angles in radians, colours `0xRRGGBBAA`, and `depth` orders layers from the back. *)
 module Scenes
-    (** A filled rectangle centred on `x`, `y`, rotated by `angle`. *)
+    (** A filled rectangle centred on `x`, `y`, rotated by `angle`.
+    # Examples
+    ```osprey
+    print "${Scenes::rect (1.0, 2.0, 3.0, 4.0, 0.5, Scenes::rgb (255, 0, 0), 0)}"
+    ```
+    ```output
+    Rect { x: 1.0, y: 2.0, w: 3.0, h: 4.0, angle: 0.5, color: 4278190335, depth: 0 }
+    ```
+    *)
     export rect (x, y, w, h, angle, color, depth) = Rect(x = x, y = y, w = w, h = h, angle = angle, color = color, depth = depth)
 
-    (** A filled circle centred on `x`, `y`. *)
+    (** A filled circle centred on `x`, `y`.
+    # Examples
+    ```osprey
+    print "${Scenes::disc (5.0, 6.0, 2.5, Scenes::rgb (0, 0, 255), 1)}"
+    ```
+    ```output
+    Disc { x: 5.0, y: 6.0, radius: 2.5, color: 65535, depth: 1 }
+    ```
+    *)
     export disc (x, y, radius, color, depth) = Disc(x = x, y = y, radius = radius, color = color, depth = depth)
 
-    (** A stroked polyline through `points`, given as `x0, y0, x1, y1, ...`, `stroke` units wide. *)
+    (** A stroked polyline through `points`, given as `x0, y0, x1, y1, ...`, `stroke` units wide.
+    # Examples
+    ```osprey
+    print "${Scenes::strip ([0.0, 0.0, 10.0, 10.0, 20.0, 0.0], Scenes::rgb (0, 255, 0), 2.0, 1)}"
+    ```
+    ```output
+    Strip { points: [0.0, 0.0, 10.0, 10.0, 20.0, 0.0], color: 16711935, stroke: 2.0, depth: 1 }
+    ```
+    *)
     export strip (points, color, stroke, depth) = Strip(points = points, color = color, stroke = stroke, depth = depth)
 
-    (** The atlas image at `index`, centred on `x`, `y`, `w` by `h` units, rotated by `angle` and tinted by `color`. *)
+    (** The atlas image at `index`, centred on `x`, `y`, `w` by `h` units, rotated by `angle` and tinted by `color`.
+    # Examples
+    ```osprey
+    print "${Scenes::sprite (0, 8.0, 9.0, 2.0, 2.0, 0.25, Scenes::rgb (255, 255, 255), 2)}"
+    ```
+    ```output
+    Sprite { sprite: 0, x: 8.0, y: 9.0, w: 2.0, h: 2.0, angle: 0.25, color: 4294967295, depth: 2 }
+    ```
+    *)
     export sprite (index, x, y, w, h, angle, color, depth) = Sprite(sprite = index, x = x, y = y, w = w, h = h, angle = angle, color = color, depth = depth)
 
-    (** `text` with its baseline starting at `x`, `y`, `size` units tall. *)
+    (** `text` with its baseline starting at `x`, `y`, `size` units tall.
+    # Examples
+    ```osprey
+    print "${Scenes::glyphs ("Score 3", 1.0, 1.0, 12.0, Scenes::rgb (0, 0, 0), 3)}"
+    ```
+    ```output
+    Glyphs { glyphs: "Score 3", x: 1.0, y: 1.0, size: 12.0, color: 255, depth: 3 }
+    ```
+    *)
     export glyphs (text, x, y, size, color, depth) = Glyphs(glyphs = text, x = x, y = y, size = size, color = color, depth = depth)
 
-    (** A text run in the system font at `weight` (400 regular, 600 semibold), with its left edge (`anchor` 0), centre (1) or right edge (2) at x and the top of its line at y ([UI-MACHINE-CANVAS]). *)
+    (** A text run in the system font at `weight` (400 regular, 600 semibold), with its left edge (`anchor` 0), centre (1) or right edge (2) at x and the top of its line at y ([UI-MACHINE-CANVAS]).
+    # Examples
+    ```osprey
+    print "${Scenes::lettering ("Ready", 2.0, 3.0, 10.0, Scenes::rgb (255, 255, 255), 0, 400.0, 0)} ${Scenes::lettering ("Ready", 20.0, 3.0, 10.0, Scenes::rgb (255, 255, 255), 1, 600.0, 1)}"
+    ```
+    ```output
+    Lettering { letters: "Ready", x: 2.0, y: 3.0, size: 10.0, color: 4294967295, depth: 0, anchor: 0, weight: 400.0 } Lettering { letters: "Ready", x: 20.0, y: 3.0, size: 10.0, color: 4294967295, depth: 1, anchor: 1, weight: 600.0 }
+    ```
+    *)
     export lettering (text, x, y, size, color, anchor, weight, depth) = Lettering(letters = text, x = x, y = y, size = size, color = color, depth = depth, anchor = anchor, weight = weight)
 
-    (** A filled (`Fill`) or line-drawn (`Line`) path built from `steps`, painted with `paint`, with no transform. *)
+    (** A filled (`Fill`) or line-drawn (`Line`) path built from `steps`, painted with `paint`, with no transform.
+    # Examples
+    ```osprey
+    steps = [MoveTo(toX = 0.0, toY = 0.0), LineTo(toX = 4.0, toY = 2.0)]
+    paint = Solid(tint = Rgb(red = 1.0, green = 0.4, blue = 0.0, alpha = 1.0))
+    print "${Scenes::path (steps, Fill, paint, 0)}"
+    ```
+    ```output
+    Path { steps: [MoveTo { toX: 0.0, toY: 0.0 }, LineTo { toX: 4.0, toY: 2.0 }], outline: Fill, paint: Solid { tint: Rgb { red: 1.0, green: 0.4, blue: 0.0, alpha: 1.0 } }, moveX: 0.0, moveY: 0.0, scale: 1.0, depth: 0 }
+    ```
+    *)
     export path (steps, outline, paint, depth) = Path(steps = steps, outline = outline, paint = paint, moveX = 0.0, moveY = 0.0, scale = 1.0, depth = depth)
 
-    (** A path translated by `moveX`, `moveY` and then scaled by `scale`, as the host's path builder applies them. *)
+    (** A path translated by `moveX`, `moveY` and then scaled by `scale`, as the host's path builder applies them.
+    # Examples
+    ```osprey
+    steps = [MoveTo(toX = 0.0, toY = 0.0), LineTo(toX = 4.0, toY = 2.0)]
+    outline = Line(width = 1.0, dashes = [4.0, 2.0], bevel = true)
+    print "${Scenes::moved (steps, outline, Solid(tint = Rgb(red = 1.0, green = 0.0, blue = 0.0, alpha = 0.5)), 10.0, 20.0, 0.9, 1)}"
+    ```
+    ```output
+    Path { steps: [MoveTo { toX: 0.0, toY: 0.0 }, LineTo { toX: 4.0, toY: 2.0 }], outline: Line { width: 1.0, dashes: [4.0, 2.0], bevel: true }, paint: Solid { tint: Rgb { red: 1.0, green: 0.0, blue: 0.0, alpha: 0.5 } }, moveX: 10.0, moveY: 20.0, scale: 0.9, depth: 1 }
+    ```
+    *)
     export moved (steps, outline, paint, moveX, moveY, scale, depth) = Path(steps = steps, outline = outline, paint = paint, moveX = moveX, moveY = moveY, scale = scale, depth = depth)
 
-    (** An sRGB tint from a `0xRRGGBB` integer, each channel divided by 255, at `alpha` from 0 to 1. *)
+    (** An sRGB tint from a `0xRRGGBB` integer, each channel divided by 255, at `alpha` from 0 to 1.
+    # Examples
+    ```osprey
+    print "${Scenes::hex (16737792, 0.5)} ${Scenes::hex (255, 1.0)}"
+    ```
+    ```output
+    Rgb { red: 1.0, green: 0.4, blue: 0.0, alpha: 0.5 } Rgb { red: 0.0, green: 0.0, blue: 1.0, alpha: 1.0 }
+    ```
+    *)
     export hex (value, alpha) =
         handle Arith
             divideByZero _ dividend => dividend
@@ -158,8 +234,24 @@ module Scenes
 
     channel (value, shift) = bitAnd (shiftRight value shift) 255
 
-    (** A colour packed as `0xRRGGBBAA` from channels 0 to 255. *)
+    (** A colour packed as `0xRRGGBBAA` from channels 0 to 255.
+    # Examples
+    ```osprey
+    print "${Scenes::rgba (255, 128, 0, 64)} ${Scenes::rgba (0, 0, 0, 0)}"
+    ```
+    ```output
+    4286578752 0
+    ```
+    *)
     export rgba (r, g, b, a) = satAdd (satMul (satAdd (satMul (satAdd (satMul r 256) g) 256) b) 256) a
 
-    (** An opaque colour packed as `0xRRGGBBFF` from channels 0 to 255. *)
+    (** An opaque colour packed as `0xRRGGBBFF` from channels 0 to 255.
+    # Examples
+    ```osprey
+    print "${Scenes::rgb (255, 0, 255)}"
+    ```
+    ```output
+    4278255615
+    ```
+    *)
     export rgb (r, g, b) = rgba (r, g, b, 255)
