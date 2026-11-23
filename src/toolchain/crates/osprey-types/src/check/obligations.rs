@@ -106,12 +106,12 @@ impl Checker {
                 // choice.
                 // A local result depends on its enclosing function's operands.
                 // Generalize the relation only when every variable travels with it.
-                let mut free = BTreeSet::new();
-                self.ctx.free_vars(ty, &mut free);
-                let defer = vars.iter().any(|var| free.contains(var))
+                // `ty` is substituted, so its `Var`s are exactly its free variables;
+                // asking about them directly builds no set per obligation.
+                let defer = holds_var(ty, &|var| vars.contains(&var))
                     && !crate::expr::is_monomorphic_arith(name)
                     && (!crate::expr::is_deferred_arith(name)
-                        || free.iter().all(|var| vars.contains(var)))
+                        || !holds_var(ty, &|var| !vars.contains(&var)))
                     && !crate::builtin_constraints::fixed_numeric_operand(name, ty);
                 checked_kept += usize::from(!defer && index < checked);
                 index += 1;
@@ -122,5 +122,21 @@ impl Checker {
         // Applying the substitution cannot decide an unresolved receiver.
         self.field_uses_prefix = Some((bindings, checked_kept));
         (deferred, kept)
+    }
+}
+
+/// Whether substituted `ty` holds a variable `wanted` accepts, stopping at the
+/// first. Generalization asks this of every pending obligation, so it must not
+/// allocate ([`Checker::split_obligations`]).
+fn holds_var(ty: &Type, wanted: &dyn Fn(VarId) -> bool) -> bool {
+    match ty {
+        Type::Var(var) => wanted(*var),
+        Type::Fun { params, ret } => {
+            params.iter().any(|param| holds_var(param, wanted)) || holds_var(ret, wanted)
+        }
+        Type::Con { args, .. } | Type::Union { variants: args, .. } => {
+            args.iter().any(|arg| holds_var(arg, wanted))
+        }
+        Type::Record { fields, .. } => fields.values().any(|field| holds_var(field, wanted)),
     }
 }
