@@ -11,7 +11,18 @@ import fs::Path
 
 (** Recursive directory walking: every file of a subtree as one flat list. *)
 module Walk
-    (** Every file under `root`, directories recursed and sorted, or the first listing Error. *)
+    (** Every file under `root`, directories recursed and sorted, or the first listing Error.
+    # Examples
+    ```osprey
+    found = match Walk::tree "no-such-directory"
+        Success files => "found ${files}"
+        Error _ => "no listing"
+    print found
+    ```
+    ```output
+    no listing
+    ```
+    *)
     export tree root = match listed root
         Success found => Success(value = listSort found)
         failed => failed
