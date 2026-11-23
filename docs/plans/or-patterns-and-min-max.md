@@ -63,7 +63,7 @@ This is a language gap that blocks top tier, ranked with the gaps in [generic er
 - [x] Nested alternatives go through `nested::capture`: a failed alternative falls to the next alternative, then to the next arm; bindings install only when one alternative matched whole
 - [x] ARC: a binder taken from either alternative is retained and released once, with no leak and no double release on the alternative that failed part-way
 - [x] wasm32: the same blocks and phis; corpus green under `OSPREY_TARGET=wasm32`
-- [ ] `many` lowering (`osprey-types/src/many`): a `match` with or-pattern arms inside a `many` region is rewritten with the arm kept whole; a request captured in the body resumes once per `resume` call with the alternative's bindings ([MULTI-HANDLE-MANY], [MULTI-REPLAY])
+- [x] `many` lowering (`osprey-types/src/many`): a `match` with or-pattern arms inside a `many` region is rewritten with the arm kept whole; a request captured in the body resumes once per `resume` call with the alternative's bindings ([MULTI-HANDLE-MANY], [MULTI-REPLAY])
 - [ ] Static handler discharge and staged effects ([STAGE-WASM]) pass the node through unchanged
 
 ### Tooling
@@ -81,7 +81,7 @@ Expand existing suites. Add no new test file.
 - [x] `src/osprey/tests/flavors/matching/matching.test` in both flavors, loaded with permutations: payload-free variants, literals (`int`, `float`, `string`, `bool`), constructor payloads, `Success` and `Error`, tuples, lists with a rest binder, rows, and or-patterns nested three levels deep, each asserted for every alternative and for the values that reach no alternative
 - [x] Binding cases: the same binder taken from each alternative, a function-valued binder, a closure that captures the binder and escapes the arm, a binder shadowing a `mut` cell ([PATTERN-BINDING-SCOPE])
 - [x] Order cases: overlapping alternatives where only the first can supply the binding ([PATTERN-OR-ORDER])
-- [ ] Multi-shot: an or-pattern arm whose body performs a `control many` operation, resumed two and three times, in `osprey-cli/tests/common/many_permutations.rs` and the multi-shot corpus, with identical output under GC, ARC and wasm32
+- [x] Multi-shot: an or-pattern arm whose body performs a `control many` operation, resumed two and three times, in `osprey-cli/tests/common/many_permutations.rs` and the multi-shot corpus, with identical output under GC, ARC and wasm32
 - [ ] Python and TypeScript twins share the Default golden
 - [x] `src/osprey/examples/failscompilation/`: an alternative that omits a binder, binders of two types, an unreachable alternative after an earlier arm, an alternative repeated inside one pattern, a leading `|`, a trailing `|`, an alternative of another union, and a non-exhaustive match whose witness is shown. Expand `match_not_exhaustive` and `match_unreachable_after_catch_all`
 - [x] The lambda generic-uses regression executes a lambda arm followed by an or-pattern arm, calls the returned functions for both alternatives and the fallback, and matches its golden under GC, ARC and wasm32.
