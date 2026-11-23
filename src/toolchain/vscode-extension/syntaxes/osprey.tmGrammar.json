@@ -225,7 +225,7 @@
         },
         {
           "name": "keyword.control.osprey",
-          "match": "\\b(match|if|else|loop|select|where|handle|in|perform|resume|do)\\b"
+          "match": "\\b(match|if|else|loop|select|where|handle|in|perform|resume|do|use)\\b"
         },
         {
           "name": "keyword.declaration.osprey",

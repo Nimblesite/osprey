@@ -168,7 +168,7 @@ The binder is on the left of every step, and the answer is the last line.
 
 ## Phases
 
-- [ ] **1. Tests first (red).**
+- [x] **1. Tests first (red).** Done 2026-11-23: `regressions/basics/blocks/use_binding.test.{osp,ospml}` (1, 2, 8 and 12 binds, an Error at every position, guards, `use <-`, two binders, match arms, a handler arm, lambdas, a resource scope, `x<-1`), seven `failscompilation/*use_*` programs and `cross_flavor_ir_equiv/use_binding.rs` (IR identical to the pyramid). The golden came from running the hand-written pyramid; both twins were red until Phase 2.
   - Add a regression to `src/osprey/tests/regressions/` with ML and Default
     twins that share one golden output. It covers:
     - 1, 2, 8 and 12 binds in a row;
@@ -181,7 +181,7 @@ The binder is on the left of every step, and the answer is the last line.
       pyramid.
   - Add one `failscompilation` program per rule in `[BLOCK-USE-REJECT]`.
   - Add a `[LEX-USE-ARROW]` test showing that `x<-1` is still a comparison.
-- [ ] **2. Compiler.**
+- [x] **2. Compiler.** Done 2026-11-23: `use_statement` in the tree-sitter grammar, `use` in the ML parser (`ml/parser/uses.rs`), lowering beside `handle` in both flavors, `try` in the `errors` prelude unit, the callback-arity message in the checker, `[BLOCK-USE]` and `[LEX-USE-ARROW]` in spec 0008, `[BLOCK-USE-RESULT]` in 0013, `[FLAVOR-ML-USE]` in 0024, hover and highlighting. Both twins match the golden under GC, ARC and wasm32. `use` is now reserved, so four synth test parameters named `use` became `consume`.
   - Add `use` and `<-` to the tree-sitter grammar and the ML lexer.
   - Add the `use` statement to both parsers.
   - Desugar it in AST lowering.

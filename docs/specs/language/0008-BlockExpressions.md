@@ -96,3 +96,59 @@ record sale =
 The check runs against the final substitution, so a type still open where the
 statement is written is judged at the type it eventually resolved to. A type
 variable that never resolves is accepted: nothing proves it is not `Unit`.
+
+## Flat binding with `use` [BLOCK-USE]
+
+Fallible steps run one after another. Without help, each step nests inside the
+callback of the one before it, and the code drifts right with a run of closing
+brackets. A `use` statement keeps such code flat: it hands **the rest of its
+block** to a call as that call's last argument, a callback.
+
+```osprey
+fn order(id) = {
+    use customer <- try(findCustomer(id))
+    use _ <- try(checkCredit(customer))
+    use invoice <- try(bill(customer))
+    Success { value: invoice.total }
+}
+```
+
+```osprey-ml
+order id =
+    use customer <- try (findCustomer id)
+    use _ <- try (checkCredit customer)
+    use invoice <- try (bill customer)
+    Success(value = invoice.total)
+```
+
+`use p <- f(a, b)` is sugar for `f(a, b, fn(p) => <rest of the block>)`, and the
+ML `use p <- f (a, b)` for `f (a, b, \p => <rest>)`. The parser does the whole
+rewrite: the checker and code generator see only the ordinary call and lambda,
+so the IR is byte-identical to the nested form written by hand.
+
+- `use _ <- f(...)` is a guard step: its value is discarded.
+- `use <- f(...)` passes a callback that takes no argument, such as a resource
+  scope: `use <- withLock(lock)`.
+- `use a, b <- f(...)` passes a callback with two parameters.
+- A `use` works in any block: a function body, a match arm, a handler arm or a
+  lambda.
+
+`use` is a keyword in both flavors, so it is no longer a valid name for a
+variable, parameter or function. A method may still be called `use`:
+`app.use(log)` is a method call.
+
+### Rejections [BLOCK-USE-REJECT]
+
+Each is a compile error that names the fix:
+
+- a `use` on the last line of its block, which leaves the callback no body;
+- a `use` outside any block, such as at the top of a file;
+- a right-hand side that is not a call, such as `use x <- 42`;
+- a callee that passes its callback a different number of values than the
+  `use` binds: "`try` passes 1 value to its callback, but this callback takes
+  2". The same message reports a written lambda of the wrong arity.
+
+### Lexing [LEX-USE-ARROW]
+
+`<-` is one token only after `use` and its binders. Everywhere else it is still
+`<` followed by `-`, so `x<-1` compares `x` with `-1` exactly as before.

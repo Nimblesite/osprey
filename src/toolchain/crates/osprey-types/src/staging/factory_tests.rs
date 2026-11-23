@@ -4,14 +4,14 @@ use crate::effect_rows_tests::assert_accepted;
 use osprey_ast::{AstVisitor, Expr};
 
 const FACTORY: &str = "effect Store<T> { put: fn(T) -> T }\n\
-    fn use(work) = {\n\
+    fn within(work) = {\n\
       handle static Store<int> { put x => x }\n\
       work()\n\
     }\n\
     fn make(i) = if i == 0 { fn() => perform Store.put(1) } else { fn() => perform Store.put(2) }\n\
     fn run(i) = {\n\
       let compute = make(i)\n\
-      use(fn() => compute())\n\
+      within(fn() => compute())\n\
     }\n\
     let answer = run(0)\n";
 

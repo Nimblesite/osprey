@@ -3089,6 +3089,10 @@
         {
           "type": "type_declaration",
           "named": true
+        },
+        {
+          "type": "use_statement",
+          "named": true
         }
       ]
     }
@@ -3543,6 +3547,47 @@
     }
   },
   {
+    "type": "use_binders",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "identifier",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "use_statement",
+    "named": true,
+    "fields": {
+      "binders": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "use_binders",
+            "named": true
+          }
+        ]
+      },
+      "call": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "expression",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "variant",
     "named": true,
     "fields": {
@@ -3679,6 +3724,10 @@
   },
   {
     "type": "<",
+    "named": false
+  },
+  {
+    "type": "<-",
     "named": false
   },
   {
@@ -3916,6 +3965,10 @@
   },
   {
     "type": "type",
+    "named": false
+  },
+  {
+    "type": "use",
     "named": false
   },
   {

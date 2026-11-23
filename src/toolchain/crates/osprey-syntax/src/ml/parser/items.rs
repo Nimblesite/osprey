@@ -44,6 +44,13 @@ impl Parser<'_> {
                 let _ = self.handle_line();
                 None
             }
+            TokKind::KwUse => {
+                // A file-scope `use` has no block to pass on; say so, then consume
+                // the lines it would have taken so they do not cascade. [BLOCK-USE-REJECT]
+                self.error(crate::USE_NEEDS_A_BLOCK);
+                let _ = self.use_line();
+                None
+            }
             TokKind::KwType => self.type_decl(),
             TokKind::KwExtern => self.extern_decl(),
             TokKind::KwEffect => self.effect_decl(Stage::Dynamic),

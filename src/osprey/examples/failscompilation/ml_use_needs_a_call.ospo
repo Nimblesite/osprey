@@ -1,0 +1,8 @@
+// osprey: flavor=ml
+// [BLOCK-USE-REJECT] The ML half of `use_needs_a_call.ospo`: the right of `<-`
+// must be a call.
+answer () =
+    use a <- 42
+    a + 1
+
+print "${toString (answer ())}"

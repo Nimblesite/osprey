@@ -142,3 +142,21 @@ fn go() -> int = {
 ([BLOCK-DISCARD](0008-BlockExpressions.md#discarded-values-block-discard)), but
 it does not discharge a `Result`. Handle the failure with `match` or `?:`, or
 return it to a caller who will.
+
+## Sequencing Results with `try` — [BLOCK-USE-RESULT]
+
+`try(result, next)` is the one bind for `Result`, from the prelude. A `Success`
+passes its value to `next`; an `Error` comes back unchanged, payload and all
+([ERR-PAYLOAD]). It is what a `use` line names
+([BLOCK-USE](0008-BlockExpressions.md#flat-binding-with-use-block-use)), so a
+chain of fallible steps stops at the first failure and reports that failure:
+
+```osprey
+fn total(a, b) = {
+    use x <- try(parseInt(a))
+    use y <- try(parseInt(b))
+    Success { value: x + y }
+}
+```
+
+A program that defines its own `try` keeps its own.

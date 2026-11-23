@@ -24,9 +24,14 @@ fn region_error(handler: Node<'_>) -> Option<&'static str> {
     let Some(item) = block_item(handler) else {
         return Some(HANDLE_NEEDS_A_BLOCK);
     };
-    let follows = std::iter::successors(item.next_named_sibling(), Node::next_named_sibling)
-        .any(|node| matches!(node.kind(), "statement" | "expression"));
-    (!follows).then_some(NOTHING_TO_HANDLE)
+    (!rest_follows(item)).then_some(NOTHING_TO_HANDLE)
+}
+
+/// Whether any statement or value follows `item` in its block: the region a
+/// `handle` governs, and the callback a `use` passes [BLOCK-USE].
+pub(super) fn rest_follows(item: Node<'_>) -> bool {
+    std::iter::successors(item.next_named_sibling(), Node::next_named_sibling)
+        .any(|node| matches!(node.kind(), "statement" | "expression"))
 }
 
 fn block_item(handler: Node<'_>) -> Option<Node<'_>> {
