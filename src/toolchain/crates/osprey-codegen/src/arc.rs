@@ -455,6 +455,6 @@ pub(crate) use lends::{
     is_lent, lending, lends, lends_list, mark_lent, reading, set_lending, take_reading,
 };
 mod unwind;
-pub(crate) use constructors::{consume_into_store, store_owned, transfer_or_retain};
+pub(crate) use constructors::{consume_into_store, give_binding, store_owned, transfer_or_retain};
 pub(crate) use last_use::release_dead_after;
 pub(crate) use unwind::instrument as instrument_unwind;

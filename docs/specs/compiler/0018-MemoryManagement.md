@@ -271,7 +271,8 @@ refused, when:
 - it is given to a function that takes ownership of that parameter while the
   caller reads it again;
 - it is handed to a fiber, channel, handler or collection that keeps it;
-- a file-scope binding holds it as well as its owner.
+- a `mut` file-scope binding holds it as well as its owner (a binding that is
+  never reassigned hands the module its one reference instead).
 
 The diagnostic gives the statement, the function, the binding that names the
 value when one does, which of these applies, and the other use that keeps the

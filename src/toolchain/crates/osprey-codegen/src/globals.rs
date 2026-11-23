@@ -233,10 +233,11 @@ pub(crate) fn read(cg: &mut Codegen, name: &str) -> Option<Value> {
     Some(crate::cast::incoming_param(cg, raw, slot.sig, slot.owner))
 }
 
-/// Publish the value a file-scope `let` just bound. The global is an owner, so
-/// it takes its own reference and the initializing statement stays free to drop
-/// its own [GC-ARC-PERCEUS].
-pub(crate) fn publish(cg: &mut Codegen, name: &str, value: Value) -> Result<()> {
+/// Publish the value a file-scope `let` just bound. The global is an owner. A
+/// binding that can never be reassigned hands it the reference it holds, since
+/// the global then outlives every read of the binding; a `mut` one keeps its
+/// own and the global takes another [GC-ARC-PERCEUS].
+pub(crate) fn publish(cg: &mut Codegen, name: &str, value: Value, mutable: bool) -> Result<()> {
     let Some(slot) = cg.module_globals.get(name).cloned() else {
         return Ok(());
     };
@@ -250,7 +251,19 @@ pub(crate) fn publish(cg: &mut Codegen, name: &str, value: Value) -> Result<()> 
     // it before any function can read the slot as a runtime List handle.
     let escaped = crate::listlit::escaping(cg, value);
     let stored = crate::cast::coerce_param(cg, escaped, &slot.sig)?;
-    store(cg, &slot, &stored.operand);
+    let given = !mutable
+        && slot.storage().is_managed_ptr()
+        && crate::arc::give_binding(cg, name, &stored.operand);
+    if given {
+        let storage = slot.storage().as_str();
+        let operand = &stored.operand;
+        cg.emit(format!(
+            "store {storage} {operand}, {storage}* @{}",
+            slot.symbol
+        ));
+    } else {
+        store(cg, &slot, &stored.operand);
+    }
     Ok(())
 }
 

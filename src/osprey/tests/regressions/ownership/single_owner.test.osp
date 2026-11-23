@@ -8,6 +8,13 @@ type Pair = { left: Box, right: Box }
 type Named = { label: (int) -> string }
 type Fault = DivZero | Overflow { by: int }
 
+/// A file-scope binding hands its value to the module, which every function
+/// then reads.
+let shared = Box { text: "shared${toString(1)}" }
+let sharedNames = ["a${toString(1)}", "b${toString(2)}"]
+
+fn fileScope(n) = "file scope ${shared.text} ${toString(listLength(sharedNames))} ${toString(n)}"
+
 /// Fresh values go straight to what takes them.
 fn span(shape) = match shape {
     Dot { at } => at.x
@@ -221,4 +228,4 @@ fn borrows() = {
     "borrows ${shown} ${same.text} ${toString(listLength(noise))} ${left.text}"
 }
 
-print("${spans()}\n${elements()}\n${collections()}\n${lastUses()}\n${paths()}\n${owned()}\n${literals()}\n${errors()}\n${captures()}\n${lends()}\n${lentLists()}\n${reads()}\n${borrows()}")
+print("${fileScope(1)} ${shared.text}\n${spans()}\n${elements()}\n${collections()}\n${lastUses()}\n${paths()}\n${owned()}\n${literals()}\n${errors()}\n${captures()}\n${lends()}\n${lentLists()}\n${reads()}\n${borrows()}")

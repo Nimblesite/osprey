@@ -114,7 +114,8 @@ fn store_prefix(
 ) -> Result<Option<crate::closure::Environment>> {
     if let Some((_, slots)) = cg.file_lambda_prefix.get(name).cloned() {
         for (slot, captured) in slots.iter().zip(prefix) {
-            crate::globals::publish(cg, slot, captured)?;
+            // A captured argument stays owned by what produced it.
+            crate::globals::publish(cg, slot, captured, true)?;
         }
         return Ok(None);
     }

@@ -10,6 +10,25 @@ pub(crate) fn transfer_or_retain(cg: &mut Codegen, value: &Value) {
     }
 }
 
+/// The file-scope binding `name` hands its module global the reference it
+/// holds on `operand`: the one the binding owns, or a fresh copy made to store.
+/// False when the ledger holds neither, and the global must count its own.
+pub(crate) fn give_binding(cg: &mut Codegen, name: &str, operand: &str) -> bool {
+    let operand = super::aliases::root(cg, operand).to_owned();
+    let Some(frame) = cg.arc.frames.last_mut() else {
+        return false;
+    };
+    let held = frame.iter().rposition(|e| {
+        e.operand == operand && !e.lent && e.name.as_deref().is_none_or(|bound| bound == name)
+    });
+    let Some(at) = held else {
+        return false;
+    };
+    let slot = frame.remove(at).slot;
+    cg.emit(format!("store i8* null, i8** {slot}"));
+    true
+}
+
 /// Perceus "move into constructor" (TR §2.3, the *own* argument rule): a store
 /// into a heap slot normally dups, because the owning block's drop mask will
 /// release that slot at the object's death. But when the stored pointer is a

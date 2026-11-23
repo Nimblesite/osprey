@@ -111,7 +111,7 @@ fn rebindable(cg: &Codegen, name: &str) -> bool {
 /// arms' writes and the functions' reads on one location
 /// [EFFECTS-HANDLER-STATE] [MODULES-FILE-SCOPE-BINDING].
 pub(crate) fn publish_binding(cg: &mut Codegen, stmt: &Stmt) -> Result<()> {
-    let Stmt::Let { name, .. } = stmt else {
+    let Stmt::Let { name, mutable, .. } = stmt else {
         return Ok(());
     };
     if !cg.module_globals.contains_key(name) {
@@ -120,7 +120,7 @@ pub(crate) fn publish_binding(cg: &mut Codegen, stmt: &Stmt) -> Result<()> {
     match cg.cell_slots.get(name).cloned() {
         Some(cell) => crate::globals::publish_cell(cg, name, &cell),
         None => match cg.lookup(name) {
-            Some(value) => crate::globals::publish(cg, name, value),
+            Some(value) => crate::globals::publish(cg, name, value, *mutable),
             None => Err(CodegenError::unknown(name)),
         },
     }
