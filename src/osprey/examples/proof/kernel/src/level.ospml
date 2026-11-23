@@ -151,7 +151,9 @@ module Levels
     (** Whether `left ≥ right` under every assignment of the parameters.
         Each rule is sound on its own, so `false` may only mean "not shown":
         an inductive the rule cannot place is rejected, never one that is
-        too big accepted ([PROOF-KERNEL-THEORY]). *)
+        too big accepted ([PROOF-KERNEL-THEORY]). Bounding `imax a b` by its
+        arms is sufficient but not necessary, so a `max` holding that very
+        `imax` among its arms is also tried. *)
     export geq left right = atLeast (normal left) (normal right)
 
     atLeast left right = match same left right
@@ -161,7 +163,7 @@ module Levels
     atLeastRight (left, right) = match right
         Zero => true
         Max a b => atLeast left a && atLeast left b
-        IMax a b => atLeast left a && atLeast left b
+        IMax a b => (atLeast left a && atLeast left b) || atLeastLeft (left, right)
         other => atLeastLeft (left, other)
 
     atLeastLeft (left, right) = match left

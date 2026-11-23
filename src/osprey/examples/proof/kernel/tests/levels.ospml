@@ -8,7 +8,13 @@ import proof
 module LevelsTests
     one () = Succ Zero
 
+    // Except.ctorElimType's two spellings of one universe, from the Init.Prelude ledger.
+    imaxOf (p) = IMax (Succ (Param p)) (Param "u_1")
+    ctorElimLeft () = Max (imaxOf "u") (Max (Max (imaxOf "u") (imaxOf "v")) (one ()))
+    ctorElimRight () = Max (one ()) (Max (imaxOf "u") (imaxOf "v"))
+
     export run () =
+        test ("a max holding an imax arm is at least that imax, as Lean's ctorElimType universes need", \() => expectAll [Levels::equal (ctorElimLeft ()) (ctorElimRight ()) == true, Levels::equal (ctorElimRight ()) (ctorElimLeft ()) == true, Levels::geq (Max (Param "w") (IMax (Param "u") (Param "v"))) (IMax (Param "u") (Param "v")) == true, Levels::equal (IMax (Param "u") (Param "v")) (Max (Param "u") (Param "v")) == false, Levels::geq (Param "w") (IMax (Param "u") (Param "v")) == false])
         test ("imax one u equals u for zero and positive universe assignments", \() => expectAll [Levels::equal (IMax (one ()) (Param "u")) (Param "u") == true, Levels::equal (IMax Zero (Param "u")) (Param "u") == true, Levels::equal (IMax (Succ (one ())) (Param "u")) (Param "u") == false])
 
         test ("open successor maxima preserve the exact universe of imported stack proofs", \() => expectAll [Levels::equal (IMax (one ()) (Succ (Param "u"))) (Succ (Param "u")) == true, Levels::equal (Max (Succ (Param "u")) (Succ (Param "v"))) (Succ (Support::maxUV ())) == true, Levels::equal (Max (Max (one ()) (Param "v")) (Max (Succ (Param "u")) (Param "v"))) (Max (Succ (Param "u")) (Param "v")) == true, Levels::equal (IMax (Param "u") (Support::imaxUOne ())) (Max (one ()) (Param "u")) == true, Levels::equal (Support::maxUV ()) (Max (Param "v") (Param "u")) == true, Levels::equal (Support::imaxUV ()) (Support::maxUV ()) == false, Levels::equal (Max (one ()) (Param "u")) (Param "u") == false, Levels::equal (IMax (one ()) (Param "u")) (one ()) == false])
