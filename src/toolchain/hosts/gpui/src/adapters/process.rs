@@ -3,6 +3,7 @@
 use std::io::{Read, Write};
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, SyncSender};
 use std::time::{Duration, Instant};
 
@@ -40,7 +41,11 @@ struct Collected {
 
 /// Runs one executable without a shell and writes its UTF-8 stdout to a slice.
 pub fn run(ask: &Ask) -> Result<String, String> {
-    execute(ask, None)
+    cancellable(ask, &AtomicBool::new(false))
+}
+
+pub(crate) fn cancellable(ask: &Ask, cancelled: &AtomicBool) -> Result<String, String> {
+    execute(ask, None, cancelled)
 }
 
 /// Writes bounded UTF-8 input while draining both outputs concurrently.
@@ -48,10 +53,10 @@ pub(super) fn with_input(ask: &Ask, input: String) -> Result<String, String> {
     if input.len() > 2 * 1024 * 1024 {
         return Err("Process input exceeds the 2 MiB limit".to_owned());
     }
-    execute(ask, Some(input))
+    execute(ask, Some(input), &AtomicBool::new(false))
 }
 
-fn execute(ask: &Ask, input: Option<String>) -> Result<String, String> {
+fn execute(ask: &Ask, input: Option<String>, cancelled: &AtomicBool) -> Result<String, String> {
     let executable = text(ask, 1, "executable")?;
     if !Path::new(&executable).is_absolute() {
         return Err("Executable must be an absolute path".to_owned());
@@ -62,6 +67,7 @@ fn execute(ask: &Ask, input: Option<String>) -> Result<String, String> {
         number(ask, 3, "timeout")?,
         number(ask, 4, "limit")?,
         input,
+        cancelled,
     )?;
     let stdout = String::from_utf8(launched.stdout).map_err(|_| "Not UTF-8 text".to_owned())?;
     ffi::put_slice(&text(ask, 6, "slice")?, &stdout)?;
@@ -75,8 +81,15 @@ fn launch(
     timeout: u64,
     limit: u64,
     input: Option<String>,
+    cancelled: &AtomicBool,
 ) -> Result<Launched, String> {
-    let mut child = Command::new(executable)
+    if cancelled.load(Ordering::Acquire) {
+        return Err("Run cancelled".into());
+    }
+    let mut command = Command::new(executable);
+    #[cfg(unix)]
+    std::os::unix::process::CommandExt::process_group(&mut command, 0);
+    let mut child = command
         .args(arguments)
         .stdin(if input.is_some() {
             Stdio::piped()
@@ -110,7 +123,7 @@ fn launch(
     let outbox = sender.clone();
     std::thread::spawn(move || drain(stdout, Stream::Stdout, outbox));
     std::thread::spawn(move || drain(stderr, Stream::Stderr, sender));
-    collect(&mut child, receiver, timeout, limit, streams)
+    collect(&mut child, receiver, timeout, limit, streams, cancelled)
 }
 
 /// Drains one pipe in blocks so neither output stream can deadlock the child.
@@ -145,6 +158,7 @@ fn collect(
     timeout: u64,
     limit: u64,
     streams: usize,
+    cancelled: &AtomicBool,
 ) -> Result<Launched, String> {
     let started = Instant::now();
     let duration = Duration::from_millis(timeout.max(1));
@@ -152,7 +166,9 @@ fn collect(
     let mut open = streams;
     let mut failure = None;
     while open > 0 {
-        match receiver.recv_timeout(remaining(child, started, duration, timeout)?) {
+        match receiver.recv_timeout(
+            remaining(child, started, duration, timeout, cancelled)?.min(Duration::from_millis(40)),
+        ) {
             Ok(Event::Bytes(stream, bytes)) => absorb(
                 child,
                 stream,
@@ -169,14 +185,14 @@ fn collect(
                     return Err(problem);
                 }
             }
-            Err(RecvTimeoutError::Timeout) => return Err(timed_out(child, timeout)),
+            Err(RecvTimeoutError::Timeout) => continue,
             Err(RecvTimeoutError::Disconnected) => {
                 stop(child);
                 return Err("run output channel closed".to_owned());
             }
         }
     }
-    let status = wait_before_deadline(child, started, duration, timeout)?;
+    let status = wait_before_deadline(child, started, duration, timeout, cancelled)?;
     match failure {
         Some(problem) => Err(problem),
         None => Ok(Launched {
@@ -193,12 +209,13 @@ fn wait_before_deadline(
     started: Instant,
     duration: Duration,
     timeout: u64,
+    cancelled: &AtomicBool,
 ) -> Result<std::process::ExitStatus, String> {
     loop {
         if let Some(status) = child.try_wait().map_err(|problem| problem.to_string())? {
             return Ok(status);
         }
-        let left = remaining(child, started, duration, timeout)?;
+        let left = remaining(child, started, duration, timeout, cancelled)?;
         std::thread::sleep(left.min(Duration::from_millis(2)));
     }
 }
@@ -209,14 +226,19 @@ fn remaining(
     started: Instant,
     duration: Duration,
     timeout: u64,
+    cancelled: &AtomicBool,
 ) -> Result<Duration, String> {
+    if cancelled.load(Ordering::Acquire) {
+        stop_group(child);
+        return Err("Run cancelled".into());
+    }
     duration
         .checked_sub(started.elapsed())
         .ok_or_else(|| timed_out(child, timeout))
 }
 
 fn timed_out(child: &mut Child, timeout: u64) -> String {
-    stop(child);
+    stop_group(child);
     format!("Timed out after {timeout} ms")
 }
 
@@ -252,6 +274,16 @@ fn absorb(
         .extend_from_slice(&bytes[..bytes.len().min(remaining)]);
 }
 
+/// Each Run starts a new process group; its renderer may itself be running an encoder.
+fn stop_group(child: &mut Child) {
+    #[cfg(unix)]
+    if let Ok(pid) = i32::try_from(child.id()) {
+        // SAFETY: launch set this unreaped child's process group to its own positive PID.
+        unsafe { libc::kill(-pid, libc::SIGKILL) };
+    }
+    stop(child);
+}
+
 /// Kills and reaps a child after a deadline or output-limit failure.
 pub(super) fn stop(child: &mut Child) {
     let _ = child.kill();
@@ -265,12 +297,17 @@ fn stderr_text(bytes: &[u8]) -> String {
 
 #[cfg(test)]
 mod tests {
+    // The run and session tests drive Unix executables; their helpers come with them.
+    #[cfg(unix)]
     use serde_json::json;
 
+    #[cfg(unix)]
     use crate::adapters::answer;
 
     use super::stderr_text;
+    #[cfg(unix)]
     use crate::ffi;
+    #[cfg(unix)]
     use crate::rows::{Ask, Field};
 
     #[cfg(unix)]
@@ -327,7 +364,18 @@ mod tests {
         let started = std::time::Instant::now();
         let result = answer(&run_request("/bin/sleep", &["2"], 20, 100));
         assert_eq!(result.err().as_deref(), Some("Timed out after 20 ms"));
-        assert!(started.elapsed() < std::time::Duration::from_secs(1));
+        let cancel = super::AtomicBool::new(false);
+        let request = run_request("/bin/sh", &["-c", "sleep 12 & wait"], 15_000, 100);
+        std::thread::scope(|scope| {
+            let run = scope.spawn(|| super::cancellable(&request, &cancel));
+            std::thread::sleep(std::time::Duration::from_millis(120));
+            cancel.store(true, super::Ordering::Release);
+            assert_eq!(
+                run.join().ok().and_then(Result::err).as_deref(),
+                Some("Run cancelled")
+            );
+        });
+        assert!(started.elapsed() < std::time::Duration::from_secs(2));
     }
 
     #[cfg(unix)]
@@ -335,9 +383,11 @@ mod tests {
     /// Rejects output beyond the requested byte limit.
     fn run_rejects_output_over_limit() {
         let result = answer(&run_request("/bin/echo", &["too large"], 1_000, 3));
-        assert!(result
-            .err()
-            .is_some_and(|problem| problem.contains("exceeds the 3 byte limit")));
+        assert!(
+            result
+                .err()
+                .is_some_and(|problem| problem.contains("exceeds the 3 byte limit"))
+        );
     }
 
     #[test]

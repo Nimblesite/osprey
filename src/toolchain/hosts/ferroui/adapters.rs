@@ -3,6 +3,7 @@
 #[path = "../gpui/src/adapters/files.rs"]
 mod files;
 pub(crate) mod picker;
+#[path = "../gpui/src/adapters/process.rs"]
 pub(crate) mod process;
 #[path = "../gpui/src/adapters/process_input.rs"]
 mod process_input;
