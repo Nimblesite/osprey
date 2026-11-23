@@ -1,0 +1,14 @@
+# Recording tools for the first Mathlib export ([PROOF-RUNNABLE-LIBRARY], plan 0041
+# milestone 5): Mathlib at the tag whose lean-toolchain is exactly the pinned
+# leanprover/lean4:v4.25.0, and the same lean4export rev the proof tools pin.
+name = "mathlib-export"
+
+[[require]]
+name = "mathlib"
+git = "https://github.com/leanprover-community/mathlib4"
+rev = "v4.25.0"
+
+[[require]]
+name = "lean4export"
+git = "https://github.com/leanprover/lean4export"
+rev = "cfefafacc917b2d14c5f9bb092ed337f71317a4a"

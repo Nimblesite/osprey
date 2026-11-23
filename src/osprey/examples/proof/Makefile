@@ -24,9 +24,10 @@ math: build
 ##        then the kernel, disciplines and corpora under GC, ARC and wasm32:
 ##        openai 51 PASS, lean-core 525 PASS + 1,050 rejected mutations, Unicode
 ##        6 checks + 12 rejections. Every PASS row is followed by its rejected
-##        corruption. Checked exports, not Mathlib or headline-theorem ports.
+##        corruption. Mathlib: Function.Bijective.comp (tag v4.25.0) re-exports byte for
+##        byte and its five kernel cases pass. Checked exports, not headline-theorem ports.
 proof: build
-	for theorem in id_imp and_swap Nat.add_comm; do bash scripts/proof/proof-export.sh --check --theorem $$theorem || exit 1; done
+	for theorem in id_imp and_swap Nat.add_comm Function.Bijective.comp; do bash scripts/proof/proof-export.sh --check --theorem $$theorem || exit 1; done
 	node --test scripts/proof/test-proof-export.mjs
 	python3 scripts/proof/test-proof-openai.py
 	$(MAKE) -j3 _test_proof_ci
