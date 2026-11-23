@@ -50,6 +50,7 @@ pub(crate) fn analyze_live(
         encoding,
         vfs,
         &crate::project_cache::ProjectCache::default(),
+        true,
     )
 }
 
@@ -59,6 +60,7 @@ pub(crate) fn analyze_cached(
     encoding: PositionEncoding,
     vfs: Option<&lspkit::vfs::Vfs>,
     cache: &crate::project_cache::ProjectCache,
+    prove: bool,
 ) -> Analysis {
     let snapshot = cache.sources(path, vfs, Some(source));
     let view = snapshot
@@ -94,7 +96,7 @@ pub(crate) fn analyze_cached(
             .collect::<Vec<_>>()
             .into();
     }
-    let mut analysis = project_diagnostics(source, path, encoding, snapshot, cache)
+    let mut analysis = project_diagnostics(source, path, encoding, snapshot, cache, prove)
         .or_else(|| standalone_diagnostics(source, path, flavor, &parsed.program, encoding))
         .unwrap_or_else(|| type_diagnostics(source, &parsed.program, flavor, encoding));
     // Like every other warning, documentation advice waits for a file that

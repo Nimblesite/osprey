@@ -78,6 +78,8 @@ impl OspreyEngine {
     fn answer(&self, query: Query) -> Report {
         let enc = self.encoding();
         match query {
+            // An open document gets the redundancy proof; a closed file the sweep
+            // reads from disk gets the cheap advice ([LSP-MEMORY-RETENTION]).
             Query::Diagnostics(uri) => Report::Diagnostics(match self.diagnostic_text(&uri) {
                 Ok(text) => {
                     diagnostics::analyze_cached(
@@ -86,6 +88,7 @@ impl OspreyEngine {
                         enc,
                         Some(&self.vfs),
                         &self.project_cache,
+                        self.vfs.text(&uri).is_some(),
                     )
                     .diagnostics
                 }
