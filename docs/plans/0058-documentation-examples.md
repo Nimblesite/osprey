@@ -35,8 +35,9 @@ below are added to those specs when this plan is implemented.
 
 The built rules now live in the specs:
 [`[DOC-DOCTEST-WRAPPER-DEPTH]`](../specs/tooling/DocumentationTools.md#wrapper-names-doc-doctest-wrapper-depth)
-and [`[DOC-PYTHON-DOCSTRING-CLEAN]`](../specs/language/0026-DocumentationComments.md#python-docstrings-doc-python-docstring-clean).
-The two below move there when they are built.
+, [`[DOC-PYTHON-DOCSTRING-CLEAN]`](../specs/language/0026-DocumentationComments.md#python-docstrings-doc-python-docstring-clean)
+and [`[DOC-EXPORT-EXAMPLE-REQUIRED]`](../specs/language/0026-DocumentationComments.md#exported-examples-doc-export-example-required).
+The rule below moves there when it is built.
 
 ### `[DOC-EXAMPLE-FLAVORS]` A fence label picks the example's flavor
 
@@ -58,19 +59,6 @@ exporter writes each twin in a fence labelled with its flavor.
 Breaking change: an ML file whose example fence is labelled `osprey` now compiles
 that example as Default. Every such fence in the repository is relabelled
 `osprey-ml` in the same change.
-
-### `[DOC-EXPORT-EXAMPLE-REQUIRED]` Exports must show an example
-
-`--check`, `--run`, `--doctests` and the language server report an
-`unexampled-export` warning for:
-
-- an exported function, value, extern or effect operation whose doc comment has
-  no `# Examples` section, and
-- such a section that holds no example fence.
-
-A type, module, namespace or signature is covered by the examples of the
-members that use it, so these are not reported. The warning names the
-declaration with its module path, just as `undocumented-export` does.
 
 ## Implementation
 
@@ -107,5 +95,7 @@ declaration with its module path, just as `undocumented-export` does.
 - [x] Examples for all 22 `@osprey/json` exports, run under GC, ARC and wasm32 (22 passed each, 2026-11-23)
 - [x] The corpus doctest pass covers `src/osprey/packages/` (`corpus_doctests.sh` runs each package with an example as a project; floor 28)
 - [ ] `[DOC-EXAMPLE-FLAVORS]` parser, harness, exporter, website tabs, relabelling
-- [ ] `[DOC-EXPORT-EXAMPLE-REQUIRED]` warning, examples in every package, warning promoted to an error
-- [ ] Spec sections added to 0026 and DocumentationTools, with IDs cited in the code and tests (done for WRAPPER-DEPTH and DOCSTRING-CLEAN; FLAVORS and EXAMPLE-REQUIRED move when built)
+- [x] `[DOC-EXPORT-EXAMPLE-REQUIRED]` warning: `unexampled-export` in `osprey-types/src/undocumented.rs`, shown by the CLI and the language server; tests in `undocumented_tests.rs` and `osprey-lsp/src/undocumented.rs`
+- [ ] Examples in every package until `make -C src/osprey/packages` reports no `unexampled-export`
+- [ ] Promote `unexampled-export` to an error in the package build
+- [ ] Spec sections added to 0026 and DocumentationTools, with IDs cited in the code and tests (done for WRAPPER-DEPTH, DOCSTRING-CLEAN and EXAMPLE-REQUIRED; FLAVORS moves when built)

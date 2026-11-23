@@ -1,20 +1,28 @@
-//! Undocumented public API. Implements [DOC-EXPORT-REQUIRED].
+//! Undocumented and unexampled public API. Implements [DOC-EXPORT-REQUIRED]
+//! and [DOC-EXPORT-EXAMPLE-REQUIRED].
 //!
 //! An exported declaration is a library's contract with its callers, so it
 //! must say what it is for. A module that exports anything must be documented
 //! too, by an outer or an inner comment. Variants and fields are documented by
 //! their type ([DOC-ATTACH]), so a documented type covers its constructors.
+//!
+//! A documented export a caller can call or read (a function, value, extern or
+//! effect operation) must also show an example. Types, modules and signatures
+//! are covered by the examples of the members that use them.
 
-use osprey_ast::{ModuleItem, Position, Program, Stmt, Visibility};
+use osprey_ast::{DocComment, ModuleItem, Position, Program, Stmt, Visibility};
 
 use crate::TypeWarning;
 
 /// Shared rule identifier for compiler and editor diagnostics.
 pub const UNDOCUMENTED_EXPORT: &str = "undocumented-export";
 
-/// Every undocumented export in `program`, in source order.
+/// Shared rule identifier for an export whose documentation shows no example.
+pub const UNEXAMPLED_EXPORT: &str = "unexampled-export";
+
+/// Every undocumented or unexampled export in `program`, in source order.
 #[must_use]
-pub fn undocumented_exports(program: &Program) -> Vec<TypeWarning> {
+pub fn documentation_warnings(program: &Program) -> Vec<TypeWarning> {
     let mut warnings = Vec::new();
     statements(&program.statements, &mut warnings);
     warnings
@@ -52,6 +60,7 @@ fn module(statement: &Stmt, owner: &str, exported: bool, warnings: &mut Vec<Type
         warnings.push(warning(
             format!("module `{name}` exports an API but has no documentation comment"),
             *position,
+            UNDOCUMENTED_EXPORT,
         ));
     }
     for item in body {
@@ -68,8 +77,10 @@ fn item(item: &ModuleItem, owner: &str, warnings: &mut Vec<TypeWarning>) {
             warnings.push(warning(
                 format!("exported {kind} `{name}` has no documentation comment"),
                 position,
+                UNDOCUMENTED_EXPORT,
             ));
         }
+        unexampled(declaration, owner, warnings);
     }
     module(declaration, owner, exported, warnings);
 }
@@ -96,6 +107,42 @@ fn undocumented(declaration: &Stmt) -> Option<(String, String, Option<Position>)
         .then(|| (kind, declared.name.to_owned(), declared.position))
 }
 
+/// Reports a documented callable export, or an operation of an exported
+/// effect, whose documentation holds no example fence. An undocumented
+/// function, value or extern is already reported as undocumented.
+fn unexampled(declaration: &Stmt, owner: &str, warnings: &mut Vec<TypeWarning>) {
+    if let Stmt::Effect {
+        name, operations, ..
+    } = declaration
+    {
+        let effect = qualified(owner, name);
+        for operation in operations.iter().filter(|op| !shows_example(op.doc.as_ref())) {
+            warnings.push(no_example("operation", &format!("{effect}.{}", operation.name), operation.position));
+        }
+        return;
+    }
+    let Some(declared) = declaration.documented() else {
+        return;
+    };
+    let callable = matches!(declared.kind, "Function" | "Value" | "Extern");
+    if callable && declared.doc.is_some() && !shows_example(declared.doc) {
+        let kind = declared.kind.to_lowercase();
+        warnings.push(no_example(&kind, &qualified(owner, declared.name), declared.position));
+    }
+}
+
+fn shows_example(doc: Option<&DocComment>) -> bool {
+    doc.is_some_and(|doc| !doc.examples.is_empty())
+}
+
+fn no_example(kind: &str, name: &str, position: Option<Position>) -> TypeWarning {
+    warning(
+        format!("exported {kind} `{name}` has no example"),
+        position,
+        UNEXAMPLED_EXPORT,
+    )
+}
+
 fn qualified(owner: &str, name: &str) -> String {
     if owner.is_empty() {
         name.to_owned()
@@ -104,10 +151,10 @@ fn qualified(owner: &str, name: &str) -> String {
     }
 }
 
-fn warning(message: String, position: Option<Position>) -> TypeWarning {
+fn warning(message: String, position: Option<Position>, rule: &'static str) -> TypeWarning {
     TypeWarning {
         message,
         position,
-        rule: UNDOCUMENTED_EXPORT,
+        rule,
     }
 }

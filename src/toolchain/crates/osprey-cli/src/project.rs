@@ -158,9 +158,9 @@ impl CompilationInput {
     /// assembly flattens modules away, so the flattened program cannot say
     /// what was exported. Positions land in the flattened space, like every
     /// other warning's ([DOC-EXPORT-REQUIRED]).
-    pub(crate) fn undocumented_exports(&self) -> Vec<osprey_types::TypeWarning> {
+    pub(crate) fn documentation_warnings(&self) -> Vec<osprey_types::TypeWarning> {
         let CompilationUnit::Project(project) = &self.unit else {
-            return osprey_types::undocumented_exports(self.program());
+            return osprey_types::documentation_warnings(self.program());
         };
         project
             .sources
@@ -168,7 +168,7 @@ impl CompilationInput {
             .flat_map(|source| {
                 let parsed =
                     osprey_syntax::parse_program_with_flavor(&source.source, source.flavor);
-                osprey_types::undocumented_exports(&parsed.program)
+                osprey_types::documentation_warnings(&parsed.program)
                     .into_iter()
                     .map(|mut warning| {
                         if let Some(position) = &mut warning.position {

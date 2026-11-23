@@ -156,6 +156,21 @@ The warning names the declaration with its module path, for example
 type covers its variants and fields, which take no documentation of their
 own. Private declarations are not reported.
 
+### Exported examples `[DOC-EXPORT-EXAMPLE-REQUIRED]`
+
+Wherever `undocumented-export` is reported (the compiler's warning listing and
+the language server), the `unexampled-export` warning is reported too, for:
+
+- a documented exported function, value or extern whose comment has no
+  `# Examples` section, or whose section holds no example fence, and
+- an operation of an exported effect whose documentation shows no example.
+
+A type, module, namespace or signature is covered by the examples of the
+members that use it, so it is not reported. An undocumented export is reported
+once, as `undocumented-export`. The warning names the declaration with its
+module path, for example `exported function `Api::triple` has no example`, and
+an operation as `Effect.operation` (`osprey-types/src/undocumented.rs`).
+
 ### Effect operations `[DOC-EFFECT-OP]`
 
 An effect operation is the one nested form that carries its own documentation.
