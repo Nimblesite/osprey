@@ -192,7 +192,19 @@ The binder is on the left of every step, and the answer is the last line.
   - Bind through the prelude `andThen`.
   - Update the specs, and the LSP's hover and highlighting.
 - [ ] **3. Rewrite every pyramid.** Work through the 46 files, deepest first:
-  - Rewrite each pyramid with `use`.
+  - Rewrite each pyramid with `use`. Progress 2026-11-24: the manager is
+    free of chains deeper than two lambdas, and so are the GPU corpus twins,
+    `tensor_backends`, `stress`, `transformer`, `synth/tests/grain_journeys`
+    and the fastapi bench report (about 260 functions). The corpus and project
+    rewrites were checked by emitting each file's or project's LLVM IR before
+    and after: every one is byte-identical. Left: 38 closing runs in 19 files.
+    These are the curried `RenderInputs::setting` chains in four synth kernels,
+    the DAW tests, the proof kernel's `export`, `exportinductive` and
+    `numeric-canonical` (being edited by others), and the workbench tests (their
+    project IR could not be compared while the proof kernel they import was
+    changing). The rest is nested data, not callbacks: Lean term trees in
+    `numeric-canonical`, a fiber `await` chain and nested JSON values. Those need
+    inner values named, not `use`.
   - [x] Delete every module-local `andThen`. Done 2026-11-24: `Checked::andThen` (316 calls in 36 manager files) and the tensor tests' `Backends::andThen` (60 calls) were copies of the prelude `andThen`; every caller now uses the prelude one. Manager suites 521/521 under GC, tensor twins match their golden under GC and ARC.
   - Remove the lambda type annotations the rewrite makes unnecessary.
   - Import `registry::Governance as G`.
