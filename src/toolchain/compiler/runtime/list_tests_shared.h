@@ -62,7 +62,7 @@ static const int64_t CAT_SIZES[] = {0, 1, 31, 32, 33, 64, 65, 100};
 /* Test helpers ----------------------------------------------------- */
 static inline OspreyList *make_range_list(int64_t start, int64_t end) {
   OspreyListBuilder *b = osprey_list_builder_new();
-  for (int64_t i = start; i < end; i++) osprey_list_builder_push(b, i);
+  for (int64_t i = start; i < end; i++) osprey_list_builder_push_of(b, i, 0);
   return osprey_list_builder_seal(b);
 }
 

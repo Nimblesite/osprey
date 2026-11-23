@@ -83,10 +83,6 @@ void osprey_list_builder_push_of(OspreyListBuilder *b, int64_t v, int em) {
   b->length++;
 }
 
-void osprey_list_builder_push(OspreyListBuilder *b, int64_t v) {
-  osprey_list_builder_push_of(b, v, b->elem_managed);
-}
-
 /* Push an element BORROWED from another container: the source keeps its
  * reference, so the builder takes its own. */
 void osprey_list_builder_push_borrowed(OspreyListBuilder *b, int64_t v) {

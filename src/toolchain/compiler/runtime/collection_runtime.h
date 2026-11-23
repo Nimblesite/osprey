@@ -100,7 +100,6 @@ OspreyListBuilder *osprey_list_builder_new(void);
 /* TRANSFERS `v` and latches the builder's element kind. */
 void osprey_list_builder_push_of(OspreyListBuilder *b, int64_t v,
                                  int elem_managed);
-void osprey_list_builder_push(OspreyListBuilder *b, int64_t v);
 /* Dups `v` first: for elements BORROWED out of another container. */
 void osprey_list_builder_push_borrowed(OspreyListBuilder *b, int64_t v);
 OspreyList *osprey_list_builder_seal(OspreyListBuilder *b);
@@ -129,7 +128,6 @@ OspreyMap *osprey_map_merge(OspreyMap *a, OspreyMap *b);
 OspreyMapBuilder *osprey_map_builder_new(OspreyKeyType key_type);
 void osprey_map_builder_put_of(OspreyMapBuilder *b, int64_t key, int64_t value,
                                int value_managed);
-void osprey_map_builder_put(OspreyMapBuilder *b, int64_t key, int64_t value);
 OspreyMap *osprey_map_builder_seal(OspreyMapBuilder *b);
 
 OspreyMapIter *osprey_map_iter_new(OspreyMap *m);

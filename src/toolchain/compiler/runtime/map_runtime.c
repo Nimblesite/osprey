@@ -233,10 +233,6 @@ void osprey_map_builder_put_of(OspreyMapBuilder *b, int64_t key, int64_t value,
   }
 }
 
-void osprey_map_builder_put(OspreyMapBuilder *b, int64_t key, int64_t value) {
-  osprey_map_builder_put_of(b, key, value, b->value_managed);
-}
-
 OspreyMap *osprey_map_builder_seal(OspreyMapBuilder *b) {
   /* The builder itself stays RAW (untagged): seal TRANSFERS the root to the
    * sealed header, so freeing the builder must not walk it. */

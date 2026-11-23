@@ -94,7 +94,7 @@ void test_builder_paths(void) {
     OspreyListBuilder *b = osprey_list_builder_new();
     CHECK(b != NULL);
     for (int64_t i = 0; i < n; i++) {
-      osprey_list_builder_push(b, i * 3 - 1);
+      osprey_list_builder_push_of(b, i * 3 - 1, 0);
     }
     OspreyList *l = osprey_list_builder_seal(b);
     int64_t *m = model_range(0, n);
@@ -133,7 +133,7 @@ void test_element_kind_flags(void) {
   CHECK(osprey_list_elem_managed(osprey_list_concat(managed, inherit)) == 1);
   OspreyListBuilder *b1 = osprey_list_builder_new_of(1);
   CHECK(b1 != NULL);
-  osprey_list_builder_push(b1, 1);
+  osprey_list_builder_push_of(b1, 1, 1);
   osprey_list_builder_push_borrowed(b1, 2); /* dup-first path, same word */
   OspreyList *s1 = osprey_list_builder_seal(b1);
   CHECK(osprey_list_elem_managed(s1) == 1);
