@@ -25,7 +25,35 @@ class Split:
 
 def train_test_split(permutation, test_size):
     """`sklearn.model_selection.train_test_split` with the shuffle replaced by
-    an explicit permutation: the last `test_size` indices are the test set."""
+    an explicit permutation: the last `test_size` indices are the test set.
+
+    # Examples
+    ```osprey
+    from sklearn import ModelSelection
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped_value):
+            return wrapped_value
+
+        def divideByZero(_op, _l):
+            return 0.0
+
+        def remainderByZero(_l):
+            return 0
+
+    def show():
+        with wrapped:
+            full = ModelSelection.train_test_split([2, 0, 3, 1, 4, 5], 2)
+            none = ModelSelection.train_test_split([2, 0, 3, 1, 4, 5], 0)
+            print(f"[{toString(full.train)}] [{toString(full.test)}] [{toString(none.test)}]")
+
+    show()
+    ```
+    ```output
+    [[2, 0, 3, 1]] [[4, 5]] [[]]
+    ```
+    """
     n = len(permutation)
     train = toList(map(range(n - test_size), lambda i: unwrap_or(listGet(permutation, i), 0)))
     test = toList(map(range(test_size), lambda i: unwrap_or(listGet(permutation, n - test_size + i), 0)))
@@ -49,7 +77,36 @@ def fold_split(n_samples, k, base, extra):
 
 def kfold_splits(n_samples, n_splits):
     """`sklearn.model_selection.KFold(n_splits).split` without shuffling: the
-    first `n_samples % n_splits` folds hold one extra sample."""
+    first `n_samples % n_splits` folds hold one extra sample.
+
+    # Examples
+    ```osprey
+    from sklearn import ModelSelection
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped_value):
+            return wrapped_value
+
+        def divideByZero(_op, _l):
+            return 0.0
+
+        def remainderByZero(_l):
+            return 0
+
+    def show():
+        with wrapped:
+            folds = ModelSelection.kfold_splits(7, 3)
+            first = unwrap_or(listGet(folds, 0), ModelSelection.Split(train=[], test=[]))
+            last = unwrap_or(listGet(folds, 2), ModelSelection.Split(train=[], test=[]))
+            print(f"[{toString(first.train)}] [{toString(first.test)}] [{toString(last.train)}] [{toString(last.test)}]")
+
+    show()
+    ```
+    ```output
+    [[3, 4, 5, 6]] [[0, 1, 2]] [[0, 1, 2, 3, 4]] [[5, 6]]
+    ```
+    """
     base = intDiv(n_samples, n_splits)
     extra = n_samples % n_splits
     return toList(map(range(n_splits), lambda k: fold_split(n_samples, k, base, extra)))
@@ -112,7 +169,36 @@ def indices_where(test_folds, i, keep):
 
 def stratified_kfold_splits(y, n_splits):
     """`sklearn.model_selection.StratifiedKFold(n_splits).split` without
-    shuffling."""
+    shuffling.
+
+    # Examples
+    ```osprey
+    from sklearn import ModelSelection
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped_value):
+            return wrapped_value
+
+        def divideByZero(_op, _l):
+            return 0.0
+
+        def remainderByZero(_l):
+            return 0
+
+    def show():
+        with wrapped:
+            folds = ModelSelection.stratified_kfold_splits([0, 0, 0, 1, 1, 1], 2)
+            head = unwrap_or(listGet(folds, 0), ModelSelection.Split(train=[], test=[]))
+            tail = unwrap_or(listGet(folds, 1), ModelSelection.Split(train=[], test=[]))
+            print(f"[{toString(head.train)}] [{toString(head.test)}] [{toString(tail.train)}] [{toString(tail.test)}]")
+
+    show()
+    ```
+    ```output
+    [[2, 4, 5]] [[0, 1, 3]] [[0, 1, 3]] [[2, 4, 5]]
+    ```
+    """
     y_encoded = appearance_encode(y)
     n_classes = len(unique_ints(y))
     sorted_encoded = listSortBy(y_encoded, cmp_int)
