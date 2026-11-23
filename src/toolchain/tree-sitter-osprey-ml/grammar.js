@@ -135,7 +135,12 @@ module.exports = grammar(base, {
     recv_expression: $ => seq('recv', $.ml_postfix),
     yield_expression: $ => prec.right(seq('yield', optional($.ml_postfix))),
     spawn_expression: $ => prec.right(seq('spawn', body($))),
-    select_expression: $ => seq('select', $._indent, repeat1(choice($.match_arm, $._newline)), $._dedent),
+    select_expression: $ => seq('select', $._indent, repeat1(choice($.select_arm, $._newline)), $._dedent),
+    select_arm: $ => seq(choice(
+      seq(optional(seq(field('binding', choice($.identifier, '_')), '=')), field('operation', $.recv_expression)),
+      field('operation', choice($.send_expression, $.select_timeout)), '_'
+    ), '=>', field('body', body($))),
+    select_timeout: $ => seq('timeout', $.ml_postfix),
     kernel_expression: $ => prec.right(seq('kernel', $._indent,
       repeat1(choice($.kernel_arm, $._newline)), $._dedent, optional($._newline), 'in', body($))),
     kernel_arm: $ => seq($.identifier, $.identifier, optional($.ml_parameters), '=>', body($)),

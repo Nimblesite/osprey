@@ -2362,6 +2362,62 @@
     }
   },
   {
+    "type": "select_arm",
+    "named": true,
+    "fields": {
+      "binding": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "_",
+            "named": false
+          },
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      },
+      "body": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "assignment",
+            "named": true
+          },
+          {
+            "type": "block",
+            "named": true
+          },
+          {
+            "type": "expression",
+            "named": true
+          }
+        ]
+      },
+      "operation": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "recv_expression",
+            "named": true
+          },
+          {
+            "type": "select_timeout",
+            "named": true
+          },
+          {
+            "type": "send_expression",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "select_expression",
     "named": true,
     "fields": {},
@@ -2370,7 +2426,22 @@
       "required": false,
       "types": [
         {
-          "type": "match_arm",
+          "type": "select_arm",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "select_timeout",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "ml_postfix",
           "named": true
         }
       ]
@@ -3356,6 +3427,10 @@
   {
     "type": "string_content",
     "named": true
+  },
+  {
+    "type": "timeout",
+    "named": false
   },
   {
     "type": "true",

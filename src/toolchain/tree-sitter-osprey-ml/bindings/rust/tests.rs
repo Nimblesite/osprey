@@ -240,6 +240,30 @@ fn concurrency_keywords_have_native_operation_nodes() {
     ] {
         counted(tree.root_node(), kind, 1);
     }
+    // [CONCURRENCY-SELECT] The editor exposes each selectable operation and its binder.
+    let selection = "pick ch = select\n    n = recv ch => n\n    recv ch => 1\n    send ch 7 => 2\n    timeout 5 => 3\n    _ => 4\n";
+    let tree = parse(selection);
+    let arms = counted(tree.root_node(), "select_arm", 5);
+    let operations: Vec<_> = arms
+        .iter()
+        .map(|arm| arm.child_by_field_name("operation").map(|node| node.kind()))
+        .collect();
+    assert_eq!(
+        operations,
+        [
+            Some("recv_expression"),
+            Some("recv_expression"),
+            Some("send_expression"),
+            Some("select_timeout"),
+            None
+        ]
+    );
+    assert_eq!(
+        arms.iter()
+            .filter(|arm| arm.child_by_field_name("binding").is_some())
+            .count(),
+        1
+    );
 }
 
 #[test]
@@ -325,12 +349,15 @@ fn real_ml_programs_parse_without_errors() -> Result<(), Box<dyn std::error::Err
     Ok(())
 }
 
-
 /// The top-level declarations of `source`, each read through its node's byte range.
 fn declarations(source: &str) -> Vec<&str> {
     let tree = parser().parse(source, None).expect("tree");
     let mut cursor = tree.root_node().walk();
-    let ranges: Vec<_> = tree.root_node().named_children(&mut cursor).map(|node| node.byte_range()).collect();
+    let ranges: Vec<_> = tree
+        .root_node()
+        .named_children(&mut cursor)
+        .map(|node| node.byte_range())
+        .collect();
     ranges.into_iter().map(|range| &source[range]).collect()
 }
 
@@ -354,7 +381,10 @@ fn a_block_declaration_ends_at_its_own_last_line_whatever_follows() {
                 assert_eq!(found.first(), Some(&block), "{source:?}");
                 assert_eq!(found.len(), 2, "{source:?}");
                 let next_found = found.get(1).copied().unwrap_or_default();
-                assert!(next.starts_with(next_found) && !next_found.is_empty(), "{source:?}: {next_found:?}");
+                assert!(
+                    next.starts_with(next_found) && !next_found.is_empty(),
+                    "{source:?}: {next_found:?}"
+                );
             }
         }
     }
@@ -364,7 +394,8 @@ fn a_block_declaration_ends_at_its_own_last_line_whatever_follows() {
 /// declaration. The function ends at byte 84 and the broken neighbour stays its own error.
 #[test]
 fn an_unfinished_neighbour_never_extends_the_declaration_before_it() {
-    let function = "sums items =\n    counted = length items\n    summed = sum items\n    summed + counted\n";
+    let function =
+        "sums items =\n    counted = length items\n    summed = sum items\n    summed + counted\n";
     assert_eq!(function.len(), 84);
     let source = format!("{function}\n{UNFINISHED}");
     let tree = parser().parse(&source, None).expect("tree");
@@ -380,6 +411,10 @@ fn an_unfinished_neighbour_never_extends_the_declaration_before_it() {
 fn one_line_declarations_keep_their_ranges() {
     for gap in ["", "\n", "\n\n  \n"] {
         let source = format!("one x = x\n{gap}next y = y\n");
-        assert_eq!(declarations(&source), ["one x = x", "next y = y"], "{source:?}");
+        assert_eq!(
+            declarations(&source),
+            ["one x = x", "next y = y"],
+            "{source:?}"
+        );
     }
 }
