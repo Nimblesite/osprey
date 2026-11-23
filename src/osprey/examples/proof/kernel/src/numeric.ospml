@@ -32,7 +32,7 @@ module Numeric
         other => NoNumericRule
 
     (** Only the saturated primitive heads at no universe arguments. *)
-    binaryConstant (env, name, levels, left, right) = match (name == "Nat.ble" || name == "Nat.mul" || name == "Nat.pow") && isEmpty levels
+    binaryConstant (env, name, levels, left, right) = match (name == "Nat.ble" || name == "Nat.beq" || name == "Nat.mul" || name == "Nat.pow") && isEmpty levels
         false => NoNumericRule
         true => match validLiterals left && validLiterals right
             true => numerals (env, left, right, name)
@@ -94,6 +94,7 @@ module Numeric
         false => NoNumericRule
         true => match operation
             "Nat.ble" => NumericReduced (boolean (Naturals::le (left, right)))
+            "Nat.beq" => equality (env, left, right)
             "Nat.mul" => multiplication (env, left, right)
             "Nat.pow" => power (env, left, right)
             other => NoNumericRule
@@ -103,6 +104,11 @@ module Numeric
         true => match Naturals::multiply (left, right)
             Error _ => NoNumericRule
             Success value => NumericReduced (NatLit value)
+
+    (** `Nat.beq` decides literal equality only with its own tree pinned. *)
+    equality (env, left, right) = match pinnedAll (env, NumericCanonical::equality ())
+        false => NoNumericRule
+        true => NumericReduced (boolean (Naturals::equal (left, right)))
 
     (** `Nat.pow` computes only with every multiplication and power tree pinned:
         its body multiplies, so a forged `Nat.mul` must disable it too. *)

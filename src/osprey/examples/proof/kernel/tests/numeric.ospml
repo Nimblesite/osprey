@@ -229,9 +229,9 @@ module NumericTests
 
     pow (base, exponent) = applyTwoAt ("Nat.pow", [], base, exponent)
 
-    (** Guarded literal `Nat.pow` ([PROOF-KERNEL-THEORY]): exact up to Lean's 2^24 exponent bound,
-        and off whenever `Nat.pow` or the multiplication it uses is not the pinned tree. *)
-    powers () = match exportedEmpty (Fixtures::natPower ())
+    (** Guarded literal `Nat.pow` and `Nat.beq` ([PROOF-KERNEL-THEORY]): `pow` exact up to Lean's 2^24
+        exponent bound, both off whenever their pinned trees are not the environment's. *)
+    powers () = match exportedEmpty (Fixtures::natLiterals ())
         Error message => check "power closure loads" "success" message
         Success env => powerCases (env)
 
@@ -242,6 +242,16 @@ module NumericTests
         test ("an exponent above 2^24 stays on the ordinary path", \() => expect (outcome (env, pow (small 2, small 16777217)), "disabled"))
         test ("a variable operand is never computed", \() => expect (outcome (env, pow (small 2, BVar 0)), "disabled"))
         test ("Nat.pow with another body disables the power rule", \() => expect (forgedPower (), "disabled"))
+        test ("Nat.beq decides literal equality exactly, past one limb", \() => expectAll [outcome (env, beq (small 7, small 7)) == "reduced:Bool.true", outcome (env, beq (small 7, small 8)) == "reduced:Bool.false", outcome (env, beq (small 0, small 0)) == "reduced:Bool.true", outcome (env, beq (word (), word ())) == "reduced:Bool.true", outcome (env, beq (word (), limbs [294967295, 4])) == "reduced:Bool.false"])
+        test ("Nat.beq on a non-canonical literal stays on the ordinary path", \() => expect (outcome (env, beq (small 4294967295, small 1)), "disabled"))
+        test ("Nat.beq on a variable operand is never computed", \() => expect (outcome (env, beq (BVar 0, small 1)), "disabled"))
+        test ("Nat.beq with another body disables the equality rule", \() => expect (forgedEquality (), "disabled"))
+
+    beq (left, right) = applyTwoAt ("Nat.beq", [], left, right)
+
+    forgedEquality () = match exportedEmpty (Fixtures::natEqualityForged ())
+        Error message => "forged closure did not load: ${message}"
+        Success forged => outcome (forged, beq (small 7, small 7))
 
     forgedPower () = match exportedEmpty (Fixtures::natPowerForged ())
         Error message => "forged closure did not load: ${message}"
