@@ -102,21 +102,8 @@ static inline void reverse_model(int64_t *m, int64_t n) {
   }
 }
 
-static inline void check_iter(OspreyList *l, const int64_t *m, int64_t n) {
-  OspreyListIter *it = osprey_list_iter_new(l);
-  CHECK(it != NULL);
-  int64_t v = SET_SENTINEL;
-  for (int64_t i = 0; i < n; i++) {
-    CHECK(osprey_list_iter_next(it, &v) == 1);
-    CHECK(v == m[i]);
-  }
-  CHECK(osprey_list_iter_next(it, &v) == 0);
-  CHECK(osprey_list_iter_next(it, &v) == 0); /* exhaustion is stable */
-  free(it);
-}
-
-/* The workhorse: length, in-bounds + value at every index, every OOB answer,
-   and a full iteration. */
+/* The workhorse: length, in-bounds + value at every index, and every OOB
+   answer. */
 static inline void check_elems(OspreyList *l, const int64_t *m, int64_t n) {
   const int64_t oob[] = {-1, -2, n, n + 1, INT64_MIN, INT64_MAX};
   CHECK(osprey_list_length(l) == n);
@@ -128,7 +115,6 @@ static inline void check_elems(OspreyList *l, const int64_t *m, int64_t n) {
     CHECK(osprey_list_in_bounds(l, i) == 1);
     CHECK(osprey_list_get(l, i) == m[i]);
   }
-  check_iter(l, m, n);
 }
 
 static inline void check_range(OspreyList *l, int64_t start, int64_t n) {

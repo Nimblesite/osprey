@@ -59,7 +59,6 @@ typedef enum {
 /* Opaque handles. */
 typedef struct OspreyList OspreyList;
 typedef struct OspreyListBuilder OspreyListBuilder;
-typedef struct OspreyListIter OspreyListIter;
 
 typedef struct OspreyMap OspreyMap;
 typedef struct OspreyMapBuilder OspreyMapBuilder;
@@ -105,10 +104,6 @@ void osprey_list_builder_push(OspreyListBuilder *b, int64_t v);
 /* Dups `v` first: for elements BORROWED out of another container. */
 void osprey_list_builder_push_borrowed(OspreyListBuilder *b, int64_t v);
 OspreyList *osprey_list_builder_seal(OspreyListBuilder *b);
-
-OspreyListIter *osprey_list_iter_new(OspreyList *l);
-/* Returns 1 if a value was produced (in *out), 0 if exhausted. */
-int osprey_list_iter_next(OspreyListIter *it, int64_t *out);
 
 /* ============ Map API ============ */
 

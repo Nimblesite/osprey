@@ -211,26 +211,3 @@ OspreyList *osprey_list_sort(OspreyList *l) {
   free(scratch);
   return osprey_list_builder_seal(b);
 }
-
-struct OspreyListIter {
-  OspreyList *list;
-  int64_t index;
-};
-
-/* ===== Iterator ===== */
-
-OspreyListIter *osprey_list_iter_new(OspreyList *l) {
-  OspreyListIter *it = (OspreyListIter *)calloc(1, sizeof(OspreyListIter));
-  it->list = l;
-  it->index = 0;
-  return it;
-}
-
-int osprey_list_iter_next(OspreyListIter *it, int64_t *out) {
-  if (it->index >= osprey_list_length(it->list)) {
-    return 0;
-  }
-  *out = osprey_list_get(it->list, it->index);
-  it->index++;
-  return 1;
-}
