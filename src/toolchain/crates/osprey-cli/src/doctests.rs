@@ -107,6 +107,6 @@ fn run_example(
         .collect::<Vec<_>>()
         .join("\n");
     let source = format!("{context}\n{}", example.code);
-    let input = CompilationInput::script(name, source, synthesized.checked);
+    let input = CompilationInput::example(name, source, synthesized.checked);
     execute::check(cli, &input, synthesized.backend, example)
 }

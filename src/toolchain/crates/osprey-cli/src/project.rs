@@ -17,6 +17,10 @@ pub(crate) struct CompilationInput {
     display_path: String,
     debug_path: String,
     output: OutputDefault,
+    /// Whether the per-file advice (documentation, repeated literals,
+    /// consecutive prints) is reported: a documentation example is compiled
+    /// inside its whole file, whose advice belongs to checking that file.
+    source_advice: bool,
 }
 
 #[derive(Debug)]
@@ -61,6 +65,16 @@ impl CompilationInput {
             display_path: path.to_string(),
             debug_path: path.to_string(),
             output: OutputDefault::Source(path.to_string()),
+            source_advice: true,
+        }
+    }
+
+    /// A documentation example compiled inside the file it documents: the
+    /// file's own advice is not repeated for every example.
+    pub(crate) fn example(path: &str, source: String, program: Program) -> Self {
+        Self {
+            source_advice: false,
+            ..Self::script(path, source, program)
         }
     }
 
@@ -128,6 +142,7 @@ impl CompilationInput {
             display_path,
             debug_path,
             output,
+            source_advice: true,
         }
     }
 
@@ -160,6 +175,9 @@ impl CompilationInput {
     /// the flattened space, like every other warning's ([DOC-EXPORT-REQUIRED],
     /// [TYPE-WARNINGS-REPEATED-LITERAL]).
     pub(crate) fn source_warnings(&self) -> Vec<osprey_types::TypeWarning> {
+        if !self.source_advice {
+            return Vec::new();
+        }
         let CompilationUnit::Project(project) = &self.unit else {
             return osprey_types::source_warnings(self.program());
         };
