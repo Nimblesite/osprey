@@ -20,7 +20,9 @@ pub mod adapters;
 mod app;
 #[path = "../gpui/src/events.rs"]
 pub mod events;
+#[path = "../gpui/src/ffi.rs"]
 pub mod ffi;
+#[path = "../gpui/src/frame.rs"]
 mod frame;
 pub mod host;
 #[path = "../gpui/src/regions.rs"]

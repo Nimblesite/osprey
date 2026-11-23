@@ -14,6 +14,8 @@ pub struct Bench {
     pub duration: Duration,
     pub frames: u64,
     pub dispatch_total: f64,
+    /// The application's own share of each dispatch: its `event` export, before the frame is read.
+    pub app_total: f64,
     pub paint_total: f64,
     /// Main-thread time from each frame event to the end of the paint that shows it: dispatch,
     /// envelope apply, layout and paint. Unlike `fps`, it does not depend on the display clock,
@@ -29,6 +31,7 @@ impl Bench {
             duration: Duration::from_secs_f64(seconds.max(0.)),
             frames: 0,
             dispatch_total: 0.,
+            app_total: 0.,
             paint_total: 0.,
             frame_total: 0.,
         }
@@ -99,6 +102,8 @@ fn record_bench(view: &mut HostView, arrived: Instant) {
     };
     bench.frames += 1;
     bench.dispatch_total += view.dispatch_ms;
+    bench.app_total +=
+        crate::ffi::APP_MICROS.load(std::sync::atomic::Ordering::Relaxed) as f64 / 1000.;
     bench.paint_total += view.paint_ms;
     bench.frame_total += view.frame_ms;
     if arrived.duration_since(bench.started) < bench.duration {
@@ -122,8 +127,9 @@ fn report(bench: &Bench, rows: usize) {
     let frames = bench.frames.max(1) as f64;
     let seconds = bench.started.elapsed().as_secs_f64().max(f64::EPSILON);
     println!(
-        "bench fps={} dispatch_ms={} paint_ms={} frame_ms={} rows={} frames={}",
+        "bench fps={} app_ms={} dispatch_ms={} paint_ms={} frame_ms={} rows={} frames={}",
         bench.frames as f64 / seconds,
+        bench.app_total / frames,
         bench.dispatch_total / frames,
         bench.paint_total / frames,
         bench.frame_total / frames,
