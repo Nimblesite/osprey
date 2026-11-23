@@ -656,10 +656,11 @@ suite("Osprey Language Features Tests", () => {
   // budget is exhausted, then throws with the last value. This is what turns
   // "the LSP returned nothing (yet)" into an eventual HARD FAILURE rather than a
   // silent pass — the toothlessness that let the hover regression ship.
+  // 30 s: a re-check that takes 1.5 s on a quiet machine missed 10 s at a load average near 100.
   async function pollFor<T>(
     attempt: () => Thenable<T>,
     ok: (value: T) => boolean,
-    tries = 40,
+    tries = 120,
     delayMs = 250,
   ): Promise<T> {
     let last: T | undefined;
