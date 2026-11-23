@@ -17,9 +17,9 @@ fn odds(xs) = match xs {
     [_, ...tail] => evens(tail)
 }
 fn merge(left, right) = match left {
-    [] => right
+    [] => listConcat(right, List())
     [l, ...ls] => match right {
-        [] => left
+        [] => listConcat(left, List())
         [r, ...rs] => match r < l {
             true => listPrepend(merge(left, rs), r)
             false => listPrepend(merge(ls, right), l)

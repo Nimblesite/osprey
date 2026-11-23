@@ -27,7 +27,7 @@ fn main() = {
     mut fault = ""
     handle Arith {
         overflow op _ _ wrapped => {
-            fault = op
+            fault = "${op}"
             wrapped
         }
         remainderByZero _ => {
