@@ -164,9 +164,9 @@ The port is half the size of the C# it reproduces, counted two ways ([EXAMPLE-CL
 | | Files | Lines | Code lines |
 | --- | --- | --- | --- |
 | C# files the port reproduces | 54 | 1,675 | 1,252 |
-| Osprey port | 11 | 837 | 620 |
-| Osprey only: retry and rollback, [todo_replay.osp](src/todo_replay.osp) | 1 | 124 | 93 |
-| Osprey only: what-if probes, [todo_probe.osp](src/todo_probe.osp) | 1 | 119 | 80 |
+| Osprey port | 11 | 843 | 618 |
+| Osprey only: retry and rollback, [todo_replay.osp](src/todo_replay.osp) | 1 | 122 | 92 |
+| Osprey only: what-if probes, [todo_probe.osp](src/todo_probe.osp) | 1 | 117 | 78 |
 
 A code line is a line that is neither blank nor a comment. The C# count takes `src/Domain`, `src/Application`, `src/Web/Endpoints`, `src/Web/Infrastructure`, `src/Web/Services`, `src/Web/Program.cs`, the `DependencyInjection.cs` files, `ApplicationDbContext.cs`, the entity configurations and `DispatchDomainEventsInterceptor.cs` at the pinned commit. It leaves out what the port does not reproduce: the weather forecast and user endpoints, the three OpenAPI transformers, audit stamps (`AuditableEntityInterceptor.cs`, `BaseAuditableEntity.cs`) and `Result.cs`.
 
