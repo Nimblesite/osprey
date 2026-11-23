@@ -138,8 +138,6 @@ module Packages
             JsonArray items => collect (items, catalogEntry)
             _ => failure "Registry catalog has a non-list packages"
 
-    catalogKeys entries = mapList (entries, \item => item.catalogKey)
-
     latestVersion item = match listGet item.catalogVersions (satSub (length item.catalogVersions) 1)
         Success version => version
         Error _ => "No release"
