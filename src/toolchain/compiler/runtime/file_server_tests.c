@@ -275,8 +275,8 @@ static void test_file_server_folder(void) {
   usleep(300000);
   // As the renderer does, so the waiting request can't see it half written.
   write_text(folder, ".partial", "segment-one");
-  char partial[512];
-  char finished[512];
+  char partial[600];
+  char finished[600];
   snprintf(partial, sizeof partial, "%s/.partial", folder);
   snprintf(finished, sizeof finished, "%s/seg00001.ts", folder);
   assert(rename(partial, finished) == 0);
