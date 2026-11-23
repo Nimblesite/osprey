@@ -21,7 +21,10 @@ exclude = [
   "src/osprey/examples/gpui/painting/src/logo.ospml",
   "src/toolchain/compiler/runtime/klee/hunt_format_cases.inc",
   "src/toolchain/website/src/_includes/benchmarks-tables.html",
+  # Benchmark cases stand alone, one per language, so each can be read and timed on its own.
+  "src/toolchain/benchmarks/**",
   # Third-party: FerroUI's ferroui-osprey-native host (MIT, Wiesław Šoltés), carried byte for byte
   # from upstream so it can be updated by copying; its duplication with hosts/gpui is upstream's.
   "src/toolchain/hosts/ferroui/**",
+  "/book/"
 ]

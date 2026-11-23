@@ -34,12 +34,12 @@ Root-cause fixes only: no retries, no wider timeouts used to hide a race, no ski
   - the cleanarch_todo `multishot_*_cases.osp`
   - `osprey-cli/tests/common/many_programs.rs`, `staged_multiplicity.rs` and `staged_many.rs`
 
-  The cleanarch suite must stay at 91 passed and the same 9 failed.
-- [ ] **cleanarch_todo has 9 failing tests** (the same 9 before and after the dedup), for example "a missing list is missing in every fix branch" and "the page plan answers its four shapes in order". Find out why they fail; they are not new.
+  The CleanArch suite must retain all 100 passing tests in both GC and ARC.
+- [x] **CleanArch retry and page tests.** The rival queue consumes one writer at a time, including duplicate titles, and the authorization, pagination and validation expectations match their fixtures and branch rules. All 100 cases pass under GC and ARC on the PR head.
 - [ ] **Windows Prism docked panel:** a white toolbar strip where Undo and Redo belong, and a light-theme panel beside the dark canvas. Logged as [daw.md](daw.md) item 40. The 100% goldens record the current look; the 150% goldens still show the deleted keyboard dock.
 - [ ] **Canvas scale with the panel docked.** The user said "scale a bit off". With [DAW-LAYOUT-FIXED-SCALE] at one unit per point, a 1152-point window with the 320-point panel hides the right of the patch. Decide whether a docked panel narrows the page or the canvas fits its pane.
 - [ ] **CPython in CI.** `_prism_ui_test` and `_prism_vst_ui_test` run `python3 src/toolchain/hosts/synth_vst/build.py`, which AGENTS.md bans. Port it to Python-flavour Osprey.
-- [ ] **Uncommitted work by another agent.** The `has_many` gating in `osprey-ast/src/multiplicity.rs` and `osprey-types/src/multiplicity.rs` (it also drops a `sort_unstable`) was left in the tree for its owner, neither committed nor reverted.
+- [x] **Rust lowering growth.** Only programs that declare a multi-shot operation need captured-state analysis. The gate is in the pushed commit `b87b7e245`. The 4,000-caller fixture fell from 4.02 s to 0.69 s locally, and the budget, staged-many and multiplicity tests passed.
 - [ ] **Multi-shot review leftovers** ([MULTI-HANDLE-MANY]):
   - compile time grows about cubically with many resumes in one arm, and overflows the Rust stack near 10,000
   - resume is capped near 512 by the syntax nesting limit

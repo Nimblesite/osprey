@@ -53,8 +53,8 @@ module MultishotPlanListsCases {
         let b = [planSpec(2, "b1", false), planSpec(1, "b2", false), planSpec(4, "b3", false), planSpec(3, "b4", true), planSpec(5, "b5", false)]
         let c5 = [planSpec(2, "c1", false), planSpec(3, "c2", false), planSpec(1, "c3", false), planSpec(5, "c4", false), planSpec(6, "c5", false)]
         let c = listAppend(c5, planSpec(4, "c6", true))
-        expect(one.answers, [planPage(a, 4, false, false), planPage([], 4, true, false), planPage(a, 4, false, false), planPage(a, 4, false, false)])
-        expect(two.answers, [planPage(b, 5, false, false), planPage([], 5, true, false), planPage(b, 5, false, false), planPage(b, 5, false, false)])
+        expect(one.answers, planWhole(a, 4))
+        expect(two.answers, planWhole(b, 5))
         expect(three.answers, [planPage(c5, 6, false, true), planPage([planSpec(4, "c6", true)], 6, true, false), planPage(c, 6, false, false), planPage(c, 6, false, false)])
         checkAll("three asks, one list each; every ask sees the same untouched store", [
             one.readings == 6, two.readings == 6, three.readings == 6,
@@ -100,7 +100,7 @@ module MultishotPlanListsCases {
         let plan = TodoHarness::probed(TodoHarness::anonymous(), [TodoHarness::seedList(1, "Open", "#5C6BC0")], seeds, PagePlan { listId: 1 })
         let rows = [planSpec(2, "p1", false), planSpec(4, "p2", true), planSpec(3, "p3", false), planSpec(1, "p4", false)]
         // sorted p1(2),p2(4 done),p3(3),p4(1); N=4: (2,5) empty with hasPrevious true, all hasNext false
-        expect(plan.answers, [planPage(rows, 4, false, false), planPage([], 4, true, false), planPage(rows, 4, false, false), planPage(rows, 4, false, false)])
+        expect(plan.answers, planWhole(rows, 4))
         checkAll("no sign-in needed to plan pages; four answers, store untouched", [
             planCalm(plan),
             structuralEquals(planTitles(plan.answers, 0), ["p1", "p2", "p3", "p4"]), structuralEquals(planTitles(plan.answers, 1), []),
