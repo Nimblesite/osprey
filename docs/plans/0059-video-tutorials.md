@@ -7,10 +7,9 @@ the viewer sees the effect. Short promotional films and app tours are useful,
 but they are introductions, not tutorials, and they live on the feature's own
 page.
 
-Spec home: the website video rules in
+Spec: [Tutorial videos](../specs/tooling/DocumentationTools.md#tutorial-videos), enforced by
 [`src/toolchain/website/lib/videos.mjs`](../../src/toolchain/website/lib/videos.mjs)
 and [`tests/videos.spec.js`](../../src/toolchain/website/tests/videos.spec.js).
-The rules below go into the docs specs when this plan is implemented.
 
 ## Where things stand
 
@@ -40,99 +39,8 @@ The rules below go into the docs specs when this plan is implemented.
 
 ## Rules
 
-### `[DOC-TUTORIAL-VIDEO-KIND]` Tutorials and introductions are different kinds
+The rules (`[DOC-TUTORIAL-VIDEO-*]`, `[MEDIA-VIDEOS-REPO]`) live in [Tutorial videos](../specs/tooling/DocumentationTools.md#tutorial-videos).
 
-Every entry in `src/toolchain/website/src/_data/videos.json` has `"kind": "tutorial"` or
-`"kind": "intro"`. The tutorials index lists only `tutorial` entries. An
-`intro` plays on its feature page (for example `agent-native` on
-[Osprey Native](../../src/toolchain/website/src/docs/osprey-native.md)) and has
-no page under `/docs/tutorials/`. The proof films keep their own learning path
-and are `intro` entries until they meet the tutorial rules.
-
-### `[DOC-TUTORIAL-VIDEO-OSPREY]` A tutorial teaches Osprey
-
-Tutorials exist to teach people Osprey: the language, its packages and its
-tools. Each one is titled by the Osprey concept it teaches (effects for I/O,
-type inference in the Python flavor, exports and externs, GPUI apps in
-Osprey, testing by label, profiling) and uses an app only as the worked
-example. A film about an app with no Osprey lesson is an `intro`.
-
-### `[DOC-TUTORIAL-VIDEO-FINISHED]` Tutorials only for finished, working features
-
-A tutorial teaches something a viewer can use today. A feature that is still
-in progress, such as Osprey Agent, gets no tutorial and no film on the docs
-home or install pages; at most a short `intro` on its own feature page.
-
-### `[DOC-TUTORIAL-VIDEO-LENGTH]` A tutorial runs at least four minutes
-
-A `tutorial` lasts at least 240 seconds and no more than 600 seconds (measured
-`durationSeconds`). The minimum is a floor, not a target: length comes from
-covering the code, never from padding or slowing the narration.
-
-### `[DOC-TUTORIAL-VIDEO-CODE]` A tutorial shows the code it teaches
-
-At least half of a tutorial's running time shows source code on screen at a
-readable size (at least 28 px monospace at 1920x1080). Every code scene:
-
-- shows the repository path of the file, such as
-  `src/osprey/packages/chromecast/src/cast.py`, and the line range;
-- highlights the lines the narration is explaining at that moment;
-- shows code taken from the file at the recorded commit, never retyped or
-  simplified.
-
-### `[DOC-TUTORIAL-VIDEO-EXPLAIN]` The narration explains how the code works
-
-For each code scene, the narration says what the highlighted code does, why it
-is written that way (the effect, type or package API it uses), and what changes
-when it runs. Reading the code aloud does not count. Each tutorial covers the
-four steps below, in order, and has one chapter for each:
-
-1. **Goal:** what the viewer will build or do, and the finished result
-   (at most 30 seconds).
-2. **Code:** a walk through the package or example source, in the order the
-   program uses it.
-3. **Run:** the real command, from `make help` or the page, and its real
-   output or app window, with each visible effect tied back to the code that
-   caused it.
-4. **Change it:** one small edit the viewer can make, run again, with the
-   different result shown.
-
-### `[DOC-TUTORIAL-VIDEO-PACKAGES]` A tutorial points to the packages it uses
-
-On screen and in the watch page's text, a tutorial links each package or
-example it shows (its `src/osprey/packages/<name>` or `src/osprey/examples/<name>`
-folder, and its `/docs/packages/<name>/` reference page where one exists). The
-page gives the command that runs it.
-
-### `[DOC-TUTORIAL-VIDEO-SOURCE]` Every video is built from checked-in source
-
-Each video is a screen film in the Videos repository
-(`projects/osprey/videos/<id>/`): `film.mjs` lists the scenes (code excerpts by
-file and text, commands, app clips), `narration.json` holds the spoken lines,
-and `film.source.html` draws the page. `./bin/factory film osprey/<id>`
-renders the MP4, poster, captions and chapters. Captions come from the
-narration text, so the two always match.
-
-### `[DOC-TUTORIAL-VIDEO-FRESH]` A tutorial fails when its code drifts
-
-The Videos factory checks each `tutorial` film against the Osprey checkout
-when it publishes, and the website tests check what was published:
-
-- every file it shows exists, and the shown lines match the file byte for
-  byte, or the film is re-published;
-- every command it runs is still a documented `make` target or CLI command;
-- `durationSeconds`, the chapter list and the `[DOC-TUTORIAL-VIDEO-EXPLAIN]`
-  chapters agree with the film's scenes.
-
-### `[MEDIA-VIDEOS-REPO]` Videos are made in the Videos repository and committed here
-
-The Videos repository (`github.com/MelbourneDeveloper/Videos`, `projects/osprey/`)
-holds each film's source and the factory that renders it. Its `published/`
-folder mirrors the paths this repository reads. `make media` copies that folder
-from the Videos checkout next to this one (`../Videos`, or `VIDEOS_DIR=<path>`)
-into this checkout, and the copied videos, posters and caption tracks are
-committed here through Git LFS. CI, the deploy and releases read them from the
-checkout: nothing downloads media at build time and no token is involved.
 
 ## Tutorials to make
 
