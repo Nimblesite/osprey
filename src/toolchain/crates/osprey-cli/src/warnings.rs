@@ -24,7 +24,7 @@ type Listing = Vec<(String, String)>;
 pub(crate) fn collect(input: &CompilationInput, analyse: bool) -> Vec<TypeWarning> {
     let contract = |symbol: &str| input.exported_member(symbol);
     let mut warnings = of(input.program(), &contract, analyse);
-    warnings.extend(input.documentation_warnings());
+    warnings.extend(input.source_warnings());
     in_source_order(&mut warnings);
     warnings
 }
