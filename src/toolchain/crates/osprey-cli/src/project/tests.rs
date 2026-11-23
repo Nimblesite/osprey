@@ -421,7 +421,7 @@ fn an_exported_module_members_signature_is_never_reported_redundant() {
         ],
     );
     let input = CompilationInput::load_project(root.to_string_lossy().as_ref()).expect("assembles");
-    let warnings = crate::warnings::collect(&input, true);
+    let warnings = crate::warnings::collect(&input, true, None);
     std::fs::remove_dir_all(&root).expect("cleanup");
     let messages: Vec<&str> = warnings.iter().map(|w| w.message.as_str()).collect();
     assert_eq!(

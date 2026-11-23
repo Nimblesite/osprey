@@ -157,7 +157,7 @@ fn print_ir(cli: &Cli, input: &CompilationInput) -> ExitCode {
 pub(crate) fn report_type_errors(input: &CompilationInput, warnings: Warnings) -> usize {
     let errors = osprey_types::check_program(input.program());
     let count = report_errors(&errors, input);
-    count + report_warnings(input, warnings, false)
+    count + report_warnings(input, warnings, false, None)
 }
 
 /// Gate a compiling mode exactly like [`report_type_errors`], retaining the
@@ -168,7 +168,13 @@ fn gate(cli: &Cli, input: &CompilationInput) -> Result<osprey_types::CheckedProg
         let _ = report_errors(&errors, input);
         ExitCode::FAILURE
     });
-    if report_warnings(input, cli.warnings, cli.mode == "--check") > 0 {
+    if report_warnings(
+        input,
+        cli.warnings,
+        cli.mode == "--check",
+        checked.as_ref().ok(),
+    ) > 0
+    {
         return Err(ExitCode::FAILURE);
     }
     checked
@@ -182,11 +188,16 @@ fn report_errors(errors: &[osprey_types::TypeError], input: &CompilationInput) -
 }
 
 /// Print the warnings and return how many of them fail the invocation.
-fn report_warnings(input: &CompilationInput, warnings: Warnings, check_examples: bool) -> usize {
+fn report_warnings(
+    input: &CompilationInput,
+    warnings: Warnings,
+    check_examples: bool,
+    checked: Option<&osprey_types::CheckedProgram>,
+) -> usize {
     if warnings == Warnings::Skip {
         return 0;
     }
-    let mut diagnostics = warnings::collect(input, warnings.analyses());
+    let mut diagnostics = warnings::collect(input, warnings.analyses(), checked);
     // [DOC-EXPORT-EXAMPLE-REQUIRED] Source checks audit examples during rollout.
     if !check_examples {
         diagnostics.retain(|warning| warning.rule != osprey_types::UNEXAMPLED_EXPORT);

@@ -56,6 +56,19 @@ impl CheckedProgram {
         &self.types
     }
 
+    /// Read the source's unused symbols after its effects have been proved.
+    /// The source may differ from the lowered program, so infer the source's
+    /// method targets without repeating its effect proof when they are settled.
+    #[must_use]
+    pub fn unused_symbols(&self) -> Vec<crate::UnusedSymbol> {
+        match infer_annotation_trial(&self.source, None) {
+            Ok(Some((types, false))) => {
+                crate::unused::unused_symbols_with_types(&self.source, &types)
+            }
+            _ => crate::unused_symbols(&self.source),
+        }
+    }
+
     /// What each function needs discharged were a host to call it directly.
     #[must_use]
     pub fn library_exports(&self) -> &LibraryExports {
