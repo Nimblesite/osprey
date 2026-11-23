@@ -173,31 +173,19 @@ impl CompilationInput {
     /// assembly flattens modules away, so the flattened program cannot say
     /// what was exported or which file repeats a literal. Positions land in
     /// the flattened space, like every other warning's ([DOC-EXPORT-REQUIRED],
-    /// [TYPE-WARNINGS-REPEATED-LITERAL]).
+    /// [TYPE-WARNINGS-REPEATED-LITERAL], [LINT-NESTING-LAMBDA]).
     pub(crate) fn source_warnings(&self) -> Vec<osprey_types::TypeWarning> {
         if !self.source_advice {
             return Vec::new();
         }
         let CompilationUnit::Project(project) = &self.unit else {
-            return osprey_types::source_warnings(self.program());
+            return osprey_syntax::resolve_flavor(None, &self.display_path, &self.source)
+                .map_or_else(
+                    |_| Vec::new(),
+                    |flavor| osprey_types::source_warnings(self.program(), &self.source, flavor),
+                );
         };
-        project
-            .sources
-            .iter()
-            .flat_map(|source| {
-                let parsed =
-                    osprey_syntax::parse_program_with_flavor(&source.source, source.flavor);
-                osprey_types::source_warnings(&parsed.program)
-                    .into_iter()
-                    .map(|mut warning| {
-                        if let Some(position) = &mut warning.position {
-                            position.line = source.global_line(position.line);
-                        }
-                        warning
-                    })
-                    .collect::<Vec<_>>()
-            })
-            .collect()
+        project.sources.iter().flat_map(file_warnings).collect()
     }
 
     /// All original source text used to discover project-wide link directives.
@@ -401,6 +389,20 @@ fn normalize_path(path: &Path) -> PathBuf {
 /// breakpoint's path literally. Implements [DEBUGGER-SOURCE-MAP].
 fn spelled_path(path: &Path) -> PathBuf {
     std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf())
+}
+
+/// One file's advice, read from the file as written, at flattened lines.
+fn file_warnings(source: &osprey_project::SourceMetadata) -> Vec<osprey_types::TypeWarning> {
+    let parsed = osprey_syntax::parse_program_with_flavor(&source.source, source.flavor);
+    osprey_types::source_warnings(&parsed.program, &source.source, source.flavor)
+        .into_iter()
+        .map(|mut warning| {
+            if let Some(position) = &mut warning.position {
+                position.line = source.global_line(position.line);
+            }
+            warning
+        })
+        .collect()
 }
 
 fn aggregate_sources(project: &AssembledProject) -> String {

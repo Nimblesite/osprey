@@ -133,8 +133,10 @@ The static-analysis step of CI phase 1 rejects any Osprey source that has:
 
 - lambdas nested more than **2** deep,
 - `match` arms nested more than **2** deep, or
-- a run of **4 or more** closing delimiters (`)`, `}` or `]`, ignoring
-  whitespace).
+- a run of **8 or more** closing delimiters (`)`, `}` or `]`) on one line, with
+  only spaces between them. The first draft said 4 counting newlines; that
+  flagged 2865 sites, most of them ordinary layout, so the lead set 8 on one
+  line (about 109 sites).
 
 This is an error, not a warning, and no file is excluded. The message points
 to `use`.
@@ -201,6 +203,10 @@ The binder is on the left of every step, and the answer is the last line.
     every diff by hand.
 - [ ] **4. Lint.** Add `[LINT-NESTING-LAMBDA]` to CI phase 1. It must be green
   on the whole tree after Phase 3, with no exclusions.
+  - [x] The closing-run rule, as a `closing-run` warning in the compiler and the
+    editor (`osprey-syntax/src/closing_runs.rs`, spec 0004).
+  - [ ] The lambda-depth and `match`-depth rules.
+  - [ ] Make all three an error once Phase 3 leaves no site.
 - [ ] **5. Prove it.**
   - All three corpus runs pass: `run_test_corpus.sh` under GC, ARC and wasm32.
   - Run the manager packages' E2E suites.

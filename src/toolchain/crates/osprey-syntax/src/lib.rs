@@ -42,6 +42,7 @@ mod annotation_edits;
 #[cfg(test)]
 mod annotation_edits_tests;
 mod binding_ranges;
+pub(crate) mod closing_runs;
 mod default;
 mod desugar;
 mod docparse;
@@ -59,6 +60,7 @@ mod typescript;
 
 pub use annotation_edits::{annotation_edits, AnnotationEdit, AnnotationTarget, SourceEdit};
 pub use binding_ranges::{binding_ranges, binding_scope, BindingKind, BindingRange};
+pub use closing_runs::{closing_runs, ClosingRun, MIN_CLOSING_RUN};
 pub use default::parse_tree;
 pub use docparse::doc_links;
 pub use ml::ml_line_layout;

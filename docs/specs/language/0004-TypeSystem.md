@@ -1257,6 +1257,19 @@ print("${total}") // warning (at the line above): 2 `print` calls in a row: join
 
 Write `print("total\n${total}")`. A `print` separated from the next by any other statement starts a new run. The compiler's warning listing and the language server both report it (`osprey-types/src/consecutive_print.rs`).
 
+## Closing runs `[LINT-NESTING-LAMBDA]`
+
+Code that ends in a pile of closing brackets is nested too deep to read: a callback pyramid always ends in one, and the same steps written as `use` lines ([BLOCK-USE]) never do. Eight or more `)`, `}` or `]` on one line, with only spaces between them, are one `closing-run` warning at the first bracket, in the Default and ML flavors:
+
+```osprey
+fn chain(n) = andThen(step(1, n), fn(a) => andThen(step(2, a), fn(b) => andThen(step(3, b), fn(c) =>
+    andThen(step(4, c), fn(d) => andThen(step(5, d), fn(e) => andThen(step(6, e), fn(f) =>
+        andThen(step(7, f), fn(g) => Success { value: a + b + c + d + e + f + g })))))))
+// warning (at the `}`): 8 brackets close here at once: this code nests 8 deep; flatten its callbacks into `use x <- f(...)` lines and name its inner values
+```
+
+Write each step as `use a <- andThen(step(1, n))` on its own line. Deeply nested data is reported the same way (`[[[[[[[[1]]]]]]]]`); name its inner values. Brackets in strings and comments are text and are not counted. Closers split over two lines are two runs, so layout that puts each closer on its own line is not reported. The Python and TypeScript flavors keep their own bracket conventions and are not checked. The compiler's warning listing and the language server both report it (`osprey-syntax/src/closing_runs.rs`, `osprey-types/src/source_warnings.rs`). Plan 0060 makes it an error once the tree has no runs left.
+
 ## Unused symbols `[TYPE-WARNINGS-UNUSED]`
 
 A program that passes type checking reports a Warning for each unread lexical binding below. These warnings do not change compilation, evaluation, generated code or exit status. The CLI includes them in the same source-grouped listing as redundant annotations; the editor reports the same rule and message on the written identifier and marks it unnecessary.

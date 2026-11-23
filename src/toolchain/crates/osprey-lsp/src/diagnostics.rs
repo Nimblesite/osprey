@@ -111,6 +111,7 @@ pub(crate) fn analyze_cached(
             .extend(crate::undocumented::diagnostics(
                 source,
                 &parsed.program,
+                flavor,
                 encoding,
             ));
     }

@@ -277,6 +277,50 @@ mod tests {
         ));
     }
 
+    /// `depth` `andThen` binds nested as callbacks, closing on line 2.
+    fn pyramid(depth: usize) -> String {
+        let nested = (1..=depth)
+            .map(|i| format!("andThen(step({i}, n), fn(v{i}) => "))
+            .collect::<Vec<_>>()
+            .concat();
+        let sum = (1..=depth)
+            .map(|i| format!("v{i}"))
+            .collect::<Vec<_>>()
+            .join(" + ");
+        format!(
+            "fn step(i, n) = Success {{ value: n + i }}\nfn chain(n) = {nested}Success {{ value: {sum} }}{}\n",
+            ")".repeat(depth)
+        )
+    }
+
+    #[test]
+    fn compiler_warns_where_a_callback_pyramid_closes_and_not_one_level_short() {
+        for depth in [5, 6, 7, 8, 11] {
+            let source = pyramid(depth);
+            let parsed = osprey_syntax::parse_program(&source);
+            assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+            assert_checks_clean(&parsed.program);
+            let input = CompilationInput::script("pyramid.osp", source.clone(), parsed.program);
+            let warnings = super::collect(&input, false);
+            let runs: Vec<_> = warnings
+                .iter()
+                .filter(|w| w.rule == "closing-run")
+                .collect();
+            // The record's `}` closes with the callbacks: depth 7 is 8 brackets.
+            if depth + 1 < 8 {
+                assert!(runs.is_empty(), "depth {depth}: {runs:?}");
+                continue;
+            }
+            let line_two = &source[source.find('\n').unwrap_or(0) + 1..];
+            let column = line_two.find("})").unwrap_or(0);
+            let expected = format!(
+                "\npyramid.osp\n  2:{column}  warning: {} brackets close here at once: this code nests {} deep; flatten its callbacks into `use x <- f(...)` lines and name its inner values\n\n1 warning (closing-run)",
+                depth + 1, depth + 1
+            );
+            assert_eq!(render(&input, &warnings), Some(expected), "depth {depth}");
+        }
+    }
+
     #[test]
     fn signed_inline_unused_parameters_never_report_compiler_generated_locals() {
         let parsed = osprey_syntax::parse_program_with_flavor(
