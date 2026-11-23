@@ -61,6 +61,11 @@ pub(crate) fn move_phi_owners(cg: &mut Codegen, incoming: &[String], out: &Value
         .filter(|operand| operand.starts_with('%') && !cg.is_rodata(operand))
         .cloned()
         .collect();
+    if counted.is_empty() {
+        // A join of literals is as static as each of them.
+        cg.mark_rodata(&out.operand);
+        return;
+    }
     let every_arm_counted = counted.len() == incoming.len();
     let incoming = counted.as_slice();
     let owned = !incoming.is_empty() && incoming_owners_match(cg, incoming, mark, |_| true);
