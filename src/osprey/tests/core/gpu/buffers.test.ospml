@@ -119,7 +119,11 @@ literalCaseUploaded (ints, floats, flags, signed, wide) =
 listCopyCase () = withIndices (0, \indices0 =>
     source = [2, 4, 6, 8]
     lone = [11]
-    withUpload(source, \asCopy => withBuffer(fromGpu (asCopy), \read0 => withUpload(read0, \relayed => withBuffer(fromGpu (indices0), \none => checkAll("list copy path", [listLengthIs (source, 4), lengthIs (asCopy, 4), elementsFrom (asCopy, 0, 0, [2, 4, 6, 8]), lastIs (asCopy, 0, 8), missesAll (asCopy, [4, (-1)]), rendersAs (asCopy, 0, "2"), sumIs (asCopy, 20), lengthIs (relayed, 4), intAt (relayed, 2, 6), sumIs (relayed, 20), uploadsLength (lone, 1), uploaded (lone, \up => elementIs (up, 0, 0, 11)), uploaded (lone, \up => lastIs (up, 0, 11)), listLengthIs (none, 0), uploadsLength (none, 0), uploaded (none, \up => sumsTo (up, 7, 7)), uploaded (source, \up => widthOf up == widthOf asCopy), uploaded (source, \up => foldsTogether(up, asCopy))]))))))
+    use asCopy <- withUpload (source)
+    use read0 <- withBuffer (fromGpu (asCopy))
+    use relayed <- withUpload (read0)
+    use none <- withBuffer (fromGpu (indices0))
+    checkAll("list copy path", [listLengthIs (source, 4), lengthIs (asCopy, 4), elementsFrom (asCopy, 0, 0, [2, 4, 6, 8]), lastIs (asCopy, 0, 8), missesAll (asCopy, [4, (-1)]), rendersAs (asCopy, 0, "2"), sumIs (asCopy, 20), lengthIs (relayed, 4), intAt (relayed, 2, 6), sumIs (relayed, 20), uploadsLength (lone, 1), uploaded (lone, \up => elementIs (up, 0, 0, 11)), uploaded (lone, \up => lastIs (up, 0, 11)), listLengthIs (none, 0), uploadsLength (none, 0), uploaded (none, \up => sumsTo (up, 7, 7)), uploaded (source, \up => widthOf up == widthOf asCopy), uploaded (source, \up => foldsTogether(up, asCopy))]))
 (** Pin toGpu/fromGpu as an order-preserving dense copy in both directions [GPU-BUFFER-TO-LIST]: list to buffer to list to buffer, every index checked at every hop, with a list index past the end still failing. *)
 roundTripCase () =
     use indices0 <- withIndices (0)

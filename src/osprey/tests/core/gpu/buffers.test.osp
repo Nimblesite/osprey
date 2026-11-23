@@ -119,9 +119,13 @@ fn literalCaseUploaded(ints, floats, flags, signed, wide) = checkAll("buffer lit
 fn listCopyCase() = withIndices(0, fn(indices0) => {
     let source = [2, 4, 6, 8]
     let lone = [11]
-    withUpload(source, fn(asCopy) => withBuffer(fromGpu(asCopy), fn(read0) => withUpload(read0, fn(relayed) => withBuffer(fromGpu(indices0), fn(none) => checkAll("list copy path", [
+    use asCopy <- withUpload(source)
+    use read0 <- withBuffer(fromGpu(asCopy))
+    use relayed <- withUpload(read0)
+    use none <- withBuffer(fromGpu(indices0))
+    checkAll("list copy path", [
     listLengthIs(source, 4), lengthIs(asCopy, 4), elementsFrom(asCopy, 0, 0, [2, 4, 6, 8]), lastIs(asCopy, 0, 8), missesAll(asCopy, [4, -1]), rendersAs(asCopy, 0, "2"), sumIs(asCopy, 20), lengthIs(relayed, 4), intAt(relayed, 2, 6), sumIs(relayed, 20), uploadsLength(lone, 1), uploaded(lone, fn(up) => elementIs(up, 0, 0, 11)), uploaded(lone, fn(up) => lastIs(up, 0, 11)), listLengthIs(none, 0), uploadsLength(none, 0), uploaded(none, fn(up) => sumsTo(up, 7, 7)), uploaded(source, fn(up) => widthOf(up) == widthOf(asCopy)), uploaded(source, fn(up) => foldsTogether(up, asCopy))
-])))))
+])
 })
 /// roundTripCase pins toGpu/fromGpu as an order-preserving dense copy in both directions [GPU-BUFFER-TO-LIST]: list to buffer to list to buffer, every index checked at every hop, with a list index past the end still failing.
 fn roundTripCase() = {
