@@ -375,17 +375,10 @@ patched kinds =
     wired
 
 // The host draws the timeline and the detached patch in separate regions.
-dialTarget (d, ordinal) = match listGet d.drivenSurface.surfaceBound ordinal
-    Error _ => false
-    Success binding => match binding
-        ui::SceneInput action => action == synth::Controls
-        _ => false
+dialTarget (d, ordinal) = boundTo (d, ordinal, synth::Controls)
 
-dialPointer (d, x, y, down, shift) = match listGet (filterList (d.drivenSeen.renderedScenes, \ordinal => dialTarget (d, ordinal))) 0
-    Error _ =>
-        expect ("no Patch Controls scene", "a Patch Controls scene")
-        d
-    Success scene => Drive::sent (d, ui::Touch(touchNow = d.drivenNow, touchKind = ui::Hosting::pointer, touchOrdinal = scene, touchWords = "", touchDetail = "", touchX = x, touchY = y, touchDown = down, touchShift = shift))
+// A pointer on the Patch Controls scene, Shift held or not.
+dialPointer (d, x, y, down, shift) = sceneEvent (d, synth::Controls, ui::Hosting::pointer, x, y, down, shift)
 
 // The controls drawn by the Patch Controls scene at this scene index.
 dialAccess (d, index) = match listGet d.drivenSeen.renderedScenes index
@@ -586,7 +579,7 @@ liveLaunched (place, tab, score, check) =
 // The song proven audible after `frames`, handed to `check` as a live stream.
 heardStream (score, frames, check) = succeeds (daw::Playback::start score, \initial =>
     succeeds (daw::Playback::step (score, initial, frames), \before =>
-        expect (loudest before.left > 0.01, true)
+        audible before.left
         check (daw::LiveStream(playing = before.playing, controlVersion = 0, controlScore = score, noteFolders = []))))
 
 // [DAW-TRANSPORT-LIVE-CONTROLS] Read the same controls and audio block as the renderer between UI events.
@@ -595,8 +588,8 @@ liveMixHistory (place, released, muted) =
     expect ((Drive::holding undone).songTicket, (Drive::holding released).songTicket)
     liveDialBlock (place, muted, \(loud, heard) =>
         expect (heard.controlVersion > muted.controlVersion, true)
-        expect (loudest loud.left > 0.01, true)
-        expect (loudest loud.right > 0.01, true)
+        audible loud.left
+        audible loud.right
         redone = Drive::press (undone, "Redo")
         liveDialBlock (place, heard, \(quiet, again) =>
             expect (again.controlVersion > heard.controlVersion, true)
@@ -649,7 +642,7 @@ liveSendJourney () =
                 cancelled = Drive::press (invalid, "Cancel")
                 liveDialBlock (place, retained, \(restored, last) =>
                     expect (last.controlVersion > retained.controlVersion, true)
-                    expect (loudest restored.left > 0.01, true)
-                    expect (loudest restored.right > 0.01, true)
+                    audible restored.left
+                    audible restored.right
                     expect ((Drive::holding cancelled).songTicket, (Drive::holding started).songTicket)
                     succeeds (readFile source, \saved => succeeds (daw::SongFiles::decode saved, \disk => expect (structuralEquals (disk, score), true))))))))
