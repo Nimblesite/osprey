@@ -2,9 +2,9 @@
 // backend of the [MEM-BACKENDS] ABI ([MEM-OWNERSHIP-STATIC],
 // docs/specs/compiler/0018-MemoryManagement.md). Its contract: no reference
 // counts. An owned block's one release frees it and every block its layout
-// word owns; a block a runtime unit retained is never freed by any release, so
-// no holder can read freed memory; immortals and foreign pointers are never
-// touched.
+// word owns; a block a new version took passes, unfreed, to that version at its
+// source's release; a block taken twice is never freed, so no holder can read
+// freed memory; immortals and foreign pointers are never touched.
 #include "memory_hooks.h"
 
 #include <assert.h>
@@ -52,8 +52,8 @@ static void t_release_frees_the_owned_tree(void) {
   CHECK(osp_arc_live_objects() == base);
 }
 
-// A retained block has two holders: neither release frees it, and its owner's
-// drop walk leaves it allocated, so both holders keep reading live memory.
+// A block taken twice before a handover has two holders: neither release frees
+// it, and its owner's drop walk leaves it allocated, so both keep reading it.
 static void t_retained_blocks_are_never_freed(void) {
   size_t base = osp_arc_live_objects();
   unsigned char *shared = osp_alloc(BODY);
@@ -69,6 +69,27 @@ static void t_retained_blocks_are_never_freed(void) {
   for (int64_t i = 0; i < BODY; i++) {
     CHECK(shared[i] == 0x5A);
   }
+}
+
+// A derived version takes a node from its moved source
+// ([MEM-OWNERSHIP-STATIC-SHARING]): the copy marks the node moving, the
+// source's release hands it over without freeing it, and the new version's
+// release frees it. Repeated derivations each move the node on once.
+static void t_moved_block_passes_to_its_new_owner(void) {
+  size_t base = osp_arc_live_objects();
+  unsigned char *node = osp_alloc(BODY);
+  memset(node, 0x6B, BODY);
+  void **version = parent_of(node, NULL);
+  for (int step = 0; step < 3; step++) {
+    osp_retain(node);
+    void **next = parent_of(node, NULL);
+    osp_release(version);
+    CHECK(osp_arc_live_objects() == base + 2);
+    CHECK(node[0] == 0x6B && node[BODY - 1] == 0x6B);
+    version = next;
+  }
+  osp_release(version);
+  CHECK(osp_arc_live_objects() == base);
 }
 
 // Immortals, foreign pointers and NULL are outside the heap's ownership.
@@ -98,6 +119,7 @@ int main(void) {
   osp_mem_boot();
   t_release_frees_the_owned_tree();
   t_retained_blocks_are_never_freed();
+  t_moved_block_passes_to_its_new_owner();
   t_immortal_and_foreign_are_untouched();
   printf("[ok] memory_ownership: %ld assertions\n", g_checks);
   return 0;

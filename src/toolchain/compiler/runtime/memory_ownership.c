@@ -6,15 +6,20 @@
 // The compiler refuses every program in which a value would need a second
 // owner, so an accepted program emits no retain and exactly one release per
 // value: the release of its one owner. This backend therefore keeps no
-// reference counts. A block is in one of four states, held in the header word
+// reference counts. A block is in one of these states, held in the header word
 // the tracked heap shares with ARC (memory_tracked_heap.h):
 //
 //   OSP_OWN_OWNED   one owner; its release frees the block and walks its
 //                   layout word, freeing every child it owns the same way
-//   OSP_OWN_SHARED  a C runtime unit handed out a second reference
-//                   (osp_retain); no release frees it, so neither holder can
-//                   ever read freed memory. It stays allocated to the end of
-//                   the run and the exit report counts it
+//   OSP_OWN_MOVING  a persistent list or map is deriving a new version from
+//                   a moved source ([MEM-OWNERSHIP-STATIC-SHARING]): the new
+//                   version took the node (osp_retain) and the source's
+//                   release, which follows the call at once, hands it over
+//                   unfreed, so the new version owns it alone
+//   OSP_OWN_SHARED  a second take before the handover: a program the checker
+//                   should have refused. No release frees the block, so no
+//                   holder can read freed memory; it stays allocated to the
+//                   end of the run and the exit report counts it
 //   immortal (< 0)  a runtime singleton; never freed
 //   parked (0)      on the recycling pool
 //
@@ -25,16 +30,20 @@
 #define OSP_HEAP_TAG "ownership"
 #define OSP_HEAP_DEBUG_ENV "OSPREY_OWNERSHIP_DEBUG"
 #define OSP_OWN_OWNED 1
-#define OSP_OWN_SHARED 2
-// The drop walk holds the one reference an owned child has: that is its last.
-#define OSP_HEAP_DROP_LAST(h) ((h)->rc == OSP_OWN_OWNED)
+#define OSP_OWN_MOVING 2
+#define OSP_OWN_SHARED 3
+// The owner lets go: an owned block is freed; a moving one passes, unfreed, to
+// the version that took it; a shared one stays.
+#define OSP_HEAP_DROP_LAST(h)                                                  \
+  ((h)->rc == OSP_OWN_OWNED ||                                                 \
+   ((h)->rc == OSP_OWN_MOVING && ((h)->rc = OSP_OWN_OWNED, 0)))
 #define OSP_HEAP_EXIT_NOTE() own_report_shared()
 
 static void own_report_shared(void);
 
 #include "memory_tracked_heap.h"
 
-// Blocks a runtime unit gave a second reference to.
+// Blocks taken twice before a handover.
 static size_t g_own_shared = 0;
 
 static void own_report_shared(void) {
@@ -42,7 +51,8 @@ static void own_report_shared(void) {
           g_own_shared);
 }
 
-// A second reference to a block: it can no longer be freed by either holder.
+// A new version takes the block: an owned one starts moving; taking a moving
+// one again would give it two owners, so it is kept instead.
 void osp_retain(void *o) {
   if (!o) {
     return;
@@ -50,20 +60,22 @@ void osp_retain(void *o) {
   heap_lock();
   OspArcHdr *h = arc_lookup_body((uintptr_t)o);
   if (h && h->rc == OSP_OWN_OWNED) {
+    h->rc = OSP_OWN_MOVING;
+  } else if (h && h->rc == OSP_OWN_MOVING) {
     h->rc = OSP_OWN_SHARED;
     g_own_shared++;
   }
   heap_unlock();
 }
 
-// The owner's release: an owned block is freed with everything it owns.
+// The owner's release: the tracked heap's drop walk applies the rule above.
 void osp_release(void *o) {
   if (!o) {
     return;
   }
   heap_lock();
   OspArcHdr *h = arc_lookup_body((uintptr_t)o);
-  if (h && h->rc == OSP_OWN_OWNED) {
+  if (h && OSP_HEAP_DROP_LAST(h)) {
     arc_release_zero_locked((uintptr_t)o);
   }
   heap_unlock();
