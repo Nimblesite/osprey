@@ -436,3 +436,51 @@ async fn analysis_scope_setting_turns_project_inference_off_and_on() -> Fallible
     h.shutdown_and_exit().await;
     Ok(())
 }
+
+// [LSP-COMPLETION-MEMBER] Complete unfinished source against the current dependency.
+#[tokio::test]
+async fn a_consumer_completes_dependency_fields_and_patterns() -> Fallible {
+    let app = ProjectFixture::new("osp")?;
+    let package = ProjectFixture::new("osp")?;
+    let manifest = app.root.join("osprey.toml");
+    let roots = serde_json::to_string(&["src".into(), package.root.join("src")])?;
+    let config = std::fs::read_to_string(&manifest)?.replace("[\"src\"]", &roots);
+    std::fs::write(manifest, config)?;
+    let _shapes = package.write(
+        "shapes",
+        "namespace geo;\ntype Point = { x: int, label: string }\ntype Shade = Light | Dark\n",
+    )?;
+    let saved = "let origin = geo::Point { x: 4, label: \"here\" }\nlet axis = origin.x\nfn tone(s) = match s {\n    _ => axis\n}\n";
+    let uri = app.write("main", saved)?;
+    let mut h = Harness::start_with_progress().await;
+    let _ = h.open_at(&uri, saved).await;
+    let patterns = h
+        .request(32, "textDocument/completion", position_params(&uri, 3, 4))
+        .await;
+    let items = completion_items(&patterns);
+    for label in ["geo::Light", "geo::Dark", "_"] {
+        assert!(items.iter().any(|item| item["label"] == label), "{items:?}");
+    }
+    let incomplete = saved
+        .replace("origin", "cursor")
+        .replace("cursor.x", "cursor.");
+    h.notify(
+        "textDocument/didChange",
+        json!({"textDocument":{"uri":uri,"version":2},"contentChanges":[{"text":incomplete}]}),
+    )
+    .await;
+    let members = h
+        .request(33, "textDocument/completion", position_params(&uri, 1, 18))
+        .await;
+    let items = completion_items(&members);
+    let fields: Vec<_> = items
+        .iter()
+        .map(|item| (item["label"].as_str(), item["detail"].as_str()))
+        .collect();
+    assert_eq!(
+        fields,
+        [(Some("x"), Some("int")), (Some("label"), Some("string"))]
+    );
+    h.shutdown_and_exit().await;
+    Ok(())
+}

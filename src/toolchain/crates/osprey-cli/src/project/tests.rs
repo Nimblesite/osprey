@@ -214,7 +214,11 @@ fn project_symbol_mapping_changes_exact_names_and_localizes_positions() {
         source_name_by_mangled: source_names,
         ..empty_project(std::collections::BTreeMap::new())
     };
-    let json = project_symbols_json(osprey_lsp::symbols_json(&project.program), &project);
+    let json = project_symbols_json(
+        osprey_lsp::symbols_json(&project.program),
+        &project,
+        &project.program,
+    );
     crate::testkit::contents(
         &json,
         &[
@@ -298,17 +302,20 @@ fn project_symbol_projection_is_a_noop_on_unmappable_input() {
     let project = empty_project(std::collections::BTreeMap::new());
     // Non-JSON input is returned verbatim.
     assert_eq!(
-        project_symbols_json("not json".to_string(), &project),
+        project_symbols_json("not json".to_string(), &project, &project.program),
         "not json"
     );
     // Valid JSON that is not an array is also returned verbatim.
     assert_eq!(
-        project_symbols_json("{\"a\":1}".to_string(), &project),
+        project_symbols_json("{\"a\":1}".to_string(), &project, &project.program),
         "{\"a\":1}"
     );
     // An array entry that is not an object, has no mapped name, and no
     // position exercises every early-return guard in update_project_symbol.
-    assert_eq!(project_symbols_json("[42]".to_string(), &project), "[42]");
+    assert_eq!(
+        project_symbols_json("[42]".to_string(), &project, &project.program),
+        "[42]"
+    );
 }
 
 #[test]

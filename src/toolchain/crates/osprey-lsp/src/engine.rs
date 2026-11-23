@@ -122,14 +122,24 @@ impl OspreyEngine {
                 include_declaration,
             } => Report::Locations(self.locate(&at, false, include_declaration)),
             Query::SignatureHelp(at) => Report::Signature(self.signature(&at)),
-            Query::Completion(at) => Report::Completion(crate::complete::completion(
-                &self.text(&at.uri),
-                at.uri.as_str(),
-                at.line,
-                at.character,
-                enc,
-                &self.typed_view(at.uri.as_str()),
-            )),
+            Query::Completion(at) => {
+                let text = self.text(&at.uri);
+                let uri = at.uri.as_str();
+                let view = if crate::server::scope::lock(self).whole_project() {
+                    self.project_cache
+                        .view_for_buffer(uri, &self.vfs, Some(&text))
+                } else {
+                    self.project_cache.view(uri, &self.vfs)
+                };
+                Report::Completion(crate::complete::completion(
+                    &text,
+                    uri,
+                    at.line,
+                    at.character,
+                    enc,
+                    &view,
+                ))
+            }
         }
     }
 

@@ -253,7 +253,7 @@ impl CompilationInput {
         let CompilationUnit::Project(project) = &self.unit else {
             return json;
         };
-        project_symbols_json(json, project)
+        project_symbols_json(json, project, &project.program)
     }
 
     /// Include constants removed by assembly when presenting documentation types.
@@ -261,12 +261,8 @@ impl CompilationInput {
         let CompilationUnit::Project(project) = &self.unit else {
             return self.symbols_json();
         };
-        let mut documented = project.clone();
-        documented
-            .program
-            .statements
-            .extend(project.documentation_bindings.clone());
-        project_symbols_json(osprey_lsp::symbols_json(&documented.program), &documented)
+        let program = project.source_program();
+        project_symbols_json(osprey_lsp::symbols_json(&program), project, &program)
     }
 
     /// The finalized module API, including signature exports and opaque types.
@@ -402,11 +398,11 @@ fn project_name(root: &Path) -> String {
     config.name
 }
 
-fn project_symbols_json(json: String, project: &AssembledProject) -> String {
+fn project_symbols_json(json: String, project: &AssembledProject, program: &Program) -> String {
     let Ok(mut value) = serde_json::from_str::<serde_json::Value>(&json) else {
         return json;
     };
-    let symbols = osprey_lsp::analysis::collect_symbols(&project.program);
+    let symbols = osprey_lsp::analysis::collect_symbols(program);
     let Some(entries) = value.as_array_mut() else {
         return json;
     };

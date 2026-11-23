@@ -30,6 +30,38 @@ pub(crate) struct Sources {
 }
 
 impl Sources {
+    /// Use declarations parsed before a missing field or pattern in the live buffer.
+    pub(super) fn recover_current(&mut self, uri: &str, text: &str) {
+        let Some(path) =
+            file_path(uri).filter(|path| self.config.contains_source(&self.root, path))
+        else {
+            return;
+        };
+        let current = self
+            .files
+            .iter()
+            .position(|file| same_path(&file.path, &path));
+        if current.is_some_and(|i| self.files[i].source == text) {
+            return;
+        }
+        let Ok(flavor) = osprey_syntax::resolve_flavor(self.config.flavor, uri, text) else {
+            return;
+        };
+        let program = osprey_syntax::parse_program_with_flavor(text, flavor).program;
+        let recovered = SourceFile {
+            path,
+            source: text.to_owned(),
+            program,
+            flavor,
+            discipline: None,
+        };
+        if let Some(i) = current {
+            self.files[i] = recovered;
+        } else {
+            self.files.push(recovered);
+        }
+    }
+
     fn new(root: &Path, config: ProjectConfig) -> Self {
         Self {
             root: root.to_path_buf(),

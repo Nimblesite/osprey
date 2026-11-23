@@ -73,7 +73,7 @@ impl Checked {
             let mut declared = Declared::default();
             osprey_ast::walk_program(&project.program, &mut declared);
             (
-                Arc::new(osprey_types::infer_program(&project.program)),
+                Arc::new(osprey_types::infer_program(&project.source_program())),
                 Arc::new(declared.0),
             )
         });
@@ -147,9 +147,22 @@ impl ProjectCache {
     /// [`Self::view`] with the project's checked types, for the features that
     /// display one ([LSP-HOVER-PROJECT]).
     pub(crate) fn typed_view(&self, uri: &str, vfs: &lspkit::vfs::Vfs) -> crate::workspace::View {
-        let Some(Ok(sources)) = self.sources(uri, Some(vfs), None) else {
+        self.view_for_buffer(uri, vfs, None)
+    }
+
+    /// Completion uses the parser's recovered declarations while the user is typing.
+    pub(crate) fn view_for_buffer(
+        &self,
+        uri: &str,
+        vfs: &lspkit::vfs::Vfs,
+        buffer: Option<&str>,
+    ) -> crate::workspace::View {
+        let Some(Ok(mut sources)) = self.sources(uri, Some(vfs), buffer) else {
             return crate::workspace::View::default();
         };
+        if let Some(text) = buffer.filter(|_| sources.incomplete || !sources.errors.is_empty()) {
+            sources.recover_current(uri, text);
+        }
         let mut view = sources.view(uri);
         if view.current.is_some() {
             view.checked = Some(self.checked(&sources.root, &sources.config, &sources.files));
