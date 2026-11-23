@@ -4,7 +4,16 @@ namespace orchestra
 // Identities come from that transport, never from a controller's JSON payload.
 (** Pure session transitions with bounded admission, touch ownership and heartbeat expiry. *)
 module Sessions
-    (** Create an empty session with a fresh epoch. *)
+    (** Create an empty session with a fresh epoch.
+    # Examples
+    ```osprey
+    session = Sessions::empty 7
+    print (session.epoch == 7 && session.clock == 0 && length session.players == 0)
+    ```
+    ```output
+    true
+    ```
+    *)
     export empty epoch = Session(epoch = epoch, clock = 0, players = [])
 
     player (session, peer) = match listGet (filterList (session.players, \p => p.peer == peer)) 0
@@ -17,7 +26,18 @@ module Sessions
 
     replaced (session, next) = session(players = mapList (session.players, \p => replacement (next, p)))
 
-    (** Admit one unique peer, up to eight simultaneous controllers. *)
+    (** Admit one unique peer, up to eight simultaneous controllers.
+    # Examples
+    ```osprey
+    joined = match Sessions::join (Sessions::empty 7, 10)
+        Accepted session => length session.players
+        Rejected _ => 0
+    print joined
+    ```
+    ```output
+    1
+    ```
+    *)
     export join (session, peer) = match peer < 0
         true => Rejected(fault = InvalidPeer)
         false => match player (session, peer)
@@ -26,20 +46,79 @@ module Sessions
                 true => Rejected(fault = Full)
                 false => Accepted(value = (session(players = listAppend session.players (Player(peer = peer, sequence = 0, seen = session.clock, instrument = Glass, sound = Sound(tone = 0.0, echo = 0.0, reverb = 0.0, warp = 0.0), touches = [])))))
 
-    (** Remove a peer and every note it owns. *)
+    (** Remove a peer and every note it owns.
+    # Examples
+    ```osprey
+    departed = match Sessions::join (Sessions::empty 7, 10)
+        Accepted session =>
+            left = Sessions::leave (session, 10)
+            length left.players == 0
+        Rejected _ => false
+    print departed
+    ```
+    ```output
+    true
+    ```
+    *)
     export leave (session, peer) = session(players = filterList (session.players, \p => p.peer != peer))
 
-    (** Release all touches while retaining admitted controllers. *)
+    (** Release all touches while retaining admitted controllers.
+    # Examples
+    ```osprey
+    sound = Sound(tone = 0.0, echo = 0.0, reverb = 0.0, warp = 0.0)
+    touch = Touch(finger = 0, horizontal = 0.5, vertical = 0.75)
+    controller = Player(peer = 10, sequence = 1, seen = 0, instrument = Glass, sound = sound, touches = [touch])
+    quiet = Sessions::silence (Session(epoch = 7, clock = 0, players = [controller]))
+    released = match listGet quiet.players 0
+        Success p => length p.touches == 0
+        Error _ => false
+    print released
+    ```
+    ```output
+    true
+    ```
+    *)
     export silence session = session(players = mapList (session.players, \p => p(touches = [])))
 
-    (** Select an instrument and release the peer's previous touches. *)
+    (** Select an instrument and release the peer's previous touches.
+    # Examples
+    ```osprey
+    selected = match Sessions::join (Sessions::empty 7, 10)
+        Accepted session => match Sessions::instrument (session, 10, Bass)
+            Accepted changed => match listGet changed.players 0
+                Success p => p.instrument == Bass
+                Error _ => false
+            Rejected _ => false
+        Rejected _ => false
+    print selected
+    ```
+    ```output
+    true
+    ```
+    *)
     export instrument (session, peer, selected) = match player (session, peer)
         Rejected fault => Rejected(fault = fault)
         Accepted p => Accepted(value = (replaced (session, p(instrument = selected, touches = []))))
 
     validAmount value = value >= 0.0 && value <= 1.0
 
-    (** Apply a sequenced sound edit independently for each authenticated player. *)
+    (** Apply a sequenced sound edit independently for each authenticated player.
+    # Examples
+    ```osprey
+    sound = Sound(tone = 0.5, echo = 0.25, reverb = 0.0, warp = 0.0)
+    edited = match Sessions::join (Sessions::empty 7, 10)
+        Accepted session => match Sessions::configure (session, 10, 1, Glass, sound)
+            Accepted changed => match listGet changed.players 0
+                Success p => p.sequence == 1 && p.sound.tone == 0.5
+                Error _ => false
+            Rejected _ => false
+        Rejected _ => false
+    print edited
+    ```
+    ```output
+    true
+    ```
+    *)
     export configure (session, peer, sequence, selected, sound) = match player (session, peer)
         Rejected fault => Rejected(fault = fault)
         Accepted p => match sequence <= p.sequence
@@ -52,14 +131,42 @@ module Sessions
                         false => []
                     Accepted(value = (replaced (session, p(sequence = sequence, seen = session.clock, instrument = selected, sound = sound, touches = touches))))
 
-    (** Renew an admitted peer's lease at the session clock. *)
+    (** Renew an admitted peer's lease at the session clock.
+    # Examples
+    ```osprey
+    renewed = match Sessions::join (Sessions::empty 7, 10)
+        Accepted session => match Sessions::heartbeat (session(clock = 500), 10)
+            Accepted live => match listGet live.players 0
+                Success p => p.seen == 500
+                Error _ => false
+            Rejected _ => false
+        Rejected _ => false
+    print renewed
+    ```
+    ```output
+    true
+    ```
+    *)
     export heartbeat (session, peer) = match player (session, peer)
         Rejected fault => Rejected(fault = fault)
         Accepted p => Accepted(value = (replaced (session, p(seen = session.clock))))
 
     // Monotonic milliseconds are supplied by the host clock effect. Expiring a
     // player removes every owned voice; reconnect requires fresh admission.
-    (** Advance a monotonic clock and release peers absent for 1500 milliseconds. *)
+    (** Advance a monotonic clock and release peers absent for 1500 milliseconds.
+    # Examples
+    ```osprey
+    expired = match Sessions::join (Sessions::empty 7, 10)
+        Accepted session => match Sessions::tick (session, 1500)
+            Accepted advanced => advanced.clock == 1500 && length advanced.players == 0
+            Rejected _ => false
+        Rejected _ => false
+    print expired
+    ```
+    ```output
+    true
+    ```
+    *)
     export tick (session, now) = match now < session.clock
         true => Rejected(fault = ClockReversed)
         false => Accepted(value = (session(clock = now, players = filterList (session.players, \p => satSub now p.seen < 1500))))
@@ -88,7 +195,24 @@ module Sessions
                 Rejected fault => Rejected(fault = fault)
                 Accepted touches => Accepted(value = (replaced (session, p(sequence = event.sequence, seen = session.clock, touches = touches))))
 
-    (** Validate epoch, sequence and touch ownership before applying a gesture. *)
+    (** Validate epoch, sequence and touch ownership before applying a gesture.
+    # Examples
+    ```osprey
+    touch = Touch(finger = 0, horizontal = 0.5, vertical = 0.75)
+    gesture = Gesture(epoch = 7, sequence = 1, phase = Begin, touch = touch)
+    sounding = match Sessions::join (Sessions::empty 7, 10)
+        Accepted session => match Sessions::play (session, 10, gesture)
+            Accepted changed => match listGet changed.players 0
+                Success p => length p.touches == 1
+                Error _ => false
+            Rejected _ => false
+        Rejected _ => false
+    print sounding
+    ```
+    ```output
+    true
+    ```
+    *)
     export play (session, peer, event) = match event.epoch != session.epoch
         true => Rejected(fault = WrongEpoch)
         false => match player (session, peer)
