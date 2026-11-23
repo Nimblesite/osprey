@@ -1,14 +1,21 @@
-// The file server, end to end against real loopback sockets with a plain TCP client,
-// split from net_runtime_tests.c so each test TU stays under the repo size budget.
+// The file server, end to end against real loopback sockets with a plain TCP client.
+// This suite OWNS file_server_runtime.c. Windows CI runs it too, so it reaches files
+// only through file_server_test_files.c.
 // [FFI-FILE-SERVER] 200/206/416/404/405 and byte-exact bodies
 // [FFI-FILE-SERVER-FOLDER] files by name, and nothing outside the folder
 // [FFI-FILE-SERVER-STOP] stopping ends every connection before its state goes
-#include "file_server_tests.h"
-
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <signal.h>
 #include <sys/stat.h>
+#ifdef _WIN32
+#include <io.h>
+#endif
+
+// Last: on Windows it maps close() to closesocket(), which would rename the CRT's
+// own close() in any system header after it.
+#include "file_server_tests.h"
 
 enum { MEDIA_BYTES = 200000 };
 
@@ -19,8 +26,7 @@ static char media_path[256];
 static unsigned char media_byte(int64_t i) { return (unsigned char)((i * 7 + i / 251) & 255); }
 
 static void write_media(void) {
-  snprintf(media_path, sizeof media_path, "/tmp/osprey-net-tests-%d.bin", (int)getpid());
-  FILE *file = fopen(media_path, "wb");
+  FILE *file = fdopen(fs_temp_file(media_path, sizeof media_path, "osprey-net-tests"), "wb");
   assert(file != NULL);
   for (int64_t i = 0; i < MEDIA_BYTES; i++) {
     unsigned char b = media_byte(i);
@@ -64,10 +70,9 @@ static int dial_loopback(int64_t port) {
 // handshake, so a buffer shrunk afterwards never makes the server's send block.
 static int dial_with_deadline(int64_t port, int receive_buffer) {
   int fd = open_socket();
-  struct timeval deadline = {5, 0};
-  assert(setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &deadline, sizeof deadline) == 0);
+  osp_socket_deadline(fd, 5000);
   if (receive_buffer > 0) {
-    assert(setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &receive_buffer, sizeof receive_buffer) == 0);
+    assert(setsockopt(fd, SOL_SOCKET, SO_RCVBUF, (const char *)&receive_buffer, sizeof receive_buffer) == 0);
   }
   return connect_loopback(fd, port);
 }
@@ -80,7 +85,7 @@ void fetch(int port, const char *request, Reply *reply) {
   unsigned char *all = malloc(cap);
   size_t len = 0;
   for (;;) {
-    ssize_t n = recv(fd, all + len, cap - len, 0);
+    ssize_t n = recv(fd, (char *)all + len, cap - len, 0);
     if (n <= 0) {
       break;
     }
@@ -243,8 +248,8 @@ static void unlink_in_folder(const char *folder, const char *const *names, size_
 }
 
 static void test_file_server_folder(void) {
-  char folder[] = "/tmp/osprey-net-folder.XXXXXX";
-  assert(mkdtemp(folder) != NULL);
+  char folder[512];
+  fs_temp_folder(folder, sizeof folder, "osprey-net-folder");
   write_text(folder, "media.m3u8", "#EXTM3U\n");
   write_text(folder, "seg00000.ts", "segment-zero");
   write_text(folder, "cover.jpg", "jpeg");
@@ -292,23 +297,48 @@ static void test_file_server_folder(void) {
   assert(rmdir(folder) == 0);
 }
 
-// [FFI-FILE-SERVER-FOLDER] Every separator any platform honours is refused, and so
-// is a drive or stream colon: on Windows "\..\..\secret" leaves the folder. These
-// files really exist in the folder, so only the name check can refuse them.
-static void test_file_server_refuses_every_separator(void) {
-  char folder[] = "/tmp/osprey-net-names.XXXXXX";
-  assert(mkdtemp(folder) != NULL);
-  const char *hostile[] = {"a\\b", "\\a", "a\\", "..\\a", "\\..\\..\\a", "C:a", "a:b", "a::$DATA", ":", "\\"};
-  size_t count = sizeof hostile / sizeof hostile[0];
-  for (size_t i = 0; i < count; i++) {
-    write_text(folder, hostile[i], "must not be served");
+static const char *const HOSTILE[] = {"a\\b", "\\a", "a\\", "..\\a", "\\..\\..\\a", "C:a", "a:b", "a::$DATA", ":", "\\"};
+#ifdef _WIN32
+// Windows cannot hold these names, so it holds what two of them reach: `a::$DATA`
+// and `a:b` are streams of a real `a` in the folder.
+static const char *const BAIT[] = {"a"};
+#else
+// These files really exist in the folder, so only the name check can refuse them.
+#define BAIT HOSTILE
+#endif
+
+// The served folder sits inside `outer`, beside a real `a`: on Windows `..\a` reaches
+// that file if the name check ever lets a backslash through.
+static void plant_names(char *outer, size_t outer_cap, char *folder, size_t folder_cap) {
+  fs_temp_folder(outer, outer_cap, "osprey-net-names");
+  snprintf(folder, folder_cap, "%s/served", outer);
+  fs_make_folder(folder);
+  write_text(outer, "a", "must not be served");
+  for (size_t i = 0; i < sizeof BAIT / sizeof BAIT[0]; i++) {
+    write_text(folder, BAIT[i], "must not be served");
   }
   write_text(folder, "plain.txt", "ok");
+}
+
+static void remove_names(const char *outer, const char *folder) {
+  unlink_in_folder(folder, BAIT, sizeof BAIT / sizeof BAIT[0]);
+  const char *plain[] = {"plain.txt"};
+  unlink_in_folder(folder, plain, 1);
+  const char *beside[] = {"a"};
+  unlink_in_folder(outer, beside, 1);
+  assert(rmdir(folder) == 0 && rmdir(outer) == 0);
+}
+
+// [FFI-FILE-SERVER-FOLDER] Every separator any platform honours is refused, and so
+// is a drive or stream colon: on Windows "\..\..\secret" leaves the folder.
+static void test_file_server_refuses_every_separator(void) {
+  char outer[512], folder[600];
+  plant_names(outer, sizeof outer, folder, sizeof folder);
   int64_t port = start_folder_server(folder);
-  for (size_t i = 0; i < count; i++) {
+  for (size_t i = 0; i < sizeof HOSTILE / sizeof HOSTILE[0]; i++) {
     char get[128], head[128];
-    snprintf(get, sizeof get, "GET /%s HTTP/1.1\r\n\r\n", hostile[i]);
-    snprintf(head, sizeof head, "HEAD /%s HTTP/1.1\r\n\r\n", hostile[i]);
+    snprintf(get, sizeof get, "GET /%s HTTP/1.1\r\n\r\n", HOSTILE[i]);
+    snprintf(head, sizeof head, "HEAD /%s HTTP/1.1\r\n\r\n", HOSTILE[i]);
     const Exchange refused[] = {{get, 404, {NULL}, NULL, 0, 0}, {head, 404, {NULL}, NULL, 0, -1}};
     expect_exchanges(port, refused, 2);
   }
@@ -316,10 +346,7 @@ static void test_file_server_refuses_every_separator(void) {
   expect_exchanges(port, plain_served, 1);
   run_file_server_link_tests(folder, port);
   assert(osprey_file_server_stop(port) == 0);
-  unlink_in_folder(folder, hostile, count);
-  const char *plain[] = {"plain.txt"};
-  unlink_in_folder(folder, plain, 1);
-  assert(rmdir(folder) == 0);
+  remove_names(outer, folder);
 }
 
 // Bytes the peer sends before closing; a read that times out fails the test.
@@ -328,7 +355,7 @@ static size_t drain_until_closed(int fd) {
   size_t total = 0;
   for (;;) {
     ssize_t n = recv(fd, sink, sizeof sink, 0);
-    assert(n >= 0 || errno == ECONNRESET);
+    assert(n >= 0 || osp_socket_reset(osp_socket_error()));
     if (n <= 0) {
       return total;
     }
@@ -366,10 +393,14 @@ static void test_file_server_stop_ends_an_idle_connection(void) {
 // the connection past it, though its send is blocked on a full socket.
 static void test_file_server_stop_ends_a_blocked_send(void) {
   enum { HUGE_BYTES = 64 * 1024 * 1024 };
-  char huge[] = "/tmp/osprey-net-huge.XXXXXX";
-  int file = mkstemp(huge);
-  assert(file >= 0 && ftruncate(file, HUGE_BYTES) == 0);
-  close(file);
+  char huge[512];
+  int file = fs_temp_file(huge, sizeof huge, "osprey-net-huge");
+#ifdef _WIN32
+  assert(_chsize_s(file, HUGE_BYTES) == 0);
+#else
+  assert(ftruncate(file, HUGE_BYTES) == 0);
+#endif
+  fs_close_file(file);
   char type[] = "video/mp4";
   int64_t port = start_server(huge, type);
   int fd = send_then_stop(port, 4096, "GET /media HTTP/1.1\r\n\r\n", 200000);
@@ -400,7 +431,11 @@ static void test_file_server_stop_repeatedly(void) {
   }
 }
 
-void run_file_server_tests(void) {
+int main(void) {
+#ifndef _WIN32
+  signal(SIGPIPE, SIG_IGN); // a client writing to a stopped server must fail, not die
+#endif
+  osprey_wsa_init();
   write_media();
   test_file_server_whole_and_ranges();
   test_file_server_refusals();
@@ -412,4 +447,6 @@ void run_file_server_tests(void) {
   test_file_server_stop_ends_a_blocked_send();
   test_file_server_stop_repeatedly();
   unlink(media_path);
+  printf("✅ file server tests passed\n");
+  return 0;
 }

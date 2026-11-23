@@ -60,7 +60,46 @@ def bind_axes_go(axes_lengths, name2pos, lengths, i) -> list[int]:
 
 
 def reconstruct(recipe, shape, axes_lengths) -> Result[CookedRecipe, str]:
-    """Resolve a recipe against a concrete shape into concrete reshapes."""
+    """Resolve a recipe against a concrete shape into concrete reshapes.
+
+    # Examples
+    ```osprey
+    from einops import Recipe, Reconstruct
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(op, l, r, wrapped_value):
+            return wrapped_value
+
+        def remainderByZero(l):
+            return 0
+
+    def cooked_text(result):
+        match result:
+            case Success(value=cooked):
+                return f"init={toString(cooked.init_shapes)} reordering={toString(cooked.axes_reordering)} n_axes={cooked.n_axes_after_adding_axes}"
+            case Error(message=m):
+                return f"error: {m}"
+
+    def resolve(pattern, shape, names, bound):
+        match Recipe.prepare(pattern, "rearrange", names, len(shape)):
+            case Success(value=recipe):
+                return cooked_text(Reconstruct.reconstruct(recipe, shape, bound))
+            case Error(message=m):
+                return f"error: {m}"
+
+    def show():
+        with wrapped:
+            split = "b c (h w) -> b c h w"
+            h4 = Reconstruct.NameLen(name="h", length=4)
+            print(f"{resolve(split, [2, 3, 12], ["h"], [h4])} {resolve(split, [2, 3, 10], ["h"], [h4])}")
+
+    show()
+    ```
+    ```output
+    init=[2, 3, 4, 3] reordering=[] n_axes=4 error: Shape mismatch, can't divide axis of length 10 in chunks of 4
+    ```
+    """
     lengths = bind_axes_go(axes_lengths, recipe.axis_name2elementary_axis, recipe.elementary_axes_lengths, 0)
     return reconstruct_body(recipe, shape, lengths, 0, False)
 

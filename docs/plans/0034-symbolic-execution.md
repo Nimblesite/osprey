@@ -18,7 +18,7 @@ Contract: [Symbolic bug hunting with KLEE](../specs/tooling/SymbolicExecution.md
 
 ## Verification gap `[SYMEX-CODEGEN]`
 
-- [ ] Build `klee_corpus_parses_with_pinned_llvm` (named in KleeCodegen.md Verification): `llvm-as`-parse every module in the `src/osprey/tests/` corpus with KLEE's pinned LLVM 19. Acceptance: the test exists and passes.
+- [x] Build `klee_corpus_parses_with_pinned_llvm` (named in KleeCodegen.md Verification): `llvm-as`-parse every module in the `src/osprey/tests/` corpus with KLEE's pinned LLVM 19. Acceptance: the test exists and passes. 2026-11-23: 312 of 315 corpus programs parse in 14 s. The other 3 are uncommitted red tests of work in progress (plan 0060's `use_binding` twins, the or-patterns `matching` case); the committed `matching.test.osp` builds and explores under KLEE. `make _test_hunt` runs it.
 
 ## Phase 4: typed harness and libkleeRuntest replay `[SYMEX-HARNESS-TYPED]` `[SYMEX-REPLAY]`
 

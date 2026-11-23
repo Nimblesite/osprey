@@ -4782,10 +4782,43 @@
           "name": "tuple_pattern"
         },
         {
+          "type": "SYMBOL",
+          "name": "or_pattern"
+        },
+        {
           "type": "STRING",
           "value": "_"
         }
       ]
+    },
+    "or_pattern": {
+      "type": "PREC_LEFT",
+      "value": -1,
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "FIELD",
+            "name": "alternative",
+            "content": {
+              "type": "SYMBOL",
+              "name": "pattern"
+            }
+          },
+          {
+            "type": "STRING",
+            "value": "|"
+          },
+          {
+            "type": "FIELD",
+            "name": "alternative",
+            "content": {
+              "type": "SYMBOL",
+              "name": "pattern"
+            }
+          }
+        ]
+      }
     },
     "structural_pattern": {
       "type": "SEQ",

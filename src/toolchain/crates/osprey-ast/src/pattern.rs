@@ -52,6 +52,11 @@ pub enum Pattern {
     },
     /// A bare identifier capture.
     Binding(String),
+    /// `A | B | C`: two or more alternatives tried left to right, the first
+    /// that matches supplying the bindings; every flavor lowers to this one
+    /// node and no frontend copies an arm. Implements [PATTERN-OR-SYNTAX],
+    /// [PATTERN-OR-ORDER].
+    Or(Vec<Pattern>),
 }
 
 impl Pattern {

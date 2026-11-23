@@ -19,6 +19,8 @@ enum Space {
     Any,
     Ctor(String, Vec<Space>),
     Opaque(String, String),
+    /// An or-pattern: the union of its alternatives ([PATTERN-OR-EXHAUSTIVE]).
+    Or(Vec<Space>),
 }
 
 /// A matrix row: one space per column.
@@ -28,10 +30,15 @@ type Row = Vec<Space>;
 /// sorted, so `{ x, y }` and `{ y, x }` are one shape.
 const ROW_OPEN: &str = "{";
 
+/// The two list constructors the analysis reads `[…]` patterns as.
+const LIST_NIL: &str = "[]";
+const LIST_CONS: &str = "::";
+
 /// Whether a pattern tests a value below its top: a constructor slot or a row
 /// field that is not a binding or `_`.
 pub(super) fn nested(pattern: &Pattern) -> bool {
     match pattern {
+        Pattern::Or(_) => true,
         Pattern::Constructor { sub_patterns, .. } => {
             sub_patterns.iter().any(|slot| !slot.is_irrefutable())
         }
@@ -49,14 +56,14 @@ impl Checker {
             .map(|arm| vec![self.space(&arm.pattern)])
             .collect();
         for (index, row) in rows.iter().enumerate() {
-            if self
-                .useful(rows.get(..index).unwrap_or_default(), row)
-                .is_none()
-            {
+            let earlier = rows.get(..index).unwrap_or_default();
+            if self.useful(earlier, row).is_none() {
                 self.errors.push(TypeError::new(format!(
                     "unreachable match arm: earlier arms cover every value `{}` matches",
                     self.render_row(row)
                 )));
+            } else {
+                self.check_alternatives(earlier, row);
             }
         }
         if let Some(witness) = self.useful(&rows, &[Space::Any]) {
@@ -65,6 +72,30 @@ impl Checker {
                 self.render_row(&witness)
             )));
         }
+    }
+
+    /// Reject each alternative of a reachable arm that the earlier arms, or
+    /// the earlier alternatives of the same or-pattern, already cover; the
+    /// diagnostic names that alternative, not the whole arm.
+    fn check_alternatives(&mut self, earlier: &[Row], row: &[Space]) {
+        let Some(space) = row.first() else {
+            return;
+        };
+        for (vector, before, shown) in alternative_checks(space) {
+            let mut rows = earlier.to_vec();
+            rows.extend(before.into_iter().map(|space| vec![space]));
+            if self.useful(&rows, &[vector]).is_none() {
+                self.errors.push(TypeError::new(format!(
+                    "unreachable alternative: earlier arms or alternatives cover every value `{}` matches",
+                    self.render(&shown)
+                )));
+            }
+        }
+    }
+
+    /// Spell a pattern as the Default pattern its space renders to.
+    pub(super) fn render_pattern(&self, pattern: &Pattern) -> String {
+        self.render(&self.space(pattern))
     }
 
     /// The value space of one pattern.
@@ -78,14 +109,33 @@ impl Checker {
             }
             Pattern::Wildcard | Pattern::TypeAnnotated { .. } | Pattern::Binding(_) => Space::Any,
             Pattern::Literal(literal) => literal_space(literal),
-            Pattern::List { .. } => Space::Opaque(format!("{pattern:p}"), "[..]".to_owned()),
+            Pattern::List { elements, rest } => self.list_space(elements, rest.is_some()),
             Pattern::Constructor {
                 name,
                 fields,
                 sub_patterns,
             } => self.constructor_space(name, fields, sub_patterns),
             Pattern::Structural { fields, open } => self.row_space(pattern, fields, *open),
+            Pattern::Or(alternatives) => Space::Or(
+                alternatives
+                    .iter()
+                    .map(|alternative| self.space(alternative))
+                    .collect(),
+            ),
         }
+    }
+
+    /// A list as nested cells: `[a, b]` is `a :: b :: []` and `[a, ...rest]`
+    /// is `a :: _`, so `[]` and `[_, ..._]` together cover every list.
+    fn list_space(&self, elements: &[Pattern], open: bool) -> Space {
+        let end = if open {
+            Space::Any
+        } else {
+            Space::Ctor(LIST_NIL.to_owned(), Vec::new())
+        };
+        elements.iter().rev().fold(end, |tail, element| {
+            Space::Ctor(LIST_CONS.to_owned(), vec![self.space(element), tail])
+        })
     }
 
     /// A constructor's slots in declared order: positional slots by column,
@@ -150,6 +200,9 @@ impl Checker {
                 ("Error".to_owned(), 1),
             ]);
         }
+        if name == LIST_NIL || name == LIST_CONS {
+            return Some(vec![(LIST_NIL.to_owned(), 0), (LIST_CONS.to_owned(), 2)]);
+        }
         if let Some(row) = name.strip_prefix(ROW_OPEN) {
             return Some(vec![(name.to_owned(), row.split(',').count())]);
         }
@@ -170,6 +223,8 @@ impl Checker {
     /// The witness extending `vector` that no row of `matrix` matches, or
     /// `None` when every value `vector` matches some row matches first.
     fn useful(&self, matrix: &[Row], vector: &[Space]) -> Option<Row> {
+        let expanded = expand(matrix);
+        let matrix = expanded.as_slice();
         let Some((head, rest)) = vector.split_first() else {
             return matrix.is_empty().then(Vec::new);
         };
@@ -184,6 +239,9 @@ impl Checker {
                 Some(prepend(Space::Any, witness))
             }
             Space::Any => self.useful_any(matrix, rest),
+            Space::Or(alternatives) => alternatives.iter().find_map(|alternative| {
+                self.useful(matrix, &prepend(alternative.clone(), rest.to_vec()))
+            }),
         }
     }
 
@@ -237,9 +295,17 @@ impl Checker {
             Space::Ctor(name, args) => (name, args),
             Space::Opaque(_, shown) => return shown.clone(),
             Space::Any => return "_".to_owned(),
+            Space::Or(alternatives) => {
+                let shown: Vec<String> = alternatives
+                    .iter()
+                    .map(|space| self.render(space))
+                    .collect();
+                return shown.join(" | ");
+            }
         };
         let shown: Vec<String> = args.iter().map(|arg| self.render(arg)).collect();
         match name.as_str() {
+            LIST_CONS => render_list(space, &|space| self.render(space)),
             _ if args.is_empty() => name.clone(),
             names::SUCCESS => format!("Success {{ value: {} }}", shown.join(", ")),
             "Error" => format!("Error {{ message: {} }}", shown.join(", ")),
@@ -262,6 +328,32 @@ impl Checker {
         }
         labelled(&format!("{name} "), declared.into_iter(), shown)
     }
+}
+
+/// A chain of list cells spelled as the list pattern it is: `[a, b]` when it
+/// ends in `[]`, `[a, ..._]` when its tail is open.
+fn render_list(space: &Space, render: &dyn Fn(&Space) -> String) -> String {
+    let mut shown = Vec::new();
+    let mut cell = space;
+    loop {
+        match cell {
+            Space::Ctor(name, args) if name == LIST_CONS => {
+                if let Some(head) = args.first() {
+                    shown.push(render(head));
+                }
+                match args.get(1) {
+                    Some(tail) => cell = tail,
+                    None => break,
+                }
+            }
+            Space::Ctor(name, _) if name == LIST_NIL => break,
+            _ => {
+                shown.push("..._".to_owned());
+                break;
+            }
+        }
+    }
+    format!("[{}]", shown.join(", "))
 }
 
 /// `Name { a: x, b: y }`, or `{ a: x }` for a bare row.
@@ -313,6 +405,66 @@ fn specialize(matrix: &[Row], name: &str, arity: usize) -> Vec<Row> {
             Some([args.as_slice(), rest].concat())
         })
         .collect()
+}
+
+/// Each row headed by an or-pattern as one row per alternative, in order:
+/// `A | B => body` is the rows `A` and `B` ([PATTERN-OR-EXHAUSTIVE]).
+fn expand(matrix: &[Row]) -> Vec<Row> {
+    matrix
+        .iter()
+        .flat_map(|row| match row.split_first() {
+            Some((Space::Or(alternatives), rest)) => expand(
+                &alternatives
+                    .iter()
+                    .map(|alternative| prepend(alternative.clone(), rest.to_vec()))
+                    .collect::<Vec<_>>(),
+            ),
+            _ => vec![row.clone()],
+        })
+        .collect()
+}
+
+/// One check per alternative of every or-pattern in `space`, outermost first:
+/// the space with that or-pattern narrowed to the alternative, the spaces it
+/// narrows to at each earlier alternative (which the check counts as earlier
+/// rows), and the alternative alone, for the diagnostic.
+fn alternative_checks(space: &Space) -> Vec<(Space, Vec<Space>, Space)> {
+    match space {
+        Space::Or(alternatives) => alternatives
+            .iter()
+            .enumerate()
+            .flat_map(|(index, alternative)| {
+                let earlier: Vec<Space> = alternatives.iter().take(index).cloned().collect();
+                let own = (alternative.clone(), earlier.clone(), alternative.clone());
+                let nested = alternative_checks(alternative).into_iter().map(
+                    move |(vector, mut before, shown)| {
+                        before.extend(earlier.iter().cloned());
+                        (vector, before, shown)
+                    },
+                );
+                std::iter::once(own).chain(nested).collect::<Vec<_>>()
+            })
+            .collect(),
+        Space::Ctor(name, args) => args
+            .iter()
+            .enumerate()
+            .flat_map(|(column, arg)| {
+                alternative_checks(arg)
+                    .into_iter()
+                    .map(move |(vector, before, shown)| {
+                        let with = |slot: Space| {
+                            let mut slots = args.clone();
+                            if let Some(target) = slots.get_mut(column) {
+                                *target = slot;
+                            }
+                            Space::Ctor(name.clone(), slots)
+                        };
+                        (with(vector), before.into_iter().map(with).collect(), shown)
+                    })
+            })
+            .collect(),
+        Space::Any | Space::Opaque(..) => Vec::new(),
+    }
 }
 
 /// The rows whose first column matches anything, without that column.

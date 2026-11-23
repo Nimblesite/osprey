@@ -82,7 +82,17 @@ def list_index(xs, v) -> int:
 
 
 def set_at(xs, i, v) -> list[int]:
-    """`xs` with element `i` replaced by `v`; shared with `Reconstruct`."""
+    """`xs` with element `i` replaced by `v`; shared with `Reconstruct`.
+
+    # Examples
+    ```osprey
+    from einops import Recipe
+    print(f"[{toString(Recipe.set_at([1, 2, 3], 1, 9))}] [{toString(Recipe.set_at([], 0, 9))}]")
+    ```
+    ```output
+    [[1, 9, 3]] [[]]
+    ```
+    """
     return map_indexed(xs, lambda j: v if j == i else unwrap_or(listGet(xs, j), v))
 
 
@@ -311,7 +321,36 @@ def build_recipe_known(left_assigned, right_assigned, left_idents, right_idents,
 
 
 def prepare(pattern, operation, axes_names, ndim):
-    """Parse `pattern` and build its transformation recipe."""
+    """Parse `pattern` and build its transformation recipe.
+
+    # Examples
+    ```osprey
+    from einops import Recipe
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(op, l, r, wrapped_value):
+            return wrapped_value
+
+    def recipe_text(result):
+        match result:
+            case Success(value=recipe):
+                return f"permutation={toString(recipe.axes_permutation)} first_reduced_axis={recipe.first_reduced_axis}"
+            case Error(message=m):
+                return f"error: {m}"
+
+    def show():
+        with wrapped:
+            swap = Recipe.prepare("a b -> b a", "rearrange", [], 2)
+            wrong_ndim = Recipe.prepare("a b -> b a", "rearrange", [], 3)
+            print(f"{recipe_text(swap)} {recipe_text(wrong_ndim)}")
+
+    show()
+    ```
+    ```output
+    permutation=[1, 0] first_reduced_axis=2 error: Wrong shape: expected 2 dims. Received 3-dim tensor.
+    ```
+    """
     match split(pattern, "->"):
         case Error(message=message):
             return Error(message=message)

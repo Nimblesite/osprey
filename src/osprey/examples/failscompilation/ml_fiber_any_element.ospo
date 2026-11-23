@@ -1,0 +1,9 @@
+// osprey: flavor=ml
+// [TYPE-ANY] [CONCURRENCY-HANDLES] The ML twin of `fiber_any_element.ospo`: a
+// `Fiber<int>` cannot travel as a `Fiber<any>`, because its result is unboxed.
+sevenLater () = 7
+
+awaitErased : Fiber<any> -> any
+awaitErased fib = await fib
+
+print (toString (awaitErased (spawn (sevenLater ()))))

@@ -10,6 +10,9 @@ struct Resolver {
     next: u32,
     labels: BTreeMap<String, Scope>,
     constructors: BTreeMap<String, Vec<String>>,
+    /// The names the first alternative of an or-pattern chose: every later
+    /// alternative binds the same variable, so it reuses them ([PATTERN-OR-BINDINGS]).
+    pinned: Option<Scope>,
 }
 
 pub(super) fn resolve(program: &Program) -> Program {
@@ -41,7 +44,8 @@ impl Resolver {
     }
 
     fn bind(&mut self, name: &mut String, scope: &mut Scope) {
-        let resolved = self.fresh(name);
+        let pinned = self.pinned.as_ref().and_then(|chosen| chosen.get(name.as_str())).cloned();
+        let resolved = pinned.unwrap_or_else(|| self.fresh(name));
         let _ = scope.insert(name.clone(), resolved.clone());
         *name = resolved;
     }
@@ -230,8 +234,24 @@ impl Resolver {
                     self.bind(name, scope);
                 }
             }
+            Pattern::Or(alternatives) => self.alternatives(alternatives, scope),
             Pattern::Wildcard | Pattern::Literal(_) => {}
         }
+    }
+
+    /// The first alternative chooses each binder's name; every later one is
+    /// walked from the same outer scope and binds those same names.
+    fn alternatives(&mut self, alternatives: &mut [Pattern], scope: &mut Scope) {
+        let before = scope.clone();
+        let Some((first, rest)) = alternatives.split_first_mut() else {
+            return;
+        };
+        self.pattern(first, scope);
+        let outer = self.pinned.replace(scope.clone());
+        for alternative in rest {
+            self.pattern(alternative, &mut before.clone());
+        }
+        self.pinned = outer;
     }
 
     fn argument_labels(&self, expression: &mut Expr) {

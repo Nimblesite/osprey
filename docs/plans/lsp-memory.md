@@ -12,7 +12,7 @@ Coordinated on TMC: `osprey-lsp-memory` (Osprey), `codex-memory-leak-fix` (lspki
 - [x] Fix in `ddf589022`. Keep the projects of open documents plus the 4 most recently loaded, and evict the rest. After the same run, live heap is 128 MB in 317k allocations.
 - [x] Pushed to `codex/prism-synth-routing`. Also in PR #411 to main: `fix/lsp-sweep-memory`, with fmt, clippy and the 257 LSP tests passing on its exact tree.
 - [x] An open shared file pinned every project that lists it. Fixed by pinning only its own project (`an_open_shared_file_does_not_pin_its_dependents`).
-- [ ] PR #411 CI green, merge, release, then verify the released extension binary's live heap.
+- [ ] PR #411 CI green, merge, release, then verify the released extension binary's live heap before closing anything. CI green and merged 2026-11-16; released in v0.31.0 and v0.31.1. Remaining: the installed extension's v0.31.1 binary measured after its sweep finishes (osprey-codex-checkin is running that replay).
 
 ## lspkit repairs that reach Osprey
 
@@ -35,9 +35,8 @@ Checked against the published v0.4.0 source on 2026-11-16, and confirmed on TMC 
 - [x] Bump `@nimblesite/lsp-profiler-ui` (to 0.6.0) in `src/toolchain/vscode-extension/package.json` if lspkit publishes a matching UI release.
 - [x] Fix any API breaks in `osprey-lsp`; no shims. None: it builds unchanged and the 259 LSP and 21 profiler tests pass.
 - [x] Keep Osprey's own guard: 32 unknown-method requests through the real server leave `in_flight: 0` (`Dispatcher` `Debug`). Test: `unknown_methods_leave_no_request_in_flight`; 261 LSP tests pass.
-- [ ] `cargo test -p osprey-lsp`, then `make ci`, then one coordinated push.
-- [ ] Re-measure with `heap -s` after the idle sweep: live heap at or below 128 MB.
-- [ ] Release Osprey, then verify the released extension binary's live heap before closing anything.
+- [x] `cargo test -p osprey-lsp`, then `make ci`, then one coordinated push. 261 LSP tests pass (2026-11-23); the bump shipped through PR #417 (lspkit 0.10.1), merged 2026-11-20 with the required `CI` check green, and is in v0.31.1.
+- [ ] Re-measure with `heap -s` after the idle sweep: live heap at or below 128 MB. 2026-11-23, initialize-only run on this repository, 280 s: released v0.31.1 holds 63 MB live with its sweep still publishing (448 diagnostics); the worktree build at `0c5725f73` holds 868 MB in 6.9M allocations with the sweep stuck at 81. `sample` puts the stuck sweep in the DAW project (`src/osprey/examples/daw`, added after v0.31.1 by #427): `osprey src/osprey/examples/daw --check --no-warnings` alone takes 32.7 s and 1.46 GB, and the redundant-annotation pass adds its trials on top. The cache rule holds; the type checker's cost on DAW is the blocker. Fix that, then re-measure until the sweep finishes.
 
 ## Open, not yet fixed
 

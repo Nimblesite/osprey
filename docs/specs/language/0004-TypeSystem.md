@@ -1020,6 +1020,14 @@ Erasing an `int`, `float` or `bool` keeps a scalar row: those values carry no
 fields, so every field-naming arm declines and only a binding or `_` arm selects
 them.
 
+A handle's element is never erased. `Fiber<T>` and `Channel<T>` hand `T` back
+through `await` and `recv` as an unboxed word, so a handle with a concrete
+element passed where `Fiber<any>` or `Channel<any>` is declared is rejected
+(`a fiber or channel with a concrete element cannot be passed as a `Fiber<any>`
+or `Channel<any>``) instead of `await` reading that word as a box. Leave the
+parameter to inference, or write its element type
+(`failscompilation/fiber_any_element.ospo` and its ML twin).
+
 > **Status: implemented.** An erased value is a pointer to a two-word box
 > `{ desc, payload }` whose descriptor names its runtime shape, on every
 > memory backend and both flavors. The one-way rule holds at annotations

@@ -53,7 +53,7 @@ async fn unknown_method_yields_method_not_found_error() {
     h.shutdown_and_exit().await;
 }
 
-/// Implements [LSP-LIFECYCLE]: unknown methods never leave a
+/// Implements [LSP-MEMORY-BACKLOG]: unknown methods never leave a
 /// cancellation entry behind in the server's real dispatcher.
 #[tokio::test]
 async fn unknown_methods_leave_no_request_in_flight() {

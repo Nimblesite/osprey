@@ -15,6 +15,7 @@ use crate::ty::{names, Scheme, Type};
 use osprey_ast::{Expr, MatchArm, Pattern};
 use std::collections::{BTreeMap, HashMap};
 
+mod alternatives;
 mod constructors;
 mod exhaustive;
 mod joins;
@@ -136,6 +137,7 @@ impl Checker {
             Pattern::List { elements, rest } => {
                 self.bind_list_pattern(elements, rest.as_deref(), disc, local);
             }
+            Pattern::Or(alternatives) => self.bind_alternatives(alternatives, disc, local),
         }
     }
 
@@ -230,6 +232,10 @@ pub(crate) fn pattern_binders_where(
             .iter()
             .flat_map(|(_, slot)| pattern_binders_where(slot, binding))
             .collect(),
+        // Every alternative binds the same names ([PATTERN-OR-BINDINGS]).
+        Pattern::Or(alternatives) => alternatives
+            .first()
+            .map_or_default(|first| pattern_binders_where(first, binding)),
         Pattern::Wildcard | Pattern::Literal(_) => Vec::new(),
     }
 }

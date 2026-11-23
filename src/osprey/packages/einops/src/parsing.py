@@ -19,7 +19,17 @@ __all__ = [
 
 
 def map_indexed(xs, read):
-    """`xs` rebuilt with its indices: element `i` of the result is `read(i)`."""
+    """`xs` rebuilt with its indices: element `i` of the result is `read(i)`.
+
+    # Examples
+    ```osprey
+    from einops import Parsing
+    print(f"[{toString(Parsing.map_indexed([5, 6, 7], lambda i: i * 3))}] [{toString(Parsing.map_indexed([], lambda i: i))}]")
+    ```
+    ```output
+    [[0, 3, 6]] [[]]
+    ```
+    """
     return toList(map(range(len(xs)), read))
 
 ELLIPSIS = "…"
@@ -57,7 +67,18 @@ class AxisNameCheck:
 
 
 def named(name):
-    """A named axis."""
+    """A named axis.
+
+    # Examples
+    ```osprey
+    from einops import Parsing
+    ax = Parsing.named("h")
+    print(f"[{ax.kind}] [{ax.name}] [{ax.value}]")
+    ```
+    ```output
+    [named] [h] [0]
+    ```
+    """
     return Axis(kind="named", name=name, value=0)
 
 
@@ -71,7 +92,20 @@ def ellipsis_axis():
 
 def axis_repr(ax):
     """An axis as Python's `repr` prints it inside a set message: `'b'` for a
-    named axis, `2-axis` for an anonymous one, `'…'` for the ellipsis."""
+    named axis, `2-axis` for an anonymous one, `'…'` for the ellipsis.
+
+    # Examples
+    ```osprey
+    from einops import Parsing
+    named_ax = Parsing.named("b")
+    anonymous_ax = Parsing.Axis(kind="anonymous", name="", value=2)
+    ellipsis_ax = Parsing.Axis(kind="ellipsis", name=Parsing.ELLIPSIS, value=0)
+    print(f"[{Parsing.axis_repr(named_ax)}] [{Parsing.axis_repr(anonymous_ax)}] [{Parsing.axis_repr(ellipsis_ax)}]")
+    ```
+    ```output
+    ['b'] [2-axis] ['…']
+    ```
+    """
     if ax.kind == "named":
         return "'" + ax.name + "'"
     elif ax.kind == "anonymous":
@@ -81,7 +115,18 @@ def axis_repr(ax):
 
 
 def format_axes(axes):
-    """`{'a', 'b'}`: a set of axes, sorted by `axis_repr`, as an error names it."""
+    """`{'a', 'b'}`: a set of axes, sorted by `axis_repr`, as an error names it.
+
+    # Examples
+    ```osprey
+    from einops import Parsing
+    axes = [Parsing.named("b"), Parsing.named("a")]
+    print(f"[{Parsing.format_axes(axes)}] [{Parsing.format_axes([])}]")
+    ```
+    ```output
+    [{'a', 'b'}] [{}]
+    ```
+    """
     sorted_axes = listSortBy(axes, lambda a, b: 1 if axis_repr(a) > axis_repr(b) else (-1 if axis_repr(a) < axis_repr(b) else 0))
     return "{" + join(map_indexed(sorted_axes, lambda i: axis_repr(unwrap_or(listGet(sorted_axes, i), named("")))), ", ") + "}"
 
@@ -124,7 +169,30 @@ def is_decimal(x):
 
 
 def check_axis_name_return_reason(name, allow_underscore):
-    """The original's identifier rule, with its exact reasons."""
+    """The original's identifier rule, with its exact reasons.
+
+    # Examples
+    ```osprey
+    from einops import Parsing
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(op, l, r, wrapped_value):
+            return wrapped_value
+
+    def show():
+        with wrapped:
+            bad = Parsing.check_axis_name_return_reason("1a", False)
+            underscore = Parsing.check_axis_name_return_reason("_h", False)
+            lone = Parsing.check_axis_name_return_reason("_", True)
+            print(f"[{bad.is_valid} {bad.reason}] [{underscore.is_valid} {underscore.reason}] [{lone.is_valid} {lone.reason}]")
+
+    show()
+    ```
+    ```output
+    [false not a valid python identifier] [false axis name should should not start or end with underscore] [true ]
+    ```
+    """
     if not is_identifier(name):
         return AxisNameCheck(is_valid=False, reason="not a valid python identifier")
     elif startsWith(name, "_") or endsWith(name, "_"):
@@ -137,13 +205,51 @@ def check_axis_name_return_reason(name, allow_underscore):
 
 
 def check_axis_name(name):
-    """Whether `name` is an acceptable axis name."""
+    """Whether `name` is an acceptable axis name.
+
+    # Examples
+    ```osprey
+    from einops import Parsing
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(op, l, r, wrapped_value):
+            return wrapped_value
+
+    def show():
+        with wrapped:
+            good = Parsing.check_axis_name("axis")
+            leading_digit = Parsing.check_axis_name("1a")
+            leading_underscore = Parsing.check_axis_name("_a")
+            print(f"[{good}] [{leading_digit}] [{leading_underscore}]")
+
+    show()
+    ```
+    ```output
+    [true] [false] [false]
+    ```
+    """
     return check_axis_name_return_reason(name, False).is_valid
 
 
 def axis_in_idents(idents, ax):
     """Membership in an identifier set: named axes by name, the ellipsis by kind,
-    and anonymous axes never (each occurrence is a distinct axis)."""
+    and anonymous axes never (each occurrence is a distinct axis).
+
+    # Examples
+    ```osprey
+    from einops import Parsing
+    ellipsis_ax = Parsing.Axis(kind="ellipsis", name=Parsing.ELLIPSIS, value=0)
+    anonymous_ax = Parsing.Axis(kind="anonymous", name="", value=2)
+    idents = [Parsing.named("a"), ellipsis_ax]
+    a = Parsing.named("a")
+    b = Parsing.named("b")
+    print(f"[{Parsing.axis_in_idents(idents, a)}] [{Parsing.axis_in_idents(idents, b)}] [{Parsing.axis_in_idents(idents, anonymous_ax)}] [{Parsing.axis_in_idents(idents, ellipsis_ax)}]")
+    ```
+    ```output
+    [true] [false] [false] [true]
+    ```
+    """
     if ax.kind == "anonymous":
         return False
     elif ax.kind == "ellipsis":
@@ -375,7 +481,36 @@ def parse_replaced(original, replaced, has_ellipsis, allow_underscore, allow_dup
 
 
 def parse(expression, allow_underscore, allow_duplicates):
-    """Parse one side of an einops pattern into a `ParsedExpression`."""
+    """Parse one side of an einops pattern into a `ParsedExpression`.
+
+    # Examples
+    ```osprey
+    from einops import Parsing
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(op, l, r, wrapped_value):
+            return wrapped_value
+
+    def describe(result):
+        match result:
+            case Success(value=parsed):
+                return f"[{parsed.expression}] ellipsis={parsed.has_ellipsis} identifiers={len(parsed.identifiers)} groups={len(parsed.composition)}"
+            case Error(message=m):
+                return f"error: {m}"
+
+    def show():
+        with wrapped:
+            composed = Parsing.parse("b (h w) ...", False, False)
+            dotted = Parsing.parse("b ..", False, False)
+            print(f"{describe(composed)} {describe(dotted)}")
+
+    show()
+    ```
+    ```output
+    [b (h w) ...] ellipsis=true identifiers=4 groups=3 error: Expression may contain dots only inside ellipsis (...)
+    ```
+    """
     if contains(expression, "."):
         if not contains(expression, "..."):
             return Error(message="Expression may contain dots only inside ellipsis (...)")
@@ -389,10 +524,66 @@ def parse(expression, allow_underscore, allow_duplicates):
 
 
 def flat_axes_order(expr):
-    """Every axis of the composition in order, ignoring the ellipsis."""
+    """Every axis of the composition in order, ignoring the ellipsis.
+
+    # Examples
+    ```osprey
+    from einops import Parsing
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(op, l, r, wrapped_value):
+            return wrapped_value
+
+    def flat_text(result):
+        match result:
+            case Success(value=parsed):
+                return f"flat={join(mapList(Parsing.flat_axes_order(parsed), lambda ax: ax.name), ",")}"
+            case Error(message=m):
+                return f"error: {m}"
+
+    def show():
+        with wrapped:
+            print(flat_text(Parsing.parse("b (h w) ...", False, False)))
+
+    show()
+    ```
+    ```output
+    flat=b,h,w
+    ```
+    """
     return foldList(expr.composition, [], lambda acc, c: listConcat(acc, c.axes))
 
 
 def has_composed_axes(expr):
-    """Whether any group composes more than one axis."""
+    """Whether any group composes more than one axis.
+
+    # Examples
+    ```osprey
+    from einops import Parsing
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(op, l, r, wrapped_value):
+            return wrapped_value
+
+    def composed_text(result):
+        match result:
+            case Success(value=parsed):
+                return f"grouped={Parsing.has_composed_axes(parsed)}"
+            case Error(message=m):
+                return f"error: {m}"
+
+    def show():
+        with wrapped:
+            split = Parsing.parse("b (h w) ...", False, False)
+            flat = Parsing.parse("b c", False, False)
+            print(f"{composed_text(split)} {composed_text(flat)}")
+
+    show()
+    ```
+    ```output
+    grouped=true grouped=false
+    ```
+    """
     return len(filterList(expr.composition, lambda c: c.kind == "group" and len(c.axes) > 1)) > 0

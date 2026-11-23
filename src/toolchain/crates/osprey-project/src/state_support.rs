@@ -33,6 +33,11 @@ pub(crate) fn pattern_names(pattern: &Pattern, names: &mut BTreeSet<String>) {
             }
             names.extend(rest.iter().cloned());
         }
+        Pattern::Or(alternatives) => {
+            for alternative in alternatives {
+                pattern_names(alternative, names);
+            }
+        }
         Pattern::Wildcard | Pattern::Literal(_) => {}
     }
 }

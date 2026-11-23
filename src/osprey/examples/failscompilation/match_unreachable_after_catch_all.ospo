@@ -26,3 +26,16 @@ fn layered(r) = match r {
 }
 print("${depth(Leaf)} ${layered(Success { value: 1 })}")
 
+// [PATTERN-OR-EXHAUSTIVE] An alternative an earlier arm, or an earlier
+// alternative of the same pattern, already covers is unreachable.
+fn shade(c) = match c {
+    Red => "r"
+    Green | Red => "g"
+    Blue => "b"
+}
+fn twice(c) = match c {
+    Blue | Blue => "b"
+    _ => "?"
+}
+print("${shade(Red)} ${twice(Blue)}")
+

@@ -12,6 +12,15 @@ namespace todo;
 import todo::TodoHarness
 import todo::TodoProbe
 
+/// The titles of the two seeded lists, in id order.
+let seededTitles = ["Shopping", "Banking"]
+
+/// The seven titles of list 1, in id order.
+let sevenTitles = ["A", "B", "C", "D", "E", "F", "G"]
+
+/// What the title length rule answers.
+let titleTooLong = ValidationFault { problems: ["'Title' must be at most 200 characters."] }
+
 /// Two seeded lists.
 fn twoLists() = [TodoHarness::seedList(1, "Shopping", "#78909C"), TodoHarness::seedList(2, "Banking", "#AB47BC")]
 
@@ -23,11 +32,11 @@ fn threeItems() = [
 ]
 
 /// Seven items in list 1, titled so title order is id order.
-fn sevenItems() = mapList(["A", "B", "C", "D", "E", "F", "G"], fn(title) =>
+fn sevenItems() = mapList(sevenTitles, fn(title) =>
     TodoHarness::seedItem(length(listTitlesUpTo(title)), 1, title, false))
 
 /// The titles from "A" up to and including `title`.
-fn listTitlesUpTo(title) = filterList(["A", "B", "C", "D", "E", "F", "G"], fn(each) => each <= title)
+fn listTitlesUpTo(title) = filterList(sevenTitles, fn(each) => each <= title)
 
 /// The page a plan branch answers.
 fn pageOfTitles(titles, hasPrevious, hasNext) = Success { value: ItemsPageView {
@@ -68,7 +77,7 @@ module MultishotCases {
         ])
         checkAll("three resumptions; the purge that ran is rolled back", [
             probe.readings == 7,
-            structuralEquals(titlesOf(probe.lists), ["Shopping", "Banking"]),
+            structuralEquals(titlesOf(probe.lists), seededTitles),
             length(probe.items) == 3,
             length(probe.events) == 0
         ])
@@ -94,7 +103,7 @@ module MultishotCases {
             Success { value: CreatedId { value: 3 } }
         ])
         checkAll("every branch created list 3 and none of them is left behind", [
-            structuralEquals(titlesOf(creates.lists), ["Shopping", "Banking"]),
+            structuralEquals(titlesOf(creates.lists), seededTitles),
             creates.readings == 7
         ])
         let completes = TodoHarness::probed(TodoHarness::anonymous(), twoLists(), threeItems(), WhoMayRun { request: UpdateItem { edit: ItemEdit { id: 1, title: "Milk", done: true } } })
@@ -128,14 +137,14 @@ module MultishotCases {
             Error { message: ValidationFault { problems: [
                 "UnsupportedColour: '#HotPink' is not a supported colour"
             ] } },
-            Error { message: ValidationFault { problems: ["'Title' must be at most 200 characters."] } }
+            Error { message: titleTooLong }
         ])
         let fixable = TodoHarness::probed(TodoHarness::admin(), twoLists(), [], WhichFixesWork { request: CreateList { list: NewList { title: wide(201), colour: "#AB47BC" } } })
         expect(fixable.answers, [
-            Error { message: ValidationFault { problems: ["'Title' must be at most 200 characters."] } },
-            Error { message: ValidationFault { problems: ["'Title' must be at most 200 characters."] } },
+            Error { message: titleTooLong },
+            Error { message: titleTooLong },
             Success { value: CreatedId { value: 3 } },
-            Error { message: ValidationFault { problems: ["'Title' must be at most 200 characters."] } }
+            Error { message: titleTooLong }
         ])
         let padded = TodoHarness::probed(TodoHarness::admin(), twoLists(), [], WhichFixesWork { request: CreateList { list: NewList { title: "  Shopping  ", colour: "" } } })
         expect(padded.answers, [
@@ -148,9 +157,9 @@ module MultishotCases {
             hopeless.readings == 6,
             fixable.readings == 6,
             padded.readings == 6,
-            structuralEquals(titlesOf(hopeless.lists), ["Shopping", "Banking"]),
-            structuralEquals(titlesOf(fixable.lists), ["Shopping", "Banking"]),
-            structuralEquals(titlesOf(padded.lists), ["Shopping", "Banking"]),
+            structuralEquals(titlesOf(hopeless.lists), seededTitles),
+            structuralEquals(titlesOf(fixable.lists), seededTitles),
+            structuralEquals(titlesOf(padded.lists), seededTitles),
             length(TodoProbe::fixes()) == 4
         ])
     }
@@ -160,10 +169,10 @@ module MultishotCases {
     export fn pagePlanCase() = {
         let plan = TodoHarness::probed(TodoHarness::admin(), twoLists(), sevenItems(), PagePlan { listId: 1 })
         expect(plan.answers, [
-            pageOfTitles(["A", "B", "C", "D", "E"], false, true),
+            pageOfTitles(listTitlesUpTo("E"), false, true),
             pageOfTitles(["F", "G"], true, false),
-            pageOfTitles(["A", "B", "C", "D", "E", "F", "G"], false, false),
-            pageOfTitles(["A", "B", "C", "D", "E", "F", "G"], false, false)
+            pageOfTitles(sevenTitles, false, false),
+            pageOfTitles(sevenTitles, false, false)
         ])
         let empty = TodoHarness::probed(TodoHarness::admin(), twoLists(), sevenItems(), PagePlan { listId: 2 })
         checkAll("four resumptions of one query; an empty list plans four empty pages", [

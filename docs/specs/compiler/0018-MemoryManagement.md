@@ -104,19 +104,24 @@ the ARC target additionally checks its live-allocation counter at process exit.
 
 ### Tracing Heap Layout [MEM-BACKENDS-GC-HEAP]
 
-Today the tracing backend takes every block from the system allocator and records it in one open-addressing table keyed by the block's address. A collection marks through that table, frees the unmarked blocks one by one, and reseats the survivors in place. The table keeps its capacity between collections and shrinks only after a collection that peaked below it.
+The tracing backend keeps a block in one of two places, chosen by its size.
 
-That layout is correct but slow for programs that allocate many short-lived small blocks. In the `binarytrees` benchmark the program's own code is about 5% of the run: the system allocator's `malloc` and `free` take about 38%, the table insert on each allocation about 28%, and collection about 25%. The run collects 133 times while about 640 KiB stays live. Resolving scanned words through the table is a small part of that (about 6%).
+**Small blocks, up to 1024 bytes, are cells of size-class pages.** A page is a 64 KiB region, aligned to 64 KiB, that holds cells of one size. Cell sizes step by 16 bytes, so there are 64 classes, and every cell is 16-byte aligned.
 
-Planned, not built ([plan 0033](../../plans/0033-generated-code-performance.md), phase 2): small blocks come from size-class pages that the collector owns.
+- **Allocation** takes a cell from a page of the block's class that has room: first a cell a collection found dead, lowest address first, then a cell never used. It makes no system allocator call and no table insert. A new page is taken from the system only when no page of the class has room.
+- **Lookup** of a scanned word masks the address to its page, then divides the offset by the cell size. The word names a block only when it is the first byte of a cell in use. A byte inside a cell, a dead cell, a cell never used and the page's own header name nothing, which is the rule the table applies, so no program retains more or less than it did with the table alone.
+- **Per-block state** (size, marked, finalizer, string, pinned, leaf) is an 8-byte record per cell in an array at the head of the page, outside the cells. A dead cell's record links the page's dead cells, so a dead cell's own bytes are never written.
+- **Sweep** unmarks a page's survivors and lists every other cell as dead. A page left with no live cell goes back to the system. Finalizers of every dying block, in pages and in the table, run before any block of that collection is freed or reused.
 
-- **Allocation** takes the next free cell of a page of the block's size class. It makes no system allocator call and no table insert.
-- **Lookup** of a scanned word finds its page from the address, then its cell from the offset in the page. A word keeps a block alive under exactly the rule the table applies today, so no program retains more or less than it does now.
-- **Per-block state** (marked, finalizer, string, pinned) is held in the page, beside the cells and outside them.
-- **Sweep** clears a page's unmarked cells for reuse and returns a page with no live cell to the operating system. Finalizers still run before any block of that collection is reused.
-- **Large blocks**, above the largest size class, keep the system allocator and the table.
+**Larger blocks keep the system allocator and one open-addressing table** keyed by the block's address. A collection frees the unmarked ones and reseats the survivors in place. The table keeps its capacity between collections and shrinks only after a collection that peaked below it.
 
-A cell freed by a collection is reused only by later allocations of the same size class. This replaces the allocator. It is not the recycling pool that was measured to make `binarytrees` about 12 times slower, which sat on top of the system allocator and cycled a cold working set.
+A small block also becomes a table block when no page can be had (the system refused one), and always in a symbolic build (`OSP_SYMBOLIC`), where the engine must see each block as an object of its own. `OSPREY_GC_PAGES=0` turns the pages off for a run, so every block is a table block: it exists to compare the two layouts and for the runtime's out-of-memory tests, which refuse one system block by its size.
+
+Measured on `binarytrees` (Apple M4 Max, same binary, `OSPREY_GC_PAGES=0` against the default): 1.37 s with the table alone, 0.25 s with pages. Before pages the program's own code was about 5% of that run: `malloc` and `free` took about 38%, the table insert on each allocation about 28%, and collection about 25%. `exprtree`, `mergesort`, `quicksort` and `wordfreq` are also faster and no benchmark case is slower. Peak resident memory moves with how full the pages are: `exprtree` falls from 22.7 MB to 11.7 MB, while `mergesort`, `quicksort` and `wordfreq` rise by about 5 MB, because a page with one live cell stays.
+
+The collection budget's floor stays at 4 MiB (`OSPREY_GC_HEAP_MB`). With pages, 2 MiB halves `binarytrees`' peak memory (17.5 MB to 9.8 MB) but slows it from 0.25 s to 0.33 s, and 1 MiB slows it to 0.52 s.
+
+An earlier recycling pool that sat on top of the system allocator made `binarytrees` about 12 times slower, because it cycled a cold working set. Pages replace the allocator for small blocks instead of adding a layer to it.
 
 The collection rules do not change: [MEM-OPAQUE], [MEM-GC-SAFEPOINT] and [MEM-EFFECT-BATON] hold as written, and the supported platforms stay the same.
 
