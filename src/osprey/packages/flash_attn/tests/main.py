@@ -134,9 +134,21 @@ def varlen_checks(i):
     cu_q = row(Expected.VARLEN_CUQ, i)
     cu_k = row(Expected.VARLEN_CUK, i)
     o = opts_of(Expected.VARLEN_SCALES, Expected.VARLEN_CAUSAL, Expected.VARLEN_WINDOWS, Expected.VARLEN_ALIBI, Expected.VARLEN_RETURN, i)
-    r = Attention.flash_attn_varlen_func(row(Expected.VARLEN_Q, i), row(Expected.VARLEN_K, i), row(Expected.VARLEN_V, i), cu_q, cu_k, max_diff(cu_q), max_diff(cu_k), at(Expected.VARLEN_HQ, i, 0), at(Expected.VARLEN_HK, i, 0), at(Expected.VARLEN_HD, i, 0), o.scale, o.causal, o.window_left, o.window_right, o.alibi, o.ret)
-    checks = close_all_each(f"varlen{i}", [".out", ".lse"], [r.out, r.lse], [row(Expected.VARLEN_OUT, i), row(Expected.VARLEN_LSE, i)])
-    return listConcat(checks, probs_checks(f"varlen{i}", o.ret, r.probs, row(Expected.VARLEN_PROBS, i)))
+    match Attention.flash_attn_varlen_func(row(Expected.VARLEN_Q, i), row(Expected.VARLEN_K, i), row(Expected.VARLEN_V, i), cu_q, cu_k, max_diff(cu_q), max_diff(cu_k), at(Expected.VARLEN_HQ, i, 0), at(Expected.VARLEN_HK, i, 0), at(Expected.VARLEN_HD, i, 0), o.scale, o.causal, o.window_left, o.window_right, o.alibi, o.ret):
+        case Success(value=r):
+            checks = close_all_each(f"varlen{i}", [".out", ".lse"], [r.out, r.lse], [row(Expected.VARLEN_OUT, i), row(Expected.VARLEN_LSE, i)])
+            return listConcat(checks, probs_checks(f"varlen{i}", o.ret, r.probs, row(Expected.VARLEN_PROBS, i)))
+        case Error(message=m):
+            return [Check.failed(f"varlen{i}", m)]
+
+
+def varlen_error(q, cu):
+    """The error a varlen call reports when its cumulative lengths overrun the inputs."""
+    match Attention.flash_attn_varlen_func(q, q, q, cu, cu, 0, 0, 1, 1, 1, 1.0, False, -1, -1, [], False):
+        case Success():
+            return "no error"
+        case Error(message=m):
+            return m
 
 
 def varlen_cases():
@@ -166,7 +178,11 @@ def core_checks():
         Check.equal("core.dim4", Core.dim4(2, 3, 4, 5, 0).a, 0),
         Check.close("core.dot", Core.dot([1.0, 2.0], [5.0, 6.0], hd2, 0, 0, 0, 0), 17.0, RTOL, ATOL),
         Check.close("core.v_at", Core.v_at([0.0, 1.0, 2.0, 3.0], gqa, 0, 0, 0, 1), 1.0, RTOL, ATOL),
-        Check.close_all("core.slice_flat", Core.slice_flat([1.0, 2.0, 3.0, 4.0], 1, 2), [2.0, 3.0], RTOL, ATOL),
+        Check.equal("core.slice_flat", toString(Core.slice_flat([1.0, 2.0, 3.0, 4.0], 1, 2)), "Success([2.0, 3.0])"),
+        Check.equal("core.slice_flat.empty", toString(Core.slice_flat([1.0, 2.0], 2, 0)), "Success([])"),
+        Check.equal("core.slice_flat.past_end", toString(Core.slice_flat([1.0, 2.0], 1, 2)), "Error(slice_flat: elements [1, 3) are outside a list of 2)"),
+        Check.equal("core.slice_flat.negative", toString(Core.slice_flat([1.0, 2.0], -1, 1)), "Error(slice_flat: elements [-1, 0) are outside a list of 2)"),
+        Check.equal("varlen.short_input", varlen_error([1.0], [0, 2]), "slice_flat: elements [0, 2) are outside a list of 1"),
         Check.equal("core.mask_bounds.causal", Core.mask_bounds(sq_sk, True, -1, -1, 1).hi, 2),
         Check.equal("core.mask_bounds.window.lo", Core.mask_bounds(sq_sk, False, 1, -1, 2).lo, 1),
         Check.equal("core.mask_bounds.empty", Core.mask_bounds(long_q, True, -1, -1, 0).hi, 0),

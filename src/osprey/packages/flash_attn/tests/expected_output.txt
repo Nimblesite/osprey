@@ -1028,9 +1028,13 @@ ok core.dim4
 ok core.dot
 ok core.v_at
 ok core.slice_flat
+ok core.slice_flat.empty
+ok core.slice_flat.past_end
+ok core.slice_flat.negative
+ok varlen.short_input
 ok core.mask_bounds.causal
 ok core.mask_bounds.window.lo
 ok core.mask_bounds.empty
 ok core.alibi_bias
 ok core.alibi_bias.none
-1035 passed, 0 failed
+1039 passed, 0 failed

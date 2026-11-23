@@ -349,17 +349,30 @@ def dim4(_shape_a, shape_b, shape_c, shape_d, s):
 
 
 def slice_flat(xs, start, n):
-    """A contiguous run xs[start .. start+n) as a new list, for varlen segments.
+    """A contiguous run xs[start .. start+n) as a new list, for varlen segments,
+    or an Error naming the run when any of it lies outside `xs` [FAILURE-EXPLICIT].
 
     # Examples
     ```osprey
     from flash_attn import Core
 
-    xs = [1.0, 2.0, 3.0]
-    print(f"{toString(Core.slice_flat(xs, 1, 2))} {toString(Core.slice_flat(xs, 0, 0))}")
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped_value):
+            return wrapped_value
+
+    def show():
+        xs = [1.0, 2.0, 3.0]
+        with wrapped:
+            print(f"{toString(Core.slice_flat(xs, 1, 2))} {toString(Core.slice_flat(xs, 0, 0))} {toString(Core.slice_flat(xs, 2, 2))}")
+
+    show()
     ```
     ```output
-    [2.0, 3.0] []
+    Success([2.0, 3.0]) Success([]) Error(slice_flat: elements [2, 4) are outside a list of 3)
     ```
     """
-    return toList(map(range(n), lambda i: unwrap_or(listGet(xs, start + i), 0.0)))
+    outside = start < 0 or n < 0 or start + n > len(xs)
+    # Every index is inside `xs` when `outside` is false, so the fallback is never read.
+    inside = lambda: Success(value=toList(map(range(n), lambda i: unwrap_or(listGet(xs, start + i), 0.0))))
+    return Error(message=f"slice_flat: elements [{start}, {start + n}) are outside a list of {len(xs)}") if outside else inside()
