@@ -15,13 +15,7 @@ fn iota3(a, b, c, work) = {
     use z <- withIndices(c)
     work(x, y, z)
 }
-fn iota4(a, b, c, d, work) = {
-    use x <- withIndices(a)
-    use y <- withIndices(b)
-    use z <- withIndices(c)
-    use w <- withIndices(d)
-    work(x, y, z, w)
-}
+fn iota4(a, b, c, d, work) = iota3(a, b, c, fn(x, y, z) => withIndices(d, fn(w) => work(x, y, z, w)))
 // GPU stress, scale and numeric-edge workloads: million-element pipelines, two-dozen-pass chains, buffers rebuilt from their own output, and the checked-arithmetic
 // boundaries where a `?:` fallback is all that stands between a kernel and an overflow. Every expected value is closed-form, and every accumulation that can overflow
 // asserts both sides of its boundary — the last value that fits and the first that does not ([GPU-BACKEND-HOST], [GPU-FOLD], [GPU-SCAN], [GPU-FILTER], [GPU-ZIPWITH],

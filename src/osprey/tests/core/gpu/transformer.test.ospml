@@ -177,6 +177,8 @@ written (path, content) =
         Error _ => false
 loadFailure (path, offset, count) = failureOf (gpuLoad (path, offset, count))
 tensorFailure (path, name) = failureOf (gpuLoadTensor (path, name))
+(** tensorRefuses holds when gpuLoadTensor names `path` and `reason` for refusing tensor `name`. *)
+tensorRefuses (path, name, reason) = tensorFailure (path, name) == "gpuLoadTensor: " + path + ": " + reason
 (** Two uploaded float buffers in sequence: the entry shape the buffer cases share. *)
 twoFloats (xs, ys, next) = withBuffer (floats (xs), \a => withBuffer (floats (ys), \b => next (a, b)))
 matMulExactCase () = twoFloats ([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], [7.0, 8.0, 9.0, 10.0, 11.0, 12.0], matMulExactCaseUploaded)
@@ -400,9 +402,9 @@ tensorHeaderCase () =
     missing = scratch + "_missing.safetensors"
     ready = written (short, "abc") && written (ascii, "AAAAAAAA{}")
     checkAll "gpuLoadTensor names the file and the reason its header cannot be read" [
-        ready, tensorFailure (short, "wte.weight") == "gpuLoadTensor: " + short + ": shorter than a safetensors header prefix",
-        tensorFailure (ascii, "wte.weight") == "gpuLoadTensor: " + ascii + ": header length is not plausible for safetensors",
-        tensorFailure (missing, "wte.weight") == "gpuLoadTensor: " + missing + ": No such file or directory"
+        ready, tensorRefuses (short, "wte.weight", "shorter than a safetensors header prefix"),
+        tensorRefuses (ascii, "wte.weight", "header length is not plausible for safetensors"),
+        tensorRefuses (missing, "wte.weight", "No such file or directory")
     ]
 (** Exact-value tests record any arithmetic fault as a failed assertion; the kernels' `%` and `/` by a non-literal divisor dispatch to this policy. *)
 exactTests [

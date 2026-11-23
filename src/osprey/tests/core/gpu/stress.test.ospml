@@ -13,12 +13,7 @@ iota3 (a, b, c, work) =
     use y <- withIndices (b)
     use z <- withIndices (c)
     work (x, y, z)
-iota4 (a, b, c, d, work) =
-    use x <- withIndices (a)
-    use y <- withIndices (b)
-    use z <- withIndices (c)
-    use w <- withIndices (d)
-    work (x, y, z, w)
+iota4 (a, b, c, d, work) = iota3 (a, b, c, \(x, y, z) => withIndices (d, \w => work (x, y, z, w)))
 // GPU stress, scale and numeric-edge workloads: million-element pipelines,
 // two-dozen-pass chains, buffers rebuilt from their own output, and the
 // checked-arithmetic boundaries where a `?:` fallback is all that stands
