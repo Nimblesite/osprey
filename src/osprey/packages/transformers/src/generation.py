@@ -29,7 +29,41 @@ def generate(next_logits, tokens, processors, stoppers, sampler, max_new_tokens)
     """Produce up to `max_new_tokens` more tokens after `tokens`, stopping when a
     criterion fires. `processors` is a `list[LogitsProcessor]`, `stoppers` a
     `list[StoppingCriterion]`, and `sampler` picks one token from a logits row.
-    A non-finite logits row is an `Error` naming the step that produced it."""
+    A non-finite logits row is an `Error` naming the step that produced it.
+
+    # Examples
+    ```osprey
+    from transformers import Generation, StoppingCriteria
+    from transformers import Math
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped_value):
+            return wrapped_value
+
+        def divideByZero(_op, _l):
+            return 0.0
+
+    def constant(_tokens):
+        return [toFloat32(1.0), toFloat32(2.0), toFloat32(0.0)]
+
+    def empty(_tokens):
+        return []
+
+    def describe(result):
+        match result:
+            case Success(value=tokens):
+                return f"produced {toString(tokens)}"
+            case Error(message=message):
+                return message
+
+    def show():
+        with wrapped:
+            print(f"[{toString(unwrap_or(Generation.generate(constant, [7], [], [StoppingCriteria.MaxLengthCriteria(2)], Math.argmax, 5), []))}] [{describe(Generation.generate(empty, [7], [], [], Math.argmax, 1))}]")
+
+    show()
+    ```
+    """
     if max_new_tokens < 0:
         return Error(message="generate: negative token budget")
     else:
