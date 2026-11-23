@@ -43,6 +43,7 @@ src/osprey/tests/regressions/basics/files/directory_io.test.osp directory access
 src/osprey/tests/regressions/basics/files/directory_io.test.ospml directory access builtin `listDir`
 src/osprey/tests/regressions/basics/osprey_mega_showcase.test.osp fiber concurrency
 src/osprey/tests/regressions/basics/osprey_mega_showcase.test.ospml fiber concurrency
+src/osprey/tests/regressions/basics/osprey_mega_showcase.test.py fiber concurrency
 src/osprey/tests/regressions/basics/processes/async_process_management.test.osp process spawning builtin `awaitProcess`
 src/osprey/tests/regressions/basics/processes/async_process_management.test.ospml process spawning builtin `awaitProcess`
 src/osprey/tests/regressions/basics/processes/callback_stdout_demo.test.osp process spawning builtin `spawnProcess`

@@ -30,6 +30,7 @@ mod resolve;
 mod rewrite;
 mod signature_collect;
 mod source;
+pub use source::{project_root, python_source};
 mod source_dependencies;
 pub use source_dependencies::SourceDependency;
 mod state;
