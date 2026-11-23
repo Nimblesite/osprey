@@ -123,27 +123,21 @@ module GovernanceHandover {
         Governance::requireHumanCeremony(proof)
     }
 
-    fn liveTransfer(t: Governance::Transfer) = requiredTransfer(t, Governance::isLiveTransfer(t), "governance.transfer.not-pending")
+    fn liveTransfer(t: Governance::Transfer) = Governance::required(Governance::isLiveTransfer(t), t, "governance.transfer.not-pending")
 
-    fn acceptedTransfer(t: Governance::Transfer) = requiredTransfer(t, Governance::isAcceptedTransfer(t), "governance.transfer.acceptance-missing")
+    fn acceptedTransfer(t: Governance::Transfer) = Governance::required(Governance::isAcceptedTransfer(t), t, "governance.transfer.acceptance-missing")
 
-    /// `t` when the proposal passes `flag`, else the refusal `code`.
-    fn requiredTransfer(t: Governance::Transfer, flag, code) = if flag { Success { value: t } } else { Error { message: code } }
-
-    fn withinHold(t: Governance::Transfer, decidedAt) = match decidedAt < t.notBefore {
-        true => Error { message: "governance.transfer.hold" }
-        false => match decidedAt > t.expiresAt {
-            true => Error { message: "governance.transfer.expired" }
-            false => Success { value: t }
-        }
+    /// `t` once `decidedAt` is inside the hold window: not before it opens,
+    /// not after the proposal expires.
+    fn withinHold(t: Governance::Transfer, decidedAt) = {
+        use _ <- andThen(Governance::required(decidedAt >= t.notBefore, t, "governance.transfer.hold"))
+        Governance::required(decidedAt <= t.expiresAt, t, "governance.transfer.expired")
     }
 
-    fn stillCurrent(t: Governance::Transfer, pkg: Governance::Package) = match pkg.admin == t.current {
-        false => Error { message: "governance.transfer.stale-admin" }
-        true => match pkg.authorityEpoch == t.expectedEpoch {
-            false => Error { message: "governance.transfer.stale-epoch" }
-            true => Success { value: t }
-        }
+    /// `t` while the package still has the admin and epoch it was proposed under.
+    fn stillCurrent(t: Governance::Transfer, pkg: Governance::Package) = {
+        use _ <- andThen(Governance::required(pkg.admin == t.current, t, "governance.transfer.stale-admin"))
+        Governance::required(pkg.authorityEpoch == t.expectedEpoch, t, "governance.transfer.stale-epoch")
     }
 
     fn completed(registry, pkg: Governance::Package, t: Governance::Transfer) = {

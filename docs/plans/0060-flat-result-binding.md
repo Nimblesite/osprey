@@ -196,10 +196,12 @@ The binder is on the left of every step, and the answer is the last line.
   - [x] Delete every module-local `andThen`. Done 2026-11-24: `Checked::andThen` (316 calls in 36 manager files) and the tensor tests' `Backends::andThen` (60 calls) were copies of the prelude `andThen`; every caller now uses the prelude one. Manager suites 521/521 under GC, tensor twins match their golden under GC and ARC.
   - Remove the lambda type annotations the rewrite makes unnecessary.
   - Import `registry::Governance as G`.
-  - Flatten the nested `match bool` ladders (`withinHold`, `stillCurrent`)
-    into guard steps.
-  - Merge the duplicate guard helpers (`requiredTransfer` and
-    `Governance::required`).
+  - [x] Flatten the nested `match bool` ladders (`withinHold`, `stillCurrent`)
+    into guard steps. Done 2026-11-24: each is two `Governance::required` steps.
+  - [x] Merge the duplicate guard helpers (`requiredTransfer` and
+    `Governance::required`). Done 2026-11-24: `required` is exported and
+    `requiredTransfer` is gone. `governance_handover.osp` and
+    `governance_transitions.osp` are pyramid-free.
   - Hand the mechanical rewrites to pi, in the order AGENTS.md sets. Review
     every diff by hand.
 - [ ] **4. Lint.** Add `[LINT-NESTING-LAMBDA]` to CI phase 1. It must be green

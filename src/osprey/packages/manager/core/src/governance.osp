@@ -112,8 +112,14 @@ module Governance {
     /// Permission equality by canonical name.
     export fn samePermission(a, b) = permissionName(a) == permissionName(b)
 
-    /// `value` when `flag` holds, else the refusal `code`.
-    fn required(flag, value, code) = if flag { Success { value: value } } else { Error { message: code } }
+    /// `value` when `flag` holds, else the refusal `code`: the one guard
+    /// step every transition chains with `use`.
+    /// # Examples
+    /// ```osprey
+    /// let kept = required(true, 7, "governance.example.refused")
+    /// let refused = required(false, 7, "governance.example.refused")
+    /// ```
+    export fn required(flag, value, code) = if flag { Success { value: value } } else { Error { message: code } }
 
     export fn activeMemberOf(membership: Membership) = required(isActive(membership), membership, "governance.membership.inactive")
 
