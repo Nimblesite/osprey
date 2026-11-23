@@ -41,83 +41,83 @@ fn a_still_generic_lambda_with_no_slot_at_all_is_rejected() {
 #[test]
 fn float_literal_match_uses_fcmp() {
     // A float-literal arm drives gen_eq's fcmp-oeq path (pattern.rs 487-491).
-    let ir = module(
+    lowers(
         "fn pick(x) = match x {\n\
                1.5 => 1\n\
                _   => 0\n\
              }\n\
              fn main() -> Unit = print(\"${pick(1.5)}\")\n",
+        &["fcmp oeq double"],
     );
-    shows(&ir, &["fcmp oeq double"]);
 }
 
 #[test]
 fn float_and_bool_elements_box_into_collections() {
     // Boxing a double (bitcast) and a bool (zext) into the uniform i64
     // element ABI — conv.rs box_to_i64's Double + I1 arms.
-    let ir = module(
+    lowers(
         "fn main() -> Unit = {\n\
                let fs = listAppend(List(), 1.5)\n\
                let bs = listAppend(List(), true)\n\
                print(\"${listLength(fs)} ${listLength(bs)}\")\n\
              }\n",
+        &["bitcast double", "zext i1"],
     );
-    shows(&ir, &["bitcast double", "zext i1"]);
 }
 
 #[test]
 fn boolean_equality_zexts_operands_to_i64() {
     // Comparing two bools widens each to i64 for the icmp (conv.rs as_i64's
     // I1 arm).
-    let ir = module(
+    lowers(
         "fn main() -> Unit = {\n\
                let a = true\n\
                let b = false\n\
                print(\"${a == b}\")\n\
              }\n",
+        &["zext i1", "icmp eq i64"],
     );
-    shows(&ir, &["zext i1", "icmp eq i64"]);
 }
 
 #[test]
 fn float_compared_to_int_promotes_via_sitofp() {
     // A float compared with an int literal promotes the int to double
     // (conv.rs as_double's I64 arm) inside gen_comparison's float branch.
-    let ir = module(
+    lowers(
         "fn main() -> Unit = {\n\
                let f = 2.5\n\
                let gt = f > 2\n\
                print(\"${gt}\")\n\
              }\n",
+        &["sitofp i64", "fcmp"],
     );
-    shows(&ir, &["sitofp i64", "fcmp"]);
 }
 
 #[test]
 fn code_point_width_cursor_builtin() {
     // strings.rs codePointWidth dispatch arm (the one cursor builtin not
     // exercised by the broad string sweep).
-    let ir = module(
+    lowers(
         "fn main() -> Unit = match codePointWidth(2) {\n\
                Success { value } => print(\"w=${value}\")\n\
                Error { message } => print(\"no\")\n\
              }\n",
+        &["osp_string_codepoint_width"],
     );
-    shows(&ir, &["osp_string_codepoint_width"]);
 }
 
 #[test]
 fn yield_without_value_and_let_bound_lambda_materialize() {
     // `yield` with no operand (fiber.rs gen_yield None) and a let-bound
     // lambda materialized as a closure cell (lower.rs gen_bind lambda arm).
-    let ir = module(
+    lowers(
         "fn main() -> Unit = {\n\
                yield\n\
                let inc = fn(x: int) => x + 1\n\
                print(\"${inc(4)}\")\n\
              }\n",
+        &["define"],
     );
-    shows(&ir, &["define"]);
 }
 
 #[test]

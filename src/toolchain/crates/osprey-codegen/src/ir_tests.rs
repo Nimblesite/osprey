@@ -22,6 +22,11 @@ fn module(src: &str) -> String {
     compile_program(&parsed(src, Flavor::Default)).expect("codegen should succeed")
 }
 
+/// Compiles `src` and asserts the module shows every one of `wants`.
+fn lowers(src: &str, wants: &[&str]) {
+    shows(&module(src), wants);
+}
+
 fn ml_module(src: &str) -> String {
     compile_program(&parsed(src, Flavor::Ml)).expect("ML codegen should succeed")
 }
