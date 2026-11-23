@@ -407,7 +407,10 @@ impl Lowerer<'_> {
             fields: Vec::new(),
         });
         let body = self.scoped(false, tail, |lowerer| lowerer.block(&statements, case.span));
-        let fields = self.narrowed.pop().map_or_default(|narrowing| narrowing.fields);
+        let fields = self
+            .narrowed
+            .pop()
+            .map_or_default(|narrowing| narrowing.fields);
         let mut alternatives: Vec<Pattern> = shared
             .into_iter()
             .map(|label| variant_pattern(label, fields.clone()))

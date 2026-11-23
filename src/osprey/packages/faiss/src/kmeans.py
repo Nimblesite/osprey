@@ -30,7 +30,18 @@ class KmeansState:
 
 
 def Kmeans(d, k, niter, seed):
-    """faiss's `Kmeans(d, k, niter=niter, seed=seed)` constructor."""
+    """faiss's `Kmeans(d, k, niter=niter, seed=seed)` constructor.
+
+    # Examples
+    ```osprey
+    from faiss.Kmeans import Kmeans
+    km = Kmeans(2, 3, 10, 0)
+    print(f"[{km.d}] [{km.k}] [{km.niter}] [{km.seed}] {toString(km.centroids)} {toString(km.obj)}")
+    ```
+    ```output
+    [2] [3] [10] [0] [] []
+    ```
+    """
     return KmeansState(d=d, k=k, niter=niter, seed=seed, centroids=[], obj=[])
 
 
@@ -38,7 +49,41 @@ def train(km, x, init_centroids):
     """faiss's `km.train(x, init_centroids=init_centroids)`: Lloyd iterations
     from the explicit centroids. Error when there are fewer points than
     clusters; with exactly k points faiss copies the training set and runs no
-    iterations (obj is `[0.0]`)."""
+    iterations (obj is `[0.0]`).
+
+    # Examples
+    ```osprey
+    from faiss.Kmeans import Kmeans, train
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(op, l, r, wrapped_value):
+            return wrapped_value
+
+        def divideByZero(op, l):
+            return 0.0
+
+    def text(result):
+        match result:
+            case Success(value=km):
+                return f"centroids={toString(km.centroids)} obj={toString(km.obj)}"
+            case Error(message=m):
+                return f"error: {m}"
+
+    def show():
+        with wrapped:
+            four = [[0.0, 0.0], [10.0, 0.0], [0.0, 1.0], [10.0, 1.0]]
+            run = text(train(Kmeans(2, 2, 10, 0), four, [[0.0, 0.0], [10.0, 0.0]]))
+            exact = text(train(Kmeans(2, 2, 10, 0), [[1.0, 1.0], [3.0, 3.0]], [[1.0, 1.0], [3.0, 3.0]]))
+            few = text(train(Kmeans(2, 5, 10, 0), four, [[0.0, 0.0], [10.0, 0.0]]))
+            print(f"{run} {exact} {few}")
+
+    show()
+    ```
+    ```output
+    centroids=[[0.0, 0.5], [10.0, 0.5]] obj=[2.0, 1.0, 1.0] centroids=[[1.0, 1.0], [3.0, 3.0]] obj=[0.0] error: Number of training points (4) should be at least as large as number of clusters (5)
+    ```
+    """
     if len(x) < km.k:
         return Error(message=f"Number of training points ({len(x)}) should be at least as large as number of clusters ({km.k})")
     elif len(x) == km.k:
@@ -65,7 +110,38 @@ def iterate(km, x, centroids, i, prev_obj, acc):
 
 
 def assign(km, x):
-    """faiss's `km.index.search(x, 1)`: the nearest centroid id of every row."""
+    """faiss's `km.index.search(x, 1)`: the nearest centroid id of every row.
+
+    # Examples
+    ```osprey
+    from faiss.Kmeans import Kmeans, train, assign
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(op, l, r, wrapped_value):
+            return wrapped_value
+
+        def divideByZero(op, l):
+            return 0.0
+
+    def assigned(result):
+        match result:
+            case Success(value=km):
+                return f"{toString(assign(km, [[0.0, 0.75], [10.0, 0.0]]))} {toString(assign(km, []))}"
+            case Error(message=m):
+                return f"error: {m}"
+
+    def show():
+        with wrapped:
+            four = [[0.0, 0.0], [10.0, 0.0], [0.0, 1.0], [10.0, 1.0]]
+            print(f"{assigned(train(Kmeans(2, 2, 10, 0), four, [[0.0, 0.0], [10.0, 0.0]]))}")
+
+    show()
+    ```
+    ```output
+    [0, 1] []
+    ```
+    """
     idx = add(IndexFlatL2(km.d), km.centroids)
     return flatten(search(idx, x, 1).labels)
 

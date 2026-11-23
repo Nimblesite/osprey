@@ -59,7 +59,30 @@ def invalid_uuid(location, text, message):
 
 
 def uuid(location, result):
-    """Validate and normalize a UUID, retaining the original input in any validation issue."""
+    """Validate and normalize a UUID, retaining the original input in any validation issue.
+
+    # Examples
+    ```osprey
+    from fastapi import Uuids
+    from fastapi import Models as M
+
+    def verdict(result):
+        match Uuids.uuid(["path", "uid"], result):
+            case M.Valid(value=normalized):
+                return f"valid: {normalized}"
+            case M.Invalid(issues=errors):
+                match listGet(errors, 0):
+                    case Success(value=issue):
+                        return f"invalid: {issue.kind} (input {issue.input})"
+                    case Error():
+                        return "invalid"
+
+    print(f"[{verdict(Success(value='123E4567-E89B-12D3-A456-426614174000'))}] [{verdict(Success(value='123e4567e89b12d3a456426614174000'))}] [{verdict(Success(value='{123E4567-E89B-12D3-A456-426614174000}'))}] [{verdict(Success(value='zzz'))}]")
+    ```
+    ```output
+    [valid: 123e4567-e89b-12d3-a456-426614174000] [valid: 123e4567-e89b-12d3-a456-426614174000] [valid: 123e4567-e89b-12d3-a456-426614174000] [invalid: uuid_parsing (input zzz)]
+    ```
+    """
     match V.required(location, result):
         case M.Invalid(issues=errors):
             return M.Invalid(issues=errors)

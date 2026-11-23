@@ -15,22 +15,81 @@ __all__ = ["route", "path_of", "dispatch", "include_router"]
 
 
 def route(method, path, handler: Callable[[M.Request], M.Response]):
-    """Register a typed request handler for a method and route pattern."""
+    """Register a typed request handler for a method and route pattern.
+
+    # Examples
+    ```osprey
+    from fastapi import Routing
+    from fastapi import Responses
+    route = Routing.route("GET", "/health", lambda request: Responses.not_found())
+    print(f"[{route.method}] [{route.path}]")
+    ```
+    ```output
+    [GET] [/health]
+    ```
+    """
     return M.Route(method=method, path=path, handler=handler)
 
 
 def path_of(url):
-    """The raw URL path without its query string."""
+    """The raw URL path without its query string.
+
+    # Examples
+    ```osprey
+    from fastapi import Routing
+    from fastapi import Responses
+    print(f"[{Routing.path_of('/items?tag=a')}] [{Routing.path_of('/plain')}]")
+    ```
+    ```output
+    [/items] [/plain]
+    ```
+    """
     return Urls.path_of(url)
 
 
 def include_router(routes, prefix: str, children):
-    """Append child routes under a prefix while preserving their declaration order."""
+    """Append child routes under a prefix while preserving their declaration order.
+
+    # Examples
+    ```osprey
+    from fastapi import Routing
+    from fastapi import Responses
+    children = [Routing.route("GET", "/users", lambda request: Responses.not_found()), Routing.route("GET", "/items", lambda request: Responses.not_found())]
+    mounted = Routing.include_router([], "/api", children)
+    print(f"[{len(mounted)}] [{toString(mapList(mounted, lambda route: route.path))}]")
+    ```
+    ```output
+    [2] [["/api/users", "/api/items"]]
+    ```
+    """
     return listConcat(routes, mapList(children, lambda child: route(child.method, prefix + child.path, child.handler)))
 
 
 def dispatch(routes, request):
-    """Decode the URL, select an ordered route and invoke its typed handler."""
+    """Decode the URL, select an ordered route and invoke its typed handler.
+
+    # Examples
+    ```osprey
+    from fastapi import Routing
+    from fastapi import Responses
+    from fastapi import Responses as R
+    from fastapi import Models as M
+
+    def health(_request):
+        return R.json_response(200, '{"status":"ok"}', "")
+
+    routes = [Routing.route("GET", "/health", health)]
+
+    def verdict(method, url):
+        reply = Routing.dispatch(routes, M.Request(method=method, url=url, headers="", body="", path_params={}))
+        return f"{reply.status_code} {reply.content}"
+
+    print(f"[{verdict('GET', '/health?q=1')}] [{verdict('GET', '/missing')}] [{verdict('POST', '/health')}]")
+    ```
+    ```output
+    [200 {"status":"ok"}] [404 {"detail":"Not Found"}] [405 {"detail":"Method Not Allowed"}]
+    ```
+    """
     match Urls.decode(path_of(request.url), False):
         case Success(value=path):
             return select(routes, request, path)

@@ -161,7 +161,30 @@ def topk(k, metric, values, ids):
     """Select the k best of the `len(values)` candidates: for metric "L2" the k
     smallest squared distances, for "IP" the k largest inner products, with
     faiss's exact tie ordering. `values` and `ids` are parallel lists in scan
-    order. The result always has length k."""
+    order. The result always has length k.
+
+    # Examples
+    ```osprey
+    from faiss import Metrics
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(op, l, r, wrapped_value):
+            return wrapped_value
+
+    def show():
+        with wrapped:
+            nearest = Metrics.topk(3, "L2", [9.0, 1.0, 4.0], [0, 1, 2])
+            ties = Metrics.topk(2, "L2", [2.0, 2.0], [5, 3])
+            padded = Metrics.topk(4, "IP", [2.0, 5.0], [10, 20])
+            print(f"{toString(nearest.vals)} {toString(nearest.ids)} {toString(ties.vals)} {toString(ties.ids)} {toString(padded.vals)} {toString(padded.ids)}")
+
+    show()
+    ```
+    ```output
+    [1.0, 4.0, 9.0] [1, 2, 0] [2.0, 2.0] [3, 5] [5.0, 2.0, -3.4028234663852886e+38, -3.4028234663852886e+38] [20, 10, -1, -1]
+    ```
+    """
     is_max = metric == "L2"
     h0 = Heap(vals=toList(map(range(k), lambda _i: neutral(is_max))), ids=toList(map(range(k), lambda _i: -1)))
     h1 = fold(range(len(values)), h0, lambda acc, j: fold_repl(is_max, k, acc, unwrap_or(listGet(values, j), 0.0), unwrap_or(listGet(ids, j), -1)))

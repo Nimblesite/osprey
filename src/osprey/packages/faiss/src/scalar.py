@@ -21,11 +21,41 @@ from faiss.Metrics import map_indexed
 __all__ = ["ScalarQuantizer", "QT_8bit", "QT_4bit", "QT_8bit_uniform", "train", "compute_codes", "decode", "IndexScalarQuantizer", "sq_add", "sq_search"]
 
 QT_8bit = 0
-"""faiss's `ScalarQuantizer.QT_8bit`: one byte per component over the trained [min, max] range."""
+"""faiss's `ScalarQuantizer.QT_8bit`: one byte per component over the trained [min, max] range.
+
+# Examples
+```osprey
+from faiss import ScalarQuant
+print(f"[{ScalarQuant.QT_8bit}]")
+```
+```output
+[0]
+```
+"""
 QT_4bit = 1
-"""faiss's `ScalarQuantizer.QT_4bit`: a nibble per component over the trained [min, max] range."""
+"""faiss's `ScalarQuantizer.QT_4bit`: a nibble per component over the trained [min, max] range.
+
+# Examples
+```osprey
+from faiss import ScalarQuant
+print(f"[{ScalarQuant.QT_4bit}]")
+```
+```output
+[1]
+```
+"""
 QT_8bit_uniform = 2
-"""faiss's `ScalarQuantizer.QT_8bit_uniform`: one byte per component over one range shared by every dimension."""
+"""faiss's `ScalarQuantizer.QT_8bit_uniform`: one byte per component over one range shared by every dimension.
+
+# Examples
+```osprey
+from faiss import ScalarQuant
+print(f"[{ScalarQuant.QT_8bit_uniform}]")
+```
+```output
+[2]
+```
+"""
 
 
 class ScalarQuantizerState:
@@ -48,13 +78,49 @@ class IndexSQ:
 
 
 def ScalarQuantizer(d, qtype):
-    """faiss's `ScalarQuantizer(d, qtype)` constructor."""
+    """faiss's `ScalarQuantizer(d, qtype)` constructor.
+
+    # Examples
+    ```osprey
+    from faiss import ScalarQuant
+    sq = ScalarQuant.ScalarQuantizer(2, ScalarQuant.QT_8bit)
+    print(f"[{sq.d}] [{sq.qtype}] {toString(sq.trained)}")
+    ```
+    ```output
+    [2] [0] []
+    ```
+    """
     return ScalarQuantizerState(d=d, qtype=qtype, trained=[])
 
 
 def train(sq, x):
     """faiss's `sq.train(x)` with RS_minmax: per-dimension min/range (8/4-bit)
-    or global min/range (uniform)."""
+    or global min/range (uniform).
+
+    # Examples
+    ```osprey
+    from faiss import ScalarQuant
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(op, l, r, wrapped_value):
+            return wrapped_value
+
+        def divideByZero(op, l):
+            return 0.0
+
+    def show():
+        with wrapped:
+            per_dim = ScalarQuant.train(ScalarQuant.ScalarQuantizer(2, ScalarQuant.QT_8bit), [[0.0, 2.0], [4.0, 6.0]])
+            shared = ScalarQuant.train(ScalarQuant.ScalarQuantizer(2, ScalarQuant.QT_8bit_uniform), [[0.0, 2.0], [4.0, 6.0]])
+            print(f"{toString(per_dim.trained)} {toString(shared.trained)}")
+
+    show()
+    ```
+    ```output
+    [0.0, 2.0, 4.0, 4.0] [0.0, 6.0]
+    ```
+    """
     if sq.qtype == QT_8bit_uniform:
         return ScalarQuantizerState(d=sq.d, qtype=sq.qtype, trained=train_uniform(x))
     else:
@@ -125,7 +191,33 @@ def per_qtype(sq, rows, exact, four_bit, uniform):
 
 
 def compute_codes(sq, x):
-    """faiss's `sq.compute_codes(x)`: the exact byte codes, one list per row."""
+    """faiss's `sq.compute_codes(x)`: the exact byte codes, one list per row.
+
+    # Examples
+    ```osprey
+    from faiss import ScalarQuant
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(op, l, r, wrapped_value):
+            return wrapped_value
+
+        def divideByZero(op, l):
+            return 0.0
+
+    def show():
+        with wrapped:
+            x = [[0.0, 2.0], [2.0, 4.0], [4.0, 6.0]]
+            sq8 = ScalarQuant.train(ScalarQuant.ScalarQuantizer(2, ScalarQuant.QT_8bit), x)
+            sq4 = ScalarQuant.train(ScalarQuant.ScalarQuantizer(2, ScalarQuant.QT_4bit), x)
+            print(f"{toString(ScalarQuant.compute_codes(sq8, x))} {toString(ScalarQuant.compute_codes(sq4, x))}")
+
+    show()
+    ```
+    ```output
+    [[0, 0], [127, 127], [255, 255]] [[112], [247], [255]]
+    ```
+    """
     return per_qtype(sq, x, codes_8bit, codes_4bit, codes_uniform)
 
 
@@ -188,7 +280,31 @@ def floor_in(v, hi):
 
 
 def decode(sq, codes):
-    """faiss's `sq.decode(codes)`: reconstruct each code at the cell centre."""
+    """faiss's `sq.decode(codes)`: reconstruct each code at the cell centre.
+
+    # Examples
+    ```osprey
+    from faiss import ScalarQuant
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(op, l, r, wrapped_value):
+            return wrapped_value
+
+        def divideByZero(op, l):
+            return 0.0
+
+    def show():
+        with wrapped:
+            sq8 = ScalarQuant.train(ScalarQuant.ScalarQuantizer(2, ScalarQuant.QT_8bit), [[0.0, 2.0], [4.0, 6.0]])
+            print(f"{toString(ScalarQuant.decode(sq8, [[0, 127]]))}")
+
+    show()
+    ```
+    ```output
+    [[0.00784313725490196, 2.007843137254902], [2.0, 4.0]]
+    ```
+    """
     return per_qtype(sq, codes, decode_8bit, decode_4bit, decode_uniform)
 
 
@@ -213,19 +329,83 @@ def nibble_at(row, j):
 
 def IndexScalarQuantizer(d, qtype, metric):
     """faiss's `IndexScalarQuantizer(d, qtype, metric)` constructor: an
-    untrained index (train it with `train`, then `sq_add`)."""
+    untrained index (train it with `train`, then `sq_add`).
+
+    # Examples
+    ```osprey
+    from faiss import ScalarQuant
+    index = ScalarQuant.IndexScalarQuantizer(2, ScalarQuant.QT_8bit, "L2")
+    print(f"[{index.d}] [{index.qtype}] [{index.metric}] {toString(index.codes)}")
+    ```
+    ```output
+    [2] [0] [L2] []
+    ```
+    """
     return IndexSQ(d=d, qtype=qtype, metric=metric, sq=ScalarQuantizer(d, qtype), codes=[])
 
 
 def sq_add(index, sq, xb):
-    """Append the codes of `xb` to the (trained) index."""
+    """Append the codes of `xb` to the (trained) index.
+
+    # Examples
+    ```osprey
+    from faiss import ScalarQuant
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(op, l, r, wrapped_value):
+            return wrapped_value
+
+        def divideByZero(op, l):
+            return 0.0
+
+    def show():
+        with wrapped:
+            x = [[0.0, 2.0], [2.0, 4.0], [4.0, 6.0]]
+            index = ScalarQuant.IndexScalarQuantizer(2, ScalarQuant.QT_8bit, "L2")
+            sq = ScalarQuant.train(ScalarQuant.ScalarQuantizer(2, ScalarQuant.QT_8bit), x)
+            loaded = ScalarQuant.sq_add(index, sq, x)
+            print(f"{toString(loaded.codes)} {toString(index.codes)}")
+
+    show()
+    ```
+    ```output
+    [[0, 0], [127, 127], [255, 255]] []
+    ```
+    """
     return IndexSQ(d=index.d, qtype=index.qtype, metric=index.metric, sq=sq, codes=listConcat(index.codes, compute_codes(sq, xb)))
 
 
 def sq_search(index, xq, k):
     """faiss's `IndexScalarQuantizer.search`: reconstruct every code, measure
     the metric to each query and heap-select. Reconstruction is float32, so
-    distances compare at rtol 1e-6 (labels stay exact on well-separated data)."""
+    distances compare at rtol 1e-6 (labels stay exact on well-separated data).
+
+    # Examples
+    ```osprey
+    from faiss import ScalarQuant
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(op, l, r, wrapped_value):
+            return wrapped_value
+
+        def divideByZero(op, l):
+            return 0.0
+
+    def show():
+        with wrapped:
+            sq = ScalarQuant.train(ScalarQuant.ScalarQuantizer(2, ScalarQuant.QT_8bit), [[0.0, 2.0], [4.0, 6.0]])
+            index = ScalarQuant.sq_add(ScalarQuant.IndexScalarQuantizer(2, ScalarQuant.QT_8bit, "L2"), sq, [[0.0, 2.0], [4.0, 6.0]])
+            result = ScalarQuant.sq_search(index, [[2.0, 4.0]], 2)
+            print(f"{toString(result.distances)} {toString(result.labels)}")
+
+    show()
+    ```
+    ```output
+    [[7.93737896590171, 8.062868947940924]] [[0, 1]]
+    ```
+    """
     rows = map_indexed(index.codes, lambda j: decode_one(index.sq, unwrap_or(listGet(index.codes, j), [])))
     return search_rows(index.metric, rows, xq, k)
 

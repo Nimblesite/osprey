@@ -10,7 +10,18 @@ __all__ = ["exception", "exception_response", "validation", "issue", "json_respo
 
 
 def exception(status_code, detail, headers):
-    """Create a typed HTTP failure carrying status, detail and response headers."""
+    """Create a typed HTTP failure carrying status, detail and response headers.
+
+    # Examples
+    ```osprey
+    from fastapi import Errors
+    error = Errors.exception(503, "Backing service unavailable", "Retry-After: 30")
+    print(f"[{error.status_code}] [{error.detail}] [{error.headers}]")
+    ```
+    ```output
+    [503] [Backing service unavailable] [Retry-After: 30]
+    ```
+    """
     return M.HTTPException(status_code=status_code, detail=detail, headers=headers)
 
 
@@ -23,17 +34,59 @@ def json_reply(document, render):
 
 
 def json_response(status, document, headers):
-    """Serialize a boundary JSON value; serialization failure becomes an explicit HTTP 500."""
+    """Serialize a boundary JSON value; serialization failure becomes an explicit HTTP 500.
+
+    # Examples
+    ```osprey
+    from fastapi import Errors
+    reply = Errors.json_response(200, JsonObject([JsonMember("name", JsonString("Osprey"))]), "")
+    print(f"[{reply.status_code}] [{reply.content}] [{reply.media_type}]")
+    ```
+    ```output
+    [200] [{"name":"Osprey"}] [application/json]
+    ```
+    """
     return json_reply(document, lambda text: R.json_response(status, text, headers))
 
 
 def exception_response(error):
-    """Carry the typed exception and its default JSON detail response."""
+    """Carry the typed exception and its default JSON detail response.
+
+    # Examples
+    ```osprey
+    from fastapi import Errors
+    reply = Errors.exception_response(Errors.exception(404, "Not Found", ""))
+    print(f"[{reply.status_code}] [{reply.content}] [{reply.media_type}]")
+    ```
+    ```output
+    [404] [{"detail":"Not Found"}] [application/json]
+    ```
+    """
     return json_reply(JsonObject([JsonMember("detail", JsonString(error.detail))]), lambda text: R.exception_reply(error, text))
 
 
 def issue(location, kind, message, input, missing, context):
-    """Construct one typed validation issue with its location, input and context."""
+    """Construct one typed validation issue with its location, input and context.
+
+    # Examples
+    ```osprey
+    from fastapi import Errors
+    from fastapi import Models as M
+    def part_name(part):
+        match part:
+            case M.Field(name=name):
+                return name
+            case M.Index(value=index):
+                return toString(index)
+
+    issue = Errors.issue(["body", "name"], "string_type", "Input should be a valid string", "7", False, M.NoContext())
+    located = toString(mapList(issue.location, part_name))
+    print(f"[{located}] [{issue.kind}] [{issue.message}] [{issue.input}]")
+    ```
+    ```output
+    [["body", "name"]] [string_type] [Input should be a valid string] [7]
+    ```
+    """
     return M.ValidationIssue(location=mapList(location, lambda name: M.Field(name=name)), kind=kind, message=message, input=input, missing=missing, json_input=False, context=context)
 
 
@@ -62,7 +115,23 @@ def issue_fields(error, input):
 
 
 def validation(issues):
-    """Render all collected validation issues as the standard HTTP 422 detail array."""
+    """Render all collected validation issues as the standard HTTP 422 detail array.
+
+    # Examples
+    ```osprey
+    from fastapi import Errors
+    from fastapi import Models as M
+
+    def issue_of(kind, message):
+        return Errors.issue(["body", "q"], kind, message, "", True, M.NoContext())
+
+    reply = Errors.validation([issue_of("missing", "Field required"), issue_of("string_type", "Input should be a valid string")])
+    print(f"[{reply.status_code}] [{reply.content}]")
+    ```
+    ```output
+    [422] [{"detail":[{"type":"missing","loc":["body","q"],"msg":"Field required","input":null},{"type":"string_type","loc":["body","q"],"msg":"Input should be a valid string","input":null}]}]
+    ```
+    """
     collected = foldList(issues, Success(value=[]), lambda result, item: andThen(result, lambda previous: B.mapped(issue_json(item), lambda encoded: listConcat(previous, [encoded]))))
     match collected:
         case Success(value=encoded):

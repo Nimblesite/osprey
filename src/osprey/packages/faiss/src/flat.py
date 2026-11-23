@@ -49,22 +49,68 @@ class RangeRow:
 
 
 def IndexFlatL2(d):
-    """faiss's `IndexFlatL2(d)`: exact search by squared L2 distance."""
+    """faiss's `IndexFlatL2(d)`: exact search by squared L2 distance.
+
+    # Examples
+    ```osprey
+    from faiss import Flat
+    index = Flat.IndexFlatL2(2)
+    print(f"[{index.metric}] [{index.d}] [{Flat.ntotal(index)}]")
+    ```
+    ```output
+    [L2] [2] [0]
+    ```
+    """
     return IndexFlat(metric="L2", d=d, vectors=[])
 
 
 def IndexFlatIP(d):
-    """faiss's `IndexFlatIP(d)`: exact search by inner product."""
+    """faiss's `IndexFlatIP(d)`: exact search by inner product.
+
+    # Examples
+    ```osprey
+    from faiss import Flat
+    index = Flat.IndexFlatIP(3)
+    print(f"[{index.metric}] [{index.d}] [{Flat.ntotal(index)}]")
+    ```
+    ```output
+    [IP] [3] [0]
+    ```
+    """
     return IndexFlat(metric="IP", d=d, vectors=[])
 
 
 def ntotal(index):
-    """faiss's `index.ntotal`: the number of stored vectors."""
+    """faiss's `index.ntotal`: the number of stored vectors.
+
+    # Examples
+    ```osprey
+    from faiss import Flat
+    empty = Flat.IndexFlatL2(2)
+    loaded = Flat.add(empty, [[1.0, 0.0], [0.0, 1.0]])
+    print(f"[{Flat.ntotal(empty)}] [{Flat.ntotal(loaded)}]")
+    ```
+    ```output
+    [0] [2]
+    ```
+    """
     return len(index.vectors)
 
 
 def add(index, xb):
-    """faiss's `index.add(xb)`: the index with `xb`'s rows appended."""
+    """faiss's `index.add(xb)`: the index with `xb`'s rows appended.
+
+    # Examples
+    ```osprey
+    from faiss import Flat
+    index = Flat.IndexFlatIP(2)
+    grown = Flat.add(index, [[1.0, 0.0], [0.0, 4.0]])
+    print(f"[{Flat.ntotal(index)}] [{Flat.ntotal(grown)}] {toString(grown.vectors)}")
+    ```
+    ```output
+    [0] [2] [[1.0, 0.0], [0.0, 4.0]]
+    ```
+    """
     return IndexFlat(metric=index.metric, d=index.d, vectors=listConcat(index.vectors, xb))
 
 
@@ -89,7 +135,29 @@ def search_row(index, q, k):
 
 
 def search(index, xq, k):
-    """faiss's `index.search(xq, k)`: distances and labels for every query row."""
+    """faiss's `index.search(xq, k)`: distances and labels for every query row.
+
+    # Examples
+    ```osprey
+    from faiss import Flat
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(op, l, r, wrapped_value):
+            return wrapped_value
+
+    def show():
+        with wrapped:
+            index = Flat.add(Flat.IndexFlatL2(2), [[0.0, 0.0], [3.0, 4.0]])
+            result = Flat.search(index, [[3.0, 4.0], [0.0, 0.0]], 3)
+            print(f"{toString(result.distances)} {toString(result.labels)}")
+
+    show()
+    ```
+    ```output
+    [[0.0, 25.0, 3.4028234663852886e+38], [0.0, 25.0, 3.4028234663852886e+38]] [[1, 0, -1], [0, 1, -1]]
+    ```
+    """
     rows = per_query(xq, lambda q: search_row(index, q, k))
     return SearchResult(distances=mapList(rows, lambda r: r.vals), labels=mapList(rows, lambda r: r.ids))
 
@@ -120,7 +188,29 @@ def concat_rows(rows, pick):
 
 
 def range_search(index, xq, radius):
-    """faiss's `index.range_search(xq, radius)`: lims, distances and labels."""
+    """faiss's `index.range_search(xq, radius)`: lims, distances and labels.
+
+    # Examples
+    ```osprey
+    from faiss import Flat
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(op, l, r, wrapped_value):
+            return wrapped_value
+
+    def show():
+        with wrapped:
+            index = Flat.add(Flat.IndexFlatL2(2), [[0.0, 0.0], [1.0, 0.0], [3.0, 0.0]])
+            result = Flat.range_search(index, [[0.0, 0.0]], 2.0)
+            print(f"{toString(result.lims)} {toString(result.distances)} {toString(result.labels)}")
+
+    show()
+    ```
+    ```output
+    [0, 2] [0.0, 1.0] [0, 1]
+    ```
+    """
     rows = per_query(xq, lambda q: range_row(index, q, radius))
     distances = concat_rows(rows, lambda r: r.distances)
     labels = concat_rows(rows, lambda r: r.labels)
@@ -128,7 +218,29 @@ def range_search(index, xq, radius):
 
 
 def reconstruct(index, i):
-    """faiss's `index.reconstruct(i)`: row i, or Error when i is out of range."""
+    """faiss's `index.reconstruct(i)`: row i, or Error when i is out of range.
+
+    # Examples
+    ```osprey
+    from faiss import Flat
+
+    def text(result):
+        match result:
+            case Success(value=row):
+                return toString(row)
+            case Error(message=m):
+                return m
+
+    def show():
+        index = Flat.add(Flat.IndexFlatL2(2), [[1.0, 0.0], [0.0, 1.0]])
+        print(f"{text(Flat.reconstruct(index, 1))} {text(Flat.reconstruct(index, 5))}")
+
+    show()
+    ```
+    ```output
+    [0.0, 1.0] IndexFlat reconstruct: index 5 out of range (ntotal=2)
+    ```
+    """
     if i < 0 or i >= len(index.vectors):
         return Error(message=f"IndexFlat reconstruct: index {i} out of range (ntotal={len(index.vectors)})")
     else:
@@ -136,7 +248,35 @@ def reconstruct(index, i):
 
 
 def reconstruct_n(index, i0, ni0):
-    """faiss's `index.reconstruct_n(i0, ni0)`: rows i0 .. i0+ni0-1, or Error."""
+    """faiss's `index.reconstruct_n(i0, ni0)`: rows i0 .. i0+ni0-1, or Error.
+
+    # Examples
+    ```osprey
+    from faiss import Flat
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(op, l, r, wrapped_value):
+            return wrapped_value
+
+    def text(result):
+        match result:
+            case Success(value=rows):
+                return toString(rows)
+            case Error(message=m):
+                return m
+
+    def show():
+        with wrapped:
+            index = Flat.add(Flat.IndexFlatL2(2), [[1.0, 0.0], [0.0, 1.0]])
+            print(f"{text(Flat.reconstruct_n(index, 0, 2))} {text(Flat.reconstruct_n(index, 1, 2))}")
+
+    show()
+    ```
+    ```output
+    [[1.0, 0.0], [0.0, 1.0]] IndexFlat reconstruct_n: range [1, 3) out of range (ntotal=2)
+    ```
+    """
     if i0 < 0 or i0 + ni0 > len(index.vectors):
         return Error(message=f"IndexFlat reconstruct_n: range [{i0}, {i0 + ni0}) out of range (ntotal={len(index.vectors)})")
     else:
@@ -146,20 +286,65 @@ def reconstruct_n(index, i0, ni0):
 def remove_ids(index, selector):
     """faiss's `index.remove_ids(selector)`: the index without the selected rows,
     remaining labels compacted to 0..ntotal-1 in order (nremoved is the old
-    ntotal minus the new one)."""
+    ntotal minus the new one).
+
+    # Examples
+    ```osprey
+    from faiss import Flat, Selectors
+    index = Flat.add(Flat.IndexFlatL2(2), [[1.0, 0.0], [0.0, 1.0], [2.0, 2.0]])
+    kept = Flat.remove_ids(index, Selectors.IDSelectorRange(0, 2))
+    print(f"{toString(kept.vectors)} [{Flat.ntotal(kept)}]")
+    ```
+    ```output
+    [[2.0, 2.0]] [1]
+    ```
+    """
     kept = filterList(map_indexed(index.vectors, lambda j: j), lambda j: not selected(selector, j))
     return IndexFlat(metric=index.metric, d=index.d, vectors=mapList(kept, lambda j: unwrap_or(listGet(index.vectors, j), [])))
 
 
 def reset(index):
-    """faiss's `index.reset()`: the empty index of the same metric and dimension."""
+    """faiss's `index.reset()`: the empty index of the same metric and dimension.
+
+    # Examples
+    ```osprey
+    from faiss import Flat
+    index = Flat.add(Flat.IndexFlatIP(2), [[1.0, 0.0]])
+    emptied = Flat.reset(index)
+    print(f"[{emptied.metric}] [{emptied.d}] [{Flat.ntotal(emptied)}] [{Flat.ntotal(index)}]")
+    ```
+    ```output
+    [IP] [2] [0] [1]
+    ```
+    """
     return IndexFlat(metric=index.metric, d=index.d, vectors=[])
 
 
 def search_rows(metric, rows, xq, k):
     """Search `xq` against already-materialized `rows` with `metric`: the shared
     step behind the quantized indexes, which reconstruct their codes and then
-    search them exactly as flat vectors."""
+    search them exactly as flat vectors.
+
+    # Examples
+    ```osprey
+    from faiss import Flat
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(op, l, r, wrapped_value):
+            return wrapped_value
+
+    def show():
+        with wrapped:
+            result = Flat.search_rows("IP", [[1.0, 0.0], [2.0, 0.0]], [[3.0, 0.0]], 1)
+            print(f"{toString(result.distances)} {toString(result.labels)}")
+
+    show()
+    ```
+    ```output
+    [[6.0]] [[1]]
+    ```
+    """
     d = len(unwrap_or(listGet(xq, 0), []))
     idx = add(IndexFlatL2(d) if metric == "L2" else IndexFlatIP(d), rows)
     return search(idx, xq, k)

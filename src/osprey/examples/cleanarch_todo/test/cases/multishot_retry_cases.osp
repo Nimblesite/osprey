@@ -17,6 +17,42 @@ namespace todo;
 
 import todo::TodoHarness
 
+/// The CreateList ask naming a list "Mine": the request every retry case replays.
+let mineListAsk = CreateList { list: NewList { title: "Mine", colour: "" } }
+
+/// A single rival queued to steal one commit.
+let loneRival = ["Rival"]
+
+/// Two generic rivals queued to steal two commits.
+let twoRivals = ["X", "Y"]
+
+/// Three generic rivals queued to steal three commits.
+let threeRivals = ["X", "Y", "Z"]
+
+/// Three distinct named rivals, in queue order.
+let namedRivals = ["Rival", "Other", "Third"]
+
+/// The titles of the two seeded lists, in id order.
+let seedTitles = ["Shopping", "Banking"]
+
+/// The stored titles once three rivals have landed on the seeds, in id order.
+let titlesAfterThreeRivals = ["Shopping", "Banking", "X", "Y", "Z"]
+
+/// Rivals alternating "A" and "B", in queue order.
+let alternatingRivals = ["A", "B", "A"]
+
+/// The fault a colliding title answers, as faults() expects it.
+let uniqueTitleFault = ["'Title' must be unique."]
+
+/// The stored row ids after two rows exist.
+let firstTwoIds = [1, 2]
+
+/// The stored row ids after three rows exist.
+let firstThreeIds = [1, 2, 3]
+
+/// All five stored row ids once five lists have landed.
+let idsOneToFive = [1, 2, 3, 4, 5]
+
 /// Two seeded lists, ids 1 and 2: Shopping grey, Banking purple.
 fn retryLists() = authzTwoLists()
 
@@ -133,11 +169,11 @@ module MultishotRetryCases {
     /// retries resume after the start reading.
     /// [EXAMPLE-CLEANARCH-MULTISHOT-RETRY], [MULTI-REPLAY].
     export fn retryRivalCountsCase() = {
-        let ask = CreateList { list: NewList { title: "Mine", colour: "" } }
+        let ask = mineListAsk
         let none = retryBareAsked([], ask)
-        let one = retryBareAsked(["Rival"], ask)
+        let one = retryBareAsked(loneRival, ask)
         let two = retryBareAsked(["Rival", "Other"], ask)
-        let three = retryBareAsked(["Rival", "Other", "Third"], ask)
+        let three = retryBareAsked(namedRivals, ask)
         let four = retryBareAsked(["Rival", "Other", "Third", "Fourth"], ask)
         let five = retryBareAsked(["Rival", "Other", "Third", "Fourth", "Fifth"], ask)
         expect(none.settled, createdId(1))
@@ -146,11 +182,11 @@ module MultishotRetryCases {
         forEachList([three, four, five], fn(run) => retryExpectGaveUp(run))
         expect(TodoHarness::failures("each lost commit burns one id and lands one rival; three attempts at most", listConcat([
             retryStoredAs(none, ["Mine"], [1]),
-            retryStoredAs(one, ["Rival", "Mine"], [1, 2]),
-            retryStoredAs(two, ["Rival", "Other", "Mine"], [1, 2, 3]),
-            retryStoredAs(three, ["Rival", "Other", "Third"], [1, 2, 3]),
-            retryStoredAs(four, ["Rival", "Other", "Third"], [1, 2, 3]),
-            retryStoredAs(five, ["Rival", "Other", "Third"], [1, 2, 3]),
+            retryStoredAs(one, ["Rival", "Mine"], firstTwoIds),
+            retryStoredAs(two, ["Rival", "Other", "Mine"], firstThreeIds),
+            retryStoredAs(three, namedRivals, firstThreeIds),
+            retryStoredAs(four, namedRivals, firstThreeIds),
+            retryStoredAs(five, namedRivals, firstThreeIds),
             retryColoursAre(one, ["#78909C", "#78909C"]),
             retryColoursAre(three, ["#78909C", "#78909C", "#78909C"]),
             length(none.items) == 0, length(two.items) == 0
@@ -164,24 +200,24 @@ module MultishotRetryCases {
     /// attempt 3's conflict; versions climb 1→2→3→4 whatever the titles.
     /// [EXAMPLE-CLEANARCH-MULTISHOT-RETRY], [MULTI-REPLAY], [MULTI-HANDLE-MANY].
     export fn retryDuplicateRivalsCase() = {
-        let ask = CreateList { list: NewList { title: "Mine", colour: "" } }
+        let ask = mineListAsk
         let pair = retryBareAsked(["Rival", "Rival"], ask)
         let twoDup = retryBareAsked(["A", "A"], ask)
         let triple = retryBareAsked(["A", "A", "A"], ask)
-        let mixed = retryBareAsked(["A", "B", "A"], ask)
+        let mixed = retryBareAsked(alternatingRivals, ask)
         let fourDup = retryBareAsked(["A", "B", "A", "B"], ask)
         expect(pair.settled, createdId(3))
         expect(twoDup.settled, createdId(3))
         forEachList([triple, mixed, fourDup], fn(run) => retryExpectGaveUp(run))
         expect(TodoHarness::failures("every queued rival wins one commit and lands once, in queue order", listConcat([
-            retryStoredAs(pair, ["Rival", "Rival", "Mine"], [1, 2, 3]),
+            retryStoredAs(pair, ["Rival", "Rival", "Mine"], firstThreeIds),
             retryHasTitles(pair, "Rival", 2), length(pair.lists) == 3,
             retryTitlesAre(twoDup, ["A", "A", "Mine"]), retryHasTitles(twoDup, "A", 2),
-            retryStoredAs(triple, ["A", "A", "A"], [1, 2, 3]),
+            retryStoredAs(triple, ["A", "A", "A"], firstThreeIds),
             retryHasTitles(triple, "A", 3),
-            retryStoredAs(mixed, ["A", "B", "A"], [1, 2, 3]),
+            retryStoredAs(mixed, alternatingRivals, firstThreeIds),
             retryHasTitles(mixed, "A", 2), retryHasTitles(mixed, "B", 1),
-            retryTitlesAre(fourDup, ["A", "B", "A"]),
+            retryTitlesAre(fourDup, alternatingRivals),
             retryHasTitles(fourDup, "A", 2), retryHasTitles(fourDup, "B", 1),
             noEvents(pair), noEvents(triple),
             noEvents(mixed), noEvents(fourDup)
@@ -196,19 +232,19 @@ module MultishotRetryCases {
     /// [EXAMPLE-CLEANARCH-MULTISHOT-RETRY], [MULTI-REPLAY],
     /// [EXAMPLE-CLEANARCH-INV-FAITHFUL].
     export fn retryCreateListValidationCase() = {
-        let ask = CreateList { list: NewList { title: "Mine", colour: "" } }
+        let ask = mineListAsk
         let rival = retryAsked(["Mine"], [], ask)
         let twinRivals = retryAsked(["Mine", "Mine"], [], ask)
-        let badColour = retryAsked(["Rival"], [], CreateList {
+        let badColour = retryAsked(loneRival, [], CreateList {
             list: NewList { title: "Fresh", colour: "#HotPink" } })
-        let spaces = retryAsked(["Rival"], [], CreateList {
+        let spaces = retryAsked(loneRival, [], CreateList {
             list: NewList { title: "   ", colour: "" } })
         let tooLong = retryAsked(["Rival", "Other"], [], CreateList {
             list: NewList { title: retryWide(201), colour: "" } })
-        let empty = retryAsked(["Rival"], [], CreateList {
+        let empty = retryAsked(loneRival, [], CreateList {
             list: NewList { title: "", colour: "" } })
-        expect(rival.settled, faults(["'Title' must be unique."]))
-        expect(twinRivals.settled, faults(["'Title' must be unique."]))
+        expect(rival.settled, faults(uniqueTitleFault))
+        expect(twinRivals.settled, faults(uniqueTitleFault))
         expect(badColour.settled, Error { message: ValidationFault {
             problems: ["UnsupportedColour: '#HotPink' is not a supported colour"] } })
         expect(spaces.settled, createdId(4))
@@ -217,12 +253,12 @@ module MultishotRetryCases {
             problems: ["'Title' must not be empty."] } })
         let refused = [badColour, tooLong, empty]
         expect(TodoHarness::failures("the landed rival collides on the retry; a refused attempt burns no rival", listConcat([
-            retryStoredAs(rival, ["Shopping", "Banking", "Mine"], [1, 2, 3]),
+            retryStoredAs(rival, ["Shopping", "Banking", "Mine"], firstThreeIds),
             retryTitlesAre(twinRivals, ["Shopping", "Banking", "Mine"]), retryHasTitles(twinRivals, "Mine", 1),
-            retryStoredAs(badColour, ["Shopping", "Banking"], [1, 2]),
+            retryStoredAs(badColour, seedTitles, firstTwoIds),
             length(badColour.lists) == 2,
-            retryTitlesAre(tooLong, ["Shopping", "Banking"]),
-            retryTitlesAre(empty, ["Shopping", "Banking"]),
+            retryTitlesAre(tooLong, seedTitles),
+            retryTitlesAre(empty, seedTitles),
             retryTitlesAre(spaces, ["Shopping", "Banking", "Rival", "   "]),
             retryIdsAre(spaces, [1, 2, 3, 4]),
             retryColoursAre(rival, ["#78909C", "#AB47BC", "#78909C"])
@@ -237,17 +273,17 @@ module MultishotRetryCases {
     export fn retryUpdateListCase() = {
         let edit = ListEdit { id: 1, title: "Chores", colour: "" }
         let calm = retryAsked([], retryItems(), UpdateList { edit: edit })
-        let twice = retryAsked(["X", "Y"], retryItems(), UpdateList { edit: edit })
-        let lost = retryAsked(["X", "Y", "Z"], retryItems(), UpdateList { edit: edit })
+        let twice = retryAsked(twoRivals, retryItems(), UpdateList { edit: edit })
+        let lost = retryAsked(threeRivals, retryItems(), UpdateList { edit: edit })
         let collide = retryAsked(["Chores"], retryItems(), UpdateList { edit: edit })
-        let missing = retryAsked(["X", "Y"], retryItems(), UpdateList {
+        let missing = retryAsked(twoRivals, retryItems(), UpdateList {
             edit: ListEdit { id: 9, title: "Ninth", colour: "" } })
-        let recolour = retryAsked(["Rival"], retryItems(), UpdateList {
+        let recolour = retryAsked(loneRival, retryItems(), UpdateList {
             edit: ListEdit { id: 2, title: "Banking", colour: "#4CAF50" } })
         retryExpectUpdated(calm)
         retryExpectUpdated(twice)
         retryExpectGaveUp(lost)
-        expect(collide.settled, faults(["'Title' must be unique."]))
+        expect(collide.settled, faults(uniqueTitleFault))
         retryExpectMissing(missing, "TodoList", 9)
         retryExpectUpdated(recolour)
         let landed = [calm, twice, collide, recolour]
@@ -255,9 +291,9 @@ module MultishotRetryCases {
             retryStoredAs(calm, ["Banking", "Chores"], [2, 1]),
             retryColoursAre(calm, ["#AB47BC", "#78909C"]),
             retryStoredAs(twice, ["Banking", "X", "Y", "Chores"], [2, 3, 4, 1]),
-            retryStoredAs(lost, ["Shopping", "Banking", "X", "Y", "Z"], [1, 2, 3, 4, 5]),
-            retryStoredAs(collide, ["Shopping", "Banking", "Chores"], [1, 2, 3]),
-            retryTitlesAre(missing, ["Shopping", "Banking"]),
+            retryStoredAs(lost, titlesAfterThreeRivals, idsOneToFive),
+            retryStoredAs(collide, ["Shopping", "Banking", "Chores"], firstThreeIds),
+            retryTitlesAre(missing, seedTitles),
             retryStoredAs(recolour, ["Shopping", "Rival", "Banking"], [1, 3, 2]),
             retryColoursAre(recolour, ["#78909C", "#78909C", "#4CAF50"])
         ], retryCalm(listConcat(landed, [lost, missing])))), [])
@@ -269,10 +305,10 @@ module MultishotRetryCases {
     /// [EXAMPLE-CLEANARCH-MULTISHOT-RETRY], [MULTI-REPLAY].
     export fn retryDeleteListCase() = {
         let calm = retryAsked([], retryItems(), DeleteList { id: 1 })
-        let one = retryAsked(["Rival"], retryItems(), DeleteList { id: 2 })
-        let twice = retryAsked(["X", "Y"], retryItems(), DeleteList { id: 1 })
-        let lost = retryAsked(["X", "Y", "Z"], retryItems(), DeleteList { id: 1 })
-        let missing = retryAsked(["X", "Y", "Z"], retryItems(), DeleteList { id: 9 })
+        let one = retryAsked(loneRival, retryItems(), DeleteList { id: 2 })
+        let twice = retryAsked(twoRivals, retryItems(), DeleteList { id: 1 })
+        let lost = retryAsked(threeRivals, retryItems(), DeleteList { id: 1 })
+        let missing = retryAsked(threeRivals, retryItems(), DeleteList { id: 9 })
         retryExpectUpdated(calm)
         retryExpectUpdated(one)
         retryExpectUpdated(twice)
@@ -280,12 +316,12 @@ module MultishotRetryCases {
         retryExpectMissing(missing, "TodoList", 9)
         expect(TodoHarness::failures("each lost commit restores the cascade; only the committing attempt deletes", listConcat([
             retryStoredAs(calm, ["Banking"], [2]), retryItemIdsAre(calm, [3]),
-            retryStoredAs(one, ["Shopping", "Rival"], [1, 3]), retryItemIdsAre(one, [1, 2]),
+            retryStoredAs(one, ["Shopping", "Rival"], [1, 3]), retryItemIdsAre(one, firstTwoIds),
             retryStoredAs(twice, ["Banking", "X", "Y"], [2, 3, 4]),
             retryItemIdsAre(twice, [3]),
-            retryStoredAs(lost, ["Shopping", "Banking", "X", "Y", "Z"], [1, 2, 3, 4, 5]),
-            retryItemIdsAre(lost, [1, 2, 3]), retryItemsKept(lost),
-            retryTitlesAre(missing, ["Shopping", "Banking"]), retryItemIdsAre(missing, [1, 2, 3])
+            retryStoredAs(lost, titlesAfterThreeRivals, idsOneToFive),
+            retryItemIdsAre(lost, firstThreeIds), retryItemsKept(lost),
+            retryTitlesAre(missing, seedTitles), retryItemIdsAre(missing, firstThreeIds)
         ], retryCalm([calm, one, twice, lost, missing]))), [])
     }
 
@@ -296,8 +332,8 @@ module MultishotRetryCases {
     /// [EXAMPLE-CLEANARCH-MULTISHOT-RETRY], [MULTI-REPLAY].
     export fn retryPurgeCase() = {
         let calm = retryAsked([], retryItems(), PurgeTodoLists)
-        let twice = retryAsked(["X", "Y"], retryItems(), PurgeTodoLists)
-        let lost = retryAsked(["X", "Y", "Z"], retryItems(), PurgeTodoLists)
+        let twice = retryAsked(twoRivals, retryItems(), PurgeTodoLists)
+        let lost = retryAsked(threeRivals, retryItems(), PurgeTodoLists)
         let five = retryAsked(["X", "Y", "Z", "Fourth", "Fifth"], retryItems(), PurgeTodoLists)
         expect(calm.settled, purgedCount(2))
         expect(twice.settled, purgedCount(4))
@@ -305,10 +341,10 @@ module MultishotRetryCases {
         expect(TodoHarness::failures("the committing attempt purges seeds and landed rivals together", listConcat([
             length(calm.lists) == 0, length(calm.items) == 0,
             length(twice.lists) == 0, length(twice.items) == 0,
-            retryStoredAs(lost, ["Shopping", "Banking", "X", "Y", "Z"], [1, 2, 3, 4, 5]),
-            length(lost.lists) == 5, length(lost.items) == 3, retryItemIdsAre(lost, [1, 2, 3]),
-            retryStoredAs(five, ["Shopping", "Banking", "X", "Y", "Z"], [1, 2, 3, 4, 5]),
-            length(five.lists) == 5, length(five.items) == 3, retryItemIdsAre(five, [1, 2, 3]),
+            retryStoredAs(lost, titlesAfterThreeRivals, idsOneToFive),
+            length(lost.lists) == 5, length(lost.items) == 3, retryItemIdsAre(lost, firstThreeIds),
+            retryStoredAs(five, titlesAfterThreeRivals, idsOneToFive),
+            length(five.lists) == 5, length(five.items) == 3, retryItemIdsAre(five, firstThreeIds),
             retryHasTitles(five, "Fourth", 0), retryHasTitles(five, "Fifth", 0),
             retryHasTitles(lost, "X", 1), retryHasTitles(lost, "Y", 1), retryHasTitles(lost, "Z", 1)
         ], retryCalm([calm, twice, lost, five]))), [])
@@ -322,15 +358,15 @@ module MultishotRetryCases {
         let ask = UpdateItem { edit: ItemEdit { id: 1, title: "Milk", done: true } }
         let seeds = retryItems()
         let none = retryAsked([], seeds, ask)
-        let one = retryAsked(["Rival"], seeds, ask)
+        let one = retryAsked(loneRival, seeds, ask)
         let two = retryAsked(["Rival", "Other"], seeds, ask)
-        let bread = retryAsked(["Rival"], seeds, UpdateItem {
+        let bread = retryAsked(loneRival, seeds, UpdateItem {
             edit: ItemEdit { id: 2, title: "Bread", done: true } })
         retryExpectUpdated(none)
         retryExpectUpdated(one)
         retryExpectUpdated(two)
         retryExpectUpdated(bread)
-        let three = retryAsked(["Rival", "Other", "Third"], seeds, ask)
+        let three = retryAsked(namedRivals, seeds, ask)
         let four = retryAsked(["Rival", "Other", "Third", "Fourth"], seeds, ask)
         let five = retryAsked(["Rival", "Other", "Third", "Fourth", "Fifth"], seeds, ask)
         forEachList([three, four, five], fn(run) => retryExpectGaveUp(run))
@@ -346,7 +382,7 @@ module MultishotRetryCases {
             structuralEquals(three.items, seeds), structuralEquals(five.items, seeds),
             retryItemIdsAre(two, [2, 3, 1]),
             retryTitlesAre(five, ["Shopping", "Banking", "Rival", "Other", "Third"]),
-            retryIdsAre(five, [1, 2, 3, 4, 5]), length(five.lists) == 5
+            retryIdsAre(five, idsOneToFive), length(five.lists) == 5
         ], listConcat(retryQuiet(exhausted),
             retryReadsThree(listConcat([none, one, two, bread], exhausted))))), [])
     }
@@ -362,15 +398,15 @@ module MultishotRetryCases {
             TodoHarness::seedItem(2, 1, "Bread", false),
             TodoHarness::seedItem(3, 2, "Tax", false)
         ]
-        let keep = retryAsked(["X", "Y"], doneSeeds, UpdateItem {
+        let keep = retryAsked(twoRivals, doneSeeds, UpdateItem {
             edit: ItemEdit { id: 1, title: "Milk", done: true } })
-        let undo = retryAsked(["X", "Y"], doneSeeds, UpdateItem {
+        let undo = retryAsked(twoRivals, doneSeeds, UpdateItem {
             edit: ItemEdit { id: 1, title: "Milk", done: false } })
-        let rename = retryAsked(["X", "Y", "Z"], retryItems(), UpdateItem {
+        let rename = retryAsked(threeRivals, retryItems(), UpdateItem {
             edit: ItemEdit { id: 1, title: "Oat Milk", done: false } })
-        let missing = retryAsked(["X", "Y"], retryItems(), UpdateItem {
+        let missing = retryAsked(twoRivals, retryItems(), UpdateItem {
             edit: ItemEdit { id: 9, title: "Ninth", done: false } })
-        let empty = retryAsked(["Rival"], retryItems(), UpdateItem {
+        let empty = retryAsked(loneRival, retryItems(), UpdateItem {
             edit: ItemEdit { id: 1, title: "", done: false } })
         let long = retryAsked([], retryItems(), UpdateItem {
             edit: ItemEdit { id: 3, title: retryWide(201), done: false } })
@@ -384,8 +420,8 @@ module MultishotRetryCases {
             retryDoneOf(keep.items, 1), !retryDoneOf(undo.items, 1),
             retryItemsKept(rename), retryItemsKept(missing),
             retryItemsKept(empty), retryItemsKept(long),
-            retryStoredAs(missing, ["Shopping", "Banking"], [1, 2]),
-            retryTitlesAre(empty, ["Shopping", "Banking"]),
+            retryStoredAs(missing, seedTitles, firstTwoIds),
+            retryTitlesAre(empty, seedTitles),
             retryItemIdsAre(keep, [2, 3, 1]), length(keep.items) == 3, length(undo.items) == 3
         ], retryCalm([keep, undo, rename, missing, empty, long]))), [])
     }

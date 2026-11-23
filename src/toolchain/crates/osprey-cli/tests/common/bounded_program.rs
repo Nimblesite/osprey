@@ -1,5 +1,5 @@
 //! One Osprey program run from source under the program budget; see `bounded.rs`.
-use crate::bounded::{Bounded, Budget, run_command};
+use crate::bounded::{run_command, Bounded, Budget};
 use std::io;
 use std::process::Command;
 use std::time::Duration;

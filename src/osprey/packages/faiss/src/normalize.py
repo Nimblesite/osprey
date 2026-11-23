@@ -17,7 +17,30 @@ __all__ = ["normalize_L2"]
 
 def normalize_L2(x):
     """faiss's `normalize_L2(x)`: each row divided by its L2 norm, zero rows
-    unchanged. Returns the new matrix (faiss mutates `x` in place)."""
+    unchanged. Returns the new matrix (faiss mutates `x` in place).
+
+    # Examples
+    ```osprey
+    import faiss.Normalize as Normalize
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(op, l, r, wrapped_value):
+            return wrapped_value
+
+        def divideByZero(op, l):
+            return 0.0
+
+    def show():
+        with wrapped:
+            print(f"{toString(Normalize.normalize_L2([[3.0, 4.0], [0.0, 0.0]]))}")
+
+    show()
+    ```
+    ```output
+    [[0.6, 0.8], [0.0, 0.0]]
+    ```
+    """
     return mapList(x, lambda row: normalize_row(row))
 
 
