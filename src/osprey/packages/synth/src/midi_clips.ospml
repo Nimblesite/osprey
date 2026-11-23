@@ -3,7 +3,7 @@ namespace synth
 
 (** Deterministic MIDI note sources; no host, clock or UI dependency. *)
 module MidiClips
-    value (n, key) = match listGet (filterList (n.parameters, \p => p.key == key)) 0
+    value (n, key) = match Graphs::parameterNamed (n, key)
         Error _ => Error(message = MissingResource(detail = "The MIDI generator is missing a required parameter."))
         Success p => Success(value = p.initial)
 
