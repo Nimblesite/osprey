@@ -17,7 +17,8 @@ Compiler and language rules are separate from integration tooling. See [Document
 - the comment scope.
 
 `DocExample` stores the Osprey source, optional expected output, and whether the
-example is runnable. Both syntax flavors use this model.
+example is runnable or requires native capabilities. Both syntax flavors use
+this model.
 
 ## Default sigil `[DOC-SIGIL-DEFAULT]`
 

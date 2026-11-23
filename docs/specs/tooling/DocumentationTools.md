@@ -33,6 +33,12 @@ significant. A failure names the source, declaration, and example ordinal;
 the command exits unsuccessfully if any example fails or any examples section
 holds an orphaned `output` fence.
 
+Use a fence labelled `osprey native` for an example that requires an operation
+unavailable in WebAssembly. Native runs check stdout as usual. WebAssembly
+runs still type-check the example and require the target capability check to
+reject it. If the example becomes portable, the harness fails so its fence can
+run on both targets.
+
 ### Wrapper names `[DOC-DOCTEST-WRAPPER-DEPTH]`
 
 The harness wraps each example in one generated function per enclosing namespace

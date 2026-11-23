@@ -2,8 +2,8 @@
 // flat, sorted `List<string>` of file paths, the same order on every host
 // whatever order `listDir` answers in. `listDir` marks directories with a
 // trailing separator (`Path::isDir`), so the recursion needs no second syscall
-// per entry. A directory that cannot be listed — missing, not a directory, or
-// refused on wasm — fails the whole walk with its Error.
+// per entry. A missing or unreadable directory fails the whole walk with its
+// Error. WebAssembly rejects directory access at compile time.
 
 namespace fs
 
@@ -13,7 +13,7 @@ import fs::Path
 module Walk
     (** Every file under `root`, directories recursed and sorted, or the first listing Error.
     # Examples
-    ```osprey
+    ```osprey native
     found = match Walk::tree "no-such-directory"
         Success files => "found ${files}"
         Error _ => "no listing"
