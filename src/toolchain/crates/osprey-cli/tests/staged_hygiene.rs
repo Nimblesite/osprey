@@ -398,7 +398,15 @@ fn dependency_reports_assemble_modules_and_keep_source_names() -> std::io::Resul
 }
 
 #[test]
-fn reactive_programs_match_both_flavors_and_release_all_arc_values() {
+fn reactive_programs_match_flavors_and_release_all_arc_values() {
+    assert_flavored_output(
+        "reactive_views",
+        "py",
+        include_str!("../../../../osprey/tests/effects/staged/reactive_signals.test.py"),
+        include_str!(
+            "../../../../osprey/tests/effects/staged/reactive_signals.test.osp.expectedoutput"
+        ),
+    );
     for (name, sources, expected) in [
         (
             "reactive_views",
