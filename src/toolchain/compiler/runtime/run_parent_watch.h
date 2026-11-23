@@ -14,6 +14,7 @@
 #include <signal.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <time.h>
 #include <unistd.h>
 #if defined(__linux__)
 #include <sys/prctl.h>
@@ -30,14 +31,15 @@ static void run_parent_died(void *unused) {
   _exit(OSP_RUN_ORPHANED_STATUS);
 }
 
-#define OSP_RUN_POLL_USEC 50000
+#define OSP_RUN_POLL_NSEC 50000000L
 
 // The fallback watch when the system offers none: look every 50 ms, and end
 // once this process is no longer the runner's child.
 static void *run_parent_poll(void *named) {
   pid_t runner = (pid_t)(intptr_t)named;
+  const struct timespec pause = {0, OSP_RUN_POLL_NSEC};
   while (getppid() == runner) {
-    (void)usleep(OSP_RUN_POLL_USEC);
+    (void)nanosleep(&pause, NULL);
   }
   run_parent_died(NULL);
   return NULL;
