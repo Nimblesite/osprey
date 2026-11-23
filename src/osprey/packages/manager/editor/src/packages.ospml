@@ -192,8 +192,6 @@ module Packages
 
     export packageKey item = keyOf item
 
-    export catalogKeyOf item = keyOfCatalog item
-
     export newest item = latestVersion item
 
     export packageAt (entries, key) = findPackage (entries, key)

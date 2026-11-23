@@ -127,9 +127,6 @@ module Verify {
     /// The offline check of whichever lock the overlay selects.
     export fn verifyOfflineAt(project) = Reports::checked(Overlay::readAt(project), fn(value) => if Overlay::active(value) { verifyLocalAt(project) } else { verifyReleaseAt(project) })
 
-    /// The whole offline check in the working directory.
-    export fn verifyOffline() = verifyOfflineAt("")
-
     /// The command: `verify`, `verify --offline` and `verify --project <dir>`.
     export fn run(args) = Flags::dispatch(args, [Flags::projectFlag], [offlineFlag], usageCode, usageText,
         fn(parsed) => verifyOfflineAt(Flags::project(parsed)))

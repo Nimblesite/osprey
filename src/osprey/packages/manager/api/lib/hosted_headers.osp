@@ -113,12 +113,6 @@ module HostedHeaders {
         _ => false
     }
 
-    /// The parsed value, or `fallback` for any rejection.
-    export fn withDefault(parsed, fallback) = match parsed {
-        Ok { value } => value
-        _ => fallback
-    }
-
     /// The rejection status, or 0 when the parse succeeded.
     export fn statusOf(parsed) = match parsed {
         Reject { status, code } => status
