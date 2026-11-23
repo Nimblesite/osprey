@@ -117,6 +117,35 @@ fn main() = print("application main must not run")
     assert_doc_tests(&result, "1 passed, 0 failed");
 }
 
+/// A function an example reaches only as a method (`n.twice()`) is still part
+/// of the example's program, chained or nested, beside one it calls directly.
+#[test]
+fn doctests_keep_functions_an_example_reaches_only_by_method_call() {
+    let source = r#"/// `s` written twice.
+/// # Examples
+/// ```osprey
+/// let s = "ab"
+/// print("${s.twice()} ${s.twice().twice()} ${s.shout().twice()} ${twice(s.shout())}")
+/// ```
+/// ```output
+/// abab abababab ab!ab! ab!ab!
+/// ```
+fn twice(s) = s + s
+
+/// `s` with a bang, reached by a method call from inside `twice`'s example.
+/// # Examples
+/// ```osprey
+/// print("${"hi".shout()}")
+/// ```
+/// ```output
+/// hi!
+/// ```
+fn shout(s) = s + "!"
+"#;
+    let result = doc_tests("documentation_methods", source);
+    assert_doc_tests(&result, "2 passed, 0 failed");
+}
+
 #[test]
 fn doctests_include_file_and_module_inner_documentation() {
     let source = r#"//! File documentation.

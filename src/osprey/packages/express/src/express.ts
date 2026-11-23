@@ -165,7 +165,25 @@ export function put(app: Application, path: string, handler: (req: Request, res:
   return { ...app, routes: withRoute(app.routes, "PUT", path, false, handler) };
 }
 
-/** `app.delete(path, handler)` routes DELETE requests for `path`. */
+/** `app.delete(path, handler)` routes DELETE requests for `path`.
+ * # Examples
+ * ```osprey
+ * const app = express().delete("/tasks/:id", (_req, res) => res.send("deleted"));
+ * const shown = (routes) => {
+ *   const entry = listGet(routes, 0);
+ *   switch (entry.kind) {
+ *     case "success":
+ *       return `${entry.value.method} ${entry.value.path} of ${listLength(routes)}`;
+ *     case "error":
+ *       return "none";
+ *   }
+ * };
+ * print(`[${shown(app.routes)}]`);
+ * ```
+ * ```output
+ * [DELETE /tasks/:id of 1]
+ * ```
+ */
 function remove(app: Application, path: string, handler: (req: Request, res: Response) => Response): Application {
   return { ...app, routes: withRoute(app.routes, "DELETE", path, false, handler) };
 }
