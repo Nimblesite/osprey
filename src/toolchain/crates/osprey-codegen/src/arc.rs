@@ -16,7 +16,10 @@
 use crate::builder::Codegen;
 use crate::llty::Value;
 
+mod ownership;
 mod phi;
+pub(crate) use ownership::{second_owner, verdict as ownership_verdict, OwnershipCheck};
+pub use ownership::{set_ownership_check, Need, SecondOwner};
 pub(crate) use phi::{borrowed_phi_arms, move_phi_owners, promote_phi_arm};
 
 const RETAIN_DECL: &str = "declare void @osp_retain(i8*)";
@@ -288,6 +291,7 @@ pub(crate) fn bind_owned(cg: &mut Codegen, name: &str, v: &Value) {
         push_parent(cg, e);
         return;
     }
+    second_owner(cg, &v.operand, Some(name), Need::Bound);
     retain_val(cg, v);
     let ptr = as_i8ptr(cg, v);
     let slot = cg.hoist_arc_slot();
@@ -352,6 +356,7 @@ fn push_parent(cg: &mut Codegen, entry: Entry) {
 /// a value spelled as a constant. Both hooks are null-safe and ignore pointers
 /// the heap never registered (rodata), so an unconditional pair is correct.
 pub(crate) fn retain_operand(cg: &mut Codegen, operand: &str) {
+    second_owner(cg, operand, None, Need::Shared);
     ownership_call(cg, RETAIN_DECL, "retain", operand);
 }
 
@@ -382,6 +387,9 @@ fn retain_val(cg: &mut Codegen, v: &Value) {
 /// releases it, so the store is a new reference). [GC-ARC-PERCEUS]
 pub(crate) fn dup_store(cg: &mut Codegen, slot_ty: &str, operand: &str) {
     if slot_ty.ends_with('*') && operand.starts_with('%') {
+        if !slot_ty.contains('(') {
+            second_owner(cg, operand, None, Need::Stored);
+        }
         cg.add_extern(RETAIN_DECL);
         let ptr = if slot_ty == "i8*" {
             operand.to_string()
@@ -402,6 +410,9 @@ pub(crate) fn epilogue(cg: &mut Codegen, ret: Option<&Value>) {
     // dup-it-then-drop-it — the +1 the caller receives is the one the function
     // already holds. Saves a retain/release pair on every value-returning call.
     if let Some(v) = ret.filter(|v| !take_owner_anywhere(cg, v)) {
+        if managed(cg, v) {
+            second_owner(cg, &v.operand, None, Need::Returned);
+        }
         retain_val(cg, v);
     }
     let frames = std::mem::take(&mut cg.arc.frames);
@@ -416,6 +427,9 @@ pub(crate) fn epilogue(cg: &mut Codegen, ret: Option<&Value>) {
 /// effect / channel boundary where the pointer-ness is erased: dup it so the
 /// receiving side owns +1 (the boundary's structural release lands in M5).
 pub(crate) fn escape_retain(cg: &mut Codegen, v: &Value) {
+    if managed(cg, v) {
+        second_owner(cg, &v.operand, None, Need::Kept);
+    }
     retain_val(cg, v);
 }
 

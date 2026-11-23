@@ -6,12 +6,12 @@ use osprey_syntax::Flavor;
 pub(crate) const USAGE: &str =
     "usage: osprey <file-or-project> [--check | --ast | --llvm | --compile | --run | \
 --symbols | --signature | --source-graph | --list-tests | --doctests | --deps] [--quiet] [--no-warnings | --analyse | --warnings-as-errors] [--debug] [--profile] [--flavor default|ml|python|typescript] \
-[--memory=gc|arc|none] [--target=native|wasm32|ios|ios-sim|macos|android-arm64|android-x64|linux-x64|linux-arm64|windows-x64|python] [--entry-only] [-o <out>] \
+[--memory=gc|arc|ownership|none] [--target=native|wasm32|ios|ios-sim|macos|android-arm64|android-x64|linux-x64|linux-arm64|windows-x64|python] [--entry-only] [-o <out>] \
 [--sandbox | --no-http | --no-websocket | --no-fs | --no-ffi] [-- <program args>]\n\
-       osprey build [project] [--quiet] [--no-warnings | --analyse | --warnings-as-errors] [--debug] [--memory=gc|arc|none] \
+       osprey build [project] [--quiet] [--no-warnings | --analyse | --warnings-as-errors] [--debug] [--memory=gc|arc|ownership|none] \
 [--target=native|wasm32|ios|ios-sim|macos|android-arm64|android-x64|linux-x64|linux-arm64|windows-x64|python] [-o <out>]\n\
        osprey test [path] [--filter <name>] [--quiet] [--coverage] \
-[--coverage-json <path>] [--memory=gc|arc|none]\n\
+[--coverage-json <path>] [--memory=gc|arc|ownership|none]\n\
        osprey fmt [--check | --stdout] [--flavor default|ml|python|typescript] <path...>\n\
        osprey math <file.lean>\n\
        osprey hunt <file> [--max-time <seconds>] [--max-memory <mb>] [--input-bytes <n>] [--out <dir>] [--json] [--no-replay] [--quiet]\n\
@@ -298,7 +298,7 @@ fn parse_named_value(cli: &mut Cli, flag: &str, memory_given: &mut bool) -> Resu
         Some(("--debug-out", value)) => crate::debug_options::set_output(cli, value, true)?,
         Some(("--flavor", value)) => cli.flavor = Some(parse_flavor(value)?),
         Some(("--memory", value)) => {
-            cli.memory = parse_memory(value)?;
+            cli.memory = linked_backend(parse_memory(value)?);
             *memory_given = true;
         }
         Some(("--target", value)) => cli.target = parse_target(value)?,
@@ -355,15 +355,36 @@ pub(super) fn parse_target(value: &str) -> Result<String, String> {
 }
 
 /// Validate the `--memory=` value: the malloc passthrough (`none`), the
-/// tracing collector (`gc`), or Perceus reference counting (`arc`).
-/// Implements [MEM-BACKENDS].
+/// tracing collector (`gc`), Perceus reference counting (`arc`), or one proved
+/// owner per value (`ownership`). Implements [MEM-BACKENDS] and
+/// [MEM-OWNERSHIP-STATIC].
 pub(super) fn parse_memory(value: &str) -> Result<String, String> {
     match value {
-        "none" | "gc" | "arc" => Ok(value.to_string()),
+        "none" | "gc" | "arc" | OWNERSHIP => Ok(value.to_string()),
         other => Err(format!(
-            "unknown memory backend '{other}' (available: gc, arc, none)\n{USAGE}"
+            "unknown memory backend '{other}' (available: gc, arc, ownership, none)\n{USAGE}"
         )),
     }
+}
+
+/// The backend `--memory=ownership` selects.
+pub(crate) const OWNERSHIP: &str = "ownership";
+
+/// The runtime a backend links. A program `ownership` accepts counts no
+/// reference, so the reference-counting runtime frees each value at its one
+/// release [MEM-OWNERSHIP-STATIC].
+fn linked_backend(memory: String) -> String {
+    if memory == OWNERSHIP {
+        "arc".into()
+    } else {
+        memory
+    }
+}
+
+/// Whether the invocation asks for the ownership check.
+pub(crate) fn wants_ownership(args: &[String]) -> bool {
+    args.iter()
+        .any(|arg| arg.strip_prefix("--memory=") == Some(OWNERSHIP))
 }
 
 /// Validate a `--flavor` / marker value into a [`Flavor`]. [FLAVOR-SELECT]

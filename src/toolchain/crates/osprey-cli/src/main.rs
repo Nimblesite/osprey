@@ -135,6 +135,7 @@ fn report_version(args: &[String]) -> ExitCode {
 }
 
 fn run_arguments(args: &[String]) -> ExitCode {
+    osprey_codegen::set_ownership_check(invocation::wants_ownership(args));
     let cli = match parse_args(args) {
         Ok(cli) => cli,
         Err(message) => return usage_error(&message),

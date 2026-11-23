@@ -203,6 +203,8 @@ impl Codegen {
     }
 
     pub(crate) fn begin_function(&mut self, name: &str, position: Option<Position>) {
+        name.clone_into(&mut self.ownership.function);
+        self.ownership.position = position;
         self.reg_count = 0;
         self.label_count = 0;
         self.cur_lines.clear();

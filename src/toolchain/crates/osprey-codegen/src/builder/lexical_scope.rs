@@ -140,6 +140,17 @@ impl Codegen {
         self.scope_ids.last().copied()
     }
 
+    /// The innermost binding whose value is the register `operand`.
+    pub(crate) fn name_of(&self, operand: &str) -> Option<String> {
+        self.scopes.iter().rev().find_map(|scope| {
+            scope
+                .iter()
+                .filter(|(_, value)| value.operand == operand)
+                .map(|(name, _)| name.clone())
+                .min()
+        })
+    }
+
     pub(crate) fn bind(&mut self, name: impl Into<String>, value: Value) {
         let name = name.into();
         let _ = self.handler_value_captures.remove(&name);

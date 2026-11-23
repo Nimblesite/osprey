@@ -1,0 +1,161 @@
+//! `--memory=ownership` [MEM-OWNERSHIP-STATIC]
+//! (docs/specs/compiler/0018-MemoryManagement.md): the compiler proves one
+//! owner for every managed value or refuses the program. An accepted program
+//! prints what it prints under the collector and leaves nothing allocated; a
+//! refused one names the value that needs a second owner and where.
+
+use std::process::{Command, Output};
+
+const CLEAN_EXIT: &str = "[osp-arc] exit: 0 live objects, ";
+
+fn run(name: &str, source: &str, memory: &str) -> std::io::Result<Output> {
+    let directory = std::env::temp_dir().join(format!("osprey_ownership_{}", std::process::id()));
+    std::fs::create_dir_all(&directory)?;
+    let path = directory.join(format!("{name}_{memory}.osp"));
+    std::fs::write(&path, source)?;
+    let output = Command::new(env!("CARGO_BIN_EXE_osprey"))
+        .arg(&path)
+        .args(["--run", &format!("--memory={memory}")])
+        .env("OSPREY_ARC_DEBUG", "1")
+        .output();
+    let _ = std::fs::remove_file(&path);
+    output
+}
+
+/// Runs `source` under the collector and under ownership: same output, and the
+/// ownership run ends with no block left allocated.
+fn assert_accepted(name: &str, source: &str) -> std::io::Result<()> {
+    let collected = run(name, source, "gc")?;
+    let owned = run(name, source, "ownership")?;
+    let stderr = String::from_utf8_lossy(&owned.stderr);
+    assert!(collected.status.success(), "{name} under gc");
+    assert!(owned.status.success(), "{name}: {stderr}");
+    assert!(!collected.stdout.is_empty(), "{name} prints nothing");
+    assert_eq!(
+        String::from_utf8_lossy(&owned.stdout),
+        String::from_utf8_lossy(&collected.stdout),
+        "{name}"
+    );
+    assert!(stderr.contains(CLEAN_EXIT), "{name} left blocks: {stderr}");
+    Ok(())
+}
+
+/// Ownership refuses `source`, saying each of `wanted`; the collector runs it.
+fn assert_refused(name: &str, source: &str, wanted: &[&str]) -> std::io::Result<()> {
+    let collected = run(name, source, "gc")?;
+    assert!(
+        collected.status.success(),
+        "{name} under gc: {}",
+        String::from_utf8_lossy(&collected.stderr)
+    );
+    let owned = run(name, source, "ownership")?;
+    let stderr = String::from_utf8_lossy(&owned.stderr);
+    assert!(!owned.status.success(), "{name} was accepted");
+    assert!(owned.stdout.is_empty(), "{name} ran: {stderr}");
+    for needle in wanted {
+        assert!(stderr.contains(needle), "{name} lacks `{needle}`: {stderr}");
+    }
+    assert!(
+        stderr.contains("[MEM-OWNERSHIP-STATIC]"),
+        "{name}: {stderr}"
+    );
+    Ok(())
+}
+
+const FRESH_VALUES: &str = r#"type Point = { x: int, y: int }
+type Shape = Dot { at: Point } | Line { from: Point, to: Point }
+
+fn span(shape) = match shape {
+    Dot { at } => at.x
+    Line { from, to } => wrapSub(to.x, from.x)
+}
+
+fn label(shape) = "span ${span(shape)}"
+
+fn main() = {
+    let line = Line { from: Point { x: 1, y: 2 }, to: Point { x: 9, y: 4 } }
+    let dot = Dot { at: Point { x: 5, y: 5 } }
+    print("${label(line)}, ${label(dot)}, ${toString(wrapAdd(span(line), span(dot)))}")
+}
+"#;
+
+const SCALARS_AND_TEXT: &str = r#"fn twice(n) = wrapMul(n, 2)
+fn greet(name) = "hello ${name}"
+
+fn main() = {
+    let n = twice(21)
+    print("${greet("osprey")} ${n}")
+}
+"#;
+
+#[test]
+fn a_program_whose_values_each_have_one_owner_runs_and_frees_everything() -> std::io::Result<()> {
+    assert_accepted("scalars", SCALARS_AND_TEXT)?;
+    assert_accepted("fresh", FRESH_VALUES)
+}
+
+const SECOND_NAME: &str = r#"type Box = { text: string }
+
+fn main() = {
+    let made = Box { text: "a${toString(1)}" }
+    let again = made
+    print("${made.text}${again.text}")
+}
+"#;
+
+const STORED_TWICE: &str = r#"type Box = { text: string }
+type Pair = { left: Box, right: Box }
+
+fn main() = {
+    let made = Box { text: "a${toString(1)}" }
+    let pair = Pair { left: made, right: made }
+    print("${pair.left.text}${pair.right.text}")
+}
+"#;
+
+const RETURNED_BORROW: &str = r#"type Box = { text: string }
+
+fn pick(box, n) = match n {
+    0 => box
+    _ => Box { text: "none${toString(n)}" }
+}
+
+fn main() = {
+    let made = Box { text: "a${toString(1)}" }
+    print("${pick(made, 0).text}${pick(made, 3).text}")
+}
+"#;
+
+#[test]
+fn a_value_that_needs_a_second_owner_is_refused_by_name_and_place() -> std::io::Result<()> {
+    assert_refused(
+        "second_name",
+        SECOND_NAME,
+        &["`again`", " 5:4: ownership", "second owner"],
+    )?;
+    assert_refused(
+        "stored_twice",
+        STORED_TWICE,
+        &["`made`", " 6:4: ownership", "second owner"],
+    )?;
+    assert_refused(
+        "returned_borrow",
+        RETURNED_BORROW,
+        &[
+            "`box` needs a second owner in `pick`",
+            "one arm of a `match`",
+        ],
+    )
+}
+
+#[test]
+fn an_unknown_backend_names_ownership_among_the_choices() -> std::io::Result<()> {
+    let output = run("unknown", SCALARS_AND_TEXT, "bogus")?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(!output.status.success());
+    assert!(
+        stderr.contains("available: gc, arc, ownership, none"),
+        "{stderr}"
+    );
+    Ok(())
+}

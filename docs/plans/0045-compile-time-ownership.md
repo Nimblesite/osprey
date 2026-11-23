@@ -14,16 +14,17 @@ Contract: [MEM-OWNERSHIP-STATIC](../specs/compiler/0018-MemoryManagement.md#comp
 
 ## Phase 0 — design decisions recorded in spec 0018
 
-- [ ] Decide the persistent-list/map sharing rule (reject two live versions vs. copy shared nodes on second use) and record it in docs/specs/compiler/0018-MemoryManagement.md under [MEM-OWNERSHIP-STATIC].
-- [ ] Decide the fiber/channel transfer rule (ownership transfers to exactly one side, or repeated `await` of a managed result is rejected) and record it in spec 0018 [MEM-FIBER-ISOLATION].
-- [ ] Decide the closure/effect owner for captured values, resumptions, and handler state across `perform`/`resume`, and record it in spec 0018.
-- [ ] Decide the host-library transfer rule for exported globals and C ABI results (WASM, iOS, Android, Python callers) and record it in spec 0018 [MEM-BACKENDS].
-- [ ] Decide the rejection diagnostic's recommended source change (e.g. bind a copy or restructure the second use) and record it in spec 0018.
+- [x] Decide the persistent-list/map sharing rule (reject two live versions vs. copy shared nodes on second use) and record it in docs/specs/compiler/0018-MemoryManagement.md under [MEM-OWNERSHIP-STATIC].
+- [x] Decide the fiber/channel transfer rule (ownership transfers to exactly one side, or repeated `await` of a managed result is rejected) and record it in spec 0018 [MEM-FIBER-ISOLATION].
+- [x] Decide the closure/effect owner for captured values, resumptions, and handler state across `perform`/`resume`, and record it in spec 0018.
+- [x] Decide the host-library transfer rule for exported globals and C ABI results (WASM, iOS, Android, Python callers) and record it in spec 0018 [MEM-BACKENDS].
+- [x] Decide the rejection diagnostic's recommended source change (e.g. bind a copy or restructure the second use) and record it in spec 0018.
 - Acceptance: each answer is written into spec 0018 before Phase 1 starts.
 
 ## Phase 1 — analysis without codegen
 
 - [ ] Accept `--memory=ownership` in `parse_memory` (src/toolchain/crates/osprey-cli/src/invocation.rs) and in the usage strings; run the ownership ledger in checking mode and report every value that would need a run-time retain.
+  - Built: the flag, the checking mode in src/toolchain/crates/osprey-codegen/src/arc/ownership.rs and src/toolchain/crates/osprey-cli/tests/ownership_mode.rs. Open: the diagnostic names the value and the use that needs a second owner, not yet the owner's other use.
 - Acceptance: `osprey --memory=ownership` compiles a simple program; an unprovable program fails with a diagnostic naming the value and both uses; `parse_memory("ownership")` returns Ok and the tests in src/toolchain/crates/osprey-cli/src/tests/execution.rs cover it.
 - [ ] Add `src/osprey/examples/failscompilation/*.ospo` programs for each rejected pattern and `src/osprey/tests/regressions/` programs that must be accepted under `ownership`.
 - Acceptance: the check rejects every failscompilation program with a precise diagnostic and accepts the regression set.

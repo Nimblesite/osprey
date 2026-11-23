@@ -17,7 +17,8 @@ pub(crate) fn borrowed_phi_arms(cg: &Codegen, incoming: &[Value], mark: usize) -
 pub(crate) fn promote_phi_arm(cg: &mut Codegen, value: &Value, borrowed: bool) {
     if borrowed {
         let pointer = super::as_i8ptr(cg, value);
-        super::retain_operand(cg, &pointer);
+        super::second_owner(cg, &value.operand, None, super::Need::Joined);
+        super::ownership_call(cg, super::RETAIN_DECL, "retain", &pointer);
         own(cg, value);
     }
 }

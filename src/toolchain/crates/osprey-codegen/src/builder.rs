@@ -253,6 +253,8 @@ pub(crate) struct Codegen {
     /// The Perceus ownership ledger for the in-progress function
     /// [GC-ARC-PERCEUS] (see `crate::arc`).
     pub(crate) arc: crate::arc::ArcLedger,
+    /// Checking mode of the ledger [MEM-OWNERSHIP-STATIC].
+    pub(crate) ownership: crate::arc::OwnershipCheck,
     /// Device emission of extracted kernels [GPU-BACKEND-DEVICE].
     pub(crate) device: crate::gpu_device::DeviceState,
     /// Monotonic id for hoisted ARC spill slots (`%arc.sN`), per function.
@@ -393,6 +395,7 @@ impl Codegen {
             symbolic: options.symbolic,
             import_abi: options.import_abi,
             arc: crate::arc::ArcLedger::new(),
+            ownership: crate::arc::OwnershipCheck::requested(),
             device: crate::gpu_device::DeviceState::default(),
             arc_slot_count: 0,
             rodata_regs: HashSet::new(),

@@ -13,6 +13,8 @@ pub enum CodegenError {
     UnknownName(String),
     /// A structurally invalid program (e.g. a call with no callee).
     Invalid(String),
+    /// Values `--memory=ownership` could not give one owner [MEM-OWNERSHIP-STATIC].
+    Ownership(Vec<crate::SecondOwner>),
 }
 
 impl CodegenError {
@@ -36,6 +38,10 @@ impl fmt::Display for CodegenError {
             CodegenError::Unsupported(w) => write!(f, "codegen: unsupported construct: {w}"),
             CodegenError::UnknownName(n) => write!(f, "codegen: unknown name `{n}`"),
             CodegenError::Invalid(w) => write!(f, "codegen: invalid program: {w}"),
+            CodegenError::Ownership(found) => found
+                .iter()
+                .enumerate()
+                .try_for_each(|(i, one)| write!(f, "{}{one}", if i == 0 { "" } else { "\n" })),
         }
     }
 }

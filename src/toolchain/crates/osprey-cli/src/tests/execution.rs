@@ -50,6 +50,8 @@ fn link_args_selects_gc_archive_and_validates_backend() {
     assert_eq!(parse_memory("none").as_deref(), Ok("none"));
     assert!(parse_memory("default").is_err());
     assert_eq!(parse_memory("arc").as_deref(), Ok("arc"));
+    // [MEM-OWNERSHIP-STATIC]
+    assert_eq!(parse_memory("ownership").as_deref(), Ok("ownership"));
     assert!(parse_memory("bogus").is_err());
 }
 

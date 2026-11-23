@@ -263,7 +263,7 @@ fn compile_module(program: &Program, options: CodegenOptions, library: bool) -> 
     cg.finish_function(LType::I32.as_str(), "main", &[]);
     crate::gpu_device::publish(&mut cg);
 
-    Ok(cg.render())
+    crate::arc::ownership_verdict(&cg, cg.render())
 }
 
 /// Pre-pass: record parameter names so named-argument calls can be ordered,

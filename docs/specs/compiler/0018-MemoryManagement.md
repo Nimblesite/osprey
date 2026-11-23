@@ -4,8 +4,8 @@ Memory reclamation is an implementation detail. Osprey source cannot select
 allocation sites, release values, or observe when a value is reclaimed. Native
 builds default to tracing GC (`gc`); `arc` selects Perceus reference counting. WebAssembly, Apple and Android archives, and Python-hosted libraries default to ARC.
 Unmanaged allocation requires explicit `--memory=none`. The old
-`--memory=default` spelling is rejected. A third reclaiming backend,
-compile-time ownership, is planned to replace `none`
+`--memory=default` spelling is rejected. `--memory=ownership` accepts only programs the compiler can give one owner per
+value, and will replace `none`
 ([MEM-OWNERSHIP-STATIC](#compile-time-ownership-mem-ownership-static)).
 
 ## Collection Is Unobservable [MEM-OPAQUE]
@@ -77,11 +77,12 @@ and keeps collection on; the first allocation from a thread that never
 registered turns collection off for the rest of the run ([MEM-EFFECT-BATON]). Deterministic fiber mode
 runs the same ownership protocol without creating a thread.
 
-Under the planned compile-time ownership backend
+Under compile-time ownership
 ([MEM-OWNERSHIP-STATIC](#compile-time-ownership-mem-ownership-static)) this
-runtime co-ownership is replaced: ownership must transfer to exactly one
-side, or repeated `await` of a managed result is rejected. That backend is
-not implemented yet.
+runtime co-ownership is replaced: ownership transfers to exactly one side and
+a second `await` of a managed result is refused
+([MEM-OWNERSHIP-STATIC-FIBERS]). The checking mode doesn't enforce the
+`await` rule yet.
 
 ## Backend Selection [MEM-BACKENDS]
 
@@ -237,40 +238,82 @@ before a pthread-backed fiber is spawned.
 
 ## Compile-Time Ownership [MEM-OWNERSHIP-STATIC]
 
-**Planned; not in active work and not implemented.** `--memory=ownership` is
-not accepted today. Delivery is tracked by
-[plan 0045](../../plans/0045-compile-time-ownership.md).
+`--memory=ownership` accepts a program only when the compiler can give every
+managed value exactly one owner, as Rust's ownership and borrowing rules do.
+Osprey source gains no lifetimes, borrow markers or ownership annotations: the
+ownership ledger ([MEM-OWNERSHIP]) infers owners and borrows. Delivery is
+tracked by [plan 0045](../../plans/0045-compile-time-ownership.md).
 
-Under this backend the compiler proves the last use of every managed value
-and frees it there, as Rust's ownership and borrowing rules do, with no
-collector and no reference count at run time. Osprey source gains no
-lifetimes, borrow markers or ownership annotations: the ownership ledger
-([MEM-OWNERSHIP]) infers owners and borrows, and a program whose ownership it
-cannot prove is rejected at compile time with a diagnostic naming the value
-and its conflicting uses. The acyclic heap ([MEM-ACYCLIC]) makes a single-owner
-tree sufficient. Collection stays unobservable ([MEM-OPAQUE]): the backend
-decides which programs compile and when memory is freed, never a compiled
-program's output.
+**What is built.** The ledger runs in a checking mode. Wherever it would count
+a reference at run time, because it cannot move the one reference that exists,
+it reports the value instead, and a program with any report isn't compiled.
+An accepted program therefore counts no reference in compiled code: each value
+is freed at the single release the ledger emits for its owner. Until the
+backend has a runtime of its own, an accepted program links the reference
+counting runtime, where that single release frees the value. Runtime
+collections still count the elements two versions share; the sharing rule
+below isn't enforced yet.
 
-Design points still open for this backend; none is implemented yet:
+**What is refused.** A value needs a second owner, and the program is
+refused, when:
 
-- **Sharing.** Persistent lists and maps share structure between versions.
-  Either the backend rejects programs that keep two live versions, or shared
-  nodes are copied on the second use (an implicit clone the diagnostic can
-  recommend instead).
-- **Fibers and channels.** `spawn`, `await` and channel sends currently
-  co-own values with the runtime
-  ([MEM-FIBER-ISOLATION](#fiber-boundary-ownership-mem-fiber-isolation)).
-  Ownership must transfer to exactly one side, or repeated `await` of a
-  managed result is rejected.
-- **Closures and effects.** Captured values, resumptions and handler state
-  need an owner the analysis can see across `perform`/`resume`.
-- **Host libraries.** Exported globals and C ABI results
-  ([MEM-BACKENDS](#backend-selection-mem-backends)) need a documented
-  transfer rule for WASM, iOS, Android and Python callers.
-- **Diagnostics.** The rejection must say what to change in source with no
-  annotation syntax available, for example binding a copy or restructuring
-  the second use.
+- a value another binding, parameter or field owns is given a new name;
+- it is stored in a record, union, list, closure or cell while its owner keeps
+  it;
+- a function returns a parameter, a field of one, or a file-scope binding;
+- one arm of a `match` yields it where another arm yields a new value;
+- it is handed to a fiber, channel, handler or collection that keeps it;
+- a file-scope binding holds it as well as its owner.
 
-When shipped, `ownership` replaces the unmanaged `none` backend, which is then
-deleted and its spelling rejected.
+The diagnostic gives the statement, the function, the binding that names the
+value when one does, and which of these applies:
+
+```text
+main.osp: 6:4: ownership: `made` needs a second owner in `main`: it is stored in a new value while its owner keeps it [MEM-OWNERSHIP-STATIC]
+```
+
+A fresh value passed straight to its use is moved and never refused. A
+function parameter is a borrow: the caller keeps the value alive for the
+call, so reading a parameter or passing it on costs nothing. A function
+result is owned by the caller. The acyclic heap ([MEM-ACYCLIC]) makes a
+single-owner tree sufficient. Collection stays unobservable ([MEM-OPAQUE]):
+the backend decides which programs compile and when memory is freed, never a
+compiled program's output.
+
+### Rules for shared values [MEM-OWNERSHIP-STATIC-RULES]
+
+These are decided. The checking mode enforces the ones stated under "What is
+refused"; the rest are the contract the remaining phases build.
+
+- **Persistent collections [MEM-OWNERSHIP-STATIC-SHARING].** Two live versions
+  of a list or map are refused. An operation that derives a new version takes
+  its argument by move when that is the argument's last use, and may then
+  update it in place; when the argument is used again afterwards the program
+  is refused. The compiler never inserts a copy, because a hidden copy of a
+  whole collection would make cost unpredictable.
+- **Fibers and channels [MEM-OWNERSHIP-STATIC-FIBERS].** Ownership transfers to
+  exactly one side. `spawn` moves the managed values its body captures into the
+  fiber. `await` moves the result to the awaiting side, so a fiber whose result
+  is managed is awaited once and a second `await` is refused. `send` moves a
+  value into the channel and `recv` moves it out. This replaces the runtime
+  co-ownership of [MEM-FIBER-ISOLATION] under this backend.
+- **Closures and effects [MEM-OWNERSHIP-STATIC-CLOSURES].** A closure that
+  outlives the scope it is written in owns the managed values it captures, so
+  capturing is a move and must be the captured binding's last use. A closure
+  applied only inside that scope borrows them. A handler owns its state.
+  `perform` lends its arguments to the handler until it resumes, and the
+  resumed value moves to the performer. A continuation that owns managed
+  values is resumed at most once.
+- **Host libraries [MEM-OWNERSHIP-STATIC-HOSTS].** A managed result returned
+  over the C ABI belongs to the host, which hands it back through the
+  exported release function exactly once. Arguments a host passes are lent
+  for the call. An exported global is owned by the module and lent to every
+  caller. The rule is the same for WASM, iOS, Android and Python hosts.
+- **Diagnostics [MEM-OWNERSHIP-STATIC-ADVICE].** With no annotation syntax,
+  there are two changes a refused program can make: make the use that needs
+  ownership the last use of the value, or build a separate value for that
+  use. The diagnostic names the value and the use so either change is local.
+
+When the backend has its own runtime, `ownership` replaces the unmanaged
+`none` backend, which is then deleted and its spelling rejected.
+
