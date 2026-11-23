@@ -29,6 +29,7 @@
 #include "socket_platform.h"
 #include "socket_safety.h"
 #include "osprey_path.h"
+#include "osprey_path_open.h"
 
 enum { FS_TICK_MS = 100 }; // how soon a connection blocked on its peer notices a stop
 enum { FS_SERVERS = 16, FS_CHUNK = 65536, FS_REQUEST = 8192, FS_WAIT = 120 };
@@ -41,14 +42,14 @@ typedef struct {
   pthread_t thread;
   char *path;
   char *content_type;
-  int64_t size;
   bool folder;
   int connections; // the live ones, under fs_connections_mutex
 } FileServer;
 
-// One file a request resolved to: its path, type and size.
+// One file a request resolved to: the handle it was opened and checked through,
+// its type and its size. Bytes come only from that handle, never from the name again.
 typedef struct {
-  char path[1280];
+  FILE *file;
   const char *content_type;
   int64_t size;
 } Served;
@@ -151,11 +152,8 @@ static void send_status(const Connection *connection, const char *status, const 
 // failed send (a player that seeks away closes its old connection) or a server stop.
 static void send_body(const Connection *connection, const Served *served, int64_t start,
                       int64_t end) {
-  FILE *file = fopen(served->path, "rb");
-  if (!file || fseeko(file, (off_t)start, SEEK_SET) != 0) {
-    if (file) {
-      fclose(file);
-    }
+  FILE *file = served->file;
+  if (fseeko(file, (off_t)start, SEEK_SET) != 0) {
     return;
   }
   char chunk[FS_CHUNK];
@@ -168,7 +166,6 @@ static void send_body(const Connection *connection, const Served *served, int64_
     }
     left -= (int64_t)got;
   }
-  fclose(file);
 }
 
 // Answers a GET or HEAD for the media: 200 for the whole file, 206 for a
@@ -224,47 +221,51 @@ static bool is_plain_name(const char *name) {
   return name[0] != '\0' && name[0] != '.' && !strpbrk(name, "/\\:");
 }
 
-// Implements [FFI-FILE-SERVER-FOLDER]: never follow a folder entry outside its root.
-static bool is_folder_link(const char *path) {
-#ifdef _WIN32
-  DWORD attributes = GetFileAttributesA(path);
-  return attributes != INVALID_FILE_ATTRIBUTES &&
-         (attributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0;
-#else
+// Takes `file` as the served handle when it is a regular file; closes it otherwise.
+static bool serve_regular(FILE *file, Served *served) {
   struct stat info;
-  return lstat(path, &info) == 0 && S_ISLNK(info.st_mode);
-#endif
+  if (file && fstat(fileno(file), &info) == 0 && S_ISREG(info.st_mode)) {
+    served->file = file;
+    served->size = (int64_t)info.st_size;
+    return true;
+  }
+  if (file) {
+    fclose(file);
+  }
+  return false;
 }
 
-// Resolves a request path to the file it serves: the one file at `/media`, or
+// Opens a folder's entry, never through a link, once it exists: waits up to FS_WAIT
+// seconds or the stop [FFI-FILE-SERVER-FOLDER].
+static FILE *open_when_present(const FileServer *server, const char *path) {
+  bool missing = false;
+  FILE *file = osp_open_entry(path, &missing);
+  for (int waited = 0; !file && missing; waited++) {
+    if (waited >= FS_WAIT * 10 || atomic_load(&server->stopping)) {
+      return NULL;
+    }
+    usleep(100000);
+    file = osp_open_entry(path, &missing);
+  }
+  return file;
+}
+
+// Resolves a request path to the open file it serves: the one file at `/media`, or
 // a folder's `/<name>` once that file exists. False answers 404.
 static bool resolve(const FileServer *server, const char *path, Served *served) {
+  served->file = NULL;
   if (!server->folder) {
-    snprintf(served->path, sizeof served->path, "%s", server->path);
     served->content_type = server->content_type;
-    served->size = server->size;
-    return strcmp(path, "/media") == 0;
+    return strcmp(path, "/media") == 0 && serve_regular(fopen(server->path, "rb"), served);
   }
   const char *name = path + 1;
-  if (path[0] != '/' || !is_plain_name(name)) {
-    return false;
-  }
-  if (osp_path_child(served->path, sizeof served->path, server->path, name) == 0) {
+  char child[1280];
+  if (path[0] != '/' || !is_plain_name(name) ||
+      osp_path_child(child, sizeof child, server->path, name) == 0) {
     return false; // a truncated path could name a different file: refuse it
   }
   served->content_type = folder_type(name);
-  struct stat info;
-  for (int waited = 0; stat(served->path, &info) != 0; waited++) {
-    if (waited >= FS_WAIT * 10 || atomic_load(&server->stopping)) {
-      return false;
-    }
-    usleep(100000);
-  }
-  if (is_folder_link(served->path)) {
-    return false;
-  }
-  served->size = (int64_t)info.st_size;
-  return S_ISREG(info.st_mode);
+  return serve_regular(open_when_present(server, child), served);
 }
 
 static void connection_join(Connection *connection) {
@@ -297,6 +298,7 @@ static void *connection_thread(void *arg) {
     send_status(connection, "404 Not Found", "");
   } else {
     serve_media(connection, &served, request, strcmp(method, "HEAD") == 0);
+    fclose(served.file);
   }
   connection_leave(connection);
   close(connection->fd);
@@ -399,7 +401,6 @@ int64_t osprey_file_server_start(char *path, char *content_type, char *address) 
   memset(server, 0, sizeof *server);
   server->path = strdup(path);
   server->content_type = strdup(content_type);
-  server->size = (int64_t)info.st_size;
   server->folder = S_ISDIR(info.st_mode);
   server->listen_fd = listen_on(address, &server->port);
   if (server->listen_fd < 0 || !server->path || !server->content_type) {

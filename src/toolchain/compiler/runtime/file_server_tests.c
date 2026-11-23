@@ -3,16 +3,12 @@
 // [FFI-FILE-SERVER] 200/206/416/404/405 and byte-exact bodies
 // [FFI-FILE-SERVER-FOLDER] files by name, and nothing outside the folder
 // [FFI-FILE-SERVER-STOP] stopping ends every connection before its state goes
-#include "http_shared.h"
+#include "file_server_tests.h"
 
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <sys/stat.h>
-
-int64_t osprey_file_server_start(char *path, char *content_type, char *address);
-int64_t osprey_file_server_stop(int64_t port);
-void run_file_server_tests(void);
 
 enum { MEDIA_BYTES = 200000 };
 
@@ -76,15 +72,8 @@ static int dial_with_deadline(int64_t port, int receive_buffer) {
   return connect_loopback(fd, port);
 }
 
-typedef struct {
-  int status;
-  char headers[4096];
-  unsigned char *body;
-  size_t body_len;
-} Reply;
-
 // Sends one raw request and reads the whole reply until the server closes.
-static void fetch(int port, const char *request, Reply *reply) {
+void fetch(int port, const char *request, Reply *reply) {
   int fd = dial_loopback(port);
   assert(send(fd, request, strlen(request), 0) == (ssize_t)strlen(request));
   size_t cap = MEDIA_BYTES + 8192;
@@ -118,19 +107,7 @@ static void assert_body_is(const Reply *reply, int64_t start, int64_t count) {
   }
 }
 
-// One request and what its reply must carry: the status, every header line in
-// `headers`, and a body that is the literal `text`, or MEDIA bytes
-// [start, start + len), or empty (len 0); len -1 leaves the body unchecked.
-typedef struct {
-  const char *request;
-  int status;
-  const char *headers[3];
-  const char *text;
-  int64_t start;
-  int64_t len;
-} Exchange;
-
-static void expect_exchanges(int64_t port, const Exchange *cases, size_t count) {
+void expect_exchanges(int64_t port, const Exchange *cases, size_t count) {
   for (size_t i = 0; i < count; i++) {
     const Exchange *e = &cases[i];
     Reply reply;
@@ -241,7 +218,7 @@ static void *fetch_thread(void *arg) {
   return NULL;
 }
 
-static void write_text(const char *folder, const char *name, const char *text) {
+void write_text(const char *folder, const char *name, const char *text) {
   char path[512];
   snprintf(path, sizeof path, "%s/%s", folder, name);
   FILE *file = fopen(path, "w");
@@ -318,21 +295,6 @@ static void test_file_server_folder(void) {
 // [FFI-FILE-SERVER-FOLDER] Every separator any platform honours is refused, and so
 // is a drive or stream colon: on Windows "\..\..\secret" leaves the folder. These
 // files really exist in the folder, so only the name check can refuse them.
-static void assert_folder_symlink_refused(const char *folder, int64_t port) {
-  char outside[] = "/tmp/osprey-net-outside.XXXXXX";
-  int fd = mkstemp(outside);
-  assert(fd >= 0 && write(fd, "outside", 7) == 7 && close(fd) == 0);
-  char link[512];
-  snprintf(link, sizeof link, "%s/escape.txt", folder);
-  assert(symlink(outside, link) == 0);
-  static const Exchange refused[] = {
-      {"GET /escape.txt HTTP/1.1\r\n\r\n", 404, {NULL}, NULL, 0, 0},
-      {"HEAD /escape.txt HTTP/1.1\r\n\r\n", 404, {NULL}, NULL, 0, 0},
-  };
-  expect_exchanges(port, refused, sizeof refused / sizeof refused[0]);
-  assert(unlink(link) == 0 && unlink(outside) == 0);
-}
-
 static void test_file_server_refuses_every_separator(void) {
   char folder[] = "/tmp/osprey-net-names.XXXXXX";
   assert(mkdtemp(folder) != NULL);
@@ -352,7 +314,7 @@ static void test_file_server_refuses_every_separator(void) {
   }
   static const Exchange plain_served[] = {{"GET /plain.txt HTTP/1.1\r\n\r\n", 200, {NULL}, "ok", 0, 0}};
   expect_exchanges(port, plain_served, 1);
-  assert_folder_symlink_refused(folder, port);
+  run_file_server_link_tests(folder, port);
   assert(osprey_file_server_stop(port) == 0);
   unlink_in_folder(folder, hostile, count);
   const char *plain[] = {"plain.txt"};
