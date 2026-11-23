@@ -167,18 +167,18 @@ captureJourney writer =
     refusedWith (GrainCapture::write (writer, []), "Invalid capture state, block size or sample clock.")
     refusedWith (GrainCapture::resource (writer, "capture", 60.0), "Freeze a valid capture before preparing a sample resource.")
     refusedWith (GrainCapture::freeze writer, "Freeze requires at least two captured frames.")
-    succeeds (GrainCapture::write (writer, [0.0, 0.25]), \first =>
-        succeeds (GrainCapture::write (first, [0.5, 0.75, 1.0]), \second =>
-            succeeds (GrainCapture::freeze second, \frozen =>
-                expect (structuralEquals (frozen.samples, [0.25, 0.5, 0.75, 1.0]) && frozen.written == 5, true)
-                refusedWith (GrainCapture::write (frozen, [0.0]), "Resume capture before writing.")
-                succeeds (GrainCapture::resource (frozen, "captured", 60.0), \resource =>
-                    expect (resource.sampleRate == 24000 && resource.sourceChannels == 1, true)
-                    sameStructure (resource.samples, frozen.samples))
-                succeeds (GrainCapture::thaw frozen, \resumed =>
-                    succeeds (GrainCapture::write (resumed, [-1.0, 0.0, 0.25, 0.5, 0.75]), \next =>
-                        expect (next.written == 10 && structuralEquals (next.samples, [0.0, 0.25, 0.5, 0.75]), true)
-                        sameStructure (frozen.samples, [0.25, 0.5, 0.75, 1.0]))))))
+    use first <- succeeds (GrainCapture::write (writer, [0.0, 0.25]))
+    use second <- succeeds (GrainCapture::write (first, [0.5, 0.75, 1.0]))
+    use frozen <- succeeds (GrainCapture::freeze second)
+    expect (structuralEquals (frozen.samples, [0.25, 0.5, 0.75, 1.0]) && frozen.written == 5, true)
+    refusedWith (GrainCapture::write (frozen, [0.0]), "Resume capture before writing.")
+    succeeds (GrainCapture::resource (frozen, "captured", 60.0), \resource =>
+        expect (resource.sampleRate == 24000 && resource.sourceChannels == 1, true)
+        sameStructure (resource.samples, frozen.samples))
+    succeeds (GrainCapture::thaw frozen, \resumed =>
+        succeeds (GrainCapture::write (resumed, [-1.0, 0.0, 0.25, 0.5, 0.75]), \next =>
+            expect (next.written == 10 && structuralEquals (next.samples, [0.0, 0.25, 0.5, 0.75]), true)
+            sameStructure (frozen.samples, [0.25, 0.5, 0.75, 1.0])))
 
 // Each upward crossing in an external monophonic reference owns exactly one absolute sample.
 pitchMarkJourney () =
@@ -260,14 +260,14 @@ grainPlacementJourney () =
 grainLifetimeJourney () =
     short = grainAsr (0.0, 0.0, 5, 1.0, -1.0)
     long = grainAsr (2.0, 1.0, 11, 1.0, 1.0)
-    succeeds (Grains::prepare ([1.0, 1.0, 1.0, 1.0], 2), \pool =>
-        succeeds (Grains::trigger (pool, short), \first =>
-            grainBlockAfterTrigger (first.pool, long, 5, \rendered =>
-                watched = Grains::observation rendered.next
-                expect (watched.activeGrains, 1)
-                survivor = grainVoiceAt (watched.voices, 0)
-                expect (survivor.identity == 1 && survivor.age == 5 && survivor.duration == 11, true)
-                expect (survivor.cursor, 3.0))))
+    use pool <- succeeds (Grains::prepare ([1.0, 1.0, 1.0, 1.0], 2))
+    use first <- succeeds (Grains::trigger (pool, short))
+    use rendered <- grainBlockAfterTrigger (first.pool, long, 5)
+    watched = Grains::observation rendered.next
+    expect (watched.activeGrains, 1)
+    survivor = grainVoiceAt (watched.voices, 0)
+    expect (survivor.identity == 1 && survivor.age == 5 && survivor.duration == 11, true)
+    expect (survivor.cursor, 3.0)
 
 // [SYNTH-ADVANCED-GRAINS-OVERLOAD] Reject-new admission: counted, never stolen, audio untouched.
 grainOverloadJourney () =
@@ -429,12 +429,12 @@ grainCloudCommitJourney () =
             refusedWith (GrainClouds::variedBlock (played.next, synth::GrainDistribution(minimum = controls(amplitude = 1.0), maximum = controls(amplitude = 0.0)), 4), "Invalid grain distribution bounds, sample positions or random seeds.")
             succeeds (GrainClouds::block (played.next, controls, 4), \again => expect (again.next.pool.position, 12))))
     // Rejected onsets consume their draws: eight onsets advance all five streams exactly eight times.
-    succeeds (GrainDistributions::seeded 7, \base =>
-        succeeds (variedCloud 7, \seeded =>
-            succeeds (GrainClouds::variedBlock (seeded, wideGrainDistribution (), 8), \drawn =>
-                sameStructure (drawn.next.seeds, grainAdvancedTimes (base, 8))
-                counted = GrainClouds::observation drawn.next
-                exactRows ([{ got = counted.playback.requestedGrains, want = 8 }, { got = counted.playback.acceptedGrains, want = 4 }, { got = counted.playback.rejectedGrains, want = 4 }, { got = counted.playback.activeGrains, want = 4 }]))))
+    use base <- succeeds (GrainDistributions::seeded 7)
+    use seeded <- succeeds (variedCloud 7)
+    use drawn <- succeeds (GrainClouds::variedBlock (seeded, wideGrainDistribution (), 8))
+    sameStructure (drawn.next.seeds, grainAdvancedTimes (base, 8))
+    counted = GrainClouds::observation drawn.next
+    exactRows ([{ got = counted.playback.requestedGrains, want = 8 }, { got = counted.playback.acceptedGrains, want = 4 }, { got = counted.playback.rejectedGrains, want = 4 }, { got = counted.playback.activeGrains, want = 4 }])
 
 // Identical seeds replay identical audio across irregular partitions; different seeds draw different grains.
 grainCloudReplayJourney () =
