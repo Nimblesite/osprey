@@ -139,7 +139,7 @@ def osprey_wins(v: dict[str, float]) -> bool:
 
 
 def cell_missing(c: Cell) -> str:
-    return {"build_failed": "build✗", "wrong_output": "wrong✗"}.get(str(c.get("status")), "—")
+    return {"build_failed": "build✗", "wrong_output": "wrong✗", "ownership_refused": "refused"}.get(str(c.get("status")), "—")
 
 
 def table(head: list[str], rows: str, numeric: set[int] = frozenset(), compact: bool = False) -> str:

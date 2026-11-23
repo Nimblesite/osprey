@@ -127,7 +127,9 @@ class MergeResultsTests(TempDirs, unittest.TestCase):
                 self.assert_merge_untouched(destination, update, "")
 
     def test_incompatible_skip_cannot_replace_a_published_measurement(self) -> None:
-        self.assert_merge_untouched(*self.fixture_pair("wasm_incompatible"))
+        for status in ("wasm_incompatible", "ownership_refused"):
+            with self.subTest(status=status):
+                self.assert_merge_untouched(*self.fixture_pair(status))
 
     def test_malformed_later_case_does_not_partially_publish(self) -> None:
         destination, update = self.fixture_pair(resumed=True)

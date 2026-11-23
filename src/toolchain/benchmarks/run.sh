@@ -124,7 +124,7 @@ build() {
   case "$lang" in
     osprey-gc)  ( cd "$dir" && "$OSP" "$input" --memory=gc --compile >/dev/null 2>&1 ) && mv -f "$dir/$name" "$out" ;;
     osprey-arc) ( cd "$dir" && "$OSP" "$input" --memory=arc --compile >/dev/null 2>&1 ) && mv -f "$dir/$name" "$out" ;;
-    osprey-ownership) ( cd "$dir" && "$OSP" "$input" --memory=ownership --compile >/dev/null 2>&1 ) && mv -f "$dir/$name" "$out" ;;
+    osprey-ownership) ( cd "$dir" && "$OSP" "$input" --memory=ownership --compile >/dev/null 2>"$TMP/ownership.txt" ) && mv -f "$dir/$name" "$out" ;;
     rust)    rustc -C opt-level=3 -C overflow-checks=off -o "$out" "$dir/$name.rs" 2>/dev/null ;;
     rust-checked) rustc -C opt-level=3 -C overflow-checks=on -o "$out" "$dir/$name.rs" 2>/dev/null ;;
     c)       cc -O2 -o "$out" "$dir/$name.c" 2>/dev/null ;;
@@ -241,6 +241,12 @@ for dir in $CASEDIR/*/(/); do
       # don't fail the suite. A native build failure is a real error.
       case "$lang" in
         *-wasm) echo "    $lang: not wasm-compatible (skipped)"; json_row "$name" "$lang" "wasm_incompatible" "" "$expected" ;;
+        # A program the checker refuses has no single-owner build: record the
+        # refusal and its diagnostics, as the wasm column records a missing builtin.
+        osprey-ownership) if grep -q "\[MEM-OWNERSHIP-STATIC\]" "$TMP/ownership.txt"; then
+            echo "    $lang: refused by the ownership check (skipped)"; sed "s/^/      /" "$TMP/ownership.txt"
+            json_row "$name" "$lang" "ownership_refused" "" "$expected"
+          else echo "    $lang: BUILD FAILED"; json_row "$name" "$lang" "build_failed" "" "$expected"; fail=1; fi ;;
         *)      echo "    $lang: BUILD FAILED"; json_row "$name" "$lang" "build_failed" "" "$expected"; fail=1 ;;
       esac
       continue

@@ -9,7 +9,7 @@ import tempfile
 from pathlib import Path
 
 TIMING = ("mean", "stddev", "min", "max")
-PUBLISHABLE = {"ok", "wasm_incompatible"}
+PUBLISHABLE = {"ok", "wasm_incompatible", "ownership_refused"}
 
 
 def valid_timing(result: dict) -> bool:
