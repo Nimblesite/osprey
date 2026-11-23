@@ -52,7 +52,18 @@ def jbool(b):
 
 
 def jnull():
-    """The JSON null value, the fallback when a member or item is absent."""
+    """The JSON null value, the fallback when a member or item is absent.
+
+    # Examples
+    ```osprey
+    from safetensors import JsonParser
+    none = JsonParser.jnull()
+    print(f"[{none.kind}] [{none.i}] [{toString(none.members)}]")
+    ```
+    ```output
+    [null] [0] [[]]
+    ```
+    """
     return JsonValue(kind="null", b=False, i=0, f=0.0, s="", items=[], members=[])
 
 
@@ -375,5 +386,36 @@ def ensure_end(text, p):
 
 
 def parse(text):
-    """Parse `text` as one complete JSON value, or Error with a reason."""
+    """Parse `text` as one complete JSON value, or Error with a reason.
+
+    # Examples
+    ```osprey
+    from safetensors import JsonParser
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped):
+            return wrapped
+
+    def describe(result):
+        match result:
+            case Success(value=v):
+                return v.kind
+            case Error(message=m):
+                return m
+
+    def run():
+        with wrapped:
+            obj = describe(JsonParser.parse('{"t": {"dtype": "U8"}}'))
+            number = describe(JsonParser.parse("-2.5"))
+            truncated = describe(JsonParser.parse("[1, 2"))
+            blank = describe(JsonParser.parse(""))
+            print(f"[{obj}] [{number}] [{truncated}] [{blank}]")
+
+    run()
+    ```
+    ```output
+    [obj] [float] [invalid JSON: expected ',' or ']'] [invalid JSON: unexpected character]
+    ```
+    """
     return andThen(skip_value(text, 0), lambda value: ensure_end(text, value))

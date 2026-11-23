@@ -16,28 +16,144 @@ __all__ = ["pow2i", "pow2", "le_bytes", "le16", "le32", "le64", "read_bytes", "r
 
 
 def pow2i(e):
-    """2^e as an int, for e in [0, 56], by repeated doubling."""
+    """2^e as an int, for e in [0, 56], by repeated doubling.
+
+    # Examples
+    ```osprey
+    from safetensors import Bytes
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped):
+            return wrapped
+
+        def remainderByZero(l):
+            return 0
+
+    def show():
+        with wrapped:
+            print(f"[{Bytes.pow2i(10)}] [{Bytes.pow2i(1)}] [{Bytes.pow2i(0)}]")
+
+    show()
+    ```
+    ```output
+    [1024] [2] [1]
+    ```
+    """
     return fold(range(e), 1, lambda acc, i: acc * 2)
 
 
 def le_bytes(data, off, n):
-    """The n little-endian bytes at `off` as one int; n <= 7 keeps it in range."""
+    """The n little-endian bytes at `off` as one int; n <= 7 keeps it in range.
+
+    # Examples
+    ```osprey
+    from safetensors import Bytes
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped):
+            return wrapped
+
+        def remainderByZero(l):
+            return 0
+
+    def show():
+        with wrapped:
+            data = [255, 2, 1]
+            print(f"[{Bytes.le_bytes(data, 0, 3)}] [{Bytes.le_bytes(data, 1, 2)}] [{Bytes.le_bytes(data, 9, 2)}]")
+
+    show()
+    ```
+    ```output
+    [66303] [258] [0]
+    ```
+    """
     return fold(range(n), 0, lambda acc, i: acc + unwrap_or(listGet(data, off + i), 0) * pow2i(8 * i))
 
 
 def le16(data, off):
-    """Two little-endian bytes at `off` as one int."""
+    """Two little-endian bytes at `off` as one int.
+
+    # Examples
+    ```osprey
+    from safetensors import Bytes
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped):
+            return wrapped
+
+        def remainderByZero(l):
+            return 0
+
+    def show():
+        with wrapped:
+            print(f"[{Bytes.le16([0, 62], 0)}] [{Bytes.le16([255], 0)}]")
+
+    show()
+    ```
+    ```output
+    [15872] [255]
+    ```
+    """
     return le_bytes(data, off, 2)
 
 
 def le32(data, off):
-    """Four little-endian bytes at `off` as one int."""
+    """Four little-endian bytes at `off` as one int.
+
+    # Examples
+    ```osprey
+    from safetensors import Bytes
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped):
+            return wrapped
+
+        def remainderByZero(l):
+            return 0
+
+    def show():
+        with wrapped:
+            print(f"[{Bytes.le32([255, 255, 255, 127], 0)}] [{Bytes.le32([255], 0)}]")
+
+    show()
+    ```
+    ```output
+    [2147483647] [255]
+    ```
+    """
     return le_bytes(data, off, 4)
 
 
 def le64(data, off):
     """Eight little-endian bytes at `off` as one int; callers ensure bytes 6 and 7
-    are zero so the value stays in range."""
+    are zero so the value stays in range.
+
+    # Examples
+    ```osprey
+    from safetensors import Bytes
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped):
+            return wrapped
+
+        def remainderByZero(l):
+            return 0
+
+    def show():
+        with wrapped:
+            print(f"[{Bytes.le64([255, 255, 255, 255, 255, 255, 0, 0], 0)}] [{Bytes.le64([255], 0)}]")
+
+    show()
+    ```
+    ```output
+    [281474976710655] [255]
+    ```
+    """
     return le_bytes(data, off, 8)
 
 
@@ -57,7 +173,39 @@ def le32s(data, off):
 
 
 def read_bytes(data, off, n):
-    """n bytes starting at `off`, or Error when the range leaves `data`."""
+    """n bytes starting at `off`, or Error when the range leaves `data`.
+
+    # Examples
+    ```osprey
+    from safetensors import Bytes
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped):
+            return wrapped
+
+        def remainderByZero(l):
+            return 0
+
+    def shown(result):
+        match result:
+            case Success(value=vs):
+                return toString(vs)
+            case Error(message=m):
+                return m
+
+    def show():
+        with wrapped:
+            inside = Bytes.read_bytes([1, 2, 3, 4], 1, 2)
+            past = Bytes.read_bytes([1, 2, 3, 4], 3, 2)
+            print(f"[{shown(inside)}] [{shown(past)}]")
+
+    show()
+    ```
+    ```output
+    [[2, 3]] [read_bytes: out of range]
+    ```
+    """
     if off < 0 or n < 0 or off > len(data) or n > len(data) - off:
         return Error(message="read_bytes: out of range")
     else:
@@ -66,7 +214,40 @@ def read_bytes(data, off, n):
 
 def read_u64(data, off):
     """Eight little-endian bytes at `off` as one int, or Error when out of range or
-    the value would exceed 2^48 (bytes 6 or 7 nonzero, impossible in a real file)."""
+    the value would exceed 2^48 (bytes 6 or 7 nonzero, impossible in a real file).
+
+    # Examples
+    ```osprey
+    from safetensors import Bytes
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped):
+            return wrapped
+
+        def remainderByZero(l):
+            return 0
+
+    def shown(result):
+        match result:
+            case Success(value=v):
+                return toString(v)
+            case Error(message=m):
+                return m
+
+    def show():
+        with wrapped:
+            ok = Bytes.read_u64([255, 255, 255, 255, 255, 255, 0, 0], 0)
+            short = Bytes.read_u64([1, 2], 0)
+            big = Bytes.read_u64([255, 255, 255, 255, 255, 255, 1, 0], 0)
+            print(f"[{shown(ok)}] [{shown(short)}] [{shown(big)}]")
+
+    show()
+    ```
+    ```output
+    [281474976710655] [read_u64: out of range] [read_u64: value too large]
+    ```
+    """
     if off < 0 or off + 8 > len(data):
         return Error(message="read_u64: out of range")
     else:
@@ -79,7 +260,30 @@ def read_u64(data, off):
 
 def pow2(e):
     """2^e exactly, by repeated doubling for e >= 0 and halving for e < 0. Exact
-    for the float64 exponent range [-1074, 1024] this module decodes."""
+    for the float64 exponent range [-1074, 1024] this module decodes.
+
+    # Examples
+    ```osprey
+    from safetensors import Bytes
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped):
+            return wrapped
+
+        def remainderByZero(l):
+            return 0
+
+    def show():
+        with wrapped:
+            print(f"[{Bytes.pow2(10)}] [{Bytes.pow2(-1)}] [{Bytes.pow2(-1074)}]")
+
+    show()
+    ```
+    ```output
+    [1024.0] [0.5] [4.940656458e-324]
+    ```
+    """
     if e >= 0:
         return fold(range(e), 1.0, lambda acc, i: acc * 2.0)
     else:
@@ -103,43 +307,227 @@ def narrow_from_bits(bits, sign_bit, fraction_base, exponent_count, shift):
 
 
 def f16_from_bits(bits: int16) -> float16:
-    """The binary16 value whose bits are `bits`."""
+    """The binary16 value whose bits are `bits`.
+
+    # Examples
+    ```osprey
+    from safetensors import Bytes
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped):
+            return wrapped
+
+        def remainderByZero(l):
+            return 0
+
+    def show():
+        with wrapped:
+            print(f"[{Bytes.f16_from_bits(15360)}] [{Bytes.f16_from_bits(0)}] [{Bytes.f16_from_bits(-16384)}]")
+
+    show()
+    ```
+    ```output
+    [1.0] [0.0] [-2.0]
+    ```
+    """
     return float16FromBits(bits)
 
 
 def bf16_from_bits(bits):
-    """The binary64 the bfloat16 word `bits` holds, reconstructed exactly."""
+    """The binary64 the bfloat16 word `bits` holds, reconstructed exactly.
+
+    # Examples
+    ```osprey
+    from safetensors import Bytes
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped):
+            return wrapped
+
+        def remainderByZero(l):
+            return 0
+
+    def show():
+        with wrapped:
+            print(f"[{Bytes.bf16_from_bits(16256)}] [{Bytes.bf16_from_bits(0)}] [{Bytes.bf16_from_bits(49152)}]")
+
+    show()
+    ```
+    ```output
+    [1.0] [0.0] [-2.0]
+    ```
+    """
     return narrow_from_bits(bits, 32768, 128, 256, 134)
 
 
 def f32_from_bits(bits: int32) -> float32:
-    """The binary32 value whose bits are `bits`."""
+    """The binary32 value whose bits are `bits`.
+
+    # Examples
+    ```osprey
+    from safetensors import Bytes
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped):
+            return wrapped
+
+        def remainderByZero(l):
+            return 0
+
+    def show():
+        with wrapped:
+            print(f"[{Bytes.f32_from_bits(1065353216)}] [{Bytes.f32_from_bits(0)}] [{Bytes.f32_from_bits(-1073741824)}]")
+
+    show()
+    ```
+    ```output
+    [1.0] [0.0] [-2.0]
+    ```
+    """
     return float32FromBits(bits)
 
 
 def f64_from_parts(sign, exp, frac):
     """The binary64 with sign bit `sign`, 11-bit exponent `exp` and 52-bit
-    fraction `frac`, reconstructed exactly."""
+    fraction `frac`, reconstructed exactly.
+
+    # Examples
+    ```osprey
+    from safetensors import Bytes
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped):
+            return wrapped
+
+        def remainderByZero(l):
+            return 0
+
+    def show():
+        with wrapped:
+            print(f"[{Bytes.f64_from_parts(0, 1023, 0)}] [{Bytes.f64_from_parts(1, 1023, 0)}] [{Bytes.f64_from_parts(0, 0, 0)}]")
+
+    show()
+    ```
+    ```output
+    [1.0] [-1.0] [0.0]
+    ```
+    """
     return float_from_fields(sign, exp, frac, 2047, 4503599627370496, 1075)
 
 
 def decode_f16(data, off):
-    """The binary16 stored little-endian at `off` as a binary64."""
+    """The binary16 stored little-endian at `off` as a binary64.
+
+    # Examples
+    ```osprey
+    from safetensors import Bytes
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped):
+            return wrapped
+
+        def remainderByZero(l):
+            return 0
+
+    def show():
+        with wrapped:
+            print(f"[{Bytes.decode_f16([0, 62], 0)}] [{Bytes.decode_f16([], 0)}]")
+
+    show()
+    ```
+    ```output
+    [1.5] [0.0]
+    ```
+    """
     return toFloat(f16_from_bits(le16s(data, off)))
 
 
 def decode_bf16(data, off):
-    """The bfloat16 stored little-endian at `off` as a binary64."""
+    """The bfloat16 stored little-endian at `off` as a binary64.
+
+    # Examples
+    ```osprey
+    from safetensors import Bytes
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped):
+            return wrapped
+
+        def remainderByZero(l):
+            return 0
+
+    def show():
+        with wrapped:
+            print(f"[{Bytes.decode_bf16([192, 63], 0)}] [{Bytes.decode_bf16([0, 63], 0)}] [{Bytes.decode_bf16([], 0)}]")
+
+    show()
+    ```
+    ```output
+    [1.5] [0.5] [0.0]
+    ```
+    """
     return bf16_from_bits(le16(data, off))
 
 
 def decode_f32(data, off):
-    """The binary32 stored little-endian at `off` as a binary64."""
+    """The binary32 stored little-endian at `off` as a binary64.
+
+    # Examples
+    ```osprey
+    from safetensors import Bytes
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped):
+            return wrapped
+
+        def remainderByZero(l):
+            return 0
+
+    def show():
+        with wrapped:
+            print(f"[{Bytes.decode_f32([0, 0, 192, 63], 0)}] [{Bytes.decode_f32([0, 0, 128, 63], 0)}] [{Bytes.decode_f32([], 0)}]")
+
+    show()
+    ```
+    ```output
+    [1.5] [1.0] [0.0]
+    ```
+    """
     return toFloat(f32_from_bits(le32s(data, off)))
 
 
 def decode_f64(data, off):
-    """The binary64 stored little-endian at `off` as a binary64."""
+    """The binary64 stored little-endian at `off` as a binary64.
+
+    # Examples
+    ```osprey
+    from safetensors import Bytes
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped):
+            return wrapped
+
+        def remainderByZero(l):
+            return 0
+
+    def show():
+        with wrapped:
+            print(f"[{Bytes.decode_f64([0, 0, 0, 0, 0, 0, 240, 63], 0)}] [{Bytes.decode_f64([0, 0, 0, 0, 0, 0, 248, 63], 0)}] [{Bytes.decode_f64([], 0)}]")
+
+    show()
+    ```
+    ```output
+    [1.0] [1.5] [0.0]
+    ```
+    """
     b7 = unwrap_or(listGet(data, off + 7), 0)
     b6 = unwrap_or(listGet(data, off + 6), 0)
     sign = intDiv(b7, 128)
@@ -149,7 +537,39 @@ def decode_f64(data, off):
 
 
 def bytes_to_string(data):
-    """The UTF-8 text `data` holds, or Error when the bytes are not valid UTF-8."""
+    """The UTF-8 text `data` holds, or Error when the bytes are not valid UTF-8.
+
+    # Examples
+    ```osprey
+    from safetensors import Bytes
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped):
+            return wrapped
+
+        def remainderByZero(l):
+            return 0
+
+    def shown(result):
+        match result:
+            case Success(value=s):
+                return s
+            case Error(message=m):
+                return m
+
+    def show():
+        with wrapped:
+            text = Bytes.bytes_to_string([72, 105])
+            bad = Bytes.bytes_to_string([255])
+            print(f"[{shown(text)}] [{shown(bad)}]")
+
+    show()
+    ```
+    ```output
+    [Hi] [invalid utf-8 sequence of 1 bytes from index 0]
+    ```
+    """
     match utf8_decode(data):
         case Success(value=value):
             return Success(value=join(value, ""))
@@ -176,7 +596,30 @@ def int_bytes_from(v, n, acc):
 
 
 def int_bytes(v, n):
-    """n little-endian two's-complement bytes of the int v."""
+    """n little-endian two's-complement bytes of the int v.
+
+    # Examples
+    ```osprey
+    from safetensors import Bytes
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped):
+            return wrapped
+
+        def remainderByZero(l):
+            return 0
+
+    def show():
+        with wrapped:
+            print(f"[{toString(Bytes.int_bytes(1, 4))}] [{toString(Bytes.int_bytes(-1, 2))}] [{toString(Bytes.int_bytes(258, 2))}]")
+
+    show()
+    ```
+    ```output
+    [[1, 0, 0, 0]] [[255, 255]] [[2, 1]]
+    ```
+    """
     return int_bytes_from(v, n, [])
 
 
@@ -325,22 +768,114 @@ def narrow_float_bytes(x, exp_bits, frac_bits, bias):
 
 
 def f64_bytes(x):
-    """8 little-endian bytes of the binary64 x."""
+    """8 little-endian bytes of the binary64 x.
+
+    # Examples
+    ```osprey
+    from safetensors import Bytes
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped):
+            return wrapped
+
+        def remainderByZero(l):
+            return 0
+
+    def show():
+        with wrapped:
+            print(f"[{toString(Bytes.f64_bytes(1.0))}] [{toString(Bytes.f64_bytes(-0.5))}]")
+
+    show()
+    ```
+    ```output
+    [[0, 0, 0, 0, 0, 0, 240, 63]] [[0, 0, 0, 0, 0, 0, 224, 191]]
+    ```
+    """
     return int_bytes(floatBits(x), 8)
 
 
 def f32_bytes(x: float):
-    """4 little-endian bytes of x rounded to binary32."""
+    """4 little-endian bytes of x rounded to binary32.
+
+    # Examples
+    ```osprey
+    from safetensors import Bytes
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped):
+            return wrapped
+
+        def remainderByZero(l):
+            return 0
+
+    def show():
+        with wrapped:
+            print(f"[{toString(Bytes.f32_bytes(1.0))}] [{toString(Bytes.f32_bytes(0.1))}]")
+
+    show()
+    ```
+    ```output
+    [[0, 0, 128, 63]] [[205, 204, 204, 61]]
+    ```
+    """
     return int_bytes(toInt(float32Bits(toFloat32(x))), 4)
 
 
 def f16_bytes(x: float):
-    """2 little-endian bytes of x rounded to binary16."""
+    """2 little-endian bytes of x rounded to binary16.
+
+    # Examples
+    ```osprey
+    from safetensors import Bytes
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped):
+            return wrapped
+
+        def remainderByZero(l):
+            return 0
+
+    def show():
+        with wrapped:
+            print(f"[{toString(Bytes.f16_bytes(1.0))}] [{toString(Bytes.f16_bytes(1.1))}]")
+
+    show()
+    ```
+    ```output
+    [[0, 60]] [[102, 60]]
+    ```
+    """
     return int_bytes(toInt(float16Bits(toFloat16(x))), 2)
 
 
 def bf16_bytes(x):
-    """2 little-endian bytes of x rounded to bfloat16."""
+    """2 little-endian bytes of x rounded to bfloat16.
+
+    # Examples
+    ```osprey
+    from safetensors import Bytes
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped):
+            return wrapped
+
+        def remainderByZero(l):
+            return 0
+
+    def show():
+        with wrapped:
+            print(f"[{toString(Bytes.bf16_bytes(1.0))}] [{toString(Bytes.bf16_bytes(1.1))}]")
+
+    show()
+    ```
+    ```output
+    [[128, 63]] [[141, 63]]
+    ```
+    """
     return narrow_float_bytes(x, 8, 7, 127)
 
 
@@ -426,7 +961,30 @@ def utf8_four(data, i, b0):
 
 
 def checked_mul(a, b):
-    """a*b for non-negative a and b, or -1 when it overflows an int64."""
+    """a*b for non-negative a and b, or -1 when it overflows an int64.
+
+    # Examples
+    ```osprey
+    from safetensors import Bytes
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped):
+            return wrapped
+
+        def remainderByZero(l):
+            return 0
+
+    def show():
+        with wrapped:
+            print(f"[{Bytes.checked_mul(3, 4)}] [{Bytes.checked_mul(5, 0)}] [{Bytes.checked_mul(9223372036854775807, 2)}]")
+
+    show()
+    ```
+    ```output
+    [12] [0] [-1]
+    ```
+    """
     if a == 0 or b == 0:
         return 0
     elif a > intDiv(9223372036854775807, b):
