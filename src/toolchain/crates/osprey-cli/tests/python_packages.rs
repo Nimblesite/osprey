@@ -6,6 +6,7 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 #[path = "common/bounded.rs"]
 mod bounded;
@@ -86,6 +87,9 @@ fn package_name(suite: &Path) -> String {
         .map_or_else(String::new, |name| name.to_string_lossy().into_owned())
 }
 
+/// How many suite runs this test binary has started.
+static RUNS: AtomicUsize = AtomicUsize::new(0);
+
 /// Runs one suite under one backend inside `budget`. Returns the
 /// command line it ran and the bounded run, or why it could not start.
 fn run(
@@ -103,9 +107,13 @@ fn run(
         .env("OSPREY_ARC_DEBUG", "1")
         .env("OSPREY_TEST_CACHE_DIR", cache);
     let line = format!("osprey {} --run --quiet {backend}", suite.display());
+    // Tests in this binary run the same suite and backend at once (the budget
+    // test and the matrix both take chromecast); a per-run ordinal keeps one
+    // run from reading or deleting the other's transcript files.
     let stem = format!(
-        "osprey_package_{}_{}_{memory}",
+        "osprey_package_{}_{}_{}_{memory}",
         std::process::id(),
+        RUNS.fetch_add(1, Ordering::Relaxed),
         package_name(suite)
     );
     (line, bounded::run_command(command, &stem, budget))
