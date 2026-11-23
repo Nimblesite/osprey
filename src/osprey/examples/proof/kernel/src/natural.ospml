@@ -204,3 +204,24 @@ module Naturals
     export predecessor (n) = match isZero n
         true => Error(message = "0 is not a successor")
         false => Success(value = sub (n, one ()))
+
+    (** Lean's `Nat.pow` at an exponent of at most 2^24, the bound Lean's own
+        kernel computes literals to; a larger exponent is refused, never
+        attempted. Square and multiply, so `2^64` is seven products. *)
+    export power (value, exponent) = match le (exponent, Natural(naturalLimbs = [16777216]))
+        false => Error(message = "${show exponent} is above the 2^24 literal exponent bound")
+        true => powered (value, toInt exponent ?: 0)
+
+    powered (value, exponent) = match exponent == 0
+        true => Success(value = one ())
+        false => squared (value, exponent, powered (value, intDiv (exponent, 2)))
+
+    squared (value, exponent, half) = match half
+        Error message => Error(message = message)
+        Success root => oddTimes (value, exponent, multiply (root, root))
+
+    oddTimes (value, exponent, square) = match square
+        Error message => Error(message = message)
+        Success even => match satSub exponent (satMul 2 (intDiv (exponent, 2))) == 1
+            true => multiply (even, value)
+            false => Success(value = even)

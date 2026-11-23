@@ -27,6 +27,7 @@ module NumericTests
         products env
         differentials env
         shortCircuit ()
+        powers ()
 
     (** The empty environment exported from fixture `text`. *)
     exportedEmpty (text) = Checked::exported (Environment::empty (), text)
@@ -225,3 +226,23 @@ module NumericTests
     symbolicProduct depth = match depth == 0
         true => BVar 0
         false => multiplied (BVar 0, symbolicProduct (satSub depth 1))
+
+    pow (base, exponent) = applyTwoAt ("Nat.pow", [], base, exponent)
+
+    (** Guarded literal `Nat.pow` ([PROOF-KERNEL-THEORY]): exact up to Lean's 2^24 exponent bound,
+        and off whenever `Nat.pow` or the multiplication it uses is not the pinned tree. *)
+    powers () = match exportedEmpty (Fixtures::natPower ())
+        Error message => check "power closure loads" "success" message
+        Success env => powerCases (env)
+
+    powerCases (env) =
+        test ("2^64 is exact under the pinned power closure", \() => expect (outcome (env, pow (small 2, small 64)), "reduced:18446744073709551616"))
+        test ("2^32, 7^3, 10^18 and 3^40 are exact, across limbs", \() => expectAll [outcome (env, pow (small 2, small 32)) == "reduced:4294967296", outcome (env, pow (small 7, small 3)) == "reduced:343", outcome (env, pow (small 10, small 18)) == "reduced:1000000000000000000", outcome (env, pow (small 3, small 40)) == "reduced:12157665459056928801"])
+        test ("anything to the zero is one, zero included, and zero to a positive power is zero", \() => expectAll [outcome (env, pow (small 0, small 0)) == "reduced:1", outcome (env, pow (small 9, small 0)) == "reduced:1", outcome (env, pow (small 0, small 5)) == "reduced:0", outcome (env, pow (small 1, small 16777216)) == "reduced:1"])
+        test ("an exponent above 2^24 stays on the ordinary path", \() => expect (outcome (env, pow (small 2, small 16777217)), "disabled"))
+        test ("a variable operand is never computed", \() => expect (outcome (env, pow (small 2, BVar 0)), "disabled"))
+        test ("Nat.pow with another body disables the power rule", \() => expect (forgedPower (), "disabled"))
+
+    forgedPower () = match exportedEmpty (Fixtures::natPowerForged ())
+        Error message => "forged closure did not load: ${message}"
+        Success forged => outcome (forged, pow (small 2, small 64))
