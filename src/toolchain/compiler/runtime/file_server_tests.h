@@ -42,8 +42,6 @@ int fs_temp_file(char *out, size_t cap, const char *stem);
 void fs_temp_folder(char *out, size_t cap, const char *stem);
 void fs_close_file(int fd);
 void fs_make_folder(const char *path);
-// Whether the last socket call failed because the peer reset the connection.
-bool fs_peer_reset(void);
 
 void run_file_server_link_tests(const char *folder, int64_t port); // file_server_link_tests.c
 

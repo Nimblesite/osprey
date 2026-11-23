@@ -15,11 +15,16 @@
 // own close() in any system header after it.
 #include "file_server_tests.h"
 
-// The system's temporary folder: TEMP on Windows, /tmp elsewhere.
+// The system's temporary folder, /tmp outside Windows. On Windows it comes from
+// GetTempPathA, not TEMP: an MSYS2 shell may export TEMP as `/tmp`, which a native
+// program reads as `\tmp` on the current drive.
 static const char *temp_root(void) {
 #ifdef _WIN32
-  const char *root = getenv("TEMP");
-  return root != NULL ? root : ".";
+  static char root[MAX_PATH + 1];
+  DWORD len = GetTempPathA(sizeof root, root);
+  assert(len > 0 && len < sizeof root);
+  root[len - 1] = '\0'; // drop the trailing separator GetTempPathA always writes
+  return root;
 #else
   return "/tmp";
 #endif
@@ -76,13 +81,5 @@ void fs_make_folder(const char *path) {
   assert(_mkdir(path) == 0);
 #else
   assert(mkdir(path, 0700) == 0);
-#endif
-}
-
-bool fs_peer_reset(void) {
-#ifdef _WIN32
-  return osp_socket_error() == WSAECONNRESET;
-#else
-  return errno == ECONNRESET;
 #endif
 }
