@@ -216,6 +216,7 @@ pub(super) fn file_scope_env(
     for statement in statements {
         bootstrap.statement_environment(statement, &[], &mut env);
     }
+    env.values = env.values.frozen();
     env
 }
 

@@ -59,7 +59,7 @@ fn file_scope_dependencies_ignore_calls_that_do_not_bind_values() {
         let instances = Instances::default();
         let (env, reads) =
             recording(|| file_scope_env(index, &instances, statements, &state.0, &state.1));
-        assert!(env.values.is_empty());
+        assert!(env.values == crate::effect_rows::scope_values::ScopeValues::default());
         assert!(
             reads.is_empty(),
             "effect-only calls invalidate every function: {reads:?}"

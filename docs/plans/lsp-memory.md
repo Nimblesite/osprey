@@ -65,8 +65,11 @@ Checked against the published v0.4.0 source on 2026-11-16, and confirmed on TMC 
     time fell from 36.9/37.9 s to 29.3/30.3 s, and `src/osprey/examples/daw/test
     --check` from 256 s to 77 s. `--check` output is byte-identical over all
     617 corpus and failscompilation programs, all 161 projects and the DAW.
-    osprey-types passes 980/980. Still open: per-entry scope invalidation and
-    the shared file-scope base.
+    osprey-types passes 980/980. Then the scope values became layered
+    (`effect_rows::scope_values`): a scope copy shares the frozen file scope
+    and owns only the names bound since. DAW `--check` user time went from
+    37.8/37.6 s to 27.8/28.7 s back to back, with the same identical-output check.
+    Still open: per-entry scope invalidation.
 
 ## Open, not yet fixed
 

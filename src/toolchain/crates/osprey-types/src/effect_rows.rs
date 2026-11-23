@@ -69,6 +69,7 @@ mod data_shapes;
 mod reachability;
 pub(crate) use data_shapes::data_types;
 mod recursion;
+mod scope_values;
 mod worklist;
 use reachability::{fibered_operation, operation_pairs, walk_children};
 
@@ -358,7 +359,7 @@ enum EmptyCase {
 
 #[derive(Clone, Default, Eq, PartialEq)]
 struct CallableEnv {
-    values: HashMap<String, Value>,
+    values: scope_values::ScopeValues,
     shadowed: HashSet<String>,
     channel_payloads: BTreeMap<usize, Value>,
     /// Results supplied by handlers active while this expression evaluates.

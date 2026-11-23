@@ -59,7 +59,7 @@ impl Analyzer<'_> {
             let changes = self.flow_callable_assignments(value, scope, &mut local);
             merge_changes(&mut writes, visible_changes(changes, &names));
         }
-        merge_changes(&mut env.values, writes.clone());
+        env.values.merge(writes.clone());
         merge_channels(env, local);
         writes
     }
@@ -120,12 +120,14 @@ impl Analyzer<'_> {
         let incoming = self
             .value(value, scope, env)
             .unwrap_or_else(Value::unknown_value);
-        let slot = env
+        let mut slot = env
             .values
-            .entry(name.to_owned())
-            .or_insert_with(Value::unknown_value);
+            .get(name)
+            .cloned()
+            .unwrap_or_else(Value::unknown_value);
         slot.union(incoming);
-        let _ = changes.insert(name.to_owned(), slot.clone());
+        let _ = env.values.insert(name.to_owned(), slot.clone());
+        let _ = changes.insert(name.to_owned(), slot);
         changes
     }
 

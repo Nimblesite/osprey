@@ -44,9 +44,8 @@ impl CallableEnv {
     pub(super) fn enter_lambda(&self, parameters: &[String]) -> Self {
         let mut env = self.clone();
         env.handler_returns.clear();
-        for value in env.values.values_mut() {
-            shift_value_levels(value, 1, 0);
-        }
+        env.values
+            .map_values(|value| shift_value_levels(value, 1, 0));
         for value in env.channel_payloads.values_mut() {
             shift_value_levels(value, 1, 0);
         }
