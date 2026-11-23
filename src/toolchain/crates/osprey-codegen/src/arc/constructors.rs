@@ -49,10 +49,11 @@ pub(crate) fn consume_into_store(cg: &mut Codegen, operand: &str) -> bool {
 
 fn take_owner(cg: &mut Codegen, operand: &str) -> Option<String> {
     let floor = conditional_floor(cg);
+    let operand = &super::aliases::root(cg, operand).to_owned();
     let fresh = cg.arc.frames.last_mut().and_then(|frame| {
         frame
             .iter()
-            .rposition(|e| e.operand == operand && e.name.is_none() && !e.lent)
+            .rposition(|e| e.operand == *operand && e.name.is_none() && !e.lent)
             .filter(|at| *at >= floor)
             .map(|at| frame.remove(at).slot)
     });

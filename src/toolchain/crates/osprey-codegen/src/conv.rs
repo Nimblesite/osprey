@@ -142,6 +142,7 @@ pub(crate) fn box_to_i64(cg: &mut Codegen, v: Value) -> Value {
             if fixed {
                 cg.mark_rodata(&word);
             }
+            crate::arc::same_value(cg, &word, &v.operand);
             word
         }
         LType::I1 => cg.emit_reg(format!("zext i1 {} to i64", v.operand)),
@@ -191,6 +192,7 @@ pub(crate) fn unbox_from_i64(cg: &mut Codegen, raw: &str, ty: LType) -> Value {
             if cg.is_rodata(raw) {
                 cg.mark_rodata(&pointer);
             }
+            crate::arc::same_as_word(cg, &pointer, raw);
             pointer
         }
         LType::I1 => cg.emit_reg(format!("trunc i64 {raw} to i1")),

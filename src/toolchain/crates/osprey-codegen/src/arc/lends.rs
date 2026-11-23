@@ -79,6 +79,17 @@ pub(crate) fn lends_list(cg: &Codegen, position: Option<Position>) -> bool {
         && position.is_some_and(|at| cg.ownership.lent_lists.contains(&(at.line, at.column)))
 }
 
+/// The next Result wraps an element read out of a collection: under ownership
+/// it holds that element without owning it.
+pub(crate) fn reading(cg: &mut Codegen) {
+    cg.ownership.reading = cg.ownership.on;
+}
+
+/// Whether the Result being built wraps a read element, asked once.
+pub(crate) fn take_reading(cg: &mut Codegen) -> bool {
+    std::mem::take(&mut cg.ownership.reading)
+}
+
 /// Whether the innermost region holds `v` as something that only lends.
 pub(crate) fn is_lent(cg: &Codegen, v: &Value) -> bool {
     let frame = cg.arc.frames.last();

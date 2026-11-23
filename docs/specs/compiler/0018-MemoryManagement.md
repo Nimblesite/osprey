@@ -300,6 +300,11 @@ or an alias of a parameter, borrows it: the new binding holds no reference and
 frees nothing. Every binding the value was read from stays alive until the
 borrower's last read, so the owner is freed after the borrower, never before.
 
+A read from a list or a map lends the same way: the Result that `listGet`,
+`mapGet` or an index gives holds the element without owning it, because the
+collection still does. Reading it, matching on it and taking its value with
+`?:` are accepted; binding or returning the Result itself needs an owner.
+
 A binding can't borrow in two cases, and is refused as needing a second
 owner. The first is a value read out of something the statement itself made,
 as in `let left = make(1).left`: that temporary dies when the statement ends.

@@ -157,15 +157,22 @@ pub(crate) fn make_result(
     disc: &str,
     errmsg: &str,
 ) -> Result<Value> {
+    // A Result that wraps an element read out of a collection holds it without
+    // owning it: the collection does [MEM-OWNERSHIP-STATIC-BORROWS].
+    let lent = crate::arc::take_reading(cg);
     let value = settled_payload(cg, value, disc);
     let value = coerce_to(cg, value, inner)?;
-    let meta = result_meta(cg, inner);
+    let held = if lent { LType::I64 } else { inner };
+    let meta = result_meta(cg, held);
     let obj = cg.malloc_struct(RESULT_STRUCT, meta);
-    store_payload(cg, &obj, &value);
+    store_payload(cg, &obj, &value, lent);
     store_status(cg, &obj, disc, errmsg);
     let mut out = Value::result(obj, inner).with_payload_owner(value.osp_ty);
     out.result_payload_type = value.inferred_type;
-    own_result(cg, &out, inner, errmsg);
+    own_result(cg, &out, held, errmsg);
+    if lent {
+        crate::arc::mark_lent(cg, &out);
+    }
     Ok(out)
 }
 
@@ -215,8 +222,10 @@ fn own_result(cg: &mut Codegen, value: &Value, inner: LType, errmsg: &str) {
     }
 }
 
-fn store_payload(cg: &mut Codegen, object: &str, value: &Value) {
-    crate::arc::store_owned(cg, value.ty.as_str(), &value.operand);
+fn store_payload(cg: &mut Codegen, object: &str, value: &Value, lent: bool) {
+    if !lent {
+        crate::arc::store_owned(cg, value.ty.as_str(), &value.operand);
+    }
     let bits = crate::conv::box_to_i64(cg, value.clone());
     crate::aggregate::store_field(cg, RESULT_STRUCT, object, 0, LType::I64, &bits.operand);
 }
@@ -260,6 +269,9 @@ pub(crate) fn make_list_read(
     let length = length(cg);
     let record = crate::aggregate::index_out_of_bounds(cg, index, &length)?;
     let boxed = crate::anybox::box_typed(cg, record)?;
+    // The box exists on this path alone: the join below carries it, or null,
+    // into the Result, which then owns it [GC-ARC-PERCEUS].
+    let carried = crate::arc::consume_into_store(cg, &boxed.operand);
     crate::arc::close_conditional(cg);
     let from_oob = cg.snapshot_to(&end);
     cg.start_block(&ok);
@@ -269,6 +281,9 @@ pub(crate) fn make_list_read(
         "phi i8* [ null, %{from_ok} ], [ {}, %{from_oob} ]",
         boxed.operand
     ));
+    if carried {
+        crate::arc::own(cg, &Value::new(slot.clone(), LType::Ptr));
+    }
     let disc = cg.emit_reg(format!("select i1 {in_bounds}, i8 0, i8 {TYPED_ERROR}"));
     // An element type the backend cannot see stays open; the error side is
     // what every reader of the payload decides on.

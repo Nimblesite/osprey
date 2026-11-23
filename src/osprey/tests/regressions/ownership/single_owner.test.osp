@@ -169,6 +169,24 @@ fn lentLists() = {
     "lent lists ${toString(passed)} ${toString(size)} ${made.text} ${other.text}"
 }
 
+/// A read from a list or a map lends the element: the collection still owns it,
+/// in range or out of it.
+fn reads() = {
+    let scores = { "ann${toString(1)}": "high${toString(9)}", "bob${toString(2)}": "low${toString(3)}" }
+    let boxes = listAppend(listAppend([], Box { text: "first${toString(1)}" }), Box { text: "second${toString(2)}" })
+    let names = ["a${toString(1)}", "b${toString(2)}"]
+    let ann = mapGet(scores, "ann1") ?: "none"
+    let second = match listGet(boxes, 1) {
+        Success { value } => value.text
+        Error => "missing"
+    }
+    let gone = match listGet(boxes, 7) {
+        Success { value } => value.text
+        Error => "missing"
+    }
+    "reads ${ann} ${mapGet(scores, "zed") ?: "none"} ${second} ${gone} ${names[1] ?: "?"}"
+}
+
 /// A binding that names part of a live value borrows it, and the value it was
 /// read from stays alive until the borrower's own last read.
 fn churn(n) = "x${toString(n)}${toString(n)}${toString(n)}"
@@ -188,4 +206,4 @@ fn borrows() = {
     "borrows ${shown} ${same.text} ${toString(listLength(noise))} ${left.text}"
 }
 
-print("${spans()}\n${elements()}\n${collections()}\n${lastUses()}\n${paths()}\n${owned()}\n${errors()}\n${captures()}\n${lends()}\n${lentLists()}\n${borrows()}")
+print("${spans()}\n${elements()}\n${collections()}\n${lastUses()}\n${paths()}\n${owned()}\n${errors()}\n${captures()}\n${lends()}\n${lentLists()}\n${reads()}\n${borrows()}")

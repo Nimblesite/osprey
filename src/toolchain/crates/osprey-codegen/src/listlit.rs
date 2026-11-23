@@ -370,6 +370,7 @@ pub(crate) fn gen_index(cg: &mut Codegen, target: &Expr, index: &Expr) -> Result
         elem.as_str()
     ));
     let value = typed_element(cg, &tv, Value::new(phi, elem).with_owner(elem_owner));
+    crate::arc::reading(cg);
     crate::result::make_list_read(cg, &ok, value, &idx.operand, |_| len)
 }
 

@@ -122,6 +122,8 @@ pub(crate) struct OwnershipCheck {
     pub(crate) lent_closures: std::collections::BTreeSet<(u32, u32)>,
     /// Where each list literal that only lends its elements is written.
     pub(crate) lent_lists: std::collections::BTreeSet<(u32, u32)>,
+    /// Whether the next Result wraps an element read out of a collection.
+    pub(crate) reading: bool,
     /// Where each suspended function's nested function began in `found`.
     nested: Vec<usize>,
 }
@@ -137,6 +139,7 @@ impl OwnershipCheck {
             owned_parameters: super::OwnedParameters::new(),
             lent_closures: std::collections::BTreeSet::new(),
             lent_lists: std::collections::BTreeSet::new(),
+            reading: false,
             nested: Vec::new(),
         }
     }

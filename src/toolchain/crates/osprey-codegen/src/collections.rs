@@ -394,6 +394,7 @@ pub(crate) fn runtime_list_get(cg: &mut Codegen, l: &Value, i: &Value) -> Result
     // `List<float>` yields `Result<float, _>` [`LIST_TAG`].
     let value = elem_value(cg, l, &raw);
     let ok = cg.emit_reg(format!("icmp ne i32 {inb}, 0"));
+    crate::arc::reading(cg);
     crate::result::make_list_read(cg, &ok, value, &i.operand, |cg| list_length(cg, l))
 }
 

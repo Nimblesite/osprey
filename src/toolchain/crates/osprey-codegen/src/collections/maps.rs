@@ -209,5 +209,6 @@ pub(crate) fn runtime_map_get(cg: &mut Codegen, m: &Value, k: &Value) -> Result<
     let value = element_word(cg, m, &got, osprey_types::names::MAP, MAP_TAG);
     let inner = value.ty;
     let is_err = cg.emit_reg(format!("icmp eq i32 {has}, 0"));
+    crate::arc::reading(cg);
     crate::result::make_result_if_err(cg, value, inner, &is_err, Some("mapGet: key not found"))
 }

@@ -238,6 +238,7 @@ impl Codegen {
         // registers would otherwise alias this one's heap values and silently
         // elide their dup/drop [GC-ARC-PERCEUS].
         self.rodata_regs.clear();
+        crate::arc::forget_aliases(self);
         self.push_scope();
         self.cur_lines.push("entry:".to_string());
         if let Some(debug) = self.debug.as_mut() {
