@@ -476,3 +476,60 @@ fn field_resolution_retries_only_after_new_work() {
     assert_eq!(checker.errors, []);
     assert_eq!(checker.builtin_uses, []);
 }
+
+/// Only method, field and index relations can be solved by field resolution,
+/// so the operator obligations around one are never visited, keep their
+/// order, and a list of them alone costs no visit at all.
+#[test]
+fn field_resolution_visits_only_relations_it_can_solve() {
+    use super::{Checker, Type};
+    use crate::fields::{obligation_name, FIELD_VISITS};
+
+    let mut checker = Checker::new();
+    let operator = |checker: &mut Checker, op: &str| {
+        let operand = checker.ctx.fresh();
+        (
+            op.to_owned(),
+            Type::fun(vec![operand.clone(), operand.clone()], operand),
+        )
+    };
+    let before: Vec<_> = ["+", "<", "==", "*"]
+        .map(|op| operator(&mut checker, op))
+        .into();
+    checker.builtin_uses.extend(before.clone());
+    FIELD_VISITS.with(|visits| visits.set(0));
+    checker.resolve_field_uses();
+    assert_eq!(FIELD_VISITS.with(std::cell::Cell::get), 0);
+    assert_eq!(checker.builtin_uses, before);
+    let receiver = checker.ctx.fresh();
+    let value = checker.ctx.fresh();
+    let field = (
+        obligation_name("", "value"),
+        Type::fun(vec![receiver.clone()], value.clone()),
+    );
+    let after: Vec<_> = ["-", ">", "!="].map(|op| operator(&mut checker, op)).into();
+    checker.builtin_uses.push(field.clone());
+    checker.builtin_uses.extend(after.clone());
+    let unrelated = checker.ctx.fresh();
+    checker.push_unify(&unrelated, &Type::int());
+    checker.resolve_field_uses();
+    assert_eq!(FIELD_VISITS.with(std::cell::Cell::get), 1);
+    let order: Vec<_> = before
+        .iter()
+        .chain([&field])
+        .chain(&after)
+        .cloned()
+        .collect();
+    assert_eq!(checker.builtin_uses, order);
+    let record = Type::Record {
+        name: String::new(),
+        fields: [("value".into(), Type::string())].into(),
+    };
+    checker.push_unify(&receiver, &record);
+    checker.resolve_field_uses();
+    assert_eq!(checker.ctx.apply(&value), Type::string());
+    assert_eq!(FIELD_VISITS.with(std::cell::Cell::get), 2);
+    let rest: Vec<_> = before.iter().chain(&after).cloned().collect();
+    assert_eq!(checker.builtin_uses, rest);
+    assert_eq!(checker.errors, []);
+}
