@@ -343,6 +343,8 @@ pub(crate) enum MlPattern {
         /// The trailing `...name` rest-binder, or `None` for a fixed length.
         rest: Option<MlBinder>,
     },
+    /// `A | B` — alternatives tried left to right, one body ([PATTERN-OR]).
+    Or(Vec<MlPattern>),
 }
 
 /// A `field = value` initialiser inside a record literal.
