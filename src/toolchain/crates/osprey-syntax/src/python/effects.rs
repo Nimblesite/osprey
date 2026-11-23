@@ -98,14 +98,20 @@ impl Lowerer<'_> {
             .into_iter()
             .map(|arm| self.handler_arm(arm))
             .collect::<Result<_>>()?;
-        let function = osprey_ast::handler_function(
-            self.text(name).into(),
-            stage,
-            effect,
-            arms,
-            Some(position(node)),
-        );
-        self.documented(node, function)
+        let position = Some(position(node));
+        let statement = if self.file_scope() {
+            osprey_ast::handler_function(self.text(name).into(), stage, effect, arms, position)
+        } else {
+            let value = osprey_ast::handler_value(
+                stage,
+                effect,
+                arms,
+                osprey_ast::Clauses::default(),
+                position,
+            );
+            self.let_statement(name, value, false, None)
+        };
+        self.documented(node, statement)
     }
 
     fn handler_head(&self, node: Node<'_>) -> Result<(Stage, String)> {

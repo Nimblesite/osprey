@@ -319,6 +319,10 @@ fn python_effect_metadata_and_requirement_rows_equal_default_ast() {
 
 #[test]
 fn python_handler_classes_and_their_docs_equal_default_ast() {
+    equal(
+        "effect Ask { get: fn() -> int }\nfn run(n, work) = {\nlet local = handler Ask { get => n }\nlocal(work)\n}\n",
+        "@effect\nclass Ask:\n    def get() -> int: ...\ndef run(n, work):\n    @handler(Ask)\n    class local:\n        def get():\n            return n\n    return local(work)\n",
+    );
     // [FLAVOR-PYTHON-HANDLER]: a handler class is a named handler function,
     // the module idiom `fn h(work) = { handle E { … }\n work() }`, so a module
     // may export it where a module `let` must be a compile-time constant. Its
