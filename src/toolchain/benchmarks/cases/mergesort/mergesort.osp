@@ -16,10 +16,14 @@ fn odds(xs) = match xs {
     [] => []
     [_, ...tail] => evens(tail)
 }
+fn copied(xs) = match xs {
+    [] => []
+    [head, ...tail] => listPrepend(copied(tail), head)
+}
 fn merge(left, right) = match left {
-    [] => listConcat(right, List())
+    [] => copied(right)
     [l, ...ls] => match right {
-        [] => listConcat(left, List())
+        [] => copied(left)
         [r, ...rs] => match r < l {
             true => listPrepend(merge(left, rs), r)
             false => listPrepend(merge(ls, right), l)

@@ -9,13 +9,12 @@
 // The token generator is Park-Miller MINSTD, which stays within int64 (no
 // overflow trap) and is reproducible across every language port.
 import bench::Bench::{guarded, add, mul, modp, hashAt, seedOf, word}
-fn bump(m, k) = {
-    let w = word(k)
-    let seen = add(mapGet(m, w) ?: 0, 1)
-    mapSet(m, w, seen)
-}
 fn main() = guarded(|| => {
     let seed = seedOf(input())
-    let counts = range(0, 200000) |> fold({ "the": 0 }, |m, i| => bump(m, modp(hashAt(seed, i), 8)))
+    let counts = range(0, 200000) |> fold({ "the": 0 }, |m, i| => {
+        let w = word(modp(hashAt(seed, i), 8))
+        let seen = add(mapGet(m, w) ?: 0, 1)
+        mapSet(m, w, seen)
+    })
     print("${range(0, 8) |> fold(0, |acc, k| => add(acc, mul(add(k, 1), mapGet(counts, word(k)) ?: 0)))}")
 })
