@@ -4629,6 +4629,10 @@
               "name": "tuple_pattern"
             },
             {
+              "type": "SYMBOL",
+              "name": "or_pattern"
+            },
+            {
               "type": "STRING",
               "value": "_"
             }
@@ -4639,6 +4643,35 @@
           "name": "ml_constructor_pattern"
         }
       ]
+    },
+    "or_pattern": {
+      "type": "PREC_LEFT",
+      "value": -1,
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "FIELD",
+            "name": "alternative",
+            "content": {
+              "type": "SYMBOL",
+              "name": "pattern"
+            }
+          },
+          {
+            "type": "STRING",
+            "value": "|"
+          },
+          {
+            "type": "FIELD",
+            "name": "alternative",
+            "content": {
+              "type": "SYMBOL",
+              "name": "pattern"
+            }
+          }
+        ]
+      }
     },
     "structural_pattern": {
       "type": "SEQ",
@@ -4901,7 +4934,7 @@
               "members": [
                 {
                   "type": "STRING",
-                  "value": ":"
+                  "value": "="
                 },
                 {
                   "type": "FIELD",
@@ -5026,6 +5059,10 @@
             {
               "type": "SYMBOL",
               "name": "function_declaration"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "extern_declaration"
             },
             {
               "type": "SYMBOL",
@@ -5757,6 +5794,10 @@
             {
               "type": "SYMBOL",
               "name": "ml_constructor_pattern"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "or_pattern"
             },
             {
               "type": "SYMBOL",

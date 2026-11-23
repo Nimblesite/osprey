@@ -270,6 +270,10 @@
           "named": true
         },
         {
+          "type": "extern_declaration",
+          "named": true
+        },
+        {
           "type": "function_declaration",
           "named": true
         },
@@ -1683,6 +1687,10 @@
           "named": true
         },
         {
+          "type": "or_pattern",
+          "named": true
+        },
+        {
           "type": "string",
           "named": true
         }
@@ -2043,6 +2051,22 @@
     }
   },
   {
+    "type": "or_pattern",
+    "named": true,
+    "fields": {
+      "alternative": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "pattern",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "parameter",
     "named": true,
     "fields": {
@@ -2198,6 +2222,10 @@
         },
         {
           "type": "ml_constructor_pattern",
+          "named": true
+        },
+        {
+          "type": "or_pattern",
           "named": true
         },
         {

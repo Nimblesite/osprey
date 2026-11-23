@@ -204,6 +204,15 @@ fn layout_types_and_effect_rows_retain_structural_nodes() {
     counted(root, "ml_variant", 2);
     counted(root, "ml_effect_row", 1);
     counted(root, "generic_type", 1);
+    let module = "module Numbers\n    export extern twice (n : int) -> int\n";
+    assert_eq!(
+        sole_slice(module, "extern_declaration"),
+        "extern twice (n : int) -> int"
+    );
+    let arms = "pick r = match r\n    { n = Digit (0 | 1) } | { n = Blank } => 1\n    _ => 0\n";
+    let patterns = parse(arms);
+    counted(patterns.root_node(), "or_pattern", 2);
+    counted(patterns.root_node(), "field_slot", 2);
 }
 
 #[test]
