@@ -22,6 +22,7 @@ mod inner_doc;
 mod kernel;
 mod lower;
 mod modules;
+pub(crate) mod use_rest;
 
 fn is_i64_min_magnitude_text(text: &str) -> bool {
     text.chars()
@@ -67,6 +68,7 @@ pub(crate) fn parse(source: &str) -> Parsed {
     collect_errors(root, source.as_bytes(), &mut errors);
     inner_doc::reclassify(root, source.as_bytes(), &mut errors);
     handle_rest::check(root, &mut errors);
+    use_rest::check(root, &mut errors);
     Parsed {
         program,
         errors,

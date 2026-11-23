@@ -22,14 +22,14 @@ eventClip notes = synth::NodeClip(clipNode = 1, clipChannels = 0, clipSamples = 
 missingClip () = audioClipFixture (-1, 0, [])
 
 // The success value of a render step, or `fallback` after a failed expectation.
-renderedOr (outcome, fallback, use) = match outcome
+renderedOr (outcome, fallback, consume) = match outcome
     Error why =>
         expect (synth::Faults::detail why, "a rendered block")
         fallback
-    Success value => use value
+    Success value => consume value
 
 // The output node's clip among completed clips, or `fallback` after a failed expectation.
-completedOr (clips, output, fallback, use) = renderedOr (synth::ClipInputs::completed (clips, output), fallback, use)
+completedOr (clips, output, fallback, consume) = renderedOr (synth::ClipInputs::completed (clips, output), fallback, consume)
 
 readyClip (output, ready) = match ready
     synth::ClipWaiting _ _ _ =>

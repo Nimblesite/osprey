@@ -47,7 +47,29 @@ def naive_out(probs, v, shapes, o):
 def naive_attention(q, k, v, shapes, softmax_scale, causal, window_left, window_right, alibi_slopes):
     """Attention computed the explicit way: scores, softmax with per-row max and sum,
     then the probability-weighted sum over v. Fully-masked rows yield out 0.0 and lse
-    -inf."""
+    -inf.
+
+    # Examples
+    ```osprey
+    from flash_attn import Core, Naive
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(op, l, r, wrapped_value):
+            return wrapped_value
+
+    def show():
+        with wrapped:
+            shapes = Core.Shapes(batch=1, seqlen_q=2, seqlen_k=1, heads_q=1, heads_k=1, headdim=1)
+            r = Naive.naive_attention([1.0, 2.0], [3.0], [7.0], shapes, 1.0, True, -1, -1, [])
+            print(f"[{toString(r.out)}] [{toString(r.lse)}] [{toString(r.probs)}]")
+
+    show()
+    ```
+    ```output
+    [[0.0, 7.0]] [[-inf, 6.0]] [[0.0, 1.0]]
+    ```
+    """
     n_scores = shapes.batch * shapes.heads_q * shapes.seqlen_q * shapes.seqlen_k
     scores = toList(map(range(n_scores), lambda s: naive_score(q, k, shapes, softmax_scale, causal, window_left, window_right, alibi_slopes, s)))
     n_rows = shapes.batch * shapes.heads_q * shapes.seqlen_q

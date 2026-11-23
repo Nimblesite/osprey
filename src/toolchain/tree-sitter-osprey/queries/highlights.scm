@@ -22,7 +22,7 @@
   "let" "mut" "fn" "extern" "type" "module" "import"
   "namespace" "signature" "export" "opaque" "state" "as" "extra"
   "effect" "perform" "handle" "handler" "return" "finally" "mask" "instance" "in"
-  "match" "select" "where" "if" "else"
+  "match" "select" "where" "if" "else" "use"
 ] @keyword
 
 [
@@ -31,7 +31,7 @@
 
 ; --- Operators ---
 [
-  "=" "->" "=>" "|>" "?" "?:" ":" "::"
+  "=" "->" "=>" "<-" "|>" "?" "?:" ":" "::"
   "==" "!=" "<" ">" "<=" ">=" "&&" "||" "!" "%"
   "+" "-" "*" "/"
 ] @operator

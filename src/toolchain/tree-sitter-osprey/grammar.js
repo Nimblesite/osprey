@@ -130,6 +130,7 @@ module.exports = grammar({
           $.effect_declaration,
           $.module_declaration,
           $.signature_declaration,
+          $.use_statement,
           $.expression_statement,
         ),
         $._statement_break,

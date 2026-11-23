@@ -180,7 +180,7 @@ fn ml_effect_handler_keeps_delayed_execution_while_removing_only_forwarding() {
 
 #[test]
 fn adapting_the_result_type_does_not_recommend_changing_a_named_function() {
-    let source = "fn work() = 41\nfn use(action: fn() -> Result<int, string>) = action()\nlet answer = use(fn() => work())\n";
+    let source = "fn work() = 41\nfn invoke(action: fn() -> Result<int, string>) = action()\nlet answer = invoke(fn() => work())\n";
     let program = parse_program_with_flavor(source, Flavor::Default).program;
     assert!(
         warnings(Flavor::Default, source).is_empty(),

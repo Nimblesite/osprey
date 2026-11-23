@@ -32,6 +32,9 @@ mod gpu;
 #[path = "cross_flavor_ir_equiv/device.rs"]
 mod device;
 
+#[path = "cross_flavor_ir_equiv/use_binding.rs"]
+mod use_binding;
+
 use std::path::{Path, PathBuf};
 
 use osprey_ast::Program;

@@ -256,6 +256,14 @@ module.exports = {
 
   block: ($) => seq('{', repeat($.statement), optional($.expression), '}'),
 
+  // `use p <- f(a)` passes the rest of its block to `f(a)` as a final callback
+  // argument, so fallible steps read one per line. `<-` is a token only in this
+  // head: everywhere else `x<-1` still lexes as `x < -1`. Lowering appends the
+  // callback; the checker never sees `use`. Implements [BLOCK-USE], [LEX-USE-ARROW].
+  use_statement: ($) =>
+    seq('use', optional(field('binders', $.use_binders)), '<-', field('call', $.expression)),
+  use_binders: ($) => seq($.identifier, repeat(seq(',', $.identifier))),
+
   object_literal: ($) => prec(-1, seq('{', $.field_assignments, '}')),
 
   lambda_expression: ($) =>

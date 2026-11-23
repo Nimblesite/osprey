@@ -1,0 +1,8 @@
+// [BLOCK-USE-REJECT] The right of `<-` must be a call: the rest of the block is
+// appended to its arguments, and a bare value has none.
+fn answer() = {
+    use a <- 42
+    a + 1
+}
+
+print("${toString(answer())}")

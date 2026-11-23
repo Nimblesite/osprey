@@ -19,6 +19,7 @@ pub(super) fn project_diagnostics(
     encoding: PositionEncoding,
     snapshot: Option<Result<crate::project_sources::Sources, Vec<ProjectError>>>,
     cache: &crate::project_cache::ProjectCache,
+    prove: bool,
 ) -> Option<Analysis> {
     let file = file_path(uri)?;
     let snapshot = match snapshot? {
@@ -37,7 +38,7 @@ pub(super) fn project_diagnostics(
     {
         return None;
     }
-    let shared = cache.checked(&snapshot.root, &config, &sources);
+    let shared = cache.checked(&snapshot.root, &config, &sources, prove);
     let mut analysis = match &shared.assembled {
         Ok(project) => assembled_type_errors(
             source,

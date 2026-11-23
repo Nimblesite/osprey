@@ -352,3 +352,62 @@ fn cleanup(child: &mut Child, runner: u32, program: Option<u32>, files: [&Path; 
     }
     let _ = child.wait();
 }
+
+/// Runs a program that leaves a marker and prints `ran`, under a compiler told
+/// that `runner` started it. Returns whether the marker appeared, the exit code
+/// and what the compiler wrote to standard error.
+fn named_run(case: &str, runner: u32) -> io::Result<(bool, Option<i32>, String)> {
+    let osp = std::env::temp_dir().join(format!("osprey_named_{case}.osp"));
+    let marker = std::env::temp_dir().join(format!("osprey_named_{case}.marker"));
+    let _ = std::fs::remove_file(&marker);
+    std::fs::write(
+        &osp,
+        format!(
+            "match writeFile(\"{}\", \"up\") {{\n  Success {{ value }} => print(\"ran\")\n  Error {{ message }} => print(message)\n}}\n",
+            marker.display()
+        ),
+    )?;
+    let run = Command::new(env!("CARGO_BIN_EXE_osprey"))
+        .arg(&osp)
+        .args(["--run", "--quiet"])
+        .env("OSPREY_RUN_PARENT", runner.to_string())
+        .stdin(Stdio::null())
+        .output()?;
+    let ran = marker.exists();
+    let _ = std::fs::remove_file(&osp);
+    let _ = std::fs::remove_file(&marker);
+    Ok((
+        ran,
+        run.status.code(),
+        String::from_utf8_lossy(&run.stderr).into_owned(),
+    ))
+}
+
+/// [RUN-PARENT-DEATH] A compiler whose named runner is already gone starts no
+/// program: a runner killed while its compiler was still building left that
+/// compiler to run the program with nothing watching it. A runner that is alive
+/// is no reason to refuse, whether it is the compiler's parent or a process
+/// further up that the name was inherited from.
+#[test]
+fn a_compiler_whose_runner_is_gone_starts_no_program() -> io::Result<()> {
+    let mut finished = Command::new("true").spawn()?;
+    let dead = finished.id();
+    let _ = finished.wait()?;
+    let (ran, code, stderr) = named_run("dead", dead)?;
+    assert!(!ran, "the program ran under a dead runner: {stderr}");
+    assert_eq!(code, Some(1), "{stderr}");
+    assert!(
+        stderr.contains("OSPREY_RUN_PARENT") && stderr.contains(&dead.to_string()),
+        "{stderr}"
+    );
+    let parent = named_run("parent", std::process::id())?;
+    assert_eq!((parent.0, parent.1), (true, Some(0)), "{}", parent.2);
+    let inherited = named_run("inherited", std::os::unix::process::parent_id())?;
+    assert_eq!(
+        (inherited.0, inherited.1),
+        (true, Some(0)),
+        "{}",
+        inherited.2
+    );
+    Ok(())
+}

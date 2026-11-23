@@ -99,10 +99,10 @@ spectralFor (config, voices, count) = foldList (toList (range (0, count)), Succe
 
 formantRendered config = spectralRendered (config, { main = formantVoice, side = \_ => 0.0 })
 
-// One shared runner for every journey result: the rendered samples go to `use`, a refusal is asserted exactly.
-renderedHeld (rendered, use) = match rendered
+// One shared runner for every journey result: the rendered samples go to `consume`, a refusal is asserted exactly.
+renderedHeld (rendered, consume) = match rendered
     Error why => expect (synth::Faults::detail why, "")
-    Success run => use run.samples
+    Success run => consume run.samples
 
 formantWindowed (samples, n) = (listGet samples n ?: 0.0) * (0.5 - 0.5 * cos (tau * toFloat (n - 3072) / 1024.0))
 

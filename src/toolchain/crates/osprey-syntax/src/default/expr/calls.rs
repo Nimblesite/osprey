@@ -190,6 +190,14 @@ impl Lowerer<'_> {
                     Some(self.pos(*child)),
                 );
             }
+            if let Some(binding) = self.use_over_rest(*child) {
+                let rest = children.get(index + 1..).unwrap_or_default();
+                return (
+                    statements,
+                    Some(Box::new(self.using_rest(binding, rest))),
+                    Some(self.pos(*child)),
+                );
+            }
             match child.kind() {
                 "statement" => {
                     if let Some(s) = self.first_named(*child).and_then(|n| self.lower_stmt(n)) {
@@ -235,6 +243,35 @@ impl Lowerer<'_> {
             node = self.first_named(node)?;
         }
         (node.kind() == "handler_expression").then_some(node)
+    }
+
+    /// A `use p <- f(a)` block statement. Implements [BLOCK-USE].
+    fn use_over_rest<'t>(&self, item: Node<'t>) -> Option<Node<'t>> {
+        (item.kind() == "statement")
+            .then(|| self.first_named(item))
+            .flatten()
+            .filter(|statement| statement.kind() == "use_statement")
+    }
+
+    /// The call a `use` stands for: the remaining block items become a lambda
+    /// appended as its last argument, the same node the written pyramid lowers to.
+    fn using_rest(&self, binding: Node<'_>, rest: &[Node<'_>]) -> Expr {
+        let names = binding
+            .child_by_field_name("binders")
+            .map_or_else(Vec::new, |binders| {
+                self.named_of_kind(binders, "identifier")
+            })
+            .into_iter()
+            .map(|name| self.text(name))
+            .collect();
+        let (statements, value, position) = self.block_items(rest);
+        let callback = Expr::Lambda {
+            parameters: crate::default::use_rest::parameters(names),
+            return_type: None,
+            body: Box::new(crate::desugar::block(statements, value, position)),
+            position: Some(self.pos(binding)),
+        };
+        crate::default::use_rest::with_callback(self.lower_expr_field(binding, "call"), callback)
     }
 
     /// Install the handler over the remaining block items.

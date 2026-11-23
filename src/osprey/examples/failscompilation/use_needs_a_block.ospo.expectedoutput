@@ -1,0 +1,1 @@
+3:0: `use` must be a block statement: it passes the rest of its block to the call as a callback

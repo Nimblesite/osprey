@@ -930,3 +930,66 @@ fn describe(value) = "${if value > 0 { value + 1 } else { value - 1 }}"
                           (primary_expression
                             (literal
                               (integer))))))))))))))))
+
+================================================================================
+use passes the rest of its block; x<-1 stays a comparison [BLOCK-USE] [LEX-USE-ARROW]
+================================================================================
+
+fn chain(n) = {
+    use a, b <- both(n)
+    use <- scoped("x")
+    a<-1
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (statement
+    (function_declaration
+      name: (identifier)
+      parameters: (parameter_list
+        (parameter
+          name: (identifier)))
+      body: (expression
+        (primary_expression
+          (block
+            (statement
+              (use_statement
+                binders: (use_binders
+                  (identifier)
+                  (identifier))
+                call: (expression
+                  (call_expression
+                    callee: (expression
+                      (primary_expression
+                        (identifier)))
+                    (argument_list
+                      (expression
+                        (primary_expression
+                          (identifier))))))))
+            (statement
+              (use_statement
+                call: (expression
+                  (call_expression
+                    callee: (expression
+                      (primary_expression
+                        (identifier)))
+                    (argument_list
+                      (expression
+                        (primary_expression
+                          (literal
+                            (string
+                              (string_content))))))))))
+            (statement
+              (expression_statement
+                (expression
+                  (binary_expression
+                    left: (expression
+                      (primary_expression
+                        (identifier)))
+                    right: (expression
+                      (unary_expression
+                        operand: (expression
+                          (primary_expression
+                            (literal
+                              (integer))))))))))))))))

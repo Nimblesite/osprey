@@ -71,7 +71,10 @@ impl Checker {
                 self.check_alternatives(earlier, row, erased);
             }
         }
-        if let Some(witness) = self.useful_in(&rows, &[Space::Any], erased) {
+        // A closed-domain witness names its missing constructor. Erased values always need a catch-all.
+        let witness = self.useful_in(&rows, &[Space::Any], erased)
+            .filter(|witness| erased || !matches!(witness.first(), Some(Space::Any)));
+        if let Some(witness) = witness {
             let message = if erased {
                 super::ERASED_CATCH_ALL.to_owned()
             } else {
@@ -134,10 +137,15 @@ impl Checker {
                 sub_patterns,
             } => self.constructor_space(name, fields, sub_patterns),
             Pattern::Structural { fields, open } => self.row_space(pattern, fields, *open),
+            // An or-pattern directly inside another is spliced in, so every
+            // alternative is checked in its own context ([PATTERN-OR-EXHAUSTIVE]).
             Pattern::Or(alternatives) => Space::Or(
                 alternatives
                     .iter()
-                    .map(|alternative| self.pattern_space(alternative, erased))
+                    .flat_map(|alternative| match self.pattern_space(alternative, erased) {
+                        Space::Or(nested) => nested,
+                        single => vec![single],
+                    })
                     .collect(),
             ),
         }

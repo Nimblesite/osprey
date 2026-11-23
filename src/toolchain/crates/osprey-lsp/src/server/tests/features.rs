@@ -252,7 +252,8 @@ async fn symbols_completion_and_signature_help() {
 async fn watched_changes_recheck_only_the_projects_they_affect(
 ) -> Result<(), Box<dyn std::error::Error>> {
     const PROJECTS: usize = 8;
-    const WARNED: &str = "double : int -> int\ndouble x = x * 2\n";
+    // The sweep reports a closed file's cheap advice, never the redundancy proof.
+    const WARNED: &str = "double x =\n    spare = 1\n    x * 2\n";
     let root = std::env::temp_dir().join(format!("osprey sweep cpu {}", std::process::id()));
     let mut mains = Vec::new();
     for index in 0..PROJECTS {
@@ -307,16 +308,30 @@ async fn watched_changes_recheck_only_the_projects_they_affect(
     only_published(&reports, &[closed_uri], "a tab close");
 
     let extra = root.join("p2/src/extra.ospml");
-    std::fs::write(&extra, "triple : int -> int\ntriple x = x * 3\n")?;
+    const PROVABLE: &str = "triple : int -> int\ntriple x =\n    spare = 1\n    x * 3\n";
+    std::fs::write(&extra, PROVABLE)?;
     let extra_uri = sweep_uri(&extra)?;
     let created = json!({"changes":[{"uri":extra_uri,"type":1}]});
     let reports = rechecked(&mut h, 604, created, &mut analyses, 1, "a new file").await;
     assert!(
-        reports.iter().any(|p| p["uri"] == extra_uri
-            && p.pointer("/diagnostics/0/code") == Some(&json!("redundant-annotation"))),
-        "the new file is checked: {reports:?}"
+        reports
+            .iter()
+            .any(|p| p["uri"] == extra_uri && codes(p) == ["unused-variable"]),
+        "the new closed file is checked without the redundancy proof: {reports:?}"
     );
     only_published(&reports, &[&extra_uri, grown_uri], "a new file");
+    // Opening it is what buys the proof ([LSP-MEMORY-RETENTION]).
+    let opened = h.open_at(&extra_uri, PROVABLE).await;
+    let opened = opened.params.as_ref().ok_or("a report")?;
+    assert_eq!(
+        codes(opened),
+        ["redundant-annotation", "unused-variable"],
+        "{opened:?}"
+    );
+    h.notify("textDocument/didClose", text_doc(&extra_uri))
+        .await;
+    let _ = settled(&mut h, 606).await;
+    analyses = h.engine.project_cache.analyses();
 
     let tool = root.join("tool.ts");
     std::fs::write(&tool, "export const x = 1;\n")?;
@@ -373,4 +388,15 @@ fn only_published(reports: &[Value], expected: &[&String], what: &str) {
         stray.is_empty(),
         "{what} republished other documents: {stray:?}"
     );
+}
+
+/// The diagnostic codes of one `publishDiagnostics` report, in order.
+fn codes(report: &Value) -> Vec<String> {
+    report["diagnostics"]
+        .as_array()
+        .map_or_else(Vec::new, |all| {
+            all.iter()
+                .filter_map(|d| d["code"].as_str().map(str::to_owned))
+                .collect()
+        })
 }

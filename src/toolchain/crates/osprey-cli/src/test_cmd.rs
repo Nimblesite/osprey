@@ -277,6 +277,7 @@ fn run_suite(
     if let Some(directory) = &scratch {
         let _ = command.current_dir(&directory.path);
     }
+    crate::toolchain::runner_alive()?;
     command.output()
 }
 
