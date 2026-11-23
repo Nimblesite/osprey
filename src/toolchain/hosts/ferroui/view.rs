@@ -293,6 +293,14 @@ fn tone(cx: &Cx, tone: &str, fallback: &str) -> Option<Color> {
     cx.look.colour(tone).or_else(|| cx.look.colour(fallback))
 }
 
+/// `panel` with the node's symbol added first, when the node names one.
+fn with_symbol(cx: &mut Cx, panel: El<ferroui_controls::StackPanel>, node: &Tree) -> El<ferroui_controls::StackPanel> {
+    match tree::string(node, "symbol") {
+        "" => panel,
+        name => panel.child(symbol(cx, name)),
+    }
+}
+
 /// A symbol's glyph, or a box naming a symbol the framework does not define.
 fn symbol(cx: &mut Cx, name: &str) -> Element {
     match crate::symbols::glyph(name) {
@@ -447,12 +455,8 @@ fn pair(cx: &mut Cx, node: &Tree) -> Element {
 
 /// A symbol and a label.
 fn label_node(cx: &mut Cx, node: &Tree) -> Element {
-    let mut row = stack_panel()
-        .orientation(Orientation::Horizontal)
-        .spacing(cx.look.gap());
-    if !tree::string(node, "symbol").is_empty() {
-        row = row.child(symbol(cx, tree::string(node, "symbol")));
-    }
+    let gap = cx.look.gap();
+    let row = with_symbol(cx, stack_panel().orientation(Orientation::Horizontal).spacing(gap), node);
     row.child(
         text_block()
             .text(tree::string(node, "label").to_owned())
@@ -474,12 +478,7 @@ fn icon(cx: &mut Cx, node: &Tree) -> Element {
 
 /// A small rounded label in its tone's colour, its symbol before it.
 fn badge(cx: &mut Cx, node: &Tree) -> Element {
-    let mut content = stack_panel()
-        .orientation(Orientation::Horizontal)
-        .spacing(4.0);
-    if !tree::string(node, "symbol").is_empty() {
-        content = content.child(symbol(cx, tree::string(node, "symbol")));
-    }
+    let content = with_symbol(cx, stack_panel().orientation(Orientation::Horizontal).spacing(4.0), node);
     let mut label = text_block()
         .text(tree::string(node, "label").to_owned())
         .font_size(12.0);
@@ -641,6 +640,11 @@ fn toggle(cx: &mut Cx, node: &Tree) -> Element {
         .into()
 }
 
+/// Each item's key, in order, as a choice control holds them.
+fn keys_of<'a>(items: impl Iterator<Item = &'a Tree>) -> Vec<Option<String>> {
+    items.map(|item| Some(tree::string(item, "key").to_owned())).collect()
+}
+
 /// The index of the key `selected` among `keys`, or -1.
 fn index_of(keys: &[Option<String>], selected: &str) -> i32 {
     keys.iter()
@@ -674,10 +678,7 @@ fn picker(cx: &mut Cx, node: &Tree) -> Element {
         return refused(cx, "a picker has no event ordinal".to_owned());
     };
     let choices = tree::list(node, "choices");
-    let keys: Vec<Option<String>> = choices
-        .iter()
-        .map(|choice| Some(tree::string(choice, "key").to_owned()))
-        .collect();
+    let keys = keys_of(choices.iter());
     let selected = tree::string(node, "selected").to_owned();
     let labels: Vec<Element> = choices
         .iter()
@@ -1097,10 +1098,7 @@ fn tabs(cx: &mut Cx, node: &Tree) -> Element {
         return refused(cx, "tabs have no event ordinal".to_owned());
     };
     let entries = tree::list(node, "tabs");
-    let keys: Vec<Option<String>> = entries
-        .iter()
-        .map(|entry| Some(tree::string(entry, "key").to_owned()))
-        .collect();
+    let keys = keys_of(entries.iter());
     let selected = tree::string(node, "selected").to_owned();
     let items: Vec<Element> = entries
         .iter()
@@ -1152,12 +1150,8 @@ fn rows(cx: &mut Cx, node: &Tree) -> Element {
             Some(child) => self::node(cx, child),
             None => Element::Empty,
         };
-        let mut line = stack_panel()
-            .orientation(Orientation::Horizontal)
-            .spacing(cx.look.gap());
-        if !tree::string(row, "symbol").is_empty() {
-            line = line.child(symbol(cx, tree::string(row, "symbol")));
-        }
+        let gap = cx.look.gap();
+        let line = with_symbol(cx, stack_panel().orientation(Orientation::Horizontal).spacing(gap), row);
         keys.push(Some(tree::string(row, "key").to_owned()));
         items.push(
             list_box_item()
