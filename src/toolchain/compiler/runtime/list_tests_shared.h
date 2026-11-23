@@ -162,6 +162,17 @@ static inline void check_view_at(OspreyList *l, const int64_t *m, int64_t n, int
   OspreyList *vv = osprey_list_drop(v, vn / 2); /* view of a view */
   check_elems(vv, m + k + vn / 2, vn - vn / 2);
   check_elems(v, m + k, vn);
+  /* [MEM-OWNERSHIP-STATIC-SHARING] The lent view reads the same elements and
+     takes nothing from the source: past its end it is the empty list, and a
+     negative count lends the whole list. */
+  OspreyList *lent = osprey_list_view(l, k);
+  check_elems(lent, m + k, vn);
+  check_elems(osprey_list_view(l, -1), m, n);
+  CHECK(osprey_list_view(l, n) == osprey_list_empty());
+  CHECK(osprey_list_view(l, n + 1) == osprey_list_empty());
+  CHECK(osprey_list_view(NULL, 0) == osprey_list_empty());
+  check_elems(osprey_list_view(lent, vn / 2), m + k + vn / 2, vn - vn / 2);
+  check_elems(l, m, n);
   if (deep) {
     check_appends(v, m + k, vn);
     check_sets(v, m + k, vn);

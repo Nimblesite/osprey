@@ -43,6 +43,7 @@ Found while building phase 1, each a place where an accepted program still count
 
 - The helpers the compiler synthesises for rendering and structural equality (`osp.any.*`) box a borrowed payload and retain it for the life of the helper. They need a box that lends.
 - The list runtime duplicates the elements it copies (`osprey_list_builder_push_borrowed`) and shares structure between versions, in C. The sharing rule [MEM-OWNERSHIP-STATIC-SHARING] has to be enforced at compile time before those counts can go.
+  - 2026-11-24: enforced. A derived version takes its source by move and releases it at once; `...rest` is a lent view (`osprey_list_view`); a `fold` step owns its accumulator. Open: a recursive `listPrepend` past one 32-element chunk still leaves blocks under the ownership runtime (ARC frees them).
 - `spawn`, `await`, channel sends and handler environments retain what crosses them ([MEM-OWNERSHIP-STATIC-FIBERS]).
 - A `mut` file-scope binding read by a function is published with its own reference. An immutable one hands the module the reference it holds.
 

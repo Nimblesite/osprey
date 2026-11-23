@@ -35,6 +35,8 @@ pub enum Need {
     Shared,
     /// It is passed to a function that takes ownership of that parameter.
     Given,
+    /// A new version of a list or map is derived from it while it is still read.
+    Versioned,
 }
 
 impl Need {
@@ -47,6 +49,9 @@ impl Need {
             Need::Joined => "one arm of a `match` yields it while another arm yields a new value",
             Need::Shared => "a file-scope binding or cell holds it as well as its owner",
             Need::Given => "it is given to a function that takes ownership of it",
+            Need::Versioned => {
+                "a new version of the collection is derived from it while another owner keeps it"
+            }
         }
     }
 }

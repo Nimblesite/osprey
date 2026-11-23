@@ -4,6 +4,7 @@ use super::{
     list_builder_push_borrowed, list_builder_seal, list_owner, managed_flag, map_owner, own_handle,
     stored_boxed_arg, stored_element, tagged_map_elem, unboxed_arg, MAP_TAG,
 };
+use crate::arc::versions;
 use crate::builder::Codegen;
 use crate::cast::coerce_to;
 use crate::conv::box_to_i64;
@@ -28,12 +29,14 @@ pub(super) fn map_set(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let raw = crate::conv::fit_literal(cg, raw, map_value_numeric(cg, &m))?;
     let elem = crate::llty::elem_spelling(&raw).or_else(|| tagged_map_elem(&m));
     let (v, managed) = stored_element(cg, raw)?;
+    let source = versions::take_source(cg, m.clone());
     let r = cg.call(
         "i8*",
         "osprey_map_set_of",
         "i8*, i64, i64, i32",
         &[&m.operand, &k.operand, &v.operand, managed],
     );
+    versions::release_source(cg, &source);
     Ok(own_handle(cg, Value::handle(r, map_owner(elem.as_deref()))))
 }
 
@@ -65,7 +68,16 @@ fn map_key_op(cg: &mut Codegen, args: &[Expr], ret: &str, name: &str) -> Result<
 
 /// `mapRemove(m, k) -> Map`.
 pub(super) fn map_remove(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
-    let (m, r) = map_key_op(cg, args, "i8*", "osprey_map_remove")?;
+    let m = handle_arg(cg, args, 0)?;
+    let k = boxed_arg(cg, args, 1)?;
+    let source = versions::take_source(cg, m.clone());
+    let r = cg.call(
+        "i8*",
+        "osprey_map_remove",
+        "i8*, i64",
+        &[&m.operand, &k.operand],
+    );
+    versions::release_source(cg, &source);
     Ok(own_handle(
         cg,
         Value::handle(r, map_owner(tagged_map_elem(&m).as_deref())),

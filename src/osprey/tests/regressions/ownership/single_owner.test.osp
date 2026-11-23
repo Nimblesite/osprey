@@ -43,11 +43,18 @@ fn elements() = {
     "elements ${toString(firstX(points))} ${toString(listLength(names))}"
 }
 
-/// A fresh element moves into the list it is added to.
+/// A fresh element moves into the list it is added to, and a version derived
+/// at its source's last use takes the source by move [MEM-OWNERSHIP-STATIC-SHARING].
 fn collections() = {
     let base = listAppend([], "t${toString(1)}")
     let more = listAppend(base, "t${toString(2)}")
-    "collections ${toString(listLength(more))}"
+    let both = listPrepend(listAppend(more, "t${toString(3)}"), "z")
+    let flipped = listReverse(both)
+    let joined = flipped + listAppend([], "tail${toString(4)}")
+    let ages = mapSet(mapSet(Map(), "ann${toString(1)}", 30), "bob", 41)
+    let fewer = mapRemove(mapSet(ages, "cat", 7), "bob")
+    let merged = mapMerge(fewer, mapSet(Map(), "dan", 2))
+    "collections ${toString(listLength(joined))} ${joined[0] ?: "-"} ${joined[4] ?: "-"} ${toString(length(merged))}"
 }
 
 /// A binding read once, and never again, gives its value to what takes it.

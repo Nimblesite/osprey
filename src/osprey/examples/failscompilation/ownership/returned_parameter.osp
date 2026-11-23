@@ -2,8 +2,10 @@
 // `pick` can return its parameter, so it takes ownership of it, and one
 // statement gives the same value to it twice. `firstOr` is generic, so its
 // parameters stay borrowed and its `match` cannot yield one where another arm
-// yields a new list; the refusal names `firstOr`, whose body is lowered inside
-// the caller that instantiates it.
+// yields a new list, and the list it derives from `tail`, which only lends the
+// matched list's nodes, would be a second live version
+// [MEM-OWNERSHIP-STATIC-SHARING]. The refusals name `firstOr`, whose body is
+// lowered inside the caller that instantiates it.
 type Box = { text: string }
 
 fn pick(box, n) = match n {

@@ -5,6 +5,7 @@
 //! `+` operator and `toString` can tell them from records. Implements
 //! [TYPE-LIST-OPS], [TYPE-MAP-OPS], [BUILTIN-LIST], and [BUILTIN-MAP].
 
+use crate::arc::versions;
 use crate::builder::Codegen;
 use crate::cast::coerce_to;
 use crate::conv::box_to_i64;
@@ -310,7 +311,9 @@ fn one_list_i64(cg: &mut Codegen, cname: &str, args: &[Expr]) -> Result<Value> {
 /// keeps the source's element tag.
 fn one_list_handle(cg: &mut Codegen, cname: &str, args: &[Expr]) -> Result<Value> {
     let h = handle_arg(cg, args, 0)?;
+    let source = versions::take_source(cg, h.clone());
     let r = cg.call("i8*", cname, "i8*", &[&h.operand]);
+    versions::release_source(cg, &source);
     Ok(derived_list(cg, r, tagged_elem(&h).as_deref()))
 }
 
@@ -323,12 +326,14 @@ fn list_insert(cg: &mut Codegen, cname: &str, args: &[Expr]) -> Result<Value> {
     let x = unboxed_arg(cg, args, 1)?;
     let elem = tagged_elem(&h).or_else(|| crate::llty::elem_spelling(&x));
     let (x, managed) = stored_element(cg, x)?;
+    let source = versions::take_source(cg, h.clone());
     let r = cg.call(
         "i8*",
         cname,
         "i8*, i64, i32",
         &[&h.operand, &x.operand, managed],
     );
+    versions::release_source(cg, &source);
     Ok(derived_list(cg, r, elem.as_deref()))
 }
 
@@ -337,7 +342,11 @@ fn list_insert(cg: &mut Codegen, cname: &str, args: &[Expr]) -> Result<Value> {
 /// A runtime op combining two collection handles into a new one — the body
 /// behind both list concat and map merge.
 fn combine_handles(cg: &mut Codegen, a: &Value, b: &Value, cname: &str, owner: &str) -> Value {
+    let first = versions::take_source(cg, a.clone());
+    let second = versions::take_source(cg, b.clone());
     let r = cg.call("i8*", cname, "i8*, i8*", &[&a.operand, &b.operand]);
+    versions::release_source(cg, &first);
+    versions::release_source(cg, &second);
     let v = Value::handle(r, owner);
     own_handle(cg, v)
 }

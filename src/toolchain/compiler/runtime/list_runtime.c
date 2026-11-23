@@ -174,12 +174,14 @@ OspreyList *osprey_list_set(OspreyList *l, int64_t i, int64_t v) {
 /* Open room before physical index 0 of `h`, a by-value header copy: a tree one
    level taller holds the old root in slot 1, so every element moves up by the
    old capacity and slot 0 is free; a tail-only list gains an empty leaf root.
-   Returns the fresh root (+1), which `h` now borrows. */
+   The old root's reference, which the caller holds, moves into the fresh root
+   instead of being taken a second time: a second take of one node is a second
+   owner under [MEM-OWNERSHIP-STATIC-SHARING]. Returns the fresh root (+1),
+   which `h` now borrows. */
 static OspreyListNode *open_front(OspreyList *h) {
   int32_t shift = (h->root == NULL) ? 0 : h->shift + OSPREY_LIST_BITS;
   OspreyListNode *fresh = alloc_node(node_layout(shift, h->elem_managed));
   if (h->root != NULL) {
-    osp_retain(h->root);
     fresh->slots[1] = (int64_t)(uintptr_t)h->root;
   }
   h->offset = (int64_t)1 << (h->shift + OSPREY_LIST_BITS);
@@ -223,9 +225,7 @@ static OspreyList *prepend_new_front(OspreyList h, int64_t v) {
   else osp_retain(root);
   h.root = root;
   if (h.offset == 0) {
-    OspreyListNode *fresh = open_front(&h);
-    osp_release(root); /* the fresh root holds it now */
-    root = fresh;
+    root = open_front(&h); /* the fresh root holds the old one now */
   }
   int64_t j = h.offset - 1;
   OspreyListNode *front = clone_node(tree_leaf(&h, j), node_layout(0, em));
@@ -327,4 +327,21 @@ OspreyList *osprey_list_drop(OspreyList *l, int64_t n) {
   osp_retain(front);
   return alloc_list(l->length - n, l->shift, l->tail_count, l->root, l->tail,
                     l->offset + n, l->elem_managed, front);
+}
+
+/* [MEM-OWNERSHIP-STATIC-SHARING] The list after its first `n` elements, lent
+ * rather than owned: the header points into `l`'s nodes without taking a
+ * reference to any of them, and its layout names no child, so releasing it
+ * frees the header alone. The compiler emits it only under ownership, for a
+ * `...rest` pattern binding it keeps inside `l`'s lifetime. */
+OspreyList *osprey_list_view(OspreyList *l, int64_t n) {
+  int64_t skip = n < 0 ? 0 : n;
+  if (l == NULL || skip >= l->length) {
+    return osprey_list_empty();
+  }
+  OspreyListNode *front = in_front(l, l->offset + skip) ? l->front : NULL;
+  OspreyList *view = alloc_list(l->length - skip, l->shift, l->tail_count, l->root, l->tail,
+                                l->offset + skip, l->elem_managed, front);
+  osp_mem_set_layout(view, OSP_MEM_RAW);
+  return view;
 }

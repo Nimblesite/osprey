@@ -251,11 +251,15 @@ An accepted program therefore counts no reference to a source value: each one
 is freed at the single release the ledger emits for its owner. The helper
 functions the compiler synthesises for rendering and structural equality
 still count references among their own temporaries; they keep no value
-alive past their return. Until the
-backend has a runtime of its own, an accepted program links the reference
-counting runtime, where that single release frees the value. Runtime
-collections still count the elements two versions share; the sharing rule
-below isn't enforced yet.
+alive past their return. An accepted program links the ownership runtime
+(`memory_ownership.c`), never the reference counting one; it keeps no counts,
+and that single release frees the value. The sharing rule below is enforced:
+an operation that derives a new version of a list or map (`listAppend`,
+`listPrepend`, `listReverse`, `listSort`, `+`, `mapSet`, `mapRemove`,
+`mapMerge`) takes its source by move and releases it as soon as the new
+version exists, and a `...rest` pattern binding is a view lent by the matched
+list, which takes nothing from its nodes and may not be stored, returned or
+used to derive a version. A `fold` step owns the accumulator it is given.
 
 **What is refused.** A value needs a second owner, and the program is
 refused, when:
@@ -271,6 +275,8 @@ refused, when:
 - it is given to a function that takes ownership of that parameter while the
   caller reads it again;
 - it is handed to a fiber, channel, handler or collection that keeps it;
+- a new version of a list or map is derived from it while another owner
+  keeps it, or from a `...rest` view;
 - a `mut` file-scope binding holds it as well as its owner (a binding that is
   never reassigned hands the module its one reference instead).
 

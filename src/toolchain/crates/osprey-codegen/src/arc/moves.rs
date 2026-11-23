@@ -243,10 +243,15 @@ pub(super) fn give_up(cg: &mut Codegen, operand: &str) -> Option<String> {
         return Some(entry.slot);
     }
     let (level, place, name) = giver(cg, operand)?;
+    // A binding read on only some paths is read at most once on each, so a
+    // sibling path, such as another arm of the same `match`, may give it up
+    // too [MEM-OWNERSHIP-STATIC-PATHS].
     let movable = match level {
         Some(level) => cg.arc.enclosing.get_mut(level)?,
         None => &mut cg.arc.movable,
     };
-    let _ = movable.names.remove(&name);
+    if !movable.sometimes.contains(&name) {
+        let _ = movable.names.remove(&name);
+    }
     Some(cg.arc.frames.get(place.0)?.get(place.1)?.slot.clone())
 }

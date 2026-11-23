@@ -90,6 +90,7 @@ OspreyList *osprey_list_prepend_of(OspreyList *l, int64_t v, int elem_managed);
 OspreyList *osprey_list_prepend(OspreyList *l, int64_t v);
 OspreyList *osprey_list_concat(OspreyList *a, OspreyList *b);
 OspreyList *osprey_list_drop(OspreyList *l, int64_t n);
+OspreyList *osprey_list_view(OspreyList *l, int64_t n);
 OspreyList *osprey_list_reverse(OspreyList *l);
 /* Stable ascending sort of a List<int> or List<string> [BUILTIN-LIST-SORT].
    Codegen rejects every other element type before this can be reached. */

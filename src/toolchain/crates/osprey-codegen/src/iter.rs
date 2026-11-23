@@ -266,6 +266,13 @@ pub(crate) fn acc_step(
 ) -> Result<()> {
     let a = cg.emit_reg(format!("load i64, i64* {acc}"));
     let acc_val = rebuild_acc(cg, &a, tmpl);
+    // Under ownership the step owns the accumulator it is given, so a step that
+    // derives the next version takes the old one by move; whatever it does not
+    // take dies with the step [MEM-OWNERSHIP-STATIC-SHARING].
+    let given = cg.ownership.on && acc_val.ty.is_managed_ptr();
+    if given {
+        crate::arc::own(cg, &acc_val);
+    }
     let new = invoke(cg, combine, vec![acc_val, elem])?;
     let new = match tmpl.result_inner {
         Some(inner) if new.result_inner.is_some() => {
@@ -279,8 +286,10 @@ pub(crate) fn acc_step(
     // `acc` unchanged must keep it alive. [GC-ARC-PERCEUS]
     if new.ty.is_managed_ptr() {
         crate::arc::transfer_or_retain(cg, &new);
-        let old = cg.emit_reg(format!("inttoptr i64 {a} to i8*"));
-        crate::arc::release_operand(cg, &old);
+        if !given {
+            let old = cg.emit_reg(format!("inttoptr i64 {a} to i8*"));
+            crate::arc::release_operand(cg, &old);
+        }
     }
     let new = box_to_i64(cg, new);
     cg.emit(format!("store i64 {}, i64* {acc}", new.operand));
