@@ -77,7 +77,7 @@ This is a language gap that blocks top tier, ranked with the gaps in [generic er
 
 Expand existing suites. Add no new test file.
 
-- [ ] `src/osprey/tests/flavors/matching/matching.test` in both flavors, loaded with permutations: payload-free variants, literals (`int`, `float`, `string`, `bool`), constructor payloads, `Success` and `Error`, tuples, lists with a rest binder, rows, and or-patterns nested three levels deep, each asserted for every alternative and for the values that reach no alternative
+- [x] `src/osprey/tests/flavors/matching/matching.test` in both flavors, loaded with permutations: payload-free variants, literals (`int`, `float`, `string`, `bool`), constructor payloads, `Success` and `Error`, tuples, lists with a rest binder, rows, and or-patterns nested three levels deep, each asserted for every alternative and for the values that reach no alternative
 - [x] Binding cases: the same binder taken from each alternative, a function-valued binder, a closure that captures the binder and escapes the arm, a binder shadowing a `mut` cell ([PATTERN-BINDING-SCOPE])
 - [x] Order cases: overlapping alternatives where only the first can supply the binding ([PATTERN-OR-ORDER])
 - [ ] Multi-shot: an or-pattern arm whose body performs a `control many` operation, resumed two and three times, in `osprey-cli/tests/common/many_permutations.rs` and the multi-shot corpus, with identical output under GC, ARC and wasm32

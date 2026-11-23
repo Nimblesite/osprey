@@ -325,6 +325,12 @@ onAxis p = match p
 shortList xs = match xs
     [] | [_] => "short"
     [a, b, ...rest] => "long ${wrapAdd (wrapAdd (a, b), listLength rest)}"
+axisPair (x, y) = match Pt x y
+    (0, n) | (n, 0) => n
+    _ => -1
+tailSize xs = match xs
+    [0, ...rest] | [1, ...rest] => listLength rest
+    _ => -1
 rowSize (r : Sized) = match r
     { kind = "s", n } | { kind = "m", n } => n
     _ => 0
@@ -339,6 +345,8 @@ orStructureCase () = checkAll ("or-pattern Result, payload, list, row and nested
     resultText (Success(value = "a")) == "got a", resultText (Error(message = "b")) == "got b",
     onAxis (Pt 0 5) == "axis", onAxis (Pt 5 0) == "axis", onAxis (Pt 0 0) == "axis",
     onAxis (Pt 2 3) == "plane",
+    axisPair (0, 8) == 8, axisPair (9, 0) == 9, axisPair (2, 3) == -1,
+    tailSize [0] == 0, tailSize [1, 8, 9] == 2, tailSize [2, 9] == -1, tailSize [] == -1,
     shortList [] == "short", shortList [9] == "short", shortList [1, 2, 3, 4] == "long 5",
     rowSize (Sized(kind = "s", n = 3)) == 3, rowSize (Sized(kind = "m", n = 4)) == 4,
     rowSize (Sized(kind = "l", n = 5)) == 0,
