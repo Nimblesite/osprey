@@ -31,5 +31,6 @@ Fix: keep only the projects that loaded the open file (its `project_roots`), plu
 - [x] Fix any API break in `osprey-lsp` and `lsp-profiler-osprey`, with no change to behaviour (none: Osprey uses no changed API)
 - [x] Rust pinned to 1.100.0 everywhere ([TOOLCHAIN-RUST-PIN]), the version lspkit builds with
 - [x] `live_profiler_lsp` found queued requests ignored `$/cancelRequest`; fixed with `work/pending.rs`
-- [ ] `cargo test -p osprey-lsp -p lsp-profiler-osprey`, `cargo test --test live_profiler_lsp`, the VS Code extension LSP suite, then `make ci`
+- [x] `cargo test -p osprey-lsp` (261 passed), `-p lsp-profiler-osprey` (21 passed) and `--test live_profiler_lsp` (5 passed), 2026-11-23 at `4f3215fa8` + `0c5725f73`
+- [ ] The VS Code extension LSP suite (`make _test_vscode_extension`), then `make ci`
 - [ ] Push under the TMC lock `PUSH-<branch>` once `make ci` is green
