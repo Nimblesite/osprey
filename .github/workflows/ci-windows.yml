@@ -100,6 +100,13 @@ jobs:
         shell: msys2 {0}
         run: make _test_gc_stack_root CC=gcc
 
+      # [FFI-FILE-SERVER-FOLDER] Backslashes, drive and stream colons, symlinks and
+      # subfolders only bite on Windows: the file server suite proves each answers 404
+      # here, over real loopback sockets.
+      - name: File server refuses hostile names and links
+        shell: msys2 {0}
+        run: make _test_file_server CC=gcc
+
       - name: Build osprey (release)
         run: cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 

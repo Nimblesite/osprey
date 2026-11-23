@@ -1,6 +1,6 @@
 // Assertion-driven tests for the extern-callable network units: a failed
-// assert aborts the binary. This suite OWNS tls_client_runtime.c and, through
-// file_server_tests.c, file_server_runtime.c.
+// assert aborts the binary. This suite OWNS tls_client_runtime.c; the file server
+// has its own suite, file_server_tests.c.
 //
 // Everything runs against real loopback sockets in this process: an OpenSSL
 // echo server with a self-signed certificate for the TLS session, so the unit is
@@ -23,7 +23,6 @@ char *osprey_tls_recv_hex(int64_t handle, int64_t count, int64_t timeout_ms);
 int64_t osprey_tls_status(int64_t handle);
 int64_t osprey_tls_close(int64_t handle);
 char *osprey_net_local_address(char *host, int64_t port);
-void run_file_server_tests(void); // file_server_tests.c
 
 #define ECHO_PORT test_port(7)
 #define ECHO_CLOSE_PORT test_port(8)
@@ -282,7 +281,6 @@ int main(void) {
   echo_stop(&closer);
   X509_free(cert);
   EVP_PKEY_free(key);
-  run_file_server_tests();
   printf("✅ network runtime tests passed\n");
   return 0;
 }
