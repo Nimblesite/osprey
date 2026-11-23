@@ -365,6 +365,9 @@ fn typescript_rejects_unsupported_semantics_at_original_positions() {
         ("function f(x) {\n  switch (x) {\n    case 1:\n      return 1;\n  }\n}\n", "must test `value.kind`", 2, 10),
         ("function f(x) {\n  switch (x.kind) {\n    default:\n      return 1;\n  }\n}\n", "`default` is rejected", 3, 4),
         ("function f(x) {\n  switch (x.kind) {\n    case \"a\":\n      g();\n    case \"b\":\n      return 1;\n  }\n}\n", "fallthrough is rejected", 3, 4),
+        // Adjacent labels share the next body ([PATTERN-OR-SYNTAX]); a label
+        // with no body after it falls through.
+        ("function f(x) {\n  switch (x.kind) {\n    case \"a\":\n      return 1;\n    case \"b\":\n  }\n}\n", "must end with a body", 5, 4),
         ("function f(a, b) {\n  a.set(1);\n  b.set(2);\n}\n", "only one parameter", 1, 17),
         ("function f(a, c) {\n  if (c) {\n    a.set(1);\n  }\n  return a;\n}\n", "inside a branch", 3, 4),
         ("function f() {\n  const a = make();\n  const read = () => a.size;\n  a.grow(1);\n  return read;\n}\n", "captured it", 4, 2),
