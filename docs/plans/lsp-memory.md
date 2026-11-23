@@ -36,7 +36,7 @@ Checked against the published v0.4.0 source on 2026-11-16, and confirmed on TMC 
 - [x] Fix any API breaks in `osprey-lsp`; no shims. None: it builds unchanged and the 259 LSP and 21 profiler tests pass.
 - [x] Keep Osprey's own guard: 32 unknown-method requests through the real server leave `in_flight: 0` (`Dispatcher` `Debug`). Test: `unknown_methods_leave_no_request_in_flight`; 261 LSP tests pass.
 - [x] `cargo test -p osprey-lsp`, then `make ci`, then one coordinated push. 261 LSP tests pass (2026-11-23); the bump shipped through PR #417 (lspkit 0.10.1), merged 2026-11-20 with the required `CI` check green, and is in v0.31.1.
-- [ ] Re-measure with `heap -s` after the idle sweep: live heap at or below 128 MB. 2026-11-23, initialize-only run on this repository, 280 s: released v0.31.1 holds 63 MB live with its sweep still publishing (448 diagnostics); the worktree build at `0c5725f73` holds 868 MB in 6.9M allocations with the sweep stuck at 81. `sample` puts the stuck sweep in the DAW project (`src/osprey/examples/daw`, added after v0.31.1 by #427): `osprey src/osprey/examples/daw --check --no-warnings` alone takes 32.7 s and 1.46 GB, and the redundant-annotation pass adds its trials on top. The cache rule holds; the type checker's cost on DAW is the blocker. Fix that, then re-measure until the sweep finishes.
+- [x] Re-measure with `heap -s` after the idle sweep. On 2026-11-23 the worktree release build published diagnostics for all 1,406 files after initialize, then sent the diagnostics progress end notification at 1,280 s. macOS `heap -s` measured 17,293,072 live bytes (16.49 MiB, 107,338 allocations), below the 128 MB limit. Physical footprint remained 2.2 GB and peaked at 3.9 GB during the sweep.
 
 ## Open, not yet fixed
 
