@@ -5,6 +5,20 @@ use crate::testutil::{bad_with, check, ok};
 use osprey_ast::{Expr, Stmt};
 use osprey_syntax::parse_program;
 
+#[test]
+fn effect_forms_require_a_capability_when_the_target_is_a_value() {
+    for binding in ["42", "fn(n: int) => n"] {
+        for effect_form in [
+            "perform token.get()",
+            "mask token { 42 }",
+            "{ handle token { get => 0 }\n42 }",
+        ] {
+            let source = format!("let token = {binding}\nlet result = {effect_form}");
+            bad_with(&source, "`token` is not a capability: its type is");
+        }
+    }
+}
+
 /// One generic effect over a generic RECORD, differing only in the
 /// instantiation the handler answers at.
 fn stash(handler_payload: &str) -> String {
