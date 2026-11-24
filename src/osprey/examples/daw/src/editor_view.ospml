@@ -16,6 +16,7 @@ module EditorView
         Lfo => "LFO"
         ModulatedGain => "Modulated gain"
         MidiNotes => "MIDI notes"
+        FormulaNotes _ => "Formula melody"
         Stereo => "Mono to stereo"
         Panner => "Panner"
         Split => "Channel split"
@@ -85,6 +86,19 @@ module EditorView
         External _ _ => mapList (filterList (n.parameters, \p => p.automatable), \p => Ui::button ("Modulate ${p.label}", "", Modulate(identity = n.identity, key = p.key)))
         _ => []
 
+    // [SYNTH-FORMULA-NOTES] A melody's formula over the step t, applied on Return, above the notes it plays.
+    formulaSection n = match n.processor
+        FormulaNotes formula => [Ui::section ("Formula", "", [ui::Field(label = "Formula over step t", value = formula, prompt = "60 + t * 7 % 12", secure = false, multiline = false, commit = ui::OnSubmit, bind = EditFormula(identity = n.identity)), Ui::caption (melody formula)])]
+        _ => []
+
+    heard note = match note
+        Rest => "rest"
+        Sounded pitch => TimelineView::noteName pitch
+
+    melody formula = match Formulas::parse formula
+        Error why => Faults::detail why
+        Success term => "Plays ${join (mapList (Formulas::notes (term, 16), heard), " ")}"
+
     component (editor, n) =
         parameters = match (length n.parameters == 0)
             true => []
@@ -102,7 +116,7 @@ module EditorView
                         false => Ui::caption "Opening plug-in window…"
                     [focus, Ui::button ("Close plug-in window", "", ClosePluginWindow(identity = n.identity))]
             _ => []
-        Ui::column (listConcat native (listConcat sample parameters))
+        Ui::column (listConcat native (listConcat sample (listConcat (formulaSection n) parameters)))
 
     x index = index.layoutX
 

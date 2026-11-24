@@ -80,7 +80,7 @@ module ClipLayouts
         Lfo => true
         ModulatedGain => true
         External _ _ => true
-        MidiNotes => true
+        MidiNotes | FormulaNotes _ => true
         Stereo => true
         Panner => true
         _ => length (filterList (listConcat n.inputs n.outputs, \p => p.channels != 1)) > 0
@@ -98,7 +98,7 @@ module ClipLayouts
         Bowed _ => uniform (n, 0, 1)
         ModulatedGain => modulated n
         Filter => uniform (n, 1, 1) || (modulated n && cutoffPort n)
-        MidiNotes => length n.inputs == 0 && length n.outputs == 1 && notes n.outputs
+        MidiNotes | FormulaNotes _ => length n.inputs == 0 && length n.outputs == 1 && notes n.outputs
         Stereo => monoTo (n, \width => width == 2)
         Panner => monoTo (n, Graphs::channelCount)
         Split => splitting n
@@ -133,7 +133,7 @@ module ClipLayouts
 
     (** Sinks retain their input channel count in the completed output clip. *)
     export channels n = match n.processor
-        MidiNotes => Success(value = 0)
+        MidiNotes | FormulaNotes _ => Success(value = 0)
         Sink => match listGet n.inputs 0
             Error _ => Error(message = Outcomes::indexOutOfBounds)
             Success port => Success(value = port.channels)
@@ -158,11 +158,11 @@ module ClipLayouts
     (** Bound all per-channel delay state before any buffer is allocated. *)
     export bounded (graph, frames) = frames > 0 && frames <= 32768 && satMul frames (foldList (graph.nodes, 0, cacheWidth)) <= 16777216 && SpectralKernels::affordable graph && foldList (graph.nodes, 0, \(total, n) => satAdd total (delay n)) <= 1920000 && length (filterList (graph.nodes, \n => supported n)) == length graph.nodes
 
-    noteClip (n, first, frames, clip) = match n.processor
-        MidiNotes => match MidiClips::timeline (n, first, frames)
+    noteClip (n, first, frames, clip) = match Kinds::noteSource n.processor
+        true => match MidiClips::timeline (n, first, frames)
             Error _ => false
             Success notes => structuralEquals (notes, clip.clipNotes)
-        _ => length clip.clipNotes == 0
+        false => length clip.clipNotes == 0
 
     (** Revalidate public cached buffers before allowing them to feed another node. *)
     export validClipAt (graph, first, frames, clip) = match Graphs::node (graph, clip.clipNode)

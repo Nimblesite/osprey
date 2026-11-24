@@ -41,6 +41,7 @@ module PatchRecords
         synth::Panner => outputWidth ("panner", n)
         synth::Delay samples => sized ("delay", samples)
         synth::MidiNotes => plain "midiNote"
+        synth::FormulaNotes formula => Success(value = PatchNode(identity = 0, component = "formulaNotes", size = 0, seed = 0, asset = formula, settings = []))
         synth::Split => sized ("split", length n.outputs)
         synth::Join => sized ("join", length n.inputs)
         synth::Route entries => savedMap (n, entries)

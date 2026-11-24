@@ -519,6 +519,8 @@ test ("VST audio packets preserve float samples, stereo frames and exact MIDI of
 
 test ("MIDI generators and stereo outputs are available through native graph controls", \() => Runtime::guarded (\() => hosted midiMenuJourney))
 
+test ("a formula melody is added, typed, refused with its column and heard through native graph controls [SYNTH-FORMULA-NOTES]", \() => Runtime::guarded (\() => hosted formulaMenuJourney))
+
 test ("MIDI note-on and note-off ownership survives exact block partitions", \() => Runtime::guarded midiTimingJourney)
 
 test ("hosted graph execution shares exact builtin PCM and rejects malformed cached buffers", \() => Runtime::guarded graphClipJourney)
@@ -809,6 +811,7 @@ test ("the project JSON reopens the edited patch, its note bindings, track mix a
     projectPatchJourney ()
     projectPortsJourney ()
     projectGrainJourney ()
+    projectFormulaJourney ()
     projectMixJourney ()))
 
 // [DAW-PROJECT] One project file holds the timeline, each track's mix and each track's patch: a saved project

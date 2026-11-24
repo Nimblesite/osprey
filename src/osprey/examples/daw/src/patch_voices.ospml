@@ -97,6 +97,11 @@ module PatchVoices
         oscillator = synth::Components::sine (identity, 440.0)
         ok (oscillator(inputs = [synth::Port(name = "notes", rate = synth::Events, channels = 1, unit = synth::Notes)]))
 
+    // [SYNTH-FORMULA-NOTES] A saved melody keeps its formula in the asset; one that no longer parses is refused.
+    formulated item = match synth::Formulas::parse item.asset
+        Error why => Error(message = synth::Faults::detail why)
+        Success _ => ok (synth::Components::formulaMelody (item.identity, item.asset))
+
     made item = match item.component
         "vst3" => synth::PluginDocuments::restored (item.identity, item.asset)
         "split" => channels item
@@ -105,6 +110,7 @@ module PatchVoices
         "route" => channels item
         "midiOscillator" => midiOscillator item.identity
         "midiNote" => ok (synth::Components::midiNote (item.identity, 60.0, 0.8, 6000.0))
+        "formulaNotes" => formulated item
         "stereo" => ok (synth::Components::stereo item.identity)
         "downmix" => ok (synth::Components::downmix item.identity)
         "stereoOutput" => ok (synth::Components::stereoOutput item.identity)

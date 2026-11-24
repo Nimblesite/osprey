@@ -68,7 +68,7 @@ A routing's `nodes` are `{"identity", "component", "size", "seed", "asset", "set
 The available graph components include `exciter`, `sine`, `wavetable`, `additive`, `operator`,
 `bowed`, `lfo`, `resonator`, `modal`, `waveguide`, `strikeComb`, `fractionalDelay`, `lossFilter`,
 `allpass`, `lowpass`, `shaper`, `shifter`, `spectral`, `reverb`, `smoother`, `gain`, `modulatedGain`,
-`mixer`, `delay`, `output`, `modulatedLowpass`, `grainCloud`, `midiNote`, `midiOscillator`, `stereo`, `downmix`, `split`, `join`, `route`, `stereoModulatedGain` and `stereoOutput`. Each `channelN` setting on a `route` selects one input for output N. An unknown component or setting is an error.
+`mixer`, `delay`, `output`, `modulatedLowpass`, `grainCloud`, `midiNote`, `formulaNotes` (its formula in `asset`), `midiOscillator`, `stereo`, `downmix`, `split`, `join`, `route`, `stereoModulatedGain` and `stereoOutput`. Each `channelN` setting on a `route` selects one input for output N. An unknown component or setting is an error.
 
 ### Send a patch outlet to a bus
 

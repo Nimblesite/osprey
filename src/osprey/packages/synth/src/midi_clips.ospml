@@ -3,6 +3,8 @@ namespace synth
 
 (** Deterministic MIDI note sources; no host, clock or UI dependency. *)
 module MidiClips
+    invalidWindow = Error(message = InvalidConfiguration(detail = "Invalid MIDI generator or sample window."))
+
     value (n, key) = match Graphs::parameterNamed (n, key)
         Error _ => Error(message = MissingResource(detail = "The MIDI generator is missing a required parameter."))
         Success p => Success(value = p.initial)
@@ -15,30 +17,49 @@ module MidiClips
         false => Error(message = InvalidConfiguration(detail = "MIDI pitch and gate frames must be whole numbers."))
         true => Success(value = count)
 
-    events (identity, pitch, velocity, gate) =
-        on = HostNote(kind = 1, offset = 0, pitch = pitch, channel = 0, identity = identity, velocity = velocity)
-        [on, on(kind = 2, offset = gate, velocity = 0.0)]
+    // One note-on at `offset` and its note-off `gate` frames later.
+    struck (identity, offset, pitch, velocity, gate) =
+        on = HostNote(kind = 1, offset = offset, pitch = pitch, channel = 0, identity = identity, velocity = velocity)
+        [on, on(kind = 2, offset = satAdd offset gate, velocity = 0.0)]
 
-    velocity (n, pitch, gate) = match value (n, "velocity")
-        Error why => Error(message = why)
-        Success strength => match strength >= 0.0 && strength <= 1.0
-            false => Error(message = InvalidConfiguration(detail = "MIDI velocity must be between zero and one."))
-            true => Success(value = events (n.identity, pitch, strength, gate))
+    loudness loud = match loud >= 0.0 && loud <= 1.0
+        false => Error(message = InvalidConfiguration(detail = "MIDI velocity must be between zero and one."))
+        true => Success(value = loud)
+
+    strength n = Outcomes::carried (value (n, "velocity"), loudness)
 
     whole (n, key, low, high) = Outcomes::carried (value (n, key), \number => integer (number, low, high))
 
     configured n = match whole (n, "pitch", 0.0, 127.0)
         Error why => Error(message = why)
-        Success pitch => Outcomes::carried (whole (n, "gateFrames", 1.0, 65535.0), \gate => velocity (n, pitch, gate))
+        Success pitch => Outcomes::carried (whole (n, "gateFrames", 1.0, 65535.0), \gate =>
+            Outcomes::carried (strength n, \loud => Success(value = struck (n.identity, 0, pitch, loud, gate))))
+
+    // [SYNTH-FORMULA-NOTES] Step `index` sounds its note at `index * step`; a rest sounds nothing.
+    stepEvents (identity, step, gate, loud, index, note) = match note
+        Rest => []
+        Sounded pitch => struck (identity, satMul index step, pitch, loud, gate)
+
+    sequenced (n, term, step, gate, steps) = Outcomes::carried (strength n, \loud =>
+        Success(value = Sequences::flattened (Sequences::mapIndexed (Formulas::notes (term, steps), \(index, note) => stepEvents (n.identity, step, min (gate, step), loud, index, note)))))
+
+    formulaEvents (n, term) = Outcomes::carried (whole (n, "stepFrames", 16.0, 65535.0), \step =>
+        Outcomes::carried (whole (n, "gateFrames", 1.0, 65535.0), \gate =>
+            Outcomes::carried (whole (n, "steps", 1.0, 256.0), \steps => sequenced (n, term, step, gate, steps))))
+
+    notesOf n = match n.processor
+        MidiNotes => configured n
+        FormulaNotes formula => Outcomes::carried (Formulas::parse formula, \term => formulaEvents (n, term))
+        _ => invalidWindow
 
     (** Render a half-open sample window; partitioning cannot duplicate or drop a note-off. *)
-    export timeline (n, first, count) = match n.processor == MidiNotes && n.identity >= 0 && n.identity <= 2147483647 && first >= 0 && count > 0 && count <= 65536 && first <= satSub 9223372036854775807 count
-        false => Error(message = InvalidConfiguration(detail = "Invalid MIDI generator or sample window."))
-        true => match configured n
+    export timeline (n, first, count) = match n.identity >= 0 && n.identity <= 2147483647 && first >= 0 && count > 0 && count <= 65536 && first <= satSub 9223372036854775807 count
+        false => invalidWindow
+        true => match notesOf n
             Error why => Error(message = why)
             Success notes => Success(value = mapList (filterList (notes, \note => note.offset >= first && note.offset < satAdd first count), \note => note(offset = satSub note.offset first)))
 
     (** A bounded whole-clip window retains the clip transport's original size contract. *)
     export window (n, first, count) = match first <= satSub 65536 count
-        false => Error(message = InvalidConfiguration(detail = "Invalid MIDI generator or sample window."))
+        false => invalidWindow
         true => timeline (n, first, count)

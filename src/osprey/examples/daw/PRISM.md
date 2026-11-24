@@ -4,7 +4,7 @@ Prism opens its signal-flow studio with the original node cards, cables, inspect
 
 Prism is the modular instrument editor for `@osprey/synth`. Its native component picker, port controls and parameter fields share a typed graph with the canvas. Start with an oscillator, filter, gain and output; add more components, choose an output port, and connect it to an input. The patch is heard when the song plays, through Master. Invalid connections leave the previous graph unchanged, and deleting a component removes its cables.
 
-The menu offers grain clouds, sine oscillators, low-pass filters, gains, mixers, delays, MIDI note generators, normalized LFOs, stereo conversion, modulated stereo gain and mono/stereo outputs. Scan a VST3 bundle to add independent instrument or effect instances. Drag nodes, connect canvas ports or native port controls, and route LFOs to compatible effect parameters. The graph library validates port rates, units, channel counts and feedback cycles; parameter edits are checked against each component's descriptor.
+The menu offers grain clouds, sine oscillators, low-pass filters, gains, mixers, delays, MIDI note generators, formula melodies (type a formula over the step `t`, such as `60 + t * 7 % 12`, and the module plays one note per step; see [SYNTH-FORMULA-NOTES]), normalized LFOs, stereo conversion, modulated stereo gain and mono/stereo outputs. Scan a VST3 bundle to add independent instrument or effect instances. Drag nodes, connect canvas ports or native port controls, and route LFOs to compatible effect parameters. The graph library validates port rates, units, channel counts and feedback cycles; parameter edits are checked against each component's descriptor.
 
 ## 🚨 CRITICAL: SYNTH TRANSPARENCY [DAW-TRANSPARENCY]
 
