@@ -155,6 +155,11 @@ pub(crate) fn end(cg: &mut Codegen) {
 }
 
 impl Movable {
+    /// Whether this statement may move the binding `name`.
+    pub(super) fn names_it(&self, name: &str) -> bool {
+        self.names.contains(name)
+    }
+
     /// Whether the lowering is still where this statement started: in its
     /// scope, at most its own statement frame deep, and inside no conditional
     /// opened since.

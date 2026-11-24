@@ -330,6 +330,44 @@ fn stores(n) = {
     "stores ${held.inner.text}${made.text} ${linkText(join)} ${linkText(Solo { at: other })} ${heldText(held)} ${nest.held.inner.text}${nest.tag} ${heldText(Held { inner: made, n: 4 })} ${twice.left.text}${twice.right.text} ${looped}"
 }
 
+type Foe = { name: string, box: Box, health: int }
+type Verdict = Passed { result: string } | Halted { reason: string, code: int }
+
+fn foe(kind) = Foe { name: "foe${toString(kind)}", box: Box { text: "box${toString(kind)}" }, health: kind }
+
+fn verdict(n) = match n {
+    0 => Halted { reason: "halted${toString(n)}", code: n }
+    _ => Passed { result: "passed${toString(n)}" }
+}
+
+/// Every arm takes its field out of the matched temporary.
+fn told(n) = match verdict(n) {
+    Passed { result } => result
+    Halted { reason } => reason
+}
+
+/// One arm takes a field, the other builds a new value.
+fn detailed(n) = match verdict(n) {
+    Passed { result } => result
+    Halted { reason, code } => "${reason}/${toString(code)}"
+}
+
+fn foeBox(kind) = foe(kind).box
+
+/// A field read out of a value the function made and never named takes the
+/// reference that value held [MEM-OWNERSHIP-STATIC-PATHS]: returned, bound,
+/// through a second field, and out of a `match` on a temporary. The value is
+/// freed without that field; a field read twice is left where it is.
+fn takes(n) = {
+    let name = foe(n).name
+    let box = foeBox(n)
+    let held = Held { inner: box, n: n }
+    let both = match foe(n) {
+        Foe { name, box } => "${name}${box.text}${name}"
+    }
+    "takes ${name} ${foe(n).box.text} ${held.inner.text}${box.text} ${told(0)} ${told(n)} ${detailed(0)} ${detailed(n)} ${both}"
+}
+
 fn effects() = "${toString(listLength(folded(4)))} ${toString(listLength(folded(0)))} ${drawn(10)} ${drawn(0)} ${noted(3)}"
 
-print("${fileScope(1)} ${shared.text}\n${spans()}\n${elements()}\n${collections()}\n${lastUses()}\n${paths()}\n${owned()}\n${generics()}\n${literals()}\n${errors()}\n${captures()}\n${lends()}\n${lentLists()}\n${reads()}\n${borrows()}\n${effects()}\n${stores(2)}")
+print("${fileScope(1)} ${shared.text}\n${spans()}\n${elements()}\n${collections()}\n${lastUses()}\n${paths()}\n${owned()}\n${generics()}\n${literals()}\n${errors()}\n${captures()}\n${lends()}\n${lentLists()}\n${reads()}\n${borrows()}\n${effects()}\n${stores(2)}\n${takes(3)}")

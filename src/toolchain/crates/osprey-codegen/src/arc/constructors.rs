@@ -62,7 +62,7 @@ pub(crate) fn consume_into_store(cg: &mut Codegen, operand: &str) -> bool {
             cg.emit(format!("store i8* null, i8** {slot}"));
             true
         }
-        None => false,
+        None => super::takes::take_field(cg, operand),
     }
 }
 

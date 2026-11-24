@@ -361,6 +361,7 @@ pub(crate) fn load_field(
         "getelementptr {struct_ty}, {struct_ty}* {obj}, i32 0, i32 {idx}"
     ));
     let r = cg.emit_reg(format!("load {fty}, {fty}* {p}"));
+    crate::arc::note_field(cg, &r, obj, &p, fty.as_str());
     r
 }
 

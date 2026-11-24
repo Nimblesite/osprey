@@ -3,8 +3,14 @@ use super::{managed, mark_pure_scalar, own, Codegen, Entry, Value};
 /// Promote mixed joins only when every incoming handle can carry ownership and
 /// at least one arm already produced its reference inside this conditional.
 pub(crate) fn borrowed_phi_arms(cg: &Codegen, incoming: &[Value], mark: usize) -> Vec<bool> {
+    // When every arm that is not a new value can take its field out of an
+    // owned temporary, the join owns what it yields [MEM-OWNERSHIP-STATIC-PATHS].
+    let taken = |value: &Value| super::takes::can_take_field(cg, &value.operand);
+    let every_arm_gives = incoming
+        .iter()
+        .all(|value| arm_owned(cg, value, mark) || taken(value));
     let promote = incoming.iter().all(|value| managed(cg, value))
-        && incoming.iter().any(|value| arm_owned(cg, value, mark));
+        && (incoming.iter().any(|value| arm_owned(cg, value, mark)) || every_arm_gives);
     incoming
         .iter()
         .map(|value| promote && !arm_owned(cg, value, mark))
@@ -22,6 +28,10 @@ pub(crate) fn promote_phi_arm(cg: &mut Codegen, value: &Value, borrowed: bool) {
     // join; the other arms still release the binding [GC-ARC-PERCEUS].
     if let Some(slot) = super::moves::give_up(cg, &value.operand) {
         cg.emit(format!("store i8* null, i8** {slot}"));
+        own(cg, value);
+        return;
+    }
+    if super::takes::take_field(cg, &value.operand) {
         own(cg, value);
         return;
     }

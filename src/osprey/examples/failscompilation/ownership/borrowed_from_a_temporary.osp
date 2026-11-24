@@ -1,11 +1,11 @@
-// [MEM-OWNERSHIP-STATIC] Runs under the collector; `--memory=ownership` refuses it.
-// Read out of a value the statement itself made, which dies with the statement.
+// [MEM-OWNERSHIP-STATIC-BORROWS] Runs under the collector; `--memory=ownership` refuses it.
+// Read out of a value the statement itself made, which only lends the field:
+// the temporary dies with the statement and `made` still owns what it held.
 type Box = { text: string }
-type Pair = { left: Box, right: Box }
-
-fn make(n) = Pair { left: Box { text: "left${toString(n)}" }, right: Box { text: "right${toString(n)}" } }
+type Wrap = { inner: Box }
 
 fn main() = {
-    let left = make(1).left
-    print(left.text)
+    let made = Box { text: "made${toString(1)}" }
+    let got = Wrap { inner: made }.inner
+    print("${got.text}${made.text}")
 }

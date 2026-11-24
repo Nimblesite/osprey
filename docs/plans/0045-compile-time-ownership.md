@@ -83,8 +83,10 @@ Acceptance of ordinary programs, largest refusal class first. After each item: `
   - Built for named record and union constructors ([MEM-OWNERSHIP-STATIC-BORROWS], "Lent fields"): a field written as a binding moves in at its last use and is lent otherwise; the lent field is left out of the new value's drop walk, and the value can't be returned, kept or bound at file scope. A top-level function used as a value is a constant cell and needs no owner. `single_owner` `stores()` covers a chain of stores, one value in two fields, a union and a loop; `stored_then_read` and `stored_twice` now refuse the escaping value. Corpus 40 to 54 of 181, each accepted golden byte-identical with no live object under scribbled frees; 164 goldens under ARC unchanged, no leak. Stored refusals 922 to 808.
   - Open: list literals, Results, anonymous records and closures that hold a still-read value; file-scope bindings as lenders.
 - [ ] C3. Record update whose base is at its last use moves the fields it keeps; a field read out of a value at its last use moves.
+  - Built for temporaries ([MEM-OWNERSHIP-STATIC-PATHS], "Taking a field", `arc/takes.rs`): a field read out of an unnamed value the function owns takes its reference at a return, a binding, a store, a call that owns the argument and a `match` join; the slot is cleared so the value frees without it. `single_owner` `takes()` exits with no live object; `borrowed_from_a_temporary` now refuses a read from a temporary that only lends. Corpus 54 to 56 of 181, each byte-identical with no live object under scribbled frees.
+  - Open: a field of a named binding or an owned parameter at its last use; record update.
 - [ ] C4. The remaining classes: bound, returned, joined, kept, shared. Each gets a rule or stays a documented refusal with a fixture.
-- Acceptance: `ownership` accepts every program in `src/osprey/tests/` that does not use a construct the spec refuses by rule. Today 54 of 181.
+- Acceptance: `ownership` accepts every program in `src/osprey/tests/` that does not use a construct the spec refuses by rule. Today 56 of 181.
 
 Soundness and the space bound:
 

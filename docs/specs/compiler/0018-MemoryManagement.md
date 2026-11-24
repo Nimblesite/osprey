@@ -278,8 +278,8 @@ used to derive a version. A `fold` step owns the accumulator it is given.
 **What is refused.** A value needs a second owner, and the program is
 refused, when:
 
-- a value read out of a temporary, a `mut` binding or a file-scope binding is
-  given a name (anything else borrows, see
+- a value read out of a temporary that only lends it, a `mut` binding or a
+  file-scope binding is given a name (anything else borrows or moves, see
   [MEM-OWNERSHIP-STATIC-BORROWS](#inferred-borrows-mem-ownership-static-borrows));
 - it is stored in a list, Result, anonymous record, closure or cell while its
   owner keeps it (a named record or union constructor lends instead, see
@@ -374,8 +374,10 @@ collection still does. Reading it, matching on it and taking its value with
 `?:` are accepted; binding or returning the Result itself needs an owner.
 
 A binding can't borrow in two cases, and is refused as needing a second
-owner. The first is a value read out of something the statement itself made,
-as in `let left = make(1).left`: that temporary dies when the statement ends.
+owner. The first is a value read out of something the statement itself made that
+does not own it, as in `let got = Wrap { inner: made }.inner` while `made` is
+still read: that temporary dies when the statement ends. A temporary that
+owns the field gives it up instead ([MEM-OWNERSHIP-STATIC-PATHS]).
 The second is a value read from a `mut` binding or a file-scope binding,
 which can be replaced while the borrower still reads it. A borrower can be
 read and passed to functions. Storing it, returning it or handing it to a
@@ -439,6 +441,19 @@ A binding may be given away where no path through the statement reads it
 twice and nothing reads it afterwards. When only some paths give it away, as
 when one arm of a `match` stores or returns it, the binding is released on the
 other paths and not on that one.
+
+**Taking a field.** A value the function made and never named has one owner,
+so what it holds has one owner too. A field read out of it can take the
+reference the value held: `make(n).name`, `make(n).box.text`, and a field a
+`match` on a temporary binds, as in `match attempt(n) { Done { result } =>
+result }`. The field's slot is cleared and the value is freed later without
+it, so the field can be returned, bound, stored or yielded by an arm with no
+second owner. This is the owned projection of [Ullrich 2019] and the drop
+specialization of [Reinking 2021], with the count removed. It applies only
+where nothing reads that field again: a pattern binding read twice, or read
+after the take, keeps borrowing; so does a field of a named binding, a field
+of a value that only lends it, and a read inside a loop body of a value made
+outside it.
 
 ### Rules for shared values [MEM-OWNERSHIP-STATIC-RULES]
 
@@ -533,7 +548,7 @@ Rust is the reference point for static ownership. This backend has to do better 
 - **A proof of the shipped checker. Not built.** Rust's proofs are of models: λRust [Jung 2018], Oxide [Weiss 2019] and Featherweight Rust [Pearce 2021], not of `rustc`. The target here is a mechanised model of the ledger with a proof that lowering preserves one owner per allocation and a live lender for every borrow on every control-flow edge. The backend is not declared shipped without it.
 - **A space bound. Not built.** [Lorenzen 2022] show that unrestricted borrowing can raise peak memory by an arbitrary amount and define the frame-limited bound that avoids it. Osprey must meet that bound: a value at its last use is given to a callee that can free it earlier. Until then, benchmarks report peak live bytes for `ownership` beside `gc` and `arc`, separately from exit-time leaks.
 
-**Where Rust is ahead today.** Rust accepts far more programs. It has mutable borrows, and it records ownership in types, so functions passed as values and library boundaries are checked against a signature. Osprey infers ownership from the bodies of one executable, so those two keep borrowed parameters ([MEM-OWNERSHIP-STATIC-PARAMETERS]), and `ownership` accepts 54 of the 181 programs in `src/osprey/tests/` (2026-11-24). Rust's models are proved; Osprey's ledger is tested.
+**Where Rust is ahead today.** Rust accepts far more programs. It has mutable borrows, and it records ownership in types, so functions passed as values and library boundaries are checked against a signature. Osprey infers ownership from the bodies of one executable, so those two keep borrowed parameters ([MEM-OWNERSHIP-STATIC-PARAMETERS]), and `ownership` accepts 56 of the 181 programs in `src/osprey/tests/` (2026-11-24). Rust's models are proved; Osprey's ledger is tested.
 
 ### References [MEM-OWNERSHIP-STATIC-REFERENCES]
 

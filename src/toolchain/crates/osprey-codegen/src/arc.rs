@@ -89,6 +89,8 @@ pub(crate) struct ArcLedger {
     aliases: std::collections::HashMap<String, String>,
     /// Bindings that borrow, and what they borrow from [MEM-OWNERSHIP-STATIC-BORROWS].
     borrows: borrows::Borrows,
+    /// Where each loaded register was read from [MEM-OWNERSHIP-STATIC-PATHS].
+    fields: takes::FieldReads,
 }
 
 impl ArcLedger {
@@ -103,6 +105,7 @@ impl ArcLedger {
             lending: false,
             aliases: std::collections::HashMap::new(),
             borrows: borrows::Borrows::default(),
+            fields: takes::FieldReads::new(),
         }
     }
 }
@@ -283,6 +286,10 @@ pub(crate) fn bind_owned(cg: &mut Codegen, name: &str, v: &Value) {
 /// Give `name` the reference `v` already has: the one the closing statement
 /// owns, or the one a binding at its last use gives up. False when neither.
 fn adopt(cg: &mut Codegen, name: &str, v: &Value) -> bool {
+    // A field read out of a temporary this statement owns moves to the binding.
+    if takes::take_field(cg, &v.operand) {
+        own(cg, v);
+    }
     if let Some(mut e) = take_entry(cg, &v.operand) {
         e.name = Some(name.to_string());
         e.binding_scope = cg.scope_id();
@@ -429,7 +436,9 @@ pub(crate) fn epilogue(cg: &mut Codegen, ret: Option<&Value>) {
     // one of this function's owners, MOVE it out of the ledger rather than
     // dup-it-then-drop-it — the +1 the caller receives is the one the function
     // already holds. Saves a retain/release pair on every value-returning call.
-    if let Some(v) = ret.filter(|v| !take_owner_anywhere(cg, v)) {
+    if let Some(v) =
+        ret.filter(|v| !take_owner_anywhere(cg, v) && !takes::take_field(cg, &v.operand))
+    {
         if managed(cg, v) {
             second_owner(cg, &v.operand, None, Need::Returned);
         }
@@ -463,6 +472,8 @@ pub(crate) use lends::{
     hold_field, is_lent, lending, lends, lends_list, mark_lent, reading, set_lending, take_reading,
     Held,
 };
+mod takes;
+pub(crate) use takes::note_field;
 mod unwind;
 pub(crate) mod versions;
 pub(crate) use constructors::{consume_into_store, give_binding, store_owned, transfer_or_retain};
