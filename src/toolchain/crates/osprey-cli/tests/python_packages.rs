@@ -199,7 +199,7 @@ fn matrix_jobs(suites: &[PathBuf]) -> Vec<(&Path, &str)> {
 }
 
 #[test]
-fn the_package_matrix_runs_all_62_suite_backend_pairs_once() {
+fn the_package_matrix_runs_all_64_suite_backend_pairs_once() {
     let suites = suites();
     let jobs = matrix_jobs(&suites);
     let unique: std::collections::BTreeSet<_> = jobs.iter().copied().collect();
@@ -207,7 +207,7 @@ fn the_package_matrix_runs_all_62_suite_backend_pairs_once() {
     assert!(suites
         .iter()
         .all(|suite| !suite.starts_with(repo().join("src/osprey/examples"))));
-    assert_eq!(jobs.len(), 62, "all 31 packages need both managed backends");
+    assert_eq!(jobs.len(), 64, "all 32 packages need both managed backends");
     assert_eq!(unique.len(), jobs.len(), "duplicate job");
     for suite in &suites {
         for memory in BACKENDS {
