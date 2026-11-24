@@ -174,7 +174,7 @@ test ("a launch asks for both listings from the demo server and shows progress",
     launchWith []
     expect (asked (), "GET http://127.0.0.1:18790/api/accounts  accounts;GET http://127.0.0.1:18790/api/activity  activity")
     expect ((store ()).bankLoads, 2)
-    showsAll ["Contacting the ledger", "Overview"]
+    showsAll (["Contacting the ledger", "Overview"])
     expect (driven.drivenSurface.surfaceProblem, "")))
 test ("the first launch argument names the server", \() => bench (\() =>
     launchWith ["https://bank.example"]
@@ -184,7 +184,7 @@ test ("both listings fill the overview with the total, the accounts and the jour
     expect ((store ()).bankLoads, 0)
     expect (length (store ()).bankAccounts, 3)
     expect (length (store ()).bankJournal, 3)
-    showsAll ["$7,980.25", "Across 3 protected client accounts", "vintage synthesizer", "−$1,850.00", "+$4,250.00", "$9,999.00"]
+    showsAll (["$7,980.25", "Across 3 protected client accounts", "vintage synthesizer", "−$1,850.00", "+$4,250.00", "$9,999.00"])
     wordsIn "Marcus Webb · Account #2"
     expect (Drive::shows (driven, "Contacting the ledger"), false)))
 test ("a failed listing says the bank data is unavailable", \() => bench (\() =>
@@ -211,10 +211,10 @@ test ("choosing an account opens it in detail and every form starts from it", \(
     expect ((store ()).bankChosen, "3")
     expect ((store ()).bankDraft.draftAccount, "3")
     expect ((store ()).bankDraft.draftFrom, "3")
-    showsAll ["$3,600.00", "Ready to move"))
+    showsAll (["$3,600.00", "Ready to move"])))
 test ("activity filters by kind and searches notes and owners", \() => bench (\() =>
     openPage ("Activity")
-    showsAll ["All 3", "In 1", "Out 1", "Declined 1"]
+    showsAll (["All 3", "In 1", "Out 1", "Declined 1"])
     expect (talon::Parts::counted ((store ()).bankJournal, "refused"), 1)
     press "Declined 1"
     expect ((store ()).bankFilter, "refused")
