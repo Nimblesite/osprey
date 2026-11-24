@@ -150,6 +150,25 @@ finalizer registration, multithread notification, and collection. Backends
 that do not use a hook implement it as a no-op. This ABI keeps emitted IR
 independent of the selected native backend.
 
+### Shared code and research basis [MEM-BACKENDS-SHARED]
+
+The three backends share code wherever one implementation is right for all of them, and each follows the published technique for its kind in full. Sharing never weakens a technique: where the best algorithm for one backend differs, that backend has its own code, as each has its own allocator and reclamation today. Nothing requires the backends to be decoupled, and a copy of shared logic in two backends is a defect.
+
+| Shared by | Code | Why one implementation is right |
+| --- | --- | --- |
+| all three | the hook ABI (`memory_hooks.h`), block layouts, the heap ceiling (`memory_heap_limit.h`) | The emitted IR and the limit a program may reach don't depend on how memory is reclaimed. |
+| `arc` and `ownership` | the tracked heap (`memory_tracked_heap.h`): headers, the live-block registry, the non-recursive walk that frees a block's children | Both free a block at a point the compiler chose. ARC adds a count; ownership adds none. |
+| `arc` and `ownership` | the ownership ledger in `osprey-codegen` (`arc/**`) | Both run the Perceus last-use analysis [Reinking 2021]. ARC emits `dup` where a second owner is needed; ownership refuses the program there. |
+| all three | the list and map runtime | One persistent structure; each backend supplies allocation, release and the element ownership rule ([MEM-BACKENDS-ELEMENTS]). |
+
+Each backend follows the research for its kind:
+
+- **`gc`** is a conservative, non-moving mark-and-sweep collector in the line of McCarthy, "Recursive Functions of Symbolic Expressions and Their Computation by Machine, Part I" (Communications of the ACM 3(4), 1960, [doi:10.1145/367177.367199](https://doi.org/10.1145/367177.367199)) and Boehm and Weiser, "Garbage Collection in an Uncooperative Environment" (Software: Practice and Experience 18(9), 1988, [doi:10.1002/spe.4380180902](https://doi.org/10.1002/spe.4380180902)). Its guard against false retention, treating a word as a root only when it equals an allocation base, addresses the problem studied in Boehm, "Space Efficient Conservative Garbage Collection" (PLDI 1993, [doi:10.1145/173262.155109](https://doi.org/10.1145/173262.155109)).
+- **`arc`** is reference counting, first described in Collins, "A Method for Overlapping and Erasure of Lists" (Communications of the ACM 3(12), 1960, [doi:10.1145/367487.367501](https://doi.org/10.1145/367487.367501)), made precise by Perceus ([GC-ARC-PERCEUS]).
+- **`ownership`** follows [MEM-OWNERSHIP-STATIC-BASIS](#research-synthesis-mem-ownership-static-basis).
+
+Tracing and counting are two views of one problem, and a design may combine them: Bacon, Cheng and Rajan, "A Unified Theory of Garbage Collection" (OOPSLA 2004, [doi:10.1145/1028976.1028982](https://doi.org/10.1145/1028976.1028982)). That is the ground for sharing code between the backends.
+
 ### Heap Ceiling [MEM-HEAP-CEILING]
 
 The managed heap of a native program has a ceiling under both reclaiming backends. It is `OSPREY_HEAP_MAX_MB` mebibytes when that variable holds a positive number, and half of the machine's physical memory otherwise. Where the host does not report its physical memory (Windows and WebAssembly today) there is no ceiling unless the variable sets one.
