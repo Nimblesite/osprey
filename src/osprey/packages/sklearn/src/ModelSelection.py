@@ -29,10 +29,21 @@ def train_test_split(permutation, test_size):
 
     # Examples
     ```osprey
-    from sklearn import ModelSelection, Stats
+    from sklearn import ModelSelection
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped_value):
+            return wrapped_value
+
+        def divideByZero(_op, _l):
+            return 0.0
+
+        def remainderByZero(_l):
+            return 0
 
     def show():
-        with Stats.wrapping:
+        with wrapped:
             full = ModelSelection.train_test_split([2, 0, 3, 1, 4, 5], 2)
             none = ModelSelection.train_test_split([2, 0, 3, 1, 4, 5], 0)
             print(f"[{toString(full.train)}] [{toString(full.test)}] [{toString(none.test)}]")
@@ -70,10 +81,21 @@ def kfold_splits(n_samples, n_splits):
 
     # Examples
     ```osprey
-    from sklearn import ModelSelection, Stats
+    from sklearn import ModelSelection
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped_value):
+            return wrapped_value
+
+        def divideByZero(_op, _l):
+            return 0.0
+
+        def remainderByZero(_l):
+            return 0
 
     def show():
-        with Stats.wrapping:
+        with wrapped:
             folds = ModelSelection.kfold_splits(7, 3)
             first = unwrap_or(listGet(folds, 0), ModelSelection.Split(train=[], test=[]))
             last = unwrap_or(listGet(folds, 2), ModelSelection.Split(train=[], test=[]))
@@ -151,10 +173,21 @@ def stratified_kfold_splits(y, n_splits):
 
     # Examples
     ```osprey
-    from sklearn import ModelSelection, Stats
+    from sklearn import ModelSelection
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped_value):
+            return wrapped_value
+
+        def divideByZero(_op, _l):
+            return 0.0
+
+        def remainderByZero(_l):
+            return 0
 
     def show():
-        with Stats.wrapping:
+        with wrapped:
             folds = ModelSelection.stratified_kfold_splits([0, 0, 0, 1, 1, 1], 2)
             head = unwrap_or(listGet(folds, 0), ModelSelection.Split(train=[], test=[]))
             tail = unwrap_or(listGet(folds, 1), ModelSelection.Split(train=[], test=[]))

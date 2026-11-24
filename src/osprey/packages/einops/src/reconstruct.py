@@ -64,7 +64,15 @@ def reconstruct(recipe, shape, axes_lengths) -> Result[CookedRecipe, str]:
 
     # Examples
     ```osprey
-    from einops import Recipe, Reconstruct, Parsing
+    from einops import Recipe, Reconstruct
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(op, l, r, wrapped_value):
+            return wrapped_value
+
+        def remainderByZero(l):
+            return 0
 
     def cooked_text(result):
         match result:
@@ -81,7 +89,7 @@ def reconstruct(recipe, shape, axes_lengths) -> Result[CookedRecipe, str]:
                 return f"error: {m}"
 
     def show():
-        with Parsing.wrapping:
+        with wrapped:
             split = "b c (h w) -> b c h w"
             h4 = Reconstruct.NameLen(name="h", length=4)
             print(f"{resolve(split, [2, 3, 12], ["h"], [h4])} {resolve(split, [2, 3, 10], ["h"], [h4])}")

@@ -88,6 +88,14 @@ def load(data):
     ```osprey
     from safetensors import SafeTensors, Bytes
 
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped):
+            return wrapped
+
+        def remainderByZero(l):
+            return 0
+
     def file_bytes(header, data):
         text = toList(map(range(len(header)), lambda i: unwrap_or(byteAt(header, i), 0)))
         return listConcat(listConcat(Bytes.int_bytes(len(header), 8), text), data)
@@ -100,7 +108,7 @@ def load(data):
                 return m
 
     def run():
-        with Bytes.wrapping:
+        with wrapped:
             header = '{"t": {"dtype": "U8", "shape": [2], "data_offsets": [0, 2]}}'
             good = describe(SafeTensors.load(file_bytes(header, [7, 9])))
             short = describe(SafeTensors.load(file_bytes(header, [7])))
@@ -364,6 +372,14 @@ def keys(file):
     ```osprey
     from safetensors import SafeTensors, Bytes
 
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped):
+            return wrapped
+
+        def remainderByZero(l):
+            return 0
+
     def file_bytes(header, data):
         text = toList(map(range(len(header)), lambda i: unwrap_or(byteAt(header, i), 0)))
         return listConcat(listConcat(Bytes.int_bytes(len(header), 8), text), data)
@@ -372,7 +388,7 @@ def keys(file):
         return unwrap_or(SafeTensors.load(file_bytes(header, data)), SafeTensors.SafeFile(data=[], data_offset=0, tensors=[], metadata={}))
 
     def run():
-        with Bytes.wrapping:
+        with wrapped:
             header = '{"b": {"dtype": "U8", "shape": [1], "data_offsets": [0, 1]}, "a": {"dtype": "U8", "shape": [1], "data_offsets": [1, 2]}}'
             file = loaded(header, [7, 9])
             plain = loaded('{"__metadata__": {"format": "ust"}}', [])
@@ -394,6 +410,14 @@ def offset_keys(file):
     ```osprey
     from safetensors import SafeTensors, Bytes
 
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped):
+            return wrapped
+
+        def remainderByZero(l):
+            return 0
+
     def file_bytes(header, data):
         text = toList(map(range(len(header)), lambda i: unwrap_or(byteAt(header, i), 0)))
         return listConcat(listConcat(Bytes.int_bytes(len(header), 8), text), data)
@@ -402,7 +426,7 @@ def offset_keys(file):
         return unwrap_or(SafeTensors.load(file_bytes(header, data)), SafeTensors.SafeFile(data=[], data_offset=0, tensors=[], metadata={}))
 
     def run():
-        with Bytes.wrapping:
+        with wrapped:
             header = '{"b": {"dtype": "U8", "shape": [1], "data_offsets": [0, 1]}, "a": {"dtype": "U8", "shape": [1], "data_offsets": [1, 2]}}'
             file = loaded(header, [7, 9])
             print(f"[{toString(SafeTensors.offset_keys(file))}] [{toString(SafeTensors.keys(file))}]")
@@ -438,6 +462,14 @@ def metadata(file):
     ```osprey
     from safetensors import SafeTensors, Bytes
 
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped):
+            return wrapped
+
+        def remainderByZero(l):
+            return 0
+
     def file_bytes(header, data):
         text = toList(map(range(len(header)), lambda i: unwrap_or(byteAt(header, i), 0)))
         return listConcat(listConcat(Bytes.int_bytes(len(header), 8), text), data)
@@ -446,7 +478,7 @@ def metadata(file):
         return unwrap_or(SafeTensors.load(file_bytes(header, data)), SafeTensors.SafeFile(data=[], data_offset=0, tensors=[], metadata={}))
 
     def run():
-        with Bytes.wrapping:
+        with wrapped:
             with_meta = loaded('{"__metadata__": {"format": "ust"}}', [])
             plain = loaded('{"t": {"dtype": "U8", "shape": [1], "data_offsets": [0, 1]}}', [7])
             fmt = unwrap_or(mapGet(SafeTensors.metadata(with_meta), "format"), "")
@@ -469,6 +501,14 @@ def get_tensor(file, name):
     ```osprey
     from safetensors import SafeTensors, Bytes
 
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped):
+            return wrapped
+
+        def remainderByZero(l):
+            return 0
+
     def file_bytes(header, data):
         text = toList(map(range(len(header)), lambda i: unwrap_or(byteAt(header, i), 0)))
         return listConcat(listConcat(Bytes.int_bytes(len(header), 8), text), data)
@@ -485,7 +525,7 @@ def get_tensor(file, name):
                 return m
 
     def run():
-        with Bytes.wrapping:
+        with wrapped:
             file = loaded('{"w": {"dtype": "F32", "shape": [2], "data_offsets": [0, 8]}}', [0, 0, 128, 63, 0, 0, 128, 64])
             got = describe(SafeTensors.get_tensor(file, "w"))
             missing = describe(SafeTensors.get_tensor(file, "x"))
@@ -599,6 +639,14 @@ def get_slice(file, name, first, last):
     ```osprey
     from safetensors import SafeTensors, Bytes
 
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped):
+            return wrapped
+
+        def remainderByZero(l):
+            return 0
+
     def file_bytes(header, data):
         text = toList(map(range(len(header)), lambda i: unwrap_or(byteAt(header, i), 0)))
         return listConcat(listConcat(Bytes.int_bytes(len(header), 8), text), data)
@@ -615,7 +663,7 @@ def get_slice(file, name, first, last):
                 return m
 
     def run():
-        with Bytes.wrapping:
+        with wrapped:
             header = '{"m": {"dtype": "F32", "shape": [2, 2], "data_offsets": [0, 16]}, "s": {"dtype": "U8", "shape": [], "data_offsets": [16, 17]}}'
             file = loaded(header, [0, 0, 128, 63, 0, 0, 0, 64, 0, 0, 128, 64, 0, 0, 64, 64, 7])
             rows = describe(SafeTensors.get_slice(file, "m", 1, 2))

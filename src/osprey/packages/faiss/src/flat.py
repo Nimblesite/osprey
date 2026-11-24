@@ -139,10 +139,15 @@ def search(index, xq, k):
 
     # Examples
     ```osprey
-    from faiss import Flat, Metrics
+    from faiss import Flat
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(op, l, r, wrapped_value):
+            return wrapped_value
 
     def show():
-        with Metrics.wrapping:
+        with wrapped:
             index = Flat.add(Flat.IndexFlatL2(2), [[0.0, 0.0], [3.0, 4.0]])
             result = Flat.search(index, [[3.0, 4.0], [0.0, 0.0]], 3)
             print(f"{toString(result.distances)} {toString(result.labels)}")
@@ -187,10 +192,15 @@ def range_search(index, xq, radius):
 
     # Examples
     ```osprey
-    from faiss import Flat, Metrics
+    from faiss import Flat
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(op, l, r, wrapped_value):
+            return wrapped_value
 
     def show():
-        with Metrics.wrapping:
+        with wrapped:
             index = Flat.add(Flat.IndexFlatL2(2), [[0.0, 0.0], [1.0, 0.0], [3.0, 0.0]])
             result = Flat.range_search(index, [[0.0, 0.0]], 2.0)
             print(f"{toString(result.lims)} {toString(result.distances)} {toString(result.labels)}")
@@ -242,7 +252,12 @@ def reconstruct_n(index, i0, ni0):
 
     # Examples
     ```osprey
-    from faiss import Flat, Metrics
+    from faiss import Flat
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(op, l, r, wrapped_value):
+            return wrapped_value
 
     def text(result):
         match result:
@@ -252,7 +267,7 @@ def reconstruct_n(index, i0, ni0):
                 return m
 
     def show():
-        with Metrics.wrapping:
+        with wrapped:
             index = Flat.add(Flat.IndexFlatL2(2), [[1.0, 0.0], [0.0, 1.0]])
             print(f"{text(Flat.reconstruct_n(index, 0, 2))} {text(Flat.reconstruct_n(index, 1, 2))}")
 
@@ -312,10 +327,15 @@ def search_rows(metric, rows, xq, k):
 
     # Examples
     ```osprey
-    from faiss import Flat, Metrics
+    from faiss import Flat
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(op, l, r, wrapped_value):
+            return wrapped_value
 
     def show():
-        with Metrics.wrapping:
+        with wrapped:
             result = Flat.search_rows("IP", [[1.0, 0.0], [2.0, 0.0]], [[3.0, 0.0]], 1)
             print(f"{toString(result.distances)} {toString(result.labels)}")
 

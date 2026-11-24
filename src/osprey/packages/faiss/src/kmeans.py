@@ -53,8 +53,15 @@ def train(km, x, init_centroids):
 
     # Examples
     ```osprey
-    from faiss import Metrics
     from faiss.Kmeans import Kmeans, train
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(op, l, r, wrapped_value):
+            return wrapped_value
+
+        def divideByZero(op, l):
+            return 0.0
 
     def text(result):
         match result:
@@ -64,7 +71,7 @@ def train(km, x, init_centroids):
                 return f"error: {m}"
 
     def show():
-        with Metrics.wrapping:
+        with wrapped:
             four = [[0.0, 0.0], [10.0, 0.0], [0.0, 1.0], [10.0, 1.0]]
             run = text(train(Kmeans(2, 2, 10, 0), four, [[0.0, 0.0], [10.0, 0.0]]))
             exact = text(train(Kmeans(2, 2, 10, 0), [[1.0, 1.0], [3.0, 3.0]], [[1.0, 1.0], [3.0, 3.0]]))
@@ -107,8 +114,15 @@ def assign(km, x):
 
     # Examples
     ```osprey
-    from faiss import Metrics
     from faiss.Kmeans import Kmeans, train, assign
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(op, l, r, wrapped_value):
+            return wrapped_value
+
+        def divideByZero(op, l):
+            return 0.0
 
     def assigned(result):
         match result:
@@ -118,7 +132,7 @@ def assign(km, x):
                 return f"error: {m}"
 
     def show():
-        with Metrics.wrapping:
+        with wrapped:
             four = [[0.0, 0.0], [10.0, 0.0], [0.0, 1.0], [10.0, 1.0]]
             print(f"{assigned(train(Kmeans(2, 2, 10, 0), four, [[0.0, 0.0], [10.0, 0.0]]))}")
 

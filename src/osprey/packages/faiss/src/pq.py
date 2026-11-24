@@ -48,11 +48,18 @@ def ProductQuantizer(d, M, nbits):
 
     # Examples
     ```osprey
-    from faiss import Metrics
     import faiss.ProductQuant as ProductQuant
 
+    @handler(Arith)
+    class wrapped:
+        def overflow(op, l, r, wrapped_value):
+            return wrapped_value
+
+        def remainderByZero(l):
+            return 0
+
     def show():
-        with Metrics.wrapping:
+        with wrapped:
             pq = ProductQuant.ProductQuantizer(4, 2, 8)
             print(f"[{pq.d}] [{pq.M}] [{pq.nbits}] [{pq.dsub}] [{pq.ksub}] {toString(pq.centroids)}")
 
@@ -70,11 +77,18 @@ def set_centroids(pq, centroids):
 
     # Examples
     ```osprey
-    from faiss import Metrics
     import faiss.ProductQuant as ProductQuant
 
+    @handler(Arith)
+    class wrapped:
+        def overflow(op, l, r, wrapped_value):
+            return wrapped_value
+
+        def remainderByZero(l):
+            return 0
+
     def show():
-        with Metrics.wrapping:
+        with wrapped:
             pq = ProductQuant.set_centroids(ProductQuant.ProductQuantizer(1, 1, 2), [[0.0], [1.0], [2.0], [3.0]])
             print(f"[{pq.ksub}] [{toString(pq.centroids)}]")
 
@@ -113,11 +127,18 @@ def compute_codes(pq, x):
 
     # Examples
     ```osprey
-    from faiss import Metrics
     import faiss.ProductQuant as ProductQuant
 
+    @handler(Arith)
+    class wrapped:
+        def overflow(op, l, r, wrapped_value):
+            return wrapped_value
+
+        def remainderByZero(l):
+            return 0
+
     def show():
-        with Metrics.wrapping:
+        with wrapped:
             pq = ProductQuant.set_centroids(ProductQuant.ProductQuantizer(1, 1, 2), [[0.0], [1.0], [2.0], [3.0]])
             print(f"{toString(ProductQuant.compute_codes(pq, [[1.75]]))} {toString(ProductQuant.compute_codes(pq, []))}")
 
@@ -135,11 +156,18 @@ def decode(pq, codes):
 
     # Examples
     ```osprey
-    from faiss import Metrics
     import faiss.ProductQuant as ProductQuant
 
+    @handler(Arith)
+    class wrapped:
+        def overflow(op, l, r, wrapped_value):
+            return wrapped_value
+
+        def remainderByZero(l):
+            return 0
+
     def show():
-        with Metrics.wrapping:
+        with wrapped:
             pq = ProductQuant.set_centroids(ProductQuant.ProductQuantizer(1, 1, 2), [[0.0], [1.0], [2.0], [3.0]])
             print(f"{toString(ProductQuant.decode(pq, [[1], [3]]))}")
 
@@ -189,11 +217,18 @@ def sdc_table(pq):
 
     # Examples
     ```osprey
-    from faiss import Metrics
     import faiss.ProductQuant as ProductQuant
 
+    @handler(Arith)
+    class wrapped:
+        def overflow(op, l, r, wrapped_value):
+            return wrapped_value
+
+        def remainderByZero(l):
+            return 0
+
     def show():
-        with Metrics.wrapping:
+        with wrapped:
             pq = ProductQuant.set_centroids(ProductQuant.ProductQuantizer(1, 1, 2), [[0.0], [1.0], [2.0], [3.0]])
             table = ProductQuant.sdc_table(pq)
             print(f"[{len(table)}] {toString(table)}")
@@ -220,11 +255,18 @@ def IndexPQ(pq, metric):
 
     # Examples
     ```osprey
-    from faiss import Metrics
     import faiss.ProductQuant as ProductQuant
 
+    @handler(Arith)
+    class wrapped:
+        def overflow(op, l, r, wrapped_value):
+            return wrapped_value
+
+        def remainderByZero(l):
+            return 0
+
     def show():
-        with Metrics.wrapping:
+        with wrapped:
             pq = ProductQuant.ProductQuantizer(1, 1, 2)
             index = ProductQuant.IndexPQ(pq, "L2")
             print(f"[{index.metric}] [{toString(index.codes)}]")
@@ -243,11 +285,18 @@ def pq_add(index, xb):
 
     # Examples
     ```osprey
-    from faiss import Metrics
     import faiss.ProductQuant as ProductQuant
 
+    @handler(Arith)
+    class wrapped:
+        def overflow(op, l, r, wrapped_value):
+            return wrapped_value
+
+        def remainderByZero(l):
+            return 0
+
     def show():
-        with Metrics.wrapping:
+        with wrapped:
             pq = ProductQuant.set_centroids(ProductQuant.ProductQuantizer(1, 1, 2), [[0.0], [1.0], [2.0], [3.0]])
             index = ProductQuant.IndexPQ(pq, "L2")
             loaded = ProductQuant.pq_add(index, [[1.75], [2.5]])
@@ -268,11 +317,21 @@ def pq_search(index, xq, k):
 
     # Examples
     ```osprey
-    from faiss import Metrics
     import faiss.ProductQuant as ProductQuant
 
+    @handler(Arith)
+    class wrapped:
+        def overflow(op, l, r, wrapped_value):
+            return wrapped_value
+
+        def remainderByZero(l):
+            return 0
+
+        def divideByZero(op, l):
+            return 0.0
+
     def show():
-        with Metrics.wrapping:
+        with wrapped:
             pq = ProductQuant.set_centroids(ProductQuant.ProductQuantizer(1, 1, 2), [[0.0], [1.0], [2.0], [3.0]])
             index = ProductQuant.pq_add(ProductQuant.IndexPQ(pq, "L2"), [[1.75]])
             result = ProductQuant.pq_search(index, [[2.0]], 2)

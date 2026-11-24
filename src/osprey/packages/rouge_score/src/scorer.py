@@ -50,11 +50,18 @@ def fmeasure(precision, recall):
 
     # Examples
     ```osprey
-    from rouge_score import Tokenize
     from rouge_score.RougeScorer import fmeasure, score, score_multi, RougeScorer
 
+    @handler(Arith)
+    class wrapped:
+        def overflow(op, l, r, wrapped_value):
+            return wrapped_value
+
+        def divideByZero(op, dividend):
+            return 0.0
+
     def show():
-        with Tokenize.wrapping:
+        with wrapped:
             normal = fmeasure(0.5, 1.0)
             zero = fmeasure(0.0, 0.0)
             print(f"[{normal}] [{zero}]")
@@ -253,11 +260,18 @@ def score(scorer, target, prediction):
 
     # Examples
     ```osprey
-    from rouge_score import Tokenize
     from rouge_score.RougeScorer import fmeasure, score, score_multi, RougeScorer
 
+    @handler(Arith)
+    class wrapped:
+        def overflow(op, l, r, wrapped_value):
+            return wrapped_value
+
+        def divideByZero(op, dividend):
+            return 0.0
+
     def show():
-        with Tokenize.wrapping:
+        with wrapped:
             scorer = RougeScorer(rouge_types=["rouge1", "rougeL"], use_stemmer=False, split_summaries=False)
             scores = score(scorer, "the cat was found under the bed", "the cat was under the bed")
             empty = score(scorer, "", "")
@@ -294,11 +308,18 @@ def score_multi(scorer, targets, prediction):
 
     # Examples
     ```osprey
-    from rouge_score import Tokenize
     from rouge_score.RougeScorer import fmeasure, score, score_multi, RougeScorer
 
+    @handler(Arith)
+    class wrapped:
+        def overflow(op, l, r, wrapped_value):
+            return wrapped_value
+
+        def divideByZero(op, dividend):
+            return 0.0
+
     def show():
-        with Tokenize.wrapping:
+        with wrapped:
             scorer = RougeScorer(rouge_types=["rouge1"], use_stemmer=False, split_summaries=False)
             best = score_multi(scorer, ["the cat", "the dog"], "the cat")
             no_targets = score_multi(scorer, [], "the cat")

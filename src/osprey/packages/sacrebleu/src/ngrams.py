@@ -11,36 +11,7 @@ whitespace-free) line. This is the `Counter` of `sacrebleu.metrics.helpers`.
 
 from sacrebleu.Text import codepoints, from_codepoints
 
-__all__ = ["wrapping", "word_ngrams", "word_ngrams_from_tokens", "char_ngrams", "counter_total", "counter_matched", "counter_merge_max", "counter_get", "counter_increment"]
-
-
-@handler(Arith)
-class wrapping:
-    """The arithmetic policy the examples run under: an overflow answers the
-    two's-complement wrapped value, a division or remainder by zero answers zero.
-
-    # Examples
-    ```osprey
-    from sacrebleu import Ngrams
-
-    def show(top, zero):
-        with Ngrams.wrapping:
-            print(f"[{top + 1}] [{3.0 / toFloat(zero)}] [{7 % zero}]")
-
-    show(9223372036854775807, 0)
-    ```
-    ```output
-    [-9223372036854775808] [0.0] [0]
-    ```
-    """
-    def overflow(_op, _l, _r, wrapped):
-        return wrapped
-
-    def divideByZero(_op, _l):
-        return 0.0
-
-    def remainderByZero(_l):
-        return 0
+__all__ = ["word_ngrams", "word_ngrams_from_tokens", "char_ngrams", "counter_total", "counter_matched", "counter_merge_max", "counter_get", "counter_increment"]
 
 
 def counter_get(counter, key):
@@ -69,8 +40,13 @@ def counter_increment(counter, key):
     ```osprey
     from sacrebleu import Ngrams
 
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped):
+            return wrapped
+
     def show():
-        with Ngrams.wrapping:
+        with wrapped:
             grown = Ngrams.counter_increment({"x": 1}, "x")
             seeded = Ngrams.counter_increment({}, "new")
             print(f"[{Ngrams.counter_get(grown, "x")}] [{Ngrams.counter_get(seeded, "new")}]")
@@ -111,8 +87,13 @@ def word_ngrams_from_tokens(tokens, order):
     ```osprey
     from sacrebleu import Ngrams
 
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped):
+            return wrapped
+
     def show():
-        with Ngrams.wrapping:
+        with wrapped:
             counts = Ngrams.word_ngrams_from_tokens(["the", "cat", "the"], 2)
             pair = Ngrams.counter_get(counts, "the cat")
             backward = Ngrams.counter_get(counts, "cat the")
@@ -137,8 +118,13 @@ def word_ngrams(line, min_order, max_order):
     ```osprey
     from sacrebleu import Ngrams
 
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped):
+            return wrapped
+
     def show():
-        with Ngrams.wrapping:
+        with wrapped:
             counts = Ngrams.word_ngrams("the cat the", 1, 2)
             single = Ngrams.counter_get(counts, "the")
             bigram = Ngrams.counter_get(counts, "cat the")
@@ -165,8 +151,13 @@ def char_ngrams(line, order, include_whitespace):
     ```osprey
     from sacrebleu import Ngrams
 
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped):
+            return wrapped
+
     def show():
-        with Ngrams.wrapping:
+        with wrapped:
             plain = Ngrams.char_ngrams("abc", 2, False)
             spaced = Ngrams.char_ngrams("a b", 2, True)
             stripped = Ngrams.char_ngrams("a b", 2, False)
@@ -194,8 +185,13 @@ def counter_total(counter):
     ```osprey
     from sacrebleu import Ngrams
 
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped):
+            return wrapped
+
     def show():
-        with Ngrams.wrapping:
+        with wrapped:
             total = Ngrams.counter_total({"a": 2, "b": 3})
             blank = Ngrams.counter_total({})
             print(f"[{total}] [{blank}]")
@@ -216,8 +212,13 @@ def counter_matched(hyp, ref):
     ```osprey
     from sacrebleu import Ngrams
 
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped):
+            return wrapped
+
     def show():
-        with Ngrams.wrapping:
+        with wrapped:
             hyp = Ngrams.word_ngrams("cat dog", 1, 1)
             ref = Ngrams.word_ngrams("cat fish", 1, 1)
             matched = Ngrams.counter_matched(hyp, ref)

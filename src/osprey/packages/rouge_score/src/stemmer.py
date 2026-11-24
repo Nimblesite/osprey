@@ -297,10 +297,15 @@ def stem(word):
 
     # Examples
     ```osprey
-    from rouge_score import Stemmer, Tokenize
+    from rouge_score import Stemmer
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(op, l, r, wrapped_value):
+            return wrapped_value
 
     def show():
-        with Tokenize.wrapping:
+        with wrapped:
             pool = Stemmer.stem("Skies")
             rule = Stemmer.stem("dying")
             blank = Stemmer.stem("")

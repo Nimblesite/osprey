@@ -11,36 +11,7 @@ drops empty or invalid tokens. `use_stemmer` selects the NLTK Porter stemmer.
 from sacrebleu.Text import codepoints, is_ascii_lower_alnum, map_codepoints
 from rouge_score.Stemmer import stem
 
-__all__ = ["wrapping", "tokenize"]
-
-
-@handler(Arith)
-class wrapping:
-    """The arithmetic policy the examples run under: an overflow answers the
-    two's-complement wrapped value, a division or remainder by zero answers zero.
-
-    # Examples
-    ```osprey
-    from rouge_score import Tokenize
-
-    def show(top, zero):
-        with Tokenize.wrapping:
-            print(f"[{top + 1}] [{3.0 / toFloat(zero)}] [{7 % zero}]")
-
-    show(9223372036854775807, 0)
-    ```
-    ```output
-    [-9223372036854775808] [0.0] [0]
-    ```
-    """
-    def overflow(_op, _l, _r, wrapped):
-        return wrapped
-
-    def divideByZero(_op, _l):
-        return 0.0
-
-    def remainderByZero(_l):
-        return 0
+__all__ = ["tokenize"]
 
 
 def valid_token(x):
@@ -58,8 +29,13 @@ def tokenize(text, use_stemmer):
     ```osprey
     from rouge_score import Tokenize
 
+    @handler(Arith)
+    class wrapped:
+        def overflow(op, l, r, wrapped_value):
+            return wrapped_value
+
     def show():
-        with Tokenize.wrapping:
+        with wrapped:
             plain = Tokenize.tokenize("Hello, World! 42", False)
             stemmed = Tokenize.tokenize("running runs", True)
             empty = Tokenize.tokenize("", True)

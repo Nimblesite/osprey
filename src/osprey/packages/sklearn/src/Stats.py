@@ -12,38 +12,9 @@ by the suite.
 """
 
 __all__ = [
-    "wrapping", "sum_float", "mean_float", "min_float", "max_float", "argsort_float",
+    "sum_float", "mean_float", "min_float", "max_float", "argsort_float",
     "unique_ints", "index_of", "encode_labels", "cmp_int", "map_indexed",
 ]
-
-
-@handler(Arith)
-class wrapping:
-    """The arithmetic policy the examples run under: an overflow answers the
-    two's-complement wrapped value, a division or remainder by zero answers zero.
-
-    # Examples
-    ```osprey
-    from sklearn import Stats
-
-    def show(top, zero):
-        with Stats.wrapping:
-            print(f"[{top + 1}] [{3.0 / toFloat(zero)}] [{7 % zero}]")
-
-    show(9223372036854775807, 0)
-    ```
-    ```output
-    [-9223372036854775808] [0.0] [0]
-    ```
-    """
-    def overflow(_op, _l, _r, wrapped):
-        return wrapped
-
-    def divideByZero(_op, _l):
-        return 0.0
-
-    def remainderByZero(_l):
-        return 0
 
 
 def map_indexed(xs, read):
@@ -53,8 +24,19 @@ def map_indexed(xs, read):
     ```osprey
     from sklearn import Stats
 
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped_value):
+            return wrapped_value
+
+        def divideByZero(_op, _l):
+            return 0.0
+
+        def remainderByZero(_l):
+            return 0
+
     def show():
-        with Stats.wrapping:
+        with wrapped:
             scaled = Stats.map_indexed([4, 5], lambda i: i * 10)
             lone = Stats.map_indexed([1], lambda i: i)
             print(f"[{toString(scaled)}] [{toString(lone)}]")
@@ -75,8 +57,19 @@ def sum_float(xs):
     ```osprey
     from sklearn import Stats
 
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped_value):
+            return wrapped_value
+
+        def divideByZero(_op, _l):
+            return 0.0
+
+        def remainderByZero(_l):
+            return 0
+
     def show():
-        with Stats.wrapping:
+        with wrapped:
             total = Stats.sum_float([1.0, 2.5, 3.0])
             lone = Stats.sum_float([0.5])
             print(f"[{total}] [{lone}]")
@@ -97,8 +90,19 @@ def mean_float(xs):
     ```osprey
     from sklearn import Stats
 
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped_value):
+            return wrapped_value
+
+        def divideByZero(_op, _l):
+            return 0.0
+
+        def remainderByZero(_l):
+            return 0
+
     def show():
-        with Stats.wrapping:
+        with wrapped:
             even = Stats.mean_float([1.0, 2.0, 3.0])
             lone = Stats.mean_float([4.0])
             print(f"[{even}] [{lone}]")
@@ -119,8 +123,19 @@ def min_float(xs):
     ```osprey
     from sklearn import Stats
 
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped_value):
+            return wrapped_value
+
+        def divideByZero(_op, _l):
+            return 0.0
+
+        def remainderByZero(_l):
+            return 0
+
     def show():
-        with Stats.wrapping:
+        with wrapped:
             smallest = Stats.min_float([3.0, 1.0, 2.0])
             lone = Stats.min_float([7.0])
             print(f"[{smallest}] [{lone}]")
@@ -142,8 +157,19 @@ def max_float(xs):
     ```osprey
     from sklearn import Stats
 
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped_value):
+            return wrapped_value
+
+        def divideByZero(_op, _l):
+            return 0.0
+
+        def remainderByZero(_l):
+            return 0
+
     def show():
-        with Stats.wrapping:
+        with wrapped:
             largest = Stats.max_float([3.0, 1.0, 2.0])
             lone = Stats.max_float([7.0])
             print(f"[{largest}] [{lone}]")
@@ -181,8 +207,19 @@ def argsort_float(xs):
     ```osprey
     from sklearn import Stats
 
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped_value):
+            return wrapped_value
+
+        def divideByZero(_op, _l):
+            return 0.0
+
+        def remainderByZero(_l):
+            return 0
+
     def show():
-        with Stats.wrapping:
+        with wrapped:
             tied = Stats.argsort_float([3.0, 1.0, 3.0])
             spread = Stats.argsort_float([3.0, 1.0, 3.0, 0.5])
             print(f"[{toString(tied)}] [{toString(spread)}]")
@@ -215,8 +252,19 @@ def cmp_int(a, b):
     ```osprey
     from sklearn import Stats
 
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped_value):
+            return wrapped_value
+
+        def divideByZero(_op, _l):
+            return 0.0
+
+        def remainderByZero(_l):
+            return 0
+
     def show():
-        with Stats.wrapping:
+        with wrapped:
             print(f"[{Stats.cmp_int(2, 5)}] [{Stats.cmp_int(5, 2)}] [{Stats.cmp_int(3, 3)}]")
 
     show()
@@ -235,8 +283,19 @@ def unique_ints(xs):
     ```osprey
     from sklearn import Stats
 
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped_value):
+            return wrapped_value
+
+        def divideByZero(_op, _l):
+            return 0.0
+
+        def remainderByZero(_l):
+            return 0
+
     def show():
-        with Stats.wrapping:
+        with wrapped:
             repeated = Stats.unique_ints([3, 1, 3, 2, 1])
             lone = Stats.unique_ints([5])
             print(f"[{toString(repeated)}] [{toString(lone)}]")
@@ -257,8 +316,19 @@ def index_of(xs, v):
     ```osprey
     from sklearn import Stats
 
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped_value):
+            return wrapped_value
+
+        def divideByZero(_op, _l):
+            return 0.0
+
+        def remainderByZero(_l):
+            return 0
+
     def show():
-        with Stats.wrapping:
+        with wrapped:
             found = Stats.index_of([10, 20, 30], 20)
             missing = Stats.index_of([10, 20, 30], 99)
             print(f"[{found}] [{missing}]")
@@ -280,8 +350,19 @@ def encode_labels(labels, ys):
     ```osprey
     from sklearn import Stats
 
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped_value):
+            return wrapped_value
+
+        def divideByZero(_op, _l):
+            return 0.0
+
+        def remainderByZero(_l):
+            return 0
+
     def show():
-        with Stats.wrapping:
+        with wrapped:
             encoded = Stats.encode_labels([3, 7, 9], [9, 3, 7, 9])
             unseen = Stats.encode_labels([3, 7], [3, 99])
             print(f"[{toString(encoded)}] [{toString(unseen)}]")

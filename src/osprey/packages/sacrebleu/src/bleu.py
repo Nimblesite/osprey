@@ -158,10 +158,18 @@ def compute_bleu(correct, total, sys_len, ref_len, smooth_method, smooth_value, 
 
     # Examples
     ```osprey
-    from sacrebleu import Bleu, Ngrams
+    from sacrebleu import Bleu
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped):
+            return wrapped
+
+        def divideByZero(_op, _l):
+            return 0.0
 
     def show():
-        with Ngrams.wrapping:
+        with wrapped:
             exact = Bleu.compute_bleu([2.0, 1.0], [2.0, 1.0], 2, 2, "none", -1.0, True, 2)
             blank = Bleu.compute_bleu([0.0, 0.0], [2.0, 1.0], 2, 2, "none", -1.0, True, 2)
             print(f"[{exact.score}] [{exact.bp}] [{blank.score}]")
@@ -243,10 +251,18 @@ def score_sentence(bleu, hypothesis, references):
 
     # Examples
     ```osprey
-    from sacrebleu import Bleu, Ngrams
+    from sacrebleu import Bleu
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped):
+            return wrapped
+
+        def divideByZero(_op, _l):
+            return 0.0
 
     def show():
-        with Ngrams.wrapping:
+        with wrapped:
             metric = Bleu.BLEU(lowercase=False, force=False, tokenize="13a", smooth_method="exp", smooth_value=-1.0, max_ngram_order=4, effective_order=False)
             exact = Bleu.score_sentence(metric, "the cat sat down", ["the cat sat down"])
             none = Bleu.score_sentence(metric, "a dog ran fast", ["the cat sat down"])
@@ -270,10 +286,18 @@ def score_corpus(bleu, hypotheses, references):
 
     # Examples
     ```osprey
-    from sacrebleu import Bleu, Ngrams
+    from sacrebleu import Bleu
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped):
+            return wrapped
+
+        def divideByZero(_op, _l):
+            return 0.0
 
     def show():
-        with Ngrams.wrapping:
+        with wrapped:
             metric = Bleu.BLEU(lowercase=False, force=False, tokenize="13a", smooth_method="exp", smooth_value=-1.0, max_ngram_order=4, effective_order=False)
             exact = Bleu.score_corpus(metric, ["the cat sat down", "a dog ran fast"], [["the cat sat down", "a dog ran fast"]])
             blank = Bleu.score_corpus(metric, [], [])
@@ -300,10 +324,18 @@ def sentence_bleu(hypothesis, references, smooth_method, smooth_value, lowercase
 
     # Examples
     ```osprey
-    from sacrebleu import Bleu, Ngrams
+    from sacrebleu import Bleu
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped):
+            return wrapped
+
+        def divideByZero(_op, _l):
+            return 0.0
 
     def show():
-        with Ngrams.wrapping:
+        with wrapped:
             exact = Bleu.sentence_bleu("the cat sat down", ["the cat sat down"], "exp", -1.0, False, "13a", True)
             lowered = Bleu.sentence_bleu("The Cat Sat Down", ["the cat sat down"], "exp", -1.0, True, "13a", True)
             strict = Bleu.sentence_bleu("The Cat Sat Down", ["the cat sat down"], "exp", -1.0, False, "13a", True)
@@ -326,10 +358,18 @@ def corpus_bleu(hypotheses, references, smooth_method, smooth_value, force, lowe
 
     # Examples
     ```osprey
-    from sacrebleu import Bleu, Ngrams
+    from sacrebleu import Bleu
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped):
+            return wrapped
+
+        def divideByZero(_op, _l):
+            return 0.0
 
     def show():
-        with Ngrams.wrapping:
+        with wrapped:
             exact = Bleu.corpus_bleu(["the cat sat down"], [["the cat sat down"]], "exp", -1.0, False, False, "13a", False)
             shortened = Bleu.corpus_bleu(["the cat sat down"], [["the cat sat down now"]], "exp", -1.0, False, False, "13a", False)
             print(f"[{exact.score}] [{shortened.sys_len}] [{shortened.ref_len}] [{shortened.bp}]")
@@ -350,10 +390,18 @@ def raw_corpus_bleu(hypotheses, references, smooth_value):
 
     # Examples
     ```osprey
-    from sacrebleu import Bleu, Ngrams
+    from sacrebleu import Bleu
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped):
+            return wrapped
+
+        def divideByZero(_op, _l):
+            return 0.0
 
     def show():
-        with Ngrams.wrapping:
+        with wrapped:
             perfect = Bleu.raw_corpus_bleu(["the cat"], [["the cat"]], 0.1)
             unmatched = Bleu.raw_corpus_bleu(["a"], [["the cat"]], 0.1)
             print(f"[{perfect.score}] [{unmatched.score}]")

@@ -36,6 +36,14 @@ def generate(next_logits, tokens, processors, stoppers, sampler, max_new_tokens)
     from transformers import Generation, StoppingCriteria
     from transformers import Math
 
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped_value):
+            return wrapped_value
+
+        def divideByZero(_op, _l):
+            return 0.0
+
     def constant(_tokens):
         return [toFloat32(1.0), toFloat32(2.0), toFloat32(0.0)]
 
@@ -50,7 +58,7 @@ def generate(next_logits, tokens, processors, stoppers, sampler, max_new_tokens)
                 return message
 
     def show():
-        with Math.wrapping:
+        with wrapped:
             print(f"[{toString(unwrap_or(Generation.generate(constant, [7], [], [StoppingCriteria.MaxLengthCriteria(2)], Math.argmax, 5), []))}] [{describe(Generation.generate(empty, [7], [], [], Math.argmax, 1))}]")
 
     show()

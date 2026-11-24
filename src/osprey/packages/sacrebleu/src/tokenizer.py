@@ -116,10 +116,15 @@ def tokenize_char(line):
 
     # Examples
     ```osprey
-    from sacrebleu import Tokenizer, Ngrams
+    from sacrebleu import Tokenizer
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped):
+            return wrapped
 
     def show():
-        with Ngrams.wrapping:
+        with wrapped:
             spaced = Tokenizer.tokenize_char("ab")
             accented = Tokenizer.tokenize_char("aé")
             print(f"[{spaced}] [{accented}] [{Tokenizer.tokenize_char("")}]")
@@ -154,10 +159,15 @@ def tokenize_13a(line):
 
     # Examples
     ```osprey
-    from sacrebleu import Tokenizer, Ngrams
+    from sacrebleu import Tokenizer
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped):
+            return wrapped
 
     def show():
-        with Ngrams.wrapping:
+        with wrapped:
             punctuated = Tokenizer.tokenize_13a("a.b")
             number = Tokenizer.tokenize_13a("3.5")
             decoded = Tokenizer.tokenize_13a("&quot;x&quot; &amp;")
@@ -181,10 +191,15 @@ def tokenize(text, kind):
 
     # Examples
     ```osprey
-    from sacrebleu import Tokenizer, Ngrams
+    from sacrebleu import Tokenizer
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, wrapped):
+            return wrapped
 
     def show():
-        with Ngrams.wrapping:
+        with wrapped:
             mteval = Tokenizer.tokenize("a.b", "13a")
             chars = Tokenizer.tokenize("a.b", "char")
             unknown = Tokenizer.tokenize("a.b", "intl")
