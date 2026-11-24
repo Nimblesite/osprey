@@ -128,7 +128,7 @@ def serve(port, host, app):
     """Start the native listener; return its handle or the creation/listen/cleanup error.
 
     # Examples
-    ```osprey
+    ```osprey native
     from fastapi import Applications
     from fastapi import Routing
     from fastapi import Responses
@@ -163,7 +163,7 @@ def with_lifespan(port, host, startup, build, run, shutdown):
     """Run an application with startup state and release it after the listener stops. [FASTAPI-HTTP-LIFESPAN]
 
     # Examples
-    ```osprey
+    ```osprey native
     from fastapi import Applications
 
     def startup():

@@ -319,7 +319,7 @@ function failure() {
  * A listener that cannot start is reported on the console, as Node.js reports
  * the unhandled error, and returned as `failed`. [TS-PORT-EXPRESS-SERVE]
  * # Examples
- * ```osprey
+ * ```osprey native
  * const server = listen(express(), 70000, () => {});
  * const shown = (server) => {
  *   switch (server.kind) {
@@ -352,7 +352,7 @@ export function listen(app: Application, port: int, callback: () => void): Serve
 
 /** `server.close()` stops the listener, which lets the process exit.
  * # Examples
- * ```osprey
+ * ```osprey native
  * const stopped = close({ kind: "failed", message: "port held" } satisfies Server);
  * const shown = (outcome) => {
  *   switch (outcome.kind) {

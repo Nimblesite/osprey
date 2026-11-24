@@ -117,8 +117,11 @@ fn builtin_feature(target: &str, name: &str) -> Option<&'static str> {
 /// values, parameters, pattern binders and explicitly declared host imports.
 fn required_builtins(program: &Program) -> BTreeSet<String> {
     let mut normalized = program.clone();
+    let fields = record_fields(program);
     for statement in &mut normalized.statements {
-        osprey_ast::mutate::statement_children_mut(statement, &mut normalize_methods);
+        osprey_ast::mutate::statement_children_mut(statement, &mut |expression| {
+            normalize_methods(expression, &fields);
+        });
     }
     let mut collector = FunctionUses {
         bound: global_bindings(&normalized.statements),
@@ -173,8 +176,28 @@ impl AstVisitor for FunctionUses {
     }
 }
 
-fn normalize_methods(expression: &mut Expr) {
-    osprey_ast::mutate::children_mut(expression, &mut normalize_methods);
+/// Every field a record type declares.
+fn record_fields(program: &Program) -> BTreeSet<String> {
+    let mut fields = BTreeSet::new();
+    for statement in &program.statements {
+        if let Stmt::Type { variants, .. } = statement {
+            fields.extend(
+                variants
+                    .iter()
+                    .flat_map(|v| v.fields.iter().map(|f| f.name.clone())),
+            );
+        }
+    }
+    fields
+}
+
+/// `x.m(args)` is UFCS `m(x, args)` unless a record declares a field `m`:
+/// inference leaves a call open while its receiver is a type variable, and
+/// `res.send(text)` on such a record reads the field, never the `send` builtin.
+/// A real channel `send` written that way still fails at the wasm link.
+/// [WASM-TARGET-CAPABILITIES]
+fn normalize_methods(expression: &mut Expr, fields: &BTreeSet<String>) {
+    osprey_ast::mutate::children_mut(expression, &mut |child| normalize_methods(child, fields));
     if let Expr::MethodCall {
         target,
         method,
@@ -182,6 +205,9 @@ fn normalize_methods(expression: &mut Expr) {
         named_arguments,
     } = expression
     {
+        if fields.contains(method.as_str()) {
+            return;
+        }
         *expression = Expr::Call {
             function: Box::new(Expr::Identifier(method.clone())),
             arguments: std::iter::once((**target).clone())
