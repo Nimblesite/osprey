@@ -1,0 +1,7 @@
+ok 1 - lexer tokens, lines, comments and every lexical error
+ok 2 - builtin, LLVM dialect, function and unregistered types
+ok 3 - integer, string, symbol, array, dictionary, dense and dialect attributes
+ok 4 - the compiler's generic MLIR for grow and a branching function
+ok 5 - operation, region and block shapes with every parse error
+1..5
+# tests=5 passed=5 failed=0 skipped=0

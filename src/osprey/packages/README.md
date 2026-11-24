@@ -37,6 +37,7 @@ Each package's `NOTICE.md` acknowledges the original repositories and comparison
 | [tokenizers](tokenizers/NOTICE.md) | Hugging Face tokenizers 0.23.3 | Derived Unicode tables in `src/Unicode.py`, `src/NfcData.py` and `src/Category.py` |
 | [torch](torch/NOTICE.md) | PyTorch 2.14.1 | None identified; MIT Osprey implementation |
 | [transformers](transformers/NOTICE.md) | Transformers 5.20.2 generation behavior and Qwen3.5 model | Qwen3.5 model modules translated from Apache-2.0 `modeling_qwen3_5.py`; unmodified Apache-2.0 Qwen chat template |
+| [xdsl](xdsl/NOTICE.md) | xDSL commit `efd7a0e7` MLIR generic-form parser | Lexer, attribute and operation parsers in `src/*.py` ported from Apache-2.0 WITH LLVM-exception xDSL |
 
 ## Why the remaining license texts are present
 

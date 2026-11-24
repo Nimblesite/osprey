@@ -6,7 +6,7 @@ default_namespace = "xdsl"
 
 [package]
 name = "@osprey/xdsl"
-license = "Apache-2.0 WITH LLVM-exception"
+license = "MIT AND Apache-2.0 WITH LLVM-exception"
 summary = "xDSL's MLIR reader: the generic-syntax lexer and parser, and the LLVM dialect's types"
 keywords = ["llvm", "mlir", "python-flavor", "xdsl"]
 

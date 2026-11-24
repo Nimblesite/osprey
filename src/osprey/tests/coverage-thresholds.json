@@ -445,6 +445,10 @@
       "express": {
         "threshold": 96.0,
         "language": "osprey"
+      },
+      "xdsl": {
+        "threshold": 98.0,
+        "language": "osprey"
       }
     },
     "apps": {

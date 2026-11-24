@@ -1,4 +1,5 @@
 # osprey: flavor=python
+# Ported from xDSL (Apache-2.0 WITH LLVM-exception); required attribution and terms: ../NOTICE.md.
 # osprey: namespace=xdsl
 # osprey: module=AttrParser
 """Attribute and type parsing.
@@ -240,9 +241,34 @@ def parse_type(ts, i):
         return Ir.fail(ts, i, "a type")
 
 
+HEX_DIGITS_MAX = 15
+"""The most hexadecimal digits a literal may have and still fit a signed 64-bit value without wrapping."""
+
+
+def hex_int(text, i, acc) -> Result[int, str]:
+    """The value of the hexadecimal digits of `text` from `i` on, added to `acc`."""
+    digit = hex_value(Lexer.at(text, i))
+    if i >= len(text):
+        return Success(value=acc)
+    elif digit < 0:
+        return Error(message="not a hexadecimal digit")
+    else:
+        return hex_int(text, wrapAdd(i, 1), wrapAdd(wrapMul(acc, 16), digit))
+
+
+def int_literal(text) -> Result[int, str]:
+    """A decimal literal, or a `0x` literal of at most `HEX_DIGITS_MAX` digits."""
+    if startsWith(text, "0x") and len(text) > 2 and len(text) <= wrapAdd(HEX_DIGITS_MAX, 2):
+        return hex_int(text, 2, 0)
+    elif startsWith(text, "0x"):
+        return Error(message="hexadecimal literal too long")
+    else:
+        return parseInt(text)
+
+
 def integer_attr(ts, i, sign):
     """An integer literal at `i` with an optional `: type`; the default type is `i64`."""
-    match parseInt(Ir.peek(ts, i).text):
+    match int_literal(Ir.peek(ts, i).text):
         case Success(value=value):
             return typed_integer(ts, wrapAdd(i, 1), wrapMul(sign, value))
         case Error():

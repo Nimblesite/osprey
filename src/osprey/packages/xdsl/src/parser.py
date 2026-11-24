@@ -1,4 +1,5 @@
 # osprey: flavor=python
+# Ported from xDSL (Apache-2.0 WITH LLVM-exception); required attribution and terms: ../NOTICE.md.
 # osprey: namespace=xdsl
 # osprey: module=Parser
 """The generic-syntax parser: MLIR text to a module.
