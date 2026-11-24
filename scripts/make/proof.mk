@@ -103,6 +103,10 @@ _conformance-arc:
 	@echo "==> [conformance] assertion corpus under --memory=arc..."
 	@OSPREY_ARC_DEBUG=1 OSPREY_TEST_JOBS=1 zsh src/toolchain/crates/run_test_corpus.sh arc
 
+# _conformance-ownership: compare every accepted program against the shared native golden and require zero leaks.
+_conformance-ownership:
+	@OSPREY_TEST_JOBS=1 zsh src/toolchain/crates/run_test_corpus.sh ownership --accepted
+
 # _test_disciplines: the reference type disciplines of [TYPES-DISCIPLINE-REFERENCE]
 # (spec 0050). The `bounded` package reads `// @bound p in 0..100`, holds every
 # call site inside the module to it by interval arithmetic, and erases to plain

@@ -98,7 +98,7 @@ Files: `src/toolchain/crates/run_test_corpus.sh`, `src/toolchain/benchmarks/**`,
 
 - [x] V1. `--memory=none` deleted everywhere (phase 3 item 1; c54aa2118, 70689c8af, d56504cc2, da6f758c5).
 - [x] V2. Corpus harness runs `ownership` (0ab14eb53): baseline 52 of 342 goldens, no leak among the programs that ran.
-- [ ] V3. The corpus lane is a gate: a program on the accepted list that is refused, leaks or differs from `gc` and `arc` fails CI. The list only grows.
+- [x] V3. The required corpus matrix runs `make _conformance-ownership` against the same native goldens as GC and ARC. The PR gate rejects removal of a path from `OWNERSHIP_ACCEPTED.txt`. Local verification on 2026-11-24 matched all 52 listed goldens with zero live objects at each exit. Full-corpus acceptance remains open in phase 2.
 - [ ] V4. Verification lane ([MEM-OWNERSHIP-STATIC-VERIFICATION]): every accepted program also runs with freed memory scribbled and under AddressSanitizer; a test fails when `ownership` IR calls `@osp_retain` or `@osp_release` once C5 lands.
 - [ ] V5. Benchmarks: `osprey-ownership` beside `osprey-gc` and `osprey-arc` (phase 3 item 2), with peak live bytes as its own column. Run on a quiet machine: agents announce a window on TMC and stop cargo, tests and pis for it.
 - [ ] V6. Shared code ([MEM-BACKENDS-SHARED]): run deslop over `compiler/runtime/memory_*`; move what `arc` and `ownership` both need into `memory_tracked_heap.h`; no copy survives in two backends, no technique is weakened.

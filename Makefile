@@ -66,6 +66,7 @@ test: build _build_c_runtime_tests
 # test` subcommand itself stays covered by `make -C src/toolchain/targets/tests bank` and the CLI e2e suite.
 	$(MAKE) _conformance-gc
 	$(MAKE) _conformance-arc
+	$(MAKE) _conformance-ownership
 	$(MAKE) _test_proof_kernel
 	$(MAKE) _test_disciplines
 	$(MAKE) _test_profiler

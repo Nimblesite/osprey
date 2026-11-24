@@ -137,28 +137,6 @@ run_worker() {
   print -r -- "$run_code" >"$resultdir/$index.status"
 }
 
-# Golden precedence for a program at $1, echoing the chosen path (empty if none):
-#   1. <file>.expectedoutput                     — per-file golden
-#   2. <file>.expectedoutput.<uname>             — OS-specific output
-#   3. <stem>.test.osp.expectedoutput            — an ML, Python or TypeScript twin shares the Default golden
-#   4. <stem>.test.osp.expectedoutput.<uname>    — ...and its OS-specific form
-# Rules 3 and 4 are what make all flavor twins share ONE file:
-# every flavor is required to run byte-identically, so one golden proves it
-# ([FLAVOR-IR-EQUIV], [FLAVOR-TS-VERIFICATION]).
-golden_for() {
-  local file=$1 stem=${1%.*} os
-  os=$(uname -s)
-  for candidate in \
-    "$file.expectedoutput" \
-    "$file.expectedoutput.$os" \
-    "$stem.osp.expectedoutput" \
-    "$stem.osp.expectedoutput.$os"
-  do
-    [[ -f "$candidate" ]] && { print -r -- "$candidate"; return 0 }
-  done
-  return 1
-}
-
 # Echo the live-object count only when exactly one exit sentinel from the
 # selected backend appears in the stderr transcript.
 # Absent or repeated sentinels echo nothing, which every caller treats as a
@@ -245,14 +223,7 @@ cleanup_results() {
 trap cleanup_results EXIT
 trap 'cleanup_results; exit 130' INT TERM
 
-while IFS= read -r -d $'\0' f; do
-  # Standalone Python suites explicitly opt in ([FLAVOR-PYTHON-SELECT]).
-  if [[ $f == *.py ]] && ! awk '/^[[:space:]]*# ?osprey: flavor=python[[:space:]]*$/ {found=1; exit}
-    /^[[:space:]]*($|#|\/\/)/ {next} {exit} END {exit !found}' "$f"; then
-    continue
-  fi
-  FILES+=("$f")
-done < <(find "$TESTDIR" \( -name '*.test.osp' -o -name '*.test.ospml' -o -name '*.test.ts' -o -name '*.test.py' \) -print0 | LC_ALL=C sort -z)
+source "${0:A:h}/corpus_files.sh"
 
 # Programs that contend for an OS resource are run one at a time. Two kinds do:
 #
@@ -502,7 +473,9 @@ fi
 
 source "${0:A:h}/corpus_doctests.sh"
 doctests_ok=1
-run_corpus_doctests || doctests_ok=0
+if [[ $accepted_only != --accepted ]]; then
+  run_corpus_doctests || doctests_ok=0
+fi
 
 [[ $fail -eq 0 && $leaky -eq 0 && $golden_fail -eq 0 && $golden_missing -eq 0 \
    && $golden_floor_ok -eq 1 && $skips_ok -eq 1 \

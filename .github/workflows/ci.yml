@@ -584,7 +584,11 @@ jobs:
         run: python3 src/toolchain/benchmarks/instruction_gate.py
 
   test-corpus-arc:
-    name: "Tests: language corpus (arc)"
+    name: "Tests: language corpus (${{ matrix.memory }})"
+    strategy:
+      fail-fast: false
+      matrix:
+        memory: [arc, ownership]
     needs: [changes, build]
     if: ${{ needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-latest
@@ -600,8 +604,21 @@ jobs:
           name: osprey-build
       - name: Restore artifact permissions
         run: chmod +x target/release/osprey
-      - name: Corpus and goldens (ARC, leak oracle enabled)
-        run: make _conformance-arc
+      - name: Check ownership acceptance only grows
+        if: matrix.memory == 'ownership'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          list=src/osprey/tests/OWNERSHIP_ACCEPTED.txt
+          if git cat-file -e "$BASE_SHA:$list" 2>/dev/null; then
+            git show "$BASE_SHA:$list" > "$RUNNER_TEMP/ownership-base.txt"
+            LC_ALL=C comm -23 "$RUNNER_TEMP/ownership-base.txt" "$list" > "$RUNNER_TEMP/ownership-removed.txt"
+            cat "$RUNNER_TEMP/ownership-removed.txt"
+            test ! -s "$RUNNER_TEMP/ownership-removed.txt"
+          fi
+      - name: Corpus and goldens (leak oracle enabled)
+        run: make _conformance-${{ matrix.memory }}
 
   # The Qwen oracle (the tiny checkpoint against its golden) runs beside the corpus
   # rather than after it: under ARC the two together outran the corpus job's budget.
