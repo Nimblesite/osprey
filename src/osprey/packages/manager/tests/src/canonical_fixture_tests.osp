@@ -21,13 +21,13 @@ module CanonicalFixtureTests {
     fn canonical(value) = Canonical::serialize(value) ?: "canonical.duplicate-key"
 
     fn domainDigestHolds(fx) = match Json::get(fx, "domain") {
-        Success { value } => Digests::hashText(Fixtures::text(value), canonical(Fixtures::field(fx, "value"))) == Fixtures::textOf(fx, "digest")
+        Success { value } => Digests::hashText(JsonRead::text(value), canonical(JsonRead::field(fx, "value"))) == Fixtures::textOf(fx, "digest")
         Error => true
     }
 
     fn fixtureHolds(name) = {
         let fx = fixture(name)
-        let bytes = canonical(Fixtures::field(fx, "value"))
+        let bytes = canonical(JsonRead::field(fx, "value"))
         checkAll("canonical ${name}", [
             bytes == Fixtures::textOf(fx, "canonical"),
             byteLength(bytes) == Fixtures::numberOf(fx, "canonicalLength"),
@@ -40,7 +40,7 @@ module CanonicalFixtureTests {
     fn resolve(reference) = {
         let parts = split(reference, "#") ?: [reference]
         let pointer = listGet(parts, 1) ?: ""
-        JsonRead::at(Fixtures::field(fixture(listGet(parts, 0) ?: ""), "value"), pointer)
+        JsonRead::at(JsonRead::field(fixture(listGet(parts, 0) ?: ""), "value"), pointer)
     }
 
     fn withoutMember(value, key) = match value {
@@ -49,7 +49,7 @@ module CanonicalFixtureTests {
     }
 
     fn omitted(relation, source) = match Json::get(relation, "omit") {
-        Success { value } => withoutMember(source, Fixtures::text(value))
+        Success { value } => withoutMember(source, JsonRead::text(value))
         Error => source
     }
 
@@ -65,7 +65,7 @@ module CanonicalFixtureTests {
     }
 
     fn relationHolds(relation) = match Fixtures::textOf(relation, "kind") {
-        "digest" => Fixtures::text(resolve(Fixtures::textOf(relation, "target"))) == derived(relation)
+        "digest" => JsonRead::text(resolve(Fixtures::textOf(relation, "target"))) == derived(relation)
         "equal" => canonical(resolve(Fixtures::textOf(relation, "left"))) == canonical(resolve(Fixtures::textOf(relation, "right")))
         _ => false
     }
@@ -76,7 +76,7 @@ module CanonicalFixtureTests {
         let relations = Fixtures::loadItems("canonical/relations.json", "relations")
         let digests = filterList(relations, fn(r) => Fixtures::textOf(r, "kind") == "digest")
         let targets = mapList(digests, fn(r) => resolve(Fixtures::textOf(r, "target")))
-        Fixtures::report("relation targets resolve to strings", targets, fn(t) => Fixtures::text(t) != "")
+        Fixtures::report("relation targets resolve to strings", targets, fn(t) => JsonRead::text(t) != "")
     }
 
     /// One test per canonical fixture and per relation.

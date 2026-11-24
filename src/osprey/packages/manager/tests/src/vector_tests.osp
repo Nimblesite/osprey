@@ -1,4 +1,5 @@
 namespace registry_tests;
+import registry::JsonRead
 import registry::Bytes
 import registry::Sha256
 import registry::Digests
@@ -65,7 +66,7 @@ module VectorTests {
 
     fn dsseCases() = {
         let fx = Fixtures::load("vectors/dsse.json")
-        let intent = Fixtures::field(fx, "releaseIntent")
+        let intent = JsonRead::field(fx, "releaseIntent")
         Fixtures::report("dsse PAE bytes", Fixtures::itemsOf(fx, "pae"), paeOk)
         checkAll("dsse release intent detached forms", [
             structuralEquals([intentPae(intent), intentCanonical(intent), intentChallenge(intent)], [true, true, true]),
@@ -96,7 +97,7 @@ module VectorTests {
     }
 
     fn negativeRoot(c, size) = match Json::get(c, "root") {
-        Success { value } => rootAt(Fixtures::number(value))
+        Success { value } => rootAt(JsonRead::number(value))
         Error => rootAt(size)
     }
 
