@@ -211,10 +211,10 @@ fn aliasCase() = withUpload([1, 2, 3, 4], fn(source) => withBuffer(doubledInts(s
 }))
 /// fusionCase pins [GPU-BUFFER-FUSE] from the indexing side: whatever the pipeline fused into the buffer has to be addressable element by element, the published length has to bound gpuGet exactly, and a one-element or empty range has to land on a buffer of that size.
 fn fusionCase() = {
-    use straight <- withUpload (range(0, 6))
-    use squares <- withUpload (range(1, 5) |> map(square))
-    use lone <- withUpload (range(4, 5))
-    use empty <- withUpload (range(3, 3))
+    use straight <- withBuffer (toGpu (range (0, 6)))
+    use squares <- withBuffer (toGpu (range (1, 5) |> map(square)))
+    use lone <- withBuffer (toGpu (range (4, 5)))
+    use empty <- withBuffer (toGpu (range (3, 3)))
     checkAll("iterator fusion fills the buffer directly", [
     lengthIs(straight, 6), firstIs(straight, 0), intAt(straight, 5, 5), lastIs(straight, 0, 5), missesAll(straight, [6, -1]), lengthIs(squares, 4), elementsFrom(squares, 0, 0, [1, 4, 9, 16]), lastIs(squares, 0, 16), misses(squares, 4), lengthIs(lone, 1), intAt(lone, 0, 4), misses(lone, 1), lengthIs(empty, 0), misses(empty, 0), sumsTo(empty, 5, 5), widthOf(empty) == 0, readsBack(straight, 6), readsBackAt(squares, 1, 0, 4), roundTripSumsTo(squares, 30)
 ])
@@ -346,7 +346,7 @@ fn quantMessage(result) = match result { Success { value } => "unexpected succes
 /// The exact reason gpuMatMulQuant reports for `x` against the Q4_K weights `w` under `kind`, `rows`, `inner` and `cols` is `message`.
 fn rejectsAs(x, w, kind, rows, inner, cols, message) = quantMessage(gpuMatMulQuant(x, w, kind, rows, inner, cols)) == message
 fn quantCase() = {
-    use ints <- withUpload (range(0, 256))
+    use ints <- withBuffer (toGpu (range (0, 256)))
     use x <- withBuffer(gpuMap(ints, fn(i) => toFloat32(i)))
     use w <- withBuffer(quantWeights())
     use out <- withBuffer(gpuMatMulQuant(x, w, "Q4_K", 1, 256, 2))

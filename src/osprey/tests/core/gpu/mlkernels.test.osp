@@ -150,7 +150,7 @@ fn saxpyCase() = {
 }
 /// captureScalarCase is the first acceptance shape: one host scalar closed over
 /// by a kernel, spent by map, filter, fold and scan, empty buffer included.
-fn captureScalarCase() = withBuffer(xs3(), fn(input0) => upload([], fn(input1) => {
+fn captureScalarCase() = withBuffer(xs3(), fn(input0) => withUpload([], fn(input1) => {
     let k = toFloat32(3.0)
     withBuffer(gpuMap(input0, fn(x) => k * x), fn(scaled) =>
         withBuffer(gpuMap(input0, fn(x) => k * x + k), fn(twice) =>

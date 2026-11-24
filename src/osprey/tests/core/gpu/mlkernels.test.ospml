@@ -101,9 +101,6 @@ trainEach (w, xs, ys, n, work) = match n
 trainOf (w, xs, ys, n, predicate) = match n
     0 => predicate(w)
     _ => gradStepOf(w, xs, ys, \stepped => trainOf(stepped, xs, ys, (n - 1), predicate))
-(** upload stages a host list on the GPU and hands the buffer to work: the *)
-(** shape every case below uploads its inputs with. *)
-upload (values, work) = withBuffer(toGpu(values), work)
 (** withMean stages xs's folded mean — zero on an empty buffer, like meanOf — *)
 (** for the kernels that capture it. *)
 withMean (xs, work) = withBuffer(gpuFold(xs, toFloat32(0.0), addF), \total => work(meanFrom(xs, total)))
@@ -151,7 +148,7 @@ saxpyCase () =
     ])))
 (** captureScalarCase is the first acceptance shape: one host scalar closed over *)
 (** by a kernel, spent by map, filter, fold and scan, empty buffer included. *)
-captureScalarCase () = withBuffer(xs3(), \input0 => upload([], \input1 =>
+captureScalarCase () = withBuffer(xs3(), \input0 => withUpload([], \input1 =>
     k = toFloat32(3.0)
     withBuffer(gpuMap(input0, \x => k * x), \scaled => withBuffer(gpuMap(input0, \x => k * x + k), \twice => checkAll("captured scalar", [
     sumIs(scaled, toFloat32(18.0)), elementIs(scaled, 1, toFloat32(0.0), toFloat32(6.0)), lengthIs(scaled, 3), sumIs(twice, toFloat32(27.0)), elementIs(twice, 2, toFloat32(0.0), toFloat32(12.0)), sumsTo(gpuMap(scaled, \y => k * y), toFloat32(54.0)), sumsTo(gpuMap(input0, \x => k * x - k), toFloat32(9.0)), sumsTo(gpuMap(input0, \x => k + x), toFloat32(15.0)), gpuLengthIs(gpuFilter(input0, \x => x > k), 0), gpuLengthIs(gpuFilter(input0, \x => k > x), 2), gpuLengthIs(gpuMap(input1, \x => k * x), 0), gpuEquals(gpuFold(input0, toFloat32(0.0), \(a, x) => a + k * x), toFloat32(18.0)), gpuSatisfies(gpuScan(input0, toFloat32(0.0), \(a, x) => a + k * x), \prefix => elementIs(prefix, 2, toFloat32(0.0), toFloat32(18.0)))
