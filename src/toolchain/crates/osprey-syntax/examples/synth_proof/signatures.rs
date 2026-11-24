@@ -53,6 +53,7 @@ const SIGNATURES: &[(&str, &[Signature])] = &[
     (
         "NonlinearMath",
         &[
+            ("clamped", &["α", "α", "α"], "α"),
             ("tanh", &["α"], "α"),
             ("hard", &["α"], "α"),
             ("cubic", &["α"], "α"),
@@ -103,6 +104,7 @@ const SIGNATURES: &[(&str, &[Signature])] = &[
         &[
             ("power", &["α", "α"], "α"),
             ("magnitude", &["α", "α"], "α"),
+            ("unitised", &["α", "α", "α"], "α"),
             ("unitRe", &["α", "α"], "α"),
             ("unitIm", &["α", "α"], "α"),
             ("hann", &["α", "α"], "α"),

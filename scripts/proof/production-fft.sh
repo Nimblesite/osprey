@@ -81,11 +81,11 @@ reject_edit negativeFrameRejected 's/listContains sizes size/listContains sizes 
 reject_edit advertisedSizesAccepted 's/listContains sizes size/listContains [] size/'
 reject_edit shaperSymmetricInterval 's/x \* x \* x \* x \/ 12.0/x * x * x \/ 12.0/' "${source%/*}/nonlinear_math.ospml"
 reject_edit hardClipPositiveInterval 's/false => a - 0.5/false => a * 0.5/' "${source%/*}/nonlinear_math.ospml"
-reject_edit tanhUpperPlateau 's/true => 20.0/true => x/' "${source%/*}/nonlinear_math.ospml"
+reject_edit tanhUpperPlateau 's/clamped (x, (-20.0), 20.0)/clamped (x, (-20.0), x)/' "${source%/*}/nonlinear_math.ospml"
 reject_edit upperClipRails 's/match x >= 1.0/match x <= 1.0/' "${source%/*}/nonlinear_math.ospml"
 reject_edit wavefolderPair 's/0.6366197723675814/0.6366197723675815/' "${source%/*}/nonlinear_math.ospml"
 reject_edit rotationComponents 's/re \* re + im \* im/re * re - im * im/' "$math"
-reject_edit rotationComponents 's/false => floatDiv (im, m)/false => floatDiv (re, m)/' "$math"
+reject_edit rotationComponents 's/unitised (im, magnitude/unitised (re, magnitude/' "$math"
 reject_edit realSamplesConjugate 's/im = 0.0 - value.im/im = value.im/'
 reject_edit addedDftBin 's/im = e.im + t.im/im = e.im - t.im/'
 reject_edit grainAsrBoundarySamples 's/age >= duration - 1.0/age > duration - 1.0/' "$grain_math"
