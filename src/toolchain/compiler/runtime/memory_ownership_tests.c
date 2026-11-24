@@ -12,6 +12,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef OSP_TEST_POISONED_FREES
+#include <sanitizer/asan_interface.h>
+#endif
 
 void *osp_alloc(int64_t size);
 size_t osp_arc_live_objects(void);
@@ -47,6 +50,11 @@ static void t_release_frees_the_owned_tree(void) {
   CHECK(osp_arc_live_objects() == base + 4);
   osp_ownership_free(root);
   CHECK(osp_arc_live_objects() == base);
+#ifdef OSP_TEST_POISONED_FREES
+  CHECK(__asan_address_is_poisoned(root));
+  CHECK(__asan_address_is_poisoned(inner));
+  CHECK(__asan_address_is_poisoned(leaf));
+#endif
   void *unique = osp_alloc(BODY);
   osp_release_unique(unique);
   CHECK(osp_arc_live_objects() == base);
@@ -116,6 +124,7 @@ static void t_immortal_and_foreign_are_untouched(void) {
 int main(void) {
   // Arm the live counters before the first allocation (memory_tracked_heap.h).
   CHECK(setenv("OSPREY_OWNERSHIP_DEBUG", "1", 1) == 0);
+  CHECK(setenv("OSPREY_SCRIBBLE_FREES", "1", 1) == 0);
   osp_mem_boot();
   t_release_frees_the_owned_tree();
   t_retained_blocks_are_never_freed();

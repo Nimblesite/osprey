@@ -8,8 +8,15 @@
 static void arc_free_or_recycle(void *body) {
   OspArcHdr *h = arc_hdr(body);
   arc_live_dec(h->size);
-  h->rc = 0; // pooled sentinel (leak report skips it); harmless if freed below
-  if (osp_pool_push(&g_arc_pool, body, osp_pool_cap(h->size))) {
+  h->rc = 0; // pooled sentinel; the leak report skips parked blocks
+  // [MEM-OWNERSHIP-STATIC-VERIFICATION] Bypass the pool so ASan poisons
+  // the allocation. Volatile stores preserve the scribble before free.
+  if (g_scribble_frees) {
+    volatile unsigned char *bytes = body;
+    for (size_t i = 0; i < h->size; i++) {
+      bytes[i] = 0xDD;
+    }
+  } else if (osp_pool_push(&g_arc_pool, body, osp_pool_cap(h->size))) {
     return; // slot stays present; recycled in place for the next same-size
             // alloc
   }

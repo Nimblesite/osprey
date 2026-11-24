@@ -71,6 +71,7 @@ static size_t g_live_bytes = 0;
 static size_t g_peak_bytes =
     0; // high-water mark of g_live_bytes (spike goldens)
 static int g_debug_armed = 0;
+static int g_scribble_frees = 0;
 // Bytes held from the system allocator, live and parked alike [MEM-HEAP-CEILING].
 // It moves only where malloc and free are called, never on the recycling path.
 static size_t g_arc_resident = 0;
@@ -185,6 +186,8 @@ static void arc_arm_debug(void) {
   if (!g_debug_armed) {
     g_debug_armed = 1;
     heap_limit_arm();
+    const char *scribble = getenv("OSPREY_SCRIBBLE_FREES");
+    g_scribble_frees = scribble && strcmp(scribble, "1") == 0;
     if (getenv(OSP_HEAP_DEBUG_ENV)) {
       g_arc_track = 1; // gate the hot-path live counters on (arc_live_inc/dec)
       (void)atexit(arc_report_leaks);

@@ -229,7 +229,7 @@ _test_gc_stack_root:
 C_COV_DIR ?= src/toolchain/compiler/bin/cov
 C_BUILD_TARGETS = $(addprefix _build_c_suite_,$(C_TEST_SUITES))
 C_TEST_TARGETS = $(addprefix _test_c_suite_,$(C_TEST_SUITES))
-C_ASAN_SUITES ?= fiber_runtime_tests http_runtime_tests net_runtime_tests websocket_runtime_tests file_server_tests
+C_ASAN_SUITES ?= fiber_runtime_tests http_runtime_tests net_runtime_tests websocket_runtime_tests file_server_tests memory_ownership_tests
 C_ASAN_BUILD_TARGETS = $(addprefix _build_c_asan_,$(C_ASAN_SUITES))
 C_ASAN_TEST_TARGETS = $(addprefix _test_c_asan_,$(C_ASAN_SUITES))
 .PHONY: _build_c_runtime_tests $(C_BUILD_TARGETS) $(C_TEST_TARGETS) $(C_ASAN_BUILD_TARGETS) $(C_ASAN_TEST_TARGETS)
@@ -250,6 +250,7 @@ _test_c_runtime: $(C_TEST_TARGETS) $(C_ASAN_TEST_TARGETS)
 # these suites link cannot find them as roots.
 C_ASAN_OPTIONS = intercept_strstr=0:detect_stack_use_after_return=0
 $(C_ASAN_BUILD_TARGETS): T := $(filter-out -D_FORTIFY_SOURCE=2,$(T))
+_build_c_asan_memory_ownership_tests: T += -DOSP_TEST_POISONED_FREES
 $(C_ASAN_BUILD_TARGETS): _build_c_asan_%: $(GPU_DEVICE_NATIVE)
 	@mkdir -p "$(C_COV_DIR)/$*/asan"
 	@cd "$(C_COV_DIR)/$*/asan" && $(call C_SUITE_BUILD,$*,../../../../,$*,-fsanitize=address -fno-omit-frame-pointer -g) && rm -f -- *.o

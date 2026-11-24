@@ -105,7 +105,7 @@ _conformance-arc:
 
 # _conformance-ownership: compare every accepted program against the shared native golden and require zero leaks.
 _conformance-ownership:
-	@OSPREY_TEST_JOBS=1 zsh src/toolchain/crates/run_test_corpus.sh ownership --accepted
+	@OSPREY_SCRIBBLE_FREES=1 OSPREY_TEST_JOBS=1 zsh src/toolchain/crates/run_test_corpus.sh ownership --accepted
 
 # _test_disciplines: the reference type disciplines of [TYPES-DISCIPLINE-REFERENCE]
 # (spec 0050). The `bounded` package reads `// @bound p in 0..100`, holds every
