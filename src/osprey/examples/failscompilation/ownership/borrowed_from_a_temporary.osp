@@ -3,9 +3,18 @@
 // `got` borrows what `made` still owns, so `reread` can't return it.
 // `firstOr` yields an element its list owns on one path and a value it made
 // on the other, so what it returns may still belong to the list
-// [MEM-OWNERSHIP-STATIC-PATHS].
+// [MEM-OWNERSHIP-STATIC-PATHS]. `latestText` returns what a file-scope cell
+// holds, which the next write to the cell frees.
 type Box = { text: string }
 type Wrap = { inner: Box }
+
+effect Feed {
+    push: fn(string) -> int
+}
+
+mut latest = "none${toString(0)}"
+
+fn latestText() = latest
 
 fn reread(n: int) = {
     let made = Box { text: "made${toString(n)}" }
@@ -21,5 +30,12 @@ fn firstOr(boxes: List<Box>, n: int) = {
 
 fn main() = {
     let boxes = [Box { text: "in${toString(2)}" }]
-    print("${reread(1).text}${firstOr(boxes, 0).text}${firstOr(boxes, 3).text}")
+    handle Feed {
+        push text => {
+            latest = "got ${text}"
+            1
+        }
+    }
+    let pushed = perform Feed.push("p${toString(4)}")
+    print("${reread(1).text}${firstOr(boxes, 0).text}${firstOr(boxes, 3).text}${toString(pushed)}${latestText()}")
 }

@@ -386,7 +386,7 @@ The rules of this backend are theorems about one transition system, stated in Le
 
 A path h ⟶\* h′ applies accepted steps to single cells of a heap, in any order, along either incoming edge of a join.
 
-**Theorems.** All 25 are checked by Lean 4.25 and replayed by the GC, ARC and WASI builds of Osprey's proof kernel, which must each answer `PASS` with the listed axioms and no others.
+**Theorems.** All 26 are checked by Lean 4.25 and replayed by the GC, ARC and WASI builds of Osprey's proof kernel, which must each answer `PASS` with the listed axioms and no others.
 
 | Theorem | Statement | Rule it discharges | Axioms |
 | --- | --- | --- | --- |
@@ -414,6 +414,7 @@ A path h ⟶\* h′ applies accepted steps to single cells of a heap, in any ord
 | `literal_needs_no_owner` | ∀ s, d. step(⊥, a) = ∅ for a ∈ {free(s), read(s), move(s, d)} | An arm that yields a literal yields no allocation, so the join frees nothing on that path. | propext, Quot.sound |
 | `capture_leaves_frame` | f ≠ c ⟹ step(own(c), free(f)) = ∅ ∧ ⊥ ─alloc(f)·move(f, c)·free(c)→ ⊥ | A capture moved into a closure cell that leaves the function is no longer the frame's to free, and dies once with the cell ([MEM-OWNERSHIP-STATIC-CLOSURES]). | propext, Quot.sound |
 | `mixed_join_frees_once` | n ≠ o ⟹ ⊥ ─alloc(n)·read(n)·free(n)→ ⊥ ∧ ⊥ ─alloc(o)·borrow(n, o)·read(n)·free(n)→ ∅ ∧ ⊥ ─alloc(o)·borrow(n, o)·read(n)·endBorrow(n)·free(o)→ ⊥ | A join that makes a value on one path and borrows one on another: the name frees what was made once, frees nothing it borrowed, and the lender frees its own ([MEM-OWNERSHIP-STATIC-PATHS]). | propext, Quot.sound, Classical.choice |
+| `cell_write_frees_old` | r ≠ c ⟹ ⊥ ─alloc(c)·borrow(r, c)·free(c)→ ∅ ∧ ⊥ ─alloc(c)·free(c)·read(c)→ ∅ ∧ ⊥ ─alloc(f)·move(f, c)·free(c)→ ⊥ | A cell that is rewritten owns each value in turn: the write frees the old value, so nothing may borrow it across a write, and the fresh value moves in ([MEM-OWNERSHIP-STATIC-BORROWS]). | propext, Quot.sound, Classical.choice |
 | `shared_element_refused` | s ≠ d ⟹ ⊥ ─alloc(s)·move(s, d)·a→ ∅ for a ∈ {read(s), free(s)} | An element a derived list keeps has left its source, so a source read again is refused ([MEM-OWNERSHIP-STATIC-SHARING]). | propext, Quot.sound |
 
 Here step(c, a) = ∅ means the action is refused, and ⊥ ─a₁·…·aₙ→ ⊥ means the actions are accepted in order from the freed cell and end in it. The axioms are Lean's three standard ones; a proof that needs any other, `sorryAx` included, fails the gate.
@@ -473,7 +474,14 @@ that owns the field gives it up instead ([MEM-OWNERSHIP-STATIC-PATHS]).
 
 A binding can't borrow a value read from a `mut` binding or a file-scope
 binding, which can be replaced while the borrower still reads it, and is
-refused as needing a second owner. A borrower can be
+refused as needing a second owner.
+
+**File-scope cells.** A file-scope `mut` that a handler arm rewrites lives in
+a cell the entry's frame owns. Module storage holds the cell's address without
+owning it, because that frame outlives every function. A write moves a fresh
+value into the cell and frees the value it replaces; a value that is not fresh
+is refused. A function reads the cell where it is and can't return or keep
+what it holds. Proved: `cell_write_frees_old`. A borrower can be
 read and passed to functions. Storing it, returning it or handing it to a
 fiber needs an owner and is refused. Proved in the ledger model
 ([MEM-OWNERSHIP-STATIC-MODEL]): `borrow_keeps_owner`, `lent_pins_owner`,

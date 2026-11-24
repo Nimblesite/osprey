@@ -18,6 +18,25 @@ effect Note {
 let shared = Box { text: "shared${toString(1)}" }
 let sharedNames = ["a${toString(1)}", "b${toString(2)}"]
 
+/// A file-scope `mut` that a handler arm rewrites lives in a cell the entry
+/// owns [MEM-OWNERSHIP-STATIC-BORROWS]: module storage borrows the cell, and
+/// each write moves a fresh value in and frees the one it replaces.
+mut journal = "start${toString(1)}"
+mut entries = 0
+
+let journalRun = {
+    handle Note {
+        hit text => {
+            journal = "${journal};${text}"
+            entries = wrapAdd(entries, 1)
+            entries
+        }
+    }
+    "${toString(perform Note.hit("a${toString(1)}"))}${toString(perform Note.hit("b"))}"
+}
+
+fn journaled() = "journal ${journalRun} ${journal} ${toString(entries)} ${toString(length(journal))}"
+
 fn fileScope(n) = "file scope ${shared.text} ${toString(listLength(sharedNames))} ${toString(n)}"
 
 /// Fresh values go straight to what takes them.
@@ -546,4 +565,4 @@ fn keeps(n) = {
 
 fn effects() = "${toString(listLength(folded(4)))} ${toString(listLength(folded(0)))} ${drawn(10)} ${drawn(0)} ${noted(3)}"
 
-print("${fileScope(1)} ${shared.text}\n${spans()}\n${elements()}\n${collections()}\n${lastUses()}\n${paths()}\n${owned()}\n${generics()}\n${literals()}\n${errors()} ${renderedTwice(7)}\n${captures()}\n${lends()}\n${lentLists()}\n${reads()}\n${borrows()}\n${effects()}\n${stores(2)}\n${takes(3)}\n${closures(2)}\n${parts(3)}\n${returned(2)}\n${returned(3)}\n${updates(5)}\n${fallbacks(1)}\n${fallbacks(4)}\n${keeps(6)}")
+print("${fileScope(1)} ${shared.text}\n${spans()}\n${elements()}\n${collections()}\n${lastUses()}\n${paths()}\n${owned()}\n${generics()}\n${literals()}\n${errors()} ${renderedTwice(7)}\n${captures()}\n${lends()}\n${lentLists()}\n${reads()}\n${borrows()}\n${effects()}\n${stores(2)}\n${takes(3)}\n${closures(2)}\n${parts(3)}\n${returned(2)}\n${returned(3)}\n${updates(5)}\n${fallbacks(1)}\n${fallbacks(4)}\n${keeps(6)}\n${journaled()}")

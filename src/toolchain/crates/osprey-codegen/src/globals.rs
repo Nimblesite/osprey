@@ -313,6 +313,16 @@ pub(crate) fn publish_cell(cg: &mut Codegen, name: &str, cell: &CellSlot) -> Res
     } else {
         cg.emit_reg(format!("bitcast {pointee}* {} to i8*", cell.ptr))
     };
+    if cg.ownership.on {
+        // The entry's frame owns the cell and outlives every function, so the
+        // global only borrows its address [MEM-OWNERSHIP-STATIC-BORROWS].
+        let storage = slot.storage().as_str();
+        cg.emit(format!(
+            "store {storage} {address}, {storage}* @{}",
+            slot.symbol
+        ));
+        return Ok(());
+    }
     store(cg, &slot, &address);
     Ok(())
 }
@@ -354,7 +364,13 @@ pub(crate) fn assign(cg: &mut Codegen, name: &str, value: Value) -> Result<()> {
         crate::cast::coerce_param(cg, value, &slot.sig)?
     };
     if held.is_managed_ptr() {
-        crate::arc::retain_operand(cg, &incoming.operand);
+        if cg.ownership.on {
+            // The location takes the one reference a fresh value brings; the
+            // value it replaces is freed [MEM-OWNERSHIP-STATIC-PATHS].
+            crate::arc::store_owned(cg, ty, &incoming.operand);
+        } else {
+            crate::arc::retain_operand(cg, &incoming.operand);
+        }
         let old = cg.emit_reg(format!("load {ty}, {ty}* {target}"));
         crate::arc::release_operand(cg, &old);
     }
@@ -387,11 +403,14 @@ pub(crate) fn release_all(cg: &mut Codegen) {
             continue;
         }
         let storage = slot.storage().as_str();
-        let live = cg.emit_reg(format!(
-            "load {storage}, {storage}* @{symbol}",
-            symbol = slot.symbol
-        ));
-        crate::arc::release_operand(cg, &live);
+        // Under ownership a cell belongs to the entry's frame, which frees it.
+        if !(cg.ownership.on && slot.cell) {
+            let live = cg.emit_reg(format!(
+                "load {storage}, {storage}* @{symbol}",
+                symbol = slot.symbol
+            ));
+            crate::arc::release_operand(cg, &live);
+        }
         cg.emit(format!(
             "store {storage} null, {storage}* @{symbol}",
             symbol = slot.symbol

@@ -374,4 +374,15 @@ theorem mixed_join_frees_once {name lender : Slot} (distinct : name ≠ lender) 
       .free lender].foldlM step dead = some dead := by
   simp [List.foldlM, step, owned, dead, distinct]
 
+/-- A cell that is rewritten owns each value in turn
+    [MEM-OWNERSHIP-STATIC-BORROWS]: the write frees the value it replaces, so
+    nothing may still borrow that value or read it afterwards, and the fresh
+    value moves in and is freed once through the cell. A function that
+    returned what a cell holds would be such a borrower. -/
+theorem cell_write_frees_old {cell reader fresh : Slot} (apart : reader ≠ cell) :
+    [Action.alloc cell, .borrow reader cell, .free cell].foldlM step dead = none ∧
+    [Action.alloc cell, .free cell, .read cell].foldlM step dead = none ∧
+    [Action.alloc fresh, .move fresh cell, .free cell].foldlM step dead = some dead := by
+  simp [List.foldlM, step, owned, dead, apart]
+
 end OwnershipLedger
