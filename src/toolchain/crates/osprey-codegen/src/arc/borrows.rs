@@ -40,6 +40,7 @@ pub(crate) fn bind_let(cg: &mut Codegen, name: &str, source: &Expr, v: &Value) {
         || bind_lent(cg, name, source, v)
         || super::adopt(cg, name, v)
         || lend(cg, name, source)
+        || keep_made(cg, name, source)
     {
         return;
     }
@@ -64,9 +65,16 @@ pub(crate) fn bind_alias(cg: &mut Codegen, alias: &str, source: &str, v: &Value)
 /// lives for as long as `name` is read, and what the statement made is freed
 /// at that last read [MEM-OWNERSHIP-STATIC-PATHS].
 fn bind_mixed(cg: &mut Codegen, name: &str, source: &Expr, v: &Value) -> bool {
+    super::phi::take_mixed(cg, &v.operand) && keep_made(cg, name, source)
+}
+
+/// `name` borrows a value that may belong to something the statement made:
+/// it keeps everything the statement made, freed at its own last read, and
+/// borrows from every binding `source` mentions. False, with nothing changed,
+/// when one of those bindings can be replaced or none is a binding.
+fn keep_made(cg: &mut Codegen, name: &str, source: &Expr) -> bool {
     let statement = cg.arc.kinds.last() == Some(&FrameKind::Statement);
-    let mixed = statement && super::phi::take_mixed(cg, &v.operand);
-    if !mixed || !borrow_from(cg, name, source) {
+    if !cg.ownership.on || !statement || !borrow_from(cg, name, source) {
         return false;
     }
     let made = cg.arc.frames.last_mut().map(std::mem::take);

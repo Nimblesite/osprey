@@ -463,13 +463,15 @@ A read from a list or a map lends the same way: the Result that `listGet`,
 collection still does. Reading it, matching on it and taking its value with
 `?:` are accepted; binding or returning the Result itself needs an owner.
 
-A binding can't borrow in two cases, and is refused as needing a second
-owner. The first is a value read out of something the statement itself made that
-does not own it, as in `let got = Wrap { inner: made }.inner` while `made` is
-still read: that temporary dies when the statement ends. A temporary that
-owns the field gives it up instead ([MEM-OWNERSHIP-STATIC-PATHS]).
-The second is a value read from a `mut` binding or a file-scope binding,
-which can be replaced while the borrower still reads it. A borrower can be
+A value read out of something the statement itself made that does not own
+it, as in `let got = Wrap { inner: made }.inner` while `made` is still read,
+borrows too: the binding keeps everything the statement made until its own
+last read, and borrows from every binding the statement mentions. A temporary
+that owns the field gives it up instead ([MEM-OWNERSHIP-STATIC-PATHS]).
+
+A binding can't borrow a value read from a `mut` binding or a file-scope
+binding, which can be replaced while the borrower still reads it, and is
+refused as needing a second owner. A borrower can be
 read and passed to functions. Storing it, returning it or handing it to a
 fiber needs an owner and is refused. Proved in the ledger model
 ([MEM-OWNERSHIP-STATIC-MODEL]): `borrow_keeps_owner`, `lent_pins_owner`,

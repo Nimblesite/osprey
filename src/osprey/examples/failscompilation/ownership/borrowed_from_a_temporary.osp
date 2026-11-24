@@ -1,11 +1,18 @@
 // [MEM-OWNERSHIP-STATIC-BORROWS] Runs under the collector; `--memory=ownership` refuses it.
 // Read out of a value the statement itself made, which only lends the field:
-// the temporary dies with the statement and `made` still owns what it held.
+// `got` borrows what `made` still owns, so `reread` can't return it.
 // `firstOr` yields an element its list owns on one path and a value it made
 // on the other, so what it returns may still belong to the list
 // [MEM-OWNERSHIP-STATIC-PATHS].
 type Box = { text: string }
 type Wrap = { inner: Box }
+
+fn reread(n: int) = {
+    let made = Box { text: "made${toString(n)}" }
+    let got = Wrap { inner: made }.inner
+    print(made.text)
+    got
+}
 
 fn firstOr(boxes: List<Box>, n: int) = {
     let first = boxes[n] ?: Box { text: "none${toString(n)}" }
@@ -13,8 +20,6 @@ fn firstOr(boxes: List<Box>, n: int) = {
 }
 
 fn main() = {
-    let made = Box { text: "made${toString(1)}" }
-    let got = Wrap { inner: made }.inner
     let boxes = [Box { text: "in${toString(2)}" }]
-    print("${got.text}${made.text}${firstOr(boxes, 0).text}${firstOr(boxes, 3).text}")
+    print("${reread(1).text}${firstOr(boxes, 0).text}${firstOr(boxes, 3).text}")
 }

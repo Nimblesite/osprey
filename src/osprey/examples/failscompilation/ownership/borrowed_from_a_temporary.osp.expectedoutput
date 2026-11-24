@@ -1,2 +1,2 @@
-12:4: ownership: a value needs a second owner in `firstOr`: it is returned while another value owns it [MEM-OWNERSHIP-STATIC]
-17:4: ownership: `got` needs a second owner in `main`: it is bound to a name that can outlive the value it was read from [MEM-OWNERSHIP-STATIC]
+14:4: ownership: a value needs a second owner in `reread`: it is returned while another value owns it [MEM-OWNERSHIP-STATIC]
+19:4: ownership: a value needs a second owner in `firstOr`: it is returned while another value owns it [MEM-OWNERSHIP-STATIC]

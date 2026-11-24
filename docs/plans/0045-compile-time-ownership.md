@@ -96,6 +96,7 @@ Acceptance of ordinary programs, largest refusal class first. After each item: `
   - Refused for now: an update whose new fields read the base (`box { n: box.n + 1 }`). Two loads of one field slot could each take it, so the base must be read once.
 - [ ] C4. The remaining classes: bound, returned, joined, kept, shared. Each gets a rule or stays a documented refusal with a fixture.
   - Joined: built ([MEM-OWNERSHIP-STATIC-PATHS], "Joins that borrow", `arc/phi.rs` `note_mixed`, `arc/borrows.rs` `bind_mixed`). A join of paths that make a value with paths that can only borrow one borrows instead of counting; a `let` naming it keeps what the statement made and borrows from what the statement mentions. `single_owner` `fallbacks()` covers list and map reads with defaults, a `match`, a join of joins, a read out of a list the statement made and a loop; `borrowed_from_a_temporary` refuses returning one. Proved: `mixed_join_frees_once` (25 theorems). Corpus 69 to 73 of 180; joined refusals 111 to 0.
+  - Bound: a `let` that borrows out of a value the statement made keeps everything the statement made until the name's last read (`arc/borrows.rs` `keep_made`), so a read out of a temporary that only lends is accepted; `single_owner` `keeps()`. Bound refusals 41 to 34; what remains is closures over handler state and file-scope cells (C6).
 - Acceptance: `ownership` accepts every program in `src/osprey/tests/` that does not use a construct the spec refuses by rule. Today 73 of 180.
 
 Soundness and the space bound:

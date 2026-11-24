@@ -534,6 +534,16 @@ fn fallbacks(n) = {
     "fallbacks ${present.text} ${absent.text} ${label} ${other} ${matched.text} ${either.text} ${fromMade.text} ${looped} ${(boxes[1] ?: Box { text: "y" }).text}${(boxes[5] ?: Box { text: "z${toString(n)}" }).text} ${toString(listLength(boxes))}${toString(length(labels))}"
 }
 
+/// A name that borrows out of a value the statement made keeps that value
+/// until its own last read [MEM-OWNERSHIP-STATIC-BORROWS]: a field the
+/// temporary only lends, and a field it owns beside one it lends.
+fn keeps(n) = {
+    let made = Box { text: "made${toString(n)}" }
+    let got = Pair { left: made, right: Box { text: "r${toString(n)}" } }.left
+    let right = Pair { left: made, right: Box { text: "s${toString(n)}" } }.right
+    "keeps ${got.text} ${right.text} ${made.text}"
+}
+
 fn effects() = "${toString(listLength(folded(4)))} ${toString(listLength(folded(0)))} ${drawn(10)} ${drawn(0)} ${noted(3)}"
 
-print("${fileScope(1)} ${shared.text}\n${spans()}\n${elements()}\n${collections()}\n${lastUses()}\n${paths()}\n${owned()}\n${generics()}\n${literals()}\n${errors()} ${renderedTwice(7)}\n${captures()}\n${lends()}\n${lentLists()}\n${reads()}\n${borrows()}\n${effects()}\n${stores(2)}\n${takes(3)}\n${closures(2)}\n${parts(3)}\n${returned(2)}\n${returned(3)}\n${updates(5)}\n${fallbacks(1)}\n${fallbacks(4)}")
+print("${fileScope(1)} ${shared.text}\n${spans()}\n${elements()}\n${collections()}\n${lastUses()}\n${paths()}\n${owned()}\n${generics()}\n${literals()}\n${errors()} ${renderedTwice(7)}\n${captures()}\n${lends()}\n${lentLists()}\n${reads()}\n${borrows()}\n${effects()}\n${stores(2)}\n${takes(3)}\n${closures(2)}\n${parts(3)}\n${returned(2)}\n${returned(3)}\n${updates(5)}\n${fallbacks(1)}\n${fallbacks(4)}\n${keeps(6)}")
