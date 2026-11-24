@@ -2,8 +2,9 @@
 // The Boolean parameter has two inhabitants; specialize both, resolving each phi by
 // its actual predecessor. Reject unknown instructions [MEM-OWNERSHIP-STATIC-VERIFICATION].
 import { readFileSync } from 'node:fs'
+import { childDrop } from './child-drop.mjs'
 import { pairConstructor, pairWalk } from './record-ownership.mjs'
-import { nullDrop, runtimeReturns } from './runtime-returns.mjs'
+import { blocks as llvmBlocks, nullDrop, runtimeReturns } from './runtime-returns.mjs'
 const [source, irFile, template, listFile, mapFile, stringFile, heapFile, walkFile] = process.argv.slice(2)
 const src = readFileSync(source, 'utf8').split('\n')
 const ir = readFileSync(irFile, 'utf8')
@@ -21,14 +22,7 @@ function blocks(name, conditional) {
   const pattern = new RegExp('^define internal i8\\* @' + name + '\\$mono\\d+\\(' + sig + '\\) #\\d+ \\{\\n([^}]+)\\n\\}$', 'gm')
   const bodies = [...ir.matchAll(pattern)]
   if (bodies.length !== 1) throw Error('expected one specialization of ' + name)
-  const result = new Map()
-  let current
-  for (const raw of bodies[0][1].split('\n')) {
-    const line = raw.trim()
-    if (/^(entry|L\d+):$/.test(line)) current = define(result, line.slice(0, -1), [])
-    else current.push(line)
-  }
-  return result
+  return llvmBlocks(bodies[0][1].split('\n').map(line => line.trim()))
 }
 const option = value => value === null ? 'none' : '(some ' + value + ')'
 function instruction({ regs, slots, contents, bits, code }, line, previous) {
@@ -89,6 +83,7 @@ const strings = runtimeReturns(stringFile, 'osp_alloc_tagged')
 const renderer = runtimeReturns(irFile, 'osp_string_show', strings('osp_string_show'))
 const stringOps = 'concat take drop substring to_upper to_lower trim_start trim_end trim reverse replace repeat pad_start pad_end from_codepoint'.split(' ')
 process.stdout.write(readFileSync(template, 'utf8')
+  .replace('-- CHILD DROP', childDrop(readFileSync(heapFile, 'utf8')))
   .replace('-- PAIR WALK', pairWalk(readFileSync(walkFile, 'utf8')))
   .replace('-- PAIR CONSTRUCTOR', pairConstructor(ir))
   .replace('-- NULL DROP', nullDrop(heapFile))

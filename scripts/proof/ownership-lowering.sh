@@ -30,7 +30,7 @@ lake build lean4export
 lake env lean -DwarningAsError=true --root="$out" -o "$out/OwnershipLowering.olean" "$out/OwnershipLowering.lean"
 exporter=$(lake env which lean4export)
 lean_path=$(lake env printenv LEAN_PATH)
-for name in compiledGrow compiledGrowWhen runtimeRootOrigins renderedStringOrigin stringResultOrigins compiledFreeNull compiledPairFields; do
+for name in compiledGrow compiledGrowWhen runtimeRootOrigins renderedStringOrigin stringResultOrigins compiledFreeNull compiledPairFields compiledChildDrop; do
   theorem="OwnershipLowering.$name"
   LEAN_PATH="$out:$lean_path" "$exporter" OwnershipLowering -- "$theorem" > "$out/$name.ndjson"
   for backend in gc arc wasm; do
@@ -128,3 +128,14 @@ awk '/^define / {walk = /@proof_pair_drop\(/}
 reflect "$out/ownership.ll" "$out/mutations/missing-child-drop.lean" \
   "$out/runtime.ll" "$out/strings.ll" "$out/heap.ll" "$out/mutations/missing-child-drop.ll"
 reject missing-child-drop compiledPairFields
+
+for fault in queue-child-twice retain-moving-state; do
+  awk -v fault="$fault" '
+    /^define / {inside = /@arc_drop_hdr\(/}
+    inside && fault == "queue-child-twice" && /call .*@arc_wl_push\(/ {print}
+    inside && fault == "retain-moving-state" {sub(/store i32 1,/, "store i32 2,")}
+    {print}
+  ' "$out/heap.ll" > "$out/mutations/$fault.ll"
+  reflect "$out/ownership.ll" "$out/mutations/$fault.lean" "$out/runtime.ll" "$out/strings.ll" "$out/mutations/$fault.ll"
+  reject "$fault" compiledChildDrop
+done

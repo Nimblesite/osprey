@@ -150,4 +150,22 @@ theorem compiledPairFields (left right : α) :
     (emittedPair left right).2.lookup 2 = some right := by
   exact ⟨rfl, rfl, rfl, rfl, rfl⟩
 
+inductive HeaderEffect (α : Type) where
+  | read (byteOffset : Nat)
+  | write (state : Nat)
+  | queue (child : α)
+
+def emittedChildDrop (child : α) : Option Nat → List (HeaderEffect α)
+-- CHILD DROP
+
+/-- A registry miss does nothing. For a hit the trace includes every header
+    access and call to the worklist push, quantified over the state's bit value. -/
+theorem compiledChildDrop (child : α) (state : Option Nat) :
+    emittedChildDrop child state = (match state with
+      | none => []
+      | some word => .read 8 :: (match word with
+        | 1 => [.queue child]
+        | 2 => [.write 1]
+        | _ => [])) := by rfl
+
 end OwnershipLowering

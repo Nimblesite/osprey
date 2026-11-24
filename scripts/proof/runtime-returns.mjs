@@ -45,31 +45,52 @@ function alternatives(values) {
   return values.reduce((left, right) => '(.fork ' + left + ' ' + right + ')')
 }
 
-function unary(ir, name) {
-  const attributes = '(?:(?:noundef|nofree|readnone|nocapture|captures\\(address_is_null\\)) )*'
-  const header = '^define [^@\\n]*void @' + name + '\\(ptr ' + attributes + '(%[\\w.-]+)\\)[^\\n]*\\{\\n([\\s\\S]*?)^\\}'
+export function voidBody(ir, name, arity = 1) {
+  const attributes = '(?:(?:noundef|nofree|readonly|readnone|nocapture|captures\\(address_is_null\\)) )*'
+  const pointer = 'ptr ' + attributes + '(%[\\w.-]+)'
+  const header = '^define [^@\\n]*void @' + name + '\\(' + Array(arity).fill(pointer).join(', ') + '\\)[^\\n]*\\{\\n([\\s\\S]*?)^\\}'
   const match = new RegExp(header, 'm').exec(ir)
-  if (!match) throw Error('missing unary free function: ' + name)
-  return { arg: match[1], lines: match[2].replace(/;[^\n]*/g, '').split('\n').map(line => line.trim()).filter(Boolean) }
+  if (!match) throw Error('unsupported signature: ' + name)
+  const lines = match.at(-1).replace(/;[^\n]*/g, '').split('\n').map(line => line.trim()).filter(Boolean)
+  return { args: match.slice(1, -1), lines }
+}
+
+export function blocks(lines) {
+  const result = new Map()
+  let block
+  for (const line of lines) {
+    if (/^[\w.-]+:$/.test(line)) {
+      const name = line.slice(0, -1)
+      if (result.has(name)) throw Error('duplicate LLVM block: ' + name)
+      block = []
+      result.set(name, block)
+    } else block.push(line)
+  }
+  return result
+}
+
+export function nullSuccessors(entry = [], header) {
+  const cmp = /^(%[\w.]+) = icmp (eq|ne) ptr (%[\w.]+), null$/.exec(entry[0])
+  const br = /^br i1 (%[\w.]+), label %([\w.]+), label %([\w.]+)$/.exec(entry[1])
+  if (entry.length !== 2 || !cmp || !br || cmp[3] !== header || br[1] !== cmp[1]) throw Error('unsupported child header guard')
+  return cmp[2] === 'eq' ? br.slice(2) : br.slice(2).reverse()
 }
 
 // Reflect the compiled free entry and its null test. Only an immediate void
 // return is inert. Every other successor is conservatively effectful.
 export function nullDrop(file) {
   const ir = readFileSync(file, 'utf8')
-  const wrapper = unary(ir, 'osp_ownership_free')
+  const wrapper = voidBody(ir, 'osp_ownership_free')
   const call = /^(?:tail )?call (?:fastcc )?void @tracked_drop\(ptr (?:noundef )?(%[\w.-]+)\)$/.exec(wrapper.lines[1])
-  if (wrapper.lines.length !== 3 || wrapper.lines[0] !== 'entry:' || wrapper.lines[2] !== 'ret void' || call?.[1] !== wrapper.arg)
+  if (wrapper.lines.length !== 3 || wrapper.lines[0] !== 'entry:' || wrapper.lines[2] !== 'ret void' || call?.[1] !== wrapper.args[0])
     throw Error('unsupported ownership free entry')
-  const { arg, lines } = unary(ir, 'tracked_drop')
-  const test = /^(%[\w.-]+) = icmp (eq|ne) ptr (%[\w.-]+), null$/.exec(lines[1])
-  const branch = /^br i1 (%[\w.-]+), label %([\w.-]+), label %([\w.-]+)$/.exec(lines[2])
-  if (lines[0] !== 'entry:' || !test || !branch || test[3] !== arg || branch[1] !== test[1])
-    throw Error('unsupported tracked drop guard')
+  const { args: [arg], lines } = voidBody(ir, 'tracked_drop')
+  const cfg = blocks(lines)
+  const [absent, present] = nullSuccessors(cfg.get('entry'), arg)
   const inert = label => {
-    const at = lines.indexOf(label + ':')
-    if (at < 0) throw Error('missing drop successor ' + label)
-    return lines[at + 1] === 'ret void'
+    const block = cfg.get(label)
+    if (!block) throw Error('missing drop successor: ' + label)
+    return block.length === 1 && block[0] === 'ret void'
   }
-  return 'if (isNull == ' + (test[2] === 'eq') + ') then ' + inert(branch[2]) + ' else ' + inert(branch[3])
+  return 'if isNull then ' + inert(absent) + ' else ' + inert(present)
 }

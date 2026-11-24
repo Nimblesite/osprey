@@ -8,6 +8,7 @@ typedef struct {
 } Pair;
 _Static_assert(sizeof(void *) == 8 && sizeof(Pair) == 24,
                "native record proof ABI");
+_Static_assert(offsetof(OspArcHdr, rc) == 8, "native ownership state offset");
 #define PAIR_LAYOUT                                                            \
   OSP_MEM_LAYOUT(OSP_MEM_WORD(offsetof(Pair, left)) |                          \
                  OSP_MEM_WORD(offsetof(Pair, right)))
