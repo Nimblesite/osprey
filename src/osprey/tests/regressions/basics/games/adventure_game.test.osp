@@ -4,10 +4,8 @@
 
 print("🏰 Welcome to the Mystical Castle Adventure! 🏰\nYou stand before an ancient castle shrouded in mystery...\n")
 
-/// Game state and inventory system
+/// Game state and inventory system (item flags are 0/1 ints)
 let playerHealth = 100
-let hasKey = 0  // 0 = false, 1 = true
-let hasSword = 0
 let goldCoins = 50
 let monstersDefeated = 0
 
@@ -86,24 +84,17 @@ fn hasRoomKey(roomNumber) = match roomNumber {
 print("⚔️  Your Quest Begins! ⚔️\n")
 
 let startRank = rankFor(monstersDefeated)
-print("You are ${startRank.title} (Level ${startRank.level})\nHealth: ${playerHealth} ❤️  | Gold: ${goldCoins} 💰\n")
+print("You are ${startRank.title} (Level ${startRank.level})\nHealth: ${playerHealth} ❤️  | Gold: ${goldCoins} 💰\n\n🚪 Room 1: You enter ${exploreRoom(1)}")
 
 // Explore multiple rooms
-print("🚪 Room 1: You enter ${exploreRoom(1)}")
 let room1 = collectGold(goldCoins, 1)
-print("You find ${room1.found} gold coins! Total: ${room1.total} 💰\n")
-
-print("📚 Room 2: You discover ${exploreRoom(2)}")
+print("You find ${room1.found} gold coins! Total: ${room1.total} 💰\n\n📚 Room 2: You discover ${exploreRoom(2)}")
 let room2 = collectGold(room1.total, 2)
-let foundKey = hasRoomKey(2)
-print("You find ${room2.found} gold coins and acquire a mysterious key! 🗝️\nTotal gold: ${room2.total} 💰\n")
-
-print("⚔️  Room 3: You enter ${exploreRoom(3)}")
+print("You find ${room2.found} gold coins and acquire a mysterious key! 🗝️\nTotal gold: ${room2.total} 💰\n\n⚔️  Room 3: You enter ${exploreRoom(3)}")
 let foundSword = hasRoomWeapon(3)
-print("You acquire a gleaming sword! ⚔️\nYour combat prowess has increased dramatically!\n")
 
 // Epic battle sequence
-print("🐉 BOSS BATTLE: Ancient Dragon Appears! 🐉\nThe ground trembles as a massive dragon blocks your path!\n")
+print("You acquire a gleaming sword! ⚔️\nYour combat prowess has increased dramatically!\n\n🐉 BOSS BATTLE: Ancient Dragon Appears! 🐉\nThe ground trembles as a massive dragon blocks your path!\n")
 
 let enemyType = 3  // Dragon
 let enemyName = getEnemyName(enemyType)
@@ -120,8 +111,7 @@ let playerDamage = match foundSword {
 print("Enemy: ${enemyName}\nEnemy Health: ${enemyHealth} ❤️\nYour attack power: ${playerDamage} ⚔️\n")
 
 /// Battle calculation
-let totalDamageNeeded = enemyHealth
-let attacksNeeded = safeDiv(totalDamageNeeded, playerDamage)
+let attacksNeeded = safeDiv(enemyHealth, playerDamage)
 
 print("⚡ BATTLE COMMENCES! ⚡\nYou need ${attacksNeeded} successful attacks to defeat the ${enemyName}!\n")
 
@@ -136,9 +126,7 @@ fn battleRound(banner, health) = {
 let remainingHealth1 = battleRound("🥊 Round 1: You strike for", enemyHealth)
 let remainingHealth2 = battleRound("🥊 Round 2: Another powerful blow for", remainingHealth1)
 
-print("🥊 FINAL ROUND: You deliver the finishing blow!")
-let finalDamage = remainingHealth2
-print("Critical hit for ${finalDamage} damage!\n")
+print("🥊 FINAL ROUND: You deliver the finishing blow!\nCritical hit for ${remainingHealth2} damage!\n")
 
 /// Victory and level progression
 let newMonstersDefeated = safeAdd(monstersDefeated, 1)
@@ -146,17 +134,13 @@ let newRank = rankFor(newMonstersDefeated)
 let victoryGold = 200
 let finalGold = safeAdd(room2.total, victoryGold)
 
-print("🎉 VICTORY! 🎉\nThe ${enemyName} has been defeated!\nYou gain ${victoryGold} gold coins as reward!\nTotal gold: ${finalGold} 💰\n")
-
-print("📈 LEVEL UP! 📈\nPrevious: ${startRank.title} (Level ${startRank.level})\nNew: ${newRank.title} (Level ${newRank.level})\n")
+print("🎉 VICTORY! 🎉\nThe ${enemyName} has been defeated!\nYou gain ${victoryGold} gold coins as reward!\nTotal gold: ${finalGold} 💰\n\n📈 LEVEL UP! 📈\nPrevious: ${startRank.title} (Level ${startRank.level})\nNew: ${newRank.title} (Level ${newRank.level})\n\n🏆 Room 4: You enter ${exploreRoom(4)}")
 
 // Final treasure room
-print("🏆 Room 4: You enter ${exploreRoom(4)}")
 let treasure = collectGold(finalGold, 4)
-print("You discover the legendary treasure chest!\nInside: ${treasure.found} gold coins! 💎\nYour final wealth: ${treasure.total} 💰\n")
 
 // Epic conclusion
-print("🎭 QUEST COMPLETE! 🎭\nCongratulations, ${newRank.title}!\nYou have conquered the Mystical Castle!\nFinal Stats:\n  - Level: ${newRank.level}\n  - Monsters Defeated: ${newMonstersDefeated}\n  - Gold Collected: ${treasure.total} 💰\n  - Artifacts: Sword ⚔️ & Key 🗝️\n\n🌟 Your legend will be remembered forever! 🌟\nThanks for playing the Osprey Adventure Game!")
+print("You discover the legendary treasure chest!\nInside: ${treasure.found} gold coins! 💎\nYour final wealth: ${treasure.total} 💰\n\n🎭 QUEST COMPLETE! 🎭\nCongratulations, ${newRank.title}!\nYou have conquered the Mystical Castle!\nFinal Stats:\n  - Level: ${newRank.level}\n  - Monsters Defeated: ${newMonstersDefeated}\n  - Gold Collected: ${treasure.total} 💰\n  - Artifacts: Sword ⚔️ & Key 🗝️\n\n🌟 Your legend will be remembered forever! 🌟\nThanks for playing the Osprey Adventure Game!")
 
 /// Validates the quest state the narrative computed and every helper's branch table.
 fn adventureGameCase() = {
