@@ -38,6 +38,22 @@ pub(crate) fn take_source(cg: &mut Codegen, source: Value) -> Source {
     }
 }
 
+/// `source` is about to give a list that holds some of its elements, in nodes
+/// of its own: `elem` is how those elements are spelled, when known. Elements
+/// that are plain numbers have no owner, so nothing is shared; any other
+/// element would have two owners while the source lives, so the source is
+/// taken as in [`take_source`].
+pub(crate) fn take_element_source(cg: &mut Codegen, source: &Value, elem: Option<&str>) -> Source {
+    let counted = elem.is_none_or(|elem| crate::llty::elem_of_spelling(elem).0.is_managed_ptr());
+    if counted {
+        return take_source(cg, source.clone());
+    }
+    Source {
+        value: source.clone(),
+        taken: false,
+    }
+}
+
 /// `literal` is about to be copied into the runtime layout: under ownership a
 /// literal the statement made gives its reference to the copy, so each element
 /// has one owner again before anything is derived from the copy. A literal

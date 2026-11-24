@@ -205,4 +205,24 @@ theorem compiledPairQueue (left right top cap : Nat) (room : top + 1 < cap) :
     some [(top * 8, left), (slot, value)]) = _
   rw [second]
   rfl
+def unsignedShift (value shift : Nat) : Option Nat :=
+  if value * 2^shift < 2^64 then some (value * 2^shift) else none
+
+def emittedGrowth (capacity : Nat) : Option Nat :=
+-- GROWTH BYTES
+
+theorem compiledGrowthBytes (capacity : Nat) :
+    emittedGrowth capacity = some (if capacity = 0 then 256 * 8 else
+      if capacity * 16 < 2^64 then capacity * 16 else 0) := by
+  by_cases empty : capacity = 0
+  · subst capacity
+    rfl
+  · by_cases fits : capacity * 16 < 2^64
+    · have bound : ¬ capacity > 1152921504606846975 := by omega
+      unfold emittedGrowth unsignedShift
+      rw [if_neg bound, if_neg empty, if_pos fits, if_neg empty, if_pos fits]
+    · have bound : capacity > 1152921504606846975 := by omega
+      unfold emittedGrowth
+      rw [if_pos bound, if_neg empty, if_neg fits]
+
 end OwnershipLowering

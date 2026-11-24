@@ -99,3 +99,26 @@ export function worklistPush(ir) {
   const [equal, different] = cmp[2] === 'eq' ? branch.slice(2) : branch.slice(2).reverse()
   return '  if ' + regs.get(cmp[3]) + ' = ' + regs.get(cmp[4]) + ' then ' + path(equal) + ' else ' + path(different)
 }
+
+// The unchecked arm of an LLVM select may produce poison. Keep it as none and
+// select the resulting Option so overflow matters only on the chosen arm.
+export function growthBytes(ir) {
+  const fn = /^define [^\n@]*i64 @proof_growth_bytes\(i64 noundef (%[\w.]+)\)[^\n]*\{\nentry:\n([\s\S]*?)^\}/m.exec(ir)
+  if (!fn) throw Error('missing native worklist growth calculation')
+  const numbers = new Map([[fn[1], 'some capacity']]), tests = new Map()
+  const number = val => /^\d+$/.test(val) ? 'some ' + val : numbers.get(val)
+  const lines = fn[2].trim().split('\n').map(line => line.trim())
+  const ret = /^ret i64 (%[\w.]+)$/.exec(lines.pop())
+  for (const line of lines) {
+    const cmp = /^(%[\w.]+) = icmp (eq|ugt) i64 (%[\w.]+), (\d+)$/.exec(line)
+    const shift = /^(%[\w.]+) = shl nuw i64 (%[\w.]+), (\d+)$/.exec(line)
+    const sel = /^(%[\w.]+) = select i1 (%[\w.]+), i64 ([%\w.]+), i64 ([%\w.]+)$/.exec(line)
+    if (cmp && cmp[3] === fn[1]) tests.set(cmp[1], 'capacity ' + (cmp[2] === 'eq' ? '=' : '>') + ' ' + cmp[4])
+    else if (shift && shift[2] === fn[1] && Number(shift[3]) < 64) numbers.set(shift[1], 'unsignedShift capacity ' + shift[3])
+    else if (sel && tests.has(sel[2]) && number(sel[3]) && number(sel[4]))
+      numbers.set(sel[1], '(if ' + tests.get(sel[2]) + ' then ' + number(sel[3]) + ' else ' + number(sel[4]) + ')')
+    else throw Error('unsupported growth instruction: ' + line)
+  }
+  if (!ret || !numbers.has(ret[1])) throw Error('unsupported growth return')
+  return '  ' + numbers.get(ret[1])
+}

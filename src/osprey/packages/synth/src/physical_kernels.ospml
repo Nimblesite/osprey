@@ -18,11 +18,12 @@ module PhysicalKernels
                 Success every => Exciters::configure (ExciterConfig(strength = strength, duration = frames, interval = every, excitation = shape))
 
     excitationSettings (snapshot, identity) =
-        use strength <- RenderInputs::setting (snapshot, identity, "strength")
-        use duration <- RenderInputs::setting (snapshot, identity, "duration")
-        use interval <- RenderInputs::setting (snapshot, identity, "interval")
-        use kind <- RenderInputs::setting (snapshot, identity, "excitation")
-        use colour <- RenderInputs::setting (snapshot, identity, "colour")
+        read (name, continue) = RenderInputs::setting (snapshot, identity, name, continue)
+        use strength <- read "strength"
+        use duration <- read "duration"
+        use interval <- read "interval"
+        use kind <- read "excitation"
+        use colour <- read "colour"
         exciterConfig (strength, duration, interval, kind, colour)
 
     (** Resolve the burst controls once when there are no automation events in this block. *)
@@ -73,12 +74,13 @@ module PhysicalKernels
             Success whole => Success(value = shape (modes, whole))
 
     modalSettings (rate, snapshot, identity) =
-        use selector <- RenderInputs::setting (snapshot, identity, "body")
-        use count <- RenderInputs::setting (snapshot, identity, "modes")
-        use frequency <- RenderInputs::setting (snapshot, identity, "frequency")
-        use decay <- RenderInputs::setting (snapshot, identity, "decay")
-        use brightness <- RenderInputs::setting (snapshot, identity, "brightness")
-        use strike <- RenderInputs::setting (snapshot, identity, "strike")
+        read (name, continue) = RenderInputs::setting (snapshot, identity, name, continue)
+        use selector <- read "body"
+        use count <- read "modes"
+        use frequency <- read "frequency"
+        use decay <- read "decay"
+        use brightness <- read "brightness"
+        use strike <- read "strike"
         use modes, whole <- bodied (selector, count)
         ModalConfig(sampleRate = rate, frequency = frequency, decay = decay, brightness = brightness, strike = strike, count = whole, modes = modes)
 
@@ -92,11 +94,12 @@ module PhysicalKernels
         _ => Outcomes::carried (modalSettings (rate, snapshot, held.identity), \config => modal (frame, held, input, config))
 
     guideSettings (rate, snapshot, identity, capacity) =
-        use frequency <- RenderInputs::setting (snapshot, identity, "frequency")
-        use decay <- RenderInputs::setting (snapshot, identity, "decay")
-        use brightness <- RenderInputs::setting (snapshot, identity, "brightness")
-        use dispersion <- RenderInputs::setting (snapshot, identity, "dispersion")
-        use pickup <- RenderInputs::setting (snapshot, identity, "pickup")
+        read (name, continue) = RenderInputs::setting (snapshot, identity, name, continue)
+        use frequency <- read "frequency"
+        use decay <- read "decay"
+        use brightness <- read "brightness"
+        use dispersion <- read "dispersion"
+        use pickup <- read "pickup"
         Waveguides::configure (WaveguideConfig(sampleRate = rate, frequency = frequency, decay = decay, brightness = brightness, dispersion = dispersion, pickup = pickup, capacity = capacity))
 
     (** Prepare physical string tuning for a fixed snapshot. *)

@@ -7,7 +7,7 @@
 //! instead: the caller gives its reference up at the call, and the function
 //! returns it or releases it.
 use super::{Codegen, Entry, Need};
-use crate::llty::Value;
+use crate::llty::{LType, Value};
 use osprey_ast::{AstNode, Expr, Program, Stmt};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -77,6 +77,33 @@ fn stores(node: AstNode<'_>, name: &str) -> bool {
     let mut below = false;
     node.for_each_child(|child| below = below || stores(child, name));
     here || below
+}
+
+/// Whether `e` is the binding `name` or a field read out of it.
+fn rooted(e: &Expr, name: &str) -> bool {
+    match e {
+        Expr::FieldAccess { target, .. } => rooted(target, name),
+        _ => is_named(e, name),
+    }
+}
+
+/// Whether `e` can evaluate to a part of the binding `name`: a field of it, or
+/// what a pattern binds out of it. A function that returns part of a parameter
+/// takes that part out of it, so it owns the parameter and frees the rest
+/// [MEM-OWNERSHIP-STATIC-PATHS].
+fn yields_part(e: &Expr, name: &str) -> bool {
+    match e {
+        Expr::FieldAccess { target, .. } => rooted(target, name),
+        Expr::Block {
+            value: Some(tail), ..
+        } => yields_part(tail, name),
+        Expr::Match { value, arms } => arms.iter().any(|arm| {
+            let bound = osprey_ast::freevars::pattern_bindings(&arm.pattern);
+            let of_bound = |part: &String| yields(&arm.body, part) || yields_part(&arm.body, part);
+            (rooted(value, name) && bound.iter().any(of_bound)) || yields_part(&arm.body, name)
+        }),
+        _ => false,
+    }
 }
 
 /// Whether anything under `node` binds `name` again, hiding the parameter.
@@ -162,10 +189,14 @@ pub(crate) fn infer(cg: &mut Codegen, program: &Program) {
         if name == "main" || values.contains(name) {
             continue;
         }
+        // A part that is a plain number is copied out, not taken.
+        let managed = cg.fn_ret_ltype(name).is_some_and(LType::is_managed_ptr);
         let owned: Vec<bool> = parameters
             .iter()
             .map(|p| {
-                (yields(body, &p.name) || stores(AstNode::Expression(body), &p.name))
+                (yields(body, &p.name)
+                    || (managed && yields_part(body, &p.name))
+                    || stores(AstNode::Expression(body), &p.name))
                     && !rebinds(AstNode::Expression(body), &p.name)
             })
             .collect();

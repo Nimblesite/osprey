@@ -10,10 +10,6 @@ module Player
 
     songPath request = "${request.folder}/song.wav"
 
-    least (one, other) = match one < other
-        true => one
-        false => other
-
     stored (held, name, stem, hex) = match writeFile "${stem}.hex" hex
         Error why => held(fault = why)
         Success _ => match Shell::ran (120, "xxd -r -p ${Shell::quoted "${stem}.hex"} ${Shell::quoted "${stem}.wav"} && rm ${Shell::quoted "${stem}.hex"}")
@@ -22,7 +18,7 @@ module Player
 
     written (request, arrangement, mix, held, index) = match held.fault == ""
         false => held
-        true => match PatchVoices::told (synth::WaveFiles::interleaved (arrangement.sampleRate, 2, Arrangements::interleaved (mix, satMul index chunk, least (satMul (satAdd index 1) chunk, length mix.left))))
+        true => match PatchVoices::told (synth::WaveFiles::interleaved (arrangement.sampleRate, 2, Arrangements::interleaved (mix, satMul index chunk, min (satMul (satAdd index 1) chunk) (length mix.left))))
             Error why => held(fault = why)
             Success hex => stored (held, "part-${index}", "${request.folder}/part-${index}", hex)
 
@@ -73,7 +69,7 @@ module Player
     kept (take, played) = Take(playing = played.playing, lefts = listPrepend take.lefts played.left, rights = listPrepend take.rights played.right)
 
     taken (arrangement, count, outcome) = synth::Outcomes::carried (outcome, \take =>
-        synth::Outcomes::carried (Playback::step (arrangement, take.playing, least (Playback::block, satSub count take.playing.cursor)), \played => Success(value = kept (take, reported (arrangement, count, played)))))
+        synth::Outcomes::carried (Playback::step (arrangement, take.playing, min Playback::block (satSub count take.playing.cursor)), \played => Success(value = kept (take, reported (arrangement, count, played)))))
 
     // [DAW-RENDER-PLAY] The whole graph played once, block by block, keeping only Master.
     played (arrangement, count) = synth::Outcomes::carried (Playback::start arrangement, \playing =>

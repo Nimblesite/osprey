@@ -497,8 +497,7 @@ grainGraphVariationJourney () =
 // [SYNTH-ADVANCED-GRAINS-DISTRIBUTIONS-GRAPH] Invalid widths, seeds and region starts fail before rendering.
 grainGraphVariationRefusalJourney () =
     node = granularNode ()
-    refusedWith (GrainGraph::prepare (grainSet (node, "variationSeed", 0.0)), "Invalid grain variation seed.")
-    refusedWith (GrainGraph::prepare (grainSet (node, "variationSeed", 2147483647.0)), "Invalid grain variation seed.")
+    forEachList ([0.0, 2147483647.0], \seed => refusedWith (GrainGraph::prepare (grainSet (node, "variationSeed", seed)), "Invalid grain variation seed."))
     succeeds (GrainClouds::prepare ([0.5, -0.5, 0.25, -0.25], 4, synth::PeriodicTiming(period = 4, jitter = 0), 1, 7), \cloud =>
         forEachList ([{ key = "rateSpread", value = 33.0 }, { key = "gainSpread", value = 1.5 }, { key = "panSpread", value = 2.5 }, { key = "positionSpread", value = 4.0 }, { key = "durationSpread", value = 65534.0 }], \c =>
             refusedWith (GrainGraph::block (grainSet (node, c.key, c.value), cloud, 8), "Invalid grain variation center or spread.")))
@@ -508,7 +507,7 @@ grainGraphVariationRefusalJourney () =
         refusedWith (GrainGraph::block (regionNode, cloud, 8), "Grain start positions and spread must stay inside the selected region."))
 
 // One transposition row per resource: the requested note at the graph's 48 kHz rate.
-playbackWants (resource, rows) = forEachList (rows, \held => succeeds (SampleResources::playbackRate (resource, held.note, 48000.0), \speed => near (speed, held.want, 0.000000000001)))
+playbackWants (resources, rows) = forEachList (resources, \resource => forEachList (rows, \held => succeeds (SampleResources::playbackRate (resource, held.note, 48000.0), \speed => near (speed, held.want, 0.000000000001))))
 
 // [SYNTH-SAMPLES-IMPORT] The pure preparation API preserves rate, channels and interleaved PCM and tunes by root.
 // The little-endian RIFF bytes come from the shared builders in wave_journeys.
@@ -540,11 +539,10 @@ grainImportJourney () =
     longWave = synth::WaveSamples(sampleRate = 48000, channels = 1, frames = 64, samples = grainQuiet 64)
     succeeds (SampleResources::fromWave ("short", 60.0, shortWave), \short =>
         succeeds (SampleResources::fromWave ("long", 60.0, longWave), \long =>
-            playbackWants (short, [{ note = 36.0, want = 0.25 }, { note = 48.0, want = 0.5 }, { note = 60.0, want = 1.0 }, { note = 72.0, want = 2.0 }, { note = 84.0, want = 4.0 }])
-            playbackWants (long, [{ note = 36.0, want = 0.25 }, { note = 48.0, want = 0.5 }, { note = 60.0, want = 1.0 }, { note = 72.0, want = 2.0 }, { note = 84.0, want = 4.0 }])))
+            playbackWants ([short, long], [{ note = 36.0, want = 0.25 }, { note = 48.0, want = 0.5 }, { note = 60.0, want = 1.0 }, { note = 72.0, want = 2.0 }, { note = 84.0, want = 4.0 }])))
     // [SYNTH-ADVANCED-GRANULAR] Pitch spans -24..+24 semitones; a 96 kHz source doubles the read increment.
     succeeds (SampleResources::fromWave ("high", 60.0, shortWave(sampleRate = 96000)), \high =>
-        playbackWants (high, [{ note = 36.0, want = 0.5 }, { note = 84.0, want = 8.0 }, { note = 96.0, want = 16.0 }])
+        playbackWants ([high], [{ note = 36.0, want = 0.5 }, { note = 84.0, want = 8.0 }, { note = 96.0, want = 16.0 }])
         refusedAs (SampleResources::playbackRate (high, 97.0, 48000.0), "capacity", "The requested sample transposition exceeds the grain rate limit."))
 
 // [SYNTH-SAMPLES-IMPORT] The granular node takes the resource; its default rate compensates the source rate.

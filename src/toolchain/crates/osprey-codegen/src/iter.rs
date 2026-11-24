@@ -414,7 +414,16 @@ fn list_builder(cg: &mut Codegen, args: &[Expr], filter: bool) -> Result<Value> 
         out_elem = push_built(cg, &bld, mapped, "mapList")?;
         Ok(())
     })?;
-    Ok(seal_built(cg, &bld, out_elem.as_deref()))
+    // What `filterList` keeps has one owner: the source gives way to the result.
+    let source = filter.then(|| {
+        let elem = crate::collections::tagged_elem(&l);
+        crate::arc::versions::take_element_source(cg, &l, elem.as_deref())
+    });
+    let built = seal_built(cg, &bld, out_elem.as_deref());
+    if let Some(source) = source {
+        crate::arc::versions::release_source(cg, &source);
+    }
+    Ok(built)
 }
 
 /// Seal the list under construction and hand it the element type it latched,

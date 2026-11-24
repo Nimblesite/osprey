@@ -64,11 +64,7 @@ module Renderer
 
     nextDelay (plan, outcome, cable) = Outcomes::carried (outcome, \frame => writeDelay (plan, frame, cable.destination, cable.inlet))
 
-    higher (one, other) = match one > other
-        true => one
-        false => other
-
-    meter (previous, value) = Meter(identity = value.identity, peak = higher (previous.peak, abs value.value), energy = previous.energy + value.value * value.value, count = satAdd previous.count 1)
+    meter (previous, value) = Meter(identity = value.identity, peak = max previous.peak (abs value.value), energy = previous.energy + value.value * value.value, count = satAdd previous.count 1)
 
     measured (meters, value) = match Seek::first (meters, \m => m.identity == value.identity)
         Error _ => listAppend meters (Meter(identity = value.identity, peak = abs value.value, energy = value.value * value.value, count = 1))

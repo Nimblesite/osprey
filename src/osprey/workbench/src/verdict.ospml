@@ -1,7 +1,7 @@
 // Implements [WORKBENCH-VERDICT]: steps become one proof term and the kernel
 // of spec 0049 checks it against the statement. The verdict is the kernel's;
 // the goal engine only says which step to underline when the kernel refuses.
-// A proof with an unknown step or an open goal is never sent to the kernel.
+// A proof with an open goal is never sent to the kernel.
 namespace workbench
 
 import proof::Infer
@@ -45,7 +45,6 @@ module Elaborate
 
     stepped (goal, steps, at, step) = match step
         Done => prove (goal, steps, satAdd at 1)
-        Unknown text => Holed at ("`" + text + "` is not a step the workbench knows")
         Assume name formula => assume (goal, steps, at, { name = name, formula = formula })
         Cases name names => cases (goal, steps, at, { name = name, names = names })
         Split => split (goal, steps, at)
@@ -119,12 +118,10 @@ module Verdicts
 
     moved (walk, step) = match walk.outcome
         Stuck _ => walk
-        UnsupportedStep _ _ => walk
         Advanced progress => refused (walk, Goals::apply (progress, step))
 
     refused (walk, outcome) = match outcome
         Stuck _ => Refusal(outcome = outcome, at = satAdd walk.at 1, stuck = walk.at)
-        UnsupportedStep _ _ => walk(outcome = outcome, at = satAdd walk.at 1)
         Advanced _ => walk(outcome = outcome, at = satAdd walk.at 1)
 
     // Steps after the proof closes may only be `Done`.

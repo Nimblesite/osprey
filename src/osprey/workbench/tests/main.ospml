@@ -40,7 +40,7 @@ suite () = [
     unitCase "text without an abbreviation is unchanged and expanding twice changes nothing" NotationCases::total,
     unitCase "the palette lists the rows that start with what was typed" NotationCases::palette,
 
-    unitCase "every sentence form reads to the same formula as its symbols" FormulaCases::sentences,
+    unitCase "no English sentence reads as the formula it describes" FormulaCases::englishRefused,
     resultCase "precedence and grouping read as the formula table says" FormulaCases::precedence,
     unitCase "a malformed formula names the column and what was expected" FormulaCases::faults,
     resultCase "formula equality is structural" FormulaCases::equality,

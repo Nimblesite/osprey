@@ -1,5 +1,5 @@
-// Implements [WORKBENCH-FORMULA]: propositional formulas read from symbols and
-// sentences in one grammar, written back in Unicode with minimal parentheses.
+// Implements [WORKBENCH-FORMULA] and [WORKBENCH-NO-ENGLISH]: propositional formulas
+// read from mathematical notation only, written back in Unicode with minimal parentheses.
 // A `Result`'s error channel stores only a message ([TYPE-RECORD-RESULT] phantom `E`),
 // so a reading that fails is the `Faulted` variant carrying a typed `Fault`.
 namespace workbench
@@ -15,8 +15,8 @@ type Fault =
 (** A formula read from text, or the fault that stopped the reading. *)
 type Reading = Read Formula | Faulted Fault
 
-(** What a token is: a name, a reserved word of the sentence forms, a symbol, a character no formula holds, or the end. *)
-type Kind = Name | Word | Mark | Stray | End
+(** What a token is: a name, a symbol, a character no formula holds, or the end. *)
+type Kind = Name | Mark | Stray | End
 
 (** One token with its 1-based column, counted in characters. *)
 type Token =
@@ -46,8 +46,6 @@ type Level =
 
 (** Splits text into the tokens of [WORKBENCH-FORMULA]; total, ending with an `End` token. *)
 module Lexer
-    reserved = ["and", "or", "not", "if", "then", "iff", "implies", "only", "true", "false", "for", "all", "every", "it", "is", "the", "case", "that"]
-
     marks = ["∧", "∨", "→", "↔", "¬", "∀", "⊤", "⊥", "(", ")", ","]
 
     letter code = (code >= 97 && code <= 122) || (code >= 65 && code <= 90) || (code >= 48 && code <= 57) || code == 95 || code == 39
@@ -83,10 +81,6 @@ module Lexer
         true => nameEnd (text, after (text, at), satAdd count 1)
         false => Run(stop = at, count = count)
 
-    word text = match listContains (reserved, toLowerCase text)
-        true => Token(kind = Word, text = toLowerCase text, column = 0)
-        false => Token(kind = Name, text = text, column = 0)
-
     (** The tokens of `text`, the last one `End` at the column after the text. *)
     export tokens text = scan (text, 0, 1, [])
 
@@ -110,22 +104,21 @@ module Lexer
 
     nameToken (text, at, column, done) =
         run = nameEnd (text, at, 0)
-        found = word (cut (text, at, run.stop))
-        scan (text, run.stop, satAdd column run.count, listPrepend (done, found(column = column)))
+        scan (text, run.stop, satAdd column run.count, listPrepend (done, Token(kind = Name, text = cut (text, at, run.stop), column = column)))
 
 (** Reads, writes and compares formulas ([WORKBENCH-FORMULA]). *)
 module Formulas
     // Loosest first: `↔`, `→` (right associative), `∨`, `∧`; `¬` and the atoms are below the table.
     levels () = [
-        Level(spellings = [["↔"], ["iff"], ["if", "and", "only", "if"]], connective = Biconditional, grouping = Leftward),
-        Level(spellings = [["→"], ["implies"]], connective = Conditional, grouping = Rightward),
-        Level(spellings = [["∨"], ["or"]], connective = Disjunction, grouping = Leftward),
-        Level(spellings = [["∧"], ["and"]], connective = Conjunction, grouping = Leftward),
+        Level(spellings = [["↔"]], connective = Biconditional, grouping = Leftward),
+        Level(spellings = [["→"]], connective = Conditional, grouping = Rightward),
+        Level(spellings = [["∨"]], connective = Disjunction, grouping = Leftward),
+        Level(spellings = [["∧"]], connective = Conjunction, grouping = Leftward),
     ]
 
-    negations = [["¬"], ["not"], ["it", "is", "not", "the", "case", "that"]]
+    negations = [["¬"]]
 
-    binders = [["∀"], ["for", "all"], ["for", "every"]]
+    binders = [["∀"]]
 
     (** The token at `at`, or the closing `End` token past the last one. *)
     export token (tokens, at) = listGet tokens at ?: (listGet tokens (satSub (length tokens) 1) ?: Token(kind = End, text = "", column = 1))
@@ -193,12 +186,9 @@ module Formulas
             _ => keyword (tokens, at, here.text)
 
     keyword (tokens, at, text) = match text
-        "true" => Parsed Top (satAdd at 1)
         "⊤" => Parsed Top (satAdd at 1)
-        "false" => Parsed Bot (satAdd at 1)
         "⊥" => Parsed Bot (satAdd at 1)
         "(" => grouped (tokens, at)
-        "if" => conditional (tokens, at)
         _ => quantified (tokens, at)
 
     grouped (tokens, at) = match climb (tokens, satAdd at 1, 0)
@@ -206,16 +196,6 @@ module Formulas
         Parsed inner next => match (token (tokens, next)).kind == Mark && (token (tokens, next)).text == ")"
             true => Parsed inner (satAdd next 1)
             false => fault (tokens, next, "`)`")
-
-    conditional (tokens, at) = match climb (tokens, satAdd at 1, 0)
-        Failed problem => Failed problem
-        Parsed condition next => match phrase (tokens, next, [["then"]]) == 1
-            true => consequence (condition, climb (tokens, satAdd next 1, 0))
-            false => fault (tokens, next, "`then` after the condition")
-
-    consequence (condition, parsed) = match parsed
-        Failed problem => Failed problem
-        Parsed result next => Parsed (Imp condition result) next
 
     quantified (tokens, at) =
         width = phrase (tokens, at, binders)
@@ -248,7 +228,7 @@ module Formulas
             Stray => Faulted (Fault(column = (token (tokens, next)).column, expected = "a connective in place of `" + (token (tokens, next)).text + "`"))
             _ => Faulted (Fault(column = (token (tokens, next)).column, expected = "the end of the formula or a connective before `" + (token (tokens, next)).text + "`"))
 
-    (** Reads a formula written in symbols, sentences or both; `p ∧ q → q ∧ p` and `if p and q then q and p` are the same value. *)
+    (** Reads a formula written in mathematical notation, `p ∧ q → q ∧ p`; English is never read ([WORKBENCH-NO-ENGLISH]). *)
     export read text =
         tokens = Lexer::tokens text
         whole (tokens, climb (tokens, 0, 0))
@@ -330,3 +310,19 @@ module Formulas
 
     (** Whether two propositions are the same once negation heads are expanded; `equal` stays syntactic. *)
     export equivalent (first, second) = equal (comparable first, comparable second)
+
+    (** The distinct atoms of `formula`, in first-appearance order ([WORKBENCH-FORMULA]). *)
+    export atoms formula = free (formula, [], [])
+
+    // The distinct atoms of `formula` that `bound` does not name, first appearance first.
+    free (formula, bound, found) = match formula
+        Var name => match listContains (bound, name)
+            true => found
+            false => listAppend (found, name)
+        Not inner => free (inner, bound, found)
+        And left right => free (right, bound, free (left, bound, found))
+        Or left right => free (right, bound, free (left, bound, found))
+        Imp left right => free (right, bound, free (left, bound, found))
+        Iff left right => free (right, bound, free (left, bound, found))
+        Forall names inner => free (inner, foldList (names, bound, \(all, name) => listAppend (all, name)), found)
+        _ => found

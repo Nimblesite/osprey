@@ -32,10 +32,15 @@ static uintptr_t *g_wl = NULL;
 static size_t g_wl_cap = 0;
 static size_t g_wl_top = 0;
 
+static size_t arc_wl_growth_bytes(size_t capacity) {
+  if (capacity > SIZE_MAX / (2 * sizeof(uintptr_t))) return 0;
+  return (capacity ? capacity * 2 : 256) * sizeof(uintptr_t);
+}
+
 static void arc_wl_push(uintptr_t body) {
   if (g_wl_top == g_wl_cap) {
-    size_t cap = g_wl_cap ? g_wl_cap * 2 : 256;
-    uintptr_t *wl = (uintptr_t *)realloc(g_wl, cap * sizeof(uintptr_t));
+    size_t bytes = arc_wl_growth_bytes(g_wl_cap);
+    uintptr_t *wl = bytes ? realloc(g_wl, bytes) : NULL;
     if (!wl) {
       // Broken-code quarantine: losing this body would silently abandon its
       // owners.
@@ -43,7 +48,7 @@ static void arc_wl_push(uintptr_t body) {
       abort();
     }
     g_wl = wl;
-    g_wl_cap = cap;
+    g_wl_cap = bytes / sizeof(uintptr_t);
   }
   g_wl[g_wl_top++] = body;
 }

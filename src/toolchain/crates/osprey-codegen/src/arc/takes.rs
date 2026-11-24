@@ -46,24 +46,37 @@ pub(crate) fn note_field(cg: &mut Codegen, loaded: &str, container: &str, slot: 
 /// Whether nothing reads the binding that names `operand` again: it has no
 /// name, or the statement being lowered holds its one remaining read.
 fn at_last_read(cg: &Codegen, operand: &str) -> bool {
-    cg.name_of(operand).is_none_or(|name| {
-        cg.arc.movable.names_it(&name) && super::moves::other_use(cg, &name).is_none()
-    })
+    cg.name_of(operand).is_none_or(|name| last_read(cg, &name))
 }
 
-/// Whether the ledger holds `operand` as a value this function made, never
-/// named and owns outright, in the region that runs once per pass through here:
-/// no loop body has opened since.
-fn owned_temporary(cg: &Codegen, operand: &str) -> bool {
+/// Whether nothing reads the binding `name` again: the statement being lowered
+/// holds its one remaining read.
+fn last_read(cg: &Codegen, name: &str) -> bool {
+    cg.arc.movable.names_it(name) && super::moves::other_use(cg, name).is_none()
+}
+
+/// Whether the ledger holds `operand` as a value this function owns outright
+/// and nothing reads again. One it never named is in the region that runs once
+/// per pass through here: no loop body has opened since. One it named, a
+/// binding or an owned parameter, is at its last read.
+fn owned_at_last_read(cg: &Codegen, operand: &str) -> bool {
     let scope = cg
         .arc
         .kinds
         .iter()
         .rposition(|kind| *kind == FrameKind::Scope);
-    let frames = cg.arc.frames.iter().skip(scope.unwrap_or(0));
-    frames
-        .flatten()
-        .any(|e| e.operand == operand && e.name.is_none() && !e.lent)
+    let inner = scope.unwrap_or(0);
+    let frames = cg.arc.frames.iter().enumerate();
+    frames.into_iter().any(|(depth, frame)| {
+        frame.iter().any(|e| {
+            e.operand == operand
+                && !e.lent
+                && match &e.name {
+                    Some(name) => last_read(cg, name),
+                    None => depth >= inner,
+                }
+        })
+    })
 }
 
 /// The read that `operand` came from, when the field can be taken: every value
@@ -81,7 +94,16 @@ fn takeable(cg: &Codegen, operand: &str) -> Option<(String, FieldRead)> {
         }
         container = outer.container.as_str();
     }
-    owned_temporary(cg, container).then_some((key, read))
+    owned_at_last_read(cg, container).then_some((key, read))
+}
+
+/// [`take_field`] for the value a function returns. Its body's tail is already
+/// lowered, so what that tail may move is put back for the question.
+pub(super) fn take_returned(cg: &mut Codegen, operand: &str) -> bool {
+    std::mem::swap(&mut cg.arc.movable, &mut cg.arc.ended);
+    let taken = take_field(cg, operand);
+    std::mem::swap(&mut cg.arc.movable, &mut cg.arc.ended);
+    taken
 }
 
 /// Whether [`take_field`] would succeed for `operand`.

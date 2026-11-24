@@ -81,6 +81,8 @@ pub(crate) struct ArcLedger {
     movable: moves::Movable,
     /// The same for each statement enclosing that one, outermost first.
     enclosing: Vec<moves::Movable>,
+    /// The statement lowered last: a function body's tail, at its return.
+    ended: moves::Movable,
     /// Owned parameters still waiting for the body block that scopes them.
     unscoped_parameters: Vec<String>,
     /// Whether the closure cell being built lends its captures.
@@ -109,6 +111,7 @@ impl ArcLedger {
             cond_floors: Vec::new(),
             movable: moves::Movable::default(),
             enclosing: Vec::new(),
+            ended: moves::Movable::default(),
             unscoped_parameters: Vec::new(),
             lending: false,
             lent_capture: false,
@@ -449,7 +452,7 @@ pub(crate) fn epilogue(cg: &mut Codegen, ret: Option<&Value>) {
     // dup-it-then-drop-it — the +1 the caller receives is the one the function
     // already holds. Saves a retain/release pair on every value-returning call.
     if let Some(v) =
-        ret.filter(|v| !take_owner_anywhere(cg, v) && !takes::take_field(cg, &v.operand))
+        ret.filter(|v| !take_owner_anywhere(cg, v) && !takes::take_returned(cg, &v.operand))
     {
         if managed(cg, v) {
             second_owner(cg, &v.operand, None, Need::Returned);

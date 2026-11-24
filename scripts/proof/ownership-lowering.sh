@@ -30,7 +30,7 @@ lake build lean4export
 lake env lean -DwarningAsError=true --root="$out" -o "$out/OwnershipLowering.olean" "$out/OwnershipLowering.lean"
 exporter=$(lake env which lean4export)
 lean_path=$(lake env printenv LEAN_PATH)
-for name in compiledGrow compiledGrowWhen runtimeRootOrigins renderedStringOrigin stringResultOrigins compiledFreeNull compiledPairFields compiledChildDrop compiledWorklistPush compiledPairQueue; do
+for name in compiledGrow compiledGrowWhen runtimeRootOrigins renderedStringOrigin stringResultOrigins compiledFreeNull compiledPairFields compiledChildDrop compiledWorklistPush compiledPairQueue compiledGrowthBytes; do
   theorem="OwnershipLowering.$name"
   LEAN_PATH="$out:$lean_path" "$exporter" OwnershipLowering -- "$theorem" > "$out/$name.ndjson"
   for backend in gc arc wasm; do
@@ -149,3 +149,9 @@ reflect "$out/ownership.ll" "$out/mutations/wrong-worklist-slot.lean" \
 reject wrong-worklist-slot compiledWorklistPush
 
 reject duplicate-child compiledPairQueue
+
+sed '/^define .*@proof_growth_bytes(/,/^}/s/1152921504606846975/1152921504606846974/' \
+  "$out/pair-walk.ll" > "$out/mutations/small-growth-limit.ll"
+reflect "$out/ownership.ll" "$out/mutations/small-growth-limit.lean" \
+  "$out/runtime.ll" "$out/strings.ll" "$out/heap.ll" "$out/mutations/small-growth-limit.ll"
+reject small-growth-limit compiledGrowthBytes

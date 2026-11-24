@@ -122,6 +122,12 @@ static void exhaust_registry(void) {
   (void)osp_alloc_tagged((int64_t)REFUSED_BYTES, OSP_MEM_RAW);
 }
 static void t_allocator_refusal(void) {
+  const size_t stride = 2 * sizeof(uintptr_t), limit = SIZE_MAX / stride;
+  CHECK(arc_wl_growth_bytes(0) == 256 * sizeof(uintptr_t));
+  CHECK(arc_wl_growth_bytes(limit) == limit * stride);
+  CHECK(arc_wl_growth_bytes(limit + 1) == 0);
+  CHECK(arc_wl_growth_bytes(limit + 2) == 0);
+  CHECK(arc_wl_growth_bytes(SIZE_MAX) == 0);
   size_t live = osp_arc_live_objects();
   g_refuse_malloc = 1;
   CHECK(osp_alloc((int64_t)REFUSED_BYTES) == NULL);

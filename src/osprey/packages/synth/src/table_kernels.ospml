@@ -53,16 +53,17 @@ module TableKernels
         true => Outcomes::carried (configured, \config => Success(value = PartialSettings(interval = interval, config = config)))
 
     settings (rate, snapshot, identity) =
-        use frequency <- RenderInputs::setting (snapshot, identity, "frequency")
-        use count <- RenderInputs::setting (snapshot, identity, "partials")
-        use tilt <- RenderInputs::setting (snapshot, identity, "tilt")
-        use parity <- RenderInputs::setting (snapshot, identity, "parity")
-        use decay <- RenderInputs::setting (snapshot, identity, "decay")
-        use damping <- RenderInputs::setting (snapshot, identity, "damping")
-        use amplitude <- RenderInputs::setting (snapshot, identity, "amplitude")
-        use inharmonicity <- RenderInputs::setting (snapshot, identity, "inharmonicity")
-        use stretch <- RenderInputs::setting (snapshot, identity, "stretch")
-        use interval <- RenderInputs::setting (snapshot, identity, "interval")
+        read (name, continue) = RenderInputs::setting (snapshot, identity, name, continue)
+        use frequency <- read "frequency"
+        use count <- read "partials"
+        use tilt <- read "tilt"
+        use parity <- read "parity"
+        use decay <- read "decay"
+        use damping <- read "damping"
+        use amplitude <- read "amplitude"
+        use inharmonicity <- read "inharmonicity"
+        use stretch <- read "stretch"
+        use interval <- read "interval"
         bank (interval, shaped (rate, frequency, count, tilt, parity, decay, damping, amplitude, inharmonicity, stretch))
 
     (** Prepare the additive bank when the block uses a fixed control snapshot. *)

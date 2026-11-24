@@ -5,15 +5,20 @@ use super::{managed, mark_pure_scalar, own, Codegen, Entry, Value};
 pub(crate) fn borrowed_phi_arms(cg: &Codegen, incoming: &[Value], mark: usize) -> Vec<bool> {
     // When every arm that is not a new value can take its field out of an
     // owned temporary, the join owns what it yields [MEM-OWNERSHIP-STATIC-PATHS].
-    let taken = |value: &Value| super::takes::can_take_field(cg, &value.operand);
-    let every_arm_gives = incoming
-        .iter()
-        .all(|value| arm_owned(cg, value, mark) || taken(value));
-    let promote = incoming.iter().all(|value| managed(cg, value))
-        && (incoming.iter().any(|value| arm_owned(cg, value, mark)) || every_arm_gives);
+    // An arm that yields a literal yields no reference and needs no owner.
+    let counted = |value: &&Value| value.operand.starts_with('%') && !cg.is_rodata(&value.operand);
+    let gives = |value: &Value| {
+        arm_owned(cg, value, mark) || super::takes::can_take_field(cg, &value.operand)
+    };
+    let every_arm_gives = cg.ownership.on
+        && incoming.iter().any(|value| counted(&value))
+        && incoming.iter().filter(counted).all(|value| managed(cg, value) && gives(value));
+    let promote = every_arm_gives
+        || (incoming.iter().all(|value| managed(cg, value))
+            && incoming.iter().any(|value| arm_owned(cg, value, mark)));
     incoming
         .iter()
-        .map(|value| promote && !arm_owned(cg, value, mark))
+        .map(|value| promote && counted(&value) && !arm_owned(cg, value, mark))
         .collect()
 }
 

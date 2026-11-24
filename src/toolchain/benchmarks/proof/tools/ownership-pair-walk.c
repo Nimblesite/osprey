@@ -17,3 +17,6 @@ void proof_pair_drop(void *body) {
   arc_drop_masked(body, sizeof(Pair), OSP_ARC_MASK_BITS(PAIR_LAYOUT),
                   OSP_ARC_KIND(PAIR_LAYOUT) == OSP_MEM_MASK_DIRECT);
 }
+
+// Expose the production size calculation to Clang for every native capacity.
+size_t proof_growth_bytes(size_t capacity) { return arc_wl_growth_bytes(capacity); }

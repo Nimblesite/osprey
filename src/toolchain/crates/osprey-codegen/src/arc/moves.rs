@@ -149,9 +149,11 @@ fn place_reads(cg: &mut Codegen, read: &BTreeSet<String>, at: Option<Position>) 
     }
 }
 
-/// The statement is lowered: the enclosing one resumes.
+/// The statement is lowered: the enclosing one resumes. What it could move is
+/// kept for the function's return, which follows its body's tail.
 pub(crate) fn end(cg: &mut Codegen) {
-    cg.arc.movable = cg.arc.enclosing.pop().unwrap_or_default();
+    let outer = cg.arc.enclosing.pop().unwrap_or_default();
+    cg.arc.ended = std::mem::replace(&mut cg.arc.movable, outer);
 }
 
 impl Movable {

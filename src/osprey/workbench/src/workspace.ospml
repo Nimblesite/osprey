@@ -1,4 +1,4 @@
-// Implements [WORKBENCH-STORE]: portable working contains source and title, never a cached proof verdict.
+// Implements [WORKBENCH-STORE] and [WORKBENCH-LIBRARY]: the checked proof library, never a cached proof verdict.
 namespace workbench
 
 import proof::CachedImports
@@ -13,64 +13,11 @@ import ui::Doc
 import ui::Requests
 import ui::Runtime
 
-(** Explicit save, open and source export over the same bounded host capabilities on every platform. *)
+(** The operation notice every proof-library action reports through. *)
 module Workspaces
     export notice (bench, text, bad) = bench(layout = messaged (bench.layout, text, bad))
 
     messaged (layout, text, bad) = layout(noticeText = text, noticeBad = bad)
-
-    export encode bench = jsonEncode (JsonObject [Doc::num ("version", 2), Doc::str ("title", bench.draft.draftTitle), Doc::str ("text", bench.draft.draftText)])
-
-    export save bench = match encode bench
-        Error problem => Runtime::step (notice (bench, problem, true))
-        Success source => saving (bench, "workspace:saved", "solution.proof.json", source)
-
-    saving (bench, ticket, name, source) = ui::Step(stepStore = bench, requests = [Requests::ask (ticket, ui::SaveFile(suggested = name, exportSlice = ticket))], writes = [Requests::write (ticket, source)])
-
-    export open bench = Runtime::asking (bench, [Requests::ask ("workspace:opened", ui::ChooseFile(types = ["json"], chosenLimit = 8388608, chosenSlice = "workspace:import"))])
-
-    export source bench =
-        declarations = filterList (Statements::document bench.draft.draftText, \found => isEmpty found.problems)
-        match isEmpty declarations
-            true => Runtime::step (notice (bench, "No supported statement is available to export.", true))
-            false => saving (bench, "workspace:source", "proof.ospml", Emit::document (mapList (declarations, \found => Proof(statement = found.statement, steps = Steps::readAll found.proof))))
-
-    export decode source = match jsonDecode source
-        Error _ => Error(message = "The workspace is not valid JSON.")
-        Success doc => match Doc::has (doc, "board")
-            true => Error(message = "Workspaces containing drawing data are unsupported.")
-            false => validated doc
-
-    supportedVersion doc = match Doc::field (doc, "version")
-        JsonInt version => version == 2
-        _ => false
-
-    validated doc = match jsonText (Doc::field (doc, "text"))
-        Error _ => Error(message = "The workspace is missing its written working.")
-        Success source => match supportedVersion doc && length source <= 1048576
-            false => Error(message = "The workspace version or document size is unsupported.")
-            true => match jsonText (Doc::field (doc, "title"))
-                Error _ => Error(message = "The workspace is missing its title.")
-                Success title => Success(value = { title = title, source = source })
-
-    restoredLayout layout = layout(guided = false, mode = Working, noticeText = "Workspace opened. Supported statements have been checked again.", noticeBad = false)
-
-    restored (bench, saved) = bench(draft = Draft(draftTitle = saved.title, draftText = saved.source, caret = length saved.source, selectedStep = -1), verdicts = Reviewed(checks = Reviews::review saved.source), layout = restoredLayout bench.layout)
-
-    export opened bench = match decode (perform ui::Slices.fetch "workspace:import")
-        Error problem => Runtime::step (notice (bench, problem, true))
-        Success saved => Runtime::step (restored (bench, saved))
-
-    (** The store after a chooser finished: it completes with the chosen path, or with nothing when the person cancelled. *)
-    export completed (bench, ticket, path) = match isEmpty path
-        true => Runtime::step bench
-        false => received (bench, ticket)
-
-    received (bench, ticket) = match ticket
-        "workspace:opened" => opened bench
-        "workspace:source" => Runtime::step (notice (bench, "Generated source exported.", false))
-        "workspace:saved" => Runtime::step (notice (bench, "Workspace saved.", false))
-        _ => Runtime::step bench
 
 (** [WORKBENCH-VERDICT] Shared file import and current-source checking for every host. *)
 module ProofLibraries
@@ -210,9 +157,8 @@ module BundledLibraries
 
     export handles ticket = ticket == "proof:catalogue" || startsWith ticket "proof:bundled:"
 
-    export load bench = match catalogue bench.imports.libraryCatalogue
-        Success _ => Runtime::step bench
-        Error _ => Runtime::asking (bench, [read ("proof:catalogue", cataloguePath, 65536)])
+    (** The request for the bundled catalogue, made when the application starts. *)
+    export request () = read ("proof:catalogue", cataloguePath, 65536)
 
     read (ticket, path, limit) = Requests::ask (ticket, ui::ReadTexts(texts = [path], textLimit = limit, textSlice = ticket))
 
