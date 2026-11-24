@@ -28,6 +28,8 @@ module Export
     exprAt (tables, ref, next) = Terms::upon (ExportJson::exprOf (tables, ref), next)
     nameAt (tables, ref, next) = Terms::upon (ExportJson::nameOf (tables, ref), next)
     levelAt (tables, ref, next) = Terms::upon (ExportJson::levelOf (tables, ref), next)
+    nameIn (reading, node, key, next) = intAt (node, key, \ref => nameAt (reading.tables, ref, next))
+    exprIn (reading, node, key, next) = intAt (node, key, \ref => exprAt (reading.tables, ref, next))
 
     started () = Reading(tables = Tables(names = Map(), levels = Map(), exprs = Map()), items = [], line = 1)
 
@@ -258,11 +260,9 @@ module Export
         reading one never substitutes an unchecked field. [PROOF-KERNEL-THEORY] *)
     projected (reading, json, index) =
         use proj <- fieldAt (json, "proj")
-        use ref <- intAt (proj, "typeName")
-        use name <- nameAt (reading.tables, ref)
+        use name <- nameIn (reading, proj, "typeName")
         use field <- intAt (proj, "idx")
-        use target <- intAt (proj, "struct")
-        use term <- exprAt (reading.tables, target)
+        use term <- exprIn (reading, proj, "struct")
         Success(value = setExpr (reading, index, Proj name field term))
 
     sorted (reading, json, index) = Terms::upon (ExportJson::intIn (json, "sort"), \ref => Terms::upon (ExportJson::levelOf (reading.tables, ref), \level => Success(value = setExpr (reading, index, Sort level))))
@@ -272,8 +272,7 @@ module Export
     (** A constant names its head and carries its level arguments. *)
     consted (reading, json, index) =
         use c <- fieldAt (json, "const")
-        use ref <- intAt (c, "name")
-        use name <- nameAt (reading.tables, ref)
+        use name <- nameIn (reading, c, "name")
         use items <- Terms::upon (ExportJson::arrayIn (c, "us"))
         use levels <- Terms::upon (levelList (reading.tables, items))
         Success(value = setExpr (reading, index, Const name levels))
@@ -308,12 +307,9 @@ module Export
         false => Error(message = "bad binderInfo ${info}")
 
     boundName (reading, index, binder, lambda) =
-        use ref <- intAt (binder, "name")
-        use name <- nameAt (reading.tables, ref)
-        use ty <- intAt (binder, "type")
-        use domain <- exprAt (reading.tables, ty)
-        use body <- intAt (binder, "body")
-        use inner <- exprAt (reading.tables, body)
+        use name <- nameIn (reading, binder, "name")
+        use domain <- exprIn (reading, binder, "type")
+        use inner <- exprIn (reading, binder, "body")
         Success(value = setExpr (reading, index, boundForm (lambda, name, domain, inner)))
 
     boundForm (lambda, name, domain, inner) = match lambda
@@ -324,12 +320,9 @@ module Export
         is dropped. *)
     letted (reading, json, index) =
         use letE <- fieldAt (json, "letE")
-        use nref <- intAt (letE, "name")
-        use name <- nameAt (reading.tables, nref)
-        use tref <- intAt (letE, "type")
-        use domain <- exprAt (reading.tables, tref)
-        use vref <- intAt (letE, "value")
-        use value <- exprAt (reading.tables, vref)
+        use name <- nameIn (reading, letE, "name")
+        use domain <- exprIn (reading, letE, "type")
+        use value <- exprIn (reading, letE, "value")
         letBody (reading, index, letE, name, domain, value)
 
     letBody (reading, index, letE, name, domain, value) = Terms::upon (ExportJson::intIn (letE, "body"), \bref => Terms::upon (ExportJson::exprOf (reading.tables, bref), \inner => Success(value = setExpr (reading, index, Let name domain value inner))))
@@ -378,11 +371,7 @@ module Export
         "ind" => Success(value = QuotInd)
         other => Error(message = "unsupported quotient kind: ${other}")
 
-    quotientDeclaration (reading, data, kind) =
-        use name <- Terms::upon (ExportJson::declName (reading.tables, data))
-        use params <- Terms::upon (ExportJson::paramsOf (reading.tables, data))
-        use ty <- Terms::upon (ExportJson::typedOf (reading.tables, data))
-        Success(value = addItem (reading, Single (Decl(name = name, params = params, ty = ty, body = Quotient kind))))
+    quotientDeclaration (reading, data, kind) = declared (reading, data, Quotient kind)
 
     (** Opaque declarations require an explicit false `isUnsafe` flag before reading their type and value. *)
     opaqued (reading, json) = Terms::upon (ExportJson::fieldIn (json, "opaque"), \opq => Terms::upon (ExportJson::boolIn (opq, "isUnsafe"), \unsafe => opaqueSafety (reading, opq, unsafe)))
@@ -398,19 +387,18 @@ module Export
     (** Theorem, definition and opaque bodies share the same checked table
         reads; only their reduction and reporting semantics differ. *)
     valuedDeclaration (reading, raw, body) =
-        use name <- Terms::upon (ExportJson::declName (reading.tables, raw))
-        use params <- Terms::upon (ExportJson::paramsOf (reading.tables, raw))
-        use ty <- Terms::upon (ExportJson::typedOf (reading.tables, raw))
-        use vref <- intAt (raw, "value")
-        use value <- exprAt (reading.tables, vref)
-        Success(value = addItem (reading, Single (Decl(name = name, params = params, ty = ty, body = body value))))
+        use value <- exprIn (reading, raw, "value")
+        declared (reading, raw, body value)
 
-    axiomed (reading, json) =
-        use ax <- Terms::upon (ExportJson::safeField (json, "axiom"))
-        use name <- Terms::upon (ExportJson::declName (reading.tables, ax))
-        use params <- Terms::upon (ExportJson::paramsOf (reading.tables, ax))
-        use ty <- Terms::upon (ExportJson::typedOf (reading.tables, ax))
-        Success(value = addItem (reading, Single (Decl(name = name, params = params, ty = ty, body = Axiom))))
+    (** A declaration's name, parameters and statement, read through the
+        tables exactly as a theorem's are, then recorded with `body`. *)
+    declared (reading, node, body) =
+        use name <- Terms::upon (ExportJson::declName (reading.tables, node))
+        use params <- Terms::upon (ExportJson::paramsOf (reading.tables, node))
+        use ty <- Terms::upon (ExportJson::typedOf (reading.tables, node))
+        Success(value = addItem (reading, Single (Decl(name = name, params = params, ty = ty, body = body))))
+
+    axiomed (reading, json) = Terms::upon (ExportJson::safeField (json, "axiom"), \ax => declared (reading, ax, Axiom))
 
     (** One inductive line is one block: the type former, its constructors
         and its recursor, each read exactly like a theorem's name,

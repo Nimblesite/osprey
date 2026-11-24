@@ -396,18 +396,22 @@ module TimelineView
         x = TimelineGeometry::rollX (rollStart editor + toFloat tick * DawSession::unit editor.song / 4.0, rollStart editor, DawSession::measure editor.song)
         box (x, 850.0, 1.0, 45.0, ui::Pick::either (tick % 4 == 0, Scenes::rgb (44, 38, 60), Scenes::rgb (29, 25, 43)), 4))
 
+    // The roll's pitch grid over the notes in view: their top pitch and row count.
+    pitched bounds =
+        top = pitchTop bounds
+        { high = top, rows = pitchRows (bounds, top) }
+
     roll editor = match track editor
         Error _ => [label ("Open a song to see its tracks.", 24.0, 500.0, 18.0, dim (), 0, 3)]
         Success original =>
             bounds = shown (editor, original)
-            high = pitchTop bounds
-            rows = pitchRows (bounds, high)
+            grid = pitched bounds
             voice = captured (editor, original)
             notes = match editor.rollDrag
                 RollIdle => bounds
                 RollHeld _ => shown (editor, voice)
             heading = [box (0.0, 437.0, 1132.0, 18.0, panelInk (), 3), box (0.0, 511.0, 1132.0, 30.0, panelInk (), 3), label ("PITCH", 16.0, 520.0, 10.0, dim (), 0, 5), label ("VELOCITY", 8.0, 815.0, 10.0, dim (), 0, 5), label ("0–1", 28.0, 870.0, 10.0, dim (), 0, 5), box (0.0, 803.0, 1132.0, 1.0, Scenes::rgb (50, 42, 70), 4), box (76.0, 894.0, 1034.0, 1.0, dim (), 4), label ("Piano roll", 24.0, 477.0, 18.0, ink (), 0, 3), label ("${voice.name}    ${length notes} of ${length voice.notes} notes", 130.0, 481.0, 14.0, accent (), 0, 3)]
-            listConcat (ui::Lists::flatten [heading, pianoKeys (high, rows), beatLines editor, bars editor, selectedCursor (editor, voice), velocityGrid editor, rollSounding editor]) (foldList (notes, [], \(all, note) => listConcat all (rollNote (editor, rollStart editor, high, rows, selected (editor, voice, note), note))))
+            listConcat (ui::Lists::flatten [heading, pianoKeys (grid.high, grid.rows), beatLines editor, bars editor, selectedCursor (editor, voice), velocityGrid editor, rollSounding editor]) (foldList (notes, [], \(all, note) => listConcat all (rollNote (editor, rollStart editor, grid.high, grid.rows, selected (editor, voice, note), note))))
 
     (** The empty dry destination in a project is the direct Master input. *)
     export destination voice = ui::Pick::either (voice.bus == "", "Master", voice.bus)
@@ -427,9 +431,8 @@ module TimelineView
         [label ("Output", 1154.0, 491.0, 14.0, dim (), 0, 9), box (1154.0, 518.0, 262.0, 36.0, Scenes::rgb (46, 39, 66), 9), Scenes::disc (1173.0, 536.0, 4.0, accent (), 10), label (destination voice, 1188.0, 529.0, 14.0, ink (), 0, 10), label ("›", 1400.0, 526.0, 18.0, dim (), 2, 10)]]
 
     (** The track inspector writes its controls through the same checked mixer action as the routing table. *)
-    export inspectorAt (editor, x, y) = match track editor
-        Error _ => Error(message = "Select a track first.")
-        Success voice => match x >= 1154.0 && x <= 1416.0
+    export inspectorAt (editor, x, y) = synth::Outcomes::carried (daw::Projects::required (editor.song.tracks, editor.track, "Select a track first."), \voice =>
+        match x >= 1154.0 && x <= 1416.0
             false => Error(message = "No control here.")
             true => match y >= 338.0 && y <= 358.0
                 true => Success(value = AdjustMix(index = editor.track, gain = TimelineGeometry::fader (x, 1154.0, 262.0, 0.0, 4.0), pan = voice.pan))
@@ -437,7 +440,7 @@ module TimelineView
                     true => Success(value = AdjustMix(index = editor.track, gain = voice.gain, pan = TimelineGeometry::fader (x, 1154.0, 262.0, -1.0, 1.0)))
                     false => match y >= 518.0 && y <= 554.0
                         true => Success(value = ChooseOutput(index = editor.track, offset = -1))
-                        false => Error(message = "No control here.")
+                        false => Error(message = "No control here."))
 
     noteDetails (editor, voice) = match listGet voice.notes editor.selectedNote
         Error _ => []
@@ -455,10 +458,8 @@ module TimelineView
         true => Success(value = SetVelocity(value = TimelineGeometry::fader (x, 1154.0, 262.0, 0.0, 1.0)))
         false => match track editor
             Success voice =>
-                notes = shown (editor, voice)
-                high = pitchTop notes
-                rows = pitchRows (notes, high)
-                index = ui::Lists::position (voice.notes, \note => hitNote (editor, rollStart editor, high, rows, x, y, note))
+                grid = pitched (shown (editor, voice))
+                index = ui::Lists::position (voice.notes, \note => hitNote (editor, rollStart editor, grid.high, grid.rows, x, y, note))
                 Success(value = SelectNote(index = index))
             Error _ => Error(message = "Select a track first.")
 

@@ -21,18 +21,14 @@ module AccessCases {
     /// PurgeTodoLists demands the Administrator role AND the CanPurge
     /// policy, like `[Authorize(Roles = "Administrator", Policy = "CanPurge")]`.
     export fn purgeGuardsCase() = {
-        let anon = TodoHarness::request(TodoHarness::anonymous(), 0, [
-            TodoHarness::seedList(1, "Shopping", "#78909C")
-        ], [], PurgeTodoLists)
-        expect(anon.settled, Error { message: Unauthorized })
-        let user = TodoHarness::request(TodoHarness::user(), 0, [
-            TodoHarness::seedList(1, "Shopping", "#78909C")
-        ], [], PurgeTodoLists)
-        expect(user.settled, Error { message: Forbidden { why: "not in role" } })
-        let admin = TodoHarness::adminAsks([
-            TodoHarness::seedList(1, "Shopping", "#78909C")
-        ], [], PurgeTodoLists)
-        expect(admin.settled, Success { value: Purged { count: 1 } })
+        let seeds = [TodoHarness::seedList(1, "Shopping", "#78909C")]
+        let ladder = [
+            { who: TodoHarness::anonymous(), reply: Error { message: Unauthorized } },
+            { who: TodoHarness::user(), reply: Error { message: Forbidden { why: "not in role" } } },
+            { who: TodoHarness::admin(), reply: Success { value: Purged { count: 1 } } }
+        ]
+        forEachList(ladder, fn(step) =>
+            expect(TodoHarness::request(step.who, 0, seeds, [], PurgeTodoLists).settled, step.reply))
     }
 
     /// A principal with the role but not the policy still fails the policy

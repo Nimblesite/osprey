@@ -99,6 +99,36 @@ expectClean (held, tally) =
 // The memo `held`'s note store carries after an edit arrives.
 expectMemo (held, memo) = expect ((Probes::stored held).note.memo, memo)
 
+// The probe after a tap on control 0 of `probe`, checked clean at tally 1.
+tappedClean probe =
+    tapped = Probes::tapped (probe, 0)
+    expectClean (tapped, 1)
+    tapped
+
+// The probe after a tap on control `ordinal` of `probe`, checked to report no problem.
+tappedProblem (probe, ordinal) =
+    tapped = Probes::tapped (probe, ordinal)
+    expectNoProblem tapped
+    tapped
+
+// The probe after a tap on control `ordinal` of `probe`, checked to report no problem and answer a store-read ask.
+tappedAsked (probe, ordinal) =
+    tapped = tappedProblem (probe, ordinal)
+    expect (Probes::asked tapped, "store-read")
+    tapped
+
+// The probe after `text` is posted to control `ordinal` of `probe`, checked to keep it as the memo.
+postedMemo (probe, ordinal, text) =
+    posted = Probes::posted (probe, ordinal, text)
+    expectMemo (posted, text)
+    posted
+
+// The probe after `text` is posted to control `ordinal` of `probe`, checked to report no problem and keep it as the memo.
+postedWhole (probe, ordinal, text) =
+    posted = postedMemo (probe, ordinal, text)
+    expectNoProblem posted
+    posted
+
 // `held` binds exactly `count` controls in its surface.
 surfaceBinds (held, count) = expect (length held.surfaceBound, count)
 
@@ -205,23 +235,19 @@ rootPortion words = noteCut (words, \at => substring words 0 at)
 
 test ("a tap refreshes only the region whose signal changed", \() => ui::Runtime::guarded (\() =>
     first = Probes::started ()
-    second = Probes::tapped (first, 0)
-    expectClean (second, 1)
+    second = tappedClean first
     // The tap changed the tally signal, not the memo: the note region's rows cross again unchanged, word for word.
     expect (notePortion (walkedWords second), notePortion (walkedWords first))
     // The next frame tells the same theme and note region, and the root with the changed count and one Go button.
     expect (walkedWords second, "|||canvas|#FFFFFF|#000000|||||||root||stack|vertical|||text|Count 1|body|primary||button|Go|play|plain||||slot|note||note||stack|vertical|||field|Note|linux||||edit|||button|Load|tray|plain||||button|Load|tray|plain||")))
 test ("text input reaches update through its binding and patches its own region", \() => ui::Runtime::guarded (\() =>
     first = Probes::started ()
-    second = Probes::posted (first, 2, "hello")
-    expectNoProblem second
-    expectMemo (second, "hello")
+    second = postedWhole (first, 2, "hello")
     expect (Probes::written second, "echo=hello")
     // The edit patched only the note region: the field's value row carries the new text and every other row is the open frame's again.
     expect (wordsAt (Probes::seen second, 48), "hello")
     expect (walkedWords second, "|||canvas|#FFFFFF|#000000|||||||root||stack|vertical|||text|Count 0|body|primary||button|Go|play|plain||||button|Go|play|plain||||slot|note||note||stack|vertical|||field|Note|hello||||edit|||button|Load|tray|plain||||button|Load|tray|plain||")
-    third = Probes::tapped (second, 0)
-    expectNoProblem third))
+    tappedProblem (second, 0)))
 // The typed host events a host sends that must all be refused, with the reason each is given.
 refusalHeld () = Probes::tapped (Probes::started (), 0)
 refusalCases () = [
@@ -254,31 +280,26 @@ test ("stale, unknown and mismatched events are rejected without change", \() =>
 test ("an edit from prior state keeps its meaning when ordinals shift", \() => ui::Runtime::guarded (\() =>
     first = Probes::started ()
     // At count 0 the Go buttons are [Increment, Load]; the host taps control 0.
-    counted = Probes::tapped (first, 0)
-    expectClean (counted, 1)
+    counted = tappedClean first
     surfaceBinds (counted, 4)
     // At count 1 only [Load] is drawn, so control 0 now means Load and asks the host.
     loaded = Probes::tapped (counted, 0)
     expect (Probes::tickets loaded, "load:1")
     expectClean (loaded, 1)
     // The note field shifted from control 2 to control 1, and its edits still arrive.
-    noted = Probes::posted (counted, 1, "hello")
-    expectMemo (noted, "hello")))
+    postedMemo (counted, 1, "hello")))
 // [UI-EVENTS]: a control that no frame drew refuses without change, and the session still answers its own controls.
 test ("an edit whose typed action is gone or ambiguous refuses without change", \() => ui::Runtime::guarded (\() =>
     first = Probes::started ()
     // The note region draws two identical Load buttons: each is its own control with its own number, so both deliver the same typed action separately and none is ambiguous.
     forEachList ([3, 4], \at => expect (Probes::tickets (Probes::tapped (first, at)), "load:1"))
     // At count 1 only [Load] is drawn: the withdrawn Increment and the note's second Load are gone, and a number no frame drew refuses.
-    gone = Probes::tapped (first, 0)
-    expectClean (gone, 1)
+    gone = tappedClean first
     refusedJust (Probes::posted (gone, 4, ""), "Unknown control 4")
     refused = Probes::posted (gone, 9, "")
     refusedJust (refused, "Unknown control 9")
     // The refusal changed nothing: the current session still answers its own controls.
-    intact = Probes::tapped (refused, 0)
-    expectNoProblem intact
-    expect (Probes::asked intact, "store-read")
+    intact = tappedAsked (refused, 0)
     expect ((Probes::stored intact).counter.tally, 1)))
 // [UI-EVENTS]: a refused event leaves the store whole and still answering.
 // A refused edit asks nothing and writes nothing, beside the reason it names.
@@ -289,8 +310,7 @@ test ("an edit with an impossible original refuses without change", \() => ui::R
     // A number no frame drew, a negative number and an unknown kind: each names itself, asks nothing and writes no slice.
     forEachList ([9, 0 - 1, 9], \ordinal => expect (refusedBare (Probes::posted (first, ordinal, "")), "Unknown control ${ordinal}||"))
     expect (Probes::problem (Probes::framed (first, 0.0 - 1.0)), "Invalid frame elapsed time")
-    after = Probes::tapped (first, 0)
-    expectClean (after, 1)))
+    tappedClean first))
 // [UI-EVENTS]: a delivered edit runs update on the current session, never on an earlier frame's.
 test ("a resolved edit updates the current state", \() => ui::Runtime::guarded (\() =>
     first = Probes::started ()

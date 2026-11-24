@@ -107,7 +107,7 @@ test ("graph validation covers corrupt persisted metadata, missing endpoints, fa
     output = node (2, synth::Sink, [audio], [])
     graph = added ([source, output], Graphs::empty)
     third = added ([output(identity = 3)], graph)
-    fan = wired ([cable (1, 2), cable (1, 3)], third)
+    fan = wired (fanRoute (), third)
     prepared (fan, 3)
     invalidInlet = cable (1, 2)
     forEachList ([{ bad = cable (1, 99), why = synth::MissingNode }, { bad = invalidInlet(inlet = 9), why = synth::InvalidPort }], \r => refused (Graphs::connect (graph, r.bad), r.why))
@@ -226,6 +226,11 @@ test ("performance timbres and metallic warp stay bounded across rates and contr
     near (Performance::wave (0, 0.25, 0.01, 0.0, 0.0), 1.0, 0.000000001)
     near (Performance::wave (0, 0.25, 0.01, 0.0, 1.0), -1.0, 0.000000001)))
 
+// Each routed output channel carries its mapped join channel, or silence where the map entry is -1.
+routedCarries (route, join, f, out, source) = match source < 0
+    true => near (channelOf (route, f, out), 0.0, 0.0)
+    false => near (channelOf (route, f, out), channelOf (join, f, source), 0.0)
+
 test ("an 8-channel graph splits, joins and route-reorders every 7.1 channel sample-for-sample", \() => arithmetic (\() =>
     forEachList ([1, 2, 6, 8, 12], \width => forEachList ([-1.0, -0.4, 0.0, 0.7, 1.0], \pan => pannerJourney (width, pan)))
     frames = toList (range (0, 64))
@@ -238,7 +243,7 @@ test ("an 8-channel graph splits, joins and route-reorders every 7.1 channel sam
         join = clipFrom (clips, 11)
         route = clipFrom (clips, 12)
         gains = mapList (channels, \index => clipFrom (clips, satAdd 3 index))
-        expect (source.clipChannels == 8 && length source.clipSamples == 512, true)
+        clipIs (source, 8, 512)
         expect (abs (channelOf (source, 5, 0)) > 0.000001, true)
         expect (split.clipChannels == 8 && structuralEquals (split.clipSamples, source.clipSamples), true)
         // Independent per-channel kernel state renders identical channels from identical parameters.
@@ -247,9 +252,9 @@ test ("an 8-channel graph splits, joins and route-reorders every 7.1 channel sam
             gain = listGet gains c ?: clipFrom (clips, 0)
             expect (gain.clipChannels, 1)
             forEachList (frames, \f => near (channelOf (gain, f, 0), channelOf (source, f, c) * scaleOf c, 0.0)))
-        expect (join.clipChannels == 8 && length join.clipSamples == 512, true)
+        clipIs (join, 8, 512)
         forEachList (channels, \c => forEachList (frames, \f => near (channelOf (join, f, c), channelOf (listGet gains c ?: clipFrom (clips, 0), f, 0), 0.0)))
-        expect (route.clipChannels == 8 && length route.clipSamples == 512, true)
+        clipIs (route, 8, 512)
         forEachList (channels, \c => forEachList (frames, \f => near (channelOf (route, f, c), channelOf (listGet gains (satSub 7 c) ?: clipFrom (clips, 0), f, 0), 0.0)))
         mixed = clipFrom (clips, 13)
         sink = clipFrom (clips, 14)
@@ -264,25 +269,16 @@ test ("a five-channel graph duplicates, silences and resizes channels through ex
     succeeds (clipsOf (built (nodes, cables), 64), \clips =>
         join = clipFrom (clips, 8)
         route = clipFrom (clips, 9)
-        expect (join.clipChannels == 5 && length join.clipSamples == 320, true)
-        expect (route.clipChannels == 6 && length route.clipSamples == 384, true)
-        forEachList (frames, \f =>
-            near (channelOf (route, f, 0), channelOf (join, f, 1), 0.0)
-            near (channelOf (route, f, 1), channelOf (join, f, 1), 0.0)
-            near (channelOf (route, f, 2), 0.0, 0.0)
-            near (channelOf (route, f, 3), channelOf (join, f, 4), 0.0)
-            near (channelOf (route, f, 4), channelOf (join, f, 0), 0.0)
-            near (channelOf (route, f, 5), channelOf (join, f, 0), 0.0))
+        clipIs (join, 5, 320)
+        clipIs (route, 6, 384)
+        forEachList (frames, \f => forEachList ([{ out = 0, src = 1 }, { out = 1, src = 1 }, { out = 2, src = -1 }, { out = 3, src = 4 }, { out = 4, src = 0 }, { out = 5, src = 0 }], \m => routedCarries (route, join, f, m.out, m.src)))
         forEachList (toList (range (0, 5)), \c => forEachList (frames, \f => near (channelOf (join, f, c), channelOf (clipFrom (clips, satAdd 3 c), f, 0), 0.0))))
     // The same five-channel join shrinks to three: duplicated, duplicated, silenced.
     succeeds (clipsOf (built (listConcat (channelChain (1, 2, 3, 8, 5)) [Components::routeChannels (9, 5, [4, 4, -1]), sinkOf (10, 3)], listConcat (channelCables (1, 2, 3, 8, 5)) [cable (8, 9), cable (9, 10)]), 64), \clips =>
         join = clipFrom (clips, 8)
         route = clipFrom (clips, 9)
-        expect (route.clipChannels == 3 && length route.clipSamples == 192, true)
-        forEachList (frames, \f =>
-            near (channelOf (route, f, 0), channelOf (join, f, 4), 0.0)
-            near (channelOf (route, f, 1), channelOf (join, f, 4), 0.0)
-            near (channelOf (route, f, 2), 0.0, 0.0)))))
+        clipIs (route, 3, 192)
+        forEachList (frames, \f => forEachList ([{ out = 0, src = 4 }, { out = 1, src = 4 }, { out = 2, src = -1 }], \m => routedCarries (route, join, f, m.out, m.src))))))
 
 test ("channel maps out of range and mismatched channel cables are refused with typed faults", \() => arithmetic (\() =>
     forEachList ([[0, -2], [0, 5], [0, 1, 9]], \entries => refused (Graphs::add (Graphs::empty, Components::routeChannels (1, 5, entries)), synth::InvalidNode))

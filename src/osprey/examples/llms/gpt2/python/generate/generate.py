@@ -68,8 +68,4 @@ def main():
     prompt = DEFAULT_PROMPT if prompt_line == "" else prompt_line
     count = unwrap_or(parseInt(input()), DEFAULT_TOKENS)
     backend = input()
-    match Backends.strictly(lambda: Backends.under(backend, lambda: run(prompt, count))):
-        case Success(value=value):
-            return value
-        case Error(message=message):
-            return print(f"generation stopped: {message}")
+    return Backends.reported(Backends.strictly(lambda: Backends.under(backend, lambda: run(prompt, count))), "generation")

@@ -10,9 +10,7 @@ module PipelineCases {
     /// LoggingBehaviour writes one structured line naming the request and
     /// the user, before the use case runs.
     export fn loggingCase() = {
-        let heard = TodoHarness::witnessed(TodoHarness::admin(), 0, [], [], CreateList {
-            list: NewList { title: "Shopping", colour: "" }
-        })
+        let heard = TodoHarness::witnessed(TodoHarness::admin(), 0, [], [], newList("Shopping", ""))
         checkAll("one info line names request and user", [
             length(heard.lines) == 1,
             contains(firstLine(heard.lines), "CreateTodoListCommand"),
@@ -27,12 +25,12 @@ module PipelineCases {
     export fn rescueCase() = {
         let clash = TodoHarness::witnessed(TodoHarness::admin(), 0, [
             TodoHarness::seedList(1, "Shopping", "#78909C")
-        ], [], CreateList { list: NewList { title: "Shopping", colour: "" } })
+        ], [], newList("Shopping", ""))
         checkAll("validation faults pass without an error line", [
             length(clash.lines) == 1,
             contains(firstLine(clash.lines), "info:")
         ])
-        let missing = TodoHarness::witnessed(TodoHarness::admin(), 0, [], [], DeleteList { id: 9 })
+        let missing = TodoHarness::witnessed(TodoHarness::admin(), 0, [], [], dropList(9))
         checkAll("not-found faults pass without an error line", [
             length(missing.lines) == 1,
             contains(firstLine(missing.lines), "info:")
@@ -43,16 +41,16 @@ module PipelineCases {
     /// the request reads the clock when it starts and when it settles, and the
     /// fixture clock advances one step per reading, so a request takes one step.
     export fn performanceCase() = {
-        let slow = TodoHarness::witnessed(TodoHarness::admin(), 600, [], [], GetTodos)
+        let slow = timed(600)
         checkAll("600 elapsed milliseconds warn", [
             length(slow.lines) == 2,
             contains(lineAt(slow.lines, 1), "warn:"),
             contains(lineAt(slow.lines, 1), "GetTodosQuery"),
             contains(lineAt(slow.lines, 1), "600 milliseconds")
         ])
-        let quick = TodoHarness::witnessed(TodoHarness::admin(), 0, [], [], GetTodos)
-        let onTheLine = TodoHarness::witnessed(TodoHarness::admin(), 500, [], [], GetTodos)
-        let justOver = TodoHarness::witnessed(TodoHarness::admin(), 501, [], [], GetTodos)
+        let quick = timed(0)
+        let onTheLine = timed(500)
+        let justOver = timed(501)
         checkAll("no elapsed milliseconds, no warning", [
             length(quick.lines) == 1,
             contains(firstLine(quick.lines), "info:")
@@ -69,9 +67,7 @@ module PipelineCases {
     export fn eventPublicationCase() = {
         let heard = TodoHarness::witnessed(TodoHarness::admin(), 0, [
             TodoHarness::seedList(1, "Shopping", "#78909C")
-        ], [TodoHarness::seedItem(1, 1, "Milk", false)], UpdateItem {
-            edit: ItemEdit { id: 1, title: "Milk", done: true }
-        })
+        ], [TodoHarness::seedItem(1, 1, "Milk", false)], editItem(1, "Milk", true))
         checkAll("the completion event publishes once, after settling", [
             length(heard.events) == 1,
             contains(join(TodoHost::eventLines(heard.events), ";"), "TodoItemCompletedEvent for 'Milk' (#1)")
@@ -84,3 +80,6 @@ fn firstLine(lines) = listGet(lines, 0) ?: ""
 
 /// Line `at` of the captured log, or "".
 fn lineAt(lines, at) = listGet(lines, at) ?: ""
+
+/// GetTodos by the administrator at clock step `step`: the case's only moving part.
+fn timed(step) = TodoHarness::witnessed(TodoHarness::admin(), step, [], [], GetTodos)

@@ -142,21 +142,20 @@ module TreeGraphTests {
         ])
     }
 
-    fn corruptLock() = {
-        let a = runGraph([Fixture::readRoute("osprey.toml", manifestText()), Fixture::readRoute("osprey.lock", "not json")], [], ["tree", "--graph"])
-        checkAll("tree graph: a corrupt lock is a nonzero lock.shape", [
+    /// The graph command refuses `reads`: one line, status 1, the given code first.
+    fn refusedBy(reads, label, code) = {
+        let a = runGraph(reads, [], ["tree", "--graph"])
+        checkAll(label, [
             oneLine(a, 1),
-            Fixture::line(a, 0) == "lock.shape"
+            Fixture::line(a, 0) == code
         ])
     }
 
-    fn invalidManifest() = {
-        let a = runGraph([Fixture::readRoute("osprey.toml", "not toml\n")], [], ["tree", "--graph"])
-        checkAll("tree graph: a rejected manifest is a nonzero source error", [
-            oneLine(a, 1),
-            Fixture::line(a, 0) == "toml.expected-equals at 1:5"
-        ])
-    }
+    fn corruptLock() = refusedBy([Fixture::readRoute("osprey.toml", manifestText()), Fixture::readRoute("osprey.lock", "not json")],
+        "tree graph: a corrupt lock is a nonzero lock.shape", "lock.shape")
+
+    fn invalidManifest() = refusedBy([Fixture::readRoute("osprey.toml", "not toml\n")],
+        "tree graph: a rejected manifest is a nonzero source error", "toml.expected-equals at 1:5")
 
     fn missingPackage() = {
         let present = [maths(), report(), tool(), otherGreeting()]

@@ -91,10 +91,8 @@ module Update {
     fn rebaseAll(lock, breakingWanted, mappings) = foldList(mappings, Rebase { mappings: [], notes: [] }, fn(r, m) => rebaseOne(lock, breakingWanted, r, m))
 
     /// A failed development relock restores the release lock too, so the update changes nothing.
-    fn restoredRelease(s, previousRelease, report) = if Reports::statusOf(report) == 0 { report } else { match Host::restore(Project::lockPathAt(Transaction::projectOf(s)), previousRelease) {
-        Error { message } => Reports::failure(listAppend(Reports::linesOf(report), "${restoreCode} ${message}"))
-        Success => report
-    } }
+    fn restoredRelease(s, previousRelease, report) = if Reports::statusOf(report) == 0 { report }
+        else { Reports::restored(Host::restore(Project::lockPathAt(Transaction::projectOf(s)), previousRelease), report, restoreCode) }
 
     fn relockedLocal(s, mappings, previousRelease, lock, breakingWanted, releaseLines) = {
         let r = rebaseAll(lock, breakingWanted, mappings)

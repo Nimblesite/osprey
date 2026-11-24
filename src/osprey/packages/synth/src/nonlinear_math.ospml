@@ -7,13 +7,16 @@ namespace synth
 
 (** Nonlinear, feedback and frequency-shifting mathematics [SYNTH-ADVANCED-NONLINEAR]. *)
 module NonlinearMath
+    (** Clamp the input to the interval from `low` to `high`. *)
+    clamped (x, low, high) = match x > high
+        true => high
+        false => match x < low
+            true => low
+            false => x
+
     (** Hyperbolic tangent, saturated beyond |x| = 20 where it equals ±1 in binary64. *)
     export tanh x =
-        c = match x > 20.0
-            true => 20.0
-            false => match x < (-20.0)
-                true => -20.0
-                false => x
+        c = clamped (x, (-20.0), 20.0)
         e = exp (2.0 * c)
         floatDiv (e - 1.0, e + 1.0)
 
@@ -23,11 +26,7 @@ module NonlinearMath
         a + ln (1.0 + exp ((-2.0) * a)) - 0.6931471805599453
 
     (** Clip the input to the interval from minus one to one. *)
-    export hard x = match x > 1.0
-        true => 1.0
-        false => match x < (-1.0)
-            true => -1.0
-            false => x
+    export hard x = clamped (x, (-1.0), 1.0)
 
     (** Continuous antiderivative of the hard clipper. *)
     export hardIntegral x =

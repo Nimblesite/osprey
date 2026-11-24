@@ -34,9 +34,8 @@ module NoteRenders
         gate = ArrangeMath::beatFrames (note.length, tempo, rate)
         match floatToInt (held (gate, instrument) + ArrangeMath::secondFrames (ring instrument, rate))
             Error _ => Error(message = "A note has a non-finite length.")
-            Success total => match total >= 1 && total <= 960000
-                false => Error(message = "A note must last 1 to 960000 frames including its ring.")
-                true => Success(value = NoteSpan(gate = gate, total = total))
+            Success total => synth::Outcomes::carried (Projects::limited (total, 1, 960000, "A note must last 1 to 960000 frames including its ring."), \within =>
+                Success(value = NoteSpan(gate = gate, total = within)))
 
     (** Check pitch, velocity, timing and the bounded note length before scheduling the note. *)
     export checkedSpan (note, tempo, rate, instrument) = match note.pitch >= 0 && note.pitch <= 127 && note.velocity >= 0.0 && note.velocity <= 1.0 && note.length > 0.0 && tempo >= 20.0 && tempo <= 400.0
@@ -97,11 +96,10 @@ module NoteRenders
             synth::Outcomes::carried (PatchVoices::told (synth::Exciters::configure (pick (note, capacity))), \_ =>
                 Success(value = Plucked(guide = guide, burst = synth::Exciters::initial (satAdd note.pitch 1), capacity = capacity, brightness = brightness, decay = decay)))))
 
-    bowed (note, noteSpan, rate, capacity, pressure, brightness, depth) = match depth >= 0.0 && depth <= 0.02
-        false => Error(message = "Bow vibrato depth must be 0 to 0.02.")
-        true => synth::Outcomes::carried (PatchVoices::told (synth::BowedStrings::configure (bow (note, noteSpan, rate, capacity, pressure, brightness, depth, 0.0))), \config =>
+    bowed (note, noteSpan, rate, capacity, pressure, brightness, depth) = synth::Outcomes::carried (Projects::limited (depth, 0.0, 0.02, "Bow vibrato depth must be 0 to 0.02."), \_ =>
+        synth::Outcomes::carried (PatchVoices::told (synth::BowedStrings::configure (bow (note, noteSpan, rate, capacity, pressure, brightness, depth, 0.0))), \config =>
             synth::Outcomes::carried (PatchVoices::told (synth::BowedStrings::initial config), \string =>
-                Success(value = Bowed(strand = string, capacity = capacity, pressure = pressure, brightness = brightness, depth = depth))))
+                Success(value = Bowed(strand = string, capacity = capacity, pressure = pressure, brightness = brightness, depth = depth)))))
 
     modal (note, rate, decay, brightness, modes) = synth::Outcomes::carried (PatchVoices::told (synth::ModalBanks::configure (synth::ModalConfig(sampleRate = rate, frequency = hertz note, decay = decay, brightness = brightness, strike = 0.37, count = 8, modes = modes))), \bank =>
         Success(value = Rung(bank = bank, modes = synth::ModalBanks::initial bank)))

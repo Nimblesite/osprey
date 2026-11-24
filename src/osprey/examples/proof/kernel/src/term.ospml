@@ -77,14 +77,15 @@ module Terms
         [] => []
         [first, ...rest] => suffix (rest, satSub count 1)
 
-    (** Whether two term lists are equal position by position. *)
-    export equalAll (left, right) = match left
+    (** Whether two lists agree position by position under `same`. *)
+    equalBy (same, left, right) = match left
         [] => isEmpty right
-        [a, ...la] => equalAllHead (a, la, right)
+        [a, ...la] => match right
+            [] => false
+            [b, ...lb] => same (a, b) && equalBy (same, la, lb)
 
-    equalAllHead (a, la, right) = match right
-        [] => false
-        [b, ...lb] => equal (a, b) && equalAll (la, lb)
+    (** Whether two term lists are equal position by position. *)
+    export equalAll (left, right) = equalBy (equal, left, right)
 
     (** Add `by` to every bound variable at index `cutoff` or above. *)
     export shift (term, cutoff, by) = match by == 0 || !mentioned (term, cutoff, true)
@@ -103,9 +104,12 @@ module Terms
         Let name ty value body => Let name (openChild (ty, depth, leaf)) (openChild (value, depth, leaf)) (openChild (body, satAdd depth 1, leaf))
         other => other
 
-    openChild (term, depth, leaf) = match mentioned (term, depth, true)
-        true => underBinders (term, depth, leaf)
+    // `term` changed by `change` only where it mentions `depth`, else itself.
+    whereMentioned (term, depth, change) = match mentioned (term, depth, true)
+        true => change ()
         false => term
+
+    openChild (term, depth, leaf) = whereMentioned (term, depth, \() => underBinders (term, depth, leaf))
 
     shifted (term, cutoff, by) = underBinders (term, cutoff, \(index, depth) => shiftVar (index, depth, by))
 
@@ -115,9 +119,7 @@ module Terms
 
     (** Replace `BVar depth` in `term` by `value` (lifted past `depth`
         binders) and lower the free variables above it. *)
-    export substitute (term, depth, value) = match mentioned (term, depth, true)
-        true => substituted (term, depth, value)
-        false => term
+    export substitute (term, depth, value) = whereMentioned (term, depth, \() => substituted (term, depth, value))
 
     substituted (term, depth, value) = underBinders (term, depth, \(index, depth) => substituteVar (index, depth, value))
 
@@ -278,13 +280,7 @@ module Terms
         other => false
 
     (** Whether two universe argument lists agree position by position. *)
-    export equalLevels (left, right) = match left
-        [] => isEmpty right
-        [a, ...la] => equalHead (a, la, right)
-
-    equalHead (a, la, right) = match right
-        [] => false
-        [b, ...lb] => Levels::equal a b && equalLevels (la, lb)
+    export equalLevels (left, right) = equalBy (\(a, b) => Levels::equal a b, left, right)
 
     equalProj (family, index, target, right) = match right
         Proj other field value => family == other && index == field && equal (target, value)

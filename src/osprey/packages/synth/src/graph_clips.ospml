@@ -197,9 +197,9 @@ module GraphClips
     (** Prepare a render order that rejects cycles even through delay components. *)
     export ordered graph = Graphs::prepare (graph(nodes = mapList (graph.nodes, acyclic)))
 
-    prepared (graph, clips, held, frames) = match Graphs::prepare graph
-        Invalid _ => Error(message = InvalidConfiguration(detail = "The graph has invalid nodes or routes."))
-        Valid _ => match ordered graph
+    prepared (graph, clips, held, frames) =
+        use _ <- Renderer::validated (graph, InvalidConfiguration(detail = "The graph has invalid nodes or routes."))
+        match ordered graph
             Invalid _ => Error(message = InvalidConfiguration(detail = "Hosted graph rendering requires an acyclic graph."))
             Valid plan => scheduled (plan(graph = graph), clips, held, frames, plan.order)
 

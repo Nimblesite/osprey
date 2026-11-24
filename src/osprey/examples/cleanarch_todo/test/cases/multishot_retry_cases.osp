@@ -18,7 +18,7 @@ namespace todo;
 import todo::TodoHarness
 
 /// The CreateList ask naming a list "Mine": the request every retry case replays.
-let mineListAsk = CreateList { list: NewList { title: "Mine", colour: "" } }
+fn mineListAsk() = newList("Mine", "")
 
 /// A single rival queued to steal one commit.
 let loneRival = ["Rival"]
@@ -169,7 +169,7 @@ module MultishotRetryCases {
     /// retries resume after the start reading.
     /// [EXAMPLE-CLEANARCH-MULTISHOT-RETRY], [MULTI-REPLAY].
     export fn retryRivalCountsCase() = {
-        let ask = mineListAsk
+        let ask = mineListAsk()
         let none = retryBareAsked([], ask)
         let one = retryBareAsked(loneRival, ask)
         let two = retryBareAsked(["Rival", "Other"], ask)
@@ -200,7 +200,7 @@ module MultishotRetryCases {
     /// attempt 3's conflict; versions climb 1→2→3→4 whatever the titles.
     /// [EXAMPLE-CLEANARCH-MULTISHOT-RETRY], [MULTI-REPLAY], [MULTI-HANDLE-MANY].
     export fn retryDuplicateRivalsCase() = {
-        let ask = mineListAsk
+        let ask = mineListAsk()
         let pair = retryBareAsked(["Rival", "Rival"], ask)
         let twoDup = retryBareAsked(["A", "A"], ask)
         let triple = retryBareAsked(["A", "A", "A"], ask)
@@ -232,17 +232,13 @@ module MultishotRetryCases {
     /// [EXAMPLE-CLEANARCH-MULTISHOT-RETRY], [MULTI-REPLAY],
     /// [EXAMPLE-CLEANARCH-INV-FAITHFUL].
     export fn retryCreateListValidationCase() = {
-        let ask = mineListAsk
+        let ask = mineListAsk()
         let rival = retryAsked(["Mine"], [], ask)
         let twinRivals = retryAsked(["Mine", "Mine"], [], ask)
-        let badColour = retryAsked(loneRival, [], CreateList {
-            list: NewList { title: "Fresh", colour: "#HotPink" } })
-        let spaces = retryAsked(loneRival, [], CreateList {
-            list: NewList { title: "   ", colour: "" } })
-        let tooLong = retryAsked(["Rival", "Other"], [], CreateList {
-            list: NewList { title: retryWide(201), colour: "" } })
-        let empty = retryAsked(loneRival, [], CreateList {
-            list: NewList { title: "", colour: "" } })
+        let badColour = retryAsked(loneRival, [], newList("Fresh", "#HotPink"))
+        let spaces = retryAsked(loneRival, [], newList("   ", ""))
+        let tooLong = retryAsked(["Rival", "Other"], [], newList(retryWide(201), ""))
+        let empty = retryAsked(loneRival, [], newList("", ""))
         expect(rival.settled, faults(uniqueTitleFault))
         expect(twinRivals.settled, faults(uniqueTitleFault))
         expect(badColour.settled, Error { message: ValidationFault {
@@ -271,15 +267,13 @@ module MultishotRetryCases {
     /// missing list answers NotFound before any commit, burning no rival.
     /// [EXAMPLE-CLEANARCH-MULTISHOT-RETRY], [MULTI-REPLAY].
     export fn retryUpdateListCase() = {
-        let edit = ListEdit { id: 1, title: "Chores", colour: "" }
-        let calm = retryAsked([], retryItems(), UpdateList { edit: edit })
-        let twice = retryAsked(twoRivals, retryItems(), UpdateList { edit: edit })
-        let lost = retryAsked(threeRivals, retryItems(), UpdateList { edit: edit })
-        let collide = retryAsked(["Chores"], retryItems(), UpdateList { edit: edit })
-        let missing = retryAsked(twoRivals, retryItems(), UpdateList {
-            edit: ListEdit { id: 9, title: "Ninth", colour: "" } })
-        let recolour = retryAsked(loneRival, retryItems(), UpdateList {
-            edit: ListEdit { id: 2, title: "Banking", colour: "#4CAF50" } })
+        let ask = editList(1, "Chores", "")
+        let calm = retryAsked([], retryItems(), ask)
+        let twice = retryAsked(twoRivals, retryItems(), ask)
+        let lost = retryAsked(threeRivals, retryItems(), ask)
+        let collide = retryAsked(["Chores"], retryItems(), ask)
+        let missing = retryAsked(twoRivals, retryItems(), editList(9, "Ninth", ""))
+        let recolour = retryAsked(loneRival, retryItems(), editList(2, "Banking", "#4CAF50"))
         retryExpectUpdated(calm)
         retryExpectUpdated(twice)
         retryExpectGaveUp(lost)
@@ -304,11 +298,11 @@ module MultishotRetryCases {
     /// seeds and every item; a missing list refuses before any commit.
     /// [EXAMPLE-CLEANARCH-MULTISHOT-RETRY], [MULTI-REPLAY].
     export fn retryDeleteListCase() = {
-        let calm = retryAsked([], retryItems(), DeleteList { id: 1 })
-        let one = retryAsked(loneRival, retryItems(), DeleteList { id: 2 })
-        let twice = retryAsked(twoRivals, retryItems(), DeleteList { id: 1 })
-        let lost = retryAsked(threeRivals, retryItems(), DeleteList { id: 1 })
-        let missing = retryAsked(threeRivals, retryItems(), DeleteList { id: 9 })
+        let calm = retryAsked([], retryItems(), dropList(1))
+        let one = retryAsked(loneRival, retryItems(), dropList(2))
+        let twice = retryAsked(twoRivals, retryItems(), dropList(1))
+        let lost = retryAsked(threeRivals, retryItems(), dropList(1))
+        let missing = retryAsked(threeRivals, retryItems(), dropList(9))
         retryExpectUpdated(calm)
         retryExpectUpdated(one)
         retryExpectUpdated(twice)
@@ -355,13 +349,12 @@ module MultishotRetryCases {
     /// or more lost attempts publish nothing and leave every item seeded.
     /// [EXAMPLE-CLEANARCH-MULTISHOT-RETRY], [MULTI-REPLAY], [MULTI-HANDLE-MANY].
     export fn retryCompleteItemCase() = {
-        let ask = UpdateItem { edit: ItemEdit { id: 1, title: "Milk", done: true } }
+        let ask = editItem(1, "Milk", true)
         let seeds = retryItems()
         let none = retryAsked([], seeds, ask)
         let one = retryAsked(loneRival, seeds, ask)
         let two = retryAsked(["Rival", "Other"], seeds, ask)
-        let bread = retryAsked(loneRival, seeds, UpdateItem {
-            edit: ItemEdit { id: 2, title: "Bread", done: true } })
+        let bread = retryAsked(loneRival, seeds, editItem(2, "Bread", true))
         retryExpectUpdated(none)
         retryExpectUpdated(one)
         retryExpectUpdated(two)
@@ -398,18 +391,12 @@ module MultishotRetryCases {
             TodoHarness::seedItem(2, 1, "Bread", false),
             TodoHarness::seedItem(3, 2, "Tax", false)
         ]
-        let keep = retryAsked(twoRivals, doneSeeds, UpdateItem {
-            edit: ItemEdit { id: 1, title: "Milk", done: true } })
-        let undo = retryAsked(twoRivals, doneSeeds, UpdateItem {
-            edit: ItemEdit { id: 1, title: "Milk", done: false } })
-        let rename = retryAsked(threeRivals, retryItems(), UpdateItem {
-            edit: ItemEdit { id: 1, title: "Oat Milk", done: false } })
-        let missing = retryAsked(twoRivals, retryItems(), UpdateItem {
-            edit: ItemEdit { id: 9, title: "Ninth", done: false } })
-        let empty = retryAsked(loneRival, retryItems(), UpdateItem {
-            edit: ItemEdit { id: 1, title: "", done: false } })
-        let long = retryAsked([], retryItems(), UpdateItem {
-            edit: ItemEdit { id: 3, title: retryWide(201), done: false } })
+        let keep = retryAsked(twoRivals, doneSeeds, editItem(1, "Milk", true))
+        let undo = retryAsked(twoRivals, doneSeeds, editItem(1, "Milk", false))
+        let rename = retryAsked(threeRivals, retryItems(), editItem(1, "Oat Milk", false))
+        let missing = retryAsked(twoRivals, retryItems(), editItem(9, "Ninth", false))
+        let empty = retryAsked(loneRival, retryItems(), editItem(1, "", false))
+        let long = retryAsked([], retryItems(), editItem(3, retryWide(201), false))
         retryExpectUpdated(keep)
         retryExpectUpdated(undo)
         retryExpectGaveUp(rename)

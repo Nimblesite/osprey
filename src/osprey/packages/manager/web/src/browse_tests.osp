@@ -8,27 +8,18 @@ namespace registry_web;
 module BrowseTests {
     fn catalog() = [WebFixtures::warnedAtlasUtil(), WebFixtures::warnedBorderUtil(), WebFixtures::cleanAtlasUtil()]
 
-    fn orgBesideEveryResult() = WebFixtures::shows("web: browse shows org identity", Browse::render(catalog(), ""),
-        fn(html) => contains(html, "@atlas/util") &&
-            contains(html, "Organization: @atlas") &&
-            contains(html, "@border/util") &&
-            contains(html, "Organization: @border"))
+    fn orgBesideEveryResult() = WebFixtures::showsTexts("web: browse shows org identity", Browse::render(catalog(), ""),
+        ["@atlas/util", "Organization: @atlas", "@border/util", "Organization: @border"], [])
 
     /// No false negatives: each warning, and each explicit no-warnings
     /// statement, is present in the rendered listing.
-    fn warningsSurface() = WebFixtures::shows("web: browse surfaces warnings", Browse::render(catalog(), ""),
-        fn(html) => contains(html, "OSA-2026-0001") &&
-            contains(html, "executes code") &&
-            contains(html, "OSB-2026-0007") &&
-            contains(html, "No known security warnings."))
+    fn warningsSurface() = WebFixtures::showsTexts("web: browse surfaces warnings", Browse::render(catalog(), ""),
+        ["OSA-2026-0001", "executes code", "OSB-2026-0007", "No known security warnings."], [])
 
     /// Two organizations may share one leaf name; each result keeps its own
     /// identity and its own warnings.
-    fn sameLeafAcrossOrgs() = WebFixtures::shows("web: browse keeps same leaf names distinct", Browse::render(catalog(), ""),
-        fn(html) => contains(html, "id=\"-atlas-util-h\"") &&
-            contains(html, "id=\"-border-util-h\"") &&
-            contains(html, "@atlas/util") &&
-            contains(html, "@border/util"))
+    fn sameLeafAcrossOrgs() = WebFixtures::showsTexts("web: browse keeps same leaf names distinct", Browse::render(catalog(), ""),
+        ["id=\"-atlas-util-h\"", "id=\"-border-util-h\"", "@atlas/util", "@border/util"], [])
 
     /// One package without evidence hides the entire screen, naming the
     /// package and the reason — never a partial listing.

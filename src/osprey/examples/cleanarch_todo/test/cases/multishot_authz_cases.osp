@@ -83,15 +83,8 @@ fn authzViewLists(view) = match view {
 /// The stored list titles, in stored order.
 fn authzTitlesOf(lists) = mapList(lists, fn(list) => list.title)
 
-/// Request builders: one per request kind the cases send.
-fn authzNewList(title, colour) = CreateList { list: NewList { title: title, colour: colour } }
-fn authzEditList(id, title, colour) = UpdateList { edit: ListEdit { id: id, title: title, colour: colour } }
-fn authzDropList(id) = DeleteList { id: id }
-fn authzNewItem(listId, title) = CreateItem { item: NewItem { listId: listId, title: title } }
-fn authzEditItem(id, title, done) = UpdateItem { edit: ItemEdit { id: id, title: title, done: done } }
-fn authzDetail(id, priority) = UpdateItemDetail { detail: ItemDetail { id: id, listId: 2, priority: priority, note: "call first" } }
-fn authzDropItem(id) = DeleteItem { id: id }
-fn authzQuery(listId, pageNumber, pageSize) = ItemsWithPagination { query: ItemQuery { listId: listId, pageNumber: pageNumber, pageSize: pageSize } }
+/// The detail ask the authorization cases send: always list 2, note "call first".
+fn authzDetail(id, priority) = itemDetail(id, 2, priority, "call first")
 
 /// Reply and fault literals the branch answers must equal.
 fn createdId(id) = Success { value: CreatedId { value: id } }
@@ -119,6 +112,15 @@ fn authzAsAnonymous(seedLists, seedItems, request) = authzProbed(TodoHarness::an
 fn authzAsUser(seedLists, seedItems, request) = authzProbed(TodoHarness::user(), seedLists, seedItems, request)
 fn authzAsAdmin(seedLists, seedItems, request) = authzProbed(TodoHarness::admin(), seedLists, seedItems, request)
 
+/// The GetTodos what-if over the standard seeds: the anonymous branch is
+/// refused, and both signed-in branches read the identical view.
+fn authzReadsTodos() = {
+    let reads = authzAsAnonymous(authzTwoLists(), authzThreeItems(), GetTodos)
+    let view = authzGetTodosView(authzTwoLists(), authzThreeItems())
+    expect(reads.answers, [authzUnauthorized(), Success { value: view }, Success { value: view }])
+    { reads: reads, view: view }
+}
+
 /// The question probed once per start principal, in `TodoProbe::principals()` order.
 fn authzFromEachStart(seedLists, seedItems, request) = mapList(TodoProbe::principals(), fn(who) =>
     authzProbed(who, seedLists, seedItems, request))
@@ -131,9 +133,9 @@ fn authzStartInert(seedLists, seedItems, request, why, extra) = {
 
 /// The eight requests with no access rule, each valid against two lists and three items.
 fn authzUnguardedRequests() = [
-    authzNewList("Travel", "#5C6BC0"), authzEditList(2, "Budget", "#4CAF50"), authzDropList(2),
-    authzNewItem(1, "Dentist"), authzEditItem(1, "Milk", true), authzDetail(1, 2),
-    authzDropItem(3), authzQuery(1, 1, 5)
+    newList("Travel", "#5C6BC0"), editList(2, "Budget", "#4CAF50"), dropList(2),
+    newItem(1, "Dentist"), editItem(1, "Milk", true), authzDetail(1, 2),
+    dropItem(3), itemQuery(1, 1, 5)
 ]
 
 /// One collected validation problem list as one comparable text.
@@ -182,9 +184,9 @@ module MultishotAuthzCases {
     /// same snapshot ([MULTI-REPLAY-STATE]), so all three get the same id and
     /// nothing is stored.
     export fn whoMayCreateListCase() = {
-        let bare = authzAsAnonymous([], [], authzNewList("Travel", "#5C6BC0"))
-        let solo = authzAsUser(authzOneList(), [], authzNewList("Travel", "#5C6BC0"))
-        let pair = authzAsAdmin(authzTwoLists(), [], authzNewList("Travel", "#5C6BC0"))
+        let bare = authzAsAnonymous([], [], newList("Travel", "#5C6BC0"))
+        let solo = authzAsUser(authzOneList(), [], newList("Travel", "#5C6BC0"))
+        let pair = authzAsAdmin(authzTwoLists(), [], newList("Travel", "#5C6BC0"))
         // nextListId = length(seedLists)+1 in every branch: the id follows the seeds, never a branch counter.
         expect(bare.answers, authzAllBranches(createdId(1)))
         expect(solo.answers, authzAllBranches(createdId(2)))
@@ -197,7 +199,7 @@ module MultishotAuthzCases {
             structuralEquals(authzTitlesOf(pair.lists), ["Shopping", "Banking"]),
             noEvents(bare), noEvents(solo), noEvents(pair)
         ])
-        let blank = authzAsAdmin(authzOneList(), [], authzNewList("Travel", ""))
+        let blank = authzAsAdmin(authzOneList(), [], newList("Travel", ""))
         // A blank colour is no access concern: the branch still answers the same new id.
         expect(blank.answers, authzAllBranches(createdId(2)))
         checkAll("the blank-colour branch is undone like the rest", [
@@ -205,7 +207,7 @@ module MultishotAuthzCases {
             structuralEquals(authzTitlesOf(blank.lists), ["Solo"])
         ])
         // The start principal never reaches the branches: whoMayRun answers Auth itself.
-        authzStartInert([], [], authzNewList("Travel", ""), "the start principal changes no answer, no reading, no row",
+        authzStartInert([], [], newList("Travel", ""), "the start principal changes no answer, no reading, no row",
             fn(report) => noEvents(report) && structuralEquals(report.lists, []) && structuralEquals(report.items, []))
     }
 
@@ -214,11 +216,11 @@ module MultishotAuthzCases {
     /// typed NotFound fault in every branch, and validation runs before the
     /// lookup, so a broken title refuses before the id is ever read.
     export fn whoMayUpdateListCase() = {
-        let rename = authzAsAnonymous(authzTwoLists(), [], authzEditList(2, "Budget", "#4CAF50"))
-        let blank = authzAsAdmin(authzTwoLists(), [], authzEditList(1, "Shopping", ""))
-        let dup = authzAsUser(authzTwoLists(), [], authzEditList(2, "Shopping", ""))
-        let missing = authzAsAdmin(authzTwoLists(), [], authzEditList(99, "Budget", "#4CAF50"))
-        let invalid = authzAsAnonymous(authzTwoLists(), [], authzEditList(99, "", ""))
+        let rename = authzAsAnonymous(authzTwoLists(), [], editList(2, "Budget", "#4CAF50"))
+        let blank = authzAsAdmin(authzTwoLists(), [], editList(1, "Shopping", ""))
+        let dup = authzAsUser(authzTwoLists(), [], editList(2, "Shopping", ""))
+        let missing = authzAsAdmin(authzTwoLists(), [], editList(99, "Budget", "#4CAF50"))
+        let invalid = authzAsAnonymous(authzTwoLists(), [], editList(99, "", ""))
         let dupFault = faults(["'Title' must be unique."])
         let noList = missingRow("TodoList", 99)
         let emptyTitle = faults(["'Title' must not be empty."])
@@ -243,10 +245,10 @@ module MultishotAuthzCases {
     /// store) answers the typed NotFound fault, and each branch's cascade drop
     /// is undone.
     export fn whoMayDeleteListCase() = {
-        let drop = authzAsAnonymous(authzTwoLists(), authzThreeItems(), authzDropList(1))
-        let keep = authzAsUser(authzTwoLists(), authzThreeItems(), authzDropList(2))
-        let missing = authzAsAdmin(authzTwoLists(), authzThreeItems(), authzDropList(99))
-        let bare = authzAsAnonymous([], [], authzDropList(1))
+        let drop = authzAsAnonymous(authzTwoLists(), authzThreeItems(), dropList(1))
+        let keep = authzAsUser(authzTwoLists(), authzThreeItems(), dropList(2))
+        let missing = authzAsAdmin(authzTwoLists(), authzThreeItems(), dropList(99))
+        let bare = authzAsAnonymous([], [], dropList(1))
         let noList = missingRow("TodoList", 99)
         // Existing ids answer Updated in all branches; id 99 and an empty store answer NotFound with kind and id asked.
         expect(drop.answers, authzAllBranches(updatedOk()))
@@ -269,10 +271,9 @@ module MultishotAuthzCases {
     /// user and administrator branches answer the identical full view; the
     /// abandoned reads publish nothing and store nothing.
     export fn whoMayGetTodosCase() = {
-        let view = authzGetTodosView(authzTwoLists(), authzThreeItems())
-        let reads = authzAsAnonymous(authzTwoLists(), authzThreeItems(), GetTodos)
-        // MustSignIn is the first and only rule: anonymous refused, both signed-in branches get the same view.
-        expect(reads.answers, [authzUnauthorized(), Success { value: view }, Success { value: view }])
+        let seen = authzReadsTodos()
+        let reads = seen.reads
+        let view = seen.view
         let bare = authzAsAdmin([], [], GetTodos)
         let bareView = authzGetTodosView([], [])
         // An empty store answers the same lookups with no lists.
@@ -301,10 +302,10 @@ module MultishotAuthzCases {
     /// parent list answers the new id; an empty title collects its one
     /// problem; every branch's row is undone.
     export fn whoMayCreateItemCase() = {
-        let fresh = authzAsAnonymous(authzTwoLists(), authzThreeItems(), authzNewItem(1, "Dentist"))
-        let bare = authzAsUser([], [], authzNewItem(1, "First"))
-        let orphan = authzAsAdmin(authzTwoLists(), authzThreeItems(), authzNewItem(99, "Dentist"))
-        let empty = authzAsAnonymous(authzTwoLists(), authzThreeItems(), authzNewItem(1, ""))
+        let fresh = authzAsAnonymous(authzTwoLists(), authzThreeItems(), newItem(1, "Dentist"))
+        let bare = authzAsUser([], [], newItem(1, "First"))
+        let orphan = authzAsAdmin(authzTwoLists(), authzThreeItems(), newItem(99, "Dentist"))
+        let empty = authzAsAnonymous(authzTwoLists(), authzThreeItems(), newItem(1, ""))
         let noTitle = faults(["'Title' must not be empty."])
         // nextItemId = length(seedItems)+1 per branch (4 with three items, 1 bare); the parent listId is never
         // checked; an empty title collects exactly the empty-title problem.
@@ -319,7 +320,7 @@ module MultishotAuthzCases {
             authzItemsKept(empty), structuralEquals(bare.items, []),
             noEvents(fresh), noEvents(orphan), noEvents(empty), noEvents(bare)
         ])
-        authzStartInert(authzTwoLists(), authzThreeItems(), authzNewItem(1, "Dentist"), "the start principal changes nothing",
+        authzStartInert(authzTwoLists(), authzThreeItems(), newItem(1, "Dentist"), "the start principal changes nothing",
             fn(report) => structuralEquals(authzBranchTexts(report), ["created 4", "created 4", "created 4"]))
     }
 
@@ -328,13 +329,13 @@ module MultishotAuthzCases {
     /// event a false->true flip raises is undone with the branch, so `events`
     /// stays empty, and a missing item answers the typed NotFound fault.
     export fn whoMayCompleteItemCase() = {
-        let flip = authzAsAnonymous(authzTwoLists(), authzThreeItems(), authzEditItem(1, "Milk", true))
+        let flip = authzAsAnonymous(authzTwoLists(), authzThreeItems(), editItem(1, "Milk", true))
         let doneSeeds = [TodoHarness::seedItem(1, 1, "Milk", true)]
         let doneList = [TodoHarness::seedList(1, "Shopping", "#78909C")]
-        let again = authzAsUser(doneList, doneSeeds, authzEditItem(1, "Milk", true))
-        let down = authzAsAdmin(doneList, doneSeeds, authzEditItem(1, "Milk", false))
-        let idle = authzAsAnonymous(authzTwoLists(), authzThreeItems(), authzEditItem(3, "Tax", false))
-        let missing = authzAsUser(authzTwoLists(), authzThreeItems(), authzEditItem(99, "Milk", true))
+        let again = authzAsUser(doneList, doneSeeds, editItem(1, "Milk", true))
+        let down = authzAsAdmin(doneList, doneSeeds, editItem(1, "Milk", false))
+        let idle = authzAsAnonymous(authzTwoLists(), authzThreeItems(), editItem(3, "Tax", false))
+        let missing = authzAsUser(authzTwoLists(), authzThreeItems(), editItem(99, "Milk", true))
         let noItem = missingRow("TodoItem", 99)
         // false->true, true->true and true->false all answer Updated (only the flip up raises, and it is
         // rewound); false on an already-open item answers Updated; a missing id answers NotFound TodoItem 99.
@@ -385,9 +386,9 @@ module MultishotAuthzCases {
     /// rule; every branch answers Updated or the typed NotFound fault, and the
     /// removal is undone, leaving exactly the seed rows.
     export fn whoMayDeleteItemCase() = {
-        let drop = authzAsAnonymous(authzTwoLists(), authzThreeItems(), authzDropItem(2))
-        let missing = authzAsUser(authzTwoLists(), authzThreeItems(), authzDropItem(99))
-        let bare = authzAsAdmin([], [], authzDropItem(1))
+        let drop = authzAsAnonymous(authzTwoLists(), authzThreeItems(), dropItem(2))
+        let missing = authzAsUser(authzTwoLists(), authzThreeItems(), dropItem(99))
+        let bare = authzAsAdmin([], [], dropItem(1))
         let noItem = missingRow("TodoItem", 99)
         // Item 2 exists, id 99 and an empty store do not: Updated or NotFound { kind: "TodoItem", id } per branch.
         expect(drop.answers, authzAllBranches(updatedOk()))
@@ -401,7 +402,7 @@ module MultishotAuthzCases {
             length(bare.items) == 0, length(bare.lists) == 0,
             noEvents(drop), noEvents(missing), noEvents(bare)
         ])
-        authzStartInert(authzTwoLists(), authzThreeItems(), authzDropItem(3), "the start principal changes nothing",
+        authzStartInert(authzTwoLists(), authzThreeItems(), dropItem(3), "the start principal changes nothing",
             fn(report) => noEvents(report) && authzItemsKept(report))
     }
 }

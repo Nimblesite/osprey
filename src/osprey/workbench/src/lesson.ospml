@@ -100,7 +100,7 @@ module Lessons
         false => "stage must be 1, 2 or 3"
 
     header (doc, slug) = firstOf [
-        formatProblem doc,
+        formatProblem "lesson" doc,
         slugProblem slug,
         needText (doc, "title", "lesson"),
         needText (doc, "summary", "lesson"),
@@ -109,9 +109,9 @@ module Lessons
         afterProblem doc,
     ]
 
-    formatProblem doc = match Doc::number (doc, "format") == 1
+    export formatProblem kind doc = match Doc::number (doc, "format") == 1
         true => ""
-        false => "this lesson needs a newer workbench (format must be 1)"
+        false => "this ${kind} needs a newer workbench (format must be 1)"
 
     slugProblem slug = match isSlug slug
         true => ""
@@ -254,9 +254,7 @@ module Catalogues
         stagesProblem (mapList (Doc::fieldItems (doc, "stages"), \item => stage item)),
     ]
 
-    format doc = match Doc::number (doc, "format") == 1
-        true => ""
-        false => "this catalogue needs a newer workbench (format must be 1)"
+    format doc = Lessons::formatProblem "catalogue" doc
 
     slugsProblem slugs = match isEmpty slugs || Lists::any (slugs, \slug => !Lessons::isSlug slug) || !Lists::distinct slugs
         true => "lessons must be distinct lesson slugs, at least one"

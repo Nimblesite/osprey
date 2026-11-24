@@ -33,11 +33,9 @@ module ItemsCases {
     export fn createItemCase() = {
         let made = TodoHarness::adminAsks([
             TodoHarness::seedList(1, "Shopping", "#78909C")
-        ], [], CreateItem { item: NewItem { listId: 1, title: "Milk" } })
+        ], [], newItem(1, "Milk"))
         expect(made.settled, Success { value: CreatedId { value: 1 } })
-        let untitled = TodoHarness::adminAsks([], [], CreateItem {
-            item: NewItem { listId: 1, title: "" }
-        })
+        let untitled = TodoHarness::adminAsks([], [], newItem(1, ""))
         expect(untitled.settled, Error { message: ValidationFault {
             problems: ["'Title' must not be empty."]
         } })
@@ -46,33 +44,26 @@ module ItemsCases {
     /// Completing an item raises TodoItemCompletedEvent exactly once;
     /// un-completing raises nothing; completing again raises again.
     export fn completionEventCase() = {
-        let seeds = [TodoHarness::seedItem(1, 1, "Milk", false)]
         let lists = [TodoHarness::seedList(1, "Shopping", "#78909C")]
-        let done = TodoHarness::adminAsks(lists, seeds, UpdateItem {
-            edit: ItemEdit { id: 1, title: "Milk", done: true }
+        let completed = [TodoItemCompleted { itemId: 1, listId: 1, title: "Milk" }]
+        let flips = [
+            { seeded: false, done: true, events: completed },
+            { seeded: true, done: false, events: [] },
+            { seeded: false, done: true, events: completed }
+        ]
+        forEachList(flips, fn(flip) => {
+            let run = TodoHarness::adminAsks(lists, [
+                TodoHarness::seedItem(1, 1, "Milk", flip.seeded)
+            ], editItem(1, "Milk", flip.done))
+            expect(run.settled, Success { value: Updated })
+            expect(run.events, flip.events)
         })
-        expect(done.settled, Success { value: Updated })
-        expect(done.events, [TodoItemCompleted { itemId: 1, listId: 1, title: "Milk" }])
-        let undone = TodoHarness::adminAsks(lists, [
-            TodoHarness::seedItem(1, 1, "Milk", true)
-        ], UpdateItem { edit: ItemEdit { id: 1, title: "Milk", done: false } })
-        expect(undone.settled, Success { value: Updated })
-        expect(undone.events, [])
-        let redone = TodoHarness::adminAsks(lists, [
-            TodoHarness::seedItem(1, 1, "Milk", false)
-        ], UpdateItem { edit: ItemEdit { id: 1, title: "Milk", done: true } })
-        expect(redone.settled, Success { value: Updated })
-        expect(redone.events, [TodoItemCompleted { itemId: 1, listId: 1, title: "Milk" }])
     }
 
     /// UpdateTodoItemDetail moves lists, sets the priority and the note.
     export fn detailCase() = {
-        let after = TodoHarness::rowsAfter(TodoHarness::admin(), 0, [
-            TodoHarness::seedList(1, "Shopping", "#78909C"),
-            TodoHarness::seedList(2, "Banking", "#AB47BC")
-        ], [TodoHarness::seedItem(1, 1, "Milk", false)], UpdateItemDetail {
-            detail: ItemDetail { id: 1, listId: 2, priority: 3, note: "switch banks" }
-        })
+        let after = TodoHarness::rowsAfter(TodoHarness::admin(), 0, authzTwoLists(),
+            [TodoHarness::seedItem(1, 1, "Milk", false)], itemDetail(1, 2, 3, "switch banks"))
         expect(after.items, [TodoItem {
             id: 1,
             listId: 2,
@@ -88,13 +79,11 @@ module ItemsCases {
     export fn missingItemCase() = {
         let edited = TodoHarness::adminAsks([
             TodoHarness::seedList(1, "Shopping", "#78909C")
-        ], [], UpdateItem { edit: ItemEdit { id: 9, title: "Ghost", done: false } })
+        ], [], editItem(9, "Ghost", false))
         expect(edited.settled, Error { message: NotFound { kind: "TodoItem", id: 9 } })
-        let detailed = TodoHarness::adminAsks([], [], UpdateItemDetail {
-            detail: ItemDetail { id: 9, listId: 1, priority: 0, note: "" }
-        })
+        let detailed = TodoHarness::adminAsks([], [], itemDetail(9, 1, 0, ""))
         expect(detailed.settled, Error { message: NotFound { kind: "TodoItem", id: 9 } })
-        let deleted = TodoHarness::adminAsks([], [], DeleteItem { id: 9 })
+        let deleted = TodoHarness::adminAsks([], [], dropItem(9))
         expect(deleted.settled, Error { message: NotFound { kind: "TodoItem", id: 9 } })
     }
 
@@ -105,7 +94,7 @@ module ItemsCases {
         ], [
             TodoHarness::seedItem(1, 1, "Milk", true),
             TodoHarness::seedItem(2, 1, "Bread", false)
-        ], DeleteItem { id: 1 })
+        ], dropItem(1))
         expect(after.items, [TodoHarness::seedItem(2, 1, "Bread", false)])
     }
 
@@ -113,9 +102,7 @@ module ItemsCases {
     /// an oversize page and an empty list ([EXAMPLE-CLEANARCH-INV-FAITHFUL]).
     export fn paginationEdgesCase() = {
         let seeds = pagedSeeds()
-        let ask = fn(number, size) => TodoHarness::adminAsks(seeds.lists, seeds.items, ItemsWithPagination {
-            query: ItemQuery { listId: 1, pageNumber: number, pageSize: size }
-        })
+        let ask = fn(number, size) => TodoHarness::adminAsks(seeds.lists, seeds.items, itemQuery(1, number, size))
         expect(ask(1, 2).settled, pageOf([row(1, "Apples"), row(2, "Bread")], 5, false, true))
         expect(ask(2, 2).settled, pageOf([row(3, "Cherries"), row(4, "Dates")], 5, true, true))
         expect(ask(3, 2).settled, pageOf([row(5, "Eggs")], 5, true, false))
@@ -127,20 +114,15 @@ module ItemsCases {
             row(4, "Dates"),
             row(5, "Eggs")
         ], 5, false, false))
-        expect(TodoHarness::adminAsks(seeds.lists, [], ItemsWithPagination {
-            query: ItemQuery { listId: 1, pageNumber: 1, pageSize: 10 }
-        }).settled, pageOf([], 0, false, false))
+        expect(TodoHarness::adminAsks(seeds.lists, [], itemQuery(1, 1, 10)).settled, pageOf([], 0, false, false))
     }
 
     /// The page query only ever reports its own list's items.
     export fn paginationIsPerListCase() = {
-        let view = TodoHarness::adminAsks([
-            TodoHarness::seedList(1, "Shopping", "#78909C"),
-            TodoHarness::seedList(2, "Banking", "#AB47BC")
-        ], [
+        let view = TodoHarness::adminAsks(authzTwoLists(), [
             TodoHarness::seedItem(1, 1, "Milk", false),
             TodoHarness::seedItem(2, 2, "Tax", true)
-        ], ItemsWithPagination { query: ItemQuery { listId: 2, pageNumber: 1, pageSize: 10 } })
+        ], itemQuery(2, 1, 10))
         expect(view.settled, pageOf([
             ItemView { id: 2, title: "Tax", done: true, priority: "None", note: "" }
         ], 1, false, false))

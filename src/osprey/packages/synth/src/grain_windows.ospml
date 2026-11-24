@@ -24,7 +24,5 @@ module GrainWindows
         0.0 => Success(value = HannWindow)
         1.0 =>
             shape = AsrWindow(attack = attack, release = release)
-            match valid shape
-                true => Success(value = shape)
-                false => Error(message = InvalidConfiguration(detail = "Grain attack and release must be positive fractions whose sum is at most one."))
+            GrainTimings::accepted (valid shape, shape, InvalidConfiguration(detail = "Grain attack and release must be positive fractions whose sum is at most one."))
         _ => Error(message = InvalidConfiguration(detail = "Grain window must be 0 (Hann) or 1 (ASR)."))

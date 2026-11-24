@@ -23,12 +23,15 @@ module ClipLayouts
             _ => false
         _ => false
 
+    (** One audio port fanned to `many` mono outlets of the same total width. *)
+    linked (single, many) = audio [single] && audio many && length many == single.channels && length (filterList (many, \port => port.channels == 1)) == length many
+
     splitting n = match n.inputs
-        [input] => audio [input] && audio n.outputs && length n.outputs == input.channels && length (filterList (n.outputs, \port => port.channels == 1)) == length n.outputs
+        [input] => linked (input, n.outputs)
         _ => false
 
     joining n = match n.outputs
-        [output] => audio [output] && audio n.inputs && length n.inputs == output.channels && length (filterList (n.inputs, \port => port.channels == 1)) == length n.inputs
+        [output] => linked (output, n.inputs)
         _ => false
 
     mapped n = match n.processor

@@ -121,10 +121,14 @@ module BuildTests {
 
     // ---- cases ----
 
+    /// The plain project build over `packages`: a matching lock, their reads
+    /// and walks, `--project`.
+    fn buildAll(packages) = runBuild(readsOf(matchingLock(mapList(packages, pkgOf)), packages), walksOf(packages), ["--project", project])
+
     /// A passing verify writes the exact derived project and runs the compiler.
     fn derived() = {
         let packages = [one(), two()]
-        let a = runBuild(readsOf(matchingLock(mapList(packages, pkgOf)), packages), walksOf(packages), ["--project", project])
+        let a = buildAll(packages)
         checkAll("the derived osprey.toml is exact and the compiler runs", [
             a.report.status == 0,
             a.derived == derivedText(),
@@ -166,7 +170,7 @@ module BuildTests {
 
     fn relativePythonSources() = {
         let packages = [one(), two()]
-        let a = runBuild(readsOf(matchingLock(mapList(packages, pkgOf)), packages), walksOf(packages), ["--project", project])
+        let a = buildAll(packages)
         checkAll("derived Python sources obey the compiler's manifest-relative path contract", [
             a.report.status == 0,
             !contains(a.derived, "python_sources = [\"/"),
@@ -188,7 +192,7 @@ module BuildTests {
     /// A package whose installed manifest is rejected is `build.manifest`.
     fn buildManifestRejected() = {
         let packages = [bad(), two()]
-        let a = runBuild(readsOf(matchingLock(mapList(packages, pkgOf)), packages), walksOf(packages), ["--project", project])
+        let a = buildAll(packages)
         checkAll("a rejected package manifest is build.manifest with no compiler run", [
             a.report.status == 1,
             startsWith(Fixture::line(a.report, 0), "build.manifest @demo/one manifest.project.name at "),

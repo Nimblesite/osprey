@@ -31,8 +31,7 @@ module GraphRebase
             true => Outcomes::carried (fresh (graph, n), \bank => Success(value = listAppend banks bank))
 
     (** The running state carried into an edited graph; the graph must already pass `Graphs.prepare`. *)
-    export rebased (graph, held) = match Graphs::prepare graph
-        Invalid _ => Error(message = InvalidConfiguration(detail = "The edited graph is invalid; keep the previous graph and state."))
-        Valid _ =>
-            kept = filterList (held.graphKernels, \bank => surviving (graph, held, bank))
-            Outcomes::carried (foldList (graph.nodes, Success(value = kept), \(outcome, n) => added (graph, kept, outcome, n)), \banks => Success(value = held(graphKernels = banks)))
+    export rebased (graph, held) =
+        use _ <- Renderer::validated (graph, InvalidConfiguration(detail = "The edited graph is invalid; keep the previous graph and state."))
+        kept = filterList (held.graphKernels, \bank => surviving (graph, held, bank))
+        Outcomes::carried (foldList (graph.nodes, Success(value = kept), \(outcome, n) => added (graph, kept, outcome, n)), \banks => Success(value = held(graphKernels = banks)))

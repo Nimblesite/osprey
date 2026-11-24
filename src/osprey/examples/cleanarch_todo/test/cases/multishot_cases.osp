@@ -19,27 +19,10 @@ let sevenTitles = ["A", "B", "C", "D", "E", "F", "G"]
 /// What the title length rule answers.
 let titleTooLong = ValidationFault { problems: ["'Title' must be at most 200 characters."] }
 
-/// Two seeded lists.
-fn twoLists() = [TodoHarness::seedList(1, "Shopping", "#78909C"), TodoHarness::seedList(2, "Banking", "#AB47BC")]
-
-/// Three seeded items across the two lists.
-fn threeItems() = [
-    TodoHarness::seedItem(1, 1, "Milk", false),
-    TodoHarness::seedItem(2, 1, "Bread", false),
-    TodoHarness::seedItem(3, 2, "Tax", false)
-]
-
-/// Seven items in list 1, titled so title order is id order.
-fn sevenItems() = mapList(sevenTitles, fn(title) =>
-    TodoHarness::seedItem(length(listTitlesUpTo(title)), 1, title, false))
-
-/// The titles from "A" up to and including `title`.
-fn listTitlesUpTo(title) = filterList(sevenTitles, fn(each) => each <= title)
-
 /// The page a plan branch answers.
 fn pageOfTitles(titles, hasPrevious, hasNext) = Success { value: ItemsPageView {
     rows: mapList(titles, fn(title) => ItemView {
-        id: length(listTitlesUpTo(title)),
+        id: length(authzTitlesUpTo(title)),
         title: title,
         done: false,
         priority: "None",
@@ -53,9 +36,6 @@ fn pageOfTitles(titles, hasPrevious, hasNext) = Success { value: ItemsPageView {
 /// The stored list titles, in stored order.
 fn titlesOf(lists) = mapList(lists, fn(list) => list.title)
 
-/// A title of `size` characters.
-fn wide(size) = foldList(range(0, size) |> toList, "", fn(built, _i) => built + "x")
-
 /// The conflict's explanation, or "" for any other outcome.
 fn conflictWhy(outcome) = match outcome {
     Error { message: Conflict { why } } => why
@@ -67,7 +47,7 @@ module MultishotCases {
     /// anonymous party, a user and the administrator. Each branch answers for
     /// its own principal, and the administrator's purge is undone.
     export fn whoMayPurgeCase() = {
-        let probe = TodoHarness::probed(TodoHarness::anonymous(), twoLists(), threeItems(), WhoMayRun { request: PurgeTodoLists })
+        let probe = TodoHarness::probed(TodoHarness::anonymous(), authzTwoLists(), authzThreeItems(), WhoMayRun { request: PurgeTodoLists })
         expect(probe.answers, [
             Error { message: Unauthorized },
             Error { message: Forbidden { why: "not in role" } },
@@ -85,7 +65,7 @@ module MultishotCases {
     /// succeed get the same id, because each starts from the same store, and
     /// a completion event raised in an abandoned branch is never published.
     export fn whoMayRunCommandsCase() = {
-        let reads = TodoHarness::probed(TodoHarness::admin(), twoLists(), threeItems(), WhoMayRun { request: GetTodos })
+        let reads = TodoHarness::probed(TodoHarness::admin(), authzTwoLists(), authzThreeItems(), WhoMayRun { request: GetTodos })
         checkAll("the query is refused anonymously and identical for both signed-in parties", [
             match reads.answers {
                 [Error { message: Unauthorized }, Success { value: user }, Success { value: administrator }] =>
@@ -94,7 +74,7 @@ module MultishotCases {
             },
             reads.readings == 7
         ])
-        let creates = TodoHarness::probed(TodoHarness::anonymous(), twoLists(), [], WhoMayRun { request: CreateList { list: NewList { title: "Travel", colour: "" } } })
+        let creates = TodoHarness::probed(TodoHarness::anonymous(), authzTwoLists(), [], WhoMayRun { request: newList("Travel", "") })
         expect(creates.answers, [
             Success { value: CreatedId { value: 3 } },
             Success { value: CreatedId { value: 3 } },
@@ -104,7 +84,7 @@ module MultishotCases {
             structuralEquals(titlesOf(creates.lists), seededTitles),
             creates.readings == 7
         ])
-        let completes = TodoHarness::probed(TodoHarness::anonymous(), twoLists(), threeItems(), WhoMayRun { request: UpdateItem { edit: ItemEdit { id: 1, title: "Milk", done: true } } })
+        let completes = TodoHarness::probed(TodoHarness::anonymous(), authzTwoLists(), authzThreeItems(), WhoMayRun { request: editItem(1, "Milk", true) })
         expect(completes.answers, [
             Success { value: Updated },
             Success { value: Updated },
@@ -112,7 +92,7 @@ module MultishotCases {
         ])
         checkAll("three completions ran and none published or persisted", [
             length(completes.events) == 0,
-            structuralEquals(completes.items, threeItems()),
+            structuralEquals(completes.items, authzThreeItems()),
             completes.readings == 7
         ])
     }
@@ -122,7 +102,7 @@ module MultishotCases {
     /// failures, and the request's start is never re-run: one start reading,
     /// one settle reading per branch.
     export fn whichFixesWorkCase() = {
-        let hopeless = TodoHarness::probed(TodoHarness::admin(), twoLists(), [], WhichFixesWork { request: CreateList { list: NewList { title: wide(201), colour: "#HotPink" } } })
+        let hopeless = TodoHarness::probed(TodoHarness::admin(), authzTwoLists(), [], WhichFixesWork { request: newList(retryWide(201), "#HotPink") })
         expect(hopeless.answers, [
             Error { message: ValidationFault { problems: [
                 "'Title' must be at most 200 characters.",
@@ -137,14 +117,14 @@ module MultishotCases {
             ] } },
             Error { message: titleTooLong }
         ])
-        let fixable = TodoHarness::probed(TodoHarness::admin(), twoLists(), [], WhichFixesWork { request: CreateList { list: NewList { title: wide(201), colour: "#AB47BC" } } })
+        let fixable = TodoHarness::probed(TodoHarness::admin(), authzTwoLists(), [], WhichFixesWork { request: newList(retryWide(201), "#AB47BC") })
         expect(fixable.answers, [
             Error { message: titleTooLong },
             Error { message: titleTooLong },
             Success { value: CreatedId { value: 3 } },
             Error { message: titleTooLong }
         ])
-        let padded = TodoHarness::probed(TodoHarness::admin(), twoLists(), [], WhichFixesWork { request: CreateList { list: NewList { title: "  Shopping  ", colour: "" } } })
+        let padded = TodoHarness::probed(TodoHarness::admin(), authzTwoLists(), [], WhichFixesWork { request: newList("  Shopping  ", "") })
         expect(padded.answers, [
             Success { value: CreatedId { value: 3 } },
             Error { message: ValidationFault { problems: ["'Title' must be unique."] } },
@@ -165,14 +145,14 @@ module MultishotCases {
     /// [EXAMPLE-CLEANARCH-MULTISHOT-PLAN]: one captured query, resumed with
     /// four page shapes.
     export fn pagePlanCase() = {
-        let plan = TodoHarness::probed(TodoHarness::admin(), twoLists(), sevenItems(), PagePlan { listId: 1 })
+        let plan = TodoHarness::probed(TodoHarness::admin(), authzTwoLists(), authzSevenItems(), PagePlan { listId: 1 })
         expect(plan.answers, [
-            pageOfTitles(listTitlesUpTo("E"), false, true),
+            pageOfTitles(authzTitlesUpTo("E"), false, true),
             pageOfTitles(["F", "G"], true, false),
             pageOfTitles(sevenTitles, false, false),
             pageOfTitles(sevenTitles, false, false)
         ])
-        let empty = TodoHarness::probed(TodoHarness::admin(), twoLists(), sevenItems(), PagePlan { listId: 2 })
+        let empty = TodoHarness::probed(TodoHarness::admin(), authzTwoLists(), authzSevenItems(), PagePlan { listId: 2 })
         checkAll("four resumptions of one query; an empty list plans four empty pages", [
             plan.readings == 6,
             length(TodoProbe::shapes()) == 4,
@@ -186,7 +166,7 @@ module MultishotCases {
     /// transaction handler resumes the same request again. The lost
     /// attempt's write is gone and the retried write lands exactly once.
     export fn retryAfterConflictCase() = {
-        let ask = CreateList { list: NewList { title: "Mine", colour: "" } }
+        let ask = newList("Mine", "")
         let calm = TodoHarness::contested([], [], [], ask)
         let once = TodoHarness::contested(["Rival"], [], [], ask)
         let twice = TodoHarness::contested(["Rival", "Other"], [], [], ask)
@@ -206,13 +186,11 @@ module MultishotCases {
     /// Three rivals beat all three attempts: the conflict names the third,
     /// and nothing of the request is stored.
     export fn retryGivesUpCase() = {
-        let lost = TodoHarness::contested(["Rival", "Other", "Third"], [], [], CreateList {
-            list: NewList { title: "Mine", colour: "" }
-        })
+        let lost = TodoHarness::contested(namedRivals, [], [], newList("Mine", ""))
         checkAll("the third attempt's conflict is the answer and no write survives", [
             contains(conflictWhy(lost.settled), "attempt 3:"),
             contains(conflictWhy(lost.settled), "store changed under transaction"),
-            structuralEquals(titlesOf(lost.lists), ["Rival", "Other", "Third"]),
+            structuralEquals(titlesOf(lost.lists), namedRivals),
             lost.readings == 3
         ])
     }
@@ -220,11 +198,11 @@ module MultishotCases {
     /// A retried completion publishes its event once: the lost attempt's
     /// event is rewound before the request resumes.
     export fn retryPublishesOnceCase() = {
-        let ask = UpdateItem { edit: ItemEdit { id: 1, title: "Milk", done: true } }
+        let ask = editItem(1, "Milk", true)
         let seeds = [TodoHarness::seedItem(1, 1, "Milk", false)]
         let lists = [TodoHarness::seedList(1, "Shopping", "#78909C")]
         let retried = TodoHarness::contested(["Rival"], lists, seeds, ask)
-        let lost = TodoHarness::contested(["Rival", "Other", "Third"], lists, seeds, ask)
+        let lost = TodoHarness::contested(namedRivals, lists, seeds, ask)
         expect(retried.settled, Success { value: Updated })
         expect(retried.events, [TodoItemCompleted { itemId: 1, listId: 1, title: "Milk" }])
         expect(retried.items, [TodoHarness::seedItem(1, 1, "Milk", true)])

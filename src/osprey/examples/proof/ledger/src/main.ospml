@@ -33,12 +33,8 @@ named item = match item
         Success former => former.name
         Error _ => "(empty block)"
 
-declared (env, item) = match item
-    Single decl => Checked::declare (env, decl)
-    Group block => Inductive::add (env, block)
-
 (** `tally` after `item`: its declarations accepted, or counted as rejected with the first reason kept. *)
-step (tally, item) = recorded (tally, item, declared (tally.env, item))
+step (tally, item) = recorded (tally, item, Checked::itemDeclared (tally.env, item))
 
 (** One line per item, the ledger's record: `accepted <name>` or `rejected <name>: <reason>`. *)
 recorded (tally, item, outcome) = match outcome

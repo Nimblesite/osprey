@@ -12,6 +12,21 @@ type Question =
     | WhichFixesWork { request: Request }
     | PagePlan { listId: int }
 
+/// Request builders, one per request kind: the shape every case sends, so
+/// the cases spell their data, not their plumbing.
+fn newList(title, colour) = CreateList { list: NewList { title: title, colour: colour } }
+fn editList(id, title, colour) = UpdateList { edit: ListEdit { id: id, title: title, colour: colour } }
+fn dropList(id) = DeleteList { id: id }
+fn newItem(listId, title) = CreateItem { item: NewItem { listId: listId, title: title } }
+fn editItem(id, title, done) = UpdateItem { edit: ItemEdit { id: id, title: title, done: done } }
+fn dropItem(id) = DeleteItem { id: id }
+fn itemDetail(id, listId, priority, note) = UpdateItemDetail {
+    detail: ItemDetail { id: id, listId: listId, priority: priority, note: note }
+}
+fn itemQuery(listId, pageNumber, pageSize) = ItemsWithPagination {
+    query: ItemQuery { listId: listId, pageNumber: pageNumber, pageSize: pageSize }
+}
+
 module TodoHarness {
     /// The signed-in administrator: the role and the CanPurge policy.
     export fn admin() = Principal {
@@ -54,13 +69,19 @@ module TodoHarness {
         work()
     }
 
+    /// `work` inside the whole request region: the principal, a clock that
+    /// starts at 0 and steps `clockStep` per reading, and the store with its
+    /// transactions — the ring the composition root installs.
+    fn region(principal, clockStep, seedLists, seedItems, work) =
+        TodoHost::withAuth(principal, fn() =>
+            TodoHost::withClock(0, clockStep, fn() =>
+                TodoReplay::asSent(fn() => stored(seedLists, seedItems, work))))
+
     /// One request through the whole pipeline, under the caller's Log
     /// handler: answers `{ settled, events }`.
     fn staged(principal, clockStep, seedLists, seedItems, ask) =
-        TodoHost::withAuth(principal, fn() =>
-            TodoHost::withClock(0, clockStep, fn() =>
-                TodoReplay::asSent(fn() => stored(seedLists, seedItems, fn() =>
-                    TodoHost::withEventReport(fn() => TodoDispatch::dispatch(ask))))))
+        region(principal, clockStep, seedLists, seedItems, fn() =>
+            TodoHost::withEventReport(fn() => TodoDispatch::dispatch(ask)))
 
     /// `staged` with the log silenced.
     export fn request(principal, clockStep, seedLists, seedItems, ask) =
@@ -83,10 +104,8 @@ module TodoHarness {
 
     /// One route through the edge over seeded rows, as the server would answer it.
     export fn routeOver(seedLists, seedItems, principal, method, path, body) =
-        quiet(fn() => TodoHost::withAuth(principal, fn() =>
-            TodoHost::withClock(0, 0, fn() =>
-                TodoReplay::asSent(fn() => stored(seedLists, seedItems, fn() =>
-                    TodoHost::withEventReport(fn() => EdgeTodo::answer(method, path, body)).settled)))))
+        quiet(fn() => region(principal, 0, seedLists, seedItems, fn() =>
+            TodoHost::withEventReport(fn() => EdgeTodo::answer(method, path, body)).settled))
 
     /// `routeOver` an empty store.
     export fn route(principal, method, path, body) = routeOver([], [], principal, method, path, body)
@@ -104,18 +123,16 @@ module TodoHarness {
     /// clock advances one per reading, so `readings` counts every reading
     /// made before this one.
     export fn probed(principal, seedLists, seedItems, question) =
-        quiet(fn() => TodoHost::withAuth(principal, fn() =>
-            TodoHost::withClock(0, 1, fn() =>
-                TodoReplay::asSent(fn() => stored(seedLists, seedItems, fn() => {
-                    let report = TodoHost::withEventReport(fn() => asked(question))
-                    {
-                        answers: report.settled,
-                        events: report.events,
-                        readings: perform Clock.nowMs(),
-                        lists: perform Store.lists(),
-                        items: perform Store.items()
-                    }
-                })))))
+        quiet(fn() => region(principal, 1, seedLists, seedItems, fn() => {
+            let report = TodoHost::withEventReport(fn() => asked(question))
+            {
+                answers: report.settled,
+                events: report.events,
+                readings: perform Clock.nowMs(),
+                lists: perform Store.lists(),
+                items: perform Store.items()
+            }
+        }))
 
     /// One request sent while each of `rivals` commits first: every queued
     /// rival wins one attempt's commit, so the transaction handler resumes
@@ -138,17 +155,15 @@ module TodoHarness {
     /// The stored rows after `ask` ran, read inside the store's region:
     /// answers `{ settled, events, lists, items }`.
     export fn rowsAfter(principal, clockStep, seedLists, seedItems, ask) =
-        quiet(fn() => TodoHost::withAuth(principal, fn() =>
-            TodoHost::withClock(0, clockStep, fn() =>
-                TodoReplay::asSent(fn() => stored(seedLists, seedItems, fn() => {
-                    let report = TodoHost::withEventReport(fn() => TodoDispatch::dispatch(ask))
-                    {
-                        settled: report.settled,
-                        events: report.events,
-                        lists: perform Store.lists(),
-                        items: perform Store.items()
-                    }
-                })))))
+        quiet(fn() => region(principal, clockStep, seedLists, seedItems, fn() => {
+            let report = TodoHost::withEventReport(fn() => TodoDispatch::dispatch(ask))
+            {
+                settled: report.settled,
+                events: report.events,
+                lists: perform Store.lists(),
+                items: perform Store.items()
+            }
+        }))
 
     /// The checks that failed, each as `label #position`: empty when every one
     /// holds. `checkAll` takes only a list literal, so a computed list of checks

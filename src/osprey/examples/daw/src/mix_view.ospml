@@ -59,15 +59,14 @@ module MixView
             [tap] => Success(value = BeginSend(identity = tap.sendId))
             _ => Success(value = BrowseSends(offset = 0))
 
-    graphAt (editor, x, y) = match listGet editor.song.tracks editor.track
-        Error _ => Error(message = "Select a track first.")
-        Success voice => match EditorView::areaAt (busAreas (editor, voice), x, y)
+    graphAt (editor, x, y) = synth::Outcomes::carried (daw::Projects::required (editor.song.tracks, editor.track, "Select a track first."), \voice =>
+        match EditorView::areaAt (busAreas (editor, voice), x, y)
             0 => Success(value = OpenTrack(index = editor.track))
             1 => Success(value = BrowseBuses)
             2 => synth::Outcomes::carried (daw::BusMix::named (editor.song, voice.bus), \bus =>
                 area = gainArea bus
                 Success(value = AdjustBusGain(name = bus.name, gain = TimelineGeometry::fader (x, area.accessLeft, area.accessWidth, area.accessMin, area.accessMax))))
-            _ => sendAt (voice, x, y)
+            _ => sendAt (voice, x, y))
 
     onward bus = ui::Pick::either (bus.output == "", "Master", bus.output)
 

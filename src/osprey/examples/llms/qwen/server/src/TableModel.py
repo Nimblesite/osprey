@@ -318,9 +318,4 @@ def seeded(model, history, sampling):
 
 def bias(anchor, token):
     """A non-negative score below `SEEDED_ROW` from the context anchor and the token."""
-    return residue_seeded(satAdd(wrapMul(satAdd(anchor, token), 1103515245), 12345))
-
-
-def residue_seeded(value):
-    """`value` modulo `SEEDED_ROW`, never negative."""
-    return satSub(abs(value), wrapMul(intDiv(abs(value), SEEDED_ROW), SEEDED_ROW))
+    return Sampler.residue(satAdd(wrapMul(satAdd(anchor, token), 1103515245), 12345), SEEDED_ROW)

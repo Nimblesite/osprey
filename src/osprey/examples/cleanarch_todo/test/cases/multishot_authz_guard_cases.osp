@@ -7,6 +7,24 @@ namespace todo;
 /// The purge-rule ladder of branch answers for a purge of `count` lists.
 fn guardPurgeLadder(count) = [authzUnauthorized(), authzDenied("not in role"), purgedCount(count)]
 
+/// One pagination what-if per row — who asks, against which list, page and
+/// size — over the seven A-G items: every branch answers the page that list,
+/// page and size imply ([MULTI-HANDLE-MANY]), and no probe keeps a row or an
+/// event ([MULTI-REPLAY]).
+fn guardPages(why, rows) = forEachList(rows, fn(row) => {
+    let seeds = authzSevenItems()
+    let probe = authzProbed(row.who, authzTwoLists(), seeds, itemQuery(row.listId, row.page, row.size))
+    expect(probe.answers, authzAllBranches(authzPageView(row.listId, seeds, row.page, row.size)))
+    checkAll(why, [
+        probe.readings == 7,
+        answeredThree(probe),
+        length(probe.items) == 7,
+        authzListsKept(probe),
+        noEvents(probe),
+        structuralEquals(authzBranchTexts(probe), ["page view", "page view", "page view"])
+    ])
+})
+
 /// Authorization what-if over pages, the purge rules and the starting principal ([EXAMPLE-CLEANARCH-MULTISHOT-AUTHZ], [MULTI-REPLAY]).
 module MultishotAuthzGuardCases {
     /// [EXAMPLE-CLEANARCH-MULTISHOT-AUTHZ], [MULTI-REPLAY]:
@@ -14,24 +32,14 @@ module MultishotAuthzGuardCases {
     /// page: title-ordered rows, the list's total, `hasPrevious` = page > 1
     /// and `hasNext` = page*size < total over seven A-G items.
     export fn whoMayPaginateCase() = {
-        let seeds = authzSevenItems()
-        let first = authzAsAnonymous(authzTwoLists(), seeds, authzQuery(1, 1, 5))
-        let second = authzAsUser(authzTwoLists(), seeds, authzQuery(1, 2, 5))
-        let whole = authzAsAdmin(authzTwoLists(), seeds, authzQuery(1, 1, 10))
-        let wide = authzAsAnonymous(authzTwoLists(), seeds, authzQuery(1, 1, 50))
-        // page 1 of 5 = A-E with hasNext (5 < 7); page 2 of 5 = F,G with hasPrevious; 10 or 50 per page = all
-        // seven, hasNext false in both.
-        expect(first.answers, authzAllBranches(authzPageView(1, seeds, 1, 5)))
-        expect(second.answers, authzAllBranches(authzPageView(1, seeds, 2, 5)))
-        expect(whole.answers, authzAllBranches(authzPageView(1, seeds, 1, 10)))
-        expect(wide.answers, authzAllBranches(authzPageView(1, seeds, 1, 50)))
-        checkAll("four page shapes x three branches: reads store nothing, publish nothing [MULTI-REPLAY]", [
-            authzReadsEveryBranch([first, second, whole, wide]),
-            length(first.items) == 7, length(second.items) == 7, length(whole.items) == 7, length(wide.items) == 7,
-            noEvents(first), noEvents(second), noEvents(whole), noEvents(wide),
-            authzListsKept(first), answeredThree(first)
+        guardPages("four page shapes x three branches: reads store nothing, publish nothing [MULTI-REPLAY]", [
+            { who: TodoHarness::anonymous(), listId: 1, page: 1, size: 5 },
+            { who: TodoHarness::user(), listId: 1, page: 2, size: 5 },
+            { who: TodoHarness::admin(), listId: 1, page: 1, size: 10 },
+            { who: TodoHarness::anonymous(), listId: 1, page: 1, size: 50 }
         ])
-        let empty = authzAsAdmin(authzTwoLists(), seeds, authzQuery(2, 1, 5))
+        let seeds = authzSevenItems()
+        let empty = authzAsAdmin(authzTwoLists(), seeds, itemQuery(2, 1, 5))
         // List 2 holds no items: every branch answers an empty page, totalCount 0, hasPrevious false, hasNext false.
         expect(empty.answers, authzAllBranches(authzPageView(2, seeds, 1, 5)))
         checkAll("an empty list plans the same empty page three times", [
@@ -44,26 +52,15 @@ module MultishotAuthzGuardCases {
     /// and an empty list asked from page 3 — every branch answers the same
     /// view, and a missing list id is an empty page, never a NotFound.
     export fn whoMayPaginateEdgesCase() = {
-        let seeds = authzSevenItems()
-        let middle = authzAsAnonymous(authzTwoLists(), seeds, authzQuery(1, 2, 2))
-        let tail = authzAsUser(authzTwoLists(), seeds, authzQuery(1, 4, 2))
-        let nothing = authzAsAdmin(authzTwoLists(), seeds, authzQuery(99, 1, 5))
-        let late = authzAsAnonymous(authzTwoLists(), seeds, authzQuery(2, 3, 3))
         // p2 s2 = C,D (hasNext, 4 < 7); p4 s2 = G alone (hasNext false, 8 >= 7); a missing list id is an empty
         // page; page 3 of an empty list keeps hasPrevious true.
-        expect(middle.answers, authzAllBranches(authzPageView(1, seeds, 2, 2)))
-        expect(tail.answers, authzAllBranches(authzPageView(1, seeds, 4, 2)))
-        expect(nothing.answers, authzAllBranches(authzPageView(99, seeds, 1, 5)))
-        expect(late.answers, authzAllBranches(authzPageView(2, seeds, 3, 3)))
-        checkAll("four edges x three branches: same page for every principal [MULTI-HANDLE-MANY]", [
-            authzReadsEveryBranch([middle, tail, nothing, late]),
-            length(middle.items) == 7, length(tail.items) == 7, length(late.items) == 7,
-            answeredThree(middle), answeredThree(tail),
-            noEvents(middle), noEvents(tail), noEvents(nothing), noEvents(late),
-            structuralEquals(authzBranchTexts(middle), ["page view", "page view", "page view"]),
-            structuralEquals(authzBranchTexts(late), ["page view", "page view", "page view"])
+        guardPages("four edges x three branches: same page for every principal [MULTI-HANDLE-MANY]", [
+            { who: TodoHarness::anonymous(), listId: 1, page: 2, size: 2 },
+            { who: TodoHarness::user(), listId: 1, page: 4, size: 2 },
+            { who: TodoHarness::admin(), listId: 99, page: 1, size: 5 },
+            { who: TodoHarness::anonymous(), listId: 2, page: 3, size: 3 }
         ])
-        authzStartInert(authzTwoLists(), seeds, authzQuery(1, 2, 2), "the start principal changes nothing", noEvents)
+        authzStartInert(authzTwoLists(), authzSevenItems(), itemQuery(1, 2, 2), "the start principal changes nothing", noEvents)
     }
 
     /// [EXAMPLE-CLEANARCH-MULTISHOT-AUTHZ], [MULTI-REPLAY]: PurgeTodoLists
@@ -154,10 +151,7 @@ module MultishotAuthzGuardCases {
     /// three branch answers — refused exactly where the branch's own principal
     /// lacks sign-in or the role.
     export fn whoMayGuardedRequestsCase() = {
-        let reads = authzAsAnonymous(authzTwoLists(), authzThreeItems(), GetTodos)
-        let view = authzGetTodosView(authzTwoLists(), authzThreeItems())
-        // MustSignIn alone: the anonymous branch refuses, user and administrator branches read the identical view.
-        expect(reads.answers, [authzUnauthorized(), Success { value: view }, Success { value: view }])
+        let reads = authzReadsTodos().reads
         let purge = authzAsAnonymous(authzTwoLists(), authzThreeItems(), PurgeTodoLists)
         // The full ladder: Unauthorized, then "not in role", then the purge of two lists.
         expect(purge.answers, guardPurgeLadder(2))
@@ -193,13 +187,13 @@ module MultishotAuthzGuardCases {
     export fn whoMayStartPrincipalCase() = {
         authzStartInert(authzTwoLists(), authzThreeItems(), GetTodos, "GetTodos: the same refusal-and-view triple from every start",
             fn(report) => noEvents(report) && authzListsKept(report) && authzItemsKept(report))
-        authzStartInert(authzTwoLists(), authzThreeItems(), authzNewList("Travel", "#AB47BC"), "CreateList: the same new id 3 from every start",
+        authzStartInert(authzTwoLists(), authzThreeItems(), newList("Travel", "#AB47BC"), "CreateList: the same new id 3 from every start",
             fn(report) => structuralEquals(authzBranchTexts(report), ["created 3", "created 3", "created 3"]) && noEvents(report) && authzItemsKept(report))
         authzStartInert(authzTwoLists(), authzThreeItems(), PurgeTodoLists, "PurgeTodoLists: the same unauthorized, forbidden, purge-2 triple from every start",
             fn(report) => structuralEquals(authzBranchTexts(report), ["unauthorized", "forbidden not in role", "purged 2"]) && noEvents(report) && authzListsKept(report))
-        let first = authzAsAnonymous(authzTwoLists(), authzThreeItems(), authzNewItem(1, "Dentist"))
-        let second = authzAsUser(authzTwoLists(), authzThreeItems(), authzNewItem(1, "Dentist"))
-        let third = authzAsAdmin(authzTwoLists(), authzThreeItems(), authzNewItem(1, "Dentist"))
+        let first = authzAsAnonymous(authzTwoLists(), authzThreeItems(), newItem(1, "Dentist"))
+        let second = authzAsUser(authzTwoLists(), authzThreeItems(), newItem(1, "Dentist"))
+        let third = authzAsAdmin(authzTwoLists(), authzThreeItems(), newItem(1, "Dentist"))
         // The three branch answers are identical across all three start principals, item id 4 each time.
         expect(first.answers, authzAllBranches(createdId(4)))
         expect(second.answers, authzAllBranches(createdId(4)))

@@ -338,8 +338,7 @@ sceneCaseARefusedEventLeavesTheSurfaceWhole () =
     unknown = Probes::sent (moved, Probes::touchAt (7, 42, 0, "", "", 0.0, 0.0, false))
     expect (Probes::problem unknown, "Unknown event kind 42")
     surfaceTally (unknown, 1)
-    delivered = Probes::tapped (moved, 0)
-    expectNoProblem delivered
+    delivered = tappedProblem (moved, 0)
     expect (Probes::tickets delivered, "load:1")
 
 // One scene holding a single disc at `layer`, so the drawing order names the container it was found in.

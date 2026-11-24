@@ -17,6 +17,11 @@ import ui::Ui
 
 (** The extra case beside each restored test: another permutation, edge or component of the same fact. *)
 module Extras
+    // The root region unchanged after `after` landed, with the note region carrying `text`.
+    expectPatched (before, after, text) =
+        expect (rootPortion (walkedWords after), rootPortion (walkedWords before))
+        expect (contains (notePortion (walkedWords after), text), true)
+
     // ---- the surface's events ----
 
     (** "a resolved edit updates the current state (extra: a completion lands on the state the tap changed)". *)
@@ -32,8 +37,7 @@ module Extras
     export tapRegion () =
         first = Probes::started ()
         edited = Probes::posted (first, 2, "hello")
-        expect (rootPortion (walkedWords first), rootPortion (walkedWords edited))
-        expect (contains (notePortion (walkedWords edited), "hello"), true)
+        expectPatched (first, edited, "hello")
         tapped = Probes::tapped (edited, 0)
         expect (rootPortion (walkedWords tapped) != rootPortion (walkedWords edited), true)
         expect (notePortion (walkedWords tapped), notePortion (walkedWords edited))
@@ -41,15 +45,11 @@ module Extras
 
     (** "an edit from prior state keeps its meaning when ordinals shift (extra: the note's old number now names the button the frame drew there)". *)
     export ordinals () =
-        counted = Probes::tapped (Probes::started (), 0)
-        expectClean (counted, 1)
+        counted = tappedClean (Probes::started ())
         surfaceBinds (counted, 4)
         // The note field moved from ordinal 2 to 1: its edit still arrives, and its old number now delivers a Load ask.
-        noted = Probes::posted (counted, 1, "world")
-        expectMemo (noted, "world")
-        moved = Probes::tapped (counted, 2)
-        expectNoProblem moved
-        expect (Probes::asked moved, "store-read")
+        _ = postedMemo (counted, 1, "world")
+        moved = tappedAsked (counted, 2)
         expectClean (moved, 1)
 
     (** "an edit whose typed action is gone or ambiguous refuses without change (extra: every number the shifted frame did not draw refuses)". *)
@@ -71,9 +71,7 @@ module Extras
     export staleNumbers () =
         counted = Probes::tapped (Probes::started (), 0)
         forEachList ([4, 5], \ordinal => expect (Probes::problem (Probes::posted (counted, ordinal, "")), "Unknown control ${ordinal}"))
-        noted = Probes::posted (counted, 1, "kept")
-        expectNoProblem noted
-        expectMemo (noted, "kept")
+        noted = postedWhole (counted, 1, "kept")
         expectClean (noted, 1)
 
     (** "start sends every region once with the theme (extra: the open export hands init the platform, clock and appearance)". *)
@@ -138,13 +136,10 @@ module Extras
     export textRegion () =
         first = Probes::started ()
         hello = Probes::posted (first, 2, "hello")
-        world = Probes::posted (hello, 2, "world")
-        expectMemo (world, "world")
+        world = postedMemo (hello, 2, "world")
         expect (Probes::written world, "echo=world")
-        expect (rootPortion (walkedWords world), rootPortion (walkedWords hello))
-        expect (contains (notePortion (walkedWords world), "world"), true)
-        tapped = Probes::tapped (world, 0)
-        expectClean (tapped, 1)
+        expectPatched (hello, world, "world")
+        tapped = tappedClean world
         expect (contains (notePortion (walkedWords tapped), "world"), true)
         expect (contains (walkedWords tapped, "Count 1"), true)
 

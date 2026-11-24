@@ -23,19 +23,16 @@ module SpectralMath
     (** Magnitude of a complex value. *)
     export magnitude (re, im: float) = pow (power (re, im), 0.5)
 
+    (** One component of a unit vector, with its silence fallback. *)
+    unitised (part, m, silent) = match m <= 0.0
+        true => silent
+        false => floatDiv (part, m)
+
     (** Unit-vector components; silence maps to phase zero. *)
-    export unitRe (re, im) =
-        m = magnitude (re, im)
-        match m <= 0.0
-            true => 1.0
-            false => floatDiv (re, m)
+    export unitRe (re, im) = unitised (re, magnitude (re, im), 1.0)
 
     (** Imaginary component of the unit phase vector. *)
-    export unitIm (re, im) =
-        m = magnitude (re, im)
-        match m <= 0.0
-            true => 0.0
-            false => floatDiv (im, m)
+    export unitIm (re, im) = unitised (im, magnitude (re, im), 0.0)
 
     (** Centre frequency of bin `index`. *)
     export binFrequency (index, size, sampleRate) = floatDiv (index * sampleRate, size)

@@ -33,8 +33,7 @@ module GovernanceHandover {
     /// Acceptance is still not administration: only the package's admin
     /// reference decides who administers.
     export fn acceptHandover(registry, transferId, proof) = {
-        use t <- andThen(Governance::transferOf(registry, transferId))
-        use _ <- andThen(liveTransfer(t))
+        use t <- andThen(liveTransferOf(registry, transferId))
         use m <- andThen(Governance::membershipOf(registry, t.proposed))
         use p <- andThen(Governance::principalOf(registry, m.principal))
         use _ <- andThen(liveAcceptingHuman(p, proof))
@@ -65,8 +64,7 @@ module GovernanceHandover {
 
     /// The current administrator cancels a live proposal; the evidence row stays.
     export fn cancelHandover(registry, transferId, proof) = {
-        use t <- andThen(Governance::transferOf(registry, transferId))
-        use _ <- andThen(liveTransfer(t))
+        use t <- andThen(liveTransferOf(registry, transferId))
         use pkg <- andThen(Governance::packageOf(registry, t.package))
         use _ <- andThen(Governance::requireAdmin(registry, pkg, proof, Governance::cancelStatement(transferId)))
         Success { value: Governance::replaceTransfer(registry, t { status: Governance::Cancelled }) }
@@ -74,8 +72,7 @@ module GovernanceHandover {
 
     /// The intended recipient declines a live proposal; the evidence row stays.
     export fn declineHandover(registry, transferId, proof) = {
-        use t <- andThen(Governance::transferOf(registry, transferId))
-        use _ <- andThen(liveTransfer(t))
+        use t <- andThen(liveTransferOf(registry, transferId))
         use actor <- andThen(recipientPrincipal(registry, t.proposed))
         use _ <- andThen(Governance::requireProof(proof, actor, t.proposed, Governance::declineStatement(transferId)))
         Success { value: Governance::replaceTransfer(registry, t { status: Governance::Declined }) }
@@ -84,8 +81,7 @@ module GovernanceHandover {
     /// Mark a live proposal expired once its window has passed; the row
     /// stays as evidence and can never replace a newer admin.
     export fn expireHandover(registry, transferId, now) = {
-        use t <- andThen(Governance::transferOf(registry, transferId))
-        use _ <- andThen(liveTransfer(t))
+        use t <- andThen(liveTransferOf(registry, transferId))
         match now > t.expiresAt {
             true => Success { value: Governance::replaceTransfer(registry, t { status: Governance::Expired }) }
             false => Error { message: "governance.transfer.not-expired" }
@@ -119,6 +115,9 @@ module GovernanceHandover {
     }
 
     fn liveTransfer(t: Governance::Transfer) = Governance::required(Governance::isLiveTransfer(t), t, "governance.transfer.not-pending")
+
+    /// The transfer `transferId` names, once it is still live.
+    fn liveTransferOf(registry, transferId) = andThen(Governance::transferOf(registry, transferId), liveTransfer)
 
     fn acceptedTransfer(t: Governance::Transfer) = Governance::required(Governance::isAcceptedTransfer(t), t, "governance.transfer.acceptance-missing")
 

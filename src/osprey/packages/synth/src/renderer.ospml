@@ -35,10 +35,15 @@ module Renderer
 
     supported plan = SpectralKernels::affordable plan.graph && length (filterList (plan.graph.cables, \c => midiCable (plan.graph, c))) == 0 && length (filterList (plan.graph.nodes, validNode)) == length plan.graph.nodes && length (outputs plan.graph) == 1 && length (filterList (plan.graph.nodes, \n => ClipLayouts::connected (plan.graph, n))) == length plan.graph.nodes && foldList (plan.graph.nodes, 0, \(total, n) => satAdd total (delaySize n)) <= 1920000
 
+    (** Validate a graph for the renderer, reporting `failure` when `Graphs.prepare` rejects it. *)
+    export validated (graph, failure, continue) = match Graphs::prepare graph
+        Invalid _ => Error(message = failure)
+        Valid plan => continue plan
+
     (** Prepare and allocate reference state. Unknown layouts and external plug-ins are explicit errors. *)
-    export start graph = match Graphs::prepare graph
-        Invalid _ => Error(message = InvalidConfiguration(detail = "The graph is invalid; inspect Graphs.prepare for the typed fault."))
-        Valid plan => match supported plan
+    export start graph =
+        use plan <- validated (graph, InvalidConfiguration(detail = "The graph is invalid; inspect Graphs.prepare for the typed fault."))
+        match supported plan
             false => Error(message = IncompatibleLayout(detail = "Reference rendering requires mono audio, one output and supported bounded processors."))
             true => Success(value = RenderInputs::initial plan)
 

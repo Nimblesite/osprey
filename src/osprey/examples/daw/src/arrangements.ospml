@@ -36,9 +36,7 @@ module Arrangements
         false => Error(message = "An arrangement needs a tempo of 20 to 400, a rate of 8000 to 192000 and 1 to 64 tracks.")
         true => match floatToInt (ArrangeMath::pieceFrames (beats arrangement, arrangement.tempo, toFloat arrangement.sampleRate))
             Error _ => Error(message = "The arrangement length is not finite.")
-            Success count => match count >= 1 && count <= 28800000
-                false => Error(message = "An arrangement must last 1 to 28800000 frames.")
-                true => Success(value = count)
+            Success count => Projects::limited (count, 1, 28800000, "An arrangement must last 1 to 28800000 frames.")
 
     (** `samples` enter `offset` frames into the bus, scaled by `gain`; the bus grows to hold them. *)
     export bused (existing, samples, offset, gain) = match length samples == 0 && offset <= length existing

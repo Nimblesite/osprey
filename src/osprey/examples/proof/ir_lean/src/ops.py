@@ -57,7 +57,7 @@ def lean_int(value):
     return f"({value})" if value < 0 else toString(value)
 
 
-def constant(scope, op) -> Result[str, str]:
+def constant(scope: Types.Scope, op: Ir.Operation) -> Result[str, str]:
     """`llvm.mlir.constant` with an integer value."""
     match Ir.int_attr(op.properties, "value"):
         case Success(value=value):
@@ -75,7 +75,7 @@ def scalar(attr):
             return False
 
 
-def zero(scope, op) -> Result[str, str]:
+def zero(scope: Types.Scope, op: Ir.Operation) -> Result[str, str]:
     """`llvm.mlir.zero` of a pointer or an integer: null, or 0."""
     if scalar(unwrap_or(listGet(op.result_types, 0), Ir.UnitAttr())):
         return andThen(result(scope, op), lambda d: Success(value=f".const {d} 0"))
@@ -83,7 +83,7 @@ def zero(scope, op) -> Result[str, str]:
         return Error(message="a zero of an aggregate type")
 
 
-def alloca(scope, op) -> Result[str, str]:
+def alloca(scope: Types.Scope, op: Ir.Operation) -> Result[str, str]:
     """`llvm.alloca` of one element of `elem_type`."""
     count = andThen(nth(op.operands, 0), lambda name: mapGet(scope.consts, name))
     if unwrap_or(count, 0) != 1:
@@ -92,12 +92,12 @@ def alloca(scope, op) -> Result[str, str]:
         return andThen(result(scope, op), lambda d: andThen(andThen(Ir.get_attr(op.properties, "elem_type"), Types.ty), lambda elem: Success(value=f".alloca {d} {elem}")))
 
 
-def store(scope, op) -> Result[str, str]:
+def store(scope: Types.Scope, op: Ir.Operation) -> Result[str, str]:
     """`llvm.store value, pointer`."""
     return andThen(type_at(op.operand_types, 0), lambda t: andThen(operand(scope, op, 0), lambda v: andThen(operand(scope, op, 1), lambda p: Success(value=f".store {t} {v} {p}"))))
 
 
-def load(scope, op) -> Result[str, str]:
+def load(scope: Types.Scope, op: Ir.Operation) -> Result[str, str]:
     """`llvm.load pointer`."""
     return andThen(result(scope, op), lambda d: andThen(type_at(op.result_types, 0), lambda t: andThen(operand(scope, op, 0), lambda p: Success(value=f".load {d} {t} {p}"))))
 
@@ -114,7 +114,7 @@ def indices(scope, op, raw, i, dynamic, acc) -> Result[str, str]:
             return Success(value="[" + join(acc, ", ") + "]")
 
 
-def gep(scope, op) -> Result[str, str]:
+def gep(scope: Types.Scope, op: Ir.Operation) -> Result[str, str]:
     """`llvm.getelementptr`: base operand, `elem_type`, `rawConstantIndices`."""
     match Ir.dense_attr(op.properties, "rawConstantIndices"):
         case Success(value=raw):
@@ -133,7 +133,7 @@ def two(scope, op, head) -> Result[str, str]:
     return andThen(result(scope, op), lambda d: andThen(type_at(op.operand_types, 0), lambda t: andThen(operand(scope, op, 0), lambda a: andThen(operand(scope, op, 1), lambda b: Success(value=f"{head(d)} {t} {a} {b}")))))
 
 
-def icmp(scope, op) -> Result[str, str]:
+def icmp(scope: Types.Scope, op: Ir.Operation) -> Result[str, str]:
     """`llvm.icmp` with the dialect's predicate number."""
     match Ir.int_attr(op.properties, "predicate"):
         case Success(value=number):
@@ -142,7 +142,7 @@ def icmp(scope, op) -> Result[str, str]:
             return Error(message="an icmp without a predicate")
 
 
-def select(scope, op) -> Result[str, str]:
+def select(scope: Types.Scope, op: Ir.Operation) -> Result[str, str]:
     """`llvm.select condition, whenTrue, whenFalse`."""
     return andThen(result(scope, op), lambda d: andThen(operand(scope, op, 0), lambda c: andThen(operand(scope, op, 1), lambda a: andThen(operand(scope, op, 2), lambda b: Success(value=f".select {d} {c} {a} {b}")))))
 
@@ -156,7 +156,7 @@ def callee(scope, name) -> Result[str, str]:
             return Success(value=f"(.ext .{name})") if listContains(EXTERNS, name) else Error(message=f"extern @{name} has no model in LlvmSubset.Ext")
 
 
-def call(scope, op) -> Result[str, str]:
+def call(scope: Types.Scope, op: Ir.Operation) -> Result[str, str]:
     """`llvm.call` of a named callee."""
     match Ir.symbol_attr(op.properties, "callee"):
         case Success(value=name):
@@ -176,34 +176,34 @@ def named(scope, op, kind) -> Result[str, str]:
         return Error(message=f"operation {op.name} is outside the subset")
 
 
-def memory(scope, op) -> Result[str, str]:
+def routed(scope, op, names, steps, otherwise) -> Result[str, str]:
+    """The first `steps` row whose `names` row names `op.name`, else `otherwise`.
+
+    The two lists run in parallel, one row per operation the subset defines.
+    """
+    return routedAt(scope, op, names, steps, otherwise, 0)
+
+
+def routedAt(scope, op, names, steps, otherwise, i) -> Result[str, str]:
+    """Row `i` of the dispatch table, or `otherwise` past its end."""
+    match listGet(names, i):
+        case Success(value=name):
+            if op.name == name:
+                return unwrap_or(listGet(steps, i), otherwise)(scope, op)
+            else:
+                return routedAt(scope, op, names, steps, otherwise, wrapAdd(i, 1))
+        case Error():
+            return otherwise(scope, op)
+
+
+def memory(scope: Types.Scope, op: Ir.Operation) -> Result[str, str]:
     """An operation that is not a constant, a call or a comparison."""
-    if op.name == "llvm.alloca":
-        return alloca(scope, op)
-    elif op.name == "llvm.store":
-        return store(scope, op)
-    elif op.name == "llvm.load":
-        return load(scope, op)
-    elif op.name == "llvm.getelementptr":
-        return gep(scope, op)
-    else:
-        return named(scope, op, drop(op.name, 5))
+    return routed(scope, op, ["llvm.alloca", "llvm.store", "llvm.load", "llvm.getelementptr"], [alloca, store, load, gep], lambda scope, op: named(scope, op, drop(op.name, 5)))
 
 
 def instr(scope, op) -> Result[str, str]:
     """One non-terminator operation as a Lean `Instr`."""
-    if op.name == "llvm.mlir.constant":
-        return constant(scope, op)
-    elif op.name == "llvm.mlir.zero":
-        return zero(scope, op)
-    elif op.name == "llvm.call":
-        return call(scope, op)
-    elif op.name == "llvm.icmp":
-        return icmp(scope, op)
-    elif op.name == "llvm.select":
-        return select(scope, op)
-    else:
-        return memory(scope, op)
+    return routed(scope, op, ["llvm.mlir.constant", "llvm.mlir.zero", "llvm.call", "llvm.icmp", "llvm.select"], [constant, zero, call, icmp, select], memory)
 
 
 def is_term(op):

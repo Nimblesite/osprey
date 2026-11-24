@@ -26,15 +26,19 @@ knobSnapshotJourney () =
         expect (down.sample, 0.25)
         expect ((Smoothers::next (accepted, down.next, 0.3125)).sample, 0.3125))
 
+// An idle activity panel: no active voices, `capacity` slots and no stored energy.
+idlePanel (panel, capacity) =
+    expect (panel.active, 0)
+    expect (panel.capacity, capacity)
+    expect (panel.energy, 0.0)
+
 // [SYNTH-ADVANCED-CORE-SIGNALS] The activity panel distinguishes stored feedback from an input impulse.
 physicalActivityJourney () =
     resonator = synth::ModalConfig(sampleRate = 8000.0, frequency = 125.0, decay = 0.5, brightness = 0.5, strike = 0.25, count = 2, modes = synth::HarmonicModes)
     succeeds (ModalBanks::configure resonator, \bank =>
         initial = ModalBanks::initial bank
         idle = Activities::modes initial
-        expect (idle.active, 0)
-        expect (idle.capacity, 8)
-        expect (idle.energy, 0.0)
+        idlePanel (idle, 8)
         succeeds (ModalBanks::next (bank, initial, 1.0), \step =>
             struck = Activities::modes step.next
             expect (struck.active, 2)

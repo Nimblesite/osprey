@@ -11,7 +11,7 @@ here depends on the weights. Implements [LLM-MODEL-DELTANET], [LLM-MODEL-ATTENTI
 """
 
 from qwen import Qwen3_5Config as C
-from qwen.Qwen3_5Device import Div, divider, grid
+from qwen.Qwen3_5Device import Div, divider, for_rows, grid
 
 __all__ = ["Shapes", "Rows", "shapes_of", "rows_of", "NORM_CHUNK", "VOCAB_CHUNK", "KV_BLOCK", "chunk_of"]
 
@@ -67,10 +67,7 @@ class Rows:
 
 def rows_of(config, shapes, count) -> Rows:
     """The grids for `count` rows; one row reuses the model's own."""
-    if count == 1:
-        return Rows(count=1, rows=shapes.one, hidden=shapes.hidden, hidden_chunks=shapes.hidden_chunks, intermediate=shapes.intermediate)
-    else:
-        return Rows(count=count, rows=grid(count), hidden=grid(count * config.hidden_size), hidden_chunks=grid(count * (config.hidden_size // shapes.norm_chunk)), intermediate=grid(count * config.intermediate_size))
+    return Rows(count=count, rows=for_rows(count, shapes.one, 1), hidden=for_rows(count, shapes.hidden, config.hidden_size), hidden_chunks=for_rows(count, shapes.hidden_chunks, config.hidden_size // shapes.norm_chunk), intermediate=for_rows(count, shapes.intermediate, config.intermediate_size))
 
 
 def chunk_of(width, preferred):

@@ -26,14 +26,11 @@ module Playback
         quiet = silence count
         Buses(left = quiet, right = quiet, groups = mapList (song.buses, \bus => Stereo(name = bus.name, left = quiet, right = quiet)), keys = [])
 
-    trackStep (song, playing, held, index, from, until) = match listGet song.tracks index
-        Error _ => Error(message = "A track is missing.")
-        Success voice => match listGet playing.tracks index
-            Error _ => Error(message = "A track is missing.")
-            Success play => match listGet playing.score.tracks index
-                Error _ => Error(message = "The playing track has no previous patch.")
-                Success prior => Outcomes::carried (Arrangements::refreshed (song, voice, prior, play, from), \ready =>
-                    Outcomes::carried (Arrangements::advanceWindow (song, held.buses, voice, ready, from, until), \step => ok (Heard(plays = listAppend held.plays step.play, buses = step.buses))))
+    trackStep (song, playing, held, index, from, until) = Outcomes::carried (Projects::required (song.tracks, index, "A track is missing."), \voice =>
+        Outcomes::carried (Projects::required (playing.tracks, index, "A track is missing."), \play =>
+            Outcomes::carried (Projects::required (playing.score.tracks, index, "The playing track has no previous patch."), \prior =>
+                Outcomes::carried (Arrangements::refreshed (song, voice, prior, play, from), \ready =>
+                    Outcomes::carried (Arrangements::advanceWindow (song, held.buses, voice, ready, from, until), \step => ok (Heard(plays = listAppend held.plays step.play, buses = step.buses)))))))
 
     // Every track advances over the same frames into the same buses.
     heard (song, playing, buses, from, until) = foldList (toList (range (0, length song.tracks)), ok (Heard(plays = [], buses = buses)), \(outcome, index) => Outcomes::carried (outcome, \held => trackStep (song, playing, held, index, from, until)))

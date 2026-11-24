@@ -1,5 +1,11 @@
 import uitest::Drive
 
+// `state` undone to a graph of `count` nodes: the journey's next state.
+undoneTo (driven, count) =
+    undone = prismTap (driven, "Undo")
+    nodesOf (undone, count)
+    undone
+
 // [PRISM-ROUTING-EDITOR] History must edit the live graph, not only the retained skin.
 graphHistoryJourney () =
     channelUtilitiesJourney ()
@@ -7,9 +13,7 @@ graphHistoryJourney () =
     library = prismTap (opened, "Modules")
     added = prismTap (library, "Add Sine oscillator")
     nodesOf (added, 1)
-    undone = prismTap (added, "Undo")
-    nodesOf (undone, 0)
-    redone = prismTap (undone, "Redo")
+    redone = prismTap (undoneTo (added, 0), "Redo")
     sameGraph (redone, added)
     branched = prismTap (prismTap (prismTap (redone, "Undo"), "Modules"), "Add Low-pass filter")
     nodesOf (branched, 1)
@@ -37,9 +41,7 @@ channelUtilitiesJourney () =
                 "route" => expect (structuralEquals (n.processor, synth::Route(channelMap = [1, 0])), true)
                 "panner" => expect (mapList (n.outputs, \p => p.channels), [2])
                 _ => expect (mapList (n.parameters, \p => p.key), ["firstGain", "secondGain"]))
-        undone = prismTap (selected, "Undo")
-        nodesOf (undone, 0)
-        expect (structuralEquals ((Drive::holding (prismTap (undone, "Redo"))).graph, graph), true))
+        expect (structuralEquals ((Drive::holding (prismTap (undoneTo (selected, 0), "Redo"))).graph, graph), true))
 
 // [DAW-KEYS] Every shipped keymap passes its own checks and gives every command keys; a keymap file may change
 // some commands and leave the rest on their Prism keys; an unknown command, a clash or a missing name is refused
@@ -154,6 +156,12 @@ canvasDialUndo (released, before, at, start, liftedValue) =
     idle = dialPointer (escaped, at.pointX, at.pointY - 90.0, false, false)
     expect (grainPan idle, start)
 
+// The "Load WAV sample" request opened from `driven`: its ticket is pending.
+askedSample driven =
+    asked = Drive::press (driven, "Load WAV sample")
+    expect ((Drive::holding asked).sampleTicket != "", true)
+    asked
+
 // [SYNTH-ADVANCED-GRAINS-IMPORT] Only the latest request may change the selected grain source.
 sampleChoiceJourney () =
     added = prismTap (prismTap (editorLaunched ["--empty"], "Modules"), "Add Grain cloud")
@@ -163,9 +171,8 @@ sampleChoiceJourney () =
     first = Drive::press (added, "Load WAV sample")
     // A high note exceeds the built-in source's 16x rate and must preserve the editable graph.
     errs (synth::EditorState::tune (Drive::holding first, 100))
-    second = Drive::press (first, "Load WAV sample")
+    second = askedSample first
     ticket = (Drive::holding second).sampleTicket
-    expect (ticket != "", true)
     expect (ticket != (Drive::holding first).sampleTicket, true)
     stale = Drive::completed (second, (Drive::holding first).sampleTicket, false, "old selection")
     expect ((Drive::holding stale).sampleTicket, ticket)
@@ -210,10 +217,8 @@ namesRefusalJourney () =
 
 // One chosen file through the picker: the graph and history stay as they were and the node says why.
 refusedFile (driven, path, check) =
-    asked = Drive::press (driven, "Load WAV sample")
-    ticket = (Drive::holding asked).sampleTicket
-    expect (ticket != "", true)
-    done = Drive::completed (asked, ticket, true, path)
+    asked = askedSample driven
+    done = Drive::completed (asked, (Drive::holding asked).sampleTicket, true, path)
     held = Drive::holding done
     expect (held.sampleTicket, "")
     expect (startsWith held.message "Grain cloud ${held.selected}: ", true)
@@ -339,8 +344,7 @@ graphResizeJourney () =
     expect (length (connectionLefts wider), 0)
     added = prismTap (prismTap (wider, "Modules"), "Add Sine oscillator")
     nodesOf (added, 6)
-    undone = prismTap (added, "Undo")
-    nodesOf (undone, 5)
+    undone = undoneTo (added, 5)
     smaller = Drive::viewed (undone, 1536.0, 828.0)
     expect ((portIn (smaller, "Undo")).accessLeft, baseUndo.accessLeft + 1536.0 - 1212.0)
     redone = prismTap (smaller, "Redo")
@@ -391,10 +395,14 @@ arrangedExact (got, want) = expect (got, want)
 
 arrangedBusFrames (buses, count) = forEachList ([buses.left, buses.right], \samples => expect (length samples, count))
 
+// The rendered run opens with `count` frames and its first frame reading `first`.
+arrangedOpened (samples, count, first) =
+    expect (length samples, count)
+    expect (arrangedAt (samples, 0), first)
+
 // One drum note from beat 0: -cos carrier on a wrapped phase, ringing at -6.9078/decay/rate per frame.
 arrangedKickHead samples =
-    expect (length samples, 5)
-    expect (arrangedAt (samples, 0), -0.5)
+    arrangedOpened (samples, 5, -0.5)
     arrangedReadings (samples, closeTo, [
         { frame = 1, want = -0.4994192478404178 }, { frame = 2, want = -0.49825365548570233 },
         { frame = 3, want = -0.49650526238606774 }, { frame = 4, want = -0.49417678890818284 }])
@@ -409,8 +417,7 @@ arrangedKickPadded samples =
 
 // A second identical note from beat 0.25 (frame 6000) overlap-added onto the first.
 arrangedPairSamples samples =
-    expect (length samples, 12002)
-    expect (arrangedAt (samples, 0), -0.5)
+    arrangedOpened (samples, 12002, -0.5)
     arrangedReadings (samples, closeTo, [
         { frame = 5999, want = 0.005101474122257177 }, { frame = 6000, want = -0.4954169144577917 },
         { frame = 6001, want = -0.49535932751606987 }, { frame = 12000, want = 0.0045830855422083275 },
@@ -418,8 +425,7 @@ arrangedPairSamples samples =
 
 // Two identical notes on one beat: the carry sums them from the first frame.
 arrangedTwinSamples samples =
-    expect (length samples, 12000)
-    expect (arrangedAt (samples, 0), -1.0)
+    arrangedOpened (samples, 12000, -1.0)
     closeTo (arrangedAt (samples, 1), -0.9988384956808356)
 
 // A note from beat 0 and one from beat 1: frames 12000 to 23999 settle as silence between them.
@@ -507,12 +513,10 @@ arrangementsJourney () =
         succeeds (daw::Arrangements::layered (centre, [0.1, 0.2], [3.0, 4.0], 2, 1.0, 0.0), \placed =>
             expect (placed.left, [2.0, 1.0, -0.4, 0.2])
             expect (placed.right, [0.5, -2.0, 3.0, 4.0])))
-    succeeds (daw::Arrangements::layered (silent, [5.0], [5.0], 0, 2.0, -1.0), \hard =>
-        closeTo (arrangedAt (hard.left, 0), 14.142135623730951)
-        closeTo (arrangedAt (hard.right, 0), 0.0))
-    succeeds (daw::Arrangements::layered (silent, [5.0], [5.0], 0, 2.0, 1.0), \wide =>
-        closeTo (arrangedAt (wide.left, 0), 0.0)
-        closeTo (arrangedAt (wide.right, 0), 14.142135623730951))
+    forEachList ([{ pan = -1.0, left = 14.142135623730951, right = 0.0 }, { pan = 1.0, left = 0.0, right = 14.142135623730951 }], \row =>
+        succeeds (daw::Arrangements::layered (silent, [5.0], [5.0], 0, 2.0, row.pan), \mixed =>
+            closeTo (arrangedAt (mixed.left, 0), row.left)
+            closeTo (arrangedAt (mixed.right, 0), row.right)))
     succeeds (daw::Arrangements::layered (silent, [0.25], [-0.25], 0, 4.0, 0.0), \loud =>
         expect (loud.left, [1.0])
         expect (loud.right, [-1.0]))
@@ -587,12 +591,16 @@ periodic (samples, period, half, near) =
     expect (lagged (samples, period) > lagged (samples, half), true)
     expect (lagged (samples, period) > lagged (samples, near), true)
 
+// A family's rendered note: a quarter second plus release, finite, peaking above `least`.
+heardSamples (samples, least) =
+    expect (length samples, 14400)
+    expect (finite samples, true)
+    expect (peakOf samples > least, true)
+
 // [SYNTH-SPECTRAL-PITCH-EFFECT] The FFT pitch shifter moves middle C up a fifth (7 semitones, G4 at 122 frames) and an
 // octave (12 semitones, C5 at 92 frames), anti-correlated at its half period, with the shifted level kept.
 shifted (semitones, period, half, near) = succeeds (sampledNote (middleC (), chainOf [part ("sine", 0, [pitched "frequency"]), part ("pitchShifter", 1024, [fixed ("semitones", semitones)])]), \samples =>
-    expect (length samples, 14400)
-    expect (finite samples, true)
-    expect (peakOf samples > 0.05, true)
+    heardSamples (samples, 0.05)
     periodic (samples, period, half, near)
     expect (lagged (samples, half) < 0.0 - 0.5 * lagged (samples, 0), true)
     // A unit sine carries 4800 over the 9600 measured frames; the shifted note keeps more than half of it.
@@ -602,9 +610,7 @@ heardFamily (name, instrument, pitch) = succeeds (sampledNote (middleC (), instr
 
 familyHeard (name, instrument, pitch, samples) =
     // A quarter-second note plus its 50 ms release.
-    expect (length samples, 14400)
-    expect (finite samples, true)
-    expect (peakOf samples > 0.01, true)
+    heardSamples (samples, 0.01)
     expect (peakOf samples <= 4.0, true)
     succeeds (sampledNote (middleC (), instrument), \again => expect (structuralEquals (again, samples), true))
     match pitch

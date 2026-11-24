@@ -272,13 +272,12 @@ module EditorState
             Success next => Success(value = listPrepend nodes next)
 
     (** Transpose the patch atomically. A grain outside its rate range rejects the whole key strike. *)
-    export tune (editor, note) = match note >= 0 && note <= 127
-        false => Error(message = "Choose a MIDI note from 0 to 127.")
-        true => match foldList (editor.graph.nodes, Success(value = []), \(held, n) => pitchNext (note, held, n))
+    export tune (editor, note) = synth::Outcomes::carried (daw::Projects::limited (note, 0, 127, "Choose a MIDI note from 0 to 127."), \_ =>
+        match foldList (editor.graph.nodes, Success(value = []), \(held, n) => pitchNext (note, held, n))
             Error why => relayed why
             Success nodes =>
                 graph = editor.graph
-                Success(value = editor(graph = graph(nodes = listReverse nodes), note = note, armedNote = -1, revision = satAdd editor.revision 1))
+                Success(value = editor(graph = graph(nodes = listReverse nodes), note = note, armedNote = -1, revision = satAdd editor.revision 1)))
 
     (** A playable starting patch; the menu can add more independent instances. *)
     export preset () =

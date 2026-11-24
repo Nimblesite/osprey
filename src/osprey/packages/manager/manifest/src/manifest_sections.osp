@@ -39,6 +39,12 @@ module ManifestSections {
     /// True when pair `key` exists.
     export fn has(pairs, key) = Checked::succeeded(find(pairs, key))
 
+    /// The section `key` run through `of`; a missing section is [].
+    export fn optional(pairs, key, of) = match find(pairs, key) {
+        Error => Success { value: [] }
+        Success { value } => of(value)
+    }
+
     /// The first pair whose key is not allowed, as `code`.
     export fn unknownKeys(pairs, allowed, code) = foldList(pairs, Success { value: 0 }, fn(acc, pair: Toml::Pair) => match acc {
         Error { message } => Error { message: message }

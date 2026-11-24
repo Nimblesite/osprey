@@ -10,9 +10,6 @@
 namespace todo;
 
 
-/// `size` copies of "x": the title whose sort rank is its length ("x" < "xx" < "xxx").
-fn planWide(size) = foldList(range(0, size) |> toList, "", fn(built, _i) => built + "x")
-
 /// The widths `from` up to and including `to`.
 fn planWidths(from, to) = foldList(range(from, satAdd(to, 1)) |> toList, [], fn(acc, w) => listAppend(acc, w))
 
@@ -21,11 +18,11 @@ fn planDescWidths(to) = foldList(planWidths(1, to), [], fn(acc, w) => listConcat
 
 /// Items in `listId` titled widest-first: width `w` gets id `count - w + 1`, so id 1 sorts last.
 fn planWideSeeds(listId, count) = mapList(planDescWidths(count), fn(w) =>
-    TodoHarness::seedItem(satAdd(satSub(count, w), 1), listId, planWide(w), false))
+    TodoHarness::seedItem(satAdd(satSub(count, w), 1), listId, retryWide(w), false))
 
 /// The branch answer for the wide rows widths `from`..`to` of a `count`-item list (id = count - w + 1);
 /// shapes() order is (page 1 of 5), (page 2 of 5), (page 1 of 10), (page 1 of 50).
-fn planWidePage(count, from, to, total, hasPrevious, hasNext) = Success { value: ItemsPageView { rows: mapList(planWidths(from, to), fn(w) => ItemView { id: satAdd(satSub(count, w), 1), title: planWide(w), done: false, priority: "None", note: "" }), totalCount: total, hasPrevious: hasPrevious, hasNext: hasNext } }
+fn planWidePage(count, from, to, total, hasPrevious, hasNext) = Success { value: ItemsPageView { rows: mapList(planWidths(from, to), fn(w) => ItemView { id: satAdd(satSub(count, w), 1), title: retryWide(w), done: false, priority: "None", note: "" }), totalCount: total, hasPrevious: hasPrevious, hasNext: hasNext } }
 
 /// Items titled `titles` in `listId`, seeded in that order (id = position), done exactly for `flipped`.
 fn planSeeds(listId, titles, flipped) = foldList(titles, { next: 1, rows: [] }, fn(walk, title) => {
@@ -86,10 +83,6 @@ fn planShaped(answers, total, counts, nexts) = foldList(range(0, 4) |> toList, t
 fn planCalm(plan) = plan.readings == 6 && length(plan.answers) == 4 && length(plan.events) == 0
 
 /// The stored rows as the queries see them, in stored order.
-fn planStoredTitles(items) = mapList(items, fn(item) => item.title)
-
-fn planStoredIds(items) = mapList(items, fn(item) => item.id)
-
 fn planStoredDones(items) = mapList(items, fn(item) => item.done)
 
 /// One PagePlan probe over a single seeded list titled `title` in `colour`, asked as the administrator.
@@ -147,8 +140,8 @@ module MultishotPlanCases {
             planTitlesFour(plan, [], [], []),
             structuralEquals(planRows(plan.answers, 0), []), structuralEquals(planRows(plan.answers, 1), []),
             planShaped(plan.answers, 0, [0, 0, 0, 0], [false, false, false, false]),
-            planKeptOneList(plan, "Empty", "#26A69A", others), structuralEquals(planStoredTitles(plan.items), ["K1", "K2"]),
-            structuralEquals(planStoredIds(plan.items), [1, 2]), structuralEquals(planStoredDones(plan.items), [false, false])
+            planKeptOneList(plan, "Empty", "#26A69A", others), structuralEquals(authzTitlesOf(plan.items), ["K1", "K2"]),
+            structuralEquals(retryItemIds(plan.items), [1, 2]), structuralEquals(planStoredDones(plan.items), [false, false])
         ])
     }
 
@@ -195,7 +188,7 @@ module MultishotPlanCases {
             structuralEquals(planIds(plan.answers, 0), [1]), structuralEquals(planIds(plan.answers, 2), [1]), structuralEquals(planIds(plan.answers, 3), [1]),
             planShaped(plan.answers, 1, [1, 0, 1, 1], [false, false, false, false]),
             planRowIs(plan.answers, 0, 0, planSpec(1, "Q", true)), planRowIs(plan.answers, 3, 0, planSpec(1, "Q", true)),
-            planKeptOneList(plan, "Solo", "#D98B2B", seeds), structuralEquals(planStoredTitles(plan.items), ["Q"]),
+            planKeptOneList(plan, "Solo", "#D98B2B", seeds), structuralEquals(authzTitlesOf(plan.items), ["Q"]),
             structuralEquals(planStoredDones(plan.items), [true])
         ])
     }
@@ -216,8 +209,8 @@ module MultishotPlanCases {
             structuralEquals(planIds(plan.answers, 0), [3, 1, 2, 4]), structuralEquals(planIds(plan.answers, 2), [3, 1, 2, 4]),
             planShaped(plan.answers, 4, [4, 0, 4, 4], [false, false, false, false]),
             planRowIs(plan.answers, 0, 2, planSpec(2, "2", true)), planRowIs(plan.answers, 3, 0, planSpec(3, "1", false)),
-            structuralEquals(plan.items, seeds), structuralEquals(planStoredTitles(plan.items), ["10", "2", "1", "20"]),
-            structuralEquals(planStoredIds(plan.items), [1, 2, 3, 4]), structuralEquals(planStoredDones(plan.items), [false, true, false, false])
+            structuralEquals(plan.items, seeds), structuralEquals(authzTitlesOf(plan.items), ["10", "2", "1", "20"]),
+            structuralEquals(retryItemIds(plan.items), [1, 2, 3, 4]), structuralEquals(planStoredDones(plan.items), [false, true, false, false])
         ])
     }
 
@@ -241,7 +234,7 @@ module MultishotPlanCases {
             planFlags(plan.answers, 0, false, false), planFlags(plan.answers, 1, true, false),
             planFlags(plan.answers, 2, false, false), planFlags(plan.answers, 3, false, false),
             planRowIs(plan.answers, 0, 0, planSpec(5, "e", false)), planRowIs(plan.answers, 0, 4, planSpec(1, "m", false)),
-            structuralEquals(plan.items, seeds), structuralEquals(planStoredTitles(plan.items), ["m", "k", "i", "g", "e"])
+            structuralEquals(plan.items, seeds), structuralEquals(authzTitlesOf(plan.items), ["m", "k", "i", "g", "e"])
         ])
     }
 
@@ -263,7 +256,7 @@ module MultishotPlanCases {
             planShaped(plan.answers, 9, [5, 4, 9, 9], [true, false, false, false]),
             planRowIs(plan.answers, 0, 4, planSpec(3, "f", true)), planRowIs(plan.answers, 1, 0, planSpec(7, "g", false)),
             structuralEquals(plan.items, seeds),
-            structuralEquals(planStoredTitles(plan.items), ["j", "h", "f", "b", "d", "i", "g", "c", "e"]),
+            structuralEquals(authzTitlesOf(plan.items), ["j", "h", "f", "b", "d", "i", "g", "c", "e"]),
             structuralEquals(planStoredDones(plan.items), [false, false, true, false, false, false, false, false, false])
         ])
     }
@@ -287,7 +280,7 @@ module MultishotPlanCases {
             planRowIs(plan.answers, 0, 3, planSpec(4, "l", true)), planRowIs(plan.answers, 1, 4, planSpec(10, "x", false)),
             planRowIs(plan.answers, 2, 9, planSpec(10, "x", false)),
             structuralEquals(plan.items, seeds),
-            structuralEquals(planStoredTitles(plan.items), ["r", "p", "n", "l", "t", "j", "h", "f", "v", "x"])
+            structuralEquals(authzTitlesOf(plan.items), ["r", "p", "n", "l", "t", "j", "h", "f", "v", "x"])
         ])
     }
 
@@ -313,7 +306,7 @@ module MultishotPlanCases {
             planRowIs(plan.answers, 1, 1, planSpec(11, "z5x", true)), planRowIs(plan.answers, 3, 10, planSpec(2, "z9", false)),
             planRowIs(plan.answers, 0, 0, planSpec(10, "z0", false)),
             structuralEquals(plan.items, seeds),
-            structuralEquals(planStoredTitles(plan.items), ["z1", "z9", "z3", "z7", "z5", "z2", "z8", "z4", "z6", "z0", "z5x"])
+            structuralEquals(authzTitlesOf(plan.items), ["z1", "z9", "z3", "z7", "z5", "z2", "z8", "z4", "z6", "z0", "z5x"])
         ])
     }
 
@@ -336,8 +329,8 @@ module MultishotPlanCases {
             planRowIs(plan.answers, 0, 4, planSpec(2, "A", true)), planRowIs(plan.answers, 1, 0, planSpec(6, "B", false)),
             planRowIs(plan.answers, 1, 3, planSpec(9, "c", false)),
             structuralEquals(plan.items, seeds),
-            structuralEquals(planStoredTitles(plan.items), ["b", "A", "10", "2", "aa", "B", "1", "20", "c"]),
-            structuralEquals(planStoredIds(plan.items), [1, 2, 3, 4, 5, 6, 7, 8, 9])
+            structuralEquals(authzTitlesOf(plan.items), ["b", "A", "10", "2", "aa", "B", "1", "20", "c"]),
+            structuralEquals(retryItemIds(plan.items), [1, 2, 3, 4, 5, 6, 7, 8, 9])
         ])
     }
 }

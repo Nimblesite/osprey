@@ -53,13 +53,18 @@ def ty(attr) -> Result[str, str]:
             return Error(message="an attribute that is not a first-class type")
 
 
-def reg(scope, name) -> Result[str, str]:
-    """The number of the value `name`."""
-    match mapGet(scope.values, name):
+def numbered(table, name, kind) -> Result[str, str]:
+    """The number `table` gives `name`, or why it does not."""
+    match mapGet(table, name):
         case Success(value=number):
             return Success(value=toString(number))
         case Error():
-            return Error(message=f"value {name} is not defined in this function")
+            return Error(message=f"{kind} {name} is not defined in this function")
+
+
+def reg(scope, name) -> Result[str, str]:
+    """The number of the value `name`."""
+    return numbered(scope.values, name, "value")
 
 
 def regs(scope, names) -> Result[str, str]:
@@ -69,8 +74,4 @@ def regs(scope, names) -> Result[str, str]:
 
 def block(scope, name) -> Result[str, str]:
     """The number of the block `name`."""
-    match mapGet(scope.blocks, name):
-        case Success(value=number):
-            return Success(value=toString(number))
-        case Error():
-            return Error(message=f"block {name} is not defined in this function")
+    return numbered(scope.blocks, name, "block")

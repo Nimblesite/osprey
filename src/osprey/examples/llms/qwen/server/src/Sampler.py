@@ -17,19 +17,19 @@ from transformers import LogitsProcess
 from transformers import Math
 from transformers import StoppingCriteria
 
-__all__ = ["one_token", "draw"]
+__all__ = ["one_token", "draw", "residue"]
 
 DRAW_ROW = 1000000
 
 
 def draw(seed, at):
     """A deterministic draw in [0, 1) from the seed and the position."""
-    return toFloat32(toFloat(residue_draw(wrapMul(satAdd(seed, wrapMul(at, 2654435761)), 1103515245))) / 1000000.0)
+    return toFloat32(toFloat(residue(wrapMul(satAdd(seed, wrapMul(at, 2654435761)), 1103515245), DRAW_ROW)) / 1000000.0)
 
 
-def residue_draw(value):
-    """`value` modulo `DRAW_ROW`, never negative."""
-    return satSub(abs(value), wrapMul(intDiv(abs(value), DRAW_ROW), DRAW_ROW))
+def residue(value, row):
+    """`value` modulo `row`, never negative."""
+    return satSub(abs(value), wrapMul(intDiv(abs(value), row), row))
 
 
 def temperature_processors(sampling):

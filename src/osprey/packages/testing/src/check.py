@@ -12,7 +12,7 @@ NaN equal only to NaN, so a reference value computed by CPython's numpy or
 torch under a different libm still compares. Implements [PORT-TEST-ORACLE].
 """
 
-__all__ = ["Outcome", "passed", "failed", "equal", "close", "close_all", "ints_equal", "truth", "near", "report", "summary", "ints_text", "float_of", "Fault", "strictly", "run", "lenient", "specials"]
+__all__ = ["Outcome", "passed", "failed", "equal", "close", "close_all", "ints_equal", "truth", "near", "report", "summary", "ints_text", "float_of", "Fault", "strictly", "run", "run_or_print", "lenient", "specials"]
 
 
 class Outcome:
@@ -374,11 +374,33 @@ def run(cases):
     suite stopped: integer overflow: 9223372036854775807 + 1
     ```
     """
-    match strictly(lambda: report(cases())):
+    return run_or_print(lambda: report(cases()), "suite")
+
+
+def run_or_print(work, label):
+    """`work` under `strictly`; when the policy abandons it, prints
+    `<label> stopped: <message>` instead of returning.
+
+    # Examples
+    ```osprey native
+    from testing import Check
+
+    def plus(a, b):
+        return a + b
+
+    Check.run_or_print(lambda: print(f"sum {plus(2, 3)}"), "probe")
+    Check.run_or_print(lambda: print(f"sum {plus(9223372036854775807, 1)}"), "probe")
+    ```
+    ```output
+    sum 5
+    probe stopped: integer overflow: 9223372036854775807 + 1
+    ```
+    """
+    match strictly(work):
         case Success(value=value):
             return value
         case Error(message=message):
-            return print(f"suite stopped: {message}")
+            return print(f"{label} stopped: {message}")
 
 
 def specials():

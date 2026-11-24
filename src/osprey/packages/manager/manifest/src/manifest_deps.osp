@@ -225,10 +225,8 @@ module ManifestDeps {
     }
 
     /// `[system.*]` as canonical, sorted requirements with unique capabilities.
-    export fn systems(root) = match ManifestSections::find(ManifestSections::pairsOf(root), "system") {
-        Error => Success { value: [] }
-        Success { value } => systemsSorted(systemsOf(ManifestSections::pairsOf(Toml::valueOf(value))), Toml::pairSpan(value))
-    }
+    export fn systems(root) = ManifestSections::optional(ManifestSections::pairsOf(root), "system",
+        fn(value) => systemsSorted(systemsOf(ManifestSections::pairsOf(Toml::valueOf(value))), Toml::pairSpan(value)))
 
     fn systemsSorted(result, span) = andThen(result, fn(value) => uniqueCapabilities(value, span))
 
@@ -307,13 +305,10 @@ module ManifestDeps {
     }
 
     /// `[[assets]]` as canonical, sorted declarations with collision-free paths.
-    export fn assets(root) = match ManifestSections::find(ManifestSections::pairsOf(root), "assets") {
-        Error => Success { value: [] }
-        Success { value } => match Toml::valueOf(value) {
-            Toml::Arr { items } => assetsFrom(items, Toml::pairSpan(value))
-            _ => fail("manifest.asset.shape", Toml::pairSpan(value))
-        }
-    }
+    export fn assets(root) = ManifestSections::optional(ManifestSections::pairsOf(root), "assets", fn(value) => match Toml::valueOf(value) {
+        Toml::Arr { items } => assetsFrom(items, Toml::pairSpan(value))
+        _ => fail("manifest.asset.shape", Toml::pairSpan(value))
+    })
 
     fn assetsFrom(items, span) = andThen(assetItems(items, span), fn(value) => uniqueAssets(value, span))
 }

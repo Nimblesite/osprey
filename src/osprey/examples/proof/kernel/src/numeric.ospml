@@ -99,11 +99,7 @@ module Numeric
             "Nat.pow" => power (env, left, right)
             other => NoNumericRule
 
-    multiplication (env, left, right) = match pinnedAll (env, NumericCanonical::multiplication ())
-        false => NoNumericRule
-        true => match Naturals::multiply (left, right)
-            Error _ => NoNumericRule
-            Success value => NumericReduced (NatLit value)
+    multiplication (env, left, right) = computed (pinnedAll (env, NumericCanonical::multiplication ()), \() => Naturals::multiply (left, right))
 
     (** `Nat.beq` decides literal equality only with its own tree pinned. *)
     equality (env, left, right) = match pinnedAll (env, NumericCanonical::equality ())
@@ -112,9 +108,13 @@ module Numeric
 
     (** `Nat.pow` computes only with every multiplication and power tree pinned:
         its body multiplies, so a forged `Nat.mul` must disable it too. *)
-    power (env, left, right) = match pinnedAll (env, NumericCanonical::multiplication ()) && pinnedAll (env, NumericCanonical::power ())
+    power (env, left, right) = computed (pinnedAll (env, NumericCanonical::multiplication ()) && pinnedAll (env, NumericCanonical::power ()), \() => Naturals::power (left, right))
+
+    // The literal `compute` yields when `pinned` holds, else no rule: the pin,
+    // not the arithmetic, decides.
+    computed (pinned, compute) = match pinned
         false => NoNumericRule
-        true => match Naturals::power (left, right)
+        true => match compute ()
             Error _ => NoNumericRule
             Success value => NumericReduced (NatLit value)
 

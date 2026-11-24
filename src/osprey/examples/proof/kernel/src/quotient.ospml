@@ -87,9 +87,7 @@ module Quotients
             false => Error(message = "`${decl.name}` does not have its derived quotient signature")
             true => typed (env, Decl(name = decl.name, params = decl.params, ty = ty, body = decl.body))
 
-    typed (env, decl) = match Infer::sort (env, [], decl.ty)
-        Success _ => Environment::add (env, decl)
-        Error message => Error(message = message)
+    typed (env, decl) = Terms::upon (Infer::sort (env, [], decl.ty), \_ => Environment::add (env, decl))
 
     previous (env, kind) = match kind
         QuotType => true

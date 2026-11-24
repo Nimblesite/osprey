@@ -112,16 +112,13 @@ module PatchRecords
     edited (track, graph) = synth::Outcomes::carried (routed (TrackPatches::routing track.instrument, graph), \routing => Success(value = track(instrument = PatchInstrument(routing = routing))))
 
     (** Publish an edited patch without reloading the saved instrument or its samples on the UI thread. *)
-    export live (song, index, graph) = match listGet song.tracks index
-        Error _ => Error(message = "The selected track is missing.")
-        Success track => synth::Outcomes::carried (edited (track, graph), \next => Projects::replaced (song, index, next))
+    export live (song, index, graph) = synth::Outcomes::carried (Projects::required (song.tracks, index, "The selected track is missing."), \track =>
+        synth::Outcomes::carried (edited (track, graph), \next => Projects::replaced (song, index, next)))
 
     (** The arrangement with track `index` storing `graph`. *)
-    export saved (arrangement, index, graph) = match listGet arrangement.tracks index
-        Error _ => Error(message = "The arrangement has no track ${satAdd index 1}.")
-        Success track => synth::Outcomes::carried (stored (track, graph), \next => Projects::replaced (arrangement, index, next))
+    export saved (arrangement, index, graph) = synth::Outcomes::carried (Projects::required (arrangement.tracks, index, "The arrangement has no track ${satAdd index 1}."), \track =>
+        synth::Outcomes::carried (stored (track, graph), \next => Projects::replaced (arrangement, index, next)))
 
     (** Keep the canvas coordinates with their track. Moving a module leaves an unchanged built-in instrument intact. *)
-    export savedAt (arrangement, index, graph, positions) = match listGet arrangement.tracks index
-        Error _ => Error(message = "The selected track is missing.")
-        Success track => synth::Outcomes::carried (stored (track, graph), \next => Projects::replaced (arrangement, index, next(positions = filterList (positions, \at => ui::Lists::any (graph.nodes, \node => node.identity == at.layoutNode)))))
+    export savedAt (arrangement, index, graph, positions) = synth::Outcomes::carried (Projects::required (arrangement.tracks, index, "The selected track is missing."), \track =>
+        synth::Outcomes::carried (stored (track, graph), \next => Projects::replaced (arrangement, index, next(positions = filterList (positions, \at => ui::Lists::any (graph.nodes, \node => node.identity == at.layoutNode))))))

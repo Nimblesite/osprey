@@ -143,9 +143,8 @@ module PatchVoices
         true => ok (builtinSample ())
         false => match fileSize path
             Error why => Error(message = why)
-            Success size => match size >= 12 && size <= 8388608
-                false => Error(message = "Choose a WAV file between 12 bytes and 8 MiB.")
-                true => chained (readFileBytes (path, 0, satAdd size 1), \bytes => decoded (path, size, bytes))
+            Success size => chained (Projects::limited (size, 12, 8388608, "Choose a WAV file between 12 bytes and 8 MiB."), \within =>
+                chained (readFileBytes (path, 0, satAdd within 1), \bytes => decoded (path, within, bytes)))
 
     (** The last part of a path: what Prism shows for an imported sample. *)
     export fileName path = foldList (split (replace path "\\" "/" ?: path) "/" ?: [path], path, \(_, part) => part)

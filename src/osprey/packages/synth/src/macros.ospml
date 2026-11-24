@@ -11,9 +11,10 @@ module Macros
     (** A macro is valid when every target names an automatable parameter and stays inside its range. *)
     export valid (graph, macro) = macro.name != "" && length macro.targets >= 1 && length macro.targets <= 32 && length (filterList (macro.targets, \t => target (graph, t))) == length macro.targets
 
-    retargeted (n, t, amount) = match n.identity == t.node
+    (** Rewrite the identified node's parameters with `edit`; other nodes pass through unchanged. *)
+    export retargeted (n, identity, edit) = match n.identity == identity
         false => n
-        true => n(parameters = mapList (n.parameters, \p => valued (p, t, amount)))
+        true => n(parameters = mapList (n.parameters, edit))
 
     valued (p, t, amount) = match p.key == t.key
         true => p(initial = FitMath::macroValue (amount, t.minimum, t.maximum, t.exponent))
@@ -22,4 +23,4 @@ module Macros
     (** Write the amount (0–1) into every target; an invalid macro or amount leaves the graph unchanged. *)
     export apply (graph, macro, amount) = match valid (graph, macro) && amount >= 0.0 && amount <= 1.0
         false => Error(message = InvalidConfiguration(detail = "The macro has an invalid target or amount; the patch is unchanged."))
-        true => Success(value = foldList (macro.targets, graph, \(g, t) => g(nodes = mapList (g.nodes, \n => retargeted (n, t, amount)))))
+        true => Success(value = foldList (macro.targets, graph, \(g, t) => g(nodes = mapList (g.nodes, \n => retargeted (n, t.node, \p => valued (p, t, amount))))))

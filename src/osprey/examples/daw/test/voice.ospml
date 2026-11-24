@@ -326,9 +326,7 @@ dialAccess (d, index) = match listGet d.drivenSeen.renderedScenes index
     Error _ => []
     Success ordinal => match dialTarget (d, ordinal)
         false => []
-        true => match listGet (ui::Surfaces::seen (d.drivenSurface, d.drivenProgram)).walkSketches index
-            Error _ => []
-            Success drawing => drawing.sketchedAs.sketchAccess
+        true => walkAccess (d, index)
 
 // The Patch Controls dial of the parameter `label`, as the host sees it.
 dialOf (d, label) =
@@ -336,22 +334,21 @@ dialOf (d, label) =
     accessible = ui::Lists::flatten (mapList (scenes, \index => dialAccess (d, index)))
     listGet (filterList (accessible, \a => endsWith a.accessLabel " ${label}")) 0
 
+// One press and release on the point `at`: the tap a host sends a dial.
+dialTappedAt (d, at) = dialPointer (dialPointer (d, at.pointX, at.pointY, true, false), at.pointX, at.pointY, false, false)
+
 // [DAW-CONTROLS-DIAL] A press on a dial that never moves asks for the value in figures.
 dialTapped (d, label) = match dialOf (d, label)
     Error _ =>
         expect ("a dial for ${label}", "")
         d
     Success a =>
-        x = a.accessLeft + a.accessWidth / 2.0
-        y = a.accessTop + a.accessHeight / 2.0
-        asked = dialPointer (dialPointer (d, x, y, true, false), x, y, false, false)
+        asked = dialTappedAt (d, Semantics::point (a, 0.5))
         expect ((Drive::holding asked).dialEntry != "", true)
         asked
 
 // [DAW-CONTROLS-DIAL] One press and release on a Patch Controls page button, turning the panel's dial pages.
-pageTapped (d, label) =
-    at = controlPoint (d, label, 0.5)
-    dialPointer (dialPointer (d, at.pointX, at.pointY, true, false), at.pointX, at.pointY, false, false)
+pageTapped (d, label) = dialTappedAt (d, controlPoint (d, label, 0.5))
 
 tuned (driven, node, label, words) = Drive::choose (dialTapped (inspectorSelected (driven, node), label), label, words)
 
@@ -412,24 +409,23 @@ panelDialJourney selected =
         Success a =>
             expect (a.accessValue, 440.0)
             expect (a.accessMin < 440.0 && a.accessMax > 440.0, true)
-            x = a.accessLeft + a.accessWidth / 2.0
-            y = a.accessTop + a.accessHeight / 2.0
-            pressed = dialPointer (selected, x, y, true, false)
+            at = Semantics::point (a, 0.5)
+            pressed = dialPointer (selected, at.pointX, at.pointY, true, false)
             expect ((Drive::holding pressed).dial != synth::DialIdle, true)
             sameGraph (pressed, selected)
-            sideways = dialPointer (pressed, x + 80.0, y + 1.0, true, false)
+            sideways = dialPointer (pressed, at.pointX + 80.0, at.pointY + 1.0, true, false)
             sameGraph (sideways, selected)
-            lifted = dialPointer (sideways, x + 80.0, y - 36.0, true, false)
+            lifted = dialPointer (sideways, at.pointX + 80.0, at.pointY - 36.0, true, false)
             coarse = panelFrequency lifted
             expect (coarse > 440.0, true)
             expect ((Drive::holding lifted).dragging, 0)
-            fine = dialPointer (lifted, x, y - 36.0, true, true)
+            fine = dialPointer (lifted, at.pointX, at.pointY - 36.0, true, true)
             expect (panelFrequency fine > 440.0 && panelFrequency fine < coarse, true)
-            lowered = dialPointer (fine, x, y + 36.0, true, false)
+            lowered = dialPointer (fine, at.pointX, at.pointY + 36.0, true, false)
             expect (panelFrequency lowered < 440.0, true)
-            back = dialPointer (lowered, x, y - 36.0, true, false)
+            back = dialPointer (lowered, at.pointX, at.pointY - 36.0, true, false)
             expect (panelFrequency back, coarse)
-            released = dialPointer (back, x, y - 36.0, false, false)
+            released = dialPointer (back, at.pointX, at.pointY - 36.0, false, false)
             expect ((Drive::holding released).dial, synth::DialIdle)
             expect ((Drive::holding released).dragging, 0 - 1)
             expect ((Drive::holding released).dialEntry, "")
@@ -458,7 +454,7 @@ dialPagesJourney () =
     // The grain cloud keeps the panel docked on its own: View → Patch Controls would put it away, not open it.
     viewShows (last, "Parameters", true)
     previous = controlPoint (last, "Previous parameters", 0.5)
-    back = dialPointer (dialPointer (last, previous.pointX, previous.pointY, true, false), previous.pointX, previous.pointY, false, false)
+    back = dialTappedAt (last, previous)
     spread = dialTapped (back, "Pan spread")
     changed = Drive::choose (spread, "Pan spread", "0.5")
     reads (dialOf (changed, "Pan spread"), \a => expect (a.accessValue, 0.5))
@@ -509,8 +505,6 @@ pageHeadingsJourney () =
 
 // [DAW-TRANSPORT-LIVE-CONTROLS] Every live journey's opening: the folder, the saved song, its launched editor and Play.
 liveLaunched (place, tab, score, check) =
-    _root = makeDir "target/daw-tests"
-    _dir = makeDir place
     succeeds (daw::Projects::saved (score, "${place}/knobs.json"), \source =>
         session = editorLaunched ["--song", "${place}/knobs.json", "--renderer", "${place}/daw", "--vst-worker", "${place}/worker"]
         started = Drive::press (prismTap (session, tab), "Play Song")
@@ -537,9 +531,9 @@ liveMixHistory (place, released, muted) =
             bothSilent quiet))
 
 liveMixJourney group =
-    place = ui::Pick::either (group, "target/daw-tests/live-group", "target/daw-tests/live-mixer")
+    place = ui::Pick::either (group, madeRoom "live-group", madeRoom "live-mixer")
     track = keysTrack ()
-    first = daw::Note(pitch = 60, start = 0.0, length = 0.02, velocity = 1.0)
+    first = beatNote 0.02
     arrangement = timeline [track(bus = ui::Pick::either (group, "pads", ""), notes = [first, first(pitch = 67, start = 0.02)])]
     score = arrangement(buses = ui::Pick::either (group, [padsBus (1.0, "")], []))
     liveLaunched (place, ui::Pick::either (group, "Bus routing", "Timeline"), score, \(_, started) =>
@@ -555,19 +549,22 @@ liveMixJourney group =
             expect (synth::DawSession::holding (Drive::holding up), false)
             liveMixHistory (place, up, muted))))
 
+// The control `label` shows, then is pressed: the next state after the press.
+shownPressed (driven, label) =
+    viewShows (driven, label, true)
+    Drive::press (driven, label)
+
 // [DAW-MIX-BUS-TAP] The send is the only audible route, so its edit is verified at the output.
 liveSendJourney () =
-    place = "target/daw-tests/live-send"
+    place = madeRoom "live-send"
     keys = keysTrack ()
     tap = daw::AudioSend(sendId = 1, source = 1, outlet = 0, bus = "pads", level = 0.5, enabled = true)
-    track = keys(gain = 0.0, sends = [tap], notes = [daw::Note(pitch = 60, start = 0.0, length = 0.125, velocity = 1.0)])
+    track = keys(gain = 0.0, sends = [tap], notes = [beatNote 0.125])
     base = timeline [track]
     score = base(buses = [padsBus (1.0, "")])
     liveLaunched (place, "Bus routing", score, \(source, started) =>
-        viewShows (started, "Patch sends…", true)
-        list = Drive::press (started, "Patch sends…")
-        viewShows (list, "Edit send 1 · pads…", true)
-        panel = Drive::press (list, "Edit send 1 · pads…")
+        list = shownPressed (started, "Patch sends…")
+        panel = shownPressed (list, "Edit send 1 · pads…")
         viewShows (panel, "Send level (%)", true)
         muted = Drive::choose (panel, "Send level (%)", "0")
         heardStream (score, 512, \stream => liveDialBlock (place, stream, \(quiet, applied) =>

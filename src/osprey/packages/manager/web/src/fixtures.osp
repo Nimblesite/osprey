@@ -129,6 +129,12 @@ module WebFixtures {
         Model::Hidden { reason } => check(name, "shown screen", "hidden: ${reason}")
     }
 
+    /// The screen must be shown, carrying every `wanted` text and none of
+    /// the `unwanted` ones.
+    export fn showsTexts(name, view, wanted, unwanted) = shows(name, view, fn(html) =>
+        foldList(wanted, true, fn(all, text) => all && contains(html, text)) &&
+        foldList(unwanted, true, fn(clean, text) => clean && !contains(html, text)))
+
     /// The screen must be hidden and every condition `verify` states of its
     /// reason must hold, folded the same way as `shows`.
     export fn hides(name, view, verify) = match view {

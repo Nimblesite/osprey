@@ -76,10 +76,7 @@ module Overlay {
 
     fn parsed(text) = match Toml::parse(text) {
         Error { message } => Error { message: "${shapeCode} ${message}" }
-        Success { value } => match ManifestSections::find(ManifestSections::pairsOf(value), "overrides") {
-            Error => Success { value: [] }
-            Success { value } => mappingsOf(ManifestSections::pairsOf(pairValue(value)))
-        }
+        Success { value } => ManifestSections::optional(ManifestSections::pairsOf(value), "overrides", fn(section) => mappingsOf(ManifestSections::pairsOf(pairValue(section))))
     }
 
     /// The overlay at `dir`: no file means no overrides; a file that does

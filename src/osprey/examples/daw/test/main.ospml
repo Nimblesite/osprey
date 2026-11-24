@@ -1163,6 +1163,13 @@ zoomedTo (editor, factor, zoom) =
     expect (zipped.laneZoom, zoom)
     zipped
 
+// Zoomed by `factor`, with the lane zoom, the beats and the lane it lands on checked.
+zoomShows (editor, factor, zoom, beats, lane) =
+    zipped = zoomedTo (editor, factor, zoom)
+    expect (synth::TimelineView::shownBeats zipped, beats)
+    expect (zipped.laneStart, lane)
+    zipped
+
 // [DAW-TIMELINE-ZOOM] Zoom changes which beats the lanes show, about the playhead, and nothing else: taps, traces
 // and the ruler follow it; the song, the playhead, the track and the undo history stay. Moving the playhead out
 // of view brings the lanes with it.
@@ -1171,9 +1178,7 @@ zoomJourney lined =
     expect (synth::TimelineView::shownBeats at, 16.0)
     expect (synth::TimelineView::shownFrom at, 0.0)
     expect (firstTrace at, 4)
-    closer = zoomedTo (at, 2.0, 2.0)
-    expect (synth::TimelineView::shownBeats closer, 8.0)
-    expect (closer.laneStart, 2.0)
+    closer = zoomShows (at, 2.0, 2.0, 8.0, 2.0)
     expect (synth::TimelineView::shownFrom closer, 2.0)
     expect (closer.rollBar, 1)
     expect (closer.track, at.track)
@@ -1185,9 +1190,7 @@ zoomJourney lined =
         laneSetsBar (closer, point.x, 200.0, point.bar))
     succeeds (synth::TimelineView::laneAt (closer, 1085.0, 235.0), \action => expect (action, synth::PickTrack(index = 0, bar = 2)))
     // The closest zoom is one beat across the lanes, still about the playhead; the widest is the whole song.
-    closest = zoomedTo (closer, 100.0, 16.0)
-    expect (synth::TimelineView::shownBeats closest, 1.0)
-    expect (closest.laneStart, 3.75)
+    closest = zoomShows (closer, 100.0, 16.0, 1.0, 3.75)
     wider = zoomedTo (closer, 0.5, 1.0)
     expect (wider.laneStart, 0.0)
     expect (firstTrace wider, 4)

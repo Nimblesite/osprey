@@ -107,8 +107,4 @@ def main():
     if name == "":
         return print("skipped: write a TV's name to .osprey/live-cast-tv to cast to it")
     else:
-        match Check.strictly(lambda: Check.report(Wire.Native(lambda: live(name)))):
-            case Success(value=value):
-                return value
-            case Error(message=message):
-                return print(f"live check stopped: {message}")
+        return Check.run_or_print(lambda: Check.report(Wire.Native(lambda: live(name))), "live check")
