@@ -136,7 +136,7 @@ wasm32 fully supports multi-shot (`many`) continuations ([MULTI-WASM-MANY](../la
 
 WebAssembly defaults to ARC. The managed archive contains `memory_arc.c`, target-width allocation metadata and ownership shims for runtime units that create or retain managed children. Explicit `--memory=arc` selects the same backend. `--memory=gc` is rejected before linking, including with `--check` and `--llvm`; the compiler does not substitute another backend for it.
 
-The separate `--memory=none` opt-out links `libosprey_runtime_wasm.a`. It is not the default or the managed conformance path.
+Programs accepted under `--memory=ownership` link `libosprey_runtime_wasm_ownership.a`.
 
 The native conservative collector is not in `WASM_RT_SRC`: it depends on native
 stack/register/data-segment scanning, `setjmp`, and pthread synchronization.

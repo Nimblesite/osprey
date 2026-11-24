@@ -1,14 +1,11 @@
 # Android native app-logic archives. Platform networking stays in the host.
-ANDROID_RT_SRC ?= $(MOBILE_RT_SRC)
 # Which slice the corpus runs on: the attached device or emulator decides.
 ANDROID_GOLDEN_TARGET ?= android
 
 .PHONY: _runtime_android _runtime_android_arm64 _runtime_android_x64 _test_android_goldens
 _runtime_android: _runtime_android_arm64 _runtime_android_x64
 _runtime_android_arm64: _runtime_android_arm64_arc _runtime_android_arm64_ownership
-	@bash scripts/mobile/android-runtime.sh aarch64-linux-android26 $(RTB)/libosprey_runtime_android_arm64.a $(B) -- $(ANDROID_RT_SRC)
 _runtime_android_x64: _runtime_android_x64_arc _runtime_android_x64_ownership
-	@bash scripts/mobile/android-runtime.sh x86_64-linux-android26 $(RTB)/libosprey_runtime_android_x64.a $(B) -- $(ANDROID_RT_SRC)
 
 # One tracked-heap archive per slice and backend: $(3) is `arc` or `ownership`
 # [GC-ARC-PERCEUS] [MEM-OWNERSHIP-STATIC]; $(4) names its unit list.

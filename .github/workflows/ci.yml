@@ -370,7 +370,7 @@ jobs:
           build: "false"
 
       # osprey-cli's wasm end-to-end test self-skips unless wasm-ld, a WASI
-      # sysroot and libosprey_runtime_wasm.a are all present; skipping it drops
+      # sysroot and libosprey_runtime_wasm_arc.a are all present; skipping it drops
       # osprey-cli under its coverage floor and fails the threshold gate. The
       # dependency is therefore explicit rather than left to whatever the
       # runner happens to carry.

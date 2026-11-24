@@ -257,7 +257,7 @@ endef
 # the WASI random_get host call). Each compiles its non-portable half out under
 # `#ifndef __wasm__`, so adding them unskips file and random programs on wasm32
 # without pretending fork/exec or pthreads exist.
-WASM_RT_SRC  ?= native_scene native_bridge native_bridge_lifecycle memory_runtime gpu_runtime gpu_map_file gpu_elements gpu_host tensor_file tensor_list string_runtime string_runtime_list float_spelling list_runtime list_rebuild map_runtime map_runtime_hamt json_runtime json_text json_codec effects_runtime test_runtime coverage_runtime web_runtime profiler_runtime wasm_builtins_runtime system_runtime file_runtime random_runtime
+WASM_RT_SRC  ?= native_scene native_bridge native_bridge_lifecycle gpu_runtime gpu_map_file gpu_elements gpu_host tensor_file tensor_list string_runtime string_runtime_list float_spelling list_runtime list_rebuild map_runtime map_runtime_hamt json_runtime json_text json_codec effects_runtime test_runtime coverage_runtime web_runtime profiler_runtime wasm_builtins_runtime system_runtime file_runtime random_runtime
 
 # The ARC twin of that archive, linked by `--memory=arc` — the wasm32 default
 # [WASM-TARGET-MEMORY]. Same unit set with memory_arc.c in place of the malloc
@@ -267,7 +267,7 @@ WASM_RT_SRC  ?= native_scene native_bridge native_bridge_lifecycle memory_runtim
 # lock stays untripped, and memory_arc.c reads 4-byte pointer slots there.
 WASM_ARC_LIB      ?= libosprey_runtime_wasm_arc.a
 WASM_ARC_SHIM_SRC ?= string_runtime string_runtime_list list_runtime list_rebuild map_runtime map_runtime_hamt json_runtime json_text json_codec file_runtime
-WASM_ARC_RT_SRC   ?= memory_arc $(filter-out memory_runtime,$(WASM_RT_SRC))
+WASM_ARC_RT_SRC   ?= memory_arc $(WASM_RT_SRC)
 # The ownership twin, linked by `--memory=ownership` on wasm32 [MEM-OWNERSHIP-STATIC].
 WASM_OWNERSHIP_LIB    ?= libosprey_runtime_wasm_ownership.a
 WASM_OWNERSHIP_RT_SRC ?= memory_ownership $(filter-out memory_arc,$(WASM_ARC_RT_SRC))
@@ -283,7 +283,7 @@ KLEE_LLVM_BIN ?= $(shell for d in "$$OSPREY_KLEE_LLVM" /opt/homebrew/opt/llvm@19
 KLEE_CC       ?= $(KLEE_LLVM_BIN)/clang
 KLEE_LINK     ?= $(KLEE_LLVM_BIN)/llvm-link
 KLEE_NM       ?= $(KLEE_LLVM_BIN)/llvm-nm
-KLEE_RT_SRC   ?= $(filter-out memory_runtime web_runtime wasm_builtins_runtime,$(WASM_RT_SRC)) $(patsubst src/toolchain/compiler/runtime/%.c,%,$(filter-out %_tests.c,$(wildcard src/toolchain/compiler/runtime/klee/*.c)))
+KLEE_RT_SRC   ?= $(filter-out web_runtime wasm_builtins_runtime,$(WASM_RT_SRC)) $(patsubst src/toolchain/compiler/runtime/%.c,%,$(filter-out %_tests.c,$(wildcard src/toolchain/compiler/runtime/klee/*.c)))
 KLEE_CFLAGS   ?= --target=x86_64-unknown-linux-gnu -nostdlibinc -isystem runtime/klee/include \
   -emit-llvm -c -g -O0 -Xclang -disable-O0-optnone -std=c11 $(WARN_MAX) -U_FORTIFY_SOURCE -fno-stack-protector \
   -fsanitize=undefined -fno-sanitize=function -DOSP_SYMBOLIC -DOSP_FLOAT_SPELLING_PORTABLE -D_GNU_SOURCE '-D__thread=' '-D_Thread_local='

@@ -23,7 +23,7 @@ osprey app.osp --compile --target=ios -o libApp.a --memory=arc
 osprey app.osp --compile --target=ios-sim -o libApp.a --memory=arc
 ```
 
-Compilation emits the requested `.a` and a sibling `.h`. Other output extensions are rejected. `--run` is rejected because the result needs an iOS host. ARC is the default memory backend; `--memory=arc` selects it explicitly. Tracing GC is unsupported for these hosted archives and is rejected before toolchain work. Unmanaged allocation remains an explicit `--memory=none` opt-out. Native debugger and profiler flags are rejected for these targets. These option restrictions also apply to `--check` and `--llvm`. `--llvm` emits the host-compatible LLVM representation after the same target legality checks; it cannot bypass those checks.
+Compilation emits the requested `.a` and a sibling `.h`. Other output extensions are rejected. `--run` is rejected because the result needs an iOS host. ARC is the default memory backend; `--memory=arc` selects it explicitly. Tracing GC is unsupported for these hosted archives and is rejected before toolchain work. Compile-time ownership selects the ownership archive. Native debugger and profiler flags are rejected for these targets. These option restrictions also apply to `--check` and `--llvm`. `--llvm` emits the host-compatible LLVM representation after the same target legality checks; it cannot bypass those checks.
 
 ## Compile and link [IOS-TARGET-LINK]
 

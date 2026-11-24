@@ -4,7 +4,7 @@
 # `--profile ci` is the workspace's fast-compile profile (see src/toolchain/Cargo.toml).
 # `_runtime_wasm` is a prerequisite because the coverage gate below already
 # DEPENDS on it: osprey-cli's wasm end-to-end test (src/toolchain/crates/osprey-cli/src/wasm.rs)
-# self-skips unless wasm-ld, a WASI sysroot and libosprey_runtime_wasm.a are all
+# self-skips unless wasm-ld, a WASI sysroot and libosprey_runtime_wasm_arc.a are all
 # present, and skipping it drops osprey-cli from 96.7% to 94.8% — under its 95%
 # floor. Without this line the archive is whatever an earlier target happened to
 # leave behind, so a plain `make clean && make ci` fails on a coverage number

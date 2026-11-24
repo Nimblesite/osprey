@@ -106,7 +106,7 @@ toolchain_ok() {
     codon)   have codon ;;
     ocaml)   have ocamlopt ;;
     haskell) have ghc ;;
-    osprey-wasm) [[ -x "$OSP" ]] && have wasmtime && [[ -f "$ROOT/src/toolchain/compiler/lib/libosprey_runtime_wasm.a" ]] ;;
+    osprey-wasm) [[ -x "$OSP" ]] && have wasmtime && [[ -f "$ROOT/src/toolchain/compiler/lib/libosprey_runtime_wasm_arc.a" ]] ;;
     rust-wasm)   have rustc && have wasmtime && rustup target list 2>/dev/null | grep -q 'wasm32-wasip1 (installed)' ;;
     c-wasm)      [[ "${CWASM_OK:-0}" == 1 ]] ;;
   esac

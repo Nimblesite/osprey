@@ -35,7 +35,7 @@ node scripts/wasm/wasm-browser-smoke.mjs src/osprey/examples/wasm/build/studio.o
 endef
 
 ## wasm: Build everything for the WebAssembly target, ready to go — the wasm
-## runtime archive (src/toolchain/compiler/bin/libosprey_runtime_wasm.a), the hello example,
+## runtime archive (src/toolchain/compiler/bin/libosprey_runtime_wasm_arc.a), the hello example,
 ## and Osprey Data Studio in BOTH flavors (studio.{osp,ospml} -> one byte-
 ## identical manifest that drives the SQLite dashboard in src/osprey/examples/wasm/
 ## index.html) — then validate them and smoke-run under Node's WASI, the browser

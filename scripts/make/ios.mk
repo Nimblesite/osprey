@@ -3,25 +3,18 @@
 # fibers and substituting effects use the existing native runtime. The Mac
 # slice compiles the same sources with the same flags, so a Swift host links
 # one boundary on every Apple platform. [IOS-TARGET-CAPABILITIES] [IOS-TARGET-MACOS]
-IOS_RT_SRC ?= $(MOBILE_RT_SRC)
 
 .PHONY: _runtime_ios _runtime_ios_sim _runtime_macos _test_ios _test_ios_goldens _test_macos
 
 _runtime_ios: _runtime_ios_arc _runtime_ios_ownership
-	@bash scripts/mobile/ios-runtime.sh iphoneos arm64-apple-ios15.0 \
-		$(RTB)/libosprey_runtime_ios.a $(B) -DOSPREY_IOS -- $(IOS_RT_SRC)
 
 _runtime_ios_sim: _runtime_ios_sim_arc _runtime_ios_sim_ownership
-	@bash scripts/mobile/ios-runtime.sh iphonesimulator arm64-apple-ios15.0-simulator \
-		$(RTB)/libosprey_runtime_ios_sim.a $(B) -DOSPREY_IOS -- $(IOS_RT_SRC)
 
 # The Mac slice also carries the Metal device adapter, so a desktop host such as
 # GPUI can run Osprey kernels on the GPU ([GPU-DEVICE], [GPUI-HOST-TARGETS]).
 MACOS_GPU_FLAGS ?= -DOSPREY_GPU_METAL=1 -Isrc/toolchain/compiler/bin
 
 _runtime_macos: _runtime_macos_arc _runtime_macos_ownership src/toolchain/compiler/bin/gpu_shader_source.h
-	@OSPREY_RUNTIME_OBJC=gpu_metal bash scripts/mobile/ios-runtime.sh macosx arm64-apple-macos12.0 \
-		$(RTB)/libosprey_runtime_macos.a $(B) -DOSPREY_IOS $(MACOS_GPU_FLAGS) -- $(IOS_RT_SRC)
 
 # One tracked-heap archive per slice and backend: $(5) is `arc` or `ownership`
 # [GC-ARC-PERCEUS] [MEM-OWNERSHIP-STATIC]; $(6) names its unit list.

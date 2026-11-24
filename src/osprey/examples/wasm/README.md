@@ -56,12 +56,12 @@ Or drive the compiler directly:
 
 ```sh
 # the language tour
-osprey src/osprey/examples/wasm/hello.osp --target=wasm32 --memory=none --compile -o src/osprey/examples/wasm/build/hello.wasm
-osprey src/osprey/examples/wasm/hello.osp --target=wasm32 --memory=none --run        # uses wasmtime under the hood
+osprey src/osprey/examples/wasm/hello.osp --target=wasm32 --memory=arc --compile -o src/osprey/examples/wasm/build/hello.wasm
+osprey src/osprey/examples/wasm/hello.osp --target=wasm32 --memory=arc --run        # uses wasmtime under the hood
 
 # Osprey Data Studio, both flavors — identical manifest from different syntax
-osprey src/osprey/examples/wasm/studio.osp   --target=wasm32 --memory=none --compile -o src/osprey/examples/wasm/build/studio.osp.wasm
-osprey src/osprey/examples/wasm/studio.ospml --target=wasm32 --memory=none --compile -o src/osprey/examples/wasm/build/studio.ospml.wasm
+osprey src/osprey/examples/wasm/studio.osp   --target=wasm32 --memory=arc --compile -o src/osprey/examples/wasm/build/studio.osp.wasm
+osprey src/osprey/examples/wasm/studio.ospml --target=wasm32 --memory=arc --compile -o src/osprey/examples/wasm/build/studio.ospml.wasm
 osprey src/osprey/examples/wasm/studio.osp   --run    # the manifest, on the console
 diff <(osprey src/osprey/examples/wasm/studio.osp --run) <(osprey src/osprey/examples/wasm/studio.ospml --run) && echo "byte-identical"
 ```

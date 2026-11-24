@@ -18,7 +18,7 @@ osprey app.osp --compile --target=android-arm64 -o libApp.a --memory=arc
 osprey app.osp --compile --target=android-x64 -o libApp.a --memory=arc
 ```
 
-Compilation emits the requested `.a` and sibling `.h`; other output extensions fail. ARC is the default backend and can be selected explicitly with `--memory=arc`; unmanaged allocation requires explicit `--memory=none`. Tracing GC, native debugger/profiler flags, and `--run` are rejected. Android GC does not provide the required native data-root scan. The target checks also apply to `--check` and `--llvm`, before any external tool invocation.
+Compilation emits the requested `.a` and sibling `.h`; other output extensions fail. ARC is the default backend and can be selected explicitly with `--memory=arc`. Compile-time ownership selects the ownership archive. Tracing GC, native debugger/profiler flags, and `--run` are rejected. Android GC does not provide the required native data-root scan. The target checks also apply to `--check` and `--llvm`, before any external tool invocation.
 
 ## C function boundary [ANDROID-HOST-ABI]
 
