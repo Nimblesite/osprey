@@ -142,15 +142,13 @@ fn mixupDemo() = loudRegion("LOG", fn() => {
 
     /// results into a persistent list, walked with functional builtins
     let scores = [sHigh, sMed, sLow]
-    print("list len " + toString(listLength(scores)))
-    print("has 81 " + toString(listContains(scores, 81)))
+    print("list len " + toString(listLength(scores)) + "\nhas 81 " + toString(listContains(scores, 81)))
     forEachList(scores, show)
     report(scores)
 
     /// results into a map keyed by name, walked the same way
     let m = mapSet(mapSet(mapSet(Map(), "high", sHigh), "med", sMed), "low", sLow)
-    print("map len " + toString(mapLength(m)))
-    print("has high " + toString(mapContains(m, "high")))
+    print("map len " + toString(mapLength(m)) + "\nhas high " + toString(mapContains(m, "high")))
     forEachList(mapValues(m), show)
 })
 exactArithmetic(fn() => mixupDemo())
@@ -203,8 +201,7 @@ fn giftTally(work) = {
 fn giftPairSum() = giftTally(fn() => pairSum(1, 2)).answer
 
 let raceSum = exactArithmetic(fn() => giftPairSum())
-print("race-free sum " + toString(raceSum))
-print("=== done ===")
+print("race-free sum " + toString(raceSum) + "\n=== done ===")
 
 /// Runs one logged job under a silent handler for assertion use.
 fn highScoreForTest() = silenceLogger(fn() => spawnedScore(High))
