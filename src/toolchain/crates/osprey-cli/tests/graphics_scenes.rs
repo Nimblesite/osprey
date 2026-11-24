@@ -61,11 +61,14 @@ fn graphics_scenes_share_one_host_and_one_shader() {
         ("character", "SceneBase::character()"),
     ] {
         let source = read_required(&graphics.join(scene).join("scene.osp"));
-        assert!(
-            source.contains("import graphics::SceneBase"),
-            "{scene} must import the shared host"
-        );
-        assert!(source.contains(entry), "{scene} must call {entry}");
+        // A qualified `SceneBase::` path needs no import (b0fdb7595 removed
+        // the unused ones), so the scene's whole code is the host's entry.
+        let code: Vec<_> = source
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty() && !line.starts_with("//"))
+            .collect();
+        assert_eq!(code, [format!("fn main() = {entry}")], "{scene} must only call {entry}");
         let lines = source_lines(&source);
         assert!(
             lines <= MAX_SCENE_SOURCE_LINES,
