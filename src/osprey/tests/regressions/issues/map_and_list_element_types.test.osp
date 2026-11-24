@@ -1,6 +1,12 @@
 // #211: mapGet and listGet return values, never raw storage words.
 
-let ms = mapSet(Map(), "k", "he" + "ap")
+// [MEM-OWNERSHIP-STATIC-SHARING] The absent removal keeps the managed value
+// usable through the next successful removal and lookup.
+fn afterRemovals() = {
+    let populated = mapSet(mapSet(Map(), "k", "he" + "ap"), "other", "temporary")
+    mapRemove(mapRemove(populated, "absent"), "other")
+}
+let ms = afterRemovals()
 print("map string  -> ${mapGet(ms, "k")}")
 let mf = mapSet(Map(), "k", 1.5)
 print("map float   -> ${mapGet(mf, "k")}")

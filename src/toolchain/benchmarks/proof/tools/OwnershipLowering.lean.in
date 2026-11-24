@@ -384,4 +384,12 @@ def compatibilityReturns : Bool × Bool × Bool :=
 
 theorem compiledCompatibilityReturns : compatibilityReturns = (true, true, true) := by rfl
 
+/-- After a recursive remove returns with shrunk=0, record each release
+    argument and the pointer the enclosing compiled frame returns. -/
+def emittedMissFrame (_parent _child : Option Nat) : List (Option Nat) × Option Nat :=
+-- MAP MISS FRAME
+
+theorem compiledMapMissFrame (parent child : Option Nat) :
+    emittedMissFrame parent child = ([], none) := by rfl
+
 end OwnershipLowering

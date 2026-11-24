@@ -332,15 +332,6 @@ int osprey_map_node_lookup(OspreyMapNode *node, int32_t shift, uint32_t hash,
   return 0;
 }
 
-/* Unchanged subtrees are returned as-is; like every other alias-returning op
- * ([GC-ARC-PERCEUS] M4a) they carry a fresh +1 so the caller owns EVERY return
- * path uniformly and never has to know which it got. */
-static OspreyMapNode *keep(OspreyMapNode *node, int *shrunk) {
-  *shrunk = 0;
-  osp_retain(node);
-  return node;
-}
-
 /* Drop entry `at` from a collision node. `node` survives, so every element the
  * result keeps is BORROWED out of it and gains a reference. */
 static OspreyMapNode *remove_from_collision(OspreyMapNode *node, uint32_t at,
@@ -372,8 +363,8 @@ OspreyMapNode *osprey_map_node_remove(OspreyMapNode *node, int32_t shift,
                                       uint32_t hash, int64_t key,
                                       OspreyMapPolicy pol, int *shrunk) {
   OspreyKeyType kt = map_key_type(pol);
+  *shrunk = 0;
   if (node == NULL) {
-    *shrunk = 0;
     return NULL;
   }
   if (node->kind == NODE_LEAF) {
@@ -381,11 +372,11 @@ OspreyMapNode *osprey_map_node_remove(OspreyMapNode *node, int32_t shift,
       *shrunk = 1;
       return NULL; /* the dying node releases its own key/value */
     }
-    return keep(node, shrunk);
+    return NULL;
   }
   if (node->kind == NODE_COLLISION) {
     if (node->hash != hash) {
-      return keep(node, shrunk);
+      return NULL;
     }
     for (uint32_t i = 0; i < node->count; i++) {
       if (osprey_map_keys_equal(kt, node->coll_keys[i], key)) {
@@ -393,19 +384,18 @@ OspreyMapNode *osprey_map_node_remove(OspreyMapNode *node, int32_t shift,
         return remove_from_collision(node, i, hash, pol);
       }
     }
-    return keep(node, shrunk);
+    return NULL;
   }
   uint32_t bit = bit_for(hash, shift);
   if ((node->bitmap & bit) == 0u) {
-    return keep(node, shrunk);
+    return NULL;
   }
   uint32_t idx = index_for(node->bitmap, bit);
   OspreyMapNode *child = node->children[idx];
   OspreyMapNode *new_child = osprey_map_node_remove(
       child, shift + OSPREY_MAP_BITS, hash, key, pol, shrunk);
   if (!*shrunk) {
-    osp_release(new_child); /* the child's own alias +1 — nothing changed */
-    return keep(node, shrunk);
+    return NULL;
   }
   if (new_child == NULL) {
     if (node->count == 1u) {

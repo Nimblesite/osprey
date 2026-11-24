@@ -126,6 +126,8 @@ OspreyMapNode *osprey_map_node_assoc(OspreyMapNode *node, int32_t shift,
                                      OspreyMapPolicy pol, int *grew);
 int osprey_map_node_lookup(OspreyMapNode *node, int32_t shift, uint32_t hash,
                            int64_t key, OspreyKeyType kt, int64_t *out);
+/* A miss sets shrunk=0 and returns NULL. Only a successful removal can
+   supply an owned replacement. Removing the final leaf sets shrunk=1 with NULL. */
 OspreyMapNode *osprey_map_node_remove(OspreyMapNode *node, int32_t shift,
                                       uint32_t hash, int64_t key,
                                       OspreyMapPolicy pol, int *shrunk);

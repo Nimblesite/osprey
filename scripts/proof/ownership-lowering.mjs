@@ -5,10 +5,11 @@ import { readFileSync } from 'node:fs'
 import { liveAccounting, reclaimPrefix } from './live-accounting.mjs'
 import { bodyPaths, popBody } from './worklist-drain.mjs'
 import { childDrop, growthBytes, worklistPush } from './child-drop.mjs'
+import { mapMissFrame } from './map-miss.mjs'
 import { resultMatch } from './result-take.mjs'
 import { pairConstructor, pairWalk } from './record-ownership.mjs'
 import { blocks as llvmBlocks, compatibilityReturns, nullDrop, operand as get, selectedPhi, runtimeReturns, tracePointer } from './runtime-returns.mjs'
-const [source, irFile, template, listFile, mapFile, stringFile, heapFile, walkFile] = process.argv.slice(2)
+const [source, irFile, template, listFile, mapFile, stringFile, heapFile, walkFile, hamtFile] = process.argv.slice(2)
 const src = readFileSync(source, 'utf8').split('\n')
 const ir = readFileSync(irFile, 'utf8')
 function define(map, key, value = map.size) {
@@ -80,6 +81,7 @@ process.stdout.write(readFileSync(template, 'utf8')
   .replace('-- PAIR WALK', pairWalk(walk))
   .replace('-- PAIR CONSTRUCTOR', pairConstructor(ir))
   .replace('-- COMPATIBILITY RETURNS', compatibilityReturns(heap))
+  .replace('-- MAP MISS FRAME', mapMissFrame(readFileSync(hamtFile, 'utf8')))
   .replace('-- NULL DROP', nullDrop(heapFile))
   .replace('-- STRING OP RETURNS', stringOps.map(op => '  | .«' + op + '» => ' + strings('osp_string_' + op)).join('\n'))
   .replace('-- APPEND RETURNS', list('osprey_list_append_of'))

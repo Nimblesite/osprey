@@ -107,10 +107,17 @@ export function tracePointer(cfg, instruction, bit, returned) {
   throw Error('cycle in compiled ownership path')
 }
 
-export function nullSuccessors(entry = [], header) {
-  const cmp = /^(%[\w.]+) = icmp (eq|ne) ptr (%[\w.]+), null$/.exec(entry[0])
+export function jumpTarget(line) {
+  const jump = /^br label %([\w.]+)$/.exec(line)
+  if (!jump) throw Error('unsupported LLVM jump: ' + line)
+  return jump[1]
+}
+
+export function zeroSuccessors(entry = [], value, type = 'ptr') {
+  const cmp = /^(%[\w.]+) = icmp (eq|ne) (ptr|i32) (%[\w.]+), (null|0)$/.exec(entry[0])
   const br = /^br i1 (%[\w.]+), label %([\w.]+), label %([\w.]+)$/.exec(entry[1])
-  if (entry.length !== 2 || !cmp || !br || cmp[3] !== header || br[1] !== cmp[1]) throw Error('unsupported child header guard')
+  if (entry.length !== 2 || !cmp || !br || cmp[3] !== type || cmp[4] !== value || cmp[5] !== (type === 'ptr' ? 'null' : '0') ||
+      br[1] !== cmp[1]) throw Error('unsupported LLVM zero guard')
   return cmp[2] === 'eq' ? br.slice(2) : br.slice(2).reverse()
 }
 
@@ -134,7 +141,7 @@ export function nullDrop(file) {
     throw Error('unsupported ownership free entry')
   const { args: [arg], lines } = voidBody(ir, 'tracked_drop')
   const cfg = blocks(lines)
-  const [absent, present] = nullSuccessors(cfg.get('entry'), arg)
+  const [absent, present] = zeroSuccessors(cfg.get('entry'), arg)
   const inert = label => {
     const block = cfg.get(label)
     if (!block) throw Error('missing drop successor: ' + label)

@@ -1,6 +1,6 @@
 // [MEM-OWNERSHIP-STATIC-VERIFICATION-COMPILER] Resolve the child's own registry
 // lookup and interpret the shipped header switch, including its default edge.
-import { blocks, nullSuccessors, operand, voidBody, wordSlot } from './runtime-returns.mjs'
+import { blocks, jumpTarget, zeroSuccessors, operand, voidBody, wordSlot } from './runtime-returns.mjs'
 
 const addressCast = /^(%[\w.]+) = ptrtoint ptr (%[\w.]+) to i64$/
 
@@ -37,9 +37,7 @@ function effects(cfg, start, child, field) {
       recordAction(line, child, field, addresses, actions)
     }
     if (body.at(-1) === 'ret void') return '[' + actions.join(', ') + ']'
-    const branch = /^br label %([\w.]+)$/.exec(body.at(-1))
-    if (!branch) throw Error('unsupported child drop terminator')
-    label = branch[1]
+    label = jumpTarget(body.at(-1))
   }
   throw Error('cycle in child drop')
 }
@@ -48,7 +46,7 @@ export function childDrop(ir) {
   lookupForwarder(ir)
   const { args: [child, header], lines } = voidBody(ir, 'arc_drop_hdr', 2)
   const cfg = blocks(lines)
-  const [absent, present] = nullSuccessors(cfg.get('entry'), header)
+  const [absent, present] = zeroSuccessors(cfg.get('entry'), header)
   const dispatch = cfg.get(present) ?? []
   const field = /^(%[\w.]+) = getelementptr (?:inbounds )?(?:nuw )?i8, ptr (%[\w.]+), i64 (\d+)$/.exec(dispatch[0])
   const load = /^(%[\w.]+) = load i32, ptr (%[\w.]+), align \d+(?:, !tbaa !\d+)?$/.exec(dispatch[1])

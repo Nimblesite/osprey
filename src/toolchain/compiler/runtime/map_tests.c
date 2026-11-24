@@ -79,8 +79,9 @@ static void test_node_algebra(void) {
   OspreyMapNode *same = osprey_map_node_assoc(leaf, 0, 7u, 5, 51, KI, &grew);
   CHECK(grew == 0); CHECK(same != leaf); CHECK(same->leaf_value == 51);
   CHECK(leaf->leaf_value == 50);
-  /* removing a non-matching key alias-returns the very same node */
-  CHECK(osprey_map_node_remove(leaf, 0, 7u, 6, KI, &shrunk) == leaf);
+  /* A miss yields no replacement and leaves the original leaf readable. */
+  CHECK(osprey_map_node_remove(leaf, 0, 7u, 6, KI, &shrunk) == NULL);
+  chk_leaf(leaf, 5, 50);
   CHECK(shrunk == 0);
   CHECK(osprey_map_node_remove(leaf, 0, 7u, 5, KI, &shrunk) == NULL);
   CHECK(shrunk == 1);
@@ -204,6 +205,9 @@ static void test_collision_structure(void) {
   chk_coll_map(m); (void)chk_coll(m, (uint32_t)COLL_N);
   /* Iterating this spine uses exactly the 8-slot iterator stack. */
   CHECK(drain(m, 0, COLL_KEYS[COLL_N - 1] + 1) == COLL_N + 1);
+  int shrunk = 1;
+  CHECK(osprey_map_node_remove(m->root, 0, COLL_HASH, ABSENT_COLL, KB, &shrunk) == NULL);
+  CHECK(shrunk == 0);
   CHECK(osprey_map_remove(m, ABSENT_COLL) == m); /* same hash, absent key */
   chk_coll_map(m);
   /* Two colliding keys are the minimum collision node. */

@@ -17,13 +17,14 @@ compile_runtime() {
 }
 shim=(-include "$runtime/osp_arc_shim.h")
 compile_runtime "$runtime/list_runtime.c" "$out/runtime.ll" "${shim[@]}"
+compile_runtime "$runtime/map_runtime_hamt.c" "$out/hamt.ll" "${shim[@]}"
 compile_runtime "$runtime/map_runtime.c" "$out/map.ll" "${shim[@]}"
 compile_runtime "$runtime/string_runtime.c" "$out/strings.ll" "${shim[@]}"
 compile_runtime "$runtime/memory_ownership.c" "$out/heap.ll"
 compile_runtime "$tools/ownership-pair-walk.c" "$out/pair-walk.ll" -O2 -finline
 reflect() {
   node "$root/scripts/proof/ownership-lowering.mjs" "$program" "$1" \
-    "$tools/OwnershipLowering.lean.in" "${3:-$out/runtime.ll}" "$out/map.ll" "${4:-$out/strings.ll}" "${5:-$out/heap.ll}" "${6:-$out/pair-walk.ll}" > "$2"
+    "$tools/OwnershipLowering.lean.in" "${3:-$out/runtime.ll}" "$out/map.ll" "${4:-$out/strings.ll}" "${5:-$out/heap.ll}" "${6:-$out/pair-walk.ll}" "${7:-$out/hamt.ll}" > "$2"
 }
 cd "$tools"
 reflect "$out/ownership.ll" "$out/OwnershipLowering.lean"
@@ -31,7 +32,7 @@ lake build lean4export
 lake env lean -DwarningAsError=true --root="$out" -o "$out/OwnershipLowering.olean" "$out/OwnershipLowering.lean"
 exporter=$(lake env which lean4export)
 lean_path=$(lake env printenv LEAN_PATH)
-for name in compiledGrow compiledGrowWhen runtimeRootOrigins renderedStringOrigin stringResultOrigins compiledFreeNull compiledPairFields compiledChildDrop compiledWorklistPush compiledPairQueue compiledGrowthBytes compiledPop compiledBodyReclaim compiledPushPop compiledLiveDebit compiledReclaimPrefix compiledLiveCredit compiledAccountingRoundTrip compiledResultTake compiledResultBorrow compiledResultBorrowUses compiledCompatibilityReturns; do
+for name in compiledGrow compiledGrowWhen runtimeRootOrigins renderedStringOrigin stringResultOrigins compiledFreeNull compiledPairFields compiledChildDrop compiledWorklistPush compiledPairQueue compiledGrowthBytes compiledPop compiledBodyReclaim compiledPushPop compiledLiveDebit compiledReclaimPrefix compiledLiveCredit compiledAccountingRoundTrip compiledResultTake compiledResultBorrow compiledResultBorrowUses compiledCompatibilityReturns compiledMapMissFrame; do
   theorem="OwnershipLowering.$name"
   axioms=none
   if [[ $name == compiledAccountingRoundTrip ]]; then axioms=propext; fi
@@ -240,3 +241,13 @@ reject_active_hook() {
 }
 reject_active_hook unique-drop 's/osp_release_unique(void \*body) { (void)body; }/osp_release_unique(void *body) { tracked_drop(body); }/'
 reject_active_hook active-finalizer 's/{ (void)finalize; }/{ if (finalize) finalize(NULL); }/'
+
+# A child miss returns no owned replacement. Both mutants reach the theorem.
+for fault in release-miss return-parent; do
+  action='osp_release(new_child); return NULL;'
+  if [[ $fault == return-parent ]]; then action='return node;'; fi
+  sed "/if (!\\*shrunk)/{n;s/return NULL;/$action/;}" "$runtime/map_runtime_hamt.c" > "$out/mutations/$fault.c"
+  compile_runtime "$out/mutations/$fault.c" "$out/mutations/$fault.ll" "${shim[@]}"
+  reflect "$out/ownership.ll" "$out/mutations/$fault.lean" "" "" "" "" "$out/mutations/$fault.ll"
+  reject "$fault" compiledMapMissFrame
+done
