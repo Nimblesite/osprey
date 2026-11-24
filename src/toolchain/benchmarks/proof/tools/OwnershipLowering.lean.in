@@ -111,4 +111,16 @@ theorem renderedStringOrigin (pick : Nat → Bool) :
   apply allocatedPath
   repeat constructor
 
+inductive StringOp where
+  | concat | take | drop | substring | to_upper | to_lower | trim_start | trim_end
+  | trim | reverse | replace | «repeat» | pad_start | pad_end | from_codepoint
+
+def stringOpReturns : StringOp → Origin
+-- STRING OP RETURNS
+
+theorem stringResultOrigins (op : StringOp) (pick : Nat → Bool) :
+    allocatorOrigin true pick 0 (stringOpReturns op) = true := by
+  apply allocatedPath
+  cases op <;> repeat constructor
+
 end OwnershipLowering

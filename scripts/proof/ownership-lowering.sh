@@ -25,7 +25,7 @@ lake build lean4export
 lake env lean -DwarningAsError=true --root="$out" -o "$out/OwnershipLowering.olean" "$out/OwnershipLowering.lean"
 exporter=$(lake env which lean4export)
 lean_path=$(lake env printenv LEAN_PATH)
-for name in compiledGrow compiledGrowWhen runtimeRootOrigins renderedStringOrigin; do
+for name in compiledGrow compiledGrowWhen runtimeRootOrigins renderedStringOrigin stringResultOrigins; do
   theorem="OwnershipLowering.$name"
   LEAN_PATH="$out:$lean_path" "$exporter" OwnershipLowering -- "$theorem" > "$out/$name.ndjson"
   for backend in gc arc wasm; do
@@ -91,3 +91,9 @@ sed '/^char \*osp_string_dup_internal(/,/^}/s/return out;/return (char *)s;/' \
 compile_runtime "$out/mutations/borrowed-string.c" "$out/mutations/borrowed-string.ll"
 reflect "$out/ownership.ll" "$out/mutations/borrowed-string.lean" "$out/runtime.ll" "$out/mutations/borrowed-string.ll"
 reject borrowed-string renderedStringOrigin
+
+sed '/^char \*osp_string_concat(/,/^}/s/return out;/return (char *)left;/' \
+  "$runtime/string_runtime.c" > "$out/mutations/borrowed-concat.c"
+compile_runtime "$out/mutations/borrowed-concat.c" "$out/mutations/borrowed-concat.ll"
+reflect "$out/ownership.ll" "$out/mutations/borrowed-concat.lean" "$out/runtime.ll" "$out/mutations/borrowed-concat.ll"
+reject borrowed-concat stringResultOrigins
