@@ -4,11 +4,13 @@
 // overflow. WebAssembly has no native i128 multiply, so LLVM lowers that
 // widened operation to the standard compiler-runtime `__multi3` ABI. The
 // Homebrew LLVM package and the sysroot-only WASI SDK used in CI do not ship a
-// wasm compiler-rt archive, so the portable Osprey runtime provides the one
-// helper its generated IR requires, along with the WASI math correction below.
+// wasm compiler-rt archive, so the portable Osprey runtime provides the
+// helpers its generated IR requires, along with the WASI math correction below.
 
 #include <math.h>
 #include <stdint.h>
+
+#include "float_spelling.h"
 
 typedef __int128 osp_i128;
 
@@ -61,4 +63,20 @@ osp_i128 __multi3(osp_i128 left, osp_i128 right) {
 // pins signed zero and subnormals. Keep this in the wasm-only runtime archive.
 float tanhf(float value) {
     return (float)tanh((double)value);
+}
+
+// [BUILTIN-MIN-MAX] wasm32 has no binary16 arithmetic, so LLVM promotes a
+// float16 min/max through binary32 with compiler-rt's conversion ABI: the half
+// travels as its bit pattern. Widening to binary64 is exact, so the narrowing
+// below rounds once, as a direct binary32 -> binary16 rounding would.
+float __extendhfsf2(uint16_t bits);
+
+float __extendhfsf2(uint16_t bits) {
+    return osp_f16_to_f32(bits);
+}
+
+uint16_t __truncsfhf2(float value);
+
+uint16_t __truncsfhf2(float value) {
+    return osp_float_to_f16((double)value);
 }
