@@ -68,7 +68,11 @@ fn graphics_scenes_share_one_host_and_one_shader() {
             .map(str::trim)
             .filter(|line| !line.is_empty() && !line.starts_with("//"))
             .collect();
-        assert_eq!(code, [format!("fn main() = {entry}")], "{scene} must only call {entry}");
+        assert_eq!(
+            code,
+            [format!("fn main() = {entry}")],
+            "{scene} must only call {entry}"
+        );
         let lines = source_lines(&source);
         assert!(
             lines <= MAX_SCENE_SOURCE_LINES,
