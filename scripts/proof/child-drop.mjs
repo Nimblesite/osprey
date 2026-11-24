@@ -72,7 +72,7 @@ function pushWrites(body, regs) {
   const buffer = /^(%[\w.]+) = load ptr, ptr @g_wl, align 8(?:, !tbaa !\d+)?$/.exec(body[0])
   const add = /^(%[\w.]+) = add i64 (%[\w.]+), (\d+)$/.exec(body[1])
   const depth = /^store i64 (%[\w.]+), ptr @g_wl_top, align 8(?:, !tbaa !\d+)?$/.exec(body[2])
-  const slot = /^(%[\w.]+) = getelementptr inbounds (?:nuw )?\[(\d+) x i8\], ptr (%[\w.]+), i64 (%[\w.]+)$/.exec(body[3])
+  const slot = /^(%[\w.]+) = getelementptr inbounds (?:nuw )?(?:\[(\d+) x i8\]|i64), ptr (%[\w.]+), i64 (%[\w.]+)$/.exec(body[3])
   const write = /^store i64 (%[\w.]+), ptr (%[\w.]+), align 8(?:, !tbaa !\d+)?$/.exec(body[4])
   if (!buffer || !add || !depth || !slot || !write || buffer[1] !== slot[3] || write[2] !== slot[1]) return 'none'
   const operand = reg => {
@@ -80,7 +80,7 @@ function pushWrites(body, regs) {
     return regs.get(reg)
   }
   regs.set(add[1], '(' + operand(add[2]) + ' + ' + add[3] + ')')
-  return 'some (' + operand(depth[1]) + ', ' + operand(slot[4]) + ' * ' + slot[2] + ', ' + operand(write[1]) + ')'
+  return 'some (' + operand(depth[1]) + ', ' + operand(slot[4]) + ' * ' + (slot[2] ?? '8') + ', ' + operand(write[1]) + ')'
 }
 
 export function worklistPush(ir) {

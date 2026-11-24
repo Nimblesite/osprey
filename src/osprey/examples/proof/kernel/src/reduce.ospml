@@ -55,9 +55,16 @@ module Reduce
         Resuming term frames => resumeFrames (env, term, frames)
 
     enter (env, step, frames) = match step
-        Again term => Pending term frames
+        Again term => pendingHead (term, frames)
         Whnf term => Resuming term frames
         Suspend term frame => Pending term (listPrepend (frames, frame))
+
+    (** Keep arguments attached when a transparent head takes a step. A
+        projected arithmetic method can then reach its checked numeric rule
+        fully applied, before delta reduction unfolds its recursive body. *)
+    pendingHead (term, frames) = match frames
+        [AwaitApply _ spine, ...rest] => Pending (Terms::apps (term, spine.spineArgs)) rest
+        other => Pending term frames
 
     (** A weak head normal form resumes the innermost pending frame. *)
     resumeFrames (env, term, frames) = match frames

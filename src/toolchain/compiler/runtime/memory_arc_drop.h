@@ -32,8 +32,11 @@ static uintptr_t *g_wl = NULL;
 static size_t g_wl_cap = 0;
 static size_t g_wl_top = 0;
 
+// Zero routes an unrepresentable byte request to the existing exhaustion path.
 static size_t arc_wl_growth_bytes(size_t capacity) {
-  if (capacity > SIZE_MAX / (2 * sizeof(uintptr_t))) return 0;
+  if (capacity > SIZE_MAX / (2 * sizeof(uintptr_t))) {
+    return 0;
+  }
   return (capacity ? capacity * 2 : 256) * sizeof(uintptr_t);
 }
 

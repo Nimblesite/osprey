@@ -218,10 +218,12 @@ theorem compiledGrowthBytes (capacity : Nat) :
   · subst capacity
     rfl
   · by_cases fits : capacity * 16 < 2^64
-    · have bound : ¬ capacity > 1152921504606846975 := by omega
+    · have bound : ¬ capacity > 1152921504606846975 := fun h =>
+        Nat.not_le_of_gt fits (Nat.mul_le_mul_right 16 h)
       unfold emittedGrowth unsignedShift
       rw [if_neg bound, if_neg empty, if_pos fits, if_neg empty, if_pos fits]
-    · have bound : capacity > 1152921504606846975 := by omega
+    · have bound : capacity > 1152921504606846975 := Nat.lt_of_not_ge (fun h =>
+        fits (Nat.lt_of_le_of_lt (Nat.mul_le_mul_right 16 h) (by decide)))
       unfold emittedGrowth
       rw [if_pos bound, if_neg empty, if_neg fits]
 

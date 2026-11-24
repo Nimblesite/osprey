@@ -19,4 +19,6 @@ void proof_pair_drop(void *body) {
 }
 
 // Expose the production size calculation to Clang for every native capacity.
-size_t proof_growth_bytes(size_t capacity) { return arc_wl_growth_bytes(capacity); }
+size_t proof_growth_bytes(size_t capacity) {
+  return arc_wl_growth_bytes(capacity);
+}
