@@ -9,15 +9,17 @@ mkdir -p "$out"
 "$1" "$program" --llvm --memory=ownership > "$out/ownership.ll"
 runtime="$root/src/toolchain/compiler/runtime"
 compile_runtime() {
-  clang -O1 -fno-inline -fno-discard-value-names -I "$runtime" -include "$runtime/osp_arc_shim.h" \
+  clang -O1 -fno-inline -fno-discard-value-names -I "$runtime" "${@:3}" \
     -S -emit-llvm "$1" -o "$2"
 }
-compile_runtime "$runtime/list_runtime.c" "$out/runtime.ll"
-compile_runtime "$runtime/map_runtime.c" "$out/map.ll"
-compile_runtime "$runtime/string_runtime.c" "$out/strings.ll"
+shim=(-include "$runtime/osp_arc_shim.h")
+compile_runtime "$runtime/list_runtime.c" "$out/runtime.ll" "${shim[@]}"
+compile_runtime "$runtime/map_runtime.c" "$out/map.ll" "${shim[@]}"
+compile_runtime "$runtime/string_runtime.c" "$out/strings.ll" "${shim[@]}"
+compile_runtime "$runtime/memory_ownership.c" "$out/heap.ll"
 reflect() {
   node "$root/scripts/proof/ownership-lowering.mjs" "$program" "$1" \
-    "$tools/OwnershipLowering.lean.in" "${3:-$out/runtime.ll}" "$out/map.ll" "${4:-$out/strings.ll}" > "$2"
+    "$tools/OwnershipLowering.lean.in" "${3:-$out/runtime.ll}" "$out/map.ll" "${4:-$out/strings.ll}" "${5:-$out/heap.ll}" > "$2"
 }
 cd "$tools"
 reflect "$out/ownership.ll" "$out/OwnershipLowering.lean"
@@ -25,7 +27,7 @@ lake build lean4export
 lake env lean -DwarningAsError=true --root="$out" -o "$out/OwnershipLowering.olean" "$out/OwnershipLowering.lean"
 exporter=$(lake env which lean4export)
 lean_path=$(lake env printenv LEAN_PATH)
-for name in compiledGrow compiledGrowWhen runtimeRootOrigins renderedStringOrigin stringResultOrigins; do
+for name in compiledGrow compiledGrowWhen runtimeRootOrigins renderedStringOrigin stringResultOrigins compiledFreeNull; do
   theorem="OwnershipLowering.$name"
   LEAN_PATH="$out:$lean_path" "$exporter" OwnershipLowering -- "$theorem" > "$out/$name.ndjson"
   for backend in gc arc wasm; do
@@ -82,18 +84,25 @@ awk '
   {print}
   END {if (changed != 1) exit 1}
 ' "$runtime/list_runtime.c" > "$out/mutations/alias.c"
-compile_runtime "$out/mutations/alias.c" "$out/mutations/alias.ll"
+compile_runtime "$out/mutations/alias.c" "$out/mutations/alias.ll" "${shim[@]}"
 reflect "$out/ownership.ll" "$out/mutations/alias.lean" "$out/mutations/alias.ll"
 reject alias runtimeRootOrigins
 
 sed '/^char \*osp_string_dup_internal(/,/^}/s/return out;/return (char *)s;/' \
   "$runtime/string_runtime.c" > "$out/mutations/borrowed-string.c"
-compile_runtime "$out/mutations/borrowed-string.c" "$out/mutations/borrowed-string.ll"
+compile_runtime "$out/mutations/borrowed-string.c" "$out/mutations/borrowed-string.ll" "${shim[@]}"
 reflect "$out/ownership.ll" "$out/mutations/borrowed-string.lean" "$out/runtime.ll" "$out/mutations/borrowed-string.ll"
 reject borrowed-string renderedStringOrigin
 
 sed '/^char \*osp_string_concat(/,/^}/s/return out;/return (char *)left;/' \
   "$runtime/string_runtime.c" > "$out/mutations/borrowed-concat.c"
-compile_runtime "$out/mutations/borrowed-concat.c" "$out/mutations/borrowed-concat.ll"
+compile_runtime "$out/mutations/borrowed-concat.c" "$out/mutations/borrowed-concat.ll" "${shim[@]}"
 reflect "$out/ownership.ll" "$out/mutations/borrowed-concat.lean" "$out/runtime.ll" "$out/mutations/borrowed-concat.ll"
 reject borrowed-concat stringResultOrigins
+
+cp "$runtime/memory_ownership.c" "$out/mutations/"
+sed '/^static void tracked_drop(/,/^}/s/if (!body)/if (body)/' \
+  "$runtime/memory_tracked_heap.h" > "$out/mutations/memory_tracked_heap.h"
+compile_runtime "$out/mutations/memory_ownership.c" "$out/mutations/inverted-drop.ll"
+reflect "$out/ownership.ll" "$out/mutations/inverted-drop.lean" "$out/runtime.ll" "$out/strings.ll" "$out/mutations/inverted-drop.ll"
+reject inverted-drop compiledFreeNull

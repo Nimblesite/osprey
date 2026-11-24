@@ -2,8 +2,8 @@
 // The Boolean parameter has two inhabitants; specialize both, resolving each phi by
 // its actual predecessor. Reject unknown instructions [MEM-OWNERSHIP-STATIC-VERIFICATION].
 import { readFileSync } from 'node:fs'
-import { runtimeReturns } from './runtime-returns.mjs'
-const [source, irFile, template, listFile, mapFile, stringFile] = process.argv.slice(2)
+import { nullDrop, runtimeReturns } from './runtime-returns.mjs'
+const [source, irFile, template, listFile, mapFile, stringFile, heapFile] = process.argv.slice(2)
 const src = readFileSync(source, 'utf8').split('\n')
 const ir = readFileSync(irFile, 'utf8')
 function define(map, key, value = map.size) {
@@ -45,7 +45,7 @@ function instruction({ regs, slots, contents, bits, code }, line, previous) {
     code.push('.append ' + get(regs, m[2]) + ' ' + define(regs, m[1]))
   } else if ((m = /^call void @osp_ownership_free\(i8\* (%[\w$]+)\)$/.exec(line))) {
     const reg = get(regs, m[1])
-    if (reg !== null) code.push('.free ' + reg)
+    code.push('.free ' + option(reg))
   }
   else if ((m = /^(%r\d+) = zext i1 (0|1|%\$p2) to i64$/.exec(line))) define(bits, m[1], get(bits, m[2]))
   else if ((m = /^(%r\d+) = icmp eq i64 (%r\d+), (%r\d+)$/.exec(line))) define(bits, m[1], get(bits, m[2]) === get(bits, m[3]))
@@ -88,6 +88,7 @@ const strings = runtimeReturns(stringFile, 'osp_alloc_tagged')
 const renderer = runtimeReturns(irFile, 'osp_string_show', strings('osp_string_show'))
 const stringOps = 'concat take drop substring to_upper to_lower trim_start trim_end trim reverse replace repeat pad_start pad_end from_codepoint'.split(' ')
 process.stdout.write(readFileSync(template, 'utf8')
+  .replace('-- NULL DROP', nullDrop(heapFile))
   .replace('-- STRING OP RETURNS', stringOps.map(op => '  | .«' + op + '» => ' + strings('osp_string_' + op)).join('\n'))
   .replace('-- APPEND RETURNS', list('osprey_list_append_of'))
   .replace('-- PREPEND RETURNS', list('osprey_list_prepend_of'))

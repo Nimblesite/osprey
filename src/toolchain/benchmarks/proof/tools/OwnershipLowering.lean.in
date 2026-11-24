@@ -2,16 +2,21 @@
    compiler's emitted scalar grow and conditional grow paths. Registers identify
    allocations; each append returns a fresh root. Contents model the C helper's
    persistent-list contract. Stack slots hold raw pointers and expire on return.
-   The reflector resolves predecessor-selected phi operands and folds free(null)
-   using the runtime's null-safe free contract. A load's value is checked here. -/
+   The reflector resolves predecessor-selected phi operands and preserves free(null)
+   for verification against the compiled drop guard. A load's value is checked here. -/
 namespace OwnershipLowering
+
+def immediateDropReturn (isNull : Bool) : Bool :=
+-- NULL DROP
+
+theorem compiledFreeNull : immediateDropReturn true = true := by rfl
 
 inductive Instr where
   | reserve (slot : Nat)
   | store (slot : Nat) (reg : Option Nat)
   | load (slot : Nat) (expected : Option Nat)
   | append (src dst : Nat)
-  | free (reg : Nat)
+  | free (reg : Option Nat)
   | ret (reg : Nat)
 
 def emitted : List Instr :=
@@ -37,7 +42,8 @@ def execute (element : α) (s : Machine α) : List Instr → Option (List α)
     let xs ← s.heap.lookup src
     if (s.heap.lookup dst).isSome then none else
       execute element {s with heap := (dst, xs ++ [element]) :: s.heap} rest
-  | .free reg :: rest =>
+  | .free none :: rest => if immediateDropReturn true then execute element s rest else none
+  | .free (some reg) :: rest =>
     if (s.heap.lookup reg).isSome then
       execute element {s with heap := s.heap.filter (fun entry => entry.1 != reg)} rest
     else none
