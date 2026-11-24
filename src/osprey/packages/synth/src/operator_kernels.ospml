@@ -34,21 +34,20 @@ module OperatorKernels
         Success modulation => Outcomes::carried (RenderInputs::optional (plan, frame, identity, 1), \sync => Success(value = Complex(re = modulation, im = sync)))
 
     settings (snapshot, identity) =
-        read (name, continue) = RenderInputs::setting (snapshot, identity, name, continue)
-        use frequency <- read "frequency"
-        use selector <- read "shape"
-        use breakpoint <- read "breakpoint"
-        use index <- read "index"
-        use ratio <- read "ratio"
-        use offset <- read "offset"
-        use index2 <- read "index2"
-        use ratio2 <- read "ratio2"
-        use offset2 <- read "offset2"
-        use depth <- read "depth"
-        use spread <- read "spread"
-        use feedback <- read "feedback"
-        use amplitude <- read "amplitude"
-        use oversample <- read "oversample"
+        use frequency <- RenderInputs::setting (snapshot, identity, "frequency")
+        use selector <- RenderInputs::setting (snapshot, identity, "shape")
+        use breakpoint <- RenderInputs::setting (snapshot, identity, "breakpoint")
+        use index <- RenderInputs::setting (snapshot, identity, "index")
+        use ratio <- RenderInputs::setting (snapshot, identity, "ratio")
+        use offset <- RenderInputs::setting (snapshot, identity, "offset")
+        use index2 <- RenderInputs::setting (snapshot, identity, "index2")
+        use ratio2 <- RenderInputs::setting (snapshot, identity, "ratio2")
+        use offset2 <- RenderInputs::setting (snapshot, identity, "offset2")
+        use depth <- RenderInputs::setting (snapshot, identity, "depth")
+        use spread <- RenderInputs::setting (snapshot, identity, "spread")
+        use feedback <- RenderInputs::setting (snapshot, identity, "feedback")
+        use amplitude <- RenderInputs::setting (snapshot, identity, "amplitude")
+        use oversample <- RenderInputs::setting (snapshot, identity, "oversample")
         Success(value = OperatorControls(selector = selector, breakpoint = breakpoint, first = pulse (index, ratio, offset), second = pulse (index2, ratio2, offset2), frequency = frequency, depth = depth, spread = spread, feedback = feedback, amplitude = amplitude, oversample = oversample))
 
     configured (rate, c) = Outcomes::carried (shape (c.selector, c.breakpoint, c.first, c.second), \kind =>

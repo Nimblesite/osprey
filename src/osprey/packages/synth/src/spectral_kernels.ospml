@@ -38,18 +38,17 @@ module SpectralKernels
     configured (rate, size, hop, chosen, mix) = Outcomes::carried (chosen, \kind => SpectralStreams::configure (SpectralConfig(sampleRate = rate, size = size, hop = hop, transform = kind, mix = mix)))
 
     settings (rate, snapshot, identity, size, hop) =
-        read (name, continue) = RenderInputs::setting (snapshot, identity, name, continue)
-        use selector <- read "transform"
-        use hold <- read "hold"
-        use low <- read "low"
-        use high <- read "high"
-        use shift <- read "shift"
-        use amount <- read "amount"
-        use morphMode <- read "morphMode"
-        use mix <- read "mix"
-        use semitones <- read "semitones"
-        use cents <- read "cents"
-        use keep <- read "keepFormants"
+        use selector <- RenderInputs::setting (snapshot, identity, "transform")
+        use hold <- RenderInputs::setting (snapshot, identity, "hold")
+        use low <- RenderInputs::setting (snapshot, identity, "low")
+        use high <- RenderInputs::setting (snapshot, identity, "high")
+        use shift <- RenderInputs::setting (snapshot, identity, "shift")
+        use amount <- RenderInputs::setting (snapshot, identity, "amount")
+        use morphMode <- RenderInputs::setting (snapshot, identity, "morphMode")
+        use mix <- RenderInputs::setting (snapshot, identity, "mix")
+        use semitones <- RenderInputs::setting (snapshot, identity, "semitones")
+        use cents <- RenderInputs::setting (snapshot, identity, "cents")
+        use keep <- RenderInputs::setting (snapshot, identity, "keepFormants")
         configured (rate, size, hop, transform (selector, hold, low, high, shift, amount, morphMode, { semitones = semitones, cents = cents, keep = keep }), mix)
 
     (** Resolve fixed FFT parameters once; automated blocks resolve them at each sample. *)
