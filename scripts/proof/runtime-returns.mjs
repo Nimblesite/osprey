@@ -82,6 +82,31 @@ export function operand(regs, reg) {
   return regs.get(reg)
 }
 
+export function pointerPhi(rhs, regs, predecessor) {
+  const m = /^phi i8\* \[ (%[\w$]+), %(L\d+) \], \[ (%[\w$]+), %(L\d+) \]$/.exec(rhs)
+  if (!m || m[2] === m[4]) throw Error('invalid ownership phi: ' + rhs)
+  return operand(regs, operand(new Map([[m[2], m[1]], [m[4], m[3]]]), predecessor))
+}
+
+// Consume every instruction on the selected, acyclic path, including its
+// actual incoming edge at each join. Callers supply path-specific semantics.
+export function tracePointer(cfg, instruction, bit, returned) {
+  const seen = new Set()
+  let label = 'entry', previous
+  while (!seen.has(label)) {
+    seen.add(label)
+    const lines = operand(cfg, label)
+    for (const line of lines.slice(0, -1)) instruction(line, previous)
+    const end = lines.at(-1)
+    const ret = /^ret i8\* (null|%[\w$]+)$/.exec(end)
+    if (ret) return returned(ret[1])
+    previous = label
+    const br = /^br i1 (%r\d+), label %(L\d+), label %(L\d+)$/.exec(end)
+    label = br ? br[bit(br[1]) ? 2 : 3] : /^br label %(L\d+)$/.exec(end)?.[1]
+  }
+  throw Error('cycle in compiled ownership path')
+}
+
 export function nullSuccessors(entry = [], header) {
   const cmp = /^(%[\w.]+) = icmp (eq|ne) ptr (%[\w.]+), null$/.exec(entry[0])
   const br = /^br i1 (%[\w.]+), label %([\w.]+), label %([\w.]+)$/.exec(entry[1])

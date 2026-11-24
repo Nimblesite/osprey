@@ -5,8 +5,9 @@ import { readFileSync } from 'node:fs'
 import { liveAccounting, reclaimPrefix } from './live-accounting.mjs'
 import { bodyPaths, popBody } from './worklist-drain.mjs'
 import { childDrop, growthBytes, worklistPush } from './child-drop.mjs'
+import { resultTake } from './result-take.mjs'
 import { pairConstructor, pairWalk } from './record-ownership.mjs'
-import { blocks as llvmBlocks, nullDrop, runtimeReturns } from './runtime-returns.mjs'
+import { blocks as llvmBlocks, nullDrop, operand as get, pointerPhi, runtimeReturns, tracePointer } from './runtime-returns.mjs'
 const [source, irFile, template, listFile, mapFile, stringFile, heapFile, walkFile] = process.argv.slice(2)
 const src = readFileSync(source, 'utf8').split('\n')
 const ir = readFileSync(irFile, 'utf8')
@@ -14,10 +15,6 @@ function define(map, key, value = map.size) {
   if (map.has(key)) throw Error('duplicate definition ' + key)
   map.set(key, value)
   return value
-}
-function get(map, key) {
-  if (!map.has(key)) throw Error('undefined operand ' + key)
-  return map.get(key)
 }
 function blocks(name, conditional) {
   const sig = 'i8\\* %\\$p0, i64 %\\$p1' + (conditional ? ', i1 %\\$p2' : '')
@@ -46,12 +43,8 @@ function instruction({ regs, slots, contents, bits, code }, line, previous) {
   }
   else if ((m = /^(%r\d+) = zext i1 (0|1|%\$p2) to i64$/.exec(line))) define(bits, m[1], get(bits, m[2]))
   else if ((m = /^(%r\d+) = icmp eq i64 (%r\d+), (%r\d+)$/.exec(line))) define(bits, m[1], get(bits, m[2]) === get(bits, m[3]))
-  else if ((m = /^(%r\d+) = phi i8\* \[ (%[\w$]+), %(L\d+) \], \[ (%[\w$]+), %(L\d+) \]$/.exec(line))) {
-    const incoming = new Map()
-    define(incoming, m[3], m[2])
-    define(incoming, m[5], m[4])
-    define(regs, m[1], get(regs, get(incoming, previous)))
-  } else throw Error('unsupported LLVM instruction: ' + line)
+  else if ((m = /^(%r\d+) = (phi .+)$/.exec(line))) define(regs, m[1], pointerPhi(m[2], regs, previous))
+  else throw Error('unsupported LLVM instruction: ' + line)
 }
 function trace(body, enabled) {
   const regs = new Map([['%$p0', 0]])
@@ -59,21 +52,8 @@ function trace(body, enabled) {
   const bits = new Map([['0', false], ['1', true], ['%$p2', enabled]])
   const code = []
   const state = { regs, slots, contents: new Map(), bits, code }
-  let label = 'entry', previous
-  const visited = new Set()
-  while (!visited.has(label)) {
-    visited.add(label)
-    const lines = get(body, label)
-    for (const line of lines.slice(0, -1)) instruction(state, line, previous)
-    const end = lines.at(-1)
-    previous = label
-    let m
-    if ((m = /^ret i8\* (%[\w$]+)$/.exec(end))) return '[' + [...code, '.ret ' + get(regs, m[1])].join(', ') + ']'
-    if ((m = /^br label %(L\d+)$/.exec(end))) label = m[1]
-    else if ((m = /^br i1 (%r\d+), label %(L\d+), label %(L\d+)$/.exec(end))) label = get(bits, m[1]) ? m[2] : m[3]
-    else throw Error('unsupported reachable terminator: ' + end)
-  }
-  throw Error('loop in scalar append specialization')
+  return tracePointer(body, (line, prev) => instruction(state, line, prev), reg => get(bits, reg),
+    reg => '[' + [...code, '.ret ' + get(regs, reg)].join(', ') + ']')
 }
 for (const definition of ['type Pair = { left: Box, right: Box }', 'fn pairUp(left, right) = Pair { left: left, right: right }', 'fn grow(xs, x) = listAppend(xs, x)', 'fn growWhen(xs, x, enabled) = if enabled { listAppend(xs, x) } else { xs }']) {
   if (!src.includes(definition)) throw Error('unsupported source: ' + definition)
@@ -95,6 +75,7 @@ process.stdout.write(readFileSync(template, 'utf8')
   .replace('-- LIVE DEBIT', liveAccounting(heap, 'arc_live_dec'))
   .replace('-- BODY PATHS', bodyPaths(heap))
   .replace('-- CHILD DROP', childDrop(heap))
+  .replace('-- RESULT TAKE', resultTake(ir, src.join('\n')))
   .replace('-- PAIR WALK', pairWalk(walk))
   .replace('-- PAIR CONSTRUCTOR', pairConstructor(ir))
   .replace('-- NULL DROP', nullDrop(heapFile))

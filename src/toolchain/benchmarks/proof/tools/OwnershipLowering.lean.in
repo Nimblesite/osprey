@@ -306,4 +306,19 @@ theorem compiledAccountingRoundTrip (tracking : Bool) (objects bytes peak : BitV
     · rw [if_pos larger, BitVec.add_sub_cancel, BitVec.add_sub_cancel]
     · rw [if_neg larger, BitVec.add_sub_cancel, BitVec.add_sub_cancel]
 
+inductive ResultPtr where
+  | parent | child | nil | fallback
+
+inductive ResultEvent where
+  | acquire | read (field : Nat) | write (ptr : ResultPtr) | free (ptr : ResultPtr) | ret (ptr : ResultPtr)
+
+def emittedResultTake (present : Bool) : List ResultEvent :=
+-- RESULT TAKE
+
+/-- For every nonzero error tag the taken message is detached before wrapper destruction.
+    A null message selects the native static fallback. The returned pointer is never freed. -/
+theorem compiledResultTake (present : Bool) :
+    emittedResultTake present = [.acquire, .read 1, .read 0, .read 2, .write .nil, .free .nil,
+      .free .parent, .ret (if present then .child else .fallback)] := by cases present <;> rfl
+
 end OwnershipLowering

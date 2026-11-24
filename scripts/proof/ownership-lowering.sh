@@ -30,7 +30,7 @@ lake build lean4export
 lake env lean -DwarningAsError=true --root="$out" -o "$out/OwnershipLowering.olean" "$out/OwnershipLowering.lean"
 exporter=$(lake env which lean4export)
 lean_path=$(lake env printenv LEAN_PATH)
-for name in compiledGrow compiledGrowWhen runtimeRootOrigins renderedStringOrigin stringResultOrigins compiledFreeNull compiledPairFields compiledChildDrop compiledWorklistPush compiledPairQueue compiledGrowthBytes compiledPop compiledBodyReclaim compiledPushPop compiledLiveDebit compiledReclaimPrefix compiledLiveCredit compiledAccountingRoundTrip; do
+for name in compiledGrow compiledGrowWhen runtimeRootOrigins renderedStringOrigin stringResultOrigins compiledFreeNull compiledPairFields compiledChildDrop compiledWorklistPush compiledPairQueue compiledGrowthBytes compiledPop compiledBodyReclaim compiledPushPop compiledLiveDebit compiledReclaimPrefix compiledLiveCredit compiledAccountingRoundTrip compiledResultTake; do
   theorem="OwnershipLowering.$name"
   axioms=none
   if [[ $name == compiledAccountingRoundTrip ]]; then axioms=propext; fi
@@ -195,3 +195,20 @@ done
 
 reject double-credit compiledAccountingRoundTrip
 reject skipped-live-bytes compiledAccountingRoundTrip
+
+for fault in attached-message freed-message null-fallback; do
+  awk -v fault="$fault" '
+    /^define / {inside = /@missing\(/}
+    inside && / = select i1 / {
+      message = $1
+      if (fault == "null-fallback") sub($7, $9 ",")
+    }
+    inside && /^  store i8\* null, i8\*\* %r[0-9]+$/ {
+      if (fault == "attached-message") next
+      if (fault == "freed-message") print "  call void @osp_ownership_free(i8* " message ")"
+    }
+    {print}
+  ' "$out/ownership.ll" > "$out/mutations/$fault.ll"
+  reflect "$out/mutations/$fault.ll" "$out/mutations/$fault.lean"
+  reject "$fault" compiledResultTake
+done
