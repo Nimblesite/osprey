@@ -14,7 +14,7 @@ use ferroui_osprey_native::rows::Shown;
 use ferroui_osprey_native::scene::Shape;
 
 mod common;
-use common::{repo, scene, shapes};
+use common::{center, repo, scene, shapes};
 
 /// One display frame at 120 Hz, in milliseconds.
 const FRAME_MS: f64 = 1000.0 / 120.0;
@@ -43,11 +43,6 @@ fn along(index: usize) -> (f64, f64) {
 
 /// [DAW-LAYOUT-FILL] Drag by the title in three viewport shapes and trace the real output socket.
 fn drag_across_resized_canvas(canvas: i64) {
-    let center = |frame: &Shown, label: &str| {
-        let area = frame.scenes.values().flat_map(|scene| &scene.access)
-            .find(|area| area.label == label).unwrap_or_else(|| panic!("missing canvas control: {label}"));
-        (area.x + area.w / 2.0, area.y + area.h / 2.0)
-    };
     let sprite = |frame: &Shown| {
         frame.scenes.values().find_map(|scene| scene.shapes.iter().find_map(|shape| match shape {
             Shape::Sprite { atlas, x, y, .. } if scene.atlas.get(*atlas).is_some_and(|s| s.ends_with("/node-source.png")) => Some((f64::from(*x), f64::from(*y))),

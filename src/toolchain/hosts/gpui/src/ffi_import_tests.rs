@@ -15,6 +15,23 @@ fn prepare_snapshot() -> std::sync::MutexGuard<'static, ()> {
     guard
 }
 
+/// A healthy re-open after the failed one restores the snapshot it left pinned.
+fn healthy_reopen() {
+    MODE.store(3, Ordering::SeqCst);
+    assert!(Library::open(0, 0, "test", "/home", false).is_ok());
+    assert_eq!(snapshot().as_deref(), Some("before|before|after"));
+}
+
+/// The poisoned store rejected `which` without an import during it, leaving no frame and no export.
+fn rejected_without_import(which: &str, result: &Result<crate::rows::Shown, String>) {
+    assert!(
+        result.is_err(),
+        "a poisoned store with no import during the {which} became a successful view"
+    );
+    assert!(frame::take().is_none(), "the rejected {which} left a frame");
+    assert_eq!(EXPORTS.load(Ordering::SeqCst), 0, "an export ran");
+}
+
 #[test]
 fn start_pins_imports_across_a_concurrent_slice_replacement() {
     let _serial = prepare_snapshot();
@@ -85,9 +102,7 @@ fn malformed_output_does_not_leave_an_import_snapshot_active() {
     let _serial = prepare_snapshot();
     MODE.store(2, Ordering::SeqCst);
     assert!(Library::open(0, 0, "test", "/home", false).is_err());
-    MODE.store(3, Ordering::SeqCst);
-    assert!(Library::open(0, 0, "test", "/home", false).is_ok());
-    assert_eq!(snapshot().as_deref(), Some("before|before|after"));
+    healthy_reopen();
 }
 
 #[test]
@@ -99,9 +114,7 @@ fn a_nested_export_is_refused_without_disturbing_the_outer_scope() {
         snapshot().as_deref(),
         Some("A native call is already active")
     );
-    MODE.store(3, Ordering::SeqCst);
-    assert!(Library::open(0, 0, "test", "/home", false).is_ok());
-    assert_eq!(snapshot().as_deref(), Some("before|before|after"));
+    healthy_reopen();
 }
 
 #[test]
@@ -250,12 +263,7 @@ fn stream_poison_without_a_later_callback_still_rejects_the_export() {
     poison(slices());
     let result = Library::open(0, 0, "test", "/home", false);
     slices().clear_poison();
-    assert!(
-        result.is_err(),
-        "a poisoned store with no import during the call became a successful view"
-    );
-    assert!(frame::take().is_none(), "the rejected call left a frame");
-    assert_eq!(EXPORTS.load(Ordering::SeqCst), 0, "an export ran");
+    rejected_without_import("call", &result);
     let shown = Library::open(0, 0, "test", "/home", false).expect("the next call's frame");
     assert_eq!(shown.controls.len(), 1);
 }
@@ -270,10 +278,5 @@ fn stream_poison_without_a_later_callback_still_rejects_the_export_extra_event()
     poison(slices());
     let result = Library::event(0, &Touch::pointer(0, 1., 2., true, false));
     slices().clear_poison();
-    assert!(
-        result.is_err(),
-        "a poisoned store with no import during the event became a successful view"
-    );
-    assert!(frame::take().is_none(), "the rejected event left a frame");
-    assert_eq!(EXPORTS.load(Ordering::SeqCst), 0, "an export ran");
+    rejected_without_import("event", &result);
 }

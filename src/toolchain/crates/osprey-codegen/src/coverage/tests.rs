@@ -75,9 +75,7 @@ fn callback_header_owners(module: &str, line: u32) -> Vec<&str> {
 
 #[test]
 fn named_callback_headers_are_bumped_inside_the_emitted_closure() {
-    let parsed = osprey_syntax::parse_program_for_path("callbacks.ospml", NAMED_CALLBACKS);
-    assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
-    let module = crate::compile_program_coverage(&parsed.program).expect("coverage lowering");
+    let module = coverage_module("callbacks.ospml", NAMED_CALLBACKS);
     for line in [4, 5] {
         let owners = callback_header_owners(&module, line);
         assert_eq!(owners.len(), 1, "header {line}: {module}");
@@ -86,6 +84,13 @@ fn named_callback_headers_are_bumped_inside_the_emitted_closure() {
             "header {line} must count invocation, not creation: {owners:?}"
         );
     }
+}
+
+/// The coverage lowering of `source`, parsed as `path` and asserted clean.
+fn coverage_module(path: &str, source: &str) -> String {
+    let parsed = osprey_syntax::parse_program_for_path(path, source);
+    assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+    crate::compile_program_coverage(&parsed.program).expect("coverage lowering")
 }
 
 fn coverage_codegen() -> Codegen {
@@ -213,9 +218,7 @@ const INLINED_RECORD_MAPPER: &str = "type Item =\n    value : string\n\ntype Sec
 const MODULE_STEPS: &str = "// [TESTING-COVERAGE-CODEGEN]\nnamespace proof\n\ntype Item =\n    value : string\n\ntype Section =\n    records : List<Item>\n\nmodule Steps\n    entries section = mapList (section.records, \\item => Item(value = item.value))\n    (** Transform every record through a function value. *)\n    export gather sections = mapList (sections, entries)\n";
 #[test]
 fn higher_order_record_mapper_header_counts_when_the_mapper_runs() {
-    let parsed = osprey_syntax::parse_program_for_path("mapper.ospml", INLINED_RECORD_MAPPER);
-    assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
-    let module = crate::compile_program_coverage(&parsed.program).expect("coverage lowering");
+    let module = coverage_module("mapper.ospml", INLINED_RECORD_MAPPER);
     let owners = callback_header_owners(&module, 7);
     assert_eq!(owners.len(), 1, "mapper header 7: {owners:?}\n{module}");
     assert_eq!(

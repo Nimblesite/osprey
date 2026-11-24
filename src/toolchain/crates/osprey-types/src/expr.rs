@@ -197,11 +197,11 @@ impl Checker {
             return self.ctx.fresh();
         }
         let result = self.ctx.fresh();
-        self.builtin_uses.push((
+        self.record_field_relation(
             crate::fields::obligation_name(&self.site, field),
-            Type::fun(vec![receiver.clone()], result.clone()),
-        ));
-        self.resolve_field_uses();
+            receiver,
+            &result,
+        );
         result
     }
 
@@ -212,9 +212,19 @@ impl Checker {
         if self.reject_erased_operand(&format!("update field `{field}` on"), receiver) {
             return;
         }
-        self.builtin_uses.push((
+        self.record_field_relation(
             crate::fields::write_obligation_name(&self.site, field),
-            Type::fun(vec![receiver.clone()], value.clone()),
+            receiver,
+            value,
+        );
+    }
+
+    /// Queue one field relation — read or write — as the function type from
+    /// `receiver` to `outcome`, then drain the queue.
+    fn record_field_relation(&mut self, obligation: String, receiver: &Type, outcome: &Type) {
+        self.builtin_uses.push((
+            obligation,
+            Type::fun(vec![receiver.clone()], outcome.clone()),
         ));
         self.resolve_field_uses();
     }

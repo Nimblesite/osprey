@@ -234,6 +234,15 @@ fn each_distinct_kernel_gets_its_own_symbol() {
         ],
     );
 }
+
+/// The body of the one lifted kernel these uniform-capturing programs emit:
+/// two captured scalars then the element, all `double`.
+fn uniform_kernel(ir: &str) -> String {
+    let header = "define internal double @__gpu_kernel_0(double %$p0, double %$p1, double %$p2)";
+    assert!(ir.contains(header), "{ir}");
+    function_body(ir, header)
+}
+
 #[test]
 fn captures_become_leading_parameters_sorted_by_name() {
     // Uniforms lead the element slot and are ordered by identifier —
@@ -247,9 +256,7 @@ fn captures_become_leading_parameters_sorted_by_name() {
              }\n\
              print(f())\n",
     );
-    let header = "define internal double @__gpu_kernel_0(double %$p0, double %$p1, double %$p2)";
-    assert!(ir.contains(header), "{ir}");
-    let kernel = function_body(&ir, header);
+    let kernel = uniform_kernel(&ir);
     shows(&kernel, &["fmul double %$p1, %$p2", "fadd double"]);
     testkit::contents(&kernel, &[], &["__env"]);
     let host = function_body(&ir, "define internal i64 @f()");
@@ -273,9 +280,7 @@ fn a_fold_kernel_takes_uniforms_then_accumulator_then_element() {
              }\n\
              print(\"${f()}\")\n",
     );
-    let header = "define internal double @__gpu_kernel_0(double %$p0, double %$p1, double %$p2)";
-    assert!(ir.contains(header), "{ir}");
-    let kernel = function_body(&ir, header);
+    let kernel = uniform_kernel(&ir);
     shows(&kernel, &["fmul double %$p0, %$p2", "fadd double %$p1,"]);
 }
 #[test]

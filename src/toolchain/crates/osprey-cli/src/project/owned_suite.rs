@@ -1,7 +1,7 @@
 //! A test file that belongs to a project runs against that project's code.
 //! Implements [TESTING-FILE-PROJECT] (docs/specs/tooling/TestRunner.md).
 
-use super::{aggregate_sources, CompilationInput, OutputDefault};
+use super::CompilationInput;
 use crate::test_discovery::is_test_file;
 use osprey_project::ProjectError;
 use std::path::{Path, PathBuf};
@@ -33,14 +33,7 @@ impl CompilationInput {
             .iter()
             .find(|source| canonical(&source.path) == suite)
             .map(|source| source.path.clone());
-        let assembled = osprey_project::assemble(&config, &sources)?;
-        let source = aggregate_sources(&assembled);
-        Ok(Self::assembled(
-            assembled,
-            source,
-            path.to_string(),
-            OutputDefault::Source(path.to_string()),
-        ))
+        Self::assembled_source(path, &config, &sources)
     }
 }
 

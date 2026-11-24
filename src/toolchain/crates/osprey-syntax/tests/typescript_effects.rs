@@ -1,8 +1,10 @@
 //! TypeScript effect declarations, performs and handlers lower to the shared
 //! effects core. Implements [FLAVOR-TS-EFFECTS].
 mod common;
+mod typescript_common;
 
 use osprey_syntax::{parse_program_with_flavor, Flavor};
+use typescript_common::rejected_at;
 
 /// Asserts the TypeScript `source` has the canonical AST of the Default program.
 fn same(default: &str, source: &str) {
@@ -12,18 +14,6 @@ fn same(default: &str, source: &str) {
         actual == expected,
         "{source}\n--- typescript\n{actual}\n--- default\n{expected}"
     );
-}
-
-/// Asserts `source` is rejected by a diagnostic containing `needle` at the
-/// one-based `line` and zero-based `column`.
-fn rejected_at(source: &str, needle: &str, line: u32, column: u32) {
-    let parsed = parse_program_with_flavor(source, Flavor::TypeScript);
-    let found = parsed
-        .errors
-        .iter()
-        .find(|error| error.message.contains(needle))
-        .map(|error| (error.position.line, error.position.column));
-    assert_eq!(found, Some((line, column)), "{source}\n{:?}", parsed.errors);
 }
 
 #[test]

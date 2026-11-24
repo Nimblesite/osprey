@@ -26,6 +26,22 @@ fn set(names: &[&str]) -> BTreeSet<String> {
     names.iter().map(ToString::to_string).collect()
 }
 
+/// The report on `p.osp` every assertion in this file reads, over `scan`
+/// after `exploration` under `options`.
+fn report<'a>(
+    options: &'a options::Options,
+    exploration: &'a Exploration,
+    scan: &'a Scan,
+) -> Report<'a> {
+    Report {
+        program: "p.osp",
+        options,
+        exploration,
+        scan,
+        context: None,
+    }
+}
+
 /// The report over one finding under default options, as JSON and as text.
 fn rendered(finding: Finding) -> (serde_json::Value, String) {
     let options = options::parse(&options::args(&["p.osp"])).expect("options");
@@ -34,14 +50,8 @@ fn rendered(finding: Finding) -> (serde_json::Value, String) {
         findings: vec![finding],
         incomplete: Vec::new(),
     };
-    let report = Report {
-        program: "p.osp",
-        options: &options,
-        exploration: &exploration,
-        scan: &scan,
-        context: None,
-    };
-    (report::json(&report), report::text(&report))
+    let rendered = report(&options, &exploration, &scan);
+    (report::json(&rendered), report::text(&rendered))
 }
 
 /// `--json` carries exactly the spec's fields, at every nesting level.
@@ -70,13 +80,7 @@ fn the_json_report_has_exactly_the_spec_fields() {
             reason: "r".into(),
         }],
     };
-    let value = report::json(&Report {
-        program: "p.osp",
-        options: &options,
-        exploration: &exploration,
-        scan: &scan,
-        context: None,
-    });
+    let value = report::json(&report(&options, &exploration, &scan));
     assert_eq!(
         keys(&value),
         set(&[
@@ -200,13 +204,7 @@ fn the_text_place_falls_back_like_the_dedupe_key() {
             findings: vec![sample(Class::Memory, location, frame, "m")],
             incomplete: Vec::new(),
         };
-        let text = report::text(&Report {
-            program: "p.osp",
-            options: &options,
-            exploration: &exploration,
-            scan: &scan,
-            context: None,
-        });
+        let text = report::text(&report(&options, &exploration, &scan));
         assert!(text.contains(&format!("  memory     {place}\n")), "{text}");
         assert_eq!(text.contains("runtime  "), runtime_line, "{text}");
         crate::testkit::shows(&text, &["findings: 1\n"]);
@@ -293,13 +291,8 @@ fn saved_reports_fail_loudly_when_the_output_directory_is_not_writable() {
     let path = dir.0.join("blocked").display().to_string();
     let options = options::parse(&options::args(&["p.osp", "--out", &path])).expect("options");
     let scan = Scan::default();
-    let report = Report {
-        program: "p.osp",
-        options: &options,
-        exploration: &Exploration::default(),
-        scan: &scan,
-        context: None,
-    };
+    let exploration = Exploration::default();
+    let report = report(&options, &exploration, &scan);
     let error =
         super::report_files::write(&report, "{}").expect_err("must not swallow write error");
     crate::testkit::shows(&error, &["cannot save Hunt report"]);
@@ -308,20 +301,12 @@ fn saved_reports_fail_loudly_when_the_output_directory_is_not_writable() {
 fn html_for_scan(scan: &Scan, completed: u64) -> String {
     let mut options = options::parse(&options::args(&["p.osp"])).expect("options");
     options.reports.json = false;
-    super::report_html::render(
-        &Report {
-            program: "p.osp",
-            options: &options,
-            exploration: &Exploration {
-                paths: completed.max(1),
-                completed,
-                ..Exploration::default()
-            },
-            scan,
-            context: None,
-        },
-        "{}",
-    )
+    let exploration = Exploration {
+        paths: completed.max(1),
+        completed,
+        ..Exploration::default()
+    };
+    super::report_html::render(&report(&options, &exploration, scan), "{}")
 }
 
 #[test]
@@ -330,17 +315,12 @@ fn html_never_confuses_finished_unfinished_and_reproduced_results() {
     assert!(html_for_scan(&scan, 0).contains("No bugs found in an unfinished analysis"));
     assert!(html_for_scan(&scan, 1).contains("No bugs found in the explored paths"));
     let options = options::parse(&options::args(&["p.osp"])).expect("options");
-    let partial = Report {
-        program: "p.osp",
-        options: &options,
-        exploration: &Exploration {
-            paths: 3,
-            completed: 1,
-            ..Exploration::default()
-        },
-        scan: &scan,
-        context: None,
+    let unfinished = Exploration {
+        paths: 3,
+        completed: 1,
+        ..Exploration::default()
     };
+    let partial = report(&options, &unfinished, &scan);
     assert!(super::report_html::render(&partial, "{}")
         .contains("No bugs found in an unfinished analysis"));
     scan.incomplete.push(Incomplete {

@@ -44,7 +44,17 @@ impl CompilationInput {
         if config.entry.is_none() {
             config.entry = sources.first().map(|source| source.path.clone());
         }
-        let assembled = osprey_project::assemble(&config, sources)?;
+        Self::assembled_source(path, &config, sources)
+    }
+
+    /// Assemble `sources` under `config` into the input whose output defaults
+    /// to the source itself at `path`.
+    fn assembled_source(
+        path: &str,
+        config: &ProjectConfig,
+        sources: &[SourceFile],
+    ) -> Result<Self, Vec<ProjectError>> {
+        let assembled = osprey_project::assemble(config, sources)?;
         let source = aggregate_sources(&assembled);
         Ok(Self::assembled(
             assembled,

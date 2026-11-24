@@ -420,16 +420,19 @@ impl<'a> State<'a> {
 
     fn scrutinee(&mut self, value: &'a Expr, arms: &'a [MatchArm], env: &Env) {
         self.expression(value, env);
-        for arm in arms {
-            let inner = without(env.clone(), &pattern_bindings(&arm.pattern));
-            self.expression(&arm.body, &inner);
-        }
+        self.arm_bodies(arms, env);
     }
 
     fn selections(&mut self, operations: &'a [SelectOperation], arms: &'a [MatchArm], env: &Env) {
         for operand in operations.iter().flat_map(SelectOperation::operands) {
             self.expression(operand, env);
         }
+        self.arm_bodies(arms, env);
+    }
+
+    /// Each arm's body, recorded with the names its pattern takes out of
+    /// scope — the names it cannot close over.
+    fn arm_bodies(&mut self, arms: &'a [MatchArm], env: &Env) {
         for arm in arms {
             let inner = without(env.clone(), &pattern_bindings(&arm.pattern));
             self.expression(&arm.body, &inner);

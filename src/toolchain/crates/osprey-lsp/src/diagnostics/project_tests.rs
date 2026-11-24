@@ -113,6 +113,17 @@ fn module_bearing_files_outside_project_roots_are_assembled_standalone() {
     assert_warnings(&compute(&inferred, uri, U16), &[]);
 }
 
+/// `compute` answers at least one diagnostic carrying `code` for `source` at `uri`.
+fn assert_code(source: &str, uri: &str, code: &str) {
+    let diagnostics = compute(source, uri, U16);
+    assert!(
+        diagnostics
+            .iter()
+            .any(|item| item.code.as_deref() == Some(code)),
+        "{diagnostics:?}"
+    );
+}
+
 #[cfg(unix)]
 #[test]
 fn project_diagnostics_map_resolution_and_type_errors_to_the_open_file() {
@@ -123,21 +134,17 @@ fn project_diagnostics_map_resolution_and_type_errors_to_the_open_file() {
         "namespace bank\n",
         "namespace bank\nimport \"missing/web\" as web\n",
     );
-    let diagnostics = compute(&unresolved, &format!("file://{}", main_path.display()), U16);
-    assert!(
-        diagnostics
-            .iter()
-            .any(|item| item.code.as_deref() == Some("project-error")),
-        "{diagnostics:?}"
+    assert_code(
+        &unresolved,
+        &format!("file://{}", main_path.display()),
+        "project-error",
     );
 
     let ill_typed = main.replace("served = Metrics::track boot", "served = Metrics::track 42");
-    let diagnostics = compute(&ill_typed, &format!("file://{}", main_path.display()), U16);
-    assert!(
-        diagnostics
-            .iter()
-            .any(|item| item.code.as_deref() == Some("type-error")),
-        "{diagnostics:?}"
+    assert_code(
+        &ill_typed,
+        &format!("file://{}", main_path.display()),
+        "type-error",
     );
 
     let source = "print(missing)\n";

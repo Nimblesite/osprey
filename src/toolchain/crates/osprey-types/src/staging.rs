@@ -49,14 +49,7 @@ pub(crate) fn lower_proved(
         let lowered = osprey_ast::stage::lower(program).map_err(stage_errors)?;
         return Ok((lowered, None));
     }
-    let solved = solved_source(program)?;
-    let checked = solved.copy.as_ref().unwrap_or(program);
-    // Static lowering compares source effect spellings. An inferred
-    // `perform Echo.echo(42)` is nevertheless the same operation as the
-    // enclosing `handle static Echo<int>`. Use the already checked site
-    // instantiations for this backend copy before matching regions; otherwise
-    // the rewrite silently leaves a request that the checker proved handled.
-    let resolved = resolved_signals(checked, &solved);
+    let (resolved, solved) = resolved_source(program)?;
     let lowered = osprey_ast::stage::lower(&resolved).map_err(stage_errors)?;
     // A source proof that deferred a static arm's GPU callback cannot certify
     // the concrete callback substituted by discharge. [STAGE-GPU-LEGAL]
@@ -64,8 +57,22 @@ pub(crate) fn lower_proved(
         let proof = crate::check::prove_residual(&lowered)?;
         return Ok((lowered, Some(proof)));
     }
-    let discharged = !retains_static_operation(checked, &lowered);
+    let discharged = !retains_static_operation(solved.copy.as_ref().unwrap_or(program), &lowered);
     Ok((lowered, discharged.then_some(solved.exports)))
+}
+
+/// The source to lower, with its checked site instantiations resolved: the
+/// copy checking produced when it produced one, else the program itself.
+/// Static lowering compares source effect spellings, and an inferred
+/// `perform Echo.echo(42)` is nevertheless the same operation as the
+/// enclosing `handle static Echo<int>`, so using the already checked site
+/// instantiations keeps the rewrite from silently leaving a request the
+/// checker proved handled.
+fn resolved_source(program: &Program) -> Result<(Program, SolvedSource), Vec<TypeError>> {
+    let solved = solved_source(program)?;
+    let checked = solved.copy.as_ref().unwrap_or(program);
+    let resolved = resolved_signals(checked, &solved);
+    Ok((resolved, solved))
 }
 
 /// A program with a `many` operation: its source is proved as written, static
@@ -74,9 +81,7 @@ pub(crate) fn lower_proved(
 /// source proof answers for it. Implements [MULTI-HANDLE-MANY],
 /// [TYPE-EFFECT-PROOF-COUNT].
 fn lower_captured(program: &Program) -> Result<(Program, Option<LibraryExports>), Vec<TypeError>> {
-    let solved = solved_source(program)?;
-    let checked = solved.copy.as_ref().unwrap_or(program);
-    let resolved = resolved_signals(checked, &solved);
+    let (resolved, solved) = resolved_source(program)?;
     let discharged = osprey_ast::stage::lower(&resolved).map_err(stage_errors)?;
     let lowered = crate::many::lower(&discharged)?;
     Ok((lowered, Some(solved.exports)))

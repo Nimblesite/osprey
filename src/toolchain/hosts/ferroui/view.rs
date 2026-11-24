@@ -315,7 +315,7 @@ fn symbol(cx: &mut Cx, name: &str) -> Element {
 /// A button: its label after its symbol, its role's look, enabled or not; a click sends a tap.
 fn button_node(cx: &mut Cx, node: &Tree) -> Element {
     let Some(event) = tree::ordinal(node) else {
-        return refused(cx, "a button has no event ordinal".to_owned());
+        return unbound(cx, "a button");
     };
     let label = tree::string(node, "label").to_owned();
     let name = tree::string(node, "symbol");
@@ -365,7 +365,7 @@ fn button_node(cx: &mut Cx, node: &Tree) -> Element {
 /// A labelled text field. `edit` sends every change; `submit` sends the text on Return.
 fn field(cx: &mut Cx, node: &Tree) -> Element {
     let Some(event) = tree::ordinal(node) else {
-        return refused(cx, "a field has no event ordinal".to_owned());
+        return unbound(cx, "a field");
     };
     let value = tree::string(node, "value").to_owned();
     let host = cx.host.clone();
@@ -621,7 +621,7 @@ fn swatch(cx: &mut Cx, node: &Tree) -> Element {
 /// A switch with its label; a change sends the new state.
 fn toggle(cx: &mut Cx, node: &Tree) -> Element {
     let Some(event) = tree::ordinal(node) else {
-        return refused(cx, "a toggle has no event ordinal".to_owned());
+        return unbound(cx, "a toggle");
     };
     let on = tree::flag(node, "on");
     let host = cx.host.clone();
@@ -652,6 +652,22 @@ fn index_of(keys: &[Option<String>], selected: &str) -> i32 {
         .map_or(-1, |index| index as i32)
 }
 
+/// The node's title at `size` in a semibold weight.
+fn title(node: &Tree, size: f64) -> El<ferroui_controls::TextBlock> {
+    text_block()
+        .text(tree::string(node, "title").to_owned())
+        .font_size(size)
+        .font_weight(FontWeight::SemiBold)
+}
+
+/// A trailing button that sends one tap of `event`, dismissing the surface `label` names.
+fn dismissing(label: &str, host: Rc<Host>, event: i64) -> El<ferroui_controls::Button> {
+    button()
+        .child(label.to_owned())
+        .horizontal_alignment(HorizontalAlignment::Right)
+        .on_click(move |_| host.control(event, ""))
+}
+
 /// Sends the key at a newly selected index of a choice control, when it is not the selected one.
 fn on_choice(
     host: Rc<Host>,
@@ -672,20 +688,37 @@ fn on_choice(
     }
 }
 
+/// The choice keys of `items`, and the key the node's `selected` member names.
+fn choices_of<'a>(
+    items: impl Iterator<Item = &'a Tree>,
+    node: &Tree,
+) -> (Vec<Option<String>>, String) {
+    (keys_of(items), tree::string(node, "selected").to_owned())
+}
+
+/// A choice control's selection: the index of its selected key, and its change handler.
+fn choosing(
+    host: &Rc<Host>,
+    event: i64,
+    keys: Vec<Option<String>>,
+    selected: String,
+) -> (i32, impl Fn(&i32) + 'static) {
+    let index = index_of(&keys, &selected);
+    (index, on_choice(host.clone(), event, keys, selected))
+}
+
 /// A labelled drop-down of choices; choosing one sends its key.
 fn picker(cx: &mut Cx, node: &Tree) -> Element {
     let Some(event) = tree::ordinal(node) else {
-        return refused(cx, "a picker has no event ordinal".to_owned());
+        return unbound(cx, "a picker");
     };
     let choices = tree::list(node, "choices");
-    let keys = keys_of(choices.iter());
-    let selected = tree::string(node, "selected").to_owned();
+    let (keys, selected) = choices_of(choices.iter(), node);
     let labels: Vec<Element> = choices
         .iter()
         .map(|choice| Element::Text(Rc::from(tree::string(choice, "label"))))
         .collect();
-    let index = index_of(&keys, &selected);
-    let changed = on_choice(cx.host.clone(), event, keys, selected);
+    let (index, changed) = choosing(cx.host, event, keys, selected);
     let mut row = stack_panel()
         .orientation(Orientation::Horizontal)
         .spacing(cx.look.gap());
@@ -709,7 +742,7 @@ fn picker(cx: &mut Cx, node: &Tree) -> Element {
 /// A titled section that expands to its children; expanding or collapsing sends the new state.
 fn disclosure(cx: &mut Cx, node: &Tree) -> Element {
     let Some(event) = tree::ordinal(node) else {
-        return refused(cx, "a disclosure has no event ordinal".to_owned());
+        return unbound(cx, "a disclosure");
     };
     let expanded = tree::flag(node, "expanded");
     let host = cx.host.clone();
@@ -740,10 +773,21 @@ fn card(cx: &Cx, line: &str) -> El<ferroui_controls::Border> {
         .padding(Thickness::uniform(12.0))
 }
 
+/// A stack at the theme's gap, led by the node's title in a semibold weight.
+fn titled(cx: &Cx, node: &Tree) -> El<ferroui_controls::StackPanel> {
+    stack_panel()
+        .spacing(cx.look.gap())
+        .child(
+            text_block()
+                .text(tree::string(node, "title").to_owned())
+                .font_weight(FontWeight::SemiBold),
+        )
+}
+
 /// While visible, the alert's title and message and a button that dismisses it (one tap).
 fn alert(cx: &mut Cx, node: &Tree) -> Element {
     let Some(event) = tree::ordinal(node) else {
-        return refused(cx, "an alert has no event ordinal".to_owned());
+        return unbound(cx, "an alert");
     };
     if !tree::flag(node, "visible") {
         return Element::Empty;
@@ -751,38 +795,20 @@ fn alert(cx: &mut Cx, node: &Tree) -> Element {
     let host = cx.host.clone();
     card(cx, "caution")
         .child(
-            stack_panel()
-                .spacing(cx.look.gap())
-                .child(
-                    text_block()
-                        .text(tree::string(node, "title").to_owned())
-                        .font_weight(FontWeight::SemiBold),
-                )
+            titled(cx, node)
                 .child(
                     text_block()
                         .text(tree::string(node, "message").to_owned())
                         .text_wrapping(TextWrapping::Wrap),
                 )
-                .child(
-                    button()
-                        .child("OK")
-                        .horizontal_alignment(HorizontalAlignment::Right)
-                        .on_click(move |_| host.control(event, "")),
-                ),
+                .child(dismissing("OK", host, event)),
         )
         .into()
 }
 
 /// A titled group: its title, children and footer caption.
 fn section(cx: &mut Cx, node: &Tree) -> Element {
-    let mut panel = stack_panel()
-        .spacing(cx.look.gap())
-        .child(
-            text_block()
-                .text(tree::string(node, "title").to_owned())
-                .font_weight(FontWeight::SemiBold),
-        )
-        .children(children(cx, node, "children"));
+    let mut panel = titled(cx, node).children(children(cx, node, "children"));
     if !tree::string(node, "footer").is_empty() {
         panel = panel.child(muted(cx, tree::string(node, "footer")));
     }
@@ -792,12 +818,7 @@ fn section(cx: &mut Cx, node: &Tree) -> Element {
 /// A screen: its title and subtitle with the toolbar at the trailing edge, above its body.
 fn screen(cx: &mut Cx, node: &Tree) -> Element {
     let gap = cx.look.gap();
-    let mut heading = stack_panel().grid_column(0).child(
-        text_block()
-            .text(tree::string(node, "title").to_owned())
-            .font_size(20.0)
-            .font_weight(FontWeight::SemiBold),
-    );
+    let mut heading = stack_panel().grid_column(0).child(title(node, 20.0));
     if !tree::string(node, "subtitle").is_empty() {
         heading = heading.child(muted(cx, tree::string(node, "subtitle")));
     }
@@ -930,7 +951,7 @@ fn themed(cx: &mut Cx, node: &Tree) -> Element {
 /// A modal surface drawn in place: its title, its body and a button that dismisses it (a tap).
 fn dialog(cx: &mut Cx, node: &Tree) -> Element {
     let Some(event) = tree::ordinal(node) else {
-        return refused(cx, "a dialog has no event ordinal".to_owned());
+        return unbound(cx, "a dialog");
     };
     let host = cx.host.clone();
     let body = match node.get("body") {
@@ -945,19 +966,9 @@ fn dialog(cx: &mut Cx, node: &Tree) -> Element {
         .child(
             stack_panel()
                 .spacing(cx.look.gap())
-                .child(
-                    text_block()
-                        .text(tree::string(node, "title").to_owned())
-                        .font_size(17.0)
-                        .font_weight(FontWeight::SemiBold),
-                )
+                .child(title(node, 17.0))
                 .child(body)
-                .child(
-                    button()
-                        .child("Close")
-                        .horizontal_alignment(HorizontalAlignment::Right)
-                        .on_click(move |_| host.control(event, "")),
-                ),
+                .child(dismissing("Close", host, event)),
         )
         .into()
 }
@@ -1045,7 +1056,7 @@ fn context_menu(cx: &mut Cx, node: &Tree) -> Element {
 /// width within `least` and `most`; dragging the splitter sends the aside's new width.
 fn aside(cx: &mut Cx, node: &Tree) -> Element {
     let Some(event) = tree::ordinal(node) else {
-        return refused(cx, "an aside has no event ordinal".to_owned());
+        return unbound(cx, "an aside");
     };
     let width = tree::whole(node, "width").max(0) as f64;
     let pane = match node.get("pane") {
@@ -1098,8 +1109,7 @@ fn tabs(cx: &mut Cx, node: &Tree) -> Element {
         return refused(cx, "tabs have no event ordinal".to_owned());
     };
     let entries = tree::list(node, "tabs");
-    let keys = keys_of(entries.iter());
-    let selected = tree::string(node, "selected").to_owned();
+    let (keys, selected) = choices_of(entries.iter(), node);
     let items: Vec<Element> = entries
         .iter()
         .map(|entry| {
@@ -1114,8 +1124,7 @@ fn tabs(cx: &mut Cx, node: &Tree) -> Element {
                 .into()
         })
         .collect();
-    let index = index_of(&keys, &selected);
-    let changed = on_choice(cx.host.clone(), event, keys, selected);
+    let (index, changed) = choosing(cx.host, event, keys, selected);
     tab_control()
         .children(items)
         .selected_index(index)
@@ -1160,8 +1169,7 @@ fn rows(cx: &mut Cx, node: &Tree) -> Element {
                 .into(),
         );
     }
-    let index = index_of(&keys, &selected);
-    let changed = on_choice(cx.host.clone(), event, keys, selected);
+    let (index, changed) = choosing(cx.host, event, keys, selected);
     list_box()
         .children(items)
         .selected_index(index)
@@ -1245,7 +1253,7 @@ fn rich_text(cx: &mut Cx, node: &Tree) -> Element {
 /// (`sceneRow`), its input going back through its `event` ordinal; a missing row is refused.
 fn scene_node(cx: &mut Cx, node: &Tree) -> Element {
     let Some(ordinal) = tree::ordinal(node) else {
-        return refused(cx, "a scene has no event ordinal".to_owned());
+        return unbound(cx, "a scene");
     };
     let Some(row) = node
         .get("sceneRow")
@@ -1259,6 +1267,11 @@ fn scene_node(cx: &mut Cx, node: &Tree) -> Element {
         Some(scene) => crate::surface::scene_element(cx.host, row, ordinal, scene),
         None => refused(cx, format!("the scene at row {row} streamed no scene")),
     }
+}
+
+/// Rejects a control that lacks the event ordinal it must return.
+fn unbound(cx: &mut Cx, control: &str) -> Element {
+    refused(cx, format!("{control} has no event ordinal"))
 }
 
 /// A part this host cannot draw: a box that names it, and a diagnostic.

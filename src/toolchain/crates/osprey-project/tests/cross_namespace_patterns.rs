@@ -5,9 +5,9 @@
 
 mod support;
 
-use osprey_project::{assemble, ProjectConfig};
+use osprey_project::ProjectConfig;
 use osprey_syntax::Flavor;
-use support::{config, parsed};
+use support::{assembles_cleanly, config, parsed};
 
 const ML_LIBRARY: &str =
     "namespace lib\n\ntype Outcome =\n    Done\n        result : string\n    Failed\n        reason : string\n";
@@ -29,12 +29,7 @@ fn checks(flavor: Flavor, extension: &str, library: &str, entry: &str) {
         allow_wildcard_imports: true,
         ..config(&entry_path)
     };
-    let project = assemble(&wildcards, &sources);
-    assert!(project.is_ok(), "{project:?}");
-    if let Ok(project) = project {
-        let errors = osprey_types::check_program(&project.program);
-        assert!(errors.is_empty(), "{errors:?}");
-    }
+    assembles_cleanly(&wildcards, &sources);
 }
 
 #[test]

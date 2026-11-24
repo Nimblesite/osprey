@@ -209,26 +209,30 @@ mod tests {
     fn no_http_and_no_websocket_are_independent() {
         // [SECURITY-CAPABILITY-GATES] Every network builtin belongs to
         // exactly its own independently controlled capability group.
+        only_flag_gates(HTTP_FNS, "--no-http", |policy| policy.http = false);
+        // websocket builtin is NOT gated when only http is off.
         let mut http_off = Policy::allow_all();
         http_off.http = false;
-        let v = violations(&refs(HTTP_FNS), http_off);
-        assert_eq!(v.len(), HTTP_FNS.len());
-        assert!(HTTP_FNS.iter().all(|name| v
-            .iter()
-            .any(|message| message == &format!("security: `{name}` is disabled by --no-http"))));
-        // websocket builtin is NOT gated when only http is off.
         assert_eq!(
             violations(&prog("let c = websocketConnect(\"ws://x\")\n"), http_off),
             Vec::<String>::new()
         );
 
-        let mut ws_off = Policy::allow_all();
-        ws_off.websocket = false;
-        let v = violations(&refs(WEBSOCKET_FNS), ws_off);
-        assert_eq!(v.len(), WEBSOCKET_FNS.len());
-        assert!(WEBSOCKET_FNS.iter().all(|name| v.iter().any(
-            |message| message == &format!("security: `{name}` is disabled by --no-websocket")
-        )));
+        only_flag_gates(WEBSOCKET_FNS, "--no-websocket", |policy| {
+            policy.websocket = false;
+        });
+    }
+
+    /// Every builtin in `names` is gated by exactly its own capability:
+    /// switching only that capability off refuses each one by name.
+    fn only_flag_gates(names: &[&str], flag: &str, off: impl FnOnce(&mut Policy)) {
+        let mut policy = Policy::allow_all();
+        off(&mut policy);
+        let messages = violations(&refs(names), policy);
+        assert_eq!(messages.len(), names.len());
+        assert!(names.iter().all(|name| messages
+            .iter()
+            .any(|message| message == &format!("security: `{name}` is disabled by {flag}"))));
     }
 
     #[test]

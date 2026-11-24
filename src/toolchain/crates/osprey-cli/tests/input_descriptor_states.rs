@@ -216,6 +216,17 @@ impl Running {
         self.stdin = None;
     }
 
+    /// The run's exit verdict and, to match it, settled output once it has
+    /// exited or the not-necessarily-final output so far.
+    fn exited_and_printed(&mut self) -> (Option<bool>, String) {
+        let exited = self.exited_within(RUN_BUDGET);
+        let printed = match exited {
+            Some(_) => self.settled_output(),
+            None => self.output(),
+        };
+        (exited, printed)
+    }
+
     /// `Some(true)` on a clean exit, `Some(false)` on a failing one, `None` if the
     /// child was still running when `budget` ran out.
     fn exited_within(&mut self, budget: Duration) -> Option<bool> {
@@ -298,11 +309,7 @@ fn a_closed_descriptor_reads_as_end_of_file() {
         Ok(run) => run,
         Err(reason) => panic!("{reason}"),
     };
-    let exited = run.exited_within(RUN_BUDGET);
-    let printed = match exited {
-        Some(_) => run.settled_output(),
-        None => run.output(),
-    };
+    let (exited, printed) = run.exited_and_printed();
     assert_eq!(
         exited,
         Some(true),
@@ -392,11 +399,7 @@ fn an_open_silent_descriptor_is_waited_on_and_released_by_its_close() {
          that still had a line to send."
     );
     run.close_stdin();
-    let released = run.exited_within(RUN_BUDGET);
-    let printed = match released {
-        Some(_) => run.settled_output(),
-        None => run.output(),
-    };
+    let (released, printed) = run.exited_and_printed();
     assert_eq!(
         released,
         Some(true),

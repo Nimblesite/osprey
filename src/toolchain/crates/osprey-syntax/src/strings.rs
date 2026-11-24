@@ -83,13 +83,19 @@ pub fn column_byte(text: &str, column: usize, flavor: Flavor) -> Option<usize> {
     }
 }
 
+/// The column units `flavor` counts for `text`: bytes everywhere except the
+/// ML flavor, which counts characters.
+fn column_width(flavor: Flavor, text: &str) -> usize {
+    match flavor {
+        Flavor::Default | Flavor::Python | Flavor::TypeScript => text.len(),
+        Flavor::Ml => text.chars().count(),
+    }
+}
+
 fn advance_position(base: Position, text: &str, flavor: Flavor) -> Position {
     let lines = text.bytes().filter(|byte| *byte == b'\n').count();
     let tail = text.rsplit('\n').next().unwrap_or_default();
-    let width = match flavor {
-        Flavor::Default | Flavor::Python | Flavor::TypeScript => tail.len(),
-        Flavor::Ml => tail.chars().count(),
-    };
+    let width = column_width(flavor, tail);
     Position {
         line: base
             .line

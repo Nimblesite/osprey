@@ -17,7 +17,7 @@ use ferroui_osprey_native::host::Menu;
 use ferroui_osprey_native::view::window_menus;
 
 mod common;
-use common::{repo, shapes};
+use common::{center, repo, shapes};
 
 /// One display frame at 60 Hz, in milliseconds.
 const FRAME_MS: f64 = 1000.0 / 60.0;
@@ -60,6 +60,13 @@ fn scene_event(node: &Tree, row: i64) -> Option<i64> {
 /// One pointer event; returns its frame and the milliseconds the application took.
 fn point(canvas: i64, (x, y): (f64, f64), down: bool) -> (Shown, f64) {
     common::point("the daw", canvas, x, y, down)
+}
+
+/// Presses `keys` in order on the canvas; `note` names what the sequence does.
+fn press(canvas: i64, keys: &[&str], note: &str) {
+    for key in keys {
+        Library::event(0, &Touch::key(canvas, key, true)).expect(note);
+    }
 }
 
 /// The scene point of lane `track` at fraction `along` of the song. Seven rows fit on each page of the arrangement.
@@ -186,6 +193,12 @@ fn choose_control(regions: &mut Regions, kind: &str, label: &str, text: &str) {
     regions.adopt(&changed).expect("updated workspace");
 }
 
+/// Opens the patch's send list, then the editor of send `id` of `bus`.
+fn open_send(regions: &mut Regions, id: i64, bus: &str) {
+    choose_control(regions, "button", "Patch sends…", "");
+    choose_control(regions, "button", &format!("Edit send {id} · {bus}…"), "");
+}
+
 /// [PRISM-TIMELINE-GRAPH] Create a named group from the piano roll and share it with the adjacent track.
 fn create_group(regions: &mut Regions, canvas: i64, song: &std::path::Path) {
     let read = || -> serde_json::Value {
@@ -236,14 +249,10 @@ fn create_group(regions: &mut Regions, canvas: i64, song: &std::path::Path) {
     expected["tracks"][6]["bus"] = "Keys bus".into();
     assert_eq!(read(), expected, "both keys tracks share the group and retain their individual sends");
     open(regions, 6);
-    for key in ["up", "escape"] {
-        Library::event(0, &Touch::key(canvas, key, true)).expect("navigate the open chooser");
-    }
+    press(canvas, &["up", "escape"], "navigate the open chooser");
     assert_eq!(read(), expected, "Escape discards the focused route");
     open(regions, 6);
-    for key in ["up", "enter"] {
-        Library::event(0, &Touch::key(canvas, key, true)).expect("commit the keyboard selection");
-    }
+    press(canvas, &["up", "enter"], "commit the keyboard selection");
     expected["tracks"][6]["bus"] = "pads".into();
     assert_eq!(read(), expected, "Enter commits the adjacent destination");
 }
@@ -328,14 +337,12 @@ fn output_routing(regions: &mut Regions, canvas: i64, song: &std::path::Path) {
     choose_control(regions, "button", "Save send", "");
     expected["tracks"][5]["sends"][1]["level"] = serde_json::json!(0.42);
     assert_eq!(read(), expected, "the pending level survives both navigation directions");
-    choose_control(regions, "button", "Patch sends…", "");
-    choose_control(regions, "button", "Edit send 2 · Keys bus…", "");
+    open_send(regions, 2, "Keys bus");
     choose_control(regions, "field", "Send level (%)", "75");
     choose_control(regions, "button", "Save send", "");
     expected["tracks"][5]["sends"][1] = second.clone();
     assert_eq!(read(), expected, "restoring the level changes only this tap");
-    choose_control(regions, "button", "Patch sends…", "");
-    choose_control(regions, "button", "Edit send 2 · Keys bus…", "");
+    open_send(regions, 2, "Keys bus");
     choose_control(regions, "button", "Enable send", "");
     choose_control(regions, "button", "Cancel", "");
     assert_eq!(read(), expected, "browsing and cancelling preserves all four independent sends");
@@ -349,8 +356,7 @@ fn output_routing(regions: &mut Regions, canvas: i64, song: &std::path::Path) {
         expected["tracks"][5]["sends"].as_array_mut().expect("keysL sends").pop();
         assert_eq!(read(), expected, "removing a tap on either page preserves all siblings");
     }
-    choose_control(regions, "button", "Patch sends…", "");
-    choose_control(regions, "button", "Edit send 1 · pads…", "");
+    open_send(regions, 1, "pads");
     choose_control(regions, "button", "Remove send", "");
     expected["tracks"][5]["sends"] = serde_json::json!([second]);
     assert_eq!(read(), expected, "removing the first send preserves the muted sibling and its identity");
@@ -362,8 +368,7 @@ fn output_routing(regions: &mut Regions, canvas: i64, song: &std::path::Path) {
     expected["tracks"][5]["sends"][0]["enabled"] = serde_json::json!(true);
     expected["tracks"][5]["sends"][0]["level"] = serde_json::json!(0.5);
     assert_eq!(read(), expected, "the surviving send responds to its own level and mute control");
-    choose_control(regions, "button", "Patch sends…", "");
-    choose_control(regions, "button", "Edit send 2 · Keys bus…", "");
+    open_send(regions, 2, "Keys bus");
     choose_control(regions, "button", "Remove send", "");
     expected["tracks"][5]["sends"] = serde_json::json!([]);
     assert_eq!(read(), expected, "removing both sends restores the complete project");
@@ -564,10 +569,6 @@ fn modulation_sockets(regions: &mut Regions, song: &std::path::Path) {
         tablepad_patch(regions, false)
     };
     let (canvas, patch) = open(regions);
-    let center = |view: &Shown, label: &str| {
-        let a = view.scenes.values().flat_map(|s| &s.access).find(|a| a.label == label).unwrap_or_else(|| panic!("missing {label}"));
-        (a.x + a.w / 2.0, a.y + a.h / 2.0)
-    };
     let source = center(&patch, "Canvas output 4:0");
     for inlet in 0..4 {
         let destination = center(&patch, &format!("Canvas input 0:{inlet}"));

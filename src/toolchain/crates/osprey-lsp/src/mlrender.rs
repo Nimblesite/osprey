@@ -41,10 +41,7 @@ pub fn signature(flavor: Flavor, sig: &str) -> String {
 }
 
 fn python_signature(sig: &str) -> String {
-    let Some(rest) = sig.strip_prefix("fn ") else {
-        return sig.to_owned();
-    };
-    let Some((head, params, tail)) = split_params(rest) else {
+    let Some((head, params, tail)) = fn_parts(sig, "fn ") else {
         return sig.to_owned();
     };
     let params = python_parameters(&params);
@@ -285,16 +282,19 @@ fn ml_binder(decl: &str) -> String {
 /// how it must read nested inside a larger signature. [FLAVOR-ML-FN]
 fn ml_type(ty: &str) -> String {
     let ty = ty.trim();
-    let Some(rest) = ty.strip_prefix("fn") else {
-        return ty.to_owned();
-    };
-    let Some((head, params, tail)) = split_params(rest) else {
+    let Some((head, params, tail)) = fn_parts(ty, "fn") else {
         return ty.to_owned();
     };
     if !head.trim().is_empty() {
         return ty.to_owned();
     }
     format!("({})", arrow_chain(&params, &tail, ml_type))
+}
+
+/// Split `head(params)tail` after its leading `keyword`, else `None`: the
+/// shared prefix of every flavor's `fn`-signature re-spelling.
+fn fn_parts(sig: &str, keyword: &str) -> Option<(String, String, String)> {
+    split_params(sig.strip_prefix(keyword)?)
 }
 
 /// Split `head(inner)tail` at the parameter list's **balanced** parentheses, so

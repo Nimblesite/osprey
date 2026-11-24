@@ -12,33 +12,6 @@ use super::spec_tests::permutations;
 
 // ---- [SYMEX-MOCK-STREAM]: ktest framing -------------------------------------
 
-/// A KTEST file of any supported `version` with `arguments`, for framing
-/// permutations; version 4 adds an empty pointer table per object.
-fn framed(magic: &[u8], version: u32, arguments: &[&str], objects: &[(&str, &[u8])]) -> Vec<u8> {
-    let be = |n: usize| u32::try_from(n).unwrap_or(u32::MAX).to_be_bytes();
-    let mut out = magic.to_vec();
-    out.extend(version.to_be_bytes());
-    out.extend(be(arguments.len()));
-    for argument in arguments {
-        out.extend(be(argument.len()));
-        out.extend(argument.as_bytes());
-    }
-    if version >= 2 {
-        out.extend([0u8; 8]);
-    }
-    out.extend(be(objects.len()));
-    for (name, bytes) in objects {
-        out.extend(be(name.len()));
-        out.extend(name.as_bytes());
-        out.extend(be(bytes.len()));
-        out.extend(*bytes);
-        if version >= 4 {
-            out.extend(0u32.to_be_bytes());
-        }
-    }
-    out
-}
-
 const OBJECTS: [(&str, &[u8]); 3] = [
     ("stdin", b"9\nzz"),
     ("stdin.len", &[2, 0, 0, 0]),
@@ -54,7 +27,7 @@ fn every_magic_version_and_argument_list_parses_the_same_objects() {
                 &["prog"][..],
                 &["prog", "--sym-stdin", "64", ""][..],
             ] {
-                let parsed = ktest::parse(&framed(magic, version, arguments, &OBJECTS));
+                let parsed = ktest::parse(&ktest::framed(magic, version, arguments, &OBJECTS));
                 assert!(parsed.is_ok(), "v{version} {arguments:?}: {parsed:?}");
                 let parsed = parsed.unwrap_or_default();
                 let names: Vec<&str> = parsed.objects.iter().map(|o| o.name.as_str()).collect();
@@ -69,7 +42,8 @@ fn every_magic_version_and_argument_list_parses_the_same_objects() {
 #[test]
 fn a_newer_version_is_refused_by_number() {
     for version in [5, 6, 42, u32::MAX] {
-        let error = ktest::parse(&framed(b"KTEST", version, &[], &OBJECTS)).expect_err("newer");
+        let error =
+            ktest::parse(&ktest::framed(b"KTEST", version, &[], &OBJECTS)).expect_err("newer");
         assert!(error.contains(&format!("version {version}")), "{error}");
     }
 }
@@ -79,7 +53,7 @@ fn a_newer_version_is_refused_by_number() {
 #[test]
 fn every_truncation_of_every_version_is_an_error() {
     for version in [1, 3, 4] {
-        let bytes = framed(b"KTEST", version, &["prog"], &OBJECTS);
+        let bytes = ktest::framed(b"KTEST", version, &["prog"], &OBJECTS);
         assert!(ktest::parse(&bytes).is_ok());
         for cut in 0..bytes.len() {
             assert!(

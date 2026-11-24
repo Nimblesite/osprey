@@ -42,10 +42,7 @@ fn choose_file<'a>(
     let slice = text(ask, 3, "slice")?;
     let receiver = cx.prompt_for_paths(options(true, false));
     Ok(async move {
-        let paths = receiver
-            .await
-            .map_err(|problem| problem.to_string())?
-            .map_err(|problem| problem.to_string())?;
+        let paths = reply(receiver).await?;
         let path = paths.and_then(|paths| paths.into_iter().next());
         if let Some(path) = &path {
             if !accepted(path, &types) {
@@ -67,10 +64,7 @@ fn choose_folder<'a>(
 ) -> Result<impl Future<Output = Result<String, String>>, String> {
     let receiver = cx.prompt_for_paths(options(false, true));
     Ok(async move {
-        let paths = receiver
-            .await
-            .map_err(|problem| problem.to_string())?
-            .map_err(|problem| problem.to_string())?;
+        let paths = reply(receiver).await?;
         Ok(chosen(paths.and_then(|paths| paths.into_iter().next())))
     })
 }
@@ -87,10 +81,7 @@ fn save_file<'a>(
         .or_else(|_| std::env::current_dir().map_err(|problem| problem.to_string()))?;
     let receiver = cx.prompt_for_new_path(&directory, Some(name.as_str()));
     Ok(async move {
-        let path = receiver
-            .await
-            .map_err(|problem| problem.to_string())?
-            .map_err(|problem| problem.to_string())?;
+        let path = reply(receiver).await?;
         if let Some(path) = &path {
             write_chosen(path, &staged)?;
         }
@@ -114,6 +105,20 @@ fn reveal(ask: &Ask, cx: &Context<HostView>) -> Result<String, String> {
     }
     cx.reveal_path(Path::new(&path));
     Ok(json!({}).to_string())
+}
+
+/// Awaits a prompt's reply, spelling a dropped channel or a refused prompt as its message.
+async fn reply<T, Cancelled, Refused>(
+    receiver: impl Future<Output = Result<Result<T, Refused>, Cancelled>>,
+) -> Result<T, String>
+where
+    Cancelled: ToString,
+    Refused: ToString,
+{
+    receiver
+        .await
+        .map_err(|problem| problem.to_string())?
+        .map_err(|problem| problem.to_string())
 }
 
 /// Builds GPUI's single-selection path options.

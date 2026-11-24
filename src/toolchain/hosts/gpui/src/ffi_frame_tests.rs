@@ -28,18 +28,20 @@ fn shows(view: &crate::rows::Shown, text: &str) -> bool {
         .is_some_and(|scene| letters(scene, text))
 }
 
+/// No frame is left pending for a later call to trip over; `note` names the one checked.
+fn none_pending(note: &str) {
+    assert!(frame::take().is_none(), "{note}");
+}
+
 /// The next export after a failed one succeeds and its frame holds none of the failed call's rows.
 fn assert_clean_frame() {
-    assert!(frame::take().is_none(), "a failed export left a frame");
+    none_pending("a failed export left a frame");
     MODE.store(1, Ordering::SeqCst);
     let shown = opened().expect("the healthy call's frame");
     assert_eq!(shown.controls.len(), 1, "{shown:?}");
     let scene = shown.scenes.get(&0).expect("the healthy frame's scene");
     assert_eq!(scene.shapes.len(), 1, "{scene:?}");
-    assert!(
-        frame::take().is_none(),
-        "the healthy frame was left pending"
-    );
+    none_pending("the healthy frame was left pending");
 }
 
 /// Mode `mode` is refused whole and the next export draws a clean frame.
@@ -53,10 +55,7 @@ fn a_checked_frame_survives_its_lease_and_is_read_once() {
     let _serial = serial();
     reset(1);
     let shown = opened().expect("a checked frame");
-    assert!(
-        frame::take().is_none(),
-        "the checked frame was left pending"
-    );
+    none_pending("the checked frame was left pending");
     assert_eq!(shown.controls.len(), 1);
     assert_eq!(shown.controls[0].kind, Kind::Canvas);
     assert!(
@@ -80,7 +79,7 @@ fn a_call_that_streams_nothing_reads_an_empty_view() {
     assert!(shown.controls.is_empty(), "an empty frame drew controls");
     assert!(shown.roots.is_empty(), "an empty frame drew roots");
     assert!(shown.asks.is_empty(), "an empty frame asked for work");
-    assert!(frame::take().is_none(), "the empty frame was left pending");
+    none_pending("the empty frame was left pending");
 }
 
 #[test]
@@ -88,10 +87,7 @@ fn valid_owned_output_is_released_after_copying() {
     let _serial = serial();
     reset(1);
     let shown = opened().expect("a checked frame");
-    assert!(
-        frame::take().is_none(),
-        "the frame was left leased after it was copied"
-    );
+    none_pending("the frame was left leased after it was copied");
     MODE.store(13, Ordering::SeqCst);
     let next = opened().expect("the next call's frame");
     assert!(
@@ -102,10 +98,7 @@ fn valid_owned_output_is_released_after_copying() {
         shows(&shown, "Count 0"),
         "the copied view did not survive the next frame's lease: {shown:?}"
     );
-    assert!(
-        frame::take().is_none(),
-        "the next frame was left leased after it was copied"
-    );
+    none_pending("the next frame was left leased after it was copied");
 }
 
 #[test]
@@ -150,10 +143,7 @@ fn null_output_is_not_released_extra_a_refused_event_still_draws() {
         ["the picker was closed"],
         "the refused event's reason did not ride along"
     );
-    assert!(
-        frame::take().is_none(),
-        "the refused event's frame was left pending"
-    );
+    none_pending("the refused event's frame was left pending");
 }
 
 /// A failed shape write, a failed view-row write, a scene count past its rows, an unknown

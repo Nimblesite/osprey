@@ -141,30 +141,31 @@ mod tests {
         }
     }
 
+    /// A root frame whose tree is a `kind` component with one other member.
+    fn framed(kind: &str) -> Frame {
+        frame(record([
+            ("kind", Tree::Text(kind.to_owned())),
+            ("other", Tree::Whole(1)),
+        ]))
+    }
+
+    /// Whether the root still holds the tree `first` names.
+    fn same_root(regions: &Regions, first: &Arc<Tree>) -> bool {
+        Arc::ptr_eq(first, &regions.get("root").expect("the root").node)
+    }
+
     /// A region whose tree did not change is left untouched; a changed one is replaced.
     #[test]
     fn a_region_whose_tree_did_not_change_keeps_its_tree() {
         let mut regions = Regions::new();
-        let one = frame(record([
-            ("kind", Tree::Text("stack".to_owned())),
-            ("other", Tree::Whole(1)),
-        ]));
+        let one = framed("stack");
         regions.regions = regions.kept(one.regions.clone()).0;
         let first = regions.get("root").expect("the root").node.clone();
         regions.regions = regions.kept(one.regions).0;
-        assert!(Arc::ptr_eq(
-            &first,
-            &regions.get("root").expect("the root").node
-        ));
-        let two = frame(record([
-            ("kind", Tree::Text("screen".to_owned())),
-            ("other", Tree::Whole(1)),
-        ]));
+        assert!(same_root(&regions, &first));
+        let two = framed("screen");
         regions.regions = regions.kept(two.regions).0;
-        assert!(!Arc::ptr_eq(
-            &first,
-            &regions.get("root").expect("the root").node
-        ));
+        assert!(!same_root(&regions, &first));
     }
 
     /// Every control number the frame's components issue is kept, so an editor stays while drawn.

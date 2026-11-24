@@ -345,7 +345,7 @@ fn assert_project_output(
             .arg(format!("--memory={memory}"));
         effect_execution::runtime_environment(&mut command, memory);
         let output = command.output()?;
-        expect_run(&output, expected, &format!("{name}/{memory}"), memory);
+        effect_execution::assert_run(&output, expected, &format!("{name}/{memory}"), memory);
         Ok(())
     });
     let _ = std::fs::remove_dir_all(&directory);
@@ -403,21 +403,6 @@ fn nul_read_source(directory: &std::path::Path) -> std::io::Result<String> {
     Ok(source)
 }
 
-/// One run's answer, whatever ran it: success, the exact `expected` stdout,
-/// and — under ARC — a clean teardown.
-fn expect_run(output: &std::process::Output, expected: &str, label: &str, memory: &str) {
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(output.status.success(), "{label}: {stderr}");
-    assert_eq!(
-        String::from_utf8_lossy(&output.stdout),
-        expected,
-        "{label}: {stderr}"
-    );
-    if memory == "arc" {
-        effect_execution::assert_arc_clean(&stderr);
-    }
-}
-
 fn assert_python_bytes(
     name: &str,
     source: &str,
@@ -425,7 +410,7 @@ fn assert_python_bytes(
     expected: &str,
 ) -> std::io::Result<()> {
     let output = effect_execution::execute(name, "py", source, memory)?;
-    expect_run(&output, expected, memory, memory);
+    effect_execution::assert_run(&output, expected, memory, memory);
     Ok(())
 }
 

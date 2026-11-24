@@ -38,6 +38,17 @@ pub fn repo(path: &str) -> String {
     format!("{}/../../../{path}", env!("CARGO_MANIFEST_DIR"))
 }
 
+/// The centre of the access element `label` names, in scene units.
+pub fn center(shown: &Shown, label: &str) -> (f64, f64) {
+    let area = shown
+        .scenes
+        .values()
+        .flat_map(|scene| &scene.access)
+        .find(|area| area.label == label)
+        .unwrap_or_else(|| panic!("missing {label}"));
+    (area.x + area.w / 2.0, area.y + area.h / 2.0)
+}
+
 /// One pointer event; returns its frame and the milliseconds the application took.
 pub fn point(app: &str, canvas: i64, x: f64, y: f64, down: bool) -> (Shown, f64) {
     match Library::event(0, &Touch::pointer(canvas, x, y, down, false)) {

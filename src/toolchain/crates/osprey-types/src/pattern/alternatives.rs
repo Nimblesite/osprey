@@ -48,21 +48,36 @@ impl Checker {
     ) {
         let theirs = self.alternative_binders(alternative);
         let shown = self.render_pattern(alternative);
-        for name in chosen.iter().filter(|name| !theirs.contains(name)) {
-            self.errors.push(TypeError::new(format!(
-                "`{name}` is not bound by the alternative `{shown}`; every alternative of an or-pattern binds the same names"
-            )));
-        }
-        for name in theirs.iter().filter(|name| !chosen.contains(name)) {
-            self.errors.push(TypeError::new(format!(
-                "`{name}` is bound only by the alternative `{shown}`; every alternative of an or-pattern binds the same names"
-            )));
-        }
+        self.report_unshared(
+            chosen.iter().filter(|name| !theirs.contains(name)),
+            "not bound by",
+            &shown,
+        );
+        self.report_unshared(
+            theirs.iter().filter(|name| !chosen.contains(name)),
+            "bound only by",
+            &shown,
+        );
         for name in theirs.iter().filter(|name| chosen.contains(name)) {
             if let (Some(expected), Some(found)) = (first.get(name), own.get(name)) {
                 let (expected, found) = (expected.ty.clone(), found.ty.clone());
                 self.push_unify(&expected, &found);
             }
+        }
+    }
+
+    /// Reject each unshared name, saying `how` it fails to be shared with the
+    /// alternative `shown`.
+    fn report_unshared<'a>(
+        &mut self,
+        names: impl Iterator<Item = &'a String>,
+        how: &str,
+        shown: &str,
+    ) {
+        for name in names {
+            self.errors.push(TypeError::new(format!(
+                "`{name}` is {how} the alternative `{shown}`; every alternative of an or-pattern binds the same names"
+            )));
         }
     }
 }

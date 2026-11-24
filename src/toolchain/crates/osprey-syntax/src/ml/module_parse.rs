@@ -114,11 +114,21 @@ fn reject_redundant_module(parser: &mut Parser<'_>, kind: MlModuleKind) {
 }
 
 fn module_body(parser: &mut Parser<'_>) -> Vec<MlItem> {
+    indented_body(parser, "module declaration", items_until_dedent)
+}
+
+/// The indented item block a declaration requires: `items` under an Indent
+/// token, or an error naming `declaration` and none.
+fn indented_body<T: Default>(
+    parser: &mut Parser<'_>,
+    declaration: &str,
+    items: impl FnOnce(&mut Parser<'_>) -> T,
+) -> T {
     if parser.eat(&TokKind::Indent) {
-        items_until_dedent(parser)
+        items(parser)
     } else {
-        parser.error("module declaration requires an indented body");
-        Vec::new()
+        parser.error(format!("{declaration} requires an indented body"));
+        T::default()
     }
 }
 
@@ -126,12 +136,7 @@ pub(super) fn signature_decl(parser: &mut Parser<'_>) -> Option<MlItem> {
     let pos = parser.pos();
     parser.advance();
     let name = parser.ident()?;
-    let items = if parser.eat(&TokKind::Indent) {
-        signature_items(parser)
-    } else {
-        parser.error("signature declaration requires an indented body");
-        Vec::new()
-    };
+    let items = indented_body(parser, "signature declaration", signature_items);
     Some(MlItem::ModuleSignature { name, items, pos })
 }
 
