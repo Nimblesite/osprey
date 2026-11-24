@@ -202,7 +202,7 @@ if have clang && have wasmtime && [[ -n "$WASI_SYSROOT" ]]; then
 fi
 
 # The bench MUST time the CURRENT sources, never a stale artifact. Rebuild the
-# C runtime archives (memory_{runtime,gc,arc}.c live here — the backend picked
+# C runtime archives (memory_{ownership,gc,arc}.c live here — the backend picked
 # by --memory=) AND the release compiler up front, so a code change is always
 # reflected in the numbers. Both steps are incremental, so this is ~seconds when
 # nothing changed. Escape hatch: BENCH_NO_BUILD=1 times whatever is already built.

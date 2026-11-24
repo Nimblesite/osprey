@@ -316,16 +316,19 @@ class HarnessPublicationTests(TempDirs, unittest.TestCase):
         log = root / "compiles.log"
         self.run_partial_harness(root, bench)
         compiles = log.read_text().splitlines()
-        self.assertEqual(len(compiles), 2)
-        self.assertEqual(sum("--memory=arc" in c for c in compiles), 1)
-        self.assertEqual(sum("--memory=gc" in c for c in compiles), 1)
-        self.assertEqual(set(published(bench / "results")["cases"]["fib"]), {"rust", "osprey-arc", "osprey-gc"})
-        self.assertEqual(published(bench / "results")["languages"], ["osprey-arc", "osprey-gc", "rust"])
+        modes = ["arc", "gc", "ownership"]
+        self.assertEqual(len(compiles), len(modes))
+        for mode in modes:
+            self.assertEqual(sum(f"--memory={mode}" in c.split() for c in compiles), 1)
+        columns = [f"osprey-{mode}" for mode in modes] + ["rust"]
+        self.assertEqual(set(published(bench / "results")["cases"]["fib"]), set(columns))
+        self.assertEqual(published(bench / "results")["languages"], columns)
         page = self.page(root)
         self.assertFalse((bench / "results/results.html").exists(), "the website page is the only report")
         self.assertNotIn(">Osprey</th>", page)
         self.assertIn(">Osprey (ARC)</th>", page)
         self.assertIn(">Osprey (GC)</th>", page)
+        self.assertIn(">Osprey (ownership)</th>", page)
 
     def test_a_recorded_backendless_cell_is_never_published_again(self) -> None:
         out = published_tree(self.temp_dir(), [raw_row("fib", "osprey")],
