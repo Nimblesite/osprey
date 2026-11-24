@@ -181,7 +181,7 @@ def check_axis_name_return_reason(name, allow_underscore):
         lone = Parsing.check_axis_name_return_reason("_", True)
         print(f"[{bad.is_valid} {bad.reason}] [{underscore.is_valid} {underscore.reason}] [{lone.is_valid} {lone.reason}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [false not a valid python identifier] [false axis name should should not start or end with underscore] [true ]
@@ -211,7 +211,7 @@ def check_axis_name(name):
         leading_underscore = Parsing.check_axis_name("_a")
         print(f"[{good}] [{leading_digit}] [{leading_underscore}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [true] [false] [false]
@@ -487,7 +487,7 @@ def parse(expression, allow_underscore, allow_duplicates):
         dotted = Parsing.parse("b ..", False, False)
         print(f"{describe(composed)} {describe(dotted)}")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [b (h w) ...] ellipsis=true identifiers=4 groups=3 error: Expression may contain dots only inside ellipsis (...)
@@ -522,7 +522,7 @@ def flat_axes_order(expr):
     def show():
         print(flat_text(Parsing.parse("b (h w) ...", False, False)))
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     flat=b,h,w
@@ -550,7 +550,7 @@ def has_composed_axes(expr):
         flat = Parsing.parse("b c", False, False)
         print(f"{composed_text(split)} {composed_text(flat)}")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     grouped=true grouped=false

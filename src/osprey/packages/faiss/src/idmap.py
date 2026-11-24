@@ -119,7 +119,7 @@ def search(index, xq, k):
         result = search(loaded, [[0.0, 0.0]], 3)
         print(f"{toString(result.distances)} {toString(result.labels)}")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [[0.0, 25.0, 3.4028234663852886e+38]] [[7, 9, -1]]

@@ -58,7 +58,7 @@ def naive_attention(q, k, v, shapes, softmax_scale, causal, window_left, window_
         r = Naive.naive_attention([1.0, 2.0], [3.0], [7.0], shapes, 1.0, True, -1, -1, [])
         print(f"[{toString(r.out)}] [{toString(r.lse)}] [{toString(r.probs)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [[0.0, 7.0]] [[-inf, 6.0]] [[0.0, 1.0]]

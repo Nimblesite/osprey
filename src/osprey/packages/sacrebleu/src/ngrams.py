@@ -45,7 +45,7 @@ def counter_increment(counter, key):
         seeded = Ngrams.counter_increment({}, "new")
         print(f"[{Ngrams.counter_get(grown, "x")}] [{Ngrams.counter_get(seeded, "new")}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [2] [1]
@@ -78,7 +78,7 @@ def word_ngrams_from_tokens(tokens, order):
         blank = Ngrams.counter_total(Ngrams.word_ngrams_from_tokens([], 2))
         print(f"[{pair}] [{backward}] [{blank}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [1] [1] [0]
@@ -103,7 +103,7 @@ def word_ngrams(line, min_order, max_order):
         over = Ngrams.counter_total(Ngrams.word_ngrams("cat", 2, 3))
         print(f"[{single}] [{bigram}] [{over}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [2] [1] [0]
@@ -132,7 +132,7 @@ def char_ngrams(line, order, include_whitespace):
         joined = Ngrams.counter_get(stripped, "ab")
         print(f"[{ab}] [{a_space}] [{joined}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [1] [1] [1]
@@ -156,7 +156,7 @@ def counter_total(counter):
         blank = Ngrams.counter_total({})
         print(f"[{total}] [{blank}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [5] [0]
@@ -179,7 +179,7 @@ def counter_matched(hyp, ref):
         none = Ngrams.counter_matched(Ngrams.word_ngrams("x", 1, 1), Ngrams.word_ngrams("y", 1, 1))
         print(f"[{matched}] [{none}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [1] [0]

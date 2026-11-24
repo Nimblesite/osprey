@@ -60,7 +60,7 @@ def empty():
         g = Engine.empty()
         print(f"[{Engine.size(g)}] [{Engine.top(g)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [0] [-1]
@@ -96,7 +96,7 @@ def top(g):
         g = Engine.mul_const(Engine.value(Engine.empty(), 2.0), 0, 3.0)
         print(f"[{Engine.top(g)}] [{Engine.data(g, Engine.top(g))}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [2] [6.0]
@@ -134,7 +134,7 @@ def data(g, i):
         g = Engine.mul_const(Engine.value(Engine.empty(), 2.5), 0, 4.0)
         print(f"[{Engine.data(g, 0)}] [{Engine.data(g, Engine.top(g))}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [2.5] [10.0]
@@ -159,7 +159,7 @@ def value(g, x):
         g = Engine.value(Engine.empty(), 1.5)
         print(f"[{Engine.data(g, Engine.top(g))}] [{Engine.node(g, Engine.top(g)).op}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [1.5] []
@@ -201,7 +201,7 @@ def add_const(g, a, k):
         g = Engine.add_const(Engine.value(Engine.empty(), 2.0), 0, 3.0)
         print(f"[{Engine.data(g, Engine.top(g))}] [{Engine.node(g, 1).op}] [{Engine.data(g, 1)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [5.0] [] [3.0]
@@ -237,7 +237,7 @@ def mul_const(g, a, k):
         g = Engine.mul_const(Engine.value(Engine.empty(), 2.5), 0, 4.0)
         print(f"[{Engine.data(g, Engine.top(g))}] [{Engine.size(g)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [10.0] [3]
@@ -257,7 +257,7 @@ def pow_const(g, a, k):
         g = Engine.pow_const(Engine.value(Engine.empty(), 3.0), 0, 2)
         print(f"[{Engine.data(g, Engine.top(g))}] [{Engine.node(g, Engine.top(g)).exponent}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [9.0] [2]
@@ -331,7 +331,7 @@ def neg(g, a):
         g = Engine.neg(Engine.value(Engine.empty(), 2.5), 0)
         print(f"[{Engine.data(g, Engine.top(g))}] [{Engine.size(g)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [-2.5] [3]
@@ -351,7 +351,7 @@ def sub(g, a, b):
         g = Engine.sub(Engine.value(Engine.value(Engine.empty(), 5.0), 2.0), 0, 1)
         print(f"[{Engine.data(g, Engine.top(g))}] [{Engine.size(g)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [3.0] [5]
@@ -373,7 +373,7 @@ def sub_const(g, a, k: float):
         g = Engine.sub_const(Engine.value(Engine.empty(), 5.0), 0, 2.0)
         print(f"[{Engine.data(g, Engine.top(g))}] [{Engine.size(g)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [3.0] [3]
@@ -394,7 +394,7 @@ def rsub_const(g, a, k):
         g = Engine.rsub_const(Engine.value(Engine.empty(), 2.0), 0, 10.0)
         print(f"[{Engine.data(g, Engine.top(g))}] [{Engine.size(g)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [8.0] [5]
@@ -415,7 +415,7 @@ def truediv(g, a, b):
         g = Engine.truediv(Engine.value(Engine.value(Engine.empty(), 7.0), 2.0), 0, 1)
         print(f"[{Engine.data(g, Engine.top(g))}] [{Engine.size(g)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [3.5] [4]
@@ -437,7 +437,7 @@ def truediv_const(g, a, k):
         g = Engine.truediv_const(Engine.value(Engine.empty(), 7.5), 0, 2.5)
         print(f"[{Engine.data(g, Engine.top(g))}] [{Engine.data(g, 1)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [3.0] [0.4]
@@ -459,7 +459,7 @@ def rtruediv_const(g, a, k):
         g = Engine.rtruediv_const(Engine.value(Engine.empty(), 4.0), 0, 10.0)
         print(f"[{Engine.data(g, Engine.top(g))}] [{Engine.size(g)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [2.5] [4]
@@ -483,7 +483,7 @@ def ipow(x, n):
     def show():
         print(f"[{Engine.ipow(2.0, 3)}] [{Engine.ipow(2.0, -2)}] [{Engine.ipow(5.0, 0)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [8.0] [0.25] [1.0]
@@ -507,7 +507,7 @@ def zero_grad(g):
         g = Engine.mul_const(Engine.value(Engine.empty(), 2.0), 0, 3.0)
         print(f"{toString(Engine.zero_grad(g))}")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [0.0, 0.0, 0.0]
@@ -529,7 +529,7 @@ def backward(g, root):
         g = Engine.mul_const(Engine.value(Engine.empty(), 2.0), 0, 3.0)
         print(f"{toString(Engine.backward(g, Engine.top(g)))}")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [3.0, 2.0, 1.0]
@@ -554,7 +554,7 @@ def backward_into(g, root, grads):
         grads2 = Engine.backward_into(g, Engine.top(g), grads)
         print(f"{toString(grads2)}")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [6.0, 4.0, 1.0]

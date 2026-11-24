@@ -35,7 +35,7 @@ def tokenize(text, use_stemmer):
         empty = Tokenize.tokenize("", True)
         print(f"[{plain}] [{stemmed}] [{empty}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [["hello", "world", "42"]] [["run", "run"]] [[]]

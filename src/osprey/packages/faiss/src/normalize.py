@@ -26,7 +26,7 @@ def normalize_L2(x):
     def show():
         print(f"{toString(Normalize.normalize_L2([[3.0, 4.0], [0.0, 0.0]]))}")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [[0.6, 0.8], [0.0, 0.0]]

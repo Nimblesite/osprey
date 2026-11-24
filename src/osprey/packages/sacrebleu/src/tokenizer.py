@@ -123,7 +123,7 @@ def tokenize_char(line):
         accented = Tokenizer.tokenize_char("aé")
         print(f"[{spaced}] [{accented}] [{Tokenizer.tokenize_char("")}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [a b] [a é] []
@@ -162,7 +162,7 @@ def tokenize_13a(line):
         skipped = Tokenizer.tokenize_13a("<skipped>")
         print(f"[{punctuated}] [{number}] [{decoded}] [{skipped}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [a . b] [3.5] [" x " &] []
@@ -187,7 +187,7 @@ def tokenize(text, kind):
         unknown = Tokenizer.tokenize("a.b", "intl")
         print(f"[{mteval}] [{chars}] [{unknown}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [a . b] [a . b] [a.b]

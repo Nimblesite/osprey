@@ -49,7 +49,7 @@ def codepoints(s):
         accented = Text.codepoints("aé")
         print(f"[{toString(accented)}] [{toString(Text.codepoints(""))}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [[97, 233]] [[]]
@@ -86,7 +86,7 @@ def map_codepoints(s, f):
         mapped = Text.map_codepoints("a1!", lambda cp: 120 if cp == 97 else cp)
         print(f"[{mapped}] [{Text.map_codepoints("", lambda cp: cp)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [x1!] []

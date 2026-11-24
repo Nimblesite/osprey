@@ -145,7 +145,7 @@ def accuracy_score(y_true, y_pred):
         perfect = Metrics.accuracy_score([0, 1], [0, 1])
         print(f"[{mixed}] [{perfect}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [0.3333333333333333] [1.0]
@@ -169,7 +169,7 @@ def precision_score(y_true, y_pred, average, zero_division):
         one = Metrics.precision_score([0, 1], [0, 0], "binary", 1)
         print(f"[{usual}] [{no_positive}] [{one}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [0.6666666666666666] [0.0] [1.0]
@@ -192,7 +192,7 @@ def recall_score(y_true, y_pred, average, zero_division):
         one = Metrics.recall_score([0, 0, 0, 0], [1, 1, 1, 1], "binary", 1)
         print(f"[{usual}] [{no_positive}] [{one}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [0.6666666666666666] [0.0] [1.0]
@@ -215,7 +215,7 @@ def f1_score(y_true, y_pred, average, zero_division):
         one = Metrics.f1_score([0, 0], [0, 0], "binary", 1)
         print(f"[{usual}] [{no_positive}] [{one}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [0.6666666666666666] [0.0] [1.0]
@@ -237,7 +237,7 @@ def confusion_matrix(y_true, y_pred, labels):
         wide = Metrics.confusion_matrix([0, 1, 1], [0, 1, 0], [0, 1, 2])
         print(f"[{toString(present)}] [{toString(wide)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [[[1, 0], [1, 1]]] [[[1, 0, 0], [1, 1, 0], [0, 0, 0]]]
@@ -320,7 +320,7 @@ def roc_curve(y_true, y_score):
         curve = Metrics.roc_curve([0, 0, 1, 1], [0.1, 0.4, 0.35, 0.8])
         print(f"[{toString(curve.fpr)}] [{toString(curve.tpr)}] [{toString(curve.thresholds)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [[0.0, 0.0, 0.5, 0.5, 1.0]] [[0.0, 0.5, 0.5, 1.0, 1.0]] [[inf, 0.8, 0.4, 0.35, 0.1]]
@@ -361,7 +361,7 @@ def roc_auc_score(y_true, y_score):
         one_class = Metrics.roc_auc_score([1, 1, 1], [0.1, 0.4, 0.8])
         print(f"[{mixed}] [{one_class}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [0.75] [nan]
@@ -386,7 +386,7 @@ def precision_recall_curve(y_true, y_score):
         curve = Metrics.precision_recall_curve([0, 0, 1, 1], [0.1, 0.4, 0.35, 0.8])
         print(f"[{toString(curve.precision)}] [{toString(curve.recall)}] [{toString(curve.thresholds)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [[0.5, 0.6666666666666666, 0.5, 1.0, 1.0]] [[1.0, 1.0, 0.5, 0.5, 0.0]] [[0.1, 0.35, 0.4, 0.8]]
@@ -418,7 +418,7 @@ def average_precision_score(y_true, y_score):
         perfect = Metrics.average_precision_score([0, 0, 1, 1], [0.1, 0.2, 0.8, 0.9])
         print(f"[{mixed}] [{perfect}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [0.8333333333333333] [1.0]
@@ -452,7 +452,7 @@ def log_loss(y_true, y_proba):
         clipped = Metrics.log_loss([0, 1], [[0.0, 1.0], [1.0, 0.0]])
         print(f"[{usual}] [{clipped}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [0.164252033486018] [36.04365338911715]
@@ -491,7 +491,7 @@ def mean_squared_error(y_true, y_pred):
         perfect = Metrics.mean_squared_error([1.0, 2.0], [1.0, 2.0])
         print(f"[{usual}] [{perfect}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [0.375] [0.0]
@@ -512,7 +512,7 @@ def mean_absolute_error(y_true, y_pred):
         perfect = Metrics.mean_absolute_error([1.0, 2.0], [1.0, 2.0])
         print(f"[{usual}] [{perfect}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [0.5] [0.0]
@@ -553,7 +553,7 @@ def r2_score(y_true, y_pred):
         one_sample = Metrics.r2_score([4.0], [5.0])
         print(f"[{usual}] [{perfect}] [{one_sample}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [0.9486081370449679] [1.0] [nan]
@@ -575,7 +575,7 @@ def explained_variance_score(y_true, y_pred):
         perfect = Metrics.explained_variance_score([1.0, 2.0], [1.0, 2.0])
         print(f"[{usual}] [{perfect}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [0.9571734475374732] [1.0]
@@ -622,7 +622,7 @@ def matthews_corrcoef(y_true, y_pred):
         constant = Metrics.matthews_corrcoef([1, 1], [1, 1])
         print(f"[{inverse}] [{perfect}] [{constant}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [-1.0] [1.0] [0.0]
@@ -678,7 +678,7 @@ def top_k_accuracy_score(y_true, y_score, k):
         tie_all = Metrics.top_k_accuracy_score([0, 0], tied, 3)
         print(f"[{one}] [{two}] [{tie_one}] [{tie_all}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [0.5] [0.75] [0.0] [1.0]

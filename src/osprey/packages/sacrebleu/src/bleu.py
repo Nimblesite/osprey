@@ -165,7 +165,7 @@ def compute_bleu(correct, total, sys_len, ref_len, smooth_method, smooth_value, 
         blank = Bleu.compute_bleu([0.0, 0.0], [2.0, 1.0], 2, 2, "none", -1.0, True, 2)
         print(f"[{exact.score}] [{exact.bp}] [{blank.score}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [100.00000000000004] [1.0] [0.0]
@@ -250,7 +250,7 @@ def score_sentence(bleu, hypothesis, references):
         none = Bleu.score_sentence(metric, "a dog ran fast", ["the cat sat down"])
         print(f"[{exact.score}] [{exact.bp}] [{none.score}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [100.00000000000004] [1.0] [0.0]
@@ -276,7 +276,7 @@ def score_corpus(bleu, hypotheses, references):
         blank = Bleu.score_corpus(metric, [], [])
         print(f"[{exact.score}] [{exact.sys_len}] [{exact.ref_len}] [{blank.score}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [100.00000000000004] [8] [8] [0.0]
@@ -305,7 +305,7 @@ def sentence_bleu(hypothesis, references, smooth_method, smooth_value, lowercase
         strict = Bleu.sentence_bleu("The Cat Sat Down", ["the cat sat down"], "exp", -1.0, False, "13a", True)
         print(f"[{exact.score}] [{lowered.score}] [{strict.score}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [100.00000000000004] [100.00000000000004] [0.0]
@@ -329,7 +329,7 @@ def corpus_bleu(hypotheses, references, smooth_method, smooth_value, force, lowe
         shortened = Bleu.corpus_bleu(["the cat sat down"], [["the cat sat down now"]], "exp", -1.0, False, False, "13a", False)
         print(f"[{exact.score}] [{shortened.sys_len}] [{shortened.ref_len}] [{shortened.bp}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [100.00000000000004] [4] [5] [0.7788007830714049]
@@ -352,7 +352,7 @@ def raw_corpus_bleu(hypotheses, references, smooth_value):
         unmatched = Bleu.raw_corpus_bleu(["a"], [["the cat"]], 0.1)
         print(f"[{perfect.score}] [{unmatched.score}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [100.00000000000004] [0.0]

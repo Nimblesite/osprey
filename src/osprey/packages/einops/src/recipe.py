@@ -339,7 +339,7 @@ def prepare(pattern, operation, axes_names, ndim):
         wrong_ndim = Recipe.prepare("a b -> b a", "rearrange", [], 3)
         print(f"{recipe_text(swap)} {recipe_text(wrong_ndim)}")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     permutation=[1, 0] first_reduced_axis=2 error: Wrong shape: expected 2 dims. Received 3-dim tensor.

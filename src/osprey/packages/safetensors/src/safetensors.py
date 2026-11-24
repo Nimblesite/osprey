@@ -105,7 +105,7 @@ def load(data):
         short = describe(SafeTensors.load(file_bytes(header, [7])))
         print(f"[{good}] [{short}]")
 
-    run()
+    wrappingArithmetic(run)
     ```
     ```output
     [1 tensors, data at 68] [incomplete metadata, file not fully covered]
@@ -376,7 +376,7 @@ def keys(file):
         plain = loaded('{"__metadata__": {"format": "ust"}}', [])
         print(f"[{toString(SafeTensors.keys(file))}] [{toString(SafeTensors.keys(plain))}]")
 
-    run()
+    wrappingArithmetic(run)
     ```
     ```output
     [["a", "b"]] [[]]
@@ -404,7 +404,7 @@ def offset_keys(file):
         file = loaded(header, [7, 9])
         print(f"[{toString(SafeTensors.offset_keys(file))}] [{toString(SafeTensors.keys(file))}]")
 
-    run()
+    wrappingArithmetic(run)
     ```
     ```output
     [["b", "a"]] [["a", "b"]]
@@ -439,7 +439,7 @@ def metadata(file):
         blank = unwrap_or(mapGet(SafeTensors.metadata(plain), "format"), "")
         print(f"[{fmt}] [{blank}]")
 
-    run()
+    wrappingArithmetic(run)
     ```
     ```output
     [ust] []
@@ -476,7 +476,7 @@ def get_tensor(file, name):
         missing = describe(SafeTensors.get_tensor(file, "x"))
         print(f"[{got}] [{missing}]")
 
-    run()
+    wrappingArithmetic(run)
     ```
     ```output
     [floats [1.0, 4.0]] [File does not contain tensor x]
@@ -606,7 +606,7 @@ def get_slice(file, name, first, last):
         scalar = describe(SafeTensors.get_slice(file, "s", 0, 1))
         print(f"[{rows}] [{scalar}]")
 
-    run()
+    wrappingArithmetic(run)
     ```
     ```output
     [floats [4.0, 3.0]] [Error during slicing [0:1] with shape []: more slicing indexes than dimensions in tensor]

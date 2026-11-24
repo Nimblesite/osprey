@@ -146,7 +146,7 @@ def search(index, xq, k):
         result = Flat.search(index, [[3.0, 4.0], [0.0, 0.0]], 3)
         print(f"{toString(result.distances)} {toString(result.labels)}")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [[0.0, 25.0, 3.4028234663852886e+38], [0.0, 25.0, 3.4028234663852886e+38]] [[1, 0, -1], [0, 1, -1]]
@@ -193,7 +193,7 @@ def range_search(index, xq, radius):
         result = Flat.range_search(index, [[0.0, 0.0]], 2.0)
         print(f"{toString(result.lims)} {toString(result.distances)} {toString(result.labels)}")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [0, 2] [0.0, 1.0] [0, 1]
@@ -253,7 +253,7 @@ def reconstruct_n(index, i0, ni0):
         index = Flat.add(Flat.IndexFlatL2(2), [[1.0, 0.0], [0.0, 1.0]])
         print(f"{text(Flat.reconstruct_n(index, 0, 2))} {text(Flat.reconstruct_n(index, 1, 2))}")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [[1.0, 0.0], [0.0, 1.0]] IndexFlat reconstruct_n: range [1, 3) out of range (ntotal=2)
@@ -315,7 +315,7 @@ def search_rows(metric, rows, xq, k):
         result = Flat.search_rows("IP", [[1.0, 0.0], [2.0, 0.0]], [[3.0, 0.0]], 1)
         print(f"{toString(result.distances)} {toString(result.labels)}")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [[6.0]] [[1]]

@@ -85,7 +85,7 @@ def reconstruct(recipe, shape, axes_lengths) -> Result[CookedRecipe, str]:
         h4 = Reconstruct.NameLen(name="h", length=4)
         print(f"{resolve(split, [2, 3, 12], ["h"], [h4])} {resolve(split, [2, 3, 10], ["h"], [h4])}")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     init=[2, 3, 4, 3] reordering=[] n_axes=4 error: Shape mismatch, can't divide axis of length 10 in chunks of 4

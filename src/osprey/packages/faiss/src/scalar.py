@@ -106,7 +106,7 @@ def train(sq, x):
         shared = ScalarQuant.train(ScalarQuant.ScalarQuantizer(2, ScalarQuant.QT_8bit_uniform), [[0.0, 2.0], [4.0, 6.0]])
         print(f"{toString(per_dim.trained)} {toString(shared.trained)}")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [0.0, 2.0, 4.0, 4.0] [0.0, 6.0]
@@ -186,7 +186,7 @@ def compute_codes(sq, x):
         sq4 = ScalarQuant.train(ScalarQuant.ScalarQuantizer(2, ScalarQuant.QT_4bit), x)
         print(f"{toString(ScalarQuant.compute_codes(sq8, x))} {toString(ScalarQuant.compute_codes(sq4, x))}")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [[0, 0], [127, 127], [255, 255]] [[0], [119], [255]]
@@ -264,7 +264,7 @@ def decode(sq, codes):
         sq8 = ScalarQuant.train(ScalarQuant.ScalarQuantizer(2, ScalarQuant.QT_8bit), [[0.0, 2.0], [4.0, 6.0]])
         print(f"{toString(ScalarQuant.decode(sq8, [[0, 127]]))}")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [[0.00784313725490196, 4.0]]
@@ -323,7 +323,7 @@ def sq_add(index, sq, xb):
         loaded = ScalarQuant.sq_add(index, sq, x)
         print(f"{toString(loaded.codes)} {toString(index.codes)}")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [[0, 0], [127, 127], [255, 255]] []
@@ -347,7 +347,7 @@ def sq_search(index, xq, k):
         result = ScalarQuant.sq_search(index, [[2.0, 4.0]], 2)
         print(f"{toString(result.distances)} {toString(result.labels)}")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [[7.937377931564783, 8.062868127643213]] [[0, 1]]

@@ -36,7 +36,7 @@ def train_test_split(permutation, test_size):
         none = ModelSelection.train_test_split([2, 0, 3, 1, 4, 5], 0)
         print(f"[{toString(full.train)}] [{toString(full.test)}] [{toString(none.test)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [[2, 0, 3, 1]] [[4, 5]] [[]]
@@ -77,7 +77,7 @@ def kfold_splits(n_samples, n_splits):
         last = unwrap_or(listGet(folds, 2), ModelSelection.Split(train=[], test=[]))
         print(f"[{toString(first.train)}] [{toString(first.test)}] [{toString(last.train)}] [{toString(last.test)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [[3, 4, 5, 6]] [[0, 1, 2]] [[0, 1, 2, 3, 4]] [[5, 6]]
@@ -157,7 +157,7 @@ def stratified_kfold_splits(y, n_splits):
         tail = unwrap_or(listGet(folds, 1), ModelSelection.Split(train=[], test=[]))
         print(f"[{toString(head.train)}] [{toString(head.test)}] [{toString(tail.train)}] [{toString(tail.test)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [[2, 4, 5]] [[0, 1, 3]] [[0, 1, 3]] [[2, 4, 5]]

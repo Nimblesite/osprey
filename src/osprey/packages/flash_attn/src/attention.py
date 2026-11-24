@@ -91,7 +91,7 @@ def flash_attn_func(q, k, v, shapes, softmax_scale, causal, window_left, window_
         r = Attention.flash_attn_func([1.0, 2.0], [1.0, 2.0, 3.0], [10.0, 20.0, 30.0], shapes, 1.0, True, -1, -1, [], True)
         print(f"[{toString(r.out)}] [{toString(r.lse)}] [{toString(r.probs)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [[17.31058578630005, 28.50937092220868]] [[2.313261687518223, 6.142931628499899]] [[0.2689414213699951, 0.7310585786300049, 0.0, 0.015876239976466765, 0.11731042782619838, 0.8668133321973349]]
@@ -162,7 +162,7 @@ def flash_attn_varlen_func(q, k, v, cu_seqlens_q, cu_seqlens_k, _max_seqlen_q, _
         short = Attention.flash_attn_varlen_func([1.0], [3.0], [10.0], [0, 2], [0, 2], 2, 2, 1, 1, 1, 1.0, False, -1, -1, [], False)
         print(f"{shown(r)} {shown(empty)} {shown(short)}")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [[10.0, 20.0]] [[3.0, 8.0]] [[]] [[]] slice_flat: elements [0, 2) are outside a list of 1

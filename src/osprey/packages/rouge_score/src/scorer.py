@@ -57,7 +57,7 @@ def fmeasure(precision, recall):
         zero = fmeasure(0.0, 0.0)
         print(f"[{normal}] [{zero}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [0.6666666666666666] [0.0]
@@ -254,7 +254,7 @@ def score(scorer, target, prediction):
         empty = score(scorer, "", "")
         print(f"[{scores}] [{empty}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [[{ name: "rouge1", precision: 1.0, recall: 0.8571428571428571, fmeasure: 0.923076923076923 }, { name: "rougeL", precision: 1.0, recall: 0.8571428571428571, fmeasure: 0.923076923076923 }]] [[{ name: "rouge1", precision: 0.0, recall: 0.0, fmeasure: 0.0 }, { name: "rougeL", precision: 0.0, recall: 0.0, fmeasure: 0.0 }]]
@@ -293,7 +293,7 @@ def score_multi(scorer, targets, prediction):
         no_targets = score_multi(scorer, [], "the cat")
         print(f"[{best}] [{no_targets}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [[{ name: "rouge1", precision: 1.0, recall: 1.0, fmeasure: 1.0 }]] [[{ name: "", precision: 0.0, recall: 0.0, fmeasure: -1.0 }]]

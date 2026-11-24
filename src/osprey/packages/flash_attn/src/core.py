@@ -76,7 +76,7 @@ def kv_head(shapes, h):
         mqa = Core.Shapes(batch=1, seqlen_q=2, seqlen_k=2, heads_q=1, heads_k=1, headdim=2)
         print(f"[{Core.kv_head(gqa, 0)}] [{Core.kv_head(gqa, 3)}] [{Core.kv_head(mqa, 0)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [0] [1] [0]
@@ -101,7 +101,7 @@ def q_index(shapes, b, i, h, d):
         shapes = Core.Shapes(batch=1, seqlen_q=2, seqlen_k=2, heads_q=2, heads_k=2, headdim=2)
         print(f"[{Core.q_index(shapes, 0, 0, 0, 0)}] [{Core.q_index(shapes, 0, 1, 1, 1)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [0] [7]
@@ -121,7 +121,7 @@ def kv_index(shapes, b, j, h, d):
         shapes = Core.Shapes(batch=1, seqlen_q=2, seqlen_k=3, heads_q=4, heads_k=2, headdim=2)
         print(f"[{Core.kv_index(shapes, 0, 0, 0, 0)}] [{Core.kv_index(shapes, 0, 2, 1, 1)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [0] [11]
@@ -142,7 +142,7 @@ def v_at(v, shapes, b, j, h, d):
         v = [10.0, 11.0, 20.0, 21.0]
         print(f"[{Core.v_at(v, shapes, 0, 0, 0, 0)}] [{Core.v_at(v, shapes, 0, 1, 1, 0)}] [{Core.v_at(v, shapes, 0, 5, 0, 0)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [10.0] [20.0] [0.0]
@@ -164,7 +164,7 @@ def dot(q, k, shapes, b, i, h, j):
         k = [3.0, 4.0, 0.0, 5.0]
         print(f"[{Core.dot(q, k, shapes, 0, 0, 0, 0)}] [{Core.dot(q, k, shapes, 0, 0, 0, 1)}] [{Core.dot(q, k, shapes, 0, 0, 0, 9)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [11.0] [10.0] [0.0]
@@ -193,7 +193,7 @@ def mask_bounds(shapes, causal, window_left, window_right, i):
         m = Core.mask_bounds(masked, True, -1, -1, 0)
         print(f"[{b0.lo}, {b0.hi}] [{b1.lo}, {b1.hi}] [{w.lo}, {w.hi}] [{m.lo}, {m.hi}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [0, 2] [0, 3] [1, 4] [0, 0]
@@ -217,7 +217,7 @@ def alibi_bias(alibi_slopes, shapes, h, i, j):
         shapes = Core.Shapes(batch=1, seqlen_q=2, seqlen_k=2, heads_q=2, heads_k=2, headdim=2)
         print(f"[{Core.alibi_bias([], shapes, 0, 0, 1)}] [{Core.alibi_bias([0.5, 1.0], shapes, 0, 0, 1)}] [{Core.alibi_bias([0.5, 1.0], shapes, 1, 1, 0)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [0.0] [-0.5] [-1.0]
@@ -243,7 +243,7 @@ def dim4(_shape_a, shape_b, shape_c, shape_d, s):
         last = Core.dim4(2, 3, 2, 2, 11)
         print(f"[{first.a}, {first.b}, {first.c}, {first.d}] [{last.a}, {last.b}, {last.c}, {last.d}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [0, 0, 0, 0] [0, 2, 1, 1]
@@ -270,7 +270,7 @@ def slice_flat(xs, start, n):
         xs = [1.0, 2.0, 3.0]
         print(f"{toString(Core.slice_flat(xs, 1, 2))} {toString(Core.slice_flat(xs, 0, 0))} {toString(Core.slice_flat(xs, 2, 2))}")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     Success([2.0, 3.0]) Success([]) Error(slice_flat: elements [2, 4) are outside a list of 3)

@@ -29,7 +29,7 @@ def map_indexed(xs, read):
         lone = Stats.map_indexed([1], lambda i: i)
         print(f"[{toString(scaled)}] [{toString(lone)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [[0, 10]] [[0]]
@@ -50,7 +50,7 @@ def sum_float(xs):
         lone = Stats.sum_float([0.5])
         print(f"[{total}] [{lone}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [6.5] [0.5]
@@ -71,7 +71,7 @@ def mean_float(xs):
         lone = Stats.mean_float([4.0])
         print(f"[{even}] [{lone}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [2.0] [4.0]
@@ -92,7 +92,7 @@ def min_float(xs):
         lone = Stats.min_float([7.0])
         print(f"[{smallest}] [{lone}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [1.0] [7.0]
@@ -114,7 +114,7 @@ def max_float(xs):
         lone = Stats.max_float([7.0])
         print(f"[{largest}] [{lone}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [3.0] [7.0]
@@ -152,7 +152,7 @@ def argsort_float(xs):
         spread = Stats.argsort_float([3.0, 1.0, 3.0, 0.5])
         print(f"[{toString(tied)}] [{toString(spread)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [[1, 0, 2]] [[3, 1, 0, 2]]
@@ -185,7 +185,7 @@ def unique_ints(xs):
         lone = Stats.unique_ints([5])
         print(f"[{toString(repeated)}] [{toString(lone)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [[1, 2, 3]] [[5]]
@@ -206,7 +206,7 @@ def index_of(xs, v):
         missing = Stats.index_of([10, 20, 30], 99)
         print(f"[{found}] [{missing}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [1] [-1]
@@ -228,7 +228,7 @@ def encode_labels(labels, ys):
         unseen = Stats.encode_labels([3, 7], [3, 99])
         print(f"[{toString(encoded)}] [{toString(unseen)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [[2, 0, 1, 2]] [[0, -1]]

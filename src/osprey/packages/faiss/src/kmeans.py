@@ -69,7 +69,7 @@ def train(km, x, init_centroids):
         few = text(train(Kmeans(2, 5, 10, 0), four, [[0.0, 0.0], [10.0, 0.0]]))
         print(f"{run} {exact} {few}")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     centroids=[[0.0, 0.5], [10.0, 0.5]] obj=[2.0, 1.0, 1.0] centroids=[[1.0, 1.0], [3.0, 3.0]] obj=[0.0] error: Number of training points (4) should be at least as large as number of clusters (5)
@@ -118,7 +118,7 @@ def assign(km, x):
         four = [[0.0, 0.0], [10.0, 0.0], [0.0, 1.0], [10.0, 1.0]]
         print(f"{assigned(train(Kmeans(2, 2, 10, 0), four, [[0.0, 0.0], [10.0, 0.0]]))}")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [0, 1] []

@@ -25,7 +25,7 @@ def pow2i(e):
     def show():
         print(f"[{Bytes.pow2i(10)}] [{Bytes.pow2i(1)}] [{Bytes.pow2i(0)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [1024] [2] [1]
@@ -45,7 +45,7 @@ def le_bytes(data, off, n):
         data = [255, 2, 1]
         print(f"[{Bytes.le_bytes(data, 0, 3)}] [{Bytes.le_bytes(data, 1, 2)}] [{Bytes.le_bytes(data, 9, 2)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [66303] [258] [0]
@@ -64,7 +64,7 @@ def le16(data, off):
     def show():
         print(f"[{Bytes.le16([0, 62], 0)}] [{Bytes.le16([255], 0)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [15872] [255]
@@ -83,7 +83,7 @@ def le32(data, off):
     def show():
         print(f"[{Bytes.le32([255, 255, 255, 127], 0)}] [{Bytes.le32([255], 0)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [2147483647] [255]
@@ -103,7 +103,7 @@ def le64(data, off):
     def show():
         print(f"[{Bytes.le64([255, 255, 255, 255, 255, 255, 0, 0], 0)}] [{Bytes.le64([255], 0)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [281474976710655] [255]
@@ -146,7 +146,7 @@ def read_bytes(data, off, n):
         past = Bytes.read_bytes([1, 2, 3, 4], 3, 2)
         print(f"[{shown(inside)}] [{shown(past)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [[2, 3]] [read_bytes: out of range]
@@ -179,7 +179,7 @@ def read_u64(data, off):
         big = Bytes.read_u64([255, 255, 255, 255, 255, 255, 1, 0], 0)
         print(f"[{shown(ok)}] [{shown(short)}] [{shown(big)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [281474976710655] [read_u64: out of range] [read_u64: value too large]
@@ -206,7 +206,7 @@ def pow2(e):
     def show():
         print(f"[{Bytes.pow2(10)}] [{Bytes.pow2(-1)}] [{Bytes.pow2(-1074)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [1024.0] [0.5] [4.940656458e-324]
@@ -244,7 +244,7 @@ def f16_from_bits(bits: int16) -> float16:
     def show():
         print(f"[{Bytes.f16_from_bits(15360)}] [{Bytes.f16_from_bits(0)}] [{Bytes.f16_from_bits(-16384)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [1.0] [0.0] [-2.0]
@@ -263,7 +263,7 @@ def bf16_from_bits(bits):
     def show():
         print(f"[{Bytes.bf16_from_bits(16256)}] [{Bytes.bf16_from_bits(0)}] [{Bytes.bf16_from_bits(49152)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [1.0] [0.0] [-2.0]
@@ -282,7 +282,7 @@ def f32_from_bits(bits: int32) -> float32:
     def show():
         print(f"[{Bytes.f32_from_bits(1065353216)}] [{Bytes.f32_from_bits(0)}] [{Bytes.f32_from_bits(-1073741824)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [1.0] [0.0] [-2.0]
@@ -302,7 +302,7 @@ def f64_from_parts(sign, exp, frac):
     def show():
         print(f"[{Bytes.f64_from_parts(0, 1023, 0)}] [{Bytes.f64_from_parts(1, 1023, 0)}] [{Bytes.f64_from_parts(0, 0, 0)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [1.0] [-1.0] [0.0]
@@ -321,7 +321,7 @@ def decode_f16(data, off):
     def show():
         print(f"[{Bytes.decode_f16([0, 62], 0)}] [{Bytes.decode_f16([], 0)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [1.5] [0.0]
@@ -340,7 +340,7 @@ def decode_bf16(data, off):
     def show():
         print(f"[{Bytes.decode_bf16([192, 63], 0)}] [{Bytes.decode_bf16([0, 63], 0)}] [{Bytes.decode_bf16([], 0)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [1.5] [0.5] [0.0]
@@ -359,7 +359,7 @@ def decode_f32(data, off):
     def show():
         print(f"[{Bytes.decode_f32([0, 0, 192, 63], 0)}] [{Bytes.decode_f32([0, 0, 128, 63], 0)}] [{Bytes.decode_f32([], 0)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [1.5] [1.0] [0.0]
@@ -378,7 +378,7 @@ def decode_f64(data, off):
     def show():
         print(f"[{Bytes.decode_f64([0, 0, 0, 0, 0, 0, 240, 63], 0)}] [{Bytes.decode_f64([0, 0, 0, 0, 0, 0, 248, 63], 0)}] [{Bytes.decode_f64([], 0)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [1.0] [1.5] [0.0]
@@ -411,7 +411,7 @@ def bytes_to_string(data):
         bad = Bytes.bytes_to_string([255])
         print(f"[{shown(text)}] [{shown(bad)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [Hi] [invalid utf-8 sequence of 1 bytes from index 0]
@@ -452,7 +452,7 @@ def int_bytes(v, n):
     def show():
         print(f"[{toString(Bytes.int_bytes(1, 4))}] [{toString(Bytes.int_bytes(-1, 2))}] [{toString(Bytes.int_bytes(258, 2))}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [[1, 0, 0, 0]] [[255, 255]] [[2, 1]]
@@ -615,7 +615,7 @@ def f64_bytes(x):
     def show():
         print(f"[{toString(Bytes.f64_bytes(1.0))}] [{toString(Bytes.f64_bytes(-0.5))}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [[0, 0, 0, 0, 0, 0, 240, 63]] [[0, 0, 0, 0, 0, 0, 224, 191]]
@@ -634,7 +634,7 @@ def f32_bytes(x: float):
     def show():
         print(f"[{toString(Bytes.f32_bytes(1.0))}] [{toString(Bytes.f32_bytes(0.1))}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [[0, 0, 128, 63]] [[205, 204, 204, 61]]
@@ -653,7 +653,7 @@ def f16_bytes(x: float):
     def show():
         print(f"[{toString(Bytes.f16_bytes(1.0))}] [{toString(Bytes.f16_bytes(1.1))}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [[0, 60]] [[102, 60]]
@@ -672,7 +672,7 @@ def bf16_bytes(x):
     def show():
         print(f"[{toString(Bytes.bf16_bytes(1.0))}] [{toString(Bytes.bf16_bytes(1.1))}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [[128, 63]] [[141, 63]]
@@ -772,7 +772,7 @@ def checked_mul(a, b):
     def show():
         print(f"[{Bytes.checked_mul(3, 4)}] [{Bytes.checked_mul(5, 0)}] [{Bytes.checked_mul(9223372036854775807, 2)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [12] [0] [-1]

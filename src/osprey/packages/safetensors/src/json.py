@@ -406,7 +406,7 @@ def parse(text):
         blank = describe(JsonParser.parse(""))
         print(f"[{obj}] [{number}] [{truncated}] [{blank}]")
 
-    run()
+    wrappingArithmetic(run)
     ```
     ```output
     [obj] [float] [invalid JSON: expected ',' or ']'] [invalid JSON: unexpected character]

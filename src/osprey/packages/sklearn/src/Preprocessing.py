@@ -126,7 +126,7 @@ def standard_scaler_fit(scaler, X):
         constant = Preprocessing.standard_scaler_fit(Preprocessing.StandardScaler(with_mean=True, with_std=True), [[4.0], [4.0]])
         print(f"[{toString(fit.mean)}] [{toString(fit.scale)}] [{toString(constant.scale)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [[2.0, 5.0]] [[0.816496580927726, 2.943920288775949]] [[1.0]]
@@ -159,7 +159,7 @@ def standard_scaler_transform(fitted, X):
         flat = Preprocessing.standard_scaler_transform(constant, [[4.0]])
         print(f"[{toString(scaled)}] [{toString(flat)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [[[-1.0], [1.0], [5.0]]] [[[0.0]]]
@@ -186,7 +186,7 @@ def minmax_scaler_fit(scaler, X):
         constant = Preprocessing.minmax_scaler_fit(Preprocessing.MinMaxScaler(feature_min=0.0, feature_max=1.0), [[7.0], [7.0]])
         print(f"[{toString(fit.data_min)}] [{toString(fit.data_max)}] [{toString(fit.scale)}] [{toString(fit.min_)}] [{toString(constant.scale)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [[0.0, 2.0]] [[3.0, 8.0]] [[0.3333333333333333, 0.16666666666666666]] [[0.0, -0.3333333333333333]] [[1.0]]
@@ -215,7 +215,7 @@ def minmax_scaler_transform(fitted, X):
         flat = Preprocessing.minmax_scaler_transform(constant, [[7.0]])
         print(f"[{toString(scaled)}] [{toString(flat)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [[[0.0], [1.0]]] [[[0.0]]]
@@ -260,7 +260,7 @@ def robust_scaler_fit(scaler, X):
         fit = Preprocessing.robust_scaler_fit(Preprocessing.RobustScaler(quantile_min=25.0, quantile_max=75.0), [[1.0], [2.0], [3.0], [100.0]])
         print(f"[{toString(fit.center)}] [{toString(fit.scale)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [[2.5]] [[25.5]]
@@ -284,7 +284,7 @@ def robust_scaler_transform(fitted, X):
         scaled = Preprocessing.robust_scaler_transform(fit, [[1.0], [100.0]])
         print(f"[{toString(scaled)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [[[-0.058823529411764705], [3.823529411764706]]]
@@ -321,7 +321,7 @@ def normalize(X, norm):
         unit = Preprocessing.normalize([[-2.0, 1.0, 2.0], [0.0, 0.0, 0.0]], "l2")
         print(f"[{toString(unit)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [[[-0.6666666666666666, 0.3333333333333333, 0.6666666666666666], [0.0, 0.0, 0.0]]]
@@ -349,7 +349,7 @@ def label_encoder_fit(y):
         lone = Preprocessing.label_encoder_fit([4])
         print(f"[{toString(classes)}] [{toString(lone)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [[0, 1, 2, 3]] [[4]]
@@ -370,7 +370,7 @@ def label_encoder_transform(classes, y):
         unseen = Preprocessing.label_encoder_transform([0, 1, 2, 3], [9])
         print(f"[{toString(encoded)}] [{toString(unseen)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [[3, 1]] [[-1]]
@@ -390,7 +390,7 @@ def one_hot_encoder_fit(X):
         categories = Preprocessing.one_hot_encoder_fit([[0, 1], [2, 0]])
         print(f"[{toString(categories)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [[[0, 2], [0, 1]]]
@@ -425,7 +425,7 @@ def one_hot_encoder_transform(categories, X):
         unseen = Preprocessing.one_hot_encoder_transform(categories, [[9, 1]])
         print(f"[{toString(encoded)}] [{toString(unseen)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [[[0.0, 1.0, 0.0, 1.0]]] [[[0.0, 0.0, 0.0, 1.0]]]
@@ -492,7 +492,7 @@ def polynomial_powers(pf, n_features):
         interactions = Preprocessing.polynomial_powers(Preprocessing.PolynomialFeatures(degree=2, include_bias=False, interaction_only=True), 2)
         print(f"[{toString(full)}] [{toString(interactions)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [[[0, 0], [1, 0], [0, 1], [2, 0], [1, 1], [0, 2]]] [[[1, 0], [0, 1], [1, 1]]]
@@ -523,7 +523,7 @@ def polynomial_features_transform(powers, X):
         expanded = Preprocessing.polynomial_features_transform(powers, [[2.0, 3.0]])
         print(f"[{toString(expanded)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [[[1.0, 2.0, 3.0, 4.0, 6.0, 9.0]]]

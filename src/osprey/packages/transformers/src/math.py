@@ -48,7 +48,7 @@ def softmax(logits):
     def show():
         print(f"[{toString(Math.softmax([toFloat32(0.0), toFloat32(0.0)]))}] [{toString(Math.softmax([]))}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [[0.5, 0.5]] [[]]
@@ -123,7 +123,7 @@ def multinomial(probs, u):
     def show():
         print(f"[{Math.multinomial([toFloat32(0.5), toFloat32(0.5)], toFloat32(0.0))}] [{Math.multinomial([toFloat32(0.5), toFloat32(0.5)], toFloat32(0.9))}] [{Math.multinomial([toFloat32(0.25), toFloat32(0.25), toFloat32(0.25)], toFloat32(0.9))}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [0] [1] [2]

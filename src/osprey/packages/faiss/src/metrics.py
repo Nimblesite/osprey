@@ -203,7 +203,7 @@ def topk(k, metric, values, ids):
         padded = Metrics.topk(4, "IP", [2.0, 5.0], [10, 20])
         print(f"{toString(nearest.vals)} {toString(nearest.ids)} {toString(ties.vals)} {toString(ties.ids)} {toString(padded.vals)} {toString(padded.ids)}")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [1.0, 4.0, 9.0] [1, 2, 0] [2.0, 2.0] [3, 5] [5.0, 2.0, -3.4028234663852886e+38, -3.4028234663852886e+38] [20, 10, -1, -1]

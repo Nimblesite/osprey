@@ -306,7 +306,7 @@ def stem(word):
         short = Stemmer.stem("as")
         print(f"[{pool}] [{rule}] [{blank}] [{short}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [sky] [die] [] [as]

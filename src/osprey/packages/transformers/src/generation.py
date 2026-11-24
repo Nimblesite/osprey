@@ -52,7 +52,7 @@ def generate(next_logits, tokens, processors, stoppers, sampler, max_new_tokens)
     def show():
         print(f"[{toString(unwrap_or(Generation.generate(constant, [7], [], [StoppingCriteria.MaxLengthCriteria(2)], Math.argmax, 5), []))}] [{describe(Generation.generate(empty, [7], [], [], Math.argmax, 1))}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     """
     if max_new_tokens < 0:

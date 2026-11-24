@@ -225,7 +225,7 @@ def score_sentence(chrf, hypothesis, references):
         none = Chrf.score_sentence(metric, "x", ["the cat"])
         print(f"[{exact.score}] [{none.score}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [100.0] [0.0]
@@ -248,7 +248,7 @@ def score_corpus(chrf, hypotheses, references):
         blank = Chrf.score_corpus(metric, [""], [["the cat"]])
         print(f"[{exact.score}] [{blank.score}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [100.0] [0.0]
@@ -275,7 +275,7 @@ def sentence_chrf(hypothesis, references, char_order, word_order, beta, remove_w
         strict = Chrf.sentence_chrf("The Cat", ["the cat"], 6, 0, 2, False, False)
         print(f"[{exact.score}] [{plus.score}] [{strict.score}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [100.0] [100.0] [23.571428571428577]
@@ -296,7 +296,7 @@ def corpus_chrf(hypotheses, references, char_order, word_order, beta, remove_whi
         blank = Chrf.corpus_chrf([""], [["the cat"]], 6, 0, 2, False, False)
         print(f"[{exact.score}] [{blank.score}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [100.0] [0.0]

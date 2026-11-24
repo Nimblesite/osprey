@@ -54,7 +54,7 @@ def ProductQuantizer(d, M, nbits):
         pq = ProductQuant.ProductQuantizer(4, 2, 8)
         print(f"[{pq.d}] [{pq.M}] [{pq.nbits}] [{pq.dsub}] [{pq.ksub}] {toString(pq.centroids)}")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [4] [2] [8] [2] [256] []
@@ -74,7 +74,7 @@ def set_centroids(pq, centroids):
         pq = ProductQuant.set_centroids(ProductQuant.ProductQuantizer(1, 1, 2), [[0.0], [1.0], [2.0], [3.0]])
         print(f"[{pq.ksub}] [{toString(pq.centroids)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [4] [[[0.0], [1.0], [2.0], [3.0]]]
@@ -115,7 +115,7 @@ def compute_codes(pq, x):
         pq = ProductQuant.set_centroids(ProductQuant.ProductQuantizer(1, 1, 2), [[0.0], [1.0], [2.0], [3.0]])
         print(f"{toString(ProductQuant.compute_codes(pq, [[1.75]]))} {toString(ProductQuant.compute_codes(pq, []))}")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [[2]] []
@@ -135,7 +135,7 @@ def decode(pq, codes):
         pq = ProductQuant.set_centroids(ProductQuant.ProductQuantizer(1, 1, 2), [[0.0], [1.0], [2.0], [3.0]])
         print(f"{toString(ProductQuant.decode(pq, [[1], [3]]))}")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [[1.0], [3.0]]
@@ -188,7 +188,7 @@ def sdc_table(pq):
         table = ProductQuant.sdc_table(pq)
         print(f"[{len(table)}] {toString(table)}")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [16] [0.0, 1.0, 4.0, 9.0, 1.0, 0.0, 1.0, 4.0, 4.0, 1.0, 0.0, 1.0, 9.0, 4.0, 1.0, 0.0]
@@ -217,7 +217,7 @@ def IndexPQ(pq, metric):
         index = ProductQuant.IndexPQ(pq, "L2")
         print(f"[{index.metric}] [{toString(index.codes)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [L2] [[]]
@@ -239,7 +239,7 @@ def pq_add(index, xb):
         loaded = ProductQuant.pq_add(index, [[1.75], [2.5]])
         print(f"{toString(loaded.codes)} {toString(index.codes)}")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [[2], [2]] []
@@ -262,7 +262,7 @@ def pq_search(index, xq, k):
         result = ProductQuant.pq_search(index, [[2.0]], 2)
         print(f"{toString(result.distances)} {toString(result.labels)}")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [[0.0, 3.4028234663852886e+38]] [[0, -1]]

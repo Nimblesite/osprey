@@ -70,7 +70,7 @@ def param_count(nin, nouts):
         none: list[int] = []
         print(f"[{NN.param_count(3, [4, 4, 1])}] [{NN.param_count(2, none)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [41] [0]
@@ -93,7 +93,7 @@ def init_mlp(g, nin, nouts, params):
         g = NN.init_mlp(Engine.empty(), 2, [1], [0.5, -1.5, 2.0])
         print(f"[{Engine.size(g)}] [{Engine.data(g, 0)}] [{Engine.data(g, 2)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [3] [0.5] [2.0]
@@ -113,7 +113,7 @@ def neuron_at(offset, nin, nonlin):
         n = NN.neuron_at(3, 2, True)
         print(f"{toString(n.weights)} [{n.bias}] [{n.nonlin}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [3, 4] [5] [true]
@@ -155,7 +155,7 @@ def mlp_of(nin, nouts):
         n_last = unwrap_or(listGet(l1.neurons, 0), NN.Neuron(weights=[], bias=-1, nonlin=True))
         print(f"[{len(m.layers)}] [{len(l1.neurons)}] [{n_last.nonlin}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [2] [1] [false]
@@ -192,7 +192,7 @@ def call_neuron(g, n, xs):
         g2 = NN.call_neuron(g1, NN.neuron_at(0, 2, False), [1.0, 1.0])
         print(f"[{Engine.data(g2, Engine.top(g2))}] [{Engine.size(g2)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [1.0] [9]
@@ -216,7 +216,7 @@ def call_neuron_values(g, n, x_ids):
         g3 = NN.call_neuron_values(g2, NN.neuron_at(0, 2, False), [3, 4])
         print(f"[{Engine.data(g3, Engine.top(g3))}] [{Engine.size(g3)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [5.5] [9]
@@ -251,7 +251,7 @@ def call_layer(g, l, xs):
         fwd = NN.call_layer(g, l, [1.0, 1.0])
         print(f"[{Engine.data(fwd.graph, Engine.top(fwd.graph))}] {toString(fwd.outputs)}")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [3.5] [11, 17]
@@ -275,7 +275,7 @@ def call_layer_values(g, l, x_ids):
         fwd = NN.call_layer_values(g2, l, [6, 7])
         print(f"[{Engine.data(fwd.graph, Engine.top(fwd.graph))}] {toString(fwd.outputs)}")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [3.0] [11, 15]
@@ -299,7 +299,7 @@ def call_mlp(g, m, xs):
         bare = NN.call_mlp(Engine.empty(), NN.mlp_of(2, []), [1.0, 1.0])
         print(f"[{Engine.data(out, Engine.top(out))}] [{Engine.size(out)}] [{Engine.size(bare)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [1.25] [27] [0]
@@ -326,7 +326,7 @@ def parameters(m):
     def show():
         print(f"[{len(NN.parameters(NN.mlp_of(2, [2])))}] {toString(NN.parameters(NN.mlp_of(2, [2])))}")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [6] [0, 1, 2, 3, 4, 5]

@@ -91,7 +91,7 @@ def TemperatureLogitsWarper(temperature):
         scores = [toFloat32(1.0), toFloat32(2.0)]
         print(f"[{toString(LogitsProcess.apply(LogitsProcess.TemperatureLogitsWarper(2.0), [], scores))}] [{toString(LogitsProcess.apply(LogitsProcess.TemperatureLogitsWarper(0.5), [], scores))}]")
 
-    show()
+    wrappingArithmetic(show)
     ```output
     [[0.5, 1.0]] [[2.0, 4.0]]
     ```
@@ -112,7 +112,7 @@ def TopKLogitsWarper(top_k, filter_value, min_tokens_to_keep):
         scores = [toFloat32(1.0), toFloat32(3.0), toFloat32(2.0)]
         print(f"[{toString(LogitsProcess.apply(LogitsProcess.TopKLogitsWarper(2, Math.neg_inf(), 1), [], scores))}] [{toString(LogitsProcess.apply(LogitsProcess.TopKLogitsWarper(1, Math.neg_inf(), 1), [], scores))}]")
 
-    show()
+    wrappingArithmetic(show)
     ```output
     [[-inf, 3.0, 2.0]] [[-inf, 3.0, -inf]]
     ```
@@ -133,7 +133,7 @@ def TopPLogitsWarper(top_p, filter_value, min_tokens_to_keep):
         flat = [toFloat32(1.0), toFloat32(1.0), toFloat32(1.0)]
         print(f"[{toString(LogitsProcess.apply(LogitsProcess.TopPLogitsWarper(0.6, Math.neg_inf(), 1), [], flat))}] [{toString(LogitsProcess.apply(LogitsProcess.TopPLogitsWarper(1.0, Math.neg_inf(), 1), [], flat))}]")
 
-    show()
+    wrappingArithmetic(show)
     ```output
     [[-inf, 1.0, 1.0]] [[1.0, 1.0, 1.0]]
     ```
@@ -154,7 +154,7 @@ def MinPLogitsWarper(min_p, filter_value, min_tokens_to_keep):
         scores = [toFloat32(2.0), toFloat32(1.0), toFloat32(0.0)]
         print(f"[{toString(LogitsProcess.apply(LogitsProcess.MinPLogitsWarper(0.5, Math.neg_inf(), 1), [], scores))}] [{toString(LogitsProcess.apply(LogitsProcess.MinPLogitsWarper(0.5, Math.neg_inf(), 2), [], scores))}]")
 
-    show()
+    wrappingArithmetic(show)
     ```output
     [[2.0, -inf, -inf]] [[2.0, 1.0, -inf]]
     ```
@@ -175,7 +175,7 @@ def TypicalLogitsWarper(mass, filter_value, min_tokens_to_keep):
         scores = [toFloat32(2.0), toFloat32(1.0), toFloat32(0.0)]
         print(f"[{toString(LogitsProcess.apply(LogitsProcess.TypicalLogitsWarper(0.7, Math.neg_inf(), 1), [], scores))}] [{toString(LogitsProcess.apply(LogitsProcess.TypicalLogitsWarper(1.0, Math.neg_inf(), 1), [], scores))}]")
 
-    show()
+    wrappingArithmetic(show)
     ```output
     [[2.0, 1.0, -inf]] [[2.0, 1.0, 0.0]]
     ```
@@ -196,7 +196,7 @@ def EpsilonLogitsWarper(epsilon, filter_value, min_tokens_to_keep):
         scores = [toFloat32(2.0), toFloat32(1.0), toFloat32(0.0)]
         print(f"[{toString(LogitsProcess.apply(LogitsProcess.EpsilonLogitsWarper(0.2, Math.neg_inf(), 1), [], scores))}] [{toString(LogitsProcess.apply(LogitsProcess.EpsilonLogitsWarper(0.5, Math.neg_inf(), 1), [], scores))}]")
 
-    show()
+    wrappingArithmetic(show)
     ```output
     [[2.0, 1.0, -inf]] [[2.0, -inf, -inf]]
     ```
@@ -216,7 +216,7 @@ def EtaLogitsWarper(epsilon, filter_value, min_tokens_to_keep):
     def show():
         print(f"[{toString(LogitsProcess.apply(LogitsProcess.EtaLogitsWarper(0.1, Math.neg_inf(), 1), [], [toFloat32(2.0), toFloat32(1.0), toFloat32(0.0)]))}] [{toString(LogitsProcess.apply(LogitsProcess.EtaLogitsWarper(0.1, Math.neg_inf(), 1), [], []))}]")
 
-    show()
+    wrappingArithmetic(show)
     ```output
     [[2.0, 1.0, -inf]] [[]]
     ```
@@ -238,7 +238,7 @@ def RepetitionPenaltyLogitsProcessor(penalty, prompt_ignore_length):
         scores = [toFloat32(2.0), toFloat32(-2.0), toFloat32(1.0)]
         print(f"[{toString(LogitsProcess.apply(LogitsProcess.RepetitionPenaltyLogitsProcessor(2.0, 0), [0, 1], scores))}] [{toString(LogitsProcess.apply(LogitsProcess.RepetitionPenaltyLogitsProcessor(2.0, 1), [0, 1], scores))}]")
 
-    show()
+    wrappingArithmetic(show)
     ```output
     [[1.0, -4.0, 1.0]] [[2.0, -4.0, 1.0]]
     ```
@@ -258,7 +258,7 @@ def NoRepeatNGramLogitsProcessor(ngram_size):
         scores = [toFloat32(1.0), toFloat32(2.0), toFloat32(3.0), toFloat32(4.0), toFloat32(5.0)]
         print(f"[{toString(LogitsProcess.apply(LogitsProcess.NoRepeatNGramLogitsProcessor(2), [1, 2, 3, 1, 2], scores))}] [{toString(LogitsProcess.apply(LogitsProcess.NoRepeatNGramLogitsProcessor(2), [1], scores))}]")
 
-    show()
+    wrappingArithmetic(show)
     ```output
     [[1.0, 2.0, 3.0, -inf, 5.0]] [[1.0, 2.0, 3.0, 4.0, 5.0]]
     ```
@@ -278,7 +278,7 @@ def MinLengthLogitsProcessor(min_length, eos_ids):
         scores = [toFloat32(1.0), toFloat32(2.0), toFloat32(3.0)]
         print(f"[{toString(LogitsProcess.apply(LogitsProcess.MinLengthLogitsProcessor(3, [1]), [1, 2], scores))}] [{toString(LogitsProcess.apply(LogitsProcess.MinLengthLogitsProcessor(3, [1]), [1, 2, 3], scores))}]")
 
-    show()
+    wrappingArithmetic(show)
     ```output
     [[1.0, -inf, 3.0]] [[1.0, 2.0, 3.0]]
     ```
@@ -299,7 +299,7 @@ def MinNewTokensLengthLogitsProcessor(prompt_length_to_skip, min_new_tokens, eos
         scores = [toFloat32(1.0), toFloat32(2.0), toFloat32(3.0)]
         print(f"[{toString(LogitsProcess.apply(LogitsProcess.MinNewTokensLengthLogitsProcessor(2, 1, [2]), [5, 6], scores))}] [{toString(LogitsProcess.apply(LogitsProcess.MinNewTokensLengthLogitsProcessor(2, 1, [2]), [5, 6, 7], scores))}]")
 
-    show()
+    wrappingArithmetic(show)
     ```output
     [[1.0, 2.0, -inf]] [[1.0, 2.0, 3.0]]
     ```
@@ -319,7 +319,7 @@ def ForcedBOSTokenLogitsProcessor(bos_token_id):
         scores = [toFloat32(1.0), toFloat32(2.0), toFloat32(3.0)]
         print(f"[{toString(LogitsProcess.apply(LogitsProcess.ForcedBOSTokenLogitsProcessor(1), [9], scores))}] [{toString(LogitsProcess.apply(LogitsProcess.ForcedBOSTokenLogitsProcessor(1), [9, 1], scores))}]")
 
-    show()
+    wrappingArithmetic(show)
     ```output
     [[0.0, -inf, -inf]] [[1.0, 2.0, 3.0]]
     ```
@@ -339,7 +339,7 @@ def ForcedEOSTokenLogitsProcessor(max_length, eos_ids):
         scores = [toFloat32(1.0), toFloat32(2.0), toFloat32(3.0)]
         print(f"[{toString(LogitsProcess.apply(LogitsProcess.ForcedEOSTokenLogitsProcessor(3, [2]), [4, 5], scores))}] [{toString(LogitsProcess.apply(LogitsProcess.ForcedEOSTokenLogitsProcessor(3, [2]), [4], scores))}]")
 
-    show()
+    wrappingArithmetic(show)
     ```output
     [[-inf, -inf, 0.0]] [[1.0, 2.0, 3.0]]
     ```
@@ -359,7 +359,7 @@ def SuppressTokensLogitsProcessor(suppress_ids):
         scores = [toFloat32(1.0), toFloat32(2.0), toFloat32(3.0)]
         print(f"[{toString(LogitsProcess.apply(LogitsProcess.SuppressTokensLogitsProcessor([0, 2]), [], scores))}] [{toString(LogitsProcess.apply(LogitsProcess.SuppressTokensLogitsProcessor([]), [], scores))}]")
 
-    show()
+    wrappingArithmetic(show)
     ```output
     [[-inf, 2.0, -inf]] [[1.0, 2.0, 3.0]]
     ```
@@ -380,7 +380,7 @@ def NoBadWordsLogitsProcessor(bad_words_ids, eos_ids):
         scores = [toFloat32(1.0), toFloat32(2.0), toFloat32(3.0), toFloat32(4.0)]
         print(f"[{toString(LogitsProcess.apply(LogitsProcess.NoBadWordsLogitsProcessor([[3], [1, 2]], [3]), [0, 1], scores))}] [{toString(LogitsProcess.apply(LogitsProcess.NoBadWordsLogitsProcessor([[3]], []), [5], scores))}]")
 
-    show()
+    wrappingArithmetic(show)
     ```output
     [[1.0, 2.0, -inf, 4.0]] [[1.0, 2.0, 3.0, -inf]]
     ```
@@ -402,7 +402,7 @@ def apply_list(processors, input_ids, scores: list[float32]):
         suppress_first = LogitsProcess.apply_list([LogitsProcess.SuppressTokensLogitsProcessor([2]), LogitsProcess.TopKLogitsWarper(1, Math.neg_inf(), 1)], [], scores)
         print(f"[{toString(top_first)}] [{toString(suppress_first)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```output
     [[-inf, -inf, -inf]] [[-inf, 2.0, -inf]]
     ```
@@ -421,7 +421,7 @@ def apply(processor: Processor, input_ids, scores: list[float32]):
         scores = [toFloat32(1.0), toFloat32(2.0), toFloat32(3.0)]
         print(f"[{toString(LogitsProcess.apply(LogitsProcess.TemperatureLogitsWarper(2.0), [], scores))}] [{toString(LogitsProcess.apply(LogitsProcess.TopKLogitsWarper(1, Math.neg_inf(), 1), [], scores))}]")
 
-    show()
+    wrappingArithmetic(show)
     ```output
     [[0.5, 1.0, 1.5]] [[-inf, -inf, 3.0]]
     ```
