@@ -33,4 +33,14 @@ theorem compiledRelabelLedger (n : Int) (r : Tracked (fun _ => OwnershipLedger.d
     (done : runFn Emitted.module 12 Emitted.«relabel(ptr,ptr)» [.ptr 4 0, .ptr 3 0] (seed n) = .ok (v, r)) :
     Run (fun _ => OwnershipLedger.dead) r.log (view r.mem) ∧ OwnershipLedger.Safe (view r.mem) :=
   run_follows_ledger Emitted.module 12 Emitted.«relabel(ptr,ptr)» _ (seed n) r v done
+/-- The specialized generic identity returns its input allocation alive, with
+    every caller-supplied cell unchanged and no additional heap blocks. -/
+def identityResult (cells : List (Nat × Val)) : Except Fault (Val × List (Bool × List (Nat × Val))) := do
+  let t := (Tracked.empty.alloc true 8 0 cells .raw).2
+  let (result, after) ← runFn Emitted.module 4 Emitted.«keep(ptr)» [.ptr 0 0] t
+  return (result, (after.mem.filter (·.heap)).map fun b => (b.live, b.cells))
+
+theorem compiledIdentity (cells : List (Nat × Val)) : identityResult cells =
+    .ok (.ptr 0 0, [(true, cells)]) := by kernel_rfl
+
 end OwnershipRecord

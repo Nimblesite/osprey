@@ -3,14 +3,18 @@
 record() { LEAN_PATH="$1:$lean_path" lean -DwarningAsError=true -o "$1/OwnershipRecord.olean" OwnershipRecord.lean; }
 
 check_record_update() {
-  local fault dir
+  local fault dir theorem
   record "$out/emitted"
   export_and_replay OwnershipRecord OwnershipRecord.compiledRelabelLedger
+  export_and_replay OwnershipRecord OwnershipRecord.compiledIdentity
   # Check each lost field against the concrete return and the final drop.
-  for fault in attached-field skipped-child; do
+  for fault in attached-field skipped-child freed-input; do
     dir="$out/mutations/$fault"
+    theorem=compiledRelabel
+    if [[ $fault == freed-input ]]; then theorem=compiledIdentity; fi
     awk -v fault="$fault" '
-      /^define / {body = /@relabel\(/}
+      /^define / {body = /@relabel\(/; identity = /@keep\$mono[0-9]+\(i8\* %\$p0\)/}
+      identity && fault == "freed-input" && /ret i8\* %\$p0$/ {print "  call void @osp_ownership_free(i8* %$p0)"; changed=1}
       body && fault == "attached-field" && !changed && /store i8\* null, i8\*\* %r[0-9]+$/ {changed=1; next}
       body && fault == "skipped-child" && /call .*@osp_alloc_tagged_noinit/ {changed=sub(/i64 3585\)/, "i64 3073)")}
       {print}
@@ -18,7 +22,7 @@ check_record_update() {
     ' "$out/emitted.ll" > "$dir.ll"
     translate "$dir.ll" "$dir"
     if record "$dir" > "$dir/proof.log" 2>&1; then echo "accepted $fault" >&2; exit 1; fi
-    grep -Fq "(kernel) declaration type mismatch, 'OwnershipRecord.compiledRelabel'" "$dir/proof.log"
-    echo "REJECT $fault at compiledRelabel"
+    grep -Fq "(kernel) declaration type mismatch, 'OwnershipRecord.$theorem'" "$dir/proof.log"
+    echo "REJECT $fault at $theorem"
   done
 }
