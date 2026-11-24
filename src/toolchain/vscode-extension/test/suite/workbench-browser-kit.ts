@@ -13,7 +13,6 @@ import type { NativeTouch } from "../../client/src/osprey-ui/wasi-runner";
 import { activateWithServer, connectEditorBrowser, editorWebviewFrame, press, waitForIdleWorkbench } from "./profiler-kit";
 
 export const COMMAND = "osprey.workbench.open";
-export const ARGUMENT = "Theorem and_swap. For all p q, p ∧ q → q ∧ p.\nProof.\nAssume h : p ∧ q.\nBy cases on h, as hp and hq.\nIt suffices to show q and p.\nFrom hq.\nFrom hp.";
 const FREEHAND_CONTROLS = ["Draw", "Pan", "Pan board", "Clear", "Undo", "Board", "Show working board", "Preview sample transcription"];
 
 /** The events that reached the live application, and a gate a test may close on them. */
@@ -106,25 +105,21 @@ export async function assertNoFreehandInk(frame: Frame): Promise<void> {
   }
 }
 
-/** Types `source` into the argument editor and waits for the kernel's checked mathematics. */
-export async function mathematics(frame: Frame, source = ARGUMENT, last = "From hq."): Promise<void> {
-  const editor = frame.getByRole("textbox", { name: "Argument & calculations" });
-  const bounds = await editor.boundingBox();
-  assert.ok(bounds && bounds.height > 250, `the argument editor must fill its authored writing surface: ${JSON.stringify(bounds)}`);
-  await editor.fill(source);
-  await frame.locator("math[aria-label]").first().waitFor();
-  assert.ok((await frame.locator(".osp-frame-proof-rows").textContent())?.includes(last), "the shared proof keeps the entered reasoning");
-  assert.ok((await frame.locator("math[aria-label]").first().getAttribute("aria-label"))?.trim());
-  assert.strictEqual(await frame.locator("#osprey-diagnostics:not([hidden])").count(), 0);
+/** Opens the first lesson from Lessons and waits for its formula field. */
+export async function firstLesson(frame: Frame): Promise<void> {
+  await press(frame, "Lessons");
+  await frame.getByRole("button", { name: "Open", exact: true }).first().click();
+  await frame.getByRole("textbox", { name: "Your formula", exact: true }).waitFor();
 }
 
-/** Opens the conjunction lesson from Examples and returns to working. */
-export async function lesson(frame: Frame): Promise<void> {
-  await press(frame, "Examples");
-  await press(frame, "Open conjunction example");
-  await frame.locator(".osp-frame-example-context").waitFor();
-  await press(frame, "Return to working");
-  await frame.locator(".osp-frame-example-context").waitFor({ state: "detached" });
+/** Types `formula` into the first lesson's formula field and submits it to the kernel. */
+export async function answer(frame: Frame, formula: string, badge: string): Promise<void> {
+  const field = frame.getByRole("textbox", { name: "Your formula", exact: true });
+  await field.fill(formula);
+  await press(frame, "Submit");
+  await frame.getByText(badge, { exact: true }).first().waitFor();
+  assert.strictEqual(await field.inputValue(), formula, "the submitted formula stays as typed");
+  assert.strictEqual(await frame.locator("#osprey-diagnostics:not([hidden])").count(), 0);
 }
 
 export { press, waitForIdleWorkbench };

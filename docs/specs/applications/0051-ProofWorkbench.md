@@ -16,7 +16,7 @@ Before 2026-10-31 the workbench had its own English-sentence proof document (`Th
 
 ## No English source [WORKBENCH-NO-ENGLISH]
 
-**The workbench never reads or writes English as mathematics or proof.** No reader, lexer, reserved-word table, phrase table, completion, lesson field, store record, fixture, golden or export may accept or hold an English sentence as a statement, hypothesis, step or proof (`Theorem …`, `For all …`, `Assume …`, `By cases on …`, `From …`, `p implies q`, `p and q`). Code that does is a defect and is deleted on sight, not held.
+**The workbench never reads or writes English as mathematics or proof.** No reader, lexer, reserved-word table, phrase table, completion, lesson field, store record, fixture, golden or export may accept or hold an English sentence as a statement, hypothesis, step or proof (`Theorem …`, `For all …`, `Assume …`, `By cases on …`, `From …`, `p implies q`, `p and q`). Code that does is a defect and is deleted on sight, not held. The one exception is a refusal test, which holds an English input only to prove it is refused.
 
 **Translating to English is display only.** The workbench may render a checked statement or proof as English words on screen, one way, from the AST. That rendering is never parsed back, never saved, never exported, never sent to a host as source and never typed by the user in place of notation.
 
@@ -42,7 +42,7 @@ The application lives at [`src/osprey/workbench/`](../../../src/osprey/workbench
 
 Every file under 500 lines, every function under 20, a documentation comment on every export.
 
-Not implemented yet: `src/document.ospml`, `src/lean.ospml` and `src/library.ospml`; [plan 0042](../../plans/0042-proof-workbench.md) delivers them. Today `src/formula.ospml`, `statement.ospml`, `step.ospml`, `goals.ospml`, `emit.ospml`, `kernel.ospml` and the step-elaborating half of `verdict.ospml`, the deleted formats of [WORKBENCH-DELETED], are still present and tested; [plan 0041](../../plans/0041-dependent-types-and-mathlib.md) removes them, and the ids their tests cite ([WORKBENCH-FORMULA], [WORKBENCH-STATEMENT], [WORKBENCH-STEPS], [WORKBENCH-GOALS]) retire with them. The grep gate of [WORKBENCH-VERIFICATION] does not exist yet and would fail until then.
+Not implemented yet: `src/document.ospml`, `src/lean.ospml` and `src/library.ospml`; [plan 0042](../../plans/0042-proof-workbench.md) delivers them. Deleted under [WORKBENCH-NO-ENGLISH]: the English statement and step readers, the sentence spellings of the formula reader, `emit`, `review`, `goalview`, the free-form draft editor, the Read page, the guided example, workspace save, open and source export, and the English `prove` and `judge` lesson challenges. Held under [WORKBENCH-DELETED-HOLD]: the notation-only `formula` reader, the `Statement` and `Step` values, `goals`, `kernel` and the step-elaborating half of `verdict`, tested by building values from notation ([WORKBENCH-FORMULA], [WORKBENCH-STATEMENT], [WORKBENCH-STEPS], [WORKBENCH-GOALS]). Work mode shows the checked proof library; Learn mode shows the lessons and their state challenges.
 
 ## Notation [WORKBENCH-NOTATION]
 

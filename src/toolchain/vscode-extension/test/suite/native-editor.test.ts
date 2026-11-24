@@ -5,7 +5,7 @@ import { renderWorkspace } from "../../client/src/osprey-ui/render";
 // and typing suites that shared this file drove a live webview through the windowed extension
 // host and stay with it.
 
-const editorNode = (extra: Record<string, unknown> = {}) => ({ kind: "editor", label: "Argument", value: "Assume h : p ∧ q.\nFrom hp.", cursor: 0,
+const editorNode = (extra: Record<string, unknown> = {}) => ({ kind: "editor", label: "Argument", value: "p ∧ q → q ∧ p\nq ∧ p", cursor: 0,
   marks: [{ line: 2, underlined: true, tone: "danger", badge: "Needs attention", note: "The goal is q; this step establishes p." }],
   event: 4, placeEvent: 5, ...extra });
 const editor = (extra: Record<string, unknown> = {}): string => renderWorkspace({

@@ -45,43 +45,6 @@
           "Put an arrow from that conjunction to q."
         ]
       }
-    },
-    {
-      "kind": "challenge",
-      "challenge": {
-        "kind": "judge",
-        "id": "judge-checked-search-result",
-        "prompt": "A search proposed this proof. Decide whether the kernel will accept it.",
-        "statement": "Theorem modus_ponens. For all p q, (p → q) → p → q.",
-        "steps": [
-          "Assume f : p → q.",
-          "Assume x : p.",
-          "Apply f.",
-          "From x."
-        ],
-        "hints": [
-          "Applying f to the goal q leaves the goal p.",
-          "The last step supplies p from x."
-        ]
-      }
-    },
-    {
-      "kind": "challenge",
-      "challenge": {
-        "kind": "judge",
-        "id": "judge-skipped-step",
-        "prompt": "This attempt leaves out the application of f. Decide whether it still checks.",
-        "statement": "Theorem shortcut. For all p q, (p → q) → p → q.",
-        "steps": [
-          "Assume f : p → q.",
-          "Assume x : p.",
-          "From x."
-        ],
-        "hints": [
-          "After both assumptions, the goal is q.",
-          "x proves p, not q."
-        ]
-      }
     }
   ]
 }

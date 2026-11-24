@@ -115,8 +115,8 @@ module ImportedFlowCases
 
     ask () = asked (Drive::started ())
 
-    (** Notation opened, then the proof library picker requested. *)
-    asked first = Drive::requested (Drive::press (first, "root", "Notation"), "library-actions", "Open proof library", "proof:opened")
+    (** The proof library picker requested from the library Work always shows. *)
+    asked first = Drive::requested (first, "library-actions", "Open proof library", "proof:opened")
 
     loaded (requested, source) = Drive::completedHeld (requested, "proof:opened", "proof.ndjson", JsonObject [Doc::str ("proof:import", source)])
 
@@ -145,36 +145,26 @@ module ImportedFlowCases
         readsSelection (after, "id_imp")
         shows (after, ["Checked theorem", "(∀ (p : Prop), (p → p))", "Axioms: none"])
         expect (Doc::text (selectedMath after, "kind"), "math")
-        AppCases::kept (after, "")
         arithmetic ()
         customEquality ()
         customAddition ()
         bundled ()
 
+    (** [WORKBENCH-LIBRARY] Work is the checked library at full width; Lessons and back keep the imported selection. *)
     export inspectionLayout () =
-        before = asked (AppCases::reopened (AppCases::freshTyped ("Keep this free-form argument.")))
-        expect (AppCases::namedKind (Drive::node (before, "root"), "proof-library-inspection"), "")
-        after = loaded (before, Fixtures::idImp ())
+        before = Drive::started ()
+        expect (AppCases::namedKind (Drive::node (before, "root"), "proof-library-inspection"), "framed")
+        after = loaded (asked before, Fixtures::idImp ())
         root = Drive::node (after, "root")
         expect (AppCases::namedKind (root, "proof-library-inspection"), "framed")
         expect (Doc::text (Drive::findNode ("aside", root), "kind"), "")
-        closed = Drive::press (after, "root", "Close proof library")
-        expect (Doc::text (Drive::kindedIn ("aside", closed, "root"), "kind"), "aside")
-        expect (Doc::write (current closed), Doc::write (current after))
-        AppCases::kept (closed, "Keep this free-form argument.")
-        WorkspaceCases::withoutDrawing (Drive::stored closed)
-        reopened = Drive::press (closed, "root", "Notation")
-        expect (AppCases::namedKind (Drive::node (reopened, "root"), "proof-library-inspection"), "framed")
-        AppCases::agrees (Drive::stored reopened, Drive::stored before, ["text"])
-
-    export exampleAfterImport () =
-        imported = askLoaded (Fixtures::idImp ())
-        started = WorkflowCases::openExample imported
-        root = Drive::node (started, "root")
-        expect (AppCases::namedKind (root, "proof-library-inspection"), "")
-        expect (AppCases::namedKind (root, "example-context"), "framed")
-        AppCases::present (Doc::text (Drive::stored started, "text"), ["Theorem and_swap"])
-        readsSelection (started, "id_imp")
+        lessons = Drive::press (after, "root", "Lessons")
+        expect (AppCases::namedKind (Drive::node (lessons, "root"), "proof-library-inspection"), "")
+        back = Drive::press (lessons, "root", "Library")
+        expect (AppCases::namedKind (Drive::node (back, "root"), "proof-library-inspection"), "framed")
+        expect (Doc::write (current back), Doc::write (current after))
+        readsSelection (back, "id_imp")
+        AppCases::withoutDrawing (Drive::stored back)
 
     customEquality () = forEachList ([counterfeitEquality (), counterfeitEqualityRenamed ()], \source => customRelation (source, "claimed_equality", "Eq", "="))
 
@@ -209,7 +199,6 @@ module ImportedFlowCases
         refusedWith (missing, "Import refused")
         axiom = picked (after, "unusedAssumption")
         refusedWith (axiom, "not a theorem")
-        AppCases::kept (axiom, "")
 
     export currentSource () =
         after = expanded (askLoaded (Fixtures::idImp ()))
@@ -269,7 +258,8 @@ module ImportedFlowCases
             shows (lost, ["Import refused", "The imported source is unavailable. Open the proof export again."])
 
     bundled () =
-        requested = Drive::requested (Drive::started (), "root", "Notation", "proof:catalogue")
+        requested = Drive::started ()
+        AppCases::present (Drive::tickets requested, ["proof:catalogue"])
         manifest = "{\"libraries\":[{\"title\":\"Identity fixture\",\"path\":\"proof-libraries/identity.ndjson\"}]}"
         listed = readCompleted (requested, "proof:catalogue", "proof-libraries.json", manifest)
         AppCases::holds (Drive::findLabel ("Identity fixture", actions listed), ["event"])
@@ -281,7 +271,7 @@ module ImportedFlowCases
         bundledRefused selected
         bundledRaces selected
         catalogueRefusals requested
-        restoredCatalogue ()
+        forgedCatalogue ()
 
     bundledLarge selected = match repeat (" ", 1048577)
         Error message => expect (message, "allocated large valid JSON fixture")
@@ -338,13 +328,14 @@ module ImportedFlowCases
         absent = Drive::completedHeld (requested, "proof:catalogue", "{}", JsonObject [])
         told (absent, ["library read result is invalid"])
 
-    restoredCatalogue () =
+    forgedCatalogue () =
         path = "proof-libraries/../../secrets.ndjson"
         entry = JsonObject [Doc::str ("title", "Forged restored entry"), Doc::str ("path", path)]
         catalogue = Doc::write (JsonObject [JsonMember "libraries" (JsonArray [entry])])
-        saved = JsonObject [JsonMember "imports" (JsonObject [Doc::str ("catalogue", catalogue)])]
-        restored = Benches::restore saved
-        asked = BundledLibraries::open (restored, path)
+        fresh = Benches::fresh ()
+        imports = fresh.imports
+        forged = fresh(imports = imports(libraryCatalogue = catalogue))
+        asked = BundledLibraries::open (forged, path)
         expect (length asked.requests, 0)
         expect (isEmpty asked.stepStore.imports.exportProblem, false)
 

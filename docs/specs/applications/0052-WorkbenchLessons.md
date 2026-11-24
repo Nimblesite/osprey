@@ -85,6 +85,8 @@ Blocks:
 
 Every challenge has an `id` (unique within its lesson), a `prompt`, zero or more `hints`, and one `kind`. Three kinds, all judged by Lean and the kernel.
 
+**Today only `state` ships.** The English-sentence `prove` and `judge` challenges were deleted with every other English proof reader ([WORKBENCH-NO-ENGLISH](0051-ProofWorkbench.md#no-english-source-workbench-no-english)); the reader refuses both kinds, and the Lean forms below are delivery targets. **Show solution** and **Open in the workbench** are not offered until they return in that form.
+
 ### Prove [LESSONS-PROVE]
 
 ```json

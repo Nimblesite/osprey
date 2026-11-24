@@ -115,7 +115,7 @@ module Goals
 
     holds (formula, target) = Formulas::equivalent (formula, target)
 
-    // `Assume h : A` on `A → B` adds `h : A`; on `∀ x ...` it introduces `x`, which must be the name.
+    // `Assume h A` on `A → B` adds `h : A`; on `∀ x ...` it introduces `x`, which must be the name.
     // A negated head is read as the implication it is defined to be; the goal itself is never rewritten.
     assumed (progress, goal, rest, hypothesis) = match Formulas::expandNot goal.target
         Imp premise conclusion => introduced (progress, goal, rest, { hypothesis = hypothesis, premise = premise, conclusion = conclusion })
@@ -142,7 +142,7 @@ module Goals
 
     with (hypotheses, name, formula) = listAppend (hypotheses, Hypothesis(name = name, formula = formula))
 
-    // `By cases on h, as a and b.`: a conjunction becomes two hypotheses, a disjunction two goals.
+    // `Cases h [a, b]`: a conjunction becomes two hypotheses, a disjunction two goals.
     split (progress, goal, rest, parts) = match lookup (goal, parts.name)
         Absent => unknown (goal, parts.name)
         Held formula => match length parts.names == 2

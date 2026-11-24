@@ -29,16 +29,6 @@ final class WorkbenchLayoutTests: RenderingTestCase, DrivesWorkbench {
         XCTAssertNil(bench.store.failure)
     }
 
-    func testRealAppKeepsPastedProofWhenSelectionAndTextNotificationsArriveTogether() throws {
-        let bench = try pasted("Theorem self. For all p, p → p.\nProof.\nAssume h : p.\nFrom h.\n")
-        // A whole theorem leaves the editor for the checked paper: every pasted line is typeset there.
-        let words = bench.words("document")
-        for line in ["self", "For all propositions p.", "p → p", "Proof.", "Assume h : p.", "From h.", "Checked by the Osprey kernel"] {
-            XCTAssertTrue(words.contains(line), "Actual App dispatch must retain every pasted line: \(line) in \(words)")
-        }
-        XCTAssertTrue(bench.store.diagnostics.isEmpty, bench.store.diagnostics.joined(separator: "; "))
-    }
-
     func testRealAppKeepsSubsequentTypingInTheCurrentFormulaEditor() throws {
         try exerciseTyping("p → q\n", append: true)
     }
@@ -58,45 +48,23 @@ final class WorkbenchLayoutTests: RenderingTestCase, DrivesWorkbench {
         try assertReachable(result, theme: bench.store.theme)
     }
 
-    func testOpeningAnExampleRevealsTheProofInsteadOfTheImportedLibrary() throws {
+    func testLessonsAndBackKeepTheImportedLibrary() throws {
         let bench = try Workbench.importedWordSeed()
-        XCTAssertNotNil(bench.framed("proof-library-inspection", in: "root"))
-        try bench.press("Examples")
-        try bench.press("Open conjunction example")
-        XCTAssertNotNil(bench.framed("example-context", in: "root"))
-        XCTAssertNil(bench.framed("proof-library-inspection", in: "root"), "Opening the example must reveal its proof instead of leaving the imported-library surface over it")
-    }
-
-    func testActualApplicationKeepsTheGuidedCaptionBesideItsReturnAction() throws {
-        let bench = Workbench()
-        try bench.press("Examples")
-        try bench.press("Open conjunction example")
-        let context = try XCTUnwrap(bench.framed("example-context", in: "root"))
-        XCTAssertGreaterThan(try captionInk(context, theme: bench.store.theme, columns: 195..<400), 100,
-                             "The real Osprey context must keep Guided example beside Return, rather than at the window's far edge")
+        try bench.press("Lessons")
+        XCTAssertTrue(bench.settle { bench.framed("proof-library-inspection", in: "root") == nil }, "Lessons must replace the library surface")
+        try bench.press("Library")
+        XCTAssertTrue(bench.settle { bench.framed("proof-library-inspection", in: "root") != nil }, "Library must bring the imported library back")
+        XCTAssertNotNil(bench.framed("proof-library-result"), "The imported selection must survive the round trip")
     }
 }
 
-// MARK: typing into the real document editor
+// MARK: typing into the real lesson formula editor
 
-/// A suite that drives the real Workbench's document editor and draws its frames.
+/// A suite that drives the real Workbench's lesson formula editor and draws its frames.
 @MainActor
 protocol DrivesWorkbench {}
 
 extension DrivesWorkbench {
-    /// The Workbench after `source` was pasted into its empty editor with one newline typed after it.
-    func pasted(_ source: String) throws -> Workbench {
-        let bench = Workbench()
-        let (host, window) = try bench.document()
-        defer { window.close() }
-        let text = try bench.editor(host)
-        XCTAssertTrue(window.makeFirstResponder(text))
-        text.insertText(String(source.dropLast()), replacementRange: NSRange(location: 0, length: 0))
-        text.insertText("\n", replacementRange: text.selectedRange())
-        bench.settle { bench.find { $0.text("kind") == "editor" } == nil }
-        return bench
-    }
-
     func exerciseTyping(_ source: String, append: Bool) throws {
         let bench = Workbench()
         let (host, window) = try bench.document()
@@ -136,19 +104,6 @@ extension DrivesWorkbench {
                                    "The actual checked statement must expose horizontal inspection instead of painting beyond its pane")
         try TestResources.assertInspectableEnd(scroll)
     }
-
-    /// Ink in `columns` of the context strip drawn at the window's full width.
-    func captionInk(_ context: Tree, theme: Theme?, columns: Range<Int>) throws -> Int {
-        let view = NodeView(node: context, drawing: Fixtures.drawing("root"))
-            .environment(\.ospreyTheme, ThemeResolver(theme: theme)).frame(width: 1488, height: 45).background(Color.white)
-        let bitmap = try TestResources.rendered(view)
-        return (0..<45).reduce(0) { count, y in
-            count + columns.filter { x in
-                guard let colour = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) else { return false }
-                return colour.alphaComponent > 0.9 && max(colour.redComponent, colour.greenComponent, colour.blueComponent) < 0.7
-            }.count
-        }
-    }
 }
 
 /// One running Workbench: its regions, and the controls a person would press.
@@ -168,11 +123,10 @@ final class Workbench {
 
     deinit { try? FileManager.default.removeItem(at: folder) }
 
-    /// The Workbench after Notation opened the pinned word-seed proof library.
+    /// The Workbench after its library opened the pinned word-seed proof library.
     static func importedWordSeed() throws -> Workbench {
         let library = Repo.src.appendingPathComponent("osprey/examples/proof/openai/word-seed.ndjson").path
         let bench = Workbench(chosen: library)
-        try bench.press("Notation")
         try bench.press("Open proof library")
         XCTAssertTrue(bench.settle { bench.framed("proof-library-inspection", in: "root") != nil && bench.store.cell("library") != nil },
                       "The chosen library must load: \(bench.store.diagnostics)")
@@ -207,7 +161,7 @@ final class Workbench {
     /// One lesson-progress import: the store read's text in its slice, then its completion.
     func progress(_ revision: Int) throws {
         try autoreleasepool {
-            let prefix = "{\"completed\":[\"what-is-a-proof/write-identity\",\"what-is-a-proof/prove-identity\",\"what-is-a-proof/judge-identity\"],\"padding\":\"\(revision) é→"
+            let prefix = "{\"completed\":[\"what-is-a-proof/write-identity\"],\"padding\":\"\(revision) é→"
             SliceStore.shared.write("lessons:progress", prefix + String(repeating: "x", count: 8192 - prefix.utf8.count - 2) + "\"}")
             let before = store.diagnostics.count
             store.shared.send(Touch.completed("lessons:progress", result: ""))
@@ -219,9 +173,13 @@ final class Workbench {
         Workbench.labels(try XCTUnwrap(store.cell("catalogue")).node, kind: "badge").contains("Complete")
     }
 
-    /// The document region alone in a keyboard window, as its pane draws it.
+    /// The first lesson's formula challenge alone in a keyboard window, as its pane draws it.
     func document() throws -> (NSHostingView<some View>, NSWindow) {
-        let cell = try XCTUnwrap(store.cell("document"))
+        let key = "challenge:what-is-a-proof/write-identity"
+        try press("Lessons")
+        try press("Open")
+        XCTAssertTrue(settle { self.store.cell(key) != nil }, "The first lesson's formula challenge must be drawn")
+        let cell = try XCTUnwrap(store.cell(key))
         let view = CellView(cell: cell, store: store).environmentObject(store).environment(\.ospreyTheme, ThemeResolver(theme: store.theme))
         return TestResources.hosted(view, width: 900, height: 800, keyboard: true)
     }
@@ -248,14 +206,6 @@ final class Workbench {
         let deadline = Date(timeIntervalSinceNow: 3)
         repeat { TestResources.settle(0.02) } while !done() && Date() < deadline
         return done()
-    }
-
-    /// Every word `region` draws, joined as it reads.
-    func words(_ region: String) -> String {
-        func spoken(_ node: Tree) -> [String] {
-            [node.text("text"), node.text("value"), node.text("label"), node.text("spoken")].filter { !$0.isEmpty } + Workbench.children(node).flatMap(spoken)
-        }
-        return store.cell(region).map { spoken($0.node).joined() } ?? ""
     }
 
     static func labels(_ node: Tree, kind: String = "button") -> [String] {

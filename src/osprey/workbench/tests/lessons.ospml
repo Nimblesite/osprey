@@ -12,20 +12,12 @@ import ui::Doc
 
 (** The lesson reader, judge and tutor cases of [LESSONS-VERIFICATION]. *)
 module LessonCases
-    swapTask () = workbench::Proving(provedHeading = AppCases::swapHeading (), provedGiven = ["Assume h : p ∧ q."], provedSolution = ["By cases on h, as hp and hq.", "It suffices to show q and p.", "From hq.", "From hp."])
-
     marked mark = match mark
         workbench::Correct said => "right: " + said
-        workbench::Incorrect at said => "wrong ${at}: " + said
+        workbench::Incorrect said => "wrong: " + said
         workbench::Unfinished said => "unfinished: " + said
 
     head mark = substring (marked mark, 0, 10) ?: ""
-
-    (** [LESSONS-PROVE]: a complete answer is right; the swapped answer is wrong at its third line with the kernel's reason; an unknown sentence is unfinished. *)
-    export prove () =
-        expect (marked (Judge::prove (swapTask (), "By cases on h, as hp and hq.\nIt suffices to show q and p.\nFrom hq.\nFrom hp.")), "right: Right. The Osprey kernel checked it.")
-        expect (head (Judge::prove (swapTask (), "By cases on h, as hp and hq.\nIt suffices to show q and p.\nFrom hp.\nFrom hq.")), "wrong 2: T")
-        expect (head (Judge::prove (swapTask (), "Wave hands.")), "unfinished")
 
     stateTask expected = workbench::Stating(statedVariables = ["p", "q"], statedExpected = expected)
 
@@ -33,8 +25,10 @@ module LessonCases
     export stated () =
         expect (head (Judge::written (stateTask "p → q", "p → q")), "right: Rig")
         expect (head (Judge::written (stateTask "p → ⊥", "¬p")), "right: Rig")
-        expect (head (Judge::written (stateTask "p ∧ q", "q ∧ p")), "wrong -1: ")
-        expect (marked (Judge::written (stateTask "p ∧ q", "p ∧ r")), "wrong -1: `r` is not one of p, q")
+        expect (head (Judge::written (stateTask "p ∧ q", "q ∧ p")), "wrong: The")
+        expect (marked (Judge::written (stateTask "p ∧ q", "p ∧ r")), "wrong: `r` is not one of p, q")
+        expect (head (Judge::written (stateTask "p ∧ q", "p and q")), "unfinished")
+        expect (head (Judge::written (stateTask "p → q", "if p then q")), "unfinished")
         expect (head (Judge::written (stateTask "p ∧ q", "p ∧")), "unfinished")
         keypadTyping ()
         keypadState ()
@@ -59,8 +53,6 @@ module LessonCases
     caretOf (tutor, key) = (tried (tutor, key)).attemptCursor
 
     triesOf (tutor, key) = (tried (tutor, key)).attemptCount
-
-    revealedOf (tutor, key) = (tried (tutor, key)).attemptRevealed
 
     (** The actual editor of one challenge region, as the app drew it. *)
     editorOf (envelope, region) = Drive::findNode ("editor", Drive::node (envelope, region))
@@ -100,22 +92,19 @@ module LessonCases
         expect (answerOf (both, "l/three"), "q")
         expect (startsWith (answerOf (both, "l/two"), "p → q"), true)
 
-    (** [LESSONS-STATE]: the caret survives a saved session, and an attempt saved before carets decode with the caret at its end. *)
+    (** [LESSONS-STATE]: the session carries the caret, answer and focus of each attempt, and no ruling or revealed solution. *)
     keypadPersistence () =
         moved = Tutors::moved (Tutors::answer (Tutors::empty (), "l/two", "pq"), "l/two", 1)
-        restored = Tries::restore (Doc::parse (Doc::write (Tries::save moved)))
-        expect (caretOf (restored, "l/two"), 1)
-        expect (answerOf (restored, "l/two"), "pq")
-        expect (Tutors::focusOf (tried (restored, "l/two")), 0)
-        legacy = Tries::restore (Doc::parse "{\"tries\":[{\"key\":\"l/two\",\"answer\":\"p → q\",\"ruling\":\"\",\"count\":0,\"hints\":0,\"mark\":null,\"revealed\":false}],\"completed\":[]}")
-        expect (Tutors::cursorOf (tried (legacy, "l/two")), length "p → q")
-        expect (Tutors::focusOf (tried (legacy, "l/two")), 0)
+        saved = Tries::attemptJson (tried (moved, "l/two"))
+        expect (Doc::number (saved, "cursor"), 1)
+        expect (Doc::text (saved, "answer"), "pq")
+        expect (Doc::number (saved, "focusEpoch"), 0)
+        AppCases::lacks (saved, ["ruling", "revealed"])
+        expect (Doc::number (Tries::attemptJson (tried (Tutors::moved (moved, "l/two", 999), "l/two")), "cursor"), 2)
 
     keypadEncoding () =
-        task = workbench::StateTask (stateTask "p → q")
-        keys = FormulaKeys::buttons (task, "two")
+        keys = FormulaKeys::buttons (stateTask "p → q", "two")
         expect (join (mapList (keys, buttonLabel), "|"), "p|q|→ implies|¬ not|∧ and|∨ or|↔ both ways|(|)")
-        expect (length (FormulaKeys::buttons (workbench::ProveTask (swapTask ()), "one")), 0)
 
     buttonLabel node = match node
         ui::Button label _ _ _ _ => label
@@ -134,12 +123,12 @@ module LessonCases
         keypadEncoding ()
         next = keypadInsert ()
         saved = Drive::stored next
-        tutor = Tries::restore (Doc::field (saved, "tutor"))
-        work = Tutors::attempt (tutor, "and-swap/state-swapped-goal")
-        expect (work.attemptAnswer, "p→q")
-        expect (work.attemptCursor, length "p→")
-        expect (work.attemptCount, 0)
-        expect (isEmpty tutor.tutorCompleted, true)
+        tutor = Doc::field (saved, "tutor")
+        work = listGet (filterList (Doc::fieldItems (tutor, "tries"), \item => Doc::text (item, "key") == "and-swap/state-swapped-goal")) 0 ?: JsonNull
+        expect (Doc::text (work, "answer"), "p→q")
+        expect (Doc::number (work, "cursor"), length "p→")
+        expect (Doc::number (work, "count"), 0)
+        expect (isEmpty (Doc::texts (tutor, "completed")), true)
         expect (Doc::text (saved, "focused"), "state-swapped-goal")
         expect (Drive::keys next, "challenge:and-swap/state-swapped-goal")
         epochIs (next, "challenge:and-swap/state-swapped-goal", 1)
@@ -172,40 +161,10 @@ module LessonCases
             expect (Drive::draws (first, previousRegion, "p"), true)
             Drive::after (Drive::stale (Drive::shared next, first, previousRegion, "p"), \stale => FixtureFiles::ok (expect (Doc::write (Drive::stored stale), Doc::write (Drive::stored next)))))
 
-    judgeTask steps = workbench::Judging(judgedHeading = AppCases::swapHeading (), judgedSteps = listConcat (["Assume h : p ∧ q.", "By cases on h, as hp and hq.", "It suffices to show q and p."], steps))
-
-    (** The mark the judge gives `steps` when the learner says it checks or does not. *)
-    ruleOf (steps, agrees) = head (Judge::rule (judgeTask steps, agrees))
-
-    (** [LESSONS-JUDGE]: the learner is right exactly when their choice agrees with the kernel's verdict, decided at submission. *)
-    export judge () =
-        expect (ruleOf (["From hq.", "From hp."], true), "right: Rig")
-        expect (ruleOf (["From hq.", "From hp."], false), "wrong -1: ")
-        expect (ruleOf (["From hp.", "From hq."], false), "right: Rig")
-        expect (ruleOf (["From hp.", "From hq."], true), "wrong 3: N")
-        judgementAttempts ()
-
-    judgement () = workbench::Challenge(challengeId = "judge", challengePrompt = "Does it check?", challengeHints = ["Look at the first target."], challengeTask = workbench::JudgeTask (judgeTask ["From hp.", "From hq."]))
-
-    judgementAttempts () =
-        blank = Tutors::empty ()
-        expect (Tutors::ready (blank, "l/judge", judgement ()), false)
-        expect (length (Tutors::submit (blank, "l/judge", judgement ())).tutorTries, 0)
-        picked = Tutors::pick (blank, "l/judge", workbench::Fails)
-        expect (Tutors::ready (picked, "l/judge", judgement ()), true)
-        right = Tutors::submit (picked, "l/judge", judgement ())
-        expect (join (right.tutorCompleted, ","), "l/judge")
-        rightAgain = Tutors::submit (Tutors::answer (roundTrip right, "l/judge", ""), "l/judge", judgement ())
-        expect (Doc::text (Doc::field (Tries::attemptJson (Tutors::attempt (rightAgain, "l/judge")), "mark"), "kind"), "correct")
-        wrong = Tutors::submit (Tutors::pick (blank, "l/judge", workbench::Checks), "l/judge", judgement ())
-        expect (triesOf (roundTrip wrong, "l/judge"), 1)
-        expect (triesOf (Tutors::submit (roundTrip wrong, "l/judge", judgement ()), "l/judge"), 2)
-        expect (revealedOf (Tutors::reveal (wrong, "l/judge", judgement ()), "l/judge"), false)
-
-    challenge () = workbench::Challenge(challengeId = "swap", challengePrompt = "Prove it.", challengeHints = ["one", "two"], challengeTask = workbench::ProveTask (swapTask ()))
+    challenge () = workbench::Challenge(challengeId = "swap", challengePrompt = "Write the swapped conjunction.", challengeHints = ["one", "two"], challengeTask = workbench::StateTask (stateTask "q ∧ p"))
 
     wrongTwice () =
-        typed = Tutors::answer (Tutors::empty (), "l/swap", "From hp.")
+        typed = Tutors::answer (Tutors::empty (), "l/swap", "p ∧ q")
         Tutors::submit (Tutors::submit (typed, "l/swap", challenge ()), "l/swap", challenge ())
 
     (** [LESSONS-FEEDBACK]: each wrong submission counts an attempt and shows the next hint, never more hints than exist. *)
@@ -214,35 +173,30 @@ module LessonCases
         expect (item.attemptCount, 3)
         expect (item.attemptHints, 2)
 
-    (** [LESSONS-FEEDBACK]: the solution is offered after three wrong attempts, fills the answer, and counts only once submitted. *)
-    export reveal () =
-        early = Tutors::reveal (wrongTwice (), "l/swap", challenge ())
-        expect (revealedOf (early, "l/swap"), false)
-        shown = Tutors::reveal (Tutors::submit (wrongTwice (), "l/swap", challenge ()), "l/swap", challenge ())
-        expect (revealedOf (shown, "l/swap"), true)
-        expect (isEmpty shown.tutorCompleted, true)
-        expect (join ((Tutors::submit (shown, "l/swap", challenge ())).tutorCompleted, ","), "l/swap")
-
     markOf tutor = markKey (tutor, "l/swap")
 
     (** [LESSONS-FEEDBACK]: editing the answer after a right submission clears the mark, so the badge describes the text on screen. *)
     export clearing () =
-        right = Tutors::submit (Tutors::answer (Tutors::empty (), "l/swap", "By cases on h, as hp and hq.\nIt suffices to show q and p.\nFrom hq.\nFrom hp."), "l/swap", challenge ())
+        right = Tutors::submit (Tutors::answer (Tutors::empty (), "l/swap", "q ∧ p"), "l/swap", challenge ())
         expect (markOf right, "right: Rig")
-        expect (markOf (Tutors::answer (right, "l/swap", "From hq.")), "none")
-        expect (Tutors::ready (Tutors::empty (), "l/swap", challenge ()), false)
-        attemptPersistence right
+        expect (markOf (Tutors::answer (right, "l/swap", "q")), "none")
+        expect (Tutors::ready (Tutors::empty (), "l/swap"), false)
+        expect (Tutors::ready (Tutors::answer (Tutors::empty (), "l/swap", "   "), "l/swap"), false)
+        attemptMarks right
 
-    roundTrip tutor = Tries::restore (Doc::parse (Doc::write (Tries::save tutor)))
+    savedMark (tutor, key) = Doc::text (Doc::field (Tries::attemptJson (tried (tutor, key)), "mark"), "kind")
 
-    attemptPersistence right =
-        expect (markOf (roundTrip right), "right: Rig")
+    attemptMarks right =
+        expect (savedMark (right, "l/swap"), "correct")
         expect (length (Tutors::submit (right, "l/swap", challenge ())).tutorCompleted, 1)
-        unfinished = Tutors::submit (Tutors::answer (Tutors::empty (), "l/swap", "Wave hands."), "l/swap", challenge ())
+        unfinished = Tutors::submit (Tutors::answer (Tutors::empty (), "l/swap", "q and p"), "l/swap", challenge ())
         expect (markOf unfinished, "unfinished")
-        expect (markOf (roundTrip unfinished), "unfinished")
-        expect ((Tutors::attempt (roundTrip unfinished, "l/swap")).attemptCount, 0)
-        expect (isEmpty (roundTrip unfinished).tutorCompleted, true)
+        expect (savedMark (unfinished, "l/swap"), "unfinished")
+        expect ((Tutors::attempt (unfinished, "l/swap")).attemptCount, 0)
+        expect (isEmpty unfinished.tutorCompleted, true)
+        wrong = Tutors::submit (Tutors::answer (Tutors::empty (), "l/swap", "p ∧ q"), "l/swap", challenge ())
+        expect (savedMark (wrong, "l/swap"), "incorrect")
+        expect ((Tutors::attempt (wrong, "l/swap")).attemptCount, 1)
 
     (** [LESSONS-PROGRESS]: progress saves only the completed keys and restores them; unreadable text is no progress. *)
     export progress () =
@@ -254,6 +208,7 @@ module LessonCases
 
     shaped (format, slug, blocks) = "{\"format\":" + format + ",\"slug\":\"" + slug + "\",\"title\":\"Demo\",\"summary\":\"A demo.\",\"stage\":1,\"minutes\":3,\"after\":[],\"blocks\":[" + blocks + "]}"
 
+    // English proof blocks a lesson file may no longer hold ([WORKBENCH-NO-ENGLISH]).
     proveBlock () = "{\"kind\":\"challenge\",\"challenge\":{\"kind\":\"prove\",\"id\":\"one\",\"prompt\":\"Prove it.\",\"statement\":\"Theorem t. For all p, p → p.\",\"given\":[],\"solution\":[\"Assume h : p.\",\"From h.\"],\"hints\":[]}}"
 
     refusal source = match Lessons::read source
@@ -279,35 +234,36 @@ module LessonCases
         workbench::Clip _ => "video"
         workbench::Exercise _ => "challenge"
 
-    everyKind () = lesson ("{\"kind\":\"prose\",\"text\":\"Hello.\"},{\"kind\":\"formula\",\"formula\":\"p ∧ q\"},{\"kind\":\"math\",\"math\":{\"kind\":\"sym\",\"text\":\"u\"},\"spoken\":\"u\"},{\"kind\":\"image\",\"source\":\"media/demo/a.jpg\",\"alt\":\"A.\",\"width\":4,\"height\":3},{\"kind\":\"video\",\"source\":\"media/demo/f.mp4\",\"poster\":\"media/demo/p.jpg\",\"captions\":\"media/demo/f.en.vtt\",\"alt\":\"F.\",\"seconds\":9}," + proveBlock () + "," + stateBlock () + "," + judgeBlock () + "")
+    everyKind () = lesson ("{\"kind\":\"prose\",\"text\":\"Hello.\"},{\"kind\":\"formula\",\"formula\":\"p ∧ q\"},{\"kind\":\"math\",\"math\":{\"kind\":\"sym\",\"text\":\"u\"},\"spoken\":\"u\"},{\"kind\":\"image\",\"source\":\"media/demo/a.jpg\",\"alt\":\"A.\",\"width\":4,\"height\":3},{\"kind\":\"video\",\"source\":\"media/demo/f.mp4\",\"poster\":\"media/demo/p.jpg\",\"captions\":\"media/demo/f.en.vtt\",\"alt\":\"F.\",\"seconds\":9}," + stateBlock () + "")
 
     stateBlock () = "{\"kind\":\"challenge\",\"challenge\":{\"kind\":\"state\",\"id\":\"two\",\"prompt\":\"Write it.\",\"variables\":[\"p\"],\"expected\":\"p → p\",\"hints\":[]}}"
 
+    // English proof blocks a lesson file may no longer hold ([WORKBENCH-NO-ENGLISH]).
     judgeBlock () = "{\"kind\":\"challenge\",\"challenge\":{\"kind\":\"judge\",\"id\":\"three\",\"prompt\":\"Does it check?\",\"statement\":\"Theorem t. For all p, p → p.\",\"steps\":[\"Assume h : p.\",\"From h.\"],\"hints\":[]}}"
 
-    (** [LESSONS-FORMAT]: every block kind and every challenge kind reads, in order. *)
+    (** [LESSONS-FORMAT]: every block kind and the state challenge read, in order. *)
     export everyBlock () = match Lessons::read (everyKind ())
         Error problem => expect (problem, "read")
-        Success found => expect (kinds found, "prose,formula,math,image,video,challenge,challenge,challenge")
+        Success found => expect (kinds found, "prose,formula,math,image,video,challenge")
 
     (** [LESSONS-FORMAT] [LESSONS-FILES]: each broken form is refused with its JSON path and the rule it breaks. *)
     export refusals () =
         expect (refusal "{", "the lesson is not JSON")
-        expect (refusal (shaped ("2", "demo", proveBlock ())), "this lesson needs a newer workbench (format must be 1)")
-        expect (refusal (shaped ("1", "Demo Slug", proveBlock ())), "slug must be lowercase letters, digits and hyphens")
-        rejects ("{\"kind\":\"poem\"}," + proveBlock (), "blocks[0].kind `poem` is not a block kind")
-        rejects ("{\"kind\":\"formula\",\"formula\":\"p ∧\"}," + proveBlock (), "blocks[0].formula does not read: expected a proposition after `∧` at column 4")
-        rejects ("{\"kind\":\"image\",\"source\":\"media/demo/../../x.jpg\",\"alt\":\"A.\",\"width\":4,\"height\":3}," + proveBlock (), "blocks[0].source must be a path under media/demo/ with no `..`")
-        rejects ("{\"kind\":\"image\",\"source\":\"/etc/x.jpg\",\"alt\":\"A.\",\"width\":4,\"height\":3}," + proveBlock (), "blocks[0].source must be a path under media/demo/ with no `..`")
+        expect (refusal (shaped ("2", "demo", stateBlock ())), "this lesson needs a newer workbench (format must be 1)")
+        expect (refusal (shaped ("1", "Demo Slug", stateBlock ())), "slug must be lowercase letters, digits and hyphens")
+        rejects ("{\"kind\":\"poem\"}," + stateBlock (), "blocks[0].kind `poem` is not a block kind")
+        rejects ("{\"kind\":\"formula\",\"formula\":\"p ∧\"}," + stateBlock (), "blocks[0].formula does not read: expected a proposition after `∧` at column 4")
+        rejects ("{\"kind\":\"image\",\"source\":\"media/demo/../../x.jpg\",\"alt\":\"A.\",\"width\":4,\"height\":3}," + stateBlock (), "blocks[0].source must be a path under media/demo/ with no `..`")
+        rejects ("{\"kind\":\"image\",\"source\":\"/etc/x.jpg\",\"alt\":\"A.\",\"width\":4,\"height\":3}," + stateBlock (), "blocks[0].source must be a path under media/demo/ with no `..`")
         rejects ("{\"kind\":\"prose\",\"text\":\"Only words.\"}", "a lesson needs at least one challenge")
-        rejects (proveBlock () + "," + proveBlock (), "the challenge id `one` is used twice")
+        rejects (stateBlock () + "," + stateBlock (), "the challenge id `two` is used twice")
         headerRefusals ()
         blockRefusals ()
         taskRefusals ()
         catalogueRefusals ()
 
     headerRefusals () =
-        source = lesson (proveBlock ())
+        source = lesson (stateBlock ())
         rejectsEdit (source, "\"title\":\"Demo\"", "\"title\":\"\"", "lesson.title must be non-empty text")
         rejectsEdit (source, "\"summary\":\"A demo.\"", "\"summary\":\"\"", "lesson.summary must be non-empty text")
         rejectsEdit (source, "\"stage\":1", "\"stage\":0", "stage must be 1, 2 or 3")
@@ -316,19 +272,19 @@ module LessonCases
 
     blockRefusals () =
         rejects ("", "blocks must not be empty")
-        rejects ("{\"kind\":\"prose\",\"text\":\"\"}," + proveBlock (), "blocks[0].text must be non-empty text")
-        expect (startsWith (refusal (lesson ("{\"kind\":\"math\",\"math\":{\"kind\":\"unknown\"},\"spoken\":\"u\"}," + proveBlock ())), "blocks[0].math: "), true)
-        rejects ("{\"kind\":\"math\",\"math\":{\"kind\":\"sym\",\"text\":\"u\"}}," + proveBlock (), "blocks[0].spoken must be non-empty text")
+        rejects ("{\"kind\":\"prose\",\"text\":\"\"}," + stateBlock (), "blocks[0].text must be non-empty text")
+        expect (startsWith (refusal (lesson ("{\"kind\":\"math\",\"math\":{\"kind\":\"unknown\"},\"spoken\":\"u\"}," + stateBlock ())), "blocks[0].math: "), true)
+        rejects ("{\"kind\":\"math\",\"math\":{\"kind\":\"sym\",\"text\":\"u\"}}," + stateBlock (), "blocks[0].spoken must be non-empty text")
         rejectsEdit (everyKind (), "\"seconds\":9", "\"seconds\":0", "blocks[4].seconds must be a positive whole number")
         rejectsEdit (everyKind (), "\"width\":4", "\"width\":0", "blocks[3].width must be a positive whole number")
 
     taskRefusals () =
-        rejectsBlockEdit (proveBlock (), "\"kind\":\"prove\"", "\"kind\":\"unknown\"", "blocks[0].challenge.kind `unknown` is not a challenge kind")
-        rejectsBlockEdit (proveBlock (), "\"id\":\"one\"", "\"id\":\"Bad id\"", "blocks[0].challenge.id must be lowercase letters, digits and hyphens")
-        rejectsBlockEdit (proveBlock (), "\"statement\":\"Theorem t. For all p, p → p.\"", "\"statement\":\"\"", "blocks[0].challenge.statement must be non-empty text")
+        rejectsBlockEdit (stateBlock (), "\"kind\":\"state\"", "\"kind\":\"unknown\"", "blocks[0].challenge.kind `unknown` is not a challenge kind")
+        rejectsBlockEdit (stateBlock (), "\"id\":\"two\"", "\"id\":\"Bad id\"", "blocks[0].challenge.id must be lowercase letters, digits and hyphens")
         rejectsBlockEdit (stateBlock (), "\"variables\":[\"p\"]", "\"variables\":[]", "blocks[0].challenge.variables must name at least one proposition")
         rejectsBlockEdit (stateBlock (), "\"expected\":\"p → p\"", "\"expected\":\"\"", "blocks[0].challenge.expected must be non-empty text")
-        rejectsBlockEdit (judgeBlock (), "\"steps\":[\"Assume h : p.\",\"From h.\"]", "\"steps\":[]", "blocks[0].challenge.steps must list the proof to judge")
+        rejects (proveBlock (), "blocks[0].challenge.kind `prove` is not a challenge kind")
+        rejects (judgeBlock (), "blocks[0].challenge.kind `judge` is not a challenge kind")
 
     catalogueResult source = match Catalogues::read source
         Error problem => problem

@@ -178,27 +178,6 @@
     {
       "kind": "challenge",
       "challenge": {
-        "kind": "prove",
-        "id": "prove-remaining-outcome",
-        "prompt": "Prove that if one of the two outcomes holds, and blowup leads to the impossible, then smooth holds.",
-        "statement": "Theorem remaining_outcome. For all smooth blowup, (smooth ∨ blowup) → (blowup → ⊥) → smooth.",
-        "given": [],
-        "solution": [
-          "Assume outcomes : smooth ∨ blowup.",
-          "Assume noBlowup : blowup → ⊥.",
-          "By cases on outcomes, as isSmooth and isBlowup.",
-          "From isSmooth.",
-          "Contradiction from isBlowup and noBlowup."
-        ],
-        "hints": [
-          "Assume both premises, then split the disjunction into two cases.",
-          "Use isSmooth in the first case and the contradiction in the blowup case."
-        ]
-      }
-    },
-    {
-      "kind": "challenge",
-      "challenge": {
         "kind": "state",
         "id": "state-outcomes-exclusive",
         "prompt": "Write that smooth and blowup cannot both hold. Negate the conjunction, with smooth on the left and blowup on the right.",
@@ -210,22 +189,6 @@
         "hints": [
           "Form smooth ∧ blowup inside parentheses.",
           "Negate the whole parenthesised conjunction."
-        ]
-      }
-    },
-    {
-      "kind": "challenge",
-      "challenge": {
-        "kind": "judge",
-        "id": "judge-unproved-smoothness",
-        "prompt": "This one-line proof asserts smooth without any hypothesis. Decide whether the kernel accepts it.",
-        "statement": "Theorem clay. For all smooth, smooth.",
-        "steps": [
-          "From smooth."
-        ],
-        "hints": [
-          "Look for a hypothesis named smooth in the proof.",
-          "For all smooth declares a proposition; it does not supply evidence that smooth holds."
         ]
       }
     },

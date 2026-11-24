@@ -54,7 +54,7 @@ module Elaborate
         Apply name => applied (goal, steps, at, name)
         Absurd name other => absurd (goal, at, name, other)
 
-    // `Assume h : A`: a λ over `A` whose body proves the conclusion; on `∀ p ...` a λ over the next bound proposition.
+    // `Assume h A`: a λ over `A` whose body proves the conclusion; on `∀ p ...` a λ over the next bound proposition.
     // A negated head is read as the implication it is defined to be.
     assume (goal, steps, at, step) = match Formulas::expandNot goal.target
         Imp _ conclusion => wrap (prove (Goal(hypotheses = listAppend (goal.hypotheses, Hypothesis(name = step.name, formula = step.formula)), target = conclusion), steps, satAdd at 1), \term => NLam step.name (of step.formula) term)

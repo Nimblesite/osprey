@@ -237,13 +237,7 @@ module Drive
     export chooseIn (case, held, label, words) = step (case(caseHeld = held), \d => uitest::Drive::choose (d, label, words))
 
     // The first component of a shape in one region's tree, as the typed action it delivers; a missing region or tree rests on the same default.
-    rowsBind (case, key) = at (case, key, \found => rowsIn found.snapshotValue ?: workbench::SelectStep, workbench::SelectStep)
-
-    editorPlace (case, key) = at (case, key, \found => editorIn found.snapshotValue ?: workbench::Place, workbench::Place)
-
-    rowsIn node = match node
-        ui::Rows _ _ bind => Success(value = bind)
-        _ => searchChildren (node, rowsIn)
+    editorPlace (case, key) = at (case, key, \found => editorIn found.snapshotValue ?: workbench::FormulaPlace "", workbench::FormulaPlace "")
 
     editorIn : ui::Node<workbench::Act> -> Result<workbench::Act, string>
     editorIn node = match node
@@ -272,9 +266,6 @@ module Drive
         ui::Rows entries _ _ => mapList (entries, \entry => entry.cell)
         ui::Disclosure _ _ _ items => items
         _ => []
-
-    (** Row `key` chosen on the first rows control in `region`'s tree. *)
-    export chosen (case, region, key) = exported (case, ui::Chose(chooser = rowsBind (case, region), chosen = key))
 
     (** The caret of the first editor in `region`'s tree placed at `offset`. *)
     export placed (case, region, offset) = exported (case, ui::Placed(placer = editorPlace (case, region), placed = offset))

@@ -24,25 +24,6 @@
     {
       "kind": "challenge",
       "challenge": {
-        "kind": "prove",
-        "id": "prove-no-contradiction",
-        "prompt": "Prove that p and its negation lead to falsehood.",
-        "statement": "Theorem no_contradiction. For all p, p → ¬p → ⊥.",
-        "given": [],
-        "solution": [
-          "Assume hp : p.",
-          "Assume hn : ¬p.",
-          "Contradiction from hp and hn."
-        ],
-        "hints": [
-          "Assume p, then assume its negation.",
-          "Name hp first in the Contradiction step."
-        ]
-      }
-    },
-    {
-      "kind": "challenge",
-      "challenge": {
         "kind": "state",
         "id": "state-not-both",
         "prompt": "Write that p and its negation cannot both hold. Negate the whole conjunction.",
@@ -53,24 +34,6 @@
         "hints": [
           "Write p ∧ ¬p inside parentheses.",
           "Place ¬ before the parentheses."
-        ]
-      }
-    },
-    {
-      "kind": "challenge",
-      "challenge": {
-        "kind": "judge",
-        "id": "judge-contradiction-closes",
-        "prompt": "Here the target is q, which is unrelated to p. Decide whether contradictory hypotheses still close the proof.",
-        "statement": "Theorem anything_follows. For all p q, p → ¬p → q.",
-        "steps": [
-          "Assume hp : p.",
-          "Assume hn : ¬p.",
-          "Contradiction from hp and hn."
-        ],
-        "hints": [
-          "hp proves p and hn proves its negation.",
-          "A contradiction closes the current target, whatever that target is."
         ]
       }
     }

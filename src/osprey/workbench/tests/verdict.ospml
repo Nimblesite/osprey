@@ -1,18 +1,24 @@
-// [WORKBENCH-VERDICT] cases: the kernel's verdict on real documents, the
-// agreement between the goal engine and the kernel, and the unchecked holes.
+// [WORKBENCH-VERDICT] cases: the kernel's verdict on statements and steps built
+// as values from mathematical notation ([WORKBENCH-NO-ENGLISH]), the agreement
+// between the goal engine and the kernel, and the unchecked holes.
 namespace workbenchtests
 
+import workbench::Formulas
 
 (** The kernel-verdict cases of [WORKBENCH-VERIFICATION]. *)
 module VerdictCases
-    declaration text = StatementCases::sole (workbench::Statements::document text)
+    // A fixture formula in notation; a typo reads as an unbound atom, so its row can never check.
+    math text = match Formulas::read text
+        workbench::Read formula => formula
+        workbench::Faulted _ => workbench::Var ("unreadable " + text)
 
-    steps declaration = mapList (workbench::Steps::sentences declaration.proof, \sentence => workbench::Steps::read sentence)
+    claim (variables, text) = workbench::Statement(name = "t", named = true, variables = variables, claim = math text)
 
-    (** The verdict of the first declaration of a document. *)
-    judged text =
-        found = declaration text
-        workbench::Verdicts::decide (found.statement, steps found)
+    assume (name, text) = workbench::Assume name (math text)
+
+    row (name, statement, steps) = { name = name, statement = statement, steps = steps }
+
+    judged item = workbench::Verdicts::decide (item.statement, item.steps)
 
     shown verdict = match verdict
         workbench::Checked => "checked"
@@ -34,70 +40,71 @@ module VerdictCases
             workbench::Refused _ => false
         expect (admitted, true)
 
-    andSwapText = "Theorem and_swap. For all p q, p ∧ q → q ∧ p.\nProof.\n  Assume h : p ∧ q.\n  By cases on h, as hp and hq.\n  It suffices to show q and p.\n  From hq.\n  From hp."
+    swap (last, final) = row ("and-swap", claim (["p", "q"], "p ∧ q → q ∧ p"), [assume ("h", "p ∧ q"), workbench::Cases "h" ["hp", "hq"], workbench::Split, workbench::Exact last, workbench::Exact final])
 
-    (** [WORKBENCH-VERDICT]: the spec's and_swap document is checked by the kernel. *)
-    export andSwap () =
-        expect (shown (judged andSwapText), "checked")
-
-    swappedText = "Theorem and_swap. For all p q, p ∧ q → q ∧ p.\nProof.\n  Assume h : p ∧ q.\n  By cases on h, as hp and hq.\n  It suffices to show q and p.\n  From hp.\n  From hq."
+    (** [WORKBENCH-VERDICT]: the spec's and_swap proof is checked by the kernel. *)
+    export andSwap () = expect (shown (judged (swap ("hq", "hp"))), "checked")
 
     (** [WORKBENCH-VERDICT]: swapping the last two steps is rejected at the step the goal engine refuses, with the kernel's mismatch. *)
     export swapped () =
-        verdict = judged swappedText
+        verdict = judged (swap ("hp", "hq"))
         expect (refusalIndex verdict, 3)
         expect (startsWith (refusalText verdict, "type mismatch"), true)
 
+    pq text = claim (["p", "q"], text)
+
+    single text = claim (["p"], text)
+
     // The goal table, one passing proof per row, plus the spec's and_swap.
     table () = [
-        { name = "and-swap", text = andSwapText },
-        { name = "assume-implication", text = "Theorem t. For all p, p → p.\nProof.\n  Assume h : p.\n  From h." },
-        { name = "assume-forall", text = "Theorem t. For all p, ∀ q, p → q → p.\nProof.\n  Assume q : true.\n  Assume h : p.\n  Assume k : q.\n  From h." },
-        { name = "cases-and", text = "Theorem t. For all p q, p ∧ q → p.\nProof.\n  Assume h : p ∧ q.\n  By cases on h, as a and b.\n  From a." },
-        { name = "cases-or", text = "Theorem t. For all p q, p ∨ q → q ∨ p.\nProof.\n  Assume h : p ∨ q.\n  By cases on h, as a and b.\n  Show the right side.\n  From a.\n  Show the left side.\n  From b." },
-        { name = "split-and", text = "Theorem t. For all p q, p → q → p ∧ q.\nProof.\n  Assume a : p.\n  Assume b : q.\n  It suffices to show p and q.\n  From a.\n  From b." },
-        { name = "split-iff", text = "Theorem t. For all p, p ↔ p.\nProof.\n  We show both.\n  Assume h : p.\n  From h.\n  Assume k : p.\n  From k." },
-        { name = "left", text = "Theorem t. For all p q, p → p ∨ q.\nProof.\n  Assume h : p.\n  Show the left side.\n  From h." },
-        { name = "right", text = "Theorem t. For all p q, q → p ∨ q.\nProof.\n  Assume h : q.\n  Show the right side.\n  From h." },
-        { name = "exact", text = "Theorem t. For all p q, p ∧ q → q.\nProof.\n  Assume h : p ∧ q.\n  By cases on h, as a and b.\n  By b." },
-        { name = "apply", text = "Theorem t. For all p q, (p → q) → p → q.\nProof.\n  Assume f : p → q.\n  Assume x : p.\n  Apply f.\n  From x." },
-        { name = "absurd", text = "Theorem t. For all p q, p → ¬p → q.\nProof.\n  Assume x : p.\n  Assume y : ¬p.\n  Contradiction from x and y." },
-        { name = "absurd-implication", text = "Theorem t. For all p q, p → (p → ⊥) → q.\nProof.\nAssume x : p.\nAssume f : p → ⊥.\nContradiction from x and f." },
-        { name = "apply-not-hypothesis", text = "Theorem t. For all p, p → ¬p → ⊥.\nProof.\nAssume x : p.\nAssume h : ¬p.\nApply h.\nBy x." },
-        { name = "apply-not-hypothesis-implication", text = "Theorem t. For all p, p → (p → ⊥) → ⊥.\nProof.\nAssume x : p.\nAssume f : p → ⊥.\nApply f.\nBy x." },
-        { name = "assume-not-target", text = "Theorem t. For all p, ¬p → ¬p.\nProof.\nAssume h : ¬p.\nAssume x : p.\nApply h.\nBy x." },
-        { name = "navier-remaining-outcome", text = "Theorem remaining_outcome. For all smooth blowup, (smooth ∨ blowup) → (blowup → ⊥) → smooth.\nProof.\nAssume outcomes : smooth ∨ blowup.\nAssume noBlowup : blowup → ⊥.\nBy cases on outcomes, as isSmooth and isBlowup.\nFrom isSmooth.\nContradiction from isBlowup and noBlowup." },
-        { name = "trailing-done", text = "Theorem t. For all p, p → p.\nProof.\n  Assume h : p.\n  From h.\n  Done." },
-        { name = "trailing-qed", text = "Theorem t. For all p, p → p.\nProof.\n  Assume h : p.\n  From h.\n  QED." },
+    swap ("hq", "hp"),
+    row ("assume-implication", single "p → p", [assume ("h", "p"), workbench::Exact "h"]),
+    row ("assume-forall", single "∀ q, p → q → p", [workbench::Assume "q" workbench::Top, assume ("h", "p"), assume ("k", "q"), workbench::Exact "h"]),
+    row ("cases-and", pq "p ∧ q → p", [assume ("h", "p ∧ q"), workbench::Cases "h" ["a", "b"], workbench::Exact "a"]),
+    row ("cases-or", pq "p ∨ q → q ∨ p", [assume ("h", "p ∨ q"), workbench::Cases "h" ["a", "b"], workbench::Right, workbench::Exact "a", workbench::Left, workbench::Exact "b"]),
+    row ("split-and", pq "p → q → p ∧ q", [assume ("a", "p"), assume ("b", "q"), workbench::Split, workbench::Exact "a", workbench::Exact "b"]),
+    row ("split-iff", single "p ↔ p", [workbench::Split, assume ("h", "p"), workbench::Exact "h", assume ("k", "p"), workbench::Exact "k"]),
+    row ("left", pq "p → p ∨ q", [assume ("h", "p"), workbench::Left, workbench::Exact "h"]),
+    row ("right", pq "q → p ∨ q", [assume ("h", "q"), workbench::Right, workbench::Exact "h"]),
+    row ("exact", pq "p ∧ q → q", [assume ("h", "p ∧ q"), workbench::Cases "h" ["a", "b"], workbench::Exact "b"]),
+    row ("apply", pq "(p → q) → p → q", [assume ("f", "p → q"), assume ("x", "p"), workbench::Apply "f", workbench::Exact "x"]),
+    row ("absurd", pq "p → ¬p → q", [assume ("x", "p"), assume ("y", "¬p"), workbench::Absurd "x" "y"]),
+    row ("absurd-implication", pq "p → (p → ⊥) → q", [assume ("x", "p"), assume ("f", "p → ⊥"), workbench::Absurd "x" "f"]),
+    row ("apply-not-hypothesis", single "p → ¬p → ⊥", [assume ("x", "p"), assume ("h", "¬p"), workbench::Apply "h", workbench::Exact "x"]),
+    row ("apply-not-hypothesis-implication", single "p → (p → ⊥) → ⊥", [assume ("x", "p"), assume ("f", "p → ⊥"), workbench::Apply "f", workbench::Exact "x"]),
+    row ("assume-not-target", single "¬p → ¬p", [assume ("h", "¬p"), assume ("x", "p"), workbench::Apply "h", workbench::Exact "x"]),
+    row ("navier-remaining-outcome", claim (["smooth", "blowup"], "(smooth ∨ blowup) → (blowup → ⊥) → smooth"), [assume ("outcomes", "smooth ∨ blowup"), assume ("noBlowup", "blowup → ⊥"), workbench::Cases "outcomes" ["isSmooth", "isBlowup"], workbench::Exact "isSmooth", workbench::Absurd "isBlowup" "noBlowup"]),
+    row ("trailing-done", single "p → p", [assume ("h", "p"), workbench::Exact "h", workbench::Done]),
     ]
 
-    unchecked row = shown (judged row.text) != "checked"
+    unchecked item = shown (judged item) != "checked"
 
     (** [WORKBENCH-VERDICT]: one passing proof per row of the goal table is checked. *)
     export rows () =
-        expect (join (mapList (filterList (table (), unchecked), \row => row.name), ", "), "")
+        expect (join (mapList (filterList (table (), unchecked), \item => item.name), ", "), "")
+
+    pqr text = claim (["p", "q", "r"], text)
 
     // Wrong proofs whose goal engine refuses a step; the kernel must refuse the same step.
     wrong () = [
-        { name = "swapped", text = swappedText },
-        { name = "no-hypothesis", text = "Theorem t. For all p, p.\nProof.\n  From h." },
-        { name = "split-atom", text = "Theorem t. For all p q, p.\nProof.\n  It suffices to show q and p." },
-        { name = "left-atom", text = "Theorem t. For all p q, p.\nProof.\n  Show the left side." },
-        { name = "right-atom", text = "Theorem t. For all p q, p.\nProof.\n  Show the right side." },
-        { name = "cases-atom", text = "Theorem t. For all p, p → p.\nProof.\n  Assume h : p.\n  By cases on h, as a and b." },
-        { name = "exact-mismatch", text = "Theorem t. For all p q, p → q → p.\nProof.\n  Assume h : p.\n  Assume k : q.\n  By k." },
-        { name = "apply-mismatch", text = "Theorem t. For all p q, (p → q) → p → p.\nProof.\n  Assume f : p → q.\n  Assume x : p.\n  Apply f.\n  From x." },
-        { name = "absurd-implication-reversed", text = "Theorem t. For all p q, (p → ⊥) → p → q.\nProof.\nAssume f : p → ⊥.\nAssume x : p.\nContradiction from f and x." },
-        { name = "absurd-other-implication", text = "Theorem t. For all p q r, p → (q → ⊥) → r.\nProof.\nAssume x : p.\nAssume f : q → ⊥.\nContradiction from x and f." },
-        { name = "absurd-mismatch", text = "Theorem t. For all p q r, p → q → r.\nProof.\n  Assume x : p.\n  Assume y : q.\n  Contradiction from x and y." },
-        { name = "apply-not-implication", text = "Theorem t. For all p q, p → q.\nProof.\n  Assume h : p.\n  Apply h." },
+    swap ("hp", "hq"),
+    row ("no-hypothesis", single "p", [workbench::Exact "h"]),
+    row ("split-atom", pq "p", [workbench::Split]),
+    row ("left-atom", pq "p", [workbench::Left]),
+    row ("right-atom", pq "p", [workbench::Right]),
+    row ("cases-atom", single "p → p", [assume ("h", "p"), workbench::Cases "h" ["a", "b"]]),
+    row ("exact-mismatch", pq "p → q → p", [assume ("h", "p"), assume ("k", "q"), workbench::Exact "k"]),
+    row ("apply-mismatch", pq "(p → q) → p → p", [assume ("f", "p → q"), assume ("x", "p"), workbench::Apply "f", workbench::Exact "x"]),
+    row ("absurd-implication-reversed", pq "(p → ⊥) → p → q", [assume ("f", "p → ⊥"), assume ("x", "p"), workbench::Absurd "f" "x"]),
+    row ("absurd-other-implication", pqr "p → (q → ⊥) → r", [assume ("x", "p"), assume ("f", "q → ⊥"), workbench::Absurd "x" "f"]),
+    row ("absurd-mismatch", pqr "p → q → r", [assume ("x", "p"), assume ("y", "q"), workbench::Absurd "x" "y"]),
+    row ("apply-not-implication", pq "p → q", [assume ("h", "p"), workbench::Apply "h"]),
     ]
 
     walk0 statement = { outcome = workbench::Advanced (workbench::Goals::start statement), at = 0, stuck = satSub 0 1 }
 
     moved (walk, step) = match walk.outcome
         workbench::Stuck _ => walk
-        workbench::UnsupportedStep _ _ => walk
         workbench::Advanced progress => refused (walk, workbench::Goals::apply (progress, step))
 
     refused (walk, outcome) = match outcome
@@ -106,51 +113,34 @@ module VerdictCases
 
     refusalAt (statement, stepList) = (foldList (stepList, walk0 statement, \(walk, step) => moved (walk, step))).stuck
 
-    // "" when the goal engine and the kernel agree on a document, its name otherwise.
-    disagrees row =
-        found = declaration row.text
-        stepList = steps found
-        verdict = workbench::Verdicts::decide (found.statement, stepList)
-        match workbench::Goals::run (found.statement, stepList)
-            workbench::UnsupportedStep _ _ => match verdict
-                workbench::Unchecked _ => ""
-                _ => row.name
+    // "" when the goal engine and the kernel agree on a proof, its name otherwise.
+    disagrees item =
+        verdict = judged item
+        match workbench::Goals::run (item.statement, item.steps)
             workbench::Stuck _ => match verdict
-                workbench::Rejected at _ => match at == refusalAt (found.statement, stepList)
+                workbench::Rejected at _ => match at == refusalAt (item.statement, item.steps)
                     true => ""
-                    false => row.name
-                _ => row.name
+                    false => item.name
+                _ => item.name
             workbench::Advanced progress => match isEmpty progress.open
                 true => match verdict
                     workbench::Checked => ""
-                    _ => row.name
-                false => row.name
+                    _ => item.name
+                false => item.name
 
     (** [WORKBENCH-VERDICT] [WORKBENCH-GOALS]: the goal engine and the kernel agree on every right and wrong proof. *)
     export agreement () =
-        bad = filterList (listConcat (table (), wrong ()), \row => disagrees row != "")
-        expect (join (mapList (bad, \row => row.name), ", "), "")
-
-    unknownText = "Theorem t. For all p, p → p.\nProof.\n  Hence the result follows."
-
-    (** [WORKBENCH-VERDICT]: an unknown step is unchecked, quoting the sentence and its 1-based position. *)
-    export unknownStep () =
-        expect (shown (judged unknownText), "unchecked: step 1: `Hence the result follows.` is not a step the workbench knows")
-
-    openText = "Theorem t. For all p, p → p.\nProof.\n  Assume h : p."
+        bad = filterList (listConcat (table (), wrong ()), \item => disagrees item != "")
+        expect (join (mapList (bad, \item => item.name), ", "), "")
 
     (** [WORKBENCH-VERDICT]: a proof that stops with a goal open is unchecked, naming the open goal. *)
     export openGoal () =
-        expect (shown (judged openText), "unchecked: step 2: the goal `p` is still open")
-
-    surplusText = "Theorem t. For all p, p → p.\nProof.\n  Assume h : p.\n  From h.\n  From h."
+        expect (shown (judged (row ("open", single "p → p", [assume ("h", "p")]))), "unchecked: step 2: the goal `p` is still open")
 
     (** [WORKBENCH-VERDICT]: a step after the proof is complete is unchecked. *)
     export surplus () =
-        expect (shown (judged surplusText), "unchecked: step 3 comes after the proof is complete")
-
-    undeclaredText = "Theorem u. p → p.\nProof.\n  Assume h : p.\n  From h."
+        expect (shown (judged (row ("surplus", single "p → p", [assume ("h", "p"), workbench::Exact "h", workbench::Exact "h"]))), "unchecked: step 3 comes after the proof is complete")
 
     (** [WORKBENCH-VERDICT]: an undeclared atom is rejected on the statement with the kernel's unknown-constant message. *)
     export undeclaredAtom () =
-        expect (shown (judged undeclaredText), "rejected -1: unknown constant `p`")
+        expect (shown (judged (row ("undeclared", claim ([], "p → p"), [assume ("h", "p"), workbench::Exact "h"]))), "rejected -1: unknown constant `p`")

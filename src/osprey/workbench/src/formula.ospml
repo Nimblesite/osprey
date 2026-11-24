@@ -54,27 +54,22 @@ module Lexer
     named code = letter code || (code >= 945 && code <= 969) || (code >= 8320 && code <= 8329) || (code >= 8304 && code <= 8313) || code == 185 || code == 178 || code == 179
 
     (** Whether `code` is one of the four whitespace code points every reader skips. *)
-    export blank code = code == 32 || code == 9 || code == 10 || code == 13
+    blank code = code == 32 || code == 9 || code == 10 || code == 13
 
     // The byte width of the code point `code`, one when it is unknown.
     width code = codePointWidth code ?: 1
 
     (** The code point at byte offset `at`, 0 past the end. *)
-    export codeAt (text, at) = codePointAt (text, at) ?: 0
+    codeAt (text, at) = codePointAt (text, at) ?: 0
 
     (** The byte offset just past the code point at `at`. *)
-    export after (text, at) = satAdd at (width (codeAt (text, at)))
+    after (text, at) = satAdd at (width (codeAt (text, at)))
 
     (** The text of the code point at `at`, empty past the end. *)
-    export glyphAt (text, at) = substring (text, at, after (text, at)) ?: ""
+    glyphAt (text, at) = substring (text, at, after (text, at)) ?: ""
 
     (** The text from `from` to `to`, empty when the range falls outside it. *)
-    export cut (text, from, to) = substring (text, from, to) ?: ""
-
-    (** The byte offset of the first code point at or after `at` that is not blank. *)
-    export skipBlank (text, at) = match at < length text && blank (codeAt (text, at))
-        true => skipBlank (text, after (text, at))
-        false => at
+    cut (text, from, to) = substring (text, from, to) ?: ""
 
     // The byte just past the run of name characters starting at `at`, and its length in characters.
     nameEnd (text, at, count) = match at < length text && named (codeAt (text, at))
@@ -121,7 +116,7 @@ module Formulas
     binders = [["∀"]]
 
     (** The token at `at`, or the closing `End` token past the last one. *)
-    export token (tokens, at) = listGet tokens at ?: (listGet tokens (satSub (length tokens) 1) ?: Token(kind = End, text = "", column = 1))
+    token (tokens, at) = listGet tokens at ?: (listGet tokens (satSub (length tokens) 1) ?: Token(kind = End, text = "", column = 1))
 
     // How many tokens from `at` spell `words`, or 0.
     spells (tokens, at, words) = match foldList (words, at, \(next, word) => advance (tokens, next, word))
@@ -134,7 +129,7 @@ module Formulas
         false => satSub 0 1
 
     (** How many tokens from `at` spell one of `phrases`, or 0 when none does. *)
-    export phrase (tokens, at, phrases) = foldList (phrases, 0, \(found, words) => max found (spells (tokens, at, words)))
+    phrase (tokens, at, phrases) = foldList (phrases, 0, \(found, words) => max found (spells (tokens, at, words)))
 
     fault (tokens, at, expected) = Failed (Fault(column = (token (tokens, at)).column, expected = expected))
 
