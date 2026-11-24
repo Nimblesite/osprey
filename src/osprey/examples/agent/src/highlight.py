@@ -291,16 +291,12 @@ def byte_at(code, i):
 
 
 def text_of(code, from_at, to):
-    return unwrap_or(substring(code, from_at, least(to, byteLength(code))), "")
-
-
-def least(a, b):
-    return a if a < b else b
+    return unwrap_or(substring(code, from_at, min(to, byteLength(code))), "")
 
 
 def hit(code, i, mark):
     """Whether `mark` is written at `i`."""
-    return unwrap_or(substring(code, i, least(i + byteLength(mark), byteLength(code))), "") == mark
+    return unwrap_or(substring(code, i, min(i + byteLength(mark), byteLength(code))), "") == mark
 
 
 def is_upper(b):
