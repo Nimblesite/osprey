@@ -141,11 +141,7 @@ module Formulas
         false => satSub 0 1
 
     (** How many tokens from `at` spell one of `phrases`, or 0 when none does. *)
-    export phrase (tokens, at, phrases) = foldList (phrases, 0, \(found, words) => larger (found, spells (tokens, at, words)))
-
-    larger (first, second) = match first > second
-        true => first
-        false => second
+    export phrase (tokens, at, phrases) = foldList (phrases, 0, \(found, words) => max found (spells (tokens, at, words)))
 
     fault (tokens, at, expected) = Failed (Fault(column = (token (tokens, at)).column, expected = expected))
 

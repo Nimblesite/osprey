@@ -53,17 +53,13 @@ module Levels
     export height level = match level
         Zero => 0
         Succ inner => satAdd (height inner) 1
-        Max left right => larger (height left) (height right)
+        Max left right => max (height left) (height right)
         IMax left right => imaxHeight (height left) (height right)
         Param _name => 0
 
-    larger left right = match left >= right
-        true => left
-        false => right
-
     imaxHeight left right = match right == 0
         true => 0
-        false => larger left right
+        false => max left right
 
     (** Normal form: a closed level collapses to `Succ^n Zero`; an open level
         keeps its parameters, with `max`/`imax` simplified where a side is
@@ -183,11 +179,7 @@ module Levels
         true => arm.offset
         false => top
 
-    constantPart (all) = constantAbove (largest (all, ""), foldList (paramsIn all, (-1), \(top, p) => higher (top, largest (all, p))))
-
-    higher (a, b) = match a > b
-        true => a
-        false => b
+    constantPart (all) = constantAbove (largest (all, ""), foldList (paramsIn all, (-1), \(top, p) => max top (largest (all, p))))
 
     constantAbove (constant, topParam) = match constant > topParam
         true => ["${toString constant}"]
