@@ -26,6 +26,59 @@ fn yields(e: &Expr, name: &str) -> bool {
     }
 }
 
+/// The collection builtins whose first argument is the source of a new version
+/// [MEM-OWNERSHIP-STATIC-SHARING].
+const DERIVING: [&str; 8] = [
+    "listAppend",
+    "listPrepend",
+    "listReverse",
+    "listSort",
+    "listConcat",
+    "mapSet",
+    "mapRemove",
+    "mapMerge",
+];
+
+/// Whether `e` is the binding `name` itself.
+fn is_named(e: &Expr, name: &str) -> bool {
+    matches!(e, Expr::Identifier(found) if found == name)
+}
+
+/// Whether the function body under `node` hands the binding `name` itself to a
+/// value it builds: a field of a record or object, or the source, element, key
+/// or value of a derived collection. Like a parameter it returns, such a parameter is taken by move
+/// [MEM-OWNERSHIP-STATIC-PARAMETERS]. A nested closure is a function of its own.
+fn stores(node: AstNode<'_>, name: &str) -> bool {
+    let here = match node {
+        AstNode::Expression(Expr::Lambda { .. }) => return false,
+        AstNode::Expression(Expr::TypeConstructor { fields, .. } | Expr::Object(fields)) => {
+            fields.iter().any(|field| is_named(&field.value, name))
+        }
+        AstNode::Expression(Expr::Call {
+            function,
+            arguments,
+            ..
+        }) => {
+            // Every argument is kept by the new version but a removed key.
+            let kept = match named_callee(function) {
+                Some(Expr::Identifier(callee)) if callee == "mapRemove" => 1,
+                Some(Expr::Identifier(callee)) if DERIVING.contains(&callee.as_str()) => {
+                    arguments.len()
+                }
+                _ => 0,
+            };
+            arguments
+                .iter()
+                .take(kept)
+                .any(|argument| is_named(argument, name))
+        }
+        _ => false,
+    };
+    let mut below = false;
+    node.for_each_child(|child| below = below || stores(child, name));
+    here || below
+}
+
 /// Whether anything under `node` binds `name` again, hiding the parameter.
 fn rebinds(node: AstNode<'_>, name: &str) -> bool {
     let here = match node {
@@ -111,7 +164,10 @@ pub(crate) fn infer(cg: &mut Codegen, program: &Program) {
         }
         let owned: Vec<bool> = parameters
             .iter()
-            .map(|p| yields(body, &p.name) && !rebinds(AstNode::Expression(body), &p.name))
+            .map(|p| {
+                (yields(body, &p.name) || stores(AstNode::Expression(body), &p.name))
+                    && !rebinds(AstNode::Expression(body), &p.name)
+            })
             .collect();
         if owned.contains(&true) {
             let _ = cg.ownership.owned_parameters.insert(name.clone(), owned);

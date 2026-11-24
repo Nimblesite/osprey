@@ -107,13 +107,24 @@ fn choose(box, n) = match n {
     _ => Box { text: "none${toString(n)}" }
 }
 
+/// A function that stores its parameter in the value it builds, or derives a
+/// new version of a collection from it, owns that parameter too.
+fn pairUp(left, right) = Pair { left: left, right: right }
+
+fn grown(names, n) = listAppend(names, "g${toString(wrapAdd(n, 1))}")
+
+fn renamed(ages, n) = mapSet(ages, "k${toString(n)}", n)
+
 fn owned() = {
     let tags = collect(3, [])
     let made = Box { text: "a${toString(1)}" }
     let kept = keep(made)
     let chosen = choose(kept, 0)
     let other = choose(Box { text: "b${toString(2)}" }, 4)
-    "owned ${toString(listLength(tags))} ${chosen.text} ${other.text}"
+    let pair = pairUp(Box { text: "p${toString(3)}" }, other)
+    let longer = grown(grown(tags, 4), 5)
+    let ages = renamed(renamed(Map(), 1), 2)
+    "owned ${toString(listLength(longer))} ${chosen.text} ${pair.left.text}${pair.right.text} ${toString(mapLength(ages))}"
 }
 
 /// An arm that yields a literal yields no reference, so it joins an arm that

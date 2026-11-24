@@ -1,6 +1,7 @@
 // [MEM-OWNERSHIP-STATIC] Runs under the collector; `--memory=ownership` refuses it.
-// `hold` stores the closure it is given, but a parameter is only borrowed for
-// the call: the record would outlive what the closure captures.
+// `hold` stores the closure it is given, so it owns that parameter. The closure
+// captures `made`, which `main` reads again, so it only lends its captures and
+// cannot be given away: the record would outlive what the closure captures.
 type Box = { text: string }
 type Holder = { run: (int) -> string }
 
