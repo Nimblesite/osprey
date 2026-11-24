@@ -58,10 +58,10 @@ module Tutors
 
     put (tutor, item) = tutor(tutorTries = listAppend (filterList (tutor.tutorTries, \other => other.attemptKey != item.attemptKey), item))
 
-    (** The answer text replaced; any mark is cleared, so a badge never describes text that is gone, and the caret stays within the new text. *)
+    (** The answer text replaced, as typing replaces it: the caret follows the typed text to its end and any mark is cleared, so a badge never describes text that is gone. A later host placement moves the caret. *)
     export answer (tutor, key, text) =
         item = attempt (tutor, key)
-        put (tutor, item(attemptAnswer = text, attemptCursor = clamped (item.attemptCursor, length text), attemptMarking = Unmarked))
+        put (tutor, item(attemptAnswer = text, attemptCursor = length text, attemptMarking = Unmarked))
 
     (** `text` inserted at the caret; the caret advances past it, the surrounding answer stays, and any mark is cleared. *)
     export insert (tutor, key, text) =

@@ -67,6 +67,9 @@ module LessonCases
     (** [LESSONS-STATE] [WORKBENCH-NOTATION]: a formula key inserts at the caret and advances it, preserving the text around it, at the start, in the middle and past the end. *)
     keypadTyping () =
         tutor = Tutors::answer (Tutors::empty (), "l/two", "pq")
+        caretAt (tutor, length "pq")
+        caretAt (Tutors::answer (tutor, "l/two", "p ∧ q"), length "p ∧ q")
+        caretAt (Tutors::answer (tutor, "l/two", ""), 0)
         atStart = inserted (tutor, "l/two", 0, "¬")
         answersAs (atStart, "¬pq")
         caretAt (atStart, length "¬")
