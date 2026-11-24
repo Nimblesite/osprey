@@ -473,10 +473,16 @@ fi
 
 source "${0:A:h}/corpus_doctests.sh"
 doctests_ok=1
-if [[ $accepted_only != --accepted ]]; then
+if [[ -z $selection ]]; then
   run_corpus_doctests || doctests_ok=0
 fi
 
 [[ $fail -eq 0 && $leaky -eq 0 && $golden_fail -eq 0 && $golden_missing -eq 0 \
    && $golden_floor_ok -eq 1 && $skips_ok -eq 1 \
-   && $gpu_mode_fail -eq 0 && $gpu_mode_floor_ok -eq 1 && $doctests_ok -eq 1 ]]
+   && $gpu_mode_fail -eq 0 && $gpu_mode_floor_ok -eq 1 && $doctests_ok -eq 1 ]] || exit 1
+
+# Each cross-target conformance run also verifies the ownership archive with
+# the same host, stdout oracle and mandatory exit sentinel. [MEM-OWNERSHIP-STATIC-HOSTS]
+if [[ $TARGET != native && $MEMORY == arc && -z $selection ]]; then
+  zsh "$SCRIPT" ownership --ownership-host || exit 1
+fi

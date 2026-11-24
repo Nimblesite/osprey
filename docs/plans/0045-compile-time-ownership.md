@@ -103,7 +103,7 @@ Files: `src/toolchain/crates/run_test_corpus.sh`, `src/toolchain/benchmarks/**`,
   - The native ownership lane scribbles freed objects, bypasses recycling and instruments generated loads and stores with AddressSanitizer. On 2026-11-24 all 52 accepted programs matched their goldens with zero live objects. The runtime test checks that freeing a tree poisons its root and both descendant levels. The retain/release IR assertion awaits C5.
 - [ ] V5. Benchmarks: `osprey-ownership` beside `osprey-gc` and `osprey-arc` (phase 3 item 2), with peak live bytes as its own column. Run on a quiet machine: agents announce a window on TMC and stop cargo, tests and pis for it.
 - [ ] V6. Shared code ([MEM-BACKENDS-SHARED]): run deslop over `compiler/runtime/memory_*`; move what `arc` and `ownership` both need into `memory_tracked_heap.h`; no copy survives in two backends, no technique is weakened.
-- [ ] V7. Hosts ([MEM-OWNERSHIP-STATIC-HOSTS]): `ownership` archives for wasm32, Apple and Android link and run `single_owner` with its golden.
+- [x] V7. Hosts ([MEM-OWNERSHIP-STATIC-HOSTS]): on 2026-11-24 WASI, Apple silicon macOS, the arm64 iOS simulator, and the arm64 Android emulator each linked and ran `single_owner` under ownership. All four matched the native golden byte for byte and reported zero live objects. Each full cross-target corpus run now repeats this check on its own host.
 - [ ] V8. The proof ([MEM-OWNERSHIP-STATIC-BEYOND-RUST]): a Lean model of the ledger's rules, derived from the spec and checked against OspreyFable2's rules as they land, with the theorem that lowering keeps one owner per allocation and a live lender for every borrow on every control-flow edge. First the model and the statement; then the proof.
 
 ### Together, last

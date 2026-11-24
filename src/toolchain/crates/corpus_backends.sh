@@ -84,7 +84,7 @@ run_apple() {
   if [[ $TARGET == macos ]]; then
     "$work/host" "$work" >"$out" 2>>"$err" </dev/null
   else
-    SIMCTL_CHILD_OSPREY_ARC_DEBUG=1 xcrun simctl spawn "$IOS_DEVICE" "$work/host" "$work" >"$out" 2>>"$err" </dev/null
+    env "SIMCTL_CHILD_OSPREY_${(U)memory}_DEBUG=1" xcrun simctl spawn "$IOS_DEVICE" "$work/host" "$work" >"$out" 2>>"$err" </dev/null
   fi
 }
 
@@ -106,7 +106,7 @@ run_android() {
   local remote=$ANDROID_REMOTE/$index
   $adb shell "mkdir -p $remote" >>"$err" 2>&1 || return 1
   $adb push "$work/host" "$remote/host" >>"$err" 2>&1 || return 1
-  $adb shell "cd $remote && OSPREY_ARC_DEBUG=1 ./host $remote" >"$out" 2>>"$err"
+  $adb shell "cd $remote && OSPREY_${(U)memory}_DEBUG=1 ./host $remote" >"$out" 2>>"$err"
 }
 
 # Resolve the device and toolchain a cross target needs, exactly once. Called

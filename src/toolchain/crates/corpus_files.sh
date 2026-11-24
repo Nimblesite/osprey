@@ -31,8 +31,14 @@ while IFS= read -r -d $'\0' f; do
   FILES+=("$f")
 done < <(find "$TESTDIR" \( -name '*.test.osp' -o -name '*.test.ospml' -o -name '*.test.ts' -o -name '*.test.py' \) -print0 | LC_ALL=C sort -z)
 
-accepted_only=${2:-}
-if [[ $accepted_only == --accepted ]]; then
+selection=${2:-}
+if [[ $selection == --ownership-host ]]; then
+  [[ $MEMORY == ownership && $TARGET != native ]] || exit 2
+  FILES=("$TESTDIR/regressions/ownership/single_owner.test.osp")
+  GOLDEN_MIN=1
+  GPU_MODE_MIN=0
+  MANIFEST= # The host contract must run; even a reviewed skip fails its golden floor.
+elif [[ $selection == --accepted ]]; then
   [[ $MEMORY == ownership && $TARGET == native ]] || exit 2
   manifest=$TESTDIR/OWNERSHIP_ACCEPTED.txt
   LC_ALL=C sort -cu "$manifest" || exit 1
@@ -49,7 +55,7 @@ if [[ $accepted_only == --accepted ]]; then
   FILES=("${accepted[@]}")
   GOLDEN_MIN=${#FILES}
   GPU_MODE_MIN=${#${(M)FILES:#$GPU_SUITE_DIR/*}}
-elif [[ -n $accepted_only ]]; then
-  echo "Unknown corpus selection: $accepted_only" >&2
+elif [[ -n $selection ]]; then
+  echo "Unknown corpus selection: $selection" >&2
   exit 2
 fi
