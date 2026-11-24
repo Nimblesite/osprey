@@ -41,4 +41,4 @@ module App
     export theme () = View::theme ()
 
     (** Flock as its boundary runs it: the store drawn with its semantic theme. *)
-    export program () = ui::Program(programInit = initial, programUpdate = update, programRender = regions, programTheme = \_ => theme ())
+    export program () = ui::Surfaces::themed (initial, update, regions, theme ())

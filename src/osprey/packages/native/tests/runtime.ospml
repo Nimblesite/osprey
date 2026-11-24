@@ -109,7 +109,7 @@ delivered result = match result
 theme = ui::Theme(tokens = [ui::Token(tokenName = "canvas", tokenLight = "#FFFFFF", tokenDark = "#000000")], spacing = [4, 8], feedback = 120, settle = 220)
 
 (** The probe application as its boundary runs it: the store drawn with the probe theme. *)
-program () = ui::Program(programInit = initial, programUpdate = update, programRender = regions, programTheme = \_ => theme)
+program () = ui::Surfaces::themed (initial, update, regions, theme)
 
 // A node drawn as the rows of one root region with no theme tokens: the frame a test reads a single component from ([NATIVE-SHM-NODES]). Monomorphic at the suite's action union: the telling walk is instantiated at one action type (Nimblesite/osprey#278).
 drawnOf : ui::Node<Act> -> ui::Walk<ui::Binding<Act>>

@@ -295,7 +295,7 @@ regions (before, after, frames, _) =
     changed = signalChanges before after MachineDocs::snapshot (signalDependencies machineSlice)
     [Keyed::region (frames, "root", changed, root)]
 
-program () = ui::Program(programInit = initial, programUpdate = update, programRender = regions, programTheme = \_ => Templates::theme (fixture ()))
+program () = ui::Surfaces::themed (initial, update, regions, Templates::theme (fixture ()))
 
 bench work =
     handle Bench

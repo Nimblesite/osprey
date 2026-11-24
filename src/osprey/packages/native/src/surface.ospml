@@ -33,6 +33,9 @@ module Surfaces
     (** The region every surface draws; other regions appear where it names them with a `Slot`. *)
     export rootKey = "root"
 
+    (** An application whose `init`, `update` and `render` are always drawn with `look`, whatever its store holds. *)
+    export themed (init, update, render, look) = Program(programInit = init, programUpdate = update, programRender = render, programTheme = \_ => look)
+
     (** The frame `held` shows, as the rows, fits and scenes its host was sent: what a test reads. *)
     export seen<S, A> : (Surface<S, A>, Program<S, A>) -> Walk<Binding<A>>
     seen (held, program) =
