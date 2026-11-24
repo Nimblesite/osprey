@@ -296,7 +296,7 @@ int32_t osprey_gpu_declined(const char *what) {
 // osprey_gpu_finalize over the body, then releases data only — the
 // OSP_MEM_LIST_HDR_EXTERN contract, so a dead buffer's device object goes
 // with it under every memory backend that reclaims.
-#define GPU_HDR_LAYOUT ((int64_t)OSP_MEM_LIST_HDR_EXTERN)
+#define GPU_HDR_LAYOUT ((int64_t)OSP_MEM_GPU_BUFFER)
 
 // Unmap a mapped buffer's pages once nothing can reach them. Clearing `data`
 // keeps the memory backend from releasing a pointer it never allocated.
@@ -342,14 +342,6 @@ void osprey_gpu_finalize(void *buffer) {
   release_mapping(b);
 }
 
-static void register_finalizer(void) {
-  static int registered;
-  if (!registered) {
-    osp_mem_set_finalizer(osprey_gpu_finalize);
-    registered = 1;
-  }
-}
-
 // `length` zero-filled scalar words (at least one, so the empty buffer still
 // owns a payload), or NULL when the data allocation fails.
 static uint8_t *zeroed_words(int64_t length, int64_t elem_bytes) {
@@ -376,7 +368,7 @@ void *osp_gpu_alloc_buffer(int64_t length, int64_t elem_bytes, size_t header_byt
     osp_io_error_text("gpu", "buffer allocation", "element count overflows the byte size");
     return NULL;
   }
-  register_finalizer();
+  osp_gpu_bind_drop(osprey_gpu_finalize);
   OspreyGpuBuffer *b = (OspreyGpuBuffer *)osp_alloc_tagged((int64_t)header_bytes, GPU_HDR_LAYOUT);
   if (!b) {
     osp_io_error_text("gpu", "buffer allocation", "out of memory");

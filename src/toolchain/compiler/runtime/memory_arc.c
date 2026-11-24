@@ -35,6 +35,12 @@
 
 #include "memory_tracked_heap.h"
 
+static void (*g_finalizer)(void *body);
+void osp_mem_set_finalizer(void (*finalize)(void *body)) { g_finalizer = finalize; }
+static void finalize_external(void *body) {
+  if (g_finalizer) g_finalizer(body);
+}
+
 // dup — probe first: only live ARC objects with a non-negative rc count.
 void osp_retain(void *o) {
   if (!o) {

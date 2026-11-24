@@ -30,6 +30,8 @@
 // Requires 1..UINT32_MAX bytes and tracked ownership; allocation fails rather
 // than returning an untracked value whose full length could not be recovered.
 #define OSP_MEM_STRING 7
+// EXTERN subtype reserved for the GPU runtime; its upper bits are unused by GC and ARC.
+#define OSP_MEM_GPU_BUFFER (OSP_MEM_LIST_HDR_EXTERN | (1 << 8))
 // -1 means no live STRING allocation owns this address (never an empty value).
 int64_t osp_mem_string_length(const void *p);
 
@@ -70,7 +72,8 @@ void osp_mem_set_layout(void *p, int64_t meta);
 // and the resource dies with its owner. ARC runs it at the owner's last
 // release and the tracing GC at the sweep that reclaims it; the default
 // backend reclaims no general allocation, so it never runs it. One per
-// process; registering again replaces it. [MEM-BACKENDS]
+// process under ARC and GC. Ownership ignores registration and drops GPU
+// resources by their layout on explicit free. [MEM-BACKENDS]
 void osp_mem_set_finalizer(void (*finalize)(void *body));
 
 // dup / drop (ARC: registry-probed reference counting; others: no-ops).

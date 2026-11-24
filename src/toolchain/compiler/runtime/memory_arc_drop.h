@@ -115,8 +115,8 @@ static void arc_drop_masked(char *body, uint32_t size, uint64_t mask,
   }
 }
 
-// Finalizer of extern-backed list headers (registered by the list runtime).
-static void (*g_finalizer)(void *body);
+// The backend chooses how an external resource dies while its header is intact.
+static void finalize_external(void *body);
 
 // { i64 len, i8* data }: run an EXTERN header's finalizer while its words are
 // intact, release elements (PTR kind only), then the array. The body is
@@ -125,8 +125,8 @@ static void arc_drop_list_hdr(char *body, uint32_t size, int kind) {
   if (size < sizeof(int64_t) + sizeof(void *)) {
     return;
   }
-  if (kind == OSP_MEM_LIST_HDR_EXTERN && g_finalizer) {
-    g_finalizer(body);
+  if (kind == OSP_MEM_LIST_HDR_EXTERN) {
+    finalize_external(body);
   }
   int64_t len;
   memcpy(&len, body, sizeof(len));

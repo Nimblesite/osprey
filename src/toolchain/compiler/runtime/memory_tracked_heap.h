@@ -221,11 +221,6 @@ void osp_release(void *body) { tracked_drop(body); }
 // ------------------------------------------------------------------ Implements
 // the [MEM-BACKENDS] C interface (docs/specs/compiler/0018-MemoryManagement.md §Custom Managers).
 
-// Finalizer registration (memory_hooks.h).
-void osp_mem_set_finalizer(void (*finalize)(void *body)) {
-  g_finalizer = finalize;
-}
-
 // Link anchor AND unconditional arming (memory_hooks.h): the leak sentinel
 // must print under OSPREY_ARC_DEBUG even when the program never allocates —
 // lazy arming on first alloc left an allocation-free program with no report,

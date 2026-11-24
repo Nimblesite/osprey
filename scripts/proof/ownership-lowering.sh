@@ -230,9 +230,13 @@ for fault in detached-borrow early-parent-free wrong-borrow-fallback leaked-rend
 done
 reject detached-borrow compiledResultBorrowUses
 
-# Recompile the old ownership hook so Clang also recomputes its memory effects.
-sed 's/osp_release_unique(void \*body) { (void)body; }/osp_release_unique(void *body) { tracked_drop(body); }/' \
-  "$runtime/memory_ownership.c" > "$out/mutations/unique-drop.c"
-compile_runtime "$out/mutations/unique-drop.c" "$out/mutations/unique-drop.ll"
-reflect "$out/ownership.ll" "$out/mutations/unique-drop.lean" "$out/runtime.ll" "$out/strings.ll" "$out/mutations/unique-drop.ll"
-reject unique-drop compiledCompatibilityReturns
+# Recompile each changed hook so Clang recomputes its memory effects.
+reject_active_hook() {
+  local name=$1 pattern=$2
+  sed "$pattern" "$runtime/memory_ownership.c" > "$out/mutations/$name.c"
+  compile_runtime "$out/mutations/$name.c" "$out/mutations/$name.ll"
+  reflect "$out/ownership.ll" "$out/mutations/$name.lean" "$out/runtime.ll" "$out/strings.ll" "$out/mutations/$name.ll"
+  reject "$name" compiledCompatibilityReturns
+}
+reject_active_hook unique-drop 's/osp_release_unique(void \*body) { (void)body; }/osp_release_unique(void *body) { tracked_drop(body); }/'
+reject_active_hook active-finalizer 's/{ (void)finalize; }/{ if (finalize) finalize(NULL); }/'

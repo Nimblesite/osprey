@@ -8,6 +8,11 @@
 #include "memory_hooks.h"
 
 #include <assert.h>
+#include <errno.h>
+#ifndef _WIN32
+#include <sys/mman.h>
+#include <unistd.h>
+#endif
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -128,11 +133,45 @@ static void t_immortal_and_foreign_are_untouched(void) {
   osp_release_unique(NULL);
 }
 
+// A generic ABI registration must neither run nor suppress the typed GPU drop.
+static int generic_calls;
+static void count_generic(void *body) { (void)body; generic_calls++; }
+
+#ifndef _WIN32
+void *osprey_gpu_map_file(const char *, int64_t, int64_t, int64_t);
+void *osprey_gpu_data(void *);
+
+static void t_external_mapping_drop(void) {
+  char path[] = "/tmp/osprey-own-map-XXXXXX";
+  int fd = mkstemp(path);
+  CHECK(fd >= 0 && write(fd, "m", 1) == 1 && close(fd) == 0);
+  size_t base = osp_arc_live_objects();
+  void *buffer = osprey_gpu_map_file(path, 0, 1, 1);
+  CHECK(buffer != NULL && unlink(path) == 0);
+  char *page = osprey_gpu_data(buffer);
+  CHECK(page != NULL && page[0] == 'm' && msync(page, 1, MS_SYNC) == 0);
+  osp_mem_set_finalizer(count_generic);
+  osp_ownership_free(buffer);
+  CHECK(generic_calls == 0);
+  CHECK(msync(page, 1, MS_SYNC) == -1 && errno == ENOMEM);
+  CHECK(osp_arc_live_objects() == base);
+}
+#endif
+
 int main(void) {
   // Arm the live counters before the first allocation (memory_tracked_heap.h).
   CHECK(setenv("OSPREY_OWNERSHIP_DEBUG", "1", 1) == 0);
   CHECK(setenv("OSPREY_SCRIBBLE_FREES", "1", 1) == 0);
   osp_mem_boot();
+  osp_mem_set_finalizer(count_generic);
+  size_t base = osp_arc_live_objects();
+  void *external = osp_alloc_tagged(16, OSP_MEM_LIST_HDR_EXTERN);
+  CHECK(external != NULL && osp_arc_live_objects() == base + 1);
+  osp_ownership_free(external);
+  CHECK(generic_calls == 0 && osp_arc_live_objects() == base);
+#ifndef _WIN32
+  t_external_mapping_drop();
+#endif
   t_release_frees_the_owned_tree();
   t_retained_blocks_are_never_freed();
   t_moved_block_passes_to_its_new_owner();

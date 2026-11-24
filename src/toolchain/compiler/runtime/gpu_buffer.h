@@ -41,4 +41,10 @@ int64_t osprey_gpu_len(void *buffer);
 int64_t osprey_gpu_elem_bytes(void *buffer);
 void osprey_gpu_finalize(void *buffer);
 
+// Kept in a separate archive member so a CPU-only ownership program does
+// not pull in the device SDK. The GPU allocator installs its sole destructor.
+typedef void (*OspGpuDrop)(void *);
+void osp_gpu_bind_drop(OspGpuDrop drop);
+void osp_gpu_drop_header(void *body);
+
 #endif

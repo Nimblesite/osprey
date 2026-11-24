@@ -42,6 +42,18 @@
 static void own_report_shared(void);
 
 #include "memory_tracked_heap.h"
+#include "gpu_buffer.h"
+
+void osp_mem_set_finalizer(void (*finalize)(void *body)) { (void)finalize; }
+
+// GPU allocations own a device handle or mapping. A plain EXTERN body only
+// has length and data, so it must never be interpreted as a GPU header.
+static void finalize_external(void *body) {
+  OspArcHdr *h = arc_hdr(body);
+  if (h->meta == OSP_MEM_GPU_BUFFER && h->size >= sizeof(OspreyGpuBuffer)) {
+    osp_gpu_drop_header(body);
+  }
+}
 
 // Blocks taken twice before a handover.
 static size_t g_own_shared = 0;
