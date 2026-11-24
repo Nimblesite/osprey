@@ -30,7 +30,7 @@ lake build lean4export
 lake env lean -DwarningAsError=true --root="$out" -o "$out/OwnershipLowering.olean" "$out/OwnershipLowering.lean"
 exporter=$(lake env which lean4export)
 lean_path=$(lake env printenv LEAN_PATH)
-for name in compiledGrow compiledGrowWhen runtimeRootOrigins renderedStringOrigin stringResultOrigins compiledFreeNull compiledPairFields compiledChildDrop compiledWorklistPush compiledPairQueue compiledGrowthBytes; do
+for name in compiledGrow compiledGrowWhen runtimeRootOrigins renderedStringOrigin stringResultOrigins compiledFreeNull compiledPairFields compiledChildDrop compiledWorklistPush compiledPairQueue compiledGrowthBytes compiledPop compiledBodyReclaim compiledPushPop; do
   theorem="OwnershipLowering.$name"
   LEAN_PATH="$out:$lean_path" "$exporter" OwnershipLowering -- "$theorem" > "$out/$name.ndjson"
   for backend in gc arc wasm; do
@@ -155,3 +155,19 @@ sed '/^define .*@proof_growth_bytes(/,/^}/s/1152921504606846975/1152921504606846
 reflect "$out/ownership.ll" "$out/mutations/small-growth-limit.lean" \
   "$out/runtime.ll" "$out/strings.ll" "$out/heap.ll" "$out/mutations/small-growth-limit.ll"
 reject small-growth-limit compiledGrowthBytes
+
+for fault in stale-pop duplicate-reclaim; do
+  awk -v fault="$fault" '
+    /^define / {pop = /@arc_release_zero_locked\(/; drop = /@arc_drop_body\(/}
+    pop && / = phi i64 / {depth = $1}
+    pop && fault == "stale-pop" && / = getelementptr inbounds / {sub(/i64 %[^, ]+$/, "i64 " depth)}
+    drop && fault == "duplicate-reclaim" && /call .*@arc_free_or_recycle\(/ {print}
+    {print}
+  ' "$out/heap.ll" > "$out/mutations/$fault.ll"
+  reflect "$out/ownership.ll" "$out/mutations/$fault.lean" "$out/runtime.ll" "$out/strings.ll" "$out/mutations/$fault.ll"
+  theorem=compiledPop
+  if [[ $fault == duplicate-reclaim ]]; then theorem=compiledBodyReclaim; fi
+  reject "$fault" "$theorem"
+done
+
+reject stale-pop compiledPushPop

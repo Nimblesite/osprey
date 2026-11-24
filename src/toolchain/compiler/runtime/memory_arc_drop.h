@@ -154,29 +154,33 @@ static void arc_drop_ptr_array(char *body, uint32_t size) {
   }
 }
 
+static void arc_drop_body(void *body) {
+  OspArcHdr *h = arc_hdr(body);
+  int kind = OSP_ARC_KIND(h->meta);
+  if (kind == OSP_MEM_MASK || kind == OSP_MEM_MASK_DIRECT) {
+    arc_drop_masked((char *)body, h->size, OSP_ARC_MASK_BITS(h->meta),
+                    kind == OSP_MEM_MASK_DIRECT);
+  } else if (kind == OSP_MEM_LIST_HDR_PTR ||
+             kind == OSP_MEM_LIST_HDR_SCALAR ||
+             kind == OSP_MEM_LIST_HDR_EXTERN) {
+    arc_drop_list_hdr((char *)body, h->size, kind);
+  } else if (kind == OSP_MEM_PTR_ARRAY) {
+    arc_drop_ptr_array((char *)body, h->size);
+  }
+  arc_free_or_recycle(body);
+}
+
 // Free `start`'s object and everything transitively released by it. Holds
 // g_lock. Bodies enter the worklist already confirmed managed (the initial
-// caller confirmed membership; arc_drop_child pushes only a registered body
-// it just decremented to zero), so no per-node re-probe is needed — the drop
+// caller confirmed membership; child drops check the backend’s last-owner
+// rule before queuing a body), so no per-node re-probe is needed — the drop
 // walk reads the header directly and reclaims via arc_free_or_recycle.
 static void arc_release_zero_locked(uintptr_t start) {
   g_wl_top = 0;
   arc_wl_push(start);
   while (g_wl_top > 0) {
     uintptr_t body = g_wl[--g_wl_top];
-    OspArcHdr *h = arc_hdr((void *)body);
-    int kind = OSP_ARC_KIND(h->meta);
-    if (kind == OSP_MEM_MASK || kind == OSP_MEM_MASK_DIRECT) {
-      arc_drop_masked((char *)body, h->size, OSP_ARC_MASK_BITS(h->meta),
-                      kind == OSP_MEM_MASK_DIRECT);
-    } else if (kind == OSP_MEM_LIST_HDR_PTR ||
-               kind == OSP_MEM_LIST_HDR_SCALAR ||
-               kind == OSP_MEM_LIST_HDR_EXTERN) {
-      arc_drop_list_hdr((char *)body, h->size, kind);
-    } else if (kind == OSP_MEM_PTR_ARRAY) {
-      arc_drop_ptr_array((char *)body, h->size);
-    }
-    arc_free_or_recycle((void *)body);
+    arc_drop_body((void *)body);
   }
 }
 

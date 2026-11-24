@@ -227,4 +227,38 @@ theorem compiledGrowthBytes (capacity : Nat) :
       unfold emittedGrowth
       rw [if_pos bound, if_neg empty, if_neg fits]
 
+/-- The depth and body passed to the dispatcher on one nonempty iteration.
+    The memory function reads the existing worklist by byte offset. -/
+def emittedPop (depth : Nat) (memory : Nat → α) : Nat × α :=
+-- POP BODY
+
+theorem compiledPop (top : Nat) (memory : Nat → α) :
+    emittedPop (top + 1) memory = (top, memory (top * 8)) := by rfl
+
+inductive BodyEvent where
+  | inspect | scan | reclaim
+
+def emittedBodyPaths : List (List BodyEvent) :=
+-- BODY PATHS
+
+def reclaimedLast (scanned : Bool) : List BodyEvent → Bool
+  | .inspect :: rest => reclaimedLast scanned rest
+  | .scan :: rest => !scanned && reclaimedLast true rest
+  | [.reclaim] => true
+  | _ => false
+
+theorem compiledBodyReclaim :
+    emittedBodyPaths.all (reclaimedLast false) = true := by rfl
+
+def readAfterWrite (memory : Nat → Nat) (slot value atByte : Nat) : Nat :=
+  if atByte = slot then value else memory atByte
+
+theorem compiledPushPop (depth cap child : Nat) (memory : Nat → Nat) (spare : depth < cap) :
+    (emittedPush depth cap child).map (fun (next, slot, value) =>
+      emittedPop next (readAfterWrite memory slot value)) = some (depth, child) := by
+  rw [(compiledWorklistPush depth cap child spare).1]
+  change some (depth, readAfterWrite memory (depth * 8) child (depth * 8)) = _
+  unfold readAfterWrite
+  rw [if_pos rfl]
+
 end OwnershipLowering

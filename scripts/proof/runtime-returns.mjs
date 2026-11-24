@@ -45,15 +45,17 @@ function alternatives(values) {
   return values.reduce((left, right) => '(.fork ' + left + ' ' + right + ')')
 }
 
-export function voidBody(ir, name, arity = 1) {
+export function voidBody(ir, name, arity = 1, type = 'ptr') {
   const attributes = '(?:(?:noundef|nofree|readonly|readnone|nocapture|captures\\(address_is_null\\)) )*'
-  const pointer = 'ptr ' + attributes + '(%[\\w.-]+)'
-  const header = '^define [^@\\n]*void @' + name + '\\(' + Array(arity).fill(pointer).join(', ') + '\\)[^\\n]*\\{\\n([\\s\\S]*?)^\\}'
+  const param = type + ' ' + attributes + '(%[\\w.-]+)'
+  const header = '^define [^@\\n]*void @' + name + '\\(' + Array(arity).fill(param).join(', ') + '\\)[^\\n]*\\{\\n([\\s\\S]*?)^\\}'
   const match = new RegExp(header, 'm').exec(ir)
   if (!match) throw Error('unsupported signature: ' + name)
   const lines = match.at(-1).replace(/;[^\n]*/g, '').split('\n').map(line => line.trim()).filter(Boolean)
   return { args: match.slice(1, -1), lines }
 }
+
+export const wordSlot = /^(%[\w.]+) = getelementptr inbounds (?:nuw )?(?:\[(\d+) x i8\]|i64), ptr (%[\w.]+), i64 (%[\w.]+)$/
 
 export function blocks(lines) {
   const result = new Map()

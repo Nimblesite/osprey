@@ -1,6 +1,6 @@
 // [MEM-OWNERSHIP-STATIC-VERIFICATION-COMPILER] Resolve the child's own registry
 // lookup and interpret the shipped header switch, including its default edge.
-import { blocks, nullSuccessors, voidBody } from './runtime-returns.mjs'
+import { blocks, nullSuccessors, voidBody, wordSlot } from './runtime-returns.mjs'
 
 const addressCast = /^(%[\w.]+) = ptrtoint ptr (%[\w.]+) to i64$/
 
@@ -72,7 +72,7 @@ function pushWrites(body, regs) {
   const buffer = /^(%[\w.]+) = load ptr, ptr @g_wl, align 8(?:, !tbaa !\d+)?$/.exec(body[0])
   const add = /^(%[\w.]+) = add i64 (%[\w.]+), (\d+)$/.exec(body[1])
   const depth = /^store i64 (%[\w.]+), ptr @g_wl_top, align 8(?:, !tbaa !\d+)?$/.exec(body[2])
-  const slot = /^(%[\w.]+) = getelementptr inbounds (?:nuw )?(?:\[(\d+) x i8\]|i64), ptr (%[\w.]+), i64 (%[\w.]+)$/.exec(body[3])
+  const slot = wordSlot.exec(body[3])
   const write = /^store i64 (%[\w.]+), ptr (%[\w.]+), align 8(?:, !tbaa !\d+)?$/.exec(body[4])
   if (!buffer || !add || !depth || !slot || !write || buffer[1] !== slot[3] || write[2] !== slot[1]) return 'none'
   const operand = reg => {
@@ -84,16 +84,15 @@ function pushWrites(body, regs) {
 }
 
 export function worklistPush(ir) {
-  const fn = /^define [^@\n]*void @arc_wl_push\(i64 (?:noundef )?(%[\w.]+)\)[^\n]*\{\n([\s\S]*?)^\}/m.exec(ir)
-  if (!fn) throw Error('missing native worklist push')
-  const cfg = blocks(fn[2].replace(/;[^\n]*/g, '').split('\n').map(line => line.trim()).filter(Boolean))
+  const { args: [child], lines } = voidBody(ir, 'arc_wl_push', 1, 'i64')
+  const cfg = blocks(lines)
   const entry = cfg.get('entry') ?? []
   const load = /^(%[\w.]+) = load i64, ptr @g_wl_(top|cap), align 8(?:, !tbaa !\d+)?$/
   const first = load.exec(entry[0]), second = load.exec(entry[1])
   const cmp = /^(%[\w.]+) = icmp (eq|ne) i64 (%[\w.]+), (%[\w.]+)$/.exec(entry[2])
   const branch = /^br i1 (%[\w.]+), label %([\w.]+), label %([\w.]+)$/.exec(entry[3])
   if (entry.length !== 4 || !first || !second || !cmp || !branch || cmp[1] !== branch[1]) throw Error('unsupported worklist guard')
-  const regs = new Map([[fn[1], 'child'], [first[1], first[2]], [second[1], second[2]]])
+  const regs = new Map([[child, 'child'], [first[1], first[2]], [second[1], second[2]]])
   if (!regs.has(cmp[3]) || !regs.has(cmp[4])) throw Error('unknown worklist comparison operand')
   const path = label => pushWrites(cfg.get(label), new Map(regs))
   const [equal, different] = cmp[2] === 'eq' ? branch.slice(2) : branch.slice(2).reverse()
