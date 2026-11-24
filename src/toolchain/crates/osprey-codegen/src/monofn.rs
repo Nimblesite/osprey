@@ -211,17 +211,24 @@ fn emit_at(
     // included, takes its argument types from this instantiation, not from
     // the call that selected it.
     let selecting_caller = cg.application_caller.take();
-    let (plist, emitted) = cg.within_source_function(name, |cg| {
-        crate::closure::begin_source(cg, name, position);
-        let plist = crate::cast::bind_params(cg, parameters, params, owners.iter().cloned(), 0);
-        own_parameters(cg, name, parameters);
-        crate::closure::source_parameters(cg, parameters, 0);
-        // Inside the body, so the definition line is credited when the
-        // instantiation RUNS rather than when it is emitted or handed to a C
-        // callback slot — the same placement `gen_function` uses for a
-        // monomorphic definition [TESTING-COVERAGE-CODEGEN].
-        cg.cov_hit_inline_fn(name);
-        (plist, lower_body(cg, body, &target.sig))
+    // The instantiation is a real function shared by every call site with
+    // these argument types, so nothing the selecting caller knew about its own
+    // names may reach the body: an inlined caller aliases a function-valued
+    // parameter to the callee it was given, and that alias would bind this
+    // body's same-named parameter to one caller's function for all of them.
+    let (plist, emitted) = cg.with_file_scope(|cg| {
+        cg.within_source_function(name, |cg| {
+            crate::closure::begin_source(cg, name, position);
+            let plist = crate::cast::bind_params(cg, parameters, params, owners.iter().cloned(), 0);
+            own_parameters(cg, name, parameters);
+            crate::closure::source_parameters(cg, parameters, 0);
+            // Inside the body, so the definition line is credited when the
+            // instantiation RUNS rather than when it is emitted or handed to a C
+            // callback slot — the same placement `gen_function` uses for a
+            // monomorphic definition [TESTING-COVERAGE-CODEGEN].
+            cg.cov_hit_inline_fn(name);
+            (plist, lower_body(cg, body, &target.sig))
+        })
     });
     cg.application_caller = selecting_caller;
     let spelling = crate::llty::ret_spelling(ret.0, ret.1);

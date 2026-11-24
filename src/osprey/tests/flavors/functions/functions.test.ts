@@ -249,6 +249,29 @@ function applyTwo(f, a, b) {
   return f(a)(b);
 }
 
+/** A function handed down through a recursive generic helper stays the one
+ * each call passed: two calls with different functions share no callee. */
+function walkWith(n, step, acc) {
+  return n <= 0 ? acc : restWith(wrapSub(n, 1), step, listAppend(acc, step(n)));
+}
+
+/** The recursive helper `walkWith` hands its function to. */
+function restWith(n, step, acc) {
+  return n <= 0 ? acc : restWith(wrapSub(n, 1), step, listAppend(acc, step(n)));
+}
+
+function addThree(x) {
+  return wrapAdd(x, 3);
+}
+
+function timesTwo(x) {
+  return wrapMul(x, 2);
+}
+
+function total(xs) {
+  return foldList(xs, 0, (a, b) => wrapAdd(a, b));
+}
+
 /** This case pins file-scope generic function values and lexical callability. */
 function genericValueCase() {
   const curriedSum = (a) => (b) => a + b;
@@ -269,6 +292,8 @@ function genericValueCase() {
     contains("alpha", "ph"),
     !contains("alpha", "zz"),
     applyTwo(curriedSum, 20, 22) === 42,
+    total(walkWith(3, addThree, [])) === 15,
+    total(walkWith(3, timesTwo, [])) === 12,
   ]);
 }
 

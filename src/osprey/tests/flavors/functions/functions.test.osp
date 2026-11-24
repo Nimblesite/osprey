@@ -214,6 +214,23 @@ fn builtinAfterShadow() = contains("alpha", "ph")
 /// parameter to stay callable INSIDE its own scope.
 fn applyTwo(f, a, b) = f(a)(b)
 
+/// A function handed down through a recursive generic helper stays the one
+/// each call passed: two calls with different functions share no callee.
+fn walkWith(n, step, acc) = match n <= 0 {
+    true => acc
+    false => restWith(wrapSub(n, 1), step, listAppend(acc, step(n)))
+}
+
+/// The recursive helper `walkWith` hands its function to.
+fn restWith(n, step, acc) = match n <= 0 {
+    true => acc
+    false => restWith(wrapSub(n, 1), step, listAppend(acc, step(n)))
+}
+
+fn addThree(x) = wrapAdd(x, 3)
+fn timesTwo(x) = wrapMul(x, 2)
+fn total(xs) = foldList(xs, 0, fn(a, b) => wrapAdd(a, b))
+
 /// This case pins file-scope generic function values and lexical callability.
 fn genericValueCase() = {
     let curriedSum = |a| => |b| => a + b 
@@ -233,7 +250,9 @@ fn genericValueCase() = {
             builtinAfterShadow(),
             contains("alpha", "ph"),
             !contains("alpha", "zz"),
-            applyTwo(curriedSum, 20, 22) == 42
+            applyTwo(curriedSum, 20, 22) == 42,
+            total(walkWith(3, addThree, [])) == 15,
+            total(walkWith(3, timesTwo, [])) == 12
     ])
 }
 
