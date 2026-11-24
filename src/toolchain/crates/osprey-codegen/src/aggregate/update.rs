@@ -29,6 +29,9 @@ fn copy_record(
 ) -> Result<Value> {
     let ty = &block.struct_ty;
     let source = cg.emit_reg(format!("bitcast i8* {} to {ty}*", base.operand));
+    // A base nothing reads again gives the copy the fields it keeps
+    // [MEM-OWNERSHIP-STATIC-PATHS].
+    crate::arc::same_value(cg, &source, &base.operand);
     // Every tag and field is initialized before the new allocation escapes.
     let target = cg.malloc_struct_noinit(ty, block.meta);
     if let Some(tag) = block.tag {

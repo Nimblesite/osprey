@@ -72,6 +72,10 @@ fn stores(node: AstNode<'_>, name: &str) -> bool {
         AstNode::Expression(Expr::TypeConstructor { fields, .. } | Expr::Object(fields)) => {
             fields.iter().any(|field| is_named(&field.value, name))
         }
+        // An updated copy takes the fields it keeps out of its base.
+        AstNode::Expression(Expr::Update { record, fields }) => {
+            record == name || fields.iter().any(|field| is_named(&field.value, name))
+        }
         AstNode::Expression(Expr::Call {
             function,
             arguments,

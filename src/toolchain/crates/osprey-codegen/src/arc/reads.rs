@@ -79,6 +79,11 @@ impl Reads {
                 self.add(name, MANY);
                 self.visit_all(fields.iter().map(|field| &field.value));
             }
+            // An updated copy reads its base once, then each new field.
+            Expr::Update { record, fields } => {
+                self.add(record, 1);
+                self.visit_all(fields.iter().map(|field| &field.value));
+            }
             _ => self.visit_control(e),
         }
     }

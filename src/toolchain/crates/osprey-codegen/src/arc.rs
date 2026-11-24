@@ -431,6 +431,9 @@ pub(crate) fn dup_store(cg: &mut Codegen, slot_ty: &str, operand: &str) {
     if slot_ty.ends_with('*') && operand.starts_with('%') && !cg.is_rodata(operand) {
         if !slot_ty.contains('(') {
             second_owner(cg, operand, None, Need::Stored);
+        } else if cg.ownership.on {
+            // A code pointer is no allocation: nothing owns it.
+            return;
         }
         cg.add_extern(RETAIN_DECL);
         let ptr = if slot_ty == "i8*" {

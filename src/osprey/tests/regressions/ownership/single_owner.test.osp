@@ -490,6 +490,25 @@ fn returned(n) = {
     "returned ${join(1)}${join(2)} ${one(3)} ${tag(4)} ${runWith(tagger("w${toString(n)}"), 5)}"
 }
 
+type Wide<T> = { item: T, names: List<string>, label: string, n: int }
+
+/// An updated copy takes the fields it keeps out of a base nothing reads
+/// again [MEM-OWNERSHIP-STATIC-PATHS]: a local, a parameter the function then
+/// owns, a generic record and a chain of updates. The base is freed without
+/// the fields it gave; the fields it replaced are freed with it.
+fn relabel(wide: Wide<Box>, label) = wide { label: label }
+
+fn wide(n) = Wide { item: Box { text: "w${toString(n)}" }, names: ["n${toString(n)}"], label: "old${toString(n)}", n: n }
+
+fn updates(n) = {
+    let first = wide(n)
+    let second = first { n: wrapAdd(n, 1) }
+    let third = relabel(second, "new${toString(n)}")
+    let fourth = third { item: Box { text: "x${toString(n)}" }, names: ["y${toString(n)}"] }
+    let last = relabel(relabel(wide(0), "a"), "b${toString(n)}")
+    "updates ${fourth.item.text}${fourth.label}${toString(fourth.n)}${toString(listLength(fourth.names))} ${last.item.text}${last.label}"
+}
+
 fn effects() = "${toString(listLength(folded(4)))} ${toString(listLength(folded(0)))} ${drawn(10)} ${drawn(0)} ${noted(3)}"
 
-print("${fileScope(1)} ${shared.text}\n${spans()}\n${elements()}\n${collections()}\n${lastUses()}\n${paths()}\n${owned()}\n${generics()}\n${literals()}\n${errors()} ${renderedTwice(7)}\n${captures()}\n${lends()}\n${lentLists()}\n${reads()}\n${borrows()}\n${effects()}\n${stores(2)}\n${takes(3)}\n${closures(2)}\n${parts(3)}\n${returned(2)}\n${returned(3)}")
+print("${fileScope(1)} ${shared.text}\n${spans()}\n${elements()}\n${collections()}\n${lastUses()}\n${paths()}\n${owned()}\n${generics()}\n${literals()}\n${errors()} ${renderedTwice(7)}\n${captures()}\n${lends()}\n${lentLists()}\n${reads()}\n${borrows()}\n${effects()}\n${stores(2)}\n${takes(3)}\n${closures(2)}\n${parts(3)}\n${returned(2)}\n${returned(3)}\n${updates(5)}")

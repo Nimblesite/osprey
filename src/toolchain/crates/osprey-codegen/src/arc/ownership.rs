@@ -192,10 +192,26 @@ pub(crate) fn second_owner(cg: &mut Codegen, operand: &str, name: Option<&str>, 
     }
 }
 
+/// The calls that count a reference. The ledger model has no such action
+/// [MEM-OWNERSHIP-STATIC-MODEL], so accepted code may not contain one.
+const COUNTS: [&str; 2] = ["call void @osp_retain(", "call void @osp_release("];
+
+/// `ir` for an accepted module: under ownership it frees and never counts
+/// [MEM-OWNERSHIP-STATIC-SAFETY]. A count that got past the ledger is a
+/// compiler fault, reported instead of built.
+fn counts_nothing(cg: &Codegen, ir: String) -> crate::error::Result<String> {
+    if cg.ownership.on && COUNTS.iter().any(|call| ir.contains(call)) {
+        return Err(crate::error::CodegenError::invalid(
+            "ownership: the lowering counted a reference the ledger did not refuse [MEM-OWNERSHIP-STATIC]",
+        ));
+    }
+    Ok(ir)
+}
+
 /// The refusal for a module that needed second owners, else `ir` unchanged.
 pub(crate) fn verdict(cg: &Codegen, ir: String) -> crate::error::Result<String> {
     if cg.ownership.found.is_empty() {
-        return Ok(ir);
+        return counts_nothing(cg, ir);
     }
     let mut found = cg.ownership.found.clone();
     found.sort_by_key(|one| one.position.map(|at| (at.line, at.column)));
