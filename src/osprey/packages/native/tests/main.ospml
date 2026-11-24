@@ -268,8 +268,7 @@ test ("an edit from prior state keeps its meaning when ordinals shift", \() => u
 test ("an edit whose typed action is gone or ambiguous refuses without change", \() => ui::Runtime::guarded (\() =>
     first = Probes::started ()
     // The note region draws two identical Load buttons: each is its own control with its own number, so both deliver the same typed action separately and none is ambiguous.
-    expect (Probes::tickets (Probes::tapped (first, 3)), "load:1")
-    expect (Probes::tickets (Probes::tapped (first, 4)), "load:1")
+    forEachList ([3, 4], \at => expect (Probes::tickets (Probes::tapped (first, at)), "load:1"))
     // At count 1 only [Load] is drawn: the withdrawn Increment and the note's second Load are gone, and a number no frame drew refuses.
     gone = Probes::tapped (first, 0)
     expectClean (gone, 1)
