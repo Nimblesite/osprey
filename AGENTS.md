@@ -11,7 +11,7 @@
 
 ## Workflow
 - ❌ subagents, linked worktrees, git hooks (delete them). Primary checkout only; git = commit/push
-- 🐍🚫 **Running Python (CPython, `python3`) is banned**, ad hoc scripts included (generators, analysis, one-liners). ✅ Write the script in **Python flavor Osprey** (a `.py` file starting with `# osprey: flavor=python`) and run it with **`osprey`**; its math goes in Lean ([MATH-CODE])
+- 🐍 **Prefer Python flavor Osprey over CPython.** Write scripts (generators, analysis, one-liners) as a `.py` file starting with `# osprey: flavor=python` and run it with **`osprey`**; its math goes in Lean ([MATH-CODE]). CPython (`python3`) is allowed where Osprey cannot do the job, such as a package oracle that runs the original library in a throwaway virtualenv
 - 🎼🚫 **Music is hand-written.** Never generate notes, patterns, arrangements or project files with a script, loop or generator; every note of a song in `src/osprey/examples/daw/tracks/` is composed and written by hand
 - **Coordinated pushes ([CI-PUSH-LOCK], [docs/plans/coordinated-push.md](docs/plans/coordinated-push.md)).** The agent holding the TMC lock `PUSH-<branch>` runs `make ci`, verifies the stamp matches the exact commit and checks GitHub for queued or running CI before using `git push`. Other agents commit and message the lock holder, who owns the run to green
 - **Offload legwork (repetitive, simple work) to pi agents**, model per [PiNotes model comparison](../PiNotes/MODEL-COMPARISON.md), always that family's newest id in `pi --list-models` use `zai/glm-5.3-flash` ,`kimi-coding/k3.1-pro-highspeed`, out of credit → tell user, take the next; register each pi on TMC, delete its identity when it exits; you own their output: review and fix it

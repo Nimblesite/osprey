@@ -104,7 +104,10 @@ static void assert_swapped_link_never_escapes(const char *folder, int64_t port) 
   pthread_t thread;
   assert(pthread_create(&thread, NULL, swap_thread, &swap) == 0);
   int served = 0;
-  for (int i = 0; i < 600; i++) {
+  // At least 600 requests, and more until one lands while the inside file is in place: a
+  // slow (coverage-instrumented) server can lose every early race to the swapper, which
+  // proves nothing about serving. The bound keeps a server that never serves a failure.
+  for (int i = 0; i < 600 || (served == 0 && i < 60000); i++) {
     Reply reply;
     fetch((int)port, "GET /race.txt HTTP/1.1\r\n\r\n", &reply);
     assert(reply.status == 200 || reply.status == 404);
