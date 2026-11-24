@@ -480,6 +480,13 @@ A binding can't borrow a value read from a `mut` binding or a file-scope
 binding, which can be replaced while the borrower still reads it, and is
 refused as needing a second owner.
 
+**Lent Results.** `Success { value: made }` and `Error { message: text }`
+hold their payload and their message the same way a record holds a field: a
+binding at its last use moves in, a fresh value is owned, and a binding that is
+read again is lent and left out of the Result's drop walk. A Result that lends
+can be read, matched and passed to a function; it can't be returned, stored or
+sent. Proved: `lent_pins_owner`, `lent_field_not_freed`, `lent_then_released`.
+
 **Lent list literals.** A list literal bound to a name, whose elements are
 all bindings or fields of them and one of which is read again, holds its
 elements without owning them, like a record with lent fields: `let both =

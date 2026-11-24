@@ -576,6 +576,29 @@ fn keeps(n) = {
     "keeps ${got.text} ${right.text} ${made.text}"
 }
 
+/// A Result holds its payload and its message like a record holds a field
+/// [MEM-OWNERSHIP-STATIC-BORROWS]: a binding at its last use moves in, one that
+/// is read again is lent, and a fresh value is owned.
+fn vetted(box: Box, long: bool) -> Result<Box, string> = match long {
+    true => Success { value: box }
+    false => Error { message: "short ${box.text}" }
+}
+
+fn verdictOf(outcome: Result<Box, string>) = match outcome {
+    Success { value } => "ok ${value.text}"
+    Error { message } => "err ${message}"
+}
+
+fn results(n) = {
+    let made = Box { text: "b${toString(n)}" }
+    let reason = "why${toString(n)}"
+    let kept = Success { value: made }
+    let fresh = Success { value: Box { text: "fresh${toString(n)}" } }
+    let failed: Result<Box, string> = Error { message: reason }
+    let fallback = failed ?: made
+    "results ${verdictOf(kept)} ${verdictOf(fresh)} ${verdictOf(failed)} ${fallback.text} ${made.text}${reason} ${verdictOf(vetted(Box { text: "xyz${toString(n)}" }, true))} ${verdictOf(vetted(Box { text: "x" }, false))}"
+}
+
 fn effects() = "${toString(listLength(folded(4)))} ${toString(listLength(folded(0)))} ${drawn(10)} ${drawn(0)} ${noted(3)}"
 
-print("${fileScope(1)} ${shared.text}\n${spans()}\n${elements()}\n${collections()}\n${lastUses()}\n${paths()}\n${owned()}\n${generics()}\n${literals()}\n${errors()} ${renderedTwice(7)}\n${captures()}\n${lends()}\n${lentLists()}\n${reads()}\n${borrows()}\n${effects()}\n${stores(2)}\n${takes(3)}\n${closures(2)}\n${parts(3)}\n${returned(2)}\n${returned(3)}\n${updates(5)}\n${fallbacks(1)}\n${fallbacks(4)}\n${keeps(6)}\n${journaled()} ${fileFault()}")
+print("${fileScope(1)} ${shared.text}\n${spans()}\n${elements()}\n${collections()}\n${lastUses()}\n${paths()}\n${owned()}\n${generics()}\n${literals()}\n${errors()} ${renderedTwice(7)}\n${captures()}\n${lends()}\n${lentLists()}\n${reads()}\n${borrows()}\n${effects()}\n${stores(2)}\n${takes(3)}\n${closures(2)}\n${parts(3)}\n${returned(2)}\n${returned(3)}\n${updates(5)}\n${fallbacks(1)}\n${fallbacks(4)}\n${keeps(6)}\n${journaled()} ${fileFault()}\n${results(8)}")

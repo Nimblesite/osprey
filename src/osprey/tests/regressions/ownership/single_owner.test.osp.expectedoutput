@@ -25,3 +25,4 @@ fallbacks in1 made1 la1 no1 at1 at1 tmp1 in1at1gap2 at1z1 22
 fallbacks in4 made4 la4 no4 built4 at4 tmp4 in4at4gap2 at4z4 22
 keeps made6 s6 made6
 journal 12 start1;a1;b 2 11 fault parseInt: invalid integer
+results ok b8 ok fresh8 err why8 b8 b8why8 ok xyz8 err short x
