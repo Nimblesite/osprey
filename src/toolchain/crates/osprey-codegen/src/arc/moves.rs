@@ -122,6 +122,7 @@ pub(crate) fn begin_statement<S: std::borrow::Borrow<Stmt>>(
     };
     let live = super::last_use::live_after(cg, rest, tail.map(|(value, _)| value));
     begin(cg, value, &live);
+    super::lends::note_bound_list(cg, stmt);
     place_later_reads(cg, rest);
     if let Some((value, at)) = tail {
         let mut read = BTreeSet::new();

@@ -2,7 +2,8 @@
 // A new version of a list or map is derived while the old one is read again:
 // two live versions would share their nodes and elements. A list filtered or
 // sorted while it is read again would share each element it keeps, and so
-// would the keys or values listed out of a map that is read again.
+// would the keys or values listed out of a map that is read again. A list
+// literal that only lends its elements can't give them to a derived list.
 type Box = { text: string }
 
 fn main() = {
@@ -16,5 +17,8 @@ fn main() = {
     let labels = mapSet(Map(), "k${toString(1)}", "v${toString(1)}")
     let keys = mapKeys(labels)
     let values = mapValues(labels)
-    print("${toString(length(more))} ${toString(length(names))} ${toString(length(older))} ${toString(length(ages))} ${toString(length(short))} ${toString(length(ordered))} ${toString(length(boxes))} ${toString(length(keys))} ${toString(length(values))} ${toString(length(labels))}")
+    let lone = Box { text: "z${toString(2)}" }
+    let lent = [lone, lone]
+    let longer = lent + [Box { text: "w" }]
+    print("${toString(length(more))} ${toString(length(names))} ${toString(length(older))} ${toString(length(ages))} ${toString(length(short))} ${toString(length(ordered))} ${toString(length(boxes))} ${toString(length(keys))} ${toString(length(values))} ${toString(length(labels))} ${toString(length(longer))}${lone.text}")
 }

@@ -91,6 +91,35 @@ pub(super) fn note_lent_closures(cg: &mut Codegen, value: &Expr) {
     }
 }
 
+/// The binding a place is read from: `a` for `a` and for `a.b.c`.
+fn place_root(value: &Expr) -> Option<&str> {
+    match value {
+        Expr::Identifier(name) => Some(name),
+        Expr::FieldAccess { target, .. } => place_root(target),
+        _ => None,
+    }
+}
+
+/// `stmt` binds a list literal whose elements are all bindings or fields of
+/// them, and one of those bindings keeps its value: the list holds every
+/// element without owning it, and borrows from the bindings instead
+/// [MEM-OWNERSHIP-STATIC-BORROWS].
+pub(super) fn note_bound_list(cg: &mut Codegen, stmt: &osprey_ast::Stmt) {
+    let osprey_ast::Stmt::Let {
+        mutable: false,
+        value: Expr::List(items, Some(at)),
+        ..
+    } = stmt
+    else {
+        return;
+    };
+    let roots: Option<Vec<&str>> = items.iter().map(place_root).collect();
+    let kept = |root: &&str| !cg.arc.movable.names_it(root);
+    if cg.ownership.on && roots.is_some_and(|roots| roots.iter().any(kept)) {
+        let _ = cg.ownership.lent_lists.insert((at.line, at.column));
+    }
+}
+
 /// Whether the closure written at `position` lends its captures.
 pub(crate) fn lends(cg: &Codegen, position: Option<Position>) -> bool {
     position.is_some_and(|at| cg.ownership.lent_closures.contains(&(at.line, at.column)))
@@ -115,10 +144,11 @@ pub(crate) fn take_reading(cg: &mut Codegen) -> bool {
     std::mem::take(&mut cg.ownership.reading)
 }
 
-/// Whether the innermost region holds `v` as something that only lends.
+/// Whether the ledger holds `v` as something that only lends.
 pub(crate) fn is_lent(cg: &Codegen, v: &Value) -> bool {
-    let frame = cg.arc.frames.last();
-    frame.is_some_and(|frame| frame.iter().any(|e| e.lent && e.operand == v.operand))
+    let held = super::aliases::root(cg, &v.operand);
+    let mut entries = cg.arc.frames.iter().flatten();
+    entries.any(|e| e.lent && e.operand == held)
 }
 
 /// Build the next closure cell without owning its captures, or as usual.

@@ -168,7 +168,8 @@ pub(crate) fn gen_list(
     let arr = cg.emit_reg(format!("bitcast i8* {data} to {}*", elem.as_str()));
     // A list passed straight to a checked callee holds its elements without
     // owning them [MEM-OWNERSHIP-STATIC-CLOSURES].
-    let lent = crate::arc::lends_list(cg, position);
+    // Only pointers have owners to borrow from.
+    let lent = elem.is_managed_ptr() && crate::arc::lends_list(cg, position);
     for (i, v) in vals.into_iter().enumerate() {
         let v = crate::cast::erase_result(cg, v);
         // [TYPE-NUMERIC-WORD] coerce to the published element BEFORE boxing: a
@@ -235,10 +236,17 @@ pub(crate) fn to_runtime_list(cg: &mut Codegen, v: Value) -> Value {
     let Some((elem, _)) = lit_elem(v.osp_ty.as_deref()) else {
         return v;
     };
+    // The copy of a literal that only lends its elements lends them too: it
+    // holds their words without owning them [MEM-OWNERSHIP-STATIC-BORROWS].
+    let lent = crate::arc::is_lent(cg, &v);
     let literal = crate::arc::versions::take_literal(cg, &v);
     let len = crate::aggregate::load_field(cg, LIST_STRUCT, &v.operand, 0, LType::I64);
     let data = crate::aggregate::load_field(cg, LIST_STRUCT, &v.operand, 1, LType::Str);
-    let managed = if elem.is_managed_ptr() { "1" } else { "0" };
+    let managed = if elem.is_managed_ptr() && !lent {
+        "1"
+    } else {
+        "0"
+    };
     let bld = crate::collections::list_builder_new_of(cg, managed);
     let arr = cg.emit_reg(format!("bitcast i8* {data} to {}*", elem.as_str()));
     let lp = crate::loops::open_range_loop(cg, "0", &len);
@@ -257,6 +265,9 @@ pub(crate) fn to_runtime_list(cg: &mut Codegen, v: Value) -> Value {
     // in its owner tag rather than losing it to the uniform `i64` element ABI
     // ([`crate::collections::LIST_TAG`]).
     let mut sealed = crate::collections::list_builder_seal(cg, &bld);
+    if lent {
+        crate::arc::mark_lent(cg, &sealed);
+    }
     crate::arc::versions::release_source(cg, &literal);
     sealed.inferred_type.clone_from(&v.inferred_type);
     sealed.with_owner(Some(crate::collections::list_owner(
@@ -283,13 +294,7 @@ pub(crate) fn escaping(cg: &mut Codegen, v: Value) -> Value {
     if !is_lit(&v) {
         return v;
     }
-    // The runtime copy of a list of lent closures lends as well.
-    let lent = crate::arc::is_lent(cg, &v);
-    let list = to_runtime_list(cg, v);
-    if lent {
-        crate::arc::mark_lent(cg, &list);
-    }
-    list
+    to_runtime_list(cg, v)
 }
 
 /// A string list (`lines`/`words`/`split`) reaching a NAME is converted to the

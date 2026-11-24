@@ -255,7 +255,14 @@ fn lentLists() = {
     let other = Box { text: "other${toString(22)}" }
     let passed = runAll([|| => made.text == "made1", || => other.text == "nope", || => made.text != other.text])
     let size = longest([made, other, Box { text: churn(3) }])
-    "lent lists ${toString(passed)} ${toString(size)} ${made.text} ${other.text}"
+    // A list literal bound to a name lends too when a binding it holds is read
+    // again: read, indexed, walked, passed on and held in a record, never owned.
+    let both = [made, other]
+    let texts = [made.text, other.text]
+    let second = both[1] ?: made
+    let walked = foldList(both, "", fn(acc, box) => "${acc}${box.text}")
+    let held = Named { label: fn(i) => "${toString(i)}${toString(listLength(both))}" }
+    "lent lists ${toString(passed)} ${toString(size)} ${made.text} ${other.text} ${toString(longest(both))}${toString(listLength(texts))} ${second.text} ${walked} ${held.label(7)} ${texts}"
 }
 
 /// A read from a list or a map lends the element: the collection still owns it,

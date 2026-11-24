@@ -385,4 +385,15 @@ theorem cell_write_frees_old {cell reader fresh : Slot} (apart : reader ≠ cell
     [Action.alloc fresh, .move fresh cell, .free cell].foldlM step dead = some dead := by
   simp [List.foldlM, step, owned, dead, apart]
 
+/-- A holder can't give away what it only holds lent
+    [MEM-OWNERSHIP-STATIC-SHARING]: a list literal that lends its elements
+    has no element to hand to a list derived from it, so filtering, sorting or
+    concatenating it is refused. -/
+theorem lent_element_not_given {c lent : Cell} {holder owner : Slot}
+    (accepted : step c (.borrow holder owner) = some lent) (taker : Slot) :
+    step lent (.move holder taker) = none := by
+  have shape := borrowed accepted
+  subst shape
+  simp [step, owned]
+
 end OwnershipLedger

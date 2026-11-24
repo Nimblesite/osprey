@@ -46,6 +46,7 @@ shared_element_refused propext, Quot.sound
 capture_leaves_frame propext, Quot.sound
 mixed_join_frees_once propext, Quot.sound, Classical.choice
 cell_write_frees_old propext, Quot.sound, Classical.choice
+lent_element_not_given propext
 THEOREMS
 # A model that frees or moves a value while it is lent, or frees through a
 # slot that does not own it, must lose its proofs.

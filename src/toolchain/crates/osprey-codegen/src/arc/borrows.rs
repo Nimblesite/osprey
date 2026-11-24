@@ -90,7 +90,10 @@ fn keep_made(cg: &mut Codegen, name: &str, source: &Expr) -> bool {
 /// `name` takes `v` and borrows from every binding `source` mentions, which
 /// then outlive `name`'s last read.
 fn bind_lent(cg: &mut Codegen, name: &str, source: &Expr, v: &Value) -> bool {
-    let built = matches!(source, Expr::TypeConstructor { .. } | Expr::Lambda { .. });
+    let built = matches!(
+        source,
+        Expr::TypeConstructor { .. } | Expr::Lambda { .. } | Expr::List(..)
+    );
     if !built || !super::is_lent(cg, v) || !borrow_from(cg, name, source) {
         return false;
     }
