@@ -201,14 +201,9 @@ def distinct(values):
     return foldList(values, [], lambda kept, value: kept if listContains(kept, value) else listAppend(kept, value))
 
 
-def ascending(values):
-    """`values` in ascending order."""
-    return listSortBy(values, lambda left, right: -1 if left < right else (1 if left > right else 0))
-
-
 def vocabulary(corpus):
     """Every byte the corpus uses except the end-of-turn marker, ascending."""
-    return ascending(filterList(distinct(bytes_of(corpus)), lambda byte: byte != marker()))
+    return listSort(filterList(distinct(bytes_of(corpus)), lambda byte: byte != marker()))
 
 
 def token_ids(vocab):
