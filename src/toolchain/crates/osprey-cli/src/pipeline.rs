@@ -247,7 +247,19 @@ fn reuse_eligible(cli: &Cli, input: &CompilationInput) -> bool {
 }
 
 pub(super) fn run_check(cli: &Cli, input: &CompilationInput) -> ExitCode {
-    let verdict = gated(cli, input);
+    let verdict = gated(cli, input).and_then(|()| {
+        // Library checks already lower their ABI in target_error. Native and
+        // WASI need lowering here to check the ownership ledger before linking.
+        if cli.memory == crate::invocation::OWNERSHIP
+            && matches!(cli.target.as_str(), "native" | "wasm32")
+        {
+            return target_ir(cli, input).map(drop).map_err(|error| {
+                eprintln!("{}: {error}", input.display_path());
+                ExitCode::FAILURE
+            });
+        }
+        Ok(())
+    });
     osprey_codegen::set_reused_check(None);
     if verdict.is_ok() {
         if !cli.quiet {

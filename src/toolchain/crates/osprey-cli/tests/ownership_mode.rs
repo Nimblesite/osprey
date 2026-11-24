@@ -107,6 +107,24 @@ fn a_value_that_needs_a_second_owner_is_refused_by_name_and_place() -> std::io::
         .try_for_each(|program| assert_refused(program))
 }
 
+/// The check-only entry point must enforce the same ownership rules as emission.
+#[test]
+fn ownership_check_agrees_with_lowering() -> std::io::Result<()> {
+    for program in programs(REFUSED)?.into_iter().chain(programs(ACCEPTED)?) {
+        for target in ["--target=native", "--target=wasm32"] {
+            let emit = osprey(&program, &["--llvm", "--memory=ownership", target])?;
+            let check = osprey(&program, &["--check", "--memory=ownership", target])?;
+            let name = program.display();
+            assert_eq!(check.status.code(), emit.status.code(), "{name} {target}");
+            if !emit.status.success() {
+                assert!(check.stdout.is_empty(), "{name} {target} claimed success");
+                assert_eq!(text(&check.stderr), text(&emit.stderr), "{name} {target}");
+            }
+        }
+    }
+    Ok(())
+}
+
 #[test]
 fn an_unknown_backend_names_ownership_among_the_choices() -> std::io::Result<()> {
     let program = repo_root().join(ACCEPTED).join("single_owner.test.osp");
