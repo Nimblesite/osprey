@@ -1,6 +1,6 @@
 // [MEM-OWNERSHIP-STATIC-VERIFICATION-COMPILER] The native loop reloads the
 // worklist depth after each child walk, which can append more bodies to visit.
-import { blocks, voidBody, wordSlot } from './runtime-returns.mjs'
+import { blocks, runtimeCfg, voidBody, wordSlot } from './runtime-returns.mjs'
 
 function loopGuard(lines) {
   const load = /^(%[\w.]+) = load i64, ptr @g_wl_top, align 8$/.exec(lines[0])
@@ -11,9 +11,7 @@ function loopGuard(lines) {
 }
 
 export function popBody(ir) {
-  const { args: [root], lines } = voidBody(ir, 'arc_release_zero_locked', 1, 'i64')
-  const cfg = blocks(lines.map(line => line.replace(/, !(?:tbaa|llvm\.loop) !\d+/g, '')))
-  const entry = cfg.get('entry') ?? []
+  const { arg: root, cfg, entry } = runtimeCfg(ir, 'arc_release_zero_locked', 'i64')
   const push = /^(?:tail )?call (?:fastcc )?void @arc_wl_push\(i64 (?:noundef )?(%[\w.]+)\)$/.exec(entry[1])
   if (entry.length !== 5 || entry[0] !== 'store i64 0, ptr @g_wl_top, align 8' || push?.[1] !== root) throw Error('unsupported destruction entry')
   const start = loopGuard(entry.slice(2))

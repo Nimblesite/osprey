@@ -30,7 +30,7 @@ lake build lean4export
 lake env lean -DwarningAsError=true --root="$out" -o "$out/OwnershipLowering.olean" "$out/OwnershipLowering.lean"
 exporter=$(lake env which lean4export)
 lean_path=$(lake env printenv LEAN_PATH)
-for name in compiledGrow compiledGrowWhen runtimeRootOrigins renderedStringOrigin stringResultOrigins compiledFreeNull compiledPairFields compiledChildDrop compiledWorklistPush compiledPairQueue compiledGrowthBytes compiledPop compiledBodyReclaim compiledPushPop; do
+for name in compiledGrow compiledGrowWhen runtimeRootOrigins renderedStringOrigin stringResultOrigins compiledFreeNull compiledPairFields compiledChildDrop compiledWorklistPush compiledPairQueue compiledGrowthBytes compiledPop compiledBodyReclaim compiledPushPop compiledLiveDebit compiledReclaimPrefix; do
   theorem="OwnershipLowering.$name"
   LEAN_PATH="$out:$lean_path" "$exporter" OwnershipLowering -- "$theorem" > "$out/$name.ndjson"
   for backend in gc arc wasm; do
@@ -171,3 +171,19 @@ for fault in stale-pop duplicate-reclaim; do
 done
 
 reject stale-pop compiledPushPop
+
+for fault in skipped-live-count skipped-live-bytes debit-state-field keep-live-header; do
+  awk -v fault="$fault" '
+    /^define / {debit = /@arc_live_dec\(/; reclaim = /@arc_free_or_recycle\(/}
+    debit && fault == "skipped-live-count" && /store i64 .*@g_live,/ {next}
+    debit && fault == "skipped-live-bytes" && /store i64 .*@g_live_bytes,/ {next}
+    reclaim && fault == "debit-state-field" && / = getelementptr .*i64 12$/ {sub(/12$/, "8")}
+    reclaim && fault == "keep-live-header" && /store i32 0, ptr/ {sub(/store i32 0/, "store i32 1")}
+    {print}
+  ' "$out/heap.ll" > "$out/mutations/$fault.ll"
+  reflect "$out/ownership.ll" "$out/mutations/$fault.lean" "$out/runtime.ll" "$out/strings.ll" "$out/mutations/$fault.ll"
+  case "$fault" in
+    skipped-*) reject "$fault" compiledLiveDebit ;;
+    *) reject "$fault" compiledReclaimPrefix ;;
+  esac
+done

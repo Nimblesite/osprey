@@ -261,4 +261,23 @@ theorem compiledPushPop (depth cap child : Nat) (memory : Nat → Nat) (spare : 
   unfold readAfterWrite
   rw [if_pos rfl]
 
+/-- The native counters use unsigned machine arithmetic, including wraparound. -/
+def emittedDebit (tracking : Bool) (objects bytes size : BitVec 64) : BitVec 64 × BitVec 64 :=
+-- LIVE DEBIT
+
+theorem compiledLiveDebit (tracking : Bool) (objects bytes size : BitVec 64) :
+    emittedDebit tracking objects bytes size =
+      (if tracking then (objects - 1, bytes - size) else (objects, bytes)) := by rfl
+
+/-- Counter state and the (byte offset, value) of the first header store. -/
+def emittedReclaimPrefix (tracking : Bool) (objects bytes : BitVec 64) (header : Nat → BitVec 32) :
+    (BitVec 64 × BitVec 64) × Nat × BitVec 32 :=
+-- RECLAIM PREFIX
+
+theorem compiledReclaimPrefix (tracking : Bool) (objects bytes : BitVec 64) (header : Nat → BitVec 32) :
+    emittedReclaimPrefix tracking objects bytes header =
+      ((if tracking then (objects - 1, bytes - (header 12).zeroExtend 64) else (objects, bytes)), 8, 0) := by
+  unfold emittedReclaimPrefix
+  rw [compiledLiveDebit]
+
 end OwnershipLowering

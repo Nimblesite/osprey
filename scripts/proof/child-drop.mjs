@@ -1,6 +1,6 @@
 // [MEM-OWNERSHIP-STATIC-VERIFICATION-COMPILER] Resolve the child's own registry
 // lookup and interpret the shipped header switch, including its default edge.
-import { blocks, nullSuccessors, voidBody, wordSlot } from './runtime-returns.mjs'
+import { blocks, nullSuccessors, operand, voidBody, wordSlot } from './runtime-returns.mjs'
 
 const addressCast = /^(%[\w.]+) = ptrtoint ptr (%[\w.]+) to i64$/
 
@@ -75,12 +75,9 @@ function pushWrites(body, regs) {
   const slot = wordSlot.exec(body[3])
   const write = /^store i64 (%[\w.]+), ptr (%[\w.]+), align 8(?:, !tbaa !\d+)?$/.exec(body[4])
   if (!buffer || !add || !depth || !slot || !write || buffer[1] !== slot[3] || write[2] !== slot[1]) return 'none'
-  const operand = reg => {
-    if (!regs.has(reg)) throw Error('unknown worklist operand: ' + reg)
-    return regs.get(reg)
-  }
-  regs.set(add[1], '(' + operand(add[2]) + ' + ' + add[3] + ')')
-  return 'some (' + operand(depth[1]) + ', ' + operand(slot[4]) + ' * ' + (slot[2] ?? '8') + ', ' + operand(write[1]) + ')'
+  const read = reg => operand(regs, reg)
+  regs.set(add[1], '(' + read(add[2]) + ' + ' + add[3] + ')')
+  return 'some (' + read(depth[1]) + ', ' + read(slot[4]) + ' * ' + (slot[2] ?? '8') + ', ' + read(write[1]) + ')'
 }
 
 export function worklistPush(ir) {

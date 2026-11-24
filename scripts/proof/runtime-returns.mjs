@@ -46,7 +46,7 @@ function alternatives(values) {
 }
 
 export function voidBody(ir, name, arity = 1, type = 'ptr') {
-  const attributes = '(?:(?:noundef|nofree|readonly|readnone|nocapture|captures\\(address_is_null\\)) )*'
+  const attributes = '(?:(?:range\\(i64 0, 4294967296\\)|noundef|nofree|readonly|readnone|nocapture|captures\\(address_is_null\\)) )*'
   const param = type + ' ' + attributes + '(%[\\w.-]+)'
   const header = '^define [^@\\n]*void @' + name + '\\(' + Array(arity).fill(param).join(', ') + '\\)[^\\n]*\\{\\n([\\s\\S]*?)^\\}'
   const match = new RegExp(header, 'm').exec(ir)
@@ -69,6 +69,17 @@ export function blocks(lines) {
     } else block.push(line)
   }
   return result
+}
+
+export function runtimeCfg(ir, name, type = 'ptr') {
+  const { args: [arg], lines } = voidBody(ir, name, 1, type)
+  const cfg = blocks(lines.map(line => line.replace(/, !(?:tbaa|llvm\.loop) !\d+/g, '')))
+  return { arg, cfg, entry: cfg.get('entry') ?? [] }
+}
+
+export function operand(regs, reg) {
+  if (!regs.has(reg)) throw Error('unknown LLVM operand: ' + reg)
+  return regs.get(reg)
 }
 
 export function nullSuccessors(entry = [], header) {
