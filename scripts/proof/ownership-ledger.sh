@@ -6,6 +6,7 @@ set -euo pipefail
 root=$(cd "$(dirname "$0")/../.." && pwd)
 out="$root/target/proof/ownership"
 tools="$root/src/toolchain/benchmarks/proof/tools"
+source "$root/scripts/proof/replay.sh"
 mkdir -p "$out/mutations"
 cd "$tools"
 lake build lean4export
@@ -17,15 +18,7 @@ lean_path=$(lake env printenv LEAN_PATH)
 while read -r name axioms; do
   theorem="OwnershipLedger.$name"
   LEAN_PATH="$out:$lean_path" "$exporter" OwnershipLedger -- "$theorem" > "$out/ledger-$name.ndjson"
-  for backend in gc arc wasm; do
-    if [[ $backend == wasm ]]; then
-      result=$(printf 'ledger-%s.ndjson\t%s\n' "$name" "$theorem" | node "$root/scripts/proof/proof-batch-wasm.mjs" "$root/target/proof/openai/check-batch.wasm" "$out")
-    else
-      result=$(printf '%s\t%s\n' "$out/ledger-$name.ndjson" "$theorem" | "$root/target/proof/openai/check-batch.$backend")
-    fi
-    echo "$backend $result"
-    test "$result" = "PASS $theorem | axioms: $axioms"
-  done
+  replay "ledger-$name.ndjson" "$theorem" "$axioms"
 done <<'THEOREMS'
 step_preserves propext, Quot.sound
 from_empty propext, Quot.sound

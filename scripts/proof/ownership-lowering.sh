@@ -4,6 +4,7 @@ set -euo pipefail
 root=$(cd "$(dirname "$0")/../.." && pwd)
 out="$root/target/proof/ownership"
 tools="$root/src/toolchain/benchmarks/proof/tools"
+source "$root/scripts/proof/replay.sh"
 program="$root/src/osprey/tests/regressions/ownership/single_owner.test.osp"
 mkdir -p "$out"
 "$1" "$program" --llvm --memory=ownership > "$out/ownership.ll"
@@ -35,15 +36,7 @@ for name in compiledGrow compiledGrowWhen runtimeRootOrigins renderedStringOrigi
   axioms=none
   if [[ $name == compiledAccountingRoundTrip ]]; then axioms=propext; fi
   LEAN_PATH="$out:$lean_path" "$exporter" OwnershipLowering -- "$theorem" > "$out/$name.ndjson"
-  for backend in gc arc wasm; do
-    if [[ $backend == wasm ]]; then
-      result=$(printf '%s.ndjson\t%s\n' "$name" "$theorem" | node "$root/scripts/proof/proof-batch-wasm.mjs" "$root/target/proof/openai/check-batch.wasm" "$out")
-    else
-      result=$(printf '%s\t%s\n' "$out/$name.ndjson" "$theorem" | "$root/target/proof/openai/check-batch.$backend")
-    fi
-    echo "$backend $result"
-    test "$result" = "PASS $theorem | axioms: $axioms"
-  done
+  replay "$name.ndjson" "$theorem" "$axioms"
 done
 # The mutants are valid instructions in the supported fragment. Refuse them
 # at the theorem itself, independently of reflection or LLVM syntax checks.
