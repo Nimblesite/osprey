@@ -1,0 +1,47 @@
+/- [MEM-OWNERSHIP-STATIC-VERIFICATION] Translation validation of the native
+   compiler's entire emitted grow(List<int>, int) body. Registers identify
+   allocations; each append returns a fresh root. Contents model the C helper's
+   persistent-list contract. Stack slots hold raw pointers and expire on return. -/
+namespace OwnershipLowering
+
+inductive Instr where
+  | reserve (slot : Nat)
+  | store (slot : Nat) (reg : Option Nat)
+  | append (src dst : Nat)
+  | free (reg : Nat)
+  | ret (reg : Nat)
+
+def emitted : List Instr :=
+-- EMITTED BODY
+
+structure Machine (α : Type) where
+  heap : List (Nat × List α)
+  slots : List (Nat × Option Nat)
+
+def execute (element : α) (s : Machine α) : List Instr → Option (List α)
+  | .reserve slot :: rest =>
+    execute element {s with slots := (slot, none) :: s.slots} rest
+  | .store slot reg :: rest =>
+    if s.slots.lookup slot |>.isSome then
+      execute element {s with slots := (slot, reg) :: s.slots} rest
+    else none
+  | .append src dst :: rest => do
+    let xs ← s.heap.lookup src
+    if (s.heap.lookup dst).isSome then none else
+      execute element {s with heap := (dst, xs ++ [element]) :: s.heap} rest
+  | .free reg :: rest =>
+    if (s.heap.lookup reg).isSome then
+      execute element {s with heap := s.heap.filter (fun entry => entry.1 != reg)} rest
+    else none
+  | [.ret reg] =>
+    match s.heap with
+    | [(owner, result)] => if owner == reg then some result else none
+    | _ => none
+  | _ => none
+
+/-- Every input produces the source result and returns its only surviving root.
+    A stale read, invalid free or extra surviving allocation yields none. -/
+theorem compiledGrow (xs : List α) (x : α) :
+    execute x ⟨[(0, xs)], []⟩ emitted = some (xs ++ [x]) := by rfl
+
+end OwnershipLowering

@@ -155,8 +155,9 @@ _test_proof_ci: _test_proof_kernel _test_disciplines _test_ownership_proof $(PRO
 
 # Verify single ownership and lender liveness along accepted ledger paths.
 .PHONY: _test_ownership_proof
-_test_ownership_proof:
+_test_ownership_proof: $(PROOF_BATCH_TARGETS)
 	cd src/toolchain/benchmarks/proof/tools && lean -DwarningAsError=true OwnershipLedger.lean
+	bash scripts/proof/ownership-lowering.sh "$(abspath $(BIN))"
 
 _test_proof_batch_gc _test_proof_batch_arc: _test_proof_batch_%:
 	@$(MKDIR) target/proof/openai

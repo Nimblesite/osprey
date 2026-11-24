@@ -92,6 +92,8 @@ Depends on: [plan 0042](0042-proof-workbench.md) for the workbench phases (resum
 
 Dated evidence for proof claims; spec 0049 requires it. Add new dated entries here. Open proof items: #347.
 
+**Compiler translation validation, 2026-11-24.** The ownership proof target compiles the generic `grow` regression, reflects every instruction of the scalar-list specialization and checks `OwnershipLowering.compiledGrow` with pinned Lean. The GC, ARC and WASI builds of the Osprey kernel replay its certificate with zero reported axioms. Its scope and remaining compiler obligations are recorded in [ownership V8](0045-compile-time-ownership.md).
+
 **Road test, 2026-10-29.** M0 kernel: 330 Osprey lines in six files, about four hours to first green (most of it the positional-constructor gap, since fixed), longest function 19 lines. Costs: recursive functions need written signatures that the checker then flags as redundant; no nested patterns.
 
 **Export fixture, 2026-10-29.** Lean 4.25.0 (`cdd38ac5115bdeec5f609e9126cce00f51ae88b3`), lean4export `cfefafacc917b2d14c5f9bb092ed337f71317a4a`, lean4checker `aa03950243dc18750c1546602ab054609ea8d57d`, both tag `v4.25.0`. `exports/id_imp.ndjson`: 24 lines, sha256 `2adb6bc5ff4e2fcaf9d804548fc2eaf0753902effbac3d70e1657d1b5998330d`. `Fixtures::idImp` is that text byte for byte; `idImpBad` changes line 22 from `"body":1` to `"body":2`. `scripts/proof/proof-export.sh --check` exits 1 on a one-byte edit. Format history: 0.1.2 text to `v4.20.0-rc5`; 2.0.0 text `v4.22.0-rc3` to `v4.27.0-rc1` (last `9847384d`); NDJSON from `c8407566`.

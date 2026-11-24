@@ -26,6 +26,8 @@ Compatibility concerns intended logical rules and valid certificates, not reprod
 
 The compatible theory remains a versioned package under spec 0050. An implementation repair requires fresh validation of affected proofs. Removing an axiom or changing inference/equality rules creates an explicit policy/theory revision or separately named fork; its certificates, caches and library dependencies must be rechecked under that identity. Such a fork does not inherit its parent's proof authority. Unsupported proofs remain refused, and pluggability alone establishes no consistency theorem.
 
+For a theorem about compiled code, record the compiler input, the emitted function and the semantics assumed for its external calls. The proof gate must derive the theorem input from that compiler output, reject unsupported instructions, and reject a change to the emitted function that violates the property. [Ownership proof scope](../../plans/0045-compile-time-ownership.md)
+
 ## The existing language is untouched [PROOF-NO-HARM]
 
 This contract adds; it never alters. The rules below are testable and each has a gate:
