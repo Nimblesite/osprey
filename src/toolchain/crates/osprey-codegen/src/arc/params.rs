@@ -14,34 +14,32 @@ use std::collections::{BTreeMap, BTreeSet};
 /// For each function that owns any, which of its parameters it owns.
 pub(crate) type OwnedParameters = BTreeMap<String, Vec<bool>>;
 
-/// Whether `e` can evaluate to the binding `name` itself.
-fn yields(e: &Expr, name: &str) -> bool {
+/// Whether some expression `e` can evaluate to, through blocks and the arms
+/// of a `match`, satisfies `found`.
+fn yields_some(e: &Expr, found: &dyn Fn(&Expr) -> bool) -> bool {
     match e {
-        Expr::Identifier(found) => found == name,
         Expr::Block {
             value: Some(tail), ..
-        } => yields(tail, name),
-        Expr::Match { arms, .. } => arms.iter().any(|arm| yields(&arm.body, name)),
-        _ => false,
+        } => yields_some(tail, found),
+        Expr::Match { arms, .. } => arms.iter().any(|arm| yields_some(&arm.body, found)),
+        _ => found(e),
     }
+}
+
+/// Whether `e` can evaluate to the binding `name` itself.
+fn yields(e: &Expr, name: &str) -> bool {
+    yields_some(e, &|tail| is_named(tail, name))
 }
 
 /// Whether `e` can evaluate to a closure that captures the binding `name`: the
 /// closure leaves the function, so it must own what it captured and the
 /// parameter is taken by move [MEM-OWNERSHIP-STATIC-CLOSURES].
 fn yields_closure_over(e: &Expr, name: &str) -> bool {
-    match e {
-        Expr::Lambda { .. } => {
-            let mut free = BTreeSet::new();
-            osprey_ast::freevars::free_idents(e, &mut free);
-            free.contains(name)
-        }
-        Expr::Block {
-            value: Some(tail), ..
-        } => yields_closure_over(tail, name),
-        Expr::Match { arms, .. } => arms.iter().any(|arm| yields_closure_over(&arm.body, name)),
-        _ => false,
-    }
+    yields_some(e, &|tail| {
+        let mut free = BTreeSet::new();
+        osprey_ast::freevars::free_idents(tail, &mut free);
+        matches!(tail, Expr::Lambda { .. }) && free.contains(name)
+    })
 }
 
 /// The collection builtins whose first argument is the source of a new version
