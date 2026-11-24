@@ -7,6 +7,8 @@ tools="$root/src/toolchain/benchmarks/proof/tools"
 program="$root/src/osprey/tests/regressions/ownership/single_owner.test.osp"
 mkdir -p "$out"
 "$1" "$program" --llvm --memory=ownership > "$out/ownership.ll"
+validate_ir() { clang -Wno-override-module -c -x ir "$1" -o /dev/null; }
+validate_ir "$out/ownership.ll"
 runtime="$root/src/toolchain/compiler/runtime"
 compile_runtime() {
   clang -O1 -fno-inline -fno-discard-value-names -I "$runtime" "${@:3}" \
@@ -17,9 +19,10 @@ compile_runtime "$runtime/list_runtime.c" "$out/runtime.ll" "${shim[@]}"
 compile_runtime "$runtime/map_runtime.c" "$out/map.ll" "${shim[@]}"
 compile_runtime "$runtime/string_runtime.c" "$out/strings.ll" "${shim[@]}"
 compile_runtime "$runtime/memory_ownership.c" "$out/heap.ll"
+compile_runtime "$tools/ownership-pair-walk.c" "$out/pair-walk.ll" -O2 -finline
 reflect() {
   node "$root/scripts/proof/ownership-lowering.mjs" "$program" "$1" \
-    "$tools/OwnershipLowering.lean.in" "${3:-$out/runtime.ll}" "$out/map.ll" "${4:-$out/strings.ll}" "${5:-$out/heap.ll}" > "$2"
+    "$tools/OwnershipLowering.lean.in" "${3:-$out/runtime.ll}" "$out/map.ll" "${4:-$out/strings.ll}" "${5:-$out/heap.ll}" "${6:-$out/pair-walk.ll}" > "$2"
 }
 cd "$tools"
 reflect "$out/ownership.ll" "$out/OwnershipLowering.lean"
@@ -27,7 +30,7 @@ lake build lean4export
 lake env lean -DwarningAsError=true --root="$out" -o "$out/OwnershipLowering.olean" "$out/OwnershipLowering.lean"
 exporter=$(lake env which lean4export)
 lean_path=$(lake env printenv LEAN_PATH)
-for name in compiledGrow compiledGrowWhen runtimeRootOrigins renderedStringOrigin stringResultOrigins compiledFreeNull; do
+for name in compiledGrow compiledGrowWhen runtimeRootOrigins renderedStringOrigin stringResultOrigins compiledFreeNull compiledPairFields; do
   theorem="OwnershipLowering.$name"
   LEAN_PATH="$out:$lean_path" "$exporter" OwnershipLowering -- "$theorem" > "$out/$name.ndjson"
   for backend in gc arc wasm; do
@@ -46,6 +49,7 @@ mkdir -p "$out/mutations"
 reject() {
   local fault=$1 theorem=$2
   local file="$out/mutations/$fault.lean" log="$out/mutations/$fault.log"
+  validate_ir "$out/mutations/$fault.ll"
   if lake env lean "$file" > "$log" 2>&1; then
     echo "accepted $fault" >&2
     return 1
@@ -106,3 +110,21 @@ sed '/^static void tracked_drop(/,/^}/s/if (!body)/if (body)/' \
 compile_runtime "$out/mutations/memory_ownership.c" "$out/mutations/inverted-drop.ll"
 reflect "$out/ownership.ll" "$out/mutations/inverted-drop.lean" "$out/runtime.ll" "$out/strings.ll" "$out/mutations/inverted-drop.ll"
 reject inverted-drop compiledFreeNull
+
+for fault in duplicate-child omitted-child-bit; do
+  awk -v fault="$fault" '
+    /^define / {pair = /@pairUp\(/}
+    pair && fault == "duplicate-child" && /store i8\* %\$p1, i8\*\* %r/ {sub(/%\$p1/, "%$p0")}
+    pair && fault == "omitted-child-bit" && /@osp_alloc_tagged_noinit/ {sub(/i64 1537\)/, "i64 513)")}
+    {print}
+  ' "$out/ownership.ll" > "$out/mutations/$fault.ll"
+  reflect "$out/mutations/$fault.ll" "$out/mutations/$fault.lean"
+  reject "$fault" compiledPairFields
+done
+
+awk '/^define / {walk = /@proof_pair_drop\(/}
+     walk && /call .*@arc_drop_child\(/ && ++drops == 2 {next} {print}' \
+  "$out/pair-walk.ll" > "$out/mutations/missing-child-drop.ll"
+reflect "$out/ownership.ll" "$out/mutations/missing-child-drop.lean" \
+  "$out/runtime.ll" "$out/strings.ll" "$out/heap.ll" "$out/mutations/missing-child-drop.ll"
+reject missing-child-drop compiledPairFields

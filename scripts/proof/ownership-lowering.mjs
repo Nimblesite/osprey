@@ -2,8 +2,9 @@
 // The Boolean parameter has two inhabitants; specialize both, resolving each phi by
 // its actual predecessor. Reject unknown instructions [MEM-OWNERSHIP-STATIC-VERIFICATION].
 import { readFileSync } from 'node:fs'
+import { pairConstructor, pairWalk } from './record-ownership.mjs'
 import { nullDrop, runtimeReturns } from './runtime-returns.mjs'
-const [source, irFile, template, listFile, mapFile, stringFile, heapFile] = process.argv.slice(2)
+const [source, irFile, template, listFile, mapFile, stringFile, heapFile, walkFile] = process.argv.slice(2)
 const src = readFileSync(source, 'utf8').split('\n')
 const ir = readFileSync(irFile, 'utf8')
 function define(map, key, value = map.size) {
@@ -78,7 +79,7 @@ function trace(body, enabled) {
   }
   throw Error('loop in scalar append specialization')
 }
-for (const definition of ['fn grow(xs, x) = listAppend(xs, x)', 'fn growWhen(xs, x, enabled) = if enabled { listAppend(xs, x) } else { xs }']) {
+for (const definition of ['type Pair = { left: Box, right: Box }', 'fn pairUp(left, right) = Pair { left: left, right: right }', 'fn grow(xs, x) = listAppend(xs, x)', 'fn growWhen(xs, x, enabled) = if enabled { listAppend(xs, x) } else { xs }']) {
   if (!src.includes(definition)) throw Error('unsupported source: ' + definition)
 }
 const conditional = blocks('growWhen', true)
@@ -88,6 +89,8 @@ const strings = runtimeReturns(stringFile, 'osp_alloc_tagged')
 const renderer = runtimeReturns(irFile, 'osp_string_show', strings('osp_string_show'))
 const stringOps = 'concat take drop substring to_upper to_lower trim_start trim_end trim reverse replace repeat pad_start pad_end from_codepoint'.split(' ')
 process.stdout.write(readFileSync(template, 'utf8')
+  .replace('-- PAIR WALK', pairWalk(readFileSync(walkFile, 'utf8')))
+  .replace('-- PAIR CONSTRUCTOR', pairConstructor(ir))
   .replace('-- NULL DROP', nullDrop(heapFile))
   .replace('-- STRING OP RETURNS', stringOps.map(op => '  | .«' + op + '» => ' + strings('osp_string_' + op)).join('\n'))
   .replace('-- APPEND RETURNS', list('osprey_list_append_of'))

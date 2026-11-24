@@ -129,4 +129,25 @@ theorem stringResultOrigins (op : StringOp) (pick : Nat → Bool) :
   apply allocatedPath
   cases op <;> repeat constructor
 
+/-- Layout word and pointer writes of the emitted native two-owner constructor,
+    newest write first. The allocator must return fresh storage of the requested
+    size. Each argument already carries ownership of its distinct child. -/
+def emittedPair (left right : α) : Nat × List (Nat × α) :=
+-- PAIR CONSTRUCTOR
+
+inductive WalkEvent where
+  | read (byteOffset : Nat)
+  | drop (loadedFrom : Nat)
+
+def pairWalk : Nat × List WalkEvent :=
+-- PAIR WALK
+
+theorem compiledPairFields (left right : α) :
+    (emittedPair left right).1 = pairWalk.1 ∧
+    pairWalk.2 = [.read 8, .drop 8, .read 16, .drop 16] ∧
+    (emittedPair left right).2.length = 2 ∧
+    (emittedPair left right).2.lookup 1 = some left ∧
+    (emittedPair left right).2.lookup 2 = some right := by
+  exact ⟨rfl, rfl, rfl, rfl, rfl⟩
+
 end OwnershipLowering
