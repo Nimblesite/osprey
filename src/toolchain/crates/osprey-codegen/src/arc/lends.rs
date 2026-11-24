@@ -167,7 +167,11 @@ pub(crate) fn take_lent_capture(cg: &mut Codegen) -> bool {
     std::mem::take(&mut cg.arc.lent_capture)
 }
 
-/// How a constructor holds one field [MEM-OWNERSHIP-STATIC-BORROWS].
+/// How a constructor holds one field [MEM-OWNERSHIP-STATIC-BORROWS]. Each way
+/// is an action of the ledger model [MEM-OWNERSHIP-STATIC-MODEL]: `Moved` is
+/// `move`, `Lent` is `borrow`. Proved there: a lent field pins its lender
+/// (`lent_pins_owner`), is never freed by its holder (`lent_field_not_freed`)
+/// and is freed once by its owner (`lent_then_released`, `lent_twice_released`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Held {
     /// Counted or moved by the store itself: every backend but ownership.

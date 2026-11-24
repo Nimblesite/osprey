@@ -5,6 +5,13 @@
 //! take the reference the value held: the field's slot is cleared, and the
 //! value is freed later without that field. This is the owned projection of
 //! Counting Immutable Beans §5 and the drop specialization of Perceus §2.3.
+//!
+//! In the ledger model [MEM-OWNERSHIP-STATIC-MODEL] a take is `move` from the
+//! field's slot. Proved there: the taker becomes the one owner
+//! (`take_moves_owner`), the holder may not free through the slot it gave up
+//! (`taken_field_not_freed`, hence the cleared slot), nothing may still borrow
+//! the value (`take_needs_no_loan`, hence the last-read checks), and it is
+//! freed once (`taken_freed_once`).
 use super::{Codegen, FrameKind};
 use std::collections::BTreeMap;
 

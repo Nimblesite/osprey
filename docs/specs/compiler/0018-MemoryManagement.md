@@ -362,6 +362,50 @@ calls that alias an owner with a live borrow, and continuations that would
 duplicate an owner. Acceptance tests must cover cleanup when a continuation
 is discarded, as well as ordinary returns and successful resumption.
 
+#### The ledger model [MEM-OWNERSHIP-STATIC-MODEL]
+
+The rules of this backend are theorems about one transition system, stated in Lean and replayed by Osprey's proof kernel. [Model and proofs](../../../src/toolchain/benchmarks/proof/tools/OwnershipLedger.lean), [proof gate](../../../scripts/proof/ownership-ledger.sh).
+
+**State.** Let S be the set of slots: a binding, a temporary, a record or union field, a closure capture, a caller. An allocation is a cell c = (live, O, L) with live ∈ 𝔹, owners O ∈ S\*, and loans L ⊆ S × S, where (b, o) ∈ L reads "slot b borrows from owner o". The freed cell is ⊥ = (false, [], ∅) and own(o) = (true, [o], ∅). A heap is a map h : ℕ → Cell.
+
+**Invariant.** Valid(c) ⟺ (live ∧ ∃ o. O = [o] ∧ ∀ (b, o′) ∈ L. o′ = o) ∨ (¬live ∧ O = [] ∧ L = ∅). Safe(h) ⟺ ∀ a. Valid(h(a)). A live allocation has exactly one owner and every loan names it; a freed one has no owner and no loan.
+
+**Transitions.** step : Cell × Action ⇀ Cell is partial. Where the guard fails the compiler refuses the program.
+
+| Action | Guard | Result | Lowering |
+| --- | --- | --- | --- |
+| alloc(o) | c = ⊥ | own(o) | A constructor, literal or call result registers its owner. |
+| borrow(b, o) | live ∧ O = [o] ∧ b ≠ o ∧ ∀ (b′, \_) ∈ L. b′ ≠ b | (live, O, L ∪ {(b, o)}) | A `let` alias, a lent field, a lent capture ([MEM-OWNERSHIP-STATIC-BORROWS]). |
+| read(s) | live ∧ (s ∈ O ∨ ∃ o. (s, o) ∈ L) | c | Any use of a value. |
+| endBorrow(b) | none | (live, O, L ∖ {(b, o) : o ∈ S}) | The borrower's last read; the death of a holder. |
+| move(s, d) | c = own(s) | own(d) | A last-use move, a return, a field taken out of a temporary ([MEM-OWNERSHIP-STATIC-PATHS]). |
+| free(o) | c = own(o) | ⊥ | A last-use release or a region exit. |
+
+A path h ⟶\* h′ applies accepted steps to single cells of a heap, in any order, along either incoming edge of a join.
+
+**Theorems.** Each is checked by Lean 4.25 and replayed by the GC, ARC and WASI builds of Osprey's proof kernel, which must each answer `PASS` with the listed axioms and no others.
+
+| Theorem | Statement | Rule it discharges | Axioms |
+| --- | --- | --- | --- |
+| `step_preserves` | Valid(c) ∧ step(c, a) = c′ ⟹ Valid(c′) | Every accepted action keeps one owner and live lenders. | propext, Quot.sound |
+| `from_empty` | (λ\_. ⊥) ⟶\* h ⟹ Safe(h) | Every heap an accepted program reaches is safe. | propext, Quot.sound |
+| `dead_rejects` | step(⊥, a) = c′ ⟹ a ∈ {alloc(o), endBorrow(b)} | No read, borrow, move or free after a free: no use after free, no double free. | propext, Quot.sound |
+| `lent_pins_owner` | step(c, borrow(f, o)) = c′ ⟹ ∀ d. step(c′, free(o)) = ∅ ∧ step(c′, move(o, d)) = ∅ | A lent field or capture pins its lender, so a lending value can't be returned, stored or sent past its lender's region. | propext |
+| `lent_field_not_freed` | step(c, borrow(f, o)) = c′ ⟹ step(c′, free(f)) = ∅ | A holder frees nothing through a lent field: the field is left out of its drop walk. | propext |
+| `lent_then_released` | f ≠ o ⟹ ⊥ ─alloc(o)·borrow(f, o)·read(f)·endBorrow(f)·free(o)→ ⊥ | A lent field is read, its holder dies, and the owner frees the value once. | propext, Quot.sound, Classical.choice |
+| `lent_twice_released` | l ≠ o ∧ r ≠ o ∧ r ≠ l ⟹ ⊥ ─alloc(o)·borrow(l, o)·borrow(r, o)·read(l)·read(r)·endBorrow(l)·endBorrow(r)·free(o)→ ⊥ | One value in two fields, or in two holders, is freed once. | propext, Quot.sound, Classical.choice |
+| `take_moves_owner` | step(own(f), move(f, t)) = own(t) | Taking a field changes the value's one owner from the holder's slot to the taker. | propext |
+| `taken_field_not_freed` | f ≠ t ⟹ step(own(t), free(f)) = ∅ | After a take the holder must not free through that slot, so the compiler clears it. | propext |
+| `take_needs_no_loan` | step(c, borrow(b, f)) = c′ ⟹ ∀ t. step(c′, move(f, t)) = ∅ | A field can't be taken while anything borrows the value. | propext |
+| `taken_freed_once` | ⊥ ─alloc(f)·move(f, t)·free(t)→ ⊥ | A taken field is freed once, by its taker. | propext, Quot.sound |
+| `edge_frames` | a′ ≠ a ⟹ h[a ↦ c′](a′) = h(a′) | A step on one allocation changes no other, so a holder moved into another holder keeps its loans and the outer holder lends in turn. | propext |
+
+Here step(c, a) = ∅ means the action is refused, and ⊥ ─a₁·…·aₙ→ ⊥ means the actions are accepted in order from the freed cell and end in it. The axioms are Lean's three standard ones; a proof that needs any other, `sorryAx` included, fails the gate.
+
+**Negative controls.** The gate weakens a guard of the model and requires Lean to reject the proofs: free(o) allowed while a loan stands, move(s, d) allowed while a loan stands, and free(o) allowed from a slot that is not the owner.
+
+**Scope.** The theorems are about the model. They assume the compiler ends each borrow at the borrower's last read and resolves a chain of borrowers to its ultimate lender (`arc/borrows.rs`). That the instructions the compiler emits are a path of this system is proved per emitted function, below, and is open in general.
+
 #### Proofs of compiled ownership code [MEM-OWNERSHIP-STATIC-VERIFICATION-COMPILER]
 
 `make _test_ownership_proof` compiles the tracked `single_owner.test.osp` regression with the Osprey compiler under test and compiles the production C helpers with Clang at `-O1 -fno-inline` and the ownership allocation shim. The following claims apply to those translations. [Proof gate](../../../scripts/proof/ownership-lowering.sh)
@@ -566,7 +610,7 @@ Rust is the reference point for static ownership. This backend has to do better 
 - **Refusal never changes a program. Built.** A Rust program the borrow checker refuses must be rewritten, often with `Rc<RefCell<T>>`, which moves the check to run time and can panic. A program `ownership` refuses compiles unchanged under `gc` or `arc` and gives the same output ([MEM-OPAQUE]).
 - **Effects and continuations under one rule. Built as refusal.** Rust has no effect handlers. Osprey applies [Tang 2024]: today every handler of a `control` or `many` operation is refused; the target is to accept one that resumes at most once.
 - **In-place update of persistent collections. Decided, not built.** A derived version whose source is at its last use may overwrite it [Lorenzen 2023]. Rust has no persistent collections in its language to do this for.
-- **A proof of the shipped checker. Not built.** Rust's proofs are of models: λRust [Jung 2018], Oxide [Weiss 2019] and Featherweight Rust [Pearce 2021], not of `rustc`. The target here is a mechanised model of the ledger with a proof that lowering preserves one owner per allocation and a live lender for every borrow on every control-flow edge. The backend is not declared shipped without it.
+- **A proof of the shipped checker. Built for the model, open for the lowering.** Rust's proofs are of models: λRust [Jung 2018], Oxide [Weiss 2019] and Featherweight Rust [Pearce 2021], not of `rustc`. Osprey's ledger is a mechanised transition system whose accepted paths are proved to keep one owner per allocation and a live lender for every borrow, with a theorem for each lowering rule, replayed by Osprey's own proof kernel ([MEM-OWNERSHIP-STATIC-MODEL]). The emitted code of selected functions is proved against it ([MEM-OWNERSHIP-STATIC-VERIFICATION-COMPILER]). Open: that every function the compiler emits is a path of the model. The backend is not declared shipped without it.
 - **A space bound. Not built.** [Lorenzen 2022] show that unrestricted borrowing can raise peak memory by an arbitrary amount and define the frame-limited bound that avoids it. Osprey must meet that bound: a value at its last use is given to a callee that can free it earlier. Until then, benchmarks report peak live bytes for `ownership` beside `gc` and `arc`, separately from exit-time leaks.
 
 **Where Rust is ahead today.** Rust accepts far more programs. It has mutable borrows, and it records ownership in types, so functions passed as values and library boundaries are checked against a signature. Osprey infers ownership from the bodies of one executable, so those two keep borrowed parameters ([MEM-OWNERSHIP-STATIC-PARAMETERS]), and `ownership` accepts 59 of the 181 programs in `src/osprey/tests/` (2026-11-24). Rust's models are proved; Osprey's ledger is tested.
