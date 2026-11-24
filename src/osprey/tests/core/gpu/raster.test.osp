@@ -158,7 +158,10 @@ fn texelRun(pixels, start, want) = match want {
     [v, ...rest] => texel(pixels, start) == v && texelRun(pixels, (start + 1), rest)
 }
 /// texelRunOf is texelRun over a dispatched buffer, so a run of texelIs assertions is one line.
-fn texelRunOf(result, start, want) = gpuSatisfies(result, fn(pixels) => texelRun(pixels, start, want))
+fn texelRunOf(result, start, want) = match want {
+    [] => true
+    [v, ...rest] => texelIs(result, start, v) && texelRunOf(result, (start + 1), rest)
+}
 /// texelsAt is that same assertion at raster coordinates — `v` is a flat (x, y, want) triple list over a raster [w] wide, so a coverage case states its read-backs as
 /// one table — and texelsAre is the flat-index (index, want) pair form.
 fn texelsAt(pixels, w, v) = match v {
@@ -257,7 +260,14 @@ fn gallery(indices1536, indices64, indices16, texels) = {
 }
 /// dispatchCase pins the grid one dispatch covers at every raster size here, plus the empty dispatch every combinator survives and three gathers that leave the buffer
 /// entirely.
-fn dispatchCase() = withIndices(0, fn(indices0) => withIndices(8, fn(indices8) => withIndices(16, fn(indices16) => withIndices(64, fn(indices64) => withIndices(1536, fn(indices1536) => dispatchWith(indices0, indices8, indices16, indices64, indices1536))))))
+fn dispatchCase() = {
+    use indices0 <- withIndices(0)
+    use indices8 <- withIndices(8)
+    use indices16 <- withIndices(16)
+    use indices64 <- withIndices(64)
+    use indices1536 <- withIndices(1536)
+    dispatchWith(indices0, indices8, indices16, indices64, indices1536)
+}
 fn dispatchWith(indices0, indices8, indices16, indices64, indices1536) = checkAll("dispatch", [
         gpuLength(indices1536) == 1536, gpuLengthIs(mandelFrame(indices1536), 1536),
         gpuLengthIs(sphereFrame(indices1536), 1536), gpuLength(indices64) == 64,
@@ -350,7 +360,12 @@ fn saturateCaseUploaded(base, addend) = {
 }
 /// samplingCase pins edge-clamp addressing and nearest-neighbour magnification — every magnified texel of it — plus the 1x1, single-row, single-column and empty degenerate
 /// images.
-fn samplingCase() = withIndices(0, fn(indices0) => withIndices(4, fn(indices4) => withIndices(16, fn(indices16) => samplingWith(indices0, indices4, indices16))))
+fn samplingCase() = {
+    use indices0 <- withIndices(0)
+    use indices4 <- withIndices(4)
+    use indices16 <- withIndices(16)
+    samplingWith(indices0, indices4, indices16)
+}
 fn samplingWith(indices0, indices4, indices16) = withBuffer(toGpu([1, 2, 3, 4]), fn(tex) => withBuffer(upscale2(tex, 2, 2, indices16), fn(big) =>
     checkAll("sampling", [
             sampleRun(tex, 2, 2, [0, 0, 1, 1, 0, 2, 0, 1, 3, 1, 1, 4, (0 - 5) , (0 - 5) , 1,
@@ -366,7 +381,14 @@ fn samplingWith(indices0, indices4, indices16) = withBuffer(toGpu([1, 2, 3, 4]),
     ])))
 /// gatherCase pins row and column addressing over a non-square raster: transpose by gather alone, its involution, the reductions it turns into each other, and a prefix
 /// scan read at each scanline boundary.
-fn gatherCase() = withIndices(1, fn(indices1) => withIndices(2, fn(indices2) => withIndices(3, fn(indices3) => withIndices(6, fn(indices6) => withIndices(64, fn(indices64) => gatherWith(indices1, indices2, indices3, indices6, indices64))))))
+fn gatherCase() = {
+    use indices1 <- withIndices(1)
+    use indices2 <- withIndices(2)
+    use indices3 <- withIndices(3)
+    use indices6 <- withIndices(6)
+    use indices64 <- withIndices(64)
+    gatherWith(indices1, indices2, indices3, indices6, indices64)
+}
 fn gatherWith(indices1, indices2, indices3, indices6, indices64) = {
     use src <- withUpload ([1, 2, 3, 4, 5, 6])
     use flipped <- withBuffer(transposeOf(src, 3, 2, indices6))
@@ -425,7 +447,12 @@ fn shadingWith(indices24, indices1536) =
         ]))
 /// compositeCase pins that one elementwise pass layers sphere over fractal. The silhouette falls entirely inside what the fractal drew, so the composite lights exactly the
 /// fractal's cells while its brightness total drops — the foreground is darker than what it hides.
-fn compositeCase() = withIndices(0, fn(indices0) => withIndices(16, fn(indices16) => withIndices(1536, fn(indices1536) => compositeWith(indices0, indices16, indices1536))))
+fn compositeCase() = {
+    use indices0 <- withIndices(0)
+    use indices16 <- withIndices(16)
+    use indices1536 <- withIndices(1536)
+    compositeWith(indices0, indices16, indices1536)
+}
 fn compositeWith(indices0, indices16, indices1536) =
     withComposite(indices1536, fn(mandel, sphere, composite) =>
         checkAll("composite", [
