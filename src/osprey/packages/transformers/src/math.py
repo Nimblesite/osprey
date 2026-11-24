@@ -15,7 +15,7 @@ own RNG stream is not reproduced, so callers pass an explicit draw. Values from
 the usual libm last-digit spread. Implements [PORT-TEST-ORACLE].
 """
 
-__all__ = ["softmax", "log_softmax", "argmax", "multinomial", "neg_inf", "max_f", "max_i", "min_f", "min_i"]
+__all__ = ["softmax", "log_softmax", "argmax", "multinomial", "neg_inf"]
 
 
 def neg_inf():
@@ -35,67 +35,7 @@ def neg_inf():
 
 def list_max(xs):
     """The largest element of a float list; -inf for an empty list."""
-    return fold(range(len(xs)), neg_inf(), lambda a, i: max_f(a, unwrap_or(listGet(xs, i), neg_inf())))
-
-
-def max_f(a, x):
-    """The larger of two floats.
-
-    # Examples
-    ```osprey
-    from transformers import Math
-    print(f"[{Math.max_f(toFloat32(0.5), toFloat32(-2.0))}] [{Math.max_f(toFloat32(-2.0), toFloat32(-0.5))}]")
-    ```
-    ```output
-    [0.5] [-0.5]
-    ```
-    """
-    return x if x > a else a
-
-
-def min_f(a, b):
-    """The smaller of two floats.
-
-    # Examples
-    ```osprey
-    from transformers import Math
-    print(f"[{Math.min_f(toFloat32(0.5), toFloat32(-2.0))}] [{Math.min_f(toFloat32(3.0), toFloat32(7.5))}]")
-    ```
-    ```output
-    [-2.0] [3.0]
-    ```
-    """
-    return a if a < b else b
-
-
-def max_i(a, b):
-    """The larger of two ints.
-
-    # Examples
-    ```osprey
-    from transformers import Math
-    print(f"[{Math.max_i(3, 7)}] [{Math.max_i(-3, -7)}]")
-    ```
-    ```output
-    [7] [-3]
-    ```
-    """
-    return a if a > b else b
-
-
-def min_i(a, b):
-    """The smaller of two ints.
-
-    # Examples
-    ```osprey
-    from transformers import Math
-    print(f"[{Math.min_i(3, 7)}] [{Math.min_i(-3, -7)}]")
-    ```
-    ```output
-    [3] [-7]
-    ```
-    """
-    return a if a < b else b
+    return fold(range(len(xs)), neg_inf(), lambda a, i: max(a, unwrap_or(listGet(xs, i), neg_inf())))
 
 
 def softmax(logits):

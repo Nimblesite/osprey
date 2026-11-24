@@ -19,7 +19,7 @@ that is exactly what torch.sort does for the vocab sizes this package is tested
 at, and it is the documented tie order for larger vocabs.
 """
 
-from transformers.Math import log_softmax, max_f, max_i, min_f, min_i, neg_inf, softmax
+from transformers.Math import log_softmax, neg_inf, softmax
 from transformers.Lists import contains_int, last_n, map_indexed
 
 __all__ = [
@@ -583,7 +583,7 @@ def apply(processor: Processor, input_ids, scores: list[float32]):
         case "temperature":
             return mapList(scores, lambda x: x / processor.temperature)
         case "top_k":
-            return top_k_warper(max_i(processor.top_k, processor.min_tokens_to_keep), processor.filter_value, scores)
+            return top_k_warper(max(processor.top_k, processor.min_tokens_to_keep), processor.filter_value, scores)
         case "top_p":
             return tuned(top_p_warper, processor, scores)
         case "min_p":
@@ -737,7 +737,7 @@ def count_lt(xs, limit):
 # --- warpers --------------------------------------------------------------
 
 def top_k_warper(k, fv, scores):
-    kk = min_i(k, len(scores))
+    kk = min(k, len(scores))
     threshold = kth_largest(scores, kk)
     return mapList(scores, lambda x: x if x >= threshold else fv)
 
@@ -760,8 +760,8 @@ def removed_top_p(i, idx, cum, cutoff, keep_from):
 
 def min_p_warper(p, fv, m, scores):
     probs = softmax(scores)
-    scaled = p * fold(range(len(probs)), neg_inf(), lambda a, i: max_f(a, get_or(probs, i, neg_inf())))
-    keep = top_k_indices(scores, min_i(m, len(scores)))
+    scaled = p * fold(range(len(probs)), neg_inf(), lambda a, i: max(a, get_or(probs, i, neg_inf())))
+    keep = top_k_indices(scores, min(m, len(scores)))
     return map_indexed(scores, lambda i: fv if prob_at(probs, i) < scaled and not contains_int(keep, i) else score_at(scores, i))
 
 
@@ -770,7 +770,7 @@ def typical_warper(mass, fv, m, scores):
     idx = sort_indices_by(shifted)
     sorted_shifted = in_index_order(idx, shifted)
     cum = cum_probs(idx, scores)
-    last = min_i(count_lt(cum, mass), len(scores) - 1)
+    last = min(count_lt(cum, mass), len(scores) - 1)
     threshold = score_at(sorted_shifted, last)
     return map_indexed(scores, lambda i: fv if removed_typical(i, idx, shifted, threshold, m) else score_at(scores, i))
 
@@ -782,13 +782,13 @@ def removed_typical(i, idx, shifted, threshold, m):
 
 def eta_warper(e, fv, m, scores):
     """The eta threshold warper: `below_cutoff` at eta's entropy-scaled limit."""
-    return below_cutoff(min_f(e, sqrt(e) * exp(0.0 - entropy(scores))), fv, m, scores)
+    return below_cutoff(min(e, sqrt(e) * exp(0.0 - entropy(scores))), fv, m, scores)
 
 
 def below_cutoff(limit, fv, m, scores):
     """Filter every token whose probability is under `limit`, keeping the `m` best."""
     probs = softmax(scores)
-    threshold = kth_largest(scores, min_i(m, len(scores)))
+    threshold = kth_largest(scores, min(m, len(scores)))
     return map_indexed(scores, lambda i: fv if prob_at(probs, i) < limit and score_at(scores, i) < threshold else score_at(scores, i))
 
 
