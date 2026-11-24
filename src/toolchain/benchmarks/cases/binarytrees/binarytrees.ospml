@@ -15,7 +15,7 @@ main () =
     mut fault = ""
     handle Arith
         overflow op _ _ wrapped =>
-            fault := op
+            fault := "${op}"
             wrapped
     answer = range 0 1200 |> fold 0 (\(acc, _) => acc + check (make 13))
     rendered = match fault == ""
