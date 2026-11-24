@@ -29,6 +29,7 @@ Each film runs about two to three minutes, with English captions, seekable chapt
 ## Try the tools
 
 - [Proof Workbench guide](/docs/proof-workbench/): open the app, follow the first proof, inspect goals and use guided lessons.
+- [How Osprey proves its memory code is correct](/docs/proofs/memory-ownership/): Lean proofs about the code the compiler emits for compile-time ownership, and the broken versions CI must reject.
 - [Mathlib port: current evidence](/docs/mathlib-port/): reproduce the checked imports and understand which claims remain open.
 - [Dependent types and proofs specification](/spec/0049-dependenttypesandproofs/): the full intended contract, distinguished from delivered results.
 
