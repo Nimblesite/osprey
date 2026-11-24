@@ -33,13 +33,14 @@ fn cache_directory(input: &CompilationInput) -> Option<PathBuf> {
 
 pub(super) fn codegen_cache_path(
     input: &CompilationInput,
+    memory: &str,
     kind: osprey_debug::BuildKind,
 ) -> Option<PathBuf> {
     use std::hash::Hasher;
     let dir = cache_directory(input)?;
     Some(dir.join(format!(
         "module-{:016x}.ll",
-        codegen_key(input, kind).finish()
+        codegen_key(input, memory, kind).finish()
     )))
 }
 
@@ -75,7 +76,7 @@ pub(super) fn test_cache_key(
     kind: osprey_debug::BuildKind,
 ) -> u64 {
     use std::hash::{Hash, Hasher};
-    let mut state = codegen_key(input, kind);
+    let mut state = codegen_key(input, memory, kind);
     memory.hash(&mut state);
     hash_runtime_identity(memory, &mut state);
     state.finish()
@@ -83,11 +84,14 @@ pub(super) fn test_cache_key(
 
 fn codegen_key(
     input: &CompilationInput,
+    memory: &str,
     kind: osprey_debug::BuildKind,
 ) -> std::collections::hash_map::DefaultHasher {
     use std::hash::Hash;
     let mut state = std::collections::hash_map::DefaultHasher::new();
-    "osprey-test-cache-v2".hash(&mut state);
+    "osprey-test-cache-v3".hash(&mut state);
+    // GC and ARC share lowering. Ownership checks transfers and emits different IR.
+    (memory == crate::invocation::OWNERSHIP).hash(&mut state);
     input.source().hash(&mut state);
     // Assembly options can change qualified symbols without changing source text.
     format!("{:?}", input.backend_program()).hash(&mut state);

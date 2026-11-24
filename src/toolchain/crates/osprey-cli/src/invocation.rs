@@ -377,12 +377,6 @@ pub(crate) fn exit_audit(memory: &str) -> Option<(&'static str, &'static str)> {
     }
 }
 
-/// Whether the invocation asks for the ownership check.
-pub(crate) fn wants_ownership(args: &[String]) -> bool {
-    args.iter()
-        .any(|arg| arg.strip_prefix("--memory=") == Some(OWNERSHIP))
-}
-
 /// Validate a `--flavor` / marker value into a [`Flavor`]. [FLAVOR-SELECT]
 pub(super) fn parse_flavor(value: &str) -> Result<Flavor, String> {
     value.parse().map_err(|e| format!("{e}\n{USAGE}"))

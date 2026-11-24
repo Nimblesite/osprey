@@ -135,11 +135,11 @@ fn report_version(args: &[String]) -> ExitCode {
 }
 
 fn run_arguments(args: &[String]) -> ExitCode {
-    osprey_codegen::set_ownership_check(invocation::wants_ownership(args));
     let cli = match parse_args(args) {
         Ok(cli) => cli,
         Err(message) => return usage_error(&message),
     };
+    osprey_codegen::set_ownership_check(cli.memory == invocation::OWNERSHIP);
     match cli.mode.as_str() {
         "--deps" => report_dependencies(&cli),
         "--hover" => report_hover(&cli.path),

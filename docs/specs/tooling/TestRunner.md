@@ -61,7 +61,7 @@ argument validation with exit code `2`.
 
 The Android corpus harness defaults to one worker because all suites share the attached device's memory budget. An explicit `OSPREY_TEST_JOBS` overrides that default; host CPU count does not select device concurrency.
 
-**`[TESTING-NATIVE-CACHE]`** Native test runs cache LLVM IR and object code for an assembled program and build configuration. Memory backends can share those artifacts, while each memory mode links its own executable. Reuse depends on the assembled sources and project settings, Osprey and C compiler identities, build kind and optimization setting. Executable keys additionally include the memory mode and both native runtime archives.
+**`[TESTING-NATIVE-CACHE]`** Native test runs cache LLVM IR and object code for an assembled program and build configuration. GC and ARC share these artifacts. Compile-time ownership has its own IR and object because it checks transfers and lowers managed values differently. Each memory mode links its own executable. Reuse depends on the assembled sources and project settings, Osprey and C compiler identities, build kind and optimization setting. Executable keys additionally include the memory mode and both native runtime archives.
 
 `OSPREY_TEST_CACHE_DIR` selects the cache directory; the test runner defaults to `osprey-test-cache-v1` under the system temporary directory. Use a new private directory for a fresh build. Custom `@linkdir` search paths bypass caching because their external inputs cannot be validated from source alone. Named system-library `@link` directives remain part of the source key. Builds that preserve debug artifacts or override debug optimization also bypass caching.
 
