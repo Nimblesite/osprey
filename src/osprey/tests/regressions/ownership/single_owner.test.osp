@@ -516,7 +516,7 @@ fn tagger(tag: string) = {
 
 fn returned(n) = {
     let join = joiner(Box { text: "l${toString(n)}" }, Box { text: "r${toString(n)}" })
-    let unused = joiner(Box { text: "u${toString(n)}" }, Box { text: "v" })
+    let _unused = joiner(Box { text: "u${toString(n)}" }, Box { text: "v" })
     let one = pickOne(Box { text: "one${toString(n)}" }, Box { text: "two${toString(n)}" }, n > 2)
     let tag = tagger("t${toString(n)}")
     "returned ${join(1)}${join(2)} ${one(3)} ${tag(4)} ${runWith(tagger("w${toString(n)}"), 5)}"
