@@ -106,16 +106,16 @@ def grad_cases():
 
 def optimizer_records():
     a = Array.array1([2.0])
-    sgd = Optim.SgdResult(params=[a], state=Optim.SgdState(buffers=[]))
-    adam = Optim.AdamResult(params=[a], state=Optim.AdamState(exp_avg=[], exp_avg_sq=[], max_exp_avg_sq=[], step=2))
-    rms = Optim.RmspropResult(params=[a], state=Optim.RmspropState(square_avg=[], grad_avg=[], buffers=[]))
-    ada = Optim.AdagradResult(params=[a], state=Optim.AdagradState(sum=[], step=3))
+    sgd = Optim.StepResult(params=[a], state=Optim.SgdState(buffers=[]))
+    adam = Optim.StepResult(params=[a], state=Optim.AdamState(exp_avg=[], exp_avg_sq=[], max_exp_avg_sq=[], step=2))
+    rms = Optim.StepResult(params=[a], state=Optim.RmspropState(square_avg=[], grad_avg=[], buffers=[]))
+    ada = Optim.StepResult(params=[a], state=Optim.AdagradState(sum=[], step=3))
     clip = Optim.ClipResult(grads=[a], total_norm=2.0)
     return [
-        Check.equal("optim.SgdResult", len(sgd.params), 1),
-        Check.equal("optim.AdamResult", adam.state.step, 2),
-        Check.equal("optim.RmspropResult", len(rms.params), 1),
-        Check.equal("optim.AdagradResult", ada.state.step, 3),
+        Check.equal("optim.StepResult sgd", len(sgd.params), 1),
+        Check.equal("optim.StepResult adam", adam.state.step, 2),
+        Check.equal("optim.StepResult rmsprop", len(rms.params), 1),
+        Check.equal("optim.StepResult adagrad", ada.state.step, 3),
         Check.equal("optim.ClipResult", clip.total_norm, 2.0),
     ]
 
