@@ -2,6 +2,13 @@
 
 Contract: [MEM-OWNERSHIP-STATIC](../specs/compiler/0018-MemoryManagement.md#compile-time-ownership-mem-ownership-static)
 
+## Unfinished at handoff (2026-11-24)
+
+- **Corpus coverage.** The last full run matched 137 of 341 native goldens, with zero live allocations across the 137 successes. The other 204 did not pass. The later 82-of-180 figure below counts only Default-flavour programs.
+- **Compiler and runtime.** The open checklist below covers split-field fixtures, record and collection borrows, continuation cleanup, fibers and channels, last-use arguments, in-place collection updates, remaining runtime retain/release behavior, and the parameter-shadowing miscompile.
+- **Independent proof coverage.** Lean checks the full modeled heap for `foeName` and `relabel`. Osprey replays the field-transfer instructions and the record-update ledger theorem. Independent replay of both full heap equalities and proof coverage for every supported lowering remain open. [Compiler proof inventory](../specs/compiler/0018-MemoryManagement.md#proofs-of-compiled-ownership-code-mem-ownership-static-verification-compiler)
+- **Release checks.** The ownership-lowering run completed 81 kernel replays and rejected 45 mutations. The separate MLIR replay run stopped during managed-list WASI replay. A fresh full matrix, quiet-machine benchmarks and branch-wide CI still need verification. The last repository duplication measurement was 4.2% against the 4.0% gate, before the proof-script cleanup.
+
 ## Constraints
 
 - Leave `--memory=none`, `src/toolchain/compiler/runtime/memory_runtime.c`, and the wasm `none` passthrough unchanged until Phase 3; they stay as [MEM-BACKENDS] describes.

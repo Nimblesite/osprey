@@ -58,18 +58,7 @@ reject() {
   echo "REJECT $fault at $theorem"
 }
 for fault in leak double-free early-free stale-phi; do
-  awk -v fault="$fault" '
-    /^define / {body = /@grow\$mono[0-9]+\(i8\* %\$p0, i64 %\$p1\)/}
-    /^define / {conditional = /@growWhen\$mono[0-9]+\(/}
-    conditional && fault == "stale-phi" && / = phi i8\*/ {sub(/\[ %r[0-9]+,/, "[ %$p0,")}
-    body && fault == "early-free" && / = call i8\* @osprey_list_append_of/ {append = $0; next}
-    body && fault != "stale-phi" && /call void @osp_ownership_free/ {
-      if (fault == "leak") next
-      if (fault == "early-free") {print; print append; next}
-      print
-    }
-    {print}
-  ' "$out/ownership.ll" > "$out/mutations/$fault.ll"
+  grow_mutation "$fault" "$out/ownership.ll" "$out/mutations/$fault.ll"
   reflect "$out/mutations/$fault.ll" "$out/mutations/$fault.lean"
   theorem=compiledGrow
   if [[ $fault == stale-phi ]]; then theorem=compiledGrowWhen; fi

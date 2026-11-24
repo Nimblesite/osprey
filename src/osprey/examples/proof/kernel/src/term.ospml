@@ -91,22 +91,21 @@ module Terms
         true => term
         false => shifted (term, cutoff, by)
 
-    // [PROOF-KERNEL-THEORY] The shared structural walk advances depth only under binders.
-    mapChildren (term, depth, walk) = match term
-        App head arg => App (walk (head, depth)) (walk (arg, depth))
-        Lam name domain body => Lam name (walk (domain, depth)) (walk (body, satAdd depth 1))
-        Pi name domain body => Pi name (walk (domain, depth)) (walk (body, satAdd depth 1))
-        Proj family index target => Proj family index (walk (target, depth))
-        Let name ty value body => Let name (walk (ty, depth)) (walk (value, depth)) (walk (body, satAdd depth 1))
-        other => other
-
-    // The walk every binder-aware traversal shares: `leaf` decides a bound
-    // variable at the current depth, and `mapChildren` advances that depth under
-    // each binder.
+    // [PROOF-KERNEL-THEORY] Only open subterms can change in a shift or
+    // substitution. Reuse closed siblings verbatim, including their binders.
     underBinders : (Term, int, (int, int) -> Term) -> Term
     underBinders (term, depth, leaf) = match term
         BVar index => leaf (index, depth)
-        other => mapChildren (other, depth, \(child, innerDepth) => underBinders (child, innerDepth, leaf))
+        App head arg => App (openChild (head, depth, leaf)) (openChild (arg, depth, leaf))
+        Lam name domain body => Lam name (openChild (domain, depth, leaf)) (openChild (body, satAdd depth 1, leaf))
+        Pi name domain body => Pi name (openChild (domain, depth, leaf)) (openChild (body, satAdd depth 1, leaf))
+        Proj family index target => Proj family index (openChild (target, depth, leaf))
+        Let name ty value body => Let name (openChild (ty, depth, leaf)) (openChild (value, depth, leaf)) (openChild (body, satAdd depth 1, leaf))
+        other => other
+
+    openChild (term, depth, leaf) = match mentioned (term, depth, true)
+        true => underBinders (term, depth, leaf)
+        false => term
 
     shifted (term, cutoff, by) = underBinders (term, cutoff, \(index, depth) => shiftVar (index, depth, by))
 

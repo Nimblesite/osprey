@@ -31,15 +31,29 @@ translate() {
   fi
   lake env lean -DwarningAsError=true --root="$dir" -o "$dir/Emitted.olean" "$dir/Emitted.lean"
 }
-prove() { LEAN_PATH="$1:$lean_path" lean -DwarningAsError=true -o "$1/EmittedOwnership.olean" EmittedOwnership.lean; }
+prove_module() { LEAN_PATH="$1:$lean_path" lean -DwarningAsError=true -o "$1/$2.olean" "$2.lean"; }
 translate "$out/emitted.ll" "$out/emitted"
 grep -m1 'Translated' "$out/emitted/Emitted.lean"
-prove "$out/emitted"
+prove_module "$out/emitted" EmittedOwnership
 # Osprey's kernel replays each theorem; the axioms are pinned.
 export_and_replay() {
   local module=$1 theorem=$2 name=${2##*.} axioms=${3:-propext}
   LEAN_PATH="$out/emitted:$lean_path" "$exporter" "$module" -- "$theorem" > "$out/emitted/$name.ndjson"
   replay "$name.ndjson" "$theorem" "$axioms" "$out/emitted"
+}
+reject_module() {
+  local fault=$1 module=$2 dir="$out/mutations/$1"
+  shift 2
+  translate "$dir.ll" "$dir"
+  if prove_module "$dir" "$module" > "$dir/proof.log" 2>&1; then
+    echo "accepted $fault" >&2
+    return 1
+  fi
+  local theorem
+  for theorem in "$@"; do
+    kernel_rejected_at "$module.lean" "$theorem" "$dir/proof.log" || return 1
+    echo "REJECT $fault at $theorem"
+  done
 }
 source "$root/scripts/proof/ownership-record.sh"
 check_record_update
@@ -47,33 +61,10 @@ export_and_replay LlvmSubset LlvmSubset.run_follows_ledger "propext, Quot.sound"
 for name in growScalar growManaged growWhen; do export_and_replay EmittedOwnership "EmittedOwnership.$name"; done
 # Each mutant is valid LLVM IR in the supported subset. It must reach the
 # theorem and be refused there by Lean's kernel.
-reject() {
-  local fault=$1 theorem=$2 dir="$out/mutations/$1"
-  translate "$dir.ll" "$dir"
-  if prove "$dir" > "$dir/proof.log" 2>&1; then
-    echo "accepted $fault" >&2
-    return 1
-  fi
-  kernel_rejected_at EmittedOwnership.lean "$theorem" "$dir/proof.log"
-  echo "REJECT $fault at $theorem"
-}
 for fault in leak double-free early-free stale-phi; do
-  awk -v fault="$fault" '
-    /^define / {body = /@grow\$mono[0-9]+\(i8\* %\$p0, i64 %\$p1\)/}
-    /^define / {conditional = /@growWhen\$mono[0-9]+\(/}
-    conditional && fault == "stale-phi" && / = phi i8\*/ {changed += sub(/\[ %r[0-9]+,/, "[ %$p0,")}
-    body && fault == "early-free" && / = call i8\* @osprey_list_append_of/ {append = $0; next}
-    body && fault != "stale-phi" && /call void @osp_ownership_free/ {
-      changed++
-      if (fault == "leak") next
-      if (fault == "early-free") {print; print append; next}
-      print
-    }
-    {print}
-    END {exit changed != 1}
-  ' "$out/emitted.ll" > "$out/mutations/$fault.ll"
+  grow_mutation "$fault" "$out/emitted.ll" "$out/mutations/$fault.ll"
   theorem=growScalar
   if [[ $fault == stale-phi ]]; then theorem=growWhen; fi
-  reject "$fault" "$theorem"
+  reject_module "$fault" EmittedOwnership "$theorem"
 done
 

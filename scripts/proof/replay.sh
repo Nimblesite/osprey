@@ -33,3 +33,21 @@ kernel_rejected_at() {
       split($0, pos, ":"); if (start && pos[2]>=start && (!end || pos[2]<end)) rejected=1}
     END {exit !rejected}' "$source" "$log"
 }
+
+# Generate the same four compiler corruptions for both ownership validators.
+grow_mutation() {
+  awk -v fault="$1" '
+    /^define / {body = /@grow\$mono[0-9]+\(i8\* %\$p0, i64 %\$p1\)/}
+    /^define / {conditional = /@growWhen\$mono[0-9]+\(/}
+    conditional && fault == "stale-phi" && / = phi i8\*/ {changed += sub(/\[ %r[0-9]+,/, "[ %$p0,")}
+    body && fault == "early-free" && / = call i8\* @osprey_list_append_of/ {append = $0; next}
+    body && fault != "stale-phi" && /call void @osp_ownership_free/ {
+      changed++
+      if (fault == "leak") next
+      if (fault == "early-free") {print; print append; next}
+      print
+    }
+    {print}
+    END {exit changed != 1}
+  ' "$2" > "$3"
+}
