@@ -1,2 +1,6 @@
-6:4: ownership: `names` needs a second owner in `main`: a new version of the collection is derived from it while another owner keeps it; it is read again at 9:4 [MEM-OWNERSHIP-STATIC]
-8:4: ownership: `ages` needs a second owner in `main`: a new version of the collection is derived from it while another owner keeps it; it is read again at 9:4 [MEM-OWNERSHIP-STATIC]
+10:4: ownership: `names` needs a second owner in `main`: a new version of the collection is derived from it while another owner keeps it; it is read again at 19:4 [MEM-OWNERSHIP-STATIC]
+12:4: ownership: `ages` needs a second owner in `main`: a new version of the collection is derived from it while another owner keeps it; it is read again at 19:4 [MEM-OWNERSHIP-STATIC]
+14:4: ownership: `boxes` needs a second owner in `main`: a new version of the collection is derived from it while another owner keeps it; it is read again at 15:4 [MEM-OWNERSHIP-STATIC]
+15:4: ownership: `boxes` needs a second owner in `main`: a new version of the collection is derived from it while another owner keeps it; it is read again at 19:4 [MEM-OWNERSHIP-STATIC]
+17:4: ownership: `labels` needs a second owner in `main`: a new version of the collection is derived from it while another owner keeps it; it is read again at 18:4 [MEM-OWNERSHIP-STATIC]
+18:4: ownership: `labels` needs a second owner in `main`: a new version of the collection is derived from it while another owner keeps it; it is read again at 19:4 [MEM-OWNERSHIP-STATIC]

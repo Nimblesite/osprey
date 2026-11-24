@@ -299,4 +299,60 @@ theorem read_needs_live {c next : Cell} {slot : Slot}
     exact guard.1
   · contradiction
 
+/- Parts, joins with literals and shared elements
+   ([MEM-OWNERSHIP-STATIC-PARAMETERS], -PATHS, -SHARING): a function that
+   returns part of a parameter (arc/params.rs `yields_part`), a field taken on
+   one path only (arc/phi.rs), and a list filtered out of another
+   (arc/versions.rs `take_element_source`). -/
+
+/-- Along every accepted path from the empty heap, every allocation has at
+    most one owner: no lowering can make a second one. A list that kept an
+    element of a list still alive would be that second owner. -/
+theorem one_owner_always {finish : Heap} (path : Path (fun _ => dead) finish)
+    (address : Nat) : (finish address).owners.length ≤ 1 := by
+  have valid := from_empty path address
+  unfold Valid at valid
+  split at valid
+  · obtain ⟨owner, one, _⟩ := valid
+    simp [one]
+  · simp [valid.1]
+
+/-- A part taken out of a holder outlives it: the taker owns the part, the
+    holder is freed without it, and the heap stays safe. A function that
+    returns a field of a parameter it owns does exactly this. -/
+theorem part_outlives_holder {heap : Heap} {part holder : Nat} {field taker owner : Slot}
+    (apart : part ≠ holder) (held : heap part = owned field)
+    (whole : heap holder = owned owner) :
+    ∃ after : Heap, Path heap after ∧ after part = owned taker ∧
+      (after holder).live = false := by
+  have first : step (heap part) (.move field taker) = some (owned taker) := by
+    simp [held, step]
+  have second : step ((fun atAddr => if atAddr = part then owned taker else heap atAddr) holder)
+      (.free owner) = some { owned owner with live := false, owners := [] } := by
+    simp [Ne.symm apart, whole, step]
+  refine ⟨_, Path.edge (Path.edge (Path.here heap) first) second, ?_, ?_⟩
+  · simp [apart]
+  · simp
+
+/-- A part taken on one path only is freed once on each path: by its taker
+    where it was taken, through the holder's slot where it was not. -/
+theorem take_on_one_path (field taker : Slot) :
+    [Action.alloc field, .move field taker, .free taker].foldlM step dead = some dead ∧
+    [Action.alloc field, .free field].foldlM step dead = some dead := by
+  simp [List.foldlM, step, owned, dead]
+
+/-- An arm that yields a literal yields no allocation: the join has nothing to
+    free, read or give on that path, so the arm needs no owner. -/
+theorem literal_needs_no_owner (slot other : Slot) :
+    step dead (.free slot) = none ∧ step dead (.read slot) = none ∧
+    step dead (.move slot other) = none := by
+  simp [step, dead, owned]
+
+/-- An element a derived list keeps has left its source: the source can no
+    longer read it or free it, so a source that is read again is refused. -/
+theorem shared_element_refused {source derived : Slot} (distinct : source ≠ derived) :
+    [Action.alloc source, .move source derived, .read source].foldlM step dead = none ∧
+    [Action.alloc source, .move source derived, .free source].foldlM step dead = none := by
+  simp [List.foldlM, step, owned, dead, distinct, Ne.symm distinct]
+
 end OwnershipLedger

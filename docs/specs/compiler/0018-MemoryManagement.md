@@ -383,7 +383,7 @@ The rules of this backend are theorems about one transition system, stated in Le
 
 A path h ⟶\* h′ applies accepted steps to single cells of a heap, in any order, along either incoming edge of a join.
 
-**Theorems.** All 18 are checked by Lean 4.25 and replayed by the GC, ARC and WASI builds of Osprey's proof kernel, which must each answer `PASS` with the listed axioms and no others.
+**Theorems.** All 23 are checked by Lean 4.25 and replayed by the GC, ARC and WASI builds of Osprey's proof kernel, which must each answer `PASS` with the listed axioms and no others.
 
 | Theorem | Statement | Rule it discharges | Axioms |
 | --- | --- | --- | --- |
@@ -405,6 +405,11 @@ A path h ⟶\* h′ applies accepted steps to single cells of a heap, in any ord
 | `join_needs_one_owner` | step(own(k), move(k, m)) = own(k) ⟹ m = k | Paths that meet agree on the owner only if both moved the value or neither did ([MEM-OWNERSHIP-STATIC-PATHS]). | propext |
 | `borrow_keeps_owner` | step(c, borrow(b, o)) = c′ ⟹ O′ = O ∧ live′ = live | Any number of read-only borrowers share one owner ([MEM-OWNERSHIP-STATIC-BORROWS]). | none |
 | `read_needs_live` | step(c, read(s)) = c′ ⟹ live(c) | Every accepted read is of a live allocation: no use after free. | propext |
+| `one_owner_always` | (λ\_. ⊥) ⟶\* h ⟹ ∀ a. \|O(h(a))\| ≤ 1 | No accepted program gives an allocation a second owner. A list that kept an element of a list still alive would be one ([MEM-OWNERSHIP-STATIC-SHARING]). | propext, Quot.sound |
+| `part_outlives_holder` | p ≠ q ∧ h(p) = own(f) ∧ h(q) = own(o) ⟹ ∃ h′. h ⟶\* h′ ∧ h′(p) = own(t) ∧ ¬live(h′(q)) | A part taken out of a holder outlives it: a function that returns part of a parameter it owns frees the rest ([MEM-OWNERSHIP-STATIC-PARAMETERS]). | propext |
+| `take_on_one_path` | ⊥ ─alloc(f)·move(f, t)·free(t)→ ⊥ ∧ ⊥ ─alloc(f)·free(f)→ ⊥ | A part taken on one path only is freed once on each path: by the taker, or through the holder ([MEM-OWNERSHIP-STATIC-PATHS]). | propext, Quot.sound |
+| `literal_needs_no_owner` | ∀ s, d. step(⊥, a) = ∅ for a ∈ {free(s), read(s), move(s, d)} | An arm that yields a literal yields no allocation, so the join frees nothing on that path. | propext, Quot.sound |
+| `shared_element_refused` | s ≠ d ⟹ ⊥ ─alloc(s)·move(s, d)·a→ ∅ for a ∈ {read(s), free(s)} | An element a derived list keeps has left its source, so a source read again is refused ([MEM-OWNERSHIP-STATIC-SHARING]). | propext, Quot.sound |
 
 Here step(c, a) = ∅ means the action is refused, and ⊥ ─a₁·…·aₙ→ ⊥ means the actions are accepted in order from the freed cell and end in it. The axioms are Lean's three standard ones; a proof that needs any other, `sorryAx` included, fails the gate.
 
@@ -487,8 +492,12 @@ is valid for the call and cannot escape it. A consuming parameter transfers
 its owner into the function. Returning a parameter, storing it in an owned
 result or using it to derive a new collection can require a consuming mode.
 The caller supplies a fresh value or an owner at its last use. The callee
-transfers or frees it on every path. A later read by the caller is refused
-(proved: `given_is_gone`):
+transfers or frees it on every path. A function that returns part of a
+parameter, a field of it or what a pattern binds out of it, takes that part
+and frees the rest, so it owns the parameter too (proved:
+`part_outlives_holder`); a part that is a plain number is copied and the
+parameter stays borrowed. A later read by the caller is refused (proved:
+`given_is_gone`):
 
 ```text
 main.osp: 13:4: ownership: `made` needs a second owner in `main`: it is given to a function that takes ownership of it; it is read again at 14:4 [MEM-OWNERSHIP-STATIC]
@@ -530,12 +539,18 @@ reference the value held: `make(n).name`, `make(n).box.text`, and a field a
 result }`. The field's slot is cleared and the value is freed later without
 it, so the field can be returned, bound, stored or yielded by an arm with no
 second owner. This is the owned projection of [Ullrich 2019] and the drop
-specialization of [Reinking 2021], with the count removed. It applies only
-where nothing reads that field again: a pattern binding read twice, or read
-after the take, keeps borrowing; so does a field of a named binding, a field
-of a value that only lends it, and a read inside a loop body of a value made
-outside it. Proved: `take_moves_owner`, `taken_field_not_freed`,
-`take_needs_no_loan`, `taken_freed_once`.
+specialization of [Reinking 2021], with the count removed. The same
+holds for a value the function owns under a name, a binding or an owned
+parameter, at its last read: `let who = made.name` where nothing reads `made`
+again, and `fn show(outcome) = match outcome { Done { result } => result }`.
+It applies only where nothing reads that field again: a pattern binding read
+twice, or read after the take, keeps borrowing; so does a field of a binding
+that is read again, a field of a value that only lends it, and a read inside
+a loop body of a value made outside it. When only some arms take the part,
+the other arms free it with the holder; an arm that yields a literal needs no
+owner. Proved: `take_moves_owner`, `taken_field_not_freed`,
+`take_needs_no_loan`, `taken_freed_once`, `take_on_one_path`,
+`literal_needs_no_owner`.
 
 ### Rules for shared values [MEM-OWNERSHIP-STATIC-RULES]
 
@@ -547,8 +562,14 @@ refused"; the rest are the contract the remaining phases build.
   its argument by move when that is the argument's last use, and may then
   update it in place; when the argument is used again afterwards the program
   is refused. The compiler never inserts a copy, because a hidden copy of a
-  whole collection would make cost unpredictable. Proved: `given_is_gone`,
-  `moved_once`.
+  whole collection would make cost unpredictable. `filterList`,
+  `listSortBy`, `mapKeys` and `mapValues` build new nodes but keep the
+  source's elements, so a source whose elements have owners is taken the same
+  way; a collection of plain numbers is filtered, sorted or listed while it is
+  still read. A list literal whose elements have owners takes the runtime
+  layout where it is bound, so no later copy holds them a second time.
+  Proved: `given_is_gone`, `moved_once`, `one_owner_always`,
+  `shared_element_refused`.
 - **Fibers and channels [MEM-OWNERSHIP-STATIC-FIBERS].** Ownership transfers to
   exactly one side. `spawn` moves the managed values its body captures into the
   fiber. `await` moves the result to the awaiting side, so a fiber whose result

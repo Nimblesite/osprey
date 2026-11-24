@@ -45,6 +45,11 @@ moved_once propext, Quot.sound
 join_needs_one_owner propext
 borrow_keeps_owner none
 read_needs_live propext
+one_owner_always propext, Quot.sound
+part_outlives_holder propext
+take_on_one_path propext, Quot.sound
+literal_needs_no_owner propext, Quot.sound
+shared_element_refused propext, Quot.sound
 THEOREMS
 # A model that frees or moves a value while it is lent, or frees through a
 # slot that does not own it, must lose its proofs.

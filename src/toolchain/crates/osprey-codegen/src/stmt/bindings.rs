@@ -26,7 +26,7 @@ pub(super) fn gen_bind(
         return Ok(());
     }
     let value_bound = typed_initializer(cg, name, value, position, declaration)?;
-    let value_bound = crate::listlit::settled_string_list(cg, value_bound);
+    let value_bound = crate::listlit::settled_list(cg, value_bound);
     // Reassignment must discard stale inline lambdas and aliases.
     cg.forget_binding(name);
     finish_binding(cg, name, value, value_bound, declaration);

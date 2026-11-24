@@ -11,7 +11,9 @@
 //! (`take_moves_owner`), the holder may not free through the slot it gave up
 //! (`taken_field_not_freed`, hence the cleared slot), nothing may still borrow
 //! the value (`take_needs_no_loan`, hence the last-read checks), and it is
-//! freed once (`taken_freed_once`).
+//! freed once (`taken_freed_once`). A part taken out of a named holder
+//! outlives it (`part_outlives_holder`), and one taken on some paths only is
+//! freed once on each (`take_on_one_path`).
 use super::{Codegen, FrameKind};
 use std::collections::BTreeMap;
 

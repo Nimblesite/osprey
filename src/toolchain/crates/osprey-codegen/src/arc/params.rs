@@ -90,7 +90,8 @@ fn rooted(e: &Expr, name: &str) -> bool {
 /// Whether `e` can evaluate to a part of the binding `name`: a field of it, or
 /// what a pattern binds out of it. A function that returns part of a parameter
 /// takes that part out of it, so it owns the parameter and frees the rest
-/// [MEM-OWNERSHIP-STATIC-PATHS].
+/// [MEM-OWNERSHIP-STATIC-PATHS]; `part_outlives_holder` proves the part
+/// survives that free [MEM-OWNERSHIP-STATIC-MODEL].
 fn yields_part(e: &Expr, name: &str) -> bool {
     match e {
         Expr::FieldAccess { target, .. } => rooted(target, name),

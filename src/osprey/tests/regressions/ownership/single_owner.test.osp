@@ -397,6 +397,58 @@ fn closures(n) = {
     "closures ${show(1)} ${runWith(show, 2)} ${again(3)} ${runWith(again, 4)} ${runner.run(5)} ${runWith(runner.run, 6)} ${nest.held.inner.text}${nest.tag} ${looped} ${box.text}"
 }
 
+type Deep = Core { verdict: Verdict } | Shell
+
+/// A function that returns part of a parameter owns that parameter
+/// [MEM-OWNERSHIP-STATIC-PARAMETERS]: it takes the part and frees the rest.
+fn foeName(foe: Foe) = foe.name
+
+fn reasonOf(verdict) = match verdict {
+    Passed { result } => result
+    Halted { reason } => reason
+}
+
+/// A part two patterns deep, beside an arm that builds a value and an arm
+/// that yields a literal.
+fn deepest(deep) = match deep {
+    Core { verdict: Passed { result } } => result
+    Core { verdict: Halted { reason, code } } => "${reason}${toString(code)}"
+    Shell => "shell"
+}
+
+/// The part leaves on one path only; the other path frees the whole value.
+fn nameWhen(foe: Foe, wanted) = match wanted {
+    true => foe.name
+    false => "nobody"
+}
+
+/// Read first, then taken from at its last read.
+fn boxOf(foe: Foe) = {
+    let size = length(foe.name)
+    match size > 4 {
+        true => foe.box
+        false => Box { text: "small${toString(size)}" }
+    }
+}
+
+/// A binding at its last read gives up the field read out of it. A list whose
+/// elements have owners gives way to what is filtered out of it; a list of
+/// plain numbers is filtered while it is still read
+/// [MEM-OWNERSHIP-STATIC-SHARING].
+fn parts(n) = {
+    let kept = foe(n)
+    let named = kept.name
+    let foes = [foe(n), foe(0), foe(wrapAdd(n, 1))]
+    let alive = filterList(foes, fn(each) => each.health > 0)
+    let numbers = [n, 0, wrapAdd(n, 1)]
+    let positive = filterList(numbers, fn(each) => each > 0)
+    let ordered = listSortBy([foe(n), foe(0)], fn(left, right) => wrapSub(left.health, right.health))
+    let keys = mapKeys(mapSet(Map(), "k${toString(n)}", n))
+    let counts = mapSet(Map(), "c${toString(n)}", n)
+    let values = mapValues(counts)
+    "parts ${foeName(foe(n))} ${reasonOf(verdict(0))} ${reasonOf(verdict(n))} ${deepest(Core { verdict: verdict(0) })} ${deepest(Core { verdict: verdict(n) })} ${deepest(Shell)} ${nameWhen(foe(n), true)} ${nameWhen(foe(n), false)} ${boxOf(foe(n)).text} ${boxOf(foe(12345)).text} ${named} ${toString(listLength(alive))} ${toString(listLength(positive))}${toString(listLength(numbers))} ${toString(listLength(ordered))}${toString(listLength(keys))}${toString(listLength(values))}${toString(length(counts))}"
+}
+
 fn effects() = "${toString(listLength(folded(4)))} ${toString(listLength(folded(0)))} ${drawn(10)} ${drawn(0)} ${noted(3)}"
 
-print("${fileScope(1)} ${shared.text}\n${spans()}\n${elements()}\n${collections()}\n${lastUses()}\n${paths()}\n${owned()}\n${generics()}\n${literals()}\n${errors()} ${renderedTwice(7)}\n${captures()}\n${lends()}\n${lentLists()}\n${reads()}\n${borrows()}\n${effects()}\n${stores(2)}\n${takes(3)}\n${closures(2)}")
+print("${fileScope(1)} ${shared.text}\n${spans()}\n${elements()}\n${collections()}\n${lastUses()}\n${paths()}\n${owned()}\n${generics()}\n${literals()}\n${errors()} ${renderedTwice(7)}\n${captures()}\n${lends()}\n${lentLists()}\n${reads()}\n${borrows()}\n${effects()}\n${stores(2)}\n${takes(3)}\n${closures(2)}\n${parts(3)}")

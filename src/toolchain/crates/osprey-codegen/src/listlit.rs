@@ -298,8 +298,14 @@ pub(crate) fn escaping(cg: &mut Codegen, v: Value) -> Value {
 /// 5 000 times allocated 6.9 GB and took nine seconds; settled here the same
 /// reads take 80 ms. Numeric literals keep their flat fast path: they are
 /// small, and `toGpu` reads them in place. [BUILTIN-LIST-GET]
-pub(crate) fn settled_string_list(cg: &mut Codegen, v: Value) -> Value {
-    if v.osp_ty.as_deref() == Some(STRING_LIST_OWNER) {
+///
+/// Under ownership every literal whose elements have owners settles here: a
+/// copy made later, while the name still holds the literal, would give each
+/// element a second owner [MEM-OWNERSHIP-STATIC-SHARING].
+pub(crate) fn settled_list(cg: &mut Codegen, v: Value) -> Value {
+    let owns_elements = cg.ownership.on
+        && lit_elem(v.osp_ty.as_deref()).is_some_and(|(elem, _)| elem.is_managed_ptr());
+    if owns_elements || v.osp_ty.as_deref() == Some(STRING_LIST_OWNER) {
         return to_runtime_list(cg, v);
     }
     v

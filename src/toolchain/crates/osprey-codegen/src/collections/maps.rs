@@ -164,7 +164,11 @@ pub(super) fn map_to_list(cg: &mut Codegen, args: &[Expr], take_key: bool) -> Re
     } else {
         tagged_map_elem(&m)
     };
-    Ok(list_builder_seal(cg, &bld).with_owner(Some(list_owner(elem.as_deref()))))
+    // The list keeps the map's own keys or values, so the map gives way.
+    let source = versions::take_element_source(cg, &m, elem.as_deref());
+    let list = list_builder_seal(cg, &bld);
+    versions::release_source(cg, &source);
+    Ok(list.with_owner(Some(list_owner(elem.as_deref()))))
 }
 
 /// `{ k: v, … }` — build a runtime string-key map [TYPE-MAP-LITERAL].

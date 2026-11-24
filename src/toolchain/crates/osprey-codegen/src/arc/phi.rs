@@ -5,14 +5,18 @@ use super::{managed, mark_pure_scalar, own, Codegen, Entry, Value};
 pub(crate) fn borrowed_phi_arms(cg: &Codegen, incoming: &[Value], mark: usize) -> Vec<bool> {
     // When every arm that is not a new value can take its field out of an
     // owned temporary, the join owns what it yields [MEM-OWNERSHIP-STATIC-PATHS].
-    // An arm that yields a literal yields no reference and needs no owner.
+    // An arm that yields a literal yields no reference and needs no owner
+    // (`literal_needs_no_owner`, [MEM-OWNERSHIP-STATIC-MODEL]).
     let counted = |value: &&Value| value.operand.starts_with('%') && !cg.is_rodata(&value.operand);
     let gives = |value: &Value| {
         arm_owned(cg, value, mark) || super::takes::can_take_field(cg, &value.operand)
     };
     let every_arm_gives = cg.ownership.on
         && incoming.iter().any(|value| counted(&value))
-        && incoming.iter().filter(counted).all(|value| managed(cg, value) && gives(value));
+        && incoming
+            .iter()
+            .filter(counted)
+            .all(|value| managed(cg, value) && gives(value));
     let promote = every_arm_gives
         || (incoming.iter().all(|value| managed(cg, value))
             && incoming.iter().any(|value| arm_owned(cg, value, mark)));

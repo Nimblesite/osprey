@@ -42,7 +42,9 @@ pub(crate) fn take_source(cg: &mut Codegen, source: Value) -> Source {
 /// of its own: `elem` is how those elements are spelled, when known. Elements
 /// that are plain numbers have no owner, so nothing is shared; any other
 /// element would have two owners while the source lives, so the source is
-/// taken as in [`take_source`].
+/// taken as in [`take_source`]. Proved in [MEM-OWNERSHIP-STATIC-MODEL]: no
+/// accepted path gives an allocation two owners (`one_owner_always`), and a
+/// source read after the move is refused (`shared_element_refused`).
 pub(crate) fn take_element_source(cg: &mut Codegen, source: &Value, elem: Option<&str>) -> Source {
     let counted = elem.is_none_or(|elem| crate::llty::elem_of_spelling(elem).0.is_managed_ptr());
     if counted {

@@ -3,7 +3,8 @@
 // cannot give the value away and read it again. `pick` owns its pair and only
 // borrows `inside`: one call cannot give a pair away and lend a field of it,
 // directly or through a binding that borrows the field
-// [MEM-OWNERSHIP-STATIC-SAFETY].
+// [MEM-OWNERSHIP-STATIC-SAFETY]. `textOf` returns part of its parameter, so it
+// owns the parameter too: it takes the text and frees the box.
 type Box = { text: string }
 type Pair = { left: Box, right: Box }
 
@@ -17,6 +18,8 @@ fn pick(inside: Box, pair: Pair, n: int) = match n {
     _ => Pair { left: Box { text: "new${toString(n)}" }, right: Box { text: "r${inside.text}" } }
 }
 
+fn textOf(box: Box) = box.text
+
 fn pairOf(n) = Pair { left: Box { text: "l${toString(n)}" }, right: Box { text: "r${toString(n)}" } }
 
 fn main() = {
@@ -27,5 +30,7 @@ fn main() = {
     let two = pairOf(2)
     let field = two.left
     let named = pick(field, two, 0)
-    print("${kept.text}${made.text} ${direct.right.text} ${named.left.text}")
+    let lone = Box { text: "t${toString(3)}" }
+    let text = textOf(lone)
+    print("${kept.text}${made.text} ${direct.right.text} ${named.left.text} ${text}${lone.text}")
 }

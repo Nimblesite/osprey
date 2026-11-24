@@ -86,9 +86,13 @@ Acceptance of ordinary programs, largest refusal class first. After each item: `
   - Open: list literals, Results and anonymous records that hold a still-read value; file-scope bindings as lenders.
 - [ ] C3. Record update whose base is at its last use moves the fields it keeps; a field read out of a value at its last use moves.
   - Built for temporaries ([MEM-OWNERSHIP-STATIC-PATHS], "Taking a field", `arc/takes.rs`): a field read out of an unnamed value the function owns takes its reference at a return, a binding, a store, a call that owns the argument and a `match` join; the slot is cleared so the value frees without it. `single_owner` `takes()` exits with no live object; `borrowed_from_a_temporary` now refuses a read from a temporary that only lends. Corpus 54 to 56 of 181, each byte-identical with no live object under scribbled frees.
-  - Open: a field of a named binding or an owned parameter at its last use; record update.
+  - Built for named values (`arc/takes.rs` `owned_at_last_read`, `arc/params.rs` `yields_part`): a binding or an owned parameter at its last read gives up the field read out of it, at a return, a binding and a `match` join; a function that returns a managed part of a parameter owns that parameter; an arm that yields a literal joins with arms that take. `single_owner` `parts()` covers a field, a pattern, a nested pattern, one path only and a read before the take; `given_then_read` refuses a read after the gift. Returned refusals 178 to 160.
+  - Fixed while probing ([MEM-OWNERSHIP-STATIC-SHARING]): `filterList`, `listSortBy`, `mapKeys` and `mapValues` kept the elements of a list or map still alive, so a second one, or one inside a callee, left blocks shared to exit in an accepted program. The source is now taken or refused (`arc/versions.rs` `take_element_source`), and a literal with owned elements settles at its binding. `derived_then_read` covers the refusal; `parts()` the accepted cases.
+  - Proved: `one_owner_always`, `part_outlives_holder`, `take_on_one_path`, `literal_needs_no_owner`, `shared_element_refused` (23 ledger theorems replayed under GC, ARC and WASI).
+  - Refused by design for now: a list literal bound to a name that holds still-read bindings. The runtime list's element flag is inherited by every list derived from it, so a copy that held its elements unowned would hand unowned elements to `filterList` and its callers; it needs a list kind whose own drop is shallow.
+  - Open: record update.
 - [ ] C4. The remaining classes: bound, returned, joined, kept, shared. Each gets a rule or stays a documented refusal with a fixture.
-- Acceptance: `ownership` accepts every program in `src/osprey/tests/` that does not use a construct the spec refuses by rule. Today 59 of 181.
+- Acceptance: `ownership` accepts every program in `src/osprey/tests/` that does not use a construct the spec refuses by rule. Today 59 of 180.
 
 Soundness and the space bound:
 
