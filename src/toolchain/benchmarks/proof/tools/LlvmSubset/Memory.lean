@@ -4,8 +4,8 @@
 
    Every change to memory is one of three primitives (`alloc`, `access`,
    `kill`), and each one is built from a step the ownership ledger accepts.
-   A `Tracked` state carries the proof, so "this run followed the ledger" is
-   true by construction for everything the interpreter can do. -/
+   Each primitive preserves `Good`. Ledger.lean composes these proofs for
+   every successful interpreter run from a ledger-valid initial state. -/
 import OwnershipLedger
 import LlvmSubset.Syntax
 namespace LlvmSubset

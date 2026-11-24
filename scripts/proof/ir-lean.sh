@@ -24,7 +24,7 @@ translate() {
   mkdir -p "$dir"
   clang -Wno-override-module -c -x ir "$ir" -o /dev/null
   "$mlir_bin/mlir-translate" --import-llvm "$ir" | "$mlir_bin/mlir-opt" --mlir-print-op-generic > "$dir/emitted.mlir"
-  "$out/ir_lean" "$dir/emitted.mlir" Emitted 'grow$mono' 'growWhen$mono' 'keep$mono' relabel > "$dir/Emitted.lean"
+  "$out/ir_lean" "$dir/emitted.mlir" Emitted 'grow$mono' 'growWhen$mono' 'keep$mono' relabel foeName > "$dir/Emitted.lean"
   if grep -q 'IR-LEAN-FAILED\|REFUSED' "$dir/Emitted.lean"; then
     grep 'IR-LEAN-FAILED\|REFUSED' "$dir/Emitted.lean" >&2
     return 1
@@ -37,13 +37,13 @@ grep -m1 'Translated' "$out/emitted/Emitted.lean"
 prove "$out/emitted"
 # Osprey's kernel replays each theorem; the axioms are pinned.
 export_and_replay() {
-  local module=$1 theorem=$2 name=${2##*.}
+  local module=$1 theorem=$2 name=${2##*.} axioms=${3:-propext}
   LEAN_PATH="$out/emitted:$lean_path" "$exporter" "$module" -- "$theorem" > "$out/emitted/$name.ndjson"
-  replay "$name.ndjson" "$theorem" "Quot.sound, propext" "$out/emitted"
+  replay "$name.ndjson" "$theorem" "$axioms" "$out/emitted"
 }
 source "$root/scripts/proof/ownership-record.sh"
 check_record_update
-export_and_replay LlvmSubset LlvmSubset.run_follows_ledger
+export_and_replay LlvmSubset LlvmSubset.run_follows_ledger "propext, Quot.sound"
 for name in growScalar growManaged growWhen; do export_and_replay EmittedOwnership "EmittedOwnership.$name"; done
 # Each mutant is valid LLVM IR in the supported subset. It must reach the
 # theorem and be refused there by Lean's kernel.
@@ -54,7 +54,7 @@ reject() {
     echo "accepted $fault" >&2
     return 1
   fi
-  grep -q "error: (kernel) declaration type mismatch, 'EmittedOwnership.$theorem'" "$dir/proof.log"
+  kernel_rejected_at EmittedOwnership.lean "$theorem" "$dir/proof.log"
   echo "REJECT $fault at $theorem"
 }
 for fault in leak double-free early-free stale-phi; do

@@ -104,7 +104,7 @@ What it does not say: it does not show that a run answers. A per-function theore
 ## Kernel cost [IR-LEAN-FORCE] [IR-LEAN-KERNEL-RFL]
 
 - **[IR-LEAN-KERNEL-RFL]** The tactic `kernel_rfl` closes `a = b` with `Eq.refl a` and leaves the check to Lean's kernel. Lean's elaborator does not finish its own check on a symbolic run. A false statement is refused by the kernel.
-- **[IR-LEAN-FORCE]** `LlvmSubset/Force.lean` rebuilds the state from its constructors after every instruction. Each function is proved to be the identity. Osprey's kernel evaluates by substitution without sharing, so a state used twice is evaluated twice; forcing hands the next step data instead of a pending computation. List payloads and integers are not forced, because in a theorem they are variables.
+- **[IR-LEAN-FORCE]** `LlvmSubset/Force.lean` rebuilds the state from its constructors after every instruction. Each function is proved to be the identity. Osprey's kernel evaluates by substitution without sharing, so a state used twice is evaluated twice; forcing hands the next step data instead of a pending computation. Stack cells are forced. Heap payloads, list elements and integer values can be arbitrary theorem parameters and pass through unchanged.
 - The state carries no proofs. An earlier version carried a ledger proof inside the state; terms grew at every step, one replay took about two minutes, and the WASM kernel trapped.
 
 ## Theorems about emitted code [IR-LEAN-EMITTED]

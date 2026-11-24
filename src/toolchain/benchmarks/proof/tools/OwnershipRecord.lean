@@ -14,7 +14,8 @@ theorem seed_good (n : Int) : Good (seed n) := by
   have push (s : St) (h : Good s) (size layout : Nat) (cells : List (Nat × Val)) :
       Good (s.allocated true size layout cells .raw) :=
     allocBlk_preserves true size layout cells .raw s s.mem.length _ rfl h
-  exact push _ (push _ (push _ (push _ (push _ St.empty_good _ _ _) _ _ _) _ _ _) _ _ _) _ _ _
+  unfold seed
+  repeat first | exact St.empty_good | apply push
 
 def observe (n : Int) : Option (List Bool × List (Option Val) × List Bool) :=
   match runFn Emitted.module 12 Emitted.«relabel(ptr,ptr)» [.ptr 4 0, .ptr 3 0] (seed n) with
@@ -49,7 +50,6 @@ def identityResult (cells : List (Nat × Val)) : Except Fault (Val × List (Bool
 theorem compiledIdentity (cells : List (Nat × Val)) : identityResult cells =
     .ok (.ptr 0 0, [(true, cells)]) := by kernel_rfl
 
-
 /-- The record owns a name and a nested box. The caller may place arbitrary
     bytes, represented as cells, in the returned name allocation. -/
 def fieldResult (cells : List (Nat × Val)) (health : Int) : Except Fault (Val × List Bool × Option (List (Nat × Val))) := Id.run do
@@ -63,5 +63,24 @@ def fieldResult (cells : List (Nat × Val)) (health : Int) : Except Fault (Val �
 theorem compiledFieldTake (cells : List (Nat × Val)) (health : Int) :
     fieldResult cells health = .ok (.ptr 0 0, [true, false, false, false], some cells) := by
   kernel_rfl
+
+/-- The straight-line field transfer must load and clear the same field,
+    free the parent read from its owner slot, then return the loaded pointer. -/
+def fieldTransfer (f : Func) : Bool :=
+  match f.blocks with
+  | [⟨[arg], [.const _ _, .const nullReg 0, .const index 0, .alloca owner .ptr,
+       .store .ptr nilEntry slot, .store .ptr input saved, .cast base .bitcast .ptr record .ptr,
+       .gep addr (.struct [.int 64, .ptr, .ptr, .int 64]) src [.reg first, .const 1],
+       .load name .ptr readAt, .store .ptr nilField cleared, .load parent .ptr fromSlot,
+       .call none (.ext .osp_ownership_free) [dropped], .store .ptr nilExit retired],
+       .ret (some returned)⟩] =>
+    nullReg == nilEntry && nullReg == nilField && nullReg == nilExit && owner == slot &&
+    owner == saved && owner == fromSlot && owner == retired && arg == input &&
+    arg == record && base == src && index == first && addr == readAt &&
+    addr == cleared && parent == dropped && name == returned
+  | _ => false
+
+theorem compiledFieldTransfer :
+    (Emitted.module.funcs[Emitted.«foeName(ptr)»]?).map fieldTransfer = some true := by kernel_rfl
 
 end OwnershipRecord
