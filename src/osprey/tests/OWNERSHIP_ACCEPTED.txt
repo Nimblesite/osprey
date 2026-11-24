@@ -27,6 +27,9 @@ flavors/operators/operators.test.ts
 flavors/text_and_pipelines/text_and_pipelines.test.osp
 flavors/text_and_pipelines/text_and_pipelines.test.ospml
 flavors/text_and_pipelines/text_and_pipelines.test.ts
+flavors/workflows/workflows.test.osp
+flavors/workflows/workflows.test.ospml
+flavors/workflows/workflows.test.ts
 framework/verdict_declared.test.ospml
 modules/cross_namespace_patterns.test.osp
 modules/cross_namespace_patterns.test.ospml
