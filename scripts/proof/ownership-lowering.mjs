@@ -5,9 +5,9 @@ import { readFileSync } from 'node:fs'
 import { liveAccounting, reclaimPrefix } from './live-accounting.mjs'
 import { bodyPaths, popBody } from './worklist-drain.mjs'
 import { childDrop, growthBytes, worklistPush } from './child-drop.mjs'
-import { resultTake } from './result-take.mjs'
+import { resultMatch } from './result-take.mjs'
 import { pairConstructor, pairWalk } from './record-ownership.mjs'
-import { blocks as llvmBlocks, nullDrop, operand as get, pointerPhi, runtimeReturns, tracePointer } from './runtime-returns.mjs'
+import { blocks as llvmBlocks, nullDrop, operand as get, selectedPhi, runtimeReturns, tracePointer } from './runtime-returns.mjs'
 const [source, irFile, template, listFile, mapFile, stringFile, heapFile, walkFile] = process.argv.slice(2)
 const src = readFileSync(source, 'utf8').split('\n')
 const ir = readFileSync(irFile, 'utf8')
@@ -43,7 +43,7 @@ function instruction({ regs, slots, contents, bits, code }, line, previous) {
   }
   else if ((m = /^(%r\d+) = zext i1 (0|1|%\$p2) to i64$/.exec(line))) define(bits, m[1], get(bits, m[2]))
   else if ((m = /^(%r\d+) = icmp eq i64 (%r\d+), (%r\d+)$/.exec(line))) define(bits, m[1], get(bits, m[2]) === get(bits, m[3]))
-  else if ((m = /^(%r\d+) = (phi .+)$/.exec(line))) define(regs, m[1], pointerPhi(m[2], regs, previous))
+  else if ((m = /^(%r\d+) = (phi .+)$/.exec(line))) define(regs, m[1], selectedPhi(m[2], regs, previous))
   else throw Error('unsupported LLVM instruction: ' + line)
 }
 function trace(body, enabled) {
@@ -75,7 +75,8 @@ process.stdout.write(readFileSync(template, 'utf8')
   .replace('-- LIVE DEBIT', liveAccounting(heap, 'arc_live_dec'))
   .replace('-- BODY PATHS', bodyPaths(heap))
   .replace('-- CHILD DROP', childDrop(heap))
-  .replace('-- RESULT TAKE', resultTake(ir, src.join('\n')))
+  .replace('-- RESULT BORROW', resultMatch(ir, src.join('\n'), 'missingKept'))
+  .replace('-- RESULT TAKE', resultMatch(ir, src.join('\n'), 'missing'))
   .replace('-- PAIR WALK', pairWalk(walk))
   .replace('-- PAIR CONSTRUCTOR', pairConstructor(ir))
   .replace('-- NULL DROP', nullDrop(heapFile))

@@ -30,7 +30,7 @@ lake build lean4export
 lake env lean -DwarningAsError=true --root="$out" -o "$out/OwnershipLowering.olean" "$out/OwnershipLowering.lean"
 exporter=$(lake env which lean4export)
 lean_path=$(lake env printenv LEAN_PATH)
-for name in compiledGrow compiledGrowWhen runtimeRootOrigins renderedStringOrigin stringResultOrigins compiledFreeNull compiledPairFields compiledChildDrop compiledWorklistPush compiledPairQueue compiledGrowthBytes compiledPop compiledBodyReclaim compiledPushPop compiledLiveDebit compiledReclaimPrefix compiledLiveCredit compiledAccountingRoundTrip compiledResultTake; do
+for name in compiledGrow compiledGrowWhen runtimeRootOrigins renderedStringOrigin stringResultOrigins compiledFreeNull compiledPairFields compiledChildDrop compiledWorklistPush compiledPairQueue compiledGrowthBytes compiledPop compiledBodyReclaim compiledPushPop compiledLiveDebit compiledReclaimPrefix compiledLiveCredit compiledAccountingRoundTrip compiledResultTake compiledResultBorrow compiledResultBorrowUses; do
   theorem="OwnershipLowering.$name"
   axioms=none
   if [[ $name == compiledAccountingRoundTrip ]]; then axioms=propext; fi
@@ -212,3 +212,27 @@ for fault in attached-message freed-message null-fallback; do
   reflect "$out/mutations/$fault.ll" "$out/mutations/$fault.lean"
   reject "$fault" compiledResultTake
 done
+
+for fault in detached-borrow early-parent-free wrong-borrow-fallback leaked-render-buffer unwritten-return; do
+  awk -v fault="$fault" '
+    /^define / {inside = /@missingKept\(/}
+    inside && / = bitcast .* to i8\*$/ {parent = $1}
+    inside && fault == "leaked-render-buffer" && /call void @osp_ownership_free/ && !omitted++ {next}
+    inside && fault == "unwritten-return" && /call void .*@osp_format_into/ && /, i8\* %r[0-9]+, i8\* %r[0-9]+, i8\* %r[0-9]+\)$/ {next}
+    inside && / = getelementptr \{.*i32 0, i32 2$/ {field = $1}
+    inside && / = call i64 @osp_strlen\(/ {
+      print
+      if (fault == "detached-borrow") print "  store i8* null, i8** " field
+      if (fault == "early-parent-free") print "  call void @osp_ownership_free(i8* " parent ")"
+      next
+    }
+    inside && fault == "wrong-borrow-fallback" && / = select i1 / {sub($9 "$", substr($7, 1, length($7)-1))}
+    {print}
+  ' "$out/ownership.ll" > "$out/mutations/$fault.ll"
+  reflect "$out/mutations/$fault.ll" "$out/mutations/$fault.lean"
+  case "$fault" in
+    wrong-borrow-fallback) reject "$fault" compiledResultBorrowUses ;;
+    *) reject "$fault" compiledResultBorrow ;;
+  esac
+done
+reject detached-borrow compiledResultBorrowUses

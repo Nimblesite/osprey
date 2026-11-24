@@ -307,9 +307,12 @@ theorem compiledAccountingRoundTrip (tracking : Bool) (objects bytes peak : BitV
     · rw [if_neg larger, BitVec.add_sub_cancel, BitVec.add_sub_cancel]
 
 inductive ResultPtr where
-  | parent | child | nil | fallback
+  | parent | child | nil | fallback | buffer (id : Nat)
+  deriving BEq
 
 inductive ResultEvent where
+  | alloc (ptr : ResultPtr) | number (dest : ResultPtr) | length (src : ResultPtr)
+  | measure (inputs : List ResultPtr) | render (dest : ResultPtr) (inputs : List ResultPtr)
   | acquire | read (field : Nat) | write (ptr : ResultPtr) | free (ptr : ResultPtr) | ret (ptr : ResultPtr)
 
 def emittedResultTake (present : Bool) : List ResultEvent :=
@@ -320,5 +323,58 @@ def emittedResultTake (present : Bool) : List ResultEvent :=
 theorem compiledResultTake (present : Bool) :
     emittedResultTake present = [.acquire, .read 1, .read 0, .read 2, .write .nil, .free .nil,
       .free .parent, .ret (if present then .child else .fallback)] := by cases present <;> rfl
+
+def emittedResultBorrow (success present : Bool) : List ResultEvent :=
+-- RESULT BORROW
+
+/-- Check every Result-field read against its live parent, every formatting
+    read against initialized storage, and every temporary against its allocation.
+    A borrowed field stays attached until the wrapper is destroyed. -/
+structure RenderHeap where
+  roots : List ResultPtr := []
+  ready : List ResultPtr := []
+
+def readable (heap : RenderHeap) : ResultPtr → Bool
+  | .child => heap.roots.contains .parent
+  | .fallback => true
+  | p => heap.roots.contains p && heap.ready.contains p
+
+def checkedRender (heap : RenderHeap) : List ResultEvent → Option ResultPtr
+  | [] => none
+  | event :: rest =>
+    let create p := if heap.roots.contains p then none else
+      checkedRender { heap with roots := p :: heap.roots } rest
+    let written p := if heap.roots.contains p then
+      checkedRender { heap with ready := p :: heap.ready } rest else none
+    match event with
+    | .acquire => create .parent
+    | .alloc (.buffer n) => create (.buffer n)
+    | .read _ => if heap.roots.contains .parent then checkedRender heap rest else none
+    | .length p => if readable heap p then checkedRender heap rest else none
+    | .number (.buffer n) => written (.buffer n)
+    | .measure args => if args.all (readable heap) then checkedRender heap rest else none
+    | .render (.buffer n) args => if args.all (readable heap) then written (.buffer n) else none
+    | .free .nil => checkedRender heap rest
+    | .free p => if heap.roots.contains p then
+        checkedRender ⟨heap.roots.erase p, heap.ready.erase p⟩ rest else none
+    | .ret p => if rest.isEmpty && heap.roots == [p] && readable heap p then some p else none
+    | _ => none
+
+theorem compiledResultBorrow (success present : Bool) :
+    checkedRender {} (emittedResultBorrow success present) =
+      some (.buffer (if success then 3 else 2)) := by cases success <;> cases present <;> rfl
+
+/-- The message length and its subsequent string interpolation must read the
+    same borrowed pointer, including the static fallback on the null path. -/
+def borrowInputs : List ResultEvent → List ResultPtr
+  | [] => []
+  | .length p :: rest | .render _ [p] :: rest => p :: borrowInputs rest
+  | _ :: rest => borrowInputs rest
+
+theorem compiledResultBorrowUses (success present : Bool) :
+    borrowInputs (emittedResultBorrow success present) =
+      (if success then [.buffer 1] else
+        let message := if present then ResultPtr.child else .fallback
+        [message, message]) := by cases success <;> cases present <;> rfl
 
 end OwnershipLowering

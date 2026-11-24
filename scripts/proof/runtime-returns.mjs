@@ -82,8 +82,8 @@ export function operand(regs, reg) {
   return regs.get(reg)
 }
 
-export function pointerPhi(rhs, regs, predecessor) {
-  const m = /^phi i8\* \[ (%[\w$]+), %(L\d+) \], \[ (%[\w$]+), %(L\d+) \]$/.exec(rhs)
+export function selectedPhi(rhs, regs, predecessor) {
+  const m = /^phi (?:i8\*|i64) \[ (%[\w$]+), %(L\d+) \], \[ (%[\w$]+), %(L\d+) \]$/.exec(rhs)
   if (!m || m[2] === m[4]) throw Error('invalid ownership phi: ' + rhs)
   return operand(regs, operand(new Map([[m[2], m[1]], [m[4], m[3]]]), predecessor))
 }
