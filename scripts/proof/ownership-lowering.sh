@@ -30,7 +30,7 @@ lake build lean4export
 lake env lean -DwarningAsError=true --root="$out" -o "$out/OwnershipLowering.olean" "$out/OwnershipLowering.lean"
 exporter=$(lake env which lean4export)
 lean_path=$(lake env printenv LEAN_PATH)
-for name in compiledGrow compiledGrowWhen runtimeRootOrigins renderedStringOrigin stringResultOrigins compiledFreeNull compiledPairFields compiledChildDrop; do
+for name in compiledGrow compiledGrowWhen runtimeRootOrigins renderedStringOrigin stringResultOrigins compiledFreeNull compiledPairFields compiledChildDrop compiledWorklistPush compiledPairQueue; do
   theorem="OwnershipLowering.$name"
   LEAN_PATH="$out:$lean_path" "$exporter" OwnershipLowering -- "$theorem" > "$out/$name.ndjson"
   for backend in gc arc wasm; do
@@ -139,3 +139,13 @@ for fault in queue-child-twice retain-moving-state; do
   reflect "$out/ownership.ll" "$out/mutations/$fault.lean" "$out/runtime.ll" "$out/strings.ll" "$out/mutations/$fault.ll"
   reject "$fault" compiledChildDrop
 done
+
+awk '/^define / {inside = /@arc_wl_push\(/}
+     inside && / = add i64 / {nextTop = $1}
+     inside && / = getelementptr inbounds .*ptr / {sub(/i64 %[^, ]+$/, "i64 " nextTop)}
+     {print}' "$out/heap.ll" > "$out/mutations/wrong-worklist-slot.ll"
+reflect "$out/ownership.ll" "$out/mutations/wrong-worklist-slot.lean" \
+  "$out/runtime.ll" "$out/strings.ll" "$out/mutations/wrong-worklist-slot.ll"
+reject wrong-worklist-slot compiledWorklistPush
+
+reject duplicate-child compiledPairQueue

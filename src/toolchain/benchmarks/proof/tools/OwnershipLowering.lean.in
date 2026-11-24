@@ -168,4 +168,41 @@ theorem compiledChildDrop (child : α) (state : Option Nat) :
         | 2 => [.write 1]
         | _ => [])) := by rfl
 
+/-- New depth, byte offset written in the existing buffer, and stored pointer.
+    The buffer and its full declared capacity must be valid native storage. -/
+def emittedPush (top cap child : Nat) : Option (Nat × Nat × Nat) :=
+-- WORKLIST PUSH
+
+theorem compiledWorklistPush (top cap child : Nat) (spare : top < cap) :
+    emittedPush top cap child = some (top + 1, top * 8, child) ∧ top + 1 ≤ cap := by
+  exact ⟨if_neg (Nat.ne_of_lt spare), spare⟩
+
+/-- Replay the specialized walk on registered, separately owned children and
+    record the writes it issues to the existing worklist, in execution order. -/
+def queueWalk (fields : List (Nat × Nat)) (cap : Nat) :
+    List WalkEvent → Nat → List (Nat × Nat) → Option (List (Nat × Nat))
+  | [], _, writes => some writes
+  | .read offset :: .drop source :: rest, top, writes => do
+    if offset != source || offset % 8 != 0 then none else
+    let child ← fields.lookup (offset / 8)
+    match emittedChildDrop child (some 1) with
+    | [.read 8, .queue body] =>
+      let (next, slot, value) ← emittedPush top cap body
+      queueWalk fields cap rest next (writes ++ [(slot, value)])
+    | _ => none
+  | _, _, _ => none
+
+theorem compiledPairQueue (left right top cap : Nat) (room : top + 1 < cap) :
+    (if (emittedPair left right).1 == pairWalk.1 then
+       queueWalk (emittedPair left right).2 cap pairWalk.2 top [] else none) =
+      some [(top * 8, left), ((top + 1) * 8, right)] := by
+  have first := (compiledWorklistPush top cap left (Nat.lt_trans (Nat.lt_succ_self _) room)).1
+  have second := (compiledWorklistPush (top + 1) cap right room).1
+  change (emittedPush top cap left).bind (fun (next, slot, value) =>
+    queueWalk (emittedPair left right).2 cap [.read 16, .drop 16] next [(slot, value)]) = _
+  rw [first]
+  change (emittedPush (top + 1) cap right).bind (fun (_, slot, value) =>
+    some [(top * 8, left), (slot, value)]) = _
+  rw [second]
+  rfl
 end OwnershipLowering

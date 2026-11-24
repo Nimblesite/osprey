@@ -64,3 +64,38 @@ export function childDrop(ir) {
   return ['  | none => ' + effects(cfg, absent, child, null),
     '  | some state => .read ' + field[3] + ' :: (match state with', ...arms, '    | _ => ' + run(sw[2]) + ')'].join('\n')
 }
+
+// The spare-capacity theorem follows the selected edge only. Uninterpreted
+// paths (including growth) yield none, so they cannot justify a successful push.
+function pushWrites(body, regs) {
+  if (body?.length !== 6 || body[5] !== 'ret void') return 'none'
+  const buffer = /^(%[\w.]+) = load ptr, ptr @g_wl, align 8(?:, !tbaa !\d+)?$/.exec(body[0])
+  const add = /^(%[\w.]+) = add i64 (%[\w.]+), (\d+)$/.exec(body[1])
+  const depth = /^store i64 (%[\w.]+), ptr @g_wl_top, align 8(?:, !tbaa !\d+)?$/.exec(body[2])
+  const slot = /^(%[\w.]+) = getelementptr inbounds (?:nuw )?\[(\d+) x i8\], ptr (%[\w.]+), i64 (%[\w.]+)$/.exec(body[3])
+  const write = /^store i64 (%[\w.]+), ptr (%[\w.]+), align 8(?:, !tbaa !\d+)?$/.exec(body[4])
+  if (!buffer || !add || !depth || !slot || !write || buffer[1] !== slot[3] || write[2] !== slot[1]) return 'none'
+  const operand = reg => {
+    if (!regs.has(reg)) throw Error('unknown worklist operand: ' + reg)
+    return regs.get(reg)
+  }
+  regs.set(add[1], '(' + operand(add[2]) + ' + ' + add[3] + ')')
+  return 'some (' + operand(depth[1]) + ', ' + operand(slot[4]) + ' * ' + slot[2] + ', ' + operand(write[1]) + ')'
+}
+
+export function worklistPush(ir) {
+  const fn = /^define [^@\n]*void @arc_wl_push\(i64 (?:noundef )?(%[\w.]+)\)[^\n]*\{\n([\s\S]*?)^\}/m.exec(ir)
+  if (!fn) throw Error('missing native worklist push')
+  const cfg = blocks(fn[2].replace(/;[^\n]*/g, '').split('\n').map(line => line.trim()).filter(Boolean))
+  const entry = cfg.get('entry') ?? []
+  const load = /^(%[\w.]+) = load i64, ptr @g_wl_(top|cap), align 8(?:, !tbaa !\d+)?$/
+  const first = load.exec(entry[0]), second = load.exec(entry[1])
+  const cmp = /^(%[\w.]+) = icmp (eq|ne) i64 (%[\w.]+), (%[\w.]+)$/.exec(entry[2])
+  const branch = /^br i1 (%[\w.]+), label %([\w.]+), label %([\w.]+)$/.exec(entry[3])
+  if (entry.length !== 4 || !first || !second || !cmp || !branch || cmp[1] !== branch[1]) throw Error('unsupported worklist guard')
+  const regs = new Map([[fn[1], 'child'], [first[1], first[2]], [second[1], second[2]]])
+  if (!regs.has(cmp[3]) || !regs.has(cmp[4])) throw Error('unknown worklist comparison operand')
+  const path = label => pushWrites(cfg.get(label), new Map(regs))
+  const [equal, different] = cmp[2] === 'eq' ? branch.slice(2) : branch.slice(2).reverse()
+  return '  if ' + regs.get(cmp[3]) + ' = ' + regs.get(cmp[4]) + ' then ' + path(equal) + ' else ' + path(different)
+}

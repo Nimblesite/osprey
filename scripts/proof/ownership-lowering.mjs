@@ -2,7 +2,7 @@
 // The Boolean parameter has two inhabitants; specialize both, resolving each phi by
 // its actual predecessor. Reject unknown instructions [MEM-OWNERSHIP-STATIC-VERIFICATION].
 import { readFileSync } from 'node:fs'
-import { childDrop } from './child-drop.mjs'
+import { childDrop, worklistPush } from './child-drop.mjs'
 import { pairConstructor, pairWalk } from './record-ownership.mjs'
 import { blocks as llvmBlocks, nullDrop, runtimeReturns } from './runtime-returns.mjs'
 const [source, irFile, template, listFile, mapFile, stringFile, heapFile, walkFile] = process.argv.slice(2)
@@ -81,9 +81,11 @@ const list = runtimeReturns(listFile, 'osp_alloc_tagged_noinit')
 const map = runtimeReturns(mapFile, 'osp_arc_calloc')
 const strings = runtimeReturns(stringFile, 'osp_alloc_tagged')
 const renderer = runtimeReturns(irFile, 'osp_string_show', strings('osp_string_show'))
+const heap = readFileSync(heapFile, 'utf8')
 const stringOps = 'concat take drop substring to_upper to_lower trim_start trim_end trim reverse replace repeat pad_start pad_end from_codepoint'.split(' ')
 process.stdout.write(readFileSync(template, 'utf8')
-  .replace('-- CHILD DROP', childDrop(readFileSync(heapFile, 'utf8')))
+  .replace('-- WORKLIST PUSH', worklistPush(heap))
+  .replace('-- CHILD DROP', childDrop(heap))
   .replace('-- PAIR WALK', pairWalk(readFileSync(walkFile, 'utf8')))
   .replace('-- PAIR CONSTRUCTOR', pairConstructor(ir))
   .replace('-- NULL DROP', nullDrop(heapFile))
