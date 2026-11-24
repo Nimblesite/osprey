@@ -329,6 +329,19 @@ output under each.
 These papers motivate Osprey's proof obligations. Verification of Osprey's
 lowering and runtime is tracked in plan 0045.
 
+### Verification [MEM-OWNERSHIP-STATIC-VERIFICATION]
+
+Check ownership and live borrows in the lowered program at transfers, frees,
+storage reuse, call boundaries and every continuation exit. At each move,
+the analysis must account for aliases of the allocation, including aliases
+reachable through fields or captures. An unproved path is rejected before
+emission. Exit-time counts cannot detect an earlier use-after-free or
+double free. Exercise accepted paths with freed-memory checking and compare
+their output with GC and ARC. Rejection tests must cover escaping borrows,
+calls that alias an owner with a live borrow, and continuations that would
+duplicate an owner. Acceptance tests must cover cleanup when a continuation
+is discarded, as well as ordinary returns and successful resumption.
+
 ### Inferred borrows [MEM-OWNERSHIP-STATIC-BORROWS]
 
 A `let` that names a value another binding owns, such as a field of a record
@@ -351,22 +364,31 @@ fiber needs an owner and is refused.
 
 ### Owned parameters [MEM-OWNERSHIP-STATIC-PARAMETERS]
 
-A parameter is a borrow unless the function can return it. A function whose
-result can be one of its parameters, as an accumulator or a function that picks
-between its argument and a new value does, takes ownership of that parameter:
-the caller gives a fresh value or a binding at its last use, and the function
-returns the value or frees it. Giving a value the caller reads again is
-refused at the call:
+Each managed parameter has a compiler-inferred mode. A borrowed parameter
+is valid for the call and cannot escape it. A consuming parameter transfers
+its owner into the function. Returning a parameter, storing it in an owned
+result or using it to derive a new collection can require a consuming mode.
+The caller supplies a fresh value or an owner at its last use. The callee
+transfers or frees it on every path. A later read by the caller is refused:
 
 ```text
 main.osp: 13:4: ownership: `made` needs a second owner in `main`: it is given to a function that takes ownership of it; it is read again at 14:4 [MEM-OWNERSHIP-STATIC]
 ```
 
-The rule is inferred, never written, and holds under reference counting too,
-where it saves the count a returned parameter needed. It applies to a function
-of an executable that is called only by name. A function passed as a value, a
-generic function, and every function of a library a host calls keep borrowed
-parameters, because their callers can't know which parameters are owned.
+The compiler checks the parameter modes and result ownership at each call
+boundary. Every possible target of an indirect call must satisfy the same
+contract, including when a closure stores arguments for later application.
+If the call cannot establish a consuming contract, it can lend arguments
+only to targets proved to keep those borrows within the call. Host calls use
+the ownership contract declared by their ABI. A borrow and a move of
+aliases to the same allocation may coexist only if the borrow is proved
+dead before the callee can free or reuse the allocation.
+
+The current lowering infers consuming modes for eligible functions called
+directly by name in an executable. Generic, indirect and host entry points
+use borrowed parameters where supported. ARC also uses the inferred modes
+to reduce count updates. This contract requires agreement at the call
+boundary even when the source function type carries no ownership modes.
 
 ### Moves on one path [MEM-OWNERSHIP-STATIC-PATHS]
 
@@ -428,25 +450,33 @@ refused"; the rest are the contract the remaining phases build.
 
 ### Research basis [MEM-OWNERSHIP-STATIC-BASIS]
 
-Each rule above follows an established result. This section names the result, and says where the design departs from it.
+**Ownership and inference.** Linear types account for exactly one use of a
+resource. Osprey's ownership discipline permits a value to go unread and
+inserts a drop for its owner on that path. The checker uses liveness and
+aliasing to infer where to emit frees. Proust's ASAP also infers frees and
+uses run-time scanning where static information is insufficient. In
+`ownership` mode an unproved transfer is a compile error.
+[Linear Types Can Change the World! (IFIP 1990)](https://www.researchgate.net/profile/Philip-Wadler/publication/2429119_Linear_Types_Can_Change_the_World/links/6410b420315dfb4cce7cf9bc/Linear-Types-Can-Change-the-World.pdf) · [Linear Haskell (POPL 2018)](https://doi.org/10.1145/3158093) · [ASAP (Cambridge technical report, 2017)](https://www.cl.cam.ac.uk/techreports/UCAM-CL-TR-908.pdf)
 
-**One owner, moved at the last use.** A value used at most once needs no collector and no count: this is the linear and affine discipline of Wadler, "Linear Types Can Change the World!" (IFIP TC 2 Working Conference on Programming Concepts and Methods, 1990), made practical for a functional language in Bernardy, Boespflug, Newton, Peyton Jones and Spiwack, "Linear Haskell" (POPL 2018, [doi:10.1145/3158093](https://doi.org/10.1145/3158093)). Rust's ownership and borrowing have a syntactic type-safety proof in Weiss, Gierczak, Patterson and Ahmed, "Oxide: The Essence of Rust" ([arXiv:1903.00982](https://arxiv.org/abs/1903.00982)) and a machine-checked semantic one in Jung, Jourdan, Krebbers and Dreyer, "RustBelt" (POPL 2018, [doi:10.1145/3158154](https://doi.org/10.1145/3158154)). Osprey's ledger is the Perceus ownership analysis ([GC-ARC-PERCEUS]) with its `dup` made an error.
+**Escape and reuse.** A borrowed closure, collection view or field can be
+read only while its lender is alive. The checker must prove that neither
+the borrow nor a value carrying it escapes that lifetime. This is the
+relevant property of second-class values and OCaml's locality mode. Region
+inference provides another static approach to safe reclamation. Osprey
+tracks individual owners and borrow lifetimes. A collection operation may
+reuse storage once the old version and its borrows have reached their last
+use. Clean's uniqueness typing and FP² give precedents for that condition.
+[Affordable 2nd-Class Values (OOPSLA 2016)](https://www.cs.purdue.edu/homes/rompf/papers/osvald-oopsla16.pdf) · [Oxidizing OCaml with Modal Memory Management (ICFP 2024)](https://www.research.ed.ac.uk/files/475247237/LorenzenEtalPACMPL2024OxidizingOCamlWith.pdf) · [Region-Based Memory Management (Tofte and Talpin, 1997)](https://www.sciencedirect.com/science/article/pii/S0890540196926139) · [Uniqueness Typing (Barendsen and Smetsers, 1996)](https://www.cambridge.org/core/journals/mathematical-structures-in-computer-science/article/abs/uniqueness-typing-for-functional-languages-with-graph-rewriting-semantics/0BF63E550377419604F633CB61A78496) · [FP² (ICFP 2023)](https://webspace.science.uu.nl/~swier004/publications/2023-icfp.pdf)
 
-**Borrows are inferred, not written.** Parameters default to borrowed and become owned only where the function consumes them, the inference of Ullrich and de Moura, "Counting Immutable Beans" (IFL 2019, [arXiv:1908.05647](https://arxiv.org/abs/1908.05647)), which Lean 4 ships. Their heuristic owns a parameter that is reused or passed on as owned; [MEM-OWNERSHIP-STATIC-PARAMETERS] owns one that is returned, stored or derived from. A borrow ends at the borrower's last read, never at the end of its scope, as in Rust's non-lexical lifetimes ([RFC 2094](https://rust-lang.github.io/rfcs/2094-nll.html)). A value read from a `mut` binding can't be borrowed, which is the rule that aliasing and mutation exclude each other.
-
-**A lent value can't escape.** A closure, list literal, `...rest` view or collection read that only borrows may be read and passed down, never stored, returned or sent. That is a second-class value, in Osvald, Essertel, Wu, González Alayón and Rompf, "Gentrification Gone Too Far? Affordable 2nd-Class Values for Fun and (Co-)Effect" (OOPSLA 2016, [doi:10.1145/2983990.2984009](https://doi.org/10.1145/2983990.2984009)), and the `local` mode of Lorenzen, White, Dolan, Eisenberg and Lindley, "Oxidizing OCaml with Modal Memory Management" (ICFP 2024, [doi:10.1145/3674642](https://doi.org/10.1145/3674642)). The lifetime of a borrow is a region in the sense of Tofte and Talpin, "Region-Based Memory Management" (Information and Computation 132(2), 1997) and Grossman, Morrisett, Jim, Hicks, Wang and Cheney, "Region-Based Memory Management in Cyclone" (PLDI 2002, [doi:10.1145/512529.512563](https://doi.org/10.1145/512529.512563)), inferred here per statement and never named.
-
-**One live version of a collection.** A unique value may be updated in place without the program being able to tell: Barendsen and Smetsers, "Uniqueness Typing for Functional Languages with Graph Rewriting Semantics" (Mathematical Structures in Computer Science, 1996, [doi:10.1017/S0960129500070109](https://doi.org/10.1017/S0960129500070109)), the basis of Clean. Lorenzen, Leijen and Swierstra, "FP²: Fully in-Place Functional Programming" (ICFP 2023, [doi:10.1145/3607840](https://doi.org/10.1145/3607840)) check statically that a function reuses its unique argument and allocates nothing; [MEM-OWNERSHIP-STATIC-SHARING] is that check applied to every derived version. Mutable value semantics, Racordon, Shabalin, Zheng, Abrahams and Saeta, "Implementation Strategies for Mutable Value Semantics" (Journal of Object Technology 21(2), 2022, [doi:10.5381/jot.2022.21.2.a2](https://doi.org/10.5381/jot.2022.21.2.a2)), reaches the same single-owner collections but copies when a value is used twice. Osprey refuses instead, so that no copy is hidden.
-
-**Fibers and channels move.** A value that crosses to another thread of control leaves the sender, as in the isolated capability of Clebsch, Drossopoulou, Blessing and McNeil, "Deny Capabilities for Safe, Fast Actors" (AGERE! 2015) and Rust's `Send`. A continuation that owns a value is resumed at most once: resuming it twice would use that value twice, the unsoundness that Tang, Hillerström, Lindley and Morris, "Soundly Handling Linearity" (POPL 2024, [doi:10.1145/3632896](https://doi.org/10.1145/3632896)) show for linear resources under multi-shot handlers.
-
-**No annotations at all.** Fully inferred static memory management is the goal of Proust, "ASAP: As Static As Possible Memory Management" (University of Cambridge Technical Report UCAM-CL-TR-908, 2017, [doi:10.48456/tr-908](https://doi.org/10.48456/tr-908)). ASAP falls back to scanning at run time where its analysis is imprecise; Osprey refuses the program there and leaves it to `gc` or `arc`.
-
-**Where this design departs from best practice.**
-
-- **No soundness proof.** Oxide and RustBelt state and prove type safety. The ledger has neither a formal model nor a proof. Its evidence is tests: every accepted regression exits with no live object under the ownership runtime, gives the output it gives under `gc` and `arc`, and is run with freed memory scribbled.
-- **Borrowing can hold memory longer.** A caller keeps a borrowed argument alive for the whole call even when the callee stops reading it early. Lorenzen and Leijen, "Reference Counting with Frame Limited Reuse" (ICFP 2022, [doi:10.1145/3547634](https://doi.org/10.1145/3547634)) define a frame-limited evaluation, one that holds memory longer only by a constant factor per call, show that unrestricted borrow inference isn't frame-limited, and advise against it. This backend puts no bound on what a borrow holds.
-- **Ownership is not in the types.** Rust, Linear Haskell and OCaml's modes record ownership in a function's type, so a caller can be checked against a signature. Here it is inferred from the function body of a whole executable, which is why generic functions, functions used as values and library exports keep borrowed parameters ([MEM-OWNERSHIP-STATIC-PARAMETERS]).
+**Memory bounds and evidence.** A whole-call borrow may keep a large input
+alive while the callee allocates its result. Unrestricted borrow inference
+can increase peak memory by an arbitrary amount. Exit-time leak checks
+measure reclamation at exit. Peak retention requires its own measurement.
+Osprey has no established frame-local space bound for inferred borrows.
+The ownership ledger and its lowering also lack a formal soundness proof.
+Rust's syntactic and semantic models show what a separate proof of
+ownership and borrowing must establish.
+[Reference Counting with Frame Limited Reuse, §4.2 (ICFP 2022)](https://www.microsoft.com/en-us/research/wp-content/uploads/2023/07/flreuse.pdf) · [Oxide](https://arxiv.org/abs/1903.00982) · [RustBelt (POPL 2018)](https://people.mpi-sws.org/~dreyer/papers/rustbelt/paper.pdf)
 
 When the backend has its own runtime, `ownership` replaces the unmanaged
 `none` backend, which is then deleted and its spelling rejected.
