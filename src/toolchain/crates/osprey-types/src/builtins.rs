@@ -80,6 +80,9 @@ pub(crate) const SHADOWABLE_BUILTINS: &[&str] = &[
     "checkAll",
     "checkTrue",
     "checkFalse",
+    // [BUILTIN-MIN-MAX-SHADOWING] common identifiers, not reserved.
+    "min",
+    "max",
 ];
 
 /// Install every built-in into a base environment.

@@ -251,7 +251,10 @@ pub(super) fn gen_call(
         // Every intrinsic with a value form — print, toString, the float and
         // integer builtins — lowers through the one table the iterator
         // callbacks use, so a direct call and `gpuMap(toFloat)` agree.
-        name if has_value_form(name) => gen_value_form_builtin(cg, name, arguments, named),
+        // A source declaration of the same name wins ([BUILTIN-MIN-MAX-SHADOWING]).
+        name if has_value_form(name) && !crate::builtin_values::shadowed(cg, name) => {
+            gen_value_form_builtin(cg, name, arguments, named)
+        }
         // Runtime builtins take precedence over a same-named user function: the
         // names below are reserved. Each dispatcher returns `None` when the name
         // is not its builtin, so the chain falls through to a user call.

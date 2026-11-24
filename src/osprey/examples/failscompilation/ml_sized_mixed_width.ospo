@@ -1,4 +1,5 @@
-// [TYPE-NUMERIC-SAME-TYPE] A binary operator takes both operands at one numeric type.
+// [TYPE-NUMERIC-SAME-TYPE] A binary operator takes both operands at one numeric type,
+// and so do `min` and `max` [BUILTIN-MIN-MAX-TYPE].
 // osprey: flavor=ml
 narrow : int32
 narrow = 1
@@ -11,3 +12,5 @@ print "${policy (\() => narrow + wide)}"
 print "${narrow < wide}"
 print "${policy (\() => narrow + small)}"
 print "${policy (\() => narrow + 1.5)}"
+print "${min narrow wide}"
+print "${max small 1.5}"

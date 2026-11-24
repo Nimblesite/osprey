@@ -61,6 +61,10 @@ fn numbers(e: &mut TypeEnv) {
         e.insert(name, open_integer_scheme(name, 2, Type::Var(0)));
     }
     e.insert("bitNot", open_integer_scheme("bitNot", 1, Type::Var(0)));
+    // [BUILTIN-MIN-MAX-TYPE] two values of one numeric type, any width, total.
+    for name in ["min", "max"] {
+        e.insert(name, open_numeric_scheme(name, 2, Type::Var(0)));
+    }
     // Conversions named for their target, over any integer source
     // [BUILTIN-CONVERT-INT]; out of range performs `Arith.overflow`.
     insert_conversions(e, Numeric::is_integer, open_integer_scheme);

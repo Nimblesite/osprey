@@ -107,7 +107,38 @@ transcendentalCase () =
         expm1 0.0 == 0.0
     ]
 
+(** A quiet NaN, built from its bits so no division performs Arith. *)
+quietNaN = floatFromBits 9221120237041090560
+
+(** Positive infinity, from its bits. *)
+infinity = floatFromBits 9218868437227405312
+
+(** NaN is the one float unequal to itself. *)
+nan x = x != x
+
+(** [BUILTIN-MIN-MAX] every width at its limits, both argument orders, unsigned
+order, the IEEE float table and the function-value forms. No Arith handler. *)
+extremumCase () =
+    checkAll "min and max at every numeric width" [
+        min 3 7 == 3, min 7 3 == 3, max 3 7 == 7, max 7 3 == 7, min 5 5 == 5,
+        min (-9223372036854775807 - 1) 9223372036854775807 == -9223372036854775807 - 1,
+        max (-9223372036854775807 - 1) 9223372036854775807 == 9223372036854775807,
+        min (toInt8 (-128)) (toInt8 127) == toInt8 (-128), max (toInt8 127) (toInt8 (-128)) == toInt8 127,
+        min (toInt16 (-32768)) (toInt16 5) == toInt16 (-32768), max (toInt32 (-1)) (toInt32 2147483647) == toInt32 2147483647,
+        max (toUint8 200) (toUint8 100) == toUint8 200, min (toUint8 0) (toUint8 255) == toUint8 0,
+        max (toUint16 65535) (toUint16 1) == toUint16 65535, max (toUint32 4000000000) (toUint32 1) == toUint32 4000000000,
+        min 1.5 2.5 == 1.5, max 2.5 1.5 == 2.5, min (-1.0) 1.0 == -1.0,
+        nan (min quietNaN 1.0), nan (min 1.0 quietNaN), nan (max quietNaN 1.0), nan (max 1.0 quietNaN),
+        floatBits (min 0.0 (-0.0)) == floatBits (-0.0), floatBits (min (-0.0) 0.0) == floatBits (-0.0),
+        floatBits (max (-0.0) 0.0) == floatBits 0.0, floatBits (max 0.0 (-0.0)) == floatBits 0.0,
+        min infinity 2.0 == 2.0, max (-infinity) (-2.0) == -2.0, max infinity 2.0 == infinity,
+        toFloat (min (toFloat32 2.5) (toFloat32 (-1.0))) == -1.0, toFloat (max (toFloat16 2.5) (toFloat16 (-1.0))) == 2.5,
+        foldList [4, 9, 2] 0 max == 9, foldList [4, 9, 2] 100 min == 2,
+        structuralEquals (mapList [1, 5, 9] (\x => min x 4)) [1, 4, 4]
+    ]
+
 testCases [
     { name = "math builtins: exact families are byte-exact", work = exactCase },
-    { name = "math builtins: transcendental families within 1e-12", work = transcendentalCase }
+    { name = "math builtins: transcendental families within 1e-12", work = transcendentalCase },
+    { name = "math builtins: min and max at every numeric width", work = extremumCase }
 ]
