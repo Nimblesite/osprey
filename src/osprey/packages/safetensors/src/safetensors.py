@@ -400,7 +400,7 @@ def keys(file):
     [["a", "b"]] [[]]
     ```
     """
-    return listSortBy(tensor_names(file), str_cmp)
+    return listSort(tensor_names(file))
 
 
 def offset_keys(file):
@@ -438,16 +438,6 @@ def offset_keys(file):
     ```
     """
     return tensor_names(file)
-
-
-def str_cmp(a, b):
-    """String comparison for sorting."""
-    if a < b:
-        return -1
-    elif a > b:
-        return 1
-    else:
-        return 0
 
 
 def tensor_names(file):

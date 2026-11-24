@@ -10,7 +10,7 @@ deterministic and matches sklearn's index order exactly. Implements
 [PORT-TEST-ORACLE].
 """
 
-from sklearn.Stats import cmp_int, index_of, map_indexed, unique_ints
+from sklearn.Stats import index_of, map_indexed, unique_ints
 
 __all__ = [
     "Split", "train_test_split", "kfold_splits", "stratified_kfold_splits",
@@ -201,7 +201,7 @@ def stratified_kfold_splits(y, n_splits):
     """
     y_encoded = appearance_encode(y)
     n_classes = len(unique_ints(y))
-    sorted_encoded = listSortBy(y_encoded, cmp_int)
+    sorted_encoded = listSort(y_encoded)
     alloc = allocation(sorted_encoded, n_splits, n_classes)
     test_folds = test_folds_list(y_encoded, alloc, n_splits)
     return toList(map(range(n_splits), lambda i: Split(train=indices_where(test_folds, i, False), test=indices_where(test_folds, i, True))))

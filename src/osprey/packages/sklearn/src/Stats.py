@@ -13,7 +13,7 @@ by the suite.
 
 __all__ = [
     "sum_float", "mean_float", "min_float", "max_float", "argsort_float",
-    "unique_ints", "index_of", "encode_labels", "cmp_int", "map_indexed",
+    "unique_ints", "index_of", "encode_labels", "map_indexed",
 ]
 
 
@@ -245,37 +245,6 @@ def dedup(sorted_xs):
     )
 
 
-def cmp_int(a, b):
-    """Total integer comparison: negative/zero/positive.
-
-    # Examples
-    ```osprey
-    from sklearn import Stats
-
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(_op, _l):
-            return 0.0
-
-        def remainderByZero(_l):
-            return 0
-
-    def show():
-        with wrapped:
-            print(f"[{Stats.cmp_int(2, 5)}] [{Stats.cmp_int(5, 2)}] [{Stats.cmp_int(3, 3)}]")
-
-    show()
-    ```
-    ```output
-    [-1] [1] [0]
-    ```
-    """
-    return -1 if a < b else (1 if a > b else 0)
-
-
 def unique_ints(xs):
     """The distinct integers of `xs` in ascending order.
 
@@ -306,7 +275,7 @@ def unique_ints(xs):
     [[1, 2, 3]] [[5]]
     ```
     """
-    return dedup(listSortBy(xs, cmp_int))
+    return dedup(listSort(xs))
 
 
 def index_of(xs, v):

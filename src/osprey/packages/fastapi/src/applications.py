@@ -296,7 +296,7 @@ def cors_methods(policy):
 def cors_headers(policy):
     names = listConcat(["Accept", "Accept-Language", "Content-Language", "Content-Type"], policy.headers)
     unique = foldList(names, [], lambda previous, name: previous if listContains(previous, name) else listConcat(previous, [name]))
-    return listSortBy(unique, lambda left, right: -1 if left < right else (1 if left > right else 0))
+    return listSort(unique)
 
 
 def cors_preflight_base(policy, origin):
