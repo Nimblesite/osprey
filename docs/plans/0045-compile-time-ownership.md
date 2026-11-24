@@ -63,3 +63,17 @@ Found while building phase 1, each a place where an accepted program still count
 - Acceptance: `osprey-ownership` appears in benchmark output alongside `osprey-gc` and `osprey-arc`.
 - [ ] Update docs/specs/compiler/0018-MemoryManagement.md [MEM-OWNERSHIP-STATIC] to state the shipped contract, removing the "Planned; not implemented" status; retire this plan.
 - Acceptance: the spec no longer marks the backend planned.
+
+## Owners (2026-11-24)
+
+One checkout, branch `fixes`, explicit-path commits, no push. Each owner edits only their files and reports the commit and its test evidence on TMC.
+
+- **OspreyFable2: the compiler.** `src/toolchain/crates/osprey-codegen/src/arc/**`, `collections*`, `iter.rs`, `pattern/**`, the list and map runtime, `failscompilation/ownership/` and `tests/regressions/ownership/`.
+  - Phase 2 item 1: no `@osp_retain`/`@osp_release` in `ownership` IR (lending box for `osp.any.*`, fibers and channels, `mut` file-scope bindings).
+  - Corpus acceptance: owned parameters for stored and derived parameters, record update, field moves, generic functions. Today 38 of 181.
+- **PrismCodex: the harness, the runtime contract and `none`.** `src/toolchain/crates/run_test_corpus.sh`, `src/toolchain/benchmarks/run.sh`, `osprey-cli/src/invocation.rs` and `wasm.rs`, `compiler/runtime/memory_runtime.c` and `memory_ownership.c`, the Makefiles, docs.
+  - Phase 3 item 1: delete `--memory=none` everywhere (closes #378). It no longer waits on phase 2: `ownership` links its own runtime.
+  - Phase 3 item 2: `osprey-ownership` in the benchmark report.
+  - Phase 2 item 3: the `ownership` corpus lane with the zero-live-objects check (`OSPREY_OWNERSHIP_DEBUG=1`). A refused program fails the lane; it reports the accepted count until OspreyFable2 gets it to 181.
+  - Phase 2 item 2: check `memory_ownership.c` against its acceptance and tick it.
+  - Last, together: the spec 0018 shipped contract, then retire this plan.
