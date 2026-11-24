@@ -75,11 +75,6 @@ def fmeasure(precision, recall):
     return 2.0 * precision * recall / (precision + recall) if precision + recall > 0.0 else 0.0
 
 
-def max_i(a, b):
-    """The larger of two ints."""
-    return a if a > b else b
-
-
 def token_at(xs, i):
     """Element `i` of a token list, or the empty string."""
     return unwrap_or(listGet(xs, i), "")
@@ -105,7 +100,7 @@ def lcs_cell(ref, can, prev_row, cur_row, i, j):
     if token_at(ref, i - 1) == token_at(can, j - 1):
         return row_at(prev_row, j - 1) + 1
     else:
-        return max_i(row_at(prev_row, j), row_at(cur_row, j - 1))
+        return max(row_at(prev_row, j), row_at(cur_row, j - 1))
 
 
 def lcs_row(ref, can, prev_row, i, cols):
@@ -181,8 +176,8 @@ def score_lcs(target_tokens, prediction_tokens):
 def score_ngrams(target_ngrams, prediction_ngrams):
     """rougeN: n-gram overlap precision/recall/f-measure."""
     intersection = counter_matched(target_ngrams, prediction_ngrams)
-    precision = toFloat(intersection) / toFloat(max_i(counter_total(prediction_ngrams), 1))
-    recall = toFloat(intersection) / toFloat(max_i(counter_total(target_ngrams), 1))
+    precision = toFloat(intersection) / toFloat(max(counter_total(prediction_ngrams), 1))
+    recall = toFloat(intersection) / toFloat(max(counter_total(target_ngrams), 1))
     return Score(precision=precision, recall=recall, fmeasure=fmeasure(precision, recall))
 
 

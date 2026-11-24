@@ -143,38 +143,30 @@ def train_nonuniform(x, d):
 
 def matrix_min(x):
     """The smallest value anywhere in `x`."""
-    return fold(range(len(x)), exp(1000.0), lambda acc, i: min_f(acc, row_min(unwrap_or(listGet(x, i), []))))
+    return fold(range(len(x)), exp(1000.0), lambda acc, i: min(acc, row_min(unwrap_or(listGet(x, i), []))))
 
 
 def matrix_max(x):
     """The largest value anywhere in `x`."""
-    return fold(range(len(x)), 0.0 - exp(1000.0), lambda acc, i: max_f(acc, row_max(unwrap_or(listGet(x, i), []))))
+    return fold(range(len(x)), 0.0 - exp(1000.0), lambda acc, i: max(acc, row_max(unwrap_or(listGet(x, i), []))))
 
 
 def column_min(x, j):
     """The smallest value in column `j`."""
-    return fold(range(len(x)), exp(1000.0), lambda acc, i: min_f(acc, unwrap_or(listGet(unwrap_or(listGet(x, i), []), j), 0.0)))
+    return fold(range(len(x)), exp(1000.0), lambda acc, i: min(acc, unwrap_or(listGet(unwrap_or(listGet(x, i), []), j), 0.0)))
 
 
 def column_max(x, j):
     """The largest value in column `j`."""
-    return fold(range(len(x)), 0.0 - exp(1000.0), lambda acc, i: max_f(acc, unwrap_or(listGet(unwrap_or(listGet(x, i), []), j), 0.0)))
+    return fold(range(len(x)), 0.0 - exp(1000.0), lambda acc, i: max(acc, unwrap_or(listGet(unwrap_or(listGet(x, i), []), j), 0.0)))
 
 
 def row_min(row):
-    return fold(range(len(row)), exp(1000.0), lambda acc, i: min_f(acc, unwrap_or(listGet(row, i), 0.0)))
+    return fold(range(len(row)), exp(1000.0), lambda acc, i: min(acc, unwrap_or(listGet(row, i), 0.0)))
 
 
 def row_max(row):
-    return fold(range(len(row)), 0.0 - exp(1000.0), lambda acc, i: max_f(acc, unwrap_or(listGet(row, i), 0.0)))
-
-
-def min_f(a, b):
-    return a if a < b else b
-
-
-def max_f(a, b):
-    return a if a > b else b
+    return fold(range(len(row)), 0.0 - exp(1000.0), lambda acc, i: max(acc, unwrap_or(listGet(row, i), 0.0)))
 
 
 def per_qtype(sq, rows, exact, four_bit, uniform):

@@ -60,16 +60,6 @@ def counter_increment(counter, key):
     return mapSet(counter, key, counter_get(counter, key) + 1)
 
 
-def min_i(a, b):
-    """The smaller of two ints."""
-    return a if a < b else b
-
-
-def max_i(a, b):
-    """The larger of two ints."""
-    return a if a > b else b
-
-
 def ngram_key(tokens, i, order):
     """The joined order-`order` word n-gram starting at token `i`."""
     return join(toList(map(range(order), lambda k: unwrap_or(listGet(tokens, i + k), ""))), " ")
@@ -231,7 +221,7 @@ def counter_matched(hyp, ref):
     [1] [0]
     ```
     """
-    return foldList(mapKeys(hyp), 0, lambda acc, key: acc + min_i(counter_get(hyp, key), counter_get(ref, key)))
+    return foldList(mapKeys(hyp), 0, lambda acc, key: acc + min(counter_get(hyp, key), counter_get(ref, key)))
 
 
 def counter_merge_max(a, b):
@@ -249,4 +239,4 @@ def counter_merge_max(a, b):
     [3] [1]
     ```
     """
-    return foldList(mapKeys(b), a, lambda acc, key: mapSet(acc, key, max_i(counter_get(acc, key), counter_get(b, key))))
+    return foldList(mapKeys(b), a, lambda acc, key: mapSet(acc, key, max(counter_get(acc, key), counter_get(b, key))))

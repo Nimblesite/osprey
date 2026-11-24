@@ -8,7 +8,7 @@ flash-attn ships no Python reference; this port adds one so the flash path is pr
 against an independent implementation of the same masking, GQA, window and ALiBi
 conventions. Implements [PORT-TEST-ORACLE] from spec 0043.
 """
-from flash_attn.Core import FlashResult, max_f, v_at, dot, mask_bounds, alibi_bias, dim4
+from flash_attn.Core import FlashResult, v_at, dot, mask_bounds, alibi_bias, dim4
 
 __all__ = ["naive_attention"]
 
@@ -25,7 +25,7 @@ def naive_score(q, k, shapes, scale, causal, wl, wr, alibi, s):
 
 def row_peak(scores, shapes, r):
     """The maximum score of row r, or -inf when the row is fully masked."""
-    return fold(range(shapes.seqlen_k), unwrap_or(listGet(scores, r * shapes.seqlen_k), 0.0), lambda a, j: max_f(a, unwrap_or(listGet(scores, r * shapes.seqlen_k + j), 0.0)))
+    return fold(range(shapes.seqlen_k), unwrap_or(listGet(scores, r * shapes.seqlen_k), 0.0), lambda a, j: max(a, unwrap_or(listGet(scores, r * shapes.seqlen_k + j), 0.0)))
 
 
 def naive_weight(score, peak):

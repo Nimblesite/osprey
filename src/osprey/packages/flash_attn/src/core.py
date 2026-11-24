@@ -14,7 +14,7 @@ Implements [PORT-DEVICE], [PORT-SCOPE] from spec 0043.
 
 __all__ = [
     "Shapes", "FlashResult", "Bounds", "Row", "Dim4",
-    "max_f", "min_i", "kv_head", "q_index", "kv_index", "v_at", "dot",
+    "kv_head", "q_index", "kv_index", "v_at", "dot",
     "mask_bounds", "alibi_bias", "dim4", "slice_flat",
 ]
 
@@ -62,36 +62,6 @@ class Dim4:
     b: int
     c: int
     d: int
-
-
-def max_f(a, b):
-    """The larger of two floats, for the online softmax's running maximum.
-
-    # Examples
-    ```osprey
-    from flash_attn import Core
-    print(f"[{Core.max_f(1.5, 2.5)}] [{Core.max_f(-0.5, -1.5)}] [{Core.max_f(2.0, 2.0)}]")
-    ```
-    ```output
-    [2.5] [-0.5] [2.0]
-    ```
-    """
-    return b if b > a else a
-
-
-def min_i(a, b):
-    """The smaller of two ints, for block-end clamps.
-
-    # Examples
-    ```osprey
-    from flash_attn import Core
-    print(f"[{Core.min_i(10, 7)}] [{Core.min_i(3, 7)}]")
-    ```
-    ```output
-    [7] [3]
-    ```
-    """
-    return a if a < b else b
 
 
 def kv_head(shapes, h):
@@ -275,8 +245,8 @@ def mask_bounds(shapes, causal, window_left, window_right, i):
     ```
     """
     lo = 0 if window_left < 0 else (i - window_left if i - window_left > 0 else 0)
-    causal_hi = min_i(shapes.seqlen_k, i + shapes.seqlen_k - shapes.seqlen_q + 1) if causal else shapes.seqlen_k
-    hi = min_i(causal_hi, i + window_right + 1) if window_right >= 0 else causal_hi
+    causal_hi = min(shapes.seqlen_k, i + shapes.seqlen_k - shapes.seqlen_q + 1) if causal else shapes.seqlen_k
+    hi = min(causal_hi, i + window_right + 1) if window_right >= 0 else causal_hi
     return Bounds(lo=lo, hi=(lo if lo > hi else hi))
 
 

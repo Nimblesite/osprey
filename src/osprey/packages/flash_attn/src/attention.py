@@ -12,7 +12,7 @@ from `Naive.naive_attention`, which does materialise them. Implements [PORT-DEVI
 from spec 0043; the same body moves behind @osprey/numpy's Storage.Buffer when it lands.
 """
 from flash_attn import Core, Naive
-from flash_attn.Core import Shapes, FlashResult, Row, max_f, min_i, dot, mask_bounds, alibi_bias, dim4, slice_flat, v_at
+from flash_attn.Core import Shapes, FlashResult, Row, dot, mask_bounds, alibi_bias, dim4, slice_flat, v_at
 
 __all__ = ["flash_attn_func", "flash_attn_varlen_func"]
 
@@ -30,7 +30,7 @@ def block_count(lo, hi):
 def update_row(q, k, v, shapes, scale, alibi, b, i, h, j, r):
     """One online-softmax step: fold key j's score into the running state r."""
     score = scale * dot(q, k, shapes, b, i, h, j) + alibi_bias(alibi, shapes, h, i, j)
-    new_m = max_f(r.m, score)
+    new_m = max(r.m, score)
     rescale = exp(r.m - new_m)
     p = exp(score - new_m)
     acc = toList(map(range(shapes.headdim), lambda d: unwrap_or(listGet(r.acc, d), 0.0) * rescale + v_at(v, shapes, b, j, h, d) * p))
@@ -55,7 +55,7 @@ def attend_row(q, k, v, shapes, scale, causal, wl, wr, alibi, b, i, h):
         return empty_row(shapes)
     else:
         seed = empty_row(shapes)
-        return fold(range(block_count(bounds.lo, bounds.hi)), seed, lambda row, bi: block_pass(q, k, v, shapes, scale, alibi, b, i, h, bounds.lo + bi * BLOCK_SIZE, min_i(bounds.hi, bounds.lo + (bi + 1) * BLOCK_SIZE), row))
+        return fold(range(block_count(bounds.lo, bounds.hi)), seed, lambda row, bi: block_pass(q, k, v, shapes, scale, alibi, b, i, h, bounds.lo + bi * BLOCK_SIZE, min(bounds.hi, bounds.lo + (bi + 1) * BLOCK_SIZE), row))
 
 
 def out_element(q, k, v, shapes, scale, causal, wl, wr, alibi, o):

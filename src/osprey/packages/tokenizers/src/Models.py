@@ -158,12 +158,8 @@ def longest_match(m, text, starts, si, end_idx):
 def build_unigram(tokens, scores, unk_id, byte_fallback):
     """A Unigram model from parallel token and score lists."""
     token_to_id = token_index(tokens)
-    min_score = fold(range(len(scores)), exp(1000.0), lambda acc, i: low(acc, unwrap_or(listGet(scores, i), 0.0)))
+    min_score = fold(range(len(scores)), exp(1000.0), lambda acc, i: min(acc, unwrap_or(listGet(scores, i), 0.0)))
     return UnigramModel(tokens=tokens, scores=scores, token_to_id=token_to_id, unk_id=unk_id, byte_fallback=byte_fallback, fuse_unk=True, min_score=min_score)
-
-
-def low(a, b):
-    return b if b < a else a
 
 
 def unigram_tokenize(m, text):
