@@ -65,16 +65,47 @@ Found while building phase 1, each a place where an accepted program still count
 - [ ] Update docs/specs/compiler/0018-MemoryManagement.md [MEM-OWNERSHIP-STATIC] to state the shipped contract, removing the "Planned; not implemented" status; retire this plan.
 - Acceptance: the spec no longer marks the backend planned.
 
-## Owners (2026-11-24)
+## Phase 4 — build what spec 0018 requires
 
-One checkout, branch `fixes`, explicit-path commits, no push. Each owner edits only their files and reports the commit and its test evidence on TMC.
+The spec states the contract: [MEM-OWNERSHIP-STATIC-SAFETY], [MEM-OWNERSHIP-STATIC-VERIFICATION], [MEM-OWNERSHIP-STATIC-BEYOND-RUST] and [MEM-BACKENDS-SHARED]. Every item below is one requirement of it that is not built. One checkout, branch `fixes`, explicit-path commits, no push. Each owner edits only their files, works test-first, and reports the commit and its evidence on TMC.
 
-- **OspreyFable2: the compiler.** `src/toolchain/crates/osprey-codegen/src/arc/**`, `collections*`, `iter.rs`, `pattern/**`, the list and map runtime, `failscompilation/ownership/` and `tests/regressions/ownership/`.
-  - Phase 2 item 1: no `@osp_retain`/`@osp_release` in `ownership` IR (lending box for `osp.any.*`, fibers and channels, `mut` file-scope bindings).
-  - Corpus acceptance: owned parameters for stored and derived parameters, record update, field moves, generic functions. Today 38 of 181.
-- **PrismCodex: the harness, the runtime contract and `none`.** `src/toolchain/crates/run_test_corpus.sh`, `src/toolchain/benchmarks/run.sh`, `osprey-cli/src/invocation.rs` and `wasm.rs`, `compiler/runtime/memory_runtime.c` and `memory_ownership.c`, the Makefiles, docs.
-  - Phase 3 item 1: delete `--memory=none` everywhere (closes #378). It no longer waits on phase 2: `ownership` links its own runtime.
-  - Phase 3 item 2: `osprey-ownership` in the benchmark report.
-  - Phase 2 item 3: the `ownership` corpus lane with the zero-live-objects check (`OSPREY_OWNERSHIP_DEBUG=1`). A refused program fails the lane; it reports the accepted count until OspreyFable2 gets it to 181.
-  - Phase 2 item 2: check `memory_ownership.c` against its acceptance and tick it.
-  - Last, together: the spec 0018 shipped contract, then retire this plan.
+### OspreyFable2 — the compiler and the collection runtime
+
+Files: `src/toolchain/crates/osprey-codegen/src/arc/**`, `collections*`, `iter.rs`, `pattern/**`, `expr/**` where the ledger is called, `compiler/runtime/list_runtime.c` and `map_runtime.c`, `failscompilation/ownership/`, `tests/regressions/ownership/`.
+
+Acceptance of ordinary programs, largest refusal class first. After each item: `ownership_mode` and `osprey-codegen` tests pass, `single_owner` gains the case and exits with no live object, and the accepted count below is updated.
+
+- [ ] C1. Generic functions own parameters. Infer per function body, apply to every instance ([MEM-OWNERSHIP-STATIC-PARAMETERS]).
+- [ ] C2. A value stored in a record, Result or collection that is then only read (the largest class, about 945 refusals): the constructor lends when the new value does not outlive the stored one.
+- [ ] C3. Record update whose base is at its last use moves the fields it keeps; a field read out of a value at its last use moves.
+- [ ] C4. The remaining classes: bound, returned, joined, kept, shared. Each gets a rule or stays a documented refusal with a fixture.
+- Acceptance: `ownership` accepts every program in `src/osprey/tests/` that does not use a construct the spec refuses by rule. Today 39 of 181.
+
+Soundness and the space bound:
+
+- [ ] C5. No `@osp_retain`/`@osp_release` in `ownership` IR (phase 2 item 1): a lending box for `osp.any.*`, `mut` file-scope bindings.
+- [ ] C6. Continuations ([MEM-OWNERSHIP-STATIC-CLOSURES]): accept a `control` handler that resumes at most once; a dropped continuation frees what it owns; `many` stays refused, reported once at the handler and never in the prelude's `__many*` helpers.
+- [ ] C7. Fibers and channels move ([MEM-OWNERSHIP-STATIC-FIBERS]): `spawn` captures, `await` once, `send` and `recv`.
+- [ ] C8. Frame-limited borrows ([MEM-OWNERSHIP-STATIC-BEYOND-RUST], space bound): a value at its last use is given to the callee, which frees it at its own last read.
+- [ ] C9. In-place update: a derived version whose source is at its last use overwrites it (`list_runtime.c`, `map_runtime.c`), under `ownership` and `arc` alike ([MEM-BACKENDS-SHARED]).
+
+### PrismCodex — the harness, verification, the runtime contract and the proof
+
+Files: `src/toolchain/crates/run_test_corpus.sh`, `src/toolchain/benchmarks/**`, `osprey-cli/src/**` and its tests, `compiler/runtime/memory_*`, the Makefiles and CI, `docs/` other than spec 0018's ownership sections, the Lean proof tooling.
+
+- [x] V1. `--memory=none` deleted everywhere (phase 3 item 1; c54aa2118, 70689c8af, d56504cc2, da6f758c5).
+- [x] V2. Corpus harness runs `ownership` (0ab14eb53): baseline 52 of 342 goldens, no leak among the programs that ran.
+- [ ] V3. The corpus lane is a gate: a program on the accepted list that is refused, leaks or differs from `gc` and `arc` fails CI. The list only grows.
+- [ ] V4. Verification lane ([MEM-OWNERSHIP-STATIC-VERIFICATION]): every accepted program also runs with freed memory scribbled and under AddressSanitizer; a test fails when `ownership` IR calls `@osp_retain` or `@osp_release` once C5 lands.
+- [ ] V5. Benchmarks: `osprey-ownership` beside `osprey-gc` and `osprey-arc` (phase 3 item 2), with peak live bytes as its own column. Run on a quiet machine: agents announce a window on TMC and stop cargo, tests and pis for it.
+- [ ] V6. Shared code ([MEM-BACKENDS-SHARED]): run deslop over `compiler/runtime/memory_*`; move what `arc` and `ownership` both need into `memory_tracked_heap.h`; no copy survives in two backends, no technique is weakened.
+- [ ] V7. Hosts ([MEM-OWNERSHIP-STATIC-HOSTS]): `ownership` archives for wasm32, Apple and Android link and run `single_owner` with its golden.
+- [ ] V8. The proof ([MEM-OWNERSHIP-STATIC-BEYOND-RUST]): a Lean model of the ledger's rules, derived from the spec and checked against OspreyFable2's rules as they land, with the theorem that lowering keeps one owner per allocation and a live lender for every borrow on every control-flow edge. First the model and the statement; then the proof.
+
+### Together, last
+
+- [ ] The spec's "Built" and "Not built" marks in [MEM-OWNERSHIP-STATIC-BEYOND-RUST] match the code; phase 2 and 3 boxes are ticked with evidence; this plan is retired and its rules live in spec 0018.
+
+### Order
+
+OspreyFable2: C1, C2, C3, then C6 and C5, C8, C7, C9, C4. PrismCodex: V5 and V3 first (the user asked to see the bench), then V4, V6, V7, V8. A change that crosses the split is announced on TMC before it is made.
