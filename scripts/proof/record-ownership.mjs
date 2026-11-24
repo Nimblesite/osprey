@@ -52,7 +52,8 @@ function recordInstructions(body) {
 // the reflection, including extra reads, branches and writes.
 export function pairWalk(ir) {
   const layout = /^@proof_pair_layout = [^\n]*?constant i64 (\d+),/m.exec(ir)
-  const body = /^define void @proof_pair_drop\([^\n]* %body\)[^\n]*\{\n[\w.]+:\n([\s\S]*?)^\}/m.exec(ir)
+  // ELF clang marks the definition dso_local; Mach-O clang does not.
+  const body = /^define [^\n@]*void @proof_pair_drop\([^\n]* %body\)[^\n]*\{\n[\w.]+:\n([\s\S]*?)^\}/m.exec(ir)
   if (!layout || !body) throw Error('missing specialized native record walk')
   const offsets = new Map([['%body', '0']])
   const loaded = new Map()
@@ -62,7 +63,7 @@ export function pairWalk(ir) {
   for (const line of lines) {
     const gep = /^(%[\w.]+) = getelementptr (?:inbounds )?(?:nuw )?i8, ptr %body, i64 (\d+)$/.exec(line)
     const load = /^(%[\w.]+) = load ptr, ptr (%[\w.]+), align 8(?:, !tbaa !\d+)?$/.exec(line)
-    const drop = /^(?:tail )?call (?:fastcc )?void @arc_drop_child\(ptr (?:noundef )?(%[\w.]+)\)$/.exec(line)
+    const drop = /^(?:tail )?call (?:fastcc )?void @arc_drop_child\(ptr (?:noundef )?(%[\w.]+)\)(?: #\d+)?$/.exec(line)
     if (gep) offsets.set(gep[1], gep[2])
     else if (load && offsets.has(load[2])) {
       loaded.set(load[1], offsets.get(load[2]))
