@@ -1,39 +1,87 @@
-// Reflect the complete scalar list-append specialization into Lean. Reject every
-// unrecognized instruction, signature or source body [MEM-OWNERSHIP-STATIC-VERIFICATION].
+// Translate the complete reachable LLVM paths for the owned scalar list regressions.
+// The Boolean parameter has two inhabitants; specialize both, resolving each phi by
+// its actual predecessor. Reject unknown instructions [MEM-OWNERSHIP-STATIC-VERIFICATION].
 import { readFileSync } from 'node:fs'
 const [source, irFile, template] = process.argv.slice(2)
-const src = readFileSync(source, 'utf8')
-if (!/^fn grow\(xs, x\) = listAppend\(xs, x\)$/m.test(src)) throw Error('unsupported grow source')
+const src = readFileSync(source, 'utf8').split('\n')
 const ir = readFileSync(irFile, 'utf8')
-const bodies = [...ir.matchAll(/^define internal i8\* @grow\$mono\d+\(i8\* (%\$p0), i64 (%\$p1)\) #[0-9]+ \{\nentry:\n([^}]+)\n\}$/gm)]
-if (bodies.length !== 1) throw Error('expected one scalar grow specialization')
-const [, list, scalar, body] = bodies[0]
-const regs = new Map([[list, 0]])
-const slots = new Map()
-function declare(map, name) {
-  if (map.has(name)) throw Error('duplicate definition ' + name)
-  map.set(name, map.size)
-  return map.get(name)
+function define(map, key, value = map.size) {
+  if (map.has(key)) throw Error('duplicate definition ' + key)
+  map.set(key, value)
+  return value
 }
-function lookup(map, name) {
-  if (!map.has(name)) throw Error('undefined operand ' + name)
-  return map.get(name)
+function get(map, key) {
+  if (!map.has(key)) throw Error('undefined operand ' + key)
+  return map.get(key)
 }
-function instruction(line) {
+function blocks(name, conditional) {
+  const sig = 'i8\\* %\\$p0, i64 %\\$p1' + (conditional ? ', i1 %\\$p2' : '')
+  const pattern = new RegExp('^define internal i8\\* @' + name + '\\$mono\\d+\\(' + sig + '\\) #\\d+ \\{\\n([^}]+)\\n\\}$', 'gm')
+  const bodies = [...ir.matchAll(pattern)]
+  if (bodies.length !== 1) throw Error('expected one specialization of ' + name)
+  const result = new Map()
+  let current
+  for (const raw of bodies[0][1].split('\n')) {
+    const line = raw.trim()
+    if (/^(entry|L\d+):$/.test(line)) current = define(result, line.slice(0, -1), [])
+    else current.push(line)
+  }
+  return result
+}
+const option = value => value === null ? 'none' : '(some ' + value + ')'
+function instruction({ regs, slots, contents, bits, code }, line, previous) {
   let m
-  if ((m = /^(%arc\.s\d+) = alloca i8\*$/.exec(line))) return '.reserve ' + declare(slots, m[1])
-  if ((m = /^store i8\* (null|%[\w$]+), i8\*\* (%arc\.s\d+)$/.exec(line))) {
-    const value = m[1] === 'null' ? 'none' : '(some ' + lookup(regs, m[1]) + ')'
-    return '.store ' + lookup(slots, m[2]) + ' ' + value
+  if ((m = /^(%arc\.s\d+) = alloca i8\*$/.exec(line))) code.push('.reserve ' + define(slots, m[1]))
+  else if ((m = /^store i8\* (null|%[\w$]+), i8\*\* (%arc\.s\d+)$/.exec(line))) {
+    const v = m[1] === 'null' ? null : get(regs, m[1])
+    contents.set(m[2], v)
+    code.push('.store ' + get(slots, m[2]) + ' ' + option(v))
+  } else if ((m = /^(%r\d+) = load i8\*, i8\*\* (%arc\.s\d+)$/.exec(line))) {
+    const loaded = get(contents, m[2])
+    define(regs, m[1], loaded)
+    code.push('.load ' + get(slots, m[2]) + ' ' + option(loaded))
+  } else if ((m = /^(%r\d+) = call i8\* @osprey_list_append_of\(i8\* (%[\w$]+), i64 %\$p1, i32 0\)$/.exec(line))) {
+    code.push('.append ' + get(regs, m[2]) + ' ' + define(regs, m[1]))
+  } else if ((m = /^call void @osp_ownership_free\(i8\* (%[\w$]+)\)$/.exec(line))) {
+    const reg = get(regs, m[1])
+    if (reg !== null) code.push('.free ' + reg)
   }
-  if ((m = /^(%r\d+) = call i8\* @osprey_list_append_of\(i8\* (%[\w$]+), i64 (%[\w$]+), i32 0\)$/.exec(line))) {
-    if (m[3] !== scalar) throw Error('unsupported append element')
-    const from = lookup(regs, m[2])
-    return '.append ' + from + ' ' + declare(regs, m[1])
-  }
-  if ((m = /^call void @osp_ownership_free\(i8\* (%[\w$]+)\)$/.exec(line))) return '.free ' + lookup(regs, m[1])
-  if ((m = /^ret i8\* (%[\w$]+)$/.exec(line))) return '.ret ' + lookup(regs, m[1])
-  throw Error('unsupported emitted LLVM instruction: ' + line)
+  else if ((m = /^(%r\d+) = zext i1 (0|1|%\$p2) to i64$/.exec(line))) define(bits, m[1], get(bits, m[2]))
+  else if ((m = /^(%r\d+) = icmp eq i64 (%r\d+), (%r\d+)$/.exec(line))) define(bits, m[1], get(bits, m[2]) === get(bits, m[3]))
+  else if ((m = /^(%r\d+) = phi i8\* \[ (%[\w$]+), %(L\d+) \], \[ (%[\w$]+), %(L\d+) \]$/.exec(line))) {
+    const incoming = new Map()
+    define(incoming, m[3], m[2])
+    define(incoming, m[5], m[4])
+    define(regs, m[1], get(regs, get(incoming, previous)))
+  } else throw Error('unsupported LLVM instruction: ' + line)
 }
-const code = body.trim().split('\n').map(line => instruction(line.trim()))
-process.stdout.write(readFileSync(template, 'utf8').replace('-- EMITTED BODY', '[' + code.join(', ') + ']'))
+function trace(body, enabled) {
+  const regs = new Map([['%$p0', 0]])
+  const slots = new Map()
+  const bits = new Map([['0', false], ['1', true], ['%$p2', enabled]])
+  const code = []
+  const state = { regs, slots, contents: new Map(), bits, code }
+  let label = 'entry', previous
+  const visited = new Set()
+  while (!visited.has(label)) {
+    visited.add(label)
+    const lines = get(body, label)
+    for (const line of lines.slice(0, -1)) instruction(state, line, previous)
+    const end = lines.at(-1)
+    previous = label
+    let m
+    if ((m = /^ret i8\* (%[\w$]+)$/.exec(end))) return '[' + [...code, '.ret ' + get(regs, m[1])].join(', ') + ']'
+    if ((m = /^br label %(L\d+)$/.exec(end))) label = m[1]
+    else if ((m = /^br i1 (%r\d+), label %(L\d+), label %(L\d+)$/.exec(end))) label = get(bits, m[1]) ? m[2] : m[3]
+    else throw Error('unsupported reachable terminator: ' + end)
+  }
+  throw Error('loop in scalar append specialization')
+}
+for (const definition of ['fn grow(xs, x) = listAppend(xs, x)', 'fn growWhen(xs, x, enabled) = if enabled { listAppend(xs, x) } else { xs }']) {
+  if (!src.includes(definition)) throw Error('unsupported source: ' + definition)
+}
+const conditional = blocks('growWhen', true)
+process.stdout.write(readFileSync(template, 'utf8')
+  .replace('-- EMITTED BODY', trace(blocks('grow', false), false))
+  .replace('-- ENABLED BODY', trace(conditional, true))
+  .replace('-- DISABLED BODY', trace(conditional, false)))

@@ -92,7 +92,7 @@ Depends on: [plan 0042](0042-proof-workbench.md) for the workbench phases (resum
 
 Dated evidence for proof claims; spec 0049 requires it. Add new dated entries here. Open proof items: #347.
 
-**Compiler translation validation, 2026-11-24.** The ownership proof target compiles the generic `grow` regression, reflects every instruction of the scalar-list specialization and checks `OwnershipLowering.compiledGrow` with pinned Lean. The GC, ARC and WASI builds of the Osprey kernel replay its certificate with zero reported axioms. Its scope and remaining compiler obligations are recorded in [ownership V8](0045-compile-time-ownership.md).
+**Compiler translation validation, 2026-11-24.** The ownership proof target compiles the generic `grow` regression, reflects the scalar-list specialization and the two paths of `growWhen`, and checks their return and ownership properties with pinned Lean. The GC, ARC and WASI builds of the Osprey kernel replay its certificate with zero reported axioms. Its scope and remaining compiler obligations are recorded in [ownership V8](0045-compile-time-ownership.md).
 
 **Road test, 2026-10-29.** M0 kernel: 330 Osprey lines in six files, about four hours to first green (most of it the positional-constructor gap, since fixed), longest function 19 lines. Costs: recursive functions need written signatures that the checker then flags as redundant; no nested patterns.
 

@@ -118,6 +118,7 @@ fn renamed(ages, n) = mapSet(ages, "k${toString(n)}", n)
 /// A generic function owns its parameters by the same rule, whatever type it
 /// is called at, and a list literal given straight to one is moved.
 fn grow(xs, x) = listAppend(xs, x)
+fn growWhen(xs, x, enabled) = if enabled { listAppend(xs, x) } else { xs }
 
 fn gather(n, acc) = match n {
     0 => acc
@@ -126,7 +127,7 @@ fn gather(n, acc) = match n {
 
 fn generics() = {
     let words = grow(grow(["a${toString(1)}"], "b${toString(2)}"), "c${toString(3)}")
-    let numbers = grow(grow([1], 2), 3)
+    let numbers = growWhen(growWhen(grow([1], 2), 3, true), 4, false)
     let counted = gather(3, [])
     let turned = listReverse(["r${toString(1)}", "r${toString(2)}"])
     "generics ${toString(listLength(words))} ${toString(listLength(numbers))} ${toString(listLength(counted))} ${toString(listLength(turned))}"

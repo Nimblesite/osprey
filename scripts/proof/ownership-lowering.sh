@@ -5,7 +5,6 @@ root=$(cd "$(dirname "$0")/../.." && pwd)
 out="$root/target/proof/ownership"
 tools="$root/src/toolchain/benchmarks/proof/tools"
 program="$root/src/osprey/tests/regressions/ownership/single_owner.test.osp"
-theorem=OwnershipLowering.compiledGrow
 mkdir -p "$out"
 "$1" "$program" --llvm --memory=ownership > "$out/ownership.ll"
 reflect() {
@@ -18,24 +17,29 @@ lake build lean4export
 lake env lean -DwarningAsError=true --root="$out" -o "$out/OwnershipLowering.olean" "$out/OwnershipLowering.lean"
 exporter=$(lake env which lean4export)
 lean_path=$(lake env printenv LEAN_PATH)
-LEAN_PATH="$out:$lean_path" "$exporter" OwnershipLowering -- "$theorem" > "$out/compiledGrow.ndjson"
-for backend in gc arc wasm; do
-  if [[ $backend == wasm ]]; then
-    result=$(printf 'compiledGrow.ndjson\t%s\n' "$theorem" | node "$root/scripts/proof/proof-batch-wasm.mjs" "$root/target/proof/openai/check-batch.wasm" "$out")
-  else
-    result=$(printf '%s\t%s\n' "$out/compiledGrow.ndjson" "$theorem" | "$root/target/proof/openai/check-batch.$backend")
-  fi
-  echo "$backend $result"
-  test "$result" = "PASS $theorem | axioms: none"
+for name in compiledGrow compiledGrowWhen; do
+  theorem="OwnershipLowering.$name"
+  LEAN_PATH="$out:$lean_path" "$exporter" OwnershipLowering -- "$theorem" > "$out/$name.ndjson"
+  for backend in gc arc wasm; do
+    if [[ $backend == wasm ]]; then
+      result=$(printf '%s.ndjson\t%s\n' "$name" "$theorem" | node "$root/scripts/proof/proof-batch-wasm.mjs" "$root/target/proof/openai/check-batch.wasm" "$out")
+    else
+      result=$(printf '%s\t%s\n' "$out/$name.ndjson" "$theorem" | "$root/target/proof/openai/check-batch.$backend")
+    fi
+    echo "$backend $result"
+    test "$result" = "PASS $theorem | axioms: none"
+  done
 done
 # The mutants are valid instructions in the supported fragment. Refuse them
 # at the theorem itself, independently of reflection or LLVM syntax checks.
 mkdir -p "$out/mutations"
-for fault in leak double-free early-free; do
+for fault in leak double-free early-free stale-phi; do
   awk -v fault="$fault" '
     /^define / {body = /@grow\$mono[0-9]+\(i8\* %\$p0, i64 %\$p1\)/}
+    /^define / {conditional = /@growWhen\$mono[0-9]+\(/}
+    conditional && fault == "stale-phi" && / = phi i8\*/ {sub(/\[ %r[0-9]+,/, "[ %$p0,")}
     body && fault == "early-free" && / = call i8\* @osprey_list_append_of/ {append = $0; next}
-    body && /call void @osp_ownership_free/ {
+    body && fault != "stale-phi" && /call void @osp_ownership_free/ {
       if (fault == "leak") next
       if (fault == "early-free") {print; print append; next}
       print

@@ -1,12 +1,15 @@
 /- [MEM-OWNERSHIP-STATIC-VERIFICATION] Translation validation of the native
-   compiler's entire emitted grow(List<int>, int) body. Registers identify
+   compiler's emitted scalar grow and conditional grow paths. Registers identify
    allocations; each append returns a fresh root. Contents model the C helper's
-   persistent-list contract. Stack slots hold raw pointers and expire on return. -/
+   persistent-list contract. Stack slots hold raw pointers and expire on return.
+   The reflector resolves predecessor-selected phi operands and folds free(null)
+   using the runtime's null-safe free contract. A load's value is checked here. -/
 namespace OwnershipLowering
 
 inductive Instr where
   | reserve (slot : Nat)
   | store (slot : Nat) (reg : Option Nat)
+  | load (slot : Nat) (expected : Option Nat)
   | append (src dst : Nat)
   | free (reg : Nat)
   | ret (reg : Nat)
@@ -14,17 +17,22 @@ inductive Instr where
 def emitted : List Instr :=
 -- EMITTED BODY
 
+def conditional (enabled : Bool) : List Instr := if enabled then
+-- ENABLED BODY
+else
+-- DISABLED BODY
+
 structure Machine (α : Type) where
   heap : List (Nat × List α)
   slots : List (Nat × Option Nat)
 
 def execute (element : α) (s : Machine α) : List Instr → Option (List α)
-  | .reserve slot :: rest =>
-    execute element {s with slots := (slot, none) :: s.slots} rest
-  | .store slot reg :: rest =>
-    if s.slots.lookup slot |>.isSome then
-      execute element {s with slots := (slot, reg) :: s.slots} rest
-    else none
+  -- Reflection assigns a slot id at its unique alloca and checks dominance
+  -- before each access. LLVM alloca alone leaves the contents uninitialized.
+  | .reserve _ :: rest => execute element s rest
+  | .store slot reg :: rest => execute element {s with slots := (slot, reg) :: s.slots} rest
+  | .load slot expected :: rest =>
+    if s.slots.lookup slot == some expected then execute element s rest else none
   | .append src dst :: rest => do
     let xs ← s.heap.lookup src
     if (s.heap.lookup dst).isSome then none else
@@ -43,5 +51,9 @@ def execute (element : α) (s : Machine α) : List Instr → Option (List α)
     A stale read, invalid free or extra surviving allocation yields none. -/
 theorem compiledGrow (xs : List α) (x : α) :
     execute x ⟨[(0, xs)], []⟩ emitted = some (xs ++ [x]) := by rfl
+
+theorem compiledGrowWhen (xs : List α) (x : α) (enabled : Bool) :
+    execute x ⟨[(0, xs)], []⟩ (conditional enabled) =
+      some (if enabled then xs ++ [x] else xs) := by cases enabled <;> rfl
 
 end OwnershipLowering
