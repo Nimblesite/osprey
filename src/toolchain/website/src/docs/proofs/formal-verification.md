@@ -24,6 +24,8 @@ Each idea below appears on this page.
 - **Lean.** A widely used proof checker and programming language, created by Leonardo de Moura ([Lean](https://lean-lang.org/)). Osprey writes its theorems and proofs in Lean. Osprey also has its own [Lean-compatible kernel](/docs/mathlib-port/), written in Osprey, which checks the same proofs a second time.
 - **Assumption.** A fact the proof takes as given, such as "adding numbers in either order gives the same answer". A proof is only as sound as its assumptions, so Osprey writes every one into the theorem where you can read it.
 
+{{ capture("/assets/images/guides/proof-workbench-commutativity.png", "The Osprey Proof Workbench showing the theorem p ∧ q → q ∧ p, its five-step proof, the hypotheses hp : p and hq : q, and the badge Checked by the Osprey kernel.", "All of these ideas on one screen: the theorem p ∧ q → q ∧ p, its five-step proof, and the badge saying Osprey's kernel checked every step.", 1356, 820) }}
+
 ## Why it raises software quality
 
 A test runs code on inputs someone picked and checks the answers. Ten tests try ten inputs. Code can still fail on the eleventh input, on an empty list or on a value nobody thought to try. As Edsger Dijkstra wrote, "Program testing can be used to show the presence of bugs, but never to show their absence" ([EWD249](https://www.cs.utexas.edu/~EWD/ewd02xx/EWD249.PDF)).
@@ -64,6 +66,10 @@ Take this function from [single_owner.test.osp](https://github.com/Nimblesite/os
 
 ```osprey
 fn grow(xs, x) = listAppend(xs, x)
+```
+
+```osprey-ml
+grow (xs, x) = listAppend (xs, x)
 ```
 
 `grow` builds a new list from the old list `xs` with the item `x` on the end. The old list is then no longer needed, so it must be freed exactly once, and only after the new list exists.
@@ -164,6 +170,8 @@ The [IR to Lean specification](/spec/irtolean/) states each theorem and what it 
 ## Mathematics too
 
 The same checkers are now used at the frontier of mathematics. OpenAI published its solution to a Navier-Stokes problem, about the equations of how water and air flow, together with a Lean version of the proof. Mathlib, Lean's shared library of checked mathematics, states the Riemann hypothesis exactly, so a future proof of it could be checked by machine. Osprey's kernel already checks selected Lean results: see [the Mathlib port](/docs/mathlib-port/) and [the Navier-Stokes film](/docs/proofs/videos/navier-stokes-proof/).
+
+{{ capture("/assets/images/guides/mathlib-check.png", "Recorded Mathlib tutorial: inspect a real check and its result; the Mathlib port guide distinguishes imported certificates from independent operation.", "Recorded Mathlib tutorial: Osprey's kernel checks a real Mathlib result and shows the outcome.", 1920, 1080) }}
 
 ## The code doing it
 

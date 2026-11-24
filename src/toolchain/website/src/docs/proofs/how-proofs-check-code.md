@@ -4,6 +4,7 @@ title: What is a proof, and how does it check Osprey code?
 description: "A plain-English guide to proofs: what a proof is, how it differs from a test, and how a Lean proof checks the exact code Osprey's compiler produced, step by step, using memory ownership as the example."
 permalink: /docs/proofs/how-proofs-check-code/
 ---
+{% from "native-capture.njk" import capture %}
 
 ## A test checks some cases. A proof checks all of them.
 
@@ -27,6 +28,10 @@ Here is the Osprey code we will check, from [single_owner.test.osp](https://gith
 
 ```osprey
 fn grow(xs, x) = listAppend(xs, x)
+```
+
+```osprey-ml
+grow (xs, x) = listAppend (xs, x)
 ```
 
 `grow` makes a **new** list that is the old list plus one item. The old list is no longer needed, so it must be freed **exactly once**, **after** the new list is made. Only the new list may still be alive when `grow` returns.
@@ -101,6 +106,8 @@ That is the whole idea:
 3. State what it should compute.
 4. Let Lean check it for every input.
 
+{{ capture("/assets/images/guides/proof-workbench-commutativity.png", "The Osprey Proof Workbench showing the theorem p ∧ q → q ∧ p, its five-step proof, the hypotheses hp : p and hq : q, and the badge Checked by the Osprey kernel.", "What a checked theorem looks like in Osprey's Proof Workbench: every step follows, so the kernel marks it Checked.", 1356, 820) }}
+
 ### 5. Prove the proof can fail
 
 A checker that never says no is useless. So, on every run, CI breaks the compiler's code on purpose and makes sure Lean **refuses** each broken version:
@@ -130,9 +137,13 @@ is not definitionally equal to the right-hand side
 
 If the compiler ever produced code like this, the pull request would go red.
 
+{% videoPlayer "proofs-that-say-no", true %}
+
 ### 6. Check the checker
 
 Lean has been carefully built and tested, but it is still software. So each finished proof is exported and checked again by **Osprey's own proof checker**, a separate checker written in Osprey. It runs three ways: with garbage collection, with reference counting, and as WebAssembly. Each must accept the proof and report `axioms: none`, which means the proof relied on nothing unproved.
+
+{% videoPlayer "osprey-proof-kernel", true %}
 
 ## What else is proved this way
 
