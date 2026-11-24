@@ -345,6 +345,8 @@ lowering and runtime is tracked in plan 0045.
 
 ### Verification [MEM-OWNERSHIP-STATIC-VERIFICATION]
 
+On native and WASI targets, `--check --memory=ownership` applies the same ownership rules as LLVM emission and reports the same ownership diagnostics. Check-only compilation ends before linking or execution.
+
 Check ownership and live borrows in the lowered program at transfers, frees,
 storage reuse, call boundaries and every continuation exit. At each move,
 the analysis must account for aliases of the allocation, including aliases
