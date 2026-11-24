@@ -4,7 +4,9 @@
 // `firstOr` yields an element its list owns on one path and a value it made
 // on the other, so what it returns may still belong to the list
 // [MEM-OWNERSHIP-STATIC-PATHS]. `latestText` returns what a file-scope cell
-// holds, which the next write to the cell frees.
+// holds, which the next write to the cell frees; `held` would borrow it across
+// such a write. `missing` is a read out of a map, which only lends what it
+// found: the module can't hold a value the map still owns.
 type Box = { text: string }
 type Wrap = { inner: Box }
 
@@ -13,6 +15,10 @@ effect Feed {
 }
 
 mut latest = "none${toString(0)}"
+let stock = mapSet(Map(), "plum${toString(5)}", "ripe")
+let missing = stock["mango"]
+
+fn missingText() = "${missing}"
 
 fn latestText() = latest
 
@@ -36,6 +42,7 @@ fn main() = {
             1
         }
     }
+    let held = latest
     let pushed = perform Feed.push("p${toString(4)}")
-    print("${reread(1).text}${firstOr(boxes, 0).text}${firstOr(boxes, 3).text}${toString(pushed)}${latestText()}")
+    print("${reread(1).text}${firstOr(boxes, 0).text}${firstOr(boxes, 3).text}${toString(pushed)}${latestText()}${held}${missingText()}")
 }

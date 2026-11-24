@@ -269,7 +269,10 @@ pub(crate) fn publish(cg: &mut Codegen, name: &str, value: Value, mutable: bool)
     // The global erases a flat literal's codegen-only layout tag. Materialize
     // it before any function can read the slot as a runtime List handle.
     let escaped = crate::listlit::escaping(cg, value);
+    let bound = escaped.operand.clone();
     let stored = crate::cast::coerce_param(cg, escaped, &slot.sig)?;
+    // The stored word is the bound value in the global's own spelling.
+    crate::arc::same_value(cg, &stored.operand, &bound);
     let given = !mutable
         && slot.storage().is_managed_ptr()
         && crate::arc::give_binding(cg, name, &stored.operand);

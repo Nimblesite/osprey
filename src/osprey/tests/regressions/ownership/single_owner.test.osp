@@ -17,6 +17,12 @@ effect Note {
 /// then reads.
 let shared = Box { text: "shared${toString(1)}" }
 let sharedNames = ["a${toString(1)}", "b${toString(2)}"]
+let sharedFault = parseInt("nope${toString(1)}")
+
+fn fileFault() = match sharedFault {
+    Success { value } => "parsed${toString(value)}"
+    Error { message } => "fault ${message}"
+}
 
 /// A file-scope `mut` that a handler arm rewrites lives in a cell the entry
 /// owns [MEM-OWNERSHIP-STATIC-BORROWS]: module storage borrows the cell, and
@@ -572,4 +578,4 @@ fn keeps(n) = {
 
 fn effects() = "${toString(listLength(folded(4)))} ${toString(listLength(folded(0)))} ${drawn(10)} ${drawn(0)} ${noted(3)}"
 
-print("${fileScope(1)} ${shared.text}\n${spans()}\n${elements()}\n${collections()}\n${lastUses()}\n${paths()}\n${owned()}\n${generics()}\n${literals()}\n${errors()} ${renderedTwice(7)}\n${captures()}\n${lends()}\n${lentLists()}\n${reads()}\n${borrows()}\n${effects()}\n${stores(2)}\n${takes(3)}\n${closures(2)}\n${parts(3)}\n${returned(2)}\n${returned(3)}\n${updates(5)}\n${fallbacks(1)}\n${fallbacks(4)}\n${keeps(6)}\n${journaled()}")
+print("${fileScope(1)} ${shared.text}\n${spans()}\n${elements()}\n${collections()}\n${lastUses()}\n${paths()}\n${owned()}\n${generics()}\n${literals()}\n${errors()} ${renderedTwice(7)}\n${captures()}\n${lends()}\n${lentLists()}\n${reads()}\n${borrows()}\n${effects()}\n${stores(2)}\n${takes(3)}\n${closures(2)}\n${parts(3)}\n${returned(2)}\n${returned(3)}\n${updates(5)}\n${fallbacks(1)}\n${fallbacks(4)}\n${keeps(6)}\n${journaled()} ${fileFault()}")

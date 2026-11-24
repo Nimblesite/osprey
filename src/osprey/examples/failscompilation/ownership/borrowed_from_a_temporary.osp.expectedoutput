@@ -1,3 +1,5 @@
-17:3: ownership: a value needs a second owner in `latestText`: it is returned while another value owns it [MEM-OWNERSHIP-STATIC]
-23:4: ownership: a value needs a second owner in `reread`: it is returned while another value owns it [MEM-OWNERSHIP-STATIC]
-28:4: ownership: a value needs a second owner in `firstOr`: it is returned while another value owns it [MEM-OWNERSHIP-STATIC]
+19:0: ownership: a value needs a second owner in `main`: a file-scope binding or cell holds it as well as its owner [MEM-OWNERSHIP-STATIC]
+23:3: ownership: a value needs a second owner in `latestText`: it is returned while another value owns it [MEM-OWNERSHIP-STATIC]
+29:4: ownership: a value needs a second owner in `reread`: it is returned while another value owns it [MEM-OWNERSHIP-STATIC]
+34:4: ownership: a value needs a second owner in `firstOr`: it is returned while another value owns it [MEM-OWNERSHIP-STATIC]
+45:4: ownership: `held` needs a second owner in `main`: it is bound to a name that can outlive the value it was read from [MEM-OWNERSHIP-STATIC]
