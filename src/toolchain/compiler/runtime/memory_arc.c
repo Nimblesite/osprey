@@ -42,31 +42,8 @@ void osp_retain(void *o) {
   }
   heap_lock();
   OspArcHdr *h = arc_lookup_body((uintptr_t)o);
-  if (h) {
-    if (h->rc >= 0) {
-      h->rc++;
-    }
+  if (h && h->rc >= 0) {
+    h->rc++;
   }
   heap_unlock();
 }
-
-// drop — probe first; on rc==0 run the kind/mask worklist drop.
-void osp_release(void *o) {
-  if (!o) {
-    return;
-  }
-  heap_lock();
-  OspArcHdr *h = arc_lookup_body((uintptr_t)o);
-  if (h) {
-    if (h->rc > 0 && --h->rc == 0) {
-      arc_release_zero_locked((uintptr_t)o);
-    }
-  }
-  heap_unlock();
-}
-
-// Codegen-proved-unique drop (memory_hooks.h): the caller proved rc == 1, so
-// this is exactly osp_release — the distinct symbol only exists to carry
-// LLVM's free-pair attributes so -O2 can delete non-escaping alloc+release
-// pairs before they ever reach the runtime.
-void osp_release_unique(void *o) { osp_release(o); }

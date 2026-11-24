@@ -69,19 +69,4 @@ void osp_retain(void *o) {
 }
 
 // The owner's release: the tracked heap's drop walk applies the rule above.
-void osp_ownership_free(void *o) {
-  if (!o) {
-    return;
-  }
-  heap_lock();
-  OspArcHdr *h = arc_lookup_body((uintptr_t)o);
-  if (h && OSP_HEAP_DROP_LAST(h)) {
-    arc_release_zero_locked((uintptr_t)o);
-  }
-  heap_unlock();
-}
-
-// Callers using the shared runtime ABI still transfer collection nodes via
-// retain and release. Both drop paths use the same ownership walk.
-void osp_release(void *o) { osp_ownership_free(o); }
-void osp_release_unique(void *o) { osp_ownership_free(o); }
+void osp_ownership_free(void *o) { tracked_drop(o); }

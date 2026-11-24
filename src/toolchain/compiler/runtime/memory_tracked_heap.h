@@ -12,13 +12,13 @@
 //                           block with header `h` was its last one
 // and optionally OSP_HEAP_EXIT_NOTE(), a statement the exit report runs after
 // its totals line,
-// and then defines osp_retain, osp_release and osp_release_unique itself:
-// they are where reference counting and single ownership differ.
+// and then defines osp_retain for its own transfer rules.
 #ifndef OSPREY_MEMORY_TRACKED_HEAP_H
 #define OSPREY_MEMORY_TRACKED_HEAP_H
 
 #include "memory_hooks.h"
 #include "memory_baton_passthrough.h"
+#include "memory_calloc.h"
 #include "memory_pool.h"
 
 #ifndef __wasi__
@@ -200,6 +200,25 @@ static void arc_arm_debug(void) {
 
 #include "memory_arc_drop.h"
 
+// A root drop and the recursive child walk use the backend's last-owner
+// rule. Parked blocks, immortals and foreign addresses have no owner to drop.
+static void tracked_drop(void *body) {
+  if (!body) {
+    return;
+  }
+  heap_lock();
+  OspArcHdr *h = arc_lookup_body((uintptr_t)body);
+  if (h && h->rc > 0 && OSP_HEAP_DROP_LAST(h)) {
+    arc_release_zero_locked((uintptr_t)body);
+  }
+  heap_unlock();
+}
+
+// The shared ABI's two drop calls differ in the compiler's uniqueness proof.
+// ARC and the current ownership collection shims both need the root walk.
+void osp_release(void *body) { tracked_drop(body); }
+void osp_release_unique(void *body) { tracked_drop(body); }
+
 // --- public ABI
 // ------------------------------------------------------------------ Implements
 // the [MEM-BACKENDS] C interface (docs/specs/compiler/0018-MemoryManagement.md §Custom Managers).
@@ -353,15 +372,7 @@ void *osp_arc_malloc(size_t size) {
 }
 
 void *osp_arc_calloc(size_t n, size_t size) {
-  size_t total = n * size;
-  if (n != 0 && total / n != size) {
-    return NULL; // overflow
-  }
-  void *p = osp_arc_malloc(total);
-  if (p) {
-    memset(p, 0, total);
-  }
-  return p;
+  return managed_calloc(n, size, osp_arc_malloc);
 }
 
 // Manual free from C runtime code is authoritative: it drops the object
