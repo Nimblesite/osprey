@@ -1,7 +1,9 @@
-/- [IR-LEAN-SYNTAX] The LLVM subset `osprey --memory=ownership` emits, as data.
-   `@osprey/ir_lean` writes one `Module` per compiled program; nothing here is
-   typed by hand. Registers, labels and functions are numbered by the
-   translator in order of first definition, so lookups compare numbers. -/
+/- [IR-LEAN-SYNTAX] The LLVM subset `osprey --memory=ownership` emits, as data, in
+   the shape of MLIR's LLVM dialect: every operand is a value, a constant is an
+   operation, and a branch passes arguments to its target block instead of the
+   target holding phis. `mlir-translate --import-llvm` produces that shape from
+   the compiler's IR and `@osprey/xdsl` reads it; nothing here is typed by hand.
+   Values, blocks and functions are numbered in order of first definition. -/
 namespace LlvmSubset
 
 /-- First-class types, needed for sizes and `getelementptr` offsets. -/
@@ -19,13 +21,6 @@ inductive Val where
   | int (v : Int)
   | ptr (block : Nat) (off : Nat)
   deriving DecidableEq, Repr
-
-inductive Operand where
-  | reg (id : Nat)
-  | const (v : Int)
-  /-- The address of a module global (a string constant). -/
-  | global (id : Nat)
-  deriving Repr
 
 inductive CastOp where
   | bitcast | ptrtoint | inttoptr | zext | sext | trunc
@@ -55,41 +50,44 @@ inductive Callee where
   | ext (name : Ext)
   deriving Repr
 
+/-- One index of a `getelementptr`: a constant, or a value. -/
+inductive Index where
+  | const (v : Int)
+  | reg (id : Nat)
+  deriving Repr
+
 inductive Instr where
+  /-- `llvm.mlir.constant` and `llvm.mlir.zero`. -/
+  | const (dst : Nat) (v : Int)
   | alloca (dst : Nat) (ty : Ty)
-  | store (ty : Ty) (value pointer : Operand)
-  | load (dst : Nat) (ty : Ty) (pointer : Operand)
-  | gep (dst : Nat) (ty : Ty) (base : Operand) (indices : List Operand)
-  | cast (dst : Nat) (op : CastOp) (source : Ty) (value : Operand) (target : Ty)
-  | bin (dst : Nat) (op : BinOp) (ty : Ty) (left right : Operand)
-  | icmp (dst : Nat) (pred : Pred) (ty : Ty) (left right : Operand)
-  | select (dst : Nat) (condition whenTrue whenFalse : Operand)
-  | call (dst : Option Nat) (callee : Callee) (args : List Operand)
+  | store (ty : Ty) (value pointer : Nat)
+  | load (dst : Nat) (ty : Ty) (pointer : Nat)
+  | gep (dst : Nat) (ty : Ty) (base : Nat) (indices : List Index)
+  | cast (dst : Nat) (op : CastOp) (source : Ty) (value : Nat) (target : Ty)
+  | bin (dst : Nat) (op : BinOp) (ty : Ty) (left right : Nat)
+  | icmp (dst : Nat) (pred : Pred) (ty : Ty) (left right : Nat)
+  | select (dst : Nat) (condition whenTrue whenFalse : Nat)
+  | call (dst : Option Nat) (callee : Callee) (args : List Nat)
   deriving Repr
 
 inductive Term where
-  | ret (value : Option Operand)
-  | br (target : Nat)
-  | condBr (condition : Operand) (whenTrue whenFalse : Nat)
+  | ret (value : Option Nat)
+  | br (target : Nat) (args : List Nat)
+  | condBr (condition : Nat) (whenTrue : Nat) (trueArgs : List Nat)
+      (whenFalse : Nat) (falseArgs : List Nat)
   | unreachable
   deriving Repr
 
-/-- `dst = phi [value, predecessor] ...`; every phi of a block reads the
-    registers as they were on the incoming edge. -/
-structure Phi where
-  dst : Nat
-  incoming : List (Nat × Operand)
-  deriving Repr
-
+/-- A basic block. A branch to it binds `params` to the arguments it passes,
+    all read before any is bound. -/
 structure Block where
-  phis : List Phi
+  params : List Nat
   body : List Instr
   term : Term
   deriving Repr
 
-/-- Block 0 is the entry block; `params` are the registers the arguments bind. -/
+/-- Block 0 is the entry block; its `params` bind the function's arguments. -/
 structure Func where
-  params : List Nat
   blocks : List Block
   deriving Repr
 

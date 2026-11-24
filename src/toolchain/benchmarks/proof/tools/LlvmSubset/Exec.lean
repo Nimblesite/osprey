@@ -2,9 +2,9 @@
    block by block against tracked memory. It is total (fuel bounds calls and
    block transitions), so Lean can evaluate it inside a proof and compile it
    for the differential check against the real binary. -/
-import LlvmSubset.Memory
+import LlvmSubset.Force
 namespace LlvmSubset
-variable {start : OwnershipLedger.Heap}
+
 
 abbrev Env := List (Nat × Val)
 
@@ -18,37 +18,48 @@ def Ty.bits : Ty → Nat
   | .int bits => bits
   | _ => 64
 
-def evalOp (env : Env) : Operand → Except Fault Val
-  | .reg id => match env.lookup id with
-    | some v => .ok v
-    | none => .error .undefinedRegister
-  | .const v => .ok (.int v)
-  | .global _ => .error .unsupported
+/-- The value a register holds. -/
+def evalOp (env : Env) (id : Nat) : Except Fault Val :=
+  match env.lookup id with
+  | some v => .ok v
+  | none => .error .undefinedRegister
 
-def evalAll (env : Env) : List Operand → Except Fault (List Val)
+def evalAll (env : Env) : List Nat → Except Fault (List Val)
   | [] => .ok []
-  | op :: rest => do
-    let v ← evalOp env op
+  | id :: rest => do
+    let v ← evalOp env id
     let more ← evalAll env rest
     .ok (v :: more)
 
-def loadAt (t : Tracked start) (ty : Ty) : Val → Except Fault (Val × Tracked start)
-  | .int _ => .error .badPointer
+def evalIndices (env : Env) : List Index → Except Fault (List Val)
+  | [] => .ok []
+  | .const v :: rest => do
+    let more ← evalIndices env rest
+    .ok (.int v :: more)
+  | .reg id :: rest => do
+    let v ← evalOp env id
+    let more ← evalIndices env rest
+    .ok (v :: more)
+
+def loadAt (ty : Ty) : Val → M Val
+  | .int _ => fault .badPointer
   | .ptr b off => do
-    let ⟨blk, found⟩ ← t.live b
+    let blk ← liveBlk .useAfterFree b
     if off + ty.size ≤ blk.size then
       match blk.cells.lookup off with
-      | some v => .ok (v, t.access b blk found blk.cells blk.obj)
-      | none => .error .uninitialised
-    else .error .outOfBounds
+      | some v => do
+        touch b blk.cells blk.obj
+        pure v
+      | none => fault .uninitialised
+    else fault .outOfBounds
 
-def storeAt (t : Tracked start) (ty : Ty) (v : Val) : Val → Except Fault (Tracked start)
-  | .int _ => .error .badPointer
+def storeAt (ty : Ty) (v : Val) : Val → M Unit
+  | .int _ => fault .badPointer
   | .ptr b off => do
-    let ⟨blk, found⟩ ← t.live b
+    let blk ← liveBlk .useAfterFree b
     if off + ty.size ≤ blk.size then
-      .ok (t.access b blk found ((off, v) :: blk.cells.filter (fun cell => cell.1 != off)) blk.obj)
-    else .error .outOfBounds
+      touch b ((off, v) :: blk.cells.filter (fun cell => cell.1 != off)) blk.obj
+    else fault .outOfBounds
 
 /-- Offset the indices after the first add, walking into `ty`. -/
 def gepOffset : Ty → List Val → Option Nat
@@ -120,165 +131,172 @@ def children (blk : Blk) : Except Fault (List Val) :=
           | none => .error .uninitialised)
     else .ok []
 
+def freeEach (free : Val → M Unit) : List Val → M Unit
+  | [] => pure ()
+  | v :: rest => do
+    settled (free v)
+    freeEach free rest
+
 /-- `osp_ownership_free`: free the allocation, then everything it owns. A
     null or a foreign word has no owner to release. -/
-def freeVal : Nat → Tracked start → Val → Except Fault (Tracked start)
-  | 0, _, _ => .error .fuel
-  | _ + 1, t, .int _ => .ok t
-  | fuel + 1, t, .ptr b off =>
-    if off ≠ 0 then .error .freeInside else
-    match t.live b with
-    | .error .useAfterFree => .error .doubleFree
-    | .error fault => .error fault
-    | .ok ⟨blk, found⟩ =>
+def freeVal : Nat → Val → M Unit
+  | 0, _ => fault .fuel
+  | _ + 1, .int _ => pure ()
+  | fuel + 1, .ptr b off =>
+    if off ≠ 0 then fault .freeInside else do
+      let blk ← liveBlk .doubleFree b
       if blk.heap then do
-        let owned ← children blk
-        owned.foldlM (freeVal fuel) (t.kill b blk found)
-      else .error .freeOfStack
+        let owned ← liftM (children blk)
+        killBlk b
+        freeEach (freeVal fuel) owned
+      else fault .freeOfStack
 
 /-- Zeroed words for `size` bytes. -/
-def zeroed (size : Nat) : List (Nat × Val) := (List.range (size / 8)).map (fun word => (8 * word, .int 0))
+def zeroed (size : Nat) : List (Nat × Val) :=
+  (List.range (size / 8)).map (fun word => (8 * word, .int 0))
 
-def allocated (t : Tracked start) (size layout : Int) (cells : List (Nat × Val)) : Except Fault (Val × Tracked start) :=
-  if size < 0 ∨ layout < 0 then .error .badArguments else
-  let (b, t) := t.alloc true size.toNat layout.toNat cells .raw
-  .ok (.ptr b 0, t)
+def allocated (size layout : Int) (cells : List (Nat × Val)) : M Val :=
+  if size < 0 ∨ layout < 0 then fault .badArguments else do
+    let b ← allocBlk true size.toNat layout.toNat cells .raw
+    pure (.ptr b 0)
+
+def appendTo (source : Nat) (v : Val) (managed : Bool) : M Val := do
+  let blk ← liveBlk .useAfterFree source
+  match blk.obj with
+  | .list elems _ false => do
+    touch source blk.cells (.list elems managed true)
+    let b ← allocBlk true 0 0 [] (.list (elems ++ [v]) managed false)
+    pure (.ptr b 0)
+  | .list _ _ true => fault .movedFrom
+  | .raw => fault .badPointer
+
+def lengthOf (source : Nat) : M Val := do
+  let blk ← liveBlk .useAfterFree source
+  match blk.obj with
+  | .list elems _ _ => do
+    touch source blk.cells blk.obj
+    pure (.int elems.length)
+  | .raw => fault .badPointer
 
 /-- The runtime entry points, each at the level the emitted code can observe. -/
-def callExt (fuel : Nat) (t : Tracked start) : Ext → List Val → Except Fault (Val × Tracked start)
-  | .osp_alloc, [.int size] => allocated t size 0 []
-  | .osp_alloc_tagged, [.int size, .int layout] => allocated t size layout (zeroed size.toNat)
-  | .osp_alloc_tagged_noinit, [.int size, .int layout] => allocated t size layout []
-  | .osp_ownership_free, [v] => (fun t => (Val.int 0, t)) <$> freeVal fuel t v
-  | .osprey_list_append_of, [.int 0, v, .int managed] =>
-    let (b, t) := t.alloc true 0 0 [] (.list [v] (managed != 0) false)
-    .ok (.ptr b 0, t)
-  | .osprey_list_append_of, [.ptr source 0, v, .int managed] => do
-    let ⟨blk, found⟩ ← t.live source
-    match blk.obj with
-    | .list elems _ false =>
-      let t := t.access source blk found blk.cells (.list elems (managed != 0) true)
-      let (b, t) := t.alloc true 0 0 [] (.list (elems ++ [v]) (managed != 0) false)
-      .ok (.ptr b 0, t)
-    | .list _ _ true => .error .movedFrom
-    | .raw => .error .badPointer
-  | .osprey_list_length, [.ptr source 0] => do
-    let ⟨blk, found⟩ ← t.live source
-    match blk.obj with
-    | .list elems _ _ => .ok (.int elems.length, t.access source blk found blk.cells blk.obj)
-    | .raw => .error .badPointer
-  | _, _ => .error .badArguments
+def callExt (fuel : Nat) : Ext → List Val → M Val
+  | .osp_alloc, [.int size] => allocated size 0 []
+  | .osp_alloc_tagged, [.int size, .int layout] => allocated size layout (zeroed size.toNat)
+  | .osp_alloc_tagged_noinit, [.int size, .int layout] => allocated size layout []
+  | .osp_ownership_free, [v] => do
+    freeVal fuel v
+    pure (.int 0)
+  | .osprey_list_append_of, [.int 0, v, .int managed] => do
+    let b ← allocBlk true 0 0 [] (.list [v] (managed != 0) false)
+    pure (.ptr b 0)
+  | .osprey_list_append_of, [.ptr source 0, v, .int managed] => appendTo source v (managed != 0)
+  | .osprey_list_length, [.ptr source 0] => lengthOf source
+  | _, _ => fault .badArguments
 
-abbrev CallFn (start : OwnershipLedger.Heap) :=
-  Nat → List Val → Tracked start → Except Fault (Val × Tracked start)
+abbrev CallFn := Nat → List Val → M Val
 
-def execInstr (callFn : CallFn start) (fuel : Nat) (env : Env) (t : Tracked start) :
-    Instr → Except Fault (Env × Tracked start)
-  | .alloca dst ty =>
-    let (b, t) := t.alloc false ty.size 0 [] .raw
-    .ok ((dst, .ptr b 0) :: env, t)
+def execInstr (callFn : CallFn) (fuel : Nat) (env : Env) : Instr → M Env
+  | .const dst v => pure ((dst, .int v) :: env)
+  | .alloca dst ty => do
+    let b ← allocBlk false ty.size 0 [] .raw
+    pure ((dst, .ptr b 0) :: env)
   | .store ty value pointer => do
-    let v ← evalOp env value
-    let p ← evalOp env pointer
-    let t ← storeAt t ty v p
-    .ok (env, t)
+    let v ← liftM (evalOp env value)
+    let p ← liftM (evalOp env pointer)
+    storeAt ty v p
+    pure env
   | .load dst ty pointer => do
-    let p ← evalOp env pointer
-    let (v, t) ← loadAt t ty p
-    .ok ((dst, v) :: env, t)
+    let p ← liftM (evalOp env pointer)
+    let v ← loadAt ty p
+    pure ((dst, v) :: env)
   | .gep dst ty base indices => do
-    let p ← evalOp env base
-    let at' ← evalAll env indices
-    let v ← gep ty p at'
-    .ok ((dst, v) :: env, t)
+    let v ← liftM (do
+      let p ← evalOp env base
+      let at' ← evalIndices env indices
+      gep ty p at')
+    pure ((dst, v) :: env)
   | .cast dst op source value target => do
-    let v ← evalOp env value
-    .ok ((dst, cast op source target v) :: env, t)
+    let v ← liftM (evalOp env value)
+    pure ((dst, cast op source target v) :: env)
   | .bin dst op ty left right => do
-    let a ← evalOp env left
-    let b ← evalOp env right
-    let v ← binary op ty.bits a b
-    .ok ((dst, v) :: env, t)
+    let v ← liftM (do
+      let a ← evalOp env left
+      let b ← evalOp env right
+      binary op ty.bits a b)
+    pure ((dst, v) :: env)
   | .icmp dst pred ty left right => do
-    let a ← evalOp env left
-    let b ← evalOp env right
-    let v ← compare pred ty.bits a b
-    .ok ((dst, v) :: env, t)
+    let v ← liftM (do
+      let a ← evalOp env left
+      let b ← evalOp env right
+      compare pred ty.bits a b)
+    pure ((dst, v) :: env)
   | .select dst condition whenTrue whenFalse => do
-    let c ← evalOp env condition
-    let v ← evalOp env (if c = .int 0 then whenFalse else whenTrue)
-    .ok ((dst, v) :: env, t)
-  | .call dst callee args => do
-    let values ← evalAll env args
-    let (v, t) ← match callee with
-      | .fn index => callFn index values t
-      | .ext name => callExt fuel t name values
-    .ok (match dst with
+    let v ← liftM (do
+      let c ← evalOp env condition
+      evalOp env (if c = Val.int 0 then whenFalse else whenTrue))
+    pure ((dst, v) :: env)
+  | .call dst (.fn index) args => do
+    let values ← liftM (evalAll env args)
+    let v ← callFn index values
+    pure (match dst with
       | some dst => (dst, v) :: env
-      | none => env, t)
+      | none => env)
+  | .call dst (.ext name) args => do
+    let values ← liftM (evalAll env args)
+    let v ← callExt fuel name values
+    pure (match dst with
+      | some dst => (dst, v) :: env
+      | none => env)
 
-def execBody (callFn : CallFn start) (fuel : Nat) : List Instr → Env → Tracked start → Except Fault (Env × Tracked start)
-  | [], env, t => .ok (env, t)
-  | instr :: rest, env, t => do
-    let (env, t) ← execInstr callFn fuel env t instr
-    execBody callFn fuel rest env t
+def execBody (callFn : CallFn) (fuel : Nat) : List Instr → Env → M Env
+  | [], env => pure env
+  | instr :: rest, env => forceCells env fun env => do
+    let env ← settled (execInstr callFn fuel env instr)
+    execBody callFn fuel rest env
 
-/-- Every phi of a block, read against the registers of the incoming edge. -/
-def execPhis (env : Env) (previous : Nat) : List Phi → Except Fault Env
-  | [] => .ok []
-  | phi :: rest =>
-    match phi.incoming.lookup previous with
-    | none => .error .badPhi
-    | some op => do
-      let v ← evalOp env op
-      let more ← execPhis env previous rest
-      .ok ((phi.dst, v) :: more)
+/-- The block a branch enters and the registers it enters with: the target's
+    parameters bound to the arguments, every argument read before any binds. -/
+def enter (f : Func) (env : Env) (target : Nat) (args : List Nat) : Except Fault (Block × Env) :=
+  match f.blocks[target]? with
+  | none => .error .noBlock
+  | some block =>
+    if block.params.length = args.length then do
+      let values ← evalAll env args
+      .ok (block, block.params.zip values ++ env)
+    else .error .badPhi
 
-def runBlocks (callFn : CallFn start) (fuel : Nat) (f : Func) :
-    Nat → Nat → Nat → Env → Tracked start → Except Fault (Val × Tracked start)
-  | 0, _, _, _, _ => .error .fuel
-  | steps + 1, previous, current, env, t =>
-    match f.blocks[current]? with
-    | none => .error .noBlock
-    | some block => do
-      let bound ← execPhis env previous block.phis
-      let (env, t) ← execBody callFn fuel block.body (bound ++ env) t
-      match block.term with
-      | .ret none => .ok (.int 0, t)
-      | .ret (some op) => do
-        let v ← evalOp env op
-        .ok (v, t)
-      | .br target => runBlocks callFn fuel f steps current target env t
-      | .condBr condition whenTrue whenFalse => do
-        let c ← evalOp env condition
-        runBlocks callFn fuel f steps current (if c = .int 0 then whenFalse else whenTrue) env t
-      | .unreachable => .error .unreachable
+/-- Where a block's terminator leads: a returned value, or the next block. -/
+def leave (f : Func) (env : Env) : Term → Except Fault (Val ⊕ (Block × Env))
+  | .ret none => .ok (.inl (Val.int 0))
+  | .ret (some id) => .inl <$> evalOp env id
+  | .br target args => .inr <$> enter f env target args
+  | .condBr condition whenTrue trueArgs whenFalse falseArgs => do
+    let c ← evalOp env condition
+    .inr <$> (if c = Val.int 0 then enter f env whenFalse falseArgs else enter f env whenTrue trueArgs)
+  | .unreachable => .error .unreachable
+
+def runBlocks (callFn : CallFn) (fuel : Nat) (f : Func) : Nat → Block → Env → M Val
+  | 0, _, _ => fault .fuel
+  | steps + 1, block, env => do
+    let env ← execBody callFn fuel block.body env
+    let next ← liftM (leave f env block.term)
+    match next with
+    | .inl v => pure v
+    | .inr (block, env) => runBlocks callFn fuel f steps block env
 
 /-- Run function `index` of `m` on `args`. `fuel` bounds the call depth and
     the block transitions of each call. -/
-def runFn (m : Module) : Nat → CallFn start
-  | 0, _, _, _ => .error .fuel
-  | fuel + 1, index, args, t =>
+def runFn (m : Module) : Nat → CallFn
+  | 0, _, _ => fault .fuel
+  | fuel + 1, index, args =>
     match m.funcs[index]? with
-    | none => .error .noFunction
+    | none => fault .noFunction
     | some f =>
-      if f.params.length = args.length then
-        runBlocks (runFn m fuel) fuel f (fuel + 1) 0 0 (f.params.zip args) t
-      else .error .badArguments
-
-/-- Memory before anything is allocated. -/
-def Tracked.empty : Tracked (fun _ => OwnershipLedger.dead) := ⟨[], [], .here _⟩
-
-/-- [IR-LEAN-GENERAL] The general theorem. For every module the translator
-    can write, every function in it, every argument list and every amount of
-    fuel: if the run answers at all, then every step it took on memory was a
-    step the ownership ledger accepts, and every allocation ends in a valid
-    ledger state. No hypothesis names a particular function. -/
-theorem run_follows_ledger (m : Module) (fuel index : Nat) (args : List Val)
-    (t result : Tracked (fun _ => OwnershipLedger.dead)) (v : Val)
-    (_ : runFn m fuel index args t = .ok (v, result)) :
-    Run (fun _ => OwnershipLedger.dead) result.log (view result.mem) ∧
-      OwnershipLedger.Safe (view result.mem) :=
-  ⟨result.run, result.safe⟩
+      match f.blocks with
+      | [] => fault .noBlock
+      | entry :: _ =>
+        if entry.params.length = args.length then
+          runBlocks (runFn m fuel) fuel f (fuel + 1) entry (entry.params.zip args)
+        else fault .badArguments
 
 end LlvmSubset

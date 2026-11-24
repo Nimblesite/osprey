@@ -61,10 +61,13 @@ theorem view_alloc (m : Mem) (blk : Blk) (alive : blk.live = true) :
   · subst same; simp [alive]
   · by_cases inside : a < m.length
     · simp [same, List.getElem?_append_left inside]
-    · have past : m.length < a := by omega
+    · have past : m.length ≤ a := Nat.le_of_not_lt inside
+      have beyond : m.length < a := Nat.lt_of_le_of_ne past (Ne.symm same)
       have none₁ : (m ++ [blk])[a]? = none := by
-        apply List.getElem?_eq_none; simp; omega
-      have none₂ : m[a]? = none := List.getElem?_eq_none (by omega)
+        apply List.getElem?_eq_none
+        simp only [List.length_append, List.length_singleton]
+        exact Nat.succ_le_of_lt beyond
+      have none₂ : m[a]? = none := List.getElem?_eq_none past
       simp [same, none₁, none₂]
 
 theorem view_set (m : Mem) (b : Nat) (old next : Blk) (found : m[b]? = some old) :
@@ -81,66 +84,152 @@ theorem view_set (m : Mem) (b : Nat) (old next : Blk) (found : m[b]? = some old)
   · subst same; simp [List.getElem?_set_self inside]
   · simp [same, List.getElem?_set_ne (Ne.symm same)]
 
-/-- A state reached from `start` only through ledger-accepted steps. -/
-structure Tracked (start : OwnershipLedger.Heap) where
+/-- The interpreter's state: memory, and every ledger action taken on it. -/
+structure St where
   mem : Mem
   log : Log
-  run : Run start log (view mem)
 
-namespace Tracked
-variable {start : OwnershipLedger.Heap}
+/-- A state reached only through steps the ownership ledger accepts. -/
+def Good (s : St) : Prop := Run (fun _ => dead) s.log (view s.mem)
+
+/-- A computation over the state that may fault. Memory changes only through
+    the four primitives below, so what holds of them holds of every run. -/
+def M (α : Type) := St → Except Fault (α × St)
+
+instance : Monad M where
+  pure a := fun s => .ok (a, s)
+  bind m f := fun s =>
+    match m s with
+    | .ok (a, next) => f a next
+    | .error e => .error e
+
+def fault {α : Type} (e : Fault) : M α := fun _ => .error e
+
+instance : MonadLift (Except Fault) M where
+  monadLift
+    | .ok a => pure a
+    | .error e => fault e
 
 /-- A fresh allocation: the ledger's `alloc` on a cell that never existed. -/
-def alloc (t : Tracked start) (heap : Bool) (size layout : Nat)
-    (cells : List (Nat × Val)) (obj : Obj) : Nat × Tracked start :=
-  let blk : Blk := ⟨true, heap, size, layout, cells, obj⟩
-  (t.mem.length, ⟨t.mem ++ [blk], (t.mem.length, .alloc t.mem.length) :: t.log, by
-    rw [view_alloc t.mem blk rfl]
-    refine .edge t.run ?_
-    have fresh : view t.mem t.mem.length = dead := by
-      simp [view]
-    simp [fresh, step]⟩)
+def allocBlk (heap : Bool) (size layout : Nat) (cells : List (Nat × Val)) (obj : Obj) : M Nat :=
+  fun s => .ok (s.mem.length,
+    ⟨s.mem ++ [⟨true, heap, size, layout, cells, obj⟩], (s.mem.length, .alloc s.mem.length) :: s.log⟩)
 
-/-- The live allocation `b`, or the fault its use would be. -/
-def liveOf (m : Mem) (b : Nat) (entry : Option Blk) (found : m[b]? = entry) :
-    Except Fault {blk : Blk // m[b]? = some blk ∧ blk.live = true} :=
-  match entry, found with
-  | none, _ => .error .badPointer
-  | some blk, found =>
-    if alive : blk.live = true then .ok ⟨blk, found, alive⟩ else .error .useAfterFree
-
-/-- The live allocation `b`, or the fault its use would be. -/
-def live (t : Tracked start) (b : Nat) :
-    Except Fault {blk : Blk // t.mem[b]? = some blk ∧ blk.live = true} :=
-  liveOf t.mem b t.mem[b]? rfl
+/-- The live allocation `b`; `dead` is the fault using a freed one is. -/
+def liveBlk (dead : Fault) (b : Nat) : M Blk := fun s =>
+  match s.mem[b]? with
+  | none => .error .badPointer
+  | some blk => if blk.live then .ok (blk, s) else .error dead
 
 /-- Read or write through a live allocation: the ledger's `read` by its owner. -/
-def access (t : Tracked start) (b : Nat) (blk : Blk)
-    (found : t.mem[b]? = some blk ∧ blk.live = true)
-    (cells : List (Nat × Val)) (obj : Obj) : Tracked start :=
-  ⟨t.mem.set b { blk with cells := cells, obj := obj }, (b, .read b) :: t.log, by
-    rw [view_set t.mem b blk _ found.1]
-    have before : view t.mem b = owned b := by simp [view, found.1, found.2]
-    have accepted : step (view t.mem b) (.read b) = some (owned b) := by
-      simp [before, step, owned]
-    simpa [found.2] using Run.edge t.run accepted⟩
+def touch (b : Nat) (cells : List (Nat × Val)) (obj : Obj) : M Unit := fun s =>
+  match s.mem[b]? with
+  | none => .error .badPointer
+  | some blk =>
+    if blk.live then
+      .ok ((), ⟨s.mem.set b { blk with cells := cells, obj := obj }, (b, .read b) :: s.log⟩)
+    else .error .useAfterFree
 
 /-- Free a live allocation: the ledger's `free` by its owner. -/
-def kill (t : Tracked start) (b : Nat) (blk : Blk)
-    (found : t.mem[b]? = some blk ∧ blk.live = true) : Tracked start :=
-  ⟨t.mem.set b { blk with live := false }, (b, .free b) :: t.log, by
-    rw [view_set t.mem b blk _ found.1]
-    have before : view t.mem b = owned b := by simp [view, found.1, found.2]
-    have accepted : step (view t.mem b) (.free b) = some dead := by
-      simp [before, step, owned, dead]
-    simpa using Run.edge t.run accepted⟩
+def killBlk (b : Nat) : M Unit := fun s =>
+  match s.mem[b]? with
+  | none => .error .badPointer
+  | some blk =>
+    if blk.live then .ok ((), ⟨s.mem.set b { blk with live := false }, (b, .free b) :: s.log⟩)
+    else .error .doubleFree
 
-end Tracked
+/-- Whatever `m` answers, it answers from a good state with a good state. -/
+def Preserves {α : Type} (m : M α) : Prop :=
+  ∀ s a next, m s = .ok (a, next) → Good s → Good next
 
-/-- The general theorem's ledger half: whatever a tracked state has done, it
-    is a path the ownership ledger accepts, so every allocation it reached is
-    in a valid ledger state: live with exactly one owner, or dead. -/
-theorem Tracked.safe (t : Tracked (fun _ => dead)) : OwnershipLedger.Safe (view t.mem) :=
-  OwnershipLedger.from_empty t.run.path
+theorem Preserves.pure {α : Type} (a : α) : Preserves (Pure.pure a : M α) := by
+  intro s b next h good
+  cases h
+  exact good
+
+theorem Preserves.fault {α : Type} (e : Fault) : Preserves (fault e : M α) := by
+  intro s b next h
+  cases h
+
+theorem Preserves.bind {α β : Type} {m : M α} {f : α → M β}
+    (first : Preserves m) (rest : ∀ a, Preserves (f a)) : Preserves (m >>= f) := by
+  intro s b next h good
+  show Good next
+  have h' : (match m s with
+      | .ok (a, mid) => f a mid
+      | .error e => .error e) = .ok (b, next) := h
+  split at h'
+  · rename_i a mid found
+    exact rest a mid b next h' (first s a mid found good)
+  · cases h'
+
+theorem Preserves.lift {α : Type} (e : Except Fault α) : Preserves (liftM e : M α) := by
+  cases e with
+  | ok a => exact Preserves.pure a
+  | error e => exact Preserves.fault e
+
+theorem allocBlk_preserves (heap : Bool) (size layout : Nat) (cells : List (Nat × Val))
+    (obj : Obj) : Preserves (allocBlk heap size layout cells obj) := by
+  intro s a next h good
+  cases h
+  show Run _ _ (view (s.mem ++ [_]))
+  rw [view_alloc s.mem _ rfl]
+  refine .edge good ?_
+  have fresh : view s.mem s.mem.length = dead := by simp [view]
+  simp [fresh, step]
+
+theorem liveBlk_preserves (dead : Fault) (b : Nat) : Preserves (liveBlk dead b) := by
+  intro s a next h good
+  unfold liveBlk at h
+  split at h
+  · cases h
+  · split at h
+    · cases h; exact good
+    · cases h
+
+theorem touch_preserves (b : Nat) (cells : List (Nat × Val)) (obj : Obj) :
+    Preserves (touch b cells obj) := by
+  intro s a next h good
+  unfold touch at h
+  split at h
+  · cases h
+  · rename_i blk found
+    split at h
+    · rename_i alive
+      cases h
+      show Run _ _ (view (s.mem.set b _))
+      rw [view_set s.mem b blk _ found]
+      have before : view s.mem b = owned b := by simp [view, found, alive]
+      have accepted : step (view s.mem b) (.read b) = some (owned b) := by
+        simp [before, step, owned]
+      simpa [alive] using Run.edge good accepted
+    · cases h
+
+theorem killBlk_preserves (b : Nat) : Preserves (killBlk b) := by
+  intro s a next h good
+  unfold killBlk at h
+  split at h
+  · cases h
+  · rename_i blk found
+    split at h
+    · rename_i alive
+      cases h
+      show Run _ _ (view (s.mem.set b _))
+      rw [view_set s.mem b blk _ found]
+      have before : view s.mem b = owned b := by simp [view, found, alive]
+      have accepted : step (view s.mem b) (.free b) = some dead := by
+        simp [before, step, owned, dead]
+      simpa using Run.edge good accepted
+    · cases h
+
+/-- Memory before anything is allocated. -/
+def St.empty : St := ⟨[], []⟩
+
+theorem St.empty_good : Good St.empty := .here _
+
+/-- A good state is a ledger path from the empty heap, so every allocation in
+    it is in a valid ledger state: live with exactly one owner, or dead. -/
+theorem Good.safe {s : St} (good : Good s) : OwnershipLedger.Safe (view s.mem) :=
+  OwnershipLedger.from_empty good.path
 
 end LlvmSubset
