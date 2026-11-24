@@ -47,8 +47,7 @@ the entry, so its imports resolve while sibling test files stay out of the run.
 
 One invocation runs every discovered suite under exactly one memory backend.
 `--memory=gc` selects tracing garbage collection, `--memory=arc` selects
-Perceus reference counting, and `--memory=none` explicitly selects the
-non-reclaiming backend. Omitting `--memory` uses the compiler default, `gc`.
+Perceus reference counting, and `--memory=ownership` selects compile-time ownership. Omitting `--memory` uses the compiler default, `gc`.
 The old `--memory=default` spelling is rejected.
 
 **`[TESTING-PARALLEL]`** Independent suites compile and run concurrently by

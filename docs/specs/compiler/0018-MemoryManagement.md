@@ -3,9 +3,7 @@
 Memory reclamation is an implementation detail. Osprey source cannot select
 allocation sites, release values, or observe when a value is reclaimed. Native
 builds default to tracing GC (`gc`); `arc` selects Perceus reference counting. WebAssembly, Apple and Android archives, and Python-hosted libraries default to ARC.
-Unmanaged allocation requires explicit `--memory=none`. The old
-`--memory=default` spelling is rejected. `--memory=ownership` accepts only programs the compiler can give one owner per
-value, and will replace `none`
+The CLI rejects `--memory=none` and `--memory=default`. `--memory=ownership` checks that each managed allocation has one owner
 ([MEM-OWNERSHIP-STATIC](#compile-time-ownership-mem-ownership-static)).
 
 ## Collection Is Unobservable [MEM-OPAQUE]
@@ -36,14 +34,12 @@ Code generation tracks managed values in an ownership ledger:
 - Region exits and proved last uses release their remaining owners.
 - A returned owner transfers its reference; a returned borrow is retained.
 
-GC, ARC and the unmanaged `none` backend share this lowering. General
-retain/release calls are no-ops under `none` and GC and active under ARC.
+GC and ARC share this lowering. The collector ignores general retain/release calls. ARC uses them to track live references.
 Compile-time ownership adds the checks and lowering specified in
 [MEM-OWNERSHIP-STATIC](#compile-time-ownership-mem-ownership-static).
 For a proved-unique value, codegen emits the paired `osp_release_unique` hook
 with LLVM allocator/free attributes, allowing `-O2` to remove a non-escaping
-allocation and release. The unmanaged `none` runtime also frees that unique value when
-the pair survives optimization; tracing GC leaves it for the collector.
+allocation and release. Tracing GC reclaims surviving allocations during collection.
 
 ## Effect Continuation Threads [MEM-EFFECT-BATON]
 
@@ -99,7 +95,7 @@ The current GC is supported on Apple and glibc-Linux, not Windows. It stops coll
 Heap allocation sites use the same IR symbols across backends. For these
 backends, native selection changes the runtime archive passed to the linker:
 
-- Explicit `--memory=none` uses `src/toolchain/compiler/runtime/memory_runtime.c`.
+- `ownership` uses `src/toolchain/compiler/runtime/memory_ownership.c`.
 - `gc` uses `src/toolchain/compiler/runtime/memory_gc.c`.
 - `arc` uses `src/toolchain/compiler/runtime/memory_arc.c`.
 
@@ -231,8 +227,7 @@ arrays, and finalized list headers: a header whose body owns a resource beyond
 the heap (a GPU buffer's copy on the device, [GPU-BUFFER-RESIDENT](../runtime/0034-GPUComputation.md#device-resident-buffers--gpu-buffer-resident))
 passes through the one finalizer the owning runtime unit registers
 (`osp_mem_set_finalizer`) before its data is released; the tracing collector
-runs the same finalizer at the sweep that reclaims the header, and the unmanaged `none`
-backend, which reclaims no general allocation, never runs it. Releases walk
+runs the same finalizer at the sweep that reclaims the header. Releases walk
 managed child slots non-recursively. Persistent list and
 map nodes retain shared structure and release the portion no longer referenced
 by any live version. ARC operations start lock-free and become mutex-protected
@@ -481,6 +476,10 @@ that the runtime implements those transfers and frees. That proof remains
 open. Rust's syntactic and semantic models give precedents for it.
 [Reference Counting with Frame Limited Reuse, §4.2 (ICFP 2022)](https://www.microsoft.com/en-us/research/wp-content/uploads/2023/07/flreuse.pdf) · [Oxide](https://arxiv.org/abs/1903.00982) · [RustBelt (POPL 2018)](https://people.mpi-sws.org/~dreyer/papers/rustbelt/paper.pdf)
 
-When the backend has its own runtime, `ownership` replaces the unmanaged
-`none` backend, which is then deleted and its spelling rejected.
+| Published finding | Osprey design consequence |
+| --- | --- |
+| Reinking et al. describe precise reference counting as freeing an object “as soon as no more references remain.” [Perceus, §2.2 (Microsoft Research)](https://www.microsoft.com/en-us/research/wp-content/uploads/2021/06/perceus-pldi21.pdf) | Account for live borrows when proving a last use. A field or closure can still read an allocation after its owner's last direct read. |
+| Ullrich and de Moura describe “a heuristic for automatically inferring borrow annotations.” [Counting Immutable Beans, abstract (Karlsruhe Institute of Technology)](https://pp.ipd.kit.edu/uploads/publikationen/ullrich19counting.pdf) | Infer argument modes and verify each call against its callee's contract. |
+| Lorenzen and Leijen show that “borrowing can increase the memory usage of a program by an arbitrary amount.” [Reference Counting with Frame Limited Reuse, §4.2 (Microsoft Research)](https://www.microsoft.com/en-us/research/wp-content/uploads/2023/07/flreuse.pdf) | Measure peak live bytes while a consuming traversal builds its output. A zero exit count alone cannot detect prolonged retention. |
+| Tang et al. explain that “effect handlers allow continuations to be discarded (e.g. for exceptions) or invoked more than once (e.g. for backtracking).” [Soundly Handling Linearity, abstract (University of Edinburgh)](https://www.research.ed.ac.uk/files/407801113/Soundly_Handling_TANG_DOA07112023_VOR_CC_BY.pdf) | Dropping a continuation must release its owners. Repeated resumption requires proof that it preserves ownership and borrow lifetimes. |
 
