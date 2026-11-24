@@ -54,7 +54,9 @@ fn at_last_read(cg: &Codegen, operand: &str) -> bool {
 /// Whether nothing reads the binding `name` again: the statement being lowered
 /// holds its one remaining read.
 fn last_read(cg: &Codegen, name: &str) -> bool {
-    cg.arc.movable.names_it(name) && super::moves::other_use(cg, name).is_none()
+    let movable = &cg.arc.movable;
+    movable.splits_it(name)
+        || (movable.names_it(name) && super::moves::other_use(cg, name).is_none())
 }
 
 /// Whether the ledger holds `operand` as a value this function owns outright

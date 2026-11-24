@@ -17,6 +17,9 @@ pub(crate) struct Movable {
     /// Movable names whose one read runs on only some paths. Their owner stays
     /// in the ledger: the paths that never take the value still release it.
     sometimes: BTreeSet<String>,
+    /// Bindings read only through separate fields, and not afterwards: each
+    /// field read may take its field, though the binding itself can't move.
+    split: BTreeSet<String>,
     scope: Option<usize>,
     depth: usize,
     conditionals: usize,
@@ -93,6 +96,11 @@ pub(crate) fn begin(cg: &mut Codegen, value: &Expr, live: &BTreeSet<String>) {
             .cloned()
             .collect(),
         names,
+        split: reads
+            .split()
+            .filter(|name| !live.contains(*name))
+            .cloned()
+            .collect(),
         scope: cg.scope_id(),
         depth: cg.arc.frames.len(),
         conditionals: cg.arc.cond_floors.len(),
@@ -161,6 +169,12 @@ impl Movable {
     /// Whether this statement may move the binding `name`.
     pub(super) fn names_it(&self, name: &str) -> bool {
         self.names.contains(name)
+    }
+
+    /// Whether this statement reads `name` only through separate fields, each
+    /// of which it may take.
+    pub(super) fn splits_it(&self, name: &str) -> bool {
+        self.split.contains(name)
     }
 
     /// Whether the lowering is still where this statement started: in its

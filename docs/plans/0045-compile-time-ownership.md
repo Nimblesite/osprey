@@ -99,7 +99,7 @@ Acceptance of ordinary programs, largest refusal class first. After each item: `
   - Every class now has a rule, a fixture in `src/osprey/examples/failscompilation/ownership/`, or both: stored (lent fields, lent list literals; `stored_then_read`, `stored_twice`), derived (the sharing rule; `derived_then_read`, `returned_parameter`), bound (inferred borrows, kept temporaries; `borrowed_from_a_temporary`), returned (owned parameters, field takes; `borrowed_from_a_temporary`, `stored_on_one_path`, `stored_then_read`, `stored_twice`), joined (joins that borrow; no refusal of this class remains), kept (lent closures; `continuation_kept`, with C6 and C7 open), shared (file-scope cells; a file-scope binding of a read that only lends, `borrowed_from_a_temporary`), given (`given_then_read`, `closure_kept`, `returned_parameter`). A file-scope Result binding now hands the module its one reference (`globals.rs` `publish`; `single_owner` `fileFault()`).
   - Joined: built ([MEM-OWNERSHIP-STATIC-PATHS], "Joins that borrow", `arc/phi.rs` `note_mixed`, `arc/borrows.rs` `bind_mixed`). A join of paths that make a value with paths that can only borrow one borrows instead of counting; a `let` naming it keeps what the statement made and borrows from what the statement mentions. `single_owner` `fallbacks()` covers list and map reads with defaults, a `match`, a join of joins, a read out of a list the statement made and a loop; `borrowed_from_a_temporary` refuses returning one. Proved: `mixed_join_frees_once` (25 theorems). Corpus 69 to 73 of 180; joined refusals 111 to 0.
   - Bound: a `let` that borrows out of a value the statement made keeps everything the statement made until the name's last read (`arc/borrows.rs` `keep_made`), so a read out of a temporary that only lends is accepted; `single_owner` `keeps()`. Bound refusals 41 to 34; what remains is closures over handler state and file-scope cells (C6).
-- Acceptance: `ownership` accepts every program in `src/osprey/tests/` that does not use a construct the spec refuses by rule. Today 81 of 180.
+- Acceptance: `ownership` accepts every program in `src/osprey/tests/` that does not use a construct the spec refuses by rule. Today 81 of 180; see "What is left" below.
 
 Soundness and the space bound:
 
@@ -109,6 +109,24 @@ Soundness and the space bound:
 - [ ] C7. Fibers and channels move ([MEM-OWNERSHIP-STATIC-FIBERS]): `spawn` captures, `await` once, `send` and `recv`.
 - [ ] C8. Frame-limited borrows ([MEM-OWNERSHIP-STATIC-BEYOND-RUST], space bound): a value at its last use is given to the callee, which frees it at its own last read.
 - [ ] C9. In-place update: a derived version whose source is at its last use overwrites it (`list_runtime.c`, `map_runtime.c`), under `ownership` and `arc` alike ([MEM-BACKENDS-SHARED]).
+
+### What is left (OspreyFable2, 2026-11-24)
+
+State: 81 of 180 `.osp` programs in `src/osprey/tests/` are accepted, each golden byte-identical with no live object under scribbled frees; 163 ARC goldens unchanged; 27 ledger theorems replay in the proof kernel under GC, ARC and WASI (`scripts/proof/ownership-ledger.sh`). Remaining refusals by class: stored 349, derived 253, returned 209, kept 204, given 154, bound 42, file-scope 6.
+
+- [ ] Re-measure the corpus for the last change before relying on it. A binding read only through separate fields now gives up each field (`arc/reads.rs` `split`, `arc/moves.rs` `splits_it`, `arc/takes.rs` `last_read`). It passed its probes (deep paths accepted with no live object; one field read twice refused), `ownership_mode` and the codegen tests. The full corpus run, the ARC goldens, a `single_owner` case, a fixture, a theorem and the spec paragraph are not done.
+- [ ] C2, rest: anonymous records that hold a still-read value; a list literal nested in another literal; a lending value stored in a field typed as a Result; file-scope bindings as lenders.
+- [ ] C5, rest: a lending box for `osp.any.*`. `osp_retain` and `osp_release` still exist in the C runtime because the list and map runtimes count when they copy elements; PrismCodex makes them no-ops once C9 lands.
+- [ ] C6: accept a `control` handler that resumes at most once; a dropped continuation frees what it owns; report a `many` refusal once at the handler. Most of the 204 kept and the 42 bound refusals are closures over handler state.
+- [ ] C7: `spawn` moves its captures, `await` once, `send` and `recv` move.
+- [ ] C8: give a value at its last use to the callee, which frees it at its own last read.
+- [ ] C9: overwrite a derived version's source in place in `list_runtime.c` and `map_runtime.c`. The 253 derived refusals are two live versions of one collection and stay refused by rule.
+- [ ] Returned and given (363 refusals). A function that returns a parameter, or part of one, owns that parameter, so a caller that reads the argument again is refused. Two designs are open: a second copy of such a function that borrows and writes a value it made into an owner slot the caller passes; and reads in a `match` scrutinee counted as earlier than the reads in its arms, which needs pattern bindings recorded as borrowers first.
+- [ ] Known refusals that could be accepted: a record update whose new fields read the base (`box { n: box.n + 1 }`); a parameter whose fields are stored one by one; an element taken out of an owned list.
+- [ ] A miscompile under every backend, found while probing and not fixed: a parameter named like a top-level function is ignored in favour of the function. No issue is filed yet.
+- [ ] The proof that the code the compiler emits is a path of the ledger model (V8, with PrismCodex's compiled-code certificates) covers the functions listed in spec 0018, not every lowering.
+- [ ] V5: the quiet-machine benchmark run with the ownership column.
+- [ ] Last: spec 0018 [MEM-OWNERSHIP-STATIC] states the shipped contract and this plan is retired.
 
 ### PrismCodex — the harness, verification, the runtime contract and the proof
 

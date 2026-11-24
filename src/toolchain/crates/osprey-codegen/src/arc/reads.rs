@@ -19,6 +19,30 @@ pub(super) struct Reads {
     sometimes: BTreeSet<String>,
     /// Whether what is being visited runs on only some paths.
     branching: bool,
+    /// Names read whole: by name, not only through a field of theirs.
+    whole: BTreeSet<String>,
+    /// The field paths read out of each name on every path, with how often.
+    parts: BTreeMap<String, BTreeMap<String, u8>>,
+}
+
+/// The binding a chain of field reads starts at, and the path it follows:
+/// `("a", "b.c")` for `a.b.c`.
+fn field_path(e: &Expr) -> Option<(&str, String)> {
+    let Expr::FieldAccess { target, field } = e else {
+        return None;
+    };
+    match target.as_ref() {
+        Expr::Identifier(root) => Some((root, field.clone())),
+        inner => field_path(inner).map(|(root, path)| (root, format!("{path}.{field}"))),
+    }
+}
+
+/// Whether each path is read once and none runs through another: every read
+/// then names a field slot no other read names.
+fn apart(paths: &BTreeMap<String, u8>) -> bool {
+    let within = |outer: &String, inner: &String| inner.starts_with(&format!("{outer}."));
+    paths.values().all(|reads| *reads == 1)
+        && !paths.keys().any(|p| paths.keys().any(|q| within(p, q)))
 }
 
 /// The expression an interpolated part embeds, if it embeds one.
@@ -46,13 +70,36 @@ impl Reads {
         self.sometimes.contains(name)
     }
 
+    /// Names read only through fields, each field once and none inside
+    /// another: a binding of these can give up every field it is read for
+    /// [MEM-OWNERSHIP-STATIC-PATHS].
+    pub(super) fn split(&self) -> impl Iterator<Item = &String> {
+        let parts = self.parts.iter();
+        parts
+            .filter(|(name, paths)| !self.whole.contains(*name) && apart(paths))
+            .map(|(name, _)| name)
+    }
+
     /// `name` is read `count` more times on the path being visited.
     pub(super) fn add(&mut self, name: &str, count: u8) {
+        self.count(name, count);
+        let _ = self.whole.insert(name.to_owned());
+    }
+
+    fn count(&mut self, name: &str, count: u8) {
         let most = self.most.entry(name.to_owned()).or_default();
         *most = most.saturating_add(count).min(MANY);
         if self.branching {
             let _ = self.sometimes.insert(name.to_owned());
         }
+    }
+
+    /// `name` is read once more, through the field path `path` only.
+    fn add_part(&mut self, name: &str, path: String) {
+        self.count(name, 1);
+        let reads = self.parts.entry(name.to_owned()).or_default();
+        let reads = reads.entry(path).or_default();
+        *reads = reads.saturating_add(1).min(MANY);
     }
 
     /// Every name `e` mentions is read `count` times: once each for what a
@@ -73,7 +120,10 @@ impl Reads {
             Expr::Lambda { .. } => self.mention(e, 1),
             Expr::List(items, _) => self.visit_all(items),
             Expr::InterpolatedStr(parts) => self.visit_all(parts.iter().filter_map(embedded)),
-            Expr::FieldAccess { target, .. } => self.visit(target),
+            Expr::FieldAccess { target, .. } => match field_path(e) {
+                Some((root, path)) => self.add_part(root, path),
+                None => self.visit(target),
+            },
             Expr::Unary { operand, .. } => self.visit(operand),
             Expr::TypeConstructor { name, fields, .. } => {
                 self.add(name, MANY);
