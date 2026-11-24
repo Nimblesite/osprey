@@ -470,12 +470,15 @@ use. Clean's uniqueness typing and FP² give precedents for that condition.
 
 **Memory bounds and evidence.** A whole-call borrow may keep a large input
 alive while the callee allocates its result. Unrestricted borrow inference
-can increase peak memory by an arbitrary amount. Exit-time leak checks
-measure reclamation at exit. Peak retention requires its own measurement.
-Osprey has no established frame-local space bound for inferred borrows.
-The ownership ledger and its lowering also lack a formal soundness proof.
-Rust's syntactic and semantic models show what a separate proof of
-ownership and borrowing must establish.
+can increase peak memory by an arbitrary amount. A last-use input should
+transfer to a callee that can release it earlier, when the caller and callee
+can prove that transfer. Benchmark changes to borrow inference or reuse
+on growing inputs and report peak live bytes separately from exit-time
+leaks. Osprey has no established frame-local space bound for inferred
+borrows. Its soundness target is a proof that lowering preserves a unique
+owner and live lender for each borrow across every control-flow edge and
+that the runtime implements those transfers and frees. That proof remains
+open. Rust's syntactic and semantic models give precedents for it.
 [Reference Counting with Frame Limited Reuse, §4.2 (ICFP 2022)](https://www.microsoft.com/en-us/research/wp-content/uploads/2023/07/flreuse.pdf) · [Oxide](https://arxiv.org/abs/1903.00982) · [RustBelt (POPL 2018)](https://people.mpi-sws.org/~dreyer/papers/rustbelt/paper.pdf)
 
 When the backend has its own runtime, `ownership` replaces the unmanaged
