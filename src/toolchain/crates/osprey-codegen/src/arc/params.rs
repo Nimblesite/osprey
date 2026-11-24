@@ -238,7 +238,9 @@ pub(crate) fn scope_parameters(cg: &mut Codegen) {
 
 /// `function` is about to be called with `arguments`: each one it owns is
 /// handed over. A fresh value or a binding at its last use moves; anything
-/// else needs a reference of its own to give.
+/// else needs a reference of its own to give. In the ledger model the gift is
+/// a `move`, and `given_is_gone` proves the giver can't use it again
+/// [MEM-OWNERSHIP-STATIC-MODEL].
 pub(crate) fn give_arguments(cg: &mut Codegen, function: &str, arguments: &[Value]) {
     if !owns_a_parameter(cg, function) {
         return;

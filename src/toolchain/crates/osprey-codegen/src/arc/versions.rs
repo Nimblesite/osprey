@@ -8,6 +8,8 @@
 //! release follows the call at once, handing every shared node and element to
 //! the new version. A source read again, or one the function only borrows, is
 //! refused. The collector and reference counting keep their own path.
+//! In the ledger model [MEM-OWNERSHIP-STATIC-MODEL] the source is moved, and
+//! `given_is_gone` and `moved_once` prove it can't be used or derived from again.
 use super::{Codegen, Need};
 use crate::llty::Value;
 

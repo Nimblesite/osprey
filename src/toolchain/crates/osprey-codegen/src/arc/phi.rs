@@ -17,6 +17,8 @@ pub(crate) fn borrowed_phi_arms(cg: &Codegen, incoming: &[Value], mark: usize) -
         .collect()
 }
 
+/// Arms that meet must agree on the owner (`join_needs_one_owner`,
+/// [MEM-OWNERSHIP-STATIC-MODEL]), so every arm hands the join one reference.
 /// Each deferred exit acquires exactly one reference: fresh arm owners transfer
 /// theirs, while a borrowed arm takes its own before joining. Outer owners stay
 /// live on every path and are never consumed by this promotion.

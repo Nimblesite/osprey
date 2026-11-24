@@ -383,7 +383,7 @@ The rules of this backend are theorems about one transition system, stated in Le
 
 A path h ⟶\* h′ applies accepted steps to single cells of a heap, in any order, along either incoming edge of a join.
 
-**Theorems.** Each is checked by Lean 4.25 and replayed by the GC, ARC and WASI builds of Osprey's proof kernel, which must each answer `PASS` with the listed axioms and no others.
+**Theorems.** All 18 are checked by Lean 4.25 and replayed by the GC, ARC and WASI builds of Osprey's proof kernel, which must each answer `PASS` with the listed axioms and no others.
 
 | Theorem | Statement | Rule it discharges | Axioms |
 | --- | --- | --- | --- |
@@ -399,6 +399,12 @@ A path h ⟶\* h′ applies accepted steps to single cells of a heap, in any ord
 | `take_needs_no_loan` | step(c, borrow(b, f)) = c′ ⟹ ∀ t. step(c′, move(f, t)) = ∅ | A field can't be taken while anything borrows the value. | propext |
 | `taken_freed_once` | ⊥ ─alloc(f)·move(f, t)·free(t)→ ⊥ | A taken field is freed once, by its taker. | propext, Quot.sound |
 | `edge_frames` | a′ ≠ a ⟹ h[a ↦ c′](a′) = h(a′) | A step on one allocation changes no other, so a holder moved into another holder keeps its loans and the outer holder lends in turn. | propext |
+| `only_free_kills` | live(c) ∧ step(c, a) = c′ ∧ ¬live(c′) ⟹ ∃ o. a = free(o) ∧ c = own(o) | Every death is one free, by the owner, of a value nothing borrows ([MEM-OWNERSHIP-STATIC-SAFETY], transfer and drop). | propext |
+| `given_is_gone` | g ≠ t ⟹ ∀ s. step(own(t), a) = ∅ for a ∈ {read(g), borrow(s, g), move(g, s), free(g)} | A value given to an owning parameter, a derived version, a channel or a caller can't be used by its giver again ([MEM-OWNERSHIP-STATIC-PARAMETERS], [MEM-OWNERSHIP-STATIC-SHARING]). | propext, Quot.sound, Classical.choice |
+| `moved_once` | s ≠ d ⟹ ⊥ ─alloc(s)·move(s, d)·move(s, d′)→ ∅ | A second `await`, a second `recv` and a second version derived from one source are refused ([MEM-OWNERSHIP-STATIC-FIBERS], [MEM-OWNERSHIP-STATIC-SHARING]). | propext, Quot.sound |
+| `join_needs_one_owner` | step(own(k), move(k, m)) = own(k) ⟹ m = k | Paths that meet agree on the owner only if both moved the value or neither did ([MEM-OWNERSHIP-STATIC-PATHS]). | propext |
+| `borrow_keeps_owner` | step(c, borrow(b, o)) = c′ ⟹ O′ = O ∧ live′ = live | Any number of read-only borrowers share one owner ([MEM-OWNERSHIP-STATIC-BORROWS]). | none |
+| `read_needs_live` | step(c, read(s)) = c′ ⟹ live(c) | Every accepted read is of a live allocation: no use after free. | propext |
 
 Here step(c, a) = ∅ means the action is refused, and ⊥ ─a₁·…·aₙ→ ⊥ means the actions are accepted in order from the freed cell and end in it. The axioms are Lean's three standard ones; a proof that needs any other, `sorryAx` included, fails the gate.
 
@@ -441,7 +447,9 @@ owns the field gives it up instead ([MEM-OWNERSHIP-STATIC-PATHS]).
 The second is a value read from a `mut` binding or a file-scope binding,
 which can be replaced while the borrower still reads it. A borrower can be
 read and passed to functions. Storing it, returning it or handing it to a
-fiber needs an owner and is refused.
+fiber needs an owner and is refused. Proved in the ledger model
+([MEM-OWNERSHIP-STATIC-MODEL]): `borrow_keeps_owner`, `lent_pins_owner`,
+`step_preserves`.
 
 **Lent fields.** A record or union constructor whose field is written as a
 binding, or a field of one, moves the value in when that is the binding's last
@@ -459,7 +467,8 @@ of a `match` beside an arm that yields a new value is refused. A field written
 as any other expression is a fresh value and moves in. When that fresh value
 itself holds a lent field, as in `Outer { wrap: Wrap { inner: made } }`, the
 new value owns it and lends in turn. A refusal of a lending value names the
-binding it holds.
+binding it holds. Proved: `lent_pins_owner`, `lent_field_not_freed`,
+`lent_then_released`, `lent_twice_released`, `edge_frames`.
 
 A top-level function used as a value is a constant cell: nothing owns it and
 nothing frees it, so storing it anywhere needs no owner.
@@ -471,7 +480,8 @@ is valid for the call and cannot escape it. A consuming parameter transfers
 its owner into the function. Returning a parameter, storing it in an owned
 result or using it to derive a new collection can require a consuming mode.
 The caller supplies a fresh value or an owner at its last use. The callee
-transfers or frees it on every path. A later read by the caller is refused:
+transfers or frees it on every path. A later read by the caller is refused
+(proved: `given_is_gone`):
 
 ```text
 main.osp: 13:4: ownership: `made` needs a second owner in `main`: it is given to a function that takes ownership of it; it is read again at 14:4 [MEM-OWNERSHIP-STATIC]
@@ -503,7 +513,8 @@ boundary even when the source function type carries no ownership modes.
 A binding may be given away where no path through the statement reads it
 twice and nothing reads it afterwards. When only some paths give it away, as
 when one arm of a `match` stores or returns it, the binding is released on the
-other paths and not on that one.
+other paths and not on that one. Proved: `join_needs_one_owner`,
+`only_free_kills`.
 
 **Taking a field.** A value the function made and never named has one owner,
 so what it holds has one owner too. A field read out of it can take the
@@ -516,7 +527,8 @@ specialization of [Reinking 2021], with the count removed. It applies only
 where nothing reads that field again: a pattern binding read twice, or read
 after the take, keeps borrowing; so does a field of a named binding, a field
 of a value that only lends it, and a read inside a loop body of a value made
-outside it.
+outside it. Proved: `take_moves_owner`, `taken_field_not_freed`,
+`take_needs_no_loan`, `taken_freed_once`.
 
 ### Rules for shared values [MEM-OWNERSHIP-STATIC-RULES]
 
@@ -528,12 +540,14 @@ refused"; the rest are the contract the remaining phases build.
   its argument by move when that is the argument's last use, and may then
   update it in place; when the argument is used again afterwards the program
   is refused. The compiler never inserts a copy, because a hidden copy of a
-  whole collection would make cost unpredictable.
+  whole collection would make cost unpredictable. Proved: `given_is_gone`,
+  `moved_once`.
 - **Fibers and channels [MEM-OWNERSHIP-STATIC-FIBERS].** Ownership transfers to
   exactly one side. `spawn` moves the managed values its body captures into the
   fiber. `await` moves the result to the awaiting side, so a fiber whose result
   is managed is awaited once and a second `await` is refused. `send` moves a
-  value into the channel and `recv` moves it out. This replaces the runtime
+  value into the channel and `recv` moves it out (proved: `moved_once`,
+  `given_is_gone`). This replaces the runtime
   co-ownership of [MEM-FIBER-ISOLATION] under this backend. The sender must
   have no surviving local borrow that outlives the handoff. Pony's isolated
   capability provides a precedent for reasoning about aliases when a value

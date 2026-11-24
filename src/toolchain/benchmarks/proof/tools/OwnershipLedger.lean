@@ -225,4 +225,78 @@ theorem edge_frames {start before : Heap} {address other : Nat} {action : Action
     (fun atAddr => if atAddr = address then next else before atAddr) other = before other := by
   simp [apart]
 
+/- The rules for calls, versions, joins, fibers and region exits
+   ([MEM-OWNERSHIP-STATIC-PARAMETERS], -SHARING, -PATHS, -FIBERS), each as the
+   property of the transition system that the compiler's refusal enforces. -/
+
+/-- Only its owner's free ends an allocation, and only when nothing borrows
+    it: every death is one free of an unborrowed value. -/
+theorem only_free_kills {c next : Cell} {a : Action} (alive : c.live = true)
+    (accepted : step c a = some next) (ended : next.live = false) :
+    ∃ owner, a = .free owner ∧ c = owned owner := by
+  cases a with
+  | free owner =>
+    simp only [step] at accepted
+    split at accepted
+    · rename_i shape
+      exact ⟨owner, rfl, shape⟩
+    · contradiction
+  | alloc owner | move _ owner =>
+    simp only [step] at accepted
+    split at accepted <;> cases accepted
+    simp [owned] at ended
+  | borrow _ _ | read _ =>
+    simp only [step] at accepted
+    split at accepted <;> cases accepted
+    simp [alive] at ended
+  | endBorrow _ =>
+    cases accepted
+    simp [alive] at ended
+
+/-- A value given away is gone from its giver: an argument moved to a callee
+    that owns the parameter, a source moved into a derived version, a value
+    sent to a channel or returned. A later read, borrow, move or free by the
+    giver is rejected. -/
+theorem given_is_gone {giver taker : Slot} (distinct : giver ≠ taker) (other : Slot) :
+    step (owned taker) (.read giver) = none ∧
+    step (owned taker) (.borrow other giver) = none ∧
+    step (owned taker) (.move giver other) = none ∧
+    step (owned taker) (.free giver) = none := by
+  simp [step, owned, distinct, Ne.symm distinct]
+
+/-- A value moves at most once from one slot: a second `await` of a fiber, a
+    second `recv` of one message and a second use of a derived version's
+    source are each a move from a slot that no longer owns. -/
+theorem moved_once {source first second : Slot} (distinct : source ≠ first) :
+    [Action.alloc source, .move source first, .move source second].foldlM step dead = none := by
+  simp [List.foldlM, step, owned, dead, Ne.symm distinct]
+
+/-- Two paths that meet agree on the owner only when both moved the value or
+    neither did: an arm of a `match` that gives a binding away while another
+    arm keeps it leaves different owners at the join. -/
+theorem join_needs_one_owner {kept moved : Slot}
+    (agree : step (owned kept) (.move kept moved) = some (owned kept)) : moved = kept := by
+  simp [step, owned] at agree
+  exact agree
+
+/-- Borrowing changes neither the owner nor liveness: any number of read-only
+    borrowers share one owner. -/
+theorem borrow_keeps_owner {c lent : Cell} {borrower owner : Slot}
+    (accepted : step c (.borrow borrower owner) = some lent) :
+    lent.owners = c.owners ∧ lent.live = c.live := by
+  have shape := borrowed accepted
+  subst shape
+  exact ⟨rfl, rfl⟩
+
+/-- A read is accepted only on a live allocation, through its owner or a
+    borrower whose loan stands. -/
+theorem read_needs_live {c next : Cell} {slot : Slot}
+    (accepted : step c (.read slot) = some next) : c.live = true := by
+  simp only [step] at accepted
+  split at accepted
+  · rename_i guard
+    simp only [Bool.and_eq_true] at guard
+    exact guard.1
+  · contradiction
+
 end OwnershipLedger
