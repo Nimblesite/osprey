@@ -36,8 +36,10 @@ Code generation tracks managed values in an ownership ledger:
 - Region exits and proved last uses release their remaining owners.
 - A returned owner transfers its reference; a returned borrow is retained.
 
-The generated calls are identical for every backend. General retain/release
-calls are no-ops under the unmanaged `none` and tracing-GC runtimes and active under ARC.
+GC, ARC and the unmanaged `none` backend share this lowering. General
+retain/release calls are no-ops under `none` and GC and active under ARC.
+Compile-time ownership adds the checks and lowering specified in
+[MEM-OWNERSHIP-STATIC](#compile-time-ownership-mem-ownership-static).
 For a proved-unique value, codegen emits the paired `osp_release_unique` hook
 with LLVM allocator/free attributes, allowing `-O2` to remove a non-escaping
 allocation and release. The unmanaged `none` runtime also frees that unique value when
@@ -94,8 +96,8 @@ The tradeoff is delayed reclamation, conservative retention and collection pause
 
 The current GC is supported on Apple and glibc-Linux, not Windows. It stops collecting once a thread that never registered with it allocates ([MEM-EFFECT-BATON]). Use ARC on Windows and for native programs whose own threads allocate. WebAssembly, mobile and Python-library targets default to ARC and reject explicit tracing GC. Their managed runtime selection never falls back to unmanaged allocation. Exported host-library globals remain alive for later calls; `--entry-only` programs release globals on return, and native, WASM and mobile differential suites require zero live ARC allocations.
 
-All code-generated heap allocation sites use the same IR symbols, so native
-backend selection only changes the runtime archive passed to the linker:
+Heap allocation sites use the same IR symbols across backends. For these
+backends, native selection changes the runtime archive passed to the linker:
 
 - Explicit `--memory=none` uses `src/toolchain/compiler/runtime/memory_runtime.c`.
 - `gc` uses `src/toolchain/compiler/runtime/memory_gc.c`.
@@ -217,7 +219,7 @@ are not declared.
 
 ### Perceus ARC [GC-ARC-PERCEUS]
 
-The ownership and `dup`/`drop` discipline follows Perceus (Reinking, Xie, de Moura, Leijen), implemented from the extended technical report [MSR-TR-2020-42](https://www.microsoft.com/en-us/research/wp-content/uploads/2020/11/perceus-tr-v1.pdf) rather than the PLDI 2021 paper, because the report carries the full `λ₁` calculus and insertion algorithm.
+Reinking, Xie, de Moura and Leijen derive precise `dup`/`drop` insertion and reuse from a linear resource calculus. Osprey's ARC implementation follows the insertion algorithm in the extended technical report. [Perceus (PLDI 2021)](https://www.microsoft.com/en-us/research/wp-content/uploads/2021/06/perceus-pldi21.pdf) · [MSR-TR-2020-42](https://www.microsoft.com/en-us/research/wp-content/uploads/2020/11/perceus-tr-v1.pdf)
 
 The ARC backend stores a 16-byte header before each managed body: a layout word,
 a signed reference count, and the body size. Retain/release first probe the live
@@ -238,22 +240,20 @@ before a pthread-backed fiber is spawned.
 
 ## Compile-Time Ownership [MEM-OWNERSHIP-STATIC]
 
-`--memory=ownership` accepts a program only when the compiler can give every
-managed value exactly one owner, as Rust's ownership and borrowing rules do.
-Osprey source gains no lifetimes, borrow markers or ownership annotations: the
-ownership ledger ([MEM-OWNERSHIP]) infers owners and borrows. Delivery is
+`--memory=ownership` accepts a program only when the compiler can prove one
+owner per managed allocation and keep that allocation alive through all of
+its borrows. The ownership ledger ([MEM-OWNERSHIP]) infers owners and borrows
+from ordinary Osprey source. Delivery is
 tracked by [plan 0045](../../plans/0045-compile-time-ownership.md).
 
 **What is built.** The ledger runs in a checking mode. Wherever it would count
 a reference at run time, because it cannot move the one reference that exists,
 it reports the value instead, and a program with any report isn't compiled.
 An accepted program therefore counts no reference to a source value: each one
-is freed at the single release the ledger emits for its owner. The helper
-functions the compiler synthesises for rendering and structural equality
-still count references among their own temporaries; they keep no value
-alive past their return. An accepted program links the ownership runtime
-(`memory_ownership.c`), never the reference counting one; it keeps no counts,
-and that single release frees the value. The sharing rule below is enforced:
+is released by the owner that holds it at its last use. Accepted programs
+link `memory_ownership.c`. Generated helpers and runtime collection internals
+still have sharing cases tracked by plan 0045. The compiler enforces the
+source-level sharing rule below:
 an operation that derives a new version of a list or map (`listAppend`,
 `listPrepend`, `listReverse`, `listSort`, `+`, `mapSet`, `mapRemove`,
 `mapMerge`) takes its source by move and releases it as soon as the new
@@ -269,7 +269,8 @@ refused, when:
   [MEM-OWNERSHIP-STATIC-BORROWS](#inferred-borrows-mem-ownership-static-borrows));
 - it is stored in a record, union, list, closure or cell while its owner keeps
   it;
-- a function returns a parameter, a field of one, or a file-scope binding;
+- a function returns a borrowed parameter, a field that remains owned by
+  that parameter's owner, or a file-scope binding;
 - one arm of a `match` yields a value something else still owns where another
   arm yields a new value;
 - it is given to a function that takes ownership of that parameter while the
@@ -292,13 +293,41 @@ main.osp: 8:4: ownership: `made` needs a second owner in `main`: it is stored in
 A fresh value passed straight to its use is moved and never refused. A binding
 read exactly once by a statement, on a path that runs once, and never read
 after it gives its value to the record, list, closure or binding that takes
-it there. A
-function parameter is a borrow: the caller keeps the value alive for the
-call, so reading a parameter or passing it on costs nothing. A function
-result is owned by the caller. The acyclic heap ([MEM-ACYCLIC]) makes a
-single-owner tree sufficient. Collection stays unobservable ([MEM-OPAQUE]):
-the backend decides which programs compile and when memory is freed, never a
-compiled program's output.
+it there. The caller keeps borrowed arguments alive for the call and owns
+the function result. Managed values can have several read-only aliases,
+subject to the owner's lifetime. Collection stays unobservable
+([MEM-OPAQUE]). A program accepted by multiple backends produces identical
+output under each.
+
+### Safety obligations [MEM-OWNERSHIP-STATIC-SAFETY]
+
+- **Lifetime.** A borrow may be used only while its owner keeps the same
+  allocation alive. Moving or replacing the owner, or reusing its storage,
+  must preserve every live borrow. The checker must account for aliases of
+  aggregate fields, borrowed call arguments and closure captures. Marshall
+  and Orchard formalize the distinction between uniqueness and temporary
+  shared access for functional languages. [Functional Ownership through Fractional Uniqueness (OOPSLA 2024)](https://kar.kent.ac.uk/105880/1/D.%20Orchard%20-%20Functional%20ownership%20through%20fractional%20uniqueness%20-%20PPDF.pdf)
+- **Transfer and drop.** On each execution path an owned value is moved or
+  freed exactly once by its current owner. At a control-flow join the
+  compiler must account for the owners and borrows on each incoming edge.
+  Reuse requires proof that no live alias would observe the old storage.
+  The completed backend lowers those obligations to direct frees and moves
+  without retain/release calls in ownership IR. Perceus supplies the
+  last-use resource accounting that motivates these rules. [Perceus (PLDI 2021)](https://www.microsoft.com/en-us/research/wp-content/uploads/2021/06/perceus-pldi21.pdf)
+- **Calls.** Every call must agree with the callee on which arguments move
+  and which are lent. Indirect calls, partial applications and any call that
+  borrows and consumes aliases to the same allocation need that proof too.
+  Reject a transfer when the compiler cannot prove it. Ullrich and de Moura
+  describe inferred parameter modes and explain the aliasing hazards at
+  calls in an eager functional compiler. [Counting Immutable Beans, §5 (IFL 2019)](https://pp.ipd.kit.edu/uploads/publikationen/ullrich19counting.pdf)
+- **Runtime boundary.** An allocating runtime or foreign helper must obey
+  the ownership and lifetime contract of its interface. Foreign hosts must
+  follow the documented transfer and release rules. RustBelt demonstrates
+  how unsafe implementations carry a proof obligation at each safe
+  interface, which is the model for these review boundaries. [RustBelt (POPL 2018)](https://people.mpi-sws.org/~dreyer/papers/rustbelt/paper.pdf)
+
+These papers motivate Osprey's proof obligations. Verification of Osprey's
+lowering and runtime is tracked in plan 0045.
 
 ### Inferred borrows [MEM-OWNERSHIP-STATIC-BORROWS]
 
@@ -362,7 +391,10 @@ refused"; the rest are the contract the remaining phases build.
   fiber. `await` moves the result to the awaiting side, so a fiber whose result
   is managed is awaited once and a second `await` is refused. `send` moves a
   value into the channel and `recv` moves it out. This replaces the runtime
-  co-ownership of [MEM-FIBER-ISOLATION] under this backend.
+  co-ownership of [MEM-FIBER-ISOLATION] under this backend. The sender must
+  have no surviving local borrow that outlives the handoff. Pony's isolated
+  capability provides a precedent for reasoning about aliases when a value
+  crosses a concurrency boundary. [Deny Capabilities for Safe, Fast Actors (AGERE! 2015)](https://soft.vub.ac.be/AGERE15/papers/AGERE_2015_paper_10.pdf)
 - **Closures and effects [MEM-OWNERSHIP-STATIC-CLOSURES].** A closure that
   outlives the scope it is written in owns the managed values it captures, so
   capturing is a move and must be the captured binding's last use. A closure
@@ -378,7 +410,12 @@ refused"; the rest are the contract the remaining phases build.
   first, as in `fault = "${op}"`.
   `perform` lends its arguments to the handler until it resumes, and the
   resumed value moves to the performer. A continuation that owns managed
-  values is resumed at most once.
+  values is resumed at most once. If the handler discards it, the discard
+  path drops those owners exactly once. A continuation is eligible for
+  repeated resumption only if the compiler can prove that doing so neither
+  duplicates an owner nor outlives a borrow. Tang, Hillerström, Lindley and
+  Morris formalize the resource obligations for discarding and duplicating
+  continuations. [Soundly Handling Linearity (POPL 2024)](https://www.research.ed.ac.uk/files/407801113/Soundly_Handling_TANG_DOA07112023_VOR_CC_BY.pdf)
 - **Host libraries [MEM-OWNERSHIP-STATIC-HOSTS].** A managed result returned
   over the C ABI belongs to the host, which hands it back through the
   exported release function exactly once. Arguments a host passes are lent
