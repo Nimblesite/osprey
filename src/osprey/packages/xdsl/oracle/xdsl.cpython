@@ -1,0 +1,206 @@
+"""CPython oracle for @osprey/xdsl: what the real xDSL reader makes of the suite's inputs.
+
+Writes src/osprey/packages/xdsl/tests/expected.py, which the suite compares `Lexer`,
+`AttrParser` and `Parser` against ([PORT-TEST-ORACLE], spec 0043). Run with the oracle
+virtualenv holding xDSL at the commit NOTICE.md names (efd7a0e7):
+`python -I src/osprey/packages/testing/oracle/oracle.cpython xdsl`.
+
+Every value is rendered in the suite's own vocabulary, so the suite compares strings:
+- a token is `kind:text`, its kind spelled as the port spells it (`percent-ident`,
+  `integer`, `punctuation`, ...), and its line counted from the token's start;
+- a type or attribute the port models is `i64`, `ptr`, `struct Pair(i32, array 4 x i8)`,
+  `1:i1`, `str(grow)`, `dense<i32: 3 0 -1>` and so on; one xDSL reads but the port keeps
+  as text is `raw`; one xDSL refuses is `error`;
+- an operation of a module is its name, operand and result counts and types, successor
+  block indices, region shapes, and its properties and attributes in written order.
+An `i1` value is rendered unsigned (xDSL stores `true` as -1), and the module is read
+with LLVM and DLTI types and attributes registered but their operations left
+unregistered, so properties stay exactly as written instead of gaining defaults; an
+unregistered operation is named by the name it was written with.
+"""
+import xdsl
+from xdsl.context import Context
+from xdsl.dialects import builtin, llvm
+from xdsl.dialects.builtin import Builtin, UnregisteredOp
+from xdsl.dialects.dlti import DLTI
+from xdsl.dialects.llvm import LLVM
+from xdsl.ir import Dialect
+from xdsl.parser import Parser
+from xdsl.utils.exceptions import ParseError, VerifyException
+from xdsl.utils.lexer import Input
+from xdsl.utils.mlir_lexer import MLIRLexer, MLIRTokenKind
+
+from expected_module import write
+
+KINDS = {
+    MLIRTokenKind.BARE_IDENT: "bare-ident", MLIRTokenKind.AT_IDENT: "at-ident",
+    MLIRTokenKind.HASH_IDENT: "hash-ident", MLIRTokenKind.PERCENT_IDENT: "percent-ident",
+    MLIRTokenKind.CARET_IDENT: "caret-ident", MLIRTokenKind.EXCLAMATION_IDENT: "exclamation-ident",
+    MLIRTokenKind.INTEGER_LIT: "integer", MLIRTokenKind.FLOAT_LIT: "float",
+    MLIRTokenKind.STRING_LIT: "string", MLIRTokenKind.EOF: "eof",
+}
+
+LEX_SOURCES = [
+    '%0 = "llvm.add"(%a, %b) : (i64, i64) -> i64',
+    '^bb1 #llvm.linkage<external> !llvm.ptr @main @"q x"',
+    "1.5 2.0e-3 0x1F 42 ... - + * / ? | [ ] { }",
+    "a // comment ignored\n\tb_c$d.e",
+    '"a \\" b"',
+    "",
+    "a\nb\n\nc",
+]
+LEX_ERROR_SOURCES = ['"open', "x\n@1", "% x", "a ; b", '"a\\zz"']
+
+TYPE_SOURCES = [
+    "i64", "i1", "!llvm.ptr", "!llvm.ptr<1>", "!llvm.void", "!llvm.struct<(i64, ptr)>",
+    '!llvm.struct<"Pair", (i32, array<4 x i8>)>', "!llvm.array<3 x i64>", "!llvm.func<i32 (ptr, ...)>",
+    "!llvm.func<void ()>", "!llvm.func<ptr (i64, i8)>", "!llvm.array<x i8>", "!llvm.vec<4 x i32>",
+    "!llvm.struct<(i64>", "(i64, !llvm.ptr) -> i1", "() -> ()", "(i8) -> (i8, i16)", "f64",
+    "tensor<1xi8>", "!other.thing", "ix", "42", "(i64 i64) -> i1", "(i64) i1", "tensor<1xi8",
+]
+
+ATTR_SOURCES = [
+    "7", "-3 : i32", "0x10 : i8", "0x7FFFFFFFFFFFFFF", "0x7FF0000000000000 : f64", "-0x1F : i16",
+    "true", "false", "unit", '"grow"', '"a\\nb\\t\\\\\\"\\41"', '"a\\nb\\t\\\\\\"\\41" : i8',
+    "@osprey_list_append_of", '@"quoted name"', '[1, "x", [unit]]', "[]", '{a = 1, "b c", d = @f}',
+    "array<i32: 3, 0, -1>", "array<i32>", "dense<0> : tensor<1xi8>", "#llvm.linkage<external>",
+    '#llvm.framePointerKind<"non-leaf">', "#loc", "1.5 : f64", "-2.5", "!llvm.ptr", "i64",
+    "99999999999999999999", "array<i32: 1, x>", "array<i32 1>", "{1 = 2}", "[1 2]", "#x<a <b>", "}",
+]
+
+MODULE_SOURCE = """"builtin.module"() ({
+  "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<ptr (ptr, i64)>, linkage = #llvm.linkage<external>, sym_name = "grow", visibility_ = 0 : i64}> ({
+  ^bb0(%arg0: !llvm.ptr, %arg1: i64):
+    %0 = "llvm.mlir.constant"() <{value = 0 : i32}> : () -> i32
+    %1 = "llvm.call"(%arg0, %arg1, %0) <{callee = @osprey_list_append_of, operandSegmentSizes = array<i32: 3, 0>, op_bundle_sizes = array<i32>}> : (!llvm.ptr, i64, i32) -> !llvm.ptr
+    "llvm.call"(%arg0) <{callee = @osp_ownership_free, operandSegmentSizes = array<i32: 1, 0>, op_bundle_sizes = array<i32>}> : (!llvm.ptr) -> ()
+    "llvm.return"(%1) : (!llvm.ptr) -> ()
+  }) : () -> ()
+  "llvm.func"() <{function_type = !llvm.func<i1 (i1)>, sym_name = "pick"}> ({
+  ^bb0(%arg0: i1):
+    %2 = "llvm.mlir.constant"() <{value = dense<0> : tensor<1xi8>}> : () -> i1
+    "llvm.cond_br"(%arg0)[^bb1, ^bb2] <{operandSegmentSizes = array<i32: 1, 0, 0>}> : (i1) -> ()
+  ^bb1:
+    "llvm.br"(%arg0)[^bb3] : (i1) -> ()
+  ^bb2:
+    "llvm.br"(%2)[^bb3] : (i1) -> ()
+  ^bb3(%3: i1):
+    "llvm.return"(%3) : (i1) -> ()
+  }) : () -> ()
+}) {dlti.dl_spec = #dlti.dl_spec<"dlti.endianness" = "little">, llvm.target_triple = "arm64-apple-macosx"} : () -> ()
+"""
+
+
+def context(operations):
+    """Builtin, plus LLVM and DLTI with or without their operations."""
+    ctx = Context(allow_unregistered=True)
+    ctx.load_dialect(Builtin)
+    for dialect in (LLVM, DLTI):
+        ctx.load_dialect(dialect if operations else Dialect(dialect.name, [], list(dialect.attributes)))
+    return ctx
+
+
+def shows(items):
+    return ", ".join(show(item) for item in items)
+
+
+def integer(attr):
+    value = attr.value.data
+    return value % 2 if attr.type.width.data == 1 else value
+
+
+def show(attr):
+    """`attr` in the suite's vocabulary, or `raw` for a form the port keeps as text."""
+    match attr:
+        case builtin.IntegerType():
+            return f"i{attr.width.data}"
+        case builtin.IntegerAttr() if isinstance(attr.type, builtin.IntegerType):
+            return f"{integer(attr)}:{show(attr.type)}"
+        case builtin.StringAttr():
+            return f"str({attr.data})"
+        case builtin.SymbolRefAttr():
+            return f"@{attr.root_reference.data}"
+        case builtin.UnitAttr():
+            return "unit"
+        case builtin.ArrayAttr():
+            return f"[{shows(attr.data)}]"
+        case builtin.DenseArrayBase():
+            return f"dense<{show(attr.elt_type)}: {' '.join(str(v) for v in attr.get_values())}>"
+        case builtin.DictionaryAttr():
+            return f"dict({' '.join(attr.data)} = {shows(attr.data.values())})"
+        case builtin.FunctionType():
+            return f"({shows(attr.inputs.data)}) -> ({shows(attr.outputs.data)})"
+        case llvm.LLVMPointerType():
+            return "ptr"
+        case llvm.LLVMStructType():
+            return f"struct {attr.struct_name.data}({shows(attr.types.data)})"
+        case llvm.LLVMArrayType():
+            return f"array {attr.size.data} x {show(attr.type)}"
+        case llvm.LLVMFunctionType():
+            variadic = " ..." if attr.is_variadic else ""
+            return f"func {show(attr.output)}({shows(attr.inputs.data)}{variadic})"
+        case llvm.LLVMVoidType():
+            return "void"
+    return "raw"
+
+
+def parsed(source, read):
+    """The rendered value of one complete parse, or `error`."""
+    try:
+        parser = Parser(context(True), source)
+        value = read(parser)
+        return show(value) if parser._current_token.kind == MLIRTokenKind.EOF else "error"
+    except (ParseError, VerifyException, ValueError):
+        return "error"
+
+
+def lexed(source):
+    """Every token as `kind:text` and every token's line, or the error message."""
+    lexer = MLIRLexer(Input(source, "<oracle>"))
+    tokens = []
+    try:
+        while not tokens or tokens[-1].kind != MLIRTokenKind.EOF:
+            tokens.append(lexer.lex())
+    except ParseError as error:
+        return None, None, error.msg
+    texts = " ".join(f"{KINDS.get(t.kind, 'punctuation')}:{t.text}" for t in tokens)
+    lines = ",".join(str(source[: t.span.start].count("\n") + 1) for t in tokens)
+    return texts, lines, None
+
+
+def block_index(block):
+    return block.parent.blocks.index(block)
+
+
+def operation(op):
+    """One operation's shape, in the order the suite prints it."""
+    name = op.op_name.data if isinstance(op, UnregisteredOp) else op.name
+    regions = ";".join(",".join(f"{len(b.args)}:{shows(a.type for a in b.args)}" for b in r.blocks) for r in op.regions)
+    properties = ";".join(f"{key}={show(value)}" for key, value in op.properties.items())
+    attributes = ";".join(f"{key}={show(value)}" for key, value in op.attributes.items() if key != "op_name__")
+    successors = ",".join(str(block_index(s)) for s in op.successors)
+    types = f"({shows(o.type for o in op.operands)}) -> ({shows(r.type for r in op.results)})"
+    return f"{name} {len(op.operands)}/{len(op.results)} {types} [{successors}] {{{regions}}} <{properties}> {{{attributes}}}"
+
+
+def build():
+    lexes = [lexed(source) for source in LEX_SOURCES]
+    errors = [lexed(source)[2] for source in LEX_ERROR_SOURCES]
+    module = Parser(context(False), MODULE_SOURCE).parse_module()
+    return {
+        "LEX_SOURCES": LEX_SOURCES,
+        "LEX_TOKENS": [tokens for tokens, _, _ in lexes],
+        "LEX_LINES": [lines for _, lines, _ in lexes],
+        "LEX_ERROR_SOURCES": LEX_ERROR_SOURCES,
+        "LEX_ERRORS": errors,
+        "TYPE_SOURCES": TYPE_SOURCES,
+        "TYPES": [parsed(source, Parser.parse_type) for source in TYPE_SOURCES],
+        "ATTR_SOURCES": ATTR_SOURCES,
+        "ATTRS": [parsed(source, Parser.parse_attribute) for source in ATTR_SOURCES],
+        "MODULE_SOURCE": MODULE_SOURCE,
+        "MODULE_OPS": [operation(op) for op in module.walk()],
+    }
+
+
+def main():
+    write("xdsl", "Tokens, types, attributes and module shapes as the real xDSL reader reads the suite's inputs.", {"xdsl": xdsl.__version__}, build())

@@ -57,13 +57,13 @@ These were written but not run to green. Treat each as unproven.
 
 ### 3. Make `@osprey/xdsl` a governed package
 
-The package now has the files and gate entries every package needs; the items left open below do not block the package checks.
+The package now has the files, gate entries, suite and oracle every package needs; the items left open below do not block the package checks.
 
 - [x] `README.md`, `LICENSE`, `LICENSES/` with xDSL's Apache-2.0 WITH LLVM-exception text, and `NOTICE.md` naming xDSL commit `efd7a0e7`.
 - [x] Entries in `license-audit.json`, the table in `packages/README.md` and `coverage-thresholds.json` (98%; the suite measured 488 of 495 own lines).
 - [ ] `source-audit.json`: it is the dated 25 October token-similarity snapshot; add xdsl when that comparison is next re-run.
 - [x] A loaded golden suite in `tests/` (5 tests: lexer, types, attributes, the compiler's generic MLIR for a list function and a branching function, and every parse error).
-- [ ] Record the same inputs through xDSL's own parser as an independent oracle. Hex integer literals were missing until the suite caught them; there may be other differences.
+- [x] Record the same inputs through xDSL's own parser as an independent oracle: `oracle/xdsl.cpython` (xDSL `efd7a0e7`) writes `tests/expected.py`. Hex integer literals were missing until the suite caught them; the oracle then found the end-of-file line one past the last line and unknown string escapes accepted, both fixed, and the deliberate differences the package README lists.
 - [ ] Tests and an `expectedoutput` for the `ir_lean` example app.
 - [ ] Doc comments on the union variants and constants the compiler warns about.
 

@@ -447,7 +447,7 @@
         "language": "osprey"
       },
       "xdsl": {
-        "threshold": 98.0,
+        "threshold": 98.4,
         "language": "osprey"
       }
     },

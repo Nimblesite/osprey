@@ -11,7 +11,7 @@ list, because no MLIR token spans a line. Each token keeps its 1-based line
 for error messages.
 """
 
-__all__ = ["Token", "tokens", "at", "cut", "is_digit", "BARE", "AT", "HASH", "PERCENT", "CARET", "BANG", "INT", "FLOAT", "STRING", "PUNCT", "EOF"]
+__all__ = ["Token", "tokens", "at", "cut", "is_digit", "UNCLOSED", "BARE", "AT", "HASH", "PERCENT", "CARET", "BANG", "INT", "FLOAT", "STRING", "PUNCT", "EOF"]
 
 BARE = "bare-ident"
 """`bare-id ::= (letter|[_]) (letter|digit|[_$.])*`."""
@@ -35,6 +35,9 @@ PUNCT = "punctuation"
 """Punctuation: `-> : , ... = > { ( [ < - + ? / } ) ] * |`."""
 EOF = "eof"
 """The end of the input."""
+
+UNCLOSED = "End of file reached before closing string literal."
+"""xDSL's message for a string literal with no closing quote or an escape it does not know."""
 
 
 class Token:
@@ -97,14 +100,27 @@ def suffix_end(text, i):
         return i
 
 
+def escape_end(text, i) -> Result[int, str]:
+    """The index after the escape whose backslash is at `i`: `\\n`, `\\t`, `\\\\`, `\\"` or two
+    hexadecimal digits. xDSL's string pattern stops matching at any other escape, so the
+    literal never closes."""
+    b = at(text, wrapAdd(i, 1))
+    if b == 110 or b == 116 or b == 92 or b == 34:
+        return Success(value=wrapAdd(i, 2))
+    elif is_hex(b) and is_hex(at(text, wrapAdd(i, 2))):
+        return Success(value=wrapAdd(i, 3))
+    else:
+        return Error(message=UNCLOSED)
+
+
 def string_end(text, i) -> Result[int, str]:
     """The index after the quote closing the string whose body starts at `i`."""
     if i >= len(text):
-        return Error(message="End of file reached before closing string literal.")
+        return Error(message=UNCLOSED)
     elif at(text, i) == 34:
         return Success(value=wrapAdd(i, 1))
     elif at(text, i) == 92:
-        return string_end(text, wrapAdd(i, 2))
+        return andThen(escape_end(text, i), lambda next: string_end(text, next))
     else:
         return string_end(text, wrapAdd(i, 1))
 
@@ -220,7 +236,7 @@ def lex_literal(text, line, i, b, done) -> Result[list[Token], str]:
 def lex_lines(lines, number, done) -> Result[list[Token], str]:
     """The tokens of every line from `number` (1-based) on."""
     if number > len(lines):
-        return Success(value=listAppend(done, Token(kind=EOF, text="", line=number)))
+        return Success(value=listAppend(done, Token(kind=EOF, text="", line=max(wrapSub(number, 1), 1))))
     else:
         return andThen(lex(unwrap_or(listGet(lines, wrapSub(number, 1)), ""), number, 0, done), lambda more: lex_lines(lines, wrapAdd(number, 1), more))
 

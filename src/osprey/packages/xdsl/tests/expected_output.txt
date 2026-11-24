@@ -1,7 +1,12 @@
-ok 1 - lexer tokens, lines, comments and every lexical error
-ok 2 - builtin, LLVM dialect, function and unregistered types
-ok 3 - integer, string, symbol, array, dictionary, dense and dialect attributes
-ok 4 - the compiler's generic MLIR for grow and a branching function
-ok 5 - operation, region and block shapes with every parse error
-1..5
-# tests=5 passed=5 failed=0 skipped=0
+ok 1 - lexer tokens and lines match xDSL, and every lexical error carries xDSL's message
+ok 2 - lexer kinds, token records, cuts and the port's line-numbered errors
+ok 3 - the token cursor, item lists, dictionaries, function types, string contents and single operations
+ok 4 - builtin, LLVM dialect and function types read as xDSL reads them, except the documented differences
+ok 5 - raw types and type errors name what was found and where
+ok 6 - integer, string, symbol, array, dictionary, dense and dialect attributes read as xDSL reads them, except the documented differences
+ok 7 - raw attributes and attribute errors name what was found and where
+ok 8 - the compiler's generic MLIR for grow and a branching function
+ok 9 - every operation of the module has xDSL's name, operand and result types, successors, regions, properties and attributes
+ok 10 - operation, region and block shapes with every parse error
+1..10
+# tests=10 passed=10 failed=0 skipped=0

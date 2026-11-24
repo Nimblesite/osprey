@@ -47,20 +47,17 @@ def hex_value(b):
 
 
 def escape_at(text, i):
-    """[decoded text, bytes consumed] for the escape whose backslash is at `i`."""
+    """[decoded text, bytes consumed] for the escape whose backslash is at `i`; the lexer
+    admits only these four and two hexadecimal digits."""
     b = Lexer.at(text, wrapAdd(i, 1))
-    high = hex_value(b)
-    low = hex_value(Lexer.at(text, wrapAdd(i, 2)))
     if b == 110:
         return ["\n", "2"]
     elif b == 116:
         return ["\t", "2"]
     elif b == 92 or b == 34:
         return [Lexer.cut(text, wrapAdd(i, 1), wrapAdd(i, 2)), "2"]
-    elif high >= 0 and low >= 0:
-        return [unwrap_or(fromCodePoint(wrapAdd(wrapMul(high, 16), low)), ""), "3"]
     else:
-        return [Lexer.cut(text, i, wrapAdd(i, 2)), "2"]
+        return [unwrap_or(fromCodePoint(wrapAdd(wrapMul(hex_value(b), 16), hex_value(Lexer.at(text, wrapAdd(i, 2))))), ""), "3"]
 
 
 def decode(text, i, end, acc):
