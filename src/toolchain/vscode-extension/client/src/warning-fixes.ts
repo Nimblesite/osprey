@@ -27,7 +27,7 @@ interface WarningFix {
   edits: { range: [number, number, number, number]; newText: string }[];
 }
 
-function openWarningDocuments(): WarningFix["dependencies"] {
+export function openWarningDocuments(): WarningFix["dependencies"] {
   return workspace.textDocuments
     .filter((document) => ["osprey", "osprey-ml"].includes(document.languageId))
     .map((document) => ({

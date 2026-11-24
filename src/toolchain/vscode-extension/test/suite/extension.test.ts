@@ -22,6 +22,7 @@ import {
   type OspreyExtensionApi,
 } from "../../client/src/extension";
 import {
+  assertSkipWarningLayout,
   extensionRoot,
   pinOspreySettings,
   resolveBuiltOsprey,
@@ -1451,17 +1452,13 @@ suite("Osprey Language Features Tests", () => {
       'test("alpha", fn() => Skip("flaky on CI"))',
     );
     const afterSecond = await pollSkips(doc.uri, 2);
-    assert.deepStrictEqual(
-      afterSecond.map((w) => w.range.start.line),
-      [2, 3],
-      "warnings track their own lines, in source order",
-    );
-    assert.deepStrictEqual(
-      afterSecond.map((w) => w.message),
+    assertSkipWarningLayout(
+      afterSecond,
       [
-        "test 'alpha' is skipped: flaky on CI",
-        "test 'beta' is skipped: waiting on the API",
+        { line: 2, message: "test 'alpha' is skipped: flaky on CI" },
+        { line: 3, message: "test 'beta' is skipped: waiting on the API" },
       ],
+      "warnings track their own lines, in source order",
     );
 
     // (4) Editing only the REASON updates the message in place.

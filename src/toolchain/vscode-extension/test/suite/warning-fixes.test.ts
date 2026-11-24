@@ -7,19 +7,9 @@ import {
 import {
   applyWarningFix,
   applyWarningFixCommand,
+  openWarningDocuments,
   warningFixMiddleware,
 } from "../../client/src/warning-fixes";
-
-function openSources() {
-  return vscode.workspace.textDocuments
-    .filter((document) => ["osprey", "osprey-ml"].includes(document.languageId))
-    .map((document) => ({
-      uri: document.uri.toString(),
-      version: document.version,
-      source: document.getText(),
-    }))
-    .sort((left, right) => left.uri.localeCompare(right.uri));
-}
 
 /**
  * An unsaved document to hang a guarded action on: `plaintext` by default so
@@ -215,7 +205,7 @@ suite("Warning fix document-version guard", () => {
           uri: document.uri.toString(),
           version: document.version,
           source: "abc body",
-          dependencies: openSources(),
+          dependencies: openWarningDocuments(),
           title: action.title,
           kind: "quickfix",
           range: [0, 0, 0, 0] as [number, number, number, number],
@@ -302,7 +292,7 @@ suite("Warning fix document-version guard", () => {
       uri: document.uri.toString(),
       version: document.version,
       source: document.getText(),
-      dependencies: openSources(),
+      dependencies: openWarningDocuments(),
       title: "Remove redundant type signature",
       kind: "quickfix",
       range: [0, 0, 0, 0] as [number, number, number, number],

@@ -4,7 +4,7 @@
 mod support;
 
 use osprey_ast::{Expr, ImportSelection, ModuleKind, Stmt, SymbolPath, Visibility};
-use osprey_project::assemble;
+use osprey_project::{assemble, ProjectConfig};
 use support::{
     ast, config, contains, error_messages, function, handler, import, item, path, rejects,
     state_module,
@@ -151,38 +151,10 @@ fn state_initializer_must_be_pure_and_dependency_free() {
 #[test]
 fn wildcard_import_from_state_module_is_always_rejected() {
     // Implements [MODULES-IMPORT], [MODULES-STATE-MODULE].
-    let state = counter_handled_by("CounterFx");
-    let entry = ast(
-        "main.osp",
-        vec![
-            import("app", &["Counter"], None, ImportSelection::Wildcard),
-            function("main", Expr::Integer(0)),
-        ],
-    );
     let mut project = config("main.osp");
     project.allow_wildcard_imports = true;
-    let messages = error_messages(&project, &[ast("state.osp", vec![state]), entry]);
-    assert!(
-        contains(&messages, "wildcard imports from state modules"),
-        "{messages:?}"
-    );
-
-    let namespace_state = counter_handled_by("CounterFx");
-    let namespace_entry = ast(
-        "main.osp",
-        vec![
-            import("app", &[], None, ImportSelection::Wildcard),
-            function("main", Expr::Integer(0)),
-        ],
-    );
-    let namespace_messages = error_messages(
-        &project,
-        &[ast("state.osp", vec![namespace_state]), namespace_entry],
-    );
-    assert!(
-        contains(&namespace_messages, "wildcard imports from state modules"),
-        "{namespace_messages:?}"
-    );
+    rejects_wildcard_import(&project, &["Counter"]);
+    rejects_wildcard_import(&project, &[]);
 }
 
 #[test]
@@ -330,4 +302,22 @@ fn counter_handled_by(effect: &str) -> Stmt {
         Vec::new(),
         handler(effect, Expr::Identifier("count".to_string())),
     )
+}
+
+/// One wildcard-import permutation: `names` imported from `app` beside the
+/// state module, which the project must refuse even with wildcards allowed.
+fn rejects_wildcard_import(project: &ProjectConfig, names: &[&str]) {
+    let state = counter_handled_by("CounterFx");
+    let entry = ast(
+        "main.osp",
+        vec![
+            import("app", names, None, ImportSelection::Wildcard),
+            function("main", Expr::Integer(0)),
+        ],
+    );
+    let messages = error_messages(project, &[ast("state.osp", vec![state]), entry]);
+    assert!(
+        contains(&messages, "wildcard imports from state modules"),
+        "{messages:?}"
+    );
 }
