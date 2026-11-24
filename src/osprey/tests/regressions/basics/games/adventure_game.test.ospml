@@ -85,7 +85,7 @@ print "⚔️  Your Quest Begins! ⚔️\n"
 startRank = rankFor monstersDefeated
 print "You are ${startRank.title} (Level ${startRank.level})\nHealth: ${playerHealth} ❤️  | Gold: ${goldCoins} 💰\n\n🚪 Room 1: You enter ${exploreRoom 1}"
 
-// Explore multiple rooms
+(** Explore multiple rooms *)
 room1 = collectGold (goldCoins, 1)
 print "You find ${room1.found} gold coins! Total: ${room1.total} 💰\n\n📚 Room 2: You discover ${exploreRoom 2}"
 room2 = collectGold (room1.total, 2)
@@ -134,7 +134,7 @@ finalGold = safeAdd (room2.total, victoryGold)
 
 print "🎉 VICTORY! 🎉\nThe ${enemyName} has been defeated!\nYou gain ${victoryGold} gold coins as reward!\nTotal gold: ${finalGold} 💰\n\n📈 LEVEL UP! 📈\nPrevious: ${startRank.title} (Level ${startRank.level})\nNew: ${newRank.title} (Level ${newRank.level})\n\n🏆 Room 4: You enter ${exploreRoom 4}"
 
-// Final treasure room
+(** Final treasure room *)
 treasure = collectGold (finalGold, 4)
 
 // Epic conclusion

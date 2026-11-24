@@ -261,8 +261,8 @@ fn lentLists() = {
     let other = Box { text: "other${toString(22)}" }
     let passed = runAll([|| => made.text == "made1", || => other.text == "nope", || => made.text != other.text])
     let size = longest([made, other, Box { text: churn(3) }])
-    // A list literal bound to a name lends too when a binding it holds is read
-    // again: read, indexed, walked, passed on and held in a record, never owned.
+    /// A list literal bound to a name lends too when a binding it holds is read
+    /// again: read, indexed, walked, passed on and held in a record, never owned.
     let both = [made, other]
     let texts = [made.text, other.text]
     let second = both[1] ?: made
@@ -579,7 +579,7 @@ fn keeps(n) = {
 /// A Result holds its payload and its message like a record holds a field
 /// [MEM-OWNERSHIP-STATIC-BORROWS]: a binding at its last use moves in, one that
 /// is read again is lent, and a fresh value is owned.
-fn vetted(box: Box, long: bool) -> Result<Box, string> = match long {
+fn vetted(box: Box, long: bool) = match long {
     true => Success { value: box }
     false => Error { message: "short ${box.text}" }
 }

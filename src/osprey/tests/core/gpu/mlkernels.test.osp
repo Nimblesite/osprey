@@ -380,6 +380,6 @@ exactTests([
         { name: "gradient descent converges on the true weight", work: trainCase }
 ])
 
-// Folded GPU reductions, each buffer freed when `next` returns.
+/// Folded GPU reductions, each buffer freed when `next` returns.
 fn summed(xs, next) = withBuffer(gpuFold(xs, toFloat32(0.0), addF), next)
 fn peaked(xs, next) = withBuffer(gpuFold(xs, at(xs, 0), maxF), next)

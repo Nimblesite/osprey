@@ -527,7 +527,7 @@ exactTests([
     { name: "ragged entity streams truncate to the shortest", work: raggedCase }
 ])
 
-// Pairwise GPU steps, each buffer freed when `next` returns.
+/// Pairwise GPU steps, each buffer freed when `next` returns.
 fn added(a, b, next) = withBuffer(gpuZipWith(a, b, sumInts), next)
 fn multiplied(a, b, next) = withBuffer(gpuZipWith(a, b, fpMul), next)
 fn subtracted(a, b, next) = withBuffer(gpuZipWith(a, b, subInts), next)
