@@ -1,15 +1,11 @@
 // [MEM-OWNERSHIP-STATIC-VERIFICATION-COMPILER] Interpret the continuation of
 // the actual recursive HAMT call, assuming its output flag contains zero.
-import { blocks, jumpTarget, operand, zeroSuccessors } from './runtime-returns.mjs'
+import { pointerCfg, jumpTarget, operand, zeroSuccessors } from './runtime-returns.mjs'
 
 export function mapMissFrame(ir) {
   const name = 'osprey_map_node_remove'
-  const fn = /^define [^\n@]*ptr @osprey_map_node_remove\((.*)\)[^\n{]*\{\n([\s\S]*?)^\}/m.exec(ir)
-  if (!fn) throw Error('missing HAMT removal')
-  const args = [...fn[1].matchAll(/%[\w.]+/g)].map(m => m[0])
+  const { args, cfg } = pointerCfg(ir, name)
   if (args.length !== 6) throw Error('unsupported HAMT signature')
-  const lines = fn[2].replace(/;[^\n]*|, !tbaa !\d+| #\d+(?=\n)/g, '').split('\n').map(s => s.trim()).filter(Boolean)
-  const cfg = blocks(lines)
   const calls = [...cfg].flatMap(([label, body]) => body.flatMap((line, i) =>
     line.includes('@' + name + '(') ? [{ label, line, rest: body.slice(i + 1) }] : []))
   if (calls.length !== 1) throw Error('expected one recursive HAMT call')

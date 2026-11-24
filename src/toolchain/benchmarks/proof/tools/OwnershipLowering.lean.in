@@ -392,4 +392,18 @@ def emittedMissFrame (_parent _child : Option Nat) : List (Option Nat) × Option
 theorem compiledMapMissFrame (parent child : Option Nat) :
     emittedMissFrame parent child = ([], none) := by rfl
 
+/-- Indices passed through as_node_ptr to osp_retain in one reached loop iteration. -/
+def emittedSlotRetains (i slot : Fin 32) : List (Fin 32) :=
+-- RETAINED SLOT
+
+theorem compiledSlotRetains (i slot : Fin 32) :
+    emittedSlotRetains i slot = (if i = slot then [] else [i]) := by rfl
+
+/-- Byte offset and payload of the final store into the returned native node. -/
+def emittedSlotWrite (slot : Fin 32) (_value : BitVec 64) : Nat × BitVec 64 :=
+-- WRITTEN SLOT
+
+theorem compiledSlotWrite (slot : Fin 32) (value : BitVec 64) :
+    emittedSlotWrite slot value = (slot.val * 8, value) := by rfl
+
 end OwnershipLowering

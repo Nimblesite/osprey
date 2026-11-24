@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs'
 import { liveAccounting, reclaimPrefix } from './live-accounting.mjs'
 import { bodyPaths, popBody } from './worklist-drain.mjs'
 import { childDrop, growthBytes, worklistPush } from './child-drop.mjs'
+import { retainedSlot, writtenSlot } from './list-slot.mjs'
 import { mapMissFrame } from './map-miss.mjs'
 import { resultMatch } from './result-take.mjs'
 import { pairConstructor, pairWalk } from './record-ownership.mjs'
@@ -81,6 +82,8 @@ process.stdout.write(readFileSync(template, 'utf8')
   .replace('-- PAIR WALK', pairWalk(walk))
   .replace('-- PAIR CONSTRUCTOR', pairConstructor(ir))
   .replace('-- COMPATIBILITY RETURNS', compatibilityReturns(heap))
+  .replace('-- WRITTEN SLOT', writtenSlot(readFileSync(listFile, 'utf8')))
+  .replace('-- RETAINED SLOT', retainedSlot(readFileSync(listFile, 'utf8')))
   .replace('-- MAP MISS FRAME', mapMissFrame(readFileSync(hamtFile, 'utf8')))
   .replace('-- NULL DROP', nullDrop(heapFile))
   .replace('-- STRING OP RETURNS', stringOps.map(op => '  | .«' + op + '» => ' + strings('osp_string_' + op)).join('\n'))

@@ -32,7 +32,7 @@ lake build lean4export
 lake env lean -DwarningAsError=true --root="$out" -o "$out/OwnershipLowering.olean" "$out/OwnershipLowering.lean"
 exporter=$(lake env which lean4export)
 lean_path=$(lake env printenv LEAN_PATH)
-for name in compiledGrow compiledGrowWhen runtimeRootOrigins renderedStringOrigin stringResultOrigins compiledFreeNull compiledPairFields compiledChildDrop compiledWorklistPush compiledPairQueue compiledGrowthBytes compiledPop compiledBodyReclaim compiledPushPop compiledLiveDebit compiledReclaimPrefix compiledLiveCredit compiledAccountingRoundTrip compiledResultTake compiledResultBorrow compiledResultBorrowUses compiledCompatibilityReturns compiledMapMissFrame; do
+for name in compiledGrow compiledGrowWhen runtimeRootOrigins renderedStringOrigin stringResultOrigins compiledFreeNull compiledPairFields compiledChildDrop compiledWorklistPush compiledPairQueue compiledGrowthBytes compiledPop compiledBodyReclaim compiledPushPop compiledLiveDebit compiledReclaimPrefix compiledLiveCredit compiledAccountingRoundTrip compiledResultTake compiledResultBorrow compiledResultBorrowUses compiledCompatibilityReturns compiledMapMissFrame compiledSlotRetains compiledSlotWrite; do
   theorem="OwnershipLowering.$name"
   axioms=none
   if [[ $name == compiledAccountingRoundTrip ]]; then axioms=propext; fi
@@ -251,3 +251,16 @@ for fault in release-miss return-parent; do
   reflect "$out/ownership.ll" "$out/mutations/$fault.lean" "" "" "" "" "$out/mutations/$fault.ll"
   reject "$fault" compiledMapMissFrame
 done
+
+# Recompile the shipped list unit against the changed local trie header.
+mkdir -p "$out/mutations/slot"
+cp "$runtime/list_runtime.c" "$out/mutations/slot/"
+sed 's/if (i != slot) osp_retain/if (i == slot) osp_retain/' "$runtime/list_trie.h" > "$out/mutations/slot/list_trie.h"
+compile_runtime "$out/mutations/slot/list_runtime.c" "$out/mutations/retain-overwritten.ll" "${shim[@]}"
+reflect "$out/ownership.ll" "$out/mutations/retain-overwritten.lean" "$out/mutations/retain-overwritten.ll"
+reject retain-overwritten compiledSlotRetains
+
+awk '/^define / {slot = /@replace_slot\(/} slot {changed += sub(/store i64 %value,/, "store i64 0,")} {print} END {exit changed != 1}' \
+  "$out/runtime.ll" > "$out/mutations/zero-slot.ll"
+reflect "$out/ownership.ll" "$out/mutations/zero-slot.lean" "$out/mutations/zero-slot.ll"
+reject zero-slot compiledSlotWrite

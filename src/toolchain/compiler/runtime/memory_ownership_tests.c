@@ -6,6 +6,7 @@
 // source's release; a block taken twice is never freed, so no holder can read
 // freed memory; immortals and foreign pointers are never touched.
 #include "memory_hooks.h"
+#include "collection_runtime.h"
 
 #include <assert.h>
 #include <errno.h>
@@ -158,6 +159,43 @@ static void t_external_mapping_drop(void) {
 }
 #endif
 
+// One past the second trie level exercises the front, inner paths and tail.
+enum { LAST_INDEX = 1056 };
+static OspreyList *managed_sequence(int prepend) {
+  OspreyList *list = osprey_list_empty();
+  for (int i = 0; i <= LAST_INDEX; i++) {
+    int *value = osp_alloc(sizeof(*value));
+    CHECK(value != NULL);
+    *value = i;
+    int64_t word = (int64_t)(uintptr_t)value;
+    OspreyList *next = prepend ? osprey_list_prepend_of(list, word, 1)
+                               : osprey_list_append_of(list, word, 1);
+    osp_ownership_free(list);
+    list = next;
+  }
+  return list;
+}
+
+// Replace a managed element with the very element read from the old version.
+static void t_replace_transferred_slot(int prepend) {
+  const int indices[] = {0, 31, 32, 1023, 1024, LAST_INDEX};
+  (void)osprey_list_empty(); // Initialize the singleton before measuring.
+  size_t base = osp_arc_live_objects();
+  OspreyList *list = managed_sequence(prepend);
+  for (size_t i = 0; i < sizeof(indices) / sizeof(indices[0]); i++) {
+    int index = indices[i];
+    int64_t value = osprey_list_get(list, index);
+    osp_retain((void *)(uintptr_t)value); // Transfer this occurrence to the result.
+    OspreyList *next = osprey_list_set(list, index, value);
+    osp_ownership_free(list);
+    CHECK(osprey_list_get(next, index) == value);
+    CHECK(*(int *)(uintptr_t)value == (prepend ? LAST_INDEX - index : index));
+    list = next;
+  }
+  osp_ownership_free(list);
+  CHECK(osp_arc_live_objects() == base);
+}
+
 int main(void) {
   // Arm the live counters before the first allocation (memory_tracked_heap.h).
   CHECK(setenv("OSPREY_OWNERSHIP_DEBUG", "1", 1) == 0);
@@ -172,6 +210,8 @@ int main(void) {
 #ifndef _WIN32
   t_external_mapping_drop();
 #endif
+  t_replace_transferred_slot(0);
+  t_replace_transferred_slot(1);
   t_release_frees_the_owned_tree();
   t_retained_blocks_are_never_freed();
   t_moved_block_passes_to_its_new_owner();

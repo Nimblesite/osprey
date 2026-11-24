@@ -71,6 +71,14 @@ export function blocks(lines) {
   return result
 }
 
+export function pointerCfg(ir, name) {
+  const fn = new RegExp('^define [^\\n@]*ptr @' + name + '\\((.*)\\)[^\\n{]*\\{\\n([\\s\\S]*?)^\\}', 'm').exec(ir)
+  if (!fn) throw Error('missing compiled function: ' + name)
+  const args = [...fn[1].matchAll(/%[\w.]+/g)].map(m => m[0])
+  const lines = fn[2].replace(/;[^\n]*|, !tbaa !\d+| #\d+(?=\n)/g, '').split('\n').map(s => s.trim()).filter(Boolean)
+  return { args, lines, cfg: blocks(lines) }
+}
+
 export function runtimeCfg(ir, name, type = 'ptr') {
   const { args: [arg], lines } = voidBody(ir, name, 1, type)
   const cfg = blocks(lines.map(line => line.replace(/, !(?:tbaa|llvm\.loop) !\d+/g, '')))
