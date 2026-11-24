@@ -1,1 +1,3 @@
-13:4: ownership: `made` needs a second owner in `main`: it is given to a function that takes ownership of it; it is read again at 14:4 [MEM-OWNERSHIP-STATIC]
+24:4: ownership: `made` needs a second owner in `main`: it is given to a function that takes ownership of it; it is read again at 30:4 [MEM-OWNERSHIP-STATIC]
+26:4: ownership: `one` needs a second owner in `main`: it is given to a function that takes ownership of it; this statement reads it more than once or on a path that may not run [MEM-OWNERSHIP-STATIC]
+29:4: ownership: `two` needs a second owner in `main`: it is given to a function that takes ownership of it; this statement reads it more than once or on a path that may not run [MEM-OWNERSHIP-STATIC]

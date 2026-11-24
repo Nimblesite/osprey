@@ -1,15 +1,31 @@
 // [MEM-OWNERSHIP-STATIC] Runs under the collector; `--memory=ownership` refuses it.
 // `choose` can return its parameter, so it takes ownership of it: the caller
-// cannot give the value away and read it again.
+// cannot give the value away and read it again. `pick` owns its pair and only
+// borrows `inside`: one call cannot give a pair away and lend a field of it,
+// directly or through a binding that borrows the field
+// [MEM-OWNERSHIP-STATIC-SAFETY].
 type Box = { text: string }
+type Pair = { left: Box, right: Box }
 
 fn choose(box, n) = match n {
     0 => box
     _ => Box { text: "none${toString(n)}" }
 }
 
+fn pick(inside: Box, pair: Pair, n: int) = match n {
+    0 => pair
+    _ => Pair { left: Box { text: "new${toString(n)}" }, right: Box { text: "r${inside.text}" } }
+}
+
+fn pairOf(n) = Pair { left: Box { text: "l${toString(n)}" }, right: Box { text: "r${toString(n)}" } }
+
 fn main() = {
     let made = Box { text: "a${toString(1)}" }
     let kept = choose(made, 0)
-    print("${kept.text}${made.text}")
+    let one = pairOf(1)
+    let direct = pick(one.left, one, 3)
+    let two = pairOf(2)
+    let field = two.left
+    let named = pick(field, two, 0)
+    print("${kept.text}${made.text} ${direct.right.text} ${named.left.text}")
 }
