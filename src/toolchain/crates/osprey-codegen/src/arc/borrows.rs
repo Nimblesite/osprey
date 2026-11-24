@@ -36,6 +36,7 @@ pub(crate) fn note_rebound(cg: &mut Codegen, stmt: &osprey_ast::Stmt) {
 /// let it borrow when it may.
 pub(crate) fn bind_let(cg: &mut Codegen, name: &str, source: &Expr, v: &Value) {
     if !super::managed(cg, v)
+        || bind_mixed(cg, name, source, v)
         || bind_lent(cg, name, source, v)
         || super::adopt(cg, name, v)
         || lend(cg, name, source)
@@ -55,6 +56,26 @@ pub(crate) fn bind_alias(cg: &mut Codegen, alias: &str, source: &str, v: &Value)
     if !lent {
         super::bind_owned(cg, alias, v);
     }
+}
+
+/// `v` joins paths that made a value with paths that borrow one, as in
+/// `items[0] ?: fallback()`: `name` keeps everything the statement made and
+/// borrows from every binding `source` mentions. Whichever path ran, the value
+/// lives for as long as `name` is read, and what the statement made is freed
+/// at that last read [MEM-OWNERSHIP-STATIC-PATHS].
+fn bind_mixed(cg: &mut Codegen, name: &str, source: &Expr, v: &Value) -> bool {
+    let statement = cg.arc.kinds.last() == Some(&FrameKind::Statement);
+    let mixed = statement && super::phi::take_mixed(cg, &v.operand);
+    if !mixed || !borrow_from(cg, name, source) {
+        return false;
+    }
+    let made = cg.arc.frames.last_mut().map(std::mem::take);
+    for mut entry in made.unwrap_or_default() {
+        entry.name = Some(name.to_owned());
+        entry.binding_scope = cg.scope_id();
+        super::push_parent(cg, entry);
+    }
+    true
 }
 
 /// `v` is a value `source` constructs that holds values other bindings own:

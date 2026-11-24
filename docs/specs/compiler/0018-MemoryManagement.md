@@ -386,7 +386,7 @@ The rules of this backend are theorems about one transition system, stated in Le
 
 A path h ⟶\* h′ applies accepted steps to single cells of a heap, in any order, along either incoming edge of a join.
 
-**Theorems.** All 24 are checked by Lean 4.25 and replayed by the GC, ARC and WASI builds of Osprey's proof kernel, which must each answer `PASS` with the listed axioms and no others.
+**Theorems.** All 25 are checked by Lean 4.25 and replayed by the GC, ARC and WASI builds of Osprey's proof kernel, which must each answer `PASS` with the listed axioms and no others.
 
 | Theorem | Statement | Rule it discharges | Axioms |
 | --- | --- | --- | --- |
@@ -413,6 +413,7 @@ A path h ⟶\* h′ applies accepted steps to single cells of a heap, in any ord
 | `take_on_one_path` | ⊥ ─alloc(f)·move(f, t)·free(t)→ ⊥ ∧ ⊥ ─alloc(f)·free(f)→ ⊥ | A part taken on one path only is freed once on each path: by the taker, or through the holder ([MEM-OWNERSHIP-STATIC-PATHS]). | propext, Quot.sound |
 | `literal_needs_no_owner` | ∀ s, d. step(⊥, a) = ∅ for a ∈ {free(s), read(s), move(s, d)} | An arm that yields a literal yields no allocation, so the join frees nothing on that path. | propext, Quot.sound |
 | `capture_leaves_frame` | f ≠ c ⟹ step(own(c), free(f)) = ∅ ∧ ⊥ ─alloc(f)·move(f, c)·free(c)→ ⊥ | A capture moved into a closure cell that leaves the function is no longer the frame's to free, and dies once with the cell ([MEM-OWNERSHIP-STATIC-CLOSURES]). | propext, Quot.sound |
+| `mixed_join_frees_once` | n ≠ o ⟹ ⊥ ─alloc(n)·read(n)·free(n)→ ⊥ ∧ ⊥ ─alloc(o)·borrow(n, o)·read(n)·free(n)→ ∅ ∧ ⊥ ─alloc(o)·borrow(n, o)·read(n)·endBorrow(n)·free(o)→ ⊥ | A join that makes a value on one path and borrows one on another: the name frees what was made once, frees nothing it borrowed, and the lender frees its own ([MEM-OWNERSHIP-STATIC-PATHS]). | propext, Quot.sound, Classical.choice |
 | `shared_element_refused` | s ≠ d ⟹ ⊥ ─alloc(s)·move(s, d)·a→ ∅ for a ∈ {read(s), free(s)} | An element a derived list keeps has left its source, so a source read again is refused ([MEM-OWNERSHIP-STATIC-SHARING]). | propext, Quot.sound |
 
 Here step(c, a) = ∅ means the action is refused, and ⊥ ─a₁·…·aₙ→ ⊥ means the actions are accepted in order from the freed cell and end in it. The axioms are Lean's three standard ones; a proof that needs any other, `sorryAx` included, fails the gate.
@@ -542,6 +543,18 @@ twice and nothing reads it afterwards. When only some paths give it away, as
 when one arm of a `match` stores or returns it, the binding is released on the
 other paths and not on that one. Proved: `join_needs_one_owner`,
 `only_free_kills`.
+
+**Joins that borrow.** When some paths make a value and another can only
+borrow one, the join borrows: `items[0] ?: Box { text: "none" }`,
+`mapGet(labels, key) ?: "no${n}"`, and a `match` whose arms yield an element
+or build one. Each value an arm made stays with the statement and is freed
+when the statement ends. A `let` that names such a join keeps everything the
+statement made until the name's last read, and borrows from every binding the
+statement mentions, so whichever path ran the value lives as long as the
+name. The name can be read, lent to a call or held lent in a value; it can't
+be returned, given to an owning parameter or derived from, because on one
+path it is not the function's to give. Proved: `mixed_join_frees_once`,
+`take_on_one_path`.
 
 **Taking a field.** A value the function made and never named has one owner,
 so what it holds has one owner too. A field read out of it can take the

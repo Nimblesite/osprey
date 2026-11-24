@@ -509,6 +509,31 @@ fn updates(n) = {
     "updates ${fourth.item.text}${fourth.label}${toString(fourth.n)}${toString(listLength(fourth.names))} ${last.item.text}${last.label}"
 }
 
+/// A join that borrows on one path and makes a value on another borrows
+/// [MEM-OWNERSHIP-STATIC-PATHS]: an element or a made default, a map entry or
+/// a made one, a `match` that yields an element or builds one, a join of
+/// joins, one read straight out of a list the statement made, and one in a
+/// loop. The name keeps what the statement made until its last read.
+fn fallbacks(n) = {
+    let boxes = [Box { text: "in${toString(n)}" }, Box { text: "at${toString(n)}" }]
+    let labels = mapSet(mapSet(Map(), "a", "la${toString(n)}"), "b", "lb")
+    let present = boxes[0] ?: Box { text: "none${toString(n)}" }
+    let absent = boxes[9] ?: Box { text: "made${toString(n)}" }
+    let label = mapGet(labels, "a") ?: "no${toString(n)}"
+    let other = mapGet(labels, "z") ?: "no${toString(n)}"
+    let matched = match boxes[n] {
+        Success { value } => value
+        Error => Box { text: "built${toString(n)}" }
+    }
+    let either = boxes[9] ?: (boxes[1] ?: Box { text: "never" })
+    let fromMade = [Box { text: "tmp${toString(n)}" }][0] ?: Box { text: "x" }
+    let looped = range(0, 3) |> fold("", |acc, i| => {
+        let each = boxes[i] ?: Box { text: "gap${toString(i)}" }
+        "${acc}${each.text}"
+    })
+    "fallbacks ${present.text} ${absent.text} ${label} ${other} ${matched.text} ${either.text} ${fromMade.text} ${looped} ${(boxes[1] ?: Box { text: "y" }).text}${(boxes[5] ?: Box { text: "z${toString(n)}" }).text} ${toString(listLength(boxes))}${toString(length(labels))}"
+}
+
 fn effects() = "${toString(listLength(folded(4)))} ${toString(listLength(folded(0)))} ${drawn(10)} ${drawn(0)} ${noted(3)}"
 
-print("${fileScope(1)} ${shared.text}\n${spans()}\n${elements()}\n${collections()}\n${lastUses()}\n${paths()}\n${owned()}\n${generics()}\n${literals()}\n${errors()} ${renderedTwice(7)}\n${captures()}\n${lends()}\n${lentLists()}\n${reads()}\n${borrows()}\n${effects()}\n${stores(2)}\n${takes(3)}\n${closures(2)}\n${parts(3)}\n${returned(2)}\n${returned(3)}\n${updates(5)}")
+print("${fileScope(1)} ${shared.text}\n${spans()}\n${elements()}\n${collections()}\n${lastUses()}\n${paths()}\n${owned()}\n${generics()}\n${literals()}\n${errors()} ${renderedTwice(7)}\n${captures()}\n${lends()}\n${lentLists()}\n${reads()}\n${borrows()}\n${effects()}\n${stores(2)}\n${takes(3)}\n${closures(2)}\n${parts(3)}\n${returned(2)}\n${returned(3)}\n${updates(5)}\n${fallbacks(1)}\n${fallbacks(4)}")

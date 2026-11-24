@@ -9,7 +9,9 @@ pub(crate) fn borrowed_phi_arms(cg: &Codegen, incoming: &[Value], mark: usize) -
     // (`literal_needs_no_owner`, [MEM-OWNERSHIP-STATIC-MODEL]).
     let counted = |value: &&Value| value.operand.starts_with('%') && !cg.is_rodata(&value.operand);
     let gives = |value: &Value| {
-        arm_owned(cg, value, mark) || super::takes::can_take_field(cg, &value.operand)
+        arm_owned(cg, value, mark)
+            || super::takes::can_take_field(cg, &value.operand)
+            || super::moves::can_give_up(cg, &value.operand)
     };
     let every_arm_gives = cg.ownership.on
         && incoming.iter().any(|value| counted(&value))
@@ -17,9 +19,13 @@ pub(crate) fn borrowed_phi_arms(cg: &Codegen, incoming: &[Value], mark: usize) -
             .iter()
             .filter(counted)
             .all(|value| managed(cg, value) && gives(value));
-    let promote = every_arm_gives
-        || (incoming.iter().all(|value| managed(cg, value))
-            && incoming.iter().any(|value| arm_owned(cg, value, mark)));
+    // Under ownership an arm that can't give its value leaves the join
+    // borrowing: the arms that made a value keep it for the statement
+    // ([`note_mixed`]). Counting backends give that arm a reference instead.
+    let counts = !cg.ownership.on
+        && incoming.iter().all(|value| managed(cg, value))
+        && incoming.iter().any(|value| arm_owned(cg, value, mark));
+    let promote = every_arm_gives || counts;
     incoming
         .iter()
         .map(|value| promote && counted(&value) && !arm_owned(cg, value, mark))
@@ -91,6 +97,7 @@ pub(crate) fn move_phi_owners(cg: &mut Codegen, incoming: &[String], out: &Value
     let incoming = counted.as_slice();
     let owned = !incoming.is_empty() && incoming_owners_match(cg, incoming, mark, |_| true);
     if !managed(cg, out) || !owned {
+        note_mixed(cg, incoming, out, mark);
         return;
     }
     // The unique release is for a block the join alone owns, never a literal.
@@ -103,6 +110,32 @@ pub(crate) fn move_phi_owners(cg: &mut Codegen, incoming: &[String], out: &Value
     if all_pure {
         mark_pure_scalar(cg, out);
     }
+}
+
+/// Some arms of the join `out` made their value and others only borrow one
+/// [MEM-OWNERSHIP-STATIC-PATHS]: under ownership the join borrows, and the
+/// values the arms made stay with the statement. Remember them, so a `let`
+/// that names the join can keep them for as long as the name is read
+/// ([`take_mixed`], [`super::borrows`]). In the ledger model this is `take_on_one_path`: each
+/// path frees the value it made once, and the borrowed path frees nothing.
+fn note_mixed(cg: &mut Codegen, incoming: &[String], out: &Value, mark: usize) {
+    if !cg.ownership.on {
+        return;
+    }
+    // An arm that is itself such a join makes this one a join of the kind.
+    let made = |operand: &String| {
+        incoming_owners_match(cg, std::slice::from_ref(operand), mark, |_| true)
+            || cg.arc.mixed.contains(operand)
+    };
+    if incoming.iter().any(made) {
+        let _ = cg.arc.mixed.insert(out.operand.clone());
+    }
+}
+
+/// Whether `operand` is a join that borrows on some paths, asked once.
+pub(super) fn take_mixed(cg: &mut Codegen, operand: &str) -> bool {
+    let key = super::aliases::root(cg, operand).to_owned();
+    cg.arc.mixed.remove(&key)
 }
 
 fn take_phi_slots(cg: &mut Codegen, incoming: &[String], mark: usize) -> Vec<String> {

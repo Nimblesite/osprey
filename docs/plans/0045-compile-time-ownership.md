@@ -95,7 +95,8 @@ Acceptance of ordinary programs, largest refusal class first. After each item: `
   - Built for record update (`aggregate/update.rs`, `arc/reads.rs`, `arc/params.rs` `stores`): `base { field: value }` reads its base once and takes each kept field out of a base at its last read; a function that updates a parameter owns it. `single_owner` `updates()` covers a local, an owned parameter, a generic record and a chain; `stored_then_read` refuses a base read again. Proved by the take theorems and `part_outlives_holder`. Corpus 68 to 69 of 180; stored refusals 499 to 481.
   - Refused for now: an update whose new fields read the base (`box { n: box.n + 1 }`). Two loads of one field slot could each take it, so the base must be read once.
 - [ ] C4. The remaining classes: bound, returned, joined, kept, shared. Each gets a rule or stays a documented refusal with a fixture.
-- Acceptance: `ownership` accepts every program in `src/osprey/tests/` that does not use a construct the spec refuses by rule. Today 69 of 180.
+  - Joined: built ([MEM-OWNERSHIP-STATIC-PATHS], "Joins that borrow", `arc/phi.rs` `note_mixed`, `arc/borrows.rs` `bind_mixed`). A join of paths that make a value with paths that can only borrow one borrows instead of counting; a `let` naming it keeps what the statement made and borrows from what the statement mentions. `single_owner` `fallbacks()` covers list and map reads with defaults, a `match`, a join of joins, a read out of a list the statement made and a loop; `borrowed_from_a_temporary` refuses returning one. Proved: `mixed_join_frees_once` (25 theorems). Corpus 69 to 73 of 180; joined refusals 111 to 0.
+- Acceptance: `ownership` accepts every program in `src/osprey/tests/` that does not use a construct the spec refuses by rule. Today 73 of 180.
 
 Soundness and the space bound:
 

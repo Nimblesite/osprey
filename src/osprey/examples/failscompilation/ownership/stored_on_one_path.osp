@@ -1,13 +1,18 @@
 // [MEM-OWNERSHIP-STATIC] Runs under the collector; `--memory=ownership` refuses it.
-// Stored on one path only: on the other path the binding still owns it.
+// Stored on one path only: on that path the new value holds `made` without
+// owning it, because the `match` reads `made` first. The join of the two arms
+// borrows, so `build` can't return it: `made` dies in `build`
+// [MEM-OWNERSHIP-STATIC-PATHS].
 type Box = { text: string }
 type Wrap = { inner: Box }
 
-fn main() = {
-    let made = Box { text: "a${toString(1)}" }
+fn build(n: int) = {
+    let made = Box { text: "a${toString(n)}" }
     let wrap = match made.text {
         "a1" => Wrap { inner: made }
         _ => Wrap { inner: Box { text: "other" } }
     }
-    print(wrap.inner.text)
+    wrap
 }
+
+fn main() = print("${build(1).inner.text}${build(2).inner.text}")

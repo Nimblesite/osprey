@@ -363,4 +363,15 @@ theorem capture_leaves_frame {frame cell : Slot} (distinct : frame ≠ cell) :
     [Action.alloc frame, .move frame cell, .free cell].foldlM step dead = some dead := by
   simp [List.foldlM, step, owned, dead, Ne.symm distinct]
 
+/-- A join that makes a value on one path and borrows one on another
+    [MEM-OWNERSHIP-STATIC-PATHS]: on the making path the name owns the value
+    and frees it once; on the borrowing path the name frees nothing, and the
+    lender frees its value once the name's last read has passed. -/
+theorem mixed_join_frees_once {name lender : Slot} (distinct : name ≠ lender) :
+    [Action.alloc name, .read name, .free name].foldlM step dead = some dead ∧
+    [Action.alloc lender, .borrow name lender, .read name, .free name].foldlM step dead = none ∧
+    [Action.alloc lender, .borrow name lender, .read name, .endBorrow name,
+      .free lender].foldlM step dead = some dead := by
+  simp [List.foldlM, step, owned, dead, distinct]
+
 end OwnershipLedger

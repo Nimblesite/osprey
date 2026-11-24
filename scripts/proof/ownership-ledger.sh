@@ -51,6 +51,7 @@ take_on_one_path propext, Quot.sound
 literal_needs_no_owner propext, Quot.sound
 shared_element_refused propext, Quot.sound
 capture_leaves_frame propext, Quot.sound
+mixed_join_frees_once propext, Quot.sound, Classical.choice
 THEOREMS
 # A model that frees or moves a value while it is lent, or frees through a
 # slot that does not own it, must lose its proofs.

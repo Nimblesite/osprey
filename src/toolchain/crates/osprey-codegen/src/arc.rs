@@ -101,6 +101,8 @@ pub(crate) struct ArcLedger {
     borrows: borrows::Borrows,
     /// Where each loaded register was read from [MEM-OWNERSHIP-STATIC-PATHS].
     fields: takes::FieldReads,
+    /// Joins that borrow on some paths and made a value on others.
+    mixed: std::collections::HashSet<String>,
 }
 
 impl ArcLedger {
@@ -121,6 +123,7 @@ impl ArcLedger {
             aliases: std::collections::HashMap::new(),
             borrows: borrows::Borrows::default(),
             fields: takes::FieldReads::new(),
+            mixed: std::collections::HashSet::new(),
         }
     }
 }

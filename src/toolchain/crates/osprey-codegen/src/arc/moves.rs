@@ -242,6 +242,15 @@ fn giver(cg: &Codegen, operand: &str) -> Option<(Option<usize>, Place, String)> 
     })
 }
 
+/// Whether [`give_up`] would succeed for `operand`, changing nothing.
+pub(super) fn can_give_up(cg: &Codegen, operand: &str) -> bool {
+    let movable = &cg.arc.movable;
+    let whole = movable
+        .find(cg, operand)
+        .is_some_and(|(_, name)| !movable.sometimes.contains(&name) && movable.on_every_path(cg));
+    whole || giver(cg, operand).is_some()
+}
+
 /// The slot of the movable binding whose value is `operand`, for the caller to
 /// clear: the binding gives its reference up here. On a path only some runs
 /// take, its owner stays in the ledger, so the other paths still release it
