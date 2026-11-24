@@ -88,6 +88,10 @@ void osp_release(void *o);
 // true when rc == 1 — hence the uniqueness proof at every emission site.
 void osp_release_unique(void *o);
 
+// Ownership-only codegen entry for a proved last use. Walk owned children
+// before reclaiming their parent. [MEM-OWNERSHIP-STATIC-SAFETY]
+void osp_ownership_free(void *o);
+
 // Mark a shared C-runtime singleton immortal (ARC: rc < 0 — dup/drop skip it
 // forever). For objects returned from multiple call sites by construction,
 // e.g. the empty-list singleton.

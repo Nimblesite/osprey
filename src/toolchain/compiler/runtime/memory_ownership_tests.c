@@ -45,7 +45,7 @@ static void t_release_frees_the_owned_tree(void) {
   void **inner = parent_of(leaf, NULL);
   void **root = parent_of(inner, osp_alloc(BODY));
   CHECK(osp_arc_live_objects() == base + 4);
-  osp_release(root);
+  osp_ownership_free(root);
   CHECK(osp_arc_live_objects() == base);
   void *unique = osp_alloc(BODY);
   osp_release_unique(unique);
@@ -88,7 +88,7 @@ static void t_moved_block_passes_to_its_new_owner(void) {
     CHECK(node[0] == 0x6B && node[BODY - 1] == 0x6B);
     version = next;
   }
-  osp_release(version);
+  osp_ownership_free(version);
   CHECK(osp_arc_live_objects() == base);
 }
 

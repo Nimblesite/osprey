@@ -69,7 +69,7 @@ void osp_retain(void *o) {
 }
 
 // The owner's release: the tracked heap's drop walk applies the rule above.
-void osp_release(void *o) {
+void osp_ownership_free(void *o) {
   if (!o) {
     return;
   }
@@ -81,5 +81,7 @@ void osp_release(void *o) {
   heap_unlock();
 }
 
-// Codegen-proved-unique drop (memory_hooks.h): the one owner's release.
-void osp_release_unique(void *o) { osp_release(o); }
+// Callers using the shared runtime ABI still transfer collection nodes via
+// retain and release. Both drop paths use the same ownership walk.
+void osp_release(void *o) { osp_ownership_free(o); }
+void osp_release_unique(void *o) { osp_ownership_free(o); }
