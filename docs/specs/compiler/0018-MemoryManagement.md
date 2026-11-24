@@ -399,8 +399,14 @@ aliases to the same allocation may coexist only if the borrow is proved
 dead before the callee can free or reuse the allocation.
 
 The current lowering infers consuming modes for eligible functions called
-directly by name in an executable. Generic, indirect and host entry points
-use borrowed parameters where supported. ARC also uses the inferred modes
+directly by name in an executable. A generic function's modes are inferred
+from its body once and hold for every type it is called at; under
+`ownership` such a function is emitted as a real function per set of
+argument types, when its return type has a concrete representation, so the
+callee can take what it is given. A generic function whose return type is a
+bare type variable is still expanded in its caller and borrows. A list
+literal given to a consuming parameter is moved, never lent. Indirect and
+host entry points use borrowed parameters where supported. ARC also uses the inferred modes
 to reduce count updates. This contract requires agreement at the call
 boundary even when the source function type carries no ownership modes.
 
@@ -504,7 +510,7 @@ Rust is the reference point for static ownership. This backend has to do better 
 - **A proof of the shipped checker. Not built.** Rust's proofs are of models: λRust [Jung 2018], Oxide [Weiss 2019] and Featherweight Rust [Pearce 2021], not of `rustc`. The target here is a mechanised model of the ledger with a proof that lowering preserves one owner per allocation and a live lender for every borrow on every control-flow edge. The backend is not declared shipped without it.
 - **A space bound. Not built.** [Lorenzen 2022] show that unrestricted borrowing can raise peak memory by an arbitrary amount and define the frame-limited bound that avoids it. Osprey must meet that bound: a value at its last use is given to a callee that can free it earlier. Until then, benchmarks report peak live bytes for `ownership` beside `gc` and `arc`, separately from exit-time leaks.
 
-**Where Rust is ahead today.** Rust accepts far more programs. It has mutable borrows, and it records ownership in types, so generic functions, functions passed as values and library boundaries are checked against a signature. Osprey infers ownership from the bodies of one executable, so those three keep borrowed parameters ([MEM-OWNERSHIP-STATIC-PARAMETERS]), and `ownership` accepts 39 of the 181 programs in `src/osprey/tests/` (2026-11-24). Rust's models are proved; Osprey's ledger is tested.
+**Where Rust is ahead today.** Rust accepts far more programs. It has mutable borrows, and it records ownership in types, so functions passed as values and library boundaries are checked against a signature. Osprey infers ownership from the bodies of one executable, so those two keep borrowed parameters ([MEM-OWNERSHIP-STATIC-PARAMETERS]), and `ownership` accepts 40 of the 181 programs in `src/osprey/tests/` (2026-11-24). Rust's models are proved; Osprey's ledger is tested.
 
 ### References [MEM-OWNERSHIP-STATIC-REFERENCES]
 

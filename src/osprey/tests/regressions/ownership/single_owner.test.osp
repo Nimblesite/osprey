@@ -115,6 +115,23 @@ fn grown(names, n) = listAppend(names, "g${toString(wrapAdd(n, 1))}")
 
 fn renamed(ages, n) = mapSet(ages, "k${toString(n)}", n)
 
+/// A generic function owns its parameters by the same rule, whatever type it
+/// is called at, and a list literal given straight to one is moved.
+fn grow(xs, x) = listAppend(xs, x)
+
+fn gather(n, acc) = match n {
+    0 => acc
+    _ => gather(wrapSub(n, 1), listAppend(acc, n))
+}
+
+fn generics() = {
+    let words = grow(grow(["a${toString(1)}"], "b${toString(2)}"), "c${toString(3)}")
+    let numbers = grow(grow([1], 2), 3)
+    let counted = gather(3, [])
+    let turned = listReverse(["r${toString(1)}", "r${toString(2)}"])
+    "generics ${toString(listLength(words))} ${toString(listLength(numbers))} ${toString(listLength(counted))} ${toString(listLength(turned))}"
+}
+
 fn owned() = {
     let tags = collect(3, [])
     let made = Box { text: "a${toString(1)}" }
@@ -286,4 +303,4 @@ fn noted(n) = {
 
 fn effects() = "${toString(listLength(folded(4)))} ${toString(listLength(folded(0)))} ${drawn(10)} ${drawn(0)} ${noted(3)}"
 
-print("${fileScope(1)} ${shared.text}\n${spans()}\n${elements()}\n${collections()}\n${lastUses()}\n${paths()}\n${owned()}\n${literals()}\n${errors()}\n${captures()}\n${lends()}\n${lentLists()}\n${reads()}\n${borrows()}\n${effects()}")
+print("${fileScope(1)} ${shared.text}\n${spans()}\n${elements()}\n${collections()}\n${lastUses()}\n${paths()}\n${owned()}\n${generics()}\n${literals()}\n${errors()}\n${captures()}\n${lends()}\n${lentLists()}\n${reads()}\n${borrows()}\n${effects()}")

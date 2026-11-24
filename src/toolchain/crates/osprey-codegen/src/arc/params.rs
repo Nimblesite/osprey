@@ -130,7 +130,7 @@ fn value_uses_except(node: AstNode<'_>, called: Option<&Expr>, out: &mut BTreeSe
 }
 
 /// The identifier a call's callee names, through any explicit type application.
-fn named_callee(function: &Expr) -> Option<&Expr> {
+pub(super) fn named_callee(function: &Expr) -> Option<&Expr> {
     match function {
         Expr::Identifier(_) => Some(function),
         Expr::TypeApply { function, .. } => named_callee(function),
@@ -159,7 +159,7 @@ pub(crate) fn infer(cg: &mut Codegen, program: &Program) {
         else {
             continue;
         };
-        if name == "main" || cg.is_generic_fn(name) || values.contains(name) {
+        if name == "main" || values.contains(name) {
             continue;
         }
         let owned: Vec<bool> = parameters
@@ -175,8 +175,20 @@ pub(crate) fn infer(cg: &mut Codegen, program: &Program) {
     }
 }
 
-fn owns(cg: &Codegen, function: &str, index: usize) -> bool {
-    let owned = cg.ownership.owned_parameters.get(function);
+/// The parameters `function` owns: an instantiation of a generic function owns
+/// what the function it was made from owns.
+fn owned_by<'a>(cg: &'a Codegen, function: &str) -> Option<&'a Vec<bool>> {
+    let written = crate::monofn::source_name(function);
+    cg.ownership.owned_parameters.get(written)
+}
+
+/// Whether `function` owns any of its parameters.
+pub(crate) fn owns_a_parameter(cg: &Codegen, function: &str) -> bool {
+    owned_by(cg, function).is_some()
+}
+
+pub(super) fn owns(cg: &Codegen, function: &str, index: usize) -> bool {
+    let owned = owned_by(cg, function);
     owned
         .and_then(|owned| owned.get(index))
         .copied()
@@ -228,7 +240,7 @@ pub(crate) fn scope_parameters(cg: &mut Codegen) {
 /// handed over. A fresh value or a binding at its last use moves; anything
 /// else needs a reference of its own to give.
 pub(crate) fn give_arguments(cg: &mut Codegen, function: &str, arguments: &[Value]) {
-    if !cg.ownership.owned_parameters.contains_key(function) {
+    if !owns_a_parameter(cg, function) {
         return;
     }
     for (index, argument) in arguments.iter().enumerate() {

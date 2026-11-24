@@ -1,3 +1,2 @@
-18:4: ownership: `tail` needs a second owner in `firstOr`: a new version of the collection is derived from it while another owner keeps it [MEM-OWNERSHIP-STATIC]
-18:4: ownership: a value needs a second owner in `firstOr`: one arm of a `match` yields it while another arm yields a new value [MEM-OWNERSHIP-STATIC]
-23:4: ownership: `made` needs a second owner in `main`: it is given to a function that takes ownership of it; this statement reads it more than once or on a path that may not run [MEM-OWNERSHIP-STATIC]
+16:4: ownership: `tail` needs a second owner in `firstOr`: a new version of the collection is derived from it while another owner keeps it [MEM-OWNERSHIP-STATIC]
+21:4: ownership: `made` needs a second owner in `main`: it is given to a function that takes ownership of it; this statement reads it more than once or on a path that may not run [MEM-OWNERSHIP-STATIC]

@@ -30,6 +30,19 @@ use osprey_ast::{Expr, Parameter};
 /// [FLAVOR-IR-EQUIV].
 const MONO_INFIX: &str = "$mono";
 
+/// The function an instantiation symbol was made from, or `symbol` itself.
+pub(crate) fn source_name(symbol: &str) -> &str {
+    symbol
+        .split_once(MONO_INFIX)
+        .map_or(symbol, |(name, _)| name)
+}
+
+/// Whether `name` can be emitted as a real function: its return type has a
+/// concrete representation.
+pub(crate) fn instantiable(cg: &Codegen, name: &str) -> bool {
+    return_slot(cg, name).is_ok()
+}
+
 /// One emitted instantiation: the symbol to call and the signature to call it
 /// with.
 #[derive(Clone, Debug)]
@@ -83,6 +96,7 @@ pub(crate) fn specialize_values(
     body: &Expr,
     values: Vec<Value>,
 ) -> Result<Value> {
+    let values = kept_values(cg, name, values);
     let key = format!(
         "{}{}",
         instantiation_key(name, &values),
@@ -200,6 +214,7 @@ fn emit_at(
     let (plist, emitted) = cg.within_source_function(name, |cg| {
         crate::closure::begin_source(cg, name, position);
         let plist = crate::cast::bind_params(cg, parameters, params, owners.iter().cloned(), 0);
+        own_parameters(cg, name, parameters);
         crate::closure::source_parameters(cg, parameters, 0);
         // Inside the body, so the definition line is credited when the
         // instantiation RUNS rather than when it is emitted or handed to a C
@@ -329,8 +344,32 @@ fn lower_body(cg: &mut Codegen, body: &Expr, sig: &FnSig) -> Result<Value> {
     crate::closure::lower_fn_body(cg, body, Some(sig))
 }
 
+/// A function that owns a parameter keeps what it is given, so a list literal
+/// reaches it in the runtime layout, as it does any emitted function
+/// [`crate::listlit::escaping`].
+fn kept_values(cg: &mut Codegen, name: &str, values: Vec<Value>) -> Vec<Value> {
+    if !crate::arc::owns_a_parameter(cg, name) {
+        return values;
+    }
+    values
+        .into_iter()
+        .map(|value| crate::listlit::escaping(cg, value))
+        .collect()
+}
+
+/// The instantiation of `name` owns the parameters `name` owns
+/// [MEM-OWNERSHIP-STATIC-PARAMETERS].
+fn own_parameters(cg: &mut Codegen, name: &str, parameters: &[Parameter]) {
+    for (index, parameter) in parameters.iter().enumerate() {
+        if let Some(value) = cg.lookup(&parameter.name) {
+            crate::arc::own_parameter(cg, name, index, &parameter.name, &value);
+        }
+    }
+}
+
 /// Call one instantiation with the argument values the call site lowered.
 fn call(cg: &mut Codegen, target: &Instantiation, args: Vec<Value>) -> Result<Value> {
+    crate::arc::give_arguments(cg, &target.symbol, &args);
     crate::closure::call_symbol(cg, &target.symbol, &target.sig, &[], args)
 }
 

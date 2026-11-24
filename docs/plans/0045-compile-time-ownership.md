@@ -78,11 +78,11 @@ Files: `src/toolchain/crates/osprey-codegen/src/arc/**`, `collections*`, `iter.r
 
 Acceptance of ordinary programs, largest refusal class first. After each item: `ownership_mode` and `osprey-codegen` tests pass, `single_owner` gains the case and exits with no live object, and the accepted count below is updated.
 
-- [ ] C1. Generic functions own parameters. Infer per function body, apply to every instance ([MEM-OWNERSHIP-STATIC-PARAMETERS]).
+- [x] C1. Generic functions own parameters. Infer per function body, apply to every instance ([MEM-OWNERSHIP-STATIC-PARAMETERS]). Done: an owning generic is emitted as a real function under `ownership`; a list literal given to an owned parameter is moved; a fresh list literal gives its reference to its runtime copy (it leaked one element per literal passed straight to a deriving operation). `single_owner` `generics()` exits with no live object; corpus under ARC unchanged, no leak. Open: a generic whose return type is a bare type variable (`fn keep(x) = x`) is still expanded in its caller and borrows.
 - [ ] C2. A value stored in a record, Result or collection that is then only read (the largest class, about 945 refusals): the constructor lends when the new value does not outlive the stored one.
 - [ ] C3. Record update whose base is at its last use moves the fields it keeps; a field read out of a value at its last use moves.
 - [ ] C4. The remaining classes: bound, returned, joined, kept, shared. Each gets a rule or stays a documented refusal with a fixture.
-- Acceptance: `ownership` accepts every program in `src/osprey/tests/` that does not use a construct the spec refuses by rule. Today 39 of 181.
+- Acceptance: `ownership` accepts every program in `src/osprey/tests/` that does not use a construct the spec refuses by rule. Today 40 of 181.
 
 Soundness and the space bound:
 

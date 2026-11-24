@@ -235,6 +235,7 @@ pub(crate) fn to_runtime_list(cg: &mut Codegen, v: Value) -> Value {
     let Some((elem, _)) = lit_elem(v.osp_ty.as_deref()) else {
         return v;
     };
+    let literal = crate::arc::versions::take_literal(cg, &v);
     let len = crate::aggregate::load_field(cg, LIST_STRUCT, &v.operand, 0, LType::I64);
     let data = crate::aggregate::load_field(cg, LIST_STRUCT, &v.operand, 1, LType::Str);
     let managed = if elem.is_managed_ptr() { "1" } else { "0" };
@@ -256,6 +257,7 @@ pub(crate) fn to_runtime_list(cg: &mut Codegen, v: Value) -> Value {
     // in its owner tag rather than losing it to the uniform `i64` element ABI
     // ([`crate::collections::LIST_TAG`]).
     let mut sealed = crate::collections::list_builder_seal(cg, &bld);
+    crate::arc::versions::release_source(cg, &literal);
     sealed.inferred_type.clone_from(&v.inferred_type);
     sealed.with_owner(Some(crate::collections::list_owner(
         crate::llty::elem_of_tag(&v, LIST_LIT).as_deref(),

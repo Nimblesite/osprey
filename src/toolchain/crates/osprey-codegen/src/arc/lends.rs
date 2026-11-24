@@ -2,14 +2,15 @@
 //! (docs/specs/compiler/0018-MemoryManagement.md). Under `--memory=ownership`
 //! a closure written as an argument of a call to an Osprey function borrows
 //! what it captures. Its cell lives until the calling statement ends, the
-//! captured bindings outlive that statement, and a checked callee cannot keep
-//! a parameter, so the cell owns none of its captures and frees none.
+//! captured bindings outlive that statement, and a checked callee keeps only a
+//! parameter it owns, so a cell passed for any other parameter owns none of its
+//! captures and frees none.
 use super::Codegen;
 use crate::llty::Value;
 use osprey_ast::{AstNode, Expr, Position};
 
 /// Whether a call names an Osprey function or a local function value: code
-/// this compilation checks, which therefore keeps no parameter.
+/// this compilation checks, which keeps only the parameters it owns.
 fn checked_callee(cg: &Codegen, function: &Expr) -> bool {
     match function {
         Expr::Identifier(name) => cg.fn_params.contains_key(name) || cg.lookup(name).is_some(),
@@ -40,6 +41,31 @@ fn note_argument(cg: &mut Codegen, argument: &Expr) {
     }
 }
 
+/// The arguments of a call that the callee only borrows. A callee that owns a
+/// parameter keeps what it is given, so that argument owns what it holds; one
+/// called with named arguments is taken to own each of them.
+fn borrowed_arguments<'a>(
+    cg: &Codegen,
+    function: &Expr,
+    arguments: &'a [Expr],
+    named: &'a [osprey_ast::NamedArgument],
+) -> Vec<&'a Expr> {
+    let callee = match super::params::named_callee(function) {
+        Some(Expr::Identifier(name)) => name.as_str(),
+        _ => "",
+    };
+    let positional = arguments
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| !super::params::owns(cg, callee, *index))
+        .map(|(_, argument)| argument);
+    let named = named
+        .iter()
+        .filter(|_| !super::params::owns_a_parameter(cg, callee))
+        .map(|argument| &argument.value);
+    positional.chain(named).collect()
+}
+
 /// Note every closure literal under `node` that is an argument of a call to a
 /// checked callee.
 fn note(cg: &mut Codegen, node: AstNode<'_>) {
@@ -50,8 +76,7 @@ fn note(cg: &mut Codegen, node: AstNode<'_>) {
     }) = node
     {
         if checked_callee(cg, function) {
-            let named = named_arguments.iter().map(|argument| &argument.value);
-            for argument in arguments.iter().chain(named) {
+            for argument in borrowed_arguments(cg, function, arguments, named_arguments) {
                 note_argument(cg, argument);
             }
         }

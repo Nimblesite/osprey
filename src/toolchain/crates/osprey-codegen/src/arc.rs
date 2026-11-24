@@ -24,8 +24,8 @@ mod ownership;
 mod params;
 pub(crate) use borrows::{bind_let, note_rebound};
 pub(crate) use params::{
-    give_arguments, infer as infer_owned_parameters, own_parameter, scope_parameters,
-    OwnedParameters,
+    give_arguments, infer as infer_owned_parameters, own_parameter, owns_a_parameter,
+    scope_parameters, OwnedParameters,
 };
 mod phi;
 mod reads;

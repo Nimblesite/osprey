@@ -36,6 +36,20 @@ pub(crate) fn take_source(cg: &mut Codegen, source: Value) -> Source {
     }
 }
 
+/// `literal` is about to be copied into the runtime layout: under ownership a
+/// literal the statement made gives its reference to the copy, so each element
+/// has one owner again before anything is derived from the copy. A literal
+/// something else owns is left alone.
+pub(crate) fn take_literal(cg: &mut Codegen, literal: &Value) -> Source {
+    let taken = cg.ownership.on
+        && super::managed(cg, literal)
+        && super::consume_into_store(cg, &literal.operand);
+    Source {
+        value: literal.clone(),
+        taken,
+    }
+}
+
 /// The new version exists: release the source it was derived from, whose
 /// reference was taken, so its nodes and elements have one owner again.
 pub(crate) fn release_source(cg: &mut Codegen, source: &Source) {
