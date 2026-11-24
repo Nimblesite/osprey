@@ -68,7 +68,7 @@ fn link_args_selects_gc_archive_and_validates_backend() {
     );
     // Unmanaged execution requires the explicit none option.
     assert_eq!(parse_memory("gc").as_deref(), Ok("gc"));
-    assert_eq!(parse_memory("none").as_deref(), Ok("none"));
+    assert!(parse_memory("none").is_err());
     assert!(parse_memory("default").is_err());
     assert_eq!(parse_memory("arc").as_deref(), Ok("arc"));
     // [MEM-OWNERSHIP-STATIC]

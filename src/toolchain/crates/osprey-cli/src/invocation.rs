@@ -6,12 +6,12 @@ use osprey_syntax::Flavor;
 pub(crate) const USAGE: &str =
     "usage: osprey <file-or-project> [--check | --ast | --llvm | --compile | --run | \
 --symbols | --signature | --source-graph | --list-tests | --doctests | --deps] [--quiet] [--no-warnings | --analyse | --warnings-as-errors] [--debug] [--profile] [--flavor default|ml|python|typescript] \
-[--memory=gc|arc|ownership|none] [--target=native|wasm32|ios|ios-sim|macos|android-arm64|android-x64|linux-x64|linux-arm64|windows-x64|python] [--entry-only] [-o <out>] \
+[--memory=gc|arc|ownership] [--target=native|wasm32|ios|ios-sim|macos|android-arm64|android-x64|linux-x64|linux-arm64|windows-x64|python] [--entry-only] [-o <out>] \
 [--sandbox | --no-http | --no-websocket | --no-fs | --no-ffi] [-- <program args>]\n\
-       osprey build [project] [--quiet] [--no-warnings | --analyse | --warnings-as-errors] [--debug] [--memory=gc|arc|ownership|none] \
+       osprey build [project] [--quiet] [--no-warnings | --analyse | --warnings-as-errors] [--debug] [--memory=gc|arc|ownership] \
 [--target=native|wasm32|ios|ios-sim|macos|android-arm64|android-x64|linux-x64|linux-arm64|windows-x64|python] [-o <out>]\n\
        osprey test [path] [--filter <name>] [--quiet] [--coverage] \
-[--coverage-json <path>] [--memory=gc|arc|ownership|none]\n\
+[--coverage-json <path>] [--memory=gc|arc|ownership]\n\
        osprey fmt [--check | --stdout] [--flavor default|ml|python|typescript] <path...>\n\
        osprey math <file.lean>\n\
        osprey hunt <file> [--max-time <seconds>] [--max-memory <mb>] [--input-bytes <n>] [--out <dir>] [--json] [--no-replay] [--quiet]\n\
@@ -90,9 +90,7 @@ pub(crate) struct Cli {
     pub(super) quiet: bool,
     pub(super) warnings: Warnings,
     pub(super) policy: Policy,
-    /// The memory backend linked behind `@osp_alloc`: `none` (explicit malloc
-    /// passthrough), `gc` (tracing collector), or `arc` (reference counting).
-    /// Link-time only; native IR is identical [MEM-BACKENDS].
+    /// Memory backend selected for lowering and linking [MEM-BACKENDS].
     pub(super) memory: String,
     /// Host executable, WebAssembly, or iPhone C ABI archive.
     /// [WASM-TARGET] [IOS-TARGET]
@@ -354,15 +352,12 @@ pub(super) fn parse_target(value: &str) -> Result<String, String> {
     }
 }
 
-/// Validate the `--memory=` value: the malloc passthrough (`none`), the
-/// tracing collector (`gc`), Perceus reference counting (`arc`), or one proved
-/// owner per value (`ownership`). Implements [MEM-BACKENDS] and
-/// [MEM-OWNERSHIP-STATIC].
+/// Validate the memory backend [MEM-BACKENDS] [MEM-OWNERSHIP-STATIC].
 pub(super) fn parse_memory(value: &str) -> Result<String, String> {
     match value {
-        "none" | "gc" | "arc" | OWNERSHIP => Ok(value.to_string()),
+        "gc" | "arc" | OWNERSHIP => Ok(value.to_string()),
         other => Err(format!(
-            "unknown memory backend '{other}' (available: gc, arc, ownership, none)\n{USAGE}"
+            "unknown memory backend '{other}' (available: gc, arc, ownership)\n{USAGE}"
         )),
     }
 }

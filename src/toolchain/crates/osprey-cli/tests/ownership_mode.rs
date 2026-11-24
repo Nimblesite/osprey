@@ -113,9 +113,6 @@ fn an_unknown_backend_names_ownership_among_the_choices() -> std::io::Result<()>
     let output = osprey(&program, &["--run", "--memory=bogus"])?;
     let stderr = text(&output.stderr);
     assert!(!output.status.success());
-    assert!(
-        stderr.contains("available: gc, arc, ownership, none"),
-        "{stderr}"
-    );
+    assert!(stderr.contains("available: gc, arc, ownership"), "{stderr}");
     Ok(())
 }

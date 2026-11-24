@@ -10,7 +10,7 @@
 //!   2. clang lowers the IR to a wasm object — `-c` only, because stock
 //!      Homebrew/apt LLVM does not ship a wasm compiler-rt archive;
 //!   3. `wasm-ld` links `crt1-command.o` + that object + the portable wasm
-//!      runtime archive (`libosprey_runtime_wasm.a`, `make -C src/toolchain/website wasm`) + libc. The
+//!      runtime archive (`libosprey_runtime_wasm_arc.a`, `make -C src/toolchain/website wasm`) + libc. The
 //!      runtime supplies the standard `__multi3` helper used when LLVM lowers
 //!      checked i64 multiplication through a widened intermediate.
 //!
@@ -31,9 +31,6 @@ use std::process::{Command, ExitCode};
 /// The canonical wasm target triple (the modern spelling of `wasm32-wasi`).
 /// Implements [WASM-TARGET-TRIPLE].
 const TRIPLE: &str = "wasm32-wasip1";
-/// The `--memory=none` malloc-passthrough C runtime, built by `make -C src/toolchain/website wasm`.
-/// Implements [WASM-TARGET-RUNTIME].
-const RUNTIME_LIB_NONE: &str = "libosprey_runtime_wasm.a";
 /// The ARC runtime twin `--memory=arc` links: same portable unit set with the
 /// managed allocator and the ARC ownership shims. It is the wasm32 default, so
 /// this is the archive a plain `--target=wasm32` build takes. [WASM-TARGET-MEMORY]
@@ -87,9 +84,7 @@ pub(crate) fn build(path: &str, program: &osprey_ast::Program, out: &Path) -> Re
     )
 }
 
-/// Lower `program` to the `.wasm` at `out` with an explicit memory backend:
-/// `arc` links the managed runtime, anything else the malloc passthrough, which
-/// is what an explicit `--memory=none` means. [WASM-TARGET-MEMORY]
+/// Lower the program with its selected managed backend [WASM-TARGET-MEMORY]
 ///
 /// # Errors
 ///
@@ -118,7 +113,11 @@ pub(crate) fn build_with_memory(
     };
     let sysroot = wasi_sysroot().map_err(|e| fail(&e))?;
     let libdir = lib_dir(&sysroot).map_err(|e| fail(&e))?;
-    let lib = runtime_lib(memory);
+    let lib = match memory {
+        "arc" => RUNTIME_LIB_ARC,
+        crate::invocation::OWNERSHIP => RUNTIME_LIB_OWNERSHIP,
+        other => return Err(fail(&format!("unsupported wasm32 memory backend: {other}"))),
+    };
     let archive = find_runtime_lib(lib).ok_or_else(|| {
         fail(&format!(
             "{lib} not found — run `make -C src/toolchain/website wasm` to build it"
@@ -128,15 +127,6 @@ pub(crate) fn build_with_memory(
     let linked = link(&obj, &archive, &libdir, out, web_dispatch, &exports);
     let _ = std::fs::remove_file(&obj);
     linked
-}
-
-/// The runtime archive a memory backend links. [WASM-TARGET-MEMORY]
-fn runtime_lib(memory: &str) -> &'static str {
-    match memory {
-        "arc" => RUNTIME_LIB_ARC,
-        crate::invocation::OWNERSHIP => RUNTIME_LIB_OWNERSHIP,
-        _ => RUNTIME_LIB_NONE,
-    }
 }
 
 /// The shared boundary's IR, when the entry file defines `argument`, `open` and `event`

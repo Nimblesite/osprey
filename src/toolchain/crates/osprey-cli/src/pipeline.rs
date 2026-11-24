@@ -350,7 +350,7 @@ pub(super) fn reject_debug_cross_target(cli: &Cli) -> Option<ExitCode> {
 /// targets' "no managed archive" one: `--memory=arc` links the ARC runtime
 /// built for wasip1, and the target defaults to it when `--memory` is omitted.
 /// `--memory=gc` is refused — the tracing collector walks a shadow stack that
-/// wasm32 does not have — and `--memory=none` stays the explicit opt-out.
+/// wasm32 does not have.
 /// Implements [WASM-TARGET-MEMORY].
 pub(super) fn reject_wasm_options(cli: &Cli) -> Option<ExitCode> {
     if let Some(code) = reject_debug_cross_target(cli) {
@@ -358,7 +358,7 @@ pub(super) fn reject_wasm_options(cli: &Cli) -> Option<ExitCode> {
     }
     (cli.memory == "gc").then(|| {
         toolchain::fail(
-            "wasm32 has no garbage-collecting runtime; use --memory=arc (the default) or --memory=none",
+            "wasm32 has no garbage-collecting runtime; use --memory=arc (the default) or --memory=ownership",
         )
     })
 }
