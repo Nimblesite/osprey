@@ -1,1 +1,1 @@
-10:8: ownership: a value needs a second owner in `main`: one arm of a `match` yields it while another arm yields a new value [MEM-OWNERSHIP-STATIC]
+10:8: ownership: `made` needs a second owner in `main`: one arm of a `match` yields it while another arm yields a new value; this statement reads it more than once or on a path that may not run [MEM-OWNERSHIP-STATIC]

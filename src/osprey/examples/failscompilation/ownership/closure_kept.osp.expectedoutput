@@ -1,1 +1,1 @@
-12:4: ownership: `made` needs a second owner in `main`: it is stored in a new value while its owner keeps it; it is read again at 13:4 [MEM-OWNERSHIP-STATIC]
+12:4: ownership: `made` needs a second owner in `main`: it is given to a function that takes ownership of it; it is read again at 13:4 [MEM-OWNERSHIP-STATIC]

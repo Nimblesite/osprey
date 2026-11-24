@@ -86,7 +86,7 @@ pub(super) fn materialize(
     let obj = cg.malloc_struct_noinit(&struct_ty, constructor_meta(cg, view.meta, values, &held));
     store_tagged_fields(cg, &struct_ty, &obj, &view, values, &held);
     let made = super::own_struct_handle(cg, &struct_ty, &obj, view.owner);
-    if held.contains(&Held::Lent) {
+    if held.iter().any(|held| held.lends()) {
         crate::arc::mark_lent(cg, &made);
     }
     Ok(made)
@@ -138,6 +138,9 @@ fn hold_fields(cg: &mut Codegen, values: &[(Value, MetaField)], places: &[bool])
         .iter()
         .zip(places.iter().chain(std::iter::repeat(&false)))
         .map(|((value, meta), place)| match meta {
+            MetaField::PtrManaged | MetaField::PtrDirect if !place => {
+                crate::arc::hold_temporary(cg, value)
+            }
             _ if !place => Held::Stored,
             MetaField::ManagedWord => {
                 let pointer = crate::conv::unbox_from_i64(cg, &value.operand, LType::Ptr);

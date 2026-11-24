@@ -45,11 +45,23 @@ pub(crate) fn bind_let(cg: &mut Codegen, name: &str, source: &Expr, v: &Value) {
     super::bind_counted(cg, name, v);
 }
 
+/// `alias` names the value `v` of the binding `source` for an inline lambda
+/// to read later: under ownership it borrows from `source`, which then lives
+/// for as long as the lambda can be applied; else it owns a reference.
+pub(crate) fn bind_alias(cg: &mut Codegen, alias: &str, source: &str, v: &Value) {
+    let lent = cg.ownership.on
+        && super::managed(cg, v)
+        && borrow_from(cg, alias, &Expr::Identifier(source.to_owned()));
+    if !lent {
+        super::bind_owned(cg, alias, v);
+    }
+}
+
 /// `v` is a value `source` constructs that holds values other bindings own:
 /// `name` takes `v` and borrows from every binding `source` mentions, which
 /// then outlive `name`'s last read.
 fn bind_lent(cg: &mut Codegen, name: &str, source: &Expr, v: &Value) -> bool {
-    let built = matches!(source, Expr::TypeConstructor { .. });
+    let built = matches!(source, Expr::TypeConstructor { .. } | Expr::Lambda { .. });
     if !built || !super::is_lent(cg, v) || !borrow_from(cg, name, source) {
         return false;
     }
@@ -80,9 +92,15 @@ fn lend(cg: &mut Codegen, name: &str, source: &Expr) -> bool {
 fn borrow_from(cg: &mut Codegen, name: &str, source: &Expr) -> bool {
     let mut mentioned = BTreeSet::new();
     osprey_ast::freevars::free_idents(source, &mut mentioned);
+    // A closure reads a file-scope binding where it is, capturing nothing.
+    if matches!(source, Expr::Lambda { .. }) {
+        mentioned.retain(|name| !cg.module_globals.contains_key(name));
+    }
     if mentioned.iter().any(|lender| replaceable(cg, lender)) {
         return false;
     }
+    // What an inline lambda reads later lends through its aliases.
+    mentioned.extend(crate::closure::reach(cg, &mentioned));
     let lenders: BTreeSet<String> = mentioned
         .into_iter()
         .filter(|lender| cg.lookup(lender).is_some())

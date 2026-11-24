@@ -125,10 +125,14 @@ fn owned_closure(
         // A closure passed straight to a checked callee borrows what it
         // captures [MEM-OWNERSHIP-STATIC-CLOSURES].
         crate::arc::set_lending(cg, lends);
+        crate::arc::allow_lent_captures(cg);
         let fresh = emit_fresh_closure(cg, &caps, definition, key);
         crate::arc::set_lending(cg, false);
         fresh?
     };
+    // A cell that could not take a capture holds it lent
+    // [MEM-OWNERSHIP-STATIC-CLOSURES].
+    let lends = lends || crate::arc::take_lent_capture(cg);
     // The cell is a fresh +1 producer here; a spawn's cell instead transfers
     // to the fiber runtime (fiber.rs calls `cell_value` directly).
     crate::arc::own(cg, &v);

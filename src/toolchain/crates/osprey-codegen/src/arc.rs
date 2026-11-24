@@ -22,7 +22,7 @@ pub(crate) use aliases::{forget as forget_aliases, same_as_word, same_value};
 mod moves;
 mod ownership;
 mod params;
-pub(crate) use borrows::{bind_let, note_rebound};
+pub(crate) use borrows::{bind_alias, bind_let, note_rebound};
 pub(crate) use params::{
     give_arguments, infer as infer_owned_parameters, own_parameter, owns_a_parameter,
     scope_parameters, OwnedParameters,
@@ -85,6 +85,14 @@ pub(crate) struct ArcLedger {
     unscoped_parameters: Vec<String>,
     /// Whether the closure cell being built lends its captures.
     lending: bool,
+    /// Whether a cell built since [`take_lent_capture`] holds a lent capture.
+    lent_capture: bool,
+    /// Whether the next closure cell may lend a capture it cannot take.
+    may_lend_captures: bool,
+    /// The binding a value being built last held lent, then, by register, the
+    /// binding each lending value holds: what a refusal of that value names.
+    lending_name: Option<String>,
+    lent_names: std::collections::HashMap<String, String>,
     /// Registers that hold a value first made in another register.
     aliases: std::collections::HashMap<String, String>,
     /// Bindings that borrow, and what they borrow from [MEM-OWNERSHIP-STATIC-BORROWS].
@@ -103,6 +111,10 @@ impl ArcLedger {
             enclosing: Vec::new(),
             unscoped_parameters: Vec::new(),
             lending: false,
+            lent_capture: false,
+            may_lend_captures: false,
+            lending_name: None,
+            lent_names: std::collections::HashMap::new(),
             aliases: std::collections::HashMap::new(),
             borrows: borrows::Borrows::default(),
             fields: takes::FieldReads::new(),
@@ -469,8 +481,8 @@ pub(crate) use frames::{drop_frame_inline, pop_frame, push_frame, FrameKind};
 mod last_use;
 mod lends;
 pub(crate) use lends::{
-    hold_field, is_lent, lending, lends, lends_list, mark_lent, reading, set_lending, take_reading,
-    Held,
+    allow_lent_captures, hold_capture, hold_field, hold_temporary, is_lent, lends, lends_list,
+    mark_lent, reading, set_lending, take_lent_capture, take_reading, Held,
 };
 mod takes;
 pub(crate) use takes::note_field;

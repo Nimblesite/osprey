@@ -175,7 +175,8 @@ pub(crate) fn second_owner(cg: &mut Codegen, operand: &str, name: Option<&str>, 
     if !cg.ownership.on || !operand.starts_with('%') || cg.is_rodata(operand) {
         return;
     }
-    let value = name.map(str::to_owned).or_else(|| cg.name_of(operand));
+    let named = name.map(str::to_owned).or_else(|| cg.name_of(operand));
+    let value = named.or_else(|| super::lends::lent_name(cg, operand));
     let other = value
         .as_deref()
         .and_then(|name| super::moves::other_use(cg, name));

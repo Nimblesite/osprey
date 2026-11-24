@@ -369,6 +369,27 @@ fn takes(n) = {
     "takes ${name} ${foe(n).box.text} ${held.inner.text}${box.text} ${told(0)} ${told(n)} ${detailed(0)} ${detailed(n)} ${both}"
 }
 
+type Runner = { run: (int) -> string }
+
+fn runWith(run: (int) -> string, n) = run(n)
+
+/// A closure that stays in the scope that wrote it lends what it captures
+/// [MEM-OWNERSHIP-STATIC-CLOSURES]: bound to a name, captured by a second
+/// closure, stored in a record, passed to a function, and built in a loop. A
+/// record that holds a lending value written in place lends in turn.
+fn closures(n) = {
+    let box = Box { text: "c${toString(n)}" }
+    let show = fn(i: int) => "${box.text}${toString(i)}"
+    let again = fn(i: int) => "${show(i)}!"
+    let runner = Runner { run: fn(i) => "${box.text}/${toString(i)}" }
+    let nest = Nest { held: Held { inner: box, n: n }, tag: "n${toString(n)}" }
+    let looped = range(0, n) |> fold("", |acc, i| => {
+        let each = fn(j) => "${box.text}${toString(j)}"
+        "${acc}${each(i)}"
+    })
+    "closures ${show(1)} ${runWith(show, 2)} ${again(3)} ${runWith(again, 4)} ${runner.run(5)} ${runWith(runner.run, 6)} ${nest.held.inner.text}${nest.tag} ${looped} ${box.text}"
+}
+
 fn effects() = "${toString(listLength(folded(4)))} ${toString(listLength(folded(0)))} ${drawn(10)} ${drawn(0)} ${noted(3)}"
 
-print("${fileScope(1)} ${shared.text}\n${spans()}\n${elements()}\n${collections()}\n${lastUses()}\n${paths()}\n${owned()}\n${generics()}\n${literals()}\n${errors()}\n${captures()}\n${lends()}\n${lentLists()}\n${reads()}\n${borrows()}\n${effects()}\n${stores(2)}\n${takes(3)}")
+print("${fileScope(1)} ${shared.text}\n${spans()}\n${elements()}\n${collections()}\n${lastUses()}\n${paths()}\n${owned()}\n${generics()}\n${literals()}\n${errors()}\n${captures()}\n${lends()}\n${lentLists()}\n${reads()}\n${borrows()}\n${effects()}\n${stores(2)}\n${takes(3)}\n${closures(2)}")

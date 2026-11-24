@@ -281,8 +281,9 @@ refused, when:
 - a value read out of a temporary that only lends it, a `mut` binding or a
   file-scope binding is given a name (anything else borrows or moves, see
   [MEM-OWNERSHIP-STATIC-BORROWS](#inferred-borrows-mem-ownership-static-borrows));
-- it is stored in a list, Result, anonymous record, closure or cell while its
-  owner keeps it (a named record or union constructor lends instead, see
+- it is stored in a list, Result, anonymous record, cell or a fiber's closure
+  while its owner keeps it (a named record or union constructor and a closure
+  literal lend instead, see
   [MEM-OWNERSHIP-STATIC-BORROWS](#inferred-borrows-mem-ownership-static-borrows));
 - a value that holds a lent field is returned, stored, bound at file scope or
   yielded by one arm of a `match` where another arm yields a new value;
@@ -304,7 +305,7 @@ value from moving: a later read with its place, or a second read in the same
 statement.
 
 ```text
-main.osp: 12:4: ownership: `made` needs a second owner in `main`: it is stored in a new value while its owner keeps it; it is read again at 13:4 [MEM-OWNERSHIP-STATIC]
+main.osp: 12:4: ownership: `made` needs a second owner in `main`: it is given to a function that takes ownership of it; it is read again at 13:4 [MEM-OWNERSHIP-STATIC]
 ```
 
 A fresh value passed straight to its use is moved and never refused. A binding
@@ -410,7 +411,10 @@ passed to a function that borrows it and stored in another constructor, which
 then lends in turn. It can't leave that scope: returning it, binding it at file
 scope, giving it to an owning parameter or a fiber, or yielding it from one arm
 of a `match` beside an arm that yields a new value is refused. A field written
-as any other expression is a fresh value and moves in.
+as any other expression is a fresh value and moves in. When that fresh value
+itself holds a lent field, as in `Outer { wrap: Wrap { inner: made } }`, the
+new value owns it and lends in turn. A refusal of a lending value names the
+binding it holds.
 
 A top-level function used as a value is a constant cell: nothing owns it and
 nothing frees it, so storing it anywhere needs no owner.
@@ -497,8 +501,11 @@ refused"; the rest are the contract the remaining phases build.
   dies with the calling statement and the callee can't keep a parameter, so
   the cell owns none of its captures; binding, storing or returning it is
   refused. A list literal written as an argument lends the same way: it holds
-  its elements, closures included, without owning them. A closure bound to a
-  name before it is passed still owns its captures. Built: a handler region
+  its elements, closures included, without owning them. Built: any other closure
+  literal takes each capture at that binding's last use and holds it lent
+  otherwise, so a closure bound to a name, captured by a second closure or
+  stored in a record can read bindings the scope still uses; it then can't
+  leave that scope. A `spawn` body never lends. Built: a handler region
   lends what its arms capture, because the region ends inside the scope that
   owns them; a value `perform` lends that an arm keeps in a cell is copied
   first, as in `fault = "${op}"`.
@@ -562,7 +569,7 @@ Rust is the reference point for static ownership. This backend has to do better 
 - **A proof of the shipped checker. Not built.** Rust's proofs are of models: λRust [Jung 2018], Oxide [Weiss 2019] and Featherweight Rust [Pearce 2021], not of `rustc`. The target here is a mechanised model of the ledger with a proof that lowering preserves one owner per allocation and a live lender for every borrow on every control-flow edge. The backend is not declared shipped without it.
 - **A space bound. Not built.** [Lorenzen 2022] show that unrestricted borrowing can raise peak memory by an arbitrary amount and define the frame-limited bound that avoids it. Osprey must meet that bound: a value at its last use is given to a callee that can free it earlier. Until then, benchmarks report peak live bytes for `ownership` beside `gc` and `arc`, separately from exit-time leaks.
 
-**Where Rust is ahead today.** Rust accepts far more programs. It has mutable borrows, and it records ownership in types, so functions passed as values and library boundaries are checked against a signature. Osprey infers ownership from the bodies of one executable, so those two keep borrowed parameters ([MEM-OWNERSHIP-STATIC-PARAMETERS]), and `ownership` accepts 56 of the 181 programs in `src/osprey/tests/` (2026-11-24). Rust's models are proved; Osprey's ledger is tested.
+**Where Rust is ahead today.** Rust accepts far more programs. It has mutable borrows, and it records ownership in types, so functions passed as values and library boundaries are checked against a signature. Osprey infers ownership from the bodies of one executable, so those two keep borrowed parameters ([MEM-OWNERSHIP-STATIC-PARAMETERS]), and `ownership` accepts 59 of the 181 programs in `src/osprey/tests/` (2026-11-24). Rust's models are proved; Osprey's ledger is tested.
 
 ### References [MEM-OWNERSHIP-STATIC-REFERENCES]
 

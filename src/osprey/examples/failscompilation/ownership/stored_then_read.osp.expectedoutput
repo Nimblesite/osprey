@@ -1,1 +1,1 @@
-11:4: ownership: a value needs a second owner in `build`: it is returned while another value owns it [MEM-OWNERSHIP-STATIC]
+11:4: ownership: `made` needs a second owner in `build`: it is returned while another value owns it [MEM-OWNERSHIP-STATIC]

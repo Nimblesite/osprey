@@ -32,6 +32,7 @@ pub(crate) use source::{
     source_parameters,
 };
 
+use crate::arc::Held;
 use crate::builder::{Codegen, FnSig, ParamSig};
 use crate::error::{CodegenError, Result};
 use crate::expr::gen_expr;
@@ -123,21 +124,29 @@ pub(crate) fn cell_value(
     // capture marks itself by its slot type ([`crate::meta`]).
     // A lent cell owns none of its captures, so its pointer slots are ones
     // the drop walk leaves alone [MEM-OWNERSHIP-STATIC-CLOSURES].
-    let lending = crate::arc::lending(cg);
+    let held: Vec<Held> = caps
+        .iter()
+        .map(|c| crate::arc::hold_capture(cg, &c.val))
+        .collect();
     let mut mf = vec![crate::meta::MetaField::PtrOpaque];
-    mf.extend(caps.iter().map(|c| capture_meta(&c.val.llvm_ty(), lending)));
+    let lent = held.iter().map(|held| *held == Held::Lent);
+    mf.extend(
+        caps.iter()
+            .zip(lent)
+            .map(|(c, lent)| capture_meta(&c.val.llvm_ty(), lent)),
+    );
     let meta = cg.struct_meta(&mf);
     let cell = cg.malloc_struct(cell_ty, meta);
     let fpp = cg.emit_reg(format!(
         "getelementptr {cell_ty}, {cell_ty}* {cell}, i32 0, i32 0"
     ));
     cg.emit(format!("store i8* {fnptr}, i8** {fpp}"));
-    for (i, c) in caps.iter().enumerate() {
+    for (i, (c, held)) in caps.iter().zip(&held).enumerate() {
         let slot = i + 1;
         let lty = c.val.llvm_ty();
         // Each captured pointer is a new reference the cell's drop releases —
         // including the same variable captured by two closures [GC-ARC-PERCEUS].
-        if !lending {
+        if *held == Held::Stored {
             crate::arc::store_owned(cg, &lty, &c.val.operand);
         }
         let p = cg.emit_reg(format!(
