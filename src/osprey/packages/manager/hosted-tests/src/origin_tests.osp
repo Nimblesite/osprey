@@ -1,12 +1,13 @@
 namespace hosted_tests;
 import registry_api::HostedOrigin
+import registry_api::HostedHeaders
 
 /// Origin validation for credentialed mutations and CSRF token checks.
 /// Implements [PACKAGE-HOSTED-EDGE] credentialed browser request rules.
 module OriginTests {
     let site = "https://packages.example.test"
 
-    fn outcome(result) = if HostedOrigin::ok(result) { "" } else { HostedOrigin::codeOf(result) }
+    fn outcome(result) = if HostedHeaders::isOk(result) { "" } else { HostedHeaders::codeOf(result) }
 
     fn origins() = checkAll("origin: exact site origin only", [
         outcome(HostedOrigin::check("${site}", site, "POST")) == "",

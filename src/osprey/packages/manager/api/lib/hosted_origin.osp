@@ -33,13 +33,4 @@ module HostedOrigin {
         else if presented == "" { reject("req.csrf-missing") }
         else if presented == expected { passed() }
         else { reject("req.csrf-mismatch") }
-
-    /// True when the verdict is `Ok`.
-    export fn ok(verdict) = HostedHeaders::isOk(verdict)
-
-    /// The rejection status, or 0 for `Ok`.
-    export fn statusOf(verdict) = HostedHeaders::statusOf(verdict)
-
-    /// The rejection code, or "" for `Ok`.
-    export fn codeOf(verdict) = HostedHeaders::codeOf(verdict)
 }

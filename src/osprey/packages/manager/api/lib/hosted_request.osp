@@ -93,14 +93,14 @@ module HostedRequest {
 
     fn originChain(headers, policy, method) = {
         let origin = HostedOrigin::check((HostedHeaders::find(headers, "origin") ?: ""), policy.allowedOrigin, method)
-        if !HostedOrigin::ok(origin) { rejected(HostedOrigin::statusOf(origin), HostedOrigin::codeOf(origin)) }
+        if !HostedHeaders::isOk(origin) { rejected(HostedHeaders::statusOf(origin), HostedHeaders::codeOf(origin)) }
         else { csrfChain(headers, policy, method) }
     }
 
     fn csrfChain(headers, policy, method) = {
         let token = HostedOrigin::csrf((HostedHeaders::find(headers, "x-csrf-token") ?: ""), policy.csrfToken)
-        if !listContains(mutationMethods, toUpperCase(method)) || HostedOrigin::ok(token) { admitted(method, "", "") }
-        else { rejected(HostedOrigin::statusOf(token), HostedOrigin::codeOf(token)) }
+        if !listContains(mutationMethods, toUpperCase(method)) || HostedHeaders::isOk(token) { admitted(method, "", "") }
+        else { rejected(HostedHeaders::statusOf(token), HostedHeaders::codeOf(token)) }
     }
 
     /// The full admission decision for one raw request against one policy.
@@ -126,13 +126,4 @@ module HostedRequest {
         }
         Stop { verdict } => verdict
     }
-
-    /// True when the verdict is admission.
-    export fn isAdmitted(verdict) = HostedHeaders::isOk(verdict)
-
-    /// The rejection status, or 0 for admission.
-    export fn statusOf(verdict) = HostedHeaders::statusOf(verdict)
-
-    /// The rejection code, or "" for admission.
-    export fn codeOf(verdict) = HostedHeaders::codeOf(verdict)
 }
