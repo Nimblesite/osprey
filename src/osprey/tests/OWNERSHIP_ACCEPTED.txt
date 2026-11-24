@@ -70,7 +70,6 @@ regressions/effects/static_discharge.test.osp
 regressions/effects/static_discharge.test.ospml
 regressions/fiber/cpu_profiling_demo.test.osp
 regressions/fiber/fiber_determinism.test.osp
-regressions/fiber/fiber_exact_replica.test.osp
 regressions/http/http_client_example.test.osp
 regressions/http/http_client_example.test.ospml
 regressions/http/http_create_client.test.osp

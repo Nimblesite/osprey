@@ -1,4 +1,5 @@
-// Fiber execution order remains deterministic when awaited in spawn order.
+// Fiber execution order remains deterministic when awaited in spawn order,
+// including a multi-step batch whose workers each preprocess, validate and transform.
 // [CONCURRENCY-DETERMINISTIC]
 
 extern fn fiber_set_deterministic_mode(enabled: bool) -> int
@@ -13,12 +14,13 @@ effect Metrics {
     recordSuccess: fn(string, int) -> Unit
 }
 
-type TaskPriority = Urgent | High | Medium
+type TaskPriority = Urgent | High | Medium | Low
 
 fn calculateComplexity(priority) = match priority {
     Urgent => 750
     High => 450    
     Medium => 600
+    Low => 75
 }
 
 fn calculateTaskTime(complexity: int) = (intDiv(complexity, 10) ) + 2 
@@ -55,8 +57,7 @@ fn determinismDemo() = {
     let result2 = await(fiber2)
     let result3 = await(fiber3)
 
-    print("Total processed: " + toString(totalProcessed(result1, result2, result3)) + " units")
-    print("=== Test Complete ===")
+    print("Total processed: ${toString(totalProcessed(result1, result2, result3))} units\n=== Test Complete ===")
 }
 exactArithmetic(fn() => determinismDemo())
 
@@ -111,3 +112,108 @@ fn selectDrivesQueuedFibers() = {
 }
 
 test("a deterministic select runs queued fibers in spawn order", fn() => check("trace", "second:2|first:1|expired", selectDrivesQueuedFibers()))
+
+fn calculateTime(complexity: int) = (intDiv(complexity, 10) ) + 7 
+
+fn calculateEfficiency(duration) = match duration < 100 {
+    true => 100
+    false => 50
+}
+
+fn preprocessData(rawData) = rawData * 2 + 100 
+fn validateData(data) = data > 50
+fn transformData(data) = data * 3 
+
+type TaskResult = Success | Warning | Failed
+
+fn classifyTask(taskId: string, dataSize: int, priority: TaskPriority) -> TaskResult ![Logger, Metrics, Arith] = {
+    perform Logger.info("Starting task: " + taskId + " with data size: " + toString(dataSize))
+    
+    let complexity = calculateComplexity(priority)
+    let actualTime = calculateTime(complexity)
+    
+    let preprocessed = preprocessData(dataSize)
+    let isValid = validateData(preprocessed)
+    
+    match isValid {
+        true => {
+            let processed = transformData(preprocessed)
+            let efficiency = calculateEfficiency(actualTime)
+            
+            perform Metrics.recordSuccess(taskId, processed)
+            perform Logger.info("Task " + taskId + " completed successfully in " + toString(actualTime) + "ms")
+            
+            match efficiency > 80 {
+                true => Success
+                false => Warning
+            }
+        }
+        false => {
+            perform Logger.info("Task " + taskId + " failed validation")
+            Failed
+        }
+    }
+}
+
+fn processTaskForBatch(taskId: string, dataSize: int, priority: TaskPriority) -> int ![Logger, Metrics, Arith] = {
+    let result = classifyTask(taskId: taskId, dataSize: dataSize, priority: priority)
+    match result {
+        Success => 900
+        Warning => 600  
+        Failed => 0
+    }
+}
+
+fn processAlphaTask1() = processTaskForBatch(taskId: "task-alpha-1", dataSize: 150, priority: High)
+fn processAlphaTask2() = processTaskForBatch(taskId: "task-alpha-2", dataSize: 200, priority: Medium) 
+fn processAlphaTask3() = processTaskForBatch(taskId: "task-alpha-3", dataSize: 75, priority: Urgent)
+fn sumBatchResults(first: int, second: int, third: int) = first + second + third 
+
+fn processAlphaBatch() -> int ![Logger, Metrics, Arith] = {
+    perform Logger.info("Processing batch: alpha")
+    
+    let worker1 = spawn processAlphaTask1()
+    let worker2 = spawn processAlphaTask2()
+    let worker3 = spawn processAlphaTask3()
+    
+    let result1 = await(worker1)
+    let result2 = await(worker2)
+    let result3 = await(worker3)
+    
+    let batchTotal = sumBatchResults(result1, result2, result3)
+    
+    perform Logger.info("Batch alpha processed: " + toString(batchTotal) + " total data units")
+    
+    batchTotal
+}
+
+fn executionOrderDemo() = {
+    handle Metrics {
+        recordSuccess taskId processed => print("✅ " + taskId + " succeeded: " + toString(processed) + " units")
+    }
+    handle Logger {
+        info msg => print("ℹ️  " + msg)
+    }
+    print("=== Fiber Execution Order Test ===")
+    let results1 = processAlphaBatch()
+    print("Total: ${toString(results1)}\n=== Test Complete ===")
+}
+exactArithmetic(fn() => executionOrderDemo())
+
+/// Repeats the complete batch under quiet handlers for an asserted result.
+fn alphaBatchForTest() = {
+    handle Metrics {
+        recordSuccess _taskId _processed => 0
+    }
+    handle Logger {
+        info _msg => 0
+    }
+    processAlphaBatch()
+}
+
+// Verifies preprocessing, classification, and the awaited batch total.
+
+test("fiber batch preserves transformed results", fn() => exactArithmetic(fn() => checkAll("fiber batch results", [
+    structuralEquals([alphaBatchForTest(), preprocessData(150), transformData(400)], [2700, 400, 1200]),
+    structuralEquals([calculateEfficiency(52), calculateComplexity(Low)], [100, 75])
+])))
