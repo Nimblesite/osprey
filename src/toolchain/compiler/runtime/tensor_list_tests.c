@@ -2,7 +2,7 @@
 // the host loader must satisfy the same safetensors contract as
 // `gpuLoadTensor` (tensor_file_tests.h) while building a List<float> and
 // linking no GPU unit at all — this suite links tensor_list.c, tensor_file.c,
-// list_runtime.c, file_runtime.c (the io_error channel) and memory_runtime.c,
+// list_runtime.c, file_runtime.c (the io_error channel) and memory_gc.c,
 // and nothing named gpu_*.
 #include <assert.h>
 #include <string.h>

@@ -58,13 +58,7 @@ fn runtime_archive(http: bool, memory: &str) -> Option<String> {
 
 pub(crate) fn runtime_name(base: &str, memory: &str) -> String {
     // [MEM-BACKENDS]: the reclaiming backend is an archive swap.
-    let suffix = match memory {
-        "gc" => "_gc",
-        "arc" => "_arc",
-        crate::invocation::OWNERSHIP => "_ownership",
-        _ => "",
-    };
-    format!("{}{suffix}.a", base.trim_end_matches(".a"))
+    format!("{}_{memory}.a", base.trim_end_matches(".a"))
 }
 
 /// The IR spellings that reach libm: `frem` may lower to `fmod`

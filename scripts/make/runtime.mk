@@ -6,9 +6,9 @@
 # so `cd` persists; faithful port of the original hardened C recipes.
 _test_runtime_incremental: _runtime
 	@runtime_mtime() { stat -c %Y "$$1" 2>/dev/null || stat -f %m "$$1"; }; \
-	  before="$$(runtime_mtime $(RTB)/libfiber_runtime.a)"; \
+	  before="$$(runtime_mtime $(RTB)/libfiber_runtime_gc.a)"; \
 	  $(MAKE) _runtime >/dev/null; \
-	  after="$$(runtime_mtime $(RTB)/libfiber_runtime.a)"; \
+	  after="$$(runtime_mtime $(RTB)/libfiber_runtime_gc.a)"; \
 	  if [ "$$before" != "$$after" ]; then \
 	    echo "ERROR: unchanged native runtime rebuilt and invalidated the test cache"; \
 	    exit 1; \
@@ -19,7 +19,7 @@ _runtime:
 	@set -e; config_tmp="$(NATIVE_RUNTIME_CONFIG).$$$$"; \
 	  { printf '%s\n' \
 	      "CC=$(CC)" "AR=$(AR)" "A=$(A)" "B=$(B)" "WARN_MAX=$(WARN_MAX)" "GPU_DEVICE_FLAGS=$(GPU_DEVICE_FLAGS)" \
-	      "OSSL=$(OSSL)" "OSPREY_VERSION=$(OSPREY_VERSION)" "FIB_OBJ=$(FIB_OBJ)" "HTTP_OBJ=$(HTTP_OBJ)" \
+	      "OSSL=$(OSSL)" "OSPREY_VERSION=$(OSPREY_VERSION)" "FIB_OBJ_OWNERSHIP=$(FIB_OBJ_OWNERSHIP)" "HTTP_OBJ_OWNERSHIP=$(HTTP_OBJ_OWNERSHIP)" \
 	      "FIB_OBJ_GC=$(FIB_OBJ_GC)" "HTTP_OBJ_GC=$(HTTP_OBJ_GC)" \
 	      "FIB_OBJ_ARC=$(FIB_OBJ_ARC)" "HTTP_OBJ_ARC=$(HTTP_OBJ_ARC)"; \
 	    command -v "$(firstword $(CC))" 2>/dev/null || true; \
@@ -53,7 +53,6 @@ src/toolchain/compiler/bin/gpu_opencl.o: src/toolchain/compiler/runtime/gpu_open
 $(NATIVE_RUNTIME_STAMP): $(NATIVE_RUNTIME_INPUTS) $(NATIVE_RUNTIME_CONFIG) Makefile scripts/make/config.mk scripts/make/runtime.mk $(GPU_DEVICE_NATIVE)
 	@echo "==> building C runtime archives ($(RTB)/lib*_runtime.a)"
 	@cd src/toolchain/compiler && set -e && $(MKDIR) bin lib bin/gc bin/arc && \
-	  $(CC) $(B) runtime/memory_runtime.c       -o bin/memory_runtime.o && \
 	  $(CC) $(B) runtime/memory_gc.c            -o bin/memory_gc.o && \
 	  $(CC) $(B) runtime/memory_arc.c           -o bin/memory_arc.o && \
 	  $(CC) $(B) runtime/memory_ownership.c     -o bin/memory_ownership.o && \
@@ -136,8 +135,6 @@ $(NATIVE_RUNTIME_STAMP): $(NATIVE_RUNTIME_INPUTS) $(NATIVE_RUNTIME_CONFIG) Makef
 	    mv -f "$$stage/$$name" "bin/$$name" && \
 	    mv -f "$$stage/lib-copy" "lib/$$name"; \
 	  } && \
-	  publish_archive libfiber_runtime.a $(FIB_OBJ) && \
-	  publish_archive libhttp_runtime.a $(HTTP_OBJ) && \
 	  publish_archive libfiber_runtime_gc.a $(FIB_OBJ_GC) && \
 	  publish_archive libhttp_runtime_gc.a $(HTTP_OBJ_GC) && \
 	  publish_archive libfiber_runtime_arc.a $(FIB_OBJ_ARC) && \

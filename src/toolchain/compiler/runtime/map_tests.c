@@ -9,7 +9,7 @@
  * non-zero exit on failure. Build (all warnings are errors):
  *   cc -O2 -D_FORTIFY_SOURCE=2 -fstack-protector-strong -Werror -Wall -Wextra \
  *      -ftrapv -std=c11 -D_GNU_SOURCE -o map_tests \
- *      map_tests.c map_runtime.c map_runtime_hamt.c memory_runtime.c
+ *      map_tests.c map_runtime.c map_runtime_hamt.c memory_gc.c
  * Covers the runtime half of the map builtins [BUILTIN-MAP], [BUILTIN-MAP-GET],
  * [BUILTIN-MAP-SET], [BUILTIN-MAP-REMOVE], [BUILTIN-MAP-MERGE],
  * [BUILTIN-MAP-CONTAINS], [BUILTIN-COLLECTION-LENGTH] and the iteration behind

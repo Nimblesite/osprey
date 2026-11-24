@@ -160,16 +160,12 @@ T    ?= -O2 -D_FORTIFY_SOURCE=2 -fstack-protector-strong $(WARN) -ftrapv -std=c1
 PROF_OBJ = bin/profiler_runtime.o bin/profiler_store.o bin/profiler_dump.o bin/profiler_sampler.o bin/profiler_stream.o bin/profiler_endpoint.o
 # One shared allocator implementation in both GC and ARC runtime archives.
 NATIVE_BRIDGE_OBJ := bin/native_bridge.o bin/native_bridge_lifecycle.o bin/native_scene.o
-FIB_OBJ  ?= bin/memory_runtime.o bin/gpu_runtime.o bin/gpu_map_file.o bin/gpu_elements.o bin/gpu_host.o bin/tensor_file.o bin/tensor_list.o bin/fiber_runtime.o bin/system_runtime.o bin/file_runtime.o bin/effects_runtime.o bin/effects_coro.o bin/string_runtime.o bin/string_runtime_list.o bin/float_spelling.o bin/list_runtime.o bin/list_rebuild.o bin/map_runtime.o bin/map_runtime_hamt.o bin/json_runtime.o bin/json_text.o bin/json_codec.o bin/ffi_runtime.o bin/term_runtime.o bin/random_runtime.o bin/test_runtime.o bin/coverage_runtime.o $(NATIVE_BRIDGE_OBJ) $(PROF_OBJ)
-HTTP_OBJ ?= bin/http_shared.o bin/http_client_runtime.o bin/http_client_transport.o bin/http_client_response.o bin/http_client_framing.o bin/http_client_chunks.o bin/http_server_request.o bin/http_server_response.o bin/http_server_runtime.o bin/http_server_pool.o bin/websocket_client_runtime.o bin/websocket_server_runtime.o bin/websocket_frames.o bin/tls_client_runtime.o bin/file_server_runtime.o bin/media_render_runtime.o $(FIB_OBJ)
-# GC backend archives (osprey --memory=gc): the tracing collector replaces
-# memory_runtime.o, and the value-container units are rebuilt with the malloc
-# redirect (osp_gc_shim.h) so their nodes live in the managed heap. Everything
-# else is the same object. Implements [GC-TRACE-CONSERVATIVE], spec 0018.
+# GC container nodes use the tracing heap.
+# The other runtime units use their standard objects.
 FIB_OBJ_GC  ?= bin/memory_gc.o bin/gpu_runtime.o bin/gpu_map_file.o bin/gpu_elements.o bin/gpu_host.o bin/tensor_file.o bin/tensor_list.o bin/fiber_runtime.o bin/system_runtime.o bin/file_runtime.o bin/effects_runtime.o bin/effects_coro.o bin/string_runtime.o bin/string_runtime_list.o bin/float_spelling.o bin/gc/list_runtime.o bin/gc/list_rebuild.o bin/gc/map_runtime.o bin/gc/map_runtime_hamt.o bin/json_runtime.o bin/json_text.o bin/json_codec.o bin/ffi_runtime.o bin/term_runtime.o bin/random_runtime.o bin/test_runtime.o bin/coverage_runtime.o $(NATIVE_BRIDGE_OBJ) $(PROF_OBJ)
 HTTP_OBJ_GC ?= bin/http_shared.o bin/http_client_runtime.o bin/http_client_transport.o bin/http_client_response.o bin/http_client_framing.o bin/http_client_chunks.o bin/http_server_request.o bin/http_server_response.o bin/http_server_runtime.o bin/http_server_pool.o bin/websocket_client_runtime.o bin/websocket_server_runtime.o bin/websocket_frames.o bin/tls_client_runtime.o bin/file_server_runtime.o bin/media_render_runtime.o $(FIB_OBJ_GC)
 # ARC backend archives (osprey --memory=arc): Perceus reference counting
-# replaces memory_runtime.o, and the value-producing units (containers +
+# tracks references. The value-producing units (containers +
 # strings + JSON) are rebuilt with the allocation redirect (osp_arc_shim.h) so
 # their nodes/buffers carry the 16-byte header and registry entry. Implements
 # [GC-ARC-PERCEUS], spec 0018.
@@ -180,7 +176,6 @@ GPU_DEVICE_OBJ ?= bin/gpu_metal.o
 GPU_DEVICE_NATIVE ?= src/toolchain/compiler/bin/gpu_metal.o
 GPU_DEVICE_FLAGS ?= -DOSPREY_GPU_METAL=1
 GPU_DEVICE_LIBS ?= -framework Foundation -framework Metal
-FIB_OBJ += bin/gpu_metal.o
 FIB_OBJ_GC += bin/gpu_metal.o
 FIB_OBJ_ARC += bin/gpu_metal.o
 endif
@@ -188,7 +183,6 @@ GPU_DEVICE_OBJ += bin/gpu_opencl.o
 GPU_DEVICE_NATIVE += src/toolchain/compiler/bin/gpu_opencl.o
 GPU_DEVICE_FLAGS += -DOSPREY_GPU_OPENCL=1
 GPU_DEVICE_LINK = $(addprefix $(CURDIR)/src/toolchain/compiler/,$(GPU_DEVICE_OBJ))
-FIB_OBJ += bin/gpu_opencl.o
 FIB_OBJ_GC += bin/gpu_opencl.o
 FIB_OBJ_ARC += bin/gpu_opencl.o
 ifeq ($(UNAME_S),Linux)
@@ -203,15 +197,14 @@ HTTP_OBJ_OWNERSHIP = $(patsubst bin/memory_arc.o,bin/memory_ownership.o,$(HTTP_O
 # The iOS and Android archives carry no device adapter: their gpu_runtime is
 # compiled without the adapter flags, so every kernel and product runs the host
 # oracle and a device selection is the no-adapter error [GPU-BACKEND-DEVICE].
-MOBILE_RT_SRC ?= $(filter-out system_runtime $(basename $(notdir $(GPU_DEVICE_OBJ))),$(basename $(notdir $(FIB_OBJ))))
-MOBILE_ARC_RT_SRC ?= memory_arc $(filter-out memory_runtime,$(MOBILE_RT_SRC))
-MOBILE_OWNERSHIP_RT_SRC ?= memory_ownership $(filter-out memory_runtime,$(MOBILE_RT_SRC))
+MOBILE_ARC_RT_SRC ?= $(filter-out system_runtime $(basename $(notdir $(GPU_DEVICE_OBJ))),$(basename $(notdir $(FIB_OBJ_ARC))))
+MOBILE_OWNERSHIP_RT_SRC ?= memory_ownership $(filter-out memory_arc,$(MOBILE_ARC_RT_SRC))
 MOBILE_ARC_SHIM_SRC ?= $(patsubst bin/arc/%.o,%,$(filter bin/arc/%,$(FIB_OBJ_ARC)))
 NATIVE_RUNTIME_CONFIG ?= src/toolchain/compiler/bin/.native-runtime-config
 NATIVE_RUNTIME_STAMP ?= src/toolchain/compiler/bin/.native-runtime.stamp
 NATIVE_RUNTIME_INPUTS ?= $(filter-out src/toolchain/compiler/runtime/%_tests.c src/toolchain/compiler/runtime/test_http_length_validation.c src/toolchain/compiler/runtime/test_openssl.c src/toolchain/compiler/runtime/test_system_runtime.c src/toolchain/compiler/runtime/test_file_runtime.c src/toolchain/compiler/runtime/web_runtime.c,$(wildcard src/toolchain/compiler/runtime/*.c)) $(wildcard src/toolchain/compiler/runtime/*.h)
 NATIVE_RUNTIME_INPUTS += $(wildcard src/toolchain/compiler/runtime/*.m src/toolchain/compiler/runtime/*.metal)
-NATIVE_RUNTIME_ARCHIVES ?= src/toolchain/compiler/bin/libfiber_runtime.a src/toolchain/compiler/bin/libhttp_runtime.a src/toolchain/compiler/bin/libfiber_runtime_gc.a src/toolchain/compiler/bin/libhttp_runtime_gc.a src/toolchain/compiler/bin/libfiber_runtime_arc.a src/toolchain/compiler/bin/libhttp_runtime_arc.a src/toolchain/compiler/lib/libfiber_runtime.a src/toolchain/compiler/lib/libhttp_runtime.a src/toolchain/compiler/lib/libfiber_runtime_gc.a src/toolchain/compiler/lib/libhttp_runtime_gc.a src/toolchain/compiler/lib/libfiber_runtime_arc.a src/toolchain/compiler/lib/libhttp_runtime_arc.a src/toolchain/compiler/bin/libfiber_runtime_ownership.a src/toolchain/compiler/bin/libhttp_runtime_ownership.a src/toolchain/compiler/lib/libfiber_runtime_ownership.a src/toolchain/compiler/lib/libhttp_runtime_ownership.a
+NATIVE_RUNTIME_ARCHIVES ?= $(foreach dir,$(RTB) src/toolchain/compiler/lib,$(foreach name,fiber http,$(foreach mode,gc arc ownership,$(dir)/lib$(name)_runtime_$(mode).a)))
 
 # WebAssembly (wasm32-wasip1) cross-build toolchain — opt-in via `make -C src/toolchain/website wasm`.
 # Compiles the portable C-runtime subset (no pthreads/sockets/OpenSSL/syscalls)

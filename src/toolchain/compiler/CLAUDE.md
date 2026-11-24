@@ -11,7 +11,7 @@ migration:
 
 - `runtime/` - Pure-C runtime libraries (fibers, HTTP/WebSocket, system, string,
   list/map, JSON, FFI, terminal). Linked by `osprey --run` as
-  `libfiber_runtime.a` / `libhttp_runtime.a`.
+  `libfiber_runtime_<backend>.a` / `libhttp_runtime_<backend>.a`.
 
 Example programs and golden tests live at the top-level
 [`../../osprey/examples/`](../../osprey/examples): `src/osprey/tests/` (each program matches its

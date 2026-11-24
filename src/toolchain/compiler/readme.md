@@ -5,8 +5,8 @@ The compiler itself is the Rust workspace at the repository root
 that compiled programs link against:
 
 - [runtime/](runtime) - The C runtime (fibers, effects, HTTP/WebSocket,
-  strings, lists, maps, JSON, terminal). Built into `lib/libfiber_runtime.a` /
-  `lib/libhttp_runtime.a` by `make _runtime`; `osprey` links these at
+  strings, lists, maps, JSON, terminal). Built into `lib/libfiber_runtime_<backend>.a` /
+  `lib/libhttp_runtime_<backend>.a` by `make _runtime`; `osprey` links these at
   `--compile`/`--run` time.
 
 Runnable applications live in [src/osprey/examples/](../../osprey/examples). Acceptance programs live in [src/osprey/tests/](../../osprey/tests) and are compared with `.expectedoutput` files by [src/toolchain/crates/run_test_corpus.sh](../crates/run_test_corpus.sh). [src/osprey/examples/failscompilation/](../../osprey/examples/failscompilation) holds must-reject cases; [src/osprey/examples/tui/](../../osprey/examples/tui) is the `make _tui` showcase.

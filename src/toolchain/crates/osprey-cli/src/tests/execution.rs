@@ -88,7 +88,7 @@ fn openssl_and_compiler_helpers_are_well_formed() {
 fn runtime_search_walks_above_arbitrarily_nested_cargo_profiles() {
     let root = PathBuf::from("workspace");
     let executable_dir = root.join("target/llvm-cov-target/ci/deps");
-    let lib = "libfiber_runtime.a";
+    let lib = "libfiber_runtime_gc.a";
     let candidates = runtime_lib_candidates(lib, Some(&executable_dir));
     let expected = root
         .join("src/toolchain/compiler/bin")
@@ -100,7 +100,7 @@ fn runtime_search_walks_above_arbitrarily_nested_cargo_profiles() {
     assert!(fallbacks.contains(&format!("/usr/local/lib/{lib}")));
     assert!(fallbacks
         .iter()
-        .any(|path| path.ends_with("src/toolchain/compiler/lib/libfiber_runtime.a")));
+        .any(|path| path.ends_with("src/toolchain/compiler/lib/libfiber_runtime_gc.a")));
 }
 
 #[cfg(unix)]

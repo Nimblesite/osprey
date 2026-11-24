@@ -1,5 +1,5 @@
 // Backend-neutral memory-manager hooks C runtime units may call directly.
-// Every memory backend (memory_runtime.c, memory_gc.c, memory_arc.c) defines
+// Every memory backend (GC, ARC and ownership) defines
 // all of them, so a unit compiled once links against whichever backend the
 // program selected. General retain/release are no-ops in default/GC; the
 // default backend still reclaims codegen-proved unique values. Implements the
@@ -96,8 +96,7 @@ void osp_mem_immortal(void *p);
 // Announce that a second thread is about to be able to touch the heap. The
 // fiber runtime calls this once, immediately before the pthread_create that
 // spawns a real fiber thread. ARC uses it to trip from its single-threaded
-// lock-free fast path to a mutexed one; the tracing collector takes its heap lock from then on; the
-// unmanaged backend does nothing.
+// lock-free fast path to a mutexed one; the tracing collector takes its heap lock from then on.
 // Idempotent and monotonic. [MEM-BACKENDS]
 void osp_mem_notify_multithreaded(void);
 

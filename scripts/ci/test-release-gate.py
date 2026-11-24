@@ -94,9 +94,9 @@ def gate_script(text):
 
 
 NATIVE_ARCHIVES = tuple(f"lib{name}{mode}.a" for name in ("fiber_runtime", "http_runtime")
-                        for mode in ("", "_gc", "_arc"))
+                        for mode in ("_ownership", "_gc", "_arc"))
 APPLE_ARCHIVES = tuple(f"libosprey_runtime_{target}{mode}.a" for target in ("ios", "ios_sim", "macos")
-                       for mode in ("", "_arc"))
+                       for mode in ("_ownership", "_arc"))
 
 
 def package_result(text, platform, archives, empty_archive=""):
