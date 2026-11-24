@@ -98,7 +98,7 @@ Refusals on `single_owner.test.osp` (64 of 76 functions):
 ### 8. Documentation
 
 - [ ] `website/src/docs/proofs/how-proofs-check-code.md` still describes the regex translator and says "nothing is skipped". Rewrite steps 2 to 4 for this pipeline once it is in CI.
-- [ ] Record this framework in [plan 0045](0045-compile-time-ownership.md) and the memory management spec.
+- [x] Recorded in [plan 0045](0045-compile-time-ownership.md) (V8) and the memory management spec ([MEM-OWNERSHIP-STATIC-VERIFICATION-COMPILER]).
 
 ## Decisions
 
