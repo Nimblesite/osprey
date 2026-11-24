@@ -8,11 +8,15 @@ source "$root/scripts/proof/replay.sh"
 program="$root/src/osprey/tests/regressions/ownership/single_owner.test.osp"
 mkdir -p "$out"
 "$1" "$program" --llvm --memory=ownership > "$out/ownership.ll"
-validate_ir() { clang -Wno-override-module -c -x ir "$1" -o /dev/null; }
+# The reflections read LLVM 21+ IR, which addresses fields by byte offset;
+# clang 18 spells the same fields as struct-typed GEPs. CI pins the proof
+# compiler with OSPREY_PROOF_CLANG.
+clang=${OSPREY_PROOF_CLANG:-clang}
+validate_ir() { "$clang" -Wno-override-module -c -x ir "$1" -o /dev/null; }
 validate_ir "$out/ownership.ll"
 runtime="$root/src/toolchain/compiler/runtime"
 compile_runtime() {
-  clang -O1 -fno-inline -fno-discard-value-names -I "$runtime" "${@:3}" \
+  "$clang" -O1 -fno-inline -fno-discard-value-names -I "$runtime" "${@:3}" \
     -S -emit-llvm "$1" -o "$2"
 }
 shim=(-include "$runtime/osp_arc_shim.h")
