@@ -30,7 +30,7 @@ lake build lean4export
 lake env lean -DwarningAsError=true --root="$out" -o "$out/OwnershipLowering.olean" "$out/OwnershipLowering.lean"
 exporter=$(lake env which lean4export)
 lean_path=$(lake env printenv LEAN_PATH)
-for name in compiledGrow compiledGrowWhen runtimeRootOrigins renderedStringOrigin stringResultOrigins compiledFreeNull compiledPairFields compiledChildDrop compiledWorklistPush compiledPairQueue compiledGrowthBytes compiledPop compiledBodyReclaim compiledPushPop compiledLiveDebit compiledReclaimPrefix compiledLiveCredit compiledAccountingRoundTrip compiledResultTake compiledResultBorrow compiledResultBorrowUses; do
+for name in compiledGrow compiledGrowWhen runtimeRootOrigins renderedStringOrigin stringResultOrigins compiledFreeNull compiledPairFields compiledChildDrop compiledWorklistPush compiledPairQueue compiledGrowthBytes compiledPop compiledBodyReclaim compiledPushPop compiledLiveDebit compiledReclaimPrefix compiledLiveCredit compiledAccountingRoundTrip compiledResultTake compiledResultBorrow compiledResultBorrowUses compiledCompatibilityReturns; do
   theorem="OwnershipLowering.$name"
   axioms=none
   if [[ $name == compiledAccountingRoundTrip ]]; then axioms=propext; fi
@@ -236,3 +236,10 @@ for fault in detached-borrow early-parent-free wrong-borrow-fallback leaked-rend
   esac
 done
 reject detached-borrow compiledResultBorrowUses
+
+# Recompile the old ownership hook so Clang also recomputes its memory effects.
+sed 's/osp_release_unique(void \*body) { (void)body; }/osp_release_unique(void *body) { tracked_drop(body); }/' \
+  "$runtime/memory_ownership.c" > "$out/mutations/unique-drop.c"
+compile_runtime "$out/mutations/unique-drop.c" "$out/mutations/unique-drop.ll"
+reflect "$out/ownership.ll" "$out/mutations/unique-drop.lean" "$out/runtime.ll" "$out/strings.ll" "$out/mutations/unique-drop.ll"
+reject unique-drop compiledCompatibilityReturns

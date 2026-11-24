@@ -37,9 +37,9 @@ Code generation tracks managed values in an ownership ledger:
 GC and ARC share this lowering. The collector ignores general retain/release calls. ARC uses them to track live references.
 Compile-time ownership adds the checks and lowering specified in
 [MEM-OWNERSHIP-STATIC](#compile-time-ownership-mem-ownership-static).
-For a proved-unique value, codegen emits the paired `osp_release_unique` hook
+Under ARC and GC, codegen lowers a proved-unique drop to the paired `osp_release_unique` hook
 with LLVM allocator/free attributes, allowing `-O2` to remove a non-escaping
-allocation and release. Tracing GC reclaims surviving allocations during collection.
+allocation and release. Tracing GC reclaims surviving allocations during collection. Under ownership, the compiler emits `osp_ownership_free` for a proved-unique drop. Both `osp_release_unique` and `osp_collect` return immediately in the native ownership runtime.
 
 ## Effect Continuation Threads [MEM-EFFECT-BATON]
 
@@ -428,6 +428,7 @@ Here step(c, a) = ∅ means the action is refused, and ⊥ ─a₁·…·aₙ→
 | Checked theorem | Property | Assumptions and scope |
 | --- | --- | --- |
 | `OwnershipLowering.compiledFreeNull` | Passing null to the compiled ownership free entry reaches a void return before any heap operation. | Reflection follows the actual argument through the direct call, pointer comparison and branch. The non-null path and recursive child destruction require separate proofs. |
+| `OwnershipLowering.compiledCompatibilityReturns` | The compiled entry blocks of `osp_release_unique` and `osp_collect` return immediately. Neither changes the ownership heap, for any pointer or heap state. | The proof inspects both definitions in the compiled ownership translation unit. Recompiling the unique-release hook with its former tracked drop must break the theorem. |
 | `OwnershipLowering.compiledGrow` | For every integer list and element, the emitted specialization of `grow` returns the appended list as its only live list root and frees the input root exactly once. | The caller supplies one owned root. The append helper returns a fresh root with persistent-list contents. |
 | `OwnershipLowering.compiledGrowWhen` | For both Boolean inputs, the emitted function follows the corresponding path through the join. Enabling append frees the original root and returns the appended list. Disabling it returns the original root alive. | The reflector follows branches, resolves LLVM phi operands by predecessor and preserves null frees. The execution model checks those calls against the compiled runtime guard. Lean checks the resulting loads, frees and return against the ownership semantics. |
 | `OwnershipLowering.compiledPairFields` | For any two supplied children, the emitted `pairUp` writes the left and right arguments at words 1 and 2 of its fresh record. Its allocation layout equals that of the compiled 64-bit C masked walk, which reads byte 8, calls the child drop with that pointer, then does the same at byte 16. | The proof specializes the shipped walk at the record size and layout with Clang `-O2`. It assumes two distinct owned children, successful allocation, dispatch to the masked walk and a child drop that preserves the parent and sibling. Recursive deallocation and other record layouts remain open. |

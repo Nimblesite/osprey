@@ -194,7 +194,11 @@ pub(crate) fn second_owner(cg: &mut Codegen, operand: &str, name: Option<&str>, 
 
 /// The calls that count a reference. The ledger model has no such action
 /// [MEM-OWNERSHIP-STATIC-MODEL], so accepted code may not contain one.
-const COUNTS: [&str; 2] = ["call void @osp_retain(", "call void @osp_release("];
+const COUNTS: [&str; 3] = [
+    "call void @osp_retain(",
+    "call void @osp_release(",
+    "call void @osp_release_unique(",
+];
 
 /// `ir` for an accepted module: under ownership it frees and never counts
 /// [MEM-OWNERSHIP-STATIC-SAFETY]. A count that got past the ledger is a

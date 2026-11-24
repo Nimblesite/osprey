@@ -214,10 +214,8 @@ static void tracked_drop(void *body) {
   heap_unlock();
 }
 
-// The shared ABI's two drop calls differ in the compiler's uniqueness proof.
-// ARC and the current ownership collection shims both need the root walk.
+// ARC and the persistent-container helpers use the tracked root walk.
 void osp_release(void *body) { tracked_drop(body); }
-void osp_release_unique(void *body) { tracked_drop(body); }
 
 // --- public ABI
 // ------------------------------------------------------------------ Implements

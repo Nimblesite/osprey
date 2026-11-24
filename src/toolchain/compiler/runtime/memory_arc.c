@@ -47,3 +47,5 @@ void osp_retain(void *o) {
   }
   heap_unlock();
 }
+
+void osp_release_unique(void *body) { tracked_drop(body); }

@@ -46,7 +46,7 @@ function alternatives(values) {
 }
 
 export function voidBody(ir, name, arity = 1, type = 'ptr') {
-  const attributes = '(?:(?:range\\(i64 0, 4294967296\\)|noundef|nofree|readonly|readnone|nocapture|captures\\(address_is_null\\)) )*'
+  const attributes = '(?:(?:range\\(i64 0, 4294967296\\)|noundef|nofree|readonly|readnone|nocapture|captures\\((?:none|address_is_null)\\)) )*'
   const param = type + ' ' + attributes + '(%[\\w.-]+)'
   const header = '^define [^@\\n]*void @' + name + '\\(' + Array(arity).fill(param).join(', ') + '\\)[^\\n]*\\{\\n([\\s\\S]*?)^\\}'
   const match = new RegExp(header, 'm').exec(ir)
@@ -114,6 +114,16 @@ export function nullSuccessors(entry = [], header) {
   return cmp[2] === 'eq' ? br.slice(2) : br.slice(2).reverse()
 }
 
+const returnsImmediately = block => block.length === 1 && block[0] === 'ret void'
+
+export function compatibilityReturns(ir) {
+  const inert = (name, arity) => {
+    const { lines } = voidBody(ir, name, arity)
+    return returnsImmediately(operand(blocks(lines), 'entry'))
+  }
+  return '  (' + inert('osp_release_unique', 1) + ', ' + inert('osp_collect', 0) + ')'
+}
+
 // Reflect the compiled free entry and its null test. Only an immediate void
 // return is inert. Every other successor is conservatively effectful.
 export function nullDrop(file) {
@@ -128,7 +138,7 @@ export function nullDrop(file) {
   const inert = label => {
     const block = cfg.get(label)
     if (!block) throw Error('missing drop successor: ' + label)
-    return block.length === 1 && block[0] === 'ret void'
+    return returnsImmediately(block)
   }
   return 'if isNull then ' + inert(absent) + ' else ' + inert(present)
 }

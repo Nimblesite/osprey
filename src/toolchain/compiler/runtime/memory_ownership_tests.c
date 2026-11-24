@@ -17,6 +17,7 @@
 #endif
 
 void *osp_alloc(int64_t size);
+void osp_collect(void);
 size_t osp_arc_live_objects(void);
 
 static long g_checks = 0;
@@ -55,8 +56,14 @@ static void t_release_frees_the_owned_tree(void) {
   CHECK(__asan_address_is_poisoned(inner));
   CHECK(__asan_address_is_poisoned(leaf));
 #endif
-  void *unique = osp_alloc(BODY);
+  unsigned char *unique = osp_alloc(BODY);
+  CHECK(unique != NULL);
+  unique[0] = 0x5A;
   osp_release_unique(unique);
+  osp_collect();
+  CHECK(osp_arc_live_objects() == base + 1);
+  CHECK(unique[0] == 0x5A);
+  osp_ownership_free(unique);
   CHECK(osp_arc_live_objects() == base);
 }
 

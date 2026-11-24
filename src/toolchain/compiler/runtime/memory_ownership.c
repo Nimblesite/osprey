@@ -4,8 +4,8 @@
 // (docs/specs/compiler/0018-MemoryManagement.md).
 //
 // The compiler refuses every program in which a value would need a second
-// owner, so an accepted program emits no retain and exactly one release per
-// value: the release of its one owner. This backend therefore keeps no
+// owner. Accepted ownership IR issues explicit frees. Persistent collection
+// helpers still use the transfer states below. This backend keeps no
 // reference counts. A block is in one of these states, held in the header word
 // the tracked heap shares with ARC (memory_tracked_heap.h):
 //
@@ -70,3 +70,6 @@ void osp_retain(void *o) {
 
 // The owner's release: the tracked heap's drop walk applies the rule above.
 void osp_ownership_free(void *o) { tracked_drop(o); }
+
+// Ownership code emits osp_ownership_free for a proved-unique allocation.
+void osp_release_unique(void *body) { (void)body; }

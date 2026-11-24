@@ -78,9 +78,10 @@ void osp_retain(void *o);
 void osp_release(void *o);
 
 // Release a reference codegen PROVES is the only one (a fresh, never-bound,
-// never-stored value consumed in the expression that created it). Default
-// frees it directly, ARC performs its ordinary release, and tracing GC leaves
-// it for the collector. The separate symbol also lets codegen declare LLVM's
+// never-stored value consumed in the expression that created it). ARC performs
+// its ordinary release. GC and ownership leave the object intact. Ownership
+// lowering calls osp_ownership_free for the last use. The separate symbol lets
+// ARC and GC codegen declare LLVM's
 // allocator free-pair attributes (allockind("free") / allocptr), so -O2 can
 // delete a provably-dead alloc+release pair outright — restoring the
 // [MEM-OWNERSHIP] static-free ideal for per-operation Result blocks. Those
