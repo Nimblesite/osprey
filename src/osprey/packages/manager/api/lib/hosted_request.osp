@@ -26,15 +26,19 @@ module HostedRequest {
         cookieName: string, csrfToken: string, maxBody: int
     }
 
-    /// The gate's decision: admission, or a stable typed rejection.
-    export type Verdict = Admitted { method: string, uri: string, body: string } | Rejected { status: int, code: string }
+    /// The admitted request echoed back by the gate.
+    export type Admission = { method: string, uri: string, body: string }
+
+    /// The gate's decision: admission, or a stable typed rejection in the
+    /// shared `HostedHeaders::Parsed` shape.
+    export type Verdict = HostedHeaders::Parsed<Admission>
 
     /// An intermediate gate result: pass to the next gate, or stop.
     type Stage = Pass | Stop { verdict: Verdict }
 
-    fn rejected(status, code) = Rejected { status: status, code: code }
+    fn rejected(status, code) = HostedHeaders::Reject { status: status, code: code }
     fn stop(status, code) = Stop { verdict: rejected(status, code) }
-    fn admitted(method, uri, body) = Admitted { method: method, uri: uri, body: body }
+    fn admitted(method, uri, body) = HostedHeaders::Ok { value: Admission { method: method, uri: uri, body: body } }
 
     /// The edge secret first, before routing, auth parsing or body work.
     /// Ordinary equality here; a constant-time comparison primitive belongs
@@ -124,20 +128,11 @@ module HostedRequest {
     }
 
     /// True when the verdict is admission.
-    export fn isAdmitted(verdict) = match verdict {
-        Admitted => true
-        _ => false
-    }
+    export fn isAdmitted(verdict) = HostedHeaders::isOk(verdict)
 
     /// The rejection status, or 0 for admission.
-    export fn statusOf(verdict) = match verdict {
-        Rejected { status, code } => status
-        _ => 0
-    }
+    export fn statusOf(verdict) = HostedHeaders::statusOf(verdict)
 
     /// The rejection code, or "" for admission.
-    export fn codeOf(verdict) = match verdict {
-        Rejected { status, code } => code
-        _ => ""
-    }
+    export fn codeOf(verdict) = HostedHeaders::codeOf(verdict)
 }
