@@ -17,6 +17,8 @@ flavors/text_and_pipelines/text_and_pipelines.test.ts
 framework/verdict_declared.test.ospml
 regressions/basics/files/file_io_json_workflow.test.osp
 regressions/basics/files/file_io_json_workflow.test.ospml
+regressions/basics/memory/struct_allocation_stress.test.osp
+regressions/basics/memory/struct_allocation_stress.test.ospml
 regressions/basics/osprey_mega_showcase.test.osp
 regressions/basics/osprey_mega_showcase.test.ospml
 regressions/basics/osprey_mega_showcase.test.py
