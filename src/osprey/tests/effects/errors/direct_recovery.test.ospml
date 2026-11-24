@@ -18,6 +18,9 @@ noneIn (s, absent) = foldList(absent, true, \(holds, item) => holds && !contains
 sealedMentions (s, whole, size, head, tail, kept, absent) =
     sealed(s, whole, size, head, tail) && mentions(s, kept, absent)
 
+(** `s` opens with `head` and closes with `tail`. *)
+edgesHold (s, head, tail) = startsWith(s, head) && endsWith(s, tail)
+
 (** Append `item` and a bar to `base`. *)
 barOn (base, item) = "${base}${item}|"
 
@@ -221,9 +224,7 @@ multipleResultTypesCase () =
 
     // Integer, string, and boolean replacements retain their declared types.
     checkAll "multiple operation result types" [
-        rendered == "7|fallback|true",
-        startsWith(rendered, "7|"),
-        endsWith(rendered, "|true")
+        sealed(rendered, "7|fallback|true", 15, "7|", "|true")
     ]
 
 (** Run `work` under a `shortage` arm whose answer `answer` computes from the request. *)
@@ -729,8 +730,7 @@ partialOverrideLatticeCase () =
         outerBaseCalls > innerBaseCalls,
         (outerBaseCalls + innerBaseCalls ) == 3,
         contains(overridden, "gold:205"),
-        startsWith(overridden, "gold:105|"),
-        endsWith(overridden, "|gold:105"),
+        edgesHold(overridden, "gold:105|", "|gold:105"),
         !contains(overridden, "gold:305"),
         !startsWith(overridden, "gold:205"),
         mentions(overridden, ["|gold:205|"], ["gold:305"]),
@@ -821,15 +821,15 @@ higherOrderRecoveryCase () =
         isEmpty(none),
         !isEmpty(one),
         steps == (listLength(one) + listLength(dup) + listLength(mixed) + 3 ),
-        listContains(dup, 3) && !listContains(dup, 6) && listContains(mixed, 5) && !listContains(mixed, 0) && listContains(one, 7) && !listContains(none, 7)
+        allHold([listContains(dup, 3), !listContains(dup, 6), listContains(mixed, 5), !listContains(mixed, 0), listContains(one, 7), !listContains(none, 7)])
     ]
 
     // Every traversed list is unchanged afterwards, at the first index, the
     // last index, one past the end and a negative index.
     checkAll "the traversed lists are unchanged by the effectful callback" [
         getIs(none, 0, missing),
-        getIs(one, 0, 7) && getIs(one, 1, missing),
-        getIs(dup, 0, 3) && getIs(dup, 2, 3) && getIs(dup, 3, missing) && getIs(mixed, 0, 1) && getIs(mixed, 4, 5) && getIs(mixed, 5, missing),
+        allHold([getIs(one, 0, 7), getIs(one, 1, missing)]),
+        allHold([getIs(dup, 0, 3), getIs(dup, 2, 3), getIs(dup, 3, missing), getIs(mixed, 0, 1), getIs(mixed, 4, 5), getIs(mixed, 5, missing)]),
         (listGet(mixed, missing) ?: 0) == 0,
         getIs(listReverse(mixed), 0, 5),
         listLength(listGet(nested, 0) ?: none) == 2,
@@ -1020,8 +1020,7 @@ multiEffectRegionCase () =
     checkAll "changing the policies changes only the handled decisions" [
         sealed(generous, "basic:2:6:0", 11, "basic:", ":0"),
         generous != rendered,
-        startsWith(generous, "basic:"),
-        endsWith(generous, ":0"),
+        edgesHold(generous, "basic:", ":0"),
         mentions(generous, [":2:6:"], ["priority"]),
         generousAudits == 3,
         generousAudits == notes,
@@ -1068,15 +1067,14 @@ boundaryValueRecoveryCase () =
         fills != 1,
         sealed(seen, "a1|a2|b3|", 9, "a1|", "b3|"),
         mentions(seen, ["|a2|"], ["b1|", "a3|"]),
-        startsWith(joined, "/x/"),
-        endsWith(joined, "  "),
+        edgesHold(joined, "/x/", "  "),
         contains(joined, "spaced")
     ]
 
     // Empty, one-character and digit-bearing replacements keep their exact
     // bytes rather than being normalised on the way out of the arm.
     checkAll "empty, single-character and digit-bearing replacements" [
-        blank == "" && isEmpty(blank) && length(blank) == 0 && single == "z" && length(single) == 1 && !isEmpty(single) && single != blank,
+        allHold([blank == "", isEmpty(blank), length(blank) == 0, single == "z", length(single) == 1, !isEmpty(single), single != blank]),
         sealedMentions(digits, "007", 3, "0", "7", ["07"], ["70"]),
         digits != "7"
     ]
@@ -1084,9 +1082,9 @@ boundaryValueRecoveryCase () =
     // Case folding is ASCII-only and total, and a substring is found at the
     // start, in the middle and at the end but not in the wrong orientation.
     checkAll "case folding and substring position at start, middle and end" [
-        mixedCase == "OsPrey" && length(mixedCase) == 6 && toUpperCase(mixedCase) == "OSPREY" && toLowerCase(mixedCase) == "osprey" && mixedCase != toUpperCase(mixedCase) && mixedCase != toLowerCase(mixedCase) && toUpperCase(mixedCase) != toLowerCase(mixedCase),
-        punctuated == "a-b_c.d,e" && length(punctuated) == 9 && startsWith(punctuated, "a-") && contains(punctuated, "_c.") && endsWith(punctuated, ",e") && !startsWith(punctuated, "-") && !endsWith(punctuated, "e,"),
-        repeated == "abab abab" && startsWith(repeated, "abab") && endsWith(repeated, "abab") && contains(repeated, "b a") && !contains(repeated, "abc") && length(repeated) == 9
+        allHold([mixedCase == "OsPrey", length(mixedCase) == 6, toUpperCase(mixedCase) == "OSPREY", toLowerCase(mixedCase) == "osprey", mixedCase != toUpperCase(mixedCase), mixedCase != toLowerCase(mixedCase), toUpperCase(mixedCase) != toLowerCase(mixedCase)]),
+        allHold([punctuated == "a-b_c.d,e", length(punctuated) == 9, startsWith(punctuated, "a-"), contains(punctuated, "_c."), endsWith(punctuated, ",e"), !startsWith(punctuated, "-"), !endsWith(punctuated, "e,")]),
+        allHold([repeated == "abab abab", startsWith(repeated, "abab"), endsWith(repeated, "abab"), contains(repeated, "b a"), !contains(repeated, "abc"), length(repeated) == 9])
     ]
 
     // Zero, the largest 32-bit positive and its negation cross the arm and then

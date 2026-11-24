@@ -3,6 +3,8 @@
 /// The zero-length buffers every combinator is pushed through; the annotation supplies the element type an empty literal cannot.
 fn emptyInts() -> Result<GpuBuffer<int>, string> = toGpu([])
 fn emptyFloats() -> Result<GpuBuffer<float>, string> = toGpu([])
+/// fourDigits uploads the digit run 1, 2, 3, 4 the zip, prefix, order and type-change cases share.
+fn fourDigits() = toGpu([1, 2, 3, 4])
 /// sumI and mulI are the associative int combines fold and scan share.
 fn sumI(a, b) = (a + b)
 fn mulI(a, b) = (a * b)
@@ -152,7 +154,7 @@ fn raggedWith(indices3, indices7, indices4) = {
 }
 /// zipTypeCase pins that the zip kernel's result type is the buffer's, not either operand's, including a pair whose two operands differ in type.
 fn zipTypeCase() = {
-    use first <- withBuffer(toGpu([1, 2, 3, 4]))
+    use first <- withBuffer(fourDigits())
     use second <- withBuffer(toGpu([3, 5, 7, 9]))
     use parity <- withBuffer(gpuZipWith(first, second, sameParity))
     use meanLeft <- withBuffer(toGpu([1, 3]))
@@ -194,7 +196,7 @@ fn scanPrefixWith(indices5) = {
     use value <- withBuffer(toGpu([1, 2, 3, 4, 5]))
     use sums <- withBuffer(gpuScan(value, 0, sumI))
     use twice <- withBuffer(gpuScan(sums, 0, sumI))
-    use four <- withBuffer(toGpu([1, 2, 3, 4]))
+    use four <- withBuffer(fourDigits())
     use products <- withBuffer(gpuScan(four, 1, mulI))
     checkAll("inclusive prefix", [
     startsAs(sums, 5, 0, [1, 3, 6, 10]), elementIs(sums, 4, 0, 15), elementIs(sums, 5, 77, 77), gpuSatisfies(gpuFold(value, 0, sumI), fn(total) => elementIs(sums, 4, 0, total)),
@@ -216,7 +218,7 @@ fn scanSeedCase() = {
 ])
 }
 /// orderCase pins the traversal itself. Every combine here is order-sensitive, so reversing the source has to change the answer, and a scan's last element has to agree with the fold running the same combine — the left-to-right host contract [GPU-BACKEND-HOST], written out as numbers.
-fn orderCase() = withBuffer(toGpu([1, 2, 3, 4]), fn(digitsUp) => withBuffer(gpuScan(digitsUp, 0, horner), fn(running) => checkAll("traversal order", [
+fn orderCase() = withBuffer(fourDigits(), fn(digitsUp) => withBuffer(gpuScan(digitsUp, 0, horner), fn(running) => checkAll("traversal order", [
     hornerTo(digitsUp, 0, 1234), uploadedHolds([4, 3, 2, 1], fn(digitsDown) => hornerTo(digitsDown, 0, 4321)), hornerTo(digitsUp, 9, 91234),
     uploadedHolds([1, 2, 3], fn(up) => differencesTo(up, 100, 94)), uploadedHolds([3, 2, 1], fn(down) => differencesTo(down, 100, 94)), elementIs(running, 0, 0, 1),
     elementsFrom(running, 1, 0, [12, 123, 1234]), gpuSatisfies(gpuFold(digitsUp, 0, horner), fn(total) => elementIs(running, 3, 0, total)),
@@ -268,7 +270,7 @@ fn mixedChainWith(indices30, indices6) = {
 fn typeChangeCase() = {
     use counting <- withBuffer(toGpu([1, 2, 3]))
     use widened <- withBuffer(gpuMap(counting, toFloat))
-    use four <- withBuffer(toGpu([1, 2, 3, 4]))
+    use four <- withBuffer(fourDigits())
     use flags <- withBuffer(gpuMap(four, isEven))
     use bits <- withBuffer(gpuMap(flags, toBit))
     use signed <- withBuffer(toGpu([0.0 - 1.5, 0.0, 2.5]))
