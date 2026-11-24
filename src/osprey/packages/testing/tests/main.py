@@ -90,5 +90,8 @@ def stopped_suite_case():
 
 
 def main():
+    """Runs every case and prints the report a golden pins: `report` lists each
+    outcome and the totals, under `run_or_print` so a fault stops the suite
+    with its reason, exactly as `Check.run` does in stopped_suite_case."""
     stopped_suite_case()
-    return Check.run(lambda: listConcat(listConcat(oracle_cases(), helper_cases()), arithmetic_fault_cases()))
+    return Check.run_or_print(lambda: Check.report(listConcat(listConcat(oracle_cases(), helper_cases()), arithmetic_fault_cases())), "suite")
