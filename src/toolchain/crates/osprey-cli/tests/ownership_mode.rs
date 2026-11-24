@@ -125,6 +125,18 @@ fn ownership_check_agrees_with_lowering() -> std::io::Result<()> {
     Ok(())
 }
 
+/// Last uses and region exits lower to the backend's direct free [MEM-OWNERSHIP-STATIC-SAFETY].
+#[test]
+fn ownership_drops_call_the_direct_free() -> std::io::Result<()> {
+    let program = repo_root().join(ACCEPTED).join("single_owner.test.osp");
+    let output = osprey(&program, &["--llvm", "--memory=ownership"])?;
+    assert!(output.status.success(), "{}", text(&output.stderr));
+    let ir = text(&output.stdout);
+    assert!(ir.contains("call void @osp_ownership_free("));
+    assert!(!ir.contains("call void @osp_release"));
+    Ok(())
+}
+
 #[test]
 fn an_unknown_backend_names_ownership_among_the_choices() -> std::io::Result<()> {
     let program = repo_root().join(ACCEPTED).join("single_owner.test.osp");

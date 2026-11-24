@@ -1,6 +1,6 @@
 //! Ledger regions [GC-ARC-PERCEUS]: a statement or a scope opens a frame, and
 //! the owners still in it are released when it closes.
-use super::{Codegen, Entry, RELEASE_DECL};
+use super::{release_operand, Codegen, Entry};
 
 /// What a ledger frame delimits. A statement's owners die when the statement
 /// closes; a scope — the function body, a loop body, a kernel or comparator
@@ -42,9 +42,8 @@ pub(crate) fn drop_frame_inline(cg: &mut Codegen) {
 /// (loop bodies reuse slots across iterations).
 pub(super) fn release_entries(cg: &mut Codegen, entries: &[Entry]) {
     for e in entries.iter().rev() {
-        cg.add_extern(RELEASE_DECL);
         let live = cg.emit_reg(format!("load i8*, i8** {}", e.slot));
-        cg.emit(format!("call void @osp_release(i8* {live})"));
+        release_operand(cg, &live);
         cg.emit(format!("store i8* null, i8** {}", e.slot));
     }
 }

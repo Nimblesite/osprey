@@ -37,6 +37,7 @@ pub use ownership::{set_ownership_check, Need, OtherUse, SecondOwner};
 pub(crate) use phi::{borrowed_phi_arms, move_phi_owners, promote_phi_arm};
 
 const RETAIN_DECL: &str = "declare void @osp_retain(i8*)";
+const OWNERSHIP_FREE_DECL: &str = "declare void @osp_ownership_free(i8*)";
 const RELEASE_DECL: &str = "declare void @osp_release(i8*)";
 /// The proved-unique drop: `allockind("free")`/`allocptr` pair it with
 /// `osp_alloc`/`osp_alloc_tagged` (same `alloc-family`), so -O2 deletes a
@@ -229,8 +230,11 @@ pub(crate) fn consume_fresh(cg: &mut Codegen, v: &Value) {
 /// default frees it, ARC releases it and tracing GC leaves it to the
 /// collector [MEM-BACKENDS].
 pub(crate) fn release_unique(cg: &mut Codegen, ptr: &str) {
-    cg.add_extern(RELEASE_UNIQUE_DECL);
-    cg.emit(format!("call void @osp_release_unique(i8* {ptr})"));
+    if cg.ownership.on {
+        release_operand(cg, ptr);
+    } else {
+        ownership_call(cg, RELEASE_UNIQUE_DECL, "release_unique", ptr);
+    }
 }
 
 /// The innermost frame's current length — the mark a `match` captures BEFORE
@@ -374,7 +378,11 @@ pub(crate) fn retain_operand(cg: &mut Codegen, operand: &str) {
 /// Emit `osp_release` on a raw `i8*` operand (a loaded old cell value, a
 /// runtime-held env whose structural end has been reached).
 pub(crate) fn release_operand(cg: &mut Codegen, operand: &str) {
-    ownership_call(cg, RELEASE_DECL, "release", operand);
+    if cg.ownership.on {
+        ownership_call(cg, OWNERSHIP_FREE_DECL, "ownership_free", operand);
+    } else {
+        ownership_call(cg, RELEASE_DECL, "release", operand);
+    }
 }
 
 /// Emit one runtime ownership call over a raw `i8*` operand, declaring it once.
