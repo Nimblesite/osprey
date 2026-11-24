@@ -14,9 +14,10 @@ compile_runtime() {
 }
 compile_runtime "$runtime/list_runtime.c" "$out/runtime.ll"
 compile_runtime "$runtime/map_runtime.c" "$out/map.ll"
+compile_runtime "$runtime/string_runtime.c" "$out/strings.ll"
 reflect() {
   node "$root/scripts/proof/ownership-lowering.mjs" "$program" "$1" \
-    "$tools/OwnershipLowering.lean.in" "${3:-$out/runtime.ll}" "$out/map.ll" > "$2"
+    "$tools/OwnershipLowering.lean.in" "${3:-$out/runtime.ll}" "$out/map.ll" "${4:-$out/strings.ll}" > "$2"
 }
 cd "$tools"
 reflect "$out/ownership.ll" "$out/OwnershipLowering.lean"
@@ -24,7 +25,7 @@ lake build lean4export
 lake env lean -DwarningAsError=true --root="$out" -o "$out/OwnershipLowering.olean" "$out/OwnershipLowering.lean"
 exporter=$(lake env which lean4export)
 lean_path=$(lake env printenv LEAN_PATH)
-for name in compiledGrow compiledGrowWhen runtimeRootOrigins; do
+for name in compiledGrow compiledGrowWhen runtimeRootOrigins renderedStringOrigin; do
   theorem="OwnershipLowering.$name"
   LEAN_PATH="$out:$lean_path" "$exporter" OwnershipLowering -- "$theorem" > "$out/$name.ndjson"
   for backend in gc arc wasm; do
@@ -40,6 +41,20 @@ done
 # The mutants are valid instructions in the supported fragment. Refuse them
 # at the theorem itself, independently of reflection or LLVM syntax checks.
 mkdir -p "$out/mutations"
+reject() {
+  local fault=$1 theorem=$2
+  local file="$out/mutations/$fault.lean" log="$out/mutations/$fault.log"
+  if lake env lean "$file" > "$log" 2>&1; then
+    echo "accepted $fault" >&2
+    return 1
+  fi
+  local start end
+  start=$(grep -n "^theorem $theorem " "$file" | cut -d: -f1)
+  end=$(awk -v start="$start" 'NR > start && /^(def |theorem |end )/ {print NR; exit}' "$file")
+  awk -F: -v start="$start" -v end="$end" \
+    '/\.lean:[0-9]+:[0-9]+: error:/ && $2 >= start && $2 < end {failed=1} END {exit !failed}' "$log"
+  echo "REJECT $fault at $theorem"
+}
 for fault in leak double-free early-free stale-phi; do
   awk -v fault="$fault" '
     /^define / {body = /@grow\$mono[0-9]+\(i8\* %\$p0, i64 %\$p1\)/}
@@ -54,12 +69,9 @@ for fault in leak double-free early-free stale-phi; do
     {print}
   ' "$out/ownership.ll" > "$out/mutations/$fault.ll"
   reflect "$out/mutations/$fault.ll" "$out/mutations/$fault.lean"
-  if lake env lean "$out/mutations/$fault.lean" > "$out/mutations/$fault.log" 2>&1; then
-    echo "accepted $fault" >&2
-    exit 1
-  fi
-  grep -q "Tactic .rfl. failed" "$out/mutations/$fault.log"
-  echo "REJECT $fault"
+  theorem=compiledGrow
+  if [[ $fault == stale-phi ]]; then theorem=compiledGrowWhen; fi
+  reject "$fault" "$theorem"
 done
 
 # Mutate a real C return and recompile it through the same ownership shim.
@@ -72,10 +84,10 @@ awk '
 ' "$runtime/list_runtime.c" > "$out/mutations/alias.c"
 compile_runtime "$out/mutations/alias.c" "$out/mutations/alias.ll"
 reflect "$out/ownership.ll" "$out/mutations/alias.lean" "$out/mutations/alias.ll"
-if lake env lean "$out/mutations/alias.lean" > "$out/mutations/alias.log" 2>&1; then
-  echo 'accepted aliased list root' >&2
-  exit 1
-fi
-awk -F: -v first="$(grep -n '^theorem runtimeRootOrigins ' "$out/mutations/alias.lean" | cut -d: -f1)" \
-  '/alias.lean:[0-9]+:[0-9]+: error:/ && $2 >= first {failed=1} END {exit !failed}' "$out/mutations/alias.log"
-echo 'REJECT aliased C return'
+reject alias runtimeRootOrigins
+
+sed '/^char \*osp_string_dup_internal(/,/^}/s/return out;/return (char *)s;/' \
+  "$runtime/string_runtime.c" > "$out/mutations/borrowed-string.c"
+compile_runtime "$out/mutations/borrowed-string.c" "$out/mutations/borrowed-string.ll"
+reflect "$out/ownership.ll" "$out/mutations/borrowed-string.lean" "$out/runtime.ll" "$out/mutations/borrowed-string.ll"
+reject borrowed-string renderedStringOrigin

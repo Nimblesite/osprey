@@ -62,23 +62,27 @@ theorem compiledGrowWhen (xs : List α) (x : α) (enabled : Bool) :
    Allocator correctness and survival of that allocation are separate. -/
 inductive Origin where
   | allocated
+  | nullResult
   | other
   | fork (left right : Origin)
 
-def allocatorOrigin (pick : Nat → Bool) (depth : Nat) : Origin → Bool
+def allocatorOrigin (allowNull : Bool) (pick : Nat → Bool) (depth : Nat) : Origin → Bool
   | .allocated => true
+  | .nullResult => allowNull
   | .other => false
-  | .fork a b => if pick depth then allocatorOrigin pick (depth+1) a
-                  else allocatorOrigin pick (depth+1) b
+  | .fork a b => if pick depth then allocatorOrigin allowNull pick (depth+1) a
+                  else allocatorOrigin allowNull pick (depth+1) b
 
-inductive Allocated : Origin → Prop where
-  | leaf : Allocated .allocated
-  | fork : Allocated left → Allocated right → Allocated (.fork left right)
+inductive Allocated (allowNull : Bool) : Origin → Prop where
+  | leaf : Allocated allowNull .allocated
+  | nullResult : allowNull = true → Allocated allowNull .nullResult
+  | fork : Allocated allowNull left → Allocated allowNull right → Allocated allowNull (.fork left right)
 
-theorem allocatedPath (pick : Nat → Bool) (depth : Nat) (h : Allocated root) :
-    allocatorOrigin pick depth root = true := by
+theorem allocatedPath {allowNull : Bool} (pick : Nat → Bool) (depth : Nat) (h : Allocated allowNull root) :
+    allocatorOrigin allowNull pick depth root = true := by
   induction h generalizing depth with
   | leaf => rfl
+  | nullResult h => exact h
   | fork _ _ left right =>
     unfold allocatorOrigin
     split
@@ -93,10 +97,18 @@ def mapSetReturns : Origin :=
 -- MAP SET RETURNS
 
 theorem runtimeRootOrigins (pick : Nat → Bool) :
-    allocatorOrigin pick 0 appendReturns = true ∧
-    allocatorOrigin pick 0 prependReturns = true ∧
-    allocatorOrigin pick 0 mapSetReturns = true := by
+    allocatorOrigin false pick 0 appendReturns = true ∧
+    allocatorOrigin false pick 0 prependReturns = true ∧
+    allocatorOrigin false pick 0 mapSetReturns = true := by
   refine ⟨allocatedPath pick 0 ?_, allocatedPath pick 0 ?_, allocatedPath pick 0 ?_⟩ <;>
     repeat constructor
+
+def stringRenderReturns : Origin :=
+-- STRING RENDER RETURNS
+
+theorem renderedStringOrigin (pick : Nat → Bool) :
+    allocatorOrigin true pick 0 stringRenderReturns = true := by
+  apply allocatedPath
+  repeat constructor
 
 end OwnershipLowering

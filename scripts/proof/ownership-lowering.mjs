@@ -3,7 +3,7 @@
 // its actual predecessor. Reject unknown instructions [MEM-OWNERSHIP-STATIC-VERIFICATION].
 import { readFileSync } from 'node:fs'
 import { runtimeReturns } from './runtime-returns.mjs'
-const [source, irFile, template, listFile, mapFile] = process.argv.slice(2)
+const [source, irFile, template, listFile, mapFile, stringFile] = process.argv.slice(2)
 const src = readFileSync(source, 'utf8').split('\n')
 const ir = readFileSync(irFile, 'utf8')
 function define(map, key, value = map.size) {
@@ -84,10 +84,13 @@ for (const definition of ['fn grow(xs, x) = listAppend(xs, x)', 'fn growWhen(xs,
 const conditional = blocks('growWhen', true)
 const list = runtimeReturns(listFile, 'osp_alloc_tagged_noinit')
 const map = runtimeReturns(mapFile, 'osp_arc_calloc')
+const strings = runtimeReturns(stringFile, 'osp_alloc_tagged')
+const renderer = runtimeReturns(irFile, 'osp_string_show', strings('osp_string_show'))
 process.stdout.write(readFileSync(template, 'utf8')
   .replace('-- APPEND RETURNS', list('osprey_list_append_of'))
   .replace('-- PREPEND RETURNS', list('osprey_list_prepend_of'))
   .replace('-- MAP SET RETURNS', map('osprey_map_set_of'))
+  .replace('-- STRING RENDER RETURNS', renderer('osp.any.str.string'))
   .replace('-- EMITTED BODY', trace(blocks('grow', false), false))
   .replace('-- ENABLED BODY', trace(conditional, true))
   .replace('-- DISABLED BODY', trace(conditional, false)))
