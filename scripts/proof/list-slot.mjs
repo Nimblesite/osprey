@@ -2,7 +2,7 @@
 // from replace_slot's phi through the skip/retain edge, up to the loop latch.
 import { pointerCfg, jumpTarget, operand } from './runtime-returns.mjs'
 
-const slotAddress = /^(%[\w.]+) = getelementptr inbounds (?:nuw )?(?:\[8 x i8\], ptr (%[\w.]+), i64 |\[32 x i64\], ptr (%[\w.]+), i64 0, i64 )(%[\w.]+)$/
+const slotAddress = /^(%[\w.]+) = getelementptr inbounds (?:nuw )?(?:(?:\[8 x i8\]|i64), ptr (%[\w.]+), i64 |\[32 x i64\], ptr (%[\w.]+), i64 0, i64 )(%[\w.]+)$/
 
 function one(values, description) {
   if (values.length !== 1) throw Error('expected one ' + description)
@@ -30,9 +30,11 @@ function retainIndex(body, fresh, indices, latch) {
   return '[' + operand(indices, gep[4]) + ']'
 }
 
-function slotFunction(ir) {
-  const { args, lines, cfg } = pointerCfg(ir, 'replace_slot')
-  const allocated = one(lines.flatMap(s => s.match(/^(%[\w.]+) = .*call .*ptr @alloc_trie_storage\(/)?.slice(1) ?? []), 'node allocation')
+function slotFunction(ir, collision = false) {
+  const { args, lines, cfg } = pointerCfg(ir, collision ? 'collision_words' : 'replace_slot')
+  const allocator = collision ? 'alloc_slots' : 'alloc_trie_storage'
+  const allocation = new RegExp('^(%[\\w.]+) = .*call .*ptr @' + allocator + '\\(')
+  const allocated = one(lines.flatMap(s => s.match(allocation)?.slice(1) ?? []), 'slot allocation')
   if (args.length !== 5) throw Error('unsupported slot signature')
   return { args, cfg, allocated }
 }
@@ -71,15 +73,53 @@ export function retainedSlot(ir) {
   return '  if i ' + (cmp[2] === 'eq' ? '=' : '≠') + ' slot then ' + edge(br[2]) + ' else ' + edge(br[3])
 }
 
-export function writtenSlot(ir) {
-  const { args, cfg, allocated } = slotFunction(ir)
+export function writtenSlot(ir, collision = false) {
+  const { args, cfg, allocated } = slotFunction(ir, collision)
   const end = one([...cfg.values()].filter(body => body.at(-1)?.startsWith('ret ')), 'slot return')
   const [widen, gep, write] = decode(end.slice(0, -1),
-    /^(%[\w.]+) = sext i32 (%[\w.]+) to i64$/,
+    /^(%[\w.]+) = (sext|zext) i32 (%[\w.]+) to i64$/,
     slotAddress,
     /^store i64 (0|%[\w.]+), ptr (%[\w.]+), align 8$/)
-  if (end.at(-1) !== 'ret ptr ' + allocated || widen[2] !== args[3] ||
+  if (end.at(-1) !== 'ret ptr ' + allocated || widen[2] !== (collision ? 'zext' : 'sext') ||
+      widen[3] !== args[collision ? 2 : 3] ||
       (gep[2] ?? gep[3]) !== allocated || gep[4] !== widen[1] || write[2] !== gep[1])
     throw Error('unsupported compiled slot write')
-  return '  (slot.val * 8, ' + operand(new Map([[args[4], '_value'], ['0', '0']]), write[1]) + ')'
+  return '  (slot.val * 8, ' + operand(new Map([[args[collision ? 3 : 4], '_value'], ['0', '0']]), write[1]) + ')'
+}
+
+// Only straight-line size arithmetic, allocation and memcpy can precede the
+// reflected calls. Reject new effects before the first retain.
+function collisionSetup(body) {
+  const effects = body.filter(line => !/^%[\w.]+ = (?:zext|icmp|add|shl) /.test(line))
+  decode(effects, /^%[\w.]+ = (?:tail )?call fastcc ptr @alloc_slots\(/,
+    /^(?:tail )?call void @llvm\.memcpy\.p0\.p0\.i64\(/)
+}
+
+// LLVM xor with all ones complements a 32-bit word. The add wraps modulo 2^32.
+export function collisionRanges(ir) {
+  const { args: [, count, at, , managed], cfg, allocated } = slotFunction(ir, true)
+  const entry = operand(cfg, 'entry')
+  const call = /^(?:tail )?call fastcc void @retain_slots\(ptr (?:noundef |nonnull )*(%[\w.]+), i32 noundef (%[\w.]+), i32 noundef (%[\w.]+)\)$/
+  const [prefix, cmp, br] = decode(entry.slice(-3), call,
+    /^(%[\w.]+) = icmp ult i32 (%[\w.]+), (%[\w.]+)$/,
+    /^br i1 (%[\w.]+), label %([\w.]+), label %([\w.]+)$/)
+  collisionSetup(entry.slice(0, -3))
+  if (cfg.size !== 3 ||
+      prefix[1] !== allocated || prefix[3] !== managed || cmp[2] !== at || cmp[3] !== count ||
+      br[1] !== cmp[1] || !operand(cfg, br[3]).at(-1)?.startsWith('ret ptr '))
+    throw Error('unsupported collision prefix')
+  const body = operand(cfg, br[2])
+  const [index, base, offset, complement, sum, suffix] = decode(body.slice(0, -1),
+    /^(%[\w.]+) = zext i32 (%[\w.]+) to i64$/, slotAddress,
+    /^(%[\w.]+) = getelementptr inbounds (?:nuw )?i8, ptr (%[\w.]+), i64 (\d+)$/,
+    /^(%[\w.]+) = xor i32 (%[\w.]+), -1$/,
+    /^(%[\w.]+) = add i32 (%[\w.]+), (%[\w.]+)$/, call)
+  if (jumpTarget(body.at(-1)) !== br[3] || index[2] !== at || (base[2] ?? base[3]) !== allocated ||
+      base[4] !== index[1] || offset[2] !== base[1] || complement[2] !== at ||
+      ![count, complement[1]].every(v => sum.slice(2).includes(v)) ||
+      suffix[1] !== offset[1] || suffix[2] !== sum[1] || suffix[3] !== managed)
+    throw Error('unsupported collision suffix')
+  const first = operand(new Map([[count, 'count'], [at, 'atSlot']]), prefix[2])
+  return '  ((' + first + '), if atSlot < count then some (atSlot.val * 8 + ' + offset[3] +
+    ', (count.val + (4294967295 - atSlot.val)) % 4294967296) else none)'
 }

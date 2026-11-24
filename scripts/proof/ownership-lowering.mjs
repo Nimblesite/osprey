@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs'
 import { liveAccounting, reclaimPrefix } from './live-accounting.mjs'
 import { bodyPaths, popBody } from './worklist-drain.mjs'
 import { childDrop, growthBytes, worklistPush } from './child-drop.mjs'
-import { retainedSlot, writtenSlot } from './list-slot.mjs'
+import { collisionRanges, retainedSlot, writtenSlot } from './list-slot.mjs'
 import { mapMissFrame } from './map-miss.mjs'
 import { resultMatch } from './result-take.mjs'
 import { pairConstructor, pairWalk } from './record-ownership.mjs'
@@ -66,6 +66,7 @@ const map = runtimeReturns(mapFile, 'osp_arc_calloc')
 const strings = runtimeReturns(stringFile, 'osp_alloc_tagged')
 const renderer = runtimeReturns(irFile, 'osp_string_show', strings('osp_string_show'))
 const heap = readFileSync(heapFile, 'utf8')
+const hamt = readFileSync(hamtFile, 'utf8')
 const walk = readFileSync(walkFile, 'utf8')
 const stringOps = 'concat take drop substring to_upper to_lower trim_start trim_end trim reverse replace repeat pad_start pad_end from_codepoint'.split(' ')
 process.stdout.write(readFileSync(template, 'utf8')
@@ -84,7 +85,9 @@ process.stdout.write(readFileSync(template, 'utf8')
   .replace('-- COMPATIBILITY RETURNS', compatibilityReturns(heap))
   .replace('-- WRITTEN SLOT', writtenSlot(readFileSync(listFile, 'utf8')))
   .replace('-- RETAINED SLOT', retainedSlot(readFileSync(listFile, 'utf8')))
-  .replace('-- MAP MISS FRAME', mapMissFrame(readFileSync(hamtFile, 'utf8')))
+  .replace('-- COLLISION WRITE', writtenSlot(hamt, true))
+  .replace('-- COLLISION RANGES', collisionRanges(hamt))
+  .replace('-- MAP MISS FRAME', mapMissFrame(hamt))
   .replace('-- NULL DROP', nullDrop(heapFile))
   .replace('-- STRING OP RETURNS', stringOps.map(op => '  | .«' + op + '» => ' + strings('osp_string_' + op)).join('\n'))
   .replace('-- APPEND RETURNS', list('osprey_list_append_of'))

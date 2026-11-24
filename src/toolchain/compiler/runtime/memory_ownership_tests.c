@@ -196,6 +196,38 @@ static void t_replace_transferred_slot(int prepend) {
   CHECK(osp_arc_live_objects() == base);
 }
 
+// Distinct FNV-1a keys with hash 1246396058 force the production collision path.
+static int64_t owned_key(const char *text) {
+  size_t bytes = strlen(text) + 1;
+  char *key = osp_alloc_tagged((int64_t)bytes, OSP_MEM_STRING);
+  CHECK(key != NULL);
+  memcpy(key, text, bytes);
+  return (int64_t)(uintptr_t)key;
+}
+
+static void t_collision_transfer(void) {
+  size_t base = osp_arc_live_objects();
+  const int64_t keys[] = {owned_key("keyktfa"), owned_key("key51wu")};
+  OspreyMap *map = osprey_map_empty(OSPREY_KEY_STRING);
+  for (int i = 0; i < 2; i++) {
+    OspreyMap *next = osprey_map_set_of(map, keys[i], owned_key("value"), 1);
+    osp_ownership_free(map);
+    map = next;
+  }
+  for (int i = 0; i < 2; i++) {
+    int64_t value = osprey_map_get(map, keys[i]);
+    osp_retain((void *)(uintptr_t)keys[i]);
+    osp_retain((void *)(uintptr_t)value);
+    OspreyMap *next = osprey_map_set_of(map, keys[i], value, 1);
+    osp_ownership_free(map);
+    CHECK(osprey_map_length(next) == 2 && osprey_map_get(next, keys[i]) == value);
+    CHECK(strcmp((char *)(uintptr_t)value, "value") == 0);
+    map = next;
+  }
+  osp_ownership_free(map);
+  CHECK(osp_arc_live_objects() == base);
+}
+
 int main(void) {
   // Arm the live counters before the first allocation (memory_tracked_heap.h).
   CHECK(setenv("OSPREY_OWNERSHIP_DEBUG", "1", 1) == 0);
@@ -210,6 +242,7 @@ int main(void) {
 #ifndef _WIN32
   t_external_mapping_drop();
 #endif
+  t_collision_transfer();
   t_replace_transferred_slot(0);
   t_replace_transferred_slot(1);
   t_release_frees_the_owned_tree();

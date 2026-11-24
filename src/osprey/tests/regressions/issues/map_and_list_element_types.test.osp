@@ -3,11 +3,13 @@
 // [MEM-OWNERSHIP-STATIC-SHARING] The absent removal keeps the managed value
 // usable through the next successful removal and lookup.
 fn afterRemovals() = {
-    let populated = mapSet(mapSet(Map(), "k", "he" + "ap"), "other", "temporary")
-    mapRemove(mapRemove(populated, "absent"), "other")
+    // These distinct keys share a 32-bit FNV hash. Replace one collision entry.
+    let entries = mapSet(mapSet(Map(), "keyktfa", "first"), "key51wu", "temporary")
+    let populated = mapSet(entries, "keyktfa", "he" + "ap")
+    mapRemove(mapRemove(populated, "absent"), "key51wu")
 }
 let ms = afterRemovals()
-print("map string  -> ${mapGet(ms, "k")}")
+print("map string  -> ${mapGet(ms, "keyktfa")}")
 let mf = mapSet(Map(), "k", 1.5)
 print("map float   -> ${mapGet(mf, "k")}")
 let mb = mapSet(Map(), "k", true)

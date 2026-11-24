@@ -111,12 +111,6 @@ static void retain_slots(const int64_t *a, uint32_t count, int managed) {
   }
 }
 
-static void release_slot(int64_t v, int managed) {
-  if (managed) {
-    osp_release((void *)(uintptr_t)v);
-  }
-}
-
 /* TRANSFERS `key` and `value`. */
 static OspreyMapNode *make_leaf(uint32_t h, int64_t key, int64_t value,
                                 OspreyMapPolicy pol) {
@@ -164,74 +158,52 @@ static OspreyMapNode *copy_internal_except(OspreyMapNode *src, uint32_t idx,
   return out;
 }
 
-/* Fold `a` (leaf or collision) and leaf `b` into one collision node at the
- * bottom of the hash. Both are BORROWED, so every element slot copied out of
- * them gains a reference. */
-static OspreyMapNode *collide(OspreyMapNode *a, OspreyMapNode *b,
-                              OspreyMapPolicy pol) {
-  int km = map_key_is_managed(pol);
-  int vm = map_value_is_managed(pol);
-  uint32_t base = (a->kind == NODE_COLLISION) ? a->count : 1u;
-  int64_t *ks = alloc_slots((size_t)base + 1u, km);
-  int64_t *vs = alloc_slots((size_t)base + 1u, vm);
-  if (a->kind == NODE_COLLISION) {
-    memcpy(ks, a->coll_keys, (size_t)base * sizeof(int64_t));
-    memcpy(vs, a->coll_values, (size_t)base * sizeof(int64_t));
-  } else {
-    ks[0] = a->leaf_key;
-    vs[0] = a->leaf_value;
-  }
-  ks[base] = b->leaf_key;
-  vs[base] = b->leaf_value;
-  retain_slots(ks, base + 1u, km);
-  retain_slots(vs, base + 1u, vm);
-  return make_collision(a->hash, base + 1u, ks, vs, pol);
+/* The inserted word is transferred. Only words surviving from the source
+ * acquire a reference [MEM-OWNERSHIP-STATIC-SHARING]. at==count appends. */
+static int64_t *collision_words(const int64_t *src, uint32_t count, uint32_t at,
+                                int64_t value, int managed) {
+  int64_t *out = alloc_slots((size_t)count + (at == count), managed);
+  memcpy(out, src, (size_t)count * sizeof(*out));
+  retain_slots(out, at, managed);
+  if (at < count) retain_slots(out + at + 1, count - at - 1, managed);
+  out[at] = value;
+  return out;
 }
 
-/* Borrows BOTH `a` and `b` — it dups whichever it stores, so each caller keeps
- * its own reference and releases the transient leaf itself. */
-static OspreyMapNode *merge_leaves(OspreyMapNode *a, OspreyMapNode *b,
-                                   int32_t shift, OspreyMapPolicy pol) {
-  if (shift >= MAP_HASH_BITS) {
-    return collide(a, b, pol);
-  }
-  uint32_t bit_a = bit_for(a->hash, shift);
-  uint32_t bit_b = bit_for(b->hash, shift);
-  if (bit_a == bit_b) {
-    OspreyMapNode *n = make_internal(bit_a, 1u, pol);
-    n->children[0] = merge_leaves(a, b, shift + OSPREY_MAP_BITS, pol);
-    return n;
-  }
-  OspreyMapNode *n = make_internal(bit_a | bit_b, 2u, pol);
-  uint32_t idx_a = index_for(bit_a | bit_b, bit_a);
-  uint32_t idx_b = index_for(bit_a | bit_b, bit_b);
-  n->children[idx_a] = a;
-  n->children[idx_b] = b;
-  osp_retain(a);
-  osp_retain(b);
-  return n;
+static OspreyMapNode *collision_with(OspreyMapNode *node, uint32_t at, int64_t key,
+                                     int64_t value, OspreyMapPolicy pol) {
+  int leaf = node->kind == NODE_LEAF;
+  uint32_t count = leaf ? 1u : node->count;
+  int64_t *keys = collision_words(leaf ? &node->leaf_key : node->coll_keys,
+                                  count, at, key, map_key_is_managed(pol));
+  int64_t *values = collision_words(leaf ? &node->leaf_value : node->coll_values,
+                                    count, at, value, map_value_is_managed(pol));
+  return make_collision(node->hash, count + (at == count), keys, values, pol);
 }
 
-/* Split borrowed `node` and a fresh leaf into a shared subtree. merge_leaves
- * borrows the leaf, so it dies here unless the new tree dup'd it — and with it
- * the key/value references it did not hand on. */
-static OspreyMapNode *assoc_split(OspreyMapNode *node, int32_t shift,
-                                  uint32_t hash, int64_t key, int64_t value,
-                                  OspreyMapPolicy pol) {
-  OspreyMapNode *leaf = make_leaf(hash, key, value, pol);
-  OspreyMapNode *merged = merge_leaves(node, leaf, shift, pol);
-  osp_release(leaf);
-  return merged;
+/* Borrow node; move the incoming key and value directly to their destination. */
+static OspreyMapNode *assoc_split(OspreyMapNode *node, int32_t shift, uint32_t hash,
+                                  int64_t key, int64_t value, OspreyMapPolicy pol) {
+  if (shift >= MAP_HASH_BITS)
+    return collision_with(node, node->kind == NODE_LEAF ? 1u : node->count, key, value, pol);
+  uint32_t old_bit = bit_for(node->hash, shift);
+  uint32_t new_bit = bit_for(hash, shift);
+  if (old_bit == new_bit) {
+    OspreyMapNode *out = make_internal(old_bit, 1u, pol);
+    out->children[0] = assoc_split(node, shift + OSPREY_MAP_BITS, hash, key, value, pol);
+    return out;
+  }
+  uint32_t bitmap = old_bit | new_bit;
+  OspreyMapNode *out = make_internal(bitmap, 2u, pol);
+  osp_retain(node);
+  out->children[index_for(bitmap, old_bit)] = node;
+  out->children[index_for(bitmap, new_bit)] = make_leaf(hash, key, value, pol);
+  return out;
 }
 
-/* Path-copy a collision node with `key`/`value` (TRANSFERRED) written in:
- * replacing the matching entry, or appended when there is none. Every slot
- * copied out of `node` is dup'd; a replaced pair drops the copy's dup. */
-static OspreyMapNode *assoc_collision(OspreyMapNode *node, uint32_t hash,
+static OspreyMapNode *assoc_collision(OspreyMapNode *node,
                                       int64_t key, int64_t value,
                                       OspreyMapPolicy pol, int *grew) {
-  int km = map_key_is_managed(pol);
-  int vm = map_value_is_managed(pol);
   uint32_t at = node->count;
   for (uint32_t i = 0; i < node->count; i++) {
     if (osprey_map_keys_equal(map_key_type(pol), node->coll_keys[i], key)) {
@@ -240,20 +212,7 @@ static OspreyMapNode *assoc_collision(OspreyMapNode *node, uint32_t hash,
     }
   }
   *grew = (at == node->count) ? 1 : 0;
-  uint32_t count = node->count + (uint32_t)*grew;
-  int64_t *ks = alloc_slots((size_t)count, km);
-  int64_t *vs = alloc_slots((size_t)count, vm);
-  memcpy(ks, node->coll_keys, (size_t)node->count * sizeof(int64_t));
-  memcpy(vs, node->coll_values, (size_t)node->count * sizeof(int64_t));
-  retain_slots(ks, node->count, km);
-  retain_slots(vs, node->count, vm);
-  if (!*grew) {
-    release_slot(ks[at], km);
-    release_slot(vs[at], vm);
-  }
-  ks[at] = key;
-  vs[at] = value;
-  return make_collision(hash, count, ks, vs, pol);
+  return collision_with(node, at, key, value, pol);
 }
 
 OspreyMapNode *osprey_map_node_assoc(OspreyMapNode *node, int32_t shift,
@@ -274,7 +233,7 @@ OspreyMapNode *osprey_map_node_assoc(OspreyMapNode *node, int32_t shift,
   }
   if (node->kind == NODE_COLLISION) {
     if (node->hash == hash) {
-      return assoc_collision(node, hash, key, value, pol, grew);
+      return assoc_collision(node, key, value, pol, grew);
     }
     *grew = 1;
     return assoc_split(node, shift, hash, key, value, pol);

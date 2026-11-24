@@ -106,7 +106,8 @@ C_SRC_memory_arc_tests = runtime/memory_arc_tests.c runtime/memory_arc_layout_te
 C_FLAGS_memory_arc_tests = -fno-inline
 C_LIBS_memory_arc_tests = -pthread
 GPU_BUFFER_TEST_SRC = runtime/gpu_runtime.c runtime/gpu_lifetime.c runtime/gpu_map_file.c runtime/gpu_elements.c runtime/gpu_host.c $(TENSOR_READER_SRC) $(FILE_RUNTIME_SRC)
-C_SRC_memory_ownership_tests = runtime/memory_ownership_tests.c runtime/memory_ownership.c runtime/list_runtime.c $(GPU_BUFFER_TEST_SRC)
+OWNERSHIP_TEST_CONTAINERS = runtime/list_runtime.c runtime/map_runtime.c runtime/map_runtime_hamt.c
+C_SRC_memory_ownership_tests = runtime/memory_ownership_tests.c runtime/memory_ownership.c $(OWNERSHIP_TEST_CONTAINERS) $(GPU_BUFFER_TEST_SRC)
 C_LIBS_memory_ownership_tests = -pthread
 C_SRC_memory_gc_tests = runtime/memory_gc_tests.c runtime/memory_gc_page_tests.c runtime/memory_gc_thread_tests.c runtime/memory_gc.c
 C_SRC_host_import_gc_tests = runtime/host_import_tests.c runtime/native_bridge.c runtime/native_bridge_lifecycle.c runtime/native_scene.c runtime/string_runtime.c runtime/float_spelling.c runtime/memory_gc.c
@@ -214,7 +215,7 @@ C_SUITE_FLAGS = $(or $(C_PROFILE_$(1)),$(T)) $(C_FLAGS_$(1)) $(4)
 C_SUITE_OBJECT = $(3)-$(basename $(notdir $(2))).o
 C_GC_SHIM_SOURCES = $(patsubst bin/gc/%.o,runtime/%.c,$(filter bin/gc/%,$(FIB_OBJ_GC))) runtime/list_tests.c runtime/list_persistence_tests.c runtime/list_sort_tests.c runtime/map_tests.c runtime/map_bulk_tests.c
 C_SUITE_SHIM = $(if $(and $(call C_SUITE_GC,$(1)),$(filter $(2),$(C_GC_SHIM_SOURCES))),-include $(3)runtime/osp_gc_shim.h) \
-  $(if $(and $(filter memory_ownership_tests,$(1)),$(filter runtime/list_runtime.c,$(2))),-include $(3)runtime/osp_arc_shim.h)
+  $(if $(and $(filter memory_ownership_tests,$(1)),$(filter $(OWNERSHIP_TEST_CONTAINERS),$(2))),-include $(3)runtime/osp_arc_shim.h)
 C_SUITE_BUILD = $(foreach src,$(sort $(C_SRC_$(1))),$(CC) $(call C_SUITE_FLAGS,$(1),,,$(4)) $(call C_SUITE_SHIM,$(1),$(src),$(2)) -c $(2)$(src) -o $(call C_SUITE_OBJECT,$(1),$(src),$(3)) && ) $(CC) $(foreach src,$(sort $(C_SRC_$(1))),$(call C_SUITE_OBJECT,$(1),$(src),$(3))) $(C_LIBS_$(1)) $(C_TEST_MEMORY_LIBS) -lm $(4) -o $(3)
 C_SUITE_CMD = echo "--- $(1)" && $(call C_SUITE_BUILD,$(1),,bin/$(1)) && ./bin/$(1)
 

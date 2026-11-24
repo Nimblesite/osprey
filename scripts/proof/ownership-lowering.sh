@@ -2,7 +2,7 @@
 # [MEM-OWNERSHIP-STATIC-VERIFICATION] Prove the current compiler's emitted specialization.
 set -euo pipefail
 root=$(cd "$(dirname "$0")/../.." && pwd)
-out="$root/target/proof/ownership"
+out=${OSPREY_OWNERSHIP_PROOF_DIR:-"$root/target/proof/ownership"}
 tools="$root/src/toolchain/benchmarks/proof/tools"
 source "$root/scripts/proof/replay.sh"
 program="$root/src/osprey/tests/regressions/ownership/single_owner.test.osp"
@@ -32,7 +32,7 @@ lake build lean4export
 lake env lean -DwarningAsError=true --root="$out" -o "$out/OwnershipLowering.olean" "$out/OwnershipLowering.lean"
 exporter=$(lake env which lean4export)
 lean_path=$(lake env printenv LEAN_PATH)
-for name in compiledGrow compiledGrowWhen runtimeRootOrigins renderedStringOrigin stringResultOrigins compiledFreeNull compiledPairFields compiledChildDrop compiledWorklistPush compiledPairQueue compiledGrowthBytes compiledPop compiledBodyReclaim compiledPushPop compiledLiveDebit compiledReclaimPrefix compiledLiveCredit compiledAccountingRoundTrip compiledResultTake compiledResultBorrow compiledResultBorrowUses compiledCompatibilityReturns compiledMapMissFrame compiledSlotRetains compiledSlotWrite; do
+for name in compiledGrow compiledGrowWhen runtimeRootOrigins renderedStringOrigin stringResultOrigins compiledFreeNull compiledPairFields compiledChildDrop compiledWorklistPush compiledPairQueue compiledGrowthBytes compiledPop compiledBodyReclaim compiledPushPop compiledLiveDebit compiledReclaimPrefix compiledLiveCredit compiledAccountingRoundTrip compiledResultTake compiledResultBorrow compiledResultBorrowUses compiledCompatibilityReturns compiledMapMissFrame compiledSlotRetains compiledSlotWrite compiledCollisionRanges compiledCollisionWrite; do
   theorem="OwnershipLowering.$name"
   axioms=none
   if [[ $name == compiledAccountingRoundTrip ]]; then axioms=propext; fi
@@ -264,3 +264,16 @@ awk '/^define / {slot = /@replace_slot\(/} slot {changed += sub(/store i64 %valu
   "$out/runtime.ll" > "$out/mutations/zero-slot.ll"
 reflect "$out/ownership.ll" "$out/mutations/zero-slot.lean" "$out/mutations/zero-slot.ll"
 reject zero-slot compiledSlotWrite
+
+for fault in collision-prefix collision-offset collision-value; do
+  awk -v fault="$fault" '
+    /^define / {words = /@collision_words\(/}
+    words && fault == "collision-prefix" && /@retain_slots\(/ {changed += sub(/i32 noundef %at,/, "i32 noundef %count,")}
+    words && fault == "collision-offset" && /getelementptr .*i8, ptr/ {changed += sub(/, i64 8$/, ", i64 16")}
+    words && fault == "collision-value" {changed += sub(/store i64 %value,/, "store i64 0,")}
+    {print} END {exit changed != 1}' "$out/hamt.ll" > "$out/mutations/$fault.ll"
+  reflect "$out/ownership.ll" "$out/mutations/$fault.lean" "" "" "" "" "$out/mutations/$fault.ll"
+  theorem=compiledCollisionRanges
+  if [[ $fault == collision-value ]]; then theorem=compiledCollisionWrite; fi
+  reject "$fault" "$theorem"
+done

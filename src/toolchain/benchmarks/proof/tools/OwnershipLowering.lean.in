@@ -406,4 +406,33 @@ def emittedSlotWrite (slot : Fin 32) (_value : BitVec 64) : Nat × BitVec 64 :=
 theorem compiledSlotWrite (slot : Fin 32) (value : BitVec 64) :
     emittedSlotWrite slot value = (slot.val * 8, value) := by rfl
 
+/-- Prefix word count and optional suffix byte offset and word count passed to retain_slots. -/
+def emittedCollisionRanges (count atSlot : Fin 4294967296) : Fin 4294967296 × Option (Nat × Nat) :=
+-- COLLISION RANGES
+
+theorem compiledCollisionRanges (count atSlot : Fin 4294967296) :
+    emittedCollisionRanges count atSlot =
+      (atSlot, if atSlot < count then some (atSlot.val * 8 + 8,
+        (count.val + (4294967295 - atSlot.val)) % 4294967296) else none) := by rfl
+
+/-- The modular suffix length counts precisely the surviving words. -/
+theorem compiledCollisionSurvivors (count atSlot : Fin 4294967296) :
+    emittedCollisionRanges count atSlot =
+      (atSlot, if atSlot < count then some ((atSlot.val + 1) * 8, count.val - atSlot.val - 1) else none) := by
+  unfold emittedCollisionRanges
+  split <;> rename_i h
+  · have lt : atSlot.val < count.val := h
+    have width := count.isLt
+    have slotBound := atSlot.isLt
+    have eq : count.val + (4294967295 - atSlot.val) = (count.val - atSlot.val - 1) + 4294967296 := by omega
+    have bound : count.val - atSlot.val - 1 < 4294967296 := by omega
+    simp only [Nat.add_mul, Nat.one_mul, eq, Nat.add_mod_right, Nat.mod_eq_of_lt bound]
+  · rfl
+
+def emittedCollisionWrite (slot : Fin 4294967296) (_value : BitVec 64) : Nat × BitVec 64 :=
+-- COLLISION WRITE
+
+theorem compiledCollisionWrite (slot : Fin 4294967296) (value : BitVec 64) :
+    emittedCollisionWrite slot value = (slot.val * 8, value) := by rfl
+
 end OwnershipLowering
