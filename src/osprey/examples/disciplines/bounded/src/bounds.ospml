@@ -43,17 +43,9 @@ module Bounds
             Error _ => Words::Missing
         Words::Missing => Words::Missing
 
-    lowest (values) = foldList (values, head (values), lowerOf)
+    lowest (values) = foldList (values, head (values), \(low, value) => min low value)
 
-    highest (values) = foldList (values, head (values), higherOf)
-
-    lowerOf (low, value) = match value < low
-        true => value
-        false => low
-
-    higherOf (high, value) = match value > high
-        true => value
-        false => high
+    highest (values) = foldList (values, head (values), \(high, value) => max high value)
 
     head (values) = match values
         [] => 0

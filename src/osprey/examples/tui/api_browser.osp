@@ -68,7 +68,6 @@ fn rule() = dim("  ==================================================")
 // UI counters explicitly keep their previous value on arithmetic overflow.
 fn inc(x) = satAdd(x, 1)
 fn dec(x) = satSub(x, 1)
-fn min(a, b) = match a < b { true => a false => b }
 fn gap(a, b) = match a < b { true => satSub(b, a) false => satSub(a, b) }
 // `%` returns int; these positive constant divisors need no Arith policy.
 // A zero-sized animation cycle has a stationary first frame.
@@ -200,7 +199,7 @@ fn nextSel(sel: int, n: int, key: string) = match key {
 // A scrolling window keeps the cursor on screen for big directories.
 fn winStart(sel: int, n: int) = match n < 23 {
     true  => 0
-    false => match sel < 11 { true => 0 false => min(a: satSub(sel, 11) , b: satSub(n, 22) ) }
+    false => match sel < 11 { true => 0 false => min(satSub(sel, 11), satSub(n, 22)) }
 }
 fn treeRows(tree: int, first: int, last: int, sel: int) = rowFold(
     fn(i, s) => treeRow(tree: tree, i: i, sel: s), first, last, sel)
@@ -210,7 +209,7 @@ fn treeScreen(repo: string, path: string, tree: int, sel: int, n: int) =
     bold(cyan("FILES  ")) + green(repo) + dim("/" + path) + "\n" +
     rule() + "\n\n" +
     treeRows(tree: tree, first: winStart(sel: sel, n: n),
-             last: min(a: satAdd(winStart(sel: sel, n: n), 22) , b: n), sel: sel) + "\n" +
+             last: min(satAdd(winStart(sel: sel, n: n), 22), n), sel: sel) + "\n" +
     rule() + "\n" +
     dim("  up/down move    enter open dir/file    esc back")
 
