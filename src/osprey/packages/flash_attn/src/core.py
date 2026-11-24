@@ -13,10 +13,39 @@ Implements [PORT-DEVICE], [PORT-SCOPE] from spec 0043.
 """
 
 __all__ = [
-    "Shapes", "FlashResult", "Bounds", "Row", "Dim4",
+    "wrapping", "Shapes", "FlashResult", "Bounds", "Row", "Dim4",
     "max_f", "min_i", "kv_head", "q_index", "kv_index", "v_at", "dot",
     "mask_bounds", "alibi_bias", "dim4", "slice_flat",
 ]
+
+
+@handler(Arith)
+class wrapping:
+    """The arithmetic policy the examples run under: an overflow answers the
+    two's-complement wrapped value, a division or remainder by zero answers zero.
+
+    # Examples
+    ```osprey
+    from flash_attn import Core
+
+    def show(top, zero):
+        with Core.wrapping:
+            print(f"[{top + 1}] [{3.0 / toFloat(zero)}] [{7 % zero}]")
+
+    show(9223372036854775807, 0)
+    ```
+    ```output
+    [-9223372036854775808] [0.0] [0]
+    ```
+    """
+    def overflow(_op, _l, _r, wrapped):
+        return wrapped
+
+    def divideByZero(_op, _l):
+        return 0.0
+
+    def remainderByZero(_l):
+        return 0
 
 
 class Shapes:
@@ -101,16 +130,8 @@ def kv_head(shapes, h):
     ```osprey
     from flash_attn import Core
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
-        def remainderByZero(l):
-            return 0
-
     def show():
-        with wrapped:
+        with Core.wrapping:
             gqa = Core.Shapes(batch=1, seqlen_q=2, seqlen_k=2, heads_q=4, heads_k=2, headdim=2)
             mqa = Core.Shapes(batch=1, seqlen_q=2, seqlen_k=2, heads_q=1, heads_k=1, headdim=2)
             print(f"[{Core.kv_head(gqa, 0)}] [{Core.kv_head(gqa, 3)}] [{Core.kv_head(mqa, 0)}]")
@@ -136,13 +157,8 @@ def q_index(shapes, b, i, h, d):
     ```osprey
     from flash_attn import Core
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
     def show():
-        with wrapped:
+        with Core.wrapping:
             shapes = Core.Shapes(batch=1, seqlen_q=2, seqlen_k=2, heads_q=2, heads_k=2, headdim=2)
             print(f"[{Core.q_index(shapes, 0, 0, 0, 0)}] [{Core.q_index(shapes, 0, 1, 1, 1)}]")
 
@@ -162,13 +178,8 @@ def kv_index(shapes, b, j, h, d):
     ```osprey
     from flash_attn import Core
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
     def show():
-        with wrapped:
+        with Core.wrapping:
             shapes = Core.Shapes(batch=1, seqlen_q=2, seqlen_k=3, heads_q=4, heads_k=2, headdim=2)
             print(f"[{Core.kv_index(shapes, 0, 0, 0, 0)}] [{Core.kv_index(shapes, 0, 2, 1, 1)}]")
 
@@ -188,16 +199,8 @@ def v_at(v, shapes, b, j, h, d):
     ```osprey
     from flash_attn import Core
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
-        def remainderByZero(l):
-            return 0
-
     def show():
-        with wrapped:
+        with Core.wrapping:
             shapes = Core.Shapes(batch=1, seqlen_q=2, seqlen_k=2, heads_q=2, heads_k=1, headdim=2)
             v = [10.0, 11.0, 20.0, 21.0]
             print(f"[{Core.v_at(v, shapes, 0, 0, 0, 0)}] [{Core.v_at(v, shapes, 0, 1, 1, 0)}] [{Core.v_at(v, shapes, 0, 5, 0, 0)}]")
@@ -218,16 +221,8 @@ def dot(q, k, shapes, b, i, h, j):
     ```osprey
     from flash_attn import Core
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
-        def remainderByZero(l):
-            return 0
-
     def show():
-        with wrapped:
+        with Core.wrapping:
             shapes = Core.Shapes(batch=1, seqlen_q=1, seqlen_k=2, heads_q=1, heads_k=1, headdim=2)
             q = [1.0, 2.0]
             k = [3.0, 4.0, 0.0, 5.0]
@@ -252,13 +247,8 @@ def mask_bounds(shapes, causal, window_left, window_right, i):
     ```osprey
     from flash_attn import Core
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
     def show():
-        with wrapped:
+        with Core.wrapping:
             causal = Core.Shapes(batch=1, seqlen_q=2, seqlen_k=3, heads_q=1, heads_k=1, headdim=2)
             local = Core.Shapes(batch=1, seqlen_q=2, seqlen_k=4, heads_q=1, heads_k=1, headdim=2)
             masked = Core.Shapes(batch=1, seqlen_q=3, seqlen_k=2, heads_q=1, heads_k=1, headdim=2)
@@ -288,13 +278,8 @@ def alibi_bias(alibi_slopes, shapes, h, i, j):
     ```osprey
     from flash_attn import Core
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
     def show():
-        with wrapped:
+        with Core.wrapping:
             shapes = Core.Shapes(batch=1, seqlen_q=2, seqlen_k=2, heads_q=2, heads_k=2, headdim=2)
             print(f"[{Core.alibi_bias([], shapes, 0, 0, 1)}] [{Core.alibi_bias([0.5, 1.0], shapes, 0, 0, 1)}] [{Core.alibi_bias([0.5, 1.0], shapes, 1, 1, 0)}]")
 
@@ -319,16 +304,8 @@ def dim4(_shape_a, shape_b, shape_c, shape_d, s):
     ```osprey
     from flash_attn import Core
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
-        def remainderByZero(l):
-            return 0
-
     def show():
-        with wrapped:
+        with Core.wrapping:
             first = Core.dim4(2, 3, 2, 2, 0)
             last = Core.dim4(2, 3, 2, 2, 11)
             print(f"[{first.a}, {first.b}, {first.c}, {first.d}] [{last.a}, {last.b}, {last.c}, {last.d}]")
@@ -356,14 +333,9 @@ def slice_flat(xs, start, n):
     ```osprey
     from flash_attn import Core
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
     def show():
         xs = [1.0, 2.0, 3.0]
-        with wrapped:
+        with Core.wrapping:
             print(f"{toString(Core.slice_flat(xs, 1, 2))} {toString(Core.slice_flat(xs, 0, 0))} {toString(Core.slice_flat(xs, 2, 2))}")
 
     show()

@@ -15,7 +15,36 @@ own RNG stream is not reproduced, so callers pass an explicit draw. Values from
 the usual libm last-digit spread. Implements [PORT-TEST-ORACLE].
 """
 
-__all__ = ["softmax", "log_softmax", "argmax", "multinomial", "neg_inf", "max_f", "max_i", "min_f", "min_i"]
+__all__ = ["wrapping", "softmax", "log_softmax", "argmax", "multinomial", "neg_inf", "max_f", "max_i", "min_f", "min_i"]
+
+
+@handler(Arith)
+class wrapping:
+    """The arithmetic policy the examples run under: an overflow answers the
+    two's-complement wrapped value, a division or remainder by zero answers zero.
+
+    # Examples
+    ```osprey
+    from transformers import Math
+
+    def show(top, zero):
+        with Math.wrapping:
+            print(f"[{top + 1}] [{3.0 / toFloat(zero)}] [{7 % zero}]")
+
+    show(9223372036854775807, 0)
+    ```
+    ```output
+    [-9223372036854775808] [0.0] [0]
+    ```
+    """
+    def overflow(_op, _l, _r, wrapped):
+        return wrapped
+
+    def divideByZero(_op, _l):
+        return 0.0
+
+    def remainderByZero(_l):
+        return 0
 
 
 def neg_inf():
@@ -105,16 +134,8 @@ def softmax(logits):
     ```osprey
     from transformers import Math
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(_op, _l):
-            return 0.0
-
     def show():
-        with wrapped:
+        with Math.wrapping:
             print(f"[{toString(Math.softmax([toFloat32(0.0), toFloat32(0.0)]))}] [{toString(Math.softmax([]))}]")
 
     show()
@@ -189,16 +210,8 @@ def multinomial(probs, u):
     ```osprey
     from transformers import Math
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(_op, _l):
-            return 0.0
-
     def show():
-        with wrapped:
+        with Math.wrapping:
             print(f"[{Math.multinomial([toFloat32(0.5), toFloat32(0.5)], toFloat32(0.0))}] [{Math.multinomial([toFloat32(0.5), toFloat32(0.5)], toFloat32(0.9))}] [{Math.multinomial([toFloat32(0.25), toFloat32(0.25), toFloat32(0.25)], toFloat32(0.9))}]")
 
     show()

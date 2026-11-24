@@ -53,13 +53,8 @@ def naive_attention(q, k, v, shapes, softmax_scale, causal, window_left, window_
     ```osprey
     from flash_attn import Core, Naive
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
     def show():
-        with wrapped:
+        with Core.wrapping:
             shapes = Core.Shapes(batch=1, seqlen_q=2, seqlen_k=1, heads_q=1, heads_k=1, headdim=1)
             r = Naive.naive_attention([1.0, 2.0], [3.0], [7.0], shapes, 1.0, True, -1, -1, [])
             print(f"[{toString(r.out)}] [{toString(r.lse)}] [{toString(r.probs)}]")

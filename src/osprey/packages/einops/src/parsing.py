@@ -11,11 +11,40 @@ message equals `str(EinopsError)` from the original.
 """
 
 __all__ = [
-    "ELLIPSIS", "Axis", "Composite", "ParsedExpression", "AxisNameCheck",
+    "wrapping", "ELLIPSIS", "Axis", "Composite", "ParsedExpression", "AxisNameCheck",
     "parse", "check_axis_name_return_reason", "check_axis_name",
     "flat_axes_order", "has_composed_axes", "axis_repr", "format_axes",
     "named", "axis_in_idents", "map_indexed",
 ]
+
+
+@handler(Arith)
+class wrapping:
+    """The arithmetic policy the examples run under: an overflow answers the
+    two's-complement wrapped value, a division or remainder by zero answers zero.
+
+    # Examples
+    ```osprey
+    from einops import Parsing
+
+    def show(top, zero):
+        with Parsing.wrapping:
+            print(f"[{top + 1}] [{3.0 / toFloat(zero)}] [{7 % zero}]")
+
+    show(9223372036854775807, 0)
+    ```
+    ```output
+    [-9223372036854775808] [0.0] [0]
+    ```
+    """
+    def overflow(_op, _l, _r, wrapped):
+        return wrapped
+
+    def divideByZero(_op, _l):
+        return 0.0
+
+    def remainderByZero(_l):
+        return 0
 
 
 def map_indexed(xs, read):
@@ -175,13 +204,8 @@ def check_axis_name_return_reason(name, allow_underscore):
     ```osprey
     from einops import Parsing
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
     def show():
-        with wrapped:
+        with Parsing.wrapping:
             bad = Parsing.check_axis_name_return_reason("1a", False)
             underscore = Parsing.check_axis_name_return_reason("_h", False)
             lone = Parsing.check_axis_name_return_reason("_", True)
@@ -211,13 +235,8 @@ def check_axis_name(name):
     ```osprey
     from einops import Parsing
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
     def show():
-        with wrapped:
+        with Parsing.wrapping:
             good = Parsing.check_axis_name("axis")
             leading_digit = Parsing.check_axis_name("1a")
             leading_underscore = Parsing.check_axis_name("_a")
@@ -487,11 +506,6 @@ def parse(expression, allow_underscore, allow_duplicates):
     ```osprey
     from einops import Parsing
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
     def describe(result):
         match result:
             case Success(value=parsed):
@@ -500,7 +514,7 @@ def parse(expression, allow_underscore, allow_duplicates):
                 return f"error: {m}"
 
     def show():
-        with wrapped:
+        with Parsing.wrapping:
             composed = Parsing.parse("b (h w) ...", False, False)
             dotted = Parsing.parse("b ..", False, False)
             print(f"{describe(composed)} {describe(dotted)}")
@@ -530,11 +544,6 @@ def flat_axes_order(expr):
     ```osprey
     from einops import Parsing
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
     def flat_text(result):
         match result:
             case Success(value=parsed):
@@ -543,7 +552,7 @@ def flat_axes_order(expr):
                 return f"error: {m}"
 
     def show():
-        with wrapped:
+        with Parsing.wrapping:
             print(flat_text(Parsing.parse("b (h w) ...", False, False)))
 
     show()
@@ -562,11 +571,6 @@ def has_composed_axes(expr):
     ```osprey
     from einops import Parsing
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
     def composed_text(result):
         match result:
             case Success(value=parsed):
@@ -575,7 +579,7 @@ def has_composed_axes(expr):
                 return f"error: {m}"
 
     def show():
-        with wrapped:
+        with Parsing.wrapping:
             split = Parsing.parse("b (h w) ...", False, False)
             flat = Parsing.parse("b c", False, False)
             print(f"{composed_text(split)} {composed_text(flat)}")

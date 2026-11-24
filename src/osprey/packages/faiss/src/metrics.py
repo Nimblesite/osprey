@@ -17,7 +17,36 @@ dyadic-input contract: every distance here is a sum of products of dyadic
 rationals, so binary64 matches faiss's float32 bit for bit.
 """
 
-__all__ = ["Topk", "l2sqr", "inner_product", "topk", "map_indexed"]
+__all__ = ["wrapping", "Topk", "l2sqr", "inner_product", "topk", "map_indexed"]
+
+
+@handler(Arith)
+class wrapping:
+    """The arithmetic policy the examples run under: an overflow answers the
+    two's-complement wrapped value, a division or remainder by zero answers zero.
+
+    # Examples
+    ```osprey
+    from faiss import Metrics
+
+    def show(top, zero):
+        with Metrics.wrapping:
+            print(f"[{top + 1}] [{3.0 / toFloat(zero)}] [{7 % zero}]")
+
+    show(9223372036854775807, 0)
+    ```
+    ```output
+    [-9223372036854775808] [0.0] [0]
+    ```
+    """
+    def overflow(_op, _l, _r, wrapped):
+        return wrapped
+
+    def divideByZero(_op, _l):
+        return 0.0
+
+    def remainderByZero(_l):
+        return 0
 
 
 def map_indexed(xs, read):
@@ -197,13 +226,8 @@ def topk(k, metric, values, ids):
     ```osprey
     from faiss import Metrics
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
     def show():
-        with wrapped:
+        with Metrics.wrapping:
             nearest = Metrics.topk(3, "L2", [9.0, 1.0, 4.0], [0, 1, 2])
             ties = Metrics.topk(2, "L2", [2.0, 2.0], [5, 3])
             padded = Metrics.topk(4, "IP", [2.0, 5.0], [10, 20])

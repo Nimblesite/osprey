@@ -43,15 +43,10 @@ def codepoints(s):
 
     # Examples
     ```osprey
-    from sacrebleu import Text
-
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped):
-            return wrapped
+    from sacrebleu import Text, Ngrams
 
     def show():
-        with wrapped:
+        with Ngrams.wrapping:
             accented = Text.codepoints("aé")
             print(f"[{toString(accented)}] [{toString(Text.codepoints(""))}]")
 
@@ -86,15 +81,10 @@ def map_codepoints(s, f):
 
     # Examples
     ```osprey
-    from sacrebleu import Text
-
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped):
-            return wrapped
+    from sacrebleu import Text, Ngrams
 
     def show():
-        with wrapped:
+        with Ngrams.wrapping:
             mapped = Text.map_codepoints("a1!", lambda cp: 120 if cp == 97 else cp)
             print(f"[{mapped}] [{Text.map_codepoints("", lambda cp: cp)}]")
 

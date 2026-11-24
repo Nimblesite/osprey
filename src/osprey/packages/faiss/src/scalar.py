@@ -99,18 +99,10 @@ def train(sq, x):
 
     # Examples
     ```osprey
-    from faiss import ScalarQuant
-
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(op, l):
-            return 0.0
+    from faiss import ScalarQuant, Metrics
 
     def show():
-        with wrapped:
+        with Metrics.wrapping:
             per_dim = ScalarQuant.train(ScalarQuant.ScalarQuantizer(2, ScalarQuant.QT_8bit), [[0.0, 2.0], [4.0, 6.0]])
             shared = ScalarQuant.train(ScalarQuant.ScalarQuantizer(2, ScalarQuant.QT_8bit_uniform), [[0.0, 2.0], [4.0, 6.0]])
             print(f"{toString(per_dim.trained)} {toString(shared.trained)}")
@@ -195,18 +187,10 @@ def compute_codes(sq, x):
 
     # Examples
     ```osprey
-    from faiss import ScalarQuant
-
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(op, l):
-            return 0.0
+    from faiss import ScalarQuant, Metrics
 
     def show():
-        with wrapped:
+        with Metrics.wrapping:
             x = [[0.0, 2.0], [2.0, 4.0], [4.0, 6.0]]
             sq8 = ScalarQuant.train(ScalarQuant.ScalarQuantizer(2, ScalarQuant.QT_8bit), x)
             sq4 = ScalarQuant.train(ScalarQuant.ScalarQuantizer(2, ScalarQuant.QT_4bit), x)
@@ -284,18 +268,10 @@ def decode(sq, codes):
 
     # Examples
     ```osprey
-    from faiss import ScalarQuant
-
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(op, l):
-            return 0.0
+    from faiss import ScalarQuant, Metrics
 
     def show():
-        with wrapped:
+        with Metrics.wrapping:
             sq8 = ScalarQuant.train(ScalarQuant.ScalarQuantizer(2, ScalarQuant.QT_8bit), [[0.0, 2.0], [4.0, 6.0]])
             print(f"{toString(ScalarQuant.decode(sq8, [[0, 127]]))}")
 
@@ -349,18 +325,10 @@ def sq_add(index, sq, xb):
 
     # Examples
     ```osprey
-    from faiss import ScalarQuant
-
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(op, l):
-            return 0.0
+    from faiss import ScalarQuant, Metrics
 
     def show():
-        with wrapped:
+        with Metrics.wrapping:
             x = [[0.0, 2.0], [2.0, 4.0], [4.0, 6.0]]
             index = ScalarQuant.IndexScalarQuantizer(2, ScalarQuant.QT_8bit, "L2")
             sq = ScalarQuant.train(ScalarQuant.ScalarQuantizer(2, ScalarQuant.QT_8bit), x)
@@ -383,18 +351,10 @@ def sq_search(index, xq, k):
 
     # Examples
     ```osprey
-    from faiss import ScalarQuant
-
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(op, l):
-            return 0.0
+    from faiss import ScalarQuant, Metrics
 
     def show():
-        with wrapped:
+        with Metrics.wrapping:
             sq = ScalarQuant.train(ScalarQuant.ScalarQuantizer(2, ScalarQuant.QT_8bit), [[0.0, 2.0], [4.0, 6.0]])
             index = ScalarQuant.sq_add(ScalarQuant.IndexScalarQuantizer(2, ScalarQuant.QT_8bit, "L2"), sq, [[0.0, 2.0], [4.0, 6.0]])
             result = ScalarQuant.sq_search(index, [[2.0, 4.0]], 2)

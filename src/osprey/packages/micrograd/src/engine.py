@@ -20,11 +20,40 @@ already hold, which is micrograd's call-backward-again behaviour.
 from micrograd.Libm import exp_of, tanh_of
 
 __all__ = [
-    "Node", "Graph", "Cursor", "empty", "size", "top", "node", "data", "value", "add",
+    "wrapping", "Node", "Graph", "Cursor", "empty", "size", "top", "node", "data", "value", "add",
     "add_const", "mul", "mul_const", "pow_const", "relu", "tanh", "exp", "neg", "sub",
     "sub_const", "rsub_const", "truediv", "truediv_const", "rtruediv_const", "ipow",
     "zero_grad", "backward", "backward_into",
 ]
+
+
+@handler(Arith)
+class wrapping:
+    """The arithmetic policy the examples run under: an overflow answers the
+    two's-complement wrapped value, a division or remainder by zero answers zero.
+
+    # Examples
+    ```osprey
+    from micrograd import Engine
+
+    def show(top, zero):
+        with Engine.wrapping:
+            print(f"[{top + 1}] [{3.0 / toFloat(zero)}] [{7 % zero}]")
+
+    show(9223372036854775807, 0)
+    ```
+    ```output
+    [-9223372036854775808] [0.0] [0]
+    ```
+    """
+    def overflow(_op, _l, _r, wrapped):
+        return wrapped
+
+    def divideByZero(_op, _l):
+        return 0.0
+
+    def remainderByZero(_l):
+        return 0
 
 
 class Node:
@@ -56,13 +85,8 @@ def empty():
     ```osprey
     from micrograd import Engine
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
     def show():
-        with wrapped:
+        with Engine.wrapping:
             g = Engine.empty()
             print(f"[{Engine.size(g)}] [{Engine.top(g)}]")
 
@@ -98,13 +122,8 @@ def top(g):
     ```osprey
     from micrograd import Engine
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
     def show():
-        with wrapped:
+        with Engine.wrapping:
             g = Engine.mul_const(Engine.value(Engine.empty(), 2.0), 0, 3.0)
             print(f"[{Engine.top(g)}] [{Engine.data(g, Engine.top(g))}]")
 
@@ -142,13 +161,8 @@ def data(g, i):
     ```osprey
     from micrograd import Engine
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
     def show():
-        with wrapped:
+        with Engine.wrapping:
             g = Engine.mul_const(Engine.value(Engine.empty(), 2.5), 0, 4.0)
             print(f"[{Engine.data(g, 0)}] [{Engine.data(g, Engine.top(g))}]")
 
@@ -173,13 +187,8 @@ def value(g, x):
     ```osprey
     from micrograd import Engine
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
     def show():
-        with wrapped:
+        with Engine.wrapping:
             g = Engine.value(Engine.empty(), 1.5)
             print(f"[{Engine.data(g, Engine.top(g))}] [{Engine.node(g, Engine.top(g)).op}]")
 
@@ -221,13 +230,8 @@ def add_const(g, a, k):
     ```osprey
     from micrograd import Engine
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
     def show():
-        with wrapped:
+        with Engine.wrapping:
             g = Engine.add_const(Engine.value(Engine.empty(), 2.0), 0, 3.0)
             print(f"[{Engine.data(g, Engine.top(g))}] [{Engine.node(g, 1).op}] [{Engine.data(g, 1)}]")
 
@@ -263,13 +267,8 @@ def mul_const(g, a, k):
     ```osprey
     from micrograd import Engine
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
     def show():
-        with wrapped:
+        with Engine.wrapping:
             g = Engine.mul_const(Engine.value(Engine.empty(), 2.5), 0, 4.0)
             print(f"[{Engine.data(g, Engine.top(g))}] [{Engine.size(g)}]")
 
@@ -289,15 +288,8 @@ def pow_const(g, a, k):
     ```osprey
     from micrograd import Engine
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-        def divideByZero(_op, _l):
-            return 0.0
-
     def show():
-        with wrapped:
+        with Engine.wrapping:
             g = Engine.pow_const(Engine.value(Engine.empty(), 3.0), 0, 2)
             print(f"[{Engine.data(g, Engine.top(g))}] [{Engine.node(g, Engine.top(g)).exponent}]")
 
@@ -371,13 +363,8 @@ def neg(g, a):
     ```osprey
     from micrograd import Engine
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
     def show():
-        with wrapped:
+        with Engine.wrapping:
             g = Engine.neg(Engine.value(Engine.empty(), 2.5), 0)
             print(f"[{Engine.data(g, Engine.top(g))}] [{Engine.size(g)}]")
 
@@ -397,13 +384,8 @@ def sub(g, a, b):
     ```osprey
     from micrograd import Engine
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
     def show():
-        with wrapped:
+        with Engine.wrapping:
             g = Engine.sub(Engine.value(Engine.value(Engine.empty(), 5.0), 2.0), 0, 1)
             print(f"[{Engine.data(g, Engine.top(g))}] [{Engine.size(g)}]")
 
@@ -425,13 +407,8 @@ def sub_const(g, a, k: float):
     ```osprey
     from micrograd import Engine
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
     def show():
-        with wrapped:
+        with Engine.wrapping:
             g = Engine.sub_const(Engine.value(Engine.empty(), 5.0), 0, 2.0)
             print(f"[{Engine.data(g, Engine.top(g))}] [{Engine.size(g)}]")
 
@@ -452,13 +429,8 @@ def rsub_const(g, a, k):
     ```osprey
     from micrograd import Engine
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
     def show():
-        with wrapped:
+        with Engine.wrapping:
             g = Engine.rsub_const(Engine.value(Engine.empty(), 2.0), 0, 10.0)
             print(f"[{Engine.data(g, Engine.top(g))}] [{Engine.size(g)}]")
 
@@ -479,15 +451,8 @@ def truediv(g, a, b):
     ```osprey
     from micrograd import Engine
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-        def divideByZero(_op, _l):
-            return 0.0
-
     def show():
-        with wrapped:
+        with Engine.wrapping:
             g = Engine.truediv(Engine.value(Engine.value(Engine.empty(), 7.0), 2.0), 0, 1)
             print(f"[{Engine.data(g, Engine.top(g))}] [{Engine.size(g)}]")
 
@@ -509,15 +474,8 @@ def truediv_const(g, a, k):
     ```osprey
     from micrograd import Engine
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-        def divideByZero(_op, _l):
-            return 0.0
-
     def show():
-        with wrapped:
+        with Engine.wrapping:
             g = Engine.truediv_const(Engine.value(Engine.empty(), 7.5), 0, 2.5)
             print(f"[{Engine.data(g, Engine.top(g))}] [{Engine.data(g, 1)}]")
 
@@ -539,15 +497,8 @@ def rtruediv_const(g, a, k):
     ```osprey
     from micrograd import Engine
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-        def divideByZero(_op, _l):
-            return 0.0
-
     def show():
-        with wrapped:
+        with Engine.wrapping:
             g = Engine.rtruediv_const(Engine.value(Engine.empty(), 4.0), 0, 10.0)
             print(f"[{Engine.data(g, Engine.top(g))}] [{Engine.size(g)}]")
 
@@ -572,15 +523,8 @@ def ipow(x, n):
     ```osprey
     from micrograd import Engine
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-        def divideByZero(_op, _l):
-            return 0.0
-
     def show():
-        with wrapped:
+        with Engine.wrapping:
             print(f"[{Engine.ipow(2.0, 3)}] [{Engine.ipow(2.0, -2)}] [{Engine.ipow(5.0, 0)}]")
 
     show()
@@ -603,13 +547,8 @@ def zero_grad(g):
     ```osprey
     from micrograd import Engine
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
     def show():
-        with wrapped:
+        with Engine.wrapping:
             g = Engine.mul_const(Engine.value(Engine.empty(), 2.0), 0, 3.0)
             print(f"{toString(Engine.zero_grad(g))}")
 
@@ -631,15 +570,8 @@ def backward(g, root):
     ```osprey
     from micrograd import Engine
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-        def divideByZero(_op, _l):
-            return 0.0
-
     def show():
-        with wrapped:
+        with Engine.wrapping:
             g = Engine.mul_const(Engine.value(Engine.empty(), 2.0), 0, 3.0)
             print(f"{toString(Engine.backward(g, Engine.top(g)))}")
 
@@ -662,15 +594,8 @@ def backward_into(g, root, grads):
     ```osprey
     from micrograd import Engine
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-        def divideByZero(_op, _l):
-            return 0.0
-
     def show():
-        with wrapped:
+        with Engine.wrapping:
             g = Engine.mul_const(Engine.value(Engine.empty(), 2.0), 0, 3.0)
             grads = Engine.backward(g, Engine.top(g))
             grads2 = Engine.backward_into(g, Engine.top(g), grads)

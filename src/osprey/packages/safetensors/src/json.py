@@ -390,12 +390,7 @@ def parse(text):
 
     # Examples
     ```osprey
-    from safetensors import JsonParser
-
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped):
-            return wrapped
+    from safetensors import JsonParser, Bytes
 
     def describe(result):
         match result:
@@ -405,7 +400,7 @@ def parse(text):
                 return m
 
     def run():
-        with wrapped:
+        with Bytes.wrapping:
             obj = describe(JsonParser.parse('{"t": {"dtype": "U8"}}'))
             number = describe(JsonParser.parse("-2.5"))
             truncated = describe(JsonParser.parse("[1, 2"))

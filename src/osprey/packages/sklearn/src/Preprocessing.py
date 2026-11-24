@@ -119,21 +119,10 @@ def standard_scaler_fit(scaler, X):
 
     # Examples
     ```osprey
-    from sklearn import Preprocessing
-
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(_op, _l):
-            return 0.0
-
-        def remainderByZero(_l):
-            return 0
+    from sklearn import Preprocessing, Stats
 
     def show():
-        with wrapped:
+        with Stats.wrapping:
             fit = Preprocessing.standard_scaler_fit(Preprocessing.StandardScaler(with_mean=True, with_std=True), [[1.0, 2.0], [2.0, 4.0], [3.0, 9.0]])
             constant = Preprocessing.standard_scaler_fit(Preprocessing.StandardScaler(with_mean=True, with_std=True), [[4.0], [4.0]])
             print(f"[{toString(fit.mean)}] [{toString(fit.scale)}] [{toString(constant.scale)}]")
@@ -162,21 +151,10 @@ def standard_scaler_transform(fitted, X):
 
     # Examples
     ```osprey
-    from sklearn import Preprocessing
-
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(_op, _l):
-            return 0.0
-
-        def remainderByZero(_l):
-            return 0
+    from sklearn import Preprocessing, Stats
 
     def show():
-        with wrapped:
+        with Stats.wrapping:
             fit = Preprocessing.standard_scaler_fit(Preprocessing.StandardScaler(with_mean=True, with_std=True), [[1.0], [3.0]])
             scaled = Preprocessing.standard_scaler_transform(fit, [[1.0], [3.0], [7.0]])
             constant = Preprocessing.standard_scaler_fit(Preprocessing.StandardScaler(with_mean=True, with_std=True), [[4.0], [4.0]])
@@ -203,21 +181,10 @@ def minmax_scaler_fit(scaler, X):
 
     # Examples
     ```osprey
-    from sklearn import Preprocessing
-
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(_op, _l):
-            return 0.0
-
-        def remainderByZero(_l):
-            return 0
+    from sklearn import Preprocessing, Stats
 
     def show():
-        with wrapped:
+        with Stats.wrapping:
             fit = Preprocessing.minmax_scaler_fit(Preprocessing.MinMaxScaler(feature_min=0.0, feature_max=1.0), [[0.0, 2.0], [3.0, 8.0]])
             constant = Preprocessing.minmax_scaler_fit(Preprocessing.MinMaxScaler(feature_min=0.0, feature_max=1.0), [[7.0], [7.0]])
             print(f"[{toString(fit.data_min)}] [{toString(fit.data_max)}] [{toString(fit.scale)}] [{toString(fit.min_)}] [{toString(constant.scale)}]")
@@ -242,21 +209,10 @@ def minmax_scaler_transform(fitted, X):
 
     # Examples
     ```osprey
-    from sklearn import Preprocessing
-
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(_op, _l):
-            return 0.0
-
-        def remainderByZero(_l):
-            return 0
+    from sklearn import Preprocessing, Stats
 
     def show():
-        with wrapped:
+        with Stats.wrapping:
             fit = Preprocessing.minmax_scaler_fit(Preprocessing.MinMaxScaler(feature_min=0.0, feature_max=1.0), [[0.0], [3.0]])
             scaled = Preprocessing.minmax_scaler_transform(fit, [[0.0], [3.0]])
             constant = Preprocessing.minmax_scaler_fit(Preprocessing.MinMaxScaler(feature_min=0.0, feature_max=1.0), [[7.0], [7.0]])
@@ -302,21 +258,10 @@ def robust_scaler_fit(scaler, X):
 
     # Examples
     ```osprey
-    from sklearn import Preprocessing
-
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(_op, _l):
-            return 0.0
-
-        def remainderByZero(_l):
-            return 0
+    from sklearn import Preprocessing, Stats
 
     def show():
-        with wrapped:
+        with Stats.wrapping:
             fit = Preprocessing.robust_scaler_fit(Preprocessing.RobustScaler(quantile_min=25.0, quantile_max=75.0), [[1.0], [2.0], [3.0], [100.0]])
             print(f"[{toString(fit.center)}] [{toString(fit.scale)}]")
 
@@ -337,21 +282,10 @@ def robust_scaler_transform(fitted, X):
 
     # Examples
     ```osprey
-    from sklearn import Preprocessing
-
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(_op, _l):
-            return 0.0
-
-        def remainderByZero(_l):
-            return 0
+    from sklearn import Preprocessing, Stats
 
     def show():
-        with wrapped:
+        with Stats.wrapping:
             fit = Preprocessing.robust_scaler_fit(Preprocessing.RobustScaler(quantile_min=25.0, quantile_max=75.0), [[1.0], [2.0], [3.0], [100.0]])
             scaled = Preprocessing.robust_scaler_transform(fit, [[1.0], [100.0]])
             print(f"[{toString(scaled)}]")
@@ -387,21 +321,10 @@ def normalize(X, norm):
 
     # Examples
     ```osprey
-    from sklearn import Preprocessing
-
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(_op, _l):
-            return 0.0
-
-        def remainderByZero(_l):
-            return 0
+    from sklearn import Preprocessing, Stats
 
     def show():
-        with wrapped:
+        with Stats.wrapping:
             unit = Preprocessing.normalize([[-2.0, 1.0, 2.0], [0.0, 0.0, 0.0]], "l2")
             print(f"[{toString(unit)}]")
 
@@ -426,21 +349,10 @@ def label_encoder_fit(y):
 
     # Examples
     ```osprey
-    from sklearn import Preprocessing
-
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(_op, _l):
-            return 0.0
-
-        def remainderByZero(_l):
-            return 0
+    from sklearn import Preprocessing, Stats
 
     def show():
-        with wrapped:
+        with Stats.wrapping:
             classes = Preprocessing.label_encoder_fit([3, 1, 1, 3, 2, 0])
             lone = Preprocessing.label_encoder_fit([4])
             print(f"[{toString(classes)}] [{toString(lone)}]")
@@ -459,21 +371,10 @@ def label_encoder_transform(classes, y):
 
     # Examples
     ```osprey
-    from sklearn import Preprocessing
-
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(_op, _l):
-            return 0.0
-
-        def remainderByZero(_l):
-            return 0
+    from sklearn import Preprocessing, Stats
 
     def show():
-        with wrapped:
+        with Stats.wrapping:
             encoded = Preprocessing.label_encoder_transform([0, 1, 2, 3], [3, 1])
             unseen = Preprocessing.label_encoder_transform([0, 1, 2, 3], [9])
             print(f"[{toString(encoded)}] [{toString(unseen)}]")
@@ -492,21 +393,10 @@ def one_hot_encoder_fit(X):
 
     # Examples
     ```osprey
-    from sklearn import Preprocessing
-
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(_op, _l):
-            return 0.0
-
-        def remainderByZero(_l):
-            return 0
+    from sklearn import Preprocessing, Stats
 
     def show():
-        with wrapped:
+        with Stats.wrapping:
             categories = Preprocessing.one_hot_encoder_fit([[0, 1], [2, 0]])
             print(f"[{toString(categories)}]")
 
@@ -537,21 +427,10 @@ def one_hot_encoder_transform(categories, X):
 
     # Examples
     ```osprey
-    from sklearn import Preprocessing
-
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(_op, _l):
-            return 0.0
-
-        def remainderByZero(_l):
-            return 0
+    from sklearn import Preprocessing, Stats
 
     def show():
-        with wrapped:
+        with Stats.wrapping:
             categories = Preprocessing.one_hot_encoder_fit([[0, 1], [2, 0]])
             encoded = Preprocessing.one_hot_encoder_transform(categories, [[2, 1]])
             unseen = Preprocessing.one_hot_encoder_transform(categories, [[9, 1]])
@@ -617,21 +496,10 @@ def polynomial_powers(pf, n_features):
 
     # Examples
     ```osprey
-    from sklearn import Preprocessing
-
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(_op, _l):
-            return 0.0
-
-        def remainderByZero(_l):
-            return 0
+    from sklearn import Preprocessing, Stats
 
     def show():
-        with wrapped:
+        with Stats.wrapping:
             full = Preprocessing.polynomial_powers(Preprocessing.PolynomialFeatures(degree=2, include_bias=True, interaction_only=False), 2)
             interactions = Preprocessing.polynomial_powers(Preprocessing.PolynomialFeatures(degree=2, include_bias=False, interaction_only=True), 2)
             print(f"[{toString(full)}] [{toString(interactions)}]")
@@ -660,21 +528,10 @@ def polynomial_features_transform(powers, X):
 
     # Examples
     ```osprey
-    from sklearn import Preprocessing
-
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(_op, _l):
-            return 0.0
-
-        def remainderByZero(_l):
-            return 0
+    from sklearn import Preprocessing, Stats
 
     def show():
-        with wrapped:
+        with Stats.wrapping:
             powers = Preprocessing.polynomial_powers(Preprocessing.PolynomialFeatures(degree=2, include_bias=True, interaction_only=False), 2)
             expanded = Preprocessing.polynomial_features_transform(powers, [[2.0, 3.0]])
             print(f"[{toString(expanded)}]")

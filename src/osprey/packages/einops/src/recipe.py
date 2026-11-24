@@ -325,12 +325,7 @@ def prepare(pattern, operation, axes_names, ndim):
 
     # Examples
     ```osprey
-    from einops import Recipe
-
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
+    from einops import Recipe, Parsing
 
     def recipe_text(result):
         match result:
@@ -340,7 +335,7 @@ def prepare(pattern, operation, axes_names, ndim):
                 return f"error: {m}"
 
     def show():
-        with wrapped:
+        with Parsing.wrapping:
             swap = Recipe.prepare("a b -> b a", "rearrange", [], 2)
             wrong_ndim = Recipe.prepare("a b -> b a", "rearrange", [], 3)
             print(f"{recipe_text(swap)} {recipe_text(wrong_ndim)}")

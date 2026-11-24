@@ -12,7 +12,36 @@ type, widens exactly through arithmetic. Encoders round through
 correctly rounded spelling. Implements [BUILTIN-FLOAT-BITS].
 """
 
-__all__ = ["pow2i", "pow2", "le_bytes", "le16", "le32", "le64", "read_bytes", "read_u64", "f16_from_bits", "bf16_from_bits", "f32_from_bits", "f64_from_parts", "decode_f16", "decode_bf16", "decode_f32", "decode_f64", "bytes_to_string", "int_bytes", "f64_bytes", "f32_bytes", "f16_bytes", "bf16_bytes", "checked_mul"]
+__all__ = ["wrapping", "pow2i", "pow2", "le_bytes", "le16", "le32", "le64", "read_bytes", "read_u64", "f16_from_bits", "bf16_from_bits", "f32_from_bits", "f64_from_parts", "decode_f16", "decode_bf16", "decode_f32", "decode_f64", "bytes_to_string", "int_bytes", "f64_bytes", "f32_bytes", "f16_bytes", "bf16_bytes", "checked_mul"]
+
+
+@handler(Arith)
+class wrapping:
+    """The arithmetic policy the examples run under: an overflow answers the
+    two's-complement wrapped value, a division or remainder by zero answers zero.
+
+    # Examples
+    ```osprey
+    from safetensors import Bytes
+
+    def show(top, zero):
+        with Bytes.wrapping:
+            print(f"[{top + 1}] [{3.0 / toFloat(zero)}] [{7 % zero}]")
+
+    show(9223372036854775807, 0)
+    ```
+    ```output
+    [-9223372036854775808] [0.0] [0]
+    ```
+    """
+    def overflow(_op, _l, _r, wrapped):
+        return wrapped
+
+    def divideByZero(_op, _l):
+        return 0.0
+
+    def remainderByZero(_l):
+        return 0
 
 
 def pow2i(e):
@@ -22,16 +51,8 @@ def pow2i(e):
     ```osprey
     from safetensors import Bytes
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped):
-            return wrapped
-
-        def remainderByZero(l):
-            return 0
-
     def show():
-        with wrapped:
+        with Bytes.wrapping:
             print(f"[{Bytes.pow2i(10)}] [{Bytes.pow2i(1)}] [{Bytes.pow2i(0)}]")
 
     show()
@@ -50,16 +71,8 @@ def le_bytes(data, off, n):
     ```osprey
     from safetensors import Bytes
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped):
-            return wrapped
-
-        def remainderByZero(l):
-            return 0
-
     def show():
-        with wrapped:
+        with Bytes.wrapping:
             data = [255, 2, 1]
             print(f"[{Bytes.le_bytes(data, 0, 3)}] [{Bytes.le_bytes(data, 1, 2)}] [{Bytes.le_bytes(data, 9, 2)}]")
 
@@ -79,16 +92,8 @@ def le16(data, off):
     ```osprey
     from safetensors import Bytes
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped):
-            return wrapped
-
-        def remainderByZero(l):
-            return 0
-
     def show():
-        with wrapped:
+        with Bytes.wrapping:
             print(f"[{Bytes.le16([0, 62], 0)}] [{Bytes.le16([255], 0)}]")
 
     show()
@@ -107,16 +112,8 @@ def le32(data, off):
     ```osprey
     from safetensors import Bytes
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped):
-            return wrapped
-
-        def remainderByZero(l):
-            return 0
-
     def show():
-        with wrapped:
+        with Bytes.wrapping:
             print(f"[{Bytes.le32([255, 255, 255, 127], 0)}] [{Bytes.le32([255], 0)}]")
 
     show()
@@ -136,16 +133,8 @@ def le64(data, off):
     ```osprey
     from safetensors import Bytes
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped):
-            return wrapped
-
-        def remainderByZero(l):
-            return 0
-
     def show():
-        with wrapped:
+        with Bytes.wrapping:
             print(f"[{Bytes.le64([255, 255, 255, 255, 255, 255, 0, 0], 0)}] [{Bytes.le64([255], 0)}]")
 
     show()
@@ -179,14 +168,6 @@ def read_bytes(data, off, n):
     ```osprey
     from safetensors import Bytes
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped):
-            return wrapped
-
-        def remainderByZero(l):
-            return 0
-
     def shown(result):
         match result:
             case Success(value=vs):
@@ -195,7 +176,7 @@ def read_bytes(data, off, n):
                 return m
 
     def show():
-        with wrapped:
+        with Bytes.wrapping:
             inside = Bytes.read_bytes([1, 2, 3, 4], 1, 2)
             past = Bytes.read_bytes([1, 2, 3, 4], 3, 2)
             print(f"[{shown(inside)}] [{shown(past)}]")
@@ -220,14 +201,6 @@ def read_u64(data, off):
     ```osprey
     from safetensors import Bytes
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped):
-            return wrapped
-
-        def remainderByZero(l):
-            return 0
-
     def shown(result):
         match result:
             case Success(value=v):
@@ -236,7 +209,7 @@ def read_u64(data, off):
                 return m
 
     def show():
-        with wrapped:
+        with Bytes.wrapping:
             ok = Bytes.read_u64([255, 255, 255, 255, 255, 255, 0, 0], 0)
             short = Bytes.read_u64([1, 2], 0)
             big = Bytes.read_u64([255, 255, 255, 255, 255, 255, 1, 0], 0)
@@ -266,16 +239,8 @@ def pow2(e):
     ```osprey
     from safetensors import Bytes
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped):
-            return wrapped
-
-        def remainderByZero(l):
-            return 0
-
     def show():
-        with wrapped:
+        with Bytes.wrapping:
             print(f"[{Bytes.pow2(10)}] [{Bytes.pow2(-1)}] [{Bytes.pow2(-1074)}]")
 
     show()
@@ -313,16 +278,8 @@ def f16_from_bits(bits: int16) -> float16:
     ```osprey
     from safetensors import Bytes
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped):
-            return wrapped
-
-        def remainderByZero(l):
-            return 0
-
     def show():
-        with wrapped:
+        with Bytes.wrapping:
             print(f"[{Bytes.f16_from_bits(15360)}] [{Bytes.f16_from_bits(0)}] [{Bytes.f16_from_bits(-16384)}]")
 
     show()
@@ -341,16 +298,8 @@ def bf16_from_bits(bits):
     ```osprey
     from safetensors import Bytes
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped):
-            return wrapped
-
-        def remainderByZero(l):
-            return 0
-
     def show():
-        with wrapped:
+        with Bytes.wrapping:
             print(f"[{Bytes.bf16_from_bits(16256)}] [{Bytes.bf16_from_bits(0)}] [{Bytes.bf16_from_bits(49152)}]")
 
     show()
@@ -369,16 +318,8 @@ def f32_from_bits(bits: int32) -> float32:
     ```osprey
     from safetensors import Bytes
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped):
-            return wrapped
-
-        def remainderByZero(l):
-            return 0
-
     def show():
-        with wrapped:
+        with Bytes.wrapping:
             print(f"[{Bytes.f32_from_bits(1065353216)}] [{Bytes.f32_from_bits(0)}] [{Bytes.f32_from_bits(-1073741824)}]")
 
     show()
@@ -398,16 +339,8 @@ def f64_from_parts(sign, exp, frac):
     ```osprey
     from safetensors import Bytes
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped):
-            return wrapped
-
-        def remainderByZero(l):
-            return 0
-
     def show():
-        with wrapped:
+        with Bytes.wrapping:
             print(f"[{Bytes.f64_from_parts(0, 1023, 0)}] [{Bytes.f64_from_parts(1, 1023, 0)}] [{Bytes.f64_from_parts(0, 0, 0)}]")
 
     show()
@@ -426,16 +359,8 @@ def decode_f16(data, off):
     ```osprey
     from safetensors import Bytes
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped):
-            return wrapped
-
-        def remainderByZero(l):
-            return 0
-
     def show():
-        with wrapped:
+        with Bytes.wrapping:
             print(f"[{Bytes.decode_f16([0, 62], 0)}] [{Bytes.decode_f16([], 0)}]")
 
     show()
@@ -454,16 +379,8 @@ def decode_bf16(data, off):
     ```osprey
     from safetensors import Bytes
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped):
-            return wrapped
-
-        def remainderByZero(l):
-            return 0
-
     def show():
-        with wrapped:
+        with Bytes.wrapping:
             print(f"[{Bytes.decode_bf16([192, 63], 0)}] [{Bytes.decode_bf16([0, 63], 0)}] [{Bytes.decode_bf16([], 0)}]")
 
     show()
@@ -482,16 +399,8 @@ def decode_f32(data, off):
     ```osprey
     from safetensors import Bytes
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped):
-            return wrapped
-
-        def remainderByZero(l):
-            return 0
-
     def show():
-        with wrapped:
+        with Bytes.wrapping:
             print(f"[{Bytes.decode_f32([0, 0, 192, 63], 0)}] [{Bytes.decode_f32([0, 0, 128, 63], 0)}] [{Bytes.decode_f32([], 0)}]")
 
     show()
@@ -510,16 +419,8 @@ def decode_f64(data, off):
     ```osprey
     from safetensors import Bytes
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped):
-            return wrapped
-
-        def remainderByZero(l):
-            return 0
-
     def show():
-        with wrapped:
+        with Bytes.wrapping:
             print(f"[{Bytes.decode_f64([0, 0, 0, 0, 0, 0, 240, 63], 0)}] [{Bytes.decode_f64([0, 0, 0, 0, 0, 0, 248, 63], 0)}] [{Bytes.decode_f64([], 0)}]")
 
     show()
@@ -543,14 +444,6 @@ def bytes_to_string(data):
     ```osprey
     from safetensors import Bytes
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped):
-            return wrapped
-
-        def remainderByZero(l):
-            return 0
-
     def shown(result):
         match result:
             case Success(value=s):
@@ -559,7 +452,7 @@ def bytes_to_string(data):
                 return m
 
     def show():
-        with wrapped:
+        with Bytes.wrapping:
             text = Bytes.bytes_to_string([72, 105])
             bad = Bytes.bytes_to_string([255])
             print(f"[{shown(text)}] [{shown(bad)}]")
@@ -602,16 +495,8 @@ def int_bytes(v, n):
     ```osprey
     from safetensors import Bytes
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped):
-            return wrapped
-
-        def remainderByZero(l):
-            return 0
-
     def show():
-        with wrapped:
+        with Bytes.wrapping:
             print(f"[{toString(Bytes.int_bytes(1, 4))}] [{toString(Bytes.int_bytes(-1, 2))}] [{toString(Bytes.int_bytes(258, 2))}]")
 
     show()
@@ -774,16 +659,8 @@ def f64_bytes(x):
     ```osprey
     from safetensors import Bytes
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped):
-            return wrapped
-
-        def remainderByZero(l):
-            return 0
-
     def show():
-        with wrapped:
+        with Bytes.wrapping:
             print(f"[{toString(Bytes.f64_bytes(1.0))}] [{toString(Bytes.f64_bytes(-0.5))}]")
 
     show()
@@ -802,16 +679,8 @@ def f32_bytes(x: float):
     ```osprey
     from safetensors import Bytes
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped):
-            return wrapped
-
-        def remainderByZero(l):
-            return 0
-
     def show():
-        with wrapped:
+        with Bytes.wrapping:
             print(f"[{toString(Bytes.f32_bytes(1.0))}] [{toString(Bytes.f32_bytes(0.1))}]")
 
     show()
@@ -830,16 +699,8 @@ def f16_bytes(x: float):
     ```osprey
     from safetensors import Bytes
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped):
-            return wrapped
-
-        def remainderByZero(l):
-            return 0
-
     def show():
-        with wrapped:
+        with Bytes.wrapping:
             print(f"[{toString(Bytes.f16_bytes(1.0))}] [{toString(Bytes.f16_bytes(1.1))}]")
 
     show()
@@ -858,16 +719,8 @@ def bf16_bytes(x):
     ```osprey
     from safetensors import Bytes
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped):
-            return wrapped
-
-        def remainderByZero(l):
-            return 0
-
     def show():
-        with wrapped:
+        with Bytes.wrapping:
             print(f"[{toString(Bytes.bf16_bytes(1.0))}] [{toString(Bytes.bf16_bytes(1.1))}]")
 
     show()
@@ -967,16 +820,8 @@ def checked_mul(a, b):
     ```osprey
     from safetensors import Bytes
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped):
-            return wrapped
-
-        def remainderByZero(l):
-            return 0
-
     def show():
-        with wrapped:
+        with Bytes.wrapping:
             print(f"[{Bytes.checked_mul(3, 4)}] [{Bytes.checked_mul(5, 0)}] [{Bytes.checked_mul(9223372036854775807, 2)}]")
 
     show()
