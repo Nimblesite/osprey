@@ -199,12 +199,12 @@ matMulOrderCase () =
     big = toFloat32 16777216.0
     ulp = toFloat32 1.0 / toFloat32 8388608.0
     use ones <- withBuffer (floats ([1.0, 1.0, 1.0]))
-    use uploaded22 <- withBuffer (toGpu ([big, toFloat32 1.0, toFloat32 0.0 - big]))
+    use uploaded22 <- withUpload ([big, toFloat32 1.0, toFloat32 0.0 - big])
     use forward <- withBuffer (product (uploaded22, ones, 1, 3, 1))
-    use uploaded23 <- withBuffer (toGpu ([toFloat32 0.0 - big, toFloat32 1.0, big]))
+    use uploaded23 <- withUpload ([toFloat32 0.0 - big, toFloat32 1.0, big])
     use backward <- withBuffer (product (uploaded23, ones, 1, 3, 1))
-    use uploaded24 <- withBuffer (toGpu ([toFloat32 (-1.0), toFloat32 1.0 + ulp]))
-    use uploaded25 <- withBuffer (toGpu ([toFloat32 1.0, toFloat32 1.0 + toFloat32 2.0 * ulp]))
+    use uploaded24 <- withUpload ([toFloat32 (-1.0), toFloat32 1.0 + ulp])
+    use uploaded25 <- withUpload ([toFloat32 1.0, toFloat32 1.0 + toFloat32 2.0 * ulp])
     use unfused <- withBuffer (product (uploaded24, uploaded25, 1, 2, 1))
     checkAll "gpuMatMul accumulates in k order from 0.0 without a fused multiply-add" [
             atIs(forward,  0,  0.0), atIs(backward,  0,  1.0), at (unfused, 0) == 3.0 * ulp

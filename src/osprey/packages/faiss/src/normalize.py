@@ -23,17 +23,8 @@ def normalize_L2(x):
     ```osprey
     import faiss.Normalize as Normalize
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(op, l):
-            return 0.0
-
     def show():
-        with wrapped:
-            print(f"{toString(Normalize.normalize_L2([[3.0, 4.0], [0.0, 0.0]]))}")
+        print(f"{toString(Normalize.normalize_L2([[3.0, 4.0], [0.0, 0.0]]))}")
 
     show()
     ```

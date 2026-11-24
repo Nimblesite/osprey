@@ -120,11 +120,11 @@ emptyFoldOn (indices0, intEmpty, floatEmpty) = withBuffer(toGpu([1, 3, 5]), \val
 ])))
 (** singletonCase walks the one-element buffer through every combinator: the smallest shape where a kernel actually runs, and the one where an off-by-one in a loop bound or a prefix seed shows up immediately. *)
 singletonCase () =
-    use one <- withBuffer (toGpu([5]))
+    use one <- withUpload ([5])
     use scanned <- withBuffer (gpuScan(one, 3, sumI))
-    use four <- withBuffer (toGpu([4]))
-    use seven <- withBuffer (toGpu([7]))
-    use longer <- withBuffer (toGpu([1, 2, 3]))
+    use four <- withUpload ([4])
+    use seven <- withUpload ([7])
+    use longer <- withUpload ([1, 2, 3])
     checkAll("singleton", [
     lengthIs(one, 1), holdsAt(gpuMap(one, dbl), 0, 10), keepsNoEven(one),
     gpuLengthIs(gpuFilter(four, isEven), 1), holdsAt(gpuFilter(four, isEven), 0, 4),
@@ -139,8 +139,8 @@ raggedCase () =
     use indices4 <- withIndices (4)
     raggedWith(indices3, indices7, indices4)
 raggedWith (indices3, indices7, indices4) =
-    use left <- withBuffer (toGpu([1, 2, 3, 4, 5]))
-    use right <- withBuffer (toGpu([10, 20]))
+    use left <- withUpload ([1, 2, 3, 4, 5])
+    use right <- withUpload ([10, 20])
     use leftFirst <- withBuffer (gpuZipWith(left, right, subI))
     use rightFirst <- withBuffer (gpuZipWith(right, left, subI))
     checkAll("ragged zip", [
@@ -151,16 +151,16 @@ raggedWith (indices3, indices7, indices4) =
 (** zipTypeCase pins that the zip kernel's result type is the buffer's, not either operand's, including a pair whose two operands differ in type. *)
 zipTypeCase () =
     use first <- withBuffer (fourDigits())
-    use second <- withBuffer (toGpu([3, 5, 7, 9]))
+    use second <- withUpload ([3, 5, 7, 9])
     use parity <- withBuffer (gpuZipWith(first, second, sameParity))
-    use meanLeft <- withBuffer (toGpu([1, 3]))
-    use meanRight <- withBuffer (toGpu([3, 5]))
+    use meanLeft <- withUpload ([1, 3])
+    use meanRight <- withUpload ([3, 5])
     use means <- withBuffer (gpuZipWith(meanLeft, meanRight, meanF))
-    use mixLeft <- withBuffer (toGpu([1, 2]))
-    use mixRight <- withBuffer (toGpu([0.5, 0.25]))
+    use mixLeft <- withUpload ([1, 2])
+    use mixRight <- withUpload ([0.5, 0.25])
     use mixed <- withBuffer (gpuZipWith(mixLeft, mixRight, mixAdd))
-    use lessLeft <- withBuffer (toGpu([1.0, 2.0, 3.0]))
-    use lessRight <- withBuffer (toGpu([3.0, 2.0, 1.0]))
+    use lessLeft <- withUpload ([1.0, 2.0, 3.0])
+    use lessRight <- withUpload ([3.0, 2.0, 1.0])
     use flags <- withBuffer (gpuZipWith(lessLeft, lessRight, lessF))
     checkAll("zip element types", [
     trueRunIs(parity, 4, true, false, 2),
@@ -169,7 +169,7 @@ zipTypeCase () =
 ])
 (** filterKeepCase pins the three shapes of a compaction — every element kept, none kept, alternating — and reads the kept run back element by element so [GPU-FILTER]'s source-order guarantee is checked, not just its count. *)
 filterKeepCase () =
-    use src <- withBuffer (toGpu([9, 4, 7, 2, 5, 8]))
+    use src <- withUpload ([9, 4, 7, 2, 5, 8])
     use kept <- withBuffer (gpuFilter(src, keepEvery))
     use alternates <- withBuffer (gpuFilter(src, isEven))
     checkAll("filter keep sets", [
@@ -187,7 +187,7 @@ filterPredicateWith (indices10, indices6) = withBuffer(toGpu([0.0 - 1.5, 0.0, 2.
 (** scanPrefixCase reads [GPU-SCAN]'s inclusive prefix out one element at a time: element i is the combine folded through element i, so the last element must equal the whole-buffer fold and index n is out of bounds. *)
 scanPrefixCase () = withIndices(5, \indices5 => scanPrefixWith(indices5))
 scanPrefixWith (indices5) =
-    use value <- withBuffer (toGpu([1, 2, 3, 4, 5]))
+    use value <- withUpload ([1, 2, 3, 4, 5])
     use sums <- withBuffer (gpuScan(value, 0, sumI))
     use twice <- withBuffer (gpuScan(sums, 0, sumI))
     use four <- withBuffer (fourDigits())
@@ -198,11 +198,11 @@ scanPrefixWith (indices5) =
 ])
 (** scanSeedCase pins the seed's role — element 0 is combine(initial, src 0), never src 0 — over a sum, a maximum a high seed swamps, and a bool latch. *)
 scanSeedCase () =
-    use three <- withBuffer (toGpu([1, 2, 3]))
+    use three <- withUpload ([1, 2, 3])
     use seeded <- withBuffer (gpuScan(three, 10, sumI))
-    use source <- withBuffer (toGpu([3, 1, 4, 1, 5, 9, 2, 6]))
+    use source <- withUpload ([3, 1, 4, 1, 5, 9, 2, 6])
     use running <- withBuffer (gpuScan(source, 0, maxI))
-    use flagsSource <- withBuffer (toGpu([1, 3, 4, 7]))
+    use flagsSource <- withUpload ([1, 3, 4, 7])
     use flags <- withBuffer (gpuMap(flagsSource, isEven))
     use latched <- withBuffer (gpuScan(flags, false, orB))
     checkAll("scan seeds", [
@@ -257,13 +257,13 @@ mixedChainWith (indices30, indices6) =
 ])
 (** typeChangeCase walks the whole element lattice [GPU-BUFFER-ELEM] allows — int to float through [GPU-CONVERT]'s toFloat, int and float to bool through predicates, bool back to int — folding each buffer at its own element type. *)
 typeChangeCase () =
-    use counting <- withBuffer (toGpu([1, 2, 3]))
+    use counting <- withUpload ([1, 2, 3])
     use widened <- withBuffer (gpuMap(counting, toFloat))
     use four <- withBuffer (fourDigits())
     use flags <- withBuffer (gpuMap(four, isEven))
     use bits <- withBuffer (gpuMap(flags, toBit))
-    use signed <- withBuffer (toGpu([0.0 - 1.5, 0.0, 2.5]))
-    use upToTwo <- withBuffer (toGpu([0, 1, 2]))
+    use signed <- withUpload ([0.0 - 1.5, 0.0, 2.5])
+    use upToTwo <- withUpload ([0, 1, 2])
     checkAll("type-changing maps", [
     floatSumsTo(widened, 0.0, 6.0), elementIs(widened, 1, 0.0, 2.0), floatBufferSumsTo(gpuMap(widened, half), 3.0),
     floatBufferSumsTo(gpuScan(widened, 0.0, addF), 10.0), trueRunIs(flags, 4, false, true, 2),
@@ -303,8 +303,8 @@ iotaWith (indices5, indices1, indices0, indices3) =
 (** getCase pins typed reads in bounds and a visible Error out of bounds, at both ends of the index range and at both element types — plus a gather kernel, since reading a buffer is pure and therefore legal inside one. *)
 getCase () = withIndices(3, \indices3 => getWith(indices3))
 getWith (indices3) =
-    use ints <- withBuffer (toGpu([7, 8, 9]))
-    use floats <- withBuffer (toGpu([1.5, 2.5]))
+    use ints <- withUpload ([7, 8, 9])
+    use floats <- withUpload ([1.5, 2.5])
     use reversed <- withBuffer (gpuMap(indices3, \i => gpuGet(ints, (2 - i) ) ?: 0))
     checkAll("get", [
     elementsFrom(ints, 0, 0, [7, 8, 9]), elementsFrom(floats, 0, 0.0, [1.5, 2.5]), elementsAt(ints, 999, [3, (0 - 1)], [999, 999]), elementIs(floats, 2, 9.5, 9.5), rendersAs(ints, 0, "value 7"),

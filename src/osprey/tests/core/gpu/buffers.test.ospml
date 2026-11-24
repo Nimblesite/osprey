@@ -51,8 +51,6 @@ sumIs (b, expected) = sumsTo (b, 0, expected)
 oddCountIs (b, expected) = gpuEquals(gpuFold(b, 0, countOdd), expected)
 (** uploaded uploads `values` and checks the dense buffer it produces. *)
 uploaded (values, check) = gpuSatisfies(toGpu (values), check)
-(** withUpload runs `work` on the dense buffer `values` uploads. *)
-withUpload (values, work) = withBuffer(toGpu (values), work)
 (** Materialize `b` and hand its list to `check` — the [GPU-BUFFER-TO-LIST] scaffolding every read-back shares. *)
 fromList (b, check) = gpuSatisfies(fromGpu (b), check)
 (** Materialize `b`, upload its list again and hand the rebuilt buffer to `check`. *)
@@ -197,10 +195,10 @@ aliasCase () = withUpload([1, 2, 3, 4], \source => withBuffer(doubledInts(source
     checkAll("aliased bindings share one immutable buffer", [eachOf(aliases, \b => lengthIs (b, 4)), widthOf(alias) == widthOf(source), eachHolds([alias, alsoAlias], 0, 0, 1), eachHolds([alias, alsoAlias], 3, 0, 4), (lastOf(alias) ?: 0) == (lastOf(source) ?: 0), eachOf(aliases, \b => sumIs (b, 10)), lengthIs(derived, 4), sumIs(derived, 20), intAt(derived, 1, 4), eachHolds(aliases, 1, 0, 2), misses(alias, 4), misses(alsoAlias, -1), readback(source, 4) == readback(alias, 4), readsBack(alias, 4), readsBackAt(alsoAlias, 2, 0, 3)])))
 (** Pin [GPU-BUFFER-FUSE] from the indexing side: whatever the pipeline fused into the buffer has to be addressable element by element, the published length has to bound gpuGet exactly, and a one-element or empty range has to land on a buffer of that size. *)
 fusionCase () =
-    use straight <- withBuffer (toGpu (range (0, 6)))
-    use squares <- withBuffer (toGpu (range (1, 5) |> map square))
-    use lone <- withBuffer (toGpu (range (4, 5)))
-    use empty <- withBuffer (toGpu (range (3, 3)))
+    use straight <- withUpload (range (0, 6))
+    use squares <- withUpload (range (1, 5) |> map square)
+    use lone <- withUpload (range (4, 5))
+    use empty <- withUpload (range (3, 3))
     checkAll("iterator fusion fills the buffer directly", [
     lengthIs (straight, 6), firstIs (straight, 0), intAt (straight, 5, 5), lastIs (straight, 0, 5), missesAll (straight, [6, (-1)]), lengthIs (squares, 4), elementsFrom (squares, 0, 0, [1, 4, 9, 16]), lastIs (squares, 0, 16), misses (squares, 4), lengthIs (lone, 1), intAt (lone, 0, 4), misses (lone, 1), lengthIs (empty, 0), misses (empty, 0), sumsTo (empty, 5, 5), widthOf empty == 0, readsBack (straight, 6), readsBackAt (squares, 1, 0, 4), roundTripSumsTo (squares, 30)
 ])
@@ -337,7 +335,7 @@ quantMessage (result) = match result
 (** The exact reason gpuMatMulQuant reports for `x` against the Q4_K weights `w` under `kind`, `rows`, `inner` and `cols` is `message`. *)
 rejectsAs (x, w, kind, rows, inner, cols, message) = quantMessage (gpuMatMulQuant (x, w, kind, rows, inner, cols)) == message
 quantCase () =
-    use ints <- withBuffer (toGpu(range(0, 256)))
+    use ints <- withUpload (range(0, 256))
     use x <- withBuffer (gpuMap(ints, \i => toFloat32(i)))
     use w <- withBuffer (quantWeights())
     use out <- withBuffer (gpuMatMulQuant(x, w, "Q4_K", 1, 256, 2))

@@ -118,16 +118,10 @@ def tokenize_char(line):
     ```osprey
     from sacrebleu import Tokenizer
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped):
-            return wrapped
-
     def show():
-        with wrapped:
-            spaced = Tokenizer.tokenize_char("ab")
-            accented = Tokenizer.tokenize_char("aé")
-            print(f"[{spaced}] [{accented}] [{Tokenizer.tokenize_char("")}]")
+        spaced = Tokenizer.tokenize_char("ab")
+        accented = Tokenizer.tokenize_char("aé")
+        print(f"[{spaced}] [{accented}] [{Tokenizer.tokenize_char("")}]")
 
     show()
     ```
@@ -161,18 +155,12 @@ def tokenize_13a(line):
     ```osprey
     from sacrebleu import Tokenizer
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped):
-            return wrapped
-
     def show():
-        with wrapped:
-            punctuated = Tokenizer.tokenize_13a("a.b")
-            number = Tokenizer.tokenize_13a("3.5")
-            decoded = Tokenizer.tokenize_13a("&quot;x&quot; &amp;")
-            skipped = Tokenizer.tokenize_13a("<skipped>")
-            print(f"[{punctuated}] [{number}] [{decoded}] [{skipped}]")
+        punctuated = Tokenizer.tokenize_13a("a.b")
+        number = Tokenizer.tokenize_13a("3.5")
+        decoded = Tokenizer.tokenize_13a("&quot;x&quot; &amp;")
+        skipped = Tokenizer.tokenize_13a("<skipped>")
+        print(f"[{punctuated}] [{number}] [{decoded}] [{skipped}]")
 
     show()
     ```
@@ -193,17 +181,11 @@ def tokenize(text, kind):
     ```osprey
     from sacrebleu import Tokenizer
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped):
-            return wrapped
-
     def show():
-        with wrapped:
-            mteval = Tokenizer.tokenize("a.b", "13a")
-            chars = Tokenizer.tokenize("a.b", "char")
-            unknown = Tokenizer.tokenize("a.b", "intl")
-            print(f"[{mteval}] [{chars}] [{unknown}]")
+        mteval = Tokenizer.tokenize("a.b", "13a")
+        chars = Tokenizer.tokenize("a.b", "char")
+        unknown = Tokenizer.tokenize("a.b", "intl")
+        print(f"[{mteval}] [{chars}] [{unknown}]")
 
     show()
     ```

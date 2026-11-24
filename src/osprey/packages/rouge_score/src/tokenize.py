@@ -29,17 +29,11 @@ def tokenize(text, use_stemmer):
     ```osprey
     from rouge_score import Tokenize
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
     def show():
-        with wrapped:
-            plain = Tokenize.tokenize("Hello, World! 42", False)
-            stemmed = Tokenize.tokenize("running runs", True)
-            empty = Tokenize.tokenize("", True)
-            print(f"[{plain}] [{stemmed}] [{empty}]")
+        plain = Tokenize.tokenize("Hello, World! 42", False)
+        stemmed = Tokenize.tokenize("running runs", True)
+        empty = Tokenize.tokenize("", True)
+        print(f"[{plain}] [{stemmed}] [{empty}]")
 
     show()
     ```

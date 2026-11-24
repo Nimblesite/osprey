@@ -55,14 +55,6 @@ def train(km, x, init_centroids):
     ```osprey
     from faiss.Kmeans import Kmeans, train
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(op, l):
-            return 0.0
-
     def text(result):
         match result:
             case Success(value=km):
@@ -71,12 +63,11 @@ def train(km, x, init_centroids):
                 return f"error: {m}"
 
     def show():
-        with wrapped:
-            four = [[0.0, 0.0], [10.0, 0.0], [0.0, 1.0], [10.0, 1.0]]
-            run = text(train(Kmeans(2, 2, 10, 0), four, [[0.0, 0.0], [10.0, 0.0]]))
-            exact = text(train(Kmeans(2, 2, 10, 0), [[1.0, 1.0], [3.0, 3.0]], [[1.0, 1.0], [3.0, 3.0]]))
-            few = text(train(Kmeans(2, 5, 10, 0), four, [[0.0, 0.0], [10.0, 0.0]]))
-            print(f"{run} {exact} {few}")
+        four = [[0.0, 0.0], [10.0, 0.0], [0.0, 1.0], [10.0, 1.0]]
+        run = text(train(Kmeans(2, 2, 10, 0), four, [[0.0, 0.0], [10.0, 0.0]]))
+        exact = text(train(Kmeans(2, 2, 10, 0), [[1.0, 1.0], [3.0, 3.0]], [[1.0, 1.0], [3.0, 3.0]]))
+        few = text(train(Kmeans(2, 5, 10, 0), four, [[0.0, 0.0], [10.0, 0.0]]))
+        print(f"{run} {exact} {few}")
 
     show()
     ```
@@ -116,14 +107,6 @@ def assign(km, x):
     ```osprey
     from faiss.Kmeans import Kmeans, train, assign
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(op, l):
-            return 0.0
-
     def assigned(result):
         match result:
             case Success(value=km):
@@ -132,9 +115,8 @@ def assign(km, x):
                 return f"error: {m}"
 
     def show():
-        with wrapped:
-            four = [[0.0, 0.0], [10.0, 0.0], [0.0, 1.0], [10.0, 1.0]]
-            print(f"{assigned(train(Kmeans(2, 2, 10, 0), four, [[0.0, 0.0], [10.0, 0.0]]))}")
+        four = [[0.0, 0.0], [10.0, 0.0], [0.0, 1.0], [10.0, 1.0]]
+        print(f"{assigned(train(Kmeans(2, 2, 10, 0), four, [[0.0, 0.0], [10.0, 0.0]]))}")
 
     show()
     ```

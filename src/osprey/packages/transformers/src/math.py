@@ -45,17 +45,8 @@ def softmax(logits):
     ```osprey
     from transformers import Math
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(_op, _l):
-            return 0.0
-
     def show():
-        with wrapped:
-            print(f"[{toString(Math.softmax([toFloat32(0.0), toFloat32(0.0)]))}] [{toString(Math.softmax([]))}]")
+        print(f"[{toString(Math.softmax([toFloat32(0.0), toFloat32(0.0)]))}] [{toString(Math.softmax([]))}]")
 
     show()
     ```
@@ -129,17 +120,8 @@ def multinomial(probs, u):
     ```osprey
     from transformers import Math
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(_op, _l):
-            return 0.0
-
     def show():
-        with wrapped:
-            print(f"[{Math.multinomial([toFloat32(0.5), toFloat32(0.5)], toFloat32(0.0))}] [{Math.multinomial([toFloat32(0.5), toFloat32(0.5)], toFloat32(0.9))}] [{Math.multinomial([toFloat32(0.25), toFloat32(0.25), toFloat32(0.25)], toFloat32(0.9))}]")
+        print(f"[{Math.multinomial([toFloat32(0.5), toFloat32(0.5)], toFloat32(0.0))}] [{Math.multinomial([toFloat32(0.5), toFloat32(0.5)], toFloat32(0.9))}] [{Math.multinomial([toFloat32(0.25), toFloat32(0.25), toFloat32(0.25)], toFloat32(0.9))}]")
 
     show()
     ```

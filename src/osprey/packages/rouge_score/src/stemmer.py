@@ -299,18 +299,12 @@ def stem(word):
     ```osprey
     from rouge_score import Stemmer
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
     def show():
-        with wrapped:
-            pool = Stemmer.stem("Skies")
-            rule = Stemmer.stem("dying")
-            blank = Stemmer.stem("")
-            short = Stemmer.stem("as")
-            print(f"[{pool}] [{rule}] [{blank}] [{short}]")
+        pool = Stemmer.stem("Skies")
+        rule = Stemmer.stem("dying")
+        blank = Stemmer.stem("")
+        short = Stemmer.stem("as")
+        print(f"[{pool}] [{rule}] [{blank}] [{short}]")
 
     show()
     ```

@@ -87,18 +87,9 @@ def TemperatureLogitsWarper(temperature):
     ```osprey
     from transformers import LogitsProcess
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(_op, _l):
-            return 0.0
-
     def show():
-        with wrapped:
-            scores = [toFloat32(1.0), toFloat32(2.0)]
-            print(f"[{toString(LogitsProcess.apply(LogitsProcess.TemperatureLogitsWarper(2.0), [], scores))}] [{toString(LogitsProcess.apply(LogitsProcess.TemperatureLogitsWarper(0.5), [], scores))}]")
+        scores = [toFloat32(1.0), toFloat32(2.0)]
+        print(f"[{toString(LogitsProcess.apply(LogitsProcess.TemperatureLogitsWarper(2.0), [], scores))}] [{toString(LogitsProcess.apply(LogitsProcess.TemperatureLogitsWarper(0.5), [], scores))}]")
 
     show()
     ```output
@@ -117,18 +108,9 @@ def TopKLogitsWarper(top_k, filter_value, min_tokens_to_keep):
     ```osprey
     from transformers import LogitsProcess, Math
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(_op, _l):
-            return 0.0
-
     def show():
-        with wrapped:
-            scores = [toFloat32(1.0), toFloat32(3.0), toFloat32(2.0)]
-            print(f"[{toString(LogitsProcess.apply(LogitsProcess.TopKLogitsWarper(2, Math.neg_inf(), 1), [], scores))}] [{toString(LogitsProcess.apply(LogitsProcess.TopKLogitsWarper(1, Math.neg_inf(), 1), [], scores))}]")
+        scores = [toFloat32(1.0), toFloat32(3.0), toFloat32(2.0)]
+        print(f"[{toString(LogitsProcess.apply(LogitsProcess.TopKLogitsWarper(2, Math.neg_inf(), 1), [], scores))}] [{toString(LogitsProcess.apply(LogitsProcess.TopKLogitsWarper(1, Math.neg_inf(), 1), [], scores))}]")
 
     show()
     ```output
@@ -147,18 +129,9 @@ def TopPLogitsWarper(top_p, filter_value, min_tokens_to_keep):
     ```osprey
     from transformers import LogitsProcess, Math
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(_op, _l):
-            return 0.0
-
     def show():
-        with wrapped:
-            flat = [toFloat32(1.0), toFloat32(1.0), toFloat32(1.0)]
-            print(f"[{toString(LogitsProcess.apply(LogitsProcess.TopPLogitsWarper(0.6, Math.neg_inf(), 1), [], flat))}] [{toString(LogitsProcess.apply(LogitsProcess.TopPLogitsWarper(1.0, Math.neg_inf(), 1), [], flat))}]")
+        flat = [toFloat32(1.0), toFloat32(1.0), toFloat32(1.0)]
+        print(f"[{toString(LogitsProcess.apply(LogitsProcess.TopPLogitsWarper(0.6, Math.neg_inf(), 1), [], flat))}] [{toString(LogitsProcess.apply(LogitsProcess.TopPLogitsWarper(1.0, Math.neg_inf(), 1), [], flat))}]")
 
     show()
     ```output
@@ -177,18 +150,9 @@ def MinPLogitsWarper(min_p, filter_value, min_tokens_to_keep):
     ```osprey
     from transformers import LogitsProcess, Math
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(_op, _l):
-            return 0.0
-
     def show():
-        with wrapped:
-            scores = [toFloat32(2.0), toFloat32(1.0), toFloat32(0.0)]
-            print(f"[{toString(LogitsProcess.apply(LogitsProcess.MinPLogitsWarper(0.5, Math.neg_inf(), 1), [], scores))}] [{toString(LogitsProcess.apply(LogitsProcess.MinPLogitsWarper(0.5, Math.neg_inf(), 2), [], scores))}]")
+        scores = [toFloat32(2.0), toFloat32(1.0), toFloat32(0.0)]
+        print(f"[{toString(LogitsProcess.apply(LogitsProcess.MinPLogitsWarper(0.5, Math.neg_inf(), 1), [], scores))}] [{toString(LogitsProcess.apply(LogitsProcess.MinPLogitsWarper(0.5, Math.neg_inf(), 2), [], scores))}]")
 
     show()
     ```output
@@ -207,18 +171,9 @@ def TypicalLogitsWarper(mass, filter_value, min_tokens_to_keep):
     ```osprey
     from transformers import LogitsProcess, Math
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(_op, _l):
-            return 0.0
-
     def show():
-        with wrapped:
-            scores = [toFloat32(2.0), toFloat32(1.0), toFloat32(0.0)]
-            print(f"[{toString(LogitsProcess.apply(LogitsProcess.TypicalLogitsWarper(0.7, Math.neg_inf(), 1), [], scores))}] [{toString(LogitsProcess.apply(LogitsProcess.TypicalLogitsWarper(1.0, Math.neg_inf(), 1), [], scores))}]")
+        scores = [toFloat32(2.0), toFloat32(1.0), toFloat32(0.0)]
+        print(f"[{toString(LogitsProcess.apply(LogitsProcess.TypicalLogitsWarper(0.7, Math.neg_inf(), 1), [], scores))}] [{toString(LogitsProcess.apply(LogitsProcess.TypicalLogitsWarper(1.0, Math.neg_inf(), 1), [], scores))}]")
 
     show()
     ```output
@@ -237,18 +192,9 @@ def EpsilonLogitsWarper(epsilon, filter_value, min_tokens_to_keep):
     ```osprey
     from transformers import LogitsProcess, Math
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(_op, _l):
-            return 0.0
-
     def show():
-        with wrapped:
-            scores = [toFloat32(2.0), toFloat32(1.0), toFloat32(0.0)]
-            print(f"[{toString(LogitsProcess.apply(LogitsProcess.EpsilonLogitsWarper(0.2, Math.neg_inf(), 1), [], scores))}] [{toString(LogitsProcess.apply(LogitsProcess.EpsilonLogitsWarper(0.5, Math.neg_inf(), 1), [], scores))}]")
+        scores = [toFloat32(2.0), toFloat32(1.0), toFloat32(0.0)]
+        print(f"[{toString(LogitsProcess.apply(LogitsProcess.EpsilonLogitsWarper(0.2, Math.neg_inf(), 1), [], scores))}] [{toString(LogitsProcess.apply(LogitsProcess.EpsilonLogitsWarper(0.5, Math.neg_inf(), 1), [], scores))}]")
 
     show()
     ```output
@@ -267,17 +213,8 @@ def EtaLogitsWarper(epsilon, filter_value, min_tokens_to_keep):
     ```osprey
     from transformers import LogitsProcess, Math
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(_op, _l):
-            return 0.0
-
     def show():
-        with wrapped:
-            print(f"[{toString(LogitsProcess.apply(LogitsProcess.EtaLogitsWarper(0.1, Math.neg_inf(), 1), [], [toFloat32(2.0), toFloat32(1.0), toFloat32(0.0)]))}] [{toString(LogitsProcess.apply(LogitsProcess.EtaLogitsWarper(0.1, Math.neg_inf(), 1), [], []))}]")
+        print(f"[{toString(LogitsProcess.apply(LogitsProcess.EtaLogitsWarper(0.1, Math.neg_inf(), 1), [], [toFloat32(2.0), toFloat32(1.0), toFloat32(0.0)]))}] [{toString(LogitsProcess.apply(LogitsProcess.EtaLogitsWarper(0.1, Math.neg_inf(), 1), [], []))}]")
 
     show()
     ```output
@@ -297,18 +234,9 @@ def RepetitionPenaltyLogitsProcessor(penalty, prompt_ignore_length):
     ```osprey
     from transformers import LogitsProcess
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(_op, _l):
-            return 0.0
-
     def show():
-        with wrapped:
-            scores = [toFloat32(2.0), toFloat32(-2.0), toFloat32(1.0)]
-            print(f"[{toString(LogitsProcess.apply(LogitsProcess.RepetitionPenaltyLogitsProcessor(2.0, 0), [0, 1], scores))}] [{toString(LogitsProcess.apply(LogitsProcess.RepetitionPenaltyLogitsProcessor(2.0, 1), [0, 1], scores))}]")
+        scores = [toFloat32(2.0), toFloat32(-2.0), toFloat32(1.0)]
+        print(f"[{toString(LogitsProcess.apply(LogitsProcess.RepetitionPenaltyLogitsProcessor(2.0, 0), [0, 1], scores))}] [{toString(LogitsProcess.apply(LogitsProcess.RepetitionPenaltyLogitsProcessor(2.0, 1), [0, 1], scores))}]")
 
     show()
     ```output
@@ -326,18 +254,9 @@ def NoRepeatNGramLogitsProcessor(ngram_size):
     ```osprey
     from transformers import LogitsProcess
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(_op, _l):
-            return 0.0
-
     def show():
-        with wrapped:
-            scores = [toFloat32(1.0), toFloat32(2.0), toFloat32(3.0), toFloat32(4.0), toFloat32(5.0)]
-            print(f"[{toString(LogitsProcess.apply(LogitsProcess.NoRepeatNGramLogitsProcessor(2), [1, 2, 3, 1, 2], scores))}] [{toString(LogitsProcess.apply(LogitsProcess.NoRepeatNGramLogitsProcessor(2), [1], scores))}]")
+        scores = [toFloat32(1.0), toFloat32(2.0), toFloat32(3.0), toFloat32(4.0), toFloat32(5.0)]
+        print(f"[{toString(LogitsProcess.apply(LogitsProcess.NoRepeatNGramLogitsProcessor(2), [1, 2, 3, 1, 2], scores))}] [{toString(LogitsProcess.apply(LogitsProcess.NoRepeatNGramLogitsProcessor(2), [1], scores))}]")
 
     show()
     ```output
@@ -355,18 +274,9 @@ def MinLengthLogitsProcessor(min_length, eos_ids):
     ```osprey
     from transformers import LogitsProcess
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(_op, _l):
-            return 0.0
-
     def show():
-        with wrapped:
-            scores = [toFloat32(1.0), toFloat32(2.0), toFloat32(3.0)]
-            print(f"[{toString(LogitsProcess.apply(LogitsProcess.MinLengthLogitsProcessor(3, [1]), [1, 2], scores))}] [{toString(LogitsProcess.apply(LogitsProcess.MinLengthLogitsProcessor(3, [1]), [1, 2, 3], scores))}]")
+        scores = [toFloat32(1.0), toFloat32(2.0), toFloat32(3.0)]
+        print(f"[{toString(LogitsProcess.apply(LogitsProcess.MinLengthLogitsProcessor(3, [1]), [1, 2], scores))}] [{toString(LogitsProcess.apply(LogitsProcess.MinLengthLogitsProcessor(3, [1]), [1, 2, 3], scores))}]")
 
     show()
     ```output
@@ -385,18 +295,9 @@ def MinNewTokensLengthLogitsProcessor(prompt_length_to_skip, min_new_tokens, eos
     ```osprey
     from transformers import LogitsProcess
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(_op, _l):
-            return 0.0
-
     def show():
-        with wrapped:
-            scores = [toFloat32(1.0), toFloat32(2.0), toFloat32(3.0)]
-            print(f"[{toString(LogitsProcess.apply(LogitsProcess.MinNewTokensLengthLogitsProcessor(2, 1, [2]), [5, 6], scores))}] [{toString(LogitsProcess.apply(LogitsProcess.MinNewTokensLengthLogitsProcessor(2, 1, [2]), [5, 6, 7], scores))}]")
+        scores = [toFloat32(1.0), toFloat32(2.0), toFloat32(3.0)]
+        print(f"[{toString(LogitsProcess.apply(LogitsProcess.MinNewTokensLengthLogitsProcessor(2, 1, [2]), [5, 6], scores))}] [{toString(LogitsProcess.apply(LogitsProcess.MinNewTokensLengthLogitsProcessor(2, 1, [2]), [5, 6, 7], scores))}]")
 
     show()
     ```output
@@ -414,18 +315,9 @@ def ForcedBOSTokenLogitsProcessor(bos_token_id):
     ```osprey
     from transformers import LogitsProcess
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(_op, _l):
-            return 0.0
-
     def show():
-        with wrapped:
-            scores = [toFloat32(1.0), toFloat32(2.0), toFloat32(3.0)]
-            print(f"[{toString(LogitsProcess.apply(LogitsProcess.ForcedBOSTokenLogitsProcessor(1), [9], scores))}] [{toString(LogitsProcess.apply(LogitsProcess.ForcedBOSTokenLogitsProcessor(1), [9, 1], scores))}]")
+        scores = [toFloat32(1.0), toFloat32(2.0), toFloat32(3.0)]
+        print(f"[{toString(LogitsProcess.apply(LogitsProcess.ForcedBOSTokenLogitsProcessor(1), [9], scores))}] [{toString(LogitsProcess.apply(LogitsProcess.ForcedBOSTokenLogitsProcessor(1), [9, 1], scores))}]")
 
     show()
     ```output
@@ -443,18 +335,9 @@ def ForcedEOSTokenLogitsProcessor(max_length, eos_ids):
     ```osprey
     from transformers import LogitsProcess
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(_op, _l):
-            return 0.0
-
     def show():
-        with wrapped:
-            scores = [toFloat32(1.0), toFloat32(2.0), toFloat32(3.0)]
-            print(f"[{toString(LogitsProcess.apply(LogitsProcess.ForcedEOSTokenLogitsProcessor(3, [2]), [4, 5], scores))}] [{toString(LogitsProcess.apply(LogitsProcess.ForcedEOSTokenLogitsProcessor(3, [2]), [4], scores))}]")
+        scores = [toFloat32(1.0), toFloat32(2.0), toFloat32(3.0)]
+        print(f"[{toString(LogitsProcess.apply(LogitsProcess.ForcedEOSTokenLogitsProcessor(3, [2]), [4, 5], scores))}] [{toString(LogitsProcess.apply(LogitsProcess.ForcedEOSTokenLogitsProcessor(3, [2]), [4], scores))}]")
 
     show()
     ```output
@@ -472,18 +355,9 @@ def SuppressTokensLogitsProcessor(suppress_ids):
     ```osprey
     from transformers import LogitsProcess
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(_op, _l):
-            return 0.0
-
     def show():
-        with wrapped:
-            scores = [toFloat32(1.0), toFloat32(2.0), toFloat32(3.0)]
-            print(f"[{toString(LogitsProcess.apply(LogitsProcess.SuppressTokensLogitsProcessor([0, 2]), [], scores))}] [{toString(LogitsProcess.apply(LogitsProcess.SuppressTokensLogitsProcessor([]), [], scores))}]")
+        scores = [toFloat32(1.0), toFloat32(2.0), toFloat32(3.0)]
+        print(f"[{toString(LogitsProcess.apply(LogitsProcess.SuppressTokensLogitsProcessor([0, 2]), [], scores))}] [{toString(LogitsProcess.apply(LogitsProcess.SuppressTokensLogitsProcessor([]), [], scores))}]")
 
     show()
     ```output
@@ -502,18 +376,9 @@ def NoBadWordsLogitsProcessor(bad_words_ids, eos_ids):
     ```osprey
     from transformers import LogitsProcess
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(_op, _l):
-            return 0.0
-
     def show():
-        with wrapped:
-            scores = [toFloat32(1.0), toFloat32(2.0), toFloat32(3.0), toFloat32(4.0)]
-            print(f"[{toString(LogitsProcess.apply(LogitsProcess.NoBadWordsLogitsProcessor([[3], [1, 2]], [3]), [0, 1], scores))}] [{toString(LogitsProcess.apply(LogitsProcess.NoBadWordsLogitsProcessor([[3]], []), [5], scores))}]")
+        scores = [toFloat32(1.0), toFloat32(2.0), toFloat32(3.0), toFloat32(4.0)]
+        print(f"[{toString(LogitsProcess.apply(LogitsProcess.NoBadWordsLogitsProcessor([[3], [1, 2]], [3]), [0, 1], scores))}] [{toString(LogitsProcess.apply(LogitsProcess.NoBadWordsLogitsProcessor([[3]], []), [5], scores))}]")
 
     show()
     ```output
@@ -531,20 +396,11 @@ def apply_list(processors, input_ids, scores: list[float32]):
     ```osprey
     from transformers import LogitsProcess, Math
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(_op, _l):
-            return 0.0
-
     def show():
-        with wrapped:
-            scores = [toFloat32(1.0), toFloat32(2.0), toFloat32(3.0)]
-            top_first = LogitsProcess.apply_list([LogitsProcess.TopKLogitsWarper(1, Math.neg_inf(), 1), LogitsProcess.SuppressTokensLogitsProcessor([2])], [], scores)
-            suppress_first = LogitsProcess.apply_list([LogitsProcess.SuppressTokensLogitsProcessor([2]), LogitsProcess.TopKLogitsWarper(1, Math.neg_inf(), 1)], [], scores)
-            print(f"[{toString(top_first)}] [{toString(suppress_first)}]")
+        scores = [toFloat32(1.0), toFloat32(2.0), toFloat32(3.0)]
+        top_first = LogitsProcess.apply_list([LogitsProcess.TopKLogitsWarper(1, Math.neg_inf(), 1), LogitsProcess.SuppressTokensLogitsProcessor([2])], [], scores)
+        suppress_first = LogitsProcess.apply_list([LogitsProcess.SuppressTokensLogitsProcessor([2]), LogitsProcess.TopKLogitsWarper(1, Math.neg_inf(), 1)], [], scores)
+        print(f"[{toString(top_first)}] [{toString(suppress_first)}]")
 
     show()
     ```output
@@ -561,18 +417,9 @@ def apply(processor: Processor, input_ids, scores: list[float32]):
     ```osprey
     from transformers import LogitsProcess, Math
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(_op, _l):
-            return 0.0
-
     def show():
-        with wrapped:
-            scores = [toFloat32(1.0), toFloat32(2.0), toFloat32(3.0)]
-            print(f"[{toString(LogitsProcess.apply(LogitsProcess.TemperatureLogitsWarper(2.0), [], scores))}] [{toString(LogitsProcess.apply(LogitsProcess.TopKLogitsWarper(1, Math.neg_inf(), 1), [], scores))}]")
+        scores = [toFloat32(1.0), toFloat32(2.0), toFloat32(3.0)]
+        print(f"[{toString(LogitsProcess.apply(LogitsProcess.TemperatureLogitsWarper(2.0), [], scores))}] [{toString(LogitsProcess.apply(LogitsProcess.TopKLogitsWarper(1, Math.neg_inf(), 1), [], scores))}]")
 
     show()
     ```output

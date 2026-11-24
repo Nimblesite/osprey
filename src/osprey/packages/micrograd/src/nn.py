@@ -66,15 +66,9 @@ def param_count(nin, nouts):
     ```osprey
     from micrograd import NN
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
     def show():
-        with wrapped:
-            none: list[int] = []
-            print(f"[{NN.param_count(3, [4, 4, 1])}] [{NN.param_count(2, none)}]")
+        none: list[int] = []
+        print(f"[{NN.param_count(3, [4, 4, 1])}] [{NN.param_count(2, none)}]")
 
     show()
     ```
@@ -95,15 +89,9 @@ def init_mlp(g, nin, nouts, params):
     ```osprey
     from micrograd import Engine, NN
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
     def show():
-        with wrapped:
-            g = NN.init_mlp(Engine.empty(), 2, [1], [0.5, -1.5, 2.0])
-            print(f"[{Engine.size(g)}] [{Engine.data(g, 0)}] [{Engine.data(g, 2)}]")
+        g = NN.init_mlp(Engine.empty(), 2, [1], [0.5, -1.5, 2.0])
+        print(f"[{Engine.size(g)}] [{Engine.data(g, 0)}] [{Engine.data(g, 2)}]")
 
     show()
     ```
@@ -121,15 +109,9 @@ def neuron_at(offset, nin, nonlin):
     ```osprey
     from micrograd import NN
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
     def show():
-        with wrapped:
-            n = NN.neuron_at(3, 2, True)
-            print(f"{toString(n.weights)} [{n.bias}] [{n.nonlin}]")
+        n = NN.neuron_at(3, 2, True)
+        print(f"{toString(n.weights)} [{n.bias}] [{n.nonlin}]")
 
     show()
     ```
@@ -167,17 +149,11 @@ def mlp_of(nin, nouts):
     ```osprey
     from micrograd import NN
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
     def show():
-        with wrapped:
-            m = NN.mlp_of(2, [3, 1])
-            l1 = unwrap_or(listGet(m.layers, 1), NN.Layer(neurons=[]))
-            n_last = unwrap_or(listGet(l1.neurons, 0), NN.Neuron(weights=[], bias=-1, nonlin=True))
-            print(f"[{len(m.layers)}] [{len(l1.neurons)}] [{n_last.nonlin}]")
+        m = NN.mlp_of(2, [3, 1])
+        l1 = unwrap_or(listGet(m.layers, 1), NN.Layer(neurons=[]))
+        n_last = unwrap_or(listGet(l1.neurons, 0), NN.Neuron(weights=[], bias=-1, nonlin=True))
+        print(f"[{len(m.layers)}] [{len(l1.neurons)}] [{n_last.nonlin}]")
 
     show()
     ```
@@ -211,16 +187,10 @@ def call_neuron(g, n, xs):
     ```osprey
     from micrograd import Engine, NN
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
     def show():
-        with wrapped:
-            g1 = NN.init_mlp(Engine.empty(), 2, [1], [0.5, -1.5, 2.0])
-            g2 = NN.call_neuron(g1, NN.neuron_at(0, 2, False), [1.0, 1.0])
-            print(f"[{Engine.data(g2, Engine.top(g2))}] [{Engine.size(g2)}]")
+        g1 = NN.init_mlp(Engine.empty(), 2, [1], [0.5, -1.5, 2.0])
+        g2 = NN.call_neuron(g1, NN.neuron_at(0, 2, False), [1.0, 1.0])
+        print(f"[{Engine.data(g2, Engine.top(g2))}] [{Engine.size(g2)}]")
 
     show()
     ```
@@ -240,17 +210,11 @@ def call_neuron_values(g, n, x_ids):
     ```osprey
     from micrograd import Engine, NN
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
     def show():
-        with wrapped:
-            g1 = NN.init_mlp(Engine.empty(), 2, [1], [0.5, -1.5, 2.0])
-            g2 = Engine.value(Engine.value(g1, 1.0), -2.0)
-            g3 = NN.call_neuron_values(g2, NN.neuron_at(0, 2, False), [3, 4])
-            print(f"[{Engine.data(g3, Engine.top(g3))}] [{Engine.size(g3)}]")
+        g1 = NN.init_mlp(Engine.empty(), 2, [1], [0.5, -1.5, 2.0])
+        g2 = Engine.value(Engine.value(g1, 1.0), -2.0)
+        g3 = NN.call_neuron_values(g2, NN.neuron_at(0, 2, False), [3, 4])
+        print(f"[{Engine.data(g3, Engine.top(g3))}] [{Engine.size(g3)}]")
 
     show()
     ```
@@ -281,17 +245,11 @@ def call_layer(g, l, xs):
     ```osprey
     from micrograd import Engine, NN
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
     def show():
-        with wrapped:
-            g = NN.init_mlp(Engine.empty(), 2, [2], [0.5, -1.5, 2.0, 1.0, -0.5, 3.0])
-            l = unwrap_or(listGet(NN.mlp_of(2, [2]).layers, 0), NN.Layer(neurons=[]))
-            fwd = NN.call_layer(g, l, [1.0, 1.0])
-            print(f"[{Engine.data(fwd.graph, Engine.top(fwd.graph))}] {toString(fwd.outputs)}")
+        g = NN.init_mlp(Engine.empty(), 2, [2], [0.5, -1.5, 2.0, 1.0, -0.5, 3.0])
+        l = unwrap_or(listGet(NN.mlp_of(2, [2]).layers, 0), NN.Layer(neurons=[]))
+        fwd = NN.call_layer(g, l, [1.0, 1.0])
+        print(f"[{Engine.data(fwd.graph, Engine.top(fwd.graph))}] {toString(fwd.outputs)}")
 
     show()
     ```
@@ -310,18 +268,12 @@ def call_layer_values(g, l, x_ids):
     ```osprey
     from micrograd import Engine, NN
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
     def show():
-        with wrapped:
-            g1 = NN.init_mlp(Engine.empty(), 2, [2], [0.5, -1.5, 2.0, 1.0, -0.5, 3.0])
-            g2 = Engine.value(Engine.value(g1, 1.0), 2.0)
-            l = unwrap_or(listGet(NN.mlp_of(2, [2]).layers, 0), NN.Layer(neurons=[]))
-            fwd = NN.call_layer_values(g2, l, [6, 7])
-            print(f"[{Engine.data(fwd.graph, Engine.top(fwd.graph))}] {toString(fwd.outputs)}")
+        g1 = NN.init_mlp(Engine.empty(), 2, [2], [0.5, -1.5, 2.0, 1.0, -0.5, 3.0])
+        g2 = Engine.value(Engine.value(g1, 1.0), 2.0)
+        l = unwrap_or(listGet(NN.mlp_of(2, [2]).layers, 0), NN.Layer(neurons=[]))
+        fwd = NN.call_layer_values(g2, l, [6, 7])
+        print(f"[{Engine.data(fwd.graph, Engine.top(fwd.graph))}] {toString(fwd.outputs)}")
 
     show()
     ```
@@ -341,17 +293,11 @@ def call_mlp(g, m, xs):
     ```osprey
     from micrograd import Engine, NN
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
     def show():
-        with wrapped:
-            g = NN.init_mlp(Engine.empty(), 2, [2, 1], [0.5, -1.5, 2.0, 1.0, -0.5, 3.0, 0.5, 0.5, -1.0])
-            out = NN.call_mlp(g, NN.mlp_of(2, [2, 1]), [1.0, 1.0])
-            bare = NN.call_mlp(Engine.empty(), NN.mlp_of(2, []), [1.0, 1.0])
-            print(f"[{Engine.data(out, Engine.top(out))}] [{Engine.size(out)}] [{Engine.size(bare)}]")
+        g = NN.init_mlp(Engine.empty(), 2, [2, 1], [0.5, -1.5, 2.0, 1.0, -0.5, 3.0, 0.5, 0.5, -1.0])
+        out = NN.call_mlp(g, NN.mlp_of(2, [2, 1]), [1.0, 1.0])
+        bare = NN.call_mlp(Engine.empty(), NN.mlp_of(2, []), [1.0, 1.0])
+        print(f"[{Engine.data(out, Engine.top(out))}] [{Engine.size(out)}] [{Engine.size(bare)}]")
 
     show()
     ```
@@ -377,14 +323,8 @@ def parameters(m):
     ```osprey
     from micrograd import NN
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
     def show():
-        with wrapped:
-            print(f"[{len(NN.parameters(NN.mlp_of(2, [2])))}] {toString(NN.parameters(NN.mlp_of(2, [2])))}")
+        print(f"[{len(NN.parameters(NN.mlp_of(2, [2])))}] {toString(NN.parameters(NN.mlp_of(2, [2])))}")
 
     show()
     ```

@@ -24,22 +24,10 @@ def map_indexed(xs, read):
     ```osprey
     from sklearn import Stats
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(_op, _l):
-            return 0.0
-
-        def remainderByZero(_l):
-            return 0
-
     def show():
-        with wrapped:
-            scaled = Stats.map_indexed([4, 5], lambda i: i * 10)
-            lone = Stats.map_indexed([1], lambda i: i)
-            print(f"[{toString(scaled)}] [{toString(lone)}]")
+        scaled = Stats.map_indexed([4, 5], lambda i: i * 10)
+        lone = Stats.map_indexed([1], lambda i: i)
+        print(f"[{toString(scaled)}] [{toString(lone)}]")
 
     show()
     ```
@@ -57,22 +45,10 @@ def sum_float(xs):
     ```osprey
     from sklearn import Stats
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(_op, _l):
-            return 0.0
-
-        def remainderByZero(_l):
-            return 0
-
     def show():
-        with wrapped:
-            total = Stats.sum_float([1.0, 2.5, 3.0])
-            lone = Stats.sum_float([0.5])
-            print(f"[{total}] [{lone}]")
+        total = Stats.sum_float([1.0, 2.5, 3.0])
+        lone = Stats.sum_float([0.5])
+        print(f"[{total}] [{lone}]")
 
     show()
     ```
@@ -90,22 +66,10 @@ def mean_float(xs):
     ```osprey
     from sklearn import Stats
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(_op, _l):
-            return 0.0
-
-        def remainderByZero(_l):
-            return 0
-
     def show():
-        with wrapped:
-            even = Stats.mean_float([1.0, 2.0, 3.0])
-            lone = Stats.mean_float([4.0])
-            print(f"[{even}] [{lone}]")
+        even = Stats.mean_float([1.0, 2.0, 3.0])
+        lone = Stats.mean_float([4.0])
+        print(f"[{even}] [{lone}]")
 
     show()
     ```
@@ -123,22 +87,10 @@ def min_float(xs):
     ```osprey
     from sklearn import Stats
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(_op, _l):
-            return 0.0
-
-        def remainderByZero(_l):
-            return 0
-
     def show():
-        with wrapped:
-            smallest = Stats.min_float([3.0, 1.0, 2.0])
-            lone = Stats.min_float([7.0])
-            print(f"[{smallest}] [{lone}]")
+        smallest = Stats.min_float([3.0, 1.0, 2.0])
+        lone = Stats.min_float([7.0])
+        print(f"[{smallest}] [{lone}]")
 
     show()
     ```
@@ -157,22 +109,10 @@ def max_float(xs):
     ```osprey
     from sklearn import Stats
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(_op, _l):
-            return 0.0
-
-        def remainderByZero(_l):
-            return 0
-
     def show():
-        with wrapped:
-            largest = Stats.max_float([3.0, 1.0, 2.0])
-            lone = Stats.max_float([7.0])
-            print(f"[{largest}] [{lone}]")
+        largest = Stats.max_float([3.0, 1.0, 2.0])
+        lone = Stats.max_float([7.0])
+        print(f"[{largest}] [{lone}]")
 
     show()
     ```
@@ -207,22 +147,10 @@ def argsort_float(xs):
     ```osprey
     from sklearn import Stats
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(_op, _l):
-            return 0.0
-
-        def remainderByZero(_l):
-            return 0
-
     def show():
-        with wrapped:
-            tied = Stats.argsort_float([3.0, 1.0, 3.0])
-            spread = Stats.argsort_float([3.0, 1.0, 3.0, 0.5])
-            print(f"[{toString(tied)}] [{toString(spread)}]")
+        tied = Stats.argsort_float([3.0, 1.0, 3.0])
+        spread = Stats.argsort_float([3.0, 1.0, 3.0, 0.5])
+        print(f"[{toString(tied)}] [{toString(spread)}]")
 
     show()
     ```
@@ -252,22 +180,10 @@ def unique_ints(xs):
     ```osprey
     from sklearn import Stats
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(_op, _l):
-            return 0.0
-
-        def remainderByZero(_l):
-            return 0
-
     def show():
-        with wrapped:
-            repeated = Stats.unique_ints([3, 1, 3, 2, 1])
-            lone = Stats.unique_ints([5])
-            print(f"[{toString(repeated)}] [{toString(lone)}]")
+        repeated = Stats.unique_ints([3, 1, 3, 2, 1])
+        lone = Stats.unique_ints([5])
+        print(f"[{toString(repeated)}] [{toString(lone)}]")
 
     show()
     ```
@@ -285,22 +201,10 @@ def index_of(xs, v):
     ```osprey
     from sklearn import Stats
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(_op, _l):
-            return 0.0
-
-        def remainderByZero(_l):
-            return 0
-
     def show():
-        with wrapped:
-            found = Stats.index_of([10, 20, 30], 20)
-            missing = Stats.index_of([10, 20, 30], 99)
-            print(f"[{found}] [{missing}]")
+        found = Stats.index_of([10, 20, 30], 20)
+        missing = Stats.index_of([10, 20, 30], 99)
+        print(f"[{found}] [{missing}]")
 
     show()
     ```
@@ -319,22 +223,10 @@ def encode_labels(labels, ys):
     ```osprey
     from sklearn import Stats
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(_op, _l):
-            return 0.0
-
-        def remainderByZero(_l):
-            return 0
-
     def show():
-        with wrapped:
-            encoded = Stats.encode_labels([3, 7, 9], [9, 3, 7, 9])
-            unseen = Stats.encode_labels([3, 7], [3, 99])
-            print(f"[{toString(encoded)}] [{toString(unseen)}]")
+        encoded = Stats.encode_labels([3, 7, 9], [9, 3, 7, 9])
+        unseen = Stats.encode_labels([3, 7], [3, 99])
+        print(f"[{toString(encoded)}] [{toString(unseen)}]")
 
     show()
     ```

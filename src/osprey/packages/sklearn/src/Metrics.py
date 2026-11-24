@@ -140,22 +140,10 @@ def accuracy_score(y_true, y_pred):
     ```osprey
     from sklearn import Metrics
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(_op, _l):
-            return 0.0
-
-        def remainderByZero(_l):
-            return 0
-
     def show():
-        with wrapped:
-            mixed = Metrics.accuracy_score([0, 1, 2], [0, 2, 1])
-            perfect = Metrics.accuracy_score([0, 1], [0, 1])
-            print(f"[{mixed}] [{perfect}]")
+        mixed = Metrics.accuracy_score([0, 1, 2], [0, 2, 1])
+        perfect = Metrics.accuracy_score([0, 1], [0, 1])
+        print(f"[{mixed}] [{perfect}]")
 
     show()
     ```
@@ -175,23 +163,11 @@ def precision_score(y_true, y_pred, average, zero_division):
     ```osprey
     from sklearn import Metrics
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(_op, _l):
-            return 0.0
-
-        def remainderByZero(_l):
-            return 0
-
     def show():
-        with wrapped:
-            usual = Metrics.precision_score([1, 1, 1, 0, 0], [1, 0, 1, 0, 1], "binary", 0)
-            no_positive = Metrics.precision_score([0, 1], [0, 0], "binary", 0)
-            one = Metrics.precision_score([0, 1], [0, 0], "binary", 1)
-            print(f"[{usual}] [{no_positive}] [{one}]")
+        usual = Metrics.precision_score([1, 1, 1, 0, 0], [1, 0, 1, 0, 1], "binary", 0)
+        no_positive = Metrics.precision_score([0, 1], [0, 0], "binary", 0)
+        one = Metrics.precision_score([0, 1], [0, 0], "binary", 1)
+        print(f"[{usual}] [{no_positive}] [{one}]")
 
     show()
     ```
@@ -210,23 +186,11 @@ def recall_score(y_true, y_pred, average, zero_division):
     ```osprey
     from sklearn import Metrics
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(_op, _l):
-            return 0.0
-
-        def remainderByZero(_l):
-            return 0
-
     def show():
-        with wrapped:
-            usual = Metrics.recall_score([1, 1, 1, 0, 0], [1, 0, 1, 0, 1], "binary", 0)
-            no_positive = Metrics.recall_score([0, 0, 0, 0], [1, 1, 1, 1], "binary", 0)
-            one = Metrics.recall_score([0, 0, 0, 0], [1, 1, 1, 1], "binary", 1)
-            print(f"[{usual}] [{no_positive}] [{one}]")
+        usual = Metrics.recall_score([1, 1, 1, 0, 0], [1, 0, 1, 0, 1], "binary", 0)
+        no_positive = Metrics.recall_score([0, 0, 0, 0], [1, 1, 1, 1], "binary", 0)
+        one = Metrics.recall_score([0, 0, 0, 0], [1, 1, 1, 1], "binary", 1)
+        print(f"[{usual}] [{no_positive}] [{one}]")
 
     show()
     ```
@@ -245,23 +209,11 @@ def f1_score(y_true, y_pred, average, zero_division):
     ```osprey
     from sklearn import Metrics
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(_op, _l):
-            return 0.0
-
-        def remainderByZero(_l):
-            return 0
-
     def show():
-        with wrapped:
-            usual = Metrics.f1_score([1, 1, 1, 0, 0], [1, 0, 1, 0, 1], "binary", 0)
-            no_positive = Metrics.f1_score([0, 0], [0, 0], "binary", 0)
-            one = Metrics.f1_score([0, 0], [0, 0], "binary", 1)
-            print(f"[{usual}] [{no_positive}] [{one}]")
+        usual = Metrics.f1_score([1, 1, 1, 0, 0], [1, 0, 1, 0, 1], "binary", 0)
+        no_positive = Metrics.f1_score([0, 0], [0, 0], "binary", 0)
+        one = Metrics.f1_score([0, 0], [0, 0], "binary", 1)
+        print(f"[{usual}] [{no_positive}] [{one}]")
 
     show()
     ```
@@ -280,22 +232,10 @@ def confusion_matrix(y_true, y_pred, labels):
     ```osprey
     from sklearn import Metrics
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(_op, _l):
-            return 0.0
-
-        def remainderByZero(_l):
-            return 0
-
     def show():
-        with wrapped:
-            present = Metrics.confusion_matrix([0, 1, 1], [0, 1, 0], [0, 1])
-            wide = Metrics.confusion_matrix([0, 1, 1], [0, 1, 0], [0, 1, 2])
-            print(f"[{toString(present)}] [{toString(wide)}]")
+        present = Metrics.confusion_matrix([0, 1, 1], [0, 1, 0], [0, 1])
+        wide = Metrics.confusion_matrix([0, 1, 1], [0, 1, 0], [0, 1, 2])
+        print(f"[{toString(present)}] [{toString(wide)}]")
 
     show()
     ```
@@ -376,21 +316,9 @@ def roc_curve(y_true, y_score):
     ```osprey
     from sklearn import Metrics
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(_op, _l):
-            return 0.0
-
-        def remainderByZero(_l):
-            return 0
-
     def show():
-        with wrapped:
-            curve = Metrics.roc_curve([0, 0, 1, 1], [0.1, 0.4, 0.35, 0.8])
-            print(f"[{toString(curve.fpr)}] [{toString(curve.tpr)}] [{toString(curve.thresholds)}]")
+        curve = Metrics.roc_curve([0, 0, 1, 1], [0.1, 0.4, 0.35, 0.8])
+        print(f"[{toString(curve.fpr)}] [{toString(curve.tpr)}] [{toString(curve.thresholds)}]")
 
     show()
     ```
@@ -428,22 +356,10 @@ def roc_auc_score(y_true, y_score):
     ```osprey
     from sklearn import Metrics
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(_op, _l):
-            return 0.0
-
-        def remainderByZero(_l):
-            return 0
-
     def show():
-        with wrapped:
-            mixed = Metrics.roc_auc_score([0, 0, 1, 1], [0.1, 0.4, 0.35, 0.8])
-            one_class = Metrics.roc_auc_score([1, 1, 1], [0.1, 0.4, 0.8])
-            print(f"[{mixed}] [{one_class}]")
+        mixed = Metrics.roc_auc_score([0, 0, 1, 1], [0.1, 0.4, 0.35, 0.8])
+        one_class = Metrics.roc_auc_score([1, 1, 1], [0.1, 0.4, 0.8])
+        print(f"[{mixed}] [{one_class}]")
 
     show()
     ```
@@ -466,21 +382,9 @@ def precision_recall_curve(y_true, y_score):
     ```osprey
     from sklearn import Metrics
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(_op, _l):
-            return 0.0
-
-        def remainderByZero(_l):
-            return 0
-
     def show():
-        with wrapped:
-            curve = Metrics.precision_recall_curve([0, 0, 1, 1], [0.1, 0.4, 0.35, 0.8])
-            print(f"[{toString(curve.precision)}] [{toString(curve.recall)}] [{toString(curve.thresholds)}]")
+        curve = Metrics.precision_recall_curve([0, 0, 1, 1], [0.1, 0.4, 0.35, 0.8])
+        print(f"[{toString(curve.precision)}] [{toString(curve.recall)}] [{toString(curve.thresholds)}]")
 
     show()
     ```
@@ -509,22 +413,10 @@ def average_precision_score(y_true, y_score):
     ```osprey
     from sklearn import Metrics
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(_op, _l):
-            return 0.0
-
-        def remainderByZero(_l):
-            return 0
-
     def show():
-        with wrapped:
-            mixed = Metrics.average_precision_score([0, 0, 1, 1], [0.1, 0.4, 0.35, 0.8])
-            perfect = Metrics.average_precision_score([0, 0, 1, 1], [0.1, 0.2, 0.8, 0.9])
-            print(f"[{mixed}] [{perfect}]")
+        mixed = Metrics.average_precision_score([0, 0, 1, 1], [0.1, 0.4, 0.35, 0.8])
+        perfect = Metrics.average_precision_score([0, 0, 1, 1], [0.1, 0.2, 0.8, 0.9])
+        print(f"[{mixed}] [{perfect}]")
 
     show()
     ```
@@ -555,22 +447,10 @@ def log_loss(y_true, y_proba):
     ```osprey
     from sklearn import Metrics
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(_op, _l):
-            return 0.0
-
-        def remainderByZero(_l):
-            return 0
-
     def show():
-        with wrapped:
-            usual = Metrics.log_loss([0, 1, 1, 0], [[0.9, 0.1], [0.1, 0.9], [0.2, 0.8], [0.8, 0.2]])
-            clipped = Metrics.log_loss([0, 1], [[0.0, 1.0], [1.0, 0.0]])
-            print(f"[{usual}] [{clipped}]")
+        usual = Metrics.log_loss([0, 1, 1, 0], [[0.9, 0.1], [0.1, 0.9], [0.2, 0.8], [0.8, 0.2]])
+        clipped = Metrics.log_loss([0, 1], [[0.0, 1.0], [1.0, 0.0]])
+        print(f"[{usual}] [{clipped}]")
 
     show()
     ```
@@ -606,22 +486,10 @@ def mean_squared_error(y_true, y_pred):
     ```osprey
     from sklearn import Metrics
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(_op, _l):
-            return 0.0
-
-        def remainderByZero(_l):
-            return 0
-
     def show():
-        with wrapped:
-            usual = Metrics.mean_squared_error([3.0, -0.5, 2.0, 7.0], [2.5, 0.0, 2.0, 8.0])
-            perfect = Metrics.mean_squared_error([1.0, 2.0], [1.0, 2.0])
-            print(f"[{usual}] [{perfect}]")
+        usual = Metrics.mean_squared_error([3.0, -0.5, 2.0, 7.0], [2.5, 0.0, 2.0, 8.0])
+        perfect = Metrics.mean_squared_error([1.0, 2.0], [1.0, 2.0])
+        print(f"[{usual}] [{perfect}]")
 
     show()
     ```
@@ -639,22 +507,10 @@ def mean_absolute_error(y_true, y_pred):
     ```osprey
     from sklearn import Metrics
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(_op, _l):
-            return 0.0
-
-        def remainderByZero(_l):
-            return 0
-
     def show():
-        with wrapped:
-            usual = Metrics.mean_absolute_error([3.0, -0.5, 2.0, 7.0], [2.5, 0.0, 2.0, 8.0])
-            perfect = Metrics.mean_absolute_error([1.0, 2.0], [1.0, 2.0])
-            print(f"[{usual}] [{perfect}]")
+        usual = Metrics.mean_absolute_error([3.0, -0.5, 2.0, 7.0], [2.5, 0.0, 2.0, 8.0])
+        perfect = Metrics.mean_absolute_error([1.0, 2.0], [1.0, 2.0])
+        print(f"[{usual}] [{perfect}]")
 
     show()
     ```
@@ -691,23 +547,11 @@ def r2_score(y_true, y_pred):
     ```osprey
     from sklearn import Metrics
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(_op, _l):
-            return 0.0
-
-        def remainderByZero(_l):
-            return 0
-
     def show():
-        with wrapped:
-            usual = Metrics.r2_score([3.0, -0.5, 2.0, 7.0], [2.5, 0.0, 2.0, 8.0])
-            perfect = Metrics.r2_score([1.0, 2.0], [1.0, 2.0])
-            one_sample = Metrics.r2_score([4.0], [5.0])
-            print(f"[{usual}] [{perfect}] [{one_sample}]")
+        usual = Metrics.r2_score([3.0, -0.5, 2.0, 7.0], [2.5, 0.0, 2.0, 8.0])
+        perfect = Metrics.r2_score([1.0, 2.0], [1.0, 2.0])
+        one_sample = Metrics.r2_score([4.0], [5.0])
+        print(f"[{usual}] [{perfect}] [{one_sample}]")
 
     show()
     ```
@@ -726,22 +570,10 @@ def explained_variance_score(y_true, y_pred):
     ```osprey
     from sklearn import Metrics
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(_op, _l):
-            return 0.0
-
-        def remainderByZero(_l):
-            return 0
-
     def show():
-        with wrapped:
-            usual = Metrics.explained_variance_score([3.0, -0.5, 2.0, 7.0], [2.5, 0.0, 2.0, 8.0])
-            perfect = Metrics.explained_variance_score([1.0, 2.0], [1.0, 2.0])
-            print(f"[{usual}] [{perfect}]")
+        usual = Metrics.explained_variance_score([3.0, -0.5, 2.0, 7.0], [2.5, 0.0, 2.0, 8.0])
+        perfect = Metrics.explained_variance_score([1.0, 2.0], [1.0, 2.0])
+        print(f"[{usual}] [{perfect}]")
 
     show()
     ```
@@ -784,23 +616,11 @@ def matthews_corrcoef(y_true, y_pred):
     ```osprey
     from sklearn import Metrics
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(_op, _l):
-            return 0.0
-
-        def remainderByZero(_l):
-            return 0
-
     def show():
-        with wrapped:
-            inverse = Metrics.matthews_corrcoef([0, 0, 1, 1], [1, 1, 0, 0])
-            perfect = Metrics.matthews_corrcoef([0, 1], [0, 1])
-            constant = Metrics.matthews_corrcoef([1, 1], [1, 1])
-            print(f"[{inverse}] [{perfect}] [{constant}]")
+        inverse = Metrics.matthews_corrcoef([0, 0, 1, 1], [1, 1, 0, 0])
+        perfect = Metrics.matthews_corrcoef([0, 1], [0, 1])
+        constant = Metrics.matthews_corrcoef([1, 1], [1, 1])
+        print(f"[{inverse}] [{perfect}] [{constant}]")
 
     show()
     ```
@@ -849,26 +669,14 @@ def top_k_accuracy_score(y_true, y_score, k):
     ```osprey
     from sklearn import Metrics
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(_op, _l):
-            return 0.0
-
-        def remainderByZero(_l):
-            return 0
-
     def show():
-        with wrapped:
-            scores = [[0.5, 0.2, 0.2], [0.3, 0.4, 0.2], [0.2, 0.4, 0.3], [0.7, 0.2, 0.1]]
-            tied = [[0.1, 0.1, 0.1], [0.5, 0.5, 0.5]]
-            one = Metrics.top_k_accuracy_score([0, 1, 2, 2], scores, 1)
-            two = Metrics.top_k_accuracy_score([0, 1, 2, 2], scores, 2)
-            tie_one = Metrics.top_k_accuracy_score([0, 0], tied, 1)
-            tie_all = Metrics.top_k_accuracy_score([0, 0], tied, 3)
-            print(f"[{one}] [{two}] [{tie_one}] [{tie_all}]")
+        scores = [[0.5, 0.2, 0.2], [0.3, 0.4, 0.2], [0.2, 0.4, 0.3], [0.7, 0.2, 0.1]]
+        tied = [[0.1, 0.1, 0.1], [0.5, 0.5, 0.5]]
+        one = Metrics.top_k_accuracy_score([0, 1, 2, 2], scores, 1)
+        two = Metrics.top_k_accuracy_score([0, 1, 2, 2], scores, 2)
+        tie_one = Metrics.top_k_accuracy_score([0, 0], tied, 1)
+        tie_all = Metrics.top_k_accuracy_score([0, 0], tied, 3)
+        print(f"[{one}] [{two}] [{tie_one}] [{tie_all}]")
 
     show()
     ```

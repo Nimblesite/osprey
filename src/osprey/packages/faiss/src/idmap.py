@@ -113,17 +113,11 @@ def search(index, xq, k):
     from faiss.IdMap import IndexIDMap, add_with_ids, search
     from faiss import Flat
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
     def show():
-        with wrapped:
-            index = IndexIDMap(Flat.IndexFlatL2(2))
-            loaded = add_with_ids(index, [[0.0, 0.0], [3.0, 4.0]], [7, 9])
-            result = search(loaded, [[0.0, 0.0]], 3)
-            print(f"{toString(result.distances)} {toString(result.labels)}")
+        index = IndexIDMap(Flat.IndexFlatL2(2))
+        loaded = add_with_ids(index, [[0.0, 0.0], [3.0, 4.0]], [7, 9])
+        result = search(loaded, [[0.0, 0.0]], 3)
+        print(f"{toString(result.distances)} {toString(result.labels)}")
 
     show()
     ```

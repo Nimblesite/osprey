@@ -44,8 +44,9 @@ def forceBlk (blk : Blk) (k : Blk → β) : β :=
   match blk with
   | ⟨live, heap, size, layout, cells, obj⟩ =>
     forceBool live fun live => forceBool heap fun heap => forceNat size fun size =>
-      forceNat layout fun layout => forceCells cells fun cells => forceObj obj fun obj =>
-        k ⟨live, heap, size, layout, cells, obj⟩
+      forceNat layout fun layout => forceObj obj fun obj =>
+        let finish := fun payload => k ⟨live, heap, size, layout, payload, obj⟩
+        if heap then finish cells else forceCells cells finish
 
 def forceMem : Mem → (Mem → β) → β
   | [], k => k []
@@ -92,8 +93,8 @@ theorem forceObj_eq (obj : Obj) (k : Obj → β) : forceObj obj k = k obj := by
   cases obj <;> simp [forceObj, forceBool_eq]
 
 theorem forceBlk_eq (blk : Blk) (k : Blk → β) : forceBlk blk k = k blk := by
-  cases blk
-  simp [forceBlk, forceBool_eq, forceNat_eq, forceCells_eq, forceObj_eq]
+  obtain ⟨live, heap, size, layout, cells, obj⟩ := blk
+  cases heap <;> simp [forceBlk, forceBool_eq, forceNat_eq, forceCells_eq, forceObj_eq]
 
 theorem forceMem_eq (mem : Mem) : ∀ k : Mem → β, forceMem mem k = k mem := by
   induction mem with

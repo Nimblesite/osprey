@@ -50,18 +50,9 @@ def ProductQuantizer(d, M, nbits):
     ```osprey
     import faiss.ProductQuant as ProductQuant
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
-        def remainderByZero(l):
-            return 0
-
     def show():
-        with wrapped:
-            pq = ProductQuant.ProductQuantizer(4, 2, 8)
-            print(f"[{pq.d}] [{pq.M}] [{pq.nbits}] [{pq.dsub}] [{pq.ksub}] {toString(pq.centroids)}")
+        pq = ProductQuant.ProductQuantizer(4, 2, 8)
+        print(f"[{pq.d}] [{pq.M}] [{pq.nbits}] [{pq.dsub}] [{pq.ksub}] {toString(pq.centroids)}")
 
     show()
     ```
@@ -79,18 +70,9 @@ def set_centroids(pq, centroids):
     ```osprey
     import faiss.ProductQuant as ProductQuant
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
-        def remainderByZero(l):
-            return 0
-
     def show():
-        with wrapped:
-            pq = ProductQuant.set_centroids(ProductQuant.ProductQuantizer(1, 1, 2), [[0.0], [1.0], [2.0], [3.0]])
-            print(f"[{pq.ksub}] [{toString(pq.centroids)}]")
+        pq = ProductQuant.set_centroids(ProductQuant.ProductQuantizer(1, 1, 2), [[0.0], [1.0], [2.0], [3.0]])
+        print(f"[{pq.ksub}] [{toString(pq.centroids)}]")
 
     show()
     ```
@@ -129,18 +111,9 @@ def compute_codes(pq, x):
     ```osprey
     import faiss.ProductQuant as ProductQuant
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
-        def remainderByZero(l):
-            return 0
-
     def show():
-        with wrapped:
-            pq = ProductQuant.set_centroids(ProductQuant.ProductQuantizer(1, 1, 2), [[0.0], [1.0], [2.0], [3.0]])
-            print(f"{toString(ProductQuant.compute_codes(pq, [[1.75]]))} {toString(ProductQuant.compute_codes(pq, []))}")
+        pq = ProductQuant.set_centroids(ProductQuant.ProductQuantizer(1, 1, 2), [[0.0], [1.0], [2.0], [3.0]])
+        print(f"{toString(ProductQuant.compute_codes(pq, [[1.75]]))} {toString(ProductQuant.compute_codes(pq, []))}")
 
     show()
     ```
@@ -158,18 +131,9 @@ def decode(pq, codes):
     ```osprey
     import faiss.ProductQuant as ProductQuant
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
-        def remainderByZero(l):
-            return 0
-
     def show():
-        with wrapped:
-            pq = ProductQuant.set_centroids(ProductQuant.ProductQuantizer(1, 1, 2), [[0.0], [1.0], [2.0], [3.0]])
-            print(f"{toString(ProductQuant.decode(pq, [[1], [3]]))}")
+        pq = ProductQuant.set_centroids(ProductQuant.ProductQuantizer(1, 1, 2), [[0.0], [1.0], [2.0], [3.0]])
+        print(f"{toString(ProductQuant.decode(pq, [[1], [3]]))}")
 
     show()
     ```
@@ -219,19 +183,10 @@ def sdc_table(pq):
     ```osprey
     import faiss.ProductQuant as ProductQuant
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
-        def remainderByZero(l):
-            return 0
-
     def show():
-        with wrapped:
-            pq = ProductQuant.set_centroids(ProductQuant.ProductQuantizer(1, 1, 2), [[0.0], [1.0], [2.0], [3.0]])
-            table = ProductQuant.sdc_table(pq)
-            print(f"[{len(table)}] {toString(table)}")
+        pq = ProductQuant.set_centroids(ProductQuant.ProductQuantizer(1, 1, 2), [[0.0], [1.0], [2.0], [3.0]])
+        table = ProductQuant.sdc_table(pq)
+        print(f"[{len(table)}] {toString(table)}")
 
     show()
     ```
@@ -257,19 +212,10 @@ def IndexPQ(pq, metric):
     ```osprey
     import faiss.ProductQuant as ProductQuant
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
-        def remainderByZero(l):
-            return 0
-
     def show():
-        with wrapped:
-            pq = ProductQuant.ProductQuantizer(1, 1, 2)
-            index = ProductQuant.IndexPQ(pq, "L2")
-            print(f"[{index.metric}] [{toString(index.codes)}]")
+        pq = ProductQuant.ProductQuantizer(1, 1, 2)
+        index = ProductQuant.IndexPQ(pq, "L2")
+        print(f"[{index.metric}] [{toString(index.codes)}]")
 
     show()
     ```
@@ -287,20 +233,11 @@ def pq_add(index, xb):
     ```osprey
     import faiss.ProductQuant as ProductQuant
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
-        def remainderByZero(l):
-            return 0
-
     def show():
-        with wrapped:
-            pq = ProductQuant.set_centroids(ProductQuant.ProductQuantizer(1, 1, 2), [[0.0], [1.0], [2.0], [3.0]])
-            index = ProductQuant.IndexPQ(pq, "L2")
-            loaded = ProductQuant.pq_add(index, [[1.75], [2.5]])
-            print(f"{toString(loaded.codes)} {toString(index.codes)}")
+        pq = ProductQuant.set_centroids(ProductQuant.ProductQuantizer(1, 1, 2), [[0.0], [1.0], [2.0], [3.0]])
+        index = ProductQuant.IndexPQ(pq, "L2")
+        loaded = ProductQuant.pq_add(index, [[1.75], [2.5]])
+        print(f"{toString(loaded.codes)} {toString(index.codes)}")
 
     show()
     ```
@@ -319,23 +256,11 @@ def pq_search(index, xq, k):
     ```osprey
     import faiss.ProductQuant as ProductQuant
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
-        def remainderByZero(l):
-            return 0
-
-        def divideByZero(op, l):
-            return 0.0
-
     def show():
-        with wrapped:
-            pq = ProductQuant.set_centroids(ProductQuant.ProductQuantizer(1, 1, 2), [[0.0], [1.0], [2.0], [3.0]])
-            index = ProductQuant.pq_add(ProductQuant.IndexPQ(pq, "L2"), [[1.75]])
-            result = ProductQuant.pq_search(index, [[2.0]], 2)
-            print(f"{toString(result.distances)} {toString(result.labels)}")
+        pq = ProductQuant.set_centroids(ProductQuant.ProductQuantizer(1, 1, 2), [[0.0], [1.0], [2.0], [3.0]])
+        index = ProductQuant.pq_add(ProductQuant.IndexPQ(pq, "L2"), [[1.75]])
+        result = ProductQuant.pq_search(index, [[2.0]], 2)
+        print(f"{toString(result.distances)} {toString(result.labels)}")
 
     show()
     ```

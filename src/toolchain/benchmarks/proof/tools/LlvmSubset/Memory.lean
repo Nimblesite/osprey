@@ -110,10 +110,12 @@ instance : MonadLift (Except Fault) M where
     | .ok a => pure a
     | .error e => fault e
 
+def St.allocated (s : St) (heap : Bool) (size layout : Nat) (cells : List (Nat × Val)) (obj : Obj) : St :=
+  ⟨s.mem ++ [⟨true, heap, size, layout, cells, obj⟩], (s.mem.length, .alloc s.mem.length) :: s.log⟩
+
 /-- A fresh allocation: the ledger's `alloc` on a cell that never existed. -/
 def allocBlk (heap : Bool) (size layout : Nat) (cells : List (Nat × Val)) (obj : Obj) : M Nat :=
-  fun s => .ok (s.mem.length,
-    ⟨s.mem ++ [⟨true, heap, size, layout, cells, obj⟩], (s.mem.length, .alloc s.mem.length) :: s.log⟩)
+  fun s => .ok (s.mem.length, s.allocated heap size layout cells obj)
 
 /-- The live allocation `b`; `dead` is the fault using a freed one is. -/
 def liveBlk (dead : Fault) (b : Nat) : M Blk := fun s =>

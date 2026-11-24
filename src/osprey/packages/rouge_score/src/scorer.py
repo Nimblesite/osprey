@@ -52,19 +52,10 @@ def fmeasure(precision, recall):
     ```osprey
     from rouge_score.RougeScorer import fmeasure, score, score_multi, RougeScorer
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(op, dividend):
-            return 0.0
-
     def show():
-        with wrapped:
-            normal = fmeasure(0.5, 1.0)
-            zero = fmeasure(0.0, 0.0)
-            print(f"[{normal}] [{zero}]")
+        normal = fmeasure(0.5, 1.0)
+        zero = fmeasure(0.0, 0.0)
+        print(f"[{normal}] [{zero}]")
 
     show()
     ```
@@ -257,20 +248,11 @@ def score(scorer, target, prediction):
     ```osprey
     from rouge_score.RougeScorer import fmeasure, score, score_multi, RougeScorer
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(op, dividend):
-            return 0.0
-
     def show():
-        with wrapped:
-            scorer = RougeScorer(rouge_types=["rouge1", "rougeL"], use_stemmer=False, split_summaries=False)
-            scores = score(scorer, "the cat was found under the bed", "the cat was under the bed")
-            empty = score(scorer, "", "")
-            print(f"[{scores}] [{empty}]")
+        scorer = RougeScorer(rouge_types=["rouge1", "rougeL"], use_stemmer=False, split_summaries=False)
+        scores = score(scorer, "the cat was found under the bed", "the cat was under the bed")
+        empty = score(scorer, "", "")
+        print(f"[{scores}] [{empty}]")
 
     show()
     ```
@@ -305,20 +287,11 @@ def score_multi(scorer, targets, prediction):
     ```osprey
     from rouge_score.RougeScorer import fmeasure, score, score_multi, RougeScorer
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
-        def divideByZero(op, dividend):
-            return 0.0
-
     def show():
-        with wrapped:
-            scorer = RougeScorer(rouge_types=["rouge1"], use_stemmer=False, split_summaries=False)
-            best = score_multi(scorer, ["the cat", "the dog"], "the cat")
-            no_targets = score_multi(scorer, [], "the cat")
-            print(f"[{best}] [{no_targets}]")
+        scorer = RougeScorer(rouge_types=["rouge1"], use_stemmer=False, split_summaries=False)
+        best = score_multi(scorer, ["the cat", "the dog"], "the cat")
+        no_targets = score_multi(scorer, [], "the cat")
+        print(f"[{best}] [{no_targets}]")
 
     show()
     ```

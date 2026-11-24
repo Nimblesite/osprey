@@ -219,20 +219,11 @@ def score_sentence(chrf, hypothesis, references):
     ```osprey
     from sacrebleu import Chrf
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped):
-            return wrapped
-
-        def divideByZero(_op, _l):
-            return 0.0
-
     def show():
-        with wrapped:
-            metric = Chrf.CHRF(char_order=6, word_order=0, beta=2, lowercase=False, whitespace=True, eps_smoothing=False)
-            exact = Chrf.score_sentence(metric, "the cat", ["the cat"])
-            none = Chrf.score_sentence(metric, "x", ["the cat"])
-            print(f"[{exact.score}] [{none.score}]")
+        metric = Chrf.CHRF(char_order=6, word_order=0, beta=2, lowercase=False, whitespace=True, eps_smoothing=False)
+        exact = Chrf.score_sentence(metric, "the cat", ["the cat"])
+        none = Chrf.score_sentence(metric, "x", ["the cat"])
+        print(f"[{exact.score}] [{none.score}]")
 
     show()
     ```
@@ -251,20 +242,11 @@ def score_corpus(chrf, hypotheses, references):
     ```osprey
     from sacrebleu import Chrf
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped):
-            return wrapped
-
-        def divideByZero(_op, _l):
-            return 0.0
-
     def show():
-        with wrapped:
-            metric = Chrf.CHRF(char_order=6, word_order=0, beta=2, lowercase=False, whitespace=True, eps_smoothing=False)
-            exact = Chrf.score_corpus(metric, ["the cat", "a dog"], [["the cat", "a dog"]])
-            blank = Chrf.score_corpus(metric, [""], [["the cat"]])
-            print(f"[{exact.score}] [{blank.score}]")
+        metric = Chrf.CHRF(char_order=6, word_order=0, beta=2, lowercase=False, whitespace=True, eps_smoothing=False)
+        exact = Chrf.score_corpus(metric, ["the cat", "a dog"], [["the cat", "a dog"]])
+        blank = Chrf.score_corpus(metric, [""], [["the cat"]])
+        print(f"[{exact.score}] [{blank.score}]")
 
     show()
     ```
@@ -287,20 +269,11 @@ def sentence_chrf(hypothesis, references, char_order, word_order, beta, remove_w
     ```osprey
     from sacrebleu import Chrf
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped):
-            return wrapped
-
-        def divideByZero(_op, _l):
-            return 0.0
-
     def show():
-        with wrapped:
-            exact = Chrf.sentence_chrf("the cat", ["the cat"], 6, 0, 2, False, False)
-            plus = Chrf.sentence_chrf("the cat", ["the cat"], 6, 2, 2, False, False)
-            strict = Chrf.sentence_chrf("The Cat", ["the cat"], 6, 0, 2, False, False)
-            print(f"[{exact.score}] [{plus.score}] [{strict.score}]")
+        exact = Chrf.sentence_chrf("the cat", ["the cat"], 6, 0, 2, False, False)
+        plus = Chrf.sentence_chrf("the cat", ["the cat"], 6, 2, 2, False, False)
+        strict = Chrf.sentence_chrf("The Cat", ["the cat"], 6, 0, 2, False, False)
+        print(f"[{exact.score}] [{plus.score}] [{strict.score}]")
 
     show()
     ```
@@ -318,19 +291,10 @@ def corpus_chrf(hypotheses, references, char_order, word_order, beta, remove_whi
     ```osprey
     from sacrebleu import Chrf
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped):
-            return wrapped
-
-        def divideByZero(_op, _l):
-            return 0.0
-
     def show():
-        with wrapped:
-            exact = Chrf.corpus_chrf(["the cat", "a dog"], [["the cat", "a dog"]], 6, 0, 2, False, False)
-            blank = Chrf.corpus_chrf([""], [["the cat"]], 6, 0, 2, False, False)
-            print(f"[{exact.score}] [{blank.score}]")
+        exact = Chrf.corpus_chrf(["the cat", "a dog"], [["the cat", "a dog"]], 6, 0, 2, False, False)
+        blank = Chrf.corpus_chrf([""], [["the cat"]], 6, 0, 2, False, False)
+        print(f"[{exact.score}] [{blank.score}]")
 
     show()
     ```

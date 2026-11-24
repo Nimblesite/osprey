@@ -31,7 +31,7 @@ def seen (run : Except Fault (Val × St)) : Except Fault Seen :=
 def holding : List (Nat × Obj) → St → St
   | [], s => s
   | (size, obj) :: rest, s =>
-    holding rest ⟨s.mem ++ [⟨true, true, size, 0, [], obj⟩], (s.mem.length, .alloc s.mem.length) :: s.log⟩
+    holding rest (s.allocated true size 0 [] obj)
 
 /-- Such a state is one the ledger accepts, so `run_follows_ledger` applies
     to every run the theorems below start from it. -/

@@ -391,7 +391,7 @@ gatherCase () =
     use indices64 <- withIndices (64)
     gatherWith (indices1, indices2, indices3, indices6, indices64)
 gatherWith (indices1, indices2, indices3, indices6, indices64) =
-    use src <- withBuffer (toGpu([1, 2, 3, 4, 5, 6]))
+    use src <- withUpload ([1, 2, 3, 4, 5, 6])
     use flipped <- withBuffer (transposeOf(src, 3, 2, indices6))
     use cover <- withBuffer (triCover(indices64))
     use running <- withBuffer (gpuScan(cover, 0, addLevels))

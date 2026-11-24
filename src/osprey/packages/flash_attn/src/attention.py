@@ -86,16 +86,10 @@ def flash_attn_func(q, k, v, shapes, softmax_scale, causal, window_left, window_
     ```osprey
     from flash_attn import Attention, Core
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
     def show():
-        with wrapped:
-            shapes = Core.Shapes(batch=1, seqlen_q=2, seqlen_k=3, heads_q=1, heads_k=1, headdim=1)
-            r = Attention.flash_attn_func([1.0, 2.0], [1.0, 2.0, 3.0], [10.0, 20.0, 30.0], shapes, 1.0, True, -1, -1, [], True)
-            print(f"[{toString(r.out)}] [{toString(r.lse)}] [{toString(r.probs)}]")
+        shapes = Core.Shapes(batch=1, seqlen_q=2, seqlen_k=3, heads_q=1, heads_k=1, headdim=1)
+        r = Attention.flash_attn_func([1.0, 2.0], [1.0, 2.0, 3.0], [10.0, 20.0, 30.0], shapes, 1.0, True, -1, -1, [], True)
+        print(f"[{toString(r.out)}] [{toString(r.lse)}] [{toString(r.probs)}]")
 
     show()
     ```
@@ -155,11 +149,6 @@ def flash_attn_varlen_func(q, k, v, cu_seqlens_q, cu_seqlens_k, _max_seqlen_q, _
     ```osprey
     from flash_attn import Attention
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
     def shown(result):
         match result:
             case Success(value=r):
@@ -168,11 +157,10 @@ def flash_attn_varlen_func(q, k, v, cu_seqlens_q, cu_seqlens_k, _max_seqlen_q, _
                 return m
 
     def show():
-        with wrapped:
-            r = Attention.flash_attn_varlen_func([1.0, 2.0], [3.0, 4.0], [10.0, 20.0], [0, 1, 2], [0, 1, 2], 1, 1, 1, 1, 1, 1.0, False, -1, -1, [], False)
-            empty = Attention.flash_attn_varlen_func([], [], [], [0], [0], 0, 0, 1, 1, 1, 1.0, False, -1, -1, [], False)
-            short = Attention.flash_attn_varlen_func([1.0], [3.0], [10.0], [0, 2], [0, 2], 2, 2, 1, 1, 1, 1.0, False, -1, -1, [], False)
-            print(f"{shown(r)} {shown(empty)} {shown(short)}")
+        r = Attention.flash_attn_varlen_func([1.0, 2.0], [3.0, 4.0], [10.0, 20.0], [0, 1, 2], [0, 1, 2], 1, 1, 1, 1, 1, 1.0, False, -1, -1, [], False)
+        empty = Attention.flash_attn_varlen_func([], [], [], [0], [0], 0, 0, 1, 1, 1, 1.0, False, -1, -1, [], False)
+        short = Attention.flash_attn_varlen_func([1.0], [3.0], [10.0], [0, 2], [0, 2], 2, 2, 1, 1, 1, 1.0, False, -1, -1, [], False)
+        print(f"{shown(r)} {shown(empty)} {shown(short)}")
 
     show()
     ```

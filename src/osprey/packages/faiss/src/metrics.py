@@ -197,17 +197,11 @@ def topk(k, metric, values, ids):
     ```osprey
     from faiss import Metrics
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
     def show():
-        with wrapped:
-            nearest = Metrics.topk(3, "L2", [9.0, 1.0, 4.0], [0, 1, 2])
-            ties = Metrics.topk(2, "L2", [2.0, 2.0], [5, 3])
-            padded = Metrics.topk(4, "IP", [2.0, 5.0], [10, 20])
-            print(f"{toString(nearest.vals)} {toString(nearest.ids)} {toString(ties.vals)} {toString(ties.ids)} {toString(padded.vals)} {toString(padded.ids)}")
+        nearest = Metrics.topk(3, "L2", [9.0, 1.0, 4.0], [0, 1, 2])
+        ties = Metrics.topk(2, "L2", [2.0, 2.0], [5, 3])
+        padded = Metrics.topk(4, "IP", [2.0, 5.0], [10, 20])
+        print(f"{toString(nearest.vals)} {toString(nearest.ids)} {toString(ties.vals)} {toString(ties.ids)} {toString(padded.vals)} {toString(padded.ids)}")
 
     show()
     ```

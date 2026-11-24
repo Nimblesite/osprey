@@ -145,7 +145,7 @@ rebuildCase () =
     use indices20000, indices0, indices1 <- iota3 (20000, 0, 1)
     use settled <- withBuffer (rebuild (indices20000, 6))
     use back <- withBuffer (fromGpu (settled))
-    use again <- withBuffer (toGpu (back))
+    use again <- withUpload (back)
     checkAll("six host round trips", [
     lengthIs (settled, 20000), elementsAt (settled, (-1), [0, 19999], [6, 20005]), sumIs (settled, 200110000), listLengthIs (back, 20000), listHolds (back, 0, (-1), 6), listHolds (back, 19999, (-1), 20005), lengthIs (again, 20000), sumIs (again, 200110000), gpuSatisfies(gpuFilter(again, isEven), \evens => sumIs (evens, 100050000)), gpuLengthIs(rebuild (indices0, 4), 0), gpuSatisfies(rebuild (indices1, 3), \checked => sumIs (checked, 3))
 ])
@@ -183,9 +183,9 @@ overflowBoundaryCase () =
     use fits <- withBuffer (gpuFold(counted, 1, prodSat))
     use overCounted <- withBuffer (gpuMap(indices21, bump))
     use spills <- withBuffer (gpuFold(overCounted, 1, prodSat))
-    use rootsSource <- withBuffer (toGpu ([3037000499, 3037000500]))
+    use rootsSource <- withUpload ([3037000499, 3037000500])
     use roots <- withBuffer (gpuMap(rootsSource, sqSat))
-    use edgesSource <- withBuffer (toGpu ([minInt (), -1, 0, 1, maxInt ()]))
+    use edgesSource <- withUpload ([minInt (), -1, 0, 1, maxInt ()])
     use edges <- withBuffer (gpuMap(edgesSource, negSat))
     checkAll("checked overflow boundaries", [
     fits == 2432902008176640000, spills == overflowMark (), gpuEquals(gpuFold(indices62, 1, doubleUp), 4611686018427387904), gpuEquals(gpuFold(indices63, 1, doubleUp), overflowMark ()), elementsFrom (roots, 0, 0, [9223372030926249001, overflowMark ()]), elementsFrom (edges, 0, 0, [overflowMark (), 1, 0, (-1), -9223372036854775807]), uploadSumIs ([maxInt ()], maxInt ()), uploadAddOrIs ([maxInt ()], maxInt ()), uploadAddOrIs ([maxInt (), 1], overflowMark ()), uploadSumIs ([maxInt (), 1], maxInt ()), gpuSatisfies(toGpu ([minInt ()]), \edges2 => gpuSatisfies(gpuMap(edges2, lowerSat), \stepped => gpuEquals(gpuFold(stepped, 0, addOr), overflowMark ()))), gpuSatisfies(toGpu ([maxInt (), 1]), \pair => gpuLengthIs(gpuFilter(pair, isMax), 1))

@@ -45,15 +45,9 @@ def codepoints(s):
     ```osprey
     from sacrebleu import Text
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped):
-            return wrapped
-
     def show():
-        with wrapped:
-            accented = Text.codepoints("aé")
-            print(f"[{toString(accented)}] [{toString(Text.codepoints(""))}]")
+        accented = Text.codepoints("aé")
+        print(f"[{toString(accented)}] [{toString(Text.codepoints(""))}]")
 
     show()
     ```
@@ -88,15 +82,9 @@ def map_codepoints(s, f):
     ```osprey
     from sacrebleu import Text
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(_op, _l, _r, wrapped):
-            return wrapped
-
     def show():
-        with wrapped:
-            mapped = Text.map_codepoints("a1!", lambda cp: 120 if cp == 97 else cp)
-            print(f"[{mapped}] [{Text.map_codepoints("", lambda cp: cp)}]")
+        mapped = Text.map_codepoints("a1!", lambda cp: 120 if cp == 97 else cp)
+        print(f"[{mapped}] [{Text.map_codepoints("", lambda cp: cp)}]")
 
     show()
     ```

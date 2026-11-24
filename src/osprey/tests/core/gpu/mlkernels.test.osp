@@ -99,9 +99,6 @@ fn trainOf(w, xs, ys, n, predicate) = match n {
     0 => predicate(w)
     _ => gradStepOf(w, xs, ys, fn(stepped) => trainOf(stepped, xs, ys, n - 1, predicate))
 }
-/// upload stages a host list on the GPU and hands the buffer to work: the
-/// shape every case below uploads its inputs with.
-fn upload(values, work) = withBuffer(toGpu(values), work)
 /// withMean stages xs's folded mean — zero on an empty buffer, like meanOf —
 /// for the kernels that capture it.
 fn withMean(xs, work) = withBuffer(gpuFold(xs, toFloat32(0.0), addF), fn(total) => work(meanFrom(xs, total)))
@@ -118,19 +115,19 @@ fn xs789() = toGpu([toFloat32(7.0), toFloat32(8.0), toFloat32(9.0)])
 /// singleton, empty and ragged operands.
 fn dotCase() = {
     use input0 <- withBuffer(xs3())
-    use input1 <- upload([toFloat32(4.0), toFloat32(5.0), toFloat32(6.0)])
-    use input2 <- upload([])
-    use input3 <- upload([])
+    use input1 <- withUpload ([toFloat32(4.0), toFloat32(5.0), toFloat32(6.0)])
+    use input2 <- withUpload ([])
+    use input3 <- withUpload ([])
     use input4 <- withBuffer(zeros3())
-    use input5 <- upload([toFloat32(1.0), toFloat32(0.0), toFloat32(-1.0)])
-    use input6 <- upload([toFloat32(1.0), toFloat32(2.0), toFloat32(1.0)])
-    use input7 <- upload([toFloat32(-1.0), toFloat32(2.0)])
-    use input8 <- upload([toFloat32(3.0), toFloat32(-4.0)])
-    use input9 <- upload([toFloat32(2.0), toFloat32(2.0)])
-    use input10 <- upload([toFloat32(0.5)])
-    use input11 <- upload([toFloat32(0.5)])
-    use input12 <- upload([toFloat32(1.0), toFloat32(0.0), toFloat32(0.0)])
-    use input13 <- upload([toFloat32(1.0)])
+    use input5 <- withUpload ([toFloat32(1.0), toFloat32(0.0), toFloat32(-1.0)])
+    use input6 <- withUpload ([toFloat32(1.0), toFloat32(2.0), toFloat32(1.0)])
+    use input7 <- withUpload ([toFloat32(-1.0), toFloat32(2.0)])
+    use input8 <- withUpload ([toFloat32(3.0), toFloat32(-4.0)])
+    use input9 <- withUpload ([toFloat32(2.0), toFloat32(2.0)])
+    use input10 <- withUpload ([toFloat32(0.5)])
+    use input11 <- withUpload ([toFloat32(0.5)])
+    use input12 <- withUpload ([toFloat32(1.0), toFloat32(0.0), toFloat32(0.0)])
+    use input13 <- withUpload ([toFloat32(1.0)])
     checkAll("dot product", [
         dotIs(input0, input1, toFloat32(32.0)), dotIs(input1, input0, toFloat32(32.0)), dotIs(input0, input0, toFloat32(14.0)), dotIs(input2, input3, toFloat32(0.0)), dotIs(input0, input4, toFloat32(0.0)), dotIs(input5, input6, toFloat32(0.0)), dotIs(input7, input8, toFloat32(-11.0)), dotIs(input0, input9, toFloat32(6.0)), dotIs(input10, input11, toFloat32(0.25)), dotIs(input12, input1, toFloat32(4.0)), gpuLengthIs(gpuZipWith(input0, input1, mulF), 3), gpuLengthIs(gpuZipWith(input0, input13, mulF), 1)
 ])
@@ -139,10 +136,10 @@ fn dotCase() = {
 /// captured — including alphas zero and one, which reduce to projections.
 fn saxpyCase() = {
     use input0 <- withBuffer(xs3())
-    use input1 <- upload([toFloat32(10.0), toFloat32(20.0), toFloat32(30.0)])
-    use input2 <- upload([toFloat32(1.0), toFloat32(1.0), toFloat32(1.0)])
-    use input3 <- upload([toFloat32(10.0), toFloat32(20.0)])
-    use input4 <- upload([])
+    use input1 <- withUpload ([toFloat32(10.0), toFloat32(20.0), toFloat32(30.0)])
+    use input2 <- withUpload ([toFloat32(1.0), toFloat32(1.0), toFloat32(1.0)])
+    use input3 <- withUpload ([toFloat32(10.0), toFloat32(20.0)])
+    use input4 <- withUpload ([])
     use input5 <- withBuffer(zeros3())
     let alpha = toFloat32(0.5)
     withBuffer(gpuZipWith(input0, input1, saxpy), fn(out) =>
@@ -185,9 +182,9 @@ fn captureSharedCase() = withIndices(4, fn(indices4) => withBuffer(xs4(), fn(inp
 /// captureFoldedCase is the shape [GPU-KERNEL-FORM] spells out: the capture is
 /// itself a fold over another buffer — a sum, a maximum and a minimum off `ws`.
 fn captureFoldedCase() = {
-    use input0 <- upload([toFloat32(1.0), toFloat32(3.0), toFloat32(4.0), toFloat32(8.0)])
-    use input1 <- upload([toFloat32(2.0), toFloat32(4.0)])
-    use input2 <- upload([])
+    use input0 <- withUpload ([toFloat32(1.0), toFloat32(3.0), toFloat32(4.0), toFloat32(8.0)])
+    use input1 <- withUpload ([toFloat32(2.0), toFloat32(4.0)])
+    use input2 <- withUpload ([])
     use total <- summed(input0)
     use peak <- peaked(input0)
     checkAll("capture folded from another buffer", [
@@ -200,7 +197,7 @@ fn captureFoldedCase() = {
 fn captureShapeCase() = {
     use indices5 <- withIndices(5)
     use indices3 <- withIndices(3)
-    use input0 <- upload([toFloat32(10.0), toFloat32(20.0), toFloat32(30.0)])
+    use input0 <- withUpload ([toFloat32(10.0), toFloat32(20.0), toFloat32(30.0)])
     let k = toFloat32(3.0)
     let branch = fn(x) => match x > toFloat32(15.0) { true => k false => x }
     withBuffer(gpuMap(indices5, fn(i) => at(input0, i)), fn(gathered) =>
@@ -214,11 +211,11 @@ fn captureShapeCase() = {
 fn captureDegenerateCase() = {
     use emptyIndices <- withIndices(0)
     use input0 <- withBuffer(xs3())
-    use input1 <- upload([])
-    use input2 <- upload([])
-    use input3 <- upload([toFloat32(5.0)])
-    use input4 <- upload([])
-    use input5 <- upload([toFloat32(7.0)])
+    use input1 <- withUpload ([])
+    use input2 <- withUpload ([])
+    use input3 <- withUpload ([toFloat32(5.0)])
+    use input4 <- withUpload ([])
+    use input5 <- withUpload ([toFloat32(7.0)])
     let zero = toFloat32(0.0)
     let one = toFloat32(1.0)
     withBuffer(degenerate(0.0 - 1.0, fn() => gpuMap(input0, fn(x) => x / zero)), fn(divided) =>
@@ -230,11 +227,11 @@ fn captureDegenerateCase() = {
 /// folded once, captured by the normalising kernel, and both routes must agree.
 fn weightedSumCase() = {
     use input0 <- withBuffer(xs4())
-    use input1 <- upload([toFloat32(1.0), toFloat32(2.0), toFloat32(4.0), toFloat32(1.0)])
-    use input2 <- upload([toFloat32(2.0), toFloat32(4.0), toFloat32(8.0), toFloat32(16.0)])
-    use input3 <- upload([toFloat32(0.5), toFloat32(0.25), toFloat32(0.125), toFloat32(0.125)])
-    use input4 <- upload([toFloat32(0.0), toFloat32(0.0), toFloat32(0.0), toFloat32(0.0)])
-    use input5 <- upload([toFloat32(1.0), toFloat32(1.0), toFloat32(1.0), toFloat32(1.0)])
+    use input1 <- withUpload ([toFloat32(1.0), toFloat32(2.0), toFloat32(4.0), toFloat32(1.0)])
+    use input2 <- withUpload ([toFloat32(2.0), toFloat32(4.0), toFloat32(8.0), toFloat32(16.0)])
+    use input3 <- withUpload ([toFloat32(0.5), toFloat32(0.25), toFloat32(0.125), toFloat32(0.125)])
+    use input4 <- withUpload ([toFloat32(0.0), toFloat32(0.0), toFloat32(0.0), toFloat32(0.0)])
+    use input5 <- withUpload ([toFloat32(1.0), toFloat32(1.0), toFloat32(1.0), toFloat32(1.0)])
     use wtot <- summed(input1)
     use normw <- withBuffer(gpuMap(input1, fn(w) => w / wtot))
     checkAll("weighted sums", [
@@ -245,9 +242,9 @@ fn weightedSumCase() = {
 /// centering kernel, and the centered column's own mean vanishes.
 fn meanCase() = {
     use indices9 <- withIndices(9)
-    use input0 <- upload([toFloat32(1.0), toFloat32(2.0), toFloat32(3.0), toFloat32(6.0)])
-    use input1 <- upload([])
-    use input2 <- upload([toFloat32(5.0)])
+    use input0 <- withUpload ([toFloat32(1.0), toFloat32(2.0), toFloat32(3.0), toFloat32(6.0)])
+    use input1 <- withUpload ([])
+    use input2 <- withUpload ([toFloat32(5.0)])
     use input3 <- withBuffer(spread())
     use mean <- withMean(input0)
     use centered <- withBuffer(gpuMap(input0, fn(v) => v - mean))
@@ -260,9 +257,9 @@ fn meanCase() = {
 /// zero deviation must fall back rather than divide.
 fn varianceCase() = {
     use input0 <- withBuffer(spread())
-    use input1 <- upload([toFloat32(3.0), toFloat32(3.0), toFloat32(3.0)])
-    use input2 <- upload([])
-    use input3 <- upload([toFloat32(3.0), toFloat32(3.0)])
+    use input1 <- withUpload ([toFloat32(3.0), toFloat32(3.0), toFloat32(3.0)])
+    use input2 <- withUpload ([])
+    use input3 <- withUpload ([toFloat32(3.0), toFloat32(3.0)])
     let sd = toFloat32(2.0)
     withMean(input0, fn(mean) =>
         withBuffer(gpuMap(input0, fn(v) => (v - mean) / sd), fn(z) =>
@@ -273,8 +270,8 @@ fn varianceCase() = {
 /// normalizeCase pins the min-max rescale: both extremes are folded out and
 /// captured, and a constant column's zero range falls back instead of dividing.
 fn normalizeCase() = {
-    use input0 <- upload([toFloat32(1.0), toFloat32(3.0), toFloat32(5.0), toFloat32(9.0)])
-    use input1 <- upload([toFloat32(4.0), toFloat32(4.0)])
+    use input0 <- withUpload ([toFloat32(1.0), toFloat32(3.0), toFloat32(5.0), toFloat32(9.0)])
+    use input1 <- withUpload ([toFloat32(4.0), toFloat32(4.0)])
     use lo <- withBuffer(gpuFold(input0, at(input0, 0), minF))
     use hi <- peaked(input0)
     use scaled <- withBuffer(gpuMap(input0, fn(v) => (v - lo) / (hi - lo)))
@@ -284,9 +281,9 @@ fn normalizeCase() = {
 }
 /// Compare clamping and active-unit counts with captured slopes and reflected inputs.
 fn reluCase() = {
-    use input0 <- upload([toFloat32(-1.5), toFloat32(2.5), toFloat32(-0.5), toFloat32(1.0)])
-    use input1 <- upload([toFloat32(-1.0), toFloat32(-2.0)])
-    use input2 <- upload([toFloat32(1.0), toFloat32(2.0)])
+    use input0 <- withUpload ([toFloat32(-1.5), toFloat32(2.5), toFloat32(-0.5), toFloat32(1.0)])
+    use input1 <- withUpload ([toFloat32(-1.0), toFloat32(-2.0)])
+    use input2 <- withUpload ([toFloat32(1.0), toFloat32(2.0)])
     let slope = toFloat32(0.5)
     let cap = toFloat32(2.0)
     let leaky = fn(x) => match x > toFloat32(0.0) { true => x false => slope * x }
@@ -300,7 +297,7 @@ fn reluCase() = {
 /// distribution, order-preserving, shift-invariant, uniform on a flat vector.
 fn softmaxCase() = {
     use input0 <- withBuffer(xs3())
-    use input1 <- upload([toFloat32(5.0), toFloat32(5.0), toFloat32(5.0)])
+    use input1 <- withUpload ([toFloat32(5.0), toFloat32(5.0), toFloat32(5.0)])
     use probs <- softmaxEach(input0)
     use raised <- withBuffer(gpuMap(input0, fn(s) => toFloat32(10.0) + s))
     use shifted <- softmaxEach(raised)
@@ -316,15 +313,15 @@ fn matVecCase() = {
     use rows1 <- withIndices(1)
     use rows2 <- withIndices(2)
     use rows3 <- withIndices(3)
-    use input0 <- upload([toFloat32(1.0), toFloat32(2.0), toFloat32(3.0), toFloat32(4.0), toFloat32(5.0), toFloat32(6.0)])
-    use input1 <- upload([toFloat32(1.0), toFloat32(1.0), toFloat32(2.0)])
-    use input2 <- upload([toFloat32(1.0), toFloat32(0.0), toFloat32(0.0), toFloat32(0.0), toFloat32(1.0), toFloat32(0.0), toFloat32(0.0), toFloat32(0.0), toFloat32(1.0)])
+    use input0 <- withUpload ([toFloat32(1.0), toFloat32(2.0), toFloat32(3.0), toFloat32(4.0), toFloat32(5.0), toFloat32(6.0)])
+    use input1 <- withUpload ([toFloat32(1.0), toFloat32(1.0), toFloat32(2.0)])
+    use input2 <- withUpload ([toFloat32(1.0), toFloat32(0.0), toFloat32(0.0), toFloat32(0.0), toFloat32(1.0), toFloat32(0.0), toFloat32(0.0), toFloat32(0.0), toFloat32(1.0)])
     use input3 <- withBuffer(xs789())
     use input4 <- withBuffer(xs789())
-    use input5 <- upload([toFloat32(0.0), toFloat32(0.0), toFloat32(0.0), toFloat32(0.0)])
-    use input6 <- upload([toFloat32(5.0), toFloat32(5.0)])
-    use input7 <- upload([toFloat32(5.0)])
-    use input8 <- upload([toFloat32(3.0)])
+    use input5 <- withUpload ([toFloat32(0.0), toFloat32(0.0), toFloat32(0.0), toFloat32(0.0)])
+    use input6 <- withUpload ([toFloat32(5.0), toFloat32(5.0)])
+    use input7 <- withUpload ([toFloat32(5.0)])
+    use input8 <- withUpload ([toFloat32(3.0)])
     use input9 <- withBuffer(xs3())
     use out <- matVecEach(input0, input1, 3, rows2)
     checkAll("matrix-vector", [
@@ -337,15 +334,15 @@ fn layerCase() = {
     use rows0 <- withIndices(0)
     use rows1 <- withIndices(1)
     use rows2 <- withIndices(2)
-    use input0 <- upload([toFloat32(1.0), toFloat32(0.0), toFloat32(-1.0), toFloat32(0.5), toFloat32(0.5), toFloat32(0.5)])
-    use input1 <- upload([toFloat32(2.0), toFloat32(4.0), toFloat32(6.0)])
-    use input2 <- upload([toFloat32(1.0), toFloat32(-2.0)])
-    use input3 <- upload([toFloat32(2.0), toFloat32(0.25)])
-    use input4 <- upload([toFloat32(0.5)])
-    use input5 <- upload([toFloat32(0.0), toFloat32(0.0)])
+    use input0 <- withUpload ([toFloat32(1.0), toFloat32(0.0), toFloat32(-1.0), toFloat32(0.5), toFloat32(0.5), toFloat32(0.5)])
+    use input1 <- withUpload ([toFloat32(2.0), toFloat32(4.0), toFloat32(6.0)])
+    use input2 <- withUpload ([toFloat32(1.0), toFloat32(-2.0)])
+    use input3 <- withUpload ([toFloat32(2.0), toFloat32(0.25)])
+    use input4 <- withUpload ([toFloat32(0.5)])
+    use input5 <- withUpload ([toFloat32(0.0), toFloat32(0.0)])
     use input6 <- withBuffer(zeros3())
-    use input7 <- upload([toFloat32(1.0), toFloat32(2.0)])
-    use input8 <- upload([toFloat32(1.0)])
+    use input7 <- withUpload ([toFloat32(1.0), toFloat32(2.0)])
+    use input8 <- withUpload ([toFloat32(1.0)])
     use h <- denseEach(input0, input1, 3, rows2, input2)
     use out <- denseEach(input3, h, 2, rows1, input4)
     checkAll("dense layers", [
@@ -356,7 +353,7 @@ fn layerCase() = {
 /// surface: the optimum is a fixed point, the loss is symmetric about it.
 fn trainCase() = {
     use input0 <- withBuffer(xs3())
-    use input1 <- upload([toFloat32(2.0), toFloat32(4.0), toFloat32(6.0)])
+    use input1 <- withUpload ([toFloat32(2.0), toFloat32(4.0), toFloat32(6.0)])
     use w <- trainEach(toFloat32(0.0), input0, input1, 40)
     use hi <- trainEach(toFloat32(5.0), input0, input1, 40)
     checkAll("gradient descent", [
