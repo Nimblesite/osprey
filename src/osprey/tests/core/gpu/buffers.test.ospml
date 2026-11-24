@@ -112,8 +112,6 @@ literalCase () =
     use flags <- withUpload ([true, false, true])
     use signed <- withUpload ([-3, 0, 7, -1])
     use wide <- withUpload ([4611686018427387904, -4611686018427387904])
-    literalCaseUploaded(ints, floats, flags, signed, wide)
-literalCaseUploaded (ints, floats, flags, signed, wide) =
     checkAll("buffer literals", [
         lengthIs (ints, 5), lengthIs (floats, 4), lengthIs (flags, 3), lengthIs (signed, 4), lengthIs (wide, 2), uploadsLength ([9], 1), emptyUploads (), widthOf ints == 5, elementsFrom (ints, 0, 0, piDigits), lastIs (ints, 0, 5), elementsFrom (floats, 0, 9.5, [0.25, 0.5, 0.75, 1.0]), lastIs (floats, 9.5, 1.0), elementIs (flags, 0, false, true), elementIs (flags, 1, true, false), elementIs (flags, 2, false, true), lastIs (flags, false, true), intAt (signed, 0, (-3)), elementIs (signed, 1, 9, 0), elementsFrom (signed, 2, 0, [7, (-1)]), elementsFrom (wide, 0, 0, [4611686018427387904, -4611686018427387904]), uploaded ([9], \up => elementIs (up, 0, 0, 9)), sumIs (ints, 14), sumIs (signed, 3), floatSumIs (floats, 2.5), oddCountIs (flags, 2)
     ])
@@ -161,8 +159,6 @@ boundsCase () =
     use ints <- withUpload ([10, 20, 30])
     use floats <- withUpload ([1.25, 2.5])
     use flags <- withUpload ([true, false])
-    boundsCaseUploaded(ints, floats, flags)
-boundsCaseUploaded (ints, floats, flags) =
     checkAll("bounds", [
         elementsAt (ints, 0, [0, 2, (gpuLength ints - 1)], [10, 30, 30]), rendersAs (ints, 0, "10"), rendersAs (ints, 2, "30"), rendersAs (floats, 0, "1.25"), rendersAs (floats, 1, "2.5"), rendersAs (flags, 0, "true"), rendersAs (flags, 1, "false"), missesAll (ints, [3, 4, 1000000, (-1), (-1000000)]), missesAll (floats, [2, (-1)]), missesAll (flags, [2, (-1)]), elementsAt (ints, (-1), [gpuLength ints, 3, (-1)], [(-1), (-1), (-1)]), elementsAt (floats, 9.5, [2, (-1)], [9.5, 9.5]), elementIs (flags, 2, true, true), elementIs (flags, (-1), false, false), lastIs (ints, 0, 30), lastIs (floats, 9.5, 2.5), lastIs (flags, true, false)
     ])
@@ -181,8 +177,6 @@ elementCase () =
     use ints <- withUpload ([-9, 0, 9])
     use floats <- withUpload ([-0.5, 0.0, 0.125])
     use flags <- withUpload ([false, true])
-    elementCaseUploaded(ints, floats, flags)
-elementCaseUploaded (ints, floats, flags) =
     checkAll("scalar element words survive identity", [
         sameReads (ints, 0, 0, (-9)), sameReads (ints, 1, 9, 0), sameReads (ints, 2, 0, 9), sameReads (floats, 0, 9.5, (-0.5)), sameReads (floats, 1, 9.5, 0.0), sameReads (floats, 2, 9.5, 0.125), sameReads (flags, 0, true, false), sameReads (flags, 1, false, true), rendersAs (ints, 0, "-9"), rendersAs (ints, 1, "0"), rendersAs (floats, 0, "-0.5"), rendersAs (floats, 1, "0.0"), rendersAs (floats, 2, "0.125"), rendersAs (flags, 0, "false"), sumIs (ints, 0), floatSumIs (floats, (-0.375)), oddCountIs (flags, 1), sameAs (floats, \copy => lengthIs (copy, 3)), sameAs (flags, \copy => widthOf copy == 2), sameAs (ints, \copy => readsBack (copy, 3)), uploaded ([2.0], \up => floatSumIs (up, 2.0)), sameAs (floats, \copy => lastIs (copy, 9.5, 0.125))
     ])
