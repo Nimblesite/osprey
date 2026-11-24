@@ -114,6 +114,10 @@
       "gpu_runtime": {
         "language": "c"
       },
+      "gpu_lifetime": {
+        "threshold": 100,
+        "language": "c"
+      },
       "gpu_map_file": {
         "language": "c"
       },

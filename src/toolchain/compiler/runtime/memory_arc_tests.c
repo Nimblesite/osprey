@@ -42,6 +42,25 @@ static void *refusable_realloc(void *old, size_t size) { return g_refuse_realloc
 
 _Atomic long g_checks = 0;
 
+// [MEM-OWNERSHIP-STATIC-VERIFICATION] OSPREY_SCRIBBLE_FREES hands every
+// released block back to libc, where AddressSanitizer can poison it, instead of
+// parking it on the pool: the registry drops it at once. Off, a release parks
+// the slot, so the registry keeps it.
+static void t_scribble_bypasses_pool(void) {
+  g_scribble_frees = 1;
+  void *scribbled = osp_alloc_tagged(48, OSP_MEM_RAW);
+  size_t held = g_present;
+  CHECK(scribbled != NULL);
+  osp_release(scribbled);
+  CHECK(g_present == held - 1);
+  g_scribble_frees = 0;
+  void *parked = osp_alloc_tagged(48, OSP_MEM_RAW);
+  held = g_present;
+  CHECK(parked != NULL);
+  osp_release(parked);
+  CHECK(g_present == held);
+}
+
 static void t_alloc_sizes_oom(void) {
   void *zero = osp_alloc(0); // malloc(HDR+1): still a distinct live address
   void *neg = osp_alloc(-8); // size <= 0 clamps to 0
@@ -220,6 +239,7 @@ int main(void) {
   t_wrapped_cluster();
   t_alloc_and_tags(); t_alloc_sizes_oom();
   t_retain_release(); t_release_unique_collect(); t_reclaim_reuse();
+  t_scribble_bypasses_pool();
   t_foreign_stack_static(); t_foreign_heap_null();
   t_immortal(); t_immortal_child(); t_set_layout();
   t_mask_drop(); t_mask_bounds_and_bits();
