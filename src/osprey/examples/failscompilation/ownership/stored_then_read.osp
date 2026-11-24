@@ -1,10 +1,17 @@
-// [MEM-OWNERSHIP-STATIC] Runs under the collector; `--memory=ownership` refuses it.
-// Read again after it is stored: the store is not the binding's last use.
+// [MEM-OWNERSHIP-STATIC-BORROWS] Runs under the collector; `--memory=ownership` refuses it.
+// A value stored while its owner still reads it is lent, so the new value may
+// not outlive that owner: here it is returned, and the owner dies in `build`.
 type Box = { text: string }
 type Wrap = { inner: Box }
 
-fn main() = {
+fn build() = {
     let made = Box { text: "a${toString(1)}" }
     let wrap = Wrap { inner: made }
-    print("${wrap.inner.text}${made.text}")
+    print(made.text)
+    wrap
+}
+
+fn main() = {
+    let wrap = build()
+    print(wrap.inner.text)
 }

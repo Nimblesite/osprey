@@ -1,4 +1,5 @@
 //! Named aggregate construction with complete semantic field values.
+use crate::arc::Held;
 use crate::builder::Codegen;
 use crate::error::{CodegenError, Result};
 use crate::llty::{LType, Value};
@@ -43,7 +44,26 @@ fn tagged_constructor(
         .iter()
         .map(|(field, ty)| constructor_field(cg, name, field, fields, *ty))
         .collect::<Result<Vec<_>>>()?;
-    materialize(cg, name, view, &values)
+    let places = view
+        .fields
+        .iter()
+        .map(|(field, _)| {
+            fields
+                .iter()
+                .any(|f| f.name == *field && is_place(&f.value))
+        })
+        .collect::<Vec<_>>();
+    materialize(cg, name, view, &values, &places)
+}
+
+/// Whether `value` is written as a binding or a field of one: something whose
+/// owner has a name, and so can outlive a value that only holds it.
+fn is_place(value: &osprey_ast::Expr) -> bool {
+    match value {
+        osprey_ast::Expr::Identifier(_) => true,
+        osprey_ast::Expr::FieldAccess { target, .. } => is_place(target),
+        _ => false,
+    }
 }
 
 pub(super) fn materialize(
@@ -51,6 +71,7 @@ pub(super) fn materialize(
     name: &str,
     view: crate::builder::CtorView,
     values: &[(Value, MetaField)],
+    places: &[bool],
 ) -> Result<Value> {
     if !view.owner_is_record && view.fields.is_empty() {
         return Ok(Value::handle(
@@ -61,9 +82,14 @@ pub(super) fn materialize(
     let struct_ty = cg
         .ctor_struct_ty(name)
         .ok_or_else(|| CodegenError::unknown(name))?;
-    let obj = cg.malloc_struct_noinit(&struct_ty, constructor_meta(cg, view.meta, values));
-    store_tagged_fields(cg, &struct_ty, &obj, &view, values);
-    Ok(super::own_struct_handle(cg, &struct_ty, &obj, view.owner))
+    let held = hold_fields(cg, values, places);
+    let obj = cg.malloc_struct_noinit(&struct_ty, constructor_meta(cg, view.meta, values, &held));
+    store_tagged_fields(cg, &struct_ty, &obj, &view, values, &held);
+    let made = super::own_struct_handle(cg, &struct_ty, &obj, view.owner);
+    if held.contains(&Held::Lent) {
+        crate::arc::mark_lent(cg, &made);
+    }
+    Ok(made)
 }
 
 /// The built-in record a failed list read holds, from its two words.
@@ -74,7 +100,7 @@ pub(crate) fn index_out_of_bounds(cg: &mut Codegen, index: &str, length: &str) -
         .ctor_layout(name)
         .ok_or_else(|| CodegenError::unknown(name))?;
     let words = [index, length].map(|word| (Value::new(word, LType::I64), MetaField::Word));
-    let mut record = materialize(cg, name, view, &words)?;
+    let mut record = materialize(cg, name, view, &words, &[])?;
     record.inferred_type = Some(osprey_types::Type::con(name, vec![]));
     Ok(record)
 }
@@ -85,9 +111,15 @@ fn store_tagged_fields(
     obj: &str,
     view: &crate::builder::CtorView,
     values: &[(Value, MetaField)],
+    held: &[Held],
 ) {
     super::store_tag(cg, struct_ty, obj, view.tag);
-    for (i, ((_, ty), (value, field_meta))) in view.fields.iter().zip(values).enumerate() {
+    let fields = view.fields.iter().zip(values).zip(held).enumerate();
+    for (i, (((_, ty), (value, field_meta)), held)) in fields {
+        if *held != Held::Stored {
+            super::store_held_field(cg, struct_ty, obj, i + 1, *ty, &value.operand);
+            continue;
+        }
         // A later initializer can abandon construction through a control effect.
         // Retain boxed children only after every initializer has completed.
         if *field_meta == MetaField::ManagedWord {
@@ -96,6 +128,25 @@ fn store_tagged_fields(
         }
         super::store_field(cg, struct_ty, obj, i + 1, *ty, &value.operand);
     }
+}
+
+/// How the new value holds each field. Under ownership a managed field written
+/// as a place is moved in or lent [MEM-OWNERSHIP-STATIC-BORROWS]; every other
+/// field is stored as before.
+fn hold_fields(cg: &mut Codegen, values: &[(Value, MetaField)], places: &[bool]) -> Vec<Held> {
+    values
+        .iter()
+        .zip(places.iter().chain(std::iter::repeat(&false)))
+        .map(|((value, meta), place)| match meta {
+            _ if !place => Held::Stored,
+            MetaField::ManagedWord => {
+                let pointer = crate::conv::unbox_from_i64(cg, &value.operand, LType::Ptr);
+                crate::arc::hold_field(cg, &pointer)
+            }
+            MetaField::PtrManaged | MetaField::PtrDirect => crate::arc::hold_field(cg, value),
+            _ => Held::Stored,
+        })
+        .collect()
 }
 
 fn constructor_field(
@@ -130,15 +181,30 @@ pub(super) fn storage_value(
     }
 }
 
-fn constructor_meta(cg: &Codegen, declared: i64, values: &[(Value, MetaField)]) -> i64 {
-    if !values
+/// The layout of a new value: the declared one, unless a field holds a boxed
+/// pointer or lends. A lent field is laid out as a word the drop walk skips.
+fn constructor_meta(
+    cg: &Codegen,
+    declared: i64,
+    values: &[(Value, MetaField)],
+    held: &[Held],
+) -> i64 {
+    let boxed = values
         .iter()
-        .any(|(_, meta)| *meta == MetaField::ManagedWord)
-    {
+        .any(|(_, meta)| *meta == MetaField::ManagedWord);
+    if !boxed && !held.contains(&Held::Lent) {
         return declared;
     }
+    let stored = values
+        .iter()
+        .zip(held)
+        .map(|((_, meta), held)| match (held, meta) {
+            (Held::Lent, MetaField::ManagedWord) => MetaField::Word,
+            (Held::Lent, _) => MetaField::PtrOpaque,
+            _ => *meta,
+        });
     let fields = std::iter::once(MetaField::Word)
-        .chain(values.iter().map(|(_, meta)| *meta))
+        .chain(stored)
         .collect::<Vec<_>>();
     cg.struct_meta(&fields)
 }

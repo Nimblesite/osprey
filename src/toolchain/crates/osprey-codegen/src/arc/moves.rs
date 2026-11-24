@@ -181,6 +181,7 @@ impl Movable {
         let frame = below.iter().rposition(|kind| *kind == FrameKind::Scope)?;
         let at = cg.arc.frames.get(frame)?.iter().rposition(|e| {
             e.operand == operand
+                && !e.lent
                 && e.binding_scope == Some(scope)
                 && e.name
                     .as_ref()

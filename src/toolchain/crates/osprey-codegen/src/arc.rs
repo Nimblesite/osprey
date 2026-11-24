@@ -452,7 +452,8 @@ pub(crate) use frames::{drop_frame_inline, pop_frame, push_frame, FrameKind};
 mod last_use;
 mod lends;
 pub(crate) use lends::{
-    is_lent, lending, lends, lends_list, mark_lent, reading, set_lending, take_reading,
+    hold_field, is_lent, lending, lends, lends_list, mark_lent, reading, set_lending, take_reading,
+    Held,
 };
 mod unwind;
 pub(crate) mod versions;

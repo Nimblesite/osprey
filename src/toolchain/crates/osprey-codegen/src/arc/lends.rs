@@ -139,3 +139,29 @@ pub(crate) fn mark_lent(cg: &mut Codegen, v: &Value) {
         entry.lent = true;
     }
 }
+
+/// How a constructor holds one field [MEM-OWNERSHIP-STATIC-BORROWS].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Held {
+    /// Counted or moved by the store itself: every backend but ownership.
+    Stored,
+    /// The field took the one reference a fresh value or a last use gave.
+    Moved,
+    /// The field holds a value another owner keeps: the new value frees
+    /// nothing through it and may not outlive that owner.
+    Lent,
+}
+
+/// Decide how a constructor holds the managed pointer `pointer`. Under
+/// ownership a value that can't move in is lent, never counted.
+pub(crate) fn hold_field(cg: &mut Codegen, pointer: &Value) -> Held {
+    let counted = pointer.operand.starts_with('%') && !cg.is_rodata(&pointer.operand);
+    if !cg.ownership.on || !counted {
+        return Held::Stored;
+    }
+    if super::consume_into_store(cg, &pointer.operand) {
+        Held::Moved
+    } else {
+        Held::Lent
+    }
+}

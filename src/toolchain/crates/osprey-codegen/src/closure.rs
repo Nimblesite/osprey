@@ -305,10 +305,17 @@ pub(crate) fn named_fn_cell(cg: &mut Codegen, name: &str) -> Result<Value> {
         Some(g) => g.clone(),
         None => emit_forwarder(cg, name)?,
     };
-    let reg = cg.emit_reg(format!("bitcast {{ i8* }}* {cell} to i8*"));
-    let mut value = Value::new(reg, LType::Ptr);
+    let mut value = shared_cell(cg, &cell);
     value.inferred_type = cg.callee_fn_type(&Expr::Identifier(name.to_owned()));
     Ok(value)
+}
+
+/// The value of the constant cell `cell`: it is never freed, so it carries no
+/// reference to count or own [GC-ARC-PERCEUS].
+pub(crate) fn shared_cell(cg: &mut Codegen, cell: &str) -> Value {
+    let reg = cg.emit_reg(format!("bitcast {{ i8* }}* {cell} to i8*"));
+    cg.mark_rodata(&reg);
+    Value::new(reg, LType::Ptr)
 }
 
 fn specialized_named_cell(

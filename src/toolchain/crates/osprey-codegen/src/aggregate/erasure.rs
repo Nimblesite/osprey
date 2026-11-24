@@ -220,5 +220,5 @@ fn variant_value(cg: &mut Codegen, source: &Value, variant: &str, target: &Type)
             super::construct::storage_value(cg, stored, *ty)
         })
         .collect::<Result<Vec<_>>>()?;
-    super::construct::materialize(cg, variant, view, &values)
+    super::construct::materialize(cg, variant, view, &values, &[])
 }

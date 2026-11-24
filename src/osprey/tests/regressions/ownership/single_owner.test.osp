@@ -301,6 +301,35 @@ fn noted(n) = {
     "noted ${toString(sum)} ${last} ${prefix}"
 }
 
+type Held = { inner: Box, n: int }
+type Nest = { held: Held, tag: string }
+type Link = Solo { at: Box } | Join { from: Box, to: Box }
+
+fn linkText(link) = match link {
+    Solo { at } => "${at.text}"
+    Join { from, to } => "${from.text}-${to.text}"
+}
+
+fn heldText(held: Held) = "${held.inner.text}${toString(held.n)}"
+
+/// A value stored while its owner still reads it is lent
+/// [MEM-OWNERSHIP-STATIC-BORROWS]: the new value frees nothing through that
+/// field and dies before the owner, through a chain of stores and in a loop.
+fn stores(n) = {
+    let made = Box { text: "a${toString(n)}" }
+    let held = Held { inner: made, n: n }
+    let other = Box { text: "b${toString(n)}" }
+    let join = Join { from: made, to: other }
+    let nest = Nest { held: held, tag: "t${toString(n)}" }
+    let twice = Pair { left: made, right: made }
+    let looped = range(0, n) |> fold("", |acc, i| => {
+        let box = Box { text: "i${toString(i)}" }
+        let inner = Held { inner: box, n: i }
+        "${acc}${inner.inner.text}${box.text}"
+    })
+    "stores ${held.inner.text}${made.text} ${linkText(join)} ${linkText(Solo { at: other })} ${heldText(held)} ${nest.held.inner.text}${nest.tag} ${heldText(Held { inner: made, n: 4 })} ${twice.left.text}${twice.right.text} ${looped}"
+}
+
 fn effects() = "${toString(listLength(folded(4)))} ${toString(listLength(folded(0)))} ${drawn(10)} ${drawn(0)} ${noted(3)}"
 
-print("${fileScope(1)} ${shared.text}\n${spans()}\n${elements()}\n${collections()}\n${lastUses()}\n${paths()}\n${owned()}\n${generics()}\n${literals()}\n${errors()}\n${captures()}\n${lends()}\n${lentLists()}\n${reads()}\n${borrows()}\n${effects()}")
+print("${fileScope(1)} ${shared.text}\n${spans()}\n${elements()}\n${collections()}\n${lastUses()}\n${paths()}\n${owned()}\n${generics()}\n${literals()}\n${errors()}\n${captures()}\n${lends()}\n${lentLists()}\n${reads()}\n${borrows()}\n${effects()}\n${stores(2)}")

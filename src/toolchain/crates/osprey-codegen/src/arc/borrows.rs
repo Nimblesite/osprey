@@ -35,18 +35,49 @@ pub(crate) fn note_rebound(cg: &mut Codegen, stmt: &osprey_ast::Stmt) {
 /// A `let` bound `v`, the value of `source`, to `name`: give it an owner, or
 /// let it borrow when it may.
 pub(crate) fn bind_let(cg: &mut Codegen, name: &str, source: &Expr, v: &Value) {
-    if !super::managed(cg, v) || super::adopt(cg, name, v) || lend(cg, name, source) {
+    if !super::managed(cg, v)
+        || bind_lent(cg, name, source, v)
+        || super::adopt(cg, name, v)
+        || lend(cg, name, source)
+    {
         return;
     }
     super::bind_counted(cg, name, v);
 }
 
+/// `v` is a value `source` constructs that holds values other bindings own:
+/// `name` takes `v` and borrows from every binding `source` mentions, which
+/// then outlive `name`'s last read.
+fn bind_lent(cg: &mut Codegen, name: &str, source: &Expr, v: &Value) -> bool {
+    let built = matches!(source, Expr::TypeConstructor { .. });
+    if !built || !super::is_lent(cg, v) || !borrow_from(cg, name, source) {
+        return false;
+    }
+    let frame = cg.arc.frames.last_mut();
+    let held = frame.and_then(|frame| {
+        let at = frame
+            .iter()
+            .rposition(|e| e.lent && e.operand == v.operand)?;
+        Some(frame.remove(at))
+    });
+    let Some(mut entry) = held else {
+        return false;
+    };
+    entry.name = Some(name.to_owned());
+    entry.binding_scope = cg.scope_id();
+    super::push_parent(cg, entry);
+    true
+}
+
 /// Whether the names `source` mentions can lend its value to `name`: record
 /// the loan and answer true.
 fn lend(cg: &mut Codegen, name: &str, source: &Expr) -> bool {
-    if !cg.ownership.on || holds_temporaries(cg) {
-        return false;
-    }
+    cg.ownership.on && !holds_temporaries(cg) && borrow_from(cg, name, source)
+}
+
+/// Record `name` as a borrower of every binding `source` mentions. False, with
+/// nothing recorded, when one of them can be replaced or none is a binding.
+fn borrow_from(cg: &mut Codegen, name: &str, source: &Expr) -> bool {
     let mut mentioned = BTreeSet::new();
     osprey_ast::freevars::free_idents(source, &mut mentioned);
     if mentioned.iter().any(|lender| replaceable(cg, lender)) {
