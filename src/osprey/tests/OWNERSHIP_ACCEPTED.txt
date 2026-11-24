@@ -6,6 +6,12 @@ core/arithmetic/precedence_associativity_stress.test.osp
 core/arithmetic/precedence_associativity_stress.test.ospml
 core/arithmetic/result_chain_unary_stress.test.osp
 core/arithmetic/result_chain_unary_stress.test.ospml
+core/gpu/gamedev.test.osp
+core/gpu/gamedev.test.ospml
+core/gpu/mlkernels.test.osp
+core/gpu/mlkernels.test.ospml
+core/gpu/raster.test.osp
+core/gpu/raster.test.ospml
 effects/injection/logging_injection.test.osp
 effects/injection/logging_injection.test.ospml
 effects/install/install.test.osp
@@ -14,6 +20,7 @@ effects/install/install.test.py
 effects/staged/open_row_static.test.osp
 effects/staged/open_row_static.test.ospml
 effects/staged/open_row_static.test.ts
+effects/staged/staged_effects.test.osp
 flavors/operators/operators.test.osp
 flavors/operators/operators.test.ospml
 flavors/operators/operators.test.ts
@@ -21,6 +28,8 @@ flavors/text_and_pipelines/text_and_pipelines.test.osp
 flavors/text_and_pipelines/text_and_pipelines.test.ospml
 flavors/text_and_pipelines/text_and_pipelines.test.ts
 framework/verdict_declared.test.ospml
+modules/cross_namespace_patterns.test.osp
+modules/cross_namespace_patterns.test.ospml
 modules/import_resolution.test.osp
 modules/import_resolution.test.ospml
 modules/module_boundary.test.osp
@@ -35,6 +44,8 @@ modules/state_module_cells.test.osp
 modules/state_module_cells.test.ospml
 regressions/basics/binding_order.test.osp
 regressions/basics/binding_order.test.ospml
+regressions/basics/blocks/use_binding.test.osp
+regressions/basics/blocks/use_binding.test.ospml
 regressions/basics/field_access_comprehensive.test.osp
 regressions/basics/field_access_comprehensive.test.ospml
 regressions/basics/files/file_io_json_workflow.test.osp
@@ -60,6 +71,10 @@ regressions/basics/types/contextual_records.test.osp
 regressions/basics/types/contextual_records.test.ts
 regressions/basics/types/deferred_arith_abs_tolerance.test.osp
 regressions/basics/types/deferred_arith_abs_tolerance.test.ospml
+regressions/basics/types/sized_floats.test.osp
+regressions/basics/types/sized_floats.test.ospml
+regressions/basics/types/sized_integers.test.osp
+regressions/basics/types/sized_integers.test.ospml
 regressions/basics/types/sized_integers_fibers.test.osp
 regressions/basics/types/sized_integers_fibers.test.ospml
 regressions/basics/validation/proper_validation_test.test.osp
