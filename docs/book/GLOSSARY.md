@@ -60,7 +60,7 @@ The compiler's ability to work out types from how values are created and used. I
 
 ## Memory backend
 
-The runtime's method for managing allocated values. Native builds default to tracing garbage collection (`gc`); automatic reference counting (`arc`) is the alternative managed option. Explicit `--memory=none` selects unmanaged allocation and retains general allocations. WebAssembly and mobile libraries currently require `none`, with no automatic fallback.
+The runtime's method for managing allocated values. Native builds default to tracing garbage collection (`gc`); automatic reference counting (`arc`) is the alternative managed option. Compile-time ownership checks transfers and borrows. WebAssembly and mobile libraries default to ARC.
 
 ## ML flavor
 

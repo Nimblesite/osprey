@@ -4,7 +4,7 @@ The corresponding TestingFramework contract is [here](../language/0027-TestingFr
 
 ## CLI
 
-### `osprey test [path] [--filter <name>] [--quiet] [--coverage] [--coverage-json <path>] [--memory=gc|arc|none]` — `[TESTING-CLI-RUN]`
+### `osprey test [path] [--filter <name>] [--quiet] [--coverage] [--coverage-json <path>] [--memory=gc|arc|ownership]` — `[TESTING-CLI-RUN]`
 
 Runs test files and aggregates results. `path` (default `.`) is a single file
 (run as-is, regardless of naming), a project directory (see

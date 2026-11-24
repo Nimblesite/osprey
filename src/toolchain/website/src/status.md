@@ -63,7 +63,7 @@ are compiled and compared with checked-in expected output.
 
 | Target | Output | Runtime boundary |
 | --- | --- | --- |
-| `native` | Executable for the host platform | Native runtime, including resumable effects; GC by default, ARC, or explicit unmanaged `none` |
+| `native` | Executable for the host platform | Native runtime, including resumable effects; GC by default, ARC, or compile-time ownership |
 | `python` | Shared library and C header on Linux/macOS | Loaded by CPython through `osprey-interop`; scalar ABI and opaque Python handles; no dynamic control continuations, fibers, HTTP/WebSocket or process spawning |
 | `wasm32` | WebAssembly module | WASI/browser host; ARC by default; tracing GC is rejected; unsupported features rejected before code generation |
 | `ios`, `ios-sim` | ARM64 static archive and C header | Swift host, iOS 15 minimum; ARC by default; tracing GC and resumable effects are rejected |

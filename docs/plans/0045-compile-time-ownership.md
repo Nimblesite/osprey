@@ -58,7 +58,7 @@ Found while building phase 1, each a place where an accepted program still count
 
 ## Phase 3 — replace `none`
 
-- [ ] (#378: v0.29.0's `--memory=none` macOS archive lacks `osp_mem_string_length` and cannot link; rejecting `none` closes it.) Delete `--memory=none` from `parse_memory` (src/toolchain/crates/osprey-cli/src/invocation.rs), `src/toolchain/compiler/runtime/memory_runtime.c`, the wasm `none` passthrough (`RUNTIME_LIB_NONE` / `libosprey_runtime_wasm.a` in src/toolchain/crates/osprey-cli/src/wasm.rs), and every test, bench and doc reference; `--memory=none` and `--memory=default` are both rejected.
+- [x] (#378: v0.29.0's `--memory=none` macOS archive lacks `osp_mem_string_length` and cannot link; rejecting `none` closes it.) Delete `--memory=none` from `parse_memory` (src/toolchain/crates/osprey-cli/src/invocation.rs), `src/toolchain/compiler/runtime/memory_runtime.c`, the wasm `none` passthrough (`RUNTIME_LIB_NONE` / `libosprey_runtime_wasm.a` in src/toolchain/crates/osprey-cli/src/wasm.rs), and every test, bench and doc reference; `--memory=none` and `--memory=default` are both rejected.
 - Acceptance: `parse_memory` rejects both spellings; grep finds no `memory_runtime.c` or `none`-backend references outside history.
 - [ ] Report `ownership` beside GC and ARC in src/toolchain/benchmarks/run.sh (`LANGS`, `EXT`, and the compile case).
 - Acceptance: `osprey-ownership` appears in benchmark output alongside `osprey-gc` and `osprey-arc`.
