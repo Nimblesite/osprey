@@ -6,6 +6,8 @@ core/arithmetic/precedence_associativity_stress.test.osp
 core/arithmetic/precedence_associativity_stress.test.ospml
 core/arithmetic/result_chain_unary_stress.test.osp
 core/arithmetic/result_chain_unary_stress.test.ospml
+core/gpu/flavor_parity.test.osp
+core/gpu/flavor_parity.test.ospml
 core/gpu/gamedev.test.osp
 core/gpu/gamedev.test.ospml
 core/gpu/mlkernels.test.osp
@@ -21,6 +23,9 @@ effects/staged/open_row_static.test.osp
 effects/staged/open_row_static.test.ospml
 effects/staged/open_row_static.test.ts
 effects/staged/staged_effects.test.osp
+flavors/functions/functions.test.osp
+flavors/functions/functions.test.ospml
+flavors/functions/functions.test.ts
 flavors/operators/operators.test.osp
 flavors/operators/operators.test.ospml
 flavors/operators/operators.test.ts
@@ -39,6 +44,8 @@ modules/module_boundary.test.osp
 modules/module_boundary.test.ospml
 modules/module_composition.test.osp
 modules/module_composition.test.ospml
+modules/module_data_types.test.osp
+modules/module_data_types.test.ospml
 modules/namespace_surface.test.osp
 modules/namespace_surface.test.ospml
 modules/signature_ascription.test.osp
@@ -61,6 +68,8 @@ regressions/basics/math/math_builtins.test.osp
 regressions/basics/math/math_builtins.test.ospml
 regressions/basics/memory/struct_allocation_stress.test.osp
 regressions/basics/memory/struct_allocation_stress.test.ospml
+regressions/basics/operators/boolean_consolidated.test.osp
+regressions/basics/operators/boolean_consolidated.test.ospml
 regressions/basics/operators/equality_domain.test.osp
 regressions/basics/operators/equality_domain.test.ospml
 regressions/basics/operators/structural_equals.test.osp
@@ -74,6 +83,10 @@ regressions/basics/types/contextual_records.test.osp
 regressions/basics/types/contextual_records.test.ts
 regressions/basics/types/deferred_arith_abs_tolerance.test.osp
 regressions/basics/types/deferred_arith_abs_tolerance.test.ospml
+regressions/basics/types/empty_list_field_receiver.test.osp
+regressions/basics/types/empty_list_field_receiver.test.ospml
+regressions/basics/types/generic_self_recursion_fold.test.osp
+regressions/basics/types/generic_self_recursion_fold.test.ospml
 regressions/basics/types/sized_floats.test.osp
 regressions/basics/types/sized_floats.test.ospml
 regressions/basics/types/sized_integers.test.osp
@@ -100,6 +113,7 @@ regressions/http/net_local_address.test.osp
 regressions/http/net_local_address.test.ospml
 regressions/http/websocket_connections.test.osp
 regressions/http/websocket_connections.test.ospml
+regressions/issues/generic_recursion_through_fold.test.ospml
 regressions/issues/handler_state_from_nested_function.test.ospml
 regressions/issues/later_generic_callee_generalized.test.osp
 regressions/issues/map_and_list_element_types.test.osp
