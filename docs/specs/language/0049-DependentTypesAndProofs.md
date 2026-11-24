@@ -26,7 +26,11 @@ Compatibility concerns intended logical rules and valid certificates, not reprod
 
 The compatible theory remains a versioned package under spec 0050. An implementation repair requires fresh validation of affected proofs. Removing an axiom or changing inference/equality rules creates an explicit policy/theory revision or separately named fork; its certificates, caches and library dependencies must be rechecked under that identity. Such a fork does not inherit its parent's proof authority. Unsupported proofs remain refused, and pluggability alone establishes no consistency theorem.
 
-For a theorem about compiled code, record the compiler input, the emitted function and the semantics assumed for its external calls. The proof gate must derive the theorem input from that compiler output, reject unsupported instructions, and reject a change to the emitted function that violates the property. [Ownership proof scope](../../plans/0045-compile-time-ownership.md)
+### Translation validation of compiler output [PROOF-ORACLE-COMPILER]
+
+For a theorem about compiled code, record the compiler input, the emitted function, the quantified inputs and the contracts assumed for external calls. Derive the theorem input from the output produced during the proof run. A reflector must account for every reachable instruction that can affect the stated property. Unrecognized operations on that dependency path must prevent certification. At a control-flow join, check all feasible predecessors or prove the property over an overapproximation that includes them all.
+
+Check the theorem in pinned Lean and replay its export with the Osprey kernel under the declared axiom policy. Require a semantic mutation that survives translation and fails at the theorem. Record the boundary of each result, including trusted extraction and runtime semantics. The ownership spec identifies the functions, properties, mutation controls and unfinished proof obligations. [Ownership compiler proofs](../compiler/0018-MemoryManagement.md#proofs-of-compiled-ownership-code-mem-ownership-static-verification-compiler)
 
 ## The existing language is untouched [PROOF-NO-HARM]
 

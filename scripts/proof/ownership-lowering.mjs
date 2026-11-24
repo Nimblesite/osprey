@@ -2,7 +2,8 @@
 // The Boolean parameter has two inhabitants; specialize both, resolving each phi by
 // its actual predecessor. Reject unknown instructions [MEM-OWNERSHIP-STATIC-VERIFICATION].
 import { readFileSync } from 'node:fs'
-const [source, irFile, template] = process.argv.slice(2)
+import { runtimeReturns } from './runtime-returns.mjs'
+const [source, irFile, template, listFile, mapFile] = process.argv.slice(2)
 const src = readFileSync(source, 'utf8').split('\n')
 const ir = readFileSync(irFile, 'utf8')
 function define(map, key, value = map.size) {
@@ -81,7 +82,12 @@ for (const definition of ['fn grow(xs, x) = listAppend(xs, x)', 'fn growWhen(xs,
   if (!src.includes(definition)) throw Error('unsupported source: ' + definition)
 }
 const conditional = blocks('growWhen', true)
+const list = runtimeReturns(listFile, 'osp_alloc_tagged_noinit')
+const map = runtimeReturns(mapFile, 'osp_arc_calloc')
 process.stdout.write(readFileSync(template, 'utf8')
+  .replace('-- APPEND RETURNS', list('osprey_list_append_of'))
+  .replace('-- PREPEND RETURNS', list('osprey_list_prepend_of'))
+  .replace('-- MAP SET RETURNS', map('osprey_map_set_of'))
   .replace('-- EMITTED BODY', trace(blocks('grow', false), false))
   .replace('-- ENABLED BODY', trace(conditional, true))
   .replace('-- DISABLED BODY', trace(conditional, false)))

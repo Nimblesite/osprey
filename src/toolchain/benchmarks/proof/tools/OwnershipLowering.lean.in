@@ -56,4 +56,47 @@ theorem compiledGrowWhen (xs : List α) (x : α) (enabled : Bool) :
     execute x ⟨[(0, xs)], []⟩ (conditional enabled) =
       some (if enabled then xs ++ [x] else xs) := by cases enabled <;> rfl
 
+/- Each fork represents an arbitrary incoming edge or return site of the
+   compiled C helper. Allocation denotes the external tagged allocator. The
+   result concerns address origin on a defined, normally returning execution.
+   Allocator correctness and survival of that allocation are separate. -/
+inductive Origin where
+  | allocated
+  | other
+  | fork (left right : Origin)
+
+def allocatorOrigin (pick : Nat → Bool) (depth : Nat) : Origin → Bool
+  | .allocated => true
+  | .other => false
+  | .fork a b => if pick depth then allocatorOrigin pick (depth+1) a
+                  else allocatorOrigin pick (depth+1) b
+
+inductive Allocated : Origin → Prop where
+  | leaf : Allocated .allocated
+  | fork : Allocated left → Allocated right → Allocated (.fork left right)
+
+theorem allocatedPath (pick : Nat → Bool) (depth : Nat) (h : Allocated root) :
+    allocatorOrigin pick depth root = true := by
+  induction h generalizing depth with
+  | leaf => rfl
+  | fork _ _ left right =>
+    unfold allocatorOrigin
+    split
+    · exact left _
+    · exact right _
+
+def appendReturns : Origin :=
+-- APPEND RETURNS
+def prependReturns : Origin :=
+-- PREPEND RETURNS
+def mapSetReturns : Origin :=
+-- MAP SET RETURNS
+
+theorem runtimeRootOrigins (pick : Nat → Bool) :
+    allocatorOrigin pick 0 appendReturns = true ∧
+    allocatorOrigin pick 0 prependReturns = true ∧
+    allocatorOrigin pick 0 mapSetReturns = true := by
+  refine ⟨allocatedPath pick 0 ?_, allocatedPath pick 0 ?_, allocatedPath pick 0 ?_⟩ <;>
+    repeat constructor
+
 end OwnershipLowering

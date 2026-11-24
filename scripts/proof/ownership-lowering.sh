@@ -7,9 +7,16 @@ tools="$root/src/toolchain/benchmarks/proof/tools"
 program="$root/src/osprey/tests/regressions/ownership/single_owner.test.osp"
 mkdir -p "$out"
 "$1" "$program" --llvm --memory=ownership > "$out/ownership.ll"
+runtime="$root/src/toolchain/compiler/runtime"
+compile_runtime() {
+  clang -O1 -fno-inline -fno-discard-value-names -I "$runtime" -include "$runtime/osp_arc_shim.h" \
+    -S -emit-llvm "$1" -o "$2"
+}
+compile_runtime "$runtime/list_runtime.c" "$out/runtime.ll"
+compile_runtime "$runtime/map_runtime.c" "$out/map.ll"
 reflect() {
   node "$root/scripts/proof/ownership-lowering.mjs" "$program" "$1" \
-    "$tools/OwnershipLowering.lean.in" > "$2"
+    "$tools/OwnershipLowering.lean.in" "${3:-$out/runtime.ll}" "$out/map.ll" > "$2"
 }
 cd "$tools"
 reflect "$out/ownership.ll" "$out/OwnershipLowering.lean"
@@ -17,7 +24,7 @@ lake build lean4export
 lake env lean -DwarningAsError=true --root="$out" -o "$out/OwnershipLowering.olean" "$out/OwnershipLowering.lean"
 exporter=$(lake env which lean4export)
 lean_path=$(lake env printenv LEAN_PATH)
-for name in compiledGrow compiledGrowWhen; do
+for name in compiledGrow compiledGrowWhen runtimeRootOrigins; do
   theorem="OwnershipLowering.$name"
   LEAN_PATH="$out:$lean_path" "$exporter" OwnershipLowering -- "$theorem" > "$out/$name.ndjson"
   for backend in gc arc wasm; do
@@ -54,3 +61,21 @@ for fault in leak double-free early-free stale-phi; do
   grep -q "Tactic .rfl. failed" "$out/mutations/$fault.log"
   echo "REJECT $fault"
 done
+
+# Mutate a real C return and recompile it through the same ownership shim.
+# A valid alias return must reach the theorem and fail there.
+awk '
+  /^OspreyList \*osprey_list_append_of\(/ {inside=1}
+  inside && /return alloc_list\(1, 0, 1,/ {print "    return l;"; changed++; inside=0; next}
+  {print}
+  END {if (changed != 1) exit 1}
+' "$runtime/list_runtime.c" > "$out/mutations/alias.c"
+compile_runtime "$out/mutations/alias.c" "$out/mutations/alias.ll"
+reflect "$out/ownership.ll" "$out/mutations/alias.lean" "$out/mutations/alias.ll"
+if lake env lean "$out/mutations/alias.lean" > "$out/mutations/alias.log" 2>&1; then
+  echo 'accepted aliased list root' >&2
+  exit 1
+fi
+awk -F: -v first="$(grep -n '^theorem runtimeRootOrigins ' "$out/mutations/alias.lean" | cut -d: -f1)" \
+  '/alias.lean:[0-9]+:[0-9]+: error:/ && $2 >= first {failed=1} END {exit !failed}' "$out/mutations/alias.log"
+echo 'REJECT aliased C return'

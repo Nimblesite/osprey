@@ -361,6 +361,20 @@ calls that alias an owner with a live borrow, and continuations that would
 duplicate an owner. Acceptance tests must cover cleanup when a continuation
 is discarded, as well as ordinary returns and successful resumption.
 
+#### Proofs of compiled ownership code [MEM-OWNERSHIP-STATIC-VERIFICATION-COMPILER]
+
+`make _test_ownership_proof` compiles the tracked `single_owner.test.osp` regression with the Osprey compiler under test and compiles the production C helpers with Clang at `-O1 -fno-inline` and the ownership allocation shim. The following claims apply to those translations. [Proof gate](../../../scripts/proof/ownership-lowering.sh)
+
+| Checked theorem | Property | Assumptions and scope |
+| --- | --- | --- |
+| `OwnershipLowering.compiledGrow` | For every integer list and element, the emitted specialization of `grow` returns the appended list as its only live list root and frees the input root exactly once. | The caller supplies one owned root. The append helper returns a fresh root with persistent-list contents. |
+| `OwnershipLowering.compiledGrowWhen` | For both Boolean inputs, the emitted function follows the corresponding path through the join. Enabling append frees the original root and returns the appended list. Disabling it returns the original root alive. | The reflector follows branches, resolves LLVM phi operands by predecessor and recognizes null-safe free. Lean checks the resulting loads, frees and return against the ownership semantics. |
+| `OwnershipLowering.runtimeRootOrigins` | On every defined execution returning normally, the header returned by list append or prepend originates at `osp_alloc_tagged_noinit`; the header returned by map set originates at `osp_arc_calloc`. | The reflector follows SSA definitions, return sites, helper calls and all incoming phi values in the compiled C. The allocator supplies fresh storage. The theorem establishes address origin; header survival, child ownership and collection contents require additional proofs. |
+
+The gate exports each certificate and requires an axiom-free judgement from the GC, ARC and WASI builds of Osprey's proof kernel. These are three hosts replaying the same theorem about the inspected IR. Negative controls remove, duplicate or advance a free, select a freed input at a join, or change a C return to alias the input. Each control must reach Lean and fail at its violated theorem.
+
+Shipping the ownership backend requires correspondence between the checker and emitted paths for every supported lowering. Outstanding obligations include preservation of live lenders through fields and closures, cleanup on every continuation exit, transfer across fibers, and the last-use space bound. [Ownership delivery plan](../../plans/0045-compile-time-ownership.md)
+
 ### Inferred borrows [MEM-OWNERSHIP-STATIC-BORROWS]
 
 A `let` that names a value another binding owns, such as a field of a record
