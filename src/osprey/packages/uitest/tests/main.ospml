@@ -285,10 +285,8 @@ initial context =
     Runtime::step (Machines::feed (fixture (), [Machines::fact ("skin", Values::text skin), Machines::fact ("caption", Values::text caption)]))
 
 pulled (machine, lever, value) = Runtime::step (Machines::pull (machine, lever, value))
-// The route arm for a message kind the program only steps through: the state continues unchanged, whatever the kind carries.
-steppedOnly state = \_ => Runtime::step state
 update (_, machine, message) =
-    Messages::route (message, \lever => pulled (machine, lever, Values::none ()), \(lever, text) => pulled (machine, lever, Values::text text), \(lever, on) => pulled (machine, lever, Values::flag on), steppedOnly machine, steppedOnly machine, steppedOnly machine, steppedOnly machine, steppedOnly machine, steppedOnly machine, \(_, input) => Inputs::route (input, steppedOnly machine, \(x, y, down, _) => Runtime::step (Canvases::pointer (machine, x, y, down)), \(width, height) => Runtime::step (Canvases::viewed (machine, width, height)), steppedOnly machine))
+    Messages::route (message, \lever => pulled (machine, lever, Values::none ()), \(lever, text) => pulled (machine, lever, Values::text text), \(lever, on) => pulled (machine, lever, Values::flag on), \(_, _) => Runtime::step machine, \(_, _) => Runtime::step machine, \_ => Runtime::step machine, \(_, _) => Runtime::step machine, \(_, _) => Runtime::step machine, \_ => Runtime::step machine, \(_, input) => Inputs::route (input, \(_, _) => Runtime::step machine, \(x, y, down, _) => Runtime::step (Canvases::pointer (machine, x, y, down)), \(width, height) => Runtime::step (Canvases::viewed (machine, width, height)), \(_, _) => Runtime::step machine))
 machineSlice () = perform Signal<ui::Machine>.read ()
 root () = Templates::view (machineSlice ())
 regions (before, after, frames, _) =
@@ -433,6 +431,8 @@ test ("native controls are pressed and repeatedly chosen through Drive, includin
 
 spotted (role, label, x) = ui::Accessible(accessRole = role, accessLabel = label, accessLeft = x, accessTop = 10.0, accessWidth = 100.0, accessHeight = 20.0, accessValue = 0.5, accessMin = 0.0, accessMax = 1.0, accessSelected = false, accessMovable = false)
 
+// Each row of the tree tables: a node's announcement, a selection's hit, and what makes a run unclear.
+
 test ("the accessibility tree reads clearly to an agent: roles, values and ranges, where an activation lands, and what makes it unclear", \() =>
     play = spotted (ui::Pressable, "Play", 0.0)
     volume = spotted (ui::Slidable, "Volume", 100.0)
@@ -471,7 +471,7 @@ pathed [moveTo (1.0, 1.0), lineTo (2.0, 2.0)],
 probeRegions (_, _, frames, _) = [Keyed::region (frames, Surfaces::rootKey, [], \() => Ui::column [Ui::scene (40.0, 20.0, [], sketched (), Play), Ui::button ("Ask", "", Ask)])]
 
 probeHeard (heard, message) =
-    Messages::route (message, \_ => Runtime::asking (listAppend heard "asked", [Requests::ask ("job:1", ui::ChooseFolder)]), steppedOnly heard, steppedOnly heard, steppedOnly heard, steppedOnly heard, steppedOnly heard, steppedOnly heard, steppedOnly heard, steppedOnly heard, \(_, input) => Runtime::step (listAppend heard (Inputs::route (input, \(name, down) => "key ${name} ${down}", \(_, _, _, _) => "pointer", \(_, _) => "viewed", \(_, _) => "secondary"))))
+    Messages::route (message, \_ => Runtime::asking (listAppend heard "asked", [Requests::ask ("job:1", ui::ChooseFolder)]), \(_, _) => Runtime::step heard, \(_, _) => Runtime::step heard, \(_, _) => Runtime::step heard, \(_, _) => Runtime::step heard, \_ => Runtime::step heard, \(_, _) => Runtime::step heard, \(_, _) => Runtime::step heard, \_ => Runtime::step heard, \(_, input) => Runtime::step (listAppend heard (Inputs::route (input, \(name, down) => "key ${name} ${down}", \(_, _, _, _) => "pointer", \(_, _) => "viewed", \(_, _) => "secondary"))))
 
 probeProgram () = ui::Program(programInit = \_ => Runtime::step [], programUpdate = \(_, heard, message) => probeHeard (heard, message), programRender = probeRegions, programTheme = \_ => ui::Theme(tokens = [], spacing = [4, 8], feedback = 120, settle = 220))
 

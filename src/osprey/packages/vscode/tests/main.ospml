@@ -133,7 +133,7 @@ framed work =
 webTouch (kind, ordinal, words) = ui::Touch(touchNow = 9, touchKind = kind, touchOrdinal = ordinal, touchWords = words, touchDetail = "", touchX = 0.0, touchY = 0.0, touchDown = false, touchShift = false)
 
 // Delivers one host `event` to `session` and checks the answer number the boundary reports.
-delivered (session, event) answer =
+delivered (session, event, answer) =
     evented = framed (\() => Hosting::event (session, webProgram (), event))
     expect (Hosting::answer evented, answer)
     evented
@@ -149,22 +149,22 @@ test ("WASM frames route opaque state through real application entry points", \(
     allShown ["Count 0", "Note", "vscode"]
     expect (webAsks, "")
     // event: the control the frame numbered 0 delivers, and the opaque session answers from its own store.
-    counted = delivered (opened, webTouch (Hosting::control, 0, "")) 0
+    counted = delivered (opened, webTouch (Hosting::control, 0, ""), 0)
     expect (counted.surfaceSession.sessionStore.count, 1)
     expect (contains webRows "Count 1", true)
     // The field's edit resolves through the ordinal the current frame drew, never through host-held state.
-    edited = delivered (counted, webTouch (Hosting::control, 1, "opaque")) 0
+    edited = delivered (counted, webTouch (Hosting::control, 1, "opaque"), 0)
     expect (edited.surfaceSession.sessionStore.note, "opaque")
     expect (contains webRows "opaque", true)
     // A control no frame drew refuses, changes nothing and names itself as a diagnostic ask row.
-    refused = delivered (edited, webTouch (Hosting::control, 9, "")) 1
+    refused = delivered (edited, webTouch (Hosting::control, 9, ""), 1)
     expect (webAsks, "0/101/Unknown control 9;")
     expect (refused.surfaceSession.sessionStore.count, 1)
     expect (contains webRows "Count 1", true)
     // An event kind the boundary does not know refuses the same way, and a lifecycle phase delivers.
-    odd = delivered (edited, webTouch (42, 0, "")) 1
+    odd = delivered (edited, webTouch (42, 0, ""), 1)
     expect (webAsks, "0/101/Unknown control 9;0/101/Unknown event kind 42;")
-    phased = delivered (edited, webTouch (Hosting::phase, 0, "active")) 0
+    phased = delivered (edited, webTouch (Hosting::phase, 0, "active"), 0)
     expect (phased.surfaceSession.sessionStore.count, 1)))
 
 test ("WASM frames route opaque state through real application entry points (extra: arguments arrive in order and a dark open flips the frame)", \() => Runtime::guarded (\() =>
@@ -175,5 +175,5 @@ test ("WASM frames route opaque state through real application entry points (ext
     expect (opened.surfaceSession.sessionContext.hostDark, true)
     expect (opened.surfaceSession.sessionContext.now, 3)
     // The dark open still answers events: the first control delivers and the count crosses.
-    counted = delivered (opened, webTouch (Hosting::control, 0, "")) 0
+    counted = delivered (opened, webTouch (Hosting::control, 0, ""), 0)
     expect (counted.surfaceSession.sessionStore.count, 1)))
