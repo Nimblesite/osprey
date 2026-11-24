@@ -12,6 +12,8 @@ core/gpu/gamedev.test.osp
 core/gpu/gamedev.test.ospml
 core/gpu/mlkernels.test.osp
 core/gpu/mlkernels.test.ospml
+core/gpu/quant_products.test.osp
+core/gpu/quant_products.test.ospml
 core/gpu/raster.test.osp
 core/gpu/raster.test.ospml
 effects/injection/logging_injection.test.osp
@@ -58,6 +60,14 @@ regressions/basics/binding_order.test.osp
 regressions/basics/binding_order.test.ospml
 regressions/basics/blocks/use_binding.test.osp
 regressions/basics/blocks/use_binding.test.ospml
+regressions/basics/cursor/codepoint_roundtrip.test.osp
+regressions/basics/cursor/codepoint_roundtrip.test.ospml
+regressions/basics/cursor/kv_parser.test.osp
+regressions/basics/cursor/kv_parser.test.ospml
+regressions/basics/cursor/token_scan.test.osp
+regressions/basics/cursor/token_scan.test.ospml
+regressions/basics/cursor/utf8_walk.test.osp
+regressions/basics/cursor/utf8_walk.test.ospml
 regressions/basics/field_access_comprehensive.test.osp
 regressions/basics/field_access_comprehensive.test.ospml
 regressions/basics/files/file_io_json_workflow.test.osp
@@ -81,6 +91,10 @@ regressions/basics/osprey_mega_showcase.test.ospml
 regressions/basics/osprey_mega_showcase.test.py
 regressions/basics/processes/async_process_management.test.osp
 regressions/basics/processes/async_process_management.test.ospml
+regressions/basics/processes/callback_stdout_demo.test.osp
+regressions/basics/processes/callback_stdout_demo.test.ospml
+regressions/basics/strings/string_pipeline.test.osp
+regressions/basics/strings/string_pipeline.test.ospml
 regressions/basics/types/contextual_records.test.osp
 regressions/basics/types/contextual_records.test.ts
 regressions/basics/types/deferred_arith_abs_tolerance.test.osp

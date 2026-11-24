@@ -51,7 +51,7 @@ elif [[ $selection == --accepted ]]; then
     fi
     accepted+=("$f")
   done < "$manifest"
-  (( ${#accepted} >= 123 )) || { echo "Ownership acceptance floor breached" >&2; exit 1; }
+  (( ${#accepted} >= 137 )) || { echo "Ownership acceptance floor breached" >&2; exit 1; }
   FILES=("${accepted[@]}")
   GOLDEN_MIN=${#FILES}
   GPU_MODE_MIN=${#${(M)FILES:#$GPU_SUITE_DIR/*}}
