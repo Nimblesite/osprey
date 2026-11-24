@@ -440,7 +440,13 @@ fn gen_fn_body(cg: &mut Codegen, name: &str, body: &Expr) -> Result<Value> {
             .return_type(name)
             .and_then(|t| Codegen::fn_value_sig(&cg.prog, t))
         {
-            return crate::closure::emit_closure(cg, parameters, lbody, &sig, *position);
+            // The closure is the body's tail: nothing is read after it, so
+            // an owned parameter it captures moves into its cell.
+            crate::arc::scope_parameters(cg);
+            crate::arc::begin_moves(cg, body, &std::collections::BTreeSet::new());
+            let cell = crate::closure::emit_closure(cg, parameters, lbody, &sig, *position);
+            crate::arc::end_moves(cg);
+            return cell;
         }
     }
     crate::expr::gen_body(cg, body)

@@ -17,4 +17,6 @@ borrows left1/right2 left1 3 left1
 stores a2a2 a2-b2 b2 a22 a2t2 a24 a2a2 i0i0i1i1
 takes foe3 box3 box3box3 halted0 passed3 halted0/0 passed3 foe3box3foe3
 closures c21 c22 c23! c24! c2/5 c2/6 c2n2 c20c21 c2
-parts foe3 halted0 passed3 halted00 passed3 shell foe3 nobody small4 box12345 foe3 2 23 2111
+parts foe3 halted0 passed3 halted00 passed3 shell foe3 nobody small4 box12345 foe3 2 23 2111 no 0 found3 4/missing: no 0 3/found 3
+returned l21r2l22r2 two23 t2t2!4 w2w2!5
+returned l31r3l32r3 one33 t3t3!4 w3w3!5

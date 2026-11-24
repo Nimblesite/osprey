@@ -355,4 +355,12 @@ theorem shared_element_refused {source derived : Slot} (distinct : source ≠ de
     [Action.alloc source, .move source derived, .free source].foldlM step dead = none := by
   simp [List.foldlM, step, owned, dead, distinct, Ne.symm distinct]
 
+/-- A capture moved into a closure cell that leaves the function leaves the
+    function's frame with it [MEM-OWNERSHIP-STATIC-CLOSURES]: the frame can no
+    longer free it, and the cell's own death frees it once. -/
+theorem capture_leaves_frame {frame cell : Slot} (distinct : frame ≠ cell) :
+    step (owned cell) (.free frame) = none ∧
+    [Action.alloc frame, .move frame cell, .free cell].foldlM step dead = some dead := by
+  simp [List.foldlM, step, owned, dead, Ne.symm distinct]
+
 end OwnershipLedger

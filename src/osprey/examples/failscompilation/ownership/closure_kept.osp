@@ -1,14 +1,19 @@
 // [MEM-OWNERSHIP-STATIC] Runs under the collector; `--memory=ownership` refuses it.
 // `hold` stores the closure it is given, so it owns that parameter and the
 // closure must own what it captures. It captures `made`, which `main` reads
-// again: the record would outlive what the closure captures.
+// again: the record would outlive what the closure captures. `shower` returns
+// a closure over its parameter, so it owns that parameter the same way.
 type Box = { text: string }
 type Holder = { run: (int) -> string }
 
 fn hold(f) = Holder { run: f }
 
+fn shower(box: Box) = fn(n: int) => "${box.text}${toString(n)}"
+
 fn main() = {
     let made = Box { text: "made${toString(1)}" }
     let holder = hold(|n| => "${made.text}${toString(n)}")
-    print("${holder.run(2)} ${made.text}")
+    let shown = Box { text: "shown${toString(2)}" }
+    let show = shower(shown)
+    print("${holder.run(2)} ${made.text} ${show(3)} ${shown.text}")
 }

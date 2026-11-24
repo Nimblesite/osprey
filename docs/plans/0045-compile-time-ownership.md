@@ -90,9 +90,11 @@ Acceptance of ordinary programs, largest refusal class first. After each item: `
   - Fixed while probing ([MEM-OWNERSHIP-STATIC-SHARING]): `filterList`, `listSortBy`, `mapKeys` and `mapValues` kept the elements of a list or map still alive, so a second one, or one inside a callee, left blocks shared to exit in an accepted program. The source is now taken or refused (`arc/versions.rs` `take_element_source`), and a literal with owned elements settles at its binding. `derived_then_read` covers the refusal; `parts()` the accepted cases.
   - Proved: `one_owner_always`, `part_outlives_holder`, `take_on_one_path`, `literal_needs_no_owner`, `shared_element_refused` (23 ledger theorems replayed under GC, ARC and WASI).
   - Refused by design for now: a list literal bound to a name that holds still-read bindings. The runtime list's element flag is inherited by every list derived from it, so a copy that held its elements unowned would hand unowned elements to `filterList` and its callers; it needs a list kind whose own drop is shallow.
+  - Built for Results: the message of an `Error` is a field of the Result, so `match attempt(n) { Error { message } => message }` takes it (`result.rs` `load_errmsg`). `single_owner` `missing()` and `missingKept()` cover the take and the kept case. Corpus 59 to 66 of 180, each byte-identical with no live object under scribbled frees; joined refusals 133 to 111.
+  - Built for returned closures ([MEM-OWNERSHIP-STATIC-CLOSURES], `arc/params.rs` `yields_closure_over`): a function whose result is a closure over a parameter owns that parameter, and the cell takes it; a body that is itself a lambda gets the tail's move analysis (`lower.rs` `gen_fn_body`). `single_owner` `returned()` covers two captures, one of two closures, a captured local and an uncalled closure; `closure_kept` refuses a read after the gift. Proved: `capture_leaves_frame` (24 theorems). Corpus 66 to 68 of 180; returned refusals 156 to 148, bound 47 to 36.
   - Open: record update.
 - [ ] C4. The remaining classes: bound, returned, joined, kept, shared. Each gets a rule or stays a documented refusal with a fixture.
-- Acceptance: `ownership` accepts every program in `src/osprey/tests/` that does not use a construct the spec refuses by rule. Today 59 of 180.
+- Acceptance: `ownership` accepts every program in `src/osprey/tests/` that does not use a construct the spec refuses by rule. Today 68 of 180.
 
 Soundness and the space bound:
 

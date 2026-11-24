@@ -26,6 +26,24 @@ fn yields(e: &Expr, name: &str) -> bool {
     }
 }
 
+/// Whether `e` can evaluate to a closure that captures the binding `name`: the
+/// closure leaves the function, so it must own what it captured and the
+/// parameter is taken by move [MEM-OWNERSHIP-STATIC-CLOSURES].
+fn yields_closure_over(e: &Expr, name: &str) -> bool {
+    match e {
+        Expr::Lambda { .. } => {
+            let mut free = BTreeSet::new();
+            osprey_ast::freevars::free_idents(e, &mut free);
+            free.contains(name)
+        }
+        Expr::Block {
+            value: Some(tail), ..
+        } => yields_closure_over(tail, name),
+        Expr::Match { arms, .. } => arms.iter().any(|arm| yields_closure_over(&arm.body, name)),
+        _ => false,
+    }
+}
+
 /// The collection builtins whose first argument is the source of a new version
 /// [MEM-OWNERSHIP-STATIC-SHARING].
 const DERIVING: [&str; 8] = [
@@ -196,6 +214,7 @@ pub(crate) fn infer(cg: &mut Codegen, program: &Program) {
             .iter()
             .map(|p| {
                 (yields(body, &p.name)
+                    || yields_closure_over(body, &p.name)
                     || (managed && yields_part(body, &p.name))
                     || stores(AstNode::Expression(body), &p.name))
                     && !rebinds(AstNode::Expression(body), &p.name)

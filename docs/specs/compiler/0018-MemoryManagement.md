@@ -383,7 +383,7 @@ The rules of this backend are theorems about one transition system, stated in Le
 
 A path h ⟶\* h′ applies accepted steps to single cells of a heap, in any order, along either incoming edge of a join.
 
-**Theorems.** All 23 are checked by Lean 4.25 and replayed by the GC, ARC and WASI builds of Osprey's proof kernel, which must each answer `PASS` with the listed axioms and no others.
+**Theorems.** All 24 are checked by Lean 4.25 and replayed by the GC, ARC and WASI builds of Osprey's proof kernel, which must each answer `PASS` with the listed axioms and no others.
 
 | Theorem | Statement | Rule it discharges | Axioms |
 | --- | --- | --- | --- |
@@ -409,6 +409,7 @@ A path h ⟶\* h′ applies accepted steps to single cells of a heap, in any ord
 | `part_outlives_holder` | p ≠ q ∧ h(p) = own(f) ∧ h(q) = own(o) ⟹ ∃ h′. h ⟶\* h′ ∧ h′(p) = own(t) ∧ ¬live(h′(q)) | A part taken out of a holder outlives it: a function that returns part of a parameter it owns frees the rest ([MEM-OWNERSHIP-STATIC-PARAMETERS]). | propext |
 | `take_on_one_path` | ⊥ ─alloc(f)·move(f, t)·free(t)→ ⊥ ∧ ⊥ ─alloc(f)·free(f)→ ⊥ | A part taken on one path only is freed once on each path: by the taker, or through the holder ([MEM-OWNERSHIP-STATIC-PATHS]). | propext, Quot.sound |
 | `literal_needs_no_owner` | ∀ s, d. step(⊥, a) = ∅ for a ∈ {free(s), read(s), move(s, d)} | An arm that yields a literal yields no allocation, so the join frees nothing on that path. | propext, Quot.sound |
+| `capture_leaves_frame` | f ≠ c ⟹ step(own(c), free(f)) = ∅ ∧ ⊥ ─alloc(f)·move(f, c)·free(c)→ ⊥ | A capture moved into a closure cell that leaves the function is no longer the frame's to free, and dies once with the cell ([MEM-OWNERSHIP-STATIC-CLOSURES]). | propext, Quot.sound |
 | `shared_element_refused` | s ≠ d ⟹ ⊥ ─alloc(s)·move(s, d)·a→ ∅ for a ∈ {read(s), free(s)} | An element a derived list keeps has left its source, so a source read again is refused ([MEM-OWNERSHIP-STATIC-SHARING]). | propext, Quot.sound |
 
 Here step(c, a) = ∅ means the action is refused, and ⊥ ─a₁·…·aₙ→ ⊥ means the actions are accepted in order from the freed cell and end in it. The axioms are Lean's three standard ones; a proof that needs any other, `sorryAx` included, fails the gate.
@@ -545,7 +546,8 @@ second owner. This is the owned projection of [Ullrich 2019] and the drop
 specialization of [Reinking 2021], with the count removed. The same
 holds for a value the function owns under a name, a binding or an owned
 parameter, at its last read: `let who = made.name` where nothing reads `made`
-again, and `fn show(outcome) = match outcome { Done { result } => result }`.
+again, and `fn show(outcome) = match outcome { Done { result } => result }`. The
+message of an `Error` is a field of its Result and is taken the same way.
 It applies only where nothing reads that field again: a pattern binding read
 twice, or read after the take, keeps borrowing; so does a field of a binding
 that is read again, a field of a value that only lends it, and a read inside
@@ -595,7 +597,10 @@ refused"; the rest are the contract the remaining phases build.
   literal takes each capture at that binding's last use and holds it lent
   otherwise, so a closure bound to a name, captured by a second closure or
   stored in a record can read bindings the scope still uses; it then can't
-  leave that scope. A `spawn` body never lends. Built: a handler region
+  leave that scope. Built: a function whose result is a closure over one of
+  its parameters owns that parameter, so the closure's cell takes it and the
+  closure can be returned; the caller gives the argument up (proved:
+  `capture_leaves_frame`). A `spawn` body never lends. Built: a handler region
   lends what its arms capture, because the region ends inside the scope that
   owns them; a value `perform` lends that an arm keeps in a cell is copied
   first, as in `fault = "${op}"`.

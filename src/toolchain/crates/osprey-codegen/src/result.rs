@@ -436,6 +436,9 @@ pub(crate) fn load_errmsg(cg: &mut Codegen, v: &Value) -> Value {
         v.operand
     ));
     let raw = cg.emit_reg(format!("load i8*, i8** {mp}"));
+    // The message is a field of the Result: a Result at its last read gives
+    // it up [MEM-OWNERSHIP-STATIC-PATHS].
+    crate::arc::note_field(cg, &raw, &v.operand, &mp, "i8*");
     Value::new(raw, LType::Str)
 }
 
@@ -450,6 +453,8 @@ pub(crate) fn load_errmsg_str(cg: &mut Codegen, v: &Value) -> Value {
         "select i1 {isnull}, i8* {}, i8* {}",
         fallback.operand, raw.operand
     ));
+    // The stored message, or a literal that has no owner.
+    crate::arc::same_value(cg, &msg, &raw.operand);
     Value::new(msg, LType::Str)
 }
 

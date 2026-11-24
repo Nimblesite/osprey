@@ -431,6 +431,22 @@ fn boxOf(foe: Foe) = {
     }
 }
 
+/// A Result nothing reads again gives up its message, like any other field
+/// [MEM-OWNERSHIP-STATIC-PATHS]; one that is read again keeps it.
+fn missing(n) = match find(n) {
+    Success { value } => "found${toString(value)}"
+    Error { message } => message
+}
+
+fn missingKept(n) = {
+    let outcome = find(n)
+    let size = match outcome {
+        Success { value } => value
+        Error { message } => length(message)
+    }
+    "${toString(size)}/${found(outcome)}"
+}
+
 /// A binding at its last read gives up the field read out of it. A list whose
 /// elements have owners gives way to what is filtered out of it; a list of
 /// plain numbers is filtered while it is still read
@@ -446,9 +462,34 @@ fn parts(n) = {
     let keys = mapKeys(mapSet(Map(), "k${toString(n)}", n))
     let counts = mapSet(Map(), "c${toString(n)}", n)
     let values = mapValues(counts)
-    "parts ${foeName(foe(n))} ${reasonOf(verdict(0))} ${reasonOf(verdict(n))} ${deepest(Core { verdict: verdict(0) })} ${deepest(Core { verdict: verdict(n) })} ${deepest(Shell)} ${nameWhen(foe(n), true)} ${nameWhen(foe(n), false)} ${boxOf(foe(n)).text} ${boxOf(foe(12345)).text} ${named} ${toString(listLength(alive))} ${toString(listLength(positive))}${toString(listLength(numbers))} ${toString(listLength(ordered))}${toString(listLength(keys))}${toString(listLength(values))}${toString(length(counts))}"
+    "parts ${foeName(foe(n))} ${reasonOf(verdict(0))} ${reasonOf(verdict(n))} ${deepest(Core { verdict: verdict(0) })} ${deepest(Core { verdict: verdict(n) })} ${deepest(Shell)} ${nameWhen(foe(n), true)} ${nameWhen(foe(n), false)} ${boxOf(foe(n)).text} ${boxOf(foe(12345)).text} ${named} ${toString(listLength(alive))} ${toString(listLength(positive))}${toString(listLength(numbers))} ${toString(listLength(ordered))}${toString(listLength(keys))}${toString(listLength(values))}${toString(length(counts))} ${missing(0)} ${missing(n)} ${missingKept(0)} ${missingKept(n)}"
+}
+
+/// A closure that leaves the function owns what it captured
+/// [MEM-OWNERSHIP-STATIC-CLOSURES]: the function owns each captured parameter
+/// and its cell takes them. One closure captures two parameters, one of two
+/// closures is chosen and the other parameter is freed, and a closure nothing
+/// calls is freed with its captures.
+fn joiner(left: Box, right: Box) = fn(i: int) => "${left.text}${toString(i)}${right.text}"
+
+fn pickOne(left: Box, right: Box, first: bool) = match first {
+    true => fn(i: int) => "${left.text}${toString(i)}"
+    false => fn(i: int) => "${right.text}${toString(i)}"
+}
+
+fn tagger(tag: string) = {
+    let mark = "${tag}!"
+    fn(i: int) => "${tag}${mark}${toString(i)}"
+}
+
+fn returned(n) = {
+    let join = joiner(Box { text: "l${toString(n)}" }, Box { text: "r${toString(n)}" })
+    let unused = joiner(Box { text: "u${toString(n)}" }, Box { text: "v" })
+    let one = pickOne(Box { text: "one${toString(n)}" }, Box { text: "two${toString(n)}" }, n > 2)
+    let tag = tagger("t${toString(n)}")
+    "returned ${join(1)}${join(2)} ${one(3)} ${tag(4)} ${runWith(tagger("w${toString(n)}"), 5)}"
 }
 
 fn effects() = "${toString(listLength(folded(4)))} ${toString(listLength(folded(0)))} ${drawn(10)} ${drawn(0)} ${noted(3)}"
 
-print("${fileScope(1)} ${shared.text}\n${spans()}\n${elements()}\n${collections()}\n${lastUses()}\n${paths()}\n${owned()}\n${generics()}\n${literals()}\n${errors()} ${renderedTwice(7)}\n${captures()}\n${lends()}\n${lentLists()}\n${reads()}\n${borrows()}\n${effects()}\n${stores(2)}\n${takes(3)}\n${closures(2)}\n${parts(3)}")
+print("${fileScope(1)} ${shared.text}\n${spans()}\n${elements()}\n${collections()}\n${lastUses()}\n${paths()}\n${owned()}\n${generics()}\n${literals()}\n${errors()} ${renderedTwice(7)}\n${captures()}\n${lends()}\n${lentLists()}\n${reads()}\n${borrows()}\n${effects()}\n${stores(2)}\n${takes(3)}\n${closures(2)}\n${parts(3)}\n${returned(2)}\n${returned(3)}")
