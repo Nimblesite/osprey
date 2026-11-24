@@ -1,169 +1,94 @@
 // Precedence and associativity stress; no generated case shares a test registration.
 // Paired parentheses make grouping differences explicit beside unparenthesized forms.
 
-/// A sweep index rendered as its three-digit label suffix.
-fn caseSuffix(n) = if n < 10 { "00${toString(n)}" } else { "0${toString(n)}" }
-
-/// One unparenthesized mix `sum + productLeft * productRight - remainderLeft % remainderRight`.
-type UnparenthesizedMix = { n: int, sum: int, productLeft: int, productRight: int, remainderLeft: int, remainderRight: int, want: string }
-
-/// The thirty unparenthesized mixes with the exact text each must render.
-fn unparenthesizedMixes() = [
-    UnparenthesizedMix { n: 1, sum: 103, productLeft: 3, productRight: 4, remainderLeft: 41, remainderRight: 3, want: "113" },
-    UnparenthesizedMix { n: 2, sum: 106, productLeft: 4, productRight: 5, remainderLeft: 42, remainderRight: 4, want: "124" },
-    UnparenthesizedMix { n: 3, sum: 109, productLeft: 5, productRight: 6, remainderLeft: 43, remainderRight: 5, want: "136" },
-    UnparenthesizedMix { n: 4, sum: 112, productLeft: 6, productRight: 7, remainderLeft: 44, remainderRight: 6, want: "152" },
-    UnparenthesizedMix { n: 5, sum: 115, productLeft: 7, productRight: 3, remainderLeft: 45, remainderRight: 7, want: "133" },
-    UnparenthesizedMix { n: 6, sum: 118, productLeft: 8, productRight: 4, remainderLeft: 46, remainderRight: 8, want: "144" },
-    UnparenthesizedMix { n: 7, sum: 121, productLeft: 2, productRight: 5, remainderLeft: 47, remainderRight: 9, want: "129" },
-    UnparenthesizedMix { n: 8, sum: 124, productLeft: 3, productRight: 6, remainderLeft: 48, remainderRight: 10, want: "134" },
-    UnparenthesizedMix { n: 9, sum: 127, productLeft: 4, productRight: 7, remainderLeft: 49, remainderRight: 2, want: "154" },
-    UnparenthesizedMix { n: 10, sum: 130, productLeft: 5, productRight: 3, remainderLeft: 50, remainderRight: 3, want: "143" },
-    UnparenthesizedMix { n: 11, sum: 133, productLeft: 6, productRight: 4, remainderLeft: 51, remainderRight: 4, want: "154" },
-    UnparenthesizedMix { n: 12, sum: 136, productLeft: 7, productRight: 5, remainderLeft: 52, remainderRight: 5, want: "169" },
-    UnparenthesizedMix { n: 13, sum: 139, productLeft: 8, productRight: 6, remainderLeft: 53, remainderRight: 6, want: "182" },
-    UnparenthesizedMix { n: 14, sum: 142, productLeft: 2, productRight: 7, remainderLeft: 54, remainderRight: 7, want: "151" },
-    UnparenthesizedMix { n: 15, sum: 145, productLeft: 3, productRight: 3, remainderLeft: 55, remainderRight: 8, want: "147" },
-    UnparenthesizedMix { n: 16, sum: 148, productLeft: 4, productRight: 4, remainderLeft: 56, remainderRight: 9, want: "162" },
-    UnparenthesizedMix { n: 17, sum: 151, productLeft: 5, productRight: 5, remainderLeft: 57, remainderRight: 10, want: "169" },
-    UnparenthesizedMix { n: 18, sum: 154, productLeft: 6, productRight: 6, remainderLeft: 58, remainderRight: 2, want: "190" },
-    UnparenthesizedMix { n: 19, sum: 157, productLeft: 7, productRight: 7, remainderLeft: 59, remainderRight: 3, want: "204" },
-    UnparenthesizedMix { n: 20, sum: 160, productLeft: 8, productRight: 3, remainderLeft: 60, remainderRight: 4, want: "184" },
-    UnparenthesizedMix { n: 21, sum: 163, productLeft: 2, productRight: 4, remainderLeft: 61, remainderRight: 5, want: "170" },
-    UnparenthesizedMix { n: 22, sum: 166, productLeft: 3, productRight: 5, remainderLeft: 62, remainderRight: 6, want: "179" },
-    UnparenthesizedMix { n: 23, sum: 169, productLeft: 4, productRight: 6, remainderLeft: 63, remainderRight: 7, want: "193" },
-    UnparenthesizedMix { n: 24, sum: 172, productLeft: 5, productRight: 7, remainderLeft: 64, remainderRight: 8, want: "207" },
-    UnparenthesizedMix { n: 25, sum: 175, productLeft: 6, productRight: 3, remainderLeft: 65, remainderRight: 9, want: "191" },
-    UnparenthesizedMix { n: 26, sum: 178, productLeft: 7, productRight: 4, remainderLeft: 66, remainderRight: 10, want: "200" },
-    UnparenthesizedMix { n: 27, sum: 181, productLeft: 8, productRight: 5, remainderLeft: 67, remainderRight: 2, want: "220" },
-    UnparenthesizedMix { n: 28, sum: 184, productLeft: 2, productRight: 6, remainderLeft: 68, remainderRight: 3, want: "194" },
-    UnparenthesizedMix { n: 29, sum: 187, productLeft: 3, productRight: 7, remainderLeft: 69, remainderRight: 4, want: "207" },
-    UnparenthesizedMix { n: 30, sum: 190, productLeft: 4, productRight: 3, remainderLeft: 70, remainderRight: 5, want: "202" }
-]
-
-/// The thirty unparenthesized mixes, each registered under its sequential label.
-fn unparenthesizedSweep() = {
-    let _ = forEachList(unparenthesizedMixes(), fn(row) => {
-        let label = "precedence unparenthesized ${caseSuffix(row.n)}"
-        test(label, exactly(fn() => check(label, row.want, toString(row.sum + row.productLeft * row.productRight - row.remainderLeft % row.remainderRight))))
-    })
-}
-
-/// One parenthesized grouping `(sum + addend) * (minuend - (remainderLeft % remainderRight))`.
-type ParenthesizedGrouping = { n: int, sum: int, addend: int, minuend: int, remainderLeft: int, remainderRight: int, want: string }
-
-/// The twenty parenthesized groupings with the exact text each must render.
-fn parenthesizedGroupings() = [
-    ParenthesizedGrouping { n: 1, sum: 21, addend: 3, minuend: 6, remainderLeft: 2, remainderRight: 3, want: "96" },
-    ParenthesizedGrouping { n: 2, sum: 22, addend: 4, minuend: 7, remainderLeft: 3, remainderRight: 4, want: "104" },
-    ParenthesizedGrouping { n: 3, sum: 23, addend: 5, minuend: 8, remainderLeft: 4, remainderRight: 5, want: "112" },
-    ParenthesizedGrouping { n: 4, sum: 24, addend: 6, minuend: 9, remainderLeft: 1, remainderRight: 6, want: "240" },
-    ParenthesizedGrouping { n: 5, sum: 25, addend: 7, minuend: 5, remainderLeft: 2, remainderRight: 7, want: "96" },
-    ParenthesizedGrouping { n: 6, sum: 26, addend: 2, minuend: 6, remainderLeft: 3, remainderRight: 8, want: "84" },
-    ParenthesizedGrouping { n: 7, sum: 27, addend: 3, minuend: 7, remainderLeft: 4, remainderRight: 2, want: "210" },
-    ParenthesizedGrouping { n: 8, sum: 28, addend: 4, minuend: 8, remainderLeft: 1, remainderRight: 3, want: "224" },
-    ParenthesizedGrouping { n: 9, sum: 29, addend: 5, minuend: 9, remainderLeft: 2, remainderRight: 4, want: "238" },
-    ParenthesizedGrouping { n: 10, sum: 30, addend: 6, minuend: 5, remainderLeft: 3, remainderRight: 5, want: "72" },
-    ParenthesizedGrouping { n: 11, sum: 31, addend: 7, minuend: 6, remainderLeft: 4, remainderRight: 6, want: "76" },
-    ParenthesizedGrouping { n: 12, sum: 32, addend: 2, minuend: 7, remainderLeft: 1, remainderRight: 7, want: "204" },
-    ParenthesizedGrouping { n: 13, sum: 33, addend: 3, minuend: 8, remainderLeft: 2, remainderRight: 8, want: "216" },
-    ParenthesizedGrouping { n: 14, sum: 34, addend: 4, minuend: 9, remainderLeft: 3, remainderRight: 2, want: "304" },
-    ParenthesizedGrouping { n: 15, sum: 35, addend: 5, minuend: 5, remainderLeft: 4, remainderRight: 3, want: "160" },
-    ParenthesizedGrouping { n: 16, sum: 36, addend: 6, minuend: 6, remainderLeft: 1, remainderRight: 4, want: "210" },
-    ParenthesizedGrouping { n: 17, sum: 37, addend: 7, minuend: 7, remainderLeft: 2, remainderRight: 5, want: "220" },
-    ParenthesizedGrouping { n: 18, sum: 38, addend: 2, minuend: 8, remainderLeft: 3, remainderRight: 6, want: "200" },
-    ParenthesizedGrouping { n: 19, sum: 39, addend: 3, minuend: 9, remainderLeft: 4, remainderRight: 7, want: "210" },
-    ParenthesizedGrouping { n: 20, sum: 40, addend: 4, minuend: 5, remainderLeft: 1, remainderRight: 8, want: "176" }
-]
-
-/// The twenty parenthesized groupings, each registered under its sequential label.
-fn parenthesizedSweep() = {
-    let _ = forEachList(parenthesizedGroupings(), fn(row) => {
-        let label = "precedence parenthesized ${caseSuffix(row.n)}"
-        test(label, exactly(fn() => check(label, row.want, toString((row.sum + row.addend) * (row.minuend - (row.remainderLeft % row.remainderRight))))))
-    })
-}
-
-/// One subtraction triple: `first - second - third` beside the grouped `first - (second - third)`.
-type SubtractionPair = { n: int, first: int, second: int, third: int, left: string, right: string }
-
-/// The ten subtraction triples with both texts they must render.
-fn subtractionPairs() = [
-    SubtractionPair { n: 1, first: 311, second: 21, third: 4, left: "286", right: "294" },
-    SubtractionPair { n: 2, first: 322, second: 22, third: 5, left: "295", right: "305" },
-    SubtractionPair { n: 3, first: 333, second: 23, third: 6, left: "304", right: "316" },
-    SubtractionPair { n: 4, first: 344, second: 24, third: 7, left: "313", right: "327" },
-    SubtractionPair { n: 5, first: 355, second: 25, third: 8, left: "322", right: "338" },
-    SubtractionPair { n: 6, first: 366, second: 26, third: 9, left: "331", right: "349" },
-    SubtractionPair { n: 7, first: 377, second: 27, third: 10, left: "340", right: "360" },
-    SubtractionPair { n: 8, first: 388, second: 28, third: 11, left: "349", right: "371" },
-    SubtractionPair { n: 9, first: 399, second: 29, third: 12, left: "358", right: "382" },
-    SubtractionPair { n: 10, first: 410, second: 30, third: 13, left: "367", right: "393" }
-]
-
-/// The ten subtraction triples: left-associative and right-grouped registered in alternation.
-fn subtractionSweep() = {
-    let _ = forEachList(subtractionPairs(), fn(row) => {
-        let leftLabel = "subtraction left associative ${caseSuffix(row.n)}"
-        let rightLabel = "subtraction right grouped ${caseSuffix(row.n)}"
-        test(leftLabel, exactly(fn() => check(leftLabel, row.left, toString(row.first - row.second - row.third))))
-        test(rightLabel, exactly(fn() => check(rightLabel, row.right, toString(row.first - (row.second - row.third)))))
-    })
-}
-
-/// One remainder mix `factorLeft * factorRight % modulus`.
-type RemainderMix = { n: int, factorLeft: int, factorRight: int, modulus: int, want: string }
-
-/// The ten remainder mixes with the exact text each must render.
-fn remainderMixes() = [
-    RemainderMix { n: 1, factorLeft: 18, factorRight: 10, modulus: 6, want: "0" },
-    RemainderMix { n: 2, factorLeft: 19, factorRight: 11, modulus: 7, want: "6" },
-    RemainderMix { n: 3, factorLeft: 20, factorRight: 12, modulus: 8, want: "0" },
-    RemainderMix { n: 4, factorLeft: 21, factorRight: 13, modulus: 9, want: "3" },
-    RemainderMix { n: 5, factorLeft: 22, factorRight: 14, modulus: 10, want: "8" },
-    RemainderMix { n: 6, factorLeft: 23, factorRight: 15, modulus: 5, want: "0" },
-    RemainderMix { n: 7, factorLeft: 24, factorRight: 16, modulus: 6, want: "0" },
-    RemainderMix { n: 8, factorLeft: 25, factorRight: 17, modulus: 7, want: "5" },
-    RemainderMix { n: 9, factorLeft: 26, factorRight: 18, modulus: 8, want: "4" },
-    RemainderMix { n: 10, factorLeft: 27, factorRight: 19, modulus: 9, want: "0" }
-]
-
-/// The ten remainder mixes, each registered under its sequential label.
-fn remainderSweep() = {
-    let _ = forEachList(remainderMixes(), fn(row) => {
-        let label = "multiply remainder left associative ${caseSuffix(row.n)}"
-        test(label, exactly(fn() => check(label, row.want, toString(row.factorLeft * row.factorRight % row.modulus))))
-    })
-}
-
-/// One division mix `dividend / divisor * factor`.
-type DivisionMix = { n: int, dividend: int, divisor: int, factor: int, want: string }
-
-/// The ten division mixes with the exact text each must render.
-fn divisionMixes() = [
-    DivisionMix { n: 1, dividend: 8, divisor: 2, factor: 3, want: "12.0" },
-    DivisionMix { n: 2, dividend: 15, divisor: 3, factor: 4, want: "20.0" },
-    DivisionMix { n: 3, dividend: 24, divisor: 4, factor: 5, want: "30.0" },
-    DivisionMix { n: 4, dividend: 35, divisor: 5, factor: 6, want: "42.0" },
-    DivisionMix { n: 5, dividend: 48, divisor: 6, factor: 2, want: "16.0" },
-    DivisionMix { n: 6, dividend: 63, divisor: 7, factor: 3, want: "27.0" },
-    DivisionMix { n: 7, dividend: 80, divisor: 8, factor: 4, want: "40.0" },
-    DivisionMix { n: 8, dividend: 99, divisor: 9, factor: 5, want: "55.0" },
-    DivisionMix { n: 9, dividend: 120, divisor: 10, factor: 6, want: "72.0" },
-    DivisionMix { n: 10, dividend: 143, divisor: 11, factor: 2, want: "26.0" }
-]
-
-/// The ten division mixes, each registered under its sequential label.
-fn divisionSweep() = {
-    let _ = forEachList(divisionMixes(), fn(row) => {
-        let label = "division multiplication left associative ${caseSuffix(row.n)}"
-        test(label, exactly(fn() => check(label, row.want, toString(row.dividend / row.divisor * row.factor))))
-    })
-}
-
-unparenthesizedSweep()
-parenthesizedSweep()
-subtractionSweep()
-remainderSweep()
-divisionSweep()
+test("precedence unparenthesized 001", fn() => check("precedence unparenthesized 001", "113", toString(103 + 3 * 4 - 41 % 3)))
+test("precedence unparenthesized 002", fn() => check("precedence unparenthesized 002", "124", toString(106 + 4 * 5 - 42 % 4)))
+test("precedence unparenthesized 003", fn() => check("precedence unparenthesized 003", "136", toString(109 + 5 * 6 - 43 % 5)))
+test("precedence unparenthesized 004", fn() => check("precedence unparenthesized 004", "152", toString(112 + 6 * 7 - 44 % 6)))
+test("precedence unparenthesized 005", fn() => check("precedence unparenthesized 005", "133", toString(115 + 7 * 3 - 45 % 7)))
+test("precedence unparenthesized 006", fn() => check("precedence unparenthesized 006", "144", toString(118 + 8 * 4 - 46 % 8)))
+test("precedence unparenthesized 007", fn() => check("precedence unparenthesized 007", "129", toString(121 + 2 * 5 - 47 % 9)))
+test("precedence unparenthesized 008", fn() => check("precedence unparenthesized 008", "134", toString(124 + 3 * 6 - 48 % 10)))
+test("precedence unparenthesized 009", fn() => check("precedence unparenthesized 009", "154", toString(127 + 4 * 7 - 49 % 2)))
+test("precedence unparenthesized 010", fn() => check("precedence unparenthesized 010", "143", toString(130 + 5 * 3 - 50 % 3)))
+test("precedence unparenthesized 011", fn() => check("precedence unparenthesized 011", "154", toString(133 + 6 * 4 - 51 % 4)))
+test("precedence unparenthesized 012", fn() => check("precedence unparenthesized 012", "169", toString(136 + 7 * 5 - 52 % 5)))
+test("precedence unparenthesized 013", fn() => check("precedence unparenthesized 013", "182", toString(139 + 8 * 6 - 53 % 6)))
+test("precedence unparenthesized 014", fn() => check("precedence unparenthesized 014", "151", toString(142 + 2 * 7 - 54 % 7)))
+test("precedence unparenthesized 015", fn() => check("precedence unparenthesized 015", "147", toString(145 + 3 * 3 - 55 % 8)))
+test("precedence unparenthesized 016", fn() => check("precedence unparenthesized 016", "162", toString(148 + 4 * 4 - 56 % 9)))
+test("precedence unparenthesized 017", fn() => check("precedence unparenthesized 017", "169", toString(151 + 5 * 5 - 57 % 10)))
+test("precedence unparenthesized 018", fn() => check("precedence unparenthesized 018", "190", toString(154 + 6 * 6 - 58 % 2)))
+test("precedence unparenthesized 019", fn() => check("precedence unparenthesized 019", "204", toString(157 + 7 * 7 - 59 % 3)))
+test("precedence unparenthesized 020", fn() => check("precedence unparenthesized 020", "184", toString(160 + 8 * 3 - 60 % 4)))
+test("precedence unparenthesized 021", fn() => check("precedence unparenthesized 021", "170", toString(163 + 2 * 4 - 61 % 5)))
+test("precedence unparenthesized 022", fn() => check("precedence unparenthesized 022", "179", toString(166 + 3 * 5 - 62 % 6)))
+test("precedence unparenthesized 023", fn() => check("precedence unparenthesized 023", "193", toString(169 + 4 * 6 - 63 % 7)))
+test("precedence unparenthesized 024", fn() => check("precedence unparenthesized 024", "207", toString(172 + 5 * 7 - 64 % 8)))
+test("precedence unparenthesized 025", fn() => check("precedence unparenthesized 025", "191", toString(175 + 6 * 3 - 65 % 9)))
+test("precedence unparenthesized 026", fn() => check("precedence unparenthesized 026", "200", toString(178 + 7 * 4 - 66 % 10)))
+test("precedence unparenthesized 027", fn() => check("precedence unparenthesized 027", "220", toString(181 + 8 * 5 - 67 % 2)))
+test("precedence unparenthesized 028", fn() => check("precedence unparenthesized 028", "194", toString(184 + 2 * 6 - 68 % 3)))
+test("precedence unparenthesized 029", fn() => check("precedence unparenthesized 029", "207", toString(187 + 3 * 7 - 69 % 4)))
+test("precedence unparenthesized 030", fn() => check("precedence unparenthesized 030", "202", toString(190 + 4 * 3 - 70 % 5)))
+test("precedence parenthesized 001", fn() => check("precedence parenthesized 001", "96", toString((21 + 3) * (6 - (2 % 3)))))
+test("precedence parenthesized 002", fn() => check("precedence parenthesized 002", "104", toString((22 + 4) * (7 - (3 % 4)))))
+test("precedence parenthesized 003", fn() => check("precedence parenthesized 003", "112", toString((23 + 5) * (8 - (4 % 5)))))
+test("precedence parenthesized 004", fn() => check("precedence parenthesized 004", "240", toString((24 + 6) * (9 - (1 % 6)))))
+test("precedence parenthesized 005", fn() => check("precedence parenthesized 005", "96", toString((25 + 7) * (5 - (2 % 7)))))
+test("precedence parenthesized 006", fn() => check("precedence parenthesized 006", "84", toString((26 + 2) * (6 - (3 % 8)))))
+test("precedence parenthesized 007", fn() => check("precedence parenthesized 007", "210", toString((27 + 3) * (7 - (4 % 2)))))
+test("precedence parenthesized 008", fn() => check("precedence parenthesized 008", "224", toString((28 + 4) * (8 - (1 % 3)))))
+test("precedence parenthesized 009", fn() => check("precedence parenthesized 009", "238", toString((29 + 5) * (9 - (2 % 4)))))
+test("precedence parenthesized 010", fn() => check("precedence parenthesized 010", "72", toString((30 + 6) * (5 - (3 % 5)))))
+test("precedence parenthesized 011", fn() => check("precedence parenthesized 011", "76", toString((31 + 7) * (6 - (4 % 6)))))
+test("precedence parenthesized 012", fn() => check("precedence parenthesized 012", "204", toString((32 + 2) * (7 - (1 % 7)))))
+test("precedence parenthesized 013", fn() => check("precedence parenthesized 013", "216", toString((33 + 3) * (8 - (2 % 8)))))
+test("precedence parenthesized 014", fn() => check("precedence parenthesized 014", "304", toString((34 + 4) * (9 - (3 % 2)))))
+test("precedence parenthesized 015", fn() => check("precedence parenthesized 015", "160", toString((35 + 5) * (5 - (4 % 3)))))
+test("precedence parenthesized 016", fn() => check("precedence parenthesized 016", "210", toString((36 + 6) * (6 - (1 % 4)))))
+test("precedence parenthesized 017", fn() => check("precedence parenthesized 017", "220", toString((37 + 7) * (7 - (2 % 5)))))
+test("precedence parenthesized 018", fn() => check("precedence parenthesized 018", "200", toString((38 + 2) * (8 - (3 % 6)))))
+test("precedence parenthesized 019", fn() => check("precedence parenthesized 019", "210", toString((39 + 3) * (9 - (4 % 7)))))
+test("precedence parenthesized 020", fn() => check("precedence parenthesized 020", "176", toString((40 + 4) * (5 - (1 % 8)))))
+test("subtraction left associative 001", fn() => check("subtraction left associative 001", "286", toString(311 - 21 - 4)))
+test("subtraction right grouped 001", fn() => check("subtraction right grouped 001", "294", toString(311 - (21 - 4))))
+test("subtraction left associative 002", fn() => check("subtraction left associative 002", "295", toString(322 - 22 - 5)))
+test("subtraction right grouped 002", fn() => check("subtraction right grouped 002", "305", toString(322 - (22 - 5))))
+test("subtraction left associative 003", fn() => check("subtraction left associative 003", "304", toString(333 - 23 - 6)))
+test("subtraction right grouped 003", fn() => check("subtraction right grouped 003", "316", toString(333 - (23 - 6))))
+test("subtraction left associative 004", fn() => check("subtraction left associative 004", "313", toString(344 - 24 - 7)))
+test("subtraction right grouped 004", fn() => check("subtraction right grouped 004", "327", toString(344 - (24 - 7))))
+test("subtraction left associative 005", fn() => check("subtraction left associative 005", "322", toString(355 - 25 - 8)))
+test("subtraction right grouped 005", fn() => check("subtraction right grouped 005", "338", toString(355 - (25 - 8))))
+test("subtraction left associative 006", fn() => check("subtraction left associative 006", "331", toString(366 - 26 - 9)))
+test("subtraction right grouped 006", fn() => check("subtraction right grouped 006", "349", toString(366 - (26 - 9))))
+test("subtraction left associative 007", fn() => check("subtraction left associative 007", "340", toString(377 - 27 - 10)))
+test("subtraction right grouped 007", fn() => check("subtraction right grouped 007", "360", toString(377 - (27 - 10))))
+test("subtraction left associative 008", fn() => check("subtraction left associative 008", "349", toString(388 - 28 - 11)))
+test("subtraction right grouped 008", fn() => check("subtraction right grouped 008", "371", toString(388 - (28 - 11))))
+test("subtraction left associative 009", fn() => check("subtraction left associative 009", "358", toString(399 - 29 - 12)))
+test("subtraction right grouped 009", fn() => check("subtraction right grouped 009", "382", toString(399 - (29 - 12))))
+test("subtraction left associative 010", fn() => check("subtraction left associative 010", "367", toString(410 - 30 - 13)))
+test("subtraction right grouped 010", fn() => check("subtraction right grouped 010", "393", toString(410 - (30 - 13))))
+test("multiply remainder left associative 001", fn() => check("multiply remainder left associative 001", "0", toString(18 * 10 % 6)))
+test("multiply remainder left associative 002", fn() => check("multiply remainder left associative 002", "6", toString(19 * 11 % 7)))
+test("multiply remainder left associative 003", fn() => check("multiply remainder left associative 003", "0", toString(20 * 12 % 8)))
+test("multiply remainder left associative 004", fn() => check("multiply remainder left associative 004", "3", toString(21 * 13 % 9)))
+test("multiply remainder left associative 005", fn() => check("multiply remainder left associative 005", "8", toString(22 * 14 % 10)))
+test("multiply remainder left associative 006", fn() => check("multiply remainder left associative 006", "0", toString(23 * 15 % 5)))
+test("multiply remainder left associative 007", fn() => check("multiply remainder left associative 007", "0", toString(24 * 16 % 6)))
+test("multiply remainder left associative 008", fn() => check("multiply remainder left associative 008", "5", toString(25 * 17 % 7)))
+test("multiply remainder left associative 009", fn() => check("multiply remainder left associative 009", "4", toString(26 * 18 % 8)))
+test("multiply remainder left associative 010", fn() => check("multiply remainder left associative 010", "0", toString(27 * 19 % 9)))
+test("division multiplication left associative 001", fn() => check("division multiplication left associative 001", "12.0", toString(8 / 2 * 3)))
+test("division multiplication left associative 002", fn() => check("division multiplication left associative 002", "20.0", toString(15 / 3 * 4)))
+test("division multiplication left associative 003", fn() => check("division multiplication left associative 003", "30.0", toString(24 / 4 * 5)))
+test("division multiplication left associative 004", fn() => check("division multiplication left associative 004", "42.0", toString(35 / 5 * 6)))
+test("division multiplication left associative 005", fn() => check("division multiplication left associative 005", "16.0", toString(48 / 6 * 2)))
+test("division multiplication left associative 006", fn() => check("division multiplication left associative 006", "27.0", toString(63 / 7 * 3)))
+test("division multiplication left associative 007", fn() => check("division multiplication left associative 007", "40.0", toString(80 / 8 * 4)))
+test("division multiplication left associative 008", fn() => check("division multiplication left associative 008", "55.0", toString(99 / 9 * 5)))
+test("division multiplication left associative 009", fn() => check("division multiplication left associative 009", "72.0", toString(120 / 10 * 6)))
+test("division multiplication left associative 010", fn() => check("division multiplication left associative 010", "26.0", toString(143 / 11 * 2)))
 

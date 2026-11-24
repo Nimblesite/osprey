@@ -179,8 +179,6 @@ fn argmax(logits, grid0) = andThen(gpuFold(logits, at(logits, 0), maxF), fn(peak
     andThen(gpuFilter(grid0, fn(v) => at(logits, v) == peak), fn(indices) => Success { value: gpuGet(indices, 0) ?: -1 }))
 fn written(path, content) = match writeFile(path, content) { Success _ => true Error _ => false }
 fn loadFailure(path, offset, count) = failureOf(gpuLoad(path, offset, count))
-/// loadRefuses holds when gpuLoad names `path` and `reason` for refusing the read of [count] words at [offset].
-fn loadRefuses(path, offset, count, reason) = loadFailure(path, offset, count) == "gpuLoad: " + path + ": " + reason
 fn tensorFailure(path, name) = failureOf(gpuLoadTensor(path, name))
 /// tensorRefuses holds when gpuLoadTensor names `path` and `reason` for refusing tensor `name`.
 fn tensorRefuses(path, name, reason) = tensorFailure(path, name) == "gpuLoadTensor: " + path + ": " + reason
@@ -205,17 +203,25 @@ fn matMulExactCaseUploaded(left, right) = {
 fn matMulOrderCase() = {
     let big = toFloat32(16777216.0)
     let ulp = toFloat32(1.0) / toFloat32(8388608.0)
-    use ones <- withBuffer(floats([1.0, 1.0, 1.0]))
-    use forwardRow <- withBuffer(toGpu([big, toFloat32(1.0), toFloat32(0.0) - big]))
-    use forward <- withBuffer(product(forwardRow, ones, 1, 3, 1))
-    use backwardRow <- withBuffer(toGpu([toFloat32(0.0) - big, toFloat32(1.0), big]))
-    use backward <- withBuffer(product(backwardRow, ones, 1, 3, 1))
-    use unfusedLeft <- withBuffer(toGpu([toFloat32(-1.0), toFloat32(1.0) + ulp]))
-    use unfusedRight <- withBuffer(toGpu([toFloat32(1.0), toFloat32(1.0) + toFloat32(2.0) * ulp]))
-    use unfused <- withBuffer(product(unfusedLeft, unfusedRight, 1, 2, 1))
-    checkAll("gpuMatMul accumulates in k order from 0.0 without a fused multiply-add", [
-            atIs(forward,  0,  0.0), atIs(backward,  0,  1.0), at(unfused, 0) == 3.0 * ulp
-    ])
+    withBuffer(floats([1.0, 1.0, 1.0]), fn(ones) => {
+            withBuffer(toGpu([big, toFloat32(1.0), toFloat32(0.0) - big]), fn(uploaded22) => {
+                    withBuffer(product(uploaded22, ones, 1, 3, 1), fn(forward) => {
+                            withBuffer(toGpu([toFloat32(0.0) - big, toFloat32(1.0), big]), fn(uploaded23) => {
+                                    withBuffer(product(uploaded23, ones, 1, 3, 1), fn(backward) => {
+                                            withBuffer(toGpu([toFloat32(-1.0), toFloat32(1.0) + ulp]), fn(uploaded24) => {
+                                                    withBuffer(toGpu([toFloat32(1.0), toFloat32(1.0) + toFloat32(2.0) * ulp]), fn(uploaded25) => {
+                                                            withBuffer(product(uploaded24, uploaded25, 1, 2, 1), fn(unfused) => {
+                                                                    checkAll("gpuMatMul accumulates in k order from 0.0 without a fused multiply-add", [
+                                                                            atIs(forward,  0,  0.0), atIs(backward,  0,  1.0), at(unfused, 0) == 3.0 * ulp
+                                                                    ])
+                                                                })
+                                                        })
+                                                })
+                                        })
+                                })
+                        })
+                })
+        })
 }
 fn matMulShapeCase() = twoFloats([1.0, 2.0, 3.0, 4.0], [1.0, 2.0, 3.0], matMulShapeCaseUploaded)
 fn matMulShapeCaseUploaded(four, three) = {
@@ -258,7 +264,13 @@ fn geluCase() = {
                     ])
 }
 /// Only the four operations and sqrt are involved, so every digit is pinned.
-fn layerNormCase() = withIndices(2, fn(grid0) => withIndices(8, fn(grid1) => withIndices(1, fn(grid2) => withIndices(4, fn(grid3) => layerNormWith(grid0, grid1, grid2, grid3)))))
+fn layerNormCase() = {
+    use grid0 <- withIndices(2)
+    use grid1 <- withIndices(8)
+    use grid2 <- withIndices(1)
+    use grid3 <- withIndices(4)
+    layerNormWith(grid0, grid1, grid2, grid3)
+}
 fn layerNormWith(grid0, grid1, grid2, grid3) = withBuffer(floats([2.0, 1.0, 0.5, 1.0]), fn(gain) => withBuffer(floats([0.5, 0.0, -0.5, 0.0]), fn(bias) => layerNormWithUploaded(grid0, grid1, grid2, grid3, gain, bias)))
 fn layerNormWithUploaded(grid0, grid1, grid2, grid3, gain, bias) = {
     use uploaded14 <- withBuffer(floats([1.0, 2.0, 3.0, 4.0, 0.0, 0.0, 6.0, 6.0]))
@@ -295,7 +307,12 @@ fn pairQkv() = floats([
 ])
 /// A lone token attends only to itself, so attention returns its value
 /// columns; a second token whose keys equal the first's averages the values.
-fn attentionExactCase() = withIndices(2, fn(grid0) => withIndices(4, fn(grid1) => withIndices(8, fn(grid2) => attentionExactWith(grid0, grid1, grid2))))
+fn attentionExactCase() = {
+    use grid0 <- withIndices(2)
+    use grid1 <- withIndices(4)
+    use grid2 <- withIndices(8)
+    attentionExactWith(grid0, grid1, grid2)
+}
 fn attentionExactWith(grid0, grid1, grid2) = {
     use uploaded11 <- withBuffer(floats([0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0]))
     use single <- withBuffer(attention(uploaded11, 1, grid0, grid0, grid1))
@@ -401,18 +418,20 @@ fn loadCase() = {
     let raw = scratch + "_raw.bin"
     let missing = scratch + "_missing.bin"
     let ready = written(raw, "ABCDEFGHIJKL")
-    use words <- withBuffer(gpuLoad(raw, 0, 3))
-    use tail <- withBuffer(gpuLoad(raw, 4, 2))
-    checkAll("gpuLoad keeps little-endian binary32 words and refuses a short read", [
-            ready, gpuLength(words) == 3, atsFrom(words, 0, [781.0352172851562, 204057.078125, 53291300.0]),
-            gpuLength(tail) == 2, atIs(tail,  0,  204057.078125), atIs(tail,  1,  53291300.0),
-            gpuSatisfies(gpuLoad(raw, 12, 0), fn(uploaded1) => gpuLength(uploaded1) == 0),
-            loadRefuses(raw, 0, 4, "file ends before the tensor does"),
-            loadRefuses(raw, 100, 1, "file ends before the tensor does"),
-            loadRefuses(raw, 0, -1, "a negative element count"),
-            loadRefuses(raw, -1, 1, "Invalid argument"),
-            loadRefuses(missing, 0, 1, "No such file or directory")
-    ])
+    withBuffer(gpuLoad(raw, 0, 3), fn(words) => {
+            withBuffer(gpuLoad(raw, 4, 2), fn(tail) => {
+                    checkAll("gpuLoad keeps little-endian binary32 words and refuses a short read", [
+                            ready, gpuLength(words) == 3, atsFrom(words, 0, [781.0352172851562, 204057.078125, 53291300.0]),
+                            gpuLength(tail) == 2, atIs(tail,  0,  204057.078125), atIs(tail,  1,  53291300.0),
+                            gpuSatisfies(gpuLoad(raw, 12, 0), fn(uploaded1) => gpuLength(uploaded1) == 0),
+                            loadFailure(raw, 0, 4) == "gpuLoad: " + raw + ": file ends before the tensor does",
+                            loadFailure(raw, 100, 1) == "gpuLoad: " + raw + ": file ends before the tensor does",
+                            loadFailure(raw, 0, -1) == "gpuLoad: " + raw + ": a negative element count",
+                            loadFailure(raw, -1, 1) == "gpuLoad: " + raw + ": Invalid argument",
+                            loadFailure(missing, 0, 1) == "gpuLoad: " + missing + ": No such file or directory"
+                    ])
+                })
+        })
 }
 /// Only ASCII content can be written from a NUL-terminated string, so the
 /// header-length prefix is either missing or absurd; the full header grammar is
