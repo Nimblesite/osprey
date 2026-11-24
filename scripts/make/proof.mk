@@ -150,8 +150,13 @@ _test_disciplines:
 PROOF_BATCH_TARGETS := _test_proof_batch_gc _test_proof_batch_arc _test_proof_batch_wasm
 PROOF_CORPUS_TARGETS := _test_proof_openai _test_proof_lean_core _test_proof_unicode
 
-_test_proof_ci: _test_proof_kernel _test_disciplines $(PROOF_CORPUS_TARGETS)
+_test_proof_ci: _test_proof_kernel _test_disciplines _test_ownership_proof $(PROOF_CORPUS_TARGETS)
 	OSPREY_BIN="$(abspath $(BIN))" zsh src/toolchain/benchmarks/proof/run.sh
+
+# Verify single ownership and lender liveness along accepted ledger paths.
+.PHONY: _test_ownership_proof
+_test_ownership_proof:
+	cd src/toolchain/benchmarks/proof/tools && lean -DwarningAsError=true OwnershipLedger.lean
 
 _test_proof_batch_gc _test_proof_batch_arc: _test_proof_batch_%:
 	@$(MKDIR) target/proof/openai

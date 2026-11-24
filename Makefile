@@ -68,6 +68,7 @@ test: build _build_c_runtime_tests
 	$(MAKE) _conformance-arc
 	$(MAKE) _conformance-ownership
 	$(MAKE) _test_proof_kernel
+	$(MAKE) _test_ownership_proof
 	$(MAKE) _test_disciplines
 	$(MAKE) _test_profiler
 	$(MAKE) _vsix_bundle
