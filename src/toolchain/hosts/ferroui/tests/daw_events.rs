@@ -7,16 +7,17 @@
 //! Needs the daw linked: `scripts/prism.sh` builds `target/prism-app/libOspreyApp.a`, and the test
 //! runs with `OSPREY_NATIVE_APP_DIR` naming it (README.md).
 
-use std::sync::atomic::Ordering;
-
 use ferroui_osprey_native::events::Touch;
-use ferroui_osprey_native::ffi::{self, Library};
+use ferroui_osprey_native::ffi::Library;
 use ferroui_osprey_native::regions::Regions;
 use ferroui_osprey_native::rows::Shown;
 use ferroui_base::input::KeyGesture;
 use ferroui_osprey_native::tree::Tree;
 use ferroui_osprey_native::host::Menu;
 use ferroui_osprey_native::view::window_menus;
+
+mod common;
+use common::{repo, shapes};
 
 /// One display frame at 60 Hz, in milliseconds.
 const FRAME_MS: f64 = 1000.0 / 60.0;
@@ -28,10 +29,6 @@ const TIMELINE_SHAPES: usize = 300;
 /// The shapes the Mix page draws for the song, at least, and the middle of its header tab.
 const MIX_SHAPES: usize = 200;
 const MIX_TAB: (f64, f64) = (560.0, 29.0);
-
-fn repo(path: &str) -> String {
-    format!("{}/../../../{path}", env!("CARGO_MANIFEST_DIR"))
-}
 
 /// The control number of the first scene at or below `node`, depth first.
 fn scene(node: &Tree) -> Option<i64> {
@@ -58,16 +55,11 @@ fn scene_event(node: &Tree, row: i64) -> Option<i64> {
     }
 }
 
-fn shapes(shown: &Shown) -> usize {
-    shown.scenes.values().map(|scene| scene.shapes.len()).sum()
-}
+
 
 /// One pointer event; returns its frame and the milliseconds the application took.
 fn point(canvas: i64, (x, y): (f64, f64), down: bool) -> (Shown, f64) {
-    match Library::event(0, &Touch::pointer(canvas, x, y, down, false)) {
-        Ok(shown) => (shown, ffi::APP_MICROS.load(Ordering::Relaxed) as f64 / 1000.0),
-        Err(problem) => panic!("the daw refused a pointer event at {x},{y}: {problem}"),
-    }
+    common::point("the daw", canvas, x, y, down)
 }
 
 /// The scene point of lane `track` at fraction `along` of the song. Seven rows fit on each page of the arrangement.
