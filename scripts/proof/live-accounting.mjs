@@ -1,38 +1,45 @@
-// [MEM-OWNERSHIP-STATIC-VERIFICATION-COMPILER] Interpret the two native
-// counter cells as 64-bit words. Reject unknown instructions and control flow.
+// [MEM-OWNERSHIP-STATIC-VERIFICATION-COMPILER] Interpret the native live counters and peak bytes
+// as 64-bit words. Reject unknown instructions and control flow.
 import { operand, runtimeCfg } from './runtime-returns.mjs'
 
-function trackedPath(cfg, label, size) {
-  const cells = { g_live: 'objects', g_live_bytes: 'bytes' }
-  const values = new Map([[size, 'size']])
-  const seen = new Set()
-  const read = reg => operand(values, reg)
-  while (!seen.has(label) && cfg.has(label)) {
-    seen.add(label)
-    const block = cfg.get(label)
-    for (const line of block.slice(0, -1)) {
-      const load = /^(%[\w.]+) = load i64, ptr @(g_live(?:_bytes)?), align 8$/.exec(line)
-      const store = /^store i64 (%[\w.]+), ptr @(g_live(?:_bytes)?), align 8$/.exec(line)
-      const dec = /^(%[\w.]+) = add i64 (%[\w.]+), -(\d+)$/.exec(line)
-      const sub = /^(%[\w.]+) = sub i64 (%[\w.]+), (%[\w.]+)$/.exec(line)
-      if (load) values.set(load[1], cells[load[2]])
-      else if (store) cells[store[2]] = read(store[1])
-      else if (dec) values.set(dec[1], '(' + read(dec[2]) + ' - ' + dec[3] + ')')
-      else if (sub) values.set(sub[1], '(' + read(sub[2]) + ' - ' + read(sub[3]) + ')')
-      else throw Error('unsupported accounting instruction: ' + line)
-    }
-    if (block.at(-1) === 'ret void') return '(' + cells.g_live + ', ' + cells.g_live_bytes + ')'
-    label = /^br label %([\w.]+)$/.exec(block.at(-1))?.[1]
-  }
-  throw Error('unsupported accounting path')
+const conditional = /^br i1 (%[\w.]+), label %([\w.]+), label %([\w.]+)$/
+
+function accountInstruction(line, cells, values) {
+  const load = /^(%[\w.]+) = load i64, ptr @(g_live|g_live_bytes|g_peak_bytes), align 8$/.exec(line)
+  const store = /^store i64 (%[\w.]+), ptr @(g_live|g_live_bytes|g_peak_bytes), align 8$/.exec(line)
+  const op = /^(%[\w.]+) = (add|sub|icmp ugt) i64 (%[\w.]+), (-?\d+|%[\w.]+)$/.exec(line)
+  if (load) values.set(load[1], operand(cells, load[2]))
+  else if (store && cells.has(store[2])) cells.set(store[2], operand(values, store[1]))
+  else if (op) {
+    const right = op[4], negative = right.startsWith('-')
+    const operator = op[2] === 'icmp ugt' ? ' > ' : op[2] === 'add' && !negative ? ' + ' : ' - '
+    if (negative && op[2] !== 'add') throw Error('unsupported signed counter operand')
+    const value = right.startsWith('%') ? operand(values, right) : right.replace(/^-/, '')
+    values.set(op[1], '(' + operand(values, op[3]) + operator + value + ')')
+  } else throw Error('unsupported accounting instruction: ' + line)
 }
 
-export function liveDebit(ir) {
-  const { arg: size, cfg, entry } = runtimeCfg(ir, 'arc_live_dec', 'i64')
+function trackedPath(cfg, label, cells, values, seen = []) {
+  if (!cfg.has(label) || seen.includes(label)) throw Error('unsupported accounting path')
+  const block = cfg.get(label)
+  for (const line of block.slice(0, -1)) accountInstruction(line, cells, values)
+  const end = block.at(-1)
+  if (end === 'ret void') return '(' + [...cells.values()].join(', ') + ')'
+  const visit = to => trackedPath(cfg, to, new Map(cells), new Map(values), [...seen, label])
+  const br = conditional.exec(end)
+  if (br) return '(if ' + operand(values, br[1]) + ' then ' + visit(br[2]) + ' else ' + visit(br[3]) + ')'
+  return visit(/^br label %([\w.]+)$/.exec(end)?.[1])
+}
+
+export function liveAccounting(ir, name) {
+  const { arg: size, cfg, entry } = runtimeCfg(ir, name, 'i64')
   const guard = /^(%[\w.]+) = load i1, ptr @g_arc_track, align 4$/.exec(entry[0])
-  const br = /^br i1 (%[\w.]+), label %([\w.]+), label %([\w.]+)$/.exec(entry[1])
+  const br = conditional.exec(entry[1])
   if (entry.length !== 2 || !guard || !br || guard[1] !== br[1]) throw Error('unsupported tracking switch')
-  return '  if tracking then ' + trackedPath(cfg, br[2], size) + ' else ' + trackedPath(cfg, br[3], size)
+  const cells = new Map([['g_live', 'objects'], ['g_live_bytes', 'bytes']])
+  if (name === 'arc_live_inc') cells.set('g_peak_bytes', 'peak')
+  const path = label => trackedPath(cfg, label, new Map(cells), new Map([[size, 'size']]))
+  return '  if tracking then ' + path(br[2]) + ' else ' + path(br[3])
 }
 
 // Reflect the unconditional prefix, up to and including the header state store.

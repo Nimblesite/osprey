@@ -280,4 +280,30 @@ theorem compiledReclaimPrefix (tracking : Bool) (objects bytes : BitVec 64) (hea
   unfold emittedReclaimPrefix
   rw [compiledLiveDebit]
 
+def emittedCredit (tracking : Bool) (objects bytes size peak : BitVec 64) : BitVec 64 × BitVec 64 × BitVec 64 :=
+-- LIVE CREDIT
+
+theorem compiledLiveCredit (tracking : Bool) (objects bytes size peak : BitVec 64) :
+    emittedCredit tracking objects bytes size peak =
+      (if tracking then (objects + 1, bytes + size, if bytes + size > peak then bytes + size else peak)
+       else (objects, bytes, peak)) := by
+  cases tracking
+  · rfl
+  · unfold emittedCredit
+    rw [if_pos rfl, if_pos rfl]
+    by_cases larger : bytes + size > peak
+    · rw [if_pos larger, if_pos larger]
+    · rw [if_neg larger, if_neg larger]
+
+theorem compiledAccountingRoundTrip (tracking : Bool) (objects bytes peak : BitVec 64) (header : Nat → BitVec 32) :
+    let credit := emittedCredit tracking objects bytes ((header 12).zeroExtend 64) peak
+    (emittedReclaimPrefix tracking credit.1 credit.2.1 header).1 = (objects, bytes) := by
+  cases tracking
+  · rfl
+  · unfold emittedReclaimPrefix emittedDebit emittedCredit
+    simp only [if_true]
+    by_cases larger : bytes + (header 12).zeroExtend 64 > peak
+    · rw [if_pos larger, BitVec.add_sub_cancel, BitVec.add_sub_cancel]
+    · rw [if_neg larger, BitVec.add_sub_cancel, BitVec.add_sub_cancel]
+
 end OwnershipLowering

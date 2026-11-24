@@ -30,8 +30,10 @@ lake build lean4export
 lake env lean -DwarningAsError=true --root="$out" -o "$out/OwnershipLowering.olean" "$out/OwnershipLowering.lean"
 exporter=$(lake env which lean4export)
 lean_path=$(lake env printenv LEAN_PATH)
-for name in compiledGrow compiledGrowWhen runtimeRootOrigins renderedStringOrigin stringResultOrigins compiledFreeNull compiledPairFields compiledChildDrop compiledWorklistPush compiledPairQueue compiledGrowthBytes compiledPop compiledBodyReclaim compiledPushPop compiledLiveDebit compiledReclaimPrefix; do
+for name in compiledGrow compiledGrowWhen runtimeRootOrigins renderedStringOrigin stringResultOrigins compiledFreeNull compiledPairFields compiledChildDrop compiledWorklistPush compiledPairQueue compiledGrowthBytes compiledPop compiledBodyReclaim compiledPushPop compiledLiveDebit compiledReclaimPrefix compiledLiveCredit compiledAccountingRoundTrip; do
   theorem="OwnershipLowering.$name"
+  axioms=none
+  if [[ $name == compiledAccountingRoundTrip ]]; then axioms=propext; fi
   LEAN_PATH="$out:$lean_path" "$exporter" OwnershipLowering -- "$theorem" > "$out/$name.ndjson"
   for backend in gc arc wasm; do
     if [[ $backend == wasm ]]; then
@@ -40,7 +42,7 @@ for name in compiledGrow compiledGrowWhen runtimeRootOrigins renderedStringOrigi
       result=$(printf '%s\t%s\n' "$out/$name.ndjson" "$theorem" | "$root/target/proof/openai/check-batch.$backend")
     fi
     echo "$backend $result"
-    test "$result" = "PASS $theorem | axioms: none"
+    test "$result" = "PASS $theorem | axioms: $axioms"
   done
 done
 # The mutants are valid instructions in the supported fragment. Refuse them
@@ -172,9 +174,11 @@ done
 
 reject stale-pop compiledPushPop
 
-for fault in skipped-live-count skipped-live-bytes debit-state-field keep-live-header; do
+for fault in skipped-live-count skipped-live-bytes debit-state-field keep-live-header double-credit stale-peak; do
   awk -v fault="$fault" '
-    /^define / {debit = /@arc_live_dec\(/; reclaim = /@arc_free_or_recycle\(/}
+    /^define / {debit = /@arc_live_dec\(/; credit = /@arc_live_inc\(/; reclaim = /@arc_free_or_recycle\(/}
+    credit && fault == "double-credit" && / = add i64 .*, 1$/ {sub(/1$/, "2")}
+    credit && fault == "stale-peak" && /store i64 .*@g_peak_bytes,/ {next}
     debit && fault == "skipped-live-count" && /store i64 .*@g_live,/ {next}
     debit && fault == "skipped-live-bytes" && /store i64 .*@g_live_bytes,/ {next}
     reclaim && fault == "debit-state-field" && / = getelementptr .*i64 12$/ {sub(/12$/, "8")}
@@ -184,6 +188,10 @@ for fault in skipped-live-count skipped-live-bytes debit-state-field keep-live-h
   reflect "$out/ownership.ll" "$out/mutations/$fault.lean" "$out/runtime.ll" "$out/strings.ll" "$out/mutations/$fault.ll"
   case "$fault" in
     skipped-*) reject "$fault" compiledLiveDebit ;;
+    double-credit|stale-peak) reject "$fault" compiledLiveCredit ;;
     *) reject "$fault" compiledReclaimPrefix ;;
   esac
 done
+
+reject double-credit compiledAccountingRoundTrip
+reject skipped-live-bytes compiledAccountingRoundTrip

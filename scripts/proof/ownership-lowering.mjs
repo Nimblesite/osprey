@@ -2,7 +2,7 @@
 // The Boolean parameter has two inhabitants; specialize both, resolving each phi by
 // its actual predecessor. Reject unknown instructions [MEM-OWNERSHIP-STATIC-VERIFICATION].
 import { readFileSync } from 'node:fs'
-import { liveDebit, reclaimPrefix } from './live-accounting.mjs'
+import { liveAccounting, reclaimPrefix } from './live-accounting.mjs'
 import { bodyPaths, popBody } from './worklist-drain.mjs'
 import { childDrop, growthBytes, worklistPush } from './child-drop.mjs'
 import { pairConstructor, pairWalk } from './record-ownership.mjs'
@@ -91,7 +91,8 @@ process.stdout.write(readFileSync(template, 'utf8')
   .replace('-- WORKLIST PUSH', worklistPush(heap))
   .replace('-- POP BODY', popBody(heap))
   .replace('-- RECLAIM PREFIX', reclaimPrefix(heap))
-  .replace('-- LIVE DEBIT', liveDebit(heap))
+  .replace('-- LIVE CREDIT', liveAccounting(heap, 'arc_live_inc'))
+  .replace('-- LIVE DEBIT', liveAccounting(heap, 'arc_live_dec'))
   .replace('-- BODY PATHS', bodyPaths(heap))
   .replace('-- CHILD DROP', childDrop(heap))
   .replace('-- PAIR WALK', pairWalk(walk))
