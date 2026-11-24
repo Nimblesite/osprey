@@ -51,10 +51,13 @@ Found while building phase 1, each a place where an accepted program still count
 
 - [ ] Emit direct frees at proved last uses and region exits in src/toolchain/crates/osprey-codegen/src/arc.rs and arc/last_use.rs; no `@osp_retain`/`@osp_release` calls survive in `ownership` IR.
 - Acceptance: `ownership` IR contains frees only, no retain/release calls.
+- **Owner: OspreyFable2** (item C5 below; C6 and C7 remove the fiber, channel and handler retains). PrismCodex adds the test that fails on a retain or release call in `ownership` IR (V4).
 - [ ] Add `src/toolchain/compiler/runtime/memory_ownership.c` with allocation and free only; implement the remaining [MEM-BACKENDS-CUSTOM] hooks as no-ops.
 - Acceptance: the archive builds and links; every ABI hook symbol is present with retain/release/finalizer/collection as no-ops.
+- **Owner: PrismCodex.** The file exists (21cb47d01) over the shared tracked heap. Its retain still marks a block as moving and its release frees (c2ef56a69), because accepted IR still calls them. PrismCodex makes retain a no-op and release the direct free the day OspreyFable2 reports C5 done, and ticks this with the archive build and `memory_ownership_tests`.
 - [ ] Run the corpus under `ownership` in src/toolchain/crates/run_test_corpus.sh alongside GC, ARC and wasm32, with zero live allocations at exit (the check ARC already performs).
 - Acceptance: identical corpus output under all backends; zero leaks under `ownership`.
+- **Owner: PrismCodex** for the lane and its gate (V2 done, V3). **OspreyFable2** raises the number of programs it accepts (C1 to C4). Ticked when every program the spec does not refuse by rule passes the lane.
 
 ## Phase 3 — replace `none`
 
