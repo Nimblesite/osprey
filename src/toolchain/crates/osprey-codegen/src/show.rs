@@ -16,8 +16,7 @@ pub(crate) fn handle(cg: &mut Codegen, v: Value) -> Result<Value> {
     let v = crate::listlit::escaping(cg, v);
     let owner = v.osp_ty.clone().unwrap_or_default();
     if !owner.is_empty() && cg.anys.showing.contains(&owner) {
-        let boxed = crate::anybox::box_typed(cg, v)?;
-        return Ok(crate::anybox::any_to_string(cg, &boxed));
+        return crate::anybox::render_handle(cg, v, true);
     }
     cg.anys.showing.push(owner.clone());
     let shown = expand(cg, v, &owner);
@@ -36,8 +35,7 @@ fn expand(cg: &mut Codegen, v: Value, owner: &str) -> Result<Value> {
             return record(cg, &v, owner, &ty, &fields);
         }
     }
-    let boxed = crate::anybox::box_any(cg, v)?;
-    Ok(crate::anybox::any_to_string(cg, &boxed))
+    crate::anybox::render_handle(cg, v, false)
 }
 
 /// A value as it reads inside another: a string in quotes, the rest as

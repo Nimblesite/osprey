@@ -1,9 +1,25 @@
 //! Render erased scalar, row and union values.
 use super::{
-    comma_join, ensure_to_string, owned_call, row_block_ty, Codegen, DescKey, LType, Result, Value,
-    TO_STRING_FN,
+    call_renderer, classify, comma_join, desc_operand, descriptor, ensure_to_string, owned_call,
+    row_block_ty, typed, Codegen, DescKey, LType, Result, Value, TO_STRING_FN,
 };
 use osprey_types::numeric::Numeric;
+
+/// Synchronous rendering borrows its payload until the call returns.
+pub(crate) fn render_handle(cg: &mut Codegen, v: Value, recursive: bool) -> Result<Value> {
+    let (key, payload) = if recursive {
+        (typed::key(cg, &v), v)
+    } else {
+        let (key, payload, _) = classify(cg, v)?;
+        (key, payload)
+    };
+    let desc = descriptor(cg, &key)?;
+    let word = crate::conv::box_to_i64(cg, payload);
+    let rendered = call_renderer(cg, &desc_operand(&desc), &format!("@{desc}"), &word.operand);
+    let out = Value::new(rendered, LType::Str);
+    crate::arc::own(cg, &out);
+    Ok(out)
+}
 
 /// Emit the render function for `key`:
 /// `define i8* @osp.any.str.<slug>(i8* %desc, i64 %payload)`.
@@ -52,11 +68,14 @@ fn render_body(cg: &mut Codegen, key: &DescKey) -> Result<Value> {
             crate::runtime::to_string_value(cg, h)
         }
         DescKey::Str => {
-            // The payload stays owned by the box; the epilogue's borrowed-
-            // return retain hands the caller its own +1, so its release can
-            // never free the string under the box. A second retain here
-            // leaked one reference per rendering.
-            Ok(crate::conv::unbox_from_i64(cg, "%payload", LType::Str))
+            let text = crate::conv::unbox_from_i64(cg, "%payload", LType::Str);
+            // The caller owns its rendering and the box still owns its text.
+            // ARC shares the string through the normal return convention.
+            if cg.ownership.on {
+                Ok(crate::show::shown(cg, &text.operand, "0"))
+            } else {
+                Ok(text)
+            }
         }
         DescKey::Row(names) => Ok(render_row(cg, &names.clone())),
         DescKey::Union(owner, key) => {
@@ -76,7 +95,7 @@ fn render_body(cg: &mut Codegen, key: &DescKey) -> Result<Value> {
         DescKey::Opaque(label) => Ok(cg.string_constant(label)),
         DescKey::Typed(key) => {
             let proto = cg.anys.typed.get(key).cloned().unwrap_or_else(Value::unit);
-            let whole = super::typed::restore(cg, "%payload", &proto);
+            let whole = typed::restore(cg, "%payload", &proto);
             crate::runtime::to_string_value(cg, whole)
         }
     }
@@ -131,6 +150,7 @@ fn render_union(
     let block = cg.emit_reg("inttoptr i64 %payload to i64*".to_string());
     let tag = cg.emit_reg(format!("load i64, i64* {block}"));
     let end = cg.fresh_label();
+    let mark = crate::arc::frame_mark(cg);
     let mut phi_in: Vec<(String, String)> = Vec::new();
     for (i, variant) in variants.iter().enumerate() {
         let hit = cg.fresh_label();
@@ -148,10 +168,13 @@ fn render_union(
     phi_in.push((fallback.operand, from));
     cg.start_block(&end);
     let phi = comma_join(&phi_in, |(v, b)| format!("[ {v}, %{b} ]"));
-    Ok(Value::new(
-        cg.emit_reg(format!("phi i8* {phi}")),
-        LType::Str,
-    ))
+    let out = Value::new(cg.emit_reg(format!("phi i8* {phi}")), LType::Str);
+    let operands = phi_in
+        .into_iter()
+        .map(|(operand, _)| operand)
+        .collect::<Vec<_>>();
+    crate::arc::move_phi_owners(cg, &operands, &out, mark);
+    Ok(out)
 }
 
 /// One variant's rendering: nullary variants are their name; a payload lists

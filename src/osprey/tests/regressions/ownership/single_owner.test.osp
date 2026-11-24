@@ -182,6 +182,13 @@ fn divided(outcome) = match outcome {
     Error => "bad"
 }
 
+fn renderErased(x: any) = toString(x)
+fn renderedTwice(n) = {
+    let erased: any = "borrowed${toString(n)}"
+    let first = renderErased(erased)
+    "${first}|${renderErased(erased)}"
+}
+
 fn errors() = "errors ${found(find(0))}, ${found(find(4))}, ${divided(divide(6, 0))}, ${divided(divide(6, 1))}"
 
 /// A closure takes what it captures when the capture is that binding's last use.
@@ -392,4 +399,4 @@ fn closures(n) = {
 
 fn effects() = "${toString(listLength(folded(4)))} ${toString(listLength(folded(0)))} ${drawn(10)} ${drawn(0)} ${noted(3)}"
 
-print("${fileScope(1)} ${shared.text}\n${spans()}\n${elements()}\n${collections()}\n${lastUses()}\n${paths()}\n${owned()}\n${generics()}\n${literals()}\n${errors()}\n${captures()}\n${lends()}\n${lentLists()}\n${reads()}\n${borrows()}\n${effects()}\n${stores(2)}\n${takes(3)}\n${closures(2)}")
+print("${fileScope(1)} ${shared.text}\n${spans()}\n${elements()}\n${collections()}\n${lastUses()}\n${paths()}\n${owned()}\n${generics()}\n${literals()}\n${errors()} ${renderedTwice(7)}\n${captures()}\n${lends()}\n${lentLists()}\n${reads()}\n${borrows()}\n${effects()}\n${stores(2)}\n${takes(3)}\n${closures(2)}")

@@ -134,6 +134,7 @@ fn ownership_drops_call_the_direct_free() -> std::io::Result<()> {
     let ir = text(&output.stdout);
     assert!(ir.contains("call void @osp_ownership_free("));
     assert!(!ir.contains("call void @osp_release"));
+    assert!(!ir.contains("call void @osp_retain"));
     Ok(())
 }
 
