@@ -88,6 +88,9 @@ static void *process_monitor_thread(void *arg) {
   }
   close(proc->stdout_pipe[0]);
   close(proc->stderr_pipe[0]);
+  // The callbacks ran Osprey code here: without this, each process kept its
+  // monitor thread's 16 KiB handler stack to exit. [BUILTIN-PROCESS]
+  __osprey_handler_stack_cleanup();
   return NULL;
 }
 
