@@ -173,8 +173,8 @@ peak_rss() {
 
 # json_row — append one {case,lang,...} record to the raw results log.
 json_row() {
-  printf '{"case":"%s","lang":"%s","status":"%s","output":"%s","expected":"%s","rss":%s}\n' \
-    "$1" "$2" "$3" "$4" "$5" "${6:-0}" >> "$RAW"
+  printf '{"case":"%s","lang":"%s","status":"%s","output":"%s","expected":"%s","rss":%s%s}\n' \
+    "$1" "$2" "$3" "$4" "$5" "${6:-0}" "${7:+,\"peak_live_bytes\":$7}" >> "$RAW"
 }
 
 if [[ "$PARTIAL" == 1 && ! -f "$OUT/raw.jsonl" ]]; then
@@ -251,7 +251,22 @@ for dir in $CASEDIR/*/(/); do
       esac
       continue
     fi
-    actual=$("$bin" <"$MODE0" 2>/dev/null); actual=${actual//[[:space:]]/}
+    # Read the tracked heap during the correctness run. RSS and timing runs
+    # keep the same uninstrumented environment as the other languages.
+    typeset -a run_env=()
+    backend=${lang#osprey-}
+    peak=""
+    if [[ $lang == osprey-arc || $lang == osprey-ownership ]]; then
+      run_env=("OSPREY_${(U)backend}_DEBUG=1")
+    fi
+    if ! actual=$(env "${run_env[@]}" "$bin" <"$MODE0" 2>"$TMP/oracle.err"); then
+      echo "    $lang: correctness run failed"; cat "$TMP/oracle.err" >&2; fail=1; continue
+    fi
+    if (( ${#run_env} )); then
+      peak=$(sed -n "s/^\\[osp-$backend\\] peak_live_bytes=\\([0-9][0-9]*\\)$/\\1/p" "$TMP/oracle.err")
+      [[ $peak == <-> ]] || { echo "    $lang: missing or duplicate peak measurement"; fail=1; continue; }
+    fi
+    actual=${actual//[[:space:]]/}
     if [[ "$actual" != "$expected" ]]; then
       echo "    $lang: WRONG OUTPUT ($actual != $expected) — excluded from timing"
       json_row "$name" "$lang" "wrong_output" "$actual" "$expected"; fail=1; continue
@@ -262,7 +277,7 @@ for dir in $CASEDIR/*/(/); do
       *-wasm) rss=0 ;;
       *)      rss=$(peak_rss "$bin") ;;
     esac
-    json_row "$name" "$lang" "ok" "$actual" "$expected" "$rss"
+    json_row "$name" "$lang" "ok" "$actual" "$expected" "$rss" "$peak"
     if (( rss > 0 )); then echo "    $lang: ok  (rss $(( rss / 1024 )) KiB)"; else echo "    $lang: ok  (wasm; mem n/a)"; fi
     hf_args+=(-n "$lang" "$bin")
     ok_pairs+=("$lang=$bin")

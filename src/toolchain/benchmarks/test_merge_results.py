@@ -285,7 +285,10 @@ class HarnessPublicationTests(TempDirs, unittest.TestCase):
         """The stand-in compiler the harness builds fib with, logging its arguments to `log`."""
         echo = f'echo "$*" >> "{log}"\n' if log else ""
         self.executable(root / "target/release/osprey",
-                        f'#!/bin/sh\n{echo}printf "#!/bin/sh\\nprintf 42" > fib\nchmod +x fib\n')
+                        f'#!/bin/sh\n{echo}cat > fib <<\'PROGRAM\'\n#!/bin/sh\n'
+                        'if [ -n "$OSPREY_OWNERSHIP_DEBUG" ]; then echo "[osp-ownership] peak_live_bytes=0" >&2; fi\n'
+                        'if [ -n "$OSPREY_ARC_DEBUG" ]; then echo "[osp-arc] peak_live_bytes=32" >&2; fi\n'
+                        'printf 42\nPROGRAM\nchmod +x fib\n')
 
     def test_failed_malformed_or_interrupted_timing_preserves_every_published_file(self) -> None:
         for command in ("exit 1", 'kill -TERM "$PPID"; exit 0',
@@ -329,6 +332,11 @@ class HarnessPublicationTests(TempDirs, unittest.TestCase):
         self.assertIn(">Osprey (ARC)</th>", page)
         self.assertIn(">Osprey (GC)</th>", page)
         self.assertIn(">Osprey (ownership)</th>", page)
+        cells = published(bench / "results")["cases"]["fib"]
+        self.assertEqual(cells["osprey-ownership"]["peak_live_bytes"], 0)
+        self.assertEqual(cells["osprey-arc"]["peak_live_bytes"], 32)
+        self.assertNotIn("peak_live_bytes", cells["osprey-gc"])
+        self.assertIn("peak live allocation size 0 bytes", page)
 
     def test_a_recorded_backendless_cell_is_never_published_again(self) -> None:
         out = published_tree(self.temp_dir(), [raw_row("fib", "osprey")],

@@ -62,7 +62,7 @@ def raw_update(old: list[dict], new: list[dict]) -> str:
     for row in new:
         key = row["case"], row["lang"]
         previous = cells.get(key, {})
-        cells[key] = {**row, "rss": row["rss"] or previous.get("rss", 0)}
+        cells[key] = {**previous, **row, "rss": row["rss"] or previous.get("rss", 0)}
     return "".join(json.dumps(row, separators=(",", ":"), allow_nan=False) + "\n" for row in cells.values())
 
 

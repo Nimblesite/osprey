@@ -170,6 +170,7 @@ static void arc_report_leaks(void) {
   // stderr only: stdout must stay byte-identical under [MEM-BACKENDS].
   fprintf(stderr, "[osp-" OSP_HEAP_TAG "] exit: %zu live objects, %zu KiB (+%zu immortal)\n",
           g_live - immortal, g_live_bytes / 1024, immortal);
+  fprintf(stderr, "[osp-" OSP_HEAP_TAG "] peak_live_bytes=%zu\n", g_peak_bytes);
 #ifdef OSP_HEAP_EXIT_NOTE
   OSP_HEAP_EXIT_NOTE();
 #endif

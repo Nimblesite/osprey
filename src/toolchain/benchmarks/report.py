@@ -64,6 +64,8 @@ def load(out: Path, run: Optional[str] = None) -> Data:
         cell = data.setdefault(r["case"], {}).setdefault(r["lang"], {})
         if r["status"] == "ok" or cell.get("status") != "ok":
             cell.update(status=r["status"], rss=r["rss"] or cell.get("rss", 0))
+            if "peak_live_bytes" in r:
+                cell["peak_live_bytes"] = r["peak_live_bytes"]
     for hf in (out / "hf").glob("*.json"):
         for res in json.loads(hf.read_text())["results"]:
             cell = data.get(hf.stem, {}).get(res.get("command"))
@@ -116,7 +118,7 @@ def vals(case: dict[str, Cell], key: str) -> dict[str, float]:
     A falsy value (rss == 0) means "not measured" — wasm runs under wasmtime, whose
     host RSS isn't comparable — so it is excluded here and rendered as "—"."""
     return {l: float(c[key]) for l, c in case.items()
-            if c.get("status") == "ok" and c.get(key)}
+            if c.get("status") == "ok" and (key in c if key == "peak_live_bytes" else c.get(key))}
 
 
 def ratios(data: Data, cases: list[str], osprey: str, lang: str, key: str) -> list[float]:
@@ -168,7 +170,7 @@ def _row(case: dict[str, Cell], name: str, langs: list[str], key: str, fmt: Call
 
 def _td(c: Cell, lang: str, key: str, fmt: Callable[[float], str],
         v: dict[str, float], best: Optional[float]) -> str:
-    ok = c.get("status") == "ok" and bool(c.get(key))
+    ok = lang in v
     txt = fmt(float(c[key])) if ok else cell_missing(c)
     classes = ["num"] + (["col-osprey"] if lang.startswith("osprey") else [])
     if ok and best is not None and float(c[key]) == best:
@@ -188,6 +190,8 @@ def tooltip(c: Cell, key: str) -> str:
             f"{label} {plain(fmt_time(float(c[k])))}" for k, label in
             (("median", "median"), ("stddev", "standard deviation"), ("min", "min"), ("max", "max"))
             if c.get(k) is not None]
+    elif key == "peak_live_bytes":
+        stats = [f"peak live allocation size {c[key]} bytes"]
     else:
         stats = [f"peak RSS {plain(fmt_mem(float(c['rss'])))}, highest of three runs"]
     return ", ".join(stats) + f" — measured {c.get('run', 'in an unrecorded run')}"
@@ -263,6 +267,9 @@ def tables_fragment(data: Data, langs: list[str], cases: list[str], runs: dict[s
     return ("<h2>Osprey time relative to each language</h2>\n" + RELATIVE_NOTE + summary(data, langs, cases)
             + "\n<h2>CPU time</h2>\n" + value_table(data, langs, cases, "mean", fmt_time)
             + "\n<h2>Peak memory</h2>\n" + value_table(data, langs, cases, "rss", fmt_mem)
+            + "\n<h2>Peak live bytes</h2>\n" + value_table(
+                data, [l for l in langs if l in ("osprey-arc", "osprey-ownership")],
+                cases, "peak_live_bytes", lambda size: f"{int(size):,}")
             + "\n<h2>Where each figure was measured</h2>\n" + runs_table(runs, data, langs, cases))
 
 
