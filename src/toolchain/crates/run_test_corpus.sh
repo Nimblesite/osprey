@@ -1,9 +1,9 @@
 #!/usr/bin/env zsh
 # Run every assertion suite under one memory backend and one code generator;
 # used by conformance CI so moving an assertion suite within tests never drops
-# its GC, ARC or wasm coverage.
+# its GC, ARC, ownership or wasm coverage.
 #
-#   run_test_corpus.sh [gc|arc]     native backend, chosen allocator
+#   run_test_corpus.sh [gc|arc|ownership]   native backend, chosen allocator
 #   OSPREY_TARGET=wasm32 run_test_corpus.sh wasm32 backend under Node's WASI
 #
 # Two independent checks run per program, and BOTH must hold:
@@ -159,14 +159,14 @@ golden_for() {
   return 1
 }
 
-# The single ARC exit sentinel in a stderr transcript: echoes the live-object
-# count only when EXACTLY one `[osp-arc] exit: N live objects` line is present.
+# Echo the live-object count only when exactly one exit sentinel from the
+# selected backend appears in the stderr transcript.
 # Absent or repeated sentinels echo nothing, which every caller treats as a
 # failed check — a run that never printed the sentinel (crashed runtime,
 # swallowed stderr) must read as unverified, never as leak-free.
-arc_live_count() {
+live_count() {
   local matches
-  matches=$(sed -n 's/^\[osp-arc\] exit: \([0-9]*\) live objects.*/\1/p' "$1")
+  matches=$(sed -n "s/^\[osp-$MEMORY\] exit: \([0-9]*\) live objects.*/\1/p" "$1")
   [[ -n "$matches" && "$matches" != *$'\n'* ]] && print -r -- "$matches"
 }
 
@@ -212,13 +212,12 @@ case $TARGET in
   wasm32|ios-sim|macos|android*) MEMORY=${1:-arc} ;;
   *) MEMORY=${1:-gc} ;;
 esac
-# The ARC leak oracle reads the runtime's exit report, which memory_arc.c
-# arms only under OSPREY_ARC_DEBUG. The harness arms it ITSELF whenever it
-# audits the arc backend: the sentinel check below is strict (exactly one
-# line, value 0, for every passing run in BOTH kernel lowerings), and an
-# oracle that depends on the caller remembering an env var is fail-open by
-# construction — an unarmed run would read as leak-free.
-[[ "$MEMORY" == "arc" ]] && export OSPREY_ARC_DEBUG=1
+LEAK_CHECK=1
+case $MEMORY in
+  arc) export OSPREY_ARC_DEBUG=1 ;;
+  ownership) export OSPREY_OWNERSHIP_DEBUG=1 ;;
+  *) LEAK_CHECK=0 ;;
+esac
 JOBS=$(configured_jobs)
 jobs_code=$?
 [[ $jobs_code -eq 0 ]] || exit $jobs_code
@@ -351,8 +350,8 @@ for (( index = 1; index <= ${#FILES}; index++ )); do
   # runtime to print one and is already red above. For a passing run the
   # sentinel is REQUIRED to be present and zero; parsing "no line" as "no
   # leak" is how a crashed exit path would read as leak-free.
-  if [[ "$MEMORY" == "arc" && $rc -eq 0 ]]; then
-    live=$(arc_live_count "$ERRFILE")
+  if [[ $LEAK_CHECK -eq 1 && $rc -eq 0 ]]; then
+    live=$(live_count "$ERRFILE")
     if [[ "$live" != "0" ]]; then
       leaky=$((leaky + 1))
       LEAKS+=("$rel (${live:-no sentinel})")
@@ -439,8 +438,8 @@ if [[ $golden_total -lt $GOLDEN_MIN ]]; then
   echo "Goldens pin output properties assertions cannot express (print ORDER, exact" >&2
   echo "formatting, the TAP tally). Restore the missing goldens; do not lower the floor." >&2
 fi
-if [[ "$MEMORY" == "arc" ]]; then
-  echo "TEST_CORPUS_ARC_LEAKY=$leaky"
+if [[ $LEAK_CHECK -eq 1 ]]; then
+  echo "TEST_CORPUS_${(U)MEMORY}_LEAKY=$leaky"
   for item in $LEAKS; do echo "  leak: $item"; done
 fi
 
@@ -469,7 +468,7 @@ if (( ${#alt_pairs} > 0 )); then
     fi
     gpu_mode_pairs=$((gpu_mode_pairs + 1))
     # The oracle is AGREEMENT on the whole observable outcome, not stdout
-    # alone: exit status, raw transcript bytes, and (under ARC) the leak
+    # alone: exit status, raw transcript bytes, and, where enabled, the leak
     # sentinel. Comparing stdout via command substitution once let the
     # alternate lowering crash, leak, or drop a trailing line unnoticed.
     main_rc=1 alt_rc=1
@@ -480,9 +479,9 @@ if (( ${#alt_pairs} > 0 )); then
       mode_diverged="exit $alt_rc vs $main_rc"
     elif ! cmp -s -- "$RESULTDIR/$index.stdout" "$ALTDIR/$index.stdout"; then
       mode_diverged="transcripts differ"
-    elif [[ "$MEMORY" == "arc" && "$main_rc" == "0" ]]; then
-      alt_live=$(arc_live_count "$ALTDIR/$index.stderr")
-      [[ "$alt_live" == "0" ]] || mode_diverged="alternate ARC sentinel: ${alt_live:-missing}"
+    elif [[ $LEAK_CHECK -eq 1 && $main_rc -eq 0 ]]; then
+      alt_live=$(live_count "$ALTDIR/$index.stderr")
+      [[ "$alt_live" == "0" ]] || mode_diverged="alternate $MEMORY sentinel: ${alt_live:-missing}"
     fi
     if [[ -n "$mode_diverged" ]]; then
       gpu_mode_fail=$((gpu_mode_fail + 1))
