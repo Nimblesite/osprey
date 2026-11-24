@@ -52,10 +52,7 @@ keymapJourney () =
         succeeds (synth::Keymaps::decode (synth::Keymaps::encode keymap), \again =>
             forEachList (synth::Keymaps::commands (), \command => expect (synth::Keymaps::keys (again, command), synth::Keymaps::keys (keymap, command)))))
     expect (length (synth::Keymaps::commands ()), 26)
-    expect (synth::Keymaps::keys (synth::Keymaps::preset "Logic Style", "routing"), "X")
-    expect (synth::Keymaps::keys (synth::Keymaps::preset "Logic Style", "save"), "Cmd+S")
-    expect (synth::Keymaps::keys (synth::Keymaps::preset "Ableton Style", "timeline"), "Tab")
-    expect (synth::Keymaps::keys (synth::Keymaps::preset "Prism", "playSong"), synth::Keymaps::keys (synth::Keymaps::preset "Prism", "stopSong"))
+    forEachList ([{ style = "Logic Style", command = "routing", want = "X" }, { style = "Logic Style", command = "save", want = "Cmd+S" }, { style = "Ableton Style", command = "timeline", want = "Tab" }, { style = "Prism", command = "playSong", want = synth::Keymaps::keys (synth::Keymaps::preset "Prism", "stopSong") }], \row => expect (synth::Keymaps::keys (synth::Keymaps::preset row.style, row.command), row.want))
     succeeds (synth::Keymaps::decode "{\"name\": \"Mine\", \"shortcuts\": {\"save\": \"Cmd+Alt+S\", \"playSong\": \"F5\", \"stopSong\": \"F5\"}}", \mine =>
         expect (synth::Keymaps::keys (mine, "save"), "Cmd+Alt+S")
         expect (synth::Keymaps::keys (mine, "open"), "Cmd+O")
@@ -551,12 +548,7 @@ arrangementsJourney () =
     failsWith (trackBuses (song120, silent, arrangedDrum ("kick", 1.0, 0.25, [arrangedPitched (128, 0.0)]), 3), "kick: ${refusesNote}")
     // interleaved: left and right woven frame by frame, zero past the end, empty when from reaches until.
     stereo = daw::Mixdown(left = [1.0, 2.0], right = [3.0, 4.0], peak = 9.9)
-    expect (daw::Arrangements::interleaved (stereo, 0, 2), [1.0, 3.0, 2.0, 4.0])
-    expect (daw::Arrangements::interleaved (stereo, 1, 2), [2.0, 4.0])
-    expect (daw::Arrangements::interleaved (stereo, 1, 1), [])
-    expect (daw::Arrangements::interleaved (stereo, 2, 1), [])
-    expect (daw::Arrangements::interleaved (stereo, 2, 2), [])
-    expect (daw::Arrangements::interleaved (stereo, 0, 4), [1.0, 3.0, 2.0, 4.0, 0.0, 0.0, 0.0, 0.0])
+    forEachList ([{ from = 0, until = 2, want = [1.0, 3.0, 2.0, 4.0] }, { from = 1, until = 2, want = [2.0, 4.0] }, { from = 1, until = 1, want = [] }, { from = 2, until = 1, want = [] }, { from = 2, until = 2, want = [] }, { from = 0, until = 4, want = [1.0, 3.0, 2.0, 4.0, 0.0, 0.0, 0.0, 0.0] }], \row => expect (daw::Arrangements::interleaved (stereo, row.from, row.until), row.want))
 // Registered through the journey chain above (historyDragJourney), this file's path in from main.ospml's tests.
 
 // [SYNTH-ADVANCED-ORDER] Every family plays a real note through the song renderer: a chain of nodes, each cabled

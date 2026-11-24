@@ -75,6 +75,9 @@ graphRun (graph, output, sizes, check) =
     journey = foldList (sizes, failedJourney (), \(prior, span) => continuedJourney (graph, output, prior, span))
     check journey.runHeld journey.runAudio
 
+// A second run over equal halves must reproduce the first run's state and samples exactly.
+replayed (graph, output, size, clock, audio) = graphRun (graph, output, [size, size], \againClock againAudio => expect (structuralEquals (againClock, clock) && structuralEquals (againAudio, audio), true))
+
 // [SYNTH-ADVANCED-GRAINS-INTEGRATION] One playable preset graph through the hosted GraphClips executor: finite,
 // bounded, nonzero audio that survives 512-frame partitioning and repeats its exact state and samples.
 presetHeard outcome =
@@ -87,8 +90,7 @@ presetHeard outcome =
     expect (absSum whole.clipSamples > 0.0, true)
     graphRun (graph, output, [512, 512], \clock audio =>
         sameSamples (audio, whole.clipSamples)
-        graphRun (graph, output, [512, 512], \againClock againAudio =>
-            expect (structuralEquals (againClock, clock) && structuralEquals (againAudio, audio), true)))
+        replayed (graph, output, 512, clock, audio))
     whole.clipSamples
 
 granularSource () = synth::SampleResource(name = "grain", sampleRate = 48000, sourceChannels = 1, rootFrequency = 440.0, samples = [0.5, -0.5, 0.25, -0.25])
@@ -266,8 +268,7 @@ registerClipJourneys () =
         graphRun (granularGraph (), 2, [256, 256], \clock audio =>
             expect (clock.graphPosition == 512 && length clock.graphKernels == 1, true)
             expect (length audio, 1024)
-            graphRun (granularGraph (), 2, [256, 256], \againClock againAudio =>
-                expect (structuralEquals (againClock, clock) && structuralEquals (againAudio, audio), true)))
+            replayed (granularGraph (), 2, 256, clock, audio))
         match synth::GraphClips::start (granularGraph (), 256)
             Error why => expect (synth::Faults::detail why, "a first granular block")
             Success first => match first
@@ -282,10 +283,8 @@ registerClipJourneys () =
                         _ => unexpected ()
                     succeeds (synth::GraphClips::advance (granularGraph (), [], 256), \again => sameStructure (again, synth::ClipReady(clips = clips)))
         renderRefused (synth::GraphClips::advance (granularGraph (), [], 2049))
-        channelForged = synth::NodeKernels(kernelNode = 1, kernelMemory = synth::ChannelMemory(channels = [synth::RenderInputs::initialState (granularNode ())]))
-        renderRefused (synth::GraphClips::next (granularGraph (), synth::GraphState(graphHosted = [], graphPosition = 0, graphKernels = [channelForged]), 64))
-        absentForged = synth::NodeKernels(kernelNode = 99, kernelMemory = synth::MidiMemory(voice = synth::MidiOscillators::initial (granularNode ())))
-        renderRefused (synth::GraphClips::next (granularGraph (), synth::GraphState(graphHosted = [], graphPosition = 0, graphKernels = [absentForged]), 64))))
+        forEachList ([synth::NodeKernels(kernelNode = 1, kernelMemory = synth::ChannelMemory(channels = [synth::RenderInputs::initialState (granularNode ())])), synth::NodeKernels(kernelNode = 99, kernelMemory = synth::MidiMemory(voice = synth::MidiOscillators::initial (granularNode ())))], \forged =>
+            renderRefused (synth::GraphClips::next (granularGraph (), synth::GraphState(graphHosted = [], graphPosition = 0, graphKernels = [forged]), 64)))))
     test ("granular preset patches [SYNTH-ADVANCED-GRAINS-INTEGRATION] render finite, bounded, nonzero, deterministic and distinct audio", \() => arithmetic (\() =>
         cloud = presetHeard (Patches::grainCloud ())
         rhythm = presetHeard (Patches::rhythmicGrains ())

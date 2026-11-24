@@ -125,25 +125,8 @@ movedWith (mode, confirm, ticket, heading) =
     reloaded ()
 
 test ("typed amounts read as whole cents, and anything else as zero", \() =>
-    expect (Amounts::cents "$1,980.25", 198025)
-    expect (Amounts::cents "1980.25", 198025)
-    expect (Amounts::cents "  7.07 ", 707)
-    expect (Amounts::cents "12", 1200)
-    expect (Amounts::cents "0.5", 50)
-    expect (Amounts::cents "1,000", 100000)
-    expect (Amounts::cents "1,000,000.01", 100000001)
-    expect (Amounts::cents "1,2", 0)
-    expect (Amounts::cents "12,34", 0)
-    expect (Amounts::cents "-5", 0)
-    expect (Amounts::cents "+5", 0)
-    expect (Amounts::cents "1.234", 0)
-    expect (Amounts::cents "1.", 0)
-    expect (Amounts::cents "abc", 0)
-    expect (Amounts::cents "9223372036854775807.50", 0)
-    expect (Amounts::cents "92233720368547758.08", 0)
-    expect (Amounts::cents "92233720368547758.07", 9223372036854775807)
-    expect (Amounts::cents "99999999999999999999", 0)
-    expect (Amounts::cents "", 0))
+    forEachList ([{ text = "$1,980.25", cents = 198025 }, { text = "1980.25", cents = 198025 }, { text = "  7.07 ", cents = 707 }, { text = "12", cents = 1200 }, { text = "0.5", cents = 50 }, { text = "1,000", cents = 100000 }, { text = "1,000,000.01", cents = 100000001 }], \row => expect (Amounts::cents row.text, row.cents))
+    forEachList ([{ text = "1,2", cents = 0 }, { text = "12,34", cents = 0 }, { text = "-5", cents = 0 }, { text = "+5", cents = 0 }, { text = "1.234", cents = 0 }, { text = "1.", cents = 0 }, { text = "abc", cents = 0 }, { text = "9223372036854775807.50", cents = 0 }, { text = "92233720368547758.08", cents = 0 }, { text = "92233720368547758.07", cents = 9223372036854775807 }, { text = "99999999999999999999", cents = 0 }, { text = "", cents = 0 }], \row => expect (Amounts::cents row.text, row.cents)))
 test ("a launch asks for both listings from the demo server and shows progress", \() => bench (\() =>
     launchWith []
     expect (asked (), "GET http://127.0.0.1:18790/api/accounts  accounts;GET http://127.0.0.1:18790/api/activity  activity")

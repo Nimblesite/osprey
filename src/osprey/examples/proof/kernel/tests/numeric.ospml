@@ -13,11 +13,11 @@ import proof::Fixtures
 
 (** Exact numeric reductions and forged/malformed controls. Implements [PROOF-KERNEL-THEORY]. *)
 module NumericTests
-    (** `next` over `file`'s fixture environment; a load failure fails the case and stops. *)
-    loadedOr (file, label, next) = match loaded file
+    (** `result`'s value through `next`, or the refusal `label` names for its error. *)
+    checkedOr (result, label, next) = match result
         Error message => check label "success" message
-        Success env => next env
-    export run () = loadedOr ("canonical-defs.ndjson", "canonical environment loads", runLoaded)
+        Success value => next value
+    export run () = checkedOr (loaded "canonical-defs.ndjson", "canonical environment loads", runLoaded)
 
     (** The canonical environment's suite sections, in order. *)
     runLoaded (env) =
@@ -165,7 +165,7 @@ module NumericTests
         forgedBle (mutated (env, "Bool.true", ctor ("Bool", 0, 0, 0)), "forged Bool constructor tag")
         forgedBle (mutated (env, "PProd.mk", ctor ("PProd", 0, 2, 1)), "forged pair constructor field count")
         forgedBle (changedRecursor (env, "minors"), "forged recursor minor count")
-        loadedOr ("forged-ble-defs.ndjson", "forged but well typed fixture loads", forgedFixture)
+        checkedOr (loaded "forged-ble-defs.ndjson", "forged but well typed fixture loads", forgedFixture)
 
     (** The forged-but-well-typed environment's two verdicts. *)
     forgedFixture (fake) =
@@ -204,9 +204,7 @@ module NumericTests
     (** `result`'s environment, or the refusal of `term`, which the forgery
         must not accelerate: a failed mutation fails the case before it can
         read as a refusal. *)
-    forged (result, label, term) = match result
-        Error message => check label "success" message
-        Success env => refused (env, label, term)
+    forged (result, label, term) = checkedOr (result, label, \env => refused (env, label, term))
 
     (** The forgery cases all read their verdict through one comparison. *)
     forgedBle (result, label) = forged (result, label, ble (small 0, small 1))
@@ -214,14 +212,13 @@ module NumericTests
     (** A symbolic left operand disables the numeric shortcut regardless of
         the right operand. The enclosing lambda independently checks its scope
         and type. Implements [PROOF-KERNEL-THEORY]. *)
-    export shortCircuit () = test ("symbolic numeric shortcut leaves its discarded right operand alone", \() => loadedOr ("canonical-defs.ndjson", "canonical environment loads", shortCircuitLoaded))
+    export shortCircuit () = test ("symbolic numeric shortcut leaves its discarded right operand alone", \() => checkedOr (loaded "canonical-defs.ndjson", "canonical environment loads", shortCircuitLoaded))
 
     (** The symbolic product is well typed and its outcome is a refusal. *)
     shortCircuitLoaded (env) = shortCircuitTyped (env, symbolicProduct 32)
 
-    shortCircuitTyped (env, term) = match Infer::infer (env, [], Lam "n" (Const "Nat" []) term)
-        Error message => check "symbolic product is well typed" "success" message
-        Success _ => expect (outcome (env, term), "disabled")
+    shortCircuitTyped (env, term) = checkedOr (Infer::infer (env, [], Lam "n" (Const "Nat" []) term), "symbolic product is well typed",
+        \_ => expect (outcome (env, term), "disabled"))
 
     symbolicProduct depth = match depth == 0
         true => BVar 0
@@ -231,9 +228,7 @@ module NumericTests
 
     (** Guarded literal `Nat.pow` and `Nat.beq` ([PROOF-KERNEL-THEORY]): `pow` exact up to Lean's 2^24
         exponent bound, both off whenever their pinned trees are not the environment's. *)
-    powers () = match exportedEmpty (Fixtures::natLiterals ())
-        Error message => check "power closure loads" "success" message
-        Success env => powerCases (env)
+    powers () = checkedOr (exportedEmpty (Fixtures::natLiterals ()), "power closure loads", powerCases)
 
     powerCases (env) =
         test ("2^64 is exact under the pinned power closure", \() => expect (outcome (env, pow (small 2, small 64)), "reduced:18446744073709551616"))
@@ -249,10 +244,9 @@ module NumericTests
 
     beq (left, right) = applyTwoAt ("Nat.beq", [], left, right)
 
-    forgedEquality () = match exportedEmpty (Fixtures::natEqualityForged ())
+    (** The verdict `verdict` reads on the forged closure `fixture` exports, or why it did not load. *)
+    forgedOutcome (fixture, verdict) = match exportedEmpty fixture
         Error message => "forged closure did not load: ${message}"
-        Success forged => outcome (forged, beq (small 7, small 7))
-
-    forgedPower () = match exportedEmpty (Fixtures::natPowerForged ())
-        Error message => "forged closure did not load: ${message}"
-        Success forged => outcome (forged, pow (small 2, small 64))
+        Success forged => verdict forged
+    forgedEquality () = forgedOutcome (Fixtures::natEqualityForged (), \forged => outcome (forged, beq (small 7, small 7)))
+    forgedPower () = forgedOutcome (Fixtures::natPowerForged (), \forged => outcome (forged, pow (small 2, small 64)))

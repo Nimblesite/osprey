@@ -256,8 +256,7 @@ identityJourney () =
     allDistinct (mapList (variants, sampleHash))
     forEachList ([{ channels = 1, count = 6, frames = 6 }, { channels = 2, count = 6, frames = 3 }, { channels = 2, count = 7, frames = 3 }, { channels = 8, count = 64, frames = 8 }, { channels = 0, count = 5, frames = 5 }], \c => expect ((synth::Resources::sample (resourceOf ("pad", 48000, c.channels, 60.0, mapList (toList (range (0, c.count)), toFloat)))).frames, c.frames))
     expect ((synth::Resources::matches (id, id)) ?: id(hash = 0), id)
-    refusedAs (synth::Resources::matches (id, synth::Resources::sample (kick(samples = [0.0, 0.5, -0.5, 0.75]))), "resource", "The resource kick changed since the project saved it.")
-    refusedAs (synth::Resources::matches (id, synth::Resources::sample (kick(sampleRate = 96000))), "resource", "The resource kick changed since the project saved it.")
+    forEachList ([kick(samples = [0.0, 0.5, -0.5, 0.75]), kick(sampleRate = 96000)], \changed => refusedAs (synth::Resources::matches (id, synth::Resources::sample changed), "resource", "The resource kick changed since the project saved it."))
     forEachList ([id(name = "snare"), id(version = 2), id(version = 0)], \saved => refusedAs (synth::Resources::matches (saved, id), "resource", "The saved resource ${saved.name} is missing or uses another identity version."))
     // Tables hash every frame and level; a table is one rate-independent channel of `size` samples.
     phasedTableIdentity ()
@@ -320,9 +319,7 @@ registerWaveJourneys () =
             near (resource.rootFrequency, 261.6255653005986, 0.000000001)
             sameSamples (resource.samples, [0.25, -0.25, 0.75, -0.75]))
         forEachList ([-0.5, 127.5], \root => refusedWith (SampleResources::fromWave ("loop", root, wave), "Invalid sample root pitch or decoded frame count."))
-        refusedWith (SampleResources::fromWave ("loop", 60.0, wave(frames = 3)), "Invalid sample root pitch or decoded frame count.")
-        refusedWith (SampleResources::fromWave ("loop", 60.0, wave(samples = [2.0, -2.0, 0.25, -0.25])), "Grains require 2–1048576 finite normalised mono samples and capacity 1–256.")
-        refusedWith (SampleResources::fromWave ("loop", 60.0, wave(channels = 3)), "Invalid sample resource name, sample rate, source channels or root frequency.")
+        forEachList ([{ bad = wave(frames = 3), why = "Invalid sample root pitch or decoded frame count." }, { bad = wave(samples = [2.0, -2.0, 0.25, -0.25]), why = "Grains require 2–1048576 finite normalised mono samples and capacity 1–256." }, { bad = wave(channels = 3), why = "Invalid sample resource name, sample rate, source channels or root frequency." }], \c => refusedWith (SampleResources::fromWave ("loop", 60.0, c.bad), c.why))
         succeeds (SampleResources::decodeWave ("loop", 60.0, wavFile (1, 1, 48000, 16, [0, 64, 0, 128])), \resource => sameSamples (resource.samples, [0.5, -1.0]))
         refusedAs (SampleResources::decodeWave ("loop", 60.0, wavText "RIFF"), "resource", "WAV file size must be between 12 bytes and 8 MiB.")
         succeeds (SampleResources::fromWave ("loop", 60.0, wave), \tuned =>

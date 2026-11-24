@@ -194,16 +194,14 @@ test ("start sends every region once with the theme", \() => ui::Runtime::guarde
     expect (first.surfaceSession.sessionContext.platform, "linux")
     // Every row of the open frame: the theme record, then the root and note regions as told trees.
     expect (walkedWords first, "|||canvas|#FFFFFF|#000000|||||||root||stack|vertical|||text|Count 0|body|primary||button|Go|play|plain||||button|Go|play|plain||||slot|note||note||stack|vertical|||field|Note|linux||||edit|||button|Load|tray|plain||||button|Load|tray|plain||")))
-// The words of the note region's own rows: the suffix of a frame's joined words from the note region's key row —
-// the second row naming `note`, after the root region's slot names the region it holds.
-notePortion words = match indexOf words "note||note|"
+// The frame's joined words cut at the note region's key row — `cut` picks the slice, or keeps the words when no row names it.
+noteCut (words, cut) = match indexOf words "note||note|"
     Error _ => words
-    Success at => substring words (at + 12) (length words) ?: words
-
+    Success at => cut at ?: words
+// The note region's own rows: the suffix of a frame's joined words from the key row that names `note`.
+notePortion words = noteCut (words, \at => substring words (at + 12) (length words))
 // The words before those: the theme and the whole root region, up to the note region's key row.
-rootPortion words = match indexOf words "note||note|"
-    Error _ => words
-    Success at => substring words 0 at ?: words
+rootPortion words = noteCut (words, \at => substring words 0 at)
 
 test ("a tap refreshes only the region whose signal changed", \() => ui::Runtime::guarded (\() =>
     first = Probes::started ()

@@ -346,6 +346,8 @@ grainEventOrderJourney () =
         succeeds (Grains::scheduled (pool, 4, mapList (grainQuiet 2048, \_ => synth::GrainEvent(position = 0, controls = controls))), \many =>
             expect (length many.left, 4)))
 
+grainEventsRefused (bads, attempt) = forEachList (bads, \bad => refusedWith (attempt bad, "Invalid grain distribution bounds, sample positions or random seeds."))
+
 // [SYNTH-ADVANCED-GRAINS-DISTRIBUTIONS] Five separately seeded streams, inclusive uniform durations.
 grainDistributionJourney () =
     controls = grainControls synth::HannWindow
@@ -375,13 +377,10 @@ grainDistributionJourney () =
             sameStructure ((grainEventAt (held.events, 0)).controls, low)
             sameStructure (held.next, grainAdvancedOnce seeds))
         // Identical window settings and ordered minima are required at both ends.
-        forEachList ([synth::GrainDistribution(minimum = low(window = synth::AsrWindow(attack = 0.25, release = 0.25)), maximum = high), synth::GrainDistribution(minimum = low(start = 3.5), maximum = high), synth::GrainDistribution(minimum = low(rate = 2.5), maximum = high), synth::GrainDistribution(minimum = low(duration = 13), maximum = high), synth::GrainDistribution(minimum = low(amplitude = 0.8), maximum = high), synth::GrainDistribution(minimum = low(pan = 0.6), maximum = high)], \bad =>
-            refusedWith (GrainDistributions::events ([0], bad, 16, seeds), "Invalid grain distribution bounds, sample positions or random seeds."))
-        forEachList ([seeds(position = 0), seeds(rate = 2147483647), seeds(duration = -5), seeds(amplitude = 0), seeds(pan = 2147483647)], \bad =>
-            refusedWith (GrainDistributions::events ([0], ranges, 16, bad), "Invalid grain distribution bounds, sample positions or random seeds."))
-        forEachList ([[0, -1], [5, 3], toList (range (0, 2049))], \positions =>
-            refusedWith (GrainDistributions::events (positions, ranges, 16, seeds), "Invalid grain distribution bounds, sample positions or random seeds."))
-        forEachList ([1, 1048577], \size => refusedWith (GrainDistributions::events ([0], ranges, size, seeds), "Invalid grain distribution bounds, sample positions or random seeds."))
+        grainEventsRefused ([synth::GrainDistribution(minimum = low(window = synth::AsrWindow(attack = 0.25, release = 0.25)), maximum = high), synth::GrainDistribution(minimum = low(start = 3.5), maximum = high), synth::GrainDistribution(minimum = low(rate = 2.5), maximum = high), synth::GrainDistribution(minimum = low(duration = 13), maximum = high), synth::GrainDistribution(minimum = low(amplitude = 0.8), maximum = high), synth::GrainDistribution(minimum = low(pan = 0.6), maximum = high)], \bad => GrainDistributions::events ([0], bad, 16, seeds))
+        grainEventsRefused ([seeds(position = 0), seeds(rate = 2147483647), seeds(duration = -5), seeds(amplitude = 0), seeds(pan = 2147483647)], \bad => GrainDistributions::events ([0], ranges, 16, bad))
+        grainEventsRefused ([[0, -1], [5, 3], toList (range (0, 2049))], \positions => GrainDistributions::events (positions, ranges, 16, seeds))
+        grainEventsRefused ([1, 1048577], \size => GrainDistributions::events ([0], ranges, size, seeds))
         succeeds (GrainDistributions::events (toList (range (0, 2048)), ranges, 16, seeds), \full => expect (length full.events, 2048)))
 
 // [SYNTH-ADVANCED-GRAINS-DISTRIBUTIONS] Symmetric widths clip to the declared control domains.
@@ -704,7 +703,7 @@ registerGrainJourneys () =
         ranges = synth::GrainDistribution(minimum = controls, maximum = controls)
         succeeds (GrainDistributions::seeded 7, \seeds =>
             // Unordered positions, a one-sample source, and a minimum above its maximum.
-            forEachList ([{ at = [5, 3], within = ranges, size = 16 }, { at = [1], within = ranges, size = 1 }, { at = [1], within = synth::GrainDistribution(minimum = controls(start = 2.0), maximum = controls), size = 16 }], \c => refusedWith (GrainDistributions::events (c.at, c.within, c.size, seeds), "Invalid grain distribution bounds, sample positions or random seeds."))
+            grainEventsRefused ([{ at = [5, 3], within = ranges, size = 16 }, { at = [1], within = ranges, size = 1 }, { at = [1], within = synth::GrainDistribution(minimum = controls(start = 2.0), maximum = controls), size = 16 }], \c => GrainDistributions::events (c.at, c.within, c.size, seeds))
             succeeds (GrainDistributions::events ([], ranges, 16, seeds), \none => expect (length none.events == 0 && structuralEquals (none.next, seeds), true)))
         still = synth::GrainSpread(position = 0.0, rate = 0.0, duration = 0, amplitude = 0.0, pan = 0.0)
         forEachList ([{ size = 16, spread = still(position = -1.0) }, { size = 1, spread = still }], \c => refusedWith (GrainSpreads::around (controls, c.size, c.spread), "Invalid grain variation center or spread."))

@@ -82,23 +82,25 @@ test ("state-variable filter preserves blocks, passes DC, rejects DC high-pass a
     base = synth::FilterConfig(sampleRate = 48000.0, cutoff = 1000.0, resonance = 0.7)
     forEachList ([base(cutoff = 0.0), base(cutoff = 24000.0), base(resonance = 0.0), base(resonance = 21.0), base(sampleRate = 0.0)], invalidFilter)))
 
-test ("parameter edits publish applied Signals, reject stale revisions, and preserve independent values", \() => arithmetic (\() =>
+// The one-knob cutoff graph with its initial snapshot and the standard 880 Hz edit.
+cutoffEdits (audio, check) =
     blank = node (1, synth::Filter, [audio], [audio])
-    component = blank(parameters = [parameter "cutoff"])
-    graph = accepted (Graphs::add (Graphs::empty, component))
-    initial = Parameters::initial graph
-    expect (readValue initial, 440.0)
-    edit = synth::ParameterChange(node = 1, key = "cutoff", value = 880.0, revision = 0, samplePosition = 0)
-    valid (Parameters::apply (graph, initial, edit), \next =>
-        expect (readValue next, 880.0)
+    graph = accepted (Graphs::add (Graphs::empty, blank(parameters = [parameter "cutoff"])))
+    check (graph, Parameters::initial graph, synth::ParameterChange(node = 1, key = "cutoff", value = 880.0, revision = 0, samplePosition = 0))
+
+test ("parameter edits publish applied Signals, reject stale revisions, and preserve independent values", \() => arithmetic (\() =>
+    cutoffEdits (audio, \(graph, initial, edit) =>
         expect (readValue initial, 440.0)
-        expect (next.revision, 1)
-        refused (Parameters::apply (graph, next, edit), synth::StaleRevision))
-    refused (Parameters::apply (graph, initial, edit(value = 0.0)), synth::InvalidParameter)
-    refused (Parameters::apply (graph, initial, edit(samplePosition = 1)), synth::InvalidFrame)
-    refused (Parameters::apply (graph, initial, edit(key = "missing")), synth::MissingParameter)
-    refused (Parameters::apply (graph, initial, edit(node = 9)), synth::MissingNode)
-    refused (Parameters::apply (graph, initial(parameters = []), edit), synth::MissingParameter)))
+        valid (Parameters::apply (graph, initial, edit), \next =>
+            expect (readValue next, 880.0)
+            expect (readValue initial, 440.0)
+            expect (next.revision, 1)
+            refused (Parameters::apply (graph, next, edit), synth::StaleRevision))
+        refused (Parameters::apply (graph, initial, edit(value = 0.0)), synth::InvalidParameter)
+        refused (Parameters::apply (graph, initial, edit(samplePosition = 1)), synth::InvalidFrame)
+        refused (Parameters::apply (graph, initial, edit(key = "missing")), synth::MissingParameter)
+        refused (Parameters::apply (graph, initial, edit(node = 9)), synth::MissingNode)
+        refused (Parameters::apply (graph, initial(parameters = []), edit), synth::MissingParameter))))
 
 test ("graph validation covers corrupt persisted metadata, missing endpoints, fan-out and explicit channel adapters", \() => arithmetic (\() =>
     source = node (1, synth::Oscillator, [], [audio])
@@ -190,35 +192,34 @@ test ("mixing, filtering and explicit two-sample feedback execute the compiled g
     forEachList ([Graphs::empty, built ([node (1, synth::External(latency = 0, identifier = "future-vst3"), [], [audio]), Components::output 2], [cable (1, 2)]), built ([Components::gain (1, 1.0), Components::output 2], [cable (1, 2)])], \unconnected => renderRefused (Renderer::start unconnected))))
 
 test ("sample-accurate automation applies before its frame, preserves ordering and rejects stale or out-of-block events", \() => arithmetic (\() =>
+    automationKit (\(plan, snapshot, first) =>
+        mute = synth::ParameterChange(node = 2, key = "gain", value = 0.0, revision = 0, samplePosition = 17)
+        restore = mute(value = 0.5, revision = 1, samplePosition = 31)
+        succeeds (Renderer::automated (plan, 48000.0, snapshot, first, 64, [mute, restore]), \timeline =>
+            expect (timeline.observation.revision == 2 && timeline.observation.samplePosition == 64, true)
+            forEachList (toList (range (17, 31)), \i => near (listGet timeline.audio.samples i ?: -1.0, 0.0, 0.0))
+            forEachList ([{ frame = 16, scale = 1.0 }, { frame = 31, scale = 0.5 }], \r => near (listGet timeline.audio.samples r.frame ?: -1.0, sineAt (r.scale, 440.0, r.frame), 0.00000000001)))
+        forEachList ([[restore, mute], [mute(samplePosition = 64)], [mute, restore(revision = 0)]], \events => renderRefused (Renderer::automated (plan, 48000.0, snapshot, first, 64, events))))))
+
+// The gain-modulated sine graph shared by the automation journeys, with its plan, snapshot and first render.
+automationKit (check) =
     graph = sineThrough (1.0)
-    plan = planFor graph
-    snapshot = Parameters::initial graph
-    first = rendered (Renderer::start graph)
-    mute = synth::ParameterChange(node = 2, key = "gain", value = 0.0, revision = 0, samplePosition = 17)
-    restore = mute(value = 0.5, revision = 1, samplePosition = 31)
-    succeeds (Renderer::automated (plan, 48000.0, snapshot, first, 64, [mute, restore]), \timeline =>
-        expect (timeline.observation.revision == 2 && timeline.observation.samplePosition == 64, true)
-        forEachList (toList (range (17, 31)), \i => near (listGet timeline.audio.samples i ?: -1.0, 0.0, 0.0))
-        forEachList ([{ frame = 16, scale = 1.0 }, { frame = 31, scale = 0.5 }], \r => near (listGet timeline.audio.samples r.frame ?: -1.0, sineAt (r.scale, 440.0, r.frame), 0.00000000001)))
-    forEachList ([[restore, mute], [mute(samplePosition = 64)], [mute, restore(revision = 0)]], \events => renderRefused (Renderer::automated (plan, 48000.0, snapshot, first, 64, events)))))
+    check (planFor graph, Parameters::initial graph, rendered (Renderer::start graph))
 
 test ("same-frame automation applies in order and every block split renders the same samples", \() => arithmetic (\() =>
-    graph = sineThrough (1.0)
-    plan = planFor graph
-    snapshot = Parameters::initial graph
-    first = rendered (Renderer::start graph)
-    mute = synth::ParameterChange(node = 2, key = "gain", value = 0.0, revision = 0, samplePosition = 20)
-    quiet = mute(value = 0.25, revision = 1)
-    full = mute(value = 1.0, revision = 2, samplePosition = 40)
-    events = [mute, quiet, full]
-    succeeds (Renderer::automated (plan, 48000.0, snapshot, first, 64, events), \whole =>
-        expect (length whole.audio.samples, 64)
-        expect (whole.observation.revision, 3)
-        // Both frame-20 edits land before frame 20; the later one (0.25) is what sounds.
-        forEachList ([20, 21, 30, 39], \i => near (listGet whole.audio.samples i ?: -1.0, sineAt (0.25, 440.0, i), 0.00000000001))
-        forEachList ([0, 19, 40, 63], \i => near (listGet whole.audio.samples i ?: -1.0, sineWave (440.0, i), 0.00000000001))
-        forEachList ([1, 7, 19, 20, 21, 33, 40, 41, 63], \cut => succeeds (splitAt (plan, snapshot, first, events, cut), \pieces => sameStructure (pieces, whole.audio.samples))))
-    renderRefused (Renderer::automated (plan, 48000.0, snapshot, first, 64, [quiet, mute]))))
+    automationKit (\(plan, snapshot, first) =>
+        mute = synth::ParameterChange(node = 2, key = "gain", value = 0.0, revision = 0, samplePosition = 20)
+        quiet = mute(value = 0.25, revision = 1)
+        full = mute(value = 1.0, revision = 2, samplePosition = 40)
+        events = [mute, quiet, full]
+        succeeds (Renderer::automated (plan, 48000.0, snapshot, first, 64, events), \whole =>
+            expect (length whole.audio.samples, 64)
+            expect (whole.observation.revision, 3)
+            // Both frame-20 edits land before frame 20; the later one (0.25) is what sounds.
+            forEachList ([20, 21, 30, 39], \i => near (listGet whole.audio.samples i ?: -1.0, sineAt (0.25, 440.0, i), 0.00000000001))
+            forEachList ([0, 19, 40, 63], \i => near (listGet whole.audio.samples i ?: -1.0, sineWave (440.0, i), 0.00000000001))
+            forEachList ([1, 7, 19, 20, 21, 33, 40, 41, 63], \cut => succeeds (splitAt (plan, snapshot, first, events, cut), \pieces => sameStructure (pieces, whole.audio.samples))))
+        renderRefused (Renderer::automated (plan, 48000.0, snapshot, first, 64, [quiet, mute])))))
 
 test ("performance timbres and metallic warp stay bounded across rates and control extremes", \() => arithmetic (\() =>
     forEachList ([8000.0, 44100.0, 48000.0, 96000.0], \rate => forEachList ([0, 1, 2, 3], \instrument => forEachList ([0.0, 0.5, 1.0], \amount => performanceCase (rate, instrument, amount))))
@@ -344,33 +345,30 @@ test ("every component declares coherent port rates, channels, units and unique 
     expect (length (filterList (nodes, \n => length (filterList (n.outputs, \p => p.channels == 2)) > 0)) >= 2, true)))
 
 test ("controller writes stay pending until resolved, then apply with a revision or reject with a typed fault", \() => arithmetic (\() =>
-    blank = node (1, synth::Filter, [audio], [audio])
-    graph = accepted (Graphs::add (Graphs::empty, blank(parameters = [parameter "cutoff"])))
-    initial = Parameters::initial graph
-    edit = synth::ParameterChange(node = 1, key = "cutoff", value = 880.0, revision = 0, samplePosition = 0)
-    waiting = Commands::pending (initial, edit)
-    stillPending (waiting, edit)
-    expect (readValue waiting.snapshot, 440.0)
-    done = Commands::resolve (graph, waiting)
-    appliedAt (done, 1)
-    expect (readValue done.snapshot, 880.0)
-    expect (done.snapshot.revision, 1)
-    // Resolving an applied receipt changes nothing.
-    again = Commands::resolve (graph, done)
-    appliedAt (again, 1)
-    sameStructure (again.snapshot, done.snapshot)
-    // The same edit against the new snapshot is stale; the snapshot keeps the applied value.
-    stale = Commands::resolve (graph, Commands::pending (done.snapshot, edit))
-    rejectedWith (stale, synth::StaleRevision)
-    expect (readValue stale.snapshot, 880.0)
-    forEachList ([{ change = edit(value = 0.0), fault = synth::InvalidParameter }, { change = edit(samplePosition = 1), fault = synth::InvalidFrame }, { change = edit(key = "missing"), fault = synth::MissingParameter }, { change = edit(node = 9), fault = synth::MissingNode }], \c => rejectedWith (Commands::resolve (graph, Commands::pending (initial, c.change)), c.fault))
-    expect (readValue (Commands::resolve (graph, Commands::pending (initial, edit(value = 0.0)))).snapshot, 440.0)
-    // A rejected receipt stays rejected.
-    rejectedWith (Commands::resolve (graph, stale), synth::StaleRevision)
-    // Successive writes advance the revision one at a time.
-    second = Commands::resolve (graph, Commands::pending (done.snapshot, edit(value = 1760.0, revision = 1)))
-    appliedAt (second, 2)
-    expect (readValue second.snapshot, 1760.0)))
+    cutoffEdits (audio, \(graph, initial, edit) =>
+        waiting = Commands::pending (initial, edit)
+        stillPending (waiting, edit)
+        expect (readValue waiting.snapshot, 440.0)
+        done = Commands::resolve (graph, waiting)
+        appliedAt (done, 1)
+        expect (readValue done.snapshot, 880.0)
+        expect (done.snapshot.revision, 1)
+        // Resolving an applied receipt changes nothing.
+        again = Commands::resolve (graph, done)
+        appliedAt (again, 1)
+        sameStructure (again.snapshot, done.snapshot)
+        // The same edit against the new snapshot is stale; the snapshot keeps the applied value.
+        stale = Commands::resolve (graph, Commands::pending (done.snapshot, edit))
+        rejectedWith (stale, synth::StaleRevision)
+        expect (readValue stale.snapshot, 880.0)
+        forEachList ([{ change = edit(value = 0.0), fault = synth::InvalidParameter }, { change = edit(samplePosition = 1), fault = synth::InvalidFrame }, { change = edit(key = "missing"), fault = synth::MissingParameter }, { change = edit(node = 9), fault = synth::MissingNode }], \c => rejectedWith (Commands::resolve (graph, Commands::pending (initial, c.change)), c.fault))
+        expect (readValue (Commands::resolve (graph, Commands::pending (initial, edit(value = 0.0)))).snapshot, 440.0)
+        // A rejected receipt stays rejected.
+        rejectedWith (Commands::resolve (graph, stale), synth::StaleRevision)
+        // Successive writes advance the revision one at a time.
+        second = Commands::resolve (graph, Commands::pending (done.snapshot, edit(value = 1760.0, revision = 1)))
+        appliedAt (second, 2)
+        expect (readValue second.snapshot, 1760.0))))
 
 test ("a rendered grain shows its window: zero ends, Hann peak, ASR sustain, short grains and block-split and control-change invariance", \() => arithmetic (\() =>
     oneGrain (held (synth::HannWindow, 9, 0.0), 16, hann9)
