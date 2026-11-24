@@ -480,6 +480,15 @@ No single published system gives a functional language static memory safety with
 | Mutable value semantics [Racordon 2022] | Single-owner collections with no references in the language, copying when a value is used twice. | Values with no observable sharing. | The implicit copy. Osprey refuses the second use so that cost stays visible. |
 | Fully inferred reclamation [Proust 2017] | Frees can be inferred with no annotation, scanning at run time where the analysis is imprecise. | No annotations, ever. | The run-time scan. Osprey refuses the program, which still runs under `gc` or `arc`. |
 
+The findings this design rests on most, in their authors' words:
+
+| Published finding | Osprey design consequence |
+| --- | --- |
+| Reinking et al. describe precise reference counting as freeing an object “as soon as no more references remain.” [Perceus, §2.2 (Microsoft Research)](https://www.microsoft.com/en-us/research/wp-content/uploads/2021/06/perceus-pldi21.pdf) | Account for live borrows when proving a last use. A field or closure can still read an allocation after its owner's last direct read. |
+| Ullrich and de Moura describe “a heuristic for automatically inferring borrow annotations.” [Counting Immutable Beans, abstract (Karlsruhe Institute of Technology)](https://pp.ipd.kit.edu/uploads/publikationen/ullrich19counting.pdf) | Infer argument modes and verify each call against its callee's contract. |
+| Lorenzen and Leijen show that “borrowing can increase the memory usage of a program by an arbitrary amount.” [Reference Counting with Frame Limited Reuse, §4.2 (Microsoft Research)](https://www.microsoft.com/en-us/research/wp-content/uploads/2023/07/flreuse.pdf) | Measure peak live bytes while a consuming traversal builds its output. A zero exit count alone cannot detect prolonged retention. |
+| Tang et al. explain that “effect handlers allow continuations to be discarded (e.g. for exceptions) or invoked more than once (e.g. for backtracking).” [Soundly Handling Linearity, abstract (University of Edinburgh)](https://www.research.ed.ac.uk/files/407801113/Soundly_Handling_TANG_DOA07112023_VOR_CC_BY.pdf) | Dropping a continuation must release its owners. Repeated resumption requires proof that it preserves ownership and borrow lifetimes. |
+
 ### Beyond Rust [MEM-OWNERSHIP-STATIC-BEYOND-RUST]
 
 Rust is the reference point for static ownership. This backend has to do better than Rust on each property below. Each states Rust's documented position, Osprey's rule, and whether the rule is built.
