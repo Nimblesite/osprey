@@ -38,6 +38,8 @@ flavors/workflows/workflows.test.ts
 framework/verdict_declared.test.ospml
 modules/cross_namespace_patterns.test.osp
 modules/cross_namespace_patterns.test.ospml
+modules/file_scope_bindings.test.osp
+modules/file_scope_bindings.test.ospml
 modules/import_resolution.test.osp
 modules/import_resolution.test.ospml
 modules/module_boundary.test.osp
