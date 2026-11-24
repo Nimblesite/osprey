@@ -257,18 +257,9 @@ fn link(
     linked
 }
 
-/// clang argv to lower textual IR to a wasm object: target the wasm triple,
-/// optimize, suppress the module-triple-override note, compile only.
+/// clang argv to lower textual IR to an optimized wasm object.
 fn clang_argv(ll: &Path, obj: &Path) -> Vec<String> {
-    vec![
-        format!("--target={TRIPLE}"),
-        "-O2".to_string(),
-        "-Wno-override-module".to_string(),
-        "-c".to_string(),
-        ll.display().to_string(),
-        "-o".to_string(),
-        obj.display().to_string(),
-    ]
+    crate::desktop::object_argv(&[format!("--target={TRIPLE}"), "-O2".into()], ll, obj)
 }
 
 /// `wasm-ld` argv: the sysroot's `crt1-command.o` `_start`, the program object,
