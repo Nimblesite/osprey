@@ -258,8 +258,7 @@ swapped () =
     [BLOCK-DISCARD]; a Unit annotation could not, since even a discard of
     `any` counts as recovery at an annotation. *)
 _ = forward ("dis" + "carded")
-print "narrowed: ${describeAny (Boxed(held = "print" + "ed", tag = 0))}"
-print "rendered: ${erasedPoint ()}"
+print "narrowed: ${describeAny (Boxed(held = "print" + "ed", tag = 0))}\nrendered: ${erasedPoint ()}"
 
 (** Verify erased values still flow through fields, arguments, and union matches. *)
 anyTypeBehaviorCase () =

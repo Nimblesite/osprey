@@ -9,5 +9,4 @@ print("map bool    -> ${mapGet(mb, "k")}")
 let mi = mapSet(Map(), "k", 42)
 print("map int     -> ${mapGet(mi, "k")}")
 
-print("list string -> ${listGet(listAppend(List(), "he" + "ap"), 0) ?: "missing"}")
-print("list float  -> ${listGet(listAppend(List(), 1.5), 0) ?: 0.0}")
+print("list string -> ${listGet(listAppend(List(), "he" + "ap"), 0) ?: "missing"}\nlist float  -> ${listGet(listAppend(List(), 1.5), 0) ?: 0.0}")

@@ -162,9 +162,7 @@ fn sampleSquare() = Square { x: 3, y: 7 }
 // --- Literal matching ---
 print("Number analysis:\n0 is ${analyze(0)}\n42 is ${analyze(42)}\n7 is ${analyze(7)}\n")
 
-print("Even check (1=yes, 0=no):\n42 is even: ${isEven(42)}\n7  is even: ${isEven(7)}\n2  is even: ${isEven(2)}\n")
-
-print("Score categories:\nScore 100: ${category(100)}\nScore 85: ${category(85)}\nScore 50: ${category(50)}")
+print("Even check (1=yes, 0=no):\n42 is even: ${isEven(42)}\n7  is even: ${isEven(7)}\n2  is even: ${isEven(2)}\n\nScore categories:\nScore 100: ${category(100)}\nScore 85: ${category(85)}\nScore 50: ${category(50)}")
 
 // --- Nested match ---
 print("Nested 0,0: ${nested(x: 0, y: 0)}\nNested 0,3: ${nested(x: 0, y: 3)}\nNested 4,0: ${nested(x: 4, y: 0)}\nNested 4,5: ${nested(x: 4, y: 5)}")
