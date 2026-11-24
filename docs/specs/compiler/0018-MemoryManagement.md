@@ -443,43 +443,73 @@ refused"; the rest are the contract the remaining phases build.
   ownership the last use of the value, or build a separate value for that
   use. The diagnostic names the value and the use so either change is local.
 
-### Research basis [MEM-OWNERSHIP-STATIC-BASIS]
+### Research synthesis [MEM-OWNERSHIP-STATIC-BASIS]
 
-**Ownership and inference.** Linear types account for exactly one use of a
-resource. Osprey's ownership discipline permits a value to go unread and
-inserts a drop for its owner on that path. The checker uses liveness and
-aliasing to infer where to emit frees. Proust's ASAP also infers frees and
-uses run-time scanning where static information is insufficient. In
-`ownership` mode an unproved transfer is a compile error.
-[Linear Types Can Change the World! (IFIP 1990)](https://www.researchgate.net/profile/Philip-Wadler/publication/2429119_Linear_Types_Can_Change_the_World/links/6410b420315dfb4cce7cf9bc/Linear-Types-Can-Change-the-World.pdf) · [Linear Haskell (POPL 2018)](https://doi.org/10.1145/3158093) · [ASAP (Cambridge technical report, 2017)](https://www.cl.cam.ac.uk/techreports/UCAM-CL-TR-908.pdf)
+No single published system gives a functional language static memory safety with no annotations, no leaks and predictable space. Each line of research below solved one part. This section states what each established, the rule Osprey takes from it, and what Osprey leaves out. References are listed once, under [MEM-OWNERSHIP-STATIC-REFERENCES](#references-mem-ownership-static-references).
 
-**Escape and reuse.** A borrowed closure, collection view or field can be
-read only while its lender is alive. The checker must prove that neither
-the borrow nor a value carrying it escapes that lifetime. This is the
-relevant property of second-class values and OCaml's locality mode. Region
-inference provides another static approach to safe reclamation. Osprey
-tracks individual owners and borrow lifetimes. A collection operation may
-reuse storage once the old version and its borrows have reached their last
-use. Clean's uniqueness typing and FP² give precedents for that condition.
-[Affordable 2nd-Class Values (OOPSLA 2016)](https://www.cs.purdue.edu/homes/rompf/papers/osvald-oopsla16.pdf) · [Oxidizing OCaml with Modal Memory Management (ICFP 2024)](https://www.research.ed.ac.uk/files/475247237/LorenzenEtalPACMPL2024OxidizingOCamlWith.pdf) · [Region-Based Memory Management (Tofte and Talpin, 1997)](https://www.sciencedirect.com/science/article/pii/S0890540196926139) · [Uniqueness Typing (Barendsen and Smetsers, 1996)](https://www.cambridge.org/core/journals/mathematical-structures-in-computer-science/article/abs/uniqueness-typing-for-functional-languages-with-graph-rewriting-semantics/0BF63E550377419604F633CB61A78496) · [FP² (ICFP 2023)](https://webspace.science.uu.nl/~swier004/publications/2023-icfp.pdf)
+| Line of research | What it established | What Osprey takes | What Osprey leaves out |
+| --- | --- | --- | --- |
+| Linear and affine types [Wadler 1990; Baker 1992; Bernardy 2018] | A value used at most once needs no collector, and can be updated in place. | One owner per value, moved at its last use ([MEM-OWNERSHIP-STATIC-PATHS]). A value never read is dropped by its owner, so the discipline is affine. | Linearity written in types. Osprey infers it per binding. |
+| Uniqueness and in-place update [Barendsen 1996; Lorenzen 2023; Lorenzen 2024a; Marshall 2024] | A unique value can be overwritten without the program observing it. A function can be checked to reuse its argument and allocate nothing. | One live version of a list or map; a derived version takes its source ([MEM-OWNERSHIP-STATIC-SHARING]). | Uniqueness attributes in types, and an `fip` keyword. |
+| Alias control [Clarke 1998; Boyland 2001; Boyland 2003] | Aliases are safe when they can't outlive or bypass the owner. A borrowed unique value is unusable by its owner's writers until the borrow ends. Read permissions can be split and rejoined. | Any number of read-only borrows of one owner; the owner is freed after the last of them ([MEM-OWNERSHIP-STATIC-BORROWS]). | Ownership parameters on types, and fractional permissions as syntax. |
+| Regions [Tofte 1997; Grossman 2002; Fluet 2006] | Lifetimes can be inferred as nested regions and checked statically. | A borrow's lifetime is an inferred region that ends at the borrower's last read. | Region variables in types, and region-wide deallocation: a region frees late, at its end. |
+| Rust and its formal models [Matsakis 2017; Weiss 2019; Pearce 2021; Jung 2018; Jung 2020; Villani 2025; Ho 2022] | Ownership with borrowing is practical at scale, and is sound when proved against a model. Borrows should end at last use, not at scope end. Unsafe code needs an aliasing model of its own. | Moves, last-use borrows, refusal of a borrow that outlives its owner, a proof obligation at each runtime boundary ([MEM-OWNERSHIP-STATIC-SAFETY]). | Lifetime parameters, mutable borrows, `unsafe`, and reference-counted escape hatches. See [MEM-OWNERSHIP-STATIC-BEYOND-RUST](#beyond-rust-mem-ownership-static-beyond-rust). |
+| Precise reference counting [Reinking 2021; Ullrich 2019; Lorenzen 2022] | Ownership can be inferred from last uses, and a program can be garbage free: it retains only live values. Parameter modes can be inferred. Borrowing can raise peak memory without bound. | The ledger is the Perceus analysis with `dup` made an error. Owned parameters are inferred ([MEM-OWNERSHIP-STATIC-PARAMETERS]). | Run-time counts. The space bound is not yet met, see below. |
+| Second-class values and modes [Osvald 2016; Lorenzen 2024b] | A value that can't be stored or returned can't escape, with no lifetime written. | Lent closures, lent list literals, `...rest` views and collection reads ([MEM-OWNERSHIP-STATIC-CLOSURES]). | Mode annotations on types and bindings. |
+| Isolation between threads [Clebsch 2015; Fähndrich 2006] | A value that moves between threads of control, leaving no alias behind, needs no lock and no shared count. | `spawn`, `await`, `send` and `recv` move ([MEM-OWNERSHIP-STATIC-FIBERS]). | Capability annotations and a separate exchange heap. |
+| Effects and linearity [Tang 2024] | A handler may drop or re-run a continuation, so a linear value captured by one is unsound unless the operation is known to resume exactly once. | A continuation that owns values is resumed at most once, and frees them when dropped ([MEM-OWNERSHIP-STATIC-CLOSURES]). | A linearity annotation on operations. `control` and `many` already say it. |
+| Mutable value semantics [Racordon 2022] | Single-owner collections with no references in the language, copying when a value is used twice. | Values with no observable sharing. | The implicit copy. Osprey refuses the second use so that cost stays visible. |
+| Fully inferred reclamation [Proust 2017] | Frees can be inferred with no annotation, scanning at run time where the analysis is imprecise. | No annotations, ever. | The run-time scan. Osprey refuses the program, which still runs under `gc` or `arc`. |
 
-**Memory bounds and evidence.** A whole-call borrow may keep a large input
-alive while the callee allocates its result. Unrestricted borrow inference
-can increase peak memory by an arbitrary amount. A last-use input should
-transfer to a callee that can release it earlier, when the caller and callee
-can prove that transfer. Benchmark changes to borrow inference or reuse
-on growing inputs and report peak live bytes separately from exit-time
-leaks. Osprey has no established frame-local space bound for inferred
-borrows. Its soundness target is a proof that lowering preserves a unique
-owner and live lender for each borrow across every control-flow edge and
-that the runtime implements those transfers and frees. That proof remains
-open. Rust's syntactic and semantic models give precedents for it.
-[Reference Counting with Frame Limited Reuse, §4.2 (ICFP 2022)](https://www.microsoft.com/en-us/research/wp-content/uploads/2023/07/flreuse.pdf) · [Oxide](https://arxiv.org/abs/1903.00982) · [RustBelt (POPL 2018)](https://people.mpi-sws.org/~dreyer/papers/rustbelt/paper.pdf)
+### Beyond Rust [MEM-OWNERSHIP-STATIC-BEYOND-RUST]
 
-| Published finding | Osprey design consequence |
-| --- | --- |
-| Reinking et al. describe precise reference counting as freeing an object “as soon as no more references remain.” [Perceus, §2.2 (Microsoft Research)](https://www.microsoft.com/en-us/research/wp-content/uploads/2021/06/perceus-pldi21.pdf) | Account for live borrows when proving a last use. A field or closure can still read an allocation after its owner's last direct read. |
-| Ullrich and de Moura describe “a heuristic for automatically inferring borrow annotations.” [Counting Immutable Beans, abstract (Karlsruhe Institute of Technology)](https://pp.ipd.kit.edu/uploads/publikationen/ullrich19counting.pdf) | Infer argument modes and verify each call against its callee's contract. |
-| Lorenzen and Leijen show that “borrowing can increase the memory usage of a program by an arbitrary amount.” [Reference Counting with Frame Limited Reuse, §4.2 (Microsoft Research)](https://www.microsoft.com/en-us/research/wp-content/uploads/2023/07/flreuse.pdf) | Measure peak live bytes while a consuming traversal builds its output. A zero exit count alone cannot detect prolonged retention. |
-| Tang et al. explain that “effect handlers allow continuations to be discarded (e.g. for exceptions) or invoked more than once (e.g. for backtracking).” [Soundly Handling Linearity, abstract (University of Edinburgh)](https://www.research.ed.ac.uk/files/407801113/Soundly_Handling_TANG_DOA07112023_VOR_CC_BY.pdf) | Dropping a continuation must release its owners. Repeated resumption requires proof that it preserves ownership and borrow lifetimes. |
+Rust is the reference point for static ownership. This backend has to do better than Rust on each property below. Each states Rust's documented position, Osprey's rule, and whether the rule is built.
 
+- **No annotations. Built.** Rust infers lifetimes inside a function body and requires them in signatures [Matsakis 2017]. Osprey writes none anywhere: owners, borrows and parameter modes are inferred.
+- **No leaks. Built for accepted programs, tested, not proved.** Rust does not guarantee that destructors run: `mem::forget` is safe, and a cycle of `Rc` leaks [Rust RFC 1066]. Osprey has no way to forget a value and the heap is acyclic ([MEM-ACYCLIC]), so every owner is released. Each accepted regression must exit with no live object.
+- **No unsafe code in the language. Built.** A study of every Rust memory-safety CVE found that "all memory-safety bugs require unsafe code" [Xu 2021], and unsafe features are used extensively in published crates, most of all for interoperation [Astrauskas 2020]. Osprey source has no such construct. What is trusted is the C runtime and each `extern` declaration, held to [MEM-OWNERSHIP-STATIC-SAFETY].
+- **No aliasing model to obey. Built.** Rust needs Stacked Borrows or Tree Borrows to say which unsafe programs are defined [Jung 2020; Villani 2025]. Osprey values are immutable, so read-only borrows never conflict, and a `mut` binding, the only thing that changes, can't be borrowed.
+- **Freed at the last use. Built for owners.** Rust runs a destructor at the end of the binding's scope. Osprey releases an owner after its last read, the garbage-free property of [Reinking 2021]. A borrowed argument still lives for the whole call, see below.
+- **Refusal never changes a program. Built.** A Rust program the borrow checker refuses must be rewritten, often with `Rc<RefCell<T>>`, which moves the check to run time and can panic. A program `ownership` refuses compiles unchanged under `gc` or `arc` and gives the same output ([MEM-OPAQUE]).
+- **Effects and continuations under one rule. Built as refusal.** Rust has no effect handlers. Osprey applies [Tang 2024]: today every handler of a `control` or `many` operation is refused; the target is to accept one that resumes at most once.
+- **In-place update of persistent collections. Decided, not built.** A derived version whose source is at its last use may overwrite it [Lorenzen 2023]. Rust has no persistent collections in its language to do this for.
+- **A proof of the shipped checker. Not built.** Rust's proofs are of models: λRust [Jung 2018], Oxide [Weiss 2019] and Featherweight Rust [Pearce 2021], not of `rustc`. The target here is a mechanised model of the ledger with a proof that lowering preserves one owner per allocation and a live lender for every borrow on every control-flow edge. The backend is not declared shipped without it.
+- **A space bound. Not built.** [Lorenzen 2022] show that unrestricted borrowing can raise peak memory by an arbitrary amount and define the frame-limited bound that avoids it. Osprey must meet that bound: a value at its last use is given to a callee that can free it earlier. Until then, benchmarks report peak live bytes for `ownership` beside `gc` and `arc`, separately from exit-time leaks.
+
+**Where Rust is ahead today.** Rust accepts far more programs. It has mutable borrows, and it records ownership in types, so generic functions, functions passed as values and library boundaries are checked against a signature. Osprey infers ownership from the bodies of one executable, so those three keep borrowed parameters ([MEM-OWNERSHIP-STATIC-PARAMETERS]), and `ownership` accepts 39 of the 181 programs in `src/osprey/tests/` (2026-11-24). Rust's models are proved; Osprey's ledger is tested.
+
+### References [MEM-OWNERSHIP-STATIC-REFERENCES]
+
+- [Astrauskas 2020] Astrauskas, Matheja, Poli, Müller, Summers. "How Do Programmers Use Unsafe Rust?" OOPSLA 2020. [doi:10.1145/3428204](https://doi.org/10.1145/3428204)
+- [Baker 1992] Baker. "Lively Linear Lisp: 'Look Ma, No Garbage!'" ACM SIGPLAN Notices 27(8), 1992. [doi:10.1145/142137.142162](https://doi.org/10.1145/142137.142162)
+- [Barendsen 1996] Barendsen, Smetsers. "Uniqueness Typing for Functional Languages with Graph Rewriting Semantics." Mathematical Structures in Computer Science 6(6), 1996. [doi:10.1017/S0960129500070109](https://doi.org/10.1017/S0960129500070109)
+- [Bernardy 2018] Bernardy, Boespflug, Newton, Peyton Jones, Spiwack. "Linear Haskell: Practical Linearity in a Higher-Order Polymorphic Language." POPL 2018. [doi:10.1145/3158093](https://doi.org/10.1145/3158093)
+- [Boyland 2001] Boyland. "Alias Burying: Unique Variables without Destructive Reads." Software: Practice and Experience 31(6), 2001. [doi:10.1002/spe.370](https://doi.org/10.1002/spe.370)
+- [Boyland 2003] Boyland. "Checking Interference with Fractional Permissions." SAS 2003. [doi:10.1007/3-540-44898-5_4](https://doi.org/10.1007/3-540-44898-5_4)
+- [Clarke 1998] Clarke, Potter, Noble. "Ownership Types for Flexible Alias Protection." OOPSLA 1998. [doi:10.1145/286936.286947](https://doi.org/10.1145/286936.286947)
+- [Clebsch 2015] Clebsch, Drossopoulou, Blessing, McNeil. "Deny Capabilities for Safe, Fast Actors." AGERE! 2015. [doi:10.1145/2824815.2824816](https://doi.org/10.1145/2824815.2824816)
+- [Fähndrich 2006] Fähndrich, Aiken, Hawblitzel, Hodson, Hunt, Larus, Levi. "Language Support for Fast and Reliable Message-Based Communication in Singularity OS." EuroSys 2006. [doi:10.1145/1217935.1217953](https://doi.org/10.1145/1217935.1217953)
+- [Fluet 2006] Fluet, Morrisett, Ahmed. "Linear Regions Are All You Need." ESOP 2006. [doi:10.1007/11693024_2](https://doi.org/10.1007/11693024_2)
+- [Grossman 2002] Grossman, Morrisett, Jim, Hicks, Wang, Cheney. "Region-Based Memory Management in Cyclone." PLDI 2002. [doi:10.1145/512529.512563](https://doi.org/10.1145/512529.512563)
+- [Ho 2022] Ho, Protzenko. "Aeneas: Rust Verification by Functional Translation." ICFP 2022. [doi:10.1145/3547647](https://doi.org/10.1145/3547647)
+- [Jung 2018] Jung, Jourdan, Krebbers, Dreyer. "RustBelt: Securing the Foundations of the Rust Programming Language." POPL 2018. [doi:10.1145/3158154](https://doi.org/10.1145/3158154)
+- [Jung 2020] Jung, Dang, Kang, Dreyer. "Stacked Borrows: An Aliasing Model for Rust." POPL 2020. [doi:10.1145/3371109](https://doi.org/10.1145/3371109)
+- [Lorenzen 2022] Lorenzen, Leijen. "Reference Counting with Frame Limited Reuse." ICFP 2022. [doi:10.1145/3547634](https://doi.org/10.1145/3547634)
+- [Lorenzen 2023] Lorenzen, Leijen, Swierstra. "FP²: Fully in-Place Functional Programming." ICFP 2023. [doi:10.1145/3607840](https://doi.org/10.1145/3607840)
+- [Lorenzen 2024a] Lorenzen, Leijen, Swierstra, Lindley. "The Functional Essence of Imperative Binary Search Trees." PLDI 2024. [doi:10.1145/3656398](https://doi.org/10.1145/3656398)
+- [Lorenzen 2024b] Lorenzen, White, Dolan, Eisenberg, Lindley. "Oxidizing OCaml with Modal Memory Management." ICFP 2024. [doi:10.1145/3674642](https://doi.org/10.1145/3674642)
+- [Marshall 2024] Marshall, Orchard. "Functional Ownership through Fractional Uniqueness." OOPSLA 2024. [doi:10.1145/3649848](https://doi.org/10.1145/3649848)
+- [Matsakis 2017] Matsakis et al. "Non-Lexical Lifetimes." Rust RFC 2094, 2017. [rust-lang.github.io/rfcs/2094-nll.html](https://rust-lang.github.io/rfcs/2094-nll.html)
+- [Osvald 2016] Osvald, Essertel, Wu, González Alayón, Rompf. "Gentrification Gone Too Far? Affordable 2nd-Class Values for Fun and (Co-)Effect." OOPSLA 2016. [doi:10.1145/2983990.2984009](https://doi.org/10.1145/2983990.2984009)
+- [Pearce 2021] Pearce. "A Lightweight Formalism for Reference Lifetimes and Borrowing in Rust." ACM TOPLAS 43(1), 2021. [doi:10.1145/3443420](https://doi.org/10.1145/3443420)
+- [Proust 2017] Proust. "ASAP: As Static As Possible Memory Management." University of Cambridge Technical Report UCAM-CL-TR-908, 2017. [doi:10.48456/tr-908](https://doi.org/10.48456/tr-908)
+- [Racordon 2022] Racordon, Shabalin, Zheng, Abrahams, Saeta. "Implementation Strategies for Mutable Value Semantics." Journal of Object Technology 21(2), 2022. [doi:10.5381/jot.2022.21.2.a2](https://doi.org/10.5381/jot.2022.21.2.a2)
+- [Reinking 2021] Reinking, Xie, de Moura, Leijen. "Perceus: Garbage Free Reference Counting with Reuse." PLDI 2021. [doi:10.1145/3453483.3454032](https://doi.org/10.1145/3453483.3454032)
+- [Rust RFC 1066] "Safe `mem::forget`." Rust RFC 1066, 2015. [rust-lang.github.io/rfcs/1066-safe-mem-forget.html](https://rust-lang.github.io/rfcs/1066-safe-mem-forget.html)
+- [Tang 2024] Tang, Hillerström, Lindley, Morris. "Soundly Handling Linearity." POPL 2024. [doi:10.1145/3632896](https://doi.org/10.1145/3632896)
+- [Tofte 1997] Tofte, Talpin. "Region-Based Memory Management." Information and Computation 132(2), 1997. [doi:10.1006/inco.1996.2613](https://doi.org/10.1006/inco.1996.2613)
+- [Ullrich 2019] Ullrich, de Moura. "Counting Immutable Beans: Reference Counting Optimized for Purely Functional Programming." IFL 2019. [doi:10.1145/3412932.3412935](https://doi.org/10.1145/3412932.3412935)
+- [Villani 2025] Villani, Hostert, Dreyer, Jung. "Tree Borrows." PLDI 2025. [doi:10.1145/3735592](https://doi.org/10.1145/3735592)
+- [Wadler 1990] Wadler. "Linear Types Can Change the World!" IFIP TC 2 Working Conference on Programming Concepts and Methods, 1990. [homepages.inf.ed.ac.uk/wadler/topics/linear-logic.html](https://homepages.inf.ed.ac.uk/wadler/topics/linear-logic.html)
+- [Weiss 2019] Weiss, Gierczak, Patterson, Ahmed. "Oxide: The Essence of Rust." 2019. [arXiv:1903.00982](https://arxiv.org/abs/1903.00982)
+- [Xu 2021] Xu, Chen, Sun, Zhou, Lyu. "Memory-Safety Challenge Considered Solved? An In-Depth Study with All Rust CVEs." ACM TOSEM 31(1), 2021. [doi:10.1145/3466642](https://doi.org/10.1145/3466642)
