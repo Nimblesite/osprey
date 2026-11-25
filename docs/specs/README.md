@@ -14,6 +14,7 @@ The **language** and **compiler** contracts are separate from runtime libraries,
 - [Developer tooling](tooling/README.md): Language server, editor, documentation and test tools.
 - [Packages and automation](ecosystem/README.md): Package registry, evidence and GitHub automation.
 - [Application frameworks](applications/README.md): Reactive mobile applications, the proof workbench and its lessons, the Osprey Agent, host protocols, and the local coding model.
+- [Instruments and devices](instruments/README.md): Prism instruments, macro controls, and the hardware synths and effects pedals built from them.
 
 ## Contract and delivery
 

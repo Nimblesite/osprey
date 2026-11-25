@@ -30,7 +30,7 @@ Press the dial or its number and drag vertically. A 180-pixel upward drag traver
 
 ## Instrument builder [PRISM-INSTRUMENT]
 
-The three proposed Instrument views use the Hook track’s FM pluck in *Lagos After Rain*. Play shows the same four controls at their saved sizes. Edit adds the spacing grid, resize handles and the selected control’s targets. Brightness opens the filter while decreasing high damping in the short room. MIDI learn waits for a controller movement. The OSC address stays visible and copies with one action. [Instrument builder specification](../../specs/applications/Daw.md#instrument-builder-prism-instrument)
+The three proposed Instrument views use the Hook track’s FM pluck in *Lagos After Rain*. Play shows the same four controls at their saved sizes. Edit adds the spacing grid, resize handles and the selected control’s targets. Brightness opens the filter while decreasing high damping in the short room. MIDI learn waits for a controller movement. The OSC address stays visible and copies with one action. [Instrument builder specification](../../specs/instruments/PrismInstrument.md)
 
 | Design screenshot | What to inspect |
 | --- | --- |

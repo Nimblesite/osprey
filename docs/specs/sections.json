@@ -40,5 +40,11 @@
     "title": "Application frameworks",
     "description": "Reactive mobile applications, the proof workbench and its lessons, the Osprey Agent, host protocols, and the local coding model.",
     "kind": "support"
+  },
+  {
+    "slug": "instruments",
+    "title": "Instruments and devices",
+    "description": "Prism instruments, macro controls, and the hardware synths and pedals built from them.",
+    "kind": "support"
   }
 ]
