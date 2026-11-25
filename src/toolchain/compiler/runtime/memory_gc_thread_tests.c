@@ -343,6 +343,9 @@ void t_runner_poll_ends_an_orphan(void) {}
 #include <signal.h>
 
 static sigjmp_buf g_foreign_fault;
+// An unmapped address no stack is near, read through a volatile so the
+// compiler cannot see the store it guards as out of bounds.
+static int *volatile g_foreign_address = (int *)(uintptr_t)16;
 static void foreign_fault_recovered(int signal_number) {
   (void)signal_number;
   siglongjmp(g_foreign_fault, 1);
@@ -368,7 +371,7 @@ void foreign_fault_child(void) {
   int recovered = 0;
   for (int i = 0; i < 3; i++) {
     if (sigsetjmp(g_foreign_fault, 1) == 0) {
-      *(volatile int *)(uintptr_t)16 = i;
+      *(volatile int *)g_foreign_address = i;
     } else {
       recovered++;
     }
