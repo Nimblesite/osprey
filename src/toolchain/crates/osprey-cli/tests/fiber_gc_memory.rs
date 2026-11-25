@@ -463,7 +463,7 @@ const FINISHED_FIBERS: &str = "fn ints(n) = range(0, n) |> fold(0, fn(sum, i) =>
 /// keeps all 1.2 million reached.
 const FINISHED_FIBERS_PEAK_MB: u64 = 96;
 
-/// [CONCURRENCY-HANDLES] A fiber nothing can await again is reclaimed with its
+/// [CONCURRENCY-FIBER-LIFETIME] A fiber nothing can await again is reclaimed with its
 /// slot, result and synchronisation, in every backend. Every finished fiber
 /// stayed in the runtime's table for the life of the process, outside the
 /// managed heap and its ceiling, so 1.2 million sequential `await(spawn ...)`

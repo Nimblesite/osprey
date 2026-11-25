@@ -44,16 +44,46 @@ answer = await task
 A `Fiber<T>` handle is reusable: awaiting the same completed fiber more than
 once MUST return the same `T` value on every call. For a managed `T`, every
 `await` produces an independently owned reference. One caller releasing its
-value MUST NOT invalidate a later await. Once every spawned computation is
-quiescent, normal program teardown MUST release the runtime's completed-result
-roots after language-owned values have dropped; it MUST NOT release a cached
-result while another fiber can still await it.
+value MUST NOT invalidate a later await. A fiber's result is released with the
+fiber, when nothing can await it again ([CONCURRENCY-FIBER-LIFETIME]); it MUST
+NOT be released while any handle to the fiber is still held.
 
 ## How many fibers and channels [CONCURRENCY-HANDLES]
 
-A program can create any number of fibers and channels over its life. Each handle stays valid for the rest of the process and is never reused, because a `Fiber<T>` can be awaited again for as long as the program holds it. So every fiber's record and result, and every channel, stay in memory until the process ends: a program that spawns without end grows without end, by a few hundred bytes per fiber plus what it returned (230 to 250 measured; the runtime tests fail above 512).
+A program can create any number of fibers and channels over its life. A fiber costs memory only while something can still await it or it is still running ([CONCURRENCY-FIBER-LIFETIME]): a program that spawns and awaits in a loop runs in constant memory, however many fibers it makes. A channel is a runtime id that stays valid, and in memory, for the rest of the process: a few hundred bytes plus its buffer (the runtime tests fail above 512 bytes for a channel of one word).
 
 A fiber's thread ends when the fiber does, whether or not it is awaited. When the system has no thread left to give, `spawn` runs the body on the spawning thread instead, and the fiber has finished when `spawn` returns. A body that then waits for its spawner blocks for ever.
+
+## Fiber lifetime [CONCURRENCY-FIBER-LIFETIME]
+
+This section explains when a fiber's memory is given back. A `Fiber<T>` is a future in Halstead's sense: a placeholder for a value another thread is computing, which every touch reads without recomputing it ([Halstead, "Multilisp", TOPLAS 7(4), 1985](https://doi.org/10.1145/4472.4478)). Baker and Hewitt observed that a process nothing can reach is garbage like any other storage, and that a garbage collector can find it ([Baker and Hewitt, "The Incremental Garbage Collection of Processes", MIT AI Memo 454, 1977](https://dspace.mit.edu/handle/1721.1/41969)). Osprey applies that rule to finished fibers.
+
+A fiber is held by:
+
+- the program's handle, a managed value the memory backend reclaims like any other: ARC at its last release, the tracing collector at the first sweep after it becomes unreachable;
+- its runner, from `spawn` until the body has finished: the fiber's thread, the stack running it in place, or the sequential queue waiting to run it ([CONCURRENCY-DETERMINISTIC](#deterministic-execution-concurrency-deterministic));
+- each `await` and `fiberDone`, for as long as it reads the fiber.
+
+The last holder to let go frees the fiber, its result and its synchronisation. So:
+
+- A fiber that has finished and that the program can no longer name is freed. 1.2 million sequential `await(spawn …)` used to keep every fiber, 330 MiB outside the managed heap and its ceiling (#359); `finished_fibers_are_reclaimed_in_every_backend` now holds the same run under 96 MiB in both backends.
+- A running fiber is never freed or cancelled because the program dropped its handle. Baker and Hewitt also collect unreachable running processes, but an Osprey fiber may still perform effects nobody else can see, so dropping the handle detaches it instead.
+- `await` and `fiberDone` take their own hold, so a collector that reclaims the handle while they wait never frees the fiber under them.
+
+A handle's finalizer runs inside the memory backend, which may hold its heap lock or have stopped every other thread. Running arbitrary cleanup there deadlocks or corrupts state, so a finalizer must not take locks or allocate and must hand its work to an ordinary thread ([Boehm, "Destructors, Finalizers, and Synchronization", POPL 2003](https://www.hboehm.info/popl03/web)). The finalizer therefore only pushes the fiber onto a lock-free list, a Treiber stack ([Treiber, IBM RJ 5118, 1986](https://dominoweb.draco.res.ibm.com/reports/rj5118.pdf)) whose single consumer takes the whole list at once, so no pop can meet a recycled node. The runtime drops those holds outside the collector, at the next `spawn` and at the end of `main`. Under `--memory=ownership`, whose finalizer registration is proved inert, every fiber is kept to exit.
+
+The holder count is proved correct with Osprey's proof kernel. [`FiberLifetime.lean`](../../../src/toolchain/benchmarks/proof/tools/FiberLifetime.lean) models a fiber as `live n` (`n + 1` holders) or `freed`, `fiber_hold` as `acquire` and `fiber_release` as `release`, and a step on a freed fiber as a use after free. `make _check_synthesis_proofs` exports four theorems and requires the kernel to accept each with no axioms:
+
+| Theorem | Claim |
+| --- | --- |
+| `run_valid` | Every trace in which only holders act runs without a use after free and leaves exactly the holders it says. |
+| `freed_iff` | The fiber is freed exactly when no holder is left. |
+| `freed_is_final` | Nothing can be done to a freed fiber. |
+| `spawn_then_both_release` | A spawned fiber, awaited any number of times, is freed once its runner finishes and its handle dies. |
+
+The same target builds a mutant whose last release keeps the fiber, the #359 leak, and fails unless Lean rejects it. The model covers the count, not the C code that keeps it: the C runtime's suite checks that code under AddressSanitizer, including a fiber whose other holders all let go while it ran.
+
+A fiber blocked for ever on a channel nothing else can reach is still a leak: its runner never lets go. Saioc et al. detect such partial deadlocks in Go by treating reachability from the collector's roots as an over-approximation of liveness ([Saioc, Lee, Møller and Chabbi, "Dynamic Partial Deadlock Detection and Recovery via Garbage Collection", ASPLOS 2025](https://cs.au.dk/~amoeller/papers/golf/paper.pdf)). Osprey does not detect them yet.
 
 ## Buffered channels [CONCURRENCY-CHANNEL]
 

@@ -250,10 +250,20 @@ pointers are safe no-ops.
 
 The layout word identifies raw blocks, pointer masks, list headers, pointer
 arrays, and finalized list headers: a header whose body owns a resource beyond
-the heap (a GPU buffer's copy on the device, [GPU-BUFFER-RESIDENT](../runtime/0034-GPUComputation.md#device-resident-buffers--gpu-buffer-resident))
-passes through the one finalizer the owning runtime unit registers
-(`osp_mem_set_finalizer`) before its data is released; the tracing collector
-runs the same finalizer at the sweep that reclaims the header. Under ownership the generic registration hook is inert. An explicit free of a GPU-tagged header releases its device resource or file mapping before dropping the data. An ordinary external header drops only its data. Releases walk
+the heap (a GPU buffer's copy on the device, [GPU-BUFFER-RESIDENT](../runtime/0034-GPUComputation.md#device-resident-buffers--gpu-buffer-resident),
+or a fiber, [CONCURRENCY-FIBER-LIFETIME](../language/0011-LightweightFibersAndConcurrency.md#fiber-lifetime-concurrency-fiber-lifetime))
+passes through the finalizer its owning runtime unit registers before its data
+is released; the tracing collector runs the same finalizer at the sweep that
+reclaims the header. Under ownership the generic registration hook is inert.
+
+**Finalizers [MEM-BACKENDS-FINALIZERS].** Bits 8 to 15 of an external header's
+layout word name its subtype: 0 a plain header, 1 a GPU buffer, 2 a fiber
+handle. `osp_mem_set_finalizer(meta, finalize)` registers one finalizer per
+subtype, so one unit never replaces another's. The tracing collector keeps the
+subtype in the block's mark word. A finalizer may run with the heap lock held
+or the world stopped, so it MUST NOT allocate, release a managed value, or take
+a lock the heap can wait on; it hands its work to its unit, which does it
+outside the collector ([Boehm, POPL 2003](https://www.hboehm.info/popl03/web)). An explicit free of a GPU-tagged header releases its device resource or file mapping before dropping the data. An ordinary external header drops only its data. Releases walk
 managed child slots non-recursively. Persistent list and
 map nodes retain shared structure and release the portion no longer referenced
 by any live version. ARC operations start lock-free and become mutex-protected

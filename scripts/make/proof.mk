@@ -180,22 +180,36 @@ _test_proof_unicode:
 
 .PHONY: _test_proof_ci $(PROOF_BATCH_TARGETS) $(PROOF_CORPUS_TARGETS)
 
-# [SYNTH-DSP-PROOFS] Check the current source export with the Osprey kernel.
+# [SYNTH-DSP-PROOFS] [CONCURRENCY-FIBER-LIFETIME] Check the current source
+# exports with the Osprey kernel: every theorem must PASS with no axioms.
 .PHONY: _test_synthesis_proofs
 SYNTHESIS_THEOREMS := weightedOverlapAdd travelingWavePropagation additivePeriod overlapNormalizationNecessary interpolatorFactor interpolatorEndpoints interpolatorConstant zeroPulseIndices hannEndpoints
 SYNTHESIS_THEOREMS += allpassMagnitude allpassRecurrence antiderivativeAverage antiderivativeOffset antiderivativeConstantCurve hannQuarterEnergy hannEighthEnergy
 SYNTHESIS_THEOREMS += radixTwoSplit radixTwoUpper realBinConjugate binAdditive binHomogeneous
+FIBER_LIFETIME_THEOREMS := run_valid freed_iff freed_is_final spawn_then_both_release
 
 _test_synthesis_proofs: $(PROOF_BATCH_TARGETS)
 	$(MAKE) _check_synthesis_proofs
 
-.PHONY: _check_synthesis_proofs
-_check_synthesis_proofs:
-	cd src/toolchain/benchmarks/proof/tools && lake build lean4export Synthesis
-	@set -e; for name in $(SYNTHESIS_THEOREMS); do \
-		theorem="Synthesis.$$name"; export_file="$(abspath target/proof)/$$theorem.ndjson"; \
-		(cd src/toolchain/benchmarks/proof/tools && lake exe lean4export Synthesis -- "$$theorem") > "$$export_file"; \
+# $(call kernel_check_theorems,<Lean module>,<theorem names>)
+define kernel_check_theorems
+	cd src/toolchain/benchmarks/proof/tools && lake build lean4export $(1)
+	@set -e; for name in $(2); do \
+		theorem="$(1).$$name"; export_file="$(abspath target/proof)/$$theorem.ndjson"; \
+		(cd src/toolchain/benchmarks/proof/tools && lake exe lean4export $(1) -- "$$theorem") > "$$export_file"; \
 		printf '%s\t%s\n' "$$export_file" "$$theorem" | target/proof/openai/check-batch.arc > "$$export_file.result"; \
 		cat "$$export_file.result"; test "$$(cat "$$export_file.result")" = "PASS $$theorem | axioms: none"; \
 	done
+endef
+
+.PHONY: _check_synthesis_proofs
+_check_synthesis_proofs:
+	$(call kernel_check_theorems,Synthesis,$(SYNTHESIS_THEOREMS))
+	$(call kernel_check_theorems,FiberLifetime,$(FIBER_LIFETIME_THEOREMS))
+	@sed 's/| .live 0, .release => some .freed/| .live 0, .release => some (.live 0)/' \
+		src/toolchain/benchmarks/proof/tools/FiberLifetime.lean > "$(abspath target/proof)/FiberLifetimeLeak.lean"
+	@grep -q 'some (.live 0)' "$(abspath target/proof)/FiberLifetimeLeak.lean"
+	@if (cd src/toolchain/benchmarks/proof/tools && lake env lean "$(abspath target/proof)/FiberLifetimeLeak.lean") > /dev/null 2>&1; then \
+		echo "FiberLifetime: a fiber its last holder never frees was accepted"; exit 1; fi
+	@echo "REJECTED FiberLifetime leak mutant (the last release keeps the fiber, #359)"
 	@bash scripts/proof/production-fft.sh

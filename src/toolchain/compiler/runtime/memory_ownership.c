@@ -44,21 +44,21 @@ static void own_report_shared(void);
 #include "memory_tracked_heap.h"
 #include "gpu_buffer.h"
 
-#include "memory_finalizers.h"
+// Inert, as OwnershipLowering.compiledCompatibilityReturns proves: ownership
+// drops external headers by their layout, never through a registration. A
+// fiber handle's finalizer therefore never runs here, so ownership keeps every
+// fiber to exit ([CONCURRENCY-FIBER-LIFETIME]; ownership is not in active work).
+void osp_mem_set_finalizer(int64_t meta, OspFinalizer finalize) {
+  (void)meta;
+  (void)finalize;
+}
 
-// GPU allocations own a device handle or mapping, dropped by their layout. A
-// plain EXTERN body (subtype 0) only has length and data: it is never read as
-// a GPU header and owns nothing to finalize. Every other subtype, a fiber
-// handle, goes to its registered finalizer.
+// GPU allocations own a device handle or mapping. A plain EXTERN body only
+// has length and data, so it must never be interpreted as a GPU header.
 static void finalize_external(void *body) {
   OspArcHdr *h = arc_hdr(body);
-  uint64_t subtype = OSP_MEM_EXTERN_SUBTYPE(h->meta);
-  if (h->meta == OSP_MEM_GPU_BUFFER) {
-    if (h->size >= sizeof(OspreyGpuBuffer)) {
-      osp_gpu_drop_header(body);
-    }
-  } else if (subtype != 0) {
-    finalize_subtype(subtype, body);
+  if (h->meta == OSP_MEM_GPU_BUFFER && h->size >= sizeof(OspreyGpuBuffer)) {
+    osp_gpu_drop_header(body);
   }
 }
 
