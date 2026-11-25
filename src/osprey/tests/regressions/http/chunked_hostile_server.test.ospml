@@ -240,9 +240,9 @@ statusesThatAreNotStatuses client =
     ] (\c => check (c.name) (notHttp) (fetched (client, c.path)))
     check "a real 404" "status=404 body=gone" (posted (client, "/404-plain", "gone"))
 
-// A lying, junk or negative Content-Length from the handler is replaced by the
-// body's real length [HTTP-SERVER-HEADERS]; the client's refusal of lengths that
-// lie on the wire is checked from raw bytes in http_read_tests.c.
+(** A lying, junk or negative Content-Length from the handler is replaced by the
+    body's real length [HTTP-SERVER-HEADERS]; the client's refusal of lengths that
+    lie on the wire is checked from raw bytes in http_read_tests.c. *)
 lengthsThatLie client =
     _replaced = postsEach (client, "hello", "status=200 body=hello", [
         { name = "a second, different length", path = "/length-lie" }, { name = "a length that isn't one", path = "/length-junk" }, { name = "a negative length", path = "/length-negative" }
