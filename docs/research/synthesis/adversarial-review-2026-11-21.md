@@ -38,4 +38,4 @@ breaks `limitBurst`, which now runs a burst at starts 0, 1, 7, 500, 1000 and 239
 - The far Space room scales the size by 0.91, so a Space size below 0.2748 refuses the whole render.
 - `Arrangements::frames` ignores sustain pads, so pads and their reverb are cut at the piece end.
 - At 8 kHz a 0.5 s intro tail gives 4000 samples, under the 4096 a sustain needs.
-- Editing a built-in instrument in Prism replaces its sound and drops its settings; [built-in instruments become patches](../../plans/daw.md) is the fix.
+- Editing a built-in instrument in Prism replaces its sound and drops its settings; [built-in instruments become patches](../../plans/synth/daw.md) is the fix.

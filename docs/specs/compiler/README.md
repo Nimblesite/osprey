@@ -12,4 +12,5 @@ Target lowering, generated ABIs and debug artifacts.
 - [Android code generation](AndroidCodegen.md)
 - [Compiler debug artifacts](DebugArtifacts.md)
 - [iOS code generation](iOSCodegen.md)
+- [Embedded targets [TARGET-EMBEDDED]](EmbeddedTargets.md)
 - [KLEE code generation](KleeCodegen.md)

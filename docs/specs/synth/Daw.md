@@ -17,7 +17,7 @@
 - **Rendering** dumps Master's output to the export file. It plays nothing ([DAW-RENDER-MASTER]).
 - No track, note, bus or stem is ever played, rendered or exported on its own.
 
-Status: in progress. The daw runs on the FerroUI host. It opens a project, shows the Timeline, Mix and patch pages, saves edits into the project file, and plays bars through the engine. The [delivery plan](../../plans/daw.md) records what is verified.
+Status: in progress. The daw runs on the FerroUI host. It opens a project, shows the Timeline, Mix and patch pages, saves edits into the project file, and plays bars through the engine. The [delivery plan](../../plans/synth/daw.md) records what is verified.
 
 The daw is the [Prism](../../../src/osprey/examples/daw/PRISM.md) patch studio with a song around it. It opens a project, lets you edit each track's notes, mix and patch, plays it and saves it back to the same file.
 
@@ -266,7 +266,7 @@ The daw answers Open Sound Control over UDP, so a control surface, a lighting de
 
 ## Performance [DAW-PERF]
 
-**A render takes at most a fifth of the song's length ([DAW-PERF-RENDER]).** A render that runs at real time, or slower, has failed. A 5 minute song with basic tracks and routing renders, through the whole graph into Master and onto disk, in about one minute or less. No project in `tracks/`, however dense its patches, takes more than half its length. Anything slower is a defect. Every pointer event must answer within one display frame. The [plan](../../plans/daw.md) holds the profile, the owners and the targets: two bars of the codex project in under 14 s, and a Prism drag move under 5 ms mean.
+**A render takes at most a fifth of the song's length ([DAW-PERF-RENDER]).** A render that runs at real time, or slower, has failed. A 5 minute song with basic tracks and routing renders, through the whole graph into Master and onto disk, in about one minute or less. No project in `tracks/`, however dense its patches, takes more than half its length. Anything slower is a defect. Every pointer event must answer within one display frame. The [plan](../../plans/synth/daw.md) holds the profile, the owners and the targets: two bars of the codex project in under 14 s, and a Prism drag move under 5 ms mean.
 
 **Track patch windows [DAW-PAGES-PATCH-WINDOW].** Opening a track patch keeps its arrangement window open. Patch controls edit the same song. Closing the patch window leaves the arrangement available, and reopening the track restores its saved nodes, cables and control values. Choosing a module on the patch window's canvas shows its properties in the patch panel docked in that window, never on the arrangement window. Each window keeps its own size: the patch window's panel and toolbar sit inside the patch window however the arrangement window is sized, and the song page stays centred in its own window.
 
@@ -280,7 +280,7 @@ Selecting a module shows it in the patch panel docked beside the canvas, never o
 
 ## Instrument builder
 
-The instrument builder, its macros, and the hardware devices that run an instrument without Prism are specified in [Instruments and devices](../instruments/README.md): see [PRISM-INSTRUMENT] and [DEVICE].
+The instrument builder, its macros, and the hardware devices that run an instrument without Prism are specified in [Instrument builder](PrismInstrument.md), [Prism device](PrismDevice.md) and [Prism device hardware](PrismDeviceHardware.md): see [PRISM-INSTRUMENT] and [DEVICE].
 
 ## Pages [DAW-PAGES]
 

@@ -1,8 +1,8 @@
 # Instrument builder [PRISM-INSTRUMENT]
 
-Status: specified, not built. The synth package's `Macros` module validates and applies macros today ([SYNTH-ADVANCED-PRISM]); Prism has no instrument face yet. The [Prism hardware plan](../../plans/prism-hardware.md) tracks delivery. The [design screenshots](../../designs/prism-timeline/README.md#instrument-builder-prism-instrument) show Play, Edit and MIDI learn.
+Status: specified, not built. The synth package's `Macros` module validates and applies macros today ([SYNTH-ADVANCED-PRISM]); Prism has no instrument face yet. The [instrument builder plan](../../plans/synth/instrument.md) tracks delivery. The [design screenshots](../../designs/prism-timeline/README.md#instrument-builder-prism-instrument) show Play, Edit and MIDI learn.
 
-This contract belongs to [the daw](../applications/Daw.md): an instrument is stored in the project file and played through the project graph ([DAW-GRAPH-OUTPUT]).
+This contract belongs to [the daw](Daw.md): an instrument is stored in the project file and played through the project graph ([DAW-GRAPH-OUTPUT]).
 
 An instrument is a patch with a performer's face on it. The patch keeps its modules and cables; the instrument hides them and shows only the controls the user chose. Each control is a **macro**: one knob, slider, toggle or pad that moves one or more module parameters at once (Brightness turning a filter's cutoff up and its resonance down, for example). The instrument is stored with its patch in the project file ([DAW-PROJECT-PATCH]), so reopening the project restores the same face.
 

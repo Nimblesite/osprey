@@ -42,9 +42,9 @@
     "kind": "support"
   },
   {
-    "slug": "instruments",
-    "title": "Instruments and devices",
-    "description": "Prism instruments, macro controls, and the hardware synths and pedals built from them.",
+    "slug": "synth",
+    "title": "Synthesis, Prism and devices",
+    "description": "The synthesis toolkit, the Prism daw, Pocket Orchestra, instruments and macros, and the hardware Prism device.",
     "kind": "support"
   }
 ]

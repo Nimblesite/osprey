@@ -4,7 +4,7 @@ Status — proposed application specification. Implementation and platform verif
 
 Pocket Orchestra lets people turn their phones into musical instruments and play together through a desktop's speakers and animated stage. A desktop application hosts the session. Native phone applications, browser controllers and additional desktop controllers connect to it over WebSockets on the local network. The desktop owns musical time, synthesis, mixing and session state.
 
-The delivery sequence and evidence checklist live in [the implementation plan](../../plans/pocket-orchestra.md). This specification defines acceptance requirements, rather than claiming current host support.
+The delivery sequence and evidence checklist live in [the implementation plan](../../plans/synth/pocket-orchestra.md). This specification defines acceptance requirements, rather than claiming current host support.
 
 ## The performance [ORCHESTRA-EXPERIENCE]
 
@@ -105,7 +105,7 @@ Keep session transition, instrument mapping and scene evolution pure. Express tr
 
 Production handlers use real sockets, clocks and devices. Test handlers supply an in-memory network, a virtual clock, captured audio commands and deterministic entropy. Both execute the same session and instrument logic. Real adapter integration tests additionally exercise actual sockets and audio lifecycle. A simulated transport alone cannot establish framing, operating-system or timing correctness.
 
-Follow the leased-view ownership and lifecycle rules of [Osprey Native](0053-NativeSharedViews.md) and reuse [UI machines and accessibility semantics](../platforms/UiMachines.md). Network completions enter the host's serial application event boundary. Audio and network threads never retain borrowed UI buffers.
+Follow the leased-view ownership and lifecycle rules of [Osprey Native](../applications/0053-NativeSharedViews.md) and reuse [UI machines and accessibility semantics](../platforms/UiMachines.md). Network completions enter the host's serial application event boundary. Audio and network threads never retain borrowed UI buffers.
 
 ## Accessibility and lifecycle [ORCHESTRA-ACCESS]
 

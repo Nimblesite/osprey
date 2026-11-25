@@ -12,6 +12,4 @@ Reactive mobile applications, the proof workbench and its lessons, the Osprey Ag
 - [Osprey Native and its hosts [NATIVE-HOSTS]](0047-OspreyNativeHosts.md)
 - [Osprey Agent](OspreyAgent.md)
 - [Local coding model [LLM]](LocalCodingModel.md)
-- [Pocket Orchestra [ORCHESTRA]](PocketOrchestra.md)
-- [The daw [DAW]](Daw.md)
 - [Clean Architecture todo example [EXAMPLE-CLEANARCH]](CleanArchTodo.md)
