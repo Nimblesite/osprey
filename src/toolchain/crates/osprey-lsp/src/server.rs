@@ -208,9 +208,7 @@ fn did_open(engine: &OspreyEngine, params: &Value) {
         &text,
         DocumentVersion::new(wire::version(params)),
     );
-    engine.project_cache.opened(doc.as_str(), true);
-    scope::lock(engine).opened(doc.as_str(), true);
-    scope::queue_edit(engine, &doc);
+    scope::document_edited(engine, &doc);
 }
 
 fn did_change(engine: &OspreyEngine, params: &Value) {
@@ -219,9 +217,7 @@ fn did_change(engine: &OspreyEngine, params: &Value) {
     };
     let doc = DocumentUri::new(uri);
     apply_changes(engine.vfs(), &doc, params);
-    engine.project_cache.opened(doc.as_str(), true);
-    scope::lock(engine).opened(doc.as_str(), true);
-    scope::queue_edit(engine, &doc);
+    scope::document_edited(engine, &doc);
 }
 
 /// Live sibling changes can make a formerly redundant annotation necessary.

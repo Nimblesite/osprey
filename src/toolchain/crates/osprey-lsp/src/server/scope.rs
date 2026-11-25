@@ -313,9 +313,11 @@ async fn rescan(engine: &OspreyEngine, bus: &DiagnosticsBus, affected: Option<BT
     }
 }
 
-/// Queue `doc`, then every document its edit can affect, for diagnostics the
-/// work queue publishes beside requests [LSP-DIAGNOSTICS].
-pub(super) fn queue_edit(engine: &OspreyEngine, doc: &DocumentUri) {
+/// An open or change marks the buffer live and queues its diagnostics
+/// [LSP-DIAGNOSTICS].
+pub(super) fn document_edited(engine: &OspreyEngine, doc: &DocumentUri) {
+    engine.project_cache.opened(doc.as_str(), true);
+    lock(engine).opened(doc.as_str(), true);
     lock(engine).queue_now(doc.as_str(), true);
 }
 
