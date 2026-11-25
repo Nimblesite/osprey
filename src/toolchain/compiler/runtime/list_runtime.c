@@ -262,10 +262,6 @@ OspreyList *osprey_list_append_of(OspreyList *l, int64_t v, int em) {
                     l->offset, em, l->front);
 }
 
-OspreyList *osprey_list_append(OspreyList *l, int64_t v) {
-  return osprey_list_append_of(l, v, osprey_list_elem_managed(l));
-}
-
 /* Drop the first `n` elements as an O(1) VIEW: a fresh header sharing `l`'s
    whole skeleton with `offset` bumped, which makes `[head, ...tail]` recursion
    linear. Node RC (the +1s below) makes it safe: last one out frees. */

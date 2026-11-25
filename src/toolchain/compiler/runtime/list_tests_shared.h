@@ -66,7 +66,7 @@ static inline OspreyList *make_range_list(int64_t start, int64_t end) {
 
 static inline OspreyList *append_range_list(int64_t n) {
   OspreyList *l = osprey_list_empty();
-  for (int64_t i = 0; i < n; i++) l = osprey_list_append(l, i);
+  for (int64_t i = 0; i < n; i++) l = osprey_list_append_of(l, i, 0);
   return l;
 }
 
@@ -127,7 +127,7 @@ static inline void check_appends(OspreyList *l, const int64_t *m, int64_t n) {
   OspreyList *cur = l;
   for (int64_t i = 0; i < VIEW_APPEND_COUNT; i++) {
     e[n + i] = APPEND_SENTINEL - i;
-    cur = osprey_list_append(cur, e[n + i]);
+    cur = osprey_list_append_of(cur, e[n + i], 0);
     check_elems(cur, e, n + i + 1);
   }
   check_elems(l, m, n);

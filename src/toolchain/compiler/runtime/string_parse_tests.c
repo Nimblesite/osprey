@@ -155,7 +155,7 @@ void test_join(void) {
 
 /* Append a borrowed word to a runtime list the way codegen stores strings. */
 static OspreyList *push_word(OspreyList *list, const char *word) {
-    return osprey_list_append(list, (int64_t)(intptr_t)word);
+    return osprey_list_append_of(list, (int64_t)(intptr_t)word, 1);
 }
 
 void test_join_runtime_list(void) {

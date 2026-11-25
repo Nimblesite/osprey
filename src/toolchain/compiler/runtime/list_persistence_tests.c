@@ -14,9 +14,9 @@ void test_branching_persistence(void) {
   int64_t *m = model_range(0, n);
   OspreyList *kids[BRANCH_FAN];
   for (int64_t i = 0; i < fan; i++) {
-    kids[i] = osprey_list_append(
+    kids[i] = osprey_list_append_of(
         osprey_list_prepend_of(base, PREPEND_SENTINEL - i, 0),
-        APPEND_SENTINEL - i);
+        APPEND_SENTINEL - i, 0);
   }
   for (int64_t i = 0; i < fan; i++) {
     int64_t head = PREPEND_SENTINEL - i;
@@ -47,7 +47,7 @@ static int64_t rand_step(OspreyList **l, int64_t *m, int64_t n, uint64_t r) {
   int64_t i = n > 0 ? (int64_t)(r % (uint64_t)n) : 0;
   switch (r % RAND_OP_KINDS) {
   case 0:
-    *l = osprey_list_append(*l, v);
+    *l = osprey_list_append_of(*l, v, 0);
     m[n] = v;
     return n + 1;
   case 1:
@@ -101,9 +101,8 @@ void test_builder_paths(void) {
   }
 }
 
-/* The element-kind surface [MEM-BACKENDS-ELEMENTS]: `_of` spellings latch the
-   managed flag at the call site, the arity-2 forms inherit it from the source,
-   every derived container carries it forward, builders latch it at
+/* The element-kind surface [MEM-BACKENDS-ELEMENTS]: insertion takes the
+   managed flag from the call site. Builders latch it at
    construction or first push, and the borrowed push stores the same word. */
 void test_element_kind_flags(void) {
   OspreyList *e = osprey_list_empty();
@@ -114,16 +113,16 @@ void test_element_kind_flags(void) {
   CHECK(osprey_list_elem_managed(e) == 0); /* the singleton is never stamped */
   OspreyList *scalar = osprey_list_append_of(e, 42, 0);
   CHECK(osprey_list_elem_managed(scalar) == 0);
-  OspreyList *inherit = osprey_list_append(managed, 43);
-  CHECK(osprey_list_elem_managed(inherit) == 1); /* arity-2 inherits */
-  CHECK(osprey_list_get(inherit, 1) == 43);
+  OspreyList *extended = osprey_list_append_of(managed, 43, 1);
+  CHECK(osprey_list_elem_managed(extended) == 1);
+  CHECK(osprey_list_get(extended, 1) == 43);
   OspreyList *pre = osprey_list_prepend_of(e, 40, 1);
   CHECK(osprey_list_elem_managed(pre) == 1 && osprey_list_get(pre, 0) == 40);
   OspreyList *pre2 = osprey_list_prepend_of(pre, 39, 1);
   CHECK(osprey_list_elem_managed(pre2) == 1 && osprey_list_get(pre2, 0) == 39);
-  CHECK(osprey_list_elem_managed(osprey_list_reverse(inherit)) == 1);
-  CHECK(osprey_list_elem_managed(osprey_list_drop(inherit, 1)) == 1);
-  CHECK(osprey_list_elem_managed(osprey_list_concat(managed, inherit)) == 1);
+  CHECK(osprey_list_elem_managed(osprey_list_reverse(extended)) == 1);
+  CHECK(osprey_list_elem_managed(osprey_list_drop(extended, 1)) == 1);
+  CHECK(osprey_list_elem_managed(osprey_list_concat(managed, extended)) == 1);
   OspreyListBuilder *b1 = osprey_list_builder_new_of(1);
   CHECK(b1 != NULL);
   osprey_list_builder_push_of(b1, 1, 1);

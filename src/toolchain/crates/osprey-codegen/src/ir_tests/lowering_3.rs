@@ -239,7 +239,7 @@ fn map_literal_and_map_operations() {
         &ir,
         &[
             "osprey_map_builder_new",
-            "osprey_map_set",
+            "@osprey_map_set_of(",
             "osprey_map_remove",
             "osprey_map_iter_new",
         ],
@@ -344,7 +344,7 @@ fn a_list_literal_fold_seed_is_rebuilt_once_before_the_loop() {
          print(listLength(xs))",
     );
     let main = main_calls_once(&ir, "call i8* @osprey_list_builder_new_of");
-    sealed_before(&main, "@osprey_list_append");
+    sealed_before(&main, "@osprey_list_append_of(");
 }
 
 #[test]

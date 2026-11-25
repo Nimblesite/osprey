@@ -87,10 +87,6 @@ OspreyMap *osprey_map_set_of(OspreyMap *m, int64_t key, int64_t value,
                    value_managed);
 }
 
-OspreyMap *osprey_map_set(OspreyMap *m, int64_t key, int64_t value) {
-  return osprey_map_set_of(m, key, value, osprey_map_value_managed(m));
-}
-
 OspreyMap *osprey_map_remove(OspreyMap *m, int64_t key) {
   /* Alias returns carry a fresh +1 (retain-on-return) so every returned
    * handle is caller-owned [GC-ARC-PERCEUS]. */

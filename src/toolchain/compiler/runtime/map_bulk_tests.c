@@ -8,8 +8,8 @@ void test_merge(void) {
   OspreyMap *a = osprey_map_empty(KI);
   OspreyMap *b = osprey_map_empty(KI);
   for (int64_t i = 0; i < OVER_N; i++) {
-    a = osprey_map_set(a, i, 100 + i);
-    b = osprey_map_set(b, i + HALF_OVER, 200 + i + HALF_OVER);
+    a = osprey_map_set_of(a, i, 100 + i, 0);
+    b = osprey_map_set_of(b, i + HALF_OVER, 200 + i + HALF_OVER, 0);
   }
   OspreyMap *m = osprey_map_merge(a, b);
   CHECK(osprey_map_length(m) == OVER_N + HALF_OVER);
@@ -33,7 +33,8 @@ void test_merge(void) {
 void test_merge_collision(void) {
   OspreyMap *cm = make_coll_map();
   OspreyMap *cb =
-      osprey_map_set(osprey_map_empty(KB), ABSENT_COLL, ABSENT_COLL * VAL_MUL);
+      osprey_map_set_of(osprey_map_empty(KB), ABSENT_COLL,
+                         ABSENT_COLL * VAL_MUL, 0);
   OspreyMap *merged = osprey_map_merge(cm, cb);
   CHECK(osprey_map_length(merged) == COLL_N + 2);
   chk_entry(merged, ABSENT_COLL, ABSENT_COLL * VAL_MUL);
@@ -98,9 +99,8 @@ void test_scale(void) {
   CHECK(drain(big, 0, MERGE_HI) == MERGE_HI);
 }
 /* The entry-ownership flag surface [MEM-BACKENDS-ELEMENTS]: the KEY side is
-   discriminated by the key type (STRING managed, INT/BOOL scalar), the VALUE
-   side latches through the `_of` spellings, the arity-3 forms inherit it from
-   the source, and every derived map carries it forward. */
+   discriminated by the key type (STRING managed, INT/BOOL scalar), and an
+   inserted value's kind comes from the caller. Remove and merge preserve it. */
 void test_entry_kind_flags(void) {
   CHECK(osprey_map_key_managed(osprey_map_empty(KI)) == 0);
   CHECK(osprey_map_key_managed(osprey_map_empty(KB)) == 0);
@@ -111,11 +111,11 @@ void test_entry_kind_flags(void) {
   CHECK(osprey_map_value_managed(mv) == 1);
   CHECK(osprey_map_get(mv, 1) == 10);
   CHECK(osprey_map_value_managed(e) == 0); /* the source is never stamped */
-  OspreyMap *inherit = osprey_map_set(mv, 2, 20); /* arity-3 inherits */
-  CHECK(osprey_map_value_managed(inherit) == 1);
-  CHECK(osprey_map_length(inherit) == 2 && osprey_map_get(inherit, 2) == 20);
-  CHECK(osprey_map_value_managed(osprey_map_remove(inherit, 1)) == 1);
-  CHECK(osprey_map_value_managed(osprey_map_merge(mv, inherit)) == 1);
+  OspreyMap *extended = osprey_map_set_of(mv, 2, 20, 1);
+  CHECK(osprey_map_value_managed(extended) == 1);
+  CHECK(osprey_map_length(extended) == 2 && osprey_map_get(extended, 2) == 20);
+  CHECK(osprey_map_value_managed(osprey_map_remove(extended, 1)) == 1);
+  CHECK(osprey_map_value_managed(osprey_map_merge(mv, extended)) == 1);
   OspreyMapBuilder *b = osprey_map_builder_new(KI);
   CHECK(b != NULL);
   osprey_map_builder_put_of(b, 1, 100, 1); /* latches on first put */
@@ -131,7 +131,7 @@ void test_entry_kind_flags(void) {
 void test_iter_lifecycle(void) {
   OspreyMap *m = osprey_map_empty(KI);
   for (int64_t k = 0; k < PREFIX_N; k++) {
-    m = osprey_map_set(m, k, k * VAL_MUL);
+    m = osprey_map_set_of(m, k, k * VAL_MUL, 0);
   }
   OspreyMapIter *it = osprey_map_iter_new(m);
   CHECK(it != NULL);

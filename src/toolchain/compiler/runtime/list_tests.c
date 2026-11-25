@@ -62,7 +62,7 @@ static void test_null_arguments(void) {
   CHECK(osprey_list_drop(NULL, 0) == NULL); /* alias return of NULL */
   CHECK(osprey_list_drop(NULL, 7) == NULL);
   int64_t one = 5;
-  check_elems(osprey_list_append(NULL, one), &one, 1);
+  check_elems(osprey_list_append_of(NULL, one, 0), &one, 1);
   check_elems(osprey_list_prepend_of(NULL, one, 0), &one, 1);
   OspreyList *a = make_range_list(0, 5);
   CHECK(osprey_list_concat(NULL, a) == a);
@@ -194,7 +194,7 @@ static void test_prepend_deep(void) {
   OspreyList *l = osprey_list_empty();
   for (int64_t i = 0; i < DEEP_PREPEND_N; i++) {
     if (i % PREPEND_APPEND_EVERY == 0) {
-      l = osprey_list_append(l, APPEND_SENTINEL - i);
+      l = osprey_list_append_of(l, APPEND_SENTINEL - i, 0);
       m[hi++] = APPEND_SENTINEL - i;
     } else {
       l = osprey_list_prepend_of(l, i, 0);
