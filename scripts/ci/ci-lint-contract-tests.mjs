@@ -131,25 +131,31 @@ export const registerLintContracts = (build) => {
   test('the run-line guard rejects a commented, gated, suppressed or missing lint command', assertGuardRejectsEvasions)
 }
 
-function deadCodeFixture(product, tests) {
+function deadCodeFixture(product, tests, nested = false) {
   return withTempDir('dead-code', (root) => {
     mkdirSync(join(root, 'scripts/ci'), { recursive: true })
-    mkdirSync(join(root, 'crates/fixture/src'), { recursive: true })
+    const source = join(root, 'src/toolchain/crates/fixture/src')
+    mkdirSync(source, { recursive: true })
     writeFileSync(join(root, 'scripts/ci/check.mjs'), readFileSync('scripts/ci/verify-no-dead-code.mjs'))
-    writeFileSync(join(root, 'crates/fixture/src/main.rs'), product)
-    writeFileSync(join(root, 'crates/fixture/src/tests.rs'), tests)
+    const testDir = nested ? join(source, 'env') : source
+    mkdirSync(testDir, { recursive: true })
+    writeFileSync(join(source, nested ? 'env.rs' : 'main.rs'), product)
+    writeFileSync(join(testDir, 'tests.rs'), tests)
     return spawnSync(process.execPath, [join(root, 'scripts/ci/check.mjs')], { encoding: 'utf8' })
   })
 }
 
 test('dead-code gate distinguishes test module helpers from unused product code', () => {
-  const helper = deadCodeFixture('#[cfg(test)]\nmod tests;\nfn main() {}',
-    'pub(crate) fn assembled_program() {}')
-  assert.equal(helper.status, 0, helper.stderr)
+  for (const nested of [false, true]) {
+    const declaration = nested ? '#[expect(\n    clippy::indexing_slicing\n)]\npub(crate) mod tests;' : 'mod tests;'
+    const helper = deadCodeFixture(`pub fn active() {}\n#[cfg(test)]\n${declaration}\nfn main() { active(); }`,
+      'pub(crate) fn assembled_program() {}', nested)
+    assert.equal(helper.status, 0, helper.stderr)
+  }
   const dead = deadCodeFixture('pub fn orphan() {}\n#[cfg(test)]\nmod tests;\nfn main() {}',
     '#[test]\nfn regression() { crate::orphan(); }')
   assert.equal(dead.status, 1)
-  assert.match(dead.stderr, /crates\/fixture\/src\/main.rs:1  fn orphan/)
+  assert.match(dead.stderr, /src\/toolchain\/crates\/fixture\/src\/main.rs:1  fn orphan/)
   const productModule = deadCodeFixture('mod tests;\nfn main() {}', 'pub fn unused_product() {}')
   assert.equal(productModule.status, 1)
   assert.match(productModule.stderr, /fn unused_product/)
@@ -157,6 +163,10 @@ test('dead-code gate distinguishes test module helpers from unused product code'
   assert.equal(comment.status, 1)
   const live = deadCodeFixture('pub fn active() {}\nfn main() { active(); }', '')
   assert.equal(live.status, 0, live.stderr)
+  assert.match(live.stdout, /1 public items/)
+  const missing = deadCodeFixture('fn main() {}', '')
+  assert.equal(missing.status, 1)
+  assert.match(missing.stderr, /no public Rust declarations/)
 })
 
 

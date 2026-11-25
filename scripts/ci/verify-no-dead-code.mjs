@@ -35,10 +35,11 @@
 // fails, the fix is to call the item or delete it, never to exempt it.
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
-import { join, extname, resolve, dirname } from "node:path";
+import { join, extname, resolve, dirname, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
+const CRATES_ROOT = join(REPO_ROOT, "src", "toolchain", "crates") + sep;
 
 // Directories that never hold hand-written product source.
 const SKIP_DIRS = new Set([
@@ -92,8 +93,12 @@ const isTestFile = (path) =>
   path.includes("/benchmarks/");
 
 const hasTestModuleDeclaration = (path) =>
-  ["main.rs", "lib.rs", "mod.rs"].some((parent) =>
-    /^\s*#\[cfg\(test\)\]\s*mod tests\s*;/m.test(files.get(join(dirname(path), parent)) ?? ""),
+  ["main.rs", "lib.rs", "mod.rs"].map((parent) => join(dirname(path), parent))
+    .concat(dirname(path) + ".rs").some((parent) =>
+      linesOf.get(parent)?.some((line, index) =>
+        /^\s*(?:#\[[^\]]*\]\s*)*(?:pub(?:\([^)]*\))?\s+)?mod tests\s*;/.test(line)
+          && maskOf.get(parent).has(index + 1),
+      ),
   );
 
 const delimiterDepth = (line, initial) =>
@@ -153,7 +158,7 @@ for (const [path, text] of files) {
 }
 
 const crateSrc = (path) =>
-  path.startsWith(join(REPO_ROOT, "crates")) && path.endsWith(".rs") && !isTestFile(path);
+  path.startsWith(CRATES_ROOT) && path.endsWith(".rs") && !isTestFile(path);
 
 // name -> { kind, path, line, spans: [[path, start, end]] }
 const items = new Map();
@@ -225,6 +230,11 @@ for (const [name, item] of items) {
   if (!hasProductReference(name, item)) dead.push({ name, ...item });
 }
 dead.sort((a, b) => a.path.localeCompare(b.path) || a.line - b.line);
+
+if (items.size === 0) {
+  console.error("FAIL: no public Rust declarations found in src/toolchain/crates.");
+  process.exit(1);
+}
 
 if (dead.length === 0) {
   console.log(`==> Dead-code gate: ${items.size} public items, all reachable from product code.`);
