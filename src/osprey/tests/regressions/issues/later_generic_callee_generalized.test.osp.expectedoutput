@@ -1,2 +1,6 @@
 -1
 -1
+rebuilt     -> byteAt1=1
+rebuilt     -> cpWidth=2
+mapped rows -> byteAt1=1 | cpWidth=2
+kept rows   -> cpWidth=2
