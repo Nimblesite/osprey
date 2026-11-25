@@ -42,7 +42,7 @@ The planned workflow:
 
 A sound that lags behind your hand feels wrong. Researchers put the limit at 10 ms from gesture to sound, with no more than 1 ms of variation (Wessel and Wright, NIME 2001). The pedal is designed for about half of that: under 5 ms from audio in to audio out, and under 5.5 ms from a key press to its sound.
 
-The pedal runs on a Raspberry Pi Compute Module 5 with a real-time Linux kernel. Its processor is fast enough for a stereo patch with eight voices, a delay and a reverb. Osprey's engine is not yet fast enough: making it fast enough for the pedal is ongoing work, done alongside everything else.
+The pedal runs standard Raspberry Pi OS (Linux) on a Raspberry Pi Compute Module 5, the same foundation other Raspberry Pi synths and pedals use. Its processor is fast enough for a stereo patch with eight voices, a delay and a reverb. Osprey's engine is not yet fast enough: making it fast enough for the pedal is ongoing work, done alongside everything else.
 
 ## Built for the stage
 

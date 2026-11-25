@@ -35,12 +35,13 @@ This track runs alongside every other phase and never stops ([DEVICE-PERF]). The
 
 ## Firmware [DEVICE-OS]
 
-Built on the work of Elk Audio OS, Zynthian and PiPedal ([DEVICE-RESEARCH-PRIOR]); mainline PREEMPT_RT rather than Xenomai ([DEVICE-RESEARCH-RT]).
+Built on the work of Elk Audio OS, Zynthian and PiPedal ([DEVICE-RESEARCH-PRIOR]); the same OS and kernel they use by default ([DEVICE-RESEARCH-OS]).
 
-- [ ] Raspberry Pi OS Lite (64-bit) image built with `rpi-image-gen` from a pinned package list: the Raspberry Pi real-time kernel, ALSA, USB gadget modules, the engine as the only service. Image built by `make`, shipped as a CI artifact, never committed. Confirm the real-time kernel package name and that it meets the jitter target ([DEVICE-RESEARCH-OS]).
+- [ ] Raspberry Pi OS Lite (64-bit) image built with `rpi-image-gen` from a pinned package list: the standard Raspberry Pi kernel, ALSA, USB gadget modules, the engine as the only service. Image built by `make`, shipped as a CI artifact, never committed.
 - [ ] A Raspberry Pi OS (Debian arm64) root is the sysroot for `--target=linux-arm64 --sysroot` ([TARGET-EMBEDDED-LINUX-CROSS]).
 - [ ] Read-only root with the OS's overlay file system, atomic data partition, A/B images through `tryboot` with the 10 s health check and fallback.
 - [ ] Image signing with the release key; the updater refuses unsigned images.
+- [ ] Kernel swap kept as one line in the package list: build the same image with Raspberry Pi's real-time kernel only if the 24-hour journey records dropouts ([DEVICE-OS-KERNEL]).
 - [ ] Isolated audio core, `SCHED_FIFO`, locked memory, direct ALSA at 64 frames; 32 and 128 offered, nothing that can exceed 10 ms ([DEVICE-HW-LATENCY-LIMITS]).
 - [ ] One dual-role USB-C port ([DEVICE-HW-USB]): device role to a computer (USB MIDI + network link + firmware updates), host role to a USB MIDI keyboard, switched by the Type-C controller; TRS MIDI in and out on the UART; one merged, timestamped event stream.
 - [ ] Watchdog restart with the bypass relay held.
