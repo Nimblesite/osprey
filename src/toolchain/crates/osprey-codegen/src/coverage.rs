@@ -195,6 +195,14 @@ impl Codegen {
         self.cov_hit(position);
     }
 
+    /// Credit an inlined callback body with its definition line per invocation.
+    pub(crate) fn cov_inline_body(&self, body: Expr, position: Option<Position>) -> Expr {
+        if self.coverage.is_none() || coverable_line(position).is_none() {
+            return body;
+        }
+        arm_entry(body, position)
+    }
+
     /// Mark `position`'s line covered at this point in the emitted code:
     /// declare its counter global on first sight and bump it in place. A
     /// no-op unless coverage instrumentation is active.

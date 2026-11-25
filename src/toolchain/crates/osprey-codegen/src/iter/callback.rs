@@ -116,7 +116,7 @@ fn known_lambda(
 /// [BUILTIN-ITER-CALLBACK], [TYPE-GENERICS-FN].
 fn named(cg: &Codegen, name: &str, callee: &Expr) -> Callback {
     match cg.fn_defs.get(name) {
-        Some((params, ..)) => {
+        Some((params, ..)) if matches!(callee, Expr::TypeApply { .. }) => {
             let (parameters, body) =
                 forwarding_body(&format!("{name}$argument"), params.len(), callee.clone());
             Callback::Closed(
@@ -127,6 +127,15 @@ fn named(cg: &Codegen, name: &str, callee: &Expr) -> Callback {
                 None,
             )
         }
+        // A bare name (an inlined parameter's alias) has no bindings to carry:
+        // its body inlines at each element, typed by the element's own value.
+        Some((params, body, position)) => Callback::Closed(
+            crate::closure::Environment::default(),
+            params.clone(),
+            cg.cov_inline_body(body.clone(), *position),
+            None,
+            None,
+        ),
         None => eta_builtin(cg, name).unwrap_or_else(|| Callback::Named(name.to_string())),
     }
 }
