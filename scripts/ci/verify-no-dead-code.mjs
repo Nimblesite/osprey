@@ -85,14 +85,15 @@ const walk = (dir, out = []) => {
   return out;
 };
 
-const isTestFile = (path) =>
+const hasTestPath = (path) =>
   path.includes("/tests/") ||
   path.includes("/test/") ||
-  testModules.has(path) ||
   path.endsWith("_tests.rs") ||
   path.includes("test_support") ||
   path.includes("testutil") ||
   path.includes("/benchmarks/");
+
+const isTestFile = (path) => testModules.has(path) || hasTestPath(path);
 
 const delimiterDepth = (line, initial) =>
   (line.match(/->|[()[\]<>]/g) ?? []).reduce((depth, token) =>
@@ -150,29 +151,48 @@ for (const [path, text] of files) {
   maskOf.set(path, path.endsWith(".rs") ? testMask(lines) : new Set());
 }
 
-// An external module used by a product target stays product code even when
-// another target imports the same file behind cfg(test).
-const testModules = new Set();
-const productModules = new Set();
+const reachable = (roots, children) => {
+  const seen = new Set(roots);
+  const pending = [...seen];
+  while (pending.length) {
+    for (const child of children(pending.pop())) {
+      if (seen.has(child)) continue;
+      seen.add(child);
+      pending.push(child);
+    }
+  }
+  return seen;
+};
+
+// A test-only module's descendants are also test-only unless a production
+// chain independently reaches them through module declarations available in builds.
+const children = new Map();
+const testRoots = new Set([...files.keys()].filter(hasTestPath));
 const moduleRoots = new Set(["main.rs", "lib.rs", "mod.rs"]);
 for (const [path, mask] of maskOf) {
   if (!path.endsWith(".rs")) continue;
   const lines = linesOf.get(path);
   const root = moduleRoots.has(basename(path)) ? dirname(path) : path.slice(0, -3);
+  const edges = [];
   lines.forEach((line, index) => {
     const match = EXTERNAL_MODULE.exec(line);
     if (!match) return;
     const explicit = EXTERNAL_PATH.exec(line) ?? EXTERNAL_PATH.exec(lines[index - 1] ?? "");
-    const modules = mask.has(index + 1) ? testModules : productModules;
-    if (explicit) {
-      modules.add(resolve(dirname(path), explicit[1]));
-    } else {
-      modules.add(join(root, match[1] + ".rs"));
-      modules.add(join(root, match[1], "mod.rs"));
+    const paths = explicit ? [resolve(dirname(path), explicit[1])]
+      : [join(root, match[1] + ".rs"), join(root, match[1], "mod.rs")];
+    for (const child of paths.filter(path => files.has(path))) {
+      const test = mask.has(index + 1);
+      edges.push({ child, test });
+      if (test) testRoots.add(child);
     }
   });
+  if (edges.length) children.set(path, edges);
 }
-for (const path of productModules) testModules.delete(path);
+const descendants = reachable(testRoots, path => (children.get(path) ?? []).map(edge => edge.child));
+const productRoots = [...children.keys()].filter(path => !descendants.has(path));
+const product = reachable(productRoots, path => (children.get(path) ?? [])
+  .filter(edge => !edge.test).map(edge => edge.child));
+const testModules = new Set([...descendants].filter(path => !product.has(path)));
 
 const crateSrc = (path) =>
   path.startsWith(CRATES_ROOT) && path.endsWith(".rs") && !isTestFile(path);

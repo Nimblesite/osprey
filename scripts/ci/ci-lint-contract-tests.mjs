@@ -7,7 +7,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { readFileSync, readdirSync, mkdirSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { job, workflowText } from './ci-workflow-text.mjs'
 import { withTempDir } from './ci-bundle-fixture.mjs'
@@ -131,7 +131,7 @@ export const registerLintContracts = (build) => {
   test('the run-line guard rejects a commented, gated, suppressed or missing lint command', assertGuardRejectsEvasions)
 }
 
-function deadCodeFixture(product, tests, { nested = false, testFile = 'tests.rs', library = '' } = {}) {
+function deadCodeFixture(product, tests, { nested = false, testFile = 'tests.rs', library = '', descendants = {} } = {}) {
   return withTempDir('dead-code', (root) => {
     mkdirSync(join(root, 'scripts/ci'), { recursive: true })
     const source = join(root, 'src/toolchain/crates/fixture/src')
@@ -142,6 +142,11 @@ function deadCodeFixture(product, tests, { nested = false, testFile = 'tests.rs'
     writeFileSync(join(source, nested ? 'env.rs' : 'main.rs'), product)
     writeFileSync(join(testDir, testFile), tests)
     if (library) writeFileSync(join(source, 'lib.rs'), library)
+    for (const [name, contents] of Object.entries(descendants)) {
+      const file = join(testDir, name)
+      mkdirSync(dirname(file), { recursive: true })
+      writeFileSync(file, contents)
+    }
     return spawnSync(process.execPath, [join(root, 'scripts/ci/check.mjs')], { encoding: 'utf8' })
   })
 }
@@ -178,6 +183,29 @@ test('dead-code gate distinguishes test module helpers from unused product code'
   const missing = deadCodeFixture('fn main() {}', '')
   assert.equal(missing.status, 1)
   assert.match(missing.stderr, /no public Rust declarations/)
+})
+
+test('dead-code gate follows test modules through descendants and keeps shared product routes', () => {
+  const entry = 'pub fn orphan() {}\n#[cfg(test)] mod witness;\nfn main() {}'
+  for (const { shared, gated } of [{}, { shared: true }, { shared: true, gated: true }]) {
+    const guard = gated ? '#[cfg(test)] ' : ''
+    const result = deadCodeFixture(entry, 'pub mod input;', {
+      testFile: 'witness.rs',
+      library: shared ? `pub fn orphan() {}\nmod witness;\n${guard}fn run() { witness::input::leaf::fixture(); }` : '',
+      descendants: {
+        'witness/input.rs': guard + 'pub mod leaf;',
+        'witness/input/leaf.rs': 'pub fn fixture() { crate::orphan(); }',
+      },
+    })
+    if (shared && !gated) {
+      assert.equal(result.status, 0, result.stderr)
+      assert.match(result.stdout, /2 public items/)
+    } else {
+      assert.equal(result.status, 1)
+      assert.match(result.stderr, /fn orphan/)
+      assert.doesNotMatch(result.stderr, /fn fixture/)
+    }
+  }
 })
 
 
