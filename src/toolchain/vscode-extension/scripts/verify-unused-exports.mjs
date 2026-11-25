@@ -16,6 +16,8 @@ const config = ts.getParsedCommandLineOfConfigFile(join(root, "tsconfig.json"), 
 });
 const host = {
   ...ts.sys,
+  // ts.sys holds a boolean; the language service calls a function (true on Linux).
+  useCaseSensitiveFileNames: () => ts.sys.useCaseSensitiveFileNames,
   getCompilationSettings: () => config.options,
   getScriptFileNames: () => config.fileNames,
   getScriptVersion: () => "0",
