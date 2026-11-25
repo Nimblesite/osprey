@@ -82,6 +82,21 @@ function Show-Window([Diagnostics.Process] $Process) {
     }
 }
 
+# The whole-journey kill is derived from the journey itself, never a fixed wall clock: each of the
+# script's steps owns its full patience (the host's default, or --patience in -Arguments), plus each
+# picture's settle-and-capture allowance, so the outer kill can never fire before a step's own
+# patience does. An explicit -Seconds only ever raises the limit.
+function Get-Limit([int] $Floor) {
+    $steps = 0
+    try { $steps = @(ConvertFrom-Json (Get-Content -Raw $Script)).steps.Count } catch { throw "the self-test script is not readable JSON: $_" }
+    $patience = 90.0  # Launch.cs Doubles.None's default
+    for ($i = 0; $i -lt $Arguments.Count - 1; $i++) {
+        if ($Arguments[$i] -eq '--patience') { $patience = [double]$Arguments[$i + 1] }
+    }
+    [int]([Math]::Max($Floor, $steps * ($patience + 15) + 30))
+}
+$limit = Get-Limit $Seconds
+
 # Each argument quoted as Windows reads a command line: backslashes before the closing quote are
 # doubled, or a folder such as C:\ would arrive as C:" and swallow the arguments after it.
 function Format-Argument([string] $Text) {
@@ -98,10 +113,10 @@ if (-not $Headless) {
         throw
     }
 }
-if (-not $run.WaitForExit($Seconds * 1000)) {
+if (-not $run.WaitForExit($limit * 1000)) {
     Show-Failure
     Stop-Process -Id $run.Id -Force
-    throw "The window did not finish its self-test in $Seconds seconds"
+    throw "The window did not finish its self-test's $limit-second budget"
 }
 Get-Content (Join-Path $Shots 'self-test.txt') -ErrorAction SilentlyContinue
 if ($run.ExitCode -ne 0) {

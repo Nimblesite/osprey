@@ -1,6 +1,6 @@
 //! Callable provenance through records, lists, maps, success values, destructuring and branches.
 
-use crate::effect_rows_tests::{accept_alarm, reject_alarm, unwrap_success};
+use crate::effect_rows_tests::{accept_alarm, diagnostics, unwrap_success, ALARM};
 
 /// Record fixtures of the field-provenance tests: a record with one callable
 /// field, and the same record plus a label the update tests override.
@@ -12,49 +12,83 @@ const LABELLED_RUNNER: &str = "type Runner = { run: () -> int, label: string }\n
       label: \"old\"\n\
     }\n";
 
-#[test]
-fn effectful_closure_cannot_escape_through_a_record_field_alias() {
-    reject_alarm(
-        &format!("{RUNNER}let runner = Runner {{ run: fn() => perform Alarm.ring() }}\nlet delayed = runner.run\nlet answer = delayed()\n"),
-        &["Alarm.ring"],
-    );
+/// A container holding the effectful closure, and the lookup that takes it
+/// back out: the closure fetched by the lookup is then called at top level.
+const LOOKUPS: &[(&str, &str, &str)] = &[
+    (
+        "a list lookup",
+        "let runners = [fn() => perform Alarm.ring()]",
+        "runners[0]",
+    ),
+    (
+        "list concatenation",
+        "let runners = [fn() => perform Alarm.ring()] + [fn() => 42]",
+        "listGet(runners, 0)",
+    ),
+    (
+        "persistent list transforms",
+        "let runners = listReverse(\nlistAppend([], fn() => perform Alarm.ring())\n)",
+        "listGet(runners, 0)",
+    ),
+    (
+        "persistent map transforms",
+        "let runners = mapMerge(\nmapSet(Map(), \"alarm\", fn() => perform Alarm.ring()),\nMap()\n)\nlet retained = mapRemove(runners, \"other\")",
+        "mapGet(retained, \"alarm\")",
+    ),
+    (
+        "a map lookup",
+        "let runners = { \"alarm\": (fn() => perform Alarm.ring()) }",
+        "runners[\"alarm\"]",
+    ),
+    (
+        "an explicit success value",
+        "let wrapped = Success { value: fn() => perform Alarm.ring() }",
+        "wrapped",
+    ),
+];
+
+/// Every program that hides `Alarm.ring` behind a value, each named by the
+/// route the closure takes; the checker must still see the effect.
+fn escapes() -> Vec<(&'static str, String)> {
+    let mut cases: Vec<(&'static str, String)> = LOOKUPS
+        .iter()
+        .map(|(route, setup, lookup)| {
+            let delayed = unwrap_success(lookup);
+            (
+                *route,
+                format!("{setup}\nlet delayed = {delayed}\nlet answer = delayed()\n"),
+            )
+        })
+        .collect();
+    let runners = unwrap_success("runners[0]");
+    cases.extend([
+        ("a record field alias", format!("{RUNNER}let runner = Runner {{ run: fn() => perform Alarm.ring() }}\nlet delayed = runner.run\nlet answer = delayed()\n")),
+        ("a record field read in a function parameter", format!("{RUNNER}fn execute(runner: Runner) = {{\nlet delayed = runner.run\ndelayed()\n}}\nlet runner = Runner {{ run: fn() => perform Alarm.ring() }}\nlet answer = execute(runner)\n")),
+        ("a record returned from a function", format!("{RUNNER}fn makeRunner() = Runner {{ run: fn() => perform Alarm.ring() }}\nlet runner = makeRunner()\nlet delayed = runner.run\nlet answer = delayed()\n")),
+        ("a field a record update leaves unchanged", format!("{LABELLED_RUNNER}let updated = runner {{ label: \"new\" }}\nlet delayed = updated.run\nlet answer = delayed()\n")),
+        ("a map merge", "let runners = {\"a\": fn() => perform Alarm.ring()} + {\"b\": fn() => 42}\nlet delayed = mapGet(runners, \"a\") ?: fn() => 0\nlet answer = delayed()\n".to_string()),
+        ("a list element read in a function parameter", format!("fn execute(runners) = {{\nlet delayed = {runners}\ndelayed()\n}}\nlet answer = execute([fn() => perform Alarm.ring()])\n")),
+        ("positional union destructuring", "type Wrapped = Empty | Has { run: () -> int }\nlet wrapped = Has { run: fn() => perform Alarm.ring() }\nlet delayed = match wrapped {\nHas(value) => value\nEmpty => fn() => 0\n}\nlet answer = delayed()\n".to_string()),
+        ("a reassignment in a handler branch", "effect Switch { replace: fn() -> Unit }\nmut delayed = fn() => 0\nlet _ = {\nhandle Switch {\nreplace => { delayed = fn() => perform Alarm.ring() }\n}\nperform Switch.replace()\n}\nlet answer = delayed()\n".to_string()),
+        ("one effectful branch of a function", "fn choose(flag) = match flag {\ntrue => perform Alarm.ring()\nfalse => 0\n}\nlet answer = choose(false)\n".to_string()),
+    ]);
+    cases
 }
 
 #[test]
-fn record_field_effect_propagates_through_a_function_parameter() {
-    reject_alarm(
-        &format!(
-            "{RUNNER}fn execute(runner: Runner) = {{\nlet delayed = runner.run\ndelayed()\n}}\n\
-             let runner = Runner {{ run: fn() => perform Alarm.ring() }}\n\
-             let answer = execute(runner)\n"
-        ),
-        &["Alarm.ring"],
-    );
-}
-
-#[test]
-fn record_field_effect_propagates_from_a_function_return() {
-    reject_alarm(
-        &format!(
-            "{RUNNER}fn makeRunner() = Runner {{ run: fn() => perform Alarm.ring() }}\n\
-             let runner = makeRunner()\n\
-             let delayed = runner.run\n\
-             let answer = delayed()\n"
-        ),
-        &["Alarm.ring"],
-    );
-}
-
-#[test]
-fn record_update_preserves_callable_provenance_in_unchanged_fields() {
-    reject_alarm(
-        &format!(
-            "{LABELLED_RUNNER}let updated = runner {{ label: \"new\" }}\n\
-             let delayed = updated.run\n\
-             let answer = delayed()\n"
-        ),
-        &["Alarm.ring"],
-    );
+fn an_effectful_closure_cannot_escape_through_any_value_route() {
+    for (route, body) in escapes() {
+        let rendered: Vec<String> = diagnostics(&format!("{ALARM}{body}"))
+            .into_iter()
+            .map(|error| error.message)
+            .collect();
+        assert!(
+            rendered
+                .iter()
+                .any(|message| message.contains("Alarm.ring")),
+            "Alarm.ring escaped through {route}; diagnostics: {rendered:?}"
+        );
+    }
 }
 
 #[test]
@@ -64,133 +98,4 @@ fn record_update_replaces_callable_provenance_in_overridden_fields() {
              let delayed = updated.run\n\
              let answer = delayed()\n"
     ));
-}
-
-#[test]
-fn effectful_closure_cannot_escape_through_list_lookup() {
-    reject_alarm(
-        &format!(
-            "let runners = [fn() => perform Alarm.ring()]\nlet delayed = {}\nlet answer = delayed()\n",
-            unwrap_success("runners[0]")
-        ),
-        &["Alarm.ring"],
-    );
-}
-
-#[test]
-fn list_concatenation_preserves_callable_element_provenance() {
-    reject_alarm(
-        &format!(
-            "let runners = [fn() => perform Alarm.ring()] + [fn() => 42]\nlet delayed = {}\nlet answer = delayed()\n",
-            unwrap_success("listGet(runners, 0)")
-        ),
-        &["Alarm.ring"],
-    );
-}
-
-#[test]
-fn map_merge_preserves_callable_value_provenance() {
-    reject_alarm(
-        "let runners = {\"a\": fn() => perform Alarm.ring()} + {\"b\": fn() => 42}\n\
-         let delayed = mapGet(runners, \"a\") ?: fn() => 0\n\
-         let answer = delayed()\n",
-        &["Alarm.ring"],
-    );
-}
-
-#[test]
-fn persistent_list_transforms_preserve_callable_element_provenance() {
-    reject_alarm(
-        &format!(
-            "let runners = listReverse(\nlistAppend([], fn() => perform Alarm.ring())\n)\nlet delayed = {}\nlet answer = delayed()\n",
-            unwrap_success("listGet(runners, 0)")
-        ),
-        &["Alarm.ring"],
-    );
-}
-
-#[test]
-fn persistent_map_transforms_preserve_callable_value_provenance() {
-    reject_alarm(
-        &format!(
-            "let runners = mapMerge(\nmapSet(Map(), \"alarm\", fn() => perform Alarm.ring()),\nMap()\n)\nlet retained = mapRemove(runners, \"other\")\nlet delayed = {}\nlet answer = delayed()\n",
-            unwrap_success("mapGet(retained, \"alarm\")")
-        ),
-        &["Alarm.ring"],
-    );
-}
-
-#[test]
-fn list_element_effect_propagates_through_a_function_parameter() {
-    reject_alarm(
-        &format!(
-            "fn execute(runners) = {{\nlet delayed = {}\ndelayed()\n}}\nlet answer = execute([fn() => perform Alarm.ring()])\n",
-            unwrap_success("runners[0]")
-        ),
-        &["Alarm.ring"],
-    );
-}
-
-#[test]
-fn effectful_closure_cannot_escape_through_map_lookup() {
-    reject_alarm(
-        &format!(
-            "let runners = {{ \"alarm\": (fn() => perform Alarm.ring()) }}\nlet delayed = {}\nlet answer = delayed()\n",
-            unwrap_success("runners[\"alarm\"]")
-        ),
-        &["Alarm.ring"],
-    );
-}
-
-#[test]
-fn effectful_closure_cannot_escape_through_an_explicit_success_value() {
-    reject_alarm(
-        &format!(
-            "let wrapped = Success {{ value: fn() => perform Alarm.ring() }}\nlet delayed = {}\nlet answer = delayed()\n",
-            unwrap_success("wrapped")
-        ),
-        &["Alarm.ring"],
-    );
-}
-
-#[test]
-fn effectful_closure_cannot_escape_through_positional_union_destructuring() {
-    reject_alarm(
-        "type Wrapped = Empty | Has { run: () -> int }\n\
-         let wrapped = Has { run: fn() => perform Alarm.ring() }\n\
-         let delayed = match wrapped {\n\
-           Has(value) => value\n\
-           Empty => fn() => 0\n\
-         }\n\
-         let answer = delayed()\n",
-        &["Alarm.ring"],
-    );
-}
-
-#[test]
-fn branch_reassignment_cannot_hide_an_effectful_closure() {
-    reject_alarm(
-        "effect Switch { replace: fn() -> Unit }\n\
-         mut delayed = fn() => 0\n\
-         let _ = {\n\
-             handle Switch {\n\
-                 replace => { delayed = fn() => perform Alarm.ring() }\n\
-             }\n\
-             perform Switch.replace()\n\
-         }\n\
-         let answer = delayed()\n",
-        &["Alarm.ring"],
-    );
-}
-
-#[test]
-fn one_branch_with_an_effect_makes_the_whole_function_effectful() {
-    reject_alarm(
-        "fn choose(flag) = match flag {\n\
-           true => perform Alarm.ring()\n\
-           false => 0\n\
-         }\n\
-         let answer = choose(false)\n",
-        &["Alarm.ring"],
-    );
 }

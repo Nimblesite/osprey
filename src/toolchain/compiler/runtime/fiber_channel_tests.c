@@ -29,6 +29,14 @@ enum {
 };
 
 static int64_t blocking_channel = 0;
+static int64_t gating_channel = 0;
+
+// Parks on an empty channel until this test releases it: "still running" is
+// then a fact about blocking, not about a timer racing a 100 ms usleep body,
+// which a loaded runner can outrun.
+static int64_t channel_gated_function(void) {
+  return channel_recv(gating_channel);
+}
 
 // Sends more values than the buffer holds, so the runtime must park the sender
 // on `not_full` until the consumer drains rather than drop or overwrite.
@@ -189,11 +197,14 @@ void test_unassigned_fiber_handles(void) {
 // it." A still-running fiber therefore makes cleanup a no-op, and the value it
 // eventually produces survives.
 void test_cleanup_defers_while_a_fiber_runs(void) {
-  int64_t slow = fiber_spawn(slow_function);
+  gating_channel = channel_create(1);
+  assert(gating_channel > 0);
+  int64_t slow = fiber_spawn(channel_gated_function);
   assert(slow > 0);
   assert(fiber_done(slow) == 0 && "the fiber must still be running");
   fiber_cleanup_results();
   assert(fiber_done(slow) == 0 && "cleanup must not have joined the fiber");
+  assert(channel_send(gating_channel, 999, 0) == 1 && "the fiber is released");
   assert(fiber_await(slow) == 999 && "the pending result survived cleanup");
   fiber_cleanup_results();
   assert(fiber_await(slow) == 999 &&

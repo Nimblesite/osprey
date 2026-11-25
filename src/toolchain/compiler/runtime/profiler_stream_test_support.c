@@ -8,7 +8,15 @@
 #include <sys/un.h>
 #include <time.h>
 
-enum { TEST_TIMEOUT_MS = 10000, TEST_RETRIES = 500, TEST_MAX_TMPDIRS = 8 };
+enum {
+  TEST_TIMEOUT_MS = 10000,
+  // Waiting for the endpoint to release a previous connection's CPU session
+  // is environment synchronization, not the behavior under test: only
+  // ordering matters, so this is a generous safety deadline (30 s), far above
+  // any stall a sibling suite can impose on the endpoint thread.
+  TEST_RETRIES = 3000,
+  TEST_MAX_TMPDIRS = 8
+};
 
 static char g_tmpdirs[TEST_MAX_TMPDIRS][32];
 static int g_tmpdir_count = 0;

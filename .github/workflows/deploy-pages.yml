@@ -98,16 +98,8 @@ jobs:
         working-directory: ./src/toolchain/website
         run: npm run build
 
-      # Gate the live deploy on the Playwright e2e suite — a broken or visually
-      # regressed site never reaches production.
-      - name: Install Playwright browser
-        working-directory: ./src/toolchain/website
-        run: npx playwright install --with-deps chromium
-
-      - name: End-to-end tests
-        working-directory: ./src/toolchain/website
-        run: npx playwright test
-
+      # No tests here: the website's Playwright suite gates every PR in ci.yml
+      # ("Tests: Website E2E"), so what reaches main has already passed it.
       - name: Setup Pages
         uses: actions/configure-pages@v6
 

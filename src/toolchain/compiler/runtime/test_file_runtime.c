@@ -23,7 +23,26 @@ extern char *read_file(char *filename);
 #define CHECK(c) assert(c)
 #include "file_dir_tests.h"
 
-#define FILE_ROUNDTRIP_PATH "/tmp/osprey_file_runtime_test.txt"
+// Every fixture lives in one mkdtemp directory named for this run, so a
+// killed earlier run (or a second instance on the same machine) cannot leave a
+// stale file, FIFO or directory behind any fixed /tmp name. The NUL tests
+// below already used mkstemp for the same reason.
+static char g_fixture_dir[] = "/tmp/osprey_file_runtime_XXXXXX";
+static char g_roundtrip_path[sizeof g_fixture_dir + 16];
+static char g_fifo_path[sizeof g_fixture_dir + 16];
+static char g_directory_path[sizeof g_fixture_dir + 16];
+#define FILE_ROUNDTRIP_PATH g_roundtrip_path
+#define FIFO_PATH g_fifo_path
+#define FILE_DIRECTORY_PATH g_directory_path
+
+static void make_fixture_paths(void) {
+  assert(mkdtemp(g_fixture_dir) != NULL);
+  assert(snprintf(g_fifo_path, sizeof g_fifo_path, "%s/fifo", g_fixture_dir) > 0);
+  assert(snprintf(g_directory_path, sizeof g_directory_path, "%s/dir",
+                  g_fixture_dir) > 0);
+  assert(snprintf(g_roundtrip_path, sizeof g_roundtrip_path, "%s/test.txt",
+                  g_fixture_dir) > 0);
+}
 
 // A file that was written must read back byte for byte as the same text.
 static void assert_file_holds(const char *path, const char *want) {
@@ -51,7 +70,6 @@ void test_file_roundtrip(void) {
   assert(remove(FILE_ROUNDTRIP_PATH) == 0);
 }
 
-#define FIFO_PATH "/tmp/osprey_file_runtime_fifo"
 // Comfortably past any pipe buffer, so the writer below cannot finish before
 // the reader disappears, and past any malloc slack, so an undersized
 // destination buffer corrupts the heap instead of getting away with it.
@@ -187,8 +205,6 @@ static void test_io_failures_report_a_truthful_reason(void) {
   assert(osp_io_error() != NULL);
 }
 
-#define FILE_DIRECTORY_PATH "/tmp/osprey_file_runtime_dir"
-
 // A read that fails AFTER fopen succeeded must not hand back a partial buffer
 // as if it were the file. Reading a directory is exactly that shape: the open
 // is legal, every fread fails, and the only witness is ferror. Dropping it
@@ -196,8 +212,7 @@ static void test_io_failures_report_a_truthful_reason(void) {
 // same silent-success defect the write path guards against.
 // Implements [BUILTIN-FILE].
 static void test_read_file_reports_a_stream_error(void) {
-  (void)rmdir(FILE_DIRECTORY_PATH);
-  assert(mkdir(FILE_DIRECTORY_PATH, 0700) == 0);
+  assert(mkdir(FILE_DIRECTORY_PATH, 0700) == 0); // unique to this run
   char *content = read_file((char *)(uintptr_t)FILE_DIRECTORY_PATH);
   assert(content == NULL && "a stream error must not yield a buffer");
   const char *reason = osp_io_error();
@@ -443,6 +458,7 @@ static void run_nul_filesystem_tests(void) {
 }
 
 int main(int argc, char **argv) {
+  make_fixture_paths();
   if (argc == 2 && strcmp(argv[1], "--nul-files") == 0) {
     run_nul_filesystem_tests();
     return 0;
