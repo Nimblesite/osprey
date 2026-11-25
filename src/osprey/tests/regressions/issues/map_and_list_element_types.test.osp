@@ -17,7 +17,7 @@ print("map bool    -> ${mapGet(mb, "k")}")
 let mi = mapSet(Map(), "k", 42)
 print("map int     -> ${mapGet(mi, "k")}\nlist string -> ${listGet(listAppend(List(), "he" + "ap"), 0) ?: "missing"}\nlist float  -> ${listGet(listAppend(List(), 1.5), 0) ?: 0.0}")
 
-// #419: a Result held in a list keeps its own tag and payload.
+/// Input to the #419 regression, which checks that a Result held in a list keeps its tag and payload.
 type Box = { n: int }
 
 fn checked(b) = match b.n == 0 {
