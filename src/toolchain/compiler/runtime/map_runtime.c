@@ -1,5 +1,6 @@
 #include "map_runtime_internal.h"
 #include "memory_hooks.h"
+#include "memory_refused.h"
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -19,13 +20,19 @@
 
 /* ============ Public API ============ */
 
+/* A zeroed block of `bytes`, or the named refusal stop [FAILURE-EXPLICIT]:
+ * no map builtin returns a Result, so there is no branch to hand NULL to. */
+void *osprey_map_calloc(size_t bytes) {
+  return osp_alloc_checked(calloc(1, bytes), "map", bytes);
+}
+
 /* Every returned header owns its root spine: MAP_HDR_LAYOUT makes releasing a
  * dead persistent version release the nodes it stopped sharing, and node RC in
  * map_runtime_hamt.c keeps the versions that still share them alive.
  * [GC-ARC-PERCEUS] [MEM-BACKENDS-ELEMENTS]. */
 static OspreyMap *alloc_map(OspreyKeyType key_type, int64_t length,
                             OspreyMapNode *root, int value_managed) {
-  OspreyMap *m = (OspreyMap *)calloc(1, sizeof(OspreyMap));
+  OspreyMap *m = (OspreyMap *)osprey_map_calloc(sizeof(OspreyMap));
   osp_mem_set_layout(m, MAP_HDR_LAYOUT);
   m->key_type = key_type;
   m->length = length;
@@ -108,7 +115,7 @@ OspreyMap *osprey_map_remove(OspreyMap *m, int64_t key) {
 /* ============ Iteration ============ */
 
 OspreyMapIter *osprey_map_iter_new(OspreyMap *m) {
-  OspreyMapIter *it = (OspreyMapIter *)calloc(1, sizeof(OspreyMapIter));
+  OspreyMapIter *it = (OspreyMapIter *)osprey_map_calloc(sizeof(OspreyMapIter));
   it->map = m;
   if (m != NULL && m->root != NULL) {
     it->stack_nodes[0] = m->root;
@@ -202,7 +209,7 @@ OspreyMap *osprey_map_merge(OspreyMap *a, OspreyMap *b) {
 
 OspreyMapBuilder *osprey_map_builder_new(OspreyKeyType key_type) {
   OspreyMapBuilder *b =
-      (OspreyMapBuilder *)calloc(1, sizeof(OspreyMapBuilder));
+      (OspreyMapBuilder *)osprey_map_calloc(sizeof(OspreyMapBuilder));
   b->key_type = key_type;
   return b;
 }

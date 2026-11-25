@@ -3,6 +3,17 @@
 // the map_tests suite; see map_tests_shared.h.
 #include "map_tests_shared.h"
 
+#include <sys/wait.h>
+#include <unistd.h>
+
+/* The suite's units allocate through the GC shim; the injector replaces the
+   real allocator underneath it, so a large block's refusal reaches the map. */
+#undef malloc
+#undef calloc
+#undef realloc
+#undef free
+#include "test_alloc.h"
+
 void test_merge(void) {
   OspreyMap *e = osprey_map_empty(KI);
   OspreyMap *a = osprey_map_empty(KI);
@@ -150,4 +161,70 @@ void test_iter_lifecycle(void) {
   CHECK(osprey_map_iter_next(it, &key, &value) == 0); /* stays exhausted */
   osprey_map_iter_free(it);
   osprey_map_iter_free(NULL); /* tolerated, like free(NULL) */
+}
+
+/* A BOOL-key collision node this wide keeps its keys in a block larger than a
+   GC page serves, so each copy is one real allocation of exactly REFUSED_BYTES. */
+#define REFUSED_WORDS 1024
+#define REFUSED_BYTES ((size_t)REFUSED_WORDS * sizeof(int64_t))
+#define REFUSED_STATUS 71
+static OspreyMap *g_refused_map;
+static int64_t g_refused_key;
+
+static void refused_set(void) {
+  (void)osprey_map_set_of(g_refused_map, g_refused_key, g_refused_key, 0);
+}
+static void refused_remove(void) {
+  (void)osprey_map_remove(g_refused_map, g_refused_key);
+}
+
+/* [FAILURE-EXPLICIT] A refused map block ends the run naming the request,
+   never a memcpy through NULL. Runs in a forked child. */
+static void map_refused(void (*op)(void)) {
+  int err[2];
+  char seen[512];
+  int status;
+  CHECK(pipe(err) == 0);
+  (void)fflush(NULL);
+  pid_t child = fork();
+  CHECK(child >= 0);
+  if (child == 0) {
+    (void)dup2(err[1], STDERR_FILENO);
+    osp_alloc_fail_size(REFUSED_BYTES);
+    op();
+    _exit(0);
+  }
+  close(err[1]);
+  ssize_t n = read(err[0], seen, sizeof seen - 1);
+  close(err[0]);
+  CHECK(waitpid(child, &status, 0) == child);
+  CHECK(WIFEXITED(status) && WEXITSTATUS(status) == REFUSED_STATUS);
+  CHECK(n > 0);
+  seen[n > 0 ? n : 0] = '\0';
+  CHECK(strstr(seen, "osprey: allocation refused: map request_bytes=8192") != NULL);
+}
+
+static OspreyMap *bool_collision(int64_t count) {
+  OspreyMap *m = osprey_map_empty(KB);
+  for (int64_t k = 1; k <= count; k++) m = osprey_map_set_of(m, k, k, 0);
+  CHECK(osprey_map_length(m) == count);
+  return m;
+}
+
+/* Growing a collision to REFUSED_WORDS keys, and shrinking one to it, each
+   need a refused block: both stop by name. The parent, never armed, then does
+   both and keeps every entry. */
+void test_refused_collision_blocks_end_the_run_by_name(void) {
+  g_refused_map = bool_collision(REFUSED_WORDS - 1);
+  g_refused_key = REFUSED_WORDS;
+  map_refused(refused_set);
+  OspreyMap *grown = osprey_map_set_of(g_refused_map, REFUSED_WORDS, REFUSED_WORDS, 0);
+  g_refused_map = osprey_map_set_of(grown, REFUSED_WORDS + 1, REFUSED_WORDS + 1, 0);
+  g_refused_key = 1;
+  map_refused(refused_remove);
+  OspreyMap *shrunk = osprey_map_remove(g_refused_map, 1);
+  CHECK(osprey_map_length(grown) == REFUSED_WORDS);
+  CHECK(osprey_map_length(shrunk) == REFUSED_WORDS);
+  chk_absent(shrunk, 1);
+  for (int64_t k = 2; k <= REFUSED_WORDS + 1; k++) chk_entry(shrunk, k, k);
 }

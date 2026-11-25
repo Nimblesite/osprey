@@ -146,5 +146,6 @@ void test_builder_key_types(void);
 void test_scale(void);
 void test_entry_kind_flags(void);
 void test_iter_lifecycle(void);
+void test_refused_collision_blocks_end_the_run_by_name(void);
 
 #endif

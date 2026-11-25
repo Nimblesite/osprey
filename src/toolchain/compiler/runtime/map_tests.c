@@ -285,6 +285,7 @@ void run_map_tests(void) {
   test_scale();
   test_entry_kind_flags();
   test_iter_lifecycle();
+  test_refused_collision_blocks_end_the_run_by_name();
   printf("[ok] map: %llu assertions\n", (unsigned long long)g_asserts);
 }
 #ifndef OSPREY_NO_TEST_MAIN
