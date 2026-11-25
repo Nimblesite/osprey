@@ -113,7 +113,7 @@ if (-not $Headless) {
         throw
     }
 }
-if (-not $run.WaitForExit($Seconds * 1000)) {
+if (-not $run.WaitForExit($limit * 1000)) {
     Show-Failure
     Stop-Process -Id $run.Id -Force
     throw "The window did not finish its self-test's $limit-second budget"
