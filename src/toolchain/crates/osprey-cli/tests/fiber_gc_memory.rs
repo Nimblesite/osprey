@@ -454,3 +454,40 @@ fn a_compiler_whose_runner_is_gone_starts_no_program() -> io::Result<()> {
     );
     Ok(())
 }
+
+/// Spawns and awaits fibers one after another, half answering ints and half
+/// strings, so only one is ever live.
+const FINISHED_FIBERS: &str = "fn ints(n) = range(0, n) |> fold(0, fn(sum, i) => wrapAdd(sum, await(spawn wrapAdd(i, 1))))\nfn texts(n) = range(0, n) |> fold(0, fn(sum, i) => wrapAdd(sum, length(await(spawn toString(i)))))\nprint(\"${ints(600000)} ${texts(600000)}\")\n";
+/// What a run that keeps one finished fiber at a time may reach: the runtime,
+/// its first table and a collector's slack, far below the 300 MiB a run that
+/// keeps all 1.2 million reached.
+const FINISHED_FIBERS_PEAK_MB: u64 = 96;
+
+/// [CONCURRENCY-HANDLES] A fiber nothing can await again is reclaimed with its
+/// slot, result and synchronisation, in every backend. Every finished fiber
+/// stayed in the runtime's table for the life of the process, outside the
+/// managed heap and its ceiling, so 1.2 million sequential `await(spawn ...)`
+/// reached 330 MiB (#359).
+#[test]
+fn finished_fibers_are_reclaimed_in_every_backend() -> io::Result<()> {
+    let mut wrong = Vec::new();
+    for memory in ["gc", "arc"] {
+        let run = bounded_program::run_within_budget(
+            &format!("finished_fibers_{memory}"),
+            FINISHED_FIBERS,
+            &["--run", "--quiet", &format!("--memory={memory}")],
+            &[],
+        )?;
+        let answered = run.code == Some(0) && run.stdout == "180000300000 3488890\n";
+        if !answered || run.peak_mb > FINISHED_FIBERS_PEAK_MB {
+            wrong.push(format!(
+                "{memory}: {}, stdout {:?}, stderr {:?}",
+                run.summary(),
+                run.stdout,
+                run.stderr
+            ));
+        }
+    }
+    assert!(wrong.is_empty(), "{}", wrong.join("\n"));
+    Ok(())
+}
