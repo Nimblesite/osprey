@@ -112,14 +112,16 @@ static int product(int64_t *out) {
 static void traced_dispatches(void) {
   osprey_gpu_opencl_test_driver(&mock);
   int64_t out = 0;
+  const int statuses[] = {1, 1, -1, 1, 1};
   assert(setenv("OSPREY_GPU_TRACE", "0", 1) == 0);
-  assert(product(&out) == 1 && product(&out) == 1);
-  assert(setenv("OSPREY_GPU_TRACE", "1", 1) == 0);
-  fail_at = calls + 1;
-  assert(product(&out) == -1);
-  fail_at = 0;
-  assert(product(&out) == 1 && product(&out) == 1);
-  assert(setenv("OSPREY_GPU_TRACE", "0", 1) == 0);
+  for (size_t i = 0; i < sizeof statuses / sizeof *statuses; i++) {
+    if (statuses[i] < 0) {
+      assert(setenv("OSPREY_GPU_TRACE", "1", 1) == 0);
+      fail_at = calls + 1;
+    }
+    assert(product(&out) == statuses[i]);
+    fail_at = 0;
+  }
 }
 
 // [GPU-BACKEND-DEVICE] Assert the same trace a running program emits.
@@ -244,11 +246,11 @@ static void dense_transfers(void) {
 int main(void) {
   // Exercise the real dynamic loader even on a machine without a compute GPU.
   assert(osprey_gpu_opencl_name() != NULL);
-  trace_case();
   for (unsigned point = 0; point <= 20; point++) failure_case(point);
   compiled_case();
   resident_case();
   dense_transfers();
+  trace_case();
   osprey_gpu_opencl_test_driver(&mock);
   assert(live == 0);
   puts("[ok] OpenCL driver: product and compiled-kernel dispatch, program recompilation, kernel reuse, resident buffers created once and read back on demand, every initialization/transfer/launch/readback failure releases resources");
