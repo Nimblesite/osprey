@@ -101,6 +101,7 @@ fn closer(lines: &[&str], index: usize) -> Option<usize> {
 }
 
 /// UTF-8 bytes removed by trimming leading whitespace.
+#[must_use]
 pub fn leading_whitespace_bytes(line: &str) -> usize {
     line.len().saturating_sub(line.trim_start().len())
 }
