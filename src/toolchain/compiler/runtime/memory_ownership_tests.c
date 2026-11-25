@@ -161,13 +161,17 @@ static void t_external_mapping_drop(void) {
 
 // One past the second trie level exercises the front, inner paths and tail.
 enum { LAST_INDEX = 1056 };
+static int64_t managed_int(int number) {
+  int *value = osp_alloc(sizeof(*value));
+  CHECK(value != NULL);
+  *value = number;
+  return (int64_t)(uintptr_t)value;
+}
+
 static OspreyList *managed_sequence(int prepend) {
   OspreyList *list = osprey_list_empty();
   for (int i = 0; i <= LAST_INDEX; i++) {
-    int *value = osp_alloc(sizeof(*value));
-    CHECK(value != NULL);
-    *value = i;
-    int64_t word = (int64_t)(uintptr_t)value;
+    int64_t word = managed_int(i);
     OspreyList *next = prepend ? osprey_list_prepend_of(list, word, 1)
                                : osprey_list_append_of(list, word, 1);
     osp_ownership_free(list);
@@ -176,20 +180,21 @@ static OspreyList *managed_sequence(int prepend) {
   return list;
 }
 
-// Replace a managed element with the very element read from the old version.
-static void t_replace_transferred_slot(int prepend) {
+// Transfer a fresh managed value to a derived list and drop the source.
+static void t_prepend_transferred_value(int prepend) {
   const int indices[] = {0, 31, 32, 1023, 1024, LAST_INDEX};
   (void)osprey_list_empty(); // Initialize the singleton before measuring.
   size_t base = osp_arc_live_objects();
   OspreyList *list = managed_sequence(prepend);
   for (size_t i = 0; i < sizeof(indices) / sizeof(indices[0]); i++) {
-    int index = indices[i];
-    int64_t value = osprey_list_get(list, index);
-    osp_retain((void *)(uintptr_t)value); // Transfer this occurrence to the result.
-    OspreyList *next = osprey_list_set(list, index, value);
+    int64_t index = indices[i] + (int64_t)i;
+    int64_t existing = osprey_list_get(list, index);
+    int64_t value = managed_int(-1 - (int)i);
+    OspreyList *next = osprey_list_prepend_of(list, value, 1);
     osp_ownership_free(list);
-    CHECK(osprey_list_get(next, index) == value);
-    CHECK(*(int *)(uintptr_t)value == (prepend ? LAST_INDEX - index : index));
+    CHECK(osprey_list_get(next, 0) == value && *(int *)(uintptr_t)value == -1 - (int)i);
+    CHECK(osprey_list_get(next, index + 1) == existing);
+    CHECK(*(int *)(uintptr_t)existing == (prepend ? LAST_INDEX - indices[i] : indices[i]));
     list = next;
   }
   osp_ownership_free(list);
@@ -243,8 +248,8 @@ int main(void) {
   t_external_mapping_drop();
 #endif
   t_collision_transfer();
-  t_replace_transferred_slot(0);
-  t_replace_transferred_slot(1);
+  t_prepend_transferred_value(0);
+  t_prepend_transferred_value(1);
   t_release_frees_the_owned_tree();
   t_retained_blocks_are_never_freed();
   t_moved_block_passes_to_its_new_owner();

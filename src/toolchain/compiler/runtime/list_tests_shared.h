@@ -36,7 +36,7 @@ static const int64_t GROWTH_SIZES[] = {0,    1,    2,    31,   32,    33,
 static const int64_t VIEW_SIZES[] = {1,  2,  32,   33,   34,   63,  64,
                                      65, 96, 1023, 1024, 1025, 1057};
 static const int64_t VIEW_DROPS[] = {1, 2, 31, 32, 33, 34, 63, 64, 65, 1022};
-/* Views no larger than this also get the exhaustive append/set drilling. */
+/* Views no larger than this also get the append persistence check. */
 #define DEEP_VIEW_LIMIT 96
 /* > 2 * OSPREY_LIST_BRANCH: crosses the tail boundary from any starting fill. */
 #define VIEW_APPEND_COUNT 70
@@ -44,10 +44,8 @@ static const int64_t VIEW_DROPS[] = {1, 2, 31, 32, 33, 34, 63, 64, 65, 1022};
 
 static const int64_t CAT_SIZES[] = {0, 1, 31, 32, 33, 64, 65, 100};
 #define CONCAT_B_BASE 1000000
-#define SET_SENTINEL (-1000000)
-#define OOB_SET_INDEX 100000 /* past every list here, and past one node's 32 */
+#define PREPEND_SENTINEL (-1000000)
 #define APPEND_SENTINEL (-2000000)
-#define EXHAUSTIVE_N 100
 #define PREPEND_N 100
 /* Front growth: three levels of room opened before physical index 0 (32, 1024,
    32768), with an append every PREPEND_APPEND_EVERY prepends. */
@@ -123,18 +121,6 @@ static inline void check_range(OspreyList *l, int64_t start, int64_t n) {
   free(m);
 }
 
-static inline void check_sets(OspreyList *l, const int64_t *m, int64_t n) {
-  int64_t *e = join_model(m, n, NULL, 0);
-  for (int64_t i = 0; i < n; i++) {
-    OspreyList *s = osprey_list_set(l, i, SET_SENTINEL - i);
-    e[i] = SET_SENTINEL - i;
-    check_elems(s, e, n);
-    e[i] = m[i];
-    check_elems(l, m, n); /* persistence of the source */
-  }
-  free(e);
-}
-
 /* Appends past the end of a (possibly shared/view) list; source must survive. */
 static inline void check_appends(OspreyList *l, const int64_t *m, int64_t n) {
   int64_t *e = join_model(m, n, NULL, 0);
@@ -175,7 +161,6 @@ static inline void check_view_at(OspreyList *l, const int64_t *m, int64_t n, int
   check_elems(l, m, n);
   if (deep) {
     check_appends(v, m + k, vn);
-    check_sets(v, m + k, vn);
     check_elems(l, m, n);
   }
 }

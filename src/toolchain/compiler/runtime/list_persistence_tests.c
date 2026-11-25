@@ -7,7 +7,6 @@
    valid at once (path copying + node refcounting). */
 #define BRANCH_FAN 24
 #define BRANCH_N 200
-#define BRANCH_STRIDE 7
 
 void test_branching_persistence(void) {
   const int64_t n = BRANCH_N, fan = BRANCH_FAN;
@@ -16,14 +15,14 @@ void test_branching_persistence(void) {
   OspreyList *kids[BRANCH_FAN];
   for (int64_t i = 0; i < fan; i++) {
     kids[i] = osprey_list_append(
-        osprey_list_set(base, i * BRANCH_STRIDE, SET_SENTINEL - i),
+        osprey_list_prepend_of(base, PREPEND_SENTINEL - i, 0),
         APPEND_SENTINEL - i);
   }
   for (int64_t i = 0; i < fan; i++) {
-    int64_t *e = join_model(m, n, NULL, 0);
-    e[i * BRANCH_STRIDE] = SET_SENTINEL - i;
-    e[n] = APPEND_SENTINEL - i;
-    check_elems(kids[i], e, n + 1);
+    int64_t head = PREPEND_SENTINEL - i;
+    int64_t *e = join_model(&head, 1, m, n);
+    e[n + 1] = APPEND_SENTINEL - i;
+    check_elems(kids[i], e, n + 2);
     free(e);
   }
   check_elems(base, m, n);
@@ -32,7 +31,7 @@ void test_branching_persistence(void) {
 
 /* Randomised differential run against a flat-array model. */
 #define RAND_OPS 400
-#define RAND_OP_KINDS 5
+#define RAND_OP_KINDS 4
 #define RAND_VALUE_SPAN 1000
 #define RAND_SEED 0x9E3779B97F4A7C15ULL
 #define LCG_MUL 6364136223846793005ULL
@@ -52,16 +51,11 @@ static int64_t rand_step(OspreyList **l, int64_t *m, int64_t n, uint64_t r) {
     m[n] = v;
     return n + 1;
   case 1:
-    *l = osprey_list_prepend(*l, v);
+    *l = osprey_list_prepend_of(*l, v, 0);
     memmove(m + 1, m, (size_t)n * sizeof(int64_t));
     m[0] = v;
     return n + 1;
   case 2:
-    if (n == 0) return n;
-    *l = osprey_list_set(*l, i, v);
-    m[i] = v;
-    return n;
-  case 3:
     if (n == 0) return n;
     *l = osprey_list_drop(*l, i + 1);
     memmove(m, m + i + 1, (size_t)(n - i - 1) * sizeof(int64_t));
@@ -125,9 +119,8 @@ void test_element_kind_flags(void) {
   CHECK(osprey_list_get(inherit, 1) == 43);
   OspreyList *pre = osprey_list_prepend_of(e, 40, 1);
   CHECK(osprey_list_elem_managed(pre) == 1 && osprey_list_get(pre, 0) == 40);
-  OspreyList *pre2 = osprey_list_prepend(pre, 39);
+  OspreyList *pre2 = osprey_list_prepend_of(pre, 39, 1);
   CHECK(osprey_list_elem_managed(pre2) == 1 && osprey_list_get(pre2, 0) == 39);
-  CHECK(osprey_list_elem_managed(osprey_list_set(inherit, 0, 7)) == 1);
   CHECK(osprey_list_elem_managed(osprey_list_reverse(inherit)) == 1);
   CHECK(osprey_list_elem_managed(osprey_list_drop(inherit, 1)) == 1);
   CHECK(osprey_list_elem_managed(osprey_list_concat(managed, inherit)) == 1);
