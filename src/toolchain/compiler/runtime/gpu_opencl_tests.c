@@ -122,6 +122,10 @@ static void traced_dispatches(void) {
     assert(product(&out) == statuses[i]);
     fail_at = 0;
   }
+  // Tracing turns back off: this success adds no line to the trace, and the
+  // cases after this one run untraced, as they did before it.
+  assert(setenv("OSPREY_GPU_TRACE", "0", 1) == 0);
+  assert(product(&out) == 1);
 }
 
 // [GPU-BACKEND-DEVICE] Assert the same trace a running program emits.
