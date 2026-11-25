@@ -1,0 +1,5 @@
+5:0: field `fib` of `Holder` is a bare `Fiber`, which names no element type: write its type arguments, as in `Fiber<int>`, or make `Holder` generic
+6:0: field `ch` of `Pipes` is a bare `Channel`, which names no element type: write its type arguments, as in `Channel<int>`, or make `Pipes` generic
+6:0: field `names` of `Pipes` is a bare `List`, which names no element type: write its type arguments, as in `List<int>`, or make `Pipes` generic
+6:0: field `ages` of `Pipes` is a bare `Map`, which names no element type: write its type arguments, as in `Map<int, int>`, or make `Pipes` generic
+6:0: field `outcome` of `Pipes` is a bare `Result`, which names no element type: write its type arguments, as in `Result<int, int>`, or make `Pipes` generic

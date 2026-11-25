@@ -55,6 +55,31 @@ fn describe(polarity: Polarity) -> &'static str {
     }
 }
 
+/// How many type arguments the constructor `name` takes: one per declared
+/// variance, one for `Channel`, none for anything else.
+pub(crate) fn constructor_arity(ctx: &InferCtx, name: &str) -> usize {
+    ctx.variance_of(name)
+        .map(<[_]>::len)
+        .or_else(|| (name == crate::ty::names::CHANNEL).then_some(1))
+        .unwrap_or(0)
+}
+
+/// The first constructor in `ty` written bare though it takes type arguments
+/// (`Fiber` for `Fiber<int>`), so it names no element type.
+pub(crate) fn bare_constructor<'t>(ctx: &InferCtx, ty: &'t Type) -> Option<&'t str> {
+    match ty {
+        Type::Con { name, args } if args.is_empty() => {
+            (constructor_arity(ctx, name) > 0).then_some(name.as_str())
+        }
+        Type::Con { args, .. } => args.iter().find_map(|arg| bare_constructor(ctx, arg)),
+        Type::Fun { params, ret } => params
+            .iter()
+            .chain(std::iter::once(ret.as_ref()))
+            .find_map(|part| bare_constructor(ctx, part)),
+        _ => None,
+    }
+}
+
 /// Validate every variance-annotated parameter's positions in a `type`
 /// declaration's variant fields. Field types are output positions; function
 /// types flip their parameter side.

@@ -79,6 +79,30 @@ impl Checker {
         for e in crate::variance::validate_type_decl(&self.ctx, name, type_params, variants) {
             self.record_err(e, position);
         }
+        self.reject_bare_fields(name, variants, position);
+    }
+
+    /// A field typed with a bare `Fiber`, `Channel`, `List`, `Map` or `Result`
+    /// names no element type, which no later use can supply: the check passed
+    /// it and codegen refused the program (#340). Implements [TYPE-GENERICS-FIELD-BARE].
+    fn reject_bare_fields(
+        &mut self,
+        owner: &str,
+        variants: &[TypeVariant],
+        position: Option<Position>,
+    ) {
+        for field in variants.iter().flat_map(|variant| &variant.fields) {
+            let ty = type_name_to_type(&field.ty, &HashMap::new());
+            if let Some(bare) = crate::variance::bare_constructor(&self.ctx, &ty) {
+                let written =
+                    vec!["int"; crate::variance::constructor_arity(&self.ctx, bare)].join(", ");
+                let message = format!(
+                    "field `{}` of `{owner}` is a bare `{bare}`, which names no element type: write its type arguments, as in `{bare}<{written}>`, or make `{owner}` generic",
+                    field.name
+                );
+                self.record_err(TypeError::new(message), position);
+            }
+        }
     }
 
     pub(super) fn collect_effect(

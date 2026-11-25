@@ -180,6 +180,16 @@ declaration's arity.** `Box<int> { v: 1 }` against `type Box<T>` is well-formed;
 the declaration, so a count mismatch is an error rather than a silently ignored
 annotation.
 
+`[TYPE-GENERICS-FIELD-BARE]` **A declared field names its type arguments.** A
+field written with a bare `Fiber`, `Channel`, `List`, `Map`, `Result` or generic
+record (`type Holder = { fib: Fiber }`) is rejected at the declaration, telling
+the author to write the arguments (`Fiber<int>`) or make the record generic
+(`type Holder<T> = { fib: Fiber<T> }`). No use can supply the element type the
+field lost. The check used to pass it and codegen then refused the program at
+`await` (#340, [COMPILER-RED-FAILS]). A function parameter written bare is
+different: it reads as fresh arguments, as if left to inference. Rejected by
+`src/osprey/examples/failscompilation/bare_constructor_record_field.ospo`.
+
 `[TYPE-GENERICS-FN]` **Functions bind type parameters with `fn name<T, …>`.**
 A binder makes every use of `T` in the signature the SAME inference variable;
 without it, `T` in an annotation names a nominal type. The binder is
