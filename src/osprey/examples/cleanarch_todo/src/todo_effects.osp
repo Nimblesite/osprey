@@ -43,6 +43,9 @@ effect Log {
     error: fn(string) -> Unit
 }
 
+/// One log line a multi-shot region held back, logged once the region settles.
+type LogLine = LogInfo { message: string } | LogWarn { message: string } | LogError { message: string }
+
 /// TimeProvider.
 effect Clock {
     replayable nowMs: fn() -> int

@@ -226,7 +226,7 @@ void mark_stack_refused_child(void) {
   printf("mark stack refused\n");
 }
 
-static void t_child_prints(const char *self, const char *setup, const char *flag, const char *want) {
+void gc_test_child_prints(const char *self, const char *setup, const char *flag, const char *want) {
   char command[4096], line[64] = "";
   int length = snprintf(command, sizeof command, "%s '%s' %s", setup, self, flag);
   CHECK(length > 0 && (size_t)length < sizeof command);
@@ -241,6 +241,6 @@ void t_size_class_pages(const char *self) {
   t_only_a_base_names_a_block();
   t_pages_fill_reuse_and_return();
   t_large_blocks_stay_in_the_table();
-  t_child_prints(self, "OSPREY_GC_PAGES=0", "--pages-off", "pages off\n");
-  t_child_prints(self, "", "--mark-stack-refused", "mark stack refused\n");
+  gc_test_child_prints(self, "OSPREY_GC_PAGES=0", "--pages-off", "pages off\n");
+  gc_test_child_prints(self, "", "--mark-stack-refused", "mark stack refused\n");
 }

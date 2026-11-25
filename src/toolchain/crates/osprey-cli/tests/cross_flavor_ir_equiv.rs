@@ -251,246 +251,45 @@ fn first_diff(default_ir: &str, ml_ir: &str) -> String {
     )
 }
 
-const PROJECT_SOURCES: [(&str, &str, &str); 3] = [
-    (
-        "main.osp",
-        r"namespace app;
-import ledger::Ledger
-import ledger::Policy
-fn main() = {
-    handle Arith { overflow _ _ _ wrapped => wrapped }
-    handle Policy::Fee { value => 2 }
-    print(Ledger::amount(Ledger::make(Policy::credit(40))))
-}
-",
-        r"namespace app
-import ledger::Ledger
-import ledger::Policy
-main () =
-    handle Arith
-        overflow _ _ _ wrapped => wrapped
-    handle Policy::Fee
-        value => 2
-    print (Ledger::amount (Ledger::make (Policy::credit 40)))
-",
-    ),
-    (
-        "unrelated/model.osp",
-        r"namespace ledger;
-signature LedgerApi {
-    type Entry
-    type Amount = int
-    fn make(value: Amount) -> Entry
-    fn amount(value: Entry) -> Amount
-}
-module Ledger : LedgerApi {
-    type Entry = { amount: int }
-    type Amount = int
-    fn make(value) = Entry { amount: value }
-    fn amount(value) = value.amount
-}
-",
-        r"namespace ledger
-signature LedgerApi
-    type Entry
-    type Amount = int
-    make : Amount -> Entry
-    amount : Entry -> Amount
-module Ledger : LedgerApi
-    type Entry =
-        amount : int
-    type Amount = int
-    make value = Entry(amount = value)
-    amount value = value.amount
-",
-    ),
-    (
-        "another/place/policy.osp",
-        r"namespace ledger;
-module Policy {
-    export effect Fee { value: fn() -> int }
-    export fn credit(value) = value + perform Fee.value()
-}
-",
-        r"namespace ledger
-module Policy
-    export effect Fee
-        value : Unit => int
-    export credit value = value + perform Fee.value ()
-",
-    ),
-];
+#[path = "cross_flavor_ir_equiv/project.rs"]
+mod project;
 
-fn project_sources(mask: usize) -> Result<Vec<SourceFile>, String> {
-    PROJECT_SOURCES
-        .iter()
-        .enumerate()
-        .map(|(index, (path, default, ml))| {
-            let (source, flavor) = if mask & (1 << index) == 0 {
-                (*default, Flavor::Default)
-            } else {
-                (*ml, Flavor::Ml)
-            };
-            parsed_source(source, flavor, path)
-        })
-        .collect()
-}
-
-fn project_ir(mask: usize) -> Result<String, String> {
-    let mut config = osprey_project::ProjectConfig::for_root(Path::new("app"));
-    config.entry = Some(PathBuf::from("main.osp"));
-    let project = osprey_project::assemble(&config, &project_sources(mask)?)
-        .map_err(|errors| format!("project {mask}: {errors:?}"))?;
-    let errors = osprey_types::check_program(&project.program);
-    if !errors.is_empty() {
-        return Err(format!("project {mask}: {errors:?}"));
-    }
-    compile_program(project.backend_program()).map_err(|error| format!("project {mask}: {error:?}"))
-}
-
-/// [MODULES-FLAVOR-PROJECTION] [MODULES-ABI] [FLAVOR-IR-EQUIV]
-/// Abstract and manifest types, split namespaces, imports and effect dispatch keep
-/// identical IR under all eight flavor assignments to this three-file graph.
-#[test]
-fn mixed_flavor_project_graphs_emit_identical_ir() -> Result<(), String> {
-    let expected = project_ir(0)?;
-    for mask in 1..(1 << PROJECT_SOURCES.len()) {
-        let actual = project_ir(mask)?;
-        assert_eq!(
-            expected,
-            actual,
-            "project flavor mask {mask}: {}",
-            first_diff(&expected, &actual)
-        );
-    }
-    Ok(())
-}
-
-/// The two-file graph every flavor can spell, as Default, ML and TypeScript.
-const SPELLED_GRAPH: [(&str, [(&str, Flavor); 3]); 2] = [
-    (
-        "main",
-        [
-            (
-                "namespace app;\nimport app::Policy::{credit, Fee}\nfn main() = {\n    handle Arith { overflow op lhs rhs wrapped => wrapped }\n    handle Fee { value => 2 }\n    print(credit(40))\n}\n",
-                Flavor::Default,
-            ),
-            (
-                "namespace app\nimport app::Policy\n    credit\n    Fee\nmain () =\n    handle Arith\n        overflow op lhs rhs wrapped => wrapped\n    handle Fee\n        value => 2\n    print (credit 40)\n",
-                Flavor::Ml,
-            ),
-            (
-                "// osprey: namespace=app\nimport { credit, Fee } from \"./policy\";\nfunction main() {\n  return handle<Arith>({ overflow: (op, lhs, rhs, wrapped) => wrapped }, () =>\n    handle<Fee>({ value: () => 2 }, () => print(credit(40))),\n  );\n}\n",
-                Flavor::TypeScript,
-            ),
-        ],
-    ),
-    (
-        "policy",
-        [
-            (
-                "namespace app;\nmodule Policy {\n    export effect Fee { value: fn() -> int }\n    export fn credit(value) = value + perform Fee.value()\n}\n",
-                Flavor::Default,
-            ),
-            (
-                "namespace app\nmodule Policy\n    export effect Fee\n        value : Unit => int\n    export credit value = value + perform Fee.value ()\n",
-                Flavor::Ml,
-            ),
-            (
-                "// osprey: namespace=app\n// osprey: module=Policy\nexport interface Fee extends Effect {\n  value(): int;\n}\nexport function credit(value) {\n  return value + perform<Fee>().value();\n}\n",
-                Flavor::TypeScript,
-            ),
-        ],
-    ),
-];
-
-/// The IR of the graph with file `i` in the flavor at index `choice[i]`.
-fn spelled_graph_ir(choice: [usize; 2]) -> Result<String, String> {
-    let sources = SPELLED_GRAPH
-        .iter()
-        .zip(choice)
-        .map(|((stem, spellings), index)| {
-            let (source, flavor) = *spellings
-                .get(index)
-                .ok_or_else(|| format!("{stem}: no spelling {index}"))?;
-            let extension = match flavor {
-                Flavor::Ml => "ospml",
-                Flavor::TypeScript => "ts",
-                _ => "osp",
-            };
-            parsed_source(source, flavor, &format!("{stem}.{extension}"))
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    let mut config = osprey_project::ProjectConfig::for_root(Path::new("app"));
-    let entry = sources.first().ok_or("the graph has no files")?;
-    config.entry = Some(entry.path.clone());
-    let project = osprey_project::assemble(&config, &sources)
-        .map_err(|errors| format!("graph {choice:?}: {errors:?}"))?;
-    let errors = osprey_types::check_program(&project.program);
-    if !errors.is_empty() {
-        return Err(format!("graph {choice:?}: {errors:?}"));
-    }
-    compile_program(project.backend_program())
-        .map_err(|error| format!("graph {choice:?}: {error:?}"))
-}
-
-/// [FLAVOR-TS-INTEROP] [FLAVOR-IR-EQUIV] An effect declared in one module,
-/// performed by an exported function and handled by the importing entry emits
-/// identical IR under all nine Default/ML/TypeScript assignments to the graph.
-#[test]
-fn typescript_joins_the_mixed_flavor_project_graph() -> Result<(), String> {
-    let expected = spelled_graph_ir([0, 0])?;
-    for main in 0..3 {
-        for policy in 0..3 {
-            let actual = spelled_graph_ir([main, policy])?;
-            assert_eq!(
-                expected,
-                actual,
-                "main flavor {main}, policy flavor {policy}: {}",
-                first_diff(&expected, &actual)
-            );
+/// [FLAVOR-PYTHON-BOUNDARY] Check source-independent ASTs and the full LLVM module.
+fn flat_triple(label: &str, sources: [&str; 3]) -> Result<String, String> {
+    let mut expected = None;
+    for (source, flavor) in sources
+        .into_iter()
+        .zip([Flavor::Default, Flavor::Ml, Flavor::Python])
+    {
+        let program = parsed_source(source, flavor, label)?.program;
+        let canonical = osprey_ast::canonical::without_positions(&program);
+        let errors = osprey_types::check_program(&program);
+        assert!(errors.is_empty(), "{label} {flavor}: {errors:?}");
+        let ir = compile_program(&program).map_err(|e| format!("{label} {flavor}: {e:?}"))?;
+        if let Some((ast, module)) = &expected {
+            assert_eq!(ast, &canonical, "{label} {flavor} AST");
+            assert_eq!(module, &ir, "{label} {flavor} LLVM");
+        } else {
+            expected = Some((canonical, ir));
         }
     }
-    Ok(())
+    expected
+        .map(|(_, ir)| ir)
+        .ok_or_else(|| format!("{label}: missing input"))
 }
 
-/// [MODULES-ABI] Debugger names are source identities; linkage stays encoded.
-#[test]
-fn module_debug_frames_keep_source_names_in_both_flavors() -> Result<(), String> {
-    for (source, flavor) in [
-        ("namespace \"billing/api\";\nmodule Tax { export fn add(n) = satAdd(n, 1) }\nfn main() = print(Tax::add(41))", Flavor::Default),
-        ("namespace \"billing/api\"\nmodule Tax\n    export add n = satAdd n 1\nmain () = print (Tax::add 41)", Flavor::Ml),
-    ] {
-        let program = assembled_if_module_aware(parsed_source(source, flavor, "debug.osp")?)?;
-        let ir = osprey_codegen::compile_program_debug(&program, osprey_codegen::DebugSource::from_path("debug.osp"))
-            .map_err(|error| format!("{flavor}: {error}"))?;
-        let linkage = osprey_ast::symbol::mangle(["billing/api", "Tax", "add"]);
-        assert!(ir.contains("!DISubprogram(name: \"billing/api::Tax::add\", scope:"), "{flavor}: {ir}");
-        assert!(ir.contains(&format!("define internal i64 @{linkage}(")), "preserve native ABI");
-    }
-    Ok(())
-}
-
-const RESULT_RECORD_ABI: [(&str, Flavor); 2] = [
-    ("type Packet = { number: Result<float, string>, flag: Result<bool, string> }\nfn make(n, b) = Packet { number: Success { value: n }, flag: Success { value: b } }\nlet packet = make(2.5, true)\nprint(\"${packet.number},${packet.flag}\")", Flavor::Default),
-    ("type Packet =\n    number: Result<float, string>\n    flag: Result<bool, string>\nmake (n, b) = Packet(number = Success(value = n), flag = Success(value = b))\npacket = make (2.5, true)\nprint \"${packet.number},${packet.flag}\"", Flavor::Ml),
+const RESULT_RECORD_ABI: [&str; 3] = [
+    "type Packet = { number: Result<float, string>, flag: Result<bool, string> }\nfn make(n, b) = Packet { number: Success { value: n }, flag: Success { value: b } }\nlet packet = make(2.5, true)\nprint(\"${packet.number},${packet.flag}\")",
+    "type Packet =\n    number: Result<float, string>\n    flag: Result<bool, string>\nmake (n, b) = Packet(number = Success(value = n), flag = Success(value = b))\npacket = make (2.5, true)\nprint \"${packet.number},${packet.flag}\"",
+    "class Packet:\n    number: Result[float, str]\n    flag: Result[bool, str]\ndef make(n, b):\n    return Packet(number=Success(value=n), flag=Success(value=b))\npacket = make(2.5, True)\nprint(f\"{packet.number},{packet.flag}\")",
 ];
 
 /// [TYPE-RECORD-RESULT] Payload bits must not move the tag or error-message slots.
 #[test]
 fn result_record_fields_use_complete_pointer_slots_and_bit_preserving_payloads(
 ) -> Result<(), String> {
-    let mut modules = Vec::new();
-    for (source, flavor) in RESULT_RECORD_ABI {
-        let ir = ir_for(source, flavor, "result-record.osp")?;
-        assert_result_record_storage(&ir);
-        modules.push(ir);
-    }
-    assert_eq!(
-        modules.first(),
-        modules.get(1),
-        "both flavors share the Result ABI"
-    );
+    let ir = flat_triple("result-record", RESULT_RECORD_ABI)?;
+    assert_result_record_storage(&ir);
     Ok(())
 }
 

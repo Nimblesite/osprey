@@ -129,25 +129,9 @@ struct Level {
 }
 
 impl Level {
-    /// An empty level that sees everything `outer` sees.
-    fn under(outer: &Env) -> Self {
-        Level {
-            env: outer.clone(),
-            own: Env::new(),
-            fns: Vec::new(),
-        }
-    }
-
     fn declare(&mut self, prefix: &[String], name: &str, denotation: Denotation) {
         let _ = self.own.insert(name.to_owned(), denotation.clone());
         let _ = self.env.insert(qualify(prefix, name), denotation);
-    }
-}
-
-/// Each of `reserved`'s own members, visible in `env` under its name qualified by `inner`.
-fn expose(env: &mut Env, inner: &[String], reserved: Level) {
-    for (member, denotation) in reserved.own {
-        let _ = env.insert(qualify(inner, &member), denotation);
     }
 }
 
@@ -157,26 +141,30 @@ fn expose(env: &mut Env, inner: &[String], reserved: Level) {
 /// fails closed the way [MULTI-REPLAY-STATE] requires.
 impl<'a> State<'a> {
     fn reserve(&mut self, statements: &'a [Stmt], outer: &Env, prefix: &[String]) -> Level {
-        let mut level = Level::under(outer);
+        let mut level = Level {
+            env: outer.clone(),
+            own: Env::new(),
+            fns: Vec::new(),
+        };
         for statement in statements {
             self.reserve_statement(statement, &mut level, prefix);
         }
         for statement in statements {
             self.reserve_nested(statement, &mut level, prefix);
         }
-        self.finished(level, Declarations::Statements(statements))
+        self.finished(&level);
+        self.jobs
+            .push((Declarations::Statements(statements), level.env.clone()));
+        level
     }
 
-    /// Give every function of `level` the completed scope it is defined in,
-    /// and queue its `declarations` for the walk under that scope.
-    fn finished(&mut self, level: Level, declarations: Declarations<'a>) -> Level {
+    /// Give every function of `level` the completed scope it is defined in.
+    fn finished(&mut self, level: &Level) {
         for (id, params) in &level.fns {
             if let Some(callable) = self.callables.get_mut(*id) {
                 callable.env = without(level.env.clone(), params);
             }
         }
-        self.jobs.push((declarations, level.env.clone()));
-        level
     }
 
     /// One member declaration: a function, a `mut` cell or a `let`-bound
@@ -226,12 +214,16 @@ impl<'a> State<'a> {
         if let Stmt::Namespace { name, body, .. } = statement {
             let inner = nested(prefix, [name.label().to_owned()]);
             let reserved = self.reserve(body, env, &inner);
-            expose(env, &inner, reserved);
+            for (member, denotation) in reserved.own {
+                let _ = env.insert(qualify(&inner, &member), denotation);
+            }
         }
         if let Stmt::Module { path, body, .. } = statement {
             let inner = nested(prefix, path.segments.iter().cloned());
             let reserved = self.reserve_items(body, env, &inner);
-            expose(env, &inner, reserved);
+            for (member, denotation) in reserved.own {
+                let _ = env.insert(qualify(&inner, &member), denotation);
+            }
         }
     }
 
@@ -241,11 +233,18 @@ impl<'a> State<'a> {
         outer: &Env,
         prefix: &[String],
     ) -> Level {
-        let mut level = Level::under(outer);
+        let mut level = Level {
+            env: outer.clone(),
+            own: Env::new(),
+            fns: Vec::new(),
+        };
         for item in items {
             self.reserve_statement(&item.declaration, &mut level, prefix);
         }
-        self.finished(level, Declarations::Items(items))
+        self.finished(&level);
+        self.jobs
+            .push((Declarations::Items(items), level.env.clone()));
+        level
     }
 }
 
@@ -421,18 +420,16 @@ impl<'a> State<'a> {
 
     fn scrutinee(&mut self, value: &'a Expr, arms: &'a [MatchArm], env: &Env) {
         self.expression(value, env);
-        self.match_arms(arms, env);
+        for arm in arms {
+            let inner = without(env.clone(), &pattern_bindings(&arm.pattern));
+            self.expression(&arm.body, &inner);
+        }
     }
 
     fn selections(&mut self, operations: &'a [SelectOperation], arms: &'a [MatchArm], env: &Env) {
         for operand in operations.iter().flat_map(SelectOperation::operands) {
             self.expression(operand, env);
         }
-        self.match_arms(arms, env);
-    }
-
-    /// Each arm's body, walked with its pattern's bindings shadowing `env`.
-    fn match_arms(&mut self, arms: &'a [MatchArm], env: &Env) {
         for arm in arms {
             let inner = without(env.clone(), &pattern_bindings(&arm.pattern));
             self.expression(&arm.body, &inner);

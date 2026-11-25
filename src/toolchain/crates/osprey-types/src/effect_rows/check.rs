@@ -110,6 +110,7 @@ fn check_resolved(program: &Program, instances: &Instances) -> CheckedEffects {
         &mut returns,
     );
     clear_verdicts(&mut rows, &mut returns);
+    index.deferred_errors.borrow_mut().clear();
     converge(
         &index,
         instances,
@@ -233,6 +234,7 @@ fn check_resolved(program: &Program, instances: &Instances) -> CheckedEffects {
         !instances.non_callable_call_error,
         instances,
     ));
+    errors.extend(index.deferred_errors.borrow().values().cloned());
     errors.extend(index.field_row_errors());
     errors.extend(instances.field_row_violations.borrow().values().cloned());
     CheckedEffects {

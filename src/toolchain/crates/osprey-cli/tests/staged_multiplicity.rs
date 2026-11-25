@@ -165,17 +165,37 @@ fn main() = {
     }
     print("${v}")
 }
-"#;
-
-/// A `many` handler over a non replayable body.
-/// [MULTI-REPLAY-CHECK] [MULTI-FALSIFY] gate 2. Resuming twice re-runs the
-/// remainder of the handled computation, so every non-`E` entry of that
-/// expression's row must be `replayable`. Without this check the axis buys
-/// nothing: `many` would silently send the email twice, which is the defect
-/// no effect row reports today.
-const NON_REPLAYABLE_BODY: &str = concat!(
-    crate::choice_int!(),
-    r#"
+"#,
+        &["Parallel.forEach", "multiplicity"],
+        "expected multiplicity-on-static rejection",
+    ),
+    // an abort declaration is rejected until a dropped continuation unwinds.
+    // [MULTI-HANDLE-ABORT-MODE] [MULTI-COST-ABORT] `abort` inverts the meaning
+    // of a `resume`-free arm: it must ABANDON the region rather than substitute
+    // its value. Abandoning ends the suspended computation with `pthread_exit`,
+    // and a killed thread runs no epilogue — the discarded frames' owned heap
+    // operands are never released
+    // (docs/specs/language/0017-AlgebraicEffects.md, "Known limits of abandoning a
+    // region"). Compiling the arm under today's substituting rule would make
+    // the `perform` RETURN, which is the opposite of what the declaration says.
+    //
+    // So the declaration is rejected until plan 0026 supplies the unwinding.
+    // Rejecting is not a placeholder: it is the truthful answer, and the one
+    // the broken-code process requires over a silently wrong one.
+    (
+        MIXED_ABORT,
+        &["Job.quit", "unwind"],
+        "expected a truthful `abort`-not-yet-unwound rejection",
+    ),
+    // a many handler over a non replayable body is rejected at the handle site.
+    // [MULTI-REPLAY-CHECK] [MULTI-FALSIFY] gate 2. Resuming twice re-runs the
+    // remainder of the handled computation, so every non-`E` entry of that
+    // expression's row must be `replayable`. Without this check the axis buys
+    // nothing: `many` would silently send the email twice, which is the defect
+    // no effect row reports today.
+    (
+        r#"
+effect Choice { control many pick: fn(int) -> int }
 effect Email { control send: fn(string) -> Unit }
 fn placeOrder(id) = {
     let chosen = perform Choice.pick(id)
@@ -285,17 +305,116 @@ const REJECTED: &[(&str, &[&str], &str)] = &[
         &["Email.send", "replayable"],
         "expected the replayability rejection naming the offending effect",
     ),
+    // a many arm that mutates a captured cell INDIRECTLY, through a lambda
+    // bound outside the arm whose body assigns it. [MULTI-REPLAY-STATE]
+    // Branches share the one cell, and hiding the write behind a called
+    // local function is exactly the helper the rule must see through — the
+    // direct form below is the control that proves the assertion can fire.
     (
-        INDIRECT_MUTATION,
+        r#"
+effect Choice { control many pick: fn(int) -> string }
+effect Journal { replayable note: fn(string) -> Unit }
+fn main() = {
+    mut log = ""
+    let note = fn(t) => {
+        handle Journal {
+            note _t => { log = "${log}${t}" }
+        }
+        perform Journal.note(t)
+    }
+    let out = {
+        handle Choice {
+            pick _b => {
+                note("arm")
+                let a = resume("1")
+                note("|mid${a}")
+                let b = resume("2")
+                "(${a},${b})"
+            }
+        }
+        perform Choice.pick(0)
+    }
+    print(out)
+    print("log=[${log}]")
+}
+"#,
         &["Choice.pick", "captures mutable binding `log`"],
         "expected the indirect mutation through a called lambda to be rejected",
     ),
+    // the control: the same mutation written directly in the many arm.
+    // [MULTI-REPLAY-STATE] A write the arm performs on a visible cell is the
+    // plain form of the rule; it stays rejected when the scope resolution is
+    // fixed so only genuinely visible cells count.
     (
-        DIRECT_MUTATION,
+        r#"
+effect Choice { control many pick: fn(int) -> string }
+effect Journal { replayable note: fn(string) -> Unit }
+fn main() = {
+    mut log = ""
+    let out = {
+        handle Choice {
+            pick _b => {
+                handle Journal {
+                    note _t => { log = "${log}x" }
+                }
+                perform Journal.note("y")
+                "${resume(1)},${resume(2)}"
+            }
+        }
+        perform Choice.pick(0)
+    }
+    print(out)
+    print("log=[${log}]")
+}
+"#,
         &["Choice.pick", "captures mutable binding `log`"],
         "expected the direct mutation in the arm to keep its rejection",
     ),
 ];
+
+/// [FLAVOR-PYTHON-HANDLER] All three frontends must name the same operation
+/// and reject it for the same reason, including through a named handler.
+#[test]
+fn multiplicity_rejections_agree_across_three_flavors() {
+    for (case, sources) in [
+        ("once", [
+            "effect Choose { control pick: fn() -> int }\nfn trial() = {\nhandle Choose { pick => satAdd(resume(1), resume(2)) }\nperform Choose.pick()\n}\nprint(trial())\n",
+            "effect Choose\n    control pick : Unit => int\ntrial () =\n    handle Choose\n        pick => satAdd (resume 1) (resume 2)\n    perform Choose.pick ()\nprint (trial ())\n",
+            "@effect\nclass Choose:\n    @control\n    def pick() -> int: ...\n@handler(Choose)\nclass choose:\n    def pick():\n        return satAdd(resume(1), resume(2))\nprint(choose(lambda: perform(Choose.pick())))\n",
+        ]),
+        ("abort", [
+            "effect Fail { control abort stop: fn() -> int }\nfn trial() = {\nhandle Fail { stop => resume(1) }\nperform Fail.stop()\n}\nprint(trial())\n",
+            "effect Fail\n    control abort stop : Unit => int\ntrial () =\n    handle Fail\n        stop => resume 1\n    perform Fail.stop ()\nprint (trial ())\n",
+            "@effect\nclass Fail:\n    @control\n    @abort\n    def stop() -> int: ...\n@handler(Fail)\nclass fail:\n    def stop():\n        return resume(1)\nprint(fail(lambda: perform(Fail.stop())))\n",
+        ]),
+        ("static", [
+            "static effect Choice { control once pick: fn() -> int }\nfn trial() = {\nhandle static Choice { pick => 3 }\nperform Choice.pick()\n}\nprint(trial())\n",
+            "static effect Choice\n    control once pick : Unit => int\ntrial () =\n    handle static Choice\n        pick => 3\n    perform Choice.pick ()\nprint (trial ())\n",
+            "@static_effect\nclass Choice:\n    @control\n    @once\n    def pick() -> int: ...\n@static_handler(Choice)\nclass choose:\n    def pick():\n        return 3\nprint(choose(lambda: perform(Choice.pick())))\n",
+        ]),
+        ("replay", [
+            "effect Choice { control many pick: fn() -> int }\neffect Audit { write: fn(int) -> Unit }\nfn work() = { let n = perform Choice.pick()\nperform Audit.write(n)\nn }\nfn trial() = { handle Audit { write n => print(n) }\nhandle Choice { pick => resume(1) }\nwork() }\nprint(trial())\n",
+            "effect Choice\n    control many pick : Unit => int\neffect Audit\n    write : int => Unit\nwork () =\n    n = perform Choice.pick ()\n    perform Audit.write n\n    n\ntrial () =\n    handle Audit\n        write n => print n\n    handle Choice\n        pick => resume 1\n    work ()\nprint (trial ())\n",
+            "@effect\nclass Choice:\n    @control\n    @many\n    def pick() -> int: ...\n@effect\nclass Audit:\n    def write(n: int) -> None: ...\n@handler(Choice)\nclass choose:\n    def pick():\n        return resume(1)\n@handler(Audit)\nclass silent:\n    def write(n):\n        print(n)\ndef work():\n    n = perform(Choice.pick())\n    perform(Audit.write(n))\n    return n\nprint(silent(lambda: choose(work)))\n",
+        ]),
+    ] {
+        let [default, ml, python] = sources;
+        if case == "replay" {
+            for valid in [
+                python.replace("    def write(n: int)", "    @replayable\n    def write(n: int)"),
+                python.replace("silent(lambda: choose(work))", "choose(lambda: silent(work))"),
+            ] {
+                let errors = staging::diagnostics(&valid, Flavor::Python);
+                assert!(errors.is_empty(), "{errors}");
+            }
+        }
+        let expected = staging::diagnostics(default, Flavor::Default);
+        assert!(!expected.is_empty(), "{case}: Default accepted the invalid use");
+        for (source, flavor) in [(ml, Flavor::Ml), (python, Flavor::Python)] {
+            assert_eq!(staging::diagnostics(source, flavor), expected, "{case}: {flavor}");
+        }
+    }
+}
 
 #[test]
 fn every_multiplicity_violation_is_rejected_naming_its_operation() {

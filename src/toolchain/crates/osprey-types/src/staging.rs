@@ -51,6 +51,12 @@ pub(crate) fn lower_proved(
     }
     let (solved, resolved) = resolved_source(program)?;
     let checked = solved.copy.as_ref().unwrap_or(program);
+    // Static lowering compares source effect spellings. An inferred
+    // `perform Echo.echo(42)` is nevertheless the same operation as the
+    // enclosing `handle static Echo<int>`. Use the already checked site
+    // instantiations for this backend copy before matching regions; otherwise
+    // the rewrite silently leaves a request that the checker proved handled.
+    let resolved = resolved_signals(checked, &solved);
     let lowered = osprey_ast::stage::lower(&resolved).map_err(stage_errors)?;
     // A source proof that deferred a static arm's GPU callback cannot certify
     // the concrete callback substituted by discharge. [STAGE-GPU-LEGAL]
@@ -68,7 +74,9 @@ pub(crate) fn lower_proved(
 /// source proof answers for it. Implements [MULTI-HANDLE-MANY],
 /// [TYPE-EFFECT-PROOF-COUNT].
 fn lower_captured(program: &Program) -> Result<(Program, Option<LibraryExports>), Vec<TypeError>> {
-    let (solved, resolved) = resolved_source(program)?;
+    let solved = solved_source(program)?;
+    let checked = solved.copy.as_ref().unwrap_or(program);
+    let resolved = resolved_signals(checked, &solved);
     let discharged = osprey_ast::stage::lower(&resolved).map_err(stage_errors)?;
     let lowered = crate::many::lower(&discharged)?;
     Ok((lowered, Some(solved.exports)))
@@ -113,18 +121,6 @@ struct SolvedSource {
 /// The backend copy static lowering consumes: the checked program with its
 /// signal queries materialized, its effect mentions resolved to the solved
 /// site instantiations, and its forwarder witnesses dropped.
-/// The source proved as written, and the checked copy with its signal sites
-/// resolved. Static lowering compares source effect spellings. An inferred
-/// `perform Echo.echo(42)` is nevertheless the same operation as the
-/// enclosing `handle static Echo<int>`. Use the already checked site
-/// instantiations for this backend copy before matching regions; otherwise
-/// the rewrite silently leaves a request that the checker proved handled.
-fn resolved_source(program: &Program) -> Result<(SolvedSource, Program), Vec<TypeError>> {
-    let solved = solved_source(program)?;
-    let resolved = resolved_signals(solved.copy.as_ref().unwrap_or(program), &solved);
-    Ok((solved, resolved))
-}
-
 fn resolved_signals(checked: &Program, solved: &SolvedSource) -> Program {
     let mut resolved = materialize_signal_queries(checked, &solved.types);
     for statement in &mut resolved.statements {

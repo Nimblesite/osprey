@@ -8,10 +8,8 @@
 //! [CI-MULTISHOT-WASM], [EFFECTS-INV-MULTISHOT-PORTABLE]).
 //!
 //! The declaration rules of the multiplicity axis live in
-//! `staged_multiplicity.rs`; the two share `common/staging`.
+//! `staged_multiplicity.rs`; the two share `common::staging`.
 
-#[path = "common/many_fragments.rs"]
-mod many_fragments;
 #[path = "common/many_permutations.rs"]
 mod many_permutations;
 #[path = "common/many_programs.rs"]
@@ -36,7 +34,9 @@ fn run_under(source: &str, memory: &str, name: &str) -> String {
         std::process::id(),
         name.len()
     ));
-    let _ = std::fs::create_dir_all(&dir);
+    let Ok(()) = std::fs::create_dir_all(&dir) else {
+        return "could not create temp dir".to_string();
+    };
     let input = dir.join("many.osp");
     let _ = std::fs::write(&input, source);
     let ran = std::process::Command::new(env!("CARGO_BIN_EXE_osprey"))
@@ -85,38 +85,69 @@ fn a_many_region_is_closures_with_no_suspended_stack_or_thread() {
     }
 }
 
-/// A request inside an iterator stage's callback has no continuation to
-/// capture.
-const ITERATOR_STAGE: &str = concat!(
-    crate::choice_int!(),
-    "\n",
-    crate::two_answer_main!(
-        "range(0, 2) |> fold(0, fn(sum, n) => satAdd(sum, perform Choice.pick(n)))"
+/// What a closure cannot express is rejected by name, never miscompiled.
+const UNSPLITTABLE: &[(&str, &[&str], &str)] = &[
+    (
+        r#"
+effect Choice { control many pick: fn(int) -> int }
+fn main() = {
+    let all = {
+        handle Choice {
+            pick _bound => satAdd(resume(1), resume(2))
+        }
+        range(0, 2) |> fold(0, fn(sum, n) => satAdd(sum, perform Choice.pick(n)))
+    }
+    print("${all}")
+}
+"#,
+        &["Choice.pick", "cannot cross"],
+        "a request inside an iterator stage's callback has no continuation to capture",
     ),
-);
-
-/// A capturing function stored in a record cannot be followed.
-const STORED_CALLBACK: &str = concat!(
-    crate::choice_int!(),
-    "\nfn ask(n) = perform Choice.pick(n)\n",
-    crate::two_answer_main!(
-        "{\n            let stored = { run: ask }\n            stored.run(3)\n        }"
+    (
+        r#"
+effect Choice { control many pick: fn(int) -> int }
+fn ask(n) = perform Choice.pick(n)
+fn main() = {
+    let all = {
+        handle Choice {
+            pick _bound => satAdd(resume(1), resume(2))
+        }
+        {
+            let stored = { run: ask }
+            stored.run(3)
+        }
+    }
+    print("${all}")
+}
+"#,
+        &["`ask`", "cannot cross"],
+        "a capturing function stored in a record cannot be followed",
     ),
-);
-
-/// Cleanup runs where a branch ends, so it cannot make a captured request.
-const FINALLY_REQUEST: &str = concat!(
-    crate::choice_int!(),
-    "\n",
-    crate::audit_close!(),
-    "\n",
-    crate::two_answer_main!(
-        "{\n            handle Audit {\n                close text => print(text)\n                finally => print(\"${perform Choice.pick(9)}\")\n            }\n            perform Choice.pick(3)\n        }"
+    (
+        r#"
+effect Choice { control many pick: fn(int) -> int }
+effect Audit { replayable close: fn(string) -> Unit }
+fn main() = {
+    let all = {
+        handle Choice {
+            pick _bound => satAdd(resume(1), resume(2))
+        }
+        {
+            handle Audit {
+                close text => print(text)
+                finally => print("${perform Choice.pick(9)}")
+            }
+            perform Choice.pick(3)
+        }
+    }
+    print("${all}")
+}
+"#,
+        &["finally", "no continuation exists"],
+        "cleanup runs where a branch ends, so it cannot make a captured request",
     ),
-);
-
-/// A captured effect needs one request layout.
-const GENERIC_EFFECT: &str = r#"
+    (
+        r#"
 effect Pick<t> { control many replayable any: fn(t) -> t }
 fn main() = {
     let all = {
@@ -127,13 +158,18 @@ fn main() = {
     }
     print("${all}")
 }
-"#;
-
-/// A channel operation inside the captured remainder is replayed per branch
-/// and must be rejected.
-const REPLAYED_CHANNEL: &str = concat!(
-    crate::choice_string!(),
-    r#"
+"#,
+        &["Pick", "type parameters"],
+        "a captured effect needs one request layout",
+    ),
+    (
+        // [MULTI-REPLAY-CHECK] [MULTI-REPLAY-COARSE] A channel operation that
+        // sits in the captured remainder after a request is replayed by every
+        // resumption: the message is duplicated (or the second branch waits on
+        // a channel whose one message the first took). The channel use AFTER
+        // the region stays legal — only the replayed remainder is rejected.
+        r#"
+effect Choice { control many pick: fn(int) -> string }
 fn main() = {
     let box = Channel(4)
     let out = {
@@ -150,38 +186,6 @@ fn main() = {
     print("out=${out} drained=${drained}")
 }
 "#,
-);
-
-/// What a closure cannot express is rejected by name, never miscompiled.
-/// The channel entry's needles note [MULTI-REPLAY-CHECK] [MULTI-REPLAY-COARSE]:
-/// a channel operation that sits in the captured remainder after a request
-/// is replayed by every resumption — the message is duplicated (or the
-/// second branch waits on a channel whose one message the first took). The
-/// channel use AFTER the region stays legal — only the replayed remainder
-/// is rejected.
-const UNSPLITTABLE: &[(&str, &[&str], &str)] = &[
-    (
-        ITERATOR_STAGE,
-        &["Choice.pick", "cannot cross"],
-        "a request inside an iterator stage's callback has no continuation to capture",
-    ),
-    (
-        STORED_CALLBACK,
-        &["`ask`", "cannot cross"],
-        "a capturing function stored in a record cannot be followed",
-    ),
-    (
-        FINALLY_REQUEST,
-        &["finally", "no continuation exists"],
-        "cleanup runs where a branch ends, so it cannot make a captured request",
-    ),
-    (
-        GENERIC_EFFECT,
-        &["Pick", "type parameters"],
-        "a captured effect needs one request layout",
-    ),
-    (
-        REPLAYED_CHANNEL,
         &["`send`", "replays"],
         "a channel operation inside the captured remainder is replayed per branch and must be rejected",
     ),

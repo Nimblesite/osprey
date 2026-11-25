@@ -228,7 +228,7 @@ Continuation reasons below end with `(a suspended continuation cannot cross or o
 | `src/osprey/tests/regressions/http/net_local_address.test.osp` | link directive `// @link: ssl` |
 | `src/osprey/tests/regressions/http/net_local_address.test.ospml` | link directive `// @link: ssl` |
 
-## wasm32 rejects: `WASM_UNPORTABLE.txt` (84 rows)
+## wasm32 rejects: `WASM_UNPORTABLE.txt` (85 rows)
 
 File operations, stdin, random numbers and substituting effects are supported and are not listed. Each row names a feature with no wasm implementation. [WASM-TARGET-CAPABILITIES] Tracking issue: #30.
 
@@ -273,7 +273,7 @@ Continuation reasons below end with `(wasm32 acquires one-shot continuations whe
 | `src/osprey/tests/regressions/effects/staged_shared.test.osp` | a continuation for `Audit.note` |
 | `src/osprey/tests/regressions/effects/staged_shared.test.ospml` | a continuation for `Audit.note` |
 
-- [ ] Give wasm32 fiber concurrency, `Channel` and `sleep`, which need threads today. Depends on the wasm story [plan 0026](0026-structured-concurrency.md) leaves open. Acceptance: these programs match the native goldens and their rows are deleted. (22 rows)
+- [ ] Give wasm32 fiber concurrency, `Channel` and `sleep`, which need threads today. Depends on the wasm story [plan 0026](0026-structured-concurrency.md) leaves open. Acceptance: these programs match the native goldens and their rows are deleted. (23 rows)
 
 | Program | Reason |
 | --- | --- |
@@ -283,6 +283,7 @@ Continuation reasons below end with `(wasm32 acquires one-shot continuations whe
 | `src/osprey/tests/modules/module_composition.test.ospml` | fiber concurrency |
 | `src/osprey/tests/regressions/basics/osprey_mega_showcase.test.osp` | fiber concurrency |
 | `src/osprey/tests/regressions/basics/osprey_mega_showcase.test.ospml` | fiber concurrency |
+| `src/osprey/tests/regressions/basics/osprey_mega_showcase.test.py` | fiber concurrency |
 | `src/osprey/tests/regressions/basics/types/channel_element_type_in_generic_field.test.osp` | fiber concurrency builtin `Channel` |
 | `src/osprey/tests/regressions/basics/types/sized_integers_fibers.test.osp` | fiber concurrency |
 | `src/osprey/tests/regressions/basics/types/sized_integers_fibers.test.ospml` | fiber concurrency |
@@ -300,7 +301,7 @@ Continuation reasons below end with `(wasm32 acquires one-shot continuations whe
 | `src/osprey/tests/regressions/fiber/many_handles.test.osp` | fiber concurrency |
 | `src/osprey/tests/regressions/fiber/many_handles.test.ospml` | fiber concurrency |
 
-- [ ] Decide whether `spawnProcess` exists on wasm32, since it needs fork/exec. Acceptance: implemented with rows deleted, or the rows state that it is permanent. (4 rows)
+- [x] Child process spawning is permanently unavailable on the portable `wasm32-wasip1` target. The manifest identifies the four permanent rows. On 2026-11-23, compiling both programs in Default and ML with `--check --target=wasm32` rejected all four with their pinned diagnostic. See [the target contract](../specs/compiler/0022-WebAssemblyTarget.md#target-capability-checking-wasm-target-capabilities).
 
 | Program | Reason |
 | --- | --- |

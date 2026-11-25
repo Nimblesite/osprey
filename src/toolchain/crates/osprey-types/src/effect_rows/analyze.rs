@@ -362,6 +362,7 @@ impl Analyzer<'_> {
                     self.instances.handler_inference.borrow_mut()
                         .entry((position.line, position.column)).or_default().extend(candidates);
                 }
+                let body_summary = self.record_replay_bounds(body_summary, effect, arms);
                 let mut out = body_summary.without_operations(
                     effect,
                     &effect_arguments,

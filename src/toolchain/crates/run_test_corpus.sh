@@ -85,9 +85,9 @@ esac
 # is a closure, so wasm32 and the mobile C ABI run it as native does
 # ([MULTI-WASM-MANY], [CI-MULTISHOT-WASM]).
 case $TARGET in
-  wasm32)            GOLDEN_MIN=215 ;;
-  ios-sim|macos|android*) GOLDEN_MIN=230 ;;
-  *)                 GOLDEN_MIN=287 ;;
+  wasm32)            GOLDEN_MIN=216 ;;
+  ios-sim|macos|android*) GOLDEN_MIN=232 ;;
+  *)                 GOLDEN_MIN=289 ;;
 esac
 
 # [GPU-KERNEL-EXTRACT] differential. The extracted-kernel lowering and the
@@ -140,9 +140,9 @@ run_worker() {
 # Golden precedence for a program at $1, echoing the chosen path (empty if none):
 #   1. <file>.expectedoutput                     — per-file golden
 #   2. <file>.expectedoutput.<uname>             — OS-specific output
-#   3. <stem>.test.osp.expectedoutput            — an ML or TypeScript twin shares the Default golden
+#   3. <stem>.test.osp.expectedoutput            — an ML, Python or TypeScript twin shares the Default golden
 #   4. <stem>.test.osp.expectedoutput.<uname>    — ...and its OS-specific form
-# Rules 3 and 4 are what make Default, ML and TypeScript twins share ONE file:
+# Rules 3 and 4 are what make all flavor twins share ONE file:
 # every flavor is required to run byte-identically, so one golden proves it
 # ([FLAVOR-IR-EQUIV], [FLAVOR-TS-VERIFICATION]).
 golden_for() {
@@ -247,8 +247,13 @@ trap cleanup_results EXIT
 trap 'cleanup_results; exit 130' INT TERM
 
 while IFS= read -r -d $'\0' f; do
+  # Standalone Python suites explicitly opt in ([FLAVOR-PYTHON-SELECT]).
+  if [[ $f == *.py ]] && ! awk '/^[[:space:]]*# ?osprey: flavor=python[[:space:]]*$/ {found=1; exit}
+    /^[[:space:]]*($|#|\/\/)/ {next} {exit} END {exit !found}' "$f"; then
+    continue
+  fi
   FILES+=("$f")
-done < <(find "$TESTDIR" \( -name '*.test.osp' -o -name '*.test.ospml' -o -name '*.test.ts' \) -print0 | LC_ALL=C sort -z)
+done < <(find "$TESTDIR" \( -name '*.test.osp' -o -name '*.test.ospml' -o -name '*.test.ts' -o -name '*.test.py' \) -print0 | LC_ALL=C sort -z)
 
 # Programs that contend for an OS resource are run one at a time. Two kinds do:
 #

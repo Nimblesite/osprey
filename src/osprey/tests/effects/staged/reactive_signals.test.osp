@@ -114,7 +114,10 @@ fn factory() = {
 }
 fn evaluationAndNoOp() = {
     mut trail = ""
-    handle Audit { note text => { trail = "${trail}${text}" } }
+    handle Audit { note text => {
+        trail = "${trail}${text}"
+        print("audit ${text}")
+    } }
     let first = underCount(2, || => signalSnapshot(factory()))
     let idle = underCount(9, || => signalRefresh(first, [], factory()))
     let metadata = signalDependencies(factory())

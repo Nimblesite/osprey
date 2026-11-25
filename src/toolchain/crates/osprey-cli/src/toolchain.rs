@@ -3,7 +3,9 @@
 //! tool name, a failed exit and a missing program are reported one way.
 
 use std::path::{Path, PathBuf};
-use std::process::{Command, ExitCode, ExitStatus, Stdio};
+#[cfg(unix)]
+use std::process::Stdio;
+use std::process::{Command, ExitCode, ExitStatus};
 use std::time::Duration;
 
 /// The tool to invoke for `env`, defaulting to `default` when unset.
@@ -200,6 +202,7 @@ fn is_parent(_runner: u32) -> bool {
 
 /// Whether a process with this id exists. A probe that cannot run says it does,
 /// so a host without `kill` watches nothing rather than refusing every run.
+#[cfg(unix)]
 fn process_exists(pid: u32) -> bool {
     let probe = Command::new("kill")
         .args(["-0", &pid.to_string()])
@@ -210,6 +213,13 @@ fn process_exists(pid: u32) -> bool {
     probe.map_or(true, |run| {
         run.status.success() || !String::from_utf8_lossy(&run.stderr).contains("No such process")
     })
+}
+
+/// The runner watch is POSIX-only. An MSYS `kill` probes its emulated PID
+/// namespace, while the Windows compiler passes native process IDs.
+#[cfg(not(unix))]
+const fn process_exists(_pid: u32) -> bool {
+    true
 }
 
 #[cfg(test)]

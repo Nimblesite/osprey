@@ -99,8 +99,10 @@ impl Lowerer<'_> {
         let mut fields = Vec::new();
         let mut sub_patterns = Vec::new();
         for child in children(node).into_iter().skip(1) {
-            let inner = Self::first(child)?;
-            if inner.kind() == "keyword_pattern" {
+            if let Some(inner) = child
+                .named_child(0)
+                .filter(|inner| inner.kind() == "keyword_pattern")
+            {
                 let (field, binder) = self.field_pattern(inner)?;
                 if fields.contains(&field) {
                     return Err(Self::error(

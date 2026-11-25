@@ -63,7 +63,7 @@ branch input = match input
         answer = perform Choice.pick seed
         "${seed}:${answer}"
 
-answersFor input twice =
+answersFor (input, twice) =
     handle Choice
         pick base => match twice
             true => "${resume base},${resume (satAdd base 1)}"
@@ -88,8 +88,8 @@ everyAnswerCase () =
     print ("answers=${answers}")
     print ("log=[${log}]")
     checkAll "every resume collects its own branch answer" [
-        answersFor (Success(value = 4)) true == "4:4,4:5",
-        answersFor (Error(message = 9)) false == "9:9,9:10,9:11",
+        answersFor (Success(value = 4), true) == "4:4,4:5",
+        answersFor (Error(message = 9), false) == "9:9,9:10,9:11",
         answers == "b4,b5,b6",
         log == "enter\nbranch 4\nbranch 5\nbranch 6\n"
     ]

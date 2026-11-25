@@ -1270,6 +1270,19 @@ A program that passes type checking reports a Warning for each unread lexical bi
 
 Usage is resolved by lexical binding identity. A shadowing declaration cannot count as a read of the outer binding. The initializer of `let x = x` reads the previous `x`, before introducing the new one. Captures in nested functions, handlers and spawned fibers count as reads. Assignment to a mutable local alone does not read it. Pattern names belong to their own arm; a name used in another arm cannot discharge its warning. Reading an actual callable field does not read a same-named free function.
 
-Names beginning with `_` explicitly opt out. Module and top-level declaration names are excluded because they can be used through exports or native entry points. Parameters in their function bodies are still checked. Pattern binders inside a top-level expression remain local to that expression and are checked normally. Foreign declarations, effect operation declarations and signature members have no body to analyze and do not receive unused-parameter warnings. Compiler-generated curry or annotation-checking bindings are not user declarations and must not be reported as unused variables. An invalid program receives no speculative unused-symbol warnings.
+Names beginning with `_` explicitly opt out. Module and top-level declaration names are excluded because they can be used through exports or native entry points; a private module member is checked by [TYPE-WARNINGS-UNUSED-PRIVATE] instead. Parameters in their function bodies are still checked. Pattern binders inside a top-level expression remain local to that expression and are checked normally. Foreign declarations, effect operation declarations and signature members have no body to analyze and do not receive unused-parameter warnings. Compiler-generated curry or annotation-checking bindings are not user declarations and must not be reported as unused variables. An invalid program receives no speculative unused-symbol warnings.
 
 Unused warnings offer no automatic deletion: an unread binding can still evaluate an effectful initializer, and a parameter can be part of a call contract. Removing either would require a separate proof.
+
+## Unused private module members `[TYPE-WARNINGS-UNUSED-PRIVATE]`
+
+A module is a closed boundary: an item it does not export can be named only from inside it. A private function or value that no expression of its module names is dead code, so it is one `unused-private` warning at its declaration, in every flavor:
+
+```osprey
+module Cart {
+    fn orphan(x) = x * 2 // warning: private function `Cart::orphan` is never used; delete it
+    export fn total(x) = x
+}
+```
+
+Delete it. The check is by spelling, not binding: an identifier, path segment, field, method or updated record of the same name anywhere in the module, nested modules included, counts as a read. The rule can therefore miss dead code (a function that only calls itself), but it never reports live code. A Python-flavor file is a module that exports what its `__all__` lists. Exported items, top-level declarations, types, and modules ascribed a signature (whose surface the signature names) are never reported. The compiler's warning listing and the language server report it (`osprey-types/src/unused_private.rs`). Warnings never change a build's exit status, but the program check fails on this one: every tracked program must be free of dead private members ([CI-PROGRAMS-COMPILE]).

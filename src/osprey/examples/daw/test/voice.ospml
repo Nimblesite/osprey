@@ -176,6 +176,7 @@ prismIntegratedJourney () =
     paletteClickJourney quieter
     filterSocketJourney ()
     cutoffAudioJourney ()
+    menuJourney opened
 
 // Every visible module row supports one click as well as drag, without editing covered controls.
 paletteClickJourney opened = forEachList (synth::EditorState::kinds, \kind =>
@@ -254,20 +255,10 @@ menuJourney driven =
     library = Drive::press (patch, "Modules")
     expect ((Drive::holding library).paletteShown, true)
     details = Drive::press (library, "Patch Controls")
-    expect ((Drive::holding details).detailsShown, (Drive::holding library).detailsShown == false)
+    panel = \held => (synth::EditorView::paneled (Drive::holding held)).detailsShown
+    expect (panel details, panel library == false)
+    expect (panel (Drive::press (details, "Patch Controls")), panel library)
     sameGraph (details, driven)
-
-dockTap (driven, label) =
-    point = controlPoint (driven, label, 0.5)
-    scenes = filterList (driven.drivenSeen.renderedControls, \control => control.controlKind == "scene")
-    match listGet scenes 1
-        Error _ =>
-            expect (false, true)
-            driven
-        Success scene =>
-            pressed = ui::Touch(touchNow = driven.drivenNow, touchKind = ui::Hosting::pointer, touchOrdinal = scene.controlOrdinal, touchWords = "", touchDetail = "", touchX = point.pointX, touchY = point.pointY, touchDown = true, touchShift = false)
-            down = Drive::sent (driven, pressed)
-            Drive::sent (down, pressed(touchNow = down.drivenNow, touchDown = false))
 
 // Leave an exposed cable span between the two cards.
 spacedFilter driven =
@@ -338,34 +329,6 @@ cutoffAudioJourney () =
                 expect (length rendered.clipSamples, 128)
                 expect (structuralEquals (rendered.clipSamples, original.clipSamples), value == 1.0)))
     forEachList ([-0.1, 1.1, floatFromBits 9221120237041090560], \value => errs (cutoffOutput (connected.graph, value)))
-
-type Meter =
-    previous : float
-    index : int
-    first : float
-    last : float
-    rising : int
-    energy : float
-    peak : float
-    steepest : float
-
-metered (m, sample) =
-    at = toFloat (m.index - 1) + m.previous / (m.previous - sample)
-    crossed = m.index > 0 && m.previous < 0.0 && sample >= 0.0
-    step = abs (sample - m.previous)
-    next = m(previous = sample, index = satAdd m.index 1, energy = m.energy + sample * sample, peak = ui::Pick::either (abs sample > m.peak, abs sample, m.peak), steepest = ui::Pick::either (m.index > 0 && step > m.steepest, step, m.steepest))
-    match crossed
-        false => next
-        true => next(first = ui::Pick::either (m.rising == 0, at, m.first), last = at, rising = satAdd m.rising 1)
-
-meter samples = foldList (samples, Meter(previous = 0.0, index = 0, first = 0.0, last = 0.0, rising = 0, energy = 0.0, peak = 0.0, steepest = 0.0), metered)
-
-// Fundamental from interpolated rising zero crossings.
-hertz m = ui::Pick::either (m.rising < 2, 0.0, toFloat (m.rising - 1) * 48000.0 / (m.last - m.first))
-
-rms m = sqrt (m.energy / toFloat (ui::Pick::either (m.index == 0, 1, m.index)))
-
-within (actual, expected, tolerance) = expect (abs (actual - expected) <= tolerance, true)
 
 patched kinds =
     opened = openedEditor ["--empty", "--vst-worker", "/worker/osprey-vst-worker"]

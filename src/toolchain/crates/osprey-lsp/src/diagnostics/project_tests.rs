@@ -70,6 +70,9 @@ fn bank_warnings() -> Vec<(&'static str, &'static str, crate::model::Span)> {
             (90, 29, 90, 36),
         ),
         ("unused-variable", "unused variable `seen`", (91, 4, 91, 8)),
+        ("repeated-literal", "the literal `\"/api/accounts\"` is written 4 times in this file; name it once as a constant", (25, 4, 25, 82)),
+        ("repeated-literal", "the literal `\"/api/deposit\"` is written 3 times in this file; name it once as a constant", (28, 4, 28, 131)),
+        ("consecutive-print", "4 `print` calls in a row: join them into one interpolated `print`", (34, 4, 34, 141)),
     ]
 }
 

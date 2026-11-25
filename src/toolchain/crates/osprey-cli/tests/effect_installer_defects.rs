@@ -59,6 +59,12 @@ const FEED_DONE: &str = "print(\"${feeding(9, fn() => \"done\")}\")\n";
 /// A call site whose body performs `next`, answered with the reading.
 const FEED_NEXT: &str = "print(\"${feeding(3, fn() => perform Feed.next())}\")\n";
 
+/// The [TYPE-WARNINGS-CONSECUTIVE-PRINT] advice the two call sites draw, after `output`.
+fn with_print_advice(name: &str, output: &str) -> String {
+    let path = std::env::temp_dir().join(format!("osprey_installer_defect_{name}.osp"));
+    format!("{output}\n{}\n  10:0  warning: 2 `print` calls in a row: join them into one interpolated `print`\n\n1 warning (consecutive-print)\n", path.display())
+}
+
 /// One generic handler installer, applied at two different body result types.
 /// [TYPE-GENERICS-FN] makes `feeding` polymorphic in what its body answers, and
 /// [EFFECTS-HANDLER-VALUE] puts no restriction on that, so both call sites must
@@ -77,7 +83,7 @@ fn a_generic_handler_installer_renders_both_instantiations() {
         "polymorphic_installer",
         "osp",
         &source,
-        "done\n3\n",
+        &with_print_advice("polymorphic_installer", "done\n3\n"),
         "a polymorphic installer rendered the wrong value",
     );
 }
@@ -95,7 +101,7 @@ fn a_generic_handler_installer_survives_either_statement_order() {
         "polymorphic_installer_swapped",
         "osp",
         &source,
-        "3\ndone\n",
+        &with_print_advice("polymorphic_installer_swapped", "3\ndone\n"),
         "a polymorphic installer rendered the wrong value",
     );
 }

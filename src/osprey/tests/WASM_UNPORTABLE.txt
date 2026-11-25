@@ -43,6 +43,9 @@ src/osprey/tests/regressions/basics/files/directory_io.test.osp directory access
 src/osprey/tests/regressions/basics/files/directory_io.test.ospml directory access builtin `listDir`
 src/osprey/tests/regressions/basics/osprey_mega_showcase.test.osp fiber concurrency
 src/osprey/tests/regressions/basics/osprey_mega_showcase.test.ospml fiber concurrency
+src/osprey/tests/regressions/basics/osprey_mega_showcase.test.py fiber concurrency
+# Permanent for wasm32-wasip1: the four process rows below require child processes.
+# WASI Preview 1 provides neither process creation nor waiting [WASM-TARGET-CAPABILITIES].
 src/osprey/tests/regressions/basics/processes/async_process_management.test.osp process spawning builtin `awaitProcess`
 src/osprey/tests/regressions/basics/processes/async_process_management.test.ospml process spawning builtin `awaitProcess`
 src/osprey/tests/regressions/basics/processes/callback_stdout_demo.test.osp process spawning builtin `spawnProcess`

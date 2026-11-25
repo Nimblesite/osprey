@@ -118,11 +118,12 @@ fn extra_docs_state_module_exports_public_members_with_inferred_int() {
 #[test]
 fn extra_docs_state_inventory_survives_both_flavors_and_regeneration(
 ) -> Result<(), Box<dyn std::error::Error>> {
-    for (extension, source) in [
-        ("osp", "namespace z;\nmodule Outer { state module Hidden { fn secret() = 0 } }\nnamespace a;\nstate module Empty {}\n"),
-        ("ospml", "namespace z\nmodule Outer\n    state Hidden\n        secret () = 0\nnamespace a\nstate Empty\n    privateSeed = 0\n"),
+    // The private members are unread on purpose, so [TYPE-WARNINGS-UNUSED-PRIVATE] names each.
+    for (extension, source, warned) in [
+        ("osp", "namespace z;\nmodule Outer { state module Hidden { fn secret() = 0 } }\nnamespace a;\nstate module Empty {}\n", "3 warnings (state-boundary, unused-private)"),
+        ("ospml", "namespace z\nmodule Outer\n    state Hidden\n        secret () = 0\nnamespace a\nstate Empty\n    privateSeed = 0\n", "4 warnings (state-boundary, unused-private)"),
     ] {
-        for format in ["html", "markdown"] { assert_state_inventory(extension, source, format)?; }
+        for format in ["html", "markdown"] { assert_state_inventory(extension, source, format, warned)?; }
     }
     Ok(())
 }
@@ -131,13 +132,21 @@ fn assert_state_inventory(
     extension: &str,
     source: &str,
     format: &str,
+    warned: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let root = temp_dir(&format!("state_inventory_{extension}_{format}"));
     let file = root.join(format!("source.{extension}"));
     let output = root.join("docs");
     std::fs::write(&file, source)?;
     let result = export_docs(&file, &output, Some(format));
-    result.expect_stderr(0, &["2 warnings (state-boundary)"], &[]);
+    result.expect_stderr(
+        0,
+        &[
+            warned,
+            "private function `Outer::Hidden::secret` is never used",
+        ],
+        &[],
+    );
     assert_inventory_pages(&output, format)?;
     regenerate_without_state(&file, &output, extension, format)?;
     Ok(())

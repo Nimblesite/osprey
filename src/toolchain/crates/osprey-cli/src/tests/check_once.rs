@@ -96,6 +96,26 @@ fn a_plain_program_is_checked_exactly_once_on_the_host_boundary() {
     }
 }
 
+#[test]
+fn default_warnings_do_not_recheck_effects() {
+    for source in [PLAIN, STAGED] {
+        let input = script(source);
+        let checked = osprey_types::check_and_publish(input.program(), &[]).expect("valid source");
+        let before = warnings::collect(&input, false, None);
+        assert!(before
+            .iter()
+            .any(|warning| warning.rule == "unused-parameter"));
+        assert_eq!(warnings::collect(&input, false, Some(&checked)), before);
+        for mode in ["--check", "--llvm"] {
+            let mut cli = target_cli(mode, "native");
+            cli.warnings = Warnings::Report;
+            let (solves, code) = invocation_solves(&cli, &input);
+            assert_eq!(code, ExitCode::SUCCESS, "{mode}");
+            assert_eq!(solves, 1, "{mode}: default warnings must reuse the proof");
+        }
+    }
+}
+
 /// A staged program is one program: discharging its handlers rewrites it for
 /// the backend, and must not prove it again. [TYPE-EFFECT-PROOF-COUNT]
 #[test]

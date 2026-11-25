@@ -82,14 +82,16 @@ fn lower(source: &str) -> (Program, Lowerer<'_>) {
 
 fn indentation(source: &str, root: Node<'_>, lowerer: &mut Lowerer<'_>) {
     let mut offset = 0;
-    for text in source.split_inclusive('\n') {
+    for (row, text) in source.split_inclusive('\n').enumerate() {
         for (column, ch) in text.char_indices().take_while(|(_, ch)| ch.is_whitespace()) {
             if ch == '\t' && !inside_string(root, offset + column) {
-                lowerer.errors.push(Lowerer::error(
-                    root.descendant_for_byte_range(offset + column, offset + column + 1)
-                        .unwrap_or(root),
-                    "tabs are not allowed in Python-flavor indentation",
-                ));
+                lowerer.errors.push(SyntaxError {
+                    message: "tabs are not allowed in Python-flavor indentation".into(),
+                    position: crate::default::position_from_point(tree_sitter::Point {
+                        row,
+                        column,
+                    }),
+                });
             }
         }
         offset += text.len();
@@ -159,7 +161,11 @@ fn syntax_errors(node: Node<'_>, lowerer: &mut Lowerer<'_>) {
     if node.is_error() || node.is_missing() {
         lowerer.errors.push(Lowerer::error(
             node,
-            format!("invalid Python syntax near `{}`", lowerer.text(node)),
+            if node.is_missing() {
+                format!("missing Python {}", node.kind())
+            } else {
+                format!("invalid Python syntax near `{}`", lowerer.text(node))
+            },
         ));
         return;
     }

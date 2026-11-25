@@ -112,6 +112,24 @@ static void second_server_binds(int64_t listen_result) {
   assert(http_stop_server(server) == 0);
 }
 
+// A self-stopped server's listener fiber closes its socket after the reply is
+// sent, so the port is free a moment after the client has read it: 5 s of 20 ms
+// tries. Every refusal must be the bind race (-4), and the port must come back.
+enum { SELF_STOP_RELEASE_TRIES = 250 };
+static void second_server_binds_within(int tries) {
+  for (int i = 0; i < tries; i++) {
+    int64_t server = create_test_server();
+    int64_t status = http_listen(server, http_test_server_handler);
+    assert(http_stop_server(server) == 0);
+    if (status == 0) {
+      return;
+    }
+    assert(status == -4 && "only the closing listener may hold the port");
+    usleep(20000);
+  }
+  assert(false && "a self-stopped server must release its port");
+}
+
 static HttpResponse g_server_test_response;
 
 // The canned reply every handler here returns: complete plain text, no stream.
@@ -179,9 +197,9 @@ void test_server_self_stop_from_handler(void) {
   exchange_assert("GET /stop HTTP/1.1\r\nHost: x\r\n\r\n",
                   "HTTP/1.1 200", "self-stopped");
   // The handle is already gone: stopping it again is a no-op, not a double
-  // free, and the port comes back.
+  // free, and the port comes back once the listener fiber has closed it.
   assert(http_stop_server(g_self_stop_server) == 0);
-  second_server_binds(0);
+  second_server_binds_within(SELF_STOP_RELEASE_TRIES);
 }
 
 // Server handles outside the table are rejected; one inside it that names no

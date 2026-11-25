@@ -8,8 +8,6 @@ import registry_tests::Fixtures
 module OrderTests {
     fn verdict(c) = SetOrder::listCode(Fixtures::textOf(c, "element"), Fixtures::textOf(c, "field"), Fixtures::itemsOf(c, "items"))
 
-    fn caseHolds(c) = verdict(c) == Fixtures::textOf(c, "code")
-
     fn cases() = Fixtures::loadItems("order/lists.json", "cases")
 
     fn caseTest(c) = test("order: ${Fixtures::textOf(c, "why")}", fn() => check(Fixtures::textOf(c, "why"), Fixtures::textOf(c, "code"), verdict(c)))

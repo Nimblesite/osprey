@@ -7,6 +7,15 @@ use super::{
 
 impl Analyzer<'_> {
     pub(super) fn projection_absent(&self, value: &Value, path: &[Projection]) -> bool {
+        // Only structural steps can prove absence. Leave opaque suffixes for
+        // the real projection, which will evaluate them in their call scope.
+        path.iter()
+            .rposition(Projection::is_structural)
+            .and_then(|last| path.get(..=last))
+            .is_some_and(|prefix| self.projection_absent_before_lift(value, prefix))
+    }
+
+    pub(super) fn projection_absent_before_lift(&self, value: &Value, path: &[Projection]) -> bool {
         let Some((projection, remaining)) = path.split_first() else {
             return false;
         };
@@ -17,11 +26,13 @@ impl Analyzer<'_> {
             return false;
         }
         match borrowed_structural_child(value, projection) {
-            ProjectionChild::Borrowed(child) => self.projection_absent(child, remaining),
+            ProjectionChild::Borrowed(child) => {
+                self.projection_absent_before_lift(child, remaining)
+            }
             ProjectionChild::Missing => false,
             ProjectionChild::Owned => self
                 .project_borrowed_fallback(value, std::slice::from_ref(projection))
-                .is_some_and(|child| self.projection_absent(&child, remaining)),
+                .is_some_and(|child| self.projection_absent_before_lift(&child, remaining)),
         }
     }
 
@@ -85,6 +96,9 @@ impl Analyzer<'_> {
                     self.project_call_return(value, *arguments.clone())
                 }
                 Projection::Handled(answers) => Some(Self::resolve_handled_value(value, answers)),
+                Projection::StaticEscape(boundary) => {
+                    Some(self.resolve_static_escape(value, boundary))
+                }
                 Projection::Element => project_element(value),
                 Projection::SuccessValue => project_success_value(value),
                 Projection::FiberValue => project_fiber_value(value),
@@ -504,6 +518,31 @@ fn projection_test_paths() -> Vec<Vec<Projection>> {
                 .map(move |second| vec![first.clone(), second.clone()])
         }))
         .collect()
+}
+
+#[cfg(test)]
+#[test]
+fn absence_proof_ignores_opaque_suffixes() {
+    super::identity_tests::with_empty_analyzer(|analyzer| {
+        let value = Value::from_callable(super::model_values::returning_unknown(0));
+        let returned = Projection::Returned(Box::default());
+        let path = [returned.clone(), returned.clone()];
+        let (absent, clones) =
+            super::provenance::measured_clones(|| analyzer.projection_absent(&value, &path));
+        assert!(!absent);
+        assert_eq!(clones, 0, "no step in this path can prove absence");
+
+        let value = Value::from_callable(Callable::Known(Box::new(super::KnownCallable {
+            parameters: Vec::new(),
+            summary: Summary::default(),
+            returned: Some(Box::new(Value {
+                empty_case: Some(super::EmptyCase::Collection),
+                ..Value::default()
+            })),
+        })));
+        let path = [returned.clone(), Projection::Element, returned];
+        assert!(analyzer.projection_absent(&value, &path));
+    });
 }
 
 #[cfg(test)]

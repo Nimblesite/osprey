@@ -1,54 +1,63 @@
 //! Run reusable handler values through the real compiler and native runtimes.
 //! Implements [EFFECTS-HANDLER-VALUE].
 
-use std::path::Path;
-use std::process::Command;
+#[path = "common/effect_execution.rs"]
+mod effect_execution;
 
-fn execute(
-    name: &str,
-    extension: &str,
-    source: &str,
-    memory: &str,
-) -> std::io::Result<std::process::Output> {
-    let directory = std::env::temp_dir().join(format!("osprey_handlers_{}", std::process::id()));
-    assert!(std::fs::create_dir_all(&directory).is_ok());
-    let path = directory.join(format!("{name}_{memory}.{extension}"));
-    assert!(std::fs::write(&path, source).is_ok());
-    Command::new(env!("CARGO_BIN_EXE_osprey"))
-        .current_dir(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../.."))
-        .arg(&path)
-        .args(["--run", &format!("--memory={memory}")])
-        .output()
+use effect_execution::assert_flavored_output;
+
+/// A caller parameter shadows the global while the file handler updates it.
+/// The first snapshot remains live through a managed replacement and self-store.
+#[test]
+fn file_handler_writes_are_visible_through_every_reference() {
+    for (extension, source) in [
+        (
+            "osp",
+            r#"mut stored = "seed"
+effect Storage { save: fn(string) -> Unit }
+let storage = handler Storage { save value => { stored = value } }
+fn save(stored) = storage(fn() => perform Storage.save(stored))
+fn main() = {
+    save("first")
+    let first = stored
+    save("${stored}-second")
+    save(stored)
+    print("${first}/${stored}")
 }
-
-fn assert_output(name: &str, extension: &str, source: &str, expected: &str) {
-    for memory in ["gc", "arc"] {
-        let result = execute(name, extension, source, memory);
-        assert!(result.is_ok(), "could not run compiler: {result:?}");
-        let Ok(output) = result else { return };
-        assert!(
-            output.status.success(),
-            "{name}/{memory}: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        assert_eq!(
-            String::from_utf8_lossy(&output.stdout),
-            expected,
-            "{name}/{memory}"
-        );
+"#,
+        ),
+        (
+            "ospml",
+            r#"mut stored = "seed"
+effect Storage
+    save : string => Unit
+storage = handler Storage
+    save value =>
+        stored := value
+save stored = storage (\() => perform Storage.save stored)
+main () =
+    save "first"
+    first = stored
+    save "${stored}-second"
+    save stored
+    print "${first}/${stored}"
+"#,
+        ),
+    ] {
+        assert_flavored_output("global_handler", extension, source, "first/first-second\n");
     }
 }
 
 #[test]
 fn returned_handlers_keep_their_captures_and_callable_argument_types() {
     let expected = include_str!("../../../../osprey/examples/handlers/handlers.expectedoutput");
-    assert_output(
+    assert_flavored_output(
         "factory",
         "osp",
         include_str!("../../../../osprey/examples/handlers/handlers.osp"),
         expected,
     );
-    assert_output(
+    assert_flavored_output(
         "factory",
         "ospml",
         include_str!("../../../../osprey/examples/handlers/handlers.ospml"),
@@ -58,13 +67,13 @@ fn returned_handlers_keep_their_captures_and_callable_argument_types() {
 
 #[test]
 fn open_row_callback_effects_reach_the_selected_handler_in_both_flavors() {
-    assert_output(
+    assert_flavored_output(
         "open_row",
         "osp",
         "effect Log { write: fn(string) -> Unit }\nfn invoke(callback: fn() -> Unit) -> Unit !e = callback()\nfn report() -> Unit !Log = perform Log.write(\"sent\")\nlet h = handler Log { write message => print(message) }\nh(|| => invoke(report))\n",
         "sent\n",
     );
-    assert_output(
+    assert_flavored_output(
         "open_row",
         "ospml",
         "effect Log\n    write : string => Unit\ninvoke : (Unit -> Unit) -> Unit !e\ninvoke callback = callback ()\nreport : Unit -> Unit !Log\nreport () = perform Log.write \"sent\"\nh = handler Log\n    write message => print message\n_ = h (\\() => invoke report)\n",
@@ -75,13 +84,13 @@ fn open_row_callback_effects_reach_the_selected_handler_in_both_flavors() {
 #[test]
 fn the_same_open_row_helper_runs_under_static_and_dynamic_handlers() {
     let expected = include_str!("../../../../osprey/examples/handlers/staged-rows.expectedoutput");
-    assert_output(
+    assert_flavored_output(
         "staged_rows",
         "osp",
         include_str!("../../../../osprey/examples/handlers/staged-rows.osp"),
         expected,
     );
-    assert_output(
+    assert_flavored_output(
         "staged_rows",
         "ospml",
         include_str!("../../../../osprey/examples/handlers/staged-rows.ospml"),
@@ -91,13 +100,13 @@ fn the_same_open_row_helper_runs_under_static_and_dynamic_handlers() {
 
 #[test]
 fn a_fixed_open_row_keeps_its_own_and_callback_operations_separate() {
-    assert_output(
+    assert_flavored_output(
         "fixed_open_row",
         "osp",
         "effect Log { write: fn(string) -> Unit }\neffect Audit { write: fn(string) -> Unit }\nfn combine(callback: fn() -> Unit) -> Unit ![Log | e] = {\n    perform Log.write(\"fixed\")\n    callback()\n}\nfn report() -> Unit !Audit = perform Audit.write(\"tail\")\nlet logging = handler Log { write message => print(message) }\nlet auditing = handler Audit { write message => print(message) }\nlogging(|| => auditing(|| => combine(report)))\n",
         "fixed\ntail\n",
     );
-    assert_output(
+    assert_flavored_output(
         "fixed_open_row",
         "ospml",
         "effect Log\n    write : string => Unit\neffect Audit\n    write : string => Unit\ncombine : (Unit -> Unit) -> Unit ![Log | e]\ncombine callback =\n    perform Log.write \"fixed\"\n    callback ()\nreport : Unit -> Unit !Audit\nreport () = perform Audit.write \"tail\"\nlogging = handler Log\n    write message => print message\nauditing = handler Audit\n    write message => print message\n_ = logging (\\() => auditing (\\() => combine report))\n",
@@ -109,7 +118,7 @@ fn a_fixed_open_row_keeps_its_own_and_callback_operations_separate() {
 fn returned_handler_closures_preserve_shared_and_isolated_state() {
     // This existing-syntax equivalent isolates the runtime requirement from
     // the new parser: the promoted cell must survive its maker's return.
-    assert_output(
+    assert_flavored_output(
         "state",
         "osp",
         r#"
@@ -180,8 +189,8 @@ separate = b (\() => perform Count.next ())
 text = c (\() => "ready")
 print "${first},${second},${separate},${text}"
 "#;
-    assert_output("inferred_factory", "osp", default, "1,2,11,ready\n");
-    assert_output("inferred_factory", "ospml", ml, "1,2,11,ready\n");
+    assert_flavored_output("inferred_factory", "osp", default, "1,2,11,ready\n");
+    assert_flavored_output("inferred_factory", "ospml", ml, "1,2,11,ready\n");
     assert_second_call_mismatch_rejected(
         default,
         ml,
@@ -236,16 +245,16 @@ print "${first}:${second}"
         ml,
         "one branched handler value must retain one callback ABI",
     );
-    assert_output("branched_factory", "osp", default, "1:2\n");
-    assert_output("branched_factory", "ospml", ml, "1:2\n");
+    assert_flavored_output("branched_factory", "osp", default, "1:2\n");
+    assert_flavored_output("branched_factory", "ospml", ml, "1:2\n");
 }
 
 #[test]
 fn pure_handler_factory_values_remain_polymorphic() {
     let default = "effect Read { value: fn() -> int }\nfn make() = handler Read { value => 42 }\nlet h = make()\nlet n = h(|| => perform Read.value())\nlet text = h(|| => \"ready\")\nprint(\"${n}:${text}\")";
     let ml = "effect Read\n    value : Unit => int\nmake () = handler Read\n    value => 42\nh = make ()\nn = h (\\() => perform Read.value ())\ntext = h (\\() => \"ready\")\nprint \"${n}:${text}\"\n";
-    assert_output("polymorphic_handler_factory", "osp", default, "42:ready\n");
-    assert_output("polymorphic_handler_factory", "ospml", ml, "42:ready\n");
+    assert_flavored_output("polymorphic_handler_factory", "osp", default, "42:ready\n");
+    assert_flavored_output("polymorphic_handler_factory", "ospml", ml, "42:ready\n");
 }
 
 #[test]
@@ -265,8 +274,8 @@ fn function_valued_generic_operations_keep_their_instance_through_discharge() {
              f : int -> int\nf = h (\\() => perform Carry.fetch ())\n\
              print (f 41)\n"
         );
-        assert_output(&format!("generic_function_{name}"), "osp", &default, "42\n");
-        assert_output(&format!("generic_function_{name}"), "ospml", &ml, "42\n");
+        assert_flavored_output(&format!("generic_function_{name}"), "osp", &default, "42\n");
+        assert_flavored_output(&format!("generic_function_{name}"), "ospml", &ml, "42\n");
     }
 }
 
@@ -290,13 +299,13 @@ first = answer work
 second = answer work
 print "${first}\n${second}"
 "#;
-    assert_output("callable", "osp", default, "42\n42\n");
-    assert_output("callable", "ospml", ml, "42\n42\n");
+    assert_flavored_output("callable", "osp", default, "42\n42\n");
+    assert_flavored_output("callable", "ospml", ml, "42\n42\n");
 }
 
 #[test]
 fn handler_values_can_return_functions_supplied_by_effect_arms() {
-    assert_output(
+    assert_flavored_output(
         "returned_function",
         "osp",
         r"
@@ -307,7 +316,7 @@ print(action(41))
 ",
         "42\n",
     );
-    assert_output(
+    assert_flavored_output(
         "returned_function",
         "ospml",
         r"
@@ -362,13 +371,13 @@ first = run ada
 second = run grace
 print "${number}/${concrete}/${string}\n${first}\n${second}"
 "#;
-    assert_output(
+    assert_flavored_output(
         "passed",
         "osp",
         default,
         "2/2/v1!\nHello, Ada!\nHello, Grace!\n",
     );
-    assert_output(
+    assert_flavored_output(
         "passed",
         "ospml",
         ml,
@@ -410,8 +419,8 @@ report () = "${ada greet} ${ada (\() => 42)}"
 print (report ())
 "#;
     let expected = "naming Ada\nHello, Ada! 42\n";
-    assert_output("capturing_factory", "osp", default, expected);
-    assert_output("capturing_factory", "ospml", ml, expected);
+    assert_flavored_output("capturing_factory", "osp", default, expected);
+    assert_flavored_output("capturing_factory", "ospml", ml, expected);
 }
 
 #[test]
@@ -437,8 +446,8 @@ chosen = make 41
 report () = chosen (\() => perform Echo.value ())
 print (report ())
 ";
-    assert_output("generic_capture", "osp", default, "41\n1\n");
-    assert_output("generic_capture", "ospml", ml, "41\n1\n");
+    assert_flavored_output("generic_capture", "osp", default, "41\n1\n");
+    assert_flavored_output("generic_capture", "ospml", ml, "41\n1\n");
 }
 
 /// Both flavors, with the second `a` call's callback answering a string, must

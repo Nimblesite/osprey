@@ -361,7 +361,7 @@ fn emit_handler_fn(
     caps: &[ArmCap],
     env_ty: &str,
 ) -> Result<()> {
-    let saved = cg.enter_nested_fn();
+    let saved = cg.enter_nested_body(&arm.body);
     cg.begin_nested_debug(name, arm.position);
     let mut params = vec![(LType::Ptr, String::from("__env"))];
     reload_env(cg, caps, env_ty);

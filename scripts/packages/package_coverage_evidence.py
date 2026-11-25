@@ -30,9 +30,12 @@ def unique_object(pairs):
 
 
 def concrete_function(node):
-    return isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and not (
-        len(node.body) == 1 and isinstance(node.body[0], ast.Expr)
-        and isinstance(node.body[0].value, ast.Constant) and node.body[0].value.value is Ellipsis)
+    if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        return False
+    # A documented effect operation still only declares a signature.
+    body = node.body[1:] if ast.get_docstring(node, clean=False) is not None else node.body
+    return not (len(body) == 1 and isinstance(body[0], ast.Expr)
+                and isinstance(body[0].value, ast.Constant) and body[0].value.value is Ellipsis)
 
 
 def executable_statement(node):

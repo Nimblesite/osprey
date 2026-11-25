@@ -108,20 +108,7 @@ fn excluded(path: &Path) -> bool {
 fn source_file(path: &Path) -> bool {
     match path.extension().and_then(|extension| extension.to_str()) {
         Some("osp" | "ospml") => true,
-        Some("py") => python_file(path),
+        Some("py") => osprey_project::python_source(path),
         _ => false,
     }
-}
-
-fn python_file(path: &Path) -> bool {
-    // CPython tools are not Osprey. A marker or manifest must opt in.
-    if std::fs::read_to_string(path)
-        .is_ok_and(|text| osprey_syntax::flavor_marker(&text) == Some("python"))
-    {
-        return true;
-    }
-    crate::workspace::project_root(path).is_some_and(|root| {
-        osprey_project::discover(&root)
-            .is_ok_and(|(_, files)| files.iter().any(|file| file == path))
-    })
 }

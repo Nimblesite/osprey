@@ -5,9 +5,11 @@
 /// Every program below resumes one captured continuation more than once.
 /// Each pairs its source with the exact output a correct run prints
 /// ([MULTI-HANDLE-MANY], [MULTI-FALSIFY] gates 3 and 4, plan 0016 phase 3).
-const EVERY_ALTERNATIVE: &str = concat!(
-    crate::choice_int!(),
-    r#"
+pub(crate) const MANY_RUNS: &[(&str, &str, &str)] = &[
+    (
+        "every alternative is resumed and each branch keeps its own answer",
+        r#"
+effect Choice { control many pick: fn(int) -> int }
 fn answer(seed) = {
     let chosen = perform Choice.pick(seed)
     "a${chosen}"
@@ -26,16 +28,16 @@ fn main() = {
     print("collected=${collected}")
 }
 "#,
-);
-
-/// A shared helper takes capturing callbacks with no annotation, a lambda
-/// bound by `let` makes the request, work before a capture runs once, and
-/// the right side of `&&` asks only when the left allows it.
-const LAZY_SEARCH: &str = concat!(
-    crate::choice_int!(),
-    "\n",
-    crate::trace_note!(),
-    r#"
+        "collected=a4&a9\n",
+    ),
+    (
+        // A shared helper takes capturing callbacks with no annotation, a
+        // lambda bound by `let` makes the request, work before a capture runs
+        // once, and the right side of `&&` asks only when the left allows it.
+        "a shared helper, a bound lambda and a lazy operator inside one search",
+        r#"
+effect Choice { control many pick: fn(int) -> int }
+effect Trace { replayable note: fn(string) -> Unit }
 fn both(first, second) = satAdd(first(), second())
 fn pair(seed) = {
     let ask = fn(n) => perform Choice.pick(n)
@@ -50,9 +52,9 @@ fn pair(seed) = {
 fn main() = {
     mut log = ""
     let all = {
-"#,
-    crate::log_handler!("Trace", "note"),
-    r#"
+        handle Trace {
+            note text => { log = "${log}${text}" }
+        }
         handle Choice {
             pick bound => {
                 let a = resume(bound)
@@ -65,18 +67,17 @@ fn main() = {
     print("all=${all} log=${log}")
 }
 "#,
-);
-
-/// `Stop` is a `control` effect handled between the request and its `many`
-/// handler, so it is captured with it: an arm that never resumes abandons
-/// only its own branch, and `finally` runs once per branch.
-const CONTROL_AND_FINALLY: &str = concat!(
-    crate::choice_int!(),
-    "\n",
-    r#"effect Stop { control replayable quit: fn(string) -> int }
-"#,
-    crate::audit_close!(),
-    r#"
+        "all=small1:101|small1:102|big2:102|small2:102|big2:103|small2:103 log=L1 L2 \n",
+    ),
+    (
+        // `Stop` is a `control` effect handled between the request and its
+        // `many` handler, so it is captured with it: an arm that never resumes
+        // abandons only its own branch, and `finally` runs once per branch.
+        "a non-resuming control effect and a finalizer inside the captured region",
+        r#"
+effect Choice { control many pick: fn(int) -> int }
+effect Stop { control replayable quit: fn(string) -> int }
+effect Audit { replayable close: fn(string) -> Unit }
 fn work(seed) = {
     let n = perform Choice.pick(seed)
     match n > 5 {
@@ -87,9 +88,9 @@ fn work(seed) = {
 fn main() = {
     mut log = ""
     let total = {
-"#,
-    crate::log_handler!("Audit", "close"),
-    r#"
+        handle Audit {
+            close text => { log = "${log}${text}" }
+        }
         handle Choice {
             pick bound => satAdd(satAdd(resume(bound), resume(6)), resume(2))
         }
@@ -104,11 +105,13 @@ fn main() = {
     print("total=${total} log=${log}")
 }
 "#,
-);
-
-/// A value operation of a captured effect, a return clause applied to each
-/// branch, and a handler that answers without resuming at all.
-const VALUE_AND_RETURN: &str = r#"
+        "total=29 log=done;done;done;\n",
+    ),
+    (
+        // A value operation of a captured effect, a return clause applied to
+        // each branch, and a handler that answers without resuming at all.
+        "a value operation, a return clause and zero resumptions",
+        r#"
 effect Ask {
     control many choose: fn(string) -> bool
     replayable hint: fn() -> string
@@ -138,11 +141,14 @@ fn main() = {
     }
     print("both=${both} none=${none}")
 }
-"#;
-
-/// The handler is a value applied to the search: backtracking keeps the
-/// newest version that the rest of the plan accepts.
-const HANDLER_VALUE: &str = r#"
+"#,
+        "both=<yes-h>+<no-h> none=skipped\n",
+    ),
+    (
+        // The handler is a value applied to the search: backtracking keeps the
+        // newest version that the rest of the plan accepts.
+        "a handler value backtracks to the first answer the plan accepts",
+        r#"
 effect Versions { control many pick: fn(string) -> string }
 fn plan() = {
     let serde = perform Versions.pick("serde")
@@ -159,13 +165,16 @@ let newestThatWorks = handler Versions {
     }
 }
 print(newestThatWorks(plan))
-"#;
-
-/// Two `many` operations of one effect, a Unit request resumed with no value,
-/// named and `let`-bound direct functions passed where a capturing callback
-/// is expected, and a lazy `||` whose right side asks only when the left is
-/// false. The tick before every capture is counted once.
-const DIRECT_CALLBACKS: &str = r#"
+"#,
+        "serde 2, toml 1\n",
+    ),
+    (
+        // Two `many` operations of one effect, a Unit request resumed with no
+        // value, named and `let`-bound direct functions passed where a capturing
+        // callback is expected, and a lazy `||` whose right side asks only when
+        // the left is false. The tick before every capture is counted once.
+        "direct functions as callbacks, a unit resume and a lazy or",
+        r#"
 effect Flip {
     control many replayable toss: fn() -> bool
     control many replayable tick: fn() -> Unit
@@ -203,14 +212,16 @@ fn main() = {
     }
     print("all=${all} ticks=${ticks}")
 }
-"#;
-
-/// Two captured effects, one handled outside the other, around a direct
-/// handler with a return clause: the outer handler resumes continuations
-/// that pass back through the inner one.
-const NESTED_HANDLERS: &str = concat!(
-    r#"effect Choice { control many replayable pick: fn(int) -> int }"#,
-    r#"
+"#,
+        "all=hi109,hi108,hi108,hi107,lo107 ticks=1\n",
+    ),
+    (
+        // Two captured effects, one handled outside the other, around a direct
+        // handler with a return clause: the outer
+        // handler resumes continuations that pass back through the inner one.
+        "nested multi-shot handlers resume through each other",
+        r#"
+effect Choice { control many replayable pick: fn(int) -> int }
 effect Extra { control many replayable guess: fn(int) -> int }
 effect Scale { replayable by: fn() -> int }
 fn pair(seed) = satAdd(satMul(perform Choice.pick(seed), perform Scale.by()), perform Extra.guess(seed))
@@ -234,12 +245,13 @@ fn main() = {
     print("all=${all}")
 }
 "#,
-);
-
-/// `?:` asks for its fallback only when the left side failed.
-const FALLBACK_ONLY_ON_FAILURE: &str = concat!(
-    crate::choice_int!(),
-    r#"
+        "all=2044004086002042\n",
+    ),
+    (
+        // `?:` asks for its fallback only when the left side failed.
+        "a fallback operator captures only on failure",
+        r#"
+effect Choice { control many pick: fn(int) -> int }
 fn risky(n) = checkedAdd(n, 9223372036854775807) ?: perform Choice.pick(n)
 fn main() = {
     let fine = {
@@ -257,17 +269,18 @@ fn main() = {
     print("fine=${fine} fallback=${fallback}")
 }
 "#,
-);
-
-/// [MULTI-REPLAY-STATE] resolved by scope: `mut hits` belongs to `other`,
-/// while the `hits` the arm reads is `main`'s immutable `let`. A checker
-/// that collects `mut` names program-wide would collide the two and reject
-/// this program; only a `mut` binding actually visible at the arm counts.
-const IMMUTABLE_VS_MUT_NAME: &str = concat!(
-    crate::choice_string!(),
-    "\n",
-    crate::journal_note!(),
-    r#"
+        "fine=9223372036854775807 fallback=33\n",
+    ),
+    (
+        // [MULTI-REPLAY-STATE] resolved by scope: `mut hits` belongs to
+        // `other`, while the `hits` the arm reads is `main`'s immutable
+        // `let`. A checker that collects `mut` names program-wide would
+        // collide the two and reject this program; only a `mut` binding
+        // actually visible at the arm counts.
+        "an immutable name that shares its spelling with another function's mut",
+        r#"
+effect Choice { control many pick: fn(int) -> string }
+effect Journal { replayable note: fn(string) -> Unit }
 fn other() = {
     mut hits = ""
     handle Journal {
@@ -288,16 +301,16 @@ fn main() = {
     print(other())
 }
 "#,
-);
-
-/// The four list builtins with a callback that makes a captured request:
-/// each element's request is its own choice point, so a fold over two
-/// elements resumed twice each runs four branches.
-const LIST_BUILTIN_CALLBACKS: &str = concat!(
-    crate::choice_int!(),
-    "\n",
-    crate::trace_note!(),
-    r#"
+        "reads=1|2\nx\n",
+    ),
+    (
+        // The four list builtins with a callback that makes a captured request:
+        // each element's request is its own choice point, so a fold over two
+        // elements resumed twice each runs four branches.
+        "callbacks of the list builtins make captured requests",
+        r#"
+effect Choice { control many pick: fn(int) -> int }
+effect Trace { replayable note: fn(string) -> Unit }
 fn sums() = foldList([1, 2], 0, fn(sum, n) => satAdd(sum, perform Choice.pick(n)))
 fn doubled() = mapList([1, 2], fn(n) => satMul(perform Choice.pick(n), 10))
 fn evens() = filterList([1, 2, 3], fn(n) => perform Choice.pick(n) > 1)
@@ -326,9 +339,9 @@ fn main() = {
     }
     mut log = ""
     let walked = {
-"#,
-    crate::log_handler!("Trace", "note"),
-    r#"
+        handle Trace {
+            note text => { log = "${log}${text}" }
+        }
         handle Choice {
             pick bound => "${resume(bound)}+${resume(0)}"
         }
@@ -337,57 +350,6 @@ fn main() = {
     print("total=${total} lists=${lists} kept=${kept} walked=${walked} log=${log}")
 }
 "#,
-);
-
-pub(crate) const MANY_RUNS: &[(&str, &str, &str)] = &[
-    (
-        "every alternative is resumed and each branch keeps its own answer",
-        EVERY_ALTERNATIVE,
-        "collected=a4&a9\n",
-    ),
-    (
-        "a shared helper, a bound lambda and a lazy operator inside one search",
-        LAZY_SEARCH,
-        "all=small1:101|small1:102|big2:102|small2:102|big2:103|small2:103 log=L1 L2 \n",
-    ),
-    (
-        "a non-resuming control effect and a finalizer inside the captured region",
-        CONTROL_AND_FINALLY,
-        "total=29 log=done;done;done;\n",
-    ),
-    (
-        "a value operation, a return clause and zero resumptions",
-        VALUE_AND_RETURN,
-        "both=<yes-h>+<no-h> none=skipped\n",
-    ),
-    (
-        "a handler value backtracks to the first answer the plan accepts",
-        HANDLER_VALUE,
-        "serde 2, toml 1\n",
-    ),
-    (
-        "direct functions as callbacks, a unit resume and a lazy or",
-        DIRECT_CALLBACKS,
-        "all=hi109,hi108,hi108,hi107,lo107 ticks=1\n",
-    ),
-    (
-        "nested multi-shot handlers resume through each other",
-        NESTED_HANDLERS,
-        "all=2044004086002042\n",
-    ),
-    (
-        "a fallback operator captures only on failure",
-        FALLBACK_ONLY_ON_FAILURE,
-        "fine=9223372036854775807 fallback=33\n",
-    ),
-    (
-        "an immutable name that shares its spelling with another function's mut",
-        IMMUTABLE_VS_MUT_NAME,
-        "reads=1|2\nx\n",
-    ),
-    (
-        "callbacks of the list builtins make captured requests",
-        LIST_BUILTIN_CALLBACKS,
         "total=12 lists=10,20|10,70|60,20|60,70 kept=20402 walked=done+done+done+done log=v7 v8 v0 v0 v8 v0 \n",
     ),
     (

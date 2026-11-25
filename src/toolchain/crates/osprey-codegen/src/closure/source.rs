@@ -158,7 +158,7 @@ fn emit_closure_fn(
     definition: &Definition<'_>,
 ) -> Result<()> {
     let (ret_spelling, _) = spelling(definition.sig);
-    let saved = cg.enter_nested_fn();
+    let saved = cg.enter_nested_body(definition.body);
     begin_named_source(cg, fn_name, definition.source_name, definition.position);
     cg.cov_hit(definition.source_name.and(definition.position)); // [TESTING-COVERAGE-CODEGEN]
     let params = prepare_body(cg, cell_ty, caps, definition);
@@ -173,10 +173,6 @@ fn prepare_body(
     caps: &[Capture],
     definition: &Definition<'_>,
 ) -> Vec<(LType, String)> {
-    // Promotion belongs to this body: a handler must update its shared cell,
-    // not a private copy of a local cleared by enter_nested_fn.
-    // Implements [EFFECTS-HANDLER-STATE].
-    cg.cell_vars = crate::effects::captured_mut_vars(definition.body);
     reload_captures(cg, cell_ty, caps);
     let mut params = vec![(LType::Ptr, String::from("__env"))];
     params.extend(bind_params_from(

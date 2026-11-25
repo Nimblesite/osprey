@@ -397,8 +397,6 @@ module View
         "xhigh" => "Extra high"
         _ => level
 
-    modelName model = Engine::model_label model
-
     modelLine model =
         provider = Engine::provider_label (Engine::provider_id_of model)
         label = Engine::model_label model

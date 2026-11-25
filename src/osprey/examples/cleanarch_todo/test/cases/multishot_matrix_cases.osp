@@ -15,10 +15,14 @@ import todo::TodoProbe
 /// pair, and a wider store whose ids and titles are out of order.
 fn mxStores() = [
     { lists: [], items: [] },
-    { lists: shoppingList(), items: milkOnly(false) },
+    { lists: [TodoHarness::seedList(1, "Shopping", "#78909C")], items: [TodoHarness::seedItem(1, 1, "Milk", false)] },
     {
-        lists: twoLists(),
-        items: threeItems()
+        lists: [TodoHarness::seedList(1, "Shopping", "#78909C"), TodoHarness::seedList(2, "Banking", "#AB47BC")],
+        items: [
+            TodoHarness::seedItem(1, 1, "Milk", false),
+            TodoHarness::seedItem(2, 1, "Bread", false),
+            TodoHarness::seedItem(3, 2, "Tax", false)
+        ]
     },
     {
         lists: [
@@ -47,25 +51,25 @@ fn mxStores() = [
 fn mxRequests() = [
     GetTodos,
     PurgeTodoLists,
-    newList("Travel", ""),
-    newList("", "#nope"),
-    newList("Shopping", "#4CAF50"),
-    editList(1, "Renamed", ""),
-    editList(1, "Shopping", "#E05C4D"),
-    editList(7, "Ghost", ""),
-    dropList(1),
-    dropList(7),
-    newItem(1, "Eggs"),
-    newItem(1, ""),
-    editItem(1, "Milk", true),
-    editItem(1, "Milk", false),
-    editItem(7, "Ghost", true),
-    itemDetail(1, 1, 2, "soon"),
-    itemDetail(7, 1, 9, ""),
-    dropItem(1),
-    dropItem(7),
-    query(1, 1, 10),
-    query(9, 3, 2)
+    CreateList { list: NewList { title: "Travel", colour: "" } },
+    CreateList { list: NewList { title: "", colour: "#nope" } },
+    CreateList { list: NewList { title: "Shopping", colour: "#4CAF50" } },
+    UpdateList { edit: ListEdit { id: 1, title: "Renamed", colour: "" } },
+    UpdateList { edit: ListEdit { id: 1, title: "Shopping", colour: "#E05C4D" } },
+    UpdateList { edit: ListEdit { id: 7, title: "Ghost", colour: "" } },
+    DeleteList { id: 1 },
+    DeleteList { id: 7 },
+    CreateItem { item: NewItem { listId: 1, title: "Eggs" } },
+    CreateItem { item: NewItem { listId: 1, title: "" } },
+    UpdateItem { edit: ItemEdit { id: 1, title: "Milk", done: true } },
+    UpdateItem { edit: ItemEdit { id: 1, title: "Milk", done: false } },
+    UpdateItem { edit: ItemEdit { id: 7, title: "Ghost", done: true } },
+    UpdateItemDetail { detail: ItemDetail { id: 1, listId: 1, priority: 2, note: "soon" } },
+    UpdateItemDetail { detail: ItemDetail { id: 7, listId: 1, priority: 9, note: "" } },
+    DeleteItem { id: 1 },
+    DeleteItem { id: 7 },
+    ItemsWithPagination { query: ItemQuery { listId: 1, pageNumber: 1, pageSize: 10 } },
+    ItemsWithPagination { query: ItemQuery { listId: 9, pageNumber: 3, pageSize: 2 } }
 ]
 
 /// What an independent run of `ask` answers for `principal` over `store`.
@@ -160,7 +164,7 @@ fn mxProbeChecks(store, question, asks, catalogue) = {
 fn mxFixChecks(store, fixes) = mxProbeChecks(store, WhichFixesWork { request: listGet(fixes, 0) ?: GetTodos }, fixes, TodoProbe::fixes())
 
 /// A title of `size` y characters.
-fn mxWide(size) = wideTitle(size, "y")
+fn mxWide(size) = retryWideTitle(size, "y")
 
 /// Titles at and around every validation boundary.
 fn mxTitles() = [
@@ -275,7 +279,7 @@ fn mxExhaustedChecks(store, ask) = {
     let fought = TodoHarness::contested(["R1", "R2", "R3"], store.lists, store.items, ask)
     match mxCommits(store, ask) {
         true => [
-            contains(conflictWhy(fought.settled), "attempt 3:"),
+            contains(retryWhy(fought.settled), "attempt 3:"),
             mxSame(fought.lists, mxRivalled(store, ["R1", "R2", "R3"]).lists),
             mxSame(fought.items, store.items),
             length(fought.events) == 0,

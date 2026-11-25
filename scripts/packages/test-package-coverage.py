@@ -344,7 +344,7 @@ class CheckerTests(CoverageTestCase):
                 self.assertIn("missing source evidence: src/facade.py", result.stdout)
 
     def test_missing_function_rows_cannot_shrink_the_denominator(self):
-        source = "def covered(value):\n    return value\n\ndef omitted(value):\n    return value\n"
+        source = 'def covered(value):\n    return value\n\ndef omitted(value):\n    """A documented concrete function."""\n    return value\n'
         fixture = self.simple_fixture(source=source)
         fixture.write_report("demo", own_report("demo", 2, 2))
         result = fixture.check()
@@ -364,10 +364,20 @@ class CheckerTests(CoverageTestCase):
         self.assertIsNone(fixture.result("demo")["percentage"], "Incomplete evidence has no measured percentage")
 
     def test_abstract_effect_declarations_have_no_body_to_cover(self):
-        source = "@effect\nclass Buffer:\n    def length(buffer) -> int: ...\n\n" + py_source(4)
-        fixture = self.fixture({"demo": {"sources": {"src/lib.py": source}}})
+        declarations = '''@effect
+class Buffer:
+    def length(buffer) -> int: ...
+
+    @control
+    def clear(buffer) -> int:
+        """A documented abstract operation."""
+        ...
+
+'''
+        first = declarations.count("\n") + 1
+        fixture = self.fixture({"demo": {"sources": {"src/lib.py": declarations + py_source(4)}}})
         fixture.write_report("demo", {"files": {"src/osprey/packages/demo/src/lib.py": {
-            "lines": {str(line): 1 for line in range(5, 9)},
+            "lines": {str(line): 1 for line in range(first, first + 4)},
         }}})
         self.assert_exit(fixture.check(), 0)
 

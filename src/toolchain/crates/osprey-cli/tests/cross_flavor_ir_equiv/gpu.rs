@@ -481,3 +481,15 @@ fn gpu_iota_fills_its_buffer_in_one_runtime_call() -> Result<(), String> {
     }
     Ok(())
 }
+
+/// [FLAVOR-PYTHON-BOUNDARY] A captured flat callback and ordered reduction.
+#[test]
+fn flat_host_reduction_matches_across_three_flavors() -> Result<(), String> {
+    let ir = super::flat_triple("reduction", [
+        "fn total(values, offset) = fold(values, offset, fn(acc, x) => satAdd(acc, x))\nprint(total(range(1, 4), 7))\n",
+        "total (values, offset) = fold (values, offset, \\(acc, x) => satAdd (acc, x))\nprint (total (range (1, 4), 7))\n",
+        "def total(values, offset):\n    return fold(values, offset, lambda acc, x: satAdd(acc, x))\nprint(total(range(1, 4), 7))\n",
+    ])?;
+    assert!(ir.contains("define "));
+    Ok(())
+}
