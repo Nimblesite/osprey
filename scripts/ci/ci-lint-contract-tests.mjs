@@ -151,6 +151,12 @@ function deadCodeFixture(product, tests, { nested = false, testFile = 'tests.rs'
   })
 }
 
+function assertOrphanWithoutHelper(result, helperName) {
+  assert.equal(result.status, 1)
+  assert.match(result.stderr, /fn orphan/)
+  assert.doesNotMatch(result.stderr, helperName)
+}
+
 test('dead-code gate distinguishes test module helpers from unused product code', () => {
   for (const nested of [false, true]) {
     const declaration = nested ? '#[expect(\n    clippy::indexing_slicing\n)]\npub(crate) mod tests;' : 'mod tests;'
@@ -165,9 +171,7 @@ test('dead-code gate distinguishes test module helpers from unused product code'
   for (const declaration of ['#[cfg(test)] mod witness;', '#[cfg(test)]\n#[path = "witness.rs"]\nmod verification;']) {
     const named = deadCodeFixture(`pub fn orphan() {}\n${declaration}\nfn main() {}`,
       'pub fn regression() { crate::orphan(); }', { testFile: 'witness.rs' })
-    assert.equal(named.status, 1)
-    assert.match(named.stderr, /fn orphan/)
-    assert.doesNotMatch(named.stderr, /fn regression/)
+    assertOrphanWithoutHelper(named, /fn regression/)
   }
   const shared = deadCodeFixture('#[cfg(test)] mod witness;\nfn main() {}',
     'pub fn active() {}', { testFile: 'witness.rs', library: 'mod witness;\nfn use_shared() { witness::active(); }' })
@@ -201,9 +205,7 @@ test('dead-code gate follows test modules through descendants and keeps shared p
       assert.equal(result.status, 0, result.stderr)
       assert.match(result.stdout, /2 public items/)
     } else {
-      assert.equal(result.status, 1)
-      assert.match(result.stderr, /fn orphan/)
-      assert.doesNotMatch(result.stderr, /fn fixture/)
+      assertOrphanWithoutHelper(result, /fn fixture/)
     }
   }
 })
