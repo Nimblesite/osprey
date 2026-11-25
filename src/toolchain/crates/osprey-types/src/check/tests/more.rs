@@ -204,6 +204,44 @@ fn infer_program_publishes_functions_and_unions() {
     );
 }
 
+/// #340: a generic constructor written without its arguments takes fresh ones
+/// wherever it is written (a parameter, a return, a function type, a type
+/// argument), so each use instantiates it. Nullary, a `Fiber`
+/// carried no result type and codegen could not lay the program out.
+#[test]
+fn constructors_written_without_arguments_take_fresh_ones() {
+    let info = infer(
+        "fn work() = 7\n\
+         fn first(fib: Fiber) = await(fib)\n\
+         fn through(f: fn(Fiber) -> int, fib: Fiber) = f(fib)\n\
+         fn many(fibers: List<Fiber>) = listLength(fibers)\n\
+         fn spawned() -> Fiber = spawn work()\n\
+         let a = first(spawn work())\n\
+         let b = through(first, spawn work())\n\
+         let d = many([spawn work()])\n\
+         let e = first(spawned())\n",
+    );
+    let ints = info
+        .lets
+        .values()
+        .filter(|t| t.to_string() == "int")
+        .count();
+    assert_eq!(ints, 4, "every use reads an int: {:?}", info.lets);
+    for name in ["first", "through", "many", "spawned"] {
+        let shown = info
+            .functions
+            .get(name)
+            .map_or_else(String::new, |(params, ret)| {
+                let params: Vec<String> = params.iter().map(ToString::to_string).collect();
+                format!("{} -> {ret}", params.join(", "))
+            });
+        assert!(
+            shown.contains("Fiber<"),
+            "{name} keeps a fiber argument: {shown}"
+        );
+    }
+}
+
 #[test]
 fn conflicting_effect_site_keys_are_dropped() {
     // Two sites sharing one (line, column) key with DIFFERENT resolutions

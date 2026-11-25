@@ -136,7 +136,44 @@ impl Checker {
                 .with_pos(position),
             );
         }
-        crate::convert::type_expr_to_type(argument, binder)
+        let written = crate::convert::type_expr_to_type(argument, binder);
+        self.applied_constructors(&written)
+    }
+
+    /// `written` with every generic constructor named without its arguments
+    /// (`fib: Fiber`, Python's bare `list`) applied to fresh variables, as if
+    /// its arguments had been left to inference: `Fiber` reads as `Fiber<_>`.
+    /// Kept nullary, `Fiber` unified with any fiber and carried no result
+    /// type, so the check accepted a program codegen could not lay out (#340)
+    /// [COMPILER-RED-FAILS].
+    fn applied_constructors(&mut self, written: &Type) -> Type {
+        match written {
+            Type::Con { name, args } if args.is_empty() => {
+                let arity = self
+                    .ctx
+                    .variance_of(name)
+                    .map(<[_]>::len)
+                    .or_else(|| (name == names::CHANNEL).then_some(1))
+                    .unwrap_or(0);
+                let args = (0..arity).map(|_| self.ctx.fresh()).collect();
+                Type::con(name.clone(), args)
+            }
+            Type::Con { name, args } => {
+                let args = args
+                    .iter()
+                    .map(|arg| self.applied_constructors(arg))
+                    .collect();
+                Type::con(name.clone(), args)
+            }
+            Type::Fun { params, ret } => {
+                let params = params
+                    .iter()
+                    .map(|p| self.applied_constructors(p))
+                    .collect();
+                Type::fun(params, self.applied_constructors(ret))
+            }
+            other => other.clone(),
+        }
     }
 
     /// Written arguments name declared types or an enclosing binder, never a
