@@ -1289,7 +1289,7 @@ Unused warnings offer no automatic deletion: an unread binding can still evaluat
 
 ## Unused private module members `[TYPE-WARNINGS-UNUSED-PRIVATE]`
 
-A module is a closed boundary: an item it does not export can be named only from inside it. A private function or value that no expression of its module names is dead code, so it is one `unused-private` warning at its declaration, in every flavor:
+A module is a closed boundary. The compiler reports one `unused-private` warning at each unreachable private function and each unread private value, in every flavor:
 
 ```osprey
 module Cart {
@@ -1298,4 +1298,4 @@ module Cart {
 }
 ```
 
-Delete it. The check is by spelling, not binding: an identifier, path segment, field, method or updated record of the same name anywhere in the module, nested modules included, counts as a read. The rule can therefore miss dead code (a function that only calls itself), but it never reports live code. A Python-flavor file is a module that exports what its `__all__` lists. Exported items, top-level declarations, types, and modules ascribed a signature (whose surface the signature names) are never reported. The compiler's warning listing and the language server report it (`osprey-types/src/unused_private.rs`). Warnings never change a build's exit status, but the program check fails on this one: every tracked program must be free of dead private members ([CI-PROGRAMS-COMPILE]).
+Function reachability starts at exported definitions, initializers, and nested modules. It follows each referenced private function through the other functions its body names, so an isolated recursive group is reported. An identifier, path segment, field, method or updated record of the same spelling counts as a reference. A private value is reported when no expression names it. A Python-flavor file exports the names in `__all__`. Exported items, top-level declarations, types, and modules ascribed a signature are outside this check. The compiler and language server share the pass in `osprey-types/src/unused_private.rs`. The tracked-program check treats these warnings as failures ([CI-PROGRAMS-COMPILE]).

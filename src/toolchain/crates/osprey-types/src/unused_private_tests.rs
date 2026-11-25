@@ -45,7 +45,32 @@ module Counter : CounterApi {\n\
         [
             dead("value", "Cart::stale", 4),
             dead("function", "Cart::orphan", 6),
+            dead("function", "Cart::spun", 9),
             dead("function", "Cart::Inner::hidden", 13),
+        ]
+    );
+}
+
+#[test]
+fn only_reachable_roots_keep_private_function_chains_alive() {
+    let source = "module Survey {\n\
+        fn disconnected(n) = stranded(n)\n\
+        fn stranded(n) = disconnected(n)\n\
+        fn helper() = 1\n\
+        fn neverCalled() = helper()\n\
+        fn step(n) = match n { 0 => 0 _ => again(n - 1) }\n\
+        fn again(n) = step(n)\n\
+        fn startup() = 1\n\
+        let started = startup()\n\
+        export fn run(n) = step(n) + started\n\
+    }\n";
+    assert_eq!(
+        warned(Flavor::Default, source),
+        [
+            dead("function", "Survey::disconnected", 2),
+            dead("function", "Survey::stranded", 3),
+            dead("function", "Survey::helper", 4),
+            dead("function", "Survey::neverCalled", 5),
         ]
     );
 }
