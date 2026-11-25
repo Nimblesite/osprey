@@ -54,17 +54,32 @@ static uintptr_t stack_guard_low(void) {
 
 static int stack_guard_slot(int signal_number) { return signal_number == SIGSEGV ? 0 : 1; }
 
+// A fault that is not a stack's goes to the handler installed before the guard,
+// and the guard stays installed: a host that recovers from its own faults keeps
+// the guard too. With no handler before it, the default disposition comes back
+// and the re-fault ends the run as it would have without the guard.
+static void stack_guard_forward(int signal_number, siginfo_t *info, void *context) {
+  const struct sigaction *previous = &g_stack_guard_previous[stack_guard_slot(signal_number)];
+  bool with_info = (previous->sa_flags & SA_SIGINFO) != 0;
+  if (with_info && previous->sa_sigaction != NULL) {
+    previous->sa_sigaction(signal_number, info, context);
+  } else if (!with_info && previous->sa_handler != SIG_DFL && previous->sa_handler != SIG_IGN) {
+    previous->sa_handler(signal_number);
+  } else {
+    (void)sigaction(signal_number, previous, NULL);
+  }
+}
+
 // Broken-code quarantine [FAILURE-EXPLICIT]: recursion has no Result to fail
 // into, and the fault already happened. A fault on this thread's stack ends the
 // run with the memory status, stdout flushed when no other thread holds it. Any
-// other fault goes back to the handler that was there before, by re-faulting.
+// other fault is forwarded above.
 static void stack_guard_fault(int signal_number, siginfo_t *info, void *context) {
-  (void)context;
   uintptr_t at = (uintptr_t)info->si_addr;
   uintptr_t low = g_stack_low;
   bool overflow = low != 0 && at + OSP_STACK_GUARD_REACH >= low && at < low + OSP_STACK_GUARD_SLACK;
   if (!overflow) {
-    (void)sigaction(signal_number, &g_stack_guard_previous[stack_guard_slot(signal_number)], NULL);
+    stack_guard_forward(signal_number, info, context);
     return;
   }
   if (write(STDERR_FILENO, STACK_EXHAUSTED, sizeof STACK_EXHAUSTED - 1) < 0) {

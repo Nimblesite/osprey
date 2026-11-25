@@ -431,6 +431,10 @@ int main(int argc, char **argv) {
     t_table_keeps_capacity();
     return 0;
   }
+  if (argc == 2 && strcmp(argv[1], "--foreign-fault") == 0) {
+    foreign_fault_child();
+    return 0;
+  }
   if (argc == 3 && strcmp(argv[1], "--ceiling") == 0) {
     ceiling_child(argv[2]);
     return 0;
@@ -460,6 +464,7 @@ int main(int argc, char **argv) {
   t_finalizer_at_sweep();
   t_debug_reports(argv[0]);
   t_heap_ceiling(argv[0]);
+  t_stack_guard_outlives_foreign_faults(argv[0]);
   t_runner_poll_ends_an_orphan();
   t_scanned_blocks_are_roots();
   t_threads_collect_together();

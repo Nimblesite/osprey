@@ -76,6 +76,8 @@ void debug_stats_child(void);
 void t_debug_reports(const char *self);
 void ceiling_child(const char *mode);
 void t_heap_ceiling(const char *self);
+void foreign_fault_child(void);
+void t_stack_guard_outlives_foreign_faults(const char *self);
 void t_runner_poll_ends_an_orphan(void);
 
 // memory_gc_tests.c
