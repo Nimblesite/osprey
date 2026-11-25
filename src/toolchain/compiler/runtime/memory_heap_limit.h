@@ -77,12 +77,7 @@ static _Noreturn void heap_exhausted(const char *backend, size_t held, size_t re
   heap_note_peak(held);
   fprintf(stderr, "osprey: heap limit exceeded: backend=%s limit_bytes=%zu peak_bytes=%zu request_bytes=%zu\n",
           backend, g_heap_limit, g_heap_peak, request);
-  (void)fflush(NULL);
-#ifdef OSP_SYMBOLIC
-  abort();
-#else
-  _Exit(OSP_HEAP_EXHAUSTED_STATUS);
-#endif
+  osp_memory_refusal_stop();
 }
 
 #endif
