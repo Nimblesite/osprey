@@ -1,0 +1,98 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 325 216" role="img" aria-labelledby="title description">
+  <title id="title">Prism reference enclosure orthographic layout</title>
+  <desc id="description">Top, rear and both side elevations at the same scale. Outer dimensions are in millimetres. Aperture shapes are schematic.</desc>
+  <style>
+    text { font: 3.5px sans-serif; fill: #e6eff1; text-anchor: middle }
+    .title { font-size: 6px; font-weight: bold }
+    .caption { font-size: 4px; font-weight: bold; fill: #92e1da }
+    .dim { stroke: #92e1da; stroke-width: .35; fill: none }
+    .case { fill: #293039; stroke: #82929e; stroke-width: .55 }
+    .seam { fill: none; stroke: #82929e; stroke-width: .35 }
+    .port { fill: #151c24; stroke: #a6b6c1; stroke-width: .5 }
+    .led { fill: #92e1da }
+  </style>
+  <rect width="325" height="216" fill="#151c24"/>
+  <text x="162.5" y="11" class="title">PRISM ENCLOSURE</text>
+  <defs>
+    <g id="knob">
+      <circle r="7.5" fill="#181f27" stroke="#82929e" stroke-width=".5"/>
+      <path d="M0 -6V-2.7" stroke="#e6eff1" stroke-width=".65"/>
+    </g>
+    <g id="toggle">
+      <circle r="3.4" fill="#70818b" stroke="#a6b6c1" stroke-width=".5"/>
+      <path d="M0 1L1.3 -2.4" stroke="#e6eff1" stroke-linecap="round" stroke-width="1.3"/>
+    </g>
+    <g id="foot">
+      <circle r="8" fill="#7d8f99" stroke="#adbac3" stroke-width=".55"/>
+      <circle r="5.5" fill="#a6b6c1" stroke="#c9d4da" stroke-width=".5"/>
+    </g>
+    <g id="side">
+      <rect width="121.2" height="39.3" rx="3" class="case"/>
+      <path d="M.5 35.2H120.7" class="seam"/>
+    </g>
+    <g id="audio">
+      <circle r="6.5" class="port"/>
+      <circle r="3.175" class="seam"/>
+    </g>
+  </defs>
+  <g transform="translate(25 32)">
+    <path d="M0 -5V-10m0 2H145.2m0 -2v5M-4 0h-8m2 0v121.2m-2 0h8" class="dim"/>
+    <text x="72.6" y="-9.5">145.2 mm</text>
+    <text transform="translate(-12.5 60.6) rotate(-90)">121.2 mm</text>
+    <rect width="145.2" height="121.2" rx="5" class="case"/>
+    <text x="72.6" y="9" class="caption">TOP</text>
+    <g transform="translate(0 23)">
+      <use href="#knob" x="24"/><use href="#knob" x="56"/><use href="#knob" x="89.2"/><use href="#knob" x="121.2"/>
+      <text x="24" y="13">K1</text><text x="56" y="13">K2</text><text x="89.2" y="13">K3</text><text x="121.2" y="13">K4</text>
+    </g>
+    <g transform="translate(0 49)">
+      <use href="#knob" x="24"/><use href="#knob" x="56"/><use href="#knob" x="89.2"/><use href="#knob" x="121.2"/>
+      <text x="24" y="13">K5</text><text x="56" y="13">K6</text><text x="89.2" y="13">K7</text><text x="121.2" y="13">K8</text>
+    </g>
+    <g transform="translate(0 75)">
+      <use href="#toggle" x="24"/><use href="#toggle" x="56"/><use href="#toggle" x="89.2"/><use href="#toggle" x="121.2"/>
+      <circle cx="72.6" r="1.6" class="led"/>
+      <text x="24" y="9">S1 · 2-way</text><text x="56" y="9">S2 · 2-way</text>
+      <text x="72.6" y="7.5">RGB</text>
+      <text x="89.2" y="9">S3 · 3-way</text><text x="121.2" y="9">S4 · 3-way</text>
+    </g>
+    <circle cx="42" cy="90" r="1.4" class="led"/><circle cx="103.2" cy="90" r="1.4" class="led"/>
+    <use href="#foot" x="42" y="102"/><use href="#foot" x="103.2" y="102"/>
+    <text x="42" y="116">LEFT FOOTSWITCH</text><text x="103.2" y="116">RIGHT FOOTSWITCH</text>
+    <text x="72.6" y="127" class="caption">PLAYER EDGE</text>
+  </g>
+  <g transform="translate(188 32)">
+    <use href="#side"/>
+    <text x="60.6" y="8" class="caption">LEFT SIDE · REAR AT LEFT</text>
+    <use href="#audio" x="28" y="19"/><use href="#audio" x="58" y="19"/>
+    <circle cx="88" cy="19" r="3.5" class="port"/>
+    <text x="28" y="31">OUT L · ¼″</text><text x="58" y="31">OUT R · ¼″</text><text x="88" y="31">PHONES · 3.5 mm</text>
+  </g>
+  <g transform="translate(188 86)">
+    <use href="#side"/>
+    <text x="60.6" y="8" class="caption">RIGHT SIDE · REAR AT RIGHT</text>
+    <use href="#audio" x="93.2" y="19"/><use href="#audio" x="63.2" y="19"/>
+    <rect x="32.2" y="16.5" width="10" height="5" rx="1" class="port"/>
+    <rect x="14.2" y="16.5" width="10" height="5" rx="1" class="port"/>
+    <text x="93.2" y="31">IN L · ¼″</text><text x="63.2" y="31">IN R · ¼″</text>
+    <text x="37.2" y="29">L MODE</text><text x="19.2" y="29">R MODE</text>
+    <text x="28.2" y="33.7" style="font-size:2.6px">LINE / INST</text>
+  </g>
+  <g transform="translate(25 167)">
+    <rect width="145.2" height="39.3" rx="3" class="case"/>
+    <path d="M.5 35.2H144.7" class="seam"/>
+    <path d="M148 0h6m-2 0v39.3m-4 0h6" class="dim"/>
+    <text transform="translate(156 19.65) rotate(-90)">39.3 mm</text>
+    <text x="72.6" y="8" class="caption">REAR · VIEWED FROM BEHIND</text>
+    <circle cx="21" cy="19" r="4" class="port"/>
+    <rect x="44" y="17" width="10" height="4" rx="2" class="port"/>
+    <rect x="69" y="16" width="14" height="6" rx=".6" class="port"/>
+    <circle cx="102" cy="19" r="3.5" class="port"/><circle cx="124" cy="19" r="3.5" class="port"/>
+    <text x="21" y="28.5">9–12 V DC</text><text x="21" y="33" style="font-size:2.8px">CENTRE NEGATIVE</text>
+    <text x="49" y="31">USB-C DEVICE</text><text x="76" y="31">USB-A HOST</text>
+    <text x="102" y="28.5">MIDI IN</text><text x="124" y="28.5">MIDI OUT</text>
+    <text x="113" y="33" style="font-size:2.8px">3.5 mm TRS TYPE A</text>
+  </g>
+  <text x="248.6" y="190">Aperture shapes are schematic.</text>
+  <text x="248.6" y="197">Dimensions show the outer case.</text>
+</svg>
