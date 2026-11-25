@@ -1,6 +1,34 @@
 use super::*;
 
 #[test]
+fn nested_constraints_preserve_unconstrained_and_reused_variables() {
+    let signature = |argument, primary: Type, unknown| {
+        Type::fun(
+            vec![Type::list(argument)],
+            Type::Record {
+                name: "Envelope".into(),
+                fields: BTreeMap::from([(
+                    "payload".into(),
+                    Type::Union {
+                        name: "Choice".into(),
+                        variants: vec![primary.clone(), unknown, primary],
+                    },
+                )]),
+            },
+        )
+    };
+    let inferred = signature(Type::Var(2), Type::Var(1), Type::Var(3));
+    assert_eq!(vars_of(&inferred), vec![1, 3, 2]);
+    let rendered = with_constraints(&inferred, &HashMap::from([(1, "printable"), (2, "int")]));
+    assert_eq!(
+        rendered,
+        signature(Type::int(), Type::prim("printable"), Type::Var(3))
+    );
+    assert_eq!(vars_of(&rendered), vec![3]);
+    assert_eq!(vars_of(&inferred), vec![1, 3, 2]);
+}
+
+#[test]
 fn renders_primitives_and_generics() {
     assert_eq!(Type::int().to_string(), "int");
     assert_eq!(Type::list(Type::string()).to_string(), "List<string>");

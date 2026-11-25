@@ -10,6 +10,24 @@ use crate::testutil::{accepts, bad, bad_with, ok, rejects_with};
 use osprey_syntax::{parse_program_with_flavor, Flavor};
 
 #[test]
+fn replay_state_follows_both_local_callable_forms_to_the_captured_cell() {
+    let fixture = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../osprey/examples/failscompilation/multi_many_indirect_mut.ospo"
+    ));
+    for source in [
+        fixture.to_owned(),
+        fixture.replace("let note = fn(t) => {", "fn note(t) = {"),
+    ] {
+        rejects_with(
+            Flavor::Default,
+            source,
+            "handler arm `Choice.pick` captures mutable binding `log`",
+        );
+    }
+}
+
+#[test]
 fn checks_arithmetic_and_let() {
     // A constant initializer folds at file scope; a fallible call runs
     // inside the region that installs its policy ([ARITH-EFFECT-CONST]).
