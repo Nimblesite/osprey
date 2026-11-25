@@ -1,6 +1,9 @@
 // Backward slice of pointer returns in Clang's LLVM for ownership list operations.
 // Unknown pointer origins remain explicit: they invalidate a freshness theorem.
-export function runtimeReturns(ir, allocator, boundary = '.allocated') {
+import { readFileSync } from 'node:fs'
+
+export function runtimeReturns(file, allocator, boundary = '.allocated') {
+  const ir = readFileSync(file, 'utf8')
   const functions = new Map([...ir.matchAll(/^define [^\n@]*@([\w.$-]+)\([^\n]*\{\n([\s\S]*?)^\}/gm)]
     .map(([, name, body]) => [name, body]))
   const summaries = new Map()
@@ -138,7 +141,8 @@ export function compatibilityReturns(ir) {
 
 // Reflect the compiled free entry and its null test. Only an immediate void
 // return is inert. Every other successor is conservatively effectful.
-export function nullDrop(ir) {
+export function nullDrop(file) {
+  const ir = readFileSync(file, 'utf8')
   const wrapper = voidBody(ir, 'osp_ownership_free')
   const call = /^(?:tail )?call (?:fastcc )?void @tracked_drop\(ptr (?:noundef )?(%[\w.-]+)\)$/.exec(wrapper.lines[1])
   if (wrapper.lines.length !== 3 || wrapper.lines[0] !== 'entry:' || wrapper.lines[2] !== 'ret void' || call?.[1] !== wrapper.args[0])
