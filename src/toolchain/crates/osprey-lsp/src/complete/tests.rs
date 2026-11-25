@@ -308,8 +308,8 @@ fn the_constructor_layout_fallback_holes_an_open_field_and_keeps_a_fixed_one() {
     // names the type, so the instantiated record inference built for the
     // initializer is not what answers.
 
-    // Annotated + GENERIC: the annotation `Box` fixes nothing about
-    // `value`, so a hole is the honest answer.
+    // Annotated + GENERIC: the bare annotation `Box` takes fresh arguments
+    // (#340), so the initializer fixes `value` and `int` is the honest answer.
     assert_member(
         &completion(
             "type Box<T> = { value: T }\nlet b: Box = Box { value: 1 }\nlet v = b.\n",
@@ -318,8 +318,23 @@ fn the_constructor_layout_fallback_holes_an_open_field_and_keeps_a_fixed_one() {
             10,
             PositionEncoding::Utf16,
         ),
+        &[("value", "int")],
+        "a bare generic annotation is instantiated by its initializer",
+    );
+
+    // An initializer inference cannot type leaves only the annotation, so the
+    // layout fallback answers: nothing fixes `value`, and a hole is the honest
+    // answer, never a private inference name.
+    assert_member(
+        &completion(
+            "type Box<T> = { value: T }\nlet b: Box = unknownBox()\nlet v = b.\n",
+            "file:///fallback-open.osp",
+            2,
+            10,
+            PositionEncoding::Utf16,
+        ),
         &[("value", "_")],
-        "the layout fallback holes a field the declaration leaves open",
+        "a field the declaration leaves open renders as a hole",
     );
 
     // Annotated + CONCRETE, several fields: the fallback must not blank
