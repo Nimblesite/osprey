@@ -176,13 +176,6 @@ make the request before it and pass the answer in"
     /// `left && right` / `left || right` where `right` captures: `right` runs
     /// only when `left` does not decide the answer.
     fn step_lazy(&mut self, op: &str, left: &Expr, right: &Expr, scope: &Scope) -> Expr {
-        if op != "&&" && op != "||" {
-            self.reject(format!(
-                "the right side of `{op}` makes a request a `many` handler captures; bind it \
-with `let` before `{op}`"
-            ));
-            return done(right.clone());
-        }
         let decided = op == "||";
         self.sequence(vec![Item::Raw(left)], scope, |this, mut values| {
             let arm = |holds: bool, body: Expr| MatchArm {
@@ -402,5 +395,5 @@ fn set_value(binding: &mut Stmt, replacement: Expr) {
 
 /// Operators whose right side runs only for some left values.
 fn is_lazy(op: &str) -> bool {
-    matches!(op, "&&" | "||" | "?:")
+    matches!(op, "&&" | "||")
 }

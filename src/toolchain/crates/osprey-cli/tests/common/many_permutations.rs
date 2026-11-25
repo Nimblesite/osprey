@@ -392,4 +392,21 @@ fn main() = {
 "#,
         "all=stop3[stop4][stop3]\n",
     ),
+    (
+        "short-circuit and fallback branches resume independently",
+        r#"
+effect Choice { control many pick: fn() -> bool }
+effect Number { control many pick: fn() -> int }
+fn result(left) = {
+    handle Choice { pick => "${resume(false)},${resume(true)}" }
+    "${left && perform Choice.pick()}|${left || perform Choice.pick()}"
+}
+fn fallback(items) = {
+    handle Number { pick => satAdd(resume(1), resume(2)) }
+    listGet(items, 0) ?: perform Number.pick()
+}
+print("${result(false)};${result(true)};${fallback([])};${fallback([9])}")
+"#,
+        "false|false,false|true;false|true,true|true;3;9\n",
+    ),
 ];
