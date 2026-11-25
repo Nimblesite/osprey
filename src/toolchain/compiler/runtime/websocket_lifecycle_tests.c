@@ -3,42 +3,43 @@
 // list holds the live ones and nothing else, however many have come and gone, and
 // stopping ends them all before their state goes. [BUILTIN-WEBSOCKET-LIFECYCLE]
 #include "http_shared.h"
+#include "test_loopback.h"
 #include "websocket_test_helpers.h"
 
 #include <assert.h>
 #include <stdatomic.h>
 
 enum {
-  WS_LIFE_PORT = 18095,
   WS_PAST_THE_OLD_LIMIT = 1100,
-  WS_POLLS = 300,
+  // Waiting for the server's reader thread to notice a disconnect is
+  // environment synchronization, not the behavior under test, so this budget
+  // is a generous safety deadline (30 s) rather than a claim about latency:
+  // a starved runner must not turn a scheduling stall into a broadcast
+  // assertion failure. Only ordering matters.
+  WS_POLLS = 3000,
   WS_POLL_US = 10000,
   WS_CHURN = 150,
   WS_BIG_FRAME = 4000
 };
+
+// One OS-assigned port for this TU's servers [CI-TEST-PORTS]: probed once,
+// then bound by the runtime server, which cannot take port 0.
+static int ws_life_port(void) {
+  static int port = 0;
+  return port ? port : (port = test_free_loopback_port());
+}
 
 static char *const ADDRESS = (char *)(uintptr_t) "127.0.0.1";
 static char *const PATH = (char *)(uintptr_t) "/life";
 static char *const PING = (char *)(uintptr_t) "ping";
 
 static int64_t started_server(void) {
-  int64_t server = websocket_create_server(WS_LIFE_PORT, ADDRESS, PATH);
+  int64_t server = websocket_create_server(ws_life_port(), ADDRESS, PATH);
   assert(server > 0 && websocket_server_listen(server) == 0);
   return server;
 }
 
-// A connection through its handshake and welcome frame.
-static int upgraded_client(void) {
-  int fd = ws_raw_connect(WS_LIFE_PORT);
-  ws_send_upgrade(fd, "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n");
-  char headers[1024];
-  ws_read_headers(fd, headers, sizeof headers);
-  assert(strstr(headers, "HTTP/1.1 101") == headers);
-  char *welcome = ws_read_text_frame(fd);
-  assert(strstr(welcome, "\"type\":\"welcome\"") != NULL);
-  free(welcome);
-  return fd;
-}
+static int upgraded_client(void) { return ws_upgraded_client(ws_life_port()); }
 
 static int64_t broadcast_until(int64_t server, int64_t recipients, int *frames_sent) {
   int64_t reached = -1;
@@ -73,7 +74,7 @@ static void check_dead_connections_leave_the_list(int64_t server) {
     close(leaves);
     int frames = 1;
     assert(broadcast_until(server, 1, &frames) == 1);
-    int stranger = ws_raw_connect(WS_LIFE_PORT);
+    int stranger = ws_raw_connect(ws_life_port());
     usleep(WS_POLL_US * 5);
     int later = 0;
     assert(broadcast_until(server, 1, &later) == 1 && later == 1);
@@ -154,8 +155,8 @@ static void check_stop_ends_every_connection(void) {
     int64_t server = started_server();
     int live = upgraded_client();
     int other = upgraded_client();
-    int silent = ws_raw_connect(WS_LIFE_PORT);
-    int partial = ws_raw_connect(WS_LIFE_PORT);
+    int silent = ws_raw_connect(ws_life_port());
+    int partial = ws_raw_connect(ws_life_port());
     assert(send(partial, "GET /life", 9, 0) == 9);
     assert(websocket_stop_server(server) == 0);
     ws_expect_peer_close(live);

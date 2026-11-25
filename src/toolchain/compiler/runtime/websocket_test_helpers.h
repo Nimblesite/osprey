@@ -19,6 +19,7 @@ void ws_send_all(int fd, const void *buf, size_t len);
 bool ws_read_exact(int fd, void *buf, size_t len);
 void ws_send_upgrade(int fd, const char *key_header);
 void ws_expect_peer_close(int fd);
+int ws_upgraded_client(int port); // handshake done, welcome frame read
 
 void test_websocket_lifecycle(void); // websocket_lifecycle_tests.c
 void test_websocket_frames(void);    // websocket_frames_tests.c

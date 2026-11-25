@@ -6,10 +6,8 @@ namespace ui
 
 (** Loads machine documents and encodes machine state ([UI-MACHINE-DOC]). *)
 module MachineDocs
-    (** The folder a machine document at `path` sits in, where its `{{assets}}` live: everything before its last `/` or `\\`, joined with `/`, which every host's file system reads. *)
-    export folder path =
-        parts = split (replace path "\\" "/" ?: path) "/" ?: [path]
-        join (Lists::slice (parts, 0, satSub (length parts) 1)) "/"
+    (** The folder a machine document at `path` sits in, where its `{{assets}}` live, in the portable form every host's file system reads ([BUILTIN-PATH]). *)
+    export folder path = pathParent path
 
     // ---- checking ----
 

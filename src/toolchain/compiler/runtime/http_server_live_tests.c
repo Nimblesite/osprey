@@ -19,8 +19,13 @@
 // [HTTP-SERVER].
 // ---------------------------------------------------------------------------
 
-#define SERVER_TEST_PORT 18089
-#define KEEP_ALIVE_TEST_PORT 18094
+// The suite's shared server port [CI-TEST-PORTS]: probed once per process
+// from this TU, so every live-server test and the creation checks in
+// http_runtime_tests.c agree on it.
+int server_test_port(void) {
+  static int port = 0;
+  return test_cached_port(&port);
+}
 
 static int64_t g_self_stop_server = -1;
 
@@ -77,7 +82,7 @@ void server_test_exchange(int port, const char *request, char *reply,
 // One exchange with the shared live test server.
 static void server_exchange(const char *request, char *reply,
                             size_t capacity) {
-  server_test_exchange(SERVER_TEST_PORT, request, reply, capacity);
+  server_test_exchange(server_test_port(), request, reply, capacity);
 }
 
 // One exchange with the shared server: reply opens with `status`, holds `body`.
@@ -92,7 +97,7 @@ static void exchange_assert(const char *request, const char *status,
 // A server on the shared test port, bound to loopback.
 static int64_t create_test_server(void) {
   int64_t server_id =
-      http_create_server(SERVER_TEST_PORT, (char *)(uintptr_t) "127.0.0.1");
+      http_create_server(server_test_port(), (char *)(uintptr_t) "127.0.0.1");
   assert(server_id > 0);
   return server_id;
 }
@@ -116,14 +121,7 @@ static HttpResponse g_server_test_response;
 
 // The canned reply every handler here returns: complete plain text, no stream.
 static HttpResponse *plain_text_reply(const char *body) {
-  g_server_test_response.status = 200;
-  g_server_test_response.headers =
-      (char *)(uintptr_t) "Content-Type: text/plain\r\n";
-  g_server_test_response.contentType = (char *)(uintptr_t) "text/plain";
-  g_server_test_response.streamFd = -1;
-  g_server_test_response.isComplete = true;
-  g_server_test_response.partialBody = (char *)(uintptr_t) body;
-  return &g_server_test_response;
+  return test_reply(&g_server_test_response, 200, "Content-Type: text/plain\r\n", "text/plain", body);
 }
 
 HttpResponse *http_test_server_handler(char *method, char *path,
@@ -439,7 +437,7 @@ static void *stop_after_a_moment(void *server) {
 void test_keep_alive_waits_for_its_listeners(void) {
   assert(http_keep_alive(0) == -1 && http_keep_alive(MAX_SERVERS) == -1);
   assert(http_keep_alive(MAX_SERVERS - 1) == -1 && "no server has that handle");
-  int64_t quiet = http_create_server(KEEP_ALIVE_TEST_PORT, "127.0.0.1");
+  int64_t quiet = http_create_server(test_free_loopback_port(), "127.0.0.1");
   assert(quiet > 0 && http_listen(quiet, keep_alive_handler) == 0);
   http_await_servers(); // a listener that never asked holds nothing open
   assert(http_keep_alive(quiet) == 0 && http_keep_alive(quiet) == 0);

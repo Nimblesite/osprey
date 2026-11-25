@@ -7,6 +7,9 @@ namespace todo;
 
 import todo::TodoHarness
 
+/// `heard` logged exactly one line, at info level: no error and no warning.
+fn infoOnly(heard) = length(heard.lines) == 1 && contains(firstLine(heard.lines), "info:")
+
 module PipelineCases {
     /// LoggingBehaviour writes one structured line naming the request and
     /// the user, before the use case runs.
@@ -26,18 +29,10 @@ module PipelineCases {
     /// passes every fault through untouched — expected 4xx faults are not
     /// logged as errors, the conflict is.
     export fn rescueCase() = {
-        let clash = TodoHarness::witnessed(TodoHarness::admin(), 0, [
-            TodoHarness::seedList(1, "Shopping", "#78909C")
-        ], [], CreateList { list: NewList { title: "Shopping", colour: "" } })
-        checkAll("validation faults pass without an error line", [
-            length(clash.lines) == 1,
-            contains(firstLine(clash.lines), "info:")
-        ])
+        let clash = TodoHarness::witnessed(TodoHarness::admin(), 0, shoppingList(), [], CreateList { list: NewList { title: "Shopping", colour: "" } })
+        checkAll("validation faults pass without an error line", [infoOnly(clash)])
         let missing = TodoHarness::witnessed(TodoHarness::admin(), 0, [], [], DeleteList { id: 9 })
-        checkAll("not-found faults pass without an error line", [
-            length(missing.lines) == 1,
-            contains(firstLine(missing.lines), "info:")
-        ])
+        checkAll("not-found faults pass without an error line", [infoOnly(missing)])
     }
 
     /// PerformanceBehaviour warns above 500 ms and stays quiet at or below it:
@@ -54,10 +49,7 @@ module PipelineCases {
         let quick = TodoHarness::witnessed(TodoHarness::admin(), 0, [], [], GetTodos)
         let onTheLine = TodoHarness::witnessed(TodoHarness::admin(), 500, [], [], GetTodos)
         let justOver = TodoHarness::witnessed(TodoHarness::admin(), 501, [], [], GetTodos)
-        checkAll("no elapsed milliseconds, no warning", [
-            length(quick.lines) == 1,
-            contains(firstLine(quick.lines), "info:")
-        ])
+        checkAll("no elapsed milliseconds, no warning", [infoOnly(quick)])
         checkAll("exactly 500 milliseconds is quiet and 501 warns", [
             length(onTheLine.lines) == 1,
             length(justOver.lines) == 2,
@@ -68,9 +60,7 @@ module PipelineCases {
     /// Domain events publish after the request settles, once each, through
     /// the LogTodoItemCompleted handler's line.
     export fn eventPublicationCase() = {
-        let heard = TodoHarness::witnessed(TodoHarness::admin(), 0, [
-            TodoHarness::seedList(1, "Shopping", "#78909C")
-        ], [TodoHarness::seedItem(1, 1, "Milk", false)], UpdateItem {
+        let heard = TodoHarness::witnessed(TodoHarness::admin(), 0, shoppingList(), milkOnly(false), UpdateItem {
             edit: ItemEdit { id: 1, title: "Milk", done: true }
         })
         checkAll("the completion event publishes once, after settling", [

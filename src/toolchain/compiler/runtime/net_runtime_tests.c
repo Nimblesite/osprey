@@ -8,6 +8,7 @@
 //   [FFI-TLS-CLIENT]      dial, hex writes, exact-count hex reads, status, close
 //   [FFI-TLS-UNVERIFIED]  a self-signed peer is accepted
 #include "http_shared.h"
+#include "test_loopback.h"
 
 #include <assert.h>
 #include <openssl/err.h>
@@ -24,10 +25,47 @@ int64_t osprey_tls_close(int64_t handle);
 char *osprey_net_local_address(char *host, int64_t port);
 void run_file_server_tests(void); // file_server_tests.c
 
-enum { ECHO_PORT = 18092, ECHO_CLOSE_PORT = 18093 };
+// The echo servers' ports are OS-assigned at startup [CI-TEST-PORTS]; see
+// the echo/closer globals below.
 
 static char LOOPBACK[] = "127.0.0.1";
 static char NOWHERE[] = "no-such-host.invalid";
+
+// ---------------------------------------------------------------------------
+// `.invalid` is reserved (RFC 2606), but the resolver is still consulted:
+// search-domain suffixing, captive portals and corporate wildcard resolvers
+// can answer any name. So the unresolvable-host contract is pinned by
+// interposing getaddrinfo for this binary, the way random_entropy_tests.c
+// interposes getrandom: armed only around the NOWHERE assertions, it answers
+// EAI_NONAME without any network involvement; everywhere else it forwards to
+// the real libc implementation.
+// ---------------------------------------------------------------------------
+#ifdef __linux__
+#include <dlfcn.h>
+#include <netdb.h>
+
+static int deny_resolution;
+static int (*getaddrinfo_real)(const char *, const char *,
+                               const struct addrinfo *, struct addrinfo **);
+
+int getaddrinfo(const char *node, const char *service,
+                const struct addrinfo *hints, struct addrinfo **res) {
+  if (deny_resolution) {
+    return EAI_NONAME;
+  }
+  if (getaddrinfo_real == NULL) {
+    *(void **)&getaddrinfo_real = dlsym(RTLD_NEXT, "getaddrinfo");
+  }
+  return getaddrinfo_real ? getaddrinfo_real(node, service, hints, res)
+                          : EAI_NONAME;
+}
+
+static void deny_nowhere(void) { deny_resolution = 1; }
+static void allow_resolution(void) { deny_resolution = 0; }
+#else
+static void deny_nowhere(void) {}
+static void allow_resolution(void) {}
+#endif
 
 // ---------------------------------------------------------------------------
 // A self-signed certificate, generated in memory, so the suite needs no files.
@@ -51,7 +89,7 @@ static X509 *self_signed(EVP_PKEY *key) {
 
 // ---------------------------------------------------------------------------
 // A TLS echo server: every byte read is written straight back. On
-// ECHO_CLOSE_PORT the server closes after the handshake without reading.
+// closes after the handshake without reading.
 // ---------------------------------------------------------------------------
 
 typedef struct {
@@ -61,6 +99,10 @@ typedef struct {
   pthread_t thread;
   SSL_CTX *ctx;
 } EchoServer;
+
+// The suite's two echo servers, started in main on OS-assigned ports
+// [CI-TEST-PORTS]; the tests dial them as echo.port / closer.port.
+static EchoServer echo, closer;
 
 static void echo_session(SSL *ssl, bool close_immediately) {
   unsigned char buf[4096];
@@ -113,42 +155,22 @@ static void *echo_thread(void *arg) {
   }
 }
 
-static int listen_loopback(int port) {
-  int fd = socket(AF_INET, SOCK_STREAM, 0);
-  assert(fd >= 0);
-  int opt = 1;
-  assert(setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (const char *)&opt, sizeof opt) == 0);
-  struct sockaddr_in addr;
-  memset(&addr, 0, sizeof addr);
-  addr.sin_family = AF_INET;
-  addr.sin_port = htons((uint16_t)port);
-  addr.sin_addr.s_addr = inet_addr(LOOPBACK);
-  assert(bind(fd, (struct sockaddr *)&addr, sizeof addr) == 0);
-  assert(listen(fd, 64) == 0);
-  return fd;
-}
-
-static void echo_start(EchoServer *server, int port, bool close_immediately, X509 *cert,
+static void echo_start(EchoServer *server, bool close_immediately, X509 *cert,
                        EVP_PKEY *key) {
   memset(server, 0, sizeof *server);
-  server->port = port;
   server->close_immediately = close_immediately;
   server->ctx = SSL_CTX_new(TLS_server_method());
   assert(server->ctx != NULL);
   assert(SSL_CTX_use_certificate(server->ctx, cert) == 1);
   assert(SSL_CTX_use_PrivateKey(server->ctx, key) == 1);
-  server->listen_fd = listen_loopback(port);
+  server->listen_fd = test_loopback_bind(0, 64, &server->port);
   assert(pthread_create(&server->thread, NULL, echo_thread, server) == 0);
 }
 
 static void echo_stop(EchoServer *server) {
   // Wake the accept loop with one plain connection, then let it find EBADF.
   int fd = socket(AF_INET, SOCK_STREAM, 0);
-  struct sockaddr_in addr;
-  memset(&addr, 0, sizeof addr);
-  addr.sin_family = AF_INET;
-  addr.sin_port = htons((uint16_t)server->port);
-  addr.sin_addr.s_addr = inet_addr(LOOPBACK);
+  struct sockaddr_in addr = test_loopback_addr(server->port);
   shutdown(server->listen_fd, SHUT_RDWR);
   close(server->listen_fd);
   connect(fd, (struct sockaddr *)&addr, sizeof addr);
@@ -181,7 +203,7 @@ static int64_t exchange(int64_t h, char *sent, int64_t count, int64_t timeout_ms
 }
 
 static void test_tls_echo_round_trip(void) {
-  int64_t h = session(ECHO_PORT);
+  int64_t h = session(echo.port);
   assert(osprey_tls_send_hex(h, "48656c6c6f") == 0); // "Hello"
   assert(osprey_tls_status(h) == 0);
   assert(exchange(h, NULL, 5, 2000, "48656c6c6f") == 0);
@@ -193,7 +215,7 @@ static void test_tls_echo_round_trip(void) {
 }
 
 static void test_tls_timeout_keeps_partial_bytes(void) {
-  int64_t h = session(ECHO_PORT);
+  int64_t h = session(echo.port);
   // Only three of five bytes can arrive: the read times out and keeps them.
   assert(exchange(h, "010203", 5, 200, "") == 1);
   assert(exchange(h, "0405", 5, 2000, "0102030405") == 0);
@@ -203,7 +225,7 @@ static void test_tls_timeout_keeps_partial_bytes(void) {
 }
 
 static void test_tls_argument_rejections(void) {
-  int64_t h = session(ECHO_PORT);
+  int64_t h = session(echo.port);
   assert(osprey_tls_send_hex(h, "abc") == -2);  // odd length
   assert(osprey_tls_send_hex(h, "zz") == -2);   // not hex
   assert(osprey_tls_send_hex(h, NULL) == -1);
@@ -214,37 +236,42 @@ static void test_tls_argument_rejections(void) {
   assert(osprey_tls_status(h) == 3);
   exchange(h, NULL, 1 << 30, 100, "");
   close_session(h);
-  assert(osprey_tls_connect(NULL, ECHO_PORT, 100) == -1);
-  assert(osprey_tls_connect("", ECHO_PORT, 100) == -1);
+  assert(osprey_tls_connect(NULL, echo.port, 100) == -1);
+  assert(osprey_tls_connect("", echo.port, 100) == -1);
   assert(osprey_tls_connect(LOOPBACK, 65536, 100) == -1);
-  assert(osprey_tls_connect(LOOPBACK, ECHO_PORT, 0) == -1);
-  assert(osprey_tls_connect(LOOPBACK, ECHO_PORT, -1) == -1);
-  assert(osprey_tls_connect(LOOPBACK, ECHO_PORT, 60001) == -1);
+  assert(osprey_tls_connect(LOOPBACK, echo.port, 0) == -1);
+  assert(osprey_tls_connect(LOOPBACK, echo.port, -1) == -1);
+  assert(osprey_tls_connect(LOOPBACK, echo.port, 60001) == -1);
   assert(osprey_tls_connect(LOOPBACK, 0, 100) == -1);
-  assert(osprey_tls_connect(NOWHERE, ECHO_PORT, 100) == -2);
+  deny_nowhere();
+  assert(osprey_tls_connect(NOWHERE, echo.port, 100) == -2);
+  allow_resolution();
   // Nothing listens on this port: the dial is refused.
-  assert(osprey_tls_connect(LOOPBACK, 18099, 500) == -4);
+  // A port just freed by a probe socket: nothing can be listening on it
+  // [CI-TEST-PORTS], unlike a hard-coded one another suite may hold.
+  assert(osprey_tls_connect(LOOPBACK, test_free_loopback_port(), 500) == -4);
 }
 
 static void test_tls_peer_close_is_reported(void) {
-  int64_t h = session(ECHO_CLOSE_PORT);
+  int64_t h = session(closer.port);
   assert(exchange(h, NULL, 4, 2000, "") == 2);
   close_session(h);
 }
 
 static void test_tls_plain_listener_fails_handshake(void) {
-  int plain = listen_loopback(18094);
-  assert(osprey_tls_connect(LOOPBACK, 18094, 500) == -7);
+  int plain_port;
+  int plain = test_loopback_bind(0, 64, &plain_port);
+  assert(osprey_tls_connect(LOOPBACK, plain_port, 500) == -7);
   close(plain);
 }
 
 static void test_tls_slots_are_bounded(void) {
   int64_t handles[64];
   for (int i = 0; i < 64; i++) {
-    handles[i] = osprey_tls_connect(LOOPBACK, ECHO_PORT, 2000);
+    handles[i] = osprey_tls_connect(LOOPBACK, echo.port, 2000);
     assert(handles[i] == i + 1);
   }
-  assert(osprey_tls_connect(LOOPBACK, ECHO_PORT, 2000) == -5);
+  assert(osprey_tls_connect(LOOPBACK, echo.port, 2000) == -5);
   for (int i = 0; i < 64; i++) {
     assert(osprey_tls_close(handles[i]) == 0);
   }
@@ -253,7 +280,9 @@ static void test_tls_slots_are_bounded(void) {
 static void test_local_address(void) {
   char *address = osprey_net_local_address(LOOPBACK, 9);
   assert(strcmp(address, LOOPBACK) == 0);
+  deny_nowhere();
   assert(strcmp(osprey_net_local_address(NOWHERE, 9), "") == 0);
+  allow_resolution();
   assert(strcmp(osprey_net_local_address(NULL, 9), "") == 0);
   assert(strcmp(osprey_net_local_address(LOOPBACK, 0), "") == 0);
 }
@@ -263,10 +292,8 @@ int main(void) {
   EVP_PKEY *key = EVP_RSA_gen(2048);
   assert(key != NULL);
   X509 *cert = self_signed(key);
-  EchoServer echo;
-  EchoServer closer;
-  echo_start(&echo, ECHO_PORT, false, cert, key);
-  echo_start(&closer, ECHO_CLOSE_PORT, true, cert, key);
+  echo_start(&echo, false, cert, key);
+  echo_start(&closer, true, cert, key);
   test_tls_echo_round_trip();
   test_tls_timeout_keeps_partial_bytes();
   test_tls_argument_rejections();

@@ -43,7 +43,7 @@ module Browse
 
     inHome model folders =
         names = guarded model folders
-        Json::arr (join (range (0, length names) |> fold [] (\(output, index) => listAppend output (Json::quote (model.home + "/" + (listGet names index ?: ""))))) ",")
+        Json::arr (join (range (0, length names) |> fold [] (\(output, index) => listAppend output (Json::quote (pathJoin (model.home, listGet names index ?: ""))))) ",")
 
     walk model path graft = Json::obj (join [
         Json::strField "kind" "measure",
@@ -68,11 +68,7 @@ module Browse
         measure (Browser(platform = platform, full = full, home = home, root = root, path = root, hidden = true, stage = "measuring", walking = root, items = 0, bytes = 0)) root false
 
     (** Whether `path` is the measured folder or inside it. *)
-    export within model path =
-        prefix = match endsWith model.root "/"
-            true => model.root
-            false => model.root + "/"
-        path == model.root || startsWith path prefix
+    export within model path = path == model.root || pathUnder (path, model.root)
 
     opened model path = match within model path
         true => unchanged (model(path = path))

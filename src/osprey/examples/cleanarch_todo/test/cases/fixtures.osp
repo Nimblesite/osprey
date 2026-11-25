@@ -1,0 +1,125 @@
+// Fixtures every cleanarch_todo case file shares ([EXAMPLE-CLEANARCH-INV-TESTS]):
+// the seed rows the cases re-derive, one request builder per request kind, the
+// reply and fault literals the answers must equal, and the wide-title
+// generator. One definition per shape, so the case files differ only in data.
+
+namespace todo;
+
+import todo::TodoHarness
+
+/// One seeded list: Shopping grey; `nextList` starts at 2.
+fn shoppingList() = [TodoHarness::seedList(1, "Shopping", "#78909C")]
+
+/// Two seeded lists: Shopping grey, Banking purple; `nextList` starts at 3.
+fn twoLists() = [TodoHarness::seedList(1, "Shopping", "#78909C"), TodoHarness::seedList(2, "Banking", "#AB47BC")]
+
+/// Three seeded items: Milk and Bread in list 1, Tax in list 2; `nextItem` starts at 4.
+fn threeItems() = [
+    TodoHarness::seedItem(1, 1, "Milk", false),
+    TodoHarness::seedItem(2, 1, "Bread", false),
+    TodoHarness::seedItem(3, 2, "Tax", false)
+]
+
+/// Milk alone in list 1, done or not.
+fn milkOnly(done) = [TodoHarness::seedItem(1, 1, "Milk", done)]
+
+/// Milk in list 1 and Tax, done or not, in list 2.
+fn milkAndTax(taxDone) = [TodoHarness::seedItem(1, 1, "Milk", false), TodoHarness::seedItem(2, 2, "Tax", taxDone)]
+
+/// Seven items in list 1 titled A-G, so title order is id order.
+fn sevenItems() = mapList(["A", "B", "C", "D", "E", "F", "G"], fn(title) =>
+    TodoHarness::seedItem(length(titlesUpTo(title)), 1, title, false))
+
+/// The titles from "A" up to and including `title`.
+fn titlesUpTo(title) = filterList(["A", "B", "C", "D", "E", "F", "G"], fn(each) => each <= title)
+
+/// The stored list titles, in stored order.
+fn titlesOf(lists) = mapList(lists, fn(list) => list.title)
+
+/// A title of `size` `fill` characters.
+fn wideTitle(size, fill) = foldList(range(0, size) |> toList, "", fn(built, _i) => built + fill)
+
+/// A title of `size` x characters.
+fn wide(size) = wideTitle(size, "x")
+
+/// Request builders: one per request kind the cases send.
+fn newList(title, colour) = CreateList { list: NewList { title: title, colour: colour } }
+fn editList(id, title, colour) = UpdateList { edit: ListEdit { id: id, title: title, colour: colour } }
+fn dropList(id) = DeleteList { id: id }
+fn newItem(listId, title) = CreateItem { item: NewItem { listId: listId, title: title } }
+fn editItem(id, title, done) = UpdateItem { edit: ItemEdit { id: id, title: title, done: done } }
+fn itemDetail(id, listId, priority, note) = UpdateItemDetail {
+    detail: ItemDetail { id: id, listId: listId, priority: priority, note: note }
+}
+fn dropItem(id) = DeleteItem { id: id }
+fn query(listId, pageNumber, pageSize) = ItemsWithPagination {
+    query: ItemQuery { listId: listId, pageNumber: pageNumber, pageSize: pageSize }
+}
+
+/// Reply and fault literals the answers must equal.
+fn created(id) = Success { value: CreatedId { value: id } }
+fn updated() = Success { value: Updated }
+fn purged(count) = Success { value: Purged { count: count } }
+fn faults(problems) = Error { message: ValidationFault { problems: problems } }
+fn notFound(kind, id) = Error { message: NotFound { kind: kind, id: id } }
+fn denied(why) = Error { message: Forbidden { why: why } }
+fn unauthorized() = Error { message: Unauthorized }
+
+/// The three title rule texts, verbatim.
+fn tooLongRule() = "'Title' must be at most 200 characters."
+fn emptyTitleRule() = "'Title' must not be empty."
+fn uniqueTitleRule() = "'Title' must be unique."
+
+/// The colour fault for one unsupported code: the message embeds the code as sent.
+fn colourFault(code) = faults([unsupportedColour(code)])
+
+/// The unsupported-colour rule text for one code.
+fn unsupportedColour(code) = "UnsupportedColour: '${code}' is not a supported colour"
+
+/// The conflict's explanation, or "" for any other outcome.
+fn conflictWhy(outcome) = match outcome {
+    Error { message: Conflict { why } } => why
+    _ => ""
+}
+
+/// A row exactly as every query reports it: priority "None", no note.
+fn spec(id, title, done) = ItemView { id: id, title: title, done: done, priority: "None", note: "" }
+
+/// A row for an undone item.
+fn row(id, title) = spec(id, title, false)
+
+/// A page's answer: its rows, the stored count and both flags.
+fn pageOf(rows, total, hasPrevious, hasNext) = Success { value: ItemsPageView {
+    rows: rows,
+    totalCount: total,
+    hasPrevious: hasPrevious,
+    hasNext: hasNext
+} }
+
+/// The priority lookup and colour choices every TodosView carries.
+fn lookups() = [
+    Lookup { id: 0, name: "None" }, Lookup { id: 1, name: "Low" },
+    Lookup { id: 2, name: "Medium" }, Lookup { id: 3, name: "High" }
+]
+
+fn colourChoices() = [
+    ColourChoice { code: "#E05C4D", name: "Red" }, ColourChoice { code: "#D98B2B", name: "Orange" },
+    ColourChoice { code: "#4CAF50", name: "Green" }, ColourChoice { code: "#26A69A", name: "Teal" },
+    ColourChoice { code: "#5C6BC0", name: "Blue" }, ColourChoice { code: "#AB47BC", name: "Purple" },
+    ColourChoice { code: "#78909C", name: "Grey" }
+]
+
+/// A TodosView over the given lists.
+fn todosView(lists) = TodosView { priorities: lookups(), colours: colourChoices(), lists: lists }
+
+/// All three branch answers equal `answer`: a three-branch what-if.
+fn allBranches(answer) = [answer, answer, answer]
+
+/// Verdicts: `run` settled as one literal reply or fault.
+fn expectCreated(run, id) = expect(run.settled, created(id))
+fn expectUpdated(run) = expect(run.settled, updated())
+fn expectFaults(run, problems) = expect(run.settled, faults(problems))
+fn expectMissing(run, kind, id) = expect(run.settled, notFound(kind, id))
+
+/// The administrator's plain pipeline request over seeded rows.
+fn ask(lists, items, request) = TodoHarness::request(TodoHarness::admin(), 0, lists, items, request)

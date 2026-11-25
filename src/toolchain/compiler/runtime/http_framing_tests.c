@@ -123,8 +123,7 @@ static void check_interim_heads_are_checked(void) {
 // Framing that is complete needs no close, and framing that isn't stays refused.
 static void check_reads_that_never_saw_the_close(void) {
   int64_t patient = shared_origin_client;
-  shared_origin_client = http_create_client((char *)(uintptr_t) "http://127.0.0.1:18088", 150);
-  assert(shared_origin_client > 0);
+  shared_origin_client = origin_client_timed(150);
   origin_holds_connections = true;
   EXPECT_REFUSED("HTTP/1.1 200 OK\r\n\r\nhalf a bo", BODY_CUT);
   EXPECT_REFUSED("HTTP/1.1 200 OK\r\nTransfer-Encoding: gzip\r\n\r\nhalf a bo", BODY_CUT);
@@ -353,10 +352,7 @@ static void check_content_length(void) {
 // else, and whatever is accepted obeys the rules callers rely on.
 static void parse_damaged(const char *bytes, size_t len) {
   expect_scan_agrees(bytes, len);
-  char *raw = malloc(len + 1);
-  assert(raw != NULL);
-  memcpy(raw, bytes, len);
-  raw[len] = '\0';
+  char *raw = test_bytes_copy(bytes, len);
   const char *sep = NULL;
   int64_t status = 0;
   int64_t rc = 0;

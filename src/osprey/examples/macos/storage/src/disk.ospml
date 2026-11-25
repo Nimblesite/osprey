@@ -113,32 +113,16 @@ module Disk
         empty = Ranking(top = [], kept = 0, floor = 0, bytes = 0, count = 0)
         range (0, length entries) |> fold empty (\(ranking, index) => step hidden limit entries ranking index)
 
-    nonEmpty kept piece = match length piece > 0
-        true => listAppend kept piece
-        false => kept
-
-    segments path =
-        pieces = split path "/" ?: []
-        range (0, length pieces) |> fold [] (\(kept, index) => nonEmpty kept (listGet pieces index ?: ""))
+    // Paths are the core library's ([BUILTIN-PATH]): this module spells no separator.
 
     (** The last component of a path; the volume root has none and goes by `fallback`. *)
-    export name fallback path = last (segments path) fallback
-
-    joined base pieces = match length pieces > 0
-        false => base
-        true => match endsWith base "/"
-            true => base + join pieces "/"
-            false => base + "/" + join pieces "/"
+    export name fallback path = last (pathSegments path) fallback
 
     (** The enclosing folder; the volume root encloses itself. *)
-    export parent path =
-        pieces = segments path
-        joined "/" (top (satSub (length pieces) 1) pieces)
+    export parent path = pathParent path
 
     (** The folders from `root` down to `path`, outermost first. *)
-    export trail root path =
-        below = segments (drop path (length root))
-        range (0, length below) |> fold [root] (\(folders, index) => listAppend folders (joined root (top (satAdd index 1) below)))
+    export trail root path = filterList (pathAncestors path, \folder => folder == root || pathUnder (folder, root))
 
     extension path =
         pieces = split (name "" path) "." ?: []
@@ -198,19 +182,6 @@ module Disk
         true => "unknown"
         false => scaled (satMul bytes 10) "B" ["KB", "MB", "GB", "TB"]
 
-    (** A count with thousands separators. *)
-    export formatCount count = match count < 1000
-        true => toString count
-        false => formatCount (intDiv count 1000) + "," + (padStart (toString (count % 1000)) 3 "0" ?: "")
-
-    ratio scale part whole = match whole > 0
-        false => 0
-        true =>
-            handle Arith
-                overflow _ _ _ _ => 0
-                remainderByZero _ => 0
-            intDiv (satAdd (satMul part scale) (intDiv whole 2)) whole
-
     // Settings counts the space the system can purge on demand as available.
     roomy volume = match volume.important > volume.available
         true => volume.important
@@ -222,13 +193,3 @@ module Disk
     (** The kinds of asset the photo library is broken into, in the order shown. *)
     export photoKinds () = ["videos", "photos", "live", "screenshots"]
 
-    (** The share of `whole`, rounded to a whole percent; an unknown or empty whole gives no share. *)
-    export percent (part, whole) = ratio 100 part whole
-
-    (** The same share in thousandths, for drawing. *)
-    export permille (part, whole) = ratio 1000 part whole
-
-    (** A share as people read it: a sliver is "< 1%", never "0%". *)
-    export shareText (part, whole) = match percent (part, whole) == 0 && part > 0
-        true => "< 1%"
-        false => "${percent (part, whole)}%"

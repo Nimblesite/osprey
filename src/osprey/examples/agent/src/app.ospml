@@ -348,7 +348,7 @@ module Answers
                 mcp = store.mcp
                 moved = Model::putChat (store(mcp = mcp(stateFolder = folder, stateProjectLoaded = false)), chat(chatFolder = folder))
                 saving = Model::persisting (moved, "chats.json")
-                saving(requests = listAppend saving.requests (Requests::ask ("mcp-project", Model::readTextAt (moved.settings.platform, "${folder}/.mcp.json", "mcp-project-file"))))
+                saving(requests = listAppend saving.requests (Requests::ask ("mcp-project", Model::readTextAt (moved.settings.platform, pathJoin (folder, ".mcp.json"), "mcp-project-file"))))
 
     // The MCP state from the document read for `slice`: `load` of its words when the read was `found` with words, else `missing`.
     mcpDocument (store, slice, found, load, missing) =
@@ -445,7 +445,7 @@ module App
         store = Model::launched (context.platform, home, folder, context.now)
         envFile = listGet context.arguments 1 ?: ""
         env = Requests::ask ("env", Pick::either (envFile == "", ui::StoreRead(readName = "key.env", readLimit = 1000000, readSlice = "env"), Model::readText (context.platform, envFile)))
-        Runtime::asking (store, [env, storeRead ("providers", "providers.json", 1000000, "providers-file"), storeRead ("chats", "chats.json", 64000000, "chats-file"), storeRead ("mcp-global", "mcp.json", 1000000, "mcp-file"), storeRead ("mcp-state", "mcp-state.json", 1000000, "mcp-state-file"), Requests::ask ("mcp-project", Model::readTextAt (context.platform, "${folder}/.mcp.json", "mcp-project-file"))])
+        Runtime::asking (store, [env, storeRead ("providers", "providers.json", 1000000, "providers-file"), storeRead ("chats", "chats.json", 64000000, "chats-file"), storeRead ("mcp-global", "mcp.json", 1000000, "mcp-file"), storeRead ("mcp-state", "mcp-state.json", 1000000, "mcp-state-file"), Requests::ask ("mcp-project", Model::readTextAt (context.platform, pathJoin (folder, ".mcp.json"), "mcp-project-file"))])
 
     (** Applies one message: a tap, text or a choice, a flag, a splitter's width or a completion. *)
     export update (context, before, message) =

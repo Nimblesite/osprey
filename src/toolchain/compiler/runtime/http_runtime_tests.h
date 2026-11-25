@@ -5,6 +5,37 @@
 #include "string_runtime.h"
 #include "http_shared.h"
 
+#include <assert.h>
+#include <stdlib.h>
+#include <string.h>
+
+// `*out` as a complete reply with no stream: what a test handler hands back.
+static inline HttpResponse *test_reply(HttpResponse *out, int64_t status, const char *headers,
+                                       const char *content_type, const char *body) {
+  *out = (HttpResponse){.status = status,
+                        .headers = (char *)(uintptr_t)headers,
+                        .contentType = (char *)(uintptr_t)content_type,
+                        .streamFd = -1,
+                        .isComplete = true,
+                        .partialBody = (char *)(uintptr_t)body};
+  return out;
+}
+
+// `len` bytes of `fill` and a NUL, on the heap. The caller frees it.
+static inline char *test_bytes_filled(size_t len, char fill) {
+  char *bytes = malloc(len + 1);
+  assert(bytes != NULL);
+  memset(bytes, fill, len);
+  bytes[len] = '\0';
+  return bytes;
+}
+
+// A heap copy of exactly `len` bytes plus a NUL, so a sanitizer build traps any
+// read past the end. The caller frees it.
+static inline char *test_bytes_copy(const char *bytes, size_t len) {
+  return memcpy(test_bytes_filled(len, 0), bytes, len);
+}
+
 // Shared declarations for the HTTP runtime suite TUs (http_runtime_tests.c,
 // http_origin_tests.c, http_tls_tests.c, http_server_live_tests.c), which link
 // into one suite binary.
@@ -43,9 +74,15 @@ void server_test_read_to_eof(int fd, char *out, size_t capacity);
 void server_test_exchange(int port, const char *request, char *reply,
                           size_t capacity);
 
+// The OS-assigned port the live-server TUs share (http_server_live_tests.c):
+// their listeners, their clients and this TU's creation checks all use it
+// [CI-TEST-PORTS].
+int server_test_port(void);
+
 // A raw TCP origin answering with exact bytes, NULs included, defined in
-// http_origin_tests.c.
-#define ORIGIN_PORT 18088
+// http_origin_tests.c. It listens on one OS-assigned port, shared with the
+// clients below through origin_port() [CI-TEST-PORTS].
+int origin_port(void);
 
 typedef struct {
   int listen_fd;
@@ -68,6 +105,8 @@ void origin_start(ScriptedOrigin *origin, const char *reply);
 void origin_start_bytes(ScriptedOrigin *origin, const char *reply, size_t len);
 void origin_stop(ScriptedOrigin *origin);
 int64_t origin_client(void);
+// A client of the origin port that waits `timeout_ms` for each exchange.
+int64_t origin_client_timed(int64_t timeout_ms);
 
 // One exchange per call on shared_origin_client, each its own origin. Handles are
 // never reused, so the hundreds of cases share one client rather than spend handles.

@@ -1,0 +1,130 @@
+//! Path strings: THE one definition of path handling in Osprey, as
+//! `osp_path_child` is the one definition in the C runtime. Every program,
+//! package and app that joins, splits, climbs, flattens, resolves or shows a
+//! file path asks here, so no other Osprey source spells a separator, a drive
+//! letter or a network share, and none branches on the host to do it.
+//!
+//! A path is portable: `/` separates segments on every host (Windows accepts
+//! it everywhere the runtime opens a file), and a trailing `/` marks a
+//! directory exactly as `listDir` marks one. `pathPortable` is the one place a
+//! host's `\` becomes `/`, and every function here applies it to what it is
+//! given. `pathNative` is the one place `/` becomes a host's separator again,
+//! for text a person reads. A path is a root and the segments below it: the
+//! root is `C:/` for a drive, `//server/share/` for a network share, `/` for
+//! an absolute POSIX path and empty for a relative one. Implements [BUILTIN-PATH].
+
+/// The portable form of a path a host or a user wrote: every `\` is `/`.
+fn pathPortable(p) = __pathPortable(p)
+
+/// The path as a person on `system` reads it: `\` between segments on
+/// "windows", `/` everywhere else.
+fn pathNative(system, p) = __pathNative(system, p)
+
+/// True for a path that names a directory: it ends in `/`, as `listDir` marks them.
+fn pathIsDir(p) = __pathIsDir(p)
+
+/// `name` inside `dir`, with exactly one `/` between them.
+fn pathJoin(dir, name) = __pathJoin(dir, name)
+
+/// The top of the volume holding `p`: `C:/`, `//server/share/`, `/`, or ""
+/// for a relative path.
+fn pathRoot(p) = __pathRoot(p)
+
+/// The segments below the root, outermost first, empty ones dropped.
+fn pathSegments(p) = __pathSegments(p)
+
+/// True when `p` is the top of a volume, where climbing goes nowhere.
+fn pathIsRoot(p) = __pathIsRoot(p)
+
+/// The directory enclosing `p`. A root encloses itself; a single relative
+/// segment's parent is "".
+fn pathParent(p) = __pathParent(p)
+
+/// The last segment; a root is named by itself.
+fn pathName(p) = __pathName(p)
+
+/// The directories from the root down to `p`, outermost first.
+fn pathAncestors(p) = __pathAncestors(p)
+
+/// The path with every `/` flattened to `_`: one file name per path.
+fn pathSlug(p) = __pathSlug(p)
+
+/// True when `p` is anything inside `dir`.
+fn pathUnder(p, dir) = __pathUnder(p, dir)
+
+/// Relative `rel` resolved against `dir`: `.` and empty segments drop out and
+/// `..` climbs one directory.
+fn pathResolve(dir, rel) = __pathResolve(dir, rel)
+
+// Public functions never call each other: a program that declares its own
+// `pathJoin` replaces that one alone, and the rest keep working.
+fn __pathPortable(p) = replace(p, "\\", "/") ?: p
+
+fn __pathNative(system, p) = match system == "windows" {
+    true => replace(__pathPortable(p), "/", "\\") ?: p
+    false => __pathPortable(p)
+}
+
+fn __pathIsDir(p) = endsWith(__pathPortable(p), "/")
+
+fn __pathJoin(dir, name) = match __pathIsDir(dir) {
+    true => "${__pathPortable(dir)}${__pathPortable(name)}"
+    false => "${__pathPortable(dir)}/${__pathPortable(name)}"
+}
+
+fn __pathRoot(p) = __pathRootOf(__pathPortable(p))
+
+fn __pathRootOf(q) = match startsWith(q, "//") {
+    true => "//${join(__pathFirst(__pathPieces(drop(q, 2)), 2), "/")}/"
+    false => match length(q) >= 2 && (substring(q, 1, 2) ?: "") == ":" {
+        true => "${take(q, 2)}/"
+        false => match startsWith(q, "/") {
+            true => "/"
+            false => ""
+        }
+    }
+}
+
+fn __pathSegments(p) = __pathPieces(drop(__pathPortable(p), length(__pathRoot(p))))
+
+fn __pathPieces(text) = foldList(split(text, "/") ?: [], [], fn(kept, piece) => match piece {
+    "" => kept
+    _ => listAppend(kept, piece)
+})
+
+fn __pathFirst(items, count) = foldList(items, [], fn(kept, item) => match length(kept) < count {
+    true => listAppend(kept, item)
+    false => kept
+})
+
+fn __pathBuilt(root, segments) = "${root}${join(segments, "/")}"
+
+fn __pathIsRoot(p) = __pathRoot(p) != "" && length(__pathSegments(p)) == 0
+
+fn __pathParent(p) = __pathBuilt(__pathRoot(p), __pathFirst(__pathSegments(p), satSub(length(__pathSegments(p)), 1)))
+
+fn __pathName(p) = foldList(__pathSegments(p), __pathRoot(p), fn(_last, segment) => segment)
+
+fn __pathAncestors(p) = foldList(__pathSegments(p), { reached: [], walked: [__pathRoot(p)] }, fn(walk, segment) => {
+    let reached = listAppend(walk.reached, segment)
+    { reached: reached, walked: listAppend(walk.walked, __pathBuilt(__pathRoot(p), reached)) }
+}).walked
+
+fn __pathSlug(p) = replace(__pathPortable(p), "/", "_") ?: p
+
+fn __pathUnder(p, dir) = startsWith(__pathPortable(p), match __pathIsDir(dir) {
+    true => __pathPortable(dir)
+    false => "${__pathPortable(dir)}/"
+})
+
+fn __pathResolve(dir, rel) = foldList(split("${__pathPortable(dir)}/${__pathPortable(rel)}", "/") ?: [], "", __pathClimbed)
+
+fn __pathClimbed(acc, segment) = match segment {
+    "" => acc
+    "." => acc
+    ".." => __pathParent(acc)
+    _ => match acc {
+        "" => segment
+        _ => __pathJoin(acc, segment)
+    }
+}

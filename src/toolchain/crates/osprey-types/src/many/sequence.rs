@@ -8,7 +8,7 @@
 
 use super::build::{self, block, done, ident, RUN, UNIT};
 use super::facts::{Callee, Scope};
-use super::rewrite::{rebuild_call, Rewriter};
+use super::rewrite::{fiber_op, rebuild_call, Rewriter};
 use osprey_ast::{effect_name, mutate, Expr, MatchArm, Pattern, Stmt};
 
 /// One operand of a step expression.
@@ -55,13 +55,7 @@ impl Rewriter<'_> {
             } if self.analyzer.open(right, scope) && is_lazy(op) => {
                 self.step_lazy(op, left, right, scope)
             }
-            Expr::Spawn(_)
-            | Expr::Await(_)
-            | Expr::Yield(_)
-            | Expr::Send { .. }
-            | Expr::Recv(_)
-            | Expr::Select { .. }
-            | Expr::Mask { .. } => {
+            _ if fiber_op(expression).is_some() => {
                 self.reject(
                     "a `many` continuation cannot span a fiber, channel or mask operation; \
 make the request before it and pass the answer in"

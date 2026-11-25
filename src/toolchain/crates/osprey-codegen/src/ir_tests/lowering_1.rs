@@ -103,9 +103,8 @@ fn emits_arithmetic_function() {
 // status through the epilogue. [TESTING-CODEGEN][TESTING-EXIT]
 #[test]
 fn testing_builtins_lower_to_tap_runtime_calls() {
-    let ir = module("test(\"adds\", fn() => expect(1 + 1, 2))\n");
-    shows(
-        &ir,
+    emits(
+        "test(\"adds\", fn() => expect(1 + 1, 2))\n",
         &[
             "call i32 @osp_test_begin(i8*",
             "call void @osp_test_end(i8*",
@@ -211,9 +210,8 @@ fn error_results_render_visibly_and_lists_compare_by_rendering() {
     );
     // A list or record operand compares by its rendering [BUILTIN-PRINT-FORM];
     // the checker rejects an operand with none (`print_record_unsupported.ospo`).
-    let ir = module("expect([1, 2], [1, 3])\n");
-    shows(
-        &ir,
+    emits(
+        "expect([1, 2], [1, 3])\n",
         &[
             "@osp_string_join_list",
             "call void @osp_test_assert(i8* null, i32",
@@ -226,8 +224,10 @@ fn assertion_operands_render_success_payloads_without_hiding_errors() {
     // [TESTING-EQUALITY] checkedAdd returns Result<int, string>; expect
     // compares a Success payload canonically, while the sibling test proves
     // Error remains visible rather than being read as a fabricated payload.
-    let ir = module("expect(checkedAdd(1, 1), 2)\n");
-    shows(&ir, &["call void @osp_test_assert(i8* null, i32"]);
+    emits(
+        "expect(checkedAdd(1, 1), 2)\n",
+        &["call void @osp_test_assert(i8* null, i32"],
+    );
 }
 
 #[test]
@@ -244,15 +244,23 @@ fn debug_compile_emits_source_level_metadata() {
     let ir =
         debug_module("fn add(a: int, b: int) -> int = satAdd(a, b)\nlet x = add(1, 2)\nprint(x)\n");
     let expected_dwarf_version = if cfg!(target_os = "macos") { 4 } else { 5 };
+    // The path as the one portable rendering writes it: `/tmp` resolves
+    // against the current drive on Windows.
+    let source = tmp_source("debug.osp");
+    let header = format!("source_filename = \"{}\"", source.portable_path());
+    let file = format!(
+        "!DIFile(filename: \"debug.osp\", directory: \"{}\")",
+        source.directory
+    );
 
     shows(
         &ir,
         &[
-            "source_filename = \"/tmp/debug.osp\"",
+            &header,
             "!llvm.dbg.cu = !{!",
             "!llvm.module.flags = !{!",
             "!DICompileUnit(",
-            "!DIFile(filename: \"debug.osp\", directory: \"/tmp\")",
+            &file,
             &format!("!\"Dwarf Version\", i32 {expected_dwarf_version}"),
             "!DISubprogram(name: \"add\"",
             "!DISubprogram(name: \"main\"",
@@ -430,13 +438,10 @@ fn inline_lambda_argument_becomes_a_closure_cell() {
     // closure cell `{ fnptr, captures… }`: the emitted function takes a
     // hidden `i8* %__env`, and the indirect call inside `apply` loads the
     // fnptr from the cell and passes the cell back as the env.
-    let ir = module(
+    emits(
         "fn apply(value: int, f: (int) -> int) -> int = f(value)\n\
              let r = apply(value: 10, f: fn(x: int) => satAdd(x, 1))\n\
              print(\"r=${r}\")\n",
-    );
-    shows(
-        &ir,
         &[
             "define internal i64 @__closure_fn_0(i8* %__env, i64 %$p0)",
             "@__closure_cell_0 = private unnamed_addr constant { i8* }",
@@ -451,15 +456,12 @@ fn escaping_closure_captures_its_makers_state() {
     // capturing its maker's parameter stays callable — the capture is
     // stored in a malloc'd cell and reloaded from `%__env` inside the
     // lifted function.
-    let ir = module(
+    emits(
         "fn makeAdder(n: int) -> (int) -> int = fn(x: int) => satAdd(x, n)\n\
              fn main() -> Unit = {\n\
                let add5 = makeAdder(5)\n\
                print(\"r=${add5(3)}\")\n\
              }\n",
-    );
-    shows(
-        &ir,
         &[
             "define internal i8* @makeAdder(i64 %$p0)",
             "bitcast i8* %__env to { i8*, i64 }*",
@@ -470,8 +472,10 @@ fn escaping_closure_captures_its_makers_state() {
 
 #[test]
 fn interpolation_uses_sprintf() {
-    let ir = module("let x = 7\nprint(\"x=${x}\")\n");
-    shows(&ir, &["@sprintf", "@osp_alloc"]);
+    emits(
+        "let x = 7\nprint(\"x=${x}\")\n",
+        &["@sprintf", "@osp_alloc"],
+    );
 }
 
 /// An erasure builds a shape-carrying box, and ownership crosses it in

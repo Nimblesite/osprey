@@ -67,16 +67,18 @@ cannot cross that call; call the function directly or pass it to a function para
     )
 }
 
-/// The operation a replayed channel, fiber or mask expression spells.
-fn replayed_op(expression: &Expr) -> &'static str {
+/// The channel, fiber or mask operation `expression` spells, if it is one: a
+/// `many` continuation can neither span nor replay one.
+pub(super) fn fiber_op(expression: &Expr) -> Option<&'static str> {
     match expression {
-        Expr::Send { .. } => "send",
-        Expr::Recv(_) => "recv",
-        Expr::Select { .. } => "select",
-        Expr::Spawn(_) => "spawn",
-        Expr::Await(_) => "await",
-        Expr::Yield(_) => "yield",
-        _ => "mask",
+        Expr::Send { .. } => Some("send"),
+        Expr::Recv(_) => Some("recv"),
+        Expr::Select { .. } => Some("select"),
+        Expr::Spawn(_) => Some("spawn"),
+        Expr::Await(_) => Some("await"),
+        Expr::Yield(_) => Some("yield"),
+        Expr::Mask { .. } => Some("mask"),
+        _ => None,
     }
 }
 
@@ -217,19 +219,13 @@ instantiated: its requests carry their continuation as a value"
             // [MULTI-REPLAY-CHECK] Every resumption replays this code, so a
             // channel, fiber or mask operation here would repeat per branch:
             // a duplicated message, a deadlocked recv, a second fiber.
-            Expr::Spawn(_)
-            | Expr::Await(_)
-            | Expr::Yield(_)
-            | Expr::Send { .. }
-            | Expr::Recv(_)
-            | Expr::Select { .. }
-            | Expr::Mask { .. }
-                if self.replaying =>
-            {
-                self.reject(replayed_message(replayed_op(expression)));
-                expression.clone()
-            }
-            _ => self.direct_children(expression, scope),
+            _ => match fiber_op(expression).filter(|_| self.replaying) {
+                Some(op) => {
+                    self.reject(replayed_message(op));
+                    expression.clone()
+                }
+                None => self.direct_children(expression, scope),
+            },
         }
     }
 

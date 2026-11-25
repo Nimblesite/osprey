@@ -20,11 +20,11 @@ module NoteCache
 
     // A new track has the same content address in the player and every maker, even before its folder exists.
     home (folder, entries, text) = match ui::Lists::find (entries, \dir => endsWith dir "/" && labelled (dir, text))
-        Error _ => "${folder}/notes/${registry::Sha256::ofString text}"
+        Error _ => pathJoin (pathJoin (folder, "notes"), registry::Sha256::ofString text)
         Success dir => take dir (satSub (length dir) 1)
 
     folders (keys, folder) =
-        entries = listDir "${folder}/notes" ?: []
+        entries = listDir (pathJoin (folder, "notes")) ?: []
         mapList (keys, \text => home (folder, entries, text))
 
     playableHome (song, voice, folder, entries) = match voice.notes
@@ -33,12 +33,12 @@ module NoteCache
 
     (** Resolve note folders for tracks that sound in this range, preserving their track indexes. *)
     export found (song, folder) =
-        entries = listDir "${folder}/notes" ?: []
+        entries = listDir (pathJoin (folder, "notes")) ?: []
         SendRenders::collect (song.tracks, \voice => playableHome (song, voice, folder, entries))
 
     noteName note = "${note.pitch}_${note.length}_${note.velocity}.st"
 
-    path (dir, note) = "${dir}/${noteName note}"
+    path (dir, note) = (pathJoin (dir, noteName note))
 
     lane (file, index) = match loadTensor file "${index}"
         Error why => Error(message = why)
@@ -222,7 +222,7 @@ module NoteCache
     stale (dirs, entry) = endsWith entry "/" && length (filterList (dirs, \dir => "${dir}/" == entry)) == 0
 
     // Folders of keys no track has any more: an edited instrument's old notes.
-    swept (folder, dirs) = match listDir "${folder}/notes"
+    swept (folder, dirs) = match listDir (pathJoin (folder, "notes"))
         Error why => Error(message = why)
         Success entries => match filterList (entries, \entry => stale (dirs, entry) && SongFiles::safe entry)
             [] => ok 0
@@ -232,14 +232,14 @@ module NoteCache
         Error _ => Error(message = "A cache label has no folder.")
         Success dir => match listGet keys index
             Error _ => Error(message = "A cache label has no key.")
-            Success key => match writeFile "${dir}/key.txt" key
-                Error why => Error(message = "Cannot write ${dir}/key.txt: ${why}")
+            Success key => match writeFile (pathJoin (dir, "key.txt")) key
+                Error why => Error(message = "Cannot write ${pathJoin (dir, "key.txt")}: ${why}")
                 Success _ => ok 1
 
     // Ordinary cache setup stays on the maker thread. The CLI also accepts a missing parent path.
-    cacheRoot folder = match makeDir "${folder}/notes"
+    cacheRoot folder = match makeDir (pathJoin (folder, "notes"))
         Success made => ok made
-        Error _ => Shell::ran (20, "mkdir -p ${Shell::quoted folder}/notes")
+        Error _ => Shell::ran (20, "mkdir -p ${Shell::quoted (pathJoin (folder, "notes"))}")
 
     prepared (keys, folder, dirs, worker) = match Outcomes::carried (cacheRoot folder, \_ => SendRenders::collect (dirs, \dir => makeDir dir))
         Error why => Error(message = why)

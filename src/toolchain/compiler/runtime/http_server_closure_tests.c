@@ -3,6 +3,7 @@
 // through http_listen_closure, and a stop from another thread while a client is
 // still connected [HTTP-SERVER].
 #include "http_runtime_tests.h"
+#include "test_loopback.h"
 #include "http_server_pool.h"
 #include "http_shared.h"
 
@@ -16,8 +17,18 @@
 // bare function pointer — crossed.
 // ---------------------------------------------------------------------------
 
-#define CLOSURE_PORT 18100
-#define CLOSURE_HELD_PORT 18101
+// OS-assigned ports for this TU's listeners [CI-TEST-PORTS]: probed once,
+// so the rival-bind and reborn-port tests below reuse the same number.
+static int closure_port(void) {
+  static int port = 0;
+  return test_cached_port(&port);
+}
+
+static int closure_held_port(void) {
+  static int port = 0;
+  return test_cached_port(&port);
+}
+
 #define CLOSURE_HEADERS "Content-Type: application/json\r\nX-Closure: yes\r\n"
 
 extern int64_t http_listen_closure(int64_t server_id, void *closure);
@@ -52,14 +63,9 @@ static HttpResponse *closure_handler(void *raw, char *method, char *path,
   ClosureRecord *record = raw;
   assert(record == &g_closure && "the handler sees its own closure record");
   record_closure_call(record, method, path, headers, body);
-  g_closure_response.status = strcmp(path, "/created") == 0 ? 201 : 200;
-  g_closure_response.headers = (char *)(uintptr_t)CLOSURE_HEADERS;
-  g_closure_response.contentType = (char *)(uintptr_t) "application/json";
-  g_closure_response.streamFd = -1;
-  g_closure_response.isComplete = true;
   snprintf(g_closure_body, sizeof(g_closure_body), "seen:%s%s", method, path);
-  g_closure_response.partialBody = g_closure_body;
-  return &g_closure_response;
+  return test_reply(&g_closure_response, strcmp(path, "/created") == 0 ? 201 : 200, CLOSURE_HEADERS,
+                    "application/json", g_closure_body);
 }
 
 // The reply carries the closure's status line, its headers, and its body with
@@ -80,7 +86,7 @@ static void assert_closure_reply(const char *reply, const char *body) {
 static void expect_closure_call(const char *request, const char *status_line,
                                 const char *body, int calls) {
   char reply[2048];
-  server_test_exchange(CLOSURE_PORT, request, reply, sizeof(reply));
+  server_test_exchange(closure_port(), request, reply, sizeof(reply));
   assert(strstr(reply, status_line) == reply && "the status line comes first");
   assert_closure_reply(reply, body);
   assert(g_closure.calls == calls && "one request, one handler call");
@@ -108,14 +114,20 @@ static void expect_closure_post(void) {
   assert(strcmp(g_closure.body, "hello") == 0 && "the POST body crossed too");
 }
 
-// A closure listener answers real clients, and every field of the request
-// crosses the bridge on repeated exchanges [HTTP-SERVER].
-void test_closure_listener_serves_requests(void) {
+// A fresh closure and an unlistened server on the suite port, for each test.
+static int64_t closure_server(void) {
   memset(&g_closure, 0, sizeof(g_closure));
   g_closure.handler = closure_handler;
   int64_t server_id =
-      http_create_server(CLOSURE_PORT, (char *)(uintptr_t) "127.0.0.1");
+      http_create_server(closure_port(), (char *)(uintptr_t) "127.0.0.1");
   assert(server_id > 0);
+  return server_id;
+}
+
+// A closure listener answers real clients, and every field of the request
+// crosses the bridge on repeated exchanges [HTTP-SERVER].
+void test_closure_listener_serves_requests(void) {
+  int64_t server_id = closure_server();
   assert(http_listen_closure(server_id, &g_closure) == 0);
   expect_closure_get();
   expect_closure_post();
@@ -139,7 +151,7 @@ static void expect_closure_listen_conflicts(int64_t server_id) {
   assert(http_listen_closure(server_id, &g_closure) == -1 &&
          "a second listen on the same server is refused");
   int64_t rival =
-      http_create_server(CLOSURE_PORT, (char *)(uintptr_t) "127.0.0.1");
+      http_create_server(closure_port(), (char *)(uintptr_t) "127.0.0.1");
   assert(rival > 0);
   assert(http_listen_closure(rival, &g_closure) == -4); // the port is taken
   assert(http_stop_server(rival) == 0);
@@ -148,11 +160,7 @@ static void expect_closure_listen_conflicts(int64_t server_id) {
 // The closure bridge shares the handle table and its refusals, and the live
 // listener still answers after every one of them [HTTP-SERVER].
 void test_closure_listen_rejections(void) {
-  memset(&g_closure, 0, sizeof(g_closure));
-  g_closure.handler = closure_handler;
-  int64_t server_id =
-      http_create_server(CLOSURE_PORT, (char *)(uintptr_t) "127.0.0.1");
-  assert(server_id > 0);
+  int64_t server_id = closure_server();
   expect_closure_handle_refusals(server_id);
   expect_closure_listen_conflicts(server_id);
   expect_closure_call("GET /created HTTP/1.1\r\nHost: x\r\n\r\n",
@@ -186,7 +194,7 @@ static void expect_client_read_ends(int client_fd) {
 }
 
 static void expect_closure_port_reusable(void) {
-  int64_t reborn = http_create_server(CLOSURE_HELD_PORT,
+  int64_t reborn = http_create_server(closure_held_port(),
                                       (char *)(uintptr_t) "127.0.0.1");
   assert(reborn > 0);
   assert(http_listen(reborn, http_test_server_handler) == 0 &&
@@ -199,10 +207,10 @@ static void expect_closure_port_reusable(void) {
 // loop fiber exits, and the port comes back [HTTP-SERVER].
 void test_stop_server_with_client_connected(void) {
   int64_t server_id =
-      http_create_server(CLOSURE_HELD_PORT, (char *)(uintptr_t) "127.0.0.1");
+      http_create_server(closure_held_port(), (char *)(uintptr_t) "127.0.0.1");
   assert(server_id > 0);
   assert(http_listen(server_id, http_test_server_handler) == 0);
-  int client_fd = server_test_connect(CLOSURE_HELD_PORT);
+  int client_fd = server_test_connect(closure_held_port());
   // A header block with no terminator: the server cannot finish the request,
   // so it is still blocked on this client when the stop arrives.
   const char *partial = "POST /held HTTP/1.1\r\nHost: x\r\n";

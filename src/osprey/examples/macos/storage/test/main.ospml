@@ -4,6 +4,7 @@ namespace storagetests
 
 import bank::Json
 import storage::Disk
+import storage::Shares
 import storage::Browse
 import storage::View
 
@@ -104,10 +105,10 @@ answers name expected f inputs = checkTrue name (answersHold f inputs expected)
 
 formatCase () =
     answers "sizes read as Finder writes them" ["999 B", "1.0 MB", "4.1 GB", "unknown"] Disk::formatBytes [999, 999960, 4143181824, 0 - 1]
-    answers "counts group thousands and stay bare below them" ["999", "1,234,005"] Disk::formatCount [999, 1234005]
-    answers "shares, unknown wholes, slivers and thousandths" [60, 0] (\whole => Disk::percent (450, whole)) [750, 0 - 1]
-    answers "shares under a percent and none at all" ["< 1%", "0%"] (\part => Disk::shareText (part, 1000)) [1, 0]
-    check "thousandths" 375 (Disk::permille (3, 8))
+    answers "counts group thousands and stay bare below them" ["999", "1,234,005"] Shares::formatCount [999, 1234005]
+    answers "shares, unknown wholes, slivers and thousandths" [60, 0] (\whole => Shares::percent (450, whole)) [750, 0 - 1]
+    answers "shares under a percent and none at all" ["< 1%", "0%"] (\part => Shares::shareText (part, 1000)) [1, 0]
+    check "thousandths" 375 (Shares::permille (3, 8))
 
 rankCase () =
     shown = Disk::rank true 3 (homeEntries ())

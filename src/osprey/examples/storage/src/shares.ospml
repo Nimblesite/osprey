@@ -1,0 +1,31 @@
+// Implements [NATIVE-APPS-ALL] and [IOS-TARGET-MACOS]: counts and shares read
+// the same in every Osprey Storage app, so both browsers compile this one module.
+namespace storage
+
+(** Counts with thousands separators and rounded shares of a whole. *)
+module Shares
+    (** A count with thousands separators. `match`, not `Pick::either`, so the
+    untaken arm never runs: the recursive call must not fire once `count` is
+    below 1,000, or no call ever terminates. *)
+    export formatCount count = match count < 1000
+        true => toString count
+        false => formatCount (intDiv count 1000) + "," + (padStart (toString (count % 1000)) 3 "0" ?: "")
+
+    ratio scale part whole = match whole > 0
+        false => 0
+        true =>
+            handle Arith
+                overflow _ _ _ _ => 0
+                remainderByZero _ => 0
+            intDiv (satAdd (satMul part scale) (intDiv whole 2)) whole
+
+    (** The share of `whole`, rounded to a whole percent; an unknown or empty whole gives no share. *)
+    export percent (part, whole) = ratio 100 part whole
+
+    (** The same share in thousandths, for drawing. *)
+    export permille (part, whole) = ratio 1000 part whole
+
+    (** A share as people read it: a sliver is "< 1%", never "0%". *)
+    export shareText (part, whole) = match percent (part, whole) == 0 && part > 0
+        true => "< 1%"
+        false => "${percent (part, whole)}%"

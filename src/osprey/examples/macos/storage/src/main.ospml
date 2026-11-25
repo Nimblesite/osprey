@@ -5,6 +5,7 @@ namespace storage
 
 import bank::Json
 import storage::Disk
+import storage::Shares
 import storage::Browse
 import storage::View
 
@@ -33,10 +34,10 @@ entry index = Entry(path = storage_entry_path index, bytes = storage_entry_bytes
 formatBytes bytes = Disk::formatBytes bytes
 
 (** `count` with thousands separators, for the host. *)
-formatCount count = Disk::formatCount count
+formatCount count = Shares::formatCount count
 
 (** The whole percent `part` is of `whole`, for the host; 0 for an empty whole. *)
-percent (part, whole) = Disk::percent (part, whole)
+percent (part, whole) = Shares::percent (part, whole)
 
 photoKind name = PhotoKind(name = name, items = storage_photos_kind_items name, bytes = storage_photos_kind_bytes name)
 

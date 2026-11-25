@@ -96,7 +96,7 @@ impl DebugState {
     }
 
     pub(super) fn source_filename(&self) -> String {
-        metadata_escape(&self.source.path().display().to_string())
+        metadata_escape(&self.source.portable_path())
     }
 
     pub(super) fn begin_function(&mut self, name: &str, position: Option<Position>) -> usize {

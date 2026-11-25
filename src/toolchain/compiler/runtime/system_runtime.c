@@ -67,11 +67,54 @@ typedef struct {
   ProcessEventHandler handler; // Callback for events
 } ProcessResult;
 
-// Global process tracking
+#else
+// Windows process result: same shape as the POSIX one but with Win32 handles
+// instead of pipe fds + pid. The monitor thread (winpthreads) reads the child's
+// stdout/stderr pipes and reports exit, mirroring the POSIX implementation.
+typedef struct {
+  int64_t process_id;
+  char *command;
+  int64_t exit_code;
+  bool is_running;
+  pthread_t monitor_thread;
+  pthread_mutex_t mutex;
+  HANDLE stdout_rd; // read end of child's stdout
+  HANDLE stderr_rd; // read end of child's stderr
+  HANDLE process;   // child process handle
+  ProcessEventHandler handler;
+} ProcessResult;
+#endif
+
+// Global process tracking, shared by both platform implementations.
 static ProcessResult *processes[MAX_PROCESSES];
 static int64_t next_process_id = 1;
 static pthread_mutex_t process_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+// Release a process record that never reached its monitor thread. The caller
+// holds process_mutex and no other thread can see `proc`, so this is the only
+// owner. Returns `code` so every half-built teardown is one statement, the same
+// on both platforms, the per-record mutex included.
+static int64_t abandon_process(ProcessResult *proc, int64_t code) {
+  free(proc->command);
+  pthread_mutex_destroy(&proc->mutex);
+  free(proc);
+  pthread_mutex_unlock(&process_mutex);
+  return code;
+}
+
+// The next handle number, answered with process_mutex held; -2, unlocked, once
+// the table is full. Every attempt spends exactly one number.
+static int64_t reserve_process_id(void) {
+  pthread_mutex_lock(&process_mutex);
+  int64_t id = next_process_id++;
+  if (id >= MAX_PROCESSES) {
+    pthread_mutex_unlock(&process_mutex);
+    return -2;
+  }
+  return id;
+}
+
+#ifndef _WIN32
 #include "system_process_posix.h"
 
 // Clean up process resources
@@ -95,43 +138,10 @@ void cleanup_process(int64_t process_id) {
 
 #else // _WIN32 — Win32 process runtime
 
-// Windows process result: same shape as the POSIX one but with Win32 handles
-// instead of pipe fds + pid. The monitor thread (winpthreads) reads the child's
-// stdout/stderr pipes and reports exit, mirroring the POSIX implementation.
-typedef struct {
-  int64_t process_id;
-  char *command;
-  int64_t exit_code;
-  bool is_running;
-  pthread_t monitor_thread;
-  pthread_mutex_t mutex;
-  HANDLE stdout_rd; // read end of child's stdout
-  HANDLE stderr_rd; // read end of child's stderr
-  HANDLE process;   // child process handle
-  ProcessEventHandler handler;
-} ProcessResult;
-
-static ProcessResult *processes[MAX_PROCESSES];
-static int64_t next_process_id = 1;
-static pthread_mutex_t process_mutex = PTHREAD_MUTEX_INITIALIZER;
-
 // Close both ends of a handle pair created for a process that will not run.
 static void close_handle_pair(HANDLE first, HANDLE second) {
   CloseHandle(first);
   CloseHandle(second);
-}
-
-// Release a process record that never reached its monitor thread. The caller
-// holds process_mutex and no other thread can see `proc`, so this is the only
-// owner. Returns `code` so every half-built teardown is one statement and the
-// four paths that share it cannot drift apart -- and so this half of the file
-// releases exactly what the POSIX half does, the per-record mutex included.
-static int64_t abandon_process(ProcessResult *proc, int64_t code) {
-  free(proc->command);
-  pthread_mutex_destroy(&proc->mutex);
-  free(proc);
-  pthread_mutex_unlock(&process_mutex);
-  return code;
 }
 
 // Drain whatever is currently readable on a pipe, dispatching it to the handler.
@@ -205,11 +215,9 @@ int64_t spawn_process_with_handler(const char *command,
     return -1;
   }
 
-  pthread_mutex_lock(&process_mutex);
-  int64_t process_id = next_process_id++;
-  if (process_id >= MAX_PROCESSES) {
-    pthread_mutex_unlock(&process_mutex);
-    return -2;
+  int64_t process_id = reserve_process_id();
+  if (process_id < 0) {
+    return process_id;
   }
 
   ProcessResult *proc = malloc(sizeof(ProcessResult));

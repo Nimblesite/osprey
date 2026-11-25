@@ -27,6 +27,7 @@
 #define OSPREY_TEST_ALLOC_H
 
 #include <dlfcn.h>
+#include <errno.h>
 #include <stdatomic.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -147,13 +148,22 @@ static inline void osp_alloc_fail_off(void) {
   atomic_store(&osp_alloc_failure_size, 0);
 }
 
+// A refused allocation answers NULL the way the real allocator does:
+// errno is ENOMEM. libc's own internals allocate through these wrappers
+// (pthread_create's TLS vector among them, which ASSERTS on the errno of a
+// failed calloc), so a NULL with a stale errno aborts the process.
+OSP_ALLOC_ENTRY static inline void *osp_alloc_refuse(void) {
+  errno = ENOMEM;
+  return NULL;
+}
+
 OSP_ALLOC_ENTRY void *malloc(size_t bytes) {
   osp_resolve_real_allocators();
   if (osp_real_malloc == NULL) {
     return osp_bootstrap_alloc(bytes);
   }
   if (osp_alloc_should_fail(bytes)) {
-    return NULL;
+    return osp_alloc_refuse();
   }
   void *at = osp_real_malloc(bytes);
   if (at != NULL) {
@@ -170,14 +180,14 @@ OSP_ALLOC_ENTRY void *calloc(size_t count, size_t size) {
   osp_resolve_real_allocators();
   size_t bytes = count * size;
   if (size != 0 && count > (size_t)-1 / size) {
-    return NULL; // the product overflowed; no allocator can honour it
+    return osp_alloc_refuse(); // the product overflowed; no allocator can honour it
   }
   if (osp_real_calloc == NULL) {
     void *at = osp_bootstrap_alloc(bytes);
     return at == NULL ? NULL : memset(at, 0, bytes);
   }
   if (osp_alloc_should_fail(bytes)) {
-    return NULL;
+    return osp_alloc_refuse();
   }
   void *at = osp_real_calloc(count, size);
   if (at != NULL) {
@@ -189,7 +199,7 @@ OSP_ALLOC_ENTRY void *calloc(size_t count, size_t size) {
 OSP_ALLOC_ENTRY void *realloc(void *at, size_t bytes) {
   osp_resolve_real_allocators();
   if (osp_alloc_should_fail(bytes)) {
-    return NULL; // the caller still owns `at`, exactly as C requires
+    return osp_alloc_refuse(); // the caller still owns `at`, exactly as C requires
   }
   if (osp_from_bootstrap(at)) {
     // The arena records no block sizes, so the copy is bounded by what is

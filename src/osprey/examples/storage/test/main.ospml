@@ -14,6 +14,7 @@ import ui::Surfaces
 import storage::App
 import storage::Browse
 import storage::Disk
+import storage::Shares
 import uitest::Drive
 import uitest::Read
 import uitest::Views
@@ -306,9 +307,9 @@ test ("sizes count in the units each platform shows", \() =>
     expect (Disk::formatBytes ("windows", 1073741824), "1.0 GB")
     expect (Disk::formatBytes ("linux", 999), "999 B")
     expect (Disk::formatBytes ("windows", 0 - 1), "unknown")
-    expect (Disk::formatCount 1234567, "1,234,567")
-    expect (Disk::shareText (1, 1000), "< 1%")
-    expect (Disk::shareText (0, 1000), "0%"))
+    expect (Shares::formatCount 1234567, "1,234,567")
+    expect (Shares::shareText (1, 1000), "< 1%")
+    expect (Shares::shareText (0, 1000), "0%"))
 
 // [UI-STORE]: the session is fully held in the library — what the boundary kept is restored exactly by
 // replaying the same launch and the same typed events through the three entry points: no document, no

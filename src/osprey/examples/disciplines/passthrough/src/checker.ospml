@@ -86,7 +86,7 @@ module Marker
 
     (** The file name after the last `/`, kept with its extension so the
         compiler resolves the same flavor for the scratch copy. *)
-    export basename path = lastPart (split (path, "/") ?: [path])
+    export basename path = pathName path
 
     rewritten text = match marked (trim text)
         true => replacement text
@@ -310,8 +310,8 @@ module Tool
         runner creates the result cache before it spawns a checker, so the
         directory the capture files land in already exists. *)
     export capture (directory, name, command) =
-        out = directory + "/" + name + ".out"
-        err = directory + "/" + name + ".err"
+        out = pathJoin (directory, name + ".out")
+        err = pathJoin (directory, name + ".err")
         status = exited (spawnProcess ("( " + command + " ) >" + quoted out + " 2>" + quoted err, quiet))
         Ran(code = status, out = content (readFile out), err = content (readFile err))
 
@@ -376,7 +376,7 @@ module Checker
         erased = Marker::rewrite request.source
         name = Marker::basename request.path
         directory = request.cache
-        target = directory + "/" + name
+        target = pathJoin (directory, name)
         match writeFile (target, erased + stubs)
             Error why => Replies::internal ("cannot create " + directory + " or write " + target + ": " + why)
             Success _ => checked (request, directory, name, target, erased)

@@ -136,10 +136,9 @@ pluginUiJourney () =
                 true => zeroStereoResponse ()
                 false => "malformed metadata"
     home = "target/daw-tests/vst-home"
-    _root = makeDir "target/daw-tests"
-    _homeDir = makeDir home
-    _prefs = makeDir "${home}/.prism"
-    _initial = writeFile "${home}/.prism/vst3-folder" "/plugins"
+    madePlace home
+    _prefs = makeDir (pathJoin (home, ".prism"))
+    _initial = writeFile pathJoin ((pathJoin (home, ".prism")), "vst3-folder") "/plugins"
     launch = Drive::launchedAt (Drive::idle (synth::EditorApp::program (), synth::EditorState::initial ()), "macos", ["--empty", "--vst-worker", "/worker/osprey-vst-worker"], home)
     opened = Drive::press (launch, "Patch Controls")
     showsIn (opened, "Scan VST3", false)
@@ -196,13 +195,13 @@ pluginUiJourney () =
     mentions (failed, "module unavailable")
     preferences = Drive::press (scanning, "Settings…")
     replaced = Drive::press (Drive::choose (preferences, "VST3 folder", "/another-folder"), "Save settings")
-    expect (readFile "${home}/.prism/vst3-folder" ?: "", "/another-folder")
+    expect (readFile pathJoin ((pathJoin (home, ".prism")), "vst3-folder") ?: "", "/another-folder")
     ignored = receipt (replaced, "prism-vst:scan:2")
     countOf ((Drive::holding ignored).catalog, 0)
     removedSecond = deleteNode (connected, 1)
     expect (structuralEquals ([length (Drive::holding removedSecond).pluginBindings, length (Drive::holding removedSecond).graph.cables], [1, 0]), true)
     removed = deleteNode (added, 0)
-    countOf ((Drive::holding removed).graph.nodes, 0)
+    nodesOf (removed, 0)
     countOf ((Drive::holding removed).pluginBindings, 0)
 
 // [SYNTH-HOST-STREAM] Independent wire bytes, channel layouts and malformed worker replies.
@@ -227,13 +226,16 @@ hostWireJourney () =
         expect (contains hex "0300020080BB000000DC050008002000", true)
         expect (contains hex "6661637404000000020000006461746110000000", true))
 
+// The identified module's dial spans a real range.
+dialSpans (driven, label) = reads (dialOf (driven, label), \dial => expect (dial.accessMax > dial.accessMin, true))
+
 // [PRISM-ROUTING-MIDI] MIDI sources and stereo sinks are genuine menu-created graph components.
 midiMenuJourney () =
     opened = openedEditor ["--empty"]
     notes = component (opened, "midi-note")
     nodesOf (notes, 1)
     selected = inspectorSelected (notes, 0)
-    forEachList (["Pitch", "Velocity"], \text => reads (dialOf (selected, text), \dial => expect (dial.accessMax > dial.accessMin, true)))
+    forEachList (["Pitch", "Velocity"], \text => dialSpans (selected, text))
     offeredIn (notes, "Canvas output 0:0", true)
     output = component (notes, "stereo-output")
     nodesOf (output, 2)
@@ -241,7 +243,7 @@ midiMenuJourney () =
     mentions (incompatible, "different rates")
     gain = chained (output, ["lfo", "modulated-gain"])
     nodesOf (gain, 4)
-    reads (dialOf (inspectorSelected (gain, 2), "Frequency"), \dial => expect (dial.accessMax > dial.accessMin, true))
+    dialSpans (inspectorSelected (gain, 2), "Frequency")
     modulated = linkedCables (gain, 2, 3, 1, 1)
     _ = linkedCables (modulated, 2, 1, 0, 1)
     tuned = choseAt (output, 0, "Pitch", "72")
@@ -515,7 +517,7 @@ frozenParameter p = p(automatable = false)
 // track gain and sums with other independently scaled taps into the same stereo bus.
 tapJourney () =
     keys = keysTrack ()
-    voice = keys(gain = 0.0, notes = [daw::Note(pitch = 60, start = 0.0, length = 0.015, velocity = 1.0)])
+    voice = keys(gain = 0.0, notes = [beamed (60, 0.0, 0.015, 1.0)])
     song = routedTo (timeline [voice], [padsBus (1.0, "")])
     encoded (song, \text =>
         routes = "[{\"sendId\":1,\"source\":1,\"outlet\":0,\"bus\":\"pads\",\"level\":0.5,\"enabled\":true},{\"sendId\":2,\"source\":2,\"outlet\":0,\"bus\":\"pads\",\"level\":0.25,\"enabled\":true}]"
@@ -587,42 +589,37 @@ loudest side = foldList (side, 0.0, \(high, value) => synth::TableMath::larger (
 
 sidesDiffer (one, other) = length (filterList (toList (range (0, length one)), \i => abs ((listGet one i ?: 0.0) - (listGet other i ?: 0.0)) > 0.000001)) > 0
 
-liveDialBlock (place, stream, check) = succeeds (daw::LiveControls::receive ("${place}/knobs/live/controls", stream), \applied =>
+liveDialBlock (place, stream, check) = succeeds (daw::LiveControls::receive (pathJoin (pathJoin (pathJoin (place, "knobs"), "live"), "controls"), stream), \applied =>
     succeeds (daw::Playback::step (applied.controlScore, applied.playing, 64), \packet => check (packet, applied(playing = packet.playing))))
 
 liveDialJourney () =
     place = "target/daw-tests/live-dial"
-    _root = makeDir "target/daw-tests"
-    _dir = makeDir place
+    madePlace place
     track = keysTrack ()
-    score = timeline [track(notes = [daw::Note(pitch = 60, start = 0.0, length = 1.0, velocity = 1.0)])]
-    succeeds (daw::Projects::saved (score, "${place}/knobs.json"), \_ =>
-        session = editorLaunched ["--song", "${place}/knobs.json", "--renderer", "${place}/daw", "--vst-worker", "${place}/worker"]
-        started = Drive::press (session, "Play Song")
+    score = timeline [track(notes = [beamed (60, 0.0, 1.0, 1.0)])]
+    launchedSong (place, score, \session => session, \(_, started) =>
         chosen = inspectorSelected (Drive::press (started, "Patch Controls"), 2)
         reads (dialOf (chosen, "Gain"), \dial =>
             x = dial.accessLeft + dial.accessWidth / 2.0
             y = dial.accessTop + dial.accessHeight / 2.0
-            down = dialPointer (chosen, x, y, true, false)
+            down = dialDown (chosen, x, y)
             moving = dialPointer (down, x, y + 160.0, true, false)
-            expect ((Drive::holding moving).dial != synth::DialIdle, true)
-            expect ((Drive::holding moving).songTicket, "daw-song:live:${place}/knobs/live")
+            dialLive moving
+            expect ((Drive::holding moving).songTicket, "daw-song:live:${pathJoin (pathJoin (place, "knobs"), "live")}")
             reads (dialOf (moving, "Gain"), \seen => expect (seen.accessValue, 0.0))
             succeeds (daw::Playback::start score, \initial =>
                 succeeds (daw::Playback::step (score, initial, 512), \first =>
-                    stream = daw::LiveStream(playing = first.playing, controlVersion = 0, controlScore = score, noteFolders = [])
-                    liveDialBlock (place, stream, \(quiet, muted) =>
-                        expect (loudest quiet.left, 0.0)
-                        expect (loudest quiet.right, 0.0)
+                    liveDialBlock (place, liveOf score first.playing, \(quiet, muted) =>
+                        quietSides quiet
                         louder = dialPointer (moving, x, y - 60.0, true, false)
-                        expect ((Drive::holding louder).dial != synth::DialIdle, true)
+                        dialLive louder
                         reads (dialOf (louder, "Gain"), \raised =>
                             expect (raised.accessValue > dial.accessValue, true)
                             liveDialBlock (place, muted, \(loud, applied) =>
                                 expect (applied.controlVersion > muted.controlVersion, true)
                                 expect (loudest loud.left > 0.01, true)
-                                released = dialPointer (louder, x, y - 60.0, false, false)
-                                expect ((Drive::holding released).dial, synth::DialIdle)
+                                released = dialUp (louder, x, y - 60.0)
+                                dialIdle released
                                 reads (dialOf (released, "Gain"), \kept => expect (kept.accessValue, raised.accessValue))
                                 liveDialBlock (place, applied, \(after, settled) =>
                                     expect (settled.playing.cursor, 704)
@@ -632,7 +629,7 @@ liveDialJourney () =
 // [DAW-TRANSPORT-LIVE-CONTROLS] A gain edit changes the sounding note on the next block.
 liveKnobJourney () =
     track = keysTrack ()
-    note = daw::Note(pitch = 60, start = 0.0, length = 0.125, velocity = 1.0)
+    note = beamed (60, 0.0, 0.125, 1.0)
     score = timeline [track(notes = [note])]
     routing = daw::TrackPatches::routing track.instrument
     muted = routing(nodes = mapList (routing.nodes, \n => ui::Pick::either (n.component == "gain", n(settings = [daw::Setting(key = "gain", value = 0.0, follow = daw::Constant)]), n)))
@@ -647,8 +644,7 @@ liveKnobJourney () =
                     expect (abs ((listGet reference.left 0 ?: 1.0) - (listGet changed.left 0 ?: -1.0)) < 0.02, true)
                     expect (sidesDiffer (reference.left, changed.left), true)))
             succeeds (daw::Playback::step (quiet, first.playing, 128), \silent =>
-                expect (loudest silent.left, 0.0)
-                expect (loudest silent.right, 0.0)
+                quietSides silent
                 succeeds (daw::Playback::step (score, silent.playing, 128), \again =>
                     expect (again.playing.cursor, 768)
                     expect (loudest again.left > 0.01, true)))))
@@ -731,10 +727,9 @@ patchRoom (d, spareWidth, spareHeight, songShift) =
 // window, the patch window's own resizes still move them, and the song page stays centred in its own window.
 detachedRoomJourney () =
     place = "target/daw-tests/detached-room"
-    _root = makeDir "target/daw-tests"
-    _dir = makeDir place
-    succeeds (daw::Projects::saved (timeline [bellTrack (), keysTrack ()], "${place}/song.json"), \_ =>
-        session = editorLaunched ["--song", "${place}/song.json"]
+    madePlace place
+    succeeds (daw::Projects::saved (timeline [bellTrack (), keysTrack ()], (pathJoin (place, "song.json"))), \_ =>
+        session = editorLaunched ["--song", (pathJoin (place, "song.json"))]
         lane = uitest::Semantics::element (session.drivenSeen.renderedAccess, "Track 2")
         opened = clickAt (session, 100.0, lane.accessTop + lane.accessHeight / 2.0)
         expect ((Drive::holding opened).patchWindowSerial, 1)

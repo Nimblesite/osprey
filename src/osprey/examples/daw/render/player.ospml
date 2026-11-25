@@ -6,9 +6,9 @@ module Player
     // Frames per WAV part: 960,000 interleaved samples, half the encoder's limit.
     chunk = 480000
 
-    piecePath request = "${request.folder}/piece.wav"
+    piecePath request = (pathJoin (request.folder, "piece.wav"))
 
-    songPath request = "${request.folder}/song.wav"
+    songPath request = (pathJoin (request.folder, "song.wav"))
 
     least (one, other) = match one < other
         true => one
@@ -24,7 +24,7 @@ module Player
         false => held
         true => match PatchVoices::told (synth::WaveFiles::interleaved (arrangement.sampleRate, 2, Arrangements::interleaved (mix, satMul index chunk, least (satMul (satAdd index 1) chunk, length mix.left))))
             Error why => held(fault = why)
-            Success hex => stored (held, "part-${index}", "${request.folder}/part-${index}", hex)
+            Success hex => stored (held, "part-${index}", pathJoin (request.folder, "part-${index}"), hex)
 
     parts (request, arrangement, mix) =
         held = foldList (toList (range (0, intDiv (satAdd (length mix.left) (satSub chunk 1)) chunk)), Written(parts = [], fault = ""), \(held, index) => written (request, arrangement, mix, held, index))
@@ -33,18 +33,18 @@ module Player
             false => Error(message = held.fault)
 
     // The concat list names parts relative to itself.
-    assembled (stage, files, destination) = match writeFile "${stage.folder}/parts.txt" (join (mapList (files, \path => "file ${Shell::quoted path}")) "\n")
+    assembled (stage, files, destination) = match writeFile (pathJoin (stage.folder, "parts.txt")) (join (mapList (files, \path => "file ${Shell::quoted path}")) "\n")
         Error why => Error(message = why)
         Success _ =>
             wav = Shell::quoted (piecePath stage)
-            command = "ffmpeg -v error -y -f concat -safe 0 -i ${Shell::quoted "${stage.folder}/parts.txt"} -c copy ${wav} && mv -f ${wav} ${Shell::quoted destination}"
+            command = "ffmpeg -v error -y -f concat -safe 0 -i ${Shell::quoted (pathJoin (stage.folder, "parts.txt"))} -c copy ${wav} && mv -f ${wav} ${Shell::quoted destination}"
             synth::Outcomes::carried (Shell::ran (300, command), \_ => Success(value = destination))
 
     // Parts and the unfinished join are private to this render. Only a successful join replaces the last WAV.
     // A umask, not `mkdir -m`: MSYS2 mounts NTFS `noacl`, so its mkdir cannot set a mode and fails after creating.
     staged (request, arrangement, mix) =
         destination = ui::Pick::either (request.beats > 0.0, piecePath request, songPath request)
-        stage = request(folder = "${request.folder}/.render-${random ()}")
+        stage = request(folder = pathJoin (request.folder, ".render-${random ()}"))
         synth::Outcomes::carried (Shell::ran (10, "sh -c 'umask 077 && mkdir \"$1\"' sh ${Shell::quoted stage.folder}"), \_ =>
             result = synth::Outcomes::carried (parts (stage, arrangement, mix), \files => assembled (stage, files, destination))
             synth::Outcomes::carried (Shell::ran (10, "rm -rf ${Shell::quoted stage.folder}"), \_ => result))

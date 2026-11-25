@@ -66,31 +66,25 @@ module DawSession
             Error why => editor(message = "${path}: ${why}")
             Success song => picked (editor(song = song, past = [], future = [], gesture = [], laneZoom = 1.0, laneStart = 0.0, laneTop = 0, laneTraces = TimelineView::traces (song, 1.0, 0.0, 0), overview = Header::overview song, songPath = path, track = 0, patchTrack = -1, rollBar = 0, page = TimelinePage), 0)
 
-    stem path =
-        parts = split (replace path "\\" "/" ?: path) "/" ?: [path]
-        name = foldList (parts, path, \(_, part) => part)
-        replace name ".json" "" ?: name
+    stem path = replace (pathName path) ".json" "" ?: pathName path
 
-    folder editor =
-        parts = split editor.renderer "/" ?: [editor.renderer]
-        parent = foldList (toList (range (0, satSub (length parts) 1)), [], \(kept, i) => listAppend kept (listGet parts i ?: ""))
-        "${join parent "/"}/${stem editor.songPath}"
+    folder editor = pathJoin (pathParent editor.renderer, stem editor.songPath)
 
     // Implements [DAW-TRANSPORT-LIVE]. One folder beside the renderer holds the snapshot being played, the
     // device's last receipt and the renderer's refusal, if any.
-    live editor = "${folder editor}/live"
+    live editor = (pathJoin (folder editor, "live"))
 
     // Implements [DAW-RENDER]. The whole song renders into its own folder.
-    whole editor = "${folder editor}/song"
+    whole editor = (pathJoin (folder editor, "song"))
 
-    snapshot place = "${place}/project.json"
+    snapshot place = (pathJoin (place, "project.json"))
 
-    receipt place = "${place}/played.json"
+    receipt place = (pathJoin (place, "played.json"))
 
-    fault place = "${place}/fault.txt"
+    fault place = (pathJoin (place, "fault.txt"))
 
     // The whole song is `song.wav`.
-    mastered place = "${place}/song.wav"
+    mastered place = (pathJoin (place, "song.wav"))
 
     // The cached audio is current when it was rendered from exactly this project text.
     fresh (place, audio, text) = (readFile (snapshot place) ?: "") == text && completeWave audio
@@ -187,7 +181,7 @@ module DawSession
 
     focus editor = ui::Pick::either (editor.page == PatchPage, editor.patchTrack, editor.track)
 
-    streamed editor = match daw::LiveControls::reset ("${live editor}/controls", focus editor)
+    streamed editor = match daw::LiveControls::reset ((pathJoin (live editor, "controls")), focus editor)
         Error why => Runtime::step (editor(message = "Could not open live controls: ${why}"))
         Success _ => streaming editor
 
@@ -407,7 +401,7 @@ module DawSession
     publishSong (before, after, song) =
         handle static Signal<daw::Arrangement>
             read => song
-        match daw::LiveControls::publish ("${live after}/controls", focus after)
+        match daw::LiveControls::publish ((pathJoin (live after, "controls")), focus after)
             Error why => before(message = "Live controls: ${why}")
             Success _ => after
 

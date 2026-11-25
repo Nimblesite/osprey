@@ -154,6 +154,7 @@ fn later_prelude_units_rebase_cleanly_into_ranges_past_every_earlier_unit() {
         (2, TESTING, (&units().testing), &[(&units().signals)][..]),
         (3, TESTING_GPU, (&units().testing_gpu), &[]),
         (4, TESTING_RESULT, (&units().testing_result), &[]),
+        (6, PATHS, (&units().paths), &[]),
     ] {
         let base = PRELUDE_LINE_BASE + index * PRELUDE_UNIT_STRIDE;
         assert_in_range(source, unit, base, |line| line >= base, earlier);

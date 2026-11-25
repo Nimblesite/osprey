@@ -15,6 +15,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "effects_runtime.h"
@@ -343,6 +344,8 @@ static void t_coro_abort(void) {
 
 static void *g_queued_operand;
 static volatile int g_queued_entered;
+static pthread_mutex_t g_queued_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t g_queued_entered_cv = PTHREAD_COND_INITIALIZER;
 
 // A sibling performer — a fiber under the same handler — arriving while another
 // perform holds the channel. It takes its +1 for a mailbox, exactly as compiled
@@ -356,15 +359,30 @@ static void *queued_performer(void *raw) {
   int64_t args[2] = {(int64_t)(uintptr_t)g_queued_operand, SCALAR_SLOT_WORD};
   uint8_t kinds[2] = {OSP_OP_ARG_MANAGED, OSP_OP_ARG_SCALAR};
   osp_retain(g_queued_operand);
+  pthread_mutex_lock(&g_queued_lock);
   g_queued_entered = 1;
+  pthread_cond_broadcast(&g_queued_entered_cv);
+  pthread_mutex_unlock(&g_queued_lock);
   (void)__osprey_coro_suspend(raw, OP_SECOND, args, kinds, 2);
   return NULL; // unreachable: the abort kills this thread inside suspend
 }
 
-// Long enough for a created thread to reach suspend's in-flight wait. Aborting
-// before it gets there takes the same branch, so this only decides whether the
-// QUEUED path or the already-aborted path is the one exercised.
-#define QUEUE_PARK_US 50000
+// Waits on the performer's own handshake (the broadcast above), not on a
+// sleep that assumes how fast a created thread is scheduled. The deadline is
+// a generous safety bound against a hang, never the mechanism.
+enum { QUEUE_HANDSHAKE_TIMEOUT_S = 30 };
+
+static void wait_until_queued_performer_parks(void) {
+  struct timespec deadline;
+  clock_gettime(CLOCK_REALTIME, &deadline);
+  deadline.tv_sec += QUEUE_HANDSHAKE_TIMEOUT_S;
+  pthread_mutex_lock(&g_queued_lock);
+  while (!g_queued_entered) {
+    CHECK(pthread_cond_timedwait(&g_queued_entered_cv, &g_queued_lock,
+                                 &deadline) == 0);
+  }
+  pthread_mutex_unlock(&g_queued_lock);
+}
 
 // An aborting handler kills a queued performer before it can build a mailbox.
 // The mailbox is what owns a managed operand and `mailbox_free` is what
@@ -381,8 +399,7 @@ static void t_aborted_queued_perform_releases_its_operands(void) {
 
   pthread_t queued;
   CHECK(pthread_create(&queued, NULL, queued_performer, env.coro) == 0);
-  usleep(QUEUE_PARK_US);
-  CHECK(g_queued_entered == 1);
+  wait_until_queued_performer_parks();
 
   __osprey_coro_abort(env.coro); // the arm returned without resuming
   CHECK(pthread_join(queued, NULL) == 0);

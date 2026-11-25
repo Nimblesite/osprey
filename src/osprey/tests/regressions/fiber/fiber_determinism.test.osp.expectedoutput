@@ -13,7 +13,22 @@ The deterministic run scheduler preserves that order
 ℹ️  Task task-3 completed successfully in 77ms
 Total processed: 3400 units
 === Test Complete ===
+=== Fiber Execution Order Test ===
+ℹ️  Processing batch: alpha
+ℹ️  Starting task: task-alpha-1 with data size: 150
+✅ task-alpha-1 succeeded: 1200 units
+ℹ️  Task task-alpha-1 completed successfully in 52ms
+ℹ️  Starting task: task-alpha-2 with data size: 200
+✅ task-alpha-2 succeeded: 1500 units
+ℹ️  Task task-alpha-2 completed successfully in 67ms
+ℹ️  Starting task: task-alpha-3 with data size: 75
+✅ task-alpha-3 succeeded: 750 units
+ℹ️  Task task-alpha-3 completed successfully in 82ms
+ℹ️  Batch alpha processed: 2700 total data units
+Total: 2700
+=== Test Complete ===
 ok 1 - deterministic fibers complete in spawn order
 ok 2 - a deterministic select runs queued fibers in spawn order
-1..2
-# tests=2 passed=2 failed=0 skipped=0
+ok 3 - fiber batch preserves transformed results
+1..3
+# tests=3 passed=3 failed=0 skipped=0

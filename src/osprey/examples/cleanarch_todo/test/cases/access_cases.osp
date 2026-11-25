@@ -22,17 +22,11 @@ module AccessCases {
     /// PurgeTodoLists demands the Administrator role AND the CanPurge
     /// policy, like `[Authorize(Roles = "Administrator", Policy = "CanPurge")]`.
     export fn purgeGuardsCase() = {
-        let anon = TodoHarness::request(TodoHarness::anonymous(), 0, [
-            TodoHarness::seedList(1, "Shopping", "#78909C")
-        ], [], PurgeTodoLists)
+        let anon = TodoHarness::request(TodoHarness::anonymous(), 0, shoppingList(), [], PurgeTodoLists)
         expect(anon.settled, Error { message: Unauthorized })
-        let user = TodoHarness::request(TodoHarness::user(), 0, [
-            TodoHarness::seedList(1, "Shopping", "#78909C")
-        ], [], PurgeTodoLists)
+        let user = TodoHarness::request(TodoHarness::user(), 0, shoppingList(), [], PurgeTodoLists)
         expect(user.settled, Error { message: Forbidden { why: "not in role" } })
-        let admin = TodoHarness::request(TodoHarness::admin(), 0, [
-            TodoHarness::seedList(1, "Shopping", "#78909C")
-        ], [], PurgeTodoLists)
+        let admin = TodoHarness::request(TodoHarness::admin(), 0, shoppingList(), [], PurgeTodoLists)
         expect(admin.settled, Success { value: Purged { count: 1 } })
     }
 
@@ -44,9 +38,7 @@ module AccessCases {
             roles: ["Administrator"],
             policies: []
         }
-        let denied = TodoHarness::witnessed(roleOnly, 0, [
-            TodoHarness::seedList(1, "Shopping", "#78909C")
-        ], [], PurgeTodoLists)
+        let denied = TodoHarness::witnessed(roleOnly, 0, shoppingList(), [], PurgeTodoLists)
         expect(denied.settled, Error { message: Forbidden { why: "policy CanPurge not held" } })
     }
 }

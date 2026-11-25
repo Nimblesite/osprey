@@ -75,8 +75,8 @@ module EdgeCases {
             made.status == 201,
             contains(made.headers, "Location: /api/TodoItems/1\r\n")
         ])
-        let lists = [TodoHarness::seedList(1, "Shopping", "#78909C")]
-        let items = [TodoHarness::seedItem(1, 1, "Milk", false)]
+        let lists = shoppingList()
+        let items = milkOnly(false)
         let detail = TodoHarness::routeOver(lists, items, TodoHarness::admin(), "PATCH",
             "/api/TodoItems/UpdateDetail/1", "{\"id\":1,\"listId\":1,\"priority\":2,\"note\":\"soon\"}")
         let stray = TodoHarness::route(TodoHarness::admin(), "PATCH",

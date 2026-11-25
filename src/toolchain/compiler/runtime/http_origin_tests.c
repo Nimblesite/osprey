@@ -162,11 +162,8 @@ void test_client_peer_closes_during_body(void) {
 #ifndef _WIN32
   void (*previous)(int) = signal(SIGPIPE, SIG_DFL);
   size_t size = 16 * 1024 * 1024;
-  char *body = malloc(size + 1);
-  assert(body != NULL);
-  memset(body, 'x', size);
-  body[size] = '\0';
-  int listen_fd = test_loopback_listen(ORIGIN_PORT);
+  char *body = test_bytes_filled(size, 'x');
+  int listen_fd = test_loopback_listen(origin_port());
   pthread_t thread;
   assert(pthread_create(&thread, NULL, closing_origin_thread, &listen_fd) == 0);
   int64_t client_id = origin_client();
@@ -190,7 +187,7 @@ void test_client_large_request_body(void) {
   origin.capacity = LARGE_REQUEST_BODY + MAX_HTTP_BUFFER;
   origin.request = calloc(origin.capacity, 1);
   assert(origin.request != NULL);
-  origin.listen_fd = test_loopback_listen(ORIGIN_PORT);
+  origin.listen_fd = test_loopback_listen(origin_port());
   pthread_t thread;
   assert(pthread_create(&thread, NULL, large_origin_thread, &origin) == 0);
 
@@ -220,7 +217,12 @@ void test_client_transport_failures(void) {
   assert(http_create_client(wire("http://h"), -1) == -2);
   assert(http_create_client(wire("http://:0/"), 5000) == -4);
 
-  int64_t refused = expect_client_get("http://127.0.0.1:1", "/", -5);
+  // A port just freed by a probe socket: nothing can be listening on it
+  // [CI-TEST-PORTS], unlike a hard-coded one another suite may hold.
+  char refused_url[40];
+  snprintf(refused_url, sizeof(refused_url), "http://127.0.0.1:%d",
+           test_free_loopback_port());
+  int64_t refused = expect_client_get(refused_url, "/", -5);
   assert(http_get(refused, NULL, wire("")) == -2);
   http_close_client(refused);
 
@@ -382,7 +384,9 @@ void test_client_malformed_chunks(void) {
 void test_client_tls_handshake_failure(void) {
   ScriptedOrigin origin;
   origin_start(&origin, NULL); // speaks no TLS
-  int64_t client_id = expect_client_get("https://127.0.0.1:18088", "/secure", -12);
+  char secure_url[48];
+  snprintf(secure_url, sizeof(secure_url), "https://127.0.0.1:%d", origin_port());
+  int64_t client_id = expect_client_get(secure_url, "/secure", -12);
   origin_stop(&origin);
   assert(origin.request[0] != 'G'); // never reached the wire as plaintext
   http_close_client(client_id);

@@ -5,6 +5,7 @@ namespace storage
 
 import bank::Json
 import storage::Disk
+import storage::Shares
 
 module Native
     export field key value = Json::strField key value
@@ -45,8 +46,8 @@ module Phone
 
     sized title symbol tint bytes whole =
         Native::node "entry" (entryFields title symbol tint tint
-            (Disk::formatBytes bytes) (Disk::shareText (bytes, whole))
-            (toString (Disk::permille (bytes, whole))))
+            (Disk::formatBytes bytes) (Shares::shareText (bytes, whole))
+            (toString (Shares::permille (bytes, whole))))
 
     waiting detail action =
         Native::node "entry" (listConcat
@@ -98,7 +99,7 @@ module Phone
     kindRow photos output index = match listGet photos.kinds index
         Error _ => output
         Success kind => match kind.items > 0
-            true => listAppend output (sized "${title kind.name} · ${Disk::formatCount kind.items}" (symbol kind.name) (tint kind.name) kind.bytes photos.bytes)
+            true => listAppend output (sized "${title kind.name} · ${Shares::formatCount kind.items}" (symbol kind.name) (tint kind.name) kind.bytes photos.bytes)
             false => output
 
     // Originals iCloud keeps while the device holds a smaller copy, or none.
@@ -106,7 +107,7 @@ module Phone
 
     kinds photos =
         rows = range (0, length photos.kinds) |> fold [] (\(output, index) => kindRow photos output index)
-        footer = "${Disk::formatCount photos.items} items, hidden ones included. Only what is stored on this device counts; Optimise iPhone Storage keeps full-size originals in iCloud, where they take no space here.${limits photos}"
+        footer = "${Shares::formatCount photos.items} items, hidden ones included. Only what is stored on this device counts; Optimise iPhone Storage keeps full-size originals in iCloud, where they take no space here.${limits photos}"
         Native::section "Photos & Videos" footer (listConcat rows (cloudRow photos))
 
     (** Whether the browser is at an iPhone app's own folder, where the screen shows the whole device. *)
@@ -140,7 +141,7 @@ module View
         false => pick (share >= 750) "orange" "blue"
 
     gauge volume =
-        share = Disk::permille (used volume, volume.total)
+        share = Shares::permille (used volume, volume.total)
         Native::node "gauge" [
             Native::field "symbol" "internaldrive.fill",
             Native::field "tint" (pressure share),
@@ -163,7 +164,7 @@ module View
     reach model = pick (phone model) "Everything in this app's folder counts. iOS keeps every other app's files private from all apps." "Every file counts: apps, the system, hidden files, caches and package contents. macOS asks once before the app reads Desktop, Documents, Downloads and iCloud Drive; allow it so they count."
 
     measuring model volume =
-        progress = Native::node "progress" [Native::field "text" "Measuring ${title model volume model.root}…", Native::field "detail" "${Disk::formatCount model.items} items · ${Disk::formatBytes model.bytes} so far"]
+        progress = Native::node "progress" [Native::field "text" "Measuring ${title model volume model.root}…", Native::field "detail" "${Shares::formatCount model.items} items · ${Disk::formatBytes model.bytes} so far"]
         Native::section "" (reach model) [progress]
 
     failed model volume = Native::section "" "" [Native::notice "exclamationmark.triangle.fill" "orange" "Cannot measure ${title model volume model.root}" "The folder no longer exists, or macOS did not allow it to be read. Choose another folder, or rescan."]
@@ -179,7 +180,7 @@ module View
 
     plural count one many = match count == 1
         true => "1 ${one}"
-        false => "${Disk::formatCount count} ${many}"
+        false => "${Shares::formatCount count} ${many}"
 
     summary model volume ranking =
         whole = model.path == "/" || Phone::device model
@@ -198,8 +199,8 @@ module View
     segment ranking index title bytes = Native::node "segment" [
         Native::field "text" title,
         Native::field "tint" (accent index),
-        Native::field "value" (toString (Disk::permille (bytes, ranking.bytes))),
-        Native::field "detail" (Disk::shareText (bytes, ranking.bytes)),
+        Native::field "value" (toString (Shares::permille (bytes, ranking.bytes))),
+        Native::field "detail" (Shares::shareText (bytes, ranking.bytes)),
     ]
 
     leader model ranking leading output index =
@@ -214,7 +215,7 @@ module View
         others = pick (rest > 0) [segment ranking (length (palette ())) "Everything else" rest] []
         bar = Native::node "stack" [Native::nodes "children" (listConcat (range (0, length leading) |> fold [] (\(output, index) => leader model ranking leading output index)) others)]
         scope = pick model.hidden "hidden files included" "hidden files left out"
-        footer = "${Disk::formatBytes ranking.bytes} measured here, ${scope}: ${Disk::shareText (ranking.bytes, used volume)} of the space used on ${volume.name}."
+        footer = "${Disk::formatBytes ranking.bytes} measured here, ${scope}: ${Shares::shareText (ranking.bytes, used volume)} of the space used on ${volume.name}."
         Native::section "" footer [bar]
 
     row model ranking largest output index =
@@ -228,15 +229,15 @@ module View
             Native::field "accent" (accent index),
             Native::field "style" (pick entry.hidden "hidden" ""),
             Native::field "detail" (pick entry.link "Symbolic link" (Disk::formatBytes bytes)),
-            Native::field "caption" (pick entry.link "Target size excluded" (Disk::shareText (bytes, ranking.bytes))),
-            Native::field "value" (toString (capped (Disk::permille (bytes, largest)))),
+            Native::field "caption" (pick entry.link "Target size excluded" (Shares::shareText (bytes, ranking.bytes))),
+            Native::field "value" (toString (capped (Shares::permille (bytes, largest)))),
         ]
         listAppend output (pick entry.folder (folderRow model fields entry.path) (Native::node "entry" fields))
 
     remainder model ranking largest =
         count = satSub ranking.count ranking.kept
         bytes = satSub ranking.bytes (sizes model ranking.top)
-        pick (count > 0) [Native::node "entry" (Phone::entryFields "${plural count "smaller item" "smaller items"}" "ellipsis.circle.fill" "gray" "gray" (Disk::formatBytes bytes) (Disk::shareText (bytes, ranking.bytes)) (toString (capped (Disk::permille (bytes, largest)))))] []
+        pick (count > 0) [Native::node "entry" (Phone::entryFields "${plural count "smaller item" "smaller items"}" "ellipsis.circle.fill" "gray" "gray" (Disk::formatBytes bytes) (Shares::shareText (bytes, ranking.bytes)) (toString (capped (Shares::permille (bytes, largest)))))] []
 
     unreadable model = match phone model
         true => "iOS keeps them from the app."

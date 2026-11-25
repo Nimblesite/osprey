@@ -6,11 +6,19 @@
 // trusts the encoder or parser it checks.
 #include "http_shared.h"
 #include "test_alloc.h"
+#include "test_loopback.h"
 #include "websocket_test_helpers.h"
 
 #include <assert.h>
 
-enum { FRAMES_PORT = 18097, OVER_THE_LIMIT = 16385, PACKED_FRAMES = 3, CODEC_LIMIT = 65536, ODD_SIZE = 333 };
+enum { OVER_THE_LIMIT = 16385, PACKED_FRAMES = 3, CODEC_LIMIT = 65536, ODD_SIZE = 333 };
+// One OS-assigned port for this TU's server [CI-TEST-PORTS]: probed once,
+// then bound by the runtime server, which cannot take port 0.
+static int frames_port(void) {
+  static int port = 0;
+  return port ? port : (port = test_free_loopback_port());
+}
+
 enum { OP_CONT = 0x0, OP_TEXT = 0x1, OP_BINARY = 0x2, OP_CLOSE = 0x8, OP_PING = 0x9, OP_PONG = 0xA };
 enum { FIN = 0x80, RSV1 = 0x40, MASKED = 0x80 };
 
@@ -81,17 +89,7 @@ static void expect_close(int fd, int code) {
   close(fd);
 }
 
-static int frames_client(void) {
-  int fd = ws_raw_connect(FRAMES_PORT);
-  ws_send_upgrade(fd, "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n");
-  char headers[1024];
-  ws_read_headers(fd, headers, sizeof headers);
-  assert(strstr(headers, "HTTP/1.1 101") == headers);
-  char *welcome = ws_read_text_frame(fd);
-  assert(strstr(welcome, "\"type\":\"welcome\"") != NULL);
-  free(welcome);
-  return fd;
-}
+static int frames_client(void) { return ws_upgraded_client(frames_port()); }
 
 // Pings answered with their own payload, empty and at the 125-byte control
 // limit; an unsolicited pong answered with nothing.
@@ -281,7 +279,7 @@ static void check_connection_out_of_memory(void) {
 }
 
 static void check_live_protocol(void) {
-  int64_t server = websocket_create_server(FRAMES_PORT, ADDRESS, PATH);
+  int64_t server = websocket_create_server(frames_port(), ADDRESS, PATH);
   assert(server > 0 && websocket_server_listen(server) == 0);
   int fd = frames_client();
   check_ping_pong(fd);

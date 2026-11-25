@@ -344,17 +344,12 @@ fn assert_project_output(
             .args(["--run", "--quiet"])
             .arg(format!("--memory={memory}"));
         effect_execution::runtime_environment(&mut command, memory);
-        let output = command.output()?;
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        assert!(output.status.success(), "{name}/{memory}: {stderr}");
-        assert_eq!(
-            String::from_utf8_lossy(&output.stdout),
+        effect_execution::assert_ran(
+            &command.output()?,
+            &format!("{name}/{memory}"),
+            memory,
             expected,
-            "{name}/{memory}"
         );
-        if memory == "arc" {
-            effect_execution::assert_arc_clean(&stderr);
-        }
         Ok(())
     });
     let _ = std::fs::remove_dir_all(&directory);
@@ -419,16 +414,7 @@ fn assert_python_bytes(
     expected: &str,
 ) -> std::io::Result<()> {
     let output = effect_execution::execute(name, "py", source, memory)?;
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(output.status.success(), "{memory}: {stderr}");
-    assert_eq!(
-        String::from_utf8_lossy(&output.stdout),
-        expected,
-        "{memory}: {stderr}"
-    );
-    if memory == "arc" {
-        effect_execution::assert_arc_clean(&stderr);
-    }
+    effect_execution::assert_ran(&output, memory, memory, expected);
     Ok(())
 }
 

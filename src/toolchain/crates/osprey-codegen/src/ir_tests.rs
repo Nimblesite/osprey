@@ -22,6 +22,11 @@ fn module(src: &str) -> String {
     compile_program(&parsed(src, Flavor::Default)).expect("codegen should succeed")
 }
 
+/// `src` compiles, and its module IR contains every one of `needles`.
+fn emits(src: &str, needles: &[&str]) {
+    shows(&module(src), needles);
+}
+
 fn ml_module(src: &str) -> String {
     compile_program(&parsed(src, Flavor::Ml)).expect("ML codegen should succeed")
 }
