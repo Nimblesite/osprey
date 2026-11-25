@@ -14,6 +14,8 @@ The [hardware specification](../../specs/synth/PrismDeviceHardware.md) defines t
 
 ## Prototype [DEVICE-HW-PROTOTYPE]
 
+No part is ordered until the concept test passes on the Mac with the virtual device ([DEVICE-VERIFY-CONCEPT]).
+
 - [ ] Order a Raspberry Pi 5 4 GB, HiFiBerry DAC2 ADC Pro, MCP3208, pots, toggles, footswitches, H11L1 and TRS jacks; record actual prices against the [budget](../../specs/synth/PrismDeviceHardware.md#budget-device-hw-budget).
 - [ ] Bring up the firmware on the prototype: audio at 64 frames, knobs, switches, TRS MIDI, and the USB-C port in both roles (computer link and USB MIDI keyboard).
 - [ ] Measure audio round trip and note to sound with loopback cables: mean, worst case and jitter over 24 hours at full budget. Pass: round trip under 5 ms, note to sound under 5.5 ms worst case, never over 10 ms, jitter under 1 ms ([DEVICE-HW-LATENCY]).

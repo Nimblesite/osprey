@@ -12,7 +12,7 @@
 
 The [Prism device specification](../../specs/synth/PrismDevice.md) defines the engine, firmware, controls, link and factory. The board and enclosure have their own [hardware plan](hardware.md), and the compiler work has the [embedded targets plan](../embedded-targets.md). Research and citations: [hardware research](../../research/synthesis/hardware.md).
 
-Macros work in Prism first ([instrument plan](instrument.md)). The virtual device, the embedded target, the firmware, the prototype and the board then proceed in parallel, with performance optimisation running beside all of them ([DEVICE-PERF]). Each phase ships something usable on its own.
+Macros work in Prism first ([instrument plan](instrument.md)). Then the concept is tested on the Mac with the virtual device, before any hardware is bought ([DEVICE-VERIFY-CONCEPT]). After that the embedded target, the firmware, the prototype and the board proceed in parallel, with performance optimisation running beside all of them ([DEVICE-PERF]). Each phase ships something usable on its own.
 
 ## Performance optimisation, in parallel with everything [DEVICE-PLAN-SPEED]
 
@@ -31,6 +31,7 @@ This track runs alongside every other phase and never stops ([DEVICE-PERF]). The
 - [ ] **Controls ([DEVICE-CONTROLS]).** Knob filter, hysteresis, pickup and jump, switches, footswitch toggle, hold and long press, written in Osprey; proofs per [DEVICE-PROOFS].
 - [ ] **Link ([DEVICE-LINK]).** tdbin frames over TCP with the 1 MiB bound: Hello, live control, deploy, refusals, get patch. The virtual device listens on localhost only.
 - [ ] **Devices panel ([DEVICE-LINK-SHOW]).** Prism lists devices, opens the playing patch or fetches an unknown one, and deploys with the profile check shown first.
+- [ ] **Concept test on the Mac ([DEVICE-VERIFY-CONCEPT]).** `make -C src/toolchain/targets/macos prism-device` starts the virtual device; from Prism, deploy a source patch and an effect patch, play one from a MIDI keyboard and run audio through the other, turn every on-screen control, switch slots, and see the playing patch in the Devices panel. This is the gate for ordering parts.
 - [ ] **Virtual device journeys ([DEVICE-VERIFY]).** In CI: many deploys across slots, every refusal kind, malformed and oversized frames, every control moved with macro and audio assertions, click-free swaps, injected faults.
 
 ## Firmware [DEVICE-OS]

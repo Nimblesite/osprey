@@ -67,7 +67,7 @@ The engine is an Osprey program that links `@osprey/synth` and nothing else: no 
 - **Budget ([DEVICE-ENGINE-BUDGET]).** Each processor kind has a measured cost per block on the profile's hardware, shipped in the profile. A patch is accepted only if its cost at the profile's maximum polyphony fits within 70% of one block's deadline. A refused patch names its most expensive nodes and their costs, so the user knows what to cut.
 - **Patch changes ([DEVICE-ENGINE-SWAP]).** A new patch or slot is prepared outside the audio thread and swapped in at a block boundary with a 20 ms equal-power crossfade, so a change never clicks. Value-only edits keep every oscillator phase, filter state and delay line ([SYNTH-GRAPH-REPLACE]).
 - **Faults ([DEVICE-ENGINE-FAULT]).** Non-finite output, a missed deadline, thermal throttling or a failed patch is a typed fault: the block is muted (or bypassed in effects-pedal role), the status LED shows the fault, a bounded counter records it, and the link reports it to Prism. The engine never exits on a fault ([FAILURE-EXPLICIT]).
-- **The same engine on the computer ([DEVICE-ENGINE-VIRTUAL]).** The engine also builds for the computer as a **virtual device**: the same program, a virtual profile, audio to a file or the sound card, and the same link. Prism, the link and the deploy journeys are tested against it in CI with no hardware.
+- **The same engine on the computer ([DEVICE-ENGINE-VIRTUAL]).** The engine also builds for the computer as a **virtual device**: the same program, a virtual profile, audio through the computer's sound card or to a file, and the same link. It is how the whole concept is tested before any hardware is bought ([DEVICE-VERIFY-CONCEPT]).
 
 ### Embedded target [DEVICE-ENGINE-TARGET]
 
@@ -115,6 +115,22 @@ Per the repository's proof rule, every part of the device that can be formally v
 Each proof must fail on a relevant mutation of the source, and runs in CI.
 
 ## Verification [DEVICE-VERIFY]
+
+### Test the concept before any hardware [DEVICE-VERIFY-CONCEPT]
+
+The whole idea is proven on a Mac, with nothing soldered and nothing bought. No part is ordered until this passes. It uses only the virtual device ([DEVICE-ENGINE-VIRTUAL]) and standard tools:
+
+| What is tested | How, with no hardware |
+| --- | --- |
+| A patch from Prism plays on a device with no Prism in it | The engine runs as its own program on the Mac; Prism deploys to it over the link |
+| Knobs, toggles and footswitches turn macros | The device face in Prism is the panel: its on-screen knobs, switches and footswitches send the same control events the real ones will, through the same pickup and smoothing code ([DEVICE-CONTROLS]) |
+| Synth role | A MIDI keyboard plugged into the Mac plays the virtual device; sound comes from the Mac's output |
+| Effects-pedal role | A guitar or any input on the Mac's audio interface goes through the patch and out |
+| Prism shows what the device is playing; slots; refusals; faults | The same link messages as the real device ([DEVICE-LINK]) |
+| The real device program | The same 64-bit ARM Linux executable that the firmware will run is built and run in a stock Debian ARM container (Docker), and takes a deployed patch over the link |
+| The firmware image builds | `rpi-image-gen` builds the Raspberry Pi OS image with the engine in it ([DEVICE-OS]) |
+
+What this cannot show, and what the prototype is for: real latency and dropouts, the audio converter, physical knobs and jacks, booting and flashing a real Pi, and the USB-C port's two roles. No off-the-shelf emulator models a Pi 5 or this board ([DEVICE-RESEARCH-OS]).
 
 - **Virtual device journeys** in CI: connect Prism to the virtual device, read Hello, deploy many patches to many slots, refuse unsupported nodes, over-budget patches and malformed frames with their reasons, move every control and check every macro and the rendered audio, swap patches without a click (no sample step above the crossfade bound), and survive engine faults.
 - **ARM Linux corpus:** the full test corpus under ARC on `linux-arm64`.

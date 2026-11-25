@@ -31,6 +31,10 @@ The planned workflow:
   <figcaption>AI-generated concept renders of the top and rear. They show the eventual metal case, not a built pedal.</figcaption>
 </figure>
 
+## Tested before it is built
+
+The idea is tested on a Mac before any hardware is put together. The pedal's engine runs as its own program, Prism sends patches to it exactly as it will to the pedal, and Prism's on-screen picture of the pedal stands in for the knobs and footswitches. Real latency and the audio hardware are measured later, on a prototype.
+
 ## Connections
 
 - **One USB-C port** does everything: connect a computer to send patches and update firmware, or plug in a USB MIDI keyboard and the pedal powers it.
