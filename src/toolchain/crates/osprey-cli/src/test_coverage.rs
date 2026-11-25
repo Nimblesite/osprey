@@ -74,10 +74,15 @@ fn merge_hits(merged: &mut LineHits, hits: LineHits) {
 /// the flattened program's line space, so every row goes back to the physical
 /// source that wrote it, at that file's own line ([TESTING-PROJECT-SUITE]). A
 /// file suite, and any row no source claims, stays under the suite's path.
+/// The dump's flattened lines read back through the same assembly that compiled
+/// the suite: `run_suite` compiles the canonical path, and assembling the path as
+/// typed instead orders a mix of absolute and relative `source_roots` another
+/// way, so every hit landed on the wrong file and line (#381).
 fn attribute_lines(suite: &Path, hits: LineHits) -> BTreeMap<String, LineHits> {
-    let project = suite
+    let compiled = std::fs::canonicalize(suite).unwrap_or_else(|_| suite.to_path_buf());
+    let project = compiled
         .is_dir()
-        .then(|| osprey_project::load_and_assemble(suite).ok())
+        .then(|| osprey_project::load_and_assemble(&compiled).ok())
         .flatten();
     let mut files = BTreeMap::<String, LineHits>::new();
     for (line, count) in hits {
