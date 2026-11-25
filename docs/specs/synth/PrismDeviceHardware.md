@@ -14,7 +14,7 @@ Status: specified, not built. This is the reference hardware for the [Prism devi
 
 The product is a **Raspberry Pi Compute Module 5 on one purpose-built carrier**, the **Prism board**, in a die-cast pedal enclosure. The prototype is a **stock Raspberry Pi 5 with an audio HAT** ([DEVICE-HW-PROTOTYPE]). A Raspberry Pi plus one purpose-built audio and control board is the pattern norns, Zynthian and PiPedal already proved ([DEVICE-RESEARCH-PRIOR]). The compute module is the product's choice because a Pi 5 with a HAT and cooler does not fit under the controls in a 35 mm-deep pedal shell ([DEVICE-HW-ENCLOSURE]). It must meet three requirements:
 
-1. **Low latency.** Audio in to audio out, and a MIDI note to its sound, take 5 ms or less, and can never exceed 10 ms ([DEVICE-HW-LATENCY]).
+1. **Low latency.** Audio in to audio out takes under 5 ms, a MIDI note to its sound under 5.5 ms worst case, and neither can ever exceed 10 ms ([DEVICE-HW-LATENCY]).
 2. **Fast enough for a decent stereo patch.** The default patch must run in stereo with headroom ([DEVICE-HW-COMPUTE]).
 3. **Under AUD 500 to build one** ([DEVICE-HW-BUDGET]).
 
@@ -42,28 +42,33 @@ flowchart LR
 
 The bound comes from Wessel and Wright: at most 10 ms from gesture to sound and at most 1 ms of jitter ([DEVICE-RESEARCH-LATENCY]). The device targets half that.
 
-| Stage | Budget at 48 kHz | Basis |
-| --- | --- | --- |
-| Input buffering, 2 × 64 frames | 2.67 ms worst case | ALSA period of 64 frames is 1.33 ms |
-| DSP of one block | within 1.33 ms | must finish inside the period ([DEVICE-ENGINE-BUDGET]) |
-| Output buffering, 64 frames | 1.33 ms | |
-| ADC and DAC digital filters | under 1 ms combined | codec datasheet group delay; measured on the device |
-| **Audio round trip** | **5 ms or less** | PiPedal measured 5.8 ms at 64 frames on a Pi 4 over USB ([DEVICE-RESEARCH-RT]); I2S avoids the USB stage |
-| MIDI in, TRS | about 1 ms for a 3-byte note at 31,250 baud | |
-| MIDI in, USB | up to 1 ms polling | |
-| **Note to sound** | **5 ms or less** | MIDI in, then one block and the output buffer |
+ALSA runs with two periods of 64 frames (1.33 ms each). The DSP of a block happens inside the output buffering, so it adds no time of its own as long as it finishes within the period ([DEVICE-ENGINE-BUDGET]).
+
+| Stage | At 48 kHz, 64 frames | Basis |
+| --- | ---: | --- |
+| ADC group delay | 0.36 ms | PCM3060: 17.4/fs ([DEVICE-RESEARCH-AUDIO]) |
+| Input: one period | 1.33 ms | a block is processed once it is full |
+| Output: two periods | 2.67 ms | the block being played and the one being rendered |
+| DAC group delay | 0.42 ms | PCM3060: 20/fs |
+| **Audio round trip** | **4.8 ms** | PiPedal measured 5.8 ms at 64 frames on a Pi 4 over a USB interface ([DEVICE-RESEARCH-RT]); I2S avoids the USB stage |
+| MIDI in, TRS | 0.96 ms | 3 bytes × 10 bits at 31,250 baud |
+| MIDI in, USB | up to 1 ms | full-speed polling interval |
+| Wait for the next block | up to 1.33 ms | an event is rendered at its sample offset in the next block |
+| **Note to sound** | **5.4 ms worst case, about 4.1 ms typical** | MIDI in, wait, two output periods, DAC |
+
+Both are about half the 10 ms bound. At 32 frames the round trip is 2.8 ms and note to sound 3.4 ms worst case, at twice the per-block overhead.
 
 - **Buffer limits ([DEVICE-HW-LATENCY-LIMITS]).** The firmware offers periods of 32, 64 and 128 frames at 48 kHz. 64 is the default. A setting whose worst-case round trip would exceed 10 ms is refused, not offered. 96 kHz halves each period's time at double the CPU cost.
-- **Jitter ([DEVICE-HW-LATENCY-JITTER]).** Events carry sample offsets within the block ([SYNTH-RENDER]), so MIDI timing jitter is bounded by the input path, not by the block size. The PREEMPT_RT worst case measured on a Pi 5 is 224 µs, well inside 1 ms ([DEVICE-RESEARCH-RT]).
+- **Jitter ([DEVICE-HW-LATENCY-JITTER]).** Events carry sample offsets within the block ([SYNTH-RENDER]), so MIDI timing jitter is bounded by the input path, not by the block size. The PREEMPT_RT worst case measured for a `SCHED_FIFO` loop on a Pi 5 under stress is 224 µs, well inside 1 ms ([DEVICE-RESEARCH-RT]). Wessel and Wright's 1 ms jitter bound is the target: a steady delay is tolerated far better than a varying one ([DEVICE-RESEARCH-LATENCY]).
 - **Measured, not assumed ([DEVICE-HW-LATENCY-VERIFY]).** The hardware journeys measure round trip with a loopback cable and note to sound with a MIDI loopback, over 24 hours at full budget, and record mean, worst case and jitter ([DEVICE-VERIFY]).
 
 ## Compute [DEVICE-HW-COMPUTE]
 
-- **Compute Module 5, 4 GB RAM, 16 GB eMMC, no wireless** (USD 95 list). The same BCM2712 and four Cortex-A76 cores as the Pi 5, 2–3× a Pi 4 ([DEVICE-RESEARCH-COMPUTE]). One core is isolated for audio ([DEVICE-OS]); the others run MIDI, controls and the link. The engine needs well under 1 GB. No radio means a smaller attack surface and no radio certification.
+- **Compute Module 5, 4 GB RAM, 16 GB eMMC, no wireless** (CM5004016, AUD 139.95, [DEVICE-HW-BUDGET]). The same BCM2712 and four Cortex-A76 cores as the Pi 5, 2–3× a Pi 4 ([DEVICE-RESEARCH-COMPUTE]). One core is isolated for audio ([DEVICE-OS]); the others run MIDI, controls and the link. The engine needs well under 1 GB. No radio means a smaller attack surface and no radio certification.
 - **Why a compute module.** It is lower than a Pi 5 with a HAT and cooler, so the stack fits the shell under the pots and footswitches; its eMMC replaces a microSD card that can work loose on a stage; and it costs less than a Pi 5 plus a card and cooler ([DEVICE-HW-BUDGET]). The carrier must provide USB, power and boot circuits, which Raspberry Pi's published CM5 IO board design already shows.
 - **Same software.** A Pi 5 and a CM5 run the same image apart from the device tree overlay, so the prototype tests the product's firmware ([DEVICE-HW-PROTOTYPE]).
 - **A decent stereo patch.** The acceptance patch is two oscillators, a filter, two envelopes, an LFO, a stereo delay and a stereo reverb, eight voices, stereo out at 48 kHz. It must use no more than 70% of the 64-frame deadline on one core ([DEVICE-ENGINE-BUDGET]). The Pi 5 has the CPU for this; today Osprey's engine does not ([DEVICE-PLAN-SPEED]).
-- **Cooling.** Fanless: an isolated thermal path from the module to the aluminium shell ([DEVICE-HW-ENCLOSURE]). The CPU must stay below the throttling range PiPedal measured (about 60–70 °C) under the 24-hour journey ([DEVICE-RESEARCH-RT]). Throttling is reported as a fault ([DEVICE-ENGINE-FAULT]).
+- **Cooling.** Fanless: an isolated thermal path from the module to the aluminium shell ([DEVICE-HW-ENCLOSURE]). The SoC must stay at or below 75 °C under the 24-hour journey in a 35 °C room: a 10 °C margin under the 85 °C point where the CM5 throttles, which matters more on a CM5 because it has less metal to sink heat than a Pi 5 ([DEVICE-RESEARCH-COMPUTE]). Throttling is reported as a fault ([DEVICE-ENGINE-FAULT]).
 
 ## The Prism board [DEVICE-HW-BOARD]
 
@@ -71,7 +76,7 @@ One four-layer carrier for the Compute Module 5, derived from Raspberry Pi's CM5
 
 ### Audio [DEVICE-HW-AUDIO]
 
-- **Codec: TI PCM3060.** One stereo 24-bit ADC and DAC, 96 kHz capable, with a mainline Linux driver ([DEVICE-RESEARCH-AUDIO]). It runs as I2S clock master from its own low-jitter crystal, so audio timing does not depend on the Pi's clocks.
+- **Codec: TI PCM3060.** One stereo 24-bit ADC (up to 96 kHz) and DAC (up to 192 kHz), with a mainline Linux driver ([DEVICE-RESEARCH-AUDIO]). It runs as I2S clock master from a dedicated low-jitter 12.288 MHz oscillator on its SCKI input (256 fs at 48 kHz), so audio timing does not depend on the module's clocks. The codec has no crystal circuit of its own.
 - **Prototype: HiFiBerry DAC2 ADC Pro.** Until the Prism board exists, this board provides the same I2S path with a supported overlay ([DEVICE-HW-PROTOTYPE]).
 - **Outputs:** stereo 6.35 mm (1/4") jacks at line level from an op-amp stage that turns the codec's differential outputs single-ended, and a 3.5 mm headphone output with its own amplifier.
 - **Inputs:** stereo 6.35 mm jacks. A switch per input selects **line** or **instrument**; instrument level passes through a 1 MΩ op-amp buffer with up to +20 dB of gain, so a guitar or bass plugs straight in.
@@ -110,7 +115,8 @@ The device has **one USB-C port**, and it does everything: plays a keyboard, con
 - **A computer plugged in → device role.** The port is a composite USB device: USB MIDI, the network link to Prism ([DEVICE-LINK]), firmware updates ([DEVICE-LINK-UPDATE]), and factory flashing of the eMMC ([DEVICE-FACTORY-PROVISION]). The computer may also power the box ([DEVICE-HW-POWER]).
 - **A keyboard plugged in → host role.** The port is a USB host: the keyboard is a USB MIDI device the box reads directly, and the box supplies its 5 V. A small USB hub in this role takes a keyboard and a second controller.
 - **Both a keyboard and the computer.** Plug the keyboard into the computer. Prism forwards the keyboard's notes to the device over the link, with their timestamps, so patching and playing happen together through the one port.
-- **How the role is chosen.** A TI TUSB320 Type-C controller reads the cable's CC lines and switches the module's USB 2.0 OTG controller between device and host through Linux's USB role switch, which its mainline driver supports ([DEVICE-RESEARCH-IO]). The role change is reported to the engine as an event; it never interrupts audio.
+- **How the role is chosen.** A TI TUSB320 Type-C controller reads the cable's CC lines, drives the CM5's `USB_OTG_ID` pin and switches the module's USB 2.0 controller between device and host through Linux's USB role switch, which its mainline driver supports ([DEVICE-RESEARCH-IO]). The role change is reported to the engine as an event; it never interrupts audio.
+- **The open risk ([DEVICE-HW-USB-RISK]).** The CM5 datasheet calls OTG on this port "not officially documented". Device role on a CM5 is proven on Raspberry Pi's CM5 IO board, with USB MIDI and the link running, before the Prism board is laid out. If it cannot be made reliable, the fallback is a second, device-only USB-C port for the computer, and this section changes before layout.
 - **Prototype.** The Pi 5's USB-C port runs in device role (`dtoverlay=dwc2,dr_mode=peripheral`), and the keyboard goes into one of the Pi's USB-A ports until the Prism board's Type-C controller exists.
 
 ### Power [DEVICE-HW-POWER]
@@ -125,7 +131,7 @@ The device has **one USB-C port**, and it does everything: plays a keyboard, con
 
 The enclosure is drawn in the [device designs](../../designs/prism-device/README.md#enclosure-device-hw-enclosure), with its panel layout, connector faces and release checks. Constraints from this specification:
 
-- A Hammond 1590XX die-cast aluminium box, 145 × 121 × 39 mm with about 35 mm inside ([DEVICE-RESEARCH-PRICES]). Hammond's deeper 1590X, on the same footprint, is the fallback if the frozen parts do not fit.
+- A Hammond 1590WXX die-cast aluminium box: the 1590XX (145 × 121 × 39 mm, about 35 mm inside, walls about 3.1 mm) in its liquid-resistant version with a silicone lid gasket ([DEVICE-RESEARCH-PRICES]). Hammond's deeper 1590X, on the same footprint, is the fallback if the frozen parts do not fit.
 - Knobs and toggles on the top face, footswitches at the player's end, audio jacks on the sides (inputs right, outputs left, as on a pedalboard). At the back: the one USB-C port, the barrel power jack and TRS MIDI IN and OUT. No USB-A port.
 - Fanless: the module is thermally coupled to the shell through an isolated spreader ([DEVICE-HW-COMPUTE]).
 - A printed panel overlay from Prism's device face labels the controls ([PRISM-INSTRUMENT-DEVICE-LABELS]).
@@ -134,12 +140,12 @@ The enclosure is drawn in the [device designs](../../designs/prism-device/README
 
 The device is stomped on, kicked, dropped off a stage and packed in a gig bag. It is a **hard case** built like a road pedal, not a desktop gadget.
 
-- **Shell.** Die-cast aluminium, at least 2.5 mm walls (the Hammond 1590 series), powder-coated or anodised. No plastic panels, windows or bezels anywhere. Steel or stainless lid screws into the casting's bosses, with thread-locker.
+- **Shell.** Die-cast aluminium with walls of at least 2.5 mm; the 1590XX drawing gives about 3.1 mm. Powder-coated or anodised. No plastic panels, windows or bezels anywhere. Stainless O-ring lid screws (Hammond 1590WMS100) into the casting's bosses, at the gasketed torque of 25–30 cN·m.
 - **Footswitches.** Metal-bodied switches bolted through the shell with a washer and locknut, so a stomp loads the aluminium, never the board. Rated for at least 1,000,000 actuations. The top face takes a 100 kg standing load on either footswitch without deforming.
 - **Knobs and toggles.** Metal-shaft potentiometers and metal-bushing toggles, each fixed to the shell by its own panel nut; the board only carries their pins. Short bat-handle toggles; low-profile knobs below the footswitch caps so a boot slides off them ([DEVICE-HW-ENCLOSURE]).
 - **Connectors.** Every jack and the USB-C receptacle is nutted or screwed to the shell wall, so a yanked cable pulls against the case, not the solder joints. The USB-C receptacle is a panel-mount, through-hole-anchored part rated for at least 10,000 insertions.
 - **Inside.** The Prism board and module are held on a bracket fixed to the shell, with flexible, latched harnesses to the panel parts. The board is conformally coated against moisture and spilled drinks. The compute module is clamped, not only held by its connectors.
-- **Sealing.** The 1590 enclosure is rated IP54 closed; panel openings keep it splash-resistant with gaskets or tight-fit hardware ([DEVICE-RESEARCH-PRICES]).
+- **Sealing.** The 1590XX is sold as IP54, and the 1590WXX adds a silicone lid gasket. Every drilled opening keeps that splash resistance with sealed or O-ring hardware; drilling makes the rating a claim to test, not to assume ([DEVICE-RESEARCH-PRICES]).
 - **Tested ([DEVICE-HW-RUGGED-VERIFY]).** The assembled device passes, powered and playing: drop and topple to IEC 60068-2-31 from 1 m onto concrete on every face and edge; shock to IEC 60068-2-27; vibration to IEC 60068-2-64; 100 kg on each footswitch; a 50 N pull on every connected cable. After each test it still plays the acceptance patch with no new fault, and the bypass still passes signal with the power off.
 
 ## Prototype [DEVICE-HW-PROTOTYPE]
@@ -152,15 +158,17 @@ One unit, AUD including GST, 26 November 2026. Cited prices are from the [resear
 
 | Part | AUD | Basis |
 | --- | ---: | --- |
-| Compute Module 5, 4 GB, 16 GB eMMC, no wireless | 160 | USD 95 list, cited, converted with GST |
+| Compute Module 5, 4 GB, 16 GB eMMC, no wireless (CM5004016) | 140 | AUD 139.95, cited; out of stock on this date |
 | Prism board, assembled in a run of five (PCM3060, MCP3208, op-amps, relay, H11L1, TUSB320, regulators) | 110 | estimate |
 | Thermal spreader and pads | 10 | estimate |
 | Eight pots and knobs | 40 | estimate |
 | Four toggles and two footswitches | 40 | estimate |
 | Jacks: four 6.35 mm, one headphone, two TRS MIDI, one barrel, one USB-C | 35 | estimate |
-| Hammond 1590XX | 27 | cited |
+| Hammond 1590WXX, gasketed, with stainless O-ring screws | 40 | estimate; the plain 1590XX is AUD 26.81, cited |
 | Rugged hardware: panel-mount USB-C, metal toggles and footswitch nuts, bracket, gasket, conformal coat | 30 | estimate |
 | Drilling and printed panel | 30 | estimate |
-| **Total** | **482** | under AUD 500 |
+| **Total** | **475** | under AUD 500 |
 
-The prototype is a Raspberry Pi 5 4 GB (AUD 178, cited), a microSD card, the HiFiBerry DAC2 ADC Pro (about AUD 115) and breadboard parts, about AUD 450 before the enclosure. A pedal power supply is not included; most players already own one.
+Raspberry Pi raised 4 GB prices twice in 2026 as memory costs rose, and the CM5 was out of stock on this date ([DEVICE-RESEARCH-COMPUTE]). AUD 25 of headroom covers one more rise of that size; a larger one breaks the budget and is reported, not absorbed.
+
+The prototype is a Raspberry Pi 5 4 GB (AUD 178.42, cited), a microSD card, the HiFiBerry DAC2 ADC Pro (AUD 119.90, cited) and breadboard parts, about AUD 450 before the enclosure. A pedal power supply is not included; most players already own one.
