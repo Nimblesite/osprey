@@ -130,6 +130,18 @@ The enclosure is drawn in the [device designs](../../designs/prism-device/README
 - Fanless: the module is thermally coupled to the shell through an isolated spreader ([DEVICE-HW-COMPUTE]).
 - A printed panel overlay from Prism's device face labels the controls ([PRISM-INSTRUMENT-DEVICE-LABELS]).
 
+## Rugged [DEVICE-HW-RUGGED]
+
+The device is stomped on, kicked, dropped off a stage and packed in a gig bag. It is a **hard case** built like a road pedal, not a desktop gadget.
+
+- **Shell.** Die-cast aluminium, at least 2.5 mm walls (the Hammond 1590 series), powder-coated or anodised. No plastic panels, windows or bezels anywhere. Steel or stainless lid screws into the casting's bosses, with thread-locker.
+- **Footswitches.** Metal-bodied switches bolted through the shell with a washer and locknut, so a stomp loads the aluminium, never the board. Rated for at least 1,000,000 actuations. The top face takes a 100 kg standing load on either footswitch without deforming.
+- **Knobs and toggles.** Metal-shaft potentiometers and metal-bushing toggles, each fixed to the shell by its own panel nut; the board only carries their pins. Short bat-handle toggles; low-profile knobs below the footswitch caps so a boot slides off them ([DEVICE-HW-ENCLOSURE]).
+- **Connectors.** Every jack and the USB-C receptacle is nutted or screwed to the shell wall, so a yanked cable pulls against the case, not the solder joints. The USB-C receptacle is a panel-mount, through-hole-anchored part rated for at least 10,000 insertions.
+- **Inside.** The Prism board and module are held on a bracket fixed to the shell, with flexible, latched harnesses to the panel parts. The board is conformally coated against moisture and spilled drinks. The compute module is clamped, not only held by its connectors.
+- **Sealing.** The 1590 enclosure is rated IP54 closed; panel openings keep it splash-resistant with gaskets or tight-fit hardware ([DEVICE-RESEARCH-PRICES]).
+- **Tested ([DEVICE-HW-RUGGED-VERIFY]).** The assembled device passes, powered and playing: drop and topple to IEC 60068-2-31 from 1 m onto concrete on every face and edge; shock to IEC 60068-2-27; vibration to IEC 60068-2-64; 100 kg on each footswitch; a 50 N pull on every connected cable. After each test it still plays the acceptance patch with no new fault, and the bypass still passes signal with the power off.
+
 ## Prototype [DEVICE-HW-PROTOTYPE]
 
 Before the Prism board: a Raspberry Pi 5, a HiFiBerry DAC2 ADC Pro, an MCP3208 with eight knobs, toggles and footswitches on a breadboard, and the TRS MIDI circuit on the UART. Firmware and engine are identical to the product; only the device tree overlay differs. The prototype runs every hardware journey ([DEVICE-VERIFY]) before the Prism board is laid out.
@@ -147,7 +159,8 @@ One unit, AUD including GST, 26 November 2026. Cited prices are from the [resear
 | Four toggles and two footswitches | 40 | estimate |
 | Jacks: four 6.35 mm, one headphone, two TRS MIDI, one barrel, one USB-C | 35 | estimate |
 | Hammond 1590XX | 27 | cited |
+| Rugged hardware: panel-mount USB-C, metal toggles and footswitch nuts, bracket, gasket, conformal coat | 30 | estimate |
 | Drilling and printed panel | 30 | estimate |
-| **Total** | **452** | under AUD 500 |
+| **Total** | **482** | under AUD 500 |
 
 The prototype is a Raspberry Pi 5 4 GB (AUD 178, cited), a microSD card, the HiFiBerry DAC2 ADC Pro (about AUD 115) and breadboard parts, about AUD 450 before the enclosure. A pedal power supply is not included; most players already own one.
