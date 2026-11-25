@@ -3,6 +3,23 @@ use super::{
     parse_fn_sig, type_name_to_type, Checker, CtorInfo, EffectInfo, EffectOperation, EffectRef,
     EffectScope, HashMap, Position, Type, TypeError, TypeParam, TypeVariant,
 };
+use crate::ty::names;
+
+/// The first `Fiber` or `Channel` in `ty` written with no element type. Codegen
+/// needs that type at `await` and `recv`; a bare `Map` or `List` field does not.
+fn bare_handle(ty: &Type) -> Option<&str> {
+    match ty {
+        Type::Con { name, args } if args.is_empty() => [names::FIBER, names::CHANNEL]
+            .contains(&name.as_str())
+            .then_some(name.as_str()),
+        Type::Con { args, .. } => args.iter().find_map(bare_handle),
+        Type::Fun { params, ret } => params
+            .iter()
+            .chain(std::iter::once(ret.as_ref()))
+            .find_map(bare_handle),
+        _ => None,
+    }
+}
 
 /// Record one supplied effect argument, in written order, and bind it to the
 /// declaration's parameter.
@@ -25,7 +42,7 @@ impl Checker {
         variants: &[TypeVariant],
         position: Option<Position>,
     ) {
-        let builtin = crate::names::INDEX_OUT_OF_BOUNDS;
+        let builtin = names::INDEX_OUT_OF_BOUNDS;
         let declares = name == builtin || variants.iter().any(|v| v.name == builtin);
         let in_program = position.is_none_or(|p| !crate::prelude::is_prelude_line(p.line));
         if declares && in_program {
@@ -82,9 +99,9 @@ impl Checker {
         self.reject_bare_fields(name, variants, position);
     }
 
-    /// A field typed with a bare `Fiber`, `Channel`, `List`, `Map` or `Result`
-    /// names no element type, which no later use can supply: the check passed
-    /// it and codegen refused the program (#340). Implements [TYPE-GENERICS-FIELD-BARE].
+    /// A field typed with a bare `Fiber` or `Channel` names no element type,
+    /// which no later use can supply: the check passed it and codegen refused
+    /// the program at `await`/`recv` (#340). Implements [TYPE-GENERICS-FIELD-BARE].
     fn reject_bare_fields(
         &mut self,
         owner: &str,
@@ -93,11 +110,9 @@ impl Checker {
     ) {
         for field in variants.iter().flat_map(|variant| &variant.fields) {
             let ty = type_name_to_type(&field.ty, &HashMap::new());
-            if let Some(bare) = crate::variance::bare_constructor(&self.ctx, &ty) {
-                let written =
-                    vec!["int"; crate::variance::constructor_arity(&self.ctx, bare)].join(", ");
+            if let Some(bare) = bare_handle(&ty) {
                 let message = format!(
-                    "field `{}` of `{owner}` is a bare `{bare}`, which names no element type: write its type arguments, as in `{bare}<{written}>`, or make `{owner}` generic",
+                    "field `{}` of `{owner}` is a bare `{bare}`, which names no element type: write it, as in `{bare}<int>`, or make `{owner}` generic",
                     field.name
                 );
                 self.record_err(TypeError::new(message), position);

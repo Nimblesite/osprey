@@ -180,14 +180,16 @@ declaration's arity.** `Box<int> { v: 1 }` against `type Box<T>` is well-formed;
 the declaration, so a count mismatch is an error rather than a silently ignored
 annotation.
 
-`[TYPE-GENERICS-FIELD-BARE]` **A declared field names its type arguments.** A
-field written with a bare `Fiber`, `Channel`, `List`, `Map`, `Result` or generic
-record (`type Holder = { fib: Fiber }`) is rejected at the declaration, telling
-the author to write the arguments (`Fiber<int>`) or make the record generic
-(`type Holder<T> = { fib: Fiber<T> }`). No use can supply the element type the
-field lost. The check used to pass it and codegen then refused the program at
-`await` (#340, [COMPILER-RED-FAILS]). A function parameter written bare is
-different: it reads as fresh arguments, as if left to inference. Rejected by
+`[TYPE-GENERICS-FIELD-BARE]` **A declared `Fiber` or `Channel` field names its
+element type.** A field written with a bare `Fiber` or `Channel`, at any depth of
+its type (`type Holder = { fib: Fiber }`), is rejected at the declaration. The
+message tells the author to write the element type (`Fiber<int>`) or make the
+record generic (`type Holder<T> = { fib: Fiber<T> }`). Codegen needs that type
+at `await` and `recv`, and no use can supply it once the field has lost it. The
+check used to pass such a field, and codegen then refused the program (#340,
+[COMPILER-RED-FAILS]). A bare `Map` field still checks and runs. A function
+parameter written bare is different: it reads as fresh arguments, as if left to
+inference. Rejected by
 `src/osprey/examples/failscompilation/bare_constructor_record_field.ospo`.
 
 `[TYPE-GENERICS-FN]` **Functions bind type parameters with `fn name<T, …>`.**

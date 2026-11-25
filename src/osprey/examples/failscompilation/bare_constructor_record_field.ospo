@@ -1,9 +1,9 @@
-// [TYPE-GENERICS-FIELD-BARE] [COMPILER-RED-FAILS] #340: a record field written as a bare
-// `Fiber`, `Channel`, `List`, `Map` or `Result` names no element type, so `--check`
-// passed a program codegen then refused. Each field is rejected at its declaration;
-// `Fiber<int>`, a type parameter and a non-generic field still check.
+// [TYPE-GENERICS-FIELD-BARE] [COMPILER-RED-FAILS] #340: a record field written as a
+// bare `Fiber` or `Channel` names no element type, so `--check` passed a program
+// codegen then refused at `await`/`recv`. Each such field is rejected at its
+// declaration; `Fiber<int>`, a type parameter and a bare `Map` field still check.
 type Holder = { fib: Fiber, ready: Fiber<int> }
-type Pipes = { ch: Channel, names: List, ages: Map, outcome: Result }
+type Pipes = { ch: Channel, later: fn() -> Fiber, ages: Map }
 type Boxed<T> = { inner: Fiber<T>, count: int }
 fn work() = 21 * 2
 fn awaiter(h: Holder) = await(h.fib)
