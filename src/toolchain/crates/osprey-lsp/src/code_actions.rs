@@ -18,8 +18,14 @@ pub(crate) fn actions(
     let (Some(version), Some(source)) = (vfs.version(uri), vfs.text(uri)) else {
         return Vec::new();
     };
-    let analysis =
-        crate::diagnostics::analyze_cached(&source, uri.as_str(), vfs.encoding(), Some(vfs), cache);
+    let analysis = crate::diagnostics::analyze_cached(
+        &source,
+        uri.as_str(),
+        vfs.encoding(),
+        Some(vfs),
+        cache,
+        true,
+    );
     let mut actions = Vec::new();
     if includes(only, "quickfix") {
         actions.extend(crate::module_actions::actions(

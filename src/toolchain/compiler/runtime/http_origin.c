@@ -120,20 +120,11 @@ void origin_start(ScriptedOrigin *origin, const char *reply) {
   origin_start_bytes(origin, reply, reply ? strlen(reply) : 0);
 }
 
-// One OS-assigned port for the whole suite [CI-TEST-PORTS]: the shared
-// client is aimed at it once and every origin rebinds it between exchanges.
-// The cache lives here, in the one TU that owns the origin, so the client and
-// every origin agree on the number.
-int origin_port(void) {
-  static int port = 0;
-  return test_cached_port(&port);
-}
-
 void origin_start_bytes(ScriptedOrigin *origin, const char *reply, size_t len) {
   memset(origin, 0, sizeof(*origin));
   origin->reply = reply;
   origin->reply_len = len;
-  origin->listen_fd = test_loopback_listen(origin_port());
+  origin->listen_fd = test_loopback_listen(ORIGIN_PORT);
   assert(pthread_create(&origin->thread, NULL, origin_thread, origin) == 0);
 }
 
@@ -142,15 +133,12 @@ void origin_stop(ScriptedOrigin *origin) {
   close(origin->listen_fd);
 }
 
-int64_t origin_client_timed(int64_t timeout_ms) {
-  static char url[32]; // outlives every client, which copies its base URL
-  snprintf(url, sizeof(url), "http://127.0.0.1:%d", origin_port());
-  int64_t client_id = http_create_client((char *)(uintptr_t)url, timeout_ms);
+int64_t origin_client(void) {
+  int64_t client_id = http_create_client(
+      TEST_URL("http", ORIGIN_PORT), 2000);
   assert(client_id > 0);
   return client_id;
 }
-
-int64_t origin_client(void) { return origin_client_timed(2000); }
 
 // Handles are never reused, and servers share their numbering with clients, so
 // these hundreds of cases share one client rather than spend hundreds of handles.

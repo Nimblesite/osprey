@@ -71,8 +71,10 @@ managed value boxed into a channel is likewise retained for the receiving side.
 The runtime may therefore co-own managed allocations across fiber threads.
 Before creating the first pthread-backed fiber it calls
 `osp_mem_notify_multithreaded`: ARC switches from its single-threaded fast path
-to synchronized retain/release operations, while the conservative GC disables
-collection after a second allocator thread appears. Deterministic fiber mode
+to synchronized retain/release operations, while the conservative GC takes its heap lock on every allocation and
+collection from then on. A fiber or effect thread registers with the collector
+and keeps collection on; the first allocation from a thread that never
+registered turns collection off for the rest of the run ([MEM-EFFECT-BATON]). Deterministic fiber mode
 runs the same ownership protocol without creating a thread.
 
 Under the planned compile-time ownership backend
@@ -89,7 +91,7 @@ GC makes ordinary `osp_retain` and `osp_release` calls no-ops, reclaiming unreac
 
 The tradeoff is delayed reclamation, conservative retention and collection pauses. Choose `--memory=arc` when prompt reclamation or avoiding tracing pauses matters, then measure the application. Both backends are automatic and require no ownership annotations. Files, sockets and other external resources still need explicit cleanup under either backend.
 
-The current GC is supported on Apple and glibc-Linux, not Windows, and stops collecting after a second allocator thread appears. Use ARC on Windows and for native programs that need reclamation across allocating fiber threads. WebAssembly, mobile and Python-library targets default to ARC and reject explicit tracing GC. Their managed runtime selection never falls back to unmanaged allocation. Exported host-library globals remain alive for later calls; `--entry-only` programs release globals on return, and native, WASM and mobile differential suites require zero live ARC allocations.
+The current GC is supported on Apple and glibc-Linux, not Windows. It stops collecting once a thread that never registered with it allocates ([MEM-EFFECT-BATON]). Use ARC on Windows and for native programs whose own threads allocate. WebAssembly, mobile and Python-library targets default to ARC and reject explicit tracing GC. Their managed runtime selection never falls back to unmanaged allocation. Exported host-library globals remain alive for later calls; `--entry-only` programs release globals on return, and native, WASM and mobile differential suites require zero live ARC allocations.
 
 All code-generated heap allocation sites use the same IR symbols, so native
 backend selection only changes the runtime archive passed to the linker:
@@ -101,22 +103,30 @@ backend selection only changes the runtime archive passed to the linker:
 The C runtime memory tests exercise each backend directly. The differential
 conformance targets exercise compiled Osprey programs and compare their output;
 the ARC target additionally checks its live-allocation counter at process exit.
+`OSPREY_ARC_DEBUG=1` arms that counter and prints the count of blocks still
+live when the program exits; `OSPREY_ARC_DEBUG=2` also lists each survivor with
+its kind, size and reference count. Unset, ARC keeps no counters.
 
 ### Tracing Heap Layout [MEM-BACKENDS-GC-HEAP]
 
-Today the tracing backend takes every block from the system allocator and records it in one open-addressing table keyed by the block's address. A collection marks through that table, frees the unmarked blocks one by one, and reseats the survivors in place. The table keeps its capacity between collections and shrinks only after a collection that peaked below it.
+The tracing backend keeps a block in one of two places, chosen by its size.
 
-That layout is correct but slow for programs that allocate many short-lived small blocks. In the `binarytrees` benchmark the program's own code is about 5% of the run: the system allocator's `malloc` and `free` take about 38%, the table insert on each allocation about 28%, and collection about 25%. The run collects 133 times while about 640 KiB stays live. Resolving scanned words through the table is a small part of that (about 6%).
+**Small blocks, up to 1024 bytes, are cells of size-class pages.** A page is a 64 KiB region, aligned to 64 KiB, that holds cells of one size. Cell sizes step by 16 bytes, so there are 64 classes, and every cell is 16-byte aligned.
 
-Planned, not built ([plan 0033](../../plans/0033-generated-code-performance.md), phase 2): small blocks come from size-class pages that the collector owns.
+- **Allocation** takes a cell from a page of the block's class that has room: first a cell a collection found dead, lowest address first, then a cell never used. It makes no system allocator call and no table insert. A new page is taken from the system only when no page of the class has room.
+- **Lookup** of a scanned word masks the address to its page, then divides the offset by the cell size. The word names a block only when it is the first byte of a cell in use. A byte inside a cell, a dead cell, a cell never used and the page's own header name nothing, which is the rule the table applies, so no program retains more or less than it did with the table alone.
+- **Per-block state** (size, marked, finalizer, string, pinned, leaf) is an 8-byte record per cell in an array at the head of the page, outside the cells. A dead cell's record links the page's dead cells, so a dead cell's own bytes are never written.
+- **Sweep** unmarks a page's survivors and lists every other cell as dead. A page left with no live cell goes back to the system. Finalizers of every dying block, in pages and in the table, run before any block of that collection is freed or reused.
 
-- **Allocation** takes the next free cell of a page of the block's size class. It makes no system allocator call and no table insert.
-- **Lookup** of a scanned word finds its page from the address, then its cell from the offset in the page. A word keeps a block alive under exactly the rule the table applies today, so no program retains more or less than it does now.
-- **Per-block state** (marked, finalizer, string, pinned) is held in the page, beside the cells and outside them.
-- **Sweep** clears a page's unmarked cells for reuse and returns a page with no live cell to the operating system. Finalizers still run before any block of that collection is reused.
-- **Large blocks**, above the largest size class, keep the system allocator and the table.
+**Larger blocks keep the system allocator and one open-addressing table** keyed by the block's address. A collection frees the unmarked ones and reseats the survivors in place. The table keeps its capacity between collections and shrinks only after a collection that peaked below it.
 
-A cell freed by a collection is reused only by later allocations of the same size class. This replaces the allocator. It is not the recycling pool that was measured to make `binarytrees` about 12 times slower, which sat on top of the system allocator and cycled a cold working set.
+A small block also becomes a table block when no page can be had (the system refused one), and always in a symbolic build (`OSP_SYMBOLIC`), where the engine must see each block as an object of its own. `OSPREY_GC_PAGES=0` turns the pages off for a run, so every block is a table block: it exists to compare the two layouts and for the runtime's out-of-memory tests, which refuse one system block by its size.
+
+Measured on `binarytrees` (Apple M4 Max, same binary, `OSPREY_GC_PAGES=0` against the default): 1.37 s with the table alone, 0.25 s with pages. Before pages the program's own code was about 5% of that run: `malloc` and `free` took about 38%, the table insert on each allocation about 28%, and collection about 25%. `exprtree`, `mergesort`, `quicksort` and `wordfreq` are also faster and no benchmark case is slower. Peak resident memory moves with how full the pages are: `exprtree` falls from 22.7 MB to 11.7 MB, while `mergesort`, `quicksort` and `wordfreq` rise by about 5 MB, because a page with one live cell stays.
+
+The collection budget's floor stays at 4 MiB (`OSPREY_GC_HEAP_MB`). With pages, 2 MiB halves `binarytrees`' peak memory (17.5 MB to 9.8 MB) but slows it from 0.25 s to 0.33 s, and 1 MiB slows it to 0.52 s.
+
+An earlier recycling pool that sat on top of the system allocator made `binarytrees` about 12 times slower, because it cycled a cold working set. Pages replace the allocator for small blocks instead of adding a layer to it.
 
 The collection rules do not change: [MEM-OPAQUE], [MEM-GC-SAFEPOINT] and [MEM-EFFECT-BATON] hold as written, and the supported platforms stay the same.
 
@@ -141,6 +151,30 @@ finalizer registration, multithread notification, and collection. Backends
 that do not use a hook implement it as a no-op. This ABI keeps emitted IR
 independent of the selected native backend.
 
+### Heap Ceiling [MEM-HEAP-CEILING]
+
+The managed heap of a native program has a ceiling under both reclaiming backends. It is `OSPREY_HEAP_MAX_MB` mebibytes when that variable holds a positive number, and half of the machine's physical memory otherwise. Where the host does not report its physical memory (Windows and WebAssembly today) there is no ceiling unless the variable sets one.
+
+The ceiling counts what the heap holds, not what the program has allocated in total:
+
+- **GC** counts the bytes of every tracked block. Before a request would pass the ceiling the collector runs, so garbage is reclaimed first. While other threads are slow to park it asks again, for about a second in total.
+- **ARC** counts the bytes it holds from the system allocator, which includes dead blocks parked for reuse. Before a request would pass the ceiling every parked block is returned to the system.
+
+A request that still does not fit has two outcomes:
+
+- A single block larger than the whole ceiling is refused. The allocator returns no block, as it does for any size the system cannot serve, and the runtime operation that asked reports its own typed error.
+- Otherwise the heap is full of blocks still in use. The runtime writes one line to standard error and ends the process with status 71, after flushing standard output:
+
+  ```text
+  osprey: heap limit exceeded: backend=gc limit_bytes=67108864 peak_bytes=67102720 request_bytes=8192
+  ```
+
+  `peak_bytes` is the most the heap ever held and never exceeds `limit_bytes`.
+
+Ending the process is a runtime quarantine, not a language operation: compiled code allocates at sites that have no failure branch, so a refusal there would be a store through a null pointer, and growing without a bound takes memory from every other process on the machine. Making exhaustion a value the program can handle needs allocation to be an effect, which is not planned.
+
+Symbolic runs have no ceiling; the engine bounds their memory. Checked by `t_heap_ceiling` in `memory_gc_thread_tests.c` and `memory_arc_tests.c`, and by `a_heap_that_only_grows_ends_at_its_ceiling` in `src/toolchain/crates/osprey-cli/tests/fiber_gc_memory.rs`.
+
 ### Conservative Tracing GC [GC-TRACE-CONSERVATIVE]
 
 The native GC records managed allocation base addresses and conservatively
@@ -156,9 +190,15 @@ are still not scanned, so the GC backend is **not part of the supported
 Windows contract** until global-root discovery and its required Windows
 regression are implemented. Windows native callers should select `--memory=arc` explicitly.
 
-Collection is restricted to the initial allocator thread. The first allocation
-from another thread permanently disables collection, while allocation-table
-access remains synchronized.
+Any registered thread may collect once every other registered thread is parked
+([MEM-GC-SAFEPOINT]). The first allocation from a thread that never registered
+permanently disables collection, while heap access remains synchronized.
+
+The trace keeps its pending blocks on a stack that grows on demand. When that
+stack cannot get memory, the block that found no room is already marked, and the
+collector scans every marked block again until a pass drops nothing. Running out
+of memory during a collection therefore slows it and never frees a reachable
+block (`mark_stack_refused_child` in `memory_gc_page_tests.c`).
 
 #### Leaf blocks are marked, never scanned [GC-TRACE-LEAF]
 

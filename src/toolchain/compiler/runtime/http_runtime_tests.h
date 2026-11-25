@@ -4,37 +4,7 @@
 #include "memory_hooks.h"
 #include "string_runtime.h"
 #include "http_shared.h"
-
-#include <assert.h>
-#include <stdlib.h>
-#include <string.h>
-
-// `*out` as a complete reply with no stream: what a test handler hands back.
-static inline HttpResponse *test_reply(HttpResponse *out, int64_t status, const char *headers,
-                                       const char *content_type, const char *body) {
-  *out = (HttpResponse){.status = status,
-                        .headers = (char *)(uintptr_t)headers,
-                        .contentType = (char *)(uintptr_t)content_type,
-                        .streamFd = -1,
-                        .isComplete = true,
-                        .partialBody = (char *)(uintptr_t)body};
-  return out;
-}
-
-// `len` bytes of `fill` and a NUL, on the heap. The caller frees it.
-static inline char *test_bytes_filled(size_t len, char fill) {
-  char *bytes = malloc(len + 1);
-  assert(bytes != NULL);
-  memset(bytes, fill, len);
-  bytes[len] = '\0';
-  return bytes;
-}
-
-// A heap copy of exactly `len` bytes plus a NUL, so a sanitizer build traps any
-// read past the end. The caller frees it.
-static inline char *test_bytes_copy(const char *bytes, size_t len) {
-  return memcpy(test_bytes_filled(len, 0), bytes, len);
-}
+#include "test_loopback.h"
 
 // Shared declarations for the HTTP runtime suite TUs (http_runtime_tests.c,
 // http_origin_tests.c, http_tls_tests.c, http_server_live_tests.c), which link
@@ -74,15 +44,9 @@ void server_test_read_to_eof(int fd, char *out, size_t capacity);
 void server_test_exchange(int port, const char *request, char *reply,
                           size_t capacity);
 
-// The OS-assigned port the live-server TUs share (http_server_live_tests.c):
-// their listeners, their clients and this TU's creation checks all use it
-// [CI-TEST-PORTS].
-int server_test_port(void);
-
 // A raw TCP origin answering with exact bytes, NULs included, defined in
-// http_origin_tests.c. It listens on one OS-assigned port, shared with the
-// clients below through origin_port() [CI-TEST-PORTS].
-int origin_port(void);
+// http_origin_tests.c.
+#define ORIGIN_PORT test_port(3)
 
 typedef struct {
   int listen_fd;
@@ -105,8 +69,6 @@ void origin_start(ScriptedOrigin *origin, const char *reply);
 void origin_start_bytes(ScriptedOrigin *origin, const char *reply, size_t len);
 void origin_stop(ScriptedOrigin *origin);
 int64_t origin_client(void);
-// A client of the origin port that waits `timeout_ms` for each exchange.
-int64_t origin_client_timed(int64_t timeout_ms);
 
 // One exchange per call on shared_origin_client, each its own origin. Handles are
 // never reused, so the hundreds of cases share one client rather than spend handles.
@@ -130,6 +92,7 @@ void expect_response_bytes_n(const char *reply, size_t len, int64_t status,
 // The first two drive the allocation injector that lives in the main TU.
 void test_alloc_fail_off(void);
 void test_alloc_fail_size(size_t bytes);
+void test_alloc_fail_after(long successes);
 long test_alloc_live(void);
 void test_http_create_client(void);
 void test_http_create_server(void);
@@ -165,6 +128,7 @@ void test_closure_listener_serves_requests(void);
 void test_closure_listen_rejections(void);
 void test_stop_server_with_client_connected(void);
 void test_spawn_with_handlers_survives_every_failed_allocation(void);
+void test_spawn_refused_by_a_full_handle_table_frees_the_handler_copy(void);
 void test_listener_spawn_failure_is_reported(void);
 void test_client_gone_follows_the_served_client(void);
 void test_keep_alive_waits_for_its_listeners(void);

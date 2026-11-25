@@ -20,12 +20,7 @@
 // chain, so peer verification is asserted end to end [HTTP-STATUS-CLIENT].
 // ---------------------------------------------------------------------------
 
-// One OS-assigned port for this TU's TLS origins [CI-TEST-PORTS]: chosen
-// once, then rebound per test, so no sibling suite can hold it.
-static int tls_port(void) {
-  static int port = 0;
-  return test_cached_port(&port);
-}
+#define TLS_PORT test_port(5)
 
 // A self-signed root (basicConstraints CA:TRUE) when issuer is NULL, otherwise
 // a leaf signed by that issuer. `san` is an X509V3 value such as
@@ -130,7 +125,7 @@ static void tls_origin_start(TlsOrigin *origin, X509 *leaf, EVP_PKEY *leaf_key,
   assert(origin->ctx != NULL);
   assert(SSL_CTX_use_certificate(origin->ctx, leaf) == 1);
   assert(SSL_CTX_use_PrivateKey(origin->ctx, leaf_key) == 1);
-  origin->listen_fd = test_loopback_listen(tls_port());
+  origin->listen_fd = test_loopback_listen(TLS_PORT);
   assert(pthread_create(&origin->thread, NULL, tls_origin_thread, origin) == 0);
 }
 
@@ -140,10 +135,10 @@ static void tls_origin_stop(TlsOrigin *origin) {
   SSL_CTX_free(origin->ctx);
 }
 
-// One https:// client aimed at the TLS origin for `host`.
+// One https:// client aimed at the TLS origin on TLS_PORT for `host`.
 static int64_t tls_client(const char *host) {
   char url[128];
-  snprintf(url, sizeof(url), "https://%s:%d", host, tls_port());
+  snprintf(url, sizeof(url), "https://%s:%d", host, TLS_PORT);
   int64_t client_id = http_create_client(url, 3000);
   assert(client_id > 0);
   return client_id;
@@ -295,9 +290,7 @@ static int64_t tls_bounded_exchange(EVP_PKEY *key, X509 *leaf, const char *reply
   tls_origin_start(&origin, leaf, key, reply);
   origin.hold_open = hold_open; // read only once the request below has arrived
   origin.drip_us = drip_us;
-  char url[48];
-  snprintf(url, sizeof(url), "https://127.0.0.1:%d", tls_port());
-  int64_t client_id = http_create_client((char *)(uintptr_t)url, timeout_ms);
+  int64_t client_id = http_create_client(TEST_URL("https", TLS_PORT), timeout_ms);
   assert(client_id > 0);
   return tls_fetch(&origin, client_id);
 }
@@ -305,8 +298,6 @@ static int64_t tls_bounded_exchange(EVP_PKEY *key, X509 *leaf, const char *reply
 // TLS reads to the same bounds. A record dripped a byte at a time never returns from
 // a blocking SSL_read, so this is what proves the bound isn't only checked between
 // reads [HTTP-RESPONSE-FRAMING].
-enum { TLS_HANG_GUARD_MS = 30000 }; // hang guard only, far above scheduler noise
-
 static void tls_expect_read_bounds(EVP_PKEY *key, X509 *leaf) {
   uint64_t started = osp_monotonic_ms();
   int64_t handle = tls_bounded_exchange(key, leaf,
@@ -317,17 +308,14 @@ static void tls_expect_read_bounds(EVP_PKEY *key, X509 *leaf) {
       "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n2\r\nok\r\n0\r\n\r\n", 20000, true, 0);
   assert(handle >= 1);
   assert(http_response_free(handle) == 0);
-  assert((int64_t)(osp_monotonic_ms() - started) < TLS_HANG_GUARD_MS);
+  assert((int64_t)(osp_monotonic_ms() - started) < 3000);
 
   osp_io_error_clear();
   started = osp_monotonic_ms();
   assert(tls_bounded_exchange(key, leaf,
       "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok", 100, false, 40000) == -16);
   int64_t took = (int64_t)(osp_monotonic_ms() - started);
-  // The tight lower bound is the mechanism: the computed deadline (timeout x
-  // HTTP_READ_BOUND_FACTOR) really elapsed. The upper bound only guards a hang.
-  assert(took >= 100 * HTTP_READ_BOUND_FACTOR - 100);
-  assert(took < 100 * HTTP_READ_BOUND_FACTOR + TLS_HANG_GUARD_MS);
+  assert(took >= 100 * HTTP_READ_BOUND_FACTOR - 100 && took < 100 * (HTTP_READ_BOUND_FACTOR + 5));
   assert(strcmp(osp_io_error(), "http response: read: over the time limit") == 0);
   osp_io_error_clear();
   assert(tls_bounded_exchange(key, leaf,

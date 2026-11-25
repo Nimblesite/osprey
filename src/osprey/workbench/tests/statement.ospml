@@ -33,6 +33,12 @@ module StatementCases
         Success one => one
         Error _ => workbench::Problem(line = 0, column = 0, message = "missing problem", fix = "missing fix")
 
+    (** A problem on `line` saying `message`, with `fix` as its remedy. *)
+    saysAt (found, line, message, fix) =
+        expect (found.line, line)
+        expect (found.message, message)
+        expect (found.fix, fix)
+
     (** [WORKBENCH-STATEMENT]: the spec's and_swap document reads to one named declaration with its variables, claim and raw proof. *)
     export andSwap () =
         found = Statements::document andSwapText
@@ -79,13 +85,9 @@ module StatementCases
         expect (length one.problems, 2)
         first = problem one.problems 0
         second = problem one.problems 1
-        expect (first.line, 1)
         expect (first.column, 16)
-        expect (first.message, "`r` is not declared")
-        expect (first.fix, "declare `r` with For all")
-        expect (second.line, 1)
-        expect (second.message, "`p` is not declared")
-        expect (second.fix, "declare `p` with For all")
+        saysAt (first, 1, "`r` is not declared", "declare `r` with For all")
+        saysAt (second, 1, "`p` is not declared", "declare `p` with For all")
 
     (** [WORKBENCH-STATEMENT]: a claim that does not read is one problem carrying the fault's expected text and line-relative column, and the claim falls back to `Bot`. *)
     export malformed () =
@@ -93,8 +95,6 @@ module StatementCases
         one = sole found
         expect (length one.problems, 1)
         fault = problem one.problems 0
-        expect (fault.line, 1)
         expect (fault.column, 20)
-        expect (fault.message, "a proposition after `∧`")
-        expect (fault.fix, "rewrite the claim so it reads")
+        saysAt (fault, 1, "a proposition after `∧`", "rewrite the claim so it reads")
         expect (Formulas::show one.statement.claim, "⊥")

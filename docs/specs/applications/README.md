@@ -14,3 +14,4 @@ Reactive mobile applications, the proof workbench and its lessons, the Osprey Ag
 - [Local coding model [LLM]](LocalCodingModel.md)
 - [Pocket Orchestra [ORCHESTRA]](PocketOrchestra.md)
 - [The daw [DAW]](Daw.md)
+- [Clean Architecture todo example [EXAMPLE-CLEANARCH]](CleanArchTodo.md)

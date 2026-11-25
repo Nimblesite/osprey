@@ -99,21 +99,7 @@ pub(super) fn bind_list_arm(
         }
     }
     if let Some(name) = rest {
-        let tail = cg.call(
-            "i8*",
-            "osprey_list_drop",
-            "i8*, i64",
-            &[&list_val.operand, &n.to_string()],
-        );
-        let tail_owner =
-            crate::collections::list_owner(crate::collections::tagged_elem(list_val).as_deref());
-        let mut v =
-            Value::handle(tail, tail_owner).with_payload_owner(list_val.payload_owner.clone());
-        // The tail is a list of the same type. Without it a self-recursive
-        // `walk rest` keyed a second instantiation with no element type, and a
-        // field two records declare was quarantined on its elements
-        // ([`crate::monofn`], [TYPE-FIELD-ACCESS-NON-RECORD]).
-        v.inferred_type.clone_from(&list_val.inferred_type);
+        let v = tail(cg, list_val, n);
         // `osprey_list_drop` returns +1 on EVERY path (fresh view or retained
         // alias, plan 0011 M4a), so the arm owns it and must drop it at region
         // end — without this a `[head, ...tail]` recursion leaks one list
@@ -122,6 +108,26 @@ pub(super) fn bind_list_arm(
         crate::arc::own(cg, &v);
         bind_value(cg, name.to_string(), v);
     }
+}
+
+/// The list after its first `n` elements, +1 and not yet owned by any region:
+/// the caller owns it once, on the one path that binds it.
+pub(super) fn tail(cg: &mut Codegen, list_val: &Value, n: usize) -> Value {
+    let tail = cg.call(
+        "i8*",
+        "osprey_list_drop",
+        "i8*, i64",
+        &[&list_val.operand, &n.to_string()],
+    );
+    let tail_owner =
+        crate::collections::list_owner(crate::collections::tagged_elem(list_val).as_deref());
+    let mut v = Value::handle(tail, tail_owner).with_payload_owner(list_val.payload_owner.clone());
+    // The tail is a list of the same type. Without it a self-recursive
+    // `walk rest` keyed a second instantiation with no element type, and a
+    // field two records declare was quarantined on its elements
+    // ([`crate::monofn`], [TYPE-FIELD-ACCESS-NON-RECORD]).
+    v.inferred_type.clone_from(&list_val.inferred_type);
+    v
 }
 
 pub(super) fn runtime(cg: &mut Codegen, value: Value) -> Result<Value> {

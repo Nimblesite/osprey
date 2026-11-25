@@ -85,6 +85,16 @@ test('the preflight reads ci.yml and every workflow it calls', () => {
     'the hosted and local duplication check install and run the same pinned binary')
 })
 
+test('the compiler composite builds the current runtime and release binary before consumers', () => {
+  const runtime = checks.findIndex(({ job, command }) => job === 'ci.yml:build' && command === 'make _runtime')
+  const compiler = checks.findIndex(({ job, command }) => job === 'ci.yml:build' && /cargo build .* --release -p osprey-cli/.test(command))
+  const fallback = checks.findIndex(({ job, command }) => job === 'ci.yml:build' && command === 'make _runtime_wasm')
+  assert.ok(runtime >= 0 && runtime < compiler && compiler < fallback, 'fresh compiler artifacts precede the other builds and tests')
+  assert.equal(checks[compiler].env.OSPREY_VERSION, '')
+  assert.ok(checks[compiler].command.includes('target/release/osprey --version'))
+  assert.ok(!checks.some(({ job, command }) => job === 'ci.yml:analyse' && /cargo build .* --release -p osprey-cli/.test(command)), 'setup with build disabled reuses the artifact')
+})
+
 test('every make check in the PR workflows is planned, inside the step that runs it', () => {
   for (const file of workflowFiles()) {
     for (const [, line] of readFileSync(file, 'utf8').matchAll(/^\s+(?:- )?(?:run: )?(?:xvfb-run -a )?(make [^$\n]+)$/gm)) {

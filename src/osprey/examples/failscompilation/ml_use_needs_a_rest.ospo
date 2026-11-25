@@ -1,0 +1,7 @@
+// osprey: flavor=ml
+// [BLOCK-USE-REJECT] The ML half of `use_needs_a_rest.ospo`: a `use` on the last
+// line of a block has no callback body.
+first () =
+    use a <- andThen (Success(value = 1))
+
+print "${toString (first ())}"

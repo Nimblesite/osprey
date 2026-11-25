@@ -13,8 +13,8 @@ Root-cause fixes only: no retries, no wider timeouts used to hide a race, no ski
   - Fix: `test_port(offset)` in `test_loopback.h` returns a port from a block of 24 chosen once per process. It starts at a pid-derived block from 20000 and takes the first block whose ports are all bindable.
   - Keep the base in `OSP_TEST_PORT_BASE` with `setenv`. A per-translation-unit `static` let the origin and its client pick different blocks, and `test_client_chunked_response` hung in `origin_stop`.
   - Every fixed port becomes a unique offset. URLs are built with `snprintf`.
-  - Status: landed differently. Listeners bind port 0 and read the port the kernel gave them (`test_loopback_bind` in `test_loopback.h`), so no two suites can share one. The stall had a second cause: `test_alloc.h` refused allocations without setting `errno`, and glibc aborted in `allocatestack.c`. Every refusal now sets `ENOMEM`. `make -j2 _test_c_runtime` passed three rounds in a clean Linux snapshot.
-- [ ] Runtime findings 2–11 and the UI findings below, in the order listed. Done: the runtime suites (`http_read_tests.c`, `effects_runtime_tests.c`, `fiber_channel_tests.c`, the websocket and http server suites) wait on signals, verified with the three rounds above, and the WinUI kill comes from the steps (a7b6fa2e). Open: `build.py` deadlines and Playwright. Each fix replaces a sleep or a deadline with a signal the test waits on:
+  - Status: landed on 2026-11-23. The block is chosen in a constructor before main, so no thread or forked child picks its own. Verified by `make -j4 _test_c_runtime` (coverage and ASan twins side by side) on Ubuntu 26.04 with GCC 15.2, green, and the http, net and websocket suites in parallel on macOS.
+- [ ] Runtime findings 2–11 and the UI findings below, in the order listed. Each fix replaces a sleep or a deadline with a signal the test waits on:
   - wall-clock bounds in `http_read_tests.c`
   - the dribble margin
   - sleep-then-assert in `effects_runtime_tests.c` and `fiber_channel_tests.c`
@@ -29,12 +29,29 @@ Root-cause fixes only: no retries, no wider timeouts used to hide a race, no ski
 
 ## Open issues blocking PR #428 (2026-11-23 hand-off)
 
-- [x] **Duplication gate red.** `make _deslop` reported 4.1% (22828 of 561299 lines) against the 3.996181% ceiling in `.deslop.toml`. It now reports 22419 of 561098 lines, under the ceiling, on a clean export of the tree. Most of the excess was the cleanarch_todo test cases, which arrived after the ceiling was set (dfd4a5ff). They now share fixtures (`shoppingList`, `milkOnly`, `milkAndTax`, `retryItems`) and journey helpers (the rival ladder, `retryLanded`, `retryHolds`, `retryDeletes`, `authzPages`, `authzStarted`) and still pass 100 of 100 on Linux. The rest came from shared helpers in the runtime test headers, the process runtime, `osprey-types` and the osprey-cli test support, plus one fiber test folded into its twin. The margin is about 3 lines, so the next duplication pushes the gate red again.
-- [x] **cleanarch_todo has 9 failing tests** (the same 9 before and after the dedup), for example "a missing list is missing in every fix branch" and "the page plan answers its four shapes in order". Find out why they fail; they are not new. They fail only on Windows, where `osprey test` cannot link a test program (`lld-link` is handed `--stack` and `pthread.lib`). On Linux the suite passes 100 of 100.
+- [ ] **Duplication gate red.** `make _deslop` reports 4.2% (23471 of 560981 lines) against the 3.996181% ceiling in `.deslop.toml`: about 1,050 duplicated lines must go, and the ceiling only goes down. Most of the excess arrived since the last green run (cacb69095):
+  - `daw/test/main.ospml`, `voice.ospml`, `room.ospml` and `history.ospml`
+  - the cleanarch_todo `multishot_*_cases.osp`
+  - `osprey-cli/tests/common/many_programs.rs`, `staged_multiplicity.rs` and `staged_many.rs`
+
+  The CleanArch suite must retain all 100 passing tests in both GC and ARC.
+
+  Progress on 2026-11-23:
+  - FerroUI is now measured, which raised the figure to 5.0%. It shares GPUI's toolkit-free modules (events, regions, tree, store, ffi, frame, the linked app symbols, the file and process adapters, and the ffi tests). Only its view, host, surface and scene are its own.
+  - Benchmarks and `docs/book/` are excluded, because their programs stand alone.
+  - Shared helpers were added to the C process table, the workbench kernel trees, the synth tests, the Prism tests and the cleanarch plan cases.
+  - The figure is back to about 4.2%. Three GLM pis are deduplicating the collection corpus, the cleanarch multishot cases and the native tests.
+
+  Some clones that remain cannot be merged in today's Osprey. These syntax proposals would let them merge:
+  - **Operation-polymorphic handler factories** ([EFFECTS-HANDLER-VALUE]). `direct_recovery` and `resume_lifo_audit` repeat one arm shape per operation: count, log, `resume`, log, transform. That happens because a handler value names one fixed effect and `resume` cannot leave its arm. A factory parameterised by an operation reference, such as `audited(Alpha.alpha, "a", 10, |n| => n + 1)`, would install each arm from one definition.
+  - **A shared corpus test prelude.** Each `src/osprey/tests/` program stands alone, so helpers such as `twice`, `isEven` and the fiber/handler fixtures are copied between programs. Two options would let them be defined once: an importable `tests/support` module, or more helpers in the prelude's `testing.osp`.
+  - **Derived JSON codecs from typeDiagram models.** The workbench `save`/`restore` pairs (`store.ospml`, `tutor.ospml`) and every app's `*Json`/`*Of` pair are field-by-field mirrors. Generating them from the model, as AGENTS.md asks, would delete both sides.
+  - **One generic UI test bench** (`uitest::Bench S A`). daw, signal_flow, casting, painting, flock and uitest each declare their own `Bench` effect and the same `post`/`pointer`/`tap`/`element`/`offers` wrappers. A generic effect in `uitest` needs effect type parameters to work across packages in ML. This was not tried yet.
+- [x] **CleanArch retry and page tests.** The rival queue consumes one writer at a time, including duplicate titles, and the authorization, pagination and validation expectations match their fixtures and branch rules. All 100 cases pass under GC and ARC on the PR head.
 - [ ] **Windows Prism docked panel:** a white toolbar strip where Undo and Redo belong, and a light-theme panel beside the dark canvas. Logged as [daw.md](daw.md) item 40. The 100% goldens record the current look; the 150% goldens still show the deleted keyboard dock.
 - [ ] **Canvas scale with the panel docked.** The user said "scale a bit off". With [DAW-LAYOUT-FIXED-SCALE] at one unit per point, a 1152-point window with the 320-point panel hides the right of the patch. Decide whether a docked panel narrows the page or the canvas fits its pane.
 - [ ] **CPython in CI.** `_prism_ui_test` and `_prism_vst_ui_test` run `python3 src/toolchain/hosts/synth_vst/build.py`, which AGENTS.md bans. Port it to Python-flavour Osprey.
-- [ ] **Uncommitted work by another agent.** The `has_many` gating in `osprey-ast/src/multiplicity.rs` and `osprey-types/src/multiplicity.rs` (it also drops a `sort_unstable`) was left in the tree for its owner, neither committed nor reverted.
+- [x] **Rust lowering growth.** Only programs that declare a multi-shot operation need captured-state analysis. The gate is in the pushed commit `b87b7e245`. The 4,000-caller fixture fell from 4.02 s to 0.69 s locally, and the budget, staged-many and multiplicity tests passed.
 - [ ] **Multi-shot review leftovers** ([MULTI-HANDLE-MANY]):
   - compile time grows about cubically with many resumes in one arm, and overflows the Rust stack near 10,000
   - resume is capped near 512 by the syntax nesting limit
@@ -44,7 +61,7 @@ Root-cause fixes only: no retries, no wider timeouts used to hide a race, no ski
 
 ## CI runtime
 
-- [ ] `Check: every Osprey program compiles` is the longest job (17 min; 994 s for the step in run 45027767330). It ran 600+ compiles in batches of 16, and each batch waited for its slowest member. `scripts/ci/check-programs.py` now keeps 16 in flight through an `xargs -P` pool, and each job writes its own exit code: 607 programs, 0 failed, in 4 min 55 s locally. Compare its CI time with that run. Split the programs across runners only if the pool alone does not bring the job under the Rust workspace's 17 min.
+- [x] Compared the 16-worker pool with the [batched baseline](https://github.com/Nimblesite/osprey/actions/runs/45027767330) (17m23s for the job, 16m34s compiling). The four completed checks after the change all passed. Whole-job times in order were [12m26s](https://github.com/Nimblesite/osprey/actions/runs/45067066085), [15m27s](https://github.com/Nimblesite/osprey/actions/runs/45138676397), [14m59s](https://github.com/Nimblesite/osprey/actions/runs/45140038913) and [17m58s](https://github.com/Nimblesite/osprey/actions/runs/45143088617). Compilation took 11m24s to 16m39s. Keep one runner given the 15m13s median against the 17-minute target.
 - [ ] `Tests: Rust workspace (rest)` (17 min) and WinUI (16 min) are the next critical paths. macOS jobs also wait for runners: iOS Inbox started 13 min late.
 
 ## Runtime test-suite flakiness review (read-only)

@@ -24,6 +24,7 @@ void osp_gc_free(void *p);
 size_t osp_gc_live_objects(void);
 size_t osp_gc_collections(void);
 size_t osp_gc_table_capacity(void);
+size_t osp_gc_pages(void);
 
 extern long g_checks;
 #define CHECK(c)                                                               \
@@ -73,5 +74,15 @@ void t_unregistered_thread_exit_is_a_no_op(void);
 void t_multithread_disables_collection(void);
 void debug_stats_child(void);
 void t_debug_reports(const char *self);
+void ceiling_child(const char *mode);
+void t_heap_ceiling(const char *self);
+
+// memory_gc_tests.c
+void scrub_stack(void);
+
+// memory_gc_page_tests.c
+void pages_off_child(void);
+void mark_stack_refused_child(void);
+void t_size_class_pages(const char *self);
 
 #endif

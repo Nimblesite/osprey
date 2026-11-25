@@ -104,7 +104,40 @@ pub(super) fn bind_pattern(
                 }
             }
         }
+        Pattern::Or(alternatives) => bind_alternatives(alternatives, value, owner, index, env),
         Pattern::Wildcard | Pattern::Literal(_) => {}
+    }
+}
+
+/// A binder of an or-pattern may come from any alternative, so it carries
+/// the union of what each alternative gives it: a callable taken from either
+/// side keeps both sides' effects ([PATTERN-OR-BINDINGS]).
+fn bind_alternatives(
+    alternatives: &[Pattern],
+    value: Option<&Value>,
+    owner: &FieldOwner,
+    index: &Index<'_>,
+    env: &mut CallableEnv,
+) {
+    let names = alternatives
+        .first()
+        .map_or_default(crate::pattern::pattern_binder_names);
+    let mut joined: Vec<(String, Option<Value>)> =
+        names.into_iter().map(|name| (name, None)).collect();
+    for alternative in alternatives {
+        bind_pattern(alternative, value, owner, index, env);
+        for (name, slot) in &mut joined {
+            if let Some(bound) = env.values.get(name.as_str()) {
+                super::provenance::merge_optional_value(slot, bound.clone());
+            }
+        }
+    }
+    for (name, slot) in joined {
+        if let Some(bound) = slot {
+            let _ = env.values.insert(name, bound);
+        } else {
+            let _ = env.values.remove(&name);
+        }
     }
 }
 

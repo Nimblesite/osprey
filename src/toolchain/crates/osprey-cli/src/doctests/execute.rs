@@ -23,8 +23,9 @@ pub(super) fn check(
         input.source().to_string(),
         super::synthesize::reachable(backend),
     );
-    validate(cli, &input)?;
-    if !example.run {
+    let native_probe = example.native_only && cli.target == "wasm32";
+    validate(cli, &input, native_probe)?;
+    if !example.run || native_probe {
         return Ok(());
     }
     let (mut command, temporary) = executable(cli, &input)?;
@@ -38,14 +39,28 @@ pub(super) fn check(
     compare(&output?, example, &cli.memory)
 }
 
-fn validate(cli: &Cli, input: &CompilationInput) -> Result<(), String> {
+fn validate(cli: &Cli, input: &CompilationInput, native_probe: bool) -> Result<(), String> {
     let violations = sandbox::violations(input.program(), cli.policy);
     if !violations.is_empty() {
         return Err(violations.join("\n"));
     }
+    if native_probe {
+        return require_capability_refusal(input);
+    }
     if target_error(cli, input).is_some() {
         return Err("documentation example failed compilation".into());
     }
+    Ok(())
+}
+
+fn require_capability_refusal(input: &CompilationInput) -> Result<(), String> {
+    let Err(reason) = crate::target_capabilities::validate(input.program(), "wasm32") else {
+        return Err("this example is portable; remove `native` from its code fence".into());
+    };
+    eprintln!(
+        "{}: native example confirmed: {reason}",
+        input.display_path()
+    );
     Ok(())
 }
 
@@ -61,7 +76,10 @@ fn executable(cli: &Cli, input: &CompilationInput) -> Result<(Command, Option<Pa
     }
     let (path, temporary) =
         native_executable(input, crate::native::NativeOptions::from_cli(cli)).map_err(failed)?;
-    Ok((Command::new(&path), temporary.then_some(path)))
+    let mut command = Command::new(&path);
+    crate::toolchain::ends_with_this_process(&mut command);
+    crate::toolchain::runner_alive().map_err(|error| error.to_string())?;
+    Ok((command, temporary.then_some(path)))
 }
 
 fn wasm_executable(input: &CompilationInput) -> Result<(Command, Option<PathBuf>), String> {
@@ -160,6 +178,7 @@ mod tests {
                 code: String::new(),
                 expected_output: Some(output.into()),
                 run: true,
+                native_only: false,
             };
             assert_eq!(expected_bytes(&example).as_deref(), Ok(bytes));
         }
@@ -167,6 +186,7 @@ mod tests {
             code: String::new(),
             expected_output: None,
             run: true,
+            native_only: false,
         };
         assert!(expected_bytes(&example).is_err());
     }

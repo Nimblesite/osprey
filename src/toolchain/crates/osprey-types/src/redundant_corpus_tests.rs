@@ -168,6 +168,17 @@ fn a_default_signature_is_unaffected_by_the_curried_collapse() {
 }
 
 #[test]
+fn a_hand_written_lambda_is_still_reported_against_the_lambda() {
+    // The collapse is specific to a curry chain the lowering produced. A
+    // lambda somebody actually wrote still names itself.
+    reports(
+        Flavor::Ml,
+        "exclaim = \\(s: string) => s + \"!\"\nr = exclaim \"hi\"\n",
+        &["redundant type annotation on parameter `s` of `<lambda>`: inference derives `string` without it"],
+    );
+}
+
+#[test]
 fn a_three_argument_curried_header_preserves_every_arrow() {
     // The whole written signature is one warning. Its three curried arrows
     // remain distinct from a function taking three arguments in one call.

@@ -274,7 +274,10 @@ module View
         Lists::find (chats, \chat => chat.chatId == panel.panelActive) ?: (listGet chats 0 ?: Model::blank ("c0", "", "", "", 0))
 
     // The folder's own name: the last part of its path, whichever separator the platform writes.
-    folderName path = pathName path
+    folderName path =
+        parts = split (replace path "\\" "/" ?: path) "/" ?: []
+        last = listGet parts (length parts - 1) ?: path
+        Pick::either (last == "", path, last)
 
     (** The window: the sidebar beside the conversation and, when open, the inspector. *)
     export root () =

@@ -106,7 +106,7 @@ module PrismArt
 
     owns (mark, name) = belongs (mark, name) && length (filterList (["source", "process", "control", "output", "monitor"], \other => other != name && belongs (mark, other))) == 0
 
-    parameter (n, key, otherwise) = match listGet (filterList (n.parameters, \p => p.key == key)) 0
+    parameter (n, key, otherwise) = match synth::Graphs::parameterNamed (n, key)
         Error _ => otherwise
         Success p => p.initial
 

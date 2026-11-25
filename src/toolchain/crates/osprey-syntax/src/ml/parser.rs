@@ -46,6 +46,7 @@ mod items;
 mod parameters;
 mod patterns;
 mod types;
+mod uses;
 
 use super::cst::{
     MlArm, MlBinder, MlClauses, MlEffectOp, MlEffectRef, MlExpr, MlExternParam, MlField,

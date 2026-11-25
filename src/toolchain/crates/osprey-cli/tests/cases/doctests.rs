@@ -199,6 +199,8 @@ const PACKAGE_SOURCES: [(&str, &str); 4] = [
     ),
 ];
 
+// [DOC-DOCTEST-WRAPPER-DEPTH] at namespace and module depth;
+// [DOC-PYTHON-DOCSTRING-CLEAN] for the example in an indented docstring.
 #[test]
 fn doctests_run_in_packages_whose_default_namespace_is_their_own_in_every_flavor() {
     let root = temp_dir("documentation_package");
@@ -260,6 +262,47 @@ fn doctests_keep_example_type_positions_separate_from_source_positions() {
     let source = "let value = fn() => 42\n/// Separate lambda types.\n/// # Examples\n/// ```osprey\n/// let value = fn() => \"documentation\"\n/// print(value())\n/// ```\n/// ```output\n/// documentation\n/// ```\nfn documented() = value()\n";
     let result = doc_tests("documentation_positions", source);
     assert_doc_tests(&result, "1 passed, 0 failed");
+}
+
+#[test]
+fn doctests_count_written_literals_before_assembly() {
+    // [TYPE-WARNINGS-REPEATED-LITERAL] Inlining a module constant creates
+    // three AST copies, but its source only contains one literal.
+    let source = r#"namespace fixtures
+(** Example API. *)
+module Example
+    phrase = "authored only once"
+    first () = phrase
+    second () = phrase
+    third () = phrase
+    (** Count the three phrases.
+    # Examples
+    ```osprey
+    print (Example::count ())
+    ```
+    ```output
+    3
+    ```
+    *)
+    export count () = length [first (), second (), third ()]
+"#;
+    let path = temp_dir("documentation_authored_literals").join("example.ospml");
+    let strict = ["--doctests", "--warnings-as-errors"];
+    std::fs::write(&path, source).expect("write ML doctest fixture");
+    let original = run_file(&path, &strict);
+    assert_doc_tests(&original, "1 passed, 0 failed");
+
+    let written = source.replace(
+        "print (Example::count ())",
+        "print (length [\"actually repeated\", \"actually repeated\", \"actually repeated\"])",
+    );
+    std::fs::write(&path, written).expect("write repeated-literal fixture");
+    let repeated = run_file(&path, &strict);
+    assert_doc_tests_rejected(
+        &repeated,
+        &["actually repeated", "repeated-literal"],
+        "0 passed, 1 failed",
+    );
 }
 
 #[test]
@@ -343,11 +386,11 @@ fn doctests_reject_an_output_fence_with_no_example_before_it() {
     assert_doc_tests_rejected(&result, &["add", "`output` fence"], "0 passed, 1 failed");
 }
 
-/// Runnable examples execute under a WASI host on wasm32. The host is a shell
-/// script. [DOC-DOCTEST-HARNESS]
+/// Runnable examples execute under a WASI host on wasm32 and are refused, each with
+/// the target named, where nothing can execute them. [DOC-DOCTEST-HARNESS]
 #[cfg(unix)]
 #[test]
-fn doctests_run_on_wasm32() {
+fn doctests_run_on_wasm32_and_refuse_targets_that_cannot_execute() {
     let dir = temp_dir("documentation_wasm_host");
     let smoke = super::repo_root().join("scripts/wasm/wasm-smoke.mjs");
     let host = dir.join("wasi-host");
@@ -358,17 +401,46 @@ fn doctests_run_on_wasm32() {
     .expect("write WASI host");
     super::set_mode(&host, 0o755);
     let mut command = super::osprey();
+    let directory = r#"
+/// Lists a directory.
+/// # Examples
+/// ```osprey native
+/// print(directoryMissing())
+/// ```
+/// ```output
+/// true
+/// ```
+fn directoryMissing() = match listDir("/no-such-osprey-doctest-directory") {
+    Success(_) => false
+    Error(_) => true
+}
+"#;
+    let source = format!("{DOCUMENTED}{directory}");
+    assert_doc_tests(
+        &doc_tests("documentation_native", &source),
+        "3 passed, 0 failed",
+    );
     let _ = command
-        .arg(temp_osp("documentation_wasm", DOCUMENTED))
+        .arg(temp_osp("documentation_wasm", &source))
         .args(["--doctests", "--target=wasm32"])
         .env("OSPREY_WASM_RUN", &host);
-    assert_doc_tests(&super::finish(&mut command), "2 passed, 0 failed");
-}
-
-/// Runnable examples are refused, each with the target named, where nothing can
-/// execute them. [DOC-DOCTEST-HARNESS]
-#[test]
-fn doctests_refuse_targets_that_cannot_execute() {
+    let result = super::finish(&mut command);
+    assert_doc_tests(&result, "3 passed, 0 failed");
+    assert!(
+        result.stderr.contains("directory access builtin `listDir`"),
+        "{}",
+        result.stderr
+    );
+    let portable = documented_with(
+        "```osprey\n/// print(echo",
+        "```osprey native\n/// print(echo",
+    );
+    let result = run_source(
+        "documentation_stale_native",
+        &portable,
+        &["--doctests", "--target=wasm32"],
+    );
+    assert_doc_tests_rejected(&result, &["this example is portable"], "1 passed, 1 failed");
     for target in ["ios", "python"] {
         let result = doc_tests_on(target);
         let refusal = format!("runnable doctests require native or wasm32, found {target}");

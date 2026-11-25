@@ -199,7 +199,7 @@ module Extras
     (** "machine canvas use case: accessible controls, geometry, sliders, repeated menus, dismissal and live lettering (extra: every menu item lettering its own choice)". *)
     export machineCanvas () = withNativeFixture (\fresh =>
         pressed = Canvases::act (fresh, "Press", 0.5)
-        full = foldList ([0.0, 1.0], pressed, \(before, fraction) => slidTo (before, "Level", fraction))
+        full = slidThrough (pressed, [0.0, 1.0])
         expect (nativeValue (full, "Level"), 1.0)
         forEachList ([{ item = "One", key = "one" }, { item = "Two", key = "two" }, { item = "Three", key = "three" }], \pick => itemChosen (full, pick)))
 

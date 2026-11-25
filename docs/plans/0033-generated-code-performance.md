@@ -13,13 +13,13 @@ Measured on 14 November 2026 with a one-second sample of `binarytrees` under `--
 
 All work is in `src/toolchain/compiler/runtime/` (`memory_gc.c`, `memory_gc_table.h`, a new `memory_gc_pages.h`); files stay under 500 lines.
 
-- [ ] Tests first, in `memory_gc_tests.c`, red against the current runtime where they describe new behaviour: blocks of every size class and of one byte above the largest class survive and die correctly across collections; finalizers and string blocks keep their flags; a pinned block survives; a word that today does not keep a block alive still does not; a page with no live cell is returned (resident memory falls after an idle collection).
-- [ ] Page allocator: size classes for small blocks, pages aligned so a page is found from an address, per-page mark and flag state outside the cells, bump allocation then free-cell reuse within a class.
-- [ ] `gc_managed_alloc` and `gc_lookup` use pages for small blocks and the existing table for large ones; `osp_gc_live_objects` and the other diagnostics count both.
-- [ ] Sweep clears unmarked cells, runs finalizers before any reuse, and returns empty pages.
-- [ ] Remove the code the pages make dead; rewrite the comment at `gc_managed_alloc` that records the rejected recycling pool so it describes what is built.
-- [ ] Verify: C runtime suites under UBSan, the test corpus under GC (322 programs), the proof kernel and package suites under GC, then `make ci`.
-- [ ] Re-time with `make -C src/toolchain/benchmarks bench-osprey` on a quiet machine. Acceptance: `binarytrees` under GC takes at most half its recorded 0.98 s, no Osprey GC cell is more than 5% slower than its record, and no other language's value changes.
-- [ ] Re-measure the 4 MiB heap floor (`OSPREY_GC_HEAP_MB`) against 2 MiB once pages are in; lower it only if no case slows.
+- [x] Tests first, in `memory_gc_tests.c`, red against the current runtime where they describe new behaviour: blocks of every size class and of one byte above the largest class survive and die correctly across collections; finalizers and string blocks keep their flags; a pinned block survives; a word that today does not keep a block alive still does not; a page with no live cell is returned (resident memory falls after an idle collection).
+- [x] Page allocator: size classes for small blocks, pages aligned so a page is found from an address, per-page mark and flag state outside the cells, bump allocation then free-cell reuse within a class.
+- [x] `gc_managed_alloc` and `gc_lookup` use pages for small blocks and the existing table for large ones; `osp_gc_live_objects` and the other diagnostics count both.
+- [x] Sweep clears unmarked cells, runs finalizers before any reuse, and returns empty pages.
+- [x] Remove the code the pages make dead; rewrite the comment at `gc_managed_alloc` that records the rejected recycling pool so it describes what is built.
+- [ ] Verify: C runtime suites under UBSan, the test corpus under GC (322 programs), the proof kernel and package suites under GC, then `make ci`. Done so far: every C runtime suite (UBSan and ASan) and the corpus under GC (334 pass; the 3 failures are other agents' uncommitted red tests).
+- [ ] Re-time with `make -C src/toolchain/benchmarks bench-osprey` on a quiet machine. Acceptance: `binarytrees` under GC takes at most half its recorded 0.98 s, no Osprey GC cell is more than 5% slower than its record, and no other language's value changes. Interim A/B on a loaded machine (same binary, `OSPREY_GC_PAGES=0` against the default): `binarytrees` 1.37–1.55 s to 0.25–0.32 s, `mergesort` 0.11 to 0.03 s, `quicksort` 0.05 to 0.02 s, `wordfreq` 0.05 to 0.02 s, the rest equal.
+- [x] Re-measure the 4 MiB heap floor (`OSPREY_GC_HEAP_MB`) against 2 MiB once pages are in; lower it only if no case slows. Measured on `binarytrees` with pages: 1 MiB 0.52 s, 2 MiB 0.33 s, 4 MiB 0.25 s, 8 MiB 0.24 s. 2 MiB is slower, so the floor stays at 4 MiB.
 
 Out of scope: ARC allocation (`binarytrees` under ARC is 12 times Haskell's, not yet profiled), a moving or generational collector, and Windows support for GC.

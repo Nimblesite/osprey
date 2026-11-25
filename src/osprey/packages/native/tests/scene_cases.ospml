@@ -51,10 +51,22 @@ firstRows walked = match firstSketch walked
 // The shape rows of the first scene `walked` drew, past its marker and atlas.
 shapeRows walked = Lists::slice (firstRows walked, satAdd 1 (length (sceneAtlasOf walked)), length (firstRows walked))
 
+// The blank sketch a missing scene draws.
+blankSketch () = ui::Sketch(sketchWidth = 0.0, sketchHeight = 0.0, sketchZoom = 0.0, sketchAtlas = [], sketchShapes = [], sketchAccess = [])
+
+// The blank sketch's marker at row 0.
+blankSketched () = ui::Sketched(sketchedRow = 0, sketchedAs = blankSketch ())
+
+// The sketch of the first scene `walked` drew, or a blank sketch.
+firstScene walked = match firstSketch walked
+    Success drawn => drawn.sketchedAs
+    Error _ => blankSketch ()
+
 // The atlas of the first scene `walked` drew.
-sceneAtlasOf walked = match firstSketch walked
-    Success drawn => drawn.sketchedAs.sketchAtlas
-    Error _ => []
+sceneAtlasOf walked = (firstScene walked).sketchAtlas
+
+// A single disc at the origin: the shape a reader falls back to when a scene drew none.
+sampleDisc () = Scenes::disc (1.0, 1.0, 1.0, 0, 0)
 
 // The depth of a primitive, as its row carries it.
 depthOf shape = match shape
@@ -67,7 +79,7 @@ depthOf shape = match shape
     ui::Path _ _ _ _ _ _ depth => depth
 
 // The depths of the first shape of every scene `walked` drew, in drawing order.
-depthsOf walked = join (mapList (walked.walkSketches, \drawn => "${depthOf (listGet drawn.sketchedAs.sketchShapes 0 ?: Scenes::disc (1.0, 1.0, 1.0, 0, 0))}")) ","
+depthsOf walked = join (mapList (walked.walkSketches, \drawn => "${depthOf (listGet drawn.sketchedAs.sketchShapes 0 ?: sampleDisc ())}")) ","
 
 // [UI-SCENE]: a scene's shapes cross as flat typed rows: one row per shape, a type code first, sprites by
 // atlas index, glyph text inline, and one input binding.
@@ -79,7 +91,7 @@ sceneCaseASceneEncodesItsPrimitivesAsFlat () =
     rows = firstRows walked
     expect (length walked.walkSketches, 1)
     // The scene's record is told after the button's rows, and its sketch names that record's row.
-    expect ((firstSketch walked ?: ui::Sketched(sketchedRow = 0, sketchedAs = ui::Sketch(sketchWidth = 0.0, sketchHeight = 0.0, sketchZoom = 0.0, sketchAtlas = [], sketchShapes = [], sketchAccess = []))).sketchedRow, 13)
+    expect ((firstSketch walked ?: blankSketched ()).sketchedRow, 13)
     expectEtches (rows, [{ index = 0, spelled = "20 13 320.0 200.0 1.0 0.0 0.0 0 0 " }, { index = 1, spelled = "21 0 0.0 0.0 0.0 0.0 0.0 0 0 bird" }, { index = 2, spelled = "21 0 0.0 0.0 0.0 0.0 0.0 0 0 hawk" }])
     shapes = shapeRows walked
     expect (codesOf shapes, "0,1,2,7,7,3,4")
@@ -142,7 +154,7 @@ sceneCaseAPathEncodesItsStepsOutlinePaint () =
     // Move, line, curve, cubic and its continuation, arc, polygon and its three corners, close; then outline, paint and two tints.
     expect (codesOf rows, "5,8,8,8,8,7,8,8,7,7,7,8,9,10,11,11,5,8,9,7,7,10,11")
     expectEtches (rows, [{ index = 6, spelled = "8 4 30.0 30.0 0.0 9.0 9.0 2 0 " }, { index = 7, spelled = "8 5 0.0 0.0 0.0 0.0 0.0 0 3 " }, { index = 12, spelled = "9 0 0.0 0.0 0.0 0.0 0.0 0 0 " }, { index = 13, spelled = "10 1 180.0 0.7 1.0 0.0 0.0 1 0 " }, { index = 15, spelled = "11 1 0.0 1.0 0.5 1.0 0.0 0 0 " }])
-    stroked = ui::Streams::etches (listGet drawn 1 ?: Scenes::disc (1.0, 1.0, 1.0, 0, 0))
+    stroked = ui::Streams::etches (listGet drawn 1 ?: sampleDisc ())
     expectEtches (stroked, [{ index = 0, spelled = "5 1 10.0 200.0 0.9 0.0 0.0 0 1 " }, { index = 2, spelled = "9 1 1.0 0.0 0.0 0.0 0.0 1 2 " }, { index = 3, spelled = "7 0 4.0 0.0 0.0 0.0 0.0 0 0 " }, { index = 4, spelled = "7 0 2.0 0.0 0.0 0.0 0.0 0 0 " }, { index = 6, spelled = "11 0 1.0 0.0 0.0 0.5 0.0 0 0 " }])
 
 (** a scene binding delivers keys, pointer positions and its region's size in scene units. *)
@@ -171,9 +183,7 @@ elapsedOf : ui::Message<Act> -> float
 elapsedOf message = Messages::route (message, \_ => 0.0 - 1.0, \(_, _) => 0.0 - 2.0, \(_, _) => 0.0 - 3.0, \(_, _) => 0.0 - 4.0, \(_, _) => 0.0 - 5.0, \_ => 0.0 - 6.0, \(_, _) => 0.0 - 7.0, \(_, _) => 0.0 - 8.0, \elapsed => elapsed, \(_, _) => 0.0 - 9.0)
 
 // A frame's refusal, or `accepted` when it was not refused.
-frameRefusal elapsed = match Surfaces::framed elapsed
-    Error problem => problem
-    Success _ => "accepted"
+frameRefusal elapsed = refusal (Surfaces::framed elapsed)
 
 // [UI-SCENE]: a frame event reaches `update` as the seconds since the previous frame, and
 // an application that ignores it changes no store.

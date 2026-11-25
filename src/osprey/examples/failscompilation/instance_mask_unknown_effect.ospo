@@ -1,0 +1,6 @@
+// [EFFECTS-INSTANCE] [EFFECTS-MASK]: an instance or a mask must name a declared effect.
+fn main() = {
+    let cap = instance Missing
+    let skipped = mask Ghost { 1 }
+    print("${skipped}")
+}

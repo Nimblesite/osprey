@@ -62,6 +62,18 @@ module Ids {
 
     export fn value(id) = id.value
 
+    /// Read the ID carried by either result variant.
+    /// # Examples
+    /// ```osprey
+    /// print(Ids::resultValue(Error { message: Ids::make(9) }))
+    /// ```
+    /// ```output
+    /// 9
+    /// ```
+    export fn resultValue(r) = match r {
+        Success { value: Id { value: n } } | Error { message: Id { value: n } } => n
+    }
+
     export fn next(id) = match id {
         Id { value } => Id { value: value + 1 }
     }
@@ -150,6 +162,8 @@ fn genericModuleCase() = checkAll("generic module functions specialise per site"
 
 /// An opaque record is built, read and rebuilt only by its own module.
 fn opaqueCase() = checkAll("opaque records are reached through their module", [
+    Ids::resultValue(Success { value: Ids::make(3) }) == 3,
+    Ids::resultValue(Error { message: Ids::make(9) }) == 9,
     structuralEquals([Ids::value(Ids::make(7)), Ids::value(Ids::next(Ids::make(7)))], [7, 8]),
     Ids::value(Ids::next(Ids::next(Ids::make(0)))) == 2
 ])

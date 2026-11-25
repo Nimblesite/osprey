@@ -80,16 +80,19 @@ nodeWalked node = match node
 // `node` followed by its descendants' trees.
 nodeFollowed (node, children) = listPrepend (Lists::flatten (mapList (children, nodeWalked))) node
 
+// The nodes of `sort` in `node`'s tree, in document order.
+sortedOf (node, sort) = filterList (nodeWalked node, \scanned => nodeSort scanned == sort)
+
 // The style of a framed node.
 framedStyle node = match node
     ui::Framed style _ => style
     _ => Frames::plain
 
 // The styles of every framed node in `node`'s tree, in document order.
-framedStyles node = mapList (filterList (nodeWalked node, \scanned => nodeSort scanned == "framed"), framedStyle)
+framedStyles node = mapList (sortedOf (node, "framed"), framedStyle)
 
-// How many nodes of `sort` a machine's view holds.
-completeNodes (machine, sort) = filterList (mapList (nodeWalked (Templates::view machine), nodeSort), \found => found == sort)
+// The nodes of `sort` a machine's view holds, in document order.
+completeNodes (machine, sort) = sortedOf (Templates::view machine, sort)
 
 // A machine whose only layer is `layer`, starting in `loop`'s first phase.
 looped (base, layer) = base(machineLayers = [layer], currents = [ui::Current(currentLayer = "loop", currentState = "a")])
@@ -106,9 +109,9 @@ asked (produced, requestName) = match Lists::find (Machines::requests produced, 
     Error _ => ui::Ask(askName = "", askInputs = [])
 
 // The values `ask` carries, one assertion per `{ name = …, value = … }`, in order.
-expectAskedTexts (ask, fields) = forEachList (fields, \field => expect (Machines::askedText (ask, field.name), field.value))
+expectAskedTexts (ask, fields) = expectVia (Machines::askedText, ask, fields)
 
-expectAskedNumbers (ask, fields) = forEachList (fields, \field => expect (Machines::askedNumber (ask, field.name), field.value))
+expectAskedNumbers (ask, fields) = expectVia (Machines::askedNumber, ask, fields)
 
 completeTemplateVariants () =
     machine = completeMachine ()
@@ -136,7 +139,7 @@ completeTemplateVariants () =
     forEachList ([{ name = "viewWidth", value = 800.0 }, { name = "spareWidth", value = 0.0 }], \field => expect (Machines::number (viewed, field.name), field.value))
 
 completeCanvasVariants () =
-    machine = nativeFeed (completeMachine (), "skin", "canvas")
+    machine = realSkinned (completeMachine (), "canvas")
     forEachList (["Hello", "0:one:One", "2:three:Three", "Always Two"], \text => expect (nativeLetters (machine, text), true))
     forEachList ([{ name = "Fire One", value = true }, { name = "Slide Three", value = true }, { name = "Quiet", value = false }], \field => expect (nativeOffered (machine, field.name), field.value))
     expect (nativeValue (machine, "Slide One"), 0.25)
@@ -153,7 +156,7 @@ completeCanvasVariants () =
     expect (structuralEquals (MachineDocs::snapshot missed, MachineDocs::snapshot outsideReleased), true)
 
 completeDefensivePointerBranch () =
-    machine = nativeFeed (completeMachine (), "skin", "canvas")
+    machine = realSkinned (completeMachine (), "canvas")
     match (Templates::skin machine).skinBoard
         ui::Boarded _ _ _ _ _ areas =>
             hold = listGet areas 8 ?: listGet areas 0 ?: ui::Area(areaX = ui::Fixed(fixedAt = 0.0), areaY = ui::Fixed(fixedAt = 0.0), areaW = ui::Fixed(fixedAt = 0.0), areaH = ui::Fixed(fixedAt = 0.0), areaRole = ui::Unannounced, areaLabel = "", areaLever = ui::Fire(fireName = ""), areaSlide = ui::Unslid, areaDrag = ui::Undragged, areaWhen = ui::Always, areaEach = ui::Once)
@@ -208,13 +211,8 @@ completeRequestPayloads () =
     seeking = Machines::pull (playing, ui::Fire(fireName = "seek"), Values::none ())
     expectAskedNumbers (asked (seeking, "cast.seek"), [{ name = "position", value = 50.0 }, { name = "skip", value = 0.0 }])
 
-// A completion's outcome as its result text or its reason.
-outcomeText outcome = match outcome
-    Success text => text
-    Error problem => problem
-
 deniedOf : ui::Message<Act> -> string
-deniedOf message = Messages::route (message, \_ => "wrong message", \(_, _) => "wrong message", \(_, _) => "wrong message", \(_, _) => "wrong message", \(_, outcome) => outcomeText outcome, \_ => "wrong message", \(_, _) => "wrong message", \(_, _) => "wrong message", \_ => "wrong message", \(_, _) => "wrong message")
+deniedOf message = Messages::route (message, \_ => "wrong message", \(_, _) => "wrong message", \(_, _) => "wrong message", \(_, _) => "wrong message", \(_, outcome) => loaded outcome, \_ => "wrong message", \(_, _) => "wrong message", \(_, _) => "wrong message", \_ => "wrong message", \(_, _) => "wrong message")
 
 completeEventAndConvenienceCases () =
     expect (deniedOf (Surfaces::completed ("job", false, "denied")), "denied")

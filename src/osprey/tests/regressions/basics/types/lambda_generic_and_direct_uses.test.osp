@@ -7,12 +7,24 @@
 let boxIt = fn(x) => [x, x]
 fn firstOf(v) = listGet(boxIt(v), 0)
 
+// [PATTERN-OR-SYNTAX] The pipes in a lambda body end before the next pattern.
+fn applyChoice(choice, value) = {
+    let transform = match choice {
+        0 => |x| => wrapAdd(x, 1)
+        1 | 2 => |x| => wrapMul(x, 2)
+        _ => |x| => x
+    }
+    transform(value)
+}
+
 fn mixedUses() = {
     let text = firstOf("text") ?: "none"
     let number = firstOf(7) ?: 0
     let flags = listLength(boxIt(true))
     print("${text} ${toString(number)} ${toString(flags)}")
-    checkAll("each use keeps its own type", [text == "text", number == 7, flags == 2])
+    checkAll("each use keeps its own type", [text == "text", number == 7, flags == 2,
+        applyChoice(0, 5) == 6, applyChoice(1, 5) == 10,
+        applyChoice(2, 7) == 14, applyChoice(3, 5) == 5])
 }
 
 test("a lambda used directly and through a generic function keeps each type", mixedUses)

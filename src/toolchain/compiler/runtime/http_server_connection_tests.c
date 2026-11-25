@@ -1,5 +1,4 @@
 #include "http_runtime_tests.h"
-#include "test_loopback.h"
 #include <assert.h>
 #include <pthread.h>
 #include <stdatomic.h>
@@ -8,21 +7,17 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <time.h>
 
 // Connections of the native listener [HTTP-SERVER-CONNECTIONS]: one client
 // never holds up another, an HTTP/1.1 connection stays open for its next
 // request as Node.js keeps it, and every way a connection ends is answered with
 // the `Connection` header Node.js sends for it.
 
-// One OS-assigned port for this TU's listeners [CI-TEST-PORTS], probed
-// once so every connection test hits the same server port.
-static int connection_test_port(void) {
-  static int port = 0;
-  return test_cached_port(&port);
-}
-
+#define CONNECTION_TEST_PORT test_port(12)
 #define LOAD_CLIENTS 16
 #define LOAD_REQUESTS 50
+#define PROMPT_MS 1000
 #define HANDLER_WORK_US 100
 
 static const char KEPT[] = "\r\nConnection: keep-alive\r\nKeep-Alive: timeout=5\r\n\r\n";
@@ -56,13 +51,13 @@ static HttpResponse *counting_handler(char *method, char *path, char *headers, c
 static int64_t start_connection_server(void) {
   atomic_store(&g_served, 0);
   atomic_store(&g_overlapped, false);
-  int64_t server = http_create_server(connection_test_port(), (char *)(uintptr_t) "127.0.0.1");
+  int64_t server = http_create_server(CONNECTION_TEST_PORT, (char *)(uintptr_t) "127.0.0.1");
   assert(server > 0 && http_listen(server, counting_handler) == 0);
   return server;
 }
 
 static int open_client(void) {
-  int fd = server_test_connect(connection_test_port());
+  int fd = server_test_connect(CONNECTION_TEST_PORT);
   struct timeval timeout = {3, 0};
   assert(setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) == 0);
   return fd;
@@ -106,6 +101,12 @@ static bool closed_by_server(int fd) {
   return recv(fd, &byte, 1, 0) == 0;
 }
 
+static uint64_t now_ms(void) {
+  struct timespec now;
+  clock_gettime(CLOCK_MONOTONIC, &now);
+  return (uint64_t)now.tv_sec * 1000U + (uint64_t)now.tv_nsec / 1000000U;
+}
+
 static void assert_served(const char *reply, const char *connection) {
   assert(strstr(reply, "HTTP/1.1 200 OK\r\n") == reply);
   assert(strstr(reply, "Content-Length: 6") != NULL);
@@ -126,20 +127,17 @@ static void expect_closed_and_finish(int fd) {
 }
 
 // A client that sends half a request holds one connection, never the server.
-// The contract is that the second client is served AT ALL beside the silent
-// one -- an observed reply, not a wall-clock ceiling.
 void test_server_serves_a_client_while_another_is_silent(void) {
   int64_t server = start_connection_server();
   int silent = open_client();
   send_text(silent, "GET /slow HTTP/1.1\r\nHost: x\r\n");
   usleep(50000); // the silent connection is accepted first
+  uint64_t started = now_ms();
   int prompt = open_client();
   send_text(prompt, "GET / HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n");
   char reply[1024];
-  // Liveness is the reply arriving at all (SO_RCVTIMEO bounds a hang), not a
-  // wall-clock ceiling: a loaded runner must not turn a scheduling stall into
-  // a failure of code that serialized its handlers exactly as designed.
   read_reply(prompt, reply, sizeof(reply));
+  assert(now_ms() - started < PROMPT_MS && "a silent client must not stall the next one");
   assert_served(reply, CLOSED);
   assert(closed_by_server(prompt));
   close(prompt);
@@ -180,10 +178,10 @@ void test_server_ends_half_closed_and_pipelined_connections(void) {
   int fd = open_client();
   send_text(fd, "GET / HTTP/1.1\r\nHost: x\r\n\r\n");
   assert(shutdown(fd, SHUT_WR) == 0);
+  uint64_t started = now_ms();
   read_reply(fd, reply, sizeof(reply));
   assert(strstr(reply, "\r\n\r\nserved") != NULL);
-  // The whole reply then the close, observed: that is the liveness contract.
-  assert(closed_by_server(fd));
+  assert(closed_by_server(fd) && now_ms() - started < PROMPT_MS);
   close(fd);
 
   fd = open_client();
@@ -201,10 +199,9 @@ void test_server_stop_ends_idle_connections(void) {
   send_text(fd, "GET / HTTP/1.1\r\nHost: x\r\n\r\n");
   read_reply(fd, reply, sizeof(reply));
   assert_served(reply, KEPT);
-  // Observed liveness: the stop ends the idle connection, however long the
-  // machine took to schedule the pool between the bookmarks a ceiling needed.
+  uint64_t started = now_ms();
   assert(http_stop_server(server) == 0);
-  assert(closed_by_server(fd));
+  assert(closed_by_server(fd) && now_ms() - started < PROMPT_MS);
   close(fd);
 }
 
@@ -249,7 +246,7 @@ void test_server_names_statuses_as_node_does(void) {
       {503, "HTTP/1.1 503 Service Unavailable\r\n"},
       {504, "HTTP/1.1 504 Gateway Timeout\r\n"},
   };
-  int64_t server = http_create_server(connection_test_port(), (char *)(uintptr_t) "127.0.0.1");
+  int64_t server = http_create_server(CONNECTION_TEST_PORT, (char *)(uintptr_t) "127.0.0.1");
   assert(server > 0 && http_listen(server, status_handler) == 0);
   int fd = open_client();
   for (size_t each = 0; each < sizeof(named) / sizeof(named[0]); each++) {

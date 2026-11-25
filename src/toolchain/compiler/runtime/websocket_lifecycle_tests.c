@@ -9,6 +9,8 @@
 #include <assert.h>
 #include <stdatomic.h>
 
+#define WS_LIFE_PORT test_port(11)
+
 enum {
   WS_PAST_THE_OLD_LIMIT = 1100,
   // Waiting for the server's reader thread to notice a disconnect is

@@ -63,7 +63,7 @@ fn structural_match_on_a_concrete_record_is_static() {
 
 #[test]
 fn match_lowers_to_phi() {
-    emits(
+    lowers(
         "fn pick(a: int, b: int) -> int = match a < b { true => a false => b }\n",
         &["icmp", "br i1", "phi i64"],
     );
@@ -111,7 +111,7 @@ fn named_arguments_are_ordered_by_declaration() {
 
 #[test]
 fn bound_ffi_callbacks_use_raw_code_pointers() {
-    emits(
+    lowers(
         "extern fn print(callback: fn() -> int) -> int\n\
          let callback = fn() => 41\nlet answer = print(callback)\n",
         &["bitcast i64 ()* @__callback_"],
@@ -120,7 +120,7 @@ fn bound_ffi_callbacks_use_raw_code_pointers() {
 
 #[test]
 fn foreign_ffi_callbacks_use_their_raw_code_pointer() {
-    emits("extern fn print(callback: fn() -> int) -> int\nextern fn read() -> int\nlet answer = print(read)\n", &["declare i64 @read()", "bitcast i64 ()* @read to i8*"]);
+    lowers("extern fn print(callback: fn() -> int) -> int\nextern fn read() -> int\nlet answer = print(read)\n", &["declare i64 @read()", "bitcast i64 ()* @read to i8*"]);
 }
 
 #[test]
@@ -190,7 +190,7 @@ fn range_pipeline_map_filter_foreach_and_fold() {
     // range → map (record stage) → filter (record stage) → forEach (replay
     // both stages, counted loop), plus a fold accumulator. Exercises iter.rs
     // callback_of (named + lambda), replay, for_each, fold, acc_*.
-    emits(
+    lowers(
         "fn dbl(x: int) -> int = satMul(x, 2)\n\
              fn big(x: int) -> bool = x > 4\n\
              fn add(a: int, b: int) -> int = satAdd(a, b)\n\
@@ -243,7 +243,7 @@ fn list_builders_map_filter_fold_and_foreach() {
 fn iterator_lambda_callbacks_inline_and_let_bound() {
     // An inline lambda and a let-bound lambda both serve as iterator
     // callbacks — iter.rs callback_of's Lambda arms + the lambdas cache.
-    emits(
+    lowers(
         "fn main() -> Unit = {\n\
                let f = fn(x: int) => satAdd(x, 1)\n\
                range(0, 3) |> map(f) |> forEach(fn(x: int) => print(\"v=${x}\"))\n\
@@ -269,7 +269,7 @@ fn closure_captures_map_list_object_and_interpolation_free_vars() {
     // A returned closure capturing several outer locals exercises
     // freevars.rs Map/Object/List/interpolation walks and closure.rs
     // capture_list + reload_captures + cell_value (malloc cell).
-    emits(
+    lowers(
         "fn make(a: int, b: int) -> () -> int = fn() -> int => {\n\
                let m = { \"k\": a }\n\
                let o = { x: b, y: a }\n\
@@ -289,7 +289,7 @@ fn closure_captures_map_list_object_and_interpolation_free_vars() {
 fn nested_closure_returns_closure_value_in_block_tail() {
     // A closure value as a block tail (closure.rs lambda_value path) and a
     // capture-free closure (the constant-global cell branch in cell_value).
-    emits(
+    lowers(
         "fn outer() -> () -> int = {\n\
                let k = 9\n\
                fn() => k\n\
@@ -487,7 +487,7 @@ fn result_match_success_and_error_arms() {
     // Error message (pattern.rs gen_result_match, emit_result_arm). The
     // Result is a bound value, so it exists; a `listGet` matched directly is
     // fused instead (`matching_a_list_lookup_allocates_no_result`).
-    emits(
+    lowers(
         "fn main() -> Unit = {\n\
                let xs = listAppend(List(), 10)\n\
                let found = listGet(xs, 0)\n\

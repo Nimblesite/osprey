@@ -209,7 +209,7 @@ fn field_callbacks_return_callables_and_keep_named_slots() {
 #[test]
 fn channel_with_default_capacity_and_fiberdone_requires_arg() {
     // Channel() with no capacity arg (fiber.rs default "0" branch).
-    emits(
+    lowers(
         "fn main() -> Unit = {\n\
                let ch = Channel()\n\
                send(ch, 1)\n\
@@ -235,7 +235,7 @@ fn generic_function_into_concrete_slot_specialises() {
     // function-typed slot is specialised to the slot's ABI — emitted as a
     // capture-free closure (expr.rs eval_arg → closure::emit_closure).
     // Implements [TYPE-GENERICS-FN].
-    emits(
+    lowers(
         "fn identity(x) = x\n\
              fn apply(f: (int) -> int, v: int) -> int = f(v)\n\
              fn main() -> Unit = print(\"${apply(identity, 3)}\")\n",

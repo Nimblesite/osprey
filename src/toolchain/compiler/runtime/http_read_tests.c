@@ -22,37 +22,28 @@ static int64_t elapsed_ms_since(uint64_t started) {
   return (int64_t)(osp_monotonic_ms() - started);
 }
 
-// The call ended at the whole read's bound, with -16 and `text`, not before it.
-// The mechanism is the -16 and its reason, plus the tight lower bound: the
-// deadline the transport computed (timeout x HTTP_READ_BOUND_FACTOR) really
-// elapsed. The upper bound is only a hang guard, sized far above any
-// scheduler stall, so a loaded runner cannot cross it while the code under
-// test behaved exactly as specified [HTTP-RESPONSE-FRAMING].
-enum { BOUND_HANG_GUARD_MS = 30000 };
-
+// The call ended at the whole read's bound, with -16 and `text`, not before it or later.
 static void expect_bounded_failure(int64_t code, uint64_t started, int64_t timeout_ms,
                                    const char *text) {
   assert(code == -16);
   int64_t took = elapsed_ms_since(started);
   assert(took >= timeout_ms * HTTP_READ_BOUND_FACTOR - 100);
-  assert(took < timeout_ms * HTTP_READ_BOUND_FACTOR + BOUND_HANG_GUARD_MS);
+  assert(took < timeout_ms * (HTTP_READ_BOUND_FACTOR + 5));
   assert(strcmp(osp_io_error(), text) == 0);
   osp_io_error_clear();
 }
 
 static void use_client_with_timeout(int64_t timeout_ms) {
-  shared_origin_client = origin_client_timed(timeout_ms);
+  shared_origin_client =
+      http_create_client(TEST_URL("http", ORIGIN_PORT), timeout_ms);
+  assert(shared_origin_client > 0);
 }
 
-enum { PROMPT_HANG_GUARD_MS = 30000 };
-
-// Answered as framed, with the socket still open. The mechanism is the full
-// correct body below; the ceiling is only a hang guard, not a latency claim,
-// so it sits far above scheduler noise on a runner shared with a sibling suite.
+// Answered as framed, with the socket still open, in far less than the timeout.
 static void expect_prompt(const char *reply, size_t len, int64_t status, const char *body) {
   uint64_t started = osp_monotonic_ms();
   expect_response_n(reply, len, status, body);
-  assert(elapsed_ms_since(started) < PROMPT_HANG_GUARD_MS);
+  assert(elapsed_ms_since(started) < 1500); // the timeout is 20 s
 }
 
 #define EXPECT_PROMPT(reply, status, body)                                     \
@@ -102,7 +93,7 @@ static void check_stops_at_the_fault(void) {
   for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
     uint64_t started = osp_monotonic_ms();
     expect_failure_n(cases[i].reply, strlen(cases[i].reply), cases[i].code, cases[i].message);
-    assert(elapsed_ms_since(started) < PROMPT_HANG_GUARD_MS); // hang guard only
+    assert(elapsed_ms_since(started) < 1500);
   }
   http_close_client(shared_origin_client);
 }
@@ -226,14 +217,9 @@ static void check_whole_read_bound(void) {
     snprintf(reply, sizeof(reply), "HTTP/1.1 200 OK\r\n%s%s", heads[i], filler);
     expect_cut_off(reply, TIMEOUT_MS);
   }
-  static const char slow[] = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok";
+  static const char slow[] = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok"; // 1.6 s of 1 s
   http_close_client(shared_origin_client);
   use_client_with_timeout(200);
-  // The success case's drip pacing is derived from the bound, so the last byte
-  // lands at ~70% of it by construction however the scheduler stretches each
-  // usleep: fixed 40 ms drips left only ~360 ms of the 2000 ms bound (finding 3).
-  origin_drip_us = (unsigned)(200 * HTTP_READ_BOUND_FACTOR * 7 / 10 /
-                              (sizeof(slow) - 1)) * 1000;
   EXPECT_RESPONSE(slow, 200, "ok");
   // Falling silent near the end is still over the limit, at the limit: the last wait
   // is the time left, not a whole timeout, which would call it a timed-out read.
@@ -263,7 +249,9 @@ static void check_huge_timeout(void) {
   ScriptedOrigin origin;
   origin_start(&origin, "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok");
   origin.reply_delay_us = 100000;
-  int64_t client = origin_client_timed(((int64_t)1 << 32) + 1);
+  int64_t client = http_create_client(TEST_URL("http", ORIGIN_PORT),
+                                      ((int64_t)1 << 32) + 1);
+  assert(client > 0);
   assert(http_get(client, (char *)(uintptr_t) "/", (char *)(uintptr_t) "") == 200);
   origin_stop(&origin);
   http_close_client(client);
@@ -274,10 +262,10 @@ static void check_status_only_builtins(void) {
   ScriptedOrigin origin;
   origin_start(&origin, "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok");
   origin.hold_open = true;
-  int64_t client = origin_client_timed(20000);
+  int64_t client = http_create_client(TEST_URL("http", ORIGIN_PORT), 20000);
   uint64_t started = osp_monotonic_ms();
   assert(http_get(client, (char *)(uintptr_t) "/", (char *)(uintptr_t) "") == 200);
-  assert(elapsed_ms_since(started) < PROMPT_HANG_GUARD_MS); // hang guard only
+  assert(elapsed_ms_since(started) < 1500);
   origin_stop(&origin);
   http_close_client(client);
 }
@@ -315,7 +303,10 @@ void expect_scan_agrees(const char *bytes, size_t len) {
     return;
   }
   assert(whole_end == byte_end || whole_end == len); // a fault ends the scan where it stands
-  char *raw = test_bytes_copy(bytes, byte_end);
+  char *raw = malloc(byte_end + 1);
+  assert(raw != NULL);
+  memcpy(raw, bytes, byte_end);
+  raw[byte_end] = '\0';
   const char *sep = NULL;
   int64_t status = 0;
   int64_t rc = 0;
@@ -386,8 +377,6 @@ static void check_frame_ends(void) {
 // Fills a limit's worth of `unit`, read in transport-sized steps. A scan that went
 // back to the start after each read would take minutes over this, and this is what a
 // hostile server would send to burn the client's CPU instead of its memory.
-enum { SCAN_HANG_GUARD_MS = 120000 }; // covers the sanitizer build of the same scan
-
 static void expect_linear_scan(const char *head, const char *unit, const char *tail) {
   size_t size = HTTP_MAX_RESPONSE_BYTES;
   char *bytes = malloc(size + 1);
@@ -406,7 +395,7 @@ static void expect_linear_scan(const char *head, const char *unit, const char *t
   size_t end = 0;
   uint64_t started = osp_monotonic_ms();
   (void)scan_in_steps(bytes, at, CHUNK_SIZE, &end);
-  assert(elapsed_ms_since(started) < SCAN_HANG_GUARD_MS); // hang guard only
+  assert(elapsed_ms_since(started) < 20000);
   free(bytes);
 }
 
@@ -434,9 +423,7 @@ static void check_handshake_bound(void) {
   origin_start_bytes(&origin, hello, sizeof hello);
   origin.raw_request = true;
   origin.drip_us = BOUND_DRIP_US;
-  char tls_url[32];
-  snprintf(tls_url, sizeof(tls_url), "https://127.0.0.1:%d", origin_port());
-  int64_t client = http_create_client((char *)(uintptr_t)tls_url, BOUND_TIMEOUT_MS);
+  int64_t client = http_create_client(TEST_URL("https", ORIGIN_PORT), BOUND_TIMEOUT_MS);
   assert(client > 0);
   uint64_t started = osp_monotonic_ms();
   int64_t code = http_get_response(client, (char *)(uintptr_t) "/x", (char *)(uintptr_t) "");
@@ -452,12 +439,16 @@ static void check_handshake_bound(void) {
 // the timeout. Unbounded, 128 MiB at that pace takes about six seconds.
 static void check_send_bound(void) {
   size_t size = (size_t)128 * 1024 * 1024;
-  char *body = test_bytes_filled(size, 'b');
+  char *body = malloc(size + 1);
+  assert(body != NULL);
+  memset(body, 'b', size);
+  body[size] = '\0';
   ScriptedOrigin origin;
   origin_start(&origin, "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n");
   origin.trickle_bytes = TRICKLE_BYTES;
   origin.trickle_us = TRICKLE_US;
-  int64_t client = origin_client_timed(BOUND_TIMEOUT_MS);
+  int64_t client = http_create_client(TEST_URL("http", ORIGIN_PORT), BOUND_TIMEOUT_MS);
+  assert(client > 0);
   long live = test_alloc_live();
   uint64_t started = osp_monotonic_ms();
   expect_bounded_failure(http_post(client, (char *)(uintptr_t) "/up", body, (char *)(uintptr_t) ""), started,

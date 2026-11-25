@@ -149,7 +149,7 @@ fn an_immediately_called_lambda_keeps_its_device_capture() {
 #[test]
 fn boolean_device_inputs_and_captured_buffers_use_byte_storage() {
     // [GPU-BUFFER-ELEM]: a word pointer would stride eight byte-sized booleans.
-    emits("let values: List<bool> = [true, false]\nmatch toGpu(values) { Success { value } => { let table = value\nmatch gpuMap(table, fn(value) => value && (gpuGet(table, 0) ?: false)) { Success { value } => match fromGpu(value) { Success { value } => print(value) Error { message } => print(message) } Error { message } => print(message) } } Error { message } => print(message) }\n", &["GPU_GLOBAL const bool *in0", "GPU_GLOBAL const bool *u0"]);
+    lowers("let values: List<bool> = [true, false]\nmatch toGpu(values) { Success { value } => { let table = value\nmatch gpuMap(table, fn(value) => value && (gpuGet(table, 0) ?: false)) { Success { value } => match fromGpu(value) { Success { value } => print(value) Error { message } => print(message) } Error { message } => print(message) } } Error { message } => print(message) }\n", &["GPU_GLOBAL const bool *in0", "GPU_GLOBAL const bool *u0"]);
 }
 #[test]
 fn foreign_intrinsics_keep_host_identity_and_refuse_device_emission() {
@@ -257,7 +257,8 @@ fn captures_become_leading_parameters_sorted_by_name() {
 }
 #[test]
 fn a_captured_buffer_handle_travels_as_a_uniform() {
-    emits("fn f() = {\n\
+    lowers(
+        "fn f() = {\n\
                match toGpu([10.0, 20.0]) { Success { value } => { let w = value\n\
                match toGpu(range(0, 2)) { Success { value } => match gpuMap(value, fn(i) => gpuGet(w, i) ?: 0.0) { Success { value } => print(gpuLength(value)) Error { message } => print(message) } Error { message } => print(message) } } Error { message } => print(message) }\n\
              }\n\
@@ -427,7 +428,7 @@ fn gpu_load_tensor_is_one_bracketed_runtime_call() {
 
 #[test]
 fn sqrt_exp_log_are_llvm_intrinsics_and_tanh_is_libm() {
-    emits(
+    lowers(
         "fn f(x) = sqrt(x) + exp(x) + ln(x) + tanh(x)\n\
              print(\"${f(2.0)}\")\n",
         &[

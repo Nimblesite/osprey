@@ -71,20 +71,6 @@ impl Tree {
             _ => None,
         }
     }
-
-    /// The words a control event carries for this value: nothing, text, a flag or a whole number.
-    pub(crate) fn words(&self) -> String {
-        match self {
-            Self::Text(text) => text.clone(),
-            Self::Bool(on) => (*on).to_string(),
-            Self::Whole(whole) => whole.to_string(),
-            Self::Real(real) if real.fract() == 0. && real.abs() < 9e15 => {
-                (*real as i64).to_string()
-            }
-            Self::Real(real) => real.to_string(),
-            Self::Null | Self::Items(_) | Self::Record(_) => String::new(),
-        }
-    }
 }
 
 /// Reads a string member of a well-formed record.
@@ -328,4 +314,5 @@ fn shape(value: &Tree) -> &'static str {
 }
 
 #[cfg(test)]
+#[path = "tree/tests.rs"]
 mod tests;

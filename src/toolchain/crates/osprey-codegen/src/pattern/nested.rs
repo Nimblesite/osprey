@@ -40,6 +40,7 @@ pub(super) fn bind(cg: &mut Codegen, captured: Vec<Capture>) -> Result<()> {
 /// arm is decided by its outermost test alone.
 pub(super) fn is_flat(pattern: &Pattern) -> bool {
     match pattern {
+        Pattern::Or(_) => false,
         Pattern::Constructor { sub_patterns, .. } => {
             sub_patterns.iter().all(Pattern::is_irrefutable)
         }
@@ -133,6 +134,9 @@ pub(super) fn capture(
             nested_list(cg, value, elements, rest.as_deref(), failed)
         }
         Pattern::Structural { fields, open } => row(cg, &value, fields, *open, failed),
+        Pattern::Or(alternatives) => {
+            super::alternatives::capture_alternatives(cg, &value, alternatives, failed)
+        }
     }
 }
 

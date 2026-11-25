@@ -1,0 +1,1 @@
+codegen: invalid program: a fiber or channel with a concrete element cannot be passed as a `Fiber<any>` or `Channel<any>`: its element travels unboxed, so write the element type or leave the parameter to inference

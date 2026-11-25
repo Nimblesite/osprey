@@ -1,0 +1,4 @@
+// [BLOCK-USE-REJECT] A top-level `use` has no enclosing block whose rest could
+// become its callback.
+use a <- andThen(Success { value: 1 })
+print("${toString(a)}")

@@ -2,3 +2,7 @@ non-exhaustive match on `Color`: missing Blue
 non-exhaustive match: no arm matches `Node(Node(_, _), Node(_, _))`
 non-exhaustive match: no arm matches `Success { value: _ }`
 `x` is bound twice in one pattern; name each slot once
+non-exhaustive match: no arm matches `Blue`
+`s` is not bound by the alternative `Gap`; every alternative of an or-pattern binds the same names
+53:3: type mismatch: cannot unify string with int
+59:3: type mismatch: cannot unify Tree with Color

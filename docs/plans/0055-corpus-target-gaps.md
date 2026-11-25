@@ -17,9 +17,9 @@ So a row leaves its manifest only when the program works on that target, and the
 
 - [ ] When a manifest has no rows left, delete it along with its branch in `run_test_corpus.sh` or `scripts/hunt`, and its references in specs, scripts and `.github/workflows/ci.yml`.
 
-## `osprey hunt` (KLEE) cannot explore: `HUNT_UNPORTABLE.txt` (100 rows)
+## `osprey hunt` (KLEE) cannot explore: `HUNT_UNPORTABLE.txt` (92 rows)
 
-`scripts/hunt` hunts these and marks each with its listed reason. Each hunt ends on its first path with an `unmodelled` finding, because the call named has no model in the mock C library or the path reaches native code outside the module KLEE explores. Listed from the sweeps of 2026-10-24. Nothing checks this list yet (#341). Parent: [plan 0034](0034-symbolic-execution.md) [SYMEX-CORPUS].
+`scripts/hunt` hunts these and marks each with its listed reason. Each hunt ends on its first path with an `unmodelled` finding, because the call named has no model in the mock C library or the path reaches native code outside the module KLEE explores. Listed from the sweeps of 2026-10-24. The hunt app refuses to sweep while a row names a program it does not enumerate (#341). Parent: [plan 0034](0034-symbolic-execution.md) [SYMEX-CORPUS].
 
 - [ ] Model the fiber runtime for KLEE. `__osprey_coro_new`, `fiber_spawn_env_owned`, `fiber_set_deterministic_mode`, `channel_select` and `channel_create_checked` are native code outside the explored module, so every path through a resumable handler, spawn or channel ends `unmodelled`. Bring a portable fiber and channel runtime into `_runtime_klee`. Acceptance: these programs finish a hunt with no `unmodelled` finding and their rows are deleted. (59 rows)
 
@@ -84,11 +84,12 @@ So a row leaves its manifest only when the program works on that target, and the
 | `src/osprey/tests/regressions/fiber/fiber_showcase.test.osp` | fibers and continuations: `fiber_spawn_env_owned` is the native fiber runtime, outside the module |
 | `src/osprey/tests/regressions/fiber/fiber_showcase.test.ospml` | fibers and continuations: `fiber_spawn_env_owned` is the native fiber runtime, outside the module |
 
-- [ ] Model sockets in the mock C library. Acceptance: HTTP and WebSocket client and server programs explore past `http_create_server`, `http_create_client`, `websocket_create_server` and `osprey_net_local_address`, and their rows are deleted. (18 rows)
+- [ ] Model sockets in the mock C library. Acceptance: HTTP and WebSocket client and server programs explore past `http_create_server`, `http_create_client`, `websocket_create_server` and `osprey_net_local_address`, and their rows are deleted. (19 rows)
 
 | Program | Reason |
 | --- | --- |
 | `src/osprey/examples/statefulhttp/server.osp` | HTTP needs sockets: `http_create_server` is outside the module |
+| `src/osprey/examples/tui/api_browser.osp` | HTTP needs sockets: `http_create_client` is outside the module |
 | `src/osprey/examples/websocketserver/osprey_websocket_server.osp` | `websocket_create_server` is native code outside the module (not in the portable runtime) |
 | `src/osprey/tests/regressions/effects/http_state_levels.test.osp` | HTTP needs sockets: `http_create_server` is outside the module |
 | `src/osprey/tests/regressions/effects/http_state_levels.test.ospml` | HTTP needs sockets: `http_create_server` is outside the module |
@@ -131,20 +132,9 @@ So a row leaves its manifest only when the program works on that target, and the
 | `src/osprey/tests/regressions/db/database_effect.test.osp` | `osprey_ffi_cell` is native code outside the module (not in the portable runtime) |
 | `src/osprey/tests/regressions/db/database_effect.test.ospml` | `osprey_ffi_cell` is native code outside the module (not in the portable runtime) |
 
-- [ ] Fix #340 (bug): recursive function awaiting a Fiber parameter fails codegen. Acceptance is on the issue. (1 rows)
+- [x] Fix #340 (bug): a recursive generic awaiting a Fiber parameter now keeps the element type its argument carries (`FiberSig::carried` in `osprey-codegen/src/monofn.rs`). Regression: `src/osprey/tests/regressions/fiber/many_handles.test.osp` and its ML twin, int, string and record fibers under GC and ARC. `api_browser.osp` compiles unannotated on both backends; its hunt now stops at `http_create_client`, so its row moved to the sockets group above. Hunting it also found that every `osprey hunt` failed KLEE module verification on the Linux argv constructor; the symbolic runtime now skips that constructor.
 
-| Program | Reason |
-| --- | --- |
-| `src/osprey/examples/tui/api_browser.osp` | does not compile: recursive `awaitSpinning` awaits a Fiber parameter (#340) |
-
-- [ ] Fix #341 (bug): compare this list to reality. The four `gpt2/model` rows already skip nothing and go with that fix. `staging-type.osp` moved to `failscompilation/` with its diagnostic golden, and its skip row is gone. (4 rows)
-
-| Program | Reason |
-| --- | --- |
-| `src/osprey/examples/llms/gpt2/model/backends.osp` | a module of the gpt2 example, not a program of its own |
-| `src/osprey/examples/llms/gpt2/model/cpu.osp` | a module of the gpt2 example, not a program of its own |
-| `src/osprey/examples/llms/gpt2/model/gpu.osp` | a module of the gpt2 example, not a program of its own |
-| `src/osprey/examples/llms/gpt2/model/model.osp` | a module of the gpt2 example, not a program of its own |
+- [x] Fix #341 (bug): compare this list to reality. `Inventory::stale` in `scripts/hunt/src/inventory.ospml` answers every row whose program the hunt does not enumerate, and the sweep refuses to run while one exists. `scripts/hunt/tests/main.ospml` turns red for a removed program and a bogus row, and holds the real manifest at zero stale rows. The four dead `gpt2/model` rows are deleted. `staging-type.osp` moved to `failscompilation/` with its diagnostic golden earlier. The part that needs KLEE (a row that no longer fails the way it says) stays with the hand-run sweep until #306 and #307.
 
 ## Mobile C ABI targets reject: `MOBILE_UNPORTABLE.txt` (63 rows)
 

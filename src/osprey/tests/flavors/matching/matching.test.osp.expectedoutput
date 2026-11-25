@@ -10,5 +10,8 @@ ok 9 - callable pattern bindings retain their own signatures
 ok 10 - callable payload patterns preserve function values
 ok 11 - direct callable scrutinees preserve function types
 ok 12 - joined callable Results retain their payload signatures
-1..12
-# tests=12 passed=12 failed=0 skipped=0
+ok 13 - or-patterns join variant and literal alternatives
+ok 14 - or-patterns cover Results, payloads, lists, rows and three-level nests
+ok 15 - or-pattern bindings follow order, scope and closures
+1..15
+# tests=15 passed=15 failed=0 skipped=0

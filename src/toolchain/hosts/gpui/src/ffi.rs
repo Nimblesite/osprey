@@ -14,35 +14,9 @@ use std::sync::{Arc, Mutex, OnceLock};
 use crate::events::Touch;
 use crate::rows::{self, Shown};
 
-extern "C" {
-    /// Runs the application's top-level statements and `fn main`; call first.
-    fn osprey_main() -> i32;
-    /// The application's `argument` export: one launch argument, in order, before `open`.
-    fn osprey_app_argument(text: *const c_char) -> i64;
-    /// The application's `open` export: draws the first frame.
-    fn osprey_app_open(
-        now: i64,
-        offset: i64,
-        platform: *const c_char,
-        home: *const c_char,
-        dark: bool,
-    ) -> i64;
-    /// The application's `event` export: delivers one host event and draws the next frame.
-    #[allow(clippy::too_many_arguments)]
-    fn osprey_app_event(
-        now: i64,
-        kind: i64,
-        ordinal: i64,
-        words: *const c_char,
-        detail: *const c_char,
-        x: f64,
-        y: f64,
-        down: bool,
-        shift: bool,
-    ) -> i64;
-    /// ABI 1 copies borrowed import strings before the import adapter returns.
-    fn osprey_host_abi_version() -> i32;
-}
+use crate::app::{
+    osprey_app_argument, osprey_app_event, osprey_app_open, osprey_host_abi_version, osprey_main,
+};
 
 #[derive(Default)]
 struct SliceStore {
@@ -65,6 +39,7 @@ struct ImportSnapshot;
 
 impl ImportSnapshot {
     fn begin() -> Result<Self, String> {
+        crate::app::load()?;
         let mut store = slices()
             .lock()
             .map_err(|_| "The host slice store was poisoned".to_owned())?;
@@ -156,8 +131,12 @@ pub fn get_slice(key: &str) -> Option<String> {
 /// A borrowed string from this export's snapshot; ABI 1 copies it synchronously.
 /// Missing, null and invalid UTF-8 keys return empty. The pointer stays pinned
 /// until the enclosing export returns, even while background writers publish.
+///
+/// # Safety
+///
+/// `key` is null or a NUL-terminated string that stays valid for the call.
 #[no_mangle]
-pub extern "C" fn native_slice(key: *const c_char) -> *const c_char {
+pub unsafe extern "C" fn native_slice(key: *const c_char) -> *const c_char {
     if key.is_null() {
         return absent().as_ptr();
     }
@@ -233,6 +212,7 @@ impl Library {
     pub fn event(now: i64, touch: &Touch) -> Result<Shown, String> {
         let (words, detail) = (held(&touch.words)?, held(&touch.detail)?);
         let _snapshot = ImportSnapshot::begin()?;
+        let started = std::time::Instant::now();
         // SAFETY: both strings outlive the call; the export returns a scalar.
         let status = unsafe {
             osprey_app_event(
@@ -247,9 +227,14 @@ impl Library {
                 touch.shift,
             )
         };
+        APP_MICROS.store(started.elapsed().as_micros() as u64, Ordering::Relaxed);
         sealed(callback_result(Ok(status)), true)
     }
 }
+
+/// Microseconds the application's last `event` export ran, before its frame was read.
+pub static APP_MICROS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 
 /// Seals the frame an export wrote once it has returned and checks it ([NATIVE-SHM-SAFETY]). The
 /// runs are consumed even when the export failed, and a refused or malformed frame fails the call.
@@ -268,10 +253,49 @@ fn sealed(result: Result<i64, String>, event: bool) -> Result<Shown, String> {
         .and_then(|frame| rows::read(&frame))
 }
 
-#[cfg(test)]
+// These drive the bridge of a statically linked runtime with fake application exports;
+// a loaded application DLL (FerroUI on Windows) exports only its boundary, so its tests drive that.
+#[cfg(all(test, not(app_dll)))]
 #[path = "ffi_tests.rs"]
 mod tests;
 
-#[cfg(test)]
+#[cfg(all(test, not(app_dll)))]
 #[path = "ffi_test_support.rs"]
 pub(crate) mod test_support;
+
+#[cfg(all(test, app_dll))]
+mod windows_dll_tests {
+    use super::Library;
+
+    /// The Windows host runs the same self-contained `app.dll` every Windows host loads
+    /// ([WINUI-HOST-DLL]): `OSPREY_NATIVE_APP_DLL` names Prism's, built with
+    /// `osprey build src/osprey/examples/daw --target=windows-x64`. Loading binds its one import,
+    /// `native_slice`, so `osprey_main` runs (it answers -2 while a slot is empty) and the first
+    /// frame crosses the shared bridge with Prism's controls, its scene and no refusal.
+    #[test]
+    fn the_application_dll_loads_binds_its_import_and_draws_its_first_frame() {
+        assert!(
+            std::env::var_os("OSPREY_NATIVE_APP_DLL").is_some(),
+            "OSPREY_NATIVE_APP_DLL must name Prism's app.dll"
+        );
+        assert_eq!(Library::init(), Ok(()));
+        assert_eq!(
+            Library::init(),
+            Ok(()),
+            "a second init reuses the loaded application"
+        );
+        let home = crate::home().unwrap_or_default();
+        let shown = Library::open(crate::now(), crate::local_offset(), "windows", &home, true);
+        let shown = shown.expect("Prism's first frame");
+        assert!(
+            shown.controls.len() > 10,
+            "Prism's first frame tells its controls: {}",
+            shown.controls.len()
+        );
+        assert!(!shown.roots.is_empty(), "the frame has a root region");
+        assert!(
+            !shown.scenes.is_empty(),
+            "Prism draws its patch canvas as a scene"
+        );
+    }
+}

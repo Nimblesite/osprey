@@ -912,34 +912,6 @@ match listDir("src") {
 }
 ```
 
-### Path strings — [BUILTIN-PATH]
-
-Osprey programs, packages and apps join, split and compare file paths through one set of core-library functions, the `paths` prelude unit, instead of cutting strings at a separator or branching on the host. A path is portable: `/` separates segments on every host, including Windows, where every runtime file call accepts it. A trailing `/` marks a directory, exactly as `listDir` marks one. A path is a root followed by segments. The root is a drive (`C:/`), a network share (`//server/share/`), `/`, or `""` for a relative path. `pathPortable` is the one place a host's `\` becomes `/`, and every other function applies it to its inputs, so a Windows path a user typed joins cleanly. `pathNative` is the one place a host separator comes back, for showing a path to a person. The operating-system boundary in the C runtime (`osp_path_child`) is the only other place that handles separators.
-
-| Function | Answers |
-| --- | --- |
-| `pathPortable(p)` | `p` with every `\` written as `/` |
-| `pathNative(system, p)` | `p` as `system` shows it: `\` on `"windows"`, `/` elsewhere |
-| `pathJoin(dir, name)` | `name` inside `dir`, with exactly one `/` between them |
-| `pathRoot(p)` | the drive, share, `/` or `""` that `p` starts from |
-| `pathSegments(p)` | the non-empty segments after the root |
-| `pathIsRoot(p)` | whether `p` is a root with no segments |
-| `pathParent(p)` | the root and every segment but the last; `""` for a single relative segment |
-| `pathName(p)` | the last segment; the root itself when there is none |
-| `pathAncestors(p)` | the root, then each folder down to and including `p` |
-| `pathSlug(p)` | `p` with every `/` flattened to `_`: one file name per path |
-| `pathUnder(p, dir)` | whether `p` is anything inside `dir` |
-| `pathResolve(dir, rel)` | `rel` resolved against `dir`: `.` and empty segments drop out, `..` climbs |
-| `pathIsDir(p)` | whether `p` ends in `/` |
-
-```osprey
-print(pathJoin("C:\\Users\\a", "notes.txt"))    // C:/Users/a/notes.txt
-print(pathResolve("a/gpt2/generate", "../model"))  // a/gpt2/model
-print(pathParent("a/b/c.osp"))                      // a/b
-```
-
-A URL path is not a file path: HTTP routes and package coordinates keep their own `/` rules and do not use these functions.
-
 ### `kindOf(path: string) -> Result<string, string>` — [BUILTIN-FILE-KIND]
 
 `"dir"`, `"file"` or `"other"` for one path, as `stat` reports it. A path that cannot be stated is an `Error` naming the reason, never a guessed kind. `--no-fs` refuses it, and wasm32 rejects it at compile time.

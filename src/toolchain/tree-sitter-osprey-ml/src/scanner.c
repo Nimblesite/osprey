@@ -158,6 +158,7 @@ static bool indent(MlScanner *scanner, TSLexer *lexer, const bool *valid, bool n
       budget > TREE_SITTER_SERIALIZATION_BUFFER_SIZE) return false;
   scanner->regions[scanner->depth] = (unsigned short)scanner->brackets;
   scanner->indents[scanner->depth++] = (unsigned short)column;
+  scanner->pending_line = false;
   scanner->after_arrow = false; return emit(lexer, INDENT);
 }
 
@@ -208,7 +209,9 @@ static bool ml_layout(MlScanner *scanner, TSLexer *lexer, const bool *valid) {
     if (lexer->lookahead < '0' || lexer->lookahead > '9') return false;
     lexer->result_symbol = NEGATIVE_GAP; return true;
   }
-  return !newline && code_token(scanner, lexer, valid);
+  if (newline || !code_token(scanner, lexer, valid)) return false;
+  scanner->pending_line = false;
+  return true;
 }
 
 bool tree_sitter_osprey_ml_external_scanner_scan(void *payload, TSLexer *lexer, const bool *valid) {
@@ -216,5 +219,14 @@ bool tree_sitter_osprey_ml_external_scanner_scan(void *payload, TSLexer *lexer, 
   if (LAYOUT_HEADER_SIZE + scanner->depth * INDENT_ENTRY_SIZE + scanner->strings.depth + 2 >= TREE_SITTER_SERIALIZATION_BUFFER_SIZE) return false;
   if (scope(&scanner->strings) == RAW_STRING || scope(&scanner->strings) == QUOTED_STRING)
     return string_token(&scanner->strings, lexer, valid);
+  if (valid[TYPE_APPLICATION_AHEAD] && lexer->lookahead == '<') {
+    if (!scan_type_arguments(lexer)) return false;
+    skip_blanks(lexer);
+    const int32_t ch = lexer->lookahead;
+    // A declaration continues with a colon; a call continues with an ML atom.
+    return ch == ':' || ch == '(' || ch == '[' || ch == '{' || ch == '"' ||
+           ch == '_' || (ch >= '0' && ch <= '9') ||
+           (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z');
+  }
   return ml_layout(scanner, lexer, valid);
 }

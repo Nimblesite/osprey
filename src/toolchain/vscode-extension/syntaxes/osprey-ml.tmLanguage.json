@@ -78,7 +78,7 @@
         },
         {
           "name": "keyword.control.osprey-ml",
-          "match": "\\b(match|handle|do|perform|in|resume)\\b"
+          "match": "\\b(match|handle|do|perform|in|resume|use)\\b"
         },
         {
           "name": "keyword.declaration.osprey-ml",
@@ -231,7 +231,7 @@
       "patterns": [
         {
           "name": "meta.function.binding.osprey-ml",
-          "begin": "^\\s*(?!(?:extern|type|effect|handler|namespace|import|module|signature|export|opaque|state|as|match|handle|do|perform|in|resume|true|false)\\b\\s*(?!=))(?:(mut)\\s+)?([a-z_][a-zA-Z0-9_]*)((?:\\s+[a-z_][a-zA-Z0-9_]*)*)\\s*(=)(?![=>])",
+          "begin": "^\\s*(?!(?:extern|type|effect|handler|namespace|import|module|signature|export|opaque|state|as|match|handle|do|perform|in|resume|use|true|false)\\b\\s*(?!=))(?:(mut)\\s+)?([a-z_][a-zA-Z0-9_]*)((?:\\s+[a-z_][a-zA-Z0-9_]*)*)\\s*(=)(?![=>])",
           "end": "(?<==)",
           "beginCaptures": {
             "1": { "name": "keyword.declaration.osprey-ml" },
@@ -373,7 +373,7 @@
           "match": "\\."
         },
         {
-          "name": "punctuation.separator.union.osprey-ml",
+          "name": "keyword.operator.pattern.osprey-ml",
           "match": "\\|"
         },
         {

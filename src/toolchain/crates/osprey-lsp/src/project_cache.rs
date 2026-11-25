@@ -73,7 +73,7 @@ impl Checked {
             let mut declared = Declared::default();
             osprey_ast::walk_program(&project.program, &mut declared);
             (
-                Arc::new(osprey_types::infer_program(&project.program)),
+                Arc::new(osprey_types::infer_program(&project.source_program())),
                 Arc::new(declared.0),
             )
         });
@@ -86,7 +86,8 @@ impl Checked {
 }
 
 /// The latest analysis of one project root, locked on its own.
-type Slot = Arc<Mutex<Option<(Inputs, Arc<Checked>)>>>;
+/// The `bool` records whether that analysis carries the redundancy proof.
+type Slot = Arc<Mutex<Option<(Inputs, bool, Arc<Checked>)>>>;
 
 /// Each engine owns its memo: unrelated servers and parallel tests cannot
 /// evict the project while its open siblings are being refreshed.
@@ -104,6 +105,7 @@ impl ProjectCache {
         root: &std::path::Path,
         config: &ProjectConfig,
         sources: &[SourceFile],
+        prove: bool,
     ) -> Arc<Checked> {
         let inputs = Inputs::of(config, sources);
         let kept = lock(&self.sources).kept();
@@ -117,15 +119,18 @@ impl ProjectCache {
         // computation: siblings asking together share one analysis, while a
         // request in another project never waits for it.
         let mut latest = lock(&slot);
-        if let Some((_, value)) = latest.as_ref().filter(|(seen, _)| *seen == inputs) {
+        if let Some((_, _, value)) = latest
+            .as_ref()
+            .filter(|(seen, proved, _)| *seen == inputs && (*proved || !prove))
+        {
             return Arc::clone(value);
         }
-        let value = Arc::new(analyse(config, sources));
+        let value = Arc::new(analyse(config, sources, prove));
         #[cfg(test)]
         let _ = self
             .computed
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        *latest = Some((inputs, Arc::clone(&value)));
+        *latest = Some((inputs, prove, Arc::clone(&value)));
         value
     }
 
@@ -147,12 +152,26 @@ impl ProjectCache {
     /// [`Self::view`] with the project's checked types, for the features that
     /// display one ([LSP-HOVER-PROJECT]).
     pub(crate) fn typed_view(&self, uri: &str, vfs: &lspkit::vfs::Vfs) -> crate::workspace::View {
-        let Some(Ok(sources)) = self.sources(uri, Some(vfs), None) else {
+        self.view_for_buffer(uri, vfs, None)
+    }
+
+    /// Completion uses the parser's recovered declarations while the user is typing.
+    pub(crate) fn view_for_buffer(
+        &self,
+        uri: &str,
+        vfs: &lspkit::vfs::Vfs,
+        buffer: Option<&str>,
+    ) -> crate::workspace::View {
+        let Some(Ok(mut sources)) = self.sources(uri, Some(vfs), buffer) else {
             return crate::workspace::View::default();
         };
+        if let Some(text) = buffer.filter(|_| sources.incomplete || !sources.errors.is_empty()) {
+            sources.recover_current(uri, text);
+        }
         let mut view = sources.view(uri);
         if view.current.is_some() {
-            view.checked = Some(self.checked(&sources.root, &sources.config, &sources.files));
+            view.checked =
+                Some(self.checked(&sources.root, &sources.config, &sources.files, false));
         }
         view
     }
@@ -193,7 +212,8 @@ fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     }
 }
 
-fn analyse(config: &ProjectConfig, sources: &[SourceFile]) -> Checked {
+/// `prove` runs the redundancy proof: only for a project with an open document.
+fn analyse(config: &ProjectConfig, sources: &[SourceFile], prove: bool) -> Checked {
     let assembled = osprey_project::assemble(config, sources);
     let errors = match &assembled {
         Ok(project) => osprey_types::check_program(&project.program),
@@ -202,7 +222,8 @@ fn analyse(config: &ProjectConfig, sources: &[SourceFile]) -> Checked {
     // A file with type errors reports no warnings, so proving them would be
     // work nobody reads.
     let warnings = match (&assembled, errors.is_empty()) {
-        (Ok(project), true) => crate::warning_actions::Warnings::of_project(project),
+        (Ok(project), true) if prove => crate::warning_actions::Warnings::of_project(project),
+        (Ok(project), true) => crate::warning_actions::Warnings::unproved(project),
         _ => crate::warning_actions::Warnings::none(),
     };
     Checked {
@@ -260,7 +281,7 @@ mod tests {
                 .sources(uri, None, None)
                 .ok_or("missing project")?
                 .map_err(|errors| format!("{errors:?}"))?;
-            let checked = cache.checked(&sources.root, &sources.config, &sources.files);
+            let checked = cache.checked(&sources.root, &sources.config, &sources.files, true);
             assert!(checked.assembled.is_ok(), "{checked:?}");
         }
         Ok(())
@@ -276,7 +297,7 @@ mod tests {
         let (config, sources) = loaded(&root);
         let cache = ProjectCache::default();
         for _ in 0..3 {
-            let _ = cache.checked(&root, &config, &sources);
+            let _ = cache.checked(&root, &config, &sources, true);
         }
         let performed = cache.analyses();
         let _ = std::fs::remove_dir_all(&root);
@@ -294,12 +315,12 @@ mod tests {
         let root = project("manifest", "before");
         let (config, sources) = loaded(&root);
         let cache = ProjectCache::default();
-        let first = cache.checked(&root, &config, &sources);
+        let first = cache.checked(&root, &config, &sources, true);
         let renamed = ProjectConfig {
             default_namespace: Some("after".to_owned()),
             ..config
         };
-        let second = cache.checked(&root, &renamed, &sources);
+        let second = cache.checked(&root, &renamed, &sources, true);
         let performed = cache.analyses();
         let _ = std::fs::remove_dir_all(&root);
         assert_eq!(

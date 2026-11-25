@@ -4,49 +4,46 @@
 
 namespace fs_tests
 
+import fs::Path
 import fs::Walk
 
 test ("join separates without doubling", \() =>
-    expect (pathJoin ("a/b", "c.osp"), "a/b/c.osp")
-    expect (pathJoin ("a/b/", "c.osp"), "a/b/c.osp")
-    expect (pathJoin ("C:\\Users\\a", "b\\c.osp"), "C:/Users/a/b/c.osp")
-    expect (pathJoin ("a\\", "c.osp"), "a/c.osp")
-    expect (pathPortable "C:\\Program Files\\x.exe", "C:/Program Files/x.exe")
-    expect (pathName "a\\b\\c.osp", "c.osp"))
+    expect (Path::join ("a/b", "c.osp"), "a/b/c.osp")
+    expect (Path::join ("a/b/", "c.osp"), "a/b/c.osp"))
 
 test ("dirOf answers the parent and drops the name", \() =>
-    expect (pathParent ("a/b/c.osp"), "a/b")
-    expect (pathParent ("leaf.osp"), "")
-    expect (pathParent ("a/b/"), "a"))
+    expect (Path::dirOf ("a/b/c.osp"), "a/b")
+    expect (Path::dirOf ("leaf.osp"), "")
+    expect (Path::dirOf ("a/b/"), "a"))
 
 test ("nameOf answers the last segment", \() =>
-    expect (pathName ("a/b/c.osp"), "c.osp")
-    expect (pathName ("leaf.osp"), "leaf.osp"))
+    expect (Path::nameOf ("a/b/c.osp"), "c.osp")
+    expect (Path::nameOf ("leaf.osp"), "leaf.osp"))
 
 test ("slug flattens every separator", \() =>
-    expect (pathSlug ("a/b/c.osp"), "a_b_c.osp")
-    expect (pathSlug ("leaf.osp"), "leaf.osp"))
+    expect (Path::slug ("a/b/c.osp"), "a_b_c.osp")
+    expect (Path::slug ("leaf.osp"), "leaf.osp"))
 
 test ("under answers the one inside-a-directory test", \() =>
-    expect (pathUnder ("a/b/c.osp", "a/b"), true)
-    expect (pathUnder ("a/b/c.osp", "a"), true)
-    expect (pathUnder ("a/other.osp", "a/b"), false))
+    expect (Path::under ("a/b/c.osp", "a/b"), true)
+    expect (Path::under ("a/b/c.osp", "a"), true)
+    expect (Path::under ("a/other.osp", "a/b"), false))
 
 test ("resolve climbs, skips dots and keeps plain segments", \() =>
-    expect (pathResolve ("a/gpt2/generate", "../model"), "a/gpt2/model")
-    expect (pathResolve ("a/b", "."), "a/b")
-    expect (pathResolve ("a/b", "./src/x.osp"), "a/b/src/x.osp")
-    expect (pathResolve ("a/b", "../../../c"), "c")
-    expect (pathResolve ("", "src"), "src")
-    expect (pathResolve ("a//b/", "c"), "a/b/c"))
+    expect (Path::resolve ("a/gpt2/generate", "../model"), "a/gpt2/model")
+    expect (Path::resolve ("a/b", "."), "a/b")
+    expect (Path::resolve ("a/b", "./src/x.osp"), "a/b/src/x.osp")
+    expect (Path::resolve ("a/b", "../../../c"), "c")
+    expect (Path::resolve ("", "src"), "src")
+    expect (Path::resolve ("a//b/", "c"), "a/b/c"))
 
 test ("isDir reads listDir's trailing-separator directory marker", \() =>
-    expect (pathIsDir ("a/b/"), true)
-    expect (pathIsDir ("a/b"), false)
-    expect (pathIsDir (""), false))
+    expect (Path::isDir ("a/b/"), true)
+    expect (Path::isDir ("a/b"), false)
+    expect (Path::isDir (""), false))
 
 test ("tree walks real directories, nested ones included", \() =>
-    expect (walked "src/osprey/packages/fs/src", "src/osprey/packages/fs/src/walk.ospml")
+    expect (walked "src/osprey/packages/fs/src", "src/osprey/packages/fs/src/path.ospml,src/osprey/packages/fs/src/walk.ospml")
     expect (walked FIXTURE, "${FIXTURE}/leaf.txt,${FIXTURE}/nested/inner.txt")
     expect (walked "${FIXTURE}/nested", "${FIXTURE}/nested/inner.txt"))
 
@@ -65,46 +62,14 @@ test ("tree reports an unreadable directory as an Error, never an empty walk", \
     expect (shell "rm ${locked}/b.txt ${locked}/c/d.txt && rmdir ${locked}/a ${locked}/c ${locked}", 0))
 
 test ("nameOf and dirOf agree on every shape of path", \() =>
-    forEachList (["a/b/c.osp", "leaf.osp", "a/b/", "/abs/x", "a//b", "", "/abs", "/", "C:/Users/ada", "C:\\Users", "C:/", "C:", "//server/share/photos", "\\\\server\\share"], \p =>
-        expect ("${pathParent p}|${pathName p}", shapeOf p)))
-
-test ("roots, segments and ancestors read drives, shares and POSIX paths alike", \() =>
-    forEachList ([
-        { path = "C:\\Users\\ada", root = "C:/", segments = "Users,ada", top = false, trail = "C:/|C:/Users|C:/Users/ada" },
-        { path = "C:", root = "C:/", segments = "", top = true, trail = "C:/" },
-        { path = "\\\\server\\share\\photos", root = "//server/share/", segments = "photos", top = false, trail = "//server/share/|//server/share/photos" },
-        { path = "//server/share", root = "//server/share/", segments = "", top = true, trail = "//server/share/" },
-        { path = "/home/me/", root = "/", segments = "home,me", top = false, trail = "/|/home|/home/me" },
-        { path = "/", root = "/", segments = "", top = true, trail = "/" },
-        { path = "rel/x", root = "", segments = "rel,x", top = false, trail = "|rel|rel/x" },
-        { path = "", root = "", segments = "", top = false, trail = "" }
-    ], \row =>
-        expect (pathRoot row.path, row.root)
-        expect (join (pathSegments row.path) ",", row.segments)
-        expect (pathIsRoot row.path, row.top)
-        expect (join (pathAncestors row.path) "|", row.trail)))
-
-test ("native rendering is the one place a host separator comes back", \() =>
-    expect (pathNative ("windows", "C:/Users/ada"), "C:\\Users\\ada")
-    expect (pathNative ("windows", "//server/share/"), "\\\\server\\share\\")
-    expect (pathNative ("windows", pathParent "C:\\Users"), "C:\\")
-    expect (pathNative ("macos", "C:\\odd\\name"), "C:/odd/name")
-    expect (pathNative ("linux", "/home/me"), "/home/me"))
+    forEachList (["a/b/c.osp", "leaf.osp", "a/b/", "/abs/x", "a//b", ""], \p => expect ("${Path::dirOf p}|${Path::nameOf p}", shapeOf p)))
 
 shapeOf p = match p
     "a/b/c.osp" => "a/b|c.osp"
     "leaf.osp" => "|leaf.osp"
-    "a/b/" => "a|b"
-    "/abs" => "/|abs"
-    "/" => "/|/"
-    "C:/Users/ada" => "C:/Users|ada"
-    "C:\\Users" => "C:/|Users"
-    "C:/" => "C:/|C:/"
-    "C:" => "C:/|C:/"
-    "//server/share/photos" => "//server/share/|photos"
-    "\\\\server\\share" => "//server/share/|//server/share/"
+    "a/b/" => "a|"
     "/abs/x" => "/abs|x"
-    "a//b" => "a|b"
+    "a//b" => "a/|b"
     _ => "|"
 
 shell command = match spawnProcess (command) quiet

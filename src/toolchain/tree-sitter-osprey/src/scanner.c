@@ -211,10 +211,10 @@ static bool scan_call_open_gap(TSLexer *lexer) {
   return lexer->lookahead == '(';
 }
 
-// A glued angle run belongs to a call only when its complete type-shaped
-// contents close immediately before '('. A failed lookahead leaves '<' to
-// the ordinary comparison/constructor grammar. [TYPE-GENERICS-APPLY]
-static bool scan_type_application(TSLexer *lexer) {
+// Look ahead over balanced type arguments without consuming '<'. Each flavor
+// checks what follows the closing '>' before it commits to a type application.
+// A failed lookahead leaves '<' to the comparison grammar. [TYPE-GENERICS-APPLY]
+static bool scan_type_arguments(TSLexer *lexer) {
   lexer->result_symbol = TYPE_APPLICATION_AHEAD;
   lexer->mark_end(lexer);
   unsigned angles = 0;
@@ -228,7 +228,7 @@ static bool scan_type_application(TSLexer *lexer) {
     } else if (ch == '>') {
       if (--angles == 0) {
         lexer->advance(lexer, false);
-        return saw_type && lexer->lookahead == '(';
+        return saw_type;
       }
       word = false;
     } else if (ch == '-') {
@@ -350,7 +350,7 @@ bool tree_sitter_osprey_external_scanner_scan(void *payload, TSLexer *lexer,
   if (scope(scanner) == RAW_STRING || scope(scanner) == QUOTED_STRING)
     return string_token(scanner, lexer, valid_symbols);
   if (valid_symbols[TYPE_APPLICATION_AHEAD] && lexer->lookahead == '<')
-    return scan_type_application(lexer);
+    return scan_type_arguments(lexer) && lexer->lookahead == '(';
   if (valid_symbols[CALL_OPEN_GAP] && scan_call_open_gap(lexer)) return true;
   // A failed statement lookahead may have advanced past an operator. Never
   // reuse that cursor to emit a string token; the parser retries from its start.

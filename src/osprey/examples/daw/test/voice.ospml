@@ -22,13 +22,13 @@ inspectorJourney () =
     oscillator = Drive::choose (opened, "Add component", "sine")
     filter = Drive::choose (oscillator, "Add component", "filter")
     viewShows (filter, "Module", true)
-    forEachList ([{ text = "Cutoff", shown = true }, { text = "Frequency", shown = false }], \row =>
-        expect (Drive::letters (filter, row.text), row.shown))
+    expect (Drive::letters (filter, "Cutoff"), true)
+    expect (Drive::letters (filter, "Frequency"), false)
     viewShows (filter, "Select 1", false)
     selected = Drive::choose (filter, "Module", "0")
     selectedIs (selected, 0)
-    forEachList ([{ text = "Frequency", shown = true }, { text = "Cutoff", shown = false }], \row =>
-        expect (Drive::letters (selected, row.text), row.shown))
+    expect (Drive::letters (selected, "Frequency"), true)
+    expect (Drive::letters (selected, "Cutoff"), false)
     panelDialJourney selected
     viewShows (selected, "Connections", false)
     sourced = prismTap (spacedFilter selected, "Canvas output 0:0")
@@ -92,20 +92,37 @@ silentCase p =
 near (actual, expected) = expect (actual - expected < 0.0001 && expected - actual < 0.0001, true)
 
 shapes () =
-    forEachList ([{ wave = "Sine", at = 0.25, want = 1.0 }, { wave = "Sine", at = 0.75, want = -1.0 }, { wave = "Triangle", at = 0.0, want = -1.0 }, { wave = "Triangle", at = 0.5, want = 1.0 }, { wave = "Triangle", at = 0.25, want = 0.0 }, { wave = "Saw", at = 0.0, want = -1.0 }, { wave = "Saw", at = 0.75, want = 0.5 }, { wave = "Square", at = 0.2, want = 1.0 }, { wave = "Square", at = 0.7, want = -1.0 }, { wave = "Sine", at = 1.25, want = 1.0 }], \row => near (Voice::shaped (row.wave, row.at), row.want))
-    forEachList ([{ rate = "1/1", want = 0.5 }, { rate = "1/2", want = 1.0 }, { rate = "1/4", want = 2.0 }, { rate = "1/8", want = 4.0 }, { rate = "1/16", want = 8.0 }], \row => near (Voice::hertz row.rate, row.want))
-    forEachList ([{ key = "A3", want = 220.0 }, { key = "A4", want = 440.0 }, { key = "C3", want = 130.8128 }, { key = "C4", want = 261.6256 }, { key = "C#4", want = 277.1826 }, { key = "F#3", want = 184.9972 }, { key = "B4", want = 493.8833 }], \row => near (Voice::frequency row.key, row.want))
+    near (Voice::shaped ("Sine", 0.25), 1.0)
+    near (Voice::shaped ("Sine", 0.75), -1.0)
+    near (Voice::shaped ("Triangle", 0.0), -1.0)
+    near (Voice::shaped ("Triangle", 0.5), 1.0)
+    near (Voice::shaped ("Triangle", 0.25), 0.0)
+    near (Voice::shaped ("Saw", 0.0), -1.0)
+    near (Voice::shaped ("Saw", 0.75), 0.5)
+    near (Voice::shaped ("Square", 0.2), 1.0)
+    near (Voice::shaped ("Square", 0.7), -1.0)
+    near (Voice::shaped ("Sine", 1.25), 1.0)
+    near (Voice::hertz "1/1", 0.5)
+    near (Voice::hertz "1/2", 1.0)
+    near (Voice::hertz "1/4", 2.0)
+    near (Voice::hertz "1/8", 4.0)
+    near (Voice::hertz "1/16", 8.0)
+    near (Voice::frequency "A3", 220.0)
+    near (Voice::frequency "A4", 440.0)
+    near (Voice::frequency "C3", 130.8128)
+    near (Voice::frequency "C4", 261.6256)
+    near (Voice::frequency "C#4", 277.1826)
+    near (Voice::frequency "F#3", 184.9972)
+    near (Voice::frequency "B4", 493.8833)
 
 voiceCases () =
     voiceCase (defaultPatch (), 75)
-    forEachList ([
-        { wave = "Sine", process = 0.1, depth = 0.7, lfo = 2.0, volume = 0.75, peak = 17 },
-        { wave = "Sine", process = 0.1, depth = 0.0, lfo = 2.0, volume = 0.75, peak = 2 },
-        { wave = "Sine", process = 0.7, depth = 0.7, lfo = 2.0, volume = 1.0, peak = 100 },
-        { wave = "Sine", process = 0.7, depth = 0.7, lfo = 2.0, volume = 0.5, peak = 50 },
-        { wave = "Square", process = 0.7, depth = 0.7, lfo = 2.0, volume = 0.75, peak = 75 },
-        { wave = "Saw", process = 0.1, depth = 0.7, lfo = 8.0, volume = 0.75, peak = 17 }],
-        \row => voiceCase (patch (row.wave, row.process, row.depth, row.lfo, row.volume), row.peak))
+    voiceCase (patch ("Sine", 0.1, 0.7, 2.0, 0.75), 17)
+    voiceCase (patch ("Sine", 0.1, 0.0, 2.0, 0.75), 2)
+    voiceCase (patch ("Sine", 0.7, 0.7, 2.0, 1.0), 100)
+    voiceCase (patch ("Sine", 0.7, 0.7, 2.0, 0.5), 50)
+    voiceCase (patch ("Square", 0.7, 0.7, 2.0, 0.75), 75)
+    voiceCase (patch ("Saw", 0.1, 0.7, 8.0, 0.75), 17)
     d = defaultPatch ()
     silentCase (d(sounding = false))
     silentCase (d(audible = false))
@@ -137,7 +154,8 @@ zeroStereoResponse () = "4F535631020000000200000000000000" + join (mapList (toLi
 
 prismIntegratedJourney () =
     opened = editorLaunched []
-    graphOf (opened, 5, 4)
+    nodesOf (opened, 5)
+    cablesOf (opened, 4)
     forEachList (["Filter Cutoff", "Master Level", "Modules", "Undo", "Redo", "Timeline", "Track patch", "Bus routing"], \label => offeredIn (opened, label, true))
     forEachList (["Patch controls", "Save project"], \label => offeredIn (opened, label, false))
     cutoff = controlPoint (opened, "Filter Cutoff", 0.5)
@@ -147,9 +165,11 @@ prismIntegratedJourney () =
     level = controlPoint (changed, "Master Level", 0.25)
     quieter = clickAt (changed, level.pointX, level.pointY)
     parameterAt ((Drive::holding quieter).graph, 2, 0, \p => near (p.initial, 0.25))
-    library = openedPalette quieter
+    library = prismTap (quieter, "Modules")
+    expect ((Drive::holding library).paletteShown, true)
     added = Drive::pointer (Drive::pointer (library, 80.0, 130.0, true), 350.0, 230.0, false)
-    graphOf (added, 6, 4)
+    nodesOf (added, 6)
+    cablesOf (added, 4)
     selectedIs (added, 5)
     expect ((Drive::holding added).paletteDrag, "")
     prismControlJourney quieter
@@ -193,8 +213,8 @@ prismControlJourney opened =
     bypassed = prismTap (triangle, "Bypass Oscillator")
     offeredIn (bypassed, "Enable Oscillator", true)
     valid (synth::Graphs::node ((Drive::holding bypassed).graph, 0), \n =>
-        forEachList ([{ key = "waveform", at = 1.0 }, { key = "enabled", at = 0.0 }], \row =>
-            expect (length (filterList (n.parameters, \p => p.key == row.key && p.initial == row.at)), 1)))
+        expect (length (filterList (n.parameters, \p => p.key == "waveform" && p.initial == 1.0)), 1)
+        expect (length (filterList (n.parameters, \p => p.key == "enabled" && p.initial == 0.0)), 1))
     prismAudioJourney ((Drive::holding opened).graph, (Drive::holding triangle).graph, (Drive::holding bypassed).graph)
     enabled = prismTap (bypassed, "Enable Oscillator")
     rates = prismTap (enabled, "LFO Rate: 1/4")
@@ -257,11 +277,6 @@ spacedFilter driven =
     expect ((controlPoint (moved, "Canvas Filter 1", 0.5)).pointX, at.pointX + 200.0)
     moved
 
-// The wire a driven editor drags: held out, or let go.
-wireHeld d = expect ((Drive::holding d).wireDragging, true)
-
-wireFree d = expect ((Drive::holding d).wireDragging, false)
-
 // [PRISM-ROUTING-CABLES] Physical press/move/release, cancellation and direct removal.
 cableGestureJourney () =
     opened = openedEditor ["--empty"]
@@ -269,17 +284,17 @@ cableGestureJourney () =
     oscillator = controlPoint (disconnected, "Canvas output 0:0", 0.5)
     filter = controlPoint (disconnected, "Canvas input 1:0", 0.5)
     armed = grabbedAt (disconnected, oscillator.pointX, oscillator.pointY)
-    wireHeld armed
+    expect ((Drive::holding armed).wireDragging, true)
     preview = Drive::pointer (armed, 450.0, 300.0, true)
     cablesOf (preview, 0)
     expect ((Drive::holding preview).wireX, 450.0)
     cancelled = Drive::pointer (preview, 450.0, 300.0, false)
-    wireFree cancelled
+    expect ((Drive::holding cancelled).wireDragging, false)
     cablesOf (cancelled, 0)
     source = grabbedAt (cancelled, oscillator.pointX, oscillator.pointY)
     connected = clickAt (source, filter.pointX, filter.pointY)
     cablesOf (connected, 1)
-    wireFree connected
+    expect ((Drive::holding connected).wireDragging, false)
     selected = prismTap (connected, "Cable 0:0 to 1:0")
     expect ((Drive::holding selected).selectedCable, 0)
     offeredIn (selected, "Delete selected cable", true)
@@ -360,26 +375,10 @@ patched kinds =
     wired
 
 // The host draws the timeline and the detached patch in separate regions.
-dialTarget (d, ordinal) = match listGet d.drivenSurface.surfaceBound ordinal
-    Error _ => false
-    Success binding => match binding
-        ui::SceneInput action => action == synth::Controls
-        _ => false
+dialTarget (d, ordinal) = boundTo (d, ordinal, synth::Controls)
 
-dialPointer (d, x, y, down, shift) = match listGet (filterList (d.drivenSeen.renderedScenes, \ordinal => dialTarget (d, ordinal))) 0
-    Error _ =>
-        expect ("no Patch Controls scene", "a Patch Controls scene")
-        d
-    Success scene => Drive::sent (d, ui::Touch(touchNow = d.drivenNow, touchKind = ui::Hosting::pointer, touchOrdinal = scene, touchWords = "", touchDetail = "", touchX = x, touchY = y, touchDown = down, touchShift = shift))
-
-// One dial press, one dial release, and the pair at the same point.
-dialDown (d, x, y) = dialPointer (d, x, y, true, false)
-
-dialUp (d, x, y) = dialPointer (d, x, y, false, false)
-
-dialGrab (d, point) = dialDown (d, point.pointX, point.pointY)
-
-dialTouched (d, point) = dialUp (dialGrab (d, point), point.pointX, point.pointY)
+// A pointer on the Patch Controls scene, Shift held or not.
+dialPointer (d, x, y, down, shift) = sceneEvent (d, synth::Controls, ui::Hosting::pointer, x, y, down, shift)
 
 // The controls drawn by the Patch Controls scene at this scene index.
 dialAccess (d, index) = match listGet d.drivenSeen.renderedScenes index
@@ -404,14 +403,14 @@ dialTapped (d, label) = match dialOf (d, label)
     Success a =>
         x = a.accessLeft + a.accessWidth / 2.0
         y = a.accessTop + a.accessHeight / 2.0
-        asked = dialUp (dialDown (d, x, y), x, y)
+        asked = dialPointer (dialPointer (d, x, y, true, false), x, y, false, false)
         expect ((Drive::holding asked).dialEntry != "", true)
         asked
 
 // [DAW-CONTROLS-DIAL] One press and release on a Patch Controls page button, turning the panel's dial pages.
 pageTapped (d, label) =
     at = controlPoint (d, label, 0.5)
-    dialTouched (d, at)
+    dialPointer (dialPointer (d, at.pointX, at.pointY, true, false), at.pointX, at.pointY, false, false)
 
 tuned (driven, node, label, words) = Drive::choose (dialTapped (inspectorSelected (driven, node), label), label, words)
 
@@ -455,11 +454,10 @@ panelDialJourney selected =
         logTurn = synth::DialMath::turn (440.0, 20.0, 20000.0)
         expect (logTurn > 0.3 && logTurn < 0.6, true)
         near (synth::DialMath::valueAt (logTurn, 20.0, 20000.0), 440.0)
-        drag = \(by, shift) => synth::DialMath::dragged (440.0, by, p.minimum, p.maximum, shift)
-        expect (drag (0.0, false), 440.0)
-        expect (drag (1000.0, false), p.maximum)
-        expect (drag (0.0 - 1000.0, false), p.minimum)
-        expect (drag (18.0, true) < drag (18.0, false), true)))
+        expect (synth::DialMath::dragged (440.0, 0.0, p.minimum, p.maximum, 0.0), 440.0)
+        expect (synth::DialMath::dragged (440.0, 1000.0, p.minimum, p.maximum, 0.0), p.maximum)
+        expect (synth::DialMath::dragged (440.0, 0.0 - 1000.0, p.minimum, p.maximum, 0.0), p.minimum)
+        expect (synth::DialMath::dragged (440.0, 18.0, p.minimum, p.maximum, 1.0) < synth::DialMath::dragged (440.0, 18.0, p.minimum, p.maximum, 0.0), true)))
     expect (synth::DialMath::turn (0.0, 0.0 - 1.0, 1.0), 0.5)
     expect (synth::DialMath::valueAt (0.75, 0.0 - 1.0, 1.0), 0.5)
     expect (synth::DialMath::moved (100.0, 101.0), 0.0)
@@ -475,8 +473,8 @@ panelDialJourney selected =
             expect (a.accessMin < 440.0 && a.accessMax > 440.0, true)
             x = a.accessLeft + a.accessWidth / 2.0
             y = a.accessTop + a.accessHeight / 2.0
-            pressed = dialDown (selected, x, y)
-            dialLive pressed
+            pressed = dialPointer (selected, x, y, true, false)
+            expect ((Drive::holding pressed).dial != synth::DialIdle, true)
             sameGraph (pressed, selected)
             sideways = dialPointer (pressed, x + 80.0, y + 1.0, true, false)
             sameGraph (sideways, selected)
@@ -486,12 +484,12 @@ panelDialJourney selected =
             expect ((Drive::holding lifted).dragging, 0)
             fine = dialPointer (lifted, x, y - 36.0, true, true)
             expect (panelFrequency fine > 440.0 && panelFrequency fine < coarse, true)
-            lowered = dialDown (fine, x, y + 36.0)
+            lowered = dialPointer (fine, x, y + 36.0, true, false)
             expect (panelFrequency lowered < 440.0, true)
-            back = dialDown (lowered, x, y - 36.0)
+            back = dialPointer (lowered, x, y - 36.0, true, false)
             expect (panelFrequency back, coarse)
-            released = dialUp (back, x, y - 36.0)
-            dialIdle released
+            released = dialPointer (back, x, y - 36.0, false, false)
+            expect ((Drive::holding released).dial, synth::DialIdle)
             expect ((Drive::holding released).dragging, 0 - 1)
             expect ((Drive::holding released).dialEntry, "")
             expect (panelFrequency released, coarse)
@@ -509,8 +507,8 @@ dialPagesJourney () =
         end = synth::Dials::access (editor(dialOffset = at), cut, 0.0, 30.0, 248.0)
         reads (listGet cut.parameters (satSub count 1), \p => expect (Semantics::offered (end, "Grain cloud 0 ${(synth::ParameterModes::describe p).title}"), true))
         expect (Semantics::offered (end, "Next parameters"), false)))
-    forEachList ([{ label = "Previous parameters", shown = false }, { label = "Next parameters", shown = true }], \row =>
-        offeredIn (grain, row.label, row.shown))
+    offeredIn (grain, "Previous parameters", false)
+    offeredIn (grain, "Next parameters", true)
     middle = pageTapped (grain, "Next parameters")
     offeredIn (middle, "Grain cloud 0 Pan spread", true)
     last = pageTapped (middle, "Next parameters")
@@ -518,21 +516,23 @@ dialPagesJourney () =
     offeredIn (last, "Next parameters", false)
     // The grain cloud keeps the panel docked on its own: View → Patch Controls would put it away, not open it.
     viewShows (last, "Parameters", true)
-    back = pageTapped (last, "Previous parameters")
+    previous = controlPoint (last, "Previous parameters", 0.5)
+    back = dialPointer (dialPointer (last, previous.pointX, previous.pointY, true, false), previous.pointX, previous.pointY, false, false)
     spread = dialTapped (back, "Pan spread")
     changed = Drive::choose (spread, "Pan spread", "0.5")
     reads (dialOf (changed, "Pan spread"), \a => expect (a.accessValue, 0.5))
     small = Drive::choose (changed, "Add component", "sine")
-    forEachList (["Previous parameters", "Next parameters"], \label => offeredIn (small, label, false))
+    offeredIn (small, "Previous parameters", false)
+    offeredIn (small, "Next parameters", false)
     reads (dialOf (small, "Frequency"), \a => expect (a.accessValue > 0.0, true))
     shaper = Drive::choose (small, "Add component", "shaper")
     offeredIn (shaper, "Waveshaper 2 Curve", true)
     reads (dialOf (shaper, "Antiderivative antialiasing"), \a =>
         expect (a.accessSelected, true)
         point = Semantics::point (a, 0.5)
-        toggled = dialGrab (shaper, point)
+        toggled = dialPointer (shaper, point.pointX, point.pointY, true, false)
         still = dialPointer (toggled, point.pointX, point.pointY + 1.0, true, false)
-        released = dialUp (still, point.pointX, point.pointY)
+        released = dialPointer (still, point.pointX, point.pointY, false, false)
         reads (dialOf (released, "Antiderivative antialiasing"), \off =>
             expect (off.accessSelected, false)
             expect (off.accessValue, 0.0)))
@@ -544,7 +544,7 @@ dialPagesJourney () =
         moved = dialPointer (held, point.pointX, point.pointY - 9.0, true, true)
         expect (Drive::letters (moved, "Fine adjustment"), true)
         reads (dialOf (moved, "Drive"), \p => expect (p.accessValue > 1.808 && p.accessValue < 2.0, true))
-        up = dialUp (moved, point.pointX, point.pointY - 9.0)
+        up = dialPointer (moved, point.pointX, point.pointY - 9.0, false, false)
         expect (Views::letters (up.drivenSeen, "Fine adjustment"), false))
 
 // [DAW-PAGES-STRIP] Each tab names its page once. An output has no parameter section.
@@ -568,57 +568,19 @@ pageHeadingsJourney () =
 
 // [DAW-TRANSPORT-LIVE-CONTROLS] Every live journey's opening: the folder, the saved song, its launched editor and Play.
 liveLaunched (place, tab, score, check) =
-    launchedSong (place, score, \session => prismTap (session, tab), check)
-
-// The folder pair every live journey makes, then the song saved and launched, Play pressed by `press`.
-launchedSong (place, score, press, check) =
-    madePlace place
-    succeeds (daw::Projects::saved (score, (pathJoin (place, "knobs.json"))), \source =>
-        session = editorLaunched ["--song", (pathJoin (place, "knobs.json")), "--renderer", (pathJoin (place, "daw")), "--vst-worker", (pathJoin (place, "worker"))]
-        started = Drive::press (press session, "Play Song")
-        expect ((Drive::holding started).songTicket, "daw-song:live:${pathJoin (pathJoin (place, "knobs"), "live")}")
-        check (source, started))
-
-// The shared results folder and this journey's own place inside it.
-madeRoot () = succeeds (makeDir "target/daw-tests", \_ => expect (true, true))
-
-madePlace place =
     _root = makeDir "target/daw-tests"
     _dir = makeDir place
-
-// A driven editor whose dial is engaged, and one whose dial has let go.
-dialLive d = expect ((Drive::holding d).dial != synth::DialIdle, true)
-
-dialIdle d = expect ((Drive::holding d).dial, synth::DialIdle)
-
-// The graph a driven editor holds: `nodes` nodes and `cables` cables.
-graphOf (driven, nodes, cables) =
-    nodesOf (driven, nodes)
-    cablesOf (driven, cables)
-
-// The Modules menu opened as a hand opens it, its palette drawn.
-openedPalette driven =
-    library = prismTap (driven, "Modules")
-    expect ((Drive::holding library).paletteShown, true)
-    library
+    succeeds (daw::Projects::saved (score, "${place}/knobs.json"), \source =>
+        session = editorLaunched ["--song", "${place}/knobs.json", "--renderer", "${place}/daw", "--vst-worker", "${place}/worker"]
+        started = Drive::press (prismTap (session, tab), "Play Song")
+        expect ((Drive::holding started).songTicket, "daw-song:live:${place}/knobs/live")
+        check (source, started))
 
 // The song proven audible after `frames`, handed to `check` as a live stream.
 heardStream (score, frames, check) = succeeds (daw::Playback::start score, \initial =>
     succeeds (daw::Playback::step (score, initial, frames), \before =>
-        expect (loudest before.left > 0.01, true)
-        check (liveOf score before.playing)))
-
-// The live control stream over `score` as it stands at `playing`.
-liveOf score playing = daw::LiveStream(playing = playing, controlVersion = 0, controlScore = score, noteFolders = [])
-
-// A played packet's two sides: exactly silent, or clearly sounding.
-quietSides packet =
-    expect (loudest packet.left, 0.0)
-    expect (loudest packet.right, 0.0)
-
-loudSides packet =
-    expect (loudest packet.left > 0.01, true)
-    expect (loudest packet.right > 0.01, true)
+        audible before.left
+        check (daw::LiveStream(playing = before.playing, controlVersion = 0, controlScore = score, noteFolders = []))))
 
 // [DAW-TRANSPORT-LIVE-CONTROLS] Read the same controls and audio block as the renderer between UI events.
 liveMixHistory (place, released, muted) =
@@ -626,17 +588,17 @@ liveMixHistory (place, released, muted) =
     expect ((Drive::holding undone).songTicket, (Drive::holding released).songTicket)
     liveDialBlock (place, muted, \(loud, heard) =>
         expect (heard.controlVersion > muted.controlVersion, true)
-        loudSides loud
+        bothAudible loud
         redone = Drive::press (undone, "Redo")
         liveDialBlock (place, heard, \(quiet, again) =>
             expect (again.controlVersion > heard.controlVersion, true)
             expect (again.playing.cursor, 640)
-            quietSides quiet))
+            bothSilent quiet))
 
 liveMixJourney group =
     place = ui::Pick::either (group, "target/daw-tests/live-group", "target/daw-tests/live-mixer")
     track = keysTrack ()
-    first = beamed (60, 0.0, 0.02, 1.0)
+    first = daw::Note(pitch = 60, start = 0.0, length = 0.02, velocity = 1.0)
     arrangement = timeline [track(bus = ui::Pick::either (group, "pads", ""), notes = [first, first(pitch = 67, start = 0.02)])]
     score = arrangement(buses = ui::Pick::either (group, [padsBus (1.0, "")], []))
     liveLaunched (place, ui::Pick::either (group, "Bus routing", "Timeline"), score, \(_, started) =>
@@ -647,7 +609,7 @@ liveMixJourney group =
         expect (synth::DawSession::holding (Drive::holding down), true)
         heardStream (score, 448, \stream => liveDialBlock (place, stream, \(quiet, muted) =>
             // The held note crosses into the second note at frame 480 while the fader is still down.
-            quietSides quiet
+            bothSilent quiet
             up = Drive::pointer (down, point.pointX, point.pointY, false)
             expect (synth::DawSession::holding (Drive::holding up), false)
             liveMixHistory (place, up, muted))))
@@ -657,7 +619,7 @@ liveSendJourney () =
     place = "target/daw-tests/live-send"
     keys = keysTrack ()
     tap = daw::AudioSend(sendId = 1, source = 1, outlet = 0, bus = "pads", level = 0.5, enabled = true)
-    track = keys(gain = 0.0, sends = [tap], notes = [beamed (60, 0.0, 0.125, 1.0)])
+    track = keys(gain = 0.0, sends = [tap], notes = [daw::Note(pitch = 60, start = 0.0, length = 0.125, velocity = 1.0)])
     base = timeline [track]
     score = base(buses = [padsBus (1.0, "")])
     liveLaunched (place, "Bus routing", score, \(source, started) =>
@@ -668,7 +630,7 @@ liveSendJourney () =
         viewShows (panel, "Send level (%)", true)
         muted = Drive::choose (panel, "Send level (%)", "0")
         heardStream (score, 512, \stream => liveDialBlock (place, stream, \(quiet, applied) =>
-            quietSides quiet
+            bothSilent quiet
             invalid = Drive::choose (muted, "Send level (%)", "101")
             liveDialBlock (place, applied, \(still, retained) =>
                 expect (retained.controlVersion, applied.controlVersion)
@@ -676,6 +638,6 @@ liveSendJourney () =
                 cancelled = Drive::press (invalid, "Cancel")
                 liveDialBlock (place, retained, \(restored, last) =>
                     expect (last.controlVersion > retained.controlVersion, true)
-                    loudSides restored
+                    bothAudible restored
                     expect ((Drive::holding cancelled).songTicket, (Drive::holding started).songTicket)
                     succeeds (readFile source, \saved => succeeds (daw::SongFiles::decode saved, \disk => expect (structuralEquals (disk, score), true))))))))

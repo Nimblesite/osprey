@@ -30,7 +30,7 @@ pub(crate) fn execute_native(
     if let Some(directory) = &scratch {
         let _ = command.current_dir(&directory.path);
     }
-    let status = command.status();
+    let status = crate::toolchain::run_watched(command);
     if temporary {
         remove_temporary(&exe);
     }

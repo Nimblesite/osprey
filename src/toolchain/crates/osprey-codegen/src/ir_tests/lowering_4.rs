@@ -263,7 +263,7 @@ fn float_and_mixed_arithmetic_exercises_conversions() {
     // Float arithmetic, int→double promotion, division (always float),
     // negation, comparisons — conv.rs as_double/as_i64/box_to_i64 and
     // expr.rs arith/division/comparison/unary branches.
-    emits(
+    lowers(
         "fn main() -> Unit = {\n\
                let f = 3.5\n\
                let i = 2\n\
@@ -282,7 +282,7 @@ fn float_and_mixed_arithmetic_exercises_conversions() {
 #[test]
 fn boolean_logic_and_unary_not() {
     // && / || lower to i1 and/or; `not` / `!` to xor; bool box/zext paths.
-    emits(
+    lowers(
         "fn main() -> Unit = {\n\
                let a = true\n\
                let b = false\n\
@@ -301,7 +301,7 @@ fn boolean_logic_and_unary_not() {
 fn record_construct_field_access_and_update() {
     // Construct a record, read fields, update one — aggregate.rs
     // gen_constructor, gen_field_access, gen_update.
-    emits(
+    lowers(
         "type Point = { x: int, y: int }\n\
              fn main() -> Unit = {\n\
                let p = Point { x: 1, y: 2 }\n\
@@ -319,7 +319,7 @@ fn generic_record_update_rebuilds_the_instantiation_layout() {
     // every update of one — direct or through a generic function — died
     // with `codegen: unknown name `Box#i64``. `gen_update` now resolves the
     // registered layout, as field access always has.
-    emits(
+    lowers(
         "type Box<T> = { held: T }\n\
              fn rebox(b) = b { held: 5 }\n\
              fn swap(b, v) = b { held: v }\n\
@@ -341,7 +341,7 @@ fn record_update_of_a_handler_promoted_cell_reads_the_cell() {
     // after the region both died with `codegen: unknown name `acc``, while
     // `acc = Point { … }` beside them compiled. The update now reads its
     // base exactly as the identifier `acc` is read.
-    emits(
+    lowers(
         "type Point = { x: int, y: int }\n\
              effect Steer { nudge : fn(int) -> int }\n\
              fn steered() = {\n\
@@ -386,7 +386,7 @@ card doc index selected =
 fn fibers_channels_yield_and_done() {
     // spawn/await (covered elsewhere) plus Channel/send/recv, yield with and
     // without a value, fiber_yield and fiberDone.
-    emits(
+    lowers(
         "fn work(n: int) -> int = satAdd(n, 1)\n\
              fn main() -> Unit = {\n\
                let ch = Channel(1)\n\
@@ -409,7 +409,7 @@ fn fibers_channels_yield_and_done() {
 #[test]
 fn select_calls_the_runtime_and_switches_on_the_arm_it_performed() {
     // [CONCURRENCY-SELECT]: the arm comes from the runtime, never from source order.
-    emits(
+    lowers(
         "fn main() -> Unit = {\n\
                let c = Channel(1)\n\
                let d = Channel(1)\n\

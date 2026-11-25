@@ -3,7 +3,7 @@
 //! to a program that names one of its declarations — so a program that does
 //! not is checked and compiled exactly as written. `json` implements
 //! [BUILTIN-JSON-TYPED]; `signals` implements [STAGE-SIGNALS-STD]; `testing`
-//! implements [TESTING-ARITH-POLICY]; `errors` implements [BUILTIN-LIST-GET]; `paths` implements [BUILTIN-PATH].
+//! implements [TESTING-ARITH-POLICY]; `errors` implements [BUILTIN-LIST-GET].
 
 use osprey_ast::{walk_program, AstVisitor, Expr, Program, Stmt};
 use std::borrow::Cow;
@@ -14,7 +14,6 @@ const ERRORS: &str = include_str!("prelude/errors.osp");
 /// The built-in a list read is; `xs[i]` is its other spelling.
 const LIST_GET: &str = "listGet";
 const JSON: &str = include_str!("prelude/json.osp");
-const PATHS: &str = include_str!("prelude/paths.osp");
 const SIGNALS: &str = include_str!("prelude/signals.osp");
 const TESTING: &str = include_str!("prelude/testing.osp");
 const TESTING_GPU: &str = include_str!("prelude/testing_gpu.osp");
@@ -60,7 +59,6 @@ struct Units {
     testing_gpu: Loaded,
     testing_result: Loaded,
     errors: Loaded,
-    paths: Loaded,
 }
 
 fn units() -> &'static Units {
@@ -73,7 +71,6 @@ fn units() -> &'static Units {
         testing_gpu: at(TESTING_GPU, 3),
         testing_result: at(TESTING_RESULT, 4),
         errors: at(ERRORS, 5),
-        paths: at(PATHS, 6),
     })
 }
 
@@ -109,7 +106,6 @@ pub(crate) fn with_prelude(program: &Program) -> Cow<'_, Program> {
         (want(&all.testing), &all.testing),
         (gpu_wanted, &all.testing_gpu),
         (want(&all.testing_result), &all.testing_result),
-        (want(&all.paths), &all.paths),
     ]
     .into_iter()
     .filter_map(|(want, unit)| want.then_some(unit))

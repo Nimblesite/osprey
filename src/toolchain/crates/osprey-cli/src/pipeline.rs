@@ -157,21 +157,18 @@ fn print_ir(cli: &Cli, input: &CompilationInput) -> ExitCode {
 pub(crate) fn report_type_errors(input: &CompilationInput, warnings: Warnings) -> usize {
     let errors = osprey_types::check_program(input.program());
     let count = report_errors(&errors, input);
-    count + report_warnings(input, warnings)
+    count + report_warnings(input, warnings, false)
 }
 
 /// Gate a compiling mode exactly like [`report_type_errors`], retaining the
 /// lowered program and published types so codegen reuses this solve instead of
 /// re-running the whole-program check.
-fn gate(
-    input: &CompilationInput,
-    warnings: Warnings,
-) -> Result<osprey_types::CheckedProgram, ExitCode> {
+fn gate(cli: &Cli, input: &CompilationInput) -> Result<osprey_types::CheckedProgram, ExitCode> {
     let checked = osprey_types::check_and_publish(input.program(), &[]).map_err(|errors| {
         let _ = report_errors(&errors, input);
         ExitCode::FAILURE
     });
-    if report_warnings(input, warnings) > 0 {
+    if report_warnings(input, cli.warnings, cli.mode == "--check") > 0 {
         return Err(ExitCode::FAILURE);
     }
     checked
@@ -185,14 +182,20 @@ fn report_errors(errors: &[osprey_types::TypeError], input: &CompilationInput) -
 }
 
 /// Print the warnings and return how many of them fail the invocation.
-fn report_warnings(input: &CompilationInput, warnings: Warnings) -> usize {
-    match warnings {
-        Warnings::Skip => 0,
-        Warnings::Report | Warnings::Analyse => {
-            let _ = warnings::report(input, &warnings::collect(input, warnings.analyses()));
-            0
-        }
-        Warnings::Deny => warnings::report(input, &warnings::collect(input, true)),
+fn report_warnings(input: &CompilationInput, warnings: Warnings, check_examples: bool) -> usize {
+    if warnings == Warnings::Skip {
+        return 0;
+    }
+    let mut diagnostics = warnings::collect(input, warnings.analyses());
+    // [DOC-EXPORT-EXAMPLE-REQUIRED] Source checks audit examples during rollout.
+    if !check_examples {
+        diagnostics.retain(|warning| warning.rule != osprey_types::UNEXAMPLED_EXPORT);
+    }
+    let reported = warnings::report(input, &diagnostics);
+    if warnings == Warnings::Deny {
+        reported
+    } else {
+        0
     }
 }
 
@@ -208,7 +211,7 @@ fn dispatch_codegen(cli: &Cli, input: &CompilationInput) -> ExitCode {
 /// The one whole-program solve of this invocation, retained for every target
 /// boundary and codegen after it. [TYPE-EFFECT-PROOF-COUNT]
 fn gated(cli: &Cli, input: &CompilationInput) -> Result<(), ExitCode> {
-    offer_checked(cli, input, gate(input, cli.warnings)?);
+    offer_checked(cli, input, gate(cli, input)?);
     target_error(cli, input).map_or(Ok(()), |_| Err(ExitCode::FAILURE))
 }
 

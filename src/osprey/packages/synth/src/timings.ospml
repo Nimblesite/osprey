@@ -8,7 +8,7 @@ module Timings
     (** The graph rendering rate these sample counts assume. *)
     export rate = 48000.0
 
-    value (n, key) = match listGet (filterList (n.parameters, \p => p.key == key)) 0
+    value (n, key) = match Graphs::parameterNamed (n, key)
         Error _ => Error(message = InvalidConfiguration(detail = "The node lacks a timing parameter: ${key}."))
         Success p => Success(value = p.initial)
 

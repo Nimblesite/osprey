@@ -66,6 +66,8 @@ pub(crate) enum TokKind {
     KwHandle,
     /// `handler` — the handler itself, as a value ([EFFECTS-HANDLER-VALUE]).
     KwHandler,
+    /// `use` — passes the rest of its block to a call as a callback ([BLOCK-USE]).
+    KwUse,
     /// `resume` — resumes a suspended continuation from a handler arm ([FLAVOR-ML-EFFECT]).
     KwResume,
     /// `mask` — skips one enclosing activation of an effect ([EFFECTS-MASK]).
@@ -168,6 +170,7 @@ const KEYWORDS: &[(&str, TokKind)] = &[
     ("perform", TokKind::KwPerform),
     ("handle", TokKind::KwHandle),
     ("handler", TokKind::KwHandler),
+    ("use", TokKind::KwUse),
     ("resume", TokKind::KwResume),
     ("mask", TokKind::KwMask),
     ("instance", TokKind::KwInstance),

@@ -96,7 +96,7 @@ aliasHeld (shape, fundamental, folded) =
     forEachList (folded, \f => below ("${shape.name} ${fundamental} Hz fold at ${f} Hz", decibelsAt (samples, f) - decibelsAt (samples, fundamental), -34.0))
 
 filterStep (c, run, frequency, n) =
-    out = Filters::next (c, run.held, sin (6.283185307179586 * frequency * toFloat n / probeRate))
+    out = Filters::next (c, run.held, sin (tau * frequency * toFloat n / probeRate))
     { held = out.next, low = listAppend run.low out.low, band = listAppend run.band out.band, high = listAppend run.high out.high }
 
 // A sine through the state-variable filter settles for 4,800 frames; its last 4,800 hold the bilinear response.

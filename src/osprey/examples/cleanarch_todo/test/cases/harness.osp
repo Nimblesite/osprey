@@ -71,6 +71,9 @@ module TodoHarness {
     export fn request(principal, clockStep, seedLists, seedItems, ask) =
         quiet(fn() => staged(principal, clockStep, seedLists, seedItems, ask))
 
+    /// `request` by the admin at clock step 0, the shape most cases ask in.
+    export fn adminAsks(seedLists, seedItems, ask) = request(admin(), 0, seedLists, seedItems, ask)
+
     /// `request` with the log captured: answers `{ settled, events, lines }`.
     export fn witnessed(principal, clockStep, seedLists, seedItems, ask) = {
         mut lines = []

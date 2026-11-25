@@ -35,7 +35,7 @@ performed (request, source) = match daw::SongFiles::decode source
 
 // A live refusal goes to `fault.txt` in the folder: standard output carries only audio blocks.
 faulted (request, why) =
-    _told = writeFile (pathJoin (request.folder, "fault.txt")) why
+    _told = writeFile "${request.folder}/fault.txt" why
     1
 
 // [DAW-TRANSPORT-LIVE] Play the window to standard output, once or as a loop.

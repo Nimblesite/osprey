@@ -96,6 +96,16 @@ acted action = match action
 // One message spelt as its handler sees it, so a table can hold it.
 routed message = Messages::route (message, \a => "tap ${acted a}", \(a, text) => "text ${acted a}:${text}", \(a, flag) => "flag ${acted a}:${flag}", \(a, points) => "integer ${acted a}:${points}", \(ticket, _) => "completed ${ticket}", \phase => "phase ${phase}", \(a, stroke) => "stroke ${acted a}:${length stroke.strokePoints}/${stroke.strokeWidth}/${stroke.strokeAt}", \(a, indices) => "lasso ${acted a}:${join (mapList (indices, \index => "${index}")) ","}", \_ => "frame", \(_, _) => "controlled")
 
+// `result` accepted, spelt as the word the refusal cases read, or the problem it refused with.
+refusal result = match result
+    Success _ => "accepted"
+    Error problem => problem
+
+// The message `result` delivers spelt as its handler sees it, or its refusal.
+delivered result = match result
+    Success message => routed message
+    Error problem => problem
+
 theme = ui::Theme(tokens = [ui::Token(tokenName = "canvas", tokenLight = "#FFFFFF", tokenDark = "#000000")], spacing = [4, 8], feedback = 120, settle = 220)
 
 (** The probe application as its boundary runs it: the store drawn with the probe theme. *)
@@ -188,6 +198,11 @@ expectTold (node, wanted) = expect (spelled (toldOf node), wanted)
 expectToldChildren (node, rows) =
     told = toldOf node
     forEachList (rows, \row => expect (spelled (childTold (told, row.index)), row.wanted))
+
+// One node construction serving both reads: its told record spelled, then its bindings delivered.
+toldAndDelivered (node, wanted, inputs) =
+    expectTold (node, wanted)
+    delivers (node, inputs)
 
 // A component record's own members, or none when they name no kind.
 ownControls members = match memberText (members, "kind") == ""

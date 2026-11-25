@@ -38,32 +38,33 @@ This is a language gap that blocks top tier, ranked with the gaps in [generic er
 
 ### Syntax
 
-- [ ] `osprey-ast`: add `Pattern::Or(Vec<Pattern>)` in `src/pattern.rs`. Every flavor lowers to it. No frontend copies an arm
-- [ ] Tree-sitter grammar (`src/toolchain/tree-sitter-osprey/grammar/patterns.js`): `pattern` takes `sep1('|', …)` at the lowest precedence; inside `(…)`, `{…}` and `[…]` slots the alternatives end at `,` or the closing delimiter
-- [ ] Grammar test proving `|` after a pattern never starts the lambda form `|x| => body`, including an arm whose body is such a lambda followed by an or-pattern arm
-- [ ] Default parser (`osprey-syntax/src/default`): build `Pattern::Or`; reject a leading or trailing `|`
-- [ ] ML parser (`osprey-syntax/src/ml`): the same at arm level; a nested or-pattern in a juxtaposed slot needs parentheses; `|` in a type declaration stays a variant separator
-- [ ] Python parser (`osprey-syntax/src/python`): `case A() | B():` to `Pattern::Or`
-- [ ] TypeScript parser (`osprey-syntax/src/typescript`): adjacent `case` labels with no statements between them to `Pattern::Or`; fallthrough out of a case with statements stays rejected
-- [ ] Highlight queries and the VS Code grammar colour `|` in a pattern as an operator
+- [x] `osprey-ast`: add `Pattern::Or(Vec<Pattern>)` in `src/pattern.rs`. Every flavor lowers to it. No frontend copies an arm
+- [x] Tree-sitter grammar (`src/toolchain/tree-sitter-osprey/grammar/patterns.js`): `pattern` takes `sep1('|', …)` at the lowest precedence; inside `(…)`, `{…}` and `[…]` slots the alternatives end at `,` or the closing delimiter
+- [x] Grammar test proving `|` after a pattern never starts the lambda form `|x| => body`, including an arm whose body is such a lambda followed by an or-pattern arm
+- [x] Default parser (`osprey-syntax/src/default`): build `Pattern::Or`; reject a leading or trailing `|` (`failscompilation/match_or_pattern_dangling_pipe.ospo`)
+- [x] ML parser (`osprey-syntax/src/ml`): the same at arm level; a nested or-pattern in a juxtaposed slot needs parentheses; `|` in a type declaration stays a variant separator
+- [x] Python parser (`osprey-syntax/src/python`): `case A() | B():` to `Pattern::Or` (`union_pattern`; `osprey_mega_showcase` twins)
+- [x] TypeScript parser (`osprey-syntax/src/typescript`): adjacent `case` labels with no statements between them to `Pattern::Or`; fallthrough out of a case with statements stays rejected
+- [x] Highlight queries and both VS Code grammars colour `|` in a pattern as an operator. The Tree-sitter capture test and TextMate token tests distinguish pattern operators from union and lambda delimiters.
 
 ### Checker
 
-- [ ] `osprey-types/src/pattern.rs`: type every alternative against the scrutinee or slot type ([PATTERN-OR-TYPE])
-- [ ] Binding agreement ([PATTERN-OR-BINDINGS]): the same name set in every alternative, one unified type per name. The diagnostic names the missing variable and the alternative that omits it
-- [ ] `osprey-types/src/pattern/usefulness.rs`: expand an or-pattern into its alternatives for exhaustiveness and reachability; report an unreachable alternative at that alternative's range, with the usual witness for a non-exhaustive match
-- [ ] Binder walks handle the new node: `osprey-ast/src/lower_static/hygiene.rs`, `osprey-ast/src/stage_rows/callables.rs`, `osprey-project/src/patterns.rs` and `osprey-project/src/opaque.rs`
-- [ ] An opaque record's constructor stays unmatchable outside its module through an or-pattern alternative
-- [ ] `any` scrutinee: an or-pattern of type-annotation patterns follows [TYPE-ANY]; it never makes the match exhaustive
+- [x] `osprey-types/src/pattern.rs`: type every alternative against the scrutinee or slot type ([PATTERN-OR-TYPE])
+- [x] Binding agreement ([PATTERN-OR-BINDINGS]): the same name set in every alternative, one unified type per name. The diagnostic names the missing variable and the alternative that omits it
+- [x] `osprey-types/src/pattern/usefulness.rs`: expand an or-pattern into its alternatives for exhaustiveness and reachability; report an unreachable alternative at that alternative's range, with the usual witness for a non-exhaustive match
+- [x] Binder walks handle the new node: `osprey-ast/src/lower_static/hygiene.rs`, `osprey-ast/src/stage_rows/callables.rs`, `osprey-project/src/patterns.rs` and `osprey-project/src/opaque.rs`
+- [x] The checker compares each alternative inside an open row slot by field name. The rejection fixture covers both an earlier, narrower row and a duplicate within a slot. Both matching twins select distinct alternatives under GC, ARC and wasm32.
+- [x] An opaque record's constructor stays unmatchable outside its module through either or-pattern alternative. Both module-data twins match the shared golden in GC, ARC and wasm32, and both rejection fixtures pin each illegal destructure.
+- [x] Over an erased `any`, each type-annotated alternative produces the [TYPE-ANY] diagnostic and the checker requires a catch-all. The valid structural or-pattern regression selects both row shapes and the scalar fallback in GC, ARC and wasm32.
 
 ### Backend
 
-- [ ] `osprey-codegen`: each alternative runs its tests and jumps to one shared body block; a binder is a phi of the alternatives' values. The body is emitted once ([PATTERN-OR-BODY])
-- [ ] Nested alternatives go through `nested::capture`: a failed alternative falls to the next alternative, then to the next arm; bindings install only when one alternative matched whole
-- [ ] ARC: a binder taken from either alternative is retained and released once, with no leak and no double release on the alternative that failed part-way
-- [ ] wasm32: the same blocks and phis; corpus green under `OSPREY_TARGET=wasm32`
-- [ ] `many` lowering (`osprey-types/src/many`): a `match` with or-pattern arms inside a `many` region is rewritten with the arm kept whole; a request captured in the body resumes once per `resume` call with the alternative's bindings ([MULTI-HANDLE-MANY], [MULTI-REPLAY])
-- [ ] Static handler discharge and staged effects ([STAGE-WASM]) pass the node through unchanged
+- [x] `osprey-codegen`: each alternative runs its tests and jumps to one shared body block; a binder is a phi of the alternatives' values. The body is emitted once ([PATTERN-OR-BODY])
+- [x] Nested alternatives go through `nested::capture`: a failed alternative falls to the next alternative, then to the next arm; bindings install only when one alternative matched whole
+- [x] ARC: a binder taken from either alternative is retained and released once, with no leak and no double release on the alternative that failed part-way
+- [x] wasm32: the same blocks and phis; corpus green under `OSPREY_TARGET=wasm32`
+- [x] `many` lowering (`osprey-types/src/many`): a `match` with or-pattern arms inside a `many` region is rewritten with the arm kept whole; a request captured in the body resumes once per `resume` call with the alternative's bindings ([MULTI-HANDLE-MANY], [MULTI-REPLAY])
+- [x] Static handler discharge and staged effects ([STAGE-WASM]) pass the node through unchanged
 
 ### Tooling
 
@@ -77,18 +78,18 @@ This is a language gap that blocks top tier, ranked with the gaps in [generic er
 
 Expand existing suites. Add no new test file.
 
-- [ ] `src/osprey/tests/flavors/matching/matching.test` in both flavors, loaded with permutations: payload-free variants, literals (`int`, `float`, `string`, `bool`), constructor payloads, `Success` and `Error`, tuples, lists with a rest binder, rows, and or-patterns nested three levels deep, each asserted for every alternative and for the values that reach no alternative
-- [ ] Binding cases: the same binder taken from each alternative, a function-valued binder, a closure that captures the binder and escapes the arm, a binder shadowing a `mut` cell ([PATTERN-BINDING-SCOPE])
-- [ ] Order cases: overlapping alternatives where only the first can supply the binding ([PATTERN-OR-ORDER])
-- [ ] Multi-shot: an or-pattern arm whose body performs a `control many` operation, resumed two and three times, in `osprey-cli/tests/common/many_permutations.rs` and the multi-shot corpus, with identical output under GC, ARC and wasm32
+- [x] `src/osprey/tests/flavors/matching/matching.test` in both flavors, loaded with permutations: payload-free variants, literals (`int`, `float`, `string`, `bool`), constructor payloads, `Success` and `Error`, tuples, lists with a rest binder, rows, and or-patterns nested three levels deep, each asserted for every alternative and for the values that reach no alternative
+- [x] Binding cases: the same binder taken from each alternative, a function-valued binder, a closure that captures the binder and escapes the arm, a binder shadowing a `mut` cell ([PATTERN-BINDING-SCOPE])
+- [x] Order cases: overlapping alternatives where only the first can supply the binding ([PATTERN-OR-ORDER])
+- [x] Multi-shot: an or-pattern arm whose body performs a `control many` operation, resumed two and three times, in `osprey-cli/tests/common/many_permutations.rs` and the multi-shot corpus, with identical output under GC, ARC and wasm32
 - [ ] Python and TypeScript twins share the Default golden
-- [ ] `src/osprey/examples/failscompilation/`: an alternative that omits a binder, binders of two types, an unreachable alternative after an earlier arm, an alternative repeated inside one pattern, a leading `|`, a trailing `|`, an alternative of another union, and a non-exhaustive match whose witness is shown. Expand `match_not_exhaustive` and `match_unreachable_after_catch_all`
-- [ ] Regression in `src/osprey/tests/regressions/` for the grammar's lambda case
-- [ ] Corpus runs through `src/toolchain/crates/run_test_corpus.sh` under GC, ARC and wasm32
+- [x] `src/osprey/examples/failscompilation/`: an alternative that omits a binder, binders of two types, an unreachable alternative after an earlier arm, an alternative repeated inside one pattern, a leading `|`, a trailing `|`, an alternative of another union, and a non-exhaustive match whose witness is shown. Expand `match_not_exhaustive` and `match_unreachable_after_catch_all`
+- [x] The lambda generic-uses regression executes a lambda arm followed by an or-pattern arm, calls the returned functions for both alternatives and the fallback, and matches its golden under GC, ARC and wasm32.
+- [x] Full corpus passed under GC and ARC (337 goldens each) and wasm32 (253 goldens, 84 declared capability exclusions). All 22 alternate GPU runs passed on each backend. Documentation checks passed (94 GC, 93 ARC, 94 wasm32).
 
 ### Use it
 
-- [ ] `src/osprey/examples/cleanarch_todo`: join the arms of `TodoRequest`, `TodoDispatch` and the test matrix that share a body, then recount the "Half the code" table in its README
+- [x] Joined the repeated matches in TodoValidation, the HTTP route table and the test matrix. TodoRequest and TodoDispatch have distinct arm bodies. Recounted the full port including the socket host (11 files, 837 lines, 620 code lines). All 100 use cases pass under GC, ARC and wasm32.
 - [ ] Sweep `src/osprey/` for adjacent arms with identical bodies and join them; deslop `top-offenders` goes down
 
 ## `min` and `max`

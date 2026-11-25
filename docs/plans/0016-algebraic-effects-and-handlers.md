@@ -5,7 +5,7 @@
 
 ## Invariant — [EFFECTS-INV-MULTISHOT-REAL]
 
-Multi-shot (`many`) continuations are built for real: resumed any number of times, with independent branches. No agent may refuse, defer, scope down, stub, simulate (re-dispatch or loops), feature-flag or downgrade them to `once`, even while the compiler support is unfinished. Tests always assert multi-shot behaviour. A test that is red because the support is missing stays red; it is never weakened, skipped or deleted ([COMPILER-RED-FAILS]). Violating this is an egregious defect. See also [EXAMPLE-CLEANARCH-INV-NO-SKIP] in [the Clean Architecture port plan](cleanarch-todo-port.md).
+Multi-shot (`many`) continuations are built for real: resumed any number of times, with independent branches. No agent may refuse, defer, scope down, stub, simulate (re-dispatch or loops), feature-flag or downgrade them to `once`, even while the compiler support is unfinished. Tests always assert multi-shot behaviour. A test that is red because the support is missing stays red; it is never weakened, skipped or deleted ([COMPILER-RED-FAILS]). Violating this is an egregious defect. See also [EXAMPLE-CLEANARCH-INV-NO-SKIP] in [the Clean Architecture todo spec](../specs/applications/CleanArchTodo.md).
 
 ## Invariant — [EFFECTS-INV-MULTISHOT-PORTABLE]
 
@@ -62,7 +62,7 @@ Callable handler values, block-scoped `handle`, declared value/control modes, re
 
 - [ ] Ship the LSP replay-boundary view ([LSP-EFFECT-MULTIPLICITY]): on a `many` handler arm, `textDocument/implementation` returns the perform sites that arm can answer (its replay set); a handler region whose arms are all tail-resumptive over `once` operations publishes the "declaring Log static would remove it from the runtime" hint. Files: `src/toolchain/crates/osprey-lsp/src/effects/implementations.rs`, `src/toolchain/crates/osprey-lsp/src/effects/tests.rs`. Acceptance: tests pin both reports.
 
-- [ ] Align `src/toolchain/tree-sitter-osprey-ml/grammar.js` `operation_declaration` with the parser: the editor grammar accepts a multiplicity without `control` (`many op : …`), which the ML parser (`src/toolchain/crates/osprey-syntax/src/ml/parser/effect_declarations.rs`, `operation_markers`) and [MULTI-DECL] reject; nest `multiplicity` under `operation_mode` in the editor grammar ([MULTI-DECL]). Acceptance: `many op : int => int` fails to parse as an operation declaration in the ML grammar corpus.
+- [x] The ML editor grammar requires `control` before a multiplicity marker [MULTI-DECL]. The grammar corpus rejects `many op : int => int` and checks all three control multiplicities, replayable operations and contextual names. The rejection failed before the fix and all four corpus cases passed afterward (2026-11-23).
 
 ## Constraints
 

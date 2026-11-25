@@ -8,6 +8,34 @@
 /// Each entry pairs a source with the exact output a correct run prints.
 pub(crate) const MANY_PERMUTATIONS: &[(&str, &str, &str)] = &[
     (
+        "resumed or-pattern bodies retain the selected alternative binding",
+        r#"
+effect Choice { control many pick: fn(int) -> int }
+fn branch(input) = match input {
+    Success { value: seed } | Error { message: seed } => {
+        let answer = perform Choice.pick(seed)
+        "${seed}:${answer}"
+    }
+}
+
+fn answersFor(input, twice) = {
+    handle Choice {
+        pick base => match twice {
+            true => "${resume(base)},${resume(satAdd(base, 1))}"
+            false => "${resume(base)},${resume(satAdd(base, 1))},${resume(satAdd(base, 2))}"
+        }
+    }
+    branch(input)
+}
+
+fn main() = {
+    print(answersFor(Success { value: 4 }, true))
+    print(answersFor(Error { message: 9 }, false))
+}
+"#,
+        "4:4,4:5\n9:9,9:10,9:11\n",
+    ),
+    (
         // One answer per `resume` call, in call order, for 0, 1, 2, 3 and 5
         // resumptions of the same request.
         "the answers number the resumptions, from none to five",

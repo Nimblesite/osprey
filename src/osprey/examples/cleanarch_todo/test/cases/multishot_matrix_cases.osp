@@ -214,10 +214,7 @@ fn mxOverTitles(checks) = foldList(mxStores(), [], fn(all, store) =>
 
 /// Whether no candidate fix rewrites `ask`, so every fix branch answers alike.
 fn mxUnrewritten(ask) = match ask {
-    CreateList _ => false
-    UpdateList _ => false
-    CreateItem _ => false
-    UpdateItem _ => false
+    CreateList _ | UpdateList _ | CreateItem _ | UpdateItem _ => false
     _ => true
 }
 

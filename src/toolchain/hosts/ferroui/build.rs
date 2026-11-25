@@ -25,6 +25,8 @@ const VARIABLES: [&str; 5] = [
 ];
 
 fn main() {
+    // `app_dll`: the application is a DLL the host loads, so only its boundary can be tested.
+    println!("cargo::rustc-check-cfg=cfg(app_dll)");
     for name in VARIABLES {
         println!("cargo::rerun-if-env-changed={name}");
     }
@@ -37,6 +39,7 @@ fn main() {
     // On Windows the application is the self-contained DLL the host loads at run time (`app.rs`,
     // [WINUI-HOST-DLL]): its MinGW runtime stays inside it, so nothing is linked here.
     if env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
+        println!("cargo::rustc-cfg=app_dll");
         // FerroUI's ANGLE ships libEGL and libGLESv2 as static libraries, and libEGL still calls
         // libGLESv2 through DLL-import stubs. MSVC resolves each one locally and notes it (LNK4217,
         // once per EGL entry point); only that note is silenced, every other linker message stands.

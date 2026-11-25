@@ -148,7 +148,7 @@ module PatchVoices
                 true => chained (readFileBytes (path, 0, satAdd size 1), \bytes => decoded (path, size, bytes))
 
     (** The last part of a path: what Prism shows for an imported sample. *)
-    export fileName path = pathName path
+    export fileName path = foldList (split (replace path "\\" "/" ?: path) "/" ?: [path], path, \(_, part) => part)
 
     grained item = chained (sampled item.asset, \resource => ok (synth::Components::granular (item.identity, resource, room item.size, item.seed)))
 

@@ -1,12 +1,16 @@
 // Loopback sockets the HTTP, TLS and WebSocket C suites share: one address
-// builder and one single-connection listener, so no suite re-spells them.
+// builder, one single-connection listener and one port block per process, so
+// no suite re-spells them.
 #ifndef OSPREY_TEST_LOOPBACK_H
 #define OSPREY_TEST_LOOPBACK_H
 
 #include "http_shared.h"
 
 #include <assert.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 static inline struct sockaddr_in test_loopback_addr(int port) {
   struct sockaddr_in addr;
@@ -17,11 +21,81 @@ static inline struct sockaddr_in test_loopback_addr(int port) {
   return addr;
 }
 
-// A reusable loopback listener on `port` (0 = OS-assigned [CI-TEST-PORTS])
-// with `backlog` pending connections. The port actually bound lands in
-// *bound when it is not NULL, so suites running beside each other never
-// collide on a hard-coded number.
-static inline int test_loopback_bind(int port, int backlog, int *bound) {
+// [CI-TEST-PORTS] Every suite, and each suite's ASan twin, runs beside the
+// others under `make -j`, so a fixed port is bound twice. Each process takes
+// its own block of TEST_PORT_BLOCK ports below the ephemeral range, starting
+// at a pid-derived block and keeping the first whose ports all bind. The base
+// lives in the environment, not a per-file static, so every translation unit of
+// one binary (an origin and its client) agrees on it.
+enum {
+  TEST_PORT_FIRST = 20000,
+  TEST_PORT_BLOCK = 24,
+  TEST_PORT_BLOCKS = 500,
+};
+#define TEST_PORT_ENV "OSP_TEST_PORT_BASE"
+
+// Whether every port of the block at `base` binds on loopback right now.
+static inline int test_port_block_free(int base) {
+  for (int port = base; port < base + TEST_PORT_BLOCK; port++) {
+    int fd = socket(AF_INET, SOCK_STREAM, 0);
+    assert(fd >= 0);
+    struct sockaddr_in addr = test_loopback_addr(port);
+    int bound = bind(fd, (struct sockaddr *)&addr, sizeof(addr)) == 0;
+    close(fd);
+    if (!bound) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
+// The first port of this process's block, chosen once and kept in the
+// environment.
+static inline int test_port_base(void) {
+  const char *kept = getenv(TEST_PORT_ENV);
+  if (kept != NULL) {
+    return atoi(kept);
+  }
+  int start = (int)(getpid() % TEST_PORT_BLOCKS);
+  for (int step = 0; step < TEST_PORT_BLOCKS; step++) {
+    int base = TEST_PORT_FIRST + ((start + step) % TEST_PORT_BLOCKS) * TEST_PORT_BLOCK;
+    if (test_port_block_free(base)) {
+      char text[16];
+      snprintf(text, sizeof(text), "%d", base);
+      int kept_now = setenv(TEST_PORT_ENV, text, 1);
+      assert(kept_now == 0);
+      (void)kept_now;
+      return base;
+    }
+  }
+  assert(!"no free loopback port block");
+  return -1;
+}
+
+// Chosen before main, so no thread or forked child races to pick its own.
+__attribute__((constructor)) static void test_port_choose(void) {
+  (void)test_port_base();
+}
+
+// Port `offset` of this process's block; each listener a suite opens has its
+// own offset.
+static inline int test_port(int offset) {
+  assert(offset >= 0 && offset < TEST_PORT_BLOCK);
+  return test_port_base() + offset;
+}
+
+// "<scheme>://127.0.0.1:<port>" in a buffer the caller owns.
+static inline char *test_loopback_url(char *into, size_t size, const char *scheme, int port) {
+  int written = snprintf(into, size, "%s://127.0.0.1:%d", scheme, port);
+  assert(written > 0 && (size_t)written < size);
+  return into;
+}
+
+// A loopback URL in a buffer that lives as long as the enclosing block.
+#define TEST_URL(scheme, port) test_loopback_url((char[64]){0}, 64, (scheme), (port))
+
+// A reusable loopback listener on `port` with a backlog of one.
+static inline int test_loopback_listen(int port) {
   int fd = socket(AF_INET, SOCK_STREAM, 0);
   assert(fd >= 0);
   int opt = 1;
@@ -29,42 +103,8 @@ static inline int test_loopback_bind(int port, int backlog, int *bound) {
                     sizeof(opt)) == 0);
   struct sockaddr_in addr = test_loopback_addr(port);
   assert(bind(fd, (struct sockaddr *)&addr, sizeof(addr)) == 0);
-  assert(listen(fd, backlog) == 0);
-  if (bound != NULL) {
-    socklen_t len = sizeof(addr);
-    assert(getsockname(fd, (struct sockaddr *)&addr, &len) == 0);
-    *bound = ntohs(addr.sin_port);
-  }
+  assert(listen(fd, 1) == 0);
   return fd;
-}
-
-// A reusable loopback listener on `port` with a backlog of one.
-static inline int test_loopback_listen(int port) {
-  return test_loopback_bind(port, 1, NULL);
-}
-
-// A backlog-of-one listener on an OS-assigned port, written to *port.
-static inline int test_loopback_listen_ephemeral(int *port) {
-  return test_loopback_bind(0, 1, port);
-}
-
-// An OS-assigned loopback port that is free right now [CI-TEST-PORTS]. The
-// probe socket is closed first, so the caller can hand the number to an API
-// that cannot bind port 0 itself, or dial it back expecting a refusal.
-static inline int test_free_loopback_port(void) {
-  int probe;
-  int fd = test_loopback_listen_ephemeral(&probe);
-  close(fd);
-  return probe;
-}
-
-// The port in `*slot`, probed with test_free_loopback_port the first time,
-// so every test in a suite that caches it in one static slot agrees on it.
-static inline int test_cached_port(int *slot) {
-  if (*slot == 0) {
-    *slot = test_free_loopback_port();
-  }
-  return *slot;
 }
 
 #endif

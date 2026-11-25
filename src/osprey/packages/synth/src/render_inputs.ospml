@@ -10,7 +10,7 @@ module RenderInputs
 
     (** Find persistent kernel state by identity. *)
     export held (frame, identity) = match Seek::first (frame.states, \s => s.identity == identity)
-        Error _ => Error(message = MissingResource(detail = "index out of bounds"))
+        Error _ => Error(message = Outcomes::indexOutOfBounds)
         Success found => Success(value = found)
 
     (** Read a required parameter without substituting a fake value. *)
@@ -56,7 +56,7 @@ module RenderInputs
 
     (** Read one produced sample and reject invalid numeric output before publication. *)
     export sample (frame, identity) = match Seek::first (frame.values, \v => v.identity == identity)
-        Error _ => Error(message = MissingResource(detail = "index out of bounds"))
+        Error _ => Error(message = Outcomes::indexOutOfBounds)
         Success output => match output.value == output.value && abs output.value <= 1000000.0
             false => Error(message = NumericalFailure(detail = "Non-finite or excessive graph output."))
             true => Success(value = output.value)

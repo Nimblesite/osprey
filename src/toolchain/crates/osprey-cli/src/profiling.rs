@@ -12,13 +12,12 @@ use std::process::{Command, ExitCode};
 pub(super) fn execute_profiled(cli: &Cli, input: &CompilationInput) -> Result<u8, ExitCode> {
     let exe = profile_executable(cli, input)?;
     let raw = std::env::temp_dir().join(format!("{}.osprof.json", scratch_stem(&cli.path)));
-    let status = Command::new(&exe)
-        .env("OSPREY_PROFILE", &raw)
-        .status()
-        .map_err(|error| {
-            eprintln!("error: could not run {}: {error}", exe.display());
-            ExitCode::FAILURE
-        })?;
+    let mut command = Command::new(&exe);
+    let _ = command.env("OSPREY_PROFILE", &raw);
+    let status = crate::toolchain::run_watched(command).map_err(|error| {
+        eprintln!("error: could not run {}: {error}", exe.display());
+        ExitCode::FAILURE
+    })?;
     report_profile(cli, &exe, &raw);
     let _ = std::fs::remove_file(&raw);
     Ok(child_exit_code(status))

@@ -17,27 +17,90 @@ module Doc
     *)
     export parse source = jsonDecode source ?: JsonNull
 
-    (** The member `key` of an object, or `JsonNull` when it is absent or `doc` is not an object. *)
+    (** The member `key` of an object, or `JsonNull` when it is absent or `doc` is not an object.
+    # Examples
+    ```osprey
+    doc = Doc::parse "{\"pet\":{\"name\":\"Rex\"}}"
+    print "${Doc::text (Doc::field (doc, "pet"), "name")} ${Doc::kind (Doc::field (doc, "age"))} ${Doc::kind (Doc::field (Doc::parse "[1]", "pet"))}"
+    ```
+    ```output
+    Rex null null
+    ```
+    *)
     export field (doc, key) = jsonField doc key ?: JsonNull
 
-    (** True when the object `doc` has a member named `key`, whatever its value. *)
+    (** True when the object `doc` has a member named `key`, whatever its value.
+    # Examples
+    ```osprey
+    doc = Doc::parse "{\"note\":null}"
+    print "${Doc::has (doc, "note")} ${Doc::has (doc, "other")}"
+    ```
+    ```output
+    true false
+    ```
+    *)
     export has (doc, key) = match jsonField doc key
         Success _ => true
         Error _ => false
 
-    (** The string member `key`, or an empty string when it is absent or not a string. *)
+    (** The string member `key`, or an empty string when it is absent or not a string.
+    # Examples
+    ```osprey
+    doc = Doc::parse "{\"name\":\"Osprey\",\"age\":3}"
+    print "[${Doc::text (doc, "name")}] [${Doc::text (doc, "age")}] [${Doc::text (doc, "none")}]"
+    ```
+    ```output
+    [Osprey] [] []
+    ```
+    *)
     export text (doc, key) = jsonText (field (doc, key)) ?: ""
 
-    (** The integer member `key`, or 0 when it is absent or not an integer. *)
+    (** The integer member `key`, or 0 when it is absent or not an integer.
+    # Examples
+    ```osprey
+    doc = Doc::parse "{\"age\":3,\"name\":\"Osprey\"}"
+    print "${Doc::number (doc, "age")} ${Doc::number (doc, "name")} ${Doc::number (doc, "none")}"
+    ```
+    ```output
+    3 0 0
+    ```
+    *)
     export number (doc, key) = jsonInt (field (doc, key)) ?: 0
 
-    (** The float member `key`; an integer member reads as its float, and an absent or non-numeric one as 0. *)
+    (** The float member `key`; an integer member reads as its float, and an absent or non-numeric one as 0.
+    # Examples
+    ```osprey
+    doc = Doc::parse "{\"price\":2.5,\"count\":4,\"name\":\"tea\"}"
+    print "${Doc::decimal (doc, "price")} ${Doc::decimal (doc, "count")} ${Doc::decimal (doc, "name")}"
+    ```
+    ```output
+    2.5 4.0 0.0
+    ```
+    *)
     export decimal (doc, key) = real (field (doc, key))
 
-    (** The boolean member `key`, or false when it is absent or not a boolean. *)
+    (** The boolean member `key`, or false when it is absent or not a boolean.
+    # Examples
+    ```osprey
+    doc = Doc::parse "{\"on\":true,\"off\":false,\"name\":\"lamp\"}"
+    print "${Doc::flag (doc, "on")} ${Doc::flag (doc, "off")} ${Doc::flag (doc, "name")} ${Doc::flag (doc, "none")}"
+    ```
+    ```output
+    true false false false
+    ```
+    *)
     export flag (doc, key) = jsonBool (field (doc, key)) ?: false
 
-    (** What `value` is: "null", "bool", "number" (an integer or a float), "text", "list" or "object". *)
+    (** What `value` is: "null", "bool", "number" (an integer or a float), "text", "list" or "object".
+    # Examples
+    ```osprey
+    doc = Doc::parse "{\"a\":null,\"b\":true,\"c\":1,\"d\":1.5,\"e\":\"x\",\"f\":[],\"g\":{}}"
+    print "${Doc::kind (Doc::field (doc, "a"))} ${Doc::kind (Doc::field (doc, "b"))} ${Doc::kind (Doc::field (doc, "c"))} ${Doc::kind (Doc::field (doc, "d"))} ${Doc::kind (Doc::field (doc, "e"))} ${Doc::kind (Doc::field (doc, "f"))} ${Doc::kind doc}"
+    ```
+    ```output
+    null bool number number text list object
+    ```
+    *)
     export kind value = match value
         JsonNull => "null"
         JsonBool _ => "bool"
@@ -47,51 +110,172 @@ module Doc
         JsonArray _ => "list"
         JsonObject _ => "object"
 
-    (** A number as a float, an integer widened; anything else reads as 0. *)
+    (** A number as a float, an integer widened; anything else reads as 0.
+    # Examples
+    ```osprey
+    print "${Doc::real (Doc::parse "3")} ${Doc::real (Doc::parse "0.25")} ${Doc::real (Doc::parse "true")}"
+    ```
+    ```output
+    3.0 0.25 0.0
+    ```
+    *)
     export real value = jsonFloat value ?: toFloat (jsonInt value ?: 0)
 
-    (** The elements of an array, or none when `doc` is not an array. *)
+    (** The elements of an array, or none when `doc` is not an array.
+    # Examples
+    ```osprey
+    print "${Doc::write (JsonArray (Doc::items (Doc::parse "[1,2,3]")))} ${Doc::write (JsonArray (Doc::items (Doc::parse "{}")))}"
+    ```
+    ```output
+    [1,2,3] []
+    ```
+    *)
     export items doc = match doc
         JsonArray values => values
         _ => []
 
-    (** The members of an object, or none when `doc` is not an object. *)
+    (** The members of an object, or none when `doc` is not an object.
+    # Examples
+    ```osprey
+    print "${Doc::write (JsonObject (Doc::members (Doc::parse "{\"a\":1,\"b\":true}")))} ${Doc::write (JsonObject (Doc::members (Doc::parse "[1]")))}"
+    ```
+    ```output
+    {"a":1,"b":true} {}
+    ```
+    *)
     export members doc = match doc
         JsonObject values => values
         _ => []
 
-    (** The element at `index` of an array, or `JsonNull` when there is none. *)
+    (** The element at `index` of an array, or `JsonNull` when there is none.
+    # Examples
+    ```osprey
+    doc = Doc::parse "[\"x\",\"y\"]"
+    print "${Doc::string (Doc::at (doc, 1))} ${Doc::kind (Doc::at (doc, 5))} ${Doc::kind (Doc::at (Doc::parse "{}", 0))}"
+    ```
+    ```output
+    y null null
+    ```
+    *)
     export at (doc, index) = jsonIndex doc index ?: JsonNull
 
-    (** A string value's text, or "" when `value` is not a string. *)
+    (** A string value's text, or "" when `value` is not a string.
+    # Examples
+    ```osprey
+    doc = Doc::parse "[\"hi\",7]"
+    print "[${Doc::string (Doc::at (doc, 0))}] [${Doc::string (Doc::at (doc, 1))}]"
+    ```
+    ```output
+    [hi] []
+    ```
+    *)
     export string value = jsonText value ?: ""
 
-    (** The member names of an object, in document order; none when `doc` is not an object. *)
+    (** The member names of an object, in document order; none when `doc` is not an object.
+    # Examples
+    ```osprey
+    print "${Doc::write (Doc::strings (Doc::keys (Doc::parse "{\"b\":1,\"a\":2}")))} ${Doc::write (Doc::strings (Doc::keys (Doc::parse "[1]")))}"
+    ```
+    ```output
+    ["b","a"] []
+    ```
+    *)
     export keys doc = mapList (members doc, named)
 
     named m = match m
         JsonMember name _ => name
 
-    (** The elements of the array member `key`, or none when it is absent or not an array. *)
+    (** The elements of the array member `key`, or none when it is absent or not an array.
+    # Examples
+    ```osprey
+    doc = Doc::parse "{\"tags\":[1,2],\"name\":\"x\"}"
+    print "${Doc::write (JsonArray (Doc::fieldItems (doc, "tags")))} ${Doc::write (JsonArray (Doc::fieldItems (doc, "name")))} ${Doc::write (JsonArray (Doc::fieldItems (doc, "none")))}"
+    ```
+    ```output
+    [1,2] [] []
+    ```
+    *)
     export fieldItems (doc, key) = items (field (doc, key))
 
-    (** The array member `key` as strings; an element that is not a string reads as an empty string. *)
+    (** The array member `key` as strings; an element that is not a string reads as an empty string.
+    # Examples
+    ```osprey
+    doc = Doc::parse "{\"tags\":[\"a\",2,\"c\"]}"
+    print "${Doc::write (Doc::strings (Doc::texts (doc, "tags")))} ${Doc::write (Doc::strings (Doc::texts (doc, "none")))}"
+    ```
+    ```output
+    ["a","","c"] []
+    ```
+    *)
     export texts (doc, key) = mapList (fieldItems (doc, key), \item => jsonText item ?: "")
 
-    (** A string member for building an object. *)
+    (** A string member for building an object.
+    # Examples
+    ```osprey
+    doc = JsonObject [Doc::str ("name", "Osprey")]
+    print "${Doc::write doc} ${Doc::text (doc, "name")}"
+    ```
+    ```output
+    {"name":"Osprey"} Osprey
+    ```
+    *)
     export str (key, value) = JsonMember key (JsonString value)
 
-    (** An integer member for building an object. *)
+    (** An integer member for building an object.
+    # Examples
+    ```osprey
+    doc = JsonObject [Doc::num ("age", 3)]
+    print "${Doc::write doc} ${Doc::number (doc, "age")}"
+    ```
+    ```output
+    {"age":3} 3
+    ```
+    *)
     export num (key, value) = JsonMember key (JsonInt value)
 
-    (** A float member for building an object. *)
+    (** A float member for building an object.
+    # Examples
+    ```osprey
+    doc = JsonObject [Doc::dec ("price", 2.5)]
+    print "${Doc::write doc} ${Doc::decimal (doc, "price")}"
+    ```
+    ```output
+    {"price":2.5} 2.5
+    ```
+    *)
     export dec (key, value) = JsonMember key (JsonFloat value)
 
-    (** A boolean member for building an object. *)
+    (** A boolean member for building an object.
+    # Examples
+    ```osprey
+    doc = JsonObject [Doc::bit ("on", true)]
+    print "${Doc::write doc} ${Doc::flag (doc, "on")}"
+    ```
+    ```output
+    {"on":true} true
+    ```
+    *)
     export bit (key, value) = JsonMember key (JsonBool value)
 
-    (** A JSON array of `values`. *)
+    (** A JSON array of `values`.
+    # Examples
+    ```osprey
+    print "${Doc::write (Doc::strings ["a", "b"])} ${Doc::kind (Doc::strings ["a"])}"
+    ```
+    ```output
+    ["a","b"] list
+    ```
+    *)
     export strings values = JsonArray (mapList (values, \value => JsonString value))
 
-    (** `doc` as compact JSON text. *)
+    (** `doc` as compact JSON text.
+    # Examples
+    ```osprey
+    doc = JsonObject [Doc::str ("name", "Osprey"), Doc::num ("age", 3), Doc::bit ("on", false)]
+    print "${Doc::write doc} ${Doc::write JsonNull}"
+    ```
+    ```output
+    {"name":"Osprey","age":3,"on":false} null
+    ```
+    *)
     export write doc = jsonEncode doc ?: "null"

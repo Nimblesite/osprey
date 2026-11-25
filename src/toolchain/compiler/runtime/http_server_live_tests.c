@@ -19,13 +19,8 @@
 // [HTTP-SERVER].
 // ---------------------------------------------------------------------------
 
-// The suite's shared server port [CI-TEST-PORTS]: probed once per process
-// from this TU, so every live-server test and the creation checks in
-// http_runtime_tests.c agree on it.
-int server_test_port(void) {
-  static int port = 0;
-  return test_cached_port(&port);
-}
+#define SERVER_TEST_PORT test_port(4)
+#define KEEP_ALIVE_TEST_PORT test_port(9)
 
 static int64_t g_self_stop_server = -1;
 
@@ -82,7 +77,7 @@ void server_test_exchange(int port, const char *request, char *reply,
 // One exchange with the shared live test server.
 static void server_exchange(const char *request, char *reply,
                             size_t capacity) {
-  server_test_exchange(server_test_port(), request, reply, capacity);
+  server_test_exchange(SERVER_TEST_PORT, request, reply, capacity);
 }
 
 // One exchange with the shared server: reply opens with `status`, holds `body`.
@@ -97,7 +92,7 @@ static void exchange_assert(const char *request, const char *status,
 // A server on the shared test port, bound to loopback.
 static int64_t create_test_server(void) {
   int64_t server_id =
-      http_create_server(server_test_port(), (char *)(uintptr_t) "127.0.0.1");
+      http_create_server(SERVER_TEST_PORT, (char *)(uintptr_t) "127.0.0.1");
   assert(server_id > 0);
   return server_id;
 }
@@ -121,7 +116,14 @@ static HttpResponse g_server_test_response;
 
 // The canned reply every handler here returns: complete plain text, no stream.
 static HttpResponse *plain_text_reply(const char *body) {
-  return test_reply(&g_server_test_response, 200, "Content-Type: text/plain\r\n", "text/plain", body);
+  g_server_test_response.status = 200;
+  g_server_test_response.headers =
+      (char *)(uintptr_t) "Content-Type: text/plain\r\n";
+  g_server_test_response.contentType = (char *)(uintptr_t) "text/plain";
+  g_server_test_response.streamFd = -1;
+  g_server_test_response.isComplete = true;
+  g_server_test_response.partialBody = (char *)(uintptr_t) body;
+  return &g_server_test_response;
 }
 
 HttpResponse *http_test_server_handler(char *method, char *path,
@@ -302,6 +304,8 @@ static size_t fiber_record_bytes(void) {
   return 0;
 }
 
+extern int64_t fiber_set_deterministic_mode(bool enabled);
+
 static int64_t handler_seeing_fiber(void *ignored) {
   (void)ignored;
   return __osprey_handler_lookup_in(41, 0) == (void *)handler_seeing_fiber ? 7 : 0;
@@ -310,7 +314,12 @@ static int64_t handler_seeing_fiber(void *ignored) {
 // With handlers installed, every allocation a spawn makes may fail, the parent's
 // handler copy included: each size refuses the spawn (-2) or runs a fiber that
 // sees the parent's handler, and neither leaks a byte. Implements [MULTI-HANDLE-MANY].
+// The fibers are queued, not threaded: every refusal comes before a thread
+// exists, and glibc sets up and tears down a detached thread's TLS through
+// this same counted malloc, so an earlier fiber's thread still exiting would
+// move the process-wide live count under the next refusal's check.
 void test_spawn_with_handlers_survives_every_failed_allocation(void) {
+  assert(fiber_set_deterministic_mode(true) == 0);
   for (int handlers = 1; handlers <= 3; handlers++) {
     for (int i = 0; i < handlers; i++) {
       assert(__osprey_handler_push_scoped(41, (void *)handler_seeing_fiber, NULL,
@@ -334,6 +343,37 @@ void test_spawn_with_handlers_survives_every_failed_allocation(void) {
     assert(__osprey_handler_depth() == handlers);
     __osprey_handler_stack_cleanup();
   }
+  assert(fiber_set_deterministic_mode(false) == 0);
+}
+
+// With a handler installed, the spawn that finds the handle table full has
+// already copied the parent's handlers into a collector-scanned block; when the
+// table cannot grow, that copy goes back through the scanned free, never libc's
+// (glibc aborts on the interior pointer). Each spawn lets the record and the copy
+// through and refuses the next allocation, which only the full table's growth
+// makes. Implements [MULTI-HANDLE-MANY].
+void test_spawn_refused_by_a_full_handle_table_frees_the_handler_copy(void) {
+  assert(fiber_set_deterministic_mode(true) == 0);
+  assert(__osprey_handler_push_scoped(41, (void *)handler_seeing_fiber, NULL,
+                                      __osprey_handler_depth()) == 0);
+  int refused = 0;
+  for (int spawns = 0; spawns < (1 << 17) && refused == 0; spawns++) {
+    long live = test_alloc_live();
+    test_alloc_fail_after(2);
+    int64_t fiber = fiber_spawn_env(handler_seeing_fiber, NULL);
+    test_alloc_fail_off();
+    if (fiber == -2) {
+      refused++;
+      assert(test_alloc_live() == live && "a refused growth must free the handler copy");
+    } else {
+      assert(fiber > 0 && fiber_await(fiber) == 7);
+    }
+  }
+  assert(refused == 1 && "the full table's growth must be refused once");
+  int64_t grown = fiber_spawn_env(handler_seeing_fiber, NULL);
+  assert(grown > 0 && fiber_await(grown) == 7 && "the next spawn grows the table");
+  __osprey_handler_stack_cleanup();
+  assert(fiber_set_deterministic_mode(false) == 0);
 }
 
 void test_listener_spawn_failure_is_reported(void) {
@@ -437,7 +477,7 @@ static void *stop_after_a_moment(void *server) {
 void test_keep_alive_waits_for_its_listeners(void) {
   assert(http_keep_alive(0) == -1 && http_keep_alive(MAX_SERVERS) == -1);
   assert(http_keep_alive(MAX_SERVERS - 1) == -1 && "no server has that handle");
-  int64_t quiet = http_create_server(test_free_loopback_port(), "127.0.0.1");
+  int64_t quiet = http_create_server(KEEP_ALIVE_TEST_PORT, "127.0.0.1");
   assert(quiet > 0 && http_listen(quiet, keep_alive_handler) == 0);
   http_await_servers(); // a listener that never asked holds nothing open
   assert(http_keep_alive(quiet) == 0 && http_keep_alive(quiet) == 0);

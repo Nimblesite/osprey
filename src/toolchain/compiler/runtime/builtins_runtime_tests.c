@@ -11,6 +11,7 @@
 // process-global state (TAP counters, stdin, the terminal) each run in a fork
 // with stdin fed from a buffer and stdout captured, then compared BYTE-EXACT.
 #include <assert.h>
+#include <errno.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -391,6 +392,40 @@ static void t_input_allocation_failure(void) {
   CHECK(osp_alloc_live() == live);
 }
 
+// An injected refusal is a refusal libc's own callers can read. glibc's thread
+// setup allocates a new thread's TLS with this malloc and then asserts
+// `errno == ENOMEM` on NULL, so a refusal that leaves errno alone aborts the
+// whole binary from inside pthread_create instead of failing that one spawn.
+// Each result lands in a volatile slot: GCC deletes a malloc whose result is
+// only compared with NULL and folds the comparison to false, so the refusal
+// under test would never be asked for.
+static void t_injected_refusals_report_enomem(void) {
+  void *volatile got;
+  errno = 0;
+  osp_alloc_fail_next();
+  got = malloc(64);
+  CHECK(got == NULL && errno == ENOMEM);
+  errno = 0;
+  osp_alloc_fail_next();
+  got = calloc(4, 16);
+  CHECK(got == NULL && errno == ENOMEM);
+  errno = 0;
+  volatile size_t huge = (size_t)-1; // read at run time: an overflow, not a constant
+  got = calloc(huge, 16);
+  CHECK(got == NULL && errno == ENOMEM);
+  void *held = malloc(8);
+  errno = 0;
+  osp_alloc_fail_next();
+  void *grown = realloc(held, 128);
+  CHECK(grown == NULL && errno == ENOMEM);
+  free(grown == NULL ? held : grown);
+  errno = 0;
+  osp_alloc_fail_size(48);
+  got = malloc(48);
+  CHECK(got == NULL && errno == ENOMEM);
+  osp_alloc_fail_off();
+}
+
 // The bootstrap arena inside test_alloc.h serves the dlsym recursion that
 // resolves the real allocator, so an address it hands out that is NOT its own
 // corrupts whatever runs next rather than the test that caused it. Draining it
@@ -434,6 +469,7 @@ int main(void) {
   t_input_lines();
   t_input_descriptor_states();
   t_input_allocation_failure();
+  t_injected_refusals_report_enomem();
   // Last: it spends the bootstrap arena, and nothing after it may need one.
   t_bootstrap_arena_hands_out_only_its_own_bytes();
   t_term();

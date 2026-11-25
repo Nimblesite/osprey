@@ -42,21 +42,6 @@ impl DebugSource {
     pub fn path(&self) -> PathBuf {
         Path::new(&self.directory).join(&self.filename)
     }
-
-    /// The full source path as debug records and IR headers write it: the
-    /// one [`portable`] rendering, so no record mixes separators.
-    #[must_use]
-    pub fn portable_path(&self) -> String {
-        portable(&self.path())
-    }
-}
-
-/// `path` with forward slashes: the single rendering every debug record uses.
-/// LLVM, DWARF and the debug adapters all accept `/` on Windows, while a
-/// `Path::join` of a `C:\` directory and a file name mixes `\` and `/`.
-#[must_use]
-pub fn portable(path: &Path) -> String {
-    path.to_string_lossy().replace('\\', "/")
 }
 
 /// The absolute form of a source file's parent directory, resolving empty and
@@ -70,7 +55,7 @@ fn absolute_directory(parent: Option<&Path>) -> String {
         Some(p) => base.join(p),
         None => base,
     };
-    portable(&abs)
+    abs.to_str().map_or_else(|| ".".to_string(), str::to_string)
 }
 
 /// The native build kinds a compiler front-end can request.
@@ -165,17 +150,10 @@ mod tests {
 
     #[test]
     fn debug_source_splits_file_and_directory() {
-        // `/tmp` on POSIX; Windows anchors it to the current drive, `C:/tmp`.
-        // Either way the directory is written with `/` [BUILTIN-PATH].
         let src = DebugSource::from_path("/tmp/example.osp");
-        let tmp = std::path::absolute("/tmp").map(|abs| portable(&abs));
         assert_eq!(src.filename, "example.osp");
-        assert_eq!(
-            tmp.map_err(|err| err.to_string()),
-            Ok(src.directory.clone())
-        );
-        assert!(src.directory.ends_with("/tmp") && !src.directory.contains('\\'));
-        assert_eq!(src.path(), Path::new(&src.directory).join("example.osp"));
+        assert_eq!(src.directory, "/tmp");
+        assert_eq!(src.path(), PathBuf::from("/tmp/example.osp"));
     }
 
     #[test]

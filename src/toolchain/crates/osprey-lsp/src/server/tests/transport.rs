@@ -53,6 +53,44 @@ async fn unknown_method_yields_method_not_found_error() {
     h.shutdown_and_exit().await;
 }
 
+/// Implements [LSP-MEMORY-BACKLOG]: unknown methods never leave a
+/// cancellation entry behind in the server's real dispatcher.
+#[tokio::test]
+async fn unknown_methods_leave_no_request_in_flight() {
+    let engine = OspreyEngine::new(Vfs::new(ENCODING));
+    let dispatcher = build_dispatcher(&engine);
+    let idle = format!("{dispatcher:?}");
+    assert!(idle.contains("in_flight: 0"), "{idle}");
+    for n in 0..32_i64 {
+        let id = if n % 2 == 0 {
+            RequestId::Number(n)
+        } else {
+            RequestId::String(format!("u{n}"))
+        };
+        let method = format!("osprey/unknown{n}");
+        let reply = request(&dispatcher, &id, &method, json!({ "n": n })).await;
+        assert!(reply.result.is_none(), "{method}");
+        let error = reply.error.expect("method-not-found error");
+        assert_eq!(error.code, METHOD_NOT_FOUND, "{method}");
+        assert!(error.message.contains(&method), "{error:?}");
+        // A late $/cancelRequest for the finished id must not insert an entry.
+        dispatcher.cancel(&id);
+        let now = format!("{dispatcher:?}");
+        assert!(now.contains("in_flight: 0"), "after {method}: {now}");
+    }
+    // A known request still answers, and it too leaves nothing in flight.
+    let hover = request(
+        &dispatcher,
+        &RequestId::Number(99),
+        "textDocument/hover",
+        json!({}),
+    )
+    .await;
+    assert_eq!(hover.result, Some(Value::Null));
+    let done = format!("{dispatcher:?}");
+    assert!(done.contains("in_flight: 0"), "{done}");
+}
+
 #[tokio::test]
 async fn malformed_positional_params_resolve_to_empty_results() {
     let mut h = Harness::start();

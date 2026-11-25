@@ -51,6 +51,19 @@ impl FiberSig {
         })
     }
 
+    /// The element ABI a handle VALUE carries. A generic parameter's declared
+    /// type is still `Fiber<'a>` when its instantiation is emitted, so only the
+    /// argument knows the element; without it `await` inside a recursive
+    /// generic had nothing to unbox to (#340).
+    pub(crate) fn carried(value: &Value) -> Option<Self> {
+        value.fiber_elem.map(|elem| Self {
+            elem,
+            result_inner: value.fiber_elem_result_inner,
+            elem_owner: value.fiber_elem_owner.clone(),
+            elem_payload_owner: value.fiber_elem_payload_owner.clone(),
+        })
+    }
+
     pub(crate) fn restore(self, mut value: Value) -> Value {
         value.fiber_elem = Some(self.elem);
         value.fiber_elem_result_inner = self.result_inner;

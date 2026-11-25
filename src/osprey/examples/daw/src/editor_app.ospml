@@ -19,8 +19,8 @@ module EditorApp
             true => ui::Lists::after (context.arguments, "--audio-worker", "")
             false => ""
         song = ui::Lists::after (context.arguments, "--song", "")
-        keys = pathJoin (pathJoin (context.home, ".prism"), "shortcuts.json")
-        opened = editor(keysPath = keys, keymap = Keymaps::stored keys, skin = PrismArt::sized (art, 1536.0, 828.0), cards = PrismArt::classified art, workerPath = worker, audioPath = audio, assetFolder = pathJoin (pathJoin (pathParent (signalflow::App::documentPath context.arguments), "skins"), "prism"), renderer = ui::Lists::after (context.arguments, "--renderer", ""))
+        keys = "${context.home}/.prism/shortcuts.json"
+        opened = editor(keysPath = keys, keymap = Keymaps::stored keys, skin = PrismArt::sized (art, 1536.0, 828.0), cards = PrismArt::classified art, workerPath = worker, audioPath = audio, assetFolder = "${ui::MachineDocs::folder (signalflow::App::documentPath context.arguments)}/skins/prism", renderer = ui::Lists::after (context.arguments, "--renderer", ""))
         first = match song == ""
             true => Runtime::step opened
             false => DawSession::opening (opened, song)

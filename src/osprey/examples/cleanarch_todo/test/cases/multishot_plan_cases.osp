@@ -12,6 +12,9 @@ namespace todo;
 import todo::TodoHarness
 import todo::TodoProbe
 
+/// `size` copies of "x": the title whose sort rank is its length ("x" < "xx" < "xxx").
+fn planWide(size) = foldList(range(0, size) |> toList, "", fn(built, _i) => built + "x")
+
 /// The widths `from` up to and including `to`.
 fn planWidths(from, to) = foldList(range(from, satAdd(to, 1)) |> toList, [], fn(acc, w) => listAppend(acc, w))
 
@@ -20,13 +23,11 @@ fn planDescWidths(to) = foldList(planWidths(1, to), [], fn(acc, w) => listConcat
 
 /// Items in `listId` titled widest-first: width `w` gets id `count - w + 1`, so id 1 sorts last.
 fn planWideSeeds(listId, count) = mapList(planDescWidths(count), fn(w) =>
-    TodoHarness::seedItem(satAdd(satSub(count, w), 1), listId, wide(w), false))
+    TodoHarness::seedItem(satAdd(satSub(count, w), 1), listId, planWide(w), false))
 
 /// The branch answer for the wide rows widths `from`..`to` of a `count`-item list (id = count - w + 1);
 /// shapes() order is (page 1 of 5), (page 2 of 5), (page 1 of 10), (page 1 of 50).
-fn planWidePage(count, from, to, total, hasPrevious, hasNext) = pageOf(
-    mapList(planWidths(from, to), fn(w) => spec(satAdd(satSub(count, w), 1), wide(w), false)),
-    total, hasPrevious, hasNext)
+fn planWidePage(count, from, to, total, hasPrevious, hasNext) = Success { value: ItemsPageView { rows: mapList(planWidths(from, to), fn(w) => ItemView { id: satAdd(satSub(count, w), 1), title: planWide(w), done: false, priority: "None", note: "" }), totalCount: total, hasPrevious: hasPrevious, hasNext: hasNext } }
 
 /// Items titled `titles` in `listId`, seeded in that order (id = position), done exactly for `flipped`.
 fn planSeeds(listId, titles, flipped) = foldList(titles, { next: 1, rows: [] }, fn(walk, title) => {
@@ -34,11 +35,19 @@ fn planSeeds(listId, titles, flipped) = foldList(titles, { next: 1, rows: [] }, 
     rows: listAppend(walk.rows, TodoHarness::seedItem(walk.next, listId, title, listContains(flipped, title)))
 }).rows
 
+/// A seeded row exactly as every query reports it: priority "None", no note.
+fn planSpec(id, title, done) = ItemView { id: id, title: title, done: done, priority: "None", note: "" }
+
+/// The branch answer for rows `specs` (a seeded row exactly as every query reports it), the stored count and the flags.
+fn planPage(specs, total, hasPrevious, hasNext) = Success { value: ItemsPageView { rows: specs, totalCount: total, hasPrevious: hasPrevious, hasNext: hasNext } }
+/// The four asks over one whole page of `specs`: the page, an empty page past its end, then the page twice more.
+fn planWhole(specs, total) = [planPage(specs, total, false, false), planPage([], total, true, false), planPage(specs, total, false, false), planPage(specs, total, false, false)]
+
+/// The rows the `at`th branch answered ([] when the branch is missing or misshaped).
 /// What branch `at` answered. A nested `Success { value: Success { .. } }` pattern
 /// does not compile yet, so the cases read one level at a time.
 fn planAnswer(answers, at) = listGet(answers, at) ?: Error { message: NotFound { kind: "branch", id: at } }
 
-/// The rows the `at`th branch answered ([] when the branch is missing or misshaped).
 fn planRows(answers, at) = match planAnswer(answers, at) {
     Success { value: ItemsPageView { rows } } => rows
     _ => []
@@ -69,19 +78,6 @@ fn planRowIs(answers, at, row, spec) = match listGet(planRows(answers, at), row)
     _ => false
 }
 
-/// Branch `at` answered exactly `titles` in order and `ids` beneath them.
-fn planShows(answers, at, titles, ids) =
-    structuralEquals(planTitles(answers, at), titles) && structuralEquals(planIds(answers, at), ids)
-
-/// The four branch answers of a list that splits across the (1,5) seam: the
-/// first page, the rest alone on page 2 with a previous page, then the whole
-/// list twice over — `first`'s and `second`'s hasNext flags given per shape.
-fn planSplit(first, second, total, firstNext, secondNext) = {
-    let all = listConcat(first, second)
-    [pageOf(first, total, false, firstNext), pageOf(second, total, true, secondNext),
-     pageOf(all, total, false, false), pageOf(all, total, false, false)]
-}
-
 /// Every branch answered `total` rows in all, `counts` of them on its page and `nexts` for hasNext;
 /// only branch 1 (page 2) has a previous page.
 fn planShaped(answers, total, counts, nexts) = foldList(range(0, 4) |> toList, true, fn(ok, at) =>
@@ -91,28 +87,12 @@ fn planShaped(answers, total, counts, nexts) = foldList(range(0, 4) |> toList, t
 /// One start reading, one settle per branch and the harness reading; four answers; no event.
 fn planCalm(plan) = plan.readings == 6 && length(plan.answers) == 4 && length(plan.events) == 0
 
-/// What every page-plan probe proves about its surroundings ([MULTI-REPLAY]):
-/// calm, and the stored rows and lists exactly the seeds.
-fn planKept(plan, seeds, lists) = [
-    planCalm(plan),
-    structuralEquals(plan.items, seeds),
-    structuralEquals(plan.lists, lists)
-]
-
 /// The stored rows as the queries see them, in stored order.
 fn planStoredTitles(items) = mapList(items, fn(item) => item.title)
 
-fn planStoredDones(items) = mapList(items, fn(item) => item.done)
+fn planStoredIds(items) = mapList(items, fn(item) => item.id)
 
-/// The one shape most cases here take: probe list 1 of the one `list` over
-/// `seeds`, pin the four branch answers, and prove the probe kept the seeds —
-/// plus whatever `extra` checks the case needs.
-fn planCase(list, seeds, answers, extra) = {
-    let plan = TodoHarness::probed(TodoHarness::admin(), [list], seeds, PagePlan { listId: 1 })
-    expect(plan.answers, answers)
-    expect(TodoHarness::failures("the four answers in shapes() order; the store stays the seeds",
-        listConcat(planKept(plan, seeds, [list]), extra(plan))), [])
-}
+fn planStoredDones(items) = mapList(items, fn(item) => item.done)
 
 module MultishotPlanCases {
     /// [EXAMPLE-CLEANARCH-MULTISHOT-PLAN] the four shapes in shapes() order over six
@@ -122,20 +102,24 @@ module MultishotPlanCases {
     /// reading = readings 6; [MULTI-REPLAY] a page query writes nothing.
     export fn planShapesOrderCase() = {
         let seeds = planSeeds(1, ["t", "o", "d", "s", "p", "n"], ["p"])
-        let first5 = [spec(3, "d", false), spec(6, "n", false), spec(2, "o", false), spec(5, "p", true), spec(4, "s", false)]
+        let plan = TodoHarness::probed(TodoHarness::admin(), [TodoHarness::seedList(1, "Work", "#78909C")], seeds, PagePlan { listId: 1 })
+        let first5 = [planSpec(3, "d", false), planSpec(6, "n", false), planSpec(2, "o", false), planSpec(5, "p", true), planSpec(4, "s", false)]
+        let all6 = listAppend(first5, planSpec(1, "t", false))
         // N=6: (1,5) five rows, hasNext 5 < 6 true; (2,5) the sixth alone; (1,10) and (1,50) all six
-        planCase(TodoHarness::seedList(1, "Work", "#78909C"), seeds,
-            planSplit(first5, [spec(1, "t", false)], 6, true, false),
-            fn(plan) => [
-                structuralEquals(TodoProbe::shapes(), ["page 1 of 5", "page 2 of 5", "page 1 of 10", "page 1 of 50"]),
-                length(TodoProbe::shapes()) == 4,
-                length(plan.items) == 6,
-                planShows(plan.answers, 0, ["d", "n", "o", "p", "s"], [3, 6, 2, 5, 4]), planShows(plan.answers, 1, ["t"], [1]),
-                structuralEquals(planTitles(plan.answers, 2), ["d", "n", "o", "p", "s", "t"]), structuralEquals(planTitles(plan.answers, 3), ["d", "n", "o", "p", "s", "t"]),
-                planShaped(plan.answers, 6, [5, 1, 6, 6], [true, false, false, false]),
-                planRowIs(plan.answers, 0, 0, spec(3, "d", false)), planRowIs(plan.answers, 0, 3, spec(5, "p", true)),
-                planRowIs(plan.answers, 1, 0, spec(1, "t", false))
-            ])
+        expect(plan.answers, [planPage(first5, 6, false, true), planPage([planSpec(1, "t", false)], 6, true, false), planPage(all6, 6, false, false), planPage(all6, 6, false, false)])
+        checkAll("four resumptions in shapes() order; sorting is by title, not id or seed order", [
+            structuralEquals(TodoProbe::shapes(), ["page 1 of 5", "page 2 of 5", "page 1 of 10", "page 1 of 50"]),
+            length(TodoProbe::shapes()) == 4,
+            planCalm(plan), length(plan.items) == 6,
+            structuralEquals(planTitles(plan.answers, 0), ["d", "n", "o", "p", "s"]), structuralEquals(planTitles(plan.answers, 1), ["t"]),
+            structuralEquals(planTitles(plan.answers, 2), ["d", "n", "o", "p", "s", "t"]), structuralEquals(planTitles(plan.answers, 3), ["d", "n", "o", "p", "s", "t"]),
+            structuralEquals(planIds(plan.answers, 0), [3, 6, 2, 5, 4]), structuralEquals(planIds(plan.answers, 1), [1]),
+            planShaped(plan.answers, 6, [5, 1, 6, 6], [true, false, false, false]),
+            planRowIs(plan.answers, 0, 0, planSpec(3, "d", false)), planRowIs(plan.answers, 0, 3, planSpec(5, "p", true)),
+            planRowIs(plan.answers, 1, 0, planSpec(1, "t", false)),
+            structuralEquals(plan.items, seeds),
+            structuralEquals(plan.lists, [TodoHarness::seedList(1, "Work", "#78909C")])
+        ])
     }
 
     /// [EXAMPLE-CLEANARCH-MULTISHOT-PLAN] zero rows in the asked list: every branch
@@ -144,14 +128,18 @@ module MultishotPlanCases {
     /// other list never leak in: the page filters items by the asked listId only.
     export fn planEmptyListCase() = {
         let others = planSeeds(2, ["K1", "K2"], [])
-        planCase(TodoHarness::seedList(1, "Empty", "#26A69A"), others, planSplit([], [], 0, false, false), fn(plan) => [
-            length(plan.items) == 2,
+        let plan = TodoHarness::probed(TodoHarness::admin(), [TodoHarness::seedList(1, "Empty", "#26A69A")], others, PagePlan { listId: 1 })
+        // no rows in list 1: rows [], totalCount 0, hasNext p*s < 0 false; branch 2 keeps hasPrevious true
+        expect(plan.answers, [planPage([], 0, false, false), planPage([], 0, true, false), planPage([], 0, false, false), planPage([], 0, false, false)])
+        checkAll("four empty pages for the asked list only; the other list's rows stay put", [
+            planCalm(plan), length(plan.items) == 2,
             structuralEquals(planTitles(plan.answers, 0), []), structuralEquals(planTitles(plan.answers, 1), []),
             structuralEquals(planTitles(plan.answers, 2), []), structuralEquals(planTitles(plan.answers, 3), []),
             structuralEquals(planRows(plan.answers, 0), []), structuralEquals(planRows(plan.answers, 1), []),
             planShaped(plan.answers, 0, [0, 0, 0, 0], [false, false, false, false]),
-            structuralEquals(planStoredTitles(plan.items), ["K1", "K2"]),
-            structuralEquals(retryItemIds(plan.items), [1, 2]), structuralEquals(planStoredDones(plan.items), [false, false])
+            structuralEquals(plan.items, others), structuralEquals(planStoredTitles(plan.items), ["K1", "K2"]),
+            structuralEquals(planStoredIds(plan.items), [1, 2]), structuralEquals(planStoredDones(plan.items), [false, false]),
+            structuralEquals(plan.lists, [TodoHarness::seedList(1, "Empty", "#26A69A")])
         ])
     }
 
@@ -164,7 +152,7 @@ module MultishotPlanCases {
         let gone = TodoHarness::probed(TodoHarness::admin(), lists, [], PagePlan { listId: 99 })
         let bare = TodoHarness::probed(TodoHarness::admin(), lists, [], PagePlan { listId: 1 })
         // no items anywhere: both asks plan four empty pages; hasPrevious follows pageNumber alone
-        let empty: List<Result<Reply, Fault>> = planSplit([], [], 0, false, false)
+        let empty: List<Result<Reply, Fault>> = [planPage([], 0, false, false), planPage([], 0, true, false), planPage([], 0, false, false), planPage([], 0, false, false)]
         expect(gone.answers, empty)
         expect(bare.answers, empty)
         checkAll("a missing listId and a bare list row both plan four empty pages", [
@@ -188,18 +176,21 @@ module MultishotPlanCases {
     /// untouched by any branch, and no event publishes for a plain read.
     export fn planOneItemCase() = {
         let seeds = planSeeds(1, ["Q"], ["Q"])
-        let done = [spec(1, "Q", true)]
+        let plan = TodoHarness::probed(TodoHarness::admin(), [TodoHarness::seedList(1, "Solo", "#D98B2B")], seeds, PagePlan { listId: 1 })
+        let done = [planSpec(1, "Q", true)]
         // totalCount 1: page 2 is empty; hasNext 5 < 1, 10 < 1 and 50 < 1 are all false
-        planCase(TodoHarness::seedList(1, "Solo", "#D98B2B"), seeds,
-            planSplit(done, [], 1, false, false),
-            fn(plan) => [
-                planShows(plan.answers, 0, ["Q"], [1]), structuralEquals(planTitles(plan.answers, 1), []),
-                planShows(plan.answers, 2, ["Q"], [1]), planShows(plan.answers, 3, ["Q"], [1]),
-                planShaped(plan.answers, 1, [1, 0, 1, 1], [false, false, false, false]),
-                planRowIs(plan.answers, 0, 0, spec(1, "Q", true)), planRowIs(plan.answers, 3, 0, spec(1, "Q", true)),
-                structuralEquals(planStoredTitles(plan.items), ["Q"]),
-                structuralEquals(planStoredDones(plan.items), [true])
-            ])
+        expect(plan.answers, planWhole(done, 1))
+        checkAll("the single done row repeats on pages 1 of 5/10/50 and never on page 2", [
+            planCalm(plan),
+            structuralEquals(planTitles(plan.answers, 0), ["Q"]), structuralEquals(planTitles(plan.answers, 1), []),
+            structuralEquals(planTitles(plan.answers, 2), ["Q"]), structuralEquals(planTitles(plan.answers, 3), ["Q"]),
+            structuralEquals(planIds(plan.answers, 0), [1]), structuralEquals(planIds(plan.answers, 2), [1]), structuralEquals(planIds(plan.answers, 3), [1]),
+            planShaped(plan.answers, 1, [1, 0, 1, 1], [false, false, false, false]),
+            planRowIs(plan.answers, 0, 0, planSpec(1, "Q", true)), planRowIs(plan.answers, 3, 0, planSpec(1, "Q", true)),
+            structuralEquals(plan.items, seeds), structuralEquals(planStoredTitles(plan.items), ["Q"]),
+            structuralEquals(planStoredDones(plan.items), [true]),
+            structuralEquals(plan.lists, [TodoHarness::seedList(1, "Solo", "#D98B2B")])
+        ])
     }
 
     /// [EXAMPLE-CLEANARCH-MULTISHOT-PLAN] four titles in numeric-lex order ("1" is a
@@ -208,18 +199,20 @@ module MultishotPlanCases {
     /// hasPrevious true, and every hasNext is false because 5, 10 and 50 all pass 4.
     export fn planFourItemsCase() = {
         let seeds = planSeeds(1, ["10", "2", "1", "20"], ["2"])
-        let rows = [spec(3, "1", false), spec(1, "10", false), spec(2, "2", true), spec(4, "20", false)]
+        let plan = TodoHarness::probed(TodoHarness::admin(), [TodoHarness::seedList(1, "Digits", "#4CAF50")], seeds, PagePlan { listId: 1 })
+        let rows = [planSpec(3, "1", false), planSpec(1, "10", false), planSpec(2, "2", true), planSpec(4, "20", false)]
         // sorted 1(id3), 10(id1), 2(id2, done), 20(id4); N=4: (2,5) empty, all hasNext false
-        planCase(TodoHarness::seedList(1, "Digits", "#4CAF50"), seeds,
-            planSplit(rows, [], 4, false, false),
-            fn(plan) => [
-                planShows(plan.answers, 0, ["1", "10", "2", "20"], [3, 1, 2, 4]), structuralEquals(planTitles(plan.answers, 1), []),
-                planShows(plan.answers, 2, ["1", "10", "2", "20"], [3, 1, 2, 4]), structuralEquals(planTitles(plan.answers, 3), ["1", "10", "2", "20"]),
-                planShaped(plan.answers, 4, [4, 0, 4, 4], [false, false, false, false]),
-                planRowIs(plan.answers, 0, 2, spec(2, "2", true)), planRowIs(plan.answers, 3, 0, spec(3, "1", false)),
-                structuralEquals(planStoredTitles(plan.items), ["10", "2", "1", "20"]),
-                structuralEquals(retryItemIds(plan.items), [1, 2, 3, 4]), structuralEquals(planStoredDones(plan.items), [false, true, false, false])
-            ])
+        expect(plan.answers, planWhole(rows, 4))
+        checkAll("title order 1,10,2,20 on pages 1 of 5/10/50; page 2 of 5 plans nothing", [
+            planCalm(plan),
+            structuralEquals(planTitles(plan.answers, 0), ["1", "10", "2", "20"]), structuralEquals(planTitles(plan.answers, 1), []),
+            structuralEquals(planTitles(plan.answers, 2), ["1", "10", "2", "20"]), structuralEquals(planTitles(plan.answers, 3), ["1", "10", "2", "20"]),
+            structuralEquals(planIds(plan.answers, 0), [3, 1, 2, 4]), structuralEquals(planIds(plan.answers, 2), [3, 1, 2, 4]),
+            planShaped(plan.answers, 4, [4, 0, 4, 4], [false, false, false, false]),
+            planRowIs(plan.answers, 0, 2, planSpec(2, "2", true)), planRowIs(plan.answers, 3, 0, planSpec(3, "1", false)),
+            structuralEquals(plan.items, seeds), structuralEquals(planStoredTitles(plan.items), ["10", "2", "1", "20"]),
+            structuralEquals(planStoredIds(plan.items), [1, 2, 3, 4]), structuralEquals(planStoredDones(plan.items), [false, true, false, false])
+        ])
     }
 
     /// [EXAMPLE-CLEANARCH-MULTISHOT-PLAN] exactly five rows, the (1,5) boundary: page
@@ -228,21 +221,23 @@ module MultishotPlanCases {
     /// to e,g,i,k,m — the exact reverse of both seed and id order.
     export fn planExactlyFiveCase() = {
         let seeds = planSeeds(1, ["m", "k", "i", "g", "e"], [])
-        let rows = [spec(5, "e", false), spec(4, "g", false), spec(3, "i", false), spec(2, "k", false), spec(1, "m", false)]
+        let plan = TodoHarness::probed(TodoHarness::admin(), [TodoHarness::seedList(1, "Five", "#E05C4D")], seeds, PagePlan { listId: 1 })
+        let rows = [planSpec(5, "e", false), planSpec(4, "g", false), planSpec(3, "i", false), planSpec(2, "k", false), planSpec(1, "m", false)]
         // sorted e(id5), g(id4), i(id3), k(id2), m(id1); N=5: (1,5) full with hasNext 5 < 5 false
-        planCase(TodoHarness::seedList(1, "Five", "#E05C4D"), seeds,
-            planSplit(rows, [], 5, false, false),
-            fn(plan) => [
-                length(plan.items) == 5,
-                planShows(plan.answers, 0, ["e", "g", "i", "k", "m"], [5, 4, 3, 2, 1]), structuralEquals(planTitles(plan.answers, 1), []),
-                planShows(plan.answers, 2, ["e", "g", "i", "k", "m"], [5, 4, 3, 2, 1]), planShows(plan.answers, 3, ["e", "g", "i", "k", "m"], [5, 4, 3, 2, 1]),
-                planTotal(plan.answers, 0) == 5, planTotal(plan.answers, 1) == 5, planTotal(plan.answers, 2) == 5, planTotal(plan.answers, 3) == 5,
-                planCount(plan.answers, 0) == 5, planCount(plan.answers, 1) == 0,
-                planFlags(plan.answers, 0, false, false), planFlags(plan.answers, 1, true, false),
-                planFlags(plan.answers, 2, false, false), planFlags(plan.answers, 3, false, false),
-                planRowIs(plan.answers, 0, 0, spec(5, "e", false)), planRowIs(plan.answers, 0, 4, spec(1, "m", false)),
-                structuralEquals(planStoredTitles(plan.items), ["m", "k", "i", "g", "e"])
-            ])
+        expect(plan.answers, planWhole(rows, 5))
+        checkAll("five rows on pages 1 of 5/10/50 and an empty page 2; the page boundary holds", [
+            planCalm(plan), length(plan.items) == 5,
+            structuralEquals(planTitles(plan.answers, 0), ["e", "g", "i", "k", "m"]), structuralEquals(planTitles(plan.answers, 1), []),
+            structuralEquals(planTitles(plan.answers, 2), ["e", "g", "i", "k", "m"]), structuralEquals(planTitles(plan.answers, 3), ["e", "g", "i", "k", "m"]),
+            structuralEquals(planIds(plan.answers, 0), [5, 4, 3, 2, 1]), structuralEquals(planIds(plan.answers, 2), [5, 4, 3, 2, 1]),
+            structuralEquals(planIds(plan.answers, 3), [5, 4, 3, 2, 1]),
+            planTotal(plan.answers, 0) == 5, planTotal(plan.answers, 1) == 5, planTotal(plan.answers, 2) == 5, planTotal(plan.answers, 3) == 5,
+            planCount(plan.answers, 0) == 5, planCount(plan.answers, 1) == 0,
+            planFlags(plan.answers, 0, false, false), planFlags(plan.answers, 1, true, false),
+            planFlags(plan.answers, 2, false, false), planFlags(plan.answers, 3, false, false),
+            planRowIs(plan.answers, 0, 0, planSpec(5, "e", false)), planRowIs(plan.answers, 0, 4, planSpec(1, "m", false)),
+            structuralEquals(plan.items, seeds), structuralEquals(planStoredTitles(plan.items), ["m", "k", "i", "g", "e"])
+        ])
     }
 
     /// [EXAMPLE-CLEANARCH-MULTISHOT-PLAN] nine rows: page 1 of 5 stops at five with
@@ -251,19 +246,24 @@ module MultishotPlanCases {
     /// all nine. The done row "f" keeps its flag through the split.
     export fn planNineItemsCase() = {
         let seeds = planSeeds(1, ["j", "h", "f", "b", "d", "i", "g", "c", "e"], ["f"])
-        let first5 = [spec(4, "b", false), spec(8, "c", false), spec(5, "d", false), spec(9, "e", false), spec(3, "f", true)]
-        let last4 = [spec(7, "g", false), spec(2, "h", false), spec(6, "i", false), spec(1, "j", false)]
+        let plan = TodoHarness::probed(TodoHarness::admin(), [TodoHarness::seedList(1, "Nine", "#AB47BC")], seeds, PagePlan { listId: 1 })
+        let first5 = [planSpec(4, "b", false), planSpec(8, "c", false), planSpec(5, "d", false), planSpec(9, "e", false), planSpec(3, "f", true)]
+        let last4 = [planSpec(7, "g", false), planSpec(2, "h", false), planSpec(6, "i", false), planSpec(1, "j", false)]
+        let all9 = listConcat(first5, last4)
         // sorted b(4),c(8),d(5),e(9),f(3 done),g(7),h(2),i(6),j(1); N=9: 5 + 4 across the (1,5)/(2,5) seam
-        planCase(TodoHarness::seedList(1, "Nine", "#AB47BC"), seeds,
-            planSplit(first5, last4, 9, true, false),
-            fn(plan) => [
-                planShows(plan.answers, 0, ["b", "c", "d", "e", "f"], [4, 8, 5, 9, 3]), planShows(plan.answers, 1, ["g", "h", "i", "j"], [7, 2, 6, 1]),
-                structuralEquals(planTitles(plan.answers, 2), ["b", "c", "d", "e", "f", "g", "h", "i", "j"]) && structuralEquals(planTitles(plan.answers, 3), ["b", "c", "d", "e", "f", "g", "h", "i", "j"]),
-                planShaped(plan.answers, 9, [5, 4, 9, 9], [true, false, false, false]),
-                planRowIs(plan.answers, 0, 4, spec(3, "f", true)), planRowIs(plan.answers, 1, 0, spec(7, "g", false)),
-                structuralEquals(planStoredTitles(plan.items), ["j", "h", "f", "b", "d", "i", "g", "c", "e"]),
-                structuralEquals(planStoredDones(plan.items), [false, false, true, false, false, false, false, false, false])
-            ])
+        expect(plan.answers, [planPage(first5, 9, false, true), planPage(last4, 9, true, false), planPage(all9, 9, false, false), planPage(all9, 9, false, false)])
+        checkAll("5 + 4 rows split at the (1,5)/(2,5) seam, then all nine twice over", [
+            planCalm(plan),
+            structuralEquals(planTitles(plan.answers, 0), ["b", "c", "d", "e", "f"]), structuralEquals(planTitles(plan.answers, 1), ["g", "h", "i", "j"]),
+            structuralEquals(planTitles(plan.answers, 2), ["b", "c", "d", "e", "f", "g", "h", "i", "j"]),
+            structuralEquals(planTitles(plan.answers, 3), ["b", "c", "d", "e", "f", "g", "h", "i", "j"]),
+            structuralEquals(planIds(plan.answers, 0), [4, 8, 5, 9, 3]), structuralEquals(planIds(plan.answers, 1), [7, 2, 6, 1]),
+            planShaped(plan.answers, 9, [5, 4, 9, 9], [true, false, false, false]),
+            planRowIs(plan.answers, 0, 4, planSpec(3, "f", true)), planRowIs(plan.answers, 1, 0, planSpec(7, "g", false)),
+            structuralEquals(plan.items, seeds),
+            structuralEquals(planStoredTitles(plan.items), ["j", "h", "f", "b", "d", "i", "g", "c", "e"]),
+            structuralEquals(planStoredDones(plan.items), [false, false, true, false, false, false, false, false, false])
+        ])
     }
 
     /// [EXAMPLE-CLEANARCH-MULTISHOT-PLAN] exactly ten rows, the (1,10) boundary: page
@@ -272,19 +272,24 @@ module MultishotPlanCases {
     /// title order. [MULTI-HANDLE-MANY] four resumptions, readings 6.
     export fn planExactlyTenCase() = {
         let seeds = planSeeds(1, ["r", "p", "n", "l", "t", "j", "h", "f", "v", "x"], ["l"])
-        let first5 = [spec(8, "f", false), spec(7, "h", false), spec(6, "j", false), spec(4, "l", true), spec(3, "n", false)]
-        let last5 = [spec(2, "p", false), spec(1, "r", false), spec(5, "t", false), spec(9, "v", false), spec(10, "x", false)]
+        let plan = TodoHarness::probed(TodoHarness::admin(), [TodoHarness::seedList(1, "Ten", "#78909C")], seeds, PagePlan { listId: 1 })
+        let first5 = [planSpec(8, "f", false), planSpec(7, "h", false), planSpec(6, "j", false), planSpec(4, "l", true), planSpec(3, "n", false)]
+        let last5 = [planSpec(2, "p", false), planSpec(1, "r", false), planSpec(5, "t", false), planSpec(9, "v", false), planSpec(10, "x", false)]
+        let all10 = listConcat(first5, last5)
         // sorted f(8),h(7),j(6),l(4 done),n(3),p(2),r(1),t(5),v(9),x(10); N=10: page 2 of 5 is rows 6..10
-        planCase(TodoHarness::seedList(1, "Ten", "#78909C"), seeds,
-            planSplit(first5, last5, 10, true, false),
-            fn(plan) => [
-                planShows(plan.answers, 0, ["f", "h", "j", "l", "n"], [8, 7, 6, 4, 3]), planShows(plan.answers, 1, ["p", "r", "t", "v", "x"], [2, 1, 5, 9, 10]),
-                structuralEquals(planTitles(plan.answers, 2), ["f", "h", "j", "l", "n", "p", "r", "t", "v", "x"]) && structuralEquals(planTitles(plan.answers, 3), ["f", "h", "j", "l", "n", "p", "r", "t", "v", "x"]),
-                planShaped(plan.answers, 10, [5, 5, 10, 10], [true, false, false, false]),
-                planRowIs(plan.answers, 0, 3, spec(4, "l", true)), planRowIs(plan.answers, 1, 4, spec(10, "x", false)),
-                planRowIs(plan.answers, 2, 9, spec(10, "x", false)),
-                structuralEquals(planStoredTitles(plan.items), ["r", "p", "n", "l", "t", "j", "h", "f", "v", "x"])
-            ])
+        expect(plan.answers, [planPage(first5, 10, false, true), planPage(last5, 10, true, false), planPage(all10, 10, false, false), planPage(all10, 10, false, false)])
+        checkAll("5 + 5 rows on pages of 5; one full page of 10 twice with hasNext false", [
+            planCalm(plan),
+            structuralEquals(planTitles(plan.answers, 0), ["f", "h", "j", "l", "n"]), structuralEquals(planTitles(plan.answers, 1), ["p", "r", "t", "v", "x"]),
+            structuralEquals(planTitles(plan.answers, 2), ["f", "h", "j", "l", "n", "p", "r", "t", "v", "x"]),
+            structuralEquals(planTitles(plan.answers, 3), ["f", "h", "j", "l", "n", "p", "r", "t", "v", "x"]),
+            structuralEquals(planIds(plan.answers, 0), [8, 7, 6, 4, 3]), structuralEquals(planIds(plan.answers, 1), [2, 1, 5, 9, 10]),
+            planShaped(plan.answers, 10, [5, 5, 10, 10], [true, false, false, false]),
+            planRowIs(plan.answers, 0, 3, planSpec(4, "l", true)), planRowIs(plan.answers, 1, 4, planSpec(10, "x", false)),
+            planRowIs(plan.answers, 2, 9, planSpec(10, "x", false)),
+            structuralEquals(plan.items, seeds),
+            structuralEquals(planStoredTitles(plan.items), ["r", "p", "n", "l", "t", "j", "h", "f", "v", "x"])
+        ])
     }
 
     /// [EXAMPLE-CLEANARCH-MULTISHOT-PLAN] eleven rows, the first shape with three
@@ -293,19 +298,24 @@ module MultishotPlanCases {
     /// "z5" and "z6" (prefix rule, then digit order) — character-wise title order.
     export fn planElevenItemsCase() = {
         let seeds = planSeeds(1, ["z1", "z9", "z3", "z7", "z5", "z2", "z8", "z4", "z6", "z0", "z5x"], ["z5x"])
-        let z04 = [spec(10, "z0", false), spec(1, "z1", false), spec(6, "z2", false), spec(3, "z3", false), spec(8, "z4", false)]
-        let z58 = [spec(5, "z5", false), spec(11, "z5x", true), spec(9, "z6", false), spec(4, "z7", false), spec(7, "z8", false)]
-        let all11 = listAppend(listConcat(z04, z58), spec(2, "z9", false))
+        let plan = TodoHarness::probed(TodoHarness::admin(), [TodoHarness::seedList(1, "Eleven", "#26A69A")], seeds, PagePlan { listId: 1 })
+        let z04 = [planSpec(10, "z0", false), planSpec(1, "z1", false), planSpec(6, "z2", false), planSpec(3, "z3", false), planSpec(8, "z4", false)]
+        let z58 = [planSpec(5, "z5", false), planSpec(11, "z5x", true), planSpec(9, "z6", false), planSpec(4, "z7", false), planSpec(7, "z8", false)]
+        let all11 = listAppend(listConcat(z04, z58), planSpec(2, "z9", false))
         // sorted z0(10),z1(1),z2(6),z3(3),z4(8),z5(5),z5x(11 done),z6(9),z7(4),z8(7),z9(2)
-        planCase(TodoHarness::seedList(1, "Eleven", "#26A69A"), seeds,
-            [pageOf(z04, 11, false, true), pageOf(z58, 11, true, true), pageOf(listConcat(z04, z58), 11, false, true), pageOf(all11, 11, false, false)],
-            fn(plan) => [
-                planShows(plan.answers, 0, ["z0", "z1", "z2", "z3", "z4"], [10, 1, 6, 3, 8]), planShows(plan.answers, 1, ["z5", "z5x", "z6", "z7", "z8"], [5, 11, 9, 4, 7]),
-                planShaped(plan.answers, 11, [5, 5, 10, 11], [true, true, true, false]),
-                planRowIs(plan.answers, 1, 1, spec(11, "z5x", true)), planRowIs(plan.answers, 3, 10, spec(2, "z9", false)),
-                planRowIs(plan.answers, 0, 0, spec(10, "z0", false)),
-                structuralEquals(planStoredTitles(plan.items), ["z1", "z9", "z3", "z7", "z5", "z2", "z8", "z4", "z6", "z0", "z5x"])
-            ])
+        expect(plan.answers, [planPage(z04, 11, false, true), planPage(z58, 11, true, true), planPage(listConcat(z04, z58), 11, false, true), planPage(all11, 11, false, false)])
+        checkAll("5 + 5 + 10 + 11 rows; z5x sorts between z5 and z6 by characters alone", [
+            planCalm(plan),
+            structuralEquals(planTitles(plan.answers, 0), ["z0", "z1", "z2", "z3", "z4"]), structuralEquals(planTitles(plan.answers, 1), ["z5", "z5x", "z6", "z7", "z8"]),
+            structuralEquals(planTitles(plan.answers, 2), ["z0", "z1", "z2", "z3", "z4", "z5", "z5x", "z6", "z7", "z8"]),
+            structuralEquals(planTitles(plan.answers, 3), ["z0", "z1", "z2", "z3", "z4", "z5", "z5x", "z6", "z7", "z8", "z9"]),
+            structuralEquals(planIds(plan.answers, 0), [10, 1, 6, 3, 8]), structuralEquals(planIds(plan.answers, 1), [5, 11, 9, 4, 7]),
+            planShaped(plan.answers, 11, [5, 5, 10, 11], [true, true, true, false]),
+            planRowIs(plan.answers, 1, 1, planSpec(11, "z5x", true)), planRowIs(plan.answers, 3, 10, planSpec(2, "z9", false)),
+            planRowIs(plan.answers, 0, 0, planSpec(10, "z0", false)),
+            structuralEquals(plan.items, seeds),
+            structuralEquals(planStoredTitles(plan.items), ["z1", "z9", "z3", "z7", "z5", "z2", "z8", "z4", "z6", "z0", "z5x"])
+        ])
     }
 
     /// [EXAMPLE-CLEANARCH-MULTISHOT-PLAN] sort stress: digits, upper case and lower
@@ -314,19 +324,24 @@ module MultishotPlanCases {
     /// case-folded order. [MULTI-HANDLE-MANY] four resumptions of one captured query.
     export fn planSortStressCase() = {
         let seeds = planSeeds(1, ["b", "A", "10", "2", "aa", "B", "1", "20", "c"], ["A"])
-        let first5 = [spec(7, "1", false), spec(3, "10", false), spec(4, "2", false), spec(8, "20", false), spec(2, "A", true)]
-        let last4 = [spec(6, "B", false), spec(5, "aa", false), spec(1, "b", false), spec(9, "c", false)]
+        let plan = TodoHarness::probed(TodoHarness::admin(), [TodoHarness::seedList(1, "Mixed", "#D98B2B")], seeds, PagePlan { listId: 1 })
+        let first5 = [planSpec(7, "1", false), planSpec(3, "10", false), planSpec(4, "2", false), planSpec(8, "20", false), planSpec(2, "A", true)]
+        let last4 = [planSpec(6, "B", false), planSpec(5, "aa", false), planSpec(1, "b", false), planSpec(9, "c", false)]
+        let all9 = listConcat(first5, last4)
         // sorted 1(7),10(3),2(4),20(8),A(2 done),B(6),aa(5),b(1),c(9) from seeds [b,A,10,2,aa,B,1,20,c]
-        planCase(TodoHarness::seedList(1, "Mixed", "#D98B2B"), seeds,
-            planSplit(first5, last4, 9, true, false),
-            fn(plan) => [
-                planShows(plan.answers, 0, ["1", "10", "2", "20", "A"], [7, 3, 4, 8, 2]), planShows(plan.answers, 1, ["B", "aa", "b", "c"], [6, 5, 1, 9]),
-                structuralEquals(planTitles(plan.answers, 2), ["1", "10", "2", "20", "A", "B", "aa", "b", "c"]) && structuralEquals(planTitles(plan.answers, 3), ["1", "10", "2", "20", "A", "B", "aa", "b", "c"]),
-                planShaped(plan.answers, 9, [5, 4, 9, 9], [true, false, false, false]),
-                planRowIs(plan.answers, 0, 4, spec(2, "A", true)), planRowIs(plan.answers, 1, 0, spec(6, "B", false)),
-                planRowIs(plan.answers, 1, 3, spec(9, "c", false)),
-                structuralEquals(planStoredTitles(plan.items), ["b", "A", "10", "2", "aa", "B", "1", "20", "c"]),
-                structuralEquals(retryItemIds(plan.items), [1, 2, 3, 4, 5, 6, 7, 8, 9])
-            ])
+        expect(plan.answers, [planPage(first5, 9, false, true), planPage(last4, 9, true, false), planPage(all9, 9, false, false), planPage(all9, 9, false, false)])
+        checkAll("digits before upper case before lower case, on every page shape", [
+            planCalm(plan),
+            structuralEquals(planTitles(plan.answers, 0), ["1", "10", "2", "20", "A"]), structuralEquals(planTitles(plan.answers, 1), ["B", "aa", "b", "c"]),
+            structuralEquals(planTitles(plan.answers, 2), ["1", "10", "2", "20", "A", "B", "aa", "b", "c"]),
+            structuralEquals(planTitles(plan.answers, 3), ["1", "10", "2", "20", "A", "B", "aa", "b", "c"]),
+            structuralEquals(planIds(plan.answers, 0), [7, 3, 4, 8, 2]), structuralEquals(planIds(plan.answers, 1), [6, 5, 1, 9]),
+            planShaped(plan.answers, 9, [5, 4, 9, 9], [true, false, false, false]),
+            planRowIs(plan.answers, 0, 4, planSpec(2, "A", true)), planRowIs(plan.answers, 1, 0, planSpec(6, "B", false)),
+            planRowIs(plan.answers, 1, 3, planSpec(9, "c", false)),
+            structuralEquals(plan.items, seeds),
+            structuralEquals(planStoredTitles(plan.items), ["b", "A", "10", "2", "aa", "B", "1", "20", "c"]),
+            structuralEquals(planStoredIds(plan.items), [1, 2, 3, 4, 5, 6, 7, 8, 9])
+        ])
     }
 }

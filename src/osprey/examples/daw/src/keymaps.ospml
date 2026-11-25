@@ -64,9 +64,11 @@ module Keymaps
     (** `keymap` as the text of its file, every command spelled out so the file shows what can be changed. *)
     export encode keymap = ui::Doc::write (JsonObject [ui::Doc::str ("name", keymap.name), JsonMember "shortcuts" (JsonObject (mapList (commands (), \command => ui::Doc::str (command, keys (keymap, command)))))])
 
+    folderOf path = join (ui::Lists::slice (split path "/" ?: [], 0, satSub (length (split path "/" ?: [])) 1)) "/"
+
     (** The editor using `keymap`, the choice written to the user's keymap file for the next launch. *)
     export chosen (editor, keymap) =
-        _folder = makeDir (pathParent editor.keysPath)
+        _folder = makeDir (folderOf editor.keysPath)
         match writeFile editor.keysPath (encode keymap)
             Success _ => editor(keymap = keymap, message = "Shortcuts: ${keymap.name}. Your keymap file is ${editor.keysPath}.")
             Error why => editor(keymap = keymap, message = "Shortcuts: ${keymap.name} (not saved: ${why}).")

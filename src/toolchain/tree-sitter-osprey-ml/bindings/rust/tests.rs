@@ -204,6 +204,15 @@ fn layout_types_and_effect_rows_retain_structural_nodes() {
     counted(root, "ml_variant", 2);
     counted(root, "ml_effect_row", 1);
     counted(root, "generic_type", 1);
+    let module = "module Numbers\n    export extern twice (n : int) -> int\n";
+    assert_eq!(
+        sole_slice(module, "extern_declaration"),
+        "extern twice (n : int) -> int"
+    );
+    let arms = "pick r = match r\n    { n = Digit (0 | 1) } | { n = Blank } => 1\n    _ => 0\n";
+    let patterns = parse(arms);
+    counted(patterns.root_node(), "or_pattern", 2);
+    counted(patterns.root_node(), "field_slot", 2);
 }
 
 #[test]
@@ -240,6 +249,30 @@ fn concurrency_keywords_have_native_operation_nodes() {
     ] {
         counted(tree.root_node(), kind, 1);
     }
+    // [CONCURRENCY-SELECT] The editor exposes each selectable operation and its binder.
+    let selection = "pick ch = select\n    n = recv ch => n\n    recv ch => 1\n    send ch 7 => 2\n    timeout 5 => 3\n    _ => 4\n";
+    let tree = parse(selection);
+    let arms = counted(tree.root_node(), "select_arm", 5);
+    let operations: Vec<_> = arms
+        .iter()
+        .map(|arm| arm.child_by_field_name("operation").map(|node| node.kind()))
+        .collect();
+    assert_eq!(
+        operations,
+        [
+            Some("recv_expression"),
+            Some("recv_expression"),
+            Some("send_expression"),
+            Some("select_timeout"),
+            None
+        ]
+    );
+    assert_eq!(
+        arms.iter()
+            .filter(|arm| arm.child_by_field_name("binding").is_some())
+            .count(),
+        1
+    );
 }
 
 #[test]
@@ -257,6 +290,26 @@ fn negative_argument_spacing_preserves_calls_and_subtraction() {
         assert_eq!(&source[operator.byte_range()], "-");
         counted(*function, "call_expression", 0);
     }
+}
+
+#[test]
+fn block_use_keeps_binders_and_tight_comparisons_distinct() {
+    let source = "work x =\n    use a, b <- both (x, x)\n    use <- scoped a\n    use _ <- guard b\n    x<-1\nvalue = identity<int> 5\n";
+    let tree = parse(source);
+    let uses = counted(tree.root_node(), "use_statement", 3);
+    assert_eq!(
+        uses.iter()
+            .map(|node| node
+                .child_by_field_name("binders")
+                .map(|n| &source[n.byte_range()]))
+            .collect::<Vec<_>>(),
+        [Some("a, b"), None, Some("_")]
+    );
+    assert_eq!(sole_slice(source, "binary_expression"), "x<-1");
+    assert_eq!(sole_slice(source, "unary_expression"), "-1");
+    assert!(nodes(tree.root_node(), "call_expression")
+        .iter()
+        .any(|node| &source[node.byte_range()] == "identity<int> 5"));
 }
 
 fn ranges(tree: &Tree) -> Vec<(String, std::ops::Range<usize>, Point, Point)> {
@@ -325,12 +378,15 @@ fn real_ml_programs_parse_without_errors() -> Result<(), Box<dyn std::error::Err
     Ok(())
 }
 
-
 /// The top-level declarations of `source`, each read through its node's byte range.
 fn declarations(source: &str) -> Vec<&str> {
     let tree = parser().parse(source, None).expect("tree");
     let mut cursor = tree.root_node().walk();
-    let ranges: Vec<_> = tree.root_node().named_children(&mut cursor).map(|node| node.byte_range()).collect();
+    let ranges: Vec<_> = tree
+        .root_node()
+        .named_children(&mut cursor)
+        .map(|node| node.byte_range())
+        .collect();
     ranges.into_iter().map(|range| &source[range]).collect()
 }
 
@@ -354,7 +410,10 @@ fn a_block_declaration_ends_at_its_own_last_line_whatever_follows() {
                 assert_eq!(found.first(), Some(&block), "{source:?}");
                 assert_eq!(found.len(), 2, "{source:?}");
                 let next_found = found.get(1).copied().unwrap_or_default();
-                assert!(next.starts_with(next_found) && !next_found.is_empty(), "{source:?}: {next_found:?}");
+                assert!(
+                    next.starts_with(next_found) && !next_found.is_empty(),
+                    "{source:?}: {next_found:?}"
+                );
             }
         }
     }
@@ -364,7 +423,8 @@ fn a_block_declaration_ends_at_its_own_last_line_whatever_follows() {
 /// declaration. The function ends at byte 84 and the broken neighbour stays its own error.
 #[test]
 fn an_unfinished_neighbour_never_extends_the_declaration_before_it() {
-    let function = "sums items =\n    counted = length items\n    summed = sum items\n    summed + counted\n";
+    let function =
+        "sums items =\n    counted = length items\n    summed = sum items\n    summed + counted\n";
     assert_eq!(function.len(), 84);
     let source = format!("{function}\n{UNFINISHED}");
     let tree = parser().parse(&source, None).expect("tree");
@@ -380,6 +440,10 @@ fn an_unfinished_neighbour_never_extends_the_declaration_before_it() {
 fn one_line_declarations_keep_their_ranges() {
     for gap in ["", "\n", "\n\n  \n"] {
         let source = format!("one x = x\n{gap}next y = y\n");
-        assert_eq!(declarations(&source), ["one x = x", "next y = y"], "{source:?}");
+        assert_eq!(
+            declarations(&source),
+            ["one x = x", "next y = y"],
+            "{source:?}"
+        );
     }
 }

@@ -58,16 +58,26 @@
 // point where per-collection and per-allocation cost balance — same peak RSS as
 // 1 MiB, ~15% less wall — and higher floors only trade RSS away for no CPU gain.
 #define OSP_GC_MIN_HEAP_BYTES ((size_t)4u << 20)
-#define OSP_GC_INIT_TABLE_CAP ((size_t)1u << 14)
+// The table tracks only blocks past the largest size class, so it starts small.
+#define OSP_GC_INIT_TABLE_CAP ((size_t)1u << 8)
+#define OSP_GC_INIT_MARK_STACK ((size_t)1u << 14)
 
-// One managed allocation: base address (the table key), payload size, mark bit.
-// base==0 marks an empty slot (no live object is at address 0). 16 bytes — size
-// as u32 (Osprey heap values are far below 4 GiB) keeps the table compact.
+// The state of one managed block: payload size, and GC_MARKED while reached in
+// the current collection beside its lifetime flags. Size as u32 (Osprey heap
+// values are far below 4 GiB) keeps it at 8 bytes.
+typedef struct {
+  uint32_t size;
+  uint32_t mark;
+} OspGcMeta;
+
+// A block of its own in the heap table: base address (the key) and state.
+// base==0 marks an empty slot (no live object is at address 0).
 typedef struct {
   uintptr_t base;
-  uint32_t size;
-  uint32_t mark; // GC_MARKED while reached in the current collection; GC_FINAL for a finalizer
+  OspGcMeta meta;
 } OspGcEnt;
+
+typedef struct OspGcPage OspGcPage; // memory_gc_pages.h
 
 #define GC_MARKED 1u
 #define GC_FINAL 2u
@@ -78,8 +88,11 @@ typedef struct {
 // block, not one per word.
 #define GC_LEAF 16u
 #define GC_PERSISTENT (GC_FINAL | GC_STRING | GC_PINNED | GC_LEAF)
+#define GC_USED 32u // a page cell that holds a block [MEM-BACKENDS-GC-HEAP]
 
 #include "heap_lock.h"
+#include "memory_heap_limit.h"
+#include "run_parent_watch.h"
 
 // heap_lock.h governs mutual exclusion; g_off below governs whether collection
 // may run once a second allocator is seen. The two are orthogonal.
@@ -94,13 +107,15 @@ static uintptr_t g_base;   // highest address of the main thread's stack
 
 static OspGcEnt *g_tab = NULL; // open-addressing heap table (power-of-two cap)
 static size_t g_cap = 0;
-static size_t g_count = 0;
+static size_t g_count = 0;     // blocks tracked, in the table and in pages
+static size_t g_tab_count = 0; // of those, the ones in the table
 static uintptr_t g_lowest = UINTPTR_MAX; // the lowest base ever tracked; none yet, so nothing is in range
 static uintptr_t g_highest = 0;          // the highest base ever tracked
 
 static uintptr_t *g_ms = NULL; // mark stack of pending object bases
 static size_t g_ms_cap = 0;
 static size_t g_ms_top = 0;
+static int g_ms_dropped = 0; // a push found no memory this collection
 
 static size_t g_bytes = 0;                          // managed bytes since last GC
 static size_t g_min_heap = OSP_GC_MIN_HEAP_BYTES;   // floor for the adaptive budget
@@ -109,6 +124,8 @@ static int g_debug = 0;      // OSPREY_GC_DEBUG: print per-collection stats
 static size_t g_ncollect = 0;
 
 #include "memory_gc_table.h"
+#include "memory_gc_pages.h"
+#include "memory_gc_sweep.h"
 
 // --- baton threads and scanned blocks [MEM-EFFECT-BATON] -----------------------
 
@@ -175,133 +192,41 @@ __attribute__((unused)) static void gc_scan_others(const OspGcBaton *self) {
 
 // --- collect -----------------------------------------------------------------
 
-// The finalizer OSP_MEM_LIST_HDR_EXTERN blocks pass through (memory_hooks.h).
-static void (*g_finalizer)(void *body);
-
-// Run a dying block's finalizer, when it carries one, over its intact words.
-static void gc_finalize(const OspGcEnt *e) {
-  if ((e->mark & GC_FINAL) && g_finalizer) {
-    g_finalizer((void *)e->base);
-  }
-}
-
-// Finalizers see the whole table: one may ask the collector about a block that
-// outlives this collection, so they all run before any slot is emptied.
-static void gc_finalize_dead(void) {
-  for (size_t i = 0; g_finalizer && i < g_cap; i++) {
-    if (g_tab[i].base != 0 && !(g_tab[i].mark & GC_MARKED)) {
-      gc_finalize(&g_tab[i]);
-    }
-  }
-}
-
-// Free every unmarked block and empty its slot. Survivors keep GC_MARKED, which
-// from here on reads "not yet reseated". Sets g_count and g_bytes to the live set.
-static void gc_free_dead(void) {
-  g_count = 0;
-  g_bytes = 0;
-  for (size_t i = 0; i < g_cap; i++) {
-    if (g_tab[i].base == 0) {
-      continue;
-    }
-    if (g_tab[i].mark & GC_MARKED) {
-      g_count++;
-      g_bytes += g_tab[i].size;
-    } else {
-      free((void *)g_tab[i].base);
-      g_tab[i].base = 0;
-    }
-  }
-}
-
-// Lift the survivor out of slot `i` and seat it in the first slot of its probe
-// run that holds no seated block. A survivor still waiting there is displaced
-// and seated in turn, so the chain ends at an empty slot. A seated block never
-// moves again and no probe run crosses a waiting one, so every run a lookup
-// walks stays unbroken.
-static void gc_reseat(size_t i) {
-  OspGcEnt e = g_tab[i];
-  g_tab[i].base = 0;
-  while (e.base != 0) {
-    e.mark &= GC_PERSISTENT;
-    size_t j = gc_hash(e.base, g_cap);
-    while (g_tab[j].base != 0 && !(g_tab[j].mark & GC_MARKED)) {
-      j = (j + 1) & (g_cap - 1);
-    }
-    OspGcEnt waiting = g_tab[j];
-    g_tab[j] = e;
-    e = waiting;
-  }
-}
-
-// Sweep the table where it stands: free the unmarked, reseat the survivors, and
-// re-arm the adaptive budget at max(min-heap, 2× live). The table keeps the
-// capacity this cycle's allocations needed, because a steady workload fills it
-// again before the next collection; a fresh table per collection cost a
-// page-faulted allocation and a rehash at every doubling on the way back up. It
-// is cut back only once a whole cycle has peaked below it [GC-TRACE-CONSERVATIVE].
-static void gc_sweep(void) {
-  size_t fit = gc_fit(g_count);
-  gc_finalize_dead();
-  gc_free_dead();
-  for (size_t i = 0; i < g_cap; i++) {
-    if (g_tab[i].base != 0 && (g_tab[i].mark & GC_MARKED)) {
-      gc_reseat(i);
-    }
-  }
-  if (fit < g_cap) {
-    (void)gc_resize(fit); // out of memory: the oversized table still serves
-  }
-  g_thresh = g_bytes * 2 > g_min_heap ? g_bytes * 2 : g_min_heap;
-  g_ncollect++; // always: read by osp_gc_collections() diagnostics, not just debug
-  if (g_debug) {
-    // env-gated diagnostic only — not on any hot path.
-    fprintf(stderr, "[osp-gc] collect #%zu: %zu live objs, %zu live KiB\n",
-            g_ncollect, g_count, g_bytes / 1024);
-  }
-}
-
-// Caller holds g_lock. The root provider covers all active callers and globals.
-// Pinned blocks are roots wherever they are referenced from: a runtime
-// singleton held only by a global stays alive even on a host whose data
-// segment this collector cannot scan.
-static void gc_scan_pinned(void) {
-  for (size_t i = 0; i < g_cap; i++) {
-    if (g_tab[i].base != 0 && (g_tab[i].mark & GC_PINNED) && !(g_tab[i].mark & GC_MARKED)) {
-      g_tab[i].mark |= GC_MARKED;
-      gc_ms_push(g_tab[i].base);
-    }
-  }
-}
-
-static void gc_collect_locked(void) {
-  g_ms_top = 0;
-  gc_scan_roots();
-  gc_scan_pinned();
-
+static void gc_trace_pending(void) {
   while (g_ms_top > 0) {
     uintptr_t w = g_ms[--g_ms_top];
-    OspGcEnt *e = gc_lookup(w);
+    const OspGcMeta *e = gc_lookup(w);
     if (e && !(e->mark & GC_LEAF)) {
       gc_scan_range(w, w + e->size);
     }
   }
+}
+
+// Trace everything the roots reach. A block whose mark-stack entry found no
+// memory is marked but was never scanned, so while any entry was dropped every
+// marked block is scanned again: each pass marks at least one more block or
+// drops nothing, and no live block is left untraced [GC-TRACE-CONSERVATIVE].
+static void gc_trace(void) {
+  gc_trace_pending();
+  while (g_ms_dropped) {
+    g_ms_dropped = 0;
+    gc_rescan_marked();
+    gc_trace_pending();
+  }
+}
+
+// Caller holds g_lock. The root provider covers all active callers and globals.
+static void gc_collect_locked(void) {
+  heap_note_peak(g_bytes);
+  g_ms_top = 0;
+  gc_scan_roots();
+  gc_scan_pinned();
+
+  gc_trace();
   gc_sweep();
 }
 
-#ifdef OSP_SYMBOLIC
-// Symbolic runs have one thread, so nothing is ever waited for.
-static const int g_collection_wanted = 0;
-static const size_t g_retry_at = 0;
-static void gc_safepoint(void) {
-  if (gc_may_collect()) {
-    gc_collect_locked();
-  }
-}
-static void gc_wake_safepoint(void) {}
-#else
 #include "memory_gc_safepoint.h"
-#endif
 
 // --- allocation core (g_lock held) -------------------------------------------
 
@@ -322,6 +247,9 @@ static void gc_init_main(void) {
     }
   }
   g_debug = getenv("OSPREY_GC_DEBUG") != NULL;
+  const char *pages = getenv("OSPREY_GC_PAGES");
+  g_pages_off = pages != NULL && strcmp(pages, "0") == 0;
+  heap_limit_arm();
   g_init = 1;
 }
 
@@ -330,12 +258,10 @@ static void gc_init_main(void) {
 // unregistered thread has allocated, g_off is latched on and collection stays
 // disabled for everyone.
 //
-// Reclamation is left to libc malloc/free (via gc_sweep), NOT an intrusive
-// recycling pool: a tracing collector cannot reclaim a body until the next
-// collection (~a heap-budget of allocation later), so pooled reuse would cycle
-// a cold multi-MiB working set, while libc's per-size free-lists hand back the
-// just-freed, cache-hot block the next tree reuses. Measured: a pool here made
-// binarytrees ~12x SLOWER for zero reclaim benefit. [MEM-BACKENDS]
+// A small block is a cell of a size-class page [MEM-BACKENDS-GC-HEAP]: no libc call and
+// no table slot, and the sweep hands its cell to the next block of that size. A
+// block past the largest class, or any block when no page can be had, is a libc
+// block of its own in the table, freed by the sweep. [MEM-BACKENDS]
 static void *gc_managed_alloc(size_t size, uint32_t flags) {
   if (!g_init) {
     gc_init_main();
@@ -356,7 +282,16 @@ static void *gc_managed_alloc(size_t size, uint32_t flags) {
   if (g_collection_wanted || (g_bytes > g_thresh && g_bytes >= g_retry_at)) {
     gc_safepoint();
   }
-  void *p = malloc(size ? size : 1);
+  if (heap_over_limit(g_bytes, size) && !gc_make_room(size)) {
+    return NULL;
+  }
+  void *p = size <= OSP_GC_SMALL_MAX && !g_pages_off ? gc_page_alloc(size, flags) : NULL;
+  if (p) {
+    g_count++;
+    g_bytes += size;
+    return p;
+  }
+  p = malloc(size ? size : 1);
   if (!p) {
     return NULL;
   }
@@ -374,8 +309,8 @@ static void *gc_managed_alloc(size_t size, uint32_t flags) {
 void *osp_alloc(int64_t size) { return osp_alloc_tagged(size, OSP_MEM_RAW); }
 
 // Link anchor (memory_hooks.h): main calls this so an allocation-free program
-// still extracts this object. The collector arms lazily; nothing to do here.
-void osp_mem_boot(void) {}
+// still extracts this object. The collector arms lazily; only the runner watch starts here.
+void osp_mem_boot(void) { run_parent_watch(); }
 
 // [PORT-STRING-NUL-OWNERSHIP] Length lives in the existing bounded allocation entry.
 void *osp_alloc_tagged(int64_t size, int64_t meta) {
@@ -392,7 +327,7 @@ void *osp_alloc_tagged(int64_t size, int64_t meta) {
 int64_t osp_mem_string_length(const void *p) {
   int held = g_lock_owned;
   if (!held) heap_lock();
-  OspGcEnt *e = gc_lookup((uintptr_t)p);
+  OspGcMeta *e = gc_lookup((uintptr_t)p);
   int64_t length = e && (e->mark & GC_STRING) && e->size ? (int64_t)e->size - 1 : -1;
   if (!held) heap_unlock();
   return length;
@@ -423,8 +358,10 @@ void osp_mem_immortal(void *p) {
   }
   int held = g_lock_owned;
   if (!held) heap_lock();
-  OspGcEnt *e = gc_lookup((uintptr_t)p);
+  OspGcMeta *e = gc_lookup((uintptr_t)p);
+  OspGcPage *page = gc_page_of((uintptr_t)p);
   if (e) e->mark |= GC_PINNED;
+  if (e && page) page->pinned = 1;
   if (!held) heap_unlock();
 }
 // Multithreaded-heap trip (memory_hooks.h): a second thread is about to touch
@@ -447,7 +384,7 @@ static uint32_t gc_layout_flags(int64_t meta) {
 
 void osp_mem_set_layout(void *p, int64_t meta) {
   heap_lock();
-  OspGcEnt *e = gc_lookup((uintptr_t)p);
+  OspGcMeta *e = gc_lookup((uintptr_t)p);
   // Existing finalizer ownership is unchanged.
   if (e) e->mark = (e->mark & ~(GC_STRING | GC_LEAF)) | gc_layout_flags(meta);
   heap_unlock();
@@ -477,6 +414,10 @@ size_t osp_gc_live_objects(void) { return gc_snapshot(&g_count); }
 // Slots in the heap table. Lets a test confirm the table keeps the capacity a
 // steady workload needs across collections, and gives it back once unused.
 size_t osp_gc_table_capacity(void) { return gc_snapshot(&g_cap); }
+
+// Size-class pages currently held. Lets a test confirm small blocks fill pages,
+// dead cells are reused, and a page with no live cell is handed back.
+size_t osp_gc_pages(void) { return gc_snapshot(&g_npages); }
 
 // Collections run since start. Lets a test confirm a collection actually fired
 // (or, after the multithread latch, that collection stopped firing).

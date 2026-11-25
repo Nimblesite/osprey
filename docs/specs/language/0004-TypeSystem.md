@@ -1020,6 +1020,14 @@ Erasing an `int`, `float` or `bool` keeps a scalar row: those values carry no
 fields, so every field-naming arm declines and only a binding or `_` arm selects
 them.
 
+A handle's element is never erased. `Fiber<T>` and `Channel<T>` hand `T` back
+through `await` and `recv` as an unboxed word, so a handle with a concrete
+element passed where `Fiber<any>` or `Channel<any>` is declared is rejected
+(`a fiber or channel with a concrete element cannot be passed as a `Fiber<any>`
+or `Channel<any>``) instead of `await` reading that word as a box. Leave the
+parameter to inference, or write its element type
+(`failscompilation/fiber_any_element.ospo` and its ML twin).
+
 > **Status: implemented.** An erased value is a pointer to a two-word box
 > `{ desc, payload }` whose descriptor names its runtime shape, on every
 > memory backend and both flavors. The one-way rule holds at annotations
@@ -1225,6 +1233,29 @@ Write `print(relay(work))` to remove the wrapper. The same rule applies to `\() 
 This is a conservative simplification. A callback that supplies arguments, performs additional work, installs a handler, or reads a mutable or shadowed callee is not reported. Stored callbacks and consumers that could retain the callback are excluded. Comparing functions is a compile error ([BOOL-EQUALITY](0009-BooleanOperations.md#what--and--compare-bool-equality)), so no comparison can observe whether a wrapper was removed. Both the consumer and the forwarded function must resolve to unambiguous immutable declarations. Explicit lambda return constraints, unresolved generic types, and contexts that adapt the callback's result representation are also excluded. Unrelated comparisons, interpolation and foreign declarations do not suppress the rule.
 
 A handler still needs a callback to delay execution until its scope is installed: `policy(work)` preserves that delay. `policy(work())` does not.
+
+## Repeated literals `[TYPE-WARNINGS-REPEATED-LITERAL]`
+
+A string of 12 or more characters, or a non-empty list of literals spelled in 12 or more characters, written 3 or more times in one source file is a constant that was never named. Every copy must change together, and a missed copy drifts silently. The compiler's warning listing and the language server report `repeated-literal` once per literal, at the statement that holds its first use, with how many times it is written:
+
+```osprey
+fn refused() = "connection refused"
+fn retry() = "connection refused"
+fn report() = "connection refused" // warning: the literal `"connection refused"` is written 3 times in this file; name it once as a constant
+```
+
+Write `let refusal = "connection refused"` once and use the name. Literals in patterns are not counted, because a pattern cannot name a constant. Two literals that differ in any character are different literals. A message quotes at most 32 characters of the literal. The count is per file as written, before project assembly, so two files that each write a literal twice are not reported. Implemented in `osprey-types/src/repeated_literal.rs`.
+
+## Consecutive prints `[TYPE-WARNINGS-CONSECUTIVE-PRINT]`
+
+Osprey writes one interpolated `print` where other languages write a run of them: the output is one value the reader sees whole. Two or more `print` calls in a row, with no other statement between them, at the top level, in a namespace or in any block (a block's trailing value included), are one `consecutive-print` warning at the first call of the run, in every flavor:
+
+```osprey
+print("total")
+print("${total}") // warning (at the line above): 2 `print` calls in a row: join them into one interpolated `print`
+```
+
+Write `print("total\n${total}")`. A `print` separated from the next by any other statement starts a new run. The compiler's warning listing and the language server both report it (`osprey-types/src/consecutive_print.rs`).
 
 ## Unused symbols `[TYPE-WARNINGS-UNUSED]`
 

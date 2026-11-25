@@ -48,7 +48,7 @@ fn clean() -> int ![] = 42
       body: (expression
         (primary_expression
           (literal
-          (integer)))))))
+            (integer)))))))
 
 ================================================================================
 Open effect rows retain fixed labels and the named tail [EFFECTS-ROW-POLY]
@@ -248,14 +248,79 @@ let r = match x {
           (match_arm
             pattern: (pattern
               name: (identifier)
-              (field_pattern
-                (identifier)))
+              (slot_pattern
+                (field_slot
+                  field: (identifier))))
             body: (expression
               (primary_expression
                 (identifier))))
           (match_arm
             pattern: (pattern)
             body: (expression
+              (primary_expression
+                (literal
+                  (integer))))))))))
+
+================================================================================
+Or-patterns: whole arms, nested slots, and a lambda body before an or-arm [PATTERN-OR-SYNTAX]
+================================================================================
+
+let r = match x {
+  Space | Tab => |y| => y
+  Digit { d: 0 | 1 } | Blank => 1
+  _ => 0
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (statement
+    (let_declaration
+      (identifier)
+      (expression
+        (match_expression
+          (expression
+            (primary_expression
+              (identifier)))
+          (match_arm
+            (pattern
+              (or_pattern
+                (pattern
+                  (identifier))
+                (pattern
+                  (identifier))))
+            (expression
+              (primary_expression
+                (lambda_expression
+                  (parameter_list
+                    (parameter
+                      (identifier)))
+                  (expression
+                    (primary_expression
+                      (identifier)))))))
+          (match_arm
+            (pattern
+              (or_pattern
+                (pattern
+                  (identifier)
+                  (slot_pattern
+                    (field_slot
+                      (identifier)
+                      (pattern
+                        (or_pattern
+                          (pattern
+                            (integer))
+                          (pattern
+                            (integer)))))))
+                (pattern
+                  (identifier))))
+            (expression
+              (primary_expression
+                (literal
+                  (integer)))))
+          (match_arm
+            (pattern)
+            (expression
               (primary_expression
                 (literal
                   (integer))))))))))
@@ -286,7 +351,8 @@ let t = if score >= 90 { "A" } else if score >= 80 { "B" } else { "C" }
           consequence: (expression
             (primary_expression
               (literal
-                (string (string_content)))))
+                (string
+                  (string_content)))))
           alternative: (if_expression
             condition: (expression
               (binary_expression
@@ -300,11 +366,13 @@ let t = if score >= 90 { "A" } else if score >= 80 { "B" } else { "C" }
             consequence: (expression
               (primary_expression
                 (literal
-                  (string (string_content)))))
+                  (string
+                    (string_content)))))
             alternative: (expression
               (primary_expression
                 (literal
-                  (string (string_content)))))))))))
+                  (string
+                    (string_content)))))))))))
 
 ================================================================================
 Pipe chain (left-associative) with UFCS-style calls
@@ -373,7 +441,8 @@ import std.io.file
     (import_statement
       (import_target
         (namespace_name
-          (string (string_content))))
+          (string
+            (string_content))))
       (import_tail
         (identifier))))
   (statement
@@ -601,7 +670,8 @@ test("undocumented", bareCase)
             (expression
               (primary_expression
                 (literal
-                  (string (string_content)))))
+                  (string
+                    (string_content)))))
             (expression
               (primary_expression
                 (identifier))))))))
@@ -616,7 +686,8 @@ test("undocumented", bareCase)
             (expression
               (primary_expression
                 (literal
-                  (string (string_content)))))
+                  (string
+                    (string_content)))))
             (expression
               (primary_expression
                 (identifier)))))))))
@@ -721,7 +792,8 @@ fn main() = pick<int, string>(1, "two")
             (expression
               (primary_expression
                 (literal
-                  (string (string_content)))))))))))
+                  (string
+                    (string_content)))))))))))
 
 ================================================================================
 A nested type argument closes two lists with one angle pair [TYPE-GENERICS-APPLY] [SYNTAX-TYPE-ARGUMENTS]
@@ -817,31 +889,107 @@ fn describe(value) = "${if value > 0 { value + 1 } else { value - 1 }}"
 
 --------------------------------------------------------------------------------
 
-(source_file (statement (function_declaration name: (identifier) parameters: (parameter_list (parameter name: (identifier))) body: (expression (primary_expression (literal (interpolated_string (interpolation expression: (expression (if_expression
-          condition: (expression
-            (binary_expression
-              left: (expression
-                (primary_expression
-                  (identifier)))
-              right: (expression
-                (primary_expression
-                  (literal
-                    (integer))))))
-          consequence: (expression
-            (binary_expression
-              left: (expression
-                (primary_expression
-                  (identifier)))
-              right: (expression
-                (primary_expression
-                  (literal
-                    (integer))))))
-          alternative: (expression
-            (binary_expression
-              left: (expression
-                (primary_expression
-                  (identifier)))
-              right: (expression
-                (primary_expression
-                  (literal
-                    (integer))))))))))))))))
+(source_file
+  (statement
+    (function_declaration
+      name: (identifier)
+      parameters: (parameter_list
+        (parameter
+          name: (identifier)))
+      body: (expression
+        (primary_expression
+          (literal
+            (interpolated_string
+              (interpolation
+                expression: (expression
+                  (if_expression
+                    condition: (expression
+                      (binary_expression
+                        left: (expression
+                          (primary_expression
+                            (identifier)))
+                        right: (expression
+                          (primary_expression
+                            (literal
+                              (integer))))))
+                    consequence: (expression
+                      (binary_expression
+                        left: (expression
+                          (primary_expression
+                            (identifier)))
+                        right: (expression
+                          (primary_expression
+                            (literal
+                              (integer))))))
+                    alternative: (expression
+                      (binary_expression
+                        left: (expression
+                          (primary_expression
+                            (identifier)))
+                        right: (expression
+                          (primary_expression
+                            (literal
+                              (integer))))))))))))))))
+
+================================================================================
+use passes the rest of its block; x<-1 stays a comparison [BLOCK-USE] [LEX-USE-ARROW]
+================================================================================
+
+fn chain(n) = {
+    use a, b <- both(n)
+    use <- scoped("x")
+    a<-1
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (statement
+    (function_declaration
+      name: (identifier)
+      parameters: (parameter_list
+        (parameter
+          name: (identifier)))
+      body: (expression
+        (primary_expression
+          (block
+            (statement
+              (use_statement
+                binders: (use_binders
+                  (identifier)
+                  (identifier))
+                call: (expression
+                  (call_expression
+                    callee: (expression
+                      (primary_expression
+                        (identifier)))
+                    (argument_list
+                      (expression
+                        (primary_expression
+                          (identifier))))))))
+            (statement
+              (use_statement
+                call: (expression
+                  (call_expression
+                    callee: (expression
+                      (primary_expression
+                        (identifier)))
+                    (argument_list
+                      (expression
+                        (primary_expression
+                          (literal
+                            (string
+                              (string_content))))))))))
+            (statement
+              (expression_statement
+                (expression
+                  (binary_expression
+                    left: (expression
+                      (primary_expression
+                        (identifier)))
+                    right: (expression
+                      (unary_expression
+                        operand: (expression
+                          (primary_expression
+                            (literal
+                              (integer))))))))))))))))

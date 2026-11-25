@@ -92,14 +92,21 @@ mod redundant_contract_tests;
 mod redundant_sites;
 mod site_applications;
 pub use site_applications::SiteApplications;
+mod consecutive_print;
+#[cfg(test)]
+mod consecutive_print_tests;
 #[cfg(test)]
 mod redundant_corpus_tests;
 #[cfg(test)]
 mod redundant_tests;
 #[cfg(test)]
 mod redundant_window_tests;
+mod repeated_literal;
+#[cfg(test)]
+mod repeated_literal_tests;
 #[cfg(test)]
 mod site_applications_tests;
+mod source_warnings;
 mod staging;
 mod structural_equals;
 #[cfg(test)]
@@ -129,6 +136,7 @@ pub use check::{
     check_and_publish, check_program, check_program_exports, effect_check_count, erased_var,
     infer_program, CheckedProgram,
 };
+pub use consecutive_print::{consecutive_prints, CONSECUTIVE_PRINT};
 pub use effect_rows::LibraryExports;
 pub use error::TypeError;
 pub use info::{
@@ -140,9 +148,11 @@ pub use redundant::{
     redundant_annotations, redundant_annotations_where, RedundantAnnotation, RedundantTarget,
     TypeWarning, REDUNDANT_ANNOTATION,
 };
+pub use repeated_literal::{repeated_literals, REPEATED_LITERAL};
+pub use source_warnings::source_warnings;
 pub use staging::{lower_static_checked, signal_dependencies};
 pub use ty::{has_type_var, names, render_with_holes, with_constraints, Scheme, Type, VarId, HOLE};
-pub use undocumented::{undocumented_exports, UNDOCUMENTED_EXPORT};
+pub use undocumented::{documentation_warnings, UNDOCUMENTED_EXPORT, UNEXAMPLED_EXPORT};
 pub use unused::{checked_method_reads, unused_symbols, UnusedKind, UnusedSymbol};
 #[cfg(test)]
 mod tests;

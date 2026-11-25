@@ -205,7 +205,7 @@ Exhaustiveness and reachability ([TYPE-MATCH-EXHAUSTIVE](#exhaustiveness-and-unr
 
 ## Or-patterns — [PATTERN-OR]
 
-**Status: not implemented.** [The or-patterns and min/max plan](../../plans/or-patterns-and-min-max.md) owns delivery. Until it lands, the compiler rejects `|` between patterns and each alternative needs its own arm.
+**Status: implemented** in all four flavors, in the checker and on every backend. [The or-patterns and min/max plan](../../plans/or-patterns-and-min-max.md) tracks the tooling still to come (formatter, editor, flavor conversion, symbolic execution). Inside an open row, the checker compares alternatives by field name. An earlier `{ kind: "s", .. }` makes the `"s"` alternative unreachable in `{ kind: "s" | "m", size, .. }`.
 
 An or-pattern is two or more patterns separated by `|`. It matches a value when any of its alternatives does, so arms that share a body are written once.
 

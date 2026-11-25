@@ -29,6 +29,13 @@ pub struct DocExample {
     pub expected_output: Option<String>,
     /// Compile-only (no run) for type-level examples (no `output` fence).
     pub run: bool,
+    /// On WebAssembly, require a capability refusal for this native example.
+    pub native_only: bool,
+}
+
+impl DocExample {
+    /// Markdown fence label for native capability examples.
+    pub const NATIVE_FENCE: &'static str = "osprey native";
 }
 
 /// A structured documentation comment. Implements [DOC-MODEL]. Recognised
@@ -166,7 +173,12 @@ fn render_examples(out: &mut String, examples: &[DocExample]) {
     }
     push_para(out, "**Examples**");
     for ex in examples {
-        push_para(out, &format!("```osprey\n{}\n```", ex.code));
+        let label = if ex.native_only {
+            DocExample::NATIVE_FENCE
+        } else {
+            "osprey"
+        };
+        push_para(out, &format!("```{label}\n{}\n```", ex.code));
         if let Some(o) = &ex.expected_output {
             push_para(out, &format!("```\n{o}\n```"));
         }
@@ -201,6 +213,7 @@ mod tests {
             code: "divide(6, 2)".to_owned(),
             expected_output: Some("3".to_owned()),
             run: true,
+            native_only: false,
         }];
         doc.see_also = vec!["[div]".to_owned()];
         doc.since = Some("1.2".to_owned());

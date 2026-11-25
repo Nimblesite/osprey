@@ -3,6 +3,7 @@
 // that walks the disk sorts, hides and formats nothing ([UI-EFFECTS-MEASURE]).
 namespace storage
 
+import ui::Lists
 import ui::Pick
 
 (** One child of a measured folder, measured to the bottom by the host ([UI-EFFECTS-MEASURE]): its allocated bytes, the bytes left once hidden items are left out, and the items below it. *)
@@ -27,21 +28,37 @@ type Ranking =
 
 (** Paths, sizes, shares and ranking for Osprey Storage, each decided for the platform the host runs on ([UI-CONTEXT-PLATFORM]). *)
 module Disk
-    (** Whether `system` is Windows, which counts sizes in powers of 1,024. *)
+    (** Whether `system` is Windows, whose paths use backslashes, drive letters and network shares. *)
     export windows system = system == "windows"
 
-    // Paths are the core library's ([BUILTIN-PATH]): drives, network shares,
-    // roots and separators are decided there, and `pathNative` is the one
-    // place a path turns back into what a person on `system` reads.
+    (** The separator between a path's folder names on `system`. *)
+    export separator system = Pick::either (windows system, "\\", "/")
 
     (** The folder to open when the host names no home: the system drive on Windows, `/` elsewhere. *)
-    export fallback system = pathNative (system, Pick::either (windows system, "C:/", "/"))
+    export fallback system = Pick::either (windows system, "C:\\", "/")
+
+    nonEmpty (kept, piece) = Pick::either (length piece > 0, listAppend kept piece, kept)
 
     // The pieces of `text` split on `at`, or none when it cannot be split.
     splitOn (text, at) = split text at ?: []
 
-    (** Whether `path` is the top of its volume, where Up goes nowhere; a host that names no folder is at the top too. *)
-    export isRoot (_system, path) = pathIsRoot path || path == ""
+    (** A path's folder names, outermost first, without separators. *)
+    export segments (system, path) = foldList (splitOn (path, separator system), [], \(kept, piece) => nonEmpty (kept, piece))
+
+    // A drive root: a letter and a colon, with or without the separator after it.
+    drive path = (length path == 2 || (length path == 3 && endsWith path "\\")) && (substring path 1 2 ?: "") == ":"
+
+    // Whether `path` names a network share, written `\\\\server\\share`.
+    network path = startsWith path "\\\\"
+
+    // A network share's root: the server and the share, with nothing below them.
+    share (system, path) = network path && length (segments (system, path)) <= 2
+
+    (** Whether `path` is the top of its volume on `system`, where Up goes nowhere. *)
+    export isRoot (system, path) = Pick::either (windows system, drive path || share (system, path), path == "/" || path == "")
+
+    // How many of a path's names make up its root: the drive, or the server and share.
+    depth (system, path) = Pick::either (windows system, Pick::either (network path, 2, 1), 0)
 
     (** The first `count` of `items`. *)
     export top count items = match items
@@ -50,19 +67,35 @@ module Disk
             true => listPrepend (top (satSub count 1) rest) first
             false => []
 
-    (** The top of the volume holding `path`, as a person on `system` reads it. *)
-    export rootOf (system, path) = pathNative (system, pathRoot path)
+    names (system, path) =
+        pieces = segments (system, path)
+        Lists::slice (pieces, depth (system, path), length pieces)
+
+    (** The top of the volume holding `path`: its drive or share on Windows, `/` elsewhere. *)
+    export rootOf (system, path) = Pick::either (windows system, Pick::either (network path, "\\\\" + join (top 2 (segments (system, path))) "\\" + "\\", take path 2 + "\\"), "/")
+
+    joined (system, root, pieces) =
+        sep = separator system
+        Pick::either (length pieces > 0, Pick::either (endsWith root sep, root + join pieces sep, root + sep + join pieces sep), root)
+
+    // The volume top of `path` with the first `count` of `below` joined onto it.
+    level (system, path, below, count) = joined (system, rootOf (system, path), top count below)
+
+    // A volume's top encloses itself; anything below hands `work` its folder names.
+    belowOf (system, path, work) = Pick::either (isRoot (system, path), path, work (names (system, path)))
 
     (** The folder enclosing `path`; the top of a volume encloses itself. *)
-    export parent (system, path) = pathNative (system, pathParent path)
+    export parent (system, path) = belowOf (system, path, \below => level (system, path, below, satSub (length below) 1))
 
     (** The folders from the top of `path`'s volume down to `path`, outermost first. *)
-    export trail (system, path) = mapList (pathAncestors path, \folder => pathNative (system, folder))
+    export trail (system, path) =
+        below = names (system, path)
+        range (0, length below) |> fold [rootOf (system, path)] (\(folders, index) => listAppend folders (level (system, path, below, satAdd index 1)))
 
     last items fallback = foldList (items, fallback, \(_, item) => item)
 
     (** The last folder name of `path`; the top of a volume goes by the path itself. *)
-    export name (system, path) = Pick::either (isRoot (system, path), path, pathName path)
+    export name (system, path) = belowOf (system, path, \below => last below path)
 
     // Windows counts in powers of 1,024 as File Explorer does; other systems count in powers of 1,000.
     base system = Pick::either (windows system, 1024, 1000)
@@ -80,6 +113,32 @@ module Disk
 
     (** `bytes` with one rounded decimal in the units `system` shows: powers of 1,024 on Windows, as File Explorer counts, and powers of 1,000 elsewhere. *)
     export formatBytes (system, bytes) = Pick::either (bytes < 0, "unknown", scaled (base system, satMul bytes 10, "B", ["KB", "MB", "GB", "TB"]))
+
+    (** A count with thousands separators. `match`, not `Pick::either`, so the
+    untaken arm never runs: the recursive call must not fire once `count` is
+    below 1,000, or no call ever terminates. *)
+    export formatCount count = match count < 1000
+        true => toString count
+        false => formatCount (intDiv count 1000) + "," + (padStart (toString (count % 1000)) 3 "0" ?: "")
+
+    ratio scale part whole = match whole > 0
+        false => 0
+        true =>
+            handle Arith
+                overflow _ _ _ _ => 0
+                remainderByZero _ => 0
+            intDiv (satAdd (satMul part scale) (intDiv whole 2)) whole
+
+    (** The share of `whole`, rounded to a whole percent; an empty whole gives no share. *)
+    export percent (part, whole) = ratio 100 part whole
+
+    (** The same share in thousandths. *)
+    export permille (part, whole) = ratio 1000 part whole
+
+    (** A share as people read it: a sliver is "< 1%", never "0%". *)
+    export shareText (part, whole) = match percent (part, whole) == 0 && part > 0
+        true => "< 1%"
+        false => "${percent (part, whole)}%"
 
     (** What an item counts for: everything below it, or only what is in sight. *)
     export size (hidden, item) = Pick::either (hidden, item.itemBytes, item.itemShown)

@@ -1,6 +1,5 @@
 #include "http_server_internal.h"
 #include "http_shared.h"
-#include "test_loopback.h"
 #include "test_alloc.h"
 #include <assert.h>
 #include <openssl/err.h>
@@ -11,8 +10,8 @@
 // Runtime APIs and cross-TU test entry points: http_runtime_tests.h
 #include "http_runtime_tests.h"
 
-// Ports come from server_test_port() [CI-TEST-PORTS]: the shared live-server
-// port owned by http_server_live_tests.c, or an OS-assigned probe.
+// Port burned by test_server_handle_exhaustion (see http_server_live_tests.c).
+#define SERVER_TEST_PORT test_port(4)
 
 // Creates a loopback server on `port` and asserts the table took it.
 static int64_t create_test_server(int64_t port) {
@@ -65,11 +64,11 @@ static void check_http_creation_allocation_failures(void) {
   assert(http_create_client("http://127.0.0.1:1", 1) == -3);
   assert(osp_alloc_live() == live);
   osp_alloc_fail_next(); // the server record itself
-  assert(http_create_server(server_test_port(),
+  assert(http_create_server(SERVER_TEST_PORT,
                             (char *)(uintptr_t) "127.0.0.1") == -3);
   assert(osp_alloc_live() == live);
   osp_alloc_fail_after(1); // the record succeeds; its address copy does not
-  assert(http_create_server(server_test_port(),
+  assert(http_create_server(SERVER_TEST_PORT,
                             (char *)(uintptr_t) "127.0.0.1") == -3);
   assert(osp_alloc_live() == live &&
          "the half-built record must be released, not abandoned");
@@ -81,7 +80,7 @@ void test_http_create_server(void) {
   check_http_creation_allocation_failures();
 
   // Test valid server creation
-  int64_t server_id = create_test_server(test_free_loopback_port());
+  int64_t server_id = create_test_server(test_port(17));
   printf("✅ Created server with ID: %" PRId64 "\n", server_id);
 
   // Test invalid port
@@ -103,7 +102,7 @@ void test_http_server_lifecycle(void) {
   printf("Testing HTTP server lifecycle...\n");
 
   // Create server
-  int64_t server_id = create_test_server(test_free_loopback_port());
+  int64_t server_id = create_test_server(test_port(18));
   printf("✅ Server created: %" PRId64 "\n", server_id);
 
   // Start listening
@@ -203,7 +202,13 @@ static HttpResponse g_live_response;
 // Fills the shared response stub that the live handlers hand back.
 static HttpResponse *live_response(int64_t status, const char *headers,
                                    const char *partial_body) {
-  return test_reply(&g_live_response, status, headers, "text/plain", partial_body);
+  g_live_response.status = status;
+  g_live_response.headers = (char *)(uintptr_t) headers;
+  g_live_response.contentType = (char *)(uintptr_t) "text/plain";
+  g_live_response.streamFd = -1;
+  g_live_response.isComplete = true;
+  g_live_response.partialBody = (char *)(uintptr_t) partial_body;
+  return &g_live_response;
 }
 
 static HttpResponse *live_handler(char *method, char *path, char *headers,
@@ -215,6 +220,7 @@ static HttpResponse *live_handler(char *method, char *path, char *headers,
   return live_response(200, "X-Test: yes\r\n", "pong");
 }
 
+#define LIVE_PORT test_port(0)
 #define LIVE_TRIES 50
 
 // Cross-TU forwarders for the allocation injector: test_alloc.h's arming
@@ -222,12 +228,13 @@ static HttpResponse *live_handler(char *method, char *path, char *headers,
 // through these out-of-line symbols (same pattern as http_test_server_handler).
 void test_alloc_fail_off(void) { osp_alloc_fail_off(); }
 void test_alloc_fail_size(size_t bytes) { osp_alloc_fail_size(bytes); }
+void test_alloc_fail_after(long successes) { osp_alloc_fail_after(successes); }
 long test_alloc_live(void) { return osp_alloc_live(); }
 
 void test_live_loopback_exchange(void) {
   printf("Testing live loopback HTTP exchange...\n");
   int64_t server_id = 0, client_id = 0;
-  start_loopback(server_test_port(), live_handler, &server_id, &client_id);
+  start_loopback(LIVE_PORT, live_handler, &server_id, &client_id);
   int64_t handle = -1;
   for (int i = 0; i < LIVE_TRIES && handle < 0; i++) {
     handle = http_get_response(client_id, (char *)(uintptr_t) "/ping",
@@ -263,10 +270,12 @@ static HttpResponse *post_handler(char *method, char *path, char *headers,
   return live_response(201, "X-Echo: posted\r\n", "created");
 }
 
+#define POST_PORT test_port(6)
+
 void test_post_response_loopback(void) {
   printf("Testing http_post_response loopback...\n");
   int64_t server_id = 0, client_id = 0;
-  start_loopback(server_test_port(), post_handler, &server_id, &client_id);
+  start_loopback(POST_PORT, post_handler, &server_id, &client_id);
   int64_t handle = -1;
   for (int i = 0; i < LIVE_TRIES && handle < 0; i++) {
     handle = http_post_response(client_id, (char *)(uintptr_t) "/submit",
@@ -322,7 +331,7 @@ void test_client_handle_exhaustion(void) {
 // create that answered with an out-of-range id would write servers[id] outside
 // the array, which is exactly the defect the client handles carried.
 void test_server_handle_exhaustion(void) {
-  assert(http_create_server(server_test_port(),
+  assert(http_create_server(SERVER_TEST_PORT,
                             (char *)(uintptr_t) "127.0.0.1") == -3);
   assert(http_create_server(1, (char *)(uintptr_t) "127.0.0.1") == -3);
 }
@@ -372,9 +381,10 @@ void run_all_http_tests(void) {
   test_stop_server_with_client_connected(); // foreign stop tears the client down
   // The three below burn finite id spaces and are permanent for the process.
   test_spawn_with_handlers_survives_every_failed_allocation();
+  test_spawn_refused_by_a_full_handle_table_frees_the_handler_copy();
   test_listener_spawn_failure_is_reported(); // burns the FIBER id space
   test_client_handle_exhaustion();           // burns the shared HTTP id space
-  test_server_handle_exhaustion();
+  test_server_handle_exhaustion();           // observes that same exhaustion
 
   printf("🎉 All HTTP runtime tests passed!\n");
   printf("=====================================\n");

@@ -1,0 +1,3 @@
+type arguments require a named function
+5:0: unknown identifier `undefinedThing`
+5:0: unknown identifier `Mod::gone`

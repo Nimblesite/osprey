@@ -464,6 +464,9 @@ int main(int argc, char **argv) {
     return 0;
   }
   assert(argc == 1);
+  // The out-of-memory cases refuse one libc block by its size. Pages serve small
+  // blocks without libc [MEM-BACKENDS-GC-HEAP], so this suite turns them off.
+  assert(setenv("OSPREY_GC_PAGES", "0", 1) == 0);
   printf("Running File Runtime Tests...\n\n");
 
   test_file_roundtrip();

@@ -153,7 +153,7 @@ test ("module switches pick the waveform, bypass a module and modulate the filte
     modulated = switchedSamples (sine, filter, lfo)
     expect (structuralEquals (modulated, plainLowpass ()), false)
     sameStructure (switchedSamples (sine, filter, disabled lfo), plainLowpass ())
-    forEachList (toList (range (0, 64)), \i => near (listGet (switchedSamples (sine, disabled filter, lfo)) i ?: 9.0, sin (6.283185307179586 * 440.0 * toFloat i / 48000.0), 0.00000000001))
+    forEachList (toList (range (0, 64)), \i => near (listGet (switchedSamples (sine, disabled filter, lfo)) i ?: 9.0, sineWave (440.0, i), 0.00000000001))
     sameStructure (switchedSamples (sine, switched (filter, "enabled", 1.0, 1.0), lfo), modulated)
     sameStructure (switchedSamples (disabled sine, filter, lfo), mapList (modulated, \_ => 0.0))
     renderRefused (switchedRender (sine, switched (filter, "enabled", 2.0, 2.0), lfo))))
@@ -162,7 +162,7 @@ test ("a routed oscillator and gain render exact continuous PCM across unequal b
     graph = sineChain ()
     kit = running graph
     whole = renderBlock (kit.plan, kit.parameters, kit.start, 128)
-    expected = mapList (toList (range (0, 128)), \i => 0.25 * sin (6.283185307179586 * 440.0 * toFloat i / 48000.0))
+    expected = mapList (toList (range (0, 128)), \i => sineAt (0.25, 440.0, i))
     first = renderBlock (kit.plan, kit.parameters, kit.start, 31)
     second = renderBlock (kit.plan, kit.parameters, first, 97)
     sameSamples (whole.samples, listConcat first.samples second.samples)
@@ -199,7 +199,7 @@ test ("sample-accurate automation applies before its frame, preserves ordering a
     succeeds (Renderer::automated (plan, 48000.0, snapshot, first, 64, [mute, restore]), \timeline =>
         expect (timeline.observation.revision == 2 && timeline.observation.samplePosition == 64, true)
         forEachList (toList (range (17, 31)), \i => near (listGet timeline.audio.samples i ?: -1.0, 0.0, 0.0))
-        forEachList ([{ frame = 16, scale = 1.0 }, { frame = 31, scale = 0.5 }], \r => near (listGet timeline.audio.samples r.frame ?: -1.0, r.scale * sin (6.283185307179586 * 440.0 * toFloat r.frame / 48000.0), 0.00000000001)))
+        forEachList ([{ frame = 16, scale = 1.0 }, { frame = 31, scale = 0.5 }], \r => near (listGet timeline.audio.samples r.frame ?: -1.0, sineAt (r.scale, 440.0, r.frame), 0.00000000001)))
     forEachList ([[restore, mute], [mute(samplePosition = 64)], [mute, restore(revision = 0)]], \events => renderRefused (Renderer::automated (plan, 48000.0, snapshot, first, 64, events)))))
 
 test ("same-frame automation applies in order and every block split renders the same samples", \() => arithmetic (\() =>
@@ -215,8 +215,8 @@ test ("same-frame automation applies in order and every block split renders the 
         expect (length whole.audio.samples, 64)
         expect (whole.observation.revision, 3)
         // Both frame-20 edits land before frame 20; the later one (0.25) is what sounds.
-        forEachList ([20, 21, 30, 39], \i => near (listGet whole.audio.samples i ?: -1.0, 0.25 * sin (6.283185307179586 * 440.0 * toFloat i / 48000.0), 0.00000000001))
-        forEachList ([0, 19, 40, 63], \i => near (listGet whole.audio.samples i ?: -1.0, sin (6.283185307179586 * 440.0 * toFloat i / 48000.0), 0.00000000001))
+        forEachList ([20, 21, 30, 39], \i => near (listGet whole.audio.samples i ?: -1.0, sineAt (0.25, 440.0, i), 0.00000000001))
+        forEachList ([0, 19, 40, 63], \i => near (listGet whole.audio.samples i ?: -1.0, sineWave (440.0, i), 0.00000000001))
         forEachList ([1, 7, 19, 20, 21, 33, 40, 41, 63], \cut => succeeds (splitAt (plan, snapshot, first, events, cut), \pieces => sameStructure (pieces, whole.audio.samples))))
     renderRefused (Renderer::automated (plan, 48000.0, snapshot, first, 64, [quiet, mute]))))
 

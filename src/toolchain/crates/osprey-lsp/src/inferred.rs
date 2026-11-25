@@ -39,7 +39,7 @@ pub(crate) type Functions = Arc<BTreeMap<(u32, u32), String>>;
 /// Checked types, addressed by the document's own names and positions.
 #[derive(Debug, Clone)]
 pub(crate) struct Inferred {
-    types: Arc<ProgramTypes>,
+    pub(crate) types: Arc<ProgramTypes>,
     /// Declaration position in the assembled program → the function's linkage
     /// name; empty for a document checked alone, whose names are its own.
     functions: Functions,
@@ -113,6 +113,10 @@ impl Inferred {
             *name = source_names(std::mem::take(name));
         }
         Some(found)
+    }
+
+    pub(crate) fn record_type(&self, position: Option<Position>) -> Option<&Type> {
+        self.types.let_type(None, position.map(|at| self.at(at)))
     }
 
     pub(crate) fn let_type(&self, position: Option<Position>) -> Option<&Type> {

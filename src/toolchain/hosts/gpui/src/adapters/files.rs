@@ -129,7 +129,9 @@ fn too_large(size: u64, limit: u64) -> String {
 #[cfg(test)]
 mod tests {
     use std::io;
-    use std::path::{Path, PathBuf};
+    #[cfg(unix)]
+    use std::path::Path;
+    use std::path::PathBuf;
     use std::sync::atomic::{AtomicU64, Ordering};
 
     use serde_json::{json, Value};

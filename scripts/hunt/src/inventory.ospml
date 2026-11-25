@@ -10,7 +10,8 @@ import fs::Walk
 (** The corpus the hunt sweeps and the programs listed as unportable. *)
 module Inventory
     ROOTS = ["src/osprey/tests", "src/osprey/examples", "docs/book/examples", "src/osprey/packages", "src/toolchain/benchmarks"]
-    UNPORTABLE = "src/osprey/tests/HUNT_UNPORTABLE.txt"
+    (** The programs the hunt sweeps but cannot port, each with its reason. *)
+    export UNPORTABLE = "src/osprey/tests/HUNT_UNPORTABLE.txt"
     (** The hunt fixtures are the hunt's own controls, gated by their own targets. *)
     OWN = "src/osprey/tests/hunt"
     PYTHON_MARKER = "# osprey: flavor=python"
@@ -98,3 +99,7 @@ module Inventory
         found => trim (drop (firstOf found, satAdd (length program, 1)))
 
     firstOf rows = listGet (rows, 0) ?: ""
+
+    (** The rows whose program the hunt does not sweep. A deleted, renamed or
+        never-enumerated program skips nothing, so its row is stale (#341). *)
+    export stale (programs, rows) = filterList (rows, \row => !listContains (programs, segment (row, " ", 0)))

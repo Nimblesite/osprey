@@ -4,5 +4,6 @@ ok 3 - thousands of record fibers
 ok 4 - thousands of channels
 ok 5 - strings through fibers and channels
 ok 6 - an old handle survives thousands more
-1..6
-# tests=6 passed=6 failed=0 skipped=0
+ok 7 - a recursive loop awaits the fiber it was passed
+1..7
+# tests=7 passed=7 failed=0 skipped=0

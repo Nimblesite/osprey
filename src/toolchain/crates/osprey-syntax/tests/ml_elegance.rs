@@ -404,7 +404,7 @@ fn clause_sets_merge_inside_a_module_body() {
 /// Every restriction the elegance surface imposes reports the diagnostic that
 /// names it: an uppercase variant head, a closed named payload list, no clause
 /// after an irrefutable arm, one selected column per clause set, no
-/// or-patterns, and a labelled constructor pattern labels every slot
+/// dangling `|` in an or-pattern, and a labelled constructor pattern labels every slot
 /// ([PATTERN-NESTED]).
 #[test]
 fn rejected_surfaces_report_their_diagnostic() {
@@ -422,10 +422,10 @@ fn rejected_surfaces_report_their_diagnostic() {
         ),
         ("choose n = n\nchoose other = other\n", "unreachable clause"),
         ("f 0 y = y\nf x 0 = x\n", "selects on columns 0 and 1"),
-        // `|` separates union variants; it is meaningless in pattern position.
+        // An or-pattern needs an alternative after every `|` ([PATTERN-OR-SYNTAX]).
         (
-            "type Colour = Red | Green\nname c = match c\n    Red | Green => \"warm\"\n",
-            "or-patterns are not supported",
+            "type Colour = Red | Green\nname c = match c\n    Red | => \"warm\"\n",
+            "unexpected token FatArrow in pattern",
         ),
         // `Ctor(field = p)` names each slot it matches ([PATTERN-NESTED]).
         (

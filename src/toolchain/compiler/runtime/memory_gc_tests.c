@@ -175,7 +175,7 @@ __attribute__((noinline)) static void make_hidden(volatile HiddenRefs *out) {
 }
 
 // Overwrite the dead frames below the caller so stale pointer copies are gone.
-__attribute__((noinline)) static void scrub_stack(void) {
+__attribute__((noinline)) void scrub_stack(void) {
   volatile unsigned char pad[1 << 16];
   for (size_t i = 0; i < sizeof pad; i++) {
     pad[i] = 0;
@@ -320,7 +320,9 @@ static void t_interior_pointer(void) {
 #define SWEEP_BLOCKS 60000
 #define SWEEP_ROUNDS 6
 static char *g_swept[SWEEP_BLOCKS];
-static size_t sweep_size(int i) { return 9 + (size_t)(i % 7) * 8; }
+// One block in three is past the largest size class, so it is a table block the
+// sweep reseats; the others are page cells swept beside them [MEM-BACKENDS-GC-HEAP].
+static size_t sweep_size(int i) { return (i % 3 == 0 ? 1025 : 9) + (size_t)(i % 7) * 8; }
 static char sweep_byte(int i, int round) { return (char)(1 + (i + round) % 120); }
 
 static void sweep_fill(int round) {
@@ -364,19 +366,21 @@ static void t_sweep_reseats_survivors(void) {
 
 // The table keeps the capacity a steady cycle needs: cutting it back to the
 // live set at each collection made the next cycle regrow it, rehashing every
-// block at each doubling. It is given back once a cycle peaks below it. Each
-// cycle allocates under the 1 MiB budget, so only osp_collect collects here.
-#define STEADY_BLOCKS 30000
+// block at each doubling. It is given back once a cycle peaks below it. The
+// blocks are past the largest size class, the only ones the table tracks, and
+// each cycle allocates under the 1 MiB budget, so only osp_collect collects here.
+#define STEADY_BLOCKS 900
+#define STEADY_BYTES 1040
 #define STEADY_CYCLES 5
 static void t_table_keeps_capacity(void) {
   osp_collect();
-  (void)alloc_churn(STEADY_BLOCKS, 16);
+  (void)alloc_churn(STEADY_BLOCKS, STEADY_BYTES);
   osp_collect(); // warm-up cycle: the table now fits one cycle's blocks
   size_t steady = osp_gc_table_capacity();
   CHECK(steady * 3 > (size_t)STEADY_BLOCKS * 4);
   for (int cycle = 0; cycle < STEADY_CYCLES; cycle++) {
     size_t collections = osp_gc_collections();
-    (void)alloc_churn(STEADY_BLOCKS, 16);
+    (void)alloc_churn(STEADY_BLOCKS, STEADY_BYTES);
     CHECK(osp_gc_collections() == collections && osp_gc_table_capacity() == steady);
     osp_collect();
     CHECK(osp_gc_table_capacity() == steady && osp_gc_live_objects() < 1000);
@@ -412,6 +416,18 @@ int main(int argc, char **argv) {
     debug_stats_child();
     return 0;
   }
+  if (argc == 2 && strcmp(argv[1], "--pages-off") == 0) {
+    pages_off_child();
+    return 0;
+  }
+  if (argc == 2 && strcmp(argv[1], "--mark-stack-refused") == 0) {
+    mark_stack_refused_child();
+    return 0;
+  }
+  if (argc == 3 && strcmp(argv[1], "--ceiling") == 0) {
+    ceiling_child(argv[2]);
+    return 0;
+  }
   CHECK(argc == 1);
   // Floor the collection budget at 1 MiB BEFORE the first allocation so the
   // spike guard exercises the budget with a deterministic knob. gc_init_main
@@ -433,8 +449,10 @@ int main(int argc, char **argv) {
   t_sweep_reseats_survivors();
   t_table_keeps_capacity();
   t_many_rooted_survive();
+  t_size_class_pages(argv[0]);
   t_finalizer_at_sweep();
   t_debug_reports(argv[0]);
+  t_heap_ceiling(argv[0]);
   t_scanned_blocks_are_roots();
   t_threads_collect_together();
   t_parked_thread_stays_a_root();

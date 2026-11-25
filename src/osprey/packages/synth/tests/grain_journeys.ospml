@@ -40,7 +40,7 @@ retuned (key, value) = grainSet (granularNode (), key, value)
 grainTuned (n, changes) = foldList (changes, n, \(held, change) => grainSet (held, change.key, change.value))
 
 // A descriptor lookup that fails visibly instead of silently matching nothing.
-grainParameterOf (n, key) = match listGet (filterList (n.parameters, \p => p.key == key)) 0
+grainParameterOf (n, key) = match synth::Graphs::parameterNamed (n, key)
     Error _ => synth::Parameter(key = "absent", label = "absent", unit = synth::Ratio, minimum = -1.0, maximum = -1.0, initial = -1.0, automatable = false)
     Success p => p
 

@@ -2,9 +2,9 @@
 //! boundaries). String/handle targets take the operand as-is, only re-tagging
 //! the LLVM type.
 
-use crate::builder::{Codegen, ParamSig};
+use crate::builder::{Codegen, FiberSig, ParamSig};
 use crate::conv::as_i1;
-use crate::error::Result;
+use crate::error::{CodegenError, Result};
 use crate::llty::{LType, Value};
 
 /// Bind borrowed incoming registers, retaining each semantic type and owner.
@@ -40,7 +40,7 @@ pub(crate) fn coerce_to(cg: &mut Codegen, v: Value, want: LType) -> Result<Value
     // WHOLE — discriminant intact, rendered as `Success(…)`/`Error(…)` — which
     // is preservation, not unwrapping ([`crate::anybox`], [TYPE-ANY]).
     if v.result_inner.is_some() && want != LType::Any {
-        return Err(crate::error::CodegenError::invalid(
+        return Err(CodegenError::invalid(
             "cannot coerce an unhandled Result to a plain value",
         ));
     }
@@ -68,7 +68,7 @@ pub(crate) fn coerce_to(cg: &mut Codegen, v: Value, want: LType) -> Result<Value
         // it as a string/handle is the unchecked recovery [TYPE-ANY] deletes.
         LType::Str | LType::Ptr => {
             if v.ty == LType::Any {
-                return Err(crate::error::CodegenError::invalid(
+                return Err(CodegenError::invalid(
                     "cannot read through an erased `any`: match its structure instead",
                 ));
             }
@@ -115,10 +115,24 @@ pub(crate) fn coerce_semantic_param(cg: &mut Codegen, v: Value, want: &ParamSig)
         Some(inner) => coerce_result(cg, v, want, inner)?,
         None => coerce_to(cg, v, want.ty)?,
     };
-    Ok(match want.fiber.clone() {
-        Some(fiber) => fiber.restore(value),
-        None => value,
-    })
+    match want.fiber.clone() {
+        Some(fiber) if erases_handle_element(&value, &fiber) => {
+            Err(CodegenError::invalid(ERASED_HANDLE))
+        }
+        Some(fiber) => Ok(fiber.restore(value)),
+        None => Ok(value),
+    }
+}
+
+const ERASED_HANDLE: &str = "a fiber or channel with a concrete element cannot be passed as a \
+     `Fiber<any>` or `Channel<any>`: its element travels unboxed, so write the element type or \
+     leave the parameter to inference";
+
+/// A handle's element crosses `await`/`recv` as an unboxed word, so an `any`
+/// slot cannot take a concrete one: `await` read a raw `7` as an `any` box and
+/// segfaulted [TYPE-ANY] [CONCURRENCY-HANDLES].
+fn erases_handle_element(value: &Value, want: &FiberSig) -> bool {
+    want.elem == LType::Any && value.fiber_elem.is_some_and(|elem| elem != LType::Any)
 }
 
 /// Result payloads retain their semantic target even when both ABIs are pointers.

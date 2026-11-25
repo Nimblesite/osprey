@@ -82,6 +82,21 @@ sameStructure (actual, expected) = expect (structuralEquals (actual, expected), 
 
 unexpected () = expect (false, true)
 
+tau = 6.283185307179586
+
+pi = 3.141592653589793
+
+rate = 48000.0
+
+sineWave (frequency, i) = sin (tau * frequency * toFloat i / rate)
+
+// The sine of `x` whole turns.
+turn x = sin (tau * x)
+
+sineAt (gain, frequency, i) = gain * sineWave (frequency, i)
+
+absSum samples = foldList (samples, 0.0, \(sum, value) => sum + abs value)
+
 oscillator (rate, frequency, waveform) = synth::OscillatorConfig(sampleRate = rate, frequency = frequency, pulseWidth = 0.5, waveform = waveform)
 
 sampleAt (config, phase) = (Oscillators::next (config, synth::OscillatorState(phase = phase))).sample
@@ -223,9 +238,9 @@ sineFiltered (cutoff, resonance) = serial ([Components::sine (1, 440.0), Compone
 
 sineChain () = sineThrough (0.25)
 
-blockOf (graph, frames) = rendered (Renderer::block (planFor graph, 48000.0, Parameters::initial graph, rendered (Renderer::start graph), frames))
+blockOf (graph, frames) = rendered (Renderer::block (planFor graph, rate, Parameters::initial graph, rendered (Renderer::start graph), frames))
 
-renderBlock (plan, parameters, prior, frames) = rendered (Renderer::block (plan, 48000.0, parameters, prior, frames))
+renderBlock (plan, parameters, prior, frames) = rendered (Renderer::block (plan, rate, parameters, prior, frames))
 
 running (graph) = { plan = planFor graph, parameters = Parameters::initial graph, start = rendered (Renderer::start graph) }
 
@@ -235,7 +250,7 @@ sameSamples (actual, expected) =
 
 energetic (samples, count) =
     expect (length samples, count)
-    expect (foldList (samples, 0.0, \(sum, value) => sum + abs value) > 1.0, true)
+    expect (absSum samples > 1.0, true)
 
 // [SYNTH-ADVANCED-LEARNED] Independent, licensed evaluation data does not influence the fitted gain.
 fitGainJourney (graph, samples) =
@@ -255,7 +270,7 @@ feedbackExpected (samples, i) =
     previous = match i >= 2
         true => listGet samples (satSub i 2) ?: -999.0
         false => 0.0
-    expected = 0.5 * (sin (6.283185307179586 * 440.0 * toFloat i / 48000.0) + previous)
+    expected = 0.5 * (sineWave (440.0, i) + previous)
     near (listGet samples i ?: -888.0, expected, 0.00000000001)
 
 metersObserved snapshot =
@@ -427,7 +442,7 @@ hann9 block =
     near (frameAt (block.left, 0), 0.0, 0.0)
     near (frameAt (block.left, 8), 0.0, 0.0)
     near (frameAt (block.left, 4), centre, 0.000000000001)
-    forEachList (toList (range (0, 9)), \k => near (frameAt (block.left, k), centre * (sin (3.141592653589793 * toFloat k / 8.0) * sin (3.141592653589793 * toFloat k / 8.0)), 0.000000000001))
+    forEachList (toList (range (0, 9)), \k => near (frameAt (block.left, k), centre * (sin (pi * toFloat k / 8.0) * sin (pi * toFloat k / 8.0)), 0.000000000001))
     // cos and sin of π/4 differ in the last bit, so the centred sides agree to 1e-15, not bit for bit.
     forEachList (toList (range (0, 16)), \k => near (frameAt (block.left, k), frameAt (block.right, k), 0.000000000000001))
     forEachList (toList (range (9, 16)), \k => near (frameAt (block.left, k), 0.0, 0.0))

@@ -1,6 +1,5 @@
 // The page plan across several lists and for the anonymous party ([EXAMPLE-CLEANARCH-MULTISHOT-PLAN]).
-// The fixtures and helpers are the ones at the top of `multishot_plan_cases.osp`
-// and `fixtures.osp`.
+// The fixtures and helpers are the ones at the top of `multishot_plan_cases.osp`.
 
 namespace todo;
 
@@ -9,29 +8,28 @@ import todo::TodoProbe
 
 fn wideOrder(answers, count, shape, first, last) = {
     let widths = planWidths(first, last)
-    structuralEquals(planTitles(answers, shape), mapList(widths, wide)) &&
+    structuralEquals(planTitles(answers, shape), mapList(widths, planWide)) &&
         structuralEquals(planIds(answers, shape), mapList(widths, fn(w) => satSub(satAdd(count, 1), w)))
 }
 
 /// [EXAMPLE-CLEANARCH-MULTISHOT-PLAN] The same four shapes probe stores around the 50-row boundary.
 fn wideBoundary(count, last, hasNext, colour) = {
     let seeds = planWideSeeds(1, count)
-    let list = TodoHarness::seedList(1, "Wide", colour)
-    let plan = TodoHarness::probed(TodoHarness::admin(), [list], seeds, PagePlan { listId: 1 })
+    let plan = TodoHarness::probed(TodoHarness::admin(), [TodoHarness::seedList(1, "Wide", colour)], seeds, PagePlan { listId: 1 })
     let answers = plan.answers
     expect(answers, [planWidePage(count, 1, 5, count, false, true), planWidePage(count, 6, 10, count, true, true),
         planWidePage(count, 1, 10, count, false, true), planWidePage(count, 1, last, count, false, hasNext)])
     checkAll("widest-first seeds are untouched and the four pages keep title order", [
         planCalm(plan), length(plan.items) == count, structuralEquals(plan.items, seeds),
-        structuralEquals(planStoredTitles(plan.items), mapList(planDescWidths(count), wide)),
+        structuralEquals(planStoredTitles(plan.items), mapList(planDescWidths(count), planWide)),
         structuralEquals(planStoredDones(plan.items), mapList(planWidths(1, count), fn(_w) => false)),
         wideOrder(answers, count, 0, 1, 5), wideOrder(answers, count, 1, 6, 10),
         wideOrder(answers, count, 2, 1, 10), wideOrder(answers, count, 3, 1, last),
         planShaped(answers, count, [5, 5, 10, last], [true, true, true, hasNext]),
-        planRowIs(answers, 0, 0, spec(count, wide(1), false)),
-        planRowIs(answers, 1, 4, spec(satSub(count, 9), wide(10), false)),
-        planRowIs(answers, 2, 9, spec(satSub(count, 9), wide(10), false)),
-        planRowIs(answers, 3, satSub(last, 1), spec(satAdd(satSub(count, last), 1), wide(last), false))
+        planRowIs(answers, 0, 0, planSpec(count, planWide(1), false)),
+        planRowIs(answers, 1, 4, planSpec(satSub(count, 9), planWide(10), false)),
+        planRowIs(answers, 2, 9, planSpec(satSub(count, 9), planWide(10), false)),
+        planRowIs(answers, 3, satSub(last, 1), planSpec(satAdd(satSub(count, last), 1), planWide(last), false))
     ])
     answers
 }
@@ -51,13 +49,13 @@ module MultishotPlanListsCases {
         let three = TodoHarness::probed(TodoHarness::admin(), lists, seeds, PagePlan { listId: 3 })
         // list 1 sorted a1(1),a2(3),a3(2 done),a4(4), N=4; list 2 sorted b1(2),b2(1),b3(4),b4(3 done),b5(5), N=5;
         // list 3 sorted c1(2),c2(3),c3(1),c4(5),c5(6),c6(4 done), N=6: (1,5) five rows hasNext true, (2,5) the sixth
-        let a = [spec(1, "a1", false), spec(3, "a2", false), spec(2, "a3", true), spec(4, "a4", false)]
-        let b = [spec(2, "b1", false), spec(1, "b2", false), spec(4, "b3", false), spec(3, "b4", true), spec(5, "b5", false)]
-        let c5 = [spec(2, "c1", false), spec(3, "c2", false), spec(1, "c3", false), spec(5, "c4", false), spec(6, "c5", false)]
-        let c = listAppend(c5, spec(4, "c6", true))
-        expect(one.answers, [pageOf(a, 4, false, false), pageOf([], 4, true, false), pageOf(a, 4, false, false), pageOf(a, 4, false, false)])
-        expect(two.answers, [pageOf(b, 5, false, false), pageOf([], 5, true, false), pageOf(b, 5, false, false), pageOf(b, 5, false, false)])
-        expect(three.answers, [pageOf(c5, 6, false, true), pageOf([spec(4, "c6", true)], 6, true, false), pageOf(c, 6, false, false), pageOf(c, 6, false, false)])
+        let a = [planSpec(1, "a1", false), planSpec(3, "a2", false), planSpec(2, "a3", true), planSpec(4, "a4", false)]
+        let b = [planSpec(2, "b1", false), planSpec(1, "b2", false), planSpec(4, "b3", false), planSpec(3, "b4", true), planSpec(5, "b5", false)]
+        let c5 = [planSpec(2, "c1", false), planSpec(3, "c2", false), planSpec(1, "c3", false), planSpec(5, "c4", false), planSpec(6, "c5", false)]
+        let c = listAppend(c5, planSpec(4, "c6", true))
+        expect(one.answers, planWhole(a, 4))
+        expect(two.answers, planWhole(b, 5))
+        expect(three.answers, [planPage(c5, 6, false, true), planPage([planSpec(4, "c6", true)], 6, true, false), planPage(c, 6, false, false), planPage(c, 6, false, false)])
         checkAll("three asks, one list each; every ask sees the same untouched store", [
             one.readings == 6, two.readings == 6, three.readings == 6,
             length(one.answers) == 4, length(two.answers) == 4, length(three.answers) == 4,
@@ -71,8 +69,8 @@ module MultishotPlanListsCases {
             structuralEquals(planTitles(one.answers, 0), ["a1", "a2", "a3", "a4"]),
             structuralEquals(planTitles(two.answers, 0), ["b1", "b2", "b3", "b4", "b5"]),
             structuralEquals(planTitles(three.answers, 1), ["c6"]),
-            planRowIs(one.answers, 0, 2, spec(2, "a3", true)), planRowIs(two.answers, 0, 3, spec(3, "b4", true)),
-            planRowIs(three.answers, 1, 0, spec(4, "c6", true)),
+            planRowIs(one.answers, 0, 2, planSpec(2, "a3", true)), planRowIs(two.answers, 0, 3, planSpec(3, "b4", true)),
+            planRowIs(three.answers, 1, 0, planSpec(4, "c6", true)),
             structuralEquals(one.items, seeds), structuralEquals(two.items, seeds), structuralEquals(three.items, seeds),
             structuralEquals(one.lists, lists), structuralEquals(three.lists, lists)
         ])
@@ -99,21 +97,20 @@ module MultishotPlanListsCases {
     /// [MULTI-HANDLE-MANY] the same readings 6; [MULTI-REPLAY] the store stays put.
     export fn planAnonymousPlanCase() = {
         let seeds = planSeeds(1, ["p4", "p1", "p3", "p2"], ["p2"])
-        let list = TodoHarness::seedList(1, "Open", "#5C6BC0")
-        let plan = TodoHarness::probed(TodoHarness::anonymous(), [list], seeds, PagePlan { listId: 1 })
-        let rows = [spec(2, "p1", false), spec(4, "p2", true), spec(3, "p3", false), spec(1, "p4", false)]
+        let plan = TodoHarness::probed(TodoHarness::anonymous(), [TodoHarness::seedList(1, "Open", "#5C6BC0")], seeds, PagePlan { listId: 1 })
+        let rows = [planSpec(2, "p1", false), planSpec(4, "p2", true), planSpec(3, "p3", false), planSpec(1, "p4", false)]
         // sorted p1(2),p2(4 done),p3(3),p4(1); N=4: (2,5) empty with hasPrevious true, all hasNext false
-        expect(plan.answers, [pageOf(rows, 4, false, false), pageOf([], 4, true, false), pageOf(rows, 4, false, false), pageOf(rows, 4, false, false)])
+        expect(plan.answers, planWhole(rows, 4))
         checkAll("no sign-in needed to plan pages; four answers, store untouched", [
             planCalm(plan),
             structuralEquals(planTitles(plan.answers, 0), ["p1", "p2", "p3", "p4"]), structuralEquals(planTitles(plan.answers, 1), []),
             structuralEquals(planTitles(plan.answers, 2), ["p1", "p2", "p3", "p4"]), structuralEquals(planTitles(plan.answers, 3), ["p1", "p2", "p3", "p4"]),
             structuralEquals(planIds(plan.answers, 0), [2, 4, 3, 1]), structuralEquals(planIds(plan.answers, 2), [2, 4, 3, 1]),
             planShaped(plan.answers, 4, [4, 0, 4, 4], [false, false, false, false]),
-            planRowIs(plan.answers, 0, 1, spec(4, "p2", true)), planRowIs(plan.answers, 3, 3, spec(1, "p4", false)),
+            planRowIs(plan.answers, 0, 1, planSpec(4, "p2", true)), planRowIs(plan.answers, 3, 3, planSpec(1, "p4", false)),
             structuralEquals(plan.items, seeds), structuralEquals(planStoredTitles(plan.items), ["p4", "p1", "p3", "p2"]),
             structuralEquals(planStoredDones(plan.items), [false, false, false, true]),
-            structuralEquals(plan.lists, [list])
+            structuralEquals(plan.lists, [TodoHarness::seedList(1, "Open", "#5C6BC0")])
         ])
     }
 }

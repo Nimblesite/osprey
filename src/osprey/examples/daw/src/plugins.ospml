@@ -14,7 +14,7 @@ module Plugins
         next = editor(pluginSerial = serial, pluginTicket = ticket, pluginClassId = selectedClass, message = "Inspecting VST3 module.")
         Runtime::asking (next, [Requests::ask (ticket, ui::Run(executable = editor.workerPath, arguments = arguments, timeout = 10000, outputLimit = 1048576, plist = false, runSlice = ticket))])
 
-    preference editor = pathJoin (pathParent editor.keysPath, "vst3-folder")
+    preference editor = "${ui::MachineDocs::folder editor.keysPath}/vst3-folder"
 
     scan editor = match editor.workerPath == "" || editor.pluginPath == ""
         true => Runtime::step editor
@@ -25,7 +25,7 @@ module Plugins
         fallback = match context.platform
             "macos" => "/Library/Audio/Plug-Ins/VST3"
             "windows" => "C:/Program Files/Common Files/VST3"
-            _ => pathJoin (context.home, ".vst3")
+            _ => "${context.home}/.vst3"
         folder = readFile (preference editor) ?: fallback
         discovery = scan (editor(pluginPath = folder))
         first(stepStore = discovery.stepStore, requests = listConcat first.requests discovery.requests)

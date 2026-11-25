@@ -61,11 +61,11 @@ pub struct AskRow {
 /// The generated `OwnedLease` descriptor: opaque to the host, 64 bytes, 8-aligned.
 #[repr(C, align(8))]
 #[derive(Clone, Copy)]
-struct Lease([u8; 64]);
+pub(crate) struct Lease([u8; 64]);
 
 /// The generated `ApplicationInstance`: a 16-byte identity, fresh for each process.
 #[repr(C, align(8))]
-struct Instance([u8; 16]);
+pub(crate) struct Instance([u8; 16]);
 
 const _: () = assert!(size_of::<Streamed>() == 88 && align_of::<Streamed>() == 8);
 const _: () = assert!(size_of::<ViewRow>() == 152 && align_of::<ViewRow>() == 8);
@@ -98,40 +98,10 @@ const REFUSALS: [&str; 13] = [
     "a failed lock",
 ];
 
-#[repr(C)]
-struct Bridge {
-    _opaque: [u8; 0],
-}
-
-extern "C" {
-    fn osp_native_open(
-        instance: *const Instance,
-        fingerprint: *const std::ffi::c_char,
-        bytes: i64,
-        chunks: i64,
-        owners: i64,
-        out: *mut *mut Bridge,
-    ) -> i32;
-    fn osp_native_frame_commit(bridge: *mut Bridge, revision: *mut i64) -> i32;
-    fn osp_native_acquire(bridge: *mut Bridge, out: *mut Lease, revision: *mut i64) -> i32;
-    fn osp_native_child(
-        bridge: *mut Bridge,
-        lease: *const Lease,
-        index: i64,
-        out: *mut Lease,
-    ) -> i32;
-    fn osp_native_length(bridge: *mut Bridge, lease: *const Lease, length: *mut i64) -> i32;
-    fn osp_native_view(
-        bridge: *mut Bridge,
-        lease: *const Lease,
-        kind: i64,
-        offset: i64,
-        length: i64,
-        out: *mut *const std::ffi::c_void,
-    ) -> i32;
-    fn osp_native_release(bridge: *mut Bridge, lease: *const Lease) -> i32;
-    fn osp_native_frame_discard();
-}
+use crate::app::{
+    osp_native_acquire, osp_native_child, osp_native_frame_commit, osp_native_frame_discard,
+    osp_native_length, osp_native_open, osp_native_release, osp_native_view, Bridge,
+};
 
 /// The process's one bridge. It is never destroyed: leases may outlive every window.
 struct Opened(*mut Bridge);

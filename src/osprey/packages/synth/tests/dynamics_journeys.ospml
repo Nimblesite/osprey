@@ -2,9 +2,7 @@ import synth::Limiters
 import synth::Spectra
 
 // [SYNTH-DYNAMICS-LIMITER] The brick-wall limiter against sines, bursts and single impulses.
-limitRate = 48000.0
-
-limitSine (amplitude, count) = mapList (toList (range (0, count)), \i => amplitude * sin (6.283185307179586 * 997.0 * toFloat i / limitRate))
+limitSine (amplitude, count) = mapList (toList (range (0, count)), \i => sineAt (amplitude, 997.0, i))
 
 limitSpike (i, at, height) = match i == at
     true => height
@@ -12,11 +10,7 @@ limitSpike (i, at, height) = match i == at
 
 limitImpulse (count, at, height) = mapList (toList (range (0, count)), \i => limitSpike (i, at, height))
 
-limitHigher (high, value) = match abs value > high
-    true => abs value
-    false => high
-
-limitPeak side = foldList (side, 0.0, limitHigher)
+limitPeak side = foldList (side, 0.0, \(high, value) => larger (high, abs value))
 
 // Before the last clamp, every frame already sits inside the ceiling: the lookahead, not the clamp, did it.
 limitUnclamped (left, right, gains, ceiling) = forEachList (toList (range (0, length left)), \i =>
@@ -32,12 +26,12 @@ limitChecked (left, right, c, gains) =
     expect (limitPeak out <= c.ceiling, true)
     expect (limitPeak out >= c.ceiling * 0.95, limitPeak left > c.ceiling)
 
-limitCase (left, right, c) = match Limiters::gains (left, right, limitRate, c.ceiling, c.ms, c.release)
+limitCase (left, right, c) = match Limiters::gains (left, right, rate, c.ceiling, c.ms, c.release)
     Error _ => unexpected ()
     Success gains => limitChecked (left, right, c, gains)
 
 // A signal under the ceiling passes bit-exact: every gain is exactly one.
-limitTransparent (amplitude, c) = match Limiters::gains (limitSine (amplitude, 2400), limitSine (amplitude, 2400), limitRate, c.ceiling, c.ms, c.release)
+limitTransparent (amplitude, c) = match Limiters::gains (limitSine (amplitude, 2400), limitSine (amplitude, 2400), rate, c.ceiling, c.ms, c.release)
     Error _ => unexpected ()
     Success gains => forEachList (gains, \g => expect (g, 1.0))
 
@@ -52,14 +46,14 @@ limitImpulseGains (gains, block, c) =
     expect ((listGet gains 5999 ?: 0.0) > (listGet gains (1001 + block) ?: 1.0), true)
     expect ((listGet gains 5999 ?: 0.0) > 0.99, c.release <= 0.01)
 
-limitOneImpulse (c, block) = match Limiters::gains (limitImpulse (6000, 1000, 4.0), limitImpulse (6000, 0, 0.0), limitRate, c.ceiling, c.ms, c.release)
+limitOneImpulse (c, block) = match Limiters::gains (limitImpulse (6000, 1000, 4.0), limitImpulse (6000, 0, 0.0), rate, c.ceiling, c.ms, c.release)
     Error _ => unexpected ()
     Success gains => limitImpulseGains (gains, block, c)
 
 // A quarter-rate sine at 45 degrees: every sample is 0.707 of a true peak of 1, which only the oversampler sees.
 limitBetween i = sin (1.5707963267948966 * toFloat i + 0.7853981633974483)
 
-limitInterSample c = match Limiters::gains (mapList (toList (range (0, 4800)), limitBetween), mapList (toList (range (0, 4800)), limitBetween), limitRate, c.ceiling, c.ms, c.release)
+limitInterSample c = match Limiters::gains (mapList (toList (range (0, 4800)), limitBetween), mapList (toList (range (0, 4800)), limitBetween), rate, c.ceiling, c.ms, c.release)
     Error _ => unexpected ()
     Success gains => forEachList ([1200, 2400, 3600], \i => limitHeldUnder (listGet gains i ?: 9.0, c.ceiling))
 
@@ -72,7 +66,7 @@ limitBurstSample (start, i) = match i >= start && i < satAdd start 8
 
 limitBurst (c, start) =
     burst = mapList (toList (range (0, 2400)), \i => limitBurstSample (start, i))
-    match Limiters::gains (burst, burst, limitRate, c.ceiling, c.ms, c.release)
+    match Limiters::gains (burst, burst, rate, c.ceiling, c.ms, c.release)
         Error _ => unexpected ()
         Success gains => forEachList (toList (range (start, satAdd start 8)), \i => expect ((listGet gains i ?: 9.0) * 1.0061 <= c.ceiling * 1.02, true))
 
@@ -84,7 +78,7 @@ limitWhy = "A limiter needs equal sides, a rate of 8 to 384 kHz, a ceiling above
 
 limitRefusals () =
     one = limitSine (1.0, 64)
-    refusedWith (Limiters::gains (one, limitSine (1.0, 63), limitRate, 0.89, 5.0, 0.1), limitWhy)
+    refusedWith (Limiters::gains (one, limitSine (1.0, 63), rate, 0.89, 5.0, 0.1), limitWhy)
     forEachList ([{ rate = 4000.0, ceiling = 0.89, ms = 5.0, release = 0.1 }, { rate = 48000.0, ceiling = 0.0, ms = 5.0, release = 0.1 }, { rate = 48000.0, ceiling = 1.5, ms = 5.0, release = 0.1 }, { rate = 48000.0, ceiling = 0.89, ms = 0.05, release = 0.1 }, { rate = 48000.0, ceiling = 0.89, ms = 25.0, release = 0.1 }, { rate = 48000.0, ceiling = 0.89, ms = 5.0, release = 0.0 }, { rate = 48000.0, ceiling = 0.89, ms = 5.0, release = 3.0 }, { rate = 400000.0, ceiling = 0.89, ms = 5.0, release = 0.1 }], \r => refusedWith (Limiters::gains (one, one, r.rate, r.ceiling, r.ms, r.release), limitWhy))
 
 limitSettings = [{ ceiling = 0.89, ms = 5.0, release = 0.05, block = 240 }, { ceiling = 0.5, ms = 1.5, release = 0.01, block = 72 }, { ceiling = 1.0, ms = 0.1, release = 0.2, block = 5 }, { ceiling = 0.25, ms = 20.0, release = 0.002, block = 960 }]
@@ -100,7 +94,7 @@ limitJourney () =
     limitRefusals ()
 
 // [DAW-ANALYSIS-SPECTRUM] The octave-band analyser against sines of known level and frequency.
-spectrumTone (parts, i) = foldList (parts, 0.0, \(sum, p) => sum + p.amplitude * sin (6.283185307179586 * p.frequency * toFloat i / limitRate))
+spectrumTone (parts, i) = foldList (parts, 0.0, \(sum, p) => sum + sineAt (p.amplitude, p.frequency, i))
 
 spectrumSignal (parts, count) = mapList (toList (range (0, count)), \i => spectrumTone (parts, i))
 
@@ -119,7 +113,7 @@ spectrumChecked (bands, parts) =
 
 spectrumFar (parts, centre) = length (filterList (parts, \p => p.band > centre * 0.3 && p.band < centre * 3.0)) == 0
 
-spectrumCase (parts, count) = match Spectra::bands (spectrumSignal (parts, count), limitRate, 4096, 2048)
+spectrumCase (parts, count) = match Spectra::bands (spectrumSignal (parts, count), rate, 4096, 2048)
     Error _ => unexpected ()
     Success bands => spectrumChecked (bands, parts)
 
@@ -129,7 +123,7 @@ spectrumSilent bands = forEachList (bands, \band => expect ([band.level, band.pe
 
 // Sound in half the frames: the peak stays at the tone's level, the mean drops by 3 dB.
 spectrumHalf i = match i < 24576
-    true => sin (6.283185307179586 * 1000.0 * toFloat i / limitRate)
+    true => sineWave (1000.0, i)
     false => 0.0
 
 spectrumHalves bands =
@@ -141,7 +135,7 @@ spectrumJourney () =
     spectrumCase ([{ frequency = 250.0, amplitude = 0.5, band = 250.0, level = -6.0206 }], 48000)
     spectrumCase ([{ frequency = 125.0, amplitude = 0.5, band = 125.0, level = -6.0206 }, { frequency = 4000.0, amplitude = 0.25, band = 4000.0, level = -12.0412 }], 48000)
     spectrumCase ([{ frequency = 2100.0, amplitude = 0.1, band = 2000.0, level = -20.0 }, { frequency = 9000.0, amplitude = 0.7, band = 8000.0, level = -3.098 }], 30000)
-    succeeds (Spectra::bands (mapList (toList (range (0, 9000)), \_ => 0.0), limitRate, 2048, 512), spectrumSilent)
-    succeeds (Spectra::bands ([], limitRate, 1024, 256), spectrumSilent)
-    succeeds (Spectra::bands (mapList (toList (range (0, 49152)), spectrumHalf), limitRate, 4096, 4096), spectrumHalves)
+    succeeds (Spectra::bands (mapList (toList (range (0, 9000)), \_ => 0.0), rate, 2048, 512), spectrumSilent)
+    succeeds (Spectra::bands ([], rate, 1024, 256), spectrumSilent)
+    succeeds (Spectra::bands (mapList (toList (range (0, 49152)), spectrumHalf), rate, 4096, 4096), spectrumHalves)
     forEachList ([{ size = 100, hop = 256, rate = 48000.0 }, { size = 8192, hop = 256, rate = 48000.0 }, { size = 1024, hop = 0, rate = 48000.0 }, { size = 1024, hop = 256, rate = 4000.0 }], \r => refusedWith (Spectra::bands ([0.0], r.rate, r.size, r.hop), spectrumWhy))

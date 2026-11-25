@@ -10,6 +10,8 @@ use std::env;
 use std::path::PathBuf;
 
 fn main() {
+    // `app_dll`: the application is a DLL the host loads, so only its boundary can be tested.
+    println!("cargo::rustc-check-cfg=cfg(app_dll)");
     let manifest = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("manifest dir"));
     let app = env::var("OSPREY_GPUI_APP_DIR")
         .map(PathBuf::from)

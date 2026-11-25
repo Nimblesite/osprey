@@ -10,7 +10,7 @@ module ClipKernels
             Success clip => match ClipInputs::sourceChannel (plan.graph, cable, channel)
                 Error why => Error(message = why)
                 Success selected => match listGet clip.clipSamples (satAdd (satMul index clip.clipChannels) selected)
-                    Error _ => Error(message = MissingResource(detail = "index out of bounds"))
+                    Error _ => Error(message = Outcomes::indexOutOfBounds)
                     Success sample => Success(value = listAppend values (NodeSample(identity = cable.source, value = sample)))
 
     delay (plan, n, frame) = match n.processor
@@ -34,7 +34,7 @@ module ClipKernels
     channel (plan, snapshot, clips, n, frames, states, outcome, channel) = match outcome
         Error why => Error(message = why)
         Success buffers => match listGet states channel
-            Error _ => Error(message = MissingResource(detail = "index out of bounds"))
+            Error _ => Error(message = Outcomes::indexOutOfBounds)
             Success saved =>
                 initial = ClipKernel(heldKernel = saved, kernelSamples = [])
                 // [SYNTH-HOST-GRAPH] The frozen block has one cable set per channel, not per sample.
@@ -44,9 +44,9 @@ module ClipKernels
     interleave (buffers, channels, outcome, index) = match outcome
         Error why => Error(message = why)
         Success samples => match listGet buffers (index % channels)
-            Error _ => Error(message = MissingResource(detail = "index out of bounds"))
+            Error _ => Error(message = Outcomes::indexOutOfBounds)
             Success channel => match listGet channel.kernelSamples (intDiv index channels)
-                Error _ => Error(message = MissingResource(detail = "index out of bounds"))
+                Error _ => Error(message = Outcomes::indexOutOfBounds)
                 Success sample => Success(value = listPrepend samples sample)
 
     capacity (frames, channels) = channels >= 1 && channels <= 64 && frames > 0 && satMul frames channels <= 65536

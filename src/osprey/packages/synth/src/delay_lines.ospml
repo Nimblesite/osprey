@@ -3,6 +3,8 @@ namespace synth
 
 (** A fixed-capacity FIFO: the newest sample is last, so a one-sample delay reads the final element. *)
 module DelayLines
+    outsideLine = InvalidConfiguration(detail = "Delay read is outside the prepared line.")
+
     (** Allocate silent storage outside rendering; capacity is 2–1,920,000 samples. *)
     export prepare capacity = match capacity >= 2 && capacity <= 1920000
         true => Success(value = DelayLine(samples = mapList (toList (range (0, capacity)), \_ => 0.0)))
@@ -12,11 +14,11 @@ module DelayLines
     export tap (line, delay) =
         position = toFloat (length line.samples) - delay
         match delay >= 1.0 && delay <= toFloat (length line.samples) && position == position
-            false => Error(message = InvalidConfiguration(detail = "Delay read is outside the prepared line."))
+            false => Error(message = outsideLine)
             true => match floatToInt (floor position)
-                Error _ => Error(message = InvalidConfiguration(detail = "Delay read is outside the prepared line."))
+                Error _ => Error(message = outsideLine)
                 Success older => match listGet line.samples older
-                    Error _ => Error(message = InvalidConfiguration(detail = "Delay read is outside the prepared line."))
+                    Error _ => Error(message = outsideLine)
                     Success a => Success(value = Interpolation::linear (a, listGet line.samples (satAdd older 1) ?: a, GrainMath::fraction position))
 
     (** Write the newest sample and discard the oldest, keeping capacity constant. *)

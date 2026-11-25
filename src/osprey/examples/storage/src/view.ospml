@@ -6,7 +6,6 @@ namespace storage
 import ui::Ui
 import ui::Pick
 import storage::Disk
-import storage::Shares
 import storage::Measured
 
 (** The words that differ by platform ([UI-CONTEXT-PLATFORM]). *)
@@ -70,7 +69,7 @@ module View
 
     plural (count, one, many) = match count == 1
         true => "1 ${one}"
-        false => "${Shares::formatCount count} ${many}"
+        false => "${Disk::formatCount count} ${many}"
 
     pressure share = match share >= 900
         true => ui::Danger
@@ -84,7 +83,7 @@ module View
         match walked.driveTotal > 0
             false => Ui::caption "This folder's volume does not report its size."
             true => Ui::section (title, "", [
-                Ui::meter ("${Disk::formatBytes (system, used)} of ${Disk::formatBytes (system, walked.driveTotal)} used", used, walked.driveTotal, pressure (Shares::permille (used, walked.driveTotal))),
+                Ui::meter ("${Disk::formatBytes (system, used)} of ${Disk::formatBytes (system, walked.driveTotal)} used", used, walked.driveTotal, pressure (Disk::permille (used, walked.driveTotal))),
                 Ui::pair ("Used", Disk::formatBytes (system, used)),
                 Ui::pair ("Available", Disk::formatBytes (system, walked.driveFree)),
             ])
@@ -93,12 +92,12 @@ module View
 
     detail (system, item, bytes, whole) = match item.itemLink
         true => "Link · its target is not counted"
-        false => "${Disk::formatBytes (system, bytes)} · ${Shares::shareText (bytes, whole)}"
+        false => "${Disk::formatBytes (system, bytes)} · ${Disk::shareText (bytes, whole)}"
 
     // A listing row is the same shell every time: the item's own name, a caption
     // carrying its size, a bar of its share, and Show in the file manager.
     meterCell (label, captionText, bytes, whole, largest, tint) =
-        Ui::column [Ui::row [label, ui::Spacer, Ui::caption captionText], Ui::meter (Shares::shareText (bytes, whole), bytes, largest, tint)]
+        Ui::column [Ui::row [label, ui::Spacer, Ui::caption captionText], Ui::meter (Disk::shareText (bytes, whole), bytes, largest, tint)]
 
     itemEntry (place, item, symbol, body) =
         Ui::entry (item.itemPath, symbol, "", Ui::contextMenu (body, [Ui::button (Words::reveal place.osName, (ui::Symbols::name ui::External), ShowIn(shownPath = item.itemPath))]))
@@ -115,7 +114,7 @@ module View
     remainder (place, options, ranking, largest) =
         count = satSub ranking.rankCount ranking.rankKept
         bytes = satSub ranking.rankBytes (sizes (options.showHidden, ranking.rankTop))
-        cell = meterCell (Ui::text (plural (count, "smaller item", "smaller items")), "${Disk::formatBytes (place.osName, bytes)} · ${Shares::shareText (bytes, ranking.rankBytes)}", bytes, ranking.rankBytes, largest, ui::Secondary)
+        cell = meterCell (Ui::text (plural (count, "smaller item", "smaller items")), "${Disk::formatBytes (place.osName, bytes)} · ${Disk::shareText (bytes, ranking.rankBytes)}", bytes, ranking.rankBytes, largest, ui::Secondary)
         Pick::either (count > 0, [Ui::entry ("smaller", (ui::Symbols::name ui::NoSymbol), "", cell)], [])
 
     // Folders the walk could not open are listed last, so the person sees which ones are not counted.

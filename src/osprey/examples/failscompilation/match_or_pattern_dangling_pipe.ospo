@@ -1,0 +1,16 @@
+// [PATTERN-OR-SYNTAX] An or-pattern needs an alternative on both sides of
+// every `|`: a leading `|` cannot start an arm, and a trailing `|` leaves an
+// alternative missing before `=>`.
+type Colour = Red | Green | Blue
+
+fn trail(c) = match c {
+    Red | => "r"
+    _ => "?"
+}
+
+print(trail(Red))
+
+fn lead(c) = match c {
+    | Blue => 1
+    _ => 0
+}

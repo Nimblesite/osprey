@@ -73,7 +73,6 @@ module Lock {
     // Shared field names (`key`, `digest`, `release`, `packages`, `dependencies`,
     // `path`, `epoch`) need typed receivers (issue #273).
     fn freshOf(cmd: CommandLine) = cmd.fresh
-    fn localOf(cmd: CommandLine) = cmd.local
     fn spot(id: Identity::ReleaseId) = "${Names::display(id.key)} e${id.epoch}.r${id.ordinal}"
     fn systemCapabilities(m: ManifestModel::Manifest) = mapList(m.systemRequirements, fn(s: ManifestModel::SystemRequirement) => s.capability)
     fn candidateOf(t: LocalTree) = t.candidate
@@ -81,7 +80,6 @@ module Lock {
     fn treeFiles(t: LocalTree) = t.tree
     fn bundleOf(f: Fetched) = f.bundle
     fn fetchedRelease(f: Fetched) = f.fetchedRelease
-    fn overridePath(o: Lockfile::Override) = o.path
     fn mappingsOf(l: Locals) = l.mappings
     fn treesOf(l: Locals) = l.trees
 

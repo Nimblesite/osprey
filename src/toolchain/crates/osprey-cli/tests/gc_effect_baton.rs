@@ -6,6 +6,8 @@
 
 #[path = "common/bounded.rs"]
 mod bounded;
+#[path = "common/bounded_program.rs"]
+mod bounded_program;
 
 use std::io;
 
@@ -60,7 +62,7 @@ fn run(memory: &str) -> io::Result<bounded::Bounded> {
     let memory_flag = format!("--memory={memory}");
     let args = ["--run", "--quiet", "--no-warnings", memory_flag.as_str()];
     let envs = [("OSPREY_GC_DEBUG", "1")];
-    bounded::run_within_budget(&format!("gc_baton_{memory}"), PROGRAM, &args, &envs)
+    bounded_program::run_within_budget(&format!("gc_baton_{memory}"), PROGRAM, &args, &envs)
 }
 
 #[test]
@@ -68,7 +70,12 @@ fn the_collector_keeps_tracing_inside_a_resumable_handler() -> io::Result<()> {
     let run = run("gc")?;
     let stderr = run.stderr.as_str();
     let outcome = (run.stopped.as_deref(), run.code, run.stdout.as_str());
-    assert_eq!(outcome, (None, Some(0), EXPECTED), "{stderr}");
+    assert_eq!(
+        outcome,
+        (None, Some(0), EXPECTED),
+        "{}: {stderr}",
+        run.summary()
+    );
     let collections = stderr.matches("[osp-gc] collect #").count();
     assert!(collections > 100, "only {collections} collections");
     assert!(!stderr.contains("collection disabled"), "{stderr}");
@@ -88,6 +95,12 @@ fn the_collector_keeps_tracing_inside_a_resumable_handler() -> io::Result<()> {
 fn the_same_handled_program_is_exact_under_arc() -> io::Result<()> {
     let run = run("arc")?;
     let outcome = (run.stopped.as_deref(), run.code, run.stdout.as_str());
-    assert_eq!(outcome, (None, Some(0), EXPECTED), "{}", run.stderr);
+    assert_eq!(
+        outcome,
+        (None, Some(0), EXPECTED),
+        "{}: {}",
+        run.summary(),
+        run.stderr
+    );
     Ok(())
 }

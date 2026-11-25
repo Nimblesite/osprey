@@ -17,7 +17,8 @@ Compiler and language rules are separate from integration tooling. See [Document
 - the comment scope.
 
 `DocExample` stores the Osprey source, optional expected output, and whether the
-example is runnable. Both syntax flavors use this model.
+example is runnable or requires native capabilities. Both syntax flavors use
+this model.
 
 ## Default sigil `[DOC-SIGIL-DEFAULT]`
 
@@ -46,6 +47,13 @@ the opener; `(**)` and all-star banners such as `(*****)` remain ordinary
 comments. An unterminated documentation comment is a syntax error.
 
 Each prose line drops its leading whitespace and one optional `*` continuation marker. A line inside a fenced code block drops only the margin its opening fence carried, so an example keeps the indentation ML layout depends on.
+
+## Python docstrings `[DOC-PYTHON-DOCSTRING-CLEAN]`
+
+A Python-flavor docstring is cleaned as PEP 257 `inspect.cleandoc` cleans it:
+the first line is trimmed, and every later line loses the indentation that all
+later non-blank lines share. A fenced example inside an indented docstring keeps
+only its own relative indentation (`python/documents.rs`, `clean_docstring`).
 
 ## Inner sigil `[DOC-SIGIL-INNER]`
 
@@ -148,6 +156,22 @@ The warning names the declaration with its module path, for example
 `exported function `Api::double` has no documentation comment`. A documented
 type covers its variants and fields, which take no documentation of their
 own. Private declarations are not reported.
+
+### Exported examples `[DOC-EXPORT-EXAMPLE-REQUIRED]`
+
+`--check` and the language server report `unexampled-export` while packages
+add examples. With `--check --warnings-as-errors`, it fails the check just
+like every other reported warning. The rule covers:
+
+- a documented exported function, value or extern whose comment has no
+  `# Examples` section, or whose section holds no example fence, and
+- an operation of an exported effect whose documentation shows no example.
+
+A type, module, namespace or signature is covered by the examples of the
+members that use it, so it is not reported. An undocumented export is reported
+once, as `undocumented-export`. The warning names the declaration with its
+module path, for example `exported function `Api::triple` has no example`, and
+an operation as `Effect.operation` (`osprey-types/src/undocumented.rs`).
 
 ### Effect operations `[DOC-EFFECT-OP]`
 
