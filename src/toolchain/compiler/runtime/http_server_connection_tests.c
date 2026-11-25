@@ -1,4 +1,5 @@
 #include "http_runtime_tests.h"
+#include "http_server_internal.h"
 #include <assert.h>
 #include <pthread.h>
 #include <stdatomic.h>
@@ -288,4 +289,49 @@ void test_server_serves_concurrent_keep_alive_clients(void) {
   assert(http_stop_server(server) == 0);
   assert(atomic_load(&g_served) == LOAD_CLIENTS * LOAD_REQUESTS);
   assert(!atomic_load(&g_overlapped) && "handlers must never run at once");
+}
+
+// The head `http_send_response` writes for `headers` and a five-byte body, read
+// back through a socket pair. Its Date value, which changes every second, is
+// checked for IMF-fixdate's shape and then written as `<date>`.
+static void expect_head(const char *headers, bool keep_alive, const char *want) {
+  int pair[2];
+  assert(socketpair(AF_UNIX, SOCK_STREAM, 0, pair) == 0);
+  assert(http_send_response(pair[0], 200, headers, "hello", 5, keep_alive));
+  close(pair[0]);
+  char wire[1024];
+  ssize_t n = recv(pair[1], wire, sizeof(wire) - 1, MSG_WAITALL);
+  close(pair[1]);
+  assert(n > 0);
+  wire[n] = '\0';
+  char *date = strstr(wire, "Date: ");
+  assert(date != NULL && "every reply carries a Date");
+  date += strlen("Date: ");
+  static const char SHAPE[] = "Aaa, 00 Aaa 0000 00:00:00 GMT"; // A, a: a letter; 0: a digit
+  for (size_t i = 0; i < sizeof(SHAPE) - 1; i++) {
+    char c = date[i];
+    bool letter = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
+    assert(SHAPE[i] == '0' ? (c >= '0' && c <= '9') : (SHAPE[i] == 'A' || SHAPE[i] == 'a') ? letter : c == SHAPE[i]);
+  }
+  assert(strncmp(date + sizeof(SHAPE) - 1, "\r\n", 2) == 0);
+  char seen[1024];
+  (void)snprintf(seen, sizeof(seen), "%.*s<date>%s", (int)(date - wire), wire, date + sizeof(SHAPE) - 1);
+  assert(strcmp(seen, want) == 0);
+}
+
+// [HTTP-SERVER-HEADERS] #398: every handler header ends its own line, the body's
+// Content-Length appears exactly once (in the handler's place when it wrote one,
+// replacing a wrong value), and Date and Connection follow, Node's order.
+void test_server_head_is_framed_once_in_the_handlers_order(void) {
+  expect_head("Content-Type: text/plain", true,
+              "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 5\r\nDate: <date>\r\n"
+              "Connection: keep-alive\r\nKeep-Alive: timeout=5\r\n\r\nhello");
+  expect_head("", false, "HTTP/1.1 200 OK\r\nContent-Length: 5\r\nDate: <date>\r\nConnection: close\r\n\r\nhello");
+  expect_head("X-Powered-By: Osprey\r\nContent-Length: 5\r\nETag: W/\"5\"\r\n", false,
+              "HTTP/1.1 200 OK\r\nX-Powered-By: Osprey\r\nContent-Length: 5\r\nETag: W/\"5\"\r\nDate: <date>\r\n"
+              "Connection: close\r\n\r\nhello");
+  expect_head("content-length: 99\nX-A: 1\n", false,
+              "HTTP/1.1 200 OK\r\nContent-Length: 5\r\nX-A: 1\r\nDate: <date>\r\nConnection: close\r\n\r\nhello");
+  expect_head("Date: Sun, 06 Nov 1994 08:49:37 GMT\r\nConnection: keep-alive\r\nX-B: 2", false,
+              "HTTP/1.1 200 OK\r\nDate: <date>\r\nConnection: close\r\nX-B: 2\r\nContent-Length: 5\r\n\r\nhello");
 }

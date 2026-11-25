@@ -372,6 +372,7 @@ void run_all_http_tests(void) {
   test_server_stop_ends_idle_connections();
   test_server_serves_concurrent_keep_alive_clients();
   test_server_names_statuses_as_node_does();
+  test_server_head_is_framed_once_in_the_handlers_order();
   test_live_loopback_exchange();    // full end-to-end request path
   test_post_response_loopback();    // POST body retained behind a handle
   test_client_tls_peer_verification(); // untrusted/wrong-host certs rejected
