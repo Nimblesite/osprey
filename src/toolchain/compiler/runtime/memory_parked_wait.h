@@ -10,19 +10,33 @@
 #include <pthread.h>
 #include <time.h>
 
-#if defined(__wasi__)
-// WASI preview1 runs one thread [WASM-TARGET]: no other stack can be scanned,
-// so there are no registers to spill, and no other thread can ever signal.
+// WASI preview1 runs one thread [WASM-TARGET], and KLEE explores one
+// [SYMEX-MOCK-THREADS]: fibers run on it in spawn order
+// [CONCURRENCY-DETERMINISTIC].
+#if defined(__wasi__) || defined(OSP_SYMBOLIC)
+#define OSP_ONE_THREAD 1
+#else
+#define OSP_ONE_THREAD 0
+#endif
+
+#if OSP_ONE_THREAD
+// No other stack can be scanned, so there are no registers to spill, and no
+// other thread can ever signal.
 typedef int OspRegisters;
 #define OSP_SPILL_REGISTERS(buffer) ((void)((buffer) = 0))
 #include <stdio.h>
 #include <stdlib.h>
+
+#if defined(OSP_SYMBOLIC)
+// Symbolic time is the mock's clock, which every reading advances: nothing sleeps.
+static inline void osp_one_thread_sleep(int64_t nanoseconds) { (void)nanoseconds; }
+#else
 #include <wasi/api.h>
 
 // Sleeps the one thread for `nanoseconds` through WASI's own clock
 // subscription. wasi-libc's nanosleep needs a 128-bit multiply from
 // compiler-rt that the wasm32 link does not carry.
-static inline void osp_wasi_sleep(int64_t nanoseconds) {
+static inline void osp_one_thread_sleep(int64_t nanoseconds) {
   if (nanoseconds <= 0) {
     return;
   }
@@ -37,6 +51,7 @@ static inline void osp_wasi_sleep(int64_t nanoseconds) {
   __wasi_size_t events = 0;
   (void)__wasi_poll_oneoff(&wake, &woke, 1, &events);
 }
+#endif
 
 // Exit status of a run whose one thread waits for something only another
 // thread could do: every fiber is blocked, so nothing can ever wake it.
@@ -44,17 +59,22 @@ static inline void osp_wasi_sleep(int64_t nanoseconds) {
 
 // A wait on the one thread. A bounded wait sleeps to its deadline, as nothing
 // can change before it; an unbounded one could never end, so it stops the run
-// by name instead of hanging. [CONCURRENCY-WASM] [FAILURE-EXPLICIT]
+// by name instead of hanging. [CONCURRENCY-WASM] [SYMEX-MOCK-THREADS]
+// [FAILURE-EXPLICIT]
 static inline int osp_parked_wait(pthread_cond_t *cond, pthread_mutex_t *lock, const struct timespec *deadline) {
   (void)cond;
   (void)lock;
   if (deadline == NULL) {
     fputs("osprey: every fiber is blocked: this wait can never be woken\n", stderr);
+#if defined(OSP_SYMBOLIC)
+    abort(); // the symbolic runtime's modelled stop: the hunt reports the deadlock
+#else
     _Exit(OSP_ALL_BLOCKED_STATUS);
+#endif
   }
   struct timespec now;
   if (clock_gettime(CLOCK_REALTIME, &now) == 0) {
-    osp_wasi_sleep((int64_t)(deadline->tv_sec - now.tv_sec) * 1000000000LL +
+    osp_one_thread_sleep((int64_t)(deadline->tv_sec - now.tv_sec) * 1000000000LL +
                    (deadline->tv_nsec - now.tv_nsec));
   }
   return ETIMEDOUT;

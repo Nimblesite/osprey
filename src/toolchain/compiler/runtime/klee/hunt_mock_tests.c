@@ -340,6 +340,40 @@ static void unsupported_calls_stop_the_path(void) {
   hunt_check(osp_hunt_calls[OSP_HUNT_CALL_UNSUPPORTED] == 1, "the stub counted the call");
 }
 
+// The doubles one thread needs to run the fiber runtime [SYMEX-MOCK-THREADS].
+int pthread_cond_init(int *condition, const void *attributes);
+int pthread_cond_destroy(int *condition);
+int pthread_cond_signal(int *condition);
+int pthread_cond_broadcast(int *condition);
+int pthread_cond_wait(int *condition, int *mutex);
+int pthread_cond_timedwait(int *condition, int *mutex, const void *deadline);
+int pthread_mutex_lock(int *mutex);
+int pthread_mutex_unlock(int *mutex);
+int sched_yield(void);
+int nanosleep(const void *span, void *left);
+
+// A condition can be signalled, but nobody else exists to signal it: a bounded
+// wait times out with the lock still held, and an unbounded one stops the path.
+static void one_thread_waits_time_out_or_stop(void) {
+  enum { MOCK_ETIMEDOUT = 110 };
+  int condition = 7, mutex = 0;
+  long deadline[2] = {1, 0};
+  hunt_reset();
+  hunt_check(pthread_cond_init(&condition, NULL) == 0 && condition == 0, "cond init");
+  hunt_check(pthread_cond_signal(&condition) == 0 && pthread_cond_broadcast(&condition) == 0, "signals wake nobody");
+  hunt_check(pthread_mutex_lock(&mutex) == 0 && mutex == 1, "the lock is taken");
+  hunt_check(pthread_cond_timedwait(&condition, &mutex, deadline) == MOCK_ETIMEDOUT && mutex == 1, "a bounded wait times out holding the lock");
+  hunt_check(pthread_mutex_unlock(&mutex) == 0 && mutex == 0, "the lock is balanced");
+  hunt_check(sched_yield() == 0 && nanosleep(deadline, NULL) == 0, "yield and sleep return at once");
+  hunt_check(pthread_cond_destroy(&condition) == 0, "cond destroy");
+  hunt_check(osp_hunt_calls[OSP_HUNT_CALL_UNSUPPORTED] == 0, "none of those is unmodelled");
+  if (setjmp(on_error) == 0) {
+    (void)pthread_cond_wait(&condition, &mutex);
+    hunt_check(0, "an unbounded wait must not return");
+  }
+  hunt_check(strcmp(last_error, "unmodelled: pthread_cond_wait") == 0, last_error);
+}
+
 static void check_initial_int(const char *bytes, size_t length) {
   hunt_reset();
   osp_hunt_input_bytes = (long)length;
@@ -378,6 +412,7 @@ int main(void) {
   float_math_matches_gpu_operands();
   power_special_cases_match_libm();
   unsupported_calls_stop_the_path();
+  one_thread_waits_time_out_or_stop();
   hunt_mock_format_tests();
   hunt_mock_stream_tests();
   hunt_mock_parse_tests();

@@ -69,11 +69,123 @@ fn finished_fibers_are_reclaimed_in_every_backend() -> io::Result<()> {
     Ok(())
 }
 
+/// Makes, fills and drains a fresh 256-slot channel one after another, half
+/// carrying ints and half strings, so only one is ever live.
+const FINISHED_CHANNELS: &str = "fn ints(n) = range(0, n) |> fold(0, fn(sum, i) => {\n  let box = Channel(256)\n  send(box, i)\n  wrapAdd(sum, recv(box))\n})\nfn texts(n) = range(0, n) |> fold(0, fn(sum, i) => {\n  let box = Channel(256)\n  send(box, toString(i))\n  wrapAdd(sum, length(recv(box)))\n})\nprint(\"${ints(300000)} ${texts(300000)}\")\n";
+const FINISHED_CHANNELS_ANSWER: &str = "44999850000 1688890\n";
+/// The same count of channels for `--memory=ownership`, which refuses a string
+/// handed to a channel ([MEM-OWNERSHIP-STATIC]), so every one carries an int.
+const FINISHED_INT_CHANNELS: &str = "fn ints(n) = range(0, n) |> fold(0, fn(sum, i) => {\n  let box = Channel(256)\n  send(box, i)\n  wrapAdd(sum, recv(box))\n})\nprint(\"${ints(600000)}\")\n";
+const FINISHED_INT_CHANNELS_ANSWER: &str = "179999700000\n";
+
+/// [CONCURRENCY-FIBER-LIFETIME] [CONCURRENCY-CHANNEL] [CONCURRENCY-WASM] A
+/// channel nothing can name again is reclaimed with its buffer and
+/// synchronisation, in every backend and on wasm32. Every channel stayed in the
+/// runtime's table for the life of the process, so 600 thousand sequential
+/// `Channel(256)` reached 1.4 GiB under ARC and 1.8 GiB under the GC.
+#[test]
+fn finished_channels_are_reclaimed_in_every_backend() -> io::Result<()> {
+    let cases = [
+        ("gc", "native", FINISHED_CHANNELS, FINISHED_CHANNELS_ANSWER),
+        ("arc", "native", FINISHED_CHANNELS, FINISHED_CHANNELS_ANSWER),
+        (
+            "ownership",
+            "native",
+            FINISHED_INT_CHANNELS,
+            FINISHED_INT_CHANNELS_ANSWER,
+        ),
+        ("arc", "wasm32", FINISHED_CHANNELS, FINISHED_CHANNELS_ANSWER),
+        (
+            "ownership",
+            "wasm32",
+            FINISHED_INT_CHANNELS,
+            FINISHED_INT_CHANNELS_ANSWER,
+        ),
+    ];
+    let mut wrong = Vec::new();
+    for (memory, target, source, answer) in cases {
+        let run = compiled_run(
+            &format!("finished_channels_{memory}_{target}"),
+            source,
+            memory,
+            target,
+        )?;
+        let answered = run.code == Some(0) && run.stdout == answer;
+        if !answered || run.peak_mb > FINISHED_FIBERS_PEAK_MB {
+            wrong.push(format!(
+                "{memory}/{target}: {}, stdout {:?}, stderr {:?}",
+                run.summary(),
+                run.stdout,
+                run.stderr
+            ));
+        }
+    }
+    assert!(wrong.is_empty(), "{}", wrong.join("\n"));
+    Ok(())
+}
+
+/// Fibers that share channels: one made per call and shared by two fibers (with
+/// room for every value, as wasm32 runs a fiber to completion), one
+/// at file scope shared with a fiber that outlives the statement, and 2000
+/// more made, shared and dropped in a loop.
+const SHARED_CHANNELS: &str = "fn produce(box, n) = range(0, n) |> fold(0, fn(sum, i) => {\n  send(box, i)\n  wrapAdd(sum, 1)\n})\nfn consume(box, n) = range(0, n) |> fold(0, fn(sum, _) => wrapAdd(sum, recv(box)))\nfn relay(n) = {\n  let box = Channel(64)\n  let maker = spawn produce(box, n)\n  let taker = spawn consume(box, n)\n  wrapAdd(await(maker), await(taker))\n}\nlet shared = Channel(2)\nlet late = spawn recv(shared)\nsend(shared, 7)\nprint(\"${relay(50)} ${relay(3)} ${await(late)} ${range(0, 2000) |> fold(0, fn(sum, _) => wrapAdd(sum, relay(2)))}\")\n";
+const SHARED_CHANNELS_ANSWER: &str = "1275 6 7 6000\n";
+
+/// [CONCURRENCY-CHANNEL-LIFETIME] [MEM-OWNERSHIP-STATIC-HANDLES] A channel is
+/// shared by every fiber that names it and ends with its last sharer, in every
+/// backend and on wasm32, leaving nothing live at exit. Ownership refused the
+/// program once a channel became a managed value: it exists to be shared, so
+/// its handle is the one value that mode lets a program share.
+#[test]
+fn shared_channels_end_with_their_last_sharer() -> io::Result<()> {
+    let cases = [
+        ("gc", "native", ""),
+        ("arc", "native", "[osp-arc] exit: 0 live objects"),
+        (
+            "ownership",
+            "native",
+            "[osp-ownership] exit: 0 live objects",
+        ),
+        ("arc", "wasm32", "[osp-arc] exit: 0 live objects"),
+        (
+            "ownership",
+            "wasm32",
+            "[osp-ownership] exit: 0 live objects",
+        ),
+    ];
+    let mut wrong = Vec::new();
+    for (memory, target, nothing_live) in cases {
+        let run = compiled_run(
+            &format!("shared_channels_{memory}_{target}"),
+            SHARED_CHANNELS,
+            memory,
+            target,
+        )?;
+        let answered = run.code == Some(0) && run.stdout == SHARED_CHANNELS_ANSWER;
+        if !answered
+            || !run.stderr.contains(nothing_live)
+            || run.stderr.contains("shared:") && !run.stderr.contains("shared: 0 blocks")
+        {
+            wrong.push(format!(
+                "{memory}/{target}: {}, stdout {:?}, stderr {:?}",
+                run.summary(),
+                run.stdout,
+                run.stderr
+            ));
+        }
+    }
+    assert!(wrong.is_empty(), "{}", wrong.join("\n"));
+    Ok(())
+}
+
 /// The memory and time one compiled program may use, the compiler not counted.
 const PROGRAM_ONLY: bounded::Budget = bounded::Budget {
     memory_mb: 1024,
     deadline: Duration::from_secs(120),
 };
+
+/// The switches that make ARC and ownership report what is live at exit.
+const LEAK_REPORTS: [&str; 2] = ["OSPREY_ARC_DEBUG", "OSPREY_OWNERSHIP_DEBUG"];
 
 /// Compiles `source` for `memory` and `target`, then runs only the program
 /// under [`PROGRAM_ONLY`], so its peak is the program's own (a WASI host's for
@@ -110,14 +222,52 @@ fn compiled_run(
     let command = if wasm {
         let mut host =
             Command::new(std::env::var("OSPREY_WASM_RUN").unwrap_or_else(|_| "wasmtime".into()));
-        let _ = host.arg(&program);
+        let _ = host
+            .args(LEAK_REPORTS.map(|name| format!("--env={name}=1")))
+            .arg(&program);
         host
     } else {
-        Command::new(&program)
+        let mut native = Command::new(&program);
+        let _ = native.envs(LEAK_REPORTS.map(|name| (name, "1")));
+        native
     };
     let run = bounded::run_command(command, stem, PROGRAM_ONLY);
     std::fs::remove_dir_all(&directory)?;
     run
+}
+
+/// Twenty fibers each left waiting on a channel only it can name, then enough
+/// time for every one to block before `main` ends.
+const STRANDED_FIBERS: &str = "fn strand() = {\n  let box = Channel(1)\n  let waiting = spawn wrapAdd(recv(box), 1)\n  1\n}\nlet stranded = range(0, 20) |> fold(0, fn(sum, _) => wrapAdd(sum, strand()))\nsleep(300)\nprint(\"${stranded}\")\n";
+const STRANDED_REPORT: &str = "fiber(s) blocked for ever: only blocked fibers can reach the channel each waits on [CONCURRENCY-DEADLOCK]";
+
+/// [CONCURRENCY-DEADLOCK] A fiber waiting on a channel that only waiting fibers
+/// can reach can never be woken. The tracing collector finds it by
+/// reachability and the run names it on stderr; the program's own result is
+/// untouched. Reference counting cannot tell the fiber's own reference from
+/// one that could wake it, so ARC reports nothing, and says nothing false.
+#[test]
+fn fibers_blocked_for_ever_are_named_by_the_collector() -> io::Result<()> {
+    let mut wrong = Vec::new();
+    for (memory, reported) in [("gc", true), ("arc", false)] {
+        let run = compiled_run(
+            &format!("stranded_{memory}"),
+            STRANDED_FIBERS,
+            memory,
+            "native",
+        )?;
+        let answered = run.code == Some(0) && run.stdout == "20\n";
+        if !answered || run.stderr.contains(STRANDED_REPORT) != reported {
+            wrong.push(format!(
+                "{memory}: {}, stdout {:?}, stderr {:?}",
+                run.summary(),
+                run.stdout,
+                run.stderr
+            ));
+        }
+    }
+    assert!(wrong.is_empty(), "{}", wrong.join("\n"));
+    Ok(())
 }
 
 /// A program whose one fiber waits for a value no fiber will ever send.

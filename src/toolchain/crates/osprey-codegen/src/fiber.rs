@@ -11,8 +11,9 @@
 //! the memory backend reclaims like any value, and the fiber dies with the
 //! last of its handle, its runner and its awaits
 //! ([CONCURRENCY-FIBER-LIFETIME]). Channels are
-//! `channel_create`/`channel_send`/`channel_recv`, with `channel_cleanup`
-//! releasing whatever a program never received; a channel is a runtime id.
+//! `channel_create_checked`/`channel_send`/`channel_recv` on a managed handle
+//! of the same kind, whose channel dies with it and releases whatever a
+//! program never received ([CONCURRENCY-CHANNEL-LIFETIME]).
 //! `yield e` performs the runtime's
 //! cooperative hand-off (`fiber_yield`) and evaluates to its operand.
 //! Implements [CONCURRENCY-SPAWN-AWAIT], [CONCURRENCY-CHANNEL], and
@@ -105,7 +106,7 @@ pub(crate) fn fiber_id(cg: &mut Codegen, handle: &Value) -> Value {
     Value::new(r, LType::I64)
 }
 
-/// A fiber handle as the `i8*` the runtime's fiber entry points take.
+/// A fiber or channel handle as the `i8*` the runtime's entry points take.
 fn handle_word(cg: &mut Codegen, handle: &Value) -> String {
     crate::arc::as_i8ptr(cg, handle)
 }
@@ -161,7 +162,7 @@ pub(crate) fn gen_send(cg: &mut Codegen, channel: &Expr, value: &Expr) -> Result
     let r = cg.call(
         "i64",
         "channel_send",
-        "i64, i64, i64",
+        "i8*, i64, i64",
         &[&wire.id, &wire.word, &wire.managed],
     );
     Ok(Value::new(r, LType::I64))
@@ -179,7 +180,7 @@ struct SendWire {
 fn send_wire(cg: &mut Codegen, channel: &Expr, value: &Expr) -> Result<SendWire> {
     cg.lowered.channels = true;
     let ch = gen_expr(cg, channel)?;
-    let id = as_i64(cg, ch)?;
+    let id = handle_word(cg, &ch);
     let v = gen_expr(cg, value)?;
     if v.result_inner.is_some() {
         return Err(CodegenError::unsupported(
@@ -209,12 +210,12 @@ fn send_wire(cg: &mut Codegen, channel: &Expr, value: &Expr) -> Result<SendWire>
     // side owns +1 [GC-ARC-PERCEUS] [MEM-FIBER-ISOLATION].
     // The channel owns that reference until a `recv` adopts it, so it has to
     // know the value is managed: a send the runtime rejects releases it again,
-    // and `channel_cleanup` releases whatever was never received.
+    // and the channel releases whatever was never received when it is freed.
     let managed = i64::from(v.ty.is_managed_ptr()).to_string();
     crate::arc::escape_retain(cg, &v);
     let v = box_to_i64(cg, v);
     Ok(SendWire {
-        id: id.operand,
+        id,
         word: v.operand,
         managed,
     })
@@ -240,13 +241,8 @@ pub(crate) fn gen_recv(cg: &mut Codegen, channel: &Expr) -> Result<Value> {
     // does travel [CONCURRENCY-CHANNEL].
     // `send` retained a reference for the receiver; adopting it here makes
     // this region drop it.
-    let id = as_i64(cg, ch.clone())?;
-    adopt_from_runtime(
-        cg,
-        ch,
-        ("channel_recv", "i64", &id.operand),
-        RECV_WITHOUT_ELEMENT,
-    )
+    let id = handle_word(cg, &ch);
+    adopt_from_runtime(cg, ch, ("channel_recv", "i8*", &id), RECV_WITHOUT_ELEMENT)
 }
 
 /// `select` — one `channel_select` call over the channel arms, then a switch on
@@ -265,8 +261,8 @@ pub(crate) fn gen_select(
         match operation {
             SelectOperation::Recv(channel) => {
                 let handle = gen_expr(cg, channel)?;
-                let id = as_i64(cg, handle.clone())?;
-                channels.push(SelectChannel::recv(arm, id.operand, handle));
+                let id = handle_word(cg, &handle);
+                channels.push(SelectChannel::recv(arm, id, handle));
             }
             SelectOperation::Send { channel, value } => {
                 let wire = send_wire(cg, channel, value)?;
@@ -352,27 +348,30 @@ impl<'a> SelectChannel<'a> {
 }
 
 /// Fill the runtime's arrays and call it; the chosen index and the received slot.
+/// The arrays are entry-block slots: claimed where the `select` is written they
+/// were dynamic stack allocations, which the symbolic engine's root pass refuses
+/// once the function is inlined ([SYMEX-CORPUS]).
 fn select_call(cg: &mut Codegen, channels: &[SelectChannel<'_>], waits: &str) -> (String, String) {
-    cg.add_extern("declare i64 @channel_select(i64, i64*, i64*, i64*, i64*, i64)");
+    cg.add_extern("declare i64 @channel_select(i64, i64*, i8**, i64*, i64*, i64)");
     let count = channels.len();
-    let array = |cg: &mut Codegen, slot: &dyn Fn(&SelectChannel<'_>) -> String| {
-        let base = cg.emit_reg(format!("alloca [{count} x i64]"));
+    let array = |cg: &mut Codegen, of: &str, slot: &dyn Fn(&SelectChannel<'_>) -> String| {
+        let base = cg.hoist_slot(&format!("[{count} x {of}]"));
         for (position, channel) in channels.iter().enumerate() {
             let at = cg.emit_reg(format!(
-                "getelementptr [{count} x i64], [{count} x i64]* {base}, i64 0, i64 {position}"
+                "getelementptr [{count} x {of}], [{count} x {of}]* {base}, i64 0, i64 {position}"
             ));
-            cg.emit(format!("store i64 {}, i64* {at}", slot(channel)));
+            cg.emit(format!("store {of} {}, {of}* {at}", slot(channel)));
         }
         cg.emit_reg(format!(
-            "getelementptr [{count} x i64], [{count} x i64]* {base}, i64 0, i64 0"
+            "getelementptr [{count} x {of}], [{count} x {of}]* {base}, i64 0, i64 0"
         ))
     };
-    let kinds = array(cg, &|channel| channel.kind.to_owned());
-    let ids = array(cg, &|channel| channel.id.clone());
-    let words = array(cg, &|channel| channel.word.clone());
-    let received = cg.emit_reg("alloca i64");
+    let kinds = array(cg, "i64", &|channel| channel.kind.to_owned());
+    let ids = array(cg, "i8*", &|channel| channel.id.clone());
+    let words = array(cg, "i64", &|channel| channel.word.clone());
+    let received = cg.hoist_slot("i64");
     let chosen = cg.emit_reg(format!(
-        "call i64 @channel_select(i64 {count}, i64* {kinds}, i64* {ids}, i64* {words}, i64* {received}, i64 {waits})"
+        "call i64 @channel_select(i64 {count}, i64* {kinds}, i8** {ids}, i64* {words}, i64* {received}, i64 {waits})"
     ));
     (chosen, received)
 }
@@ -381,7 +380,8 @@ fn select_call(cg: &mut Codegen, channels: &[SelectChannel<'_>], waits: &str) ->
 /// is not one of them.
 pub(crate) fn gen_builtin(cg: &mut Codegen, name: &str, args: &[Expr]) -> Result<Option<Value>> {
     let v = match name {
-        // `Channel(capacity)` — a real C-runtime channel, named by its id.
+        // `Channel(capacity)` — a real C-runtime channel behind the managed
+        // handle the runtime hands over at +1, like a constructor.
         "Channel" => {
             let cap = match args.first() {
                 Some(a) => {
@@ -392,11 +392,13 @@ pub(crate) fn gen_builtin(cg: &mut Codegen, name: &str, args: &[Expr]) -> Result
             };
             // `_checked`, not the bare constructor: `Channel` has no failure
             // channel in the language, so a runtime that cannot honour the
-            // capacity must stop the program rather than answer a negative code
-            // the rest of the lowering would treat as a handle
+            // capacity must stop the program rather than answer a refusal the
+            // rest of the lowering would treat as a handle
             // [CONCURRENCY-CHANNEL].
-            let r = cg.call("i64", "channel_create_checked", "i64", &[&cap]);
-            Value::new(r, LType::I64)
+            let r = cg.call("i8*", "channel_create_checked", "i64", &[&cap]);
+            let handle = Value::new(r, LType::Ptr);
+            crate::arc::own(cg, &handle);
+            handle
         }
         // `fiber_yield(v)` called as an ordinary function shares `yield`'s
         // lowering — the same runtime hand-off, forwarding `v`.

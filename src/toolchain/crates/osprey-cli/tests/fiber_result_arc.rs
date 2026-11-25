@@ -270,9 +270,9 @@ print(toString(listLength(taken)))
 // not implement rendezvous channels."
 //
 // Rejected has to mean the program cannot go on as though it had a channel.
-// Today it does not: `channel_create` answers `-1`, the language keeps treating
-// that as a `Channel<T>`, `send` returns without enqueueing anything, and
-// `recv` returns `-1` AS THE VALUE — which codegen converts to a pointer.
+// It once did not: `channel_create` answered `-1`, the language kept treating
+// that as a `Channel<T>`, `send` returned without enqueueing anything, and
+// `recv` returned `-1` AS THE VALUE — which codegen converted to a pointer.
 // Measured: adding one `recv` to any case below exits 139 (SIGSEGV) with no
 // diagnostic, on the default backend and under ARC alike.
 //

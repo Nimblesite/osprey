@@ -140,7 +140,7 @@ static void count_generic(void *body) { (void)body; generic_calls++; }
 
 // [MEM-BACKENDS-FINALIZERS] A fiber handle's finalizer runs once, at the
 // explicit free of the handle, with the body still intact; a plain header's
-// registration is never called; a block taken twice is kept, so it never runs.
+// registration is never called.
 static int handle_calls;
 static void *handle_seen;
 static void *handle_word_seen;
@@ -160,16 +160,63 @@ static void t_fiber_handle_finalizes_once(void) {
   osp_ownership_free(handle);
   CHECK(handle_calls == 1 && handle_seen == handle && handle_word_seen == &fiber_stand_in);
   CHECK(generic_calls == 0 && osp_arc_live_objects() == base);
-  void **shared = osp_alloc_tagged(3 * sizeof(void *), OSP_MEM_FIBER_HANDLE);
-  CHECK(shared != NULL);
-  osp_retain(shared);
-  osp_ownership_free(shared);
-  CHECK(handle_calls == 1 && "a block taken twice is kept to exit, unfinalized");
   osp_mem_set_finalizer(OSP_MEM_FIBER_HANDLE, NULL);
   void **unregistered = osp_alloc_tagged(3 * sizeof(void *), OSP_MEM_FIBER_HANDLE);
   CHECK(unregistered != NULL);
   osp_ownership_free(unregistered);
   CHECK(handle_calls == 1 && "an unregistered subtype runs nothing");
+}
+
+// [MEM-OWNERSHIP-STATIC-HANDLES] A fiber or channel handle is the one block a
+// program shares: each sharer frees it once, and only the last free finalizes
+// and frees it, however the sharer was added.
+static void share_and_free(int64_t meta, int runtime_takes, int program_shares) {
+  static char stand_in;
+  size_t base = osp_arc_live_objects();
+  void **handle = osp_alloc_tagged(3 * sizeof(void *), meta);
+  CHECK(handle != NULL);
+  handle[2] = &stand_in;
+  for (int i = 0; i < runtime_takes; i++) {
+    osp_retain(handle);
+  }
+  for (int i = 0; i < program_shares; i++) {
+    osp_ownership_share(handle);
+  }
+  int before = handle_calls;
+  for (int i = 0; i < runtime_takes + program_shares; i++) {
+    osp_ownership_free(handle);
+    CHECK(handle_calls == before && osp_arc_live_objects() == base + 1 && handle[2] == &stand_in);
+  }
+  osp_ownership_free(handle);
+  CHECK(handle_calls == before + 1 && handle_seen == handle && handle_word_seen == &stand_in);
+  CHECK(osp_arc_live_objects() == base);
+}
+
+// Any other block that is shared is kept to exit, never freed under a holder.
+static void t_handles_are_shared_and_freed_last(void) {
+  const int64_t kinds[] = {OSP_MEM_FIBER_HANDLE, OSP_MEM_CHANNEL_HANDLE};
+  for (size_t kind = 0; kind < 2; kind++) {
+    osp_mem_set_finalizer(kinds[kind], count_handle);
+    for (int takes = 0; takes <= 3; takes++) {
+      for (int shares = 0; shares <= 3; shares++) {
+        share_and_free(kinds[kind], takes, shares);
+      }
+    }
+    osp_mem_set_finalizer(kinds[kind], NULL);
+  }
+  size_t base = osp_arc_live_objects();
+  void **plain = osp_alloc_tagged(3 * sizeof(void *), OSP_MEM_LIST_HDR_EXTERN);
+  void *record = osp_alloc_tagged(2 * sizeof(void *), OSP_MEM_RAW);
+  CHECK(plain != NULL && record != NULL);
+  osp_ownership_share(plain);
+  osp_ownership_share(record);
+  osp_ownership_share(record);
+  osp_ownership_share(NULL);
+  for (int i = 0; i < 3; i++) {
+    osp_ownership_free(plain);
+    osp_ownership_free(record);
+  }
+  CHECK(osp_arc_live_objects() == base + 2 && "a shared non-handle is kept, never freed");
 }
 
 #ifndef _WIN32
@@ -282,6 +329,7 @@ int main(void) {
   t_external_mapping_drop();
 #endif
   t_fiber_handle_finalizes_once();
+  t_handles_are_shared_and_freed_last();
   t_collision_transfer();
   t_prepend_transferred_value(0);
   t_prepend_transferred_value(1);

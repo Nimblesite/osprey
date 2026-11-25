@@ -29,7 +29,10 @@ void __osprey_handler_stack_cleanup(void);
 
 // Fiber runtime implementation in C for linking with LLVM-generated code
 
+#include "handle_lifetime.h"
+
 typedef struct Fiber {
+  Held held; // first: handle_lifetime.h [CONCURRENCY-FIBER-LIFETIME]
   int64_t id;
   // Codegen allocates a separate environment per spawn so two in-flight
   // fibers from one site never share captures.
@@ -49,13 +52,11 @@ typedef struct Fiber {
   pthread_cond_t cond;
   bool uses_thread;
   HandlerSnapshot *handler_snapshot; // Inherited effect handlers from parent
-  _Atomic int64_t holders;           // fiber_lifetime.h [CONCURRENCY-FIBER-LIFETIME]
   struct Fiber *queue_next;          // the deterministic queue, under runtime_mutex
-  struct Fiber *dead_next;           // the dead-handle list (fiber_lifetime.h)
 } Fiber;
 
 typedef struct Channel {
-  int64_t id;
+  Held held; // first: handle_lifetime.h [CONCURRENCY-CHANNEL-LIFETIME]
   int capacity;
   int64_t *buffer;
   int head;
@@ -71,27 +72,21 @@ typedef struct Channel {
   pthread_cond_t not_full;
 } Channel;
 
-// Global runtime state, all under runtime_mutex. A fiber is reached only through
-// the holds on it (fiber_lifetime.h), so it needs no table. A channel id is a
-// slot in `channels`, which grows to fit; it holds pointers, so what a lookup
-// returns outlives the lock even if the table then moves. [CONCURRENCY-HANDLES]
-static Channel **channels;
-static int64_t handle_capacity;
-static int64_t next_id = 1;       // the next channel slot
+// Global runtime state, all under runtime_mutex. Fibers and channels are
+// reached only through the holds on them (handle_lifetime.h), so neither needs
+// a table. [CONCURRENCY-HANDLES]
 static int64_t next_fiber_id = 1; // spawn order, which the deterministic queue keeps
 static pthread_mutex_t runtime_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 // Sequential execution mode [CONCURRENCY-DETERMINISTIC]. Queued fibers run in
 // spawn order: the queue is a FIFO list, and each holds its runner's hold.
-// WASI preview1 has one thread, so wasm32 is always sequential [CONCURRENCY-WASM].
-#if defined(__wasi__)
-#define OSP_ONE_THREAD true
-#else
-#define OSP_ONE_THREAD false
-#endif
+// Where there is one thread (memory_parked_wait.h) it is always sequential
+// [CONCURRENCY-WASM] [SYMEX-MOCK-THREADS].
 static bool deterministic_mode = OSP_ONE_THREAD;
 static Fiber *queue_head;
 static Fiber *queue_tail;
+// The fiber whose thread this is; NULL on a thread no fiber owns.
+static _Thread_local Fiber *thread_fiber;
 
 // Enable/disable deterministic fiber execution
 int64_t fiber_set_deterministic_mode(bool enabled) {
@@ -101,31 +96,39 @@ int64_t fiber_set_deterministic_mode(bool enabled) {
   return 0;
 }
 
-#include "fiber_lifetime.h"
-
-// Makes room for channel slot next_id: 0, or the bytes the allocator refused.
-static size_t reserve_handle(void) {
-  if (next_id < handle_capacity) {
-    return 0;
+// Frees everything a fiber still owns. Only the last holder gets here.
+static void fiber_free(Held *held) {
+  Fiber *fiber = (Fiber *)held;
+  if (fiber->result_owned && fiber->result_managed) {
+    osp_release((void *)(uintptr_t)fiber->result);
   }
-  int64_t capacity = handle_capacity > 0 ? handle_capacity * 2 : 1024;
-  size_t bytes = (size_t)capacity * sizeof(Channel *);
-  Channel **grown = realloc(channels, bytes);
-  if (!grown) {
-    return bytes;
+  osp_release(fiber->env); // never ran: the capture cell is still the runtime's
+  if (fiber->handler_snapshot != NULL) {
+    osp_mem_scanned_free(fiber->handler_snapshot);
   }
-  size_t kept = (size_t)handle_capacity * sizeof(Channel *);
-  memset((char *)grown + kept, 0, bytes - kept);
-  channels = grown;
-  handle_capacity = capacity;
-  return 0;
+  pthread_mutex_destroy(&fiber->mutex);
+  pthread_cond_destroy(&fiber->cond);
+  osp_mem_scanned_free(fiber);
 }
 
-static Channel *channel_of(int64_t channel_id) {
-  pthread_mutex_lock(&runtime_mutex);
-  Channel *channel = channel_id >= 1 && channel_id < next_id ? channels[channel_id] : NULL;
-  pthread_mutex_unlock(&runtime_mutex);
-  return channel;
+void fiber_release(Fiber *fiber) { held_release((Held *)fiber); }
+
+// Fibers waiting on a channel now, and how many stuck ones were reported.
+static atomic_int channel_waits;
+static _Atomic size_t stuck_reported;
+
+// Names the fibers a collection found blocked for ever since the last report
+// [CONCURRENCY-DEADLOCK]. The collector only counts them: it may hold the heap
+// lock or have stopped the world, so the report is written here.
+static void report_stuck_fibers(void) {
+  size_t found = osp_mem_stuck_waits();
+  size_t seen = atomic_exchange_explicit(&stuck_reported, found, memory_order_relaxed);
+  if (found > seen) {
+    fprintf(stderr,
+            "osprey: %zu fiber(s) blocked for ever: only blocked fibers can reach "
+            "the channel each waits on [CONCURRENCY-DEADLOCK]\n",
+            found - seen);
+  }
 }
 
 // Restores the parent's effect handlers so perform calls work inside the
@@ -163,6 +166,7 @@ static void *fiber_thread_func(void *arg) {
   // per-fiber sample attribution [PROF-COLLECT-REGISTRY]. No-op when inactive.
   osp_prof_thread_register(fiber->id, "fiber");
 
+  thread_fiber = fiber;
   run_with_parent_handlers(fiber);
   // The handler stack is this thread's own; left behind, every fiber kept about
   // 64 KiB for the life of the process. [CONCURRENCY-HANDLES]
@@ -224,7 +228,7 @@ static Fiber *fiber_new(int64_t (*env_fn)(void *), void *env, bool result_manage
   }
   *fiber = (Fiber){.env_function = env_fn, .env = env, .result_managed = result_managed,
                    .handler_snapshot = snapshot};
-  atomic_init(&fiber->holders, 2);
+  held_init(&fiber->held, 2, fiber_free);
   pthread_mutex_init(&fiber->mutex, NULL);
   pthread_cond_init(&fiber->cond, NULL);
   return fiber;
@@ -257,7 +261,8 @@ static void schedule(Fiber *fiber) {
 static Fiber *fiber_start(int64_t (*env_fn)(void *), void *env, bool result_managed,
                           size_t *refused) {
   *refused = 0;
-  fiber_reclaim();
+  held_reclaim();
+  report_stuck_fibers();
   Fiber *fiber = env_fn ? fiber_new(env_fn, env, result_managed, refused) : NULL;
   if (fiber) {
     schedule(fiber);
@@ -280,14 +285,10 @@ Fiber *fiber_spawn_env(int64_t (*fn)(void *), void *env) {
 // of handing back a handle the program would carry on with (#359)
 // [MEM-REFUSED-STOP]. NULL for a NULL body, which compiled code never passes.
 void *fiber_spawn_env_owned(int64_t (*fn)(void *), void *env, int64_t result_managed) {
-  FiberHandle *handle = osp_alloc_tagged_noinit(sizeof(FiberHandle), OSP_MEM_FIBER_HANDLE);
-  if (!handle) {
-    osp_alloc_refused("spawn", sizeof(FiberHandle));
-  }
-  *handle = (FiberHandle){.length = 0, .data = NULL, .fiber = NULL};
+  HeldHandle *handle = held_handle_new(OSP_MEM_FIBER_HANDLE, "spawn");
   size_t refused = 0;
-  handle->fiber = fiber_start(fn, env, result_managed != 0, &refused);
-  if (handle->fiber) {
+  handle->held = (Held *)fiber_start(fn, env, result_managed != 0, &refused);
+  if (handle->held) {
     return handle;
   }
   osp_release(handle);
@@ -363,7 +364,7 @@ int64_t fiber_join(Fiber *fiber) {
 
 // `await` on a program's handle, holding the fiber while it waits.
 int64_t fiber_await(void *handle) {
-  Fiber *fiber = fiber_of_handle(handle);
+  Fiber *fiber = (Fiber *)held_of_handle(handle);
   int64_t result = fiber_join(fiber);
   fiber_release(fiber);
   return result;
@@ -371,9 +372,16 @@ int64_t fiber_await(void *handle) {
 
 // Drops the holds of every handle the program let go of. Codegen calls this
 // once at the end of main, after its language-level owners have dropped, so
-// each finished fiber they held is freed with its result. A fiber still running
-// keeps its runner's hold and is ended by process exit.
-void fiber_cleanup_results(void) { fiber_reclaim(); }
+// each finished fiber and unshared channel they held is freed. A fiber still
+// running keeps its runner's hold and is ended by process exit; one still
+// waiting on a channel gets a last collection's verdict [CONCURRENCY-DEADLOCK].
+void fiber_cleanup_results(void) {
+  held_reclaim();
+  if (atomic_load_explicit(&channel_waits, memory_order_relaxed) > 0) {
+    osp_collect();
+  }
+  report_stuck_fibers();
+}
 
 // Cooperative hand-off [CONCURRENCY-YIELD]. In concurrent (threaded) mode,
 // donate the rest of this

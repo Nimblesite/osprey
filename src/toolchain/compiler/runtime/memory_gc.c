@@ -122,6 +122,9 @@ static size_t g_ms_top = 0;
 static int g_ms_dropped = 0; // a push found no memory this collection
 
 static size_t g_bytes = 0;                          // managed bytes since last GC
+// Scanned-block bytes since the last GC. They count towards the next one: only
+// a collection finds the dead handles whose fibers and channels own them.
+static size_t g_scanned_since = 0;
 static size_t g_min_heap = OSP_GC_MIN_HEAP_BYTES;   // floor for the adaptive budget
 static size_t g_thresh = OSP_GC_MIN_HEAP_BYTES;     // next-collection budget
 static int g_debug = 0;      // OSPREY_GC_DEBUG: print per-collection stats
@@ -189,17 +192,23 @@ static int gc_may_collect(void) {
   return 1;
 }
 
+#include "memory_gc_waits.h"
+
+// Every other thread's stack and every scanned block, but those a channel wait
+// defers [CONCURRENCY-DEADLOCK].
 __attribute__((unused)) static void gc_scan_others(const OspGcBaton *self) {
-  if (self != &g_main_baton) {
+  if (self != &g_main_baton && !gc_wait_defers(&g_main_baton, NULL)) {
     gc_scan_range(g_main_baton.parked_at, g_main_baton.base);
   }
   for (const OspGcBaton *b = g_batons; b; b = b->next) {
-    if (b != self) {
+    if (b != self && !gc_wait_defers(b, NULL)) {
       gc_scan_range(b->parked_at, b->base);
     }
   }
   for (const OspGcScanned *s = g_scanned; s; s = s->next) {
-    gc_scan_range((uintptr_t)(s + 1), (uintptr_t)(s + 1) + s->size);
+    if (!gc_wait_defers(NULL, s + 1)) {
+      gc_scan_range((uintptr_t)(s + 1), (uintptr_t)(s + 1) + s->size);
+    }
   }
 }
 
@@ -238,9 +247,15 @@ static void gc_trace(void) {
 static void gc_collect_locked(void) {
   heap_note_peak(g_bytes);
   g_ms_top = 0;
+  gc_defer_waits();
   gc_scan_roots();
   gc_scan_pinned();
 
+  gc_trace();
+  while (gc_wake_reached_waits()) {
+    gc_trace();
+  }
+  gc_settle_stuck_waits();
   gc_trace();
   gc_sweep();
 }
@@ -298,7 +313,8 @@ static void *gc_managed_alloc(size_t size, uint32_t flags) {
             g_bytes >> 20);
     g_off_report_at *= 2;
   }
-  if (g_collection_wanted || (g_bytes > g_thresh && g_bytes >= g_retry_at)) {
+  size_t pressure = g_bytes + g_scanned_since;
+  if (g_collection_wanted || (pressure > g_thresh && pressure >= g_retry_at)) {
     gc_safepoint();
   }
   if (heap_over_limit(g_bytes, size) && !gc_make_room(size)) {

@@ -12,4 +12,7 @@ void osp_mem_baton_thread_enter(void) {}
 void osp_mem_baton_thread_exit(void) {}
 void osp_mem_baton_park(const void *lowest) { (void)lowest; }
 void osp_mem_baton_unpark(void) {}
+void osp_mem_wait_enter(OspChannelWait *wait) { (void)wait; }
+void osp_mem_wait_exit(OspChannelWait *wait) { (void)wait; }
+size_t osp_mem_stuck_waits(void) { return 0; }
 #endif

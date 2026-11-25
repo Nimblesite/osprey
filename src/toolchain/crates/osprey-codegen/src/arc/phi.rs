@@ -54,8 +54,8 @@ pub(crate) fn promote_phi_arm(cg: &mut Codegen, value: &Value, borrowed: bool) {
     }
     {
         let pointer = super::as_i8ptr(cg, value);
-        super::second_owner(cg, &value.operand, None, super::Need::Joined);
-        super::ownership_call(cg, super::RETAIN_DECL, "retain", &pointer);
+        super::second_owner_of(cg, value, None, super::Need::Joined);
+        super::count_call(cg, &pointer);
         own(cg, value);
     }
 }

@@ -19,13 +19,6 @@ extern int64_t fiber_await_process(int64_t process_id);
 extern int64_t fiber_await_process_with_callback(int64_t process_id,
                                                  void (*stdout_callback)(char *));
 extern void fiber_cleanup_process(int64_t process_id);
-extern int64_t channel_create(int64_t capacity);
-extern int64_t channel_create_checked(int64_t capacity);
-extern int64_t channel_send(int64_t channel_id, int64_t value, int64_t managed);
-extern void channel_cleanup(void);
-extern int64_t channel_recv(int64_t channel_id);
-extern int64_t channel_select(int64_t count, const int64_t *kinds, const int64_t *ids,
-                              const int64_t *words, int64_t *received, int64_t timeout_ms);
 extern int64_t spawn_process_with_handler(const char *command,
                                           void (*handler)(int64_t, int64_t,
                                                           char *));
@@ -47,8 +40,9 @@ void test_unusable_capacities_are_refused_not_returned(void);
 void test_channel_handle_guards(void);
 void test_channel_blocks_both_directions(void);
 void test_cleanup_defers_while_a_fiber_runs(void);
-void test_cleanup_drains_unreceived_values(void);
+void test_cleanup_keeps_what_a_held_channel_buffers(void);
 void test_rejected_managed_send_releases_its_value(void);
 void test_channel_select(void);
+void test_fibers_blocked_for_ever_are_found(void);
 
 #endif

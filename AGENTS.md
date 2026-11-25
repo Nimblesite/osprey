@@ -31,7 +31,7 @@
 ## Tests
 - ✅ E2E tests driving real use cases. Unit tests (in-crate) only when isolation is needed.
 - **Loaded tests:** many input permutations, many user interactions per test, many assertions per interaction.
-- `src/osprey/tests/` programs run via `src/toolchain/crates/run_test_corpus.sh` under GC, ARC, wasm32 (`OSPREY_TARGET=wasm32`); output matches sibling `.expectedoutput` byte-for-byte; ML twin shares the Default twin's golden.
+- `src/osprey/tests/` programs run via `src/toolchain/crates/run_test_corpus.sh` under GC, ARC, ownership and wasm32 (`OSPREY_TARGET=wasm32`). Under ownership every program either passes and is listed in `OWNERSHIP_ACCEPTED.txt`, or is refused by the checker by name; output matches sibling `.expectedoutput` byte-for-byte; ML twin shares the Default twin's golden.
 - `src/osprey/examples/failscompilation/` = programs the compiler must reject.
 - Expand existing tests/examples, ❌ new files; mix many constructs per program.
 - 💯 coverage aim per package/project; `src/osprey/tests/coverage-thresholds.json` only goes ⬆️.

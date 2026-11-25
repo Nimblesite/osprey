@@ -277,7 +277,7 @@ void run_all_fiber_tests(void) {
   test_channel_handle_guards();
   test_channel_blocks_both_directions();
   test_cleanup_defers_while_a_fiber_runs();
-  test_cleanup_drains_unreceived_values();
+  test_cleanup_keeps_what_a_held_channel_buffers();
   test_rejected_managed_send_releases_its_value();
   run_fiber_handle_tests();
 
@@ -285,6 +285,9 @@ void run_all_fiber_tests(void) {
 }
 
 int main(void) {
+  // First: later cases allocate from threads the collector does not know,
+  // which turns collection off for the rest of the process.
+  test_fibers_blocked_for_ever_are_found();
   test_channel_select();
   run_all_fiber_tests();
   return 0;

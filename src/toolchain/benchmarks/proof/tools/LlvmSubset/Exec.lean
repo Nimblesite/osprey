@@ -117,6 +117,13 @@ def compare (pred : Pred) (bits : Nat) (left right : Val) : Except Fault Val :=
   | .uge, .int a, .int b => bit (unsigned bits b ≤ unsigned bits a)
   | _, _, _ => .error .unsupported
 
+/-- The word an `atomicrmw` leaves, from the word it found and its operand. -/
+def rmw (op : RmwOp) (bits : Nat) (found operand : Val) : Except Fault Val :=
+  match op with
+  | .xchg => .ok operand
+  | .add => binary .add bits found operand
+  | .sub => binary .sub bits found operand
+
 /-- The values a dying allocation owns: the words its layout mask marks
     ([GC-ARC-PERCEUS]: bit `8 + i` of the layout word is the word at byte
     `8 * i`), or a list's managed elements unless a newer version took them. -/
@@ -195,6 +202,22 @@ def callExt (fuel : Nat) : Ext → List Val → M Val
 
 abbrev CallFn := Nat → List Val → M Val
 
+/-- [IR-LEAN-ATOMIC] `atomicrmw`: the word at `p` becomes `rmw` of itself, and
+    the word it was is the answer. The interpreter runs one thread, so nothing
+    comes between the read and the write: the one indivisible step the
+    instruction is among threads. A model of interleavings takes each such
+    step whole. -/
+def rmwAt (op : RmwOp) (ty : Ty) (p operand : Val) : M Val := do
+  let found ← loadAt ty p
+  let left ← liftM (rmw op ty.bits found operand)
+  storeAt ty left p
+  pure found
+
+/-- A call through a function pointer: the function whose number it holds. -/
+def callAt (callFn : CallFn) (values : List Val) : Val → M Val
+  | .int index => if index < 0 then fault .badPointer else callFn index.toNat values
+  | .ptr _ _ => fault .badPointer
+
 def execInstr (callFn : CallFn) (fuel : Nat) (env : Env) : Instr → M Env
   | .const dst v => pure ((dst, .int v) :: env)
   | .alloca dst ty => do
@@ -235,6 +258,18 @@ def execInstr (callFn : CallFn) (fuel : Nat) (env : Env) : Instr → M Env
       let c ← evalOp env condition
       evalOp env (if c = Val.int 0 then whenFalse else whenTrue))
     pure ((dst, v) :: env)
+  | .atomicrmw dst op ty pointer operand => do
+    let p ← liftM (evalOp env pointer)
+    let by' ← liftM (evalOp env operand)
+    let found ← rmwAt op ty p by'
+    pure ((dst, found) :: env)
+  | .call dst (.reg id) args => do
+    let target ← liftM (evalOp env id)
+    let values ← liftM (evalAll env args)
+    let v ← callAt callFn values target
+    pure (match dst with
+      | some dst => (dst, v) :: env
+      | none => env)
   | .call dst (.fn index) args => do
     let values ← liftM (evalAll env args)
     let v ← callFn index values

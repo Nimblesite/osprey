@@ -77,6 +77,7 @@ static void gc_sweep(void) {
   }
   gc_pages_sweep();
   g_thresh = g_bytes * 2 > g_min_heap ? g_bytes * 2 : g_min_heap;
+  g_scanned_since = 0;
   g_ncollect++; // always: read by osp_gc_collections() diagnostics, not just debug
   if (g_debug) {
     // env-gated diagnostic only — not on any hot path.

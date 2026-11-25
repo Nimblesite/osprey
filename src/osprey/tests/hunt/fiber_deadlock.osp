@@ -1,0 +1,6 @@
+/// A fiber waits for a value nothing sends, and the program waits for the
+/// fiber: every fiber is blocked, which the engine reports where the wait is
+/// [SYMEX-MOCK-THREADS] [CONCURRENCY-DEADLOCK].
+let box = Channel(1)
+let waiting = spawn recv(box)
+print("started ${await(waiting)}")

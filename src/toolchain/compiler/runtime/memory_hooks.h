@@ -8,6 +8,7 @@
 #ifndef OSPREY_MEMORY_HOOKS_H
 #define OSPREY_MEMORY_HOOKS_H
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -32,11 +33,12 @@
 #define OSP_MEM_STRING 7
 // An EXTERN body's subtype, bits 8..15 of its meta, picks its finalizer
 // ([MEM-BACKENDS-FINALIZERS]): 0 is a plain external header, 1 a GPU buffer
-// (gpu_runtime.c), 2 a fiber handle (fiber_lifetime.h).
+// (gpu_runtime.c), 2 a fiber handle and 3 a channel handle (handle_lifetime.h).
 #define OSP_MEM_EXTERN_SUBTYPE(meta) (((uint64_t)(meta) >> 8) & 0xFF)
 #define OSP_MEM_EXTERN_SUBTYPES 4
 #define OSP_MEM_GPU_BUFFER (OSP_MEM_LIST_HDR_EXTERN | (1 << 8))
 #define OSP_MEM_FIBER_HANDLE (OSP_MEM_LIST_HDR_EXTERN | (2 << 8))
+#define OSP_MEM_CHANNEL_HANDLE (OSP_MEM_LIST_HDR_EXTERN | (3 << 8))
 // -1 means no live STRING allocation owns this address (never an empty value).
 int64_t osp_mem_string_length(const void *p);
 
@@ -106,6 +108,8 @@ void osp_release_unique(void *o);
 // Ownership-only codegen entry for a proved last use. Walk owned children
 // before reclaiming their parent. [MEM-OWNERSHIP-STATIC-SAFETY]
 void osp_ownership_free(void *o);
+// One more sharer of a fiber or channel handle [MEM-OWNERSHIP-STATIC-HANDLES].
+void osp_ownership_share(void *o);
 
 // Mark a shared C-runtime singleton immortal (ARC: rc < 0 — dup/drop skip it
 // forever). For objects returned from multiple call sites by construction,
@@ -125,6 +129,28 @@ void osp_mem_notify_multithreaded(void);
 void *osp_mem_scanned_alloc(size_t size);
 void *osp_mem_scanned_realloc(void *block, size_t size);
 void osp_mem_scanned_free(void *block);
+
+// A wait only an operation on one channel can end [CONCURRENCY-DEADLOCK]. While
+// it is registered, the tracing collector treats the waiting thread's stack and
+// `record` (the waiting fiber's scanned block, or NULL) as roots only once
+// `handle`, the channel's managed handle, is reached some other way; a wait it
+// never reaches is blocked for ever. The caller fills `handle` and `record`,
+// the rest is the collector's. Other backends count nothing: a reference count
+// cannot tell a waiting fiber's own reference from one that could wake it.
+typedef struct OspChannelWait {
+  const void *handle;
+  void *record;
+  void *baton;
+  struct OspChannelWait *next;
+  bool reached;
+  bool stuck;
+} OspChannelWait;
+void osp_mem_wait_enter(OspChannelWait *wait);
+void osp_mem_wait_exit(OspChannelWait *wait);
+// How many waits collections have found blocked for ever so far.
+size_t osp_mem_stuck_waits(void);
+// Collects now where a tracing collector can; nothing in the other backends.
+void osp_collect(void);
 
 // Fibers and effect continuations register their threads [MEM-EFFECT-BATON]
 // [MEM-GC-SAFEPOINT]. Tracing can stay on while every other registered thread is

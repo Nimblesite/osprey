@@ -251,14 +251,15 @@ pointers are safe no-ops.
 The layout word identifies raw blocks, pointer masks, list headers, pointer
 arrays, and finalized list headers: a header whose body owns a resource beyond
 the heap (a GPU buffer's copy on the device, [GPU-BUFFER-RESIDENT](../runtime/0034-GPUComputation.md#device-resident-buffers--gpu-buffer-resident),
-or a fiber, [CONCURRENCY-FIBER-LIFETIME](../language/0011-LightweightFibersAndConcurrency.md#fiber-lifetime-concurrency-fiber-lifetime))
+a fiber, [CONCURRENCY-FIBER-LIFETIME](../language/0011-LightweightFibersAndConcurrency.md#fiber-lifetime-concurrency-fiber-lifetime),
+or a channel, [CONCURRENCY-CHANNEL-LIFETIME](../language/0011-LightweightFibersAndConcurrency.md#channel-lifetime-concurrency-channel-lifetime))
 passes through the finalizer its owning runtime unit registers before its data
 is released; the tracing collector runs the same finalizer at the sweep that
 reclaims the header, and ownership at the explicit free.
 
 **Finalizers [MEM-BACKENDS-FINALIZERS].** Bits 8 to 15 of an external header's
 layout word name its subtype: 0 a plain header, 1 a GPU buffer, 2 a fiber
-handle. `osp_mem_set_finalizer(meta, finalize)` registers one finalizer per
+handle, 3 a channel handle. `osp_mem_set_finalizer(meta, finalize)` registers one finalizer per
 subtype, so one unit never replaces another's. The tracing collector keeps the
 subtype in the block's mark word. Ownership drops a GPU buffer by its layout,
 whatever is registered, and runs no finalizer for a plain header. A finalizer may run with the heap lock held
@@ -665,6 +666,21 @@ refused"; the rest are the contract the remaining phases build.
   have no surviving local borrow that outlives the handoff. Pony's isolated
   capability provides a precedent for reasoning about aliases when a value
   crosses a concurrency boundary. [Deny Capabilities for Safe, Fast Actors (AGERE! 2015)](https://soft.vub.ac.be/AGERE15/papers/AGERE_2015_paper_10.pdf)
+- **Handles [MEM-OWNERSHIP-STATIC-HANDLES].** A `Fiber<T>` or `Channel<T>`
+  handle is the one value a program may share. A fiber exists to be awaited
+  from somewhere else and a channel to be used by several fibers, so the
+  ledger does not refuse a handle's second owner: it emits
+  `osp_ownership_share`, and each owner still frees the handle once. The
+  backend counts a handle's sharers in its header word (`OSP_OWN_HELD + n`),
+  and only the last free runs the finalizer and frees the block. Accepted code
+  still never calls `osp_retain` or `osp_release`. A handle carries no payload
+  the program can read, so sharing one aliases nothing the ledger tracks; what
+  crosses a channel still moves. Rust's channels have the same shape: the
+  endpoints are counted, the messages are moved. The sharer count is the
+  holder count of [CONCURRENCY-FIBER-LIFETIME](../language/0011-LightweightFibersAndConcurrency.md#fiber-lifetime-concurrency-fiber-lifetime),
+  proved with Osprey's proof kernel (`share_is_acquire`, `free_is_release`,
+  `free_last_iff`). `osp_ownership_share` on any other block is a compiler
+  fault: the block is kept to exit and the exit report counts it.
 - **Closures and effects [MEM-OWNERSHIP-STATIC-CLOSURES].** A closure that
   outlives the scope it is written in owns the managed values it captures, so
   capturing is a move and must be the captured binding's last use. A closure
@@ -744,7 +760,7 @@ Rust is the reference point for static ownership. This backend has to do better 
 - **A proof of the shipped checker. Built for the model, open for the lowering.** Rust's proofs are of models: λRust [Jung 2018], Oxide [Weiss 2019] and Featherweight Rust [Pearce 2021], not of `rustc`. Osprey's ledger is a mechanised transition system whose accepted paths are proved to keep one owner per allocation and a live lender for every borrow, with a theorem for each lowering rule, replayed by Osprey's own proof kernel ([MEM-OWNERSHIP-STATIC-MODEL]). The emitted code of selected functions is proved against it ([MEM-OWNERSHIP-STATIC-VERIFICATION-COMPILER]). Open: that every function the compiler emits is a path of the model. The backend is not declared shipped without it.
 - **A space bound. Not built.** [Lorenzen 2022] show that unrestricted borrowing can raise peak memory by an arbitrary amount and define the frame-limited bound that avoids it. Osprey must meet that bound: a value at its last use is given to a callee that can free it earlier. Until then, benchmarks report peak live bytes for `ownership` beside `gc` and `arc`, separately from exit-time leaks.
 
-**Not built.** `ownership` accepts 82 of the 180 Osprey-flavor programs in the test corpus. Still refused, each tracked in plan 0045: a `control` handler that resumes at most once, and closures over handler state; `spawn`, `await`, `send` and `recv` of managed values; a caller that reads an argument again after a function that returns part of it; anonymous records and nested list literals that hold a value still read; the erased `any` box; a record update whose new fields read its base. Two live versions of one collection are refused by rule and stay refused. In-place update and the frame-limited space bound are decided and not built. The C runtime still counts when the list and map runtimes copy elements; accepted compiled code never does.
+**Not built.** `ownership` accepts 140 of the 342 programs in the test corpus. The corpus run holds both sets: the 140 listed in `src/osprey/tests/OWNERSHIP_ACCEPTED.txt` must match their goldens with nothing live, natively and, where the target runs them, on each cross target, and the other 202 must be refused by the checker by name, so no program is ever built wrong or dropped from the count in silence. Still refused, each tracked in plan 0045: a `control` handler that resumes at most once, and closures over handler state; `spawn`, `await`, `send` and `recv` of managed values; a caller that reads an argument again after a function that returns part of it; anonymous records and nested list literals that hold a value still read; the erased `any` box; a record update whose new fields read its base. Two live versions of one collection are refused by rule and stay refused. In-place update and the frame-limited space bound are decided and not built. The C runtime still counts when the list and map runtimes copy elements; accepted compiled code never does.
 
 **Where Rust is ahead today.** Rust accepts far more programs. It has mutable borrows, and it records ownership in types, so functions passed as values and library boundaries are checked against a signature. Osprey infers ownership from the bodies of one executable, so those two keep borrowed parameters ([MEM-OWNERSHIP-STATIC-PARAMETERS]), and `ownership` accepts 82 of the 180 programs in `src/osprey/tests/` (2026-11-24). Rust's models are proved; Osprey's ledger is tested.
 

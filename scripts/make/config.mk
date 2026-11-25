@@ -278,7 +278,7 @@ KLEE_LLVM_BIN ?= $(shell for d in "$$OSPREY_KLEE_LLVM" /opt/homebrew/opt/llvm@19
 KLEE_CC       ?= $(KLEE_LLVM_BIN)/clang
 KLEE_LINK     ?= $(KLEE_LLVM_BIN)/llvm-link
 KLEE_NM       ?= $(KLEE_LLVM_BIN)/llvm-nm
-KLEE_RT_SRC   ?= $(filter-out web_runtime wasm_builtins_runtime fiber_runtime,$(WASM_RT_SRC)) $(patsubst src/toolchain/compiler/runtime/%.c,%,$(filter-out %_tests.c,$(wildcard src/toolchain/compiler/runtime/klee/*.c)))
+KLEE_RT_SRC   ?= $(filter-out web_runtime wasm_builtins_runtime,$(WASM_RT_SRC)) $(patsubst src/toolchain/compiler/runtime/%.c,%,$(filter-out %_tests.c,$(wildcard src/toolchain/compiler/runtime/klee/*.c)))
 KLEE_CFLAGS   ?= --target=x86_64-unknown-linux-gnu -nostdlibinc -isystem runtime/klee/include \
   -emit-llvm -c -g -O0 -Xclang -disable-O0-optnone -std=c11 $(WARN_MAX) -U_FORTIFY_SOURCE -fno-stack-protector \
   -fsanitize=undefined -fno-sanitize=function -DOSP_SYMBOLIC -DOSP_FLOAT_SPELLING_PORTABLE -D_GNU_SOURCE '-D__thread=' '-D_Thread_local='
