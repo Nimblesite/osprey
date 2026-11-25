@@ -25,10 +25,8 @@ void __osprey_handler_stack_cleanup(void);
 
 typedef struct Fiber {
   int64_t id;
-  int64_t (*function)(void);
-  // Closure-cell entry: when set, takes precedence over `function`. The env
-  // points at a per-spawn heap cell owned by the spawning program (codegen
-  // emits it), so two in-flight spawns from one site never share state.
+  // Codegen allocates a separate environment per spawn so two in-flight
+  // fibers from one site never share captures.
   int64_t (*env_function)(void *);
   void *env;
   int64_t result;
@@ -46,20 +44,6 @@ typedef struct Fiber {
   bool uses_thread;
   HandlerSnapshot *handler_snapshot; // Inherited effect handlers from parent
 } Fiber;
-
-// Run a fiber's entry point through whichever ABI it was spawned with.
-static int64_t run_fiber_fn(Fiber *fiber) {
-  if (fiber->env_function != NULL) {
-    int64_t result = fiber->env_function(fiber->env);
-    // The spawn transferred the capture cell (+1) to the runtime; the thunk
-    // has fully consumed it once it returns. No-op outside the ARC backend
-    // [GC-ARC-PERCEUS] [MEM-FIBER-ISOLATION].
-    osp_release(fiber->env);
-    fiber->env = NULL;
-    return result;
-  }
-  return fiber->function();
-}
 
 typedef struct Channel {
   int64_t id;
@@ -167,7 +151,12 @@ static void run_with_parent_handlers(Fiber *fiber) {
     __osprey_handler_restore(fiber->handler_snapshot);
     fiber->handler_snapshot = NULL;
   }
-  fiber->result = run_fiber_fn(fiber);
+  int64_t result = fiber->env_function(fiber->env);
+  // The spawn transferred its capture cell to the runtime until the thunk
+  // returned. [GC-ARC-PERCEUS] [MEM-FIBER-ISOLATION]
+  osp_release(fiber->env);
+  fiber->env = NULL;
+  fiber->result = result;
 }
 
 // Run a fiber on this thread's stack, holding no lock: its body can use the runtime.
@@ -217,11 +206,13 @@ static bool start_fiber_thread(Fiber *fiber) {
   return osp_thread_start(&thread, fiber_thread_func, fiber, true) == 0;
 }
 
-// Create and schedule a fiber (shared by both spawn ABIs).
+// Create and schedule a fiber.
 // [CONCURRENCY-SPAWN-AWAIT]
-static int64_t fiber_spawn_internal(int64_t (*fn)(void),
-                                    int64_t (*env_fn)(void *), void *env,
+static int64_t fiber_spawn_internal(int64_t (*env_fn)(void *), void *env,
                                     bool result_managed) {
+  if (!env_fn) {
+    return -1; // Invalid function pointer
+  }
   // Scanned: the capture cell and the result are managed words no stack names.
   Fiber *fiber = osp_mem_scanned_alloc(sizeof(Fiber));
   if (!fiber) {
@@ -241,7 +232,6 @@ static int64_t fiber_spawn_internal(int64_t (*fn)(void),
   }
   int64_t id = next_id++;
   fiber->id = id;
-  fiber->function = fn;
   fiber->env_function = env_fn;
   fiber->env = env;
   fiber->result = 0;
@@ -266,33 +256,18 @@ static int64_t fiber_spawn_internal(int64_t (*fn)(void),
   return id;
 }
 
-// Spawn with the env-free entry ABI.
-int64_t fiber_spawn(int64_t (*fn)(void)) {
-  if (!fn) {
-    return -1; // Invalid function pointer
-  }
-  return fiber_spawn_internal(fn, NULL, NULL, false);
-}
-
 // Spawn with the closure-cell entry ABI: `fn(env)` runs on the fiber. The env
 // cell is allocated per spawn by the compiled program, so re-entering the same
 // spawn site never aliases another in-flight fiber's captures.
 int64_t fiber_spawn_env(int64_t (*fn)(void *), void *env) {
-  if (!fn) {
-    return -1; // Invalid function pointer
-  }
-  return fiber_spawn_internal(NULL, fn, env, false);
+  return fiber_spawn_internal(fn, env, false);
 }
 
 // Spawn a compiler-generated closure thunk and preserve whether its erased
-// result word is a managed pointer. The legacy two-argument entry point remains
-// scalar for C-runtime callers such as the HTTP server.
+// result word is a managed pointer.
 int64_t fiber_spawn_env_owned(int64_t (*fn)(void *), void *env,
                               int64_t result_managed) {
-  if (!fn) {
-    return -1; // Invalid function pointer
-  }
-  return fiber_spawn_internal(NULL, fn, env, result_managed != 0);
+  return fiber_spawn_internal(fn, env, result_managed != 0);
 }
 
 // Claims the first queued fiber at or below `last` that nothing has started.

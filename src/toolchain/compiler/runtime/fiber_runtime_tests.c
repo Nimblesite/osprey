@@ -15,19 +15,26 @@
 
 #include "fiber_tests_shared.h"
 
-static int64_t test_function_1(void) { return 42; }
+static int64_t test_function_1(void *env) {
+  (void)env;
+  return 42;
+}
 
-static int64_t test_function_2(void) { return 100; }
+static int64_t test_function_2(void *env) {
+  (void)env;
+  return 100;
+}
 
-int64_t slow_function(void) {
+static int64_t slow_function(void *env) {
+  (void)env;
   usleep(100000); // 100ms
   return 999;
 }
 
 void test_null_function_pointer(void) {
-  int64_t result = fiber_spawn(NULL);
+  int64_t result = fiber_spawn_env(NULL, NULL);
   assert(result == -1 &&
-         "fiber_spawn should return -1 for a null function pointer");
+         "fiber_spawn_env should return -1 for a null function pointer");
 }
 
 void test_invalid_fiber_await(void) {
@@ -41,16 +48,16 @@ void test_invalid_fiber_await(void) {
 }
 
 void test_valid_fiber_spawn(void) {
-  int64_t fiber_id = fiber_spawn(test_function_1);
+  int64_t fiber_id = fiber_spawn_env(test_function_1, NULL);
   assert(fiber_id > 0 &&
-         "fiber_spawn should return a positive ID for a valid function");
+         "fiber_spawn_env should return a positive ID for a valid function");
 
   int64_t result = fiber_await(fiber_id);
   assert(result == 42 && "fiber should return its function's value");
 }
 
 void test_repeated_fiber_await(void) {
-  int64_t fiber_id = fiber_spawn(test_function_1);
+  int64_t fiber_id = fiber_spawn_env(test_function_1, NULL);
   assert(fiber_id > 0 && "fiber should spawn for repeated await");
 
   int64_t first = fiber_await(fiber_id);
@@ -60,8 +67,8 @@ void test_repeated_fiber_await(void) {
 }
 
 void test_multiple_fibers(void) {
-  int64_t fiber1 = fiber_spawn(test_function_1);
-  int64_t fiber2 = fiber_spawn(test_function_2);
+  int64_t fiber1 = fiber_spawn_env(test_function_1, NULL);
+  int64_t fiber2 = fiber_spawn_env(test_function_2, NULL);
 
   assert(fiber1 > 0 && fiber2 > 0 && "both fibers should have valid IDs");
   assert(fiber1 != fiber2 && "fibers should have different IDs");
@@ -93,7 +100,7 @@ void test_fiber_stress(void) {
   int64_t fiber_ids[NUM_FIBERS];
 
   for (int i = 0; i < NUM_FIBERS; i++) {
-    fiber_ids[i] = fiber_spawn(test_function_1);
+    fiber_ids[i] = fiber_spawn_env(test_function_1, NULL);
     assert(fiber_ids[i] > 0 && "each fiber should have a valid ID");
   }
 
@@ -104,8 +111,8 @@ void test_fiber_stress(void) {
 }
 
 void test_concurrent_execution(void) {
-  int64_t slow_fiber = fiber_spawn(slow_function);
-  int64_t fast_fiber = fiber_spawn(test_function_1);
+  int64_t slow_fiber = fiber_spawn_env(slow_function, NULL);
+  int64_t fast_fiber = fiber_spawn_env(test_function_1, NULL);
 
   int64_t fast_result = fiber_await(fast_fiber);
   assert(fast_result == 42 && "fast fiber should return 42");
@@ -120,7 +127,7 @@ void test_fiber_done(void) {
   assert(fiber_done(-1) == -1 &&
          "fiber_done should return -1 for a negative fiber ID");
 
-  int64_t slow_fiber = fiber_spawn(slow_function);
+  int64_t slow_fiber = fiber_spawn_env(slow_function, NULL);
   assert(fiber_done(slow_fiber) == 0 &&
          "fiber_done should report 0 while the fiber is running");
 
@@ -147,7 +154,7 @@ static void await_env_doubled(int64_t fiber) {
 }
 
 // The env-carrying spawn forms deliver the environment pointer to the thunk
-// and reject a NULL function like the plain form.
+// and reject a NULL function before scheduling.
 void test_fiber_spawn_env_forms(void) {
   int64_t twenty_one = 21;
   await_env_doubled(fiber_spawn_env(env_doubler, &twenty_one));
@@ -172,8 +179,8 @@ static void await_repeatedly(int64_t fiber, int64_t expected, int times) {
 // results — same values, same repeated-await semantics — and toggles cleanly.
 void test_deterministic_mode(void) {
   assert(fiber_set_deterministic_mode(true) == 0);
-  int64_t a = fiber_spawn(test_function_1);
-  int64_t b = fiber_spawn(test_function_2);
+  int64_t a = fiber_spawn_env(test_function_1, NULL);
+  int64_t b = fiber_spawn_env(test_function_2, NULL);
   assert(a > 0 && b > 0 && a != b);
   // A queued deterministic fiber reports READY before it has run: execution
   // happens at the await, and a `while (!fiber_done(f))` poll would otherwise
@@ -195,17 +202,17 @@ void test_deterministic_mode(void) {
   await_repeatedly(owned, 42, 3);
   assert(fiber_done(owned) == 1);
   assert(fiber_set_deterministic_mode(false) == 0);
-  int64_t d = fiber_spawn(test_function_1); // threaded mode works again
+  int64_t d = fiber_spawn_env(test_function_1, NULL); // threaded mode works again
   assert(d > 0 && fiber_await(d) == 42);
 }
 
 // fiber_cleanup_results releases retained results without breaking later
 // spawns: the runtime stays fully usable afterwards.
 void test_cleanup_results(void) {
-  int64_t f = fiber_spawn(test_function_1);
+  int64_t f = fiber_spawn_env(test_function_1, NULL);
   assert(fiber_await(f) == 42);
   fiber_cleanup_results();
-  int64_t g = fiber_spawn(test_function_2);
+  int64_t g = fiber_spawn_env(test_function_2, NULL);
   assert(g > 0 && fiber_await(g) == 100);
   fiber_cleanup_results();
 }

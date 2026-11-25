@@ -34,13 +34,15 @@ static int64_t gating_channel = 0;
 // Parks on an empty channel until this test releases it: "still running" is
 // then a fact about blocking, not about a timer racing a 100 ms usleep body,
 // which a loaded runner can outrun.
-static int64_t channel_gated_function(void) {
+static int64_t channel_gated_function(void *env) {
+  (void)env;
   return channel_recv(gating_channel);
 }
 
 // Sends more values than the buffer holds, so the runtime must park the sender
 // on `not_full` until the consumer drains rather than drop or overwrite.
-static int64_t channel_overfiller(void) {
+static int64_t channel_overfiller(void *env) {
+  (void)env;
   for (int64_t i = 0; i < CHANNEL_MESSAGES; i++) {
     if (channel_send(blocking_channel, CHANNEL_FIRST_VALUE + i, 0) != 1) {
       return -1;
@@ -50,7 +52,8 @@ static int64_t channel_overfiller(void) {
 }
 
 // Sends exactly once, late, so a recv issued first must park on `not_empty`.
-static int64_t channel_late_sender(void) {
+static int64_t channel_late_sender(void *env) {
+  (void)env;
   usleep(CHANNEL_SETTLE_US);
   return channel_send(blocking_channel, CHANNEL_HANDOFF_VALUE, 0);
 }
@@ -161,7 +164,7 @@ void test_channel_blocks_both_directions(void) {
   assert(fiber_set_deterministic_mode(false) == 0);
   blocking_channel = channel_create(CHANNEL_CAP);
   assert(blocking_channel > 0);
-  int64_t producer = fiber_spawn(channel_overfiller);
+  int64_t producer = fiber_spawn_env(channel_overfiller, NULL);
   assert(producer > 0);
   usleep(CHANNEL_SETTLE_US);
   assert(fiber_done(producer) == 0 &&
@@ -173,7 +176,7 @@ void test_channel_blocks_both_directions(void) {
   assert(fiber_await(producer) == CHANNEL_MESSAGES &&
          "every send reported success");
 
-  int64_t sender = fiber_spawn(channel_late_sender);
+  int64_t sender = fiber_spawn_env(channel_late_sender, NULL);
   assert(sender > 0);
   assert(channel_recv(blocking_channel) == CHANNEL_HANDOFF_VALUE &&
          "an empty buffer parks the receiver until a value arrives");
@@ -199,7 +202,7 @@ void test_unassigned_fiber_handles(void) {
 void test_cleanup_defers_while_a_fiber_runs(void) {
   gating_channel = channel_create(1);
   assert(gating_channel > 0);
-  int64_t slow = fiber_spawn(channel_gated_function);
+  int64_t slow = fiber_spawn_env(channel_gated_function, NULL);
   assert(slow > 0);
   assert(fiber_done(slow) == 0 && "the fiber must still be running");
   fiber_cleanup_results();
