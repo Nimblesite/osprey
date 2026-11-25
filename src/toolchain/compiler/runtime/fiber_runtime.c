@@ -19,7 +19,7 @@
 
 // Forward declarations for effect handler snapshot/restore
 typedef struct HandlerSnapshot HandlerSnapshot;
-int __osprey_handler_try_snapshot(HandlerSnapshot **out);
+size_t __osprey_handler_try_snapshot(HandlerSnapshot **out);
 void __osprey_handler_restore(HandlerSnapshot *snap);
 void __osprey_handler_stack_cleanup(void);
 
@@ -104,22 +104,27 @@ static bool grow_table(void **table, int64_t capacity, size_t entry) {
   return true;
 }
 
-// Makes room for next_id in both tables; false when out of memory.
-static bool reserve_handle(void) {
+// Makes room for next_id in both tables: 0, or the bytes of the table growth
+// the allocator refused.
+static size_t reserve_handle(void) {
   if (next_id < handle_capacity) {
-    return true;
+    return 0;
   }
   int64_t capacity = handle_capacity > 0 ? handle_capacity * 2 : 1024;
   void *grown_fibers = fibers;
   void *grown_channels = channels;
-  bool grown = grow_table(&grown_fibers, capacity, sizeof(Fiber *));
+  bool fibers_grown = grow_table(&grown_fibers, capacity, sizeof(Fiber *));
   fibers = grown_fibers;
-  grown = grown && grow_table(&grown_channels, capacity, sizeof(Channel *));
-  channels = grown_channels;
-  if (grown) {
-    handle_capacity = capacity;
+  if (!fibers_grown) {
+    return (size_t)capacity * sizeof(Fiber *);
   }
-  return grown;
+  bool channels_grown = grow_table(&grown_channels, capacity, sizeof(Channel *));
+  channels = grown_channels;
+  if (!channels_grown) {
+    return (size_t)capacity * sizeof(Channel *);
+  }
+  handle_capacity = capacity;
+  return 0;
 }
 
 static Fiber *fiber_of(int64_t fiber_id) {
@@ -208,25 +213,28 @@ static bool start_fiber_thread(Fiber *fiber) {
   return osp_thread_start(&thread, fiber_thread_func, fiber, true) == 0;
 }
 
-// Create and schedule a fiber.
-// [CONCURRENCY-SPAWN-AWAIT]
+// Create and schedule a fiber. -2 when memory is refused, with the refused
+// allocation's size in `*refused`. [CONCURRENCY-SPAWN-AWAIT]
 static int64_t fiber_spawn_internal(int64_t (*env_fn)(void *), void *env,
-                                    bool result_managed) {
+                                    bool result_managed, size_t *refused) {
   if (!env_fn) {
     return -1; // Invalid function pointer
   }
   // Scanned: the capture cell and the result are managed words no stack names.
   Fiber *fiber = osp_mem_scanned_alloc(sizeof(Fiber));
   if (!fiber) {
-    return -2; // Memory allocation failed
+    *refused = sizeof(Fiber);
+    return -2;
   }
   // No memory for the parent's handlers: the spawn is refused, never run without them.
-  if (__osprey_handler_try_snapshot(&fiber->handler_snapshot) != 0) {
+  *refused = __osprey_handler_try_snapshot(&fiber->handler_snapshot);
+  if (*refused != 0) {
     osp_mem_scanned_free(fiber);
     return -2;
   }
   pthread_mutex_lock(&runtime_mutex);
-  if (!reserve_handle()) {
+  *refused = reserve_handle();
+  if (*refused != 0) {
     pthread_mutex_unlock(&runtime_mutex);
     osp_mem_scanned_free(fiber->handler_snapshot); // a scanned block, as the copy was made
     osp_mem_scanned_free(fiber);
@@ -262,7 +270,8 @@ static int64_t fiber_spawn_internal(int64_t (*env_fn)(void *), void *env,
 // cell is allocated per spawn by the compiled program, so re-entering the same
 // spawn site never aliases another in-flight fiber's captures.
 int64_t fiber_spawn_env(int64_t (*fn)(void *), void *env) {
-  return fiber_spawn_internal(fn, env, false);
+  size_t refused = 0;
+  return fiber_spawn_internal(fn, env, false, &refused);
 }
 
 // Spawn a compiler-generated closure thunk and preserve whether its erased
@@ -271,9 +280,10 @@ int64_t fiber_spawn_env(int64_t (*fn)(void *), void *env) {
 // back -2 as a handle the program would carry on with (#359) [MEM-REFUSED-STOP].
 int64_t fiber_spawn_env_owned(int64_t (*fn)(void *), void *env,
                               int64_t result_managed) {
-  int64_t id = fiber_spawn_internal(fn, env, result_managed != 0);
+  size_t refused = 0;
+  int64_t id = fiber_spawn_internal(fn, env, result_managed != 0, &refused);
   if (id == -2) { // -1 is a NULL thunk, which compiled code never passes
-    osp_alloc_refused("spawn", sizeof(Fiber));
+    osp_alloc_refused("spawn", refused);
   }
   return id;
 }

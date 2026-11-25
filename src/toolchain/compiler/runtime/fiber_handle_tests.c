@@ -266,8 +266,32 @@ static void test_a_refused_compiled_spawn_stops_by_name(void) {
   assert(ran > 0 && fiber_await(ran) == 7);
 }
 
+// A handle table that must grow to 131072 slots asks for exactly 1 MiB, a size
+// no other spawn allocation has.
+enum { GROWN_SLOTS = 131072, QUEUED_PAST_GROWTH = GROWN_SLOTS + 8 };
+
+static void refuse_the_grown_table(void) {
+  assert(fiber_set_deterministic_mode(true) == 0); // queued, so no thread per fiber
+  osp_alloc_fail_size((size_t)GROWN_SLOTS * sizeof(void *));
+}
+
+static void spawn_past_the_growth(void) {
+  for (int i = 0; i < QUEUED_PAST_GROWTH; i++) {
+    (void)fiber_spawn_env_owned(seven, NULL, 0);
+  }
+}
+
+// [MEM-REFUSED-STOP] A refused spawn names the bytes the refused allocation
+// asked for. It always reported the fiber record's size, so a refused handle
+// table of 1 MiB read as a refusal of a few hundred bytes.
+static void test_a_refused_spawn_names_the_bytes_refused(void) {
+  assert(osp_child_refusal_names(refuse_the_grown_table, spawn_past_the_growth,
+                                 "osprey: allocation refused: spawn request_bytes=1048576\n"));
+}
+
 void run_fiber_handle_tests(void) {
   test_a_refused_compiled_spawn_stops_by_name();
+  test_a_refused_spawn_names_the_bytes_refused();
   check_what_a_handle_costs();
   check_handles_are_one_space();
   check_growth_under_contention();

@@ -46,7 +46,7 @@ int64_t channel_create(int64_t capacity) {
   }
 
   pthread_mutex_lock(&runtime_mutex);
-  if (!reserve_handle()) {
+  if (reserve_handle() != 0) {
     pthread_mutex_unlock(&runtime_mutex);
     osp_mem_scanned_free(channel->buffer);
     free(channel);
