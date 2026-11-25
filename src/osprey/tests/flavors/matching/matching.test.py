@@ -30,10 +30,54 @@ def parity(n):
         case False:
             return "odd"
 
+# #433: a name every branch of an `if` binds is bound after it, as in CPython.
+def size_or_zero(items):
+    if len(items) > 0:
+        result = wrapAdd(len(items), 100)
+    else:
+        result = 0
+    return result
+
+def band(n):
+    if n < 0:
+        name = "neg"
+    elif n == 0:
+        name = "zero"
+    elif n < 10:
+        doubled = wrapMul(n, 2)
+        name = f"small{doubled}"
+    else:
+        name = "big"
+    return f"{name}:{n}"
+
+def quadrant(x, y):
+    if x >= 0:
+        if y >= 0:
+            q = 1
+        else:
+            q = 4
+    else:
+        q = 2 if y >= 0 else 3
+    scaled = wrapMul(q, 10)
+    return scaled
+
+def spread(a, b):
+    if a <= b:
+        low = a
+        high = b
+    else:
+        low = b
+        high = a
+    return f"{low}..{high}"
+
 def boolean_case():
     return checkAll("grade boundaries and parity", [
         f"g80={grade(80)} g20={grade(20)} e4={parity(4)} e7={parity(7)}" == "g80=pass g20=fail e4=even e7=odd",
-        grade(50) == "pass", grade(49) == "fail", parity(0) == "even", parity(9) == "odd"
+        grade(50) == "pass", grade(49) == "fail", parity(0) == "even", parity(9) == "odd",
+        size_or_zero([5, 6]) == 102, size_or_zero([]) == 0,
+        answersHold(band, [-3, 0, 4, 9, 10, 99], ["neg:-3", "zero:0", "small8:4", "small18:9", "big:10", "big:99"]),
+        quadrant(1, 1) == 10, quadrant(-1, 1) == 20, quadrant(-1, -1) == 30, quadrant(1, -1) == 40,
+        quadrant(0, 0) == 10, spread(2, 7) == "2..7", spread(7, 2) == "2..7", spread(4, 4) == "4..4"
     ])
 
 def label(n):

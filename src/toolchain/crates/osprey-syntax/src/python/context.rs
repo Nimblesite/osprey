@@ -277,6 +277,17 @@ impl<'s> Lowerer<'s> {
         ) {
             return;
         }
+        if node.kind() == "if_statement" {
+            let mut inner = BTreeMap::new();
+            for child in children(node) {
+                self.count_writes(child, &mut inner);
+            }
+            self.count_joined_writes(node, &mut inner);
+            for (name, count) in inner {
+                *counts.entry(name).or_default() += count;
+            }
+            return;
+        }
         if node.kind() == "assignment" {
             if let Some(name) = node
                 .child_by_field_name("left")

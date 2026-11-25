@@ -200,6 +200,11 @@ fn python_rejects_reading_a_local_before_its_assignment() {
             "balance = 0\ndef deposit(amount):\n    balance = balance + amount\n    return balance\n",
             "balance = 0\ndef shown():\n    print(f\"{balance}\")\n    balance = 2\n    return balance\n",
             "balance = 0\ndef bump(flag):\n    if flag:\n        balance = balance + 1\n    return 0\n",
+            // #433: only a name every branch binds is bound after the `if`.
+            "def pick(flag):\n    if flag:\n        balance = 1\n    return balance\n",
+            "def pick(n):\n    if n > 0:\n        balance = 1\n    elif n < 0:\n        balance = 2\n    return balance\n",
+            "def pick(n):\n    if n > 0:\n        balance = 1\n    else:\n        other = 2\n    return balance\n",
+            "def pick(n):\n    if n > 0:\n        if n > 5:\n            balance = 1\n    else:\n        balance = 2\n    return balance\n",
         ],
     );
     for accepted in [
