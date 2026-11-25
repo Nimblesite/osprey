@@ -300,20 +300,21 @@ function revealView(ask: Ask, host: CapabilityHost): Promise<unknown> {
 }
 
 /** Capability kinds this webview answers ([NATIVE-HOSTS-COVERAGE]); any other kind fails explicitly. */
-export const ANSWERED_CAPABILITIES: readonly string[] = ["http", "host-call"];
+export const ANSWERED_CAPABILITIES = ["http", "host-call"] as const;
+const [HTTP_CAPABILITY, HOST_CALL_CAPABILITY] = ANSWERED_CAPABILITIES;
 
 /** Execute one bounded capability from a checked ask. */
 export function createRequestExecutor(host: CapabilityHost, options: ExecutorOptions = {}): (ask: Ask) => Promise<Completion> {
   const serialize = options.serialize ?? serializeProcesses;
   return async (ask) => {
     const kind = ask.kind;
-    if (kind === "http") {
+    if (kind === HTTP_CAPABILITY) {
       // The completion text is the raw response body — "formats owned by the outside world … stay
       // the business of the adapter that speaks them" ([NATIVE-SHM-WHERE-SERIALIZATION-REMAINS]) —
       // and the body also lands in the host-held slice the ask names ([NATIVE-SHM-ASK]).
       return httpRequest(ask);
     }
-    if (kind === "host-call") {
+    if (kind === HOST_CALL_CAPABILITY) {
       if (required(ask, 2, "operation") === "process.input") {
         const plan = processPlan(ask, host);
         return serialize(plan.cwd, async () => {
