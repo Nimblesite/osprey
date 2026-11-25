@@ -46,7 +46,7 @@ static void test_empty_singleton(void) {
   CHECK(osprey_list_concat(NULL, NULL) == e);
   CHECK(osprey_list_reverse(e) == e);
   CHECK(osprey_list_reverse(NULL) == e);
-  CHECK(osprey_list_builder_seal(osprey_list_builder_new()) == e);
+  CHECK(osprey_list_builder_seal(osprey_list_builder_new_of(0)) == e);
   CHECK(osprey_list_drop(make_range_list(0, 40), 40) == e);
   check_range(e, 0, 0); /* still pristine after all of the above */
 }

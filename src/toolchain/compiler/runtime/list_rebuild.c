@@ -28,10 +28,6 @@ OspreyListBuilder *osprey_list_builder_new_of(int em) {
   return b;
 }
 
-OspreyListBuilder *osprey_list_builder_new(void) {
-  return osprey_list_builder_new_of(0);
-}
-
 /* Stack a fresh root over the builder's root and its full tail chunk. Unlike
    grow_root this MOVES both builder references into the new node. */
 static void builder_grow_root(OspreyListBuilder *b) {

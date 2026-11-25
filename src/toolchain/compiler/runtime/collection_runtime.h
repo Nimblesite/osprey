@@ -93,7 +93,6 @@ OspreyList *osprey_list_reverse(OspreyList *l);
 OspreyList *osprey_list_sort(OspreyList *l);
 
 OspreyListBuilder *osprey_list_builder_new_of(int elem_managed);
-OspreyListBuilder *osprey_list_builder_new(void);
 /* TRANSFERS `v` and latches the builder's element kind. */
 void osprey_list_builder_push_of(OspreyListBuilder *b, int64_t v,
                                  int elem_managed);

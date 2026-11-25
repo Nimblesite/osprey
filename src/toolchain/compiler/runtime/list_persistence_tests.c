@@ -85,7 +85,7 @@ void test_builder_paths(void) {
   for (size_t k = 0; k < NELEMS(GROWTH_SIZES); k++) {
     int64_t n = GROWTH_SIZES[k];
     if (n > APPEND_BUILD_LIMIT) continue;
-    OspreyListBuilder *b = osprey_list_builder_new();
+    OspreyListBuilder *b = osprey_list_builder_new_of(0);
     CHECK(b != NULL);
     for (int64_t i = 0; i < n; i++) {
       osprey_list_builder_push_of(b, i * 3 - 1, 0);
@@ -130,7 +130,7 @@ void test_element_kind_flags(void) {
   OspreyList *s1 = osprey_list_builder_seal(b1);
   CHECK(osprey_list_elem_managed(s1) == 1);
   CHECK(osprey_list_length(s1) == 2 && osprey_list_get(s1, 1) == 2);
-  OspreyListBuilder *b2 = osprey_list_builder_new();
+  OspreyListBuilder *b2 = osprey_list_builder_new_of(0);
   CHECK(b2 != NULL);
   osprey_list_builder_push_of(b2, 5, 1); /* latches on first push */
   OspreyList *s2 = osprey_list_builder_seal(b2);

@@ -47,7 +47,7 @@ static int64_t scrambled_word(int64_t i) {
 }
 
 static OspreyList *scrambled(int64_t n) {
-  OspreyListBuilder *b = osprey_list_builder_new();
+  OspreyListBuilder *b = osprey_list_builder_new_of(0);
   for (int64_t i = 0; i < n; i++) {
     osprey_list_builder_push_of(b, scrambled_word(i), 0);
   }
@@ -65,7 +65,7 @@ static void check_ascending(OspreyList *sorted, int64_t n) {
 static void test_short_lists_come_back_as_themselves(void) {
   OspreyList *e = osprey_list_empty();
   CHECK(osprey_list_sort(e) == e);
-  OspreyListBuilder *b = osprey_list_builder_new();
+  OspreyListBuilder *b = osprey_list_builder_new_of(0);
   osprey_list_builder_push_of(b, 7, 0);
   OspreyList *one = osprey_list_builder_seal(b);
   CHECK(osprey_list_sort(one) == one);
