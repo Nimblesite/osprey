@@ -35,23 +35,15 @@ test.describe("documentation sub-page navigation", () => {
     await expect(page.locator("#site-navigation a.active")).toHaveText("Docs");
   });
 
-  test("Synth links to the planned Prism hardware and labels the illustrations", async ({ page }) => {
+  test("the planned Prism hardware page is unpublished: no page, no nav entry, no link", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/docs/audio-synthesis/");
     const synth = page.locator(".docs-nav-desktop .docs-nav-section", { hasText: "Synth" });
-    await synth.getByRole("link", { name: "Prism hardware", exact: true }).click();
-    await expect(page).toHaveURL(/\/docs\/audio-synthesis\/hardware\/$/);
-    const article = page.locator(".prose-layout .prose");
-    await expect(article.getByText("not in production", { exact: false })).toBeVisible();
-    await expect(article.locator("figcaption")).toHaveText([/This is the design you install on the box/, /AI-generated renders from three angles of one 3D model/]);
-    await expect(article.getByRole("img")).toHaveCount(4);
-    await expect(article.locator("h2").first()).toHaveText("Build your own synth. Install it on the box.");
-    for (const illustration of await article.getByRole("img").all()) {
-      await illustration.scrollIntoViewIfNeeded();
-      await expect(illustration).toHaveJSProperty("complete", true);
-      expect(await illustration.evaluate((image) => image.naturalWidth)).toBeGreaterThan(0);
-    }
-    await expect(article.getByRole("link", { name: "Read the hardware specification" })).toHaveAttribute("href", "/spec/prismdevicehardware/");
+    await expect(synth.getByRole("link", { name: "Audio synthesis", exact: true })).toBeVisible();
+    await expect(synth.getByRole("link", { name: "Prism hardware", exact: true })).toHaveCount(0);
+    await expect(page.locator('a[href="/docs/audio-synthesis/hardware/"]')).toHaveCount(0);
+    const response = await page.request.get("/docs/audio-synthesis/hardware/");
+    expect(response.status()).toBe(404);
   });
 
   for (const height of [600, 900]) {

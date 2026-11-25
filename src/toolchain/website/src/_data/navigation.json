@@ -165,10 +165,6 @@
         {
           "text": "Audio synthesis",
           "url": "/docs/audio-synthesis/"
-        },
-        {
-          "text": "Prism hardware",
-          "url": "/docs/audio-synthesis/hardware/"
         }
       ]
     },
