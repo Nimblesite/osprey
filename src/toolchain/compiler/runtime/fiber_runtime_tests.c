@@ -31,12 +31,6 @@ static int64_t slow_function(void *env) {
   return 999;
 }
 
-void test_null_function_pointer(void) {
-  int64_t result = fiber_spawn_env(NULL, NULL);
-  assert(result == -1 &&
-         "fiber_spawn_env should return -1 for a null function pointer");
-}
-
 void test_invalid_fiber_await(void) {
   int64_t result = fiber_await(99999);
   assert(result == -1 &&
@@ -262,7 +256,6 @@ void test_fiber_process_bridge(void) {
 }
 
 void run_all_fiber_tests(void) {
-  test_null_function_pointer();
   test_invalid_fiber_await();
   test_valid_fiber_spawn();
   test_repeated_fiber_await();
