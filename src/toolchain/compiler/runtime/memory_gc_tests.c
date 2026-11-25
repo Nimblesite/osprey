@@ -435,6 +435,10 @@ int main(int argc, char **argv) {
     foreign_fault_child();
     return 0;
   }
+  if (argc == 2 && strcmp(argv[1], "--stdout-overflow") == 0) {
+    stdout_overflow_child();
+    return 0;
+  }
   if (argc == 3 && strcmp(argv[1], "--ceiling") == 0) {
     ceiling_child(argv[2]);
     return 0;
