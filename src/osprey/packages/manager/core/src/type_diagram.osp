@@ -1,5 +1,4 @@
 namespace registry;
-import registry::Bytes
 
 /// Parses a typeDiagram document — `typeDiagram`, then `alias X = T`,
 /// `type X { ... }`, and `union X { Variant { ... } ... }` declarations whose
@@ -113,17 +112,14 @@ module TypeDiagram {
     }
 
     fn declName(decl) = match decl {
-        Alias { name } => name
-        Struct { name } => name
-        Union { name } => name
+        Alias { name } | Struct { name } | Union { name } => name
     }
 
     fn isBuiltin(name) = name == "String" || name == "Int" || name == "Bool" || name == "DateTime" || name == "Uuid"
 
     fn refKnown(names, ref) = match ref {
         Named { name } => isBuiltin(name) || listContains(names, name)
-        ListOf { element } => refKnown(names, element)
-        OptionOf { element } => refKnown(names, element)
+        ListOf { element } | OptionOf { element } => refKnown(names, element)
     }
 
     /// True when every item satisfies `ok`.

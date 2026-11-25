@@ -1,9 +1,9 @@
 #!/usr/bin/env zsh
 # Run every assertion suite under one memory backend and one code generator;
 # used by conformance CI so moving an assertion suite within tests never drops
-# its GC, ARC or wasm coverage.
+# its GC, ARC, ownership or wasm coverage.
 #
-#   run_test_corpus.sh [gc|arc]     native backend, chosen allocator
+#   run_test_corpus.sh [gc|arc|ownership]   native backend, chosen allocator
 #   OSPREY_TARGET=wasm32 run_test_corpus.sh wasm32 backend under Node's WASI
 #
 # Two independent checks run per program, and BOTH must hold:
@@ -137,36 +137,14 @@ run_worker() {
   print -r -- "$run_code" >"$resultdir/$index.status"
 }
 
-# Golden precedence for a program at $1, echoing the chosen path (empty if none):
-#   1. <file>.expectedoutput                     — per-file golden
-#   2. <file>.expectedoutput.<uname>             — OS-specific output
-#   3. <stem>.test.osp.expectedoutput            — an ML, Python or TypeScript twin shares the Default golden
-#   4. <stem>.test.osp.expectedoutput.<uname>    — ...and its OS-specific form
-# Rules 3 and 4 are what make all flavor twins share ONE file:
-# every flavor is required to run byte-identically, so one golden proves it
-# ([FLAVOR-IR-EQUIV], [FLAVOR-TS-VERIFICATION]).
-golden_for() {
-  local file=$1 stem=${1%.*} os
-  os=$(uname -s)
-  for candidate in \
-    "$file.expectedoutput" \
-    "$file.expectedoutput.$os" \
-    "$stem.osp.expectedoutput" \
-    "$stem.osp.expectedoutput.$os"
-  do
-    [[ -f "$candidate" ]] && { print -r -- "$candidate"; return 0 }
-  done
-  return 1
-}
-
-# The single ARC exit sentinel in a stderr transcript: echoes the live-object
-# count only when EXACTLY one `[osp-arc] exit: N live objects` line is present.
+# Echo the live-object count only when exactly one exit sentinel from the
+# selected backend appears in the stderr transcript.
 # Absent or repeated sentinels echo nothing, which every caller treats as a
 # failed check — a run that never printed the sentinel (crashed runtime,
 # swallowed stderr) must read as unverified, never as leak-free.
-arc_live_count() {
+live_count() {
   local matches
-  matches=$(sed -n 's/^\[osp-arc\] exit: \([0-9]*\) live objects.*/\1/p' "$1")
+  matches=$(sed -n "s/^\[osp-$MEMORY\] exit: \([0-9]*\) live objects.*/\1/p" "$1")
   [[ -n "$matches" && "$matches" != *$'\n'* ]] && print -r -- "$matches"
 }
 
@@ -212,13 +190,12 @@ case $TARGET in
   wasm32|ios-sim|macos|android*) MEMORY=${1:-arc} ;;
   *) MEMORY=${1:-gc} ;;
 esac
-# The ARC leak oracle reads the runtime's exit report, which memory_arc.c
-# arms only under OSPREY_ARC_DEBUG. The harness arms it ITSELF whenever it
-# audits the arc backend: the sentinel check below is strict (exactly one
-# line, value 0, for every passing run in BOTH kernel lowerings), and an
-# oracle that depends on the caller remembering an env var is fail-open by
-# construction — an unarmed run would read as leak-free.
-[[ "$MEMORY" == "arc" ]] && export OSPREY_ARC_DEBUG=1
+LEAK_CHECK=1
+case $MEMORY in
+  arc) export OSPREY_ARC_DEBUG=1 ;;
+  ownership) export OSPREY_OWNERSHIP_DEBUG=1 ;;
+  *) LEAK_CHECK=0 ;;
+esac
 JOBS=$(configured_jobs)
 jobs_code=$?
 [[ $jobs_code -eq 0 ]] || exit $jobs_code
@@ -246,14 +223,7 @@ cleanup_results() {
 trap cleanup_results EXIT
 trap 'cleanup_results; exit 130' INT TERM
 
-while IFS= read -r -d $'\0' f; do
-  # Standalone Python suites explicitly opt in ([FLAVOR-PYTHON-SELECT]).
-  if [[ $f == *.py ]] && ! awk '/^[[:space:]]*# ?osprey: flavor=python[[:space:]]*$/ {found=1; exit}
-    /^[[:space:]]*($|#|\/\/)/ {next} {exit} END {exit !found}' "$f"; then
-    continue
-  fi
-  FILES+=("$f")
-done < <(find "$TESTDIR" \( -name '*.test.osp' -o -name '*.test.ospml' -o -name '*.test.ts' -o -name '*.test.py' \) -print0 | LC_ALL=C sort -z)
+source "${0:A:h}/corpus_files.sh"
 
 # Programs that contend for an OS resource are run one at a time. Two kinds do:
 #
@@ -351,8 +321,8 @@ for (( index = 1; index <= ${#FILES}; index++ )); do
   # runtime to print one and is already red above. For a passing run the
   # sentinel is REQUIRED to be present and zero; parsing "no line" as "no
   # leak" is how a crashed exit path would read as leak-free.
-  if [[ "$MEMORY" == "arc" && $rc -eq 0 ]]; then
-    live=$(arc_live_count "$ERRFILE")
+  if [[ $LEAK_CHECK -eq 1 && $rc -eq 0 ]]; then
+    live=$(live_count "$ERRFILE")
     if [[ "$live" != "0" ]]; then
       leaky=$((leaky + 1))
       LEAKS+=("$rel (${live:-no sentinel})")
@@ -439,8 +409,8 @@ if [[ $golden_total -lt $GOLDEN_MIN ]]; then
   echo "Goldens pin output properties assertions cannot express (print ORDER, exact" >&2
   echo "formatting, the TAP tally). Restore the missing goldens; do not lower the floor." >&2
 fi
-if [[ "$MEMORY" == "arc" ]]; then
-  echo "TEST_CORPUS_ARC_LEAKY=$leaky"
+if [[ $LEAK_CHECK -eq 1 ]]; then
+  echo "TEST_CORPUS_${(U)MEMORY}_LEAKY=$leaky"
   for item in $LEAKS; do echo "  leak: $item"; done
 fi
 
@@ -469,7 +439,7 @@ if (( ${#alt_pairs} > 0 )); then
     fi
     gpu_mode_pairs=$((gpu_mode_pairs + 1))
     # The oracle is AGREEMENT on the whole observable outcome, not stdout
-    # alone: exit status, raw transcript bytes, and (under ARC) the leak
+    # alone: exit status, raw transcript bytes, and, where enabled, the leak
     # sentinel. Comparing stdout via command substitution once let the
     # alternate lowering crash, leak, or drop a trailing line unnoticed.
     main_rc=1 alt_rc=1
@@ -480,9 +450,9 @@ if (( ${#alt_pairs} > 0 )); then
       mode_diverged="exit $alt_rc vs $main_rc"
     elif ! cmp -s -- "$RESULTDIR/$index.stdout" "$ALTDIR/$index.stdout"; then
       mode_diverged="transcripts differ"
-    elif [[ "$MEMORY" == "arc" && "$main_rc" == "0" ]]; then
-      alt_live=$(arc_live_count "$ALTDIR/$index.stderr")
-      [[ "$alt_live" == "0" ]] || mode_diverged="alternate ARC sentinel: ${alt_live:-missing}"
+    elif [[ $LEAK_CHECK -eq 1 && $main_rc -eq 0 ]]; then
+      alt_live=$(live_count "$ALTDIR/$index.stderr")
+      [[ "$alt_live" == "0" ]] || mode_diverged="alternate $MEMORY sentinel: ${alt_live:-missing}"
     fi
     if [[ -n "$mode_diverged" ]]; then
       gpu_mode_fail=$((gpu_mode_fail + 1))
@@ -503,8 +473,16 @@ fi
 
 source "${0:A:h}/corpus_doctests.sh"
 doctests_ok=1
-run_corpus_doctests || doctests_ok=0
+if [[ -z $selection ]]; then
+  run_corpus_doctests || doctests_ok=0
+fi
 
 [[ $fail -eq 0 && $leaky -eq 0 && $golden_fail -eq 0 && $golden_missing -eq 0 \
    && $golden_floor_ok -eq 1 && $skips_ok -eq 1 \
-   && $gpu_mode_fail -eq 0 && $gpu_mode_floor_ok -eq 1 && $doctests_ok -eq 1 ]]
+   && $gpu_mode_fail -eq 0 && $gpu_mode_floor_ok -eq 1 && $doctests_ok -eq 1 ]] || exit 1
+
+# Each cross-target conformance run also verifies the ownership archive with
+# the same host, stdout oracle and mandatory exit sentinel. [MEM-OWNERSHIP-STATIC-HOSTS]
+if [[ $TARGET != native && $MEMORY == arc && -z $selection ]]; then
+  zsh "$SCRIPT" ownership --ownership-host || exit 1
+fi

@@ -3,26 +3,6 @@
 // because a test statement is only legal in the entry source.
 namespace workbenchtests
 
-import workbenchtests::NotationCases
-import workbenchtests::StepCases
-import workbenchtests::CorpusCases
-import workbenchtests::GoalCases
-import workbenchtests::EmitCases
-import workbenchtests::StatementCases
-import workbenchtests::WorkspaceCases
-import workbenchtests::ThemeCases
-import workbenchtests::TypesetCases
-import workbenchtests::VerdictCases
-import workbenchtests::AppCases
-import workbenchtests::WorkflowCases
-import workbenchtests::ImportedCases
-import workbenchtests::ImportMemoCases
-import workbenchtests::ImportedFlowCases
-import workbenchtests::ProofTermCases
-import workbenchtests::FixtureFiles
-import workbenchtests::FormulaCases
-import workbenchtests::LessonCases
-import workbenchtests::IntegrityCases
 
 (** One case the harness reports, with the name it reports. *)
 entry name run = { name = name, run = run }
@@ -60,46 +40,25 @@ suite () = [
     unitCase "text without an abbreviation is unchanged and expanding twice changes nothing" NotationCases::total,
     unitCase "the palette lists the rows that start with what was typed" NotationCases::palette,
 
-    unitCase "every sentence form reads to the same formula as its symbols" FormulaCases::sentences,
+    unitCase "no English sentence reads as the formula it describes" FormulaCases::englishRefused,
     resultCase "precedence and grouping read as the formula table says" FormulaCases::precedence,
     unitCase "a malformed formula names the column and what was expected" FormulaCases::faults,
     resultCase "formula equality is structural" FormulaCases::equality,
     resultCase "formula layouts preserve grouping and binder scope" FormulaCases::typesetting,
-    unitCase "workspace documents save and reopen without drawing data" WorkspaceCases::roundTrip,
-    unitCase "unsupported workspace versions are refused without changing the document" WorkspaceCases::versions,
-    unitCase "drawing workspace data is explicitly refused without a compatibility bridge" WorkspaceCases::drawingData,
-    unitCase "malformed workspace fields preserve the current document and verdicts" WorkspaceCases::malformed,
-    unitCase "workspace saves ignore unrelated host slices" WorkspaceCases::sliceIsolation,
-    unitCase "workbench exposes typed mathematics without freehand drawing" WorkspaceCases::mathematicalWorkspaceOnly,
 
-    unitCase "every written form of the step table reads to its step" StepCases::written,
-    unitCase "the ten near-misses of the step table stay unknown" StepCases::nearMisses,
-    unitCase "a proof body splits into its step sentences" StepCases::proofBody,
-    unitCase "every step constructor becomes its tactic" StepCases::tactics,
 
     unitCase "every generated formula survives its shown round trip" CorpusCases::roundTrip,
     unitCase "the generated formula corpus has the exact derived count" CorpusCases::generatedCount,
     unitCase "every generated parenthesis is needed to preserve the formula" CorpusCases::minimalParentheses,
 
-    unitCase "the spec's and_swap document reads to one declaration with its claim, variables and proof" StatementCases::andSwap,
-    unitCase "all four heading words open declarations and unnamed headings take t_<n>" StatementCases::headings,
-    unitCase "two declarations in one buffer split at the second heading" StatementCases::split,
-    unitCase "an atom outside the bound variables reports the exact problem and fix" StatementCases::undeclared,
-    unitCase "a claim that is not a formula is Bot with the fault's column and expectation" StatementCases::malformed,
 
     resultCase "and_swap closes under the goal engine and every goal is shown" GoalCases::andSwap,
     resultCase "every row of the tactic table advances the goal it names" GoalCases::rows,
     resultCase "every failing step reports the exact mismatch" GoalCases::mismatches,
-    resultCase "unrecognised prose is unsupported input rather than a mathematical mismatch" GoalCases::unsupportedProse,
-    resultCase "unsupported prose preserves context and stops later goal evaluation" GoalCases::unsupportedProgress,
-    resultCase "refused sentences retain the last understood goals and step count" GoalCases::retainedGoal,
+    resultCase "refused steps retain the last understood goals and step count" GoalCases::retainedGoal,
     resultCase "missing premises and premature completion never supply an invented truth" GoalCases::noInventedTruth,
     unitCase "a fifty-step proof closes" GoalCases::fifty,
 
-    resultCase "and_swap emits byte-identical to its golden" EmitCases::andSwap,
-    resultCase "an unknown step becomes a sorry with the text as a comment" EmitCases::holes,
-    resultCase "leading assumptions become binders" EmitCases::binders,
-    resultCase "two proofs share one header and are separated by a blank line" EmitCases::layout,
     unitCase "body text and source roles reach 4.5:1 on every surface in both appearances" ThemeCases::bodyText,
     unitCase "selection and diagnostic surfaces keep their foregrounds at 4.5:1" ThemeCases::states,
     unitCase "the control outline reaches 3.0:1 on every surface" ThemeCases::outlines,
@@ -112,52 +71,33 @@ suite () = [
     unitCase "only the antecedent of a nested implication has a math parenthesis" TypesetCases::conditionalAntecedent,
 
     unitCase "the prelude is admitted by the kernel" VerdictCases::prelude,
-    unitCase "and_swap is checked by the kernel" VerdictCases::andSwap,
+    unitCase "and_swap built from notation is checked by the kernel" VerdictCases::andSwap,
     unitCase "swapping the last two steps is rejected at the step the engine refuses" VerdictCases::swapped,
     unitCase "one passing proof per row of the goal table is checked" VerdictCases::rows,
     unitCase "the goal engine and the kernel agree on every right and wrong proof" VerdictCases::agreement,
-    unitCase "an unknown step is unchecked with its sentence quoted" VerdictCases::unknownStep,
     unitCase "a proof that stops with a goal open is unchecked" VerdictCases::openGoal,
     unitCase "a step after the proof is complete is unchecked" VerdictCases::surplus,
     unitCase "an undeclared atom is rejected on the statement" VerdictCases::undeclaredAtom,
-    unitCase "a kernel-checked answer is right, a refused one is wrong at its line, an unknown sentence is unfinished" LessonCases::prove,
     resultCase "a stated formula is right when the kernel finds it the same proposition by definition" LessonCases::stated,
-    unitCase "a judgement is right exactly when it agrees with the kernel's verdict" LessonCases::judge,
-    unitCase "wrong submissions count attempts and reveal hints up to their number" LessonCases::attempts,
-    unitCase "the solution is offered after three wrong attempts and counts only once submitted" LessonCases::reveal,
+    unitCase "wrong submissions count attempts and show hints up to their number" LessonCases::attempts,
     unitCase "editing an answer clears its mark and an empty answer cannot be submitted" LessonCases::clearing,
     unitCase "progress saves only completed challenges and unreadable progress is none" LessonCases::progress,
-    unitCase "a lesson with every block and challenge kind reads in order" LessonCases::everyBlock,
-    unitCase "each broken lesson form is refused with its path and rule" LessonCases::refusals,
-    unitCase "every shipped lesson reads, its solutions check, its questions are decided and its media exist" IntegrityCases::shipped,
-    unitCase "starting the app draws every region and requests lessons and progress" AppCases::start,
-    unitCase "typing redraws only the document goal and source regions" AppCases::keystroke,
-    unitCase "kernel verdicts mark the actual proof line" AppCases::underline,
-    unitCase "the paper fills the content viewport with no authored board height" AppCases::paperViewport,
-    unitCase "unregistered drawing controls cannot change a reopened mathematical document" AppCases::absentControls,
+    unitCase "a lesson with every block kind and a state challenge reads in order" LessonCases::everyBlock,
+    unitCase "each broken lesson form and every English proof challenge is refused with its path and rule" LessonCases::refusals,
+    unitCase "every shipped lesson reads, holds no English proof, its questions are decided and its media exist" IntegrityCases::shipped,
+    unitCase "starting the app draws the checked library with no English proof entry and requests lessons, progress and libraries" AppCases::start,
+    unitCase "unregistered drawing controls change nothing" AppCases::absentControls,
     unitCase "the retired board requests no recognition and a stray reply changes nothing" AppCases::lasso,
     unitCase "catalogue loading restores saved learner progress" AppCases::loading,
     unitCase "editing a lesson answer redraws only its challenge" AppCases::challenge,
     unitCase "only a kernel checked lesson submission saves progress" AppCases::submit,
     unitCase "a stray legacy ink answer cannot overwrite the focused lesson answer" AppCases::inked,
-    unitCase "a lesson challenge opens in the workbench" AppCases::carry,
-    unitCase "typeset row edits preserve the complete source and caret" AppCases::rowEditing,
-    unitCase "unsupported wording stays neutral and unchecked through the app" AppCases::unsupportedFeedback,
-    unitCase "naming and reading preserve free form working without an editor" AppCases::namedReading,
-    unitCase "returning from a guided example restores the complete original working" AppCases::exampleRoundTrip,
     unitCase "lessons retain one natural scrolling page around all challenges" AppCases::lessonPageScroll,
 
-    unitCase "mathematical documents reopen without drawing controls or retained ink state" WorkflowCases::boardTools,
-    unitCase "Source Read and Proof transitions preserve one mathematical document" WorkflowCases::sourceModes,
-    unitCase "the real example walkthrough inserts its step and returns the working unmarked" WorkflowCases::sampleReview,
-    unitCase "no ink review exists so a stray completion approves no statement" WorkflowCases::inkReview,
-    unitCase "workspace save open and source export preserve actual host slices" WorkflowCases::files,
-    unitCase "workspace cancellations malformed files and host failures stay explicit" WorkflowCases::fileFailures,
 
     unitCase "proof library file import displays its actual checked statement" ImportedFlowCases::fileImport,
     unitCase "imported assumption receipts cannot hide an axiom named none" ImportedFlowCases::ledgerBoundaries,
-    unitCase "imported proof inspection uses full width and preserves working state" ImportedFlowCases::inspectionLayout,
-    unitCase "opening an example from an imported library reveals its proof" ImportedFlowCases::exampleAfterImport,
+    unitCase "the checked library fills Work and keeps its selection across Lessons" ImportedFlowCases::inspectionLayout,
     unitCase "imported theorem selection refuses missing and axiom roots" ImportedFlowCases::selection,
     unitCase "current imported source corruption revokes checking until repaired" ImportedFlowCases::currentSource,
     unitCase "proof import cancellation malformed source and host errors stay explicit" ImportedFlowCases::refusals,

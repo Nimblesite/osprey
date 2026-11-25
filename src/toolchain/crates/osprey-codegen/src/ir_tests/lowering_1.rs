@@ -376,8 +376,12 @@ fn fold_transfers_owned_callback_results_but_retains_borrowed_accumulators() {
     let ir = module("type Box = { n: int }\nfn fresh() = fold(range(0, 3), Box { n: 7 }, fn(b, _) => Box { n: b.n })\nfn borrowed() = fold(range(0, 3), Box { n: 7 }, fn(b, _) => b)\n");
     let fresh = function_body(&ir, "define internal i8* @fresh()");
     let borrowed = function_body(&ir, "define internal i8* @borrowed()");
-    assert_eq!(fresh.matches("call void @osp_retain(").count(), 1, "only the seed needs a retain; a newly owned callback result transfers to the loop slot:\n{fresh}");
-    assert_eq!(borrowed.matches("call void @osp_retain(").count(), 2, "a borrowed callback result must be retained before the old accumulator is released:\n{borrowed}");
+    assert_eq!(
+        fresh.matches("call void @osp_retain(").count(),
+        0,
+        "a fresh seed and each newly owned callback result move into the loop slot:\n{fresh}"
+    );
+    assert_eq!(borrowed.matches("call void @osp_retain(").count(), 1, "the fresh seed moves, but a borrowed callback result must be retained before the old accumulator is released:\n{borrowed}");
 }
 
 #[test]
@@ -497,8 +501,13 @@ fn erasure_boxes_with_one_way_ownership() {
         &["store i8* null, i8** %arc.s0", "@osp.any.desc.string"],
     );
     // The pass-through function receives and returns the box UNTOUCHED:
-    // no new box, no descriptor reference — and the borrowed return is
-    // retained (+1) rather than entered in the ledger as a fresh owner.
+    // no new box, no descriptor reference. It can return its parameter, so
+    // it owns it [MEM-OWNERSHIP-STATIC-PARAMETERS]: the caller gives the
+    // reference and the function hands the same one back, counting nothing.
     let pass = function_body(&ir, "define internal i8* @identity(i8* %$p0)");
-    contents(&pass, &["@osp_retain"], &["@osp.any.desc"]);
+    contents(
+        &pass,
+        &["store i8* %$p0, i8** %arc.s0", "ret i8* %$p0"],
+        &["@osp_retain", "@osp_release", "@osp.any.desc"],
+    );
 }

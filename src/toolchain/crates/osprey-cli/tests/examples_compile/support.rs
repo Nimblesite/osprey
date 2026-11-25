@@ -26,7 +26,7 @@ fn project_reason(errors: Vec<osprey_project::ProjectError>) -> String {
 /// `failscompilation/ml_*.ospo` are ML-flavor negatives selected by a leading
 /// marker, and grading them with the brace grammar would pin the wrong
 /// rejection path. Implements [FLAVOR-SELECT] (docs/specs/language/0023-LanguageFlavors.md).
-pub(super) fn compile(path: &Path, source: &str) -> Result<usize, String> {
+pub(super) fn compile(path: &Path, source: &str) -> Result<String, String> {
     let parsed = osprey_syntax::parse_program_for_path(&path.to_string_lossy(), source);
     if !parsed.errors.is_empty() {
         let messages = parsed
@@ -44,7 +44,7 @@ pub(super) fn compile(path: &Path, source: &str) -> Result<usize, String> {
 /// Compile the project rooted at `root` the way `osprey <dir> --run` does:
 /// load its manifest and sources, assemble the module graph, then gate and
 /// lower exactly as [`compile`] does for one source.
-pub(super) fn compile_project(root: &Path) -> Result<usize, String> {
+pub(super) fn compile_project(root: &Path) -> Result<String, String> {
     let assembled = osprey_project::load_and_assemble(root).map_err(project_reason)?;
     lower(&assembled.program, assembled.backend.as_ref())
 }
@@ -52,13 +52,12 @@ pub(super) fn compile_project(root: &Path) -> Result<usize, String> {
 fn lower(
     program: &osprey_ast::Program,
     backend: Option<&osprey_ast::Program>,
-) -> Result<usize, String> {
+) -> Result<String, String> {
     let type_errors = osprey_types::check_program(program);
     if let Some(first) = type_errors.first() {
         return Err(format!("typecheck: {first:?}"));
     }
     osprey_codegen::compile_program(backend.unwrap_or(program))
-        .map(|ir| ir.len())
         .map_err(|e| format!("codegen: {e:?}"))
 }
 

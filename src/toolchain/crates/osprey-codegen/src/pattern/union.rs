@@ -198,6 +198,7 @@ fn bind_variant_fields(
         return;
     };
     let src = cg.emit_reg(format!("bitcast i8* {} to {struct_ty}*", disc.operand));
+    crate::arc::same_value(cg, &src, &disc.operand);
     for (column, bind_name) in pat_fields.iter().enumerate() {
         if bind_name.is_empty() {
             continue; // an ignored slot binds nothing

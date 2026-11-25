@@ -145,6 +145,9 @@ fn carriesNone(haystack, banned) = foldList(banned, true, fn(acc, head) => acc &
 /// True when every flag in `flags` holds, so a row of checks needs no expected list.
 fn allTrue(flags) = foldList(flags, true, fn(acc, head) => acc && head)
 
+/// True when no flag in `flags` holds, so a row of must-be-false probes needs no expected list.
+fn noneTrue(flags) = foldList(flags, true, fn(acc, head) => acc && !head)
+
 /// The transcript that appends one channel entry: `letter` then the attempt `n`.
 fn channelTag(trail, letter, n) = "${trail}${letter}${toString(n)}|"
 
@@ -199,8 +202,8 @@ fn retryAttemptMatrixCase() = {
         edges3(r1.issued, "1:0|", "2:200|", r2.issued, "1:0|2:-5|", "3:300|", r8.issued, "1:-1|", "9:900|"),
         contains(r8.issued, "5:-5|"),
         contains(r2.issued, "2:-5|"),
-        structuralEquals([contains(r0.issued, "2:"), contains(r1.issued, "3:"),
-            contains(r2.issued, "4:"), contains(r8.issued, "10:")], [false, false, false, false]),
+        noneTrue([contains(r0.issued, "2:"), contains(r1.issued, "3:"),
+            contains(r2.issued, "4:"), contains(r8.issued, "10:")]),
         length(r0.issued) == 6
     ])
 
@@ -212,7 +215,7 @@ fn retryAttemptMatrixCase() = {
         r0.settled == r0.issued,
         allTrue([r1.settled != r1.issued, r2.settled != r2.issued, r8.settled != r8.issued]),
         edges3(r1.settled, "2:200|", "1:200|", r2.settled, "3:300|", "1:300|", r8.settled, "9:900|", "1:900|"),
-        structuralEquals([contains(r1.settled, "1:0|"), contains(r2.settled, "2:-5|")], [false, false])
+        noneTrue([contains(r1.settled, "1:0|"), contains(r2.settled, "2:-5|")])
     ])
 
     // Four runs, four separate cells: nothing crosses between them.
@@ -221,7 +224,7 @@ fn retryAttemptMatrixCase() = {
         carriesNone(r0.issued, ["200"]),
         carriesNone(r1.issued, ["300"]),
         carriesNone(r2.issued, ["900"]),
-        structuralEquals([contains(r8.issued, "100|"), contains(r8.settled, "300")], [false, false]),
+        noneTrue([contains(r8.issued, "100|"), contains(r8.settled, "300")]),
         contains(r8.issued, "900"),
         r8.accepted != r2.accepted,
         (r8.accepted - r2.accepted ) == 600,
@@ -560,7 +563,7 @@ fn retryPayloadChannelMatrixCase() = {
             startsWith(textTrail, "1:no|"), endsWith(textTrail, "3:ready|"), contains(textTrail, "2:abc|"),
             startsWith(flagTrail, "1:false|"), endsWith(flagTrail, "4:true|"),
             startsWith(markTrail, "4|"), endsWith(markTrail, "1|")]),
-        structuralEquals([contains(flagTrail, "5:"), contains(textTrail, "4:")], [false, false])
+        noneTrue([contains(flagTrail, "5:"), contains(textTrail, "4:")])
     ])
 
     // The six-arm region interleaves all six channels in body order.
@@ -691,8 +694,8 @@ fn retryScriptedCandidateMatrixCase() = {
         carriesNone(fromBoundary.issued, ["2|"]),
         structuralEquals([length(fromBoundary.issued), fromBoundary.calls], [7, 3]),
         fromBoundary.issued != drawn,
-        structuralEquals([contains(drawn, "8888"), contains(fromMap.issued, "4321"),
-            contains(fromSparse.issued, "8888")], [false, false, false]),
+        noneTrue([contains(drawn, "8888"), contains(fromMap.issued, "4321"),
+            contains(fromSparse.issued, "8888")]),
         fromBoundary.accepted != fromSparse.accepted
     ])
 }

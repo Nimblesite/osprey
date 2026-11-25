@@ -6,7 +6,6 @@ import proof::Inductive
 import proof::Infer
 import proof::Reduce
 import proof::Fixtures
-import prooftests::Support
 import proof
     Proj BVar Const App Lam Pi Sort Succ Zero Max Param Decl Axiom Definition Opaque Binder
 (** Structure eta of [PROOF-KERNEL-THEORY]: one side a saturated constructor

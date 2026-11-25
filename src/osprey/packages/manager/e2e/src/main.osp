@@ -1,7 +1,6 @@
 namespace registry_e2e;
 import registry::Policy
 import registry_host::Native
-import registry_e2e::Probes
 
 /// The end-to-end demo of plan 0020 Milestone 0, run by `make -C src/osprey/packages registry-test`
 /// after the suites: start the Osprey server over the sample registry on a

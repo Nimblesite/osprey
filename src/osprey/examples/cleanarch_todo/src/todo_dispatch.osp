@@ -3,11 +3,6 @@
 
 namespace todo;
 
-import todo::TodoItems
-import todo::TodoLists
-import todo::TodoReplay
-import todo::TodoRequest
-import todo::TodoValidation
 
 /// ISender and the five MediatR behaviours.
 module TodoDispatch {

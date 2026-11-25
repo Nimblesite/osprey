@@ -82,7 +82,7 @@ Projects can mix Default, ML and Python-flavor modules. The [package manager](ht
 
 Examples identify their target when it matters. Native executables support dynamic control handlers with single-shot resumption; WebAssembly and mobile libraries currently support value handlers and static discharge, but reject dynamic control operations. Chapter 9 explains those terms beside runnable examples.
 
-Memory choices also have limits: native builds default to tracing GC, with ARC available through `--memory=arc`. Explicit `--memory=none` opts into unmanaged allocation, which retains general allocations. The Chapter 12 outline records the choices and deployment boundaries. Calling a C library crosses Osprey's memory-safety boundary.
+Memory choices also have limits: native builds default to tracing GC, with ARC available through `--memory=arc`. Use `--memory=ownership` to check transfers and borrows at compile time. The Chapter 12 outline records the choices and deployment boundaries. Calling a C library crosses Osprey's memory-safety boundary.
 
 Read each example's requirements and test the program on the target you plan to use.
 

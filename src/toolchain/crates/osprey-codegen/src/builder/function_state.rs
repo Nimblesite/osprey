@@ -18,6 +18,13 @@ pub(crate) enum Linkage {
     Executable,
 }
 
+impl Codegen {
+    /// Whether nothing outside the module calls its functions by name.
+    pub(crate) fn only_entry_is_external(&self) -> bool {
+        matches!(self.linkage, Linkage::Executable)
+    }
+}
+
 impl Linkage {
     /// The linkage keyword `define` takes for `name`, with its trailing space.
     fn keyword(self, name: &str) -> &'static str {
@@ -104,6 +111,7 @@ impl Codegen {
     /// hand back to [`Codegen::exit_nested_fn`]. The new function gets its own
     /// SSA/label counters and an isolated scope stack (handlers capture nothing).
     pub(crate) fn enter_nested_fn(&mut self) -> SavedFn {
+        self.ownership.enter_nested();
         let saved = SavedFn {
             expression_type: self.expression_type.take(),
             lines: std::mem::take(&mut self.cur_lines),
@@ -150,6 +158,7 @@ impl Codegen {
         params: &[(LType, String)],
     ) {
         self.finish_function(ret, name, params);
+        self.ownership.leave_nested(name);
         self.restore_function(saved);
     }
 
@@ -162,6 +171,7 @@ impl Codegen {
     ) {
         let signature = format!("{}{}", self.c_scalar_extension(ret.1), ret.0);
         self.finish_function_with_abi(&signature, name, params, true);
+        self.ownership.leave_nested(name);
         self.restore_function(saved);
     }
 
@@ -197,19 +207,25 @@ impl Codegen {
     /// Lower part of top-level source function `name` — its own body, or a
     /// generic body inlined elsewhere — so its position-keyed inferred types
     /// resolve to that function's copy ([`osprey_types::SiteTable`]), then
-    /// restore the enclosing function.
+    /// restore the enclosing function. What the ownership check reports while
+    /// lowering it names `name`, not the caller it is inlined into
+    /// [MEM-OWNERSHIP-STATIC].
     pub(crate) fn within_source_function<R>(
         &mut self,
         name: &str,
         lower: impl FnOnce(&mut Self) -> R,
     ) -> R {
         let enclosing = self.source_function.replace(name.to_owned());
+        let reporting = std::mem::replace(&mut self.ownership.function, name.to_owned());
         let result = lower(self);
         self.source_function = enclosing;
+        self.ownership.function = reporting;
         result
     }
 
     pub(crate) fn begin_function(&mut self, name: &str, position: Option<Position>) {
+        name.clone_into(&mut self.ownership.function);
+        self.ownership.position = position;
         self.reg_count = 0;
         self.label_count = 0;
         self.cur_lines.clear();
@@ -233,6 +249,7 @@ impl Codegen {
         // registers would otherwise alias this one's heap values and silently
         // elide their dup/drop [GC-ARC-PERCEUS].
         self.rodata_regs.clear();
+        crate::arc::forget_aliases(self);
         self.push_scope();
         self.cur_lines.push("entry:".to_string());
         if let Some(debug) = self.debug.as_mut() {

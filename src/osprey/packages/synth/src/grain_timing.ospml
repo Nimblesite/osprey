@@ -19,6 +19,9 @@ module GrainTimings
         1.0 => checked (ExponentialTiming(mean = toFloat period, maximum = maximum))
         _ => Error(message = InvalidConfiguration(detail = "Grain timing must be 0 (periodic jitter) or 1 (bounded exponential)."))
 
-    checked timing = match valid timing
-        true => Success(value = timing)
-        false => Error(message = InvalidConfiguration(detail = "Invalid grain timing distribution or bounds."))
+    (** Accept `value` when `test` holds, reporting `failure` otherwise. *)
+    export accepted (test, value, failure) = match test
+        true => Success(value = value)
+        false => Error(message = failure)
+
+    checked timing = accepted (valid timing, timing, InvalidConfiguration(detail = "Invalid grain timing distribution or bounds."))

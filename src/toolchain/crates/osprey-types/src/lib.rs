@@ -96,6 +96,8 @@ mod consecutive_print;
 #[cfg(test)]
 mod consecutive_print_tests;
 #[cfg(test)]
+mod lint_test_support;
+#[cfg(test)]
 mod redundant_corpus_tests;
 #[cfg(test)]
 mod redundant_tests;

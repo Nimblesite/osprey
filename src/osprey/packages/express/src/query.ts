@@ -10,6 +10,14 @@ import { byteOr, printable } from "./encode.ts";
 /**
  * Each name in the query of `url` with its decoded value. A repeated name
  * keeps its first value, where Node.js collects them into an array.
+ * # Examples
+ * ```osprey
+ * const query = queryOf("/search?q=ru%73t+lang&page=2&q=again&flag");
+ * print(`[${mapGet(query, "q")}] [${mapGet(query, "page")}] [${mapGet(query, "flag")}] [${mapGet(queryOf("/plain"), "q")}]`);
+ * ```
+ * ```output
+ * [Success(rust lang)] [Success(2)] [Success()] [Error(mapGet: key not found)]
+ * ```
  */
 export function queryOf(url: string): Map<string, string> {
   const mark = indexOf(url, "?");

@@ -9,9 +9,12 @@
 
 #if (defined(__APPLE__) || defined(__linux__)) && !defined(OSP_SYMBOLIC)
 #include <errno.h>
+#include <pthread.h>
+#include <stdio.h>
 #include <signal.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <time.h>
 #include <unistd.h>
 #if defined(__linux__)
 #include <sys/prctl.h>
@@ -28,22 +31,52 @@ static void run_parent_died(void *unused) {
   _exit(OSP_RUN_ORPHANED_STATUS);
 }
 
-// Ask the system to end this process when `runner` exits.
-static void run_parent_arm(pid_t runner) {
+#define OSP_RUN_POLL_NSEC 50000000L
+
+// The fallback watch when the system offers none: look every 50 ms, and end
+// once this process is no longer the runner's child.
+static void *run_parent_poll(void *named) {
+  pid_t runner = (pid_t)(intptr_t)named;
+  const struct timespec interval = {0, OSP_RUN_POLL_NSEC};
+  while (getppid() == runner) {
+    (void)nanosleep(&interval, NULL);
+  }
+  run_parent_died(NULL);
+  return NULL;
+}
+
+// Start the poll on its own thread. A process that cannot start even that is
+// left with no watch, so it says so rather than run on silently.
+static inline void run_parent_poll_start(pid_t runner) {
+  pthread_t poll;
+  if (pthread_create(&poll, NULL, run_parent_poll, (void *)(intptr_t)runner) == 0) {
+    (void)pthread_detach(poll);
+  } else {
+    (void)fputs("osprey: cannot watch the runner named in OSPREY_RUN_PARENT; this program will outlive it\n", stderr);
+  }
+}
+
+// Ask the system to end this process when `runner` exits, and poll when the
+// system refuses ([RUN-PARENT-DEATH]): a watch that silently arms nothing is
+// the orphan this exists to prevent.
+static inline void run_parent_arm(pid_t runner) {
 #if defined(__linux__)
-  (void)runner;
-  (void)prctl(PR_SET_PDEATHSIG, SIGKILL);
+  if (prctl(PR_SET_PDEATHSIG, SIGKILL) != 0) {
+    run_parent_poll_start(runner);
+  }
 #else
   dispatch_source_t watch = dispatch_source_create(DISPATCH_SOURCE_TYPE_PROC, (uintptr_t)runner, DISPATCH_PROC_EXIT,
                                                    dispatch_get_global_queue(QOS_CLASS_UTILITY, 0));
   if (watch) {
     dispatch_source_set_event_handler_f(watch, run_parent_died);
     dispatch_resume(watch);
+  } else {
+    run_parent_poll_start(runner);
   }
 #endif
 }
 
-static void run_parent_watch(void) {
+static inline void run_parent_watch(void) {
   const char *named = getenv("OSPREY_RUN_PARENT");
   long runner = named ? strtol(named, NULL, 10) : 0;
   if (runner <= 1) {
@@ -60,7 +93,7 @@ static void run_parent_watch(void) {
   }
 }
 #else
-static void run_parent_watch(void) {}
+static inline void run_parent_watch(void) {}
 #endif
 
 #endif

@@ -32,6 +32,7 @@ pub(crate) use source::{
     source_parameters,
 };
 
+use crate::arc::Held;
 use crate::builder::{Codegen, FnSig, ParamSig};
 use crate::error::{CodegenError, Result};
 use crate::expr::gen_expr;
@@ -90,6 +91,15 @@ pub(crate) fn bind_params_from(
     crate::cast::bind_params(cg, parameters, param_tys, std::iter::repeat(None), first)
 }
 
+/// The layout word of one capture slot: a managed pointer the cell releases,
+/// or, in a cell that only borrows its captures, one it leaves alone.
+pub(crate) fn capture_meta(slot_ty: &str, lending: bool) -> crate::meta::MetaField {
+    match crate::meta::MetaField::of_slot_ty(slot_ty) {
+        crate::meta::MetaField::PtrManaged if lending => crate::meta::MetaField::PtrOpaque,
+        field => field,
+    }
+}
+
 /// Build the cell and hand back its `i8*` handle. Capture-free closures share
 /// one private constant global; capturing ones `malloc` a cell and store the
 /// fnptr plus each captured value.
@@ -112,10 +122,18 @@ pub(crate) fn cell_value(
     }
     // Layout word: the leading fnptr is a CODE pointer (never released); each
     // capture marks itself by its slot type ([`crate::meta`]).
+    // A lent cell owns none of its captures, so its pointer slots are ones
+    // the drop walk leaves alone [MEM-OWNERSHIP-STATIC-CLOSURES].
+    let held: Vec<Held> = caps
+        .iter()
+        .map(|c| crate::arc::hold_capture(cg, &c.val))
+        .collect();
     let mut mf = vec![crate::meta::MetaField::PtrOpaque];
+    let lent = held.iter().map(|held| *held == Held::Lent);
     mf.extend(
         caps.iter()
-            .map(|c| crate::meta::MetaField::of_slot_ty(&c.val.llvm_ty())),
+            .zip(lent)
+            .map(|(c, lent)| capture_meta(&c.val.llvm_ty(), lent)),
     );
     let meta = cg.struct_meta(&mf);
     let cell = cg.malloc_struct(cell_ty, meta);
@@ -123,12 +141,14 @@ pub(crate) fn cell_value(
         "getelementptr {cell_ty}, {cell_ty}* {cell}, i32 0, i32 0"
     ));
     cg.emit(format!("store i8* {fnptr}, i8** {fpp}"));
-    for (i, c) in caps.iter().enumerate() {
+    for (i, (c, held)) in caps.iter().zip(&held).enumerate() {
         let slot = i + 1;
         let lty = c.val.llvm_ty();
         // Each captured pointer is a new reference the cell's drop releases —
         // including the same variable captured by two closures [GC-ARC-PERCEUS].
-        crate::arc::dup_store(cg, &lty, &c.val.operand);
+        if *held == Held::Stored {
+            crate::arc::store_owned(cg, &lty, &c.val.operand);
+        }
         let p = cg.emit_reg(format!(
             "getelementptr {cell_ty}, {cell_ty}* {cell}, i32 0, i32 {slot}"
         ));
@@ -294,10 +314,17 @@ pub(crate) fn named_fn_cell(cg: &mut Codegen, name: &str) -> Result<Value> {
         Some(g) => g.clone(),
         None => emit_forwarder(cg, name)?,
     };
-    let reg = cg.emit_reg(format!("bitcast {{ i8* }}* {cell} to i8*"));
-    let mut value = Value::new(reg, LType::Ptr);
+    let mut value = shared_cell(cg, &cell);
     value.inferred_type = cg.callee_fn_type(&Expr::Identifier(name.to_owned()));
     Ok(value)
+}
+
+/// The value of the constant cell `cell`: it is never freed, so it carries no
+/// reference to count or own [GC-ARC-PERCEUS].
+pub(crate) fn shared_cell(cg: &mut Codegen, cell: &str) -> Value {
+    let reg = cg.emit_reg(format!("bitcast {{ i8* }}* {cell} to i8*"));
+    cg.mark_rodata(&reg);
+    Value::new(reg, LType::Ptr)
 }
 
 fn specialized_named_cell(

@@ -1,7 +1,5 @@
 namespace proof
 
-import proof::Levels
-import proof::Terms
 
 (** The three tables of a `lean4export` NDJSON file: injective name spellings, universe
     levels and expressions, each numbered in its own space. Map keys are
@@ -33,16 +31,17 @@ module ExportJson
     // The member `name`, read by `read`.
     asIn (json, name, read) = Terms::upon (fieldIn (json, name), \value => read (value, name))
 
-    textAs (value, name) = match jsonText value
-        Success text => Success(value = text)
-        Error _ => Error(message = "${name} is not a string")
+    // `value` read by `read`, which names the `kind` it is not.
+    readAs (value, name, read, kind) = match read (value)
+        Success v => Success(value = v)
+        Error _ => Error(message = "${name} is not ${kind}")
+
+    textAs (value, name) = readAs (value, name, jsonText, "a string")
 
     export intIn (json, name) = asIn (json, name, intAs)
 
     (** The integer `value`, which `name` names. *)
-    export intAs (value, name) = match jsonInt value
-        Success number => Success(value = number)
-        Error _ => Error(message = "${name} is not an integer")
+    export intAs (value, name) = readAs (value, name, jsonInt, "an integer")
 
     export arrayIn (json, name) = asIn (json, name, arrayAs)
 
@@ -52,9 +51,7 @@ module ExportJson
 
     export boolIn (json, name) = asIn (json, name, boolAs)
 
-    boolAs (value, name) = match jsonBool value
-        Success flag => Success(value = flag)
-        Error _ => Error(message = "${name} is not a boolean")
+    boolAs (value, name) = readAs (value, name, jsonBool, "a boolean")
 
     (** The entry `index` of `table`, or an error naming the `kind` of table
         that does not hold it. *)

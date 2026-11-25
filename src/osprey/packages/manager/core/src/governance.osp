@@ -1,7 +1,4 @@
 namespace registry;
-import registry::Checked
-import registry::Names
-import registry::Maybe
 
 /// The hosted governance domain: organizations, memberships, the single
 /// package administrator, explicit per-package grants, authority epochs,
@@ -115,8 +112,14 @@ module Governance {
     /// Permission equality by canonical name.
     export fn samePermission(a, b) = permissionName(a) == permissionName(b)
 
-    /// `value` when `flag` holds, else the refusal `code`.
-    fn required(flag, value, code) = if flag { Success { value: value } } else { Error { message: code } }
+    /// `value` when `flag` holds, else the refusal `code`: the one guard
+    /// step every transition chains with `use`.
+    /// # Examples
+    /// ```osprey
+    /// let kept = required(true, 7, "governance.example.refused")
+    /// let refused = required(false, 7, "governance.example.refused")
+    /// ```
+    export fn required(flag, value, code) = if flag { Success { value: value } } else { Error { message: code } }
 
     export fn activeMemberOf(membership: Membership) = required(isActive(membership), membership, "governance.membership.inactive")
 
@@ -126,17 +129,22 @@ module Governance {
 
     export fn livePrincipal(principal: Principal) = required(isLive(principal), principal, "governance.principal.suspended")
 
+    export fn liveHuman(principal: Principal) = andThen(livePrincipal(principal), fn(p: Principal) => humanPrincipal(p))
+
+    export fn activeMembershipOf(registry, id) = andThen(membershipOf(registry, id), fn(m: Membership) => activeMemberOf(m))
+
     /// The live human principal behind a membership: the actor every
     /// organizational decision is signed by.
-    export fn humanMemberOf(registry, m: Membership) = Checked::andThen(principalOf(registry, m.principal), fn(p: Principal) => humanPrincipal(p))
+    export fn humanMemberOf(registry, m: Membership) = andThen(principalOf(registry, m.principal), fn(p: Principal) => humanPrincipal(p))
 
     /// Package writes need a writable lifecycle status
     /// [PACKAGE-OWNERSHIP-MAINTENANCE]; each refusal names its status.
     export fn writable(pkg: Package) = match pkg.status {
-        Draft => Success { value: pkg }
-        Active => Success { value: pkg }
+        Draft | Active => Success { value: pkg }
         _ => Error { message: refusalCode(pkg.status) }
     }
+
+    export fn writablePackage(registry, id) = andThen(packageOf(registry, id), fn(pkg: Package) => writable(pkg))
 
     /// Operational authorization needs an active package: a draft has no
     /// releases, and frozen, deprecated and tombstoned packages refuse
@@ -186,13 +194,15 @@ module Governance {
     /// other organizations' admins and workflows all fail here.
     export fn requireAdmin(registry, pkg: Package, proof, statement) = match proof.membership == pkg.admin {
         false => Error { message: "governance.admin.not-current" }
-        true => Checked::andThen(membershipOf(registry, proof.membership), fn(m: Membership) =>
-            Checked::andThen(activeMemberOf(m), fn(_) =>
-                Checked::andThen(principalOf(registry, m.principal), fn(p: Principal) =>
-                    Checked::andThen(livePrincipal(p), fn(_) =>
-                        Checked::andThen(humanPrincipal(p), fn(_) =>
-                            Checked::andThen(requireHumanCeremony(proof), fn(_) =>
-                                requireProof(proof, m.principal, m.id, statement)))))))
+        true => {
+            use m <- andThen(membershipOf(registry, proof.membership))
+            use _ <- andThen(activeMemberOf(m))
+            use p <- andThen(principalOf(registry, m.principal))
+            use _ <- andThen(livePrincipal(p))
+            use _ <- andThen(humanPrincipal(p))
+            use _ <- andThen(requireHumanCeremony(proof))
+            requireProof(proof, m.principal, m.id, statement)
+        }
     }
 
     /// The canonical statements every proof signs. A statement binds the

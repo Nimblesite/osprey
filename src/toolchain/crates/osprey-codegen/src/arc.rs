@@ -16,10 +16,28 @@
 use crate::builder::Codegen;
 use crate::llty::Value;
 
+mod aliases;
+mod borrows;
+pub(crate) use aliases::{forget as forget_aliases, same_as_word, same_value};
+mod moves;
+mod ownership;
+mod params;
+pub(crate) use borrows::{bind_alias, bind_let, note_rebound};
+pub(crate) use params::{
+    give_arguments, infer as infer_owned_parameters, own_parameter, owns_a_parameter,
+    scope_parameters, OwnedParameters,
+};
 mod phi;
+mod reads;
+pub(crate) use moves::{
+    begin as begin_moves, begin_statement as begin_statement_moves, end as end_moves,
+};
+pub(crate) use ownership::{second_owner, verdict as ownership_verdict, OwnershipCheck};
+pub use ownership::{set_ownership_check, Need, OtherUse, SecondOwner};
 pub(crate) use phi::{borrowed_phi_arms, move_phi_owners, promote_phi_arm};
 
 const RETAIN_DECL: &str = "declare void @osp_retain(i8*)";
+const OWNERSHIP_FREE_DECL: &str = "declare void @osp_ownership_free(i8*)";
 const RELEASE_DECL: &str = "declare void @osp_release(i8*)";
 /// The proved-unique drop: `allockind("free")`/`allocptr` pair it with
 /// `osp_alloc`/`osp_alloc_tagged` (same `alloc-family`), so -O2 deletes a
@@ -40,6 +58,9 @@ struct Entry {
     binding_scope: Option<usize>,
     slot: String,
     pure_scalar: bool,
+    /// A closure cell holding borrowed captures [MEM-OWNERSHIP-STATIC-CLOSURES]:
+    /// it dies with its statement, so no binding, store or return takes it.
+    lent: bool,
 }
 
 /// The per-function ownership ledger: a stack of frames (function body,
@@ -56,6 +77,32 @@ pub(crate) struct ArcLedger {
     /// entry recorded here is the high-water mark of owners that existed BEFORE
     /// the branch — those must survive to region end. [GC-ARC-PERCEUS]
     cond_floors: Vec<(usize, usize)>,
+    /// Bindings the statement being lowered may move at their last use.
+    movable: moves::Movable,
+    /// The same for each statement enclosing that one, outermost first.
+    enclosing: Vec<moves::Movable>,
+    /// The statement lowered last: a function body's tail, at its return.
+    ended: moves::Movable,
+    /// Owned parameters still waiting for the body block that scopes them.
+    unscoped_parameters: Vec<String>,
+    /// Whether the closure cell being built lends its captures.
+    lending: bool,
+    /// Whether a cell built since [`take_lent_capture`] holds a lent capture.
+    lent_capture: bool,
+    /// Whether the next closure cell may lend a capture it cannot take.
+    may_lend_captures: bool,
+    /// The binding a value being built last held lent, then, by register, the
+    /// binding each lending value holds: what a refusal of that value names.
+    lending_name: Option<String>,
+    lent_names: std::collections::HashMap<String, String>,
+    /// Registers that hold a value first made in another register.
+    aliases: std::collections::HashMap<String, String>,
+    /// Bindings that borrow, and what they borrow from [MEM-OWNERSHIP-STATIC-BORROWS].
+    borrows: borrows::Borrows,
+    /// Where each loaded register was read from [MEM-OWNERSHIP-STATIC-PATHS].
+    fields: takes::FieldReads,
+    /// Joins that borrow on some paths and made a value on others.
+    mixed: std::collections::HashSet<String>,
 }
 
 impl ArcLedger {
@@ -64,6 +111,19 @@ impl ArcLedger {
             frames: vec![Vec::new()],
             kinds: vec![FrameKind::Scope],
             cond_floors: Vec::new(),
+            movable: moves::Movable::default(),
+            enclosing: Vec::new(),
+            ended: moves::Movable::default(),
+            unscoped_parameters: Vec::new(),
+            lending: false,
+            lent_capture: false,
+            may_lend_captures: false,
+            lending_name: None,
+            lent_names: std::collections::HashMap::new(),
+            aliases: std::collections::HashMap::new(),
+            borrows: borrows::Borrows::default(),
+            fields: takes::FieldReads::new(),
+            mixed: std::collections::HashSet::new(),
         }
     }
 }
@@ -131,6 +191,7 @@ fn register(cg: &mut Codegen, v: &Value, beyond_stmt: bool) {
         binding_scope: None,
         slot,
         pure_scalar: false,
+        lent: false,
     };
     if beyond_stmt {
         push_parent(cg, entry);
@@ -190,87 +251,10 @@ pub(crate) fn consume_fresh(cg: &mut Codegen, v: &Value) {
 /// default frees it, ARC releases it and tracing GC leaves it to the
 /// collector [MEM-BACKENDS].
 pub(crate) fn release_unique(cg: &mut Codegen, ptr: &str) {
-    cg.add_extern(RELEASE_UNIQUE_DECL);
-    cg.emit(format!("call void @osp_release_unique(i8* {ptr})"));
-}
-
-/// The innermost frame's current length — the mark a `match` captures BEFORE
-/// generating its arms, so [`move_phi_owners`] can tell arm-produced owners
-/// from values that already existed at the join (above all: the scrutinee).
-pub(crate) fn frame_mark(cg: &Codegen) -> usize {
-    cg.arc.frames.last().map_or(0, Vec::len)
-}
-
-/// Record that code emitted from here on runs on only ONE path out of the
-/// region, with `mark` owners already live. Pairs with [`close_conditional`]
-/// at the join. See [`ArcLedger::cond_floors`].
-pub(crate) fn open_conditional(cg: &mut Codegen, mark: usize) {
-    let depth = cg.arc.frames.len();
-    cg.arc.cond_floors.push((depth, mark));
-}
-
-/// Both paths have merged: owners from before the branch are unconditional again.
-pub(crate) fn close_conditional(cg: &mut Codegen) {
-    let _ = cg.arc.cond_floors.pop();
-}
-
-/// The ledger length below which owners predate the innermost conditional open
-/// in THIS frame. A frame pushed inside a conditional is wholly contained by
-/// it, so its own owners are unconditional within it and the floor is 0.
-fn conditional_floor(cg: &Codegen) -> usize {
-    let depth = cg.arc.frames.len();
-    cg.arc
-        .cond_floors
-        .iter()
-        .rev()
-        .find(|(d, _)| *d == depth)
-        .map_or(0, |(_, mark)| *mark)
-}
-
-/// What a ledger frame delimits. A statement's owners die when the statement
-/// closes; a scope — the function body, a loop body, a kernel or comparator
-/// body — is where a binding made inside it lives. [GC-ARC-PERCEUS]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum FrameKind {
-    Statement,
-    Scope,
-}
-
-/// Open a region of the given kind.
-pub(crate) fn push_frame(cg: &mut Codegen, kind: FrameKind) {
-    cg.arc.frames.push(Vec::new());
-    cg.arc.kinds.push(kind);
-}
-
-/// Close the innermost region: drop every owner it still holds.
-pub(crate) fn pop_frame(cg: &mut Codegen) {
-    let _ = cg.arc.kinds.pop();
-    if let Some(frame) = cg.arc.frames.pop() {
-        release_entries(cg, &frame);
-    }
-}
-
-/// Drop the innermost region's owners on an edge that LEAVES the region early,
-/// without closing it — a `filter` rejecting an element branches straight to
-/// the loop increment, past the fall-through region close, so the values the
-/// map stages produced this iteration would otherwise be abandoned. Safe to
-/// pair with the fall-through drop of the same entries: `release_entries`
-/// re-nulls each slot and `osp_release(null)` is a no-op. [GC-ARC-PERCEUS]
-pub(crate) fn drop_frame_inline(cg: &mut Codegen) {
-    if let Some(frame) = cg.arc.frames.pop() {
-        release_entries(cg, &frame);
-        cg.arc.frames.push(frame);
-    }
-}
-
-/// Emit slot-based drops for `entries`, newest first, re-nulling each slot
-/// (loop bodies reuse slots across iterations).
-fn release_entries(cg: &mut Codegen, entries: &[Entry]) {
-    for e in entries.iter().rev() {
-        cg.add_extern(RELEASE_DECL);
-        let live = cg.emit_reg(format!("load i8*, i8** {}", e.slot));
-        cg.emit(format!("call void @osp_release(i8* {live})"));
-        cg.emit(format!("store i8* null, i8** {}", e.slot));
+    if cg.ownership.on {
+        release_operand(cg, ptr);
+    } else {
+        ownership_call(cg, RELEASE_UNIQUE_DECL, "release_unique", ptr);
     }
 }
 
@@ -279,15 +263,36 @@ fn release_entries(cg: &mut Codegen, entries: &[Entry]) {
 /// borrow (field load, unwrap payload, alias, phi of arm-owned values) is
 /// retained so the binding survives its source. Non-candidates are untouched.
 pub(crate) fn bind_owned(cg: &mut Codegen, name: &str, v: &Value) {
-    if !managed(cg, v) {
-        return;
+    if managed(cg, v) && !adopt(cg, name, v) {
+        bind_counted(cg, name, v);
+    }
+}
+
+/// Give `name` the reference `v` already has: the one the closing statement
+/// owns, or the one a binding at its last use gives up. False when neither.
+fn adopt(cg: &mut Codegen, name: &str, v: &Value) -> bool {
+    // A field read out of a temporary this statement owns moves to the binding.
+    if takes::take_field(cg, &v.operand) {
+        own(cg, v);
     }
     if let Some(mut e) = take_entry(cg, &v.operand) {
         e.name = Some(name.to_string());
         e.binding_scope = cg.scope_id();
         push_parent(cg, e);
-        return;
+        return true;
     }
+    // An alias made at the last use of its source takes the source's reference.
+    let Some(mut e) = moves::take(cg, &v.operand) else {
+        return false;
+    };
+    e.name = Some(name.to_string());
+    push_parent(cg, e);
+    true
+}
+
+/// Bind a value something else owns: count a reference of its own for `name`.
+fn bind_counted(cg: &mut Codegen, name: &str, v: &Value) {
+    second_owner(cg, &v.operand, Some(name), Need::Bound);
     retain_val(cg, v);
     let ptr = as_i8ptr(cg, v);
     let slot = cg.hoist_arc_slot();
@@ -300,6 +305,7 @@ pub(crate) fn bind_owned(cg: &mut Codegen, name: &str, v: &Value) {
             binding_scope: cg.scope_id(),
             slot,
             pure_scalar: false,
+            lent: false,
         },
     );
 }
@@ -313,7 +319,10 @@ fn take_owner_anywhere(cg: &mut Codegen, v: &Value) -> bool {
         return false;
     }
     for frame in &mut cg.arc.frames {
-        if let Some(at) = frame.iter().rposition(|e| e.operand == v.operand) {
+        if let Some(at) = frame
+            .iter()
+            .rposition(|e| e.operand == v.operand && !e.lent)
+        {
             let _ = frame.remove(at);
             return true;
         }
@@ -324,7 +333,9 @@ fn take_owner_anywhere(cg: &mut Codegen, v: &Value) -> bool {
 /// Remove and return the innermost-frame entry registered under `operand`.
 fn take_entry(cg: &mut Codegen, operand: &str) -> Option<Entry> {
     let frame = cg.arc.frames.last_mut()?;
-    let at = frame.iter().rposition(|e| e.operand == operand)?;
+    let at = frame
+        .iter()
+        .rposition(|e| e.operand == operand && !e.lent)?;
     Some(frame.remove(at))
 }
 
@@ -352,13 +363,18 @@ fn push_parent(cg: &mut Codegen, entry: Entry) {
 /// a value spelled as a constant. Both hooks are null-safe and ignore pointers
 /// the heap never registered (rodata), so an unconditional pair is correct.
 pub(crate) fn retain_operand(cg: &mut Codegen, operand: &str) {
+    second_owner(cg, operand, None, Need::Shared);
     ownership_call(cg, RETAIN_DECL, "retain", operand);
 }
 
 /// Emit `osp_release` on a raw `i8*` operand (a loaded old cell value, a
 /// runtime-held env whose structural end has been reached).
 pub(crate) fn release_operand(cg: &mut Codegen, operand: &str) {
-    ownership_call(cg, RELEASE_DECL, "release", operand);
+    if cg.ownership.on {
+        ownership_call(cg, OWNERSHIP_FREE_DECL, "ownership_free", operand);
+    } else {
+        ownership_call(cg, RELEASE_DECL, "release", operand);
+    }
 }
 
 /// Emit one runtime ownership call over a raw `i8*` operand, declaring it once.
@@ -381,7 +397,14 @@ fn retain_val(cg: &mut Codegen, v: &Value) {
 /// stored into a heap slot spelled `slot_ty` (the owning block's drop mask
 /// releases it, so the store is a new reference). [GC-ARC-PERCEUS]
 pub(crate) fn dup_store(cg: &mut Codegen, slot_ty: &str, operand: &str) {
-    if slot_ty.ends_with('*') && operand.starts_with('%') {
+    // A literal or an immortal singleton holds no count to raise.
+    if slot_ty.ends_with('*') && operand.starts_with('%') && !cg.is_rodata(operand) {
+        if !slot_ty.contains('(') {
+            second_owner(cg, operand, None, Need::Stored);
+        } else if cg.ownership.on {
+            // A code pointer is no allocation: nothing owns it.
+            return;
+        }
         cg.add_extern(RETAIN_DECL);
         let ptr = if slot_ty == "i8*" {
             operand.to_string()
@@ -401,7 +424,12 @@ pub(crate) fn epilogue(cg: &mut Codegen, ret: Option<&Value>) {
     // one of this function's owners, MOVE it out of the ledger rather than
     // dup-it-then-drop-it — the +1 the caller receives is the one the function
     // already holds. Saves a retain/release pair on every value-returning call.
-    if let Some(v) = ret.filter(|v| !take_owner_anywhere(cg, v)) {
+    if let Some(v) =
+        ret.filter(|v| !take_owner_anywhere(cg, v) && !takes::take_returned(cg, &v.operand))
+    {
+        if managed(cg, v) {
+            second_owner(cg, &v.operand, None, Need::Returned);
+        }
         retain_val(cg, v);
     }
     let frames = std::mem::take(&mut cg.arc.frames);
@@ -416,12 +444,29 @@ pub(crate) fn epilogue(cg: &mut Codegen, ret: Option<&Value>) {
 /// effect / channel boundary where the pointer-ness is erased: dup it so the
 /// receiving side owns +1 (the boundary's structural release lands in M5).
 pub(crate) fn escape_retain(cg: &mut Codegen, v: &Value) {
+    if managed(cg, v) {
+        second_owner(cg, &v.operand, None, Need::Kept);
+    }
     retain_val(cg, v);
 }
 
+mod conditionals;
 mod constructors;
+use conditionals::conditional_floor;
+pub(crate) use conditionals::{close_conditional, frame_mark, open_conditional};
+mod frames;
+use frames::release_entries;
+pub(crate) use frames::{drop_frame_inline, pop_frame, push_frame, FrameKind};
 mod last_use;
+mod lends;
+pub(crate) use lends::{
+    allow_lent_captures, hold_capture, hold_field, hold_temporary, is_lent, lends, lends_list,
+    mark_lent, reading, set_lending, take_lent_capture, take_reading, Held,
+};
+mod takes;
+pub(crate) use takes::note_field;
 mod unwind;
-pub(crate) use constructors::{consume_into_store, transfer_or_retain};
+pub(crate) mod versions;
+pub(crate) use constructors::{consume_into_store, give_binding, store_owned, transfer_or_retain};
 pub(crate) use last_use::release_dead_after;
 pub(crate) use unwind::instrument as instrument_unwind;

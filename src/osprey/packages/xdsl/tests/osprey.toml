@@ -1,0 +1,6 @@
+[project]
+name = "xdsl-tests"
+source_roots = [".", "../src"]
+python_sources = ["../src/lexer.py", "../src/ir.py", "../src/attrs.py", "../src/parser.py", "expected.py", "main.py"]
+default_namespace = "xdsl_tests"
+entry = "main.py"

@@ -1,5 +1,4 @@
 namespace registry;
-import registry::Order
 
 /// Literal and clause algebra of the propositional engine under
 /// [PACKAGE-RESOLUTION]. A variable is an int in 1..n; a literal is `v` for

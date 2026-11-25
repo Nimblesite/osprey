@@ -11,8 +11,6 @@ import ui::Pick
 import ui::Requests
 import ui::Runtime
 import agent::McpClient
-import agentapp::McpModel
-import agentapp::Model
 
 (** Connecting and calling MCP servers. *)
 module McpRun

@@ -201,14 +201,9 @@ def distinct(values):
     return foldList(values, [], lambda kept, value: kept if listContains(kept, value) else listAppend(kept, value))
 
 
-def ascending(values):
-    """`values` in ascending order."""
-    return listSortBy(values, lambda left, right: -1 if left < right else (1 if left > right else 0))
-
-
 def vocabulary(corpus):
     """Every byte the corpus uses except the end-of-turn marker, ascending."""
-    return ascending(filterList(distinct(bytes_of(corpus)), lambda byte: byte != marker()))
+    return listSort(filterList(distinct(bytes_of(corpus)), lambda byte: byte != marker()))
 
 
 def token_ids(vocab):
@@ -323,9 +318,4 @@ def seeded(model, history, sampling):
 
 def bias(anchor, token):
     """A non-negative score below `SEEDED_ROW` from the context anchor and the token."""
-    return residue_seeded(satAdd(wrapMul(satAdd(anchor, token), 1103515245), 12345))
-
-
-def residue_seeded(value):
-    """`value` modulo `SEEDED_ROW`, never negative."""
-    return satSub(abs(value), wrapMul(intDiv(abs(value), SEEDED_ROW), SEEDED_ROW))
+    return Sampler.residue(satAdd(wrapMul(satAdd(anchor, token), 1103515245), 12345), SEEDED_ROW)

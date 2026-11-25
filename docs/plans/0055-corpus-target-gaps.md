@@ -81,7 +81,6 @@ So a row leaves its manifest only when the program works on that target, and the
 | `src/osprey/tests/regressions/fiber/channel_select.test.ospml` | fibers and continuations: `channel_select` |
 | `src/osprey/tests/regressions/fiber/cpu_profiling_demo.test.osp` | fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module |
 | `src/osprey/tests/regressions/fiber/fiber_determinism.test.osp` | fibers and continuations: `fiber_set_deterministic_mode` is the native fiber runtime, outside the module |
-| `src/osprey/tests/regressions/fiber/fiber_exact_replica.test.osp` | fibers and continuations: `fiber_set_deterministic_mode` is the native fiber runtime, outside the module |
 | `src/osprey/tests/regressions/fiber/fiber_showcase.test.osp` | fibers and continuations: `fiber_spawn_env_owned` is the native fiber runtime, outside the module |
 | `src/osprey/tests/regressions/fiber/fiber_showcase.test.ospml` | fibers and continuations: `fiber_spawn_env_owned` is the native fiber runtime, outside the module |
 
@@ -337,7 +336,6 @@ Continuation reasons below end with `(wasm32 acquires one-shot continuations whe
 | `src/osprey/tests/regressions/db/database_effect.test.osp` | foreign C import `sqlite3_open` |
 | `src/osprey/tests/regressions/db/database_effect.test.ospml` | foreign C import `sqlite3_open` |
 | `src/osprey/tests/regressions/fiber/fiber_determinism.test.osp` | foreign C import `fiber_set_deterministic_mode` |
-| `src/osprey/tests/regressions/fiber/fiber_exact_replica.test.osp` | foreign C import `fiber_set_deterministic_mode` |
 | `src/osprey/tests/regressions/http/net_local_address.test.osp` | foreign C import `osprey_net_local_address` |
 | `src/osprey/tests/regressions/http/net_local_address.test.ospml` | foreign C import `osprey_net_local_address` |
 | `src/osprey/tests/regressions/http/websocket_connections.test.osp` | foreign C import `websocket_stop_server` |

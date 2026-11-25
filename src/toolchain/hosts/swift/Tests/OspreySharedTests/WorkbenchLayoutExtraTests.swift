@@ -27,16 +27,6 @@ final class WorkbenchLayoutExtraTests: RenderingTestCase, DrivesWorkbench {
         XCTAssertNil(bench.store.failure)
     }
 
-    func testRealAppKeepsPastedProofWhenSelectionAndTextNotificationsArriveTogether_extraRenamedTheoremKeepsItsOwnName() throws {
-        let bench = try pasted("Theorem mine. For all p, p → p.\nProof.\nAssume h : p.\nFrom h.\n")
-        let words = bench.words("document")
-        for line in ["mine", "For all propositions p.", "Assume h : p.", "From h.", "Checked by the Osprey kernel"] {
-            XCTAssertTrue(words.contains(line), "The pasted theorem must be typeset under its own name: \(line) in \(words)")
-        }
-        XCTAssertFalse(words.contains("self"), "No other theorem's name may be drawn: \(words)")
-        XCTAssertTrue(bench.store.diagnostics.isEmpty, bench.store.diagnostics.joined(separator: "; "))
-    }
-
     func testRealAppKeepsSubsequentTypingInTheCurrentFormulaEditor_extraConjunctionKeepsTheNextKey() throws {
         try exerciseTyping("p ∧ q\n", append: true)
     }
@@ -79,22 +69,13 @@ final class WorkbenchLayoutExtraTests: RenderingTestCase, DrivesWorkbench {
         XCTAssertTrue(bench.store.diagnostics.isEmpty, bench.store.diagnostics.joined(separator: "; "))
     }
 
-    func testOpeningAnExampleRevealsTheProofInsteadOfTheImportedLibrary_extraReturningLeavesTheExample() throws {
-        let bench = try Workbench.importedWordSeed()
-        try bench.press("Examples")
-        try bench.press("Open conjunction example")
-        XCTAssertNotNil(bench.framed("example-context", in: "root"))
-        try bench.press("Return to working")
-        XCTAssertTrue(bench.settle { bench.framed("example-context", in: "root") == nil }, "Return must leave the guided example")
-        XCTAssertNil(bench.framed("proof-library-inspection", in: "root"), "The library stays put away after the example")
-    }
-
-    func testActualApplicationKeepsTheGuidedCaptionBesideItsReturnAction_extraNothingDrawsAtTheFarEdge() throws {
+    func testLessonsAndBackKeepTheImportedLibrary_extraNoEnglishProofEntryIsOffered() throws {
         let bench = Workbench()
-        try bench.press("Examples")
-        try bench.press("Open conjunction example")
-        let context = try XCTUnwrap(bench.framed("example-context", in: "root"))
-        XCTAssertEqual(try captionInk(context, theme: bench.store.theme, columns: 1000..<1456), 0,
-                       "The strip's right side must stay empty: its caption sits beside Return")
+        let labels = bench.store.cells.keys.flatMap { key in bench.store.cell(key).map { Workbench.labels($0.node) } ?? [] }
+        for label in ["Open conjunction example", "Open workspace", "Save", "Source", "Read", "Open in the workbench", "Show solution"] {
+            XCTAssertFalse(labels.contains(label), "The workbench must offer no English proof control: \(label) in \(labels)")
+        }
+        XCTAssertNil(bench.store.cell("document"), "No English proof document region may exist")
+        XCTAssertNotNil(bench.framed("proof-library-inspection", in: "root"))
     }
 }

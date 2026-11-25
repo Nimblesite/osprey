@@ -1,11 +1,5 @@
 namespace registry_cli;
 import registry_host::Host
-import registry_cli::Reports
-import registry_cli::Flags
-import registry_cli::Fetch
-import registry_cli::Project
-import registry_cli::Overlay
-import registry_cli::Lock
 
 /// Resolve before changing the manifest or overlay for `add`, `remove`,
 /// `update --breaking` and `use` ([PACKAGE-API], [PACKAGE-LOCAL-OVERRIDE]):
@@ -44,10 +38,7 @@ module Transaction {
     /// Relock without touching any file; `update` without `--breaking`.
     export fn relock(s: Settings) = Lock::relock(s.base, s.project, s.fresh, s.acceptRemovals, s.local)
 
-    fn restored(path, previous, locked) = match Host::restore(path, previous) {
-        Error { message } => Reports::failure(listAppend(Reports::linesOf(locked), "${restoreCode} ${message}"))
-        Success => locked
-    }
+    fn restored(path, previous, locked) = Reports::restored(Host::restore(path, previous), locked, restoreCode)
 
     fn lockPath(s: Settings) = if s.local { Project::localLockPathAt(s.project) } else { Project::lockPathAt(s.project) }
 

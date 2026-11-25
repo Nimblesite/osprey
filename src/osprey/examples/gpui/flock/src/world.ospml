@@ -4,7 +4,6 @@ namespace flock
 import ui::Doc
 import ui::Lists
 import ui::Pick
-import flock::Steering
 import ui::Requests
 import ui::Runtime
 
@@ -193,11 +192,7 @@ module Simulation
 
     taken (b, hawks) = length (filterList (hawks, \hawk => nearHawk (b, hawk))) > 0
 
-    clamp (value, low, high) = match value < low
-        true => low
-        false => match value > high
-            true => high
-            false => value
+    clamp (value, low, high) = min (max value low) high
 
     heldDirection (negative, positive) = match negative == positive
         true => 0.0

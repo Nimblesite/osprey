@@ -13,3 +13,4 @@ Language server, editor, documentation and test tools.
 - [Test runner and editor integration](TestRunner.md)
 - [Symbolic bug hunting with KLEE](SymbolicExecution.md)
 - [Math to code [MATH-CODE]](MathToCode.md): native Osprey formulas, source-derived Lean proofs, and the Lean importer.
+- [IR to Lean [IR-LEAN]](IrToLean.md): the compiler's IR read through MLIR into a Lean semantics, the ledger theorem for every run, and theorems about emitted functions.

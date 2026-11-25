@@ -1,7 +1,4 @@
 namespace registry;
-import registry::Json
-import registry::JsonRead
-import registry::Order
 
 /// The canonical order and duplicate rule of every list in the domain model.
 /// A list of model objects sorts by its element type's key tuple and is

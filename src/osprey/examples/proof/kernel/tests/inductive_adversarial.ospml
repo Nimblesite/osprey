@@ -8,9 +8,6 @@ import proof::Inductive
 import proof::Telescope
 import proof
     FormerSpec Shape Sort Spec Zero
-import prooftests::Shapes
-import prooftests::ExportInductiveTests
-import prooftests::ExportTests
 
 (** Adversarial claims against [PROOF-KERNEL-THEORY]: each case edits one
     claim of the recorded `AndSwap` export and runs the whole file through

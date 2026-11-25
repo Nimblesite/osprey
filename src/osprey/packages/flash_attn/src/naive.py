@@ -8,7 +8,7 @@ flash-attn ships no Python reference; this port adds one so the flash path is pr
 against an independent implementation of the same masking, GQA, window and ALiBi
 conventions. Implements [PORT-TEST-ORACLE] from spec 0043.
 """
-from flash_attn.Core import FlashResult, max_f, v_at, dot, mask_bounds, alibi_bias, dim4
+from flash_attn.Core import FlashResult, v_at, dot, mask_bounds, alibi_bias, dim4
 
 __all__ = ["naive_attention"]
 
@@ -25,7 +25,7 @@ def naive_score(q, k, shapes, scale, causal, wl, wr, alibi, s):
 
 def row_peak(scores, shapes, r):
     """The maximum score of row r, or -inf when the row is fully masked."""
-    return fold(range(shapes.seqlen_k), unwrap_or(listGet(scores, r * shapes.seqlen_k), 0.0), lambda a, j: max_f(a, unwrap_or(listGet(scores, r * shapes.seqlen_k + j), 0.0)))
+    return fold(range(shapes.seqlen_k), unwrap_or(listGet(scores, r * shapes.seqlen_k), 0.0), lambda a, j: max(a, unwrap_or(listGet(scores, r * shapes.seqlen_k + j), 0.0)))
 
 
 def naive_weight(score, peak):
@@ -53,18 +53,12 @@ def naive_attention(q, k, v, shapes, softmax_scale, causal, window_left, window_
     ```osprey
     from flash_attn import Core, Naive
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
     def show():
-        with wrapped:
-            shapes = Core.Shapes(batch=1, seqlen_q=2, seqlen_k=1, heads_q=1, heads_k=1, headdim=1)
-            r = Naive.naive_attention([1.0, 2.0], [3.0], [7.0], shapes, 1.0, True, -1, -1, [])
-            print(f"[{toString(r.out)}] [{toString(r.lse)}] [{toString(r.probs)}]")
+        shapes = Core.Shapes(batch=1, seqlen_q=2, seqlen_k=1, heads_q=1, heads_k=1, headdim=1)
+        r = Naive.naive_attention([1.0, 2.0], [3.0], [7.0], shapes, 1.0, True, -1, -1, [])
+        print(f"[{toString(r.out)}] [{toString(r.lse)}] [{toString(r.probs)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [[0.0, 7.0]] [[-inf, 6.0]] [[0.0, 1.0]]

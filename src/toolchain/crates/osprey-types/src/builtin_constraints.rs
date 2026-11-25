@@ -36,8 +36,12 @@ pub(crate) fn located_name(name: &str, position: Option<osprey_ast::Position>) -
 }
 
 pub(crate) fn source_position(name: &str) -> Option<osprey_ast::Position> {
-    let (_, location) = name.rsplit_once(" @")?;
-    let (line, column) = location.split_once(':')?;
+    line_column(name.rsplit_once(" @")?.1)
+}
+
+/// `line:column` text as a [`osprey_ast::Position`], when both halves parse.
+pub(crate) fn line_column(text: &str) -> Option<osprey_ast::Position> {
+    let (line, column) = text.split_once(':')?;
     Some(osprey_ast::Position {
         line: line.parse().ok()?,
         column: column.parse().ok()?,
@@ -126,6 +130,21 @@ pub(crate) fn asserted_operand(name: &str) -> Option<usize> {
     }
 }
 
+/// The diagnostic for a built-in whose operand must satisfy `holds` (a float
+/// or integer class), when its type is concrete and does not.
+fn requires_operand(
+    name: &str,
+    prefix: &str,
+    holds: fn(crate::numeric::Numeric) -> bool,
+    requirement: &str,
+    ty: &Type,
+) -> Option<String> {
+    let op = name.strip_prefix(prefix)?;
+    let satisfied = crate::numeric::Numeric::of_type(ty).is_some_and(holds);
+    (!satisfied && !matches!(ty, Type::Var(_)))
+        .then(|| format!("`{op}` requires {requirement}; got {ty}"))
+}
+
 /// Validate the receiver/value of a representation-sensitive built-in.
 pub(crate) fn invalid_use(name: &str, ty: &Type, named: Lookup<'_>) -> Option<String> {
     // [FLOAT-OPERANDS] Schemes carry this obligation into each instantiation,
@@ -138,17 +157,23 @@ pub(crate) fn invalid_use(name: &str, ty: &Type, named: Lookup<'_>) -> Option<St
         return (!valid && !matches!(ty, Type::Var(_)))
             .then(|| format!("operator `{op}` requires int or float; got {ty}"));
     }
-    if let Some(op) = name.strip_prefix(FLOAT_OPERAND_PREFIX) {
-        let float =
-            crate::numeric::Numeric::of_type(ty).is_some_and(crate::numeric::Numeric::is_float);
-        return (!float && !matches!(ty, Type::Var(_)))
-            .then(|| format!("`{op}` requires a float; got {ty}"));
+    if let Some(message) = requires_operand(
+        name,
+        FLOAT_OPERAND_PREFIX,
+        crate::numeric::Numeric::is_float,
+        "a float",
+        ty,
+    ) {
+        return Some(message);
     }
-    if let Some(op) = name.strip_prefix(INTEGER_OPERAND_PREFIX) {
-        let integer =
-            crate::numeric::Numeric::of_type(ty).is_some_and(crate::numeric::Numeric::is_integer);
-        return (!integer && !matches!(ty, Type::Var(_)))
-            .then(|| format!("`{op}` requires an integer; got {ty}"));
+    if let Some(message) = requires_operand(
+        name,
+        INTEGER_OPERAND_PREFIX,
+        crate::numeric::Numeric::is_integer,
+        "an integer",
+        ty,
+    ) {
+        return Some(message);
     }
     let name = name.strip_prefix(MATRIX_OPERAND_PREFIX).unwrap_or(name);
     match name {

@@ -1,0 +1,71 @@
+namespace proof
+
+import proof::Environment
+import proof::Checked
+import proof::Export
+import proof::Inductive
+import proof
+    Single Group Env
+
+// The dependency-order ledger of plan 0041 milestone 5 ([PROOF-COMPLETION-MATHLIB]).
+// `args` are the incremental export directory, the number of module files to check
+// and the fixed denominator. File `<i>.ndjson` holds only what files 0..i-1 did not
+// declare, so each file is checked against the environment the earlier ones built.
+// A rejected declaration is counted and skipped, never added: a later one that names
+// it is then refused as well, so a gap can never pass as accepted.
+
+type Tally =
+    env : Env
+    accepted : int
+    rejected : int
+    unread : int
+    first : string
+
+(** The declarations one export item adds: a block's every former, constructor and recursor. *)
+size item = match item
+    Single _ => 1
+    Group block => wrapAdd (wrapAdd (length block.formers, length block.ctors), length block.recursors)
+
+(** The name an item is recorded under: a block by its first type former. *)
+named item = match item
+    Single decl => decl.name
+    Group block => match listGet (block.formers, 0)
+        Success former => former.name
+        Error _ => "(empty block)"
+
+(** `tally` after `item`: its declarations accepted, or counted as rejected with the first reason kept. *)
+step (tally, item) = recorded (tally, item, Checked::itemDeclared (tally.env, item))
+
+(** One line per item, the ledger's record: `accepted <name>` or `rejected <name>: <reason>`. *)
+recorded (tally, item, outcome) = match outcome
+    Success env => accepted (tally, item, env)
+    Error message => rejected (tally, item, message)
+
+accepted (tally, item, env) =
+    print "accepted ${named item}"
+    Tally(env = env, accepted = wrapAdd (tally.accepted, size item), rejected = tally.rejected, unread = tally.unread, first = tally.first)
+
+rejected (tally, item, message) =
+    print "rejected ${named item}: ${message}"
+    Tally(env = tally.env, accepted = tally.accepted, rejected = wrapAdd (tally.rejected, size item), unread = tally.unread, first = firstReason (tally.first, message))
+
+firstReason (kept, message) = match kept
+    "" => message
+    _ => kept
+
+(** One module file: every item it declares, or the whole file counted unread. *)
+checkedFile (tally, path) = match readFile path
+    Success text => read (tally, path, Export::read text)
+    Error message => Tally(env = tally.env, accepted = tally.accepted, rejected = tally.rejected, unread = wrapAdd (tally.unread, 1), first = firstReason (tally.first, "${path}: ${message}"))
+
+read (tally, path, outcome) = match outcome
+    Success items => foldList (items, tally, step)
+    Error message => Tally(env = tally.env, accepted = tally.accepted, rejected = tally.rejected, unread = wrapAdd (tally.unread, 1), first = firstReason (tally.first, "${path}: ${message}"))
+
+files (dir, count) = toList (range (0, count) |> map (\i => "${dir}/${toString i}.ndjson"))
+
+report (tally, total) = print "ledger: accepted ${toString tally.accepted} rejected ${toString tally.rejected} unread files ${toString tally.unread} of ${total} declarations; first rejection: ${tally.first}"
+
+main () = match args ()
+    [dir, count, total] => report (foldList (files (dir, parseInt count ?: 0), Tally(env = Environment::empty (), accepted = 0, rejected = 0, unread = 0, first = ""), checkedFile), total)
+    _ => print "ledger: usage: <export dir> <module files> <denominator>"

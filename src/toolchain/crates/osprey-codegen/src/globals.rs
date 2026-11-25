@@ -252,10 +252,11 @@ pub(crate) fn bind_capture(cg: &mut Codegen, name: &str) {
     }
 }
 
-/// Publish the value a file-scope `let` just bound. The global is an owner, so
-/// it takes its own reference and the initializing statement stays free to drop
-/// its own [GC-ARC-PERCEUS].
-pub(crate) fn publish(cg: &mut Codegen, name: &str, value: Value) -> Result<()> {
+/// Publish the value a file-scope `let` just bound. The global is an owner. A
+/// binding that can never be reassigned hands it the reference it holds, since
+/// the global then outlives every read of the binding; a `mut` one keeps its
+/// own and the global takes another [GC-ARC-PERCEUS].
+pub(crate) fn publish(cg: &mut Codegen, name: &str, value: Value, mutable: bool) -> Result<()> {
     let Some(slot) = cg.module_globals.get(name).cloned() else {
         return Ok(());
     };
@@ -268,8 +269,23 @@ pub(crate) fn publish(cg: &mut Codegen, name: &str, value: Value) -> Result<()> 
     // The global erases a flat literal's codegen-only layout tag. Materialize
     // it before any function can read the slot as a runtime List handle.
     let escaped = crate::listlit::escaping(cg, value);
+    let bound = escaped.operand.clone();
     let stored = crate::cast::coerce_param(cg, escaped, &slot.sig)?;
-    store(cg, &slot, &stored.operand);
+    // The stored word is the bound value in the global's own spelling.
+    crate::arc::same_value(cg, &stored.operand, &bound);
+    let given = !mutable
+        && slot.storage().is_managed_ptr()
+        && crate::arc::give_binding(cg, name, &stored.operand);
+    if given {
+        let storage = slot.storage().as_str();
+        let operand = &stored.operand;
+        cg.emit(format!(
+            "store {storage} {operand}, {storage}* @{}",
+            slot.symbol
+        ));
+    } else {
+        store(cg, &slot, &stored.operand);
+    }
     Ok(())
 }
 
@@ -300,6 +316,16 @@ pub(crate) fn publish_cell(cg: &mut Codegen, name: &str, cell: &CellSlot) -> Res
     } else {
         cg.emit_reg(format!("bitcast {pointee}* {} to i8*", cell.ptr))
     };
+    if cg.ownership.on {
+        // The entry's frame owns the cell and outlives every function, so the
+        // global only borrows its address [MEM-OWNERSHIP-STATIC-BORROWS].
+        let storage = slot.storage().as_str();
+        cg.emit(format!(
+            "store {storage} {address}, {storage}* @{}",
+            slot.symbol
+        ));
+        return Ok(());
+    }
     store(cg, &slot, &address);
     Ok(())
 }
@@ -341,7 +367,13 @@ pub(crate) fn assign(cg: &mut Codegen, name: &str, value: Value) -> Result<()> {
         crate::cast::coerce_param(cg, value, &slot.sig)?
     };
     if held.is_managed_ptr() {
-        crate::arc::retain_operand(cg, &incoming.operand);
+        if cg.ownership.on {
+            // The location takes the one reference a fresh value brings; the
+            // value it replaces is freed [MEM-OWNERSHIP-STATIC-PATHS].
+            crate::arc::store_owned(cg, ty, &incoming.operand);
+        } else {
+            crate::arc::retain_operand(cg, &incoming.operand);
+        }
         let old = cg.emit_reg(format!("load {ty}, {ty}* {target}"));
         crate::arc::release_operand(cg, &old);
     }
@@ -374,11 +406,14 @@ pub(crate) fn release_all(cg: &mut Codegen) {
             continue;
         }
         let storage = slot.storage().as_str();
-        let live = cg.emit_reg(format!(
-            "load {storage}, {storage}* @{symbol}",
-            symbol = slot.symbol
-        ));
-        crate::arc::release_operand(cg, &live);
+        // Under ownership a cell belongs to the entry's frame, which frees it.
+        if !(cg.ownership.on && slot.cell) {
+            let live = cg.emit_reg(format!(
+                "load {storage}, {storage}* @{symbol}",
+                symbol = slot.symbol
+            ));
+            crate::arc::release_operand(cg, &live);
+        }
         cg.emit(format!(
             "store {storage} null, {storage}* @{symbol}",
             symbol = slot.symbol

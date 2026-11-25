@@ -2,7 +2,6 @@ namespace registry_tests;
 import registry::Release
 import registry::ReleaseFiles
 import registry::Surface
-import registry_tests::Fixtures
 
 /// The capability surface scan of [PACKAGE-CAPABILITY-CONFINEMENT]: the
 /// builtin-to-capability table equals the fixture, whole identifiers match

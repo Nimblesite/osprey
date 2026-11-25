@@ -160,27 +160,22 @@ T    ?= -O2 -D_FORTIFY_SOURCE=2 -fstack-protector-strong $(WARN) -ftrapv -std=c1
 PROF_OBJ = bin/profiler_runtime.o bin/profiler_store.o bin/profiler_dump.o bin/profiler_sampler.o bin/profiler_stream.o bin/profiler_endpoint.o
 # One shared allocator implementation in both GC and ARC runtime archives.
 NATIVE_BRIDGE_OBJ := bin/native_bridge.o bin/native_bridge_lifecycle.o bin/native_scene.o
-FIB_OBJ  ?= bin/memory_runtime.o bin/gpu_runtime.o bin/gpu_map_file.o bin/gpu_elements.o bin/gpu_host.o bin/tensor_file.o bin/tensor_list.o bin/fiber_runtime.o bin/system_runtime.o bin/file_runtime.o bin/effects_runtime.o bin/effects_coro.o bin/string_runtime.o bin/string_runtime_list.o bin/float_spelling.o bin/list_runtime.o bin/list_rebuild.o bin/map_runtime.o bin/map_runtime_hamt.o bin/json_runtime.o bin/json_text.o bin/json_codec.o bin/ffi_runtime.o bin/term_runtime.o bin/random_runtime.o bin/test_runtime.o bin/coverage_runtime.o $(NATIVE_BRIDGE_OBJ) $(PROF_OBJ)
-HTTP_OBJ ?= bin/http_shared.o bin/http_client_runtime.o bin/http_client_transport.o bin/http_client_response.o bin/http_client_framing.o bin/http_client_chunks.o bin/http_server_request.o bin/http_server_response.o bin/http_server_runtime.o bin/http_server_pool.o bin/websocket_client_runtime.o bin/websocket_server_runtime.o bin/websocket_frames.o bin/tls_client_runtime.o bin/file_server_runtime.o bin/media_render_runtime.o $(FIB_OBJ)
-# GC backend archives (osprey --memory=gc): the tracing collector replaces
-# memory_runtime.o, and the value-container units are rebuilt with the malloc
-# redirect (osp_gc_shim.h) so their nodes live in the managed heap. Everything
-# else is the same object. Implements [GC-TRACE-CONSERVATIVE], spec 0018.
-FIB_OBJ_GC  ?= bin/memory_gc.o bin/gpu_runtime.o bin/gpu_map_file.o bin/gpu_elements.o bin/gpu_host.o bin/tensor_file.o bin/tensor_list.o bin/fiber_runtime.o bin/system_runtime.o bin/file_runtime.o bin/effects_runtime.o bin/effects_coro.o bin/string_runtime.o bin/string_runtime_list.o bin/float_spelling.o bin/gc/list_runtime.o bin/gc/list_rebuild.o bin/gc/map_runtime.o bin/gc/map_runtime_hamt.o bin/json_runtime.o bin/json_text.o bin/json_codec.o bin/ffi_runtime.o bin/term_runtime.o bin/random_runtime.o bin/test_runtime.o bin/coverage_runtime.o $(NATIVE_BRIDGE_OBJ) $(PROF_OBJ)
+# GC container nodes use the tracing heap.
+# The other runtime units use their standard objects.
+FIB_OBJ_GC  ?= bin/memory_gc.o bin/gpu_runtime.o bin/gpu_lifetime.o bin/gpu_map_file.o bin/gpu_elements.o bin/gpu_host.o bin/tensor_file.o bin/tensor_list.o bin/fiber_runtime.o bin/system_runtime.o bin/file_runtime.o bin/effects_runtime.o bin/effects_coro.o bin/string_runtime.o bin/string_runtime_list.o bin/float_spelling.o bin/gc/list_runtime.o bin/gc/list_rebuild.o bin/gc/map_runtime.o bin/gc/map_runtime_hamt.o bin/json_runtime.o bin/json_text.o bin/json_codec.o bin/ffi_runtime.o bin/term_runtime.o bin/random_runtime.o bin/test_runtime.o bin/coverage_runtime.o $(NATIVE_BRIDGE_OBJ) $(PROF_OBJ)
 HTTP_OBJ_GC ?= bin/http_shared.o bin/http_client_runtime.o bin/http_client_transport.o bin/http_client_response.o bin/http_client_framing.o bin/http_client_chunks.o bin/http_server_request.o bin/http_server_response.o bin/http_server_runtime.o bin/http_server_pool.o bin/websocket_client_runtime.o bin/websocket_server_runtime.o bin/websocket_frames.o bin/tls_client_runtime.o bin/file_server_runtime.o bin/media_render_runtime.o $(FIB_OBJ_GC)
 # ARC backend archives (osprey --memory=arc): Perceus reference counting
-# replaces memory_runtime.o, and the value-producing units (containers +
+# tracks references. The value-producing units (containers +
 # strings + JSON) are rebuilt with the allocation redirect (osp_arc_shim.h) so
 # their nodes/buffers carry the 16-byte header and registry entry. Implements
 # [GC-ARC-PERCEUS], spec 0018.
-FIB_OBJ_ARC  ?= bin/memory_arc.o bin/gpu_runtime.o bin/gpu_map_file.o bin/gpu_elements.o bin/gpu_host.o bin/tensor_file.o bin/tensor_list.o bin/fiber_runtime.o bin/system_runtime.o bin/arc/file_runtime.o bin/effects_runtime.o bin/effects_coro.o bin/arc/string_runtime.o bin/arc/string_runtime_list.o bin/float_spelling.o bin/arc/list_runtime.o bin/arc/list_rebuild.o bin/arc/map_runtime.o bin/arc/map_runtime_hamt.o bin/arc/json_runtime.o bin/arc/json_text.o bin/arc/json_codec.o bin/ffi_runtime.o bin/term_runtime.o bin/random_runtime.o bin/test_runtime.o bin/coverage_runtime.o $(NATIVE_BRIDGE_OBJ) $(PROF_OBJ)
+FIB_OBJ_ARC  ?= bin/memory_arc.o bin/gpu_runtime.o bin/gpu_lifetime.o bin/gpu_map_file.o bin/gpu_elements.o bin/gpu_host.o bin/tensor_file.o bin/tensor_list.o bin/fiber_runtime.o bin/system_runtime.o bin/arc/file_runtime.o bin/effects_runtime.o bin/effects_coro.o bin/arc/string_runtime.o bin/arc/string_runtime_list.o bin/float_spelling.o bin/arc/list_runtime.o bin/arc/list_rebuild.o bin/arc/map_runtime.o bin/arc/map_runtime_hamt.o bin/arc/json_runtime.o bin/arc/json_text.o bin/arc/json_codec.o bin/ffi_runtime.o bin/term_runtime.o bin/random_runtime.o bin/test_runtime.o bin/coverage_runtime.o $(NATIVE_BRIDGE_OBJ) $(PROF_OBJ)
 HTTP_OBJ_ARC ?= bin/http_shared.o bin/http_client_runtime.o bin/http_client_transport.o bin/http_client_response.o bin/http_client_framing.o bin/http_client_chunks.o bin/http_server_request.o bin/http_server_response.o bin/http_server_runtime.o bin/http_server_pool.o bin/websocket_client_runtime.o bin/websocket_server_runtime.o bin/websocket_frames.o bin/tls_client_runtime.o bin/file_server_runtime.o bin/media_render_runtime.o $(FIB_OBJ_ARC)
 ifeq ($(UNAME_S),Darwin)
 GPU_DEVICE_OBJ ?= bin/gpu_metal.o
 GPU_DEVICE_NATIVE ?= src/toolchain/compiler/bin/gpu_metal.o
 GPU_DEVICE_FLAGS ?= -DOSPREY_GPU_METAL=1
 GPU_DEVICE_LIBS ?= -framework Foundation -framework Metal
-FIB_OBJ += bin/gpu_metal.o
 FIB_OBJ_GC += bin/gpu_metal.o
 FIB_OBJ_ARC += bin/gpu_metal.o
 endif
@@ -188,23 +183,28 @@ GPU_DEVICE_OBJ += bin/gpu_opencl.o
 GPU_DEVICE_NATIVE += src/toolchain/compiler/bin/gpu_opencl.o
 GPU_DEVICE_FLAGS += -DOSPREY_GPU_OPENCL=1
 GPU_DEVICE_LINK = $(addprefix $(CURDIR)/src/toolchain/compiler/,$(GPU_DEVICE_OBJ))
-FIB_OBJ += bin/gpu_opencl.o
 FIB_OBJ_GC += bin/gpu_opencl.o
 FIB_OBJ_ARC += bin/gpu_opencl.o
 ifeq ($(UNAME_S),Linux)
 GPU_DEVICE_LIBS += -ldl -pthread
 endif
+# The ownership twin of the ARC archives [MEM-OWNERSHIP-STATIC]: the same shimmed
+# units over the shared tracked heap, with memory_ownership.c, which keeps no
+# reference counts, in place of memory_arc.c. Recursive, so it sees the GPU
+# objects appended above.
+FIB_OBJ_OWNERSHIP = $(patsubst bin/memory_arc.o,bin/memory_ownership.o,$(FIB_OBJ_ARC))
+HTTP_OBJ_OWNERSHIP = $(patsubst bin/memory_arc.o,bin/memory_ownership.o,$(HTTP_OBJ_ARC))
 # The iOS and Android archives carry no device adapter: their gpu_runtime is
 # compiled without the adapter flags, so every kernel and product runs the host
 # oracle and a device selection is the no-adapter error [GPU-BACKEND-DEVICE].
-MOBILE_RT_SRC ?= $(filter-out system_runtime $(basename $(notdir $(GPU_DEVICE_OBJ))),$(basename $(notdir $(FIB_OBJ))))
-MOBILE_ARC_RT_SRC ?= memory_arc $(filter-out memory_runtime,$(MOBILE_RT_SRC))
+MOBILE_ARC_RT_SRC ?= $(filter-out system_runtime $(basename $(notdir $(GPU_DEVICE_OBJ))),$(basename $(notdir $(FIB_OBJ_ARC))))
+MOBILE_OWNERSHIP_RT_SRC ?= memory_ownership $(filter-out memory_arc,$(MOBILE_ARC_RT_SRC))
 MOBILE_ARC_SHIM_SRC ?= $(patsubst bin/arc/%.o,%,$(filter bin/arc/%,$(FIB_OBJ_ARC)))
 NATIVE_RUNTIME_CONFIG ?= src/toolchain/compiler/bin/.native-runtime-config
 NATIVE_RUNTIME_STAMP ?= src/toolchain/compiler/bin/.native-runtime.stamp
 NATIVE_RUNTIME_INPUTS ?= $(filter-out src/toolchain/compiler/runtime/%_tests.c src/toolchain/compiler/runtime/test_http_length_validation.c src/toolchain/compiler/runtime/test_openssl.c src/toolchain/compiler/runtime/test_system_runtime.c src/toolchain/compiler/runtime/test_file_runtime.c src/toolchain/compiler/runtime/web_runtime.c,$(wildcard src/toolchain/compiler/runtime/*.c)) $(wildcard src/toolchain/compiler/runtime/*.h)
 NATIVE_RUNTIME_INPUTS += $(wildcard src/toolchain/compiler/runtime/*.m src/toolchain/compiler/runtime/*.metal)
-NATIVE_RUNTIME_ARCHIVES ?= src/toolchain/compiler/bin/libfiber_runtime.a src/toolchain/compiler/bin/libhttp_runtime.a src/toolchain/compiler/bin/libfiber_runtime_gc.a src/toolchain/compiler/bin/libhttp_runtime_gc.a src/toolchain/compiler/bin/libfiber_runtime_arc.a src/toolchain/compiler/bin/libhttp_runtime_arc.a src/toolchain/compiler/lib/libfiber_runtime.a src/toolchain/compiler/lib/libhttp_runtime.a src/toolchain/compiler/lib/libfiber_runtime_gc.a src/toolchain/compiler/lib/libhttp_runtime_gc.a src/toolchain/compiler/lib/libfiber_runtime_arc.a src/toolchain/compiler/lib/libhttp_runtime_arc.a
+NATIVE_RUNTIME_ARCHIVES ?= $(foreach dir,$(RTB) src/toolchain/compiler/lib,$(foreach name,fiber http,$(foreach mode,gc arc ownership,$(dir)/lib$(name)_runtime_$(mode).a)))
 
 # WebAssembly (wasm32-wasip1) cross-build toolchain — opt-in via `make -C src/toolchain/website wasm`.
 # Compiles the portable C-runtime subset (no pthreads/sockets/OpenSSL/syscalls)
@@ -250,7 +250,7 @@ endef
 # the WASI random_get host call). Each compiles its non-portable half out under
 # `#ifndef __wasm__`, so adding them unskips file and random programs on wasm32
 # without pretending fork/exec or pthreads exist.
-WASM_RT_SRC  ?= native_scene native_bridge native_bridge_lifecycle memory_runtime gpu_runtime gpu_map_file gpu_elements gpu_host tensor_file tensor_list string_runtime string_runtime_list float_spelling list_runtime list_rebuild map_runtime map_runtime_hamt json_runtime json_text json_codec effects_runtime test_runtime coverage_runtime web_runtime profiler_runtime wasm_builtins_runtime system_runtime file_runtime random_runtime
+WASM_RT_SRC  ?= native_scene native_bridge native_bridge_lifecycle gpu_runtime gpu_lifetime gpu_map_file gpu_elements gpu_host tensor_file tensor_list string_runtime string_runtime_list float_spelling list_runtime list_rebuild map_runtime map_runtime_hamt json_runtime json_text json_codec effects_runtime test_runtime coverage_runtime web_runtime profiler_runtime wasm_builtins_runtime system_runtime file_runtime random_runtime
 
 # The ARC twin of that archive, linked by `--memory=arc` — the wasm32 default
 # [WASM-TARGET-MEMORY]. Same unit set with memory_arc.c in place of the malloc
@@ -260,7 +260,10 @@ WASM_RT_SRC  ?= native_scene native_bridge native_bridge_lifecycle memory_runtim
 # lock stays untripped, and memory_arc.c reads 4-byte pointer slots there.
 WASM_ARC_LIB      ?= libosprey_runtime_wasm_arc.a
 WASM_ARC_SHIM_SRC ?= string_runtime string_runtime_list list_runtime list_rebuild map_runtime map_runtime_hamt json_runtime json_text json_codec file_runtime
-WASM_ARC_RT_SRC   ?= memory_arc $(filter-out memory_runtime,$(WASM_RT_SRC))
+WASM_ARC_RT_SRC   ?= memory_arc $(WASM_RT_SRC)
+# The ownership twin, linked by `--memory=ownership` on wasm32 [MEM-OWNERSHIP-STATIC].
+WASM_OWNERSHIP_LIB    ?= libosprey_runtime_wasm_ownership.a
+WASM_OWNERSHIP_RT_SRC ?= memory_ownership $(filter-out memory_arc,$(WASM_ARC_RT_SRC))
 
 # Symbolic execution with KLEE [SYMEX-RUNTIME-BITCODE]. The portable runtime
 # subset plus the mock C library compile to one bitcode module with the pinned
@@ -273,7 +276,7 @@ KLEE_LLVM_BIN ?= $(shell for d in "$$OSPREY_KLEE_LLVM" /opt/homebrew/opt/llvm@19
 KLEE_CC       ?= $(KLEE_LLVM_BIN)/clang
 KLEE_LINK     ?= $(KLEE_LLVM_BIN)/llvm-link
 KLEE_NM       ?= $(KLEE_LLVM_BIN)/llvm-nm
-KLEE_RT_SRC   ?= $(filter-out memory_runtime web_runtime wasm_builtins_runtime,$(WASM_RT_SRC)) $(patsubst src/toolchain/compiler/runtime/%.c,%,$(filter-out %_tests.c,$(wildcard src/toolchain/compiler/runtime/klee/*.c)))
+KLEE_RT_SRC   ?= $(filter-out web_runtime wasm_builtins_runtime,$(WASM_RT_SRC)) $(patsubst src/toolchain/compiler/runtime/%.c,%,$(filter-out %_tests.c,$(wildcard src/toolchain/compiler/runtime/klee/*.c)))
 KLEE_CFLAGS   ?= --target=x86_64-unknown-linux-gnu -nostdlibinc -isystem runtime/klee/include \
   -emit-llvm -c -g -O0 -Xclang -disable-O0-optnone -std=c11 $(WARN_MAX) -U_FORTIFY_SOURCE -fno-stack-protector \
   -fsanitize=undefined -fno-sanitize=function -DOSP_SYMBOLIC -DOSP_FLOAT_SPELLING_PORTABLE -D_GNU_SOURCE '-D__thread=' '-D_Thread_local='

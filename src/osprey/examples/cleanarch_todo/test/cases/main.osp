@@ -3,20 +3,6 @@
 
 namespace todo;
 
-import todo::AccessCases
-import todo::EdgeCases
-import todo::ItemsCases
-import todo::ListsCases
-import todo::MultishotAuthzCases
-import todo::MultishotAuthzGuardCases
-import todo::MultishotCases
-import todo::MultishotMatrixCases
-import todo::MultishotPlanCases
-import todo::MultishotPlanListsCases
-import todo::MultishotRetryCases
-import todo::MultishotRetryItemsCases
-import todo::MultishotValidateCases
-import todo::PipelineCases
 
 test("create answers the id and GetTodos shows the list", ListsCases::createRoundTripCase)
 test("every supported colour round-trips; unsupported colours are typed faults", ListsCases::colourPermutationsCase)
@@ -81,6 +67,7 @@ test("the fixes answer alike for every principal", MultishotValidateCases::fixes
 test("every fix branch creates the same id, set by the seed count", MultishotValidateCases::seedCountSetsNewIdCase)
 test("validation resumes once per candidate fix", MultishotValidateCases::resumeCountIsFixesCase)
 test("an abandoned fix branch publishes no completion event", MultishotValidateCases::abandonedBranchEventsCase)
+test("the cut fix keeps the first 200 characters, so its collisions are uniqueness faults", MultishotValidateCases::cutKeepsFirst200Case)
 test("the page plan answers its four shapes in order", MultishotPlanCases::planShapesOrderCase)
 test("an empty list plans four empty pages", MultishotPlanCases::planEmptyListCase)
 test("a list with no rows plans four empty pages", MultishotPlanCases::planMissingListCase)
@@ -93,6 +80,9 @@ test("eleven rows leave a next page behind every small shape", MultishotPlanCase
 test("the plan sorts digits, upper case and lower case by title", MultishotPlanCases::planSortStressCase)
 test("the plan pages only the asked list's rows", MultishotPlanListsCases::planMultiListCase)
 test("the anonymous party plans the same pages", MultishotPlanListsCases::planAnonymousPlanCase)
+test("49 rows fit the longest page with no next page", MultishotPlanListsCases::planWide49Case)
+test("exactly 50 rows fill the longest page with no next page", MultishotPlanListsCases::planWide50Case)
+test("51 rows leave the widest row on a next page", MultishotPlanListsCases::planWide51Case)
 test("zero to five rivals: the request lands after each lost commit", MultishotRetryCases::retryRivalCountsCase)
 test("duplicate rival titles each win exactly one commit", MultishotRetryCases::retryDuplicateRivalsCase)
 test("validation re-runs against every retried snapshot", MultishotRetryCases::retryCreateListValidationCase)

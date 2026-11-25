@@ -66,3 +66,10 @@ name = "SameSyntax"
 
 [[lean_lib]]
 name = "Synthesis"
+
+# [IR-LEAN] The ownership ledger and the LLVM subset semantics built on it.
+[[lean_lib]]
+name = "OwnershipLedger"
+
+[[lean_lib]]
+name = "LlvmSubset"

@@ -1,7 +1,4 @@
 namespace registry;
-import registry::Checked
-import registry::Bytes
-import registry::JsonScan
 
 /// Strict RFC 8259 parsing into the registry's integer-only JSON model:
 /// integers, strings, booleans, null, arrays and objects. Every failure is a
@@ -148,7 +145,7 @@ module Json {
         else { err(unexpectedToken, j) }
     }
 
-    fn parseStr(text, j) = Checked::andThen(JsonScan::scan(text, j + 1), fn(value) => Success { value: Step { value: Str { text: value.text }, next: value.next } })
+    fn parseStr(text, j) = andThen(JsonScan::scan(text, j + 1), fn(value) => Success { value: Step { value: Str { text: value.text }, next: value.next } })
 
     fn membersOf(seen) = mapList(seen, fn(s) => s.member)
     fn hasKey(seen, key) = foldList(seen, false, fn(found, s) => found || s.member.key == key)
@@ -175,7 +172,7 @@ module Json {
         }
     }
 
-    fn parseMember(text, j, depth, seen) = Checked::andThen(JsonScan::scan(text, j + 1), fn(value) => afterKey(text, value, j, depth, seen))
+    fn parseMember(text, j, depth, seen) = andThen(JsonScan::scan(text, j + 1), fn(value) => afterKey(text, value, j, depth, seen))
 
     fn afterKey(text, scan, keyAt, depth, seen) = {
         let colon = skipWs(text, scan.next)
@@ -189,7 +186,7 @@ module Json {
         }
     }
 
-    fn afterColon(text, colon, keyAt, key, depth, seen) = Checked::andThen(parseValue(text, colon + 1, depth), fn(value) => addMember(text, value, keyAt, key, depth, seen))
+    fn afterColon(text, colon, keyAt, key, depth, seen) = andThen(parseValue(text, colon + 1, depth), fn(value) => addMember(text, value, keyAt, key, depth, seen))
 
     /// A repeated key is refused at the byte of its opening quote.
     fn addMember(text, step, keyAt, key, depth, seen) = match hasKey(seen, key) {
@@ -226,7 +223,7 @@ module Json {
         }
     }
 
-    fn parseItem(text, j, depth, items) = Checked::andThen(parseValue(text, j, depth), fn(value) => nextItem(text, skipWs(text, value.next), depth, listAppend(items, value.value)))
+    fn parseItem(text, j, depth, items) = andThen(parseValue(text, j, depth), fn(value) => nextItem(text, skipWs(text, value.next), depth, listAppend(items, value.value)))
 
     fn nextItem(text, j, depth, items) = {
         let b = byteAt(text, j) ?: 0
@@ -291,13 +288,13 @@ module Json {
     }
 
     /// The string at `key`, or `json.missing-key` / `json.not-an-object` / `json.wrong-type`.
-    export fn textAt(object, key) = Checked::andThen(get(object, key), fn(value) => textOf(value))
+    export fn textAt(object, key) = andThen(get(object, key), fn(value) => textOf(value))
 
     /// The integer at `key`, with the same failure codes as `textAt`.
-    export fn intAt(object, key) = Checked::andThen(get(object, key), fn(value) => intOf(value))
+    export fn intAt(object, key) = andThen(get(object, key), fn(value) => intOf(value))
 
     /// The array items at `key`, with the same failure codes as `textAt`.
-    export fn itemsAt(object, key) = Checked::andThen(get(object, key), fn(value) => itemsOf(value))
+    export fn itemsAt(object, key) = andThen(get(object, key), fn(value) => itemsOf(value))
 
     /// `"${code} at byte ${offset}"` — the one human-facing rendering of a
     /// parse problem. Implements [PACKAGE-PUBLISH].

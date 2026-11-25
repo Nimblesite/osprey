@@ -18,6 +18,15 @@ edgeOf (edge, label) = match edge
 // The horizontal distance between two labelled elements.
 gapBetween (left, right) = edgeOf ("left", left) - edgeOf ("left", right)
 
+// The folder each journey writes into: `target/daw-tests` first, then its own named room.
+madeRoom name =
+    _root = makeDir "target/daw-tests"
+    _room = makeDir "target/daw-tests/${name}"
+    "target/daw-tests/${name}"
+
+// A middle C struck at beat 0 with full velocity, ringing for `beats` beats.
+beatNote beats = daw::Note(pitch = 60, start = 0.0, length = beats, velocity = 1.0)
+
 // The deck `dy` lower and the inspector `dx` further right than at the design size, `gap` being their distance there; the graph's nodes stay.
 roomFor (gap, dx, dy) =
     forEachList (["Play C4", "Play C#4"], \key => near (edgeOf ("top", key), 866.0 + dy))
@@ -135,9 +144,7 @@ pluginUiJourney () =
             _ => match startsWith key "prism-worker:"
                 true => zeroStereoResponse ()
                 false => "malformed metadata"
-    home = "target/daw-tests/vst-home"
-    _root = makeDir "target/daw-tests"
-    _homeDir = makeDir home
+    home = madeRoom "vst-home"
     _prefs = makeDir "${home}/.prism"
     _initial = writeFile "${home}/.prism/vst3-folder" "/plugins"
     launch = Drive::launchedAt (Drive::idle (synth::EditorApp::program (), synth::EditorState::initial ()), "macos", ["--empty", "--vst-worker", "/worker/osprey-vst-worker"], home)
@@ -505,7 +512,7 @@ frozenParameter p = p(automatable = false)
 // track gain and sums with other independently scaled taps into the same stereo bus.
 tapJourney () =
     keys = keysTrack ()
-    voice = keys(gain = 0.0, notes = [daw::Note(pitch = 60, start = 0.0, length = 0.015, velocity = 1.0)])
+    voice = keys(gain = 0.0, notes = [beatNote 0.015])
     song = routedTo (timeline [voice], [padsBus (1.0, "")])
     encoded (song, \text =>
         routes = "[{\"sendId\":1,\"source\":1,\"outlet\":0,\"bus\":\"pads\",\"level\":0.5,\"enabled\":true},{\"sendId\":2,\"source\":2,\"outlet\":0,\"bus\":\"pads\",\"level\":0.25,\"enabled\":true}]"
@@ -593,20 +600,17 @@ liveDialBlock (place, stream, check) = succeeds (daw::LiveControls::receive ("${
     succeeds (daw::Playback::step (applied.controlScore, applied.playing, 64), \packet => check (packet, applied(playing = packet.playing))))
 
 liveDialJourney () =
-    place = "target/daw-tests/live-dial"
-    _root = makeDir "target/daw-tests"
-    _dir = makeDir place
+    place = madeRoom "live-dial"
     track = keysTrack ()
-    score = timeline [track(notes = [daw::Note(pitch = 60, start = 0.0, length = 1.0, velocity = 1.0)])]
+    score = timeline [track(notes = [beatNote 1.0])]
     succeeds (daw::Projects::saved (score, "${place}/knobs.json"), \_ =>
         session = editorLaunched ["--song", "${place}/knobs.json", "--renderer", "${place}/daw", "--vst-worker", "${place}/worker"]
         started = Drive::press (session, "Play Song")
         chosen = inspectorSelected (Drive::press (started, "Patch Controls"), 2)
         reads (dialOf (chosen, "Gain"), \dial =>
-            x = dial.accessLeft + dial.accessWidth / 2.0
-            y = dial.accessTop + dial.accessHeight / 2.0
-            down = dialPointer (chosen, x, y, true, false)
-            moving = dialPointer (down, x, y + 160.0, true, false)
+            at = uitest::Semantics::point (dial, 0.5)
+            down = dialPointer (chosen, at.pointX, at.pointY, true, false)
+            moving = dialPointer (down, at.pointX, at.pointY + 160.0, true, false)
             expect ((Drive::holding moving).dial != synth::DialIdle, true)
             expect ((Drive::holding moving).songTicket, "daw-song:live:${place}/knobs/live")
             reads (dialOf (moving, "Gain"), \seen => expect (seen.accessValue, 0.0))
@@ -615,14 +619,14 @@ liveDialJourney () =
                     stream = daw::LiveStream(playing = first.playing, controlVersion = 0, controlScore = score, noteFolders = [])
                     liveDialBlock (place, stream, \(quiet, muted) =>
                         bothSilent quiet
-                        louder = dialPointer (moving, x, y - 60.0, true, false)
+                        louder = dialPointer (moving, at.pointX, at.pointY - 60.0, true, false)
                         expect ((Drive::holding louder).dial != synth::DialIdle, true)
                         reads (dialOf (louder, "Gain"), \raised =>
                             expect (raised.accessValue > dial.accessValue, true)
                             liveDialBlock (place, muted, \(loud, applied) =>
                                 expect (applied.controlVersion > muted.controlVersion, true)
                                 audible loud.left
-                                released = dialPointer (louder, x, y - 60.0, false, false)
+                                released = dialPointer (louder, at.pointX, at.pointY - 60.0, false, false)
                                 expect ((Drive::holding released).dial, synth::DialIdle)
                                 reads (dialOf (released, "Gain"), \kept => expect (kept.accessValue, raised.accessValue))
                                 liveDialBlock (place, applied, \(after, settled) =>
@@ -633,7 +637,7 @@ liveDialJourney () =
 // [DAW-TRANSPORT-LIVE-CONTROLS] A gain edit changes the sounding note on the next block.
 liveKnobJourney () =
     track = keysTrack ()
-    note = daw::Note(pitch = 60, start = 0.0, length = 0.125, velocity = 1.0)
+    note = beatNote 0.125
     score = timeline [track(notes = [note])]
     routing = daw::TrackPatches::routing track.instrument
     muted = routing(nodes = mapList (routing.nodes, \n => ui::Pick::either (n.component == "gain", n(settings = [daw::Setting(key = "gain", value = 0.0, follow = daw::Constant)]), n)))
@@ -730,9 +734,7 @@ patchRoom (d, spareWidth, spareHeight, songShift) =
 // growing or shrinking around the song page never moves the patch's module inspector or toolbar off the patch
 // window, the patch window's own resizes still move them, and the song page stays centred in its own window.
 detachedRoomJourney () =
-    place = "target/daw-tests/detached-room"
-    _root = makeDir "target/daw-tests"
-    _dir = makeDir place
+    place = madeRoom "detached-room"
     succeeds (daw::Projects::saved (timeline [bellTrack (), keysTrack ()], "${place}/song.json"), \_ =>
         session = editorLaunched ["--song", "${place}/song.json"]
         lane = uitest::Semantics::element (session.drivenSeen.renderedAccess, "Track 2")
@@ -763,12 +765,15 @@ resized (d, wanted, room) =
     patchRoom (viewed, at 2, at 3, at 4)
     viewed
 
+// The access tree of the scene the host sketched at `index`, or none when it drew nothing.
+walkAccess (d, index) = match listGet (ui::Surfaces::seen (d.drivenSurface, d.drivenProgram)).walkSketches index
+    Error _ => []
+    Success drawing => drawing.sketchedAs.sketchAccess
+
 // The access tree of the scene bound to `wanted`, in that scene's units.
 sceneAccess (d, wanted) = match listGet (filterList (toList (range (0, length d.drivenSeen.renderedScenes)), \index => boundTo (d, listGet d.drivenSeen.renderedScenes index ?: -1, wanted))) 0
     Error _ => []
-    Success index => match listGet (ui::Surfaces::seen (d.drivenSurface, d.drivenProgram)).walkSketches index
-        Error _ => []
-        Success drawing => drawing.sketchedAs.sketchAccess
+    Success index => walkAccess (d, index)
 
 // How many rendered scenes the host binds to `wanted`.
 sceneCount (d, wanted) = length (filterList (d.drivenSeen.renderedScenes, \ordinal => boundTo (d, ordinal, wanted)))
@@ -776,11 +781,15 @@ sceneCount (d, wanted) = length (filterList (d.drivenSeen.renderedScenes, \ordin
 // A label only the properties of the Gain module `identity` carry: the skin's canvas inspector or a dial named after the module.
 moduleProperty (label, identity) = startsWith label "Inspector" || startsWith label "Gain ${identity} "
 
+// The patch panel is docked with its Controls scene bound `count` times, or away with it unbound.
+parametersDocked (d, count, shown) =
+    expect (sceneCount (d, synth::Controls), count)
+    viewShows (d, "Parameters", shown)
+
 // The keys track's Gain card chosen with a press and release on the Patch page the `wanted` scene draws: its
 // properties are in the docked patch panel and nowhere on that canvas; `check` goes on from there.
 chooseGain (d, wanted, identity, check) =
-    expect (sceneCount (d, synth::Controls), 0)
-    viewShows (d, "Parameters", false)
+    parametersDocked (d, 0, false)
     cards = filterList (sceneAccess (d, wanted), \a => startsWith a.accessLabel "Canvas " && !contains a.accessLabel ":")
     expect (length cards, 3)
     reads (listGet (filterList (cards, \a => startsWith a.accessLabel "Canvas Gain")) 0, \card =>
@@ -789,8 +798,7 @@ chooseGain (d, wanted, identity, check) =
         chosen = sceneEvent (sceneEvent (d, wanted, ui::Hosting::pointer, x, y, true, false), wanted, ui::Hosting::pointer, x, y, false, false)
         expect ((Drive::holding chosen).selected, identity)
         expect ((Drive::holding chosen).detailsShown, false)
-        expect (sceneCount (chosen, synth::Controls), 1)
-        viewShows (chosen, "Parameters", true)
+        parametersDocked (chosen, 1, true)
         reads (dialOf (chosen, "Gain"), \dial => expect (dial.accessWidth > 0.0, true))
         expect (mapList (filterList (sceneAccess (chosen, wanted), \a => moduleProperty (a.accessLabel, identity)), \a => a.accessLabel), [])
         check chosen)
@@ -811,8 +819,7 @@ mainPanelJourney () =
     expect ((Drive::holding built).patchWindowSerial, 0)
     chooseGain (closedPanel built, synth::Surface, 1, \chosen =>
         again = closedPanel chosen
-        expect (sceneCount (again, synth::Controls), 0)
-        viewShows (again, "Parameters", false))
+        parametersDocked (again, 0, false))
 
 // The panel's Close pressed: no module is chosen and no details are shown.
 closedPanel d =
@@ -823,14 +830,19 @@ closedPanel d =
 
 // [DAW-INSPECTOR] [DAW-MENU] View → Patch Controls toggles the patch panel: with a module chosen the panel is
 // docked, so Patch Controls puts it away and lets go of the module; pressed again it shows the panel and its
+// controls back.
+// Pressing Patch Controls toggles the docked panel: `shown` is whether "Add component" is visible after.
+toggledPanel (driven, shown) =
+    pressed = Drive::press (driven, "Patch Controls")
+    viewShows (pressed, "Add component", shown)
+    pressed
+
 // Add component picker; the panel's Close puts it away. The self-test every host plays relies on this.
 patchControlsTogglesPanelJourney () =
     built = patched ["sine", "gain", "output"]
     expect ((Drive::holding built).selected >= 0, true)
     viewShows (built, "Add component", true)
-    hidden = Drive::press (built, "Patch Controls")
-    viewShows (hidden, "Add component", false)
+    hidden = toggledPanel (built, false)
     expect ((Drive::holding hidden).selected, -1)
-    shown = Drive::press (hidden, "Patch Controls")
-    viewShows (shown, "Add component", true)
+    shown = toggledPanel (hidden, true)
     viewShows (closedPanel shown, "Add component", false)

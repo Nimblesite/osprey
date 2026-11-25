@@ -19,7 +19,7 @@ that is exactly what torch.sort does for the vocab sizes this package is tested
 at, and it is the documented tie order for larger vocabs.
 """
 
-from transformers.Math import log_softmax, max_f, max_i, min_f, min_i, neg_inf, softmax
+from transformers.Math import log_softmax, neg_inf, softmax
 from transformers.Lists import contains_int, last_n, map_indexed
 
 __all__ = [
@@ -81,49 +81,146 @@ def warper(kind, setting, filter_value, min_tokens_to_keep):
 
 def TemperatureLogitsWarper(temperature):
     """`TemperatureLogitsWarper(temperature)`: divide every logit by the
-    strictly positive temperature."""
+    strictly positive temperature.
+
+    # Examples
+    ```osprey
+    from transformers import LogitsProcess
+
+    def show():
+        scores = [toFloat32(1.0), toFloat32(2.0)]
+        print(f"[{toString(LogitsProcess.apply(LogitsProcess.TemperatureLogitsWarper(2.0), [], scores))}] [{toString(LogitsProcess.apply(LogitsProcess.TemperatureLogitsWarper(0.5), [], scores))}]")
+
+    wrappingArithmetic(show)
+    ```output
+    [[0.5, 1.0]] [[2.0, 4.0]]
+    ```
+    """
     return update(blank(), kind="temperature", temperature=temperature)
 
 
 def TopKLogitsWarper(top_k, filter_value, min_tokens_to_keep):
     """`TopKLogitsWarper(top_k, filter_value, min_tokens_to_keep)`: keep the
     top-k scores, masking the rest with `filter_value`; the kept count is at
-    least `min_tokens_to_keep`."""
+    least `min_tokens_to_keep`.
+
+    # Examples
+    ```osprey
+    from transformers import LogitsProcess, Math
+
+    def show():
+        scores = [toFloat32(1.0), toFloat32(3.0), toFloat32(2.0)]
+        print(f"[{toString(LogitsProcess.apply(LogitsProcess.TopKLogitsWarper(2, Math.neg_inf(), 1), [], scores))}] [{toString(LogitsProcess.apply(LogitsProcess.TopKLogitsWarper(1, Math.neg_inf(), 1), [], scores))}]")
+
+    wrappingArithmetic(show)
+    ```output
+    [[-inf, 3.0, 2.0]] [[-inf, 3.0, -inf]]
+    ```
+    """
     return update(blank(), kind="top_k", top_k=top_k, filter_value=filter_value, min_tokens_to_keep=min_tokens_to_keep)
 
 
 def TopPLogitsWarper(top_p, filter_value, min_tokens_to_keep):
     """`TopPLogitsWarper(top_p, filter_value, min_tokens_to_keep)`: keep the
     smallest set of tokens whose ascending cumulative softmax exceeds
-    `1 - top_p`, masking the rest with `filter_value`."""
+    `1 - top_p`, masking the rest with `filter_value`.
+
+    # Examples
+    ```osprey
+    from transformers import LogitsProcess, Math
+
+    def show():
+        flat = [toFloat32(1.0), toFloat32(1.0), toFloat32(1.0)]
+        print(f"[{toString(LogitsProcess.apply(LogitsProcess.TopPLogitsWarper(0.6, Math.neg_inf(), 1), [], flat))}] [{toString(LogitsProcess.apply(LogitsProcess.TopPLogitsWarper(1.0, Math.neg_inf(), 1), [], flat))}]")
+
+    wrappingArithmetic(show)
+    ```output
+    [[-inf, 1.0, 1.0]] [[1.0, 1.0, 1.0]]
+    ```
+    """
     return warper("top_p", top_p, filter_value, min_tokens_to_keep)
 
 
 def MinPLogitsWarper(min_p, filter_value, min_tokens_to_keep):
     """`MinPLogitsWarper(min_p, filter_value, min_tokens_to_keep)`: keep tokens
     whose probability is at least `min_p` times the top probability, masking the
-    rest with `filter_value`; the top `min_tokens_to_keep` always survive."""
+    rest with `filter_value`; the top `min_tokens_to_keep` always survive.
+
+    # Examples
+    ```osprey
+    from transformers import LogitsProcess, Math
+
+    def show():
+        scores = [toFloat32(2.0), toFloat32(1.0), toFloat32(0.0)]
+        print(f"[{toString(LogitsProcess.apply(LogitsProcess.MinPLogitsWarper(0.5, Math.neg_inf(), 1), [], scores))}] [{toString(LogitsProcess.apply(LogitsProcess.MinPLogitsWarper(0.5, Math.neg_inf(), 2), [], scores))}]")
+
+    wrappingArithmetic(show)
+    ```output
+    [[2.0, -inf, -inf]] [[2.0, 1.0, -inf]]
+    ```
+    """
     return warper("min_p", min_p, filter_value, min_tokens_to_keep)
 
 
 def TypicalLogitsWarper(mass, filter_value, min_tokens_to_keep):
     """`TypicalLogitsWarper(mass, filter_value, min_tokens_to_keep)`: keep the
     tokens whose distance from the entropy is below the boundary implied by
-    `mass`, masking the rest with `filter_value`."""
+    `mass`, masking the rest with `filter_value`.
+
+    # Examples
+    ```osprey
+    from transformers import LogitsProcess, Math
+
+    def show():
+        scores = [toFloat32(2.0), toFloat32(1.0), toFloat32(0.0)]
+        print(f"[{toString(LogitsProcess.apply(LogitsProcess.TypicalLogitsWarper(0.7, Math.neg_inf(), 1), [], scores))}] [{toString(LogitsProcess.apply(LogitsProcess.TypicalLogitsWarper(1.0, Math.neg_inf(), 1), [], scores))}]")
+
+    wrappingArithmetic(show)
+    ```output
+    [[2.0, 1.0, -inf]] [[2.0, 1.0, 0.0]]
+    ```
+    """
     return warper("typical", mass, filter_value, min_tokens_to_keep)
 
 
 def EpsilonLogitsWarper(epsilon, filter_value, min_tokens_to_keep):
     """`EpsilonLogitsWarper(epsilon, filter_value, min_tokens_to_keep)`: keep
     tokens whose probability is at least `epsilon`, masking the rest with
-    `filter_value`; the top `min_tokens_to_keep` always survive."""
+    `filter_value`; the top `min_tokens_to_keep` always survive.
+
+    # Examples
+    ```osprey
+    from transformers import LogitsProcess, Math
+
+    def show():
+        scores = [toFloat32(2.0), toFloat32(1.0), toFloat32(0.0)]
+        print(f"[{toString(LogitsProcess.apply(LogitsProcess.EpsilonLogitsWarper(0.2, Math.neg_inf(), 1), [], scores))}] [{toString(LogitsProcess.apply(LogitsProcess.EpsilonLogitsWarper(0.5, Math.neg_inf(), 1), [], scores))}]")
+
+    wrappingArithmetic(show)
+    ```output
+    [[2.0, 1.0, -inf]] [[2.0, -inf, -inf]]
+    ```
+    """
     return warper("epsilon", epsilon, filter_value, min_tokens_to_keep)
 
 
 def EtaLogitsWarper(epsilon, filter_value, min_tokens_to_keep):
     """`EtaLogitsWarper(epsilon, filter_value, min_tokens_to_keep)`: keep tokens
     whose probability is at least `min(epsilon, sqrt(epsilon) * exp(-entropy))`,
-    masking the rest with `filter_value`."""
+    masking the rest with `filter_value`.
+
+    # Examples
+    ```osprey
+    from transformers import LogitsProcess, Math
+
+    def show():
+        print(f"[{toString(LogitsProcess.apply(LogitsProcess.EtaLogitsWarper(0.1, Math.neg_inf(), 1), [], [toFloat32(2.0), toFloat32(1.0), toFloat32(0.0)]))}] [{toString(LogitsProcess.apply(LogitsProcess.EtaLogitsWarper(0.1, Math.neg_inf(), 1), [], []))}]")
+
+    wrappingArithmetic(show)
+    ```output
+    [[2.0, 1.0, -inf]] [[]]
+    ```
+    """
     return warper("eta", epsilon, filter_value, min_tokens_to_keep)
 
 
@@ -131,67 +228,209 @@ def RepetitionPenaltyLogitsProcessor(penalty, prompt_ignore_length):
     """`RepetitionPenaltyLogitsProcessor(penalty, prompt_ignore_length)`: divide
     positive scores and multiply negative scores of each token already present
     (after skipping the first `prompt_ignore_length` history tokens) by
-    `penalty`."""
+    `penalty`.
+
+    # Examples
+    ```osprey
+    from transformers import LogitsProcess
+
+    def show():
+        scores = [toFloat32(2.0), toFloat32(-2.0), toFloat32(1.0)]
+        print(f"[{toString(LogitsProcess.apply(LogitsProcess.RepetitionPenaltyLogitsProcessor(2.0, 0), [0, 1], scores))}] [{toString(LogitsProcess.apply(LogitsProcess.RepetitionPenaltyLogitsProcessor(2.0, 1), [0, 1], scores))}]")
+
+    wrappingArithmetic(show)
+    ```output
+    [[1.0, -4.0, 1.0]] [[2.0, -4.0, 1.0]]
+    ```
+    """
     return update(blank(), kind="repetition_penalty", penalty=penalty, prompt_ignore_length=prompt_ignore_length)
 
 
 def NoRepeatNGramLogitsProcessor(ngram_size):
     """`NoRepeatNGramLogitsProcessor(ngram_size)`: mask with -inf every token
-    that would complete an n-gram that already appears in the history."""
+    that would complete an n-gram that already appears in the history.
+
+    # Examples
+    ```osprey
+    from transformers import LogitsProcess
+
+    def show():
+        scores = [toFloat32(1.0), toFloat32(2.0), toFloat32(3.0), toFloat32(4.0), toFloat32(5.0)]
+        print(f"[{toString(LogitsProcess.apply(LogitsProcess.NoRepeatNGramLogitsProcessor(2), [1, 2, 3, 1, 2], scores))}] [{toString(LogitsProcess.apply(LogitsProcess.NoRepeatNGramLogitsProcessor(2), [1], scores))}]")
+
+    wrappingArithmetic(show)
+    ```output
+    [[1.0, 2.0, 3.0, -inf, 5.0]] [[1.0, 2.0, 3.0, 4.0, 5.0]]
+    ```
+    """
     return update(blank(), kind="no_repeat_ngram", ngram_size=ngram_size)
 
 
 def MinLengthLogitsProcessor(min_length, eos_ids):
     """`MinLengthLogitsProcessor(min_length, eos_ids)`: mask every eos id with
-    -inf while the sequence is shorter than `min_length`."""
+    -inf while the sequence is shorter than `min_length`.
+
+    # Examples
+    ```osprey
+    from transformers import LogitsProcess
+
+    def show():
+        scores = [toFloat32(1.0), toFloat32(2.0), toFloat32(3.0)]
+        print(f"[{toString(LogitsProcess.apply(LogitsProcess.MinLengthLogitsProcessor(3, [1]), [1, 2], scores))}] [{toString(LogitsProcess.apply(LogitsProcess.MinLengthLogitsProcessor(3, [1]), [1, 2, 3], scores))}]")
+
+    wrappingArithmetic(show)
+    ```output
+    [[1.0, -inf, 3.0]] [[1.0, 2.0, 3.0]]
+    ```
+    """
     return update(blank(), kind="min_length", min_length=min_length, eos_ids=eos_ids)
 
 
 def MinNewTokensLengthLogitsProcessor(prompt_length_to_skip, min_new_tokens, eos_ids):
     """`MinNewTokensLengthLogitsProcessor(prompt_length_to_skip, min_new_tokens,
     eos_ids)`: mask every eos id with -inf while fewer than `min_new_tokens`
-    tokens follow the skipped prompt."""
+    tokens follow the skipped prompt.
+
+    # Examples
+    ```osprey
+    from transformers import LogitsProcess
+
+    def show():
+        scores = [toFloat32(1.0), toFloat32(2.0), toFloat32(3.0)]
+        print(f"[{toString(LogitsProcess.apply(LogitsProcess.MinNewTokensLengthLogitsProcessor(2, 1, [2]), [5, 6], scores))}] [{toString(LogitsProcess.apply(LogitsProcess.MinNewTokensLengthLogitsProcessor(2, 1, [2]), [5, 6, 7], scores))}]")
+
+    wrappingArithmetic(show)
+    ```output
+    [[1.0, 2.0, -inf]] [[1.0, 2.0, 3.0]]
+    ```
+    """
     return update(blank(), kind="min_new_tokens", eos_ids=eos_ids, prompt_length_to_skip=prompt_length_to_skip, min_new_tokens=min_new_tokens)
 
 
 def ForcedBOSTokenLogitsProcessor(bos_token_id):
     """`ForcedBOSTokenLogitsProcessor(bos_token_id)`: when the history is one
-    token long, force `bos_token_id` (everything else -inf)."""
+    token long, force `bos_token_id` (everything else -inf).
+
+    # Examples
+    ```osprey
+    from transformers import LogitsProcess
+
+    def show():
+        scores = [toFloat32(1.0), toFloat32(2.0), toFloat32(3.0)]
+        print(f"[{toString(LogitsProcess.apply(LogitsProcess.ForcedBOSTokenLogitsProcessor(1), [9], scores))}] [{toString(LogitsProcess.apply(LogitsProcess.ForcedBOSTokenLogitsProcessor(1), [9, 1], scores))}]")
+
+    wrappingArithmetic(show)
+    ```output
+    [[0.0, -inf, -inf]] [[1.0, 2.0, 3.0]]
+    ```
+    """
     return update(blank(), kind="forced_bos", bos_token_id=bos_token_id)
 
 
 def ForcedEOSTokenLogitsProcessor(max_length, eos_ids):
     """`ForcedEOSTokenLogitsProcessor(max_length, eos_ids)`: when the history is
-    `max_length - 1` tokens long, force the eos ids (everything else -inf)."""
+    `max_length - 1` tokens long, force the eos ids (everything else -inf).
+
+    # Examples
+    ```osprey
+    from transformers import LogitsProcess
+
+    def show():
+        scores = [toFloat32(1.0), toFloat32(2.0), toFloat32(3.0)]
+        print(f"[{toString(LogitsProcess.apply(LogitsProcess.ForcedEOSTokenLogitsProcessor(3, [2]), [4, 5], scores))}] [{toString(LogitsProcess.apply(LogitsProcess.ForcedEOSTokenLogitsProcessor(3, [2]), [4], scores))}]")
+
+    wrappingArithmetic(show)
+    ```output
+    [[-inf, -inf, 0.0]] [[1.0, 2.0, 3.0]]
+    ```
+    """
     return update(blank(), kind="forced_eos", eos_ids=eos_ids, max_length=max_length)
 
 
 def SuppressTokensLogitsProcessor(suppress_ids):
     """`SuppressTokensLogitsProcessor(suppress_ids)`: mask every listed token
-    with -inf."""
+    with -inf.
+
+    # Examples
+    ```osprey
+    from transformers import LogitsProcess
+
+    def show():
+        scores = [toFloat32(1.0), toFloat32(2.0), toFloat32(3.0)]
+        print(f"[{toString(LogitsProcess.apply(LogitsProcess.SuppressTokensLogitsProcessor([0, 2]), [], scores))}] [{toString(LogitsProcess.apply(LogitsProcess.SuppressTokensLogitsProcessor([]), [], scores))}]")
+
+    wrappingArithmetic(show)
+    ```output
+    [[-inf, 2.0, -inf]] [[1.0, 2.0, 3.0]]
+    ```
+    """
     return update(blank(), kind="suppress_tokens", suppress_ids=suppress_ids)
 
 
 def NoBadWordsLogitsProcessor(bad_words_ids, eos_ids):
     """`NoBadWordsLogitsProcessor(bad_words_ids, eos_token_id)`: mask with -inf the
     last token of any bad word the history is about to complete, and every
-    single-token bad word; single-token bad words equal to an eos id are ignored."""
+    single-token bad word; single-token bad words equal to an eos id are ignored.
+
+    # Examples
+    ```osprey
+    from transformers import LogitsProcess
+
+    def show():
+        scores = [toFloat32(1.0), toFloat32(2.0), toFloat32(3.0), toFloat32(4.0)]
+        print(f"[{toString(LogitsProcess.apply(LogitsProcess.NoBadWordsLogitsProcessor([[3], [1, 2]], [3]), [0, 1], scores))}] [{toString(LogitsProcess.apply(LogitsProcess.NoBadWordsLogitsProcessor([[3]], []), [5], scores))}]")
+
+    wrappingArithmetic(show)
+    ```output
+    [[1.0, 2.0, -inf, 4.0]] [[1.0, 2.0, 3.0, -inf]]
+    ```
+    """
     return update(blank(), kind="bad_words", eos_ids=eos_ids, bad_words_ids=bad_words_ids)
 
 
 def apply_list(processors, input_ids, scores: list[float32]):
     """`LogitsProcessorList.__call__`: fold the processors left to right over the
-    scores, so the first processor in the list runs first."""
+    scores, so the first processor in the list runs first.
+
+    # Examples
+    ```osprey
+    from transformers import LogitsProcess, Math
+
+    def show():
+        scores = [toFloat32(1.0), toFloat32(2.0), toFloat32(3.0)]
+        top_first = LogitsProcess.apply_list([LogitsProcess.TopKLogitsWarper(1, Math.neg_inf(), 1), LogitsProcess.SuppressTokensLogitsProcessor([2])], [], scores)
+        suppress_first = LogitsProcess.apply_list([LogitsProcess.SuppressTokensLogitsProcessor([2]), LogitsProcess.TopKLogitsWarper(1, Math.neg_inf(), 1)], [], scores)
+        print(f"[{toString(top_first)}] [{toString(suppress_first)}]")
+
+    wrappingArithmetic(show)
+    ```output
+    [[-inf, -inf, -inf]] [[-inf, 2.0, -inf]]
+    ```
+    """
     return foldList(processors, scores, lambda s, p: apply(p, input_ids, s))
 
 
 def apply(processor: Processor, input_ids, scores: list[float32]):
-    """Run one `Processor` over a token history and a logits row."""
+    """Run one `Processor` over a token history and a logits row.
+
+    # Examples
+    ```osprey
+    from transformers import LogitsProcess, Math
+
+    def show():
+        scores = [toFloat32(1.0), toFloat32(2.0), toFloat32(3.0)]
+        print(f"[{toString(LogitsProcess.apply(LogitsProcess.TemperatureLogitsWarper(2.0), [], scores))}] [{toString(LogitsProcess.apply(LogitsProcess.TopKLogitsWarper(1, Math.neg_inf(), 1), [], scores))}]")
+
+    wrappingArithmetic(show)
+    ```output
+    [[0.5, 1.0, 1.5]] [[-inf, -inf, 3.0]]
+    ```
+    """
     match processor.kind:
         case "temperature":
             return mapList(scores, lambda x: x / processor.temperature)
         case "top_k":
-            return top_k_warper(max_i(processor.top_k, processor.min_tokens_to_keep), processor.filter_value, scores)
+            return top_k_warper(max(processor.top_k, processor.min_tokens_to_keep), processor.filter_value, scores)
         case "top_p":
             return tuned(top_p_warper, processor, scores)
         case "min_p":
@@ -345,7 +584,7 @@ def count_lt(xs, limit):
 # --- warpers --------------------------------------------------------------
 
 def top_k_warper(k, fv, scores):
-    kk = min_i(k, len(scores))
+    kk = min(k, len(scores))
     threshold = kth_largest(scores, kk)
     return mapList(scores, lambda x: x if x >= threshold else fv)
 
@@ -368,8 +607,8 @@ def removed_top_p(i, idx, cum, cutoff, keep_from):
 
 def min_p_warper(p, fv, m, scores):
     probs = softmax(scores)
-    scaled = p * fold(range(len(probs)), neg_inf(), lambda a, i: max_f(a, get_or(probs, i, neg_inf())))
-    keep = top_k_indices(scores, min_i(m, len(scores)))
+    scaled = p * fold(range(len(probs)), neg_inf(), lambda a, i: max(a, get_or(probs, i, neg_inf())))
+    keep = top_k_indices(scores, min(m, len(scores)))
     return map_indexed(scores, lambda i: fv if prob_at(probs, i) < scaled and not contains_int(keep, i) else score_at(scores, i))
 
 
@@ -378,7 +617,7 @@ def typical_warper(mass, fv, m, scores):
     idx = sort_indices_by(shifted)
     sorted_shifted = in_index_order(idx, shifted)
     cum = cum_probs(idx, scores)
-    last = min_i(count_lt(cum, mass), len(scores) - 1)
+    last = min(count_lt(cum, mass), len(scores) - 1)
     threshold = score_at(sorted_shifted, last)
     return map_indexed(scores, lambda i: fv if removed_typical(i, idx, shifted, threshold, m) else score_at(scores, i))
 
@@ -390,13 +629,13 @@ def removed_typical(i, idx, shifted, threshold, m):
 
 def eta_warper(e, fv, m, scores):
     """The eta threshold warper: `below_cutoff` at eta's entropy-scaled limit."""
-    return below_cutoff(min_f(e, sqrt(e) * exp(0.0 - entropy(scores))), fv, m, scores)
+    return below_cutoff(min(e, sqrt(e) * exp(0.0 - entropy(scores))), fv, m, scores)
 
 
 def below_cutoff(limit, fv, m, scores):
     """Filter every token whose probability is under `limit`, keeping the `m` best."""
     probs = softmax(scores)
-    threshold = kth_largest(scores, min_i(m, len(scores)))
+    threshold = kth_largest(scores, min(m, len(scores)))
     return map_indexed(scores, lambda i: fv if prob_at(probs, i) < limit and score_at(scores, i) < threshold else score_at(scores, i))
 
 

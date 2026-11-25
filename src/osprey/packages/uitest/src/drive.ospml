@@ -7,7 +7,6 @@ namespace uitest
 
 import ui::Hosting
 import ui::Surfaces
-import ui::Runtime
 import ui::Lists
 
 (** One live surface as a test drives it: the surface, its program, what it last showed and the host clock. *)

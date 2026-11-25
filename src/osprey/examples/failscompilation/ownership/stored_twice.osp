@@ -1,0 +1,23 @@
+// [MEM-OWNERSHIP-STATIC-BORROWS] Runs under the collector; `--memory=ownership` refuses it.
+// One value is stored in two fields: only one of them can own it, so the pair
+// lends the other and may not leave the function that owns `made`. A Result
+// holds a value that is read again the same way, and can't leave either.
+type Box = { text: string }
+type Pair = { left: Box, right: Box }
+
+fn build() = {
+    let made = Box { text: "a${toString(1)}" }
+    Pair { left: made, right: made }
+}
+
+fn vetted(n: int) -> Result<Box, string> = {
+    let made = Box { text: "b${toString(n)}" }
+    let kept = Success { value: made }
+    print(made.text)
+    kept
+}
+
+fn main() = {
+    let pair = build()
+    print("${pair.left.text}${pair.right.text}${vetted(2)}")
+}

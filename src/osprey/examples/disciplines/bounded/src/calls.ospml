@@ -1,10 +1,5 @@
 namespace bounded
 
-import bounded::Arguments
-import bounded::Bounds
-import bounded::Chars
-import bounded::Intervals
-import bounded::Words
 
 (** Every call site of one module checked against the bounds it declares. *)
 module Calls

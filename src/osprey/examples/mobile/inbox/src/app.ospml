@@ -1,11 +1,6 @@
 namespace mobile
 
 import bank::Json
-import mobile::Model
-import mobile::Update
-import mobile::View
-import mobile::Ui
-import mobile::Storage
 
 module App
     export initial () = Storage::commands Update::initial

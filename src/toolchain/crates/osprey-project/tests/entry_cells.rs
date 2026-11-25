@@ -7,7 +7,7 @@ mod support;
 use osprey_ast::Stmt;
 use osprey_project::assemble;
 use osprey_syntax::Flavor;
-use support::{config, parsed};
+use support::{assembly_rejects, config, parsed};
 
 const ENTRY: &str = "namespace app\n\
 effect Keep\n    keep : int => Unit\n\
@@ -47,13 +47,10 @@ fn a_cell_outside_the_entry_source_is_rejected() {
             "namespace app\nmut hidden = 0\n",
         ),
     ];
-    let errors =
-        assemble(&config("main.ospml"), &sources).expect_err("a non-entry cell is rejected");
-    assert!(
-        errors
-            .iter()
-            .any(|error| error.message.contains("namespace-level `mut` is forbidden")),
-        "{errors:?}"
+    assembly_rejects(
+        &sources,
+        "a non-entry cell is rejected",
+        "namespace-level `mut` is forbidden",
     );
 }
 
@@ -64,13 +61,10 @@ fn another_source_cannot_assign_the_entry_cell() {
         parsed("main.ospml", Flavor::Ml, ENTRY),
         parsed("src/other.ospml", Flavor::Ml, "namespace app\nset n =\n    handle Keep\n        keep value => live := value\n    perform Keep.keep n\n"),
     ];
-    let errors =
-        assemble(&config("main.ospml"), &sources).expect_err("a foreign assignment is rejected");
-    assert!(
-        errors.iter().any(|error| error
-            .message
-            .contains("cannot assign to module declaration `live`")),
-        "{errors:?}"
+    assembly_rejects(
+        &sources,
+        "a foreign assignment is rejected",
+        "cannot assign to module declaration `live`",
     );
 }
 

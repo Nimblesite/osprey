@@ -48,17 +48,16 @@ match document
 reportDeepString document
 print "types: ${describe JsonNull}, ${describe (JsonBoolean(value = true))}, ${describe (JsonNumber(value = 17))}, ${describe deepestValue}, ${describe outerArray}, ${describe document}\n=== JSON value union complete ==="
 
+(** Follow one Successful step down the path, or answer nothing when it fails. *)
+deeper step = match step
+    Success value => deepString value
+    Error _message => ""
+
 (** Recursively follow the single object/array path to its string leaf. *)
 deepString value =
     match value
-        JsonObject fields =>
-            match mapGet fields "workspace"
-                Success value => deepString value
-                Error _message => ""
-        JsonArray values =>
-            match listGet values 0
-                Success value => deepString value
-                Error _message => ""
+        JsonObject fields => deeper (mapGet fields "workspace")
+        JsonArray values => deeper (listGet values 0)
         JsonString value => value
         _ => ""
 
@@ -125,7 +124,7 @@ parses text =
 (** Parse text, read one scalar by path, and release the handle. *)
 textAt (text, path) =
     match jsonParse text
-        Success doc => released (doc, jsonGet doc path ?: noScalar)
+        Success doc => released (doc, scalarAt (doc, path))
         Error _message => noScalar
 
 (** Read back a raw number token stored as the only field of an object. *)

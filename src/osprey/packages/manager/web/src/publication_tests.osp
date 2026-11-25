@@ -1,6 +1,4 @@
 namespace registry_web;
-import registry_web::Publications
-import registry_web::WebFixtures
 
 /// The publication monitor: pending, rejected and quarantined intents each
 /// labelled with their reasons, member-only, and hidden entirely when any

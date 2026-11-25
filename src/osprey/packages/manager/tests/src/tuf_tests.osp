@@ -1,4 +1,5 @@
 namespace registry_tests;
+import registry::JsonRead
 import registry::Json
 import registry::Canonical
 import registry::Digests
@@ -6,7 +7,6 @@ import registry::Domains
 import registry::TufCheck
 import registry::SchemaCheck
 import registry::TypeDiagram
-import registry_tests::Fixtures
 
 /// The TUF 1.0 client-workflow vector tables and the release-status state
 /// machine, asserted through the pure decisions of TufCheck. Fixtures carry
@@ -34,10 +34,10 @@ module TufTests {
         Fixtures::numberOf(case, "newThreshold"))
 
     fn roleCode(case) = TufCheck::roleUpdate(
-        roleState(Fixtures::field(case, "trusted")),
-        roleState(Fixtures::field(case, "served")),
+        roleState(JsonRead::field(case, "trusted")),
+        roleState(JsonRead::field(case, "served")),
         Fixtures::textOf(case, "now"),
-        flagOf(Fixtures::field(case, "thresholdMet")),
+        flagOf(JsonRead::field(case, "thresholdMet")),
         Fixtures::numberOf(case, "metaVersion"),
         Fixtures::textOf(case, "metaDigest"))
 
@@ -56,7 +56,7 @@ module TufTests {
     }
 
     fn vectorTable(name, label) = Fixtures::report(label,
-        Fixtures::items(Fixtures::field(Fixtures::load(name), "cases")), fn(case) =>
+        JsonRead::items(JsonRead::field(Fixtures::load(name), "cases")), fn(case) =>
             vectorCode(case) == Fixtures::textOf(case, "expect"))
 
     fn chains() = Fixtures::loadItems("transitions/release-status.json", "chains")
@@ -65,22 +65,22 @@ module TufTests {
         listConcat(steps, Fixtures::itemsOf(chain, "steps")))
 
     fn transitionTable() = Fixtures::report("release-status transitions", chainSteps(chains()), fn(step) =>
-        TufCheck::statusTransition(Fixtures::field(step, "previous"), Fixtures::field(step, "next"))
+        TufCheck::statusTransition(JsonRead::field(step, "previous"), JsonRead::field(step, "next"))
             == Fixtures::textOf(step, "expect"))
 
     /// The later steps of the valid chains, whose previousStatus goldens
     /// Osprey must reproduce from its own canonical form.
-    fn goldenSteps(chain) = if flagOf(Fixtures::field(chain, "goldenPreviousStatus")) {
+    fn goldenSteps(chain) = if flagOf(JsonRead::field(chain, "goldenPreviousStatus")) {
         filterList(Fixtures::itemsOf(chain, "steps"), fn(step) =>
             Fixtures::textOf(step, "expect") == ""
-            && Fixtures::text(Fixtures::field(Fixtures::field(step, "next"), "previousStatus")) != "")
+            && JsonRead::text(JsonRead::field(JsonRead::field(step, "next"), "previousStatus")) != "")
     } else {
         []
     }
 
     fn goldenHolds(step) = Digests::hashText(Domains::releaseStatusDomain(),
-        Canonical::serialize(Fixtures::field(step, "previous")) ?: "")
-        == Fixtures::text(Fixtures::field(Fixtures::field(step, "next"), "previousStatus"))
+        Canonical::serialize(JsonRead::field(step, "previous")) ?: "")
+        == JsonRead::text(JsonRead::field(JsonRead::field(step, "next"), "previousStatus"))
 
     fn goldenTable() = {
         let steps = foldList(chains(), [], fn(all, chain) => listConcat(all, goldenSteps(chain)))
@@ -88,7 +88,7 @@ module TufTests {
         Fixtures::report("release-status chain goldens", steps, goldenHolds)
     }
 
-    fn stepRecords(step) = filterList([Fixtures::field(step, "previous"), Fixtures::field(step, "next")], fn(r) => !Json::isNull(r))
+    fn stepRecords(step) = filterList([JsonRead::field(step, "previous"), JsonRead::field(step, "next")], fn(r) => !Json::isNull(r))
 
     fn records() = foldList(chainSteps(chains()), [], fn(all, step) => listConcat(all, stepRecords(step)))
 

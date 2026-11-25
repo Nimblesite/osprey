@@ -28,19 +28,27 @@ pub(crate) fn assert_flavored_output(name: &str, extension: &str, source: &str, 
         let result = execute(name, extension, source, memory);
         assert!(result.is_ok(), "compiler execution failed: {result:?}");
         let Ok(output) = result else { return };
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        assert!(
-            output.status.success(),
-            "{name}/{extension}/{memory}: {stderr}"
-        );
-        assert_eq!(
-            String::from_utf8_lossy(&output.stdout),
+        assert_run(
+            &output,
             expected,
-            "{name}/{extension}/{memory}"
+            &format!("{name}/{extension}/{memory}"),
+            memory,
         );
-        if memory == "arc" {
-            assert_arc_clean(&stderr);
-        }
+    }
+}
+
+/// One run's answer, whatever ran it: success, the exact `expected` stdout,
+/// and — under ARC — a clean teardown.
+pub(crate) fn assert_run(output: &std::process::Output, expected: &str, label: &str, memory: &str) {
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(output.status.success(), "{label}: {stderr}");
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        expected,
+        "{label}: {stderr}"
+    );
+    if memory == "arc" {
+        assert_arc_clean(&stderr);
     }
 }
 

@@ -186,8 +186,9 @@ pub(crate) fn acc_init(
     let initial = initial_value(cg, args, numeric)?;
     // The slot escapes: materialize flat literals once before retaining it.
     let initial = crate::listlit::escaping(cg, initial);
-    // Retain pointer accumulators across iteration scopes [GC-ARC-PERCEUS].
-    crate::arc::escape_retain(cg, &initial);
+    // Move a fresh seed into the slot; retain only a borrowed one, as each step
+    // does [GC-ARC-PERCEUS] [MEM-OWNERSHIP-STATIC].
+    crate::arc::transfer_or_retain(cg, &initial);
     let tmpl = initial.clone();
     let boxed = box_to_i64(cg, initial);
     let acc = cg.hoist_slot("i64");
@@ -265,6 +266,13 @@ pub(crate) fn acc_step(
 ) -> Result<()> {
     let a = cg.emit_reg(format!("load i64, i64* {acc}"));
     let acc_val = rebuild_acc(cg, &a, tmpl);
+    // Under ownership the step owns the accumulator it is given, so a step that
+    // derives the next version takes the old one by move; whatever it does not
+    // take dies with the step [MEM-OWNERSHIP-STATIC-SHARING].
+    let given = cg.ownership.on && acc_val.ty.is_managed_ptr();
+    if given {
+        crate::arc::own(cg, &acc_val);
+    }
     let new = invoke(cg, combine, vec![acc_val, elem])?;
     let new = match tmpl.result_inner {
         Some(inner) if new.result_inner.is_some() => {
@@ -278,8 +286,10 @@ pub(crate) fn acc_step(
     // `acc` unchanged must keep it alive. [GC-ARC-PERCEUS]
     if new.ty.is_managed_ptr() {
         crate::arc::transfer_or_retain(cg, &new);
-        let old = cg.emit_reg(format!("inttoptr i64 {a} to i8*"));
-        crate::arc::release_operand(cg, &old);
+        if !given {
+            let old = cg.emit_reg(format!("inttoptr i64 {a} to i8*"));
+            crate::arc::release_operand(cg, &old);
+        }
     }
     let new = box_to_i64(cg, new);
     cg.emit(format!("store i64 {}, i64* {acc}", new.operand));
@@ -404,7 +414,16 @@ fn list_builder(cg: &mut Codegen, args: &[Expr], filter: bool) -> Result<Value> 
         out_elem = push_built(cg, &bld, mapped, "mapList")?;
         Ok(())
     })?;
-    Ok(seal_built(cg, &bld, out_elem.as_deref()))
+    // What `filterList` keeps has one owner: the source gives way to the result.
+    let source = filter.then(|| {
+        let elem = crate::collections::tagged_elem(&l);
+        crate::arc::versions::take_element_source(cg, &l, elem.as_deref())
+    });
+    let built = seal_built(cg, &bld, out_elem.as_deref());
+    if let Some(source) = source {
+        crate::arc::versions::release_source(cg, &source);
+    }
+    Ok(built)
 }
 
 /// Seal the list under construction and hand it the element type it latched,

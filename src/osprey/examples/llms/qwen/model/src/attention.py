@@ -23,7 +23,7 @@ per query head across both, one total, each segment's weighted sum. Implements
 from qwen import Qwen3_5Cache as Cache
 from qwen import Qwen3_5Norm as Norm
 from qwen import Qwen3_5Rope as Rope
-from qwen.Qwen3_5Device import Div, Weight, at, divider, grid, joined, linear, must, quot, rem, sigmoid, slice_of
+from qwen.Qwen3_5Device import Div, Weight, at, divider, for_rows, grid, joined, linear, must, quot, rem, sigmoid, slice_of
 
 __all__ = ["Layer", "Mixed", "mix"]
 
@@ -80,10 +80,9 @@ class Geometry:
 def rows_of(count, config, shapes) -> Rows:
     """The grids for `count` positions; one position reuses the model's own."""
     width = config.head_dim
-    if count == 1:
-        return Rows(count=1, q_cells=shapes.q_cells, q_heads=shapes.q_heads, kv_cells=shapes.kv_cells, kv_heads=shapes.kv_heads)
-    else:
-        return Rows(count=count, q_cells=grid(count * config.num_attention_heads * width), q_heads=grid(count * config.num_attention_heads), kv_cells=grid(count * config.num_key_value_heads * width), kv_heads=grid(count * config.num_key_value_heads))
+    heads = config.num_attention_heads
+    kv = config.num_key_value_heads
+    return Rows(count=count, q_cells=for_rows(count, shapes.q_cells, heads * width), q_heads=for_rows(count, shapes.q_heads, heads), kv_cells=for_rows(count, shapes.kv_cells, kv * width), kv_heads=for_rows(count, shapes.kv_heads, kv))
 
 
 def segment(keys, values, rows, limit, count, config) -> Segment:

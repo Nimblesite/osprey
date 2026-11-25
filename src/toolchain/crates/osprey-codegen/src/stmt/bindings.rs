@@ -26,7 +26,7 @@ pub(super) fn gen_bind(
         return Ok(());
     }
     let value_bound = typed_initializer(cg, name, value, position, declaration)?;
-    let value_bound = crate::listlit::settled_string_list(cg, value_bound);
+    let value_bound = crate::listlit::settled_list(cg, value_bound);
     // Reassignment must discard stale inline lambdas and aliases.
     cg.forget_binding(name);
     finish_binding(cg, name, value, value_bound, declaration);
@@ -114,7 +114,8 @@ fn store_prefix(
 ) -> Result<Option<crate::closure::Environment>> {
     if let Some((_, slots)) = cg.file_lambda_prefix.get(name).cloned() {
         for (slot, captured) in slots.iter().zip(prefix) {
-            crate::globals::publish(cg, slot, captured)?;
+            // A captured argument stays owned by what produced it.
+            crate::globals::publish(cg, slot, captured, true)?;
         }
         return Ok(None);
     }
@@ -220,7 +221,7 @@ fn finish_binding(cg: &mut Codegen, name: &str, source: &Expr, value: Value, dec
     }
     cg.emit_debug_binding(name, &value, declaration);
     // Move ownership out of the statement region [GC-ARC-PERCEUS].
-    crate::arc::bind_owned(cg, name, &value);
+    crate::arc::bind_let(cg, name, source, &value);
     cg.bind(name.to_string(), value);
 }
 

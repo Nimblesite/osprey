@@ -206,11 +206,16 @@ impl<'s> Lowerer<'s> {
 
     /// Whether the innermost binding of `name` is a `const`.
     pub(super) fn constant(&self, name: &str) -> bool {
+        self.innermost_scope_with(name)
+            .is_some_and(|scope| scope.constants.contains(name))
+    }
+
+    /// The innermost scope that binds `name`, if any does.
+    fn innermost_scope_with(&self, name: &str) -> Option<&Scope> {
         self.scopes
             .iter()
             .rev()
             .find(|scope| scope.names.contains(name))
-            .is_some_and(|scope| scope.constants.contains(name))
     }
 
     pub(super) fn file_scope(&self) -> bool {
@@ -252,10 +257,7 @@ impl<'s> Lowerer<'s> {
     }
 
     pub(super) fn captured(&self, name: &str) -> bool {
-        self.scopes
-            .iter()
-            .rev()
-            .find(|scope| scope.names.contains(name))
+        self.innermost_scope_with(name)
             .is_some_and(|scope| scope.captured.contains(name))
     }
 

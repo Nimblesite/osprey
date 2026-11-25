@@ -4,19 +4,10 @@
 //! keeps it quiet, and exports and ascribed modules are never reported.
 
 use crate::{unused_privates, UNUSED_PRIVATE};
-use osprey_syntax::{parse_program_with_flavor, Flavor};
+use osprey_syntax::Flavor;
 
 fn warned(flavor: Flavor, source: &str) -> Vec<(String, u32)> {
-    let parsed = parse_program_with_flavor(source, flavor);
-    assert!(parsed.errors.is_empty(), "{source}\n{:?}", parsed.errors);
-    unused_privates(&parsed.program)
-        .into_iter()
-        .map(|warning| {
-            assert_eq!(warning.rule, UNUSED_PRIVATE);
-            let line = warning.position.map_or(0, |position| position.line);
-            (warning.message, line)
-        })
-        .collect()
+    crate::lint_test_support::warned(flavor, source, unused_privates, UNUSED_PRIVATE)
 }
 
 fn dead(kind: &str, name: &str, line: u32) -> (String, u32) {

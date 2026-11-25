@@ -1,0 +1,57 @@
+namespace synth
+
+// Generated from typeDiagram [CONV-OSPREY].
+type FormulaOperator =
+    Plus
+    Minus
+    Times
+    Over
+    Modulo
+    Power
+
+type FormulaFunction =
+    SineOf
+    CosineOf
+    MagnitudeOf
+    FloorOf
+    RoundOf
+    RootOf
+
+type FormulaTerm =
+    Literal
+        value : float
+    StepIndex
+    Negated
+        operand : FormulaTerm
+    Binary
+        operation : FormulaOperator
+        left : FormulaTerm
+        right : FormulaTerm
+    Call
+        applied : FormulaFunction
+        argument : FormulaTerm
+
+type FormulaToken =
+    NumberToken
+        value : float
+    WordToken
+        text : string
+    SymbolToken
+        text : string
+
+type Lexeme =
+    token : FormulaToken
+    column : int
+
+type FormulaParse =
+    term : FormulaTerm
+    rest : List<Lexeme>
+
+type OperatorSpelling =
+    symbol : string
+    operation : FormulaOperator
+
+type FormulaNote =
+    Rest
+    Sounded
+        pitch : int

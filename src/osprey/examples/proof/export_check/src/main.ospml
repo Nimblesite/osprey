@@ -1,7 +1,5 @@
 namespace proof
 
-import proof::Environment
-import proof::Checked
 
 // M1 of plan 0041 ([PROOF-SPEED], [PROOF-EXPORT]): the Osprey side of the
 // speed gate's m1_export case, and an example in its own right. It reads

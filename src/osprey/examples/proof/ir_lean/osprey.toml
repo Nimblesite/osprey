@@ -1,0 +1,10 @@
+[project]
+name = "ir-lean"
+# [IR-LEAN] `ir_lean <module.mlir> <Namespace>` prints the module as a Lean
+# `LlvmSubset.Module`. The reader is @osprey/xdsl; the input is what
+# `mlir-translate --import-llvm | mlir-opt --mlir-print-op-generic` prints for
+# the compiler's own IR.
+source_roots = ["src", "../../../packages/xdsl/src"]
+python_sources = ["../../../packages/xdsl/src/lexer.py", "../../../packages/xdsl/src/ir.py", "../../../packages/xdsl/src/attrs.py", "../../../packages/xdsl/src/parser.py", "src/types.py", "src/ops.py", "src/emit.py", "src/main.py"]
+default_namespace = "ir_lean"
+entry = "src/main.py"

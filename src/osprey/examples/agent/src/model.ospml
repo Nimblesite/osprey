@@ -8,11 +8,9 @@ import ui::Doc
 import ui::Lists
 import ui::Pick
 import ui::Requests
-import ui::Runtime
 import agent::Engine
 import agent::Transcript
 import agent::Images
-import agentapp::McpModel
 
 (** Every control's action ([UI-EVENTS]). *)
 type AgentAction =

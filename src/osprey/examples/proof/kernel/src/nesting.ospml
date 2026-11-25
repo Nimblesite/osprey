@@ -1,9 +1,5 @@
 namespace proof
 
-import proof::Levels
-import proof::Terms
-import proof::Environment
-import proof::Telescope
 
 (** One auxiliary family the lowering created for a nested occurrence
     `container args indices` ([PROOF-KERNEL-THEORY]): the internal name

@@ -48,7 +48,7 @@ bench: build
 	@zsh src/toolchain/benchmarks/run.sh $(BENCH_FILTER)
 
 ## bench-osprey: Re-time ONLY the Osprey columns — `--memory=arc`,
-##        `--memory=gc` and wasm32 — and merge them into the results already on
+##        `--memory=gc`, `--memory=ownership` and wasm32 — and merge them into the results already on
 ##        disk. No other language is compiled, run or timed, so this is the fast
 ##        loop for a src/toolchain/compiler/runtime change. Every non-Osprey measurement in
 ##        src/toolchain/benchmarks/results/ survives byte-for-byte at the data-record level;

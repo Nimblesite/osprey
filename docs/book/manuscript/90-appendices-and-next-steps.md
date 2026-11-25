@@ -15,14 +15,14 @@ These commands assume `osprey` is on your executable search path and the named s
 | Run Python-flavor source | `osprey hello.py --run` |
 | Hunt for crash inputs | `osprey hunt hello.osp --input-bytes 1 --max-time 10` |
 | Preview formatting without editing | `osprey fmt --stdout hello.osp` |
-| Check a portable target | `osprey hello.osp --check --target=wasm32 --memory=none` |
+| Check a portable target | `osprey hello.osp --check --target=wasm32 --memory=arc` |
 | Select a native memory backend | `osprey hello.osp --run --memory=arc` |
 | Build native debug code | `osprey hello.osp --compile --debug -o hello-debug` |
 | Run with native profiling | `osprey hello.osp --run --profile` |
 
 For a multi-file project, supply its directory or `osprey.toml` in place of the source path. `osprey build project-directory` is the project build form. Discovery, entry selection, and flavor overrides follow [Modules and Namespaces](https://github.com/Nimblesite/osprey/blob/main/docs/specs/language/0025-ModulesAndNamespaces.md).
 
-`--check` also enforces target capability restrictions. WebAssembly and mobile accept only `--memory=none`; native debug and profiler flags are not portable target options. Mobile compilation emits a static archive and C header and cannot be executed by `--run` without a platform host. Profiling produces additional output files; use it on a real workload and keep its output directory intentional.
+`--check` also enforces target capability restrictions. WebAssembly and mobile default to ARC. Native debug and profiler flags are not portable target options. Mobile compilation emits a static archive and C header and cannot be executed by `--run` without a platform host. Profiling produces additional output files; use it on a real workload and keep its output directory intentional.
 
 The formatting command keeps the selected source flavor. It does not translate a `.osp` program into `.ospml`. Never replace a platform rejection with a different target flag and claim the original target was tested.
 
@@ -50,7 +50,7 @@ The following qualifications describe the current implementation. A future desig
 | Concurrency | Normal native fibers use one pthread each. Channels have a positive-capacity typed buffer. WebAssembly excludes this runtime; lexical scopes, cancellation, deadlines, and races are planned. |
 | Ownership | Managed immutable values may be co-owned across fiber threads. Message passing does not promise physically separate heaps or a deep copy of every value. |
 | Native memory | Native builds default to `gc`; `arc` is the alternative managed option. Explicit `none` retains general allocations; the old `default` spelling is rejected. Conservative GC is supported on Apple and glibc-Linux, is not supported on Windows, and disables collection after another allocator thread appears. |
-| Portable/mobile memory | WebAssembly, iOS, and Android currently require explicit `--memory=none`. Mobile returned strings have no stable host release API. Strict static-memory checking is not implemented. |
+| Portable/mobile memory | WebAssembly, iOS and Android default to ARC. Mobile hosts copy returned strings and call `osprey_release_string` once per pointer. |
 | WebAssembly | Emits a WASI command module; browser execution needs the supported host bridge. Files depend on host access. Native HTTP/WebSocket, process, terminal, fiber, and arbitrary-FFI facilities are unavailable. |
 | Mobile | iOS device/simulator and Android ARM64/x86-64 targets emit archives and headers for native hosts. The host supplies UI, networking, lifecycle, and asynchronous completion events. |
 | Modules and packages | Project discovery, namespaces and cross-flavor imports work. The package manager supports folder registries, verified source downloads, local overrides and locked builds. Hosted publishing and public trust services remain planned. Source scanning and folder publication currently accept raw native `extern` declarations without assigning an ambient capability; this does not provide complete confinement of untrusted packages. |

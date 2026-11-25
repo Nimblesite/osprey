@@ -4,8 +4,6 @@ namespace painting
 import ui::Runtime
 import ui::Messages
 import ui::Inputs
-import painting::Drawing
-import painting::View
 
 (** The application exported through the painting port's two-function C boundary. *)
 module App
@@ -31,4 +29,4 @@ module App
     export theme () = View::theme ()
 
     (** The port as its boundary runs it: an empty sketch drawn with the white theme. *)
-    export program () = ui::Program(programInit = initial, programUpdate = update, programRender = regions, programTheme = \_ => theme ())
+    export program () = ui::Surfaces::themed (initial, update, regions, theme ())

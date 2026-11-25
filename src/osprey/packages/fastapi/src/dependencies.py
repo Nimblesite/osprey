@@ -10,22 +10,87 @@ __all__ = ["need", "provider", "override", "execute", "pure_close"]
 
 
 def need(name, use_cache):
-    """Declare an injection edge with an explicit cache policy."""
+    """Declare an injection edge with an explicit cache policy.
+
+    # Examples
+    ```osprey
+    from fastapi import Dependencies
+    edge = Dependencies.need("db", True)
+    print(f"[{edge.name}] [{edge.use_cache}]")
+    ```
+    ```output
+    [db] [true]
+    ```
+    """
     return M.Need(name=name, use_cache=use_cache)
 
 
 def provider[T](name, inputs, provide: Callable[[M.Request, list[T]], M.DependencyResult[T]], close: Callable[[T], M.DependencyResult[None]]):
-    """Register a typed provider and its explicit function-scope cleanup."""
+    """Register a typed provider and its explicit function-scope cleanup.
+
+    # Examples
+    ```osprey
+    from fastapi import Dependencies
+    from fastapi import Models as M
+
+    def connect(_request, _children):
+        return M.Provided(value="conn")
+
+    dep = Dependencies.provider("db", [Dependencies.need("config", False)], connect, Dependencies.pure_close)
+    print(f"[{dep.name}] [{toString(mapList(dep.inputs, lambda edge: edge.name))}]")
+    ```
+    ```output
+    [db] [["config"]]
+    ```
+    """
     return M.Dependency(name=name, inputs=inputs, provide=provide, close=close)
 
 
 def pure_close(_value):
-    """A pure provider has no resource to release; cleanup succeeds with unit."""
+    """A pure provider has no resource to release; cleanup succeeds with unit.
+
+    # Examples
+    ```osprey
+    from fastapi import Dependencies
+    from fastapi import Models as M
+
+    def verdict(result):
+        match result:
+            case M.Provided():
+                return "cleanup succeeds"
+            case _:
+                return "cleanup fails"
+
+    print(f"[{verdict(Dependencies.pure_close('conn'))}]")
+    ```
+    ```output
+    [cleanup succeeds]
+    ```
+    """
     return M.Provided(value=None)
 
 
 def override(graph, name, replacement):
-    """Replace the provider and its children while retaining its original cache key."""
+    """Replace the provider and its children while retaining its original cache key.
+
+    # Examples
+    ```osprey
+    from fastapi import Dependencies
+    from fastapi import Models as M
+
+    def connect(_request, _children):
+        return M.Provided(value="stub")
+
+    real = Dependencies.provider("db", [Dependencies.need("config", False)], connect, Dependencies.pure_close)
+    stub = Dependencies.provider("db", [], connect, Dependencies.pure_close)
+    cache = Dependencies.provider("cache", [Dependencies.need("config", False)], connect, Dependencies.pure_close)
+    replaced = Dependencies.override([real, cache], "db", stub)
+    print(f"[{toString(mapList(replaced, lambda item: item.name))}] [{toString(mapList(replaced, lambda item: len(item.inputs)))}]")
+    ```
+    ```output
+    [["db", "cache"]] [[0, 1]]
+    ```
+    """
     return mapList(graph, lambda item: M.Dependency(name=item.name, inputs=replacement.inputs, provide=replacement.provide, close=replacement.close) if item.name == name else item)
 
 
@@ -152,7 +217,32 @@ def cleanup(graph, acquired, response):
 
 
 def execute[T](graph, injections, request, endpoint: Callable[[M.Request, list[T]], M.Response]):
-    """Resolve one request, invoke its endpoint and always unwind acquired resources."""
+    """Resolve one request, invoke its endpoint and always unwind acquired resources.
+
+    # Examples
+    ```osprey
+    from fastapi import Dependencies
+    from fastapi import Models as M
+    from fastapi import Responses
+
+    def config(_request, _children):
+        return M.Provided(value="prod")
+
+    def conn(_request, _children):
+        return M.Provided(value="online")
+
+    graph = [Dependencies.provider("config", [], config, Dependencies.pure_close), Dependencies.provider("conn", [Dependencies.need("config", False)], conn, Dependencies.pure_close)]
+
+    def endpoint(_request, values):
+        return Responses.response(200, f"serving {toString(values)}", "text/plain", "")
+
+    reply = Dependencies.execute(graph, [Dependencies.need("config", False), Dependencies.need("conn", False)], M.Request(method="GET", url="/", headers="", body="", path_params={}), endpoint)
+    print(f"[{reply.status_code}] [{reply.content}]")
+    ```
+    ```output
+    [200] [serving ["prod", "online"]]
+    ```
+    """
     solved = resolve_many(injections, graph, request, DependencyState(cache={}, acquired=[]), [])
     return cleanup(graph, solved.state.acquired, rendered(solved.outcome, request, endpoint))
 

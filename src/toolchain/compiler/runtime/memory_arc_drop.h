@@ -8,8 +8,15 @@
 static void arc_free_or_recycle(void *body) {
   OspArcHdr *h = arc_hdr(body);
   arc_live_dec(h->size);
-  h->rc = 0; // pooled sentinel (leak report skips it); harmless if freed below
-  if (osp_pool_push(&g_arc_pool, body, osp_pool_cap(h->size))) {
+  h->rc = 0; // pooled sentinel; the leak report skips parked blocks
+  // [MEM-OWNERSHIP-STATIC-VERIFICATION] Bypass the pool so ASan poisons
+  // the allocation. Volatile stores preserve the scribble before free.
+  if (g_scribble_frees) {
+    volatile unsigned char *bytes = body;
+    for (size_t i = 0; i < h->size; i++) {
+      bytes[i] = 0xDD;
+    }
+  } else if (osp_pool_push(&g_arc_pool, body, osp_pool_cap(h->size))) {
     return; // slot stays present; recycled in place for the next same-size
             // alloc
   }
@@ -25,10 +32,18 @@ static uintptr_t *g_wl = NULL;
 static size_t g_wl_cap = 0;
 static size_t g_wl_top = 0;
 
+// Zero routes an unrepresentable byte request to the existing exhaustion path.
+static size_t arc_wl_growth_bytes(size_t capacity) {
+  if (capacity > SIZE_MAX / (2 * sizeof(uintptr_t))) {
+    return 0;
+  }
+  return (capacity ? capacity * 2 : 256) * sizeof(uintptr_t);
+}
+
 static void arc_wl_push(uintptr_t body) {
   if (g_wl_top == g_wl_cap) {
-    size_t cap = g_wl_cap ? g_wl_cap * 2 : 256;
-    uintptr_t *wl = (uintptr_t *)realloc(g_wl, cap * sizeof(uintptr_t));
+    size_t bytes = arc_wl_growth_bytes(g_wl_cap);
+    uintptr_t *wl = bytes ? realloc(g_wl, bytes) : NULL;
     if (!wl) {
       // Broken-code quarantine: losing this body would silently abandon its
       // owners.
@@ -36,7 +51,7 @@ static void arc_wl_push(uintptr_t body) {
       abort();
     }
     g_wl = wl;
-    g_wl_cap = cap;
+    g_wl_cap = bytes / sizeof(uintptr_t);
   }
   g_wl[g_wl_top++] = body;
 }
@@ -44,7 +59,7 @@ static void arc_wl_push(uintptr_t body) {
 // Decrement a resolved managed header; queue the body at rc==0, immortal: no-op.
 // A NULL header (an unresolved child: foreign, rodata or NULL) is a no-op too.
 static void arc_drop_hdr(void *child, OspArcHdr *h) {
-  if (h && h->rc >= 0 && --h->rc == 0) {
+  if (h && OSP_HEAP_DROP_LAST(h)) {
     arc_wl_push((uintptr_t)child);
   }
 }
@@ -100,8 +115,8 @@ static void arc_drop_masked(char *body, uint32_t size, uint64_t mask,
   }
 }
 
-// Finalizer of extern-backed list headers (registered by the list runtime).
-static void (*g_finalizer)(void *body);
+// The backend chooses how an external resource dies while its header is intact.
+static void finalize_external(void *body);
 
 // { i64 len, i8* data }: run an EXTERN header's finalizer while its words are
 // intact, release elements (PTR kind only), then the array. The body is
@@ -110,8 +125,8 @@ static void arc_drop_list_hdr(char *body, uint32_t size, int kind) {
   if (size < sizeof(int64_t) + sizeof(void *)) {
     return;
   }
-  if (kind == OSP_MEM_LIST_HDR_EXTERN && g_finalizer) {
-    g_finalizer(body);
+  if (kind == OSP_MEM_LIST_HDR_EXTERN) {
+    finalize_external(body);
   }
   int64_t len;
   memcpy(&len, body, sizeof(len));
@@ -139,29 +154,33 @@ static void arc_drop_ptr_array(char *body, uint32_t size) {
   }
 }
 
+static void arc_drop_body(void *body) {
+  OspArcHdr *h = arc_hdr(body);
+  int kind = OSP_ARC_KIND(h->meta);
+  if (kind == OSP_MEM_MASK || kind == OSP_MEM_MASK_DIRECT) {
+    arc_drop_masked((char *)body, h->size, OSP_ARC_MASK_BITS(h->meta),
+                    kind == OSP_MEM_MASK_DIRECT);
+  } else if (kind == OSP_MEM_LIST_HDR_PTR ||
+             kind == OSP_MEM_LIST_HDR_SCALAR ||
+             kind == OSP_MEM_LIST_HDR_EXTERN) {
+    arc_drop_list_hdr((char *)body, h->size, kind);
+  } else if (kind == OSP_MEM_PTR_ARRAY) {
+    arc_drop_ptr_array((char *)body, h->size);
+  }
+  arc_free_or_recycle(body);
+}
+
 // Free `start`'s object and everything transitively released by it. Holds
 // g_lock. Bodies enter the worklist already confirmed managed (the initial
-// caller confirmed membership; arc_drop_child pushes only a registered body
-// it just decremented to zero), so no per-node re-probe is needed — the drop
+// caller confirmed membership; child drops check the backend’s last-owner
+// rule before queuing a body), so no per-node re-probe is needed — the drop
 // walk reads the header directly and reclaims via arc_free_or_recycle.
 static void arc_release_zero_locked(uintptr_t start) {
   g_wl_top = 0;
   arc_wl_push(start);
   while (g_wl_top > 0) {
     uintptr_t body = g_wl[--g_wl_top];
-    OspArcHdr *h = arc_hdr((void *)body);
-    int kind = OSP_ARC_KIND(h->meta);
-    if (kind == OSP_MEM_MASK || kind == OSP_MEM_MASK_DIRECT) {
-      arc_drop_masked((char *)body, h->size, OSP_ARC_MASK_BITS(h->meta),
-                      kind == OSP_MEM_MASK_DIRECT);
-    } else if (kind == OSP_MEM_LIST_HDR_PTR ||
-               kind == OSP_MEM_LIST_HDR_SCALAR ||
-               kind == OSP_MEM_LIST_HDR_EXTERN) {
-      arc_drop_list_hdr((char *)body, h->size, kind);
-    } else if (kind == OSP_MEM_PTR_ARRAY) {
-      arc_drop_ptr_array((char *)body, h->size);
-    }
-    arc_free_or_recycle((void *)body);
+    arc_drop_body((void *)body);
   }
 }
 

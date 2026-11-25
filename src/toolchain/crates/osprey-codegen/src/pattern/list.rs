@@ -99,13 +99,29 @@ pub(super) fn bind_list_arm(
         }
     }
     if let Some(name) = rest {
-        let v = tail(cg, list_val, n);
+        // Under ownership the tail is a view lent by the matched list: it takes no
+        // reference to the nodes it shares, frees only its own header, and may
+        // not be stored or returned [MEM-OWNERSHIP-STATIC-SHARING].
+        let lent = cg.ownership.on;
+        let v = view(
+            cg,
+            list_val,
+            n,
+            if lent {
+                "osprey_list_view"
+            } else {
+                "osprey_list_drop"
+            },
+        );
         // `osprey_list_drop` returns +1 on EVERY path (fresh view or retained
         // alias, plan 0011 M4a), so the arm owns it and must drop it at region
         // end — without this a `[head, ...tail]` recursion leaks one list
         // header (and, before the O(1)-view rewrite, a whole rebuilt trie) per
         // step. [GC-ARC-PERCEUS]
         crate::arc::own(cg, &v);
+        if lent {
+            crate::arc::mark_lent(cg, &v);
+        }
         bind_value(cg, name.to_string(), v);
     }
 }
@@ -113,9 +129,14 @@ pub(super) fn bind_list_arm(
 /// The list after its first `n` elements, +1 and not yet owned by any region:
 /// the caller owns it once, on the one path that binds it.
 pub(super) fn tail(cg: &mut Codegen, list_val: &Value, n: usize) -> Value {
+    view(cg, list_val, n, "osprey_list_drop")
+}
+
+/// [`tail`] through the runtime entry `runtime`.
+fn view(cg: &mut Codegen, list_val: &Value, n: usize, runtime: &str) -> Value {
     let tail = cg.call(
         "i8*",
-        "osprey_list_drop",
+        runtime,
         "i8*, i64",
         &[&list_val.operand, &n.to_string()],
     );

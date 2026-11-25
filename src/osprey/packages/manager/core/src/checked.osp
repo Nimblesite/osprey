@@ -2,12 +2,6 @@
 namespace registry;
 
 module Checked {
-    /// Continue only after success, returning the first typed failure unchanged.
-    export fn andThen(result, next) = match result {
-        Success { value } => next(value)
-        Error { message } => Error { message: message }
-    }
-
     /// True when `result` is a success; the presence test of every lookup.
     export fn succeeded(result) = match result {
         Success => true

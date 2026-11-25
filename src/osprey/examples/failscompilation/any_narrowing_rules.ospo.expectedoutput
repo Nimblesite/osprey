@@ -9,7 +9,8 @@ cannot apply `==` to an erased `any`: match its structure instead
 cannot apply unary `!` to an erased `any`: match its structure instead
 cannot index an erased `any`: match its structure instead
 cannot access field `name` on an erased `any`: match its structure instead
-68:0: let `viaAnon`: cannot erase an anonymous record into `any`: declare its row as a named type first
+a match over `any` is never exhaustive: add a catch-all arm
+75:0: let `viaAnon`: cannot erase an anonymous record into `any`: declare its row as a named type first
 a type-annotated binding cannot read an erased `any`: match its structure instead
 a type-annotated binding cannot read an erased `any`: match its structure instead
 a match over `any` is never exhaustive: add a catch-all arm

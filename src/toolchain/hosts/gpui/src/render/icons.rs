@@ -8,28 +8,31 @@ pub(crate) trait Inked {
     fn missing(&mut self, name: &str);
 }
 
-/// The component renderer's context.
-impl Inked for crate::render::Ctx<'_, '_> {
-    fn ink(&mut self) -> Hsla {
-        self.cx.theme().foreground
-    }
+/// Implements `Inked` for a renderer context exposing the shared `cx` and `view` fields.
+macro_rules! inked_context {
+    ($(#[$doc:meta])* $context:ty) => {
+        $(#[$doc])*
+        impl Inked for $context {
+            fn ink(&mut self) -> Hsla {
+                self.cx.theme().foreground
+            }
 
-    fn missing(&mut self, name: &str) {
-        self.view
-            .diagnose_once(format!("no icon for symbol {name}"));
-    }
+            fn missing(&mut self, name: &str) {
+                self.view
+                    .diagnose_once(format!("no icon for symbol {name}"));
+            }
+        }
+    };
 }
 
-/// The plain view-row renderer's context.
-impl Inked for crate::view::Ctx<'_, '_> {
-    fn ink(&mut self) -> Hsla {
-        self.cx.theme().foreground
-    }
+inked_context! {
+    /// The component renderer's context.
+    crate::render::Ctx<'_, '_>
+}
 
-    fn missing(&mut self, name: &str) {
-        self.view
-            .diagnose_once(format!("no icon for symbol {name}"));
-    }
+inked_context! {
+    /// The plain view-row renderer's context.
+    crate::view::Ctx<'_, '_>
 }
 
 /// Maps a framework symbol name ([UI-COMPONENTS-SYMBOLS]) to its kit icon.

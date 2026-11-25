@@ -9,6 +9,7 @@
 
 use super::effect_rows_tests::{assert_accepted, assert_rejected_with};
 use crate::check_program;
+use crate::testutil::bind;
 use osprey_ast::{Expr, FieldAssignment, Program, Stmt};
 use osprey_syntax::{parse_program_with_flavor, Flavor};
 
@@ -240,17 +241,6 @@ fn assert_synthetic_mentions(extra: Vec<Stmt>, fragment: &str) {
     );
 }
 
-fn binding(name: &str, value: Expr) -> Stmt {
-    Stmt::Let {
-        name: name.into(),
-        mutable: false,
-        ty: None,
-        value,
-        doc: None,
-        position: None,
-    }
-}
-
 fn call(function: Expr, arguments: Vec<Expr>) -> Expr {
     Expr::Call {
         function: Box::new(function),
@@ -291,7 +281,7 @@ fn pipes(callee: &str) -> [Expr; 2] {
 #[test]
 fn a_pipe_node_carries_the_row_of_whatever_stands_on_its_right() {
     for piped in pipes("wake") {
-        assert_synthetic_mentions(vec![binding("piped", piped)], "Alarm.ring");
+        assert_synthetic_mentions(vec![bind("piped", piped)], "Alarm.ring");
     }
 }
 
@@ -303,8 +293,8 @@ fn a_pipe_node_carries_the_provenance_of_the_callable_it_yields() {
     for piped in pipes("pick") {
         assert_synthetic_mentions(
             vec![
-                binding("piped", piped),
-                binding("answer", call(identifier("piped"), Vec::new())),
+                bind("piped", piped),
+                bind("answer", call(identifier("piped"), Vec::new())),
             ],
             "Alarm.ring",
         );
@@ -315,11 +305,11 @@ fn a_pipe_node_carries_the_provenance_of_the_callable_it_yields() {
 fn a_method_call_node_carries_both_the_row_and_the_provenance_of_its_method() {
     // `1.wake()` names `wake` with the receiver prepended, exactly as the call
     // form does.
-    assert_synthetic_mentions(vec![binding("woken", method_call("wake"))], "Alarm.ring");
+    assert_synthetic_mentions(vec![bind("woken", method_call("wake"))], "Alarm.ring");
     assert_synthetic_mentions(
         vec![
-            binding("picked", method_call("pick")),
-            binding("answer", call(identifier("picked"), Vec::new())),
+            bind("picked", method_call("pick")),
+            bind("answer", call(identifier("picked"), Vec::new())),
         ],
         "Alarm.ring",
     );
@@ -338,15 +328,15 @@ fn an_update_node_replaces_only_the_fields_it_names() {
     };
     assert_synthetic_mentions(
         vec![
-            binding("armed", update("onTick", "ring")),
-            binding(
+            bind("armed", update("onTick", "ring")),
+            bind(
                 "chosen",
                 Expr::FieldAccess {
                     target: Box::new(identifier("armed")),
                     field: "onTick".into(),
                 },
             ),
-            binding("answer", call(identifier("chosen"), Vec::new())),
+            bind("answer", call(identifier("chosen"), Vec::new())),
         ],
         "Alarm.ring",
     );

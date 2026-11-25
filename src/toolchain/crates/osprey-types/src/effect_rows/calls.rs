@@ -262,12 +262,7 @@ impl Analyzer<'_> {
             {
                 if let Some(argument) = arguments.get(index).or_else(|| {
                     matches!(name, "signalSnapshot" | "signalRefresh")
-                        .then(|| {
-                            named_arguments
-                                .iter()
-                                .find(|argument| argument.name == "work")
-                                .map(|argument| &argument.value)
-                        })
+                        .then(|| super::names::named_value(named_arguments, "work"))
                         .flatten()
                 }) {
                     if let Some(callback) = self.callable(argument, scope, env) {

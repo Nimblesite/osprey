@@ -286,7 +286,7 @@ module EditorApp
         step(stepStore = CardArts::refreshed (editor, EditorHistory::record (editor, view)))
 
     (** Native controls and the canvas observe the same typed graph and applied edit revision. *)
-    export program () = ui::Program(programInit = initial, programUpdate = update, programRender = EditorView::regions, programTheme = \_ => EditorView::theme ())
+    export program () = ui::Surfaces::themed (initial, update, EditorView::regions, EditorView::theme ())
 
 (** [SYNTH-ADVANCED-GRAINS-IMPORT] Prepare a selected WAV outside rendering, with playback stopped. *)
 module SamplePicker

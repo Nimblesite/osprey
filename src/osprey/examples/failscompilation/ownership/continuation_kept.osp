@@ -1,0 +1,34 @@
+// [MEM-OWNERSHIP-STATIC] Runs under the collector; `--memory=ownership` refuses it.
+// A `control` operation suspends `stopped` while it owns `held` and `names`. The
+// handler may drop that continuation or resume it, so the continuation would
+// own them as well: a handler of a `control` operation is refused, whether it
+// resumes or not [MEM-OWNERSHIP-STATIC-CLOSURES].
+type Box = { text: string }
+
+effect Stop {
+    control halt: fn(int) -> int
+}
+
+fn stopped(seed) = {
+    let held = Box { text: "kept${toString(seed)}" }
+    let names = ["a${toString(seed)}", "b${toString(seed)}"]
+    let got = perform Stop.halt(seed)
+    let more = listAppend(names, "c${toString(got)}")
+    "${held.text}:${toString(listLength(more))}"
+}
+
+fn aborted(seed) = {
+    handle Stop {
+        halt _n => "aborted"
+    }
+    stopped(seed)
+}
+
+fn resumed(seed) = {
+    handle Stop {
+        halt n => resume(wrapAdd(n, 1))
+    }
+    stopped(seed)
+}
+
+print("${aborted(3)} ${resumed(4)}")

@@ -1,21 +1,57 @@
 //! Effect row recursion: which functions lie on a cycle of named references.
 use super::{reachability::named_references, BTreeSet, Index};
 
-/// Every function on a reference cycle: a strongly connected component of
-/// more than one function, or a function that names itself. A function off
-/// every cycle is a finite function of its callees' returns and settles once
-/// they do; only a function on a cycle can feed its own return back.
-///
-/// Conservative on purpose, like [`super::reachability::reachable_bodies`]:
-/// any mention of a function's name counts as an edge, so a cycle is never
-/// missed.
-pub(super) fn recursive_functions(index: &Index<'_>) -> BTreeSet<usize> {
-    let edges = reference_edges(index);
-    components(&edges)
-        .into_iter()
-        .filter(|component| is_cycle(&edges, component))
-        .flatten()
-        .collect()
+/// The named-reference graph with each function's strongly connected
+/// component: the order a fixed point settles functions in, callees first.
+pub(super) struct Callees {
+    edges: Vec<Vec<usize>>,
+    components: Vec<Vec<usize>>,
+    component_of: Vec<usize>,
+}
+
+impl Callees {
+    pub(super) fn of(index: &Index<'_>) -> Callees {
+        let edges = reference_edges(index);
+        let components = components(&edges);
+        let mut component_of = vec![0; edges.len()];
+        for (component, members) in components.iter().enumerate() {
+            for member in members {
+                if let Some(slot) = component_of.get_mut(*member) {
+                    *slot = component;
+                }
+            }
+        }
+        Callees {
+            edges,
+            components,
+            component_of,
+        }
+    }
+
+    /// Every function on a reference cycle: a strongly connected component of
+    /// more than one function, or a function that names itself. A function off
+    /// every cycle is a finite function of its callees' returns and settles once
+    /// they do; only a function on a cycle can feed its own return back.
+    ///
+    /// Conservative on purpose, like [`super::reachability::reachable_bodies`]:
+    /// any mention of a function's name counts as an edge, so a cycle is never
+    /// missed.
+    pub(super) fn recursive(&self) -> BTreeSet<usize> {
+        let cycles = self.components.iter().filter(|c| is_cycle(&self.edges, c));
+        cycles.flatten().copied().collect()
+    }
+
+    /// Whether `id` still waits on a `dirty` callee outside its own component:
+    /// off every cycle a function is a finite function of its callees, so
+    /// modelling it before they settle only schedules it to be modelled again.
+    pub(super) fn waits(&self, id: usize, dirty: &BTreeSet<usize>) -> bool {
+        let own = self.component_of.get(id);
+        self.edges.get(id).is_some_and(|callees| {
+            callees
+                .iter()
+                .any(|callee| dirty.contains(callee) && self.component_of.get(*callee) != own)
+        })
+    }
 }
 
 fn is_cycle(edges: &[Vec<usize>], component: &[usize]) -> bool {

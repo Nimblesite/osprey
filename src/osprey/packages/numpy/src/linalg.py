@@ -13,13 +13,17 @@ from numpy import Array, Errors, Layout, Storage
 
 __all__ = ["matmul", "dot", "outer", "inner", "vdot", "trace"]
 
+def take_dims(shape, n):
+    """The first `n` dimensions of a shape, 1 for any past the end."""
+    return toList(map(range(n), lambda d: unwrap_or(listGet(shape, d), 1)))
+
 def drop_last(shape):
     """A shape without its last dimension."""
-    return toList(map(range(len(shape) - 1), lambda d: unwrap_or(listGet(shape, d), 1)))
+    return take_dims(shape, len(shape) - 1)
 
 def drop_last_two(shape):
     """A shape without its last two dimensions."""
-    return toList(map(range(len(shape) - 2), lambda d: unwrap_or(listGet(shape, d), 1)))
+    return take_dims(shape, len(shape) - 2)
 
 def take_first(xs, n):
     """The first `n` elements of a list."""

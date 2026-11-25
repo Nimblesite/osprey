@@ -2,9 +2,6 @@ namespace registry_api;
 import registry::Identity
 import registry::Release
 import registry_host::Host
-import registry_api::Config
-import registry_api::Loader
-import registry_api::Router
 
 /// The folder-registry HTTP server: load the catalog once, then answer every
 /// request through `Router::respond`. The listener calls a named function, so

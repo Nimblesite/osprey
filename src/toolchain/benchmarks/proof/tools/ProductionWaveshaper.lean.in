@@ -6,7 +6,7 @@ theorem upperClipRails (ops : Ops α) (x : α)
     (atLeast : ops.atLeast x (ops.literal 1) = true) :
     Waveshapers.curve ops .HardCurve x = ops.literal 1 ∧
     Waveshapers.curve ops .CubicCurve x = ops.literal 1 := by
-  unfold Waveshapers.curve NonlinearMath.hard NonlinearMath.cubic
+  unfold Waveshapers.curve NonlinearMath.hard NonlinearMath.clamped NonlinearMath.cubic
   dsimp only
   rw [above, atLeast]
   exact ⟨rfl, rfl⟩
@@ -17,7 +17,7 @@ theorem tanhUpperPlateau (ops : Ops α) (x y : α)
     (aboveX : ops.greater x (ops.binary64 0x4034000000000000) = true)
     (aboveY : ops.greater y (ops.binary64 0x4034000000000000) = true) :
     Waveshapers.curve ops .TanhCurve x = Waveshapers.curve ops .TanhCurve y := by
-  unfold Waveshapers.curve NonlinearMath.tanh
+  unfold Waveshapers.curve NonlinearMath.tanh NonlinearMath.clamped
   dsimp only
   rw [aboveX, aboveY]
 

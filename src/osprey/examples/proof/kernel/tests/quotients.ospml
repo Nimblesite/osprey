@@ -5,10 +5,7 @@ import proof::Environment
 import proof::Fixtures
 import proof::Quotients
 import proof::Terms
-import proof::Infer
 import proof::Inductive
-import prooftests::Shapes
-import prooftests::Support
 import proof
     Zero Succ Sort Param BVar Const App Lam Pi Decl Env Axiom Quotient QuotType QuotCtor QuotLift QuotInd
 

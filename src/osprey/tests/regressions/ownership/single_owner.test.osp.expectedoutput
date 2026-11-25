@@ -1,0 +1,28 @@
+file scope shared1 2 1 shared1
+spans 8 5 13
+elements 1 2
+collections 5 t3 tail4 3
+last uses l7r72
+paths made0 other3 made0+right left+other5
+owned 5 a1 p3none4 2
+generics 3 3 3 2
+literals none! has made1 x2!
+errors missing: no 0, found 4, bad, ok 7 borrowed7|borrowed7
+captures a13z24
+lends made12 made13made14 made1 2
+lent lists 2 7 made1 other22 72 other22 made1other22 72 ["made1", "other22"]
+reads high9 none second2 missing b2
+borrows left1/right2 left1 3 left1
+4 0 drawn refused: Error noted 6 seen3:note1 seen3
+stores a2a2 a2-b2 b2 a22 a2t2 a24 a2a2 i0i0i1i1
+takes foe3 box3 box3box3 halted0 passed3 halted0/0 passed3 foe3box3foe3
+closures c21 c22 c23! c24! c2/5 c2/6 c2n2 c20c21 c2
+parts foe3 halted0 passed3 halted00 passed3 shell foe3 nobody small4 box12345 foe3 2 23 2111 no 0 found3 4/missing: no 0 3/found 3
+returned l21r2l22r2 two23 t2t2!4 w2w2!5
+returned l31r3l32r3 one33 t3t3!4 w3w3!5
+updates x5new561 w0b5
+fallbacks in1 made1 la1 no1 at1 at1 tmp1 in1at1gap2 at1z1 22
+fallbacks in4 made4 la4 no4 built4 at4 tmp4 in4at4gap2 at4z4 22
+keeps made6 s6 made6
+journal 12 start1;a1;b 2 11 fault parseInt: invalid integer
+results ok b8 ok fresh8 err why8 b8 b8why8 ok xyz8 err short x

@@ -10,15 +10,14 @@ import proof
     Const App Lam BVar NatLit Natural NumericReduced NoNumericRule Definition Constructor Ctor Recursor Env Succ Zero
 
 import proof::Fixtures
-import prooftests::Support
 
 (** Exact numeric reductions and forged/malformed controls. Implements [PROOF-KERNEL-THEORY]. *)
 module NumericTests
-    (** `next` over `file`'s fixture environment; a load failure fails the case and stops. *)
-    loadedOr (file, label, next) = match loaded file
+    (** `result`'s value through `next`, or the refusal `label` names for its error. *)
+    checkedOr (result, label, next) = match result
         Error message => check label "success" message
-        Success env => next env
-    export run () = loadedOr ("canonical-defs.ndjson", "canonical environment loads", runLoaded)
+        Success value => next value
+    export run () = checkedOr (loaded "canonical-defs.ndjson", "canonical environment loads", runLoaded)
 
     (** The canonical environment's suite sections, in order. *)
     runLoaded (env) =
@@ -28,6 +27,7 @@ module NumericTests
         products env
         differentials env
         shortCircuit ()
+        powers ()
 
     (** The empty environment exported from fixture `text`. *)
     exportedEmpty (text) = Checked::exported (Environment::empty (), text)
@@ -165,7 +165,7 @@ module NumericTests
         forgedBle (mutated (env, "Bool.true", ctor ("Bool", 0, 0, 0)), "forged Bool constructor tag")
         forgedBle (mutated (env, "PProd.mk", ctor ("PProd", 0, 2, 1)), "forged pair constructor field count")
         forgedBle (changedRecursor (env, "minors"), "forged recursor minor count")
-        loadedOr ("forged-ble-defs.ndjson", "forged but well typed fixture loads", forgedFixture)
+        checkedOr (loaded "forged-ble-defs.ndjson", "forged but well typed fixture loads", forgedFixture)
 
     (** The forged-but-well-typed environment's two verdicts. *)
     forgedFixture (fake) =
@@ -204,9 +204,7 @@ module NumericTests
     (** `result`'s environment, or the refusal of `term`, which the forgery
         must not accelerate: a failed mutation fails the case before it can
         read as a refusal. *)
-    forged (result, label, term) = match result
-        Error message => check label "success" message
-        Success env => refused (env, label, term)
+    forged (result, label, term) = checkedOr (result, label, \env => refused (env, label, term))
 
     (** The forgery cases all read their verdict through one comparison. *)
     forgedBle (result, label) = forged (result, label, ble (small 0, small 1))
@@ -214,15 +212,41 @@ module NumericTests
     (** A symbolic left operand disables the numeric shortcut regardless of
         the right operand. The enclosing lambda independently checks its scope
         and type. Implements [PROOF-KERNEL-THEORY]. *)
-    export shortCircuit () = test ("symbolic numeric shortcut leaves its discarded right operand alone", \() => loadedOr ("canonical-defs.ndjson", "canonical environment loads", shortCircuitLoaded))
+    export shortCircuit () = test ("symbolic numeric shortcut leaves its discarded right operand alone", \() => checkedOr (loaded "canonical-defs.ndjson", "canonical environment loads", shortCircuitLoaded))
 
     (** The symbolic product is well typed and its outcome is a refusal. *)
     shortCircuitLoaded (env) = shortCircuitTyped (env, symbolicProduct 32)
 
-    shortCircuitTyped (env, term) = match Infer::infer (env, [], Lam "n" (Const "Nat" []) term)
-        Error message => check "symbolic product is well typed" "success" message
-        Success _ => expect (outcome (env, term), "disabled")
+    shortCircuitTyped (env, term) = checkedOr (Infer::infer (env, [], Lam "n" (Const "Nat" []) term), "symbolic product is well typed",
+        \_ => expect (outcome (env, term), "disabled"))
 
     symbolicProduct depth = match depth == 0
         true => BVar 0
         false => multiplied (BVar 0, symbolicProduct (satSub depth 1))
+
+    pow (base, exponent) = applyTwoAt ("Nat.pow", [], base, exponent)
+
+    (** Guarded literal `Nat.pow` and `Nat.beq` ([PROOF-KERNEL-THEORY]): `pow` exact up to Lean's 2^24
+        exponent bound, both off whenever their pinned trees are not the environment's. *)
+    powers () = checkedOr (exportedEmpty (Fixtures::natLiterals ()), "power closure loads", powerCases)
+
+    powerCases (env) =
+        test ("2^64 is exact under the pinned power closure", \() => expect (outcome (env, pow (small 2, small 64)), "reduced:18446744073709551616"))
+        test ("2^32, 7^3, 10^18 and 3^40 are exact, across limbs", \() => expectAll [outcome (env, pow (small 2, small 32)) == "reduced:4294967296", outcome (env, pow (small 7, small 3)) == "reduced:343", outcome (env, pow (small 10, small 18)) == "reduced:1000000000000000000", outcome (env, pow (small 3, small 40)) == "reduced:12157665459056928801"])
+        test ("anything to the zero is one, zero included, and zero to a positive power is zero", \() => expectAll [outcome (env, pow (small 0, small 0)) == "reduced:1", outcome (env, pow (small 9, small 0)) == "reduced:1", outcome (env, pow (small 0, small 5)) == "reduced:0", outcome (env, pow (small 1, small 16777216)) == "reduced:1"])
+        test ("an exponent above 2^24 stays on the ordinary path", \() => expect (outcome (env, pow (small 2, small 16777217)), "disabled"))
+        test ("a variable operand is never computed", \() => expect (outcome (env, pow (small 2, BVar 0)), "disabled"))
+        test ("Nat.pow with another body disables the power rule", \() => expect (forgedPower (), "disabled"))
+        test ("Nat.beq decides literal equality exactly, past one limb", \() => expectAll [outcome (env, beq (small 7, small 7)) == "reduced:Bool.true", outcome (env, beq (small 7, small 8)) == "reduced:Bool.false", outcome (env, beq (small 0, small 0)) == "reduced:Bool.true", outcome (env, beq (word (), word ())) == "reduced:Bool.true", outcome (env, beq (word (), limbs [294967295, 4])) == "reduced:Bool.false"])
+        test ("Nat.beq on a non-canonical literal stays on the ordinary path", \() => expect (outcome (env, beq (small 4294967295, small 1)), "disabled"))
+        test ("Nat.beq on a variable operand is never computed", \() => expect (outcome (env, beq (BVar 0, small 1)), "disabled"))
+        test ("Nat.beq with another body disables the equality rule", \() => expect (forgedEquality (), "disabled"))
+
+    beq (left, right) = applyTwoAt ("Nat.beq", [], left, right)
+
+    (** The verdict `verdict` reads on the forged closure `fixture` exports, or why it did not load. *)
+    forgedOutcome (fixture, verdict) = match exportedEmpty fixture
+        Error message => "forged closure did not load: ${message}"
+        Success forged => verdict forged
+    forgedEquality () = forgedOutcome (Fixtures::natEqualityForged (), \forged => outcome (forged, beq (small 7, small 7)))
+    forgedPower () = forgedOutcome (Fixtures::natPowerForged (), \forged => outcome (forged, pow (small 2, small 64)))

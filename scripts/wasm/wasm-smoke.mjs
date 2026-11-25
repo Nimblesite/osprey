@@ -45,9 +45,9 @@ mkdirSync(sandbox, { recursive: true });
 const wasi = new WASI({
   version: "preview1",
   args: [wasmPath, ...programArgs],
-  env: process.env.OSPREY_ARC_DEBUG
-    ? { OSPREY_ARC_DEBUG: process.env.OSPREY_ARC_DEBUG }
-    : {},
+  env: Object.fromEntries(["OSPREY_ARC_DEBUG", "OSPREY_OWNERSHIP_DEBUG"]
+    .filter(key => process.env[key])
+    .map(key => [key, process.env[key]])),
   preopens: { "/": sandbox, ".": sandbox },
   stdout: fd,
   returnOnExit: true,

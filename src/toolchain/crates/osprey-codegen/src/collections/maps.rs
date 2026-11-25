@@ -4,6 +4,7 @@ use super::{
     list_builder_push_borrowed, list_builder_seal, list_owner, managed_flag, map_owner, own_handle,
     stored_boxed_arg, stored_element, tagged_map_elem, unboxed_arg, MAP_TAG,
 };
+use crate::arc::versions;
 use crate::builder::Codegen;
 use crate::cast::coerce_to;
 use crate::conv::box_to_i64;
@@ -28,12 +29,14 @@ pub(super) fn map_set(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let raw = crate::conv::fit_literal(cg, raw, map_value_numeric(cg, &m))?;
     let elem = crate::llty::elem_spelling(&raw).or_else(|| tagged_map_elem(&m));
     let (v, managed) = stored_element(cg, raw)?;
+    let source = versions::take_source(cg, m.clone());
     let r = cg.call(
         "i8*",
         "osprey_map_set_of",
         "i8*, i64, i64, i32",
         &[&m.operand, &k.operand, &v.operand, managed],
     );
+    versions::release_source(cg, &source);
     Ok(own_handle(cg, Value::handle(r, map_owner(elem.as_deref()))))
 }
 
@@ -65,7 +68,16 @@ fn map_key_op(cg: &mut Codegen, args: &[Expr], ret: &str, name: &str) -> Result<
 
 /// `mapRemove(m, k) -> Map`.
 pub(super) fn map_remove(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
-    let (m, r) = map_key_op(cg, args, "i8*", "osprey_map_remove")?;
+    let m = handle_arg(cg, args, 0)?;
+    let k = boxed_arg(cg, args, 1)?;
+    let source = versions::take_source(cg, m.clone());
+    let r = cg.call(
+        "i8*",
+        "osprey_map_remove",
+        "i8*, i64",
+        &[&m.operand, &k.operand],
+    );
+    versions::release_source(cg, &source);
     Ok(own_handle(
         cg,
         Value::handle(r, map_owner(tagged_map_elem(&m).as_deref())),
@@ -152,7 +164,11 @@ pub(super) fn map_to_list(cg: &mut Codegen, args: &[Expr], take_key: bool) -> Re
     } else {
         tagged_map_elem(&m)
     };
-    Ok(list_builder_seal(cg, &bld).with_owner(Some(list_owner(elem.as_deref()))))
+    // The list keeps the map's own keys or values, so the map gives way.
+    let source = versions::take_element_source(cg, &m, elem.as_deref());
+    let list = list_builder_seal(cg, &bld);
+    versions::release_source(cg, &source);
+    Ok(list.with_owner(Some(list_owner(elem.as_deref()))))
 }
 
 /// `{ k: v, … }` — build a runtime string-key map [TYPE-MAP-LITERAL].
@@ -168,7 +184,7 @@ pub(crate) fn gen_map_literal(cg: &mut Codegen, entries: &[osprey_ast::MapEntry]
         // The map stores both key and value: dup before the i64 erasure, and
         // hand the value's kind over so the sealed map walks it on death
         // (see stored_boxed_arg) [GC-ARC-PERCEUS].
-        crate::arc::escape_retain(cg, &k);
+        crate::arc::transfer_or_retain(cg, &k);
         let k = box_to_i64(cg, k);
         // Stored, so a nested literal escapes into its slot for the same
         // reason it does in [`unboxed_arg`].
@@ -185,7 +201,7 @@ pub(crate) fn gen_map_literal(cg: &mut Codegen, entries: &[osprey_ast::MapEntry]
         let established = elem.as_deref().and_then(crate::llty::sized_of_spelling);
         let v = crate::conv::fit_literal(cg, v, established)?;
         let managed = managed_flag(&v);
-        crate::arc::escape_retain(cg, &v);
+        crate::arc::transfer_or_retain(cg, &v);
         elem = crate::llty::elem_spelling(&v);
         let v = box_to_i64(cg, v);
         cg.call_void(
@@ -209,5 +225,6 @@ pub(crate) fn runtime_map_get(cg: &mut Codegen, m: &Value, k: &Value) -> Result<
     let value = element_word(cg, m, &got, osprey_types::names::MAP, MAP_TAG);
     let inner = value.ty;
     let is_err = cg.emit_reg(format!("icmp eq i32 {has}, 0"));
+    crate::arc::reading(cg);
     crate::result::make_result_if_err(cg, value, inner, &is_err, Some("mapGet: key not found"))
 }

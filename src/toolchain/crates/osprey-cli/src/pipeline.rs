@@ -247,7 +247,19 @@ fn reuse_eligible(cli: &Cli, input: &CompilationInput) -> bool {
 }
 
 pub(super) fn run_check(cli: &Cli, input: &CompilationInput) -> ExitCode {
-    let verdict = gated(cli, input);
+    let verdict = gated(cli, input).and_then(|()| {
+        // Library checks already lower their ABI in target_error. Native and
+        // WASI need lowering here to check the ownership ledger before linking.
+        if cli.memory == crate::invocation::OWNERSHIP
+            && matches!(cli.target.as_str(), "native" | "wasm32")
+        {
+            return target_ir(cli, input).map(drop).map_err(|error| {
+                eprintln!("{}: {error}", input.display_path());
+                ExitCode::FAILURE
+            });
+        }
+        Ok(())
+    });
     osprey_codegen::set_reused_check(None);
     if verdict.is_ok() {
         if !cli.quiet {
@@ -350,7 +362,7 @@ pub(super) fn reject_debug_cross_target(cli: &Cli) -> Option<ExitCode> {
 /// targets' "no managed archive" one: `--memory=arc` links the ARC runtime
 /// built for wasip1, and the target defaults to it when `--memory` is omitted.
 /// `--memory=gc` is refused — the tracing collector walks a shadow stack that
-/// wasm32 does not have — and `--memory=none` stays the explicit opt-out.
+/// wasm32 does not have.
 /// Implements [WASM-TARGET-MEMORY].
 pub(super) fn reject_wasm_options(cli: &Cli) -> Option<ExitCode> {
     if let Some(code) = reject_debug_cross_target(cli) {
@@ -358,7 +370,7 @@ pub(super) fn reject_wasm_options(cli: &Cli) -> Option<ExitCode> {
     }
     (cli.memory == "gc").then(|| {
         toolchain::fail(
-            "wasm32 has no garbage-collecting runtime; use --memory=arc (the default) or --memory=none",
+            "wasm32 has no garbage-collecting runtime; use --memory=arc (the default) or --memory=ownership",
         )
     })
 }

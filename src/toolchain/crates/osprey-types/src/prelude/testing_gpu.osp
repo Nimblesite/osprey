@@ -34,6 +34,9 @@ fn gpuLengthIs(result, expected) = gpuSatisfies(result, fn(buffer) => gpuLength(
 /// Runs `work` on the indices `0..n` on the GPU, or fails the case.
 fn withIndices(n, work) = withBuffer(gpuIota(n), work)
 
+/// Runs `work` on the dense buffer `values` uploads.
+fn withUpload(values, work) = withBuffer(toGpu(values), work)
+
 /// The reason `gpuIota(n)` fails, or the length it unexpectedly produced.
 fn iotaError(n) = match gpuIota(n) {
     Success { value } => "unexpected success ${gpuLength(value)}"

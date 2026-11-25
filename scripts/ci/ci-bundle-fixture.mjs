@@ -47,7 +47,7 @@ function restoreStagedBundle(root, restoreJob) {
   assert.equal(result.status, 0, result.stdout + result.stderr)
 }
 
-export const nativeArchives = ['fiber_runtime', 'http_runtime'].flatMap(name => ['', '_gc', '_arc'].map(mode => `lib${name}${mode}.a`))
+export const nativeArchives = ['fiber_runtime', 'http_runtime'].flatMap(name => ['_ownership', '_gc', '_arc'].map(mode => `lib${name}${mode}.a`))
 // [NATIVE-SHM-WASM] A valid module with exported memory and one empty function exported under every
 // name a live shared-boundary module exports; packaging checks the names and never executes it.
 const boundaryExports = ['_start', 'osprey_app_argument', 'osprey_app_open', 'osprey_app_event', 'osp_native_open',

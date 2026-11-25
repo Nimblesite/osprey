@@ -193,6 +193,56 @@ This is producer-side, allocating reference execution. It does not establish all
 
 A MIDI note component exposes whole-number pitch, normalized velocity and an exact gate length in frames. `MidiClips.window` assigns note-on and note-off to half-open sample windows, preserving ownership at block boundaries. Fractional pitches/gates, invalid velocities and out-of-range windows return errors. Event outputs connect only to compatible event inputs; audio outputs remain separate. Sequencing, polyphonic generators and continuous live note control remain delivery work.
 
+## Formula melodies [SYNTH-FORMULA-NOTES]
+
+A formula melody is a note source like the MIDI note component: no inputs, one `Events/Notes` output. Its notes come from a formula the user types. The formula is evaluated once per step, with `t` set to the step number (0, 1, 2 and so on). Each value becomes one MIDI note. `Components.formulaNotes(identity, formula, velocity, stepFrames, gateFrames, steps)` builds one, and `Components.formulaMelody(identity, formula)` uses Prism's defaults: 16 steps of 6,000 frames (125 ms at 48 kHz), each held for 4,800 frames, at velocity 0.8. The formula is part of the processor (`FormulaNotes { formula }` in [graph.td](../../../src/osprey/packages/synth/graph.td)), and the formula's syntax tree is declared in [formula.td](../../../src/osprey/packages/synth/formula.td).
+
+| Formula | Notes for t = 0, 1, 2, 3 |
+| --- | --- |
+| `60 + t` | 60, 61, 62, 63 (C4 rising by semitones) |
+| `60 + t * 7 % 12` | 60, 67, 62, 69 (fifths folded into one octave) |
+| `48 + t % 4 * 12` | 48, 60, 72, 84 (an arpeggio in octaves) |
+| `60 + 12 * sin(t * 3.14159 / 2)` | 60, 72, 60, 48 |
+| `60 / (t - 1)` | 0, rest, 60, 30 |
+
+The formula language has these parts:
+
+- **Values:** decimal numbers and the step `t`.
+- **Operators**, from loosest to tightest binding:
+  - `+` and `-`.
+  - `*`, `/` and `%`.
+  - Unary `-`.
+  - `^`, which is right-associative, so `-2^2` is −4 and `2^3^2` is 2⁹.
+- **Parentheses** for grouping.
+- **Functions:** `sin`, `cos`, `abs`, `floor`, `round` and `sqrt`.
+- **Remainder:** `%` is floored, so its result takes the sign of the divisor: `(t - 5) % 12` gives 7, 8, 9, 10, 11.
+
+Names are case-sensitive and a formula is 1 to 256 characters. `Formulas.parse` returns the syntax tree or an `InvalidConfiguration` fault. The fault names the first column it cannot read, for example `Formula: unexpected ')' at column 6.`
+
+Evaluation is total and performs no `Arith` request. Division uses IEEE `floatDiv`, and `pow`, `sqrt` and the trigonometric functions follow IEEE rules.
+
+Each step's value becomes a note as follows:
+
+- A value that is not finite, such as a division by zero, a remainder by zero or the root of a negative number, is a **rest**.
+- A value farther than 1,000,000 from zero is also a rest.
+- Any other value is rounded to the nearest whole pitch.
+- A pitch above 127 or below 0 is moved by whole octaves into 0–127, so it keeps its pitch class.
+
+Step `n` sends its note-on at frame `n × stepFrames`. Its note-off follows `gateFrames` later; a gate longer than the step is cut to the step. When one step's note-off and the next step's note-on fall on the same frame, the note-off comes first, so a repeated pitch re-attacks. `MidiClips.timeline` windows formula notes exactly as it windows a single MIDI note.
+
+The parameter limits are:
+
+| Parameter | Range | Whole numbers only |
+| --- | --- | --- |
+| `steps` | 1–256 | yes |
+| `stepFrames` | 16–65,535 | yes |
+| `gateFrames` | 1–65,535 | yes |
+| `velocity` | 0–1 | no |
+
+A missing parameter or a value outside its limits is an error, and so is a formula that does not parse.
+
+In Prism, choose **Add component → Formula melody**. The inspector's **Formula over step t** field applies a formula when you press Return. A formula that does not parse leaves the patch unchanged, and the editor message names the column. Under the field, the inspector lists the first 16 notes the formula plays, by name, for example `Plays C4 G4 D4 A4 …`. A saved project stores the formula in the patch node's `asset` with the component `formulaNotes`. A stored formula that no longer parses refuses the track with the same fault.
+
 ## Routed modulation [SYNTH-GRAPH-MODULATION]
 
 A normalized sine LFO is a separate control-rate component with its own phase and frequency. A controlled-gain node takes distinct audio and normalized-control inputs; one control sample broadcasts across all audio channels while audio cables retain their declared width. The transfer functions are authored in `waves.ospml`, and the renderer shares oscillator state handling with audio oscillators. Missing controls and values outside zero through one are explicit errors. Native menu actions and canvas cable actions use the same rate/unit/channel validation.

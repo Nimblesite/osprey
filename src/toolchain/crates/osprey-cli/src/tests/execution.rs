@@ -45,11 +45,34 @@ fn link_args_selects_gc_archive_and_validates_backend() {
     );
     assert!(!arc.iter().any(|a| a.contains("_gc.a")), "{arc:?}");
     assert!(!gc.iter().any(|a| a.contains("_arc.a")), "{gc:?}");
+    // [MEM-OWNERSHIP-STATIC] Ownership links its own runtime, never ARC's.
+    let owned = link_args("call void @osprey_list_empty()", "", "ownership");
+    assert!(
+        owned.iter().any(|a| a.contains("_ownership.a")) || owned.is_empty(),
+        "ownership backend must select a *_ownership archive when one is present: {owned:?}"
+    );
+    assert!(
+        !owned
+            .iter()
+            .any(|a| a.contains("_arc.a") || a.contains("_gc.a")),
+        "{owned:?}"
+    );
+    let names =
+        ["libfiber_runtime.a", "libhttp_runtime.a"].map(|base| runtime_name(base, "ownership"));
+    assert_eq!(
+        names,
+        [
+            "libfiber_runtime_ownership.a",
+            "libhttp_runtime_ownership.a"
+        ]
+    );
     // Unmanaged execution requires the explicit none option.
     assert_eq!(parse_memory("gc").as_deref(), Ok("gc"));
-    assert_eq!(parse_memory("none").as_deref(), Ok("none"));
+    assert!(parse_memory("none").is_err());
     assert!(parse_memory("default").is_err());
     assert_eq!(parse_memory("arc").as_deref(), Ok("arc"));
+    // [MEM-OWNERSHIP-STATIC]
+    assert_eq!(parse_memory("ownership").as_deref(), Ok("ownership"));
     assert!(parse_memory("bogus").is_err());
 }
 
@@ -65,7 +88,7 @@ fn openssl_and_compiler_helpers_are_well_formed() {
 fn runtime_search_walks_above_arbitrarily_nested_cargo_profiles() {
     let root = PathBuf::from("workspace");
     let executable_dir = root.join("target/llvm-cov-target/ci/deps");
-    let lib = "libfiber_runtime.a";
+    let lib = "libfiber_runtime_gc.a";
     let candidates = runtime_lib_candidates(lib, Some(&executable_dir));
     let expected = root
         .join("src/toolchain/compiler/bin")
@@ -77,7 +100,7 @@ fn runtime_search_walks_above_arbitrarily_nested_cargo_profiles() {
     assert!(fallbacks.contains(&format!("/usr/local/lib/{lib}")));
     assert!(fallbacks
         .iter()
-        .any(|path| path.ends_with("src/toolchain/compiler/lib/libfiber_runtime.a")));
+        .any(|path| path.ends_with("src/toolchain/compiler/lib/libfiber_runtime_gc.a")));
 }
 
 #[cfg(unix)]

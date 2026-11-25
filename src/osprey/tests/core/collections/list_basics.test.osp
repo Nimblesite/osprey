@@ -53,7 +53,7 @@ fn elementsFrom(xs, wants, fallback, index) = match wants {
 /// Every listed index of `indices` yields its partner want from `xs`, through
 /// the Result path of [BUILTIN-LIST-GET].
 fn rowsHold(xs, indices, wants, fallback) =
-    range(0, listLength(indices)) |> fold(true, fn(hold, i) => hold && elementOr(xs, intAt(indices, i), fallback) == elementOr(wants, i, fallback))
+    everyRowOf(indices, fn(i) => elementOr(xs, intAt(indices, i), fallback) == elementOr(wants, i, fallback))
 
 /// listLength as a first-class value, so answersHold can fold length rows.
 fn lengthOf(xs) = listLength(xs)
@@ -325,19 +325,6 @@ fn indexingPatternsAndDispatchCase() = {
     ])
 }
 
-// Register the construction, identity, and content scenario. The testing
-// prelude supplies exactArithmetic beside every program that names it.
-test("lists construct, reverse, prepend, concatenate, and retain contents", fn() => exactArithmetic(constructionAndIdentityCase))
-
-// Register the traversal, persistence, and branching scenario.
-exactTests([
-    { name: "list iteration and persistent branches retain order and isolation", work: iterationAndPersistenceCase },
-    // Register the 32-element structural boundary scenario.
-    { name: "lists preserve content across the 32-element tail boundary", work: tailBoundaryCase },
-    // Register Result indexing, patterns, recursion, and builtin dispatch together.
-    { name: "list indexing, patterns, recursion, and receiver dispatch compose", work: indexingPatternsAndDispatchCase }
-])
-
 /// [BUILTIN-LIST-GET] declares `listGet(list: List<T>, index: int) -> Result<T, string>`
 /// and says it is "equivalent to `list[index]`", with an out-of-range index
 /// returning `Error`. `T` is the element type, so a string list yields the
@@ -424,9 +411,6 @@ fn typedElementRetrievalCase() = {
         listLength(slots) == 2
     ])
 }
-
-// Register typed element retrieval across string, float, bool and record lists.
-test("listGet returns the element type for every element type", exactly(typedElementRetrievalCase))
 
 /// TranscriptProbe renders one visited element at a time, so `forEachList`'s
 /// traversal order over non-integer element types is observable without stdout.
@@ -645,9 +629,6 @@ fn stringListPatternCase() = {
     ])
 }
 
-// Register list patterns over string elements.
-test("string lists destructure, iterate, and rebuild through list patterns", exactly(stringListPatternCase))
-
 /// The same [TYPE-LIST-PATTERNS] shape rules over `List<float>` and `List<bool>`,
 /// the two element types whose storage word is NOT an int. Every float used here
 /// is an exact binary fraction (a multiple of 0.25), so the sums are exact and a
@@ -707,9 +688,6 @@ fn floatAndBoolListPatternCase() = {
         tailLength(noFlags) == ((0 - 1) )
     ])
 }
-
-// Register list patterns over float and bool elements.
-test("float and bool lists destructure and recombine through list patterns", exactly(floatAndBoolListPatternCase))
 
 /// [TYPE-LIST-PATTERNS] over `List<Slot>`. A rest-binder pattern must bind the
 /// WHOLE record, not the storage word behind it, so every arm below reads more
@@ -780,9 +758,6 @@ fn recordListPatternCase() = {
     ])
 }
 
-// Register list patterns over record elements.
-test("record lists destructure whole through list patterns", exactly(recordListPatternCase))
-
 /// A `List<T>` whose `T` is itself a `List<int>` ([TYPE-LIST]). [BUILTIN-LIST-GET]
 /// must hand back the inner LIST, so every retrieval here is indexed again or
 /// summed; a raw storage word would have neither a length nor elements.
@@ -849,9 +824,6 @@ fn nestedListCase() = {
         sumInner(rows) == 45
     ])
 }
-
-// Register nested-list indexing, patterns and isolation.
-test("nested lists index, destructure, and stay isolated", exactly(nestedListCase))
 
 /// [BUILTIN-LIST-FOREACH] states `forEachList` "calls `function` once per element
 /// in index order". One handler owns the transcript, so the assertions between
@@ -966,9 +938,6 @@ fn typedIterationOrderCase() = {
     ])
 }
 
-// Register traversal order across every element type and the iterator surface.
-test("forEachList and range pipelines visit every element type in order", exactly(typedIterationOrderCase))
-
 /// [BUILTIN-LIST-GET] says an "out-of-range index returns `Error`", and
 /// [TYPE-LIST] says "index access is bounds-checked". These blocks walk the
 /// boundary from both sides on every element type: the first index, the last
@@ -1034,9 +1003,6 @@ fn boundaryIndexCase() = {
     ])
 }
 
-// Register bounds checking across element types and the tail boundary.
-test("list index boundaries are checked on every element type", exactly(boundaryIndexCase))
-
 /// foldSeedCase pins [BUILTIN-ITER-FOLD]: a list-literal seed takes the runtime
 /// representation once, before the loop, so every iteration's listAppend and
 /// listConcat reads a runtime list. Left flat, the second iteration read the
@@ -1079,7 +1045,20 @@ fn linesIndexCase() = {
     checkAll("a bound string list is read by index in constant time", [listLength(rows) == 2000, elementOr(rows, 1999, "?") == "line 1999", total == 84450])
 }
 
+// Register every scenario, in TAP order, under the exact-arithmetic policy the
+// testing prelude supplies beside every program that names it.
 exactTests([
+    { name: "lists construct, reverse, prepend, concatenate, and retain contents", work: constructionAndIdentityCase },
+    { name: "list iteration and persistent branches retain order and isolation", work: iterationAndPersistenceCase },
+    { name: "lists preserve content across the 32-element tail boundary", work: tailBoundaryCase },
+    { name: "list indexing, patterns, recursion, and receiver dispatch compose", work: indexingPatternsAndDispatchCase },
+    { name: "listGet returns the element type for every element type", work: typedElementRetrievalCase },
+    { name: "string lists destructure, iterate, and rebuild through list patterns", work: stringListPatternCase },
+    { name: "float and bool lists destructure and recombine through list patterns", work: floatAndBoolListPatternCase },
+    { name: "record lists destructure whole through list patterns", work: recordListPatternCase },
+    { name: "nested lists index, destructure, and stay isolated", work: nestedListCase },
+    { name: "forEachList and range pipelines visit every element type in order", work: typedIterationOrderCase },
+    { name: "list index boundaries are checked on every element type", work: boundaryIndexCase },
     { name: "fold rebuilds a list-literal seed once before the loop", work: foldSeedCase },
     { name: "a bound string list is read by index in constant time", work: linesIndexCase }
 ])

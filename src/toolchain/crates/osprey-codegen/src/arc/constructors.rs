@@ -10,6 +10,25 @@ pub(crate) fn transfer_or_retain(cg: &mut Codegen, value: &Value) {
     }
 }
 
+/// The file-scope binding `name` hands its module global the reference it
+/// holds on `operand`: the one the binding owns, or a fresh copy made to store.
+/// False when the ledger holds neither, and the global must count its own.
+pub(crate) fn give_binding(cg: &mut Codegen, name: &str, operand: &str) -> bool {
+    let operand = super::aliases::root(cg, operand).to_owned();
+    let Some(frame) = cg.arc.frames.last_mut() else {
+        return false;
+    };
+    let held = frame.iter().rposition(|e| {
+        e.operand == operand && !e.lent && e.name.as_deref().is_none_or(|bound| bound == name)
+    });
+    let Some(at) = held else {
+        return false;
+    };
+    let slot = frame.remove(at).slot;
+    cg.emit(format!("store i8* null, i8** {slot}"));
+    true
+}
+
 /// Perceus "move into constructor" (TR §2.3, the *own* argument rule): a store
 /// into a heap slot normally dups, because the owning block's drop mask will
 /// release that slot at the object's death. But when the stored pointer is a
@@ -26,25 +45,39 @@ pub(crate) fn transfer_or_retain(cg: &mut Codegen, value: &Value) {
 /// owner live in an outer frame and are likewise excluded. A borrow (parameter,
 /// field load, phi) was never registered, so it is not found and the caller
 /// dups it as before. Returns true when it consumed an owner.
+/// Store `operand` into a heap slot spelled `slot_ty` whose block releases it at
+/// its death: a fresh owner moves in, anything else gains a reference
+/// [GC-ARC-PERCEUS].
+pub(crate) fn store_owned(cg: &mut Codegen, slot_ty: &str, operand: &str) {
+    let moved =
+        slot_ty.ends_with('*') && operand.starts_with('%') && consume_into_store(cg, operand);
+    if !moved {
+        super::dup_store(cg, slot_ty, operand);
+    }
+}
+
 pub(crate) fn consume_into_store(cg: &mut Codegen, operand: &str) -> bool {
     match take_owner(cg, operand) {
         Some(slot) => {
             cg.emit(format!("store i8* null, i8** {slot}"));
             true
         }
-        None => false,
+        None => super::takes::take_field(cg, operand),
     }
 }
 
 fn take_owner(cg: &mut Codegen, operand: &str) -> Option<String> {
     let floor = conditional_floor(cg);
-    cg.arc.frames.last_mut().and_then(|frame| {
+    let operand = &super::aliases::root(cg, operand).to_owned();
+    let fresh = cg.arc.frames.last_mut().and_then(|frame| {
         frame
             .iter()
-            .rposition(|e| e.operand == operand && e.name.is_none())
+            .rposition(|e| e.operand == *operand && e.name.is_none() && !e.lent)
             .filter(|at| *at >= floor)
             .map(|at| frame.remove(at).slot)
-    })
+    });
+    // Else a binding at its last use gives up the reference it holds.
+    fresh.or_else(|| super::moves::give_up(cg, operand))
 }
 
 #[cfg(test)]

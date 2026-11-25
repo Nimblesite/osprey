@@ -79,8 +79,8 @@ fn reset(mode: usize) {
     MAIN_STATUS.store(0, Ordering::SeqCst);
     INITIALIZED.store(false, Ordering::SeqCst);
     CALLBACK_FAULT.store(NO_CALLBACK_FAULT, Ordering::SeqCst);
-    *main_slot() = None;
-    *snapshot_slot() = None;
+    *locked(&MAIN_OUTPUT) = None;
+    *locked(&SNAPSHOT) = None;
 }
 
 /// One C string a writer copies before returning.
@@ -252,7 +252,7 @@ fn framed_output(mode: usize) -> i64 {
 extern "C" fn osprey_main() -> i32 {
     EXPORTS.fetch_add(1, Ordering::SeqCst);
     if MODE.load(Ordering::SeqCst) == 3 {
-        *main_slot() = Some(snapshot_observation().unwrap_or_else(|error| error));
+        *locked(&MAIN_OUTPUT) = Some(snapshot_observation().unwrap_or_else(|error| error));
     }
     MAIN_STATUS.load(Ordering::SeqCst)
 }
@@ -295,29 +295,23 @@ extern "C" fn osprey_app_event(
     output()
 }
 
-fn main_slot() -> std::sync::MutexGuard<'static, Option<String>> {
-    MAIN_OUTPUT
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-}
-
-fn snapshot_slot() -> std::sync::MutexGuard<'static, Option<String>> {
-    SNAPSHOT
-        .lock()
+/// Locks a static string cell, treating a poisoned lock as recoverable.
+fn locked(cell: &'static Mutex<Option<String>>) -> std::sync::MutexGuard<'static, Option<String>> {
+    cell.lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 fn snapshot() -> Option<String> {
-    snapshot_slot().clone()
+    locked(&SNAPSHOT).clone()
 }
 
 fn main_observation() -> Option<String> {
-    main_slot().clone()
+    locked(&MAIN_OUTPUT).clone()
 }
 
 /// Records what an export observed, since an export now returns a status rather than text.
 fn observe(observation: fn() -> Result<String, String>) -> i64 {
-    *snapshot_slot() = Some(observation().unwrap_or_else(|error| error));
+    *locked(&SNAPSHOT) = Some(observation().unwrap_or_else(|error| error));
     0
 }
 
@@ -347,7 +341,7 @@ fn nested_output() -> i64 {
         .err()
         .unwrap_or_else(|| "accepted nested call".to_owned());
     MODE.store(4, Ordering::SeqCst);
-    *snapshot_slot() = Some(problem);
+    *locked(&SNAPSHOT) = Some(problem);
     0
 }
 
@@ -389,7 +383,7 @@ fn nested_dispatch_output() -> i64 {
         ABI.store(1, Ordering::SeqCst);
         refused.to_string()
     });
-    *snapshot_slot() = Some(observations.join(","));
+    *locked(&SNAPSHOT) = Some(observations.join(","));
     0
 }
 

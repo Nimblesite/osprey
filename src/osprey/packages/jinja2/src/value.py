@@ -512,23 +512,13 @@ def slice_bounds(n, sl, step):
 def high_bound(raw, given, n):
     """A positive-step bound: a written negative index counts from the end, then
     clamps to `0..n`. An absent bound is its default and is not shifted."""
-    return clamp_index(raw + n if given and raw < 0 else raw, 0, n)
+    return min(max(raw + n if given and raw < 0 else raw, 0), n)
 
 
 def low_bound(raw, given, n):
     """A negative-step bound: a written negative index counts from the end, then
     clamps to `-1..n-1`. An absent bound is its default and is not shifted."""
-    return clamp_index(raw + n if given and raw < 0 else raw, -1, n - 1)
-
-
-def clamp_index(value, lo, hi):
-    """`value` held inside `[lo, hi]`."""
-    if value < lo:
-        return lo
-    elif value > hi:
-        return hi
-    else:
-        return value
+    return min(max(raw + n if given and raw < 0 else raw, -1), n - 1)
 
 
 def slice_count(b):

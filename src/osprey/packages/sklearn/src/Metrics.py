@@ -134,32 +134,115 @@ def prf_scores(yt, yp, average, zd):
 
 
 def accuracy_score(y_true, y_pred):
-    """`sklearn.metrics.accuracy_score`: fraction of equal labels."""
+    """`sklearn.metrics.accuracy_score`: fraction of equal labels.
+
+    # Examples
+    ```osprey
+    from sklearn import Metrics
+
+    def show():
+        mixed = Metrics.accuracy_score([0, 1, 2], [0, 2, 1])
+        perfect = Metrics.accuracy_score([0, 1], [0, 1])
+        print(f"[{mixed}] [{perfect}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [0.3333333333333333] [1.0]
+    ```
+    """
     n = len(y_true)
     return toFloat(fold(range(n), 0, lambda acc, i: acc + 1 if unwrap_or(listGet(y_true, i), 0) == unwrap_or(listGet(y_pred, i), 0) else acc)) / toFloat(n)
 
 
 def precision_score(y_true, y_pred, average, zero_division):
     """`sklearn.metrics.precision_score` for average in binary/micro/macro/
-    weighted with zero_division 0 or 1."""
+    weighted with zero_division 0 or 1.
+
+    # Examples
+    ```osprey
+    from sklearn import Metrics
+
+    def show():
+        usual = Metrics.precision_score([1, 1, 1, 0, 0], [1, 0, 1, 0, 1], "binary", 0)
+        no_positive = Metrics.precision_score([0, 1], [0, 0], "binary", 0)
+        one = Metrics.precision_score([0, 1], [0, 0], "binary", 1)
+        print(f"[{usual}] [{no_positive}] [{one}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [0.6666666666666666] [0.0] [1.0]
+    ```
+    """
     return prf_scores(y_true, y_pred, average, zero_division).precision
 
 
 def recall_score(y_true, y_pred, average, zero_division):
     """`sklearn.metrics.recall_score` for average in binary/micro/macro/
-    weighted with zero_division 0 or 1."""
+    weighted with zero_division 0 or 1.
+
+    # Examples
+    ```osprey
+    from sklearn import Metrics
+
+    def show():
+        usual = Metrics.recall_score([1, 1, 1, 0, 0], [1, 0, 1, 0, 1], "binary", 0)
+        no_positive = Metrics.recall_score([0, 0, 0, 0], [1, 1, 1, 1], "binary", 0)
+        one = Metrics.recall_score([0, 0, 0, 0], [1, 1, 1, 1], "binary", 1)
+        print(f"[{usual}] [{no_positive}] [{one}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [0.6666666666666666] [0.0] [1.0]
+    ```
+    """
     return prf_scores(y_true, y_pred, average, zero_division).recall
 
 
 def f1_score(y_true, y_pred, average, zero_division):
     """`sklearn.metrics.f1_score` for average in binary/micro/macro/weighted
-    with zero_division 0 or 1."""
+    with zero_division 0 or 1.
+
+    # Examples
+    ```osprey
+    from sklearn import Metrics
+
+    def show():
+        usual = Metrics.f1_score([1, 1, 1, 0, 0], [1, 0, 1, 0, 1], "binary", 0)
+        no_positive = Metrics.f1_score([0, 0], [0, 0], "binary", 0)
+        one = Metrics.f1_score([0, 0], [0, 0], "binary", 1)
+        print(f"[{usual}] [{no_positive}] [{one}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [0.6666666666666666] [0.0] [1.0]
+    ```
+    """
     return prf_scores(y_true, y_pred, average, zero_division).f1
 
 
 def confusion_matrix(y_true, y_pred, labels):
     """`sklearn.metrics.confusion_matrix` over an explicit, sorted label list:
-    entry `[i][j]` counts true `labels[i]` predicted as `labels[j]`."""
+    entry `[i][j]` counts true `labels[i]` predicted as `labels[j]`.
+
+    # Examples
+    ```osprey
+    from sklearn import Metrics
+
+    def show():
+        present = Metrics.confusion_matrix([0, 1, 1], [0, 1, 0], [0, 1])
+        wide = Metrics.confusion_matrix([0, 1, 1], [0, 1, 0], [0, 1, 2])
+        print(f"[{toString(present)}] [{toString(wide)}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [[[1, 0], [1, 1]]] [[[1, 0, 0], [1, 1, 0], [0, 0, 0]]]
+    ```
+    """
     return map_indexed(labels, lambda i: toList(map(range(len(labels)), lambda j: count_pair(y_true, y_pred, unwrap_or(listGet(labels, i), 0), unwrap_or(listGet(labels, j), 0)))))
 
 
@@ -227,7 +310,22 @@ def all_nan(n):
 
 
 def roc_curve(y_true, y_score):
-    """`sklearn.metrics.roc_curve` (pos_label=1, drop_intermediate=True)."""
+    """`sklearn.metrics.roc_curve` (pos_label=1, drop_intermediate=True).
+
+    # Examples
+    ```osprey
+    from sklearn import Metrics
+
+    def show():
+        curve = Metrics.roc_curve([0, 0, 1, 1], [0.1, 0.4, 0.35, 0.8])
+        print(f"[{toString(curve.fpr)}] [{toString(curve.tpr)}] [{toString(curve.thresholds)}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [[0.0, 0.0, 0.5, 0.5, 1.0]] [[0.0, 0.5, 0.5, 1.0, 1.0]] [[inf, 0.8, 0.4, 0.35, 0.1]]
+    ```
+    """
     p = threshold_points(y_true, y_score)
     flags = keep_flags(p.fps, p.tps)
     fps = filter_floats(p.fps, flags)
@@ -252,7 +350,23 @@ def auc_trapezoid(xs, ys):
 
 def roc_auc_score(y_true, y_score):
     """`sklearn.metrics.roc_auc_score` for binary labels: NaN when one class is
-    absent, else the trapezoidal AUC of the ROC curve."""
+    absent, else the trapezoidal AUC of the ROC curve.
+
+    # Examples
+    ```osprey
+    from sklearn import Metrics
+
+    def show():
+        mixed = Metrics.roc_auc_score([0, 0, 1, 1], [0.1, 0.4, 0.35, 0.8])
+        one_class = Metrics.roc_auc_score([1, 1, 1], [0.1, 0.4, 0.8])
+        print(f"[{mixed}] [{one_class}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [0.75] [nan]
+    ```
+    """
     return nan() if len(unique_ints(y_true)) != 2 else curve_auc(roc_curve(y_true, y_score))
 
 
@@ -262,7 +376,22 @@ def curve_auc(curve):
 
 
 def precision_recall_curve(y_true, y_score):
-    """`sklearn.metrics.precision_recall_curve` (pos_label=1, no dropping)."""
+    """`sklearn.metrics.precision_recall_curve` (pos_label=1, no dropping).
+
+    # Examples
+    ```osprey
+    from sklearn import Metrics
+
+    def show():
+        curve = Metrics.precision_recall_curve([0, 0, 1, 1], [0.1, 0.4, 0.35, 0.8])
+        print(f"[{toString(curve.precision)}] [{toString(curve.recall)}] [{toString(curve.thresholds)}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [[0.5, 0.6666666666666666, 0.5, 1.0, 1.0]] [[1.0, 1.0, 0.5, 0.5, 0.0]] [[0.1, 0.35, 0.4, 0.8]]
+    ```
+    """
     p = threshold_points(y_true, y_score)
     last = unwrap_or(listGet(p.tps, len(p.tps) - 1), 0.0)
     precision = map_indexed(p.tps, lambda i: precision_at(p, i))
@@ -278,7 +407,23 @@ def precision_at(p, i):
 
 def average_precision_score(y_true, y_score):
     """`sklearn.metrics.average_precision_score`: the step-function integral of
-    the precision-recall curve, clipped at zero."""
+    the precision-recall curve, clipped at zero.
+
+    # Examples
+    ```osprey
+    from sklearn import Metrics
+
+    def show():
+        mixed = Metrics.average_precision_score([0, 0, 1, 1], [0.1, 0.4, 0.35, 0.8])
+        perfect = Metrics.average_precision_score([0, 0, 1, 1], [0.1, 0.2, 0.8, 0.9])
+        print(f"[{mixed}] [{perfect}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [0.8333333333333333] [1.0]
+    ```
+    """
     curve = precision_recall_curve(y_true, y_score)
     total = fold(range(len(curve.precision) - 1), 0.0, lambda acc, i: acc + (unwrap_or(listGet(curve.recall, i), 0.0) - unwrap_or(listGet(curve.recall, i + 1), 0.0)) * unwrap_or(listGet(curve.precision, i), 0.0))
     return total if total > 0.0 else 0.0
@@ -296,7 +441,23 @@ def clip_prob(p, eps):
 
 def log_loss(y_true, y_proba):
     """`sklearn.metrics.log_loss` over a list of per-class probability rows,
-    clipping each to `[eps, 1 - eps]` with eps = float64 machine epsilon."""
+    clipping each to `[eps, 1 - eps]` with eps = float64 machine epsilon.
+
+    # Examples
+    ```osprey
+    from sklearn import Metrics
+
+    def show():
+        usual = Metrics.log_loss([0, 1, 1, 0], [[0.9, 0.1], [0.1, 0.9], [0.2, 0.8], [0.8, 0.2]])
+        clipped = Metrics.log_loss([0, 1], [[0.0, 1.0], [1.0, 0.0]])
+        print(f"[{usual}] [{clipped}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [0.164252033486018] [36.04365338911715]
+    ```
+    """
     eps = 2.220446049250313e-16
     losses = map_indexed(y_true, lambda i: 0.0 - ln(clip_prob(unwrap_or(listGet(unwrap_or(listGet(y_proba, i), []), unwrap_or(listGet(y_true, i), 0)), 0.0), eps)))
     return mean_float(losses)
@@ -319,12 +480,44 @@ def sq_diff(yt, yp, i):
 
 
 def mean_squared_error(y_true, y_pred):
-    """`sklearn.metrics.mean_squared_error`."""
+    """`sklearn.metrics.mean_squared_error`.
+
+    # Examples
+    ```osprey
+    from sklearn import Metrics
+
+    def show():
+        usual = Metrics.mean_squared_error([3.0, -0.5, 2.0, 7.0], [2.5, 0.0, 2.0, 8.0])
+        perfect = Metrics.mean_squared_error([1.0, 2.0], [1.0, 2.0])
+        print(f"[{usual}] [{perfect}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [0.375] [0.0]
+    ```
+    """
     return mean_float(map_indexed(y_true, lambda i: sq_diff(y_true, y_pred, i)))
 
 
 def mean_absolute_error(y_true, y_pred):
-    """`sklearn.metrics.mean_absolute_error`."""
+    """`sklearn.metrics.mean_absolute_error`.
+
+    # Examples
+    ```osprey
+    from sklearn import Metrics
+
+    def show():
+        usual = Metrics.mean_absolute_error([3.0, -0.5, 2.0, 7.0], [2.5, 0.0, 2.0, 8.0])
+        perfect = Metrics.mean_absolute_error([1.0, 2.0], [1.0, 2.0])
+        print(f"[{usual}] [{perfect}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [0.5] [0.0]
+    ```
+    """
     return mean_float(map_indexed(y_true, lambda i: abs(diff_at(y_true, y_pred, i))))
 
 
@@ -348,13 +541,46 @@ def sse_around_mean(yt):
 
 def r2_score(y_true, y_pred):
     """`sklearn.metrics.r2_score` (single output, force_finite): NaN with fewer
-    than two samples."""
+    than two samples.
+
+    # Examples
+    ```osprey
+    from sklearn import Metrics
+
+    def show():
+        usual = Metrics.r2_score([3.0, -0.5, 2.0, 7.0], [2.5, 0.0, 2.0, 8.0])
+        perfect = Metrics.r2_score([1.0, 2.0], [1.0, 2.0])
+        one_sample = Metrics.r2_score([4.0], [5.0])
+        print(f"[{usual}] [{perfect}] [{one_sample}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [0.9486081370449679] [1.0] [nan]
+    ```
+    """
     return nan() if len(y_true) < 2 else assemble(sse(y_true, y_pred), sse_around_mean(y_true))
 
 
 def explained_variance_score(y_true, y_pred):
     """`sklearn.metrics.explained_variance_score`: 1 minus the ratio of the
-    unexplained to the total variance."""
+    unexplained to the total variance.
+
+    # Examples
+    ```osprey
+    from sklearn import Metrics
+
+    def show():
+        usual = Metrics.explained_variance_score([3.0, -0.5, 2.0, 7.0], [2.5, 0.0, 2.0, 8.0])
+        perfect = Metrics.explained_variance_score([1.0, 2.0], [1.0, 2.0])
+        print(f"[{usual}] [{perfect}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [0.9571734475374732] [1.0]
+    ```
+    """
     diffs = map_indexed(y_true, lambda i: diff_at(y_true, y_pred, i))
     dm = mean_float(diffs)
     num = mean_sq_dev(diffs, dm)
@@ -384,7 +610,24 @@ def dot_float(a, b):
 
 
 def matthews_corrcoef(y_true, y_pred):
-    """`sklearn.metrics.matthews_corrcoef` for binary and multiclass labels."""
+    """`sklearn.metrics.matthews_corrcoef` for binary and multiclass labels.
+
+    # Examples
+    ```osprey
+    from sklearn import Metrics
+
+    def show():
+        inverse = Metrics.matthews_corrcoef([0, 0, 1, 1], [1, 1, 0, 0])
+        perfect = Metrics.matthews_corrcoef([0, 1], [0, 1])
+        constant = Metrics.matthews_corrcoef([1, 1], [1, 1])
+        print(f"[{inverse}] [{perfect}] [{constant}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [-1.0] [1.0] [0.0]
+    ```
+    """
     labels = unique_ints(listConcat(y_true, y_pred))
     ey = encode_labels(labels, y_true)
     ep = encode_labels(labels, y_pred)
@@ -420,6 +663,26 @@ def hit_top_k(label, scores, k):
 
 def top_k_accuracy_score(y_true, y_score, k):
     """`sklearn.metrics.top_k_accuracy_score` over a list of per-class score
-    rows."""
+    rows.
+
+    # Examples
+    ```osprey
+    from sklearn import Metrics
+
+    def show():
+        scores = [[0.5, 0.2, 0.2], [0.3, 0.4, 0.2], [0.2, 0.4, 0.3], [0.7, 0.2, 0.1]]
+        tied = [[0.1, 0.1, 0.1], [0.5, 0.5, 0.5]]
+        one = Metrics.top_k_accuracy_score([0, 1, 2, 2], scores, 1)
+        two = Metrics.top_k_accuracy_score([0, 1, 2, 2], scores, 2)
+        tie_one = Metrics.top_k_accuracy_score([0, 0], tied, 1)
+        tie_all = Metrics.top_k_accuracy_score([0, 0], tied, 3)
+        print(f"[{one}] [{two}] [{tie_one}] [{tie_all}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [0.5] [0.75] [0.0] [1.0]
+    ```
+    """
     hits = map_indexed(y_true, lambda i: hit_top_k(unwrap_or(listGet(y_true, i), 0), unwrap_or(listGet(y_score, i), []), k))
     return toFloat(sum_int(hits)) / toFloat(len(y_true))

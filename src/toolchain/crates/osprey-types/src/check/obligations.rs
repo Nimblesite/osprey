@@ -50,23 +50,23 @@ impl Checker {
         external: &BTreeSet<VarId>,
         vars: &mut Vec<VarId>,
     ) {
-        // No bindings change while finding the connected component.
-        let free_vars: Vec<_> = self
-            .builtin_uses
-            .iter()
-            .map(|(_, ty)| {
-                #[cfg(test)]
-                CONNECTION_SCANS.with(|scans| scans.set(scans.get() + 1));
-                let mut free = BTreeSet::new();
-                self.ctx.free_vars(ty, &mut free);
-                free
-            })
-            .collect();
+        // No bindings change while finding the connected component. Substituted,
+        // an obligation is tested for the component without a set; only one
+        // that joins it has its variables collected, once.
+        for (_, ty) in &mut self.builtin_uses {
+            self.ctx.apply_in_place(ty);
+        }
+        let mut joined = vec![false; self.builtin_uses.len()];
         let mut connected: BTreeSet<_> = vars.iter().copied().collect();
         loop {
             let before = connected.len();
-            for free in &free_vars {
-                if !free.is_disjoint(&connected) {
+            for ((_, ty), joined) in self.builtin_uses.iter().zip(&mut joined) {
+                if !*joined && holds_var(ty, &|var| connected.contains(&var)) {
+                    *joined = true;
+                    #[cfg(test)]
+                    CONNECTION_SCANS.with(|scans| scans.set(scans.get() + 1));
+                    let mut free = BTreeSet::new();
+                    self.ctx.free_vars(ty, &mut free);
                     connected.extend(free.difference(external));
                 }
             }
@@ -106,12 +106,12 @@ impl Checker {
                 // choice.
                 // A local result depends on its enclosing function's operands.
                 // Generalize the relation only when every variable travels with it.
-                let mut free = BTreeSet::new();
-                self.ctx.free_vars(ty, &mut free);
-                let defer = vars.iter().any(|var| free.contains(var))
+                // `ty` is substituted, so its `Var`s are exactly its free variables;
+                // asking about them directly builds no set per obligation.
+                let defer = holds_var(ty, &|var| vars.contains(&var))
                     && !crate::expr::is_monomorphic_arith(name)
                     && (!crate::expr::is_deferred_arith(name)
-                        || free.iter().all(|var| vars.contains(var)))
+                        || !holds_var(ty, &|var| !vars.contains(&var)))
                     && !crate::builtin_constraints::fixed_numeric_operand(name, ty);
                 checked_kept += usize::from(!defer && index < checked);
                 index += 1;
@@ -122,5 +122,21 @@ impl Checker {
         // Applying the substitution cannot decide an unresolved receiver.
         self.field_uses_prefix = Some((bindings, checked_kept));
         (deferred, kept)
+    }
+}
+
+/// Whether substituted `ty` holds a variable `wanted` accepts, stopping at the
+/// first. Generalization asks this of every pending obligation, so it must not
+/// allocate ([`Checker::split_obligations`]).
+fn holds_var(ty: &Type, wanted: &dyn Fn(VarId) -> bool) -> bool {
+    match ty {
+        Type::Var(var) => wanted(*var),
+        Type::Fun { params, ret } => {
+            params.iter().any(|param| holds_var(param, wanted)) || holds_var(ret, wanted)
+        }
+        Type::Con { args, .. } | Type::Union { variants: args, .. } => {
+            args.iter().any(|arg| holds_var(arg, wanted))
+        }
+        Type::Record { fields, .. } => fields.values().any(|field| holds_var(field, wanted)),
     }
 }

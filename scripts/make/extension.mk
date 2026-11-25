@@ -110,9 +110,7 @@ _vsix_bundle: target/osprey-pkg target/local-registry.stamp target/package-works
 	cp -R src/osprey/workbench/assets/. "$$DEST/workbench/"; \
 	python3 scripts/proof/workbench-proof-assets.py "$$DEST/workbench"; \
 	cp src/toolchain/website/src/assets/images/logo.png "$$DEST/workbench/osprey-logo.png"; \
-	cp $(RTB)/libfiber_runtime.a $(RTB)/libhttp_runtime.a \
-	   $(RTB)/libfiber_runtime_gc.a $(RTB)/libhttp_runtime_gc.a \
-	   $(RTB)/libfiber_runtime_arc.a $(RTB)/libhttp_runtime_arc.a "$$DEST/"; \
+	cp $(filter $(RTB)/%,$(NATIVE_RUNTIME_ARCHIVES)) "$$DEST/"; \
 	cp .github/shipwright.json $(EXT_DIR)/shipwright.json; \
 	echo "  bundled $(BIN) + all native runtime archives -> $$DEST/"
 

@@ -1,6 +1,4 @@
 namespace registry_web;
-import registry_web::Html
-import registry_web::Model
 
 /// The per-organization name check. The answer is scoped to one
 /// organization and the text says so: it can never claim a leaf name is

@@ -1,8 +1,4 @@
 namespace registry;
-import registry::Identity
-import registry::ManifestModel
-import registry::Names
-import registry::Resolution
 
 /// Candidate normalization under [PACKAGE-RESOLUTION]: a catalog entry is a
 /// candidate when its activation is Eligible (or Yanked and exactly present

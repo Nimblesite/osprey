@@ -37,6 +37,7 @@ mod state;
 mod state_support;
 mod symbol_rewrite;
 mod type_rewrite;
+mod unused_imports;
 mod workspace;
 
 pub use advice::{ProjectWarning, StateBoundary};

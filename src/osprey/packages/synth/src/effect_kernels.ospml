@@ -1,7 +1,6 @@
 // [SYNTH-ADVANCED-NONLINEAR] Graph adapters for shapers, reverbs and shifters over the shared kernel state.
 namespace synth
 
-import synth::RenderInputs
 
 (** Each adapter unpacks its module state from kernel storage, runs one sample and packs it back. *)
 module EffectKernels

@@ -18,10 +18,6 @@ module Fitting
         Success values => Outcomes::carried (descriptor (graph, parameter), \initial => Success(value = listAppend values (FitMath::normalised (FitMath::clip (initial, parameter.minimum, parameter.maximum), parameter.minimum, parameter.maximum))))
 
     // Replace one node parameter's initial value; renders read initial values as their snapshot.
-    tuned (n, parameter, value) = match n.identity == parameter.node
-        false => n
-        true => n(parameters = mapList (n.parameters, \p => retuned (p, parameter, value)))
-
     retuned (p, parameter, value) = match p.key == parameter.key
         true => p(initial = FitMath::denormalised (value, parameter.minimum, parameter.maximum))
         false => p
@@ -38,7 +34,7 @@ module Fitting
             [value, ...others] => match value >= 0.0 && value <= 1.0
                 false => invalidValues ()
                 true => Outcomes::carried (descriptor (graph, parameter), \_ =>
-                    applied (graph(nodes = mapList (graph.nodes, \n => tuned (n, parameter, value))), rest, others))
+                    applied (graph(nodes = mapList (graph.nodes, \n => Macros::retargeted (n, parameter.node, \p => retuned (p, parameter, value)))), rest, others))
 
     windowed samples = Sequences::mapIndexed (samples, \(index, value) => value * SpectralMath::hann (toFloat index, toFloat (length samples)))
 
@@ -47,11 +43,10 @@ module Fitting
         Error why => Error(message = why)
         Success bins => Success(value = mapList (bins, \b => SpectralMath::power (b.re, b.im)))
 
-    rendered (graph, frames) = match Graphs::prepare graph
-        Invalid _ => Error(message = InvalidConfiguration(detail = "A candidate graph is invalid."))
-        Valid plan => match Renderer::start graph
-            Error why => Error(message = why)
-            Success initial => Outcomes::carried (Renderer::block (plan, 48000.0, Parameters::initial graph, initial, frames), \block => spectrum block.samples)
+    rendered (graph, frames) =
+        use plan <- Renderer::validated (graph, InvalidConfiguration(detail = "A candidate graph is invalid."))
+        use initial <- Outcomes::carried (Renderer::start graph)
+        Outcomes::carried (Renderer::block (plan, 48000.0, Parameters::initial graph, initial, frames), \block => spectrum block.samples)
 
     loss (candidate, target) = foldList (Sequences::combined (candidate, target, \(c, t) => FitMath::binLoss (c, t)), 0.0, \(sum, value) => sum + value) / toFloat (length target)
 
@@ -121,8 +116,7 @@ module Fitting
     export fit (graph, config, target) = running (graph, config, target, start (graph, config, target))
 
     (** Explicitly adopt a result: a new, revalidated graph; the original stays available for rejection. *)
-    export apply (graph, config, result) = match applied (graph, config.parameters, result.best.values)
-        Error why => Error(message = why)
-        Success candidate => match Graphs::prepare candidate
-            Invalid _ => Error(message = InvalidConfiguration(detail = "The fitted graph failed validation; keep the original."))
-            Valid plan => Success(value = plan.graph)
+    export apply (graph, config, result) =
+        use candidate <- Outcomes::carried (applied (graph, config.parameters, result.best.values))
+        use plan <- Renderer::validated (candidate, InvalidConfiguration(detail = "The fitted graph failed validation; keep the original."))
+        Success(value = plan.graph)

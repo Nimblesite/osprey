@@ -199,18 +199,14 @@ fn xcrun(target: Target, args: &[String]) -> Result<(), ExitCode> {
 }
 
 fn compile_args(ll: &Path, obj: &Path, sdk: &Path, target: Target) -> Vec<String> {
-    vec![
+    let flags = [
         "clang".to_string(),
         format!("--target={}", target.triple()),
-        "-isysroot".to_string(),
+        "-isysroot".into(),
         sdk.display().to_string(),
-        "-O2".to_string(),
-        "-Wno-override-module".to_string(),
-        "-c".to_string(),
-        ll.display().to_string(),
-        "-o".to_string(),
-        obj.display().to_string(),
-    ]
+        "-O2".into(),
+    ];
+    crate::desktop::object_argv(&flags, ll, obj)
 }
 
 fn archive_args(obj: &Path, runtime: &str, out: &Path) -> Vec<String> {

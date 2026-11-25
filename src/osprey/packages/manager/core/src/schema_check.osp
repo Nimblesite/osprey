@@ -1,12 +1,4 @@
 namespace registry;
-import registry::Checked
-import registry::Json
-import registry::Bytes
-import registry::Digests
-import registry::JsonRead
-import registry::Names
-import registry::Paths
-import registry::TypeDiagram
 
 /// Validates a parsed JSON value against a named type in a parsed typeDiagram
 /// model, implementing the JSON encoding rules of [PACKAGE-TYPE-INVARIANTS]:

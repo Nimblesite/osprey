@@ -69,7 +69,7 @@ This is a language gap that blocks top tier, ranked with the gaps in [generic er
 ### Tooling
 
 - [ ] Formatter (`osprey-fmt`): one space each side of `|`; an or-pattern too long for the line breaks before each `|`
-- [ ] LSP (`osprey-lsp`): hover, go-to-definition and rename on a binder that appears in every alternative act on all of its occurrences
+- [ ] LSP (`osprey-lsp`): hover, go-to-definition and rename on a binder that appears in every alternative act on all of its occurrences. Done: go-to-definition and references (547a6bb39) and hover (each alternative and the body). Open: the server has no rename yet
 - [ ] Flavor conversion ([plan 0057](0057-flavor-conversion.md)): an or-pattern converts between all four spellings and back without change
 - [ ] Symbolic execution ([plan 0034](0034-symbolic-execution.md)) explores each alternative as its own path
 - [ ] Debugger and profiler line tables point at the alternative that matched
@@ -90,7 +90,7 @@ Expand existing suites. Add no new test file.
 ### Use it
 
 - [x] Joined the repeated matches in TodoValidation, the HTTP route table and the test matrix. TodoRequest and TodoDispatch have distinct arm bodies. Recounted the full port including the socket host (11 files, 837 lines, 620 code lines). All 100 use cases pass under GC, ARC and wasm32.
-- [ ] Sweep `src/osprey/` for adjacent arms with identical bodies and join them; deslop `top-offenders` goes down
+- [x] Sweep `src/osprey/` for adjacent arms with identical bodies and join them; deslop `top-offenders` goes down (seven sites in examples and the package manager, 14 lines fewer; tests that check each arm on purpose and handler arms are left as they are; deslop not re-measured)
 
 ## `min` and `max`
 

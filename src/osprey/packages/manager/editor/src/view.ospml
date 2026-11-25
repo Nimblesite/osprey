@@ -1,6 +1,5 @@
 namespace registry_editor
 import ui::Ui
-import ui::Lists
 
 // Implements [PACKAGE-EDITOR-WORKSPACE]: the package workspace is a screen,
 // not a picker. Every value shown comes from the canonical graph or catalog,
@@ -57,15 +56,16 @@ module View
 
     searchField snapshot = ui::Field(label = "Search packages", value = snapshot.packageSearch, prompt = "Search @organization/package", secure = false, multiline = false, commit = ui::OnEdit, bind = Search)
 
+    // `rows`, or the empty-state placeholder a host shows instead.
+    rowsPage (rows, snapshot, symbol, title, blurb) = match isEmpty rows
+        true => Ui::empty (symbol, title, blurb)
+        false => Ui::rows (rows, snapshot.packageSelection, Selected)
+
     installedPage snapshot = match snapshot.packageGraph.workspaceMissing
         true => Ui::empty ("lock", "No workspace graph", snapshot.packageGraph.workspaceReason)
-        false => match isEmpty (installedRows snapshot)
-            true => Ui::empty ("shippingbox", "No installed packages", "Add a package from the registry tab to start this project's dependency graph.")
-            false => Ui::rows (installedRows snapshot, snapshot.packageSelection, Selected)
+        false => rowsPage (installedRows snapshot, snapshot, "shippingbox", "No installed packages", "Add a package from the registry tab to start this project's dependency graph.")
 
-    catalogPage snapshot = match isEmpty (catalogRows snapshot)
-        true => Ui::empty ("globe", "No registry packages", "The registry returned no packages for this search.")
-        false => Ui::rows (catalogRows snapshot, snapshot.packageSelection, Selected)
+    catalogPage snapshot = rowsPage (catalogRows snapshot, snapshot, "globe", "No registry packages", "The registry returned no packages for this search.")
 
     installedCount snapshot = length (filterList (snapshot.packageGraph.workspacePackages, \item => item.entryPresent))
 

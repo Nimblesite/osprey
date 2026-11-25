@@ -11,18 +11,9 @@ use ferroui_osprey_native::regions::Regions;
 use ferroui_osprey_native::rows::Shown;
 use ferroui_osprey_native::tree::Tree;
 
-fn repo(path: &str) -> String { format!("{}/../../../{path}", env!("CARGO_MANIFEST_DIR")) }
+mod common;
+use common::{repo, scene, shapes};
 
-fn scene(node: &Tree) -> Option<i64> {
-    match node {
-        Tree::Record(members) => match members.get("kind") {
-            Some(Tree::Text(kind)) if kind == "scene" => match members.get("event") { Some(Tree::Whole(o)) => Some(*o), _ => None },
-            _ => members.values().find_map(scene),
-        },
-        Tree::Items(items) => items.iter().find_map(scene),
-        _ => None,
-    }
-}
 fn named(node: &Tree, label: &str) -> Option<i64> {
     match node {
         Tree::Record(fields) => {
@@ -35,8 +26,6 @@ fn named(node: &Tree, label: &str) -> Option<i64> {
         _ => None,
     }
 }
-fn shapes(shown: &Shown) -> usize { shown.scenes.values().map(|scene| scene.shapes.len()).sum() }
-
 /// (application ms, whole call ms, shapes)
 fn send(touch: &Touch) -> (Shown, f64, f64) {
     let started = Instant::now();

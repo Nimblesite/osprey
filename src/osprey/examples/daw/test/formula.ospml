@@ -1,0 +1,63 @@
+import uitest::Drive
+
+// [SYNTH-FORMULA-NOTES] A person adds a formula melody from the Add component picker, types formulas into its
+// inspector and reads the notes each one plays; a formula that does not parse is refused with its column and
+// leaves the patch as it was; a saved melody reopens with its formula.
+formulaChoice (driven, text) = Drive::choose (driven, "Formula over step t", text)
+
+melodyText processor = match processor
+    synth::FormulaNotes formula => formula
+    _ => "not a melody"
+
+formulaOf editor = match synth::Graphs::node (editor.graph, 0)
+    synth::Invalid _ => "no melody"
+    synth::Valid n => melodyText n.processor
+
+formulaHeld (driven, want) = heldIs (driven, formulaOf, want)
+
+// The caption under the formula: the first sixteen notes it plays.
+plays (driven, notes) = showsIn (driven, "Plays ${notes}", true)
+
+repeated (text, times) = join (mapList (toList (range (0, times)), \_ => text), " ")
+
+formulaMenuJourney () =
+    opened = openedEditor ["--empty"]
+    melody = component (opened, "formula-notes")
+    nodesOf (melody, 1)
+    selected = inspectorSelected (melody, 0)
+    formulaHeld (selected, "60 + t * 7 % 12")
+    plays (selected, "C4 G4 D4 A4 E4 B4 F♯4 C♯4 G♯4 D♯4 A♯4 F4 C4 G4 D4 A4")
+    forEachList (["Velocity", "Step (frames)", "Gate (frames)", "Steps"], \text => reads (dialOf (selected, text), \dial => expect (dial.accessMax > dial.accessMin, true)))
+    offeredIn (selected, "Canvas output 0:0", true)
+    octaves = formulaChoice (selected, "48 + t % 4 * 12")
+    formulaHeld (octaves, "48 + t % 4 * 12")
+    mentions (octaves, "Patch updated.")
+    plays (octaves, repeated ("C3 C4 C5 C6", 4))
+    broken = formulaChoice (octaves, "48 + )")
+    formulaHeld (broken, "48 + t % 4 * 12")
+    mentions (broken, "Formula: unexpected ')' at column 6.")
+    sameGraph (broken, octaves)
+    unknown = formulaChoice (octaves, "48 + x")
+    mentions (unknown, "Formula: unknown name 'x'; use t, sin, cos, abs, floor, round or sqrt.")
+    sameGraph (unknown, octaves)
+    resting = formulaChoice (octaves, "60 / (t % 2)")
+    formulaHeld (resting, "60 / (t % 2)")
+    plays (resting, repeated ("rest C4", 8))
+    folded = formulaChoice (resting, "130 + t")
+    plays (folded, "A♯8 B8 C9 C♯9 D9 D♯9 E9 F9 F♯9 G9 G♯8 A8 A♯8 B8 C9 C♯9")
+
+// A saved melody keeps its formula in the project's asset and reopens as the same graph; a project whose
+// formula no longer parses says why the track cannot open.
+projectFormulaJourney () =
+    melody = synth::Components::formulaMelody (21, "48 + t % 4 * 12")
+    sine = synth::Components::sine (22, 440.0)
+    voice = sine(inputs = [synth::Port(name = "notes", rate = synth::Events, channels = 1, unit = synth::Notes)])
+    valid (synth::Patches::built ([melody, voice, synth::Components::output 23], [synth::Components::route (21, 0, 22, 0), synth::Components::route (22, 0, 23, 0)]), \graph =>
+        withSavedPatch (graph, \changed => encoded (changed, \source =>
+            expect (contains source "\"component\":\"formulaNotes\"", true)
+            expect (contains source "\"asset\":\"48 + t % 4 * 12\"", true)
+            decoded (source, \opened =>
+                succeeds (daw::TrackPatches::picked (opened, 0), \again => expect (structuralEquals (again, graph), true))))))
+    broken = daw::PatchNode(identity = 1, component = "formulaNotes", size = 0, seed = 0, asset = "60 +", settings = [])
+    brokenTrack = freshTrack ("broken", daw::PatchInstrument(routing = daw::Routing(nodes = [broken], cables = [], attack = 0.01, release = 0.1)))
+    failsWith (daw::TrackPatches::patch brokenTrack, "Formula: the formula ends where a number, t, a function or '(' belongs.")

@@ -1,11 +1,5 @@
 namespace proof
 
-import proof::Environment
-import proof::Checked
-import proof::Trust
-import proof::Terms
-import proof::Numeric
-import proof::NumericCanonical
 
 (** A checked imported theorem and its actual assumptions, shared across
     all hosts. Implements [WORKBENCH-VERDICT] [PROOF-RUNNABLE-LIBRARY]. *)

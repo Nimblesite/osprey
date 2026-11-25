@@ -48,8 +48,8 @@ never appears twice in one namespace, wherever a project's `default_namespace`
 places the outermost wrapper, so a package whose default namespace is its own
 runs its examples at namespace and module depth in every flavor.
 
-Native examples default to `gc` and support `--memory=gc|arc|none`; ARC execution additionally
-requires exactly one zero-live-object exit sentinel. `wasm32` defaults to ARC, rejects tracing GC, and uses `OSPREY_WASM_RUN` (default `wasmtime`) as its executable host.
+Native examples default to `gc` and support `--memory=gc|arc|ownership`. ARC and ownership execution each
+require exactly one zero-live-object exit sentinel. `wasm32` defaults to ARC, rejects tracing GC, and uses `OSPREY_WASM_RUN` (default `wasmtime`) as its executable host.
 Each runnable example has a 30-second execution limit, configurable through a
 positive `OSPREY_DOCTEST_TIMEOUT_MS`. Compilation is outside this execution limit.
 

@@ -7,7 +7,6 @@ import ui::Runtime
 import ui::Machines
 import ui::Templates
 import ui::Values
-import synth::Synth
 
 (** The editor's callbacks with a keyboard and a voice added. *)
 module Studio

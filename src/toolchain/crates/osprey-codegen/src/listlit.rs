@@ -166,6 +166,10 @@ pub(crate) fn gen_list(
     let n = elements.len();
     let data = cg.heap_alloc(&(n * 8).to_string());
     let arr = cg.emit_reg(format!("bitcast i8* {data} to {}*", elem.as_str()));
+    // A list passed straight to a checked callee holds its elements without
+    // owning them [MEM-OWNERSHIP-STATIC-CLOSURES].
+    // Only pointers have owners to borrow from.
+    let lent = elem.is_managed_ptr() && crate::arc::lends_list(cg, position);
     for (i, v) in vals.into_iter().enumerate() {
         let v = crate::cast::erase_result(cg, v);
         // [TYPE-NUMERIC-WORD] coerce to the published element BEFORE boxing: a
@@ -178,7 +182,9 @@ pub(crate) fn gen_list(
         let v = coerce_to(cg, v, elem)?;
         // The header's drop releases pointer elements, so each store is a new
         // reference [GC-ARC-PERCEUS].
-        crate::arc::dup_store(cg, elem.as_str(), &v.operand);
+        if !lent {
+            crate::arc::store_owned(cg, elem.as_str(), &v.operand);
+        }
         let slot = cg.emit_reg(format!(
             "getelementptr {}, {}* {arr}, i64 {i}",
             elem.as_str(),
@@ -193,7 +199,7 @@ pub(crate) fn gen_list(
     }
     // The header's kind tells the ARC drop walk whether data[0..len) holds
     // managed pointers (string/handle elements) or scalars ([`crate::meta`]).
-    let elems_are_ptrs = elem.is_managed_ptr();
+    let elems_are_ptrs = elem.is_managed_ptr() && !lent;
     let obj = cg.malloc_struct(LIST_STRUCT, crate::meta::list_hdr_meta(elems_are_ptrs));
     crate::aggregate::store_field(cg, LIST_STRUCT, &obj, 0, LType::I64, &n.to_string());
     // The data array is the header's OWN allocation (the LIST_HDR drop frees
@@ -204,6 +210,9 @@ pub(crate) fn gen_list(
     cg.emit(format!("store i8* {data}, i8** {dp}"));
     let v = Value::handle(obj, lit_owner(&Value::new("", elem).with_owner(elem_owner)));
     crate::arc::own(cg, &v);
+    if lent {
+        crate::arc::mark_lent(cg, &v);
+    }
     Ok(v)
 }
 
@@ -227,9 +236,17 @@ pub(crate) fn to_runtime_list(cg: &mut Codegen, v: Value) -> Value {
     let Some((elem, _)) = lit_elem(v.osp_ty.as_deref()) else {
         return v;
     };
+    // The copy of a literal that only lends its elements lends them too: it
+    // holds their words without owning them [MEM-OWNERSHIP-STATIC-BORROWS].
+    let lent = crate::arc::is_lent(cg, &v);
+    let literal = crate::arc::versions::take_literal(cg, &v);
     let len = crate::aggregate::load_field(cg, LIST_STRUCT, &v.operand, 0, LType::I64);
     let data = crate::aggregate::load_field(cg, LIST_STRUCT, &v.operand, 1, LType::Str);
-    let managed = if elem.is_managed_ptr() { "1" } else { "0" };
+    let managed = if elem.is_managed_ptr() && !lent {
+        "1"
+    } else {
+        "0"
+    };
     let bld = crate::collections::list_builder_new_of(cg, managed);
     let arr = cg.emit_reg(format!("bitcast i8* {data} to {}*", elem.as_str()));
     let lp = crate::loops::open_range_loop(cg, "0", &len);
@@ -248,6 +265,10 @@ pub(crate) fn to_runtime_list(cg: &mut Codegen, v: Value) -> Value {
     // in its owner tag rather than losing it to the uniform `i64` element ABI
     // ([`crate::collections::LIST_TAG`]).
     let mut sealed = crate::collections::list_builder_seal(cg, &bld);
+    if lent {
+        crate::arc::mark_lent(cg, &sealed);
+    }
+    crate::arc::versions::release_source(cg, &literal);
     sealed.inferred_type.clone_from(&v.inferred_type);
     sealed.with_owner(Some(crate::collections::list_owner(
         crate::llty::elem_of_tag(&v, LIST_LIT).as_deref(),
@@ -270,10 +291,10 @@ pub(crate) fn to_runtime_list(cg: &mut Codegen, v: Value) -> Value {
 /// literal consumed in the scope that built it, `toGpu([1, 2, 3])`) and pays
 /// for the runtime layout only when the value outlives that knowledge.
 pub(crate) fn escaping(cg: &mut Codegen, v: Value) -> Value {
-    if is_lit(&v) {
-        return to_runtime_list(cg, v);
+    if !is_lit(&v) {
+        return v;
     }
-    v
+    to_runtime_list(cg, v)
 }
 
 /// A string list (`lines`/`words`/`split`) reaching a NAME is converted to the
@@ -282,8 +303,14 @@ pub(crate) fn escaping(cg: &mut Codegen, v: Value) -> Value {
 /// 5 000 times allocated 6.9 GB and took nine seconds; settled here the same
 /// reads take 80 ms. Numeric literals keep their flat fast path: they are
 /// small, and `toGpu` reads them in place. [BUILTIN-LIST-GET]
-pub(crate) fn settled_string_list(cg: &mut Codegen, v: Value) -> Value {
-    if v.osp_ty.as_deref() == Some(STRING_LIST_OWNER) {
+///
+/// Under ownership every literal whose elements have owners settles here: a
+/// copy made later, while the name still holds the literal, would give each
+/// element a second owner [MEM-OWNERSHIP-STATIC-SHARING].
+pub(crate) fn settled_list(cg: &mut Codegen, v: Value) -> Value {
+    let owns_elements = cg.ownership.on
+        && lit_elem(v.osp_ty.as_deref()).is_some_and(|(elem, _)| elem.is_managed_ptr());
+    if owns_elements || v.osp_ty.as_deref() == Some(STRING_LIST_OWNER) {
         return to_runtime_list(cg, v);
     }
     v
@@ -356,6 +383,7 @@ pub(crate) fn gen_index(cg: &mut Codegen, target: &Expr, index: &Expr) -> Result
         elem.as_str()
     ));
     let value = typed_element(cg, &tv, Value::new(phi, elem).with_owner(elem_owner));
+    crate::arc::reading(cg);
     crate::result::make_list_read(cg, &ok, value, &idx.operand, |_| len)
 }
 

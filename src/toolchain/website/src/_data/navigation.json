@@ -97,6 +97,10 @@
       "title": "Proofs",
       "items": [
         {
+          "text": "Formal Verification",
+          "url": "/docs/proofs/formal-verification/"
+        },
+        {
           "text": "Proof video learning paths",
           "url": "/docs/proofs/"
         },

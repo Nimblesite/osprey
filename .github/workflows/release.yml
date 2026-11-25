@@ -257,8 +257,8 @@ jobs:
           cp "$libdir"/lib*.a "dist/$staging/"
           # Every memory backend must be in the tarball. A missing one is
           # otherwise found by the user whose --memory=gc build fails to link.
-          for archive in fiber_runtime fiber_runtime_arc fiber_runtime_gc \
-                         http_runtime http_runtime_arc http_runtime_gc; do
+          for archive in fiber_runtime_ownership fiber_runtime_arc fiber_runtime_gc \
+                         http_runtime_ownership http_runtime_arc http_runtime_gc; do
             [ -f "dist/$staging/lib${archive}.a" ] || {
               echo "::error::lib${archive}.a missing from $staging (staged from $libdir: $(echo "$libdir"/lib*.a))"
               exit 1
@@ -266,7 +266,7 @@ jobs:
           done
           if [[ "$plat" == darwin-* ]]; then
             for target in ios ios_sim macos; do
-              for mode in "" _arc; do
+              for mode in _ownership _arc; do
                 archive="libosprey_runtime_${target}${mode}.a"
                 [ -s "dist/$staging/$archive" ] || {
                   echo "::error::$archive missing from $staging"

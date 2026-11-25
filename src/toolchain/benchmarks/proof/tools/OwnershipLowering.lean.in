@@ -1,0 +1,438 @@
+/- [MEM-OWNERSHIP-STATIC-VERIFICATION] Translation validation of the native
+   compiler's emitted scalar grow and conditional grow paths. Registers identify
+   allocations; each append returns a fresh root. Contents model the C helper's
+   persistent-list contract. Stack slots hold raw pointers and expire on return.
+   The reflector resolves predecessor-selected phi operands and preserves free(null)
+   for verification against the compiled drop guard. A load's value is checked here. -/
+namespace OwnershipLowering
+
+def immediateDropReturn (isNull : Bool) : Bool :=
+-- NULL DROP
+
+theorem compiledFreeNull : immediateDropReturn true = true := by rfl
+
+inductive Instr where
+  | reserve (slot : Nat)
+  | store (slot : Nat) (reg : Option Nat)
+  | load (slot : Nat) (expected : Option Nat)
+  | append (src dst : Nat)
+  | free (reg : Option Nat)
+  | ret (reg : Nat)
+
+def emitted : List Instr :=
+-- EMITTED BODY
+
+def conditional (enabled : Bool) : List Instr := if enabled then
+-- ENABLED BODY
+else
+-- DISABLED BODY
+
+structure Machine (α : Type) where
+  heap : List (Nat × List α)
+  slots : List (Nat × Option Nat)
+
+def execute (element : α) (s : Machine α) : List Instr → Option (List α)
+  -- Reflection assigns a slot id at its unique alloca and checks dominance
+  -- before each access. LLVM alloca alone leaves the contents uninitialized.
+  | .reserve _ :: rest => execute element s rest
+  | .store slot reg :: rest => execute element {s with slots := (slot, reg) :: s.slots} rest
+  | .load slot expected :: rest =>
+    if s.slots.lookup slot == some expected then execute element s rest else none
+  | .append src dst :: rest => do
+    let xs ← s.heap.lookup src
+    if (s.heap.lookup dst).isSome then none else
+      execute element {s with heap := (dst, xs ++ [element]) :: s.heap} rest
+  | .free none :: rest => if immediateDropReturn true then execute element s rest else none
+  | .free (some reg) :: rest =>
+    if (s.heap.lookup reg).isSome then
+      execute element {s with heap := s.heap.filter (fun entry => entry.1 != reg)} rest
+    else none
+  | [.ret reg] =>
+    match s.heap with
+    | [(owner, result)] => if owner == reg then some result else none
+    | _ => none
+  | _ => none
+
+/-- Every input produces the source result and returns its only surviving root.
+    A stale read, invalid free or extra surviving allocation yields none. -/
+theorem compiledGrow (xs : List α) (x : α) :
+    execute x ⟨[(0, xs)], []⟩ emitted = some (xs ++ [x]) := by rfl
+
+theorem compiledGrowWhen (xs : List α) (x : α) (enabled : Bool) :
+    execute x ⟨[(0, xs)], []⟩ (conditional enabled) =
+      some (if enabled then xs ++ [x] else xs) := by cases enabled <;> rfl
+
+/- Each fork represents an arbitrary incoming edge or return site of the
+   compiled C helper. Allocation denotes the external tagged allocator. The
+   result concerns address origin on a defined, normally returning execution.
+   Allocator correctness and survival of that allocation are separate. -/
+inductive Origin where
+  | allocated
+  | nullResult
+  | other
+  | fork (left right : Origin)
+
+def allocatorOrigin (allowNull : Bool) (pick : Nat → Bool) (depth : Nat) : Origin → Bool
+  | .allocated => true
+  | .nullResult => allowNull
+  | .other => false
+  | .fork a b => if pick depth then allocatorOrigin allowNull pick (depth+1) a
+                  else allocatorOrigin allowNull pick (depth+1) b
+
+inductive Allocated (allowNull : Bool) : Origin → Prop where
+  | leaf : Allocated allowNull .allocated
+  | nullResult : allowNull = true → Allocated allowNull .nullResult
+  | fork : Allocated allowNull left → Allocated allowNull right → Allocated allowNull (.fork left right)
+
+theorem allocatedPath {allowNull : Bool} (pick : Nat → Bool) (depth : Nat) (h : Allocated allowNull root) :
+    allocatorOrigin allowNull pick depth root = true := by
+  induction h generalizing depth with
+  | leaf => rfl
+  | nullResult h => exact h
+  | fork _ _ left right =>
+    unfold allocatorOrigin
+    split
+    · exact left _
+    · exact right _
+
+def appendReturns : Origin :=
+-- APPEND RETURNS
+def prependReturns : Origin :=
+-- PREPEND RETURNS
+def mapSetReturns : Origin :=
+-- MAP SET RETURNS
+
+theorem runtimeRootOrigins (pick : Nat → Bool) :
+    allocatorOrigin false pick 0 appendReturns = true ∧
+    allocatorOrigin false pick 0 prependReturns = true ∧
+    allocatorOrigin false pick 0 mapSetReturns = true := by
+  refine ⟨allocatedPath pick 0 ?_, allocatedPath pick 0 ?_, allocatedPath pick 0 ?_⟩ <;>
+    repeat constructor
+
+def stringRenderReturns : Origin :=
+-- STRING RENDER RETURNS
+
+theorem renderedStringOrigin (pick : Nat → Bool) :
+    allocatorOrigin true pick 0 stringRenderReturns = true := by
+  apply allocatedPath
+  repeat constructor
+
+inductive StringOp where
+  | concat | take | drop | substring | to_upper | to_lower | trim_start | trim_end
+  | trim | reverse | replace | «repeat» | pad_start | pad_end | from_codepoint
+
+def stringOpReturns : StringOp → Origin
+-- STRING OP RETURNS
+
+theorem stringResultOrigins (op : StringOp) (pick : Nat → Bool) :
+    allocatorOrigin true pick 0 (stringOpReturns op) = true := by
+  apply allocatedPath
+  cases op <;> repeat constructor
+
+/-- Layout word and pointer writes of the emitted native two-owner constructor,
+    newest write first. The allocator must return fresh storage of the requested
+    size. Each argument already carries ownership of its distinct child. -/
+def emittedPair (left right : α) : Nat × List (Nat × α) :=
+-- PAIR CONSTRUCTOR
+
+inductive WalkEvent where
+  | read (byteOffset : Nat)
+  | drop (loadedFrom : Nat)
+
+def pairWalk : Nat × List WalkEvent :=
+-- PAIR WALK
+
+theorem compiledPairFields (left right : α) :
+    (emittedPair left right).1 = pairWalk.1 ∧
+    pairWalk.2 = [.read 8, .drop 8, .read 16, .drop 16] ∧
+    (emittedPair left right).2.length = 2 ∧
+    (emittedPair left right).2.lookup 1 = some left ∧
+    (emittedPair left right).2.lookup 2 = some right := by
+  exact ⟨rfl, rfl, rfl, rfl, rfl⟩
+
+inductive HeaderEffect (α : Type) where
+  | read (byteOffset : Nat)
+  | write (state : Nat)
+  | queue (child : α)
+
+def emittedChildDrop (child : α) : Option Nat → List (HeaderEffect α)
+-- CHILD DROP
+
+/-- A registry miss does nothing. For a hit the trace includes every header
+    access and call to the worklist push, quantified over the state's bit value. -/
+theorem compiledChildDrop (child : α) (state : Option Nat) :
+    emittedChildDrop child state = (match state with
+      | none => []
+      | some word => .read 8 :: (match word with
+        | 1 => [.queue child]
+        | 2 => [.write 1]
+        | _ => [])) := by rfl
+
+/-- New depth, byte offset written in the existing buffer, and stored pointer.
+    The buffer and its full declared capacity must be valid native storage. -/
+def emittedPush (top cap child : Nat) : Option (Nat × Nat × Nat) :=
+-- WORKLIST PUSH
+
+theorem compiledWorklistPush (top cap child : Nat) (spare : top < cap) :
+    emittedPush top cap child = some (top + 1, top * 8, child) ∧ top + 1 ≤ cap := by
+  exact ⟨if_neg (Nat.ne_of_lt spare), spare⟩
+
+/-- Replay the specialized walk on registered, separately owned children and
+    record the writes it issues to the existing worklist, in execution order. -/
+def queueWalk (fields : List (Nat × Nat)) (cap : Nat) :
+    List WalkEvent → Nat → List (Nat × Nat) → Option (List (Nat × Nat))
+  | [], _, writes => some writes
+  | .read offset :: .drop source :: rest, top, writes => do
+    if offset != source || offset % 8 != 0 then none else
+    let child ← fields.lookup (offset / 8)
+    match emittedChildDrop child (some 1) with
+    | [.read 8, .queue body] =>
+      let (next, slot, value) ← emittedPush top cap body
+      queueWalk fields cap rest next (writes ++ [(slot, value)])
+    | _ => none
+  | _, _, _ => none
+
+theorem compiledPairQueue (left right top cap : Nat) (room : top + 1 < cap) :
+    (if (emittedPair left right).1 == pairWalk.1 then
+       queueWalk (emittedPair left right).2 cap pairWalk.2 top [] else none) =
+      some [(top * 8, left), ((top + 1) * 8, right)] := by
+  have first := (compiledWorklistPush top cap left (Nat.lt_trans (Nat.lt_succ_self _) room)).1
+  have second := (compiledWorklistPush (top + 1) cap right room).1
+  change (emittedPush top cap left).bind (fun (next, slot, value) =>
+    queueWalk (emittedPair left right).2 cap [.read 16, .drop 16] next [(slot, value)]) = _
+  rw [first]
+  change (emittedPush (top + 1) cap right).bind (fun (_, slot, value) =>
+    some [(top * 8, left), (slot, value)]) = _
+  rw [second]
+  rfl
+def unsignedShift (value shift : Nat) : Option Nat :=
+  if value * 2^shift < 2^64 then some (value * 2^shift) else none
+
+def emittedGrowth (capacity : Nat) : Option Nat :=
+-- GROWTH BYTES
+
+theorem compiledGrowthBytes (capacity : Nat) :
+    emittedGrowth capacity = some (if capacity = 0 then 256 * 8 else
+      if capacity * 16 < 2^64 then capacity * 16 else 0) := by
+  by_cases empty : capacity = 0
+  · subst capacity
+    rfl
+  · by_cases fits : capacity * 16 < 2^64
+    · have bound : ¬ capacity > 1152921504606846975 := fun h =>
+        Nat.not_le_of_gt fits (Nat.mul_le_mul_right 16 h)
+      unfold emittedGrowth unsignedShift
+      rw [if_neg bound, if_neg empty, if_pos fits, if_neg empty, if_pos fits]
+    · have bound : capacity > 1152921504606846975 := Nat.lt_of_not_ge (fun h =>
+        fits (Nat.lt_of_le_of_lt (Nat.mul_le_mul_right 16 h) (by decide)))
+      unfold emittedGrowth
+      rw [if_pos bound, if_neg empty, if_neg fits]
+
+/-- The depth and body passed to the dispatcher on one nonempty iteration.
+    The memory function reads the existing worklist by byte offset. -/
+def emittedPop (depth : Nat) (memory : Nat → α) : Nat × α :=
+-- POP BODY
+
+theorem compiledPop (top : Nat) (memory : Nat → α) :
+    emittedPop (top + 1) memory = (top, memory (top * 8)) := by rfl
+
+inductive BodyEvent where
+  | inspect | scan | reclaim
+
+def emittedBodyPaths : List (List BodyEvent) :=
+-- BODY PATHS
+
+def reclaimedLast (scanned : Bool) : List BodyEvent → Bool
+  | .inspect :: rest => reclaimedLast scanned rest
+  | .scan :: rest => !scanned && reclaimedLast true rest
+  | [.reclaim] => true
+  | _ => false
+
+theorem compiledBodyReclaim :
+    emittedBodyPaths.all (reclaimedLast false) = true := by rfl
+
+def readAfterWrite (memory : Nat → Nat) (slot value atByte : Nat) : Nat :=
+  if atByte = slot then value else memory atByte
+
+theorem compiledPushPop (depth cap child : Nat) (memory : Nat → Nat) (spare : depth < cap) :
+    (emittedPush depth cap child).map (fun (next, slot, value) =>
+      emittedPop next (readAfterWrite memory slot value)) = some (depth, child) := by
+  rw [(compiledWorklistPush depth cap child spare).1]
+  change some (depth, readAfterWrite memory (depth * 8) child (depth * 8)) = _
+  unfold readAfterWrite
+  rw [if_pos rfl]
+
+/-- The native counters use unsigned machine arithmetic, including wraparound. -/
+def emittedDebit (tracking : Bool) (objects bytes size : BitVec 64) : BitVec 64 × BitVec 64 :=
+-- LIVE DEBIT
+
+theorem compiledLiveDebit (tracking : Bool) (objects bytes size : BitVec 64) :
+    emittedDebit tracking objects bytes size =
+      (if tracking then (objects - 1, bytes - size) else (objects, bytes)) := by rfl
+
+/-- Counter state and the (byte offset, value) of the first header store. -/
+def emittedReclaimPrefix (tracking : Bool) (objects bytes : BitVec 64) (header : Nat → BitVec 32) :
+    (BitVec 64 × BitVec 64) × Nat × BitVec 32 :=
+-- RECLAIM PREFIX
+
+theorem compiledReclaimPrefix (tracking : Bool) (objects bytes : BitVec 64) (header : Nat → BitVec 32) :
+    emittedReclaimPrefix tracking objects bytes header =
+      ((if tracking then (objects - 1, bytes - (header 12).zeroExtend 64) else (objects, bytes)), 8, 0) := by
+  unfold emittedReclaimPrefix
+  rw [compiledLiveDebit]
+
+def emittedCredit (tracking : Bool) (objects bytes size peak : BitVec 64) : BitVec 64 × BitVec 64 × BitVec 64 :=
+-- LIVE CREDIT
+
+theorem compiledLiveCredit (tracking : Bool) (objects bytes size peak : BitVec 64) :
+    emittedCredit tracking objects bytes size peak =
+      (if tracking then (objects + 1, bytes + size, if bytes + size > peak then bytes + size else peak)
+       else (objects, bytes, peak)) := by
+  cases tracking
+  · rfl
+  · unfold emittedCredit
+    rw [if_pos rfl, if_pos rfl]
+    by_cases larger : bytes + size > peak
+    · rw [if_pos larger, if_pos larger]
+    · rw [if_neg larger, if_neg larger]
+
+theorem compiledAccountingRoundTrip (tracking : Bool) (objects bytes peak : BitVec 64) (header : Nat → BitVec 32) :
+    let credit := emittedCredit tracking objects bytes ((header 12).zeroExtend 64) peak
+    (emittedReclaimPrefix tracking credit.1 credit.2.1 header).1 = (objects, bytes) := by
+  cases tracking
+  · rfl
+  · unfold emittedReclaimPrefix emittedDebit emittedCredit
+    simp only [if_true]
+    by_cases larger : bytes + (header 12).zeroExtend 64 > peak
+    · rw [if_pos larger, BitVec.add_sub_cancel, BitVec.add_sub_cancel]
+    · rw [if_neg larger, BitVec.add_sub_cancel, BitVec.add_sub_cancel]
+
+inductive ResultPtr where
+  | parent | child | nil | fallback | buffer (id : Nat)
+  deriving BEq
+
+inductive ResultEvent where
+  | alloc (ptr : ResultPtr) | number (dest : ResultPtr) | length (src : ResultPtr)
+  | measure (inputs : List ResultPtr) | render (dest : ResultPtr) (inputs : List ResultPtr)
+  | acquire | read (field : Nat) | write (ptr : ResultPtr) | free (ptr : ResultPtr) | ret (ptr : ResultPtr)
+
+def emittedResultTake (present : Bool) : List ResultEvent :=
+-- RESULT TAKE
+
+/-- For every nonzero error tag the taken message is detached before wrapper destruction.
+    A null message selects the native static fallback. The returned pointer is never freed. -/
+theorem compiledResultTake (present : Bool) :
+    emittedResultTake present = [.acquire, .read 1, .read 0, .read 2, .write .nil, .free .nil,
+      .free .parent, .ret (if present then .child else .fallback)] := by cases present <;> rfl
+
+def emittedResultBorrow (success present : Bool) : List ResultEvent :=
+-- RESULT BORROW
+
+/-- Check every Result-field read against its live parent, every formatting
+    read against initialized storage, and every temporary against its allocation.
+    A borrowed field stays attached until the wrapper is destroyed. -/
+structure RenderHeap where
+  roots : List ResultPtr := []
+  ready : List ResultPtr := []
+
+def readable (heap : RenderHeap) : ResultPtr → Bool
+  | .child => heap.roots.contains .parent
+  | .fallback => true
+  | p => heap.roots.contains p && heap.ready.contains p
+
+def checkedRender (heap : RenderHeap) : List ResultEvent → Option ResultPtr
+  | [] => none
+  | event :: rest =>
+    let create p := if heap.roots.contains p then none else
+      checkedRender { heap with roots := p :: heap.roots } rest
+    let written p := if heap.roots.contains p then
+      checkedRender { heap with ready := p :: heap.ready } rest else none
+    match event with
+    | .acquire => create .parent
+    | .alloc (.buffer n) => create (.buffer n)
+    | .read _ => if heap.roots.contains .parent then checkedRender heap rest else none
+    | .length p => if readable heap p then checkedRender heap rest else none
+    | .number (.buffer n) => written (.buffer n)
+    | .measure args => if args.all (readable heap) then checkedRender heap rest else none
+    | .render (.buffer n) args => if args.all (readable heap) then written (.buffer n) else none
+    | .free .nil => checkedRender heap rest
+    | .free p => if heap.roots.contains p then
+        checkedRender ⟨heap.roots.erase p, heap.ready.erase p⟩ rest else none
+    | .ret p => if rest.isEmpty && heap.roots == [p] && readable heap p then some p else none
+    | _ => none
+
+theorem compiledResultBorrow (success present : Bool) :
+    checkedRender {} (emittedResultBorrow success present) =
+      some (.buffer (if success then 3 else 2)) := by cases success <;> cases present <;> rfl
+
+/-- The message length and its subsequent string interpolation must read the
+    same borrowed pointer, including the static fallback on the null path. -/
+def borrowInputs : List ResultEvent → List ResultPtr
+  | [] => []
+  | .length p :: rest | .render _ [p] :: rest => p :: borrowInputs rest
+  | _ :: rest => borrowInputs rest
+
+theorem compiledResultBorrowUses (success present : Bool) :
+    borrowInputs (emittedResultBorrow success present) =
+      (if success then [.buffer 1] else
+        let message := if present then ResultPtr.child else .fallback
+        [message, message]) := by cases success <;> cases present <;> rfl
+
+/-- All three compiled entry blocks return immediately, independently of the
+    pointer argument and heap state. -/
+def compatibilityReturns : Bool × Bool × Bool :=
+-- COMPATIBILITY RETURNS
+
+theorem compiledCompatibilityReturns : compatibilityReturns = (true, true, true) := by rfl
+
+/-- After a recursive remove returns with shrunk=0, record each release
+    argument and the pointer the enclosing compiled frame returns. -/
+def emittedMissFrame (_parent _child : Option Nat) : List (Option Nat) × Option Nat :=
+-- MAP MISS FRAME
+
+theorem compiledMapMissFrame (parent child : Option Nat) :
+    emittedMissFrame parent child = ([], none) := by rfl
+
+/-- Indices passed through as_node_ptr to osp_retain in one reached loop iteration. -/
+def emittedSlotRetains (i slot : Fin 32) : List (Fin 32) :=
+-- RETAINED SLOT
+
+theorem compiledSlotRetains (i slot : Fin 32) :
+    emittedSlotRetains i slot = (if i = slot then [] else [i]) := by rfl
+
+/-- Byte offset and payload of the final store into the returned native node. -/
+def emittedSlotWrite (slot : Fin 32) (_value : BitVec 64) : Nat × BitVec 64 :=
+-- WRITTEN SLOT
+
+theorem compiledSlotWrite (slot : Fin 32) (value : BitVec 64) :
+    emittedSlotWrite slot value = (slot.val * 8, value) := by rfl
+
+/-- Prefix word count and optional suffix byte offset and word count passed to retain_slots. -/
+def emittedCollisionRanges (count atSlot : Fin 4294967296) : Fin 4294967296 × Option (Nat × Nat) :=
+-- COLLISION RANGES
+
+theorem compiledCollisionRanges (count atSlot : Fin 4294967296) :
+    emittedCollisionRanges count atSlot =
+      (atSlot, if atSlot < count then some (atSlot.val * 8 + 8,
+        (count.val + (4294967295 - atSlot.val)) % 4294967296) else none) := by rfl
+
+/-- The modular suffix length counts precisely the surviving words. -/
+theorem compiledCollisionSurvivors (count atSlot : Fin 4294967296) :
+    emittedCollisionRanges count atSlot =
+      (atSlot, if atSlot < count then some ((atSlot.val + 1) * 8, count.val - atSlot.val - 1) else none) := by
+  unfold emittedCollisionRanges
+  split <;> rename_i h
+  · have lt : atSlot.val < count.val := h
+    have width := count.isLt
+    have slotBound := atSlot.isLt
+    have eq : count.val + (4294967295 - atSlot.val) = (count.val - atSlot.val - 1) + 4294967296 := by omega
+    have bound : count.val - atSlot.val - 1 < 4294967296 := by omega
+    simp only [Nat.add_mul, Nat.one_mul, eq, Nat.add_mod_right, Nat.mod_eq_of_lt bound]
+  · rfl
+
+def emittedCollisionWrite (slot : Fin 4294967296) (_value : BitVec 64) : Nat × BitVec 64 :=
+-- COLLISION WRITE
+
+theorem compiledCollisionWrite (slot : Fin 4294967296) (value : BitVec 64) :
+    emittedCollisionWrite slot value = (slot.val * 8, value) := by rfl
+
+end OwnershipLowering

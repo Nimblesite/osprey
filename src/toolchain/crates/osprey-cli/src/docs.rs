@@ -66,6 +66,18 @@ fn export(options: &Options) -> std::io::Result<usize> {
     }
 }
 
+/// An overview-group page that presents prose only, without a signature.
+fn overview_page(slug: &str, title: &str, summary: &str, markdown: String) -> Page {
+    Page {
+        slug: slug.into(),
+        title: title.into(),
+        group: "Overview".into(),
+        summary: summary.into(),
+        signature: String::new(),
+        markdown,
+    }
+}
+
 fn builtin_pages() -> Vec<Page> {
     let names = builtin_names();
     let slugs = slug_map(&names);
@@ -86,14 +98,12 @@ fn builtin_pages() -> Vec<Page> {
             })
         })
         .collect();
-    pages.push(Page {
-        slug: "functions/index".into(),
-        title: "Built-in Functions".into(),
-        group: "Overview".into(),
-        summary: "The Osprey standard library.".into(),
-        signature: String::new(),
-        markdown: index(&views, &slugs),
-    });
+    pages.push(overview_page(
+        "functions/index",
+        "Built-in Functions",
+        "The Osprey standard library.",
+        index(&views, &slugs),
+    ));
     pages
 }
 

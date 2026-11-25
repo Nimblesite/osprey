@@ -63,7 +63,7 @@ update (_, store, message) = Messages::route (message, \_ => Runtime::step store
 
 theme = ui::Theme(tokens = [], spacing = [4, 8], feedback = 120, settle = 220)
 
-program () = ui::Program(programInit = init, programUpdate = update, programRender = regions, programTheme = \_ => theme)
+program () = ui::Surfaces::themed (init, update, regions, theme)
 
 tick () = ui::Touch(touchNow = 2, touchKind = Hosting::frame, touchOrdinal = 0, touchWords = "", touchDetail = "", touchX = 0.0083, touchY = 0.0, touchDown = false, touchShift = false)
 

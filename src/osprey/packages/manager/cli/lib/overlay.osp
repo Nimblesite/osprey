@@ -1,7 +1,6 @@
 namespace registry_cli;
 import registry::Checked
 import registry_host::Host
-import registry_cli::Project
 import registry::Identity
 import registry::ManifestSections
 import registry::Maybe
@@ -45,26 +44,26 @@ module Overlay {
 
     fn pathIn(pairs) = match ManifestSections::find(pairs, "path") {
         Error => Error { message: pathCode }
-        Success { value } => Checked::andThen(ManifestSections::stringOf(value, pathCode), fn(value) => if value == "" { Error { message: pathCode } } else { Success { value: value } })
+        Success { value } => andThen(ManifestSections::stringOf(value, pathCode), fn(value) => if value == "" { Error { message: pathCode } } else { Success { value: value } })
     }
 
     fn epochIn(pairs) = match ManifestSections::find(pairs, "epoch") {
         Error => Error { message: epochCode }
-        Success { value } => Checked::andThen(ManifestSections::intOf(value, epochCode), fn(value) => if value < 1 { Error { message: epochCode } } else { Success { value: value } })
+        Success { value } => andThen(ManifestSections::intOf(value, epochCode), fn(value) => if value < 1 { Error { message: epochCode } } else { Success { value: value } })
     }
 
     fn parsedBaseline(text) = Checked::orElseCode(Identity::parse(text), baselineCode, fn(value) => Success { value: Maybe::some(value) })
 
     fn baselineIn(pairs) = match ManifestSections::find(pairs, "baseline") {
         Error => Success { value: Maybe::none() }
-        Success { value } => Checked::andThen(ManifestSections::stringOf(value, baselineCode), fn(value) => parsedBaseline(value))
+        Success { value } => andThen(ManifestSections::stringOf(value, baselineCode), fn(value) => parsedBaseline(value))
     }
 
-    fn assembled(key, path, epoch, baseline) = Checked::andThen(baseline, fn(value) => Success { value: Mapping { package: key, path: path, epoch: epoch, baseline: value } })
+    fn assembled(key, path, epoch, baseline) = andThen(baseline, fn(value) => Success { value: Mapping { package: key, path: path, epoch: epoch, baseline: value } })
 
-    fn withEpoch(key, path, epoch, pairs) = Checked::andThen(epoch, fn(value) => assembled(key, path, value, baselineIn(pairs)))
+    fn withEpoch(key, path, epoch, pairs) = andThen(epoch, fn(value) => assembled(key, path, value, baselineIn(pairs)))
 
-    fn withPath(key, path, pairs) = Checked::andThen(path, fn(value) => withEpoch(key, value, epochIn(pairs), pairs))
+    fn withPath(key, path, pairs) = andThen(path, fn(value) => withEpoch(key, value, epochIn(pairs), pairs))
 
     fn mappingIn(key, value) = match value {
         Toml::Table { pairs } => withPath(key, pathIn(pairs), pairs)
@@ -77,15 +76,12 @@ module Overlay {
 
     fn parsed(text) = match Toml::parse(text) {
         Error { message } => Error { message: "${shapeCode} ${message}" }
-        Success { value } => match ManifestSections::find(ManifestSections::pairsOf(value), "overrides") {
-            Error => Success { value: [] }
-            Success { value } => mappingsOf(ManifestSections::pairsOf(pairValue(value)))
-        }
+        Success { value } => ManifestSections::optional(ManifestSections::pairsOf(value), "overrides", fn(section) => mappingsOf(ManifestSections::pairsOf(pairValue(section))))
     }
 
     /// The overlay at `dir`: no file means no overrides; a file that does
     /// not parse is its `overlay.*` code.
-    export fn readAt(dir) = Checked::andThen(Host::snapshot(pathAt(dir)), fn(value) => if value.present { parsed(value.text) } else { Success { value: [] } })
+    export fn readAt(dir) = andThen(Host::snapshot(pathAt(dir)), fn(value) => if value.present { parsed(value.text) } else { Success { value: [] } })
 
     /// Whether any key is overridden.
     export fn active(mappings) = !isEmpty(mappings)
@@ -118,5 +114,5 @@ module Overlay {
 
     /// The lock a bare command consumes: the development lock while the
     /// overlay is active, else the release lock ([PACKAGE-LOCAL-OVERRIDE]).
-    export fn activeLockAt(dir) = Checked::andThen(readAt(dir), fn(value) => if active(value) { Project::readLocalLockAt(dir) } else { Project::readLockAt(dir) })
+    export fn activeLockAt(dir) = andThen(readAt(dir), fn(value) => if active(value) { Project::readLocalLockAt(dir) } else { Project::readLockAt(dir) })
 }

@@ -10,7 +10,6 @@ import ui::Frames
     bar
     text
 import ui::Doc
-import ui::Messages
 import ui::Requests
 import ui::Surfaces
 import ui::Splitters

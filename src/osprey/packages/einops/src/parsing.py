@@ -175,19 +175,13 @@ def check_axis_name_return_reason(name, allow_underscore):
     ```osprey
     from einops import Parsing
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
     def show():
-        with wrapped:
-            bad = Parsing.check_axis_name_return_reason("1a", False)
-            underscore = Parsing.check_axis_name_return_reason("_h", False)
-            lone = Parsing.check_axis_name_return_reason("_", True)
-            print(f"[{bad.is_valid} {bad.reason}] [{underscore.is_valid} {underscore.reason}] [{lone.is_valid} {lone.reason}]")
+        bad = Parsing.check_axis_name_return_reason("1a", False)
+        underscore = Parsing.check_axis_name_return_reason("_h", False)
+        lone = Parsing.check_axis_name_return_reason("_", True)
+        print(f"[{bad.is_valid} {bad.reason}] [{underscore.is_valid} {underscore.reason}] [{lone.is_valid} {lone.reason}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [false not a valid python identifier] [false axis name should should not start or end with underscore] [true ]
@@ -211,19 +205,13 @@ def check_axis_name(name):
     ```osprey
     from einops import Parsing
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
     def show():
-        with wrapped:
-            good = Parsing.check_axis_name("axis")
-            leading_digit = Parsing.check_axis_name("1a")
-            leading_underscore = Parsing.check_axis_name("_a")
-            print(f"[{good}] [{leading_digit}] [{leading_underscore}]")
+        good = Parsing.check_axis_name("axis")
+        leading_digit = Parsing.check_axis_name("1a")
+        leading_underscore = Parsing.check_axis_name("_a")
+        print(f"[{good}] [{leading_digit}] [{leading_underscore}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [true] [false] [false]
@@ -487,11 +475,6 @@ def parse(expression, allow_underscore, allow_duplicates):
     ```osprey
     from einops import Parsing
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
     def describe(result):
         match result:
             case Success(value=parsed):
@@ -500,12 +483,11 @@ def parse(expression, allow_underscore, allow_duplicates):
                 return f"error: {m}"
 
     def show():
-        with wrapped:
-            composed = Parsing.parse("b (h w) ...", False, False)
-            dotted = Parsing.parse("b ..", False, False)
-            print(f"{describe(composed)} {describe(dotted)}")
+        composed = Parsing.parse("b (h w) ...", False, False)
+        dotted = Parsing.parse("b ..", False, False)
+        print(f"{describe(composed)} {describe(dotted)}")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [b (h w) ...] ellipsis=true identifiers=4 groups=3 error: Expression may contain dots only inside ellipsis (...)
@@ -530,11 +512,6 @@ def flat_axes_order(expr):
     ```osprey
     from einops import Parsing
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
     def flat_text(result):
         match result:
             case Success(value=parsed):
@@ -543,10 +520,9 @@ def flat_axes_order(expr):
                 return f"error: {m}"
 
     def show():
-        with wrapped:
-            print(flat_text(Parsing.parse("b (h w) ...", False, False)))
+        print(flat_text(Parsing.parse("b (h w) ...", False, False)))
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     flat=b,h,w
@@ -562,11 +538,6 @@ def has_composed_axes(expr):
     ```osprey
     from einops import Parsing
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
     def composed_text(result):
         match result:
             case Success(value=parsed):
@@ -575,12 +546,11 @@ def has_composed_axes(expr):
                 return f"error: {m}"
 
     def show():
-        with wrapped:
-            split = Parsing.parse("b (h w) ...", False, False)
-            flat = Parsing.parse("b c", False, False)
-            print(f"{composed_text(split)} {composed_text(flat)}")
+        split = Parsing.parse("b (h w) ...", False, False)
+        flat = Parsing.parse("b c", False, False)
+        print(f"{composed_text(split)} {composed_text(flat)}")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     grouped=true grouped=false

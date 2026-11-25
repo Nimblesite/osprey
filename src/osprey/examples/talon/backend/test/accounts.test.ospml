@@ -1,8 +1,6 @@
 // Account domain cases, run against the real `bank::Accounts` rules (src/domain/accounts.ospml): the pure business rules (namable/movable), the Outcome union pattern-match, the JSON encoding of an Account (escaping included), the fixed-width TUI row and a storage effect handled in place of SQLite. [TESTING-BUILTINS]
 namespace bank
 
-import bank::Accounts
-
 (** The pure ML-flavor testing surface [TESTING-VERDICT]: a three-state Verdict
     value and combinators. A case is a pure function returning a Verdict; `test`
     pattern-matches and reports it. No exceptions, no imperative assertions. *)

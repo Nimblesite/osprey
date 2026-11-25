@@ -56,15 +56,18 @@ module Fixture {
         status: Governance::Active, authorityEpoch: 1
     }
 
-    /// The verified proof the host boundary hands a transition after the
-    /// actual human ceremony accepted this exact statement.
-    export fn verified(actor, membership, statement) = Governance::Proof {
-        ceremony: Governance::WebAuthn,
+    /// A ceremony proof the host boundary accepted for `statement`.
+    fn accepted(ceremony, actor, membership, statement) = Governance::Proof {
+        ceremony: ceremony,
         actor: actor,
         membership: membership,
         statement: statement,
         verification: Governance::HostVerified
     }
+
+    /// The verified proof the host boundary hands a transition after the
+    /// actual human ceremony accepted this exact statement.
+    export fn verified(actor, membership, statement) = accepted(Governance::WebAuthn, actor, membership, statement)
 
     /// A proof the boundary refused.
     export fn refused(actor, membership, statement) = Governance::Proof {
@@ -76,13 +79,7 @@ module Fixture {
     }
 
     /// A workflow DSSE proof the boundary accepted for a CI act.
-    export fn workflow(actor, membership, statement) = Governance::Proof {
-        ceremony: Governance::EphemeralDsse,
-        actor: actor,
-        membership: membership,
-        statement: statement,
-        verification: Governance::HostVerified
-    }
+    export fn workflow(actor, membership, statement) = accepted(Governance::EphemeralDsse, actor, membership, statement)
 
     /// The reason code of a failed transition, or "" on success.
     export fn code(result) = match result {

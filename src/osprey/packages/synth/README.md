@@ -24,6 +24,10 @@ In Prism’s Add component picker, choose **Channel split** for a separate mono 
 
 `Performance.wave` provides UI-free scalar Glass, Bass, additive Pulse and FM Orbit timbres, with harmonic tone and metallic ring-modulation controls. Light Orchestra calls it from its producer thread and keeps delay storage and audio devices in its host. Echo and Schroeder-style reverb currently belong to that host adapter. They are pending extraction into reusable graph processors. Oversampling and measured alias rejection remain outstanding.
 
+## Formula melodies [SYNTH-FORMULA-NOTES]
+
+A formula melody turns a typed formula into MIDI notes. The formula is evaluated once per step with `t` set to the step number, and each value becomes one note: `60 + t * 7 % 12` climbs in fifths folded into the octave above middle C. `Components.formulaMelody(identity, formula)` builds a 16-step note source. Wire it to a MIDI oscillator's event inlet like the MIDI note component. `Formulas.parse` reads `+ - * / % ^`, parentheses, `t`, decimal numbers and `sin cos abs floor round sqrt`; it reports the column of the first thing it cannot read. A step with no finite value is a rest, and pitches outside 0–127 are moved by whole octaves into range. In Prism, choose **Add component → Formula melody** and type into **Formula over step t**. The [synthesis specification](../../../../docs/specs/runtime/Synthesis.md#formula-melodies-synth-formula-notes) defines the language and timing exactly.
+
 ## Granular reference engine [SYNTH-ADVANCED-GRAINS-PLAYBACK]
 
 `Grains.prepare(source, capacity)` accepts 2–1,048,576 finite mono samples in [-1, 1] and a pool capacity of 1–256. `Grains.trigger(pool, controls)` returns a `GrainAdmission` receipt containing `pool` and `accepted`; callers must retain its returned pool. Capacity available means `accepted=true` and a new grain at the current sample position. A full pool returns `accepted=false`, increments the rejected-request count and preserves every existing voice. This explicit reject-new policy keeps scheduled playback advancing instead of failing the block. Active identities are monotonic, unique and never reused within a pool.

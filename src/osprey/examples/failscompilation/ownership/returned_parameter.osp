@@ -1,0 +1,22 @@
+// [MEM-OWNERSHIP-STATIC] Runs under the collector; `--memory=ownership` refuses it.
+// `pick` can return its parameter, so it takes ownership of it, and one
+// statement gives the same value to it twice. `firstOr` owns `fallback` the
+// same way, though it is generic. The list it derives from `tail`, which only
+// lends the matched list's nodes, would be a second live version
+// [MEM-OWNERSHIP-STATIC-SHARING].
+type Box = { text: string }
+
+fn pick(box, n) = match n {
+    0 => box
+    _ => Box { text: "none${toString(n)}" }
+}
+
+fn firstOr(xs, fallback) = match xs {
+    [] => fallback
+    [head, ...tail] => listPrepend(tail, head)
+}
+
+fn main() = {
+    let made = Box { text: "a${toString(1)}" }
+    print("${pick(made, 0).text}${pick(made, 3).text}${listLength(firstOr([1], [2]))}")
+}

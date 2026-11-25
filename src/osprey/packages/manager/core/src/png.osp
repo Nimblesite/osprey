@@ -1,5 +1,4 @@
 namespace registry;
-import registry::Bytes
 
 /// The structural gate of the v1 `Png` asset kind: signature, a first IHDR
 /// of exactly 13 bytes, at most 4,096 by 4,096 and 16 million pixels, only

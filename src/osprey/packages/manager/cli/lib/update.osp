@@ -1,14 +1,5 @@
 namespace registry_cli;
 import registry_host::Host
-import registry_cli::Flags
-import registry_cli::Reports
-import registry_cli::Project
-import registry_cli::Lockfile
-import registry_cli::Fetch
-import registry_cli::Listing
-import registry_cli::ManifestEdit
-import registry_cli::Overlay
-import registry_cli::Transaction
 import registry::Identity
 import registry::ManifestModel
 import registry::Maybe
@@ -100,10 +91,8 @@ module Update {
     fn rebaseAll(lock, breakingWanted, mappings) = foldList(mappings, Rebase { mappings: [], notes: [] }, fn(r, m) => rebaseOne(lock, breakingWanted, r, m))
 
     /// A failed development relock restores the release lock too, so the update changes nothing.
-    fn restoredRelease(s, previousRelease, report) = if Reports::statusOf(report) == 0 { report } else { match Host::restore(Project::lockPathAt(Transaction::projectOf(s)), previousRelease) {
-        Error { message } => Reports::failure(listAppend(Reports::linesOf(report), "${restoreCode} ${message}"))
-        Success => report
-    } }
+    fn restoredRelease(s, previousRelease, report) = if Reports::statusOf(report) == 0 { report }
+        else { Reports::restored(Host::restore(Project::lockPathAt(Transaction::projectOf(s)), previousRelease), report, restoreCode) }
 
     fn relockedLocal(s, mappings, previousRelease, lock, breakingWanted, releaseLines) = {
         let r = rebaseAll(lock, breakingWanted, mappings)

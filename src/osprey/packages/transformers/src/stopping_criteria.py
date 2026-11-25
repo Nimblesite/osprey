@@ -32,23 +32,64 @@ class Criterion:
 
 def MaxLengthCriteria(max_length: int) -> Criterion:
     """`MaxLengthCriteria(max_length)`: done once the sequence has `max_length`
-    tokens."""
+    tokens.
+
+    # Examples
+    ```osprey
+    from transformers import StoppingCriteria
+    print(f"[{StoppingCriteria.stopped(StoppingCriteria.MaxLengthCriteria(3), [7, 8])}] [{StoppingCriteria.stopped(StoppingCriteria.MaxLengthCriteria(3), [7, 8, 9])}]")
+    ```
+    ```output
+    [false] [true]
+    ```
+    """
     return Criterion(kind="max_length", max_length=max_length, eos_ids=[])
 
 
 def EosTokenCriteria(eos_ids: list[int]) -> Criterion:
     """`EosTokenCriteria(eos_ids)`: done once the newest token is one of
-    `eos_ids` (new_token_length=1, the transformers default)."""
+    `eos_ids` (new_token_length=1, the transformers default).
+
+    # Examples
+    ```osprey
+    from transformers import StoppingCriteria
+    print(f"[{StoppingCriteria.stopped(StoppingCriteria.EosTokenCriteria([4]), [7, 8, 4])}] [{StoppingCriteria.stopped(StoppingCriteria.EosTokenCriteria([4]), [4, 7, 8])}]")
+    ```
+    ```output
+    [true] [false]
+    ```
+    """
     return Criterion(kind="eos", max_length=0, eos_ids=eos_ids)
 
 
 def stopped_any(criteria, tokens):
-    """`StoppingCriteriaList.__call__`: True when any criterion is done."""
+    """`StoppingCriteriaList.__call__`: True when any criterion is done.
+
+    # Examples
+    ```osprey
+    from transformers import StoppingCriteria
+    rules = [StoppingCriteria.MaxLengthCriteria(3), StoppingCriteria.EosTokenCriteria([4])]
+    print(f"[{StoppingCriteria.stopped_any(rules, [7, 8])}] [{StoppingCriteria.stopped_any(rules, [7, 8, 9])}] [{StoppingCriteria.stopped_any(rules, [1, 4])}]")
+    ```
+    ```output
+    [false] [true] [true]
+    ```
+    """
     return foldList(criteria, False, lambda done, c: done or stopped(c, tokens))
 
 
 def stopped(criterion, tokens):
-    """Check one criterion over a token history."""
+    """Check one criterion over a token history.
+
+    # Examples
+    ```osprey
+    from transformers import StoppingCriteria
+    print(f"[{StoppingCriteria.stopped(StoppingCriteria.MaxLengthCriteria(2), [7, 8])}] [{StoppingCriteria.stopped(StoppingCriteria.EosTokenCriteria([4, 5]), [7, 8])}]")
+    ```
+    ```output
+    [true] [false]
+    ```
+    """
     match criterion.kind:
         case "max_length":
             return len(tokens) >= criterion.max_length
@@ -59,7 +100,17 @@ def stopped(criterion, tokens):
 
 
 def ends_with_any(text, stop_strings):
-    """Whether `text` ends with any stop string."""
+    """Whether `text` ends with any stop string.
+
+    # Examples
+    ```osprey
+    from transformers import StoppingCriteria
+    print(f"[{StoppingCriteria.ends_with_any("The End", ["a", "End"])}] [{StoppingCriteria.ends_with_any("The End", ["end"])}] [{StoppingCriteria.ends_with_any("", ["End"])}]")
+    ```
+    ```output
+    [true] [false] [false]
+    ```
+    """
     return foldList(stop_strings, False, lambda found, s: found or endsWith(text, s))
 
 

@@ -1,6 +1,4 @@
 namespace registry_web;
-import registry_web::Availability
-import registry_web::WebFixtures
 
 /// The per-organization name check: scoped answers only, never a global
 /// claim, with hostile leaf names escaped

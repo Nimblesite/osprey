@@ -61,7 +61,11 @@ let pay  = exactArithmetic(fn() => spawn paymentService(1000))
 print("auth=${await(auth)} inv=${await(inv)} pay=${await(pay)}")
 
 /// --- Pipeline (each stage = its own fiber) ---
-let p = exactArithmetic(fn() => await(spawn stage3(await(spawn stage2(await(spawn stage1(25)))))))
+let p = exactArithmetic(fn() => {
+    let first = await(spawn stage1(25))
+    let second = await(spawn stage2(first))
+    await(spawn stage3(second))
+})
 print("pipeline = ${p}")
 
 /// --- Yield ---

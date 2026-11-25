@@ -1,7 +1,4 @@
 namespace registry_web;
-import registry_web::Browse
-import registry_web::Html
-import registry_web::WebFixtures
 
 /// Escape and identifier hardening: every untrusted byte reaching a
 /// document is neutralized in text and attribute contexts before any

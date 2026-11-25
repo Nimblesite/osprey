@@ -1,10 +1,4 @@
 namespace registry_cli;
-import registry_cli::Flags
-import registry_cli::Reports
-import registry_cli::Project
-import registry_cli::Fetch
-import registry_cli::ManifestEdit
-import registry_cli::Transaction
 import registry::Names
 
 /// `osprey-pkg remove @scope/name [--registry <base-url>] [--project <dir>]`:

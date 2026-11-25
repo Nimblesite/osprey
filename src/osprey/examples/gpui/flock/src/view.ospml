@@ -4,7 +4,6 @@ namespace flock
 import ui::Ui
 import ui::Keyed
 import ui::Scenes
-import flock::Simulation
 
 (** The scene, HUD, settings and theme for Flock. *)
 module View

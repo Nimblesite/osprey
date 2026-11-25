@@ -1,14 +1,5 @@
 namespace proof
 
-import proof::Levels
-import proof::Terms
-import proof::Environment
-import proof::DeclarationBodies
-import proof::Nesting
-import proof::Reduce
-import proof::Infer
-import proof::Telescope
-import proof::Recursors
 
 (** One field read: whether it is a proof, and how it mentions a family
     of the group (0: not at all, 1: as its type, 2: under a function). *)

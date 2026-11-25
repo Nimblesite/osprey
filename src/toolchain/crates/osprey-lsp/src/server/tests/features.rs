@@ -254,6 +254,7 @@ async fn watched_changes_recheck_only_the_projects_they_affect(
     const PROJECTS: usize = 8;
     // The sweep reports a closed file's cheap advice, never the redundancy proof.
     const WARNED: &str = "double x =\n    spare = 1\n    x * 2\n";
+    // Opened, a file is proved too: its annotation is redundant.
     const PROVABLE: &str = "triple : int -> int\ntriple x =\n    spare = 1\n    x * 3\n";
     let root = std::env::temp_dir().join(format!("osprey sweep cpu {}", std::process::id()));
     let mut mains = Vec::new();

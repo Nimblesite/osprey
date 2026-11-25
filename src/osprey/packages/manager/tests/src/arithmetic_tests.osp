@@ -3,7 +3,6 @@ import registry::Arithmetic
 import registry::Objective
 import registry::Identity
 import registry::Names
-import registry::Order
 import registry::Policy
 
 /// [PACKAGE-EVIDENCE-ARITHMETIC] formulas and the [PACKAGE-RESOLUTION] cost tuple.

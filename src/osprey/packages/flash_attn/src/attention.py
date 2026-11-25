@@ -12,7 +12,7 @@ from `Naive.naive_attention`, which does materialise them. Implements [PORT-DEVI
 from spec 0043; the same body moves behind @osprey/numpy's Storage.Buffer when it lands.
 """
 from flash_attn import Core, Naive
-from flash_attn.Core import Shapes, FlashResult, Row, max_f, min_i, dot, mask_bounds, alibi_bias, dim4, slice_flat, v_at
+from flash_attn.Core import Shapes, FlashResult, Row, dot, mask_bounds, alibi_bias, dim4, slice_flat, v_at
 
 __all__ = ["flash_attn_func", "flash_attn_varlen_func"]
 
@@ -30,7 +30,7 @@ def block_count(lo, hi):
 def update_row(q, k, v, shapes, scale, alibi, b, i, h, j, r):
     """One online-softmax step: fold key j's score into the running state r."""
     score = scale * dot(q, k, shapes, b, i, h, j) + alibi_bias(alibi, shapes, h, i, j)
-    new_m = max_f(r.m, score)
+    new_m = max(r.m, score)
     rescale = exp(r.m - new_m)
     p = exp(score - new_m)
     acc = toList(map(range(shapes.headdim), lambda d: unwrap_or(listGet(r.acc, d), 0.0) * rescale + v_at(v, shapes, b, j, h, d) * p))
@@ -55,7 +55,7 @@ def attend_row(q, k, v, shapes, scale, causal, wl, wr, alibi, b, i, h):
         return empty_row(shapes)
     else:
         seed = empty_row(shapes)
-        return fold(range(block_count(bounds.lo, bounds.hi)), seed, lambda row, bi: block_pass(q, k, v, shapes, scale, alibi, b, i, h, bounds.lo + bi * BLOCK_SIZE, min_i(bounds.hi, bounds.lo + (bi + 1) * BLOCK_SIZE), row))
+        return fold(range(block_count(bounds.lo, bounds.hi)), seed, lambda row, bi: block_pass(q, k, v, shapes, scale, alibi, b, i, h, bounds.lo + bi * BLOCK_SIZE, min(bounds.hi, bounds.lo + (bi + 1) * BLOCK_SIZE), row))
 
 
 def out_element(q, k, v, shapes, scale, causal, wl, wr, alibi, o):
@@ -86,18 +86,12 @@ def flash_attn_func(q, k, v, shapes, softmax_scale, causal, window_left, window_
     ```osprey
     from flash_attn import Attention, Core
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
-
     def show():
-        with wrapped:
-            shapes = Core.Shapes(batch=1, seqlen_q=2, seqlen_k=3, heads_q=1, heads_k=1, headdim=1)
-            r = Attention.flash_attn_func([1.0, 2.0], [1.0, 2.0, 3.0], [10.0, 20.0, 30.0], shapes, 1.0, True, -1, -1, [], True)
-            print(f"[{toString(r.out)}] [{toString(r.lse)}] [{toString(r.probs)}]")
+        shapes = Core.Shapes(batch=1, seqlen_q=2, seqlen_k=3, heads_q=1, heads_k=1, headdim=1)
+        r = Attention.flash_attn_func([1.0, 2.0], [1.0, 2.0, 3.0], [10.0, 20.0, 30.0], shapes, 1.0, True, -1, -1, [], True)
+        print(f"[{toString(r.out)}] [{toString(r.lse)}] [{toString(r.probs)}]")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
     [[17.31058578630005, 28.50937092220868]] [[2.313261687518223, 6.142931628499899]] [[0.2689414213699951, 0.7310585786300049, 0.0, 0.015876239976466765, 0.11731042782619838, 0.8668133321973349]]
@@ -112,41 +106,66 @@ def flash_attn_func(q, k, v, shapes, softmax_scale, causal, window_left, window_
 
 
 def append_seq(acc, q, k, v, cu_q, cu_k, hq, hk, hd, scale, causal, wl, wr, alibi, ret, b):
-    """One varlen sequence's flash_attn_func result appended to the running total."""
-    sq = unwrap_or(listGet(cu_q, b + 1), 0) - unwrap_or(listGet(cu_q, b), 0)
-    sk = unwrap_or(listGet(cu_k, b + 1), 0) - unwrap_or(listGet(cu_k, b), 0)
-    q_off = unwrap_or(listGet(cu_q, b), 0) * hq * hd
-    k_off = unwrap_or(listGet(cu_k, b), 0) * hk * hd
-    shapes = Shapes(batch=1, seqlen_q=sq, seqlen_k=sk, heads_q=hq, heads_k=hk, headdim=hd)
-    r = flash_attn_func(slice_flat(q, q_off, sq * hq * hd), slice_flat(k, k_off, sk * hk * hd), slice_flat(v, k_off, sk * hk * hd), shapes, scale, causal, wl, wr, alibi, ret)
-    return FlashResult(out=listConcat(acc.out, r.out), lse=listConcat(acc.lse, r.lse), probs=listConcat(acc.probs, r.probs))
+    """One varlen sequence's flash_attn_func result appended to the running total,
+    or the first error: a run the cumulative lengths name outside the inputs."""
+    match acc:
+        case Error(message=m):
+            return Error(message=m)
+        case Success(value=total):
+            sq = unwrap_or(listGet(cu_q, b + 1), 0) - unwrap_or(listGet(cu_q, b), 0)
+            sk = unwrap_or(listGet(cu_k, b + 1), 0) - unwrap_or(listGet(cu_k, b), 0)
+            q_off = unwrap_or(listGet(cu_q, b), 0) * hq * hd
+            k_off = unwrap_or(listGet(cu_k, b), 0) * hk * hd
+            shapes = Shapes(batch=1, seqlen_q=sq, seqlen_k=sk, heads_q=hq, heads_k=hk, headdim=hd)
+            return with_slices(total, slice_flat(q, q_off, sq * hq * hd), slice_flat(k, k_off, sk * hk * hd), slice_flat(v, k_off, sk * hk * hd), shapes, scale, causal, wl, wr, alibi, ret)
+
+
+def with_slices(total, qs, ks, vs, shapes, scale, causal, wl, wr, alibi, ret):
+    """flash_attn_func over three sliced inputs appended to `total`, or the first slice's error."""
+    match qs:
+        case Error(message=m):
+            return Error(message=m)
+        case Success(value=q):
+            match ks:
+                case Error(message=m):
+                    return Error(message=m)
+                case Success(value=k):
+                    match vs:
+                        case Error(message=m):
+                            return Error(message=m)
+                        case Success(value=v):
+                            r = flash_attn_func(q, k, v, shapes, scale, causal, wl, wr, alibi, ret)
+                            return Success(value=FlashResult(out=listConcat(total.out, r.out), lse=listConcat(total.lse, r.lse), probs=listConcat(total.probs, r.probs)))
 
 
 def flash_attn_varlen_func(q, k, v, cu_seqlens_q, cu_seqlens_k, _max_seqlen_q, _max_seqlen_k, heads_q, heads_k, headdim, softmax_scale, causal, window_left, window_right, alibi_slopes, return_attn_probs):
     """flash-attn's flash_attn_varlen_func: independent flash_attn_func over each
     sequence delimited by the cumulative lengths, outputs concatenated. max_seqlen_q
     and max_seqlen_k are accepted for API parity and unused (the shapes come off the
-    cumulative lengths).
+    cumulative lengths). Cumulative lengths that name rows past the end of an input
+    are an Error naming the first such run, never padding [FAILURE-EXPLICIT].
 
     # Examples
     ```osprey
     from flash_attn import Attention
 
-    @handler(Arith)
-    class wrapped:
-        def overflow(op, l, r, wrapped_value):
-            return wrapped_value
+    def shown(result):
+        match result:
+            case Success(value=r):
+                return f"[{toString(r.out)}] [{toString(r.lse)}]"
+            case Error(message=m):
+                return m
 
     def show():
-        with wrapped:
-            r = Attention.flash_attn_varlen_func([1.0, 2.0], [3.0, 4.0], [10.0, 20.0], [0, 1, 2], [0, 1, 2], 1, 1, 1, 1, 1, 1.0, False, -1, -1, [], False)
-            empty = Attention.flash_attn_varlen_func([], [], [], [0], [0], 0, 0, 1, 1, 1, 1.0, False, -1, -1, [], False)
-            print(f"[{toString(r.out)}] [{toString(r.lse)}] [{toString(empty.out)}] [{toString(empty.lse)}]")
+        r = Attention.flash_attn_varlen_func([1.0, 2.0], [3.0, 4.0], [10.0, 20.0], [0, 1, 2], [0, 1, 2], 1, 1, 1, 1, 1, 1.0, False, -1, -1, [], False)
+        empty = Attention.flash_attn_varlen_func([], [], [], [0], [0], 0, 0, 1, 1, 1, 1.0, False, -1, -1, [], False)
+        short = Attention.flash_attn_varlen_func([1.0], [3.0], [10.0], [0, 2], [0, 2], 2, 2, 1, 1, 1, 1.0, False, -1, -1, [], False)
+        print(f"{shown(r)} {shown(empty)} {shown(short)}")
 
-    show()
+    wrappingArithmetic(show)
     ```
     ```output
-    [[10.0, 20.0]] [[3.0, 8.0]] [[]] [[]]
+    [[10.0, 20.0]] [[3.0, 8.0]] [[]] [[]] slice_flat: elements [0, 2) are outside a list of 1
     ```
     """
-    return fold(range(len(cu_seqlens_q) - 1), FlashResult(out=[], lse=[], probs=[]), lambda acc, b: append_seq(acc, q, k, v, cu_seqlens_q, cu_seqlens_k, heads_q, heads_k, headdim, softmax_scale, causal, window_left, window_right, alibi_slopes, return_attn_probs, b))
+    return fold(range(len(cu_seqlens_q) - 1), Success(value=FlashResult(out=[], lse=[], probs=[])), lambda acc, b: append_seq(acc, q, k, v, cu_seqlens_q, cu_seqlens_k, heads_q, heads_k, headdim, softmax_scale, causal, window_left, window_right, alibi_slopes, return_attn_probs, b))

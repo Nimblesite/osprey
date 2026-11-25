@@ -139,6 +139,7 @@ fn run_arguments(args: &[String]) -> ExitCode {
         Ok(cli) => cli,
         Err(message) => return usage_error(&message),
     };
+    osprey_codegen::set_ownership_check(cli.memory == invocation::OWNERSHIP);
     match cli.mode.as_str() {
         "--deps" => report_dependencies(&cli),
         "--hover" => report_hover(&cli.path),

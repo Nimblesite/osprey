@@ -88,13 +88,15 @@ module ClipInputs
         Error _ => Error(message = Outcomes::indexOutOfBounds)
         Success inlet => routed (graph, clips, n.identity, inlet)
 
-    audioInput (graph, clips, n) = match length (filterList (n.inputs, \p => p.rate == Audio)) == 0
-        true => Success(value = [])
-        false => Outcomes::carried (source (graph, clips, n, Audio), \clip => Success(value = clip.clipSamples))
+    (** The node's audio inlet samples, or empty when it has no audio inlet. *)
+    audioInput (graph, clips, n) = inputSamples (graph, clips, n, Audio, \clip => clip.clipSamples)
 
-    noteInput (graph, clips, n) = match length (filterList (n.inputs, \p => p.rate == Events)) == 0
+    (** The node's note events, or empty when it has no event inlet. *)
+    noteInput (graph, clips, n) = inputSamples (graph, clips, n, Events, \clip => clip.clipNotes)
+
+    inputSamples (graph, clips, n, rate, read) = match length (filterList (n.inputs, \p => p.rate == rate)) == 0
         true => Success(value = [])
-        false => Outcomes::carried (source (graph, clips, n, Events), \clip => Success(value = clip.clipNotes))
+        false => Outcomes::carried (source (graph, clips, n, rate), \clip => Success(value = read clip))
 
     (** Assemble audio, events and current normalized controls into one bounded worker request. *)
     export requestAt (graph, clips, n, first, frames) = match audioInput (graph, clips, n)

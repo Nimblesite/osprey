@@ -15,8 +15,6 @@ import agent::Engine
 import agent::Highlight
 import agent::McpClient
 import agent::Transcript
-import agentapp::McpModel
-import agentapp::Model
 
 (** Frame recipes: this application's whole visual language. *)
 module Look
@@ -178,18 +176,17 @@ module Items
         body = Ui::framed (Look::sized (13, "secondary"), Ui::text item.itemText)
         Ui::framed (Look::sized (13, "secondary"), Ui::disclosure ("Thought", listContains expanded key, ToggleSteps(stepsKey = key), [body]))
 
-    verb tool = match tool
-        "write_file" => "Edit"
-        "read_file" => "Read"
-        "list_files" => "List"
-        "run_command" => "$"
-        _ => tool
+    // A tool's button word and its symbol, as one table.
+    mark tool = match tool
+        "write_file" => { word = "Edit", symbol = ui::Edit }
+        "read_file" => { word = "Read", symbol = ui::Document }
+        "list_files" => { word = "List", symbol = ui::Folder }
+        "run_command" => { word = "$", symbol = ui::Terminal }
+        _ => { word = tool, symbol = ui::Terminal }
 
-    symbol tool = match tool
-        "write_file" => Symbols::name ui::Edit
-        "read_file" => Symbols::name ui::Document
-        "list_files" => Symbols::name ui::Folder
-        _ => Symbols::name ui::Terminal
+    verb tool = (mark tool).word
+
+    symbol tool = Symbols::name ((mark tool).symbol)
 
     status step = match step.stepDone
         false => Look::badge ("Running", ui::Clock, ui::Caution)

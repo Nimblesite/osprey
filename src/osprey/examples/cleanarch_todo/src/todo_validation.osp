@@ -3,8 +3,6 @@
 
 namespace todo;
 
-import todo::TodoDomain
-import todo::TodoRequest
 
 /// The FluentValidation rules, collected, as one function per concern.
 module TodoValidation {

@@ -107,10 +107,16 @@ pub(super) fn signal_argument<'a>(
     arguments: ExprArgs<'a>,
     named: &'a [osprey_ast::NamedArgument],
 ) -> Option<&'a Expr> {
-    arguments.get(slot).or_else(|| {
-        named
-            .iter()
-            .find(|argument| argument.name == "work")
-            .map(|argument| &argument.value)
-    })
+    arguments.get(slot).or_else(|| named_value(named, "work"))
+}
+
+/// The value bound to the named argument with `label`, if the call gives one.
+pub(super) fn named_value<'a>(
+    named: &'a [osprey_ast::NamedArgument],
+    label: &str,
+) -> Option<&'a Expr> {
+    named
+        .iter()
+        .find(|argument| argument.name == label)
+        .map(|argument| &argument.value)
 }

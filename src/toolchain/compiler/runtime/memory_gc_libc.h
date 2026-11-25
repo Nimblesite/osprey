@@ -7,6 +7,8 @@
 #ifndef OSPREY_GC_LIBC_H
 #define OSPREY_GC_LIBC_H
 
+#include "memory_calloc.h"
+
 void *osp_gc_malloc(size_t size) {
   heap_lock();
   void *p = gc_managed_alloc(size, 0);
@@ -15,17 +17,7 @@ void *osp_gc_malloc(size_t size) {
 }
 
 void *osp_gc_calloc(size_t n, size_t size) {
-  size_t total = n * size;
-  if (n != 0 && total / n != size) {
-    return NULL; // overflow
-  }
-  heap_lock();
-  void *p = gc_managed_alloc(total, 0);
-  heap_unlock();
-  if (p) {
-    memset(p, 0, total);
-  }
-  return p;
+  return managed_calloc(n, size, osp_gc_malloc);
 }
 
 void *osp_gc_realloc(void *old, size_t size) {

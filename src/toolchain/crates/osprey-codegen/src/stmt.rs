@@ -19,6 +19,8 @@ use std::collections::BTreeSet;
 /// produced and did not bind drop at its end [GC-ARC-PERCEUS].
 pub(crate) fn gen_local_stmt(cg: &mut Codegen, stmt: &Stmt) -> Result<()> {
     crate::arc::push_frame(cg, crate::arc::FrameKind::Statement);
+    crate::arc::note_rebound(cg, stmt);
+    cg.ownership.at(stmt_position(stmt));
     let lowered = gen_stmt_kind(cg, stmt);
     crate::arc::pop_frame(cg);
     lowered
@@ -109,7 +111,7 @@ fn rebindable(cg: &Codegen, name: &str) -> bool {
 /// arms' writes and the functions' reads on one location
 /// [EFFECTS-HANDLER-STATE] [MODULES-FILE-SCOPE-BINDING].
 pub(crate) fn publish_binding(cg: &mut Codegen, stmt: &Stmt) -> Result<()> {
-    let Stmt::Let { name, .. } = stmt else {
+    let Stmt::Let { name, mutable, .. } = stmt else {
         return Ok(());
     };
     if !cg.module_globals.contains_key(name) {
@@ -118,7 +120,7 @@ pub(crate) fn publish_binding(cg: &mut Codegen, stmt: &Stmt) -> Result<()> {
     match cg.cell_slots.get(name).cloned() {
         Some(cell) => crate::globals::publish_cell(cg, name, &cell),
         None => match cg.lookup(name) {
-            Some(value) => crate::globals::publish(cg, name, value),
+            Some(value) => crate::globals::publish(cg, name, value, *mutable),
             None => Err(CodegenError::unknown(name)),
         },
     }

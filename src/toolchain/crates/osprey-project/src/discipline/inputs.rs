@@ -81,12 +81,14 @@ fn project_inputs(hasher: &mut DefaultHasher, root: &Path) -> Result<(), String>
 /// # Errors
 /// A compiler that cannot be read is named in the message.
 pub(super) fn compiler_digest(compiler: &Path) -> Result<u64, String> {
-    let bytes = std::fs::read(compiler).map_err(|error| {
-        format!(
-            "cannot read the compiler at {}: {error}",
-            compiler.display()
-        )
-    })?;
+    file_digest(compiler, "cannot read the compiler at")
+}
+
+/// The digest of the whole file at `path`, with `blame` naming it in the
+/// error when it cannot be read.
+pub(super) fn file_digest(path: &Path, blame: &str) -> Result<u64, String> {
+    let bytes =
+        std::fs::read(path).map_err(|error| format!("{blame} {}: {error}", path.display()))?;
     Ok(super::cache::digest(&bytes))
 }
 

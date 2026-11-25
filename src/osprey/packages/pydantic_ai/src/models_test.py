@@ -329,26 +329,25 @@ def gen_number(schema, seed):
         return toFloat(seed)
 
 
-def bound_min(schema):
-    minimum = J.float_at(schema, "minimum", 0.0)
-    exclusive = J.float_at(schema, "exclusiveMinimum", 0.0)
-    if J.is_null(J.object_at(schema, "exclusiveMinimum")):
-        return minimum
-    elif J.is_null(J.object_at(schema, "minimum")):
+def bound(schema, inclusive_key, exclusive_key, tighter):
+    """A JSON schema numeric bound: the inclusive limit, the exclusive one, or
+    the tighter of both under `tighter`."""
+    inclusive = J.float_at(schema, inclusive_key, 0.0)
+    exclusive = J.float_at(schema, exclusive_key, 0.0)
+    if J.is_null(J.object_at(schema, exclusive_key)):
+        return inclusive
+    elif J.is_null(J.object_at(schema, inclusive_key)):
         return exclusive
     else:
-        return minimum if minimum > exclusive else exclusive
+        return tighter(inclusive, exclusive)
+
+
+def bound_min(schema):
+    return bound(schema, "minimum", "exclusiveMinimum", lambda lo, hi: lo if lo > hi else hi)
 
 
 def bound_max(schema):
-    maximum = J.float_at(schema, "maximum", 0.0)
-    exclusive = J.float_at(schema, "exclusiveMaximum", 0.0)
-    if J.is_null(J.object_at(schema, "exclusiveMaximum")):
-        return maximum
-    elif J.is_null(J.object_at(schema, "maximum")):
-        return exclusive
-    else:
-        return maximum if maximum < exclusive else exclusive
+    return bound(schema, "maximum", "exclusiveMaximum", lambda lo, hi: lo if lo < hi else hi)
 
 
 class ArrayFold:

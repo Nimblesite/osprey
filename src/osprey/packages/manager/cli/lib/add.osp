@@ -1,13 +1,5 @@
 namespace registry_cli;
 import registry_host::Host
-import registry_cli::Flags
-import registry_cli::Reports
-import registry_cli::Project
-import registry_cli::Fetch
-import registry_cli::Listing
-import registry_cli::ManifestEdit
-import registry_cli::Transaction
-import registry_cli::Use
 import registry::Identity
 import registry::Maybe
 import registry::Names
@@ -86,10 +78,7 @@ module Add {
         fn(id) => Success { value: Identity::epochOf(id) })
     fn floorFor(baseline) = Maybe::fold(baseline, 0, Identity::ordinalOf)
 
-    fn withRestoreNote(report, result) = match result {
-        Error { message } => Reports::failure(listAppend(Reports::linesOf(report), "${restoreCode} ${message}"))
-        Success => report
-    }
+    fn withRestoreNote(report, result) = Reports::restored(result, report, restoreCode)
 
     /// Write back the manifest and the release lock after a failed development relock.
     fn restored(req, previousText, previousLock, report) = {

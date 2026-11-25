@@ -22,6 +22,7 @@ import {
   type OspreyExtensionApi,
 } from "../../client/src/extension";
 import {
+  assertSkipWarningLayout,
   extensionRoot,
   pinOspreySettings,
   resolveBuiltOsprey,
@@ -656,10 +657,11 @@ suite("Osprey Language Features Tests", () => {
   // budget is exhausted, then throws with the last value. This is what turns
   // "the LSP returned nothing (yet)" into an eventual HARD FAILURE rather than a
   // silent pass — the toothlessness that let the hover regression ship.
+  // 30 s: a re-check that takes 1.5 s on a quiet machine missed 10 s at a load average near 100.
   async function pollFor<T>(
     attempt: () => Thenable<T>,
     ok: (value: T) => boolean,
-    tries = 40,
+    tries = 120,
     delayMs = 250,
   ): Promise<T> {
     let last: T | undefined;
@@ -1450,17 +1452,13 @@ suite("Osprey Language Features Tests", () => {
       'test("alpha", fn() => Skip("flaky on CI"))',
     );
     const afterSecond = await pollSkips(doc.uri, 2);
-    assert.deepStrictEqual(
-      afterSecond.map((w) => w.range.start.line),
-      [2, 3],
-      "warnings track their own lines, in source order",
-    );
-    assert.deepStrictEqual(
-      afterSecond.map((w) => w.message),
+    assertSkipWarningLayout(
+      afterSecond,
       [
-        "test 'alpha' is skipped: flaky on CI",
-        "test 'beta' is skipped: waiting on the API",
+        { line: 2, message: "test 'alpha' is skipped: flaky on CI" },
+        { line: 3, message: "test 'beta' is skipped: waiting on the API" },
       ],
+      "warnings track their own lines, in source order",
     );
 
     // (4) Editing only the REASON updates the message in place.

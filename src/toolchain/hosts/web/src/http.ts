@@ -9,9 +9,22 @@ function allowed(url: URL): boolean {
   return url.protocol === "https:" || url.origin === location.origin || (url.protocol === "http:" && loopback);
 }
 
+// Reads chunk by chunk and cancels the stream at the first byte past `limit`, so an endless or
+// oversized reply never holds more than `limit` bytes plus one chunk.
 async function bounded(response: Response, limit: number): Promise<string> {
-  const bytes = new Uint8Array(await response.arrayBuffer());
-  if (bytes.length > limit) throw new Error(`${bytes.length} bytes exceeds the ${limit} byte limit`);
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  const reader = response.body?.getReader();
+  for (let read = await reader?.read(); read !== undefined && !read.done; read = await reader?.read()) {
+    total += read.value.length;
+    if (total > limit) {
+      await reader?.cancel();
+      throw new Error(`${total} bytes exceeds the ${limit} byte limit`);
+    }
+    chunks.push(read.value);
+  }
+  const bytes = new Uint8Array(total);
+  chunks.reduce((offset, chunk) => { bytes.set(chunk, offset); return offset + chunk.length; }, 0);
   return new TextDecoder().decode(bytes);
 }
 

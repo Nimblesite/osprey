@@ -68,7 +68,6 @@ fn rule() = dim("  ==================================================")
 // UI counters explicitly keep their previous value on arithmetic overflow.
 fn inc(x) = satAdd(x, 1)
 fn dec(x) = satSub(x, 1)
-fn min(a, b) = match a < b { true => a false => b }
 fn gap(a, b) = match a < b { true => satSub(b, a) false => satSub(a, b) }
 // `%` returns int; these positive constant divisors need no Arith policy.
 // A zero-sized animation cycle has a stationary first frame.
@@ -192,17 +191,15 @@ fn treeRow(tree: int, i: int, sel: int) = {
 
 // The cursor a key asks for: the two arrows and their j/k aliases, else unchanged.
 fn nextSel(sel: int, n: int, key: string) = match key {
-    "Up"   => moveUp(sel)
-    "k"    => moveUp(sel)
-    "Down" => moveDown(sel: sel, n: n)
-    "j"    => moveDown(sel: sel, n: n)
+    "Up" | "k"   => moveUp(sel)
+    "Down" | "j" => moveDown(sel: sel, n: n)
     _      => sel
 }
 
 // A scrolling window keeps the cursor on screen for big directories.
 fn winStart(sel: int, n: int) = match n < 23 {
     true  => 0
-    false => match sel < 11 { true => 0 false => min(a: satSub(sel, 11) , b: satSub(n, 22) ) }
+    false => match sel < 11 { true => 0 false => min(satSub(sel, 11), satSub(n, 22)) }
 }
 fn treeRows(tree: int, first: int, last: int, sel: int) = rowFold(
     fn(i, s) => treeRow(tree: tree, i: i, sel: s), first, last, sel)
@@ -212,7 +209,7 @@ fn treeScreen(repo: string, path: string, tree: int, sel: int, n: int) =
     bold(cyan("FILES  ")) + green(repo) + dim("/" + path) + "\n" +
     rule() + "\n\n" +
     treeRows(tree: tree, first: winStart(sel: sel, n: n),
-             last: min(a: satAdd(winStart(sel: sel, n: n), 22) , b: n), sel: sel) + "\n" +
+             last: min(satAdd(winStart(sel: sel, n: n), 22), n), sel: sel) + "\n" +
     rule() + "\n" +
     dim("  up/down move    enter open dir/file    esc back")
 
@@ -283,8 +280,7 @@ fn browseLoop(repo: string, path: string, tree: int, sel: int, n: int) -> Unit !
 
 fn browseKey(repo: string, path: string, tree: int, sel: int, n: int, key: string) -> Unit ![Console, Terminal, Http] = match key {
     "Enter" => openEntry(repo: repo, path: path, tree: tree, sel: sel, n: n)
-    "Esc"   => perform Console.print("")
-    "u"     => perform Console.print("")
+    "Esc" | "u" => perform Console.print("")
     _       => browseLoop(repo: repo, path: path, tree: tree, sel: nextSel(sel: sel, n: n, key: key), n: n)
 }
 
@@ -325,8 +321,7 @@ fn uiLoop(doc: int, sel: int, n: int) -> Unit ![Console, Terminal, Http] = {
 }
 
 fn handleKey(doc: int, sel: int, n: int, key: string) -> Unit ![Console, Terminal, Http] = match key {
-    "q"     => endApp()
-    "Esc"   => endApp()
+    "q" | "Esc" => endApp()
     "Enter" => openRepo(doc: doc, sel: sel, n: n)
     _       => uiLoop(doc: doc, sel: nextSel(sel: sel, n: n, key: key), n: n)
 }

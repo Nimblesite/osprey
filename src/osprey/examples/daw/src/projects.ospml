@@ -8,29 +8,35 @@ module Projects
         true => next
         false => listGet tracks at ?: next
 
+    (** The item at `index`, or `complaint` when the list holds nothing there. *)
+    export required (items, index, complaint) = match listGet items index
+        Error _ => Error(message = complaint)
+        Success item => Success(value = item)
+
+    (** The value when it lies from `low` to `high`, else `complaint`. *)
+    export limited (value, low, high, complaint) = match value >= low && value <= high
+        false => Error(message = complaint)
+        true => Success(value = value)
+
     (** The project with the track at `index` replaced by `next`. *)
-    export replaced (arrangement, index, next) = match listGet arrangement.tracks index
-        Error _ => Error(message = "There is no track ${satAdd index 1}.")
-        Success _ => Success(value = arrangement(tracks = mapList (toList (range (0, length arrangement.tracks)), \at => swapped (arrangement.tracks, index, next, at))))
+    export replaced (arrangement, index, next) = synth::Outcomes::carried (required (arrangement.tracks, index, "There is no track ${satAdd index 1}."), \_ =>
+        Success(value = arrangement(tracks = mapList (toList (range (0, length arrangement.tracks)), \at => swapped (arrangement.tracks, index, next, at)))))
 
     (** Set track `index`'s gain (0–4) and pan (−1 left to 1 right). *)
     export mixed (arrangement, index, gain, pan) = match ArrangeMath::mixable (gain, pan)
         false => Error(message = "Gain must be 0 to 4 and pan -1 to 1.")
-        true => match listGet arrangement.tracks index
-            Error _ => Error(message = "There is no track ${satAdd index 1}.")
-            Success voice => replaced (arrangement, index, voice(gain = gain, pan = pan))
+        true => synth::Outcomes::carried (required (arrangement.tracks, index, "There is no track ${satAdd index 1}."), \voice =>
+            replaced (arrangement, index, voice(gain = gain, pan = pan)))
 
     (** Set the gain on an existing group bus. *)
-    export busGain (song, name, gain) = match gain >= 0.0 && gain <= 4.0
-        false => Error(message = "Group gain must be 0 to 4.")
-        true => synth::Outcomes::carried (BusMix::named (song, name), \_ => Success(value = song(buses = mapList (song.buses, \bus => ui::Pick::either (bus.name == name, bus(gain = gain), bus)))))
+    export busGain (song, name, gain) = synth::Outcomes::carried (limited (gain, 0.0, 4.0, "Group gain must be 0 to 4."), \_ =>
+        synth::Outcomes::carried (BusMix::named (song, name), \_ => Success(value = song(buses = mapList (song.buses, \bus => ui::Pick::either (bus.name == name, bus(gain = gain), bus))))))
 
     (** Assign the dry output to Master (empty name) or one of the open project's buses. *)
-    export routed (song, index, bus) = match listGet song.tracks index
-        Error _ => Error(message = "There is no track ${satAdd index 1}.")
-        Success track => match bus == ""
+    export routed (song, index, bus) = synth::Outcomes::carried (required (song.tracks, index, "There is no track ${satAdd index 1}."), \track =>
+        match bus == ""
             true => replaced (song, index, track(bus = ""))
-            false => synth::Outcomes::carried (BusMix::named (song, bus), \found => replaced (song, index, track(bus = found.name)))
+            false => synth::Outcomes::carried (BusMix::named (song, bus), \found => replaced (song, index, track(bus = found.name))))
 
     (** A new stereo group starts at unity gain with a flat EQ and a unity-ratio compressor. *)
     export grouped (song, index, proposed) =
@@ -46,11 +52,9 @@ module Projects
     export withNote (voice, index, edited: Note) = voice(notes = mapList (toList (range (0, length voice.notes)), \at => swapped (voice.notes, index, edited, at)))
 
     (** Apply an edit to exactly one piano-roll note. *)
-    export editedNote (song, track, index, change) = match listGet song.tracks track
-        Error _ => Error(message = "Select a track first.")
-        Success voice => match listGet voice.notes index
-            Error _ => Error(message = "Select a note first.")
-            Success original => replaced (song, track, withNote (voice, index, change original))
+    export editedNote (song, track, index, change) = synth::Outcomes::carried (required (song.tracks, track, "Select a track first."), \voice =>
+        synth::Outcomes::carried (required (voice.notes, index, "Select a note first."), \original =>
+            replaced (song, track, withNote (voice, index, change original))))
 
     (** Change velocity without altering the note's pitch, timing or duration. *)
     export velocity (song, track, index, value) = match ArrangeMath::audible value

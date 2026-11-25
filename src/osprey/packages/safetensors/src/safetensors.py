@@ -82,7 +82,35 @@ def utf8_of(bs):
 
 
 def load(data):
-    """Parse and validate a safetensors file, or Error naming the failure."""
+    """Parse and validate a safetensors file, or Error naming the failure.
+
+    # Examples
+    ```osprey
+    from safetensors import SafeTensors, Bytes
+
+    def file_bytes(header, data):
+        text = toList(map(range(len(header)), lambda i: unwrap_or(byteAt(header, i), 0)))
+        return listConcat(listConcat(Bytes.int_bytes(len(header), 8), text), data)
+
+    def describe(result):
+        match result:
+            case Success(value=file):
+                return f"{len(file.tensors)} tensors, data at {file.data_offset}"
+            case Error(message=m):
+                return m
+
+    def run():
+        header = '{"t": {"dtype": "U8", "shape": [2], "data_offsets": [0, 2]}}'
+        good = describe(SafeTensors.load(file_bytes(header, [7, 9])))
+        short = describe(SafeTensors.load(file_bytes(header, [7])))
+        print(f"[{good}] [{short}]")
+
+    wrappingArithmetic(run)
+    ```
+    ```output
+    [1 tensors, data at 68] [incomplete metadata, file not fully covered]
+    ```
+    """
     return andThen(header_length(data), lambda value: header_of(data, value))
 
 
@@ -329,23 +357,60 @@ def shape_product(shape):
 
 
 def keys(file):
-    """The tensor names, sorted alphabetically like `safe_open.keys()`."""
-    return listSortBy(tensor_names(file), str_cmp)
+    """The tensor names, sorted alphabetically like `safe_open.keys()`.
+
+    # Examples
+    ```osprey
+    from safetensors import SafeTensors, Bytes
+
+    def file_bytes(header, data):
+        text = toList(map(range(len(header)), lambda i: unwrap_or(byteAt(header, i), 0)))
+        return listConcat(listConcat(Bytes.int_bytes(len(header), 8), text), data)
+
+    def loaded(header, data):
+        return unwrap_or(SafeTensors.load(file_bytes(header, data)), SafeTensors.SafeFile(data=[], data_offset=0, tensors=[], metadata={}))
+
+    def run():
+        header = '{"b": {"dtype": "U8", "shape": [1], "data_offsets": [0, 1]}, "a": {"dtype": "U8", "shape": [1], "data_offsets": [1, 2]}}'
+        file = loaded(header, [7, 9])
+        plain = loaded('{"__metadata__": {"format": "ust"}}', [])
+        print(f"[{toString(SafeTensors.keys(file))}] [{toString(SafeTensors.keys(plain))}]")
+
+    wrappingArithmetic(run)
+    ```
+    ```output
+    [["a", "b"]] [[]]
+    ```
+    """
+    return listSort(tensor_names(file))
 
 
 def offset_keys(file):
-    """The tensor names in offset order, like `safe_open.offset_keys()`."""
+    """The tensor names in offset order, like `safe_open.offset_keys()`.
+
+    # Examples
+    ```osprey
+    from safetensors import SafeTensors, Bytes
+
+    def file_bytes(header, data):
+        text = toList(map(range(len(header)), lambda i: unwrap_or(byteAt(header, i), 0)))
+        return listConcat(listConcat(Bytes.int_bytes(len(header), 8), text), data)
+
+    def loaded(header, data):
+        return unwrap_or(SafeTensors.load(file_bytes(header, data)), SafeTensors.SafeFile(data=[], data_offset=0, tensors=[], metadata={}))
+
+    def run():
+        header = '{"b": {"dtype": "U8", "shape": [1], "data_offsets": [0, 1]}, "a": {"dtype": "U8", "shape": [1], "data_offsets": [1, 2]}}'
+        file = loaded(header, [7, 9])
+        print(f"[{toString(SafeTensors.offset_keys(file))}] [{toString(SafeTensors.keys(file))}]")
+
+    wrappingArithmetic(run)
+    ```
+    ```output
+    [["b", "a"]] [["a", "b"]]
+    ```
+    """
     return tensor_names(file)
-
-
-def str_cmp(a, b):
-    """String comparison for sorting."""
-    if a < b:
-        return -1
-    elif a > b:
-        return 1
-    else:
-        return 0
 
 
 def tensor_names(file):
@@ -354,12 +419,69 @@ def tensor_names(file):
 
 
 def metadata(file):
-    """The `__metadata__` string map (empty when the file has none)."""
+    """The `__metadata__` string map (empty when the file has none).
+
+    # Examples
+    ```osprey
+    from safetensors import SafeTensors, Bytes
+
+    def file_bytes(header, data):
+        text = toList(map(range(len(header)), lambda i: unwrap_or(byteAt(header, i), 0)))
+        return listConcat(listConcat(Bytes.int_bytes(len(header), 8), text), data)
+
+    def loaded(header, data):
+        return unwrap_or(SafeTensors.load(file_bytes(header, data)), SafeTensors.SafeFile(data=[], data_offset=0, tensors=[], metadata={}))
+
+    def run():
+        with_meta = loaded('{"__metadata__": {"format": "ust"}}', [])
+        plain = loaded('{"t": {"dtype": "U8", "shape": [1], "data_offsets": [0, 1]}}', [7])
+        fmt = unwrap_or(mapGet(SafeTensors.metadata(with_meta), "format"), "")
+        blank = unwrap_or(mapGet(SafeTensors.metadata(plain), "format"), "")
+        print(f"[{fmt}] [{blank}]")
+
+    wrappingArithmetic(run)
+    ```
+    ```output
+    [ust] []
+    ```
+    """
     return file.metadata
 
 
 def get_tensor(file, name):
-    """Decode the tensor named `name`, or Error when absent."""
+    """Decode the tensor named `name`, or Error when absent.
+
+    # Examples
+    ```osprey
+    from safetensors import SafeTensors, Bytes
+
+    def file_bytes(header, data):
+        text = toList(map(range(len(header)), lambda i: unwrap_or(byteAt(header, i), 0)))
+        return listConcat(listConcat(Bytes.int_bytes(len(header), 8), text), data)
+
+    def loaded(header, data):
+        return unwrap_or(SafeTensors.load(file_bytes(header, data)), SafeTensors.SafeFile(data=[], data_offset=0, tensors=[], metadata={}))
+
+    def describe(result):
+        match result:
+            case Success(value=t):
+                values = toString(t.floats) if t.kind == "floats" else toString(t.ints)
+                return f"{t.kind} {values}"
+            case Error(message=m):
+                return m
+
+    def run():
+        file = loaded('{"w": {"dtype": "F32", "shape": [2], "data_offsets": [0, 8]}}', [0, 0, 128, 63, 0, 0, 128, 64])
+        got = describe(SafeTensors.get_tensor(file, "w"))
+        missing = describe(SafeTensors.get_tensor(file, "x"))
+        print(f"[{got}] [{missing}]")
+
+    wrappingArithmetic(run)
+    ```
+    ```output
+    [floats [1.0, 4.0]] [File does not contain tensor x]
+    ```
+    """
     return andThen(find_tensor(file.tensors, name), lambda value: Success(value=decode_range(file, value, 0, element_count(value))))
 
 
@@ -456,7 +578,40 @@ def decode_i64(data, off):
 
 
 def get_slice(file, name, first, last):
-    """Decode rows `first`..`last` of the first dimension of `name`."""
+    """Decode rows `first`..`last` of the first dimension of `name`.
+
+    # Examples
+    ```osprey
+    from safetensors import SafeTensors, Bytes
+
+    def file_bytes(header, data):
+        text = toList(map(range(len(header)), lambda i: unwrap_or(byteAt(header, i), 0)))
+        return listConcat(listConcat(Bytes.int_bytes(len(header), 8), text), data)
+
+    def loaded(header, data):
+        return unwrap_or(SafeTensors.load(file_bytes(header, data)), SafeTensors.SafeFile(data=[], data_offset=0, tensors=[], metadata={}))
+
+    def describe(result):
+        match result:
+            case Success(value=t):
+                values = toString(t.floats) if t.kind == "floats" else toString(t.ints)
+                return f"{t.kind} {values}"
+            case Error(message=m):
+                return m
+
+    def run():
+        header = '{"m": {"dtype": "F32", "shape": [2, 2], "data_offsets": [0, 16]}, "s": {"dtype": "U8", "shape": [], "data_offsets": [16, 17]}}'
+        file = loaded(header, [0, 0, 128, 63, 0, 0, 0, 64, 0, 0, 128, 64, 0, 0, 64, 64, 7])
+        rows = describe(SafeTensors.get_slice(file, "m", 1, 2))
+        scalar = describe(SafeTensors.get_slice(file, "s", 0, 1))
+        print(f"[{rows}] [{scalar}]")
+
+    wrappingArithmetic(run)
+    ```
+    ```output
+    [floats [4.0, 3.0]] [Error during slicing [0:1] with shape []: more slicing indexes than dimensions in tensor]
+    ```
+    """
     return andThen(find_tensor(file.tensors, name), lambda value: slice_of(file, value, first, last))
 
 

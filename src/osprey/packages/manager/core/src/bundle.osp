@@ -1,12 +1,4 @@
 namespace registry;
-import registry::Checked
-import registry::Canonical
-import registry::Identity
-import registry::Json
-import registry::Names
-import registry::Release
-import registry::ReleaseFiles
-import registry::ReleasePath
 
 /// The source bundle: one RFC 8785 canonical JSON document carrying a
 /// release's key, epoch, ordinal, digest and every file as UTF-8 text. Decode
@@ -47,9 +39,9 @@ module Bundle {
 
     fn intField(root, field) = shaped(Json::intAt(root, field))
 
-    fn fileOf(root) = Checked::andThen(stringField(root, "path"), fn(value) => withText(root, value))
+    fn fileOf(root) = andThen(stringField(root, "path"), fn(value) => withText(root, value))
 
-    fn withText(root, path) = Checked::andThen(stringField(root, "text"), fn(value) => Success { value: Release::File { relPath: path, content: value } })
+    fn withText(root, path) = andThen(stringField(root, "text"), fn(value) => Success { value: Release::File { relPath: path, content: value } })
 
     fn filesOf(items) = Checked::collectAll(items, fileOf)
 
@@ -58,15 +50,15 @@ module Bundle {
         Error => Error { message: shapeError }
     }
 
-    fn ofValue(root) = Checked::andThen(stringField(root, "digest"), fn(value) => withEpoch(root, value))
+    fn ofValue(root) = andThen(stringField(root, "digest"), fn(value) => withEpoch(root, value))
 
-    fn withEpoch(root, digest) = Checked::andThen(intField(root, "epoch"), fn(value) => withFiles(root, digest, value))
+    fn withEpoch(root, digest) = andThen(intField(root, "epoch"), fn(value) => withFiles(root, digest, value))
 
-    fn withFiles(root, digest, epoch) = Checked::andThen(filesField(root), fn(value) => withKey(root, digest, epoch, value))
+    fn withFiles(root, digest, epoch) = andThen(filesField(root), fn(value) => withKey(root, digest, epoch, value))
 
-    fn withKey(root, digest, epoch, files) = Checked::andThen(stringField(root, "key"), fn(value) => withOrdinal(root, digest, epoch, files, value))
+    fn withKey(root, digest, epoch, files) = andThen(stringField(root, "key"), fn(value) => withOrdinal(root, digest, epoch, files, value))
 
-    fn withOrdinal(root, digest, epoch, files, keyText) = Checked::andThen(intField(root, "ordinal"), fn(value) => makeServed(digest, epoch, files, keyText, value))
+    fn withOrdinal(root, digest, epoch, files, keyText) = andThen(intField(root, "ordinal"), fn(value) => makeServed(digest, epoch, files, keyText, value))
 
     fn makeServed(digest, epoch, files, keyText, ordinal) = match Names::parse(keyText) {
         Error => Error { message: shapeError }
@@ -83,7 +75,7 @@ module Bundle {
         Success { value } => ofValue(value)
     }
 
-    fn checkClaim(served, expectedDigest) = Checked::andThen(ReleaseFiles::assemble(ReleasePath::format(served.id), served.files), fn(value) => compare(served, value.id.digest, expectedDigest))
+    fn checkClaim(served, expectedDigest) = andThen(ReleaseFiles::assemble(ReleasePath::format(served.id), served.files), fn(value) => compare(served, value.id.digest, expectedDigest))
 
     fn compare(served: Release::Served, recomputed, expectedDigest) = match recomputed == served.id.digest {
         false => Error { message: "bundle.digest-mismatch" }
@@ -98,7 +90,7 @@ module Bundle {
     /// [PACKAGE-HARDENING]); `""` within the bound.
     export fn sizeCode(byteCount) = if byteCount > maxBytes { tooLarge } else { "" }
 
-    fn verifyParsed(text, expectedDigest) = Checked::andThen(decode(text), fn(value) => checkClaim(value, expectedDigest))
+    fn verifyParsed(text, expectedDigest) = andThen(decode(text), fn(value) => checkClaim(value, expectedDigest))
 
     /// Bound the body, decode, recompute the digest from the files and return
     /// the release only when the recomputed digest equals both the bundle's

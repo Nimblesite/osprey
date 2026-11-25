@@ -4,7 +4,7 @@
 # `--profile ci` is the workspace's fast-compile profile (see src/toolchain/Cargo.toml).
 # `_runtime_wasm` is a prerequisite because the coverage gate below already
 # DEPENDS on it: osprey-cli's wasm end-to-end test (src/toolchain/crates/osprey-cli/src/wasm.rs)
-# self-skips unless wasm-ld, a WASI sysroot and libosprey_runtime_wasm.a are all
+# self-skips unless wasm-ld, a WASI sysroot and libosprey_runtime_wasm_arc.a are all
 # present, and skipping it drops osprey-cli from 96.7% to 94.8% — under its 95%
 # floor. Without this line the archive is whatever an earlier target happened to
 # leave behind, so a plain `make clean && make ci` fails on a coverage number
@@ -15,12 +15,14 @@ _test_rust: _runtime_wasm
 	set -o pipefail && RUST_TEST_THREADS=$${RUST_TEST_THREADS:-4} cargo llvm-cov --manifest-path src/toolchain/Cargo.toml --workspace --profile ci --lcov --output-path $(RUST_LCOV) 2>&1 | tee $(RUST_LOG)
 
 # CI's shards of _test_rust: the slowest tests by name, each in its own job, and everything else.
+# The workbench shard also takes the whole-corpus compile checks (RUST_SHARD_CORPUS), which pushed rest past its 25-minute budget.
 # The coverage job merges their reports; scripts/ci/ci-scope.test.mjs holds the shards to one another.
 RUST_SHARD_PACKAGES := every_ported_package_matches_its_cpython_oracle_under_every_memory_backend
 RUST_SHARD_WORKBENCH := workbench_retains_record_identity_through_shared_proof_helpers workbench_apple_host_includes_shared_proof_dependencies a_faulted_workbench_goal_formula_fails_its_case_without_fabricating_bottom
+RUST_SHARD_CORPUS := no_corpus_program_emits_a_reference_to_an_undefined_symbol every_language_test_and_benchmark_source_compiles_to_ir failscompilation_corpus_drives_rejection_paths failscompilation_corpus_matches_its_expected_diagnostics ml_and_default_twins_emit_identical_ir shipped_sources_have_no_unused_bindings
 RUST_SHARD_ARGS_packages := --test python_packages -- $(RUST_SHARD_PACKAGES)
-RUST_SHARD_ARGS_workbench := --test generic_effect_arc_result -- $(RUST_SHARD_WORKBENCH)
-RUST_SHARD_ARGS_rest := -- $(addprefix --skip ,$(RUST_SHARD_PACKAGES) $(RUST_SHARD_WORKBENCH))
+RUST_SHARD_ARGS_workbench := --test generic_effect_arc_result --test emitted_ir_is_wellformed --test examples_compile --test cross_flavor_ir_equiv --test example_warning_hygiene -- $(RUST_SHARD_WORKBENCH) $(RUST_SHARD_CORPUS)
+RUST_SHARD_ARGS_rest := -- $(addprefix --skip ,$(RUST_SHARD_PACKAGES) $(RUST_SHARD_WORKBENCH) $(RUST_SHARD_CORPUS))
 
 .PHONY: _test_rust_shard
 _test_rust_shard: _runtime_wasm
@@ -88,7 +90,7 @@ PROF_T = -O2 -g -fno-omit-frame-pointer -D_FORTIFY_SOURCE=2 -fstack-protector-st
 # One row per test binary. C_SRC_<name> lists sources relative to src/toolchain/compiler/,
 # C_FLAGS_<name> extra compile flags, C_LIBS_<name> trailing libraries, and
 # C_PROFILE_<name> optionally replaces the default $(T) flag core.
-C_TEST_SUITES ?= memory_gc_stack_root_tests memory_arc_tests memory_gc_tests \
+C_TEST_SUITES ?= memory_gc_stack_root_tests memory_arc_tests memory_ownership_tests memory_gc_tests \
   host_import_gc_tests host_import_arc_tests \
   memory_pool_tests memory_golden_tests gpu_runtime_tests gpu_shader_tests gpu_float_tests gpu_opencl_tests gpu_selection_tests gpu_no_device_tests \
   list_tests map_tests string_runtime_tests float_spelling_portable_tests json_runtime_tests \
@@ -105,6 +107,10 @@ C_SRC_memory_arc_tests = runtime/memory_arc_tests.c runtime/memory_arc_layout_te
 # to its ABI out of line so gcov measures the entry points used by programs.
 C_FLAGS_memory_arc_tests = -fno-inline
 C_LIBS_memory_arc_tests = -pthread
+GPU_BUFFER_TEST_SRC = runtime/gpu_runtime.c runtime/gpu_lifetime.c runtime/gpu_map_file.c runtime/gpu_elements.c runtime/gpu_host.c $(TENSOR_READER_SRC) $(FILE_RUNTIME_SRC)
+OWNERSHIP_TEST_CONTAINERS = runtime/list_runtime.c runtime/map_runtime.c runtime/map_runtime_hamt.c
+C_SRC_memory_ownership_tests = runtime/memory_ownership_tests.c runtime/memory_ownership.c $(OWNERSHIP_TEST_CONTAINERS) $(GPU_BUFFER_TEST_SRC)
+C_LIBS_memory_ownership_tests = -pthread
 C_SRC_memory_gc_tests = runtime/memory_gc_tests.c runtime/memory_gc_page_tests.c runtime/memory_gc_thread_tests.c runtime/memory_gc.c
 C_SRC_host_import_gc_tests = runtime/host_import_tests.c runtime/native_bridge.c runtime/native_bridge_lifecycle.c runtime/native_scene.c runtime/string_runtime.c runtime/float_spelling.c runtime/memory_gc.c
 C_SRC_host_import_arc_tests = $(filter-out runtime/memory_gc.c,$(C_SRC_host_import_gc_tests)) runtime/memory_arc.c
@@ -114,14 +120,14 @@ C_LIBS_memory_gc_tests = -pthread
 C_SRC_memory_pool_tests = runtime/memory_pool_tests.c
 # Every tensor-reader suite shares the numeric binary16 conversion.
 TENSOR_READER_SRC = runtime/tensor_file.c runtime/float_spelling.c
-C_SRC_memory_golden_tests = runtime/memory_golden_tests.c runtime/memory_arc.c runtime/gpu_runtime.c runtime/gpu_map_file.c runtime/gpu_elements.c runtime/gpu_host.c $(TENSOR_READER_SRC) $(FILE_RUNTIME_SRC)
+C_SRC_memory_golden_tests = runtime/memory_golden_tests.c runtime/memory_arc.c $(GPU_BUFFER_TEST_SRC)
 C_LIBS_memory_golden_tests = -pthread
 C_FLAGS_memory_golden_tests = $(GPU_DEVICE_FLAGS)
 C_LIBS_memory_golden_tests += $(GPU_DEVICE_LINK) $(GPU_DEVICE_LIBS)
-C_SRC_gpu_runtime_tests = runtime/gpu_runtime_tests.c runtime/gpu_runtime.c runtime/gpu_map_file.c runtime/gpu_elements.c runtime/gpu_host.c $(TENSOR_READER_SRC) $(FILE_RUNTIME_SRC) $(C_TEST_MEMORY_SRC)
+C_SRC_gpu_runtime_tests = runtime/gpu_runtime_tests.c $(GPU_BUFFER_TEST_SRC) $(C_TEST_MEMORY_SRC)
 C_FLAGS_gpu_runtime_tests = $(GPU_DEVICE_FLAGS)
 C_LIBS_gpu_runtime_tests = $(GPU_DEVICE_LINK) $(GPU_DEVICE_LIBS)
-C_SRC_gpu_device_tests = runtime/gpu_device_tests.c runtime/gpu_runtime.c runtime/gpu_map_file.c runtime/gpu_elements.c runtime/gpu_host.c $(TENSOR_READER_SRC) $(FILE_RUNTIME_SRC) $(C_TEST_MEMORY_SRC)
+C_SRC_gpu_device_tests = runtime/gpu_device_tests.c $(GPU_BUFFER_TEST_SRC) $(C_TEST_MEMORY_SRC)
 C_FLAGS_gpu_device_tests = $(GPU_DEVICE_FLAGS)
 C_LIBS_gpu_device_tests = $(GPU_DEVICE_LINK) $(GPU_DEVICE_LIBS)
 C_SRC_gpu_shader_tests = runtime/gpu_shader_tests.c
@@ -131,7 +137,7 @@ C_FLAGS_gpu_float_tests = -ffp-contract=off
 C_SRC_gpu_opencl_tests = runtime/gpu_opencl_tests.c runtime/gpu_opencl.c $(FILE_RUNTIME_SRC) $(C_TEST_MEMORY_SRC)
 C_FLAGS_gpu_opencl_tests = -DOSPREY_GPU_TESTING=1
 C_LIBS_gpu_opencl_tests = -pthread $(if $(filter Linux,$(UNAME_S)),-ldl)
-C_SRC_gpu_selection_tests = runtime/gpu_selection_tests.c runtime/gpu_runtime_tests.c runtime/gpu_runtime.c runtime/gpu_map_file.c runtime/gpu_elements.c runtime/gpu_host.c $(TENSOR_READER_SRC) $(FILE_RUNTIME_SRC) $(C_TEST_MEMORY_SRC)
+C_SRC_gpu_selection_tests = runtime/gpu_selection_tests.c runtime/gpu_runtime_tests.c $(GPU_BUFFER_TEST_SRC) $(C_TEST_MEMORY_SRC)
 C_FLAGS_gpu_selection_tests = -DOSPREY_GPU_BUFFER_SUITE=1 -DOSPREY_GPU_METAL=1 -DOSPREY_GPU_OPENCL=1
 C_SRC_gpu_no_device_tests = $(C_SRC_gpu_selection_tests)
 C_FLAGS_gpu_no_device_tests = -DOSPREY_GPU_BUFFER_SUITE=1
@@ -149,10 +155,10 @@ C_SRC_float_spelling_portable_tests = $(C_SRC_string_runtime_tests)
 C_FLAGS_float_spelling_portable_tests = -DOSP_FLOAT_SPELLING_PORTABLE
 C_SRC_json_runtime_tests = runtime/json_runtime_tests.c runtime/json_owned_text_tests.c runtime/json_grammar_tests.c runtime/json_runtime.c runtime/json_text.c runtime/json_codec.c runtime/json_codec_tests.c $(FILE_RUNTIME_SRC) $(C_TEST_MEMORY_SRC) runtime/string_runtime.c runtime/float_spelling.c runtime/string_runtime_list.c runtime/list_runtime.c runtime/list_rebuild.c
 C_LIBS_json_runtime_tests = -pthread
-C_SRC_effects_runtime_tests = runtime/effects_runtime_tests.c runtime/effects_runtime.c runtime/effects_coro.c runtime/memory_arc.c runtime/gpu_runtime.c runtime/gpu_map_file.c runtime/gpu_elements.c $(FILE_RUNTIME_SRC) $(PROF_SRC)
+C_SRC_effects_runtime_tests = runtime/effects_runtime_tests.c runtime/effects_runtime.c runtime/effects_coro.c runtime/memory_arc.c runtime/gpu_runtime.c runtime/gpu_lifetime.c runtime/gpu_map_file.c runtime/gpu_elements.c $(FILE_RUNTIME_SRC) $(PROF_SRC)
 C_LIBS_effects_runtime_tests = -pthread
 C_SRC_builtins_runtime_tests = runtime/builtins_runtime_tests.c runtime/builtins_tap_tests.c runtime/random_entropy_tests.c runtime/term_tty_tests.c runtime/ffi_runtime.c runtime/random_runtime.c runtime/term_runtime.c runtime/test_runtime.c
-C_SRC_test_system_runtime = runtime/test_system_runtime.c runtime/test_system_failures.c runtime/system_runtime.c $(FILE_RUNTIME_SRC) $(C_TEST_MEMORY_SRC)
+C_SRC_test_system_runtime = runtime/test_system_runtime.c runtime/test_system_failures.c $(RT_THREADS) $(C_TEST_MEMORY_SRC)
 C_LIBS_test_system_runtime = -pthread
 C_SRC_test_file_runtime = runtime/test_file_runtime.c $(FILE_RUNTIME_SRC) $(C_TEST_MEMORY_SRC)
 C_SRC_tensor_list_tests = runtime/tensor_list_tests.c runtime/tensor_list.c $(TENSOR_READER_SRC) runtime/list_runtime.c runtime/list_rebuild.c $(FILE_RUNTIME_SRC) $(C_TEST_MEMORY_SRC)
@@ -210,7 +216,9 @@ C_SUITE_GC = $(if $(filter-out memory_gc_tests memory_gc_stack_root_tests,$(1)),
 C_SUITE_FLAGS = $(or $(C_PROFILE_$(1)),$(T)) $(C_FLAGS_$(1)) $(4)
 C_SUITE_OBJECT = $(3)-$(basename $(notdir $(2))).o
 C_GC_SHIM_SOURCES = $(patsubst bin/gc/%.o,runtime/%.c,$(filter bin/gc/%,$(FIB_OBJ_GC))) runtime/list_tests.c runtime/list_persistence_tests.c runtime/list_sort_tests.c runtime/map_tests.c runtime/map_bulk_tests.c
-C_SUITE_BUILD = $(foreach src,$(sort $(C_SRC_$(1))),$(CC) $(call C_SUITE_FLAGS,$(1),,,$(4)) $(if $(and $(call C_SUITE_GC,$(1)),$(filter $(src),$(C_GC_SHIM_SOURCES))),-include $(2)runtime/osp_gc_shim.h) -c $(2)$(src) -o $(call C_SUITE_OBJECT,$(1),$(src),$(3)) && ) $(CC) $(foreach src,$(sort $(C_SRC_$(1))),$(call C_SUITE_OBJECT,$(1),$(src),$(3))) $(C_LIBS_$(1)) $(C_TEST_MEMORY_LIBS) -lm $(4) -o $(3)
+C_SUITE_SHIM = $(if $(and $(call C_SUITE_GC,$(1)),$(filter $(2),$(C_GC_SHIM_SOURCES))),-include $(3)runtime/osp_gc_shim.h) \
+  $(if $(and $(filter memory_ownership_tests,$(1)),$(filter $(OWNERSHIP_TEST_CONTAINERS),$(2))),-include $(3)runtime/osp_arc_shim.h)
+C_SUITE_BUILD = $(foreach src,$(sort $(C_SRC_$(1))),$(CC) $(call C_SUITE_FLAGS,$(1),,,$(4)) $(call C_SUITE_SHIM,$(1),$(src),$(2)) -c $(2)$(src) -o $(call C_SUITE_OBJECT,$(1),$(src),$(3)) && ) $(CC) $(foreach src,$(sort $(C_SRC_$(1))),$(call C_SUITE_OBJECT,$(1),$(src),$(3))) $(C_LIBS_$(1)) $(C_TEST_MEMORY_LIBS) -lm $(4) -o $(3)
 C_SUITE_CMD = echo "--- $(1)" && $(call C_SUITE_BUILD,$(1),,bin/$(1)) && ./bin/$(1)
 
 # [FFI-FILE-SERVER-FOLDER] The file server's suite alone, built and run in place: how
@@ -227,7 +235,7 @@ _test_gc_stack_root:
 C_COV_DIR ?= src/toolchain/compiler/bin/cov
 C_BUILD_TARGETS = $(addprefix _build_c_suite_,$(C_TEST_SUITES))
 C_TEST_TARGETS = $(addprefix _test_c_suite_,$(C_TEST_SUITES))
-C_ASAN_SUITES ?= fiber_runtime_tests http_runtime_tests net_runtime_tests websocket_runtime_tests file_server_tests
+C_ASAN_SUITES ?= fiber_runtime_tests http_runtime_tests net_runtime_tests websocket_runtime_tests file_server_tests memory_ownership_tests
 C_ASAN_BUILD_TARGETS = $(addprefix _build_c_asan_,$(C_ASAN_SUITES))
 C_ASAN_TEST_TARGETS = $(addprefix _test_c_asan_,$(C_ASAN_SUITES))
 .PHONY: _build_c_runtime_tests $(C_BUILD_TARGETS) $(C_TEST_TARGETS) $(C_ASAN_BUILD_TARGETS) $(C_ASAN_TEST_TARGETS)
@@ -248,6 +256,7 @@ _test_c_runtime: $(C_TEST_TARGETS) $(C_ASAN_TEST_TARGETS)
 # these suites link cannot find them as roots.
 C_ASAN_OPTIONS = intercept_strstr=0:detect_stack_use_after_return=0
 $(C_ASAN_BUILD_TARGETS): T := $(filter-out -D_FORTIFY_SOURCE=2,$(T))
+_build_c_asan_memory_ownership_tests: T += -DOSP_TEST_POISONED_FREES
 $(C_ASAN_BUILD_TARGETS): _build_c_asan_%: $(GPU_DEVICE_NATIVE)
 	@mkdir -p "$(C_COV_DIR)/$*/asan"
 	@cd "$(C_COV_DIR)/$*/asan" && $(call C_SUITE_BUILD,$*,../../../../,$*,-fsanitize=address -fno-omit-frame-pointer -g) && rm -f -- *.o

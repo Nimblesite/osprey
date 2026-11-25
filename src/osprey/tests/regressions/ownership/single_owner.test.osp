@@ -1,0 +1,604 @@
+// [MEM-OWNERSHIP-STATIC] Every value here has one owner the compiler can
+// prove, so `--memory=ownership` accepts the program and frees every block.
+
+type Point = { x: int, y: int }
+type Shape = Dot { at: Point } | Line { from: Point, to: Point }
+type Box = { text: string }
+type Pair = { left: Box, right: Box }
+type Named = { label: (int) -> string }
+type Fault = DivZero | Overflow { by: int }
+
+effect Note {
+    /// Report `text`; the handler answers how many reports it has seen.
+    hit: fn(string) -> int
+}
+
+/// A file-scope binding hands its value to the module, which every function
+/// then reads.
+let shared = Box { text: "shared${toString(1)}" }
+let sharedNames = ["a${toString(1)}", "b${toString(2)}"]
+let sharedFault = parseInt("nope${toString(1)}")
+
+fn fileFault() = match sharedFault {
+    Success { value } => "parsed${toString(value)}"
+    Error { message } => "fault ${message}"
+}
+
+/// A file-scope `mut` that a handler arm rewrites lives in a cell the entry
+/// owns [MEM-OWNERSHIP-STATIC-BORROWS]: module storage borrows the cell, and
+/// each write moves a fresh value in and frees the one it replaces.
+mut journal = "start${toString(1)}"
+mut entries = 0
+
+let journalRun = {
+    handle Note {
+        hit text => {
+            journal = "${journal};${text}"
+            entries = wrapAdd(entries, 1)
+            entries
+        }
+    }
+    "${toString(perform Note.hit("a${toString(1)}"))}${toString(perform Note.hit("b"))}"
+}
+
+fn journaled() = "journal ${journalRun} ${journal} ${toString(entries)} ${toString(length(journal))}"
+
+fn fileScope(n) = "file scope ${shared.text} ${toString(listLength(sharedNames))} ${toString(n)}"
+
+/// Fresh values go straight to what takes them.
+fn span(shape) = match shape {
+    Dot { at } => at.x
+    Line { from, to } => wrapSub(to.x, from.x)
+}
+
+fn spans() = {
+    let line = Line { from: Point { x: 1, y: 2 }, to: Point { x: 9, y: 4 } }
+    let dot = Dot { at: Point { x: 5, y: 5 } }
+    "spans ${span(line)} ${span(dot)} ${toString(wrapAdd(span(line), span(dot)))}"
+}
+
+fn firstX(points) = match points {
+    [head, ..._] => head.x
+    [] => 0
+}
+
+fn elements() = {
+    let points = [Point { x: 1, y: 2 }, Point { x: 7, y: 4 }, Point { x: 3, y: 9 }]
+    let names = ["a${toString(1)}", "b${toString(2)}"]
+    "elements ${toString(firstX(points))} ${toString(listLength(names))}"
+}
+
+/// A fresh element moves into the list it is added to, and a version derived
+/// at its source's last use takes the source by move [MEM-OWNERSHIP-STATIC-SHARING].
+fn collections() = {
+    let base = listAppend([], "t${toString(1)}")
+    let more = listAppend(base, "t${toString(2)}")
+    let both = listPrepend(listAppend(more, "t${toString(3)}"), "z")
+    let flipped = listReverse(both)
+    let joined = flipped + listAppend([], "tail${toString(4)}")
+    let ages = mapSet(mapSet(Map(), "ann${toString(1)}", 30), "bob", 41)
+    let fewer = mapRemove(mapSet(ages, "cat", 7), "bob")
+    let merged = mapMerge(fewer, mapSet(Map(), "dan", 2))
+    "collections ${toString(listLength(joined))} ${joined[0] ?: "-"} ${joined[4] ?: "-"} ${toString(length(merged))}"
+}
+
+/// A binding read once, and never again, gives its value to what takes it.
+fn build(n) = {
+    let left = Box { text: "l${toString(n)}" }
+    let right = Box { text: "r${toString(n)}" }
+    Pair { left: left, right: right }
+}
+
+fn lastUses() = {
+    let made = Box { text: "a${toString(1)}" }
+    let again = made
+    let boxes = [again, Box { text: "b" }]
+    let pair = build(7)
+    "last uses ${pair.left.text}${pair.right.text}${toString(listLength(boxes))}"
+}
+
+/// A binding one arm of a `match` takes is given up on that path and released
+/// on the others.
+fn pick(n) = {
+    let made = Box { text: "made${toString(n)}" }
+    match n {
+        0 => made
+        _ => Box { text: "other${toString(n)}" }
+    }
+}
+
+fn wrapped(n) = {
+    let made = Box { text: "made${toString(n)}" }
+    let pair = match n {
+        0 => Pair { left: made, right: Box { text: "right" } }
+        _ => Pair { left: Box { text: "left" }, right: Box { text: "other${toString(n)}" } }
+    }
+    "${pair.left.text}+${pair.right.text}"
+}
+
+fn paths() = "paths ${pick(0).text} ${pick(3).text} ${wrapped(0)} ${wrapped(5)}"
+
+/// A function that can return its parameter takes ownership of it: the caller
+/// gives a fresh value or a binding at its last use, and gets one value back.
+fn collect(n, acc) = match n {
+    0 => acc
+    _ => collect(wrapSub(n, 1), listAppend(acc, "t${toString(n)}"))
+}
+
+fn keep(box) = box
+
+fn choose(box, n) = match n {
+    0 => box
+    _ => Box { text: "none${toString(n)}" }
+}
+
+/// A function that stores its parameter in the value it builds, or derives a
+/// new version of a collection from it, owns that parameter too.
+fn pairUp(left, right) = Pair { left: left, right: right }
+
+fn grown(names, n) = listAppend(names, "g${toString(wrapAdd(n, 1))}")
+
+fn renamed(ages, n) = mapSet(ages, "k${toString(n)}", n)
+
+/// A generic function owns its parameters by the same rule, whatever type it
+/// is called at, and a list literal given straight to one is moved.
+fn grow(xs, x) = listAppend(xs, x)
+fn growWhen(xs, x, enabled) = if enabled { listAppend(xs, x) } else { xs }
+
+fn gather(n, acc) = match n {
+    0 => acc
+    _ => gather(wrapSub(n, 1), listAppend(acc, n))
+}
+
+fn generics() = {
+    let words = grow(grow(["a${toString(1)}"], "b${toString(2)}"), "c${toString(3)}")
+    let numbers = growWhen(growWhen(grow([1], 2), 3, true), 4, false)
+    let counted = gather(3, [])
+    let turned = listReverse(["r${toString(1)}", "r${toString(2)}"])
+    "generics ${toString(listLength(words))} ${toString(listLength(numbers))} ${toString(listLength(counted))} ${toString(listLength(turned))}"
+}
+
+fn owned() = {
+    let tags = collect(3, [])
+    let made = Box { text: "a${toString(1)}" }
+    let kept = keep(made)
+    let chosen = choose(kept, 0)
+    let other = choose(Box { text: "b${toString(2)}" }, 4)
+    let pair = pairUp(Box { text: "p${toString(3)}" }, other)
+    let longer = grown(grown(tags, 4), 5)
+    let ages = renamed(renamed(Map(), 1), 2)
+    "owned ${toString(listLength(longer))} ${chosen.text} ${pair.left.text}${pair.right.text} ${toString(mapLength(ages))}"
+}
+
+/// An arm that yields a literal yields no reference, so it joins an arm that
+/// yields a new value without either being counted.
+fn label(box, n) = {
+    let shown = match n {
+        0 => "none"
+        _ => "has ${box.text} x${toString(n)}"
+    }
+    "${shown}!"
+}
+
+fn literals() = {
+    let made = Box { text: "made${toString(1)}" }
+    "literals ${label(made, 0)} ${label(made, 2)}"
+}
+
+/// An Error owns its message once and joins a Success without a copy; a
+/// variant with no fields is one static value.
+fn find(n) = match n {
+    0 => Error { message: "no ${toString(n)}" }
+    _ => Success { value: n }
+}
+
+fn found(outcome) = match outcome {
+    Success { value } => "found ${toString(value)}"
+    Error { message } => "missing: ${message}"
+}
+
+fn divide(a, b) = match b {
+    0 => Error { message: DivZero }
+    _ => Success { value: wrapAdd(a, b) }
+}
+
+fn divided(outcome) = match outcome {
+    Success { value } => "ok ${toString(value)}"
+    Error => "bad"
+}
+
+fn renderErased(x: any) = toString(x)
+fn renderedTwice(n) = {
+    let erased: any = "borrowed${toString(n)}"
+    let first = renderErased(erased)
+    "${first}|${renderErased(erased)}"
+}
+
+fn errors() = "errors ${found(find(0))}, ${found(find(4))}, ${divided(divide(6, 0))}, ${divided(divide(6, 1))}"
+
+/// A closure takes what it captures when the capture is that binding's last use.
+fn apply(f, n) = f(n)
+
+fn captures() = {
+    let made = Box { text: "a${toString(1)}" }
+    let suffix = "z${toString(2)}"
+    let named = Named { label: |n| => "${made.text}${toString(n)}" }
+    "captures ${named.label(3)}${apply(|n| => "${suffix}${toString(n)}", 4)}"
+}
+
+/// A closure passed straight to a function borrows what it captures: the
+/// captured binding is still read afterwards.
+fn twice(f, n) = "${f(n)}${f(wrapAdd(n, 1))}"
+
+fn lends() = {
+    let made = Box { text: "made${toString(1)}" }
+    let first = apply(|n| => "${made.text}${toString(n)}", 2)
+    let noise = [churn(1), churn(2)]
+    let second = twice(|n| => "${made.text}${toString(n)}", 3)
+    "lends ${first} ${second} ${made.text} ${toString(listLength(noise))}"
+}
+
+/// A list written as an argument holds its elements without owning them, and
+/// so do the closures in it: every binding named there is still read afterwards.
+fn runAll(checks) = match checks {
+    [] => 0
+    [check, ...rest] => wrapAdd(match check() {
+            true => 1
+            false => 0
+        }, runAll(rest))
+}
+
+fn longest(boxes) = match boxes {
+    [] => 0
+    [box, ...rest] => match length(box.text) > longest(rest) {
+        true => length(box.text)
+        false => longest(rest)
+    }
+}
+
+fn lentLists() = {
+    let made = Box { text: "made${toString(1)}" }
+    let other = Box { text: "other${toString(22)}" }
+    let passed = runAll([|| => made.text == "made1", || => other.text == "nope", || => made.text != other.text])
+    let size = longest([made, other, Box { text: churn(3) }])
+    /// A list literal bound to a name lends too when a binding it holds is read
+    /// again: read, indexed, walked, passed on and held in a record, never owned.
+    let both = [made, other]
+    let texts = [made.text, other.text]
+    let second = both[1] ?: made
+    let walked = foldList(both, "", fn(acc, box) => "${acc}${box.text}")
+    let held = Named { label: fn(i) => "${toString(i)}${toString(listLength(both))}" }
+    "lent lists ${toString(passed)} ${toString(size)} ${made.text} ${other.text} ${toString(longest(both))}${toString(listLength(texts))} ${second.text} ${walked} ${held.label(7)} ${texts}"
+}
+
+/// A read from a list or a map lends the element: the collection still owns it,
+/// in range or out of it.
+fn reads() = {
+    let scores = { "ann${toString(1)}": "high${toString(9)}", "bob${toString(2)}": "low${toString(3)}" }
+    let boxes = listAppend(listAppend([], Box { text: "first${toString(1)}" }), Box { text: "second${toString(2)}" })
+    let names = ["a${toString(1)}", "b${toString(2)}"]
+    let ann = mapGet(scores, "ann1") ?: "none"
+    let second = match listGet(boxes, 1) {
+        Success { value } => value.text
+        Error => "missing"
+    }
+    let gone = match listGet(boxes, 7) {
+        Success { value } => value.text
+        Error => "missing"
+    }
+    "reads ${ann} ${mapGet(scores, "zed") ?: "none"} ${second} ${gone} ${names[1] ?: "?"}"
+}
+
+/// A binding that names part of a live value borrows it, and the value it was
+/// read from stays alive until the borrower's own last read.
+fn churn(n) = "x${toString(n)}${toString(n)}${toString(n)}"
+
+fn describe(pair) = {
+    let left = pair.left
+    let text = left.text
+    "${text}/${pair.right.text}"
+}
+
+fn borrows() = {
+    let pair = Pair { left: Box { text: "left${toString(1)}" }, right: Box { text: "right${toString(2)}" } }
+    let shown = describe(pair)
+    let left = pair.left
+    let same = left
+    let noise = [churn(7), churn(8), churn(9)]
+    "borrows ${shown} ${same.text} ${toString(listLength(noise))} ${left.text}"
+}
+
+/// A fold seeded with a fresh list moves the seed into its accumulator, and
+/// each step moves its fresh result there.
+fn folded(n) = range(0, n) |> fold(List(), |acc, i| => listAppend(acc, "f${toString(i)}"))
+
+/// A runtime call that fails gives its Result the reason it recorded; on
+/// success the Result holds no message.
+fn drawn(bound) = match randomBelow(bound) {
+    Success { value } => value < bound ? "drawn" : "out of range"
+    Error { message } => "refused: ${message}"
+}
+
+fn tally(n) = match n {
+    0 => 0
+    _ => wrapAdd(perform Note.hit("note${toString(n)}"), tally(wrapSub(n, 1)))
+}
+
+/// A handler lends the cells and values it captures: they outlive its region.
+/// A value `perform` lends is copied before a cell keeps it.
+fn noted(n) = {
+    mut last = ""
+    mut count = 0
+    let prefix = "seen${toString(n)}"
+    handle Note {
+        hit text => {
+            last = "${prefix}:${text}"
+            count = wrapAdd(count, 1)
+            count
+        }
+    }
+    let sum = tally(n)
+    "noted ${toString(sum)} ${last} ${prefix}"
+}
+
+type Held = { inner: Box, n: int }
+type Nest = { held: Held, tag: string }
+type Link = Solo { at: Box } | Join { from: Box, to: Box }
+
+fn linkText(link) = match link {
+    Solo { at } => "${at.text}"
+    Join { from, to } => "${from.text}-${to.text}"
+}
+
+fn heldText(held: Held) = "${held.inner.text}${toString(held.n)}"
+
+/// A value stored while its owner still reads it is lent
+/// [MEM-OWNERSHIP-STATIC-BORROWS]: the new value frees nothing through that
+/// field and dies before the owner, through a chain of stores and in a loop.
+fn stores(n) = {
+    let made = Box { text: "a${toString(n)}" }
+    let held = Held { inner: made, n: n }
+    let other = Box { text: "b${toString(n)}" }
+    let join = Join { from: made, to: other }
+    let nest = Nest { held: held, tag: "t${toString(n)}" }
+    let twice = Pair { left: made, right: made }
+    let looped = range(0, n) |> fold("", |acc, i| => {
+        let box = Box { text: "i${toString(i)}" }
+        let inner = Held { inner: box, n: i }
+        "${acc}${inner.inner.text}${box.text}"
+    })
+    "stores ${held.inner.text}${made.text} ${linkText(join)} ${linkText(Solo { at: other })} ${heldText(held)} ${nest.held.inner.text}${nest.tag} ${heldText(Held { inner: made, n: 4 })} ${twice.left.text}${twice.right.text} ${looped}"
+}
+
+type Foe = { name: string, box: Box, health: int }
+type Verdict = Passed { result: string } | Halted { reason: string, code: int }
+
+fn foe(kind) = Foe { name: "foe${toString(kind)}", box: Box { text: "box${toString(kind)}" }, health: kind }
+
+fn verdict(n) = match n {
+    0 => Halted { reason: "halted${toString(n)}", code: n }
+    _ => Passed { result: "passed${toString(n)}" }
+}
+
+/// Every arm takes its field out of the matched temporary.
+fn told(n) = match verdict(n) {
+    Passed { result } => result
+    Halted { reason } => reason
+}
+
+/// One arm takes a field, the other builds a new value.
+fn detailed(n) = match verdict(n) {
+    Passed { result } => result
+    Halted { reason, code } => "${reason}/${toString(code)}"
+}
+
+fn foeBox(kind) = foe(kind).box
+
+/// A field read out of a value the function made and never named takes the
+/// reference that value held [MEM-OWNERSHIP-STATIC-PATHS]: returned, bound,
+/// through a second field, and out of a `match` on a temporary. The value is
+/// freed without that field; a field read twice is left where it is.
+fn takes(n) = {
+    let name = foe(n).name
+    let box = foeBox(n)
+    let held = Held { inner: box, n: n }
+    let both = match foe(n) {
+        Foe { name, box } => "${name}${box.text}${name}"
+    }
+    "takes ${name} ${foe(n).box.text} ${held.inner.text}${box.text} ${told(0)} ${told(n)} ${detailed(0)} ${detailed(n)} ${both}"
+}
+
+type Runner = { run: (int) -> string }
+
+fn runWith(run: (int) -> string, n) = run(n)
+
+/// A closure that stays in the scope that wrote it lends what it captures
+/// [MEM-OWNERSHIP-STATIC-CLOSURES]: bound to a name, captured by a second
+/// closure, stored in a record, passed to a function, and built in a loop. A
+/// record that holds a lending value written in place lends in turn.
+fn closures(n) = {
+    let box = Box { text: "c${toString(n)}" }
+    let show = fn(i: int) => "${box.text}${toString(i)}"
+    let again = fn(i: int) => "${show(i)}!"
+    let runner = Runner { run: fn(i) => "${box.text}/${toString(i)}" }
+    let nest = Nest { held: Held { inner: box, n: n }, tag: "n${toString(n)}" }
+    let looped = range(0, n) |> fold("", |acc, i| => {
+        let each = fn(j) => "${box.text}${toString(j)}"
+        "${acc}${each(i)}"
+    })
+    "closures ${show(1)} ${runWith(show, 2)} ${again(3)} ${runWith(again, 4)} ${runner.run(5)} ${runWith(runner.run, 6)} ${nest.held.inner.text}${nest.tag} ${looped} ${box.text}"
+}
+
+type Deep = Core { verdict: Verdict } | Shell
+
+/// A function that returns part of a parameter owns that parameter
+/// [MEM-OWNERSHIP-STATIC-PARAMETERS]: it takes the part and frees the rest.
+fn foeName(foe: Foe) = foe.name
+
+fn reasonOf(verdict) = match verdict {
+    Passed { result } => result
+    Halted { reason } => reason
+}
+
+/// A part two patterns deep, beside an arm that builds a value and an arm
+/// that yields a literal.
+fn deepest(deep) = match deep {
+    Core { verdict: Passed { result } } => result
+    Core { verdict: Halted { reason, code } } => "${reason}${toString(code)}"
+    Shell => "shell"
+}
+
+/// The part leaves on one path only; the other path frees the whole value.
+fn nameWhen(foe: Foe, wanted) = match wanted {
+    true => foe.name
+    false => "nobody"
+}
+
+/// Read first, then taken from at its last read.
+fn boxOf(foe: Foe) = {
+    let size = length(foe.name)
+    match size > 4 {
+        true => foe.box
+        false => Box { text: "small${toString(size)}" }
+    }
+}
+
+/// A Result nothing reads again gives up its message, like any other field
+/// [MEM-OWNERSHIP-STATIC-PATHS]; one that is read again keeps it.
+fn missing(n) = match find(n) {
+    Success { value } => "found${toString(value)}"
+    Error { message } => message
+}
+
+fn missingKept(n) = {
+    let outcome = find(n)
+    let size = match outcome {
+        Success { value } => value
+        Error { message } => length(message)
+    }
+    "${toString(size)}/${found(outcome)}"
+}
+
+/// A binding at its last read gives up the field read out of it. A list whose
+/// elements have owners gives way to what is filtered out of it; a list of
+/// plain numbers is filtered while it is still read
+/// [MEM-OWNERSHIP-STATIC-SHARING].
+fn parts(n) = {
+    let kept = foe(n)
+    let named = kept.name
+    let foes = [foe(n), foe(0), foe(wrapAdd(n, 1))]
+    let alive = filterList(foes, fn(each) => each.health > 0)
+    let numbers = [n, 0, wrapAdd(n, 1)]
+    let positive = filterList(numbers, fn(each) => each > 0)
+    let ordered = listSortBy([foe(n), foe(0)], fn(left, right) => wrapSub(left.health, right.health))
+    let keys = mapKeys(mapSet(Map(), "k${toString(n)}", n))
+    let counts = mapSet(Map(), "c${toString(n)}", n)
+    let values = mapValues(counts)
+    "parts ${foeName(foe(n))} ${reasonOf(verdict(0))} ${reasonOf(verdict(n))} ${deepest(Core { verdict: verdict(0) })} ${deepest(Core { verdict: verdict(n) })} ${deepest(Shell)} ${nameWhen(foe(n), true)} ${nameWhen(foe(n), false)} ${boxOf(foe(n)).text} ${boxOf(foe(12345)).text} ${named} ${toString(listLength(alive))} ${toString(listLength(positive))}${toString(listLength(numbers))} ${toString(listLength(ordered))}${toString(listLength(keys))}${toString(listLength(values))}${toString(length(counts))} ${missing(0)} ${missing(n)} ${missingKept(0)} ${missingKept(n)}"
+}
+
+/// A closure that leaves the function owns what it captured
+/// [MEM-OWNERSHIP-STATIC-CLOSURES]: the function owns each captured parameter
+/// and its cell takes them. One closure captures two parameters, one of two
+/// closures is chosen and the other parameter is freed, and a closure nothing
+/// calls is freed with its captures.
+fn joiner(left: Box, right: Box) = fn(i: int) => "${left.text}${toString(i)}${right.text}"
+
+fn pickOne(left: Box, right: Box, first: bool) = match first {
+    true => fn(i: int) => "${left.text}${toString(i)}"
+    false => fn(i: int) => "${right.text}${toString(i)}"
+}
+
+fn tagger(tag: string) = {
+    let mark = "${tag}!"
+    fn(i: int) => "${tag}${mark}${toString(i)}"
+}
+
+fn returned(n) = {
+    let join = joiner(Box { text: "l${toString(n)}" }, Box { text: "r${toString(n)}" })
+    let _unused = joiner(Box { text: "u${toString(n)}" }, Box { text: "v" })
+    let one = pickOne(Box { text: "one${toString(n)}" }, Box { text: "two${toString(n)}" }, n > 2)
+    let tag = tagger("t${toString(n)}")
+    "returned ${join(1)}${join(2)} ${one(3)} ${tag(4)} ${runWith(tagger("w${toString(n)}"), 5)}"
+}
+
+type Wide<T> = { item: T, names: List<string>, label: string, n: int }
+
+/// An updated copy takes the fields it keeps out of a base nothing reads
+/// again [MEM-OWNERSHIP-STATIC-PATHS]: a local, a parameter the function then
+/// owns, a generic record and a chain of updates. The base is freed without
+/// the fields it gave; the fields it replaced are freed with it.
+fn relabel(wide: Wide<Box>, label) = wide { label: label }
+
+fn wide(n) = Wide { item: Box { text: "w${toString(n)}" }, names: ["n${toString(n)}"], label: "old${toString(n)}", n: n }
+
+fn updates(n) = {
+    let first = wide(n)
+    let second = first { n: wrapAdd(n, 1) }
+    let third = relabel(second, "new${toString(n)}")
+    let fourth = third { item: Box { text: "x${toString(n)}" }, names: ["y${toString(n)}"] }
+    let last = relabel(relabel(wide(0), "a"), "b${toString(n)}")
+    "updates ${fourth.item.text}${fourth.label}${toString(fourth.n)}${toString(listLength(fourth.names))} ${last.item.text}${last.label}"
+}
+
+/// A join that borrows on one path and makes a value on another borrows
+/// [MEM-OWNERSHIP-STATIC-PATHS]: an element or a made default, a map entry or
+/// a made one, a `match` that yields an element or builds one, a join of
+/// joins, one read straight out of a list the statement made, and one in a
+/// loop. The name keeps what the statement made until its last read.
+fn fallbacks(n) = {
+    let boxes = [Box { text: "in${toString(n)}" }, Box { text: "at${toString(n)}" }]
+    let labels = mapSet(mapSet(Map(), "a", "la${toString(n)}"), "b", "lb")
+    let present = boxes[0] ?: Box { text: "none${toString(n)}" }
+    let absent = boxes[9] ?: Box { text: "made${toString(n)}" }
+    let label = mapGet(labels, "a") ?: "no${toString(n)}"
+    let other = mapGet(labels, "z") ?: "no${toString(n)}"
+    let matched = match boxes[n] {
+        Success { value } => value
+        Error => Box { text: "built${toString(n)}" }
+    }
+    let either = boxes[9] ?: (boxes[1] ?: Box { text: "never" })
+    let fromMade = [Box { text: "tmp${toString(n)}" }][0] ?: Box { text: "x" }
+    let looped = range(0, 3) |> fold("", |acc, i| => {
+        let each = boxes[i] ?: Box { text: "gap${toString(i)}" }
+        "${acc}${each.text}"
+    })
+    "fallbacks ${present.text} ${absent.text} ${label} ${other} ${matched.text} ${either.text} ${fromMade.text} ${looped} ${(boxes[1] ?: Box { text: "y" }).text}${(boxes[5] ?: Box { text: "z${toString(n)}" }).text} ${toString(listLength(boxes))}${toString(length(labels))}"
+}
+
+/// A name that borrows out of a value the statement made keeps that value
+/// until its own last read [MEM-OWNERSHIP-STATIC-BORROWS]: a field the
+/// temporary only lends, and a field it owns beside one it lends.
+fn keeps(n) = {
+    let made = Box { text: "made${toString(n)}" }
+    let got = Pair { left: made, right: Box { text: "r${toString(n)}" } }.left
+    let right = Pair { left: made, right: Box { text: "s${toString(n)}" } }.right
+    "keeps ${got.text} ${right.text} ${made.text}"
+}
+
+/// A Result holds its payload and its message like a record holds a field
+/// [MEM-OWNERSHIP-STATIC-BORROWS]: a binding at its last use moves in, one that
+/// is read again is lent, and a fresh value is owned.
+fn vetted(box: Box, long: bool) = match long {
+    true => Success { value: box }
+    false => Error { message: "short ${box.text}" }
+}
+
+fn verdictOf(outcome: Result<Box, string>) = match outcome {
+    Success { value } => "ok ${value.text}"
+    Error { message } => "err ${message}"
+}
+
+fn results(n) = {
+    let made = Box { text: "b${toString(n)}" }
+    let reason = "why${toString(n)}"
+    let kept = Success { value: made }
+    let fresh = Success { value: Box { text: "fresh${toString(n)}" } }
+    let failed: Result<Box, string> = Error { message: reason }
+    let fallback = failed ?: made
+    "results ${verdictOf(kept)} ${verdictOf(fresh)} ${verdictOf(failed)} ${fallback.text} ${made.text}${reason} ${verdictOf(vetted(Box { text: "xyz${toString(n)}" }, true))} ${verdictOf(vetted(Box { text: "x" }, false))}"
+}
+
+fn effects() = "${toString(listLength(folded(4)))} ${toString(listLength(folded(0)))} ${drawn(10)} ${drawn(0)} ${noted(3)}"
+
+print("${fileScope(1)} ${shared.text}\n${spans()}\n${elements()}\n${collections()}\n${lastUses()}\n${paths()}\n${owned()}\n${generics()}\n${literals()}\n${errors()} ${renderedTwice(7)}\n${captures()}\n${lends()}\n${lentLists()}\n${reads()}\n${borrows()}\n${effects()}\n${stores(2)}\n${takes(3)}\n${closures(2)}\n${parts(3)}\n${returned(2)}\n${returned(3)}\n${updates(5)}\n${fallbacks(1)}\n${fallbacks(4)}\n${keeps(6)}\n${journaled()} ${fileFault()}\n${results(8)}")

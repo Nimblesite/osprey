@@ -140,12 +140,9 @@ fn loop() -> Unit ![Out, Term, Net, Model] = {
 }
 
 fn dispatch(key: string) -> Unit ![Out, Term, Net, Model] = match key {
-    "q"     => endApp()
-    "Esc"   => endApp()
-    "j"     => step(1)
-    "Down"  => step(1)
-    "k"     => step(dec(0))
-    "Up"    => step(dec(0))
+    "q" | "Esc"   => endApp()
+    "j" | "Down"  => step(1)
+    "k" | "Up"    => step(dec(0))
     "r"     => continueAfter(refresh())
     "a"     => continueAfter(addTask())
     _       => loop()

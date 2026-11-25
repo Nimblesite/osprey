@@ -28,15 +28,11 @@ module Spectra
 
     collected (samples, rate, size, hop) = foldList (starts (length samples, size, hop), Success(value = []), \(outcome, index) => Outcomes::carried (outcome, \done => Outcomes::carried (framed (samples, rate, size, satMul index hop), \bands => Success(value = listAppend done bands))))
 
-    higher (high, value) = match value > high
-        true => value
-        false => high
-
     // Band `band` across frames: mean and loudest power, as levels.
     summary (frames, size, band, centre) =
         powers = mapList (frames, \bands => listGet bands band ?: 0.0)
         total = foldList (powers, 0.0, \(sum, power) => sum + power)
-        SpectrumBand(centre = centre, level = SpectralMath::bandLevel (total, toFloat (length powers), toFloat size), peak = SpectralMath::bandLevel (foldList (powers, 0.0, higher), 1.0, toFloat size))
+        SpectrumBand(centre = centre, level = SpectralMath::bandLevel (total, toFloat (length powers), toFloat size), peak = SpectralMath::bandLevel (foldList (powers, 0.0, \(high, value) => max high value), 1.0, toFloat size))
 
     valid (rate, size, hop) = Ffts::valid size && hop >= 1 && rate >= 8000.0 && rate <= 384000.0
 

@@ -1,11 +1,4 @@
 namespace registry;
-import registry::Checked
-import registry::Bytes
-import registry::Digests
-import registry::Paths
-import registry::Order
-import registry::Sha256
-import registry::Domains
 
 /// The canonical source envelope hashed into `SourceDigest`:
 /// `entry = u32be(length(path)) || path || 0x00 || u64be(length(file)) || SHA256(file)`
@@ -79,11 +72,11 @@ module Source {
     export fn entryOf(path, content) = Entry { path: path, byteLength: length(content), digest: Sha256::digest(content) }
 
     /// `SourceDigest`: the `sha256:` envelope of the tree envelope, or a reason code.
-    export fn digest(entries) = Checked::andThen(envelope(entries), fn(value) => Success { value: Digests::format(Sha256::digest(value)) })
+    export fn digest(entries) = andThen(envelope(entries), fn(value) => Success { value: Digests::format(Sha256::digest(value)) })
 
     /// The envelope bytes for a validated, sorted, collision-free tree.
     export fn envelope(entries) = match firstCode(entries) {
-        "" => Checked::andThen(sortedUnique(entries), fn(value) => Success { value: encode(value) })
+        "" => andThen(sortedUnique(entries), fn(value) => Success { value: encode(value) })
         code => Error { message: code }
     }
 }

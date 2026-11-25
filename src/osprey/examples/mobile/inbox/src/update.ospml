@@ -2,12 +2,6 @@
 namespace mobile
 
 import bank::Json
-import mobile::Model
-import mobile::Github
-import mobile::Storage
-import mobile::View
-import mobile::Annotations
-import mobile::Text
 
 type InboxUpdate =
     model : InboxModel

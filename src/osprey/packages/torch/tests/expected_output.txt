@@ -303,10 +303,10 @@ ok autograd.mean_axis_sum_axis
 ok autograd.log_softmax
 ok autograd.vjp.primal
 ok autograd.vjp.cotangent
-ok optim.SgdResult
-ok optim.AdamResult
-ok optim.RmspropResult
-ok optim.AdagradResult
+ok optim.StepResult sgd
+ok optim.StepResult adam
+ok optim.StepResult rmsprop
+ok optim.StepResult adagrad
 ok optim.ClipResult
 ok optim.unsupported_norm.-1.0
 ok optim.unsupported_norm.0.0
@@ -346,10 +346,10 @@ ok autograd.mean_axis_sum_axis
 ok autograd.log_softmax
 ok autograd.vjp.primal
 ok autograd.vjp.cotangent
-ok optim.SgdResult
-ok optim.AdamResult
-ok optim.RmspropResult
-ok optim.AdagradResult
+ok optim.StepResult sgd
+ok optim.StepResult adam
+ok optim.StepResult rmsprop
+ok optim.StepResult adagrad
 ok optim.ClipResult
 ok optim.unsupported_norm.-1.0
 ok optim.unsupported_norm.0.0

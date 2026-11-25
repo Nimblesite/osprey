@@ -2,7 +2,6 @@ namespace inboxtests
 
 import bank::Json
 import mobile::App
-import mobile::Model
 
 module Support
     (** One assertion's label, expected and actual value, checked in a case list. *)

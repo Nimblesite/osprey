@@ -6,9 +6,9 @@
 # so `cd` persists; faithful port of the original hardened C recipes.
 _test_runtime_incremental: _runtime
 	@runtime_mtime() { stat -c %Y "$$1" 2>/dev/null || stat -f %m "$$1"; }; \
-	  before="$$(runtime_mtime $(RTB)/libfiber_runtime.a)"; \
+	  before="$$(runtime_mtime $(RTB)/libfiber_runtime_gc.a)"; \
 	  $(MAKE) _runtime >/dev/null; \
-	  after="$$(runtime_mtime $(RTB)/libfiber_runtime.a)"; \
+	  after="$$(runtime_mtime $(RTB)/libfiber_runtime_gc.a)"; \
 	  if [ "$$before" != "$$after" ]; then \
 	    echo "ERROR: unchanged native runtime rebuilt and invalidated the test cache"; \
 	    exit 1; \
@@ -19,7 +19,7 @@ _runtime:
 	@set -e; config_tmp="$(NATIVE_RUNTIME_CONFIG).$$$$"; \
 	  { printf '%s\n' \
 	      "CC=$(CC)" "AR=$(AR)" "A=$(A)" "B=$(B)" "WARN_MAX=$(WARN_MAX)" "GPU_DEVICE_FLAGS=$(GPU_DEVICE_FLAGS)" \
-	      "OSSL=$(OSSL)" "OSPREY_VERSION=$(OSPREY_VERSION)" "FIB_OBJ=$(FIB_OBJ)" "HTTP_OBJ=$(HTTP_OBJ)" \
+	      "OSSL=$(OSSL)" "OSPREY_VERSION=$(OSPREY_VERSION)" "FIB_OBJ_OWNERSHIP=$(FIB_OBJ_OWNERSHIP)" "HTTP_OBJ_OWNERSHIP=$(HTTP_OBJ_OWNERSHIP)" \
 	      "FIB_OBJ_GC=$(FIB_OBJ_GC)" "HTTP_OBJ_GC=$(HTTP_OBJ_GC)" \
 	      "FIB_OBJ_ARC=$(FIB_OBJ_ARC)" "HTTP_OBJ_ARC=$(HTTP_OBJ_ARC)"; \
 	    command -v "$(firstword $(CC))" 2>/dev/null || true; \
@@ -53,9 +53,9 @@ src/toolchain/compiler/bin/gpu_opencl.o: src/toolchain/compiler/runtime/gpu_open
 $(NATIVE_RUNTIME_STAMP): $(NATIVE_RUNTIME_INPUTS) $(NATIVE_RUNTIME_CONFIG) Makefile scripts/make/config.mk scripts/make/runtime.mk $(GPU_DEVICE_NATIVE)
 	@echo "==> building C runtime archives ($(RTB)/lib*_runtime.a)"
 	@cd src/toolchain/compiler && set -e && $(MKDIR) bin lib bin/gc bin/arc && \
-	  $(CC) $(B) runtime/memory_runtime.c       -o bin/memory_runtime.o && \
 	  $(CC) $(B) runtime/memory_gc.c            -o bin/memory_gc.o && \
 	  $(CC) $(B) runtime/memory_arc.c           -o bin/memory_arc.o && \
+	  $(CC) $(B) runtime/memory_ownership.c     -o bin/memory_ownership.o && \
 	  $(CC) $(B) -include runtime/osp_gc_shim.h runtime/list_runtime.c     -o bin/gc/list_runtime.o && \
 	  $(CC) $(B) -include runtime/osp_gc_shim.h runtime/list_rebuild.c     -o bin/gc/list_rebuild.o && \
 	  $(CC) $(B) -include runtime/osp_gc_shim.h runtime/map_runtime.c      -o bin/gc/map_runtime.o && \
@@ -89,6 +89,7 @@ $(NATIVE_RUNTIME_STAMP): $(NATIVE_RUNTIME_INPUTS) $(NATIVE_RUNTIME_CONFIG) Makef
 	  $(CC) $(B) runtime/term_runtime.c         -o bin/term_runtime.o && \
 	  $(CC) $(B) runtime/random_runtime.c       -o bin/random_runtime.o && \
 	  $(CC) $(B) $(GPU_DEVICE_FLAGS) runtime/gpu_runtime.c -o bin/gpu_runtime.o && \
+	  $(CC) $(B) runtime/gpu_lifetime.c         -o bin/gpu_lifetime.o && \
 	  $(CC) $(B) runtime/gpu_map_file.c         -o bin/gpu_map_file.o && \
 	  $(CC) $(B) runtime/gpu_elements.c         -o bin/gpu_elements.o && \
 	  $(CC) $(B) runtime/gpu_host.c             -o bin/gpu_host.o && \
@@ -135,19 +136,15 @@ $(NATIVE_RUNTIME_STAMP): $(NATIVE_RUNTIME_INPUTS) $(NATIVE_RUNTIME_CONFIG) Makef
 	    mv -f "$$stage/$$name" "bin/$$name" && \
 	    mv -f "$$stage/lib-copy" "lib/$$name"; \
 	  } && \
-	  publish_archive libfiber_runtime.a $(FIB_OBJ) && \
-	  publish_archive libhttp_runtime.a $(HTTP_OBJ) && \
 	  publish_archive libfiber_runtime_gc.a $(FIB_OBJ_GC) && \
 	  publish_archive libhttp_runtime_gc.a $(HTTP_OBJ_GC) && \
 	  publish_archive libfiber_runtime_arc.a $(FIB_OBJ_ARC) && \
-	  publish_archive libhttp_runtime_arc.a $(HTTP_OBJ_ARC)
+	  publish_archive libhttp_runtime_arc.a $(HTTP_OBJ_ARC) && \
+	  publish_archive libfiber_runtime_ownership.a $(FIB_OBJ_OWNERSHIP) && \
+	  publish_archive libhttp_runtime_ownership.a $(HTTP_OBJ_OWNERSHIP)
 	@touch $@
 
-# Cross-compile the portable C-runtime subset to a wasm32-wasip1 archive that
-# osprey links for `--target=wasm32`. One shell so `cd` persists. Fails loudly
-# if no WASI sysroot is found. Output: src/toolchain/compiler/{bin,lib}/libosprey_runtime_wasm.a
-# (the `--memory=none` passthrough) and the ARC twin
-# libosprey_runtime_wasm_arc.a that `--memory=arc` links [WASM-TARGET-MEMORY].
+# Build the ARC and ownership WASI archives [WASM-TARGET-MEMORY].
 _runtime_wasm:
 	@if [ -z "$(WASI_SYSROOT)" ]; then \
 	  echo "ERROR: no WASI sysroot found. Install it with 'brew install lld wasi-libc'"; \
@@ -155,16 +152,14 @@ _runtime_wasm:
 	  exit 1; fi
 	@echo "==> building wasm runtime archives ($(WASM_TARGET), sysroot $(WASI_SYSROOT))"
 	@cd src/toolchain/compiler && set -e && $(MKDIR) bin/wasm bin/wasm/arc lib && \
-	  for u in $(WASM_RT_SRC); do \
-	    $(WASM_CC) $(WASM_CFLAGS) runtime/$$u.c -o bin/wasm/$$u.o || exit 1; \
-	  done && \
-	  $(WASM_AR) rcs bin/libosprey_runtime_wasm.a $(addprefix bin/wasm/,$(addsuffix .o,$(WASM_RT_SRC))) && \
 	  for u in $(WASM_ARC_RT_SRC); do \
 	    shim=""; case " $(WASM_ARC_SHIM_SRC) " in *" $$u "*) shim="-include runtime/osp_arc_shim.h";; esac; \
 	    $(WASM_CC) $(WASM_CFLAGS) $$shim runtime/$$u.c -o bin/wasm/arc/$$u.o || exit 1; \
 	  done && \
 	  $(WASM_AR) rcs bin/$(WASM_ARC_LIB) $(addprefix bin/wasm/arc/,$(addsuffix .o,$(WASM_ARC_RT_SRC))) && \
-	  cp bin/libosprey_runtime_wasm.a bin/$(WASM_ARC_LIB) lib/
+	  $(WASM_CC) $(WASM_CFLAGS) runtime/memory_ownership.c -o bin/wasm/arc/memory_ownership.o && \
+	  $(WASM_AR) rcs bin/$(WASM_OWNERSHIP_LIB) $(addprefix bin/wasm/arc/,$(addsuffix .o,$(WASM_OWNERSHIP_RT_SRC))) && \
+	  cp bin/$(WASM_ARC_LIB) bin/$(WASM_OWNERSHIP_LIB) lib/
 
 # The runtime bitcode `osprey hunt` links under KLEE [SYMEX-RUNTIME-BITCODE]:
 # the portable runtime subset plus the mock C library, compiled with KLEE's

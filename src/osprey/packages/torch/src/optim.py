@@ -15,8 +15,7 @@ from numpy import Array, Errors
 from torch import Tensor
 
 __all__ = [
-    "SgdState", "SgdResult", "AdamState", "AdamResult", "RmspropState",
-    "RmspropResult", "AdagradState", "AdagradResult", "ClipResult", "sgd",
+    "SgdState", "StepResult", "AdamState", "RmspropState", "AdagradState", "ClipResult", "sgd",
     "adam", "adamw", "rmsprop", "adagrad", "clip_grad_norm_", "clip_grad_value_",
 ]
 
@@ -24,10 +23,10 @@ class SgdState[B]:
     """SGD's momentum buffer per parameter, empty until the first step."""
     buffers: list[Array.NDArray[B]]
 
-class SgdResult[B]:
-    """An SGD step: the updated parameters and the new state."""
+class StepResult[B, S]:
+    """An optimizer step: the updated parameters and the optimizer's new state."""
     params: list[Array.NDArray[B]]
-    state: SgdState[B]
+    state: S
 
 class AdamState[B]:
     """Adam's moments per parameter, the amsgrad maximum, and the step count
@@ -37,11 +36,6 @@ class AdamState[B]:
     max_exp_avg_sq: list[Array.NDArray[B]]
     step: int
 
-class AdamResult[B]:
-    """An Adam/AdamW step: the updated parameters and the new state."""
-    params: list[Array.NDArray[B]]
-    state: AdamState[B]
-
 class RmspropState[B]:
     """RMSprop's running square average, centered gradient average and
     momentum buffer, empty until the first step."""
@@ -49,20 +43,10 @@ class RmspropState[B]:
     grad_avg: list[Array.NDArray[B]]
     buffers: list[Array.NDArray[B]]
 
-class RmspropResult[B]:
-    """An RMSprop step: the updated parameters and the new state."""
-    params: list[Array.NDArray[B]]
-    state: RmspropState[B]
-
 class AdagradState[B]:
     """Adagrad's running gradient-square sum, empty until the first step."""
     sum: list[Array.NDArray[B]]
     step: int
-
-class AdagradResult[B]:
-    """An Adagrad step: the updated parameters and the new state."""
-    params: list[Array.NDArray[B]]
-    state: AdagradState[B]
 
 class ClipResult[B]:
     """clip_grad_norm_'s result: the (possibly scaled) gradients and the total
@@ -111,7 +95,7 @@ def sgd(params, grads, state, lr, momentum, dampening, nesterov, weight_decay):
     """torch.optim.SGD.step: weight decay is L2 (`grad += wd * p`), momentum
     updates a buffer `buf = momentum * buf + (1 - dampening) * grad`, Nesterov
     adds `momentum * buf` on top, and `p -= lr * d`."""
-    start = SgdResult(params=[], state=SgdState(buffers=[]))
+    start = StepResult(params=[], state=SgdState(buffers=[]))
     return fold(range(len(params)), start, lambda a, i: sgd_param(a, i, params, grads, state, lr, momentum, dampening, nesterov, weight_decay))
 
 def sgd_param(a, i, params, grads, state, lr, momentum, dampening, nesterov, weight_decay):
@@ -120,11 +104,11 @@ def sgd_param(a, i, params, grads, state, lr, momentum, dampening, nesterov, wei
     p = param_at(params, i)
     d = grad_at(grads, p, i, weight_decay)
     if momentum == 0.0:
-        return SgdResult(params=listAppend(a.params, descend(p, d, lr)), state=a.state)
+        return StepResult(params=listAppend(a.params, descend(p, d, lr)), state=a.state)
     else:
         buf = d if len(state.buffers) == 0 else Array.add(Tensor.scale(unwrap_or(listGet(state.buffers, i), d), momentum), Tensor.scale(d, Tensor.one_minus(dampening)))
         d2 = Array.add(d, Tensor.scale(buf, momentum)) if nesterov else buf
-        return SgdResult(params=listAppend(a.params, descend(p, d2, lr)), state=SgdState(buffers=listAppend(a.state.buffers, buf)))
+        return StepResult(params=listAppend(a.params, descend(p, d2, lr)), state=SgdState(buffers=listAppend(a.state.buffers, buf)))
 
 def adam(params, grads, state, lr, beta1, beta2, eps, weight_decay, amsgrad):
     """torch.optim.Adam.step: L2 weight decay on the gradient, moment decay,
@@ -137,7 +121,7 @@ def adam_step(params, grads, state, lr, beta1, beta2, eps, weight_decay, amsgrad
     bc1 = Tensor.one_minus(Tensor.pow_f(beta1, t))
     bc2 = Tensor.one_minus(Tensor.pow_f(beta2, t))
     step_size = lr / bc1
-    start = AdamResult(params=[], state=AdamState(exp_avg=[], exp_avg_sq=[], max_exp_avg_sq=[], step=t))
+    start = StepResult(params=[], state=AdamState(exp_avg=[], exp_avg_sq=[], max_exp_avg_sq=[], step=t))
     return fold(range(len(params)), start, lambda a, i: adam_param(a, i, params, grads, state, beta1, beta2, eps, weight_decay, amsgrad, step_size, bc2, lr, decoupled))
 
 def adam_param(a, i, params, grads, state, beta1, beta2, eps, weight_decay, amsgrad, step_size, bc2, lr, decoupled):
@@ -152,7 +136,7 @@ def adam_param(a, i, params, grads, state, beta1, beta2, eps, weight_decay, amsg
     base = Tensor.scale(p, 1.0 - lr * weight_decay) if decoupled else p
     p2 = descend(base, Array.divide(m, denom), step_size)
     prev = a.state
-    return AdamResult(params=listAppend(a.params, p2), state=AdamState(exp_avg=listAppend(prev.exp_avg, m), exp_avg_sq=listAppend(prev.exp_avg_sq, s), max_exp_avg_sq=append_if(amsgrad, prev.max_exp_avg_sq, mx), step=prev.step))
+    return StepResult(params=listAppend(a.params, p2), state=AdamState(exp_avg=listAppend(prev.exp_avg, m), exp_avg_sq=listAppend(prev.exp_avg_sq, s), max_exp_avg_sq=append_if(amsgrad, prev.max_exp_avg_sq, mx), step=prev.step))
 
 def adamw(params, grads, state, lr, beta1, beta2, eps, weight_decay, amsgrad):
     """torch.optim.AdamW.step: decoupled weight decay — `p *= 1 - lr * wd`
@@ -162,7 +146,7 @@ def adamw(params, grads, state, lr, beta1, beta2, eps, weight_decay, amsgrad):
 def rmsprop(params, grads, state, lr, alpha, eps, weight_decay, momentum, centered):
     """torch.optim.RMSprop.step: running square average `alpha * sq + (1-alpha)
     * g^2`, optional centered variance, optional momentum, L2 weight decay."""
-    start = RmspropResult(params=[], state=RmspropState(square_avg=[], grad_avg=[], buffers=[]))
+    start = StepResult(params=[], state=RmspropState(square_avg=[], grad_avg=[], buffers=[]))
     return fold(range(len(params)), start, lambda a, i: rmsprop_param(a, i, params, grads, state, lr, alpha, eps, weight_decay, momentum, centered))
 
 def rmsprop_param(a, i, params, grads, state, lr, alpha, eps, weight_decay, momentum, centered):
@@ -177,14 +161,14 @@ def rmsprop_param(a, i, params, grads, state, lr, alpha, eps, weight_decay, mome
     buf = Array.add(Tensor.scale(buf0, momentum), Array.divide(g, avg)) if moving else buf0
     p2 = descend(p, buf, lr) if moving else descend(p, Array.divide(g, avg), lr)
     prev = a.state
-    return RmspropResult(params=listAppend(a.params, p2), state=RmspropState(square_avg=listAppend(prev.square_avg, sq), grad_avg=append_if(centered, prev.grad_avg, ga), buffers=append_if(moving, prev.buffers, buf)))
+    return StepResult(params=listAppend(a.params, p2), state=RmspropState(square_avg=listAppend(prev.square_avg, sq), grad_avg=append_if(centered, prev.grad_avg, ga), buffers=append_if(moving, prev.buffers, buf)))
 
 def adagrad(params, grads, state, lr, lr_decay, weight_decay, eps):
     """torch.optim.Adagrad.step: running gradient-square sum, and
     `p -= (lr / (1 + (step - 1) * lr_decay)) * (g / (sqrt(sum) + eps))`."""
     t = state.step + 1
     clr = lr / (1.0 + toFloat(t - 1) * lr_decay)
-    start = AdagradResult(params=[], state=AdagradState(sum=[], step=t))
+    start = StepResult(params=[], state=AdagradState(sum=[], step=t))
     return fold(range(len(params)), start, lambda a, i: adagrad_param(a, i, params, grads, state, clr, weight_decay, eps))
 
 def adagrad_param(a, i, params, grads, state, clr, weight_decay, eps):
@@ -194,7 +178,7 @@ def adagrad_param(a, i, params, grads, state, clr, weight_decay, eps):
     s = Array.add(moment(state.sum, p, i), square(g))
     std = sqrt_eps(s, eps)
     p2 = descend(p, Array.divide(g, std), clr)
-    return AdagradResult(params=listAppend(a.params, p2), state=AdagradState(sum=listAppend(a.state.sum, s), step=a.state.step))
+    return StepResult(params=listAppend(a.params, p2), state=AdagradState(sum=listAppend(a.state.sum, s), step=a.state.step))
 
 def clip_grad_norm_(grads, max_norm, norm_type):
     """torch.nn.utils.clip_grad_norm_: scale every gradient by

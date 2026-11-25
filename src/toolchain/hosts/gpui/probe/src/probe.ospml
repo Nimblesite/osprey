@@ -82,4 +82,4 @@ module App
     export theme () = ui::Theme(tokens = [ui::Token(tokenName = "accent", tokenLight = "#2563EB", tokenDark = "#60A5FA"), ui::Token(tokenName = "background", tokenLight = "#FFFFFF", tokenDark = "#1E1E1E"), ui::Token(tokenName = "text", tokenLight = "#111111", tokenDark = "#EEEEEE")], spacing = [4, 8, 12, 20, 28, 36], feedback = 120, settle = 220)
 
     (** The probe as its boundary runs it. *)
-    export program () = ui::Program(programInit = initial, programUpdate = update, programRender = regions, programTheme = \_ => theme ())
+    export program () = ui::Surfaces::themed (initial, update, regions, theme ())

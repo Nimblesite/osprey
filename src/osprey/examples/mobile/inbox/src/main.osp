@@ -1,8 +1,6 @@
 // Implements [MOBILE-REACTIVE-HOST]: the same compiled app drives both hosts.
 namespace mobile;
 
-import mobile::Model
-import mobile::App
 
 fn start() = App::envelope(App::initial())
 fn dispatch(model, event) = App::envelope(App::dispatch(Model::decode(model))(event))

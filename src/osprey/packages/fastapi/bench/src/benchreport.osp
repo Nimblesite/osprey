@@ -49,12 +49,21 @@ fn then(result, next) = match result {
 }
 
 /// Decodes every element, or fails with the first element's error.
-fn collectDecode(values, decode) = foldList(values, Success { value: List() }, fn(acc, item) =>
-    then(acc, fn(kept) => then(decode(item), fn(one) => Success { value: listAppend(kept, one) })))
+fn collectDecode(values, decode) = {
+    use acc, item <- foldList(values, Success { value: List() })
+    use kept <- then(acc)
+    use one <- then(decode(item))
+    Success { value: listAppend(kept, one) }
+}
 
 /// Threads four decoded fields into one record constructor.
-fn then4(first, second, third, fourth, build) = then(first, fn(a) => then(second, fn(b) =>
-    then(third, fn(c) => then(fourth, fn(d) => Success { value: build(a, b, c, d) }))))
+fn then4(first, second, third, fourth, build) = {
+    use a <- then(first)
+    use b <- then(second)
+    use c <- then(third)
+    use d <- then(fourth)
+    Success { value: build(a, b, c, d) }
+}
 
 // --- edge: results.json -> Report — the only code that touches Json ---------
 
@@ -65,18 +74,22 @@ fn decodeReport(source) = match jsonDecode(source) {
             Success { value: Report { meta: meta, runtimes: runtimes } }))
 }
 
-fn decodeMeta(doc) = then(fieldAt(doc, "metadata"), fn(m) =>
-    then(stringAt(m, "recorded_utc"), fn(recordedUtc) =>
-        then(decodeRefs(m), fn(refs) =>
-            then(decodeCounts(m), fn(counts) =>
-                then(decodeNotes(m), fn(notes) =>
-                    Success { value: Meta { recordedUtc: recordedUtc, refs: refs, counts: counts, notes: notes } })))))
+fn decodeMeta(doc) = {
+    use m <- then(fieldAt(doc, "metadata"))
+    use recordedUtc <- then(stringAt(m, "recorded_utc"))
+    use refs <- then(decodeRefs(m))
+    use counts <- then(decodeCounts(m))
+    use notes <- then(decodeNotes(m))
+    Success { value: Meta { recordedUtc: recordedUtc, refs: refs, counts: counts, notes: notes } }
+}
 
-fn decodeRefs(m) = then(fieldAt(m, "reference"), fn(ref) =>
-    then(stringAt(ref, "python"), fn(python) =>
-        then(stringAt(ref, "fastapi"), fn(fastapiVersion) =>
-            then(stringAt(ref, "uvicorn"), fn(uvicorn) =>
-                Success { value: Refs { python: python, fastapiVersion: fastapiVersion, uvicorn: uvicorn } }))))
+fn decodeRefs(m) = {
+    use ref <- then(fieldAt(m, "reference"))
+    use python <- then(stringAt(ref, "python"))
+    use fastapiVersion <- then(stringAt(ref, "fastapi"))
+    use uvicorn <- then(stringAt(ref, "uvicorn"))
+    Success { value: Refs { python: python, fastapiVersion: fastapiVersion, uvicorn: uvicorn } }
+}
 
 fn decodeCounts(m) = then4(intAt(m, "workers"), intAt(m, "samples"), intAt(m, "trials"), intAt(m, "warmup"),
     fn(workers, samples, trials, warmup) => Counts { workers: workers, samples: samples, trials: trials, warmup: warmup })
@@ -96,13 +109,15 @@ fn decodeRuntime(json) = then(stringAt(json, "runtime"), fn(key) =>
             _ => Error { message: "workloads of ${key} is not an array" }
 }))
 
-fn decodeWorkload(json) = then(stringAt(json, "name"), fn(name) =>
-    then(intAt(json, "input_permutations"), fn(permutations) =>
-        then(floatAt(json, "median_requests_per_second"), fn(rps) =>
-            then(floatAt(json, "median_latency_ms"), fn(latencyMs) =>
-                then(floatAt(json, "max_sampled_rss_mib"), fn(rssMib) =>
-                    then(medianP95(json), fn(p95Ms) =>
-                        Success { value: Workload { name: name, permutations: permutations, rps: rps, latencyMs: latencyMs, p95Ms: p95Ms, rssMib: rssMib } }))))))
+fn decodeWorkload(json) = {
+    use name <- then(stringAt(json, "name"))
+    use permutations <- then(intAt(json, "input_permutations"))
+    use rps <- then(floatAt(json, "median_requests_per_second"))
+    use latencyMs <- then(floatAt(json, "median_latency_ms"))
+    use rssMib <- then(floatAt(json, "max_sampled_rss_mib"))
+    use p95Ms <- then(medianP95(json))
+    Success { value: Workload { name: name, permutations: permutations, rps: rps, latencyMs: latencyMs, p95Ms: p95Ms, rssMib: rssMib } }
+}
 
 /// The median of every trial's p95, so tail latency is one honest number.
 fn medianP95(json) = then(fieldAt(json, "trials"), fn(items) => match items {

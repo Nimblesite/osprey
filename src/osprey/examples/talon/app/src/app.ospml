@@ -92,4 +92,4 @@ module App
     export regions (_, store, frames, _) = [Keyed::region (frames, Surfaces::rootKey, [], \() => root store)]
 
     (** Talon Bank as its boundary runs it. *)
-    export program () = ui::Program(programInit = initial, programUpdate = update, programRender = regions, programTheme = \_ => Look::theme ())
+    export program () = ui::Surfaces::themed (initial, update, regions, Look::theme ())

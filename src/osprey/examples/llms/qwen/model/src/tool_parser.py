@@ -235,6 +235,15 @@ def holding(state, body, text, think, calls):
     return waiting(update(state, buffer=body), text, think, calls)
 
 
+def hold_or_expect(state, body, text, think, calls, tags):
+    """Hold the rest of the buffer when one of `tags` may still be coming, else
+    fail naming the tags this position expected."""
+    if foldList(tags, False, lambda found, tag: found or is_prefix(body, tag)):
+        return holding(state, body, text, think, calls)
+    else:
+        return Error(message=ToolSchema.violation("format", "call", f"expected {join(tags, ' or ')}"))
+
+
 def entered(state, body, tag, stage, text, think, calls):
     """Consume the matched `tag`, leaving `body` after it in `stage`."""
     return consume(update(state, stage=stage, buffer=drop(body, len(tag))), text, think, calls)
@@ -245,10 +254,8 @@ def open_function(state, text, think, calls):
     body = skip_space(state.buffer)
     if startsWith(body, FUNCTION_OPEN):
         return entered(state, body, FUNCTION_OPEN, "name", text, think, calls)
-    elif is_prefix(body, FUNCTION_OPEN):
-        return holding(state, body, text, think, calls)
     else:
-        return Error(message=ToolSchema.violation("format", "call", f"expected {FUNCTION_OPEN}"))
+        return hold_or_expect(state, body, text, think, calls, [FUNCTION_OPEN])
 
 
 def read_before_gt(state, text, think, calls, next_state, unterminated):
@@ -286,10 +293,8 @@ def read_params(state, text, think, calls):
         return entered(state, body, PARAMETER_OPEN, "pname", text, think, calls)
     elif startsWith(body, FUNCTION_CLOSE):
         return entered(state, body, FUNCTION_CLOSE, "end", text, think, calls)
-    elif is_prefix(body, PARAMETER_OPEN) or is_prefix(body, FUNCTION_CLOSE):
-        return holding(state, body, text, think, calls)
     else:
-        return Error(message=ToolSchema.violation("format", "call", f"expected {PARAMETER_OPEN} or {FUNCTION_CLOSE}"))
+        return hold_or_expect(state, body, text, think, calls, [PARAMETER_OPEN, FUNCTION_CLOSE])
 
 
 def read_parameter_name(state, text, think, calls):
@@ -326,10 +331,8 @@ def close_call(state, text, think, calls):
     if startsWith(body, CALL_CLOSE):
         call = bind(state, state.name, state.raws)
         return consume(update(state, mode="text", stage="open", name="", param="", raws=[], buffer=drop(body, len(CALL_CLOSE))), text, think, listAppend(calls, call))
-    elif is_prefix(body, CALL_CLOSE):
-        return holding(state, body, text, think, calls)
     else:
-        return Error(message=ToolSchema.violation("format", "call", f"expected {CALL_CLOSE}"))
+        return hold_or_expect(state, body, text, think, calls, [CALL_CLOSE])
 
 
 def skip_space(text):

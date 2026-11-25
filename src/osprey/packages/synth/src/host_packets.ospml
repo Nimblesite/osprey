@@ -1,7 +1,6 @@
 // [SYNTH-HOST-STREAM] Pure checked requests for the native worker's shared binary/text protocol.
 namespace synth
 
-import synth::PcmWords
 
 (** Encode bounded interleaved PCM, MIDI and normalized automation without a UI dependency. *)
 module HostPackets

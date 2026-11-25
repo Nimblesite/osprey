@@ -96,7 +96,7 @@ fn run_example(
     let warnings = if cli.warnings == crate::invocation::Warnings::Skip {
         Vec::new()
     } else {
-        osprey_types::source_warnings(&parsed.program)
+        osprey_types::source_warnings(&parsed.program, &example.code, source.flavor)
     };
     let synthesized = synthesize::program(
         &sources.sources,

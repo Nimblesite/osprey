@@ -2,7 +2,6 @@ namespace registry_api;
 import registry::Canonical
 import registry::Json
 import registry::JsonRead
-import registry_api::OAuth
 
 /// Supabase Auth is the identity verifier, reached only over verified TLS at
 /// a pinned origin. Application metadata, email and decoded JWT claims never

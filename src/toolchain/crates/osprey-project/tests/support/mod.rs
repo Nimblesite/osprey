@@ -55,6 +55,30 @@ pub(crate) fn parsed(path: &str, flavor: Flavor, text: &str) -> SourceFile {
     }
 }
 
+/// Assemble `sources` under `settings` and demand a program that type checks
+/// cleanly: project assembly and type checking both succeed.
+pub(crate) fn assembles_cleanly(settings: &ProjectConfig, sources: &[SourceFile]) {
+    let project = assemble(settings, sources);
+    assert!(project.is_ok(), "{project:?}");
+    if let Ok(project) = project {
+        let errors = osprey_types::check_program(&project.program);
+        assert!(errors.is_empty(), "{errors:?}");
+    }
+}
+
+/// Assembly of `sources` with entry `main.ospml` fails with at least one
+/// error whose message contains `needle`.
+pub(crate) fn assembly_rejects(sources: &[SourceFile], context: &str, needle: &str) {
+    let assembled = assemble(&config("main.ospml"), sources);
+    assert!(assembled.is_err(), "{context}: {assembled:?}");
+    if let Err(errors) = assembled {
+        assert!(
+            errors.iter().any(|error| error.message.contains(needle)),
+            "{errors:?}"
+        );
+    }
+}
+
 pub(crate) fn ast(path: &str, statements: Vec<Stmt>) -> SourceFile {
     SourceFile {
         path: PathBuf::from(path),

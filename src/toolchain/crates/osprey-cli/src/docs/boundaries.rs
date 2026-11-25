@@ -14,11 +14,10 @@ pub(super) fn page(input: &CompilationInput) -> Option<Page> {
         .map(|owner| format!("- {}", owner.summary()))
         .collect::<Vec<_>>()
         .join("\n");
-    Some(Page {
-        slug: "api/project/state-boundaries".into(), title: "State boundaries".into(),
-        group: "Overview".into(),
-        summary: "Every state owner in this project, including private module boundaries.".into(),
-        signature: String::new(),
-        markdown: format!("# State boundaries\n\nEvery state owner is listed, including private modules. Cell names and initializers remain private. Each handler installation creates fresh cells; imports never create a shared instance.\n\n{listing}\n"),
-    })
+    Some(super::overview_page(
+        "api/project/state-boundaries",
+        "State boundaries",
+        "Every state owner in this project, including private module boundaries.",
+        format!("# State boundaries\n\nEvery state owner is listed, including private modules. Cell names and initializers remain private. Each handler installation creates fresh cells; imports never create a shared instance.\n\n{listing}\n"),
+    ))
 }

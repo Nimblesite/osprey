@@ -41,14 +41,12 @@ pub(super) fn index(pages: &[Page]) -> Option<Page> {
     } else {
         format!("## Other declarations\n\n{TABLE_HEAD}{loose}\n")
     };
-    Some(Page {
-        slug: "api/index".into(),
-        title: "API Reference".into(),
-        group: "Overview".into(),
-        summary: "Modules and declarations in this project.".into(),
-        signature: String::new(),
-        markdown: format!("# API Reference\n\n{sections}{loose}"),
-    })
+    Some(super::overview_page(
+        "api/index",
+        "API Reference",
+        "Modules and declarations in this project.",
+        format!("# API Reference\n\n{sections}{loose}"),
+    ))
 }
 
 fn section(owner: &Page, pages: &[Page]) -> String {

@@ -5,8 +5,6 @@ namespace storage
 
 import ui::Ui
 import ui::Pick
-import storage::Disk
-import storage::Measured
 
 (** The words that differ by platform ([UI-CONTEXT-PLATFORM]). *)
 module Words

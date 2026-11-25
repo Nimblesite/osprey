@@ -1,7 +1,6 @@
 // [SYNTH-ADVANCED-PHYSICAL-INTEGRATION] Graph adapters: physical primitives over the shared kernel state.
 namespace synth
 
-import synth::RenderInputs
 
 (** Each adapter reads its declared parameters, runs the standalone module and stores its state. *)
 module PhysicalKernels
@@ -18,7 +17,13 @@ module PhysicalKernels
                 Error why => Error(message = why)
                 Success every => Exciters::configure (ExciterConfig(strength = strength, duration = frames, interval = every, excitation = shape))
 
-    excitationSettings (snapshot, identity) = RenderInputs::setting (snapshot, identity, "strength", \strength => RenderInputs::setting (snapshot, identity, "duration", \duration => RenderInputs::setting (snapshot, identity, "interval", \interval => RenderInputs::setting (snapshot, identity, "excitation", \kind => RenderInputs::setting (snapshot, identity, "colour", \colour => exciterConfig (strength, duration, interval, kind, colour))))))
+    excitationSettings (snapshot, identity) =
+        use strength <- RenderInputs::setting (snapshot, identity, "strength")
+        use duration <- RenderInputs::setting (snapshot, identity, "duration")
+        use interval <- RenderInputs::setting (snapshot, identity, "interval")
+        use kind <- RenderInputs::setting (snapshot, identity, "excitation")
+        use colour <- RenderInputs::setting (snapshot, identity, "colour")
+        exciterConfig (strength, duration, interval, kind, colour)
 
     (** Resolve the burst controls once when there are no automation events in this block. *)
     export prepareExciter (snapshot, identity) = match excitationSettings (snapshot, identity)
@@ -42,7 +47,12 @@ module PhysicalKernels
 
     responded (rate, frame, held, input, frequency, decay, gain, selector) = Outcomes::carried (scaled selector, \scale => resonated (frame, held, input, Resonators::configure (ResonatorConfig(sampleRate = rate, frequency = frequency, decay = decay, gain = gain, scale = scale))))
 
-    resonator (rate, snapshot, frame, held, input) = RenderInputs::bound (snapshot, held, "frequency", \frequency => RenderInputs::bound (snapshot, held, "decay", \decay => RenderInputs::bound (snapshot, held, "gain", \gain => RenderInputs::bound (snapshot, held, "response", \selector => responded (rate, frame, held, input, frequency, decay, gain, selector)))))
+    resonator (rate, snapshot, frame, held, input) =
+        use frequency <- RenderInputs::bound (snapshot, held, "frequency")
+        use decay <- RenderInputs::bound (snapshot, held, "decay")
+        use gain <- RenderInputs::bound (snapshot, held, "gain")
+        use selector <- RenderInputs::bound (snapshot, held, "response")
+        responded (rate, frame, held, input, frequency, decay, gain, selector)
 
     body selector = Outcomes::chosen (selector, [HarmonicModes, BarModes, MembraneModes, BellModes], "Body must be 0 string, 1 bar, 2 membrane or 3 bell.")
 
@@ -62,7 +72,15 @@ module PhysicalKernels
             Error why => Error(message = why)
             Success whole => Success(value = shape (modes, whole))
 
-    modalSettings (rate, snapshot, identity) = RenderInputs::setting (snapshot, identity, "body", \selector => RenderInputs::setting (snapshot, identity, "modes", \count => RenderInputs::setting (snapshot, identity, "frequency", \frequency => RenderInputs::setting (snapshot, identity, "decay", \decay => RenderInputs::setting (snapshot, identity, "brightness", \brightness => RenderInputs::setting (snapshot, identity, "strike", \strike => bodied (selector, count, \(modes, whole) => ModalConfig(sampleRate = rate, frequency = frequency, decay = decay, brightness = brightness, strike = strike, count = whole, modes = modes))))))))
+    modalSettings (rate, snapshot, identity) =
+        use selector <- RenderInputs::setting (snapshot, identity, "body")
+        use count <- RenderInputs::setting (snapshot, identity, "modes")
+        use frequency <- RenderInputs::setting (snapshot, identity, "frequency")
+        use decay <- RenderInputs::setting (snapshot, identity, "decay")
+        use brightness <- RenderInputs::setting (snapshot, identity, "brightness")
+        use strike <- RenderInputs::setting (snapshot, identity, "strike")
+        use modes, whole <- bodied (selector, count)
+        ModalConfig(sampleRate = rate, frequency = frequency, decay = decay, brightness = brightness, strike = strike, count = whole, modes = modes)
 
     (** Resolve constant modal controls once per block, retaining the running resonator state. *)
     export prepareModal (rate, snapshot, identity) = match modalSettings (rate, snapshot, identity)
@@ -73,7 +91,13 @@ module PhysicalKernels
         FixedModal config => modal (frame, held, input, config)
         _ => Outcomes::carried (modalSettings (rate, snapshot, held.identity), \config => modal (frame, held, input, config))
 
-    guideSettings (rate, snapshot, identity, capacity) = RenderInputs::setting (snapshot, identity, "frequency", \frequency => RenderInputs::setting (snapshot, identity, "decay", \decay => RenderInputs::setting (snapshot, identity, "brightness", \brightness => RenderInputs::setting (snapshot, identity, "dispersion", \dispersion => RenderInputs::setting (snapshot, identity, "pickup", \pickup => Waveguides::configure (WaveguideConfig(sampleRate = rate, frequency = frequency, decay = decay, brightness = brightness, dispersion = dispersion, pickup = pickup, capacity = capacity)))))))
+    guideSettings (rate, snapshot, identity, capacity) =
+        use frequency <- RenderInputs::setting (snapshot, identity, "frequency")
+        use decay <- RenderInputs::setting (snapshot, identity, "decay")
+        use brightness <- RenderInputs::setting (snapshot, identity, "brightness")
+        use dispersion <- RenderInputs::setting (snapshot, identity, "dispersion")
+        use pickup <- RenderInputs::setting (snapshot, identity, "pickup")
+        Waveguides::configure (WaveguideConfig(sampleRate = rate, frequency = frequency, decay = decay, brightness = brightness, dispersion = dispersion, pickup = pickup, capacity = capacity))
 
     (** Prepare physical string tuning for a fixed snapshot. *)
     export prepare (rate, snapshot, identity, capacity) = match guideSettings (rate, snapshot, identity, capacity)
@@ -131,7 +155,14 @@ module PhysicalKernels
         Success config => Outcomes::carried (bowMemory (held, config), \bow => Outcomes::carried (BowedStrings::next (config, bow), \step => published (frame, held(memory = BowRunning(bow = step.next)), step.sample)))
 
     (** The neck and bridge keep their independent delay lines across samples. *)
-    export bowed (rate, snapshot, frame, held, capacity) = RenderInputs::bound (snapshot, held, "frequency", \frequency => RenderInputs::bound (snapshot, held, "decay", \decay => RenderInputs::bound (snapshot, held, "brightness", \brightness => RenderInputs::bound (snapshot, held, "position", \position => RenderInputs::bound (snapshot, held, "pressure", \pressure => RenderInputs::bound (snapshot, held, "velocity", \velocity => bowedStep (frame, held, BowedStrings::configure (BowConfig(sampleRate = rate, frequency = frequency, decay = decay, brightness = brightness, position = position, pressure = pressure, velocity = velocity, capacity = capacity)))))))))
+    export bowed (rate, snapshot, frame, held, capacity) =
+        use frequency <- RenderInputs::bound (snapshot, held, "frequency")
+        use decay <- RenderInputs::bound (snapshot, held, "decay")
+        use brightness <- RenderInputs::bound (snapshot, held, "brightness")
+        use position <- RenderInputs::bound (snapshot, held, "position")
+        use pressure <- RenderInputs::bound (snapshot, held, "pressure")
+        use velocity <- RenderInputs::bound (snapshot, held, "velocity")
+        bowedStep (frame, held, BowedStrings::configure (BowConfig(sampleRate = rate, frequency = frequency, decay = decay, brightness = brightness, position = position, pressure = pressure, velocity = velocity, capacity = capacity)))
 
     struck (frame, held, input, configured) = match configured
         Error why => Error(message = why)

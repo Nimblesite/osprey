@@ -168,20 +168,15 @@ impl<'s> Lowerer<'s> {
     }
 
     pub(super) fn imported_name(&self, name: &str) -> bool {
-        self.scopes
-            .iter()
-            .rev()
-            .find(|scope| scope.bindings.contains_key(name))
+        self.scope_of(name)
             .is_some_and(|scope| scope.imports.contains(name))
     }
 
     pub(super) fn typing_name(&self, name: &str) -> Option<&str> {
-        let scope = self
-            .scopes
-            .iter()
-            .rev()
-            .find(|scope| scope.bindings.contains_key(name))?;
-        scope.typing_names.get(name).map(String::as_str)
+        self.scope_of(name)?
+            .typing_names
+            .get(name)
+            .map(String::as_str)
     }
 
     pub(super) fn import_typing_name(&mut self, name: String, canonical: String) {
@@ -195,6 +190,14 @@ impl<'s> Lowerer<'s> {
         self.in_current_scope(|scope| {
             let _ = scope.constructors.insert(name);
         });
+    }
+
+    /// The innermost scope that binds `name`, if any does.
+    fn scope_of(&self, name: &str) -> Option<&Scope> {
+        self.scopes
+            .iter()
+            .rev()
+            .find(|scope| scope.bindings.contains_key(name))
     }
 
     /// Run `record` against the innermost open scope, when the lowerer has one.

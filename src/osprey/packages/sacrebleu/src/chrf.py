@@ -212,12 +212,48 @@ def metric_of(char_order, word_order, beta, remove_whitespace, eps_smoothing):
 
 
 def score_sentence(chrf, hypothesis, references):
-    """chrF for one hypothesis against one or more references."""
+    """chrF for one hypothesis against one or more references. A hypothesis
+    sharing no characters scores 0.
+
+    # Examples
+    ```osprey
+    from sacrebleu import Chrf
+
+    def show():
+        metric = Chrf.CHRF(char_order=6, word_order=0, beta=2, lowercase=False, whitespace=True, eps_smoothing=False)
+        exact = Chrf.score_sentence(metric, "the cat", ["the cat"])
+        none = Chrf.score_sentence(metric, "x", ["the cat"])
+        print(f"[{exact.score}] [{none.score}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [100.0] [0.0]
+    ```
+    """
     return chrf_score(segment_stats(chrf, hypothesis, references), chrf)
 
 
 def score_corpus(chrf, hypotheses, references):
-    """chrF over a corpus; `references` is a list of reference documents."""
+    """chrF over a corpus; `references` is a list of reference documents, one
+    list of segments per reference. An empty hypothesis scores 0.
+
+    # Examples
+    ```osprey
+    from sacrebleu import Chrf
+
+    def show():
+        metric = Chrf.CHRF(char_order=6, word_order=0, beta=2, lowercase=False, whitespace=True, eps_smoothing=False)
+        exact = Chrf.score_corpus(metric, ["the cat", "a dog"], [["the cat", "a dog"]])
+        blank = Chrf.score_corpus(metric, [""], [["the cat"]])
+        print(f"[{exact.score}] [{blank.score}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [100.0] [0.0]
+    ```
+    """
     seg_refs = segment_references(references)
     stats = fold(range(len(hypotheses)), zeros_int(3 * order(chrf)), lambda acc, i: add_int_lists(
         acc, segment_stats(chrf, unwrap_or(listGet(hypotheses, i), ""), unwrap_or(listGet(seg_refs, i), []))))
@@ -225,10 +261,45 @@ def score_corpus(chrf, hypotheses, references):
 
 
 def sentence_chrf(hypothesis, references, char_order, word_order, beta, remove_whitespace, eps_smoothing):
-    """`sacrebleu.sentence_chrf`: sentence-level chrF (compat entry point)."""
+    """`sacrebleu.sentence_chrf`: sentence-level chrF (compat entry point).
+    `word_order=2` is chrF++; chrF scores character overlaps, so a case
+    difference costs most of the score but not all of it.
+
+    # Examples
+    ```osprey
+    from sacrebleu import Chrf
+
+    def show():
+        exact = Chrf.sentence_chrf("the cat", ["the cat"], 6, 0, 2, False, False)
+        plus = Chrf.sentence_chrf("the cat", ["the cat"], 6, 2, 2, False, False)
+        strict = Chrf.sentence_chrf("The Cat", ["the cat"], 6, 0, 2, False, False)
+        print(f"[{exact.score}] [{plus.score}] [{strict.score}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [100.0] [100.0] [23.571428571428577]
+    ```
+    """
     return score_sentence(metric_of(char_order, word_order, beta, remove_whitespace, eps_smoothing), hypothesis, references)
 
 
 def corpus_chrf(hypotheses, references, char_order, word_order, beta, remove_whitespace, eps_smoothing):
-    """`sacrebleu.corpus_chrf`: corpus-level chrF (compat entry point)."""
+    """`sacrebleu.corpus_chrf`: corpus-level chrF (compat entry point).
+
+    # Examples
+    ```osprey
+    from sacrebleu import Chrf
+
+    def show():
+        exact = Chrf.corpus_chrf(["the cat", "a dog"], [["the cat", "a dog"]], 6, 0, 2, False, False)
+        blank = Chrf.corpus_chrf([""], [["the cat"]], 6, 0, 2, False, False)
+        print(f"[{exact.score}] [{blank.score}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [100.0] [0.0]
+    ```
+    """
     return score_corpus(metric_of(char_order, word_order, beta, remove_whitespace, eps_smoothing), hypotheses, references)

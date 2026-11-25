@@ -4,10 +4,7 @@ import registry::Order
 
 /// [PACKAGE-NAMES] grammar, reason codes and canonical key order.
 module NamesTests {
-    fn code(text) = match Names::parse(text) {
-        Success => ""
-        Error { message } => message
-    }
+    fn code(text) = Fixtures::code(Names::parse(text))
 
     fn shown(text) = match Names::parse(text) {
         Success { value } => Names::display(value)

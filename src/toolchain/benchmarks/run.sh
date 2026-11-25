@@ -56,16 +56,19 @@ WASM_STACK_BYTES=4194304
 # and `osprey-arc` are the SAME .osp compiled with the tracing-GC (--memory=gc)
 # and Perceus ARC (--memory=arc) backends. ARC leads because it reclaims memory
 # at Rust's footprint. Every native Osprey column names its backend.
+# `osprey-ownership` is the same source again under compile-time ownership
+# (--memory=ownership, [MEM-OWNERSHIP-STATIC]): one proved owner per value, no
+# reference counts, no collector.
 # `rust-checked` is the SAME .rs built with `-C overflow-checks=on`: Osprey
 # checks every integer operation (spec 0037), so this is the like-for-like
 # baseline; plain `rust` and `c` run unchecked arithmetic.
-LANGS=(osprey-arc osprey-gc rust rust-checked c csharp dart typescript codon ocaml haskell osprey-wasm rust-wasm c-wasm)
+LANGS=(osprey-arc osprey-gc osprey-ownership rust rust-checked c csharp dart typescript codon ocaml haskell osprey-wasm rust-wasm c-wasm)
 if [[ "$PARTIAL" == 1 ]]; then
-  LANGS=(osprey-arc osprey-gc osprey-wasm)
+  LANGS=(osprey-arc osprey-gc osprey-ownership osprey-wasm)
 fi
 [[ -n "${BENCH_LANGS:-}" ]] && LANGS=(${=BENCH_LANGS})
 typeset -A EXT
-EXT=(osprey-arc osp  osprey-gc osp  rust rs  rust-checked rs  c c  csharp cs  dart dart  typescript ts  codon codon
+EXT=(osprey-arc osp  osprey-gc osp  osprey-ownership osp  rust rs  rust-checked rs  c c  csharp cs  dart dart  typescript ts  codon codon
      ocaml ml  haskell hs  osprey-wasm osp  rust-wasm rs  c-wasm c)
 
 have() { command -v "$1" >/dev/null 2>&1 }
@@ -94,7 +97,7 @@ wasm_wrap() { printf '#!/bin/sh\nexec wasmtime run -W max-wasm-stack=%s "%s.wasm
 # probed once into CWASM_OK because stock clang+wasi-libc often lacks it.)
 toolchain_ok() {
   case "$1" in
-    osprey-gc|osprey-arc) [[ -x "$OSP" ]] ;;
+    osprey-gc|osprey-arc|osprey-ownership) [[ -x "$OSP" ]] ;;
     rust|rust-checked) have rustc ;;
     c)       have cc ;;
     csharp)  have dotnet ;;
@@ -103,7 +106,7 @@ toolchain_ok() {
     codon)   have codon ;;
     ocaml)   have ocamlopt ;;
     haskell) have ghc ;;
-    osprey-wasm) [[ -x "$OSP" ]] && have wasmtime && [[ -f "$ROOT/src/toolchain/compiler/lib/libosprey_runtime_wasm.a" ]] ;;
+    osprey-wasm) [[ -x "$OSP" ]] && have wasmtime && [[ -f "$ROOT/src/toolchain/compiler/lib/libosprey_runtime_wasm_arc.a" ]] ;;
     rust-wasm)   have rustc && have wasmtime && rustup target list 2>/dev/null | grep -q 'wasm32-wasip1 (installed)' ;;
     c-wasm)      [[ "${CWASM_OK:-0}" == 1 ]] ;;
   esac
@@ -121,6 +124,7 @@ build() {
   case "$lang" in
     osprey-gc)  ( cd "$dir" && "$OSP" "$input" --memory=gc --compile >/dev/null 2>&1 ) && mv -f "$dir/$name" "$out" ;;
     osprey-arc) ( cd "$dir" && "$OSP" "$input" --memory=arc --compile >/dev/null 2>&1 ) && mv -f "$dir/$name" "$out" ;;
+    osprey-ownership) ( cd "$dir" && "$OSP" "$input" --memory=ownership --compile >/dev/null 2>"$TMP/ownership.txt" ) && mv -f "$dir/$name" "$out" ;;
     rust)    rustc -C opt-level=3 -C overflow-checks=off -o "$out" "$dir/$name.rs" 2>/dev/null ;;
     rust-checked) rustc -C opt-level=3 -C overflow-checks=on -o "$out" "$dir/$name.rs" 2>/dev/null ;;
     c)       cc -O2 -o "$out" "$dir/$name.c" 2>/dev/null ;;
@@ -169,8 +173,8 @@ peak_rss() {
 
 # json_row — append one {case,lang,...} record to the raw results log.
 json_row() {
-  printf '{"case":"%s","lang":"%s","status":"%s","output":"%s","expected":"%s","rss":%s}\n' \
-    "$1" "$2" "$3" "$4" "$5" "${6:-0}" >> "$RAW"
+  printf '{"case":"%s","lang":"%s","status":"%s","output":"%s","expected":"%s","rss":%s%s}\n' \
+    "$1" "$2" "$3" "$4" "$5" "${6:-0}" "${7:+,\"peak_live_bytes\":$7}" >> "$RAW"
 }
 
 if [[ "$PARTIAL" == 1 && ! -f "$OUT/raw.jsonl" ]]; then
@@ -198,7 +202,7 @@ if have clang && have wasmtime && [[ -n "$WASI_SYSROOT" ]]; then
 fi
 
 # The bench MUST time the CURRENT sources, never a stale artifact. Rebuild the
-# C runtime archives (memory_{runtime,gc,arc}.c live here — the backend picked
+# C runtime archives (memory_{ownership,gc,arc}.c live here — the backend picked
 # by --memory=) AND the release compiler up front, so a code change is always
 # reflected in the numbers. Both steps are incremental, so this is ~seconds when
 # nothing changed. Escape hatch: BENCH_NO_BUILD=1 times whatever is already built.
@@ -237,11 +241,32 @@ for dir in $CASEDIR/*/(/); do
       # don't fail the suite. A native build failure is a real error.
       case "$lang" in
         *-wasm) echo "    $lang: not wasm-compatible (skipped)"; json_row "$name" "$lang" "wasm_incompatible" "" "$expected" ;;
+        # A program the checker refuses has no single-owner build: record the
+        # refusal and its diagnostics, as the wasm column records a missing builtin.
+        osprey-ownership) if grep -q "\[MEM-OWNERSHIP-STATIC\]" "$TMP/ownership.txt"; then
+            echo "    $lang: refused by the ownership check (skipped)"; sed "s/^/      /" "$TMP/ownership.txt"
+            json_row "$name" "$lang" "ownership_refused" "" "$expected"
+          else echo "    $lang: BUILD FAILED"; json_row "$name" "$lang" "build_failed" "" "$expected"; fail=1; fi ;;
         *)      echo "    $lang: BUILD FAILED"; json_row "$name" "$lang" "build_failed" "" "$expected"; fail=1 ;;
       esac
       continue
     fi
-    actual=$("$bin" <"$MODE0" 2>/dev/null); actual=${actual//[[:space:]]/}
+    # Read the tracked heap during the correctness run. RSS and timing runs
+    # keep the same uninstrumented environment as the other languages.
+    typeset -a run_env=()
+    backend=${lang#osprey-}
+    peak=""
+    if [[ $lang == osprey-arc || $lang == osprey-ownership ]]; then
+      run_env=("OSPREY_${(U)backend}_DEBUG=1")
+    fi
+    if ! actual=$(env "${run_env[@]}" "$bin" <"$MODE0" 2>"$TMP/oracle.err"); then
+      echo "    $lang: correctness run failed"; cat "$TMP/oracle.err" >&2; fail=1; continue
+    fi
+    if (( ${#run_env} )); then
+      peak=$(sed -n "s/^\\[osp-$backend\\] peak_live_bytes=\\([0-9][0-9]*\\)$/\\1/p" "$TMP/oracle.err")
+      [[ $peak == <-> ]] || { echo "    $lang: missing or duplicate peak measurement"; fail=1; continue; }
+    fi
+    actual=${actual//[[:space:]]/}
     if [[ "$actual" != "$expected" ]]; then
       echo "    $lang: WRONG OUTPUT ($actual != $expected) — excluded from timing"
       json_row "$name" "$lang" "wrong_output" "$actual" "$expected"; fail=1; continue
@@ -252,7 +277,7 @@ for dir in $CASEDIR/*/(/); do
       *-wasm) rss=0 ;;
       *)      rss=$(peak_rss "$bin") ;;
     esac
-    json_row "$name" "$lang" "ok" "$actual" "$expected" "$rss"
+    json_row "$name" "$lang" "ok" "$actual" "$expected" "$rss" "$peak"
     if (( rss > 0 )); then echo "    $lang: ok  (rss $(( rss / 1024 )) KiB)"; else echo "    $lang: ok  (wasm; mem n/a)"; fi
     hf_args+=(-n "$lang" "$bin")
     ok_pairs+=("$lang=$bin")

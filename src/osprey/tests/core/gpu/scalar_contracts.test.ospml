@@ -27,7 +27,15 @@ fromGpuScalarFlags (floats, read1) =
         listLength floats == 3, (listGet (floats, 0) ?: 99.0) == 1.25, (listGet (floats, 1) ?: 99.0) == 2.5, (listGet (floats, 2) ?: 99.0) == 5.0, listLength flags == 3, (listGet (flags, 0) ?: false) == true, (listGet (flags, 1) ?: true) == false, (listGet (flags, 2) ?: false) == true
     ]
 repeatedCrossingCase () =
-    withBuffer(toGpu (floatListValue ()), \uploaded15 => withBuffer(fromGpu (uploaded15), \read0 => withBuffer(toGpu (read0), \floats => withBuffer(toGpu (boolListValue ()), \uploaded14 => withBuffer(fromGpu (uploaded14), \read1 => withBuffer(toGpu (read1), \flags => withBuffer(fromGpu (floats), \read2 => withBuffer(fromGpu (flags), \read3 => repeatedCrossingWith (floats, flags, read2, read3)))))))))
+    use uploaded15 <- withBuffer (toGpu (floatListValue ()))
+    use read0 <- withBuffer (fromGpu (uploaded15))
+    use floats <- withBuffer (toGpu (read0))
+    use uploaded14 <- withBuffer (toGpu (boolListValue ()))
+    use read1 <- withBuffer (fromGpu (uploaded14))
+    use flags <- withBuffer (toGpu (read1))
+    use read2 <- withBuffer (fromGpu (floats))
+    use read3 <- withBuffer (fromGpu (flags))
+    repeatedCrossingWith (floats, flags, read2, read3)
 repeatedCrossingWith (floats, flags, read2, read3) =
     floatsBack = read2
     flagsBack = read3
@@ -53,7 +61,13 @@ squareScalar value = value * value
 subtractSelf value = value - value
 divideZero value = value / 0.0
 remainderZero value = value % -0.0
-gpuIeeeCase () = withBuffer(toGpu ([10000000000000000.0]), \seed => withBuffer(gpuMap(seed, squareScalar), \uploaded9 => withBuffer(gpuMap(uploaded9, squareScalar), \fourth => withBuffer(gpuMap(fourth, squareScalar), \uploaded10 => withBuffer(gpuMap(uploaded10, squareScalar), \uploaded17 => withBuffer(gpuMap(uploaded17, squareScalar), gpuIeeeInfinity))))))
+gpuIeeeCase () =
+    use seed <- withBuffer (toGpu ([10000000000000000.0]))
+    use uploaded9 <- withBuffer (gpuMap(seed, squareScalar))
+    use fourth <- withBuffer (gpuMap(uploaded9, squareScalar))
+    use uploaded10 <- withBuffer (gpuMap(fourth, squareScalar))
+    use uploaded17 <- withBuffer (gpuMap(uploaded10, squareScalar))
+    withBuffer(gpuMap(uploaded17, squareScalar), gpuIeeeInfinity)
 gpuIeeeInfinity infinityBuffer =
     infinity = gpuGet (infinityBuffer, 0) ?: 0.0
     withBuffer(gpuMap(infinityBuffer, subtractSelf), \nanBuffer => gpuIeeeNaN (infinityBuffer, infinity, nanBuffer))
@@ -134,11 +148,23 @@ remainder64Case () = gpuSatisfies(toGpu([toFloat(5.5), toFloat(-5.5), toFloat(-0
 (** [GPU-DEVICE-NATIVE] [%]: signs, subnormals and non-finite values at width 32. *)
 remainder32Case () = gpuSatisfies(toGpu([toFloat32(5.5), toFloat32(-5.5), toFloat32(-0.0), float32FromBits(1), float32FromBits(2139095040), float32FromBits(2143289344)]), \input => gpuSatisfies(gpuMap(input, \x => x % toFloat32(2.0)), \output => gpuLength(output) == 6 && bits32At(output, 0, 1069547520) && bits32At(output, 1, -1077936128) && bits32At(output, 2, -2147483648) && bits32At(output, 3, 1) && gpuSatisfies(gpuGet(output, 4), \x => x != x) && gpuSatisfies(gpuGet(output, 5), \x => x != x)))
 (** [BUILTIN-MATH-FLOATDIV] floatDiv is the IEEE quotient at width 64 on the host and in a kernel: a zero divisor answers an infinity of the right sign or NaN, never an Arith operation. *)
-floatDiv64Case () = gpuSatisfies(toGpu([toFloat(1.0), toFloat(-1.0), toFloat(0.0), toFloat(6.0), toFloat(1.0)]), \numerators => gpuSatisfies(toGpu([toFloat(0.0), toFloat(0.0), toFloat(0.0), toFloat(4.0), toFloat(-0.0)]), \divisors => gpuSatisfies(gpuZipWith(numerators, divisors, \(n, d) => floatDiv(n, d)), \q => gpuLength(q) == 5 && bits64At(q, 0, 9218868437227405312) && bits64At(q, 1, -4503599627370496) && gpuSatisfies(gpuGet(q, 2), \x => x != x) && gpuEquals(gpuGet(q, 3), toFloat(1.5)) && bits64At(q, 4, -4503599627370496) && floatBits(floatDiv(toFloat(1.0), toFloat(0.0))) == 9218868437227405312 && floatDiv(toFloat(6.0), toFloat(4.0)) == toFloat(1.5))))
+floatDiv64Case () =
+    use numerators <- gpuSatisfies (toGpu([toFloat(1.0), toFloat(-1.0), toFloat(0.0), toFloat(6.0), toFloat(1.0)]))
+    use divisors <- gpuSatisfies (toGpu([toFloat(0.0), toFloat(0.0), toFloat(0.0), toFloat(4.0), toFloat(-0.0)]))
+    use q <- gpuSatisfies (gpuZipWith(numerators, divisors, \(n, d) => floatDiv(n, d)))
+    gpuLength(q) == 5 && bits64At(q, 0, 9218868437227405312) && bits64At(q, 1, -4503599627370496) && gpuSatisfies(gpuGet(q, 2), \x => x != x) && gpuEquals(gpuGet(q, 3), toFloat(1.5)) && bits64At(q, 4, -4503599627370496) && floatBits(floatDiv(toFloat(1.0), toFloat(0.0))) == 9218868437227405312 && floatDiv(toFloat(6.0), toFloat(4.0)) == toFloat(1.5)
 (** [BUILTIN-MATH-FLOATDIV] The same quotients at width 32, the width the Qwen kernels compute in. *)
-floatDiv32Case () = gpuSatisfies(toGpu([toFloat32(1.0), toFloat32(-1.0), toFloat32(0.0), toFloat32(6.0), toFloat32(1.0)]), \numerators => gpuSatisfies(toGpu([toFloat32(0.0), toFloat32(0.0), toFloat32(0.0), toFloat32(4.0), toFloat32(-0.0)]), \divisors => gpuSatisfies(gpuZipWith(numerators, divisors, \(n, d) => floatDiv(n, d)), \q => gpuLength(q) == 5 && bits32At(q, 0, 2139095040) && bits32At(q, 1, -8388608) && gpuSatisfies(gpuGet(q, 2), \x => x != x) && gpuEquals(gpuGet(q, 3), toFloat32(1.5)) && bits32At(q, 4, -8388608) && float32Bits(floatDiv(toFloat32(1.0), toFloat32(0.0))) == 2139095040 && floatDiv(toFloat32(6.0), toFloat32(4.0)) == toFloat32(1.5))))
+floatDiv32Case () =
+    use numerators <- gpuSatisfies (toGpu([toFloat32(1.0), toFloat32(-1.0), toFloat32(0.0), toFloat32(6.0), toFloat32(1.0)]))
+    use divisors <- gpuSatisfies (toGpu([toFloat32(0.0), toFloat32(0.0), toFloat32(0.0), toFloat32(4.0), toFloat32(-0.0)]))
+    use q <- gpuSatisfies (gpuZipWith(numerators, divisors, \(n, d) => floatDiv(n, d)))
+    gpuLength(q) == 5 && bits32At(q, 0, 2139095040) && bits32At(q, 1, -8388608) && gpuSatisfies(gpuGet(q, 2), \x => x != x) && gpuEquals(gpuGet(q, 3), toFloat32(1.5)) && bits32At(q, 4, -8388608) && float32Bits(floatDiv(toFloat32(1.0), toFloat32(0.0))) == 2139095040 && floatDiv(toFloat32(6.0), toFloat32(4.0)) == toFloat32(1.5)
 (** [BUILTIN-MATH-FLOATDIV] The same quotients at width 16, which a kernel computes in binary32 and rounds back. *)
-floatDiv16Case () = gpuSatisfies(toGpu([toFloat16(1.0), toFloat16(-1.0), toFloat16(0.0), toFloat16(6.0), toFloat16(1.0)]), \numerators => gpuSatisfies(toGpu([toFloat16(0.0), toFloat16(0.0), toFloat16(0.0), toFloat16(4.0), toFloat16(-0.0)]), \divisors => gpuSatisfies(gpuZipWith(numerators, divisors, \(n, d) => floatDiv(n, d)), \q => gpuLength(q) == 5 && bits16At(q, 0, 31744) && bits16At(q, 1, -1024) && gpuSatisfies(gpuGet(q, 2), \x => x != x) && gpuEquals(gpuGet(q, 3), toFloat16(1.5)) && bits16At(q, 4, -1024) && float16Bits(floatDiv(toFloat16(1.0), toFloat16(0.0))) == 31744 && floatDiv(toFloat16(6.0), toFloat16(4.0)) == toFloat16(1.5))))
+floatDiv16Case () =
+    use numerators <- gpuSatisfies (toGpu([toFloat16(1.0), toFloat16(-1.0), toFloat16(0.0), toFloat16(6.0), toFloat16(1.0)]))
+    use divisors <- gpuSatisfies (toGpu([toFloat16(0.0), toFloat16(0.0), toFloat16(0.0), toFloat16(4.0), toFloat16(-0.0)]))
+    use q <- gpuSatisfies (gpuZipWith(numerators, divisors, \(n, d) => floatDiv(n, d)))
+    gpuLength(q) == 5 && bits16At(q, 0, 31744) && bits16At(q, 1, -1024) && gpuSatisfies(gpuGet(q, 2), \x => x != x) && gpuEquals(gpuGet(q, 3), toFloat16(1.5)) && bits16At(q, 4, -1024) && float16Bits(floatDiv(toFloat16(1.0), toFloat16(0.0))) == 31744 && floatDiv(toFloat16(6.0), toFloat16(4.0)) == toFloat16(1.5)
 (** [GPU-DEVICE-NATIVE] [%]: signs, subnormals and non-finite values at width 16. *)
 remainder16Case () = gpuSatisfies(toGpu([toFloat16(5.5), toFloat16(-5.5), toFloat16(-0.0), float16FromBits(1), float16FromBits(31744), float16FromBits(32256)]), \input => gpuSatisfies(gpuMap(input, \x => x % toFloat16(2.0)), \output => gpuLength(output) == 6 && bits16At(output, 0, 15872) && bits16At(output, 1, -16896) && bits16At(output, 2, -32768) && bits16At(output, 3, 1) && gpuSatisfies(gpuGet(output, 4), \x => x != x) && gpuSatisfies(gpuGet(output, 5), \x => x != x)))
 (** The sized bit views run as kernels too: binary32 words through

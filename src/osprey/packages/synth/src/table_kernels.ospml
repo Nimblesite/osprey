@@ -1,7 +1,6 @@
 // [SYNTH-ADVANCED-TABLES] Graph adapters for wavetable and additive sources over the shared kernel state.
 namespace synth
 
-import synth::RenderInputs
 
 (** Sources read declared parameters each sample; state lives in the kernel's phase and storage. *)
 module TableKernels
@@ -26,7 +25,11 @@ module TableKernels
     (** A wavetable source: phase is the cycle position. Optional inlets: `position` replaces the position,
         `amplitude` multiplies the level, `pitch` scales frequency by ±2 octaves (0.5 unchanged) and
         `phase` offsets the read point by 0–1 cycles. *)
-    export wavetable (rate, plan, snapshot, frame, held, table) = RenderInputs::bound (snapshot, held, "frequency", \frequency => RenderInputs::bound (snapshot, held, "position", \position => RenderInputs::bound (snapshot, held, "amplitude", \amplitude => modulatedTable (rate, plan, frame, held, table, frequency, position, amplitude))))
+    export wavetable (rate, plan, snapshot, frame, held, table) =
+        use frequency <- RenderInputs::bound (snapshot, held, "frequency")
+        use position <- RenderInputs::bound (snapshot, held, "position")
+        use amplitude <- RenderInputs::bound (snapshot, held, "amplitude")
+        modulatedTable (rate, plan, frame, held, table, frequency, position, amplitude)
 
     // A positive interval restarts every partial envelope at that exact sample period.
     restarted (held, interval) = match interval > 0.0 && held.integratorOne + 1.0 >= interval
@@ -49,7 +52,18 @@ module TableKernels
         false => Error(message = InvalidConfiguration(detail = "Retrigger interval must be 0 to 1048576 samples."))
         true => Outcomes::carried (configured, \config => Success(value = PartialSettings(interval = interval, config = config)))
 
-    settings (rate, snapshot, identity) = RenderInputs::setting (snapshot, identity, "frequency", \frequency => RenderInputs::setting (snapshot, identity, "partials", \count => RenderInputs::setting (snapshot, identity, "tilt", \tilt => RenderInputs::setting (snapshot, identity, "parity", \parity => RenderInputs::setting (snapshot, identity, "decay", \decay => RenderInputs::setting (snapshot, identity, "damping", \damping => RenderInputs::setting (snapshot, identity, "amplitude", \amplitude => RenderInputs::setting (snapshot, identity, "inharmonicity", \inharmonicity => RenderInputs::setting (snapshot, identity, "stretch", \stretch => RenderInputs::setting (snapshot, identity, "interval", \interval => bank (interval, shaped (rate, frequency, count, tilt, parity, decay, damping, amplitude, inharmonicity, stretch))))))))))))
+    settings (rate, snapshot, identity) =
+        use frequency <- RenderInputs::setting (snapshot, identity, "frequency")
+        use count <- RenderInputs::setting (snapshot, identity, "partials")
+        use tilt <- RenderInputs::setting (snapshot, identity, "tilt")
+        use parity <- RenderInputs::setting (snapshot, identity, "parity")
+        use decay <- RenderInputs::setting (snapshot, identity, "decay")
+        use damping <- RenderInputs::setting (snapshot, identity, "damping")
+        use amplitude <- RenderInputs::setting (snapshot, identity, "amplitude")
+        use inharmonicity <- RenderInputs::setting (snapshot, identity, "inharmonicity")
+        use stretch <- RenderInputs::setting (snapshot, identity, "stretch")
+        use interval <- RenderInputs::setting (snapshot, identity, "interval")
+        bank (interval, shaped (rate, frequency, count, tilt, parity, decay, damping, amplitude, inharmonicity, stretch))
 
     (** Prepare the additive bank when the block uses a fixed control snapshot. *)
     export prepare (rate, snapshot, identity) = match settings (rate, snapshot, identity)

@@ -142,11 +142,9 @@ module SendRenders
                         Error _ => Error(message = "The rendered note lost an output lane.")
                         Success block => ok (listConcat samples block)), \lanes => ok (next(captureLanes = lanes))))
 
-    shapedLane (patch, lanes, offset, rate, index) = match listGet patch.ports index
-        Error _ => Error(message = "The sounding note lost an output port.")
-        Success port => match listGet lanes index
-            Error _ => Error(message = "The sounding note lost its audio lane.")
-            Success samples => ok (mapList (toList (range (0, length samples)), \i => ArrangeMath::scaled (ArrangeMath::enveloped (listGet samples i ?: 0.0, toFloat (satAdd offset i), patch.span.gate, patch.attack, patch.release, rate), port.tapGain)))
+    shapedLane (patch, lanes, offset, rate, index) = Outcomes::carried (Projects::required (patch.ports, index, "The sounding note lost an output port."), \port =>
+        Outcomes::carried (Projects::required (lanes, index, "The sounding note lost its audio lane."), \samples =>
+            ok (mapList (toList (range (0, length samples)), \i => ArrangeMath::scaled (ArrangeMath::enveloped (listGet samples i ?: 0.0, toFloat (satAdd offset i), patch.span.gate, patch.attack, patch.release, rate), port.tapGain)))))
 
     portion (sound, patch, first, count, rate) =
         initial = Capture(captureState = patch.memory, captureLanes = mapList (patch.ports, \_ => []))

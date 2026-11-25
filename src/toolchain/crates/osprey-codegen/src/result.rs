@@ -10,10 +10,13 @@
 //! and rendering handle exactly one representation. Implements
 //! [ERR-PAYLOAD].
 
+mod holds;
+use crate::arc::Held;
 use crate::builder::Codegen;
 use crate::cast::coerce_to;
 use crate::error::Result;
 use crate::llty::{LType, Value, RESULT_STRUCT};
+use holds::{message_hold, own_result, payload_hold, result_meta, store_payload, store_status};
 
 /// A literal `null` `i8*` — the errmsg slot of a Success (or message-less Error).
 pub(crate) const NO_MSG: &str = "null";
@@ -28,9 +31,11 @@ pub(crate) const TYPED_ERROR: &str = "2";
 /// its own box; anything else is boxed whole at its type.
 pub(crate) fn make_error(cg: &mut Codegen, payload: Value) -> Result<Value> {
     if payload.ty == LType::Str && payload.result_inner.is_none() {
-        let message = payload.operand.clone();
+        // Slot 2 holds the message and owns it; no reader takes an Error's
+        // slot 0, so it stays empty and the text has one reference.
         let inner = payload.ty;
-        return make_result(cg, payload, inner, "1", &message);
+        let empty = Value::new(crate::llty::zero_literal(inner), inner);
+        return make_result(cg, empty, inner, "1", &payload.operand);
     }
     let boxed = match payload.ty {
         LType::Any => payload,
@@ -155,15 +160,29 @@ pub(crate) fn make_result(
     disc: &str,
     errmsg: &str,
 ) -> Result<Value> {
+    // A Result that wraps an element read out of a collection holds it without
+    // owning it: the collection does [MEM-OWNERSHIP-STATIC-BORROWS].
+    let reading = crate::arc::take_reading(cg);
     let value = settled_payload(cg, value, disc);
     let value = coerce_to(cg, value, inner)?;
-    let meta = result_meta(cg, inner);
+    let payload = payload_hold(cg, &value, reading);
+    // A payload the Result only holds stays out of its drop walk.
+    let walked = if payload == Held::Lent {
+        LType::I64
+    } else {
+        inner
+    };
+    let message = message_hold(cg, errmsg);
+    let meta = result_meta(cg, walked, message);
     let obj = cg.malloc_struct(RESULT_STRUCT, meta);
-    store_payload(cg, &obj, &value);
-    store_status(cg, &obj, disc, errmsg);
+    store_payload(cg, &obj, &value, payload);
+    store_status(cg, &obj, disc, errmsg, message);
     let mut out = Value::result(obj, inner).with_payload_owner(value.osp_ty);
     out.result_payload_type = value.inferred_type;
-    own_result(cg, &out, inner, errmsg);
+    own_result(cg, &out, walked, errmsg);
+    if payload.lends() || message.lends() {
+        crate::arc::mark_lent(cg, &out);
+    }
     Ok(out)
 }
 
@@ -182,41 +201,6 @@ fn settled_payload(cg: &mut Codegen, value: Value, disc: &str) -> Value {
     cg.start_block(&taken);
     let settled = crate::listlit::escaping(cg, value);
     join_payload(cg, settled, &error, &end)
-}
-
-fn result_meta(cg: &Codegen, inner: LType) -> i64 {
-    use crate::meta::MetaField;
-    // The payload is a physical `i64` on every target even when it carries a
-    // managed pointer, so it is a `ManagedWord`, not a pointer-size slot.
-    let payload = if inner.is_managed_ptr() {
-        MetaField::ManagedWord
-    } else {
-        MetaField::Word
-    };
-    cg.struct_meta(&[payload, MetaField::Byte, MetaField::PtrManaged])
-}
-
-fn store_status(cg: &mut Codegen, object: &str, disc: &str, errmsg: &str) {
-    let dp = cg.emit_reg(format!(
-        "getelementptr {RESULT_STRUCT}, {RESULT_STRUCT}* {object}, i32 0, i32 1"
-    ));
-    cg.emit(format!("store i8 {disc}, i8* {dp}"));
-    crate::aggregate::store_field(cg, RESULT_STRUCT, object, 2, LType::Str, errmsg);
-}
-
-/// Scalar payloads with static reasons hold no managed references. [GC-ARC-PERCEUS]
-fn own_result(cg: &mut Codegen, value: &Value, inner: LType, errmsg: &str) {
-    crate::arc::own(cg, value);
-    let errmsg_unmanaged = !errmsg.starts_with('%') || cg.is_rodata(errmsg);
-    if !inner.is_managed_ptr() && errmsg_unmanaged {
-        crate::arc::mark_pure_scalar(cg, value);
-    }
-}
-
-fn store_payload(cg: &mut Codegen, object: &str, value: &Value) {
-    crate::arc::dup_store(cg, value.ty.as_str(), &value.operand);
-    let bits = crate::conv::box_to_i64(cg, value.clone());
-    crate::aggregate::store_field(cg, RESULT_STRUCT, object, 0, LType::I64, &bits.operand);
 }
 
 /// A Success result wrapping `value` (disc 0, no message).
@@ -258,6 +242,9 @@ pub(crate) fn make_list_read(
     let length = length(cg);
     let record = crate::aggregate::index_out_of_bounds(cg, index, &length)?;
     let boxed = crate::anybox::box_typed(cg, record)?;
+    // The box exists on this path alone: the join below carries it, or null,
+    // into the Result, which then owns it [GC-ARC-PERCEUS].
+    let carried = crate::arc::consume_into_store(cg, &boxed.operand);
     crate::arc::close_conditional(cg);
     let from_oob = cg.snapshot_to(&end);
     cg.start_block(&ok);
@@ -267,6 +254,9 @@ pub(crate) fn make_list_read(
         "phi i8* [ null, %{from_ok} ], [ {}, %{from_oob} ]",
         boxed.operand
     ));
+    if carried {
+        crate::arc::own(cg, &Value::new(slot.clone(), LType::Ptr));
+    }
     let disc = cg.emit_reg(format!("select i1 {in_bounds}, i8 0, i8 {TYPED_ERROR}"));
     // An element type the backend cannot see stays open; the error side is
     // what every reader of the payload decides on.
@@ -295,17 +285,25 @@ pub(crate) fn make_result_if_err_because(
         Some(m) => cg.string_constant(m).operand,
         None => NO_MSG.to_string(),
     };
-    let chosen = match reason {
+    let errmsg = match reason {
+        // The slot holds the runtime's reason whenever it gave one, else the
+        // static text or null, so the slot takes the reason's one reference
+        // instead of counting a second [MEM-OWNERSHIP-STATIC].
         Some(r) => {
             let given = cg.emit_reg(format!("icmp ne i8* {r}, null"));
-            cg.emit_reg(format!("select i1 {given}, i8* {r}, i8* {fallback}"))
+            let chosen = cg.emit_reg(format!("select i1 {given}, i8* {r}, i8* {fallback}"));
+            let kept = cg.emit_reg(format!("or i1 {is_err}, {given}"));
+            let selected = cg.emit_reg(format!("select i1 {kept}, i8* {chosen}, i8* null"));
+            crate::arc::same_value(cg, &selected, r);
+            selected
         }
-        None => fallback,
-    };
-    let errmsg = if chosen == NO_MSG {
-        NO_MSG.to_string()
-    } else {
-        cg.emit_reg(format!("select i1 {is_err}, i8* {chosen}, i8* null"))
+        None if fallback == NO_MSG => NO_MSG.to_string(),
+        None => {
+            let selected = cg.emit_reg(format!("select i1 {is_err}, i8* {fallback}, i8* null"));
+            // With no runtime reason the message is the static text or null.
+            cg.mark_rodata(&selected);
+            selected
+        }
     };
     make_result(cg, value, inner, &disc, &errmsg)
 }
@@ -411,6 +409,9 @@ pub(crate) fn load_errmsg(cg: &mut Codegen, v: &Value) -> Value {
         v.operand
     ));
     let raw = cg.emit_reg(format!("load i8*, i8** {mp}"));
+    // The message is a field of the Result: a Result at its last read gives
+    // it up [MEM-OWNERSHIP-STATIC-PATHS].
+    crate::arc::note_field(cg, &raw, &v.operand, &mp, "i8*");
     Value::new(raw, LType::Str)
 }
 
@@ -425,6 +426,8 @@ pub(crate) fn load_errmsg_str(cg: &mut Codegen, v: &Value) -> Value {
         "select i1 {isnull}, i8* {}, i8* {}",
         fallback.operand, raw.operand
     ));
+    // The stored message, or a literal that has no owner.
+    crate::arc::same_value(cg, &msg, &raw.operand);
     Value::new(msg, LType::Str)
 }
 
@@ -447,13 +450,16 @@ pub(crate) fn map_payload(
     inner: LType,
     convert: impl FnOnce(&mut Codegen, Value) -> Result<Value>,
 ) -> Result<Value> {
-    let errmsg = load_errmsg(cg, value);
     if value.result_inner_is_placeholder {
-        // Only Error constructors contribute this placeholder layout.
-        let zero = Value::new(crate::llty::zero_literal(inner), inner);
-        let disc = load_disc(cg, value);
-        return make_result(cg, zero, inner, &disc, &errmsg.operand);
+        // Only Error constructors contribute this placeholder layout. Their
+        // block holds nothing in slot 0 and every payload type shares one
+        // physical block, so the same block serves `inner` as it is.
+        let mut same = value.clone();
+        same.result_inner = Some(inner);
+        same.result_inner_is_placeholder = false;
+        return Ok(same);
     }
+    let errmsg = load_errmsg(cg, value);
     let disc = load_disc(cg, value);
     let (_, error, end) = open_result_branch(cg, value);
     let loaded = load_value(cg, value);

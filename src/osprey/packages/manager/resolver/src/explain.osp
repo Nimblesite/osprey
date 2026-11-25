@@ -1,10 +1,4 @@
 namespace registry;
-import registry::Identity
-import registry::Names
-import registry::Order
-import registry::ManifestModel
-import registry::Candidates
-import registry::Resolution
 
 /// The stable explanation of a refuted graph under [PACKAGE-RESOLUTION]. The
 /// causes are checked in the spec order over the keys reachable from the root

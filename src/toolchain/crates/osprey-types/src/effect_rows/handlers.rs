@@ -87,7 +87,7 @@ impl Analyzer<'_> {
             let mut arm_env =
                 self.handler_arm_env(site.effect, arm, site.body, site.stage, scope, env);
             let changes = self.flow_callable_assignments(&arm.body, scope, &mut arm_env);
-            super::assignment_flow::merge_changes(&mut local.values, changes);
+            local.values.merge(changes);
             let value = self
                 .returned_value(&arm.body, scope, &mut arm_env)
                 .unwrap_or_else(Value::unknown_value);

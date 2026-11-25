@@ -114,13 +114,15 @@ fn link_argv_uses_crt1_runtime_archive_and_libc() {
     // [WASM-TARGET-LINK] [WASM-TARGET-RUNTIME] [WASM-TARGET-MEMORY]
     let argv = link_argv(
         Path::new("/tmp/p.o"),
-        "/lib/libosprey_runtime_wasm.a",
+        "/lib/libosprey_runtime_wasm_arc.a",
         Path::new("/sys/lib/wasm32-wasip1"),
         Path::new("/out/p.wasm"),
         None,
     );
     assert!(argv.iter().any(|a| a.ends_with("crt1-command.o")));
-    assert!(argv.iter().any(|a| a == "/lib/libosprey_runtime_wasm.a"));
+    assert!(argv
+        .iter()
+        .any(|a| a == "/lib/libosprey_runtime_wasm_arc.a"));
     assert!(argv.iter().any(|a| a == "-L/sys/lib/wasm32-wasip1"));
     assert!(argv.iter().any(|a| a == "-lc"));
     assert!(argv.iter().any(|a| a == "--export=osp_alloc"));
@@ -139,7 +141,7 @@ fn link_argv_exports_the_discovered_web_dispatch_symbol() {
     let mangled = format!("__osp_3x617070{WEB_DISPATCH_MANGLED_SUFFIX}");
     let argv = link_argv(
         Path::new("/tmp/p.o"),
-        "/lib/libosprey_runtime_wasm.a",
+        "/lib/libosprey_runtime_wasm_arc.a",
         Path::new("/sys/lib/wasm32-wasip1"),
         Path::new("/out/p.wasm"),
         Some(&mangled),

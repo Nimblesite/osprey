@@ -7,14 +7,14 @@
 //! Needs Prism linked: `scripts/prism.sh` builds `target/prism-app/libOspreyApp.a`, and the test
 //! runs with `OSPREY_NATIVE_APP_DIR` naming it (README.md).
 
-use std::sync::atomic::Ordering;
-
 use ferroui_osprey_native::events::Touch;
-use ferroui_osprey_native::ffi::{self, Library};
+use ferroui_osprey_native::ffi::Library;
 use ferroui_osprey_native::regions::Regions;
 use ferroui_osprey_native::rows::Shown;
 use ferroui_osprey_native::scene::Shape;
-use ferroui_osprey_native::tree::Tree;
+
+mod common;
+use common::{center, repo, scene, shapes};
 
 /// One display frame at 120 Hz, in milliseconds.
 const FRAME_MS: f64 = 1000.0 / 120.0;
@@ -27,37 +27,12 @@ const WARM_UP: usize = 5;
 const STUDIO_SHAPES: usize = 250;
 
 fn machine() -> String {
-    format!(
-        "{}/../../../osprey/packages/signal_flow/signal_flow.machine.json",
-        env!("CARGO_MANIFEST_DIR")
-    )
-}
-
-/// The control number of the first scene at or below `node`, depth first.
-fn scene(node: &Tree) -> Option<i64> {
-    match node {
-        Tree::Record(members) => match members.get("kind") {
-            Some(Tree::Text(kind)) if kind == "scene" => match members.get("event") {
-                Some(Tree::Whole(ordinal)) => Some(*ordinal),
-                _ => None,
-            },
-            _ => members.values().find_map(scene),
-        },
-        Tree::Items(items) => items.iter().find_map(scene),
-        _ => None,
-    }
-}
-
-fn shapes(shown: &Shown) -> usize {
-    shown.scenes.values().map(|scene| scene.shapes.len()).sum()
+    repo("osprey/packages/signal_flow/signal_flow.machine.json")
 }
 
 /// One pointer event; returns its frame and the milliseconds the application took.
 fn point(canvas: i64, (x, y): (f64, f64), down: bool) -> (Shown, f64) {
-    match Library::event(0, &Touch::pointer(canvas, x, y, down, false)) {
-        Ok(shown) => (shown, ffi::APP_MICROS.load(Ordering::Relaxed) as f64 / 1000.0),
-        Err(problem) => panic!("Prism refused a pointer event at {x},{y}: {problem}"),
-    }
+    common::point("Prism", canvas, x, y, down)
 }
 
 /// The scene point of move `index`: around a circle from the module's title bar.
@@ -68,11 +43,6 @@ fn along(index: usize) -> (f64, f64) {
 
 /// [DAW-LAYOUT-FILL] Drag by the title in three viewport shapes and trace the real output socket.
 fn drag_across_resized_canvas(canvas: i64) {
-    let center = |frame: &Shown, label: &str| {
-        let area = frame.scenes.values().flat_map(|scene| &scene.access)
-            .find(|area| area.label == label).unwrap_or_else(|| panic!("missing canvas control: {label}"));
-        (area.x + area.w / 2.0, area.y + area.h / 2.0)
-    };
     let sprite = |frame: &Shown| {
         frame.scenes.values().find_map(|scene| scene.shapes.iter().find_map(|shape| match shape {
             Shape::Sprite { atlas, x, y, .. } if scene.atlas.get(*atlas).is_some_and(|s| s.ends_with("/node-source.png")) => Some((f64::from(*x), f64::from(*y))),

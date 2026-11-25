@@ -17,14 +17,10 @@ module Exciters
 
     (** A one-shot holds its age at the burst end; a repeating burst restarts at its interval. *)
     aged (config, age) = match config.interval == 0
-        true => min (age + 1.0, toFloat config.duration)
+        true => min (age + 1.0) (toFloat config.duration)
         false => match age + 1.0 >= toFloat config.interval
             true => 0.0
             false => age + 1.0
-
-    min (one, other) = match one < other
-        true => one
-        false => other
 
     impulse (config, held) = match held.age == 0.0
         true => config.strength

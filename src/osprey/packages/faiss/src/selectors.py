@@ -24,17 +24,51 @@ class IDSelector:
 
 
 def IDSelectorBatch(ids):
-    """Selects exactly the labels listed in `ids`."""
+    """Selects exactly the labels listed in `ids`.
+
+    # Examples
+    ```osprey
+    from faiss import Selectors
+    batch = Selectors.IDSelectorBatch([3, 5, 8])
+    print(f"[{batch.kind}] {toString(batch.ids)}")
+    ```
+    ```output
+    [batch] [3, 5, 8]
+    ```
+    """
     return IDSelector(kind="batch", ids=ids, imin=0, imax=0)
 
 
 def IDSelectorRange(imin, imax):
-    """Selects every label in the half-open interval `[imin, imax)`."""
+    """Selects every label in the half-open interval `[imin, imax)`.
+
+    # Examples
+    ```osprey
+    from faiss import Selectors
+    range_sel = Selectors.IDSelectorRange(2, 5)
+    print(f"[{range_sel.kind}] [{range_sel.imin}] [{range_sel.imax}]")
+    ```
+    ```output
+    [range] [2] [5]
+    ```
+    """
     return IDSelector(kind="range", ids=[], imin=imin, imax=imax)
 
 
 def selected(selector, id):
-    """faiss's `IDSelector.is_member(id)`: whether `id` matches the selector."""
+    """faiss's `IDSelector.is_member(id)`: whether `id` matches the selector.
+
+    # Examples
+    ```osprey
+    from faiss import Selectors
+    batch = Selectors.IDSelectorBatch([3, 5])
+    range_sel = Selectors.IDSelectorRange(2, 5)
+    print(f"[{Selectors.selected(batch, 5)}] [{Selectors.selected(batch, 6)}] [{Selectors.selected(range_sel, 2)}] [{Selectors.selected(range_sel, 5)}] [{Selectors.selected(range_sel, 4)}]")
+    ```
+    ```output
+    [true] [false] [true] [false] [true]
+    ```
+    """
     match selector.kind:
         case "batch":
             return listContains(selector.ids, id)

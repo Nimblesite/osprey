@@ -136,7 +136,14 @@ pub(crate) fn box_to_i64(cg: &mut Codegen, v: Value) -> Value {
         // A box pointer travels the word ABI like any handle; the erasure
         // survives because the reader restores `Any` from its slot type.
         LType::Str | LType::Ptr | LType::Any => {
-            cg.emit_reg(format!("ptrtoint {} {} to i64", v.ty, v.operand))
+            // The word of a constant or a literal is as static as its pointer.
+            let fixed = !v.operand.starts_with('%') || cg.is_rodata(&v.operand);
+            let word = cg.emit_reg(format!("ptrtoint {} {} to i64", v.ty, v.operand));
+            if fixed {
+                cg.mark_rodata(&word);
+            }
+            crate::arc::same_value(cg, &word, &v.operand);
+            word
         }
         LType::I1 => cg.emit_reg(format!("zext i1 {} to i64", v.operand)),
         // [TYPE-NUMERIC-WORD]: a float is its bits, a signed integer sign-
@@ -180,7 +187,14 @@ pub(crate) fn fit_literal(
 pub(crate) fn unbox_from_i64(cg: &mut Codegen, raw: &str, ty: LType) -> Value {
     let reg = match ty {
         LType::I64 => return Value::new(raw.to_string(), LType::I64),
-        LType::Str | LType::Ptr | LType::Any => cg.emit_reg(format!("inttoptr i64 {raw} to i8*")),
+        LType::Str | LType::Ptr | LType::Any => {
+            let pointer = cg.emit_reg(format!("inttoptr i64 {raw} to i8*"));
+            if cg.is_rodata(raw) {
+                cg.mark_rodata(&pointer);
+            }
+            crate::arc::same_as_word(cg, &pointer, raw);
+            pointer
+        }
         LType::I1 => cg.emit_reg(format!("trunc i64 {raw} to i1")),
         // A binary16 value IS its `i16` bits [TYPE-NUMERIC-SIZED].
         LType::Num(Numeric::FLOAT16) => cg.emit_reg(format!("trunc i64 {raw} to i16")),

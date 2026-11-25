@@ -3,7 +3,10 @@
 //! [FLAVOR-TS-FUNCTIONS], [FLAVOR-TS-TYPES], [FLAVOR-TS-UNIONS],
 //! [FLAVOR-TS-EXPRESSIONS], [FLAVOR-TS-INTEROP], [FLAVOR-TS-ENTRY] and
 //! [FLAVOR-TS-RECEIVER].
+mod typescript_common;
+
 use osprey_syntax::{parse_program_with_flavor, resolve_flavor, Flavor, Parsed};
+use typescript_common::rejected_at;
 
 fn parse(source: &str) -> Parsed {
     parse_program_with_flavor(source, Flavor::TypeScript)
@@ -48,23 +51,6 @@ fn equal(default: &str, source: &str) {
         actual == expected,
         "{source}\n{}",
         first_difference(&actual, &expected)
-    );
-}
-
-/// Asserts `source` is rejected by a diagnostic containing `needle`, at the
-/// one-based `line` and zero-based `column` of the construct it names.
-fn rejected_at(source: &str, needle: &str, line: u32, column: u32) {
-    let parsed = parse(source);
-    let found = parsed
-        .errors
-        .iter()
-        .find(|error| error.message.contains(needle))
-        .map(|error| (error.position.line, error.position.column));
-    assert_eq!(
-        found,
-        Some((line, column)),
-        "{source}\nexpected `{needle}`, got {:?}",
-        parsed.errors
     );
 }
 

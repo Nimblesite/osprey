@@ -33,23 +33,30 @@ test('proof CI freshly builds each backend once, checks both corpora and Unicode
   assert.equal(result.status, 0, result.stdout + result.stderr)
   const batches = result.calls.filter(call => call.source === 'src/osprey/examples/proof/batch')
   assert.deepEqual(batches.map(call => call.memory).sort(), ['arc', 'gc', 'wasm32'])
-  assert.equal(result.calls.length, 16)
+  for (const proof of ['ownership-ledger', 'ownership-lowering']) {
+    assert.equal(result.calls.filter(call => call.source === proof).length, 1)
+  }
+  assert.equal(result.calls.length, 18)
   assert.equal(result.calls.at(-1).source, 'benchmark')
 })
 
-test('proof CI does not benchmark after a corpus failure', () => {
-  const result = runSchedule('_test_proof_ci', { FIXTURE_FAIL_CORPUS: 'lean-core' })
-  assert.notEqual(result.status, 0)
-  assert.match(result.stdout + result.stderr, /Error 21/)
-  assert.ok(!result.calls.some(call => call.source === 'benchmark'))
-})
+for (const [failure, code] of [[{ FIXTURE_FAIL_CORPUS: 'lean-core' }, 21],
+  [{ FIXTURE_FAIL_OWNERSHIP: 'ledger' }, 25], [{ FIXTURE_FAIL_OWNERSHIP: 'lowering' }, 25]]) {
+  test(`proof CI does not benchmark after ${Object.values(failure)[0]} fails`, () => {
+    const result = runSchedule('_test_proof_ci', failure)
+    assert.notEqual(result.status, 0)
+    assert.match(result.stdout + result.stderr, new RegExp(`Error ${code}`))
+    assert.ok(!result.calls.some(call => call.source === 'benchmark'))
+  })
+}
 
 
 test('files named after proof targets cannot suppress acceptance checks', () => {
   const result = runSchedule('_test_proof_ci', { FIXTURE_STALE_TARGETS: '1' })
   assert.equal(result.status, 0, result.stdout + result.stderr)
   assert.ok(result.calls.some(call => call.source === 'disciplines'))
-  assert.equal(result.calls.length, 16)
+  assert.ok(result.calls.some(call => call.source === 'ownership-ledger'))
+  assert.equal(result.calls.length, 18)
 })
 
 

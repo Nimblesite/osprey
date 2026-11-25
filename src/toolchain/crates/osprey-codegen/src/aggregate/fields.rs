@@ -106,6 +106,7 @@ fn load_field_value(
     let (index, ty) = field_slot(&fields, owner, field)?;
     let target = crate::cast::coerce_to(cg, target, LType::Ptr)?;
     let source = cg.emit_reg(format!("bitcast i8* {} to {struct_ty}*", target.operand));
+    crate::arc::same_value(cg, &source, &target.operand);
     let loaded = super::load_record_field(cg, owner, &struct_ty, &source, index, ty);
     Ok(restore_field(
         cg,

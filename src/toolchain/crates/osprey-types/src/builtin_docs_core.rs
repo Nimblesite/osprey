@@ -60,6 +60,18 @@ pub(crate) static CORE: &[BuiltinDoc] = &[
         "let d = abs(0 - 5)  // int: 5\nlet f = abs(-2.5)   // float: 2.5",
     ),
     builtin_doc!(
+        "min",
+        "The smaller of two values of one numeric type, at that type. Integers compare in their own order, unsigned for the uint types. Floats follow IEEE 754 minimum: NaN on either side gives NaN and -0.0 is below 0.0. Total: performs no Arith operation.",
+        ["a" => "The first value", "b" => "The second value, of the same numeric type"],
+        "let low = min(3, 7)  // 3\nfn clamp(x, lo, hi) = max(lo, min(x, hi))",
+    ),
+    builtin_doc!(
+        "max",
+        "The larger of two values of one numeric type, at that type. Integers compare in their own order, unsigned for the uint types. Floats follow IEEE 754 maximum: NaN on either side gives NaN and 0.0 is above -0.0. Total: performs no Arith operation.",
+        ["a" => "The first value", "b" => "The second value, of the same numeric type"],
+        "let high = max(3, 7)  // 7\nlet best = foldList([4, 9, 2], 0, max)  // 9",
+    ),
+    builtin_doc!(
         "intDiv",
         "Truncating integer division returning a plain int. A zero divisor performs Arith.remainderByZero and INT64_MIN / -1 performs Arith.overflow; a literal divisor other than 0 and -1 is total.",
         ["a" => "The dividend", "b" => "The divisor"],

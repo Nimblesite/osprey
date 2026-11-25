@@ -152,6 +152,11 @@ fn wasm_rejects_fibers_terminals_and_foreign_imports() -> std::io::Result<()> {
         ("let task = spawn 1\n", "fiber"),
         ("let task = Channel(1)\n", "fiber"),
         ("sleep(1)\n", "fiber"),
+        ("let ms = 1\nms.sleep()\n", "fiber"),
+        (
+            "type Reply = { send: fn(int) -> int }\nlet ms = 1\nms.sleep()\n",
+            "fiber",
+        ),
         ("let columns = termCols()\n", "terminal"),
         ("extern fn absent(value: int) -> int\n", "absent"),
     ] {
@@ -285,6 +290,10 @@ fn builtin_spellings_in_local_bindings_are_not_platform_capabilities() -> std::i
         "fn identity(sleep) = sleep\nprint(identity(41))\n",
         "let identity = fn(httpGet) => httpGet\nprint(identity(41))\n",
         "let value = match 41 { sleep => sleep }\nprint(value)\n",
+        // A dotted call inference left open (the receiver was a type variable)
+        // reads a declared record field, not the builtin of the same name.
+        "type Reply = { send: fn(string) -> string }\nfn respond(handler) = handler(Reply { send: fn(text) => \"sent \" + text })\nprint(respond(fn(res) => res.send(\"hello\")))\n",
+        "type Clock = { sleep: fn(string) -> string, httpGet: fn(string) -> string }\nfn tick(step) = step(Clock { sleep: fn(ms) => ms + \"ms\", httpGet: fn(url) => \"GET \" + url })\nprint(tick(fn(clock) => clock.sleep(\"40\") + clock.httpGet(\"/\")))\n",
     ] {
         let _ = accepts(source, "wasm32")?;
     }

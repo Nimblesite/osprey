@@ -19,10 +19,7 @@ use crate::mlrender;
 /// constructors, which have no declaration site to navigate to.
 /// Implements [LSP-HOVER-WRITTEN].
 pub(crate) fn type_hover(word: &str, flavor: Flavor) -> Option<String> {
-    BUILTIN_TYPE_DOCS
-        .iter()
-        .find(|(name, _)| *name == word)
-        .map(|(name, summary)| format!("{}\n\n{summary}", mlrender::fenced(flavor, name)))
+    doc_hover(&BUILTIN_TYPE_DOCS, word, flavor)
 }
 
 /// A reserved **keyword**'s one-line meaning. Keywords are reserved, so one can
@@ -32,7 +29,13 @@ pub(crate) fn type_hover(word: &str, flavor: Flavor) -> Option<String> {
 /// all, even though the highlighter colours it exactly like the built-in types
 /// that do hover. Implements [LSP-HOVER-KEYWORD].
 pub(crate) fn keyword_hover(word: &str, flavor: Flavor) -> Option<String> {
-    KEYWORD_DOCS
+    doc_hover(&KEYWORD_DOCS, word, flavor)
+}
+
+/// One entry of a documented built-in: its fenced name followed by its
+/// one-line summary, found by word in `table`.
+fn doc_hover(table: &[(&str, &str)], word: &str, flavor: Flavor) -> Option<String> {
+    table
         .iter()
         .find(|(name, _)| *name == word)
         .map(|(name, summary)| format!("{}\n\n{summary}", mlrender::fenced(flavor, name)))

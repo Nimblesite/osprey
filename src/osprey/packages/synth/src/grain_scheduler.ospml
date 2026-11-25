@@ -8,9 +8,7 @@ module GrainScheduler
     (** Starts with an onset at position. Recreating the clock with the same seed resets the sequence. *)
     export prepare (position, timing, seed) =
         clock = GrainClock(position = position, nextOnset = position, timing = timing, seed = seed)
-        match valid clock
-            true => Success(value = clock)
-            false => Error(message = InvalidConfiguration(detail = "Invalid grain clock, interval, jitter or seed."))
+        GrainTimings::accepted (valid clock, clock, InvalidConfiguration(detail = "Invalid grain clock, interval, jitter or seed."))
 
     continued (held, end) = match held.next.nextOnset >= end
         true =>

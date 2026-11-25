@@ -1,6 +1,7 @@
 //! Import validation and contribution-local lookup scopes.
 //! Implements [MODULES-IMPORT] and its wildcard/ambiguity policy.
 
+use crate::collect::impl_diagnostics;
 use crate::collect_support::Diagnostics;
 use crate::contribution::Contribution;
 use crate::model::{ProjectGraph, SymbolKey};
@@ -60,11 +61,7 @@ pub(crate) fn build(
     (scopes, builder.errors)
 }
 
-impl Diagnostics for Builder<'_> {
-    fn sink(&mut self) -> (&[SourceMetadata], &mut Vec<ProjectError>) {
-        (self.sources, &mut self.errors)
-    }
-}
+impl_diagnostics!(Builder);
 
 struct Builder<'a> {
     config: &'a ProjectConfig,
@@ -334,7 +331,7 @@ fn edit_distance(left: &str, right: &str) -> usize {
     row.last().copied().unwrap_or_default()
 }
 
-fn whole_alias(import: &ImportDecl) -> Option<String> {
+pub(crate) fn whole_alias(import: &ImportDecl) -> Option<String> {
     if let Some(alias) = &import.alias {
         return Some(alias.clone());
     }

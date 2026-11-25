@@ -1,5 +1,6 @@
 namespace hosted_tests;
 import registry_api::HostedRequest
+import registry_api::HostedHeaders
 
 /// The request gate in order: edge secret, host, method, URI and body
 /// bounds, then the credentialed origin/CSRF chain. Implements
@@ -18,8 +19,8 @@ module RequestTests {
         method: method, uri: uri, headerBlock: headerBlock, body: body
     }
 
-    fn verdictOf(v) = if HostedRequest::isAdmitted(v) { "admitted" }
-        else { "${HostedRequest::statusOf(v)}:${HostedRequest::codeOf(v)}" }
+    fn verdictOf(v) = if HostedHeaders::isOk(v) { "admitted" }
+        else { "${HostedHeaders::statusOf(v)}:${HostedHeaders::codeOf(v)}" }
 
     fn headers(method, extra) = "X-Edge-Secret: s3cr3t-edge\r\nHost: api.example.test\r\n" + extra
         + (if method == "GET" { "" } else { "\r\nX-Csrf-Token: csrf-tok" })

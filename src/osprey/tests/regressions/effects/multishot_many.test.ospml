@@ -70,23 +70,29 @@ answersFor (input, twice) =
             false => "${resume base},${resume (satAdd base 1)},${resume (satAdd base 2)}"
     branch input
 
+(** Runs `body` under a Journal handler that appends every note to a
+    transcript, then passes `next` the body's answer and the final transcript. *)
+transcribed (body, next) =
+    mut log = ""
+    answer =
+        handle Journal
+            note text => log := "${log}${text}"
+        body ()
+    next (answer, log)
+
 (** [MULTI-FALSIFY] pure search — every alternative is resumed and every branch
     answer is collected; the transcript proves each branch ran its own suffix
     exactly. *)
 everyAnswerCase () =
-    mut log = ""
-    answers =
-        handle Journal
-            note text => log := "${log}${text}"
+    use answers, log <- transcribed (\() =>
         handle Choice
             pick _bound =>
                 low = resume 4
                 mid = resume 5
                 high = resume 6
                 "${low},${mid},${high}"
-        gather 4
-    print ("answers=${answers}")
-    print ("log=[${log}]")
+        gather 4)
+    print ("answers=${answers}\nlog=[${log}]")
     checkAll "every resume collects its own branch answer" [
         answersFor (Success(value = 4), true) == "4:4,4:5",
         answersFor (Error(message = 9), false) == "9:9,9:10,9:11",
@@ -98,18 +104,14 @@ everyAnswerCase () =
     opening note stays single, and the second decision re-runs per new branch
     without replaying the branches it already settled. *)
 retryWithoutReplayCase () =
-    mut log = ""
-    stagedAnswer =
-        handle Journal
-            note text => log := "${log}${text}"
+    use stagedAnswer, log <- transcribed (\() =>
         handle Choice
             pick _bound =>
                 first = resume 0
                 second = resume 1
                 "${first}|${second}"
-        staged 7
-    print ("staged=${stagedAnswer}")
-    print ("log=[${log}]")
+        staged 7)
+    print ("staged=${stagedAnswer}\nlog=[${log}]")
     checkAll "a retried decision replays neither earlier nor later work" [
         stagedAnswer == "r0-0|r0-1|r1-0|r1-1",
         log == "before\nmid\nafter\nafter\nmid\nafter\nafter\n"
@@ -118,24 +120,16 @@ retryWithoutReplayCase () =
 (** `many` is an upper bound, never a promise: zero answers abandon the
     remainder (its suffix never runs), and a single answer runs it exactly. *)
 zeroAndSingleCase () =
-    mut zeroLog = ""
-    zeroAnswer =
-        handle Journal
-            note text => zeroLog := "${zeroLog}${text}"
+    use zeroAnswer, zeroLog <- transcribed (\() =>
         handle Choice
             pick _bound => "none"
-        gather 5
-    print ("zero=${zeroAnswer}")
-    print ("zero log=[${zeroLog}]")
-    mut singleLog = ""
-    singleAnswer =
-        handle Journal
-            note text => singleLog := "${singleLog}${text}"
+        gather 5)
+    print ("zero=${zeroAnswer}\nzero log=[${zeroLog}]")
+    use singleAnswer, singleLog <- transcribed (\() =>
         handle Choice
             pick bound => resume bound
-        gather 5
-    print ("single=${singleAnswer}")
-    print ("single log=[${singleLog}]")
+        gather 5)
+    print ("single=${singleAnswer}\nsingle log=[${singleLog}]")
     checkAll "zero answers abandon the remainder and a single answer runs it" [
         zeroAnswer == "none",
         singleAnswer == "b5",
@@ -161,8 +155,7 @@ branchFinalizersCase () =
                 finally => perform Audit.close "close\n"
             perform Choice.pick 5
         "v${chosen}"
-    print ("branches=${branches}")
-    print ("branch log=[${branchLog}]")
+    print ("branches=${branches}\nbranch log=[${branchLog}]")
     mut abandonLog = ""
     abandoned =
         handle Audit
@@ -175,8 +168,7 @@ branchFinalizersCase () =
                 finally => perform Audit.close "close\n"
             perform Choice.pick 6
         "v${chosen}"
-    print ("abandoned=${abandoned}")
-    print ("abandoned log=[${abandonLog}]")
+    print ("abandoned=${abandoned}\nabandoned log=[${abandonLog}]")
     checkAll "branch finalizers run exactly per branch and per abandonment" [
         branches == "v5&v6",
         abandoned == "dropped",
@@ -186,18 +178,14 @@ branchFinalizersCase () =
 (** A nested handler region completed before the outer capture survives every
     resumption of the outer decision without being replayed. *)
 nestedRegionsCase () =
-    mut log = ""
-    layeredAnswer =
-        handle Journal
-            note text => log := "${log}${text}"
+    use layeredAnswer, log <- transcribed (\() =>
         handle Choice
             pick bound =>
                 first = resume bound
                 second = resume 1003
                 "${first}~${second}"
-        layered 2
-    print ("layered=${layeredAnswer}")
-    print ("layered log=[${log}]")
+        layered 2)
+    print ("layered=${layeredAnswer}\nlayered log=[${log}]")
     checkAll "a nested region is not replayed across outer resumptions" [
         layeredAnswer == "L1002~L1003",
         log == "inner 1002\n"

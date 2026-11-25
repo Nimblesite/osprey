@@ -26,7 +26,7 @@ typedef struct OspreyListNode {
                  OSP_MEM_WORD(offsetof(OspreyList, tail)) |                    \
                  OSP_MEM_WORD(offsetof(OspreyList, front)))
 /* All 32 slots are managed pointers: true of every internal node (children)
- * AND of a leaf whose ELEMENTS are managed — one layout word, so clone_node's
+ * AND of a leaf whose ELEMENTS are managed — one layout word, so the clone's
  * dup loop and the drop walk serve both. Internal-vs-leaf is intrinsic: growth
  * stacks internals above a subtree, push_tail installs the tail chunk (a leaf)
  * at OSPREY_LIST_BITS — kinds never change. */
@@ -99,24 +99,21 @@ static inline OspreyListNode *alloc_node(int64_t layout) {
   return alloc_trie_storage(sizeof(OspreyListNode), layout, 1);
 }
 
-/* Copy a node. Only the first `used` slots can contain references, so each managed
- * slot gains a reference — children for an internal node, elements for a
- * managed leaf; a scalar leaf none. NULL slots probe-miss. */
-static inline OspreyListNode *clone_slots(OspreyListNode *src, int64_t layout,
-                                         int32_t used) {
-  if (src == NULL) return alloc_node(layout);
-  OspreyListNode *n = alloc_trie_storage(sizeof(*n), layout, 0);
-  memcpy(n->slots, src->slots, sizeof(src->slots));
-  if (layout == NODE_PTRS_LAYOUT) {
-    for (int32_t i = 0; i < used; i++) {
-      osp_retain(as_node_ptr(n->slots[i]));
+/* The source owns the old slot. Copy only the other ownership edges and
+ * move value into the replacement slot [MEM-OWNERSHIP-STATIC-SHARING]. */
+static inline OspreyListNode *replace_slot(OspreyListNode *src, int64_t layout,
+                                          int32_t used, int32_t slot, int64_t value) {
+  OspreyListNode *n = alloc_trie_storage(sizeof(*n), layout, src == NULL);
+  if (src != NULL) {
+    memcpy(n->slots, src->slots, sizeof(src->slots));
+    if (layout == NODE_PTRS_LAYOUT) {
+      for (int32_t i = 0; i < used; i++) {
+        if (i != slot) osp_retain(as_node_ptr(n->slots[i]));
+      }
     }
   }
+  n->slots[slot] = value;
   return n;
-}
-
-static inline OspreyListNode *clone_node(OspreyListNode *src, int64_t layout) {
-  return clone_slots(src, layout, OSPREY_LIST_BRANCH);
 }
 
 /* Wrap `node` in fresh internal nodes down to the leaf level, moving the
@@ -156,8 +153,7 @@ static inline OspreyListNode *push_tail(int32_t level, OspreyListNode *parent,
                                  int64_t in_tree_count) {
   int32_t sub_index =
       (int32_t)(((in_tree_count - 1) >> level) & OSPREY_LIST_MASK);
-  OspreyListNode *ret = clone_node(parent, NODE_PTRS_LAYOUT);
-  OspreyListNode *child = (OspreyListNode *)(uintptr_t)ret->slots[sub_index];
+  OspreyListNode *child = parent ? as_node_ptr(parent->slots[sub_index]) : NULL;
   OspreyListNode *node_to_insert;
   if (level == OSPREY_LIST_BITS) {
     osp_retain(tail_node);
@@ -169,9 +165,8 @@ static inline OspreyListNode *push_tail(int32_t level, OspreyListNode *parent,
     osp_retain(tail_node);
     node_to_insert = wrap_path(tail_node, level - OSPREY_LIST_BITS);
   }
-  osp_release(child); /* clone_node dup'd it; this slot now holds the copy */
-  ret->slots[sub_index] = (int64_t)(uintptr_t)node_to_insert;
-  return ret;
+  return replace_slot(parent, NODE_PTRS_LAYOUT, OSPREY_LIST_BRANCH, sub_index,
+                      (int64_t)(uintptr_t)node_to_insert);
 }
 
 #endif /* OSPREY_LIST_TRIE_H */

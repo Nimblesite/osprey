@@ -26,6 +26,12 @@ Compatibility concerns intended logical rules and valid certificates, not reprod
 
 The compatible theory remains a versioned package under spec 0050. An implementation repair requires fresh validation of affected proofs. Removing an axiom or changing inference/equality rules creates an explicit policy/theory revision or separately named fork; its certificates, caches and library dependencies must be rechecked under that identity. Such a fork does not inherit its parent's proof authority. Unsupported proofs remain refused, and pluggability alone establishes no consistency theorem.
 
+### Translation validation of compiler output [PROOF-ORACLE-COMPILER]
+
+For a theorem about compiled code, record the compiler input, the emitted function, the quantified inputs and the contracts assumed for external calls. Derive the theorem input from the output produced during the proof run. A reflector must account for every reachable instruction that can affect the stated property. Unrecognized operations on that dependency path must prevent certification. At a control-flow join, check all feasible predecessors or prove the property over an overapproximation that includes them all.
+
+Check the theorem in pinned Lean and replay its export with the Osprey kernel under the declared axiom policy. Compare the exact set of reported axiom names for each theorem independently of export order. Require a semantic mutation that survives translation and fails at the theorem. Record Lean execution proofs and Osprey-replayed operand proofs separately when the two check different claims. Record the boundary of each result, including trusted extraction and runtime semantics. The ownership spec identifies the functions, properties, mutation controls and unfinished proof obligations. [Ownership compiler proofs](../compiler/0018-MemoryManagement.md#proofs-of-compiled-ownership-code-mem-ownership-static-verification-compiler)
+
 ## The existing language is untouched [PROOF-NO-HARM]
 
 This contract adds; it never alters. The rules below are testable and each has a gate:
@@ -62,6 +68,8 @@ The kernel is the only trusted component. It is a type checker for terms of Lean
 - quotient types as the four primitives `Quot`, `Quot.mk`, `Quot.lift`, `Quot.ind` and the `Quot.sound` reduction;
 - natural-number and string literals with the accelerated `Nat` operations Lean's kernel special-cases (`add`, `sub`, `mul`, `div`, `mod`, `gcd`, `beq`, `ble`, `land`, `lor`, `xor`, `shiftLeft`, `shiftRight`, `pow`, `log2`), computed on arbitrary-precision integers;
 - declarations: axioms, definitions, theorems, opaque constants, with the environment checks on names, levels and free variables that Lean applies before adding each.
+
+When the head of an application reduces through a transparent definition or a projection, the reducer keeps the pending arguments attached. An arithmetic method reached through a type class can thereby use the same guarded numeric reduction as a direct call. The native worklist growth theorem exercises ordinary multiplication at the 64-bit allocation boundary. [Compiled ownership proofs](../compiler/0018-MemoryManagement.md#proofs-of-compiled-ownership-code-mem-ownership-static-verification-compiler)
 
 Under [PROOF-KERNEL-THEORY], declaration metadata is compared structurally, never through pretty-printed descriptions, joined names or hashes alone. Name lists preserve their length, order and exact elements, so one identifier containing a comma cannot stand for two identifiers. Family and constructor counts, flags and ownership are compared as fields; recursor rules retain their order, constructor identity and field counts, with their types and right-hand sides checked by the existing derivation rules. The shared `DeclarationBodies` comparison in `src/osprey/examples/proof/kernel/src/env.ospml` serves both import validation and numeric/notation identity guards. Rendered text is diagnostic output only. Genuine identifiers containing commas remain legal; rejecting punctuation is not a substitute for comparing structure. The adversarial cases in `src/osprey/examples/proof/kernel/tests/inductive_adversarial.ospml` must reject forged constructor inventories and recursor-rule lists even when their printed descriptions collide.
 

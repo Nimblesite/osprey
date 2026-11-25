@@ -236,16 +236,20 @@ fn tool(variable: &str, default: &str) -> String {
     std::env::var(variable).unwrap_or_else(|_| default.to_owned())
 }
 
-pub(crate) fn compile_args(ll: &Path, obj: &Path) -> Vec<String> {
-    vec![
-        "-O2".into(),
-        "-fPIC".into(),
-        "-Wno-override-module".into(),
-        "-c".into(),
+fn compile_args(ll: &Path, obj: &Path) -> Vec<String> {
+    object_argv(&["-O2", "-fPIC"].map(String::from), ll, obj)
+}
+
+/// clang argv lowering textual IR `ll` to the object `obj` after `flags`: the
+/// module-triple-override note suppressed, compile only. Every target shares it.
+pub(crate) fn object_argv(flags: &[String], ll: &Path, obj: &Path) -> Vec<String> {
+    let output = [
         ll.display().to_string(),
         "-o".into(),
         obj.display().to_string(),
-    ]
+    ];
+    let compile = ["-Wno-override-module".to_string(), "-c".into()];
+    [flags, &compile, &output].concat()
 }
 
 #[cfg(test)]

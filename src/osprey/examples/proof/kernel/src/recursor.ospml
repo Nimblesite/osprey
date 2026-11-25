@@ -1,8 +1,5 @@
 namespace proof
 
-import proof::Terms
-import proof::Reduce
-import proof::Telescope
 
 (** A constructor as the kernel checked it: its fields in order, each
     under the group's parameters and the fields before it; the indices

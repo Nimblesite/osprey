@@ -1,8 +1,6 @@
 namespace registry_auth_tests;
 import registry::Policy
 import registry_api::OAuth
-import registry_auth_tests::ProviderTests
-import registry_auth_tests::WebhookTests
 
 fn config() = OAuth::Config {
     supabaseOrigin: "https://project.supabase.co",

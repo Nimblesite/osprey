@@ -73,8 +73,11 @@ pub(crate) fn definition(
         (line, character),
         enc,
     ) {
-        let at = binding.at;
-        return vec![located(uri, (at.line, at.start, at.line, at.end))];
+        return binding
+            .group
+            .into_iter()
+            .map(|at| located(uri, (at.line, at.start, at.line, at.end)))
+            .collect();
     }
     let local: Vec<Location> = declarations(text, &program, &word, enc)
         .into_iter()

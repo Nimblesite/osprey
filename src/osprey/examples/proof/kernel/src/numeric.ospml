@@ -1,11 +1,5 @@
 namespace proof
 
-import proof::Terms
-import proof::Environment
-import proof::Naturals
-import proof::Reduce
-import proof::NumericCanonical
-import proof::DeclarationBodies
 
 (** One numeric fast-path outcome: the checked term a candidate step reduces
     to, or no rule, leaving the ordinary reduction unchanged. Shared by the
@@ -37,8 +31,8 @@ module Numeric
         Const name levels => binaryConstant (env, name, levels, left, right)
         other => NoNumericRule
 
-    (** Only the two saturated primitive heads at no universe arguments. *)
-    binaryConstant (env, name, levels, left, right) = match (name == "Nat.ble" || name == "Nat.mul") && isEmpty levels
+    (** Only the saturated primitive heads at no universe arguments. *)
+    binaryConstant (env, name, levels, left, right) = match (name == "Nat.ble" || name == "Nat.beq" || name == "Nat.mul" || name == "Nat.pow") && isEmpty levels
         false => NoNumericRule
         true => match validLiterals left && validLiterals right
             true => numerals (env, left, right, name)
@@ -100,14 +94,31 @@ module Numeric
         false => NoNumericRule
         true => match operation
             "Nat.ble" => NumericReduced (boolean (Naturals::le (left, right)))
+            "Nat.beq" => equality (env, left, right)
             "Nat.mul" => multiplication (env, left, right)
+            "Nat.pow" => power (env, left, right)
             other => NoNumericRule
 
-    multiplication (env, left, right) = match foldList (NumericCanonical::multiplication (), true, \(ok, expected) => ok && declared (env, expected))
+    multiplication (env, left, right) = computed (pinnedAll (env, NumericCanonical::multiplication ()), \() => Naturals::multiply (left, right))
+
+    (** `Nat.beq` decides literal equality only with its own tree pinned. *)
+    equality (env, left, right) = match pinnedAll (env, NumericCanonical::equality ())
         false => NoNumericRule
-        true => match Naturals::multiply (left, right)
+        true => NumericReduced (boolean (Naturals::equal (left, right)))
+
+    (** `Nat.pow` computes only with every multiplication and power tree pinned:
+        its body multiplies, so a forged `Nat.mul` must disable it too. *)
+    power (env, left, right) = computed (pinnedAll (env, NumericCanonical::multiplication ()) && pinnedAll (env, NumericCanonical::power ()), \() => Naturals::power (left, right))
+
+    // The literal `compute` yields when `pinned` holds, else no rule: the pin,
+    // not the arithmetic, decides.
+    computed (pinned, compute) = match pinned
+        false => NoNumericRule
+        true => match compute ()
             Error _ => NoNumericRule
             Success value => NumericReduced (NatLit value)
+
+    pinnedAll (env, expected) = foldList (expected, true, \(ok, one) => ok && declared (env, one))
 
     boolean (value) = match value
         true => Const "Bool.true" []

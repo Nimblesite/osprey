@@ -4,7 +4,6 @@ namespace synth
 
 import ui::Machines
 import ui::Requests
-import synth::Voice
 
 (** The original fixed-patch preview, retained while its interaction coverage migrates. *)
 module Synth

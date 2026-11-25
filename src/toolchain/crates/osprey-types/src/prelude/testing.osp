@@ -25,6 +25,18 @@ fn exactArithmetic(work) = {
     work()
 }
 
+/// Runs `work` under the lenient policy documentation examples share: an
+/// overflow keeps the wrapped value, a zero divisor gives zero. Implements
+/// [TESTING-ARITH-POLICY].
+fn wrappingArithmetic(work) = {
+    handle Arith {
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    }
+    work()
+}
+
 /// Prints `work`'s report, or `REJECTED:` and the last arithmetic fault it
 /// raised, so a whole report is published exactly or not at all.
 fn printExact(work) = {

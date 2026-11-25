@@ -46,7 +46,7 @@ effect before returning it to ordinary language code.
 ## Runtime and platforms
 
 - Fibers and typed channel communication.
-- Native builds use tracing GC by default; Perceus ARC is the alternative managed backend. Unmanaged allocation requires explicit `--memory=none` and does not reclaim every allocation. Static-memory checking is not implemented.
+- Native builds use tracing GC by default; Perceus ARC tracks shared owners. Compile-time ownership checks moves and borrows and rejects unproved transfers. See the [ownership contract](../compiler/0018-MemoryManagement.md#compile-time-ownership-mem-ownership-static).
 - Native C interoperability and built-in HTTP and WebSocket runtimes.
 
 Each later chapter states narrower availability or platform limits beside the

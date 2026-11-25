@@ -261,18 +261,10 @@ impl Blame {
         };
         if matches!(kind, "fn" | "binder" | "constraint") {
             let _ = self.functions.insert(subject.to_owned());
-        } else if let Some(position) = position(subject) {
+        } else if let Some(position) = crate::builtin_constraints::line_column(subject) {
             self.positions.push(position);
         }
     }
-}
-
-fn position(text: &str) -> Option<Position> {
-    let (line, column) = text.split_once(':')?;
-    Some(Position {
-        line: line.parse().ok()?,
-        column: column.parse().ok()?,
-    })
 }
 
 /// Declarations in program order. Merged files restart line numbers, so a span

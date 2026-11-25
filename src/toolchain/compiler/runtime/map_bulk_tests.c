@@ -50,20 +50,20 @@ void test_builder(void) {
   CHECK(zero->root == NULL); CHECK(osprey_map_length(zero) == 0);
   CHECK(zero->key_type == KI); chk_absent(zero, 0);
   OspreyMapBuilder *b = osprey_map_builder_new(KI);
-  for (int64_t i = 0; i < SMALL_N; i++) osprey_map_builder_put(b, i, i * VAL_MUL);
+  for (int64_t i = 0; i < SMALL_N; i++) osprey_map_builder_put_of(b, i, i * VAL_MUL, 0);
   for (int64_t i = 0; i < SMALL_N; i += 10)
-    osprey_map_builder_put(b, i, i * VAL_MUL); /* duplicates must not grow */
-  osprey_map_builder_put(b, 0, 0);
+    osprey_map_builder_put_of(b, i, i * VAL_MUL, 0); /* duplicates must not grow */
+  osprey_map_builder_put_of(b, 0, 0, 0);
   OspreyMap *built = osprey_map_builder_seal(b);
   chk_int_range(built, 0, SMALL_N); CHECK(drain(built, 0, SMALL_N) == SMALL_N);
 }
 void test_builder_key_types(void) {
   OspreyMapBuilder *sb = osprey_map_builder_new(KS);
   for (int64_t i = 0; i < STR_KEYS; i++)
-    osprey_map_builder_put(sb, skey(STRS[i]), i * VAL_MUL);
+    osprey_map_builder_put_of(sb, skey(STRS[i]), i * VAL_MUL, 0);
   char alias[STR_BUF];
   (void)snprintf(alias, sizeof(alias), "%s", STRS[2]);
-  osprey_map_builder_put(sb, skey(alias), -3); /* duplicate via an alias */
+  osprey_map_builder_put_of(sb, skey(alias), -3, 0); /* duplicate via an alias */
   OspreyMap *sm = osprey_map_builder_seal(sb);
   CHECK(sm->key_type == KS); CHECK(osprey_map_length(sm) == STR_KEYS);
   chk_entry(sm, skey(STRS[2]), -3);
@@ -71,10 +71,10 @@ void test_builder_key_types(void) {
     CHECK(osprey_map_contains(sm, skey(STRS[i])) == 1);
   /* A BOOL-keyed builder drives assoc through the collision path. */
   OspreyMapBuilder *bb = osprey_map_builder_new(KB);
-  osprey_map_builder_put(bb, 0, 0);
+  osprey_map_builder_put_of(bb, 0, 0, 0);
   for (int32_t i = 0; i < COLL_N; i++)
-    osprey_map_builder_put(bb, COLL_KEYS[i], COLL_KEYS[i] * VAL_MUL);
-  osprey_map_builder_put(bb, COLL_KEYS[0], COLL_KEYS[0] * VAL_MUL);
+    osprey_map_builder_put_of(bb, COLL_KEYS[i], COLL_KEYS[i] * VAL_MUL, 0);
+  osprey_map_builder_put_of(bb, COLL_KEYS[0], COLL_KEYS[0] * VAL_MUL, 0);
   OspreyMap *bm = osprey_map_builder_seal(bb);
   chk_coll_map(bm); (void)chk_coll(bm, (uint32_t)COLL_N);
   CHECK(drain(bm, 0, COLL_KEYS[COLL_N - 1] + 1) == COLL_N + 1);
@@ -119,7 +119,7 @@ void test_entry_kind_flags(void) {
   OspreyMapBuilder *b = osprey_map_builder_new(KI);
   CHECK(b != NULL);
   osprey_map_builder_put_of(b, 1, 100, 1); /* latches on first put */
-  osprey_map_builder_put(b, 2, 200);
+  osprey_map_builder_put_of(b, 2, 200, 1);
   OspreyMap *sealed = osprey_map_builder_seal(b);
   CHECK(osprey_map_value_managed(sealed) == 1);
   CHECK(osprey_map_get(sealed, 1) == 100 && osprey_map_get(sealed, 2) == 200);

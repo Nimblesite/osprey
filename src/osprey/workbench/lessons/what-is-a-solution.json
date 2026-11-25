@@ -44,48 +44,6 @@
           "The order is p first, then q."
         ]
       }
-    },
-    {
-      "kind": "challenge",
-      "challenge": {
-        "kind": "prove",
-        "id": "meet-both-conditions",
-        "prompt": "Prove that assumptions p and q together solve the problem p ∧ q. The first assumption is already given.",
-        "statement": "Theorem both. For all p q, p → q → p ∧ q.",
-        "given": [
-          "Assume hp : p."
-        ],
-        "solution": [
-          "Assume hq : q.",
-          "It suffices to show p and q.",
-          "From hp.",
-          "From hq."
-        ],
-        "hints": [
-          "Assume q, then split the conjunction into two goals.",
-          "Close the p goal with hp and the q goal with hq."
-        ]
-      }
-    },
-    {
-      "kind": "challenge",
-      "challenge": {
-        "kind": "judge",
-        "id": "judge-all-conditions",
-        "prompt": "Does this proof meet the conditions of its statement in the required order?",
-        "statement": "Theorem ordered. For all p q, p → q → q ∧ p.",
-        "steps": [
-          "Assume hp : p.",
-          "Assume hq : q.",
-          "We show both.",
-          "From hp.",
-          "From hq."
-        ],
-        "hints": [
-          "Splitting q ∧ p makes q the first goal.",
-          "Check which hypothesis the first From step uses."
-        ]
-      }
     }
   ]
 }

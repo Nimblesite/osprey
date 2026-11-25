@@ -1,7 +1,5 @@
 namespace proof
 
-import proof::Levels
-import proof::Terms
 
 (** A parsed theorem of the M2 surface: `theorem name binders : type := term`.
     The reader below is a whitespace-delimited demo tokenizer, not a lexer:

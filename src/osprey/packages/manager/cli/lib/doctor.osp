@@ -1,6 +1,5 @@
 namespace registry_cli;
 import registry_host::Host
-import registry_cli::Reports
 import registry::Capabilities
 
 /// `osprey doctor`: report what this host can do for the package system and

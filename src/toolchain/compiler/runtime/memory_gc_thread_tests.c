@@ -300,3 +300,40 @@ void t_heap_ceiling(const char *self) {
     check_ceiling_case(self, &cases[i]);
   }
 }
+
+#if defined(__APPLE__) || defined(__linux__)
+#include "run_parent_watch.h"
+
+// [RUN-PARENT-DEATH] When the system offers no exit watch (a failed
+// dispatch_source_create, a refused prctl), the poll fallback still ends a
+// program whose runner died. A runner starts a program and exits at once; the
+// program, two seconds from writing, ends first, so the pipe sees no bytes.
+void t_runner_poll_ends_an_orphan(void) {
+  int ends[2];
+  CHECK(pipe(ends) == 0);
+  pid_t runner = fork();
+  CHECK(runner >= 0);
+  if (runner == 0) {
+    pid_t self = getpid();
+    pid_t program = fork();
+    if (program == 0) {
+      close(ends[0]);
+      run_parent_poll_start(self);
+      sleep(2);
+      ssize_t wrote = write(ends[1], "late", 4);
+      _exit(wrote == 4 ? 0 : 2);
+    }
+    _exit(program > 0 ? 0 : 1);
+  }
+  close(ends[1]);
+  int status = 0;
+  CHECK(waitpid(runner, &status, 0) == runner);
+  CHECK(WIFEXITED(status) && WEXITSTATUS(status) == 0);
+  char got[8];
+  ssize_t read_back = read(ends[0], got, sizeof got);
+  close(ends[0]);
+  CHECK(read_back == 0);
+}
+#else
+void t_runner_poll_ends_an_orphan(void) {}
+#endif

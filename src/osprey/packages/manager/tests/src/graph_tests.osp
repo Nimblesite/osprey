@@ -1,14 +1,11 @@
 namespace registry_tests;
+import registry::JsonRead
 import registry::Json
 import registry::Canonical
 import registry::Identity
 import registry::Names
 import registry::Resolve
 import registry::Resolution
-import registry_tests::GraphModel
-import registry_tests::GraphGen
-import registry_tests::GraphOracle
-import registry_tests::Fixtures
 
 /// Every bounded dependency-graph fixture is solved by both the real CDCL
 /// resolver and the exhaustive oracle, and each result is compared, byte for
@@ -51,10 +48,10 @@ module GraphTests {
     fn matchesFixture(name, solve) = {
         let fx = Fixtures::load("graphs/${name}.json")
         let graph = GraphModel::graphOf(fx)
-        let expected = Fixtures::field(fx, "expect")
+        let expected = JsonRead::field(fx, "expect")
         let want = match Json::get(expected, "lock") {
             Success { value } => value
-            Error => Fixtures::field(expected, "explanation")
+            Error => JsonRead::field(expected, "explanation")
         }
         canonEq(outcomeJson(solve(graph)), want)
     }
@@ -91,7 +88,7 @@ module GraphTests {
 
     fn indexCheck() = {
         let fx = Fixtures::load("graphs/index.json")
-        let cases = mapList(Fixtures::itemsOf(fx, "cases"), Fixtures::text)
+        let cases = mapList(Fixtures::itemsOf(fx, "cases"), JsonRead::text)
         checkAll("graphs: index lists exactly the checked-in fixtures", [
             structuralEquals(listSort(cases), listSort(expectedCases())),
             length(cases) == length(expectedCases())

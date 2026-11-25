@@ -24,6 +24,8 @@ function prepare(root) {
   executable(root, 'bin/node', 'wasm')
   executable(root, 'bin/python3', 'corpus')
   executable(root, 'bin/zsh', 'benchmark')
+  executable(root, 'scripts/proof/ownership-ledger.sh', 'ledger')
+  executable(root, 'scripts/proof/ownership-lowering.sh', 'lowering')
   const includes = ['tests.mk', 'proof.mk'].filter(name => existsSync(`scripts/make/${name}`))
   writeFileSync(join(root, 'Makefile'), 'SHELL := /bin/bash\nBIN := target/osprey\nMKDIR := mkdir -p\n' +
     includes.map(name => `include ${resolve('scripts/make', name)}\n`).join('') +
@@ -33,7 +35,7 @@ function prepare(root) {
 function staleTargets(root) {
   const targets = ['_test_proof_ci', '_test_proof_kernel', '_test_disciplines',
     '_test_proof_openai', '_test_proof_lean_core', '_test_proof_unicode',
-    '_test_proof_batch_gc', '_test_proof_batch_arc', '_test_proof_batch_wasm']
+    '_test_proof_batch_gc', '_test_proof_batch_arc', '_test_proof_batch_wasm', '_test_ownership_proof']
   for (const name of targets) writeFileSync(join(root, name), '')
 }
 
@@ -100,12 +102,16 @@ function wasm(args) {
 if (process.argv[2] === 'compiler') compiler(process.argv.slice(3))
 if (process.argv[2] === 'wasm') wasm(process.argv.slice(3))
 
+function requireBatches(root) {
+  for (const suffix of ['gc', 'arc', 'wasm']) {
+    if (!existsSync(join(root, 'target/proof/openai/check-batch.' + suffix))) process.exit(19)
+  }
+}
+
 function corpus(args) {
   const root = process.env.FIXTURE_ROOT
   const source = args[0] === 'fixture-disciplines' ? 'disciplines' : args.includes('lean-core') ? 'lean-core' : args[0].includes('literals') ? 'unicode' : 'openai'
-  if (source !== 'disciplines') for (const suffix of ['gc', 'arc', 'wasm']) {
-    if (!existsSync(join(root, 'target/proof/openai/check-batch.' + suffix))) process.exit(19)
-  }
+  if (source !== 'disciplines') requireBatches(root)
   if (['openai', 'lean-core'].includes(source) && !args.includes('--reuse-binaries')) process.exit(20)
   appendFileSync(join(root, 'calls'), JSON.stringify({ source }) + '\n')
   if (process.env.FIXTURE_FAIL_CORPUS === source) process.exit(21)
@@ -116,12 +122,23 @@ function benchmark() {
   const calls = readFileSync(join(root, 'calls'), 'utf8').trim().split('\n').map(JSON.parse)
   const compiler = process.env.OSPREY_BIN
   if (process.env.FIXTURE_ASSERT_COMPILER && (!compiler || !existsSync(compiler) || realpathSync(compiler) !== realpathSync(join(root, 'target/osprey')))) process.exit(24)
-  for (const source of ['disciplines', 'openai', 'lean-core', 'unicode']) {
+  for (const source of ['disciplines', 'openai', 'lean-core', 'unicode', 'ownership-ledger', 'ownership-lowering']) {
     if (!calls.some(call => call.source === source)) process.exit(22)
   }
-  if (calls.length !== 15) process.exit(23)
+  if (calls.length !== 17) process.exit(23)
   appendFileSync(join(root, 'calls'), JSON.stringify({ source: 'benchmark' }) + '\n')
+}
+
+// The ledger replays in the batch checkers; the lowering proof needs the
+// compiler under test by absolute path. Either failing stops the benchmark.
+function ownership(proof, args) {
+  const root = process.env.FIXTURE_ROOT
+  requireBatches(root)
+  if (proof === 'lowering' && (!args[0]?.startsWith('/') || realpathSync(args[0]) !== realpathSync(join(root, 'target/osprey')))) process.exit(26)
+  appendFileSync(join(root, 'calls'), JSON.stringify({ source: `ownership-${proof}` }) + '\n')
+  if (process.env.FIXTURE_FAIL_OWNERSHIP === proof) process.exit(25)
 }
 
 if (process.argv[2] === 'corpus') corpus(process.argv.slice(3))
 if (process.argv[2] === 'benchmark') benchmark()
+if (['ledger', 'lowering'].includes(process.argv[2])) ownership(process.argv[2], process.argv.slice(3))

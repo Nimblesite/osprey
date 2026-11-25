@@ -71,11 +71,7 @@ fn walk(e: &Expr, bound: &mut Vec<String>, out: &mut BTreeSet<String>) {
         // ([EFFECTS-INSTANCE]). An effect declaration's name binds nothing.
         Expr::Perform { effect, .. } | Expr::Mask { effect, .. } => {
             note(crate::effect_name::base(effect), bound, out);
-            AstNode::Expression(e).for_each_child(|child| {
-                if let AstNode::Expression(expression) = child {
-                    walk(expression, bound, out);
-                }
-            });
+            walk_children(e, bound, out);
         }
         Expr::Handler {
             effect,
@@ -94,12 +90,17 @@ fn walk(e: &Expr, bound: &mut Vec<String>, out: &mut BTreeSet<String>) {
                 walk(clause, bound, out);
             }
         }
-        _ => AstNode::Expression(e).for_each_child(|child| {
-            if let AstNode::Expression(expression) = child {
-                walk(expression, bound, out);
-            }
-        }),
+        _ => walk_children(e, bound, out),
     }
+}
+
+/// Walk every expression child of `e` under the current bindings.
+fn walk_children(e: &Expr, bound: &mut Vec<String>, out: &mut BTreeSet<String>) {
+    AstNode::Expression(e).for_each_child(|child| {
+        if let AstNode::Expression(expression) = child {
+            walk(expression, bound, out);
+        }
+    });
 }
 
 /// Free identifiers of a block continuation (`statements`, then the tail

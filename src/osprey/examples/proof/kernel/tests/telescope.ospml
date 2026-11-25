@@ -5,7 +5,6 @@ import proof::Inductive
 import proof::Nesting
 import proof::Terms
 import proof::Environment
-import prooftests::Support
 import proof
     Decl Definition Axiom Pi Lam BVar Const App Sort Zero Succ
 

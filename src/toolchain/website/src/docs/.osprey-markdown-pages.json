@@ -156,6 +156,8 @@
   "functions/mapremove.md",
   "functions/mapset.md",
   "functions/mapvalues.md",
+  "functions/max.md",
+  "functions/min.md",
   "functions/nativeask.md",
   "functions/nativesceneshape.md",
   "functions/nativeviewextend.md",

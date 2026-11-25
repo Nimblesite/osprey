@@ -88,7 +88,8 @@ fn expand_call(
     named: &[NamedArgument],
     rest: &[crate::curry::ArgGroup<'_>],
 ) -> Result<Option<Value>> {
-    let share = rest.is_empty() && share_instantiation(cg, name);
+    let share =
+        rest.is_empty() && (share_instantiation(cg, name) || owning_instantiation(cg, name));
     cg.inline_expansions += 1;
     if !share {
         cg.cov_hit_inline_fn(name);
@@ -114,6 +115,15 @@ fn finish_expansion(
         cg.cov_hit_inline_fn(name);
     }
     inline_body(cg, name, params, body, lowered, rest).map(Some)
+}
+
+/// Under compile-time ownership a generic function that owns a parameter is
+/// emitted as a real function, which can take the reference its caller gives
+/// [MEM-OWNERSHIP-STATIC-PARAMETERS].
+fn owning_instantiation(cg: &Codegen, name: &str) -> bool {
+    cg.ownership.on
+        && crate::arc::owns_a_parameter(cg, name)
+        && crate::monofn::instantiable(cg, name)
 }
 
 fn share_instantiation(cg: &Codegen, name: &str) -> bool {

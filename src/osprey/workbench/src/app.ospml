@@ -3,26 +3,12 @@
 // challenge region refreshes only when its own attempt changed.
 namespace workbench
 
-import ui::Runtime
 import ui::Keyed
 import ui::Lists
 import proof::CachedImports
-import workbench::Benches
-import workbench::Update
-import workbench::Shelves
-import workbench::WorkViews
-import workbench::GoalViews
-import workbench::LearnViews
-import workbench::Palettes
-import workbench::Lessons
-import workbench::Blocks
 
 (** The signal identities each region depends on, compared slice by slice ([UI-SIGNALS]). *)
 module Changes
-    draftSlice () = perform Signal<Draft>.read ()
-
-    checksSlice () = perform Signal<Reviewed>.read ()
-
     layoutSlice () = perform Signal<Layout>.read ()
 
     shelfSlice () = perform Signal<Shelf>.read ()
@@ -33,22 +19,11 @@ module Changes
 
     doneSlice () = perform Signal<Achieved>.read ()
 
-    draftJson draft = JsonArray [JsonString draft.draftTitle, JsonString draft.draftText, JsonInt draft.caret, JsonInt draft.selectedStep]
-
-    checkJson check = JsonArray [JsonInt check.checkHead, JsonInt check.checkLine, JsonString check.checkTone, JsonString check.checkNote]
-
-    checksJson found = JsonArray (mapList (found.checks, \check => checkJson check))
-
     learning mode = match mode
         Learning => true
         Working => false
-        ReadingPage => false
 
-    reading mode = match mode
-        ReadingPage => true
-        _ => false
-
-    layoutJson layout = JsonArray [JsonBool (learning layout.mode), JsonBool (reading layout.mode), JsonBool layout.paperFirst, JsonBool layout.goalOpen, JsonBool layout.generatedOpen, JsonBool layout.libraryOpen, JsonInt layout.sideWidth, JsonBool layout.slate, JsonBool layout.guided, JsonString layout.noticeText, JsonBool layout.noticeBad]
+    layoutJson layout = JsonArray [JsonBool (learning layout.mode), JsonBool layout.slate, JsonString layout.noticeText, JsonBool layout.noticeBad]
 
     // The focused challenge is not shown, so it is not compared: focusing one never refreshes a region.
     shelfJson shelf = JsonArray [JsonString shelf.openSlug, JsonString shelf.openSource, JsonString shelf.shelfProblem, JsonArray (mapList (shelf.entries, \entry => JsonArray [JsonString entry.entrySlug, JsonString entry.entryTitle, JsonString entry.entryFault]))]
@@ -61,7 +36,7 @@ module Changes
     pair (first, second) = listConcat (first, second)
 
     (** The identities whose slice differs between `before` and `after`; the tutor's are left to each challenge. *)
-    export slices (before, after) = pair (pair (pair (signalChanges before.draft after.draft draftJson (signalDependencies draftSlice), signalChanges before.verdicts after.verdicts checksJson (signalDependencies checksSlice)), signalChanges before.layout after.layout layoutJson (signalDependencies layoutSlice)), pair (signalChanges before.shelf after.shelf shelfJson (signalDependencies shelfSlice), pair (signalChanges (done before) (done after) doneJson (signalDependencies doneSlice), signalChanges before.imports after.imports importedJson (signalDependencies importedSlice))))
+    export slices (before, after) = pair (signalChanges before.layout after.layout layoutJson (signalDependencies layoutSlice), pair (signalChanges before.shelf after.shelf shelfJson (signalDependencies shelfSlice), pair (signalChanges (done before) (done after) doneJson (signalDependencies doneSlice), signalChanges before.imports after.imports importedJson (signalDependencies importedSlice))))
 
     (** The challenge identifiers of the open lesson in `bench`, none when no lesson is open. *)
     export challenges bench = match Lessons::read bench.shelf.openSource
@@ -70,11 +45,11 @@ module Changes
 
 (** The workbench application: its program for the shared boundary ([WORKBENCH-STORE]). *)
 module App
-    // Start requests the catalogue and learner progress; lessons follow the catalogue.
+    // Start requests the lesson catalogue, learner progress and the bundled proof libraries; lessons follow the catalogue.
     initial (slate, _) =
         fresh = Benches::fresh ()
         layout = fresh.layout
-        ui::Step(stepStore = fresh(layout = layout(slate = slate)), requests = [Shelves::catalogue (), Shelves::progress ()], writes = [])
+        ui::Step(stepStore = fresh(layout = layout(slate = slate)), requests = [Shelves::catalogue (), Shelves::progress (), BundledLibraries::request ()], writes = [])
 
     // [LESSONS-VERIFICATION]: named callbacks retain precise compiler-derived dependencies.
     challengeRegion (before, current, frames, id) =
@@ -96,10 +71,6 @@ module App
         Error _ => perform ui::Slices.fetch key
 
     regionViews (before, current, frames) =
-        handle static Signal<Draft>
-            read => current.draft
-        handle static Signal<Reviewed>
-            read => current.verdicts
         handle static Signal<Layout>
             read => current.layout
         handle static Signal<Shelf>
@@ -109,7 +80,7 @@ module App
         handle static Signal<Achieved>
             read => Changes::done current
         changed = Changes::slices (before, current)
-        listConcat ([Keyed::region (frames, "root", changed, WorkViews::root), Keyed::region (frames, "heading", changed, WorkViews::header), Keyed::region (frames, "document", changed, WorkViews::document), Keyed::region (frames, "goal", changed, GoalViews::pane), Keyed::region (frames, "generated", changed, WorkViews::generated), Keyed::region (frames, "library", changed, WorkViews::library), Keyed::region (frames, "library-actions", changed, WorkViews::libraryActions), Keyed::region (frames, "catalogue", changed, LearnViews::catalogue), Keyed::region (frames, "lesson", changed, LearnViews::lesson)], mapList (Changes::challenges current, \id => challengeRegion (before, current, frames, id)))
+        listConcat ([Keyed::region (frames, "root", changed, WorkViews::root), Keyed::region (frames, "heading", changed, WorkViews::header), Keyed::region (frames, "library", changed, WorkViews::library), Keyed::region (frames, "library-actions", changed, WorkViews::libraryActions), Keyed::region (frames, "catalogue", changed, LearnViews::catalogue), Keyed::region (frames, "lesson", changed, LearnViews::lesson)], mapList (Changes::challenges current, \id => challengeRegion (before, current, frames, id)))
 
     initialPalette slate = match slate
         true => Palettes::chalk ()
