@@ -5,7 +5,7 @@ communication. A normal native fiber is backed one-to-one by a pthread; Osprey
 does not expose a separate OS-thread API. Managed values captured by `spawn` or
 sent through a channel may be co-owned across threads as specified by
 [fiber boundary ownership](../compiler/0018-MemoryManagement.md#fiber-boundary-ownership-mem-fiber-isolation).
-The WebAssembly target excludes this pthread runtime.
+The WebAssembly target runs the same fibers on its one thread ([CONCURRENCY-WASM](#fibers-on-wasm32-concurrency-wasm)).
 
 Default and ML syntax lower these forms to the same `Expr::Spawn`,
 `Expr::Await`, `Expr::Yield`, `Expr::Send`, and `Expr::Recv` nodes. See
@@ -56,23 +56,31 @@ A fiber's thread ends when the fiber does, whether or not it is awaited. When th
 
 ## Fiber lifetime [CONCURRENCY-FIBER-LIFETIME]
 
-This section explains when a fiber's memory is given back. A `Fiber<T>` is a future in Halstead's sense: a placeholder for a value another thread is computing, which every touch reads without recomputing it ([Halstead, "Multilisp", TOPLAS 7(4), 1985](https://doi.org/10.1145/4472.4478)). Baker and Hewitt observed that a process nothing can reach is garbage like any other storage, and that a garbage collector can find it ([Baker and Hewitt, "The Incremental Garbage Collection of Processes", MIT AI Memo 454, 1977](https://dspace.mit.edu/handle/1721.1/41969)). Osprey applies that rule to finished fibers.
+This section explains when a fiber's memory is given back, in every memory backend and on every target. A `Fiber<T>` is a future in Halstead's sense: a placeholder for a value another thread is computing, which every touch reads without recomputing it ([Halstead, "Multilisp", TOPLAS 7(4), 1985](https://doi.org/10.1145/4472.4478)). Baker and Hewitt observed that a process nothing can reach is garbage like any other storage, and that a garbage collector can find it ([Baker and Hewitt, "The Incremental Garbage Collection of Processes", MIT AI Memo 454, 1977](https://dspace.mit.edu/handle/1721.1/41969)). Osprey applies that rule to finished fibers.
 
 A fiber is held by:
 
 - the program's handle, a managed value the memory backend reclaims like any other: ARC at its last release, the tracing collector at the first sweep after it becomes unreachable;
 - its runner, from `spawn` until the body has finished: the fiber's thread, the stack running it in place, or the sequential queue waiting to run it ([CONCURRENCY-DETERMINISTIC](#deterministic-execution-concurrency-deterministic));
-- each `await` and `fiberDone`, for as long as it reads the fiber.
+- each `await`, `fiberDone` and interpolation of the fiber, for as long as it reads the fiber.
 
 The last holder to let go frees the fiber, its result and its synchronisation. So:
 
-- A fiber that has finished and that the program can no longer name is freed. 1.2 million sequential `await(spawn …)` used to keep every fiber, 330 MiB outside the managed heap and its ceiling (#359); `finished_fibers_are_reclaimed_in_every_backend` now holds the same run under 96 MiB in both backends.
+The rule is the same in every memory backend and on every target:
+
+| Backend | When the handle dies | Who drops the handle's hold |
+| --- | --- | --- |
+| `gc` (native) | at the first sweep after the handle is unreachable | the runtime, at the next `spawn` or the end of `main` |
+| `arc` (native, wasm32) | at the handle's last release | the same |
+| `ownership` (native, wasm32) | at the handle's proved last use, when `osp_ownership_free` runs; a handle taken twice is kept to exit, unfinalized | the same |
+
+- A fiber that has finished and that the program can no longer name is freed. 1.2 million sequential `await(spawn …)` used to keep every fiber, 330 MiB outside the managed heap and its ceiling (#359); `finished_fibers_are_reclaimed_in_every_backend` now holds the compiled program under 64 MiB natively under gc, arc and ownership and on wasm32 under arc and ownership (ownership runs int fibers, as it refuses a string handed out of one).
 - A running fiber is never freed or cancelled because the program dropped its handle. Baker and Hewitt also collect unreachable running processes, but an Osprey fiber may still perform effects nobody else can see, so dropping the handle detaches it instead.
 - `await` and `fiberDone` take their own hold, so a collector that reclaims the handle while they wait never frees the fiber under them.
 
-A handle's finalizer runs inside the memory backend, which may hold its heap lock or have stopped every other thread. Running arbitrary cleanup there deadlocks or corrupts state, so a finalizer must not take locks or allocate and must hand its work to an ordinary thread ([Boehm, "Destructors, Finalizers, and Synchronization", POPL 2003](https://www.hboehm.info/popl03/web)). The finalizer therefore only pushes the fiber onto a lock-free list, a Treiber stack ([Treiber, IBM RJ 5118, 1986](https://dominoweb.draco.res.ibm.com/reports/rj5118.pdf)) whose single consumer takes the whole list at once, so no pop can meet a recycled node. The runtime drops those holds outside the collector, at the next `spawn` and at the end of `main`. Under `--memory=ownership`, whose finalizer registration is proved inert, every fiber is kept to exit.
+A handle's finalizer runs inside the memory backend, which may hold its heap lock or have stopped every other thread. Running arbitrary cleanup there deadlocks or corrupts state, so a finalizer must not take locks or allocate and must hand its work to an ordinary thread ([Boehm, "Destructors, Finalizers, and Synchronization", POPL 2003](https://www.hboehm.info/popl03/web)). The finalizer therefore only pushes the fiber onto a lock-free list, a Treiber stack ([Treiber, IBM RJ 5118, 1986](https://dominoweb.draco.res.ibm.com/reports/rj5118.pdf)) whose single consumer takes the whole list at once, so no pop can meet a recycled node. The runtime drops those holds outside the collector, at the next `spawn` and at the end of `main`.
 
-The holder count is proved correct with Osprey's proof kernel. [`FiberLifetime.lean`](../../../src/toolchain/benchmarks/proof/tools/FiberLifetime.lean) models a fiber as `live n` (`n + 1` holders) or `freed`, `fiber_hold` as `acquire` and `fiber_release` as `release`, and a step on a freed fiber as a use after free. `make _check_synthesis_proofs` exports four theorems and requires the kernel to accept each with no axioms:
+The holder count is proved correct with Osprey's proof kernel. [`FiberLifetime.lean`](../../../src/toolchain/benchmarks/proof/tools/FiberLifetime.lean) models a fiber as `live n` (`n + 1` holders) or `freed`, `fiber_hold` as `acquire` and `fiber_release` as `release`, and a step on a freed fiber as a use after free. `make _check_synthesis_proofs` exports six theorems and requires the Osprey kernel built for gc, arc and wasm32 to accept each with no axioms:
 
 | Theorem | Claim |
 | --- | --- |
@@ -80,10 +88,24 @@ The holder count is proved correct with Osprey's proof kernel. [`FiberLifetime.l
 | `freed_iff` | The fiber is freed exactly when no holder is left. |
 | `freed_is_final` | Nothing can be done to a freed fiber. |
 | `spawn_then_both_release` | A spawned fiber, awaited any number of times, is freed once its runner finishes and its handle dies. |
+| `dead_list_conserves` | Whatever the interleaving of finalizer pushes and runtime drains, no fiber is lost from the dead-handle list or duplicated in it. |
+| `drained_releases_each_once` | After a final drain, every fiber a finalizer pushed has had its handle's hold dropped exactly once per push. |
 
-The same target builds a mutant whose last release keeps the fiber, the #359 leak, and fails unless Lean rejects it. The model covers the count, not the C code that keeps it: the C runtime's suite checks that code under AddressSanitizer, including a fiber whose other holders all let go while it ran.
+The same target builds two mutants, a last release that keeps the fiber (the #359 leak) and a drain that loses the list it took, and fails unless Lean rejects both. The model covers the count, not the C code that keeps it: the C runtime's suite checks that code under AddressSanitizer, including a fiber whose other holders all let go while it ran.
+
+The C runtime's suites check the code against the model: `fiber_runtime_tests` (gc, also under AddressSanitizer with leak detection on Linux) spawns, awaits and drops 50,000 fibers and requires under 8 bytes left per fiber, and runs a fiber whose every other holder lets go while it runs; `memory_ownership_tests` requires a fiber handle's finalizer to run exactly once at its free, never for a handle taken twice or with nothing registered; the GC and ARC suites check the subtype dispatch. `finished_fibers_are_reclaimed_in_every_backend` runs 1.2 million fibers end to end.
+
+The proofs model the count; they are not derived from the C code. The [IR to Lean framework](../tooling/IrToLean.md) could one day read the compiled runtime itself, but it is not in CI yet, translates 12 of the 76 functions of its first module, and has no model of atomic read-modify-write instructions, which `fiber_release` is built on.
 
 A fiber blocked for ever on a channel nothing else can reach is still a leak: its runner never lets go. Saioc et al. detect such partial deadlocks in Go by treating reachability from the collector's roots as an over-approximation of liveness ([Saioc, Lee, Møller and Chabbi, "Dynamic Partial Deadlock Detection and Recovery via Garbage Collection", ASPLOS 2025](https://cs.au.dk/~amoeller/papers/golf/paper.pdf)). Osprey does not detect them yet.
+
+## Fibers on wasm32 [CONCURRENCY-WASM]
+
+This section explains how fibers run where there are no threads. WASI preview 1 gives a module one thread, so on `--target=wasm32` every fiber runs on it in spawn order, exactly as [sequential execution](#deterministic-execution-concurrency-deterministic) runs them natively: `spawn` queues the body, and `await`, a blocked `send` or `recv`, and `select` run the queue until what they wait for is ready. `yield` is a passthrough and `fiberDone` reports a queued fiber ready, as in sequential mode. The fiber runtime is compiled for WASI against wasi-libc's single-threaded pthread stubs, so it is the same code as native, with the same lifetime rules and proofs ([CONCURRENCY-FIBER-LIFETIME](#fiber-lifetime-concurrency-fiber-lifetime)).
+
+Every fiber shares the one stack, and both wasm hosts give it a native program's depth ([WASM-TARGET-NODE](../compiler/0022-WebAssemblyTarget.md)), so `fiber_showcase` recurses 80,000 frames inside a fiber on wasm32 as it does natively. `sleep` sleeps the thread through WASI's own clock subscription.
+
+A wait that no queued fiber can satisfy could only be woken by another thread, and there is none. Instead of hanging, the run stops with `osprey: every fiber is blocked: this wait can never be woken` and exit status 70. A `select` with a timeout sleeps until its deadline.
 
 ## Buffered channels [CONCURRENCY-CHANNEL]
 

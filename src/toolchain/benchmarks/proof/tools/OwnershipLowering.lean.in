@@ -377,12 +377,12 @@ theorem compiledResultBorrowUses (success present : Bool) :
         let message := if present then ResultPtr.child else .fallback
         [message, message]) := by cases success <;> cases present <;> rfl
 
-/-- All three compiled entry blocks return immediately, independently of the
+/-- Both compiled entry blocks return immediately, independently of the
     pointer argument and heap state. -/
-def compatibilityReturns : Bool × Bool × Bool :=
+def compatibilityReturns : Bool × Bool :=
 -- COMPATIBILITY RETURNS
 
-theorem compiledCompatibilityReturns : compatibilityReturns = (true, true, true) := by rfl
+theorem compiledCompatibilityReturns : compatibilityReturns = (true, true) := by rfl
 
 /-- After a recursive remove returns with shrunk=0, record each release
     argument and the pointer the enclosing compiled frame returns. -/

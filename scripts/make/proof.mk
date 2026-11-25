@@ -186,30 +186,48 @@ _test_proof_unicode:
 SYNTHESIS_THEOREMS := weightedOverlapAdd travelingWavePropagation additivePeriod overlapNormalizationNecessary interpolatorFactor interpolatorEndpoints interpolatorConstant zeroPulseIndices hannEndpoints
 SYNTHESIS_THEOREMS += allpassMagnitude allpassRecurrence antiderivativeAverage antiderivativeOffset antiderivativeConstantCurve hannQuarterEnergy hannEighthEnergy
 SYNTHESIS_THEOREMS += radixTwoSplit radixTwoUpper realBinConjugate binAdditive binHomogeneous
-FIBER_LIFETIME_THEOREMS := run_valid freed_iff freed_is_final spawn_then_both_release
+FIBER_LIFETIME_THEOREMS := run_valid freed_iff freed_is_final spawn_then_both_release dead_list_conserves drained_releases_each_once
+# The FiberLifetime mutants: each edit breaks a claim, and its mark proves it applied.
+FIBER_LEAK_EDIT := s/| .live 0, .release => some .freed/| .live 0, .release => some (.live 0)/
+FIBER_LEAK_MARK := some (.live 0)
+FIBER_LOST_EDIT := s/.drain => ⟨\[\], pending ++ released⟩/.drain => ⟨[], released⟩/
+FIBER_LOST_MARK := .drain => ⟨[], released⟩
 
 _test_synthesis_proofs: $(PROOF_BATCH_TARGETS)
 	$(MAKE) _check_synthesis_proofs
 
-# $(call kernel_check_theorems,<Lean module>,<theorem names>)
+# $(call kernel_check_theorems,<Lean module>,<theorem names>): every theorem
+# replays in the Osprey kernel built for gc, arc and wasm32, with no axioms.
 define kernel_check_theorems
 	cd src/toolchain/benchmarks/proof/tools && lake build lean4export $(1)
 	@set -e; for name in $(2); do \
 		theorem="$(1).$$name"; export_file="$(abspath target/proof)/$$theorem.ndjson"; \
 		(cd src/toolchain/benchmarks/proof/tools && lake exe lean4export $(1) -- "$$theorem") > "$$export_file"; \
-		printf '%s\t%s\n' "$$export_file" "$$theorem" | target/proof/openai/check-batch.arc > "$$export_file.result"; \
-		cat "$$export_file.result"; test "$$(cat "$$export_file.result")" = "PASS $$theorem | axioms: none"; \
+		for backend in gc arc wasm; do \
+			if [ "$$backend" = wasm ]; then \
+				result=$$(printf '%s\t%s\n' "$$theorem.ndjson" "$$theorem" | node --stack-size=4096 scripts/proof/proof-batch-wasm.mjs target/proof/openai/check-batch.wasm "$(abspath target/proof)"); \
+			else \
+				result=$$(printf '%s\t%s\n' "$$export_file" "$$theorem" | target/proof/openai/check-batch.$$backend); \
+			fi; \
+			echo "$$backend $$result"; test "$$result" = "PASS $$theorem | axioms: none"; \
+		done; \
 	done
+endef
+
+# $(call kernel_rejects_mutant,<Lean module>,<name>,<sed edit>,<grep needle>,<why it is wrong>):
+# the module with one edit that breaks its claim must fail to check.
+define kernel_rejects_mutant
+	@sed '$(3)' src/toolchain/benchmarks/proof/tools/$(1).lean > "$(abspath target/proof)/$(1)_$(2).lean"
+	@grep -qF '$(4)' "$(abspath target/proof)/$(1)_$(2).lean"
+	@if (cd src/toolchain/benchmarks/proof/tools && lake env lean "$(abspath target/proof)/$(1)_$(2).lean") > /dev/null 2>&1; then \
+		echo "$(1): the $(2) mutant was accepted ($(5))"; exit 1; fi
+	@echo "REJECTED $(1) $(2) mutant ($(5))"
 endef
 
 .PHONY: _check_synthesis_proofs
 _check_synthesis_proofs:
 	$(call kernel_check_theorems,Synthesis,$(SYNTHESIS_THEOREMS))
 	$(call kernel_check_theorems,FiberLifetime,$(FIBER_LIFETIME_THEOREMS))
-	@sed 's/| .live 0, .release => some .freed/| .live 0, .release => some (.live 0)/' \
-		src/toolchain/benchmarks/proof/tools/FiberLifetime.lean > "$(abspath target/proof)/FiberLifetimeLeak.lean"
-	@grep -q 'some (.live 0)' "$(abspath target/proof)/FiberLifetimeLeak.lean"
-	@if (cd src/toolchain/benchmarks/proof/tools && lake env lean "$(abspath target/proof)/FiberLifetimeLeak.lean") > /dev/null 2>&1; then \
-		echo "FiberLifetime: a fiber its last holder never frees was accepted"; exit 1; fi
-	@echo "REJECTED FiberLifetime leak mutant (the last release keeps the fiber, #359)"
+	$(call kernel_rejects_mutant,FiberLifetime,leak,$(FIBER_LEAK_EDIT),$(FIBER_LEAK_MARK),the last release keeps the fiber - #359)
+	$(call kernel_rejects_mutant,FiberLifetime,lost,$(FIBER_LOST_EDIT),$(FIBER_LOST_MARK),a drain loses the handles it took)
 	@bash scripts/proof/production-fft.sh

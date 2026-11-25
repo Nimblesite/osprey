@@ -13,7 +13,7 @@ recv ch1 = 42
 recv ch2 = 123
 lam dbl=20 tri=21 add=13
 stream 1024 2048 4096
-req=16 db=123000
+req=14 db=123000
 user=5123 order=545
 captured spawn = 705 done=1
 record spawn direct=27 spawned=28

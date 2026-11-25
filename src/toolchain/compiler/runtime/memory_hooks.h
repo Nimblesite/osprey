@@ -77,9 +77,10 @@ void osp_mem_set_layout(void *p, int64_t meta);
 // through on its way out of the heap, before its data is released: a unit whose
 // objects own a resource beyond the heap (a GPU buffer's copy on the device, a
 // fiber) registers one, and the resource dies with its owner. ARC runs it at
-// the owner's last release and the tracing GC at the sweep that reclaims it.
-// One per subtype, so units never replace each other's. Ownership registers
-// nothing and drops GPU buffers by their layout. A finalizer may run with the
+// the owner's last release, ownership at its explicit free, and the tracing GC
+// at the sweep that reclaims it. One per subtype, so units never replace each
+// other's. Ownership drops GPU buffers by their layout and runs no finalizer
+// for a plain header (subtype 0). A finalizer may run with the
 // heap lock held, so it must not allocate, release or take a lock the heap can
 // wait on: it hands its work to its unit instead (Boehm, POPL 2003).
 // [MEM-BACKENDS-FINALIZERS]

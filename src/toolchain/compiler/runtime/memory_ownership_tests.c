@@ -138,6 +138,40 @@ static void t_immortal_and_foreign_are_untouched(void) {
 static int generic_calls;
 static void count_generic(void *body) { (void)body; generic_calls++; }
 
+// [MEM-BACKENDS-FINALIZERS] A fiber handle's finalizer runs once, at the
+// explicit free of the handle, with the body still intact; a plain header's
+// registration is never called; a block taken twice is kept, so it never runs.
+static int handle_calls;
+static void *handle_seen;
+static void *handle_word_seen;
+static void count_handle(void *body) {
+  handle_calls++;
+  handle_seen = body;
+  handle_word_seen = ((void **)body)[2];
+}
+
+static void t_fiber_handle_finalizes_once(void) {
+  static char fiber_stand_in;
+  osp_mem_set_finalizer(OSP_MEM_FIBER_HANDLE, count_handle);
+  size_t base = osp_arc_live_objects();
+  void **handle = osp_alloc_tagged(3 * sizeof(void *), OSP_MEM_FIBER_HANDLE);
+  CHECK(handle != NULL && osp_arc_live_objects() == base + 1);
+  handle[2] = &fiber_stand_in;
+  osp_ownership_free(handle);
+  CHECK(handle_calls == 1 && handle_seen == handle && handle_word_seen == &fiber_stand_in);
+  CHECK(generic_calls == 0 && osp_arc_live_objects() == base);
+  void **shared = osp_alloc_tagged(3 * sizeof(void *), OSP_MEM_FIBER_HANDLE);
+  CHECK(shared != NULL);
+  osp_retain(shared);
+  osp_ownership_free(shared);
+  CHECK(handle_calls == 1 && "a block taken twice is kept to exit, unfinalized");
+  osp_mem_set_finalizer(OSP_MEM_FIBER_HANDLE, NULL);
+  void **unregistered = osp_alloc_tagged(3 * sizeof(void *), OSP_MEM_FIBER_HANDLE);
+  CHECK(unregistered != NULL);
+  osp_ownership_free(unregistered);
+  CHECK(handle_calls == 1 && "an unregistered subtype runs nothing");
+}
+
 #ifndef _WIN32
 void *osprey_gpu_map_file(const char *, int64_t, int64_t, int64_t);
 void *osprey_gpu_data(void *);
@@ -247,6 +281,7 @@ int main(void) {
 #ifndef _WIN32
   t_external_mapping_drop();
 #endif
+  t_fiber_handle_finalizes_once();
   t_collision_transfer();
   t_prepend_transferred_value(0);
   t_prepend_transferred_value(1);

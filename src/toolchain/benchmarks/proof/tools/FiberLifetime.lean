@@ -18,7 +18,11 @@
    after free and ends with exactly as many holders as it says (`run_valid`);
    the fiber is freed exactly when the last holder lets go (`freed_iff`); and a
    spawned fiber whose handle and runner both let go, with every await
-   balanced, is freed (`spawn_then_both_release`), the leak #359 was. -/
+   balanced, is freed (`spawn_then_both_release`), the leak #359 was. For the
+   list handle finalizers hand their holds over on: whatever the interleaving
+   of pushes and drains, no fiber is lost or duplicated
+   (`dead_list_conserves`), and a final drain releases each pushed fiber
+   exactly as often as it was pushed (`drained_releases_each_once`). -/
 namespace FiberLifetime
 
 inductive Fiber where
@@ -113,5 +117,109 @@ theorem awaits_valid (k : Nat) (n : Nat) (rest : List Event) (j : Nat)
 theorem spawn_then_both_release (n : Nat) :
     run spawned (awaits n ++ [.release, .release]) = some .freed :=
   run_valid (awaits_valid 1 n _ 0 (.release (.release (.done 0))))
+
+/- The dead-handle list (`fiber_handle_finalize` and `fiber_reclaim`). A
+   finalizer pushes one fiber with a compare-and-swap; the runtime drains by
+   exchanging the whole list for the empty one, then releases each fiber it
+   took. Both are single atomic steps, so any interleaving is a sequence of
+   `push` and `drain`. `pending` is the list; `released` is every fiber a drain
+   has handed to `fiber_release`. -/
+
+inductive DeadOp where
+  | push (fiber : Nat)
+  | drain
+
+structure DeadList where
+  pending : List Nat
+  released : List Nat
+
+def deadStep : DeadList → DeadOp → DeadList
+  | ⟨pending, released⟩, .push fiber => ⟨fiber :: pending, released⟩
+  | ⟨pending, released⟩, .drain => ⟨[], pending ++ released⟩
+
+def deadRun : DeadList → List DeadOp → DeadList
+  | list, [] => list
+  | list, op :: rest => deadRun (deadStep list op) rest
+
+/-- The fibers the finalizers pushed. -/
+def pushed : List DeadOp → List Nat
+  | [] => []
+  | .push fiber :: rest => fiber :: pushed rest
+  | .drain :: rest => pushed rest
+
+/-- How many times `fiber` occurs in `fibers`. -/
+def occurrences (fiber : Nat) : List Nat → Nat
+  | [] => 0
+  | other :: rest => (if fiber == other then 1 else 0) + occurrences fiber rest
+
+theorem occurrences_append (fiber : Nat) (left right : List Nat) :
+    occurrences fiber (left ++ right) = occurrences fiber left + occurrences fiber right := by
+  induction left with
+  | nil => exact (Nat.zero_add _).symm
+  | cons other rest ih =>
+    show (if fiber == other then 1 else 0) + occurrences fiber (rest ++ right) = _
+    rw [ih]
+    exact (Nat.add_assoc _ _ _).symm
+
+/-- Every fiber in the list or released, counted. -/
+def held (fiber : Nat) (list : DeadList) : Nat :=
+  occurrences fiber list.pending + occurrences fiber list.released
+
+theorem held_step (fiber : Nat) (list : DeadList) (op : DeadOp) :
+    held fiber (deadStep list op) = held fiber list + occurrences fiber (pushed [op]) := by
+  cases list with
+  | mk pending released =>
+    cases op with
+    | push other =>
+      show (if fiber == other then 1 else 0) + occurrences fiber pending + occurrences fiber released =
+        occurrences fiber pending + occurrences fiber released + ((if fiber == other then 1 else 0) + 0)
+      rw [Nat.add_zero, Nat.add_assoc, Nat.add_comm]
+    | drain =>
+      show 0 + occurrences fiber (pending ++ released) =
+        occurrences fiber pending + occurrences fiber released + 0
+      rw [Nat.zero_add, Nat.add_zero, occurrences_append]
+
+theorem pushed_cons (op : DeadOp) (rest : List DeadOp) :
+    pushed (op :: rest) = pushed [op] ++ pushed rest :=
+  match op with
+  | .push _ => rfl
+  | .drain => rfl
+
+/-- No fiber is lost or duplicated: whatever the interleaving, every pushed
+    fiber is still in the list or released, exactly as often as it was pushed. -/
+theorem dead_list_conserves (fiber : Nat) (ops : List DeadOp) (list : DeadList) :
+    held fiber (deadRun list ops) = held fiber list + occurrences fiber (pushed ops) := by
+  induction ops generalizing list with
+  | nil => exact (Nat.add_zero _).symm
+  | cons op rest ih =>
+    show held fiber (deadRun (deadStep list op) rest) = _
+    have split : occurrences fiber (pushed (op :: rest)) =
+        occurrences fiber (pushed [op]) + occurrences fiber (pushed rest) := by
+      rw [pushed_cons op rest, occurrences_append]
+    rw [ih (deadStep list op), held_step, split, Nat.add_assoc]
+
+theorem drained_pending (list : DeadList) (ops : List DeadOp) :
+    (deadRun list (ops ++ [.drain])).pending = [] := by
+  induction ops generalizing list with
+  | nil => cases list; rfl
+  | cons op rest ih => exact ih (deadStep list op)
+
+theorem pushed_drain (ops : List DeadOp) : pushed (ops ++ [.drain]) = pushed ops := by
+  induction ops with
+  | nil => rfl
+  | cons op rest ih =>
+    cases op with
+    | push fiber => exact congrArg (fiber :: ·) ih
+    | drain => exact ih
+
+/-- After a final drain, each fiber a finalizer pushed has been released
+    exactly as many times as it was pushed: its handle's hold ends once. -/
+theorem drained_releases_each_once (fiber : Nat) (ops : List DeadOp) :
+    occurrences fiber (deadRun ⟨[], []⟩ (ops ++ [.drain])).released =
+      occurrences fiber (pushed ops) := by
+  have conserved := dead_list_conserves fiber (ops ++ [.drain]) ⟨[], []⟩
+  unfold held at conserved
+  rw [drained_pending, pushed_drain] at conserved
+  exact (Nat.zero_add _).symm.trans (conserved.trans (Nat.zero_add _))
 
 end FiberLifetime

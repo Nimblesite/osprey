@@ -405,10 +405,8 @@ fn list_builder_moves_fresh_records_and_retains_borrowed_records() {
 fn spawn_lowers_to_a_per_instance_closure_cell() {
     // `spawn` lowers its expression as a zero-parameter closure: the thunk
     // takes its heap cell as env (so two in-flight spawns from one site
-    // never alias captures) and goes to `fiber_spawn_env_owned`, which answers
-    // the managed handle the memory backend reclaims; `await` maps to
-    // `fiber_await` on that handle ([CONCURRENCY-FIBER-LIFETIME]). No module
-    // globals are involved.
+    // never alias captures) and goes to `fiber_spawn_env_owned`, whose managed
+    // handle `fiber_await` reads [CONCURRENCY-FIBER-LIFETIME]. No globals.
     let ir = module(
         "fn work(n: int) -> int = satMul(n, 2)\n\
              fn main() -> Unit = {\n\
@@ -427,7 +425,11 @@ fn spawn_lowers_to_a_per_instance_closure_cell() {
         "an erased scalar fiber result must not be probed as a managed pointer:\n{ir}"
     );
     shows(&ir, &["define internal i64 @__fiber_thunk_0(i8* %__env)"]);
-    contents(&ir, &["call i64 @fiber_await(i8*"], &["@__fiber_cap_", "@fiber_await(i64"]);
+    contents(
+        &ir,
+        &["call i64 @fiber_await(i8*"],
+        &["@__fiber_cap_", "@fiber_await(i64"],
+    );
 }
 
 #[test]

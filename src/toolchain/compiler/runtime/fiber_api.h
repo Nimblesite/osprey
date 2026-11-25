@@ -21,5 +21,6 @@ extern const size_t fiber_record_bytes;
 void *fiber_spawn_env_owned(int64_t (*fn)(void *), void *env, int64_t result_managed);
 int64_t fiber_await(void *handle);
 int64_t fiber_done(void *handle);
+int64_t fiber_id(void *handle);
 
 #endif

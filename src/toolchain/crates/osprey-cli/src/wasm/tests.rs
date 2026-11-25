@@ -451,3 +451,15 @@ fn assert_web_abi_names(web_bytes: &[u8]) {
         );
     }
 }
+
+/// [CONCURRENCY-WASM] [WASM-TARGET-NODE] wasmtime, by name or by path, gets a
+/// native-sized stack for compiled frames, so a fiber recurses as deep as
+/// natively; another host gets nothing it would not understand.
+#[test]
+fn wasmtime_runs_with_a_native_sized_stack() {
+    let deep = vec!["-W".to_string(), "max-wasm-stack=4194304".to_string()];
+    assert_eq!(host_args("wasmtime"), deep);
+    assert_eq!(host_args("/opt/homebrew/bin/wasmtime"), deep);
+    assert_eq!(host_args("node"), Vec::<String>::new());
+    assert_eq!(host_args("/usr/bin/wasmer"), Vec::<String>::new());
+}

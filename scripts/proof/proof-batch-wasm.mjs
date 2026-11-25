@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { WASI } from "node:wasi";
 import { ensureWasiCapableNode } from "../wasm/wasm-smoke-support.mjs";
 
-ensureWasiCapableNode(import.meta.url);
+await ensureWasiCapableNode(import.meta.url);
 const [modulePath, fixtureDirectory] = process.argv.slice(2);
 if (!modulePath || !fixtureDirectory) {
   throw new Error("usage: proof-batch-wasm.mjs <checker.wasm> <fixture-directory>");

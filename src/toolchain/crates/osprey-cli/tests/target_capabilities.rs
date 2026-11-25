@@ -147,20 +147,49 @@ fn unsupported_runtime_builtins_reject_through_aliases() -> std::io::Result<()> 
 }
 
 #[test]
-fn wasm_rejects_fibers_terminals_and_foreign_imports() -> std::io::Result<()> {
+fn wasm_rejects_terminals_and_foreign_imports() -> std::io::Result<()> {
     for (source, feature) in [
-        ("let task = spawn 1\n", "fiber"),
-        ("let task = Channel(1)\n", "fiber"),
-        ("sleep(1)\n", "fiber"),
-        ("let ms = 1\nms.sleep()\n", "fiber"),
-        (
-            "type Reply = { send: fn(int) -> int }\nlet ms = 1\nms.sleep()\n",
-            "fiber",
-        ),
         ("let columns = termCols()\n", "terminal"),
         ("extern fn absent(value: int) -> int\n", "absent"),
+        (
+            "extern fn fiber_set_deterministic_mode(enabled: bool) -> int\n",
+            "fiber_set_deterministic_mode",
+        ),
     ] {
         rejects(source, "wasm32", feature)?;
+    }
+    Ok(())
+}
+
+/// [CONCURRENCY-WASM] wasm32 runs fibers on its one thread, so every fiber and
+/// channel form compiles there, to the same runtime calls as native.
+#[test]
+fn wasm_accepts_fibers_and_channels() -> std::io::Result<()> {
+    for (source, calls) in [
+        (
+            "let task = spawn 1\nprint(await(task))\n",
+            &["@fiber_spawn_env_owned", "@fiber_await"][..],
+        ),
+        (
+            "let task = spawn 1\nprint(fiberDone(task))\n",
+            &["@fiber_done"][..],
+        ),
+        (
+            "let task = spawn 1\nprint(\"${task}\")\n",
+            &["@fiber_id"][..],
+        ),
+        (
+            "let box = Channel(1)\nsend(box, 2)\nprint(recv(box))\n",
+            &["@channel_create_checked", "@channel_send", "@channel_recv"][..],
+        ),
+        ("sleep(1)\n", &["@fiber_sleep"][..]),
+        ("let ms = 1\nms.sleep()\n", &["@fiber_sleep"][..]),
+        ("print(yield 3)\n", &["@fiber_yield"][..]),
+    ] {
+        let ir = accepts(source, "wasm32")?;
+        for call in calls {
+            assert!(ir.contains(call), "{source}: no `{call}` in\n{ir}");
+        }
     }
     Ok(())
 }

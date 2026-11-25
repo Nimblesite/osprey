@@ -1,3 +1,6 @@
+#if defined(__wasi__) && !defined(_GNU_SOURCE)
+#define _GNU_SOURCE // clock_gettime and nanosleep under -std=c11
+#endif
 #include <errno.h>
 #include <pthread.h>
 #include <sched.h>
@@ -80,14 +83,20 @@ static pthread_mutex_t runtime_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 // Sequential execution mode [CONCURRENCY-DETERMINISTIC]. Queued fibers run in
 // spawn order: the queue is a FIFO list, and each holds its runner's hold.
-static bool deterministic_mode = false;
+// WASI preview1 has one thread, so wasm32 is always sequential [CONCURRENCY-WASM].
+#if defined(__wasi__)
+#define OSP_ONE_THREAD true
+#else
+#define OSP_ONE_THREAD false
+#endif
+static bool deterministic_mode = OSP_ONE_THREAD;
 static Fiber *queue_head;
 static Fiber *queue_tail;
 
 // Enable/disable deterministic fiber execution
 int64_t fiber_set_deterministic_mode(bool enabled) {
   pthread_mutex_lock(&runtime_mutex);
-  deterministic_mode = enabled;
+  deterministic_mode = enabled || OSP_ONE_THREAD;
   pthread_mutex_unlock(&runtime_mutex);
   return 0;
 }
@@ -207,24 +216,37 @@ static Fiber *fiber_new(int64_t (*env_fn)(void *), void *env, bool result_manage
     return NULL;
   }
   // No memory for the parent's handlers: the spawn is refused, never run without them.
-  *refused = __osprey_handler_try_snapshot(&fiber->handler_snapshot);
+  HandlerSnapshot *snapshot = NULL;
+  *refused = __osprey_handler_try_snapshot(&snapshot);
   if (*refused != 0) {
     osp_mem_scanned_free(fiber);
     return NULL;
   }
-  fiber->env_function = env_fn;
-  fiber->env = env;
-  fiber->result = 0;
-  fiber->result_owned = false;
-  fiber->result_managed = result_managed;
-  fiber->completed = false;
-  fiber->running = false;
+  *fiber = (Fiber){.env_function = env_fn, .env = env, .result_managed = result_managed,
+                   .handler_snapshot = snapshot};
   atomic_init(&fiber->holders, 2);
-  fiber->queue_next = NULL;
-  fiber->dead_next = NULL;
   pthread_mutex_init(&fiber->mutex, NULL);
   pthread_cond_init(&fiber->cond, NULL);
   return fiber;
+}
+
+// Numbers a fresh fiber and starts it: queued in sequential mode, otherwise on
+// its own thread, or here when the system has no thread left to give.
+static void schedule(Fiber *fiber) {
+  pthread_mutex_lock(&runtime_mutex);
+  fiber->id = next_fiber_id++;
+  fiber->uses_thread = !deterministic_mode;
+  if (!fiber->uses_thread) {
+    enqueue(fiber);
+  } else if (!start_fiber_thread(fiber)) {
+    // It runs here, and spawn still means what it says.
+    fiber->uses_thread = false;
+    fiber->running = true;
+    pthread_mutex_unlock(&runtime_mutex);
+    execute_fiber_directly(fiber);
+    return;
+  }
+  pthread_mutex_unlock(&runtime_mutex);
 }
 
 // Create and schedule a fiber, returning the caller's hold on it; NULL for a
@@ -236,30 +258,10 @@ static Fiber *fiber_start(int64_t (*env_fn)(void *), void *env, bool result_mana
                           size_t *refused) {
   *refused = 0;
   fiber_reclaim();
-  if (!env_fn) {
-    return NULL;
+  Fiber *fiber = env_fn ? fiber_new(env_fn, env, result_managed, refused) : NULL;
+  if (fiber) {
+    schedule(fiber);
   }
-  Fiber *fiber = fiber_new(env_fn, env, result_managed, refused);
-  if (!fiber) {
-    return NULL;
-  }
-  pthread_mutex_lock(&runtime_mutex);
-  fiber->id = next_fiber_id++;
-  fiber->uses_thread = !deterministic_mode;
-  if (!fiber->uses_thread) {
-    enqueue(fiber);
-    pthread_mutex_unlock(&runtime_mutex);
-    return fiber;
-  }
-  if (!start_fiber_thread(fiber)) {
-    // No thread left to give it, so it runs here, and spawn still means what it says.
-    fiber->uses_thread = false;
-    fiber->running = true;
-    pthread_mutex_unlock(&runtime_mutex);
-    execute_fiber_directly(fiber);
-    return fiber;
-  }
-  pthread_mutex_unlock(&runtime_mutex);
   return fiber;
 }
 

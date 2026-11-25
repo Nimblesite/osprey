@@ -4,7 +4,7 @@ Contract: [0014 HTTP](../specs/runtime/0014-HTTP.md) [0015 WebSockets](../specs/
 
 ## Prerequisites in place
 - Name refusal (`is_plain_name` rejects `/`, `\`, `:`, and a leading dot before `resolve` builds the path) and stop-waits-for-connections already ship in `src/toolchain/compiler/runtime/file_server_runtime.c` (commit `8d9b5c99`).
-- Growable fiber/channel tables (single `next_id`, no 999 limit) already ship in `src/toolchain/compiler/runtime/fiber_runtime.c` (commit `6fbf9b05`).
+- A growable channel table (no 999 limit) ships in `src/toolchain/compiler/runtime/fiber_runtime.c`; fibers need no table ([CONCURRENCY-FIBER-LIFETIME]).
 
 ## Cross-cutting
 - [x] AddressSanitizer build of `net_runtime_tests`, `http_runtime_tests`, `fiber_runtime_tests` and `websocket_runtime_tests` inside the existing C-runtime targets: `make _build_c_runtime_tests` builds them beside the coverage binaries and `make _test_c_runtime` runs them (`C_ASAN_SUITES` in `scripts/make/tests.mk`), so the CI build and test steps pick them up with no new job. All four pass on macOS, and with gcc and clang on Ubuntu 24.04 with leak detection (2026-11-14). To get there: the collector's conservative scan is exempt from the sanitizer (`gc_scan_range`, `memory_gc_table.h`), the fault-injecting allocator's entry points are exempt (`test_alloc.h`), and the runs turn off the sanitizer's fake stack and its `strstr` interceptor, with the reasons beside `C_ASAN_OPTIONS`.
@@ -25,6 +25,18 @@ Evidence: `/Library/Logs/DiagnosticReports/JetsamEvent-2026-11-05-090847.ips`. A
 
 ## WebSocket server [BUILTIN-WEBSOCKET-FRAMING]
 - [x] Zero-length frame payload leak: `serve_messages` (`src/toolchain/compiler/runtime/websocket_server_runtime.c`) frees every payload, `websocket_lifecycle_tests.c` sends 64 empty frames and expects the connections released, and `websocket_runtime_tests` now runs under the AddressSanitizer build above, which reports no leak on Linux (2026-11-14).
+
+## Fiber lifetime [CONCURRENCY-FIBER-LIFETIME] [CONCURRENCY-WASM] (#359)
+- [x] A `Fiber<T>` is a managed handle (`OSP_MEM_FIBER_HANDLE`) and the fiber counts its holders; the last frees it with its result. Check: `finished_fibers_are_reclaimed_in_every_backend` (`fiber_lifetime.rs`): 1.2 million fibers, the compiled program under 64 MiB on native gc, arc and ownership and wasm32 arc and ownership; red at 353 and 318 MiB before. `a_wasm_wait_nothing_can_wake_stops_by_name` pins the wasm32 stop.
+- [x] Finalizers per external subtype [MEM-BACKENDS-FINALIZERS] in gc, arc and ownership. Check: `memory_ownership_tests` `t_fiber_handle_finalizes_once`, the gc and arc finalizer cases.
+- [x] C suite: `check_finished_fibers_are_reclaimed`, `check_a_dropped_running_fiber_finishes`, under AddressSanitizer on macOS and Linux (leak detection).
+- [x] Proofs: `FiberLifetime.lean`, six theorems on the gc, arc and wasm kernels with no axioms, two rejected mutants (`make _check_synthesis_proofs`).
+- [x] Ownership's finalizer registration is live; `OwnershipLowering.compiledCompatibilityReturns` now covers the two hooks that stay inert.
+- [x] wasm32 runs fibers on its one thread (`fiber_runtime` in `WASM_RT_SRC`); a wait nothing can wake stops with status 70; 25 fiber programs left `WASM_UNPORTABLE.txt`. Both wasm hosts give compiled frames a native-sized stack (wasmtime `max-wasm-stack`, a Node worker), so a fiber recurses as deep there as natively.
+- [ ] Channels are still never reclaimed: a channel id stays in the table for the life of the process. Give `Channel<T>` the same managed handle.
+- [ ] A fiber blocked for ever on an unreachable channel keeps its runner's hold (a partial deadlock, Saioc et al., ASPLOS 2025). Detect it at collection.
+- [ ] Derive the holder count's proof from the compiled runtime through [IR-LEAN] once it models atomic read-modify-write.
+- [ ] Bring the fiber runtime into `_runtime_klee` ([plan 0055](0055-corpus-target-gaps.md)); it is filtered out of `KLEE_RT_SRC` until the KLEE mock has pthread stubs.
 
 ## Handle limits [CONCURRENCY-HANDLES] [CONCURRENCY-CHANNEL]
 - [x] Item-5 test shapes: 3000 record-returning fibers in `src/osprey/tests/regressions/fiber/many_handles.test.osp` and its ML twin (pass under GC and ARC), and `test_unusable_capacities_are_refused_not_returned` (`src/toolchain/compiler/runtime/fiber_channel_tests.c`) now also passes five unusable capacities to `channel_create_checked` through a runtime variable.

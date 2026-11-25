@@ -35,6 +35,7 @@ static int64_t slow_function(void *env) {
 void test_invalid_fiber_await(void) {
   assert(fiber_await(NULL) == -1 && "awaiting no handle is an error");
   assert(fiber_join(NULL) == -1 && "joining no fiber is an error");
+  assert(fiber_id(NULL) == -1 && "no fiber has no spawn number");
   fiber_release(NULL); // ending no hold is a no-op
 }
 
@@ -64,6 +65,8 @@ void test_multiple_fibers(void) {
 
   assert(fiber1 != NULL && fiber2 != NULL && "both fibers should have handles");
   assert(fiber1 != fiber2 && "fibers should have different handles");
+  assert(fiber_id(fiber1) > 0 && fiber_id(fiber2) == fiber_id(fiber1) + 1 &&
+         "spawn numbers count spawns in order");
 
   int64_t result1 = fiber_await(fiber1);
   int64_t result2 = fiber_await(fiber2);

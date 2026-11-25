@@ -85,7 +85,7 @@ esac
 # is a closure, so wasm32 and the mobile C ABI run it as native does
 # ([MULTI-WASM-MANY], [CI-MULTISHOT-WASM]).
 case $TARGET in
-  wasm32)            GOLDEN_MIN=216 ;;
+  wasm32)            GOLDEN_MIN=278 ;; # fibers run on wasm32 [CONCURRENCY-WASM]
   ios-sim|macos|android*) GOLDEN_MIN=232 ;;
   *)                 GOLDEN_MIN=289 ;;
 esac

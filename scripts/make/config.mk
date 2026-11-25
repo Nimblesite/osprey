@@ -240,9 +240,11 @@ define wasm_validate
 	fi
 endef
 # Portable subset that compiles for wasm32: allocator + strings + value
-# containers + JSON + effects + the browser host bridge. Excludes fiber
-# (pthreads), http/websocket (sockets/OpenSSL), system (fork/wait), term
-# (termios) and ffi (dlopen).
+# containers + JSON + effects + fibers + the browser host bridge. The fiber
+# runtime runs every fiber on WASI's one thread, in spawn order, over
+# wasi-libc's single-threaded pthread stubs [CONCURRENCY-WASM]. Excludes
+# http/websocket (sockets/OpenSSL), system (fork/wait), term (termios) and
+# ffi (dlopen).
 # profiler_runtime compiles to inert stubs on wasm32 (no pthreads/signals) but
 # must be present: codegen anchors `osp_prof_boot` into every main [PROF-ACTIVATE-ENV].
 # system_runtime and random_runtime are here for their PORTABLE halves: file
@@ -250,7 +252,7 @@ endef
 # the WASI random_get host call). Each compiles its non-portable half out under
 # `#ifndef __wasm__`, so adding them unskips file and random programs on wasm32
 # without pretending fork/exec or pthreads exist.
-WASM_RT_SRC  ?= native_scene native_bridge native_bridge_lifecycle gpu_runtime gpu_lifetime gpu_map_file gpu_elements gpu_host tensor_file tensor_list string_runtime string_runtime_list float_spelling list_runtime list_rebuild map_runtime map_runtime_hamt json_runtime json_text json_codec effects_runtime test_runtime coverage_runtime web_runtime profiler_runtime wasm_builtins_runtime system_runtime file_runtime random_runtime
+WASM_RT_SRC  ?= fiber_runtime native_scene native_bridge native_bridge_lifecycle gpu_runtime gpu_lifetime gpu_map_file gpu_elements gpu_host tensor_file tensor_list string_runtime string_runtime_list float_spelling list_runtime list_rebuild map_runtime map_runtime_hamt json_runtime json_text json_codec effects_runtime test_runtime coverage_runtime web_runtime profiler_runtime wasm_builtins_runtime system_runtime file_runtime random_runtime
 
 # The ARC twin of that archive, linked by `--memory=arc` — the wasm32 default
 # [WASM-TARGET-MEMORY]. Same unit set with memory_arc.c in place of the malloc
@@ -276,7 +278,7 @@ KLEE_LLVM_BIN ?= $(shell for d in "$$OSPREY_KLEE_LLVM" /opt/homebrew/opt/llvm@19
 KLEE_CC       ?= $(KLEE_LLVM_BIN)/clang
 KLEE_LINK     ?= $(KLEE_LLVM_BIN)/llvm-link
 KLEE_NM       ?= $(KLEE_LLVM_BIN)/llvm-nm
-KLEE_RT_SRC   ?= $(filter-out web_runtime wasm_builtins_runtime,$(WASM_RT_SRC)) $(patsubst src/toolchain/compiler/runtime/%.c,%,$(filter-out %_tests.c,$(wildcard src/toolchain/compiler/runtime/klee/*.c)))
+KLEE_RT_SRC   ?= $(filter-out web_runtime wasm_builtins_runtime fiber_runtime,$(WASM_RT_SRC)) $(patsubst src/toolchain/compiler/runtime/%.c,%,$(filter-out %_tests.c,$(wildcard src/toolchain/compiler/runtime/klee/*.c)))
 KLEE_CFLAGS   ?= --target=x86_64-unknown-linux-gnu -nostdlibinc -isystem runtime/klee/include \
   -emit-llvm -c -g -O0 -Xclang -disable-O0-optnone -std=c11 $(WARN_MAX) -U_FORTIFY_SOURCE -fno-stack-protector \
   -fsanitize=undefined -fno-sanitize=function -DOSP_SYMBOLIC -DOSP_FLOAT_SPELLING_PORTABLE -D_GNU_SOURCE '-D__thread=' '-D_Thread_local='

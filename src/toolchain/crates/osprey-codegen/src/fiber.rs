@@ -98,6 +98,13 @@ pub(crate) fn gen_await(cg: &mut Codegen, e: &Expr) -> Result<Value> {
     )
 }
 
+/// A fiber's spawn number, what interpolating it shows.
+pub(crate) fn fiber_id(cg: &mut Codegen, handle: &Value) -> Value {
+    let wire = handle_word(cg, handle);
+    let r = cg.call("i64", "fiber_id", "i8*", &[&wire]);
+    Value::new(r, LType::I64)
+}
+
 /// A fiber handle as the `i8*` the runtime's fiber entry points take.
 fn handle_word(cg: &mut Codegen, handle: &Value) -> String {
     crate::arc::as_i8ptr(cg, handle)
@@ -234,7 +241,12 @@ pub(crate) fn gen_recv(cg: &mut Codegen, channel: &Expr) -> Result<Value> {
     // `send` retained a reference for the receiver; adopting it here makes
     // this region drop it.
     let id = as_i64(cg, ch.clone())?;
-    adopt_from_runtime(cg, ch, ("channel_recv", "i64", &id.operand), RECV_WITHOUT_ELEMENT)
+    adopt_from_runtime(
+        cg,
+        ch,
+        ("channel_recv", "i64", &id.operand),
+        RECV_WITHOUT_ELEMENT,
+    )
 }
 
 /// `select` — one `channel_select` call over the channel arms, then a switch on

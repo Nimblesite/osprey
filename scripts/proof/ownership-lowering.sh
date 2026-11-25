@@ -235,7 +235,6 @@ reject_active_hook() {
   reject "$name" compiledCompatibilityReturns
 }
 reject_active_hook unique-drop 's/osp_release_unique(void \*body) { (void)body; }/osp_release_unique(void *body) { tracked_drop(body); }/'
-reject_active_hook active-finalizer 's/{ (void)meta; (void)finalize; }/{ (void)meta; if (finalize) finalize(NULL); }/'
 
 # A child miss returns no owned replacement. Both mutants reach the theorem.
 for fault in release-miss return-parent; do
