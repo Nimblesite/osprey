@@ -8,6 +8,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+
+#include "memory_refused.h"
 #include <unistd.h>
 
 #include "memory_hooks.h"
@@ -264,10 +266,16 @@ int64_t fiber_spawn_env(int64_t (*fn)(void *), void *env) {
 }
 
 // Spawn a compiler-generated closure thunk and preserve whether its erased
-// result word is a managed pointer.
+// result word is a managed pointer. Compiled `spawn` has no failure branch, so
+// a fiber the runtime cannot allocate stops the run by name instead of handing
+// back -2 as a handle the program would carry on with (#359) [MEM-REFUSED-STOP].
 int64_t fiber_spawn_env_owned(int64_t (*fn)(void *), void *env,
                               int64_t result_managed) {
-  return fiber_spawn_internal(fn, env, result_managed != 0);
+  int64_t id = fiber_spawn_internal(fn, env, result_managed != 0);
+  if (id == -2) { // -1 is a NULL thunk, which compiled code never passes
+    osp_alloc_refused("spawn", sizeof(Fiber));
+  }
+  return id;
 }
 
 // Claims the first queued fiber at or below `last` that nothing has started.
