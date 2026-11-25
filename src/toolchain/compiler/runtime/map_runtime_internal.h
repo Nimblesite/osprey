@@ -116,6 +116,8 @@ static inline int64_t map_node_layout(OspreyMapPolicy pol,
 #define MAP_HDR_LAYOUT OSP_MEM_LAYOUT(OSP_MEM_WORD(offsetof(OspreyMap, root)))
 
 /* Hashing / equality. Take a bare key type, never a policy. */
+/* A zeroed map block, or the named refusal stop (memory_refused.h). */
+void *osprey_map_calloc(size_t bytes);
 uint32_t osprey_map_hash_key(OspreyKeyType kt, int64_t key);
 int osprey_map_keys_equal(OspreyKeyType kt, int64_t a, int64_t b);
 

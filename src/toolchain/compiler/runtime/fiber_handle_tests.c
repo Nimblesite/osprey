@@ -23,6 +23,9 @@
 #endif
 
 #include "fiber_tests_shared.h"
+#include "memory_refused.h"
+#include "test_alloc.h"
+#include "test_death.h"
 
 enum { MANY = 5000, THREADS = 8, PER_THREAD = 600, THREAD_CAP_PROBE = 12000, HANDLE_BYTES_MAX = 512 };
 
@@ -241,7 +244,30 @@ static void check_thousands_queued(void) {
   }
 }
 
+static int64_t seven(void *unused) {
+  (void)unused;
+  return 7;
+}
+
+// The compiled `spawn` the runtime cannot allocate a fiber for, in a child.
+static void refused_spawn(void) {
+  osp_alloc_fail_next(); // the fiber record itself
+  (void)fiber_spawn_env_owned(seven, NULL, 0);
+}
+
+// [MEM-REFUSED-STOP] #359: compiled `spawn` has no failure branch, so a fiber the
+// runtime cannot allocate ends the run with the memory status, never a negative
+// handle the program would carry on with. The runtime's own callers still see -2.
+static void test_a_refused_compiled_spawn_stops_by_name(void) {
+  assert(osp_death_exit(refused_spawn) == OSP_DEATH_EXITED + OSP_HEAP_EXHAUSTED_STATUS);
+  osp_alloc_fail_next();
+  assert(fiber_spawn_env(seven, NULL) == -2);
+  int64_t ran = fiber_spawn_env_owned(seven, NULL, 0);
+  assert(ran > 0 && fiber_await(ran) == 7);
+}
+
 void run_fiber_handle_tests(void) {
+  test_a_refused_compiled_spawn_stops_by_name();
   check_what_a_handle_costs();
   check_handles_are_one_space();
   check_growth_under_contention();

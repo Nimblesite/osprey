@@ -43,7 +43,10 @@ pub fn without_positions(program: &Program) -> String {
     let mut index = 0;
     while let Some(line) = lines.get(index) {
         if let Some(next) = position_field(&lines, index) {
-            out.push(format!("{}position: <erased>", " ".repeat(indent_of(line))));
+            out.push(format!(
+                "{}position: <erased>",
+                " ".repeat(leading_whitespace_bytes(line))
+            ));
             index = next;
         } else {
             out.push((*line).to_owned());
@@ -88,17 +91,18 @@ fn position_field(lines: &[&str], index: usize) -> Option<usize> {
 /// indents every nested line further, so the first close back at that line's own
 /// column is the matching one.
 fn closer(lines: &[&str], index: usize) -> Option<usize> {
-    let indent = indent_of(lines.get(index)?);
+    let indent = leading_whitespace_bytes(lines.get(index)?);
     lines
         .iter()
         .enumerate()
         .skip(index.saturating_add(1))
-        .find(|(_, line)| line.trim_start() == ")," && indent_of(line) == indent)
+        .find(|(_, line)| line.trim_start() == ")," && leading_whitespace_bytes(line) == indent)
         .map(|(at, _)| at.saturating_add(1))
 }
 
-/// Width of a line's leading whitespace.
-fn indent_of(line: &str) -> usize {
+/// UTF-8 bytes removed by trimming leading whitespace.
+#[must_use]
+pub fn leading_whitespace_bytes(line: &str) -> usize {
     line.len().saturating_sub(line.trim_start().len())
 }
 

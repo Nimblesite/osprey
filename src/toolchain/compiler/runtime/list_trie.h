@@ -10,6 +10,7 @@
 
 #include "collection_runtime.h"
 #include "memory_hooks.h"
+#include "memory_refused.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -82,14 +83,15 @@ struct OspreyListBuilder {
 };
 
 /* ARC can publish the layout at allocation. Fresh nodes need empty slots;
- * a copied node and a list header are initialized in full by their caller. */
+ * a copied node and a list header are initialized in full by their caller.
+ * Every caller writes the block at once, so a refusal stops by name (#409). */
 static inline void *alloc_trie_storage(size_t size, int64_t layout, int clear) {
 #ifdef OSP_ARC_SHIM_H
-  void *body = osp_alloc_tagged_noinit((int64_t)size, layout);
-  if (body != NULL && clear) memset(body, 0, size);
+  void *body = osp_alloc_checked(osp_alloc_tagged_noinit((int64_t)size, layout), "list", size);
+  if (clear) memset(body, 0, size);
 #else
   (void)clear;
-  void *body = calloc(1, size);
+  void *body = osp_alloc_checked(calloc(1, size), "list", size);
   osp_mem_set_layout(body, layout);
 #endif
   return body;

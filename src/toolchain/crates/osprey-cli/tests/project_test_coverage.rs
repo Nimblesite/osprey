@@ -161,6 +161,69 @@ fn a_project_suite_reports_coverage_for_each_source_file() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
+/// `padding` comment lines naming `what`, so each source's code sits at its own line.
+fn padded(namespace: &str, lines: usize, what: &str, module: &str) -> String {
+    let padding = format!("// {what} padding\n").repeat(lines);
+    format!("namespace {namespace}\n\n{padding}{module}")
+}
+
+/// #381: a project that mixes an absolute library root with relative roots
+/// credits each hit to the file and line that ran it, the suite path typed
+/// relative to the working directory. Attributed through another assembly
+/// order, the application's hits landed on the library's comment lines.
+#[test]
+fn mixed_absolute_and_relative_roots_keep_hits_on_their_own_lines() -> TestResult {
+    let root =
+        std::env::temp_dir().join(format!("osprey_project_cov_mixed_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let helpers = "module Helpers\n    export bump value = satAdd value 1\n";
+    let flow = "module Flow\n    export next value = external::Helpers::bump value\n";
+    write(
+        &root.join("sdk/helpers.ospml"),
+        &padded("external", 20, "library", helpers),
+    );
+    write(
+        &root.join("app/src/flow.ospml"),
+        &padded("example", 10, "application", flow),
+    );
+    write(
+        &root.join("app/tests/main.ospml"),
+        "namespace checks\n\ntest (\"cross-root call\", \\() => expect (example::Flow::next 4, 5))\n",
+    );
+    for library in [
+        root.join("sdk").display().to_string(),
+        "../../sdk".to_owned(),
+    ] {
+        write(
+            &root.join("app/tests/osprey.toml"),
+            &format!("[project]\nname = \"mixed\"\nsource_roots = [\"{library}\", \"../src\", \".\"]\ndefault_namespace = \"checks\"\nentry = \"main.ospml\"\n"),
+        );
+        let output = Command::new(env!("CARGO_BIN_EXE_osprey"))
+            .current_dir(&root)
+            .args(["test", "app/tests", "--coverage-json"])
+            .arg(root.join("cov.json"))
+            .output()?;
+        assert!(output.status.success(), "{library}: {output:?}");
+        let report = coverage_report(&root)?;
+        assert_eq!(
+            file_lines(&report, "helpers.ospml"),
+            vec![(24, 1)],
+            "{library}: {report}"
+        );
+        assert_eq!(
+            file_lines(&report, "flow.ospml"),
+            vec![(14, 1)],
+            "{library}: {report}"
+        );
+        assert_eq!(
+            file_lines(&report, "main.ospml"),
+            vec![(3, 1)],
+            "{library}: {report}"
+        );
+    }
+    finished(root)
+}
+
 #[test]
 fn a_project_suite_runs_without_coverage() {
     let root = project("plain");

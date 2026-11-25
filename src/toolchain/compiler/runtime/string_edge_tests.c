@@ -108,7 +108,7 @@ void test_round_trips(void) {
             assert(back != NULL);
             assert(strcmp(back, texts[j]) == 0);
             release_test_buffer(back);
-            osp_string_list_free(list);
+            osp_release(list);
         }
     }
 
@@ -126,7 +126,7 @@ void test_unicode_bytes(void) {
     assert(strcmp(parts->items[0], "h\xc3\xa9") == 0); /* "hé" */
     assert(strcmp(parts->items[1], "") == 0);
     assert(strcmp(parts->items[2], "o") == 0);
-    osp_string_list_free(parts);
+    osp_release(parts);
     /* indexOf still works on raw bytes */
     assert(osp_string_index_of(utf8, "l") == 3);  /* byte offset, not codepoint */
     assert(osp_string_index_of(utf8, "o") == 5);

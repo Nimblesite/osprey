@@ -3,6 +3,23 @@
 
 use std::sync::Arc;
 
+/// One element of the session's accessibility tree, bounds in scene units.
+// BEGIN GENERATED [UI-MACHINE-A11Y]
+#[derive(Debug, Clone, PartialEq)]
+pub struct Accessible<R> {
+    pub role: R,
+    pub label: String,
+    pub x: f64,
+    pub y: f64,
+    pub w: f64,
+    pub h: f64,
+    pub value: f64,
+    pub min: f64,
+    pub max: f64,
+    pub selected: bool,
+}
+// END GENERATED [UI-MACHINE-A11Y]
+
 /// A primitive in scene units; the painter applies the shared transform.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Shape {

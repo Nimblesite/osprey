@@ -12,7 +12,6 @@ import {
   isCompileFailure,
   leafTestId,
   outcomeForLeaf,
-  parseTapOutput,
   parseTapStream,
   parseTestList,
   planRun,
@@ -25,7 +24,7 @@ import {
 import { coverageCounts, coverageRunArgs, parseCoverageJson } from "../../client/src/test-explorer-runs";
 
 suite("Test Explorer parsing", () => {
-  suite("parseTapOutput", () => {
+  suite("TAP results", () => {
     test("maps result lines and attaches preceding diagnostics", () => {
       const stream = [
         "# expect failed: expected 3, got 2",
@@ -34,7 +33,7 @@ suite("Test Explorer parsing", () => {
         "1..2",
         "# tests=2 passed=1 failed=1",
       ].join("\n");
-      assert.deepStrictEqual(parseTapOutput(stream), [
+      assert.deepStrictEqual(parseTapStream(stream).results, [
         {
           name: "bad math",
           description: "bad math",
@@ -53,7 +52,7 @@ suite("Test Explorer parsing", () => {
     test("joins multiple diagnostics, resets between results, ignores noise and CRLF", () => {
       const stream =
         "program output\r\n# first\r\n# second\r\nnot ok 1 - x\r\nok 2 - y\r\n1..2\r\n";
-      assert.deepStrictEqual(parseTapOutput(stream), [
+      assert.deepStrictEqual(parseTapStream(stream).results, [
         {
           name: "x",
           description: "x",
@@ -65,15 +64,15 @@ suite("Test Explorer parsing", () => {
     });
 
     test("returns no results for empty output or compile-error text", () => {
-      assert.deepStrictEqual(parseTapOutput(""), []);
+      assert.deepStrictEqual(parseTapStream("").results, []);
       assert.deepStrictEqual(
-        parseTapOutput('broken.test.osp:1:0: syntax error near "fn"'),
+        parseTapStream('broken.test.osp:1:0: syntax error near "fn"').results,
         [],
       );
     });
 
     test("captures names byte-exact: leading/trailing spaces and dashes survive", () => {
-      const results = parseTapOutput(
+      const { results } = parseTapStream(
         "ok 1 -  padded\nok 2 - trailing  \nnot ok 3 - a - b - c\n1..3\n",
       );
       assert.deepStrictEqual(
@@ -83,7 +82,7 @@ suite("Test Explorer parsing", () => {
     });
 
     test("a SKIP directive splits the name from the reason and marks the case skipped", () => {
-      const results = parseTapOutput(
+      const { results } = parseTapStream(
         "ok 1 - runs\nok 2 - precondition unmet # SKIP not on a full moon\nok 3 - bare skip # SKIP\n1..3\n",
       );
       assert.deepStrictEqual(results, [
@@ -109,7 +108,7 @@ suite("Test Explorer parsing", () => {
     // directive is always LAST, so the split is taken from the right and the
     // whole description is kept for the tie-break in outcomeForLeaf.
     test("a name containing the directive keeps it, splitting only the trailing directive", () => {
-      const results = parseTapOutput(
+      const { results } = parseTapStream(
         [
           "ok 1 - name with # SKIP inside it",
           "ok 2 - name with # SKIP inside it # SKIP really parked",

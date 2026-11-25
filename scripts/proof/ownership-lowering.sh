@@ -15,8 +15,10 @@ clang=${OSPREY_PROOF_CLANG:-clang}
 validate_ir() { "$clang" -Wno-override-module -c -x ir "$1" -o /dev/null; }
 validate_ir "$out/ownership.ll"
 runtime="$root/src/toolchain/compiler/runtime"
+# _GNU_SOURCE as every runtime build sets it (config.mk): glibc declares
+# pthread_getattr_np, which the stack guard reads, only under it.
 compile_runtime() {
-  "$clang" -O1 -fno-inline -fno-discard-value-names -I "$runtime" "${@:3}" \
+  "$clang" -O1 -fno-inline -fno-discard-value-names -D_GNU_SOURCE -I "$runtime" "${@:3}" \
     -S -emit-llvm "$1" -o "$2"
 }
 shim=(-include "$runtime/osp_arc_shim.h")

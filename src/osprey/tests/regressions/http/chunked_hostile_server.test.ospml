@@ -224,10 +224,13 @@ bodiesPastTheBuffer client =
 headsThatHideFraming client =
     malformed = "error=http response: head: malformed"
     _hidden = forEachList [
-        { name = "bare LF in a value", path = "/bare-lf", framing = oversizeLie () }, { name = "bare CR in a value", path = "/bare-cr", framing = "hello" },
+        { name = "bare CR in a value", path = "/bare-cr", framing = "hello" },
         { name = "space before the colon", path = "/spaced-name", framing = oversizeLie () }, { name = "a folded line", path = "/folded", framing = framedHi () },
         { name = "a line with no colon", path = "/no-colon", framing = "hello" }, { name = "a line with no name", path = "/no-name", framing = "hello" }
     ] (\c => check (c.name) (malformed) (posted (client, c.path, c.framing)))
+    // The server ends a bare LF as its own line [HTTP-SERVER-HEADERS], so the
+    // chunked lie that line carried is what gets refused.
+    check "bare LF in a value" (chunkTooBig ()) (posted (client, "/bare-lf", oversizeLie ()))
     stillServing client
 
 statusesThatAreNotStatuses client =
@@ -237,8 +240,11 @@ statusesThatAreNotStatuses client =
     ] (\c => check (c.name) (notHttp) (fetched (client, c.path)))
     check "a real 404" "status=404 body=gone" (posted (client, "/404-plain", "gone"))
 
+(** A lying, junk or negative Content-Length from the handler is replaced by the
+    body's real length [HTTP-SERVER-HEADERS]; the client's refusal of lengths that
+    lie on the wire is checked from raw bytes in http_read_tests.c. *)
 lengthsThatLie client =
-    _invalid = postsEach (client, "hello", "error=http response: body: invalid Content-Length", [
+    _replaced = postsEach (client, "hello", "status=200 body=hello", [
         { name = "a second, different length", path = "/length-lie" }, { name = "a length that isn't one", path = "/length-junk" }, { name = "a negative length", path = "/length-negative" }
     ])
     check "chunked ignores a lie" "status=200 body=hi" (posted (client, "/two-lines", framedHi ()))
@@ -259,5 +265,5 @@ testCases [
     { name = "bodies past the transport buffer decode", work = originCase (18120, bodiesPastTheBuffer) },
     { name = "heads that hide framing are refused", work = originCase (18121, headsThatHideFraming) },
     { name = "statuses are three digits", work = originCase (18122, statusesThatAreNotStatuses) },
-    { name = "lengths that lie are refused", work = originCase (18123, lengthsThatLie) }
+    { name = "a handler's lying length is replaced", work = originCase (18123, lengthsThatLie) }
 ]

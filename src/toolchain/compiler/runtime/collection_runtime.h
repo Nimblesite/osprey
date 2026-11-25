@@ -81,13 +81,9 @@ int osprey_list_elem_managed(OspreyList *l);
 int osprey_list_in_bounds(OspreyList *l, int64_t i);
 /* Caller must ensure osprey_list_in_bounds(l, i) before calling. BORROWED. */
 int64_t osprey_list_get(OspreyList *l, int64_t i);
-OspreyList *osprey_list_set(OspreyList *l, int64_t i, int64_t v);
-/* The `_of` spellings take the element kind from the call site; the arity-2
-   ones inherit it from the source list (an empty source means "scalar"). */
+/* The element kind comes from the call site. */
 OspreyList *osprey_list_append_of(OspreyList *l, int64_t v, int elem_managed);
-OspreyList *osprey_list_append(OspreyList *l, int64_t v);
 OspreyList *osprey_list_prepend_of(OspreyList *l, int64_t v, int elem_managed);
-OspreyList *osprey_list_prepend(OspreyList *l, int64_t v);
 OspreyList *osprey_list_concat(OspreyList *a, OspreyList *b);
 OspreyList *osprey_list_drop(OspreyList *l, int64_t n);
 OspreyList *osprey_list_view(OspreyList *l, int64_t n);
@@ -97,7 +93,6 @@ OspreyList *osprey_list_reverse(OspreyList *l);
 OspreyList *osprey_list_sort(OspreyList *l);
 
 OspreyListBuilder *osprey_list_builder_new_of(int elem_managed);
-OspreyListBuilder *osprey_list_builder_new(void);
 /* TRANSFERS `v` and latches the builder's element kind. */
 void osprey_list_builder_push_of(OspreyListBuilder *b, int64_t v,
                                  int elem_managed);
@@ -116,11 +111,9 @@ int osprey_map_value_managed(OspreyMap *m);
 int osprey_map_contains(OspreyMap *m, int64_t key);
 /* Caller must ensure osprey_map_contains(m, k) before calling. BORROWED. */
 int64_t osprey_map_get(OspreyMap *m, int64_t key);
-/* Both key and value are TRANSFERRED. The `_of` spelling takes the value kind
-   from the call site; the arity-3 one inherits it from `m`. */
+/* Both key and value are TRANSFERRED. The value kind comes from the call site. */
 OspreyMap *osprey_map_set_of(OspreyMap *m, int64_t key, int64_t value,
                              int value_managed);
-OspreyMap *osprey_map_set(OspreyMap *m, int64_t key, int64_t value);
 /* The lookup key is BORROWED (nothing is stored). */
 OspreyMap *osprey_map_remove(OspreyMap *m, int64_t key);
 /* Right-biased: keys in b override keys in a. */

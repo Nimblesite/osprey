@@ -1,10 +1,9 @@
 // [PROF-VSCODE-FLAME] Flame model, layout, filtering, and search coverage.
 import * as assert from "assert";
+import { colorForRank } from "@nimblesite/lsp-profiler-ui/out/src/flame-model";
 import {
   buildFlameModel,
   byFrameKeyThenIndex,
-  colorForRank,
-  frameColors,
   frameStats,
   isOspreySource,
   leftHeavyRects,
@@ -198,6 +197,8 @@ suite("flame-model frame stats", () => {
 });
 
 suite("flame-model colors", () => {
+  const colorsFor = (frames: SpeedscopeFile["shared"]["frames"]) =>
+    buildFlameModel({ shared: { frames }, profiles: [] }).frames.map((frame) => frame.color);
   test("triangle wave hits its known points", () => {
     assert.strictEqual(triangle(0), 0);
     assert.strictEqual(triangle(1), 1);
@@ -210,17 +211,17 @@ suite("flame-model colors", () => {
     assert.ok(isOspreySource("/w/a.osp") && isOspreySource("/w/a.ospml"));
     assert.ok(!isOspreySource("/usr/lib/libc.dylib") && !isOspreySource(""));
     assert.strictEqual(
-      colorForRank("/usr/lib/libc.dylib", 0, 4),
+      colorsFor([{ name: "runtime", file: "/usr/lib/libc.dylib" }])[0],
       "hsl(215, 12%, 58.0%)",
     );
-    assert.ok(colorForRank("/w/a.osp", 1, 4).startsWith("hsl(80.0,"));
+    assert.ok(colorsFor(FRAMES)[1].startsWith("hsl(80.0,"));
   });
 
   test("frame colors are deterministic and identity-stable under reordering", () => {
-    const colors = frameColors(FRAMES);
-    assert.deepStrictEqual(frameColors(FRAMES), colors);
+    const colors = colorsFor(FRAMES);
+    assert.deepStrictEqual(colorsFor(FRAMES), colors);
     const reversed = [...FRAMES].reverse();
-    const reversedColors = frameColors(reversed);
+    const reversedColors = colorsFor(reversed);
     FRAMES.forEach((frame, i) => {
       assert.strictEqual(reversedColors[reversed.indexOf(frame)], colors[i]);
     });
@@ -236,7 +237,7 @@ suite("flame-model colors", () => {
   });
 
   test("frames without a file rank as runtime", () => {
-    assert.ok(frameColors([{ name: "anon" }])[0].startsWith("hsl(215"));
+    assert.ok(colorsFor([{ name: "anon" }])[0].startsWith("hsl(215"));
   });
 
   // Two frames can share a file AND a name -- the same function inlined at two
@@ -277,7 +278,7 @@ suite("flame-model colors", () => {
       { name: "same", file: "/w/twin.osp" },
       { name: "same", file: "/w/twin.osp" },
     ];
-    const colors = frameColors(twins);
+    const colors = colorsFor(twins);
     assert.strictEqual(colors.length, 3);
     assert.ok(
       colors.every((color) => color.startsWith("hsl(")),
@@ -287,13 +288,13 @@ suite("flame-model colors", () => {
     // not merely "some three colours".
     assert.deepStrictEqual(
       colors,
-      [0, 1, 2].map((rank) => colorForRank("/w/twin.osp", rank, 3)),
+      [0, 1, 2].map((rank) => colorForRank({ file: "/w/twin.osp", rank, frameCount: 3 }, isOspreySource)),
     );
     // And the three are genuinely different, so the assertion above is a claim
     // about ORDER rather than about three copies of one string.
     assert.strictEqual(new Set(colors).size, 3, "each rank is its own colour");
-    assert.deepStrictEqual(frameColors(twins), colors, "and repeatably so");
-    assert.deepStrictEqual(frameColors([...twins].reverse()), colors);
+    assert.deepStrictEqual(colorsFor(twins), colors, "and repeatably so");
+    assert.deepStrictEqual(colorsFor([...twins].reverse()), colors);
   });
 });
 

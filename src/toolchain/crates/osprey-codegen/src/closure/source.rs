@@ -9,6 +9,26 @@ use crate::error::{CodegenError, Result};
 use crate::llty::{LType, Value};
 use osprey_ast::{Expr, Parameter, Position};
 
+/// Build a closure body that forwards its parameters to the supplied callee.
+pub(crate) fn forwarding_body(prefix: &str, arity: usize, callee: Expr) -> (Vec<Parameter>, Expr) {
+    let parameters: Vec<Parameter> = (0..arity)
+        .map(|index| Parameter {
+            name: format!("{prefix}{index}"),
+            ty: None,
+            inline_constraint: false,
+        })
+        .collect();
+    let body = Expr::Call {
+        function: Box::new(callee),
+        arguments: parameters
+            .iter()
+            .map(|parameter| Expr::Identifier(parameter.name.clone()))
+            .collect(),
+        named_arguments: Vec::new(),
+    };
+    (parameters, body)
+}
+
 struct Definition<'a> {
     parameters: &'a [Parameter],
     body: &'a Expr,

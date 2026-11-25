@@ -427,7 +427,19 @@ test ("every skin's accessibility tree reads clearly to an agent, and a Prism no
     expect (contains (Semantics::outline (elements ())) "button \"Select Filter\" movable", true)))
 
 // The repository document as a store, not yet settled.
-document () = App::loaded (readFile "src/osprey/packages/signal_flow/signal_flow.machine.json" ?: "")
+document () = App::read "src/osprey/packages/signal_flow/signal_flow.machine.json"
+
+// The fault a launch with `--machine path` shows in place of the editor.
+launchFault path =
+    context = ui::Context(now = 0, offset = 0, platform = "macos", home = "", arguments = ["--machine", path], hostDark = true)
+    ((App::initial context).stepStore.screen.screenMachine).machineFault
+
+// #416: a document that cannot be read shows its path and the reason, read
+// directly and through a launch, never the faults of an empty document.
+unreadable (path, reason) =
+    shown = "the machine document could not be read: readFile: ${path}: ${reason}"
+    expect (((App::read path).screen.screenMachine).machineFault, shown)
+    expect (launchFault path, shown)
 
 // The store after one lever, each history's length read back.
 histories (store, lever) =
@@ -452,5 +464,8 @@ test ("undo and redo at the edges of their history, a refused document shown in 
     forEachList (["undo", "redo"], \lever => expect (histories (settled, lever), "${length settled.past}/0"))
     refused = App::loaded "not json"
     expect ((refused.screen.screenMachine).machineFault, "the machine document is not JSON")
+    unreadable ("/no/such/file.json", "No such file or directory")
+    unreadable ("src/osprey/packages/signal_flow/tests", "Is a directory")
+    expect (launchFault "src/osprey/packages/signal_flow/tests/osprey.toml", "the machine document is not JSON")
     expect (length refused.past, 0)
     forEachList (["", "topology", "paper"], \skin => expect (length (App::theme skin).tokens > 0, true))))

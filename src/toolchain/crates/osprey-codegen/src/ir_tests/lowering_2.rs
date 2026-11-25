@@ -250,7 +250,7 @@ fn list_builders_map_filter_fold_and_foreach() {
     shows(
         &ir,
         &[
-            "osprey_list_builder_new",
+            "call i8* @osprey_list_builder_new_of(i32 0)",
             "osprey_list_builder_push",
             "osprey_list_builder_seal",
         ],

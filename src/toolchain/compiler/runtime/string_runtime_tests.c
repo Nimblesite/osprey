@@ -374,7 +374,7 @@ static void test_process_args_and_env(int argc, char **argv) {
     osp_string_list *args = osp_process_args();
     assert(args != NULL && args->length == (int64_t)argc - 1);
     for (int i = 1; i < argc; ++i) assert(strcmp(args->items[i - 1], argv[i]) == 0);
-    osp_string_list_free(args);
+    osp_release(args);
     assert(setenv("OSP_STRING_TESTS_VAR", "value with spaces", 1) == 0);
     text_is(osp_process_env("OSP_STRING_TESTS_VAR"), "value with spaces");
     assert(setenv("OSP_STRING_TESTS_VAR", "", 1) == 0);

@@ -121,8 +121,6 @@ static bool expect_registry_lock;
 
 int64_t get_next_id(void) { return 1; }
 
-int64_t fiber_spawn(int64_t (*fn)(void)) { (void)fn; return -1; }
-
 int64_t fiber_spawn_env(int64_t (*fn)(void *), void *environment) {
   (void)fn;
   (void)environment;

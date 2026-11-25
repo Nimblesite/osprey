@@ -137,7 +137,7 @@ void test_words(void) {
 static void join_round_trip(const char *text, const char *sep, const char *glue, const char *want) {
     osp_string_list *list = osp_string_split(text, sep);
     text_is(osp_string_join(list, glue), want);
-    osp_string_list_free(list);
+    osp_release(list);
 }
 
 void test_join(void) {
@@ -155,7 +155,7 @@ void test_join(void) {
 
 /* Append a borrowed word to a runtime list the way codegen stores strings. */
 static OspreyList *push_word(OspreyList *list, const char *word) {
-    return osprey_list_append(list, (int64_t)(intptr_t)word);
+    return osprey_list_append_of(list, (int64_t)(intptr_t)word, 1);
 }
 
 void test_join_runtime_list(void) {

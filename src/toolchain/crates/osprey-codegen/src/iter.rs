@@ -396,7 +396,7 @@ fn list_builder(cg: &mut Codegen, args: &[Expr], filter: bool) -> Result<Value> 
         let managed = cg.call("i32", "osprey_list_elem_managed", "i8*", &[&l.operand]);
         crate::collections::list_builder_new_of(cg, &managed)
     } else {
-        crate::collections::list_builder_new(cg)
+        crate::collections::list_builder_new_of(cg, "0")
     };
     // `filterList` keeps the source's elements and so its element type;
     // `mapList` learns the built list's element type from the callback below.
@@ -464,7 +464,7 @@ fn to_list(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
 }
 
 fn build_range(cg: &mut Codegen, range: &Value, mapper: Option<&Callback>) -> Result<Value> {
-    let bld = crate::collections::list_builder_new(cg);
+    let bld = crate::collections::list_builder_new_of(cg, "0");
     let mut out_elem = None;
     each_range_elem(cg, range, |cg, elem| {
         let (value, builtin) = match mapper {

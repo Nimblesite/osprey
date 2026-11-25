@@ -59,14 +59,12 @@ export async function reportCoverage(
  * percentage in the Test Coverage view and the hits in the editor gutter
  * ([TESTING-COVERAGE-VSCODE]).
  */
-export const detailedCoverage = new WeakMap<
+const detailedCoverage = new WeakMap<
   vscode.FileCoverage,
   vscode.StatementCoverage[]
 >();
 
-/** The gutter detail stashed for one FileCoverage (what the Coverage profile's
- *  loadDetailedCoverage serves). Exported so tests can prove the per-line
- *  StatementCoverage values without reaching into VS Code internals. */
+/** The gutter detail served by the Coverage profile. */
 export function detailedCoverageFor(
   fileCoverage: vscode.FileCoverage,
 ): vscode.StatementCoverage[] {

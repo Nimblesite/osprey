@@ -28,8 +28,8 @@ pub(crate) use environment::{
     aliases, capture, is_alias, of_values, reach, within, within_env, Environment,
 };
 pub(crate) use source::{
-    begin_named_source, begin_source, emit_closure, emit_closure_keyed, lambda_value,
-    source_parameters,
+    begin_named_source, begin_source, emit_closure, emit_closure_keyed, forwarding_body,
+    lambda_value, source_parameters,
 };
 
 use crate::arc::Held;

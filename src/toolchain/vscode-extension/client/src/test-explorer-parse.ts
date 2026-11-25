@@ -200,11 +200,6 @@ export function parseTapStream(stdout: string): TapStream {
   return { results, strayComments: comments, sawPlan };
 }
 
-/** Just the per-case results of a TAP stream. */
-export function parseTapOutput(stdout: string): TapResult[] {
-  return parseTapStream(stdout).results;
-}
-
 // A leaf id embeds the parent uri and the exact test name; the separator can
 // never occur in a `file:` uri string, so ids stay collision-free.
 const LEAF_ID_SEPARATOR = " ";

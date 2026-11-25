@@ -110,11 +110,11 @@ void t_owned_text_trim_and_lists(void) {
   CHECK(osp_strlen(parts->items[0]) == 3 && memcmp(parts->items[0], "a\0b", 3) == 0);
   CHECK(osp_strlen(parts->items[1]) == 3 && memcmp(parts->items[1], "c\0d", 3) == 0);
   check_text(osp_string_join(parts, nul), "a\0b\0c\0d", 7);
-  osp_string_list_free(parts);
+  osp_release(parts);
   parts = osp_string_split(words, nul);
   CHECK(parts != NULL && parts->length == 3);
   CHECK(osp_strlen(parts->items[1]) == 3 && memcmp(parts->items[1], "b c", 3) == 0);
-  osp_string_list_free(parts);
+  osp_release(parts);
   osp_release(text); osp_release(nul); osp_release(words);
 }
 

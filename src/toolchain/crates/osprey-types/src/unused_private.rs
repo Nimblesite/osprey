@@ -1,14 +1,11 @@
 //! Private module members nothing reads. Implements [TYPE-WARNINGS-UNUSED-PRIVATE].
 //!
-//! A module is a closed boundary: an item it does not export can be named only
-//! from inside it. A private function or value whose name no expression of its
-//! module mentions is therefore dead. The test is by spelling, not binding: an
-//! identifier, path segment, field, method or updated record of the same name
-//! counts as a read, so the rule can miss dead code but never flags live code.
-//! A module ascribed a signature is skipped, since the signature names its
-//! surface.
+//! Follow private function references from exports, initializers and nested
+//! modules. A private value is reported only when nothing mentions its name.
+//! Name matching is conservative: a field, path segment or method of the same
+//! spelling can hide unused code. Signatures supply their own public surface.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use osprey_ast::{
     walk_statement, AstVisitor, Expr, ModuleItem, Position, Program, Stmt, Visibility,
@@ -19,7 +16,7 @@ use crate::{undocumented::qualified, TypeWarning};
 /// Shared rule identifier for compiler and editor diagnostics.
 pub const UNUSED_PRIVATE: &str = "unused-private";
 
-/// Every private module function or value `program` never names, in source order.
+/// Unreachable private module functions and unread values, in source order.
 #[must_use]
 pub fn unused_privates(program: &Program) -> Vec<TypeWarning> {
     let mut warnings = Vec::new();
@@ -50,27 +47,63 @@ fn module(statement: &Stmt, owner: &str, warnings: &mut Vec<TypeWarning>) {
     };
     let name = qualified(owner, &path.to_string());
     if signature.is_none() {
-        warnings.extend(unread_items(statement, body, &name));
+        warnings.extend(unread_items(body, &name));
     }
     for item in body {
         module(&item.declaration, &name, warnings);
     }
 }
 
-/// The private items of `body` no expression of `module` names.
-fn unread_items(module: &Stmt, body: &[ModuleItem], owner: &str) -> Vec<TypeWarning> {
-    let mentioned = mentions(module);
+fn unread_items(body: &[ModuleItem], owner: &str) -> Vec<TypeWarning> {
+    let mut mentioned = HashSet::new();
+    let mut roots = Vec::new();
+    let mut dependencies: HashMap<&str, Vec<String>> = HashMap::new();
+    for item in body {
+        let names = mentions(&item.declaration);
+        mentioned.extend(names.iter().cloned());
+        match (item.visibility, item.declaration.as_ref()) {
+            (Visibility::Private, Stmt::Function { name, .. }) => {
+                dependencies.entry(name).or_default().extend(names);
+            }
+            _ => roots.extend(names),
+        }
+    }
+    let reachable = reachable_names(roots, dependencies);
     body.iter()
-        .filter_map(|item| unread(item, owner, &mentioned))
+        .filter_map(|item| unread(item, owner, &mentioned, &reachable))
         .collect()
 }
 
-fn unread(item: &ModuleItem, owner: &str, mentioned: &HashSet<String>) -> Option<TypeWarning> {
+fn reachable_names(
+    mut pending: Vec<String>,
+    mut dependencies: HashMap<&str, Vec<String>>,
+) -> HashSet<String> {
+    let mut reached = HashSet::new();
+    while let Some(name) = pending.pop() {
+        if let Some(next) = dependencies.remove(name.as_str()) {
+            pending.extend(next);
+        }
+        let _ = reached.insert(name);
+    }
+    reached
+}
+
+fn unread(
+    item: &ModuleItem,
+    owner: &str,
+    mentioned: &HashSet<String>,
+    reachable: &HashSet<String>,
+) -> Option<TypeWarning> {
     if item.visibility == Visibility::Exported {
         return None;
     }
     let (kind, name, position) = declared(&item.declaration)?;
-    (!mentioned.contains(name)).then(|| TypeWarning {
+    let used = if matches!(item.declaration.as_ref(), Stmt::Function { .. }) {
+        reachable
+    } else {
+        mentioned
+    };
+    (!used.contains(name)).then(|| TypeWarning {
         message: format!(
             "private {kind} `{}` is never used; delete it",
             qualified(owner, name)

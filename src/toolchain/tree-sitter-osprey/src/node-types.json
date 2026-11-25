@@ -1270,16 +1270,6 @@
     "type": "import_statement",
     "named": true,
     "fields": {
-      "legacy_target": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "legacy_import_path",
-            "named": true
-          }
-        ]
-      },
       "tail": {
         "multiple": false,
         "required": false,
@@ -1292,7 +1282,7 @@
       },
       "target": {
         "multiple": false,
-        "required": false,
+        "required": true,
         "types": [
           {
             "type": "import_target",
@@ -1537,21 +1527,6 @@
         },
         {
           "type": "type_identifier",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "legacy_import_path",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "identifier",
           "named": true
         }
       ]

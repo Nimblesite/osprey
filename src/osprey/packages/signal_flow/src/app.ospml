@@ -20,10 +20,18 @@ module App
         Success machine => Flow::store machine
         Error problem => Flow::store (MachineDocs::faulty problem)
 
-    (** Loads the document in `skin` unless `--skin` names another, and answers the initial states' requests; an application built on the editor picks its own skin. *)
+    (** The store from the document at `path`: a read that fails shows the path and its reason in place of the editor. *)
+    export read path = match readFile path
+        Success source => loaded source
+        Error reason => Flow::store (MachineDocs::faulty "the machine document could not be read: ${reason}")
+
+    (** Loads the document in `skin` unless `--skin` names another, and answers the initial states' requests; an application built on the editor picks its own skin. A document that did not load is shown as it is: launching it would bury its fault under one about the launch inputs. *)
     export opened (context, skin) =
         path = documentPath context.arguments
-        Flow::settled (Flow::launched (loaded (readFile path ?: ""), MachineDocs::folder path, ui::Lists::after (context.arguments, "--skin", skin)))
+        store = read path
+        match (store.screen.screenMachine).machineFault == ""
+            true => Flow::settled (Flow::launched (store, MachineDocs::folder path, ui::Lists::after (context.arguments, "--skin", skin)))
+            false => Flow::settled store
 
     (** Loads the document, applies `--skin` and answers the initial states' requests. *)
     export initial context = opened (context, "")
@@ -45,7 +53,7 @@ module App
 
     (** The repository document's colours in `skin`, or its default skin when empty: the window paints its background around the view. *)
     export theme skin =
-        store = Flow::launched (loaded (readFile (documentPath []) ?: ""), "", skin)
+        store = Flow::launched (read (documentPath []), "", skin)
         Templates::theme store.screen.screenMachine
 
     (** The editor as its boundary runs it: the store drawn with its machine's live skin's theme. *)

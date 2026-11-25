@@ -33,7 +33,6 @@ parse_args() {
                 [ "$#" -ge 2 ] || fail "--theorem needs a name"
                 THEOREM="$2"
                 shift ;;
-            record) ;;
             *) fail "unknown argument: $1" ;;
         esac
         shift

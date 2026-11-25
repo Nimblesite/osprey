@@ -135,8 +135,10 @@ enum {
 enum { WS_FRAME_PARTIAL = 0, WS_FRAME_INVALID = -1, WS_FRAME_TOO_BIG = -2, WS_FRAME_NO_MEMORY = -3 };
 // Status codes the server closes with (RFC 6455 §7.4.1).
 enum { WS_CLOSE_PROTOCOL = 1002, WS_CLOSE_UNSUPPORTED = 1003, WS_CLOSE_TOO_BIG = 1009, WS_CLOSE_INTERNAL = 1011 };
-// The largest payload sent, the largest message a server takes, the longest header.
-enum { WS_SEND_LIMIT = 4096, WS_MESSAGE_LIMIT = 16384, WS_HEADER_MAX = 14 };
+// The largest message a server takes, the longest header, and the largest
+// payload sent: room for the echo of the largest message when every byte takes
+// the widest JSON escape (\u00XX, twice over: original and echo) (#414).
+enum { WS_MESSAGE_LIMIT = 16384, WS_HEADER_MAX = 14, WS_SEND_LIMIT = 2 * 6 * (WS_MESSAGE_LIMIT + 32) + 256 };
 
 typedef struct {
   bool fin;

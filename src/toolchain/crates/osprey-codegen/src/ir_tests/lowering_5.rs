@@ -30,7 +30,9 @@ fn folding_a_materialized_plain_range_reads_no_list() {
     let mapped = function_body(&ir, "define internal i8* @mapped(");
     testkit::contents(&mapped, &["icmp slt", "sitofp"], &["@osprey_list_get"]);
     assert_eq!(
-        mapped.matches("call i8* @osprey_list_builder_new(").count(),
+        mapped
+            .matches("call i8* @osprey_list_builder_new_of(i32 0)")
+            .count(),
         1
     );
 }

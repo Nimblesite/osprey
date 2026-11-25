@@ -67,7 +67,7 @@ static inline void chk_absent(OspreyMap *m, int64_t k) {
 }
 static inline OspreyMap *make_int_map(int64_t start, int64_t end) {
   OspreyMap *m = osprey_map_empty(KI);
-  for (int64_t i = start; i < end; i++) m = osprey_map_set(m, i, i * VAL_MUL);
+  for (int64_t i = start; i < end; i++) m = osprey_map_set_of(m, i, i * VAL_MUL, 0);
   return m;
 }
 /* Every key in [start, end) resolves to key*VAL_MUL; the fringes must miss. */
@@ -119,9 +119,9 @@ static inline int64_t drain(OspreyMap *m, int64_t base, int64_t n) {
   return count;
 }
 static inline OspreyMap *make_coll_map(void) {
-  OspreyMap *m = osprey_map_set(osprey_map_empty(KB), 0, 0);
+  OspreyMap *m = osprey_map_set_of(osprey_map_empty(KB), 0, 0, 0);
   for (int32_t i = 0; i < COLL_N; i++)
-    m = osprey_map_set(m, COLL_KEYS[i], COLL_KEYS[i] * VAL_MUL);
+    m = osprey_map_set_of(m, COLL_KEYS[i], COLL_KEYS[i] * VAL_MUL, 0);
   return m;
 }
 static inline void chk_coll_map(OspreyMap *m) {
@@ -134,7 +134,7 @@ static inline void chk_coll_map(OspreyMap *m) {
 static inline OspreyMap *make_str_map(void) {
   OspreyMap *m = osprey_map_empty(KS);
   for (int64_t i = 0; i < STR_KEYS; i++)
-    m = osprey_map_set(m, skey(STRS[i]), i * VAL_MUL);
+    m = osprey_map_set_of(m, skey(STRS[i]), i * VAL_MUL, 0);
   return m;
 }
 
@@ -146,5 +146,6 @@ void test_builder_key_types(void);
 void test_scale(void);
 void test_entry_kind_flags(void);
 void test_iter_lifecycle(void);
+void test_refused_collision_blocks_end_the_run_by_name(void);
 
 #endif

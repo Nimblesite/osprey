@@ -95,13 +95,13 @@ static void test_empty_and_single(void) {
   CHECK(osprey_map_remove(NULL, 1) == NULL);
   CHECK(osprey_map_remove(m, 5) == m); /* NULL root alias-returns the map */
   CHECK(drain(m, 0, 1) == 0); CHECK(osprey_map_iter_new(NULL) != NULL);
-  OspreyMap *one = osprey_map_set(m, 1, VAL_MUL);
+  OspreyMap *one = osprey_map_set_of(m, 1, VAL_MUL, 0);
   CHECK(one != m); chk_leaf(one->root, 1, VAL_MUL);
   CHECK(osprey_map_length(one) == 1);
   chk_entry(one, 1, VAL_MUL); chk_absent(one, 2);
   CHECK(drain(one, 1, 1) == 1);
   CHECK(osprey_map_length(m) == 0); chk_absent(m, 1); /* source untouched */
-  OspreyMap *over = osprey_map_set(one, 1, 2 * VAL_MUL);
+  OspreyMap *over = osprey_map_set_of(one, 1, 2 * VAL_MUL, 0);
   CHECK(osprey_map_length(over) == 1); chk_entry(over, 1, 2 * VAL_MUL);
   chk_entry(one, 1, VAL_MUL);              /* source untouched */
   CHECK(osprey_map_remove(one, 2) == one); /* absent: same map back */
@@ -117,13 +117,13 @@ static void test_int_keys_persistent(void) {
   CHECK(__builtin_popcount(m->root->bitmap) == (int)m->root->count);
   CHECK(drain(m, 0, SMALL_N) == SMALL_N);
   /* Overwrite deep inside the trie: the source keeps its value everywhere. */
-  OspreyMap *m2 = osprey_map_set(m, TINY_N, -99);
+  OspreyMap *m2 = osprey_map_set_of(m, TINY_N, -99, 0);
   CHECK(osprey_map_length(m2) == SMALL_N); chk_entry(m2, TINY_N, -99);
   chk_int_range(m, 0, SMALL_N);
   for (int64_t i = 0; i < SMALL_N; i++)
     CHECK(osprey_map_get(m2, i) == ((i == TINY_N) ? -99 : i * VAL_MUL));
   /* Re-setting the identical value still yields a distinct header. */
-  OspreyMap *m3 = osprey_map_set(m, TINY_N, TINY_N * VAL_MUL);
+  OspreyMap *m3 = osprey_map_set_of(m, TINY_N, TINY_N * VAL_MUL, 0);
   CHECK(m3 != m); chk_int_range(m3, 0, SMALL_N);
 }
 static void test_remove_paths(void) {
@@ -145,7 +145,7 @@ static void test_remove_paths(void) {
   CHECK(cleared->root == NULL); CHECK(drain(cleared, 0, TINY_N) == 0);
   chk_int_range(m, 0, TINY_N);
   /* remove -> set round trip restores the cardinality with the new value. */
-  OspreyMap *re = osprey_map_set(m2, TINY_N / 2, 7);
+  OspreyMap *re = osprey_map_set_of(m2, TINY_N / 2, 7, 0);
   CHECK(osprey_map_length(re) == TINY_N);
   for (int64_t i = 0; i < TINY_N; i++)
     CHECK(osprey_map_get(re, i) == (i == TINY_N / 2 ? 7 : i * VAL_MUL));
@@ -163,7 +163,7 @@ static void test_string_keys(void) {
   /* Shared prefixes must not alias each other. */
   OspreyMap *p = osprey_map_empty(KS);
   for (int64_t i = 0; i < PREFIX_N; i++)
-    p = osprey_map_set(p, skey(PREFIXES[i]), i + 1);
+    p = osprey_map_set_of(p, skey(PREFIXES[i]), i + 1, 0);
   CHECK(osprey_map_length(p) == PREFIX_N);
   for (int64_t i = 0; i < PREFIX_N; i++) chk_entry(p, skey(PREFIXES[i]), i + 1);
 }
@@ -172,7 +172,7 @@ static void test_string_aliases(void) {
   char alias[STR_BUF];
   (void)snprintf(alias, sizeof(alias), "%s", STRS[3]);
   /* Overwrite through a different pointer holding the same bytes. */
-  OspreyMap *ov = osprey_map_set(m, skey(alias), -1);
+  OspreyMap *ov = osprey_map_set_of(m, skey(alias), -1, 0);
   CHECK(osprey_map_length(ov) == STR_KEYS); chk_entry(ov, skey(STRS[3]), -1);
   chk_entry(m, skey(STRS[3]), 3 * VAL_MUL);
   /* Remove through that same alias pointer. */
@@ -180,22 +180,22 @@ static void test_string_aliases(void) {
   CHECK(osprey_map_length(rm) == STR_KEYS - 1); chk_absent(rm, skey(STRS[3]));
   chk_entry(m, skey(STRS[3]), 3 * VAL_MUL);
   CHECK(osprey_map_remove(m, skey("nope")) == m);
-  OspreyMap *withnull = osprey_map_set(m, 0, 42); /* NULL is a legal key */
+  OspreyMap *withnull = osprey_map_set_of(m, 0, 42, 0); /* NULL is a legal key */
   CHECK(osprey_map_length(withnull) == STR_KEYS + 1);
   chk_entry(withnull, 0, 42); chk_absent(m, 0);
   CHECK(osprey_map_length(m) == STR_KEYS);
 }
 static void test_bool_keys(void) {
-  OspreyMap *m = osprey_map_set(osprey_map_empty(KB), 0, 100);
+  OspreyMap *m = osprey_map_set_of(osprey_map_empty(KB), 0, 100, 0);
   chk_leaf(m->root, 0, 100);
-  m = osprey_map_set(m, 1, 200);
+  m = osprey_map_set_of(m, 1, 200, 0);
   CHECK(osprey_map_length(m) == 2);
   /* false/true differ in bit 0 only: one internal node holding two leaves. */
   chk_node(m->root, NODE_INTERNAL, BM_BOTH, 2u);
   chk_leaf(m->root->children[0], 0, 100);
   chk_leaf(m->root->children[1], 1, 200);
   chk_entry(m, 0, 100); chk_entry(m, 1, 200);
-  OspreyMap *m2 = osprey_map_set(m, 1, 999);
+  OspreyMap *m2 = osprey_map_set_of(m, 1, 999, 0);
   CHECK(osprey_map_length(m2) == 2);
   chk_entry(m2, 1, 999); chk_entry(m2, 0, 100);
   chk_entry(m, 1, 200); /* source untouched */
@@ -211,17 +211,17 @@ static void test_collision_structure(void) {
   CHECK(osprey_map_remove(m, ABSENT_COLL) == m); /* same hash, absent key */
   chk_coll_map(m);
   /* Two colliding keys are the minimum collision node. */
-  OspreyMap *pair = osprey_map_set(osprey_map_empty(KB), 0, 0);
-  pair = osprey_map_set(pair, COLL_KEYS[0], COLL_KEYS[0] * VAL_MUL);
+  OspreyMap *pair = osprey_map_set_of(osprey_map_empty(KB), 0, 0, 0);
+  pair = osprey_map_set_of(pair, COLL_KEYS[0], COLL_KEYS[0] * VAL_MUL, 0);
   chk_node(pair->root, NODE_INTERNAL, BM_BOTH, 2u);
-  pair = osprey_map_set(pair, COLL_KEYS[1], COLL_KEYS[1] * VAL_MUL);
+  pair = osprey_map_set_of(pair, COLL_KEYS[1], COLL_KEYS[1] * VAL_MUL, 0);
   (void)chk_coll(pair, 2u); CHECK(osprey_map_length(pair) == 3);
   CHECK(drain(pair, 0, COLL_KEYS[1] + 1) == 3);
 }
 static void test_collision_update_and_insert(void) {
   OspreyMap *m = make_coll_map();
   /* Update an existing entry: same arity, new value, source intact. */
-  OspreyMap *up = osprey_map_set(m, COLL_KEYS[2], -7);
+  OspreyMap *up = osprey_map_set_of(m, COLL_KEYS[2], -7, 0);
   CHECK(osprey_map_length(up) == COLL_N + 1);
   chk_node(coll_tail(up), NODE_COLLISION, 0u, (uint32_t)COLL_N);
   for (int32_t i = 0; i < COLL_N; i++)
@@ -229,7 +229,7 @@ static void test_collision_update_and_insert(void) {
           (i == 2 ? -7 : COLL_KEYS[i] * VAL_MUL));
   chk_coll_map(m);
   /* Insert a NEW colliding key: arity grows by one, source intact. */
-  OspreyMap *ins = osprey_map_set(m, ABSENT_COLL, ABSENT_COLL * VAL_MUL);
+  OspreyMap *ins = osprey_map_set_of(m, ABSENT_COLL, ABSENT_COLL * VAL_MUL, 0);
   CHECK(osprey_map_length(ins) == COLL_N + 2);
   (void)chk_coll(ins, (uint32_t)COLL_N + 1u);
   chk_entry(ins, ABSENT_COLL, ABSENT_COLL * VAL_MUL); chk_entry(ins, 0, 0);
@@ -285,6 +285,7 @@ void run_map_tests(void) {
   test_scale();
   test_entry_kind_flags();
   test_iter_lifecycle();
+  test_refused_collision_blocks_end_the_run_by_name();
   printf("[ok] map: %llu assertions\n", (unsigned long long)g_asserts);
 }
 #ifndef OSPREY_NO_TEST_MAIN

@@ -11,7 +11,7 @@ import {
   mutableFixtures,
   sourceFixtures,
 } from "./debug-fixtures";
-import { defaultDebugOutputPath } from "../../client/src/extension";
+import { defaultDebugOutputPath } from "../../client/src/client-config";
 import {
   pinOspreySettings,
   resolveBuiltOsprey,

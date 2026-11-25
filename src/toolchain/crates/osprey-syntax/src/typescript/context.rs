@@ -139,10 +139,7 @@ impl<'s> Lowerer<'s> {
         tail: bool,
         action: impl FnOnce(&mut Self) -> Result<T>,
     ) -> Result<T> {
-        self.scopes.push(Scope::new(function, tail));
-        let result = action(self);
-        let _ = self.scopes.pop();
-        result
+        self.with_scope(Scope::new(function, tail), action)
     }
 
     /// A handler arm's function scope. [EFFECTS-HANDLER-STATE]
@@ -152,6 +149,14 @@ impl<'s> Lowerer<'s> {
     ) -> Result<T> {
         let mut scope = Scope::new(true, true);
         scope.arm = true;
+        self.with_scope(scope, action)
+    }
+
+    fn with_scope<T>(
+        &mut self,
+        scope: Scope,
+        action: impl FnOnce(&mut Self) -> Result<T>,
+    ) -> Result<T> {
         self.scopes.push(scope);
         let result = action(self);
         let _ = self.scopes.pop();
@@ -160,11 +165,7 @@ impl<'s> Lowerer<'s> {
 
     /// Whether the innermost function is a handler arm.
     pub(super) fn in_arm(&self) -> bool {
-        self.scopes
-            .iter()
-            .rev()
-            .find(|scope| scope.function)
-            .is_some_and(|scope| scope.arm)
+        self.function_scope().is_some_and(|scope| scope.arm)
     }
 
     /// Record that a handler arm writes `name`, which therefore becomes
@@ -265,7 +266,11 @@ impl<'s> Lowerer<'s> {
         self.scopes.last().is_some_and(|scope| scope.tail)
     }
 
-    fn function_scope(&mut self) -> Option<&mut Scope> {
+    fn function_scope(&self) -> Option<&Scope> {
+        self.scopes.iter().rev().find(|scope| scope.function)
+    }
+
+    fn function_scope_mut(&mut self) -> Option<&mut Scope> {
         self.scopes.iter_mut().rev().find(|scope| scope.function)
     }
 
@@ -274,20 +279,18 @@ impl<'s> Lowerer<'s> {
         updated: Option<String>,
         returns: Option<Expected>,
     ) {
-        if let Some(scope) = self.function_scope() {
+        if let Some(scope) = self.function_scope_mut() {
             scope.updated = updated;
             scope.returns = returns;
         }
     }
 
     pub(super) fn updated_parameter(&self) -> Option<String> {
-        let scope = self.scopes.iter().rev().find(|scope| scope.function)?;
-        scope.updated.clone()
+        self.function_scope()?.updated.clone()
     }
 
     pub(super) fn expected_return(&self) -> Option<Expected> {
-        let scope = self.scopes.iter().rev().find(|scope| scope.function)?;
-        scope.returns.clone()
+        self.function_scope()?.returns.clone()
     }
 
     /// The name a case binds `subject.field` to: the field's own name, unless

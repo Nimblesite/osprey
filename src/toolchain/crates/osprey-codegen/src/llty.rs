@@ -283,8 +283,8 @@ pub struct Value {
     pub(crate) result_payload_type: Option<osprey_types::Type>,
     /// For a `Fiber<T>` handle: the element type `T` the fiber's result was
     /// boxed from, so `await` can unbox the uniform `i64` result back to `T`
-    /// (a string fiber result is a pointer, not an integer). `None` for
-    /// non-fiber values (then `await` keeps the legacy `i64` result).
+    /// (a string fiber result is a pointer). Lowering `await` requires this
+    /// metadata.
     pub(crate) fiber_elem: Option<LType>,
     /// Aggregate owner metadata for the element carried by a Fiber.
     pub(crate) fiber_elem_owner: Option<String>,

@@ -1,0 +1,6 @@
+// osprey: flavor=default
+// [TYPE-RECORD-ANON] #405: a record literal bound with no declared type stays anonymous, so it is not a `Point`.
+type Point = { x: int, y: int }
+fn sum(p: Point) = satAdd(p.x, p.y)
+let origin = { x: 3, y: 4 }
+print(sum(origin))

@@ -89,6 +89,5 @@ char *osp_string_join(const osp_string_list *list, const char *sep);
 /* The same join over a runtime OspreyList of string words (collection_runtime.h). */
 struct OspreyList;
 char *osp_string_join_list(struct OspreyList *list, const char *sep);
-void osp_string_list_free(osp_string_list *list);
 
 #endif

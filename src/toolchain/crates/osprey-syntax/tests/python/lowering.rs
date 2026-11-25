@@ -187,6 +187,31 @@ fn python_rejects_nested_function_definitions() {
     );
 }
 
+/// #364: Python makes a name local to its whole function once the function
+/// assigns it, so reading it first is an `UnboundLocalError`. Lowering that
+/// read to the outer binding made `balance = balance + amount` in a handler arm
+/// leave the outer `balance` at 0 forever, silently.
+#[test]
+fn python_rejects_reading_a_local_before_its_assignment() {
+    rejects_containing(
+        "`balance` is assigned in this function, so Python reads it here before it has a value (UnboundLocalError)",
+        &[
+            "balance = 0\n@handler(Ledger)\nclass books:\n    def post(amount):\n        balance = balance + amount\n        return balance\n",
+            "balance = 0\ndef deposit(amount):\n    balance = balance + amount\n    return balance\n",
+            "balance = 0\ndef shown():\n    print(f\"{balance}\")\n    balance = 2\n    return balance\n",
+            "balance = 0\ndef bump(flag):\n    if flag:\n        balance = balance + 1\n    return 0\n",
+        ],
+    );
+    for accepted in [
+        "balance = 3\ndef plus(amount):\n    f = lambda x: balance + x\n    return f(amount)\n",
+        "def bump():\n    balance = 1\n    balance = balance + 1\n    return balance\n",
+        "balance = 3\ndef plus(amount):\n    return balance + amount\n",
+        "balance = 3\ndef plus(amount):\n    total = balance + amount\n    return total\n",
+    ] {
+        let _ = parsed(accepted);
+    }
+}
+
 #[test]
 fn python_result_pattern_renames_bind_the_written_name() {
     assert_eq!(

@@ -9,7 +9,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-extern int64_t fiber_spawn(int64_t (*fn)(void));
 extern int64_t fiber_spawn_env(int64_t (*fn)(void *), void *env);
 extern int64_t fiber_spawn_env_owned(int64_t (*fn)(void *), void *env,
                                      int64_t result_managed);
@@ -35,7 +34,6 @@ extern int64_t spawn_process_with_handler(const char *command,
                                                           char *));
 
 // A fiber body that sleeps 100 ms and answers 999 (fiber_runtime_tests.c).
-int64_t slow_function(void);
 
 // fiber_handle_tests.c
 void run_fiber_handle_tests(void);

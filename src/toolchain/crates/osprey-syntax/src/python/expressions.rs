@@ -42,6 +42,13 @@ impl Lowerer<'_> {
 
     fn atom(&mut self, node: Node<'_>) -> Result<Expr> {
         match node.kind() {
+            "identifier" if self.unbound_local(self.text(node)) => Err(Self::error(
+                node,
+                format!(
+                    "`{}` is assigned in this function, so Python reads it here before it has a value (UnboundLocalError); give the new value its own name",
+                    self.text(node)
+                ),
+            )),
             "identifier" => Ok(Expr::Identifier(self.text(node).into())),
             "integer" => self.integer(node),
             "float" => self.float(node),
@@ -246,6 +253,9 @@ impl Lowerer<'_> {
     }
 
     pub(super) fn arguments(&mut self, node: Node<'_>) -> Result<(Vec<Expr>, Vec<NamedArgument>)> {
+        if node.kind() == "generator_expression" {
+            return Err(Self::unsupported_comprehension(node)); // `next(x for x in xs)`
+        }
         let mut positional = Vec::new();
         let mut named = Vec::new();
         for child in children(node) {

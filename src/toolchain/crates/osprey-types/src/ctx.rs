@@ -221,13 +221,29 @@ impl InferCtx {
             }
             _ => None,
         });
-        match sealed {
-            Some((alias, owner)) => TypeError::new(format!(
+        let declared = self.declared_row(a, b).or_else(|| self.declared_row(b, a));
+        match (sealed, declared) {
+            (Some((alias, owner)), _) => TypeError::new(format!(
                 "{}; `{alias}` is opaque outside module `{owner}`",
                 error.message
             )),
-            None => error,
+            (None, Some(name)) => TypeError::new(format!(
+                "{}; a record literal bound without a type stays anonymous, so write `{name} {{ ... }}` or annotate the binding `: {name}` ([TYPE-RECORD-ANON])",
+                error.message
+            )),
+            (None, None) => error,
         }
+    }
+
+    /// The declared record `declared` names when `anonymous` is an anonymous
+    /// record with exactly its fields: the binding only lacked its type (#405).
+    fn declared_row(&self, declared: &Type, anonymous: &Type) -> Option<String> {
+        let (Type::Con { name, args }, Type::Record { name: none, fields }) = (declared, anonymous)
+        else {
+            return None;
+        };
+        let row = self.record_fields(name, args)?;
+        (none.is_empty() && row.keys().eq(fields.keys())).then(|| name.clone())
     }
 
     /// Prune both sides of a unification and read through an opaque alias the

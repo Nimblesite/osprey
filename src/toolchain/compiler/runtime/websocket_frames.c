@@ -124,20 +124,25 @@ int send_websocket_message(int socket_fd, unsigned char opcode, const char *payl
   if (!payload || len > WS_SEND_LIMIT) {
     return -1;
   }
-  unsigned char frame[WS_SEND_LIMIT + WS_HEADER_MAX];
+  unsigned char *frame = malloc(len + WS_HEADER_MAX);
+  if (!frame) {
+    return -1;
+  }
   unsigned char key[WS_KEY_LEN];
   if (masked) {
     osp_random_bytes(key, sizeof key);
   }
   size_t frame_len = ws_encode_frame(frame, opcode, payload, len, masked ? key : NULL);
-  for (size_t sent = 0; sent < frame_len;) {
+  size_t sent = 0;
+  while (sent < frame_len) {
     int n = osp_socket_send(socket_fd, (const char *)frame + sent, frame_len - sent);
     if (n <= 0) {
-      return -1;
+      break;
     }
     sent += (size_t)n;
   }
-  return (int)frame_len;
+  free(frame);
+  return sent == frame_len ? (int)frame_len : -1;
 }
 
 int send_websocket_frame(int socket_fd, const char *payload) {

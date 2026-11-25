@@ -93,6 +93,7 @@ typedef struct OspGcPage OspGcPage; // memory_gc_pages.h
 #include "heap_lock.h"
 #include "memory_heap_limit.h"
 #include "run_parent_watch.h"
+#include "stack_guard.h"
 
 // heap_lock.h governs mutual exclusion; g_off below governs whether collection
 // may run once a second allocator is seen. The two are orthogonal.
@@ -310,7 +311,10 @@ void *osp_alloc(int64_t size) { return osp_alloc_tagged(size, OSP_MEM_RAW); }
 
 // Link anchor (memory_hooks.h): main calls this so an allocation-free program
 // still extracts this object. The collector arms lazily; only the runner watch starts here.
-void osp_mem_boot(void) { run_parent_watch(); }
+void osp_mem_boot(void) {
+  osp_stack_guard_arm();
+  run_parent_watch();
+}
 
 // [PORT-STRING-NUL-OWNERSHIP] Length lives in the existing bounded allocation entry.
 void *osp_alloc_tagged(int64_t size, int64_t meta) {

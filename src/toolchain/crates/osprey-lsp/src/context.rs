@@ -14,6 +14,7 @@
 //! than to silence.
 
 use lspkit::vfs::PositionEncoding;
+use osprey_ast::canonical::leading_whitespace_bytes;
 
 use crate::text::prefix_to;
 
@@ -225,12 +226,12 @@ fn in_match_arm(head: &str) -> bool {
     if line.contains("=>") {
         return false;
     }
-    let indent = indent_of(line);
+    let indent = leading_whitespace_bytes(line);
     head.lines()
         .rev()
         .skip(1)
         .filter(|previous| !previous.trim().is_empty())
-        .find(|previous| indent_of(previous) < indent)
+        .find(|previous| leading_whitespace_bytes(previous) < indent)
         .is_some_and(|opener| opener.contains("match ") || opener.contains("select"))
 }
 
@@ -255,10 +256,6 @@ fn open_parens(line: &str) -> usize {
 
 fn current_line(head: &str) -> &str {
     head.rsplit('\n').next().unwrap_or(head)
-}
-
-fn indent_of(line: &str) -> usize {
-    line.len().saturating_sub(line.trim_start().len())
 }
 
 #[cfg(test)]

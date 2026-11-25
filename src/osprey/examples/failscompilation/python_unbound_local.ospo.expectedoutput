@@ -1,0 +1,1 @@
+15:18: `balance` is assigned in this function, so Python reads it here before it has a value (UnboundLocalError); give the new value its own name

@@ -80,11 +80,14 @@ const DISCOVERY: Rules<'_> = Rules {
 
 /// An Osprey source, or a `.lean` math source ([MATH-CODE-SOURCES]).
 fn is_source(path: &Path) -> bool {
-    crate::math::is_math(path)
-        || path
-            .extension()
-            .and_then(|extension| extension.to_str())
-            .is_some_and(|extension| extension == "osp" || extension == "ospml")
+    crate::math::is_math(path) || is_native_source(path)
+}
+
+pub(crate) fn is_native_source(path: &Path) -> bool {
+    matches!(
+        path.extension().and_then(|extension| extension.to_str()),
+        Some("osp" | "ospml")
+    )
 }
 
 pub(crate) fn contains(root: &Path, config: &ProjectConfig, path: &Path) -> bool {

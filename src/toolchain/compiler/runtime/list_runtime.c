@@ -118,40 +118,23 @@ static OspreyListNode *leaf_of(int64_t v, int em) {
   return n;
 }
 
-/* `h` with a TRANSFERRED `v` written at PHYSICAL index `j`, as a fresh header
-   of `length` elements starting at `offset`: the tail chunk, the front chunk
-   or the tree path holding `j` is copied and the rest shared. `h` is BORROWED. */
-static OspreyList *write_at(OspreyList *h, int64_t j, int64_t v, int64_t length,
-                            int64_t offset) {
+/* Prepend TRANSFERRED `v` into the tail or front chunk covering index `j`.
+   The copied chunk holds the new element. The untouched nodes are retained. */
+static OspreyList *prepend_covered(OspreyList *h, int64_t j, int64_t v) {
   int em = h->elem_managed;
   int64_t off = tail_offset(h);
-  OspreyListNode *root = h->root, *tail = h->tail, *front = h->front;
+  OspreyListNode *tail = h->tail, *front = h->front;
   if (j >= off) {
     tail = replace_path(tail, 0, 0, j - off, v, em);
-  } else if (in_front(h, j)) {
-    front = replace_path(front, 0, 0, j, v, em);
   } else {
-    root = replace_path(root, h->shift, 0, j, v, em);
+    front = replace_path(front, 0, 0, j, v, em);
   }
   /* Whatever was not copied is aliased into a second header. */
-  if (root == h->root) osp_retain(root);
+  osp_retain(h->root);
   if (tail == h->tail) osp_retain(tail);
   if (front == h->front) osp_retain(front);
-  return alloc_list(length, h->shift, h->tail_count, root, tail, offset, em,
+  return alloc_list(h->length + 1, h->shift, h->tail_count, h->root, tail, j, em,
                     front);
-}
-
-/* Set element at an in-bounds index, path-copied; `v` is TRANSFERRED. An
-   out-of-contract index degrades like the hardened osprey_list_get instead of
-   subscripting past a 32-slot node: the list comes back unchanged (+1, the
-   alias-return convention) and the transferred element is dropped. */
-OspreyList *osprey_list_set(OspreyList *l, int64_t i, int64_t v) {
-  if (l == NULL || i < 0 || i >= l->length) {
-    release_elem(v, osprey_list_elem_managed(l));
-    osp_retain(l);
-    return l;
-  }
-  return write_at(l, l->offset + i, v, l->length, l->offset);
 }
 
 /* Open room before physical index 0 of `h`, a by-value header copy: a tree one
@@ -226,13 +209,9 @@ OspreyList *osprey_list_prepend_of(OspreyList *l, int64_t v, int em) {
   h.elem_managed = em;
   int64_t j = h.offset - 1;
   if (j >= 0 && (j >= tail_offset(&h) || in_front(&h, j))) {
-    return write_at(&h, j, v, h.length + 1, j);
+    return prepend_covered(&h, j, v);
   }
   return prepend_new_front(h, v);
-}
-
-OspreyList *osprey_list_prepend(OspreyList *l, int64_t v) {
-  return osprey_list_prepend_of(l, v, osprey_list_elem_managed(l));
 }
 
 /* `l`'s root with its full tail chunk folded in, as a fresh +1; *shift grows
@@ -281,10 +260,6 @@ OspreyList *osprey_list_append_of(OspreyList *l, int64_t v, int em) {
   osp_retain(l->front);
   return alloc_list(l->length + 1, new_shift, 1, new_root, leaf_of(v, em),
                     l->offset, em, l->front);
-}
-
-OspreyList *osprey_list_append(OspreyList *l, int64_t v) {
-  return osprey_list_append_of(l, v, osprey_list_elem_managed(l));
 }
 
 /* Drop the first `n` elements as an O(1) VIEW: a fresh header sharing `l`'s

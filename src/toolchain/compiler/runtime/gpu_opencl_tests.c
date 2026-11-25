@@ -5,6 +5,7 @@
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
 
 #define MOCK_MARK 42
 // Mirrors gpu_opencl.c's kernel-object table cap.
@@ -108,6 +109,43 @@ static int product(int64_t *out) {
   return osprey_gpu_opencl_dispatch(&d);
 }
 
+static void traced_dispatches(void) {
+  osprey_gpu_opencl_test_driver(&mock);
+  int64_t out = 0;
+  const int statuses[] = {1, 1, -1, 1, 1};
+  assert(setenv("OSPREY_GPU_TRACE", "0", 1) == 0);
+  for (size_t i = 0; i < sizeof statuses / sizeof *statuses; i++) {
+    if (statuses[i] < 0) {
+      assert(setenv("OSPREY_GPU_TRACE", "1", 1) == 0);
+      fail_at = calls + 1;
+    }
+    assert(product(&out) == statuses[i]);
+    fail_at = 0;
+  }
+  // Tracing turns back off: this success adds no line to the trace, and the
+  // cases after this one run untraced, as they did before it.
+  assert(setenv("OSPREY_GPU_TRACE", "0", 1) == 0);
+  assert(product(&out) == 1);
+}
+
+// [GPU-BACKEND-DEVICE] Assert the same trace a running program emits.
+static void trace_case(void) {
+  FILE *log = tmpfile();
+  assert(log && fflush(stderr) == 0);
+  int saved = dup(STDERR_FILENO);
+  assert(saved >= 0 && dup2(fileno(log), STDERR_FILENO) == STDERR_FILENO);
+  traced_dispatches();
+  assert(fflush(stderr) == 0 && dup2(saved, STDERR_FILENO) == STDERR_FILENO && close(saved) == 0);
+  rewind(log);
+  char text[256] = {0};
+  assert(fread(text, 1, sizeof text - 1, log) < sizeof text - 1 && feof(log));
+  assert(fclose(log) == 0);
+  assert(strcmp(text,
+    "[gpu] opencl:0 (mock): completed dispatch 1: osprey_matmul64 over 1 threads\n"
+    "[gpu] opencl:0 (mock): completed dispatch 3: osprey_matmul64 over 1 threads\n"
+    "[gpu] opencl:0 (mock): completed dispatch 4: osprey_matmul64 over 1 threads\n") == 0);
+}
+
 static int compiled(const char *name, const char *source, int64_t *out, size_t threads) {
   int64_t in = 7, fault = 0;
   OspreyGpuDispatch d = {name, source, {{0, NULL, NULL, 0, NULL, 8, NULL, 0, 0}}, 0, threads};
@@ -130,7 +168,7 @@ static void failure_case(unsigned point) {
   osp_io_error_clear();
   int result = product(&out);
   assert(point ? result == -1 : result == 1);
-  assert(point ? osp_io_error() != NULL : (out == MOCK_MARK && osprey_gpu_opencl_completed() == 1));
+  assert(point ? osp_io_error() != NULL : out == MOCK_MARK);
   assert(live <= 4); // Failed initialization releases everything; launches retain the context, program and kernels.
 }
 
@@ -145,7 +183,7 @@ static void compiled_case(void) {
   assert(product(out) == 1 && programs == 1 && kernels == 1);
   assert(compiled("osprey_kernel_1", source, out, 3) == 1 && programs == 2 && kernels == 2 && out[1] == MOCK_MARK);
   assert(compiled("osprey_kernel_1", source, out, 5) == 1 && programs == 2 && kernels == 2);
-  assert(product(out) == 1 && programs == 2 && kernels == 3 && osprey_gpu_opencl_completed() == 4);
+  assert(product(out) == 1 && programs == 2 && kernels == 3);
   const size_t boundaries[] = {31, 32, 33, 255, 256, 257, 511, 512, 513};
   for (unsigned i = 0; i < sizeof boundaries / sizeof *boundaries; i++) {
     assert(compiled("osprey_kernel_1", source, out, boundaries[i]) == 1);
@@ -216,6 +254,7 @@ int main(void) {
   compiled_case();
   resident_case();
   dense_transfers();
+  trace_case();
   osprey_gpu_opencl_test_driver(&mock);
   assert(live == 0);
   puts("[ok] OpenCL driver: product and compiled-kernel dispatch, program recompilation, kernel reuse, resident buffers created once and read back on demand, every initialization/transfer/launch/readback failure releases resources");

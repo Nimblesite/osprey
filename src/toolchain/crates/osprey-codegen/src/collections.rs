@@ -467,14 +467,8 @@ fn element_equals(cg: &mut Codegen, elem: &str, needle: &Value, boxed: &str) -> 
     eq
 }
 
-/// Runtime list-builder protocol — `new` → `push`* → `seal`, shared by every
-/// list-producing builtin (`mapList`/`filterList`, `mapKeys`/`mapValues`).
-pub(crate) fn list_builder_new(cg: &mut Codegen) -> String {
-    cg.call("i8*", "osprey_list_builder_new", "", &[])
-}
-
-/// A builder whose element kind is known up front — `managed` is either a
-/// literal `"0"`/`"1"` or a register holding a source container's flag.
+/// Start a runtime list builder with a literal or inherited element flag.
+/// Use `"0"` when the first push will supply the element kind.
 pub(crate) fn list_builder_new_of(cg: &mut Codegen, managed: &str) -> String {
     cg.call("i8*", "osprey_list_builder_new_of", "i32", &[managed])
 }
