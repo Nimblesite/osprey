@@ -35,7 +35,7 @@
 // fails, the fix is to call the item or delete it, never to exempt it.
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
-import { join, extname, resolve, dirname, sep } from "node:path";
+import { basename, join, extname, resolve, dirname, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -71,6 +71,8 @@ const IMPL = /^\s*impl\b[^{]*?\b([A-Za-z_]\w*)\s*(?:<[^{]*>)?\s*(?:where[^{]*)?\
 const VARIANT = /^\s{4,}([A-Z]\w*)\s*(?:[{(,=]|$)/;
 const FIELD = /^\s{4,}pub\s+(?:\([^)]*\)\s*)?([a-z_]\w*)\s*:/;
 const TEST_ONLY = /^\s*#\[(?:cfg\(test\)|test)\]/;
+const EXTERNAL_MODULE = /^(?:#\[[^\]]*\]\s*)*(?:pub(?:\([^)]*\))?\s+)?mod ([A-Za-z_]\w*)\s*;/;
+const EXTERNAL_PATH = /#\[path\s*=\s*"([^"\\]+)"\]/;
 const ITEM_HEADER = /^\s*(?:pub(?:\s*\([^)]*\))?\s+)?(?:(?:async|unsafe|extern(?:\s*"[^"]*")?)\s+)*(?:fn\s+\w|(?:struct|enum|trait|impl|type|use|const|static|mod|union)\b)/;
 
 const walk = (dir, out = []) => {
@@ -86,20 +88,11 @@ const walk = (dir, out = []) => {
 const isTestFile = (path) =>
   path.includes("/tests/") ||
   path.includes("/test/") ||
-  (path.endsWith("/tests.rs") && hasTestModuleDeclaration(path)) ||
+  testModules.has(path) ||
   path.endsWith("_tests.rs") ||
   path.includes("test_support") ||
   path.includes("testutil") ||
   path.includes("/benchmarks/");
-
-const hasTestModuleDeclaration = (path) =>
-  ["main.rs", "lib.rs", "mod.rs"].map((parent) => join(dirname(path), parent))
-    .concat(dirname(path) + ".rs").some((parent) =>
-      linesOf.get(parent)?.some((line, index) =>
-        /^\s*(?:#\[[^\]]*\]\s*)*(?:pub(?:\([^)]*\))?\s+)?mod tests\s*;/.test(line)
-          && maskOf.get(parent).has(index + 1),
-      ),
-  );
 
 const delimiterDepth = (line, initial) =>
   (line.match(/->|[()[\]<>]/g) ?? []).reduce((depth, token) =>
@@ -156,6 +149,30 @@ for (const [path, text] of files) {
   linesOf.set(path, lines);
   maskOf.set(path, path.endsWith(".rs") ? testMask(lines) : new Set());
 }
+
+// An external module used by a product target stays product code even when
+// another target imports the same file behind cfg(test).
+const testModules = new Set();
+const productModules = new Set();
+const moduleRoots = new Set(["main.rs", "lib.rs", "mod.rs"]);
+for (const [path, mask] of maskOf) {
+  if (!path.endsWith(".rs")) continue;
+  const lines = linesOf.get(path);
+  const root = moduleRoots.has(basename(path)) ? dirname(path) : path.slice(0, -3);
+  lines.forEach((line, index) => {
+    const match = EXTERNAL_MODULE.exec(line);
+    if (!match) return;
+    const explicit = EXTERNAL_PATH.exec(line) ?? EXTERNAL_PATH.exec(lines[index - 1] ?? "");
+    const modules = mask.has(index + 1) ? testModules : productModules;
+    if (explicit) {
+      modules.add(resolve(dirname(path), explicit[1]));
+    } else {
+      modules.add(join(root, match[1] + ".rs"));
+      modules.add(join(root, match[1], "mod.rs"));
+    }
+  });
+}
+for (const path of productModules) testModules.delete(path);
 
 const crateSrc = (path) =>
   path.startsWith(CRATES_ROOT) && path.endsWith(".rs") && !isTestFile(path);
@@ -237,7 +254,7 @@ if (items.size === 0) {
 }
 
 if (dead.length === 0) {
-  console.log(`==> Dead-code gate: ${items.size} public items, all reachable from product code.`);
+  console.log(`==> Dead-code gate: ${items.size} public items checked for product references.`);
   process.exit(0);
 }
 

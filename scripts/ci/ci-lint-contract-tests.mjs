@@ -131,7 +131,7 @@ export const registerLintContracts = (build) => {
   test('the run-line guard rejects a commented, gated, suppressed or missing lint command', assertGuardRejectsEvasions)
 }
 
-function deadCodeFixture(product, tests, nested = false) {
+function deadCodeFixture(product, tests, { nested = false, testFile = 'tests.rs', library = '' } = {}) {
   return withTempDir('dead-code', (root) => {
     mkdirSync(join(root, 'scripts/ci'), { recursive: true })
     const source = join(root, 'src/toolchain/crates/fixture/src')
@@ -140,7 +140,8 @@ function deadCodeFixture(product, tests, nested = false) {
     const testDir = nested ? join(source, 'env') : source
     mkdirSync(testDir, { recursive: true })
     writeFileSync(join(source, nested ? 'env.rs' : 'main.rs'), product)
-    writeFileSync(join(testDir, 'tests.rs'), tests)
+    writeFileSync(join(testDir, testFile), tests)
+    if (library) writeFileSync(join(source, 'lib.rs'), library)
     return spawnSync(process.execPath, [join(root, 'scripts/ci/check.mjs')], { encoding: 'utf8' })
   })
 }
@@ -149,13 +150,23 @@ test('dead-code gate distinguishes test module helpers from unused product code'
   for (const nested of [false, true]) {
     const declaration = nested ? '#[expect(\n    clippy::indexing_slicing\n)]\npub(crate) mod tests;' : 'mod tests;'
     const helper = deadCodeFixture(`pub fn active() {}\n#[cfg(test)]\n${declaration}\nfn main() { active(); }`,
-      'pub(crate) fn assembled_program() {}', nested)
+      'pub(crate) fn assembled_program() {}', { nested })
     assert.equal(helper.status, 0, helper.stderr)
   }
   const dead = deadCodeFixture('pub fn orphan() {}\n#[cfg(test)]\nmod tests;\nfn main() {}',
     '#[test]\nfn regression() { crate::orphan(); }')
   assert.equal(dead.status, 1)
   assert.match(dead.stderr, /src\/toolchain\/crates\/fixture\/src\/main.rs:1  fn orphan/)
+  for (const declaration of ['#[cfg(test)] mod witness;', '#[cfg(test)]\n#[path = "witness.rs"]\nmod verification;']) {
+    const named = deadCodeFixture(`pub fn orphan() {}\n${declaration}\nfn main() {}`,
+      'pub fn regression() { crate::orphan(); }', { testFile: 'witness.rs' })
+    assert.equal(named.status, 1)
+    assert.match(named.stderr, /fn orphan/)
+    assert.doesNotMatch(named.stderr, /fn regression/)
+  }
+  const shared = deadCodeFixture('#[cfg(test)] mod witness;\nfn main() {}',
+    'pub fn active() {}', { testFile: 'witness.rs', library: 'mod witness;\nfn use_shared() { witness::active(); }' })
+  assert.equal(shared.status, 0, shared.stderr)
   const productModule = deadCodeFixture('mod tests;\nfn main() {}', 'pub fn unused_product() {}')
   assert.equal(productModule.status, 1)
   assert.match(productModule.stderr, /fn unused_product/)
