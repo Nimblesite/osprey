@@ -2,7 +2,18 @@
 
 #include <assert.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
+/* The suite's units allocate through the GC shim; the injector replaces the
+   real allocator underneath it, so a large block's refusal reaches the list. */
+#undef malloc
+#undef calloc
+#undef realloc
+#undef free
+#include "test_alloc.h"
 
 /*
  * Vanilla-C suite for osprey_list_sort, the runtime half of `listSort`
@@ -90,9 +101,60 @@ static void test_managed_lists_sort_by_text(void) {
   }
 }
 
+/* Words in a list whose sort buffers are larger blocks than a GC page serves,
+   so each is one real allocation of exactly SORT_REFUSED_BYTES. */
+#define SORT_REFUSED_N 1024
+#define SORT_REFUSED_BYTES ((size_t)SORT_REFUSED_N * sizeof(int64_t))
+#define REFUSED_STATUS 71
+static OspreyList *g_refused_source;
+
+/* Refuse the sort's SECOND buffer of that size: the scratch half after src. */
+static void osp_alloc_fail_next_of_size(void) { osp_alloc_fail_size(SORT_REFUSED_BYTES); }
+
+static void refuse_scratch(void) {
+  atomic_store(&osp_alloc_failure_size, SORT_REFUSED_BYTES);
+  atomic_store(&osp_alloc_successes_left, 1);
+}
+
+/* [FAILURE-EXPLICIT] A refused sort buffer ends the run naming the request,
+   never a store through NULL (#409). Runs in a forked child. */
+static void sorts_refused(void (*arm)(void)) {
+  int err[2];
+  char seen[512];
+  int status;
+  CHECK(pipe(err) == 0);
+  (void)fflush(NULL);
+  pid_t child = fork();
+  CHECK(child >= 0);
+  if (child == 0) {
+    (void)dup2(err[1], STDERR_FILENO);
+    arm();
+    (void)osprey_list_sort(g_refused_source);
+    _exit(0);
+  }
+  close(err[1]);
+  ssize_t n = read(err[0], seen, sizeof seen - 1);
+  close(err[0]);
+  CHECK(waitpid(child, &status, 0) == child);
+  CHECK(WIFEXITED(status) && WEXITSTATUS(status) == REFUSED_STATUS);
+  CHECK(n > 0);
+  seen[n > 0 ? n : 0] = '\0';
+  CHECK(strstr(seen, "osprey: allocation refused: listSort") != NULL);
+  CHECK(strstr(seen, "request_bytes=8192") != NULL);
+}
+
+static void test_refused_sort_buffers_end_the_run_by_name(void) {
+  g_refused_source = scrambled(SORT_REFUSED_N);
+  sorts_refused(osp_alloc_fail_next_of_size);
+  sorts_refused(refuse_scratch);
+  /* the parent's injector never armed: the same sort still succeeds here */
+  check_ascending(osprey_list_sort(g_refused_source), SORT_REFUSED_N);
+}
+
 int64_t run_list_sort_tests(void) {
   test_short_lists_come_back_as_themselves();
   test_scalar_lists_sort_ascending_at_every_length();
   test_managed_lists_sort_by_text();
+  test_refused_sort_buffers_end_the_run_by_name();
   return g_checks;
 }

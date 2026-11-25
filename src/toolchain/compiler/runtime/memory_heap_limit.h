@@ -10,6 +10,8 @@
 #ifndef OSPREY_MEMORY_HEAP_LIMIT_H
 #define OSPREY_MEMORY_HEAP_LIMIT_H
 
+#include "memory_refused.h"
+
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -17,8 +19,6 @@
 #include <unistd.h>
 #endif
 
-// Exit status of a program stopped at the ceiling (EX_OSERR in sysexits.h).
-#define OSP_HEAP_EXHAUSTED_STATUS 71
 #define OSP_HEAP_MB_SHIFT 20
 
 static size_t g_heap_limit = SIZE_MAX; // no ceiling until heap_limit_arm reads it
