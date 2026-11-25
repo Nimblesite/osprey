@@ -222,13 +222,6 @@ const char *osprey_gpu_opencl_name(void) {
   return ready > 0 ? cl_name : "opencl:unavailable";
 }
 
-uint64_t osprey_gpu_opencl_completed(void) {
-  (void)pthread_mutex_lock(&cl_lock);
-  uint64_t count = cl_completed;
-  (void)pthread_mutex_unlock(&cl_lock);
-  return count;
-}
-
 // The device object a buffer argument is bound to [GPU-BUFFER-RESIDENT]: the
 // one its slot holds, else a new one created from its words, kept in the slot
 // of a resident argument and released after this dispatch otherwise.
