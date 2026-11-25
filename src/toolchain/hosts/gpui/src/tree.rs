@@ -130,14 +130,12 @@ pub struct Token {
     pub dark: String,
 }
 
-/// The application's theme: colour tokens, a spacing scale and motion durations ([UI-THEME]).
+/// The application's theme: colour tokens and a spacing scale ([UI-THEME]). No host
+/// animates, so the told motion durations are not read.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-#[allow(dead_code)] // The motion durations are kept for the adapters that animate.
 pub struct Theme {
     pub tokens: Vec<Token>,
     pub spacing: Vec<i64>,
-    pub feedback: i64,
-    pub settle: i64,
 }
 
 impl Theme {
@@ -158,8 +156,6 @@ impl Theme {
                 .iter()
                 .filter_map(Tree::as_i64)
                 .collect(),
-            feedback: whole(told, "feedback"),
-            settle: whole(told, "settle"),
         })
     }
 }

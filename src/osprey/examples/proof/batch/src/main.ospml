@@ -1,8 +1,5 @@
 namespace proof
 
-import proof::Environment
-import proof::Checked
-import proof::Trust
 
 // Runtime batch checker ([PROOF-EXPORT]): one stdin line, `<path><TAB><name>`,
 // put through the same kernel the example entry uses —

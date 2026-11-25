@@ -200,13 +200,12 @@ fn no_corpus_program_emits_a_reference_to_an_undefined_symbol() {
     // sweep of `osp` alone cannot see it: an `.ospml` twin lowers through the
     // same codegen, so a dangling reference there is the same unlinkable module
     // ([FLAVOR-IR-EQUIV]).
+    // `src/osprey/tests` and `src/toolchain/benchmarks/cases` are scanned by
+    // examples_compile's corpus sweep on the one lowering it already makes, so
+    // this walks only what that sweep does not compile.
     let root = repo_root();
     let mut broken = Vec::new();
-    for dir in [
-        "src/osprey/tests",
-        "src/osprey/examples",
-        "src/toolchain/benchmarks",
-    ] {
+    for dir in ["src/osprey/examples", "src/toolchain/benchmarks/shared"] {
         for path in ["osp", "ospml"]
             .iter()
             .flat_map(|ext| sources(&root.join(dir), ext))
@@ -298,10 +297,24 @@ const RETURN_ONLY_BLOCKS: [(&str, &str, &str, usize); 3] = [
 /// [DEBUGGER-LAMBDA-SCOPES] A generic function value retains its real definition.
 #[test]
 fn generic_function_values_keep_their_source_scope() -> Result<(), String> {
-    for (source, extension) in [(GENERIC_RECORD.0, "osp"), (GENERIC_RECORD.1, "ospml")] {
+    identity_keeps_source_scope(
+        &[(GENERIC_RECORD.0, "osp"), (GENERIC_RECORD.1, "ospml")],
+        5,
+        2,
+    )
+}
+
+/// Both flavors of `cases` keep `identity`'s source scope: its return location
+/// is `line` and its `x` debug argument is numbered `arg`.
+fn identity_keeps_source_scope(
+    cases: &[(&str, &str)],
+    line: usize,
+    arg: u32,
+) -> Result<(), String> {
+    for (source, extension) in cases {
         let ir = return_debug_ir(source, extension)?;
-        assert_return_location(&ir, "identity", 5)?;
-        assert!(ir.contains("!DILocalVariable(name: \"x\", arg: 2,"));
+        assert_return_location(&ir, "identity", line)?;
+        assert!(ir.contains(&format!("!DILocalVariable(name: \"x\", arg: {arg},")));
     }
     Ok(())
 }
@@ -314,12 +327,7 @@ const GENERIC_RECORD: (&str, &str) = (
 /// [FFI-CALLBACKS] Specializing a named function preserves its C ABI debug arguments.
 #[test]
 fn generic_c_callbacks_keep_their_source_scope() -> Result<(), String> {
-    for (source, extension) in GENERIC_C_CALLBACKS {
-        let ir = return_debug_ir(source, extension)?;
-        assert_return_location(&ir, "identity", 4)?;
-        assert!(ir.contains("!DILocalVariable(name: \"x\", arg: 1,"));
-    }
-    Ok(())
+    identity_keeps_source_scope(&GENERIC_C_CALLBACKS, 4, 1)
 }
 
 const GENERIC_C_CALLBACKS: [(&str, &str); 2] = [

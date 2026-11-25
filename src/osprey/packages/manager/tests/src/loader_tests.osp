@@ -4,7 +4,6 @@ import registry::Release
 import registry::ReleasePath
 import registry_api::Loader
 import registry_host::Host
-import registry_tests::Fixtures
 
 /// The folder-registry loader over one fixture walk: every good release is
 /// served and every invalid release directory is reported with its stable

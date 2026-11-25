@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "effects_runtime.h"
 #include "memory_hooks.h"
 #include "osprey_thread.h"
 
@@ -165,6 +166,8 @@ static void *process_monitor_thread(void *arg) {
 
   CloseHandle(proc->stdout_rd);
   CloseHandle(proc->stderr_rd);
+  // The callbacks ran Osprey code here; release this thread's handler stack.
+  __osprey_handler_stack_cleanup();
   return NULL;
 }
 

@@ -68,10 +68,6 @@ static void test_null_arguments(void) {
   CHECK(osprey_list_concat(NULL, a) == a);
   CHECK(osprey_list_concat(a, NULL) == a);
   check_range(a, 0, 5);
-  OspreyListIter *it = osprey_list_iter_new(NULL);
-  int64_t v = 0;
-  CHECK(osprey_list_iter_next(it, &v) == 0);
-  free(it);
   /* Out-of-contract set: an empty list has no in-bounds index, and a past-end
      or negative one would subscript past a 32-slot node. Degrades like the
      hardened osprey_list_get — unchanged list back — instead of crashing. */

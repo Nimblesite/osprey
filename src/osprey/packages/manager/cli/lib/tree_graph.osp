@@ -1,10 +1,5 @@
 namespace registry_cli;
-import registry::Checked
 import registry_host::Host
-import registry_cli::Project
-import registry_cli::Lockfile
-import registry_cli::Verify
-import registry_cli::Reports
 import registry::Canonical
 import registry::Identity
 import registry::Json
@@ -72,11 +67,11 @@ module TreeGraph {
 
     fn overridePath(o: Lockfile::Override) = o.path
 
-    fn localLock(project) = Checked::andThen(Project::readLocalLockAt(project), fn(value) => Success { value: Lockfile::overridesOf(value) })
+    fn localLock(project) = andThen(Project::readLocalLockAt(project), fn(value) => Success { value: Lockfile::overridesOf(value) })
 
     /// The development lock's overrides; a missing one has none, and an unreadable
     /// one is a finding rather than a graph that looks free of overrides.
-    fn localOverrides(project) = Checked::andThen(perform Host::Files.exists(Project::localLockPathAt(project)), fn(value) => if value { localLock(project) } else { Success { value: [] } })
+    fn localOverrides(project) = andThen(perform Host::Files.exists(Project::localLockPathAt(project)), fn(value) => if value { localLock(project) } else { Success { value: [] } })
 
     fn packageValue(lines, direct, packages, overrides, pkg: Lockfile::Package) = {
         let id = Lockfile::releaseOf(pkg)

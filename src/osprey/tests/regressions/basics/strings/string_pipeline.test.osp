@@ -45,23 +45,14 @@ print("=== String Pipeline ===\n")
 
 /// ----- Inspection / search (total, no Result wrap) -----
 let raw = "  GET /api/users?name=alice&age=30  "
-print("raw=\"${raw}\" len=${raw |> length}\n\nisEmpty=${raw |> isEmpty}\n")
-print("contains 'GET'=${raw |> contains("GET")}\n")
-print("startsWith '  '=${raw |> startsWith("  ")}\n")
-print("endsWith '  '=${raw |> endsWith("  ")}\n")
+print("raw=\"${raw}\" len=${raw |> length}\n\nisEmpty=${raw |> isEmpty}\n\ncontains 'GET'=${raw |> contains("GET")}\n\nstartsWith '  '=${raw |> startsWith("  ")}\n\nendsWith '  '=${raw |> endsWith("  ")}\n")
 
 // pipe == UFCS == direct
-print("len pipe=${raw |> length}  ufcs=${raw.length()}  direct=${length(raw)}\n")
-print("ctns pipe=${raw |> contains("GET")}  ufcs=${raw.contains("GET")}  direct=${contains(raw, "GET")}\n")
+print("len pipe=${raw |> length}  ufcs=${raw.length()}  direct=${length(raw)}\n\nctns pipe=${raw |> contains("GET")}  ufcs=${raw.contains("GET")}  direct=${contains(raw, "GET")}\n")
 
 /// ----- Transformation chain via pipe -----
 let normalized = raw |> trim |> toLowerCase
-print("normalized=\"${normalized}\"\n")
-print("isGetRequest=${normalized |> startsWith("get ")}\n")
-print("upper=\"${toUpperCase("hello")}\"\n")
-print("trimStart=\"${trimStart("  hi  ")}\"\n")
-print("trimEnd=\"${trimEnd("  hi  ")}\"\n")
-print("join=\"${join(["a", "b", "c"], "-")}\"\n")
+print("normalized=\"${normalized}\"\n\nisGetRequest=${normalized |> startsWith("get ")}\n\nupper=\"${toUpperCase("hello")}\"\n\ntrimStart=\"${trimStart("  hi  ")}\"\n\ntrimEnd=\"${trimEnd("  hi  ")}\"\n\njoin=\"${join(["a", "b", "c"], "-")}\"\n")
 
 // UFCS chain
 print("chain=\"${raw.trim().toLowerCase().take(5)}\"\n")
@@ -84,8 +75,7 @@ match padEnd  ("42", 5, "0")       { Success { value } => print("padE=\"${value}
 
 /// ----- take/drop/reverse (UFCS form) -----
 let hello = "hello"
-print("take ufcs=\"${hello.take(3)}\"\n\ndrop ufcs=\"${hello.drop(3)}\"\n")
-print("reverse=\"${"abc".reverse()}\"\n")
+print("take ufcs=\"${hello.take(3)}\"\n\ndrop ufcs=\"${hello.drop(3)}\"\n\nreverse=\"${"abc".reverse()}\"\n")
 
 // ----- Parsing -----
 match parseInt("123")  { Success { value } => print("parseInt=${value}\n")    Error => print("pi err\n") }
@@ -100,12 +90,7 @@ match split("a,b,c", ",") { Success { value } => print("split count=${listLength
 match split("anything", "") { Success => print("split empty unexpected\n") Error => print("split empty rejected\n") }
 
 // ----- HTTP-routing via startsWith + pattern matching -----
-print("${route(method: "GET",    path: "/health")}\n")
-print("${route(method: "GET",    path: "/api/users/42")}\n")
-print("${route(method: "GET",    path: "/api/orders")}\n")
-print("${route(method: "POST",   path: "/api/users")}\n")
-print("${route(method: "GET",    path: "/random")}\n")
-print("${route(method: "DELETE", path: "/anything")}\n")
+print("${route(method: "GET",    path: "/health")}\n\n${route(method: "GET",    path: "/api/users/42")}\n\n${route(method: "GET",    path: "/api/orders")}\n\n${route(method: "POST",   path: "/api/users")}\n\n${route(method: "GET",    path: "/random")}\n\n${route(method: "DELETE", path: "/anything")}\n")
 
 print("=== Pipeline Complete ===\n")
 

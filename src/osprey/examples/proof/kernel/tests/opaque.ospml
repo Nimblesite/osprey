@@ -7,7 +7,6 @@ import proof::Fixtures
 import proof::Terms
 import proof
     Single Group Theorem Opaque
-import prooftests::Support
 
 (** Lean's opaque declarations ([PROOF-EXPORT]): the compact recorded IdImp
     export with its `thm` line written as the pinned lean4export writes an

@@ -85,7 +85,7 @@ The project is intentionally ordinary. It provides enough domain to make types a
 - Future work is visibly labelled as future work.
 - Native, WebAssembly, effect-resumption, module, package, GPU, and C-FFI limits remain beside the relevant claim.
 - Teach project modules and cross-flavor imports separately from package resolution. The package client supports folder registries, verified downloads and locked builds; hosted authenticated publishing, the package website and public trust services remain planned.
-- Explain GC as the native default and ARC as the alternative managed backend. Explicit `--memory=none` opts into unmanaged allocation and retains general allocations; cross targets currently require that option because managed archives are unavailable.
+- Explain GC as the native default and ARC as the alternative managed backend. Explain compile-time ownership checks and the ARC default for portable targets.
 - Describe the current thread-backed fiber runtime accurately; reserve structured scopes and cancellation for explicitly labelled future work.
 
 ## Explicitly out of scope

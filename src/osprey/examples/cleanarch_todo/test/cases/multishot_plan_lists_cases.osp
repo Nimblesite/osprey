@@ -3,12 +3,10 @@
 
 namespace todo;
 
-import todo::TodoHarness
-import todo::TodoProbe
 
 fn wideOrder(answers, count, shape, first, last) = {
     let widths = planWidths(first, last)
-    structuralEquals(planTitles(answers, shape), mapList(widths, planWide)) &&
+    structuralEquals(planTitles(answers, shape), mapList(widths, retryWide)) &&
         structuralEquals(planIds(answers, shape), mapList(widths, fn(w) => satSub(satAdd(count, 1), w)))
 }
 
@@ -21,15 +19,15 @@ fn wideBoundary(count, last, hasNext, colour) = {
         planWidePage(count, 1, 10, count, false, true), planWidePage(count, 1, last, count, false, hasNext)])
     checkAll("widest-first seeds are untouched and the four pages keep title order", [
         planCalm(plan), length(plan.items) == count, structuralEquals(plan.items, seeds),
-        structuralEquals(planStoredTitles(plan.items), mapList(planDescWidths(count), planWide)),
+        structuralEquals(authzTitlesOf(plan.items), mapList(planDescWidths(count), retryWide)),
         structuralEquals(planStoredDones(plan.items), mapList(planWidths(1, count), fn(_w) => false)),
         wideOrder(answers, count, 0, 1, 5), wideOrder(answers, count, 1, 6, 10),
         wideOrder(answers, count, 2, 1, 10), wideOrder(answers, count, 3, 1, last),
         planShaped(answers, count, [5, 5, 10, last], [true, true, true, hasNext]),
-        planRowIs(answers, 0, 0, planSpec(count, planWide(1), false)),
-        planRowIs(answers, 1, 4, planSpec(satSub(count, 9), planWide(10), false)),
-        planRowIs(answers, 2, 9, planSpec(satSub(count, 9), planWide(10), false)),
-        planRowIs(answers, 3, satSub(last, 1), planSpec(satAdd(satSub(count, last), 1), planWide(last), false))
+        planRowIs(answers, 0, 0, planSpec(count, retryWide(1), false)),
+        planRowIs(answers, 1, 4, planSpec(satSub(count, 9), retryWide(10), false)),
+        planRowIs(answers, 2, 9, planSpec(satSub(count, 9), retryWide(10), false)),
+        planRowIs(answers, 3, satSub(last, 1), planSpec(satAdd(satSub(count, last), 1), retryWide(last), false))
     ])
     answers
 }
@@ -108,7 +106,7 @@ module MultishotPlanListsCases {
             structuralEquals(planIds(plan.answers, 0), [2, 4, 3, 1]), structuralEquals(planIds(plan.answers, 2), [2, 4, 3, 1]),
             planShaped(plan.answers, 4, [4, 0, 4, 4], [false, false, false, false]),
             planRowIs(plan.answers, 0, 1, planSpec(4, "p2", true)), planRowIs(plan.answers, 3, 3, planSpec(1, "p4", false)),
-            structuralEquals(plan.items, seeds), structuralEquals(planStoredTitles(plan.items), ["p4", "p1", "p3", "p2"]),
+            structuralEquals(plan.items, seeds), structuralEquals(authzTitlesOf(plan.items), ["p4", "p1", "p3", "p2"]),
             structuralEquals(planStoredDones(plan.items), [false, false, false, true]),
             structuralEquals(plan.lists, [TodoHarness::seedList(1, "Open", "#5C6BC0")])
         ])

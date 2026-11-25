@@ -1,7 +1,5 @@
 namespace proof
 
-import proof::Environment
-import proof::ExportJson
 
 (** Reading the `inductive` line of [PROOF-EXPORT]: one line carries a whole
     group — its type formers, its constructors and its recursors, one per
@@ -19,45 +17,77 @@ module ExportInductive
     (** The block the line states, or why it cannot be read. *)
     export blocked (tables, json) = Terms::upon (ExportJson::fieldIn (json, "inductive"), \group => Terms::upon (strict (group, groupMembers (), "inductive"), \known => grouped (tables, group)))
 
-    grouped (tables, group) = Terms::upon (ExportJson::arrayIn (group, "types"), \types => Terms::upon (nonEmpty (types, "type"), \families => Terms::upon (ExportJson::arrayIn (group, "ctors"), \ctors => Terms::upon (ExportJson::arrayIn (group, "recs"), \recs => Terms::upon (nonEmpty (recs, "recursor"), \eliminators => groupedAs (tables, families, ctors, eliminators))))))
+    (** Each reads one export field and continues with it, or stops at the first failure. *)
+    intAt (json, key, next) = Terms::upon (ExportJson::intIn (json, key), next)
+    boolAt (json, key, next) = Terms::upon (ExportJson::boolIn (json, key), next)
+    arrayAt (json, key, next) = Terms::upon (ExportJson::arrayIn (json, key), next)
+    nameAt (tables, json, key) = intAt (json, key, \ref => ExportJson::nameOf (tables, ref))
+    nonEmptyArrayAt (json, key, what) = arrayAt (json, key, \items => nonEmpty (items, what))
+    nameListAt (tables, json, key, what) = arrayAt (json, key, \items => ExportJson::nameList (tables, items, what))
 
-    groupedAs (tables, families, ctors, eliminators) = Terms::upon (eachOf (\json => formerOf (tables, json), families, []), \formers => Terms::upon (eachOf (\json => constructorOf (tables, json), ctors, []), \ctorDecls => Terms::upon (eachOf (\json => recursorOf (tables, json), eliminators, []), \recDecls => Success(value = Block(formers = formers, ctors = ctorDecls, recursors = recDecls)))))
+    grouped (tables, group) =
+        use families <- Terms::upon (nonEmptyArrayAt (group, "types", "type"))
+        use ctors <- arrayAt (group, "ctors")
+        use eliminators <- Terms::upon (nonEmptyArrayAt (group, "recs", "recursor"))
+        use formers <- Terms::upon (eachOf (\json => formerOf (tables, json), families, []))
+        use ctorDecls <- Terms::upon (eachOf (\json => constructorOf (tables, json), ctors, []))
+        use recDecls <- Terms::upon (eachOf (\json => recursorOf (tables, json), eliminators, []))
+        Success(value = Block(formers = formers, ctors = ctorDecls, recursors = recDecls))
 
     (** A member list that must hold at least one entry. *)
     nonEmpty (items, what) = match items
         [] => Error(message = "no ${what}")
         [first, ...rest] => Success(value = items)
 
-    formerOf (tables, json) = Terms::upon (strict (json, typeMembers (), "type"), \known => Terms::upon (clean (json), \safe => Terms::upon (familyOf (tables, json), \family => Terms::upon (declared (tables, json, TypeFormer family), \decl => Success(value = decl)))))
+    formerOf (tables, json) = declared (tables, json, strict (json, typeMembers (), "type"), familyBody)
+
+    familyBody (tables, json) = Terms::upon (familyOf (tables, json), \family => Success(value = TypeFormer family))
 
     familyOf (tables, json) = Terms::upon (ExportJson::intIn (json, "numParams"), \params => Terms::upon (ExportJson::intIn (json, "numIndices"), \indices => familyFlags (tables, json, params, indices)))
 
-    familyFlags (tables, json, params, indices) = Terms::upon (ExportJson::boolIn (json, "isRec"), \recursive => Terms::upon (ExportJson::boolIn (json, "isReflexive"), \reflexive => Terms::upon (ExportJson::intIn (json, "numNested"), \nested => Terms::upon (allOf (tables, json), \all => Terms::upon (ctorNames (tables, json), \ctors => Success(value = Family(familyParams = params, familyIndices = indices, familyCtors = ctors, familyRecursive = recursive, familyReflexive = reflexive, familyAll = all, familyNested = nested)))))))
+    familyFlags (tables, json, params, indices) =
+        use recursive <- boolAt (json, "isRec")
+        use reflexive <- boolAt (json, "isReflexive")
+        use nested <- intAt (json, "numNested")
+        use all <- Terms::upon (nameListAt (tables, json, "all", "group member"))
+        use ctors <- Terms::upon (nameListAt (tables, json, "ctors", "constructor"))
+        Success(value = Family(familyParams = params, familyIndices = indices, familyCtors = ctors, familyRecursive = recursive, familyReflexive = reflexive, familyAll = all, familyNested = nested))
 
-    (** The group inventory a member claims: the `all` name list itself. *)
-    allOf (tables, json) = Terms::upon (ExportJson::arrayIn (json, "all"), \items => ExportJson::nameList (tables, items, "group member"))
+    constructorOf (tables, json) = declared (tables, json, strict (json, ctorMembers (), "constructor"), ctorBody)
 
-    ctorNames (tables, json) = Terms::upon (ExportJson::arrayIn (json, "ctors"), \items => ExportJson::nameList (tables, items, "constructor"))
+    ctorBody (tables, json) = Terms::upon (ctorOf (tables, json), \ctor => Success(value = Constructor ctor))
 
-    constructorOf (tables, json) = Terms::upon (strict (json, ctorMembers (), "constructor"), \known => Terms::upon (clean (json), \safe => Terms::upon (ctorOf (tables, json), \ctor => Terms::upon (declared (tables, json, Constructor ctor), \decl => Success(value = decl)))))
+    ctorOf (tables, json) =
+        use familyName <- Terms::upon (nameAt (tables, json, "induct"))
+        use index <- intAt (json, "cidx")
+        use params <- intAt (json, "numParams")
+        use fields <- intAt (json, "numFields")
+        Success(value = Ctor(ctorFamily = familyName, ctorIndex = index, ctorParams = params, ctorFields = fields))
 
-    ctorOf (tables, json) = Terms::upon (ExportJson::intIn (json, "induct"), \family => Terms::upon (ExportJson::nameOf (tables, family), \familyName => Terms::upon (ExportJson::intIn (json, "cidx"), \index => Terms::upon (ExportJson::intIn (json, "numParams"), \params => Terms::upon (ExportJson::intIn (json, "numFields"), \fields => Success(value = Ctor(ctorFamily = familyName, ctorIndex = index, ctorParams = params, ctorFields = fields)))))))
+    recursorOf (tables, json) = declared (tables, json, strict (json, recMembers (), "recursor"), elimBody)
 
-    recursorOf (tables, json) = Terms::upon (strict (json, recMembers (), "recursor"), \known => Terms::upon (clean (json), \safe => Terms::upon (ExportJson::intIn (json, "numMotives"), \motives => Terms::upon (elimOf (tables, json), \elim => Terms::upon (declared (tables, json, Recursor elim), \decl => Success(value = decl))))))
+    elimBody (tables, json) = intAt (json, "numMotives", \motives => Terms::upon (elimOf (tables, json), \elim => Success(value = Recursor elim)))
 
-    elimOf (tables, json) = Terms::upon (ExportJson::declName (tables, json), \name => Terms::upon (allOf (tables, json), \all => Terms::upon (ExportJson::intIn (json, "numParams"), \params => Terms::upon (ExportJson::intIn (json, "numIndices"), \indices => Terms::upon (ExportJson::intIn (json, "numMinors"), \minors => Terms::upon (ExportJson::intIn (json, "numMotives"), \motives => Terms::upon (rulesOf (tables, json), \rules => Terms::upon (ExportJson::boolIn (json, "k"), \k => Success(value = Eliminator(elimFamily = eliminatorFamily (name, all), elimAll = all, elimMotives = motives, elimParams = params, elimIndices = indices, elimMinors = minors, elimRules = rules, elimK = k))))))))))
+    elimOf (tables, json) =
+        use name <- Terms::upon (ExportJson::declName (tables, json))
+        use all <- Terms::upon (nameListAt (tables, json, "all", "group member"))
+        use params <- intAt (json, "numParams")
+        use indices <- intAt (json, "numIndices")
+        use minors <- intAt (json, "numMinors")
+        use motives <- intAt (json, "numMotives")
+        use rules <- Terms::upon (rulesOf (tables, json))
+        use k <- boolAt (json, "k")
+        Success(value = Eliminator(elimFamily = eliminatorFamily (all, name, all), elimAll = all, elimMotives = motives, elimParams = params, elimIndices = indices, elimMinors = minors, elimRules = rules, elimK = k))
 
-    (** The family a recursor's claim names as its own: the group member
-        its name extends, or the first member. *)
-    eliminatorFamily (name, all) = prefixed (all, name, all)
-
-    prefixed (names, name, fallback) = match names
-        [] => match listGet (fallback, 0)
+    (** The family a recursor's claim names as its own: the group member its
+        name extends, else the first member of `all`. *)
+    eliminatorFamily (remaining, name, all) = match remaining
+        [] => match listGet (all, 0)
             Success first => first
             Error _ => name
         [first, ...rest] => match startsWith (name, "${first}.")
             true => first
-            false => prefixed (rest, name, fallback)
+            false => eliminatorFamily (rest, name, all)
 
     rulesOf (tables, json) = Terms::upon (ExportJson::arrayIn (json, "rules"), \items => eachOf (\item => ruleOf (tables, item), items, []))
 
@@ -66,11 +96,30 @@ module ExportInductive
         [] => Success(value = done)
         [first, ...rest] => Terms::upon (step first, \decl => Terms::upon (eachOf (step, rest, done), \more => Success(value = listPrepend (more, decl))))
 
-    ruleOf (tables, json) = Terms::upon (strict (json, ruleMembers (), "rule"), \known => Terms::upon (ExportJson::intIn (json, "ctor"), \ref => Terms::upon (ExportJson::nameOf (tables, ref), \name => Terms::upon (ExportJson::intIn (json, "nfields"), \fields => Terms::upon (ExportJson::intIn (json, "rhs"), \rhs => Terms::upon (ExportJson::exprOf (tables, rhs), \term => Success(value = Rule(ruleCtor = name, ruleFields = fields, ruleRhs = term))))))))
+    ruleOf (tables, json) =
+        use known <- Terms::upon (strict (json, ruleMembers (), "rule"))
+        use name <- Terms::upon (nameAt (tables, json, "ctor"))
+        use fields <- intAt (json, "nfields")
+        use rhs <- intAt (json, "rhs")
+        use term <- Terms::upon (ExportJson::exprOf (tables, rhs))
+        Success(value = Rule(ruleCtor = name, ruleFields = fields, ruleRhs = term))
 
-    (** A block member's name, universe parameters and type, read exactly
-        like a theorem's. *)
-    declared (tables, json, body) = Terms::upon (ExportJson::declName (tables, json), \name => Terms::upon (ExportJson::paramsOf (tables, json), \params => Terms::upon (ExportJson::typedOf (tables, json), \ty => Success(value = Decl(name = name, params = params, ty = ty, body = body)))))
+    (** A block member: its `membership` check passed and marked safe, read by
+        `readBody`, then recorded exactly like a theorem's declaration. *)
+    declared (tables, json, membership, readBody) =
+        use known <- Terms::upon membership
+        use safe <- Terms::upon (clean (json))
+        use body <- Terms::upon (readBody (tables, json))
+        use name <- Terms::upon (ExportJson::declName (tables, json))
+        use params <- Terms::upon (ExportJson::paramsOf (tables, json))
+        use ty <- Terms::upon (ExportJson::typedOf (tables, json))
+        Success(value = Decl(name = name, params = params, ty = ty, body = body))
+
+    typeMembers () = ["all", "ctors", "isRec", "isReflexive", "isUnsafe", "levelParams", "name", "numIndices", "numNested", "numParams", "type"]
+
+    ctorMembers () = ["cidx", "induct", "isUnsafe", "levelParams", "name", "numFields", "numParams", "type"]
+
+    recMembers () = ["all", "isUnsafe", "k", "levelParams", "name", "numIndices", "numMinors", "numMotives", "numParams", "rules", "type"]
 
     clean (json) = Terms::upon (ExportJson::boolIn (json, "isUnsafe"), \unsafe => unsafely (unsafe))
 
@@ -89,19 +138,11 @@ module ExportInductive
         [first, ...rest] => Terms::upon (knownMember (first, allowed, kind), \ok => scanned (rest, allowed, kind))
 
     knownMember (member, allowed, kind) = match member
-        JsonMember name value => matchedMember (name, allowed, kind)
+        JsonMember name value => match listContains (allowed, name)
+            true => Success(value = true)
+            false => Error(message = "unknown ${kind} member `${name}`")
         other => Error(message = "not a member")
 
-    matchedMember (name, allowed, kind) = match listContains (allowed, name)
-        true => Success(value = true)
-        false => Error(message = "unknown ${kind} member `${name}`")
-
     groupMembers () = ["ctors", "recs", "types"]
-
-    typeMembers () = ["all", "ctors", "isRec", "isReflexive", "isUnsafe", "levelParams", "name", "numIndices", "numNested", "numParams", "type"]
-
-    ctorMembers () = ["cidx", "induct", "isUnsafe", "levelParams", "name", "numFields", "numParams", "type"]
-
-    recMembers () = ["all", "isUnsafe", "k", "levelParams", "name", "numIndices", "numMinors", "numMotives", "numParams", "rules", "type"]
 
     ruleMembers () = ["ctor", "nfields", "rhs"]

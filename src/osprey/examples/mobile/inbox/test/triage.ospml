@@ -6,7 +6,6 @@ import mobile::Model
 import mobile::Storage
 import mobile::View
 import mobile::Annotations
-import inboxtests::Support
 
 module TriageSupport
     export edit kind id value = Json::obj (Json::strField "type" kind + "," + Json::strField "id" id + "," + Json::strField "value" value)

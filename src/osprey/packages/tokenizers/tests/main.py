@@ -9,7 +9,7 @@ from tokenizers.Models import (
     Token, build_unigram, build_wordlevel, build_wordpiece, char_starts,
     id_to_token, unigram_encode, unigram_tokenize, wordlevel_tokenize, wordpiece_tokenize,
 )
-from tokenizers.Normalizers import Norm, append_norm, bert_normalize, char_at, empty_norm, end_at, norm_of, norm_text, prepend_cp, replace_space, start_at
+from tokenizers.Normalizers import Norm, append_norm, bert_normalize, char_at, empty_norm, end_at, nfc_normalize, norm_of, norm_text, prepend_cp, replace_space, start_at
 from tokenizers.PreTokenizers import (
     META_CP, bert_pretokenize, char_delimiter_split, digits_pretokenize,
     metaspace_pretokenize, punctuation_pretokenize, whitespace_pretokenize, whitespace_split,
@@ -28,7 +28,6 @@ from tokenizers.HfJson import load_qwen_tokenizer
 from tokenizers import GgufVocab, NfcData
 from tokenizers.Models import BpeModel, build_bpe, bpe_tokenize, Token as ModelToken
 from tokenizers.Nfc import HANGUL_SBASE, HANGUL_SCOUNT, canonical_order, combining_class, compose, composite, decompose, decompose_cp, nfc_cps, nfc_text, nfd_cps, nfd_text
-from tokenizers.Normalizers import nfc_normalize
 from tokenizers.PreTokenizers import BYTE_CHARS, QWEN_PATTERN, byte_of_char, bytelevel_piece, bytelevel_raw, bytelevel_text, qwen_piece_len, qwen_pretokenize, qwen_split
 from tokenizers.Decoders import bytelevel_decode
 from tokenizers.Tokenizer import AddedToken, QwenTokenizer, qwen_decode, qwen_encode
@@ -515,6 +514,7 @@ def nfc_row(i):
     text = ats(Expected.NFC_INPUTS, i)
     return [
         Check.equal(f"nfc.{i}", nfc_text(text), ats(Expected.NFC_EXPECTED, i)),
+        Check.equal(f"nfc.norm.{i}", norm_text(nfc_normalize(norm_of(text))), ats(Expected.NFC_EXPECTED, i)),
         Check.equal(f"nfd.{i}", nfd_text(text), ats(Expected.NFD_EXPECTED, i)),
         Check.equal(f"nfc.cps.{i}", cps_text(nfc_cps(text_cps(text))), ats(Expected.NFC_EXPECTED, i)),
         Check.equal(f"nfd.cps.{i}", cps_text(nfd_cps(text_cps(text))), ats(Expected.NFD_EXPECTED, i)),

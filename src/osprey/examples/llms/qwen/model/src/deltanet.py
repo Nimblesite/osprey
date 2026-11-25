@@ -29,7 +29,7 @@ with key head `t % num_k_heads`; a checkpoint in Transformers' order pairs `t` w
 from qwen import Qwen3_5Cache as Cache
 from qwen import Qwen3_5Config as C
 from qwen import Qwen3_5Norm as Norm
-from qwen.Qwen3_5Device import Div, Weight, at, divider, grid, linear, must, quot, rem, rsqrt, sigmoid, slice_of, softplus, squares
+from qwen.Qwen3_5Device import Div, Weight, at, divider, for_rows, linear, must, quot, rem, rsqrt, sigmoid, slice_of, softplus, squares
 
 __all__ = ["Layer", "Mixed", "mix"]
 
@@ -69,13 +69,10 @@ class Rows:
 
 def rows_of(count, config, shapes) -> Rows:
     """The grids for `count` positions; one position reuses the model's own."""
-    conv_div = divider(C.conv_dim(config))
-    value_div = divider(C.value_dim(config))
-    v_heads_div = divider(config.linear_num_value_heads)
-    if count == 1:
-        return Rows(count=1, conv=shapes.conv, value=shapes.value, k_heads=shapes.linear_k_heads, v_heads=shapes.linear_v_heads, conv_div=conv_div, value_div=value_div, v_heads_div=v_heads_div)
-    else:
-        return Rows(count=count, conv=grid(count * C.conv_dim(config)), value=grid(count * C.value_dim(config)), k_heads=grid(count * config.linear_num_key_heads), v_heads=grid(count * config.linear_num_value_heads), conv_div=conv_div, value_div=value_div, v_heads_div=v_heads_div)
+    conv = C.conv_dim(config)
+    value = C.value_dim(config)
+    v_heads = config.linear_num_value_heads
+    return Rows(count=count, conv=for_rows(count, shapes.conv, conv), value=for_rows(count, shapes.value, value), k_heads=for_rows(count, shapes.linear_k_heads, config.linear_num_key_heads), v_heads=for_rows(count, shapes.linear_v_heads, v_heads), conv_div=divider(conv), value_div=divider(value), v_heads_div=divider(v_heads))
 
 
 def source(qkv, old, t, c, j, conv_dim, kernel):

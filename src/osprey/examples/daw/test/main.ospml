@@ -519,6 +519,8 @@ test ("VST audio packets preserve float samples, stereo frames and exact MIDI of
 
 test ("MIDI generators and stereo outputs are available through native graph controls", \() => Runtime::guarded (\() => hosted midiMenuJourney))
 
+test ("a formula melody is added, typed, refused with its column and heard through native graph controls [SYNTH-FORMULA-NOTES]", \() => Runtime::guarded (\() => hosted formulaMenuJourney))
+
 test ("MIDI note-on and note-off ownership survives exact block partitions", \() => Runtime::guarded midiTimingJourney)
 
 test ("hosted graph execution shares exact builtin PCM and rejects malformed cached buffers", \() => Runtime::guarded graphClipJourney)
@@ -809,6 +811,7 @@ test ("the project JSON reopens the edited patch, its note bindings, track mix a
     projectPatchJourney ()
     projectPortsJourney ()
     projectGrainJourney ()
+    projectFormulaJourney ()
     projectMixJourney ()))
 
 // [DAW-PROJECT] One project file holds the timeline, each track's mix and each track's patch: a saved project
@@ -846,9 +849,7 @@ mixJourney arrangement =
         trackAt (edited, 0, \voice => mixedTo (voice, 1.0, 0.0))
         trackAt (edited, 2, \voice => mixedTo (voice, 1.0, 0.0))
         roundTrip edited)
-    failsWith (daw::Projects::mixed (arrangement, 1, 4.5, 0.0), "Gain must be 0 to 4 and pan -1 to 1.")
-    failsWith (daw::Projects::mixed (arrangement, 1, 1.0, -1.5), "Gain must be 0 to 4 and pan -1 to 1.")
-    failsWith (daw::Projects::mixed (arrangement, 3, 1.0, 0.0), "There is no track 4.")
+    forEachList ([{ track = 1, gain = 4.5, pan = 0.0, why = "Gain must be 0 to 4 and pan -1 to 1." }, { track = 1, gain = 1.0, pan = -1.5, why = "Gain must be 0 to 4 and pan -1 to 1." }, { track = 3, gain = 1.0, pan = 0.0, why = "There is no track 4." }], \row => failsWith (daw::Projects::mixed (arrangement, row.track, row.gain, row.pan), row.why))
 
 excerptJourney arrangement =
     cut = daw::Projects::excerpt (arrangement, 4.0, 8.0)
@@ -1165,6 +1166,13 @@ zoomedTo (editor, factor, zoom) =
     expect (zipped.laneZoom, zoom)
     zipped
 
+// Zoomed by `factor`, with the lane zoom, the beats and the lane it lands on checked.
+zoomShows (editor, factor, zoom, beats, lane) =
+    zipped = zoomedTo (editor, factor, zoom)
+    expect (synth::TimelineView::shownBeats zipped, beats)
+    expect (zipped.laneStart, lane)
+    zipped
+
 // [DAW-TIMELINE-ZOOM] Zoom changes which beats the lanes show, about the playhead, and nothing else: taps, traces
 // and the ruler follow it; the song, the playhead, the track and the undo history stay. Moving the playhead out
 // of view brings the lanes with it.
@@ -1173,9 +1181,7 @@ zoomJourney lined =
     expect (synth::TimelineView::shownBeats at, 16.0)
     expect (synth::TimelineView::shownFrom at, 0.0)
     expect (firstTrace at, 4)
-    closer = zoomedTo (at, 2.0, 2.0)
-    expect (synth::TimelineView::shownBeats closer, 8.0)
-    expect (closer.laneStart, 2.0)
+    closer = zoomShows (at, 2.0, 2.0, 8.0, 2.0)
     expect (synth::TimelineView::shownFrom closer, 2.0)
     expect (closer.rollBar, 1)
     expect (closer.track, at.track)
@@ -1187,9 +1193,7 @@ zoomJourney lined =
         laneSetsBar (closer, point.x, 200.0, point.bar))
     succeeds (synth::TimelineView::laneAt (closer, 1085.0, 235.0), \action => expect (action, synth::PickTrack(index = 0, bar = 2)))
     // The closest zoom is one beat across the lanes, still about the playhead; the widest is the whole song.
-    closest = zoomedTo (closer, 100.0, 16.0)
-    expect (synth::TimelineView::shownBeats closest, 1.0)
-    expect (closest.laneStart, 3.75)
+    closest = zoomShows (closer, 100.0, 16.0, 1.0, 3.75)
     wider = zoomedTo (closer, 0.5, 1.0)
     expect (wider.laneStart, 0.0)
     expect (firstTrace wider, 4)
@@ -1207,9 +1211,7 @@ zoomJourney lined =
     expect (synth::TimelineGeometry::laneX (6.0, 2.0, 8.0), 645.0)
     expect (synth::TimelineGeometry::laneEdge 100.0, 198.0)
     expect (synth::TimelineGeometry::laneEdge 2000.0, 1092.0)
-    expect (synth::TimelineGeometry::zoomed (1.0, 0.5, 16.0), 1.0)
-    expect (synth::TimelineGeometry::zoomed (4.0, 1.25, 0.0), 1.0)
-    expect (synth::TimelineGeometry::zoomed (4.0, 1.25, 16.0), 5.0)
+    forEachList ([{ factor = 1.0, zoom = 0.5, beats = 16.0, want = 1.0 }, { factor = 4.0, zoom = 1.25, beats = 0.0, want = 1.0 }, { factor = 4.0, zoom = 1.25, beats = 16.0, want = 5.0 }], \row => expect (synth::TimelineGeometry::zoomed (row.factor, row.zoom, row.beats), row.want))
     // The ruler: bars with every fourth numbered, then every bar, then beats, then sixteenths.
     forEachList ([[65.0, 4.0, 16.0], [64.0, 4.0, 4.0], [17.0, 4.0, 4.0], [16.0, 1.0, 4.0], [5.0, 1.0, 4.0], [4.0, 0.25, 1.0], [1.0, 0.25, 1.0]], \row =>
         expect (synth::TimelineGeometry::rulerStep (listGet row 0 ?: 0.0, 4.0, 1.0), listGet row 1 ?: 0.0)
@@ -1221,19 +1223,13 @@ zoomJourney lined =
     expect (synth::TimelineGeometry::rulerCount (8.0, 1.0), 10.0)
     // Every keymap gives the three zoom commands keys.
     forEachList (synth::Keymaps::names, \name => forEachList (["zoomIn", "zoomOut", "zoomFit"], \command => expect (synth::Keymaps::keys (synth::Keymaps::preset name, command) != "", true)))
-    expect (synth::Keymaps::keys (synth::Keymaps::preset "Prism", "zoomIn"), "Cmd+OemPlus")
-    expect (synth::Keymaps::keys (synth::Keymaps::preset "Ableton Style", "zoomFit"), "Cmd+D0")
-    expect (synth::Keymaps::keys (synth::Keymaps::preset "Logic Style", "zoomOut"), "Cmd+Left")
+    forEachList ([{ style = "Prism", command = "zoomIn", want = "Cmd+OemPlus" }, { style = "Ableton Style", command = "zoomFit", want = "Cmd+D0" }, { style = "Logic Style", command = "zoomOut", want = "Cmd+Left" }], \row => expect (synth::Keymaps::keys (synth::Keymaps::preset row.style, row.command), row.want))
 
 barLineJourney ready =
     lined = ready(song = timeline [barLined (pluckTrack ())], track = 0)
     zoomJourney lined
     expect (daw::Arrangements::beats lined.song, 16.0)
-    laneSetsBar (lined, 1085.0, 200.0, 3)
-    laneSetsBar (lined, 1084.0, 200.0, 3)
-    laneSetsBar (lined, 205.0, 200.0, 0)
-    laneSetsBar (lined, 428.0, 200.0, 1)
-    laneSetsBar (lined, 868.5, 200.0, 3)
+    forEachList ([{ x = 1085.0, bar = 3 }, { x = 1084.0, bar = 3 }, { x = 205.0, bar = 0 }, { x = 428.0, bar = 1 }, { x = 868.5, bar = 3 }], \point => laneSetsBar (lined, point.x, 200.0, point.bar))
     succeeds (synth::TimelineView::laneAt (lined, 1085.0, 235.0), \action => expect (action, synth::PickTrack(index = 0, bar = 3)))
     // [DAW-HEADER] The header holds the page tabs and the transport; every other command is in the menu bar.
     forEachList (["Timeline", "Track patch", "Bus routing", "Return to start", "Play"], \label => expect (length (labelled (ready, label)), 1))

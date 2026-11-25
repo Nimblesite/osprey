@@ -1,7 +1,5 @@
 namespace registry_tests;
 import registry::Policy
-import registry_tests::TomlTests
-import registry_tests::ManifestTests
 
 /// The manifest suites, kept apart from `src/osprey/packages/manager/tests` until the type
 /// checker handles the TOML parser in seconds (plan 0020 Phase 1).

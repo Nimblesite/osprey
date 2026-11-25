@@ -1,15 +1,9 @@
 // Implements [WORKBENCH-VERDICT]: steps become one proof term and the kernel
 // of spec 0049 checks it against the statement. The verdict is the kernel's;
 // the goal engine only says which step to underline when the kernel refuses.
-// A proof with an unknown step or an open goal is never sent to the kernel.
+// A proof with an open goal is never sent to the kernel.
 namespace workbench
 
-import workbench::Formulas
-import workbench::Goals
-import workbench::Lists
-import workbench::Closing
-import workbench::Propositions
-import workbench::Preludes
 import proof::Infer
 
 (** What the kernel said about one declaration: checked, rejected at a step (`-1` for the statement) with the kernel's reason, or not checked and why. *)
@@ -51,7 +45,6 @@ module Elaborate
 
     stepped (goal, steps, at, step) = match step
         Done => prove (goal, steps, satAdd at 1)
-        Unknown text => Holed at ("`" + text + "` is not a step the workbench knows")
         Assume name formula => assume (goal, steps, at, { name = name, formula = formula })
         Cases name names => cases (goal, steps, at, { name = name, names = names })
         Split => split (goal, steps, at)
@@ -61,7 +54,7 @@ module Elaborate
         Apply name => applied (goal, steps, at, name)
         Absurd name other => absurd (goal, at, name, other)
 
-    // `Assume h : A`: a λ over `A` whose body proves the conclusion; on `∀ p ...` a λ over the next bound proposition.
+    // `Assume h A`: a λ over `A` whose body proves the conclusion; on `∀ p ...` a λ over the next bound proposition.
     // A negated head is read as the implication it is defined to be.
     assume (goal, steps, at, step) = match Formulas::expandNot goal.target
         Imp _ conclusion => wrap (prove (Goal(hypotheses = listAppend (goal.hypotheses, Hypothesis(name = step.name, formula = step.formula)), target = conclusion), steps, satAdd at 1), \term => NLam step.name (of step.formula) term)
@@ -125,12 +118,10 @@ module Verdicts
 
     moved (walk, step) = match walk.outcome
         Stuck _ => walk
-        UnsupportedStep _ _ => walk
         Advanced progress => refused (walk, Goals::apply (progress, step))
 
     refused (walk, outcome) = match outcome
         Stuck _ => Refusal(outcome = outcome, at = satAdd walk.at 1, stuck = walk.at)
-        UnsupportedStep _ _ => walk(outcome = outcome, at = satAdd walk.at 1)
         Advanced _ => walk(outcome = outcome, at = satAdd walk.at 1)
 
     // Steps after the proof closes may only be `Done`.

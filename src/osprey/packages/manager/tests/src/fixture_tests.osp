@@ -1,4 +1,5 @@
 namespace registry_tests;
+import registry::JsonRead
 import registry::Json
 import registry::Names
 import registry::Identity
@@ -7,7 +8,6 @@ import registry::Source
 import registry::Digests
 import registry::Bytes
 import registry::Png
-import registry_tests::Fixtures
 
 /// The declarative fixtures under src/osprey/packages/manager/tests/fixtures, read through the
 /// Osprey JSON parser and asserted case by case. A fixture is the normative
@@ -41,8 +41,8 @@ module FixtureTests {
     fn treeRows() = {
         let fx = Fixtures::load("paths.json")
         Fixtures::report("forbidden kinds", Fixtures::itemsOf(fx, "forbiddenKinds"), fn(c) => Source::kindCode(Fixtures::textOf(c, "kind")) == Fixtures::textOf(c, "code"))
-        expectTrue(Source::lfsPointer(Fixtures::text(Fixtures::field(Fixtures::field(fx, "lfsPointer"), "content"))))
-        Fixtures::report("submission limits", Fixtures::items(Fixtures::field(Fixtures::field(fx, "limits"), "cases")), fn(c) =>
+        expectTrue(Source::lfsPointer(JsonRead::text(JsonRead::field(JsonRead::field(fx, "lfsPointer"), "content"))))
+        Fixtures::report("submission limits", JsonRead::items(JsonRead::field(JsonRead::field(fx, "limits"), "cases")), fn(c) =>
             Source::limitCode(Fixtures::numberOf(c, "fileCount"), Fixtures::numberOf(c, "totalBytes"), Fixtures::numberOf(c, "assetBytes")) == Fixtures::textOf(c, "code"))
     }
 
@@ -51,7 +51,7 @@ module FixtureTests {
     fn fileDigestsMatch(fx) = foldList(Fixtures::itemsOf(fx, "files"), true, fn(ok, file) => ok && Bytes::hex(entryOf(file).digest) == Fixtures::textOf(file, "sha256"))
 
     fn tampered(fx, entries) = {
-        let sub = Fixtures::field(fx, "digestSubstitution")
+        let sub = JsonRead::field(fx, "digestSubstitution")
         let fakeDigest = Bytes::fromHex(Fixtures::textOf(sub, "sha256"))
         let replaced = mapList(entries, fn(e: Source::Entry) => if e.path == Fixtures::textOf(sub, "path") { Source::Entry { path: e.path, byteLength: e.byteLength, digest: fakeDigest } } else { e })
         (Source::digest(replaced) ?: "") == Fixtures::textOf(sub, "sourceDigest")
@@ -88,7 +88,7 @@ module FixtureTests {
     /// The structural verdict a case expects: `structure` when the full
     /// verdict needs inflation, else `code`.
     fn structureExpected(c) = match Json::get(c, "structure") {
-        Success { value } => Fixtures::text(value)
+        Success { value } => JsonRead::text(value)
         Error => Fixtures::textOf(c, "code")
     }
 

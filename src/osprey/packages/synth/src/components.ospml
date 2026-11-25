@@ -68,8 +68,19 @@ module Components
     (** Explicit sample delay; feedback scheduling reads it before writing the next sample. *)
     export delay (identity, count) = processing (identity, Delay(samples = count), [])
 
+    notesOutlet () = Port(name = "notes", rate = Events, channels = 1, unit = Notes)
+
+    gate gateFrames = parameter ("gateFrames", "Gate (frames)", Ratio, 1.0, 65535.0, gateFrames)
+
     (** A note-on/off generator; gate length is an exact sample count at the render rate. *)
-    export midiNote (identity, pitch, velocity, gateFrames) = node (identity, MidiNotes, [], [Port(name = "notes", rate = Events, channels = 1, unit = Notes)], [parameter ("pitch", "Pitch", Notes, 0.0, 127.0, pitch), normalised ("velocity", "Velocity", velocity), parameter ("gateFrames", "Gate (frames)", Ratio, 1.0, 65535.0, gateFrames)])
+    export midiNote (identity, pitch, velocity, gateFrames) = node (identity, MidiNotes, [], [notesOutlet ()], [parameter ("pitch", "Pitch", Notes, 0.0, 127.0, pitch), normalised ("velocity", "Velocity", velocity), gate gateFrames])
+
+    (** A melody source [SYNTH-FORMULA-NOTES]: `formula` over the step number `t` names one note per step, `stepFrames`
+        apart; a gate longer than its step is cut to the step. *)
+    export formulaNotes (identity, formula, velocity, stepFrames, gateFrames, steps) = node (identity, FormulaNotes(formula = formula), [], [notesOutlet ()], [normalised ("velocity", "Velocity", velocity), parameter ("stepFrames", "Step (frames)", Ratio, 16.0, 65535.0, stepFrames), gate gateFrames, parameter ("steps", "Steps", Ratio, 1.0, 256.0, steps)])
+
+    (** A formula melody at Prism's defaults: 16 steps of 6,000 frames (125 ms at 48 kHz), each gated for 4,800, at velocity 0.8. *)
+    export formulaMelody (identity, formula) = formulaNotes (identity, formula, 0.8, 6000.0, 4800.0, 16.0)
 
     (** Explicit mono-to-stereo duplication; routing never changes channel counts implicitly. *)
     export stereo identity = node (identity, Stereo, [port "audio"], [audioPort ("audio", 2)], [])

@@ -1,6 +1,4 @@
 namespace registry;
-import registry::Bytes
-import registry::Sha256
 
 /// Digest envelopes `sha256:<64 lowercase hex>` and the domain-separated
 /// preimage `ASCII(d) || 0x00 || u64be(length(x)) || x` behind every

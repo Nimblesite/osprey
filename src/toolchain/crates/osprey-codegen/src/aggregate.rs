@@ -322,12 +322,20 @@ pub(crate) fn store_field(
     // pointer is normally a new reference. But a freshly-produced owner this
     // region still holds is MOVED into the field instead — the Perceus
     // constructor transfer skips the dup and the region-end drop. [GC-ARC-PERCEUS]
-    let moved = fty.as_str().ends_with('*')
-        && val.starts_with('%')
-        && crate::arc::consume_into_store(cg, val);
-    if !moved {
-        crate::arc::dup_store(cg, fty.as_str(), val);
-    }
+    crate::arc::store_owned(cg, fty.as_str(), val);
+    store_held_field(cg, struct_ty, obj, idx, fty, val);
+}
+
+/// Store `val` into the `idx`-th element of a `{TY}*` block whose hold on it
+/// is already settled: moved in, lent, or not a managed value.
+pub(crate) fn store_held_field(
+    cg: &mut Codegen,
+    struct_ty: &str,
+    obj: &str,
+    idx: usize,
+    fty: LType,
+    val: &str,
+) {
     let p = cg.emit_reg(format!(
         "getelementptr {struct_ty}, {struct_ty}* {obj}, i32 0, i32 {idx}"
     ));
@@ -353,6 +361,7 @@ pub(crate) fn load_field(
         "getelementptr {struct_ty}, {struct_ty}* {obj}, i32 0, i32 {idx}"
     ));
     let r = cg.emit_reg(format!("load {fty}, {fty}* {p}"));
+    crate::arc::note_field(cg, &r, obj, &p, fty.as_str());
     r
 }
 

@@ -252,3 +252,29 @@ pub(crate) fn string_literals(source: &str) -> Vec<crate::fragment_ranges::Liter
 
 #[cfg(test)]
 mod tests;
+
+/// Every Default leaf token as the closing-run counter sees it. Zero-width
+/// scanner tokens (statement breaks, call gaps) are whitespace; strings and
+/// comments are single leaves, so brackets inside them never count.
+/// Implements [LINT-NESTING-LAMBDA].
+pub(crate) fn bracket_tokens(source: &str) -> Vec<crate::closing_runs::BracketToken> {
+    use crate::closing_runs::BracketToken;
+    let Some(tree) = parse_tree(source) else {
+        return Vec::new();
+    };
+    let mut leaves = Vec::new();
+    let mut stack = vec![tree.root_node()];
+    while let Some(node) = stack.pop() {
+        if node.child_count() > 0 && !matches!(node.kind(), "comment" | "string_content") {
+            let mut cursor = node.walk();
+            let children: Vec<Node<'_>> = node.children(&mut cursor).collect();
+            stack.extend(children.into_iter().rev());
+        } else if node.start_byte() < node.end_byte() {
+            leaves.push(match node.kind() {
+                ")" | "}" | "]" => BracketToken::Closer(position_from_point(node.start_position())),
+                _ => BracketToken::Other,
+            });
+        }
+    }
+    leaves
+}

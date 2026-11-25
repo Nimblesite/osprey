@@ -62,7 +62,7 @@ static const int64_t CAT_SIZES[] = {0, 1, 31, 32, 33, 64, 65, 100};
 /* Test helpers ----------------------------------------------------- */
 static inline OspreyList *make_range_list(int64_t start, int64_t end) {
   OspreyListBuilder *b = osprey_list_builder_new();
-  for (int64_t i = start; i < end; i++) osprey_list_builder_push(b, i);
+  for (int64_t i = start; i < end; i++) osprey_list_builder_push_of(b, i, 0);
   return osprey_list_builder_seal(b);
 }
 
@@ -102,21 +102,8 @@ static inline void reverse_model(int64_t *m, int64_t n) {
   }
 }
 
-static inline void check_iter(OspreyList *l, const int64_t *m, int64_t n) {
-  OspreyListIter *it = osprey_list_iter_new(l);
-  CHECK(it != NULL);
-  int64_t v = SET_SENTINEL;
-  for (int64_t i = 0; i < n; i++) {
-    CHECK(osprey_list_iter_next(it, &v) == 1);
-    CHECK(v == m[i]);
-  }
-  CHECK(osprey_list_iter_next(it, &v) == 0);
-  CHECK(osprey_list_iter_next(it, &v) == 0); /* exhaustion is stable */
-  free(it);
-}
-
-/* The workhorse: length, in-bounds + value at every index, every OOB answer,
-   and a full iteration. */
+/* The workhorse: length, in-bounds + value at every index, and every OOB
+   answer. */
 static inline void check_elems(OspreyList *l, const int64_t *m, int64_t n) {
   const int64_t oob[] = {-1, -2, n, n + 1, INT64_MIN, INT64_MAX};
   CHECK(osprey_list_length(l) == n);
@@ -128,7 +115,6 @@ static inline void check_elems(OspreyList *l, const int64_t *m, int64_t n) {
     CHECK(osprey_list_in_bounds(l, i) == 1);
     CHECK(osprey_list_get(l, i) == m[i]);
   }
-  check_iter(l, m, n);
 }
 
 static inline void check_range(OspreyList *l, int64_t start, int64_t n) {
@@ -176,6 +162,17 @@ static inline void check_view_at(OspreyList *l, const int64_t *m, int64_t n, int
   OspreyList *vv = osprey_list_drop(v, vn / 2); /* view of a view */
   check_elems(vv, m + k + vn / 2, vn - vn / 2);
   check_elems(v, m + k, vn);
+  /* [MEM-OWNERSHIP-STATIC-SHARING] The lent view reads the same elements and
+     takes nothing from the source: past its end it is the empty list, and a
+     negative count lends the whole list. */
+  OspreyList *lent = osprey_list_view(l, k);
+  check_elems(lent, m + k, vn);
+  check_elems(osprey_list_view(l, -1), m, n);
+  CHECK(osprey_list_view(l, n) == osprey_list_empty());
+  CHECK(osprey_list_view(l, n + 1) == osprey_list_empty());
+  CHECK(osprey_list_view(NULL, 0) == osprey_list_empty());
+  check_elems(osprey_list_view(lent, vn / 2), m + k + vn / 2, vn - vn / 2);
+  check_elems(l, m, n);
   if (deep) {
     check_appends(v, m + k, vn);
     check_sets(v, m + k, vn);

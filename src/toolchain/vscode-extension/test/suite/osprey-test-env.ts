@@ -159,3 +159,23 @@ export function oneSkipWarning(uri: vscode.Uri): vscode.Diagnostic {
   assert.strictEqual(warnings.length, 1, JSON.stringify(warnings));
   return warnings[0];
 }
+
+/**
+ * The skip warnings' full layout: one per expected line, in source order,
+ * carrying exactly the expected messages.
+ */
+export function assertSkipWarningLayout(
+  warnings: vscode.Diagnostic[],
+  expected: { line: number; message: string }[],
+  note: string,
+): void {
+  assert.deepStrictEqual(
+    warnings.map((warning) => warning.range.start.line),
+    expected.map((expectation) => expectation.line),
+    note,
+  );
+  assert.deepStrictEqual(
+    warnings.map((warning) => warning.message),
+    expected.map((expectation) => expectation.message),
+  );
+}

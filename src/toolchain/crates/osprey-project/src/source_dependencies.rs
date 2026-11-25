@@ -26,6 +26,7 @@ impl Resolver<'_> {
 
     pub(crate) fn tracked(&mut self, key: SymbolKey, context: &Context) -> SymbolKey {
         self.record_reference(&key, context);
+        let _ = self.referenced.insert((context.contribution, key.clone()));
         key
     }
 

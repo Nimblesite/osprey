@@ -1,7 +1,5 @@
 namespace proof
 
-import proof::Terms
-import proof::Naturals
 
 (** Lean 4.25 string literals are ordinary String.ofByteArray values with
     an explicit UTF8 witness, as in Init/Prelude and String.mk. Importing

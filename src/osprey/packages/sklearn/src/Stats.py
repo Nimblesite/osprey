@@ -13,33 +13,113 @@ by the suite.
 
 __all__ = [
     "sum_float", "mean_float", "min_float", "max_float", "argsort_float",
-    "unique_ints", "index_of", "encode_labels", "cmp_int", "map_indexed",
+    "unique_ints", "index_of", "encode_labels", "map_indexed",
 ]
 
 
 def map_indexed(xs, read):
-    """`xs` rebuilt with its indices: element `i` of the result is `read(i)`."""
+    """`xs` rebuilt with its indices: element `i` of the result is `read(i)`.
+
+    # Examples
+    ```osprey
+    from sklearn import Stats
+
+    def show():
+        scaled = Stats.map_indexed([4, 5], lambda i: i * 10)
+        lone = Stats.map_indexed([1], lambda i: i)
+        print(f"[{toString(scaled)}] [{toString(lone)}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [[0, 10]] [[0]]
+    ```
+    """
     return toList(map(range(len(xs)), read))
 
 
 def sum_float(xs):
-    """The sum of a non-empty float list, accumulated left to right."""
+    """The sum of a non-empty float list, accumulated left to right.
+
+    # Examples
+    ```osprey
+    from sklearn import Stats
+
+    def show():
+        total = Stats.sum_float([1.0, 2.5, 3.0])
+        lone = Stats.sum_float([0.5])
+        print(f"[{total}] [{lone}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [6.5] [0.5]
+    ```
+    """
     return foldList(xs, 0.0, lambda acc, x: acc + x)
 
 
 def mean_float(xs):
-    """The arithmetic mean of a non-empty float list."""
+    """The arithmetic mean of a non-empty float list.
+
+    # Examples
+    ```osprey
+    from sklearn import Stats
+
+    def show():
+        even = Stats.mean_float([1.0, 2.0, 3.0])
+        lone = Stats.mean_float([4.0])
+        print(f"[{even}] [{lone}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [2.0] [4.0]
+    ```
+    """
     return sum_float(xs) / toFloat(len(xs))
 
 
 def min_float(xs):
-    """The smallest element of a non-empty float list."""
+    """The smallest element of a non-empty float list.
+
+    # Examples
+    ```osprey
+    from sklearn import Stats
+
+    def show():
+        smallest = Stats.min_float([3.0, 1.0, 2.0])
+        lone = Stats.min_float([7.0])
+        print(f"[{smallest}] [{lone}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [1.0] [7.0]
+    ```
+    """
     first = unwrap_or(listGet(xs, 0), 0.0)
     return foldList(xs, first, lambda acc, x: acc if acc <= x else x)
 
 
 def max_float(xs):
-    """The largest element of a non-empty float list."""
+    """The largest element of a non-empty float list.
+
+    # Examples
+    ```osprey
+    from sklearn import Stats
+
+    def show():
+        largest = Stats.max_float([3.0, 1.0, 2.0])
+        lone = Stats.max_float([7.0])
+        print(f"[{largest}] [{lone}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [3.0] [7.0]
+    ```
+    """
     first = unwrap_or(listGet(xs, 0), 0.0)
     return foldList(xs, first, lambda acc, x: acc if acc >= x else x)
 
@@ -61,7 +141,23 @@ def cmp_index(xs, a, b):
 
 def argsort_float(xs):
     """Indices that sort `xs` ascending, ties broken by original index order
-    (a stable sort): `argsort_float([3.0, 1.0, 3.0]) == [1, 0, 2]`."""
+    (a stable sort): `argsort_float([3.0, 1.0, 3.0]) == [1, 0, 2]`.
+
+    # Examples
+    ```osprey
+    from sklearn import Stats
+
+    def show():
+        tied = Stats.argsort_float([3.0, 1.0, 3.0])
+        spread = Stats.argsort_float([3.0, 1.0, 3.0, 0.5])
+        print(f"[{toString(tied)}] [{toString(spread)}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [[1, 0, 2]] [[3, 1, 0, 2]]
+    ```
+    """
     indices = map_indexed(xs, lambda i: i)
     return listSortBy(indices, lambda a, b: cmp_index(xs, a, b))
 
@@ -77,22 +173,65 @@ def dedup(sorted_xs):
     )
 
 
-def cmp_int(a, b):
-    """Total integer comparison: negative/zero/positive."""
-    return -1 if a < b else (1 if a > b else 0)
-
-
 def unique_ints(xs):
-    """The distinct integers of `xs` in ascending order."""
-    return dedup(listSortBy(xs, cmp_int))
+    """The distinct integers of `xs` in ascending order.
+
+    # Examples
+    ```osprey
+    from sklearn import Stats
+
+    def show():
+        repeated = Stats.unique_ints([3, 1, 3, 2, 1])
+        lone = Stats.unique_ints([5])
+        print(f"[{toString(repeated)}] [{toString(lone)}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [[1, 2, 3]] [[5]]
+    ```
+    """
+    return dedup(listSort(xs))
 
 
 def index_of(xs, v):
-    """The first index of `v` in an int list, or -1 when absent."""
+    """The first index of `v` in an int list, or -1 when absent.
+
+    # Examples
+    ```osprey
+    from sklearn import Stats
+
+    def show():
+        found = Stats.index_of([10, 20, 30], 20)
+        missing = Stats.index_of([10, 20, 30], 99)
+        print(f"[{found}] [{missing}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [1] [-1]
+    ```
+    """
     return fold(range(len(xs)), -1, lambda acc, i: i if unwrap_or(listGet(xs, i), v) == v and acc == -1 else acc)
 
 
 def encode_labels(labels, ys):
     """Each label of `ys` as its index in `labels`: LabelEncoder.transform's
-    mapping, which the metrics share."""
+    mapping, which the metrics share.
+
+    # Examples
+    ```osprey
+    from sklearn import Stats
+
+    def show():
+        encoded = Stats.encode_labels([3, 7, 9], [9, 3, 7, 9])
+        unseen = Stats.encode_labels([3, 7], [3, 99])
+        print(f"[{toString(encoded)}] [{toString(unseen)}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [[2, 0, 1, 2]] [[0, -1]]
+    ```
+    """
     return map_indexed(ys, lambda i: index_of(labels, unwrap_or(listGet(ys, i), 0)))

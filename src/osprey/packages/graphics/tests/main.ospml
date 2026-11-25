@@ -71,10 +71,8 @@ glyphsCase (c) = sameShape (Scenes::glyphs (c.text, c.x, c.y, c.size, c.color, c
 
 letteringCase (c) = sameShape (Scenes::lettering (c.text, c.x, c.y, c.size, c.color, c.anchor, c.weight, c.depth), ui::Lettering(letters = c.text, x = c.x, y = c.y, size = c.size, color = c.color, depth = c.depth, anchor = c.anchor, weight = c.weight))
 
-// A paint's channels, and the two shapes they arrive in.
+// A paint's channels, checked against the shape they arrive in.
 rgbCase (paint, r, g, b, a) = sameShape (paint, ui::Rgb(red = r, green = g, blue = b, alpha = a))
-
-hslCase (paint, hue, saturation, lightness, opacity) = sameShape (paint, ui::Hsl(hue = hue, saturation = saturation, lightness = lightness, opacity = opacity))
 
 // A shape taken from a composed scene's list, with the stand-in a miss falls back to.
 shapeAt (shapes, index) = listGet shapes index ?: Scenes::disc (0.0, 0.0, 0.0, 0, 0)
@@ -101,9 +99,7 @@ test ("path builds an untransformed filled path and preserves empty steps solid 
     match shape
         ui::Path _ outline paint _ _ _ _ =>
             expect (outline == ui::Fill, true)
-            match paint
-                ui::Solid actual => rgbCase (actual, 1.0, 0.0, 0.0, 0.5)
-                _ => expect (false, true)
+            sameShape (paint, ui::Solid(tint = ui::Rgb(red = 1.0, green = 0.0, blue = 0.0, alpha = 0.5)))
         _ => expect (false, true))
 
 test ("moved retains every path command line style gradient stop and explicit transform", \() =>
@@ -116,27 +112,11 @@ test ("moved retains every path command line style gradient stop and explicit tr
     match shape
         ui::Path actual actualOutline paint moveX moveY scale depth =>
             expectAll [length actual == 7, moveX == 10.0, moveY == 0.0 - 200.0, scale == 0.9, depth == 7]
-            match listGet actual 0 ?: ui::Close
-                ui::MoveTo toX toY =>
-                    expect (toX, 1.0)
-                    expect (toY, 2.0)
-                _ => expect (false, true)
-            match listGet actual 4 ?: ui::Close
-                ui::ArcTo radiusX radiusY rotation large sweep toX toY =>
-                    expectAll [radiusX == 30.0, radiusY == 20.0, rotation == 45.0, !large, sweep, toX == 9.0, toY == 9.0]
-                _ => expect (false, true)
+            sameShape (listGet actual 0 ?: ui::Close, ui::MoveTo(toX = 1.0, toY = 2.0))
+            sameShape (listGet actual 4 ?: ui::Close, ui::ArcTo(radiusX = 30.0, radiusY = 20.0, rotation = 45.0, large = false, sweep = true, toX = 9.0, toY = 9.0))
             expect ((listGet actual 6 ?: ui::MoveTo(toX = 999.0, toY = 999.0)) == ui::Close, true)
-            match actualOutline
-                ui::Line width dashes bevel =>
-                    expectAll [width == 1.5, length dashes == 3, bevel]
-                    forEachList ([{ at = 0, want = 4.0 }, { at = 1, want = 0.0 }, { at = 2, want = 0.0 - 2.0 }], \c => expect (listGet dashes c.at ?: 999.0, c.want))
-                _ => expect (false, true)
-            match paint
-                ui::Linear angle actualFrom fromAt actualTo toAt oklab =>
-                    expectAll [angle == 0.0 - 180.0, fromAt == 0.0, toAt == 1.0, oklab]
-                    rgbCase (actualFrom, 0.0, 1.0, 0.0, 1.0)
-                    hslCase (actualTo, 180.0, 0.5, 0.25, 0.75)
-                _ => expect (false, true)
+            sameShape (actualOutline, ui::Line(width = 1.5, dashes = [4.0, 0.0, 0.0 - 2.0], bevel = true))
+            sameShape (paint, ui::Linear(angle = 0.0 - 180.0, from = ui::Rgb(red = 0.0, green = 1.0, blue = 0.0, alpha = 1.0), fromAt = 0.0, to = ui::Hsl(hue = 180.0, saturation = 0.5, lightness = 0.25, opacity = 0.75), toAt = 1.0, oklab = true))
         _ => expect (false, true)
     empty = Scenes::moved ([], ui::Fill, ui::Solid(tint = Scenes::hex (0, 0.0)), 0.0, 0.0, 0.0, 0)
     pathShape (empty, 0, 0.0, 0.0, 0.0, 0))

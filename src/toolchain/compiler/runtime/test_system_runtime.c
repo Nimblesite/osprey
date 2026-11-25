@@ -1,7 +1,7 @@
 // Lifecycle regressions implement [BUILTIN-PROCESS-FAILURE] on the shared await path.
 // Assertion-driven tests for system_runtime.c — the process runtime
 // (spawn/await/cleanup with streamed callbacks). The read_file/write_file pair moved to
-// test_file_runtime.c with the source it covers. Linked with memory_runtime.c
+// test_file_runtime.c with the source it covers. Linked with memory_gc.c
 // by the Makefile's _test_c_runtime; POSIX-only harness.
 #include <assert.h>
 #include <errno.h>

@@ -60,6 +60,7 @@ mod testing;
 mod testkit;
 mod types;
 
+pub use arc::{set_ownership_check, Need, OtherUse, SecondOwner};
 pub use error::{CodegenError, Result};
 pub use gpu_kernel::{GpuKernelMode, GPU_KERNELS_ENV};
 pub use llty::{LType, Value};

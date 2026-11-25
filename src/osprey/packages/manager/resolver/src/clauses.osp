@@ -1,9 +1,4 @@
 namespace registry;
-import registry::Names
-import registry::SatClauses
-import registry::ManifestModel
-import registry::Candidates
-import registry::Resolution
 
 /// The hard clauses of [PACKAGE-RESOLUTION] over one Boolean variable per
 /// candidate. Candidates are variables 1..n in catalog order; key-level

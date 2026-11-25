@@ -2,9 +2,6 @@
 namespace mobile
 
 import bank::Json
-import mobile::Model
-import mobile::Github
-import mobile::Annotations
 
 type CacheResult =
     model : InboxModel

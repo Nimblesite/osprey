@@ -351,7 +351,7 @@ theorem rotationComponents (ops : Ops α) (current previous : Bin α) :
       | false => ⟨ops.ieeeDivide z.re m, ops.ieeeDivide z.im m⟩ := by
   dsimp only
   rw [rotationConjugate]
-  unfold SpectralMath.unitRe SpectralMath.unitIm SpectralMath.magnitude SpectralMath.power
+  unfold SpectralMath.unitRe SpectralMath.unitIm SpectralMath.unitised SpectralMath.magnitude SpectralMath.power
   dsimp only
   let z := turned ops current (conjugate ops previous)
   let m := ops.pow (ops.plus (ops.times z.re z.re) (ops.times z.im z.im)) ops.half

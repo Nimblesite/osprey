@@ -1,4 +1,4 @@
-//! Share allocator-independent compilation, retaining each runtime's own link.
+//! Cache by lowering mode, retaining each runtime's own link.
 //! Implements [TESTING-NATIVE-CACHE].
 use super::{compile_ir, ir_driver, run_build_step, NativeOptions};
 use crate::executable_cache::{codegen_cache_path, is_nonempty_file, publish_cached_artifact};
@@ -9,7 +9,7 @@ use std::process::ExitCode;
 fn path(input: &CompilationInput, options: NativeOptions<'_>) -> Option<PathBuf> {
     options
         .cacheable()
-        .then(|| codegen_cache_path(input, options.kind))
+        .then(|| codegen_cache_path(input, options.memory, options.kind))
         .flatten()
 }
 

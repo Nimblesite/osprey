@@ -5,8 +5,6 @@
 
 namespace todo;
 
-import todo::TodoDispatch
-import todo::TodoRequest
 
 /// A candidate repair of a title.
 type TitleFix = Trimmed | CutShort

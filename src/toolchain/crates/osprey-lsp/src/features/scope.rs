@@ -11,11 +11,14 @@ use crate::analysis::{collect_all_symbols, collect_symbols, SymbolInfo, SymbolKi
 use crate::text::{occurrences, prefix_to, Occurrence};
 
 pub(crate) struct Binding {
-    pub(super) at: Occurrence,
     /// A pattern binder's or lambda parameter's lexical region start and its
     /// own position: the span holding the match arm or lambda its type is
     /// published under ([LSP-HOVER-BINDERS]). `None` for every other binder.
     pub(crate) introduced: Option<(Position, Position)>,
+    /// Every binder of the same name that the same arm introduces: one per
+    /// or-pattern alternative, all naming one variable ([PATTERN-OR-BINDINGS]).
+    /// Just `at` for any other binder.
+    pub(crate) group: Vec<Occurrence>,
     candidates: Vec<Scoped>,
 }
 
@@ -45,9 +48,10 @@ pub(crate) fn binding(
         .introduces
         .then(|| position(text, resolved.scope.start).zip(position(text, resolved.bytes.start)))
         .flatten();
+    let group = alternatives(&candidates, resolved);
     Some(Binding {
-        at: resolved.at.clone(),
         introduced,
+        group,
         candidates,
     })
 }
@@ -107,6 +111,19 @@ fn local_functions(
         .collect()
 }
 
+/// The binders `resolved` shares its arm with: a pattern binder's alternatives
+/// have its name and its exact lexical region.
+fn alternatives(candidates: &[Scoped], resolved: &Scoped) -> Vec<Occurrence> {
+    if !resolved.introduces {
+        return vec![resolved.at.clone()];
+    }
+    candidates
+        .iter()
+        .filter(|b| b.introduces && b.scope == resolved.scope)
+        .map(|b| b.at.clone())
+        .collect()
+}
+
 fn resolve(candidates: &[Scoped], offset: usize) -> Option<&Scoped> {
     candidates
         .iter()
@@ -126,9 +143,9 @@ pub(super) fn uses(
         .filter(|found| {
             byte_offset(text, (found.line, found.start), enc)
                 .and_then(|offset| resolve(&binding.candidates, offset))
-                .is_some_and(|resolved| resolved.at == binding.at)
+                .is_some_and(|resolved| binding.group.contains(&resolved.at))
         })
-        .filter(|found| include_declaration || *found != binding.at)
+        .filter(|found| include_declaration || !binding.group.contains(found))
         .collect()
 }
 

@@ -33,13 +33,14 @@ fn cache_directory(input: &CompilationInput) -> Option<PathBuf> {
 
 pub(super) fn codegen_cache_path(
     input: &CompilationInput,
+    memory: &str,
     kind: osprey_debug::BuildKind,
 ) -> Option<PathBuf> {
     use std::hash::Hasher;
     let dir = cache_directory(input)?;
     Some(dir.join(format!(
         "module-{:016x}.ll",
-        codegen_key(input, kind).finish()
+        codegen_key(input, memory, kind).finish()
     )))
 }
 
@@ -75,7 +76,7 @@ pub(super) fn test_cache_key(
     kind: osprey_debug::BuildKind,
 ) -> u64 {
     use std::hash::{Hash, Hasher};
-    let mut state = codegen_key(input, kind);
+    let mut state = codegen_key(input, memory, kind);
     memory.hash(&mut state);
     hash_runtime_identity(memory, &mut state);
     state.finish()
@@ -83,11 +84,14 @@ pub(super) fn test_cache_key(
 
 fn codegen_key(
     input: &CompilationInput,
+    memory: &str,
     kind: osprey_debug::BuildKind,
 ) -> std::collections::hash_map::DefaultHasher {
     use std::hash::Hash;
     let mut state = std::collections::hash_map::DefaultHasher::new();
-    "osprey-test-cache-v2".hash(&mut state);
+    "osprey-test-cache-v3".hash(&mut state);
+    // GC and ARC share lowering. Ownership checks transfers and emits different IR.
+    (memory == crate::invocation::OWNERSHIP).hash(&mut state);
     input.source().hash(&mut state);
     // Assembly options can change qualified symbols without changing source text.
     format!("{:?}", input.backend_program()).hash(&mut state);
@@ -126,13 +130,9 @@ fn compiler_path(compiler: &str) -> Option<PathBuf> {
 }
 
 pub(super) fn hash_runtime_identity<H: std::hash::Hasher>(memory: &str, state: &mut H) {
-    let suffix = match memory {
-        "gc" => "_gc",
-        "arc" => "_arc",
-        _ => "",
-    };
     for prefix in ["libfiber_runtime", "libhttp_runtime"] {
-        let runtime = find_runtime_lib(&format!("{prefix}{suffix}.a")).map(PathBuf::from);
+        let name = crate::linking::runtime_name(prefix, memory);
+        let runtime = find_runtime_lib(&name).map(PathBuf::from);
         hash_file_identity(runtime.as_deref(), state);
     }
 }

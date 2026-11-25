@@ -1,10 +1,5 @@
 namespace registry_tests;
 import registry::Policy
-import registry_tests::MembershipTests
-import registry_tests::IdentityTests
-import registry_tests::AdminTests
-import registry_tests::GrantTests
-import registry_tests::HandoverTests
 fn suites() = {
     MembershipTests::run()
     IdentityTests::run()

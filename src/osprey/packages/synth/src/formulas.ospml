@@ -1,0 +1,205 @@
+// [SYNTH-FORMULA-NOTES] A typed formula over the step number `t` becomes one MIDI note per step.
+namespace synth
+
+(** Parse and evaluate note formulas such as `60 + 12 * sin(t / 4)`. Parsing returns a typed fault that
+    names the column; evaluation is total: a value with no pitch (division by zero, a root of a negative
+    number) is a rest, and a pitch outside 0–127 is folded back into range by whole octaves. *)
+module Formulas
+    // Longer formulas are refused before scanning, which also bounds parser recursion.
+    limit = 256
+
+    // A finite formula value farther from zero than this is a rest, never converted to a pitch.
+    ceiling = 1000000.0
+
+    fault detail = Error(message = InvalidConfiguration(detail = "Formula: ${detail}"))
+
+    // The byte at `index`, or -1 past the end.
+    byte (text, index) = byteAt (text, index) ?: -1
+
+    digit b = b >= 48 && b <= 57
+
+    letter b = (b >= 97 && b <= 122) || (b >= 65 && b <= 90)
+
+    space b = b == 32 || b == 9
+
+    // The first index from `index` whose byte fails `accept`.
+    run (text, index, accept) = match accept (byte (text, index))
+        true => run (text, satAdd index 1, accept)
+        false => index
+
+    // Digits, then an optional point followed by at least one digit.
+    numberEnd (text, index) =
+        whole = run (text, index, digit)
+        match byte (text, whole) == 46 && digit (byte (text, satAdd whole 1))
+            true => run (text, satAdd whole 1, digit)
+            false => whole
+
+    lexeme (token, index) = Lexeme(token = token, column = satAdd index 1)
+
+    number (text, index, found) =
+        end = numberEnd (text, index)
+        match parseFloat (substring (text, index, end) ?: "")
+            Error _ => fault "the number at column ${satAdd index 1} is not finite."
+            Success value => lexemes (text, end, listPrepend found (lexeme (NumberToken(value = value), index)))
+
+    word (text, index, found) =
+        end = run (text, index, letter)
+        lexemes (text, end, listPrepend found (lexeme (WordToken(text = substring (text, index, end) ?: ""), index)))
+
+    symbol (text, index, found) = match substring (text, index, satAdd index 1) ?: ""
+        "+" | "-" | "*" | "/" | "%" | "^" | "(" | ")" =>
+            lexemes (text, satAdd index 1, listPrepend found (lexeme (SymbolToken(text = substring (text, index, satAdd index 1) ?: ""), index)))
+        _ => fault "unexpected character at column ${satAdd index 1}."
+
+    lexemeAt (text, index, found) =
+        b = byte (text, index)
+        match space b
+            true => lexemes (text, satAdd index 1, found)
+            false => match digit b
+                true => number (text, index, found)
+                false => match letter b
+                    true => word (text, index, found)
+                    false => symbol (text, index, found)
+
+    lexemes (text, index, found) = match byte (text, index) < 0
+        true => Success(value = listReverse found)
+        false => lexemeAt (text, index, found)
+
+    // The symbol or name a lexeme spells; a number spells nothing.
+    spelled lexeme = match lexeme.token
+        SymbolToken text => text
+        WordToken text => text
+        NumberToken _ => ""
+
+    shown lexeme = match lexeme.token
+        NumberToken _ => "number"
+        _ => "'${spelled lexeme}'"
+
+    unexpected lexeme = fault "unexpected ${shown lexeme} at column ${lexeme.column}."
+
+    // The operator a symbol spells in `table`, if any.
+    operatorOf (table, lexeme) = match lexeme.token
+        SymbolToken text => filterList (table, \entry => entry.symbol == text)
+        _ => []
+
+    // Left-associative operators of one precedence level over operands that `next` parses.
+    chain (parsed, table, next) = match parsed.rest
+        [] => Success(value = parsed)
+        [lexeme, ...after] => match operatorOf (table, lexeme)
+            [] => Success(value = parsed)
+            [entry, ..._] => Outcomes::carried (next after, \right =>
+                chain (right(term = Binary(operation = entry.operation, left = parsed.term, right = right.term)), table, next))
+
+    spelling (symbol, operation) = OperatorSpelling(symbol = symbol, operation = operation)
+
+    sum lexemes = Outcomes::carried (product lexemes, \first => chain (first, [spelling ("+", Plus), spelling ("-", Minus)], product))
+
+    product lexemes = Outcomes::carried (unary lexemes, \first => chain (first, [spelling ("*", Times), spelling ("/", Over), spelling ("%", Modulo)], unary))
+
+    // Unary minus binds looser than `^`, so `-2^2` is -4.
+    unary lexemes = match lexemes
+        [lexeme, ...after] => match spelled lexeme == "-"
+            true => Outcomes::carried (unary after, \inner => Success(value = inner(term = Negated(operand = inner.term))))
+            false => power lexemes
+        [] => power lexemes
+
+    // `^` is right-associative: `2^3^2` is 2^9.
+    power lexemes = Outcomes::carried (atom lexemes, raised)
+
+    raised base = match base.rest
+        [lexeme, ...after] => match spelled lexeme == "^"
+            true => Outcomes::carried (unary after, \exponent => Success(value = exponent(term = Binary(operation = Power, left = base.term, right = exponent.term))))
+            false => Success(value = base)
+        [] => Success(value = base)
+
+    // A parenthesised sum that must be closed; `wrap` builds the term around its contents.
+    closed (lexemes, wrap) = Outcomes::carried (sum lexemes, \inner => closing (inner, wrap))
+
+    closing (inner, wrap) = match inner.rest
+        [lexeme, ...after] => match spelled lexeme == ")"
+            true => Success(value = FormulaParse(term = wrap inner.term, rest = after))
+            false => unexpected lexeme
+        [] => fault "a '(' is never closed."
+
+    function name = match name
+        "sin" => Success(value = SineOf)
+        "cos" => Success(value = CosineOf)
+        "abs" => Success(value = MagnitudeOf)
+        "floor" => Success(value = FloorOf)
+        "round" => Success(value = RoundOf)
+        "sqrt" => Success(value = RootOf)
+        _ => fault "unknown name '${name}'; use t, sin, cos, abs, floor, round or sqrt."
+
+    call (name, lexemes) = Outcomes::carried (function name, \applied => argued (name, applied, lexemes))
+
+    argued (name, applied, lexemes) = match lexemes
+        [lexeme, ...after] => match spelled lexeme == "("
+            true => closed (after, \argument => Call(applied = applied, argument = argument))
+            false => fault "${name} needs '(' at column ${lexeme.column}."
+        [] => fault "${name} needs '(' and an argument."
+
+    atom lexemes = match lexemes
+        [] => fault "the formula ends where a number, t, a function or '(' belongs."
+        [lexeme, ...after] => match lexeme.token
+            NumberToken value => Success(value = FormulaParse(term = Literal(value = value), rest = after))
+            WordToken text => match text == "t"
+                true => Success(value = FormulaParse(term = StepIndex, rest = after))
+                false => call (text, after)
+            SymbolToken text => match text == "("
+                true => closed (after, \inner => inner)
+                false => unexpected lexeme
+
+    complete parsed = match parsed.rest
+        [] => Success(value = parsed.term)
+        [lexeme, ..._] => unexpected lexeme
+
+    (** The formula's term, or a fault naming the first column it cannot read. *)
+    export parse text = match length text > 0 && length text <= limit
+        false => fault "write 1 to ${limit} characters."
+        true => Outcomes::carried (lexemes (text, 0, []), \found => Outcomes::carried (sum found, complete))
+
+    // Floored remainder: the result takes the divisor's sign, so `t % 12` cycles upward. A zero divisor has no value.
+    modulo (a, b) = match b == 0.0
+        true => floatDiv (0.0, 0.0)
+        false => a - b * floor (floatDiv (a, b))
+
+    combine (operation, a, b) = match operation
+        Plus => a + b
+        Minus => a - b
+        Times => a * b
+        Over => floatDiv (a, b)
+        Modulo => modulo (a, b)
+        Power => pow (a, b)
+
+    apply (applied, x) = match applied
+        SineOf => sin x
+        CosineOf => cos x
+        MagnitudeOf => abs x
+        FloorOf => floor x
+        RoundOf => round x
+        RootOf => sqrt x
+
+    (** The term's value at step `step`; IEEE throughout, so a step with no value is NaN or infinite. *)
+    export evaluate (term, step) = match term
+        Literal value => value
+        StepIndex => toFloat step
+        Negated operand => 0.0 - evaluate (operand, step)
+        Binary operation left right => combine (operation, evaluate (left, step), evaluate (right, step))
+        Call applied argument => apply (applied, evaluate (argument, step))
+
+    // Whole octaves up from below 0 or down from above 127.
+    folded pitch = match pitch > 127.0
+        true => pitch - 12.0 * ceil (floatDiv (pitch - 127.0, 12.0))
+        false => match pitch < 0.0
+            true => pitch + 12.0 * ceil (floatDiv (0.0 - pitch, 12.0))
+            false => pitch
+
+    (** The note a value names: the nearest whole pitch folded into 0–127, or a rest without a finite value. *)
+    export note value = match value - value == 0.0 && abs value <= ceiling
+        false => Rest
+        true => match floatToInt (folded (round value))
+            Error _ => Rest
+            Success pitch => Sounded(pitch = pitch)
+
+    (** The first `steps` notes of a parsed formula, for `t` from 0. *)
+    export notes (term, steps) = mapList (toList (range (0, steps)), \step => note (evaluate (term, step)))

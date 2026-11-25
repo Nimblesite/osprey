@@ -35,7 +35,7 @@ fn resources() -> Result<PathBuf, String> {
 
 /// Writes each file named in `manifest`, one relative path a line, from `read` into `folder`.
 /// A path that would leave the folder or a file that cannot be read stops the launch.
-#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+#[cfg(any(target_os = "android", test))]
 pub(crate) fn unpack(
     manifest: &str,
     read: impl Fn(&str) -> Result<Vec<u8>, String>,

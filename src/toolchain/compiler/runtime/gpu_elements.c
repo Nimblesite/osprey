@@ -96,12 +96,6 @@ void osprey_gpu_iota_fill(void *buffer) {
   osprey_gpu_finalize(b);
 }
 
-// The gate osprey_gpu_get's Result form branches on, so a gather reports
-// out-of-bounds instead of reading 0 [GPU-GET].
-int32_t osprey_gpu_in_bounds(void *buffer, int64_t index) {
-  return addressable((const OspreyGpuBuffer *)buffer, index) ? 1 : 0;
-}
-
 // Shrink a compaction scratch buffer to its first `count` elements in place.
 // Stream compaction [GPU-FILTER] cannot know its output length before running
 // the predicate, so it over-allocates to the source length, fills a prefix,

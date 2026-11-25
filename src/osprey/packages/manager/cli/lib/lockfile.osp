@@ -162,9 +162,9 @@ module Lockfile {
     }
 
     /// Read the text member `key`, then hand it to `next`.
-    fn textField(object, key, next) = Checked::andThen(JsonRead::requiredText(object, key, shapeCode), next)
+    fn textField(object, key, next) = andThen(JsonRead::requiredText(object, key, shapeCode), next)
 
-    fn intField(object, key, next) = Checked::andThen(JsonRead::requiredInt(object, key, shapeCode), next)
+    fn intField(object, key, next) = andThen(JsonRead::requiredInt(object, key, shapeCode), next)
 
     fn readKey(object) = textField(object, "scope", fn(value) => readName(object, value))
 
@@ -184,8 +184,8 @@ module Lockfile {
 
     /// A member `package` key, then `next(object, key)` — the first step every
     /// locked identity shares.
-    fn readKeyed(object, next) = Checked::andThen(JsonRead::requiredObject(object, "package", shapeCode), fn(value) =>
-        Checked::andThen(readKey(value), fn(key) => next(object, key)))
+    fn readKeyed(object, next) = andThen(JsonRead::requiredObject(object, "package", shapeCode), fn(value) =>
+        andThen(readKey(value), fn(key) => next(object, key)))
 
     /// The `epoch` member, then `next(object, key, epoch)`.
     fn readEpoch(object, key, next) = intField(object, "epoch", fn(value) => next(object, key, value))
@@ -197,7 +197,7 @@ module Lockfile {
 
     fn readOrdinal(object, key, epoch) = intField(object, "ordinal", fn(value) => readDigest(object, key, epoch, value))
 
-    fn readDigest(object, key, epoch, ordinal) = Checked::andThen(digestMember(object, "digest"), fn(value) => Success { value: Identity::ReleaseId { key: key, epoch: epoch, ordinal: ordinal, digest: value } })
+    fn readDigest(object, key, epoch, ordinal) = andThen(digestMember(object, "digest"), fn(value) => Success { value: Identity::ReleaseId { key: key, epoch: epoch, ordinal: ordinal, digest: value } })
 
     fn readRequirement(object) = keyedEpoch(object, readReqFloor)
 
@@ -220,22 +220,22 @@ module Lockfile {
     // spelled out by `firstMember`.
     fn edgeOfValue(object) = {
         let m = firstMember(object)
-        Checked::andThen(JsonRead::requiredObject(m.value, "requirement", shapeCode), fn(value) => edgeFromRequirement(m, value))
+        andThen(JsonRead::requiredObject(m.value, "requirement", shapeCode), fn(value) => edgeFromRequirement(m, value))
     }
 
-    fn edgeFromRequirement(m, reqObj) = Checked::andThen(readRequirement(reqObj), fn(value) => readEdgeNamed(m.key, value))
+    fn edgeFromRequirement(m, reqObj) = andThen(readRequirement(reqObj), fn(value) => readEdgeNamed(m.key, value))
 
-    fn edgesFrom(object) = Checked::andThen(JsonRead::requiredItems(object, "dependencies", shapeCode), fn(items) => Checked::collectAll(items, edgeOfValue))
+    fn edgesFrom(object) = andThen(JsonRead::requiredItems(object, "dependencies", shapeCode), fn(items) => Checked::collectAll(items, edgeOfValue))
 
-    fn readRoot(object) = Checked::andThen(digestMember(object, "manifestDigest"), fn(value) => readRootWithDeps(object, value))
+    fn readRoot(object) = andThen(digestMember(object, "manifestDigest"), fn(value) => readRootWithDeps(object, value))
 
-    fn readRootWithDeps(object, digest) = Checked::andThen(edgesFrom(object), fn(value) => Success { value: Root { manifestDigest: digest, dependencies: value } })
+    fn readRootWithDeps(object, digest) = andThen(edgesFrom(object), fn(value) => Success { value: Root { manifestDigest: digest, dependencies: value } })
 
-    fn packageOf(pkg) = Checked::andThen(JsonRead::requiredObject(pkg, "release", shapeCode), fn(value) => packageWithRelease(pkg, readRelease(value)))
+    fn packageOf(pkg) = andThen(JsonRead::requiredObject(pkg, "release", shapeCode), fn(value) => packageWithRelease(pkg, readRelease(value)))
 
-    fn packageWithRelease(pkg, release) = Checked::andThen(release, fn(value) => packageWithDeps(pkg, value))
+    fn packageWithRelease(pkg, release) = andThen(release, fn(value) => packageWithDeps(pkg, value))
 
-    fn packageWithDeps(pkg, release) = Checked::andThen(edgesFrom(pkg), fn(value) => packageWithSurface(pkg, release, value))
+    fn packageWithDeps(pkg, release) = andThen(edgesFrom(pkg), fn(value) => packageWithSurface(pkg, release, value))
 
     fn textOf(item) = match item {
         Json::Str { text } => Success { value: text }
@@ -250,9 +250,9 @@ module Lockfile {
         Error => Error { message: shapeCode }
     }
 
-    fn surfaceOf(pkg) = Checked::andThen(JsonRead::requiredItems(pkg, "surface", shapeCode), fn(value) => Checked::andThen(textsOf(value), fn(value) => canonicalSurface(value)))
+    fn surfaceOf(pkg) = andThen(JsonRead::requiredItems(pkg, "surface", shapeCode), fn(value) => andThen(textsOf(value), fn(value) => canonicalSurface(value)))
 
-    fn packageWithSurface(pkg, release, deps) = Checked::andThen(surfaceOf(pkg), fn(value) => Success { value: Package { release: release, dependencies: deps, surface: value } })
+    fn packageWithSurface(pkg, release, deps) = andThen(surfaceOf(pkg), fn(value) => Success { value: Package { release: release, dependencies: deps, surface: value } })
 
     fn packageKeyText(p: Package) = Names::display(p.release.key)
 
@@ -263,11 +263,11 @@ module Lockfile {
 
     // ---- overrides of a development lock ----
 
-    fn overridePath(object, key) = Checked::andThen(JsonRead::requiredText(object, "path", shapeCode), fn(value) => if value == "" { Error { message: shapeCode } } else { overrideEpoch(object, key, value) })
+    fn overridePath(object, key) = andThen(JsonRead::requiredText(object, "path", shapeCode), fn(value) => if value == "" { Error { message: shapeCode } } else { overrideEpoch(object, key, value) })
 
     fn overrideEpoch(object, key, path) = intField(object, "epoch", fn(value) => if value < 1 { Error { message: shapeCode } } else { overrideDigest(object, key, path, value) })
 
-    fn overrideDigest(object, key, path, epoch) = Checked::andThen(digestMember(object, "manifestDigest"), fn(value) => Success { value: Override { package: key, path: path, epoch: epoch, manifestDigest: value } })
+    fn overrideDigest(object, key, path, epoch) = andThen(digestMember(object, "manifestDigest"), fn(value) => Success { value: Override { package: key, path: path, epoch: epoch, manifestDigest: value } })
 
     fn overrideOf(object) = readKeyed(object, fn(o, key) => overridePath(o, key))
 
@@ -285,13 +285,13 @@ module Lockfile {
 
     fn overridesOrdered(overrides) = Order::strictlyAscending(mapList(overrides, overrideKeyText))
 
-    fn pinsWith(object, pyprojectDigest) = Checked::andThen(digestMember(object, "uvLockDigest"), fn(value) => Success { value: Maybe::some(PythonPins { pyprojectDigest: pyprojectDigest, uvLockDigest: value }) })
+    fn pinsWith(object, pyprojectDigest) = andThen(digestMember(object, "uvLockDigest"), fn(value) => Success { value: Maybe::some(PythonPins { pyprojectDigest: pyprojectDigest, uvLockDigest: value }) })
 
     /// `root.python` is optional: absent means no Python plane; present, it
     /// holds the two well-formed digests.
     fn pythonOf(rootValue) = {
         let value = JsonRead::field(rootValue, "python")
-        if Json::isNull(value) { Success { value: Maybe::none() } } else { Checked::andThen(digestMember(value, "pyprojectDigest"), fn(value) => pinsWith(JsonRead::field(rootValue, "python"), value)) }
+        if Json::isNull(value) { Success { value: Maybe::none() } } else { andThen(digestMember(value, "pyprojectDigest"), fn(value) => pinsWith(JsonRead::field(rootValue, "python"), value)) }
     }
 
     fn finish(packages, root, overrides, python) = if !keysUnique(packages) { Error { message: duplicateCode } }
@@ -308,13 +308,13 @@ module Lockfile {
         Success => decodePackages(root)
     }
 
-    fn decodePackages(root) = Checked::andThen(JsonRead::requiredItems(root, "packages", shapeCode), fn(items) => Checked::andThen(Checked::collectAll(items, packageOf), fn(packages) => decodeRoot(root, packages)))
+    fn decodePackages(root) = andThen(JsonRead::requiredItems(root, "packages", shapeCode), fn(items) => andThen(Checked::collectAll(items, packageOf), fn(packages) => decodeRoot(root, packages)))
 
-    fn decodeRoot(root, packages) = Checked::andThen(JsonRead::requiredObject(root, "root", shapeCode), fn(value) => decodeRootValue(root, packages, value))
+    fn decodeRoot(root, packages) = andThen(JsonRead::requiredObject(root, "root", shapeCode), fn(value) => decodeRootValue(root, packages, value))
 
-    fn decodeRootValue(document, packages, rootValue) = Checked::andThen(readRoot(rootValue), fn(value) => withPython(document, packages, value, rootValue))
+    fn decodeRootValue(document, packages, rootValue) = andThen(readRoot(rootValue), fn(value) => withPython(document, packages, value, rootValue))
 
-    fn withPython(document, packages, root, rootValue) = Checked::andThen(pythonOf(rootValue), fn(value) => withOverrides(document, packages, root, value))
+    fn withPython(document, packages, root, rootValue) = andThen(pythonOf(rootValue), fn(value) => withOverrides(document, packages, root, value))
 
-    fn withOverrides(document, packages, root, python) = Checked::andThen(overridesFrom(document), fn(value) => finish(packages, root, value, python))
+    fn withOverrides(document, packages, root, python) = andThen(overridesFrom(document), fn(value) => finish(packages, root, value, python))
 }

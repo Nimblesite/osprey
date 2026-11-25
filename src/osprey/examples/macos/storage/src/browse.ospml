@@ -4,7 +4,6 @@
 namespace storage
 
 import bank::Json
-import storage::Disk
 
 type Browser =
     platform : string

@@ -16,7 +16,6 @@ import ui::Inputs
 import chromecast::Discovery
 import chromecast::Media
 import chromecast::Player
-import chromecast::Session
 
 (** The interface: the running machine, the only slice the view reads. *)
 type Screen =

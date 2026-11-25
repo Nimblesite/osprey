@@ -2,7 +2,6 @@ namespace registry_tests;
 import registry::Governance
 import registry::GovernanceTransitions
 import registry::Names
-import registry_tests::Fixture
 
 /// Org-bound package identity [PACKAGE-NAMES-NO-SITTING] and
 /// [PACKAGE-OWNERSHIP-MODEL]: the leaf name is never a global resource, the

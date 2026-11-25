@@ -6,7 +6,17 @@ from fastapi import Results as B
 __all__ = ['decode', 'path_of', 'query_of']
 
 def path_of(url):
-    """Return the raw path preceding the query separator."""
+    """Return the raw path preceding the query separator.
+
+    # Examples
+    ```osprey
+    from fastapi import Urls
+    print(f"[{Urls.path_of('/items?tag=a&tag=b')}] [{Urls.path_of('/plain')}]")
+    ```
+    ```output
+    [/items] [/plain]
+    ```
+    """
     match indexOf(url, '?'):
         case Success(value=index):
             return take(url, index)
@@ -14,7 +24,17 @@ def path_of(url):
             return url
 
 def query_of(url):
-    """Return the raw query following the first query separator, or an empty string."""
+    """Return the raw query following the first query separator, or an empty string.
+
+    # Examples
+    ```osprey
+    from fastapi import Urls
+    print(f"[{Urls.query_of('/items?tag=a')}] [{Urls.query_of('/items')}]")
+    ```
+    ```output
+    [tag=a] []
+    ```
+    """
     return drop(drop(url, len(path_of(url))), 1)
 
 def hex_byte(text):
@@ -90,7 +110,17 @@ def literal_piece(text, plus):
     return Success(value=piece(value, drop(text, 1)))
 
 def decode(text, plus):
-    """Decode UTF-8 percent escapes and optional form-style plus; reject unrepresentable NUL."""
+    """Decode UTF-8 percent escapes and optional form-style plus; reject unrepresentable NUL.
+
+    # Examples
+    ```osprey
+    from fastapi import Urls
+    print(f"[{Urls.decode('a%20b+c%2Cd', True)}] [{Urls.decode('%C3%A9', True)}] [{Urls.decode('%A', True)}] [{Urls.decode('', True)}] [{Urls.decode('%00', True)}]")
+    ```
+    ```output
+    [Success(a b c,d)] [Success(é)] [Success(%A)] [Success()] [Error(NUL is not representable in the native HTTP string boundary)]
+    ```
+    """
     if text == '':
         return Success(value='')
     else:

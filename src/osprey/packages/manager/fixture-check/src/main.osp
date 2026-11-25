@@ -2,7 +2,6 @@ namespace registry_fixture_check;
 import registry::Policy
 import registry_host::Host
 import registry_host::Native
-import registry_fixture_check::Audit
 
 /// The fail-fast stage of `make -C src/osprey/packages registry-test`: every fixture and every
 /// registry source is audited before any suite runs. Walks the trees once

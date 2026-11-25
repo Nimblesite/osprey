@@ -1,7 +1,15 @@
 // #211: mapGet and listGet return values, never raw storage words.
 
-let ms = mapSet(Map(), "k", "he" + "ap")
-print("map string  -> ${mapGet(ms, "k")}")
+/// [MEM-OWNERSHIP-STATIC-SHARING] The absent removal keeps the managed value
+/// usable through the next successful removal and lookup.
+fn afterRemovals() = {
+    /// These distinct keys share a 32-bit FNV hash. Replace one collision entry.
+    let entries = mapSet(mapSet(Map(), "keyktfa", "first"), "key51wu", "temporary")
+    let populated = mapSet(entries, "keyktfa", "he" + "ap")
+    mapRemove(mapRemove(populated, "absent"), "key51wu")
+}
+let ms = afterRemovals()
+print("map string  -> ${mapGet(ms, "keyktfa")}")
 let mf = mapSet(Map(), "k", 1.5)
 print("map float   -> ${mapGet(mf, "k")}")
 let mb = mapSet(Map(), "k", true)
@@ -9,5 +17,4 @@ print("map bool    -> ${mapGet(mb, "k")}")
 let mi = mapSet(Map(), "k", 42)
 print("map int     -> ${mapGet(mi, "k")}")
 
-print("list string -> ${listGet(listAppend(List(), "he" + "ap"), 0) ?: "missing"}")
-print("list float  -> ${listGet(listAppend(List(), 1.5), 0) ?: 0.0}")
+print("list string -> ${listGet(listAppend(List(), "he" + "ap"), 0) ?: "missing"}\nlist float  -> ${listGet(listAppend(List(), 1.5), 0) ?: 0.0}")

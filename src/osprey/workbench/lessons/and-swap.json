@@ -5,7 +5,9 @@
   "summary": "Build a complete proof that p and q give q and p by assuming, taking apart, rebuilding, and finishing.",
   "stage": 2,
   "minutes": 7,
-  "after": ["what-is-a-solver"],
+  "after": [
+    "what-is-a-solver"
+  ],
   "blocks": [
     {
       "kind": "prose",
@@ -20,7 +22,7 @@
     },
     {
       "kind": "prose",
-      "text": "Assume h : p ∧ q. changes the goal to q ∧ p and records h as evidence. By cases on h, as hp and hq. replaces that evidence with hp : p and hq : q.\n\nIt suffices to show q and p. then opens two goals, q first and p second. The goals share the available hypotheses, but each needs its own closing step. From hq. closes q. From hp. closes p."
+      "text": "Assuming the conjunction p ∧ q leaves q ∧ p to prove, with the assumption h : p ∧ q as evidence. Taking h apart replaces it with hp : p and hq : q.\n\nSplitting the goal q ∧ p opens two goals, q first and p second. The goals share the available hypotheses, but each needs its own closing step: hq closes q and hp closes p."
     },
     {
       "kind": "formula",
@@ -29,55 +31,17 @@
     {
       "kind": "challenge",
       "challenge": {
-        "kind": "prove",
-        "id": "prove-and-swap",
-        "prompt": "Write the full proof that the two sides of a conjunction can change places.",
-        "statement": "Theorem and_swap. For all p q, p ∧ q → q ∧ p.",
-        "given": [],
-        "solution": [
-          "Assume h : p ∧ q.",
-          "By cases on h, as hp and hq.",
-          "It suffices to show q and p.",
-          "From hq.",
-          "From hp."
-        ],
-        "hints": [
-          "Assume the conjunction and take it apart with By cases.",
-          "After splitting the goal, use hq before hp."
-        ]
-      }
-    },
-    {
-      "kind": "challenge",
-      "challenge": {
         "kind": "state",
         "id": "state-swapped-goal",
         "prompt": "Write the conclusion with q on the left and p on the right. That exact order matters to the kernel here.",
-        "variables": ["p", "q"],
+        "variables": [
+          "p",
+          "q"
+        ],
         "expected": "q ∧ p",
         "hints": [
           "The conclusion is a conjunction.",
           "Begin with q, then ∧, then p."
-        ]
-      }
-    },
-    {
-      "kind": "challenge",
-      "challenge": {
-        "kind": "judge",
-        "id": "judge-wrong-order",
-        "prompt": "The two closing steps have changed places. Decide whether the proof still checks.",
-        "statement": "Theorem wrong_order. For all p q, p ∧ q → q ∧ p.",
-        "steps": [
-          "Assume h : p ∧ q.",
-          "By cases on h, as hp and hq.",
-          "It suffices to show q and p.",
-          "From hp.",
-          "From hq."
-        ],
-        "hints": [
-          "The first goal after the split is q.",
-          "hp proves p, so compare it carefully with that goal."
         ]
       }
     }

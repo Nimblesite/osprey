@@ -5,8 +5,6 @@ import mobile::App
 import mobile::Markdown
 import mobile::View
 import mobile::Ui
-import inboxtests::Support
-import inboxtests::TriageSupport
 
 module MarkdownSupport
     export nodes source = Json::arr (Markdown::render source)

@@ -59,7 +59,6 @@ typedef enum {
 /* Opaque handles. */
 typedef struct OspreyList OspreyList;
 typedef struct OspreyListBuilder OspreyListBuilder;
-typedef struct OspreyListIter OspreyListIter;
 
 typedef struct OspreyMap OspreyMap;
 typedef struct OspreyMapBuilder OspreyMapBuilder;
@@ -91,6 +90,7 @@ OspreyList *osprey_list_prepend_of(OspreyList *l, int64_t v, int elem_managed);
 OspreyList *osprey_list_prepend(OspreyList *l, int64_t v);
 OspreyList *osprey_list_concat(OspreyList *a, OspreyList *b);
 OspreyList *osprey_list_drop(OspreyList *l, int64_t n);
+OspreyList *osprey_list_view(OspreyList *l, int64_t n);
 OspreyList *osprey_list_reverse(OspreyList *l);
 /* Stable ascending sort of a List<int> or List<string> [BUILTIN-LIST-SORT].
    Codegen rejects every other element type before this can be reached. */
@@ -101,14 +101,9 @@ OspreyListBuilder *osprey_list_builder_new(void);
 /* TRANSFERS `v` and latches the builder's element kind. */
 void osprey_list_builder_push_of(OspreyListBuilder *b, int64_t v,
                                  int elem_managed);
-void osprey_list_builder_push(OspreyListBuilder *b, int64_t v);
 /* Dups `v` first: for elements BORROWED out of another container. */
 void osprey_list_builder_push_borrowed(OspreyListBuilder *b, int64_t v);
 OspreyList *osprey_list_builder_seal(OspreyListBuilder *b);
-
-OspreyListIter *osprey_list_iter_new(OspreyList *l);
-/* Returns 1 if a value was produced (in *out), 0 if exhausted. */
-int osprey_list_iter_next(OspreyListIter *it, int64_t *out);
 
 /* ============ Map API ============ */
 
@@ -134,7 +129,6 @@ OspreyMap *osprey_map_merge(OspreyMap *a, OspreyMap *b);
 OspreyMapBuilder *osprey_map_builder_new(OspreyKeyType key_type);
 void osprey_map_builder_put_of(OspreyMapBuilder *b, int64_t key, int64_t value,
                                int value_managed);
-void osprey_map_builder_put(OspreyMapBuilder *b, int64_t key, int64_t value);
 OspreyMap *osprey_map_builder_seal(OspreyMapBuilder *b);
 
 OspreyMapIter *osprey_map_iter_new(OspreyMap *m);

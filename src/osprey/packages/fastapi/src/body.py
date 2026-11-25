@@ -30,7 +30,31 @@ def body_path():
 
 
 def object_at(document, path, decoder):
-    """Check an object at an explicit validation location."""
+    """Check an object at an explicit validation location.
+
+    # Examples
+    ```osprey
+    from fastapi import Body
+    from fastapi import Models as M
+
+    def verdict(document):
+        outcome = Body.object_at(document, [M.Field(name="body")], lambda value, path: Body.text_at(value, "name", path))
+        match outcome:
+            case Success(value=result):
+                match result:
+                    case M.Valid(value=name):
+                        return f"valid: {name}"
+                    case M.Invalid(issues=issues):
+                        return f"invalid({len(issues)})"
+            case Error():
+                return "error"
+
+    print(f"[{verdict(JsonObject([JsonMember('name', JsonString('ada'))]))}] [{verdict(JsonString('nope'))}]")
+    ```
+    ```output
+    [valid: ada] [invalid(1)]
+    ```
+    """
     match document:
         case JsonObject():
             return decoder(document, path)
@@ -52,12 +76,67 @@ def required_member(document, name, parent, decoder):
 
 
 def nested(document, name, parent, decoder):
-    """Validate a required child object and pass its full location to the decoder."""
+    """Validate a required child object and pass its full location to the decoder.
+
+    # Examples
+    ```osprey
+    from fastapi import Body
+    from fastapi import Models as M
+
+    def verdict(document):
+        outcome = Body.nested(document, "user", [M.Field(name="body")], lambda value, path: Body.text_at(value, "name", path))
+        match outcome:
+            case Success(value=result):
+                match result:
+                    case M.Valid(value=name):
+                        return f"valid: {name}"
+                    case M.Invalid(issues=issues):
+                        return f"invalid({len(issues)})"
+            case Error():
+                return "error"
+
+    user = JsonObject([JsonMember("name", JsonString("grace"))])
+    print(f"[{verdict(JsonObject([JsonMember('user', user)]))}] [{verdict(JsonObject([]))}]")
+    ```
+    ```output
+    [valid: grace] [invalid(1)]
+    ```
+    """
     return required_member(document, name, parent, lambda field, path: object_at(field, path, decoder))
 
 
 def text_at(document, name, parent):
-    """Validate a required string at a nested model location."""
+    """Validate a required string at a nested model location.
+
+    # Examples
+    ```osprey
+    from fastapi import Body
+    from fastapi import Models as M
+
+    def verdict(document):
+        outcome = Body.text_at(document, "name", [M.Field(name="body"), M.Field(name="user")])
+        match outcome:
+            case Success(value=result):
+                match result:
+                    case M.Valid(value=name):
+                        return f"valid: {name}"
+                    case M.Invalid(issues=issues):
+                        match listGet(issues, 0):
+                            case Success(value=issue):
+                                return f"invalid: {issue.kind}"
+                            case Error():
+                                return "none"
+            case Error():
+                return "error"
+
+    user = JsonObject([JsonMember("name", JsonString("ada"))])
+    wrong = JsonObject([JsonMember("name", JsonInt(7))])
+    print(f"[{verdict(user)}] [{verdict(wrong)}]")
+    ```
+    ```output
+    [valid: ada] [invalid: string_type]
+    ```
+    """
     return required_member(document, name, parent, string)
 
 
@@ -159,7 +238,27 @@ def media_type(request):
 
 
 def bind_binary(request, media_types, max_bytes, endpoint):
-    """Pass a bounded nonempty raw body to the endpoint. [FASTAPI-HTTP-FILES]"""
+    """Pass a bounded nonempty raw body to the endpoint. [FASTAPI-HTTP-FILES]
+
+    # Examples
+    ```osprey
+    from fastapi import Body
+    from fastapi import Models as M
+    from fastapi import Responses
+
+    def shown(request):
+        reply = Body.bind_binary(request, ["image/png"], 16, lambda body: Responses.response(201, f"stored {len(body)}", "text/plain", ""))
+        return f"[{reply.status_code}] [{reply.content}]"
+
+    png = M.Request(method="POST", url="/upload", headers="Content-Type: image/png", body="PNGDATA", path_params={})
+    plain = M.Request(method="POST", url="/upload", headers="Content-Type: text/plain", body="PNGDATA", path_params={})
+    empty = M.Request(method="POST", url="/upload", headers="Content-Type: image/png", body="", path_params={})
+    print(f"{shown(png)} {shown(plain)} {shown(empty)}")
+    ```
+    ```output
+    [201] [stored 7] [415] [{"detail":"Unsupported Media Type"}] [400] [{"detail":"Empty request body"}]
+    ```
+    """
     size = byteLength(request.body)
     if not listContains(media_types, media_type(request)):
         return E.exception_response(E.exception(415, "Unsupported Media Type", ""))
@@ -257,12 +356,68 @@ def json_error_location(position, reason):
 
 
 def array(document, name, decoder):
-    """Validate a body array, supplying each item with its full location."""
+    """Validate a body array, supplying each item with its full location.
+
+    # Examples
+    ```osprey
+    from fastapi import Body
+    from fastapi import Models as M
+
+    def verdict(document):
+        outcome = Body.array(document, "tags", Body.string)
+        match outcome:
+            case Success(value=result):
+                match result:
+                    case M.Valid(value=items):
+                        return f"valid: {toString(items)}"
+                    case M.Invalid(issues=issues):
+                        return f"invalid({len(issues)})"
+            case Error():
+                return "error"
+
+    good = JsonObject([JsonMember("tags", JsonArray([JsonString("a"), JsonString("b")]))])
+    mixed = JsonObject([JsonMember("tags", JsonArray([JsonString("a"), JsonInt(7)]))])
+    print(f"[{verdict(good)}] [{verdict(mixed)}]")
+    ```
+    ```output
+    [valid: ["a", "b"]] [invalid(1)]
+    ```
+    """
     return array_at(document, name, body_path(), decoder)
 
 
 def array_at(document, name, parent, decoder):
-    """Validate an array member at any path, with ordered numeric item locations."""
+    """Validate an array member at any path, with ordered numeric item locations.
+
+    # Examples
+    ```osprey
+    from fastapi import Body
+    from fastapi import Models as M
+
+    def verdict(document):
+        outcome = Body.array_at(document, "tags", [M.Field(name="body"), M.Field(name="user")], Body.string)
+        match outcome:
+            case Success(value=result):
+                match result:
+                    case M.Valid(value=items):
+                        return f"valid: {toString(items)}"
+                    case M.Invalid(issues=issues):
+                        match listGet(issues, 0):
+                            case Success(value=issue):
+                                return f"invalid: {issue.kind}"
+                            case Error():
+                                return "none"
+            case Error():
+                return "error"
+
+    good = JsonObject([JsonMember("tags", JsonArray([JsonString("a"), JsonString("b")]))])
+    mixed = JsonObject([JsonMember("tags", JsonArray([JsonString("a"), JsonInt(7)]))])
+    print(f"[{verdict(good)}] [{verdict(mixed)}]")
+    ```
+    ```output
+    [valid: ["a", "b"]] [invalid: string_type]
+    ```
+    """
     return required_member(document, name, parent, lambda field, path: array_field(field, path, decoder))
 
 
@@ -284,7 +439,31 @@ def array_items(items, path, decoder, index):
 
 
 def string(value, path):
-    """Validate a string without coercion at its full field or item location."""
+    """Validate a string without coercion at its full field or item location.
+
+    # Examples
+    ```osprey
+    from fastapi import Body
+    from fastapi import Models as M
+
+    def verdict(value):
+        outcome = Body.string(value, [M.Field(name="name")])
+        match outcome:
+            case Success(value=result):
+                match result:
+                    case M.Valid(value=text):
+                        return f"valid: {text}"
+                    case M.Invalid(issues=issues):
+                        return f"invalid({len(issues)})"
+            case Error():
+                return "error"
+
+    print(f"[{verdict(JsonString('ada'))}] [{verdict(JsonInt(7))}]")
+    ```
+    ```output
+    [valid: ada] [invalid(1)]
+    ```
+    """
     match value:
         case JsonString(text):
             return Success(value=M.Valid(value=text))

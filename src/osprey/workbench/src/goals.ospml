@@ -1,10 +1,9 @@
 // Implements [WORKBENCH-GOALS]: the hypotheses and goals after each step, and
 // why a step fails, computed in process so the goal pane answers per keystroke.
 // A `Result`'s error channel stores only a message ([TYPE-RECORD-RESULT] phantom `E`),
-// so each outcome carries typed progress, a mismatch, or unsupported wording.
+// so each outcome carries typed progress or a mismatch.
 namespace workbench
 
-import workbench::Formulas
 
 (** A named hypothesis in a goal's context. *)
 type Hypothesis =
@@ -30,10 +29,10 @@ type Comparison =
 (** A mathematical comparison, or an inapplicable operation with no supplied formula. *)
 type Failure = Mismatch Comparison | Inapplicable string
 
-(** Progress, a mathematical mismatch, or unsupported wording with the last understood progress. *)
-type Outcome = Advanced Progress | Stuck Failure | UnsupportedStep string Progress
+(** Progress, or a mathematical mismatch. *)
+type Outcome = Advanced Progress | Stuck Failure
 
-(** The last understood context and its step count, retained even when a later sentence is refused or unsupported. *)
+(** The last understood context and its step count, retained even when a later step is refused. *)
 type GoalTrace =
     traceProgress : Progress
     traceOutcome : Outcome
@@ -71,7 +70,7 @@ module Goals
     (** The progress after every step in order, stopping at the first mismatch. *)
     export run (statement, steps) = (trace (statement, steps)).traceOutcome
 
-    (** The last understood goals and exact number of applied steps; a refused sentence never advances either. *)
+    (** The last understood goals and exact number of applied steps; a refused step never advances either. *)
     export trace (statement, steps) = foldList (steps, GoalTrace(traceProgress = start statement, traceOutcome = Advanced (start statement), traceAccepted = 0), \(walk, step) => traced (walk, step))
 
     traced (walk, step) = match walk.traceOutcome
@@ -84,7 +83,6 @@ module Goals
 
     finished (progress, step) = match step
         Done => Advanced progress
-        Unknown text => UnsupportedStep text progress
         _ => stopped "there is nothing left to prove"
 
     stuck (expected, found, reason) = Stuck (Mismatch (Comparison(expected = expected, found = found, reason = reason)))
@@ -106,7 +104,6 @@ module Goals
         Apply name => applied (progress, goal, rest, name)
         Absurd name other => absurd (progress, goal, rest, { name = name, other = other })
         Done => stopped ("the goal `" + Formulas::show goal.target + "` is still open")
-        Unknown text => UnsupportedStep text progress
 
     lookup (goal, name) = foldList (goal.hypotheses, Absent, \(found, hypothesis) => matching (found, hypothesis, name))
 
@@ -118,7 +115,7 @@ module Goals
 
     holds (formula, target) = Formulas::equivalent (formula, target)
 
-    // `Assume h : A` on `A → B` adds `h : A`; on `∀ x ...` it introduces `x`, which must be the name.
+    // `Assume h A` on `A → B` adds `h : A`; on `∀ x ...` it introduces `x`, which must be the name.
     // A negated head is read as the implication it is defined to be; the goal itself is never rewritten.
     assumed (progress, goal, rest, hypothesis) = match Formulas::expandNot goal.target
         Imp premise conclusion => introduced (progress, goal, rest, { hypothesis = hypothesis, premise = premise, conclusion = conclusion })
@@ -145,7 +142,7 @@ module Goals
 
     with (hypotheses, name, formula) = listAppend (hypotheses, Hypothesis(name = name, formula = formula))
 
-    // `By cases on h, as a and b.`: a conjunction becomes two hypotheses, a disjunction two goals.
+    // `Cases h [a, b]`: a conjunction becomes two hypotheses, a disjunction two goals.
     split (progress, goal, rest, parts) = match lookup (goal, parts.name)
         Absent => unknown (goal, parts.name)
         Held formula => match length parts.names == 2

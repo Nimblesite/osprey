@@ -1,6 +1,7 @@
 //! Executable documentation is checked through the public CLI.
 //! Implements [DOC-DOCTEST-HARNESS].
 
+use super::api_docs::write_manifest;
 use super::{run_file, run_source, temp_dir, temp_osp};
 
 /// The `--doctests` run exited 0 and reported exactly `tally`.
@@ -117,6 +118,35 @@ fn main() = print("application main must not run")
     assert_doc_tests(&result, "1 passed, 0 failed");
 }
 
+/// A function an example reaches only as a method (`n.twice()`) is still part
+/// of the example's program, chained or nested, beside one it calls directly.
+#[test]
+fn doctests_keep_functions_an_example_reaches_only_by_method_call() {
+    let source = r#"/// `s` written twice.
+/// # Examples
+/// ```osprey
+/// let s = "ab"
+/// print("${s.twice()} ${s.twice().twice()} ${s.shout().twice()} ${twice(s.shout())}")
+/// ```
+/// ```output
+/// abab abababab ab!ab! ab!ab!
+/// ```
+fn twice(s) = s + s
+
+/// `s` with a bang, reached by a method call from inside `twice`'s example.
+/// # Examples
+/// ```osprey
+/// print("${"hi".shout()}")
+/// ```
+/// ```output
+/// hi!
+/// ```
+fn shout(s) = s + "!"
+"#;
+    let result = doc_tests("documentation_methods", source);
+    assert_doc_tests(&result, "2 passed, 0 failed");
+}
+
 #[test]
 fn doctests_include_file_and_module_inner_documentation() {
     let source = r#"//! File documentation.
@@ -161,11 +191,10 @@ fn doctests_preserve_stdout_whitespace_exactly() {
 #[test]
 fn doctests_work_in_mixed_flavor_projects() {
     let root = temp_dir("documentation_project");
-    std::fs::write(
-        root.join("osprey.toml"),
+    write_manifest(
+        &root,
         "[project]\nname = \"doc_project\"\nentry = \"main.osp\"\n",
-    )
-    .expect("manifest");
+    );
     std::fs::write(
         root.join("main.osp"),
         "import support::Labels\nfn main() = print(Labels::label())\n",

@@ -42,23 +42,14 @@ print "=== String Pipeline ===\n"
 
 (** ----- Inspection / search (total, no Result wrap) ----- *)
 raw = "  GET /api/users?name=alice&age=30  "
-print "raw=\"${raw}\" len=${raw |> length}\n\nisEmpty=${raw |> isEmpty}\n"
-print "contains 'GET'=${raw |> contains "GET"}\n"
-print "startsWith '  '=${raw |> startsWith "  "}\n"
-print "endsWith '  '=${raw |> endsWith "  "}\n"
+print "raw=\"${raw}\" len=${raw |> length}\n\nisEmpty=${raw |> isEmpty}\n\ncontains 'GET'=${raw |> contains "GET"}\n\nstartsWith '  '=${raw |> startsWith "  "}\n\nendsWith '  '=${raw |> endsWith "  "}\n"
 
 // pipe == UFCS == direct
-print "len pipe=${raw |> length}  ufcs=${length raw}  direct=${length raw}\n"
-print "ctns pipe=${raw |> contains "GET"}  ufcs=${contains raw "GET"}  direct=${contains raw "GET"}\n"
+print "len pipe=${raw |> length}  ufcs=${length raw}  direct=${length raw}\n\nctns pipe=${raw |> contains "GET"}  ufcs=${contains raw "GET"}  direct=${contains raw "GET"}\n"
 
 (** ----- Transformation chain via pipe ----- *)
 normalized = raw |> trim |> toLowerCase
-print "normalized=\"${normalized}\"\n"
-print "isGetRequest=${normalized |> startsWith "get "}\n"
-print "upper=\"${toUpperCase "hello"}\"\n"
-print "trimStart=\"${trimStart "  hi  "}\"\n"
-print "trimEnd=\"${trimEnd "  hi  "}\"\n"
-print "join=\"${join ["a", "b", "c"] "-"}\"\n"
+print "normalized=\"${normalized}\"\n\nisGetRequest=${normalized |> startsWith "get "}\n\nupper=\"${toUpperCase "hello"}\"\n\ntrimStart=\"${trimStart "  hi  "}\"\n\ntrimEnd=\"${trimEnd "  hi  "}\"\n\njoin=\"${join ["a", "b", "c"] "-"}\"\n"
 
 // UFCS chain
 print "chain=\"${take (toLowerCase (trim raw)) 5}\"\n"
@@ -87,8 +78,7 @@ match padEnd "42" 5 "0"
 
 (** ----- take/drop/reverse (UFCS form) ----- *)
 hello = "hello"
-print "take ufcs=\"${take hello 3}\"\n\ndrop ufcs=\"${drop hello 3}\"\n"
-print "reverse=\"${reverse "abc"}\"\n"
+print "take ufcs=\"${take hello 3}\"\n\ndrop ufcs=\"${drop hello 3}\"\n\nreverse=\"${reverse "abc"}\"\n"
 
 // ----- Parsing -----
 match parseInt "123"
@@ -113,12 +103,7 @@ match split "anything" ""
     Error _message => print "split empty rejected\n"
 
 // ----- HTTP-routing via startsWith + pattern matching -----
-print "${route ("GET", "/health")}\n"
-print "${route ("GET", "/api/users/42")}\n"
-print "${route ("GET", "/api/orders")}\n"
-print "${route ("POST", "/api/users")}\n"
-print "${route ("GET", "/random")}\n"
-print "${route ("DELETE", "/anything")}\n"
+print "${route ("GET", "/health")}\n\n${route ("GET", "/api/users/42")}\n\n${route ("GET", "/api/orders")}\n\n${route ("POST", "/api/users")}\n\n${route ("GET", "/random")}\n\n${route ("DELETE", "/anything")}\n"
 
 print "=== Pipeline Complete ===\n"
 

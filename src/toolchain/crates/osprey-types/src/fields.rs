@@ -44,6 +44,15 @@ fn parse_obligation(name: &str) -> Option<(bool, &str, &str)> {
     Some((write, site, field))
 }
 
+/// Whether field resolution can ever solve the obligation `name`: a method,
+/// index or field relation. Every other obligation is an operator's.
+fn resolvable(name: &str) -> bool {
+    name.starts_with(crate::methods::OBLIGATION)
+        || name == INDEX_OBLIGATION
+        || name.starts_with(FIELD_OBLIGATION)
+        || name.starts_with(FIELD_WRITE)
+}
+
 impl Checker {
     pub(crate) fn take_builtin_uses(&mut self) -> Vec<(String, Type)> {
         self.field_uses_prefix = None;
@@ -73,28 +82,41 @@ impl Checker {
             .map_or(0, |(_, count)| count)
     }
 
+    /// Try every relation after the checked prefix. The operator obligations
+    /// before the first relation stay where they are, unvisited: nothing here
+    /// can solve them, and a large program holds far more of them.
     fn resolve_field_suffix(&mut self, checked: usize) -> bool {
         self.field_uses_prefix = None;
-        let uses = if checked == 0 {
+        let start = self
+            .builtin_uses
+            .iter()
+            .skip(checked)
+            .position(|(name, _)| resolvable(name))
+            .map_or(self.builtin_uses.len(), |at| checked + at);
+        let uses = if start == 0 {
             std::mem::take(&mut self.builtin_uses)
         } else {
-            self.builtin_uses.split_off(checked)
+            self.builtin_uses.split_off(start)
         };
         let mut progressed = false;
         for (name, ty) in uses {
-            #[cfg(test)]
-            FIELD_VISITS.with(|visits| visits.set(visits.get() + 1));
-            let solved = self.resolve_method_use(&name, &ty)
-                || (name == INDEX_OBLIGATION && self.resolve_index_use(&ty))
-                || parse_obligation(&name).is_some_and(|(write, site, field)| {
-                    self.resolve_field_use(write, site, field, &ty)
-                });
+            let solved = resolvable(&name) && self.resolve_relation(&name, &ty);
             progressed |= solved;
             if !solved {
                 self.builtin_uses.push((name, ty));
             }
         }
         progressed
+    }
+
+    /// Solve one method, index or field relation once its receiver is known.
+    fn resolve_relation(&mut self, name: &str, ty: &Type) -> bool {
+        #[cfg(test)]
+        FIELD_VISITS.with(|visits| visits.set(visits.get() + 1));
+        self.resolve_method_use(name, ty)
+            || (name == INDEX_OBLIGATION && self.resolve_index_use(ty))
+            || parse_obligation(name)
+                .is_some_and(|(write, site, field)| self.resolve_field_use(write, site, field, ty))
     }
 
     /// The fallback [TYPE-FIELD-ACCESS-NON-RECORD] allows for an untracked

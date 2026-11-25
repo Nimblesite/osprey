@@ -18,6 +18,11 @@ module Kinds
         Modal => true
         _ => false
 
+    (** Whether the module is a MIDI note source: no inputs, one note outlet, no audio. *)
+    export noteSource processor = match processor
+        MidiNotes | FormulaNotes _ => true
+        _ => false
+
     (** The stable kind identifier of a processor. *)
     export kind processor = match processor
         SamplePlayer _ => "synth.sample"
@@ -42,6 +47,7 @@ module Kinds
         Lfo => "synth.lfo"
         ModulatedGain => "synth.modulated-gain"
         MidiNotes => "synth.midi-notes"
+        FormulaNotes _ => "synth.formula-notes"
         Stereo => "synth.stereo"
         Panner => "synth.panner"
         Split => "synth.split"

@@ -8,8 +8,6 @@
 
 namespace todo;
 
-import todo::TodoHarness
-import todo::TodoProbe
 
 /// The seeded stores every matrix crosses: empty, one row each, the usual
 /// pair, and a wider store whose ids and titles are out of order.
@@ -17,12 +15,8 @@ fn mxStores() = [
     { lists: [], items: [] },
     { lists: [TodoHarness::seedList(1, "Shopping", "#78909C")], items: [TodoHarness::seedItem(1, 1, "Milk", false)] },
     {
-        lists: [TodoHarness::seedList(1, "Shopping", "#78909C"), TodoHarness::seedList(2, "Banking", "#AB47BC")],
-        items: [
-            TodoHarness::seedItem(1, 1, "Milk", false),
-            TodoHarness::seedItem(2, 1, "Bread", false),
-            TodoHarness::seedItem(3, 2, "Tax", false)
-        ]
+        lists: authzTwoLists(),
+        items: authzThreeItems()
     },
     {
         lists: [
@@ -51,25 +45,25 @@ fn mxStores() = [
 fn mxRequests() = [
     GetTodos,
     PurgeTodoLists,
-    CreateList { list: NewList { title: "Travel", colour: "" } },
-    CreateList { list: NewList { title: "", colour: "#nope" } },
-    CreateList { list: NewList { title: "Shopping", colour: "#4CAF50" } },
-    UpdateList { edit: ListEdit { id: 1, title: "Renamed", colour: "" } },
-    UpdateList { edit: ListEdit { id: 1, title: "Shopping", colour: "#E05C4D" } },
-    UpdateList { edit: ListEdit { id: 7, title: "Ghost", colour: "" } },
-    DeleteList { id: 1 },
-    DeleteList { id: 7 },
-    CreateItem { item: NewItem { listId: 1, title: "Eggs" } },
-    CreateItem { item: NewItem { listId: 1, title: "" } },
-    UpdateItem { edit: ItemEdit { id: 1, title: "Milk", done: true } },
-    UpdateItem { edit: ItemEdit { id: 1, title: "Milk", done: false } },
-    UpdateItem { edit: ItemEdit { id: 7, title: "Ghost", done: true } },
-    UpdateItemDetail { detail: ItemDetail { id: 1, listId: 1, priority: 2, note: "soon" } },
-    UpdateItemDetail { detail: ItemDetail { id: 7, listId: 1, priority: 9, note: "" } },
-    DeleteItem { id: 1 },
-    DeleteItem { id: 7 },
-    ItemsWithPagination { query: ItemQuery { listId: 1, pageNumber: 1, pageSize: 10 } },
-    ItemsWithPagination { query: ItemQuery { listId: 9, pageNumber: 3, pageSize: 2 } }
+    newList("Travel", ""),
+    newList("", "#nope"),
+    newList("Shopping", "#4CAF50"),
+    editList(1, "Renamed", ""),
+    editList(1, "Shopping", "#E05C4D"),
+    editList(7, "Ghost", ""),
+    dropList(1),
+    dropList(7),
+    newItem(1, "Eggs"),
+    newItem(1, ""),
+    editItem(1, "Milk", true),
+    editItem(1, "Milk", false),
+    editItem(7, "Ghost", true),
+    itemDetail(1, 1, 2, "soon"),
+    itemDetail(7, 1, 9, ""),
+    dropItem(1),
+    dropItem(7),
+    itemQuery(1, 1, 10),
+    itemQuery(9, 3, 2)
 ]
 
 /// What an independent run of `ask` answers for `principal` over `store`.
@@ -137,19 +131,19 @@ fn mxAuthzChecks(store, ask) = foldList([TodoHarness::anonymous(), TodoHarness::
 
 /// A list title and colour as each candidate fix rewrites them.
 fn mxListFixes(title, colour) = [
-    CreateList { list: NewList { title: title, colour: colour } },
-    CreateList { list: NewList { title: trim(title), colour: colour } },
-    CreateList { list: NewList { title: take(title, 200), colour: colour } },
-    CreateList { list: NewList { title: title, colour: "" } }
+    newList(title, colour),
+    newList(trim(title), colour),
+    newList(take(title, 200), colour),
+    newList(title, "")
 ]
 
 /// An item title as each candidate fix rewrites it; the colour fix leaves an
 /// item as sent.
 fn mxItemFixes(title) = [
-    CreateItem { item: NewItem { listId: 1, title: title } },
-    CreateItem { item: NewItem { listId: 1, title: trim(title) } },
-    CreateItem { item: NewItem { listId: 1, title: take(title, 200) } },
-    CreateItem { item: NewItem { listId: 1, title: title } }
+    newItem(1, title),
+    newItem(1, trim(title)),
+    newItem(1, take(title, 200)),
+    newItem(1, title)
 ]
 
 /// The probe of `question` over `store`: four branches, six readings, every
@@ -190,7 +184,7 @@ fn mxColours() = ["", "   ", "#4CAF50", "#AB47BC", "#78909C", "#ab47bc", "#HotPi
 /// One store of `count` items in list 1, titled out of order, beside three
 /// items of list 2.
 fn mxPagedStore(count) = {
-    lists: [TodoHarness::seedList(1, "Shopping", "#78909C"), TodoHarness::seedList(2, "Banking", "#AB47BC")],
+    lists: authzTwoLists(),
     items: listConcat(
         mapList(range(0, count) |> toList, fn(i) =>
             TodoHarness::seedItem(satAdd(i, 1), 1, "T${toString(satMul(satSub(count, i), 7) % 101)}-${toString(i)}", i % 3 == 0)),
@@ -199,10 +193,10 @@ fn mxPagedStore(count) = {
 
 /// The page query each plan branch reads, in `shapes()` order.
 fn mxShaped(listId) = [
-    ItemsWithPagination { query: ItemQuery { listId: listId, pageNumber: 1, pageSize: 5 } },
-    ItemsWithPagination { query: ItemQuery { listId: listId, pageNumber: 2, pageSize: 5 } },
-    ItemsWithPagination { query: ItemQuery { listId: listId, pageNumber: 1, pageSize: 10 } },
-    ItemsWithPagination { query: ItemQuery { listId: listId, pageNumber: 1, pageSize: 50 } }
+    itemQuery(listId, 1, 5),
+    itemQuery(listId, 2, 5),
+    itemQuery(listId, 1, 10),
+    itemQuery(listId, 1, 50)
 ]
 
 /// The plan probe of `listId` over `store`, against an independent query per shape.

@@ -105,7 +105,10 @@ fn alias_slot(cg: &mut Codegen, name: &str) -> Option<String> {
     }
     let mut value = cg.lookup(name)?;
     value.inferred_type = value.inferred_type.or(function);
-    Some(alias_value(cg, name, value))
+    let alias = fresh_alias(cg, name, function_type(&value));
+    crate::arc::bind_alias(cg, &alias, name, &value);
+    cg.bind(alias.clone(), value);
+    Some(alias)
 }
 
 /// Bind `value` under a fresh alias that owns it, so the capture survives the

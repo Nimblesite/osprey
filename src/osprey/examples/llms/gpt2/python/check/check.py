@@ -50,8 +50,4 @@ def run():
 
 def main():
     backend = input()
-    match Backends.strictly(lambda: Backends.under(backend, run)):
-        case Success(value=value):
-            return value
-        case Error(message=message):
-            return print(f"check stopped: {message}")
+    return Backends.reported(Backends.strictly(lambda: Backends.under(backend, run)), "check")

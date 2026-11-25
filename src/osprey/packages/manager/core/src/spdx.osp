@@ -1,5 +1,4 @@
 namespace registry;
-import registry::Bytes
 
 /// SPDX license expressions as `[package].license` accepts them: license
 /// identifiers (`Apache-2.0`, `MIT`, `GPL-3.0-or-later`, `LicenseRef-x`) with

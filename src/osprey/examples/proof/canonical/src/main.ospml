@@ -1,0 +1,63 @@
+namespace proof
+
+import proof::Export
+import proof
+    Single Group Decl Sort BVar Const App Lam Pi Let Proj NatLit Zero Succ Max IMax Param
+    Axiom Definition Theorem Opaque
+
+// The exact Lean declaration trees `NumericCanonical` pins ([PROOF-KERNEL], plan 0041).
+// `args` are an export file and the names to print; each named single declaration of the
+// export is printed as the `Decl(...)` source the guard compares against. Binders print as
+// "x": the guard compares terms structurally, names aside.
+
+(** A level as Osprey source. *)
+level l = match l
+    Zero => "Zero"
+    Succ inner => "Succ (${level inner})"
+    Max a b => "Max (${level a}) (${level b})"
+    IMax a b => "IMax (${level a}) (${level b})"
+    Param name => "Param \"${name}\""
+
+quoted names = "[${join (mapList (names, \n => "\"${n}\""), ", ")}]"
+
+levels ls = "[${join (mapList (ls, level), ", ")}]"
+
+(** A term as Osprey source. *)
+term t = match t
+    Sort l => "Sort (${level l})"
+    BVar index => "BVar ${toString index}"
+    Const name ls => "Const \"${name}\" ${levels ls}"
+    App f a => "App (${term f}) (${term a})"
+    Lam _ ty body => "Lam \"x\" (${term ty}) (${term body})"
+    Pi _ ty body => "Pi \"x\" (${term ty}) (${term body})"
+    Let _ ty value body => "Let \"x\" (${term ty}) (${term value}) (${term body})"
+    Proj family index target => "Proj \"${family}\" ${toString index} (${term target})"
+    NatLit value => "NatLit (Natural(naturalLimbs = [${join (mapList (value.naturalLimbs, toString), ", ")}]))"
+
+body b = match b
+    Definition value => "Definition (${term value})"
+    Theorem value => "Theorem (${term value})"
+    Opaque value => "Opaque (${term value})"
+    Axiom => "Axiom"
+    _ => "Unsupported"
+
+decl d = "Decl(name = \"${d.name}\", params = ${quoted d.params}, ty = ${term d.ty}, body = ${body d.body})"
+
+(** The named single declarations of `items`, in the order `names` lists them. *)
+printed (items, names) = print (join (mapList (names, \name => foundDecl (items, name)), "\n"))
+
+foundDecl (items, name) = match filterList (items, \item => isNamed (item, name))
+    [Single d, ..._] => "        ${decl d},"
+    _ => "        // ${name}: not a single declaration of this export"
+
+isNamed (item, name) = match item
+    Single d => d.name == name
+    Group _ => false
+
+main () = match args ()
+    [path, ...names] => match readFile path
+        Success text => match Export::read text
+            Success items => printed (items, names)
+            Error message => print "canonical: ${message}"
+        Error message => print "canonical: ${message}"
+    _ => print "canonical: usage: <export> <name>..."

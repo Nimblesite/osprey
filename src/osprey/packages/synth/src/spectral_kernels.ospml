@@ -1,7 +1,6 @@
 // [SYNTH-ADVANCED-SPECTRAL-MODULES] Keep the spectral stream in the graph between samples.
 namespace synth
 
-import synth::RenderInputs
 
 (** The graph adapter retains each channel’s FFT state across render blocks. *)
 module SpectralKernels
@@ -38,7 +37,19 @@ module SpectralKernels
 
     configured (rate, size, hop, chosen, mix) = Outcomes::carried (chosen, \kind => SpectralStreams::configure (SpectralConfig(sampleRate = rate, size = size, hop = hop, transform = kind, mix = mix)))
 
-    settings (rate, snapshot, identity, size, hop) = RenderInputs::setting (snapshot, identity, "transform", \selector => RenderInputs::setting (snapshot, identity, "hold", \hold => RenderInputs::setting (snapshot, identity, "low", \low => RenderInputs::setting (snapshot, identity, "high", \high => RenderInputs::setting (snapshot, identity, "shift", \shift => RenderInputs::setting (snapshot, identity, "amount", \amount => RenderInputs::setting (snapshot, identity, "morphMode", \morphMode => RenderInputs::setting (snapshot, identity, "mix", \mix => RenderInputs::setting (snapshot, identity, "semitones", \semitones => RenderInputs::setting (snapshot, identity, "cents", \cents => RenderInputs::setting (snapshot, identity, "keepFormants", \keep => configured (rate, size, hop, transform (selector, hold, low, high, shift, amount, morphMode, { semitones = semitones, cents = cents, keep = keep }), mix))))))))))))
+    settings (rate, snapshot, identity, size, hop) =
+        use selector <- RenderInputs::setting (snapshot, identity, "transform")
+        use hold <- RenderInputs::setting (snapshot, identity, "hold")
+        use low <- RenderInputs::setting (snapshot, identity, "low")
+        use high <- RenderInputs::setting (snapshot, identity, "high")
+        use shift <- RenderInputs::setting (snapshot, identity, "shift")
+        use amount <- RenderInputs::setting (snapshot, identity, "amount")
+        use morphMode <- RenderInputs::setting (snapshot, identity, "morphMode")
+        use mix <- RenderInputs::setting (snapshot, identity, "mix")
+        use semitones <- RenderInputs::setting (snapshot, identity, "semitones")
+        use cents <- RenderInputs::setting (snapshot, identity, "cents")
+        use keep <- RenderInputs::setting (snapshot, identity, "keepFormants")
+        configured (rate, size, hop, transform (selector, hold, low, high, shift, amount, morphMode, { semitones = semitones, cents = cents, keep = keep }), mix)
 
     (** Resolve fixed FFT parameters once; automated blocks resolve them at each sample. *)
     export prepare (rate, snapshot, identity, processor, fixed) = match processor

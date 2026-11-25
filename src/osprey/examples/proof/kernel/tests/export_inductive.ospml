@@ -1,12 +1,10 @@
 namespace prooftests
 
 import proof::Export
-import proof::Environment
 import proof::Fixtures
 import proof::Terms
 import proof
     Single Group Decl Block Axiom TypeFormer Constructor Recursor Family Eliminator Sort Zero
-import prooftests::Support
 
 (** Reading the `inductive` line of `lean4export` NDJSON 3.1.0
     ([PROOF-EXPORT]): the recorded `AndSwap` export reads as nine items in

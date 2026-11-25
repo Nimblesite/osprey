@@ -7,7 +7,6 @@
 
 namespace fs
 
-import fs::Path
 
 (** Recursive directory walking: every file of a subtree as one flat list. *)
 module Walk

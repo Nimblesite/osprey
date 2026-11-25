@@ -13,6 +13,5 @@
 
 namespace bounded
 
-import bounded::Checker
 
 main () = Checker::run ()

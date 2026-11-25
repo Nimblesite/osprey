@@ -67,6 +67,7 @@ __pycache__/
 .osprey/
 .osprey-debug
 src/toolchain/benchmarks/proof/tools/.lake/
+src/toolchain/benchmarks/proof/mathlib/.lake/
 
 # Generated benchmark exports and downloaded model weights
 src/toolchain/benchmarks/results/hf/

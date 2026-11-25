@@ -1,5 +1,4 @@
 namespace registry;
-import registry::Identity
 
 /// The served form of one folder-registry release and the catalog the server
 /// builds from a registry root. Shared by the server, the client and tests.

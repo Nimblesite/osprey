@@ -86,34 +86,95 @@ asked () = join (mapList (driven.drivenSurface.surfaceAsked, described)) ";"
 
 askedNothing () = expect (asked (), "")
 
+// Every label in `labels` must be rendered on screen.
+showsAll (labels) = forEachList (labels, \label => shows label)
+
+// The movement notes currently shown, comma-joined, must be exactly `expected`.
+showsNotes (expected) = expect (join (mapList (talon::Forms::shown (store ()), \line => line.movementNote)) ",", expected)
+
+// A deposit of `amount` with `note` sent once from the move form, asking for `expectedAsk`.
+depositSent (amount, note, expectedAsk) =
+    typed ("Amount", amount)
+    typed ("Description", note)
+    press "Confirm deposit"
+    expect (asked (), expectedAsk)
+
+// A tap on the deposit confirm button that must ask for nothing.
+depositAskedNothing () =
+    press "Confirm deposit"
+    askedNothing ()
+
+// The transfer form from `from` to `to` for `amount`, confirmed before anything may be asked.
+transferAskedNothing (from, to, amount) =
+    typed ("From account", from)
+    typed ("To account", to)
+    typed ("Amount", amount)
+    press "Confirm transfer"
+    askedNothing ()
+
+// The withdrawal form taken from `from` for `amount`, confirmed.
+withdrawalForm (from, amount) =
+    typed ("Withdraw from", from)
+    typed ("Amount", amount)
+    press "Confirm withdrawal"
+
+// The ledger answered the pending movement under `ticket`, and its notice shows `label`.
+answeredNotice (ticket, status, body, label) =
+    reply (ticket, status, body)
+    shows label
+
+// The listings loaded, then the tab `label` pressed.
+openPage (label) =
+    loaded ()
+    press label
+
+// The control `label` pressed, and the store then shows page `page`.
+pressPage (label, page) =
+    press label
+    expect ((store ()).bankPage, page)
+
 // The keys the picker `label` offers, comma-joined.
 // The choices of the picker labelled `label`; its heading above it shares the words.
 choices (label, expected) = match Lists::find (Views::labelled (driven.drivenSeen, label), \c => c.controlKind == "picker")
     Success c => expect (join c.controlChoices ",", expected)
     Error _ => expect ("no picker labelled ${label}", expected)
 
+// Both listings answered again, as every mutation's reply asks for them.
+reloaded () =
+    expect ((store ()).bankLoads, 2)
+    reply ("accounts", 200, accountsReply ())
+    reply ("activity", 200, activityReply ())
+    expect ((store ()).bankLoads, 0)
+
+// A one-dollar withdrawal the ledger answers with HTTP `code` and `body`, then its notice dismissed.
+refusedWith (code, body, detail) =
+    press "Withdraw"
+    withdrawalForm ("1", "1")
+    answeredNotice ("withdraw", code, body, "Operation refused")
+    expect ((store ()).bankNotice.noticeTone, "danger")
+    expect ((store ()).bankNotice.noticeDetail, detail)
+    expect ((store ()).bankBusy, false)
+    reloaded ()
+    press "Dismiss"
+
+// A movement in `mode` the ledger accepts, showing `heading`.
+movedWith (mode, confirm, ticket, heading) =
+    press mode
+    typed ("Amount", "9.5")
+    typed ("To account", "3")
+    press confirm
+    answeredNotice (ticket, 200, "{}", heading)
+    expect ((store ()).bankNotice.noticeTone, "good")
+    reloaded ()
+
 test ("typed amounts read as whole cents, and anything else as zero", \() =>
-    expect (Amounts::cents "$1,980.25", 198025)
-    expect (Amounts::cents "1980.25", 198025)
-    expect (Amounts::cents "  7.07 ", 707)
-    expect (Amounts::cents "12", 1200)
-    expect (Amounts::cents "0.5", 50)
-    expect (Amounts::cents "1,000", 100000)
-    expect (Amounts::cents "1,000,000.01", 100000001)
-    expect (Amounts::cents "1,2", 0)
-    expect (Amounts::cents "12,34", 0)
-    expect (Amounts::cents "-5", 0)
-    expect (Amounts::cents "+5", 0)
-    expect (Amounts::cents "1.234", 0)
-    expect (Amounts::cents "1.", 0)
-    expect (Amounts::cents "abc", 0)
-    expect (Amounts::cents "", 0))
+    forEachList ([{ text = "$1,980.25", cents = 198025 }, { text = "1980.25", cents = 198025 }, { text = "  7.07 ", cents = 707 }, { text = "12", cents = 1200 }, { text = "0.5", cents = 50 }, { text = "1,000", cents = 100000 }, { text = "1,000,000.01", cents = 100000001 }], \row => expect (Amounts::cents row.text, row.cents))
+    forEachList ([{ text = "1,2", cents = 0 }, { text = "12,34", cents = 0 }, { text = "-5", cents = 0 }, { text = "+5", cents = 0 }, { text = "1.234", cents = 0 }, { text = "1.", cents = 0 }, { text = "abc", cents = 0 }, { text = "9223372036854775807.50", cents = 0 }, { text = "92233720368547758.08", cents = 0 }, { text = "92233720368547758.07", cents = 9223372036854775807 }, { text = "99999999999999999999", cents = 0 }, { text = "", cents = 0 }], \row => expect (Amounts::cents row.text, row.cents)))
 test ("a launch asks for both listings from the demo server and shows progress", \() => bench (\() =>
     launchWith []
     expect (asked (), "GET http://127.0.0.1:18790/api/accounts  accounts;GET http://127.0.0.1:18790/api/activity  activity")
     expect ((store ()).bankLoads, 2)
-    shows "Contacting the ledger"
-    shows "Overview"
+    showsAll (["Contacting the ledger", "Overview"])
     expect (driven.drivenSurface.surfaceProblem, "")))
 test ("the first launch argument names the server", \() => bench (\() =>
     launchWith ["https://bank.example"]
@@ -123,12 +184,7 @@ test ("both listings fill the overview with the total, the accounts and the jour
     expect ((store ()).bankLoads, 0)
     expect (length (store ()).bankAccounts, 3)
     expect (length (store ()).bankJournal, 3)
-    shows "$7,980.25"
-    shows "Across 3 protected client accounts"
-    shows "vintage synthesizer"
-    shows "−$1,850.00"
-    shows "+$4,250.00"
-    shows "$9,999.00"
+    showsAll (["$7,980.25", "Across 3 protected client accounts", "vintage synthesizer", "−$1,850.00", "+$4,250.00", "$9,999.00"])
     wordsIn "Marcus Webb · Account #2"
     expect (Drive::shows (driven, "Contacting the ledger"), false)))
 test ("a failed listing says the bank data is unavailable", \() => bench (\() =>
@@ -142,16 +198,12 @@ test ("a failed listing says the bank data is unavailable", \() => bench (\() =>
     expect ((store ()).bankLoads, 2)))
 test ("the pages move between the five pages and refuse an unknown one", \() => bench (\() =>
     loaded ()
-    press "Activity"
-    expect ((store ()).bankPage, "activity")
-    press "Security"
-    expect ((store ()).bankPage, "security")
+    pressPage ("Activity", "activity")
+    pressPage ("Security", "security")
     shows "Storage isolation"
     expect ((Update::tapped (store (), talon::SeePage(seenPage = "vault"))).stepStore.bankPage, "security")
-    press "Overview"
-    expect ((store ()).bankPage, "overview")
-    press "Full history"
-    expect ((store ()).bankPage, "activity")))
+    pressPage ("Overview", "overview")
+    pressPage ("Full history", "activity")))
 test ("choosing an account opens it in detail and every form starts from it", \() => bench (\() =>
     loaded ()
     picked ("rows", "3")
@@ -159,21 +211,16 @@ test ("choosing an account opens it in detail and every form starts from it", \(
     expect ((store ()).bankChosen, "3")
     expect ((store ()).bankDraft.draftAccount, "3")
     expect ((store ()).bankDraft.draftFrom, "3")
-    shows "$3,600.00"
-    shows "Ready to move"))
+    showsAll (["$3,600.00", "Ready to move"])))
 test ("activity filters by kind and searches notes and owners", \() => bench (\() =>
-    loaded ()
-    press "Activity"
-    shows "All 3"
-    shows "In 1"
-    shows "Out 1"
-    shows "Declined 1"
+    openPage ("Activity")
+    showsAll (["All 3", "In 1", "Out 1", "Declined 1"])
     expect (talon::Parts::counted ((store ()).bankJournal, "refused"), 1)
     press "Declined 1"
     expect ((store ()).bankFilter, "refused")
-    expect (join (mapList (talon::Forms::shown (store ()), \line => line.movementNote)) ",", "vintage synthesizer")
+    showsNotes "vintage synthesizer"
     press "Out 1"
-    expect (join (mapList (talon::Forms::shown (store ()), \line => line.movementNote)) ",", "rent — 12 Fern St")
+    showsNotes "rent — 12 Fern St"
     press "All 3"
     expect ((store ()).bankFilter, "all")
     typed ("Search", "  AMELIA ")
@@ -181,51 +228,36 @@ test ("activity filters by kind and searches notes and owners", \() => bench (\(
     typed ("Search", "nobody")
     shows "No matching activity"))
 test ("a deposit is validated before anything is sent, then sent once", \() => bench (\() =>
-    loaded ()
-    press "Deposit"
+    openPage ("Deposit")
     expect ((store ()).bankMode, "deposit")
     expect ((store ()).bankPage, "move")
     choices ("Deposit to", "1,2,3")
     typed ("Amount", "-4")
-    press "Confirm deposit"
-    askedNothing ()
+    depositAskedNothing ()
     shows "Check the amount"
     press "Dismiss"
     expect ((store ()).bankNotice.noticeHeading, "")
-    typed ("Amount", "$1,250.50")
-    typed ("Description", " bonus ")
-    press "Confirm deposit"
-    expect (asked (), "POST http://127.0.0.1:18790/api/deposit {\"account\":1,\"cents\":125050,\"note\":\"bonus\"} deposit")
+    depositSent ("$1,250.50", " bonus ", "POST http://127.0.0.1:18790/api/deposit {\"account\":1,\"cents\":125050,\"note\":\"bonus\"} deposit")
     expect ((store ()).bankBusy, true)
-    press "Confirm deposit"
-    askedNothing ()
+    depositAskedNothing ()
     reply ("deposit", 200, "{}")
     expect ((store ()).bankBusy, false)
     shows "Deposit complete"
     expect ((store ()).bankLoads, 2)))
 test ("a refused withdrawal reports the ledger's reason and reloads the journal", \() => bench (\() =>
     loaded ()
-    press "Withdraw"
-    expect ((store ()).bankPage, "move")
+    pressPage ("Withdraw", "move")
     expect ((store ()).bankMode, "withdraw")
-    typed ("Withdraw from", "2")
-    typed ("Amount", "99999")
-    press "Confirm withdrawal"
+    withdrawalForm ("2", "99999")
     expect (asked (), "POST http://127.0.0.1:18790/api/withdraw {\"account\":2,\"cents\":9999900,\"note\":\"\"} withdraw")
-    reply ("withdraw", 422, "{\"error\":\"insufficient funds\"}")
-    shows "Operation refused"
+    answeredNotice ("withdraw", 422, "{\"error\":\"insufficient funds\"}", "Operation refused")
     expect ((store ()).bankNotice.noticeDetail, "insufficient funds")
     expect ((store ()).bankLoads, 2)))
 test ("a transfer needs two different accounts and a positive amount", \() => bench (\() =>
-    loaded ()
-    press "Move"
+    openPage ("Move")
     press "Transfer"
     expect ((store ()).bankMode, "transfer")
-    typed ("From account", "2")
-    typed ("To account", "2")
-    typed ("Amount", "10")
-    press "Confirm transfer"
-    askedNothing ()
+    transferAskedNothing ("2", "2", "10")
     shows "Choose two accounts"
     typed ("To account", "3")
     typed ("Amount", "0")
@@ -234,8 +266,7 @@ test ("a transfer needs two different accounts and a positive amount", \() => be
     typed ("Amount", "62.4")
     press "Confirm transfer"
     expect (asked (), "POST http://127.0.0.1:18790/api/transfer {\"from\":2,\"to\":3,\"cents\":6240,\"note\":\"\"} transfer")
-    reply ("transfer", 0, "")
-    shows "Operation refused"
+    answeredNotice ("transfer", 0, "", "Operation refused")
     expect ((store ()).bankNotice.noticeDetail, "The app could not reach the ledger. Check your connection and try again.")))
 test ("the new-account dialog needs an owner, then opens the account and closes", \() => bench (\() =>
     loaded ()
@@ -254,3 +285,60 @@ test ("the new-account dialog needs an owner, then opens the account and closes"
     press "Open account"
     press "Cancel"
     expect ((store ()).bankOpening, false)))
+test ("a pending movement is sent once, and another movement waits for its reply", \() => bench (\() =>
+    openPage ("Deposit")
+    depositSent ("25.00", "One tap", "POST http://127.0.0.1:18790/api/deposit {\"account\":1,\"cents\":2500,\"note\":\"One tap\"} deposit")
+    depositAskedNothing ()
+    press "Transfer"
+    transferAskedNothing ("1", "2", "5")
+    expect ((store ()).bankBusy, true)
+    reply ("deposit", 200, "{}")
+    expect ((store ()).bankBusy, false)
+    press "Confirm transfer"
+    expect (asked (), "POST http://127.0.0.1:18790/api/transfer {\"from\":1,\"to\":2,\"cents\":500,\"note\":\"One tap\"} transfer")))
+test ("every refused or unreachable reply becomes a notice that names its cause", \() => bench (\() =>
+    loaded ()
+    refusedWith (503, "", "The ledger failed with HTTP 503. Try again shortly.")
+    refusedWith (403, "", "The ledger refused the request with HTTP 403.")
+    refusedWith (0, "", "The app could not reach the ledger. Check your connection and try again.")
+    refusedWith (400, "{\"error\":\"Connection timed out\"}", "Connection timed out")
+    expect ((store ()).bankNotice.noticeHeading, "")))
+test ("every successful movement shows its own notice and reloads both listings", \() => bench (\() =>
+    loaded ()
+    movedWith ("Withdraw", "Confirm withdrawal", "withdraw", "Withdrawal complete")
+    movedWith ("Deposit", "Confirm deposit", "deposit", "Deposit complete")
+    movedWith ("Transfer", "Confirm transfer", "transfer", "Transfer complete")))
+test ("notes and owners keep quotes, newlines and Unicode, trimmed and escaped", \() => bench (\() =>
+    openPage ("Deposit")
+    typed ("Deposit to", "2")
+    depositSent (" $1,234.56 ", "  Deposit \"日本語\"\nready  ", "POST http://127.0.0.1:18790/api/deposit {\"account\":2,\"cents\":123456,\"note\":\"Deposit \\\"日本語\\\"\\nready\"} deposit")
+    reply ("deposit", 200, "{}")
+    press "Open account"
+    typed ("Account owner", "  Nora \"N\" Okafor 日本語  ")
+    press "Create account"
+    expect (asked (), "POST http://127.0.0.1:18790/api/accounts {\"name\":\"Nora \\\"N\\\" Okafor 日本語\"} open")))
+test ("filter and search intersect while the journal's totals stay complete", \() => bench (\() =>
+    loaded ()
+    press "Activity"
+    press "In 1"
+    typed ("Search", "Marcus")
+    shows "No matching activity"
+    shows "All 3"
+    shows "Declined 1"
+    typed ("Search", "salary")
+    expect (join (mapList (talon::Forms::shown (store ()), \line => line.movementNote)) ",", "March salary")
+    press "Declined 1"
+    shows "No matching activity"
+    typed ("Search", "")
+    expect (join (mapList (talon::Forms::shown (store ()), \line => line.movementNote)) ",", "vintage synthesizer")))
+test ("an empty ledger draws usable empty states", \() => bench (\() =>
+    launchWith []
+    reply ("accounts", 200, "[]")
+    reply ("activity", 200, "[]")
+    expect ((store ()).bankLoads, 0)
+    shows "$0.00"
+    press "Accounts"
+    shows "No accounts yet"
+    press "Activity"
+    shows "All 0"
+    shows "No matching activity"))

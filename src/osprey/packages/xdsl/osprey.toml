@@ -1,0 +1,14 @@
+[project]
+name = "xdsl"
+source_roots = ["src"]
+python_sources = ["src/lexer.py", "src/ir.py", "src/attrs.py", "src/parser.py"]
+default_namespace = "xdsl"
+
+[package]
+name = "@osprey/xdsl"
+license = "MIT AND Apache-2.0 WITH LLVM-exception"
+summary = "xDSL's MLIR reader: the generic-syntax lexer and parser, and the LLVM dialect's types"
+keywords = ["llvm", "mlir", "python-flavor", "xdsl"]
+
+[test-dependencies]
+"@osprey/testing" = { epoch = 1, min_release = 1 }

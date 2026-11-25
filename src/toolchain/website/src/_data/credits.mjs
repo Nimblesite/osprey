@@ -153,6 +153,11 @@ const PACKAGES = {
     authors: "contributors of Hugging Face Transformers",
     relationship: "port",
   },
+  xdsl: {
+    project: "xDSL",
+    authors: "contributors of xDSL",
+    relationship: "port",
+  },
   graphics: {
     project: "Osprey (typed scene library)",
     authors: "NIMBLESITE PTY LTD, Australia",

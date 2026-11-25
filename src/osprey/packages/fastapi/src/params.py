@@ -29,7 +29,30 @@ def collect_pairs(parts):
             return andThen(query_pair(head), lambda pair: andThen(collect_pairs(tail), lambda pairs: Success(value=listConcat([pair], pairs))))
 
 def query_pairs(request):
-    """Decode ordered query name/value pairs, preserving repeated and empty values."""
+    """Decode ordered query name/value pairs, preserving repeated and empty values.
+
+    # Examples
+    ```osprey
+    from fastapi import Params
+    from fastapi import Models as M
+    def decoded(request):
+        match Params.query_pairs(request):
+            case Success(value=pairs):
+                return f"{len(pairs)} {toString(mapList(pairs, lambda pair: pair.name + '=' + pair.value))}"
+            case Error():
+                return "none"
+
+    def shown():
+        request = M.Request(method="GET", url="/items?tag=a&tag=b&empty=&tag=c", headers="", body="", path_params={})
+        empty = M.Request(method="GET", url="/items", headers="", body="", path_params={})
+        return f"[{decoded(request)}] [{decoded(empty)}]"
+
+    print(shown())
+    ```
+    ```output
+    [4 ["tag=a", "tag=b", "empty=", "tag=c"]] [0 []]
+    ```
+    """
     text = Urls.query_of(request.url)
     if text == '':
         return Success(value=[])
@@ -40,7 +63,19 @@ def nonempty_pairs(text):
     return andThen(split(text, '&'), lambda parts: collect_pairs(filterList(parts, lambda part: part != '')))
 
 def query_all(request, name):
-    """Return every decoded query value for a name, in request order."""
+    """Return every decoded query value for a name, in request order.
+
+    # Examples
+    ```osprey
+    from fastapi import Params
+    from fastapi import Models as M
+    request = M.Request(method="GET", url="/items?tag=a&tag=b&q=&tag=c", headers="", body="", path_params={})
+    print(f"[{toString(Params.query_all(request, 'tag'))}] [{toString(Params.query_all(request, 'q'))}] [{toString(Params.query_all(request, 'nope'))}]")
+    ```
+    ```output
+    [Success(["a", "b", "c"])] [Success([""])] [Success([])]
+    ```
+    """
     return andThen(query_pairs(request), lambda pairs: Success(value=mapList(filterList(pairs, lambda pair: pair.name == name), lambda pair: pair.value)))
 
 def first(values):
@@ -51,7 +86,19 @@ def first(values):
             return Success(value=value)
 
 def query(request, name):
-    """Return the last query value, or a missing/decoding error."""
+    """Return the last query value, or a missing/decoding error.
+
+    # Examples
+    ```osprey
+    from fastapi import Params
+    from fastapi import Models as M
+    request = M.Request(method="GET", url="/items?tag=a&tag=b&empty=", headers="", body="", path_params={})
+    print(f"[{toString(Params.query(request, 'tag'))}] [{toString(Params.query(request, 'empty'))}] [{toString(Params.query(request, 'gone'))}]")
+    ```
+    ```output
+    [Success(b)] [Success()] [Error(Field required)]
+    ```
+    """
     return andThen(query_all(request, name), lambda values: first(listReverse(values)))
 
 def header_line(line):
@@ -66,14 +113,51 @@ def header_values(headers, name):
     return mapList(matching, lambda line: trimStart(field_value(header_line(line), len(name))))
 
 def header_all(request, name):
-    """Read repeated case-insensitive headers, preserving value order."""
+    """Read repeated case-insensitive headers, preserving value order.
+
+    # Examples
+    ```osprey
+    from fastapi import Params
+    from fastapi import Models as M
+    request = M.Request(method="GET", url="/items", headers="X-Token: t1\\r\\nx-token: t2\\r\\n", body="", path_params={})
+    print(f"[{toString(Params.header_all(request, 'x-token'))}] [{toString(Params.header_all(request, 'X-Token'))}] [{toString(Params.header_all(request, 'Accept'))}]")
+    ```
+    ```output
+    [["t1", "t2"]] [["t1", "t2"]] [[]]
+    ```
+    """
     return header_values(request.headers, name)
 
 def header(request, name):
-    """Read the first matching header or report that it is required."""
+    """Read the first matching header or report that it is required.
+
+    # Examples
+    ```osprey
+    from fastapi import Params
+    from fastapi import Models as M
+    request = M.Request(method="GET", url="/items", headers="X-Token: t1\\r\\nx-token: t2\\r\\n", body="", path_params={})
+    print(f"[{toString(Params.header(request, 'X-Token'))}] [{toString(Params.header(request, 'x-token'))}] [{toString(Params.header(request, 'Accept'))}]")
+    ```
+    ```output
+    [Success(t1)] [Success(t1)] [Error(Field required)]
+    ```
+    """
     return first(header_all(request, name))
 
 
 def path(request, name):
-    """Read a decoded named path capture or return an absent-capture error."""
+    """Read a decoded named path capture or return an absent-capture error.
+
+    # Examples
+    ```osprey
+    from fastapi import Params
+    from fastapi import Models as M
+    request = M.Request(method="GET", url="/users/42", headers="", body="", path_params={"id": "42"})
+    stranger = M.Request(method="GET", url="/users/42", headers="", body="", path_params={})
+    print(f"[{toString(Params.path(request, 'id'))}] [{toString(Params.path(stranger, 'id'))}]")
+    ```
+    ```output
+    [Success(42)] [Error(mapGet: key not found)]
+    ```
+    """
     return mapGet(request.path_params, name)

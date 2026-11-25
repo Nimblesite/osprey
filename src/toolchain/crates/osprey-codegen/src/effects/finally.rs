@@ -21,7 +21,7 @@ pub(super) fn guarded(
     let mut names = BTreeSet::new();
     free_idents(cleanup, &mut names);
     let caps = caps_from_names(cg, names);
-    let (env, env_ty) = build_env(cg, &caps);
+    let (env, env_ty) = build_env(cg, &caps, false);
     let name = format!("__handler_finally_{}", cg.next_handler_id());
     emit_cleanup_fn(cg, &name, cleanup, position, &caps, &env_ty)?;
     cg.call_void(

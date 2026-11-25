@@ -103,8 +103,7 @@ opened (label, menu) = tapped (layer, label, "menu", menu)
 // The skins menu opened from `from`, choosing `choice`, which the `skin` knob must record.
 skinChosen (from, choice, skin) =
     tap "Skin: ${from}"
-    tap choice
-    knobText ("skin", skin)
+    tapped (knobText, choice, "skin", skin)
     layer ("menu", "closed")
 
 // Runs of reads that only their literals distinguish are tables: each case names the
@@ -114,6 +113,8 @@ reads (reader, cases) = forEachList (cases, \c => reader (c.at, c.want))
 // One case list of two knob reads: each knob and the value it must read.
 duo (a, x, b, y) = [{ at = a, want = x }, { at = b, want = y }]
 
+// The picks a chooser must take in order: each value gives way to the one after it.
+movesAlong (values) = mapList (toList (range (0, length values - 1)), \i => { from = listGet values i ?: "", to = listGet values (i + 1) ?: "" })
 lettered (texts) = forEachList (texts, \text => expect (letters text, true))
 
 offereds (labels) = forEachList (labels, offered)
@@ -131,8 +132,7 @@ bypassing (label, role) =
 
 // A node's enable press: its switch on, and the health its report must show.
 enabled (label, onRole, healthRole) =
-    tap label
-    flag ("${onRole}On", true)
+    tapped (flag, label, "${onRole}On", true)
     knobText ("${healthRole}Health", "Healthy")
 
 // The knobs a move must leave, then the lettering it must show.
@@ -161,9 +161,7 @@ inspected (label, role, texts, offers) =
 selects (cases) = forEachList (cases, \c => selected (c.label, c.role))
 
 // A history button pressed, then the one knob its press must leave reading `want`.
-reverted (button, reader, knob, want) =
-    tap button
-    reads (reader, [{ at = knob, want = want }])
+reverted (button, reader, knob, want) = tapped (reader, button, knob, want)
 
 // A node selected by label, whose inspector shows no parameters.
 bare name =
@@ -181,14 +179,10 @@ healthy role = health (true, "Healthy", role)
 
 // A switch flipped off and back on, in the two presses its labels name.
 switched (offLabel, onLabel, role) =
-    tap offLabel
-    flag ("${role}On", false)
-    tap onLabel
-    flag ("${role}On", true)
+    tapped (flag, offLabel, "${role}On", false)
+    tapped (flag, onLabel, "${role}On", true)
 
-history (undo, redo) =
-    flag ("canUndo", undo)
-    flag ("canRedo", redo)
+history (undo, redo) = reads (flag, duo ("canUndo", undo, "canRedo", redo))
 
 // A slider's edit kept across skin switches: its knobs, its selection and its undo.
 editedSession () =
@@ -203,8 +197,7 @@ topologyInitial () =
     folders ([{ path = "C:\\Program Files\\Osprey\\app\\signal_flow.machine.json", want = "C:/Program Files/Osprey/app" }, { path = "/opt/osprey/signal_flow.machine.json", want = "/opt/osprey" }, { path = "signal_flow.machine.json", want = "" }])
 
 topologyBypass () =
-    tap "Bypass Gateway"
-    bypassed "process"
+    bypassing ("Bypass Gateway", "process")
     knobsShow (duo ("process", 0.7, "level", 1.0), "1000 r/s")
     offered "Undo"
     tapAt ("Gateway Rate limit", 0.25)
@@ -214,19 +207,17 @@ topologyBypass () =
     expect (Semantics::value (elements (), "Gateway Rate limit"), 0.25)
 
 topologyHistory () =
-    undone = \() => reverted ("Undo", knobNumber, "process", 0.7)
-    undone ()
+    reverted ("Undo", knobNumber, "process", 0.7)
     flag ("processOn", false)
     expect (letters "70%", true)
-    undone ()
+    reverted ("Undo", knobNumber, "process", 0.7)
     healthy "process"
     knobNumber ("level", 0.49)
     history (false, true)
     reverted ("Redo", flag, "processOn", false)
     reads (knobNumber, duo ("process", 0.7, "level", 1.0))
     offered "Enable Gateway"
-    tap "Enable Gateway"
-    flag ("processOn", true)
+    tapped (flag, "Enable Gateway", "processOn", true)
     knobNumber ("level", 0.49)
 
 topologySelection () =
@@ -259,9 +250,8 @@ menuChoice () =
     pressed (1400.0, 700.0)
     missing "Topology"
     tap "Skin: Topology"
-    tap "Prism"
-    knobText ("skin", "prism")
-    reads (layer, [{ at = "menu", want = "closed" }, { at = "commands", want = "idle" }])
+    tapped (knobText, "Prism", "skin", "prism")
+    reads (layer, duo ("menu", "closed", "commands", "idle"))
     expect (take (labels ()) 11, "Skin: Prism")
     editedSession ()
     flag ("canRedo", false)
@@ -281,9 +271,9 @@ freshSkin skin =
 // The reads any freshly opened skin must leave: its skin and selection, its idle commands and
 // menu, the knobs it leaves where they were and a history with nothing to undo or redo.
 skinned (skin, knobs) =
-    reads (knobText, [{ at = "skin", want = skin }, { at = "selected", want = "process" }])
+    reads (knobText, duo ("skin", skin, "selected", "process"))
     reads (knobNumber, knobs)
-    reads (layer, [{ at = "commands", want = "idle" }, { at = "menu", want = "closed" }])
+    reads (layer, duo ("commands", "idle", "menu", "closed"))
     history (false, false)
 
 exercise (name, role) =
@@ -333,8 +323,7 @@ prismInspector () =
     restored ("Inspector bypass: Enable Filter", "Filter Cutoff")
     reads (knobNumber, [{ at = "process", want = 0.5 }, { at = "level", want = 0.35 }, { at = "delivered", want = 0.2625 }])
     lettered (["0.6 kHz", "+70%", "-6.0 dB", "-17.7"])
-    tap "Bypass Master"
-    knobText ("outputHealth", "Bypassed")
+    tapped (knobText, "Bypass Master", "outputHealth", "Bypassed")
     knobsShow ([{ at = "delivered", want = 0.0 }], "-24.0")
     reverted ("Undo", flag, "outputOn", true)
     expect (letters "-17.7", true)
@@ -345,19 +334,17 @@ prismInspector () =
 prismInitial () =
     begun "prism"
     expect (labels (), "Skin: Prism|LFO Rate: 1/4|Oscillator Wave: Sine|Bypass LFO|Bypass Oscillator|Bypass Filter|Bypass Master|Bypass Scope|Filter Cutoff|Master Level|Inspector: Bypass Filter|Inspector bypass: Bypass Filter|Inspector: Cutoff|Select LFO|Select Oscillator|Select Filter|Select Master|Select Scope")
-    reads (knobText, [{ at = "rate", want = "1/4" }, { at = "wave", want = "Sine" }])
-    reads (knobNumber, [{ at = "volume", want = 0.75 }, { at = "delivered", want = 0.3675 }])
+    reads (knobText, duo ("rate", "1/4", "wave", "Sine"))
+    reads (knobNumber, duo ("volume", 0.75, "delivered", 0.3675))
     lettered (["1/4", "Sine", "-6.0 dB", "2.5 kHz", "-15.2"])
     layer ("menu", "closed")
 
 // Opens the chooser `prefix` labels with the value `from`, checks its choices lead the tree, picks
 // `to` and checks it took and was recorded.
 chosen (prefix, menu, name, choices, from, to) =
-    tap "${prefix}${from}"
-    layer ("menu", menu)
+    tapped (layer, "${prefix}${from}", "menu", menu)
     expect (take (labels ()) (length choices), choices)
-    tap to
-    layer ("menu", "closed")
+    tapped (layer, to, "menu", "closed")
     knobText (name, to)
     offered "${prefix}${to}"
     expect (letters to, true)
@@ -368,7 +355,7 @@ picks (prefix, menu, name, choices, moves) =
     forEachList (moves, \m => chosen (prefix, menu, name, choices, m.from, m.to))
 
 prismRates () =
-    picks ("LFO Rate: ", "rates", "rate", "1/1|1/2|1/4|1/8|1/16", [{ from = "1/4", to = "1/16" }, { from = "1/16", to = "1/1" }, { from = "1/1", to = "1/8" }])
+    picks ("LFO Rate: ", "rates", "rate", "1/1|1/2|1/4|1/8|1/16", movesAlong ["1/4", "1/16", "1/1", "1/8"])
     reverted ("Undo", knobText, "rate", "1/1")
     offered "LFO Rate: 1/1"
     reverted ("Redo", knobText, "rate", "1/8")
@@ -378,7 +365,7 @@ prismRates () =
     missing "1/16"
 
 prismWaves () =
-    picks ("Oscillator Wave: ", "waves", "wave", "Sine|Triangle|Saw|Square", [{ from = "Sine", to = "Triangle" }, { from = "Triangle", to = "Saw" }, { from = "Saw", to = "Square" }])
+    picks ("Oscillator Wave: ", "waves", "wave", "Sine|Triangle|Saw|Square", movesAlong ["Sine", "Triangle", "Saw", "Square"])
     opened ("Oscillator Wave: Square", "waves")
     opened ("LFO Rate: 1/8", "rates")
     offered "1/2"

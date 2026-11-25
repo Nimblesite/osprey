@@ -9,9 +9,6 @@ import ui::Messages
 import ui::Pick
 import ui::Requests
 import ui::Runtime
-import storage::Disk
-import storage::Measured
-import storage::View
 
 (** Where the person is: the platform whose words and paths apply, their home folder, the open folder and the folders they chose. *)
 type Place =
@@ -180,4 +177,4 @@ module App
     export theme () = ui::Theme(tokens = [token ("accent", "#0F6CBD", "#62ABF5"), token ("good", "#0E7A0D", "#6CCB5F"), token ("caution", "#9D5D00", "#FCE100"), token ("danger", "#C42B1C", "#FF99A4"), token ("canvas", "#FAFAFA", "#202020"), token ("inset", "#F3F3F3", "#272727"), token ("text", "#1A1A1A", "#FFFFFF")], spacing = [4, 8, 12, 16, 24, 32], feedback = 120, settle = 220)
 
     (** Osprey Storage as its boundary runs it: the store drawn with its theme. *)
-    export program () = ui::Program(programInit = initial, programUpdate = update, programRender = regions, programTheme = \_ => theme ())
+    export program () = ui::Surfaces::themed (initial, update, regions, theme ())

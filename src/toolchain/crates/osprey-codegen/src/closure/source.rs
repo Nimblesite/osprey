@@ -117,16 +117,28 @@ fn owned_closure(
 ) -> Result<Value> {
     let caps = closure_captures(cg, definition.parameters, definition.body);
     let key = key.filter(|_| caps.is_empty());
-    let v = match key.as_deref().and_then(|k| cg.fnval_cells.get(k).cloned()) {
-        Some(cell) => Value::new(
-            cg.emit_reg(format!("bitcast {{ i8* }}* {cell} to i8*")),
-            LType::Ptr,
-        ),
-        None => emit_fresh_closure(cg, &caps, definition, key)?,
+    let lends = !caps.is_empty() && crate::arc::lends(cg, definition.position);
+    let shared = key.as_deref().and_then(|k| cg.fnval_cells.get(k).cloned());
+    let v = if let Some(cell) = shared {
+        super::shared_cell(cg, &cell)
+    } else {
+        // A closure passed straight to a checked callee borrows what it
+        // captures [MEM-OWNERSHIP-STATIC-CLOSURES].
+        crate::arc::set_lending(cg, lends);
+        crate::arc::allow_lent_captures(cg);
+        let fresh = emit_fresh_closure(cg, &caps, definition, key);
+        crate::arc::set_lending(cg, false);
+        fresh?
     };
+    // A cell that could not take a capture holds it lent
+    // [MEM-OWNERSHIP-STATIC-CLOSURES].
+    let lends = lends || crate::arc::take_lent_capture(cg);
     // The cell is a fresh +1 producer here; a spawn's cell instead transfers
     // to the fiber runtime (fiber.rs calls `cell_value` directly).
     crate::arc::own(cg, &v);
+    if lends {
+        crate::arc::mark_lent(cg, &v);
+    }
     Ok(v)
 }
 

@@ -25,11 +25,6 @@ module Markdown
     quoteNode content = node "column" "quote" (children (richNode "body" content))
     rule () = node "divider" "rule" ""
 
-    smaller : int -> int -> int
-    smaller a b = match a <= b
-        true => a
-        false => b
-
     // The byte index of `needle`, or the end of `s` when it is absent.
     position s needle = indexOf s needle ?: length s
 
@@ -45,7 +40,7 @@ module Markdown
     export spans text = match length text == 0
         true => ""
         false =>
-            first = smaller (smaller (position text "**") (position text "*")) (smaller (smaller (position text "`") (position text "[")) (underscore text 0))
+            first = min (min (position text "**") (position text "*")) (min (min (position text "`") (position text "[")) (underscore text 0))
             match first >= length text
                 true => plain text
                 false => Json::append (plain (take text first)) (marker (drop text first))

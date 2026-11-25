@@ -67,15 +67,13 @@ module SendEditor
             _ => Runtime::step editor
         _ => Runtime::step editor
 
-    edited (editor, draft, port, value) = match listGet editor.song.tracks editor.track
-        Error _ => Error(message = "Select a track first.")
-        Success track =>
-            identity = ui::Pick::either (draft.editingId >= 0, draft.editingId, satAdd 1 (foldList (track.sends, 0, \(highest, s) => ui::Pick::either (s.sendId > highest, s.sendId, highest))))
-            route = daw::AudioSend(sendId = identity, source = port.portNode, outlet = port.portOutlet, bus = draft.targetBus, level = daw::ArrangeMath::scaled (value, 0.01), enabled = draft.sendActive)
-            routes = match draft.editingId < 0
-                true => listAppend track.sends route
-                false => mapList (track.sends, \s => ui::Pick::either (s.sendId == identity, route, s))
-            daw::Projects::replaced (editor.song, editor.track, track(sends = routes))
+    edited (editor, draft, port, value) = Outcomes::carried (daw::Projects::required (editor.song.tracks, editor.track, "Select a track first."), \track =>
+        identity = ui::Pick::either (draft.editingId >= 0, draft.editingId, satAdd 1 (foldList (track.sends, 0, \(highest, s) => ui::Pick::either (s.sendId > highest, s.sendId, highest))))
+        route = daw::AudioSend(sendId = identity, source = port.portNode, outlet = port.portOutlet, bus = draft.targetBus, level = daw::ArrangeMath::scaled (value, 0.01), enabled = draft.sendActive)
+        routes = match draft.editingId < 0
+            true => listAppend track.sends route
+            false => mapList (track.sends, \s => ui::Pick::either (s.sendId == identity, route, s))
+        daw::Projects::replaced (editor.song, editor.track, track(sends = routes)))
 
     selectedPort : SendDraft -> Result<SendPort, string>
     selectedPort draft = ui::Lists::find (draft.options, \p => p.portKey == draft.sourceKey)

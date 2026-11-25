@@ -133,8 +133,10 @@ The static-analysis step of CI phase 1 rejects any Osprey source that has:
 
 - lambdas nested more than **2** deep,
 - `match` arms nested more than **2** deep, or
-- a run of **4 or more** closing delimiters (`)`, `}` or `]`, ignoring
-  whitespace).
+- a run of **8 or more** closing delimiters (`)`, `}` or `]`) on one line, with
+  only spaces between them. The first draft said 4 counting newlines; that
+  flagged 2865 sites, most of them ordinary layout, so the lead set 8 on one
+  line (about 109 sites).
 
 This is an error, not a warning, and no file is excluded. The message points
 to `use`.
@@ -191,17 +193,36 @@ The binder is on the left of every step, and the answer is the last line.
   - Bind through the prelude `andThen`.
   - Update the specs, and the LSP's hover and highlighting.
 - [ ] **3. Rewrite every pyramid.** Work through the 46 files, deepest first:
-  - Rewrite each pyramid with `use`, and delete every module-local `andThen` (such as `Checked::andThen`).
+  - Rewrite each pyramid with `use`. Progress 2026-11-24: the manager is
+    free of chains deeper than two lambdas, and so are the GPU corpus twins,
+    `tensor_backends`, `stress`, `transformer`, `synth/tests/grain_journeys`
+    and the fastapi bench report (about 260 functions). The corpus and project
+    rewrites were checked by emitting each file's or project's LLVM IR before
+    and after: every one is byte-identical. Left: 38 closing runs in 19 files.
+    These are the curried `RenderInputs::setting` chains in four synth kernels,
+    the DAW tests, the proof kernel's `export`, `exportinductive` and
+    `numeric-canonical` (being edited by others), and the workbench tests (their
+    project IR could not be compared while the proof kernel they import was
+    changing). The rest is nested data, not callbacks: Lean term trees in
+    `numeric-canonical`, a fiber `await` chain and nested JSON values. Those need
+    inner values named, not `use`.
+  - [x] Delete every module-local `andThen`. Done 2026-11-24: `Checked::andThen` (316 calls in 36 manager files) and the tensor tests' `Backends::andThen` (60 calls) were copies of the prelude `andThen`; every caller now uses the prelude one. Manager suites 521/521 under GC, tensor twins match their golden under GC and ARC.
   - Remove the lambda type annotations the rewrite makes unnecessary.
   - Import `registry::Governance as G`.
-  - Flatten the nested `match bool` ladders (`withinHold`, `stillCurrent`)
-    into guard steps.
-  - Merge the duplicate guard helpers (`requiredTransfer` and
-    `Governance::required`).
+  - [x] Flatten the nested `match bool` ladders (`withinHold`, `stillCurrent`)
+    into guard steps. Done 2026-11-24: each is two `Governance::required` steps.
+  - [x] Merge the duplicate guard helpers (`requiredTransfer` and
+    `Governance::required`). Done 2026-11-24: `required` is exported and
+    `requiredTransfer` is gone. `governance_handover.osp` and
+    `governance_transitions.osp` are pyramid-free.
   - Hand the mechanical rewrites to pi, in the order AGENTS.md sets. Review
     every diff by hand.
 - [ ] **4. Lint.** Add `[LINT-NESTING-LAMBDA]` to CI phase 1. It must be green
   on the whole tree after Phase 3, with no exclusions.
+  - [x] The closing-run rule, as a `closing-run` warning in the compiler and the
+    editor (`osprey-syntax/src/closing_runs.rs`, spec 0004).
+  - [ ] The lambda-depth and `match`-depth rules.
+  - [ ] Make all three an error once Phase 3 leaves no site.
 - [ ] **5. Prove it.**
   - All three corpus runs pass: `run_test_corpus.sh` under GC, ARC and wasm32.
   - Run the manager packages' E2E suites.

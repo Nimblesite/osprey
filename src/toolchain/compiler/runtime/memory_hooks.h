@@ -1,5 +1,5 @@
 // Backend-neutral memory-manager hooks C runtime units may call directly.
-// Every memory backend (memory_runtime.c, memory_gc.c, memory_arc.c) defines
+// Every memory backend (GC, ARC and ownership) defines
 // all of them, so a unit compiled once links against whichever backend the
 // program selected. General retain/release are no-ops in default/GC; the
 // default backend still reclaims codegen-proved unique values. Implements the
@@ -30,6 +30,8 @@
 // Requires 1..UINT32_MAX bytes and tracked ownership; allocation fails rather
 // than returning an untracked value whose full length could not be recovered.
 #define OSP_MEM_STRING 7
+// EXTERN subtype reserved for the GPU runtime; its upper bits are unused by GC and ARC.
+#define OSP_MEM_GPU_BUFFER (OSP_MEM_LIST_HDR_EXTERN | (1 << 8))
 // -1 means no live STRING allocation owns this address (never an empty value).
 int64_t osp_mem_string_length(const void *p);
 
@@ -70,7 +72,8 @@ void osp_mem_set_layout(void *p, int64_t meta);
 // and the resource dies with its owner. ARC runs it at the owner's last
 // release and the tracing GC at the sweep that reclaims it; the default
 // backend reclaims no general allocation, so it never runs it. One per
-// process; registering again replaces it. [MEM-BACKENDS]
+// process under ARC and GC. Ownership ignores registration and drops GPU
+// resources by their layout on explicit free. [MEM-BACKENDS]
 void osp_mem_set_finalizer(void (*finalize)(void *body));
 
 // dup / drop (ARC: registry-probed reference counting; others: no-ops).
@@ -78,15 +81,20 @@ void osp_retain(void *o);
 void osp_release(void *o);
 
 // Release a reference codegen PROVES is the only one (a fresh, never-bound,
-// never-stored value consumed in the expression that created it). Default
-// frees it directly, ARC performs its ordinary release, and tracing GC leaves
-// it for the collector. The separate symbol also lets codegen declare LLVM's
+// never-stored value consumed in the expression that created it). ARC performs
+// its ordinary release. GC and ownership leave the object intact. Ownership
+// lowering calls osp_ownership_free for the last use. The separate symbol lets
+// ARC and GC codegen declare LLVM's
 // allocator free-pair attributes (allockind("free") / allocptr), so -O2 can
 // delete a provably-dead alloc+release pair outright — restoring the
 // [MEM-OWNERSHIP] static-free ideal for per-operation Result blocks. Those
 // attributes let LLVM assume the pointee is dead after the call, which is only
 // true when rc == 1 — hence the uniqueness proof at every emission site.
 void osp_release_unique(void *o);
+
+// Ownership-only codegen entry for a proved last use. Walk owned children
+// before reclaiming their parent. [MEM-OWNERSHIP-STATIC-SAFETY]
+void osp_ownership_free(void *o);
 
 // Mark a shared C-runtime singleton immortal (ARC: rc < 0 — dup/drop skip it
 // forever). For objects returned from multiple call sites by construction,
@@ -96,8 +104,7 @@ void osp_mem_immortal(void *p);
 // Announce that a second thread is about to be able to touch the heap. The
 // fiber runtime calls this once, immediately before the pthread_create that
 // spawns a real fiber thread. ARC uses it to trip from its single-threaded
-// lock-free fast path to a mutexed one; the tracing collector takes its heap lock from then on; the
-// unmanaged backend does nothing.
+// lock-free fast path to a mutexed one; the tracing collector takes its heap lock from then on.
 // Idempotent and monotonic. [MEM-BACKENDS]
 void osp_mem_notify_multithreaded(void);
 

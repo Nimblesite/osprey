@@ -11,7 +11,7 @@ module EditorState
 
     (** [SYNTH-ADVANCED-PRISM] Advanced modules, offered in the native picker so the canvas palette keeps its
         original layout and artwork. *)
-    export advancedKinds = ["sample", "exciter", "waveguide", "bowed-string", "strike-comb", "resonator", "modal-bank", "fractional-delay", "loss-filter", "allpass", "wavetable", "additive", "spectral", "pitch-shifter", "shaper", "reverb", "shifter", "phase-operator", "smoother", "split", "join", "route", "panner"]
+    export advancedKinds = ["sample", "formula-notes", "exciter", "waveguide", "bowed-string", "strike-comb", "resonator", "modal-bank", "fractional-delay", "loss-filter", "allpass", "wavetable", "additive", "spectral", "pitch-shifter", "shaper", "reverb", "shifter", "phase-operator", "smoother", "split", "join", "route", "panner"]
 
     (** The browsing groups, in picker order. *)
     export categories = ["Sources", "Grains", "Physical", "Spectral", "Modulators", "Effects", "Utilities", "Output"]
@@ -21,6 +21,7 @@ module EditorState
         "sample" => "Sources"
         "sine" => "Sources"
         "midi-note" => "Sources"
+        "formula-notes" => "Sources"
         "wavetable" => "Sources"
         "additive" => "Sources"
         "phase-operator" => "Sources"
@@ -71,6 +72,7 @@ module EditorState
         "panner" => "Panner"
         "delay" => "Delay"
         "midi-note" => "MIDI note generator"
+        "formula-notes" => "Formula melody"
         "stereo" => "Mono to stereo"
         "stereo-output" => "Stereo output"
         "output" => "Audio output"
@@ -124,8 +126,12 @@ module EditorState
         "output" => made (Components::output identity)
         _ => advanced (kind, identity)
 
+    // [SYNTH-FORMULA-NOTES] A new formula melody climbs in fifths, folded into one octave above middle C.
+    defaultFormula = "60 + t * 7 % 12"
+
     // Advanced modules start at musically useful, level-safe defaults (A3 pitch, struck responses).
     advanced (kind, identity) = match kind
+        "formula-notes" => made (Components::formulaMelody (identity, defaultFormula))
         "exciter" => made (Components::exciter (identity, 7))
         "waveguide" => made (Components::waveguide (identity, 220.0, 2400))
         "bowed-string" => made (Components::bowed (identity, 220.0, 2400))
@@ -239,7 +245,25 @@ module EditorState
         EditParameter identity key => match parseFloat text
             Error _ => editor(message = "Enter a finite number for this parameter.")
             Success value => checkedValue (editor, identity, key, value)
+        EditFormula identity => formulaEdited (editor, identity, text)
         _ => editor
+
+    // [SYNTH-FORMULA-NOTES] A formula replaces the melody's only when it parses; otherwise the fault names its column.
+    formulaNode (identity, formula, n) = match n.identity == identity
+        true => n(processor = FormulaNotes(formula = formula))
+        false => n
+
+    reformulated (editor, identity, text) = match Formulas::parse text
+        Error why => editor(message = Faults::detail why)
+        Success _ => published (editor, Valid(value = formulaGraph (editor.graph, identity, text)))
+
+    formulaGraph (graph, identity, text) = graph(nodes = mapList (graph.nodes, \n => formulaNode (identity, text, n)))
+
+    formulaEdited (editor, identity, text) = match Graphs::node (editor.graph, identity)
+        Invalid _ => absent editor
+        Valid n => match Kinds::kind n.processor == "synth.formula-notes"
+            true => reformulated (editor, identity, text)
+            false => editor(message = "Only a formula melody takes a formula.")
 
     withParameter (n, key, value) = n(parameters = mapList (n.parameters, \p => parameterValue (key, value, p)))
 
@@ -272,13 +296,12 @@ module EditorState
             Success next => Success(value = listPrepend nodes next)
 
     (** Transpose the patch atomically. A grain outside its rate range rejects the whole key strike. *)
-    export tune (editor, note) = match note >= 0 && note <= 127
-        false => Error(message = "Choose a MIDI note from 0 to 127.")
-        true => match foldList (editor.graph.nodes, Success(value = []), \(held, n) => pitchNext (note, held, n))
+    export tune (editor, note) = synth::Outcomes::carried (daw::Projects::limited (note, 0, 127, "Choose a MIDI note from 0 to 127."), \_ =>
+        match foldList (editor.graph.nodes, Success(value = []), \(held, n) => pitchNext (note, held, n))
             Error why => relayed why
             Success nodes =>
                 graph = editor.graph
-                Success(value = editor(graph = graph(nodes = listReverse nodes), note = note, armedNote = -1, revision = satAdd editor.revision 1))
+                Success(value = editor(graph = graph(nodes = listReverse nodes), note = note, armedNote = -1, revision = satAdd editor.revision 1)))
 
     (** A playable starting patch; the menu can add more independent instances. *)
     export preset () =

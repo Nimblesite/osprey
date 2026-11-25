@@ -11,15 +11,12 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-// Only the corpus walk is used here; the IR-symbol helpers `common` also
-// carries serve the wellformedness gates, not this one.
-#[expect(
-    dead_code,
-    reason = "the corpus walk is shared; the IR-symbol helpers are not used here"
-)]
+// The corpus walk and the undefined-symbol scan are shared with the
+// wellformedness gates.
 mod common;
 #[path = "examples_compile/support.rs"]
 mod support;
+use common::undefined_symbols;
 use support::{compile, compile_project, rejection_diagnostics, repo_root, sources};
 
 /// The must-reject corpus, `src/osprey/examples/failscompilation`.
@@ -47,14 +44,17 @@ fn rel(dir: &Path, path: &Path) -> String {
     path.strip_prefix(dir).unwrap_or(path).display().to_string()
 }
 
-/// Compile every `ext` source under `dir`, asserting the corpus is complete and
-/// clean; returns the IR bytes it produced.
+/// Compile every `ext` source under `dir` once, asserting the corpus is
+/// complete and clean and that no module references a symbol it never emitted
+/// (a module that fails at clang, not at the compiler); returns the IR bytes
+/// it produced. One lowering serves both gates, so the corpus is not compiled
+/// twice ([FLAVOR-IR-EQUIV]: both flavors lower through the same codegen).
 fn check_corpus(
     dir: &Path,
     exts: &[&str],
     at_least: usize,
     what: &str,
-    one: impl Fn(&Path) -> Result<usize, String>,
+    one: impl Fn(&Path) -> Result<String, String>,
 ) -> usize {
     let mut files: Vec<PathBuf> = exts.iter().flat_map(|ext| sources(dir, ext)).collect();
     files.sort();
@@ -65,9 +65,16 @@ fn check_corpus(
     );
     let mut total_ir = 0;
     let mut failures = Vec::new();
+    let mut dangling = Vec::new();
     for path in &files {
         match one(path) {
-            Ok(ir_len) => total_ir += ir_len,
+            Ok(ir) => {
+                total_ir += ir.len();
+                let missing = undefined_symbols(&ir);
+                if !missing.is_empty() {
+                    dangling.push(format!("{}: {missing:?}", rel(dir, path)));
+                }
+            }
             Err(stage) => failures.push(format!("{}: {stage}", rel(dir, path))),
         }
     }
@@ -75,6 +82,13 @@ fn check_corpus(
         failures.is_empty(),
         "{what} must compile cleanly; failures:\n{}",
         failures.join("\n")
+    );
+    assert!(
+        dangling.is_empty(),
+        "codegen returned Ok for {} program(s) in the {what} whose IR references \
+         symbols it never emitted; each of these fails at clang, not at the compiler:\n{}",
+        dangling.len(),
+        dangling.join("\n")
     );
     total_ir
 }
@@ -167,19 +181,20 @@ fn every_language_test_and_benchmark_source_compiles_to_ir() {
         80,
         "tested corpus in both flavors",
         |path| {
-            let ir_len = compile(path, &fs::read_to_string(path).expect("read example"))?;
-            assert!(ir_len > 0, "{}: produced empty IR", rel(&dir, path));
-            Ok(ir_len)
+            let ir = compile(path, &fs::read_to_string(path).expect("read example"))?;
+            assert!(!ir.is_empty(), "{}: produced empty IR", rel(&dir, path));
+            Ok(ir)
         },
     );
     assert!(total_ir > 0, "the corpus lowered to non-empty IR");
 
     // A case with its own osprey.toml shares the benchmark module, so it
-    // compiles as the project `run.sh` builds; a lone file compiles alone.
+    // compiles as the project `run.sh` builds; a lone file compiles alone. Both
+    // flavors, as the undefined-symbol sweep this absorbed always checked.
     let dir = repo_root().join("src/toolchain/benchmarks/cases");
     let _ = check_corpus(
         &dir,
-        &["osp"],
+        &["osp", "ospml"],
         22,
         "Osprey benchmark corpus",
         |path| match path.parent().filter(|d| d.join("osprey.toml").is_file()) {

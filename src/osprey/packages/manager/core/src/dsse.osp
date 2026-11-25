@@ -1,8 +1,4 @@
 namespace registry;
-import registry::Bytes
-import registry::Sha256
-import registry::Digests
-import registry::Domains
 
 /// The DSSE protocol v1 pre-authentication encoding and the two detached
 /// hash forms spec 0030 builds on it: the PAE bytes a detached envelope

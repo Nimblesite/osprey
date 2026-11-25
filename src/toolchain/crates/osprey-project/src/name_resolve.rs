@@ -30,8 +30,11 @@ impl Resolver<'_> {
             );
             return None;
         }
-        let key = scope.and_then(|scope| scope.member(name)).cloned();
-        key.map(|key| self.tracked(key, context))
+        let key = scope.and_then(|scope| scope.member(name)).cloned()?;
+        let _ = self
+            .used_imports
+            .insert((context.contribution, name.to_string()));
+        Some(self.tracked(key, context))
     }
 
     pub(crate) fn resolve_path(
@@ -44,7 +47,7 @@ impl Resolver<'_> {
             self.error(context.source, position, "empty symbol path");
             return None;
         };
-        for key in self.path_candidates(first, segments, context) {
+        for (key, binding) in self.path_candidates(first, segments, context) {
             if !self.graph.declarations.contains_key(&key) {
                 continue;
             }
@@ -57,6 +60,9 @@ impl Resolver<'_> {
                 return None;
             }
             if self.symbol_visible(&key, context) {
+                if let Some(binding) = binding {
+                    let _ = self.used_imports.insert((context.contribution, binding));
+                }
                 return Some(self.tracked(key, context));
             }
             self.error(
@@ -141,23 +147,23 @@ impl Resolver<'_> {
         first: &str,
         segments: &[String],
         context: &Context,
-    ) -> Vec<SymbolKey> {
+    ) -> Vec<(SymbolKey, Option<String>)> {
         let tail = segments.get(1..).unwrap_or_default();
         let scope = self.scopes.get(context.contribution);
         let mut candidates = Vec::new();
         for depth in (0..=context.module.len()).rev() {
             let mut path = context.module.get(..depth).unwrap_or_default().to_vec();
             path.extend_from_slice(segments);
-            candidates.push(SymbolKey::new(context.namespace.clone(), path));
+            candidates.push((SymbolKey::new(context.namespace.clone(), path), None));
         }
         if let Some(base) = scope.and_then(|scope| scope.alias(first)) {
-            candidates.push(extend_key(base, tail));
+            candidates.push((extend_key(base, tail), Some(first.to_string())));
         }
         if let Some(base) = scope.and_then(|scope| scope.member(first)) {
-            candidates.push(extend_key(base, tail));
+            candidates.push((extend_key(base, tail), Some(first.to_string())));
         }
         if self.graph.namespaces.contains_key(first) {
-            candidates.push(SymbolKey::new(first, tail.to_vec()));
+            candidates.push((SymbolKey::new(first, tail.to_vec()), None));
         }
         candidates
     }

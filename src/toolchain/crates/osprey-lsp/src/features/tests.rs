@@ -24,6 +24,26 @@ fn nested_bindings_end_at_their_lexical_scope() {
 }
 
 #[test]
+fn a_binder_of_every_or_pattern_alternative_is_one_binding() {
+    // [PATTERN-OR-BINDINGS] `s` comes from whichever alternative matched, so
+    // a use goes to both binders and either binder finds the use.
+    let src = "type G = Letter { c: string } | Word { w: string }\nfn text(g) = match g {\n    Letter { c: s } | Word { w: s } => {\n        s\n    }\n}\n";
+    let uri = "file:///alternatives.osp";
+    let first = word_span(src, (2, "s }"));
+    let second = word_span(src, (2, "s } =>"));
+    let used = word_span(src, (3, "s"));
+    assert_eq!(definitions_at(src, uri, (3, "s")), vec![first, second]);
+    assert_eq!(
+        reference_spans(src, uri, 3, "s", true),
+        vec![first, second, used]
+    );
+    assert_eq!(
+        reference_spans(src, uri, 2, "s } =>", true),
+        vec![first, second, used]
+    );
+}
+
+#[test]
 fn layout_bindings_end_at_their_lexical_scope() {
     for (src, uri, last) in [
         (
@@ -434,6 +454,14 @@ fn hover_on_pattern_binders_and_lambda_parameters_shows_their_inferred_types() {
     ] {
         let md = binder_hover(ml, "file:///logo.ospml", line, needle);
         crate::testkit::shows(&md, &[expected, "```osprey-ml"]);
+    }
+
+    // [PATTERN-OR-BINDINGS] A binder of every or-pattern alternative hovers
+    // with its one type in each alternative and in the body.
+    let alternatives = "type G = Letter { c: string } | Word { w: string }\nfn text(g) = match g {\n    Letter { c: s } | Word { w: s } => {\n        s\n    }\n}\nlet t = text(Word { w: \"hi\" })\n";
+    for (line, needle) in [(2, "s }"), (2, "s } =>"), (3, "s\n")] {
+        let md = binder_hover(alternatives, "file:///alternatives.osp", line, needle);
+        crate::testkit::shows(&md, &["s: string"]);
     }
 
     // A tuple-style ML parameter list is a pattern over one argument, so its

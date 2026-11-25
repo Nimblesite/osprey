@@ -1,13 +1,5 @@
 namespace registry_cli;
-import registry::Checked
 import registry_host::Host
-import registry_cli::Flags
-import registry_cli::Reports
-import registry_cli::Project
-import registry_cli::Lockfile
-import registry_cli::Install
-import registry_cli::Overlay
-import registry_cli::PythonPlane
 import registry::Digests
 import registry::Manifest
 import registry::ManifestJson
@@ -93,7 +85,7 @@ module Verify {
     /// A locked package's member of the uv project, from its installed tree or checkout.
     fn packageMember(project, lock, pkg) = {
         let dir = Project::treeDirAt(project, lock, pkg)
-        Checked::andThen(Manifest::accepted(Manifest::parse(readOr("${dir}/osprey.toml"))), fn(value) => PythonPlane::memberOf(value, pythonPathFor(lock, pkg), readOr("${dir}/pyproject.toml")))
+        andThen(Manifest::accepted(Manifest::parse(readOr("${dir}/osprey.toml"))), fn(value) => PythonPlane::memberOf(value, pythonPathFor(lock, pkg), readOr("${dir}/pyproject.toml")))
     }
 
     fn members(project, lock, manifest) = PythonPlane::membersOver(Lockfile::packagesOf(lock), PythonPlane::memberOf(manifest, "../..", readOr(Project::pathAt(project, "pyproject.toml"))), fn(p) => packageMember(project, lock, p))
@@ -126,9 +118,6 @@ module Verify {
 
     /// The offline check of whichever lock the overlay selects.
     export fn verifyOfflineAt(project) = Reports::checked(Overlay::readAt(project), fn(value) => if Overlay::active(value) { verifyLocalAt(project) } else { verifyReleaseAt(project) })
-
-    /// The whole offline check in the working directory.
-    export fn verifyOffline() = verifyOfflineAt("")
 
     /// The command: `verify`, `verify --offline` and `verify --project <dir>`.
     export fn run(args) = Flags::dispatch(args, [Flags::projectFlag], [offlineFlag], usageCode, usageText,

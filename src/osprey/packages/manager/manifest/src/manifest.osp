@@ -1,9 +1,4 @@
 namespace registry;
-import registry::Toml
-import registry::Maybe
-import registry::ManifestModel
-import registry::ManifestSections
-import registry::ManifestDeps
 
 /// `osprey.toml` to the canonical manifest, or one located reason code.
 /// Parsing, every section rule and the cross-table rules run here; nothing

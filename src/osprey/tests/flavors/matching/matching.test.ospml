@@ -5,25 +5,18 @@ tourClassify 0 = "zero"
 tourClassify 1 = "one"
 tourClassify _ = "many"
 
+(** Whether every literal and wildcard branch renders its recorded answer. *)
+tourBranches () = answersHold (tourClassify, [0, 1, 9], ["zero", "one", "many"])
+
 (** Verify every literal and wildcard branch. *)
 matchTourCase () =
-    // Preserve each rendered branch result.
-    checkAll "match tour legacy rendered lines" [
-        tourClassify 0 == "zero",
-        tourClassify 1 == "one",
-        tourClassify 9 == "many"
-    ]
+    // Preserve each rendered branch result, then re-check the same answers.
+    checkAll "match tour legacy rendered lines" [tourBranches ()]
     // Check each dynamic result independently.
-    checkAll "match tour legacy constituent values" [
-        tourClassify 0 == "zero",
-        tourClassify 1 == "one",
-        tourClassify 9 == "many"
-    ]
+    checkAll "match tour legacy constituent values" [tourBranches ()]
     // Exercise adjacent, negative, and large wildcard inputs.
     checkAll "match tour wildcard edge cases" [
-        tourClassify 2 == "many",
-        tourClassify ((0 - 1) ) == "many",
-        tourClassify 100 == "many",
+        answersHold (tourClassify, [2, 0 - 1, 100], ["many", "many", "many"]),
         (tourClassify 0 == tourClassify 1) == false
     ]
 
@@ -48,17 +41,13 @@ matchBooleanCase () =
     ]
     // Check each label independently.
     checkAll "boolean match legacy constituent values" [
-        matchGrade 80 == "pass",
-        matchGrade 20 == "fail",
-        matchEven 4 == "even",
-        matchEven 7 == "odd"
+        answersHold (matchGrade, [80, 20], ["pass", "fail"]),
+        answersHold (matchEven, [4, 7], ["even", "odd"])
     ]
     // Exercise threshold and parity boundaries.
     checkAll "boolean match boundaries" [
-        matchGrade 50 == "pass",
-        matchGrade 49 == "fail",
-        matchEven 0 == "even",
-        matchEven 9 == "odd"
+        answersHold (matchGrade, [50, 49], ["pass", "fail"]),
+        answersHold (matchEven, [0, 9], ["even", "odd"])
     ]
 
 (** Label integer literals through adjacent pattern clauses. *)
@@ -80,9 +69,7 @@ matchIntegerCase () =
     ]
     // Exercise adjacent, negative, and large wildcard inputs.
     checkAll "integer match wildcard boundaries" [
-        matchLabel 3 == "many",
-        matchLabel ((0 - 1) ) == "many",
-        matchLabel 100 == "many"
+        answersHold (matchLabel, [3, 0 - 1, 100], ["many", "many", "many"])
     ]
 
 test ("literal matching retains every printed arm", matchTourCase)
@@ -302,15 +289,11 @@ unitish x = match x
     _ => "other"
 
 orLiteralCase () = checkAll ("or-pattern variant and literal alternatives", [
-    glyphKind Space == "blank", glyphKind Tab == "blank", glyphKind Newline == "blank",
-    glyphKind (Digit(d = 0)) == "bit", glyphKind (Digit(d = 1)) == "bit",
-    glyphKind (Digit(d = 7)) == "digit 7",
-    glyphKind (Letter(c = "a")) == "text a", glyphKind (Word(w = "hi")) == "text hi",
-    smallInt 0 == "small", smallInt 1 == "small", smallInt 2 == "small",
-    smallInt 3 == "big", smallInt (0 - 1) == "big",
-    yes "y", yes "yes", yes "Y", yes "n" == false, yes "" == false,
-    either true == "bool", either false == "bool",
-    unitish 0.0 == "unit", unitish 1.0 == "unit", unitish 0.5 == "other"
+    answersHold (glyphKind, [Space, Tab, Newline, Digit(d = 0), Digit(d = 1), Digit(d = 7), Letter(c = "a"), Word(w = "hi")], ["blank", "blank", "blank", "bit", "bit", "digit 7", "text a", "text hi"]),
+    answersHold (smallInt, [0, 1, 2, 3, 0 - 1], ["small", "small", "small", "big", "big"]),
+    answersHold (yes, ["y", "yes", "Y", "n", ""], [true, true, true, false, false]),
+    answersHold (either, [true, false], ["bool", "bool"]),
+    answersHold (unitish, [0.0, 1.0, 0.5], ["unit", "unit", "other"])
 ])
 
 test ("or-patterns join variant and literal alternatives", orLiteralCase)
@@ -354,26 +337,18 @@ deepBlank r = match r
     _ => "deep other"
 
 orStructureCase () = checkAll ("or-pattern Result, payload, list, row and nested alternatives", [
-    resultText (Success(value = "a")) == "got a", resultText (Error(message = "b")) == "got b",
-    onAxis (Pt 0 5) == "axis", onAxis (Pt 5 0) == "axis", onAxis (Pt 0 0) == "axis",
-    onAxis (Pt 2 3) == "plane",
+    answersHold (resultText, [Success(value = "a"), Error(message = "b")], ["got a", "got b"]),
+    answersHold (onAxis, [Pt 0 5, Pt 5 0, Pt 0 0, Pt 2 3], ["axis", "axis", "axis", "plane"]),
     axisPair (0, 8) == 8, axisPair (9, 0) == 9, axisPair (2, 3) == -1,
-    tailSize [0] == 0, tailSize [1, 8, 9] == 2, tailSize [2, 9] == -1, tailSize [] == -1,
-    shortList [] == "short", shortList [9] == "short", shortList [1, 2, 3, 4] == "long 5",
-    tailLen (Wrap [1, 2, 3]) == 2, tailLen (Boxed [1, 2, 3]) == 1, tailLen (Nest [[4, 5, 6, 7]]) == 4,
-    tailLen (Wrap []) == 0 - 1, tailLen (Nest [[1], [2]]) == 0 - 1, tailLen Hollow == 0 - 1,
+    answersHold (tailSize, [[0], [1, 8, 9], [2, 9], []], [0, 2, -1, -1]),
+    answersHold (shortList, [[], [9], [1, 2, 3, 4]], ["short", "short", "long 5"]),
+    answersHold (tailLen, [Wrap [1, 2, 3], Boxed [1, 2, 3], Nest [[4, 5, 6, 7]], Wrap [], Nest [[1], [2]], Hollow], [2, 1, 4, -1, -1, -1]),
     rowSize (Sized(kind = "s", n = 3)) == 3, rowSize (Sized(kind = "m", n = 4)) == 4,
     rowSize (Sized(kind = "l", n = 5)) == 0,
     openBand (Sized(kind = "old", n = 2)) == 1, openBand (Sized(kind = "m", n = 2)) == 2,
     openBand (Sized(kind = "s", n = 3)) == 2, openBand (Sized(kind = "s", n = 4)) == 0,
-    deepBlank (Success(value = Cell Space 0)) == "deep blank",
-    deepBlank (Success(value = Cell Tab 1)) == "deep blank",
-    deepBlank (Error(message = "blank")) == "deep blank",
-    deepBlank (Success(value = Cell Space 2)) == "deep other",
-    deepBlank (Success(value = Cell (Letter(c = "x")) 9)) == "deep letter",
-    deepBlank (Success(value = Cell (Letter(c = "y")) 9)) == "deep letter",
-    deepBlank (Success(value = Cell (Letter(c = "z")) 9)) == "deep other",
-    deepBlank (Error(message = "other")) == "deep other"
+    answersHold (deepBlank, [Success(value = Cell Space 0), Success(value = Cell Tab 1), Error(message = "blank"), Success(value = Cell Space 2)], ["deep blank", "deep blank", "deep blank", "deep other"]),
+    answersHold (deepBlank, [Success(value = Cell (Letter(c = "x")) 9), Success(value = Cell (Letter(c = "y")) 9), Success(value = Cell (Letter(c = "z")) 9), Error(message = "other")], ["deep letter", "deep letter", "deep other", "deep other"])
 ])
 
 test ("or-patterns cover Results, payloads, lists, rows and three-level nests", orStructureCase)

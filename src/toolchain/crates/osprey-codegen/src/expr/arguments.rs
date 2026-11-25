@@ -53,8 +53,10 @@ pub(super) fn binary_integer_builtin(
 /// already-evaluated values. Any other builtin named as a callback is
 /// eta-expanded into an ordinary call instead ([`crate::iter`]).
 pub(crate) fn has_value_form(name: &str) -> bool {
-    matches!(name, "print" | "toString" | "abs" | "bitNot" | "floatToInt")
-        || osprey_types::numeric::Numeric::conversion_target(name).is_some()
+    matches!(
+        name,
+        "print" | "toString" | "abs" | "min" | "max" | "bitNot" | "floatToInt"
+    ) || osprey_types::numeric::Numeric::conversion_target(name).is_some()
         || crate::arithmetic::is_float_function(name)
         || crate::arithmetic::is_binary_float_function(name)
         || crate::arithmetic::is_word_builtin(name)
@@ -100,6 +102,11 @@ pub(super) fn call_builtin_with_values(
             }
         }
         "abs" => crate::arithmetic::absolute(cg, arg()),
+        // [BUILTIN-MIN-MAX] the smaller or larger of two values of one numeric type.
+        "min" | "max" => match pair() {
+            Some((left, right)) => crate::arithmetic::extremum(cg, name, left, right),
+            None => Err(CodegenError::invalid(format!("{name} needs two arguments"))),
+        },
         // [BUILTIN-MATH] `gpuMap(exp)`: a float function named as a kernel.
         name if crate::arithmetic::is_float_function(name) => {
             crate::arithmetic::float_function(cg, name, arg())
@@ -152,6 +159,7 @@ pub(crate) fn call_with_values(cg: &mut Codegen, name: &str, args: Vec<Value>) -
             .collect::<Result<Vec<_>>>()?,
         _ => args,
     };
+    crate::arc::give_arguments(cg, name, &coerced);
     let typed = crate::llty::comma_join(&coerced, Value::typed);
     // A function declared `-> Result<T, E>` hands back a Result block pointer.
     if let Some(inner) = cg.fn_ret_result_inner(name) {

@@ -100,16 +100,12 @@ pub(crate) fn build(
 }
 
 fn compile_args(target: Target, ll: &Path, obj: &Path) -> Vec<String> {
-    vec![
+    let flags = [
         format!("--target={}", target.triple()),
         "-O2".into(),
         "-fPIC".into(),
-        "-Wno-override-module".into(),
-        "-c".into(),
-        ll.display().to_string(),
-        "-o".into(),
-        obj.display().to_string(),
-    ]
+    ];
+    crate::desktop::object_argv(&flags, ll, obj)
 }
 
 fn ndk_tool(bin: &Path, name: &str, args: &[String]) -> Result<(), ExitCode> {

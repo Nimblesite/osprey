@@ -235,7 +235,6 @@ impl Library {
 /// Microseconds the application's last `event` export ran, before its frame was read.
 pub static APP_MICROS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
-
 /// Seals the frame an export wrote once it has returned and checks it ([NATIVE-SHM-SAFETY]). The
 /// runs are consumed even when the export failed, and a refused or malformed frame fails the call.
 /// Only `event` may answer 1 — a refused event, whose frame still draws with its reason among the

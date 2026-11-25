@@ -1,11 +1,5 @@
 namespace bounded
 
-import bounded::Annotations
-import bounded::Calls
-import bounded::Erasure
-import bounded::Replies
-import bounded::Signature
-import bounded::Words
 
 (** The checker program of [TYPES-DISCIPLINE-PROTOCOL]. *)
 module Checker

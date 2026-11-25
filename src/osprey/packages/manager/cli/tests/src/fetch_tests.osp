@@ -6,7 +6,6 @@ import registry::Release
 import registry_cli::Dispatch
 import registry_cli::Fetch
 import registry_cli::Reports
-import registry_tests::Fixture
 
 /// The `fetch` client against fixture hosts: no network, no disk. The web
 /// fixture answers the folder-registry endpoints from hand-made releases, the

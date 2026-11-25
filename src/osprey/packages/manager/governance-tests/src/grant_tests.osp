@@ -2,7 +2,6 @@ namespace registry_tests;
 import registry::Governance
 import registry::GovernanceTransitions
 import registry::Maybe
-import registry_tests::Fixture
 
 /// Explicit grants and the live authorization predicate
 /// [PACKAGE-OWNERSHIP-PERMISSIONS]: several members may hold the same

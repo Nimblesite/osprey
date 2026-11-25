@@ -1,5 +1,4 @@
 namespace registry_host;
-import registry_host::Host
 
 /// Operating-system handlers for `Host`, built only on Osprey builtins.
 /// Process output is captured through shell redirection into `.osprey/scratch`
@@ -52,10 +51,13 @@ module Native {
         else { Error { message: "host.exists: unexpected response" } }
     }
 
-    fn removedFile(path) = {
-        let run = capture("rm -f -- ${Host::shellWord(path)}")
-        if run.status == 0 { Success { value: 0 } } else { Error { message: "host.remove: ${trim(run.stderr)}" } }
+    /// Run `command`: status 0 is `0`, anything else is `code` with stderr.
+    fn shellOk(command, code) = {
+        let run = capture(command)
+        if run.status == 0 { Success { value: 0 } } else { Error { message: "${code}: ${trim(run.stderr)}" } }
     }
+
+    fn removedFile(path) = shellOk("rm -f -- ${Host::shellWord(path)}", "host.remove")
 
     fn relative(line) = if startsWith(line, "./") { drop(line, 2) } else { line }
 
@@ -74,10 +76,7 @@ module Native {
         else { Success { value: Host::Walk { regular: listed(regular), executable: listed(executable), special: listed(special) } } }
     }
 
-    fn ensured(dir) = {
-        let made = capture("mkdir -p ${Host::shellWord(dir)}")
-        if made.status == 0 { Success { value: 0 } } else { Error { message: "host.mkdir: ${trim(made.stderr)}" } }
-    }
+    fn ensured(dir) = shellOk("mkdir -p ${Host::shellWord(dir)}", "host.mkdir")
 
     /// Tree answered by the system `find` and `mkdir -p`.
     export fn tree() = handler Host::Tree {

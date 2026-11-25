@@ -233,8 +233,11 @@ fn sorted_list(cg: &mut Codegen, sort: &Sort<'_>) -> Value {
     crate::collections::list_builder_push_borrowed(cg, &builder, &word);
     close_range_loop(cg, &lp);
     release_buffers(cg, sort);
-    let sealed = crate::collections::list_builder_seal(cg, &builder);
+    // The sorted list keeps the source's elements, so the source gives way.
     let elem = crate::collections::tagged_elem(sort.list);
+    let source = crate::arc::versions::take_element_source(cg, sort.list, elem.as_deref());
+    let sealed = crate::collections::list_builder_seal(cg, &builder);
+    crate::arc::versions::release_source(cg, &source);
     sealed.with_owner(Some(crate::collections::list_owner(elem.as_deref())))
 }
 

@@ -1,9 +1,6 @@
 // [SYNTH-ADVANCED-CORE-MODELS] The render lifecycle: prepare, activate, render, reset, release with its tail, dispose.
 namespace synth
 
-import synth::RenderInputs
-import synth::Renderer
-import synth::Timings
 
 (** A prepared instance is Ready; Activate makes it Running; ReleaseTail renders at most its declared tail and
     returns to Ready; Reset returns any live stage to Ready with silent state at position 0; Dispose ends it.
@@ -16,9 +13,9 @@ module Lifecycles
     (** Prepare `graph` at a sample rate and largest block, Ready with silent state at position 0. *)
     export prepared (graph, rate, block) = match settled (rate, block)
         false => Error(message = InvalidConfiguration(detail = "A lifecycle needs a sample rate of 8,000 to 384,000 Hz and a block of 1 to 8,192 frames."))
-        true => match Graphs::prepare graph
-            Invalid _ => Error(message = InvalidConfiguration(detail = "The graph is invalid; inspect Graphs.prepare for the typed fault."))
-            Valid plan => Outcomes::carried (Renderer::start graph, \audio => Success(value = Instance(stage = Ready, rate = rate, block = block, plan = plan, audio = audio)))
+        true =>
+            use plan <- Renderer::validated (graph, InvalidConfiguration(detail = "The graph is invalid; inspect Graphs.prepare for the typed fault."))
+            Outcomes::carried (Renderer::start graph, \audio => Success(value = Instance(stage = Ready, rate = rate, block = block, plan = plan, audio = audio)))
 
     named stage = match stage
         Ready => "ready"

@@ -14,6 +14,14 @@ The workbench is one Osprey application over `@osprey/native`: one store, one `u
 
 Before 2026-10-31 the workbench had its own English-sentence proof document (`Theorem and_swap. For all p q, …`, `Assume h : …`, `By cases on h`, `From h`) read by `formula`, `statement`, `step` and `goals` modules, elaborated by a hand-written prelude and `verdict` module, and written out by an `emit` module as a `// osprey: types=lean4` module with a tactic block and `sorry` holes. Both that document and that output are **deleted and illegal** ([PROOF-SOURCE-DELETED]). The modules, their tests, goldens and fixtures, the phrase table, the goal engine and the impredicative prelude are contamination and are removed by plan 0041. Nothing in this document, in lessons or in any host may read, write, display or accept them.
 
+## No English source [WORKBENCH-NO-ENGLISH]
+
+**The workbench never reads or writes English as mathematics or proof.** No reader, lexer, reserved-word table, phrase table, completion, lesson field, store record, fixture, golden or export may accept or hold an English sentence as a statement, hypothesis, step or proof (`Theorem …`, `For all …`, `Assume …`, `By cases on …`, `From …`, `p implies q`, `p and q`). Code that does is a defect and is deleted on sight, not held. The one exception is a refusal test, which holds an English input only to prove it is refused.
+
+**Translating to English is display only.** The workbench may render a checked statement or proof as English words on screen, one way, from the AST. That rendering is never parsed back, never saved, never exported, never sent to a host as source and never typed by the user in place of notation.
+
+**Deletion on hold ([WORKBENCH-DELETED-HOLD]).** What remains held is only the code that reads real mathematical notation: the symbol grammar of `formula` (`∀ p q, p ∧ q → q ∧ p`, `¬`, `⊥`), the notation table, the goal engine and the kernel. Do not hard delete it: an Osprey-owned mathematics format, parsed to the same AST as Lean, is to be **considered** as the authoring format in place of Lean's surface syntax. Only the source format would change: the proof engine, kernel, checked exports and verdicts stay exactly as they are, and both formats parse to the one AST the engine already checks.
+
 ## Layout [WORKBENCH-LAYOUT]
 
 The application lives at [`src/osprey/workbench/`](../../../src/osprey/workbench/README.md), ML flavor, namespace `workbench`, source roots `src`, the shared `@osprey/native`, `graphics`, `json` and `vscode` packages, and the proof kernel sources under `src/osprey/examples/proof/kernel/src/` ([`osprey.toml`](../../../src/osprey/workbench/osprey.toml)).
@@ -34,7 +42,7 @@ The application lives at [`src/osprey/workbench/`](../../../src/osprey/workbench
 
 Every file under 500 lines, every function under 20, a documentation comment on every export.
 
-Not implemented yet: `src/document.ospml`, `src/lean.ospml` and `src/library.ospml`; [plan 0042](../../plans/0042-proof-workbench.md) delivers them. Today `src/formula.ospml`, `statement.ospml`, `step.ospml`, `goals.ospml`, `emit.ospml`, `kernel.ospml` and the step-elaborating half of `verdict.ospml`, the deleted formats of [WORKBENCH-DELETED], are still present and tested; [plan 0041](../../plans/0041-dependent-types-and-mathlib.md) removes them, and the ids their tests cite ([WORKBENCH-FORMULA], [WORKBENCH-STATEMENT], [WORKBENCH-STEPS], [WORKBENCH-GOALS]) retire with them. The grep gate of [WORKBENCH-VERIFICATION] does not exist yet and would fail until then.
+Not implemented yet: `src/document.ospml`, `src/lean.ospml` and `src/library.ospml`; [plan 0042](../../plans/0042-proof-workbench.md) delivers them. Deleted under [WORKBENCH-NO-ENGLISH]: the English statement and step readers, the sentence spellings of the formula reader, `emit`, `review`, `goalview`, the free-form draft editor, the Read page, the guided example, workspace save, open and source export, and the English `prove` and `judge` lesson challenges. Held under [WORKBENCH-DELETED-HOLD]: the notation-only `formula` reader, the `Statement` and `Step` values, `goals`, `kernel` and the step-elaborating half of `verdict`, tested by building values from notation ([WORKBENCH-FORMULA], [WORKBENCH-STATEMENT], [WORKBENCH-STEPS], [WORKBENCH-GOALS]). Work mode shows the checked proof library; Learn mode shows the lessons and their state challenges.
 
 ## Notation [WORKBENCH-NOTATION]
 

@@ -114,6 +114,10 @@
       "gpu_runtime": {
         "language": "c"
       },
+      "gpu_lifetime": {
+        "threshold": 100,
+        "language": "c"
+      },
       "gpu_map_file": {
         "language": "c"
       },
@@ -444,6 +448,10 @@
       },
       "express": {
         "threshold": 96.0,
+        "language": "osprey"
+      },
+      "xdsl": {
+        "threshold": 98.3,
         "language": "osprey"
       }
     },

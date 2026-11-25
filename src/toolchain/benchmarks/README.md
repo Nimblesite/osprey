@@ -42,7 +42,7 @@ BENCH_LANGS=codon zsh src/toolchain/benchmarks/run.sh  # only the named columns;
 ```
 
 `make -C src/toolchain/benchmarks bench-osprey` is the fast loop for a compiler or runtime change: it
-compiles and times only `osprey-arc`, `osprey-gc` and `osprey-wasm`,
+compiles and times only `osprey-arc`, `osprey-gc`, `osprey-ownership` and `osprey-wasm`,
 never Rust/C/C#/Dart/TypeScript/Codon/OCaml/Haskell. It stages into a temp directory and merges
 only the `(case, language)` cells it actually measured, so every other
 language's tracked record survives byte-for-byte — and if any case fails to
@@ -54,7 +54,9 @@ The **`TypeScript`** column runs each `<name>.ts` with `node`, which strips the 
 All WebAssembly columns run under Wasmtime with an explicit 4 MiB call-stack budget (`-W max-wasm-stack=4194304`). The `ackermann` workload exhausts Wasmtime's default budget; with the shared budget it prints the required `8189`. This changes host capacity, not the workload or correctness oracle.
 
 > **Memory backends.** The **`Osprey (ARC)`** and **`Osprey (GC)`** columns compile the same source
-> with `--memory=arc` / `--memory=gc`, and both reclaim unused values. `BENCH_FILTER` selects cases, not backends.
+> with `--memory=arc` / `--memory=gc`, and both reclaim unused values. The **`Osprey (ownership)`** column compiles it again
+> with `--memory=ownership` ([MEM-OWNERSHIP-STATIC]): the compiler proves one owner per value and frees it at its
+> last use, with no reference counts and no collector; a case it cannot prove is refused, so the column stays empty there. `BENCH_FILTER` selects cases, not backends.
 >
 > <!-- binarytrees-results:start -->
 > Current measured peaks: `--memory=arc` **3.08 MB** and `--memory=gc` **15.5 MB**.
@@ -160,6 +162,7 @@ Compile commands (source of truth: [`run.sh`](run.sh)):
 |------|---------|
 | Osprey (ARC) | `osprey <f>.osp --memory=arc --compile` (emits LLVM IR, compiled by clang at `-O2`, override with `OSPREY_OPT`; compiler-inserted ownership operations and the reference-counting runtime archive — [MEM-BACKENDS]) |
 | Osprey (GC) | `osprey <f>.osp --memory=gc --compile` (same source; links the tracing-GC runtime archive — [MEM-BACKENDS]) |
+| Osprey (ownership) | `osprey <f>.osp --memory=ownership --compile` (same source; refused unless every value has one proved owner — [MEM-OWNERSHIP-STATIC]) |
 | Rust    | `rustc -C opt-level=3 -C overflow-checks=off -o <bin> <f>.rs` |
 | Rust (checked) | `rustc -C opt-level=3 -C overflow-checks=on -o <bin> <f>.rs` — the same source with Rust's integer overflow checks on. Osprey checks every integer operation ([spec 0037](../../../docs/specs/language/0037-ArithmeticEffects.md)), so this column is the like-for-like baseline; `Rust` and `C` run unchecked arithmetic |
 | C       | `cc -O2 -o <bin> <f>.c` |

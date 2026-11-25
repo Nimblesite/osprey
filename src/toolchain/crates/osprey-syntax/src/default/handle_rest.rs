@@ -5,11 +5,22 @@ use crate::{SyntaxError, HANDLE_NEEDS_A_BLOCK, NOTHING_TO_HANDLE};
 use tree_sitter::Node;
 
 pub(super) fn check(root: Node<'_>, errors: &mut Vec<SyntaxError>) {
+    walk_errors(root, "handler_expression", region_error, errors);
+}
+
+/// Depth-first walk of `root`'s named nodes, pushing an error for each node of
+/// `kind` that `reject` flags.
+pub(super) fn walk_errors(
+    root: Node<'_>,
+    kind: &'static str,
+    reject: impl Fn(Node<'_>) -> Option<&'static str>,
+    errors: &mut Vec<SyntaxError>,
+) {
     let mut cursor = root.walk();
     let mut stack = vec![root];
     while let Some(node) = stack.pop() {
-        if node.kind() == "handler_expression" {
-            if let Some(message) = region_error(node) {
+        if node.kind() == kind {
+            if let Some(message) = reject(node) {
                 errors.push(SyntaxError {
                     message: message.to_owned(),
                     position: super::position_from_point(node.start_position()),

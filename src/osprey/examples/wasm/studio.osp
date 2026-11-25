@@ -37,8 +37,7 @@ fn grade(price) = match price >= 15 {
 
 fn isPremium(price) = match grade(price) {
     Premium  => 1
-    Standard => 0
-    Budget   => 0
+    Standard | Budget => 0
 }
 
 // Revenue tier for the whole book of business — the headline badge.

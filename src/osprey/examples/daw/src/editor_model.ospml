@@ -257,6 +257,8 @@ type EditorAction =
     EditParameter
         identity : int
         key : string
+    EditFormula
+        identity : int
     Modulate
         identity : int
         key : string

@@ -28,18 +28,18 @@ pub(crate) fn assert_flavored_output(name: &str, extension: &str, source: &str, 
         let result = execute(name, extension, source, memory);
         assert!(result.is_ok(), "compiler execution failed: {result:?}");
         let Ok(output) = result else { return };
-        assert_ran(
+        assert_run(
             &output,
+            expected,
             &format!("{name}/{extension}/{memory}"),
             memory,
-            expected,
         );
     }
 }
 
-/// `output` succeeded and printed exactly `expected`; under ARC it also
-/// leaked nothing. `label` names the run in every failure.
-pub(crate) fn assert_ran(output: &std::process::Output, label: &str, memory: &str, expected: &str) {
+/// One run's answer, whatever ran it: success, the exact `expected` stdout,
+/// and — under ARC — a clean teardown.
+pub(crate) fn assert_run(output: &std::process::Output, expected: &str, label: &str, memory: &str) {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(output.status.success(), "{label}: {stderr}");
     assert_eq!(

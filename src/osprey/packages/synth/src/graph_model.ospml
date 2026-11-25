@@ -84,6 +84,8 @@ type Processor =
     Lfo
     ModulatedGain
     MidiNotes
+    FormulaNotes
+        formula : string
     Stereo
     Panner
     Split

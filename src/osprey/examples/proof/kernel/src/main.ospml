@@ -1,11 +1,5 @@
 namespace proof
 
-import proof::Levels
-import proof::Terms
-import proof::Environment
-import proof::Surface
-import proof::Checked
-import proof::Fixtures
 
 // M0 of plan 0041: the kernel checks `fun (p : Prop) (h : p) => h` against
 // `∀ (p : Prop), p → p` and prints `checked: id_imp`; a wrong proof of the

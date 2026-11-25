@@ -78,9 +78,7 @@ module WaveImport
     sample (bytes, fmt, at) = match word (bytes, at, fmt.sampleBytes)
         Error why => Error(message = why)
         Success bits =>
-            signed = match bits >= 2147483648
-                true => satSub bits 4294967296
-                false => bits
+            signed = PcmWords::signed bits
             value = match fmt.encoding == 3
                 true => toFloat (float32FromBits (toInt32 signed))
                 false => WaveMath::pcm (toFloat bits, toFloat (satMul fmt.sampleBytes 8))

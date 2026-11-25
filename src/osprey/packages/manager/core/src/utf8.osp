@@ -1,5 +1,4 @@
 namespace registry;
-import registry::Bytes
 
 /// UTF-8 well-formedness over a string's bytes: correct lead/continuation
 /// shapes, no overlongs, no surrogates, nothing above U+10FFFF, and the

@@ -3,11 +3,6 @@
 
 namespace bank
 
-import bank::Sqlite
-import bank::Ledger
-import bank::Api
-import bank::Metrics
-
 // One deterministic tour of the whole stack, driven over REAL HTTP by the
 // in-process client: JSON mutations, a refused overdraft, the JSON listing,
 // and the 404 a non-API path gets: the web client is served on its own, never by this server.

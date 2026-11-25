@@ -44,6 +44,6 @@ module Repatch
     (** Keep compatible components' phase/filter/delay state and parameter values; reset changed processors. No partial result escapes on rejection. *)
     export apply (previous, next, snapshot, audio) = match snapshot.samplePosition == audio.position && audio.position >= 0 && snapshot.revision >= 0 && snapshot.revision < 9223372036854775806
         false => Error(message = InvalidConfiguration(detail = "Graph replacement requires a current block-boundary snapshot and an available revision."))
-        true => match Graphs::prepare previous
-            Invalid _ => Error(message = InvalidConfiguration(detail = "The previous graph is invalid."))
-            Valid _ => Outcomes::carried (Renderer::start next, \initial => finish (previous, next, snapshot, audio, initial))
+        true =>
+            use _ <- Renderer::validated (previous, InvalidConfiguration(detail = "The previous graph is invalid."))
+            Outcomes::carried (Renderer::start next, \initial => finish (previous, next, snapshot, audio, initial))

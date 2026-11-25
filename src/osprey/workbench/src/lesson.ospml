@@ -3,7 +3,6 @@
 // the rule it breaks, and an unsafe media path never leaves this module.
 namespace workbench
 
-import workbench::Formulas
 import ui::Lists
 import ui::Doc
 import ui::Maths
@@ -23,24 +22,13 @@ type Film =
     filmAlt : string
     filmSeconds : int
 
-(** A prove challenge: the declaration heading, the locked steps shown before the answer, and a kernel-checked solution ([LESSONS-PROVE]). *)
-type Proving =
-    provedHeading : string
-    provedGiven : List<string>
-    provedSolution : List<string>
-
 (** A state challenge: the variables the answer may use and the formula it must equal by definition ([LESSONS-STATE]). *)
 type Stating =
     statedVariables : List<string>
     statedExpected : string
 
-(** A judge challenge: the declaration heading and the proof the learner rules on ([LESSONS-JUDGE]). *)
-type Judging =
-    judgedHeading : string
-    judgedSteps : List<string>
-
-(** What a challenge asks for ([LESSONS-CHALLENGES]). *)
-type Task = ProveTask Proving | StateTask Stating | JudgeTask Judging
+(** What a challenge asks for: a formula in mathematical notation ([LESSONS-CHALLENGES], [WORKBENCH-NO-ENGLISH]). *)
+type Task = StateTask Stating
 
 (** One challenge: its identifier within the lesson, the prompt, the hints in order and the task ([LESSONS-CHALLENGES]). *)
 type Challenge =
@@ -112,7 +100,7 @@ module Lessons
         false => "stage must be 1, 2 or 3"
 
     header (doc, slug) = firstOf [
-        formatProblem doc,
+        formatProblem "lesson" doc,
         slugProblem slug,
         needText (doc, "title", "lesson"),
         needText (doc, "summary", "lesson"),
@@ -121,9 +109,9 @@ module Lessons
         afterProblem doc,
     ]
 
-    formatProblem doc = match Doc::number (doc, "format") == 1
+    export formatProblem kind doc = match Doc::number (doc, "format") == 1
         true => ""
-        false => "this lesson needs a newer workbench (format must be 1)"
+        false => "this ${kind} needs a newer workbench (format must be 1)"
 
     slugProblem slug = match isSlug slug
         true => ""
@@ -231,14 +219,8 @@ module Challenges
         Posed found => Took (Exercise (Challenge(challengeId = Doc::text (doc, "id"), challengePrompt = Doc::text (doc, "prompt"), challengeHints = Doc::texts (doc, "hints"), challengeTask = found)))
 
     task (doc, path) = match Doc::text (doc, "kind")
-        "prove" => proving (doc, path)
         "state" => stating (doc, path)
-        "judge" => judging (doc, path)
         other => Unposed (path + ".kind `" + other + "` is not a challenge kind")
-
-    proving (doc, path) = match Lessons::needText (doc, "statement", path)
-        "" => Posed (ProveTask (Proving(provedHeading = Doc::text (doc, "statement"), provedGiven = Doc::texts (doc, "given"), provedSolution = Doc::texts (doc, "solution"))))
-        problem => Unposed problem
 
     // A task posed only when its `heading` text is there and its `key` list is not empty.
     listed (doc, path, heading, key, complaint, then) = match Lessons::firstOf [Lessons::needText (doc, heading, path), missing (doc, path, key, complaint)]
@@ -251,7 +233,6 @@ module Challenges
 
     stating (doc, path) = listed (doc, path, "expected", "variables", "name at least one proposition", \() => Posed (StateTask (Stating(statedVariables = Doc::texts (doc, "variables"), statedExpected = Doc::text (doc, "expected")))))
 
-    judging (doc, path) = listed (doc, path, "statement", "steps", "list the proof to judge", \() => Posed (JudgeTask (Judging(judgedHeading = Doc::text (doc, "statement"), judgedSteps = Doc::texts (doc, "steps")))))
 
 (** One stage of the catalogue: its number and its name ([LESSONS-FILES]). *)
 type Stage =
@@ -273,9 +254,7 @@ module Catalogues
         stagesProblem (mapList (Doc::fieldItems (doc, "stages"), \item => stage item)),
     ]
 
-    format doc = match Doc::number (doc, "format") == 1
-        true => ""
-        false => "this catalogue needs a newer workbench (format must be 1)"
+    format doc = Lessons::formatProblem "catalogue" doc
 
     slugsProblem slugs = match isEmpty slugs || Lists::any (slugs, \slug => !Lessons::isSlug slug) || !Lists::distinct slugs
         true => "lessons must be distinct lesson slugs, at least one"

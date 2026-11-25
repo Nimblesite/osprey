@@ -1,6 +1,4 @@
 namespace registry;
-import registry::Bytes
-import registry::Sha256
 
 /// The RFC 9162 Merkle Tree Hash over SHA-256 — MTH({}) = SHA256(""),
 /// leaf = SHA256(0x00 || d), node = SHA256(0x01 || left || right), split at

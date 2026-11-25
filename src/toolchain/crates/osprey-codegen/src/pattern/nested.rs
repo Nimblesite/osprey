@@ -247,6 +247,7 @@ fn constructor(
         .ctor_struct_ty(name)
         .ok_or_else(|| CodegenError::invalid("missing nested constructor layout"))?;
     let src = cg.emit_reg(format!("bitcast i8* {} to {struct_ty}*", value.operand));
+    crate::arc::same_value(cg, &src, &value.operand);
     constructor_fields(
         cg,
         Payload {

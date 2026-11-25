@@ -251,6 +251,27 @@ fn allocator_runs_share_codegen_but_link_and_execute_each_runtime() -> TestResul
 }
 
 #[test]
+fn ownership_has_its_own_cached_ir_and_object_in_either_build_order() -> TestResult {
+    for first in ["ownership", "gc"] {
+        let root = project(&format!("ownership_cache_{first}"));
+        let source = root.join("number.test.osp");
+        write(&source, "print(7)\n");
+        for memory in [first, "arc", "gc", "ownership", first] {
+            let output = Command::new(env!("CARGO_BIN_EXE_osprey"))
+                .arg(&source)
+                .args(["--run", "--quiet", &format!("--memory={memory}")])
+                .env("OSPREY_TEST_CACHE_DIR", root.join("cache"))
+                .output()?;
+            assert!(output.status.success(), "{output:?}");
+            assert_eq!(output.stdout, b"7\n");
+        }
+        assert_eq!(artifact_counts(&root)?, [2, 2, 3]);
+        finished(root)?;
+    }
+    Ok(())
+}
+
+#[test]
 fn shared_codegen_cannot_replay_a_stale_success_after_source_changes() -> TestResult {
     let root = project("shared_codegen_invalidation");
     cached_coverage(&root, "arc")?;

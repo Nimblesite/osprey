@@ -1,10 +1,5 @@
 namespace proof
 
-import proof::Levels
-import proof::Terms
-import proof::Environment
-import proof::Reduce
-import proof::Naturals
 
 (** Type inference and checking of [PROOF-KERNEL-THEORY]. The context is
     the list of binders entered (`Binder`: name and type, the type as it was
@@ -62,16 +57,17 @@ module Infer
         true => Success(value = expected)
         false => Error(message = "type mismatch: `${Terms::show (term, names context)}` has type `${Terms::show (found, names context)}` but `${Terms::show (expected, names context)}` was expected")
 
+    // The type `infer` gives `term`, passed to `next`; uninferable means `false`.
+    inferred (env, context, term, next) = match infer (env, context, term)
+        Success ty => next (ty)
+        Error _ => false
+
     (** Proof irrelevance: both terms must have propositions as their types,
         and those proposition types must themselves be definitionally equal.
         A type such as `P` is not a proof, so it is never admitted here. *)
-    export proofEqual (env, context, left, right) = match infer (env, context, left)
-        Success leftType => proofRight (env, context, leftType, right)
-        Error message => false
+    export proofEqual (env, context, left, right) = inferred (env, context, left, \leftType => proofRight (env, context, leftType, right))
 
-    proofRight (env, context, leftType, right) = match infer (env, context, right)
-        Success rightType => proofTypes (env, context, leftType, rightType)
-        Error message => false
+    proofRight (env, context, leftType, right) = inferred (env, context, right, \rightType => proofTypes (env, context, leftType, rightType))
 
     proofTypes (env, context, leftType, rightType) = match isProposition (env, context, leftType) && isProposition (env, context, rightType)
         true => Reduce::conversion (env, context, leftType, rightType, true)

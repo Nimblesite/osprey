@@ -105,3 +105,21 @@ pub(crate) use binding_ranges::binding_scope;
 pub(crate) fn string_literals(source: &str) -> Vec<crate::fragment_ranges::Literal> {
     binding_ranges::literals(source)
 }
+
+/// Every ML token as the closing-run counter sees it: layout is whitespace.
+/// Implements [LINT-NESTING-LAMBDA].
+pub(crate) fn bracket_tokens(source: &str) -> Vec<crate::closing_runs::BracketToken> {
+    use crate::closing_runs::BracketToken;
+    use token::TokKind;
+    lexer::lex(source)
+        .0
+        .into_iter()
+        .filter_map(|token| match token.kind {
+            TokKind::RParen | TokKind::RBrace | TokKind::RBracket => {
+                Some(BracketToken::Closer(token.pos))
+            }
+            TokKind::Newline | TokKind::Indent | TokKind::Dedent | TokKind::Eof => None,
+            _ => Some(BracketToken::Other),
+        })
+        .collect()
+}

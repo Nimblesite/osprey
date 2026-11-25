@@ -32,7 +32,7 @@ original package ships no Python reference, so this is a port addition for testi
 | Ported function | Original | Notes |
 | --- | --- | --- |
 | `Attention.flash_attn_func` | `flash_attn.flash_attn_func` | q, k, v as flat `[batch, seqlen, heads, headdim]` lists with an explicit `Core.Shapes` record; `dropout_p=0` only, `deterministic` dropped (no bf16) |
-| `Attention.flash_attn_varlen_func` | `flash_attn.flash_attn_varlen_func` | independent `flash_attn_func` per sequence, outputs concatenated |
+| `Attention.flash_attn_varlen_func` | `flash_attn.flash_attn_varlen_func` | independent `flash_attn_func` per sequence, outputs concatenated; returns `Result`: cumulative lengths that run past an input are an `Error` naming the run, where flash-attn reads out of bounds |
 | `Naive.naive_attention` | — | port-added reference (see above) |
 | `Core.mask_bounds` | flash-attn's causal/window mask | bottom-right aligned causal (`j <= i + seqlen_k - seqlen_q`) |
 | `Core.alibi_bias` | flash-attn ALiBi | `-slope * |i + seqlen_k - seqlen_q - j|`, one slope per query head |

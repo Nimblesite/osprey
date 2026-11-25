@@ -1,6 +1,5 @@
 namespace bounded
 
-import bounded::Chars
 
 (** The erased module of [TYPES-DISCIPLINE-SEAM]: the source the HM pipeline
 receives in place of the disciplined module. *)

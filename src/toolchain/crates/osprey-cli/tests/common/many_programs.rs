@@ -399,4 +399,70 @@ fn main() = {
 "#,
         "all=15\n",
     ),
+    (
+        // The inner handler answers `pick` only, so `other` passes out to the
+        // outer one from every branch; the inner region is not closed.
+        "a handler that answers some operations passes the rest outward",
+        r#"
+effect Choice {
+    control many pick: fn(int) -> int
+    control many other: fn(int) -> int
+}
+fn main() = {
+    let found = {
+        handle Choice {
+            pick bound => resume(satAdd(bound, 100))
+            other bound => resume(bound)
+        }
+        let inner = {
+            handle Choice {
+                pick bound => {
+                    let low = resume(bound)
+                    let high = resume(satAdd(bound, 1))
+                    "${low}+${high}"
+                }
+            }
+            let a = perform Choice.pick(1)
+            let b = perform Choice.other(a)
+            "${a}.${b}"
+        }
+        inner
+    }
+    print("found=${found}")
+}
+"#,
+        "found=1.1+2.2\n",
+    ),
+    (
+        // The same split with the outer handler answering only the passed operation.
+        "an outer handler answers only the operation an inner one passes",
+        r#"
+effect Choice {
+    control many pick: fn(int) -> int
+    control many other: fn(int) -> int
+}
+fn main() = {
+    let found = {
+        handle Choice {
+            other bound => resume(satMul(bound, 10))
+        }
+        let inner = {
+            handle Choice {
+                pick bound => {
+                    let low = resume(bound)
+                    let high = resume(satAdd(bound, 1))
+                    "${low}+${high}"
+                }
+            }
+            let a = perform Choice.pick(1)
+            let b = perform Choice.other(a)
+            "${a}.${b}"
+        }
+        inner
+    }
+    print("found=${found}")
+}
+"#,
+        "found=1.10+2.20\n",
+    ),
 ];

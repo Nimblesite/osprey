@@ -4,10 +4,6 @@
 // only the open lesson's text is kept in the store.
 namespace workbench
 
-import workbench::Lessons
-import workbench::Catalogues
-import workbench::Blocks
-import workbench::Tutors
 import ui::Doc
 import ui::Lists
 import ui::Requests

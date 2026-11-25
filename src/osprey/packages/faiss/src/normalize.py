@@ -17,7 +17,21 @@ __all__ = ["normalize_L2"]
 
 def normalize_L2(x):
     """faiss's `normalize_L2(x)`: each row divided by its L2 norm, zero rows
-    unchanged. Returns the new matrix (faiss mutates `x` in place)."""
+    unchanged. Returns the new matrix (faiss mutates `x` in place).
+
+    # Examples
+    ```osprey
+    import faiss.Normalize as Normalize
+
+    def show():
+        print(f"{toString(Normalize.normalize_L2([[3.0, 4.0], [0.0, 0.0]]))}")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [[0.6, 0.8], [0.0, 0.0]]
+    ```
+    """
     return mapList(x, lambda row: normalize_row(row))
 
 

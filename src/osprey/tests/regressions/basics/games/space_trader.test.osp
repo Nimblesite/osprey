@@ -104,10 +104,9 @@ fn sellLeg(amount, price, markup, balance, cargo) = {
 }
 
 // Mission briefing and setup
-print("🛸 MISSION BRIEFING 🛸\nShip: Osprey-7 Starfreighter\nFuel: ${shipFuel}% ⛽\nCredits: ${credits} 💰\nCargo Space: ${cargoUsed}/${cargoSpace} 📦\nReputation: ${getReputationTitle(reputation)}\n")
+print("🛸 MISSION BRIEFING 🛸\nShip: Osprey-7 Starfreighter\nFuel: ${shipFuel}% ⛽\nCredits: ${credits} 💰\nCargo Space: ${cargoUsed}/${cargoSpace} 📦\nReputation: ${getReputationTitle(reputation)}\n\n🌍 GALACTIC TRADING SIMULATION 🌍\n")
 
 // Trading simulation across multiple planets
-print("🌍 GALACTIC TRADING SIMULATION 🌍\n")
 
 /// Planet 1: Nebula Prime
 let market1 = planetMarket(1)
@@ -122,9 +121,7 @@ print("Purchasing ${purchaseAmount1} units of ${market1.resourceName}\nTotal cos
 
 /// Planet 2: Crystal Moon
 let market2 = planetMarket(2)
-print("🚀 Traveling to ${market2.name}...\nFuel consumed: ${jump1.cost}%\nCurrent fuel: ${jump1.fuel}% ⛽\n")
-
-print("📍 Arrived at ${market2.name}\nLocal specialty: ${market2.resourceName}\nMarket price: ${market2.resourcePrice} credits per unit")
+print("🚀 Traveling to ${market2.name}...\nFuel consumed: ${jump1.cost}%\nCurrent fuel: ${jump1.fuel}% ⛽\n\n📍 Arrived at ${market2.name}\nLocal specialty: ${market2.resourceName}\nMarket price: ${market2.resourcePrice} credits per unit")
 
 /// Sell previous cargo at premium
 let sale1 = sellLeg(purchaseAmount1, market1.resourcePrice, 25, buy1.credits, buy1.cargo)
@@ -140,9 +137,7 @@ print("Purchasing ${purchaseAmount2} units of ${market2.resourceName}\nCost: ${b
 /// Planet 3: Trade Station Alpha (Major Hub)
 let jump2 = jump(jump1.fuel, 3)
 
-print("🚀 Long-range jump to ${getPlanetName(3)}\nFuel consumed: ${jump2.cost}%\nCurrent fuel: ${jump2.fuel}% ⛽\n")
-
-print("📍 Docking at ${getPlanetName(3)}\nThis is the galaxy's premier trading hub!")
+print("🚀 Long-range jump to ${getPlanetName(3)}\nFuel consumed: ${jump2.cost}%\nCurrent fuel: ${jump2.fuel}% ⛽\n\n📍 Docking at ${getPlanetName(3)}\nThis is the galaxy's premier trading hub!")
 
 /// Major trade at hub
 let sale2 = sellLeg(purchaseAmount2, market2.resourcePrice, 30, buy2.credits, buy2.cargo)
@@ -151,25 +146,17 @@ print("Selling ${purchaseAmount2} units of ${market2.resourceName}\nHub premium 
 
 /// Calculate profit and reputation
 let totalProfit = safeSub(sale2.credits, credits)
-let newReputation = safeAdd(reputation, 1)
 let newPlanetsVisited = safeAdd(planetsVisited, 3)
-let newReputationTitle = getReputationTitle(newReputation)
+let newReputationTitle = getReputationTitle(safeAdd(reputation, 1))
 
-print("📈 TRADING RESULTS 📈\nStarting credits: ${credits}\nFinal credits: ${sale2.credits}\nTotal profit: ${totalProfit} credits! 💰\nPlanets visited: ${newPlanetsVisited}\nNew reputation: ${newReputationTitle}\n")
-
-/// Ship status report
-let finalShipStatus = getShipStatus(jump2.fuel)
-print("🛸 SHIP STATUS REPORT 🛸\nFuel level: ${jump2.fuel}% (${finalShipStatus})\nCargo bay: ${sale2.cargo}/${cargoSpace} units\nShip condition: Operational\n")
+/// Trading results and ship status report
+print("📈 TRADING RESULTS 📈\nStarting credits: ${credits}\nFinal credits: ${sale2.credits}\nTotal profit: ${totalProfit} credits! 💰\nPlanets visited: ${newPlanetsVisited}\nNew reputation: ${newReputationTitle}\n\n🛸 SHIP STATUS REPORT 🛸\nFuel level: ${jump2.fuel}% (${getShipStatus(jump2.fuel)})\nCargo bay: ${sale2.cargo}/${cargoSpace} units\nShip condition: Operational\n")
 
 /// Advanced calculations and projections
-let fuelEfficiency = safeDiv(jump2.fuel, newPlanetsVisited)
-let profitPerPlanet = safeDiv(totalProfit, newPlanetsVisited)
 let projectedWealth = safeMul(sale2.credits, 2)
 
-print("📊 ADVANCED ANALYTICS 📊\nFuel efficiency: ${fuelEfficiency}% per planet\nProfit per planet: ${profitPerPlanet} credits\nProjected wealth (if doubled): ${projectedWealth} credits\n")
-
 // Mission completion and next steps
-print("🏆 MISSION COMPLETE! 🏆\nCongratulations, Captain ${newReputationTitle}!\nYou have successfully established trade routes across the galaxy!\n\nNext objectives:\n  ⭐ Explore more distant sectors\n  ⭐ Upgrade ship cargo capacity\n  ⭐ Establish permanent trade agreements\n  ⭐ Recruit specialized crew members\n\n🌟 Your trading empire awaits! 🌟\nEnd of Galactic Trade Simulation\nThank you for playing Osprey Space Trader!")
+print("📊 ADVANCED ANALYTICS 📊\nFuel efficiency: ${safeDiv(jump2.fuel, newPlanetsVisited)}% per planet\nProfit per planet: ${safeDiv(totalProfit, newPlanetsVisited)} credits\nProjected wealth (if doubled): ${projectedWealth} credits\n\n🏆 MISSION COMPLETE! 🏆\nCongratulations, Captain ${newReputationTitle}!\nYou have successfully established trade routes across the galaxy!\n\nNext objectives:\n  ⭐ Explore more distant sectors\n  ⭐ Upgrade ship cargo capacity\n  ⭐ Establish permanent trade agreements\n  ⭐ Recruit specialized crew members\n\n🌟 Your trading empire awaits! 🌟\nEnd of Galactic Trade Simulation\nThank you for playing Osprey Space Trader!")
 
 /// Validates the ledger the narrative computed and every market and status branch.
 fn spaceTraderCase() = {

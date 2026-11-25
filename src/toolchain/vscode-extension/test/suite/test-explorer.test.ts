@@ -26,6 +26,7 @@ import {
 } from "../../client/src/test-explorer-items";
 import { runCompiler } from "../../client/src/test-explorer-process";
 import {
+  assertSkipWarningLayout,
   oneSkipWarning,
   resolveBuiltOsprey,
   skipWarningsOf,
@@ -917,17 +918,19 @@ suite("Osprey Test Explorer", () => {
         2,
         `only the skips warn: ${JSON.stringify(warnings.map((w) => w.message))}`,
       );
-      assert.deepStrictEqual(
-        warnings.map((w) => w.range.start.line),
-        [11, 13],
-        "warnings land on the two `test(` lines",
-      );
-      assert.deepStrictEqual(
-        warnings.map((w) => w.message),
+      assertSkipWarningLayout(
+        warnings,
         [
-          "Test 'statically parked' was skipped: static reason",
-          "Test 'dynamically parked' was skipped: runtime precondition unmet",
+          {
+            line: 11,
+            message: "Test 'statically parked' was skipped: static reason",
+          },
+          {
+            line: 13,
+            message: "Test 'dynamically parked' was skipped: runtime precondition unmet",
+          },
         ],
+        "warnings land on the two `test(` lines",
       );
       for (const warning of warnings) {
         assert.strictEqual(warning.severity, vscode.DiagnosticSeverity.Warning);

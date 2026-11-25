@@ -219,13 +219,14 @@ def span(width):
     return width if width > 0 else 1
 
 
+def alt_len(width, fallback):
+    """A match width when one matched, else the next alternative's."""
+    return width if width > 0 else fallback
+
+
 def qwen_piece_len(n, i):
     """How many characters the leftmost match at i takes, or 0 for none."""
-    contract = contraction_len(n, i)
-    if contract > 0:
-        return contract
-    else:
-        return rest_len(n, i)
+    return alt_len(contraction_len(n, i), rest_len(n, i))
 
 
 def rest_len(n, i):
@@ -239,19 +240,11 @@ def rest_len(n, i):
 
 
 def tail_len(n, i):
-    symbols = symbol_run_len(n, i)
-    if symbols > 0:
-        return symbols
-    else:
-        return space_alt_len(n, i)
+    return alt_len(symbol_run_len(n, i), space_alt_len(n, i))
 
 
 def space_alt_len(n, i):
-    newlines = newline_alt_len(n, i)
-    if newlines > 0:
-        return newlines
-    else:
-        return bounded_space_len(n, i)
+    return alt_len(newline_alt_len(n, i), bounded_space_len(n, i))
 
 
 def bounded_space_len(n, i):
@@ -307,14 +300,15 @@ def contraction_len(n, i):
         return 0
     elif same_ascii(cp_at(n, i + 1), 115) or same_ascii(cp_at(n, i + 1), 116) or same_ascii(cp_at(n, i + 1), 109) or same_ascii(cp_at(n, i + 1), 100):
         return 2
-    elif same_ascii(cp_at(n, i + 1), 114) and same_ascii(cp_at(n, i + 2), 101):
-        return 3
-    elif same_ascii(cp_at(n, i + 1), 118) and same_ascii(cp_at(n, i + 2), 101):
-        return 3
-    elif same_ascii(cp_at(n, i + 1), 108) and same_ascii(cp_at(n, i + 2), 108):
+    elif contraction_pair(n, i, 114, 101) or contraction_pair(n, i, 118, 101) or contraction_pair(n, i, 108, 108):
         return 3
     else:
         return 0
+
+
+def contraction_pair(n, i, first, second):
+    """Whether the contraction continues with the ASCII letters `first`, then `second`."""
+    return same_ascii(cp_at(n, i + 1), first) and same_ascii(cp_at(n, i + 2), second)
 
 
 def letter_run_len(n, i):

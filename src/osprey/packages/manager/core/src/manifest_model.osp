@@ -1,6 +1,4 @@
 namespace registry;
-import registry::Names
-import registry::Maybe
 
 /// The canonical manifest: the typeDiagram `PackageManifest` and its parts,
 /// as `osprey.toml` projects onto them. Field names follow
@@ -62,9 +60,7 @@ module ManifestModel {
 
     /// The requirement inside any edge.
     export fn requirementOf(edge) = match edge {
-        Runtime { requirement } => requirement
-        Build { requirement } => requirement
-        Test { requirement } => requirement
+        Runtime { requirement } | Build { requirement } | Test { requirement } => requirement
     }
 
     /// The key any edge requires.

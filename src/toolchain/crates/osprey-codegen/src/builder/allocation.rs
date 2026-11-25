@@ -98,6 +98,12 @@ impl Codegen {
         self.rodata_regs.contains(reg)
     }
 
+    /// Record that `reg` can only hold rodata or null: a choice between string
+    /// literals carries no reference either [GC-ARC-PERCEUS].
+    pub(crate) fn mark_rodata(&mut self, reg: &str) {
+        let _ = self.rodata_regs.insert(reg.to_owned());
+    }
+
     /// An entry-block `alloca` of `ty`: a slot claimed inside a loop body is
     /// then one frame slot, not a fresh stack allocation every iteration.
     pub(crate) fn hoist_slot(&mut self, ty: &str) -> String {

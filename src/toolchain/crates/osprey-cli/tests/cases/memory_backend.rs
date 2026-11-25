@@ -1,4 +1,4 @@
-//! Memory management is automatic; opting out requires an explicit CLI flag.
+//! The CLI defaults to managed memory and rejects retired backend spellings.
 use super::{osprey, temp_osp};
 
 #[test]
@@ -21,26 +21,22 @@ fn an_omitted_memory_flag_links_the_gc_runtime() {
 }
 
 #[test]
-fn unmanaged_execution_requires_the_explicit_none_option() {
-    let source = temp_osp("unmanaged_opt_in", "print(\"explicit opt-out\")\n");
-    let output = osprey()
-        .arg(&source)
-        .args(["--run", "--quiet", "--memory=none"])
-        .output()
-        .expect("run compiler");
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    assert_eq!(output.stdout, b"explicit opt-out\n");
-    let ambiguous = osprey()
-        .arg(source)
-        .args(["--check", "--memory=default"])
-        .output()
-        .expect("run compiler");
-    assert!(
-        !ambiguous.status.success(),
-        "ambiguous allocator option accepted"
-    );
+fn retired_memory_backends_are_rejected_on_native_and_wasm() {
+    let source = temp_osp("retired_memory", "print(\"managed memory\")\n");
+    for target in ["native", "wasm32"] {
+        for backend in ["none", "default"] {
+            let output = osprey()
+                .arg(&source)
+                .args([
+                    "--check",
+                    &format!("--target={target}"),
+                    &format!("--memory={backend}"),
+                ])
+                .output()
+                .expect("run compiler");
+            assert!(!output.status.success(), "{target} accepted {backend}");
+            assert!(String::from_utf8_lossy(&output.stderr)
+                .contains(&format!("unknown memory backend '{backend}'")));
+        }
+    }
 }

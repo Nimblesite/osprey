@@ -46,13 +46,24 @@ class SumState:
 
 
 def fmeasure(precision, recall):
-    """The harmonic mean of precision and recall."""
+    """The harmonic mean of precision and recall.
+
+    # Examples
+    ```osprey
+    from rouge_score.RougeScorer import fmeasure, score, score_multi, RougeScorer
+
+    def show():
+        normal = fmeasure(0.5, 1.0)
+        zero = fmeasure(0.0, 0.0)
+        print(f"[{normal}] [{zero}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [0.6666666666666666] [0.0]
+    ```
+    """
     return 2.0 * precision * recall / (precision + recall) if precision + recall > 0.0 else 0.0
-
-
-def max_i(a, b):
-    """The larger of two ints."""
-    return a if a > b else b
 
 
 def token_at(xs, i):
@@ -80,7 +91,7 @@ def lcs_cell(ref, can, prev_row, cur_row, i, j):
     if token_at(ref, i - 1) == token_at(can, j - 1):
         return row_at(prev_row, j - 1) + 1
     else:
-        return max_i(row_at(prev_row, j), row_at(cur_row, j - 1))
+        return max(row_at(prev_row, j), row_at(cur_row, j - 1))
 
 
 def lcs_row(ref, can, prev_row, i, cols):
@@ -156,8 +167,8 @@ def score_lcs(target_tokens, prediction_tokens):
 def score_ngrams(target_ngrams, prediction_ngrams):
     """rougeN: n-gram overlap precision/recall/f-measure."""
     intersection = counter_matched(target_ngrams, prediction_ngrams)
-    precision = toFloat(intersection) / toFloat(max_i(counter_total(prediction_ngrams), 1))
-    recall = toFloat(intersection) / toFloat(max_i(counter_total(target_ngrams), 1))
+    precision = toFloat(intersection) / toFloat(max(counter_total(prediction_ngrams), 1))
+    recall = toFloat(intersection) / toFloat(max(counter_total(target_ngrams), 1))
     return Score(precision=precision, recall=recall, fmeasure=fmeasure(precision, recall))
 
 
@@ -231,7 +242,24 @@ def one_rouge(t, tokens_t, tokens_p, target, prediction, use_stemmer):
 
 
 def score(scorer, target, prediction):
-    """`RougeScorer.score`: one `Scored` per rouge type, in `rouge_types` order."""
+    """`RougeScorer.score`: one `Scored` per rouge type, in `rouge_types` order.
+
+    # Examples
+    ```osprey
+    from rouge_score.RougeScorer import fmeasure, score, score_multi, RougeScorer
+
+    def show():
+        scorer = RougeScorer(rouge_types=["rouge1", "rougeL"], use_stemmer=False, split_summaries=False)
+        scores = score(scorer, "the cat was found under the bed", "the cat was under the bed")
+        empty = score(scorer, "", "")
+        print(f"[{scores}] [{empty}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [[{ name: "rouge1", precision: 1.0, recall: 0.8571428571428571, fmeasure: 0.923076923076923 }, { name: "rougeL", precision: 1.0, recall: 0.8571428571428571, fmeasure: 0.923076923076923 }]] [[{ name: "rouge1", precision: 0.0, recall: 0.0, fmeasure: 0.0 }, { name: "rougeL", precision: 0.0, recall: 0.0, fmeasure: 0.0 }]]
+    ```
+    """
     if len(scorer.rouge_types) == 1 and unwrap_or(listGet(scorer.rouge_types, 0), "") == "rougeLsum":
         return [one_rouge("rougeLsum", [], [], target, prediction, scorer.use_stemmer)]
     else:
@@ -253,6 +281,23 @@ def best_by_index(k, score_dicts):
 
 
 def score_multi(scorer, targets, prediction):
-    """`RougeScorer.score_multi`: the maximum-f-measure target per type."""
+    """`Rouge.score_multi`: the maximum-f-measure target per type.
+
+    # Examples
+    ```osprey
+    from rouge_score.RougeScorer import fmeasure, score, score_multi, RougeScorer
+
+    def show():
+        scorer = RougeScorer(rouge_types=["rouge1"], use_stemmer=False, split_summaries=False)
+        best = score_multi(scorer, ["the cat", "the dog"], "the cat")
+        no_targets = score_multi(scorer, [], "the cat")
+        print(f"[{best}] [{no_targets}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [[{ name: "rouge1", precision: 1.0, recall: 1.0, fmeasure: 1.0 }]] [[{ name: "", precision: 0.0, recall: 0.0, fmeasure: -1.0 }]]
+    ```
+    """
     score_dicts = mapList(targets, lambda t: score(scorer, t, prediction))
     return toList(map(range(len(scorer.rouge_types)), lambda k: best_by_index(k, score_dicts)))

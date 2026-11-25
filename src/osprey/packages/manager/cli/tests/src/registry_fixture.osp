@@ -4,14 +4,11 @@ import registry_cli::Dispatch
 import registry_cli::Lockfile
 import registry_cli::Fetch
 import registry_cli::Reports
-import registry_tests::Fixture
 import registry::Bundle
-import registry::Identity
 import registry::ManifestJson
 import registry::ManifestModel
 import registry::Maybe
 import registry::Names
-import registry::Release
 
 /// A small folder registry (`@demo/one` depends on `@demo/two`; `@demo/three`
 /// depends on nothing) served through fixture Web/Files handlers, and one

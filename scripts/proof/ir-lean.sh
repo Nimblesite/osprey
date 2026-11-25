@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+# [IR-LEAN] Prove theorems about the code the compiler emitted, through the
+# IR to Lean framework: the compiler's LLVM IR, LLVM's own importer to MLIR,
+# the @osprey/xdsl reader, and the LlvmSubset semantics in Lean. Every theorem
+# is replayed in Osprey's proof kernel under each backend, and each broken
+# version of the emitted code must lose its theorem.
+set -euo pipefail
+root=$(cd "$(dirname "$0")/../.." && pwd)
+out="$root/target/proof/ir-lean"
+tools="$root/src/toolchain/benchmarks/proof/tools"
+source "$root/scripts/proof/replay.sh"
+program="$root/src/osprey/tests/regressions/ownership/single_owner.test.osp"
+mlir_bin=${MLIR_BIN:-$(dirname "$(command -v mlir-translate || echo /opt/homebrew/opt/llvm/bin/mlir-translate)")}
+mkdir -p "$out/emitted" "$out/mutations"
+"$1" "$program" --llvm --memory=ownership > "$out/emitted.ll"
+"$1" "$root/src/osprey/examples/proof/ir_lean" --compile --quiet --no-warnings -o "$out/ir_lean"
+cd "$tools"
+lake build LlvmSubset lean4export
+exporter=$(lake env which lean4export)
+lean_path=$(lake env printenv LEAN_PATH)
+# One variant of the emitted code, from LLVM IR to a checked Lean module.
+translate() {
+  local ir=$1 dir=$2
+  mkdir -p "$dir"
+  clang -Wno-override-module -c -x ir "$ir" -o /dev/null
+  "$mlir_bin/mlir-translate" --import-llvm "$ir" | "$mlir_bin/mlir-opt" --mlir-print-op-generic > "$dir/emitted.mlir"
+  "$out/ir_lean" "$dir/emitted.mlir" Emitted 'grow$mono' 'growWhen$mono' 'keep$mono' relabel foeName > "$dir/Emitted.lean"
+  if grep -q 'IR-LEAN-FAILED\|REFUSED' "$dir/Emitted.lean"; then
+    grep 'IR-LEAN-FAILED\|REFUSED' "$dir/Emitted.lean" >&2
+    return 1
+  fi
+  lake env lean -DwarningAsError=true --root="$dir" -o "$dir/Emitted.olean" "$dir/Emitted.lean"
+}
+prove_module() { LEAN_PATH="$1:$lean_path" lean -DwarningAsError=true -o "$1/$2.olean" "$2.lean"; }
+translate "$out/emitted.ll" "$out/emitted"
+grep -m1 'Translated' "$out/emitted/Emitted.lean"
+prove_module "$out/emitted" EmittedOwnership
+# Osprey's kernel replays each theorem; the axioms are pinned.
+export_and_replay() {
+  local module=$1 theorem=$2 name=${2##*.} axioms=${3:-propext}
+  LEAN_PATH="$out/emitted:$lean_path" "$exporter" "$module" -- "$theorem" > "$out/emitted/$name.ndjson"
+  replay "$name.ndjson" "$theorem" "$axioms" "$out/emitted"
+}
+reject_module() {
+  local fault=$1 module=$2 dir="$out/mutations/$1"
+  shift 2
+  translate "$dir.ll" "$dir"
+  if prove_module "$dir" "$module" > "$dir/proof.log" 2>&1; then
+    echo "accepted $fault" >&2
+    return 1
+  fi
+  local theorem
+  for theorem in "$@"; do
+    kernel_rejected_at "$module.lean" "$theorem" "$dir/proof.log" || return 1
+    echo "REJECT $fault at $theorem"
+  done
+}
+source "$root/scripts/proof/ownership-record.sh"
+check_record_update
+export_and_replay LlvmSubset LlvmSubset.run_follows_ledger "propext, Quot.sound"
+for name in growScalar growManaged growWhen; do export_and_replay EmittedOwnership "EmittedOwnership.$name"; done
+# Each mutant is valid LLVM IR in the supported subset. It must reach the
+# theorem and be refused there by Lean's kernel.
+for fault in leak double-free early-free stale-phi; do
+  grow_mutation "$fault" "$out/emitted.ll" "$out/mutations/$fault.ll"
+  theorem=growScalar
+  if [[ $fault == stale-phi ]]; then theorem=growWhen; fi
+  reject_module "$fault" EmittedOwnership "$theorem"
+done
+

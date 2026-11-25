@@ -14,7 +14,7 @@ from typing import Callable
 
 from gpt2 import Cpu, Gpu
 
-__all__ = ["Kernel", "Combine", "Tensor", "hit", "min_i", "stop", "product_lengths", "strictly", "under"]
+__all__ = ["Kernel", "Combine", "Tensor", "hit", "min_i", "stop", "product_lengths", "strictly", "under", "reported"]
 
 
 # The kernels a model hands its handler: an index to its element, and two
@@ -119,3 +119,13 @@ def under(name, work):
             return Cpu.on_lists(work)
         case _:
             return print(f"unknown backend `{name}`: choose gpu or lists")
+
+
+def reported(run, label):
+    """A program's answer, or its last line: `label stopped: <the fault>` when the
+    run failed, so a fault ends the output instead of leaving half of it."""
+    match run:
+        case Success(value=value):
+            return value
+        case Error(message=message):
+            return print(f"{label} stopped: {message}")

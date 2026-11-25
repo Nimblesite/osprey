@@ -16,7 +16,7 @@ module GraphClips
         Route _ => false
         Downmix => false
         Sink => false
-        MidiNotes => false
+        MidiNotes | FormulaNotes _ => false
         External _ _ => false
         _ => true
 
@@ -185,7 +185,7 @@ module GraphClips
             false => processed (plan, clips, held, frames, n, 1, remaining)
         Granular _ _ _ => granular (plan, clips, held, frames, n, remaining)
         External _ _ => Outcomes::carried (hostRequest (plan.graph, clips, n, held, frames), \request => Success(value = BlockWaiting(request = request, pending = GraphPending(pendingGraph = plan.graph, pendingState = held, pendingClips = clips, pendingFrames = frames, pendingNode = n.identity))))
-        MidiNotes => Outcomes::carried (MidiClips::timeline (n, held.graphPosition, frames), \notes => emitted (plan, clips, held, frames, n, 0, [], notes, remaining))
+        MidiNotes | FormulaNotes _ => Outcomes::carried (MidiClips::timeline (n, held.graphPosition, frames), \notes => emitted (plan, clips, held, frames, n, 0, [], notes, remaining))
         _ => Outcomes::carried (ClipLayouts::channels n, \count => routed (plan, clips, held, frames, n, count, remaining))
 
     scheduled (plan, clips, held, frames, identities) = match identities
@@ -197,9 +197,9 @@ module GraphClips
     (** Prepare a render order that rejects cycles even through delay components. *)
     export ordered graph = Graphs::prepare (graph(nodes = mapList (graph.nodes, acyclic)))
 
-    prepared (graph, clips, held, frames) = match Graphs::prepare graph
-        Invalid _ => Error(message = InvalidConfiguration(detail = "The graph has invalid nodes or routes."))
-        Valid _ => match ordered graph
+    prepared (graph, clips, held, frames) =
+        use _ <- Renderer::validated (graph, InvalidConfiguration(detail = "The graph has invalid nodes or routes."))
+        match ordered graph
             Invalid _ => Error(message = InvalidConfiguration(detail = "Hosted graph rendering requires an acyclic graph."))
             Valid plan => scheduled (plan(graph = graph), clips, held, frames, plan.order)
 

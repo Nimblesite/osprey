@@ -293,7 +293,25 @@ POOL = {"sky": "sky", "skies": "sky", "dying": "die", "lying": "lie", "tying": "
 
 
 def stem(word):
-    """`PorterStemmer.stem(word)` in NLTK_EXTENSIONS mode."""
+    """`PorterStemmer.stem(word)` in NLTK_EXTENSIONS mode.
+
+    # Examples
+    ```osprey
+    from rouge_score import Stemmer
+
+    def show():
+        pool = Stemmer.stem("Skies")
+        rule = Stemmer.stem("dying")
+        blank = Stemmer.stem("")
+        short = Stemmer.stem("as")
+        print(f"[{pool}] [{rule}] [{blank}] [{short}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [sky] [die] [] [as]
+    ```
+    """
     s = toLowerCase(word)
     if mapContains(POOL, s):
         return unwrap_or(mapGet(POOL, s), s)

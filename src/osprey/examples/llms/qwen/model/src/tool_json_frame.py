@@ -340,10 +340,8 @@ def number_digit(frame, byte):
     """A digit after the sign: a leading zero may not be followed by another digit."""
     if byte == of_char("0"):
         return staged(frame, "numZero")
-    elif is_digit(byte):
-        return staged(frame, "numInt")
     else:
-        return Error(message=ToolSchema.violation("json", "number", "expected a digit"))
+        return digit_required(frame, byte, "numInt", "expected a digit")
 
 
 def number_step(frame, byte):
@@ -429,10 +427,8 @@ def exp_step(frame, byte):
     """The exponent's sign or first digit."""
     if byte == of_char("+") or byte == of_char("-"):
         return staged(frame, "numExpSign")
-    elif is_digit(byte):
-        return staged(frame, "numExpDigit")
     else:
-        return Error(message=ToolSchema.violation("json", "number", "expected an exponent"))
+        return digit_required(frame, byte, "numExpDigit", "expected an exponent")
 
 
 def exp_sign_step(frame, byte):

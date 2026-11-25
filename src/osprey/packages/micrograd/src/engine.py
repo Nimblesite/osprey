@@ -50,27 +50,96 @@ class Cursor:
 
 
 def empty():
-    """A fresh, empty graph arena."""
+    """A fresh, empty graph arena.
+
+    # Examples
+    ```osprey
+    from micrograd import Engine
+
+    def show():
+        g = Engine.empty()
+        print(f"[{Engine.size(g)}] [{Engine.top(g)}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [0] [-1]
+    ```
+    """
     return Graph(nodes=[])
 
 
 def size(g):
-    """The number of nodes in the graph."""
+    """The number of nodes in the graph.
+
+    # Examples
+    ```osprey
+    from micrograd import Engine
+    print(f"[{Engine.size(Engine.value(Engine.empty(), 2.0))}] [{Engine.size(Engine.empty())}]")
+    ```
+    ```output
+    [1] [0]
+    ```
+    """
     return len(g.nodes)
 
 
 def top(g):
-    """The id of the most recently appended node: every operation's result."""
+    """The id of the most recently appended node: every operation's result is
+    `top` of the extended graph.
+
+    # Examples
+    ```osprey
+    from micrograd import Engine
+
+    def show():
+        g = Engine.mul_const(Engine.value(Engine.empty(), 2.0), 0, 3.0)
+        print(f"[{Engine.top(g)}] [{Engine.data(g, Engine.top(g))}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [2] [6.0]
+    ```
+    """
     return len(g.nodes) - 1
 
 
 def node(g, i):
-    """Node `i`, or a neutral leaf when `i` is out of range."""
+    """Node `i`, or a neutral leaf when `i` is out of range.
+
+    # Examples
+    ```osprey
+    from micrograd import Engine
+    g = Engine.value(Engine.empty(), 2.0)
+    n = Engine.node(g, 0)
+    far = Engine.node(g, 9)
+    print(f"[{n.op}] [{n.data}] [{far.op}] [{far.data}]")
+    ```
+    ```output
+    [] [2.0] [] [0.0]
+    ```
+    """
     return unwrap_or(listGet(g.nodes, i), Node(op="", a=-1, b=-1, data=0.0, exponent=0))
 
 
 def data(g, i):
-    """The forward data of node `i` (micrograd's `Value.data`)."""
+    """The forward data of node `i` (micrograd's `Value.data`).
+
+    # Examples
+    ```osprey
+    from micrograd import Engine
+
+    def show():
+        g = Engine.mul_const(Engine.value(Engine.empty(), 2.5), 0, 4.0)
+        print(f"[{Engine.data(g, 0)}] [{Engine.data(g, Engine.top(g))}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [2.5] [10.0]
+    ```
+    """
     return node(g, i).data
 
 
@@ -80,12 +149,38 @@ def append(g, n):
 
 
 def value(g, x):
-    """micrograd's `Value(data)`: a leaf node wrapping a constant or an input."""
+    """micrograd's `Value(data)`: a leaf node wrapping a constant or an input.
+
+    # Examples
+    ```osprey
+    from micrograd import Engine
+
+    def show():
+        g = Engine.value(Engine.empty(), 1.5)
+        print(f"[{Engine.data(g, Engine.top(g))}] [{Engine.node(g, Engine.top(g)).op}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [1.5] []
+    ```
+    """
     return append(g, Node(op="", a=-1, b=-1, data=x, exponent=0))
 
 
 def add(g, a, b):
-    """micrograd's `__add__`: a `+` node over both operand ids."""
+    """micrograd's `__add__`: a `+` node over both operand ids.
+
+    # Examples
+    ```osprey
+    from micrograd import Engine
+    g = Engine.add(Engine.value(Engine.value(Engine.empty(), 2.0), 3.0), 0, 1)
+    print(f"[{Engine.data(g, 2)}] [{Engine.node(g, 2).op}]")
+    ```
+    ```output
+    [5.0] [+]
+    ```
+    """
     return append(g, Node(op="+", a=a, b=b, data=data(g, a) + data(g, b), exponent=0))
 
 
@@ -96,27 +191,95 @@ def joined(g, a, operand, op):
 
 
 def add_const(g, a, k):
-    """`a + k` for a bare number k: micrograd wraps k in a leaf, then adds."""
+    """`a + k` for a bare number k: micrograd wraps k in a leaf, then adds.
+
+    # Examples
+    ```osprey
+    from micrograd import Engine
+
+    def show():
+        g = Engine.add_const(Engine.value(Engine.empty(), 2.0), 0, 3.0)
+        print(f"[{Engine.data(g, Engine.top(g))}] [{Engine.node(g, 1).op}] [{Engine.data(g, 1)}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [5.0] [] [3.0]
+    ```
+    """
     return joined(g, a, lambda g2: value(g2, k), add)
 
 
 def mul(g, a, b):
-    """micrograd's `__mul__`: a `*` node over both operand ids."""
+    """micrograd's `__mul__`: a `*` node over both operand ids.
+
+    # Examples
+    ```osprey
+    from micrograd import Engine
+    g = Engine.mul(Engine.value(Engine.value(Engine.empty(), 2.0), 3.0), 0, 1)
+    print(f"[{Engine.data(g, 2)}] [{Engine.node(g, 2).op}]")
+    ```
+    ```output
+    [6.0] [*]
+    ```
+    """
     return append(g, Node(op="*", a=a, b=b, data=data(g, a) * data(g, b), exponent=0))
 
 
 def mul_const(g, a, k):
-    """`a * k` for a bare number k: micrograd wraps k in a leaf, then multiplies."""
+    """`a * k` for a bare number k: micrograd wraps k in a leaf, then multiplies.
+
+    # Examples
+    ```osprey
+    from micrograd import Engine
+
+    def show():
+        g = Engine.mul_const(Engine.value(Engine.empty(), 2.5), 0, 4.0)
+        print(f"[{Engine.data(g, Engine.top(g))}] [{Engine.size(g)}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [10.0] [3]
+    ```
+    """
     return joined(g, a, lambda g2: value(g2, k), mul)
 
 
 def pow_const(g, a, k):
-    """micrograd's `__pow__` with a constant integer exponent: one `**` node."""
+    """micrograd's `__pow__` with a constant integer exponent: one `**` node.
+
+    # Examples
+    ```osprey
+    from micrograd import Engine
+
+    def show():
+        g = Engine.pow_const(Engine.value(Engine.empty(), 3.0), 0, 2)
+        print(f"[{Engine.data(g, Engine.top(g))}] [{Engine.node(g, Engine.top(g)).exponent}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [9.0] [2]
+    ```
+    """
     return append(g, Node(op="**", a=a, b=-1, data=ipow(data(g, a), k), exponent=k))
 
 
 def relu(g, a):
-    """micrograd's `relu`: 0 below zero, else the value, as a `ReLU` node."""
+    """micrograd's `relu`: 0 below zero, else the value, as a `ReLU` node.
+
+    # Examples
+    ```osprey
+    from micrograd import Engine
+    g1 = Engine.relu(Engine.value(Engine.empty(), -2.0), 0)
+    g2 = Engine.relu(Engine.value(g1, 2.0), 2)
+    print(f"[{Engine.data(g2, 1)}] [{Engine.data(g2, 3)}]")
+    ```
+    ```output
+    [0.0] [2.0]
+    ```
+    """
     return append(g, Node(op="ReLU", a=a, b=-1, data=0.0 if data(g, a) < 0.0 else data(g, a), exponent=0))
 
 
@@ -126,55 +289,182 @@ def unary(g, a, op, value_of):
 
 
 def tanh(g, a):
-    """micrograd's lecture `tanh`: `(e^2x - 1) / (e^2x + 1)` as a `tanh` node."""
+    """micrograd's lecture `tanh`: `(e^2x - 1) / (e^2x + 1)` as a `tanh` node.
+
+    # Examples
+    ```osprey
+    from micrograd import Engine
+    g = Engine.tanh(Engine.value(Engine.empty(), 1.0), 0)
+    print(f"[{Engine.data(g, 1)}] [{Engine.node(g, 1).op}]")
+    ```
+    ```output
+    [0.7615941559557649] [tanh]
+    ```
+    """
     return unary(g, a, "tanh", tanh_of)
 
 
 def exp(g, a):
-    """micrograd's lecture `exp`: e raised to a, as an `exp` node."""
+    """micrograd's lecture `exp`: e raised to a, as an `exp` node.
+
+    # Examples
+    ```osprey
+    from micrograd import Engine
+    g = Engine.exp(Engine.value(Engine.empty(), 1.0), 0)
+    print(f"[{Engine.data(g, 1)}] [{Engine.node(g, 1).op}]")
+    ```
+    ```output
+    [2.718281828459045] [exp]
+    ```
+    """
     return unary(g, a, "exp", exp_of)
 
 
 def neg(g, a):
-    """micrograd's `__neg__`: `a * -1`, so a leaf and a `*` node."""
+    """micrograd's `__neg__`: `a * -1`, so a leaf and a `*` node.
+
+    # Examples
+    ```osprey
+    from micrograd import Engine
+
+    def show():
+        g = Engine.neg(Engine.value(Engine.empty(), 2.5), 0)
+        print(f"[{Engine.data(g, Engine.top(g))}] [{Engine.size(g)}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [-2.5] [3]
+    ```
+    """
     return mul_const(g, a, -1.0)
 
 
 def sub(g, a, b):
-    """micrograd's `__sub__` over a Value: `a + (-b)`, the neg's two nodes then a `+`."""
+    """micrograd's `__sub__` over a Value: `a + (-b)`, the neg's two nodes then a `+`.
+
+    # Examples
+    ```osprey
+    from micrograd import Engine
+
+    def show():
+        g = Engine.sub(Engine.value(Engine.value(Engine.empty(), 5.0), 2.0), 0, 1)
+        print(f"[{Engine.data(g, Engine.top(g))}] [{Engine.size(g)}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [3.0] [5]
+    ```
+    """
     return joined(g, a, lambda g2: neg(g2, b), add)
 
 
 def sub_const(g, a, k: float):
     """`a - k` for a bare number k: micrograd negates the number itself, wraps
     it in a leaf, then adds — two nodes, no `*` node. The annotation is needed:
-    unary minus on an unannotated parameter infers int."""
+    unary minus on an unannotated parameter infers int.
+
+    # Examples
+    ```osprey
+    from micrograd import Engine
+
+    def show():
+        g = Engine.sub_const(Engine.value(Engine.empty(), 5.0), 0, 2.0)
+        print(f"[{Engine.data(g, Engine.top(g))}] [{Engine.size(g)}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [3.0] [3]
+    ```
+    """
     g2 = value(g, -k)
     return add(g2, a, top(g2))
 
 
 def rsub_const(g, a, k):
-    """micrograd's `__rsub__` with a bare number: `k - a` as `k + (-a)`."""
+    """micrograd's `__rsub__` with a bare number: `k - a` as `k + (-a)`.
+
+    # Examples
+    ```osprey
+    from micrograd import Engine
+
+    def show():
+        g = Engine.rsub_const(Engine.value(Engine.empty(), 2.0), 0, 10.0)
+        print(f"[{Engine.data(g, Engine.top(g))}] [{Engine.size(g)}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [8.0] [5]
+    ```
+    """
     g2 = neg(g, a)
     return add_const(g2, top(g2), k)
 
 
 def truediv(g, a, b):
-    """micrograd's `__truediv__` over a Value: `a * b**-1`, a `**` node then a `*`."""
+    """micrograd's `__truediv__` over a Value: `a * b**-1`, a `**` node then a `*`.
+
+    # Examples
+    ```osprey
+    from micrograd import Engine
+
+    def show():
+        g = Engine.truediv(Engine.value(Engine.value(Engine.empty(), 7.0), 2.0), 0, 1)
+        print(f"[{Engine.data(g, Engine.top(g))}] [{Engine.size(g)}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [3.5] [4]
+    ```
+    """
     g2 = pow_const(g, b, -1)
     return mul(g2, a, top(g2))
 
 
 def truediv_const(g, a, k):
     """`a / k` for a bare number k: micrograd computes `k**-1` on the number
-    itself, wraps the reciprocal in a leaf, then multiplies."""
+    itself, wraps the reciprocal in a leaf, then multiplies.
+
+    # Examples
+    ```osprey
+    from micrograd import Engine
+
+    def show():
+        g = Engine.truediv_const(Engine.value(Engine.empty(), 7.5), 0, 2.5)
+        print(f"[{Engine.data(g, Engine.top(g))}] [{Engine.data(g, 1)}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [3.0] [0.4]
+    ```
+    """
     g2 = value(g, 1.0 / k)
     return mul(g2, a, top(g2))
 
 
 def rtruediv_const(g, a, k):
     """micrograd's `__rtruediv__` with a bare number: `k * a**-1`, a `**` node,
-    a leaf for k, then a `*` node."""
+    a leaf for k, then a `*` node.
+
+    # Examples
+    ```osprey
+    from micrograd import Engine
+
+    def show():
+        g = Engine.rtruediv_const(Engine.value(Engine.empty(), 4.0), 0, 10.0)
+        print(f"[{Engine.data(g, Engine.top(g))}] [{Engine.size(g)}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [2.5] [4]
+    ```
+    """
     g2 = pow_const(g, a, -1)
     g3 = value(g2, k)
     return mul(g3, top(g2), top(g3))
@@ -184,7 +474,21 @@ def ipow(x, n):
     """`x ** n` for an integer exponent, by repeated multiplication. Osprey has
     no `pow` builtin yet, so the port computes integer powers itself: positive
     exponents by folding `*`, negative ones through the reciprocal. Float
-    exponents wait for the builtin (the `**` op supports integers and -1)."""
+    exponents wait for the builtin (the `**` op supports integers and -1).
+
+    # Examples
+    ```osprey
+    from micrograd import Engine
+
+    def show():
+        print(f"[{Engine.ipow(2.0, 3)}] [{Engine.ipow(2.0, -2)}] [{Engine.ipow(5.0, 0)}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [8.0] [0.25] [1.0]
+    ```
+    """
     if n < 0:
         return 1.0 / ipow(x, -n)
     else:
@@ -193,14 +497,44 @@ def ipow(x, n):
 
 def zero_grad(g):
     """micrograd's `Module.zero_grad`, functionally: a fresh zero gradient per
-    node, which is the gradient state `backward` starts from."""
+    node, which is the gradient state `backward` starts from.
+
+    # Examples
+    ```osprey
+    from micrograd import Engine
+
+    def show():
+        g = Engine.mul_const(Engine.value(Engine.empty(), 2.0), 0, 3.0)
+        print(f"{toString(Engine.zero_grad(g))}")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [0.0, 0.0, 0.0]
+    ```
+    """
     return toList(map(range(size(g)), lambda _: 0.0))
 
 
 def backward(g, root):
     """micrograd's `Value.backward` after `zero_grad`: fresh zero gradients,
     the root's gradient set to 1.0, then every node's `_backward` in reversed
-    topological order."""
+    topological order.
+
+    # Examples
+    ```osprey
+    from micrograd import Engine
+
+    def show():
+        g = Engine.mul_const(Engine.value(Engine.empty(), 2.0), 0, 3.0)
+        print(f"{toString(Engine.backward(g, Engine.top(g)))}")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [3.0, 2.0, 1.0]
+    ```
+    """
     return backward_into(g, root, zero_grad(g))
 
 
@@ -208,7 +542,24 @@ def backward_into(g, root, grads):
     """micrograd's `Value.backward` accumulating into `grads`: the root's
     gradient is set to 1.0, then every node's `_backward` runs in reversed
     topological order, so calling it with an earlier result doubles gradients,
-    exactly as micrograd without `zero_grad`."""
+    exactly as micrograd without `zero_grad`.
+
+    # Examples
+    ```osprey
+    from micrograd import Engine
+
+    def show():
+        g = Engine.mul_const(Engine.value(Engine.empty(), 2.0), 0, 3.0)
+        grads = Engine.backward(g, Engine.top(g))
+        grads2 = Engine.backward_into(g, Engine.top(g), grads)
+        print(f"{toString(grads2)}")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [6.0, 4.0, 1.0]
+    ```
+    """
     indexed = fold(range(len(grads)), {}, lambda acc, i: mapSet(acc, toString(i), unwrap_or(listGet(grads, i), 0.0)))
     started = set_at(indexed, root, 1.0)
     result = foldList(listReverse(build_topo(g, root)), started, lambda acc, i: step(g, i, acc))

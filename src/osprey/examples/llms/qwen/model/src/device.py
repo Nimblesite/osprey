@@ -18,7 +18,7 @@ multiplication", 1994): a kernel with no fault site stays in the open command bu
 ([LLM-DISPATCH-BATCH]). Implements [LLM-MODEL-DELTANET], [LLM-MODEL-ATTENTION].
 """
 
-__all__ = ["Weight", "Fault", "strictly", "wrapping", "must", "must_ints", "must_values", "grid", "at", "zeros", "constant", "inverse", "Div", "divider", "quot", "rem", "linear", "added", "sigmoid", "rsqrt", "softplus", "squares", "slice_of", "joined", "stacked", "row_at"]
+__all__ = ["Weight", "Fault", "strictly", "wrapping", "must", "must_ints", "must_values", "grid", "for_rows", "at", "zeros", "constant", "inverse", "Div", "divider", "quot", "rem", "linear", "added", "sigmoid", "rsqrt", "softplus", "squares", "slice_of", "joined", "stacked", "row_at"]
 
 
 @union
@@ -101,6 +101,12 @@ def must_values(result) -> list[float32]:
 def grid(n) -> GpuBuffer[int]:
     """The index buffer `[0, n)`: every kernel maps over one."""
     return must_ints(gpuIota(n))
+
+
+def for_rows(count, own, width) -> GpuBuffer[int]:
+    """The model's own `width`-wide grid when `count` is one row, else a fresh grid of
+    `count` rows' cells ([LLM-PREFILL]: one row shares the model's dispatch)."""
+    return own if count == 1 else grid(count * width)
 
 
 def at(b, i) -> float32:

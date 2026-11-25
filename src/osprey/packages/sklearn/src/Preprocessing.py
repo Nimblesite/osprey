@@ -115,7 +115,23 @@ def scale_of(var, mean, n):
 
 
 def standard_scaler_fit(scaler, X):
-    """Fits a StandardScaler: per-feature mean and scale over `X`."""
+    """Fits a StandardScaler: per-feature mean and scale over `X`.
+
+    # Examples
+    ```osprey
+    from sklearn import Preprocessing
+
+    def show():
+        fit = Preprocessing.standard_scaler_fit(Preprocessing.StandardScaler(with_mean=True, with_std=True), [[1.0, 2.0], [2.0, 4.0], [3.0, 9.0]])
+        constant = Preprocessing.standard_scaler_fit(Preprocessing.StandardScaler(with_mean=True, with_std=True), [[4.0], [4.0]])
+        print(f"[{toString(fit.mean)}] [{toString(fit.scale)}] [{toString(constant.scale)}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [[2.0, 5.0]] [[0.816496580927726, 2.943920288775949]] [[1.0]]
+    ```
+    """
     nf = len(unwrap_or(listGet(X, 0), []))
     means = toList(map(range(nf), lambda j: mean_float(col_float(X, j))))
     variances = toList(map(range(nf), lambda j: col_var(X, j, unwrap_or(listGet(means, j), 0.0))))
@@ -130,7 +146,25 @@ def scaled_value(fitted, x, j):
 
 
 def standard_scaler_transform(fitted, X):
-    """Applies a fitted StandardScaler to `X`."""
+    """Applies a fitted StandardScaler to `X`.
+
+    # Examples
+    ```osprey
+    from sklearn import Preprocessing
+
+    def show():
+        fit = Preprocessing.standard_scaler_fit(Preprocessing.StandardScaler(with_mean=True, with_std=True), [[1.0], [3.0]])
+        scaled = Preprocessing.standard_scaler_transform(fit, [[1.0], [3.0], [7.0]])
+        constant = Preprocessing.standard_scaler_fit(Preprocessing.StandardScaler(with_mean=True, with_std=True), [[4.0], [4.0]])
+        flat = Preprocessing.standard_scaler_transform(constant, [[4.0]])
+        print(f"[{toString(scaled)}] [{toString(flat)}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [[[-1.0], [1.0], [5.0]]] [[[0.0]]]
+    ```
+    """
     nf = len(fitted.mean)
     return map_indexed(X, lambda i: toList(map(range(nf), lambda j: scaled_value(fitted, unwrap_or(listGet(unwrap_or(listGet(X, i), []), j), 0.0), j))))
 
@@ -141,7 +175,23 @@ def handle_zero_range(dr):
 
 
 def minmax_scaler_fit(scaler, X):
-    """Fits a MinMaxScaler: per-feature data min/max, scale and offset."""
+    """Fits a MinMaxScaler: per-feature data min/max, scale and offset.
+
+    # Examples
+    ```osprey
+    from sklearn import Preprocessing
+
+    def show():
+        fit = Preprocessing.minmax_scaler_fit(Preprocessing.MinMaxScaler(feature_min=0.0, feature_max=1.0), [[0.0, 2.0], [3.0, 8.0]])
+        constant = Preprocessing.minmax_scaler_fit(Preprocessing.MinMaxScaler(feature_min=0.0, feature_max=1.0), [[7.0], [7.0]])
+        print(f"[{toString(fit.data_min)}] [{toString(fit.data_max)}] [{toString(fit.scale)}] [{toString(fit.min_)}] [{toString(constant.scale)}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [[0.0, 2.0]] [[3.0, 8.0]] [[0.3333333333333333, 0.16666666666666666]] [[0.0, -0.3333333333333333]] [[1.0]]
+    ```
+    """
     nf = len(unwrap_or(listGet(X, 0), []))
     data_min = toList(map(range(nf), lambda j: min_float(col_float(X, j))))
     data_max = toList(map(range(nf), lambda j: max_float(col_float(X, j))))
@@ -152,7 +202,25 @@ def minmax_scaler_fit(scaler, X):
 
 
 def minmax_scaler_transform(fitted, X):
-    """Applies a fitted MinMaxScaler: `X * scale + min_`."""
+    """Applies a fitted MinMaxScaler: `X * scale + min_`.
+
+    # Examples
+    ```osprey
+    from sklearn import Preprocessing
+
+    def show():
+        fit = Preprocessing.minmax_scaler_fit(Preprocessing.MinMaxScaler(feature_min=0.0, feature_max=1.0), [[0.0], [3.0]])
+        scaled = Preprocessing.minmax_scaler_transform(fit, [[0.0], [3.0]])
+        constant = Preprocessing.minmax_scaler_fit(Preprocessing.MinMaxScaler(feature_min=0.0, feature_max=1.0), [[7.0], [7.0]])
+        flat = Preprocessing.minmax_scaler_transform(constant, [[7.0]])
+        print(f"[{toString(scaled)}] [{toString(flat)}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [[[0.0], [1.0]]] [[[0.0]]]
+    ```
+    """
     nf = len(fitted.scale)
     return map_indexed(X, lambda i: toList(map(range(nf), lambda j: unwrap_or(listGet(unwrap_or(listGet(X, i), []), j), 0.0) * unwrap_or(listGet(fitted.scale, j), 1.0) + unwrap_or(listGet(fitted.min_, j), 0.0))))
 
@@ -182,7 +250,22 @@ def percentile_float(xs, q):
 
 
 def robust_scaler_fit(scaler, X):
-    """Fits a RobustScaler: per-feature median and inter-quantile scale."""
+    """Fits a RobustScaler: per-feature median and inter-quantile scale.
+
+    # Examples
+    ```osprey
+    from sklearn import Preprocessing
+
+    def show():
+        fit = Preprocessing.robust_scaler_fit(Preprocessing.RobustScaler(quantile_min=25.0, quantile_max=75.0), [[1.0], [2.0], [3.0], [100.0]])
+        print(f"[{toString(fit.center)}] [{toString(fit.scale)}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [[2.5]] [[25.5]]
+    ```
+    """
     nf = len(unwrap_or(listGet(X, 0), []))
     center = toList(map(range(nf), lambda j: percentile_float(col_float(X, j), 50.0)))
     scale = toList(map(range(nf), lambda j: handle_zero_range(percentile_float(col_float(X, j), scaler.quantile_max) - percentile_float(col_float(X, j), scaler.quantile_min))))
@@ -190,7 +273,23 @@ def robust_scaler_fit(scaler, X):
 
 
 def robust_scaler_transform(fitted, X):
-    """Applies a fitted RobustScaler: `(X - center) / scale`."""
+    """Applies a fitted RobustScaler: `(X - center) / scale`.
+
+    # Examples
+    ```osprey
+    from sklearn import Preprocessing
+
+    def show():
+        fit = Preprocessing.robust_scaler_fit(Preprocessing.RobustScaler(quantile_min=25.0, quantile_max=75.0), [[1.0], [2.0], [3.0], [100.0]])
+        scaled = Preprocessing.robust_scaler_transform(fit, [[1.0], [100.0]])
+        print(f"[{toString(scaled)}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [[[-0.058823529411764705], [3.823529411764706]]]
+    ```
+    """
     nf = len(fitted.center)
     return map_indexed(X, lambda i: toList(map(range(nf), lambda j: (unwrap_or(listGet(unwrap_or(listGet(X, i), []), j), 0.0) - unwrap_or(listGet(fitted.center, j), 0.0)) / unwrap_or(listGet(fitted.scale, j), 1.0))))
 
@@ -212,7 +311,22 @@ def row_norm(row, norm):
 
 def normalize(X, norm):
     """`sklearn.preprocessing.normalize` with norm in l1/l2/max: each row
-    divided by its norm, a zero norm kept as 1.0."""
+    divided by its norm, a zero norm kept as 1.0.
+
+    # Examples
+    ```osprey
+    from sklearn import Preprocessing
+
+    def show():
+        unit = Preprocessing.normalize([[-2.0, 1.0, 2.0], [0.0, 0.0, 0.0]], "l2")
+        print(f"[{toString(unit)}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [[[-0.6666666666666666, 0.3333333333333333, 0.6666666666666666], [0.0, 0.0, 0.0]]]
+    ```
+    """
     rows = map_indexed(X, lambda i: unwrap_or(listGet(X, i), []))
     return map_indexed(rows, lambda i: normalize_row(unwrap_or(listGet(rows, i), []), norm))
 
@@ -224,17 +338,64 @@ def normalize_row(row, norm):
 
 
 def label_encoder_fit(y):
-    """`LabelEncoder.fit`: the sorted distinct labels."""
+    """`LabelEncoder.fit`: the sorted distinct labels.
+
+    # Examples
+    ```osprey
+    from sklearn import Preprocessing
+
+    def show():
+        classes = Preprocessing.label_encoder_fit([3, 1, 1, 3, 2, 0])
+        lone = Preprocessing.label_encoder_fit([4])
+        print(f"[{toString(classes)}] [{toString(lone)}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [[0, 1, 2, 3]] [[4]]
+    ```
+    """
     return unique_ints(y)
 
 
 def label_encoder_transform(classes, y):
-    """`LabelEncoder.transform`: each label mapped to its index in `classes`."""
+    """`LabelEncoder.transform`: each label mapped to its index in `classes`.
+
+    # Examples
+    ```osprey
+    from sklearn import Preprocessing
+
+    def show():
+        encoded = Preprocessing.label_encoder_transform([0, 1, 2, 3], [3, 1])
+        unseen = Preprocessing.label_encoder_transform([0, 1, 2, 3], [9])
+        print(f"[{toString(encoded)}] [{toString(unseen)}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [[3, 1]] [[-1]]
+    ```
+    """
     return encode_labels(classes, y)
 
 
 def one_hot_encoder_fit(X):
-    """`OneHotEncoder.fit`: the sorted distinct category list per feature."""
+    """`OneHotEncoder.fit`: the sorted distinct category list per feature.
+
+    # Examples
+    ```osprey
+    from sklearn import Preprocessing
+
+    def show():
+        categories = Preprocessing.one_hot_encoder_fit([[0, 1], [2, 0]])
+        print(f"[{toString(categories)}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [[[0, 2], [0, 1]]]
+    ```
+    """
     nf = len(unwrap_or(listGet(X, 0), []))
     return toList(map(range(nf), lambda j: unique_ints(col_int(X, j))))
 
@@ -252,7 +413,24 @@ def one_hot_row(categories, row):
 
 
 def one_hot_encoder_transform(categories, X):
-    """`OneHotEncoder.transform` (dense output)."""
+    """`OneHotEncoder.transform` (dense output).
+
+    # Examples
+    ```osprey
+    from sklearn import Preprocessing
+
+    def show():
+        categories = Preprocessing.one_hot_encoder_fit([[0, 1], [2, 0]])
+        encoded = Preprocessing.one_hot_encoder_transform(categories, [[2, 1]])
+        unseen = Preprocessing.one_hot_encoder_transform(categories, [[9, 1]])
+        print(f"[{toString(encoded)}] [{toString(unseen)}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [[[0.0, 1.0, 0.0, 1.0]]] [[[0.0, 0.0, 0.0, 1.0]]]
+    ```
+    """
     return map_indexed(X, lambda i: one_hot_row(categories, unwrap_or(listGet(X, i), [])))
 
 
@@ -303,7 +481,23 @@ def bincount(combo, nf):
 
 
 def polynomial_powers(pf, n_features):
-    """`PolynomialFeatures.powers_`: one exponent vector per output feature."""
+    """`PolynomialFeatures.powers_`: one exponent vector per output feature.
+
+    # Examples
+    ```osprey
+    from sklearn import Preprocessing
+
+    def show():
+        full = Preprocessing.polynomial_powers(Preprocessing.PolynomialFeatures(degree=2, include_bias=True, interaction_only=False), 2)
+        interactions = Preprocessing.polynomial_powers(Preprocessing.PolynomialFeatures(degree=2, include_bias=False, interaction_only=True), 2)
+        print(f"[{toString(full)}] [{toString(interactions)}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [[[0, 0], [1, 0], [0, 1], [2, 0], [1, 1], [0, 2]]] [[[1, 0], [0, 1], [1, 1]]]
+    ```
+    """
     return mapList(collect_combos(pf, n_features), lambda c: bincount(c, n_features))
 
 
@@ -318,5 +512,21 @@ def monomial(row, exps):
 
 
 def polynomial_features_transform(powers, X):
-    """`PolynomialFeatures.transform` over the given exponent vectors."""
+    """`PolynomialFeatures.transform` over the given exponent vectors.
+
+    # Examples
+    ```osprey
+    from sklearn import Preprocessing
+
+    def show():
+        powers = Preprocessing.polynomial_powers(Preprocessing.PolynomialFeatures(degree=2, include_bias=True, interaction_only=False), 2)
+        expanded = Preprocessing.polynomial_features_transform(powers, [[2.0, 3.0]])
+        print(f"[{toString(expanded)}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [[[1.0, 2.0, 3.0, 4.0, 6.0, 9.0]]]
+    ```
+    """
     return map_indexed(X, lambda i: toList(map(range(len(powers)), lambda k: monomial(unwrap_or(listGet(X, i), []), unwrap_or(listGet(powers, k), [])))))

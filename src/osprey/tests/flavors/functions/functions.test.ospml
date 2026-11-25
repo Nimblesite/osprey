@@ -221,6 +221,21 @@ builtinAfterShadow () = contains "alpha" "ph"
     parameter to stay callable INSIDE its own scope. *)
 applyTwo (f, a, b) = f a b
 
+(** A function handed down through a recursive generic helper stays the one
+    each call passed: two calls with different functions share no callee. *)
+walkWith (n, step, acc) = match n <= 0
+    true => acc
+    false => restWith (wrapSub n 1, step, listAppend (acc, step n))
+
+(** The recursive helper `walkWith` hands its function to. *)
+restWith (n, step, acc) = match n <= 0
+    true => acc
+    false => restWith (wrapSub n 1, step, listAppend (acc, step n))
+
+addThree x = wrapAdd x 3
+timesTwo x = wrapMul x 2
+total xs = foldList (xs, 0, \(a, b) => wrapAdd a b)
+
 (** Pin file-scope generic function values and lexical callability. *)
 genericValueCase () =
     curriedSum = \a => \b => a + b 
@@ -240,7 +255,9 @@ genericValueCase () =
         builtinAfterShadow (),
         contains "alpha" "ph",
         !(contains "alpha" "zz"),
-        applyTwo (curriedSum, 20, 22) == 42
+        applyTwo (curriedSum, 20, 22) == 42,
+        total (walkWith (3, addThree, [])) == 15,
+        total (walkWith (3, timesTwo, [])) == 12
     ]
 
 test "file-scope generic function values resolve by name" (exactly genericValueCase)

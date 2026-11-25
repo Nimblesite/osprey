@@ -5,7 +5,6 @@
 model's Markdown read into typed blocks and inline runs, so every host draws the
 same document with its own controls. Pure, and tested without a window.
 """
-from pydantic_ai import JsonUtil as J
 from pydantic_ai import Messages as M
 from agent import Engine
 

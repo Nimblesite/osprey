@@ -1,6 +1,5 @@
 namespace bounded
 
-import bounded::Words
 
 (** The one JSON line [TYPES-DISCIPLINE-PROTOCOL] answers with. *)
 module Replies

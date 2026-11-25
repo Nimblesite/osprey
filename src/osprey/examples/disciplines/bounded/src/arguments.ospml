@@ -1,6 +1,5 @@
 namespace bounded
 
-import bounded::Chars
 
 (** The comma separated argument list of one call, at the call's own depth. *)
 module Arguments

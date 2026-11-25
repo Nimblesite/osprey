@@ -72,8 +72,7 @@ runDemo () =
     postTask (clientId, "buy oat milk")
     postTask (clientId, "land the effects PR")
     listing = fetch (clientId, "/tasks")
-    print "--- GET /tasks ---\n${listing}--- end ---"
-    print "GET /stats -> ${fetch (clientId, "/stats")}"
+    print "--- GET /tasks ---\n${listing}--- end ---\nGET /stats -> ${fetch (clientId, "/stats")}"
     _stopped = httpStopServer serverId ?: -1
     print "STATE @ shutdown — db: ${toString (perform Db.count ())} tasks | server: ${toString (perform Metrics.served ())} requests | disk: ${toString (perform Persist.bytes ())} bytes"
 mut diskBytes = 0

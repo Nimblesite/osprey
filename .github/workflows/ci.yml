@@ -370,7 +370,7 @@ jobs:
           build: "false"
 
       # osprey-cli's wasm end-to-end test self-skips unless wasm-ld, a WASI
-      # sysroot and libosprey_runtime_wasm.a are all present; skipping it drops
+      # sysroot and libosprey_runtime_wasm_arc.a are all present; skipping it drops
       # osprey-cli under its coverage floor and fails the threshold gate. The
       # dependency is therefore explicit rather than left to whatever the
       # runner happens to carry.
@@ -584,7 +584,11 @@ jobs:
         run: python3 src/toolchain/benchmarks/instruction_gate.py
 
   test-corpus-arc:
-    name: "Tests: language corpus (arc)"
+    name: "Tests: language corpus (${{ matrix.memory }})"
+    strategy:
+      fail-fast: false
+      matrix:
+        memory: [arc, ownership]
     needs: [changes, build]
     if: ${{ needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-latest
@@ -600,8 +604,21 @@ jobs:
           name: osprey-build
       - name: Restore artifact permissions
         run: chmod +x target/release/osprey
-      - name: Corpus and goldens (ARC, leak oracle enabled)
-        run: make _conformance-arc
+      - name: Check ownership acceptance only grows
+        if: matrix.memory == 'ownership'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          list=src/osprey/tests/OWNERSHIP_ACCEPTED.txt
+          if git cat-file -e "$BASE_SHA:$list" 2>/dev/null; then
+            git show "$BASE_SHA:$list" > "$RUNNER_TEMP/ownership-base.txt"
+            LC_ALL=C comm -23 "$RUNNER_TEMP/ownership-base.txt" "$list" > "$RUNNER_TEMP/ownership-removed.txt"
+            cat "$RUNNER_TEMP/ownership-removed.txt"
+            test ! -s "$RUNNER_TEMP/ownership-removed.txt"
+          fi
+      - name: Corpus and goldens (leak oracle enabled)
+        run: make _conformance-${{ matrix.memory }}
 
   # The Qwen oracle (the tiny checkpoint against its golden) runs beside the corpus
   # rather than after it: under ARC the two together outran the corpus job's budget.
@@ -679,10 +696,14 @@ jobs:
         with:
           build: "false"
 
-      - name: Install lld (wasm-ld), wabt, zsh and a WASI sysroot
+      # clang-21 comes from the apt.llvm.org channel the setup action adds; the
+      # ownership lowering proof reads LLVM 21 IR, not the distro clang 18's.
+      - name: Install lld (wasm-ld), wabt, zsh, clang-21 and a WASI sysroot
         run: |
           set -euo pipefail
-          sudo apt-get install -y lld wabt zsh
+          sudo apt-get install -y lld wabt zsh clang-21
+          echo "OSPREY_PROOF_CLANG=clang-21" >> "$GITHUB_ENV"
+          clang-21 --version
           curl -fsSL --retry 3 --retry-max-time 60 -o /tmp/wasi-sysroot.tar.gz \
             "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${WASI_SDK_VERSION}/wasi-sysroot-${WASI_SDK_VERSION}.0.tar.gz"
           sudo mkdir -p /opt/wasi-sdk/share/wasi-sysroot
@@ -1143,6 +1164,9 @@ jobs:
 
       - name: Clean Architecture todo suite (GC and ARC)
         run: make _test_cleanarch
+
+      - name: Web host WASI and http boundaries
+        run: make -C src/toolchain/targets/tests web-host
 
       - name: Install bank e2e dependencies
         run: npm ci

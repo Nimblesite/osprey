@@ -4,10 +4,6 @@
 
 namespace todo;
 
-import todo::EdgeServer
-import todo::EdgeTodo
-import todo::TodoHost
-import todo::TodoReplay
 
 /// One request through the pipeline; its events are logged once it settles (LogTodoItemCompleted).
 fn onRequest(method, path, _headers, body) = {

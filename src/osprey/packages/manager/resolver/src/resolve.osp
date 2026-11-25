@@ -1,9 +1,4 @@
 namespace registry;
-import registry::Sat
-import registry::Clauses
-import registry::Optimize
-import registry::Explain
-import registry::Resolution
 
 /// The package resolver of [PACKAGE-RESOLUTION]: hard clauses from
 /// `Clauses`, CDCL from `Sat`, lexicographic optimisation from `Optimize`,

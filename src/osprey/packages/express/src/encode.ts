@@ -12,7 +12,15 @@ const HEX = "0123456789ABCDEF";
 const PRINTABLE = "!\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~";
 const FIRST_PRINTABLE = 33;
 
-/** The five replacements of `escape-html`, applied to every reflected path. */
+/** The five replacements of `escape-html`, applied to every reflected path.
+ * # Examples
+ * ```osprey
+ * print(`[${escapeHtml("<b>\"&'</b>")}] [${escapeHtml("plain")}]`);
+ * ```
+ * ```output
+ * [Success(&lt;b&gt;&quot;&amp;&#39;&lt;/b&gt;)] [Success(plain)]
+ * ```
+ */
 export function escapeHtml(text) {
   return andThen(replace(text, "&", "&amp;"), (amp) =>
     andThen(replace(amp, "<", "&lt;"), (lt) =>
@@ -23,7 +31,15 @@ export function escapeHtml(text) {
   );
 }
 
-/** `encodeurl`: percent-encode every byte a URL cannot carry as written. */
+/** `encodeurl`: percent-encode every byte a URL cannot carry as written.
+ * # Examples
+ * ```osprey
+ * print(`[${encodeUrl("/find/a b?x=1&y=2")}] [${encodeUrl("/done%20already")}]`);
+ * ```
+ * ```output
+ * [/find/a%20b?x=1&y=2] [/done%20already]
+ * ```
+ */
 export function encodeUrl(text) {
   return encodeFrom(text, 0, "");
 }
@@ -36,7 +52,15 @@ function encodeFrom(text, index, encoded) {
   return encodeFrom(text, satAdd(index, 1), `${encoded}${encodedByte(text, index, byte)}`);
 }
 
-/** The byte at `index`, or -1 past the end of `text`. */
+/** The byte at `index`, or -1 past the end of `text`.
+ * # Examples
+ * ```osprey
+ * print(`[${byteOr("A", 0)}] [${byteOr("A", 5)}]`);
+ * ```
+ * ```output
+ * [65] [-1]
+ * ```
+ */
 export function byteOr(text, index) {
   const byte = byteAt(text, index);
   switch (byte.kind) {
@@ -71,7 +95,15 @@ function hexDigit(value) {
   return take(drop(HEX, value), 1);
 }
 
-/** The printable ASCII character with this code, from `!` (33) to `~` (126). */
+/** The printable ASCII character with this code, from `!` (33) to `~` (126).
+ * # Examples
+ * ```osprey
+ * print(`[${printable(33)}] [${printable(65)}] [${printable(126)}]`);
+ * ```
+ * ```output
+ * [!] [A] [~]
+ * ```
+ */
 export function printable(code) {
   return take(drop(PRINTABLE, satSub(code, FIRST_PRINTABLE)), 1);
 }

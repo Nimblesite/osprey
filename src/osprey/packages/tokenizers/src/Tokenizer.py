@@ -81,15 +81,19 @@ def encode_splits(splits, tokenize, byte_char, nchars):
     return fold(range(len(splits)), empty_encoding(), lambda acc, i: concat_two(acc, split_encoding(unwrap_or(listGet(splits, i), empty_split()), tokenize, byte_char, nchars)))
 
 
+def encode_text(splits, tokenize, text):
+    """`encode_splits` with the byte map and character count of the raw `text`
+    the splits came from."""
+    return encode_splits(splits, tokenize, byte_char_map(text), len(char_starts(text)))
+
+
 def empty_split():
     return Norm(chars=[], starts=[], ends=[])
 
 
 def wordpiece_single_encoding(m, text):
     norm = bert_normalize(text, True, True, True, True)
-    byte_char = byte_char_map(text)
-    nchars = len(char_starts(text))
-    return encode_splits(bert_pretokenize(norm), lambda t: wordpiece_tokenize(m, t), byte_char, nchars)
+    return encode_text(bert_pretokenize(norm), lambda t: wordpiece_tokenize(m, t), text)
 
 
 def wordpiece_encode(m, text, cls_id, sep_id):
@@ -104,18 +108,12 @@ def wordpiece_encode_pair(m, text_a, text_b, cls_id, sep_id):
 
 def unigram_encode_pipeline(m, text):
     """Metaspace + Unigram (byte fallback per the model) on the raw text."""
-    norm = norm_of(text)
-    byte_char = byte_char_map(text)
-    nchars = len(char_starts(text))
-    return encode_splits(metaspace_pretokenize(norm, META_CP, 0, True), lambda t: unigram_tokenize(m, t), byte_char, nchars)
+    return encode_text(metaspace_pretokenize(norm_of(text), META_CP, 0, True), lambda t: unigram_tokenize(m, t), text)
 
 
 def wordlevel_encode_pipeline(m, text):
     """Whitespace + WordLevel on the raw text."""
-    norm = norm_of(text)
-    byte_char = byte_char_map(text)
-    nchars = len(char_starts(text))
-    return encode_splits(whitespace_pretokenize(norm), lambda t: wordlevel_tokenize(m, t), byte_char, nchars)
+    return encode_text(whitespace_pretokenize(norm_of(text)), lambda t: wordlevel_tokenize(m, t), text)
 
 
 def decode_chain(tokens, ids, specials):

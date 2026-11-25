@@ -1,8 +1,5 @@
 namespace bounded
 
-import bounded::Bounds
-import bounded::Chars
-import bounded::Words
 
 (** The interval of one call argument, read as the text it is written as. *)
 module Intervals

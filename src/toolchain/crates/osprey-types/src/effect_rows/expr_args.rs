@@ -334,10 +334,8 @@ fn forwarding_env(payload: &Value) -> CallableEnv {
         known.parameters.push("argument0".to_owned());
     }
     let mut env = CallableEnv::default();
-    env.values.extend([
-        ("source".to_owned(), source),
-        ("payload".to_owned(), payload.clone()),
-    ]);
+    let _ = env.values.insert("source".to_owned(), source);
+    let _ = env.values.insert("payload".to_owned(), payload.clone());
     env
 }
 

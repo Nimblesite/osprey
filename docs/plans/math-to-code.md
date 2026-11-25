@@ -39,6 +39,8 @@ Production migrations preserve the recorded outputs and replace import-time gene
 
 The importer also has existing consumers in `@osprey/micrograd`, `@osprey/math` and `@osprey/scipy`. Their current Lean inputs remain part of the importer oracle.
 
+The compiler-output counterpart to source reflection is exercised by `make _test_ownership_proof`. For scalar list append, the theorem compares the source operation with an interpretation of the complete LLVM function emitted by the tested compiler. [Compiler proof evidence](0041-dependent-types-and-mathlib.md#evidence)
+
 ## Phase 5 — Lean acceptance and the oracle [MATH-CODE-ORACLE]
 
 - [x] `make -C src/osprey/examples/proof math` (`scripts/math/math-oracle.py`): every tracked math source is accepted by the pinned Lean.

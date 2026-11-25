@@ -1,8 +1,6 @@
 // [SYNTH-RENDER] Allocation-using, deterministic reference renderer. Not an audio callback backend.
 namespace synth
 
-import synth::RenderInputs
-import synth::RenderKernels
 
 (** Execute the prepared mono graph with explicit state across arbitrary block partitions. *)
 module Renderer
@@ -37,10 +35,15 @@ module Renderer
 
     supported plan = SpectralKernels::affordable plan.graph && length (filterList (plan.graph.cables, \c => midiCable (plan.graph, c))) == 0 && length (filterList (plan.graph.nodes, validNode)) == length plan.graph.nodes && length (outputs plan.graph) == 1 && length (filterList (plan.graph.nodes, \n => ClipLayouts::connected (plan.graph, n))) == length plan.graph.nodes && foldList (plan.graph.nodes, 0, \(total, n) => satAdd total (delaySize n)) <= 1920000
 
+    (** Validate a graph for the renderer, reporting `failure` when `Graphs.prepare` rejects it. *)
+    export validated (graph, failure, continue) = match Graphs::prepare graph
+        Invalid _ => Error(message = failure)
+        Valid plan => continue plan
+
     (** Prepare and allocate reference state. Unknown layouts and external plug-ins are explicit errors. *)
-    export start graph = match Graphs::prepare graph
-        Invalid _ => Error(message = InvalidConfiguration(detail = "The graph is invalid; inspect Graphs.prepare for the typed fault."))
-        Valid plan => match supported plan
+    export start graph =
+        use plan <- validated (graph, InvalidConfiguration(detail = "The graph is invalid; inspect Graphs.prepare for the typed fault."))
+        match supported plan
             false => Error(message = IncompatibleLayout(detail = "Reference rendering requires mono audio, one output and supported bounded processors."))
             true => Success(value = RenderInputs::initial plan)
 
@@ -66,11 +69,7 @@ module Renderer
 
     nextDelay (plan, outcome, cable) = Outcomes::carried (outcome, \frame => writeDelay (plan, frame, cable.destination, cable.inlet))
 
-    higher (one, other) = match one > other
-        true => one
-        false => other
-
-    meter (previous, value) = Meter(identity = value.identity, peak = higher (previous.peak, abs value.value), energy = previous.energy + value.value * value.value, count = satAdd previous.count 1)
+    meter (previous, value) = Meter(identity = value.identity, peak = max previous.peak (abs value.value), energy = previous.energy + value.value * value.value, count = satAdd previous.count 1)
 
     measured (meters, value) = match Seek::first (meters, \m => m.identity == value.identity)
         Error _ => listAppend meters (Meter(identity = value.identity, peak = abs value.value, energy = value.value * value.value, count = 1))

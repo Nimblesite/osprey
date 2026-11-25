@@ -49,8 +49,15 @@ pub(crate) fn assemble(
     }
     if errors.is_empty() {
         let state_boundaries = crate::advice::boundaries(&graph, &metadata);
-        let warnings =
-            crate::advice::warnings(config, &contributions, &graph, &metadata, &state_boundaries);
+        let warnings = crate::advice::warnings(
+            config,
+            &contributions,
+            &graph,
+            &metadata,
+            &state_boundaries,
+            &resolution.used_imports,
+            &resolution.referenced,
+        );
         Ok(AssembledProject {
             source_dependencies: resolution.source_dependencies,
             method_candidates: resolution.method_candidates,

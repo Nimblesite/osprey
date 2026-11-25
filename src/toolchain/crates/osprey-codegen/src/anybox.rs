@@ -15,6 +15,7 @@
 mod render;
 mod typed;
 use render::emit_renderer;
+pub(crate) use render::render_handle;
 pub(crate) use typed::{box_typed, typed_word};
 
 use crate::builder::Codegen;
@@ -227,11 +228,15 @@ fn ensure_to_string(cg: &mut Codegen) {
     cg.anys.to_string_emitted = true;
     let saved = cg.enter_nested_fn();
     let (desc, payload, dt) = guard_box(cg);
-    let raw = crate::aggregate::load_field(cg, DESC_TY, &dt, 1, LType::Str);
-    let f = cg.emit_reg(format!("bitcast i8* {raw} to {RENDER_SIG}*"));
-    let s = cg.emit_reg(format!("call i8* {f}(i8* {desc}, i64 {payload})"));
+    let s = call_renderer(cg, &desc, &dt, &payload);
     cg.emit(format!("ret i8* {s}"));
     cg.exit_nested_fn(saved, "i8*", TO_STRING_FN, &[(LType::Ptr, "box".into())]);
+}
+
+fn call_renderer(cg: &mut Codegen, desc: &str, dt: &str, payload: &str) -> String {
+    let raw = crate::aggregate::load_field(cg, DESC_TY, dt, 1, LType::Str);
+    let f = cg.emit_reg(format!("bitcast i8* {raw} to {RENDER_SIG}*"));
+    cg.emit_reg(format!("call i8* {f}(i8* {desc}, i64 {payload})"))
 }
 
 /// Open the `%box` parameter of a nested function: a null box (a zeroed slot

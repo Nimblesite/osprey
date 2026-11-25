@@ -83,10 +83,6 @@ void osprey_list_builder_push_of(OspreyListBuilder *b, int64_t v, int em) {
   b->length++;
 }
 
-void osprey_list_builder_push(OspreyListBuilder *b, int64_t v) {
-  osprey_list_builder_push_of(b, v, b->elem_managed);
-}
-
 /* Push an element BORROWED from another container: the source keeps its
  * reference, so the builder takes its own. */
 void osprey_list_builder_push_borrowed(OspreyListBuilder *b, int64_t v) {
@@ -210,27 +206,4 @@ OspreyList *osprey_list_sort(OspreyList *l) {
   free(src);
   free(scratch);
   return osprey_list_builder_seal(b);
-}
-
-struct OspreyListIter {
-  OspreyList *list;
-  int64_t index;
-};
-
-/* ===== Iterator ===== */
-
-OspreyListIter *osprey_list_iter_new(OspreyList *l) {
-  OspreyListIter *it = (OspreyListIter *)calloc(1, sizeof(OspreyListIter));
-  it->list = l;
-  it->index = 0;
-  return it;
-}
-
-int osprey_list_iter_next(OspreyListIter *it, int64_t *out) {
-  if (it->index >= osprey_list_length(it->list)) {
-    return 0;
-  }
-  *out = osprey_list_get(it->list, it->index);
-  it->index++;
-  return 1;
 }

@@ -12,7 +12,8 @@
 use super::facts::{Alias, Callee, Esc, Facts, Scope};
 use super::table::{nested, Table};
 use osprey_ast::{
-    effect_name, freevars::pattern_bindings, AstNode, Expr, NamedArgument, Program, Stmt,
+    effect_name, freevars::pattern_bindings, AstNode, Expr, HandlerArm, NamedArgument, Program,
+    Stmt,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -360,17 +361,33 @@ impl<'a> Analyzer<'a> {
         }
     }
 
-    /// What the handled body leaves unanswered past this handler.
+    /// What the handled body leaves unanswered past this handler. A handler
+    /// with no arm for one of its effect's operations passes that operation's
+    /// requests to the next handler out, so the effect stays unanswered here.
     pub(super) fn through(&mut self, handler: &Expr, scope: &Scope) -> Esc {
-        let Expr::Handler { effect, body, .. } = handler else {
+        let Expr::Handler {
+            effect, arms, body, ..
+        } = handler
+        else {
             return Esc::default();
         };
         let body_esc = self.esc(body, scope);
-        if self.facts.is_captured(effect) {
+        if self.facts.is_captured(effect) && self.answers_every_operation(effect, arms) {
             body_esc.answered(effect_name::base(effect))
         } else {
             body_esc
         }
+    }
+
+    fn answers_every_operation(&self, effect: &str, arms: &[HandlerArm]) -> bool {
+        self.table
+            .effect(effect_name::base(effect))
+            .is_none_or(|declared| {
+                declared
+                    .ops
+                    .iter()
+                    .all(|op| arms.iter().any(|arm| arm.operation == op.name))
+            })
     }
 
     fn handler(&mut self, handler: &Expr, scope: &Scope) -> Esc {

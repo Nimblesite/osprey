@@ -11,12 +11,8 @@ module DynamicsMath
         true => one
         false => other
 
-    higher (one: float, other) = match one > other
-        true => one
-        false => other
-
     (** Level in decibels of a linear amplitude: `20 log10 |x|`, floored at −180 dB. *)
-    export decibels amplitude = 8.685889638065035 * ln (higher (abs amplitude, 0.000000001))
+    export decibels amplitude = 8.685889638065035 * ln (TableMath::larger (abs amplitude, 0.000000001))
 
     (** Linear gain of a decibel value: `10 ^ (dB / 20)`. *)
     export linear level = exp (level * 0.1151292546497023)
@@ -30,10 +26,10 @@ module DynamicsMath
     export meanSquare (previous, sample, alpha) = alpha * previous + (1.0 - alpha) * sample * sample
 
     (** RMS level in decibels from a mean square: `10 log10`. *)
-    export rmsLevel square = 4.342944819032518 * ln (higher (square, 0.000000000000000001))
+    export rmsLevel square = 4.342944819032518 * ln (TableMath::larger (square, 0.000000000000000001))
 
     (** Linked detection: every channel is reduced by the loudest channel's amount, so the image holds. *)
-    export linked (one, other) = higher (one, other)
+    export linked (one, other) = TableMath::larger (one, other)
 
     (** Detector level between peak (`blend` 0) and RMS (`blend` 1), in decibels. *)
     export detected (peak: float, rms, blend) = peak + (rms - peak) * blend
@@ -82,10 +78,10 @@ module DynamicsMath
     export tapPosition (index: float, phase, phases) = index * phases + phase
 
     (** True peak so far: the largest magnitude among the oversampled values. *)
-    export truePeak (peak, value) = higher (peak, abs value)
+    export truePeak (peak, value) = TableMath::larger (peak, abs value)
 
     (** Lookahead in whole samples for `milliseconds` at `rate`, at least one. *)
-    export lookahead (milliseconds, rate) = higher (1.0, ceil (milliseconds * rate / 1000.0))
+    export lookahead (milliseconds, rate) = TableMath::larger (1.0, ceil (milliseconds * rate / 1000.0))
 
     (** Gain (≤ 1) that brings `peak` to `ceiling` (linear); a peak under the ceiling needs none. *)
     export required (peak, ceiling) = match peak <= ceiling

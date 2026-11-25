@@ -27,10 +27,6 @@ module Streams
 
     sent (arrangement, played) = synth::Outcomes::carried (PatchVoices::told (synth::WaveFiles::interleaved (arrangement.sampleRate, 2, woven played)), \hex => printed (hex, played.playing))
 
-    least (one, other) = match one < other
-        true => one
-        false => other
-
     // Two 160-frame packets prime the device in 6.7 ms at 48 kHz.
     size path = ui::Pick::either (path == "", block, 160)
 
@@ -60,7 +56,7 @@ module Streams
         false => next(noteFolders = mapList (toList (range (0, length stream.noteFolders)), \index => retained (stream, next, index)))
 
     advanced (path, count, stream) =
-        frames = least (size path, satSub count stream.playing.cursor)
+        frames = min (size path) (satSub count stream.playing.cursor)
         synth::Outcomes::carried (LiveControls::receive (path, stream), \received =>
             next = changed (stream, received)
             synth::Outcomes::carried (Playback::step (next.controlScore, seeded (next.noteFolders, next.playing, satAdd next.playing.cursor frames), frames), \played =>

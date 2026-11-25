@@ -1,7 +1,6 @@
 namespace registry_editor
 import ui::Doc
 import ui::Lists
-import registry::Checked
 import registry::Names
 
 // Implements [PACKAGE-EDITOR-GRAPH]: the editor consumes the canonical
@@ -71,21 +70,21 @@ module Packages
 
     textListAt (doc, key) = listAt (doc, key, textItem)
 
-    identityFor (doc, key) = Checked::andThen (Fields::stringField (doc, "version", dataLabel), \version =>
-        Checked::andThen (Fields::stringField (doc, "digest", dataLabel), \digest => Success(value = EntryIdentity(entryKey = key, entryVersion = version, entryDigest = digest))))
+    identityFor (doc, key) = andThen (Fields::stringField (doc, "version", dataLabel), \version =>
+        andThen (Fields::stringField (doc, "digest", dataLabel), \digest => Success(value = EntryIdentity(entryKey = key, entryVersion = version, entryDigest = digest))))
 
-    identity doc = Checked::andThen (Fields::stringField (doc, "key", dataLabel), \text =>
-        Checked::andThen (canonical text, \key => identityFor (doc, key)))
+    identity doc = andThen (Fields::stringField (doc, "key", dataLabel), \text =>
+        andThen (canonical text, \key => identityFor (doc, key)))
 
-    flags identityValue doc = Checked::andThen (Fields::boolField (doc, "direct", dataLabel), \direct =>
-        Checked::andThen (Fields::boolField (doc, "present", dataLabel), \present => Success(value = PackageEntry(entryIdentity = identityValue, entryDirect = direct, entryPresent = present, entryDependencies = [], entryDependents = [], entryFindings = []))))
+    flags identityValue doc = andThen (Fields::boolField (doc, "direct", dataLabel), \direct =>
+        andThen (Fields::boolField (doc, "present", dataLabel), \present => Success(value = PackageEntry(entryIdentity = identityValue, entryDirect = direct, entryPresent = present, entryDependencies = [], entryDependents = [], entryFindings = []))))
 
-    linkedDraft (doc, draft, dependencies, dependents) = Checked::andThen (textListAt (doc, "findings"), \findings => Success(value = PackageEntry(entryIdentity = draft.entryIdentity, entryDirect = draft.entryDirect, entryPresent = draft.entryPresent, entryDependencies = dependencies, entryDependents = dependents, entryFindings = findings)))
+    linkedDraft (doc, draft, dependencies, dependents) = andThen (textListAt (doc, "findings"), \findings => Success(value = PackageEntry(entryIdentity = draft.entryIdentity, entryDirect = draft.entryDirect, entryPresent = draft.entryPresent, entryDependencies = dependencies, entryDependents = dependents, entryFindings = findings)))
 
-    links draft doc = Checked::andThen (keyListAt (doc, "dependencies"), \dependencies =>
-        Checked::andThen (keyListAt (doc, "dependents"), \dependents => linkedDraft (doc, draft, dependencies, dependents)))
+    links draft doc = andThen (keyListAt (doc, "dependencies"), \dependencies =>
+        andThen (keyListAt (doc, "dependents"), \dependents => linkedDraft (doc, draft, dependencies, dependents)))
 
-    entry doc = Checked::andThen (identity doc, \identityValue => Checked::andThen (flags identityValue doc, \draft => links draft doc))
+    entry doc = andThen (identity doc, \identityValue => andThen (flags identityValue doc, \draft => links draft doc))
 
     entries items = collect (items, entry)
 
@@ -101,14 +100,14 @@ module Packages
         false => failure "Package graph repeats a package key"
         true => Success(value = Graph(graphProject = project, graphPackages = packages, graphDirect = direct, graphFindings = findings))
 
-    graphOf (doc, project, direct) = Checked::andThen (packagesField doc, \packages =>
-        Checked::andThen (textListAt (doc, "findings"), \findings => checkedGraph (project, packages, direct, findings)))
+    graphOf (doc, project, direct) = andThen (packagesField doc, \packages =>
+        andThen (textListAt (doc, "findings"), \findings => checkedGraph (project, packages, direct, findings)))
 
-    graph doc = Checked::andThen (Fields::stringField (doc, "project", dataLabel), \project =>
-        Checked::andThen (keyListAt (doc, "direct"), \direct => graphOf (doc, project, direct)))
+    graph doc = andThen (Fields::stringField (doc, "project", dataLabel), \project =>
+        andThen (keyListAt (doc, "direct"), \direct => graphOf (doc, project, direct)))
 
-    release doc = Checked::andThen (Fields::intField (doc, "epoch", dataLabel), \epoch =>
-        Checked::andThen (Fields::intField (doc, "ordinal", dataLabel), \ordinal => Success(value = "e${epoch}.r${ordinal}")))
+    release doc = andThen (Fields::intField (doc, "epoch", dataLabel), \epoch =>
+        andThen (Fields::intField (doc, "ordinal", dataLabel), \ordinal => Success(value = "e${epoch}.r${ordinal}")))
 
     releases items = collect (items, release)
 
@@ -119,18 +118,18 @@ module Packages
     catalogVersion doc = match jsonField doc "releases"
         Error _ => failure "Catalog package is missing releases"
         Success value => match value
-            JsonArray items => Checked::andThen (releases items, \versions => nonEmptyVersions versions)
+            JsonArray items => andThen (releases items, \versions => nonEmptyVersions versions)
             _ => failure "Catalog package has a non-list releases"
 
     catalogFindings doc = match Doc::has (doc, "findings")
         false => Success(value = [])
         true => textListAt (doc, "findings")
 
-    catalogEntryAt (doc, key) = Checked::andThen (catalogVersion doc, \versions =>
-        Checked::andThen (catalogFindings doc, \findings => Success(value = CatalogEntry(catalogKey = key, catalogVersions = versions, catalogFindings = findings, catalogEvidence = false))))
+    catalogEntryAt (doc, key) = andThen (catalogVersion doc, \versions =>
+        andThen (catalogFindings doc, \findings => Success(value = CatalogEntry(catalogKey = key, catalogVersions = versions, catalogFindings = findings, catalogEvidence = false))))
 
-    catalogEntry doc = Checked::andThen (Fields::stringField (doc, "key", dataLabel), \text =>
-        Checked::andThen (canonical text, \key => catalogEntryAt (doc, key)))
+    catalogEntry doc = andThen (Fields::stringField (doc, "key", dataLabel), \text =>
+        andThen (canonical text, \key => catalogEntryAt (doc, key)))
 
     catalog doc = match jsonField doc "packages"
         Error _ => failure "Registry catalog is missing packages"
@@ -191,8 +190,6 @@ module Packages
     export validCatalog doc = catalog doc
 
     export packageKey item = keyOf item
-
-    export catalogKeyOf item = keyOfCatalog item
 
     export newest item = latestVersion item
 

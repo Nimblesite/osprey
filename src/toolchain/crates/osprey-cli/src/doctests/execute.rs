@@ -29,8 +29,8 @@ pub(super) fn check(
         return Ok(());
     }
     let (mut command, temporary) = executable(cli, &input)?;
-    if cli.memory == "arc" {
-        let _ = command.env("OSPREY_ARC_DEBUG", "1");
+    if let Some((variable, _)) = crate::invocation::exit_audit(&cli.memory) {
+        let _ = command.env(variable, "1");
     }
     let output = super::process::capture(&mut command);
     if let Some(path) = temporary {
@@ -126,21 +126,21 @@ fn expected_bytes(example: &DocExample) -> Result<Vec<u8>, String> {
 }
 
 fn check_arc(stderr: &[u8], memory: &str) -> Result<(), String> {
-    if memory != "arc" {
+    let Some((_, prefix)) = crate::invocation::exit_audit(memory) else {
         return Ok(());
-    }
+    };
     let text = String::from_utf8_lossy(stderr);
     let counts: Vec<_> = text
         .lines()
         .filter_map(|line| {
-            line.strip_prefix("[osp-arc] exit: ")?
+            line.strip_prefix(prefix)?
                 .split_once(" live objects")
                 .map(|(count, _)| count)
         })
         .collect();
     if counts.as_slice() != ["0"] {
         return Err(format!(
-            "expected one ARC exit sentinel with zero live objects: {text}"
+            "expected one {memory} exit sentinel with zero live objects: {text}"
         ));
     }
     Ok(())
@@ -163,6 +163,10 @@ mod tests {
         ] {
             assert!(check_arc(stderr.as_bytes(), "arc").is_err(), "{stderr}");
         }
+        let owned = b"[osp-ownership] exit: 0 live objects, 0 KiB (+0 immortal)\n";
+        assert!(check_arc(owned, "ownership").is_ok());
+        // The ownership runtime is not ARC's: an ARC record never satisfies it.
+        assert!(check_arc(b"[osp-arc] exit: 0 live objects\n", "ownership").is_err());
         assert!(check_arc(b"", "default").is_ok());
         assert!(check_arc(b"", "gc").is_ok());
     }

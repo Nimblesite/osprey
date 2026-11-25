@@ -23,7 +23,24 @@ def valid_token(x):
 
 
 def tokenize(text, use_stemmer):
-    """`DefaultTokenizer.tokenize`: lowercase, keep only `[a-z0-9]`, split, stem."""
+    """`DefaultTokenizer.tokenize`: lowercase, keep only `[a-z0-9]`, split, stem.
+
+    # Examples
+    ```osprey
+    from rouge_score import Tokenize
+
+    def show():
+        plain = Tokenize.tokenize("Hello, World! 42", False)
+        stemmed = Tokenize.tokenize("running runs", True)
+        empty = Tokenize.tokenize("", True)
+        print(f"[{plain}] [{stemmed}] [{empty}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [["hello", "world", "42"]] [["run", "run"]] [[]]
+    ```
+    """
     lowered = toLowerCase(text)
     spaced = map_codepoints(lowered, lambda cp: 32 if not is_ascii_lower_alnum(cp) else cp)
     raw = words(spaced)

@@ -1,7 +1,6 @@
 // [SYNTH-HOST-STREAM] Untrusted worker replies are checked before becoming graph audio.
 namespace synth
 
-import synth::PcmWords
 
 (** Decode bounded worker audio and reject shape changes, invalid floats and trailing bytes. *)
 module HostResponses

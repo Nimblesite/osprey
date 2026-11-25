@@ -31,7 +31,7 @@ pub(super) fn gen_cell_define(
         "getelementptr {{ {ty} }}, {{ {ty} }}* {cell}, i32 0, i32 0"
     ));
     // The cell holds its own reference to the stored value [GC-ARC-PERCEUS].
-    crate::arc::dup_store(cg, ty, &v.operand);
+    crate::arc::store_owned(cg, ty, &v.operand);
     cg.emit(format!("store {ty} {}, {ty}* {ptr}", v.operand));
     // The cell itself is a heap allocation owned by the region that declared
     // the `mut`. A handler env capturing it only DUPs it (`build_env`), so
@@ -74,7 +74,7 @@ pub(super) fn gen_cell_store(cg: &mut Codegen, name: &str, value: &Expr) -> Resu
     let ty = slot.pointee.as_str();
     // Rebind order: dup the incoming value BEFORE dropping the old one, so a
     // self-assignment never frees the value it stores [GC-ARC-PERCEUS].
-    crate::arc::dup_store(cg, ty, &v.operand);
+    crate::arc::store_owned(cg, ty, &v.operand);
     if slot.pointee.is_managed_ptr() {
         let old = cg.emit_reg(format!("load {ty}, {ty}* {}", slot.ptr));
         crate::arc::release_operand(cg, &old);

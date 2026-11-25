@@ -157,6 +157,7 @@ fn pattern_ranges(
         matches!(
             child.kind(),
             "pattern"
+                | "or_pattern"
                 | "list_pattern"
                 | "structural_pattern"
                 | "slot_pattern"
@@ -177,7 +178,7 @@ fn bare_pattern(node: Node<'_>) -> bool {
     let mut cursor = node.walk();
     let has_children = node
         .named_children(&mut cursor)
-        .any(|child| matches!(child.kind(), "pattern" | "slot_pattern"));
+        .any(|child| matches!(child.kind(), "pattern" | "slot_pattern" | "or_pattern"));
     !has_children
 }
 
@@ -189,6 +190,26 @@ mod tests {
         let parsed = crate::parse_program(source);
         assert!(parsed.errors.is_empty(), "{source}\n{:?}", parsed.errors);
         collect(source)
+    }
+
+    /// Only the pattern-binding ranges, in order.
+    fn pattern_bindings(source: &str) -> Vec<BindingRange> {
+        ranges(source)
+            .into_iter()
+            .filter(|b| b.kind == BindingKind::PatternBinding)
+            .collect()
+    }
+
+    /// Assert the ranges start at the first and the last `needle` in `source`,
+    /// so each is that exact occurrence's declaration token.
+    fn assert_start_at_first_and_last(found: &[BindingRange], source: &str, needle: &str) {
+        assert_eq!(
+            found.iter().map(|b| b.range.start).collect::<Vec<_>>(),
+            [
+                source.find(needle).unwrap_or_default(),
+                source.rfind(needle).unwrap_or_default()
+            ]
+        );
     }
 
     #[test]
@@ -220,10 +241,7 @@ mod tests {
     fn repeated_arm_names_get_distinct_exact_declaration_ranges() {
         let source =
             "fn choose(value) = match value {\n Left(item) => item\n Right(item) => 0\n}\n";
-        let found: Vec<_> = ranges(source)
-            .into_iter()
-            .filter(|b| b.kind == BindingKind::PatternBinding)
-            .collect();
+        let found = pattern_bindings(source);
         assert_eq!(
             found
                 .iter()
@@ -231,13 +249,23 @@ mod tests {
                 .collect::<Vec<_>>(),
             [("item", 0), ("item", 1)]
         );
+        assert_start_at_first_and_last(&found, source, "item)");
+    }
+
+    #[test]
+    fn a_binder_in_every_or_pattern_alternative_is_found_in_each() {
+        // [PATTERN-OR-BINDINGS] The editor renames and hovers a binder taken
+        // from either alternative, so each alternative's occurrence is a range.
+        let source = "fn text(g) = match g {\n Letter { c: s } | Word { w: s } => s\n Digit { d: 0 | 1 } => \"bit\"\n _ => \"\"\n}\n";
+        let found = pattern_bindings(source);
         assert_eq!(
-            found.iter().map(|b| b.range.start).collect::<Vec<_>>(),
-            [
-                source.find("item)").unwrap_or_default(),
-                source.rfind("item)").unwrap_or_default()
-            ]
+            found
+                .iter()
+                .map(|b| (b.name.as_str(), &source[b.range.clone()]))
+                .collect::<Vec<_>>(),
+            [("s", "s"), ("s", "s")]
         );
+        assert_start_at_first_and_last(&found, source, "s }");
     }
 
     #[test]

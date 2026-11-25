@@ -1,8 +1,5 @@
 namespace proof
 
-import proof::Terms
-import proof::Reduce
-import proof::Environment
 
 (** A Pi type taken apart: its binders, outermost first, each under the
     ones before it, and the type under all of them. *)

@@ -1,8 +1,5 @@
 namespace registry_cli;
-import registry::Checked
 import registry_host::Host
-import registry_cli::Fetch
-import registry_cli::Lockfile
 import registry::Manifest
 
 /// The local project files a command consumes: `./osprey.toml` through
@@ -29,7 +26,7 @@ module Project {
     export fn localDirAt(dir, path) = pathAt(dir, path)
 
     /// The decoded development lock at `dir`, or the OS reason / its first rejection code.
-    export fn readLocalLockAt(dir) = Checked::andThen(perform Host::Files.read(localLockPathAt(dir)), fn(value) => Lockfile::decode(value))
+    export fn readLocalLockAt(dir) = andThen(perform Host::Files.read(localLockPathAt(dir)), fn(value) => Lockfile::decode(value))
 
     // `Package.release` and `Override.path` are shared names; typed receivers (issue #273).
     /// Where a locked package's tree lives: the local checkout when the lock
@@ -46,14 +43,11 @@ module Project {
     export fn manifestTextAt(dir) = perform Host::Files.read(manifestPathAt(dir))
 
     /// The parsed manifest at `dir`, or the OS reason / `Manifest::describe(problem)`.
-    export fn readAt(dir) = Checked::andThen(manifestTextAt(dir), fn(value) => Manifest::accepted(Manifest::parse(value)))
+    export fn readAt(dir) = andThen(manifestTextAt(dir), fn(value) => Manifest::accepted(Manifest::parse(value)))
 
     /// The decoded folder lock at `dir`, or the OS reason / its first rejection code.
-    export fn readLockAt(dir) = Checked::andThen(perform Host::Files.read(lockPathAt(dir)), fn(value) => Lockfile::decode(value))
+    export fn readLockAt(dir) = andThen(perform Host::Files.read(lockPathAt(dir)), fn(value) => Lockfile::decode(value))
 
     /// The parsed manifest, or the OS reason / `Manifest::describe(problem)`.
     export fn read() = readAt("")
-
-    /// The decoded folder lock, or the OS reason / its first rejection code.
-    export fn readLock() = readLockAt("")
 }

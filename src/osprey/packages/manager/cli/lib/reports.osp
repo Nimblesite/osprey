@@ -25,6 +25,13 @@ module Reports {
     /// A command that could not do what was asked.
     export fn failure(lines) = Report { status: failureStatus, lines: lines }
 
+    /// `report` once a restore `result` is decided: a failed restore appends
+    /// `code` and the OS reason to the report that was already going out.
+    export fn restored(result, report, code) = match result {
+        Error { message } => failure(listAppend(linesOf(report), "${code} ${message}"))
+        Success => report
+    }
+
     /// Verification output projected into editor finding codes.
     export fn findings(report: Report) = if report.status == ok { [] } else { report.lines }
 

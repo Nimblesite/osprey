@@ -42,42 +42,6 @@
           "Put p on both sides of the arrow."
         ]
       }
-    },
-    {
-      "kind": "challenge",
-      "challenge": {
-        "kind": "prove",
-        "id": "prove-identity",
-        "prompt": "Prove that p implies itself. Assume p, give the assumption a name, and finish from that name.",
-        "statement": "Theorem identity. For all p, p → p.",
-        "given": [],
-        "solution": [
-          "Assume h : p.",
-          "From h."
-        ],
-        "hints": [
-          "Begin with Assume h : p.",
-          "The remaining goal is exactly the statement held by h."
-        ]
-      }
-    },
-    {
-      "kind": "challenge",
-      "challenge": {
-        "kind": "judge",
-        "id": "judge-identity",
-        "prompt": "This proof has two assumptions and finishes from one of them. Decide whether it checks.",
-        "statement": "Theorem keep_first. For all p q, p → q → p.",
-        "steps": [
-          "Assume h : p.",
-          "Assume k : q.",
-          "From k."
-        ],
-        "hints": [
-          "After both assumptions, the goal is p.",
-          "Compare what k proves with that goal."
-        ]
-      }
     }
   ]
 }

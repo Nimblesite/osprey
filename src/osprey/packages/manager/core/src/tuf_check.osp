@@ -1,9 +1,4 @@
 namespace registry;
-import registry::Checked
-import registry::Canonical
-import registry::Digests
-import registry::Domains
-import registry::Json
 
 /// The TUF 1.0 detailed client workflow (spec section 5) as pure decisions
 /// over already-verified inputs: signatures arrive as counts of valid

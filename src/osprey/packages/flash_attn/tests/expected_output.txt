@@ -1028,9 +1028,16 @@ ok core.dim4
 ok core.dot
 ok core.v_at
 ok core.slice_flat
+ok core.slice_flat.empty
+ok core.slice_flat.past_end
+ok core.slice_flat.negative
+ok varlen.short_input
+ok varlen.short_keys
+ok varlen.short_values
+ok varlen.first_run_error_carries
 ok core.mask_bounds.causal
 ok core.mask_bounds.window.lo
 ok core.mask_bounds.empty
 ok core.alibi_bias
 ok core.alibi_bias.none
-1035 passed, 0 failed
+1042 passed, 0 failed

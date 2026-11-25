@@ -344,12 +344,8 @@ fn assert_project_output(
             .args(["--run", "--quiet"])
             .arg(format!("--memory={memory}"));
         effect_execution::runtime_environment(&mut command, memory);
-        effect_execution::assert_ran(
-            &command.output()?,
-            &format!("{name}/{memory}"),
-            memory,
-            expected,
-        );
+        let output = command.output()?;
+        effect_execution::assert_run(&output, expected, &format!("{name}/{memory}"), memory);
         Ok(())
     });
     let _ = std::fs::remove_dir_all(&directory);
@@ -414,7 +410,7 @@ fn assert_python_bytes(
     expected: &str,
 ) -> std::io::Result<()> {
     let output = effect_execution::execute(name, "py", source, memory)?;
-    effect_execution::assert_ran(&output, memory, memory, expected);
+    effect_execution::assert_run(&output, expected, memory, memory);
     Ok(())
 }
 

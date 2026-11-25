@@ -109,31 +109,29 @@ def field(document, name):
             return JsonNull
 
 
-def text(document, name):
-    """The string member `name`, or an empty string."""
-    match jsonText(field(document, name)):
+def decoded_member(document, name, decode, fallback):
+    """The member `name` through `decode`, or `fallback` when it is absent or of
+    another kind: every reader below is this one check."""
+    match decode(field(document, name)):
         case Success(value=value):
             return value
         case Error():
-            return ""
+            return fallback
+
+
+def text(document, name):
+    """The string member `name`, or an empty string."""
+    return decoded_member(document, name, jsonText, "")
 
 
 def number(document, name):
     """The integer member `name`, or 0."""
-    match jsonInt(field(document, name)):
-        case Success(value=value):
-            return value
-        case Error():
-            return 0
+    return decoded_member(document, name, jsonInt, 0)
 
 
 def flag(document, name):
     """The boolean member `name`, or false."""
-    match jsonBool(field(document, name)):
-        case Success(value=value):
-            return value
-        case Error():
-            return False
+    return decoded_member(document, name, jsonBool, False)
 
 
 def items(value):

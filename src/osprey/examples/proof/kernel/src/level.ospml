@@ -5,6 +5,11 @@ namespace proof
     forms are here so M1's export reader adds nothing to the theory. *)
 type Level = Zero | Succ Level | Max Level Level | IMax Level Level | Param string
 
+(** One arm of a max-plus level: `param + offset`, or the constant `offset` when `param` is `""`. *)
+type LevelArm =
+    param : string
+    offset : int
+
 (** Normalisation, equality, instantiation and printing of levels. *)
 module Levels
     (** Whether a level mentions no parameter. *)
@@ -48,17 +53,13 @@ module Levels
     export height level = match level
         Zero => 0
         Succ inner => satAdd (height inner) 1
-        Max left right => larger (height left) (height right)
+        Max left right => max (height left) (height right)
         IMax left right => imaxHeight (height left) (height right)
         Param _name => 0
 
-    larger left right = match left >= right
-        true => left
-        false => right
-
     imaxHeight left right = match right == 0
         true => 0
-        false => larger left right
+        false => max left right
 
     (** Normal form: a closed level collapses to `Succ^n Zero`; an open level
         keeps its parameters, with `max`/`imax` simplified where a side is
@@ -114,12 +115,75 @@ module Levels
         true => Zero
         false => Succ (ofHeight (satSub n 1))
 
-    (** Structural normal forms or sound bounds in both directions.
-        The order rules also establish associativity/commutativity of max;
-        printed names never decide equality [PROOF-KERNEL-THEORY]. *)
-    export equal left right = equivalent (normal left, normal right)
+    (** Equality under every assignment of the parameters, decided completely
+        ([PROOF-KERNEL-THEORY]). While an `imax` may vanish on a parameter `p`,
+        both `p := 0` and `p := p+1` must agree; the successor case makes that
+        `imax` a `max`. Then both sides are max-plus levels, equal exactly when
+        their canonical forms are. Printed names never decide equality. *)
+    export equal left right = decided (left, right, 32)
 
-    equivalent (left, right) = same left right || (atLeast left right && atLeast right left)
+    decided (left, right, budget) = split (left, right, budget, firstOf (pending left, pending right))
+
+    split (left, right, budget, p) = match p == ""
+        true => canonicalForm left == canonicalForm right
+        false => budget > 0 && decided (instantiate (left, [p], [Zero]), instantiate (right, [p], [Zero]), satSub budget 1) && decided (instantiate (left, [p], [Succ (Param p)]), instantiate (right, [p], [Succ (Param p)]), satSub budget 1)
+
+    firstOf (a, b) = match a == ""
+        true => b
+        false => a
+
+    (** A parameter some `imax` of `level` may vanish on, or `""` when every
+        `imax` is settled. *)
+    pending level = match level
+        Succ inner => pending inner
+        Max a b => firstOf (pending a, pending b)
+        IMax a b => firstOf (firstOf (pending a, pending b), vanishOn b)
+        _ => ""
+
+    (** A parameter `level` is zero at when it is zero, or `""` when no
+        parameter decides it: `p := p+1` then removes that occurrence. *)
+    vanishOn level = match level
+        Param name => name
+        Max a b => firstOf (vanishOn a, vanishOn b)
+        IMax a b => vanishOn b
+        _ => ""
+
+    (** The max-plus arms of a level whose every `imax` is settled: a
+        parameter name (`""` for none) and the offset above it. *)
+    arms level = match level
+        Zero => [LevelArm(param = "", offset = 0)]
+        Param name => [LevelArm(param = name, offset = 0)]
+        Succ inner => mapList (arms inner, \arm => LevelArm(param = arm.param, offset = satAdd arm.offset 1))
+        Max a b => listConcat (arms a, arms b)
+        IMax a b => settledIMax (a, b)
+
+    settledIMax (a, b) = match isNotZero b
+        true => listConcat (arms a, arms b)
+        false => [LevelArm(param = "", offset = 0)]
+
+    (** Each parameter at its largest offset, sorted, then the constant only
+        when it tops every parameter's offset: `p+k >= k` at every `p`. *)
+    canonicalForm level = canonicalOf (arms level)
+
+    canonicalOf (all) = join (listConcat (mapList (paramsIn all, \p => "${p}+${toString (largest (all, p))}"), constantPart (all)), ",")
+
+    paramsIn (all) = listSort (foldList (all, [], \(seen, arm) => addParam (seen, arm.param)))
+
+    addParam (seen, name) = match name == "" || listContains (seen, name)
+        true => seen
+        false => listAppend (seen, name)
+
+    largest (all, p) = foldList (all, 0, \(top, arm) => maxOffset (top, arm, p))
+
+    maxOffset (top, arm, p) = match arm.param == p && arm.offset > top
+        true => arm.offset
+        false => top
+
+    constantPart (all) = constantAbove (largest (all, ""), foldList (paramsIn all, (-1), \(top, p) => max top (largest (all, p))))
+
+    constantAbove (constant, topParam) = match constant > topParam
+        true => ["${toString constant}"]
+        false => []
 
     same left right = match left
         Zero => zeroForm right
@@ -151,7 +215,9 @@ module Levels
     (** Whether `left ≥ right` under every assignment of the parameters.
         Each rule is sound on its own, so `false` may only mean "not shown":
         an inductive the rule cannot place is rejected, never one that is
-        too big accepted ([PROOF-KERNEL-THEORY]). *)
+        too big accepted ([PROOF-KERNEL-THEORY]). Bounding `imax a b` by its
+        arms is sufficient but not necessary, so a `max` holding that very
+        `imax` among its arms is also tried. *)
     export geq left right = atLeast (normal left) (normal right)
 
     atLeast left right = match same left right
@@ -161,7 +227,7 @@ module Levels
     atLeastRight (left, right) = match right
         Zero => true
         Max a b => atLeast left a && atLeast left b
-        IMax a b => atLeast left a && atLeast left b
+        IMax a b => (atLeast left a && atLeast left b) || atLeastLeft (left, right)
         other => atLeastLeft (left, other)
 
     atLeastLeft (left, right) = match left

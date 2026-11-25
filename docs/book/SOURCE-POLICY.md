@@ -41,7 +41,7 @@ Project modules, multi-file assembly and imports across syntax flavors are imple
 Qualify runtime claims where they are taught:
 
 - Native dynamic control handlers currently provide single-shot resumption. WebAssembly and mobile C ABI targets support value handlers and static discharge, and reject unsupported dynamic control operations.
-- Native compilation defaults to `gc`; `arc` selects reference counting. Both have platform limits. Explicit `--memory=none` selects unmanaged allocation and retains general allocations. WebAssembly and mobile libraries currently require this option because managed runtime archives are unavailable; the compiler does not substitute it silently.
+- Native compilation defaults to `gc`; `arc` selects reference counting. Both have platform limits. WebAssembly and mobile libraries default to ARC. Ownership mode accepts programs whose transfers the compiler can prove.
 - Normal native fibers use one operating-system thread each and can co-own immutable allocations. Structured scopes, fiber cancellation, `join`, and deadlines remain design work.
 - Strict static-memory checking remains unimplemented. GPU device support is kernel- and target-dependent; consult plan 0023 and the runtime implementation rather than assuming all work runs on the host or on a device.
 

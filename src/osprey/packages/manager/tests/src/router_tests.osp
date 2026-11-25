@@ -2,7 +2,6 @@ namespace registry_tests;
 import registry::Bundle
 import registry::Catalog
 import registry_api::Router
-import registry_tests::CatalogTests
 
 /// The pure routing function: every route, every problem code and status,
 /// ETags, method rejection, query-string stripping and the optional "@".

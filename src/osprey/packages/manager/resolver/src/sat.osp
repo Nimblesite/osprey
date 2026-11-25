@@ -1,6 +1,4 @@
 namespace registry;
-import registry::SatClauses
-import registry::SatSearch
 
 /// The complete, deterministic propositional core under [PACKAGE-RESOLUTION]:
 /// a CDCL solver whose models and refutations the package resolver treats as

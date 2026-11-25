@@ -158,6 +158,7 @@ fn compile_module(program: &Program, options: CodegenOptions, library: bool) -> 
     crate::anybox::seed_rows(&mut cg);
 
     record_declarations(&mut cg, program);
+    crate::arc::infer_owned_parameters(&mut cg, program);
     crate::gpu_device::record(&mut cg, program);
 
     let mut top_level: Vec<&Stmt> = Vec::new();
@@ -263,7 +264,7 @@ fn compile_module(program: &Program, options: CodegenOptions, library: bool) -> 
     cg.finish_function(LType::I32.as_str(), "main", &[]);
     crate::gpu_device::publish(&mut cg);
 
-    Ok(cg.render())
+    crate::arc::ownership_verdict(&cg, cg.render())
 }
 
 /// Pre-pass: record parameter names so named-argument calls can be ordered,
@@ -399,6 +400,7 @@ fn emit_function_body(
             .and_then(|types| types.get(i))
             .cloned();
         cg.emit_debug_param(&p.name, &v, i);
+        crate::arc::own_parameter(cg, name, i, &p.name, &v);
         cg.bind(p.name.clone(), v);
         params.push((pty.ty, reg));
     }
@@ -438,7 +440,13 @@ fn gen_fn_body(cg: &mut Codegen, name: &str, body: &Expr) -> Result<Value> {
             .return_type(name)
             .and_then(|t| Codegen::fn_value_sig(&cg.prog, t))
         {
-            return crate::closure::emit_closure(cg, parameters, lbody, &sig, *position);
+            // The closure is the body's tail: nothing is read after it, so
+            // an owned parameter it captures moves into its cell.
+            crate::arc::scope_parameters(cg);
+            crate::arc::begin_moves(cg, body, &std::collections::BTreeSet::new());
+            let cell = crate::closure::emit_closure(cg, parameters, lbody, &sig, *position);
+            crate::arc::end_moves(cg);
+            return cell;
         }
     }
     crate::expr::gen_body(cg, body)

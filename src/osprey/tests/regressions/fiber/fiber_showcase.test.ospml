@@ -61,7 +61,9 @@ pay  = exactArithmetic (\() =>
 print "auth=${await auth} inv=${await inv} pay=${await pay}"
 
 p = exactArithmetic (\() =>
-    await (spawn (stage3 (await (spawn (stage2 (await (spawn (stage1 25)))))))))
+    first = await (spawn (stage1 25))
+    second = await (spawn (stage2 first))
+    await (spawn (stage3 second)))
 print "pipeline = ${p}"
 
 y1 = yield 25

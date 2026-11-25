@@ -37,6 +37,39 @@ Checked against the published v0.4.0 source on 2026-11-16, and confirmed on TMC 
 - [x] Keep Osprey's own guard: 32 unknown-method requests through the real server leave `in_flight: 0` (`Dispatcher` `Debug`). Test: `unknown_methods_leave_no_request_in_flight`; 261 LSP tests pass.
 - [x] `cargo test -p osprey-lsp`, then `make ci`, then one coordinated push. 261 LSP tests pass (2026-11-23); the bump shipped through PR #417 (lspkit 0.10.1), merged 2026-11-20 with the required `CI` check green, and is in v0.31.1.
 - [x] Re-measure with `heap -s` after the idle sweep. On 2026-11-23 the worktree release build published diagnostics for all 1,406 files after initialize, then sent the diagnostics progress end notification at 1,280 s. macOS `heap -s` measured 17,293,072 live bytes (16.49 MiB, 107,338 allocations), below the 128 MB limit. Physical footprint remained 2.2 GB and peaked at 3.9 GB during the sweep.
+  - Measured 2026-11-24 with `sample` on `osprey src/osprey/examples/daw --check`
+    (release, 8,305 main-thread samples): 68% is the effect-row solver
+    (`effect_rows::solver::converge` → `advance_function` → `function_body_model`),
+    while all of HM inference is the remaining ~32%, of which the environment's
+    free-variable walk in `generalize` is about 6%. A level-based `generalize`
+    would therefore save at most about 6%. `c4f1b397a` (field resolution
+    visits only method, index and field relations) saved about 4%. The solver
+    models function bodies 32,259 times for 2,976 functions (about 11 each),
+    across two passes of 37 Jacobi sweeps each. Six sweeps model nearly every
+    function. Four of them are whole-program re-dirties from
+    `worklist::invalidate_scope`, which dirties every function whenever the
+    file-scope environment changes at all (3,876 models). The rest follow
+    from sweeps reading pre-sweep state in id order, so each callee change
+    re-dirties its callers on the next sweep. The candidate fixes are to
+    invalidate only the readers of the scope entries that changed, and to
+    defer a dirty function while a callee outside its own component is still
+    dirty. `recursion.rs` already proves an acyclic function settles once its
+    callees do. Either fix must keep diagnostics and IR byte-identical over
+    the corpus and DAW. Separately, `Analyzer::scoped_env` clones the whole
+    file-scope `CallableEnv` (`HashMap<String, Value>`) for every body model
+    (32,259 clones on DAW). Sharing the file-scope base behind an `Arc` with a
+    per-body overlay would remove those copies.
+  - Done 2026-11-24: a dirty function now waits while a callee outside its
+    own component is still dirty (`recursion::Callees::waits`), so callees
+    settle first. Back to back, `osprey src/osprey/examples/daw --check` user
+    time fell from 36.9/37.9 s to 29.3/30.3 s, and `src/osprey/examples/daw/test
+    --check` from 256 s to 77 s. `--check` output is byte-identical over all
+    617 corpus and failscompilation programs, all 161 projects and the DAW.
+    osprey-types passes 980/980. Then the scope values became layered
+    (`effect_rows::scope_values`): a scope copy shares the frozen file scope
+    and owns only the names bound since. DAW `--check` user time went from
+    37.8/37.6 s to 27.8/28.7 s back to back, with the same identical-output check.
+    Still open: per-entry scope invalidation.
 
 ## Verified server fixes
 

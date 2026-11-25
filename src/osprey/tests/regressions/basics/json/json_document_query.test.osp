@@ -44,16 +44,16 @@ match document {
 reportDeepString(document)
 print("types: ${describe(JsonNull)}, ${describe(JsonBoolean { value: true })}, ${describe(JsonNumber { value: 17 })}, ${describe(deepestValue)}, ${describe(outerArray)}, ${describe(document)}\n=== JSON value union complete ===")
 
+/// Follows one Successful step down the path, or answers nothing when it fails.
+fn deeper(step) = match step {
+    Success { value } => deepString(value)
+    Error => ""
+}
+
 /// Recursively follows the single object/array path to its string leaf.
 fn deepString(value) = match value {
-    JsonObject { fields } => match mapGet(fields, "workspace") {
-        Success { value } => deepString(value)
-        Error => ""
-    }
-    JsonArray { values } => match listGet(values, 0) {
-        Success { value } => deepString(value)
-        Error => ""
-    }
+    JsonObject { fields } => deeper(mapGet(fields, "workspace"))
+    JsonArray { values } => deeper(listGet(values, 0))
     JsonString { value } => value
     _ => ""
 }
@@ -121,7 +121,7 @@ fn parses(text) = match jsonParse(text) {
 
 /// Parses text, reads one scalar by path, and releases the handle.
 fn textAt(text, path) = match jsonParse(text) {
-    Success { value } => released(value, jsonGet(value, path) ?: noScalar)
+    Success { value } => released(value, scalarAt(value, path))
     Error => noScalar
 }
 

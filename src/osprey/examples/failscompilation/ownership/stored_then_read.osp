@@ -1,0 +1,24 @@
+// [MEM-OWNERSHIP-STATIC-BORROWS] Runs under the collector; `--memory=ownership` refuses it.
+// A value stored while its owner still reads it is lent, so the new value may
+// not outlive that owner: here it is returned, and the owner dies in `build`.
+// An updated copy keeps its base's fields, so a base that is read again
+// would share them with the copy [MEM-OWNERSHIP-STATIC-PATHS].
+type Box = { text: string }
+type Wrap = { inner: Box }
+type Tagged = { inner: Box, tag: string }
+
+fn build() = {
+    let made = Box { text: "a${toString(1)}" }
+    let wrap = Wrap { inner: made }
+    print(made.text)
+    wrap
+}
+
+fn main() = {
+    let wrap = build()
+    let base = Tagged { inner: Box { text: "b${toString(2)}" }, tag: "t" }
+    let copy = base { tag: "u" }
+    let kept = Wrap { inner: Box { text: "c${toString(3)}" } }
+    let same = kept { inner: kept.inner }
+    print("${wrap.inner.text}${base.inner.text}${copy.tag}${same.inner.text}")
+}

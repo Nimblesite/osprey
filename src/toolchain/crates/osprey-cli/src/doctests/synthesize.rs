@@ -39,6 +39,8 @@ pub(super) fn program(
     assemble(&sources, config, source_index)
 }
 
+/// The example's program without the functions nothing in it reaches, by name
+/// or as a method: `x.f()` calls `f`, so `f` stays.
 pub(super) fn reachable(mut program: Program) -> Program {
     let roots: Vec<_> = program
         .statements
@@ -47,12 +49,16 @@ pub(super) fn reachable(mut program: Program) -> Program {
         .collect();
     let mut names = std::collections::BTreeSet::new();
     osprey_ast::freevars::free_idents_of_stmts(&roots, None, &mut names);
+    for root in &roots {
+        methods(root, &mut names);
+    }
     loop {
         let before = names.len();
         for statement in &program.statements {
             if let Stmt::Function { name, body, .. } = statement {
                 if names.contains(name) {
                     osprey_ast::freevars::free_idents(body, &mut names);
+                    methods(statement, &mut names);
                 }
             }
         }
@@ -64,6 +70,19 @@ pub(super) fn reachable(mut program: Program) -> Program {
         .statements
         .retain(|stmt| !matches!(stmt, Stmt::Function { name, .. } if !names.contains(name)));
     program
+}
+
+/// Add the name of every method `statement` calls to `names`.
+fn methods(statement: &Stmt, names: &mut std::collections::BTreeSet<String>) {
+    struct Methods<'a>(&'a mut std::collections::BTreeSet<String>);
+    impl osprey_ast::AstVisitor for Methods<'_> {
+        fn expression(&mut self, expression: &Expr) {
+            if let Expr::MethodCall { method, .. } = expression {
+                let _ = self.0.insert(method.clone());
+            }
+        }
+    }
+    osprey_ast::walk_statement(statement, &mut Methods(names));
 }
 
 fn assemble(

@@ -1,8 +1,4 @@
 namespace registry_cli;
-import registry_cli::Flags
-import registry_cli::Reports
-import registry_cli::Project
-import registry_cli::Lockfile
 import registry::Identity
 import registry::ManifestModel
 import registry::Names

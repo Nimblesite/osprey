@@ -1,11 +1,4 @@
 namespace registry;
-import registry::Checked
-import registry::Json
-import registry::Canonical
-import registry::Digests
-import registry::Domains
-import registry::Maybe
-import registry::ManifestModel
 
 /// The canonical JSON projection of a manifest and its `manifestDigest`.
 /// Records become objects, unions one-member objects, absent options vanish.
@@ -85,5 +78,5 @@ module ManifestJson {
     export fn canonical(manifest) = Canonical::serialize(toJson(manifest))
 
     /// `H("osprey.manifest.v1", manifest)`.
-    export fn digest(manifest) = Checked::andThen(canonical(manifest), fn(value) => Success { value: Digests::hashText(Domains::manifestDomain(), value) })
+    export fn digest(manifest) = andThen(canonical(manifest), fn(value) => Success { value: Digests::hashText(Domains::manifestDomain(), value) })
 }

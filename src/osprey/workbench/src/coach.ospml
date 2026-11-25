@@ -3,14 +3,6 @@
 // `Tutors`, which asks the kernel; a right answer is saved as progress.
 namespace workbench
 
-import workbench::Lessons
-import workbench::Blocks
-import workbench::Tutors
-import workbench::Shelves
-import workbench::Drafts
-import workbench::ProofLibraries
-import workbench::BundledLibraries
-import workbench::Workspaces
 import ui::Runtime
 import ui::Lists
 
@@ -54,9 +46,6 @@ module Coach
     (** A formula key's `text` inserted at the answer's caret; the text around it stays and the caret follows the key. *)
     export insert (bench, id, text) = tutored (bench, id, Tutors::insert, text)
 
-    (** The learner's ruling on judge challenge `id`: `checks` or `fails`. *)
-    export pick (bench, id, choice) = tutored (bench, id, Tutors::pick, Tutors::rulingOf choice)
-
     (** Challenge `id` submitted to the kernel; a newly right answer writes progress ([LESSONS-PROGRESS]). *)
     export submit (bench, id) = match challengeOf (bench, id)
         Error _ => Runtime::step bench
@@ -68,25 +57,6 @@ module Coach
 
     (** One more hint shown on challenge `id`. *)
     export hint (bench, id) = applied (bench, id, Tutors::hint)
-
-    (** The solution of challenge `id` placed in its answer, when `Tutors::revealable` allows it. *)
-    export reveal (bench, id) = applied (bench, id, Tutors::reveal)
-
-    (** Challenge `id` and the learner's answer appended to the Work document as a declaration, and Work shown ([LESSONS-MODE]). *)
-    export carry (bench, id) = match challengeOf (bench, id)
-        Error _ => bench
-        Success challenge => carried (bench, declaration (challenge, (Tutors::attempt (bench.tutor, keyed (bench, id))).attemptAnswer))
-
-    carried (bench, text) =
-        shown = bench(layout = working bench.layout)
-        Drafts::edited (shown, Drafts::joined (bench.draft.draftText, "\n\n", text))
-
-    working layout = layout(mode = Working)
-
-    declaration (challenge, answer) = match challenge.challengeTask
-        ProveTask task => task.provedHeading + "\nProof.\n" + join (listAppend (task.provedGiven, answer), "\n")
-        JudgeTask task => task.judgedHeading + "\nProof.\n" + join (task.judgedSteps, "\n")
-        StateTask task => "Theorem stated. For all " + join (task.statedVariables, " ") + ", " + answer + ".\nProof.\n"
 
     (** Lesson `slug` opened from the host's lesson slice; a lesson that does not read stays closed. *)
     export open (bench, slug) = opened (bench, slug, Shelves::sourceOf (perform ui::Slices.fetch Shelves::textsKey, slug))
@@ -108,13 +78,11 @@ module Completions
 
     listed (shelf, entries) = shelf(entries = entries, shelfProblem = "")
 
-    failed (bench, ticket, said) = match startsWith ticket "workspace:"
-        true => Runtime::step (Workspaces::notice (bench, "The workspace operation failed: " + said, true))
-        false => match ticket == "proof:opened"
-            true => ProofLibraries::failed (bench, said)
-            false => match BundledLibraries::handles ticket
-                true => BundledLibraries::failed (bench, ticket, said)
-                false => failedLesson (bench, ticket, said)
+    failed (bench, ticket, said) = match ticket == "proof:opened"
+        true => ProofLibraries::failed (bench, said)
+        false => match BundledLibraries::handles ticket
+            true => BundledLibraries::failed (bench, ticket, said)
+            false => failedLesson (bench, ticket, said)
 
     failedLesson (bench, ticket, said) = match ticket == Shelves::catalogueKey || ticket == Shelves::textsKey
         true => refused (bench, "The lessons could not be loaded: " + said)
@@ -139,13 +107,11 @@ module Completions
 
     merged (tutor, keys) = tutor(tutorCompleted = foldList (keys, tutor.tutorCompleted, \(done, key) => Tutors::including (done, key)))
 
-    succeeded (bench, ticket, result) = match startsWith ticket "workspace:"
-        true => Workspaces::completed (bench, ticket, result)
-        false => match ticket == "proof:opened"
-            true => ProofLibraries::completed (bench, result)
-            false => match BundledLibraries::handles ticket
-                true => BundledLibraries::completed (bench, ticket)
-                false => succeededLesson (bench, ticket)
+    succeeded (bench, ticket, result) = match ticket == "proof:opened"
+        true => ProofLibraries::completed (bench, result)
+        false => match BundledLibraries::handles ticket
+            true => BundledLibraries::completed (bench, ticket)
+            false => succeededLesson (bench, ticket)
 
     succeededLesson (bench, ticket) = match ticket
         "lessons:catalogue" => catalogued bench

@@ -1,6 +1,4 @@
 namespace registry;
-import registry::Order
-import registry::Bytes
 
 /// The ASCII relative POSIX path grammar of a canonical source tree: segments
 /// of `[A-Za-z0-9._-]{1,128}` that are neither `.` nor `..`, at most 1,024

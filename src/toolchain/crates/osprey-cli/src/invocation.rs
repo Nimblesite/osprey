@@ -6,12 +6,12 @@ use osprey_syntax::Flavor;
 pub(crate) const USAGE: &str =
     "usage: osprey <file-or-project> [--check | --ast | --llvm | --compile | --run | \
 --symbols | --signature | --source-graph | --list-tests | --doctests | --deps] [--quiet] [--no-warnings | --analyse | --warnings-as-errors] [--debug] [--profile] [--flavor default|ml|python|typescript] \
-[--memory=gc|arc|none] [--target=native|wasm32|ios|ios-sim|macos|android-arm64|android-x64|linux-x64|linux-arm64|windows-x64|python] [--entry-only] [-o <out>] \
+[--memory=gc|arc|ownership] [--target=native|wasm32|ios|ios-sim|macos|android-arm64|android-x64|linux-x64|linux-arm64|windows-x64|python] [--entry-only] [-o <out>] \
 [--sandbox | --no-http | --no-websocket | --no-fs | --no-ffi] [-- <program args>]\n\
-       osprey build [project] [--quiet] [--no-warnings | --analyse | --warnings-as-errors] [--debug] [--memory=gc|arc|none] \
+       osprey build [project] [--quiet] [--no-warnings | --analyse | --warnings-as-errors] [--debug] [--memory=gc|arc|ownership] \
 [--target=native|wasm32|ios|ios-sim|macos|android-arm64|android-x64|linux-x64|linux-arm64|windows-x64|python] [-o <out>]\n\
        osprey test [path] [--filter <name>] [--quiet] [--coverage] \
-[--coverage-json <path>] [--memory=gc|arc|none]\n\
+[--coverage-json <path>] [--memory=gc|arc|ownership]\n\
        osprey fmt [--check | --stdout] [--flavor default|ml|python|typescript] <path...>\n\
        osprey math <file.lean>\n\
        osprey hunt <file> [--max-time <seconds>] [--max-memory <mb>] [--input-bytes <n>] [--out <dir>] [--json] [--no-replay] [--quiet]\n\
@@ -90,9 +90,7 @@ pub(crate) struct Cli {
     pub(super) quiet: bool,
     pub(super) warnings: Warnings,
     pub(super) policy: Policy,
-    /// The memory backend linked behind `@osp_alloc`: `none` (explicit malloc
-    /// passthrough), `gc` (tracing collector), or `arc` (reference counting).
-    /// Link-time only; native IR is identical [MEM-BACKENDS].
+    /// Memory backend selected for lowering and linking [MEM-BACKENDS].
     pub(super) memory: String,
     /// Host executable, WebAssembly, or iPhone C ABI archive.
     /// [WASM-TARGET] [IOS-TARGET]
@@ -354,15 +352,28 @@ pub(super) fn parse_target(value: &str) -> Result<String, String> {
     }
 }
 
-/// Validate the `--memory=` value: the malloc passthrough (`none`), the
-/// tracing collector (`gc`), or Perceus reference counting (`arc`).
-/// Implements [MEM-BACKENDS].
+/// Validate the memory backend [MEM-BACKENDS] [MEM-OWNERSHIP-STATIC].
 pub(super) fn parse_memory(value: &str) -> Result<String, String> {
     match value {
-        "none" | "gc" | "arc" => Ok(value.to_string()),
+        "gc" | "arc" | OWNERSHIP => Ok(value.to_string()),
         other => Err(format!(
-            "unknown memory backend '{other}' (available: gc, arc, none)\n{USAGE}"
+            "unknown memory backend '{other}' (available: gc, arc, ownership)\n{USAGE}"
         )),
+    }
+}
+
+/// The backend `--memory=ownership` selects.
+pub(crate) const OWNERSHIP: &str = "ownership";
+
+/// The environment variable that arms a tracked-heap backend's exit report,
+/// and the prefix of the report's totals line: ARC counts references
+/// [GC-ARC-PERCEUS]; `ownership` links its own runtime, which frees each value
+/// at its one release and counts nothing [MEM-OWNERSHIP-STATIC].
+pub(crate) fn exit_audit(memory: &str) -> Option<(&'static str, &'static str)> {
+    match memory {
+        "arc" => Some(("OSPREY_ARC_DEBUG", "[osp-arc] exit: ")),
+        OWNERSHIP => Some(("OSPREY_OWNERSHIP_DEBUG", "[osp-ownership] exit: ")),
+        _ => None,
     }
 }
 

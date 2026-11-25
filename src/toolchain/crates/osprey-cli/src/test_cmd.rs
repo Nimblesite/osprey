@@ -14,7 +14,7 @@
 //! code aggregates suite outcomes.
 //! `--coverage` instruments each suite and reports per-file and total line
 //! coverage; `--coverage-json <path>` also writes the merged hit counts.
-//! `--memory=gc|arc|none` selects one backend for every discovered suite;
+//! `--memory=gc|arc|ownership` selects one backend for every discovered suite;
 //! when omitted, child compiler invocations use the compiler's default and
 //! report the native GC default to their own programs.
 //! Every child is handed `OSPREY_TEST_COMPILER` (this executable) and
@@ -396,7 +396,7 @@ mod tests {
         let default = parse(&[]).expect("compiler default");
         assert!(default.memory.is_none());
 
-        for memory in ["none", "gc", "arc"] {
+        for memory in ["ownership", "gc", "arc"] {
             let opts = parse(&[format!("--memory={memory}")]).expect("valid memory backend");
             assert_eq!(opts.memory.as_deref(), Some(memory));
         }

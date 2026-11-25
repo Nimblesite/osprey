@@ -2,7 +2,6 @@ namespace registry_web;
 import registry::Governance
 import registry::Maybe
 import registry::Names
-import registry_web::Model
 
 /// Website fixtures: two organizations sharing one leaf name, warned and
 /// clean packages, missing evidence, an administrator without a publishing
@@ -129,6 +128,12 @@ module WebFixtures {
         Model::Shown { html } => check(name, expected, html)
         Model::Hidden { reason } => check(name, "shown screen", "hidden: ${reason}")
     }
+
+    /// The screen must be shown, carrying every `wanted` text and none of
+    /// the `unwanted` ones.
+    export fn showsTexts(name, view, wanted, unwanted) = shows(name, view, fn(html) =>
+        foldList(wanted, true, fn(all, text) => all && contains(html, text)) &&
+        foldList(unwanted, true, fn(clean, text) => clean && !contains(html, text)))
 
     /// The screen must be hidden and every condition `verify` states of its
     /// reason must hold, folded the same way as `shows`.

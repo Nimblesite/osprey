@@ -39,10 +39,6 @@ module Drawing
                 true => [x, sketch.startY]
                 false => [sketch.startX, y]
 
-    abs value = match value < 0.0
-        true => 0.0 - value
-        false => value
-
     grown (lines, point, last, i) = match i == last
         true => listConcat (listGet lines i ?: []) point
         false => listGet lines i ?: []

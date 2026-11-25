@@ -57,21 +57,9 @@ module LockfileTests {
         check("lockfile rejection codes: ${length(bad)} of ${length(cases)} failed", 0, length(bad))
     }
 
-    fn manifestWith(edges) = ManifestModel::Manifest {
-        projectName: "app",
-        sourceRoots: ["src"],
-        defaultNamespace: Maybe::none(),
-        entry: Maybe::none(),
-        flavor: Maybe::none(),
-        allowWildcardImports: false,
-        publication: Maybe::none(),
-        testRoots: [],
-        pythonSources: [],
-        typescriptSources: [],
-        dependencies: edges,
-        grants: [],
-        systemRequirements: [],
-        assets: []
+    fn manifestWith(edges) = {
+        let blank = ManifestModel::blank()
+        blank { projectName: "app", sourceRoots: ["src"], dependencies: edges }
     }
 
     fn dependenciesText(manifest) = match Json::get(ManifestJson::toJson(manifest), "dependencies") {

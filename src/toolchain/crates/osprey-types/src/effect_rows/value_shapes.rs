@@ -299,6 +299,8 @@ pub(super) fn builtin_callable_value(name: &str, ty: Option<&crate::ty::Type>) -
         && !matches!(
             name,
             "abs"
+                | "min"
+                | "max"
                 | "intDiv"
                 | "toFloat"
                 | "toFloat32"

@@ -237,3 +237,76 @@ fn published_library_is_a_validated_boolean_not_a_warning_escape_hatch() -> Resu
         .all(|error| error.message == "expected `true` or `false`"));
     Ok(())
 }
+
+const TAX_LIBRARY: &str = "namespace billing;\nmodule Tax {\n    export fn add(a, b) = wrapAdd(a, b)\n    export fn zero() = 0\n    export type Rate = Rate { percent: int }\n}\nmodule Fees {\n    export fn flat() = 5\n}\nmodule Idle {\n    export fn never() = 1\n}\n";
+
+fn unused_imports(sources: &[SourceFile]) -> Result<Vec<String>, String> {
+    let project = checked(&config("main.osp"), sources)?;
+    Ok(project
+        .warnings
+        .iter()
+        .filter(|warning| warning.rule == "unused-import")
+        .map(|warning| warning.message.clone())
+        .collect())
+}
+
+#[test]
+fn an_import_nothing_resolves_through_is_reported_and_a_used_one_is_not() -> Result<(), String> {
+    // [MODULES-STYLE]: a qualified path, a bare member, an alias in a type
+    // position and a method-style call each use the import they resolve through.
+    let library = parsed("lib.osp", Flavor::Default, TAX_LIBRARY);
+    let used = "import billing::Tax\nimport billing::Fees::{flat}\nimport billing::Tax as T\nimport billing::Tax::{zero as none}\n";
+    let body = "fn percent(rate: T::Rate) = rate.percent\nfn main() = Tax::add(flat(), none())\n";
+    let idle = "import billing::Idle\nimport billing::Idle::{never as nope}\n";
+    let clean = parsed(
+        "main.osp",
+        Flavor::Default,
+        &format!("namespace app;\n{used}{body}"),
+    );
+    assert_eq!(
+        unused_imports(&[library.clone(), clean])?,
+        Vec::<String>::new()
+    );
+    let noisy = parsed(
+        "main.osp",
+        Flavor::Default,
+        &format!("namespace app;\n{used}{idle}{body}"),
+    );
+    assert_eq!(
+        unused_imports(&[library.clone(), noisy.clone()])?,
+        [
+            "import `billing::Idle` is never used",
+            "import `billing::Idle::{never as nope}` is never used"
+        ]
+    );
+    assert_eq!(unused_imports(&[noisy, library.clone()])?.len(), 2);
+    // A module of the importing namespace resolves without its import, so a
+    // name through it makes the import redundant, not unused.
+    let sibling = parsed(
+        "main.osp",
+        Flavor::Default,
+        "namespace billing;\nimport billing::Tax\nfn main() = Tax::zero()\n",
+    );
+    assert_eq!(
+        unused_imports(&[library.clone(), sibling])?,
+        ["import `billing::Tax` is redundant: `billing::Tax` is in this file's namespace and resolves without it"]
+    );
+    let ml = parsed(
+        "main.ospml",
+        Flavor::Ml,
+        "namespace app\nimport billing::Tax\nimport billing::Idle\nmain () = Tax::zero ()\n",
+    );
+    let mut options = config("main.ospml");
+    options.entry = Some("main.ospml".into());
+    let project = checked(&options, &[library, ml])?;
+    let rules: Vec<_> = project
+        .warnings
+        .iter()
+        .map(|w| (w.rule, w.message.as_str()))
+        .collect();
+    assert_eq!(
+        rules,
+        [("unused-import", "import `billing::Idle` is never used")]
+    );
+    Ok(())
+}

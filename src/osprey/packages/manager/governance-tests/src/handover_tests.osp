@@ -4,7 +4,6 @@ import registry::GovernanceHandover
 import registry::GovernanceTransitions
 import registry::Maybe
 import registry::Names
-import registry_tests::Fixture
 
 /// Administrator handover [PACKAGE-OWNERSHIP-ADMIN]: one live proposal, the
 /// recipient's acceptance, the 24-hour hold, guarded atomic completion that

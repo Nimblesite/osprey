@@ -4,7 +4,6 @@ import registry_cli::Install
 import registry_cli::Fetch
 import registry_cli::Lockfile
 import registry_cli::Reports
-import registry_tests::Fixture
 import registry::Bundle
 import registry::Release
 
@@ -95,16 +94,18 @@ module InstallTests {
 
     fn sourceWeb(s: Release::Served) = webRoute(localBase, sourcePath(s), 200, Bundle::encode(s) ?: "")
 
+    /// The report of a two-package install: accepted, exactly two lines,
+    /// the first `= @demo/one` and the second `secondLine`.
+    fn reportedPair(a, secondLine) = accepted(a) && length(a.report.lines) == 2 &&
+        startsWith(Fixture::line(a.report, 0), "= @demo/one") && startsWith(Fixture::line(a.report, 1), secondLine)
+
     /// Both trees installed and matching: two `=` lines, no fetch, nothing written.
     fn allPresent() = {
         let os = both()
         let a = runInstall(listConcat([lockRead(os)], listConcat(readsOf(Fixture::at(os, 0)), readsOf(Fixture::at(os, 1)))),
             [walkOf(Fixture::at(os, 0)), walkOf(Fixture::at(os, 1))], [], [])
         checkAll("installed trees are skipped with = lines and no writes", [
-            accepted(a),
-            length(a.report.lines) == 2,
-            startsWith(Fixture::line(a.report, 0), "= @demo/one"),
-            startsWith(Fixture::line(a.report, 1), "= @demo/two"),
+            reportedPair(a, "= @demo/two"),
             structuralEquals([a.writes, a.ensures, a.fetched], ["", "", ""])
         ])
     }
@@ -120,10 +121,7 @@ module InstallTests {
             [sourceWeb(second)],
             [])
         checkAll("a missing tree is fetched with a + line", [
-            accepted(a),
-            length(a.report.lines) == 2,
-            startsWith(Fixture::line(a.report, 0), "= @demo/one"),
-            startsWith(Fixture::line(a.report, 1), "+ @demo/two"),
+            reportedPair(a, "+ @demo/two"),
             a.fetched == "${sourcePath(second)}|"
         ])
     }

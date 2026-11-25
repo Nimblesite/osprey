@@ -2,10 +2,9 @@
 // the host loader must satisfy the same safetensors contract as
 // `gpuLoadTensor` (tensor_file_tests.h) while building a List<float> and
 // linking no GPU unit at all — this suite links tensor_list.c, tensor_file.c,
-// list_runtime.c, file_runtime.c (the io_error channel) and memory_runtime.c,
+// list_runtime.c, file_runtime.c (the io_error channel) and memory_gc.c,
 // and nothing named gpu_*.
 #include <assert.h>
-#include <signal.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -13,12 +12,10 @@
 #include "collection_runtime.h"
 #include "float_spelling.h"
 #include "memory_hooks.h"
-#include "test_death.h"
 
 OspreyList *osprey_load_tensor(const char *path, const char *name);
 OspreyList *osprey_read_file_bytes(const char *path, int64_t offset, int64_t count);
 int64_t osprey_file_size(const char *path);
-void *osprey_tensor_panic(const char *message);
 const char *osp_io_error(void);
 void osp_io_error_clear(void);
 
@@ -80,21 +77,6 @@ static void t_half_tensor_matches_numeric_widening(void) {
   }
   osp_release(list);
   CHECK(unlink(path) == 0);
-}
-
-static void panic_named(void) {
-  (void)osprey_tensor_panic("loadTensor: w: no tensor of that name in the header");
-}
-
-static void panic_unnamed(void) {
-  (void)osprey_tensor_panic(NULL);
-}
-
-// Broken-code quarantine: the CPU handler's failed load aborts rather than
-// hand the model a fabricated tensor, with or without a recorded reason.
-static void t_panic_aborts(void) {
-  CHECK(osp_death_signal(panic_named) == SIGABRT);
-  CHECK(osp_death_signal(panic_unnamed) == SIGABRT);
 }
 
 // [BUILTIN-FILE-BYTES] Bytes come back unsigned and whole through every NUL; a
@@ -159,7 +141,6 @@ int main(void) {
   t_tensor_loader(&(TensorLoader){"loadTensor", load, length, at});
   t_read_file_bytes();
   t_half_tensor_matches_numeric_widening();
-  t_panic_aborts();
   printf("[ok] tensor_list: %ld assertions\n", g_checks);
   return 0;
 }

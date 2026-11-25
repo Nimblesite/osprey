@@ -381,3 +381,50 @@ pub(crate) fn integer_conversion(
     let zero = Value::new("0", LType::I64);
     overflow(cg, &bad, name, word, zero, narrowed)
 }
+
+/// [BUILTIN-MIN-MAX] `min` or `max` of two values of one numeric type: an
+/// integer compares in its own signed or unsigned order, a float follows IEEE
+/// 754 `minimum`/`maximum` (NaN wins, -0.0 sits below 0.0). Total.
+pub(crate) fn extremum(cg: &mut Codegen, name: &str, left: Value, right: Value) -> Result<Value> {
+    let n = operand_numeric(&left, &right);
+    let (left, right) = (as_num(cg, left, n)?, as_num(cg, right, n)?);
+    let operand = if n == Numeric::FLOAT16 {
+        half_extremum(cg, name, &left.operand, &right.operand)
+    } else {
+        let (ty, intrinsic) = (n.llvm(), extremum_intrinsic(name, n));
+        cg.add_extern(format!("declare {ty} @{intrinsic}({ty}, {ty})"));
+        cg.emit_reg(format!(
+            "call {ty} @{intrinsic}({ty} {}, {ty} {})",
+            left.operand, right.operand
+        ))
+    };
+    Ok(Value::new(operand, LType::Num(n)))
+}
+
+/// The LLVM intrinsic for `name` at `n`: `llvm.smin.i32`, `llvm.umax.i8`,
+/// `llvm.minimum.f64`.
+fn extremum_intrinsic(name: &str, n: Numeric) -> String {
+    let short = if name == "min" { "min" } else { "max" };
+    match (n.is_float(), n.is_signed()) {
+        (true, _) => format!("llvm.{short}imum.f{}", n.bits),
+        (false, true) => format!("llvm.s{short}.i{}", n.bits),
+        (false, false) => format!("llvm.u{short}.i{}", n.bits),
+    }
+}
+
+/// A binary16 value is its `i16` bits: widen both exactly to binary32, take
+/// the extremum there and narrow the chosen operand back unchanged.
+fn half_extremum(cg: &mut Codegen, name: &str, left: &str, right: &str) -> String {
+    let widen = |cg: &mut Codegen, bits: &str| {
+        let half = cg.emit_reg(format!("bitcast i16 {bits} to half"));
+        cg.emit_reg(format!("fpext half {half} to float"))
+    };
+    let (left, right) = (widen(cg, left), widen(cg, right));
+    let intrinsic = extremum_intrinsic(name, Numeric::FLOAT32);
+    cg.add_extern(format!("declare float @{intrinsic}(float, float)"));
+    let wide = cg.emit_reg(format!(
+        "call float @{intrinsic}(float {left}, float {right})"
+    ));
+    let half = cg.emit_reg(format!("fptrunc float {wide} to half"));
+    cg.emit_reg(format!("bitcast half {half} to i16"))
+}

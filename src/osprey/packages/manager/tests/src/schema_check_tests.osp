@@ -1,8 +1,8 @@
 namespace registry_tests;
+import registry::JsonRead
 import registry::Json
 import registry::TypeDiagram
 import registry::SchemaCheck
-import registry_tests::Fixtures
 
 /// The typeDiagram schema validator, exercised through the declarative
 /// fixtures under src/osprey/packages/manager/tests/fixtures/schema and .../time. `SchemaCheck`
@@ -84,7 +84,7 @@ module SchemaCheckTests {
         Error => false
     }
 
-    fn rejectionOk(model, case) = match SchemaCheck::validate(model, Fixtures::textOf(case, "type"), Fixtures::field(case, "value")) {
+    fn rejectionOk(model, case) = match SchemaCheck::validate(model, Fixtures::textOf(case, "type"), JsonRead::field(case, "value")) {
         Error { message } => message == "${Fixtures::textOf(case, "code")} at ${Fixtures::textOf(case, "at")}"
         Success => false
     }
@@ -94,7 +94,7 @@ module SchemaCheckTests {
         match result {
             Success { value } => {
                 let fx = Fixtures::load("schema/accepts.json")
-                Fixtures::report("schema accepts", Fixtures::itemsOf(fx, "cases"), fn(c) => validated(value, Fixtures::textOf(c, "type"), Fixtures::field(c, "value")))
+                Fixtures::report("schema accepts", Fixtures::itemsOf(fx, "cases"), fn(c) => validated(value, Fixtures::textOf(c, "type"), JsonRead::field(c, "value")))
             }
             Error { message } => check("typeDiagram parses", "ok", message)
         }

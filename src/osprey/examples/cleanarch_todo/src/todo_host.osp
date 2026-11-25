@@ -3,8 +3,6 @@
 
 namespace todo;
 
-import todo::TodoDomain
-import todo::TodoRequest
 
 /// The outer ring: one handler per boundary.
 module TodoHost {

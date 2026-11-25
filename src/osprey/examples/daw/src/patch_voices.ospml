@@ -97,6 +97,11 @@ module PatchVoices
         oscillator = synth::Components::sine (identity, 440.0)
         ok (oscillator(inputs = [synth::Port(name = "notes", rate = synth::Events, channels = 1, unit = synth::Notes)]))
 
+    // [SYNTH-FORMULA-NOTES] A saved melody keeps its formula in the asset; one that no longer parses is refused.
+    formulated item = match synth::Formulas::parse item.asset
+        Error why => Error(message = synth::Faults::detail why)
+        Success _ => ok (synth::Components::formulaMelody (item.identity, item.asset))
+
     made item = match item.component
         "vst3" => synth::PluginDocuments::restored (item.identity, item.asset)
         "split" => channels item
@@ -105,6 +110,7 @@ module PatchVoices
         "route" => channels item
         "midiOscillator" => midiOscillator item.identity
         "midiNote" => ok (synth::Components::midiNote (item.identity, 60.0, 0.8, 6000.0))
+        "formulaNotes" => formulated item
         "stereo" => ok (synth::Components::stereo item.identity)
         "downmix" => ok (synth::Components::downmix item.identity)
         "stereoOutput" => ok (synth::Components::stereoOutput item.identity)
@@ -143,9 +149,8 @@ module PatchVoices
         true => ok (builtinSample ())
         false => match fileSize path
             Error why => Error(message = why)
-            Success size => match size >= 12 && size <= 8388608
-                false => Error(message = "Choose a WAV file between 12 bytes and 8 MiB.")
-                true => chained (readFileBytes (path, 0, satAdd size 1), \bytes => decoded (path, size, bytes))
+            Success size => chained (Projects::limited (size, 12, 8388608, "Choose a WAV file between 12 bytes and 8 MiB."), \within =>
+                chained (readFileBytes (path, 0, satAdd within 1), \bytes => decoded (path, within, bytes)))
 
     (** The last part of a path: what Prism shows for an imported sample. *)
     export fileName path = foldList (split (replace path "\\" "/" ?: path) "/" ?: [path], path, \(_, part) => part)

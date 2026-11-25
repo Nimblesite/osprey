@@ -4,8 +4,8 @@
 //! tree, and every `shot` keeps it beside the run, so an agent reads what it may act on.
 
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use gpui_kit::*;

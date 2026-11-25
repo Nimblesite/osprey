@@ -154,15 +154,13 @@ mixupDemo () =
 
         (** results into a persistent list, walked with functional builtins *)
         scores = [sHigh, sMed, sLow]
-        print ("list len " + toString (listLength scores))
-        print ("has 81 " + toString (listContains (scores, 81)))
+        print ("list len " + toString (listLength scores) + "\nhas 81 " + toString (listContains (scores, 81)))
         forEachList (scores, show)
         report scores
 
         (** results into a map keyed by name, walked the same way *)
         m = mapSet (mapSet (mapSet (Map ()) "high" sHigh) "med" sMed) "low" sLow
-        print ("map len " + toString (mapLength m))
-        print ("has high " + toString (mapContains (m, "high")))
+        print ("map len " + toString (mapLength m) + "\nhas high " + toString (mapContains (m, "high")))
         forEachList (mapValues m, show))
 exactArithmetic (\() =>
     mixupDemo ())
@@ -212,8 +210,7 @@ giftPairSum () =
 
 raceSum =
     exactArithmetic (\() => giftPairSum ())
-print ("race-free sum " + toString raceSum)
-print "=== done ==="
+print ("race-free sum " + toString raceSum + "\n=== done ===")
 
 (** Runs one logged job under a silent handler for assertion use. *)
 highScoreForTest () =

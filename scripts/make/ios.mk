@@ -3,35 +3,33 @@
 # fibers and substituting effects use the existing native runtime. The Mac
 # slice compiles the same sources with the same flags, so a Swift host links
 # one boundary on every Apple platform. [IOS-TARGET-CAPABILITIES] [IOS-TARGET-MACOS]
-IOS_RT_SRC ?= $(MOBILE_RT_SRC)
 
 .PHONY: _runtime_ios _runtime_ios_sim _runtime_macos _test_ios _test_ios_goldens _test_macos
 
-_runtime_ios: _runtime_ios_arc
-	@bash scripts/mobile/ios-runtime.sh iphoneos arm64-apple-ios15.0 \
-		$(RTB)/libosprey_runtime_ios.a $(B) -DOSPREY_IOS -- $(IOS_RT_SRC)
+_runtime_ios: _runtime_ios_arc _runtime_ios_ownership
 
-_runtime_ios_sim: _runtime_ios_sim_arc
-	@bash scripts/mobile/ios-runtime.sh iphonesimulator arm64-apple-ios15.0-simulator \
-		$(RTB)/libosprey_runtime_ios_sim.a $(B) -DOSPREY_IOS -- $(IOS_RT_SRC)
+_runtime_ios_sim: _runtime_ios_sim_arc _runtime_ios_sim_ownership
 
 # The Mac slice also carries the Metal device adapter, so a desktop host such as
 # GPUI can run Osprey kernels on the GPU ([GPU-DEVICE], [GPUI-HOST-TARGETS]).
 MACOS_GPU_FLAGS ?= -DOSPREY_GPU_METAL=1 -Isrc/toolchain/compiler/bin
 
-_runtime_macos: _runtime_macos_arc src/toolchain/compiler/bin/gpu_shader_source.h
-	@OSPREY_RUNTIME_OBJC=gpu_metal bash scripts/mobile/ios-runtime.sh macosx arm64-apple-macos12.0 \
-		$(RTB)/libosprey_runtime_macos.a $(B) -DOSPREY_IOS $(MACOS_GPU_FLAGS) -- $(IOS_RT_SRC)
+_runtime_macos: _runtime_macos_arc _runtime_macos_ownership src/toolchain/compiler/bin/gpu_shader_source.h
 
-define apple_arc_runtime
-.PHONY: _runtime_$(1)_arc
-_runtime_$(1)_arc: $(if $(4),src/toolchain/compiler/bin/gpu_shader_source.h)
+# One tracked-heap archive per slice and backend: $(5) is `arc` or `ownership`
+# [GC-ARC-PERCEUS] [MEM-OWNERSHIP-STATIC]; $(6) names its unit list.
+define apple_tracked_runtime
+.PHONY: _runtime_$(1)_$(5)
+_runtime_$(1)_$(5): $(if $(4),src/toolchain/compiler/bin/gpu_shader_source.h)
 	@OSPREY_RUNTIME_SHIMS="$(MOBILE_ARC_SHIM_SRC)" OSPREY_RUNTIME_OBJC="$(4)" bash scripts/mobile/ios-runtime.sh $(2) $(3) \
-		$(RTB)/libosprey_runtime_$(1)_arc.a $(B) -DOSPREY_IOS $(if $(4),$(MACOS_GPU_FLAGS)) -- $(MOBILE_ARC_RT_SRC)
+		$(RTB)/libosprey_runtime_$(1)_$(5).a $(B) -DOSPREY_IOS $(if $(4),$(MACOS_GPU_FLAGS)) -- $($(6))
 endef
-$(eval $(call apple_arc_runtime,ios,iphoneos,arm64-apple-ios15.0))
-$(eval $(call apple_arc_runtime,ios_sim,iphonesimulator,arm64-apple-ios15.0-simulator))
-$(eval $(call apple_arc_runtime,macos,macosx,arm64-apple-macos12.0,gpu_metal))
+$(eval $(call apple_tracked_runtime,ios,iphoneos,arm64-apple-ios15.0,,arc,MOBILE_ARC_RT_SRC))
+$(eval $(call apple_tracked_runtime,ios_sim,iphonesimulator,arm64-apple-ios15.0-simulator,,arc,MOBILE_ARC_RT_SRC))
+$(eval $(call apple_tracked_runtime,macos,macosx,arm64-apple-macos12.0,gpu_metal,arc,MOBILE_ARC_RT_SRC))
+$(eval $(call apple_tracked_runtime,ios,iphoneos,arm64-apple-ios15.0,,ownership,MOBILE_OWNERSHIP_RT_SRC))
+$(eval $(call apple_tracked_runtime,ios_sim,iphonesimulator,arm64-apple-ios15.0-simulator,,ownership,MOBILE_OWNERSHIP_RT_SRC))
+$(eval $(call apple_tracked_runtime,macos,macosx,arm64-apple-macos12.0,gpu_metal,ownership,MOBILE_OWNERSHIP_RT_SRC))
 
 _test_macos:
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash scripts/mobile/test-macos.sh

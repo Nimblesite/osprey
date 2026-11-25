@@ -103,9 +103,6 @@ OspreyMap *osprey_map_remove(OspreyMap *m, int64_t key) {
   OspreyMapNode *new_root = osprey_map_node_remove(
       m->root, 0, h, key, policy_of(m, m->value_managed), &shrunk);
   if (!shrunk) {
-    /* node_remove hands back the unchanged root with its own alias +1; the
-     * whole spine survives `m` if that reference is dropped on the floor. */
-    osp_release(new_root);
     osp_retain(m);
     return m;
   }
@@ -231,10 +228,6 @@ void osprey_map_builder_put_of(OspreyMapBuilder *b, int64_t key, int64_t value,
   if (grew) {
     b->length++;
   }
-}
-
-void osprey_map_builder_put(OspreyMapBuilder *b, int64_t key, int64_t value) {
-  osprey_map_builder_put_of(b, key, value, b->value_managed);
 }
 
 OspreyMap *osprey_map_builder_seal(OspreyMapBuilder *b) {

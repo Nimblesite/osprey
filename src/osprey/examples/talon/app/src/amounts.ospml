@@ -32,7 +32,9 @@ module Amounts
 
     combined (whole, part) = match parseInt (replace whole "," "" ?: whole)
         Error _ => 0
-        Success dollars => checkedAdd (checkedMul dollars 100 ?: 0) (fraction part) ?: 0
+        Success dollars => match checkedMul dollars 100
+            Error _ => 0
+            Success whole => checkedAdd whole (fraction part) ?: 0
 
     decimal (source, at) =
         whole = take source at

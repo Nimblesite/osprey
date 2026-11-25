@@ -7,9 +7,8 @@ mod support;
 
 use std::time::{Duration, Instant};
 
-use osprey_project::assemble;
 use osprey_syntax::Flavor;
-use support::{config, parsed};
+use support::{assembles_cleanly, config, parsed};
 
 const SOURCE: &str = r#"namespace app
 
@@ -75,12 +74,7 @@ fn imported_record_constants_survive_updates_in_initializers_and_functions() {
         parsed("src/defaults.ospml", Flavor::Ml, RECORD_DEFAULTS),
         parsed("src/main.ospml", Flavor::Ml, RECORD_UPDATES),
     ];
-    let project = assemble(&config("src/main.ospml"), &sources);
-    assert!(project.is_ok(), "{project:?}");
-    if let Ok(project) = project {
-        let errors = osprey_types::check_program(&project.program);
-        assert!(errors.is_empty(), "{errors:?}");
-    }
+    assembles_cleanly(&config("src/main.ospml"), &sources);
 }
 
 #[test]
@@ -88,12 +82,7 @@ fn a_function_field_called_from_a_recursive_descent_checks_quickly() {
     let entry_path = "src/main.ospml";
     let sources = [parsed(entry_path, Flavor::Ml, SOURCE)];
     let started = Instant::now();
-    let project = assemble(&config(entry_path), &sources);
-    assert!(project.is_ok(), "{project:?}");
-    if let Ok(project) = project {
-        let errors = osprey_types::check_program(&project.program);
-        assert!(errors.is_empty(), "{errors:?}");
-    }
+    assembles_cleanly(&config(entry_path), &sources);
     let spent = started.elapsed();
     assert!(spent < Duration::from_secs(2), "inference took {spent:?}");
 }

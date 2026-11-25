@@ -5,10 +5,7 @@ import registry::ReleasePath
 
 /// [PACKAGE-FOLDER-REGISTRY] release directory path grammar.
 module ReleasePathTests {
-    fn code(text) = match ReleasePath::parse(text) {
-        Success => ""
-        Error { message } => message
-    }
+    fn code(text) = Fixtures::code(ReleasePath::parse(text))
 
     fn shown(text) = match ReleasePath::parse(text) {
         Success { value } => ReleasePath::format(value)

@@ -178,8 +178,8 @@ fn shown(controls: Vec<Control>) -> Shown {
     }
 }
 
-/// The theme the frame tells reads back as main's JSON theme did: its tokens, spacing and motion
-/// durations, with a member that carries no name ignored.
+/// The theme the frame tells reads back as main's JSON theme did: its tokens and spacing; the
+/// motion durations and a member that carries no name are ignored.
 #[test]
 fn the_theme_a_frame_tells_reads_back() {
     let controls = vec![
@@ -205,8 +205,6 @@ fn the_theme_a_frame_tells_reads_back() {
                     dark: String::new(),
                 }],
                 spacing: vec![4, 8],
-                feedback: 250,
-                settle: 90,
             }),
             regions: vec![],
         }

@@ -4,7 +4,6 @@
 // device: a handler for the port's `Wire` effect that reads every frame the sender writes and
 // answers as a Default Media Receiver does; receiver keys follow [CAST-MOBILE-RECEIVER-IDENTITY].
 import ui::Doc
-import ui::Canvases
 import ui::Requests
 import ui::Themes
 import ui::Templates
@@ -205,9 +204,8 @@ absentSlices keys = expects (hasSlice, keys, false)
 skinStaged key = expect (staged "casting.selected-skin", key)
 unwritten ticket = expect (asked (ticket, "kind"), "")
 clearTree () = expect (Semantics::unclear (elements ()), "")
-skinPhase (phase, _) = post (\d => Drive::phase (d, phase))
-skinShown (phase, now, key) =
-    skinPhase (phase, now)
+skinShown (phase, _, key) =
+    post (\d => Drive::phase (d, phase))
     expect (selected "Skin", key)
 skinKept (skin, warned) =
     expect (skinNow (), skin)

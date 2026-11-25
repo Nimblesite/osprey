@@ -1,8 +1,8 @@
 //! A sweep re-analyses exactly the functions whose inputs moved.
-use super::{affected, invalidate_scope, record_read, recording};
+use super::{affected, invalidate_scope, record_read, recording, scope_recording};
 use crate::effect_rows::expr_args::{assert_metadata_written, assert_model_metadata_matches};
 use crate::effect_rows::field_rows::tests::analyzer as empty_analyzer;
-use crate::effect_rows::recursion::recursive_functions;
+use crate::effect_rows::recursion::Callees;
 use crate::effect_rows::solver::{
     advance_function, clear_verdicts, converge, file_scope_env, ReturnHistory,
 };
@@ -59,7 +59,7 @@ fn file_scope_dependencies_ignore_calls_that_do_not_bind_values() {
         let instances = Instances::default();
         let (env, reads) =
             recording(|| file_scope_env(index, &instances, statements, &state.0, &state.1));
-        assert!(env.values.is_empty());
+        assert!(env.values == crate::effect_rows::scope_values::ScopeValues::default());
         assert!(
             reads.is_empty(),
             "effect-only calls invalidate every function: {reads:?}"
@@ -180,7 +180,7 @@ fn whole_pass(
     statements: &[Stmt],
     state: &mut SolverState,
 ) {
-    let mut history = ReturnHistory::new(recursive_functions(index));
+    let mut history = ReturnHistory::new(Callees::of(index).recursive());
     while reference_step(index, instances, statements, state, &mut history) {}
 }
 
@@ -308,7 +308,7 @@ fn ordinary_step_visits(depth: usize) -> usize {
     let body = (0..depth).fold("value".to_owned(), |value, _| format!("sink({value})"));
     let source = format!("fn sink(value)=value\nfn caller(value)={body}\n");
     with_program(&source, |index, statements| {
-        assert!(recursive_functions(index).is_empty());
+        assert!(Callees::of(index).recursive().is_empty());
         let original = seeded_instances();
         let state = model(index, &original, statements, worklist_pass);
         let optimized = original.clone();
@@ -461,23 +461,49 @@ fn assert_alias_route(
         &vec![Summary::default(); count],
         &vec![None; count],
     );
-    assert_scope_invalidation(leaf, count, &initial, &analyzer.file_scope);
+    let scope_reads = function_scope_reads(&analyzer);
+    assert!(
+        scope_reads
+            .get(function_id(index, "main"))
+            .is_some_and(|read| read.contains("alias")),
+        "main reads the file-scope alias: {scope_reads:?}"
+    );
+    assert_scope_invalidation(leaf, &scope_reads, &initial, &analyzer.file_scope);
+}
+
+fn function_scope_reads(analyzer: &Analyzer<'_>) -> Vec<BTreeSet<String>> {
+    let functions = analyzer.index.functions.iter();
+    functions
+        .map(|function| {
+            scope_recording(|| {
+                let _ = analyzer.function_body(function);
+                let _ = analyzer.function_return(function);
+            })
+            .1
+        })
+        .collect()
 }
 
 fn assert_scope_invalidation(
     leaf: usize,
-    count: usize,
+    scope_reads: &[BTreeSet<String>],
     initial: &CallableEnv,
     converged: &CallableEnv,
 ) {
     for previous in [None, Some(converged)] {
         let mut dirty = set(&[leaf]);
-        invalidate_scope(previous, converged, &mut dirty, count);
+        invalidate_scope(previous, converged, &mut dirty, scope_reads);
         assert_eq!(dirty, set(&[leaf]));
     }
     let mut dirty = set(&[leaf]);
-    invalidate_scope(Some(initial), converged, &mut dirty, count);
-    assert_eq!(dirty, (0..count).collect());
+    invalidate_scope(Some(initial), converged, &mut dirty, scope_reads);
+    let readers = scope_reads.iter().enumerate();
+    let alias_readers = readers
+        .filter(|(_, read)| read.contains("alias"))
+        .map(|(id, _)| id);
+    let expected: BTreeSet<usize> = alias_readers.chain([leaf]).collect();
+    assert!(expected.len() > 1, "the alias has a reader besides leaf");
+    assert_eq!(dirty, expected);
 }
 
 #[test]
@@ -494,5 +520,84 @@ fn the_alias_oracle_retains_the_actual_rejection_diagnostics() {
     crate::effect_rows_tests::assert_rejected_with(
         ALIAS_PROGRAM,
         &["outside its declared row", "Alarm.ring"],
+    );
+}
+
+/// `depth + 1` functions written callers first, each calling the next, the
+/// last performing `Alarm.ring`: the order in which a sweep that models
+/// every dirty function would model each caller before its callee settles.
+fn chain_program(depth: usize) -> String {
+    let calls = (0..depth)
+        .map(|i| format!("fn f{i}() = f{}()\n", i + 1))
+        .collect::<Vec<_>>()
+        .concat();
+    format!("effect Alarm {{ring:fn()->int}}\n{calls}fn f{depth}() = perform Alarm.ring()\n")
+}
+
+/// A caller waits for its callees, so each body is modelled a bounded number
+/// of times per pass however deep the chain, and the fixed point is exactly
+/// the whole-program schedule's.
+#[test]
+fn a_caller_waits_for_its_callees_and_reaches_the_same_fixed_point() {
+    let mut counts = Vec::new();
+    for depth in [1, 2, 4, 8, 16, 32] {
+        with_program(&chain_program(depth), |index, statements| {
+            let instances = Instances::default();
+            crate::effect_rows::solver::BODY_MODELS.with(|models| models.set(0));
+            let worklist = model(index, &instances, statements, worklist_pass);
+            counts.push(crate::effect_rows::solver::BODY_MODELS.with(core::cell::Cell::get));
+            let whole = model(index, &instances, statements, whole_pass);
+            assert_eq!(worklist, whole, "depth {depth}: the fixed point moved");
+            assert!(
+                worklist.0.iter().all(requires_ring),
+                "depth {depth}: every caller requires Alarm.ring"
+            );
+        });
+    }
+    // Three models per function across the structural and provenance passes;
+    // modelling every dirty caller at once took 5 per function plus 2.
+    assert_eq!(counts, [6, 9, 15, 27, 51, 99]);
+}
+
+/// `unrelated` pure functions beside a `leaf` whose row settles while a
+/// file-scope `alias` names it, so the file scope changes mid-solve; with
+/// `aliased` false the alias line is absent.
+fn scope_program(unrelated: usize, aliased: bool) -> String {
+    let pure = (0..unrelated)
+        .map(|i| format!("fn u{i}() = {i}\n"))
+        .collect::<Vec<_>>()
+        .concat();
+    let alias = if aliased {
+        "fn idle(x) = x\nmut held = idle(make())\nfn main() = held() + make()()\n"
+    } else {
+        "fn idle(x) = x\nfn main() = make()() + make()()\n"
+    };
+    format!("effect Alarm {{ring:fn()->int}}\nfn make() = f0()\nfn f0() = f1()\nfn f1() = f2()\nfn f2() = fn() => perform Alarm.ring()\n{alias}{pure}")
+}
+
+fn body_models(source: &str) -> usize {
+    let mut count = 0;
+    with_program(source, |index, statements| {
+        crate::effect_rows::solver::BODY_MODELS.with(|models| models.set(0));
+        let _ = model(index, &Instances::default(), statements, worklist_pass);
+        count = crate::effect_rows::solver::BODY_MODELS.with(core::cell::Cell::get);
+    });
+    count
+}
+
+/// [EFFECT-ROW-SOLVER] A file-scope entry that changes re-models only the
+/// functions that read it. Invalidating every function on any scope change
+/// made the cost of one alias grow with the size of the file, which is the
+/// editor's whole-workspace startup sweep pegging a core for minutes.
+#[test]
+fn a_changed_file_scope_entry_re_models_only_its_readers() {
+    let extra = |unrelated| {
+        body_models(&scope_program(unrelated, true)) - body_models(&scope_program(unrelated, false))
+    };
+    let (small, large) = (extra(4), extra(64));
+    assert!(small > 0, "the alias must change the file scope mid-solve");
+    assert_eq!(
+        small, large,
+        "the alias's extra models must not grow with unrelated functions"
     );
 }

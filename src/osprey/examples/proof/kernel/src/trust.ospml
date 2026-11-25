@@ -1,7 +1,5 @@
 namespace proof
 
-import proof::Terms
-import proof::Environment
 
 (** Per-root trust reporting ([PROOF-KERNEL-AXIOMS]): the assumptions one
     declaration actually rests on, not every axiom the checked file happens to
@@ -113,9 +111,7 @@ module Trust
 
     (** The axioms as the batch entry prints them: `none` for no assumptions;
         ambiguous nonempty entries are JSON-quoted before joining with `, `. *)
-    export described (outcome) = match outcome
-        Success names => listed names
-        Error message => Error(message = message)
+    export described (outcome) = Terms::upon (outcome, listed)
 
     listed (names) = match names
         [] => Success(value = "none")

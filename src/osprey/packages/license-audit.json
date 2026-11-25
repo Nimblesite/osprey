@@ -106,7 +106,7 @@
           ],
           "basis": "The whole package is a port of FastAPI, so its notice is retained even though the aim is not to copy Python code verbatim",
           "notice_attribution": [
-            "Sebasti\u00e1n Ram\u00edrez"
+            "Sebastián Ramírez"
           ]
         },
         {
@@ -228,9 +228,9 @@
             "Copyright (c) 2019 Zhouhang Zhou",
             "Copyright (c) 2022 Bolton Bailey",
             "Copyright (c) 2020 James Arthur",
-            "Copyright (c) 2023 R\u00e9my Degenne",
+            "Copyright (c) 2023 Rémy Degenne",
             "Copyright (c) 2023 Adomas Baliuka",
-            "Copyright (c) 2025 Ga\u00ebtan Serr\u00e9",
+            "Copyright (c) 2025 Gaëtan Serré",
             "Copyright (c) 2018 Chris Hughes",
             "Copyright (c) 2020 Joseph Myers"
           ]
@@ -794,6 +794,46 @@
       "references": [],
       "review": "Original Osprey synthesis implementation extracted from the project-owned Prism demo; no third-party source or data.",
       "source_notices": {}
+    },
+    "xdsl": {
+      "license": "MIT AND Apache-2.0 WITH LLVM-exception",
+      "original_license_sha256": "83e3f8aa4e2be7bff07607745cb71ab8362beaedeaedb5c2ef9dd62ac817d1fa",
+      "upstreams": [
+        {
+          "component": "xDSL",
+          "repository": "https://github.com/xdslproject/xdsl",
+          "reference": "efd7a0e7c656ea81ef64037aa98f6d468043c335",
+          "file": "LICENSES/xDSL-Apache-2.0-WITH-LLVM-exception.txt",
+          "sha256": "66eb0650ad1f1fd410b95b811852ed75f94531b9f6f09534e8eda0aa73436a08",
+          "source": "https://github.com/xdslproject/xdsl/blob/efd7a0e7c656ea81ef64037aa98f6d468043c335/LICENSE",
+          "git_blob_sha1": "6fa2860f83763415115409801c449410a8470cad",
+          "applies_to": [
+            "src/lexer.py",
+            "src/ir.py",
+            "src/attrs.py",
+            "src/parser.py"
+          ],
+          "basis": "Port of the MLIR lexer and generic-syntax parser following the upstream structure, grammar comments and messages",
+          "notice_attribution": [
+            "xDSL",
+            "Apache-2.0 WITH LLVM-exception"
+          ]
+        }
+      ],
+      "references": [
+        {
+          "component": "xdsl",
+          "repository": "https://github.com/xdslproject/xdsl",
+          "reference": "efd7a0e7c656ea81ef64037aa98f6d468043c335"
+        }
+      ],
+      "review": "The four ported reader modules carry xDSL's license; nothing else is retained.",
+      "source_notices": {
+        "src/lexer.py": "# Ported from xDSL (Apache-2.0 WITH LLVM-exception); required attribution and terms: ../NOTICE.md.",
+        "src/ir.py": "# Ported from xDSL (Apache-2.0 WITH LLVM-exception); required attribution and terms: ../NOTICE.md.",
+        "src/attrs.py": "# Ported from xDSL (Apache-2.0 WITH LLVM-exception); required attribution and terms: ../NOTICE.md.",
+        "src/parser.py": "# Ported from xDSL (Apache-2.0 WITH LLVM-exception); required attribution and terms: ../NOTICE.md."
+      }
     }
   }
 }

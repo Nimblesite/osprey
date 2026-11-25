@@ -8,12 +8,14 @@ module TimelineGeometry
     (** Bar. *)
     export bar (beat, size) = floor (floatDiv (beat, size))
 
+    (** The last bar holding sound: a song `beats` long that ends on a bar line has no bar after it. *)
+    lastBar (beats, size) = match beats <= 0.0
+        true => 0.0
+        false => ceil (floatDiv (beats, size)) - 1.0
+
     (** The bar a beat falls in, but never past the bar holding the song's last sound: a song `beats` long that ends on a bar line has no bar after it to play [DAW-TRANSPORT-PLAYHEAD]. *)
     export playableBar (beat: float, beats, size) =
-        last = match beats <= 0.0
-            true => 0.0
-            false => ceil (floatDiv (beats, size)) - 1.0
-        FitMath::clip (bar (beat, size), 0.0, last)
+        FitMath::clip (bar (beat, size), 0.0, lastBar (beats, size))
 
     (** The beat a bar (from 0) starts on. *)
     export barStart (index: float, size) = index * size
@@ -119,11 +121,16 @@ module TimelineGeometry
             false => 0.0
         FitMath::clip (wanted, 0.0, last)
 
+    (** One lane axis: rows `height` tall starting at `origin`. *)
+    laneY (origin, index, height) = origin + index * height
+
+    laneAt (origin, y, height) = floor (floatDiv (y - origin, height))
+
     (** Row y. *)
-    export rowY (index, height) = 221.0 + index * height
+    export rowY (index, height) = laneY (221.0, index, height)
 
     (** Row at. *)
-    export rowAt (y, height) = floor (floatDiv (y - 221.0, height))
+    export rowAt (y, height) = laneAt (221.0, y, height)
 
     (** The pitch silhouette of a track fits between the two inset edges of its lane. *)
     export lanePitch (top, height, pitch, low, high) = match high <= low
@@ -141,9 +148,6 @@ module TimelineGeometry
 
     (** Pitch y. *)
     export pitchY (pitch, high, rows) = 542.0 + (high - pitch) * floatDiv (260.0, rows)
-
-    (** [DAW-ROLL-KEYS] The pitch of the key row under `y`: the inverse of `pitchY`. *)
-    export keyPitch (y, high, rows) = high - floor (floatDiv (y - 542.0, floatDiv (260.0, rows)))
 
     (** Reserve the native typeface's ascent and descent within the two inset note edges. *)
     export noteLabelSize height = FitMath::clip ((height - 2.0) / 1.32, 0.0, 12.0)
@@ -173,10 +177,10 @@ module TimelineGeometry
         false => floatDiv (629.0, count)
 
     (** Mix y. *)
-    export mixY (index, height) = 235.0 + index * height
+    export mixY (index, height) = laneY (235.0, index, height)
 
     (** Mix at. *)
-    export mixAt (y, height) = floor (floatDiv (y - 235.0, height))
+    export mixAt (y, height) = laneAt (235.0, y, height)
 
     (** A level meter's filled width: `value` of `full`, within `width`. *)
     export meter (value, full, width) = FitMath::clip (floatDiv (value, full), 0.0, 1.0) * width
@@ -217,12 +221,9 @@ module TimelineGeometry
 
     (** The start marker's bar under beat `beat`: the nearest bar line, from the first bar to the bar before the end marker (`finish` bar lines from 0, or 0 for the song's end) [DAW-TRANSPORT-RANGE]. *)
     export startBar (beat, finish, beats, size) =
-        whole = match beats <= 0.0
-            true => 0.0
-            false => ceil (floatDiv (beats, size)) - 1.0
         last = match finish > 0.0 && finish * size < beats
             true => finish - 1.0
-            false => whole
+            false => lastBar (beats, size)
         FitMath::clip (floor (floatDiv (beat, size) + 0.5), 0.0, last)
 
     (** A marker's handle at `at` is grabbed by a press at `x`: within six units either side. *)

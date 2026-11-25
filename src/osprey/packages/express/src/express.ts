@@ -82,27 +82,108 @@ const JSON_TYPE = "application/json; charset=utf-8";
 /** The headers Express's final handler adds to the page it writes. */
 const FINAL_HEADERS = "Content-Security-Policy: default-src 'none'\r\nX-Content-Type-Options: nosniff\r\n";
 
-/** `express()` creates an application with no routes. [TS-PORT-EXPRESS-SURFACE] */
+/** `express()` creates an application with no routes. [TS-PORT-EXPRESS-SURFACE]
+ * # Examples
+ * ```osprey
+ * const app = express();
+ * print(`[${listLength(app.routes)}]`);
+ * ```
+ * ```output
+ * [0]
+ * ```
+ */
 export function express(): Application {
   return { routes: [], errors: [] };
 }
 
-/** `app.get(path, handler)` routes GET requests for `path`. */
+/** `app.get(path, handler)` routes GET requests for `path`.
+ * # Examples
+ * ```osprey
+ * const app = get(express(), "/user/:name", (_req, res) => res.send("hello"));
+ * const shown = (routes) => {
+ *   const entry = listGet(routes, 0);
+ *   switch (entry.kind) {
+ *     case "success":
+ *       return `${entry.value.method} ${entry.value.path} of ${listLength(routes)}`;
+ *     case "error":
+ *       return "none";
+ *   }
+ * };
+ * print(`[${shown(app.routes)}]`);
+ * ```
+ * ```output
+ * [GET /user/:name of 1]
+ * ```
+ */
 export function get(app: Application, path: string, handler: (req: Request, res: Response) => Response): Application {
   return { ...app, routes: withRoute(app.routes, "GET", path, false, handler) };
 }
 
-/** `app.post(path, handler)` routes POST requests for `path`. */
+/** `app.post(path, handler)` routes POST requests for `path`.
+ * # Examples
+ * ```osprey
+ * const app = post(express(), "/tasks", (_req, res) => res.send("created"));
+ * const shown = (routes) => {
+ *   const entry = listGet(routes, 0);
+ *   switch (entry.kind) {
+ *     case "success":
+ *       return `${entry.value.method} ${entry.value.path} of ${listLength(routes)}`;
+ *     case "error":
+ *       return "none";
+ *   }
+ * };
+ * print(`[${shown(app.routes)}]`);
+ * ```
+ * ```output
+ * [POST /tasks of 1]
+ * ```
+ */
 export function post(app: Application, path: string, handler: (req: Request, res: Response) => Response): Application {
   return { ...app, routes: withRoute(app.routes, "POST", path, false, handler) };
 }
 
-/** `app.put(path, handler)` routes PUT requests for `path`. */
+/** `app.put(path, handler)` routes PUT requests for `path`.
+ * # Examples
+ * ```osprey
+ * const app = put(express(), "/tasks/:id", (_req, res) => res.send("updated"));
+ * const shown = (routes) => {
+ *   const entry = listGet(routes, 0);
+ *   switch (entry.kind) {
+ *     case "success":
+ *       return `${entry.value.method} ${entry.value.path} of ${listLength(routes)}`;
+ *     case "error":
+ *       return "none";
+ *   }
+ * };
+ * print(`[${shown(app.routes)}]`);
+ * ```
+ * ```output
+ * [PUT /tasks/:id of 1]
+ * ```
+ */
 export function put(app: Application, path: string, handler: (req: Request, res: Response) => Response): Application {
   return { ...app, routes: withRoute(app.routes, "PUT", path, false, handler) };
 }
 
-/** `app.delete(path, handler)` routes DELETE requests for `path`. */
+/** `app.delete(path, handler)` routes DELETE requests for `path`.
+ * # Examples
+ * ```osprey
+ * const app = express().delete("/tasks/:id", (_req, res) => res.send("deleted"));
+ * const shown = (routes) => {
+ *   const entry = listGet(routes, 0);
+ *   switch (entry.kind) {
+ *     case "success":
+ *       return `${entry.value.method} ${entry.value.path} of ${listLength(routes)}`;
+ *     case "error":
+ *       return "none";
+ *   }
+ * };
+ * print(`[${shown(app.routes)}]`);
+ * ```
+ * ```output
+ * [DELETE /tasks/:id of 1]
+ * ```
+ */
 function remove(app: Application, path: string, handler: (req: Request, res: Response) => Response): Application {
   return { ...app, routes: withRoute(app.routes, "DELETE", path, false, handler) };
 }
@@ -113,12 +194,38 @@ export { remove as delete };
  * `app.use(path, handler)` runs `handler` for every method on `path` and the
  * paths under it. The handler replies, or returns `req.next()` to pass the
  * request on, or `req.fail(error)`. [TS-PORT-EXPRESS-HANDLERS]
+ * # Examples
+ * ```osprey
+ * const app = use(express(), "/api", (req, _res) => req.next());
+ * const shown = (routes) => {
+ *   const entry = listGet(routes, 0);
+ *   switch (entry.kind) {
+ *     case "success":
+ *       return `every method at ${entry.value.path} of ${listLength(routes)}`;
+ *     case "error":
+ *       return "none";
+ *   }
+ * };
+ * print(`[${shown(app.routes)}]`);
+ * ```
+ * ```output
+ * [every method at /api of 1]
+ * ```
  */
 export function use(app: Application, path: string, handler: (req: Request, res: Response) => Response): Application {
   return { ...app, routes: withRoute(app.routes, "", path === "/" ? "" : path, true, handler) };
 }
 
-/** `express.Router()` creates a router: an application of routes to mount on a path. */
+/** `express.Router()` creates a router: an application of routes to mount on a path.
+ * # Examples
+ * ```osprey
+ * const router = get(Router(), "/health", (_req, res) => res.send("ok"));
+ * print(`[${listLength(router.routes)}]`);
+ * ```
+ * ```output
+ * [1]
+ * ```
+ */
 export function Router(): Application {
   return express();
 }
@@ -126,6 +233,24 @@ export function Router(): Application {
 /**
  * `app.mount(path, router)` adds the router's routes and error handlers under
  * `path`, which Express spells `app.use(path, router)`.
+ * # Examples
+ * ```osprey
+ * const router = get(Router(), "/list", (_req, res) => res.send("[]"));
+ * const app = mount(express(), "/api", router);
+ * const shown = (routes) => {
+ *   const entry = listGet(routes, 0);
+ *   switch (entry.kind) {
+ *     case "success":
+ *       return `${entry.value.method} ${entry.value.path} of ${listLength(routes)}`;
+ *     case "error":
+ *       return "none";
+ *   }
+ * };
+ * print(`[${shown(app.routes)}]`);
+ * ```
+ * ```output
+ * [GET /api/list of 1]
+ * ```
  */
 export function mount(app: Application, path: string, router: Application): Application {
   return {
@@ -139,7 +264,16 @@ function mounted(prefix, path) {
   return path === "" || path === "/" ? prefix : `${prefix}${path}`;
 }
 
-/** `app.onError(handler)` adds an error handler: Express's four-parameter middleware. */
+/** `app.onError(handler)` adds an error handler: Express's four-parameter middleware.
+ * # Examples
+ * ```osprey
+ * const app = onError(express(), (error, _req, res) => res.status(error.status).send(error.message));
+ * print(`[${listLength(app.errors)}]`);
+ * ```
+ * ```output
+ * [1]
+ * ```
+ */
 export function onError(app: Application, handler: (error: HttpError, req: Request, res: Response) => Response): Application {
   return { ...app, errors: listConcat(app.errors, [{ handler: handler } satisfies Rescue]) };
 }
@@ -184,6 +318,23 @@ function failure() {
  * `app.listen(port, callback)` starts the native listener and runs `callback`.
  * A listener that cannot start is reported on the console, as Node.js reports
  * the unhandled error, and returned as `failed`. [TS-PORT-EXPRESS-SERVE]
+ * # Examples
+ * ```osprey native
+ * const server = listen(express(), 70000, () => {});
+ * const shown = (server) => {
+ *   switch (server.kind) {
+ *     case "listening":
+ *       return `listening on ${server.handle}`;
+ *     case "failed":
+ *       return `failed: ${server.message}`;
+ *   }
+ * };
+ * print(`[${shown(server)}]`);
+ * ```
+ * ```output
+ * Error: listen on port 70000 failed: Error
+ * [failed: Error]
+ * ```
  */
 export function listen(app: Application, port: int, callback: () => void): Server {
   const started = start(app, port);
@@ -199,7 +350,24 @@ export function listen(app: Application, port: int, callback: () => void): Serve
   }
 }
 
-/** `server.close()` stops the listener, which lets the process exit. */
+/** `server.close()` stops the listener, which lets the process exit.
+ * # Examples
+ * ```osprey native
+ * const stopped = close({ kind: "failed", message: "port held" } satisfies Server);
+ * const shown = (outcome) => {
+ *   switch (outcome.kind) {
+ *     case "success":
+ *       return "listener stopped";
+ *     case "error":
+ *       return outcome.message;
+ *   }
+ * };
+ * print(`[${shown(stopped)}]`);
+ * ```
+ * ```output
+ * [port held]
+ * ```
+ */
 export function close(server: Server) {
   switch (server.kind) {
     case "listening":
@@ -429,6 +597,38 @@ function finalPage(message) {
  * is not JSON, as Express leaves `req.body` unset, and the error `malformed
  * JSON` when it is JSON but not an object or an array, for which Express's
  * parser answers 400.
+ * # Examples
+ * ```osprey
+ * const requestWith = (type, body) => {
+ *   return {
+ *     method: "POST",
+ *     url: "/api/tasks",
+ *     path: "/api/tasks",
+ *     params: new Map<string, string>(),
+ *     query: new Map<string, string>(),
+ *     headers: `Content-Type: ${type}\r\n`,
+ *     body: body,
+ *     get: (_name) => Error("no such header"),
+ *     next: () => reply(200, "", "", ""),
+ *     fail: (error) => reply(error.status, "", "", ""),
+ *   } satisfies Request;
+ * };
+ * const document = jsonBody(requestWith("application/json", "[\"ship\",\"it\"]"));
+ * const plain = jsonBody(requestWith("text/plain", "[\"ship\",\"it\"]"));
+ * const broken = jsonBody(requestWith("application/json", "{\"title\":"));
+ * const shown = (document) => {
+ *   switch (document.kind) {
+ *     case "success":
+ *       return `${document.value}`;
+ *     case "error":
+ *       return document.message;
+ *   }
+ * };
+ * print(`[${shown(document)}] [${shown(plain)}] [${shown(broken)}]`);
+ * ```
+ * ```output
+ * [JsonArray([JsonString("ship"), JsonString("it")])] [JsonNull] [malformed JSON]
+ * ```
  */
 export function jsonBody(req: Request) {
   return isJson(headerOf(req.headers, "Content-Type")) ? decoded(trim(req.body)) : Success(JsonNull);

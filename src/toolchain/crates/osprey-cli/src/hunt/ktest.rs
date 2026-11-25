@@ -168,25 +168,43 @@ fn host_int(bytes: &[u8]) -> Option<usize> {
     usize::try_from(i32::from_le_bytes(raw)).ok()
 }
 
+/// A KTEST file of `magic` and `version` with `arguments`, for framing
+/// permutations; version 4 adds an empty pointer table per object.
+#[cfg(test)]
+pub(crate) fn framed(
+    magic: &[u8],
+    version: u32,
+    arguments: &[&str],
+    objects: &[(&str, &[u8])],
+) -> Vec<u8> {
+    let be = |n: usize| u32::try_from(n).unwrap_or(u32::MAX).to_be_bytes();
+    let mut out = magic.to_vec();
+    out.extend(version.to_be_bytes());
+    out.extend(be(arguments.len()));
+    for argument in arguments {
+        out.extend(be(argument.len()));
+        out.extend(argument.as_bytes());
+    }
+    if version >= 2 {
+        out.extend([0u8; 8]);
+    }
+    out.extend(be(objects.len()));
+    for (name, bytes) in objects {
+        out.extend(be(name.len()));
+        out.extend(name.as_bytes());
+        out.extend(be(bytes.len()));
+        out.extend(*bytes);
+        if version >= 4 {
+            out.extend(0u32.to_be_bytes());
+        }
+    }
+    out
+}
+
 /// A version-3 KTEST holding `objects`, for fixtures.
 #[cfg(test)]
 pub(crate) fn encode(objects: &[(&str, &[u8])]) -> Vec<u8> {
-    let mut out = b"KTEST".to_vec();
-    let length = |n: usize| u32::try_from(n).unwrap_or(u32::MAX).to_be_bytes();
-    out.extend(3u32.to_be_bytes());
-    out.extend(length(1));
-    out.extend(length(4));
-    out.extend(b"prog");
-    out.extend(0u32.to_be_bytes());
-    out.extend(0u32.to_be_bytes());
-    out.extend(length(objects.len()));
-    for (name, bytes) in objects {
-        out.extend(length(name.len()));
-        out.extend(name.as_bytes());
-        out.extend(length(bytes.len()));
-        out.extend(*bytes);
-    }
-    out
+    framed(b"KTEST", 3, &["prog"], objects)
 }
 
 #[cfg(test)]

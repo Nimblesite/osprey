@@ -20,6 +20,8 @@ import {
 
 const open = { now: 1, offset: 0, platform: "vscode", home: "/home", dark: false, arguments: [] };
 const touch = { kind: 0, ordinal: 0, words: "", detail: "", x: 0, y: 0, down: false, shift: false };
+/** The variables `os.tmpdir()` reads, on every platform. */
+const TEMP_VARIABLES = ["TMPDIR", "TMP", "TEMP"];
 
 async function stub(bodies: StubBodies = {}, signal?: AbortSignal): Promise<NativeRuntime> {
   return startNativeRuntime(await compileWasi(stubApplication(bodies)), signal);
@@ -175,9 +177,8 @@ suite("package workspace in-memory WASI", () => {
 
   test("stdin is the host frame and stdout is captured without temporary files", async () => {
     const temporary = fs.mkdtempSync(path.join(os.tmpdir(), "osprey-wasi-io-"));
-    const variable = process.platform === "win32" ? "TEMP" : "TMPDIR";
-    const previous = process.env[variable];
-    process.env[variable] = temporary;
+    const previous = TEMP_VARIABLES.map((name) => [name, process.env[name]] as const);
+    for (const name of TEMP_VARIABLES) process.env[name] = temporary;
     try {
       await withStub({}, async (runtime) => {
         const frame = await runtime.open(open);
@@ -186,8 +187,7 @@ suite("package workspace in-memory WASI", () => {
         assert.deepStrictEqual(fs.readdirSync(temporary), [], "the WASI host did not stage the frame in a temporary file");
       });
     } finally {
-      if (previous === undefined) delete process.env[variable];
-      else process.env[variable] = previous;
+      for (const [name, value] of previous) if (value === undefined) delete process.env[name]; else process.env[name] = value;
       fs.rmSync(temporary, { recursive: true, force: true });
     }
   });

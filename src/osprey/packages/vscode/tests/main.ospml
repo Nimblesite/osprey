@@ -5,16 +5,11 @@ import ui::Keyed
 import ui::Messages
 import ui::Surfaces
 import ui::Ui
-import ui::Views
 import vscode::Editor
 import ui::Requests
 
 // Every request the Editor builds, read as the typed `HostCall` it carries:
 // no envelope is written or parsed anywhere.
-
-asked result = match result
-    Success request => Success(value = request.capability)
-    Error problem => Error(message = problem)
 
 refused result = match result
     Error _ => true
@@ -43,32 +38,27 @@ boundOf (capability, timeout) = match capability
         false => hostLimit
     _ => 0
 
-kind result = match asked result
-    Success capability => kindOf capability
-    Error _ => ""
+// Every request reads as the typed `HostCall` it carries: `project` over the request, or `fallback` when the boundary refused.
+read (result, fallback, project) = match result
+    Success request => project request
+    Error _ => fallback
+kind result = read (result, "", \request => kindOf request.capability)
+field result = read (result, "|", \request => fieldOf request.capability)
+argumentText (result, name) = read (result, "", \request => argumentsOf (request.capability, name))
+bound (result, timeout) = read (result, 0, \request => boundOf (request.capability, timeout))
+ticketOf result = read (result, "", \request => request.ticket)
 
-ticketOf result = match result
-    Success request => request.ticket
-    Error _ => ""
-
-field result = match asked result
-    Success capability => fieldOf capability
-    Error _ => "|"
-
-argumentText (result, name) = match asked result
-    Success capability => argumentsOf (capability, name)
-    Error _ => ""
-
-bound (result, timeout) = match asked result
-    Success capability => boundOf (capability, timeout)
-    Error _ => 0
-
-test ("editor workspace requests use the shared framework envelope", \() =>
-    result = Editor::workspaces "workspace:1"
+// Reads the workspace snapshot for `ticket`: the envelope kind, the field, the empty uri and the echoed ticket.
+snapshot ticket =
+    result = Editor::workspaces ticket
     expect (kind result, "host-call")
     expect (field result, "vscode|workspace.snapshot")
     expect (argumentText (result, "uri"), "")
-    expect (ticketOf result, "workspace:1"))
+    expect (ticketOf result, ticket)
+    result
+
+test ("editor workspace requests use the shared framework envelope", \() =>
+    result = snapshot "workspace:1")
 
 test ("opening a document preserves its URI and source location", \() =>
     result = Editor::openDocument ("open:1", "file:///work/my%20app/main.osp", 12, 4)
@@ -100,11 +90,7 @@ test ("invalid tickets process scope and excessive limits fail explicitly", \() 
     allRefused [Editor::workspaces "", Editor::processInput ("bad", "", [], "", "file:///work", 1, 10, "out"), Editor::processInput ("bad", "tool", [], "", "https://example.test", 1, 10, "out"), Editor::processInput ("bad", "tool", [], "", "file:///work", 1, 10, ""), Editor::processInput ("bad", "tool", [], "", "file:///work", 120001, 10, "out"), Editor::processInput ("bad", "tool", [], "", "file:///work", 1, 16777217, "out")])
 
 test ("editor workspace requests use the shared framework envelope (extra: a second workspace reads its own ticket and field)", \() =>
-    second = Editor::workspaces "workspace:2"
-    expect (kind second, "host-call")
-    expect (field second, "vscode|workspace.snapshot")
-    expect (ticketOf second, "workspace:2")
-    expect (argumentText (second, "uri"), "")
+    second = snapshot "workspace:2"
     expect (bound (second, true), 10000)
     expect (bound (second, false), 1048576)
     expect (kind (Editor::workspaces ""), ""))
@@ -131,6 +117,9 @@ webProgram () = ui::Program(programInit = \context => Runtime::step (Web(count =
 mut webRows = ""
 mut webAsks = ""
 
+// Every word in `words` must show in the rows drawn so far.
+allShown words = forEachList (words, \word => expect (contains webRows word, true))
+
 // Runs one boundary call and records the frame it wrote: every row's words in drawing order, and every ask row as `field/number/text`. The rows accumulate across calls; only a refused event adds an ask row.
 framed work =
     handle ui::ViewStream
@@ -143,6 +132,12 @@ framed work =
 // One host event of `kind` for control `ordinal` carrying `words`, at clock 9.
 webTouch (kind, ordinal, words) = ui::Touch(touchNow = 9, touchKind = kind, touchOrdinal = ordinal, touchWords = words, touchDetail = "", touchX = 0.0, touchY = 0.0, touchDown = false, touchShift = false)
 
+// Delivers one host `event` to `session` and checks the answer number the boundary reports.
+delivered (session, event, answer) =
+    evented = framed (\() => Hosting::event (session, webProgram (), event))
+    expect (Hosting::answer evented, answer)
+    evented
+
 // The session a webview opens: the store before init, one launch argument, the vscode platform. The
 // boundary call writes through `ViewStream`, so `framed` reads the rows where the wasm bridge would.
 webOpened argument = Hosting::opened (Surfaces::argued (Surfaces::idle (Web(count = 0, note = "")), argument), webProgram (), 1, 0, "vscode", "", false)
@@ -151,32 +146,25 @@ test ("WASM frames route opaque state through real application entry points", \(
     // argument, then open: the launch context reaches init, and the first frame carries it into the field's value.
     opened = framed (\() => webOpened "vscode")
     expect (opened.surfaceSession.sessionContext.platform, "vscode")
-    expect (contains webRows "Count 0", true)
-    expect (contains webRows "Note", true)
-    expect (contains webRows "vscode", true)
+    allShown ["Count 0", "Note", "vscode"]
     expect (webAsks, "")
     // event: the control the frame numbered 0 delivers, and the opaque session answers from its own store.
-    counted = framed (\() => Hosting::event (opened, webProgram (), webTouch (Hosting::control, 0, "")))
-    expect (Hosting::answer counted, 0)
+    counted = delivered (opened, webTouch (Hosting::control, 0, ""), 0)
     expect (counted.surfaceSession.sessionStore.count, 1)
     expect (contains webRows "Count 1", true)
     // The field's edit resolves through the ordinal the current frame drew, never through host-held state.
-    edited = framed (\() => Hosting::event (counted, webProgram (), webTouch (Hosting::control, 1, "opaque")))
-    expect (Hosting::answer edited, 0)
+    edited = delivered (counted, webTouch (Hosting::control, 1, "opaque"), 0)
     expect (edited.surfaceSession.sessionStore.note, "opaque")
     expect (contains webRows "opaque", true)
     // A control no frame drew refuses, changes nothing and names itself as a diagnostic ask row.
-    refused = framed (\() => Hosting::event (edited, webProgram (), webTouch (Hosting::control, 9, "")))
-    expect (Hosting::answer refused, 1)
+    refused = delivered (edited, webTouch (Hosting::control, 9, ""), 1)
     expect (webAsks, "0/101/Unknown control 9;")
     expect (refused.surfaceSession.sessionStore.count, 1)
     expect (contains webRows "Count 1", true)
     // An event kind the boundary does not know refuses the same way, and a lifecycle phase delivers.
-    odd = framed (\() => Hosting::event (edited, webProgram (), webTouch (42, 0, "")))
-    expect (Hosting::answer odd, 1)
+    odd = delivered (edited, webTouch (42, 0, ""), 1)
     expect (webAsks, "0/101/Unknown control 9;0/101/Unknown event kind 42;")
-    phased = framed (\() => Hosting::event (edited, webProgram (), webTouch (Hosting::phase, 0, "active")))
-    expect (Hosting::answer phased, 0)
+    phased = delivered (edited, webTouch (Hosting::phase, 0, "active"), 0)
     expect (phased.surfaceSession.sessionStore.count, 1)))
 
 test ("WASM frames route opaque state through real application entry points (extra: arguments arrive in order and a dark open flips the frame)", \() => Runtime::guarded (\() =>
@@ -187,6 +175,5 @@ test ("WASM frames route opaque state through real application entry points (ext
     expect (opened.surfaceSession.sessionContext.hostDark, true)
     expect (opened.surfaceSession.sessionContext.now, 3)
     // The dark open still answers events: the first control delivers and the count crosses.
-    counted = framed (\() => Hosting::event (opened, webProgram (), webTouch (Hosting::control, 0, "")))
-    expect (Hosting::answer counted, 0)
+    counted = delivered (opened, webTouch (Hosting::control, 0, ""), 0)
     expect (counted.surfaceSession.sessionStore.count, 1)))

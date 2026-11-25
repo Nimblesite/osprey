@@ -119,8 +119,7 @@ fn runDemo() = {
     postTask(clientId: clientId, text: "buy oat milk")
     postTask(clientId: clientId, text: "land the effects PR")
     let listing = fetch(clientId: clientId, path: "/tasks")
-    print("--- GET /tasks ---\n${listing}--- end ---")
-    print("GET /stats -> ${fetch(clientId: clientId, path: "/stats")}")
+    print("--- GET /tasks ---\n${listing}--- end ---\nGET /stats -> ${fetch(clientId: clientId, path: "/stats")}")
     let _stopped = (httpStopServer(serverId) ?: -1)
     print("STATE @ shutdown — db: ${toString(perform Db.count())} tasks | server: ${toString(perform Metrics.served())} requests | disk: ${toString(perform Persist.bytes())} bytes")
 }

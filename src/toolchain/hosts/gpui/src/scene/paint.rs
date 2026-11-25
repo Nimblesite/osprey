@@ -258,6 +258,13 @@ fn sprite_colour(atlas: usize, tint: u32) -> Rgba {
     }
 }
 
+/// Builds the tessellated path, naming `which` scene part could not be built.
+fn built(builder: PathBuilder, which: &str) -> Result<Path<Pixels>, String> {
+    builder
+        .build()
+        .map_err(|problem| format!("scene {which} could not be built: {problem}"))
+}
+
 /// Strokes a decoded polyline at the uniformly scaled width.
 fn paint_strip(
     points: &[(f32, f32)],
@@ -274,10 +281,7 @@ fn paint_strip(
     for (x, y) in &points[1..] {
         builder.line_to(transform.point(*x, *y));
     }
-    let path = builder
-        .build()
-        .map_err(|problem| format!("scene strip could not be built: {problem}"))?;
-    window.paint_path(path, rgba(colour));
+    window.paint_path(built(builder, "strip")?, rgba(colour));
     Ok(())
 }
 
@@ -303,10 +307,7 @@ fn paint_path(
         builder.scale(transform.scale);
         builder.translate(transform.origin);
     }
-    let path = builder
-        .build()
-        .map_err(|problem| format!("scene path could not be built: {problem}"))?;
-    window.paint_path(path, background(paint));
+    window.paint_path(built(builder, "path")?, background(paint));
     Ok(())
 }
 

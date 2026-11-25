@@ -3,9 +3,7 @@
 // changed, and the palette is the theme every region is drawn with.
 namespace registry_editor
 import ui::Doc
-import ui::Runtime
 import ui::Keyed
-import vscode::Editor
 
 module App
     slice () = perform Signal<PackageState>.read ()
@@ -42,4 +40,4 @@ module App
     palette = ui::Theme(tokens = [ui::Token(tokenName = "canvas", tokenLight = "#F7F9FC", tokenDark = "#0C1325"), ui::Token(tokenName = "surface", tokenLight = "#FFFFFF", tokenDark = "#191F32"), ui::Token(tokenName = "accent", tokenLight = "#006B86", tokenDark = "#77D7F4"), ui::Token(tokenName = "text", tokenLight = "#17223A", tokenDark = "#DCE1FB"), ui::Token(tokenName = "secondary", tokenLight = "#5B6577", tokenDark = "#9AA7C4"), ui::Token(tokenName = "good", tokenLight = "#0E7A0D", tokenDark = "#6CCB5F"), ui::Token(tokenName = "caution", tokenLight = "#9D5D00", tokenDark = "#FCE100"), ui::Token(tokenName = "danger", tokenLight = "#C42B1C", tokenDark = "#FF99A4")], spacing = [4, 8, 16, 24, 32], feedback = 160, settle = 220)
 
     (** The package editor as its boundary runs it: the store drawn with its palette. *)
-    export program () = ui::Program(programInit = initial, programUpdate = Update::apply, programRender = regions, programTheme = \_ => palette)
+    export program () = ui::Surfaces::themed (initial, Update::apply, regions, palette)

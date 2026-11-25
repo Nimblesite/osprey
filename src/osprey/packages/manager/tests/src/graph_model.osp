@@ -1,10 +1,10 @@
 namespace registry_tests;
+import registry::JsonRead
 import registry::Json
 import registry::Names
 import registry::Identity
 import registry::ManifestModel
 import registry::Resolution
-import registry_tests::Fixtures
 
 /// The parsed declarative form of one bounded dependency-graph fixture: the
 /// target, granted capabilities, the root's dependency edges, an optional
@@ -16,14 +16,14 @@ module GraphModel {
     fn key(v) = Names::Key { scope: Fixtures::textOf(v, "scope"), name: Fixtures::textOf(v, "name") }
 
     fn releaseId(v) = Identity::ReleaseId {
-        key: key(Fixtures::field(v, "package")),
+        key: key(JsonRead::field(v, "package")),
         epoch: Fixtures::numberOf(v, "epoch"),
         ordinal: Fixtures::numberOf(v, "ordinal"),
         digest: Fixtures::textOf(v, "digest")
     }
 
     fn requirement(v) = ManifestModel::Requirement {
-        package: key(Fixtures::field(v, "package")),
+        package: key(JsonRead::field(v, "package")),
         epoch: Fixtures::numberOf(v, "epoch"),
         minimumOrdinal: Fixtures::numberOf(v, "minimumOrdinal")
     }
@@ -31,11 +31,11 @@ module GraphModel {
     /// One edge object `{"Runtime": {"requirement": {...}}}` into its
     /// `ManifestModel::Edge` variant.
     fn edge(v) = match Json::get(v, "Runtime") {
-        Success { value } => ManifestModel::Runtime { requirement: requirement(Fixtures::field(value, "requirement")) }
+        Success { value } => ManifestModel::Runtime { requirement: requirement(JsonRead::field(value, "requirement")) }
         Error => match Json::get(v, "Build") {
-            Success { value } => ManifestModel::Build { requirement: requirement(Fixtures::field(value, "requirement")) }
+            Success { value } => ManifestModel::Build { requirement: requirement(JsonRead::field(value, "requirement")) }
             Error => match Json::get(v, "Test") {
-                Success { value } => ManifestModel::Test { requirement: requirement(Fixtures::field(value, "requirement")) }
+                Success { value } => ManifestModel::Test { requirement: requirement(JsonRead::field(value, "requirement")) }
                 Error => ManifestModel::Test { requirement: requirement(Json::Null) }
             }
         }
@@ -49,26 +49,26 @@ module GraphModel {
         }
     }
 
-    fn strings(v) = Fixtures::texts(v)
+    fn strings(v) = JsonRead::texts(v)
 
     fn entry(v) = Resolution::Entry {
-        release: releaseId(Fixtures::field(v, "release")),
-        activation: releaseState(Fixtures::field(v, "state")),
-        targets: strings(Fixtures::field(v, "targets")),
-        capabilities: strings(Fixtures::field(v, "capabilities")),
+        release: releaseId(JsonRead::field(v, "release")),
+        activation: releaseState(JsonRead::field(v, "state")),
+        targets: strings(JsonRead::field(v, "targets")),
+        capabilities: strings(JsonRead::field(v, "capabilities")),
         dependencies: mapList(Fixtures::itemsOf(v, "dependencies"), edge)
     }
 
     /// One `{"package": {...}, "capabilities": [...]}` grant of the root.
-    fn grant(v) = ManifestModel::Grant { package: key(Fixtures::field(v, "package")), capabilities: strings(Fixtures::field(v, "capabilities")) }
+    fn grant(v) = ManifestModel::Grant { package: key(JsonRead::field(v, "package")), capabilities: strings(JsonRead::field(v, "capabilities")) }
 
     /// The typed graph of one parsed fixture object; `grants` is optional and
     /// empty when the fixture carries none.
     export fn graphOf(v) = Resolution::Graph {
         target: Fixtures::textOf(v, "target"),
-        granted: strings(Fixtures::field(v, "grantedCapabilities")),
+        granted: strings(JsonRead::field(v, "grantedCapabilities")),
         grants: mapList(Fixtures::itemsOf(v, "grants"), grant),
-        rootDeps: mapList(Fixtures::items(Fixtures::field(Fixtures::field(v, "root"), "dependencies")), edge),
+        rootDeps: mapList(JsonRead::items(JsonRead::field(JsonRead::field(v, "root"), "dependencies")), edge),
         current: mapList(Fixtures::itemsOf(v, "current"), releaseId),
         catalog: mapList(Fixtures::itemsOf(v, "catalog"), entry)
     }

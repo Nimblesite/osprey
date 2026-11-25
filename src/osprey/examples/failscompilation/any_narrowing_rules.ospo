@@ -65,9 +65,16 @@ fn viaIndex() = erased()[0]
 
 fn viaField() -> string = erased().name
 
+/// [PATTERN-OR] Or-patterns follow the same rules: each type-annotated
+/// alternative reads the erased word and is rejected, and no set of structural
+/// alternatives makes a match over `any` exhaustive.
+fn viaAlternatives(v: any) = match v {
+    { held, .. } | { value: held, .. } => "row"
+}
+
 let viaAnon: any = { x: 1, y: 2 }
 
-print("${viaLiteral()} ${viaAnnotation()} ${viaVariant()} ${noCatchAll()} ${shadowed()} ${viaOperator()} ${viaField()} ${viaAnon}")
+print("${viaLiteral()} ${viaAnnotation()} ${viaVariant()} ${noCatchAll()} ${shadowed()} ${viaOperator()} ${viaField()} ${viaAnon} ${viaAlternatives(viaAnon)}")
 
 // [PATTERN-OR-TYPE] Every annotated alternative checks the erased scrutinee.
 // Even together the annotations require a catch-all.

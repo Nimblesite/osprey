@@ -4,9 +4,6 @@
 namespace storage
 
 import bank::Json
-import storage::Disk
-import storage::Browse
-import storage::View
 
 extern storage_volume (path : string) (measure : string) -> int
 extern storage_volume_name (path : string) -> string

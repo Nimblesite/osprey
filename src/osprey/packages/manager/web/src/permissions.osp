@@ -2,8 +2,6 @@ namespace registry_web;
 import registry::Governance
 import registry::Maybe
 import registry::Names
-import registry_web::Html
-import registry_web::Model
 
 /// The package administrator's control screen: the organization context,
 /// the single administrator seat and the explicit grant ledger. It hides

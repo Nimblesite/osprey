@@ -3,8 +3,6 @@
 
 namespace todo;
 
-import todo::TodoDispatch
-import todo::TodoRequest
 import ui::Doc
 
 /// What a route asks for: a request and the status its success answers, or a refusal.

@@ -17,32 +17,17 @@ module Fixtures {
         Error { message } => Json::Str { text: "fixture ${name} unreadable: ${message}" }
     }
 
-    /// The member `key` of an object, or `Json::Null`.
-    export fn field(value, key) = JsonRead::field(value, key)
-
-    /// The text of a string value, or "".
-    export fn text(value) = JsonRead::text(value)
-
-    /// The integer of a number value, or -1.
-    export fn number(value) = JsonRead::number(value)
-
-    /// The items of an array value, or [].
-    export fn items(value) = JsonRead::items(value)
-
-    /// The texts of an array of strings.
-    export fn texts(value) = JsonRead::texts(value)
-
     /// The text of member `key`, or "".
-    export fn textOf(value, key) = text(field(value, key))
+    export fn textOf(value, key) = JsonRead::text(JsonRead::field(value, key))
 
     /// The integer of member `key`, or -1.
-    export fn numberOf(value, key) = number(field(value, key))
+    export fn numberOf(value, key) = JsonRead::number(JsonRead::field(value, key))
 
     /// The items of member `key`, or [].
-    export fn itemsOf(value, key) = items(field(value, key))
+    export fn itemsOf(value, key) = JsonRead::items(JsonRead::field(value, key))
 
     /// The texts of member `key`, or [].
-    export fn textsOf(value, key) = texts(field(value, key))
+    export fn textsOf(value, key) = JsonRead::texts(JsonRead::field(value, key))
 
     /// The items of member `key` of the fixture at `name`.
     export fn loadItems(name, key) = itemsOf(load(name), key)

@@ -98,9 +98,9 @@ static inline int osp_death_reap(pid_t pid, unsigned budget) {
   return osp_death_reap_status(pid, budget, NULL);
 }
 
-// Fork a child that runs `body` and exits 0 if it returns; the parent gets
-// the child pid, or -1 when no child could be forked.
-static inline pid_t osp_death_fork(OspDeathBody body) {
+// Fork a child that runs `body` and exits 0 if the guard let it return; the
+// parent gets the pid, or a negative one when the fork failed.
+static inline pid_t osp_death_spawn(OspDeathBody body) {
   pid_t pid = fork();
   if (pid == 0) {
     (void)signal(SIGABRT, osp_death_dump_and_reraise);
@@ -118,7 +118,7 @@ static inline pid_t osp_death_fork(OspDeathBody body) {
 // report the signal that killed it — 0 if it ran to completion, which means the
 // guard under test did NOT fire, and OSP_DEATH_STALLED if it did neither.
 static inline int osp_death_signal_within(OspDeathBody body, unsigned budget) {
-  pid_t pid = osp_death_fork(body);
+  pid_t pid = osp_death_spawn(body);
   return pid < 0 ? OSP_DEATH_UNOBSERVED : osp_death_reap(pid, budget);
 }
 
@@ -132,7 +132,7 @@ static inline int osp_death_signal(OspDeathBody body) {
 // reports `OSP_DEATH_EXITED`, so "the guard let the call through" stays
 // distinct from "the guard exited 0", which no guard does.
 static inline int osp_death_exit(OspDeathBody body) {
-  pid_t pid = osp_death_fork(body);
+  pid_t pid = osp_death_spawn(body);
   if (pid < 0) {
     return OSP_DEATH_UNOBSERVED;
   }

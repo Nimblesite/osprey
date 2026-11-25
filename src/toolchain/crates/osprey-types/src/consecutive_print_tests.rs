@@ -3,19 +3,10 @@
 //! first of them, in every flavor.
 
 use crate::{consecutive_prints, CONSECUTIVE_PRINT};
-use osprey_syntax::{parse_program_with_flavor, Flavor};
+use osprey_syntax::Flavor;
 
 fn warned(flavor: Flavor, source: &str) -> Vec<(String, u32)> {
-    let parsed = parse_program_with_flavor(source, flavor);
-    assert!(parsed.errors.is_empty(), "{source}\n{:?}", parsed.errors);
-    consecutive_prints(&parsed.program)
-        .into_iter()
-        .map(|warning| {
-            assert_eq!(warning.rule, CONSECUTIVE_PRINT);
-            let line = warning.position.map_or(0, |position| position.line);
-            (warning.message, line)
-        })
-        .collect()
+    crate::lint_test_support::warned(flavor, source, consecutive_prints, CONSECUTIVE_PRINT)
 }
 
 fn joined(count: usize) -> String {

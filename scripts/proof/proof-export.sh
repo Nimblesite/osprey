@@ -2,6 +2,9 @@
 # Records pinned Lean exports for the shared proof kernel [PROOF-EXPORT].
 # Default: IdImp. --theorem and_swap or --theorem Nat.add_comm selects the
 # common-proof controls or the complete real arithmetic dependency closure.
+# --theorem Function.Bijective.comp records the first pinned Mathlib theorem
+# (tag v4.25.0) from src/toolchain/benchmarks/proof/mathlib, fetching only its
+# import closure from the Mathlib cache.
 # --check emits no stdout and requires byte-identical recorded input.
 set -euo pipefail
 
@@ -9,12 +12,16 @@ export PATH="$HOME/.elan/bin:$PATH"
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 TOOLS_DIR="$ROOT/src/toolchain/benchmarks/proof/tools"
+MATHLIB_DIR="$ROOT/src/toolchain/benchmarks/proof/mathlib"
 EXPORTER_REV="cfefafacc917b2d14c5f9bb092ed337f71317a4a" # lean4export, tag v4.25.0
 CHECKER_REV="aa03950243dc18750c1546602ab054609ea8d57d" # lean4checker, tag v4.25.0
 FORMAT_VERSION="3.1.0"
 LEAN_VERSION="4.25.0"
 MODE="record"
 THEOREM="id_imp"
+PROJECT_DIR="$TOOLS_DIR"
+CACHED=""
+BUILD_TARGETS=()
 
 fail() { printf 'proof-export.sh: STOP — %s\n' "$*" >&2; exit 1; }
 
@@ -38,6 +45,7 @@ select_theorem() {
         id_imp) BUILD_MODULE="IdImp"; EXPORT_ARGS=(IdImp); FIXTURE="id_imp" ;;
         and_swap) BUILD_MODULE="AndSwap"; EXPORT_ARGS=(AndSwap); FIXTURE="and_swap" ;;
         Nat.add_comm) BUILD_MODULE=""; EXPORT_ARGS=(Init.Data.Nat.Basic -- Nat.add_comm); FIXTURE="nat_add_comm" ;;
+        Function.Bijective.comp) PROJECT_DIR="$MATHLIB_DIR"; CACHED="Mathlib/Logic/Function/Defs.lean"; BUILD_TARGETS=(lean4export Mathlib.Logic.Function.Defs); EXPORT_ARGS=(Mathlib.Logic.Function.Defs -- Function.Bijective.comp); FIXTURE="bijective_comp" ;;
         *) fail "unknown theorem: $THEOREM" ;;
     esac
     RECORDED="$ROOT/src/osprey/examples/proof/kernel/exports/$FIXTURE.ndjson"
@@ -73,9 +81,15 @@ emit_export() {
 
 parse_args "$@"
 select_theorem
-cd "$TOOLS_DIR"
+cd "$PROJECT_DIR"
 verify_toolchain
-lake build lean4export lean4checker ${BUILD_MODULE:+"$BUILD_MODULE"} >&2
+if [ -n "$CACHED" ]; then
+    lake resolve-deps >&2
+    (cd .lake/packages/mathlib && lake exe cache get "$CACHED") >&2
+    lake build "${BUILD_TARGETS[@]}" >&2
+else
+    lake build lean4export lean4checker ${BUILD_MODULE:+"$BUILD_MODULE"} >&2
+fi
 EXPORT_TEXT="$(mktemp "${TMPDIR:-/tmp}/osprey-proof-export.XXXXXX")"
 trap 'rm -f "$EXPORT_TEXT"' EXIT
 lake exe lean4export "${EXPORT_ARGS[@]}" > "$EXPORT_TEXT"

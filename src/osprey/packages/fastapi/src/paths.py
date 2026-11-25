@@ -16,7 +16,25 @@ def greedy(segment):
     return parameter(segment) and endsWith(segment, ':path}')
 
 def bind(pattern, path):
-    """Match a route pattern to a decoded path and return its named captures."""
+    """Match a route pattern to a decoded path and return its named captures.
+
+    # Examples
+    ```osprey
+    from fastapi import Paths
+
+    def capture(pattern, path, name):
+        match Paths.bind(pattern, path):
+            case Success(value=params):
+                return toString(mapGet(params, name))
+            case Error():
+                return "no match"
+
+    print(f"[{capture('/users/{id}', '/users/42', 'id')}] [{capture('/users/{id}', '/posts/9', 'id')}] [{capture('/static/{path:path}', '/static/a/b.js', 'path')}]")
+    ```
+    ```output
+    [Success(42)] [no match] [Success(a/b.js)]
+    ```
+    """
     return andThen(split(pattern, '/'), lambda patterns: andThen(split(path, '/'), lambda segments: walk(patterns, segments, {})))
 
 def walk(patterns, segments, params):
@@ -40,7 +58,17 @@ def segment(pattern, patterns, segments, params):
                 return walk(patterns, tail, params) if pattern == head else Error(message='Path does not match')
 
 def matches(pattern, path):
-    """Whether the pattern matches the complete decoded path."""
+    """Whether the pattern matches the complete decoded path.
+
+    # Examples
+    ```osprey
+    from fastapi import Paths
+    print(f"[{Paths.matches('/users/{id}', '/users/42')}] [{Paths.matches('/users/{id}', '/users/42/posts')}] [{Paths.matches('/static/{path:path}', '/static/a/b.js')}]")
+    ```
+    ```output
+    [true] [false] [true]
+    ```
+    """
     match bind(pattern, path):
         case Success():
             return True

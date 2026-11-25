@@ -204,9 +204,14 @@ impl Host {
 
     /// Records a host diagnostic once.
     pub fn diagnose(&self, message: String) {
-        let mut messages = self.messages.borrow_mut();
-        if !messages.contains(&message) {
-            messages.push(message);
+        Self::once(&self.messages, message);
+    }
+
+    /// Records `message` in `sink`, unless it is already there.
+    fn once(sink: &RefCell<Vec<String>>, message: String) {
+        let mut held = sink.borrow_mut();
+        if !held.contains(&message) {
+            held.push(message);
         }
     }
 
@@ -240,10 +245,7 @@ impl Host {
 
     /// Records what a render could not draw.
     pub(crate) fn refuse(&self, message: String) {
-        let mut rendered = self.rendered.borrow_mut();
-        if !rendered.contains(&message) {
-            rendered.push(message);
-        }
+        Self::once(&self.rendered, message);
     }
 
     /// Applies a checked frame (slice writes, diagnostics, regions, requests), runs the tree

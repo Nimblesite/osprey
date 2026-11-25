@@ -97,13 +97,7 @@ impl CheckerRunner for ProcessRunner {
     /// rebuild of the binary that would answer it.
     fn binary_digest(&self, discipline: &Discipline) -> Result<u64, String> {
         let executable = self.executable(discipline, deadline_after(discipline.timeout)?)?;
-        let bytes = std::fs::read(&executable).map_err(|error| {
-            format!(
-                "has no readable built checker at {}: {error}",
-                executable.display()
-            )
-        })?;
-        Ok(super::cache::digest(&bytes))
+        super::inputs::file_digest(&executable, "has no readable built checker at")
     }
 }
 

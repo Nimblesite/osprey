@@ -143,21 +143,11 @@ def str_list_equal(tag, got, want):
         return Check.truth(tag, i == len(want), "index " + toString(i))
 
 
-def str_cmp(a, b):
-    """String comparison for sorting."""
-    if a < b:
-        return -1
-    elif a > b:
-        return 1
-    else:
-        return 0
-
-
 def meta_cases():
     """The `__metadata__` string map round-trips through load."""
     file = file_of(Expected.META_BYTES)
     meta = SafeTensors.metadata(file)
-    keys = listSortBy(mapKeys(meta), str_cmp)
+    keys = listSort(mapKeys(meta))
     return [
         str_list_equal("meta.keys", keys, Expected.META_KEYS),
         Check.equal("meta.author", unwrap_or(mapGet(meta, "author"), ""), "osprey"),

@@ -103,6 +103,10 @@ _conformance-arc:
 	@echo "==> [conformance] assertion corpus under --memory=arc..."
 	@OSPREY_ARC_DEBUG=1 OSPREY_TEST_JOBS=1 zsh src/toolchain/crates/run_test_corpus.sh arc
 
+# _conformance-ownership: compare every accepted program against the shared native golden and require zero leaks.
+_conformance-ownership:
+	@OSPREY_CC="$(CURDIR)/scripts/ci/ownership-asan-clang.sh" OSPREY_SCRIBBLE_FREES=1 OSPREY_TEST_JOBS=1 zsh src/toolchain/crates/run_test_corpus.sh ownership --accepted
+
 # _test_disciplines: the reference type disciplines of [TYPES-DISCIPLINE-REFERENCE]
 # (spec 0050). The `bounded` package reads `// @bound p in 0..100`, holds every
 # call site inside the module to it by interval arithmetic, and erases to plain
@@ -146,8 +150,14 @@ _test_disciplines:
 PROOF_BATCH_TARGETS := _test_proof_batch_gc _test_proof_batch_arc _test_proof_batch_wasm
 PROOF_CORPUS_TARGETS := _test_proof_openai _test_proof_lean_core _test_proof_unicode
 
-_test_proof_ci: _test_proof_kernel _test_disciplines $(PROOF_CORPUS_TARGETS)
+_test_proof_ci: _test_proof_kernel _test_disciplines _test_ownership_proof $(PROOF_CORPUS_TARGETS)
 	OSPREY_BIN="$(abspath $(BIN))" zsh src/toolchain/benchmarks/proof/run.sh
+
+# Verify single ownership and lender liveness along accepted ledger paths.
+.PHONY: _test_ownership_proof
+_test_ownership_proof: $(PROOF_BATCH_TARGETS)
+	bash scripts/proof/ownership-ledger.sh
+	bash scripts/proof/ownership-lowering.sh "$(abspath $(BIN))"
 
 _test_proof_batch_gc _test_proof_batch_arc: _test_proof_batch_%:
 	@$(MKDIR) target/proof/openai

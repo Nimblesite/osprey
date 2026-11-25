@@ -92,17 +92,16 @@ timingJourney () =
         expect (structuralEquals (listGet heard 1 ?: [], listGet heard 2 ?: []), c.varies == false))
 
 // [SYNTH-ADVANCED-GRAINS-DISTRIBUTIONS] Distributed events at `positions` from `seeds`, or none after a failed expectation.
-spreadEvents (positions, ranges, seeds) = match synth::GrainDistributions::events (positions, ranges, 1024, seeds)
-    Error why =>
-        expect (synth::Faults::detail why, "distributed events")
-        synth::GrainDistributedEvents(events = [], next = seeds)
-    Success held => held
+// A refused journey step reports its detail exactly and falls back to the given value.
+journeyOr (outcome, why, fallback) = match outcome
+    Error fault =>
+        expect (synth::Faults::detail fault, why)
+        fallback
+    Success value => value
 
-spreadSeeds seed = match synth::GrainDistributions::seeded seed
-    Error why =>
-        expect (synth::Faults::detail why, "seeds")
-        synth::GrainSeeds(position = 1, rate = 1, duration = 1, amplitude = 1, pan = 1)
-    Success seeds => seeds
+spreadEvents (positions, ranges, seeds) = journeyOr (synth::GrainDistributions::events (positions, ranges, 1024, seeds), "distributed events", synth::GrainDistributedEvents(events = [], next = seeds))
+
+spreadSeeds seed = journeyOr (synth::GrainDistributions::seeded seed, "seeds", synth::GrainSeeds(position = 1, rate = 1, duration = 1, amplitude = 1, pan = 1))
 
 // One field of every event: inside [low, high], its mean within 4% of the range of the midpoint, and both ends approached.
 spreadField (label, values, low, high) =
@@ -149,12 +148,7 @@ spreadJourney () =
 // [SYNTH-ADVANCED-GRAINS-CAPACITY] A grain block from scheduled events, or silence after a failed expectation.
 fullBlock (pool, frames, positions) =
     plain = grainControls synth::HannWindow
-    tone = plain(start = 0.0, rate = 1.0, duration = 8, amplitude = 0.5, pan = -1.0)
-    match synth::Grains::scheduled (pool, frames, mapList (positions, \p => synth::GrainEvent(position = p, controls = tone)))
-        Error why =>
-            expect (synth::Faults::detail why, "a scheduled grain block")
-            synth::GrainBlock(left = [], right = [], next = pool)
-        Success b => b
+    journeyOr (synth::Grains::scheduled (pool, frames, mapList (positions, \p => synth::GrainEvent(position = p, controls = plain(start = 0.0, rate = 1.0, duration = 8, amplitude = 0.5, pan = -1.0)))), "a scheduled grain block", synth::GrainBlock(left = [], right = [], next = pool))
 
 fullCounts pool =
     seen = synth::Grains::observation pool

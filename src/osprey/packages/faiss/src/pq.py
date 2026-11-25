@@ -44,12 +44,42 @@ def pow2(n):
 
 def ProductQuantizer(d, M, nbits):
     """faiss's `ProductQuantizer(d, M, nbits)` constructor (centroids empty
-    until `set_centroids`)."""
+    until `set_centroids`).
+
+    # Examples
+    ```osprey
+    import faiss.ProductQuant as ProductQuant
+
+    def show():
+        pq = ProductQuant.ProductQuantizer(4, 2, 8)
+        print(f"[{pq.d}] [{pq.M}] [{pq.nbits}] [{pq.dsub}] [{pq.ksub}] {toString(pq.centroids)}")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [4] [2] [8] [2] [256] []
+    ```
+    """
     return ProductQuantizerState(d=d, M=M, nbits=nbits, dsub=intDiv(d, M), ksub=pow2(nbits), centroids=[])
 
 
 def set_centroids(pq, centroids):
-    """Install `centroids` (M*ksub sub-vectors) into the quantizer."""
+    """Install `centroids` (M*ksub sub-vectors) into the quantizer.
+
+    # Examples
+    ```osprey
+    import faiss.ProductQuant as ProductQuant
+
+    def show():
+        pq = ProductQuant.set_centroids(ProductQuant.ProductQuantizer(1, 1, 2), [[0.0], [1.0], [2.0], [3.0]])
+        print(f"[{pq.ksub}] [{toString(pq.centroids)}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [4] [[[0.0], [1.0], [2.0], [3.0]]]
+    ```
+    """
     return ProductQuantizerState(d=pq.d, M=pq.M, nbits=pq.nbits, dsub=pq.dsub, ksub=pq.ksub, centroids=centroids)
 
 
@@ -75,12 +105,42 @@ def sub_codes(pq, row):
 
 def compute_codes(pq, x):
     """faiss's `pq.compute_codes(x)`: the packed centroid ids per row
-    (one byte per sub-quantizer at nbits = 8, two ids per byte at nbits = 4)."""
+    (one byte per sub-quantizer at nbits = 8, two ids per byte at nbits = 4).
+
+    # Examples
+    ```osprey
+    import faiss.ProductQuant as ProductQuant
+
+    def show():
+        pq = ProductQuant.set_centroids(ProductQuant.ProductQuantizer(1, 1, 2), [[0.0], [1.0], [2.0], [3.0]])
+        print(f"{toString(ProductQuant.compute_codes(pq, [[1.75]]))} {toString(ProductQuant.compute_codes(pq, []))}")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [[2]] []
+    ```
+    """
     return mapList(x, lambda row: pack_ids(pq, sub_codes(pq, row)))
 
 
 def decode(pq, codes):
-    """faiss's `pq.decode(codes)`: reconstruct each row from its centroid ids."""
+    """faiss's `pq.decode(codes)`: reconstruct each row from its centroid ids.
+
+    # Examples
+    ```osprey
+    import faiss.ProductQuant as ProductQuant
+
+    def show():
+        pq = ProductQuant.set_centroids(ProductQuant.ProductQuantizer(1, 1, 2), [[0.0], [1.0], [2.0], [3.0]])
+        print(f"{toString(ProductQuant.decode(pq, [[1], [3]]))}")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [[1.0], [3.0]]
+    ```
+    """
     return mapList(codes, lambda code: decode_code(pq, code))
 
 
@@ -117,7 +177,23 @@ def decode_code(pq, code):
 def sdc_table(pq):
     """faiss's `pq.sdc_table` (after `compute_sdc_table`): for each
     sub-quantizer m, the ksub x ksub squared-L2 distances between centroids,
-    flattened m-major, row-major."""
+    flattened m-major, row-major.
+
+    # Examples
+    ```osprey
+    import faiss.ProductQuant as ProductQuant
+
+    def show():
+        pq = ProductQuant.set_centroids(ProductQuant.ProductQuantizer(1, 1, 2), [[0.0], [1.0], [2.0], [3.0]])
+        table = ProductQuant.sdc_table(pq)
+        print(f"[{len(table)}] {toString(table)}")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [16] [0.0, 1.0, 4.0, 9.0, 1.0, 0.0, 1.0, 4.0, 4.0, 1.0, 0.0, 1.0, 9.0, 4.0, 1.0, 0.0]
+    ```
+    """
     return toList(map(range(pq.M * pq.ksub * pq.ksub), lambda idx: sdc_entry(pq, idx)))
 
 
@@ -130,17 +206,67 @@ def sdc_entry(pq, idx):
 
 
 def IndexPQ(pq, metric):
-    """faiss's `IndexPQ(pq, metric)` constructor: an empty index over `pq`."""
+    """faiss's `IndexPQ(pq, metric)` constructor: an empty index over `pq`.
+
+    # Examples
+    ```osprey
+    import faiss.ProductQuant as ProductQuant
+
+    def show():
+        pq = ProductQuant.ProductQuantizer(1, 1, 2)
+        index = ProductQuant.IndexPQ(pq, "L2")
+        print(f"[{index.metric}] [{toString(index.codes)}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [L2] [[]]
+    ```
+    """
     return IndexPQState(pq=pq, metric=metric, codes=[])
 
 
 def pq_add(index, xb):
-    """faiss's `index.add(xb)`: append the codes of `xb`."""
+    """faiss's `index.add(xb)`: append the codes of `xb`.
+
+    # Examples
+    ```osprey
+    import faiss.ProductQuant as ProductQuant
+
+    def show():
+        pq = ProductQuant.set_centroids(ProductQuant.ProductQuantizer(1, 1, 2), [[0.0], [1.0], [2.0], [3.0]])
+        index = ProductQuant.IndexPQ(pq, "L2")
+        loaded = ProductQuant.pq_add(index, [[1.75], [2.5]])
+        print(f"{toString(loaded.codes)} {toString(index.codes)}")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [[2], [2]] []
+    ```
+    """
     return IndexPQState(pq=index.pq, metric=index.metric, codes=listConcat(index.codes, compute_codes(index.pq, xb)))
 
 
 def pq_search(index, xq, k):
     """faiss's `IndexPQ.search`: reconstruct codes and heap-select over the
-    metric (the same sum faiss's distance tables form, so it is exact)."""
+    metric (the same sum faiss's distance tables form, so it is exact).
+
+    # Examples
+    ```osprey
+    import faiss.ProductQuant as ProductQuant
+
+    def show():
+        pq = ProductQuant.set_centroids(ProductQuant.ProductQuantizer(1, 1, 2), [[0.0], [1.0], [2.0], [3.0]])
+        index = ProductQuant.pq_add(ProductQuant.IndexPQ(pq, "L2"), [[1.75]])
+        result = ProductQuant.pq_search(index, [[2.0]], 2)
+        print(f"{toString(result.distances)} {toString(result.labels)}")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [[0.0, 3.4028234663852886e+38]] [[0, -1]]
+    ```
+    """
     rows = mapList(index.codes, lambda code: decode_code(index.pq, code))
     return search_rows(index.metric, rows, xq, k)

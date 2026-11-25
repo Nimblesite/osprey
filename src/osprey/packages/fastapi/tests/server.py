@@ -1,6 +1,5 @@
 # osprey: flavor=python
 from fastapi import Applications as A
-from fastapi import Results as B
 from fastapi_tests import Fixture
 
 

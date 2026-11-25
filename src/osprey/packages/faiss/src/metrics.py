@@ -21,7 +21,17 @@ __all__ = ["Topk", "l2sqr", "inner_product", "topk", "map_indexed"]
 
 
 def map_indexed(xs, read):
-    """`xs` rebuilt with its indices: element `i` of the result is `read(i)`."""
+    """`xs` rebuilt with its indices: element `i` of the result is `read(i)`.
+
+    # Examples
+    ```osprey
+    from faiss import Metrics
+    print(toString(Metrics.map_indexed(["a", "b", "c"], lambda i: i * 10)))
+    ```
+    ```output
+    [0, 10, 20]
+    ```
+    """
     return toList(map(range(len(xs)), read))
 
 
@@ -35,12 +45,32 @@ class Topk:
 
 
 def l2sqr(a, b):
-    """Squared L2 distance between two equal-length vectors: sum((a_i - b_i)^2)."""
+    """Squared L2 distance between two equal-length vectors: sum((a_i - b_i)^2).
+
+    # Examples
+    ```osprey
+    from faiss import Metrics
+    print(f"[{Metrics.l2sqr([1.0, 2.0], [4.0, 6.0])}] [{Metrics.l2sqr([0.5], [0.5])}]")
+    ```
+    ```output
+    [25.0] [0.0]
+    ```
+    """
     return fold(range(len(a)), 0.0, lambda acc, i: acc + sq(unwrap_or(listGet(a, i), 0.0) - unwrap_or(listGet(b, i), 0.0)))
 
 
 def inner_product(a, b):
-    """Dot product between two equal-length vectors: sum(a_i * b_i)."""
+    """Dot product between two equal-length vectors: sum(a_i * b_i).
+
+    # Examples
+    ```osprey
+    from faiss import Metrics
+    print(f"[{Metrics.inner_product([1.0, 2.0], [4.0, 6.0])}] [{Metrics.inner_product([0.5, -1.0], [2.0, 1.0])}]")
+    ```
+    ```output
+    [16.0] [0.0]
+    ```
+    """
     return fold(range(len(a)), 0.0, lambda acc, i: acc + unwrap_or(listGet(a, i), 0.0) * unwrap_or(listGet(b, i), 0.0))
 
 
@@ -161,7 +191,24 @@ def topk(k, metric, values, ids):
     """Select the k best of the `len(values)` candidates: for metric "L2" the k
     smallest squared distances, for "IP" the k largest inner products, with
     faiss's exact tie ordering. `values` and `ids` are parallel lists in scan
-    order. The result always has length k."""
+    order. The result always has length k.
+
+    # Examples
+    ```osprey
+    from faiss import Metrics
+
+    def show():
+        nearest = Metrics.topk(3, "L2", [9.0, 1.0, 4.0], [0, 1, 2])
+        ties = Metrics.topk(2, "L2", [2.0, 2.0], [5, 3])
+        padded = Metrics.topk(4, "IP", [2.0, 5.0], [10, 20])
+        print(f"{toString(nearest.vals)} {toString(nearest.ids)} {toString(ties.vals)} {toString(ties.ids)} {toString(padded.vals)} {toString(padded.ids)}")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [1.0, 4.0, 9.0] [1, 2, 0] [2.0, 2.0] [3, 5] [5.0, 2.0, -3.4028234663852886e+38, -3.4028234663852886e+38] [20, 10, -1, -1]
+    ```
+    """
     is_max = metric == "L2"
     h0 = Heap(vals=toList(map(range(k), lambda _i: neutral(is_max))), ids=toList(map(range(k), lambda _i: -1)))
     h1 = fold(range(len(values)), h0, lambda acc, j: fold_repl(is_max, k, acc, unwrap_or(listGet(values, j), 0.0), unwrap_or(listGet(ids, j), -1)))

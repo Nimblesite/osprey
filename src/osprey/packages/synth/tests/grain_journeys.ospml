@@ -167,18 +167,18 @@ captureJourney writer =
     refusedWith (GrainCapture::write (writer, []), "Invalid capture state, block size or sample clock.")
     refusedWith (GrainCapture::resource (writer, "capture", 60.0), "Freeze a valid capture before preparing a sample resource.")
     refusedWith (GrainCapture::freeze writer, "Freeze requires at least two captured frames.")
-    succeeds (GrainCapture::write (writer, [0.0, 0.25]), \first =>
-        succeeds (GrainCapture::write (first, [0.5, 0.75, 1.0]), \second =>
-            succeeds (GrainCapture::freeze second, \frozen =>
-                expect (structuralEquals (frozen.samples, [0.25, 0.5, 0.75, 1.0]) && frozen.written == 5, true)
-                refusedWith (GrainCapture::write (frozen, [0.0]), "Resume capture before writing.")
-                succeeds (GrainCapture::resource (frozen, "captured", 60.0), \resource =>
-                    expect (resource.sampleRate == 24000 && resource.sourceChannels == 1, true)
-                    sameStructure (resource.samples, frozen.samples))
-                succeeds (GrainCapture::thaw frozen, \resumed =>
-                    succeeds (GrainCapture::write (resumed, [-1.0, 0.0, 0.25, 0.5, 0.75]), \next =>
-                        expect (next.written == 10 && structuralEquals (next.samples, [0.0, 0.25, 0.5, 0.75]), true)
-                        sameStructure (frozen.samples, [0.25, 0.5, 0.75, 1.0]))))))
+    use first <- succeeds (GrainCapture::write (writer, [0.0, 0.25]))
+    use second <- succeeds (GrainCapture::write (first, [0.5, 0.75, 1.0]))
+    use frozen <- succeeds (GrainCapture::freeze second)
+    expect (structuralEquals (frozen.samples, [0.25, 0.5, 0.75, 1.0]) && frozen.written == 5, true)
+    refusedWith (GrainCapture::write (frozen, [0.0]), "Resume capture before writing.")
+    succeeds (GrainCapture::resource (frozen, "captured", 60.0), \resource =>
+        expect (resource.sampleRate == 24000 && resource.sourceChannels == 1, true)
+        sameStructure (resource.samples, frozen.samples))
+    succeeds (GrainCapture::thaw frozen, \resumed =>
+        succeeds (GrainCapture::write (resumed, [-1.0, 0.0, 0.25, 0.5, 0.75]), \next =>
+            expect (next.written == 10 && structuralEquals (next.samples, [0.0, 0.25, 0.5, 0.75]), true)
+            sameStructure (frozen.samples, [0.25, 0.5, 0.75, 1.0])))
 
 // Each upward crossing in an external monophonic reference owns exactly one absolute sample.
 pitchMarkJourney () =
@@ -260,14 +260,14 @@ grainPlacementJourney () =
 grainLifetimeJourney () =
     short = grainAsr (0.0, 0.0, 5, 1.0, -1.0)
     long = grainAsr (2.0, 1.0, 11, 1.0, 1.0)
-    succeeds (Grains::prepare ([1.0, 1.0, 1.0, 1.0], 2), \pool =>
-        succeeds (Grains::trigger (pool, short), \first =>
-            grainBlockAfterTrigger (first.pool, long, 5, \rendered =>
-                watched = Grains::observation rendered.next
-                expect (watched.activeGrains, 1)
-                survivor = grainVoiceAt (watched.voices, 0)
-                expect (survivor.identity == 1 && survivor.age == 5 && survivor.duration == 11, true)
-                expect (survivor.cursor, 3.0))))
+    use pool <- succeeds (Grains::prepare ([1.0, 1.0, 1.0, 1.0], 2))
+    use first <- succeeds (Grains::trigger (pool, short))
+    use rendered <- grainBlockAfterTrigger (first.pool, long, 5)
+    watched = Grains::observation rendered.next
+    expect (watched.activeGrains, 1)
+    survivor = grainVoiceAt (watched.voices, 0)
+    expect (survivor.identity == 1 && survivor.age == 5 && survivor.duration == 11, true)
+    expect (survivor.cursor, 3.0)
 
 // [SYNTH-ADVANCED-GRAINS-OVERLOAD] Reject-new admission: counted, never stolen, audio untouched.
 grainOverloadJourney () =
@@ -346,6 +346,8 @@ grainEventOrderJourney () =
         succeeds (Grains::scheduled (pool, 4, mapList (grainQuiet 2048, \_ => synth::GrainEvent(position = 0, controls = controls))), \many =>
             expect (length many.left, 4)))
 
+grainEventsRefused (bads, attempt) = forEachList (bads, \bad => refusedWith (attempt bad, "Invalid grain distribution bounds, sample positions or random seeds."))
+
 // [SYNTH-ADVANCED-GRAINS-DISTRIBUTIONS] Five separately seeded streams, inclusive uniform durations.
 grainDistributionJourney () =
     controls = grainControls synth::HannWindow
@@ -375,13 +377,10 @@ grainDistributionJourney () =
             sameStructure ((grainEventAt (held.events, 0)).controls, low)
             sameStructure (held.next, grainAdvancedOnce seeds))
         // Identical window settings and ordered minima are required at both ends.
-        forEachList ([synth::GrainDistribution(minimum = low(window = synth::AsrWindow(attack = 0.25, release = 0.25)), maximum = high), synth::GrainDistribution(minimum = low(start = 3.5), maximum = high), synth::GrainDistribution(minimum = low(rate = 2.5), maximum = high), synth::GrainDistribution(minimum = low(duration = 13), maximum = high), synth::GrainDistribution(minimum = low(amplitude = 0.8), maximum = high), synth::GrainDistribution(minimum = low(pan = 0.6), maximum = high)], \bad =>
-            refusedWith (GrainDistributions::events ([0], bad, 16, seeds), "Invalid grain distribution bounds, sample positions or random seeds."))
-        forEachList ([seeds(position = 0), seeds(rate = 2147483647), seeds(duration = -5), seeds(amplitude = 0), seeds(pan = 2147483647)], \bad =>
-            refusedWith (GrainDistributions::events ([0], ranges, 16, bad), "Invalid grain distribution bounds, sample positions or random seeds."))
-        forEachList ([[0, -1], [5, 3], toList (range (0, 2049))], \positions =>
-            refusedWith (GrainDistributions::events (positions, ranges, 16, seeds), "Invalid grain distribution bounds, sample positions or random seeds."))
-        forEachList ([1, 1048577], \size => refusedWith (GrainDistributions::events ([0], ranges, size, seeds), "Invalid grain distribution bounds, sample positions or random seeds."))
+        grainEventsRefused ([synth::GrainDistribution(minimum = low(window = synth::AsrWindow(attack = 0.25, release = 0.25)), maximum = high), synth::GrainDistribution(minimum = low(start = 3.5), maximum = high), synth::GrainDistribution(minimum = low(rate = 2.5), maximum = high), synth::GrainDistribution(minimum = low(duration = 13), maximum = high), synth::GrainDistribution(minimum = low(amplitude = 0.8), maximum = high), synth::GrainDistribution(minimum = low(pan = 0.6), maximum = high)], \bad => GrainDistributions::events ([0], bad, 16, seeds))
+        grainEventsRefused ([seeds(position = 0), seeds(rate = 2147483647), seeds(duration = -5), seeds(amplitude = 0), seeds(pan = 2147483647)], \bad => GrainDistributions::events ([0], ranges, 16, bad))
+        grainEventsRefused ([[0, -1], [5, 3], toList (range (0, 2049))], \positions => GrainDistributions::events (positions, ranges, 16, seeds))
+        grainEventsRefused ([1, 1048577], \size => GrainDistributions::events ([0], ranges, size, seeds))
         succeeds (GrainDistributions::events (toList (range (0, 2048)), ranges, 16, seeds), \full => expect (length full.events, 2048)))
 
 // [SYNTH-ADVANCED-GRAINS-DISTRIBUTIONS] Symmetric widths clip to the declared control domains.
@@ -429,12 +428,12 @@ grainCloudCommitJourney () =
             refusedWith (GrainClouds::variedBlock (played.next, synth::GrainDistribution(minimum = controls(amplitude = 1.0), maximum = controls(amplitude = 0.0)), 4), "Invalid grain distribution bounds, sample positions or random seeds.")
             succeeds (GrainClouds::block (played.next, controls, 4), \again => expect (again.next.pool.position, 12))))
     // Rejected onsets consume their draws: eight onsets advance all five streams exactly eight times.
-    succeeds (GrainDistributions::seeded 7, \base =>
-        succeeds (variedCloud 7, \seeded =>
-            succeeds (GrainClouds::variedBlock (seeded, wideGrainDistribution (), 8), \drawn =>
-                sameStructure (drawn.next.seeds, grainAdvancedTimes (base, 8))
-                counted = GrainClouds::observation drawn.next
-                exactRows ([{ got = counted.playback.requestedGrains, want = 8 }, { got = counted.playback.acceptedGrains, want = 4 }, { got = counted.playback.rejectedGrains, want = 4 }, { got = counted.playback.activeGrains, want = 4 }]))))
+    use base <- succeeds (GrainDistributions::seeded 7)
+    use seeded <- succeeds (variedCloud 7)
+    use drawn <- succeeds (GrainClouds::variedBlock (seeded, wideGrainDistribution (), 8))
+    sameStructure (drawn.next.seeds, grainAdvancedTimes (base, 8))
+    counted = GrainClouds::observation drawn.next
+    exactRows ([{ got = counted.playback.requestedGrains, want = 8 }, { got = counted.playback.acceptedGrains, want = 4 }, { got = counted.playback.rejectedGrains, want = 4 }, { got = counted.playback.activeGrains, want = 4 }])
 
 // Identical seeds replay identical audio across irregular partitions; different seeds draw different grains.
 grainCloudReplayJourney () =
@@ -498,8 +497,7 @@ grainGraphVariationJourney () =
 // [SYNTH-ADVANCED-GRAINS-DISTRIBUTIONS-GRAPH] Invalid widths, seeds and region starts fail before rendering.
 grainGraphVariationRefusalJourney () =
     node = granularNode ()
-    refusedWith (GrainGraph::prepare (grainSet (node, "variationSeed", 0.0)), "Invalid grain variation seed.")
-    refusedWith (GrainGraph::prepare (grainSet (node, "variationSeed", 2147483647.0)), "Invalid grain variation seed.")
+    forEachList ([0.0, 2147483647.0], \seed => refusedWith (GrainGraph::prepare (grainSet (node, "variationSeed", seed)), "Invalid grain variation seed."))
     succeeds (GrainClouds::prepare ([0.5, -0.5, 0.25, -0.25], 4, synth::PeriodicTiming(period = 4, jitter = 0), 1, 7), \cloud =>
         forEachList ([{ key = "rateSpread", value = 33.0 }, { key = "gainSpread", value = 1.5 }, { key = "panSpread", value = 2.5 }, { key = "positionSpread", value = 4.0 }, { key = "durationSpread", value = 65534.0 }], \c =>
             refusedWith (GrainGraph::block (grainSet (node, c.key, c.value), cloud, 8), "Invalid grain variation center or spread.")))
@@ -509,7 +507,7 @@ grainGraphVariationRefusalJourney () =
         refusedWith (GrainGraph::block (regionNode, cloud, 8), "Grain start positions and spread must stay inside the selected region."))
 
 // One transposition row per resource: the requested note at the graph's 48 kHz rate.
-playbackWants (resource, rows) = forEachList (rows, \held => succeeds (SampleResources::playbackRate (resource, held.note, 48000.0), \speed => near (speed, held.want, 0.000000000001)))
+playbackWants (resources, rows) = forEachList (resources, \resource => forEachList (rows, \held => succeeds (SampleResources::playbackRate (resource, held.note, 48000.0), \speed => near (speed, held.want, 0.000000000001))))
 
 // [SYNTH-SAMPLES-IMPORT] The pure preparation API preserves rate, channels and interleaved PCM and tunes by root.
 // The little-endian RIFF bytes come from the shared builders in wave_journeys.
@@ -541,11 +539,10 @@ grainImportJourney () =
     longWave = synth::WaveSamples(sampleRate = 48000, channels = 1, frames = 64, samples = grainQuiet 64)
     succeeds (SampleResources::fromWave ("short", 60.0, shortWave), \short =>
         succeeds (SampleResources::fromWave ("long", 60.0, longWave), \long =>
-            playbackWants (short, [{ note = 36.0, want = 0.25 }, { note = 48.0, want = 0.5 }, { note = 60.0, want = 1.0 }, { note = 72.0, want = 2.0 }, { note = 84.0, want = 4.0 }])
-            playbackWants (long, [{ note = 36.0, want = 0.25 }, { note = 48.0, want = 0.5 }, { note = 60.0, want = 1.0 }, { note = 72.0, want = 2.0 }, { note = 84.0, want = 4.0 }])))
+            playbackWants ([short, long], [{ note = 36.0, want = 0.25 }, { note = 48.0, want = 0.5 }, { note = 60.0, want = 1.0 }, { note = 72.0, want = 2.0 }, { note = 84.0, want = 4.0 }])))
     // [SYNTH-ADVANCED-GRANULAR] Pitch spans -24..+24 semitones; a 96 kHz source doubles the read increment.
     succeeds (SampleResources::fromWave ("high", 60.0, shortWave(sampleRate = 96000)), \high =>
-        playbackWants (high, [{ note = 36.0, want = 0.5 }, { note = 84.0, want = 8.0 }, { note = 96.0, want = 16.0 }])
+        playbackWants ([high], [{ note = 36.0, want = 0.5 }, { note = 84.0, want = 8.0 }, { note = 96.0, want = 16.0 }])
         refusedAs (SampleResources::playbackRate (high, 97.0, 48000.0), "capacity", "The requested sample transposition exceeds the grain rate limit."))
 
 // [SYNTH-SAMPLES-IMPORT] The granular node takes the resource; its default rate compensates the source rate.
@@ -704,7 +701,7 @@ registerGrainJourneys () =
         ranges = synth::GrainDistribution(minimum = controls, maximum = controls)
         succeeds (GrainDistributions::seeded 7, \seeds =>
             // Unordered positions, a one-sample source, and a minimum above its maximum.
-            forEachList ([{ at = [5, 3], within = ranges, size = 16 }, { at = [1], within = ranges, size = 1 }, { at = [1], within = synth::GrainDistribution(minimum = controls(start = 2.0), maximum = controls), size = 16 }], \c => refusedWith (GrainDistributions::events (c.at, c.within, c.size, seeds), "Invalid grain distribution bounds, sample positions or random seeds."))
+            grainEventsRefused ([{ at = [5, 3], within = ranges, size = 16 }, { at = [1], within = ranges, size = 1 }, { at = [1], within = synth::GrainDistribution(minimum = controls(start = 2.0), maximum = controls), size = 16 }], \c => GrainDistributions::events (c.at, c.within, c.size, seeds))
             succeeds (GrainDistributions::events ([], ranges, 16, seeds), \none => expect (length none.events == 0 && structuralEquals (none.next, seeds), true)))
         still = synth::GrainSpread(position = 0.0, rate = 0.0, duration = 0, amplitude = 0.0, pan = 0.0)
         forEachList ([{ size = 16, spread = still(position = -1.0) }, { size = 1, spread = still }], \c => refusedWith (GrainSpreads::around (controls, c.size, c.spread), "Invalid grain variation center or spread."))
