@@ -11,23 +11,8 @@ use osprey_ast::{
 use tree_sitter::Node;
 
 impl Lowerer<'_> {
-    /// Lower both modern `::` imports and the original dotted Default spelling
-    /// into one canonical import edge. [MODULES-IMPORT]
+    /// Lower a structured import into a canonical import edge. [MODULES-IMPORT]
     pub(crate) fn lower_import(&self, node: Node<'_>) -> ImportDecl {
-        if let Some(legacy) = node.child_by_field_name("legacy_target") {
-            let mut segments = self.texts_of_kind(legacy, "identifier").into_iter();
-            let namespace = segments.next().unwrap_or_default();
-            return ImportDecl {
-                target: ImportTarget {
-                    namespace: NamespaceName::Identifier(namespace),
-                    path: SymbolPath::new(segments),
-                },
-                alias: None,
-                selection: ImportSelection::Whole,
-                position: Some(self.pos(node)),
-            };
-        }
-
         let target = node.child_by_field_name("target");
         let namespace_node = target.and_then(|target| target.child_by_field_name("namespace"));
         let namespace = self.lower_namespace_name(namespace_node);
@@ -275,14 +260,14 @@ mod tests {
     }
 
     #[test]
-    fn lowers_every_import_selection_and_legacy_dots() {
+    fn lowers_every_import_selection_and_nested_paths() {
         let statements = stmts(
             "import billing::Tax\n\
              import billing::Tax as T\n\
              import billing::Tax::{addTax, zero as noTax}\n\
              import billing::Tax::*\n\
              import \"billing/api\" as api\n\
-             import std.io.file\n",
+             import std::io::file\n",
         );
         let imports: Vec<_> = statements
             .iter()
@@ -307,6 +292,14 @@ mod tests {
         assert_eq!(imports[4].alias.as_deref(), Some("api"));
         assert_eq!(imports[5].target.namespace.label(), "std");
         assert_eq!(imports[5].target.path.segments, ["io", "file"]);
+    }
+
+    #[test]
+    fn rejects_retired_dotted_imports() {
+        // [MODULES-IMPORT] A dot cannot qualify any segment of an import.
+        for source in ["import std.io.file\n", "import std::io.file\n"] {
+            assert!(!parse_program(source).errors.is_empty(), "{source}");
+        }
     }
 
     #[test]
