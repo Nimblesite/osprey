@@ -43,7 +43,7 @@ test.describe("documentation sub-page navigation", () => {
     await expect(page).toHaveURL(/\/docs\/audio-synthesis\/hardware\/$/);
     const article = page.locator(".prose-layout .prose");
     await expect(article.getByText("not in production", { exact: false })).toBeVisible();
-    await expect(article.locator("figcaption")).toHaveText([/AI-generated concept renders/, /AI-generated layout drawing/]);
+    await expect(article.locator("figcaption")).toHaveText(/AI-generated renders from three angles of one 3D model/);
     await expect(article.getByRole("img")).toHaveCount(3);
     for (const illustration of await article.getByRole("img").all()) {
       await illustration.scrollIntoViewIfNeeded();

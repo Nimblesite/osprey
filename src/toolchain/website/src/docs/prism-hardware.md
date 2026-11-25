@@ -5,7 +5,7 @@ description: "The planned Prism pedal: a standalone synth or effects pedal that 
 permalink: /docs/audio-synthesis/hardware/
 ---
 
-**Prism hardware is a design, not a product.** No firmware, board or pedal exists yet, so there is nothing to buy or build today. This page explains what is planned.
+**Prism hardware is planned and is not in production.**
 
 ## A patch you can stomp on
 
@@ -26,9 +26,12 @@ The planned workflow:
 4. Unplug and play. Plug it back in and Prism shows which patch the pedal is running.
 
 <figure>
-  <img src="/assets/images/prism/device-front.webp" width="1536" height="1024" alt="Top of the charcoal Prism pedal concept: two rows of four knobs, four toggles with a status light between them, and two footswitches nearest the player" decoding="async">
-  <img src="/assets/images/prism/device-concept.webp" width="1536" height="1024" alt="Rear of the Prism pedal concept with one USB-C port, a DC power jack and two 3.5 mm TRS MIDI jacks" loading="lazy" decoding="async">
-  <figcaption>AI-generated concept renders of the top and rear. They show the eventual metal case, not a built pedal.</figcaption>
+  <div class="prose-image-views">
+    <a href="/assets/images/prism/starter-front.webp"><img src="/assets/images/prism/starter-front.webp" width="1440" height="1000" alt="Front of the charcoal Prism starter case with eight knobs, four toggles and two footswitches" decoding="async"></a>
+    <a href="/assets/images/prism/starter-rear.webp"><img src="/assets/images/prism/starter-rear.webp" width="1440" height="1000" alt="Rear of the same case with USB-C, DC power, MIDI in and MIDI out" loading="lazy" decoding="async"></a>
+    <a href="/assets/images/prism/starter-side.webp"><img src="/assets/images/prism/starter-side.webp" width="1440" height="1000" alt="Left side of the same case with stereo line outputs and a headphone jack" loading="lazy" decoding="async"></a>
+  </div>
+  <figcaption>AI-generated renders from three angles of one 3D model of the planned printed starter case.</figcaption>
 </figure>
 
 ## Tested before it is built
@@ -51,11 +54,6 @@ The pedal runs standard Raspberry Pi OS (Linux) on a Raspberry Pi Compute Module
 ## Built for the stage
 
 The first devices will sit in a simple 3D-printed box. The rugged case comes later. That eventual case is die-cast aluminium with a sealed lid. The footswitches are bolted through the metal and must hold a 100 kg standing load. Every jack and the USB-C port is fixed to the case, not only to the circuit board. Before release, a finished pedal must survive 1 m drops onto concrete, shock and vibration tests, and still play.
-
-<figure>
-  <a href="/assets/images/prism/enclosure.svg"><img src="/assets/images/prism/enclosure.svg" width="1300" height="980" alt="Dimensioned control and port layout with a section through the module mounting bracket" loading="lazy" decoding="async"></a>
-  <figcaption>The planned layout of controls and connectors on the case.</figcaption>
-</figure>
 
 ## Cost
 

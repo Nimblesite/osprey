@@ -17,9 +17,13 @@ The printed overlay ([PRISM-INSTRUMENT-DEVICE-LABELS]) puts each macro's name un
 
 ## Enclosure [DEVICE-HW-ENCLOSURE]
 
+The first build uses a charcoal 3D-printed case with the PRISM wordmark and the control layout shown here. Size the printed case around the Raspberry Pi 5, audio HAT, plug bodies and controls at dry fit. The three website renders are views of one starter-case concept with a provisional 53 mm exterior height.
+
+### Eventual road case
+
 ![Top, rear and both sides of the Prism enclosure](enclosure.svg)
 
-The Hammond 1590XX sets the package envelope at 145.2 × 121.2 × 39.3 mm with the bottom lid and about 35.05 mm nominal internal height. Check the complete CM5 carrier and controls against the casting taper, corner bosses and lid lip. The deeper 1590X gives about 52.4 mm internal height on the same footprint if the selected parts need clearance. Confirm the wall thickness against [DEVICE-HW-RUGGED] before selecting a production casting. The [panel layout](enclosure.svg) gives nominal centres and 61.2 mm footswitch spacing. Footswitch centres sit 20 mm from the player edge, and their row is 28 mm from the toggle row. Apertures depend on the selected parts. [1590XX mechanical drawing](https://www.hammfg.com/files/parts/pdf/1590XX.pdf) · [1590X mechanical drawing](https://www.hammfg.com/files/parts/pdf/1590X.pdf)
+The gasketed Hammond 1590WXX sets the eventual die-cast case envelope at 145.2 × 121.2 × 39.3 mm with the bottom lid and about 35.05 mm nominal internal height. Use the silicone gasket and O-ring cover screws. Check the complete CM5 carrier and controls against the casting taper, corner bosses and lid lip. The deeper 1590X gives about 52.4 mm internal height on the same footprint if the selected parts need clearance. Confirm the wall thickness against [DEVICE-HW-RUGGED] before selecting a production casting. The [panel layout](enclosure.svg) gives nominal centres and 61.2 mm footswitch spacing. Footswitch centres sit 20 mm from the player edge, and their row is 28 mm from the toggle row. Apertures depend on the selected parts. [1590WXX model downloads](https://www.hammfg.com/part/1590WXX) · [1590X mechanical drawing](https://www.hammfg.com/files/parts/pdf/1590X.pdf)
 
 | Face (player's orientation) | Hardware and access |
 | --- | --- |
@@ -52,7 +56,7 @@ Keep the PCM3060 codec and its clocks, instrument buffers, bypass relay and head
 - [x] Draw the control and connector layout against the manufacturer's envelope.
 - [ ] Freeze the actual parts and verify the 3D stack at tolerance, including full switch travel, all plugged connectors, bosses, ground hardware, cable tails and bottom lid removal.
 - [ ] Dry-fit the parts in a mockup. Check boot clearance for both footswitches, hand access to all controls, glare and LED visibility, and readable labels with cables fitted.
-- [ ] Check the assembled case against [DEVICE-HW-RUGGED-VERIFY], including the IEC 60068 drop, shock and vibration tests, 100 kg standing load at either footswitch and 50 N cable pulls. Recheck audio and unpowered bypass after each test.
+- [ ] Check the eventual die-cast case against [DEVICE-HW-RUGGED-VERIFY], including the IEC 60068 drop, shock and vibration tests, 100 kg standing load at either footswitch and 50 N cable pulls. Recheck audio and unpowered bypass after each test.
 - [ ] Verify shell grounding and audio noise with USB, barrel power and two grounded audio devices connected. Check channel-by-channel unpowered bypass, watchdog/restart bypass and separate headphone behaviour.
 - [ ] Verify USB-C device mode with the Prism link, adequate input power and TRS MIDI active. Verify host mode with barrel power, a keyboard at the 500 mA limit and overcurrent injected. Exercise role changes, brownout bypass and VBUS isolation.
 - [ ] Play a source patch without a computer from USB, 5-pin DIN and native Type A keyboards, and a Type B keyboard with the correct adapter. Check note-on, note-off, sustain and controller messages, and startup with a bus-powered keyboard attached.

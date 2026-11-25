@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 325 245" role="img" aria-labelledby="title description">
-  <title id="title">Prism reference enclosure orthographic layout</title>
+  <title id="title">Prism eventual Hammond 1590WXX enclosure layout</title>
   <desc id="description">Top, rear and both side elevations at the same scale, and a schematic section through the module mounting bracket. Outer dimensions are in millimetres.</desc>
   <style>
     text { font: 3.5px sans-serif; fill: #e6eff1; text-anchor: middle }
@@ -12,7 +12,7 @@
     .led { fill: #92e1da }
   </style>
   <rect width="325" height="245" fill="#151c24"/>
-  <text x="162.5" y="11" class="title">PRISM ENCLOSURE</text>
+  <text x="162.5" y="11" class="title">PRISM ROAD CASE · HAMMOND 1590WXX</text>
   <defs>
     <g id="knob">
       <circle r="8" fill="#181f27" stroke="#82929e" stroke-width=".5"/>
