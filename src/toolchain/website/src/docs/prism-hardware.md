@@ -28,7 +28,7 @@ The planned workflow:
 <figure>
   <img src="/assets/images/prism/device-front.webp" width="1536" height="1024" alt="Top of the charcoal Prism pedal concept: two rows of four knobs, four toggles with a status light between them, and two footswitches nearest the player" decoding="async">
   <img src="/assets/images/prism/device-concept.webp" width="1536" height="1024" alt="Rear of the Prism pedal concept with one USB-C port, a DC power jack and two 3.5 mm TRS MIDI jacks" loading="lazy" decoding="async">
-  <figcaption>AI-generated concept renders of the top and rear. They show the planned layout, not a built pedal.</figcaption>
+  <figcaption>AI-generated concept renders of the top and rear. They show the eventual metal case, not a built pedal.</figcaption>
 </figure>
 
 ## Connections
@@ -46,7 +46,7 @@ The pedal runs on a Raspberry Pi Compute Module 5 with a real-time Linux kernel.
 
 ## Built for the stage
 
-The case is die-cast aluminium with a sealed lid. The footswitches are bolted through the metal and must hold a 100 kg standing load. Every jack and the USB-C port is fixed to the case, not only to the circuit board. Before release, a finished pedal must survive 1 m drops onto concrete, shock and vibration tests, and still play.
+The first devices will sit in a simple 3D-printed box. The rugged case comes later. That eventual case is die-cast aluminium with a sealed lid. The footswitches are bolted through the metal and must hold a 100 kg standing load. Every jack and the USB-C port is fixed to the case, not only to the circuit board. Before release, a finished pedal must survive 1 m drops onto concrete, shock and vibration tests, and still play.
 
 <figure>
   <a href="/assets/images/prism/enclosure.svg"><img src="/assets/images/prism/enclosure.svg" width="1300" height="980" alt="Dimensioned control and port layout with a section through the module mounting bracket" loading="lazy" decoding="async"></a>

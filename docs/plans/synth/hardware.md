@@ -19,6 +19,7 @@ The [hardware specification](../../specs/synth/PrismDeviceHardware.md) defines t
 - [ ] Measure audio round trip and note to sound with loopback cables: mean, worst case and jitter over 24 hours at full budget. Pass: round trip under 5 ms, note to sound under 5.5 ms worst case, never over 10 ms, jitter under 1 ms ([DEVICE-HW-LATENCY]).
 - [ ] Measure the acceptance stereo patch's share of the deadline on one core and the temperature, and feed both to the performance track ([DEVICE-PERF]). Pass: 70% or less with no thermal throttling ([DEVICE-HW-COMPUTE]).
 - [ ] Power pulled during deploy and during update; bypass with the power off.
+- [ ] 3D-printed starter case ([DEVICE-HW-ENCLOSURE-PRINTED]): a printed box that fits the prototype and holds the controls and jacks in the panel layout. Model files in the repository; no rugged tests apply.
 
 ## Prism board [DEVICE-HW-BOARD]
 
@@ -31,4 +32,4 @@ The [hardware specification](../../specs/synth/PrismDeviceHardware.md) defines t
 
 ## Enclosure [DEVICE-HW-ENCLOSURE]
 
-Tracked in the [enclosure release checks](../../designs/prism-device/README.md#enclosure-release-checks).
+The die-cast road case is the eventual case and comes last, with the Prism board; the starter case above comes first. Tracked in the [enclosure release checks](../../designs/prism-device/README.md#enclosure-release-checks).
