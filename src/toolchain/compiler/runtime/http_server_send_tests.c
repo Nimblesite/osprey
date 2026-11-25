@@ -115,15 +115,14 @@ static int mock_shutdown(int socket_fd, int how) {
 // only its static send_all helper.
 HttpServer *servers[MAX_SERVERS] = {0};
 pthread_mutex_t runtime_mutex = PTHREAD_MUTEX_INITIALIZER;
-static int64_t spawn_result = -1;
-static int64_t awaited_fiber_id = -1;
+static char spawned_fiber; // stands in for the accept loop's Fiber
+static Fiber *spawn_result;
+static Fiber *awaited_fiber;
 static bool expect_registry_lock;
 
 int64_t get_next_id(void) { return 1; }
 
-int64_t fiber_spawn(int64_t (*fn)(void)) { (void)fn; return -1; }
-
-int64_t fiber_spawn_env(int64_t (*fn)(void *), void *environment) {
+Fiber *fiber_spawn_env(int64_t (*fn)(void *), void *environment) {
   (void)fn;
   (void)environment;
   spawn_calls++;
@@ -137,7 +136,9 @@ int64_t fiber_spawn_env(int64_t (*fn)(void *), void *environment) {
   return spawn_result;
 }
 
-int64_t fiber_await(int64_t fiber_id) { awaited_fiber_id = fiber_id; return 0; }
+int64_t fiber_join(Fiber *fiber) { awaited_fiber = fiber; return 0; }
+
+void fiber_release(Fiber *fiber) { (void)fiber; }
 
 // The two ways a write stops: the send fails, or it sends nothing at all.
 static void expect_send_fails(ssize_t result, int error_number) {
@@ -169,8 +170,8 @@ static void test_empty_buffer_needs_no_socket_call(void) {
 }
 
 static void test_listen_publication_and_double_listen_are_serialized(void) {
-  spawn_result = 9;
-  awaited_fiber_id = -1;
+  spawn_result = (Fiber *)&spawned_fiber;
+  awaited_fiber = NULL;
   socket_calls = 0;
   spawn_calls = 0;
   expect_registry_lock = true;
@@ -181,7 +182,7 @@ static void test_listen_publication_and_double_listen_are_serialized(void) {
   assert(http_listen(server_id, NULL) == -7);
   assert(socket_calls == 1 && spawn_calls == 1);
   assert(http_stop_server(server_id) == 0);
-  assert(awaited_fiber_id == 9);
+  assert(awaited_fiber == (Fiber *)&spawned_fiber);
 }
 
 int main(void) {

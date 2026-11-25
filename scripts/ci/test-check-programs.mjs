@@ -13,16 +13,25 @@ const compiler = path.resolve(values.compiler);
 const root = fs.mkdtempSync(path.join(repo, 'target/check-programs-test-'));
 const good = 'print("ok")\n';
 const red = 'print(1 + "x")\n';
+const recursiveModule = (entry) => `module Survey {
+    fn first(n) = match n { 0 => 0 _ => second(wrapSub(n, 1)) }
+    fn second(n) = first(n)
+    export fn run(n) = ${entry}
+}
+print(Survey::run(4))
+`;
 const project = '[project]\nname = "gate-fixture"\nsource_roots = ["src"]\ndefault_namespace = "app"\nentry = "main.osp"\n';
 const fixtures = {
   'app/osprey.toml': project, 'app/src/main.osp': good, 'app/scratch/stray.osp': red,
   'loose/good.osp': good, 'loose/bad.osp': red,
+  'loose/live-cycle.osp': recursiveModule('first(n)'),
+  'loose/dead-cycle.osp': recursiveModule('n'),
   'pyflavor/script.py': '#!/usr/bin/env python3\n# Licensed MIT.\n# osprey: flavor=python\n' + red,
   'pyflavor/slash.py': '// osprey: flavor=ml\nfn bad() { missing }\n',
   'pyflavor/plain.py': '# a plain python file\ndef add(a, b):\n    return a + b\n',
   'x/failscompilation/red.osp': red, 'x/sample-registry/red.osp': red,
 };
-const failures = ['app/scratch/stray.osp', 'loose/bad.osp', 'pyflavor/script.py', 'pyflavor/slash.py'];
+const failures = ['app/scratch/stray.osp', 'loose/bad.osp', 'loose/dead-cycle.osp', 'pyflavor/script.py', 'pyflavor/slash.py'];
 
 function put(relative, body) {
   const file = path.join(root, relative);
@@ -50,6 +59,9 @@ function check(failGraph, expected, total) {
     assert(!/^define /m.test(fs.readFileSync(path.join(logs, file), 'utf8')), 'successful LLVM output accumulated in ' + file);
   }
   assert.match(stdout, /loose\/bad\.osp:1:[0-9]+: type mismatch:/, 'the failure report includes compiler diagnostics');
+  for (const name of ['first', 'second']) {
+    assert(stdout.includes(`private function \`Survey::${name}\` is never used; delete it`), stdout);
+  }
   assert(!fs.existsSync(path.join(root, 'target/release/osprey')), 'all jobs must use the supplied compiler');
 }
 
@@ -61,8 +73,8 @@ try {
   put('scripts/ci/check-programs.py', fs.readFileSync(path.resolve(repo, values.script)));
   put('compiler-wrapper.sh', '#!/bin/sh\nprintf "%s\\n" "$*" >> "$WRAPPER_LOG"\nif [ "$FAIL_GRAPH" = 1 ] && [ "$2" = --source-graph ]; then exit 1; fi\nexec "$REAL_COMPILER" "$@"\n');
   fs.chmodSync(path.join(root, 'compiler-wrapper.sh'), 0o755);
-  check('', failures, 6);
-  check('1', ['app', ...failures.slice(1)], 5);
+  check('', failures, 8);
+  check('1', ['app', ...failures.slice(1)], 7);
   console.log('check-programs gate regression: OK');
 } finally {
   fs.rmSync(root, { recursive: true, force: true });

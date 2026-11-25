@@ -82,7 +82,13 @@ impl Checker {
                     body,
                     ..
                 } => {
-                    self.collect_function(name, type_params, parameters, return_type.as_ref(), env);
+                    self.collect_function(
+                        name,
+                        type_params,
+                        (parameters, return_type.as_ref()),
+                        *position,
+                        env,
+                    );
                     if returns_expansive_handler_value(body) {
                         let _ = self.handler_factories.insert(name.clone());
                     }

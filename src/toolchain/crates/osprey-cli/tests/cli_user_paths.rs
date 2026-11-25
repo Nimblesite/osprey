@@ -37,6 +37,7 @@ impl Drop for Scratch {
 mod launcher;
 use launcher::osprey;
 
+#[cfg(unix)]
 fn in_repository(mut command: Command) -> Command {
     let _ = command.current_dir(launcher::repo_root());
     command
@@ -356,7 +357,8 @@ fn hunt_answers_before_it_looks_for_its_engine() {
 }
 
 // `--run` needs a WASI host: Node's, the one the wasm corpus runs under, is on
-// every CI runner, wasmtime is not [WASM-TARGET].
+// every CI runner, wasmtime is not [WASM-TARGET]. The host is a shell script.
+#[cfg(unix)]
 fn node_wasi_host(scratch: &Scratch) -> PathBuf {
     let smoke =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../scripts/wasm/wasm-smoke.mjs");
@@ -377,6 +379,7 @@ fn node_wasi_host(scratch: &Scratch) -> PathBuf {
 // Every wasm32 build lowers through a scratch `.wasm.ll` and `.wasm.o`, and
 // `--run` through a scratch `.wasm`: none of them may outlive the command, or
 // each corpus run leaves thousands of files in the temp directory.
+#[cfg(unix)]
 #[test]
 fn wasm32_builds_leave_no_scratch_files_behind() {
     let scratch = Scratch::new("wasm_scratch");
@@ -491,12 +494,28 @@ fn programs_read_their_arguments_and_environment() {
             .env("OSP_ARGS_PROBE", "bin"),
     );
     assert_eq!((code, out.as_str()), (Some(0), "2:[p|q r] bin\n"));
-    // wasm32: `--run` hands the arguments to the WASI host, which grants no environment.
-    let host = node_wasi_host(&scratch);
+    #[cfg(unix)]
+    wasm_runs_read_their_arguments(&scratch, &default);
+    assert_refused(
+        osprey().arg(&default).args(["--check", "--", "x"]),
+        2,
+        "arguments after -- need --run",
+    );
+    assert_refused(
+        osprey().arg(&default).args(["--compile", "--", "x"]),
+        2,
+        "arguments after -- need --run",
+    );
+}
+
+// wasm32: `--run` hands the arguments to the WASI host, which grants no environment.
+#[cfg(unix)]
+fn wasm_runs_read_their_arguments(scratch: &Scratch, default: &Path) {
+    let host = node_wasi_host(scratch);
     let wasm = |extra: &[&str]| {
         finished(
             osprey()
-                .arg(&default)
+                .arg(default)
                 .args(["--target=wasm32", "--run", "--quiet"])
                 .args(extra)
                 .env("OSPREY_WASM_RUN", &host)
@@ -517,16 +536,6 @@ fn programs_read_their_arguments_and_environment() {
         (code, out.as_str()),
         (Some(0), "0:[] env: variable is not set\n"),
         "{err}"
-    );
-    assert_refused(
-        osprey().arg(&default).args(["--check", "--", "x"]),
-        2,
-        "arguments after -- need --run",
-    );
-    assert_refused(
-        osprey().arg(&default).args(["--compile", "--", "x"]),
-        2,
-        "arguments after -- need --run",
     );
 }
 

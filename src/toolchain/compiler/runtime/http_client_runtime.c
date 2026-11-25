@@ -156,7 +156,7 @@ static int64_t read_response(const Transport *t, char **out_raw, size_t *out_len
 // after it unchanged, so a large request can neither truncate nor read past the buffer.
 // The Host header carries the bare host name (no :port) - servers like GitHub reject
 // "Host: api.github.com:443" with 400. Returns 0, -6, or -16 past the deadline.
-static int64_t send_request(const HttpClient *client, const Transport *t, int64_t method,
+static int64_t send_request(const char *host, const Transport *t, int64_t method,
                             const char *path, const char *headers, const char *body) {
   char head[MAX_HTTP_BUFFER];
   const char *method_str = http_method_to_string((HttpMethod)method);
@@ -168,15 +168,41 @@ static int64_t send_request(const HttpClient *client, const Transport *t, int64_
   int head_len = body_len > 0
       ? snprintf(head, sizeof(head),
                  "%s %s HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n%s%sContent-Length: %zu\r\n\r\n",
-                 method_str, path, client->host, extra, extra_end, body_len)
+                 method_str, path, host, extra, extra_end, body_len)
       : snprintf(head, sizeof(head),
                  "%s %s HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n%s%s\r\n",
-                 method_str, path, client->host, extra, extra_end);
+                 method_str, path, host, extra, extra_end);
   if (head_len < 0 || (size_t)head_len >= sizeof(head)) {
     return -6; // a head that does not fit is refused, never sent truncated
   }
   int64_t rc = transport_send_all(t, head, (size_t)head_len);
   return rc == 0 ? transport_send_all(t, body, body_len) : rc;
+}
+
+// What one request reads from its client. It is copied under the lock, so an
+// http_close_client on another fiber can free the client while the request is
+// still connecting, shaking hands or sending, and the request keeps its own
+// host (#415).
+typedef struct {
+  char *host;
+  int port;
+  int timeout;
+  bool is_https;
+} ClientTarget;
+
+// Copies the client's target into *out. Returns 0, -1 for no such client, or
+// -9 when the host cannot be copied.
+static int64_t client_target(int64_t client_id, ClientTarget *out) {
+  pthread_mutex_lock(&runtime_mutex);
+  const HttpClient *client = clients[client_id];
+  if (client) {
+    *out = (ClientTarget){strdup(client->host), client->port, client->timeout, client->is_https};
+  }
+  pthread_mutex_unlock(&runtime_mutex);
+  if (!client) {
+    return -1;
+  }
+  return out->host ? 0 : -9;
 }
 
 // http_perform connects, sends the request and reads the response. For https:// clients
@@ -188,27 +214,28 @@ int64_t http_perform(int64_t client_id, int64_t method, char *path,
   if (!valid_client_id(client_id)) {
     return -1;
   }
-  pthread_mutex_lock(&runtime_mutex);
-  HttpClient *client = clients[client_id];
-  pthread_mutex_unlock(&runtime_mutex);
-  if (!client) {
-    return -1;
+  ClientTarget target;
+  int64_t rc = client_target(client_id, &target);
+  if (rc != 0) {
+    return rc;
   }
   if (!path) {
+    free(target.host);
     return -2;
   }
-  Transport t = transport_open(client->timeout);
-  int64_t rc = transport_connect(&t, client->host, client->port);
-  if (rc == 0 && client->is_https) {
-    rc = transport_secure(&t, client->host);
+  Transport t = transport_open(target.timeout);
+  rc = transport_connect(&t, target.host, target.port);
+  if (rc == 0 && target.is_https) {
+    rc = transport_secure(&t, target.host);
   }
   if (rc == 0) {
-    rc = send_request(client, &t, method, path, headers, body);
+    rc = send_request(target.host, &t, method, path, headers, body);
   }
   if (rc == 0) {
     rc = read_response(&t, out_raw, out_len, out_closed);
   }
   transport_close(&t);
+  free(target.host);
   return rc;
 }
 

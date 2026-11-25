@@ -368,7 +368,8 @@ function themed(node: Record<string, unknown>, ctx: Context): string {
   return `<div class="osp-themed" style="${escapeHtml(themeDeclarations(node.theme))}">${child(node.body, ctx)}</div>`;
 }
 
-const RENDERERS: Readonly<Record<string, (node: Record<string, unknown>, ctx: Context) => string>> = {
+// [NATIVE-HOSTS-COVERAGE] The registered node kinds this webview draws.
+export const RENDERERS: Readonly<Record<string, (node: Record<string, unknown>, ctx: Context) => string>> = {
   text: textNode,
   "rich-text": richText,
   math,
@@ -409,9 +410,6 @@ const RENDERERS: Readonly<Record<string, (node: Record<string, unknown>, ctx: Co
   tabs: tabBody,
   rows,
 };
-
-/** Every node kind this webview draws ([NATIVE-HOSTS-COVERAGE]); any other kind is refused as a protocol defect. */
-export const RENDERED_KINDS: readonly string[] = Object.keys(RENDERERS);
 
 /** Render one component; an unknown component is a protocol defect and throws. */
 export function renderNode(value: unknown, ctx: Context): string {

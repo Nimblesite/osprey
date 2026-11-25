@@ -3,7 +3,7 @@ import { execFile } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { runFrontendCommand, semanticSuccess, FrontendSpawnDeps } from "../../client/src/package-frontend";
+import { runFrontendCommand, FrontendSpawnDeps } from "../../client/src/package-frontend";
 
 function runner(script: string): FrontendSpawnDeps {
   return { execFile: ((_executable: string, _args: unknown, options: unknown, callback: unknown) =>
@@ -30,7 +30,7 @@ suite("package real subprocess protocol", () => {
   test("semantic refusal remains a failure even when the process exits zero", async () => {
     await withProcess('process.stdin.resume(); console.log(JSON.stringify({status:1,lines:["add.exists"]}));', async (root, spawn) => {
       const report = await runFrontendCommand("frontend", "--json add @org/package", root, spawn);
-      assert.strictEqual(semanticSuccess(report), false);
+      assert.strictEqual(report.status, 1);
       assert.deepStrictEqual(report.lines, ["add.exists"]);
     });
   });

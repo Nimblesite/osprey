@@ -479,14 +479,14 @@ struct HandlerSnapshot {
 // a spawn). An empty stack needs no copy: *out is NULL and restoring NULL keeps a
 // fresh thread's empty stack. Returns -1, with *out NULL, when the copy cannot be
 // allocated, so a spawn is refused instead of starting without its handlers.
-int __osprey_handler_try_snapshot(HandlerSnapshot **out) {
+size_t __osprey_handler_try_snapshot(HandlerSnapshot **out) {
     ensure_handler_stack_initialized();
     int depth = g_handler_stack->top + 1;
     *out = NULL;
     if (depth == 0) return 0;
-    HandlerSnapshot *snap = (HandlerSnapshot *)malloc(sizeof(HandlerSnapshot) +
-                                                     (size_t)depth * sizeof(HandlerEntry));
-    if (snap == NULL) return -1;
+    size_t bytes = sizeof(HandlerSnapshot) + (size_t)depth * sizeof(HandlerEntry);
+    HandlerSnapshot *snap = (HandlerSnapshot *)malloc(bytes);
+    if (snap == NULL) return bytes;
     snap->count = depth;
     memcpy(snap->entries, g_handler_stack->stack, (size_t)depth * sizeof(HandlerEntry));
     *out = snap;

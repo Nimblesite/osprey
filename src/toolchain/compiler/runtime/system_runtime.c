@@ -32,14 +32,6 @@
 #endif
 #endif // !__wasm__
 
-// Make stdout line-buffered at startup so a long-running program (e.g. an HTTP
-// server that never returns to flush at exit) shows each printed line live,
-// whether stdout is a TTY, a pipe, or a file. Line buffering changes only flush
-// timing, never the bytes, so captured/differential output is unaffected.
-__attribute__((constructor)) static void osprey_stdio_lbf(void) {
-  setvbuf(stdout, NULL, _IOLBF, 0);
-}
-
 #ifndef __wasm__
 // Process event handler function type - Osprey provides this callback
 typedef void (*ProcessEventHandler)(int64_t process_id, int64_t event_type,

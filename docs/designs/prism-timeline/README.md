@@ -30,7 +30,7 @@ Press the dial or its number and drag vertically. A 180-pixel upward drag traver
 
 ## Instrument builder [PRISM-INSTRUMENT]
 
-The three proposed Instrument views use the Hook track’s FM pluck in *Lagos After Rain*. Play shows the same four controls at their saved sizes. Edit adds the spacing grid, resize handles and the selected control’s targets. Brightness opens the filter while decreasing high damping in the short room. MIDI learn waits for a controller movement. The OSC address stays visible and copies with one action. [Instrument builder specification](../../specs/applications/Daw.md#instrument-builder-prism-instrument)
+The three proposed Instrument views use the Hook track’s FM pluck in *Lagos After Rain*. Play shows the same four controls at their saved sizes. Edit adds the spacing grid, resize handles and the selected control’s targets. Brightness opens the filter while decreasing high damping in the short room. MIDI learn waits for a controller movement. The OSC address stays visible and copies with one action. [Instrument builder specification](../../specs/synth/PrismInstrument.md)
 
 | Design screenshot | What to inspect |
 | --- | --- |
@@ -75,7 +75,7 @@ The design model has **no fixed slot count** for processors, internal cables, se
 | Feedback | Definition references form an acyclic containment hierarchy. Expand instance boundaries and validate the combined signal graph, including bus-to-bus returns. A feedback cycle needs a positive explicit Delay accepted by the synth scheduler. A delayed effect's name is insufficient. Recursive rack references are rejected. |
 | Edit and recovery | Rewire, create-and-assign, duplicate and group are single revision-checked transactions. Validate the candidate before publication. Show the offending socket, incompatible channels, occupied inlet, cycle path or capacity failure. The previous patch stays audible. Deleting a bus lists affected connections and requires an explicit replacement or disconnect. Undo restores identities, connections and levels. |
 
-The typeDiagram describes how these connections belong in the single project JSON. The current native chooser connects audio to buses. Track-to-track MIDI and OSC destinations are specified for implementation. [Project graph](../../specs/applications/Daw.md#the-project-is-a-graph-daw-graph)
+The typeDiagram describes how these connections belong in the single project JSON. The current native chooser connects audio to buses. Track-to-track MIDI and OSC destinations are specified for implementation. [Project graph](../../specs/synth/Daw.md#the-project-is-a-graph-daw-graph)
 
 The graph document composes the existing synth node and port types with the DAW instrument and note types. The editor can address nested objects using their instance path and local node/pin IDs. Pan, zoom, selection and node positions belong to the editor. They do not affect routing or scheduling. [Synth graph](../../../src/osprey/packages/synth/graph.td) · [DAW arrangement](../../../src/osprey/examples/daw/daw.td)
 

@@ -31,6 +31,7 @@ while IFS= read -r -d $'\0' f; do
   FILES+=("$f")
 done < <(find "$TESTDIR" \( -name '*.test.osp' -o -name '*.test.ospml' -o -name '*.test.ts' -o -name '*.test.py' \) -print0 | LC_ALL=C sort -z)
 
+<<<<<<< HEAD
 selection=${2:-}
 if [[ $selection == --ownership-host ]]; then
   [[ $MEMORY == ownership && $TARGET != native ]] || exit 2
@@ -40,6 +41,18 @@ if [[ $selection == --ownership-host ]]; then
   MANIFEST= # The host contract must run; even a reviewed skip fails its golden floor.
 elif [[ $selection == --accepted ]]; then
   [[ $MEMORY == ownership && $TARGET == native ]] || exit 2
+=======
+# Ownership runs the whole corpus [MEM-OWNERSHIP-STATIC]. The checker refuses
+# every program that would need a second owner, so each program has exactly one
+# right outcome, pinned by src/osprey/tests/OWNERSHIP_ACCEPTED.txt: a listed
+# program runs, matches the shared golden and leaves nothing live; every other
+# program is REFUSED by name, never built wrong, never crashed. FILES becomes
+# the listed programs and REFUSED_FILES the rest, which the harness compiles
+# after the main pass. On a cross target the host runs the listed programs its
+# own manifest does not skip.
+typeset -a REFUSED_FILES=()
+if [[ $MEMORY == ownership ]]; then
+>>>>>>> origin/fixes
   manifest=$TESTDIR/OWNERSHIP_ACCEPTED.txt
   LC_ALL=C sort -cu "$manifest" || exit 1
   typeset -a accepted=()
@@ -51,6 +64,7 @@ elif [[ $selection == --accepted ]]; then
     fi
     accepted+=("$f")
   done < "$manifest"
+<<<<<<< HEAD
   (( ${#accepted} >= 137 )) || { echo "Ownership acceptance floor breached" >&2; exit 1; }
   FILES=("${accepted[@]}")
   GOLDEN_MIN=${#FILES}
@@ -58,4 +72,20 @@ elif [[ $selection == --accepted ]]; then
 elif [[ -n $selection ]]; then
   echo "Unknown corpus selection: $selection" >&2
   exit 2
+=======
+  (( ${#accepted} >= 140 )) || { echo "Ownership acceptance floor breached" >&2; exit 1; }
+  if [[ $TARGET == native ]]; then
+    REFUSED_FILES=(${FILES:|accepted})
+  elif [[ -f $MANIFEST ]]; then
+    typeset -a unportable=()
+    for row in ${(f)"$(grep -vE '^[[:space:]]*(#|$)' "$MANIFEST")"}; do
+      unportable+=("$ROOT/${row%% *}")
+    done
+    accepted=(${accepted:|unportable})
+  fi
+  FILES=("${accepted[@]}")
+  GOLDEN_MIN=${#FILES}
+  GPU_MODE_MIN=${#${(M)FILES:#$GPU_SUITE_DIR/*}}
+  MANIFEST= # Every listed program must run: a skip here is a failure, not a hole.
+>>>>>>> origin/fixes
 fi

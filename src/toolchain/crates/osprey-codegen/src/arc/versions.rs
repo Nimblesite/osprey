@@ -30,7 +30,11 @@ pub(crate) fn take_source(cg: &mut Codegen, source: Value) -> Source {
     }
     let taken = super::consume_into_store(cg, &source.operand);
     if !taken {
+<<<<<<< HEAD
         super::second_owner(cg, &source.operand, None, Need::Versioned);
+=======
+        super::second_owner_of(cg, &source, None, Need::Versioned);
+>>>>>>> origin/fixes
     }
     Source {
         value: source,

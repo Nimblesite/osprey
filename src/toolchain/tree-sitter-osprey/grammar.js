@@ -139,19 +139,9 @@ module.exports = grammar({
     import_statement: ($) =>
       seq(
         'import',
-        choice(
-          // Compatibility with the original Default spelling. It lowers to
-          // the same namespace + SymbolPath model as `::` imports.
-          field('legacy_target', $.legacy_import_path),
-          seq(
-            field('target', $.import_target),
-            optional(field('tail', $.import_tail)),
-          ),
-        ),
+        field('target', $.import_target),
+        optional(field('tail', $.import_tail)),
       ),
-
-    legacy_import_path: ($) =>
-      seq($.identifier, repeat1(seq('.', $.identifier))),
 
     import_target: ($) =>
       seq(

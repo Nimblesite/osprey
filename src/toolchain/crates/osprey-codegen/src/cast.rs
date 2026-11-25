@@ -106,6 +106,8 @@ pub(crate) fn erase_result(cg: &mut Codegen, semantic: Value) -> Value {
         semantic.llvm_ty(),
         semantic.operand
     ));
+    // Keep the existing ledger owner across the opaque ABI cast.
+    crate::arc::same_value(cg, &ptr, &semantic.operand);
     Value::new(ptr, LType::Ptr)
 }
 

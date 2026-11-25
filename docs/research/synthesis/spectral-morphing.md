@@ -1,6 +1,6 @@
 # Spectral morphing [SYNTH-SPECTRAL-MORPH]
 
-Collected 21 November 2026 to justify the three morphing modes planned for `SpectralMorph { amount mode }` ([plan](../../plans/advanced-synthesis.md), [spec](../../specs/runtime/Synthesis.md#morphing-synth-spectral-morph)): *Blend* (log-magnitude interpolation), *Envelope* (cross-synthesis) and *Partial* (matched-peak interpolation). Summaries describe the cited work; the recommended design is ours, not a claim by those authors. Bibliographic details marked *unverified* could not be re-checked against a publisher's record and must be confirmed before formal citation; dates come from the work or its bibliographic record.
+Collected 21 November 2026 to justify the three morphing modes planned for `SpectralMorph { amount mode }` ([plan](../../plans/synth/advanced-synthesis.md), [spec](../../specs/synth/SynthDsp.md#spectral-processing-synth-spectral)): *Blend* (log-magnitude interpolation), *Envelope* (cross-synthesis) and *Partial* (matched-peak interpolation). Summaries describe the cited work; the recommended design is ours, not a claim by those authors. Bibliographic details marked *unverified* could not be re-checked against a publisher's record and must be confirmed before formal citation; dates come from the work or its bibliographic record.
 
 ## What morphs today
 

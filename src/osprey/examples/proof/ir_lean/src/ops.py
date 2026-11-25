@@ -21,6 +21,11 @@ EXTERNS = ["osp_alloc", "osp_alloc_tagged", "osp_alloc_tagged_noinit", "osp_owne
 CASTS = ["bitcast", "ptrtoint", "inttoptr", "zext", "sext", "trunc"]
 BINARY = ["add", "sub", "mul", "and", "or", "xor", "shl"]
 PREDICATES = ["eq", "ne", "slt", "sle", "sgt", "sge", "ult", "ule", "ugt", "uge"]
+<<<<<<< HEAD
+=======
+RMW = ["xchg", "add", "sub"]
+"""`llvm.atomicrmw`'s `bin_op` numbers `LlvmSubset.RmwOp` models, in order."""
+>>>>>>> origin/fixes
 DYNAMIC_INDEX = -2147483648
 
 
@@ -157,6 +162,7 @@ def callee(scope, name) -> Result[str, str]:
 
 
 def call(scope: Types.Scope, op: Ir.Operation) -> Result[str, str]:
+<<<<<<< HEAD
     """`llvm.call` of a named callee."""
     match Ir.symbol_attr(op.properties, "callee"):
         case Success(value=name):
@@ -164,6 +170,24 @@ def call(scope: Types.Scope, op: Ir.Operation) -> Result[str, str]:
             return andThen(callee(scope, name), lambda target: andThen(Types.regs(scope, op.operands), lambda args: Success(value=f".call {dst} {target} {args}")))
         case Error():
             return Error(message="an indirect call")
+=======
+    """`llvm.call` of a named callee, or through the function pointer in operand 0."""
+    dst = "none" if isEmpty(op.results) else "(some " + unwrap_or(result(scope, op), "0") + ")"
+    match Ir.symbol_attr(op.properties, "callee"):
+        case Success(value=name):
+            return andThen(callee(scope, name), lambda target: andThen(Types.regs(scope, op.operands), lambda args: Success(value=f".call {dst} {target} {args}")))
+        case Error():
+            return andThen(operand(scope, op, 0), lambda target: andThen(Types.regs(scope, segment(op.operands, 1, wrapSub(len(op.operands), 1))), lambda args: Success(value=f".call {dst} (.reg {target}) {args}")))
+
+
+def atomicrmw(scope: Types.Scope, op: Ir.Operation) -> Result[str, str]:
+    """`llvm.atomicrmw pointer, operand` with the dialect's `bin_op` number ([IR-LEAN-ATOMIC])."""
+    match andThen(Ir.int_attr(op.properties, "bin_op"), lambda number: nth(RMW, number)):
+        case Success(value=kind):
+            return andThen(result(scope, op), lambda d: andThen(type_at(op.operand_types, 1), lambda t: andThen(operand(scope, op, 0), lambda p: andThen(operand(scope, op, 1), lambda by: Success(value=f".atomicrmw {d} .{kind} {t} {p} {by}")))))
+        case Error():
+            return Error(message="an atomicrmw whose operation is not xchg, add or sub")
+>>>>>>> origin/fixes
 
 
 def named(scope, op, kind) -> Result[str, str]:
@@ -203,7 +227,11 @@ def memory(scope: Types.Scope, op: Ir.Operation) -> Result[str, str]:
 
 def instr(scope, op) -> Result[str, str]:
     """One non-terminator operation as a Lean `Instr`."""
+<<<<<<< HEAD
     return routed(scope, op, ["llvm.mlir.constant", "llvm.mlir.zero", "llvm.call", "llvm.icmp", "llvm.select"], [constant, zero, call, icmp, select], memory)
+=======
+    return routed(scope, op, ["llvm.mlir.constant", "llvm.mlir.zero", "llvm.call", "llvm.icmp", "llvm.select", "llvm.atomicrmw"], [constant, zero, call, icmp, select, atomicrmw], memory)
+>>>>>>> origin/fixes
 
 
 def is_term(op):

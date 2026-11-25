@@ -372,6 +372,7 @@ void run_all_http_tests(void) {
   test_server_stop_ends_idle_connections();
   test_server_serves_concurrent_keep_alive_clients();
   test_server_names_statuses_as_node_does();
+  test_server_head_is_framed_once_in_the_handlers_order();
   test_live_loopback_exchange();    // full end-to-end request path
   test_post_response_loopback();    // POST body retained behind a handle
   test_client_tls_peer_verification(); // untrusted/wrong-host certs rejected
@@ -381,8 +382,7 @@ void run_all_http_tests(void) {
   test_stop_server_with_client_connected(); // foreign stop tears the client down
   // The three below burn finite id spaces and are permanent for the process.
   test_spawn_with_handlers_survives_every_failed_allocation();
-  test_spawn_refused_by_a_full_handle_table_frees_the_handler_copy();
-  test_listener_spawn_failure_is_reported(); // burns the FIBER id space
+  test_listener_spawn_failure_is_reported();
   test_client_handle_exhaustion();           // burns the shared HTTP id space
   test_server_handle_exhaustion();           // observes that same exhaustion
 

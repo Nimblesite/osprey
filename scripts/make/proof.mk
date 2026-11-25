@@ -103,9 +103,19 @@ _conformance-arc:
 	@echo "==> [conformance] assertion corpus under --memory=arc..."
 	@OSPREY_ARC_DEBUG=1 OSPREY_TEST_JOBS=1 zsh src/toolchain/crates/run_test_corpus.sh arc
 
+<<<<<<< HEAD
 # _conformance-ownership: compare every accepted program against the shared native golden and require zero leaks.
 _conformance-ownership:
 	@OSPREY_CC="$(CURDIR)/scripts/ci/ownership-asan-clang.sh" OSPREY_SCRIBBLE_FREES=1 OSPREY_TEST_JOBS=1 zsh src/toolchain/crates/run_test_corpus.sh ownership --accepted
+=======
+# _conformance-ownership: run every assertion suite under compile-time
+# ownership. A program listed in OWNERSHIP_ACCEPTED.txt must match the shared
+# native golden under AddressSanitizer with zero leaks; every other program
+# must be refused by the checker by name.
+_conformance-ownership:
+	@echo "==> [conformance] assertion corpus under --memory=ownership..."
+	@OSPREY_CC="$(CURDIR)/scripts/ci/ownership-asan-clang.sh" OSPREY_SCRIBBLE_FREES=1 OSPREY_TEST_JOBS=1 zsh src/toolchain/crates/run_test_corpus.sh ownership
+>>>>>>> origin/fixes
 
 # _test_disciplines: the reference type disciplines of [TYPES-DISCIPLINE-REFERENCE]
 # (spec 0050). The `bounded` package reads `// @bound p in 0..100`, holds every
@@ -180,22 +190,65 @@ _test_proof_unicode:
 
 .PHONY: _test_proof_ci $(PROOF_BATCH_TARGETS) $(PROOF_CORPUS_TARGETS)
 
-# [SYNTH-DSP-PROOFS] Check the current source export with the Osprey kernel.
+# [SYNTH-DSP-PROOFS] [CONCURRENCY-FIBER-LIFETIME] [CONCURRENCY-DEADLOCK] Check the current source
+# exports with the Osprey kernel: every theorem must PASS with no axioms.
 .PHONY: _test_synthesis_proofs
 SYNTHESIS_THEOREMS := weightedOverlapAdd travelingWavePropagation additivePeriod overlapNormalizationNecessary interpolatorFactor interpolatorEndpoints interpolatorConstant zeroPulseIndices hannEndpoints
 SYNTHESIS_THEOREMS += allpassMagnitude allpassRecurrence antiderivativeAverage antiderivativeOffset antiderivativeConstantCurve hannQuarterEnergy hannEighthEnergy
 SYNTHESIS_THEOREMS += radixTwoSplit radixTwoUpper realBinConjugate binAdditive binHomogeneous
+FIBER_LIFETIME_THEOREMS := run_valid freed_iff freed_is_final spawn_then_both_release dead_list_conserves drained_releases_each_once
+FIBER_LIFETIME_THEOREMS += channel_then_handle_release share_is_acquire free_is_release free_last_iff
+# The FiberLifetime mutants: each edit breaks a claim, and its mark proves it applied.
+FIBER_LEAK_EDIT := s/| .live 0, .release => some .freed/| .live 0, .release => some (.live 0)/
+FIBER_LEAK_MARK := some (.live 0)
+FIBER_LOST_EDIT := s/.drain => ⟨\[\], pending ++ released⟩/.drain => ⟨[], released⟩/
+FIBER_LOST_MARK := .drain => ⟨[], released⟩
+FIBER_EARLY_EDIT := s/| .held 0 => some .owned/| .held 0 => none/
+FIBER_EARLY_MARK := | .held 0 => none
+# [CONCURRENCY-DEADLOCK] A fiber the collector reports can never be woken.
+FIBER_DEADLOCK_THEOREMS := step_keeps_known step_keeps_live step_keeps_stuck stuck_for_ever stuck_never_runs reachable_wait_is_live
+# The mutant lets a fiber wake a waiter on a channel it cannot name.
+FIBER_WAKE_EDIT := s/: Runs w g → Reach w g c → w.waits f c →/: Runs w g → w.waits f c →/
+FIBER_WAKE_MARK := : Runs w g → w.waits f c →
 
 _test_synthesis_proofs: $(PROOF_BATCH_TARGETS)
 	$(MAKE) _check_synthesis_proofs
 
+# $(call kernel_check_theorems,<Lean module>,<theorem names>): every theorem
+# replays in the Osprey kernel built for gc, arc and wasm32, with no axioms.
+define kernel_check_theorems
+	cd src/toolchain/benchmarks/proof/tools && lake build lean4export $(1)
+	@set -e; for name in $(2); do \
+		theorem="$(1).$$name"; export_file="$(abspath target/proof)/$$theorem.ndjson"; \
+		(cd src/toolchain/benchmarks/proof/tools && lake exe lean4export $(1) -- "$$theorem") > "$$export_file"; \
+		for backend in gc arc wasm; do \
+			if [ "$$backend" = wasm ]; then \
+				result=$$(printf '%s\t%s\n' "$$theorem.ndjson" "$$theorem" | node --stack-size=4096 scripts/proof/proof-batch-wasm.mjs target/proof/openai/check-batch.wasm "$(abspath target/proof)"); \
+			else \
+				result=$$(printf '%s\t%s\n' "$$export_file" "$$theorem" | target/proof/openai/check-batch.$$backend); \
+			fi; \
+			echo "$$backend $$result"; test "$$result" = "PASS $$theorem | axioms: none"; \
+		done; \
+	done
+endef
+
+# $(call kernel_rejects_mutant,<Lean module>,<name>,<sed edit>,<grep needle>,<why it is wrong>):
+# the module with one edit that breaks its claim must fail to check.
+define kernel_rejects_mutant
+	@sed '$(3)' src/toolchain/benchmarks/proof/tools/$(1).lean > "$(abspath target/proof)/$(1)_$(2).lean"
+	@grep -qF '$(4)' "$(abspath target/proof)/$(1)_$(2).lean"
+	@if (cd src/toolchain/benchmarks/proof/tools && lake env lean "$(abspath target/proof)/$(1)_$(2).lean") > /dev/null 2>&1; then \
+		echo "$(1): the $(2) mutant was accepted ($(5))"; exit 1; fi
+	@echo "REJECTED $(1) $(2) mutant ($(5))"
+endef
+
 .PHONY: _check_synthesis_proofs
 _check_synthesis_proofs:
-	cd src/toolchain/benchmarks/proof/tools && lake build lean4export Synthesis
-	@set -e; for name in $(SYNTHESIS_THEOREMS); do \
-		theorem="Synthesis.$$name"; export_file="$(abspath target/proof)/$$theorem.ndjson"; \
-		(cd src/toolchain/benchmarks/proof/tools && lake exe lean4export Synthesis -- "$$theorem") > "$$export_file"; \
-		printf '%s\t%s\n' "$$export_file" "$$theorem" | target/proof/openai/check-batch.arc > "$$export_file.result"; \
-		cat "$$export_file.result"; test "$$(cat "$$export_file.result")" = "PASS $$theorem | axioms: none"; \
-	done
+	$(call kernel_check_theorems,Synthesis,$(SYNTHESIS_THEOREMS))
+	$(call kernel_check_theorems,FiberLifetime,$(FIBER_LIFETIME_THEOREMS))
+	$(call kernel_rejects_mutant,FiberLifetime,leak,$(FIBER_LEAK_EDIT),$(FIBER_LEAK_MARK),the last release keeps the fiber - #359)
+	$(call kernel_rejects_mutant,FiberLifetime,lost,$(FIBER_LOST_EDIT),$(FIBER_LOST_MARK),a drain loses the handles it took)
+	$(call kernel_rejects_mutant,FiberLifetime,early,$(FIBER_EARLY_EDIT),$(FIBER_EARLY_MARK),a shared handle is freed under its last sharer)
+	$(call kernel_check_theorems,FiberDeadlock,$(FIBER_DEADLOCK_THEOREMS))
+	$(call kernel_rejects_mutant,FiberDeadlock,wake,$(FIBER_WAKE_EDIT),$(FIBER_WAKE_MARK),a fiber wakes a waiter on a channel it cannot name)
 	@bash scripts/proof/production-fft.sh

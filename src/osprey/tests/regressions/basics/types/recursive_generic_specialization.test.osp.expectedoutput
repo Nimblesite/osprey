@@ -2,5 +2,9 @@
 ok 1 - recursive generic functions specialize for integers and strings
 ok 2 - nested generic fanout preserves specialized values
 ok 3 - shared Result specializations preserve list payloads
+rebuilt     -> byteAt1=1
+rebuilt     -> cpWidth=2
+mapped rows -> byteAt1=1 | cpWidth=2
+kept rows   -> cpWidth=2
 1..3
 # tests=3 passed=3 failed=0 skipped=0

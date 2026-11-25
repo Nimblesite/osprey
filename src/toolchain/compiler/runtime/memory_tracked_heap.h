@@ -63,6 +63,10 @@ static OspArcHdr *arc_hdr(void *body) {
 #include "heap_lock.h"
 #include "memory_heap_limit.h"
 #include "run_parent_watch.h"
+<<<<<<< HEAD
+=======
+#include "stack_guard.h"
+>>>>>>> origin/fixes
 
 #include "memory_arc_registry.h"
 
@@ -226,6 +230,10 @@ void osp_release(void *body) { tracked_drop(body); }
 // lazy arming on first alloc left an allocation-free program with no report,
 // which the corpus harness cannot tell apart from a crashed exit path.
 void osp_mem_boot(void) {
+<<<<<<< HEAD
+=======
+  osp_stack_guard_arm();
+>>>>>>> origin/fixes
   run_parent_watch();
   heap_lock();
   arc_arm_debug();

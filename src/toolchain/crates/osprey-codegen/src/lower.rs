@@ -237,19 +237,15 @@ fn compile_module(program: &Program, options: CodegenOptions, library: bool) -> 
     // A program that used the testing built-ins exits with the TAP epilogue's
     // status (plan + summary printed by the runtime) [TESTING-EXIT].
     crate::arc::epilogue(&mut cg, None);
-    if cg.lowered.fibers && !library {
+    if (cg.lowered.fibers || cg.lowered.channels) && !library {
         // A completed fiber keeps one runtime owner so every `await` can return
-        // its own retained reference. Main's language owners are gone now, so
-        // release those runtime roots before process-exit leak accounting.
+        // its own retained reference, and a channel owns every value sent and
+        // never received. Main's language owners are gone now, so drop the
+        // holds of the handles they let go of before process-exit leak
+        // accounting ([CONCURRENCY-FIBER-LIFETIME],
+        // [CONCURRENCY-CHANNEL-LIFETIME]) [GC-ARC-PERCEUS].
         cg.add_extern("declare void @fiber_cleanup_results()");
         cg.emit("call void @fiber_cleanup_results()");
-    }
-    if cg.lowered.channels && !library {
-        // A value sent and never received still holds the reference `send`
-        // transferred to the channel, and nothing else can hand it back —
-        // `fiber_cleanup_results` walks fibers, not channels [GC-ARC-PERCEUS].
-        cg.add_extern("declare void @channel_cleanup()");
-        cg.emit("call void @channel_cleanup()");
     }
     let status = exit_status.unwrap_or_else(|| "0".to_owned());
     if cg.lowered.testing {

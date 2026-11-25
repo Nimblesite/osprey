@@ -11,8 +11,6 @@
 
 // The poller and its workers [HTTP-SERVER-CONNECTIONS].
 
-extern int64_t fiber_await(int64_t fiber_id);
-extern int64_t fiber_spawn_env(int64_t (*fn)(void *), void *environment);
 
 #define POOL_WORKERS_MIN 2
 // Osprey heap operations share one lock across threads, so more workers than
@@ -56,7 +54,7 @@ struct HttpPool {
   int serving[POOL_WORKERS_MAX];
   pthread_t threads[POOL_WORKERS_MAX];
   bool thread_known[POOL_WORKERS_MAX];
-  int64_t fibers[POOL_WORKERS_MAX];
+  Fiber *fibers[POOL_WORKERS_MAX]; // a hold on each worker until it is joined
   WorkerSeat seats[POOL_WORKERS_MAX];
   int workers;
   int wake[2]; // a worker writes [1] when it returns a connection
@@ -185,7 +183,9 @@ static void stop_workers(HttpPool *pool) {
   pthread_cond_broadcast(&pool->work);
   pthread_mutex_unlock(&pool->mutex);
   for (int index = 0; index < pool->workers; index++) {
-    (void)fiber_await(pool->fibers[index]);
+    (void)fiber_join(pool->fibers[index]);
+    fiber_release(pool->fibers[index]);
+    pool->fibers[index] = NULL;
   }
 }
 
@@ -221,8 +221,8 @@ static HttpPool *create_pool(HttpServer *server) {
     WorkerSeat *seat = &pool->seats[pool->workers];
     seat->pool = pool;
     seat->index = pool->workers;
-    int64_t fiber = fiber_spawn_env(worker_fiber, seat);
-    if (fiber < 0) {
+    Fiber *fiber = fiber_spawn_env(worker_fiber, seat);
+    if (!fiber) {
       break;
     }
     pool->fibers[pool->workers++] = fiber;

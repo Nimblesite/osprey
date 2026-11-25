@@ -53,8 +53,6 @@ import { defaultFrontend, registerPackageCommands } from "./package-commands";
 import { registerModuleExplorer } from "./module-explorer";
 import { registerLocalRegistry } from "./local-registry";
 import { huntCurrentFile } from "./hunt";
-export * from "./client-config";
-export * from "./debug-config";
 
 // @nimblesite/shipwright-vscode is ESM-only; this extension is CommonJS, so it
 // is loaded via dynamic import() (never a static require) inside activate().

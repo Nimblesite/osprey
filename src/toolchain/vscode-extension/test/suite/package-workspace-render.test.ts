@@ -6,7 +6,7 @@
 import * as assert from "assert";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { RENDERED_KINDS, renderWorkspace, type RenderOptions } from "../../client/src/osprey-ui/render";
+import { RENDERERS, renderWorkspace, type RenderOptions } from "../../client/src/osprey-ui/render";
 import { renderShown } from "../../client/src/osprey-ui/webview/render";
 import { readFrame } from "../../client/src/osprey-ui/webview/rows";
 import { workspaceHtml } from "../../client/src/osprey-ui/webview-html";
@@ -236,7 +236,7 @@ suite("package workspace component renderer", () => {
     // webview draws it or refuses it by name.
     const kinds = unionKinds("node.ospml", "type Node A =", { Typeset: "math" });
     assert.ok(kinds.includes("meter") && kinds.includes("context-menu") && kinds.includes("scene"), kinds.join(","));
-    assert.deepStrictEqual([...RENDERED_KINDS].sort(), [...kinds].sort());
+    assert.deepStrictEqual(Object.keys(RENDERERS).sort(), [...kinds].sort());
     const scene = renderWorkspace({ regions: regions({ kind: "scene", width: 400, height: 300, zoom: 0, event: 7 }) });
     assert.ok(scene.includes('<canvas class="osp-canvas"'), scene);
     assert.ok(scene.includes('data-ordinal="7"'), scene);

@@ -1,0 +1,1 @@
+6:0: type mismatch: cannot unify Point with { x: int, y: int }; a record literal bound without a type stays anonymous, so write `Point { ... }` or annotate the binding `: Point` ([TYPE-RECORD-ANON])

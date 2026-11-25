@@ -180,6 +180,18 @@ declaration's arity.** `Box<int> { v: 1 }` against `type Box<T>` is well-formed;
 the declaration, so a count mismatch is an error rather than a silently ignored
 annotation.
 
+`[TYPE-GENERICS-FIELD-BARE]` **A declared `Fiber` or `Channel` field names its
+element type.** A field written with a bare `Fiber` or `Channel`, at any depth of
+its type (`type Holder = { fib: Fiber }`), is rejected at the declaration. The
+message tells the author to write the element type (`Fiber<int>`) or make the
+record generic (`type Holder<T> = { fib: Fiber<T> }`). Codegen needs that type
+at `await` and `recv`, and no use can supply it once the field has lost it. The
+check used to pass such a field, and codegen then refused the program (#340,
+[COMPILER-RED-FAILS]). A bare `Map` field still checks and runs. A function
+parameter written bare is different: it reads as fresh arguments, as if left to
+inference. Rejected by
+`src/osprey/examples/failscompilation/bare_constructor_record_field.ospo`.
+
 `[TYPE-GENERICS-FN]` **Functions bind type parameters with `fn name<T, …>`.**
 A binder makes every use of `T` in the signature the SAME inference variable;
 without it, `T` in an annotation names a nominal type. The binder is
@@ -600,9 +612,16 @@ fn describe(p: { x: int, y: int }) -> string = "${p.x},${p.y}"
 let origin = { x: 0, y: 0 }
 ```
 
-An anonymous record unifies with a declared record of the same row
-([TYPE-ROW](#rows-and-record-type-unification--type-row)), so `origin` is
-accepted wherever a `Point` is expected. Field keys are **bare identifiers**;
+An anonymous record is a type of its own. It becomes a declared record only
+where a declared type is written for it ([TYPE-RECORD-CONTEXT](#contextual-record-literals--type-record-context)):
+`let origin: Point = { x: 0, y: 0 }`, `sum({ x: 0, y: 0 })` for a declared
+parameter, or the constructor `Point { x: 0, y: 0 }`. Bound with no declared
+type, `origin` above stays anonymous, and passing it where a `Point` is
+expected is a type mismatch. Codegen lays an anonymous record out by sorted
+field name and a declared one in declared field order, so accepting it would
+need an implicit conversion the language does not make (#405). Rejected by
+`src/osprey/examples/failscompilation/anonymous_record_where_declared_expected.ospo`.
+Field keys are **bare identifiers**;
 that is what separates a record from a map literal, whose keys are string or
 expression values (`{ "Dave": 28 }`). A brace literal with no fields is the
 empty map, not the empty record.
@@ -624,8 +643,6 @@ let many: List<Point> = [{ x: 5, y: 6 }, { y: 9, x: 7 }]
 ```
 
 The contexts are declared types, never inferred ones: an annotated binding, a function's declared return type (through blocks and match arms in tail position), a declared parameter of the function a call names, a declared field of a record being constructed, and the elements of a list whose element type is a record. In each, a literal whose fields are exactly the record's is rewritten into that record's constructor before checking and code generation, so both see the record's declared layout and field order. A literal with a missing or extra field stays anonymous and the checker reports the mismatch (`src/osprey/examples/failscompilation/contextual_record_wrong_fields.ospo`). A name shared by two functions is not read as a call context. Regression: `src/osprey/tests/regressions/basics/types/contextual_records.test.osp` and its TypeScript twin.
-
-Not implemented yet: an anonymous record bound with no declared type, such as `origin` above, is rejected where a `Point` is expected, although [TYPE-RECORD-ANON] promises it is accepted.
 
 ### Result fields — [TYPE-RECORD-RESULT]
 
@@ -1289,7 +1306,7 @@ Unused warnings offer no automatic deletion: an unread binding can still evaluat
 
 ## Unused private module members `[TYPE-WARNINGS-UNUSED-PRIVATE]`
 
-A module is a closed boundary: an item it does not export can be named only from inside it. A private function or value that no expression of its module names is dead code, so it is one `unused-private` warning at its declaration, in every flavor:
+A module is a closed boundary. The compiler reports one `unused-private` warning at each unreachable private function and each unread private value, in every flavor:
 
 ```osprey
 module Cart {
@@ -1298,4 +1315,4 @@ module Cart {
 }
 ```
 
-Delete it. The check is by spelling, not binding: an identifier, path segment, field, method or updated record of the same name anywhere in the module, nested modules included, counts as a read. The rule can therefore miss dead code (a function that only calls itself), but it never reports live code. A Python-flavor file is a module that exports what its `__all__` lists. Exported items, top-level declarations, types, and modules ascribed a signature (whose surface the signature names) are never reported. The compiler's warning listing and the language server report it (`osprey-types/src/unused_private.rs`). Warnings never change a build's exit status, but the program check fails on this one: every tracked program must be free of dead private members ([CI-PROGRAMS-COMPILE]).
+Function reachability starts at exported definitions, initializers, and nested modules. It follows each referenced private function through the other functions its body names, so an isolated recursive group is reported. An identifier, path segment, field, method or updated record of the same spelling counts as a reference. A private value is reported when no expression names it. A Python-flavor file exports the names in `__all__`. Exported items, top-level declarations, types, and modules ascribed a signature are outside this check. The compiler and language server share the pass in `osprey-types/src/unused_private.rs`. The tracked-program check treats these warnings as failures ([CI-PROGRAMS-COMPILE]).

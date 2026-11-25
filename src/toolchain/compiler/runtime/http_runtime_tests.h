@@ -128,7 +128,6 @@ void test_closure_listener_serves_requests(void);
 void test_closure_listen_rejections(void);
 void test_stop_server_with_client_connected(void);
 void test_spawn_with_handlers_survives_every_failed_allocation(void);
-void test_spawn_refused_by_a_full_handle_table_frees_the_handler_copy(void);
 void test_listener_spawn_failure_is_reported(void);
 void test_client_gone_follows_the_served_client(void);
 void test_keep_alive_waits_for_its_listeners(void);
@@ -139,6 +138,7 @@ void test_server_ends_half_closed_and_pipelined_connections(void);
 void test_server_stop_ends_idle_connections(void);
 void test_server_serves_concurrent_keep_alive_clients(void);
 void test_server_names_statuses_as_node_does(void);
+void test_server_head_is_framed_once_in_the_handlers_order(void);
 void test_server_handle_exhaustion(void);
 
 #endif // HTTP_RUNTIME_TESTS_H

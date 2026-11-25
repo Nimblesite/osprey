@@ -238,10 +238,10 @@ void t_owned_text_lifetime(void) {
   CHECK(osp_mem_string_length("borrowed") == -1);
   osp_retain(text);
   put_i64(owner, 0, 0); put(owner, 1, text);
-  osp_mem_set_finalizer(note_text_finalized);
+  osp_mem_set_finalizer(OSP_MEM_LIST_HDR_EXTERN, note_text_finalized);
   osp_release(owner);
   CHECK(g_finalized == owner && osp_mem_string_length(text) == 9);
-  osp_mem_set_finalizer(NULL);
+  osp_mem_set_finalizer(OSP_MEM_LIST_HDR_EXTERN, NULL);
   osp_release(text);
   CHECK(osp_mem_string_length(text) == -1); // Recycled storage is not a live String.
   CHECK(osp_alloc_tagged_noinit(0, OSP_MEM_STRING) == NULL);

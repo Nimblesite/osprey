@@ -22,14 +22,10 @@
 /* ===== Builder (transient-style, no sharing during construction) ===== */
 
 OspreyListBuilder *osprey_list_builder_new_of(int em) {
-  OspreyListBuilder *b =
-      (OspreyListBuilder *)calloc(1, sizeof(OspreyListBuilder));
+  OspreyListBuilder *b = (OspreyListBuilder *)osp_alloc_checked(
+      calloc(1, sizeof(OspreyListBuilder)), "list builder", sizeof(OspreyListBuilder));
   b->elem_managed = em;
   return b;
-}
-
-OspreyListBuilder *osprey_list_builder_new(void) {
-  return osprey_list_builder_new_of(0);
 }
 
 /* Stack a fresh root over the builder's root and its full tail chunk. Unlike
@@ -192,8 +188,9 @@ OspreyList *osprey_list_sort(OspreyList *l) {
     osp_retain(l); /* alias return: +1 to the caller (see concat) */
     return (OspreyList *)l;
   }
-  int64_t *src = (int64_t *)malloc((size_t)n * sizeof(int64_t));
-  int64_t *scratch = (int64_t *)malloc((size_t)n * sizeof(int64_t));
+  size_t bytes = (size_t)n * sizeof(int64_t);
+  int64_t *src = (int64_t *)osp_alloc_checked(malloc(bytes), "listSort", bytes);
+  int64_t *scratch = (int64_t *)osp_alloc_checked(malloc(bytes), "listSort", bytes);
   for (int64_t i = 0; i < n; i++) {
     src[i] = osprey_list_get(l, i);
   }

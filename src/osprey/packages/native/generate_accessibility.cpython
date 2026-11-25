@@ -6,9 +6,9 @@ import sys
 
 ROOT = Path(__file__).resolve().parent
 BEGIN, END = "// BEGIN GENERATED [UI-MACHINE-A11Y]", "// END GENERATED [UI-MACHINE-A11Y]"
-HOST = ROOT.parents[2] / "toolchain/hosts/gpui/src/scene/access.rs"
+HOST = ROOT.parents[2] / "toolchain/hosts/gpui/src/scene/shapes.rs"
 OSPREY_TYPES = {"str": "string", "float": "float", "bool": "bool", "AccessRole": "AccessRole"}
-RUST_TYPES = {"str": "String", "float": "f64", "bool": "bool", "AccessRole": "Role"}
+RUST_TYPES = {"str": "String", "float": "f64", "bool": "bool", "AccessRole": "R"}
 RUST_NAMES = dict(zip(
     ["accessRole", "accessLabel", "accessLeft", "accessTop", "accessWidth", "accessHeight", "accessValue", "accessMin", "accessMax", "accessSelected"],
     ["role", "label", "x", "y", "w", "h", "value", "min", "max", "selected"],
@@ -32,7 +32,7 @@ def osprey(roles, fields):
 
 
 def rust(fields):
-    return ["#[derive(Debug, Clone, PartialEq)]", "pub struct Access {"] + [
+    return ["#[derive(Debug, Clone, PartialEq)]", "pub struct Accessible<R> {"] + [
         f"    pub {RUST_NAMES[name]}: {RUST_TYPES[kind]}," for name, kind in fields if name in RUST_NAMES
     ] + ["}"]
 

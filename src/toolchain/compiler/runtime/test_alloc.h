@@ -26,11 +26,15 @@
 #ifndef OSPREY_TEST_ALLOC_H
 #define OSPREY_TEST_ALLOC_H
 
+#include "memory_refused.h"
+
 #include <dlfcn.h>
 #include <errno.h>
 #include <stdatomic.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <unistd.h>
+#include <sys/wait.h>
 #include <string.h>
 
 // Successes remaining before the next allocation fails. Negative is disarmed,
@@ -253,6 +257,34 @@ OSP_ALLOC_ENTRY void free(void *at) {
     atomic_fetch_sub(&osp_alloc_live_blocks, 1);
     osp_real_free(at);
   }
+}
+
+// [FAILURE-EXPLICIT] Runs `arm`, then `op`, in a forked child whose stderr is
+// captured. True when the child ended with the memory-refusal status and its
+// stderr holds `needle`: a refused block stops the run by name (#409), never
+// a store through NULL.
+static inline int osp_child_refusal_names(void (*arm)(void), void (*op)(void),
+                                          const char *needle) {
+  int err[2];
+  char seen[512];
+  int status;
+  if (pipe(err) != 0) return 0;
+  (void)fflush(NULL);
+  pid_t child = fork();
+  if (child < 0) return 0;
+  if (child == 0) {
+    (void)dup2(err[1], STDERR_FILENO);
+    arm();
+    op();
+    _exit(0);
+  }
+  close(err[1]);
+  ssize_t n = read(err[0], seen, sizeof seen - 1);
+  close(err[0]);
+  if (waitpid(child, &status, 0) != child || n <= 0) return 0;
+  seen[n] = '\0';
+  return WIFEXITED(status) && WEXITSTATUS(status) == OSP_HEAP_EXHAUSTED_STATUS &&
+         strstr(seen, needle) != NULL;
 }
 
 #endif // OSPREY_TEST_ALLOC_H

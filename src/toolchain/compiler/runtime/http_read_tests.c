@@ -85,6 +85,8 @@ static void check_stops_at_the_fault(void) {
       {"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n0\r\nX\001: 1\r\n", -14, "http response: chunked body: invalid trailer"},
       {"HTTP/1.1 200 OK\r\nContent-Length: x\r\n\r\nok", -14, "http response: body: invalid Content-Length"},
       {"HTTP/1.1 200 OK\r\nContent-Length: 1\r\nContent-Length: 2\r\n\r\nok", -14, "http response: body: invalid Content-Length"},
+      {"HTTP/1.1 200 OK\r\nContent-Length: -1\r\n\r\nok", -14, "http response: body: invalid Content-Length"},
+      {"HTTP/1.1 200 OK\r\nX-A: a\nTransfer-Encoding: chunked\r\n\r\n2\r\nok\r\n0\r\n\r\n", -14, "http response: head: malformed"},
       {"HTTP/1.1 200 OK\r\nno colon\r\n\r\nok", -14, "http response: head: malformed"},
       {"HTTP/1.1 100 Continue\r\nno colon\r\n\r\nok", -14, "http response: head: malformed"},
       {"HTTP/9 200 OK\r\n\r\nok", -8, "http response: status line: not HTTP/1.x"},

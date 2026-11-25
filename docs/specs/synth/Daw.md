@@ -17,7 +17,7 @@
 - **Rendering** dumps Master's output to the export file. It plays nothing ([DAW-RENDER-MASTER]).
 - No track, note, bus or stem is ever played, rendered or exported on its own.
 
-Status: in progress. The daw runs on the FerroUI host. It opens a project, shows the Timeline, Mix and patch pages, saves edits into the project file, and plays bars through the engine. The [delivery plan](../../plans/daw.md) records what is verified.
+Status: in progress. The daw runs on the FerroUI host. It opens a project, shows the Timeline, Mix and patch pages, saves edits into the project file, and plays bars through the engine. The [delivery plan](../../plans/synth/daw.md) records what is verified.
 
 The daw is the [Prism](../../../src/osprey/examples/daw/PRISM.md) patch studio with a song around it. It opens a project, lets you edit each track's notes, mix and patch, plays it and saves it back to the same file.
 
@@ -266,7 +266,7 @@ The daw answers Open Sound Control over UDP, so a control surface, a lighting de
 
 ## Performance [DAW-PERF]
 
-**A render takes at most a fifth of the song's length ([DAW-PERF-RENDER]).** A render that runs at real time, or slower, has failed. A 5 minute song with basic tracks and routing renders, through the whole graph into Master and onto disk, in about one minute or less. No project in `tracks/`, however dense its patches, takes more than half its length. Anything slower is a defect. Every pointer event must answer within one display frame. The [plan](../../plans/daw.md) holds the profile, the owners and the targets: two bars of the codex project in under 14 s, and a Prism drag move under 5 ms mean.
+**A render takes at most a fifth of the song's length ([DAW-PERF-RENDER]).** A render that runs at real time, or slower, has failed. A 5 minute song with basic tracks and routing renders, through the whole graph into Master and onto disk, in about one minute or less. No project in `tracks/`, however dense its patches, takes more than half its length. Anything slower is a defect. Every pointer event must answer within one display frame. The [plan](../../plans/synth/daw.md) holds the profile, the owners and the targets: two bars of the codex project in under 14 s, and a Prism drag move under 5 ms mean.
 
 **Track patch windows [DAW-PAGES-PATCH-WINDOW].** Opening a track patch keeps its arrangement window open. Patch controls edit the same song. Closing the patch window leaves the arrangement available, and reopening the track restores its saved nodes, cables and control values. Choosing a module on the patch window's canvas shows its properties in the patch panel docked in that window, never on the arrangement window. Each window keeps its own size: the patch window's panel and toolbar sit inside the patch window however the arrangement window is sized, and the song page stays centred in its own window.
 
@@ -278,16 +278,9 @@ The daw answers Open Sound Control over UDP, so a control surface, a lighting de
 
 Selecting a module shows it in the patch panel docked beside the canvas, never on the canvas itself: its name and a dial for each parameter with its value and unit. The panel's Close puts it away and lets go of the module. Connect and disconnect cables on the canvas. Right-click a node and choose **Delete node** to remove it. File → Settings stores the VST3 folder. Prism discovers its plug-ins in the background on launch and when the folder changes. A press or a drag on a slider sets the parameter, as one undoable edit. This is the same for a module the skin draws and for one it does not.
 
-## Instrument builder [PRISM-INSTRUMENT]
+## Instrument builder
 
-An instrument is a patch with a performer's face on it. The patch keeps its modules and cables; the instrument hides them and shows only the controls the user chose. Each control is a **macro**: one knob, slider, toggle or pad that moves one or more module parameters at once (Brightness turning a filter's cutoff up and its resonance down, for example). The instrument is stored with its patch in the project file ([DAW-PROJECT-PATCH]), so reopening the project restores the same face.
-
-- **Two modes ([PRISM-INSTRUMENT-MODES]).** A patch has a Patch view (the canvas) and an Instrument view. The Instrument view is in Play mode or Edit mode, switched by a command with a shortcut in every keymap ([DAW-KEYS]). Switching views or modes never changes a value or the sound.
-- **Play mode ([PRISM-INSTRUMENT-PLAY]).** Only the instrument's controls are shown; no module, cable or socket is visible. Turning a control moves its macro as one undoable edit ([DAW-CONTROLS], [DAW-HUMAN]), and the patch is heard through Master as always ([DAW-GRAPH-OUTPUT]). Notes from the MIDI keyboard play the instrument as they play the track ([DAW-MIDI-PLAY]).
-- **Edit mode ([PRISM-INSTRUMENT-EDIT]).** The user adds a control from the list of control kinds, then moves it by dragging, resizes it by its handles and places it anywhere on the instrument's face, snapping to the Prism spacing grid. They rename its label, choose its kind and delete it. Controls keep their size when the window resizes ([DAW-LAYOUT-FIXED-SCALE]). Each change is one undo step.
-- **Macro mappings ([PRISM-INSTRUMENT-MACRO]).** In Edit mode a control lists its targets: a module parameter each, with a range (from and to, which may be reversed) and a curve. One control can drive many parameters, and one parameter can be driven by at most one macro, so no two controls fight over a value. A target whose module is deleted from the patch is removed from the macro with a notice naming it; a macro left without targets is shown as unmapped, never silently dropped. Mappings use the synth package's `Macros` (declared ranges, curves, smoothing), so a macro moves exactly the values a dial on the module would.
-- **MIDI and OSC control ([PRISM-INSTRUMENT-REMOTE]).** Each control can be bound to a MIDI controller by moving it while the control is in learn ([DAW-MIDI-LEARN]), and has an OSC address `/track/<n>/instrument/<control>` ([DAW-OSC-ADDRESS]) so a phone surface such as TouchOSC drives it. Bindings are stored with the instrument. A remote change goes through the same checked edit as a turn on screen ([DAW-OSC-CHECK]), and the control on screen follows it; changed values are sent back to subscribed OSC peers ([DAW-OSC-FEEDBACK]).
-- **Accessible ([DAW-ACCESS]).** Every instrument control reports its user-given name, value, range and kind, takes keyboard focus in its layout order and steps by arrow keys.
+The instrument builder, its macros, and the hardware devices that run an instrument without Prism are specified in [Instrument builder](PrismInstrument.md), [Prism device](PrismDevice.md) and [Prism device hardware](PrismDeviceHardware.md): see [PRISM-INSTRUMENT] and [DEVICE].
 
 ## Pages [DAW-PAGES]
 

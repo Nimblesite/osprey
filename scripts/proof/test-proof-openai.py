@@ -106,7 +106,26 @@ class CorpusTests(unittest.TestCase):
     def test_workbench_custom_operator_fixtures_match_pinned_lean_sources(self):
         controls = json.loads((PROOF.ROOT / "src/osprey/examples/proof/kernel/exports/notation_cases.json").read_text())
         self.assertEqual(controls["toolchain"], "leanprover/lean4:v4.25.0")
-        self.assert_embedded_twins(controls["groups"], "src/osprey/workbench/tests/imported.ospml")
+        cases = {group["embedded"]: group for group in controls["groups"]}
+        self.assert_embedded_twins([cases.pop("counterfeitAddition")], "src/osprey/workbench/tests/imported.ospml")
+        self.assert_workbench_equality_exports(list(cases.values()))
+
+    def assert_workbench_equality_exports(self, groups):
+        tests = (PROOF.ROOT / "src/osprey/workbench/tests/imported.ospml").read_text()
+        definition = re.search(r"^    (counterfeitEquality \([^\n]+\) = .+)$", tests, re.MULTILINE)
+        driver = re.search(r"^    customEquality \(\) = (.+)$", tests, re.MULTILINE)
+        self.assertIsNotNone(definition)
+        self.assertIsNotNone(driver)
+        calls = re.findall(r'counterfeitEquality \("\w+", "\w+"\)', driver.group(1))
+        self.assertEqual(len(calls), len(groups))
+        with tempfile.TemporaryDirectory() as directory:
+            program = Path(directory) / "embedded.ospml"
+            for group, call in zip(groups, calls, strict=True):
+                with self.subTest(group=group["id"]):
+                    PROOF.check_files(group)
+                    program.write_text(f"{definition.group(1)}\nprint ({call})\n", encoding="utf-8")
+                    actual = subprocess.check_output([PROOF.ROOT / "target/release/osprey", program, "--run", "--quiet"])
+                    self.assertEqual(actual, PROOF.export_path(group).read_bytes() + b"\n")
 
     def test_kernel_export_fixture_twin_is_byte_identical_to_the_pinned_export(self):
         group = json.loads((PROOF.ROOT / "src/osprey/examples/proof/kernel/exports/recursor_cases.json").read_text())

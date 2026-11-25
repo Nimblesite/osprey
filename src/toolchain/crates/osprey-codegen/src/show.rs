@@ -82,7 +82,7 @@ pub(crate) fn row_format<S: AsRef<str>>(names: &[S]) -> String {
 
 /// `[1, 2]`: every element rendered, joined by the runtime.
 fn list(cg: &mut Codegen, l: &Value) -> Result<Value> {
-    let bld = crate::collections::list_builder_new(cg);
+    let bld = crate::collections::list_builder_new_of(cg, "0");
     crate::iter::each_list_elem(cg, l, |cg, _, elem| {
         let text = nested(cg, elem)?;
         crate::iter::push_built(cg, &bld, text, "toString").map(|_| ())

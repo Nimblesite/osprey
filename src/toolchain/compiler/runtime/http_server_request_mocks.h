@@ -76,25 +76,22 @@ static bool socket_sigpipe_suppressed;
 static int setsockopt_result;
 static void *protected_frees[2];
 static size_t protected_free_count;
-static int64_t awaited_fiber_id;
+static Fiber *awaited_fiber;
 
 int64_t get_next_id(void) { return 1; }
 
-int64_t fiber_spawn(int64_t (*fn)(void)) {
-  (void)fn;
-  return -1;
-}
-
-int64_t fiber_spawn_env(int64_t (*fn)(void *), void *environment) {
+Fiber *fiber_spawn_env(int64_t (*fn)(void *), void *environment) {
   (void)fn;
   (void)environment;
-  return -1;
+  return NULL;
 }
 
-int64_t fiber_await(int64_t fiber_id) {
-  awaited_fiber_id = fiber_id;
+int64_t fiber_join(Fiber *fiber) {
+  awaited_fiber = fiber;
   return 0;
 }
+
+void fiber_release(Fiber *fiber) { (void)fiber; }
 
 
 static ssize_t mock_recv(int socket_fd, void *buffer, size_t length,

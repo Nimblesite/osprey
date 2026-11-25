@@ -363,10 +363,10 @@ fn continuation_limit(target: &str) -> &'static str {
 /// [BUILTIN-FILE-LISTDIR].
 const DIRECTORY_FNS: &[&str] = &["listDir", "kindOf", "makeDir"];
 
+/// wasm32 runs fibers on its one thread, in spawn order ([CONCURRENCY-WASM]),
+/// so only these facilities are missing there.
 fn wasm_builtin(name: &str) -> Option<&'static str> {
-    if FIBER_FNS.contains(&name) {
-        Some("fiber concurrency")
-    } else if TERMINAL_FNS.contains(&name) {
+    if TERMINAL_FNS.contains(&name) {
         Some("terminal control")
     } else if DIRECTORY_FNS.contains(&name) {
         Some("directory access")
@@ -418,7 +418,7 @@ impl AstVisitor for Capabilities<'_> {
             | Expr::Send { .. }
             | Expr::Recv(_)
             | Expr::Select { .. }
-                if matches!(self.target, "wasm32" | "python") =>
+                if self.target == "python" =>
             {
                 self.reject("fiber concurrency");
             }

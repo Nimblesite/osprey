@@ -13,14 +13,11 @@ import {
   applyDefaultOspreyDebugConfig,
   defaultOspreyDebugConfigForEditor,
   defaultDebugOutputPath,
-  resolveLldbDapCommand,
-  resolveLldbDapExecutable,
-  missingLldbDapMessage,
   ospreyLanguageForFile,
   isOspreyFile,
-  deactivate,
-  type OspreyExtensionApi,
-} from "../../client/src/extension";
+} from "../../client/src/client-config";
+import { resolveLldbDapExecutable, missingLldbDapMessage } from "../../client/src/debug-config";
+import { deactivate, type OspreyExtensionApi } from "../../client/src/extension";
 import {
   assertSkipWarningLayout,
   extensionRoot,
@@ -3849,14 +3846,6 @@ suite("Osprey Debug Config Synthesis Unit Tests", () => {
       resolveLldbDapExecutable({ lldbDapPath: "/custom/lldb-dap" }, host),
       "/custom/lldb-dap",
     );
-    assert.strictEqual(
-      resolveLldbDapCommand({ lldbDapPath: "/custom/lldb-dap" }, host),
-      "/custom/lldb-dap",
-    );
-    assert.ok(
-      resolveLldbDapCommand({}).length > 0,
-      "default lldb-dap command is non-empty",
-    );
   });
 
   test("strict lldb-dap resolver reports missing tools precisely", () => {
@@ -3866,11 +3855,6 @@ suite("Osprey Debug Config Synthesis Unit Tests", () => {
     assert.strictEqual(
       resolveLldbDapExecutable({ lldbDapPath: "/missing/lldb-dap" }, host),
       undefined,
-    );
-    assert.strictEqual(
-      resolveLldbDapCommand({}, host),
-      "lldb-dap",
-      "compatibility resolver still returns a command name for old callers",
     );
     assert.match(
       missingLldbDapMessage({ lldbDapPath: "/missing/lldb-dap" }),

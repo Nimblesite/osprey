@@ -19,6 +19,8 @@ pub(super) struct Lowerer<'s> {
 struct Scope {
     bindings: BTreeMap<String, bool>,
     mutable: BTreeSet<String>,
+    /// Every name an assignment in this scope's body writes, nested blocks included.
+    assigned: BTreeSet<String>,
     typing_names: BTreeMap<String, String>,
     constructors: BTreeSet<String>,
     imports: BTreeSet<String>,
@@ -30,6 +32,7 @@ impl Scope {
         Self {
             bindings: BTreeMap::new(),
             mutable: BTreeSet::new(),
+            assigned: BTreeSet::new(),
             typing_names: BTreeMap::new(),
             constructors: BTreeSet::new(),
             imports: BTreeSet::new(),
@@ -242,6 +245,7 @@ impl<'s> Lowerer<'s> {
             self.count_writes(child, &mut counts);
         }
         if let Some(scope) = self.scopes.last_mut() {
+            scope.assigned.extend(counts.keys().cloned());
             scope.mutable.extend(
                 counts
                     .into_iter()
@@ -250,11 +254,38 @@ impl<'s> Lowerer<'s> {
         }
     }
 
+    /// A read of `name` the function it is in assigns but has not bound yet.
+    /// Python makes every assigned name local to its whole function, so this
+    /// read is an `UnboundLocalError`; lowering it to the outer binding instead
+    /// silently left the outer value unchanged (#364).
+    pub(super) fn unbound_local(&self, name: &str) -> bool {
+        for scope in self.scopes.iter().rev() {
+            if scope.bindings.contains_key(name) {
+                return false;
+            }
+            if scope.function_boundary {
+                return scope.assigned.contains(name);
+            }
+        }
+        false
+    }
+
     fn count_writes(&self, node: Node<'_>, counts: &mut BTreeMap<String, usize>) {
         if matches!(
             node.kind(),
             "function_definition" | "class_definition" | "lambda"
         ) {
+            return;
+        }
+        if node.kind() == "if_statement" {
+            let mut inner = BTreeMap::new();
+            for child in children(node) {
+                self.count_writes(child, &mut inner);
+            }
+            self.count_joined_writes(node, &mut inner);
+            for (name, count) in inner {
+                *counts.entry(name).or_default() += count;
+            }
             return;
         }
         if node.kind() == "assignment" {

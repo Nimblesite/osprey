@@ -1,6 +1,7 @@
 //! Python docstrings enter the shared documentation model without execution.
 //! Implements [FLAVOR-PYTHON-CST].
 use super::context::{children, Lowerer, Result};
+use osprey_ast::canonical::leading_whitespace_bytes;
 use osprey_ast::{DocComment, DocScope, Expr, Stmt};
 use tree_sitter::Node;
 
@@ -105,7 +106,7 @@ fn clean_docstring(text: &str) -> String {
     let margin = rest
         .iter()
         .filter(|line| !line.trim().is_empty())
-        .map(|line| line.len().saturating_sub(line.trim_start().len()))
+        .map(|line| leading_whitespace_bytes(line))
         .min()
         .unwrap_or(0);
     std::iter::once(first)

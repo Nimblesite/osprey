@@ -6,6 +6,11 @@
 #   run_test_corpus.sh [gc|arc|ownership]   native backend, chosen allocator
 #   OSPREY_TARGET=wasm32 run_test_corpus.sh wasm32 backend under Node's WASI
 #
+# `ownership` covers the whole corpus too: every program listed in
+# src/osprey/tests/OWNERSHIP_ACCEPTED.txt must pass, and every other program
+# must be refused by the checker by name [MEM-OWNERSHIP-STATIC]. A cross-target
+# run repeats the listed programs under that target's ownership archive.
+#
 # Two independent checks run per program, and BOTH must hold:
 #
 #   1. Exit status — the in-language `test(...)` assertions passed.
@@ -85,7 +90,7 @@ esac
 # is a closure, so wasm32 and the mobile C ABI run it as native does
 # ([MULTI-WASM-MANY], [CI-MULTISHOT-WASM]).
 case $TARGET in
-  wasm32)            GOLDEN_MIN=216 ;;
+  wasm32)            GOLDEN_MIN=278 ;; # fibers run on wasm32 [CONCURRENCY-WASM]
   ios-sim|macos|android*) GOLDEN_MIN=232 ;;
   *)                 GOLDEN_MIN=289 ;;
 esac
@@ -471,18 +476,34 @@ if [[ $gpu_mode_pairs -lt $GPU_MODE_MIN ]]; then
   echo "Both kernel lowerings must stay exercised; do not lower the floor." >&2
 fi
 
+source "${0:A:h}/corpus_ownership.sh"
+
 source "${0:A:h}/corpus_doctests.sh"
 doctests_ok=1
+<<<<<<< HEAD
 if [[ -z $selection ]]; then
+=======
+if [[ $MEMORY != ownership ]]; then
+>>>>>>> origin/fixes
   run_corpus_doctests || doctests_ok=0
 fi
 
 [[ $fail -eq 0 && $leaky -eq 0 && $golden_fail -eq 0 && $golden_missing -eq 0 \
    && $golden_floor_ok -eq 1 && $skips_ok -eq 1 \
+<<<<<<< HEAD
    && $gpu_mode_fail -eq 0 && $gpu_mode_floor_ok -eq 1 && $doctests_ok -eq 1 ]] || exit 1
 
 # Each cross-target conformance run also verifies the ownership archive with
 # the same host, stdout oracle and mandatory exit sentinel. [MEM-OWNERSHIP-STATIC-HOSTS]
 if [[ $TARGET != native && $MEMORY == arc && -z $selection ]]; then
   zsh "$SCRIPT" ownership --ownership-host || exit 1
+=======
+   && $gpu_mode_fail -eq 0 && $gpu_mode_floor_ok -eq 1 && $doctests_ok -eq 1 \
+   && $refusals_ok -eq 1 ]] || exit 1
+
+# Each cross-target conformance run also verifies the ownership archive with
+# the same host, stdout oracle and mandatory exit sentinel. [MEM-OWNERSHIP-STATIC-HOSTS]
+if [[ $TARGET != native && $MEMORY == arc ]]; then
+  zsh "$SCRIPT" ownership || exit 1
+>>>>>>> origin/fixes
 fi

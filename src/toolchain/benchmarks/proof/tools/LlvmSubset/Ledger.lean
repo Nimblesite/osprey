@@ -84,11 +84,29 @@ theorem callExt_preserves (fuel : Nat) (name : Ext) (args : List Val) :
   have counted := lengthOf_preserves
   unfold callExt; preserve
 
+<<<<<<< HEAD
+=======
+theorem rmwAt_preserves (op : RmwOp) (ty : Ty) (p operand : Val) :
+    Preserves (rmwAt op ty p operand) := by
+  have loaded := loadAt_preserves
+  have stored := storeAt_preserves
+  unfold rmwAt; preserve
+
+theorem callAt_preserves (callFn : CallFn) (called : ∀ index args, Preserves (callFn index args))
+    (values : List Val) (target : Val) : Preserves (callAt callFn values target) := by
+  cases target <;> (unfold callAt; preserve)
+
+>>>>>>> origin/fixes
 theorem execInstr_preserves (callFn : CallFn) (called : ∀ index args, Preserves (callFn index args))
     (fuel : Nat) (env : Env) (instr : Instr) : Preserves (execInstr callFn fuel env instr) := by
   have loaded := loadAt_preserves
   have stored := storeAt_preserves
   have external := callExt_preserves
+<<<<<<< HEAD
+=======
+  have atomic := rmwAt_preserves
+  have indirect := callAt_preserves callFn called
+>>>>>>> origin/fixes
   unfold execInstr; preserve
 
 theorem execBody_preserves (callFn : CallFn) (called : ∀ index args, Preserves (callFn index args))

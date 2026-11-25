@@ -11,6 +11,7 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { isMainThread, Worker } from "node:worker_threads";
 
 // `node:wasi` caches the module's memory backing store when the instance starts
 // and never refreshes it after `memory.grow`, so every WASI call a growing
@@ -57,6 +58,32 @@ function newestInstalledNode() {
   return best;
 }
 
+// The host's own stack for compiled wasm frames. V8 on a main thread's 8 MiB
+// trapped at a few thousand frames, on the main thread and in every fiber,
+// which on wasm32 run on it, so the module runs on a worker thread with a stack
+// as deep as a native program's. [CONCURRENCY-WASM] [WASM-TARGET-NODE]
+const HOST_STACK_MB = 256;
+
+// Re-runs `scriptUrl` on a worker with HOST_STACK_MB of stack, from the main
+// thread, and exits with the worker's status.
+async function ensureHostStack(scriptUrl) {
+  if (!isMainThread) {
+    return;
+  }
+  const worker = new Worker(new URL(scriptUrl), {
+    argv: process.argv.slice(2),
+    resourceLimits: { stackSizeMb: HOST_STACK_MB },
+  });
+  const status = await new Promise((done) => {
+    worker.on("error", (error) => {
+      console.error(`FAIL: ${error.message}`);
+      done(1);
+    });
+    worker.on("exit", done);
+  });
+  process.exit(status);
+}
+
 /**
  * Re-exec `scriptUrl` under a Node new enough to host WASI, when this one is
  * not. `OSPREY_NODE` names an interpreter explicitly; otherwise the newest
@@ -70,8 +97,9 @@ function newestInstalledNode() {
  *
  * Implements [WASM-TARGET-NODE].
  */
-export function ensureWasiCapableNode(scriptUrl) {
+export async function ensureWasiCapableNode(scriptUrl) {
   if (majorOf(process.versions.node) >= MIN_WASI_NODE_MAJOR) {
+    await ensureHostStack(scriptUrl);
     return;
   }
   const better =

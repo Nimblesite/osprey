@@ -301,7 +301,11 @@ pub(crate) fn give_arguments(cg: &mut Codegen, function: &str, arguments: &[Valu
     for (index, argument) in arguments.iter().enumerate() {
         let managed = owns(cg, function, index) && super::managed(cg, argument);
         if managed && !super::consume_into_store(cg, &argument.operand) {
+<<<<<<< HEAD
             super::second_owner(cg, &argument.operand, None, Need::Given);
+=======
+            super::second_owner_of(cg, argument, None, Need::Given);
+>>>>>>> origin/fixes
             super::retain_val(cg, argument);
         }
     }

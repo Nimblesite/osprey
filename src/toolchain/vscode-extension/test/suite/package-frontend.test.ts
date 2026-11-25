@@ -6,26 +6,11 @@
 
 import * as assert from "assert";
 import {
-  buildStdinCommand,
   parseFrontendReport,
-  semanticSuccess,
   runFrontendCommand,
 } from "../../client/src/package-frontend";
 
 suite("package frontend wire contract", () => {
-  test("a command is one whitespace-joined line with --project . for spaces", () => {
-    assert.strictEqual(
-      buildStdinCommand(["--json", "add", "@demo/one", "--registry", "http://127.0.0.1:8787", "--project", "."]),
-      "--json add @demo/one --registry http://127.0.0.1:8787 --project .",
-    );
-    assert.strictEqual(buildStdinCommand(["remove", "@a/b", "--project", "."]), "remove @a/b --project .");
-  });
-
-  test("a part containing whitespace is a bug, not a shell injection waiting to happen", () => {
-    assert.throws(() => buildStdinCommand(["add", "/my spaced/checkout", "--project", "."]));
-    assert.throws(() => buildStdinCommand(["add", "@a/b\nc"]));
-  });
-
   test("the JSON line is the report; the trailing process status line is not it", () => {
     const stdout = '{"lines":["added @demo/one e1.r2"],"status":0}\nstatus: 0\n';
     assert.deepStrictEqual(parseFrontendReport(stdout), { status: 0, lines: ["added @demo/one e1.r2"] });
@@ -38,13 +23,6 @@ suite("package frontend wire contract", () => {
   test("non-JSON and wrong-shape stdout is not a report", () => {
     for (const stdout of ["", "status: 0", "not json", "[]", '{"lines":[]}', '{"status":0}', '{"lines":"x","status":0}', '{"lines":[1],"status":0}', '{"lines":[],"status":"0"}']) {
       assert.strictEqual(parseFrontendReport(stdout), undefined, stdout);
-    }
-  });
-
-  test("only a semantic zero status is success", () => {
-    assert.strictEqual(semanticSuccess({ status: 0, lines: [] }), true);
-    for (const status of [1, 2, 3, -1]) {
-      assert.strictEqual(semanticSuccess({ status, lines: [] }), false, String(status));
     }
   });
 

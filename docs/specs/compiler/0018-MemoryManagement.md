@@ -193,6 +193,13 @@ Ending the process is a runtime quarantine, not a language operation: compiled c
 
 Symbolic runs have no ceiling; the engine bounds their memory. Checked by `t_heap_ceiling` in `memory_gc_thread_tests.c` and `memory_arc_tests.c`, and by `a_heap_that_only_grows_ends_at_its_ceiling` in `src/toolchain/crates/osprey-cli/tests/fiber_gc_memory.rs`.
 
+### Refused Blocks and Exhausted Stacks [MEM-REFUSED-STOP]
+
+Two more failures have no branch in compiled code to take, so each ends the run as a quarantine with the same status 71, after flushing standard output:
+
+- **A refused block a builtin must have.** `listSort` and the list builders return a list, never a `Result`, so when the allocator refuses one of their blocks the runtime writes `osprey: allocation refused: <builtin> request_bytes=<n>` to standard error instead of storing through a null pointer (`memory_refused.h`). Checked by `test_refused_sort_buffers_end_the_run_by_name` in `list_sort_tests.c`.
+- **Recursion past a thread's stack.** Every thread that runs Osprey code, the main thread from `osp_mem_boot` and every other one from `osp_thread_start`, has an alternate signal stack. A fault on its own stack writes `osprey: stack exhausted: a call went deeper than the thread's stack allows` to standard error. Any other fault goes to the handler that was installed before (`stack_guard.h`, macOS and Linux). Checked by `recursion_past_the_stack_ends_by_name` in `src/toolchain/crates/osprey-cli/tests/fiber_gc_memory.rs`, on the main thread and in a fiber under both backends.
+
 ### Conservative Tracing GC [GC-TRACE-CONSERVATIVE]
 
 The native GC records managed allocation base addresses and conservatively
@@ -243,10 +250,29 @@ pointers are safe no-ops.
 
 The layout word identifies raw blocks, pointer masks, list headers, pointer
 arrays, and finalized list headers: a header whose body owns a resource beyond
+<<<<<<< HEAD
 the heap (a GPU buffer's copy on the device, [GPU-BUFFER-RESIDENT](../runtime/0034-GPUComputation.md#device-resident-buffers--gpu-buffer-resident))
 passes through the one finalizer the owning runtime unit registers
 (`osp_mem_set_finalizer`) before its data is released; the tracing collector
 runs the same finalizer at the sweep that reclaims the header. Under ownership the generic registration hook is inert. An explicit free of a GPU-tagged header releases its device resource or file mapping before dropping the data. An ordinary external header drops only its data. Releases walk
+=======
+the heap (a GPU buffer's copy on the device, [GPU-BUFFER-RESIDENT](../runtime/0034-GPUComputation.md#device-resident-buffers--gpu-buffer-resident),
+a fiber, [CONCURRENCY-FIBER-LIFETIME](../language/0011-LightweightFibersAndConcurrency.md#fiber-lifetime-concurrency-fiber-lifetime),
+or a channel, [CONCURRENCY-CHANNEL-LIFETIME](../language/0011-LightweightFibersAndConcurrency.md#channel-lifetime-concurrency-channel-lifetime))
+passes through the finalizer its owning runtime unit registers before its data
+is released; the tracing collector runs the same finalizer at the sweep that
+reclaims the header, and ownership at the explicit free.
+
+**Finalizers [MEM-BACKENDS-FINALIZERS].** Bits 8 to 15 of an external header's
+layout word name its subtype: 0 a plain header, 1 a GPU buffer, 2 a fiber
+handle, 3 a channel handle. `osp_mem_set_finalizer(meta, finalize)` registers one finalizer per
+subtype, so one unit never replaces another's. The tracing collector keeps the
+subtype in the block's mark word. Ownership drops a GPU buffer by its layout,
+whatever is registered, and runs no finalizer for a plain header. A finalizer may run with the heap lock held
+or the world stopped, so it MUST NOT allocate, release a managed value, or take
+a lock the heap can wait on; it hands its work to its unit, which does it
+outside the collector ([Boehm, POPL 2003](https://www.hboehm.info/popl03/web)). An explicit free of a GPU-tagged header releases its device resource or file mapping before dropping the data. An ordinary external header drops only its data. Releases walk
+>>>>>>> origin/fixes
 managed child slots non-recursively. Persistent list and
 map nodes retain shared structure and release the portion no longer referenced
 by any live version. ARC operations start lock-free and become mutex-protected
@@ -436,7 +462,11 @@ The regex translators described below are being replaced by the IR to Lean frame
 | `OwnershipLowering.compiledSlotRetains` and `compiledSlotWrite` | For all 32 positions in a native list node, a reached managed-copy iteration skips the slot being replaced and retains the word at every other visited index. The final store writes the supplied 64-bit payload at eight times the replacement index in the returned allocation. | The first proof follows the loop comparison to its latch, including the pointer conversion and retain call. The second checks the returning block. Reversing the comparison or zeroing the payload invalidates the respective certificate. |
 | `OwnershipLowering.compiledMapMissFrame` | When a recursive HAMT removal reports a miss, the enclosing compiled frame returns null with no release and leaves the miss flag unchanged. This holds for arbitrary parent and child result pointers. | Reflection starts immediately after the recursive call and follows the zero flag through the actual branch and return. Releasing the child result or returning the parent invalidates the certificate. The public map operation still returns its original map on a miss. |
 | `OwnershipLowering.compiledFreeNull` | Passing null to the compiled ownership free entry reaches a void return before any heap operation. | Reflection follows the actual argument through the direct call, pointer comparison and branch. The non-null path and recursive child destruction require separate proofs. |
+<<<<<<< HEAD
 | `OwnershipLowering.compiledCompatibilityReturns` | The compiled entry blocks of `osp_release_unique`, `osp_collect` and `osp_mem_set_finalizer` return immediately for every argument and heap state. | Reflection checks all three definitions in the ownership translation unit. Recompiling with a tracked drop or a call to the supplied callback invalidates the theorem. |
+=======
+| `OwnershipLowering.compiledCompatibilityReturns` | The compiled entry blocks of `osp_release_unique` and `osp_collect` return immediately for every argument and heap state. | Reflection checks both definitions in the ownership translation unit. Recompiling with a tracked drop invalidates the theorem. `osp_mem_set_finalizer` is live under ownership, so a fiber handle's free runs its finalizer ([MEM-BACKENDS-FINALIZERS]). |
+>>>>>>> origin/fixes
 | `OwnershipLowering.compiledGrow` | For every integer list and element, the emitted specialization of `grow` returns the appended list as its only live list root and frees the input root exactly once. | The caller supplies one owned root. The append helper returns a fresh root with persistent-list contents. |
 | `OwnershipLowering.compiledGrowWhen` | For both Boolean inputs, the emitted function follows the corresponding path through the join. Enabling append frees the original root and returns the appended list. Disabling it returns the original root alive. | The reflector follows branches, resolves LLVM phi operands by predecessor and preserves null frees. The execution model checks those calls against the compiled runtime guard. Lean checks the resulting loads, frees and return against the ownership semantics. |
 | `OwnershipLowering.compiledPairFields` | For any two supplied children, the emitted `pairUp` writes the left and right arguments at words 1 and 2 of its fresh record. Its allocation layout equals that of the compiled 64-bit C masked walk, which reads byte 8, calls the child drop with that pointer, then does the same at byte 16. | The proof specializes the shipped walk at the record size and layout with Clang `-O2`. It assumes two distinct owned children, successful allocation, dispatch to the masked walk and a child drop that preserves the parent and sibling. Recursive deallocation and other record layouts remain open. |
@@ -647,6 +677,24 @@ refused"; the rest are the contract the remaining phases build.
   have no surviving local borrow that outlives the handoff. Pony's isolated
   capability provides a precedent for reasoning about aliases when a value
   crosses a concurrency boundary. [Deny Capabilities for Safe, Fast Actors (AGERE! 2015)](https://soft.vub.ac.be/AGERE15/papers/AGERE_2015_paper_10.pdf)
+<<<<<<< HEAD
+=======
+- **Handles [MEM-OWNERSHIP-STATIC-HANDLES].** A `Fiber<T>` or `Channel<T>`
+  handle is the one value a program may share. A fiber exists to be awaited
+  from somewhere else and a channel to be used by several fibers, so the
+  ledger does not refuse a handle's second owner: it emits
+  `osp_ownership_share`, and each owner still frees the handle once. The
+  backend counts a handle's sharers in its header word (`OSP_OWN_HELD + n`),
+  and only the last free runs the finalizer and frees the block. Accepted code
+  still never calls `osp_retain` or `osp_release`. A handle carries no payload
+  the program can read, so sharing one aliases nothing the ledger tracks; what
+  crosses a channel still moves. Rust's channels have the same shape: the
+  endpoints are counted, the messages are moved. The sharer count is the
+  holder count of [CONCURRENCY-FIBER-LIFETIME](../language/0011-LightweightFibersAndConcurrency.md#fiber-lifetime-concurrency-fiber-lifetime),
+  proved with Osprey's proof kernel (`share_is_acquire`, `free_is_release`,
+  `free_last_iff`). `osp_ownership_share` on any other block is a compiler
+  fault: the block is kept to exit and the exit report counts it.
+>>>>>>> origin/fixes
 - **Closures and effects [MEM-OWNERSHIP-STATIC-CLOSURES].** A closure that
   outlives the scope it is written in owns the managed values it captures, so
   capturing is a move and must be the captured binding's last use. A closure
@@ -726,7 +774,11 @@ Rust is the reference point for static ownership. This backend has to do better 
 - **A proof of the shipped checker. Built for the model, open for the lowering.** Rust's proofs are of models: λRust [Jung 2018], Oxide [Weiss 2019] and Featherweight Rust [Pearce 2021], not of `rustc`. Osprey's ledger is a mechanised transition system whose accepted paths are proved to keep one owner per allocation and a live lender for every borrow, with a theorem for each lowering rule, replayed by Osprey's own proof kernel ([MEM-OWNERSHIP-STATIC-MODEL]). The emitted code of selected functions is proved against it ([MEM-OWNERSHIP-STATIC-VERIFICATION-COMPILER]). Open: that every function the compiler emits is a path of the model. The backend is not declared shipped without it.
 - **A space bound. Not built.** [Lorenzen 2022] show that unrestricted borrowing can raise peak memory by an arbitrary amount and define the frame-limited bound that avoids it. Osprey must meet that bound: a value at its last use is given to a callee that can free it earlier. Until then, benchmarks report peak live bytes for `ownership` beside `gc` and `arc`, separately from exit-time leaks.
 
+<<<<<<< HEAD
 **Not built.** `ownership` accepts 82 of the 180 Osprey-flavor programs in the test corpus. Still refused, each tracked in plan 0045: a `control` handler that resumes at most once, and closures over handler state; `spawn`, `await`, `send` and `recv` of managed values; a caller that reads an argument again after a function that returns part of it; anonymous records and nested list literals that hold a value still read; the erased `any` box; a record update whose new fields read its base. Two live versions of one collection are refused by rule and stay refused. In-place update and the frame-limited space bound are decided and not built. The C runtime still counts when the list and map runtimes copy elements; accepted compiled code never does.
+=======
+**Not built.** `ownership` accepts 140 of the 342 programs in the test corpus. The corpus run holds both sets: the 140 listed in `src/osprey/tests/OWNERSHIP_ACCEPTED.txt` must match their goldens with nothing live, natively and, where the target runs them, on each cross target, and the other 202 must be refused by the checker by name, so no program is ever built wrong or dropped from the count in silence. Still refused, each tracked in plan 0045: a `control` handler that resumes at most once, and closures over handler state; `spawn`, `await`, `send` and `recv` of managed values; a caller that reads an argument again after a function that returns part of it; anonymous records and nested list literals that hold a value still read; the erased `any` box; a record update whose new fields read its base. Two live versions of one collection are refused by rule and stay refused. In-place update and the frame-limited space bound are decided and not built. The C runtime still counts when the list and map runtimes copy elements; accepted compiled code never does.
+>>>>>>> origin/fixes
 
 **Where Rust is ahead today.** Rust accepts far more programs. It has mutable borrows, and it records ownership in types, so functions passed as values and library boundaries are checked against a signature. Osprey infers ownership from the bodies of one executable, so those two keep borrowed parameters ([MEM-OWNERSHIP-STATIC-PARAMETERS]), and `ownership` accepts 82 of the 180 programs in `src/osprey/tests/` (2026-11-24). Rust's models are proved; Osprey's ledger is tested.
 

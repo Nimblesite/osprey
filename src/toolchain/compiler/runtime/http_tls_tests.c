@@ -9,6 +9,7 @@
 #include "socket_safety.h"
 
 #include <assert.h>
+#include <stdatomic.h>
 #include <openssl/err.h>
 #include <openssl/pem.h>
 #include <openssl/ssl.h>
@@ -65,6 +66,8 @@ typedef struct {
   bool abrupt; // close without the close_notify, as a cut connection does
   bool hold_open; // keep the session open after replying, until the client leaves
   unsigned drip_us; // send the reply's TLS records a byte at a time, this far apart
+  unsigned handshake_delay_us; // wait this long after accepting, before the handshake
+  atomic_bool accepted; // set once the client's connection is accepted
   char request[MAX_HTTP_BUFFER];
 } TlsOrigin;
 
@@ -93,6 +96,8 @@ static void *tls_origin_thread(void *arg) {
     return NULL;
   }
   (void)osp_socket_configure_no_sigpipe(fd); // the client may leave mid-reply
+  atomic_store(&origin->accepted, true);
+  usleep(origin->handshake_delay_us);
   SSL *ssl = SSL_new(origin->ctx);
   if (ssl) {
     SSL_set_fd(ssl, fd);
@@ -247,6 +252,50 @@ static int64_t tls_fetch(TlsOrigin *origin, int64_t client_id) {
   return handle;
 }
 
+typedef struct {
+  int64_t client;
+  int64_t handle;
+} InFlightGet;
+
+static void *tls_in_flight_get(void *arg) {
+  InFlightGet *get = (InFlightGet *)arg;
+  get->handle = http_get_response(get->client, (char *)(uintptr_t) "/x", (char *)(uintptr_t) "");
+  return NULL;
+}
+
+// #415: closing a client while its request waits on the TLS handshake must not
+// free what the request still reads (the SNI name, the Host header). The request
+// finishes against the values it started with, and the origin sees an intact Host.
+static void tls_expect_close_mid_request(EVP_PKEY *ca_key, X509 *ca) {
+  TlsLeaf pair = tls_leaf_issue(ca_key, ca, "loopback", "IP:127.0.0.1");
+  TlsOrigin origin;
+  tls_origin_start(&origin, pair.cert, pair.key, "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok");
+  origin.handshake_delay_us = 300000; // read only once the client below connects
+  InFlightGet get = {tls_client("127.0.0.1"), 0};
+  pthread_t requester;
+  assert(pthread_create(&requester, NULL, tls_in_flight_get, &get) == 0);
+  while (!atomic_load(&origin.accepted)) {
+    usleep(1000);
+  }
+  assert(http_close_client(get.client) == 0);
+  for (int i = 0; i < 64; i++) { // reuse the freed blocks, as other threads would
+    char *churn = malloc(16);
+    assert(churn != NULL);
+    memset(churn, 'X', 15);
+    churn[15] = '\0';
+    free(churn);
+  }
+  assert(pthread_join(requester, NULL) == 0);
+  tls_origin_stop(&origin);
+  assert(get.handle >= 1);
+  assert(http_response_status(get.handle) == 200);
+  assert(http_response_free(get.handle) == 0);
+  assert(strstr(origin.request, "\r\nHost: 127.0.0.1\r\n") != NULL);
+  assert(http_get_response(get.client, (char *)(uintptr_t) "/x", (char *)(uintptr_t) "") == -1);
+  X509_free(pair.cert);
+  EVP_PKEY_free(pair.key);
+}
+
 // One exact reply over a trusted TLS connection, returning what the client made of
 // it. The caller frees any handle.
 static int64_t tls_exchange(EVP_PKEY *key, X509 *leaf, const char *reply, bool abrupt) {
@@ -390,6 +439,7 @@ void test_client_tls_peer_verification(void) {
   tls_expect_served(ca_key, ca, "local", "DNS:localhost", "localhost",
                     "dns-ok");
   tls_expect_framing_enforced(ca_key, ca);
+  tls_expect_close_mid_request(ca_key, ca);
 
   X509_free(ca);
   EVP_PKEY_free(ca_key);

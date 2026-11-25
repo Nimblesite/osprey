@@ -65,7 +65,7 @@ void t_owned_text_finalizer_reads_do_not_deadlock(void) {
   g_finalizer_text = osp_alloc_tagged(10, 7);
   CHECK(g_finalizer_text != NULL);
   memcpy(g_finalizer_text, "head\0tail", 10);
-  osp_mem_set_finalizer(inspect_finalizer_text);
+  osp_mem_set_finalizer(OSP_MEM_LIST_HDR_EXTERN, inspect_finalizer_text);
   for (size_t i = 0; i < 4096; i++) {
     void *owner = osp_alloc_tagged(16, OSP_MEM_LIST_HDR_EXTERN);
     CHECK(owner != NULL);
@@ -74,7 +74,7 @@ void t_owned_text_finalizer_reads_do_not_deadlock(void) {
   }
   osp_collect();
   CHECK(g_text_finalized > 4000);
-  osp_mem_set_finalizer(NULL);
+  osp_mem_set_finalizer(OSP_MEM_LIST_HDR_EXTERN, NULL);
   osp_release(g_finalizer_text);
   g_finalizer_text = NULL;
 }
@@ -110,11 +110,11 @@ void t_owned_text_trim_and_lists(void) {
   CHECK(osp_strlen(parts->items[0]) == 3 && memcmp(parts->items[0], "a\0b", 3) == 0);
   CHECK(osp_strlen(parts->items[1]) == 3 && memcmp(parts->items[1], "c\0d", 3) == 0);
   check_text(osp_string_join(parts, nul), "a\0b\0c\0d", 7);
-  osp_string_list_free(parts);
+  osp_release(parts);
   parts = osp_string_split(words, nul);
   CHECK(parts != NULL && parts->length == 3);
   CHECK(osp_strlen(parts->items[1]) == 3 && memcmp(parts->items[1], "b c", 3) == 0);
-  osp_string_list_free(parts);
+  osp_release(parts);
   osp_release(text); osp_release(nul); osp_release(words);
 }
 

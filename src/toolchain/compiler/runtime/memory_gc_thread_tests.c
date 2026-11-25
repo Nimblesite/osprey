@@ -337,3 +337,105 @@ void t_runner_poll_ends_an_orphan(void) {
 #else
 void t_runner_poll_ends_an_orphan(void) {}
 #endif
+<<<<<<< HEAD
+=======
+
+#if defined(__APPLE__) || defined(__linux__)
+#include <setjmp.h>
+#include <signal.h>
+
+static sigjmp_buf g_foreign_fault;
+// An unmapped address no stack is near, read through a volatile so the
+// compiler cannot see the store it guards as out of bounds.
+static int *volatile g_foreign_address = (int *)(uintptr_t)16;
+static void foreign_fault_recovered(int signal_number) {
+  (void)signal_number;
+  siglongjmp(g_foreign_fault, 1);
+}
+
+// Non-tail recursion that only a stack limit ends; each frame keeps its bytes.
+static int64_t overflow_depth(int64_t n) {
+  volatile char frame[256];
+  frame[0] = (char)n;
+  return n == INT64_MAX ? frame[0] : overflow_depth(n + 1) + frame[0];
+}
+
+// A host that recovers from its own faults installed its handler first. The
+// guard arms over it, three faults outside the stack go back to the host and
+// are recovered, then recursion exhausts the stack.
+void foreign_fault_child(void) {
+  struct sigaction recover;
+  memset(&recover, 0, sizeof recover);
+  recover.sa_handler = foreign_fault_recovered;
+  CHECK(sigemptyset(&recover.sa_mask) == 0);
+  CHECK(sigaction(SIGSEGV, &recover, NULL) == 0 && sigaction(SIGBUS, &recover, NULL) == 0);
+  osp_mem_boot();
+  int recovered = 0;
+  for (int i = 0; i < 3; i++) {
+    if (sigsetjmp(g_foreign_fault, 1) == 0) {
+      *(volatile int *)g_foreign_address = i;
+    } else {
+      recovered++;
+    }
+  }
+  CHECK(recovered == 3);
+  (void)overflow_depth(0);
+}
+
+// A stdout whose every write recurses until the stack is gone, so the overflow
+// happens inside stdio with stdout's lock held by the faulting thread.
+#if defined(__APPLE__)
+static int overflowing_write(void *cookie, const char *bytes, int count) {
+  (void)cookie;
+  (void)bytes;
+  return (int)overflow_depth(count);
+}
+static FILE *overflowing_stream(void) { return funopen(NULL, NULL, overflowing_write, NULL, NULL); }
+#else
+static ssize_t overflowing_write(void *cookie, const char *bytes, size_t count) {
+  (void)cookie;
+  (void)bytes;
+  return (ssize_t)overflow_depth((int64_t)count);
+}
+static FILE *overflowing_stream(void) {
+  cookie_io_functions_t io = {.read = NULL, .write = overflowing_write, .seek = NULL, .close = NULL};
+  return fopencookie(NULL, "w", io);
+}
+#endif
+
+void stdout_overflow_child(void) {
+  osp_mem_boot();
+  FILE *stream = overflowing_stream();
+  CHECK(stream != NULL);
+  stdout = stream;
+  (void)fputs("a line the stack runs out writing\n", stdout);
+  (void)fflush(stdout);
+}
+
+// The run's output: stderr and stdout merged, then the exit status.
+static void stack_guard_child_says(const char *self, const char *mode, char *seen, size_t size) {
+  char command[4096];
+  int length = snprintf(command, sizeof command, "'%s' %s 2>&1; echo status=$?", self, mode);
+  CHECK(length > 0 && (size_t)length < sizeof command);
+  FILE *child = popen(command, "r");
+  CHECK(child != NULL);
+  size_t n = fread(seen, 1, size - 1, child);
+  seen[n] = '\0';
+  CHECK(pclose(child) == 0);
+}
+
+// [FAILURE-EXPLICIT] (#363) A fault that is not the stack's leaves the stack
+// guard installed: the overflow after it still ends by name with status 71. An
+// overflow inside a stdout write ends the same way: the guard only writes and
+// exits, never touches the stdio state the fault interrupted.
+void t_stack_guard_outlives_foreign_faults(const char *self) {
+  const char *modes[] = {"--foreign-fault", "--stdout-overflow"};
+  for (size_t i = 0; i < sizeof modes / sizeof modes[0]; i++) {
+    char seen[512] = "";
+    stack_guard_child_says(self, modes[i], seen, sizeof seen);
+    CHECK(strstr(seen, "osprey: stack exhausted: a call went deeper than the thread's stack allows\n") != NULL);
+    CHECK(strstr(seen, "status=71\n") != NULL);
+  }
+}
+#endif
+>>>>>>> origin/fixes

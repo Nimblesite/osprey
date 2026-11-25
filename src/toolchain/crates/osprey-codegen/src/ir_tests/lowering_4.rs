@@ -391,11 +391,14 @@ fn fibers_channels_yield_and_done() {
                let f = spawn work(3)\n\
                print(\"${got} ${y} ${z} ${await(f)} ${fiberDone(f)}\")\n\
              }\n",
+        // A channel is a managed handle like a fiber, and both are let go of
+        // through one cleanup ([CONCURRENCY-CHANNEL-LIFETIME]).
         &[
-            "channel_create",
-            "channel_send",
-            "channel_recv",
+            "call i8* @channel_create_checked(i64 1)",
+            "call i64 @channel_send(i8* ",
+            "call i64 @channel_recv(i8* ",
             "fiber_done",
+            "call void @fiber_cleanup_results()",
         ],
     );
 }
@@ -414,7 +417,13 @@ fn select_calls_the_runtime_and_switches_on_the_arm_it_performed() {
                }\n\
                print(\"${pick}\")\n\
              }\n",
-        &["@channel_select(i64 2,", "i64 5)", "switch i64"],
+        &[
+            "@channel_select(i64 2, i64* ",
+            "alloca [2 x i8*]",
+            ", i8** ",
+            "i64 5)",
+            "switch i64",
+        ],
     );
 }
 

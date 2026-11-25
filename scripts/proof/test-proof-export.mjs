@@ -230,8 +230,10 @@ test('a drifted lean toolchain stops the run before exporting', () => {
   assert.ok(!run.lake.some((argv) => argv.startsWith('exe ')), 'no export may run');
 });
 
-test('rejects an unknown flag', () => {
-  assertRejected(runCase({}, ['--bogus']), '--bogus');
+test('rejects unknown arguments', () => {
+  for (const argument of ['--bogus', 'record']) {
+    assertRejected(runCase({}, [argument]), argument);
+  }
 });
 
 test('rejects an unknown theorem name', () => {

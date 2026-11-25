@@ -1,4 +1,5 @@
 #include "map_runtime_internal.h"
+#include "memory_refused.h"
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -80,8 +81,9 @@ static OspreyMapNode *alloc_node(OspreyMapNodeKind kind, uint32_t h,
                                  uint32_t count, OspreyMapPolicy pol) {
   size_t bytes = sizeof(OspreyMapNode) +
                  (kind == NODE_INTERNAL ? (size_t)count * sizeof(OspreyMapNode *) : 0);
-  OspreyMapNode *n = (OspreyMapNode *)osp_alloc_tagged_noinit(
-      (int64_t)bytes, map_node_layout(pol, kind, count));
+  OspreyMapNode *n = (OspreyMapNode *)osp_alloc_checked(
+      osp_alloc_tagged_noinit((int64_t)bytes, map_node_layout(pol, kind, count)),
+      "map", bytes);
   memset(n, 0, bytes);
   n->kind = kind;
   n->hash = h;
@@ -94,7 +96,7 @@ static OspreyMapNode *alloc_node(OspreyMapNodeKind kind, uint32_t h,
 /* A managed element array is walked when its owning node dies; a scalar one is
  * freed with the node and never read as pointers. */
 static int64_t *alloc_slots(size_t n, int managed) {
-  int64_t *a = (int64_t *)calloc(n, sizeof(int64_t));
+  int64_t *a = (int64_t *)osprey_map_calloc(n * sizeof(int64_t));
   if (managed) {
     osp_mem_set_layout(a, OSP_MEM_PTR_ARRAY);
   }

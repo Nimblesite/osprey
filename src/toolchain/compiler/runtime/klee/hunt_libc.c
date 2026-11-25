@@ -282,5 +282,44 @@ int pthread_mutex_unlock(pthread_mutex_t *mutex) {
   return 0;
 }
 
+// Signalling wakes nobody, as nobody else can be waiting, and a bounded wait
+// can only end at its deadline, as nobody else can signal.
+int pthread_cond_init(pthread_cond_t *condition, const pthread_condattr_t *attributes) {
+  (void)attributes;
+  condition->unused = 0;
+  return 0;
+}
+
+int pthread_cond_destroy(pthread_cond_t *condition) {
+  (void)condition;
+  return 0;
+}
+
+int pthread_cond_signal(pthread_cond_t *condition) {
+  (void)condition;
+  return 0;
+}
+
+int pthread_cond_broadcast(pthread_cond_t *condition) {
+  (void)condition;
+  return 0;
+}
+
+int pthread_cond_timedwait(pthread_cond_t *condition, pthread_mutex_t *mutex,
+                           const struct timespec *deadline) {
+  (void)condition;
+  (void)mutex;
+  (void)deadline;
+  return ETIMEDOUT;
+}
+
+int sched_yield(void) { return 0; }
+
+int nanosleep(const struct timespec *span, struct timespec *left) {
+  (void)span;
+  (void)left;
+  return 0;
+}
+
 pthread_t pthread_self(void) { return 1; }
 int pthread_equal(pthread_t first, pthread_t second) { return first == second; }

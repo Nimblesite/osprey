@@ -17,11 +17,11 @@ shrink — currently 213 on wasm32 and 285 natively (`src/toolchain/crates/run_t
 override). The floor ratchets up as goldens are added and is never
 lowered to turn a red build green.
 
-The wasm runtime includes strings, persistent collections, JSON, file operations, random/input, test and coverage hooks, the effect-handler stack, profiler stubs, and the browser host bridge. It excludes fibers, sockets, HTTP/WebSocket, process APIs, terminal APIs, and general FFI. Effect semantics and capability requirements are defined in [Algebraic Effects](../language/0017-AlgebraicEffects.md); shipped backend support is tracked in [plan 0016](../../plans/0016-algebraic-effects-and-handlers.md). The compiler rejects unavailable capabilities before LLVM emission or linking.
+The wasm runtime includes strings, persistent collections, JSON, file operations, random/input, test and coverage hooks, the effect-handler stack, profiler stubs, and the browser host bridge. It includes fibers and channels, which run on the one WASI thread in spawn order ([CONCURRENCY-WASM](../language/0011-LightweightFibersAndConcurrency.md#fibers-on-wasm32-concurrency-wasm)). It excludes sockets, HTTP/WebSocket, process APIs, terminal APIs, and general FFI. Effect semantics and capability requirements are defined in [Algebraic Effects](../language/0017-AlgebraicEffects.md); shipped backend support is tracked in [plan 0016](../../plans/0016-algebraic-effects-and-handlers.md). The compiler rejects unavailable capabilities before LLVM emission or linking.
 
 ## Target Triple [WASM-TARGET-TRIPLE]
 
-The target is `wasm32-wasip1` (the current spelling of `wasm32-wasi`). wasi-libc
+The WASI Preview 1 target is `wasm32-wasip1`. wasi-libc
 provides the C allocation, string, formatting, memory, and stdout functions used
 by the portable runtime. Browser execution uses the WASI Preview 1 shim in
 `src/osprey/examples/wasm/wasi-shim.mjs`.
@@ -59,7 +59,7 @@ The driver:
 
 1. invokes clang with `--target=wasm32-wasip1 -O2 -c`;
 2. locates the WASI sysroot from `OSPREY_WASI_SYSROOT`, `WASI_SDK_PATH`, or the
-   supported platform paths;
+   supported platform paths. Its libraries must be in `lib/wasm32-wasip1`;
 3. invokes `wasm-ld` with `crt1-command.o`, the program object,
    `libosprey_runtime_wasm_arc.a`, and wasi-libc.
 
@@ -69,7 +69,7 @@ compiler-rt archive.
 
 ## Portable Runtime Archive [WASM-TARGET-RUNTIME]
 
-`make _runtime_wasm` builds `src/toolchain/compiler/bin/libosprey_runtime_wasm_arc.a` from `WASM_ARC_RT_SRC`, with ownership shims on `WASM_ARC_SHIM_SRC`. It also retains the separate unmanaged archive for explicit opt-out builds. Static archive members are linked on
+`make _runtime_wasm` builds `libosprey_runtime_wasm_arc.a` and `libosprey_runtime_wasm_ownership.a` in `src/toolchain/compiler/bin/`. Both use the portable runtime units and ownership shims. Static archive members are linked on
 demand, so a command-line program that does not use the browser bridge has no
 `osprey_web` imports.
 
@@ -108,7 +108,7 @@ Child processes are outside the portable `wasm32-wasip1` target contract. Its [W
 
 Before LLVM emission, the compiler checks the complete program for unsupported target constructs, including inside otherwise unused helper functions. `--check`, `--compile`, `--run`, and `--llvm` enforce the same rules. Diagnostics name `wasm32`, the offending operation or construct, and the unavailable capability. Native debugger and profiler flags are rejected for this target, including with `--check` and `--llvm`.
 
-Fibers/channels and their scheduling operations, process APIs, built-in HTTP/WebSocket operations, terminal APIs, and arbitrary host FFI are rejected at compile time. Multi-shot (`many`) continuations are always available and are never rejected ([WASM-TARGET-EFFECTS-MANY](#multi-shot-continuations-wasm-target-effects-many)); other effect constructs require the capabilities specified by [MULTI-WASM](../language/0017-AlgebraicEffects.md). Runtime-provided browser bridge imports remain supported. File, random, and input operations use their portable runtime implementations; access still depends on the WASI host. An unavailable capability must produce a compile error, never a link-time surprise. Removing a rejection requires a working runtime implementation and target tests.
+Process APIs, built-in HTTP/WebSocket operations, terminal APIs, and arbitrary host FFI are rejected at compile time. Fibers, channels, `select`, `yield`, `fiberDone` and `sleep` are supported ([CONCURRENCY-WASM](../language/0011-LightweightFibersAndConcurrency.md#fibers-on-wasm32-concurrency-wasm)); `fiber_set_deterministic_mode` stays a rejected foreign import, since wasm32 is always sequential. Multi-shot (`many`) continuations are always available and are never rejected ([WASM-TARGET-EFFECTS-MANY](#multi-shot-continuations-wasm-target-effects-many)); other effect constructs require the capabilities specified by [MULTI-WASM](../language/0017-AlgebraicEffects.md). Runtime-provided browser bridge imports remain supported. File, random, and input operations use their portable runtime implementations; access still depends on the WASI host. An unavailable capability must produce a compile error, never a link-time surprise. Removing a rejection requires a working runtime implementation and target tests.
 
 ## Fatal Diagnostics [WASI-LIBC-ABI]
 
@@ -166,7 +166,9 @@ target's. `scripts/wasm/wasm-browser-smoke.mjs` reads the memory afresh per call
 runs on any supported Node, which is what makes it a second, independent oracle
 rather than a copy of the first.
 
-**`[WASM-TARGET-NODE]`** The version rule lives in exactly one place:
+**`[WASM-TARGET-NODE]`** A wasm32 program recurses as deep as a native one on either host. The host's own stack for compiled wasm frames is not the module's 8 MiB shadow stack: wasmtime's default of 512 KiB and V8's on an 8 MiB main thread both trapped at a few thousand frames, on the main thread and in every fiber, which run on it ([CONCURRENCY-WASM](../language/0011-LightweightFibersAndConcurrency.md#fibers-on-wasm32-concurrency-wasm)). `osprey --run` passes wasmtime `-W max-wasm-stack=4194304`, and `scripts/wasm/wasm-smoke-support.mjs` runs the module on a Node worker thread with a 256 MiB stack.
+
+The version rule lives in exactly one place:
 `scripts/wasm/wasm-smoke.mjs` re-executes itself under a sound interpreter when the
 one it was started with is too old — `OSPREY_NODE` when set, else the newest
 qualifying `~/.nvm` install — and fails with the defect's own explanation only

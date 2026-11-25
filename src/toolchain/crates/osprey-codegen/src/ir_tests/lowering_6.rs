@@ -120,6 +120,30 @@ fn yield_without_value_and_let_bound_lambda_materialize() {
     );
 }
 
+/// #340: a recursive wait on a fiber parameter compiles whether the parameter
+/// is unannotated, written `Fiber` with its argument left to inference, or
+/// written in full. `Fiber` alone used to pass the check and then fail codegen,
+/// because a nullary `Fiber` carried no result type to the recursion.
+#[test]
+fn a_recursive_wait_compiles_however_its_fiber_parameter_is_written() {
+    for annotation in ["", ": Fiber", ": Fiber<int>"] {
+        let source = format!(
+            "fn work() = 7\n\
+             fn waitLoop(fib{annotation}, frame) = match fiberDone(fib) {{\n    1 => await(fib)\n    _ => waitLoop(fib: fib, frame: frame)\n}}\n\
+             print(toString(waitLoop(fib: spawn work(), frame: 0)))\n"
+        );
+        lowers(&source, &["@fiber_await", "@waitLoop"]);
+    }
+    for annotation in ["", " : (Fiber, int) -> int\nwaitLoop"] {
+        let source = format!(
+            "work () = 7\n\
+             waitLoop{annotation} (fib, frame) = match fiberDone fib\n    1 => await fib\n    _ => waitLoop (fib, frame)\n\
+             main () = print (toString (waitLoop (spawn work (), 0)))\n"
+        );
+        shows(&ml_module(&source), &["@fiber_await"]);
+    }
+}
+
 #[test]
 fn fiber_done_requires_an_argument() {
     // fiberDone with no argument fails loudly (fiber.rs gen_builtin error).

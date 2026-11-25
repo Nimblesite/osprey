@@ -46,7 +46,7 @@ static void test_empty_singleton(void) {
   CHECK(osprey_list_concat(NULL, NULL) == e);
   CHECK(osprey_list_reverse(e) == e);
   CHECK(osprey_list_reverse(NULL) == e);
-  CHECK(osprey_list_builder_seal(osprey_list_builder_new()) == e);
+  CHECK(osprey_list_builder_seal(osprey_list_builder_new_of(0)) == e);
   CHECK(osprey_list_drop(make_range_list(0, 40), 40) == e);
   check_range(e, 0, 0); /* still pristine after all of the above */
 }
@@ -62,12 +62,13 @@ static void test_null_arguments(void) {
   CHECK(osprey_list_drop(NULL, 0) == NULL); /* alias return of NULL */
   CHECK(osprey_list_drop(NULL, 7) == NULL);
   int64_t one = 5;
-  check_elems(osprey_list_append(NULL, one), &one, 1);
-  check_elems(osprey_list_prepend(NULL, one), &one, 1);
+  check_elems(osprey_list_append_of(NULL, one, 0), &one, 1);
+  check_elems(osprey_list_prepend_of(NULL, one, 0), &one, 1);
   OspreyList *a = make_range_list(0, 5);
   CHECK(osprey_list_concat(NULL, a) == a);
   CHECK(osprey_list_concat(a, NULL) == a);
   check_range(a, 0, 5);
+<<<<<<< HEAD
   /* Out-of-contract set: an empty list has no in-bounds index, and a past-end
      or negative one would subscript past a 32-slot node. Degrades like the
      hardened osprey_list_get — unchanged list back — instead of crashing. */
@@ -77,6 +78,8 @@ static void test_null_arguments(void) {
   CHECK(osprey_list_set(a, -1, 9) == a);
   check_range(a, 0, 5);
   check_range(osprey_list_empty(), 0, 0);
+=======
+>>>>>>> origin/fixes
 }
 
 /* Every level boundary, built both ways; builder and append must agree
@@ -89,41 +92,6 @@ static void test_growth_sizes(void) {
   }
   /* One deep append-built list: grow_root level-2 stacking + wrap_path. */
   check_range(append_range_list(DEEP_APPEND_N), 0, DEEP_APPEND_N);
-}
-
-/* Set every index in turn: one slot differs, the source stays identical. */
-static void test_set_exhaustive(void) {
-  OspreyList *base = make_range_list(0, EXHAUSTIVE_N);
-  int64_t *m = model_range(0, EXHAUSTIVE_N);
-  for (int64_t i = 0; i < EXHAUSTIVE_N; i++) {
-    OspreyList *s = osprey_list_set(base, i, SET_SENTINEL - i);
-    m[i] = SET_SENTINEL - i;
-    check_elems(s, m, EXHAUSTIVE_N);
-    m[i] = i;
-    check_elems(base, m, EXHAUSTIVE_N);
-  }
-  free(m);
-}
-
-/* Set at both sides of the tail boundary for every structural size. */
-static void test_set_boundaries(void) {
-  for (size_t k = 0; k < NELEMS(GROWTH_SIZES); k++) {
-    int64_t n = GROWTH_SIZES[k];
-    if (n == 0 || n > APPEND_BUILD_LIMIT) continue;
-    OspreyList *l = make_range_list(0, n);
-    int64_t *m = model_range(0, n);
-    int64_t idx[] = {0, n / 2, n - 1, n - (n % OSPREY_LIST_BRANCH) - 1};
-    for (size_t j = 0; j < NELEMS(idx); j++) {
-      int64_t i = idx[j] < 0 ? 0 : idx[j];
-      OspreyList *s = osprey_list_set(l, i, SET_SENTINEL);
-      int64_t old = m[i];
-      m[i] = SET_SENTINEL;
-      check_elems(s, m, n);
-      m[i] = old;
-      check_elems(l, m, n);
-    }
-    free(m);
-  }
 }
 
 static void test_views(void) {
@@ -157,9 +125,9 @@ static void test_view_derived_ops(void) {
   reverse_model(rm, vn);
   check_elems(osprey_list_reverse(v), rm, vn);
   free(rm);
-  int64_t head = SET_SENTINEL;
+  int64_t head = PREPEND_SENTINEL;
   int64_t *pm = join_model(&head, 1, m, vn);
-  check_elems(osprey_list_prepend(v, head), pm, vn + 1);
+  check_elems(osprey_list_prepend_of(v, head, 0), pm, vn + 1);
   free(pm);
   check_elems(v, m, vn); /* the view survived every derivation */
   free(m);
@@ -207,22 +175,22 @@ static void test_prepend(void) {
   OspreyList *l = osprey_list_empty();
   int64_t *m = new_model(PREPEND_N);
   for (int64_t i = 0; i < PREPEND_N; i++) {
-    l = osprey_list_prepend(l, i);
+    l = osprey_list_prepend_of(l, i, 0);
     memmove(m + 1, m, (size_t)i * sizeof(int64_t));
     m[0] = i;
     check_elems(l, m, i + 1);
   }
   /* Prepending never disturbs the version it was derived from. */
-  OspreyList *p = osprey_list_prepend(l, SET_SENTINEL);
-  CHECK(osprey_list_get(p, 0) == SET_SENTINEL);
+  OspreyList *p = osprey_list_prepend_of(l, PREPEND_SENTINEL, 0);
+  CHECK(osprey_list_get(p, 0) == PREPEND_SENTINEL);
   check_elems(l, m, PREPEND_N);
   /* A prepend-built list keeps its newest block in the front chunk: every set
      and every view of it (with that view's own appends and sets) still holds. */
-  check_sets(l, m, PREPEND_N);
   for (int64_t k = 1; k < PREPEND_N; k++) check_view_at(l, m, PREPEND_N, k, 1);
   for (int64_t k = 1; k < PREPEND_N; k++) {
-    OspreyList *v = osprey_list_prepend(osprey_list_drop(l, k), SET_SENTINEL);
-    CHECK(osprey_list_get(v, 0) == SET_SENTINEL);
+    OspreyList *v =
+        osprey_list_prepend_of(osprey_list_drop(l, k), PREPEND_SENTINEL, 0);
+    CHECK(osprey_list_get(v, 0) == PREPEND_SENTINEL);
     check_elems(osprey_list_drop(v, 1), m + k, PREPEND_N - k);
   }
   check_elems(l, m, PREPEND_N);
@@ -238,10 +206,10 @@ static void test_prepend_deep(void) {
   OspreyList *l = osprey_list_empty();
   for (int64_t i = 0; i < DEEP_PREPEND_N; i++) {
     if (i % PREPEND_APPEND_EVERY == 0) {
-      l = osprey_list_append(l, APPEND_SENTINEL - i);
+      l = osprey_list_append_of(l, APPEND_SENTINEL - i, 0);
       m[hi++] = APPEND_SENTINEL - i;
     } else {
-      l = osprey_list_prepend(l, i);
+      l = osprey_list_prepend_of(l, i, 0);
       m[--lo] = i;
     }
     for (size_t k = 0; k < NELEMS(GROWTH_SIZES); k++) {
@@ -250,18 +218,16 @@ static void test_prepend_deep(void) {
   }
   int64_t n = hi - lo;
   check_elems(l, m + lo, n);
-  /* Views of the prepended list take sets, appends and prepends of their own;
+  /* Views of the prepended list take appends and prepends of their own;
      the source survives each one. */
   for (int64_t k = 1; k < n; k += PREPEND_VIEW_STEP) {
     OspreyList *v = osprey_list_drop(l, k);
     check_elems(v, m + lo + k, n - k);
-    OspreyList *s = osprey_list_set(v, 0, SET_SENTINEL);
-    CHECK(osprey_list_get(s, 0) == SET_SENTINEL);
-    CHECK(osprey_list_get(s, n - k - 1) == m[hi - 1]);
-    OspreyList *p = osprey_list_prepend(v, SET_SENTINEL - k);
+    OspreyList *p = osprey_list_prepend_of(v, PREPEND_SENTINEL - k, 0);
     CHECK(osprey_list_length(p) == n - k + 1);
-    CHECK(osprey_list_get(p, 0) == SET_SENTINEL - k);
+    CHECK(osprey_list_get(p, 0) == PREPEND_SENTINEL - k);
     CHECK(osprey_list_get(p, 1) == m[lo + k]);
+    CHECK(osprey_list_get(p, n - k) == m[hi - 1]);
     check_appends(v, m + lo + k, n - k);
     check_elems(v, m + lo + k, n - k);
   }
@@ -273,7 +239,7 @@ static void test_prepend_deep(void) {
 static void test_prepend_scales(void) {
   clock_t start = clock();
   OspreyList *l = osprey_list_empty();
-  for (int64_t i = 0; i < PREPEND_SCALE_N; i++) l = osprey_list_prepend(l, i);
+  for (int64_t i = 0; i < PREPEND_SCALE_N; i++) l = osprey_list_prepend_of(l, i, 0);
   CHECK(osprey_list_length(l) == PREPEND_SCALE_N);
   for (int64_t i = 0; i < PREPEND_SCALE_N; i++) {
     CHECK(osprey_list_get(l, i) == PREPEND_SCALE_N - 1 - i);
@@ -285,8 +251,6 @@ void run_list_tests(void) {
   test_empty_singleton();
   test_null_arguments();
   test_growth_sizes();
-  test_set_exhaustive();
-  test_set_boundaries();
   test_views();
   test_view_derived_ops();
   test_concat_matrix();

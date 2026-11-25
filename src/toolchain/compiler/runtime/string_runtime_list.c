@@ -147,8 +147,6 @@ char *osp_string_join_list(OspreyList *list, const char *sep) {
     return out;
 }
 
-void osp_string_list_free(osp_string_list *list) { osp_release(list); }
-
 // glibc and bionic call .init_array entries with (argc, argv, envp); keep them.
 // KLEE calls constructors with no arguments and rejects the whole module when one
 // takes three, so a symbolic run has no arguments [SYMEX-CORPUS].

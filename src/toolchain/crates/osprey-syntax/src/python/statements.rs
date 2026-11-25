@@ -25,6 +25,19 @@ impl Lowerer<'_> {
         let mut statements = Vec::new();
         let mut index = 0;
         while let Some(child) = nodes.get(index).copied() {
+            match self.joined_statements(child) {
+                Ok(Some(joined)) => {
+                    statements.extend(joined);
+                    index += 1;
+                    continue;
+                }
+                Ok(None) => (),
+                Err(error) => {
+                    self.errors.push(error);
+                    index += 1;
+                    continue;
+                }
+            }
             match self.statement(child) {
                 Ok(Some(statement)) => {
                     let next = nodes.get(index + 1).copied();
@@ -115,7 +128,17 @@ impl Lowerer<'_> {
 
     fn assignment(&mut self, node: Node<'_>) -> Result<Stmt> {
         let name = self.identifier(Self::field(node, "left")?)?;
-        let value = self.expr(Self::field(node, "right")?)?;
+        let value = match self.expr(Self::field(node, "right")?) {
+            Ok(value) => value,
+            Err(error) => {
+                // The name is still this scope's, so the reads after it report
+                // their own faults rather than an unbound local.
+                if self.assignment_kind(self.text(name)).is_none() {
+                    let _ = self.bind(name, false);
+                }
+                return Err(error);
+            }
+        };
         let annotation = node.child_by_field_name("type");
         if annotation.is_none() && self.assignment_kind(self.text(name)) == Some(true) {
             return Ok(Stmt::Assignment {
@@ -198,7 +221,9 @@ impl Lowerer<'_> {
             if let Some(value) = self.tail_value(*child, last && tail)? {
                 return Ok(suite_block(*child, statements, Some(value)));
             }
-            if let Some(statement) = self.statement(*child)? {
+            if let Some(joined) = self.joined_statements(*child)? {
+                statements.extend(joined);
+            } else if let Some(statement) = self.statement(*child)? {
                 statements.push(statement);
             }
         }
@@ -260,34 +285,63 @@ impl Lowerer<'_> {
         Ok(())
     }
 
+    /// An `if` whose branches all bind the same fresh names, lowered to their
+    /// bindings ([FLAVOR-PYTHON-IF-JOIN]); `None` for any other statement.
+    fn joined_statements(&mut self, node: Node<'_>) -> Result<Option<Vec<Stmt>>> {
+        if node.kind() != "if_statement" {
+            return Ok(None);
+        }
+        let names = self.joined_names(node);
+        if names.is_empty() {
+            return Ok(None);
+        }
+        self.joined_if(node, &names).map(Some)
+    }
+
     fn if_expression(&mut self, node: Node<'_>, tail: bool) -> Result<Expr> {
+        self.if_branches(node, tail, None)
+    }
+
+    pub(super) fn if_expression_joined(&mut self, node: Node<'_>, join: &Expr) -> Result<Expr> {
+        self.if_branches(node, false, Some(join))
+    }
+
+    fn if_branches(&mut self, node: Node<'_>, tail: bool, join: Option<&Expr>) -> Result<Expr> {
         let condition = self.expr(Self::field(node, "condition")?)?;
-        let then = self.scoped(false, |lowerer| {
-            lowerer.suite(Lowerer::field(node, "consequence")?, tail)
-        })?;
+        let then = self.branch(Self::field(node, "consequence")?, tail, join)?;
         let alternatives: Vec<_> = children(node)
             .into_iter()
             .filter(|n| matches!(n.kind(), "elif_clause" | "else_clause"))
             .collect();
-        let otherwise = self.alternatives(&alternatives, tail)?;
+        let otherwise = self.alternatives(&alternatives, tail, join)?;
         Ok(crate::desugar::bool_match(condition, then, otherwise))
     }
 
-    fn alternatives(&mut self, nodes: &[Node<'_>], tail: bool) -> Result<Expr> {
+    /// One branch's suite in its own scope, ending in the joined value if any.
+    fn branch(&mut self, suite: Node<'_>, tail: bool, join: Option<&Expr>) -> Result<Expr> {
+        let lowered = self.scoped(false, |lowerer| lowerer.suite(suite, tail))?;
+        Ok(match join {
+            Some(value) => super::joins::ending_with(lowered, value),
+            None => lowered,
+        })
+    }
+
+    fn alternatives(
+        &mut self,
+        nodes: &[Node<'_>],
+        tail: bool,
+        join: Option<&Expr>,
+    ) -> Result<Expr> {
         let Some((node, rest)) = nodes.split_first() else {
             return Ok(unit());
         };
         if node.kind() == "else_clause" {
-            return self.scoped(false, |lowerer| {
-                lowerer.suite(Lowerer::field(*node, "body")?, tail)
-            });
+            return self.branch(Self::field(*node, "body")?, tail, join);
         }
         let condition = self.expr(Self::field(*node, "condition")?)?;
-        let then = self.scoped(false, |lowerer| {
-            lowerer.suite(Lowerer::field(*node, "consequence")?, tail)
-        })?;
+        let then = self.branch(Self::field(*node, "consequence")?, tail, join)?;
         Ok(crate::desugar::positioned(
-            crate::desugar::bool_match(condition, then, self.alternatives(rest, tail)?),
+            crate::desugar::bool_match(condition, then, self.alternatives(rest, tail, join)?),
             Some(position(*node)),
         ))
     }

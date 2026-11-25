@@ -239,7 +239,7 @@ fn map_literal_and_map_operations() {
         &ir,
         &[
             "osprey_map_builder_new",
-            "osprey_map_set",
+            "@osprey_map_set_of(",
             "osprey_map_remove",
             "osprey_map_iter_new",
         ],
@@ -344,7 +344,7 @@ fn a_list_literal_fold_seed_is_rebuilt_once_before_the_loop() {
          print(listLength(xs))",
     );
     let main = main_calls_once(&ir, "call i8* @osprey_list_builder_new_of");
-    sealed_before(&main, "@osprey_list_append");
+    sealed_before(&main, "@osprey_list_append_of(");
 }
 
 #[test]
@@ -409,9 +409,10 @@ fn effect_result_parameters_preserve_shape_in_direct_and_resuming_abis() {
         // source binders: a binder spelled `entry` collided with the
         // `entry:` block label and clang refused the module. The SHAPES
         // are the contract — the Result parameter travels as its block
-        // pointer, the fiber as its id word ([FLAVOR-IR-EQUIV]).
+        // pointer, the fiber as its managed handle ([FLAVOR-IR-EQUIV],
+        // [CONCURRENCY-FIBER-LIFETIME]).
         assert!(
-            definition.contains("i8* %__arm0") && definition.contains("i64 %__arm1"),
+            definition.contains("i8* %__arm0") && definition.contains("i8* %__arm1"),
             "effect parameters must use their complete ParamSig ABI:\n{definition}\n{ir}"
         );
         shows(&ir, &["bitcast i8* %__arm0 to { i64, i8, i8* }*"]);

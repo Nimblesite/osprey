@@ -3,7 +3,7 @@
 use crate::builder::Codegen;
 use crate::error::{CodegenError, Result};
 use crate::llty::Value;
-use osprey_ast::{Expr, Parameter, Position};
+use osprey_ast::{Expr, Position};
 
 pub(crate) fn intrinsic_value(
     cg: &mut Codegen,
@@ -51,21 +51,8 @@ fn open_builtin_cell(cg: &mut Codegen, name: &str, ty: osprey_types::Type) -> Re
         osprey_types::Type::Fun { params, .. } => params.len(),
         _ => 0,
     };
-    let parameters: Vec<Parameter> = (0..arity)
-        .map(|index| Parameter {
-            name: format!("value{index}"),
-            ty: None,
-            inline_constraint: false,
-        })
-        .collect();
-    let body = Expr::Call {
-        function: Box::new(Expr::Identifier(name.into())),
-        arguments: parameters
-            .iter()
-            .map(|p| Expr::Identifier(p.name.clone()))
-            .collect(),
-        named_arguments: Vec::new(),
-    };
+    let (parameters, body) =
+        crate::closure::forwarding_body("value", arity, Expr::Identifier(name.into()));
     let key = crate::closure::specialisation_key(name, &sig);
     let mut value =
         crate::closure::emit_closure_keyed(cg, &parameters, &body, &sig, Some(key), None, None)?;

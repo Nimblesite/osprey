@@ -140,14 +140,26 @@ gpuAbsoluteCase () =
         Error message => gpuOpError message
 test "host GPU abs callbacks retain numeric types and recovery" gpuAbsoluteCase
 (** Shared element probes: per-width bit words behind one shape. *)
-bits64At (values, at, word) = gpuSatisfies(gpuGet(values, at), \x => floatBits(x) == word)
-bits32At (values, at, word) = gpuSatisfies(gpuGet(values, at), \x => float32Bits(x) == word)
-bits16At (values, at, word) = gpuSatisfies(gpuGet(values, at), \x => float16Bits(x) == word)
+gpuWordMatches (values, at, word, toBits) = gpuSatisfies(gpuGet(values, at), \x => toBits(x) == word)
+gpuNanAt (values, at) = gpuSatisfies(gpuGet(values, at), \x => x != x)
+remaindersMatch (output, toBits, positive, negative, negativeZero, subnormal) =
+    (gpuLength(output) == 6 && gpuWordMatches(output, 0, positive, toBits) && gpuWordMatches(output, 1, negative, toBits)
+        && gpuWordMatches(output, 2, negativeZero, toBits) && gpuWordMatches(output, 3, subnormal, toBits)
+        && gpuNanAt(output, 4) && gpuNanAt(output, 5))
+quotientsMatch (q, toBits, positiveInfinity, negativeInfinity, ordinary) =
+    (gpuLength(q) == 5 && gpuWordMatches(q, 0, positiveInfinity, toBits) && gpuWordMatches(q, 1, negativeInfinity, toBits)
+        && gpuNanAt(q, 2) && gpuEquals(gpuGet(q, 3), ordinary)
+        && gpuWordMatches(q, 4, negativeInfinity, toBits))
 (** [GPU-DEVICE-NATIVE] [%]: signs, subnormals and non-finite values at width 64. *)
-remainder64Case () = gpuSatisfies(toGpu([toFloat(5.5), toFloat(-5.5), toFloat(-0.0), floatFromBits(1), floatFromBits(9218868437227405312), floatFromBits(9221120237041090560)]), \input => gpuSatisfies(gpuMap(input, \x => x % toFloat(2.0)), \output => gpuLength(output) == 6 && bits64At(output, 0, 4609434218613702656) && bits64At(output, 1, -4613937818241073152) && bits64At(output, 2, -9223372036854775808) && bits64At(output, 3, 1) && gpuSatisfies(gpuGet(output, 4), \x => x != x) && gpuSatisfies(gpuGet(output, 5), \x => x != x)))
+remainder64Case () = gpuSatisfies(toGpu([toFloat(5.5), toFloat(-5.5), toFloat(-0.0), floatFromBits(1), floatFromBits(9218868437227405312), floatFromBits(9221120237041090560)]), \input => gpuSatisfies(gpuMap(input, \x => x % toFloat(2.0)), \output => remaindersMatch(output, floatBits, 4609434218613702656, -4613937818241073152, -9223372036854775808, 1)))
 (** [GPU-DEVICE-NATIVE] [%]: signs, subnormals and non-finite values at width 32. *)
-remainder32Case () = gpuSatisfies(toGpu([toFloat32(5.5), toFloat32(-5.5), toFloat32(-0.0), float32FromBits(1), float32FromBits(2139095040), float32FromBits(2143289344)]), \input => gpuSatisfies(gpuMap(input, \x => x % toFloat32(2.0)), \output => gpuLength(output) == 6 && bits32At(output, 0, 1069547520) && bits32At(output, 1, -1077936128) && bits32At(output, 2, -2147483648) && bits32At(output, 3, 1) && gpuSatisfies(gpuGet(output, 4), \x => x != x) && gpuSatisfies(gpuGet(output, 5), \x => x != x)))
+remainder32Case () = gpuSatisfies(toGpu([toFloat32(5.5), toFloat32(-5.5), toFloat32(-0.0), float32FromBits(1), float32FromBits(2139095040), float32FromBits(2143289344)]), \input => gpuSatisfies(gpuMap(input, \x => x % toFloat32(2.0)), \output => remaindersMatch(output, float32Bits, 1069547520, -1077936128, -2147483648, 1)))
+withDivisionInputs (toWidth, check) =
+    use numerators <- gpuSatisfies (toGpu([toWidth(1.0), toWidth(-1.0), toWidth(0.0), toWidth(6.0), toWidth(1.0)]))
+    use divisors <- gpuSatisfies (toGpu([toWidth(0.0), toWidth(0.0), toWidth(0.0), toWidth(4.0), toWidth(-0.0)]))
+    check(numerators, divisors)
 (** [BUILTIN-MATH-FLOATDIV] floatDiv is the IEEE quotient at width 64 on the host and in a kernel: a zero divisor answers an infinity of the right sign or NaN, never an Arith operation. *)
+<<<<<<< HEAD
 floatDiv64Case () =
     use numerators <- gpuSatisfies (toGpu([toFloat(1.0), toFloat(-1.0), toFloat(0.0), toFloat(6.0), toFloat(1.0)]))
     use divisors <- gpuSatisfies (toGpu([toFloat(0.0), toFloat(0.0), toFloat(0.0), toFloat(4.0), toFloat(-0.0)]))
@@ -165,8 +177,27 @@ floatDiv16Case () =
     use divisors <- gpuSatisfies (toGpu([toFloat16(0.0), toFloat16(0.0), toFloat16(0.0), toFloat16(4.0), toFloat16(-0.0)]))
     use q <- gpuSatisfies (gpuZipWith(numerators, divisors, \(n, d) => floatDiv(n, d)))
     gpuLength(q) == 5 && bits16At(q, 0, 31744) && bits16At(q, 1, -1024) && gpuSatisfies(gpuGet(q, 2), \x => x != x) && gpuEquals(gpuGet(q, 3), toFloat16(1.5)) && bits16At(q, 4, -1024) && float16Bits(floatDiv(toFloat16(1.0), toFloat16(0.0))) == 31744 && floatDiv(toFloat16(6.0), toFloat16(4.0)) == toFloat16(1.5)
+=======
+floatDiv64Case () = withDivisionInputs(\x => toFloat(x), \(numerators, divisors) =>
+    use q <- gpuSatisfies (gpuZipWith(numerators, divisors, \(n, d) => floatDiv(n, d)))
+    (quotientsMatch(q, floatBits, 9218868437227405312, -4503599627370496, toFloat(1.5))
+        && floatBits(floatDiv(toFloat(1.0), toFloat(0.0))) == 9218868437227405312
+        && floatDiv(toFloat(6.0), toFloat(4.0)) == toFloat(1.5)))
+(** [BUILTIN-MATH-FLOATDIV] The same quotients at width 32, the width the Qwen kernels compute in. *)
+floatDiv32Case () = withDivisionInputs(\x => toFloat32(x), \(numerators, divisors) =>
+    use q <- gpuSatisfies (gpuZipWith(numerators, divisors, \(n, d) => floatDiv(n, d)))
+    (quotientsMatch(q, float32Bits, 2139095040, -8388608, toFloat32(1.5))
+        && float32Bits(floatDiv(toFloat32(1.0), toFloat32(0.0))) == 2139095040
+        && floatDiv(toFloat32(6.0), toFloat32(4.0)) == toFloat32(1.5)))
+(** [BUILTIN-MATH-FLOATDIV] The same quotients at width 16, which a kernel computes in binary32 and rounds back. *)
+floatDiv16Case () = withDivisionInputs(\x => toFloat16(x), \(numerators, divisors) =>
+    use q <- gpuSatisfies (gpuZipWith(numerators, divisors, \(n, d) => floatDiv(n, d)))
+    (quotientsMatch(q, float16Bits, 31744, -1024, toFloat16(1.5))
+        && float16Bits(floatDiv(toFloat16(1.0), toFloat16(0.0))) == 31744
+        && floatDiv(toFloat16(6.0), toFloat16(4.0)) == toFloat16(1.5)))
+>>>>>>> origin/fixes
 (** [GPU-DEVICE-NATIVE] [%]: signs, subnormals and non-finite values at width 16. *)
-remainder16Case () = gpuSatisfies(toGpu([toFloat16(5.5), toFloat16(-5.5), toFloat16(-0.0), float16FromBits(1), float16FromBits(31744), float16FromBits(32256)]), \input => gpuSatisfies(gpuMap(input, \x => x % toFloat16(2.0)), \output => gpuLength(output) == 6 && bits16At(output, 0, 15872) && bits16At(output, 1, -16896) && bits16At(output, 2, -32768) && bits16At(output, 3, 1) && gpuSatisfies(gpuGet(output, 4), \x => x != x) && gpuSatisfies(gpuGet(output, 5), \x => x != x)))
+remainder16Case () = gpuSatisfies(toGpu([toFloat16(5.5), toFloat16(-5.5), toFloat16(-0.0), float16FromBits(1), float16FromBits(31744), float16FromBits(32256)]), \input => gpuSatisfies(gpuMap(input, \x => x % toFloat16(2.0)), \output => remaindersMatch(output, float16Bits, 15872, -16896, -32768, 1)))
 (** The sized bit views run as kernels too: binary32 words through
     float32FromBits/float32Bits and binary16 words through float16FromBits/float16Bits
     come back as the words they were, on the host and on a device. *)

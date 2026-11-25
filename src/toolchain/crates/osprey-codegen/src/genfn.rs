@@ -308,6 +308,7 @@ fn lower_inline_arg(
     } else {
         relaid_placeholder(cg, v, declared)?
     };
+    let v = string_word(cg, v, declared)?;
     // The value an inlined body pattern-matches must know its own INSTANCE of
     // a generic union: the literal alone carries only the erased layout, so a
     // `Tree<string>` destructured inside `all@string` bound its payload as the
@@ -324,6 +325,19 @@ fn lower_inline_arg(
         .cloned()
         .or_else(|| crate::stmt::fn_result_type(cg, a));
     Ok(InlineArg::Value(Box::new(v), function_type))
+}
+
+/// A machine word whose declared parameter type is `string` is the string's
+/// pointer: a payload read through a slot whose element type was erased, such
+/// as `mapGet` on a map reached through an unannotated record parameter. Left a
+/// word, the inlined body compared it with a string as a number (#401).
+fn string_word(cg: &mut Codegen, v: Value, declared: Option<&osprey_types::Type>) -> Result<Value> {
+    let string = declared.is_some_and(|ty| crate::types::ltype_of(ty) == crate::llty::LType::Str);
+    if string && v.ty == crate::llty::LType::I64 && v.result_inner.is_none() {
+        crate::cast::coerce_to(cg, v, crate::llty::LType::Str)
+    } else {
+        Ok(v)
+    }
 }
 
 /// Bind one already-lowered argument to its parameter inside the inlined body's

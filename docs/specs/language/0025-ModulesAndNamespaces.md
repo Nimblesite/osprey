@@ -123,7 +123,7 @@ exports the items named by its signature.
 
 ## Imports `[MODULES-IMPORT]`
 
-Imports target logical namespaces or modules, never files.
+Imports target logical namespaces or modules, never files. Separate path segments with `::`.
 
 Default:
 

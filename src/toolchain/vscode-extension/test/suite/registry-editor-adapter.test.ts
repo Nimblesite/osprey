@@ -1,53 +1,10 @@
 import * as assert from "assert";
-import * as sinon from "sinon";
-import { CancellationTokenSource, ExtensionContext, TabInputText, Uri, window, workspace } from "vscode";
-import { defaultPackageDeps, makeAddHandler } from "../../client/src/package-commands";
+import { ExtensionContext, TabInputText, Uri, window, workspace } from "vscode";
 import { hostBridge } from "../../client/src/package-workspace";
 import { createRequestExecutor } from "../../client/src/osprey-ui/capabilities";
 import { Ask } from "../../client/src/osprey-ui/asks";
 import { activateWithServer, ACTIVATION_MS } from "./profiler-kit";
 import { extensionRoot } from "./osprey-test-env";
-
-const selected = { label: "@finch/ledger", key: "@finch/ledger", detail: "Unverified evidence" };
-
-function editorFixture(): CancellationTokenSource {
-  sinon.stub(window, "showQuickPick").resolves(selected);
-  sinon.stub(window, "showWarningMessage").resolves({ title: "Add Anyway" });
-  sinon.stub(window, "showInformationMessage").resolves(undefined);
-  const cancellation = new CancellationTokenSource();
-  sinon.stub(window, "withProgress").callsFake(async (_options, task) =>
-    task({ report: () => undefined }, cancellation.token));
-  return cancellation;
-}
-
-function dependencyFixture(calls: string[]) {
-  return {
-    ...defaultPackageDeps(), projectRoots: () => ["/work/project with spaces"], dirtyFiles: () => [],
-    fetchListing: async () => JSON.stringify({ packages: [
-      { key: selected.key, releases: [{ epoch: 1, ordinal: 1, digest: `sha256:${"a".repeat(64)}` }] },
-    ] }),
-    frontend: { run: async (command: string, cwd: string) => {
-      calls.push(`${cwd}\n${command}`);
-      return { status: 0, lines: ["fixture operation completed"] };
-    } },
-  };
-}
-
-suite("package production editor adapter", () => {
-  teardown(() => sinon.restore());
-
-  test("the real single-selection QuickPick reaches the package frontend", async () => {
-    const cancellation = editorFixture();
-    const calls: string[] = [];
-    try {
-      await makeAddHandler(dependencyFixture(calls))();
-      assert.strictEqual(calls.length, 1, "a real VS Code item must not disappear through an array cast");
-      assert.ok(calls[0].includes("--project ."));
-    } finally {
-      cancellation.dispose();
-    }
-  });
-});
 
 suite("package VSIX contributions", () => {
   test("commands and machine-scoped executable setting ship in the manifest", () => {

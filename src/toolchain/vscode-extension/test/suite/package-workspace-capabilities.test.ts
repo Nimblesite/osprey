@@ -357,7 +357,7 @@ suite("package workspace capabilities", () => {
   test("every framework capability is answered here or refused by name", async () => {
     // Every `Capability` constructor in src/osprey/packages/native/src/capability.ospml, as the encoder names it
     // ([NATIVE-HOSTS-COVERAGE]): a capability added to the framework fails here until this host answers or refuses it.
-    const answered = new Set(ANSWERED_CAPABILITIES);
+    const answered = new Set<string>(ANSWERED_CAPABILITIES);
     const kinds = unionKinds("capability.ospml", "type Capability =", { ReadPropertyLists: "read-plists" });
     assert.strictEqual(kinds.length, 25, kinds.join(","));
     const refused = kinds.filter((kind) => !answered.has(kind));

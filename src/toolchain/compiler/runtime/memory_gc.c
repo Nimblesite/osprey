@@ -87,12 +87,16 @@ typedef struct OspGcPage OspGcPage; // memory_gc_pages.h
 // marked when reached but never scanned, so a heap of sample buffers costs a lookup per
 // block, not one per word.
 #define GC_LEAF 16u
-#define GC_PERSISTENT (GC_FINAL | GC_STRING | GC_PINNED | GC_LEAF)
+// An EXTERN block's subtype, which picks its finalizer ([MEM-BACKENDS-FINALIZERS]).
+#define GC_SUBTYPE_SHIFT 8u
+#define GC_SUBTYPE_MASK (0xFFu << GC_SUBTYPE_SHIFT)
+#define GC_PERSISTENT (GC_FINAL | GC_STRING | GC_PINNED | GC_LEAF | GC_SUBTYPE_MASK)
 #define GC_USED 32u // a page cell that holds a block [MEM-BACKENDS-GC-HEAP]
 
 #include "heap_lock.h"
 #include "memory_heap_limit.h"
 #include "run_parent_watch.h"
+#include "stack_guard.h"
 
 // heap_lock.h governs mutual exclusion; g_off below governs whether collection
 // may run once a second allocator is seen. The two are orthogonal.
@@ -118,10 +122,28 @@ static size_t g_ms_top = 0;
 static int g_ms_dropped = 0; // a push found no memory this collection
 
 static size_t g_bytes = 0;                          // managed bytes since last GC
+// Scanned-block bytes since the last GC. They count towards the next one: only
+// a collection finds the dead handles whose fibers and channels own them.
+static size_t g_scanned_since = 0;
 static size_t g_min_heap = OSP_GC_MIN_HEAP_BYTES;   // floor for the adaptive budget
 static size_t g_thresh = OSP_GC_MIN_HEAP_BYTES;     // next-collection budget
 static int g_debug = 0;      // OSPREY_GC_DEBUG: print per-collection stats
 static size_t g_ncollect = 0;
+
+#include "memory_finalizers.h"
+
+// GC_FINAL and the subtype of an EXTERN block's meta; nothing for any other kind.
+static uint32_t gc_final_flags(int64_t meta) {
+  if ((meta & 0xFF) != OSP_MEM_LIST_HDR_EXTERN) {
+    return 0;
+  }
+  return GC_FINAL | (uint32_t)(OSP_MEM_EXTERN_SUBTYPE(meta) << GC_SUBTYPE_SHIFT);
+}
+
+// Runs the finalizer of the dying block `body`, whose mark word is `mark`.
+static void gc_finalize_block(uint32_t mark, void *body) {
+  finalize_subtype((mark & GC_SUBTYPE_MASK) >> GC_SUBTYPE_SHIFT, body);
+}
 
 #include "memory_gc_table.h"
 #include "memory_gc_pages.h"
@@ -170,17 +192,23 @@ static int gc_may_collect(void) {
   return 1;
 }
 
+#include "memory_gc_waits.h"
+
+// Every other thread's stack and every scanned block, but those a channel wait
+// defers [CONCURRENCY-DEADLOCK].
 __attribute__((unused)) static void gc_scan_others(const OspGcBaton *self) {
-  if (self != &g_main_baton) {
+  if (self != &g_main_baton && !gc_wait_defers(&g_main_baton, NULL)) {
     gc_scan_range(g_main_baton.parked_at, g_main_baton.base);
   }
   for (const OspGcBaton *b = g_batons; b; b = b->next) {
-    if (b != self) {
+    if (b != self && !gc_wait_defers(b, NULL)) {
       gc_scan_range(b->parked_at, b->base);
     }
   }
   for (const OspGcScanned *s = g_scanned; s; s = s->next) {
-    gc_scan_range((uintptr_t)(s + 1), (uintptr_t)(s + 1) + s->size);
+    if (!gc_wait_defers(NULL, s + 1)) {
+      gc_scan_range((uintptr_t)(s + 1), (uintptr_t)(s + 1) + s->size);
+    }
   }
 }
 
@@ -219,9 +247,15 @@ static void gc_trace(void) {
 static void gc_collect_locked(void) {
   heap_note_peak(g_bytes);
   g_ms_top = 0;
+  gc_defer_waits();
   gc_scan_roots();
   gc_scan_pinned();
 
+  gc_trace();
+  while (gc_wake_reached_waits()) {
+    gc_trace();
+  }
+  gc_settle_stuck_waits();
   gc_trace();
   gc_sweep();
 }
@@ -279,7 +313,8 @@ static void *gc_managed_alloc(size_t size, uint32_t flags) {
             g_bytes >> 20);
     g_off_report_at *= 2;
   }
-  if (g_collection_wanted || (g_bytes > g_thresh && g_bytes >= g_retry_at)) {
+  size_t pressure = g_bytes + g_scanned_since;
+  if (g_collection_wanted || (pressure > g_thresh && pressure >= g_retry_at)) {
     gc_safepoint();
   }
   if (heap_over_limit(g_bytes, size) && !gc_make_room(size)) {
@@ -310,14 +345,17 @@ void *osp_alloc(int64_t size) { return osp_alloc_tagged(size, OSP_MEM_RAW); }
 
 // Link anchor (memory_hooks.h): main calls this so an allocation-free program
 // still extracts this object. The collector arms lazily; only the runner watch starts here.
-void osp_mem_boot(void) { run_parent_watch(); }
+void osp_mem_boot(void) {
+  osp_stack_guard_arm();
+  run_parent_watch();
+}
 
 // [PORT-STRING-NUL-OWNERSHIP] Length lives in the existing bounded allocation entry.
 void *osp_alloc_tagged(int64_t size, int64_t meta) {
   bool text = (meta & 0xFF) == OSP_MEM_STRING;
   if ((size > 0 && (uint64_t)size > SIZE_MAX) ||
       (text && (size < 1 || (uint64_t)size > UINT32_MAX))) return NULL;
-  uint32_t flags = text ? (GC_STRING | GC_LEAF) : ((meta & 0xFF) == OSP_MEM_LIST_HDR_EXTERN ? GC_FINAL : 0);
+  uint32_t flags = text ? (GC_STRING | GC_LEAF) : gc_final_flags(meta);
   heap_lock();
   void *p = gc_managed_alloc(size > 0 ? (size_t)size : 0, flags);
   heap_unlock();
@@ -333,8 +371,6 @@ int64_t osp_mem_string_length(const void *p) {
   return length;
 }
 
-// Finalizer registration (memory_hooks.h).
-void osp_mem_set_finalizer(void (*finalize)(void *body)) { g_finalizer = finalize; }
 
 // Fully-initialized-by-caller twin (memory_hooks.h). The conservative collector
 // never relies on pre-zeroed bodies, so it is identical to osp_alloc_tagged.

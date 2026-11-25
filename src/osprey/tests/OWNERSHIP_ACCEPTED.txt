@@ -50,6 +50,11 @@ modules/module_composition.test.osp
 modules/module_composition.test.ospml
 modules/module_data_types.test.osp
 modules/module_data_types.test.ospml
+<<<<<<< HEAD
+=======
+modules/module_effect_records.test.osp
+modules/module_effect_records.test.ospml
+>>>>>>> origin/fixes
 modules/namespace_surface.test.osp
 modules/namespace_surface.test.ospml
 modules/signature_ascription.test.osp
@@ -134,4 +139,8 @@ regressions/issues/handler_state_from_nested_function.test.ospml
 regressions/issues/later_generic_callee_generalized.test.osp
 regressions/issues/map_and_list_element_types.test.osp
 regressions/issues/reperform_reaches_outer_handler.test.ospml
+<<<<<<< HEAD
+=======
+regressions/issues/unannotated_record_string_payload.test.ts
+>>>>>>> origin/fixes
 regressions/ownership/single_owner.test.osp

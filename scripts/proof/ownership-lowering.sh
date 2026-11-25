@@ -15,8 +15,15 @@ clang=${OSPREY_PROOF_CLANG:-clang}
 validate_ir() { "$clang" -Wno-override-module -c -x ir "$1" -o /dev/null; }
 validate_ir "$out/ownership.ll"
 runtime="$root/src/toolchain/compiler/runtime"
+<<<<<<< HEAD
 compile_runtime() {
   "$clang" -O1 -fno-inline -fno-discard-value-names -I "$runtime" "${@:3}" \
+=======
+# _GNU_SOURCE as every runtime build sets it (config.mk): glibc declares
+# pthread_getattr_np, which the stack guard reads, only under it.
+compile_runtime() {
+  "$clang" -O1 -fno-inline -fno-discard-value-names -D_GNU_SOURCE -I "$runtime" "${@:3}" \
+>>>>>>> origin/fixes
     -S -emit-llvm "$1" -o "$2"
 }
 shim=(-include "$runtime/osp_arc_shim.h")
@@ -233,7 +240,10 @@ reject_active_hook() {
   reject "$name" compiledCompatibilityReturns
 }
 reject_active_hook unique-drop 's/osp_release_unique(void \*body) { (void)body; }/osp_release_unique(void *body) { tracked_drop(body); }/'
+<<<<<<< HEAD
 reject_active_hook active-finalizer 's/{ (void)finalize; }/{ if (finalize) finalize(NULL); }/'
+=======
+>>>>>>> origin/fixes
 
 # A child miss returns no owned replacement. Both mutants reach the theorem.
 for fault in release-miss return-parent; do

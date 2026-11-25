@@ -182,6 +182,42 @@ fn bind_lookup_types(analyzer: &Analyzer<'_>, expression: &Expr) {
 }
 
 #[test]
+fn callability_requires_proof_before_discarding_unknown_field_effects() {
+    let target = Expr::Identifier("control".into());
+    with_empty_analyzer(|analyzer| {
+        let key = expression_site(&target);
+        assert!(analyzer.may_be_callable(&target));
+        assert!(analyzer.may_be_callable_field(&target, "enabled"));
+        for (ty, callable) in [
+            (crate::Type::bool(), false),
+            (
+                crate::Type::fun(vec![crate::Type::int()], crate::Type::bool()),
+                true,
+            ),
+            (crate::Type::Var(0), true),
+        ] {
+            let record = crate::Type::Record {
+                name: "Control".into(),
+                fields: [("enabled".into(), ty.clone())].into_iter().collect(),
+            };
+            let _ = analyzer
+                .instances
+                .expression_types
+                .borrow_mut()
+                .insert(key, ty);
+            assert_eq!(analyzer.may_be_callable(&target), callable);
+            let _ = analyzer
+                .instances
+                .expression_types
+                .borrow_mut()
+                .insert(key, record);
+            assert_eq!(analyzer.may_be_callable_field(&target, "enabled"), callable);
+            assert!(analyzer.may_be_callable_field(&target, "missing"));
+        }
+    });
+}
+
+#[test]
 fn borrowed_named_projection_preserves_generic_declared_rows_and_stored_effects() {
     let source = "effect Read<T>{get:fn()->T}\neffect Alarm{ring:fn()->int}\n\
                   type Control<T>={press:fn()->int ![Read<T>]}\n\

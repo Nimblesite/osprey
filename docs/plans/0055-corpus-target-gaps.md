@@ -17,11 +17,13 @@ So a row leaves its manifest only when the program works on that target, and the
 
 - [ ] When a manifest has no rows left, delete it along with its branch in `run_test_corpus.sh` or `scripts/hunt`, and its references in specs, scripts and `.github/workflows/ci.yml`.
 
-## `osprey hunt` (KLEE) cannot explore: `HUNT_UNPORTABLE.txt` (92 rows)
+## `osprey hunt` (KLEE) cannot explore: `HUNT_UNPORTABLE.txt` (77 rows)
 
 `scripts/hunt` hunts these and marks each with its listed reason. Each hunt ends on its first path with an `unmodelled` finding, because the call named has no model in the mock C library or the path reaches native code outside the module KLEE explores. Listed from the sweeps of 2026-10-24. The hunt app refuses to sweep while a row names a program it does not enumerate (#341). Parent: [plan 0034](0034-symbolic-execution.md) [SYMEX-CORPUS].
 
-- [ ] Model the fiber runtime for KLEE. `__osprey_coro_new`, `fiber_spawn_env_owned`, `fiber_set_deterministic_mode`, `channel_select` and `channel_create_checked` are native code outside the explored module, so every path through a resumable handler, spawn or channel ends `unmodelled`. Bring a portable fiber and channel runtime into `_runtime_klee`. Acceptance: these programs finish a hunt with no `unmodelled` finding and their rows are deleted. (59 rows)
+- [x] Bring the fiber and channel runtime into `_runtime_klee` ([SYMEX-MOCK-THREADS], 2026-11-26). `fiber_runtime.c` is in `KLEE_RT_SRC`, sequential on the engine's one thread as on wasm32; the mock gained condition, yield and sleep doubles, and the closed-module check passes on gc and arc. `spawn`, `await`, `Channel`, `send`, `recv` and `select` explore with no `unmodelled` finding, and a wait nothing can end is an `abort` finding at its line (`src/osprey/tests/hunt/fibers.osp`, `fiber_deadlock.osp`). Two compiler defects the first hunts met are fixed: a `select`'s arrays were dynamic stack allocations the root pass refused once inlined, and the owner-frame calls around a resumable handler had no debug location, which failed module verification. 14 rows left the manifest.
+- [ ] Model resumable continuations for KLEE. `__osprey_coro_new` is native code outside the explored module, so every path through a resumable handler ends `unmodelled`. Acceptance: these programs finish a hunt with no `unmodelled` finding and their rows are deleted. (42 rows)
+- [ ] Give nested fibers room under the engine. A fiber runs on the stack of whatever waited for it, so `fiber_showcase` reaches KLEE's stack limit (`Maximum stack size reached`) before its first path completes. Acceptance: both twins finish a hunt and their rows are deleted. (2 rows)
 
 | Program | Reason |
 | --- | --- |
@@ -32,8 +34,6 @@ So a row leaves its manifest only when the program works on that target, and the
 | `src/osprey/examples/handlers/returns.ospml` | fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module |
 | `src/osprey/examples/handlers/semantics.osp` | fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module |
 | `src/osprey/examples/handlers/semantics.ospml` | fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module |
-| `src/osprey/tests/core/collections/nested_generic_collections_fibers.test.osp` | fibers and continuations: `fiber_spawn_env_owned` is the native fiber runtime, outside the module |
-| `src/osprey/tests/core/collections/nested_generic_collections_fibers.test.ospml` | fibers and continuations: `fiber_spawn_env_owned` is the native fiber runtime, outside the module |
 | `src/osprey/tests/effects/multiplicity/multiplicity.test.osp` | fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module |
 | `src/osprey/tests/effects/multiplicity/multiplicity.test.ospml` | fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module |
 | `src/osprey/tests/effects/resume/answer_transform.test.osp` | fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module |
@@ -54,35 +54,29 @@ So a row leaves its manifest only when the program works on that target, and the
 | `src/osprey/tests/effects/scope/finalizers_masks_instances.test.ospml` | fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module |
 | `src/osprey/tests/modules/ml_layout_depth.test.osp` | fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module |
 | `src/osprey/tests/modules/ml_layout_depth.test.ospml` | fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module |
-| `src/osprey/tests/modules/module_composition.test.osp` | fibers and continuations: `fiber_spawn_env_owned` is the native fiber runtime, outside the module |
-| `src/osprey/tests/modules/module_composition.test.ospml` | fibers and continuations: `fiber_spawn_env_owned` is the native fiber runtime, outside the module |
 | `src/osprey/tests/modules/module_effects_rows.test.osp` | fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module |
 | `src/osprey/tests/modules/module_effects_rows.test.ospml` | fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module |
 | `src/osprey/tests/modules/signature_ascription.test.osp` | fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module |
 | `src/osprey/tests/modules/signature_ascription.test.ospml` | fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module |
-| `src/osprey/tests/regressions/basics/osprey_mega_showcase.test.osp` | fibers and continuations: `fiber_spawn_env_owned` is the native fiber runtime, outside the module |
-| `src/osprey/tests/regressions/basics/osprey_mega_showcase.test.ospml` | fibers and continuations: `fiber_spawn_env_owned` is the native fiber runtime, outside the module |
-| `src/osprey/tests/regressions/basics/types/channel_element_type_in_generic_field.test.osp` | `channel_create_checked` is native code outside the module (not in the portable runtime) |
-| `src/osprey/tests/regressions/basics/website/website_examples.test.osp` | fibers and continuations: `fiber_spawn_env_owned` is the native fiber runtime, outside the module |
-| `src/osprey/tests/regressions/basics/website/website_examples.test.ospml` | fibers and continuations: `fiber_spawn_env_owned` is the native fiber runtime, outside the module |
 | `src/osprey/tests/regressions/effects/abort_vs_resume.test.osp` | fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module |
 | `src/osprey/tests/regressions/effects/abort_vs_resume.test.ospml` | fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module |
-| `src/osprey/tests/regressions/effects/algebraic_effects_comprehensive.test.osp` | fibers and continuations: `fiber_spawn_env_owned` is the native fiber runtime, outside the module |
-| `src/osprey/tests/regressions/effects/algebraic_effects_comprehensive.test.ospml` | fibers and continuations: `fiber_spawn_env_owned` is the native fiber runtime, outside the module |
-| `src/osprey/tests/regressions/effects/fiber_effects.test.osp` | fibers and continuations: `fiber_spawn_env_owned` is the native fiber runtime, outside the module |
-| `src/osprey/tests/regressions/effects/fiber_effects.test.ospml` | fibers and continuations: `fiber_spawn_env_owned` is the native fiber runtime, outside the module |
+| `src/osprey/tests/regressions/effects/fiber_effects.test.osp` | fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module |
+| `src/osprey/tests/regressions/effects/fiber_effects.test.ospml` | fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module |
 | `src/osprey/tests/regressions/effects/handler_scoping.test.osp` | fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module |
 | `src/osprey/tests/regressions/effects/handler_scoping.test.ospml` | fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module |
 | `src/osprey/tests/regressions/effects/retry_until_valid.test.osp` | fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module |
 | `src/osprey/tests/regressions/effects/retry_until_valid.test.ospml` | fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module |
 | `src/osprey/tests/regressions/effects/staged_shared.test.osp` | fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module |
 | `src/osprey/tests/regressions/effects/staged_shared.test.ospml` | fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module |
-| `src/osprey/tests/regressions/fiber/channel_select.test.osp` | fibers and continuations: `channel_select` |
-| `src/osprey/tests/regressions/fiber/channel_select.test.ospml` | fibers and continuations: `channel_select` |
 | `src/osprey/tests/regressions/fiber/cpu_profiling_demo.test.osp` | fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module |
+<<<<<<< HEAD
 | `src/osprey/tests/regressions/fiber/fiber_determinism.test.osp` | fibers and continuations: `fiber_set_deterministic_mode` is the native fiber runtime, outside the module |
 | `src/osprey/tests/regressions/fiber/fiber_showcase.test.osp` | fibers and continuations: `fiber_spawn_env_owned` is the native fiber runtime, outside the module |
 | `src/osprey/tests/regressions/fiber/fiber_showcase.test.ospml` | fibers and continuations: `fiber_spawn_env_owned` is the native fiber runtime, outside the module |
+=======
+| `src/osprey/tests/regressions/fiber/fiber_showcase.test.osp` | the engine's stack limit: fibers run nested on its one stack (`Maximum stack size reached`) |
+| `src/osprey/tests/regressions/fiber/fiber_showcase.test.ospml` | the engine's stack limit: fibers run nested on its one stack (`Maximum stack size reached`) |
+>>>>>>> origin/fixes
 
 - [ ] Model sockets in the mock C library. Acceptance: HTTP and WebSocket client and server programs explore past `http_create_server`, `http_create_client`, `websocket_create_server` and `osprey_net_local_address`, and their rows are deleted. (19 rows)
 
@@ -228,7 +222,7 @@ Continuation reasons below end with `(a suspended continuation cannot cross or o
 | `src/osprey/tests/regressions/http/net_local_address.test.osp` | link directive `// @link: ssl` |
 | `src/osprey/tests/regressions/http/net_local_address.test.ospml` | link directive `// @link: ssl` |
 
-## wasm32 rejects: `WASM_UNPORTABLE.txt` (85 rows)
+## wasm32 rejects: `WASM_UNPORTABLE.txt` (64 rows)
 
 File operations, stdin, random numbers and substituting effects are supported and are not listed. Each row names a feature with no wasm implementation. [WASM-TARGET-CAPABILITIES] Tracking issue: #30.
 
@@ -273,33 +267,7 @@ Continuation reasons below end with `(wasm32 acquires one-shot continuations whe
 | `src/osprey/tests/regressions/effects/staged_shared.test.osp` | a continuation for `Audit.note` |
 | `src/osprey/tests/regressions/effects/staged_shared.test.ospml` | a continuation for `Audit.note` |
 
-- [ ] Give wasm32 fiber concurrency, `Channel` and `sleep`, which need threads today. Depends on the wasm story [plan 0026](0026-structured-concurrency.md) leaves open. Acceptance: these programs match the native goldens and their rows are deleted. (23 rows)
-
-| Program | Reason |
-| --- | --- |
-| `src/osprey/tests/core/collections/nested_generic_collections_fibers.test.osp` | fiber concurrency |
-| `src/osprey/tests/core/collections/nested_generic_collections_fibers.test.ospml` | fiber concurrency |
-| `src/osprey/tests/modules/module_composition.test.osp` | fiber concurrency |
-| `src/osprey/tests/modules/module_composition.test.ospml` | fiber concurrency |
-| `src/osprey/tests/regressions/basics/osprey_mega_showcase.test.osp` | fiber concurrency |
-| `src/osprey/tests/regressions/basics/osprey_mega_showcase.test.ospml` | fiber concurrency |
-| `src/osprey/tests/regressions/basics/osprey_mega_showcase.test.py` | fiber concurrency |
-| `src/osprey/tests/regressions/basics/types/channel_element_type_in_generic_field.test.osp` | fiber concurrency builtin `Channel` |
-| `src/osprey/tests/regressions/basics/types/sized_integers_fibers.test.osp` | fiber concurrency |
-| `src/osprey/tests/regressions/basics/types/sized_integers_fibers.test.ospml` | fiber concurrency |
-| `src/osprey/tests/regressions/basics/website/website_examples.test.osp` | fiber concurrency |
-| `src/osprey/tests/regressions/basics/website/website_examples.test.ospml` | fiber concurrency |
-| `src/osprey/tests/regressions/effects/algebraic_effects_comprehensive.test.osp` | fiber concurrency |
-| `src/osprey/tests/regressions/effects/algebraic_effects_comprehensive.test.ospml` | fiber concurrency |
-| `src/osprey/tests/regressions/effects/fiber_effects.test.osp` | fiber concurrency |
-| `src/osprey/tests/regressions/effects/fiber_effects.test.ospml` | fiber concurrency |
-| `src/osprey/tests/regressions/fiber/channel_select.test.osp` | fiber concurrency builtin `Channel` |
-| `src/osprey/tests/regressions/fiber/channel_select.test.ospml` | fiber concurrency builtin `Channel` |
-| `src/osprey/tests/regressions/fiber/cpu_profiling_demo.test.osp` | fiber concurrency builtin `sleep` |
-| `src/osprey/tests/regressions/fiber/fiber_showcase.test.osp` | fiber concurrency |
-| `src/osprey/tests/regressions/fiber/fiber_showcase.test.ospml` | fiber concurrency |
-| `src/osprey/tests/regressions/fiber/many_handles.test.osp` | fiber concurrency |
-| `src/osprey/tests/regressions/fiber/many_handles.test.ospml` | fiber concurrency |
+- [x] wasm32 runs fibers, `Channel` and `sleep` on its one thread ([CONCURRENCY-WASM], 2026-11-26): 20 rows left the manifest. Those that remain listed stop on something else, named in the manifest: `fiber_effects.test.osp` (a continuation for `Gift.get`), `fiber_effects.test.ospml` (a continuation for `Gift.get`), `cpu_profiling_demo.test.osp` (a continuation for `Tuning.baseline`).
 
 - [x] Child process spawning is permanently unavailable on the portable `wasm32-wasip1` target. The manifest identifies the four permanent rows. On 2026-11-23, compiling both programs in Default and ML with `--check --target=wasm32` rejected all four with their pinned diagnostic. See [the target contract](../specs/compiler/0022-WebAssemblyTarget.md#target-capability-checking-wasm-target-capabilities).
 

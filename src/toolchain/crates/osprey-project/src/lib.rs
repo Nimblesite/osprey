@@ -46,6 +46,26 @@ use osprey_syntax::Flavor;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
+/// Find `.osp` and `.ospml` files beneath a directory in traversal order.
+/// Unreadable directories and entries are skipped.
+#[must_use]
+pub fn native_source_files(directory: &Path) -> Vec<PathBuf> {
+    let mut files = Vec::new();
+    collect_native_sources(directory, &mut files);
+    files
+}
+
+fn collect_native_sources(directory: &Path, files: &mut Vec<PathBuf>) {
+    for entry in std::fs::read_dir(directory).into_iter().flatten().flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_native_sources(&path, files);
+        } else if source::is_native_source(&path) {
+            files.push(path);
+        }
+    }
+}
+
 /// One source file selected for project assembly.
 #[derive(Debug, Clone)]
 pub struct SourceFile {

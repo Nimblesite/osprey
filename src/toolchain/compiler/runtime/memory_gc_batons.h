@@ -14,6 +14,7 @@ void *osp_mem_scanned_alloc(size_t size) {
   memset(s, 0, sizeof(OspGcScanned) + size);
   s->size = size;
   heap_lock();
+  g_scanned_since += size;
   s->next = g_scanned;
   if (g_scanned) {
     g_scanned->prev = s;

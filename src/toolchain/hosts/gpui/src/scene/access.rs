@@ -10,21 +10,7 @@ use gpui_kit::accesskit::{Action, ActionData};
 use gpui_kit::*;
 
 /// One element of the session's accessibility tree, bounds in scene units.
-// BEGIN GENERATED [UI-MACHINE-A11Y]
-#[derive(Debug, Clone, PartialEq)]
-pub struct Access {
-    pub role: Role,
-    pub label: String,
-    pub x: f64,
-    pub y: f64,
-    pub w: f64,
-    pub h: f64,
-    pub value: f64,
-    pub min: f64,
-    pub max: f64,
-    pub selected: bool,
-}
-// END GENERATED [UI-MACHINE-A11Y]
+pub type Access = super::Accessible<Role>;
 
 /// A slider steps a twentieth of its range per increment, as a scroll wheel notch would.
 const STEPS: f64 = 20.;

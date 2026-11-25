@@ -4,6 +4,10 @@
 // http_server_request_mocks.h.
 #include "http_server_request_mocks.h"
 
+// Stand in for the accept loop's Fiber: the mocks only compare them.
+static char self_loop_fiber;
+static char external_loop_fiber;
+
 // One scripted read holding `chunk`, proved against the verdict the server owes
 // it; `reason` names the input, so a wrong verdict reports what produced it.
 static HttpRequestBuffer read_one(const char *chunk, RequestReadStatus verdict,
@@ -195,7 +199,7 @@ static void test_self_stop_defers_server_destruction(void) {
   server.is_listening = true;
   server.loop_scheduled = true;
   server.thread_known = true;
-  server.server_fiber_id = 1;
+  server.server_fiber = (Fiber *)&self_loop_fiber;
   server.server_thread = pthread_self();
   protect_server_fixture(address);
   assert(http_stop_server(1) == 0);
@@ -207,11 +211,11 @@ static void test_self_stop_defers_server_destruction(void) {
 static void test_external_stop_awaits_before_destruction(void) {
   static char address[] = "127.0.0.1";
   reset_server_fixture(address);
-  server.server_fiber_id = 9;
+  server.server_fiber = (Fiber *)&external_loop_fiber;
   protect_server_fixture(address);
-  awaited_fiber_id = -1;
+  awaited_fiber = NULL;
   assert(http_stop_server(1) == 0);
-  assert(awaited_fiber_id == 9);
+  assert(awaited_fiber == (Fiber *)&external_loop_fiber);
   assert(protected_frees[0] == NULL && protected_frees[1] == NULL);
 }
 

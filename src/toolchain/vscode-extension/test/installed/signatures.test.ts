@@ -231,7 +231,6 @@ suite("Installed VSIX compiler warnings and signature edits", () => {
       "package-api",
       "package-commands",
       "package-frontend",
-      "package-listing",
       "package-workspace",
       "warning-fixes",
       "workbench",

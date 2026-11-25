@@ -160,6 +160,15 @@
       ]
     },
     {
+      "title": "Synth",
+      "items": [
+        {
+          "text": "Audio synthesis",
+          "url": "/docs/audio-synthesis/"
+        }
+      ]
+    },
+    {
       "title": "Packages",
       "items": [
         {

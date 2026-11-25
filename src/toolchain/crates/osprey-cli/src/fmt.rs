@@ -87,32 +87,12 @@ fn collect_files(paths: &[String]) -> Vec<PathBuf> {
     for path in paths {
         let candidate = PathBuf::from(path);
         if candidate.is_dir() {
-            collect_dir(&candidate, &mut out);
+            out.extend(osprey_project::native_source_files(&candidate));
         } else {
             out.push(candidate);
         }
     }
     out
-}
-
-fn collect_dir(dir: &Path, out: &mut Vec<PathBuf>) {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            collect_dir(&path, out);
-        } else if is_osprey_source(&path) {
-            out.push(path);
-        }
-    }
-}
-
-fn is_osprey_source(path: &Path) -> bool {
-    path.extension()
-        .and_then(|e| e.to_str())
-        .is_some_and(|e| e == "osp" || e == "ospml")
 }
 
 /// Format a single file according to the parsed options, recording the outcome.

@@ -35,7 +35,7 @@ static inline void list_is(osp_string_list *list, const char *const *items) {
         assert(n < (size_t)list->length && strcmp(list->items[n], items[n]) == 0);
     }
     assert((size_t)list->length == n);
-    osp_string_list_free(list);
+    osp_release(list);
 }
 
 

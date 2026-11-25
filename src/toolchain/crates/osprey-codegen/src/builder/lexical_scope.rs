@@ -151,6 +151,20 @@ impl Codegen {
         })
     }
 
+<<<<<<< HEAD
+=======
+    /// Whether a binding names `operand` as a fiber or channel handle, the one
+    /// value a program may share under ownership
+    /// [MEM-OWNERSHIP-STATIC-HANDLES].
+    pub(crate) fn names_handle(&self, operand: &str) -> bool {
+        self.scopes.iter().any(|scope| {
+            scope
+                .values()
+                .any(|value| value.operand == operand && value.fiber_elem.is_some())
+        })
+    }
+
+>>>>>>> origin/fixes
     pub(crate) fn bind(&mut self, name: impl Into<String>, value: Value) {
         let name = name.into();
         let _ = self.handler_value_captures.remove(&name);

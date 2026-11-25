@@ -29,7 +29,9 @@ Root-cause fixes only: no retries, no wider timeouts used to hide a race, no ski
 
 ## Open issues blocking PR #428 (2026-11-23 hand-off)
 
-- [ ] **Duplication gate red.** `make _deslop` reports 4.2% (23471 of 560981 lines) against the 3.996181% ceiling in `.deslop.toml`: about 1,050 duplicated lines must go, and the ceiling only goes down. Most of the excess arrived since the last green run (cacb69095):
+- [x] **Duplication gate.** The [hosted Deslop 0.41.0 check](https://github.com/Nimblesite/osprey/actions/runs/45196739812/job/137815988719) passed on PR #428 head `a4a2ef119`. That merge raised the ceiling from 3.996181% to 4.164%, breaking the ratchet. PR #430 returned the ceiling to 4%, and the November 25 local check measured 22,889 duplicated lines out of 581,085 under the pinned scanner.
+
+  The original overage was concentrated in these files:
   - `daw/test/main.ospml`, `voice.ospml`, `room.ospml` and `history.ospml`
   - the cleanarch_todo `multishot_*_cases.osp`
   - `osprey-cli/tests/common/many_programs.rs`, `staged_multiplicity.rs` and `staged_many.rs`
@@ -48,7 +50,7 @@ Root-cause fixes only: no retries, no wider timeouts used to hide a race, no ski
   - **Derived JSON codecs from typeDiagram models.** The workbench `save`/`restore` pairs (`store.ospml`, `tutor.ospml`) and every app's `*Json`/`*Of` pair are field-by-field mirrors. Generating them from the model, as AGENTS.md asks, would delete both sides.
   - **One generic UI test bench** (`uitest::Bench S A`). daw, signal_flow, casting, painting, flock and uitest each declare their own `Bench` effect and the same `post`/`pointer`/`tap`/`element`/`offers` wrappers. A generic effect in `uitest` needs effect type parameters to work across packages in ML. This was not tried yet.
 - [x] **CleanArch retry and page tests.** The rival queue consumes one writer at a time, including duplicate titles, and the authorization, pagination and validation expectations match their fixtures and branch rules. All 100 cases pass under GC and ARC on the PR head.
-- [ ] **Windows Prism docked panel:** a white toolbar strip where Undo and Redo belong, and a light-theme panel beside the dark canvas. Logged as [daw.md](daw.md) item 40. The 100% goldens record the current look; the 150% goldens still show the deleted keyboard dock.
+- [ ] **Windows Prism docked panel:** a white toolbar strip where Undo and Redo belong, and a light-theme panel beside the dark canvas. Logged as [daw.md](synth/daw.md) item 40. The 100% goldens record the current look; the 150% goldens still show the deleted keyboard dock.
 - [ ] **Canvas scale with the panel docked.** The user said "scale a bit off". With [DAW-LAYOUT-FIXED-SCALE] at one unit per point, a 1152-point window with the 320-point panel hides the right of the patch. Decide whether a docked panel narrows the page or the canvas fits its pane.
 - [ ] **CPython in CI.** `_prism_ui_test` and `_prism_vst_ui_test` run `python3 src/toolchain/hosts/synth_vst/build.py`, which AGENTS.md bans. Port it to Python-flavour Osprey.
 - [x] **Rust lowering growth.** Only programs that declare a multi-shot operation need captured-state analysis. The gate is in the pushed commit `b87b7e245`. The 4,000-caller fixture fell from 4.02 s to 0.69 s locally, and the budget, staged-many and multiplicity tests passed.

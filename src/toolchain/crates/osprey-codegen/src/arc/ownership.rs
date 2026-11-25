@@ -3,6 +3,10 @@
 //! cannot move it would count at run time; under `--memory=ownership` each of
 //! those is reported instead, and a program with one is refused.
 use super::Codegen;
+<<<<<<< HEAD
+=======
+use crate::llty::Value;
+>>>>>>> origin/fixes
 use osprey_ast::Position;
 use std::fmt;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -170,9 +174,31 @@ impl OwnershipCheck {
     }
 }
 
+<<<<<<< HEAD
 /// The ledger is about to count a reference to `operand`: record it.
 pub(crate) fn second_owner(cg: &mut Codegen, operand: &str, name: Option<&str>, need: Need) {
     if !cg.ownership.on || !operand.starts_with('%') || cg.is_rodata(operand) {
+=======
+/// The ledger is about to count a reference to `value`: record it, unless it
+/// is a fiber or channel handle. A handle is the one value a program may share
+/// under ownership: fibers exist to be awaited and channels to be shared, so
+/// the runtime counts a handle's sharers itself and the last one to free it
+/// ends it [MEM-OWNERSHIP-STATIC-HANDLES].
+pub(crate) fn second_owner_of(cg: &mut Codegen, value: &Value, name: Option<&str>, need: Need) {
+    if value.fiber_elem.is_none() {
+        second_owner(cg, &value.operand, name, need);
+    }
+}
+
+/// The ledger is about to count a reference to `operand`: record it, unless a
+/// binding names it as a handle ([`second_owner_of`]).
+pub(crate) fn second_owner(cg: &mut Codegen, operand: &str, name: Option<&str>, need: Need) {
+    if !cg.ownership.on
+        || !operand.starts_with('%')
+        || cg.is_rodata(operand)
+        || cg.names_handle(operand)
+    {
+>>>>>>> origin/fixes
         return;
     }
     let named = name.map(str::to_owned).or_else(|| cg.name_of(operand));
@@ -193,7 +219,13 @@ pub(crate) fn second_owner(cg: &mut Codegen, operand: &str, name: Option<&str>, 
 }
 
 /// The calls that count a reference. The ledger model has no such action
+<<<<<<< HEAD
 /// [MEM-OWNERSHIP-STATIC-MODEL], so accepted code may not contain one.
+=======
+/// [MEM-OWNERSHIP-STATIC-MODEL], so accepted code may not contain one. A shared
+/// handle is counted by `osp_ownership_share` instead
+/// [MEM-OWNERSHIP-STATIC-HANDLES].
+>>>>>>> origin/fixes
 const COUNTS: [&str; 3] = [
     "call void @osp_retain(",
     "call void @osp_release(",

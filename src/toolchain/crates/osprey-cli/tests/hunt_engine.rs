@@ -179,7 +179,14 @@ fn deterministic_stems() -> Checked<Vec<String>> {
 #[ignore = "needs KLEE"]
 fn every_deterministic_hunt_program_matches_its_expectation_on_both_backends() -> Checked {
     let stems = deterministic_stems()?;
-    let pinned = ["crash", "json_empty", "process", "record_update_list"];
+    let pinned = [
+        "crash",
+        "fiber_deadlock",
+        "fibers",
+        "json_empty",
+        "process",
+        "record_update_list",
+    ];
     assert_eq!(stems, pinned, "the deterministic hunt programs changed");
     for memory in BACKENDS {
         for stem in &stems {

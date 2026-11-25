@@ -55,11 +55,12 @@ pub(crate) fn ltype_of(ty: &Type) -> LType {
 
 fn ltype_of_con(name: &str, args: &[Type]) -> LType {
     match name {
-        // Int and unit travel as a machine word — as do fiber and channel
-        // handles, which are runtime ids drawn from one shared counter, not
-        // pointers.
-        // A capability is a runtime identity word as well ([EFFECTS-INSTANCE]).
-        names::UNIT | names::FIBER | names::CHANNEL | names::CAPABILITY => LType::I64,
+        // Int and unit travel as a machine word. A capability is a runtime
+        // identity word as well ([EFFECTS-INSTANCE]). A fiber and a channel
+        // are managed handles the memory backend reclaims
+        // ([CONCURRENCY-FIBER-LIFETIME], [CONCURRENCY-CHANNEL-LIFETIME]): the
+        // wildcard's pointer.
+        names::UNIT | names::CAPABILITY => LType::I64,
         // An erased `any` is a pointer to its shape-carrying box
         // ([`crate::anybox`], [TYPE-ANY]) — never a bare machine word.
         names::ANY => LType::Any,

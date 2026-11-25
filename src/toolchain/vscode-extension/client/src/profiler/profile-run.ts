@@ -8,7 +8,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
-import { isOspreyFile } from "../extension";
+import { isOspreyFile } from "../client-config";
 import { runCompiler } from "../test-explorer-process";
 import type { ExecResult } from "../test-explorer-parse";
 import {

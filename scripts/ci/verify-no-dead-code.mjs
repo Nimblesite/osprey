@@ -35,10 +35,11 @@
 // fails, the fix is to call the item or delete it, never to exempt it.
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
-import { join, extname, resolve, dirname } from "node:path";
+import { basename, join, extname, resolve, dirname, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
+const CRATES_ROOT = join(REPO_ROOT, "src", "toolchain", "crates") + sep;
 
 // Directories that never hold hand-written product source.
 const SKIP_DIRS = new Set([
@@ -70,7 +71,62 @@ const IMPL = /^\s*impl\b[^{]*?\b([A-Za-z_]\w*)\s*(?:<[^{]*>)?\s*(?:where[^{]*)?\
 const VARIANT = /^\s{4,}([A-Z]\w*)\s*(?:[{(,=]|$)/;
 const FIELD = /^\s{4,}pub\s+(?:\([^)]*\)\s*)?([a-z_]\w*)\s*:/;
 const TEST_ONLY = /^\s*#\[(?:cfg\(test\)|test)\]/;
+const EXTERNAL_MODULE = /^(?:#\[[^\]]*\]\s*)*(?:pub(?:\([^)]*\))?\s+)?mod ([A-Za-z_]\w*)\s*;/;
+const EXTERNAL_PATH = /#\[path\s*=\s*"([^"\\]+)"\]/;
 const ITEM_HEADER = /^\s*(?:pub(?:\s*\([^)]*\))?\s+)?(?:(?:async|unsafe|extern(?:\s*"[^"]*")?)\s+)*(?:fn\s+\w|(?:struct|enum|trait|impl|type|use|const|static|mod|union)\b)/;
+
+const QUOTED_STRING = String.raw`"(?:\\[\s\S]|[^"\\])*"`;
+const RUST_RAW = String.raw`\b[bc]?r(#{0,255})"`;
+const C_RAW = String.raw`\b(?:u8|u|U|L)?R"([^\s()\\]{0,16})\(`;
+const RUST_CHAR = String.raw`'(?:\\(?:u\{[\da-fA-F_]+\}|x[\da-fA-F]{2}|[^\r\n])|[^'\\\r\n])'`;
+const C_CHAR = String.raw`'(?:\\[\s\S]|[^'\\\r\n])+'`;
+
+function blockEnd(text, start, rust) {
+  const blocks = /\/\*|\*\//g;
+  blocks.lastIndex = start;
+  let depth = 1;
+  for (let next; (next = blocks.exec(text)); ) {
+    if (next[0] === "/*") {
+      if (rust) depth += 1;
+    } else if (--depth === 0) {
+      return blocks.lastIndex;
+    }
+  }
+  return text.length;
+}
+
+function lineEnd(text, start, rust) {
+  let end = text.indexOf("\n", start);
+  while (!rust && end >= 0 && text[end - (text[end - 1] === "\r" ? 2 : 1)] === "\\") {
+    end = text.indexOf("\n", end + 1);
+  }
+  return end < 0 ? text.length : end;
+}
+
+// References in strings still count: codegen names runtime symbols in strings.
+// Replace only comments with whitespace so location and test masks use the
+// same coordinates as the original source.
+function withoutComments(text, rust) {
+  const tokens = new RegExp(
+    [rust ? RUST_RAW : C_RAW, QUOTED_STRING, rust ? RUST_CHAR : C_CHAR, String.raw`//|/\*`].join("|"), "gu",
+  );
+  const parts = [];
+  let cursor = 0;
+  for (let match; (match = tokens.exec(text)); ) {
+    const [token, delimiter] = match;
+    if (delimiter !== undefined) {
+      const close = rust ? '"' + delimiter : ")" + delimiter + '"';
+      const end = text.indexOf(close, tokens.lastIndex);
+      tokens.lastIndex = end < 0 ? text.length : end + close.length;
+      continue;
+    }
+    if (token[0] !== "/") continue;
+    const end = token === "//" ? lineEnd(text, tokens.lastIndex, rust) : blockEnd(text, tokens.lastIndex, rust);
+    parts.push(text.slice(cursor, match.index), text.slice(match.index, end).replace(/[^\r\n]/g, " "));
+    cursor = tokens.lastIndex = end;
+  }
+  return parts.join("") + text.slice(cursor);
+}
 
 const walk = (dir, out = []) => {
   for (const entry of readdirSync(dir)) {
@@ -82,19 +138,15 @@ const walk = (dir, out = []) => {
   return out;
 };
 
-const isTestFile = (path) =>
+const hasTestPath = (path) =>
   path.includes("/tests/") ||
   path.includes("/test/") ||
-  (path.endsWith("/tests.rs") && hasTestModuleDeclaration(path)) ||
   path.endsWith("_tests.rs") ||
   path.includes("test_support") ||
   path.includes("testutil") ||
   path.includes("/benchmarks/");
 
-const hasTestModuleDeclaration = (path) =>
-  ["main.rs", "lib.rs", "mod.rs"].some((parent) =>
-    /^\s*#\[cfg\(test\)\]\s*mod tests\s*;/m.test(files.get(join(dirname(path), parent)) ?? ""),
-  );
+const isTestFile = (path) => testModules.has(path) || hasTestPath(path);
 
 const delimiterDepth = (line, initial) =>
   (line.match(/->|[()[\]<>]/g) ?? []).reduce((depth, token) =>
@@ -137,11 +189,14 @@ const testMask = (lines) => {
 const files = new Map();
 for (const path of walk(REPO_ROOT)) {
   if (!REFERENCE_EXTS.has(extname(path))) continue;
+  let text;
   try {
-    files.set(path, readFileSync(path, "utf8"));
+    text = readFileSync(path, "utf8");
   } catch {
     /* unreadable file cannot name anything */
+    continue;
   }
+  files.set(path, withoutComments(text, path.endsWith(".rs")));
 }
 
 const linesOf = new Map();
@@ -152,8 +207,51 @@ for (const [path, text] of files) {
   maskOf.set(path, path.endsWith(".rs") ? testMask(lines) : new Set());
 }
 
+const reachable = (roots, children) => {
+  const seen = new Set(roots);
+  const pending = [...seen];
+  while (pending.length) {
+    for (const child of children(pending.pop())) {
+      if (seen.has(child)) continue;
+      seen.add(child);
+      pending.push(child);
+    }
+  }
+  return seen;
+};
+
+// A test-only module's descendants are also test-only unless a production
+// chain independently reaches them through module declarations available in builds.
+const children = new Map();
+const testRoots = new Set([...files.keys()].filter(hasTestPath));
+const moduleRoots = new Set(["main.rs", "lib.rs", "mod.rs"]);
+for (const [path, mask] of maskOf) {
+  if (!path.endsWith(".rs")) continue;
+  const lines = linesOf.get(path);
+  const root = moduleRoots.has(basename(path)) ? dirname(path) : path.slice(0, -3);
+  const edges = [];
+  lines.forEach((line, index) => {
+    const match = EXTERNAL_MODULE.exec(line);
+    if (!match) return;
+    const explicit = EXTERNAL_PATH.exec(line) ?? EXTERNAL_PATH.exec(lines[index - 1] ?? "");
+    const paths = explicit ? [resolve(dirname(path), explicit[1])]
+      : [join(root, match[1] + ".rs"), join(root, match[1], "mod.rs")];
+    for (const child of paths.filter(path => files.has(path))) {
+      const test = mask.has(index + 1);
+      edges.push({ child, test });
+      if (test) testRoots.add(child);
+    }
+  });
+  if (edges.length) children.set(path, edges);
+}
+const descendants = reachable(testRoots, path => (children.get(path) ?? []).map(edge => edge.child));
+const productRoots = [...children.keys()].filter(path => !descendants.has(path));
+const product = reachable(productRoots, path => (children.get(path) ?? [])
+  .filter(edge => !edge.test).map(edge => edge.child));
+const testModules = new Set([...descendants].filter(path => !product.has(path)));
+
 const crateSrc = (path) =>
-  path.startsWith(join(REPO_ROOT, "crates")) && path.endsWith(".rs") && !isTestFile(path);
+  path.startsWith(CRATES_ROOT) && path.endsWith(".rs") && !isTestFile(path);
 
 // name -> { kind, path, line, spans: [[path, start, end]] }
 const items = new Map();
@@ -226,8 +324,13 @@ for (const [name, item] of items) {
 }
 dead.sort((a, b) => a.path.localeCompare(b.path) || a.line - b.line);
 
+if (items.size === 0) {
+  console.error("FAIL: no public Rust declarations found in src/toolchain/crates.");
+  process.exit(1);
+}
+
 if (dead.length === 0) {
-  console.log(`==> Dead-code gate: ${items.size} public items, all reachable from product code.`);
+  console.log(`==> Dead-code gate: ${items.size} public items checked for product references.`);
   process.exit(0);
 }
 

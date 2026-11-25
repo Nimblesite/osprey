@@ -32,11 +32,21 @@ mod reads;
 pub(crate) use moves::{
     begin as begin_moves, begin_statement as begin_statement_moves, end as end_moves,
 };
+<<<<<<< HEAD
 pub(crate) use ownership::{second_owner, verdict as ownership_verdict, OwnershipCheck};
+=======
+pub(crate) use ownership::{
+    second_owner, second_owner_of, verdict as ownership_verdict, OwnershipCheck,
+};
+>>>>>>> origin/fixes
 pub use ownership::{set_ownership_check, Need, OtherUse, SecondOwner};
 pub(crate) use phi::{borrowed_phi_arms, move_phi_owners, promote_phi_arm};
 
 const RETAIN_DECL: &str = "declare void @osp_retain(i8*)";
+<<<<<<< HEAD
+=======
+const OWNERSHIP_SHARE_DECL: &str = "declare void @osp_ownership_share(i8*)";
+>>>>>>> origin/fixes
 const OWNERSHIP_FREE_DECL: &str = "declare void @osp_ownership_free(i8*)";
 const RELEASE_DECL: &str = "declare void @osp_release(i8*)";
 /// The proved-unique drop: `allockind("free")`/`allocptr` pair it with
@@ -292,7 +302,11 @@ fn adopt(cg: &mut Codegen, name: &str, v: &Value) -> bool {
 
 /// Bind a value something else owns: count a reference of its own for `name`.
 fn bind_counted(cg: &mut Codegen, name: &str, v: &Value) {
+<<<<<<< HEAD
     second_owner(cg, &v.operand, Some(name), Need::Bound);
+=======
+    second_owner_of(cg, v, Some(name), Need::Bound);
+>>>>>>> origin/fixes
     retain_val(cg, v);
     let ptr = as_i8ptr(cg, v);
     let slot = cg.hoist_arc_slot();
@@ -364,7 +378,23 @@ fn push_parent(cg: &mut Codegen, entry: Entry) {
 /// the heap never registered (rodata), so an unconditional pair is correct.
 pub(crate) fn retain_operand(cg: &mut Codegen, operand: &str) {
     second_owner(cg, operand, None, Need::Shared);
+<<<<<<< HEAD
     ownership_call(cg, RETAIN_DECL, "retain", operand);
+=======
+    count_call(cg, operand);
+}
+
+/// Count one more reference to the raw `i8*` `operand`. Under ownership the
+/// only value that gets here in an accepted program is a shared fiber or
+/// channel handle, whose sharers the runtime counts
+/// [MEM-OWNERSHIP-STATIC-HANDLES].
+pub(crate) fn count_call(cg: &mut Codegen, operand: &str) {
+    if cg.ownership.on {
+        ownership_call(cg, OWNERSHIP_SHARE_DECL, "ownership_share", operand);
+    } else {
+        ownership_call(cg, RETAIN_DECL, "retain", operand);
+    }
+>>>>>>> origin/fixes
 }
 
 /// Emit `osp_release` on a raw `i8*` operand (a loaded old cell value, a
@@ -389,8 +419,7 @@ fn retain_val(cg: &mut Codegen, v: &Value) {
         return;
     }
     let ptr = as_i8ptr(cg, v);
-    cg.add_extern(RETAIN_DECL);
-    cg.emit(format!("call void @osp_retain(i8* {ptr})"));
+    count_call(cg, &ptr);
 }
 
 /// Dup-on-store: retain `operand` when it is a register-carried pointer being
@@ -405,13 +434,16 @@ pub(crate) fn dup_store(cg: &mut Codegen, slot_ty: &str, operand: &str) {
             // A code pointer is no allocation: nothing owns it.
             return;
         }
+<<<<<<< HEAD
         cg.add_extern(RETAIN_DECL);
+=======
+>>>>>>> origin/fixes
         let ptr = if slot_ty == "i8*" {
             operand.to_string()
         } else {
             cg.emit_reg(format!("bitcast {slot_ty} {operand} to i8*"))
         };
-        cg.emit(format!("call void @osp_retain(i8* {ptr})"));
+        count_call(cg, &ptr);
     }
 }
 
@@ -428,7 +460,11 @@ pub(crate) fn epilogue(cg: &mut Codegen, ret: Option<&Value>) {
         ret.filter(|v| !take_owner_anywhere(cg, v) && !takes::take_returned(cg, &v.operand))
     {
         if managed(cg, v) {
+<<<<<<< HEAD
             second_owner(cg, &v.operand, None, Need::Returned);
+=======
+            second_owner_of(cg, v, None, Need::Returned);
+>>>>>>> origin/fixes
         }
         retain_val(cg, v);
     }
@@ -445,7 +481,11 @@ pub(crate) fn epilogue(cg: &mut Codegen, ret: Option<&Value>) {
 /// receiving side owns +1 (the boundary's structural release lands in M5).
 pub(crate) fn escape_retain(cg: &mut Codegen, v: &Value) {
     if managed(cg, v) {
+<<<<<<< HEAD
         second_owner(cg, &v.operand, None, Need::Kept);
+=======
+        second_owner_of(cg, v, None, Need::Kept);
+>>>>>>> origin/fixes
     }
     retain_val(cg, v);
 }

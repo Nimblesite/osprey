@@ -28,7 +28,7 @@ use crate::{find_runtime_lib, scratch_stem};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
-/// The canonical wasm target triple (the modern spelling of `wasm32-wasi`).
+/// The WASI Preview 1 target triple.
 /// Implements [WASM-TARGET-TRIPLE].
 const TRIPLE: &str = "wasm32-wasip1";
 /// The ARC runtime twin `--memory=arc` links: same portable unit set with the
@@ -40,8 +40,6 @@ const RUNTIME_LIB_ARC: &str = "libosprey_runtime_wasm_arc.a";
 const RUNTIME_LIB_OWNERSHIP: &str = "libosprey_runtime_wasm_ownership.a";
 /// The managed backend a wasm32 build links when the user left `--memory` off.
 const DEFAULT_MEMORY: &str = "arc";
-/// Candidate multiarch lib subdir names inside a WASI sysroot, newest first.
-const LIB_SUBDIRS: [&str; 2] = ["wasm32-wasip1", "wasm32-wasi"];
 /// Source-level browser event entry point. When present it is rooted and
 /// exported from the otherwise command-oriented WASI module. [WASM-WEB-ABI]
 const WEB_DISPATCH: &str = "osprey_web_dispatch";
@@ -286,6 +284,13 @@ fn link_argv(
 /// nested many requests ([MULTI-WASM-MANY]); this matches a native main thread.
 const WASM_STACK_BYTES: u32 = 8 * 1024 * 1024;
 
+/// The host's own stack for compiled wasm frames. wasmtime's 512 KiB default
+/// trapped at a few thousand frames, on the main thread and in every fiber,
+/// which on wasm32 run on it ([CONCURRENCY-WASM]); this lets a program recurse
+/// as deep as natively, inside the 8 MiB a host's main thread has.
+/// [WASM-TARGET-NODE]
+const WASM_HOST_STACK_BYTES: u32 = 4 * 1024 * 1024;
+
 fn base_link_argv(obj: &Path, archive: &str, libdir: &Path, out: &Path) -> Vec<String> {
     vec![
         libdir.join("crt1-command.o").display().to_string(),
@@ -385,14 +390,33 @@ fn pick_sysroot(override_dir: Option<String>, candidates: &[PathBuf]) -> Result<
         })
 }
 
-/// The sysroot's wasm lib dir (holds `crt1-command.o` + `libc.a`), preferring
-/// the modern `wasm32-wasip1` over the legacy `wasm32-wasi` name.
+/// The sysroot's WASI Preview 1 library directory. [WASM-TARGET-LINK]
 fn lib_dir(sysroot: &Path) -> Result<PathBuf, String> {
-    LIB_SUBDIRS
-        .iter()
-        .map(|s| sysroot.join("lib").join(s))
-        .find(|p| p.is_dir())
-        .ok_or_else(|| format!("no wasm lib dir under {}", sysroot.display()))
+    let dir = sysroot.join("lib").join(TRIPLE);
+    if dir.is_dir() {
+        Ok(dir)
+    } else {
+        Err(format!(
+            "missing WASI Preview 1 library directory: {}",
+            dir.display()
+        ))
+    }
+}
+
+/// The arguments `runner` needs before the module: wasmtime's own stack for
+/// compiled frames ([`WASM_HOST_STACK_BYTES`]); nothing for another host.
+fn host_args(runner: &str) -> Vec<String> {
+    if Path::new(runner)
+        .file_name()
+        .is_some_and(|name| name == "wasmtime")
+    {
+        vec![
+            "-W".into(),
+            format!("max-wasm-stack={WASM_HOST_STACK_BYTES}"),
+        ]
+    } else {
+        Vec::new()
+    }
 }
 
 /// Run a compiled `.wasm` under the first available WASI host (`wasmtime`, or
@@ -400,7 +424,12 @@ fn lib_dir(sysroot: &Path) -> Result<PathBuf, String> {
 /// a runtime or the browser loader.
 fn run_host(wasm: &Path, args: &[String]) -> ExitCode {
     let runner = tool("OSPREY_WASM_RUN", "wasmtime");
-    match Command::new(&runner).arg(wasm).args(args).status() {
+    match Command::new(&runner)
+        .args(host_args(&runner))
+        .arg(wasm)
+        .args(args)
+        .status()
+    {
         Ok(s) => ExitCode::from(crate::child_exit_code(s)),
         Err(e) => {
             eprintln!("error: could not run {} with {runner}: {e}", wasm.display());

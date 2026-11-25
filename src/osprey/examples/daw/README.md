@@ -2,7 +2,7 @@
 
 A digital audio workstation on the FerroUI host: one song project, shown as a timeline, a mix and a
 patch per track. Every track's sound is a patch you edit in Prism, and everything (notes, mix and patches)
-is saved in the one project file. [Specification](../../../../docs/specs/applications/Daw.md) ·
+is saved in the one project file. [Specification](../../../../docs/specs/synth/Daw.md) ·
 [Designs](../../../../docs/designs/prism-timeline/README.md) · [Patch editor guide](PRISM.md)
 
 ```sh
@@ -78,7 +78,7 @@ For example, `{"sendId":1,"source":3,"outlet":0,"bus":"pads","level":0.25,"enabl
 
 ## How it renders [SYNTH-ARRANGEMENT]
 
-**Playing and rendering both take Master only, and they are different things.** `Playback` runs the project graph forward one block at a time: every track, send, bus, the Space and Master advance together, and only Master's frames leave the block ([DAW-RENDER-PLAY]). **Playing** (`daw … live|loop`) streams those Master blocks to the audio device and writes no file. **Rendering** (`daw <project.json> <folder>`, `Player`) writes Master's output, untouched, to the export file `song.wav` ([DAW-RENDER-MASTER]). Exporting anything other than Master is banned. No note, track or bus is rendered on its own, ahead of time, into a cache or as a stem. Code that still makes notes outside the block graph breaks this rule and is listed as open in the [plan](../../../../docs/plans/daw.md). [daw.td](daw.td) declares the `Arrangement` (title, tempo, sample rate, buses, tracks of `[pitch, start, length, velocity]` notes) and six instruments built from `@osprey/synth` modules. `Sustains.frozen` analyses a recording to its end and holds its last spectrum with the phase-locked freeze. `Sustains.voiced` reads that hold at a speed ratio with its own rise, hold and fade, so written music can continue a recording and bring its last sound back at other pitches (linear interpolation, not bandlimited). Formulas are in [arrange_math.ospml](src/arrange_math.ospml).
+**Playing and rendering both take Master only, and they are different things.** `Playback` runs the project graph forward one block at a time: every track, send, bus, the Space and Master advance together, and only Master's frames leave the block ([DAW-RENDER-PLAY]). **Playing** (`daw … live|loop`) streams those Master blocks to the audio device and writes no file. **Rendering** (`daw <project.json> <folder>`, `Player`) writes Master's output, untouched, to the export file `song.wav` ([DAW-RENDER-MASTER]). Exporting anything other than Master is banned. No note, track or bus is rendered on its own, ahead of time, into a cache or as a stem. Code that still makes notes outside the block graph breaks this rule and is listed as open in the [plan](../../../../docs/plans/synth/daw.md). [daw.td](daw.td) declares the `Arrangement` (title, tempo, sample rate, buses, tracks of `[pitch, start, length, velocity]` notes) and six instruments built from `@osprey/synth` modules. `Sustains.frozen` analyses a recording to its end and holds its last spectrum with the phase-locked freeze. `Sustains.voiced` reads that hold at a speed ratio with its own rise, hold and fade, so written music can continue a recording and bring its last sound back at other pitches (linear interpolation, not bandlimited). Formulas are in [arrange_math.ospml](src/arrange_math.ospml).
 
 | Instrument | Built from | Notes |
 | --- | --- | --- |

@@ -415,7 +415,7 @@ Namespaces and structured imports [MODULES-NAMESPACE] [MODULES-IMPORT]
 namespace billing;
 import billing::Tax::{addTax, zero as noTax}
 import "billing/api" as billingApi
-import std.io.file
+import std::io::file
 
 --------------------------------------------------------------------------------
 
@@ -447,8 +447,9 @@ import std.io.file
         (identifier))))
   (statement
     (import_statement
-      (legacy_import_path
-        (identifier)
+      (import_target
+        (namespace_name
+          (identifier))
         (identifier)
         (identifier)))))
 

@@ -37,8 +37,7 @@ const KEEP_MARKER: &str = "osprey: keep-main";
 /// Every `.osp`/`.ospml` under `dir`, found by a recursive walk and sorted for
 /// deterministic reporting.
 fn example_files(dir: &Path) -> Vec<PathBuf> {
-    let mut out = Vec::new();
-    collect(dir, &mut out);
+    let mut out = osprey_project::native_source_files(dir);
     out.sort();
     out
 }
@@ -50,26 +49,10 @@ fn documentation_files(root: &Path) -> Vec<PathBuf> {
         root.join("src/toolchain/vscode-extension/test"),
     ]
     .iter()
-    .flat_map(|directory| example_files(directory))
+    .flat_map(|directory| osprey_project::native_source_files(directory))
     .collect::<Vec<_>>();
     files.sort();
     files
-}
-
-/// Recurse into `dir`, pushing every Osprey source file into `out`.
-fn collect(dir: &Path, out: &mut Vec<PathBuf>) {
-    for entry in std::fs::read_dir(dir).into_iter().flatten().flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            collect(&path, out);
-        } else if path
-            .extension()
-            .and_then(|x| x.to_str())
-            .is_some_and(|x| x == "osp" || x == "ospml")
-        {
-            out.push(path);
-        }
-    }
 }
 
 /// The text between the first `(` and its matching `)` on a `main` header line,

@@ -136,7 +136,11 @@ export function compatibilityReturns(ir) {
     const { lines } = voidBody(ir, name, arity)
     return returnsImmediately(operand(blocks(lines), 'entry'))
   }
+<<<<<<< HEAD
   return '  (' + [inert('osp_release_unique', 1), inert('osp_collect', 0), inert('osp_mem_set_finalizer', 1)].join(', ') + ')'
+=======
+  return '  (' + [inert('osp_release_unique', 1), inert('osp_collect', 0)].join(', ') + ')'
+>>>>>>> origin/fixes
 }
 
 // Reflect the compiled free entry and its null test. Only an immediate void

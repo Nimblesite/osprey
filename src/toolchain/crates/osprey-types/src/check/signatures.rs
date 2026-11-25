@@ -87,8 +87,8 @@ impl Checker {
         &mut self,
         name: &str,
         type_params: &[TypeParam],
-        parameters: &[Parameter],
-        return_type: Option<&TypeExpr>,
+        (parameters, return_type): (&[Parameter], Option<&TypeExpr>),
+        position: Option<osprey_ast::Position>,
         env: &mut TypeEnv,
     ) {
         // The testing built-ins are shadowable by design [TESTING-SHADOWING]:
@@ -119,12 +119,12 @@ impl Checker {
         let params: Vec<Type> = parameters
             .iter()
             .map(|p| match &p.ty {
-                Some(te) => self.annotation_type(te, &typarams, te.position),
+                Some(te) => self.annotation_type(te, &typarams, te.position.or(position)),
                 None => self.ctx.fresh(),
             })
             .collect();
         let ret = match return_type {
-            Some(te) => self.annotation_type(te, &typarams, te.position),
+            Some(te) => self.annotation_type(te, &typarams, te.position.or(position)),
             None => self.ctx.fresh(),
         };
         let ordered: Vec<Type> = type_params

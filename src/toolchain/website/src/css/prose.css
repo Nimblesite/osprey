@@ -14,6 +14,12 @@
 .prose-wide-layout { max-width: 1800px; grid-template-columns: minmax(0, 1fr); }
 .prose-wide-layout .docs-nav-desktop { display: none; }
 .prose-wide-layout .prose { max-width: none; }
+.prose-image-views {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+  gap: var(--space-2);
+}
+.prose-image-views img { display: block; width: 100%; height: auto; }
 .prose-wide-layout .prose > :not(.comparison-table) { max-width: var(--content-width); margin-inline: auto; }
 @media (min-width: 1200px) {
   .prose-wide-layout .comparison-table table { display: table; font-size: clamp(0.8rem, 0.8vw, 0.95rem); }
