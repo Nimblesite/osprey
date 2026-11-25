@@ -136,6 +136,8 @@ test('every selectable theorem has a recorded fixture', () => {
   for (const [name, file] of Object.entries(RECORDED)) {
     assert.ok(fs.existsSync(file), `missing recorded export for ${name}: ${file}`);
   }
+  const benchmark = path.join(REPO, 'src/toolchain/benchmarks/proof/m1_export/id_imp.ndjson');
+  assert.equal(fs.realpathSync(benchmark), fs.realpathSync(RECORDED.id_imp));
 });
 
 test('default run exports IdImp and prints it to stdout', () => {
@@ -154,20 +156,19 @@ test('the pinned lean version is verified from the tools directory', () => {
   assert.equal(fs.realpathSync(versionCall.cwd), fs.realpathSync(TOOLS_DIR));
 });
 
-test('--theorem and_swap builds AndSwap and exports AndSwap', () => {
-  const run = runCase({}, ['--theorem', 'and_swap']);
-  assertClean(run);
-  assertLake(run.lake, ['build lean4export lean4checker AndSwap', 'exe lean4export AndSwap']);
-});
-
-test('--theorem Nat.add_comm builds only the pinned tools', () => {
-  const run = runCase({}, ['--theorem', 'Nat.add_comm']);
-  assertClean(run);
-  assertLake(run.lake, [
-    'build lean4export lean4checker',
-    'exe lean4export Init.Data.Nat.Basic -- Nat.add_comm',
-  ]);
-});
+for (const [theorem, buildModule, exportArgs] of [
+  ['and_swap', ' AndSwap', 'AndSwap'],
+  ['Nat.add_comm', '', 'Init.Data.Nat.Basic -- Nat.add_comm'],
+]) {
+  test(`--theorem ${theorem} builds and exports the expected module`, () => {
+    const run = runCase({}, ['--theorem', theorem]);
+    assertClean(run);
+    assertLake(run.lake, [
+      `build lean4export lean4checker${buildModule}`,
+      `exe lean4export ${exportArgs}`,
+    ]);
+  });
+}
 
 test('--theorem and --check are accepted in any argument order', () => {
   const text = recordedText('and_swap');
@@ -205,7 +206,7 @@ test('--check preserves exact trailing newline bytes', () => {
   }
 });
 
-test('legacy --check selects the recorded IdImp fixture', () => {
+test('--check defaults to the recorded IdImp fixture', () => {
   const run = runCase({ exportText: recordedText('id_imp') }, ['--check']);
   assert.equal(run.result.status, 0, run.stderr);
   assert.equal(run.stdout, '');
@@ -230,8 +231,10 @@ test('a drifted lean toolchain stops the run before exporting', () => {
   assert.ok(!run.lake.some((argv) => argv.startsWith('exe ')), 'no export may run');
 });
 
-test('rejects an unknown flag', () => {
-  assertRejected(runCase({}, ['--bogus']), '--bogus');
+test('rejects unknown arguments', () => {
+  for (const argument of ['--bogus', 'record']) {
+    assertRejected(runCase({}, [argument]), argument);
+  }
 });
 
 test('rejects an unknown theorem name', () => {
