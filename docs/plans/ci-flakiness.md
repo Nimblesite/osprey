@@ -29,7 +29,9 @@ Root-cause fixes only: no retries, no wider timeouts used to hide a race, no ski
 
 ## Open issues blocking PR #428 (2026-11-23 hand-off)
 
-- [ ] **Duplication gate red.** `make _deslop` reports 4.2% (23471 of 560981 lines) against the 3.996181% ceiling in `.deslop.toml`: about 1,050 duplicated lines must go, and the ceiling only goes down. Most of the excess arrived since the last green run (cacb69095):
+- [x] **Duplication gate.** The [hosted Deslop 0.41.0 check](https://github.com/Nimblesite/osprey/actions/runs/45196739812/job/137815988719) passed on PR #428 head `a4a2ef119`. That merge raised the ceiling from 3.996181% to 4.164%, breaking the ratchet. PR #430 returned the ceiling to 4%, and the November 25 local check measured 22,889 duplicated lines out of 581,085 under the pinned scanner.
+
+  The original overage was concentrated in these files:
   - `daw/test/main.ospml`, `voice.ospml`, `room.ospml` and `history.ospml`
   - the cleanarch_todo `multishot_*_cases.osp`
   - `osprey-cli/tests/common/many_programs.rs`, `staged_multiplicity.rs` and `staged_many.rs`
