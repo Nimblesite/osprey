@@ -180,8 +180,13 @@ static int64_t spawn_allocated_process(int64_t id, const char *command,
 int64_t spawn_process_with_handler(const char *command, ProcessEventHandler handler) {
   if (!command || !handler)
     return -1;
-  int64_t id = reserve_process_id();
-  return id < 0 ? id : spawn_allocated_process(id, command, handler);
+  pthread_mutex_lock(&process_mutex);
+  int64_t id = next_process_id++;
+  if (id >= MAX_PROCESSES) {
+    pthread_mutex_unlock(&process_mutex);
+    return -2;
+  }
+  return spawn_allocated_process(id, command, handler);
 }
 
 #endif

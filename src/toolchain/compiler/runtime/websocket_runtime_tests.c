@@ -30,13 +30,6 @@ enum {
   WS_IO_TIMEOUT_S = 5
 };
 
-// One OS-assigned port for this TU's live server [CI-TEST-PORTS]: probed
-// once, then bound by the runtime server, which cannot take port 0.
-static int ws_live_port(void) {
-  static int port = 0;
-  return port ? port : (port = test_free_loopback_port());
-}
-
 static const char *const WS_SAMPLE_KEY = "dGhlIHNhbXBsZSBub25jZQ==";
 static const char *const WS_SAMPLE_ACCEPT = "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=";
 
@@ -178,19 +171,6 @@ void ws_expect_peer_close(int fd) {
   assert(0 && "server kept a non-WebSocket connection open");
 }
 
-// A connection on `port` through its handshake and welcome frame.
-int ws_upgraded_client(int port) {
-  int fd = ws_raw_connect(port);
-  ws_send_upgrade(fd, "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n");
-  char headers[1024];
-  ws_read_headers(fd, headers, sizeof headers);
-  assert(strstr(headers, "HTTP/1.1 101") == headers);
-  char *welcome = ws_read_text_frame(fd);
-  assert(strstr(welcome, "\"type\":\"welcome\"") != NULL);
-  free(welcome);
-  return fd;
-}
-
 // ------------------------------------------------------------- handle checks
 
 // Handle validation on every entry point, before any socket exists
@@ -209,7 +189,7 @@ static void test_handle_validation(void) {
   assert(websocket_close(MAX_WEBSOCKETS) == -1);
   assert(websocket_close(MAX_WEBSOCKETS - 1) == 0); // empty slot is a no-op
 
-  int64_t server_id = websocket_create_server(test_free_loopback_port(), "127.0.0.1", "/chat");
+  int64_t server_id = websocket_create_server(8083, "127.0.0.1", "/chat");
   assert(server_id > 0);
   assert(websocket_create_server(0, "127.0.0.1", "/chat") == -1);
   assert(websocket_create_server(65536, "127.0.0.1", "/chat") == -1);
@@ -227,10 +207,10 @@ static void test_handle_validation(void) {
   assert(websocket_stop_server(server_id) == 0); // already gone: still a no-op
 }
 
-// Creates a server on the TU's shared port with `host`/`path`, asserting the handle
+// Creates a server on WS_LIVE_PORT with `host`/`path`, asserting the handle
 // is valid and that listen() returns `expected` (0 serves, -4 is refused).
 static int64_t ws_serve(char *host, char *path, int expected) {
-  int64_t server_id = websocket_create_server(ws_live_port(), host, path);
+  int64_t server_id = websocket_create_server(WS_LIVE_PORT, host, path);
   assert(server_id > 0);
   assert(websocket_server_listen(server_id) == expected);
   return server_id;
@@ -274,7 +254,7 @@ static void ws_expect_echo_on(int fd, const char *original) {
 // Connects to the live server, upgrades with the sample key, and asserts the
 // response is a valid upgrade acceptance; returns the upgraded socket.
 static int ws_upgrade_handshake(void) {
-  int fd = ws_raw_connect(ws_live_port());
+  int fd = ws_raw_connect(WS_LIVE_PORT);
   char key_header[64];
   snprintf(key_header, sizeof(key_header), "Sec-WebSocket-Key: %s\r\n",
            WS_SAMPLE_KEY);
@@ -318,7 +298,7 @@ static void test_live_loopback_exchange(void) {
   // [BUILTIN-WEBSOCKET-CLIENT]. The surface exposes no receive hook, so its
   // welcome frame is simply left in the socket buffer.
   char url[64];
-  snprintf(url, sizeof(url), "ws://127.0.0.1:%d/chat", ws_live_port());
+  snprintf(url, sizeof(url), "ws://127.0.0.1:%d/chat", WS_LIVE_PORT);
   int64_t ws_id = websocket_connect(url);
   assert(ws_id > 0);
   assert(websocket_send(ws_id, "from-client") == 0);
@@ -345,15 +325,15 @@ static void test_live_loopback_exchange(void) {
 static void test_non_websocket_connections(void) {
   int64_t server_id = ws_serve("127.0.0.1", "/chat", 0);
 
-  int silent = ws_raw_connect(ws_live_port());
+  int silent = ws_raw_connect(WS_LIVE_PORT);
   close(silent); // no bytes at all: the handler sees recv() <= 0
 
-  int plain = ws_raw_connect(ws_live_port());
+  int plain = ws_raw_connect(WS_LIVE_PORT);
   ws_send_all(plain, "GET /chat HTTP/1.1\r\nHost: x\r\n\r\n", 30);
   ws_expect_peer_close(plain);
   close(plain);
 
-  int keyless = ws_raw_connect(ws_live_port());
+  int keyless = ws_raw_connect(WS_LIVE_PORT);
   ws_send_upgrade(keyless, ""); // upgrade headers, no Sec-WebSocket-Key
   ws_expect_peer_close(keyless);
   close(keyless);
@@ -379,11 +359,8 @@ static void *ws_rude_listener(void *arg) {
 }
 
 static void test_client_connect_failures(void) {
-  // Nothing is listening: a port just freed by a probe socket [CI-TEST-PORTS].
-  char nowhere[48];
-  snprintf(nowhere, sizeof(nowhere), "ws://127.0.0.1:%d/chat",
-           test_free_loopback_port());
-  assert(websocket_connect(nowhere) == -6);
+  // Nothing is listening: connect() is refused on loopback.
+  assert(websocket_connect("ws://127.0.0.1:1/chat") == -6);
 
   // A name no resolver can answer: the label is past the DNS length limit.
   char long_host[400];
@@ -392,14 +369,11 @@ static void test_client_connect_failures(void) {
   memcpy(long_host + sizeof(long_host) - 3, "/x", 3);
   assert(websocket_connect(long_host) == -5);
 
-  // Accepts, then closes without a handshake response [CI-TEST-PORTS]: the
-  // listener owns an OS-assigned port.
-  int dead_port;
-  int listen_fd = test_loopback_listen_ephemeral(&dead_port);
+  int listen_fd = test_loopback_listen(WS_DEAD_PORT);
   pthread_t thread;
   assert(pthread_create(&thread, NULL, ws_rude_listener, &listen_fd) == 0);
   char url[64];
-  snprintf(url, sizeof(url), "ws://127.0.0.1:%d/chat", dead_port);
+  snprintf(url, sizeof(url), "ws://127.0.0.1:%d/chat", WS_DEAD_PORT);
   assert(websocket_connect(url) == -8); // handshake response never arrives
   assert(pthread_join(thread, NULL) == 0);
   close(listen_fd);
@@ -431,22 +405,9 @@ static void test_closed_peer_preserves_process(void) {
 
 // ------------------------------------------------------------- keep-alive
 
-// SIGTERM delivered before websocket_keep_alive installs its handler kills
-// the whole binary under the DEFAULT disposition, so the signaller first
-// OBSERVES that installation -- sigaction reports the current handler -- and
-// only then raises the signal. No timer races the installation
-// [BUILTIN-WEBSOCKET-LIFECYCLE].
 static void *ws_shutdown_signaller(void *arg) {
   (void)arg;
-  struct sigaction installed;
-  do {
-    memset(&installed, 0, sizeof installed);
-    assert(sigaction(SIGTERM, NULL, &installed) == 0);
-    if (installed.sa_handler != SIG_DFL) {
-      break;
-    }
-    usleep(WS_POLL_US);
-  } while (true);
+  usleep(300000);
   assert(kill(getpid(), SIGTERM) == 0);
   return NULL;
 }

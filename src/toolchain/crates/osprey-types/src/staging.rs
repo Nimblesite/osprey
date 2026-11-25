@@ -49,7 +49,7 @@ pub(crate) fn lower_proved(
         let lowered = osprey_ast::stage::lower(program).map_err(stage_errors)?;
         return Ok((lowered, None));
     }
-    let (solved, resolved) = resolved_source(program)?;
+    let solved = solved_source(program)?;
     let checked = solved.copy.as_ref().unwrap_or(program);
     // Static lowering compares source effect spellings. An inferred
     // `perform Echo.echo(42)` is nevertheless the same operation as the

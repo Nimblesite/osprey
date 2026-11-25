@@ -12,34 +12,11 @@
 //! The stage axis lives in `staged_effects.rs`; the two share
 //! `common::staging` because they are two axes of one declaration.
 
-#[path = "common/many_fragments.rs"]
-mod many_fragments;
 #[path = "common/staging.rs"]
 mod staging;
 
 use osprey_syntax::Flavor;
 use staging::{assert_rejected, compile_for_target, compile_staged};
-
-/// The shared opening of the mutable-capture programs: both `Choice` and
-/// `Journal` declared, `mut log` initialized ([MULTI-REPLAY-STATE]).
-macro_rules! mut_log_open {
-    () => {
-        concat!(
-            crate::choice_string!(),
-            "\n",
-            crate::journal_note!(),
-            "\nfn main() = {\n    mut log = \"\""
-        )
-    };
-}
-
-/// The shared closing of the mutable-capture programs: the request, then both
-/// prints.
-macro_rules! mut_log_close {
-    () => {
-        "        perform Choice.pick(0)\n    }\n    print(out)\n    print(\"log=[${log}]\")\n}\n"
-    };
-}
 
 // --- Multiplicity: the second axis of the same declaration [MULTI-AXIS] -----
 
@@ -102,19 +79,23 @@ fn the_undeclared_control_pays_for_a_continuation_at_every_perform_site() {
     );
 }
 
-/// Resuming an undeclared operation twice.
-/// [MULTI-COMPAT] [MULTI-HANDLE-ONCE] The one place this axis narrows. An
-/// undecorated operation is `once`, which is what the runtime already
-/// enforces, so a program that resumes one continuation twice aborts at run
-/// time TODAY ("fatal: continuation already resumed") and must be rejected
-/// at compile time instead — the same program rejected earlier, not a
-/// program that stops working.
-///
-/// The check must be syntactic over the arm, never deferred to the runtime
-/// guard in `src/toolchain/compiler/runtime/effects_coro.c`: that guard is a defensive
-/// backstop, and a language that can see the arm has no excuse to use it as
-/// the normal rejection path.
-const TWICE_ON_ONCE: &str = r#"
+/// Every multiplicity violation the checker rejects: the program, the needles
+/// its diagnostics must all contain, and what the rejection means.
+const REJECTED: &[(&str, &[&str], &str)] = &[
+    // resuming an undeclared operation twice is a compile error.
+    // [MULTI-COMPAT] [MULTI-HANDLE-ONCE] The one place this axis narrows. An
+    // undecorated operation is `once`, which is what the runtime already
+    // enforces, so a program that resumes one continuation twice aborts at run
+    // time TODAY ("fatal: continuation already resumed") and must be rejected
+    // at compile time instead — the same program rejected earlier, not a
+    // program that stops working.
+    //
+    // The check must be syntactic over the arm, never deferred to the runtime
+    // guard in src/toolchain/compiler/runtime/effects_coro.c: that guard is a defensive
+    // backstop, and a language that can see the arm has no excuse to use it as
+    // the normal rejection path.
+    (
+        r#"
 effect Choose { control pick: fn() -> int }
 fn both() = satAdd(perform Choose.pick(), 1)
 fn main() = {
@@ -130,12 +111,15 @@ fn main() = {
     }
     print("total=${total}")
 }
-"#;
-
-/// An `abort` arm that resumes.
-/// [MULTI-HANDLE-ABORT] An arm for an `abort` operation must not resume:
-/// its value answers the whole region and the `perform` never returns.
-const RESUMING_ABORT: &str = r#"
+"#,
+        &["Choose.pick", "once"],
+        "expected a compile-time one-shot rejection naming the operation",
+    ),
+    // an abort arm that resumes is rejected.
+    // [MULTI-HANDLE-ABORT] An arm for an `abort` operation must not resume:
+    // its value answers the whole region and the `perform` never returns.
+    (
+        r#"
 effect Fail { control abort fail: fn(string) -> int }
 fn risky() = satAdd(perform Fail.fail("nope"), 1)
 fn main() = {
@@ -147,14 +131,17 @@ fn main() = {
     }
     print("outcome=${outcome}")
 }
-"#;
-
-/// Multiplicity on a static operation.
-/// [MULTI-AXIS-STATIC] Static effects sit outside the lattice:
-/// [STAGE-STATIC-TAIL] pins them at exactly-once-in-tail-position, the one
-/// point where a continuation need not exist. Accepting a multiplicity
-/// there would imply a choice the stage has already made.
-const STATIC_MULTIPLICITY: &str = r#"
+"#,
+        &["Fail.fail", "abort"],
+        "expected the abort-arm rejection naming the arm",
+    ),
+    // multiplicity on a static operation is rejected.
+    // [MULTI-AXIS-STATIC] Static effects sit outside the lattice:
+    // [STAGE-STATIC-TAIL] pins them at exactly-once-in-tail-position, the one
+    // point where a continuation need not exist. Accepting a multiplicity
+    // there would imply a choice the stage has already made.
+    (
+        r#"
 static effect Parallel { control once forEach: fn(int) -> int }
 fn main() = {
     let v = {
@@ -215,93 +202,6 @@ fn main() = {
     print("best=${best}")
 }
 "#,
-);
-
-/// A many arm that mutates a captured cell INDIRECTLY, through a lambda
-/// bound outside the arm whose body assigns it. [MULTI-REPLAY-STATE]
-/// Branches share the one cell, and hiding the write behind a called
-/// local function is exactly the helper the rule must see through — the
-/// direct form below is the control that proves the assertion can fire.
-const INDIRECT_MUTATION: &str = concat!(
-    mut_log_open!(),
-    r#"
-    let note = fn(t) => {
-        handle Journal {
-            note _t => { log = "${log}${t}" }
-        }
-        perform Journal.note(t)
-    }
-    let out = {
-        handle Choice {
-            pick _b => {
-                note("arm")
-                let a = resume("1")
-                note("|mid${a}")
-                let b = resume("2")
-                "(${a},${b})"
-            }
-        }
-"#,
-    mut_log_close!(),
-);
-
-/// The control: the same mutation written directly in the many arm.
-/// [MULTI-REPLAY-STATE] A write the arm performs on a visible cell is the
-/// plain form of the rule; it stays rejected when the scope resolution is
-/// fixed so only genuinely visible cells count.
-const DIRECT_MUTATION: &str = concat!(
-    mut_log_open!(),
-    r#"
-    let out = {
-        handle Choice {
-            pick _b => {
-                handle Journal {
-                    note _t => { log = "${log}x" }
-                }
-                perform Journal.note("y")
-                "${resume(1)},${resume(2)}"
-            }
-        }
-"#,
-    mut_log_close!(),
-);
-
-/// Every multiplicity violation the checker rejects: the program, the needles
-/// its diagnostics must all contain, and what the rejection means. The
-/// `MIXED_ABORT` entry is [MULTI-HANDLE-ABORT-MODE] [MULTI-COST-ABORT]:
-/// `abort` inverts the meaning of a `resume`-free arm — it must ABANDON the
-/// region rather than substitute its value. Abandoning ends the suspended
-/// computation with `pthread_exit`, and a killed thread runs no epilogue —
-/// the discarded frames' owned heap operands are never released
-/// (docs/specs/language/0017-AlgebraicEffects.md, "Known limits of abandoning a
-/// region"). Compiling the arm under today's substituting rule would make
-/// the `perform` RETURN, which is the opposite of what the declaration says.
-/// So the declaration is rejected until plan 0026 supplies the unwinding.
-/// Rejecting is not a placeholder: it is the truthful answer, and the one
-/// the broken-code process requires over a silently wrong one.
-const REJECTED: &[(&str, &[&str], &str)] = &[
-    (
-        TWICE_ON_ONCE,
-        &["Choose.pick", "once"],
-        "expected a compile-time one-shot rejection naming the operation",
-    ),
-    (
-        RESUMING_ABORT,
-        &["Fail.fail", "abort"],
-        "expected the abort-arm rejection naming the arm",
-    ),
-    (
-        STATIC_MULTIPLICITY,
-        &["Parallel.forEach", "multiplicity"],
-        "expected multiplicity-on-static rejection",
-    ),
-    (
-        MIXED_ABORT,
-        &["Job.quit", "unwind"],
-        "expected a truthful `abort`-not-yet-unwound rejection",
-    ),
-    (
-        NON_REPLAYABLE_BODY,
         &["Email.send", "replayable"],
         "expected the replayability rejection naming the offending effect",
     ),
