@@ -8,7 +8,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
-import { resolveLldbDapExecutable } from "../../client/src/extension";
+import { resolveLldbDapExecutable } from "../../client/src/debug-config";
 
 // The compiled test lives at <ext>/out/test/suite, so the extension root is
 // three levels up.

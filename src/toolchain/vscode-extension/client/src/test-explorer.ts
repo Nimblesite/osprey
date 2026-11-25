@@ -29,7 +29,7 @@ import {
   coverageJsonPath,
   makeProfileDir,
   reportCoverage,
-  detailedCoverage,
+  detailedCoverageFor,
   coverageSink,
   type TestRunSink,
 } from "./test-explorer-report";
@@ -394,7 +394,7 @@ export function registerOspreyTestExplorer(
     true,
   );
   coverageProfile.loadDetailedCoverage = (_run, fileCoverage) =>
-    Promise.resolve(detailedCoverage.get(fileCoverage) ?? []);
+    Promise.resolve(detailedCoverageFor(fileCoverage));
   const discovery = makeDiscovery(controller, resolveCompiler);
   controller.refreshHandler = () => discovery.rescan();
   const watcher = vscode.workspace.createFileSystemWatcher(SOURCE_GLOB);

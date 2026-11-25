@@ -3,12 +3,11 @@ import * as path from "path";
 import * as fs from "fs";
 import { extensionRoot } from "./osprey-test-env";
 import { resolveDebugConsole } from "../../client/src/debug-console";
+import { shipwrightPlatform } from "../../client/src/client-config";
 import {
-  shipwrightPlatform,
-  resolveLldbDapCommand,
   resolveLldbDapExecutable,
   missingLldbDapMessage,
-} from "../../client/src/extension";
+} from "../../client/src/debug-config";
 
 // Every arm of the debug-adapter search, driven through the injectable host
 // rather than the machine this suite happens to run on. A VSIX ships for
@@ -385,11 +384,6 @@ suite("Osprey lldb-dap Resolution Unit Tests", () => {
       ),
       "C:\\Program Files\\LLVM\\bin\\lldb-vscode.exe",
       "the legacy adapter is still accepted from its install path",
-    );
-    assert.strictEqual(
-      resolveLldbDapCommand({}, hostFinding("win32", "", [])),
-      "lldb-dap.exe",
-      "the fallback command name carries the windows extension",
     );
   });
 

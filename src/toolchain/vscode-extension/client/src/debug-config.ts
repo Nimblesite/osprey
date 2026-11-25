@@ -118,15 +118,6 @@ function findXcodeLldbDap(
   }
 }
 
-export function resolveLldbDapCommand(
-  config: any = {},
-  host: LldbDapResolutionHost = {},
-): string {
-  const platform = host.platform ?? process.platform;
-  const lldbDapName = platform === "win32" ? "lldb-dap.exe" : "lldb-dap";
-  return resolveLldbDapExecutable(config, host) ?? lldbDapName;
-}
-
 export function resolveLldbDapExecutable(
   config: any = {},
   host: LldbDapResolutionHost = {},
