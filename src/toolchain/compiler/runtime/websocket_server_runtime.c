@@ -1,4 +1,5 @@
 #include "http_shared.h"
+#include "json_escape.h"
 #include "socket_safety.h"
 #include "memory_hooks.h"
 #include "osprey_thread.h"
@@ -97,15 +98,72 @@ static void unregister_connection(WebSocketServer *server, WebSocket *ws) {
   free(ws);
 }
 
-// The echo the server answers each text message with.
-static void echo_message(int fd, const char *text) {
-  fprintf(stderr, "WebSocket received: %s\n", text);
-  char echo_response[1024];
-  snprintf(echo_response, sizeof(echo_response),
-           "{\"type\":\"echo\",\"original\":\"%s\",\"echo\":"
-           "\"Server received: %s\",\"timestamp\":\"%lld\"}",
-           text, text, (long long)time(NULL));
-  send_websocket_frame(fd, echo_response);
+#define WS_ECHO_PREFIX "Server received: "
+#define JSON_ESCAPE_WIDEST 6 // \u00XX
+#define WS_ECHO_FRAME_BYTES 96 // the reply's fixed keys and its timestamp
+
+// A reply buffer sized up front for the widest escape of every byte, so quoting
+// never grows it and every byte stays with this unit's allocator.
+typedef struct {
+  char *data;
+  size_t len;
+  size_t cap;
+} EchoText;
+
+static bool echo_append(void *sink, const char *bytes, size_t n) {
+  EchoText *text = (EchoText *)sink;
+  if (n >= text->cap - text->len) {
+    return false;
+  }
+  memcpy(text->data + text->len, bytes, n);
+  text->len += n;
+  text->data[text->len] = '\0';
+  return true;
+}
+
+static bool echo_put(EchoText *text, const char *bytes) { return echo_append(text, bytes, strlen(bytes)); }
+
+// The echo reply as JSON, the client's text quoted by the shared JSON escaper,
+// so a quote or a control byte cannot end a string early and no length is cut
+// off (#414). `quoted` gets the original alone, for the log line. False when
+// the text is not UTF-8 or the buffers cannot be had.
+static bool echo_reply(EchoText *reply, EchoText *quoted, const char *text, size_t length) {
+  size_t prefix = sizeof(WS_ECHO_PREFIX) - 1;
+  size_t widest = (prefix + length) * JSON_ESCAPE_WIDEST + 2;
+  *quoted = (EchoText){malloc(widest + 1), 0, widest + 1};
+  *reply = (EchoText){malloc(2 * widest + WS_ECHO_FRAME_BYTES), 0, 2 * widest + WS_ECHO_FRAME_BYTES};
+  char *echoed = malloc(prefix + length);
+  bool built = quoted->data && reply->data && echoed;
+  if (built) {
+    memcpy(echoed, WS_ECHO_PREFIX, prefix);
+    memcpy(echoed + prefix, text, length);
+    char stamp[48];
+    (void)snprintf(stamp, sizeof(stamp), ",\"timestamp\":\"%lld\"}", (long long)time(NULL));
+    built = json_quote_to(echo_append, quoted, text, length) &&
+            echo_put(reply, "{\"type\":\"echo\",\"original\":") && echo_put(reply, quoted->data) &&
+            echo_put(reply, ",\"echo\":") && json_quote_to(echo_append, reply, echoed, prefix + length) &&
+            echo_put(reply, stamp);
+  }
+  free(echoed);
+  return built;
+}
+
+// The echo the server answers each text message with. The log line carries the
+// same quoted form, so control and ANSI bytes never reach a terminal raw. A text
+// the escaper refuses ends the connection with 1011 rather than a broken reply.
+static bool echo_message(int fd, const char *text, size_t length) {
+  EchoText reply;
+  EchoText quoted;
+  bool built = echo_reply(&reply, &quoted, text, length);
+  if (built) {
+    fprintf(stderr, "WebSocket received: %s\n", quoted.data);
+    send_websocket_frame(fd, reply.data);
+  } else {
+    send_websocket_close(fd, WS_CLOSE_INTERNAL);
+  }
+  free(reply.data);
+  free(quoted.data);
+  return built;
 }
 
 // Acts on every event the bytes held make: false once the connection is over.
@@ -116,8 +174,9 @@ static bool serve_events(int fd, WsStream *stream) {
     case WS_EVENT_NONE:
       return true;
     case WS_EVENT_MESSAGE:
-      if (event.payload_len > 0) {
-        echo_message(fd, event.payload);
+      if (event.payload_len > 0 && !echo_message(fd, event.payload, event.payload_len)) {
+        free(event.payload);
+        return false;
       }
       break;
     case WS_EVENT_PING:

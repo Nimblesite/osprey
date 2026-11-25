@@ -128,19 +128,29 @@ char *ws_read_text_frame(int fd) {
   return payload;
 }
 
-// Client frames MUST be masked (RFC 6455 §5.3); the server unmasks them.
+// Client frames MUST be masked (RFC 6455 §5.3); the server unmasks them. A
+// text of 126 bytes or more takes the 16-bit extended length.
+#define WS_MASKED_TEXT_MAX 1024
 static void ws_send_masked_text(int fd, const char *text) {
   size_t len = strlen(text);
-  assert(len < 126);
-  unsigned char frame[132];
+  assert(len <= WS_MASKED_TEXT_MAX);
+  unsigned char frame[WS_MASKED_TEXT_MAX + 8];
   const unsigned char key[4] = {0x12, 0x34, 0x56, 0x78};
+  size_t at = 2;
   frame[0] = 0x81;
-  frame[1] = (unsigned char)(0x80 | len);
-  memcpy(frame + 2, key, sizeof(key));
-  for (size_t i = 0; i < len; i++) {
-    frame[6 + i] = (unsigned char)text[i] ^ key[i % 4];
+  if (len < 126) {
+    frame[1] = (unsigned char)(0x80 | len);
+  } else {
+    frame[1] = 0x80 | 126;
+    frame[at++] = (unsigned char)(len >> 8);
+    frame[at++] = (unsigned char)(len & 0xFF);
   }
-  ws_send_all(fd, frame, 6 + len);
+  memcpy(frame + at, key, sizeof(key));
+  at += sizeof(key);
+  for (size_t i = 0; i < len; i++) {
+    frame[at + i] = (unsigned char)text[i] ^ key[i % 4];
+  }
+  ws_send_all(fd, frame, at + len);
 }
 
 void ws_send_upgrade(int fd, const char *key_header) {
@@ -277,6 +287,50 @@ static void ws_expect_text(int fd, const char *a, const char *b, const char *c) 
   free(text);
 }
 
+// #414: the echo is valid JSON whatever the client sent. `escaped` is the text
+// as a JSON string body; the reply is exact up to its timestamp.
+static void ws_expect_exact_echo(int fd, const char *sent, const char *escaped) {
+  ws_send_masked_text(fd, sent);
+  char *text = ws_read_text_frame(fd);
+  size_t room = 2 * strlen(escaped) + 128;
+  char *want = malloc(room);
+  assert(want != NULL);
+  int n = snprintf(want, room,
+                   "{\"type\":\"echo\",\"original\":\"%s\",\"echo\":\"Server received: %s\",\"timestamp\":\"",
+                   escaped, escaped);
+  assert(n > 0 && (size_t)n < room);
+  assert(strncmp(text, want, (size_t)n) == 0);
+  size_t length = strlen(text);
+  assert(length > (size_t)n + 2 && strcmp(text + length - 2, "\"}") == 0);
+  for (size_t i = (size_t)n; i < length - 2; i++) {
+    assert(text[i] >= '0' && text[i] <= '9');
+  }
+  free(want);
+  free(text);
+}
+
+static void test_echo_escapes_what_it_quotes(int fd) {
+  ws_expect_exact_echo(fd, "a\"b", "a\\\"b");
+  ws_expect_exact_echo(fd, "\",\"admin\":true,\"x\":\"", "\\\",\\\"admin\\\":true,\\\"x\\\":\\\"");
+  ws_expect_exact_echo(fd, "back\\slash", "back\\\\slash");
+  ws_expect_exact_echo(fd, "tab\tnew\nline\x01\x1b[31m", "tab\\tnew\\nline\\u0001\\u001b[31m");
+  ws_expect_exact_echo(fd, "caf\xc3\xa9 / \xe2\x9c\x93", "caf\xc3\xa9 / \xe2\x9c\x93");
+  char longest[WS_MASKED_TEXT_MAX + 1];
+  memset(longest, 'x', WS_MASKED_TEXT_MAX);
+  longest[WS_MASKED_TEXT_MAX] = '\0';
+  ws_expect_exact_echo(fd, longest, longest); // past the old 1 KiB reply buffer
+}
+
+// A text frame that is not UTF-8 cannot be quoted: the server closes rather
+// than send a reply that is not JSON.
+static void test_echo_refuses_what_it_cannot_quote(void) {
+  int fd = ws_upgrade_handshake();
+  ws_expect_text(fd, "\"type\":\"welcome\"", NULL, NULL);
+  ws_send_masked_text(fd, "bad \xff byte");
+  ws_expect_peer_close(fd);
+  close(fd);
+}
+
 static void test_live_loopback_exchange(void) {
   int64_t server_id = ws_serve("127.0.0.1", "/chat", 0);
 
@@ -287,6 +341,8 @@ static void test_live_loopback_exchange(void) {
   ws_send_masked_text(fd, "hello");
   ws_expect_text(fd, "\"type\":\"echo\"", "\"original\":\"hello\"",
                  "Server received: hello");
+  test_echo_escapes_what_it_quotes(fd);
+  test_echo_refuses_what_it_cannot_quote();
 
   // Broadcast reaches exactly the registered connection and arrives verbatim.
   assert(websocket_server_broadcast(server_id, "broadcast-one") == 1);
