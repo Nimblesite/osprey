@@ -32,7 +32,8 @@ fn shipped_sources(root: &Path) -> Vec<PathBuf> {
     SOURCE_FLOORS
         .into_iter()
         .flat_map(|(directory, minimum)| {
-            let sources = example_sources(&root.join(directory));
+            let mut sources = osprey_project::native_source_files(&root.join(directory));
+            sources.sort();
             assert!(
                 sources.len() >= minimum,
                 "{directory}: found {} source(s), expected at least {minimum}",
@@ -48,33 +49,4 @@ fn display_name(root: &Path, path: &Path) -> String {
         .unwrap_or(path)
         .display()
         .to_string()
-}
-
-/// Every Osprey source under `dir`, in a stable order.
-fn example_sources(dir: &Path) -> Vec<PathBuf> {
-    let mut found = Vec::new();
-    collect_sources(dir, &mut found);
-    found.sort();
-    found
-}
-
-fn collect_sources(dir: &Path, found: &mut Vec<PathBuf>) {
-    let Ok(entries) = fs::read_dir(dir) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            collect_sources(&path, found);
-        } else if is_osprey_source(&path) {
-            found.push(path);
-        }
-    }
-}
-
-fn is_osprey_source(path: &Path) -> bool {
-    matches!(
-        path.extension().and_then(|e| e.to_str()),
-        Some("osp" | "ospml")
-    )
 }
