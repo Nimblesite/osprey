@@ -4,3 +4,9 @@ map bool    -> Success(true)
 map int     -> Success(42)
 list string -> heap
 list float  -> 1.5
+list result -> ok 4
+list result -> error diverged at 0
+list result -> ok 7
+literal     -> error plain | ok 2
+mapped      -> ok 4 | error diverged at 0 | ok 7
+indexed     -> error diverged at 0 ok 7 ok 9

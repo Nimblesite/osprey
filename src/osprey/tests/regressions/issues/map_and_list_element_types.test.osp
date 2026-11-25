@@ -15,6 +15,23 @@ print("map float   -> ${mapGet(mf, "k")}")
 let mb = mapSet(Map(), "k", true)
 print("map bool    -> ${mapGet(mb, "k")}")
 let mi = mapSet(Map(), "k", 42)
-print("map int     -> ${mapGet(mi, "k")}")
+print("map int     -> ${mapGet(mi, "k")}\nlist string -> ${listGet(listAppend(List(), "he" + "ap"), 0) ?: "missing"}\nlist float  -> ${listGet(listAppend(List(), 1.5), 0) ?: 0.0}")
 
-print("list string -> ${listGet(listAppend(List(), "he" + "ap"), 0) ?: "missing"}\nlist float  -> ${listGet(listAppend(List(), 1.5), 0) ?: 0.0}")
+// #419: a Result held in a list keeps its own tag and payload.
+type Box = { n: int }
+
+fn checked(b) = match b.n == 0 {
+    true => Error { message: "diverged at ${b.n}" }
+    false => Success { value: b.n }
+}
+
+fn shown(outcome) = match outcome {
+    Error { message } => "error ${message}"
+    Success { value } => "ok ${value}"
+}
+
+fn joined(outcomes) = join(mapList(outcomes, shown), " | ")
+
+let built = [checked(Box { n: 4 }), checked(Box { n: 0 }), checked(Box { n: 7 })]
+forEachList(built, |r| => print("list result -> ${shown(r)}"))
+print("literal     -> ${joined([Error { message: "plain" }, Success { value: 2 }])}\nmapped      -> ${joined(built)}\nindexed     -> ${shown(listGet(built, 1) ?: Success { value: 9 })} ${shown(listGet(built, 2) ?: Success { value: 9 })} ${shown(listGet(built, 5) ?: Success { value: 9 })}")
