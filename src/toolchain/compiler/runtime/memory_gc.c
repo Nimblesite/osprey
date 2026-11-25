@@ -87,7 +87,10 @@ typedef struct OspGcPage OspGcPage; // memory_gc_pages.h
 // marked when reached but never scanned, so a heap of sample buffers costs a lookup per
 // block, not one per word.
 #define GC_LEAF 16u
-#define GC_PERSISTENT (GC_FINAL | GC_STRING | GC_PINNED | GC_LEAF)
+// An EXTERN block's subtype, which picks its finalizer ([MEM-BACKENDS-FINALIZERS]).
+#define GC_SUBTYPE_SHIFT 8u
+#define GC_SUBTYPE_MASK (0xFFu << GC_SUBTYPE_SHIFT)
+#define GC_PERSISTENT (GC_FINAL | GC_STRING | GC_PINNED | GC_LEAF | GC_SUBTYPE_MASK)
 #define GC_USED 32u // a page cell that holds a block [MEM-BACKENDS-GC-HEAP]
 
 #include "heap_lock.h"
@@ -123,6 +126,21 @@ static size_t g_min_heap = OSP_GC_MIN_HEAP_BYTES;   // floor for the adaptive bu
 static size_t g_thresh = OSP_GC_MIN_HEAP_BYTES;     // next-collection budget
 static int g_debug = 0;      // OSPREY_GC_DEBUG: print per-collection stats
 static size_t g_ncollect = 0;
+
+#include "memory_finalizers.h"
+
+// GC_FINAL and the subtype of an EXTERN block's meta; nothing for any other kind.
+static uint32_t gc_final_flags(int64_t meta) {
+  if ((meta & 0xFF) != OSP_MEM_LIST_HDR_EXTERN) {
+    return 0;
+  }
+  return GC_FINAL | (uint32_t)(OSP_MEM_EXTERN_SUBTYPE(meta) << GC_SUBTYPE_SHIFT);
+}
+
+// Runs the finalizer of the dying block `body`, whose mark word is `mark`.
+static void gc_finalize_block(uint32_t mark, void *body) {
+  finalize_subtype((mark & GC_SUBTYPE_MASK) >> GC_SUBTYPE_SHIFT, body);
+}
 
 #include "memory_gc_table.h"
 #include "memory_gc_pages.h"
@@ -321,7 +339,7 @@ void *osp_alloc_tagged(int64_t size, int64_t meta) {
   bool text = (meta & 0xFF) == OSP_MEM_STRING;
   if ((size > 0 && (uint64_t)size > SIZE_MAX) ||
       (text && (size < 1 || (uint64_t)size > UINT32_MAX))) return NULL;
-  uint32_t flags = text ? (GC_STRING | GC_LEAF) : ((meta & 0xFF) == OSP_MEM_LIST_HDR_EXTERN ? GC_FINAL : 0);
+  uint32_t flags = text ? (GC_STRING | GC_LEAF) : gc_final_flags(meta);
   heap_lock();
   void *p = gc_managed_alloc(size > 0 ? (size_t)size : 0, flags);
   heap_unlock();
@@ -337,8 +355,6 @@ int64_t osp_mem_string_length(const void *p) {
   return length;
 }
 
-// Finalizer registration (memory_hooks.h).
-void osp_mem_set_finalizer(void (*finalize)(void *body)) { g_finalizer = finalize; }
 
 // Fully-initialized-by-caller twin (memory_hooks.h). The conservative collector
 // never relies on pre-zeroed bodies, so it is identical to osp_alloc_tagged.

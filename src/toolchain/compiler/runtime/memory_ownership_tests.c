@@ -151,7 +151,7 @@ static void t_external_mapping_drop(void) {
   CHECK(buffer != NULL && unlink(path) == 0);
   char *page = osprey_gpu_data(buffer);
   CHECK(page != NULL && page[0] == 'm' && msync(page, 1, MS_SYNC) == 0);
-  osp_mem_set_finalizer(count_generic);
+  osp_mem_set_finalizer(OSP_MEM_LIST_HDR_EXTERN, count_generic);
   osp_ownership_free(buffer);
   CHECK(generic_calls == 0);
   CHECK(msync(page, 1, MS_SYNC) == -1 && errno == ENOMEM);
@@ -238,7 +238,7 @@ int main(void) {
   CHECK(setenv("OSPREY_OWNERSHIP_DEBUG", "1", 1) == 0);
   CHECK(setenv("OSPREY_SCRIBBLE_FREES", "1", 1) == 0);
   osp_mem_boot();
-  osp_mem_set_finalizer(count_generic);
+  osp_mem_set_finalizer(OSP_MEM_LIST_HDR_EXTERN, count_generic);
   size_t base = osp_arc_live_objects();
   void *external = osp_alloc_tagged(16, OSP_MEM_LIST_HDR_EXTERN);
   CHECK(external != NULL && osp_arc_live_objects() == base + 1);

@@ -164,8 +164,8 @@ void test_channel_blocks_both_directions(void) {
   assert(fiber_set_deterministic_mode(false) == 0);
   blocking_channel = channel_create(CHANNEL_CAP);
   assert(blocking_channel > 0);
-  int64_t producer = fiber_spawn_env(channel_overfiller, NULL);
-  assert(producer > 0);
+  void *producer = spawn_fiber(channel_overfiller, NULL);
+  assert(producer != NULL);
   usleep(CHANNEL_SETTLE_US);
   assert(fiber_done(producer) == 0 &&
          "with CHANNEL_MESSAGES > CHANNEL_CAP the sender must still be parked");
@@ -176,34 +176,22 @@ void test_channel_blocks_both_directions(void) {
   assert(fiber_await(producer) == CHANNEL_MESSAGES &&
          "every send reported success");
 
-  int64_t sender = fiber_spawn_env(channel_late_sender, NULL);
-  assert(sender > 0);
+  void *sender = spawn_fiber(channel_late_sender, NULL);
+  assert(sender != NULL);
   assert(channel_recv(blocking_channel) == CHANNEL_HANDOFF_VALUE &&
          "an empty buffer parks the receiver until a value arrives");
   assert(fiber_await(sender) == 1);
   assert(fiber_done(sender) == 1);
 }
 
-// In range but never handed out: the slot is NULL and both probes must say so
-// instead of reading it as a fiber. [CONCURRENCY-SPAWN-AWAIT]
-void test_unassigned_fiber_handles(void) {
-  const int64_t unassigned[] = {INT32_MAX, INT64_C(1) << 40, INT64_MAX};
-  for (unsigned i = 0; i < sizeof(unassigned) / sizeof(unassigned[0]); i++) {
-    assert(fiber_await(unassigned[i]) == -1 &&
-           "awaiting an unassigned handle is an error, not a read of NULL");
-    assert(fiber_done(unassigned[i]) == -1 &&
-           "probing an unassigned handle is an error, not a read of NULL");
-  }
-}
-
 // "It MUST NOT release a cached result while another fiber can still await
-// it." A still-running fiber therefore makes cleanup a no-op, and the value it
-// eventually produces survives.
+// it." A still-running fiber keeps its runner's hold through cleanup, and the
+// value it eventually produces survives every later cleanup while held.
 void test_cleanup_defers_while_a_fiber_runs(void) {
   gating_channel = channel_create(1);
   assert(gating_channel > 0);
-  int64_t slow = fiber_spawn_env(channel_gated_function, NULL);
-  assert(slow > 0);
+  void *slow = spawn_fiber(channel_gated_function, NULL);
+  assert(slow != NULL);
   assert(fiber_done(slow) == 0 && "the fiber must still be running");
   fiber_cleanup_results();
   assert(fiber_done(slow) == 0 && "cleanup must not have joined the fiber");

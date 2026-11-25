@@ -3,21 +3,16 @@
 #ifndef OSPREY_GC_SWEEP_H
 #define OSPREY_GC_SWEEP_H
 
-// The finalizer OSP_MEM_LIST_HDR_EXTERN blocks pass through (memory_hooks.h).
-static void (*g_finalizer)(void *body);
-
 // Finalizers see the whole heap: one may ask the collector about a block that
 // outlives this collection, so they all run before any block is freed or reused.
 static void gc_finalize_dead(void) {
-  if (!g_finalizer) {
-    return;
-  }
   for (size_t i = 0; i < g_cap; i++) {
-    if (g_tab[i].base != 0 && (g_tab[i].meta.mark & (GC_FINAL | GC_MARKED)) == GC_FINAL) {
-      g_finalizer((void *)g_tab[i].base);
+    uint32_t mark = g_tab[i].meta.mark;
+    if (g_tab[i].base != 0 && (mark & (GC_FINAL | GC_MARKED)) == GC_FINAL) {
+      gc_finalize_block(mark, (void *)g_tab[i].base);
     }
   }
-  gc_pages_finalize_dead(g_finalizer);
+  gc_pages_finalize_dead();
 }
 
 // Free every unmarked table block and empty its slot. Survivors keep GC_MARKED,

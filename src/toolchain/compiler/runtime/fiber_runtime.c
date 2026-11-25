@@ -12,6 +12,7 @@
 #include "memory_refused.h"
 #include <unistd.h>
 
+#include "fiber_api.h"
 #include "memory_hooks.h"
 #include "memory_parked_wait.h"
 #include "osprey_thread.h"
@@ -45,6 +46,9 @@ typedef struct Fiber {
   pthread_cond_t cond;
   bool uses_thread;
   HandlerSnapshot *handler_snapshot; // Inherited effect handlers from parent
+  _Atomic int64_t holders;           // fiber_lifetime.h [CONCURRENCY-FIBER-LIFETIME]
+  struct Fiber *queue_next;          // the deterministic queue, under runtime_mutex
+  struct Fiber *dead_next;           // the dead-handle list (fiber_lifetime.h)
 } Fiber;
 
 typedef struct Channel {
@@ -64,74 +68,48 @@ typedef struct Channel {
   pthread_cond_t not_full;
 } Channel;
 
-// Global runtime state. Fibers and channels share one id space, and a handle is
-// never reused: a `Fiber<T>` can be awaited any number of times for as long as the
-// program holds it, so nothing says when its id could mean something else. The
-// tables grow to fit. They hold pointers, so what a lookup returns outlives the
-// lock even if they then move. All of it is under runtime_mutex.
-// [CONCURRENCY-HANDLES]
-static Fiber **fibers;
+// Global runtime state, all under runtime_mutex. A fiber is reached only through
+// the holds on it (fiber_lifetime.h), so it needs no table. A channel id is a
+// slot in `channels`, which grows to fit; it holds pointers, so what a lookup
+// returns outlives the lock even if the table then moves. [CONCURRENCY-HANDLES]
 static Channel **channels;
 static int64_t handle_capacity;
-static int64_t next_id = 1;
+static int64_t next_id = 1;       // the next channel slot
+static int64_t next_fiber_id = 1; // spawn order, which the deterministic queue keeps
 static pthread_mutex_t runtime_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 // Sequential execution mode [CONCURRENCY-DETERMINISTIC]. Queued fibers run in
-// spawn order, which is id order, so the tables are the queue: nothing below
-// queue_start can still need running.
+// spawn order: the queue is a FIFO list, and each holds its runner's hold.
 static bool deterministic_mode = false;
-static int64_t queue_start = 1;
+static Fiber *queue_head;
+static Fiber *queue_tail;
 
 // Enable/disable deterministic fiber execution
 int64_t fiber_set_deterministic_mode(bool enabled) {
   pthread_mutex_lock(&runtime_mutex);
   deterministic_mode = enabled;
-  if (enabled) {
-    queue_start = next_id; // Reset queue when enabling
-  }
   pthread_mutex_unlock(&runtime_mutex);
   return 0;
 }
 
-static bool grow_table(void **table, int64_t capacity, size_t entry) {
-  char *grown = realloc(*table, (size_t)capacity * entry);
-  if (!grown) {
-    return false;
-  }
-  size_t kept = (size_t)handle_capacity * entry;
-  memset(grown + kept, 0, (size_t)capacity * entry - kept);
-  *table = grown;
-  return true;
-}
+#include "fiber_lifetime.h"
 
-// Makes room for next_id in both tables: 0, or the bytes of the table growth
-// the allocator refused.
+// Makes room for channel slot next_id: 0, or the bytes the allocator refused.
 static size_t reserve_handle(void) {
   if (next_id < handle_capacity) {
     return 0;
   }
   int64_t capacity = handle_capacity > 0 ? handle_capacity * 2 : 1024;
-  void *grown_fibers = fibers;
-  void *grown_channels = channels;
-  bool fibers_grown = grow_table(&grown_fibers, capacity, sizeof(Fiber *));
-  fibers = grown_fibers;
-  if (!fibers_grown) {
-    return (size_t)capacity * sizeof(Fiber *);
+  size_t bytes = (size_t)capacity * sizeof(Channel *);
+  Channel **grown = realloc(channels, bytes);
+  if (!grown) {
+    return bytes;
   }
-  bool channels_grown = grow_table(&grown_channels, capacity, sizeof(Channel *));
-  channels = grown_channels;
-  if (!channels_grown) {
-    return (size_t)capacity * sizeof(Channel *);
-  }
+  size_t kept = (size_t)handle_capacity * sizeof(Channel *);
+  memset((char *)grown + kept, 0, bytes - kept);
+  channels = grown;
   handle_capacity = capacity;
   return 0;
-}
-
-static Fiber *fiber_of(int64_t fiber_id) {
-  pthread_mutex_lock(&runtime_mutex);
-  Fiber *fiber = fiber_id >= 1 && fiber_id < next_id ? fibers[fiber_id] : NULL;
-  pthread_mutex_unlock(&runtime_mutex);
-  return fiber;
 }
 
 static Channel *channel_of(int64_t channel_id) {
@@ -139,16 +117,6 @@ static Channel *channel_of(int64_t channel_id) {
   Channel *channel = channel_id >= 1 && channel_id < next_id ? channels[channel_id] : NULL;
   pthread_mutex_unlock(&runtime_mutex);
   return channel;
-}
-
-// Takes a completed fiber's still-owned result for release, at most once.
-static bool take_owned_result(Fiber *fiber, int64_t *result) {
-  if (!fiber->completed || !fiber->result_owned) {
-    return false;
-  }
-  *result = fiber->result;
-  fiber->result_owned = false;
-  return true;
 }
 
 // Restores the parent's effect handlers so perform calls work inside the
@@ -166,11 +134,13 @@ static void run_with_parent_handlers(Fiber *fiber) {
   fiber->result = result;
 }
 
-// Run a fiber on this thread's stack, holding no lock: its body can use the runtime.
+// Run a fiber on this thread's stack, holding no lock: its body can use the
+// runtime. The runner's hold ends with it.
 static void execute_fiber_directly(Fiber *fiber) {
   run_with_parent_handlers(fiber);
   fiber->result_owned = true;
   fiber->completed = true;
+  fiber_release(fiber);
 }
 
 // Thread function for executing fibers
@@ -188,16 +158,16 @@ static void *fiber_thread_func(void *arg) {
   // The handler stack is this thread's own; left behind, every fiber kept about
   // 64 KiB for the life of the process. [CONCURRENCY-HANDLES]
   __osprey_handler_stack_cleanup();
-  osp_prof_thread_unregister();
-  osp_mem_baton_thread_exit();
 
-  // Mark as completed and signal
   pthread_mutex_lock(&fiber->mutex);
   fiber->result_owned = true;
   fiber->completed = true;
-  pthread_cond_signal(&fiber->cond);
+  pthread_cond_broadcast(&fiber->cond);
   pthread_mutex_unlock(&fiber->mutex);
-
+  // The runner's hold. Still a heap thread: the last hold frees through the heap.
+  fiber_release(fiber);
+  osp_prof_thread_unregister();
+  osp_mem_baton_thread_exit();
   return NULL;
 }
 
@@ -213,35 +183,35 @@ static bool start_fiber_thread(Fiber *fiber) {
   return osp_thread_start(&thread, fiber_thread_func, fiber, true) == 0;
 }
 
-// Create and schedule a fiber. -2 when memory is refused, with the refused
-// allocation's size in `*refused`. [CONCURRENCY-SPAWN-AWAIT]
-static int64_t fiber_spawn_internal(int64_t (*env_fn)(void *), void *env,
-                                    bool result_managed, size_t *refused) {
-  if (!env_fn) {
-    return -1; // Invalid function pointer
+// Appends a fiber to the deterministic queue, under runtime_mutex.
+static void enqueue(Fiber *fiber) {
+  fiber->queue_next = NULL;
+  if (queue_tail) {
+    queue_tail->queue_next = fiber;
+  } else {
+    queue_head = fiber;
   }
+  queue_tail = fiber;
+}
+
+const size_t fiber_record_bytes = sizeof(Fiber);
+
+// A fresh fiber holding the caller's and the runner's holds, or NULL with the
+// refused allocation's size in `*refused`.
+static Fiber *fiber_new(int64_t (*env_fn)(void *), void *env, bool result_managed,
+                        size_t *refused) {
   // Scanned: the capture cell and the result are managed words no stack names.
   Fiber *fiber = osp_mem_scanned_alloc(sizeof(Fiber));
   if (!fiber) {
-    *refused = sizeof(Fiber);
-    return -2;
+    *refused = fiber_record_bytes;
+    return NULL;
   }
   // No memory for the parent's handlers: the spawn is refused, never run without them.
   *refused = __osprey_handler_try_snapshot(&fiber->handler_snapshot);
   if (*refused != 0) {
     osp_mem_scanned_free(fiber);
-    return -2;
+    return NULL;
   }
-  pthread_mutex_lock(&runtime_mutex);
-  *refused = reserve_handle();
-  if (*refused != 0) {
-    pthread_mutex_unlock(&runtime_mutex);
-    osp_mem_scanned_free(fiber->handler_snapshot); // a scanned block, as the copy was made
-    osp_mem_scanned_free(fiber);
-    return -2;
-  }
-  int64_t id = next_id++;
-  fiber->id = id;
   fiber->env_function = env_fn;
   fiber->env = env;
   fiber->result = 0;
@@ -249,59 +219,91 @@ static int64_t fiber_spawn_internal(int64_t (*env_fn)(void *), void *env,
   fiber->result_managed = result_managed;
   fiber->completed = false;
   fiber->running = false;
-  fiber->uses_thread = !deterministic_mode;
+  atomic_init(&fiber->holders, 2);
+  fiber->queue_next = NULL;
+  fiber->dead_next = NULL;
   pthread_mutex_init(&fiber->mutex, NULL);
   pthread_cond_init(&fiber->cond, NULL);
-  fibers[id] = fiber;
-  bool queued = !fiber->uses_thread;
-  if (!queued && !start_fiber_thread(fiber)) {
+  return fiber;
+}
+
+// Create and schedule a fiber, returning the caller's hold on it; NULL for a
+// NULL body, or when memory is refused, with the refused allocation's size in
+// `*refused`. Handles that died since the last spawn are reclaimed first, so a
+// program spawning in a loop keeps only the fibers it can still await.
+// [CONCURRENCY-SPAWN-AWAIT] [CONCURRENCY-FIBER-LIFETIME]
+static Fiber *fiber_start(int64_t (*env_fn)(void *), void *env, bool result_managed,
+                          size_t *refused) {
+  *refused = 0;
+  fiber_reclaim();
+  if (!env_fn) {
+    return NULL;
+  }
+  Fiber *fiber = fiber_new(env_fn, env, result_managed, refused);
+  if (!fiber) {
+    return NULL;
+  }
+  pthread_mutex_lock(&runtime_mutex);
+  fiber->id = next_fiber_id++;
+  fiber->uses_thread = !deterministic_mode;
+  if (!fiber->uses_thread) {
+    enqueue(fiber);
+    pthread_mutex_unlock(&runtime_mutex);
+    return fiber;
+  }
+  if (!start_fiber_thread(fiber)) {
     // No thread left to give it, so it runs here, and spawn still means what it says.
     fiber->uses_thread = false;
     fiber->running = true;
     pthread_mutex_unlock(&runtime_mutex);
     execute_fiber_directly(fiber);
-    return id;
+    return fiber;
   }
   pthread_mutex_unlock(&runtime_mutex);
-  return id;
+  return fiber;
 }
 
-// Spawn with the closure-cell entry ABI: `fn(env)` runs on the fiber. The env
-// cell is allocated per spawn by the compiled program, so re-entering the same
-// spawn site never aliases another in-flight fiber's captures.
-int64_t fiber_spawn_env(int64_t (*fn)(void *), void *env) {
+// The C runtime's own spawn: the caller's hold, which it ends with
+// fiber_release, or NULL when refused.
+Fiber *fiber_spawn_env(int64_t (*fn)(void *), void *env) {
   size_t refused = 0;
-  return fiber_spawn_internal(fn, env, false, &refused);
+  return fiber_start(fn, env, false, &refused);
 }
 
 // Spawn a compiler-generated closure thunk and preserve whether its erased
-// result word is a managed pointer. Compiled `spawn` has no failure branch, so
-// a fiber the runtime cannot allocate stops the run by name instead of handing
-// back -2 as a handle the program would carry on with (#359) [MEM-REFUSED-STOP].
-int64_t fiber_spawn_env_owned(int64_t (*fn)(void *), void *env,
-                              int64_t result_managed) {
+// result word is a managed pointer. The program's hold is a managed handle the
+// memory backend reclaims ([CONCURRENCY-FIBER-LIFETIME]), made before the fiber
+// starts so a refusal never leaves one running. Compiled `spawn` has no failure
+// branch, so a fiber the runtime cannot allocate stops the run by name instead
+// of handing back a handle the program would carry on with (#359)
+// [MEM-REFUSED-STOP]. NULL for a NULL body, which compiled code never passes.
+void *fiber_spawn_env_owned(int64_t (*fn)(void *), void *env, int64_t result_managed) {
+  FiberHandle *handle = osp_alloc_tagged_noinit(sizeof(FiberHandle), OSP_MEM_FIBER_HANDLE);
+  if (!handle) {
+    osp_alloc_refused("spawn", sizeof(FiberHandle));
+  }
+  *handle = (FiberHandle){.length = 0, .data = NULL, .fiber = NULL};
   size_t refused = 0;
-  int64_t id = fiber_spawn_internal(fn, env, result_managed != 0, &refused);
-  if (id == -2) { // -1 is a NULL thunk, which compiled code never passes
+  handle->fiber = fiber_start(fn, env, result_managed != 0, &refused);
+  if (handle->fiber) {
+    return handle;
+  }
+  osp_release(handle);
+  if (refused != 0) {
     osp_alloc_refused("spawn", refused);
   }
-  return id;
+  return NULL;
 }
 
-// Claims the first queued fiber at or below `last` that nothing has started.
+// Claims the first queued fiber, if it was spawned no later than `last`: the
+// queue is in spawn order, and everything on it is yet to start.
 static Fiber *claim_queued(int64_t last) {
   pthread_mutex_lock(&runtime_mutex);
-  Fiber *next = NULL;
-  for (int64_t id = queue_start; id < next_id && id <= last && !next; id++) {
-    Fiber *fiber = fibers[id];
-    if (fiber && !fiber->uses_thread && !fiber->completed && !fiber->running) {
-      fiber->running = true;
-      next = fiber;
-    }
-  }
-  while (queue_start < next_id && (!fibers[queue_start] || fibers[queue_start]->uses_thread ||
-                                   fibers[queue_start]->completed)) {
-    queue_start++;
+  Fiber *next = queue_head && queue_head->id <= last ? queue_head : NULL;
+  if (next) {
+    queue_head = next->queue_next;
+    queue_tail = queue_head ? queue_tail : NULL;
+    next->running = true;
   }
   pthread_mutex_unlock(&runtime_mutex);
   return next;
@@ -336,9 +338,9 @@ static int64_t await_on_this_stack(Fiber *fiber) {
   return result;
 }
 
-// Wait for fiber completion [CONCURRENCY-SPAWN-AWAIT].
-int64_t fiber_await(int64_t fiber_id) {
-  Fiber *fiber = fiber_of(fiber_id);
+// Waits for a fiber the caller holds to complete [CONCURRENCY-SPAWN-AWAIT].
+// -1 for NULL, or for a sequential fiber waiting on this very stack.
+int64_t fiber_join(Fiber *fiber) {
   if (!fiber) {
     return -1;
   }
@@ -357,56 +359,19 @@ int64_t fiber_await(int64_t fiber_id) {
   return result;
 }
 
-// Release the runtime roots of completed fiber results. Codegen calls this
-// once at the end of main, after language-level ARC owners have dropped, so the
-// retained root supports any number of awaits without becoming a process leak.
-void fiber_cleanup_results(void) {
-  pthread_mutex_lock(&runtime_mutex);
-
-  // Never invalidate a cached result while another fiber can still execute an
-  // await against it. Unstructured, still-running fibers are terminated by
-  // process exit; their roots intentionally remain process-owned here. Once
-  // every thunk is quiescent no more language code can race this teardown.
-  for (int64_t id = 1; id < next_id; id++) {
-    Fiber *fiber = fibers[id];
-    if (!fiber)
-      continue;
-
-    bool completed;
-    if (fiber->uses_thread) {
-      pthread_mutex_lock(&fiber->mutex);
-      completed = fiber->completed;
-      pthread_mutex_unlock(&fiber->mutex);
-    } else {
-      completed = fiber->completed;
-    }
-    if (!completed) {
-      pthread_mutex_unlock(&runtime_mutex);
-      return;
-    }
-  }
-
-  for (int64_t id = 1; id < next_id; id++) {
-    Fiber *fiber = fibers[id];
-    if (!fiber)
-      continue;
-
-    int64_t result = 0;
-    bool release_result = false;
-    if (fiber->uses_thread) {
-      pthread_mutex_lock(&fiber->mutex);
-      release_result = take_owned_result(fiber, &result);
-      pthread_mutex_unlock(&fiber->mutex);
-    } else {
-      release_result = take_owned_result(fiber, &result);
-    }
-
-    if (release_result && fiber->result_managed) {
-      osp_release((void *)(uintptr_t)result);
-    }
-  }
-  pthread_mutex_unlock(&runtime_mutex);
+// `await` on a program's handle, holding the fiber while it waits.
+int64_t fiber_await(void *handle) {
+  Fiber *fiber = fiber_of_handle(handle);
+  int64_t result = fiber_join(fiber);
+  fiber_release(fiber);
+  return result;
 }
+
+// Drops the holds of every handle the program let go of. Codegen calls this
+// once at the end of main, after its language-level owners have dropped, so
+// each finished fiber they held is freed with its result. A fiber still running
+// keeps its runner's hold and is ended by process exit.
+void fiber_cleanup_results(void) { fiber_reclaim(); }
 
 // Cooperative hand-off [CONCURRENCY-YIELD]. In concurrent (threaded) mode,
 // donate the rest of this

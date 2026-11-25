@@ -51,24 +51,30 @@ int64_t fiber_sleep(int64_t milliseconds) {
 }
 
 // Non-blocking completion probe. Returns 1 if the fiber has finished, 0 if it
-// is still running, -1 for an invalid id. Lets a caller animate (sleep + redraw)
+// is still running, -1 for no fiber. Lets a caller animate (sleep + redraw)
 // while a fiber does real work, then `fiber_await` it the instant it reports
 // done - without ever blocking the animating thread on a join or condvar.
-int64_t fiber_done(int64_t fiber_id) {
-  Fiber *fiber = fiber_of(fiber_id);
-  if (!fiber)
+static int64_t fiber_finished(Fiber *fiber) {
+  if (!fiber) {
     return -1;
-
+  }
   // Deterministic fibers only run when awaited, so report "ready" immediately;
   // the subsequent fiber_await drives execution. Avoids an infinite spin.
-  if (!fiber->uses_thread)
+  if (!fiber->uses_thread) {
     return 1;
-
+  }
   pthread_mutex_lock(&fiber->mutex);
   bool done = fiber->completed;
   pthread_mutex_unlock(&fiber->mutex);
-
   return done ? 1 : 0;
+}
+
+// `fiberDone` on a program's handle, holding the fiber while it reads it.
+int64_t fiber_done(void *handle) {
+  Fiber *fiber = fiber_of_handle(handle);
+  int64_t done = fiber_finished(fiber);
+  fiber_release(fiber);
+  return done;
 }
 
 // iOS supports fibers but excludes the fork/exec process runtime. Keeping these

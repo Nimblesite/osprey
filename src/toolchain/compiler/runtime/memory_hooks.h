@@ -30,8 +30,13 @@
 // Requires 1..UINT32_MAX bytes and tracked ownership; allocation fails rather
 // than returning an untracked value whose full length could not be recovered.
 #define OSP_MEM_STRING 7
-// EXTERN subtype reserved for the GPU runtime; its upper bits are unused by GC and ARC.
+// An EXTERN body's subtype, bits 8..15 of its meta, picks its finalizer
+// ([MEM-BACKENDS-FINALIZERS]): 0 is a plain external header, 1 a GPU buffer
+// (gpu_runtime.c), 2 a fiber handle (fiber_lifetime.h).
+#define OSP_MEM_EXTERN_SUBTYPE(meta) (((uint64_t)(meta) >> 8) & 0xFF)
+#define OSP_MEM_EXTERN_SUBTYPES 4
 #define OSP_MEM_GPU_BUFFER (OSP_MEM_LIST_HDR_EXTERN | (1 << 8))
+#define OSP_MEM_FIBER_HANDLE (OSP_MEM_LIST_HDR_EXTERN | (2 << 8))
 // -1 means no live STRING allocation owns this address (never an empty value).
 int64_t osp_mem_string_length(const void *p);
 
@@ -68,15 +73,18 @@ void *osp_alloc_tagged_noinit(int64_t size, int64_t meta);
 // the fact rather than switching to osp_alloc_tagged. No-op off ARC.
 void osp_mem_set_layout(void *p, int64_t meta);
 
-// The finalizer every OSP_MEM_LIST_HDR_EXTERN body passes through on its way
-// out of the heap, before its data is released: a unit whose objects own a
-// resource beyond the heap (a GPU buffer's copy on the device) registers one,
-// and the resource dies with its owner. ARC runs it at the owner's last
-// release and the tracing GC at the sweep that reclaims it; the default
-// backend reclaims no general allocation, so it never runs it. One per
-// process under ARC and GC. Ownership ignores registration and drops GPU
-// resources by their layout on explicit free. [MEM-BACKENDS]
-void osp_mem_set_finalizer(void (*finalize)(void *body));
+// The finalizer every OSP_MEM_LIST_HDR_EXTERN body of `meta`'s subtype passes
+// through on its way out of the heap, before its data is released: a unit whose
+// objects own a resource beyond the heap (a GPU buffer's copy on the device, a
+// fiber) registers one, and the resource dies with its owner. ARC runs it at
+// the owner's last release, ownership at the explicit free, and the tracing GC
+// at the sweep that reclaims it. One per subtype, so units never replace each
+// other's; ownership drops GPU buffers by their layout whatever is
+// registered. A finalizer may run with the heap lock held, so it must not
+// allocate, release or take a lock the heap can wait on: it hands its work to
+// its unit instead (Boehm, POPL 2003). [MEM-BACKENDS-FINALIZERS]
+typedef void (*OspFinalizer)(void *body);
+void osp_mem_set_finalizer(int64_t meta, OspFinalizer finalize);
 
 // dup / drop (ARC: registry-probed reference counting; others: no-ops).
 void osp_retain(void *o);

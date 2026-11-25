@@ -52,7 +52,7 @@ static void arc_growth_reclaims_all(void) {
 }
 
 int main(void) {
-  osp_mem_set_finalizer(finalized_once);
+  osp_mem_set_finalizer(OSP_MEM_LIST_HDR_EXTERN, finalized_once);
   CHECK(finalized == 0);
   unsigned char *root = new_arc_object();
   arc_root = root;

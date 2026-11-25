@@ -1,8 +1,7 @@
 // Buffered channels and `select` [CONCURRENCY-CHANNEL] [CONCURRENCY-SELECT],
-// included once by fiber_runtime.c after the fiber scheduler, whose handle
-// tables, runtime lock and deterministic queue it shares: fibers and channels
-// draw their ids from one space, and a deterministic `select` runs queued
-// fibers until an arm is ready.
+// included once by fiber_runtime.c after the fiber scheduler, whose channel
+// table, runtime lock and deterministic queue it shares: a deterministic
+// `select` runs queued fibers until an arm is ready.
 #ifndef OSPREY_FIBER_CHANNELS_H
 #define OSPREY_FIBER_CHANNELS_H
 

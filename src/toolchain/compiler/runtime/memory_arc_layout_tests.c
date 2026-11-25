@@ -227,11 +227,11 @@ static void note_finalized(void *body) { g_finalized = body; g_finalized_data = 
 void t_list_hdr_extern(void) {
   void *w = witness(), *hdr = mk(4 * W, OSP_MEM_LIST_HDR_EXTERN);
   put_i64(hdr, 0, 1); put(hdr, 1, w); put_i64(hdr, 2, 0x1234); osp_retain(w);
-  osp_mem_set_finalizer(note_finalized);
+  osp_mem_set_finalizer(OSP_MEM_LIST_HDR_EXTERN, note_finalized);
   osp_release(hdr);
   CHECK(g_finalized == hdr && g_finalized_data == w); // the words were intact when it ran
   survived(w); // ...and data was released after it
-  osp_mem_set_finalizer(NULL);
+  osp_mem_set_finalizer(OSP_MEM_LIST_HDR_EXTERN, NULL);
   g_finalized = NULL;
   void *plain = mk(4 * W, OSP_MEM_LIST_HDR_EXTERN); // no finalizer: drops like a scalar header
   w = witness(); put_i64(plain, 0, 0); put(plain, 1, w); osp_retain(w);

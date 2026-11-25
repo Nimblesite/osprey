@@ -409,9 +409,10 @@ fn effect_result_parameters_preserve_shape_in_direct_and_resuming_abis() {
         // source binders: a binder spelled `entry` collided with the
         // `entry:` block label and clang refused the module. The SHAPES
         // are the contract — the Result parameter travels as its block
-        // pointer, the fiber as its id word ([FLAVOR-IR-EQUIV]).
+        // pointer, the fiber as its managed handle ([FLAVOR-IR-EQUIV],
+        // [CONCURRENCY-FIBER-LIFETIME]).
         assert!(
-            definition.contains("i8* %__arm0") && definition.contains("i64 %__arm1"),
+            definition.contains("i8* %__arm0") && definition.contains("i8* %__arm1"),
             "effect parameters must use their complete ParamSig ABI:\n{definition}\n{ir}"
         );
         shows(&ir, &["bitcast i8* %__arm0 to { i64, i8, i8* }*"]);

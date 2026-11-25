@@ -280,7 +280,7 @@ static void *extern_churn(int rounds) {
   return sink;
 }
 static void t_finalizer_at_sweep(void) {
-  osp_mem_set_finalizer(note_finalized);
+  osp_mem_set_finalizer(OSP_MEM_LIST_HDR_EXTERN, note_finalized);
   void *keep = osp_alloc_tagged(24, OSP_MEM_LIST_HDR_EXTERN);
   put(keep, 1, keep);
   (void)extern_churn(100000);
@@ -288,7 +288,7 @@ static void t_finalizer_at_sweep(void) {
   CHECK(g_finalized > 99000);   // the unrooted blocks were finalized as they were swept
   CHECK(load(keep, 1) == keep); // the rooted one was not
   unsigned seen = g_finalized;
-  osp_mem_set_finalizer(NULL);
+  osp_mem_set_finalizer(OSP_MEM_LIST_HDR_EXTERN, NULL);
   (void)extern_churn(1000);
   osp_collect();
   CHECK(g_finalized == seen);

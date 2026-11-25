@@ -1,6 +1,7 @@
 #ifndef HTTP_SHARED_H
 #define HTTP_SHARED_H
 
+#include "fiber_api.h"
 #include "socket_platform.h"
 #include <openssl/evp.h>
 #include <openssl/sha.h>
@@ -54,7 +55,7 @@ typedef struct {
   bool thread_known;
   bool destroy_on_exit;
   bool keeps_process_alive; // [HTTP-SERVER-KEEPALIVE]
-  int64_t server_fiber_id;
+  Fiber *server_fiber; // the accept loop, held until the server is destroyed
   pthread_t server_thread;
   pthread_mutex_t mutex;
   HttpRequestHandler handler; // Function pointer to Osprey callback

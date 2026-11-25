@@ -215,8 +215,6 @@ void test_server_handle_bounds(void) {
   assert(http_stop_server(MAX_SERVERS - 1) == 0); // in range, no server
 }
 
-extern int64_t fiber_spawn_env(int64_t (*fn)(void *), void *env);
-extern int64_t fiber_await(int64_t fiber_id);
 
 // A request whose line yields no method and no path is still LOGGED, with both
 // fields carrying HTTP_LOG_UNKNOWN rather than left empty. An empty field in a
@@ -281,7 +279,6 @@ void test_server_labels_an_unparseable_request(void) {
 // no listening socket held. A server marked live whose loop never ran would
 // accept nothing forever while every retry answered -7 ("already listening").
 //
-// Runs late: exhausting the fiber id space is permanent for the process
 // [HTTP-SERVER], [CONCURRENCY-SPAWN-AWAIT].
 // Descriptors this process holds open. A listener that reports failure while
 // keeping its socket leaks one per attempt, and EVERY return value in this unit
@@ -306,17 +303,18 @@ static int64_t idle_fiber(void *ignored) {
   return 0;
 }
 
-// The size of a fiber's record, found by failing each size in turn until a spawn
-// is refused: the runtime keeps the struct to itself.
-static size_t fiber_record_bytes(void) {
+// The bytes the allocator is asked for a fiber's record, found by failing each
+// size in turn until a spawn is refused: the memory backend may add a header.
+static size_t record_allocation_bytes(void) {
   for (size_t bytes = 8; bytes <= 1024; bytes += 8) {
     test_alloc_fail_size(bytes);
-    int64_t fiber = fiber_spawn_env(idle_fiber, NULL);
+    Fiber *fiber = fiber_spawn_env(idle_fiber, NULL);
     test_alloc_fail_off();
-    if (fiber == -2) {
+    if (!fiber) {
       return bytes;
     }
-    assert(fiber > 0 && fiber_await(fiber) == 0);
+    assert(fiber_join(fiber) == 0);
+    fiber_release(fiber);
   }
   assert(false && "a spawn must allocate a record");
   return 0;
@@ -330,7 +328,7 @@ static int64_t handler_seeing_fiber(void *ignored) {
 }
 
 // With handlers installed, every allocation a spawn makes may fail, the parent's
-// handler copy included: each size refuses the spawn (-2) or runs a fiber that
+// handler copy included: each size refuses the spawn (NULL) or runs a fiber that
 // sees the parent's handler, and neither leaks a byte. Implements [MULTI-HANDLE-MANY].
 // The fibers are queued, not threaded: every refusal comes before a thread
 // exists, and glibc sets up and tears down a detached thread's TLS through
@@ -347,14 +345,15 @@ void test_spawn_with_handlers_survives_every_failed_allocation(void) {
     for (size_t bytes = 8; bytes <= 1024; bytes += 8) {
       long live = test_alloc_live();
       test_alloc_fail_size(bytes);
-      int64_t fiber = fiber_spawn_env(handler_seeing_fiber, NULL);
+      Fiber *fiber = fiber_spawn_env(handler_seeing_fiber, NULL);
       test_alloc_fail_off();
-      if (fiber == -2) {
+      if (!fiber) {
         refused++;
         assert(test_alloc_live() == live && "a refused spawn must free what it took");
       } else {
-        assert(fiber > 0 && fiber_await(fiber) == 7 &&
-               "a fiber must run with its parent's handlers");
+        assert(fiber_join(fiber) == 7 && "a fiber must run with its parent's handlers");
+        fiber_release(fiber);
+        assert(test_alloc_live() == live && "a released fiber frees all it took");
       }
     }
     assert(refused >= 2 && "the record and the handler copy can each refuse a spawn");
@@ -364,41 +363,11 @@ void test_spawn_with_handlers_survives_every_failed_allocation(void) {
   assert(fiber_set_deterministic_mode(false) == 0);
 }
 
-// With a handler installed, the spawn that finds the handle table full has
-// already copied the parent's handlers into a collector-scanned block; when the
-// table cannot grow, that copy goes back through the scanned free, never libc's
-// (glibc aborts on the interior pointer). Each spawn lets the record and the copy
-// through and refuses the next allocation, which only the full table's growth
-// makes. Implements [MULTI-HANDLE-MANY].
-void test_spawn_refused_by_a_full_handle_table_frees_the_handler_copy(void) {
-  assert(fiber_set_deterministic_mode(true) == 0);
-  assert(__osprey_handler_push_scoped(41, (void *)handler_seeing_fiber, NULL,
-                                      __osprey_handler_depth()) == 0);
-  int refused = 0;
-  for (int spawns = 0; spawns < (1 << 17) && refused == 0; spawns++) {
-    long live = test_alloc_live();
-    test_alloc_fail_after(2);
-    int64_t fiber = fiber_spawn_env(handler_seeing_fiber, NULL);
-    test_alloc_fail_off();
-    if (fiber == -2) {
-      refused++;
-      assert(test_alloc_live() == live && "a refused growth must free the handler copy");
-    } else {
-      assert(fiber > 0 && fiber_await(fiber) == 7);
-    }
-  }
-  assert(refused == 1 && "the full table's growth must be refused once");
-  int64_t grown = fiber_spawn_env(handler_seeing_fiber, NULL);
-  assert(grown > 0 && fiber_await(grown) == 7 && "the next spawn grows the table");
-  __osprey_handler_stack_cleanup();
-  assert(fiber_set_deterministic_mode(false) == 0);
-}
-
 void test_listener_spawn_failure_is_reported(void) {
   int64_t server_id = create_test_server();
 
   // The one way left for a spawn to fail: no memory for the fiber's record.
-  size_t record = fiber_record_bytes();
+  size_t record = record_allocation_bytes();
   int before = open_descriptor_count();
   test_alloc_fail_size(record);
   assert(http_listen(server_id, http_test_server_handler) == -6);
@@ -413,8 +382,8 @@ void test_listener_spawn_failure_is_reported(void) {
   assert(server->socket_fd == -1 && "the bound socket must be disowned");
   assert(!server->is_listening && "a failed listen must not claim to listen");
   assert(!server->loop_scheduled && "and must schedule no accept loop");
-  assert(server->server_fiber_id == -1 &&
-         "a spawn that produced no fiber must record no fiber id");
+  assert(server->server_fiber == NULL &&
+         "a spawn that produced no fiber must record no fiber");
   assert(open_descriptor_count() == before &&
          "the bound socket must be CLOSED, not merely forgotten");
 

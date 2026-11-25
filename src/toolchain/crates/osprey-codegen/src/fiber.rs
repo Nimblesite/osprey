@@ -7,10 +7,13 @@
 //! capture state (the runtime restores the spawner's effect-handler snapshot
 //! inside the fiber, so `perform` works there). `await`/`fiberDone` map to
 //! `fiber_await`/`fiber_done`, the non-blocking probe a foreground loop can
-//! animate against while the fiber works. Channels are
+//! animate against while the fiber works. A `Fiber<T>` is a managed handle
+//! the memory backend reclaims like any value, and the fiber dies with the
+//! last of its handle, its runner and its awaits
+//! ([CONCURRENCY-FIBER-LIFETIME]). Channels are
 //! `channel_create`/`channel_send`/`channel_recv`, with `channel_cleanup`
-//! releasing whatever a program never received; channel ids and fiber ids
-//! draw from the runtime's one shared counter. `yield e` performs the runtime's
+//! releasing whatever a program never received; a channel is a runtime id.
+//! `yield e` performs the runtime's
 //! cooperative hand-off (`fiber_yield`) and evaluates to its operand.
 //! Implements [CONCURRENCY-SPAWN-AWAIT], [CONCURRENCY-CHANNEL], and
 //! [CONCURRENCY-YIELD].
@@ -43,13 +46,16 @@ pub(crate) fn gen_spawn(cg: &mut Codegen, e: &Expr) -> Result<Value> {
     let cell = crate::closure::cell_value(cg, id, &thunk, &cell_ty, &caps, &sig);
     let result_managed = i64::from(elem.ty.is_managed_ptr()).to_string();
     let r = cg.call(
-        "i64",
+        "i8*",
         "fiber_spawn_env_owned",
         "i64 (i8*)*, i8*, i64",
         &[&format!("@{thunk}"), &cell.operand, &result_managed],
     );
-    // Tag the handle with the fiber's element type so `await` recovers it.
-    Ok(Value::new(r, LType::I64).with_fiber_elem(&elem))
+    // Tag the handle with the fiber's element type so `await` recovers it. The
+    // runtime hands the handle over at +1, like a constructor.
+    let handle = Value::new(r, LType::Ptr).with_fiber_elem(&elem);
+    crate::arc::own(cg, &handle);
+    Ok(handle)
 }
 
 /// Lower the spawned expression into the thunk and box its result to the
@@ -81,32 +87,38 @@ pub(crate) fn gen_await(cg: &mut Codegen, e: &Expr) -> Result<Value> {
     // guessing the wire word answers a wrong value in silence. The runtime
     // retains a fresh caller reference on every await and keeps, then later
     // drops, its separate completed-result root.
+    let wire = handle_word(cg, &f);
     adopt_from_runtime(
         cg,
         f,
-        "fiber_await",
+        ("fiber_await", "i8*", &wire),
         "this fiber's result type did not reach `await`: it was read out of \
          a field or structure whose declared type is a type variable, which \
          carries no result type. Give the field the fiber's concrete type",
     )
 }
 
-/// The `i64` word the runtime call `runtime` answers for the handle `handle`,
-/// unboxed back to the element type the handle carries, with the +1 reference
-/// the runtime hands over registered in this ARC region like an ordinary
-/// function return [GC-ARC-PERCEUS] [MEM-FIBER-ISOLATION]. A handle whose
-/// element type did not travel here is the hard error `missing`.
+/// A fiber handle as the `i8*` the runtime's fiber entry points take.
+fn handle_word(cg: &mut Codegen, handle: &Value) -> String {
+    crate::arc::as_i8ptr(cg, handle)
+}
+
+/// The `i64` word the runtime call `(runtime, parameter type, wire operand)`
+/// answers for the handle `handle`, unboxed back to the element type the
+/// handle carries, with the +1 reference the runtime hands over registered in
+/// this ARC region like an ordinary function return [GC-ARC-PERCEUS]
+/// [MEM-FIBER-ISOLATION]. A handle whose element type did not travel here is
+/// the hard error `missing`.
 fn adopt_from_runtime(
     cg: &mut Codegen,
     handle: Value,
-    runtime: &str,
+    (runtime, parameter, wire): (&str, &str, &str),
     missing: &str,
 ) -> Result<Value> {
     if handle.fiber_elem.is_none() {
         return Err(CodegenError::invalid(missing));
     }
-    let id = as_i64(cg, handle.clone())?;
-    let r = cg.call("i64", runtime, "i64", &[&id.operand]);
+    let r = cg.call("i64", runtime, parameter, &[wire]);
     adopt_word(cg, handle, &r, missing)
 }
 
@@ -221,7 +233,8 @@ pub(crate) fn gen_recv(cg: &mut Codegen, channel: &Expr) -> Result<Value> {
     // does travel [CONCURRENCY-CHANNEL].
     // `send` retained a reference for the receiver; adopting it here makes
     // this region drop it.
-    adopt_from_runtime(cg, ch, "channel_recv", RECV_WITHOUT_ELEMENT)
+    let id = as_i64(cg, ch.clone())?;
+    adopt_from_runtime(cg, ch, ("channel_recv", "i64", &id.operand), RECV_WITHOUT_ELEMENT)
 }
 
 /// `select` — one `channel_select` call over the channel arms, then a switch on
@@ -356,8 +369,7 @@ fn select_call(cg: &mut Codegen, channels: &[SelectChannel<'_>], waits: &str) ->
 /// is not one of them.
 pub(crate) fn gen_builtin(cg: &mut Codegen, name: &str, args: &[Expr]) -> Result<Option<Value>> {
     let v = match name {
-        // `Channel(capacity)` — a real C-runtime channel; its id comes from the
-        // same counter as fiber ids.
+        // `Channel(capacity)` — a real C-runtime channel, named by its id.
         "Channel" => {
             let cap = match args.first() {
                 Some(a) => {
@@ -384,8 +396,8 @@ pub(crate) fn gen_builtin(cg: &mut Codegen, name: &str, args: &[Expr]) -> Result
                 return Err(CodegenError::invalid("fiberDone needs a fiber argument"));
             };
             let v = gen_expr(cg, a)?;
-            let id = as_i64(cg, v)?;
-            let r = cg.call("i64", "fiber_done", "i64", &[&id.operand]);
+            let wire = handle_word(cg, &v);
+            let r = cg.call("i64", "fiber_done", "i8*", &[&wire]);
             Value::new(r, LType::I64)
         }
         _ => return Ok(None),
