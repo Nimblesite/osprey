@@ -201,9 +201,11 @@ fn pick_sysroot_prefers_existing_override_then_candidates() {
 }
 
 #[test]
-fn lib_dir_picks_wasip1_then_wasi_else_errors() {
+fn lib_dir_requires_wasip1() {
     let sysroot = unique_dir("libdir");
     assert!(lib_dir(&sysroot).is_err(), "no lib subdir yet");
+    std::fs::create_dir_all(sysroot.join("lib/wasm32-wasi")).expect("mk legacy dir");
+    assert!(lib_dir(&sysroot).is_err(), "retired layout cannot link");
     let want = sysroot.join("lib").join("wasm32-wasip1");
     std::fs::create_dir_all(&want).expect("mk wasip1");
     assert_eq!(lib_dir(&sysroot).expect("found"), want);

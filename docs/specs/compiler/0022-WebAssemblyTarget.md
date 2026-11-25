@@ -21,7 +21,7 @@ The wasm runtime includes strings, persistent collections, JSON, file operations
 
 ## Target Triple [WASM-TARGET-TRIPLE]
 
-The target is `wasm32-wasip1` (the current spelling of `wasm32-wasi`). wasi-libc
+The WASI Preview 1 target is `wasm32-wasip1`. wasi-libc
 provides the C allocation, string, formatting, memory, and stdout functions used
 by the portable runtime. Browser execution uses the WASI Preview 1 shim in
 `src/osprey/examples/wasm/wasi-shim.mjs`.
@@ -59,7 +59,7 @@ The driver:
 
 1. invokes clang with `--target=wasm32-wasip1 -O2 -c`;
 2. locates the WASI sysroot from `OSPREY_WASI_SYSROOT`, `WASI_SDK_PATH`, or the
-   supported platform paths;
+   supported platform paths. Its libraries must be in `lib/wasm32-wasip1`;
 3. invokes `wasm-ld` with `crt1-command.o`, the program object,
    `libosprey_runtime_wasm_arc.a`, and wasi-libc.
 
@@ -69,7 +69,7 @@ compiler-rt archive.
 
 ## Portable Runtime Archive [WASM-TARGET-RUNTIME]
 
-`make _runtime_wasm` builds `src/toolchain/compiler/bin/libosprey_runtime_wasm_arc.a` from `WASM_ARC_RT_SRC`, with ownership shims on `WASM_ARC_SHIM_SRC`. It also retains the separate unmanaged archive for explicit opt-out builds. Static archive members are linked on
+`make _runtime_wasm` builds `libosprey_runtime_wasm_arc.a` and `libosprey_runtime_wasm_ownership.a` in `src/toolchain/compiler/bin/`. Both use the portable runtime units and ownership shims. Static archive members are linked on
 demand, so a command-line program that does not use the browser bridge has no
 `osprey_web` imports.
 
