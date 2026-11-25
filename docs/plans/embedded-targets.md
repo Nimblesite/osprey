@@ -1,5 +1,10 @@
 # Embedded targets: delivery plan [TARGET-EMBEDDED-PLAN]
 
+## 🚨 DIRECTIVE: PERFORMANCE OPTIMISATION NECESSARY, ESPECIALLY ON EMBEDDED DEVICES 🚨
+
+Optimise the code generated for embedded targets continuously, profiled on the device, in parallel with every item below ([DEVICE-PERF]).
+
+
 The [embedded targets specification](../specs/compiler/EmbeddedTargets.md) defines the requirements. The first consumer is the [Prism device](synth/device.md).
 
 ## Cross-compiled ARM Linux executables [TARGET-EMBEDDED-LINUX]

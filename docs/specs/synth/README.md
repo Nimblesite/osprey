@@ -1,5 +1,10 @@
 # Synthesis, Prism and devices
 
+## 🚨 DIRECTIVE: PERFORMANCE OPTIMISATION NECESSARY, ESPECIALLY ON EMBEDDED DEVICES 🚨
+
+The synthesis engine must get much faster: it runs in Prism and on the [Prism device](PrismDevice.md), whose CPU is slower and whose deadline is hard. See [DEVICE-PERF].
+
+
 The synthesis toolkit, the Prism daw, Pocket Orchestra, instruments and macros, and the hardware Prism device.
 
 [All specification subjects](../README.md)

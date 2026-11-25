@@ -1,13 +1,23 @@
 # Prism device hardware: delivery plan [DEVICE-HW-PLAN]
 
-The [hardware specification](../../specs/synth/PrismDeviceHardware.md) defines the board, latency budget, compute and the AUD 500 budget. The enclosure is drawn in the [device designs](../../designs/prism-device/README.md#enclosure-device-hw-enclosure), with its own release checks. Research and prices: [hardware research](../../research/synthesis/hardware.md). Starts after the engine speed gate in the [device plan](device.md#gate-the-engine-must-be-fast-enough-device-plan-speed).
+## 🚨 DIRECTIVE: PERFORMANCE OPTIMISATION NECESSARY, ESPECIALLY ON EMBEDDED DEVICES 🚨 [DEVICE-PERF]
+
+**Performance optimisation is not optional and never finished.** The engine that runs in Prism is the engine that runs on the device, and the device has a slower CPU and a hard 1.33 ms deadline per 64-frame block. Today the engine renders 0.37 s of audio per second on a Mac, mostly in reference counting and allocation ([DAW-TRANSPORT-LIVE-SPEED]). That must improve many times over, and it is worked on **in parallel with everything else**, not as a gate that holds other work back.
+
+- Every change to the engine, the synth package or the code the compiler generates for them is measured for speed, and a change that makes the device slower is a defect.
+- The render callback allocates, frees and blocks nothing ([TARGET-EMBEDDED-REALTIME]).
+- Per-processor costs are measured on the device's own CPU ([DEVICE-ENGINE-BUDGET]), recorded, and only go down.
+- The acceptance stereo patch must run at 70% or less of the deadline on one core ([DEVICE-HW-COMPUTE]). Until it does, that is the most important open item on the device.
+
+
+The [hardware specification](../../specs/synth/PrismDeviceHardware.md) defines the board, latency budget, compute and the AUD 500 budget. The enclosure is drawn in the [device designs](../../designs/prism-device/README.md#enclosure-device-hw-enclosure), with its own release checks. Research and prices: [hardware research](../../research/synthesis/hardware.md). Hardware work proceeds in parallel with [performance optimisation](device.md#performance-optimisation-in-parallel-with-everything-device-plan-speed); neither waits for the other.
 
 ## Prototype [DEVICE-HW-PROTOTYPE]
 
 - [ ] Order a Raspberry Pi 5 4 GB, HiFiBerry DAC2 ADC Pro, MCP3208, pots, toggles, footswitches, H11L1 and TRS jacks; record actual prices against the [budget](../../specs/synth/PrismDeviceHardware.md#budget-device-hw-budget).
-- [ ] Bring up the firmware on the prototype: audio at 64 frames, knobs, switches, TRS and USB MIDI, USB-C gadget link.
+- [ ] Bring up the firmware on the prototype: audio at 64 frames, knobs, switches, TRS MIDI, and the USB-C port in both roles (computer link and USB MIDI keyboard).
 - [ ] Measure audio round trip and note to sound with loopback cables: mean, worst case and jitter over 24 hours at full budget. Pass: 5 ms or less, never over 10 ms, jitter under 1 ms ([DEVICE-HW-LATENCY]).
-- [ ] Run the acceptance stereo patch at 70% or less of the deadline on one core with no thermal throttling ([DEVICE-HW-COMPUTE]).
+- [ ] Measure the acceptance stereo patch's share of the deadline on one core and the temperature, and feed both to the performance track ([DEVICE-PERF]). Pass: 70% or less with no thermal throttling ([DEVICE-HW-COMPUTE]).
 - [ ] Power pulled during deploy and during update; bypass with the power off.
 
 ## Prism board [DEVICE-HW-BOARD]

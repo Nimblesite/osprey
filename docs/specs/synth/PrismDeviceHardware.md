@@ -1,5 +1,15 @@
 # Prism device hardware [DEVICE-HW]
 
+## 🚨 DIRECTIVE: PERFORMANCE OPTIMISATION NECESSARY, ESPECIALLY ON EMBEDDED DEVICES 🚨 [DEVICE-PERF]
+
+**Performance optimisation is not optional and never finished.** The engine that runs in Prism is the engine that runs on the device, and the device has a slower CPU and a hard 1.33 ms deadline per 64-frame block. Today the engine renders 0.37 s of audio per second on a Mac, mostly in reference counting and allocation ([DAW-TRANSPORT-LIVE-SPEED]). That must improve many times over, and it is worked on **in parallel with everything else**, not as a gate that holds other work back.
+
+- Every change to the engine, the synth package or the code the compiler generates for them is measured for speed, and a change that makes the device slower is a defect.
+- The render callback allocates, frees and blocks nothing ([TARGET-EMBEDDED-REALTIME]).
+- Per-processor costs are measured on the device's own CPU ([DEVICE-ENGINE-BUDGET]), recorded, and only go down.
+- The acceptance stereo patch must run at 70% or less of the deadline on one core ([DEVICE-HW-COMPUTE]). Until it does, that is the most important open item on the device.
+
+
 Status: specified, not built. This is the reference hardware for the [Prism device](PrismDevice.md). The [hardware plan](../../plans/synth/hardware.md) tracks delivery. Every choice below cites the [hardware research](../../research/synthesis/hardware.md); the [device designs](../../designs/prism-device/README.md) hold the panel and enclosure drawings.
 
 The product is a **Raspberry Pi Compute Module 5 on one purpose-built carrier**, the **Prism board**, in a die-cast pedal enclosure. The prototype is a **stock Raspberry Pi 5 with an audio HAT** ([DEVICE-HW-PROTOTYPE]). A Raspberry Pi plus one purpose-built audio and control board is the pattern norns, Zynthian and PiPedal already proved ([DEVICE-RESEARCH-PRIOR]). The compute module is the product's choice because a Pi 5 with a HAT and cooler does not fit under the controls in a 35 mm-deep pedal shell ([DEVICE-HW-ENCLOSURE]). It must meet three requirements:
@@ -81,14 +91,34 @@ In effects-pedal role, a relay connects each input jack directly to its output j
 
 ### MIDI [DEVICE-HW-MIDI]
 
-- **USB-C device port:** the module's USB 2.0 OTG port in peripheral mode is a class-compliant USB MIDI device and carries the link to Prism ([DEVICE-LINK]). The same port flashes the eMMC in the factory ([DEVICE-FACTORY-PROVISION]). On the prototype this is the Pi 5's USB-C port with `dtoverlay=dwc2,dr_mode=peripheral` ([DEVICE-RESEARCH-IO]).
-- **USB-A host port:** takes class-compliant USB MIDI keyboards and controllers, and powers a bus-powered keyboard within its current budget.
-- **TRS MIDI in and out (3.5 mm, Type A, RP-054):** the input is opto-isolated with an H11L1, which works at 3.3 V; the output uses the 3.3 V resistor values from the 2014 electrical update, CA-033 ([DEVICE-RESEARCH-IO]). Both use the Pi's UART at 31,250 baud.
+The device speaks **MIDI 1.0** on two kinds of connection. Every modern MIDI keyboard has at least one of them.
+
+| Connection | MIDI type | Plugs into it |
+| --- | --- | --- |
+| **USB-C** (the one USB port, [DEVICE-HW-USB]) | USB MIDI 1.0 class-compliant (USB Device Class Definition for MIDI Devices): no driver on any computer, phone or tablet | A computer running Prism, or any class-compliant USB MIDI keyboard or controller |
+| **TRS MIDI IN and OUT** (two 3.5 mm jacks, Type A, RP-054) | MIDI 1.0 serial at 31,250 baud | A keyboard or synth with 5-pin DIN MIDI, through a standard Type A TRS-to-DIN adapter, or gear with TRS MIDI directly |
+
+- **A modern MIDI keyboard ([DEVICE-HW-MIDI-KEYBOARD]).** Almost every current keyboard is a class-compliant USB MIDI device. It plugs straight into the USB-C port with a USB cable (USB-C to USB-C, or USB-C to the keyboard's USB-B), and the device powers it ([DEVICE-HW-POWER]). A keyboard with only 5-pin DIN MIDI uses TRS MIDI IN with a Type A adapter. No computer is needed in either case.
+- **TRS electrical.** The input is opto-isolated with an H11L1, which works at 3.3 V; the output uses the 3.3 V resistor values from the 2014 electrical update, CA-033 ([DEVICE-RESEARCH-IO]). Both use the module's UART.
+- **MIDI out** echoes the device's own knob, switch and footswitch moves as control changes on both connections, so the box can drive other gear.
+- **MIDI 2.0.** Linux already has USB MIDI 2.0 support ([DEVICE-RESEARCH-IO]). The device speaks MIDI 1.0 first; MIDI 2.0 over USB is a later addition and never replaces 1.0, because most keyboards speak only 1.0.
+
+### One USB port for everything [DEVICE-HW-USB]
+
+The device has **one USB-C port**, and it does everything: plays a keyboard, connects to a computer for patching, carries firmware updates and can power the box. USB lets one port do this because a Type-C port can switch roles by what is plugged into it (dual-role, DRP):
+
+- **A computer plugged in → device role.** The port is a composite USB device: USB MIDI, the network link to Prism ([DEVICE-LINK]), firmware updates ([DEVICE-LINK-UPDATE]), and factory flashing of the eMMC ([DEVICE-FACTORY-PROVISION]). The computer may also power the box ([DEVICE-HW-POWER]).
+- **A keyboard plugged in → host role.** The port is a USB host: the keyboard is a USB MIDI device the box reads directly, and the box supplies its 5 V. A small USB hub in this role takes a keyboard and a second controller.
+- **Both a keyboard and the computer.** Plug the keyboard into the computer. Prism forwards the keyboard's notes to the device over the link, with their timestamps, so patching and playing happen together through the one port.
+- **How the role is chosen.** A TI TUSB320 Type-C controller reads the cable's CC lines and switches the module's USB 2.0 OTG controller between device and host through Linux's USB role switch, which its mainline driver supports ([DEVICE-RESEARCH-IO]). The role change is reported to the engine as an event; it never interrupts audio.
+- **Prototype.** The Pi 5's USB-C port runs in device role (`dtoverlay=dwc2,dr_mode=peripheral`), and the keyboard goes into one of the Pi's USB-A ports until the Prism board's Type-C controller exists.
 
 ### Power [DEVICE-HW-POWER]
 
-- **Barrel:** 9–12 V DC, centre-negative 2.1 mm (the pedalboard standard), at least 2 A, with reverse-polarity protection and a buck converter to 5 V.
-- **USB-C:** the box also runs from USB-C alone when the source advertises enough current through USB Type-C current detection; the board measures it and refuses to boot the audio engine on a source too weak for the USB host load and boot transients. With both connected, the barrel powers the box and the USB-C data link keeps working.
+- **Barrel:** 9–12 V DC, centre-negative 2.1 mm (the pedalboard standard), with reverse-polarity protection and a buck converter to 5 V. Required supply: **at least 18 W** (9 V at 2 A, or 12 V at 1.5 A). The budget at 5 V: module up to 2.0 A under load, keyboard up to 0.5 A, audio, relay and LEDs 0.3 A, so 2.8 A (14 W), leaving about 15% headroom after conversion losses.
+- **Powering a keyboard:** in host role the port supplies 5 V through a current-limited switch at 500 mA, the USB 2.0 default, and advertises that on the Type-C CC line. A keyboard that needs more uses its own supply. An overload trips the switch and is reported; it never browns out the module.
+- **Powered by the computer:** in device role the box runs from USB-C alone when the computer advertises 3 A at 5 V through Type-C current detection, which Mac USB-C ports do. On a weaker port, the engine does not start until the barrel is connected, and the link still works so Prism can say why.
+- **Keyboard with no computer** needs the barrel supply, because the box is then powering the keyboard.
 - Sources are isolated from each other, and a brownout puts the relay in bypass ([DEVICE-HW-BYPASS]).
 
 ## Enclosure [DEVICE-HW-ENCLOSURE]
@@ -96,7 +126,7 @@ In effects-pedal role, a relay connects each input jack directly to its output j
 The enclosure is drawn in the [device designs](../../designs/prism-device/README.md#enclosure-device-hw-enclosure), with its panel layout, connector faces and release checks. Constraints from this specification:
 
 - A Hammond 1590XX die-cast aluminium box, 145 × 121 × 39 mm with about 35 mm inside ([DEVICE-RESEARCH-PRICES]). Hammond's deeper 1590X, on the same footprint, is the fallback if the frozen parts do not fit.
-- Knobs and toggles on the top face, footswitches at the player's end, audio jacks on the sides (inputs right, outputs left, as on a pedalboard), USB-C, USB-A, power and TRS MIDI at the back.
+- Knobs and toggles on the top face, footswitches at the player's end, audio jacks on the sides (inputs right, outputs left, as on a pedalboard). At the back: the one USB-C port, the barrel power jack and TRS MIDI IN and OUT. No USB-A port.
 - Fanless: the module is thermally coupled to the shell through an isolated spreader ([DEVICE-HW-COMPUTE]).
 - A printed panel overlay from Prism's device face labels the controls ([PRISM-INSTRUMENT-DEVICE-LABELS]).
 
@@ -111,11 +141,11 @@ One unit, AUD including GST, 26 November 2026. Cited prices are from the [resear
 | Part | AUD | Basis |
 | --- | ---: | --- |
 | Compute Module 5, 4 GB, 16 GB eMMC, no wireless | 160 | USD 95 list, cited, converted with GST |
-| Prism board, assembled in a run of five (PCM3060, MCP3208, op-amps, relay, H11L1, USB, regulators) | 110 | estimate |
+| Prism board, assembled in a run of five (PCM3060, MCP3208, op-amps, relay, H11L1, TUSB320, regulators) | 110 | estimate |
 | Thermal spreader and pads | 10 | estimate |
 | Eight pots and knobs | 40 | estimate |
 | Four toggles and two footswitches | 40 | estimate |
-| Jacks: four 6.35 mm, one headphone, two TRS MIDI, one barrel | 35 | estimate |
+| Jacks: four 6.35 mm, one headphone, two TRS MIDI, one barrel, one USB-C | 35 | estimate |
 | Hammond 1590XX | 27 | cited |
 | Drilling and printed panel | 30 | estimate |
 | **Total** | **452** | under AUD 500 |

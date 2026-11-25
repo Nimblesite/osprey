@@ -8,7 +8,7 @@ type PanelPoint { x: Float y: Float }
 type PhysicalControl { key: String kind: ControlKind position: PanelPoint labelWidth: Float }
 union AudioPortKind { LineOut {} Headphones {} LineOrInstrumentIn {} }
 type AudioPort { key: String kind: AudioPortKind channels: List<String> }
-union MidiPortKind { UsbDevice {} UsbHost {} TrsIn {} TrsOut {} }
+union MidiPortKind { UsbDualRole {} TrsIn {} TrsOut {} }
 type ProcessorCost { kind: String nanosecondsPerBlock: Int }
 type Profile { key: String name: String panelWidth: Float panelHeight: Float controls: List<PhysicalControl> audio: List<AudioPort> midi: List<MidiPortKind> sampleRates: List<Int> blockFrames: Int slots: Int maxVoices: Int costs: List<ProcessorCost> budgetShare: Float }
 union FootAction { Toggle {} Hold {} }

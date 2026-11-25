@@ -1,5 +1,15 @@
 # Prism device [DEVICE]
 
+## 🚨 DIRECTIVE: PERFORMANCE OPTIMISATION NECESSARY, ESPECIALLY ON EMBEDDED DEVICES 🚨 [DEVICE-PERF]
+
+**Performance optimisation is not optional and never finished.** The engine that runs in Prism is the engine that runs on the device, and the device has a slower CPU and a hard 1.33 ms deadline per 64-frame block. Today the engine renders 0.37 s of audio per second on a Mac, mostly in reference counting and allocation ([DAW-TRANSPORT-LIVE-SPEED]). That must improve many times over, and it is worked on **in parallel with everything else**, not as a gate that holds other work back.
+
+- Every change to the engine, the synth package or the code the compiler generates for them is measured for speed, and a change that makes the device slower is a defect.
+- The render callback allocates, frees and blocks nothing ([TARGET-EMBEDDED-REALTIME]).
+- Per-processor costs are measured on the device's own CPU ([DEVICE-ENGINE-BUDGET]), recorded, and only go down.
+- The acceptance stereo patch must run at 70% or less of the deadline on one core ([DEVICE-HW-COMPUTE]). Until it does, that is the most important open item on the device.
+
+
 Status: specified, not built. Delivery is tracked in the [device plan](../../plans/synth/device.md). The typed models are in [device.td](../../designs/prism-device/device.td) and the hardware and face designs in [Prism device designs](../../designs/prism-device/README.md).
 
 A Prism device is a small box that plays a Prism patch with no computer attached. It is either a **sound source** (MIDI in, audio out) or an **effects pedal** (audio in, audio out). It runs the synthesis engine from `@osprey/synth` and nothing else: no Prism, no screen, no editor. Its knobs and switches turn the patch's macros ([PRISM-INSTRUMENT]). Plugged into a computer, Prism shows which patch the device is playing, follows its knobs live and deploys a new patch to it.
@@ -14,7 +24,7 @@ flowchart LR
   subgraph Device
     L[Link service] --> E[Engine: @osprey/synth]
     C[Knobs, switches, footswitches] --> E
-    M[MIDI: USB device, USB host, TRS] --> E
+    M[MIDI: one USB-C port, TRS in and out] --> E
     A[ADC: audio in] --> E
     E --> D[DAC: audio out]
     E --> R[Bypass relay]
@@ -74,7 +84,7 @@ The device's knobs and switches are the patch's macros ([PRISM-INSTRUMENT-DEVICE
 
 ## Link to Prism [DEVICE-LINK]
 
-The USB-C port is a composite USB device: a USB MIDI port and a USB network link. The link is the only network the device has. The device answers on that link only, at a link-local address, and is found through mDNS on that interface. Messages are declared in [device.td](../../designs/prism-device/device.td) and encoded as tdbin, each frame length-prefixed and refused above 1 MiB.
+When a computer is plugged into the device's single USB-C port, the port is a composite USB device: a USB MIDI port and a USB network link ([DEVICE-HW-USB]). The link is the only network the device has. The device answers on that link only, at a link-local address, and is found through mDNS on that interface. Messages are declared in [device.td](../../designs/prism-device/device.td) and encoded as tdbin, each frame length-prefixed and refused above 1 MiB.
 
 - **Hello ([DEVICE-LINK-HELLO]).** On connect the device sends its serial number, firmware and engine versions, profile, active slot and each slot's patch hash and name.
 - **What is playing ([DEVICE-LINK-SHOW]).** Prism's Devices panel lists each connected device and the patch it is playing. If the hash matches a patch in the open project, Prism opens that patch on its device face. Otherwise Prism fetches the patch from the device and opens it as a new unsaved patch, so nothing the device plays is ever unknown to its owner.

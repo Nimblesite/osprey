@@ -1,16 +1,28 @@
 # Prism device: delivery plan [DEVICE-PLAN]
 
+## 🚨 DIRECTIVE: PERFORMANCE OPTIMISATION NECESSARY, ESPECIALLY ON EMBEDDED DEVICES 🚨 [DEVICE-PERF]
+
+**Performance optimisation is not optional and never finished.** The engine that runs in Prism is the engine that runs on the device, and the device has a slower CPU and a hard 1.33 ms deadline per 64-frame block. Today the engine renders 0.37 s of audio per second on a Mac, mostly in reference counting and allocation ([DAW-TRANSPORT-LIVE-SPEED]). That must improve many times over, and it is worked on **in parallel with everything else**, not as a gate that holds other work back.
+
+- Every change to the engine, the synth package or the code the compiler generates for them is measured for speed, and a change that makes the device slower is a defect.
+- The render callback allocates, frees and blocks nothing ([TARGET-EMBEDDED-REALTIME]).
+- Per-processor costs are measured on the device's own CPU ([DEVICE-ENGINE-BUDGET]), recorded, and only go down.
+- The acceptance stereo patch must run at 70% or less of the deadline on one core ([DEVICE-HW-COMPUTE]). Until it does, that is the most important open item on the device.
+
+
 The [Prism device specification](../../specs/synth/PrismDevice.md) defines the engine, firmware, controls, link and factory. The board and enclosure have their own [hardware plan](hardware.md), and the compiler work has the [embedded targets plan](../embedded-targets.md). Research and citations: [hardware research](../../research/synthesis/hardware.md).
 
-The order is fixed: macros work in Prism ([instrument plan](instrument.md)), then the same engine runs headless as a virtual device, then cross-compiled for ARM Linux, then on the prototype, then on the Prism board. Each phase ships something usable on its own.
+Macros work in Prism first ([instrument plan](instrument.md)). The virtual device, the embedded target, the firmware, the prototype and the board then proceed in parallel, with performance optimisation running beside all of them ([DEVICE-PERF]). Each phase ships something usable on its own.
 
-## Gate: the engine must be fast enough [DEVICE-PLAN-SPEED]
+## Performance optimisation, in parallel with everything [DEVICE-PLAN-SPEED]
 
-The device runs the same engine as Prism. The Pi 5's CPU is enough for a decent stereo patch, and published instruments prove it ([DEVICE-RESEARCH-COMPUTE]). Osprey's engine is not yet: it renders 0.37 s of audio per second on a Mac under load ([DAW-TRANSPORT-LIVE-SPEED] in the [daw plan](daw.md)), and the profile is mostly reference counting and allocation. A Cortex-A76 core is slower than an Apple core, and the device also has a 1.33 ms deadline per block.
+This track runs alongside every other phase and never stops ([DEVICE-PERF]). The device runs the same engine as Prism. The Pi 5's CPU is enough for a decent stereo patch, and published instruments prove it ([DEVICE-RESEARCH-COMPUTE]). Osprey's engine is not yet: it renders 0.37 s of audio per second on a Mac under load ([DAW-TRANSPORT-LIVE-SPEED] in the [daw plan](daw.md)), and the profile is mostly reference counting and allocation. A Cortex-A76 core is slower than an Apple core, and the device also has a 1.33 ms deadline per block. Nothing else waits for this track, and this track waits for nothing else.
 
 - [ ] The daw's live-speed items are done: 1.5× real time or better on the codex song on the Mac.
 - [ ] The render callback passes the real-time checks: no allocation, free, blocking lock or I/O, statically and under RealtimeSanitizer ([TARGET-EMBEDDED-REALTIME]).
-- [ ] Measure per-processor costs on a Raspberry Pi 5 for the budget table ([DEVICE-ENGINE-BUDGET]). The firmware and hardware phases do not start until the acceptance patch ([DEVICE-HW-COMPUTE]) fits within 70% of a 64-frame block at 48 kHz on one core.
+- [ ] Measure per-processor costs on a Raspberry Pi 5 for the budget table ([DEVICE-ENGINE-BUDGET]) as soon as the prototype boots, and re-measure on every engine change.
+- [ ] Profile the engine on the Pi 5 itself, not only on the Mac; fix the hottest costs first.
+- [ ] The acceptance patch ([DEVICE-HW-COMPUTE]) fits within 70% of a 64-frame block at 48 kHz on one core.
 
 ## Device profiles and the virtual device [DEVICE-ENGINE-VIRTUAL]
 
@@ -30,7 +42,7 @@ Built on the work of Elk Audio OS, Zynthian and PiPedal ([DEVICE-RESEARCH-PRIOR]
 - [ ] Read-only squashfs root, atomic data partition, A/B images with the 10 s health check and fallback.
 - [ ] Image signing with the release key; the updater refuses unsigned images.
 - [ ] Isolated audio core, `SCHED_FIFO`, locked memory, direct ALSA at 64 frames; 32 and 128 offered, nothing that can exceed 10 ms ([DEVICE-HW-LATENCY-LIMITS]).
-- [ ] USB composite gadget (MIDI + network link), USB MIDI host, TRS MIDI UART; one merged, timestamped event stream.
+- [ ] One dual-role USB-C port ([DEVICE-HW-USB]): device role to a computer (USB MIDI + network link + firmware updates), host role to a USB MIDI keyboard, switched by the Type-C controller; TRS MIDI in and out on the UART; one merged, timestamped event stream.
 - [ ] Watchdog restart with the bypass relay held.
 - [ ] QEMU boot test in CI: the image boots, the engine starts and answers Hello on the link (no audio).
 

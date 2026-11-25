@@ -1,5 +1,10 @@
 # Embedded targets [TARGET-EMBEDDED]
 
+## 🚨 DIRECTIVE: PERFORMANCE OPTIMISATION NECESSARY, ESPECIALLY ON EMBEDDED DEVICES 🚨
+
+Code compiled for an embedded target must be fast: the device's CPU is slower than a desktop's and its audio deadline is hard. Generated code for these targets is profiled on the device and optimised continuously, in parallel with all other work ([DEVICE-PERF]).
+
+
 Status: specified, not built. The [embedded targets plan](../../plans/embedded-targets.md) tracks delivery. The first consumer is the [Prism device](../synth/PrismDevice.md); the research behind each choice is in [hardware research](../../research/synthesis/hardware.md).
 
 An embedded target compiles an Osprey program to run on a small device with no compiler on it. It covers two kinds of device:
