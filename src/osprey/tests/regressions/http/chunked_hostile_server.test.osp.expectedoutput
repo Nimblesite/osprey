@@ -11,6 +11,6 @@ ok 10 - repeated Transfer-Encoding lines are one list
 ok 11 - bodies past the transport buffer decode
 ok 12 - heads that hide framing are refused
 ok 13 - statuses are three digits
-ok 14 - lengths that lie are refused
+ok 14 - a handler's lying length is replaced
 1..14
 # tests=14 passed=14 failed=0 skipped=0
