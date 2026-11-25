@@ -15,12 +15,14 @@ _test_rust: _runtime_wasm
 	set -o pipefail && RUST_TEST_THREADS=$${RUST_TEST_THREADS:-4} cargo llvm-cov --manifest-path src/toolchain/Cargo.toml --workspace --profile ci --lcov --output-path $(RUST_LCOV) 2>&1 | tee $(RUST_LOG)
 
 # CI's shards of _test_rust: the slowest tests by name, each in its own job, and everything else.
+# The workbench shard also takes the whole-corpus compile checks (RUST_SHARD_CORPUS), which pushed rest past its 25-minute budget.
 # The coverage job merges their reports; scripts/ci/ci-scope.test.mjs holds the shards to one another.
 RUST_SHARD_PACKAGES := every_ported_package_matches_its_cpython_oracle_under_every_memory_backend
 RUST_SHARD_WORKBENCH := workbench_retains_record_identity_through_shared_proof_helpers workbench_apple_host_includes_shared_proof_dependencies a_faulted_workbench_goal_formula_fails_its_case_without_fabricating_bottom
+RUST_SHARD_CORPUS := no_corpus_program_emits_a_reference_to_an_undefined_symbol every_language_test_and_benchmark_source_compiles_to_ir failscompilation_corpus_drives_rejection_paths failscompilation_corpus_matches_its_expected_diagnostics ml_and_default_twins_emit_identical_ir shipped_sources_have_no_unused_bindings
 RUST_SHARD_ARGS_packages := --test python_packages -- $(RUST_SHARD_PACKAGES)
-RUST_SHARD_ARGS_workbench := --test generic_effect_arc_result -- $(RUST_SHARD_WORKBENCH)
-RUST_SHARD_ARGS_rest := -- $(addprefix --skip ,$(RUST_SHARD_PACKAGES) $(RUST_SHARD_WORKBENCH))
+RUST_SHARD_ARGS_workbench := --test generic_effect_arc_result --test emitted_ir_is_wellformed --test examples_compile --test cross_flavor_ir_equiv --test example_warning_hygiene -- $(RUST_SHARD_WORKBENCH) $(RUST_SHARD_CORPUS)
+RUST_SHARD_ARGS_rest := -- $(addprefix --skip ,$(RUST_SHARD_PACKAGES) $(RUST_SHARD_WORKBENCH) $(RUST_SHARD_CORPUS))
 
 .PHONY: _test_rust_shard
 _test_rust_shard: _runtime_wasm

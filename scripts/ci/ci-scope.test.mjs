@@ -371,8 +371,12 @@ test('the Rust shards run every test: each name the rest skips, another shard se
   assert.match(testsMk, /cargo llvm-cov --manifest-path src\/toolchain\/Cargo\.toml --workspace --profile ci --lcov/)
   assert.doesNotMatch(testsMk, /cargo llvm-cov[^\n]*(?:--exclude|--skip)/)
   assert.match(testsMk, /^RUST_SHARD_ARGS_packages := --test python_packages -- \$\(RUST_SHARD_PACKAGES\)$/m)
-  assert.match(testsMk, /^RUST_SHARD_ARGS_workbench := --test generic_effect_arc_result -- \$\(RUST_SHARD_WORKBENCH\)$/m)
-  assert.match(testsMk, /^RUST_SHARD_ARGS_rest := -- \$\(addprefix --skip ,\$\(RUST_SHARD_PACKAGES\) \$\(RUST_SHARD_WORKBENCH\)\)$/m)
+  assert.match(testsMk, /^RUST_SHARD_ARGS_workbench := --test generic_effect_arc_result --test emitted_ir_is_wellformed --test examples_compile --test cross_flavor_ir_equiv --test example_warning_hygiene -- \$\(RUST_SHARD_WORKBENCH\) \$\(RUST_SHARD_CORPUS\)$/m)
+  assert.match(testsMk, /^RUST_SHARD_ARGS_rest := -- \$\(addprefix --skip ,\$\(RUST_SHARD_PACKAGES\) \$\(RUST_SHARD_WORKBENCH\) \$\(RUST_SHARD_CORPUS\)\)$/m)
+  const binaries = testsMk.match(/^RUST_SHARD_ARGS_workbench := (.*) -- /m)[1].split(' --test ').map(b => b.replace('--test ', ''))
+  const corpus = testsMk.match(/^RUST_SHARD_CORPUS := (.*)$/m)[1].split(' ')
+  const sources = binaries.map(b => readFileSync(`src/toolchain/crates/osprey-cli/tests/${b}.rs`, 'utf8')).join('\n')
+  for (const name of corpus) assert.match(sources, new RegExp(`fn ${name}\\(\\)`), `${name} must be a test in a workbench binary`)
 })
 
 test('the Rust shard that renders a WAV installs its native tools before it runs', () => {

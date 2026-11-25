@@ -200,13 +200,12 @@ fn no_corpus_program_emits_a_reference_to_an_undefined_symbol() {
     // sweep of `osp` alone cannot see it: an `.ospml` twin lowers through the
     // same codegen, so a dangling reference there is the same unlinkable module
     // ([FLAVOR-IR-EQUIV]).
+    // `src/osprey/tests` and `src/toolchain/benchmarks/cases` are scanned by
+    // examples_compile's corpus sweep on the one lowering it already makes, so
+    // this walks only what that sweep does not compile.
     let root = repo_root();
     let mut broken = Vec::new();
-    for dir in [
-        "src/osprey/tests",
-        "src/osprey/examples",
-        "src/toolchain/benchmarks",
-    ] {
+    for dir in ["src/osprey/examples", "src/toolchain/benchmarks/shared"] {
         for path in ["osp", "ospml"]
             .iter()
             .flat_map(|ext| sources(&root.join(dir), ext))
