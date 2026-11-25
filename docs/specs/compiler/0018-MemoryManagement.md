@@ -193,6 +193,13 @@ Ending the process is a runtime quarantine, not a language operation: compiled c
 
 Symbolic runs have no ceiling; the engine bounds their memory. Checked by `t_heap_ceiling` in `memory_gc_thread_tests.c` and `memory_arc_tests.c`, and by `a_heap_that_only_grows_ends_at_its_ceiling` in `src/toolchain/crates/osprey-cli/tests/fiber_gc_memory.rs`.
 
+### Refused Blocks and Exhausted Stacks [MEM-REFUSED-STOP]
+
+Two more failures have no branch in compiled code to take, so each ends the run as a quarantine with the same status 71, after flushing standard output:
+
+- **A refused block a builtin must have.** `listSort` and the list builders return a list, never a `Result`, so when the allocator refuses one of their blocks the runtime writes `osprey: allocation refused: <builtin> request_bytes=<n>` to standard error instead of storing through a null pointer (`memory_refused.h`). Checked by `test_refused_sort_buffers_end_the_run_by_name` in `list_sort_tests.c`.
+- **Recursion past a thread's stack.** Every thread that runs Osprey code, the main thread from `osp_mem_boot` and every other one from `osp_thread_start`, has an alternate signal stack. A fault on its own stack writes `osprey: stack exhausted: a call went deeper than the thread's stack allows` to standard error. Any other fault goes to the handler that was installed before (`stack_guard.h`, macOS and Linux). Checked by `recursion_past_the_stack_ends_by_name` in `src/toolchain/crates/osprey-cli/tests/fiber_gc_memory.rs`, on the main thread and in a fiber under both backends.
+
 ### Conservative Tracing GC [GC-TRACE-CONSERVATIVE]
 
 The native GC records managed allocation base addresses and conservatively

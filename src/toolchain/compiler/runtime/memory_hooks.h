@@ -48,6 +48,8 @@ int64_t osp_mem_string_length(const void *p);
 // sentinel must print (under OSPREY_ARC_DEBUG) even for a program that never
 // allocates, or the harness cannot tell "no leaks" from "never audited".
 void osp_mem_boot(void);
+// Guards the calling thread's stack: recursion past it ends by name (stack_guard.h).
+void osp_stack_guard_arm(void);
 
 // Layout-carrying allocation (every backend defines it; default/gc ignore meta).
 void *osp_alloc_tagged(int64_t size, int64_t meta);

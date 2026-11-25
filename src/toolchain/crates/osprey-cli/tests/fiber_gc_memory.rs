@@ -125,7 +125,7 @@ fn check_cases<const N: usize>(prelude: &str, cases: [(&str, &str, &str); N]) ->
 }
 
 const CEILING_MB: u64 = 64;
-/// Exit status of a run stopped at its heap ceiling (`OSP_HEAP_EXHAUSTED_STATUS`).
+/// Exit status of a run stopped for memory, its heap ceiling or a thread's stack (`OSP_HEAP_EXHAUSTED_STATUS`).
 const HEAP_EXHAUSTED: i32 = 71;
 /// A list that only grows: every element stays reachable until the run ends.
 const HOARD: &str = "fn hoard() = range(0, 1000000000000) |> fold([], fn(items, i) => listAppend(items, i))\nprint(\"started\")\n";
@@ -194,6 +194,49 @@ fn a_heap_that_only_grows_ends_at_its_ceiling() -> io::Result<()> {
             )?;
             if let Some(fault) = ceiling_fault(memory, &run, *survives) {
                 wrong.push(format!("{name}/{memory}: {fault}"));
+            }
+        }
+    }
+    assert!(wrong.is_empty(), "{}", wrong.join("\n"));
+    Ok(())
+}
+
+/// Non-tail recursion far past any thread's stack: each frame waits on the next.
+const DEEP: &str = "fn depth(n) = match n {\n    0 => 0\n    _ => satAdd(1, depth(satSub(n, 1)))\n}\nprint(\"started\")\n";
+
+/// [FAILURE-EXPLICIT] Recursion that exhausts a thread's stack ends the run with
+/// the memory status and a record naming the cause, on the main thread and in a
+/// fiber, in every backend. It used to die by SIGSEGV with nothing printed (#363).
+#[test]
+fn recursion_past_the_stack_ends_by_name() -> io::Result<()> {
+    let cases = [
+        ("deep_main", format!("{DEEP}print(depth(100000000))\n")),
+        (
+            "deep_fiber",
+            format!("{DEEP}let f = spawn depth(100000000)\nprint(await(f))\n"),
+        ),
+    ];
+    let mut wrong = Vec::new();
+    for (name, source) in &cases {
+        for memory in ["gc", "arc"] {
+            let run = bounded_program::run_within_budget(
+                &format!("{name}_{memory}"),
+                source,
+                &["--run", "--quiet", &format!("--memory={memory}")],
+                &[],
+            )?;
+            let named = run.stderr.contains(
+                "osprey: stack exhausted: a call went deeper than the thread's stack allows",
+            );
+            if run.stopped.is_some()
+                || run.code != Some(HEAP_EXHAUSTED)
+                || run.stdout != "started\n"
+                || !named
+            {
+                wrong.push(format!(
+                    "{name}/{memory}: stopped {:?}, exit {:?}, stdout {:?}, stderr {:?}",
+                    run.stopped, run.code, run.stdout, run.stderr
+                ));
             }
         }
     }
