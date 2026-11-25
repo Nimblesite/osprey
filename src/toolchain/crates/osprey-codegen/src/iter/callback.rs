@@ -4,14 +4,23 @@ use crate::expr::gen_expr;
 
 /// Resolve known local bodies; computed and module-stored values retain cells.
 pub(crate) fn of(cg: &mut Codegen, expr: &Expr) -> Result<Callback> {
+    applied(cg, expr, expr)
+}
+
+/// [`of`] for `expr` reached through the applications `callee` writes on the
+/// way to it: a generic declaration's callback calls `callee` itself, so the
+/// checker's bindings for this use specialise every element's call.
+fn applied(cg: &mut Codegen, expr: &Expr, callee: &Expr) -> Result<Callback> {
     match expr {
         Expr::TypeApply {
             function, position, ..
         } if !file_lambda(cg, function) => {
-            crate::expr::with_application(cg, function, *position, |cg| of(cg, function))
+            crate::expr::with_application(cg, function, *position, |cg| {
+                applied(cg, function, callee)
+            })
         }
         Expr::Identifier(_) if file_lambda(cg, expr) => value(cg, expr),
-        Expr::Identifier(name) => identifier(cg, name),
+        Expr::Identifier(name) => identifier(cg, name, callee),
         Expr::Lambda { .. } => lambda(cg, expr),
         _ => value(cg, expr),
     }
@@ -53,7 +62,7 @@ pub(crate) fn param_type(
         .cloned()
 }
 
-fn identifier(cg: &mut Codegen, name: &str) -> Result<Callback> {
+fn identifier(cg: &mut Codegen, name: &str, callee: &Expr) -> Result<Callback> {
     if let Some(sig) = cg.fn_ptr_locals.get(name) {
         return Ok(Callback::Local(name.to_string(), sig.clone()));
     }
@@ -72,7 +81,7 @@ fn identifier(cg: &mut Codegen, name: &str) -> Result<Callback> {
             cg.lambda_envs.get(name).cloned(),
         ));
     }
-    module_global(cg, name).unwrap_or_else(|| Ok(named(cg, name)))
+    module_global(cg, name).unwrap_or_else(|| Ok(named(cg, name, callee)))
 }
 
 /// A function-valued module global is called through its closure cell: the
@@ -98,19 +107,46 @@ fn known_lambda(
     }
 }
 
-/// Generic declarations inline behind a lexical barrier, never launch shadows.
-/// Implements [BUILTIN-ITER-CALLBACK], [TYPE-GENERICS-FN].
-fn named(cg: &Codegen, name: &str) -> Callback {
+/// A generic declaration named as a callback is called as `fn(a) => callee(a)`
+/// would be, behind a lexical barrier: each element is an ordinary generic call
+/// under the applications `callee` carries. Inlining the body directly lowered
+/// it after those applications had ended, at its unresolved scheme, so a record
+/// built there was read through another layout (#393). Implements
+/// [BUILTIN-ITER-CALLBACK], [TYPE-GENERICS-FN].
+fn named(cg: &Codegen, name: &str, callee: &Expr) -> Callback {
     match cg.fn_defs.get(name) {
-        Some((params, body, position)) => Callback::Closed(
-            crate::closure::Environment::default(),
-            params.clone(),
-            cg.cov_inline_body(body.clone(), *position),
-            None,
-            None,
-        ),
+        Some((params, ..)) => {
+            let (parameters, body) = eta(name, params.len(), callee);
+            Callback::Closed(
+                crate::closure::Environment::default(),
+                parameters,
+                body,
+                None,
+                None,
+            )
+        }
         None => eta_builtin(cg, name).unwrap_or_else(|| Callback::Named(name.to_string())),
     }
+}
+
+/// `fn(name$argument0, …) => callee(name$argument0, …)` over `arity` parameters.
+fn eta(name: &str, arity: usize, callee: &Expr) -> (Vec<Parameter>, Expr) {
+    let parameters: Vec<Parameter> = (0..arity)
+        .map(|index| Parameter {
+            name: format!("{name}$argument{index}"),
+            ty: None,
+            inline_constraint: false,
+        })
+        .collect();
+    let body = Expr::Call {
+        function: Box::new(callee.clone()),
+        arguments: parameters
+            .iter()
+            .map(|p| Expr::Identifier(p.name.clone()))
+            .collect(),
+        named_arguments: Vec::new(),
+    };
+    (parameters, body)
 }
 
 /// A builtin with no value form has no emitted symbol either, so naming it as
@@ -123,21 +159,7 @@ fn eta_builtin(cg: &Codegen, name: &str) -> Option<Callback> {
     let osprey_types::Type::Fun { params, .. } = osprey_types::builtin_function_type(name)? else {
         return None;
     };
-    let parameters: Vec<Parameter> = (0..params.len())
-        .map(|index| Parameter {
-            name: format!("{name}$argument{index}"),
-            ty: None,
-            inline_constraint: false,
-        })
-        .collect();
-    let body = Expr::Call {
-        function: Box::new(Expr::Identifier(name.to_string())),
-        arguments: parameters
-            .iter()
-            .map(|p| Expr::Identifier(p.name.clone()))
-            .collect(),
-        named_arguments: Vec::new(),
-    };
+    let (parameters, body) = eta(name, params.len(), &Expr::Identifier(name.to_string()));
     Some(Callback::Lambda(parameters, body, None, None))
 }
 

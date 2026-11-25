@@ -10,3 +10,7 @@ list result -> ok 7
 literal     -> error plain | ok 2
 mapped      -> ok 4 | error diverged at 0 | ok 7
 indexed     -> error diverged at 0 ok 7 ok 9
+rebuilt     -> byteAt1=1
+rebuilt     -> cpWidth=2
+mapped rows -> byteAt1=1 | cpWidth=2
+kept rows   -> cpWidth=2

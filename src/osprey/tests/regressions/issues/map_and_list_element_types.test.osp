@@ -35,3 +35,13 @@ fn joined(outcomes) = join(mapList(outcomes, shown), " | ")
 let built = [checked(Box { n: 4 }), checked(Box { n: 0 }), checked(Box { n: 7 })]
 forEachList(built, |r| => print("list result -> ${shown(r)}"))
 print("literal     -> ${joined([Error { message: "plain" }, Success { value: 2 }])}\nmapped      -> ${joined(built)}\nindexed     -> ${shown(listGet(built, 1) ?: Success { value: 9 })} ${shown(listGet(built, 2) ?: Success { value: 9 })} ${shown(listGet(built, 5) ?: Success { value: 9 })}")
+
+/// #393: a record built from another record's fields keeps its string field
+/// when the generic function that builds it is passed by name.
+fn labelled(r) = "${r.label}=${r.v}"
+fn rebuilt(row) = labelled({ label: row.label, v: row.i })
+fn printRebuilt(row) = print("rebuilt     -> ${rebuilt(row)}")
+
+let rows = [{ label: "byteAt1", i: 1 }, { label: "cpWidth", i: 2 }]
+forEachList(rows, printRebuilt)
+print("mapped rows -> ${join(mapList(rows, rebuilt), " | ")}\nkept rows   -> ${join(mapList(filterList(rows, |row| => row.i > 1), rebuilt), " | ")}")
