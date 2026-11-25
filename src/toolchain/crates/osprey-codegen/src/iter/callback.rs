@@ -1,5 +1,6 @@
 //! Preserve application types and lexical bindings when selecting callbacks.
-use super::{Callback, Codegen, CodegenError, Expr, Parameter, Result};
+use super::{Callback, Codegen, CodegenError, Expr, Result};
+use crate::closure::forwarding_body;
 use crate::expr::gen_expr;
 
 /// Resolve known local bodies; computed and module-stored values retain cells.
@@ -116,7 +117,8 @@ fn known_lambda(
 fn named(cg: &Codegen, name: &str, callee: &Expr) -> Callback {
     match cg.fn_defs.get(name) {
         Some((params, ..)) => {
-            let (parameters, body) = eta(name, params.len(), callee);
+            let (parameters, body) =
+                forwarding_body(&format!("{name}$argument"), params.len(), callee.clone());
             Callback::Closed(
                 crate::closure::Environment::default(),
                 parameters,
@@ -129,26 +131,6 @@ fn named(cg: &Codegen, name: &str, callee: &Expr) -> Callback {
     }
 }
 
-/// `fn(name$argument0, …) => callee(name$argument0, …)` over `arity` parameters.
-fn eta(name: &str, arity: usize, callee: &Expr) -> (Vec<Parameter>, Expr) {
-    let parameters: Vec<Parameter> = (0..arity)
-        .map(|index| Parameter {
-            name: format!("{name}$argument{index}"),
-            ty: None,
-            inline_constraint: false,
-        })
-        .collect();
-    let body = Expr::Call {
-        function: Box::new(callee.clone()),
-        arguments: parameters
-            .iter()
-            .map(|p| Expr::Identifier(p.name.clone()))
-            .collect(),
-        named_arguments: Vec::new(),
-    };
-    (parameters, body)
-}
-
 /// A builtin with no value form has no emitted symbol either, so naming it as
 /// a callback lowers it as `fn(a) => builtin(a)` would: an ordinary builtin
 /// call per element. `None` for every other name.
@@ -159,7 +141,11 @@ fn eta_builtin(cg: &Codegen, name: &str) -> Option<Callback> {
     let osprey_types::Type::Fun { params, .. } = osprey_types::builtin_function_type(name)? else {
         return None;
     };
-    let (parameters, body) = eta(name, params.len(), &Expr::Identifier(name.to_string()));
+    let (parameters, body) = forwarding_body(
+        &format!("{name}$argument"),
+        params.len(),
+        Expr::Identifier(name.to_string()),
+    );
     Some(Callback::Lambda(parameters, body, None, None))
 }
 
