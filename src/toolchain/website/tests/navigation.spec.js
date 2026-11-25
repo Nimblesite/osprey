@@ -2,7 +2,7 @@
 // page's own headings, independent desktop scrolling and the mobile menu.
 const { test, expect } = require("@playwright/test");
 
-const DOC_SECTIONS = ["Start here", "Python", "TypeScript", "Tutorials", "Proofs", "Build applications", "Packages", "Language", "Reference"];
+const DOC_SECTIONS = ["Start here", "Python", "TypeScript", "Tutorials", "Proofs", "Build applications", "Synth", "Packages", "Language", "Reference"];
 
 test.describe("documentation sub-page navigation", () => {
   test("groups subpages and identifies the current desktop page", async ({ page }) => {
@@ -33,6 +33,24 @@ test.describe("documentation sub-page navigation", () => {
     await expect(page.locator("h1")).toHaveText("Releases");
     await expect(page.locator(".prose a[href='https://github.com/Nimblesite/osprey/releases']")).toHaveCount(1);
     await expect(page.locator("#site-navigation a.active")).toHaveText("Docs");
+  });
+
+  test("Synth links to the planned Prism hardware and labels the illustrations", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/docs/audio-synthesis/");
+    const synth = page.locator(".docs-nav-desktop .docs-nav-section", { hasText: "Synth" });
+    await synth.getByRole("link", { name: "Prism hardware", exact: true }).click();
+    await expect(page).toHaveURL(/\/docs\/audio-synthesis\/hardware\/$/);
+    const article = page.locator(".prose-layout .prose");
+    await expect(article.getByText("not in production", { exact: false })).toBeVisible();
+    await expect(article.locator("figcaption")).toHaveText([/AI-generated concept renders/, /AI-generated layout drawing/]);
+    await expect(article.getByRole("img")).toHaveCount(3);
+    for (const illustration of await article.getByRole("img").all()) {
+      await illustration.scrollIntoViewIfNeeded();
+      await expect(illustration).toHaveJSProperty("complete", true);
+      expect(await illustration.evaluate((image) => image.naturalWidth)).toBeGreaterThan(0);
+    }
+    await expect(article.getByRole("link", { name: "Read the hardware specification" })).toHaveAttribute("href", "/spec/prismdevicehardware/");
   });
 
   for (const height of [600, 900]) {

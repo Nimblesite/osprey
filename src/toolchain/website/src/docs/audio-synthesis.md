@@ -9,6 +9,8 @@ permalink: /docs/audio-synthesis/
 
 Prism is a DAW written entirely in Osprey, on the [`@osprey/synth`](https://github.com/Nimblesite/osprey/tree/main/src/osprey/packages/synth) library. In the film below, a 17-track song is edited by clicking through the real app: a note's velocity, a reverb send, a Delay patched into a voice, and a bus send. Then the edited bars play.
 
+See the [Prism hardware plan](/docs/audio-synthesis/hardware/) for a standalone synth or effects pedal you can build yourself.
+
 {% videoPlayer "prism-daw-editing", true %}
 
 The clicks are recorded by `make -C src/toolchain/targets/macos/tests daw-video`, which fails if any click leaves the screen unchanged. The soundtrack is the audio Osprey rendered for those two bars.

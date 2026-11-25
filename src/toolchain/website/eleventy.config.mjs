@@ -399,6 +399,7 @@ export default function (eleventyConfig) {
 
   // Osprey's own CSS, JS and the Monaco-based playground ship as static assets.
   eleventyConfig.addPassthroughCopy("src/assets");
+  eleventyConfig.addPassthroughCopy({ "../../../docs/designs/prism-device/enclosure.svg": "assets/images/prism/enclosure.svg" });
   eleventyConfig.addPassthroughCopy("src/css");
   eleventyConfig.addPassthroughCopy("src/js");
   // Browsers ask for /favicon.ico whatever the page links.
