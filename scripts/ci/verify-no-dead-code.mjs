@@ -75,6 +75,59 @@ const EXTERNAL_MODULE = /^(?:#\[[^\]]*\]\s*)*(?:pub(?:\([^)]*\))?\s+)?mod ([A-Za
 const EXTERNAL_PATH = /#\[path\s*=\s*"([^"\\]+)"\]/;
 const ITEM_HEADER = /^\s*(?:pub(?:\s*\([^)]*\))?\s+)?(?:(?:async|unsafe|extern(?:\s*"[^"]*")?)\s+)*(?:fn\s+\w|(?:struct|enum|trait|impl|type|use|const|static|mod|union)\b)/;
 
+const QUOTED_STRING = String.raw`"(?:\\[\s\S]|[^"\\])*"`;
+const RUST_RAW = String.raw`\b[bc]?r(#{0,255})"`;
+const C_RAW = String.raw`\b(?:u8|u|U|L)?R"([^\s()\\]{0,16})\(`;
+const RUST_CHAR = String.raw`'(?:\\(?:u\{[\da-fA-F_]+\}|x[\da-fA-F]{2}|[^\r\n])|[^'\\\r\n])'`;
+const C_CHAR = String.raw`'(?:\\[\s\S]|[^'\\\r\n])+'`;
+
+function blockEnd(text, start, rust) {
+  const blocks = /\/\*|\*\//g;
+  blocks.lastIndex = start;
+  let depth = 1;
+  for (let next; (next = blocks.exec(text)); ) {
+    if (next[0] === "/*") {
+      if (rust) depth += 1;
+    } else if (--depth === 0) {
+      return blocks.lastIndex;
+    }
+  }
+  return text.length;
+}
+
+function lineEnd(text, start, rust) {
+  let end = text.indexOf("\n", start);
+  while (!rust && end >= 0 && text[end - (text[end - 1] === "\r" ? 2 : 1)] === "\\") {
+    end = text.indexOf("\n", end + 1);
+  }
+  return end < 0 ? text.length : end;
+}
+
+// References in strings still count: codegen names runtime symbols in strings.
+// Replace only comments with whitespace so location and test masks use the
+// same coordinates as the original source.
+function withoutComments(text, rust) {
+  const tokens = new RegExp(
+    [rust ? RUST_RAW : C_RAW, QUOTED_STRING, rust ? RUST_CHAR : C_CHAR, String.raw`//|/\*`].join("|"), "gu",
+  );
+  const parts = [];
+  let cursor = 0;
+  for (let match; (match = tokens.exec(text)); ) {
+    const [token, delimiter] = match;
+    if (delimiter !== undefined) {
+      const close = rust ? '"' + delimiter : ")" + delimiter + '"';
+      const end = text.indexOf(close, tokens.lastIndex);
+      tokens.lastIndex = end < 0 ? text.length : end + close.length;
+      continue;
+    }
+    if (token[0] !== "/") continue;
+    const end = token === "//" ? lineEnd(text, tokens.lastIndex, rust) : blockEnd(text, tokens.lastIndex, rust);
+    parts.push(text.slice(cursor, match.index), text.slice(match.index, end).replace(/[^\r\n]/g, " "));
+    cursor = tokens.lastIndex = end;
+  }
+  return parts.join("") + text.slice(cursor);
+}
+
 const walk = (dir, out = []) => {
   for (const entry of readdirSync(dir)) {
     if (SKIP_DIRS.has(entry)) continue;
@@ -136,11 +189,14 @@ const testMask = (lines) => {
 const files = new Map();
 for (const path of walk(REPO_ROOT)) {
   if (!REFERENCE_EXTS.has(extname(path))) continue;
+  let text;
   try {
-    files.set(path, readFileSync(path, "utf8"));
+    text = readFileSync(path, "utf8");
   } catch {
     /* unreadable file cannot name anything */
+    continue;
   }
+  files.set(path, withoutComments(text, path.endsWith(".rs")));
 }
 
 const linesOf = new Map();

@@ -210,6 +210,24 @@ test('dead-code gate follows test modules through descendants and keeps shared p
   }
 })
 
+test('dead-code gate discards comments and keeps runtime symbols embedded in strings', () => {
+  const source = [
+    'pub fn orphan() {}',
+    '/// orphan()',
+    '/* Outer /* inner */',
+    'pub fn phantom() {}',
+    'orphan */',
+    'pub fn native_route() {}',
+    'fn llvm() -> &\'static str { r##"// @native_route()"## }',
+    'pub fn ffi_route() {}',
+    '#[cfg(test)] fn check() { orphan(); }',
+  ].join('\n')
+  const bridge = ['// orphan \\', 'orphan', 'const char *name = "/* ffi_route */";'].join('\n')
+  const result = deadCodeFixture(source, '', { descendants: { 'bridge.c': bridge } })
+  assertOrphanWithoutHelper(result, /fn (phantom|native_route|ffi_route)/)
+  assert.match(result.stderr, /FAIL: 1 public item/)
+})
+
 
 test('a test-only field cannot hide a later product type reference', () => {
   for (const probe of ['probe: bool,', 'probe: std::collections::HashMap<String,\n        Vec<(usize, usize)>>, // only tests']) {
