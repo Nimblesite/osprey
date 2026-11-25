@@ -48,10 +48,7 @@ static void own_report_shared(void);
 // drops external headers by their layout, never through a registration. A
 // fiber handle's finalizer therefore never runs here, so ownership keeps every
 // fiber to exit ([CONCURRENCY-FIBER-LIFETIME]; ownership is not in active work).
-void osp_mem_set_finalizer(int64_t meta, OspFinalizer finalize) {
-  (void)meta;
-  (void)finalize;
-}
+void osp_mem_set_finalizer(int64_t meta, OspFinalizer finalize) { (void)meta; (void)finalize; }
 
 // GPU allocations own a device handle or mapping. A plain EXTERN body only
 // has length and data, so it must never be interpreted as a GPU header.

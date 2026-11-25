@@ -45,10 +45,12 @@ function alternatives(values) {
   return values.reduce((left, right) => '(.fork ' + left + ' ' + right + ')')
 }
 
+// `type` is every parameter's type, or a list of one type per parameter.
 export function voidBody(ir, name, arity = 1, type = 'ptr') {
   const attributes = '(?:(?:range\\(i64 0, 4294967296\\)|noundef|nofree|readonly|readnone|nocapture|captures\\((?:none|address_is_null)\\)) )*'
-  const param = type + ' ' + attributes + '(%[\\w.-]+)'
-  const header = '^define [^@\\n]*void @' + name + '\\(' + Array(arity).fill(param).join(', ') + '\\)[^\\n]*\\{\\n([\\s\\S]*?)^\\}'
+  const types = Array.isArray(type) ? type : Array(arity).fill(type)
+  const params = types.map(each => each + ' ' + attributes + '(%[\\w.-]+)').join(', ')
+  const header = '^define [^@\\n]*void @' + name + '\\(' + params + '\\)[^\\n]*\\{\\n([\\s\\S]*?)^\\}'
   const match = new RegExp(header, 'm').exec(ir)
   if (!match) throw Error('unsupported signature: ' + name)
   const lines = match.at(-1).replace(/;[^\n]*/g, '').split('\n').map(line => line.trim()).filter(Boolean)
@@ -132,11 +134,11 @@ export function zeroSuccessors(entry = [], value, type = 'ptr') {
 const returnsImmediately = block => block.length === 1 && block[0] === 'ret void'
 
 export function compatibilityReturns(ir) {
-  const inert = (name, arity) => {
-    const { lines } = voidBody(ir, name, arity)
+  const inert = (name, arity, type) => {
+    const { lines } = voidBody(ir, name, arity, type)
     return returnsImmediately(operand(blocks(lines), 'entry'))
   }
-  return '  (' + [inert('osp_release_unique', 1), inert('osp_collect', 0), inert('osp_mem_set_finalizer', 2)].join(', ') + ')'
+  return '  (' + [inert('osp_release_unique', 1), inert('osp_collect', 0), inert('osp_mem_set_finalizer', 2, ['i64', 'ptr'])].join(', ') + ')'
 }
 
 // Reflect the compiled free entry and its null test. Only an immediate void
