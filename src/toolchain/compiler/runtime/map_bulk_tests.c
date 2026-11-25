@@ -3,9 +3,6 @@
 // the map_tests suite; see map_tests_shared.h.
 #include "map_tests_shared.h"
 
-#include <sys/wait.h>
-#include <unistd.h>
-
 /* The suite's units allocate through the GC shim; the injector replaces the
    real allocator underneath it, so a large block's refusal reaches the map. */
 #undef malloc
@@ -167,7 +164,6 @@ void test_iter_lifecycle(void) {
    GC page serves, so each copy is one real allocation of exactly REFUSED_BYTES. */
 #define REFUSED_WORDS 1024
 #define REFUSED_BYTES ((size_t)REFUSED_WORDS * sizeof(int64_t))
-#define REFUSED_STATUS 71
 static OspreyMap *g_refused_map;
 static int64_t g_refused_key;
 
@@ -178,30 +174,13 @@ static void refused_remove(void) {
   (void)osprey_map_remove(g_refused_map, g_refused_key);
 }
 
+static void refuse_collision_block(void) { osp_alloc_fail_size(REFUSED_BYTES); }
+
 /* [FAILURE-EXPLICIT] A refused map block ends the run naming the request,
-   never a memcpy through NULL. Runs in a forked child. */
+   never a memcpy through NULL (#409). */
 static void map_refused(void (*op)(void)) {
-  int err[2];
-  char seen[512];
-  int status;
-  CHECK(pipe(err) == 0);
-  (void)fflush(NULL);
-  pid_t child = fork();
-  CHECK(child >= 0);
-  if (child == 0) {
-    (void)dup2(err[1], STDERR_FILENO);
-    osp_alloc_fail_size(REFUSED_BYTES);
-    op();
-    _exit(0);
-  }
-  close(err[1]);
-  ssize_t n = read(err[0], seen, sizeof seen - 1);
-  close(err[0]);
-  CHECK(waitpid(child, &status, 0) == child);
-  CHECK(WIFEXITED(status) && WEXITSTATUS(status) == REFUSED_STATUS);
-  CHECK(n > 0);
-  seen[n > 0 ? n : 0] = '\0';
-  CHECK(strstr(seen, "osprey: allocation refused: map request_bytes=8192") != NULL);
+  CHECK(osp_child_refusal_names(refuse_collision_block, op,
+                                "osprey: allocation refused: map request_bytes=8192"));
 }
 
 static OspreyMap *bool_collision(int64_t count) {
