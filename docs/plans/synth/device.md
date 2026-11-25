@@ -37,14 +37,14 @@ This track runs alongside every other phase and never stops ([DEVICE-PERF]). The
 
 Built on the work of Elk Audio OS, Zynthian and PiPedal ([DEVICE-RESEARCH-PRIOR]); mainline PREEMPT_RT rather than Xenomai ([DEVICE-RESEARCH-RT]).
 
-- [ ] Buildroot tree with pinned sources: mainline PREEMPT_RT kernel, BusyBox, ALSA, USB gadget, the engine as the only service. Image built by `make`, shipped as a CI artifact, never committed.
-- [ ] The Buildroot staging directory is the sysroot for `--target=linux-arm64 --sysroot` ([TARGET-EMBEDDED-LINUX-CROSS]).
-- [ ] Read-only squashfs root, atomic data partition, A/B images with the 10 s health check and fallback.
+- [ ] Raspberry Pi OS Lite (64-bit) image built with `rpi-image-gen` from a pinned package list: the Raspberry Pi real-time kernel, ALSA, USB gadget modules, the engine as the only service. Image built by `make`, shipped as a CI artifact, never committed. Confirm the real-time kernel package name and that it meets the jitter target ([DEVICE-RESEARCH-OS]).
+- [ ] A Raspberry Pi OS (Debian arm64) root is the sysroot for `--target=linux-arm64 --sysroot` ([TARGET-EMBEDDED-LINUX-CROSS]).
+- [ ] Read-only root with the OS's overlay file system, atomic data partition, A/B images through `tryboot` with the 10 s health check and fallback.
 - [ ] Image signing with the release key; the updater refuses unsigned images.
 - [ ] Isolated audio core, `SCHED_FIFO`, locked memory, direct ALSA at 64 frames; 32 and 128 offered, nothing that can exceed 10 ms ([DEVICE-HW-LATENCY-LIMITS]).
 - [ ] One dual-role USB-C port ([DEVICE-HW-USB]): device role to a computer (USB MIDI + network link + firmware updates), host role to a USB MIDI keyboard, switched by the Type-C controller; TRS MIDI in and out on the UART; one merged, timestamped event stream.
 - [ ] Watchdog restart with the bypass relay held.
-- [ ] QEMU boot test in CI: the image boots, the engine starts and answers Hello on the link (no audio).
+- [ ] Engine test without hardware: the same arm64 executable runs in a stock Debian arm64 container (Docker on a Mac, GitHub's ARM Linux runner in CI), answers Hello on the link and takes a deployed patch (no audio timing). Flashing and boot are tested on the prototype with Raspberry Pi Imager.
 
 ## Factory [DEVICE-FACTORY]
 

@@ -44,17 +44,18 @@ The reference hardware, a Raspberry Pi 5 with the Prism HAT in a pedal enclosure
 
 ## Firmware [DEVICE-OS]
 
-The firmware is a minimal embedded Linux whose only job is to run the engine. It is not a general-purpose computer.
+The firmware is **Raspberry Pi OS Lite (64-bit)**, the standard Raspberry Pi operating system, with the engine installed as its one service. Nothing custom or obscure: the same OS, kernel packages, drivers and tools every Raspberry Pi uses, so anyone who knows a Pi knows the device ([DEVICE-RESEARCH-OS]).
 
-- **Built with Buildroot** from pinned sources: a mainline kernel with PREEMPT_RT, BusyBox, ALSA, the USB gadget stack and the engine. No package manager, no shell on any port, no login, no SSH, no Wi-Fi, no network service except the USB link.
-- **Read-only root.** The system image is a read-only squashfs. Patches and settings live on a separate data partition, written atomically: write a new file, flush it, rename it over the old one. Pulling the power during a deploy leaves the previous patch playing on next boot.
-- **A/B images.** An update writes the inactive image, boots it once, and keeps it only if the engine reports healthy audio within 10 s; otherwise the device falls back to the previous image ([DEVICE-LINK-UPDATE]).
+- **Standard OS, standard tools.** The image is Raspberry Pi OS Lite built with Raspberry Pi's own image builder, `rpi-image-gen`, from a pinned package list: the Raspberry Pi real-time kernel, ALSA, the USB gadget modules and the engine. It is flashed with Raspberry Pi Imager (prototype microSD) or `rpiboot` (the module's eMMC). Any other image can be flashed the same way.
+- **Locked down by configuration, not by a custom OS.** No desktop, no Wi-Fi, no SSH and no login on any port in release images; the only network service is the USB link. Development images enable SSH over the USB link.
+- **Read-only root.** The root file system runs under Raspberry Pi OS's own overlay file system option, so nothing on it changes at run time. Patches and settings live on a separate data partition, written atomically: write a new file, flush it, rename it over the old one. Pulling the power during a deploy leaves the previous patch playing on next boot.
+- **A/B images.** Two system partitions and the Raspberry Pi firmware's own `tryboot` mechanism: an update writes the inactive image, boots it once, and keeps it only if the engine reports healthy audio within 10 s; otherwise the device falls back to the previous image ([DEVICE-LINK-UPDATE]).
 - **Signed.** The updater accepts only images signed by the release key. Where the board's secure boot is enabled, the boot chain checks the same key.
-- **Real-time audio.** Mainline PREEMPT_RT, chosen over Xenomai because it meets the latency target on published Raspberry Pi measurements without a commercial licence or an out-of-tree kernel ([DEVICE-RESEARCH-RT]). One CPU core is isolated for audio. The audio thread runs at `SCHED_FIFO` priority, pinned to that core, with its memory locked and no swap. It talks to the ALSA hardware device directly: no sound server, 64-frame periods by default, never a setting that could exceed the 10 ms bound ([DEVICE-HW-LATENCY-LIMITS]).
-- **Boot to sound in 5 s or less**, measured from power on to the first patch audible at the output.
+- **Real-time audio.** Raspberry Pi's PREEMPT_RT kernel, chosen over Xenomai because it meets the latency target on published Raspberry Pi measurements without a commercial licence or an out-of-tree kernel ([DEVICE-RESEARCH-RT]). One CPU core is isolated for audio. The audio thread runs at `SCHED_FIFO` priority, pinned to that core, with its memory locked and no swap. It talks to the ALSA hardware device directly: no sound server, 64-frame periods by default, never a setting that could exceed the 10 ms bound ([DEVICE-HW-LATENCY-LIMITS]).
+- **Boot to sound in 15 s or less**, measured from power on to the first patch audible at the output. A standard OS boots slower than a minimal one; in effects-pedal role the bypass relay passes the player's signal for the whole boot ([DEVICE-HW-BYPASS]).
 - **Watchdog.** A hardware watchdog restarts the engine if the audio thread stops answering. In effects-pedal role the relay is in bypass for the whole restart ([DEVICE-HW-BYPASS]).
 
-Bare-metal firmware, in the style of MiniDexed on Circle, is a later step behind the same engine boundary ([TARGET-EMBEDDED-BARE]). Linux is the first step because its USB MIDI host and gadget drivers, I2S codec drivers and flash file systems already work on this hardware, as Elk Audio OS, Zynthian and PiPedal show ([DEVICE-RESEARCH-PRIOR]).
+Bare-metal firmware, in the style of MiniDexed on Circle, is a later step behind the same engine boundary ([TARGET-EMBEDDED-BARE]). Raspberry Pi OS is the first step because its USB MIDI host and gadget drivers, I2S codec drivers and flash file systems already work on this hardware, as Elk Audio OS, Zynthian and PiPedal show ([DEVICE-RESEARCH-PRIOR]).
 
 ## Engine [DEVICE-ENGINE]
 

@@ -17,7 +17,16 @@ Collected 26 November 2026 for the [Prism device hardware](../../specs/synth/Pri
 - PiPedal, an open-source Raspberry Pi guitar pedal, measured **5.8 ms** round trip at 64 frames on a Pi 4 with a USB interface and a stock kernel, and recommends a 64-bit OS (about 40% faster audio code than 32-bit) and cooling to avoid throttling above about 60–70 °C. [PiPedal: Optimizing Audio Latency](https://rerdavies.github.io/pipedal/AudioLatency.html)
 - Zynthian users report about **5.2 ms** theoretical latency on a Pi 5 with the Zynthian V5 sound card. [Zynthian forum: expected latency with Raspberry Pi 5](https://discourse.zynthian.org/t/expected-latency-with-raspberry-pi-5-raspberry-pi-dac-pro-pianoteq-for-live-playing/13397)
 
-**Decision:** mainline PREEMPT_RT, not Xenomai. It reaches the 5 ms target on published Pi measurements, needs no commercial licence and no out-of-tree kernel. Xenomai stays the documented fallback if measured jitter misses the target.
+**Decision:** PREEMPT_RT in Raspberry Pi's own kernel ([DEVICE-RESEARCH-OS]), not Xenomai. It reaches the 5 ms target on published Pi measurements, needs no commercial licence and no out-of-tree kernel. Xenomai stays the documented fallback if measured jitter misses the target.
+
+## Operating system [DEVICE-RESEARCH-OS]
+
+- **Raspberry Pi OS Lite (64-bit)** is the standard, vendor-supported OS for the Pi 5 and CM5, based on Debian. Zynthian, PiPedal and norns all run on Raspberry Pi OS or Debian, not a custom distribution.
+- Raspberry Pi publishes `rpi-image-gen` to build customised Raspberry Pi OS images from a package list; images flash with Raspberry Pi Imager. [Raspberry Pi: introducing rpi-image-gen](https://www.raspberrypi.com/news/introducing-rpi-image-gen-build-highly-customised-raspberry-pi-software-images/), [rpi-image-gen](https://github.com/raspberrypi/rpi-image-gen)
+- Raspberry Pi engineers publish a PREEMPT_RT build of their 6.12 kernel, installed with `apt install linux-image-rpi-v8-rt` and selected in `config.txt`. This comes from Raspberry Pi forum posts that call it experimental, not from official documentation, and one user saw no gain over the standard kernel on a 1 ms task: confirm the package and measure before relying on it. [Raspberry Pi forums: experimental RPi 6.12 kernel builds](https://forums.raspberrypi.com/viewtopic.php?t=388298), [Applying PREEMPT_RT in 2026?](https://forums.raspberrypi.com/viewtopic.php?t=396623)
+- **No emulator models the device.** QEMU emulates Raspberry Pi boards only up to the 4B, with no Pi 5; Corellium's Arm Virtual Hardware has a Pi 5 model in its cloud but no model of the audio codec. Because the OS is Debian arm64, the engine itself runs unchanged in any stock Debian arm64 container or VM on an Apple-silicon Mac; audio timing needs the real prototype. [QEMU Raspberry Pi boards](https://qemu.readthedocs.io/en/master/system/arm/raspi.html), [Corellium: Raspberry Pi 5 components](https://support.avh.corellium.com/devices/rpi5/rpi5-supported-hardware-components)
+
+**Decision:** Raspberry Pi OS Lite, not Buildroot or another custom distribution. It is standard and simple, at the cost of a larger image and a slower boot than a minimal build.
 
 ## Prior art: open instruments on small computers [DEVICE-RESEARCH-PRIOR]
 
@@ -32,7 +41,7 @@ Collected 26 November 2026 for the [Prism device hardware](../../specs/synth/Pri
 | [Daisy Seed](https://www.electro-smith.com/daisy/daisy) | STM32 Cortex-M7, 480 MHz, AKM codec | Sub-millisecond bare-metal audio for about USD 21–30; far less memory and CPU than a Pi |
 | [Pisound](https://blokas.io/pisound/) | Raspberry Pi HAT | Audio plus DIN MIDI on one HAT; DIN MIDI loopback measured at 2.1 ms |
 
-**Decision:** follow the norns, Zynthian and PiPedal pattern of a Raspberry Pi plus one purpose-built audio and control board, with an appliance OS in the style of Elk. The product puts a Compute Module 5 on that board, because a Pi 5 with a HAT and cooler does not fit a 35 mm-deep pedal shell; the prototype is a stock Pi 5 with an audio HAT. Bare metal (Circle) and microcontrollers (Daisy) are later targets for the same engine ([TARGET-EMBEDDED-BARE]).
+**Decision:** follow the norns, Zynthian and PiPedal pattern of a Raspberry Pi plus one purpose-built audio and control board, running the standard Raspberry Pi OS ([DEVICE-RESEARCH-OS]) with a headless engine controlled over a link, as Elk does. The product puts a Compute Module 5 on that board, because a Pi 5 with a HAT and cooler does not fit a 35 mm-deep pedal shell; the prototype is a stock Pi 5 with an audio HAT. Bare metal (Circle) and microcontrollers (Daisy) are later targets for the same engine ([TARGET-EMBEDDED-BARE]).
 
 ## Compute [DEVICE-RESEARCH-COMPUTE]
 
