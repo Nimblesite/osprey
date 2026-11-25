@@ -129,8 +129,9 @@ char *ws_read_text_frame(int fd) {
 }
 
 // Client frames MUST be masked (RFC 6455 §5.3); the server unmasks them. A
-// text of 126 bytes or more takes the 16-bit extended length.
-#define WS_MASKED_TEXT_MAX 1024
+// text of 126 bytes or more takes the 16-bit extended length. The longest is
+// the longest message the server accepts.
+#define WS_MASKED_TEXT_MAX WS_MESSAGE_LIMIT
 static void ws_send_masked_text(int fd, const char *text) {
   size_t len = strlen(text);
   assert(len <= WS_MASKED_TEXT_MAX);
@@ -309,6 +310,33 @@ static void ws_expect_exact_echo(int fd, const char *sent, const char *escaped) 
   free(text);
 }
 
+// The widest escapes: every byte a \u00XX, so the reply is twelve times the
+// text and takes the 64-bit extended length. Each is delivered whole, never
+// dropped for being bigger than the text that asked for it.
+#define WS_ECHO_CONTROL_TEXT 6000
+static void test_echo_delivers_escaped_texts(int fd) {
+  static char sent[WS_ECHO_CONTROL_TEXT + 1];
+  static char escaped[6 * WS_ECHO_CONTROL_TEXT + 1];
+  const size_t lengths[] = {1, 10, 100, 1000, WS_ECHO_CONTROL_TEXT};
+  for (size_t at = 0; at < sizeof lengths / sizeof lengths[0]; at++) {
+    size_t length = lengths[at];
+    memset(sent, '\x01', length);
+    sent[length] = '\0';
+    for (size_t i = 0; i < length; i++) {
+      memcpy(escaped + 6 * i, "\\u0001", 6);
+    }
+    escaped[6 * length] = '\0';
+    ws_expect_exact_echo(fd, sent, escaped);
+  }
+  memset(sent, '"', WS_ECHO_CONTROL_TEXT);
+  sent[WS_ECHO_CONTROL_TEXT] = '\0';
+  for (size_t i = 0; i < WS_ECHO_CONTROL_TEXT; i++) {
+    memcpy(escaped + 2 * i, "\\\"", 2);
+  }
+  escaped[2 * WS_ECHO_CONTROL_TEXT] = '\0';
+  ws_expect_exact_echo(fd, sent, escaped);
+}
+
 static void test_echo_escapes_what_it_quotes(int fd) {
   ws_expect_exact_echo(fd, "a\"b", "a\\\"b");
   ws_expect_exact_echo(fd, "\",\"admin\":true,\"x\":\"", "\\\",\\\"admin\\\":true,\\\"x\\\":\\\"");
@@ -318,7 +346,8 @@ static void test_echo_escapes_what_it_quotes(int fd) {
   char longest[WS_MASKED_TEXT_MAX + 1];
   memset(longest, 'x', WS_MASKED_TEXT_MAX);
   longest[WS_MASKED_TEXT_MAX] = '\0';
-  ws_expect_exact_echo(fd, longest, longest); // past the old 1 KiB reply buffer
+  ws_expect_exact_echo(fd, longest, longest); // past the old 1 KiB reply buffer and the 4 KiB frame
+  test_echo_delivers_escaped_texts(fd);
 }
 
 // A text frame that is not UTF-8 cannot be quoted: the server closes rather

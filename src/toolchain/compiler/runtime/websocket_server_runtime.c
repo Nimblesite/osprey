@@ -150,20 +150,22 @@ static bool echo_reply(EchoText *reply, EchoText *quoted, const char *text, size
 
 // The echo the server answers each text message with. The log line carries the
 // same quoted form, so control and ANSI bytes never reach a terminal raw. A text
-// the escaper refuses ends the connection with 1011 rather than a broken reply.
+// the escaper refuses ends the connection with 1011 rather than a broken reply,
+// and an echo that cannot be sent whole ends it too, never silently dropped.
 static bool echo_message(int fd, const char *text, size_t length) {
   EchoText reply;
   EchoText quoted;
   bool built = echo_reply(&reply, &quoted, text, length);
   if (built) {
     fprintf(stderr, "WebSocket received: %s\n", quoted.data);
-    send_websocket_frame(fd, reply.data);
-  } else {
+  }
+  bool sent = built && send_websocket_frame(fd, reply.data) >= 0;
+  if (!sent) {
     send_websocket_close(fd, WS_CLOSE_INTERNAL);
   }
   free(reply.data);
   free(quoted.data);
-  return built;
+  return sent;
 }
 
 // Acts on every event the bytes held make: false once the connection is over.
