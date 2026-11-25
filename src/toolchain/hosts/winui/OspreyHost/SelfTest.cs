@@ -139,8 +139,19 @@ sealed class SelfTest(HostWindow window, string script, string shots, bool onScr
     // last composed: the signals a picture settles on instead of a sleep.
     bool owed;
     DateTime drew = DateTime.MinValue;
+    DateTime laid = DateTime.MinValue;
 
-    void Laid(object? sender, object args) => owed = true;
+    // A layout pass that changes nothing visible is never drawn: once this long has passed with no
+    // frame for it, it is taken as drawn. A window still laying out keeps its last pass younger.
+    static readonly TimeSpan Undrawn = TimeSpan.FromSeconds(3);
+
+    void Laid(object? sender, object args)
+    {
+        owed = true;
+        laid = DateTime.UtcNow;
+    }
+
+    bool Unsettled(DateTime now) => owed && now - laid < Undrawn || now - drew < Quiet;
 
     void Drew(object? sender, RenderedEventArgs args)
     {
@@ -154,12 +165,12 @@ sealed class SelfTest(HostWindow window, string script, string shots, bool onScr
     // A picture is taken only once the window has settled [WINUI-HOST-SELF-TEST]: every layout
     // change has been drawn (animations and a scene's first frame keep `owed` set until a frame
     // shows them) and no frame has come for a moment, so an entrance or close animation is over —
-    // a window that has not changed since its last frame is quiet at once. A change whose frame
-    // never comes fails the step instead of capturing a blank or mid-animation picture.
+    // a window that has not changed since its last frame is quiet at once. A window that keeps
+    // laying out or drawing fails the step instead of capturing a blank or mid-animation picture.
     async Task<string?> Settled(string what)
     {
         var clock = Stopwatch.StartNew();
-        while (owed || DateTime.UtcNow - drew < Quiet)
+        while (Unsettled(DateTime.UtcNow))
         {
             if (clock.Elapsed > Still)
             {
