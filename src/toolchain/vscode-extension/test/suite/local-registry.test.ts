@@ -10,7 +10,6 @@ import * as os from "os";
 import * as path from "path";
 import { commands, ConfigurationTarget, extensions, workspace } from "vscode";
 import { shipwrightPlatform } from "../../client/src/client-config";
-import { fetchListingText } from "../../client/src/package-api";
 import { freePort } from "./real-registry-kit";
 import {
   failureOf,
@@ -278,7 +277,9 @@ suite("local package registry server", () => {
     const registry = new LocalRegistry(deps);
     try {
       assert.strictEqual(await registry.start(), true, r.errors.join("|"));
-      const listing = JSON.parse(await fetchListingText(`http://127.0.0.1:${port}`)) as { packages: { key: string }[] };
+      const response = await fetch(`http://127.0.0.1:${port}/v1/packages`, { signal: AbortSignal.timeout(15_000) });
+      assert.strictEqual(response.status, 200);
+      const listing = await response.json() as { packages: { key: string }[] };
       assert.deepStrictEqual(listing.packages.map((entry) => entry.key).sort(), keys);
     } finally {
       registry.stop();

@@ -16,26 +16,6 @@ export interface PkgReport {
   readonly lines: readonly string[];
 }
 
-/** A report is successful only when its semantic status is zero. */
-export function semanticSuccess(report: PkgReport): boolean {
-  return report.status === 0;
-}
-
-/**
- * One frontend command line from its whitespace-free parts. Any part that
- * contains whitespace is a programming error — the stdin entry splits on
- * whitespace, so a spaced part would silently become flag soup. Throwing
- * here is the broken-code quarantine: an injected path must fail loudly.
- */
-export function buildStdinCommand(parts: readonly string[]): string {
-  for (const part of parts) {
-    if (/\s/.test(part)) {
-      throw new Error(`frontend command part contains whitespace: ${JSON.stringify(part)}`);
-    }
-  }
-  return parts.join(" ");
-}
-
 function isReportShape(value: any): value is PkgReport {
   return (
     Number.isSafeInteger(value?.status) && value.status >= 0 &&
