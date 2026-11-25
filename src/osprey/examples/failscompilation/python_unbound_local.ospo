@@ -1,0 +1,18 @@
+# osprey: flavor=python
+# [FLAVOR-PYTHON-UNBOUND-LOCAL] #364: an arm that assigns `balance` makes it local, so reading it first has no value.
+@effect
+class Ledger:
+    def post(amount: int) -> int: ...
+
+def account():
+    return perform(Ledger.post(100))
+
+balance = 0
+
+@handler(Ledger)
+class books:
+    def post(amount):
+        balance = balance + amount
+        return balance
+
+print(f"{books(account)} {balance}")

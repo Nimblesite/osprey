@@ -115,7 +115,17 @@ impl Lowerer<'_> {
 
     fn assignment(&mut self, node: Node<'_>) -> Result<Stmt> {
         let name = self.identifier(Self::field(node, "left")?)?;
-        let value = self.expr(Self::field(node, "right")?)?;
+        let value = match self.expr(Self::field(node, "right")?) {
+            Ok(value) => value,
+            Err(error) => {
+                // The name is still this scope's, so the reads after it report
+                // their own faults rather than an unbound local.
+                if self.assignment_kind(self.text(name)).is_none() {
+                    let _ = self.bind(name, false);
+                }
+                return Err(error);
+            }
+        };
         let annotation = node.child_by_field_name("type");
         if annotation.is_none() && self.assignment_kind(self.text(name)) == Some(true) {
             return Ok(Stmt::Assignment {
