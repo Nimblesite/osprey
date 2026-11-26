@@ -35,7 +35,7 @@ module Update
 
     // Opening a page asks for its text; opening media asks for its bytes; anything else just shows.
     opening (store, path) =
-        chosen = store(opened = path, text = "", saved = "", cursor = 0, preview = "", creating = false)
+        chosen = store(opened = path, text = "", saved = "", cursor = 0, focus = 0, blockCursor = 0, preview = "", creating = false)
         match Names::kind path
             "markdown" => Runtime::asking (chosen(loads = satAdd store.loads 1), [Api::call (store.server, "file", "GET", Api::at ("/api/file", path), "")])
             "other" => Runtime::step chosen

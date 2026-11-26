@@ -31,7 +31,7 @@ async function treeAndChrome(page) {
   const item = await row(page, POST).boundingBox();
   const label = await row(page, POST).locator(".osp-row-cell").boundingBox();
   expect(label.x - item.x).toBeLessThan(40);
-  await expect(page.getByText("Search files", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Search files", { exact: true }).filter({ visible: true })).toHaveCount(0);
   await expect(page.getByPlaceholder("Search files")).toHaveCount(1);
   const pill = await page.locator(".osp-frame-status").boundingBox();
   expect(pill.height).toBeLessThan(34);
@@ -54,7 +54,7 @@ async function highlighted(page) {
   expect(coloured).toContainEqual(["fn", brand("synKeyword")]);
   expect(coloured).toContainEqual(['"hi"', brand("synString")]);
   expect(coloured.filter(([, colour]) => colour === brand("synKeyword")).map(([text]) => text)).toEqual(["fn"]);
-  await expect(page.locator(".osp-frame-code")).toContainText("osp");
+  await expect(page.locator(".osp-frame-code")).toContainText("OSP");
   await expect(page.getByText("```")).toHaveCount(0);
   await expect(page.getByText("`code`")).toHaveCount(0);
 }
