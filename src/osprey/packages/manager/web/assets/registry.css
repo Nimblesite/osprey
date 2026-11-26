@@ -80,3 +80,12 @@ pre { overflow-x: auto; padding: 1rem; background: #e6eae1; border-radius: .35re
   .prose-cover::after, .prose-intro::after { inset: 0 0 auto; height: .6rem; clip-path: none; background-size: 2.5rem 3rem }
   .prose-cover h1, .prose-intro h1, .prose-cover > p, .prose-intro > p { max-width: 100% }
 }
+.prose-publisher { background: #322443 url(/registry-mark.svg) no-repeat right 6% center / clamp(5rem, 14vw, 11rem); color: #fff5df; padding: clamp(1.5rem, 4vw, 4rem); border-radius: 1rem }
+.prose-publisher h1 { max-width: 65%; font-size: clamp(2.4rem, 5vw, 5rem); margin: 1.3rem 0 .6rem }
+.prose-publisher p { max-width: 66%; margin: 0 }
+.prose-publisher a { color: #ffcc94 }
+.prose-credits { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(20rem,100%),1fr)); padding: 0; list-style: none; gap: .85rem }
+.prose-credits li { padding: 1.2rem; background: #fffaf1; border: 1px solid var(--line); border-radius: .75rem }
+.prose-credits a { font: 700 1.1rem var(--mono); overflow-wrap: anywhere }
+.prose-credits code { display: inline-block; margin-left: .5rem; padding: .1rem .45rem; background: #e9def2; border-radius: .4rem }
+.prose-credits p { margin: .65rem 0 0; color: var(--muted) }
