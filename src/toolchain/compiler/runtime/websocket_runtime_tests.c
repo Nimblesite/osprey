@@ -490,10 +490,25 @@ static void test_closed_peer_preserves_process(void) {
 
 // ------------------------------------------------------------- keep-alive
 
+// The signaller waits until websocket_keep_alive has installed the process's
+// SIGTERM handler, and only then sends the signal: one arriving before that
+// meets the default disposition and kills the whole binary. The bound only
+// names a keep_alive that stopped installing its handler; waiting for the
+// installation is the mechanism, never the bound.
+enum { WS_HANDLER_TRIES = 30000, WS_HANDLER_POLL_US = 1000 };
+
 static void *ws_shutdown_signaller(void *arg) {
   (void)arg;
-  usleep(300000);
-  assert(kill(getpid(), SIGTERM) == 0);
+  for (int i = 0; i < WS_HANDLER_TRIES; i++) {
+    struct sigaction installed;
+    assert(sigaction(SIGTERM, NULL, &installed) == 0);
+    if (installed.sa_handler != SIG_DFL && installed.sa_handler != SIG_IGN) {
+      assert(kill(getpid(), SIGTERM) == 0);
+      return NULL;
+    }
+    usleep(WS_HANDLER_POLL_US);
+  }
+  assert(0 && "keep_alive never installed its SIGTERM handler");
   return NULL;
 }
 
