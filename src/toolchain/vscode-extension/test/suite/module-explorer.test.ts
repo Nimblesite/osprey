@@ -5,7 +5,7 @@ import * as path from "path";
 import * as vscode from "vscode";
 import {
   clientPackageGraph, compilerSourceGraph, isContained, ModuleExplorerProvider, openSource, parsePackageGraph,
-  parseSourceGraph, projectChildren, type ModuleExplorerDeps, type ModuleNode, type PackageGraph,
+  parseSourceGraph, projectChildren, type ModuleExplorerDeps, type ModuleNode, type PackageGraph, type ProjectNode,
 } from "../../client/src/module-explorer";
 import { runFrontendCommand } from "../../client/src/package-frontend";
 import { extensionRoot, present, resolveBuiltOsprey, uriPath, writeStubExecutable } from "./osprey-test-env";
@@ -343,7 +343,7 @@ suite("Module Explorer [EDITOR-MODULE-EXPLORER]", () => {
   });
 
   test("the locked graph nests dependencies and shows what verification found", () => {
-    const owner: ModuleNode = { id: "p", label: "p", projectRoot: "/p" };
+    const owner: ProjectNode = { id: "p", label: "p", projectRoot: "/p" };
     const source = { ok: { sources: ["/p/a.osp"], declarations: [] } };
     const [modules, sources, none] = projectChildren(owner, source, { ok: { direct: [], packages: [], findings: [] } });
     assert.ok(modules && sources && none, "the three groups");

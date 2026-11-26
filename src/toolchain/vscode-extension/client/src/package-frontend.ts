@@ -68,7 +68,7 @@ export function runFrontendCommand(
   return new Promise((resolve, reject) => {
     const child = spawn.execFile(executable, [],
       { cwd, timeout: 120_000, maxBuffer: 16 * 1024 * 1024, windowsHide: true },
-      (error, stdout, stderr) => completeFrontend(error, String(stdout ?? ""), String(stderr ?? ""), resolve, reject));
+      (error, stdout, stderr) => completeFrontend(error, String(stdout), String(stderr), resolve, reject));
     child?.stdin?.once?.("error", reject);
     child?.stdin?.end(command + "\n", () => undefined);
   });

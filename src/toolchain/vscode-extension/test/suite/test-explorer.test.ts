@@ -5,13 +5,19 @@
 
 import * as assert from "assert";
 import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
 import * as sinon from "sinon";
 import * as vscode from "vscode";
 import { fileTestId, leafTestId } from "../../client/src/test-explorer-parse";
 import { COVERAGE_RUN, PLAIN_RUN } from "../../client/src/test-explorer-runs";
 import { executeRunRequest, makeRunHandler } from "../../client/src/test-explorer";
-import { coverageSink, detailedCoverageFor } from "../../client/src/test-explorer-report";
+import {
+  coverageSink,
+  detailedCoverageFor,
+  reportCoverage,
+  type TestRunSink,
+} from "../../client/src/test-explorer-report";
 import {
   makeDiscovery,
   makeDiscoveryQueue,
@@ -1262,6 +1268,44 @@ suite("Osprey Test Explorer", () => {
         [],
         "unknown FileCoverage yields no detail",
       );
+    });
+
+    // [TESTING-COVERAGE-VSCODE] reportCoverage reads, forwards and drops one
+    // run's report: a plain sink leaves the file alone, a missing or corrupt
+    // report forwards nothing, and a project report keys each source by path.
+    test("reportCoverage forwards a project report per source and nothing else", async () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "osprey-report-"));
+      const ran = path.join(dir, "ran.test.osp");
+      const uri = vscode.Uri.file(ran);
+      const report = path.join(dir, "report.json");
+      const project = JSON.stringify({ files: { [ran]: { lines: { "1": 1, "3": 0 } }, "helper.osp": { lines: { "2": 4 } } } });
+      const noop = (): void => undefined;
+      const plain: TestRunSink = {
+        enqueued: noop, started: noop, passed: noop, failed: noop, errored: noop, skipped: noop, appendOutput: noop, end: noop,
+      };
+      fs.writeFileSync(report, project);
+      await reportCoverage(uri, report, plain);
+      assert.ok(fs.existsSync(report), "a sink without line coverage never reads or drops the report");
+
+      const missing = new RecordingSink();
+      await reportCoverage(uri, path.join(dir, "absent.json"), missing);
+      assert.strictEqual(missing.coverage.size, 0, "a compile failure writes no report and forwards nothing");
+
+      const corrupt = new RecordingSink();
+      fs.writeFileSync(report, "{ not json");
+      await reportCoverage(uri, report, corrupt);
+      assert.strictEqual(corrupt.coverage.size, 0, "a corrupt report forwards nothing");
+      assert.ok(!fs.existsSync(report), "a corrupt report is still dropped");
+
+      const sink = new RecordingSink();
+      fs.writeFileSync(report, project);
+      await reportCoverage(uri, report, sink);
+      assert.deepStrictEqual([...sink.coverage.keys()].sort(), [path.join(dir, "helper.osp"), ran].sort());
+      assert.deepStrictEqual([...(sink.coverage.get(ran) ?? [])], [[1, 1], [3, 0]], "the ran file keeps its hits");
+      assert.deepStrictEqual([...(sink.coverage.get(path.join(dir, "helper.osp")) ?? [])], [[2, 4]],
+        "a relative source resolves beside the ran file");
+      assert.ok(!fs.existsSync(report), "a read report is dropped");
+      fs.rmSync(dir, { recursive: true, force: true });
     });
 
     // [TESTING-COVERAGE-VSCODE] calc proof, end to end: the Coverage button's
