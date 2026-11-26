@@ -51,6 +51,7 @@ mod fragment_ranges;
 mod kernel;
 mod ml;
 mod positional;
+mod prose;
 mod python;
 mod strings;
 pub use strings::column_byte;
@@ -64,6 +65,7 @@ pub use closing_runs::{closing_runs, ClosingRun, MIN_CLOSING_RUN};
 pub use default::parse_tree;
 pub use docparse::doc_links;
 pub use ml::ml_line_layout;
+pub use prose::prose_ranges;
 pub use python::parse_python_tree;
 
 /// A syntax error located in the source (an ERROR/MISSING node from tree-sitter).

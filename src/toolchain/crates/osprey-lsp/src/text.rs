@@ -187,6 +187,33 @@ pub(crate) fn occurrences(text: &str, name: &str, encoding: PositionEncoding) ->
         .collect()
 }
 
+/// Every whole-word occurrence of `name` that is code in `flavor`: none in a
+/// comment or a string's text, which name nothing ([LSP-REFERENCES-CODE-ONLY]).
+pub(crate) fn code_occurrences(
+    text: &str,
+    name: &str,
+    encoding: PositionEncoding,
+    flavor: osprey_syntax::Flavor,
+) -> Vec<Occurrence> {
+    let prose = osprey_syntax::prose_ranges(text, flavor);
+    let starts: Vec<usize> = std::iter::once(0)
+        .chain(text.match_indices('\n').map(|(at, _)| at + 1))
+        .collect();
+    occurrences(text, name, encoding)
+        .into_iter()
+        .filter(|found| {
+            let offset = usize::try_from(found.line)
+                .ok()
+                .and_then(|line| starts.get(line))
+                .and_then(|start| {
+                    let rest = text.get(*start..)?;
+                    Some(start + prefix_to(rest, found.start, encoding).len())
+                });
+            offset.is_none_or(|at| !prose.iter().any(|range| range.contains(&at)))
+        })
+        .collect()
+}
+
 fn line_occurrences(
     line: &str,
     line_idx: usize,

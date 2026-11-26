@@ -5,6 +5,7 @@ use lspkit::vfs::{DocumentUri, PositionEncoding, Vfs};
 use lspkit_server::Diagnostic;
 
 use crate::model::{CodeAction, Span, TextChange};
+use crate::text::measure;
 use crate::warning_actions::Fix;
 
 pub(crate) const FIX_ALL: &str = "source.fixAll.osprey";
@@ -98,9 +99,9 @@ fn import_removal(
     let lines: Vec<&str> = source.lines().collect();
     let first = lines.get(usize::try_from(start).ok()?)?;
     let last = lines.get(usize::try_from(end).ok()?)?;
-    let alone = column == units(first, encoding) - units(first.trim_start(), encoding)
+    let alone = column == measure(first, encoding) - measure(first.trim_start(), encoding)
         && first.trim_start().starts_with("import")
-        && end_column == units(last.trim_end(), encoding);
+        && end_column == measure(last.trim_end(), encoding);
     alone.then(|| CodeAction {
         title: "Remove unused import",
         kind: "quickfix",
@@ -112,16 +113,6 @@ fn import_removal(
             new_text: String::new(),
         }],
     })
-}
-
-/// How long `text` is in the client's position units.
-fn units(text: &str, encoding: PositionEncoding) -> u32 {
-    let count = match encoding {
-        PositionEncoding::Utf8 => text.len(),
-        PositionEncoding::Utf32 => text.chars().count(),
-        _ => text.encode_utf16().count(),
-    };
-    u32::try_from(count).unwrap_or(u32::MAX)
 }
 
 fn includes(only: &[String], kind: &str) -> bool {
