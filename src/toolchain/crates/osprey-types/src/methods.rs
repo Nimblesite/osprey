@@ -107,6 +107,32 @@ pub(crate) fn collect(program: &Program, sites: &Targets) -> Targets {
     collector.targets
 }
 
+pub(crate) fn collect_resolved(
+    program: &Program,
+    sites: &HashMap<usize, bool>,
+) -> HashMap<usize, bool> {
+    struct Collector<'a> {
+        sites: &'a HashMap<usize, bool>,
+        index: usize,
+        resolved: HashMap<usize, bool>,
+    }
+    impl AstVisitor for Collector<'_> {
+        fn expression(&mut self, expression: &Expr) {
+            if let Some(&uses_fallback) = self.sites.get(&std::ptr::from_ref(expression).addr()) {
+                let _ = self.resolved.insert(self.index, uses_fallback);
+            }
+            self.index += 1;
+        }
+    }
+    let mut collector = Collector {
+        sites,
+        index: 0,
+        resolved: HashMap::new(),
+    };
+    osprey_ast::walk_program(program, &mut collector);
+    collector.resolved
+}
+
 pub(crate) fn lower(expression: &mut Expr, target: &Target) {
     let Some(parts) = parts(expression) else {
         return;
@@ -159,10 +185,11 @@ impl Checker {
         let Some(descriptor) = name.strip_prefix(OBLIGATION) else {
             return false;
         };
-        let mut descriptor = descriptor.splitn(6, ':');
+        let mut descriptor = descriptor.splitn(7, ':');
         let explicit = descriptor.next().and_then(|n| n.parse::<usize>().ok());
         let line = descriptor_number(&mut descriptor);
         let column = descriptor_number(&mut descriptor);
+        let site_addr = descriptor.next().and_then(|n| n.parse::<usize>().ok());
         let (Some(site), Some(field), Some(method)) =
             (descriptor.next(), descriptor.next(), descriptor.next())
         else {
@@ -192,6 +219,12 @@ impl Checker {
         let selected = self
             .resolved_record_field(receiver.clone(), field, site)
             .ok();
+        if let Some(addr) = site_addr {
+            let entry = self.resolved_deferred_methods.entry(addr).or_insert(false);
+            if selected.is_none() {
+                *entry = true;
+            }
+        }
         let mut arguments = ordered_arguments(
             arguments,
             named,

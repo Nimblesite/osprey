@@ -89,16 +89,19 @@ pub fn checked_method_reads(
     program: &Program,
 ) -> Result<HashMap<usize, String>, Vec<crate::TypeError>> {
     let types = infer_checked(program)?;
-    if types
-        .methods
-        .values()
-        .any(|target| matches!(target, methods::Target::Deferred(_)))
-    {
+    if types.methods.iter().any(|(index, target)| {
+        matches!(target, methods::Target::Deferred(_))
+            && !types.resolved_deferred_methods.contains_key(index)
+    }) {
         return Err(vec![crate::TypeError::new(
             "package usage requires resolved method dispatch; a polymorphic call remains unresolved",
         )]);
     }
-    Ok(method_reads(program, &types.methods))
+    Ok(method_reads(
+        program,
+        &types.methods,
+        Some(&types.resolved_deferred_methods),
+    ))
 }
 
 /// Report unread lexical symbols in declaration order in a valid program.
@@ -120,7 +123,7 @@ pub(crate) fn unused_symbols_with_types(
     let mut analysis = Analysis {
         bindings: Vec::new(),
         scope: Vec::new(),
-        method_reads: method_reads(program, &types.methods),
+        method_reads: method_reads(program, &types.methods, Some(&types.resolved_deferred_methods)),
         constructors: types.ctors.keys().cloned().collect(),
     };
     let owner = Owner {
@@ -404,18 +407,28 @@ fn symbol(name: &str, kind: UnusedKind, owner: Owner<'_>, occurrence: usize) -> 
 
 /// Only a resolved UFCS fallback reads the method's value name. A same-named
 /// callable record field must not keep an unrelated local binding alive.
-fn method_reads(program: &Program, targets: &methods::Targets) -> HashMap<usize, String> {
+fn method_reads(
+    program: &Program,
+    targets: &methods::Targets,
+    resolved_deferred: Option<&HashMap<usize, bool>>,
+) -> HashMap<usize, String> {
     struct Collector<'a> {
         targets: &'a methods::Targets,
+        resolved_deferred: Option<&'a HashMap<usize, bool>>,
         index: usize,
         reads: HashMap<usize, String>,
     }
     impl AstVisitor for Collector<'_> {
         fn expression(&mut self, expression: &Expr) {
-            if matches!(
-                self.targets.get(&self.index),
-                Some(methods::Target::Function | methods::Target::Deferred(_))
-            ) {
+            let is_ufcs_read = match self.targets.get(&self.index) {
+                Some(methods::Target::Function) => true,
+                Some(methods::Target::Deferred(_)) => self
+                    .resolved_deferred
+                    .and_then(|resolved| resolved.get(&self.index).copied())
+                    .unwrap_or(true),
+                _ => false,
+            };
+            if is_ufcs_read {
                 if let Some(parts) = methods::parts(expression) {
                     let _ = self.reads.insert(
                         std::ptr::from_ref(expression).addr(),
@@ -428,6 +441,7 @@ fn method_reads(program: &Program, targets: &methods::Targets) -> HashMap<usize,
     }
     let mut collector = Collector {
         targets,
+        resolved_deferred,
         index: 0,
         reads: HashMap::new(),
     };

@@ -208,6 +208,9 @@ pub(crate) struct Checker {
     pub(crate) instantiations: HashMap<usize, HashMap<VarId, Type>>,
     /// Dotted call identity: a field name, or receiver-first function dispatch.
     pub(crate) methods: crate::methods::Targets,
+    /// Deferred dotted call sites resolved at one or more instantiations:
+    /// `true` if any instantiation used the UFCS fallback function, `false` if all resolved to a field.
+    pub(crate) resolved_deferred_methods: HashMap<usize, bool>,
     /// Explicit applications have stable source positions for backend cloning.
     pub(crate) application_tys: Vec<(Position, HashMap<VarId, Type>)>,
     /// Concrete arguments passed to representation-sensitive built-ins. These

@@ -24,6 +24,7 @@ impl Checker {
             list_tys: Vec::new(),
             instantiations: HashMap::new(),
             methods: HashMap::new(),
+            resolved_deferred_methods: HashMap::new(),
             application_tys: Vec::new(),
             builtin_uses: Vec::new(),
             field_uses_prefix: None,

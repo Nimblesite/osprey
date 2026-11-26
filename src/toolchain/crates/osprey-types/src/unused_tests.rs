@@ -263,11 +263,23 @@ fn checked_method_reads_distinguish_fields_and_fallbacks() {
             false,
         ),
         ("fn run(value) = value\nlet result = 42.run()\n", true),
+        // #406: polymorphic method call resolved to a record field at its instantiation
+        // must succeed and not claim a fallback read of the same-named free function.
+        (
+            "fn run(value) = 99\nfn apply(item) = item.run()\nlet result = apply({ run: fn() => 42 })\n",
+            false,
+        ),
+        // Polymorphic method call resolved to a fallback function at any instantiation
+        // must succeed and record the fallback read.
+        (
+            "fn run(value) = 99\nfn apply(item) = item.run()\nlet a = apply({ run: fn() => 42 })\nlet b = apply(1)\n",
+            true,
+        ),
     ] {
         let parsed = parse_program_with_flavor(source, Flavor::Default);
         assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
         let reads = crate::checked_method_reads(&parsed.program).expect("checked method reads");
-        assert_eq!(reads.values().any(|name| name == "run"), expected);
+        assert_eq!(reads.values().any(|name| name == "run"), expected, "{source}");
     }
 }
 
