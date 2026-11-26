@@ -12,8 +12,8 @@ Second sentence, when there is room:
 
 ## Audience
 
-**Synth nerds, sound designers, modular patchers, and hardware builders.**
-Write like an engineer who builds instruments, not a marketing copywriter. Lead with signal flow, synthesis engines, and concrete specs. Cut filler. Every sentence must earn its place.
+**Sound designers, modular patchers, electronic musicians, and hardware builders.**
+Write like an engineer who builds instruments, not a marketing copywriter. Lead with signal flow, synthesis engines, and concrete specs. Cut filler. Every sentence must earn its place. Never use casual labels like "synth nerd".
 
 ## Five pillars
 
