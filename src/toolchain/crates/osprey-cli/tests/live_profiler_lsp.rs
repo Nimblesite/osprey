@@ -405,3 +405,101 @@ fn editor_handles_depth_boundaries_without_aborting() {
     let shutdown = timely_shutdown(server, 2).expect("the server shuts down promptly");
     assert_eq!(shutdown.get("result"), Some(&Value::Null), "{shutdown}");
 }
+
+/// Send the whole new `text` of an open `uri` and return the diagnostics
+/// published for that version.
+fn edited_diagnostics(server: &mut Server, uri: &str, version: i64, text: &str) -> Vec<Value> {
+    server.send(
+        &json!({ "jsonrpc": "2.0", "method": "textDocument/didChange", "params": {
+            "textDocument": { "uri": uri, "version": version },
+            "contentChanges": [{ "text": text }]
+        }}),
+    );
+    loop {
+        let message = server.read();
+        if message.get("method") == Some(&json!("textDocument/publishDiagnostics"))
+            && message.pointer("/params/uri") == Some(&json!(uri))
+            && message
+                .pointer("/params/version")
+                .is_none_or(|v| v == &json!(version))
+        {
+            return message
+                .pointer("/params/diagnostics")
+                .and_then(Value::as_array)
+                .cloned()
+                .expect("diagnostics");
+        }
+    }
+}
+
+/// The codes and messages of every error (severity 1) in `diagnostics`.
+fn errors_of(diagnostics: &[Value]) -> Vec<String> {
+    diagnostics
+        .iter()
+        .filter(|item| item.get("severity") == Some(&json!(1)))
+        .map(|item| format!("{}: {}", item["code"], item["message"]))
+        .collect()
+}
+
+fn has_code(diagnostics: &[Value], code: &str) -> bool {
+    diagnostics
+        .iter()
+        .any(|item| item.get("code") == Some(&json!(code)))
+}
+
+/// [TYPES-DISCIPLINE-SEAM] [PROOF-SOURCE-DISCIPLINE]: the editor checks a
+/// disciplined module the way the CLI builds it. The checker erases its
+/// theorems before assembly, so they are never reported as top-level
+/// statements, and a broken proof is still an error the editor shows.
+#[test]
+fn editor_erases_disciplined_modules_like_the_cli() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../..");
+    let disciplines = root.join("src/osprey/examples/disciplines");
+    let mut server = Server::start_in(&std::env::temp_dir());
+    let initialized = server.request(1, "initialize", &json!({}));
+    assert!(initialized.get("result").is_some(), "{initialized}");
+    let files = [
+        "dependent_roundtrip/src/access.ospml",
+        "dependent_roundtrip/src/main.ospml",
+        "lean_roundtrip/src/tally.ospml",
+        "lean_roundtrip/src/main.ospml",
+    ];
+    for file in files {
+        let path = disciplines
+            .join(file)
+            .canonicalize()
+            .expect("example exists");
+        let text = std::fs::read_to_string(&path).expect("read example");
+        let uri = format!("file://{}", path.display());
+        let diagnostics = published_diagnostics(&mut server, &uri, &text);
+        assert_eq!(errors_of(&diagnostics), Vec::<String>::new(), "{file}");
+        assert!(
+            !has_code(&diagnostics, "project-error"),
+            "{file}: {diagnostics:?}"
+        );
+    }
+    let access = disciplines
+        .join("dependent_roundtrip/src/access.ospml")
+        .canonicalize()
+        .expect("access");
+    let good = std::fs::read_to_string(&access).expect("read access");
+    let uri = format!("file://{}", access.display());
+    let opened = published_diagnostics(&mut server, &uri, &good);
+    assert!(
+        has_code(&opened, "unexampled-export"),
+        "analysis completed: {opened:?}"
+    );
+    let unproved = good.replace(": Reader := read e", ": Reader := e");
+    assert_ne!(unproved, good, "the mutation applies");
+    let broken = edited_diagnostics(&mut server, &uri, 2, &unproved);
+    let errors = errors_of(&broken);
+    assert!(!errors.is_empty(), "a broken proof is an error: {broken:?}");
+    assert!(
+        errors.iter().all(|e| !e.contains("executable top-level")),
+        "{errors:?}"
+    );
+    let restored = edited_diagnostics(&mut server, &uri, 3, &good);
+    assert_eq!(errors_of(&restored), Vec::<String>::new());
+    let shutdown = timely_shutdown(server, 2).expect("the server shuts down promptly");
+    assert_eq!(shutdown.get("result"), Some(&Value::Null), "{shutdown}");
+}

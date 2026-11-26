@@ -214,7 +214,7 @@ fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 
 /// `prove` runs the redundancy proof: only for a project with an open document.
 fn analyse(config: &ProjectConfig, sources: &[SourceFile], prove: bool) -> Checked {
-    let assembled = osprey_project::assemble(config, sources);
+    let assembled = osprey_project::assemble_erased(config, sources);
     let errors = match &assembled {
         Ok(project) => osprey_types::check_program(&project.program),
         Err(_) => Vec::new(),

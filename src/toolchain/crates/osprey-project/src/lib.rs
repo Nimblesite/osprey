@@ -280,11 +280,20 @@ pub fn load_selected(
     let (config, mut paths) = discover(root)?;
     paths.retain(|path| keep(path));
     let sources = parse_sources(paths, config.flavor, config.types.as_deref())?;
+    erase_disciplines(&config, sources).map(|sources| (config, sources))
+}
+
+/// Replace every non-`hm` source with the module its checker erased
+/// ([TYPES-DISCIPLINE-SEAM]), building checkers under the project's cache.
+fn erase_disciplines(
+    config: &ProjectConfig,
+    sources: Vec<SourceFile>,
+) -> Result<Vec<SourceFile>, Vec<ProjectError>> {
     let runner = discipline::ProcessRunner::new(
         compiler_binary(),
-        root.join(".osprey/cache/disciplines/build"),
+        config.directory.join(".osprey/cache/disciplines/build"),
     );
-    discipline::apply(&config, sources, &runner).map(|sources| (config, sources))
+    discipline::apply(config, sources, &runner)
 }
 
 /// The compiler a checker package is built with: `OSPREY_BIN` when set (the
@@ -330,6 +339,23 @@ pub fn assemble(
     sources: &[SourceFile],
 ) -> Result<AssembledProject, Vec<ProjectError>> {
     assemble::assemble(config, sources)
+}
+
+/// [`assemble`] after the discipline seam, as the CLI builds: a disciplined
+/// module is assembled as its checker's erased module, so the editor never
+/// reads proof syntax as Osprey statements.
+///
+/// # Errors
+///
+/// Returns discipline-checker diagnostics, then everything [`assemble`] does.
+pub fn assemble_erased(
+    config: &ProjectConfig,
+    sources: &[SourceFile],
+) -> Result<AssembledProject, Vec<ProjectError>> {
+    if !discipline::any_disciplined(config, sources) {
+        return assemble(config, sources);
+    }
+    erase_disciplines(config, sources.to_vec()).and_then(|erased| assemble(config, &erased))
 }
 
 /// Module-bearing single files need resolver/flattening; ordinary scripts must
