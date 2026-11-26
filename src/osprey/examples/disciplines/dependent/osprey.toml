@@ -1,5 +1,8 @@
 [package]
 name = "@osprey/dependent"
+license = "MIT"
+summary = "Dependent type discipline: theorem lines checked in file order by the Osprey proof kernel, then erased"
+keywords = ["dependent-types", "discipline", "proof-kernel"]
 
 # What the compiler reads when a project marks a source
 # `// osprey: types=dependent` ([TYPES-DISCIPLINE-REGISTRY]): the checker is

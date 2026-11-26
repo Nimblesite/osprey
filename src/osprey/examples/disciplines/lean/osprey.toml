@@ -1,5 +1,8 @@
 [package]
 name = "@osprey/lean"
+license = "MIT"
+summary = "Type discipline that re-checks cited Lean theorems from pinned lean4export certificates with the Osprey proof kernel"
+keywords = ["discipline", "lean", "proof-kernel"]
 
 # What the compiler reads when a project marks a source
 # `// osprey: types=leanexport` ([TYPES-DISCIPLINE-REGISTRY]): the checker is the

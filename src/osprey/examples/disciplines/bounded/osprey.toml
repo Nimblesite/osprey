@@ -1,5 +1,8 @@
 [package]
 name = "@osprey/bounded"
+license = "MIT"
+summary = "Reference type discipline: interval bounds on int parameters, checked at every call site and erased to int"
+keywords = ["discipline", "intervals", "reference"]
 
 # The package is also the home of its own suite, so
 # `osprey test src/osprey/examples/disciplines/bounded` runs it

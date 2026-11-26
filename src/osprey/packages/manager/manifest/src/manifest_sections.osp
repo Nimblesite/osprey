@@ -13,6 +13,7 @@ module ManifestSections {
     let projectKeys = ["name", "source_roots", "default_namespace", "entry", "flavor", "test_roots", "python_sources", "typescript_sources"]
     let modulesKeys = ["allow_wildcard_imports", "published_library"]
     let packageKeys = ["name", "license", "summary", "keywords"]
+    let disciplineKeys = ["name", "checker", "timeout_seconds"]
     let defaultRoots = ["src"]
     let summaryMax = 512
     let keywordMax = 12
@@ -163,6 +164,21 @@ module ManifestSections {
     export fn project(root) = match find(pairsOf(root), "project") {
         Error => fail("manifest.project.missing", rootSpan())
         Success { value } => sectionBody(value, projectKeys, "manifest.project.unknown-key", projectBody)
+    }
+
+    fn nonEmpty(pairs, key, code, span) = andThen(requiredString(pairs, key, code, span), fn(value) => if value == "" { fail(code, spanOf(pairs, key, span)) } else { Success { value: value } })
+
+    fn disciplineBody(pairs, span) = andThen(nonEmpty(pairs, "name", "manifest.discipline.name", span), fn(_) => andThen(nonEmpty(pairs, "checker", "manifest.discipline.checker", span), fn(_) => match find(pairs, "timeout_seconds") {
+        Error => Success { value: 0 }
+        Success { value } => intOf(value, "manifest.discipline.timeout-seconds")
+    }))
+
+    /// `[discipline]`: a type-discipline package's word and checker
+    /// ([TYPES-DISCIPLINE-REGISTRY]). The compiler runs the checker; the
+    /// client only refuses a malformed table.
+    export fn discipline(root) = match find(pairsOf(root), "discipline") {
+        Error => Success { value: 0 }
+        Success { value } => sectionBody(value, disciplineKeys, "manifest.discipline.unknown-key", disciplineBody)
     }
 
     fn boolOf(pairs, key, fallback, code) = match find(pairs, key) {
