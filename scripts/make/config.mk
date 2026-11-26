@@ -56,6 +56,9 @@ MAKE_FOLDERS ?= src/toolchain src/toolchain/targets/macos src/toolchain/targets/
 CC  ?= cc
 AR  ?= ar
 BIN ?= target/release/osprey
+# The one recipe that builds BIN. A CI job that downloaded the Build job's binary sets
+# OSPREY_PREBUILT=1: it then checks the binary is there instead of compiling it again.
+COMPILER_BUILD = $(if $(OSPREY_PREBUILT),test -x $(BIN),cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli)
 RTB ?= src/toolchain/compiler/bin
 # The release version a build is stamped with (release.yml exports it); the
 # runtime reports it to a live-attach client [PROF-ATTACH-PROTOCOL].

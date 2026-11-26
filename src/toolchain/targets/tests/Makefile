@@ -11,7 +11,7 @@ include Makefile
 
 ## agent: Osprey Agent's turn logic and its real update path, with scripted completions.
 agent: _runtime
-	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	$(COMPILER_BUILD)
 	$(MAKE) _test_agent
 
 ## bank: Talon Bank's pure domain layer.
@@ -31,7 +31,7 @@ cms: build _runtime_wasm
 
 ## cleanarch: The Clean Architecture todo port's use cases under GC and ARC. [EXAMPLE-CLEANARCH-INV-TESTS]
 cleanarch: _runtime
-	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	$(COMPILER_BUILD)
 	$(MAKE) _test_cleanarch
 
 ## casting: The casting player, driven by accessible label. [UI-MACHINE-TEST]
@@ -61,7 +61,7 @@ flock:
 ## inbox: The shared mobile inbox domain and its build tools.
 inbox: _runtime
 	python3 scripts/mobile/test-mobile-tools.py
-	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	$(COMPILER_BUILD)
 	$(BIN) src/osprey/examples/mobile/inbox/test --run
 
 ## painting: The painting port's stroke logic.
@@ -76,7 +76,7 @@ python-app-ports: build
 ##       the server's fixture-table lanes through the real ollama and openai clients
 ##       (~/.cache/osprey-llm/oracle-venv). The Metal run: src/toolchain/targets/macos/tests qwen-headless.
 qwen: _runtime
-	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	$(COMPILER_BUILD)
 	$(MAKE) _qwen-suite MEMORY=gc
 	$(MAKE) _qwen-suite MEMORY=arc
 	$(MAKE) _qwen-lanes LANES="gc arc"

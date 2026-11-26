@@ -73,13 +73,13 @@ graphics:
 ##       checkpoint reuse and the num_ctx limit, through the real ollama and openai clients; the GGUF is
 ##       pulled first if it is missing. Unload Ollama's resident model first.
 qwen: _runtime
-	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	$(COMPILER_BUILD)
 	$(MAKE) -C $(ROOT) _qwen-lanes LANES=real
 
 ## qwen-headless: The Qwen model suite on the Metal device, equal to the golden byte for byte, with at
 ##                least one Metal dispatch completed (plan 0049 Phase 3).
 qwen-headless: _runtime
-	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	$(COMPILER_BUILD)
 	$(MAKE) -C $(ROOT) _qwen-suite MEMORY=arc QWEN_GPU=metal
 
 ## daw-icon: Verify the macOS DAW launches from a bundle with the original Prism Dock icon.
@@ -91,7 +91,7 @@ daw-icon:
 ##                      and tapping Timeline lanes each answer within one 60 Hz display frame.
 .PHONY: daw-events-headless
 daw-events-headless: daw-icon _runtime_macos
-	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	$(COMPILER_BUILD)
 	mkdir -p target/prism-app
 	nice -n 10 $(BIN) src/osprey/examples/daw --compile --target=macos -o target/prism-app/libOspreyApp.a
 	OSPREY_NATIVE_APP_DIR="$(CURDIR)/target/prism-app" OSPREY_RUNTIME_DIR="$(CURDIR)/src/toolchain/compiler/lib" \
@@ -106,7 +106,7 @@ DAW_RATE_FROM ?= 0
 DAW_RATE_BEATS ?= 2
 .PHONY: daw-playback-rate
 daw-playback-rate: _runtime_macos
-	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	$(COMPILER_BUILD)
 	mkdir -p target/daw-profile
 	nice -n 10 $(BIN) build src/osprey/examples/daw/render --memory=arc -o "$(DAW_RATE_RENDERER)"
 	node scripts/make/daw-playback-rate.mjs "$(DAW_RATE_RENDERER)" "$(DAW_RATE_SONG)" "$(DAW_RATE_FROM)" "$(DAW_RATE_BEATS)"
@@ -116,7 +116,7 @@ daw-playback-rate: _runtime_macos
 ##              attributed to Osprey functions and the runtime calls they make. Reports in target/daw-profile.
 .PHONY: daw-profile
 daw-profile: _runtime_macos
-	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	$(COMPILER_BUILD)
 	bash scripts/make/daw-profile.sh
 
 ## daw-video: The daw in a real window, clicked and dragged like a user: a note's velocity and a Space send on the
@@ -140,14 +140,14 @@ synth-headless:
 ## storage-headless: The Mac storage app's smoke test through its Swift host.
 # The Mac storage app through its Swift host.
 storage-headless: _runtime_macos
-	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	$(COMPILER_BUILD)
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/macos/run.sh --smoke
 
 ## agent-headless: Osprey Agent's whole UI on the SwiftUI host, the model a test double: its process
 ##                 adapter's tests, a real coding task and every control, against its goldens.
 # [UI-MACHINE-SELF-TEST] Osprey Agent's whole UI on the SwiftUI host, the model a test double, against its goldens.
 agent-headless: _runtime_macos
-	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	$(COMPILER_BUILD)
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/agent/self-test.sh
 	# The Agent's archive is linked, so the suites that drive the real Workbench run under `workbench`.
 	swift test --package-path src/toolchain/hosts/swift --skip WorkbenchLayout
@@ -156,19 +156,19 @@ agent-headless: _runtime_macos
 ##             agent never sees and an LLM judge. Spends tokens; the key is DEEPSEEKKEY in .env.
 # The same script and harder tasks in a real window with real DeepSeek calls. Spends tokens.
 agent-live: _runtime_macos
-	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	$(COMPILER_BUILD)
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/agent/self-test.sh --live
 
 ## agent-qwen: Local-only full E2E: actual Agent window and Osprey Qwen GGUF, real coding/tools,
 ##             independent project checks, screenshot goldens and direct Qwen judgement. No doubles.
 agent-qwen: _runtime _runtime_macos_arc
-	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	$(COMPILER_BUILD)
 	$(MAKE) -C $(ROOT) _qwen-lanes LANES=ui
 
 # The Workbench on the SwiftUI host with no window opens and draws a checked frame ([NATIVE-SHM-VIEW]),
 # which also links its archive for the suites that drive the real Workbench.
 _workbench_linked: _runtime _runtime_macos
-	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	$(COMPILER_BUILD)
 	OSPREY_BIN="$(CURDIR)/$(BIN)" OSPREY_SWIFT_APP=src/osprey/workbench bash src/toolchain/hosts/swift/view.sh --open-check
 
 # The 40,000-import memory soak: every import renders the whole app, so it has its own CI part.
