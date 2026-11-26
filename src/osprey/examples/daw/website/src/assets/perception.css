@@ -1050,6 +1050,28 @@ a {
   color: var(--dim);
 }
 
+.prose-math {
+  background: var(--inset);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 22px 24px;
+  margin: 22px 0;
+  text-align: center;
+  color: var(--ink);
+  overflow-x: auto;
+}
+
+.prose-math math {
+  font-size: 1.28rem;
+  color: var(--ink);
+}
+
+.prose-math-caption {
+  margin: 12px 0 0;
+  font-size: 0.86rem;
+  color: var(--dim);
+}
+
 /* Footer */
 .studio-footer {
   border-top: 1px solid var(--border);
