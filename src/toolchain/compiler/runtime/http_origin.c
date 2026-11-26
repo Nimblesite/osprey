@@ -99,10 +99,13 @@ static void origin_wait_for_drip(uint64_t started, size_t sent, unsigned drip_us
 
 static void *origin_thread(void *arg) {
   ScriptedOrigin *origin = (ScriptedOrigin *)arg;
-  int fd = accept(origin->listen_fd, NULL, NULL);
-  if (fd < 0) {
-    return NULL;
-  }
+  int fd;
+  do {
+    fd = accept(origin->listen_fd, NULL, NULL);
+  } while (fd < 0 && (osp_socket_error() == EINTR || osp_socket_error() == ECONNABORTED));
+  // An origin that never accepted would let the client time out against the
+  // backlog and read as a deadline the client never had to enforce on a peer.
+  assert(fd >= 0 && "the scripted origin could not accept the client");
   origin_take_request(fd, origin);
   usleep(origin->reply_delay_us);
   if (origin->reply) {
