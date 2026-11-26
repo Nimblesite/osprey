@@ -194,7 +194,14 @@ impl CompilationInput {
             return osprey_syntax::resolve_flavor(None, &self.display_path, &self.source)
                 .map_or_else(
                     |_| Vec::new(),
-                    |flavor| osprey_types::source_warnings(self.program(), &self.source, flavor),
+                    |flavor| {
+                        osprey_types::source_warnings(
+                            self.program(),
+                            &self.source,
+                            flavor,
+                            Path::new(&self.display_path),
+                        )
+                    },
                 );
         };
         project.sources.iter().flat_map(file_warnings).collect()
@@ -402,7 +409,7 @@ fn spelled_path(path: &Path) -> PathBuf {
 /// One file's advice, read from the file as written, at flattened lines.
 fn file_warnings(source: &osprey_project::SourceMetadata) -> Vec<osprey_types::TypeWarning> {
     let parsed = osprey_syntax::parse_program_with_flavor(&source.source, source.flavor);
-    osprey_types::source_warnings(&parsed.program, &source.source, source.flavor)
+    osprey_types::source_warnings(&parsed.program, &source.source, source.flavor, &source.path)
         .into_iter()
         .map(|mut warning| {
             if let Some(position) = &mut warning.position {

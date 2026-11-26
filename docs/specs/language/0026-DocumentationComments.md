@@ -174,6 +174,15 @@ once, as `undocumented-export`. The note names the declaration with its
 module path, for example `exported function `Api::triple` has no example`, and
 an operation as `Effect.operation` (`osprey-types/src/undocumented.rs`).
 
+### Test support `[DOC-EXPORT-EXAMPLE-TEST-SUPPORT]`
+
+A source under a `tests` or `test` folder serves its suite, not readers of the
+API: its exports still need documentation (`undocumented-export`), but never
+an example, so `unexampled-export` is not reported there, in the CLI or the
+editor. Generated oracle modules (`tests/expected.py`) are the main case: an
+example per data constant would only restate the constant and add a doctest
+build to every CI run (`osprey-types/src/source_warnings.rs`).
+
 ### Effect operations `[DOC-EFFECT-OP]`
 
 An effect operation is the one nested form that carries its own documentation.

@@ -112,6 +112,7 @@ pub(crate) fn analyze_cached(
                 source,
                 &parsed.program,
                 flavor,
+                Path::new(path),
                 encoding,
             ));
     }
