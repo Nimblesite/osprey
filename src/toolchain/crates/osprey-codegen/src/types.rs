@@ -84,7 +84,7 @@ fn ltype_of_con(name: &str, args: &[Type]) -> LType {
 /// restore so the value they hand back is read as the container it is.
 ///
 /// A handle itself has no owner (`owner_name` answers `None` for `Fiber` and
-/// `Channel`: they are runtime ids, not aggregates), which leaves that slot
+/// `Channel`: they are managed handles, not aggregates), which leaves that slot
 /// free to carry the element's tag across a parameter. Without it a `List<int>`
 /// received through a `Channel<List<int>>` parameter came back as an untagged
 /// handle. Implements [CONCURRENCY-CHANNEL] and [CONCURRENCY-SPAWN-AWAIT].

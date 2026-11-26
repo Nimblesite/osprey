@@ -18,7 +18,7 @@ pub(crate) struct FiberSig {
     pub(crate) result_inner: Option<LType>,
     /// The element's aggregate owner tag — `List#double`, `Map#i8*`, a record
     /// name. Carried HERE rather than rebuilt by each consumer: a handle's own
-    /// `osp_ty` is empty (an id is a machine word owning nothing), so the
+    /// `osp_ty` is empty (a managed handle is not an aggregate), so the
     /// element tag is the only record of what the uniform wire word means. When
     /// each consumer reconstructed it from a declaration instead, every route
     /// with no declaration to consult — a function-value parameter, a closure

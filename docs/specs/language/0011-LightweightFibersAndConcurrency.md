@@ -167,7 +167,7 @@ This section explains how fibers run where there are no threads. WASI preview 1 
 
 Every fiber shares the one stack, and both wasm hosts give it a native program's depth ([WASM-TARGET-NODE](../compiler/0022-WebAssemblyTarget.md)), so `fiber_showcase` recurses 80,000 frames inside a fiber on wasm32 as it does natively. `sleep` sleeps the thread through WASI's own clock subscription.
 
-A wait that no queued fiber can satisfy could only be woken by another thread, and there is none. Instead of hanging, the run stops with `osprey: every fiber is blocked: this wait can never be woken` and exit status 70. A `select` with a timeout sleeps until its deadline.
+A wait that no queued fiber can satisfy could only be woken by another thread, and there is none. Instead of hanging, the run stops with `osprey: every fiber is blocked: this wait can never be woken` and exit status 70. A `select` with nothing queued takes its `timeout` arm at once, without waiting for the clock, as in [sequential execution](#deterministic-execution-concurrency-deterministic).
 
 ## Buffered channels [CONCURRENCY-CHANNEL]
 
