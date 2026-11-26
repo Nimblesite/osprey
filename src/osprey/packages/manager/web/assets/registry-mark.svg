@@ -1,6 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
   <title>Osprey Packages</title>
-  <rect width="48" height="48" rx="10" fill="#163f35"/>
-  <path fill="#c3f773" d="M6 9l19 9 6-4 6 1 6 5-7-1-7 8-13 4 6-7-10-4 8 1z"/>
-  <path fill="#f6f5ed" d="m10 29 13 5 13-7v5l-13 8-13-6z"/>
+  <circle cx="32" cy="32" r="31" fill="#222446"/>
+  <!-- The white crown and dark eye stripe distinguish an osprey. -->
+  <path fill="#ff946f" d="M8 43c7-9 12-19 20-24 10-6 20-4 26 3-10-4-23 4-28 13L14 50z"/>
+  <path fill="#fff6de" d="M8 49c11-9 14-23 24-29 8-5 19-4 23 3l-12 2c-6 0-10 2-14 7 9-4 15-6 23-5l5 2-7 4c-3 9-9 15-19 20l2-8-12 9 3-9-13 8z"/>
+  <path fill="#efb44f" d="M50 23c7 0 11 4 10 12-2-3-4-5-9-5l-5-2z"/>
+  <circle cx="44" cy="25.5" r="3.2" fill="#ffd56c"/>
+  <circle cx="45" cy="25" r="1.5" fill="#222446"/>
 </svg>

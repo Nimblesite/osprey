@@ -83,7 +83,7 @@ suite("Module Explorer [EDITOR-MODULE-EXPLORER]", () => {
   test("the real compiler's code tree: namespace, module and members with coloured icons and the editor's hover, across flavors", async () => {
     const root = project({
       "osprey.toml": MANIFEST,
-      "src/main.ospml": '/// The whole app lives here.\nnamespace app\n\n/// Outer groups the inner values.\nmodule Outer\n    export module Inner\n        export one = 1\n    export keep x = x\n\neffect Counter\n    increment : int => Unit\n\nlimit = 3\n\nprint "${Outer::Inner::one} ${Outer::keep limit}"\n',
+      "src/main.ospml": '(** The whole app lives here. *)\nnamespace app\n\n(** Outer groups the inner values. *)\nmodule Outer\n    export module Inner\n        export one = 1\n    export keep x = x\n\neffect Counter\n    increment : int => Unit\n\nlimit = 3\n\nprint "${Outer::Inner::one} ${Outer::keep limit}"\n',
       "src/sub/deep.osp": "namespace app;\n\nmodule Deep {\n    export fn three() = 3\n}\n",
       "src/more.osp": "namespace app;\n\n\nmodule Extra {\n    export fn two() = 2\n    export type Shape = Circle | Square\n}\n\nextern fn strlen(s: string) -> int\n\nlet total = 0\n",
     });
@@ -211,7 +211,7 @@ suite("Module Explorer [EDITOR-MODULE-EXPLORER]", () => {
       const resolved = await tree.resolveTreeItem(item, member);
       assert.strictEqual((resolved.tooltip as vscode.MarkdownString | undefined)?.value, expected, name);
     }
-    // Namespaces and modules hover as the editor does at their names, with their `///` docs.
+    // Namespaces and modules hover as the editor does at their names, with their docs.
     for (const [scope, line, words] of [[mainApp, 1, "The whole app lives here."], [outer, 4, "Outer groups the inner values."]] as const) {
       const document = await vscode.workspace.openTextDocument(scope.location?.file ?? "");
       const at = new vscode.Position(line, document.lineAt(line).text.indexOf(scope.label));

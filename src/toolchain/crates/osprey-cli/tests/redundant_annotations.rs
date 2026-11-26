@@ -17,8 +17,10 @@ mod common;
 #[path = "common/effect_execution.rs"]
 mod effect_execution;
 
-use common::{repo_root, sources, undefined_symbols};
-use std::fs;
+#[path = "common/annotation_oracle.rs"]
+mod annotation_oracle;
+
+use annotation_oracle::{compiles, corpus_offenders, outline, redundant_in};
 use std::path::Path;
 
 /// Return annotations that carry meaning beyond the type the body infers.
@@ -33,30 +35,6 @@ use std::path::Path;
 /// so `-> Unit` is now reported exactly when the checker proves `Unit` on its
 /// own, like every other spelling.
 const LOAD_BEARING: [&str; 1] = ["any"];
-
-/// Parse, type-check AND lower to IR.
-///
-/// Codegen is NOT optional here, and saying otherwise cost the tree a broken
-/// build: `ec6a5cac` deleted ML signatures this gate called redundant, and
-/// `verdict`, `workflows` and `type_equality_comprehensive` stopped compiling
-/// with "a closure value with a still-generic type". All three still TYPE-CHECK
-/// without their signatures — the annotation was what made a closure's type
-/// concrete enough to lower. An oracle that stops at inference cannot see that,
-/// so it reports a load-bearing annotation as dead weight.
-/// And `is_ok()` is not the end of it either. The sibling gate exists because
-/// `compile_program` can return `Ok` while handing back a module that
-/// references a body it never emitted — IR that only clang rejects. A gate that
-/// stopped at `is_ok()` could therefore demand a removal that BREAKS the build,
-/// which is precisely how `ec6a5cac` happened. So the stripped candidate must
-/// also be self-contained ([`common::undefined_symbols`]).
-fn compiles(path: &Path, source: &str) -> bool {
-    let parsed = osprey_syntax::parse_program_for_path(&path.to_string_lossy(), source);
-    if !parsed.errors.is_empty() || !osprey_types::check_program(&parsed.program).is_empty() {
-        return false;
-    }
-    osprey_codegen::compile_program(&parsed.program)
-        .is_ok_and(|ir| undefined_symbols(&ir).is_empty())
-}
 
 /// The concrete return annotation on a `fn` line, as (byte range, spelling).
 ///
@@ -87,49 +65,9 @@ fn return_annotation(line: &str) -> Option<(usize, usize, String)> {
     Some((arrow, body, spelling))
 }
 
-/// Every `(line number, spelling)` whose deletion costs the program nothing.
-///
-/// "Still compiles" is NOT sufficient, and treating it as such gave this gate
-/// thirteen false positives. An annotation can be the only thing that pins a
-/// free type parameter — `toGpu([])` has no element type, `Error { .. }` never
-/// constrains the Success side, a recursive `animate` cannot close its own
-/// return, and a generic binder's `T` is a variable by construction. Delete one
-/// of those and the program still compiles, because inference is free to leave
-/// the slot open; what it loses is the TYPE. The checker then has nothing to
-/// report and every outline, hover and breadcrumb falls back to `Unit`.
-///
-/// So redundancy is judged on the type the checker can prove, not on exit
-/// status: an annotation is dead weight only when erasing it leaves the
-/// reported signature byte-identical. That is exactly CLAUDE.md's "still
-/// compiles with identical output", read strictly.
-fn redundant_in(path: &Path, source: &str) -> Vec<(usize, String)> {
-    let lines: Vec<&str> = source.lines().collect();
-    let before = outline(source);
-    lines
-        .iter()
-        .enumerate()
-        .filter_map(|(index, line)| {
-            let (arrow, body, spelling) = return_annotation(line)?;
-            let stripped = format!("{}{}", line.get(..arrow)?, line.get(body..)?);
-            let rebuilt = rebuild(&lines, index, &stripped);
-            (compiles(path, &rebuilt) && outline(&rebuilt) == before).then(|| (index + 1, spelling))
-        })
-        .collect()
-}
-
-fn rebuild(lines: &[&str], index: usize, replacement: &str) -> String {
-    lines
-        .iter()
-        .enumerate()
-        .map(|(i, line)| if i == index { replacement } else { line })
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
-/// What `--symbols` reports for `source`, via the exact path the CLI uses.
-fn outline(source: &str) -> String {
-    let parsed = osprey_syntax::parse_program(source);
-    osprey_lsp::symbols_json(&parsed.program)
+/// Every removable return annotation in `source`.
+fn redundant_returns(path: &Path, source: &str) -> Vec<(usize, String)> {
+    redundant_in(path, source, |line| return_annotation(line).into_iter().collect())
 }
 
 /// `onlySuccess` builds no `Error`, so nothing in this program determines E
@@ -191,7 +129,7 @@ fn a_return_type_is_reported_exactly_when_the_checker_proved_all_of_it() {
          is reported; equal outlines would mean the annotation is being ignored"
     );
     assert!(
-        redundant_in(probe, FREE_ERROR_SIDE_ANNOTATED).is_empty(),
+        redundant_returns(probe, FREE_ERROR_SIDE_ANNOTATED).is_empty(),
         "stripping must never be RECOMMENDED for a signature the checker cannot \
          rebuild on its own"
     );
@@ -221,7 +159,7 @@ fn a_return_type_is_reported_exactly_when_the_checker_proved_all_of_it() {
          it down must leave the reported symbols byte-identical"
     );
     assert_eq!(
-        redundant_in(probe, &annotated)
+        redundant_returns(probe, &annotated)
             .into_iter()
             .map(|(_, spelling)| spelling)
             .collect::<Vec<_>>(),
@@ -317,7 +255,7 @@ fn the_scanner_reads_every_shape_a_declaration_can_take() {
         .expect("a header ending in `=` carries a return annotation");
     assert_eq!(found.2, "string", "and its spelling is the declared type");
     assert_eq!(
-        redundant_in(probe, BODY_ON_NEXT_LINE)
+        redundant_returns(probe, BODY_ON_NEXT_LINE)
             .into_iter()
             .map(|(_, s)| s)
             .collect::<Vec<_>>(),
@@ -346,7 +284,7 @@ fn the_scanner_reads_every_shape_a_declaration_can_take() {
         "`-> any` is the erasure, not a description of an inferred type"
     );
     assert!(
-        redundant_in(probe, ERASED_RETURN).is_empty(),
+        redundant_returns(probe, ERASED_RETURN).is_empty(),
         "so no `any` return is ever reported as removable"
     );
 
@@ -358,7 +296,7 @@ fn the_scanner_reads_every_shape_a_declaration_can_take() {
         "an effectful return carries a row the body alone may not pin"
     );
     assert!(
-        compiles(probe, EFFECTFUL_UNIT) && redundant_in(probe, EFFECTFUL_UNIT).is_empty(),
+        compiles(probe, EFFECTFUL_UNIT) && redundant_returns(probe, EFFECTFUL_UNIT).is_empty(),
         "and no effectful `-> Unit` is ever reported, however provable it looks"
     );
 
@@ -369,7 +307,7 @@ fn the_scanner_reads_every_shape_a_declaration_can_take() {
     // the same answer without the annotation and it must be reported.
     assert!(compiles(probe, PROVABLE_UNIT), "the probe must compile");
     assert_eq!(
-        redundant_in(probe, PROVABLE_UNIT)
+        redundant_returns(probe, PROVABLE_UNIT)
             .into_iter()
             .map(|(_, s)| s)
             .collect::<Vec<_>>(),
@@ -390,32 +328,7 @@ fn the_scanner_reads_every_shape_a_declaration_can_take() {
 /// Tracked separately; do not read a green run here as ML coverage.
 #[test]
 fn no_corpus_program_carries_a_removable_return_annotation() {
-    let root = repo_root();
-    let mut offenders = Vec::new();
-    for dir in [
-        "src/osprey/tests",
-        "src/osprey/examples",
-        "src/toolchain/benchmarks",
-    ] {
-        for path in sources(&root.join(dir), "osp") {
-            let Ok(source) = fs::read_to_string(&path) else {
-                continue;
-            };
-            // Only judge a program that is valid to begin with; the
-            // must-reject corpus is graded by its own harness.
-            if !compiles(&path, &source) {
-                continue;
-            }
-            let display = path
-                .strip_prefix(&root)
-                .unwrap_or(&path)
-                .display()
-                .to_string();
-            for (line, spelling) in redundant_in(&path, &source) {
-                offenders.push(format!("{display}:{line}  -> {spelling}"));
-            }
-        }
-    }
+    let offenders = corpus_offenders(|line| return_annotation(line).into_iter().collect());
     assert!(
         offenders.is_empty(),
         "Hindley-Milner infers these return types, so the annotations are defects \

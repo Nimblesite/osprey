@@ -29,7 +29,7 @@ fn reread(n: int) = {
     got
 }
 
-fn firstOr(boxes: List<Box>, n: int) = {
+fn firstOr(boxes: List<Box>, n) = {
     let first = boxes[n] ?: Box { text: "none${toString(n)}" }
     first
 }
