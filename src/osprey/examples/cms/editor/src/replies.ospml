@@ -18,9 +18,9 @@ module Replies
     failed (store, ticket, outcome) = Runtime::step (Update::noticed (settled (store(busy = false)), "bad", "That didn't work", Api::refusal (ticket, outcome)))
 
     // A commit landed: say so, keep what the editor holds as saved, and refresh the tree and history.
-    committed (store, heading, text) =
-        done = Update::noticed (store(busy = false, saved = store.text, commit = Api::committed text, creating = false), "good", heading, "Committed ${take (Api::committed text) 7}. Publish to put it live.")
-        Update::hydrate done
+    landed (store, heading, text) = Update::noticed (store(busy = false, saved = store.text, commit = Api::committed text, creating = false), "good", heading, "Committed ${take (Api::committed text) 7}. Publish to put it live.")
+
+    committed (store, heading, text) = Update::hydrate (landed (store, heading, text))
 
     // A publish landed: the remote holds every saved commit and the site's pipeline deploys them.
     publishedNote text = match Api::published text
@@ -43,8 +43,8 @@ module Replies
         Runtime::asking (store(busy = true, upload = upload(uploadNext = next)), [Api::call (store.server, "part", "POST", path, listGet upload.uploadParts next ?: "")])
 
     // A chosen file: name it under the chosen folder, cut it into parts and send the first.
-    chosen (store, receipt) =
-        name = Doc::text (Doc::parse receipt, "name")
+    // The receipt is the chosen file's name, or empty when the chooser was cancelled.
+    chosen (store, name) =
         data = Api::body "chosen"
         match name == "" || data == ""
             true => Runtime::step store
@@ -60,7 +60,7 @@ module Replies
         next = satAdd upload.uploadNext 1
         match next < length upload.uploadParts
             true => dispatch (store, next)
-            false => committed (store(opened = upload.uploadPath, preview = ""), "Uploaded", text)
+            false => Update::previewed (landed (store(opened = upload.uploadPath, preview = ""), "Uploaded", text))
 
     loaded (store, ticket) =
         text = Api::body ticket

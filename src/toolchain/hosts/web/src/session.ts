@@ -6,6 +6,7 @@ import { startInstance } from "../../../vscode-extension/client/src/osprey-ui/in
 import { renderWorkspace } from "../../../vscode-extension/client/src/osprey-ui/render";
 import { createWorkspaceSession, type WorkspaceSession } from "../../../vscode-extension/client/src/osprey-ui/session";
 import type { NativeRuntime, SliceDelta } from "../../../vscode-extension/client/src/osprey-ui/wasi-runner";
+import { chosen } from "./files";
 import { fetched } from "./http";
 import { browserGuest } from "./wasi";
 
@@ -24,13 +25,19 @@ function runtime(module: WebAssembly.Module): NativeRuntime {
   };
 }
 
+/** The page's media assets ([UI-COMPONENTS-MEDIA]): data and blob URLs as the application gave them,
+ * anything else resolved against this page, so a relative source loads from the page's own origin. */
+function resolveAsset(source: string): string {
+  return /^(data|blob):/i.test(source) ? source : new URL(source, location.href).href;
+}
+
 /** Start the application in `module`, drawing into this page. */
 export function pageSession(module: WebAssembly.Module): WorkspaceSession {
   return createWorkspaceSession({
     runtime: runtime(module),
     send: (message) => window.postMessage(message, location.origin),
-    execute: (ask) => fetched(ask),
-    draw: (frame, regions, slices) => renderWorkspace({ regions, slices, theme: frame.theme, brand: false, loadingText: "Loading…" }),
+    execute: (ask) => (ask.kind === "choose-file" ? chosen(ask) : fetched(ask)),
+    draw: (frame, regions, slices) => renderWorkspace({ regions, slices, theme: frame.theme, brand: false, loadingText: "Loading…", resolveAsset }),
     report: (error) => console.error("Osprey Native application:", error),
   });
 }

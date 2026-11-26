@@ -137,6 +137,30 @@ async function saveAndPublish(page) {
   await expect(page.getByRole("button", { name: /Publish/ })).toBeDisabled();
 }
 
+/** A picture bigger than one request: the browser's chooser, several parts, one commit, a preview. [CMS-API-UPLOAD] */
+async function upload(page) {
+  const bytes = Buffer.alloc(2_000_000 + 17, 0);
+  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(bytes);
+  for (let at = 8; at < bytes.length; at += 1) bytes[at] = (at * 31 + 7) % 256;
+  const before = head(BROWSER_SITE);
+  const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: /Upload/ }).click();
+  await (await chooser).setFiles({ name: "Team Photo.png", mimeType: "image/png", buffer: bytes });
+  await expect(row(page, "media/team-photo.png")).toBeVisible({ timeout: 30_000 });
+  expect(git(BROWSER_SITE, "log", "-1", "--format=%s")).toBe("Upload media/team-photo.png");
+  expect(git(BROWSER_SITE, "rev-list", "--count", `${before}..HEAD`)).toBe("1");
+  expect(readFileSync(path.join(BROWSER_SITE, "media/team-photo.png")).equals(bytes)).toBe(true);
+  await expect(page.locator("img[src^='data:image/png;base64,']")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Publish 1" })).toBeEnabled();
+  const uploaded = head(BROWSER_SITE);
+  const cancelled = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: /Upload/ }).click();
+  await (await cancelled).setFiles([]);
+  await page.waitForTimeout(500);
+  expect(head(BROWSER_SITE)).toBe(uploaded);
+  await expect(page.getByRole("button", { name: "Publish 1" })).toBeEnabled();
+}
+
 async function rawMarkdown(page) {
   await page.getByRole("button", { name: "Markdown" }).click();
   const source = page.getByRole("textbox", { name: "Markdown" });
@@ -151,7 +175,7 @@ test("an editor's session: browse, select, read highlighted code, edit, save, pu
   page.on("pageerror", (error) => errors.push(error.message));
   page.on("console", (message) => message.type() === "error" && errors.push(message.text()));
   await page.goto("/");
-  for (const step of [treeAndChrome, search, highlighted, codeEditing, selection, typing, restyled, saveAndPublish, rawMarkdown]) {
+  for (const step of [treeAndChrome, search, highlighted, codeEditing, selection, typing, restyled, saveAndPublish, rawMarkdown, upload]) {
     await test.step(step.name, () => step(page));
   }
   expect(errors).toEqual([]);

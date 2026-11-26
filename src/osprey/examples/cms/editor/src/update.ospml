@@ -18,7 +18,14 @@ module Update
     export launched server = Studio(server = server, roots = [], files = [], filter = "", opened = "", text = "", saved = "", cursor = 0, mode = "formatted", focus = 0, blockCursor = 0, preview = "", commit = "", loads = 0, busy = false, history = [], unpublished = 0, remote = false, showingHistory = false, creating = false, draftPath = "", folder = "media", upload = idle (), notice = quiet ())
 
     (** The tree, the history and what is still unpublished, fetched together. *)
-    export hydrate store = Runtime::asking (store(loads = 3), [Api::call (store.server, "tree", "GET", "/api/tree", ""), Api::call (store.server, "history", "GET", "/api/history", ""), Api::call (store.server, "status", "GET", "/api/status", "")])
+    export hydrate store = Runtime::asking (store(loads = 3), refreshes store)
+
+    refreshes store = [Api::call (store.server, "tree", "GET", "/api/tree", ""), Api::call (store.server, "history", "GET", "/api/history", ""), Api::call (store.server, "status", "GET", "/api/status", "")]
+
+    mediaCall store = Api::call (store.server, "media", "GET", Api::at ("/api/media", store.opened), "")
+
+    (** Everything `hydrate` fetches, and the open media file's bytes for its preview. *)
+    export previewed store = Runtime::asking (store(loads = 4), listAppend (refreshes store) (mediaCall store))
 
     // Publishing pushes every saved commit to the site's remote, whose pipeline deploys it ([CMS-PUBLISH]).
     publish store = Runtime::asking (store(busy = true, notice = quiet ()), [Api::call (store.server, "publish", "POST", "/api/publish", "")])
@@ -39,7 +46,7 @@ module Update
         match Names::kind path
             "markdown" => Runtime::asking (chosen(loads = satAdd store.loads 1), [Api::call (store.server, "file", "GET", Api::at ("/api/file", path), "")])
             "other" => Runtime::step chosen
-            _ => Runtime::asking (chosen(loads = satAdd store.loads 1), [Api::call (store.server, "media", "GET", Api::at ("/api/media", path), "")])
+            _ => Runtime::asking (chosen(loads = satAdd store.loads 1), [mediaCall chosen])
 
     (** Saves the open page when it has changes. *)
     export save store = match Names::kind store.opened == "markdown" && store.text != store.saved

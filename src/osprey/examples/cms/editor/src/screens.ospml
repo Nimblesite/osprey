@@ -137,10 +137,16 @@ module Screens
     (** The open page: the ribbon over the formatted or raw editor. *)
     export markdown store = Ui::framed (workStyle (), Ui::column [ribbon store, surfaceOf store])
 
+    // A picture shows once its bytes arrive; until then the card says it is loading.
+    picture store = match store.preview
+        "" => Kit::say ("Loading the preview…", "body", "inkMuted")
+        source => Media::image (source, Names::base store.opened, 640, 400)
+
     mediaOf store = match Names::kind store.opened
-        "video" => Media::video (store.preview, "", "", Names::base store.opened, 0)
-        "image" => Media::image (store.preview, Names::base store.opened, 640, 400)
-        _ => Kit::say ("Audio files play on the site; there is no preview here.", "body", "inkMuted")
+        "image" => picture store
+        "video" => Kit::say ("Videos play on the site; there is no preview here.", "body", "inkMuted")
+        "audio" => Kit::say ("Audio files play on the site; there is no preview here.", "body", "inkMuted")
+        _ => Kit::say ("This file has no preview.", "body", "inkMuted")
 
     (** An open image, video or audio file. *)
     export media store = Ui::framed (workStyle (), Ui::column [Kit::card (24, [Kit::heading (Names::base store.opened, "h3", "ink"), Kit::chip store.opened, mediaOf store])])
