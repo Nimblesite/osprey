@@ -55,9 +55,13 @@ module FetchTests {
         let files = handler Host::Files {
             exists path => Fixture::existsIn(written, path)
             remove path => Error { message: "fixture: unexpected remove ${path}" }
-            read path => match Fixture::readFor(written, path) {
-                Success { value } => Success { value: value }
-                Error => Error { message: "fixture: fetch never reads" }
+            read path => if path == "release.json" {
+                andThen(replyFor(routes, localBase, "/fixture"), fn(reply: Host::Reply) => Success { value: reply.body })
+            } else {
+                match Fixture::readFor(written, path) {
+                    Success { value } => Success { value: value }
+                    Error => Error { message: "fixture: fetch never reads" }
+                }
             }
             write path content => match mode {
                 "deny-writes" => Error { message: "no space left on device" }
@@ -335,6 +339,13 @@ module FetchTests {
         test("fetch: registry failures", registryFailures)
         test("fetch: no release in the requested epoch", noRelease)
         test("fetch: unparseable package listing", packageShape)
+        test("fetch: offline bundle shares verified install", fn() => {
+            let release = Fixture::at(releases(), 2)
+            let args = [digestOf(release), "--bundle", "release.json"]
+            let good = dispatched([route(localBase, "/fixture", 200, Bundle::encode(release) ?: "")], args)
+            let bad = dispatched([route(localBase, "/fixture", 200, tamperedBundle(release))], args)
+            checkAll("offline bundle verifies source before writing", [good.report.status == 0, contains(good.writes, "src/main.osp="), failedOne(bad, "bundle.digest-mismatch"), bad.ensures == "", bad.writes == ""])
+        })
         test("fetch: tampered bundle writes nothing", tampered)
         test("fetch: wrong or malformed source bundle", wrongBundle)
         test("fetch: write failures", writeFailures)

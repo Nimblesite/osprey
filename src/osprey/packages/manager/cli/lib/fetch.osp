@@ -42,7 +42,7 @@ module Fetch {
     let writePrefix = "fetch.write"
     let usageText = [
         "usage: osprey-pkg fetch <target> [--registry <base-url>]",
-        "target: @scope/name[@e<epoch>] or sha256:<64 hex>"
+        "target: @scope/name[@e<epoch>] or sha256:<64 hex>; offline: fetch <digest> --bundle <file>"
     ]
 
     /// One `{"digest","epoch","ordinal"}` row of a package listing.
@@ -345,8 +345,15 @@ module Fetch {
     /// download and verify its source bundle, and write the tree under
     /// `.osprey/packages/@scope/name/<digest>/`. Implements
     /// [PACKAGE-FOLDER-REGISTRY].
-    export fn run(args) = match commandLine(args) {
+    fn fromBundle(digest, path) = match Digests::parse(digest) {
+        Error => Reports::usageFor(usageCode, usageText)
+        Success => Reports::checked(andThen(perform Host::Files.read(path), fn(body) => verifiedAt("", body, digest)), fn(served) => fetchedReport("", served))
+    }
+
+    export fn run(args) = if length(args) == 3 && (listGet(args, 1) ?: "") == "--bundle" {
+        fromBundle(listGet(args, 0) ?: "", listGet(args, 2) ?: "")
+    } else { match commandLine(args) {
         Error => Reports::usageFor(usageCode, usageText)
         Success { value } => asked(value)
-    }
+    } }
 }

@@ -1,16 +1,18 @@
 #!/usr/bin/env bash
 # Build a loopback-only snapshot from the running folder registry. Never deploy this directory.
 set -euo pipefail
+client="$PWD/target/osprey-pkg"
 site=target/registry-site
 work=$(mktemp -d target/registry-site-build/preview.XXXXXX)
+report="$PWD/$work/client-report"
 trap 'rm -rf "$work"' EXIT
 out="$work/site"
 api=http://127.0.0.1:8787/v1
 render() { printf '%s\n' "$@" | wasmtime target/registry-site-build/site.wasm; }
 fetch() { curl --noproxy '*' --fail --silent --show-error --max-time 120 "$api/$1"; }
 pkg() {
-  printf '%s\n' "$*" | target/osprey-pkg > "$work/client-report"
-  if ! grep -Fxq 'status: 0' "$work/client-report"; then cat "$work/client-report" >&2; return 1; fi
+  printf '%s\n' "$*" | "$client" > "$report"
+  if ! grep -Fxq 'status: 0' "$report"; then cat "$report" >&2; return 1; fi
 }
 release_docs() {
   if [[ $(yq -o yaml -p toml '.dependencies | length' "$work/manifest.toml") -gt 0 ]]; then
@@ -40,24 +42,16 @@ while IFS= read -r key; do
     [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ && "$epoch.$ordinal" =~ ^[0-9]+\.[0-9]+$ ]]
     source_file="$out/sources/$digest.json"
     fetch "releases/$digest/source" > "$source_file"
-    jq -er --arg key "$key" --arg digest "$digest" 'select(.key == $key and .digest == $digest) | .files[] | select(.path == "osprey.toml") | .text' "$source_file" > "$work/manifest.toml"
+    install=$(mktemp -d "$work/release.XXXXXX")
+    ln "$source_file" "$install/bundle.json"
+    (cd "$install" && pkg fetch "$digest" --bundle bundle.json)
+    release_source="$install/.osprey/packages/$key/${digest#sha256:}"
+    jq -e --arg key "$key" --argjson epoch "$epoch" --argjson ordinal "$ordinal" \
+      '.key == $key and .epoch == $epoch and .ordinal == $ordinal' "$source_file" >/dev/null
+    cp "$release_source/osprey.toml" "$work/manifest.toml"
     summary=$(yq -p toml -o yaml -r '.package.summary // ""' "$work/manifest.toml")
     [[ "$summary" != *$'\n'* && "$summary" != *$'\r'* ]]
     version="e$epoch.r$ordinal"
-    release_source=$(mktemp -d "$work/source.XXXXXX")
-    node - "$source_file" "$release_source" <<'NODE'
-const fs = require('node:fs');
-const path = require('node:path');
-const [bundle, root] = process.argv.slice(2);
-for (const file of JSON.parse(fs.readFileSync(bundle)).files) {
-  if (file.path.split('/').some(part => !part || part === '.' || part === '..') || file.path.includes('\\')) {
-    throw new Error('Invalid source path');
-  }
-  const target = path.join(root, file.path);
-  fs.mkdirSync(path.dirname(target), { recursive: true });
-  fs.writeFileSync(target, file.text, { flag: 'wx' });
-}
-NODE
     docs="$out/packages/$key/$version/docs"
     docs_status=unavailable
     if release_docs && [[ -s "$docs/api/index.html" ]]; then
