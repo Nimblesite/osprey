@@ -218,6 +218,72 @@ configured config = match SpectralStreams::configure config
     Error _ => false
     Success _ => true
 
+// [SYNTH-SPECTRAL-MORPH] Morph acceptance runs at 48 kHz with a 4,096-sample window and a 1,024-sample hop.
+morphRate = 48000.0
+
+wideMorph (amount, mode) = synth::SpectralConfig(sampleRate = morphRate, size = 4096, hop = 1024, transform = synth::SpectralMorph(amount = amount, mode = mode), mix = 1.0)
+
+wideTone (f, level, n) = level * sin (tau * f * toFloat n / morphRate)
+
+// `count` harmonics of `f` at `level`, harmonic k at level / k.
+wideHarmonics (f, level, count, n) = foldList (toList (range (1, satAdd count 1)), 0.0, \(sum, k) => sum + wideTone (f * toFloat k, level / toFloat k, n))
+
+// Held at 0.5, or 0 until frame 8,192 and then a 0.5 s (24,000-frame) ramp to 1.
+heldAmount _ = 0.5
+
+rampAmount n = match n < 8192
+    true => 0.0
+    false => match n >= 32192
+        true => 1.0
+        false => toFloat (n - 8192) / 24000.0
+
+wideStep (amountAt, mode, voices, carry, n) = match carry
+    Error why => Error(message = why)
+    Success run => match SpectralStreams::next (wideMorph (amountAt n, mode), run.held, voices.main n, voices.side n)
+        Error why => Error(message = why)
+        Success step => Success(value = { held = step.next, samples = listAppend run.samples step.sample })
+
+wideRendered (amountAt, mode, voices, count) = foldList (toList (range (0, count)), Success(value = { held = SpectralStreams::initial (wideMorph (0.5, mode)), samples = [] }), \(carry, n) => wideStep (amountAt, mode, voices, carry, n))
+
+// Each 1,024-frame hop's rms in dB, from hop `first` to the end.
+hopLevels (samples, first) = mapList (toList (range (first, intDiv (length samples) 1024)), \hop =>
+    start = satMul hop 1024
+    energy = foldList (toList (range (start, satAdd start 1024)), 0.0, \(sum, n) => sum + pow (listGet samples n ?: 0.0, 2.0))
+    20.0 * ln (sqrt (energy / 1024.0) + 0.000000001) / ln 10.0)
+
+// Hann-windowed amplitude of one frequency over the last 4,096 samples (window gain 1/2, DFT N/2).
+wideLevel (samples, frequency) =
+    first = satSub (length samples) 4096
+    frames = toList (range (first, length samples))
+    windowed = \n => (listGet samples n ?: 0.0) * (0.5 - 0.5 * cos (tau * toFloat (n - first) / 4096.0))
+    re = foldList (frames, 0.0, \(sum, n) => sum + windowed n * cos (tau * frequency * toFloat n / morphRate))
+    im = foldList (frames, 0.0, \(sum, n) => sum + windowed n * sin (tau * frequency * toFloat n / morphRate))
+    sqrt (re * re + im * im) / 1024.0
+
+// A held morph keeps every hop's level within 0.5 dB of its mean, from hop 8: past the 4,095-frame latency and one
+// full window.
+heldSpread (mode, voices) = renderedHeld (wideRendered (heldAmount, mode, voices, 20480), \samples =>
+    levels = hopLevels (samples, 8)
+    mean = foldList (levels, 0.0, \(sum, level) => sum + level) / toFloat (length levels)
+    expect (foldList (levels, 0.0, \(worst, level) => larger (worst, abs (level - mean))) <= 0.5, true))
+
+// A 0.5 s ramp from 0 to 1: no hop-to-hop step strays more than 2 dB from the ramp's mean step; `drop` is the
+// expected total change in dB, or 0 to skip that check.
+rampSmooth (mode, voices, drop) = renderedHeld (wideRendered (rampAmount, mode, voices, 36864), \samples =>
+    levels = hopLevels (samples, 8)
+    last = satSub (length levels) 1
+    total = (listGet levels last ?: 0.0) - (listGet levels 0 ?: 0.0)
+    trend = total / toFloat last
+    forEachList (toList (range (0, last)), \i => expect (abs ((listGet levels (satAdd i 1) ?: 0.0) - (listGet levels i ?: 0.0) - trend) <= 2.0, true))
+    expect (drop == 0.0 || abs (total - drop) <= 1.0, true))
+
+// Harmonic tones of 220 and 277 Hz with unequal partial counts at amount 0.25: three pairs glide to the geometric
+// pitch, and the unmatched partials fade in place to 0.75 (main) or 0.25 (side) of their level within 1 dB.
+orphansHeld (mainCount, sideCount, keep, orphanPitch) = renderedHeld (wideRendered (\_ => 0.25, synth::Partial, { main = \n => wideHarmonics (220.0, 0.25, mainCount, n), side = \n => wideHarmonics (277.0, 0.25, sideCount, n) }, 16384), \samples =>
+    glide = exp (0.75 * ln 220.0 + 0.25 * ln 277.0)
+    forEachList ([1.0, 2.0, 3.0], \k => near (wideLevel (samples, glide * k) * k / 0.25, 1.0, 0.2))
+    forEachList ([4.0, 5.0, 6.0], \k => expect (abs (decibels (wideLevel (samples, orphanPitch * k) * k / 0.25 / keep)) <= 1.0, true)))
+
 // [SYNTH-ADVANCED-CORE-RESOURCES] A sample resource from its five fields.
 resourceOf (name, rate, channels, root, samples) = synth::SampleResource(name = name, sampleRate = rate, sourceChannels = channels, rootFrequency = root, samples = samples)
 
@@ -408,4 +474,14 @@ registerWaveJourneys () =
         expect (configured (spectralConfig (synth::SpectralSeries(steps = [synth::SpectralMorph(amount = 0.5, mode = synth::Blend)]))), true)
         forEachList ([{ a = 1.0, b = 2.0, c = 1.0, want = 0.0 }, { a = 0.0, b = 0.0, c = 0.0, want = 0.0 }, { a = 0.0, b = 1.0, c = 0.5, want = 0.1666666667 }, { a = 0.5, b = 1.0, c = 0.0, want = -0.1666666667 }, { a = 0.0, b = 1.0, c = 1.0, want = 0.5 }, { a = 1.0, b = 1.0, c = 0.0, want = -0.5 }, { a = -2.0, b = 0.0, c = -2.0, want = 0.0 }], \p => near (SpectralMath::peakOffset (p.a, p.b, p.c), p.want, 0.0000001))
         near (SpectralMath::logLevel 1.0, 0.000000001, 0.0000000001)))
+    test ("at 48 kHz, size 4,096 and hop 1,024 a held morph keeps its level within 0.5 dB, a 0.5 s amount ramp moves without a jump over 2 dB beyond its trend, and unmatched partials fade in place [SYNTH-SPECTRAL-MORPH]", \() => arithmetic (\() =>
+        harmonics = { main = \n => wideHarmonics (220.0, 0.25, 6, n), side = \n => wideHarmonics (330.0, 0.25, 6, n) }
+        forEachList ([synth::Blend, synth::Envelope, synth::Partial], \mode => heldSpread (mode, harmonics))
+        heldSpread (synth::Blend, { main = \n => wideTone (500.0, 0.25, n), side = \n => wideTone (500.0, 0.025, n) })
+        // 0.5 to 0.05 is a 20 dB fall; Envelope keeps the main harmonics, so only its smoothness is asserted.
+        rampSmooth (synth::Blend, { main = \n => wideTone (500.0, 0.5, n), side = \n => wideTone (500.0, 0.05, n) }, -20.0)
+        rampSmooth (synth::Partial, { main = \n => wideTone (220.0, 0.5, n), side = \n => wideTone (330.0, 0.05, n) }, -20.0)
+        rampSmooth (synth::Envelope, harmonics, 0.0)
+        orphansHeld (6, 3, 0.75, 220.0)
+        orphansHeld (3, 6, 0.25, 277.0)))
     test ("sample, impulse and table resources carry a content identity: name, 64-bit hash, channels, rate, frames and version, and a changed or renamed resource is refused [SYNTH-ADVANCED-CORE-RESOURCES]", \() => arithmetic identityJourney)

@@ -388,6 +388,16 @@ Three modes on `SpectralMorph { amount mode }` (81552760a), all inside the exist
 
 Tests (`wave_journeys.ospml`): Blend at five amounts. Envelope at three amounts, with both resonances checked. Partial over ten glides: rising, falling, fifths, an octave and amounts from 0 to 1. Each harmonic k = 1–3 must land at k × the glide with level 1/k within 20%, and each source pitch must sit 30 dB below it.
 
+### Validation
+
+The acceptance test renders at 48 kHz, size 4,096 and hop 1,024, and measures from hop 8, past the 4,095-frame latency and one full window.
+
+| Test | Acceptance |
+| --- | --- |
+| Steadiness: amount held at 0.5 on 220 Hz and 330 Hz six-harmonic tones in every mode, and on a 500 Hz sine against one 20 dB quieter in Blend | every hop's rms within 0.5 dB of the mean |
+| Automation: amount ramps 0 → 1 over 0.5 s, in Blend and Partial with a 20 dB level step, and in Envelope on the harmonic tones | no hop-to-hop step more than 2 dB from the ramp's mean step; the total change within 1 dB of the level step |
+| Partial orphans: 220 Hz against 277 Hz at amount 0.25, with six main and three side harmonics, then three main and six side | the three pairs at k × the geometric glide within 20%; each unmatched harmonic at 0.75 (main) or 0.25 (side) of its level within 1 dB |
+
 ### Failure modes
 
 - **Floor ghosting** (Blend, Partial amplitudes): a partial blended with silence leaves a −floor/2 dB image (−60 dB at 0.5). Keep the floor at −120 dB and never raise true silence above it; the bound is measured, not hidden.
