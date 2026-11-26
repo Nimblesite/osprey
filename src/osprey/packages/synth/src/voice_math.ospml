@@ -9,7 +9,7 @@ module VoiceMath
     print "${VoiceMath::pi}"
     ```
     ```output
-    @@TODO@@
+    3.141592653589793
     ```
     *)
     export pi = 3.141592653589793
@@ -20,7 +20,7 @@ module VoiceMath
     print "${VoiceMath::tau}"
     ```
     ```output
-    @@TODO@@
+    6.283185307179586
     ```
     *)
     export tau = 6.283185307179586
@@ -31,7 +31,7 @@ module VoiceMath
     print "${VoiceMath::warped (12000.0, 48000.0)}"
     ```
     ```output
-    @@TODO@@
+    0.9999999999999999
     ```
     *)
     export warped (cutoff, sampleRate) = floatDiv (sin (floatDiv (pi * cutoff, sampleRate)), cos (floatDiv (pi * cutoff, sampleRate)))
@@ -42,7 +42,7 @@ module VoiceMath
     print "${VoiceMath::damping 0.5} ${VoiceMath::damping 2.0}"
     ```
     ```output
-    @@TODO@@
+    2.0 0.5
     ```
     *)
     export damping resonance = floatDiv (1.0, resonance)
@@ -53,7 +53,7 @@ module VoiceMath
     print "${VoiceMath::gainOne (1.0, 0.0)} ${VoiceMath::gainOne (1.0, 2.0)}"
     ```
     ```output
-    @@TODO@@
+    0.5 0.25
     ```
     *)
     export gainOne (g, k) = floatDiv (1.0, 1.0 + g * (g + k))
@@ -64,7 +64,7 @@ module VoiceMath
     print "${VoiceMath::gainTwo (1.0, 2.0)} ${VoiceMath::gainTwo (2.0, 0.0)}"
     ```
     ```output
-    @@TODO@@
+    0.25 0.4
     ```
     *)
     export gainTwo (g, k: float) = g * gainOne (g, k)
@@ -75,7 +75,7 @@ module VoiceMath
     print "${VoiceMath::gainThree (1.0, 2.0)} ${VoiceMath::gainThree (2.0, 0.0)}"
     ```
     ```output
-    @@TODO@@
+    0.25 0.8
     ```
     *)
     export gainThree (g: float, k: float) = g * g * gainOne (g, k)
@@ -86,7 +86,7 @@ module VoiceMath
     print "${VoiceMath::bandpass (0.5, 0.5, 0.25, 0.125, 0.5)}"
     ```
     ```output
-    @@TODO@@
+    0.3125
     ```
     *)
     export bandpass (a1: float, a2, one, two, input) = a1 * one + a2 * (input - two)
@@ -97,7 +97,7 @@ module VoiceMath
     print "${VoiceMath::lowpass (0.5, 0.5, 0.25, 0.125, 0.5)}"
     ```
     ```output
-    @@TODO@@
+    0.4375
     ```
     *)
     export lowpass (a2: float, a3, one, two, input) = two + a2 * one + a3 * (input - two)
@@ -108,7 +108,7 @@ module VoiceMath
     print "${VoiceMath::highpass (0.5, 0.5, 0.25, 0.125)}"
     ```
     ```output
-    @@TODO@@
+    0.25
     ```
     *)
     export highpass (k: float, input, b, l) = input - k * b - l
@@ -119,7 +119,7 @@ module VoiceMath
     print "${VoiceMath::integrated (0.75, 0.25)}"
     ```
     ```output
-    @@TODO@@
+    1.25
     ```
     *)
     export integrated (out, held) = 2.0 * out - held
@@ -130,7 +130,7 @@ module VoiceMath
     print "${VoiceMath::midiKey (4, 9, 0)} ${VoiceMath::midiKey (4, 9, -1)}"
     ```
     ```output
-    @@TODO@@
+    69.0 68.0
     ```
     *)
     export midiKey (octave, semitone, sharp) = 12.0 * (octave + 1.0) + semitone + sharp
@@ -141,7 +141,7 @@ module VoiceMath
     print "${VoiceMath::swept (1000.0, 1.0, 2.0, 2.0, 0, 48000.0)}"
     ```
     ```output
-    @@TODO@@
+    1000.0
     ```
     *)
     export swept (cutoff, depth, octaves, lfo, n, rate) = cutoff * pow (2.0, depth * octaves * sin (floatDiv (tau * lfo * n, rate)))
@@ -152,7 +152,7 @@ module VoiceMath
     print "${VoiceMath::butterworth (1000.0, 1000.0)}"
     ```
     ```output
-    @@TODO@@
+    0.7071067811865475
     ```
     *)
     export butterworth (pitch, cutoff) = floatDiv (1.0, sqrt (1.0 + pow (floatDiv (pitch, cutoff), 4.0)))
@@ -163,7 +163,7 @@ module VoiceMath
     print "${VoiceMath::triangle 0.25} ${VoiceMath::triangle 0.5}"
     ```
     ```output
-    @@TODO@@
+    0.0 1.0
     ```
     *)
     export triangle t = 1.0 - 4.0 * abs (t - 0.5)
@@ -174,7 +174,7 @@ module VoiceMath
     print "${VoiceMath::saw 0.25} ${VoiceMath::saw 0.75}"
     ```
     ```output
-    @@TODO@@
+    -0.5 0.5
     ```
     *)
     export saw t = 2.0 * t - 1.0
@@ -185,7 +185,7 @@ module VoiceMath
     print "${VoiceMath::knobCutoff 0.0} ${VoiceMath::knobCutoff 0.5} ${VoiceMath::knobCutoff 1.0}"
     ```
     ```output
-    @@TODO@@
+    20.0 632.4555320336758 20000.0
     ```
     *)
     export knobCutoff amount = 20.0 * pow (1000.0, amount)

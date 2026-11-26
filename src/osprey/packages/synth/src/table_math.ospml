@@ -12,7 +12,7 @@ module TableMath
     print "${TableMath::harmonic (0.5, 1.0, 0.0, 0.25)} ${TableMath::harmonic (0.5, 1.0, 0.0, 0.0)}"
     ```
     ```output
-    @@TODO@@
+    0.5 0.0
     ```
     *)
     export harmonic (amplitude, number, phase, position) = amplitude * sin (6.283185307179586 * (number * position + phase))
@@ -23,7 +23,7 @@ module TableMath
     print "${TableMath::harmonicLimit (440.0, 48000.0)} ${TableMath::harmonicLimit (0.0, 48000.0)}"
     ```
     ```output
-    @@TODO@@
+    49.0 1048576.0
     ```
     *)
     export harmonicLimit (frequency, sampleRate) = match abs frequency <= 0.0
@@ -36,7 +36,7 @@ module TableMath
     print "${TableMath::nyquistFade (1000.0, 48000.0)} ${TableMath::nyquistFade (21600.0, 48000.0)}"
     ```
     ```output
-    @@TODO@@
+    1.0 0.0
     ```
     *)
     export nyquistFade (frequency, sampleRate) =
@@ -53,7 +53,7 @@ module TableMath
     print "${TableMath::countGain (2.5, 1.0)} ${TableMath::countGain (2.5, 2.0)} ${TableMath::countGain (2.5, 3.0)}"
     ```
     ```output
-    @@TODO@@
+    1.0 0.5 0.0
     ```
     *)
     export countGain (count, index) = match count - index >= 1.0
@@ -68,7 +68,7 @@ module TableMath
     print "${TableMath::stiffRatio (2.0, 0.0, 1.0)} ${TableMath::stiffRatio (2.0, 0.1, 1.0)}"
     ```
     ```output
-    @@TODO@@
+    2.0 2.3664319132398464
     ```
     *)
     export stiffRatio (number, inharmonicity, stretch) = pow (number, stretch) * pow (1.0 + inharmonicity * number * number, 0.5)
@@ -79,7 +79,7 @@ module TableMath
     print "${TableMath::tilt (2.0, 1.0)} ${TableMath::tilt (4.0, 0.5)}"
     ```
     ```output
-    @@TODO@@
+    0.5 0.5
     ```
     *)
     export tilt (number, slope) = pow (number, (-1.0) * slope)
@@ -90,7 +90,7 @@ module TableMath
     print "${TableMath::parity (1.0, 1.0)} ${TableMath::parity (2.0, 1.0)}"
     ```
     ```output
-    @@TODO@@
+    1.0 0.0
     ```
     *)
     export parity (number, balance) =
@@ -105,7 +105,7 @@ module TableMath
     print "${TableMath::partialDecay (48000, 1.0, 0.0, 1.0, 48000.0)} ${TableMath::partialDecay (48000, 1.0, 1.0, 2.0, 48000.0)}"
     ```
     ```output
-    @@TODO@@
+    0.001 1e-06
     ```
     *)
     export partialDecay (age, decay, damping, number, sampleRate) = pow (10.0, floatDiv ((-3.0) * age * (1.0 + damping * (number - 1.0)), decay * sampleRate))
@@ -116,7 +116,7 @@ module TableMath
     print "${TableMath::normalised (0.5, 0.5, 1.0)} ${TableMath::normalised (0.5, 2.0, 1.0)}"
     ```
     ```output
-    @@TODO@@
+    0.5 0.25
     ```
     *)
     export normalised (sum, gains, amplitude) = match gains <= 1.0
@@ -129,7 +129,7 @@ module TableMath
     print "${TableMath::sinePhase 0.25}"
     ```
     ```output
-    @@TODO@@
+    1.0
     ```
     *)
     export sinePhase phase = sin (6.283185307179586 * phase)
@@ -140,7 +140,7 @@ module TableMath
     print "${TableMath::sineAmplitude 1.0} ${TableMath::sineAmplitude 2.0}"
     ```
     ```output
-    @@TODO@@
+    1.0 0.0
     ```
     *)
     export sineAmplitude number = match number == 1.0
@@ -153,7 +153,7 @@ module TableMath
     print "${TableMath::sawAmplitude 1.0} ${TableMath::sawAmplitude 2.0}"
     ```
     ```output
-    @@TODO@@
+    0.6366197723675814 0.3183098861837907
     ```
     *)
     export sawAmplitude number = floatDiv (0.6366197723675814, number)
@@ -164,7 +164,7 @@ module TableMath
     print "${TableMath::squareAmplitude 1.0} ${TableMath::squareAmplitude 2.0}"
     ```
     ```output
-    @@TODO@@
+    1.2732395447351628 0.0
     ```
     *)
     export squareAmplitude number = floatDiv (0.6366197723675814 * (1.0 - cos (3.141592653589793 * number)), number)
@@ -175,7 +175,7 @@ module TableMath
     print "${TableMath::triangleAmplitude 1.0} ${TableMath::triangleAmplitude 3.0}"
     ```
     ```output
-    @@TODO@@
+    0.8105694691387022 -0.09006327434874468
     ```
     *)
     export triangleAmplitude number = floatDiv (0.8105694691387022 * cos (1.5707963267948966 * (number - 1.0)), number * number)
@@ -186,7 +186,7 @@ module TableMath
     print "${TableMath::magnitude (-0.5)}"
     ```
     ```output
-    @@TODO@@
+    0.5
     ```
     *)
     export magnitude (value: float) = abs value
@@ -197,7 +197,7 @@ module TableMath
     print "${TableMath::larger (0.25, 0.5)}"
     ```
     ```output
-    @@TODO@@
+    0.5
     ```
     *)
     export larger (one: float, other) = match one > other
@@ -210,7 +210,7 @@ module TableMath
     print "${TableMath::octaveScale (0.0, 1.0)} ${TableMath::octaveScale (0.5, 1.0)} ${TableMath::octaveScale (1.0, 1.0)}"
     ```
     ```output
-    @@TODO@@
+    0.5 1.0 2.0
     ```
     *)
     export octaveScale (control, octaves) = pow (2.0, octaves * (2.0 * control - 1.0))

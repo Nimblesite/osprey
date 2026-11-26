@@ -14,7 +14,7 @@ module Waves
     print "${Waves::midiFrequency 69.0} ${Waves::midiFrequency 57.0}"
     ```
     ```output
-    @@TODO@@
+    440.0 220.0
     ```
     *)
     export midiFrequency pitch = 440.0 * pow (2.0, (pitch - 69.0) / 12.0)
@@ -25,7 +25,7 @@ module Waves
     print "${Waves::velocitySample (0.5, 0.0)} ${Waves::velocitySample (0.5, 1.0)}"
     ```
     ```output
-    @@TODO@@
+    0.0 0.5
     ```
     *)
     export velocitySample (sample: float, velocity) = sample * velocity
@@ -36,7 +36,7 @@ module Waves
     print "${Waves::wrap 1.25} ${Waves::wrap (-0.25)}"
     ```
     ```output
-    @@TODO@@
+    0.25 0.75
     ```
     *)
     export wrap phase = phase - floor phase
@@ -47,7 +47,7 @@ module Waves
     print "${Waves::blep (0.0, 0.1)} ${Waves::blep (0.5, 0.1)}"
     ```
     ```output
-    @@TODO@@
+    -1.0 0.0
     ```
     *)
     export blep (phase, step) = match step <= 0.0
@@ -68,7 +68,7 @@ module Waves
     print "${Waves::blamp (0.0, 0.1)} ${Waves::blamp (0.5, 0.1)}"
     ```
     ```output
-    @@TODO@@
+    0.3333333333333333 0.0
     ```
     *)
     export blamp (phase, step) = match step <= 0.0
@@ -85,7 +85,7 @@ module Waves
     print "${Waves::sine 0.0} ${Waves::sine 0.25}"
     ```
     ```output
-    @@TODO@@
+    0.0 1.0
     ```
     *)
     export sine phase = sin (6.283185307179586 * phase)
@@ -96,7 +96,7 @@ module Waves
     print "${Waves::saw (0.25, 0.1)} ${Waves::saw (0.0, 0.1)}"
     ```
     ```output
-    @@TODO@@
+    -0.5 0.0
     ```
     *)
     export saw (phase, step) = 2.0 * phase - 1.0 - blep (phase, step)
@@ -107,7 +107,7 @@ module Waves
     print "${Waves::pulse (0.25, 0.1, 0.5)} ${Waves::pulse (0.0, 0.1, 0.5)}"
     ```
     ```output
-    @@TODO@@
+    1.0 0.0
     ```
     *)
     export pulse (phase, step, width) =
@@ -122,7 +122,7 @@ module Waves
     print "${Waves::triangle (0.25, 0.0)} ${Waves::triangle (0.5, 0.0)}"
     ```
     ```output
-    @@TODO@@
+    0.0 1.0
     ```
     *)
     export triangle (phase, step) = 1.0 - 4.0 * abs (phase - 0.5) + 4.0 * step * (blamp (phase, step) - blamp (wrap (phase - 0.5), step))
@@ -133,7 +133,7 @@ module Waves
     print "${Waves::harmonic (0.25, 0.1, 3.0)} ${Waves::harmonic (0.25, 0.2, 3.0)}"
     ```
     ```output
-    @@TODO@@
+    -1.0 0.0
     ```
     *)
     export harmonic (phase, step, multiple) = match step * multiple < 0.5
@@ -146,7 +146,7 @@ module Waves
     print "${Waves::glass (0.25, 0.1, 1.0)}"
     ```
     ```output
-    @@TODO@@
+    0.39999999999999997
     ```
     *)
     export glass (phase, step: float, tone) = sine phase * (1.0 - tone * 0.3) + harmonic (phase, step, 3.0) * tone * 0.3
@@ -157,7 +157,7 @@ module Waves
     print "${Waves::bass (0.25, 0.0, 0.0)}"
     ```
     ```output
-    @@TODO@@
+    0.65
     ```
     *)
     export bass (phase, step: float, tone) = sine phase * 0.65 + harmonic (phase, step, 2.0) * (0.1 + tone * 0.25)
@@ -168,7 +168,7 @@ module Waves
     print "${Waves::hollow (0.25, 0.0, 0.0)}"
     ```
     ```output
-    @@TODO@@
+    0.5
     ```
     *)
     export hollow (phase, step: float, tone) = sine phase * 0.6 + harmonic (phase, step, 3.0) * (0.1 + tone * 0.15) + harmonic (phase, step, 5.0) * tone * 0.15
@@ -179,7 +179,7 @@ module Waves
     print "${Waves::modulated (0.0, 1.0)} ${Waves::modulated (0.25, 0.0)}"
     ```
     ```output
-    @@TODO@@
+    0.0 1.0
     ```
     *)
     export modulated (phase, tone) = sine (phase + (0.05 + tone * 0.3) * sine (phase * 2.0))
@@ -190,7 +190,7 @@ module Waves
     print "${Waves::ring (0.5, 0.25, 0.0)} ${Waves::ring (0.5, 0.25, 1.0)}"
     ```
     ```output
-    @@TODO@@
+    0.5 -0.5
     ```
     *)
     export ring (dry, phase, warp) = dry * (1.0 - warp + warp * sine (phase * 7.0))
@@ -201,7 +201,7 @@ module Waves
     print "${Waves::unipolar (-1.0)} ${Waves::unipolar 1.0}"
     ```
     ```output
-    @@TODO@@
+    0.0 1.0
     ```
     *)
     export unipolar sample = (sample + 1.0) / 2.0
@@ -212,7 +212,7 @@ module Waves
     print "${Waves::controlledGain (0.5, 2.0, 0.0)} ${Waves::controlledGain (0.5, 2.0, 1.0)}"
     ```
     ```output
-    @@TODO@@
+    0.0 1.0
     ```
     *)
     export controlledGain (sample: float, level, control) = sample * level * control
@@ -223,7 +223,7 @@ module Waves
     print "${Waves::controlledCutoff (1000.0, 0.0)} ${Waves::controlledCutoff (1000.0, 0.5)}"
     ```
     ```output
-    @@TODO@@
+    1.0 500.5
     ```
     *)
     export controlledCutoff (cutoff, control) = 1.0 + (cutoff - 1.0) * control
@@ -234,7 +234,7 @@ module Waves
     print "${Waves::releaseGain (4.0, 4.0)} ${Waves::releaseGain (1.0, 4.0)}"
     ```
     ```output
-    @@TODO@@
+    1.0 0.0
     ```
     *)
     export releaseGain (remaining, duration) = match remaining <= 1.0
