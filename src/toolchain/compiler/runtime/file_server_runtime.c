@@ -64,6 +64,11 @@ static pthread_mutex_t fs_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t fs_connections_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t fs_connection_left = PTHREAD_COND_INITIALIZER;
 
+// Requests parked in open_when_present right now, across servers: what a
+// test waits on before writing the file one waits for, or stopping the
+// server beside it, instead of a timer a loaded runner can outrun.
+static atomic_int fs_file_waiters;
+
 // Whether a socket call that failed is worth repeating: it was interrupted, or its
 // tick ran out while the peer was silent, and the server isn't stopping.
 static bool retry_socket(const Connection *connection) {
@@ -236,17 +241,23 @@ static bool serve_regular(FILE *file, Served *served) {
 }
 
 // Opens a folder's entry, never through a link, once it exists: waits up to FS_WAIT
-// seconds or the stop [FFI-FILE-SERVER-FOLDER].
+// seconds or the stop [FFI-FILE-SERVER-FOLDER]. Counted while parked, so the
+// count reads as the requests waiting for their file right now.
 static FILE *open_when_present(const FileServer *server, const char *path) {
   bool missing = false;
   FILE *file = osp_open_entry(path, &missing);
+  if (file || !missing) {
+    return file;
+  }
+  atomic_fetch_add_explicit(&fs_file_waiters, 1, memory_order_relaxed);
   for (int waited = 0; !file && missing; waited++) {
     if (waited >= FS_WAIT * 10 || atomic_load(&server->stopping)) {
-      return NULL;
+      break;
     }
     usleep(100000);
     file = osp_open_entry(path, &missing);
   }
+  atomic_fetch_sub_explicit(&fs_file_waiters, 1, memory_order_relaxed);
   return file;
 }
 
@@ -468,4 +479,12 @@ int64_t osprey_file_server_stop(int64_t port) {
   release_server(server);
   pthread_mutex_unlock(&fs_mutex);
   return 0;
+}
+
+// How many requests are parked waiting for their file to appear right now:
+// one tiny reader, no lookup of its own. A test waits on it before writing
+// the file one of them waits for, or stopping the server beside one, instead
+// of a timer a loaded runner can outrun.
+int64_t osprey_file_server_waiting_fetches(void) {
+  return atomic_load_explicit(&fs_file_waiters, memory_order_relaxed);
 }

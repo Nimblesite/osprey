@@ -223,6 +223,22 @@ static void *fetch_thread(void *arg) {
   return NULL;
 }
 
+// file_server_runtime.c: requests parked waiting for their file to appear.
+int64_t osprey_file_server_waiting_fetches(void);
+
+// Waits until the runtime's count of waiting fetches passes `baseline`: a
+// request was then accepted, read, and parked on its missing file — a signal,
+// never a timer a loaded runner can outrun. The bound is a hang guard only.
+enum { FETCH_WAIT_TRIES = 30000, FETCH_WAIT_POLL_US = 1000 };
+
+static void wait_for_a_waiting_fetch(int64_t baseline) {
+  for (int i = 0; i < FETCH_WAIT_TRIES && osprey_file_server_waiting_fetches() <= baseline; i++) {
+    usleep(FETCH_WAIT_POLL_US);
+  }
+  assert(osprey_file_server_waiting_fetches() > baseline &&
+         "the pending request never reached its wait for the file");
+}
+
 void write_text(const char *folder, const char *name, const char *text) {
   char path[512];
   snprintf(path, sizeof path, "%s/%s", folder, name);
@@ -271,8 +287,9 @@ static void test_file_server_folder(void) {
   // A segment the renderer has not written yet is served once it appears.
   PendingFetch late = {(int)port, "GET /seg00001.ts HTTP/1.1\r\n\r\n", {0}};
   pthread_t thread;
+  int64_t waiting = osprey_file_server_waiting_fetches();
   assert(pthread_create(&thread, NULL, fetch_thread, &late) == 0);
-  usleep(300000);
+  wait_for_a_waiting_fetch(waiting);
   // As the renderer does, so the waiting request can't see it half written.
   write_text(folder, ".partial", "segment-one");
   char partial[600];
@@ -286,8 +303,9 @@ static void test_file_server_folder(void) {
   free(late.reply.body);
   // Stopping the server releases a request still waiting for its file.
   PendingFetch never = {(int)port, "GET /seg00009.ts HTTP/1.1\r\n\r\n", {0}};
+  waiting = osprey_file_server_waiting_fetches();
   assert(pthread_create(&thread, NULL, fetch_thread, &never) == 0);
-  usleep(300000);
+  wait_for_a_waiting_fetch(waiting);
   assert(osprey_file_server_stop(port) == 0);
   assert(pthread_join(thread, NULL) == 0);
   assert(never.reply.status == 404);

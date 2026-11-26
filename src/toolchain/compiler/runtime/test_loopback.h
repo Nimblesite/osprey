@@ -107,4 +107,22 @@ static inline int test_loopback_listen(int port) {
   return fd;
 }
 
+// A loopback port the caller knows is closed: this binds one, reads the
+// number back and closes it, so a refused-dial assertion targets a port no
+// unrelated process was holding a moment ago instead of a fixed number any
+// listener on the host can occupy. The kernel hands out only ports nothing
+// else holds, so the port was provably shut the instant before the dial.
+static inline int test_loopback_closed_port(void) {
+  int fd = socket(AF_INET, SOCK_STREAM, 0);
+  assert(fd >= 0);
+  struct sockaddr_in addr = test_loopback_addr(0);
+  assert(bind(fd, (struct sockaddr *)&addr, sizeof(addr)) == 0);
+  struct sockaddr_in bound;
+  socklen_t size = sizeof(bound);
+  assert(getsockname(fd, (struct sockaddr *)&bound, &size) == 0);
+  int port = ntohs(bound.sin_port);
+  assert(close(fd) == 0);
+  return port;
+}
+
 #endif

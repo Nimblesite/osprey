@@ -27,7 +27,6 @@ char *osprey_net_local_address(char *host, int64_t port);
 
 #define ECHO_PORT test_port(7)
 #define ECHO_CLOSE_PORT test_port(8)
-#define CLOSED_PORT test_port(14) // nothing in this block listens here
 #define PLAIN_PORT test_port(10)
 
 static char LOOPBACK[] = "127.0.0.1";
@@ -260,8 +259,8 @@ static void test_tls_argument_rejections(void) {
   assert(osprey_tls_connect(NOWHERE, ECHO_PORT, 100) == -2);
   assert(nowhere_calls == nowhere_before + 1 &&
          "the interposed getaddrinfo answered NOWHERE");
-  // Nothing listens on this port: the dial is refused.
-  assert(osprey_tls_connect(LOOPBACK, CLOSED_PORT, 500) == -4);
+  // The dial is refused on a port this test itself just proved closed.
+  assert(osprey_tls_connect(LOOPBACK, test_loopback_closed_port(), 500) == -4);
 }
 
 static void test_tls_peer_close_is_reported(void) {
