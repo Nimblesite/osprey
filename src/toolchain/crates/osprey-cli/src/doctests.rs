@@ -12,6 +12,7 @@ use crate::project::CompilationInput;
 use crate::Cli;
 use osprey_ast::DocExample;
 use std::process::ExitCode;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 pub(crate) fn run(cli: &Cli) -> ExitCode {
     let sources = match load(cli) {
@@ -28,15 +29,38 @@ pub(crate) fn run(cli: &Cli) -> ExitCode {
     run_sources(cli, &sources)
 }
 
+/// Every declaration's examples, spread over one worker per core: each example
+/// builds its own scratch program and runs as its own process, so they share
+/// nothing but the read-only sources. [DOC-DOCTEST-HARNESS]
 fn run_sources(cli: &Cli, sources: &SourceSet) -> ExitCode {
-    let (mut passed, mut failed) = (0, 0);
-    for (source_index, source) in sources.sources.iter().enumerate() {
-        for entry in collect(&source.program) {
-            let (ok, bad) = check_entry(cli, sources, source_index, &entry);
-            passed += ok;
-            failed += bad;
+    let entries: Vec<(usize, DocEntry)> = sources
+        .sources
+        .iter()
+        .enumerate()
+        .flat_map(|(index, source)| {
+            collect(&source.program)
+                .into_iter()
+                .map(move |e| (index, e))
+        })
+        .collect();
+    let (next, passed, failed) = (
+        AtomicUsize::new(0),
+        AtomicUsize::new(0),
+        AtomicUsize::new(0),
+    );
+    let workers = std::thread::available_parallelism().map_or(1, usize::from);
+    std::thread::scope(|scope| {
+        for _ in 0..workers.min(entries.len()) {
+            let _ = scope.spawn(|| {
+                while let Some((index, entry)) = entries.get(next.fetch_add(1, Ordering::Relaxed)) {
+                    let (ok, bad) = check_entry(cli, sources, *index, entry);
+                    let _ = passed.fetch_add(ok, Ordering::Relaxed);
+                    let _ = failed.fetch_add(bad, Ordering::Relaxed);
+                }
+            });
         }
-    }
+    });
+    let (passed, failed) = (passed.into_inner(), failed.into_inner());
     println!("doctests: {passed} passed, {failed} failed");
     if failed == 0 {
         ExitCode::SUCCESS
