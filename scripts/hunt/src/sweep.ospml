@@ -6,8 +6,6 @@
 namespace hunt
 
 import fs::Path
-import hunt::Inventory
-import hunt::Report
 
 (** Parallel `osprey hunt` runs, one Outcome per program. *)
 module Sweep

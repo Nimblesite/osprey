@@ -38,7 +38,7 @@ scopedRequestsCase () =
     loaded = Support::loaded ()
     handle Storage::Requests
         http request => "${request.id}|${request.url}"
-        sql request => "unexpected SQL"
+        sql _request => "unexpected SQL"
     refreshed = Update::dispatch loaded.model (Support::event "refresh")
     Support::each [Support::it "scoped handler sees correlated request and URL" (refreshed.model.pending + "|" + Github::url loaded.model.repo) refreshed.commands, Support::it "refresh still enters loading state" "true" refreshed.model.loading]
     searched = Update::dispatch loaded.model (Support::value "search" "parser")

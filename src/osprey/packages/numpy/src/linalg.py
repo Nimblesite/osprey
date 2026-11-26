@@ -35,12 +35,12 @@ def slice_coords(xs, lo, hi):
 
 def inner_product(a, b, k):
     """The dot of two buffers over `k` elements, as a rank-0 array."""
-    return Array.NDArray(shape=[], data=Storage.built(perform(Storage.Buffer.build(1, lambda i: fold(range(k), 0.0, lambda acc, t: acc + Storage.at(a.data, t) * Storage.at(b.data, t))))))
+    return Array.NDArray(shape=[], data=Storage.built(perform(Storage.Buffer.build(1, lambda _i: fold(range(k), 0.0, lambda acc, t: acc + Storage.at(a.data, t) * Storage.at(b.data, t))))))
 
 def matvec_inner(a, b):
     """The 1-D x 1-D matmul/dot: the inner product as a rank-0 array."""
     k = unwrap_or(listGet(a.shape, 0), 0)
-    g = Errors.require(k == unwrap_or(listGet(b.shape, 0), 0), Errors.matmul_mismatch(unwrap_or(listGet(b.shape, 0), 0), k))
+    _g = Errors.require(k == unwrap_or(listGet(b.shape, 0), 0), Errors.matmul_mismatch(unwrap_or(listGet(b.shape, 0), 0), k))
     return inner_product(a, b, k)
 
 def batch_base(coords, batch_len, strides, mat_size):
@@ -64,7 +64,7 @@ def product_data(product, left):
         case Success(value=value):
             return value
         case Error(message=message):
-            g = Errors.fail(message)
+            _g = Errors.fail(message)
             return left
 
 def matmul_core(a, b):
@@ -74,7 +74,7 @@ def matmul_core(a, b):
     k = unwrap_or(listGet(a.shape, len(a.shape) - 1), 0)
     k2 = unwrap_or(listGet(b.shape, len(b.shape) - 2), 0)
     n = unwrap_or(listGet(b.shape, len(b.shape) - 1), 0)
-    g = Errors.require(k == k2, Errors.matmul_mismatch(k2, k))
+    _g = Errors.require(k == k2, Errors.matmul_mismatch(k2, k))
     batch_a = drop_last_two(a.shape)
     batch_b = drop_last_two(b.shape)
     out_batch = Layout.broadcast_shapes([batch_a, batch_b])
@@ -133,7 +133,7 @@ def dot(a, b):
     kb = unwrap_or(listGet(b.shape, 0), 1) if nb == 1 else unwrap_or(listGet(b.shape, nb - 2), 1)
     b_axis = 0 if nb == 1 else nb - 2
     out_shape = drop_last(a.shape) if nb == 1 else listConcat(drop_last(a.shape), listConcat(drop_last_two(b.shape), [unwrap_or(listGet(b.shape, nb - 1), 1)]))
-    g = Errors.require(ka == kb, Errors.aligned_failed(a.shape, b.shape, ka, na - 1, kb, b_axis))
+    _g = Errors.require(ka == kb, Errors.aligned_failed(a.shape, b.shape, ka, na - 1, kb, b_axis))
     if na == 1 and nb == 1:
         return inner_product(a, b, ka)
     else:
@@ -154,7 +154,7 @@ def inner_vectors(a, b):
     nb = len(b.shape)
     ka = unwrap_or(listGet(a.shape, na - 1), 1)
     kb = unwrap_or(listGet(b.shape, nb - 1), 1)
-    g = Errors.require(ka == kb, Errors.aligned_failed(a.shape, b.shape, ka, na - 1, kb, nb - 1))
+    _g = Errors.require(ka == kb, Errors.aligned_failed(a.shape, b.shape, ka, na - 1, kb, nb - 1))
     out = listConcat(drop_last(a.shape), drop_last(b.shape))
     b_rows = Layout.flat_size(drop_last(b.shape))
     return Array.NDArray(shape=out, data=Storage.built(perform(Storage.Buffer.build(Layout.flat_size(out), lambda i: inner_element(i, a, b, ka, b_rows)))))
@@ -170,7 +170,7 @@ def vdot(a, b):
     float64)."""
     na = Layout.flat_size(a.shape)
     nb = Layout.flat_size(b.shape)
-    g = Errors.require(na == nb, Errors.reshape_failed(nb, [na]))
+    _g = Errors.require(na == nb, Errors.reshape_failed(nb, [na]))
     return inner_product(a, b, na)
 
 def trace(a):

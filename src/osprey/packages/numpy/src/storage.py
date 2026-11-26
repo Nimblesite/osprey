@@ -50,7 +50,7 @@ def built(result):
         case Success(value=value):
             return value
         case Error(message=message):
-            g = Errors.fail(message)
+            _g = Errors.fail(message)
             return lift([])
 
 
@@ -64,7 +64,7 @@ def reduced(result):
         case Success(value=value):
             return value
         case Error(message=message):
-            g = Errors.fail(message)
+            _g = Errors.fail(message)
             return 0.0
 
 
@@ -90,7 +90,7 @@ def lower(buffer):
         case Success(value=value):
             return value
         case Error(message=message):
-            g = Errors.fail(message)
+            _g = Errors.fail(message)
             return []
 
 

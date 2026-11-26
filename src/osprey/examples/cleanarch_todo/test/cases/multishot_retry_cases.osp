@@ -15,8 +15,6 @@
 
 namespace todo;
 
-import todo::TodoHarness
-
 /// The CreateList ask naming a list "Mine": the request every retry case replays.
 fn mineListAsk() = newList("Mine", "")
 

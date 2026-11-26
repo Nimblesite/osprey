@@ -53,7 +53,7 @@ def empty():
 
 def array(values, shape):
     """An array from a flat list and an explicit shape, sized to match."""
-    g = Errors.require(len(values) == Layout.flat_size(shape), Errors.reshape_failed(len(values), shape))
+    _g = Errors.require(len(values) == Layout.flat_size(shape), Errors.reshape_failed(len(values), shape))
     return NDArray(shape=shape, data=Storage.lift(values))
 
 def array1(values):
@@ -76,7 +76,7 @@ def array2(rows):
     """A rank-2 array from a list of equal-length rows."""
     n = len(rows)
     m = len(unwrap_or(listGet(rows, 0), []))
-    g = Errors.require(uniform_rows(rows, n, m), Errors.inhomogeneous(1, [n]))
+    _g = Errors.require(uniform_rows(rows, n, m), Errors.inhomogeneous(1, [n]))
     return array(concat_each(rows, n), [n, m])
 
 def array3(blocks):
@@ -85,8 +85,8 @@ def array3(blocks):
     first = unwrap_or(listGet(blocks, 0), [])
     d1 = len(first)
     d2 = len(unwrap_or(listGet(first, 0), []))
-    g = Errors.require(uniform_rows(blocks, d0, d1), Errors.inhomogeneous(1, [d0]))
-    g2 = Errors.require(uniform_blocks(blocks, d0, d1, d2), Errors.inhomogeneous(2, [d0, d1]))
+    _g = Errors.require(uniform_rows(blocks, d0, d1), Errors.inhomogeneous(1, [d0]))
+    _g2 = Errors.require(uniform_blocks(blocks, d0, d1, d2), Errors.inhomogeneous(2, [d0, d1]))
     flats = mapList(blocks, lambda b: concat_each(b, d1))
     return array(concat_each(flats, d0), [d0, d1, d2])
 
@@ -98,7 +98,7 @@ def over(shape, built_result):
 
 def full(shape, value):
     """An array of `shape` with every element `value`."""
-    return over(shape, perform(Storage.Buffer.build(Layout.flat_size(shape), lambda i: value)))
+    return over(shape, perform(Storage.Buffer.build(Layout.flat_size(shape), lambda _i: value)))
 
 def zeros(shape):
     """An array of `shape` filled with 0.0."""
@@ -128,13 +128,13 @@ def ramp(n, start, delta):
 def arange(start, stop, step):
     """np.arange: `start + i*step` for `i` below `ceil((stop-start)/step)`,
     matching numpy's element count and values."""
-    g = Errors.require(step != 0.0, "division by zero")
+    _g = Errors.require(step != 0.0, "division by zero")
     n = Math.ceil_int((stop - start) / step)
     return ramp(n if n > 0 else 0, start, step)
 
 def linspace(start, stop, num):
     """np.linspace: `num` evenly spaced values including `stop`."""
-    g = Errors.require(num >= 0, Errors.linspace_samples(num))
+    _g = Errors.require(num >= 0, Errors.linspace_samples(num))
     if num == 0:
         return empty()
     elif num == 1:
@@ -148,7 +148,7 @@ def eye(n):
 
 def eye_m(n, m):
     """The `n` by `m` matrix with ones on the main diagonal."""
-    g = Errors.require(n >= 0 and m >= 0, Errors.negative_dimensions())
+    _g = Errors.require(n >= 0 and m >= 0, Errors.negative_dimensions())
     return over([n, m], perform(Storage.Buffer.build(Layout.flat_size([n, m]), lambda i: 1.0 if i // m == i % m else 0.0)))
 
 def identity(n):
@@ -255,7 +255,7 @@ def squeeze(a):
 def squeeze_axis(a, axis):
     """numpy's `squeeze` of one axis, which must have size 1."""
     ax = along(a, axis)
-    g = Errors.require(unwrap_or(listGet(a.shape, ax), 1) == 1, Errors.squeeze_failed())
+    _g = Errors.require(unwrap_or(listGet(a.shape, ax), 1) == 1, Errors.squeeze_failed())
     return NDArray(shape=Layout.drop_at(a.shape, ax), data=a.data)
 
 def broadcast_shapes(shapes):
@@ -264,8 +264,8 @@ def broadcast_shapes(shapes):
 
 def broadcast_to(a, shape):
     """np.broadcast_to: `a` read through broadcast strides over `shape`."""
-    g = Errors.require(len(a.shape) <= len(shape), Errors.broadcast_to_dims())
-    g2 = Errors.require(Layout.compatible(a.shape, shape), Errors.broadcast_to_failed(a.shape, shape))
+    _g = Errors.require(len(a.shape) <= len(shape), Errors.broadcast_to_dims())
+    _g2 = Errors.require(Layout.compatible(a.shape, shape), Errors.broadcast_to_failed(a.shape, shape))
     return strided(a, shape, Layout.broadcast_strides(a.shape, shape))
 
 # Joining, moving and gathering -------------------------------------------
@@ -282,7 +282,7 @@ class ArrayInputs[B]:
 def checked_inputs(name, arrays):
     """The `ArrayInputs` of the joining operation named `name`, which needs at
     least one input array."""
-    g = Errors.require(len(arrays) >= 1, Errors.need_one_array(name))
+    _g = Errors.require(len(arrays) >= 1, Errors.need_one_array(name))
     shapes = mapList(arrays, lambda a: a.shape)
     return ArrayInputs(shapes=shapes, datas=mapList(arrays, lambda a: a.data), first=unwrap_or(listGet(shapes, 0), []), fallback=empty().data)
 
@@ -304,11 +304,11 @@ def concatenate(arrays, axis):
     inputs = checked_inputs("concatenate", arrays)
     nd = len(inputs.first)
     j = fold(range(len(inputs.shapes)), -1, lambda bad, t: t if bad < 0 and input_rank(inputs, t) != nd else bad)
-    g2 = Errors.require(j < 0, Errors.concat_dims_failed(0, nd, j, input_rank(inputs, j)))
+    _g2 = Errors.require(j < 0, Errors.concat_dims_failed(0, nd, j, input_rank(inputs, j)))
     ax = Layout.normalize_axis(axis, nd, "")
     bad_d = fold(range(nd), -1, lambda bad, d: d if bad < 0 and d != ax and any_concat_row_differs(inputs.shapes, inputs.first, d) else bad)
     bad_j = concat_first_row_differs(inputs.shapes, inputs.first, bad_d)
-    g3 = Errors.require(bad_d < 0, Errors.concat_size_failed(bad_d, 0, dim_of(inputs.first, bad_d), bad_j, dim_of(unwrap_or(listGet(inputs.shapes, bad_j), []), bad_d)))
+    _g3 = Errors.require(bad_d < 0, Errors.concat_size_failed(bad_d, 0, dim_of(inputs.first, bad_d), bad_j, dim_of(unwrap_or(listGet(inputs.shapes, bad_j), []), bad_d)))
     axis_sizes = mapList(inputs.shapes, lambda s: dim_of(s, ax))
     out_shape = Layout.set_at(inputs.first, ax, total_ints(axis_sizes, len(axis_sizes)))
     return over(out_shape, perform(Storage.Buffer.build(Layout.flat_size(out_shape), lambda i: concat_read(i, out_shape, inputs, ax, axis_sizes))))
@@ -343,7 +343,7 @@ def concat_read(i, out_shape, inputs, ax, axis_sizes):
 def stack(arrays, axis):
     """np.stack: join equal-shaped arrays along a new axis of their count."""
     inputs = checked_inputs("stack", arrays)
-    g2 = Errors.require(fold(range(len(inputs.shapes)), True, lambda ok, t: ok and structuralEquals(unwrap_or(listGet(inputs.shapes, t), []), inputs.first)), Errors.stack_shape_failed())
+    _g2 = Errors.require(fold(range(len(inputs.shapes)), True, lambda ok, t: ok and structuralEquals(unwrap_or(listGet(inputs.shapes, t), []), inputs.first)), Errors.stack_shape_failed())
     ax = Layout.normalize_axis(axis, len(inputs.first) + 1, "")
     out_shape = Layout.insert_at(inputs.first, ax, len(arrays))
     return over(out_shape, perform(Storage.Buffer.build(Layout.flat_size(out_shape), lambda i: stack_read(i, out_shape, inputs, ax))))
@@ -357,7 +357,7 @@ def stack_read(i, out_shape, inputs, ax):
 
 def normalize_index(idx, n, ax):
     """A take index normalised into `[0, n)`, failing with numpy's text."""
-    g = Errors.require(idx >= 0 - n and idx < n, Errors.index_out_of_bounds(idx, ax, n))
+    _g = Errors.require(idx >= 0 - n and idx < n, Errors.index_out_of_bounds(idx, ax, n))
     return idx if idx >= 0 else idx + n
 
 def take(a, indices, axis):
@@ -446,7 +446,7 @@ def repeat_read(i, out_shape, a, ax, repeats):
 
 def tile(a, reps):
     """np.tile: repeat `a` `reps[d]` times along each dimension."""
-    g = Errors.require(len(reps) >= len(a.shape), "tile reps must have at least as many dimensions as the array")
+    _g = Errors.require(len(reps) >= len(a.shape), "tile reps must have at least as many dimensions as the array")
     gap = len(reps) - len(a.shape)
     pad = listConcat(toList(map(range(gap), lambda _: 1)), a.shape)
     out_shape = Layout.map_indexed(reps, lambda d: unwrap_or(listGet(pad, d), 1) * unwrap_or(listGet(reps, d), 1))
@@ -745,7 +745,7 @@ def reduce_axis(a, axis, keepdims, seed, op):
     shape = a.shape
     if len(shape) == 0:
         total = reduce_all(a, seed, op)
-        return over([], perform(Storage.Buffer.build(Layout.flat_size([]), lambda i: total)))
+        return over([], perform(Storage.Buffer.build(Layout.flat_size([]), lambda _i: total)))
     else:
         plan = axis_plan(shape, axis, keepdims)
         return over(plan.out_shape, perform(Storage.Buffer.build(Layout.flat_size(plan.out_shape), lambda i: reduce_axis_element(i, plan.out_shape, a, shape, plan.ax, plan.n, keepdims, seed, op))))

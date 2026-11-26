@@ -38,7 +38,7 @@ module Citations
 
     readLine (line) = match split (drop (line.text, length opening), separator)
         Success [name, certificate] => Cites (Citation(line = line, name = trim name, certificate = trim certificate))
-        other => Malformed (Lines::problem (line, codeSyntax, "expected `uses lean <Name> from <certificate>`"))
+        _ => Malformed (Lines::problem (line, codeSyntax, "expected `uses lean <Name> from <certificate>`"))
 
     citationOf (reading) = match reading
         Cites citation => [citation]
