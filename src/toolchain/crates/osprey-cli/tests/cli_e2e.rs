@@ -150,7 +150,7 @@ impl From<std::process::Output> for Out {
 /// A `stage` failure (spawn or wait) becomes an empty, code-less `Out` naming
 /// the cause on stderr; every caller asserts on an expected code/stdout, so
 /// the failure reports loudly through them.
-fn failed(stage: &str, e: std::io::Error) -> Out {
+fn failed(stage: &str, e: &std::io::Error) -> Out {
     Out {
         code: None,
         stdout: String::new(),
@@ -161,7 +161,7 @@ fn failed(stage: &str, e: std::io::Error) -> Out {
 fn finish(cmd: &mut Command) -> Out {
     match cmd.output() {
         Ok(out) => out.into(),
-        Err(e) => failed("spawn", e),
+        Err(e) => failed("spawn", &e),
     }
 }
 
@@ -183,14 +183,14 @@ fn run_args_with_stdin(args: &[&str], input: &str) -> Out {
         .stderr(Stdio::piped());
     let mut child = match cmd.spawn() {
         Ok(child) => child,
-        Err(e) => return failed("spawn", e),
+        Err(e) => return failed("spawn", &e),
     };
     if let Some(stdin) = child.stdin.as_mut() {
         let _ = stdin.write_all(input.as_bytes());
     }
     match child.wait_with_output() {
         Ok(out) => out.into(),
-        Err(e) => failed("wait", e),
+        Err(e) => failed("wait", &e),
     }
 }
 

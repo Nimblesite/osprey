@@ -78,11 +78,7 @@ pub(super) fn unit() -> Expr {
 }
 
 pub(super) fn apply(function: Expr, arguments: Vec<Expr>) -> Expr {
-    Expr::Call {
-        function: Box::new(function),
-        arguments,
-        named_arguments: Vec::new(),
-    }
+    Expr::call(function, arguments)
 }
 
 impl<'s> Lowerer<'s> {

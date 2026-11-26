@@ -367,11 +367,7 @@ pub(in crate::ml) fn pipe_into(left: Expr, right: Expr) -> Expr {
 
 /// Build a single positional [`Expr::Call`] node.
 pub(in crate::ml) fn call(function: Expr, arguments: Vec<Expr>) -> Expr {
-    Expr::Call {
-        function: Box::new(function),
-        arguments,
-        named_arguments: Vec::new(),
-    }
+    Expr::call(function, arguments)
 }
 
 /// Lower a whitespace-application spine ([FLAVOR-ML-CURRY]). The spine

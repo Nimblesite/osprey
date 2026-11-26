@@ -242,11 +242,7 @@ fn assert_synthetic_mentions(extra: Vec<Stmt>, fragment: &str) {
 }
 
 fn call(function: Expr, arguments: Vec<Expr>) -> Expr {
-    Expr::Call {
-        function: Box::new(function),
-        arguments,
-        named_arguments: Vec::new(),
-    }
+    Expr::call(function, arguments)
 }
 
 fn identifier(name: &str) -> Expr {
