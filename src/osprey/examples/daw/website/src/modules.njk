@@ -1,17 +1,17 @@
 ---
 layout: base.njk
 title: "Modules & Instruments"
-description: "Complete reference of Perception's built-in physical instruments, 36+ modular DSP components, grain clouds, formula melodies, and isolated VST3 workers."
+description: "Physical models, 16-voice granular clouds, spectral morphing, formula melodies, and 36+ typed DSP modules in Perception."
 ---
 
 <section class="section grid-backdrop">
   <div class="shell">
     <div class="section-head">
-      <p class="eyebrow"><span class="dot dot-signal" aria-hidden="true"></span>Modular DSP &amp; Built-In Voices</p>
-      <h1>Instruments &amp; 36+ Signal Modules</h1>
+      <p class="eyebrow"><span class="dot dot-signal" aria-hidden="true"></span>Instruments &amp; DSP</p>
+      <h1>Voices &amp; 36+ Signal Modules</h1>
       <p>
-        Start with a physical waveguide string, bowed string, bell, mallet, or phase-distortion
-        operator — or patch custom per-note graphs from 36+ typed DSP components and isolated VST3 plug-ins.
+        Physical waveguides, modal bells, phase-distortion operators, granular clouds, and
+        isolated VST3 plug-ins — all patchable in one typed graph.
       </p>
     </div>
 
@@ -22,6 +22,9 @@ description: "Complete reference of Perception's built-in physical instruments, 
       <button type="button" class="filter-btn" data-filter="synth" aria-pressed="false">Synthesis</button>
       <button type="button" class="filter-btn" data-filter="percussion" aria-pressed="false">Percussion</button>
     </div>
+    <p id="filter-status" class="mono dim" style="font-size:0.8rem; margin: -12px 0 18px;" aria-live="polite">
+      Showing all {{ site.instruments.length }} instruments
+    </p>
 
     <div class="card-grid">
       {% for inst in site.instruments %}
@@ -39,12 +42,19 @@ description: "Complete reference of Perception's built-in physical instruments, 
 <section class="section">
   <div class="shell">
     <div class="section-head">
-      <p class="eyebrow"><span class="dot dot-mod" aria-hidden="true"></span>Patch Graph Library</p>
-      <h2>Typed DSP Components</h2>
+      <p class="eyebrow"><span class="dot dot-mod" aria-hidden="true"></span>Interactive Module Reference</p>
+      <h2>Click any module for port &amp; DSP specs</h2>
       <p>
-        Perception validates port rates, units, channel counts, and feedback cycles on every cable.
-        Invalid connections leave the previous graph intact; Undo restores deleted nodes and cables together.
+        Port rates, units, channel counts, and feedback cycles are checked on every cable.
       </p>
+    </div>
+
+    <div class="module-detail" aria-live="polite">
+      <div>
+        <h3 class="mono" id="module-detail-title">grainCloud</h3>
+        <p id="module-detail-desc">Granular engine with 8–192 kHz WAV import, reverse/freeze playback rate, pan, and timing jitter.</p>
+      </div>
+      <span class="readout-pill" id="module-detail-rate">Stereo · 16 grains</span>
     </div>
 
     {% for group in site.moduleGroups %}
@@ -53,41 +63,17 @@ description: "Complete reference of Perception's built-in physical instruments, 
         <span class="dot dot-{{ group.accent }}" aria-hidden="true"></span>
         {{ group.name }}
       </h3>
-      <ul class="chip-list">
+      <div class="chip-list" role="group" aria-label="{{ group.name }}">
         {% for item in group.items %}
-        <li class="chip">{{ item }}</li>
+        <button
+          type="button"
+          class="chip{% if item == 'grainCloud' %} is-active{% endif %}"
+          data-module="{{ item }}"
+          aria-pressed="{% if item == 'grainCloud' %}true{% else %}false{% endif %}"
+        >{{ item }}</button>
         {% endfor %}
-      </ul>
+      </div>
     </div>
     {% endfor %}
-
-    <div class="card-grid" style="margin-top:28px">
-      <article class="card">
-        <span class="card-tag">Grain Cloud</span>
-        <h3>16-Voice Granular Synthesis</h3>
-        <p>
-          Load little-endian RIFF/WAVE files up to 8 MiB (8–192 kHz, 8/16/24/32-bit PCM or float32).
-          Control source position, playback rate (zero holds, negative reverses), grain duration,
-          pan, onset interval, and jitter — with full sample undo history.
-        </p>
-      </article>
-      <article class="card">
-        <span class="card-tag is-mod">Formula Melodies</span>
-        <h3>Deterministic Step Expressions</h3>
-        <p>
-          Type a formula over step <code class="mono">t</code> — such as
-          <code class="mono">60 + t * 7 % 12</code> — and <code class="mono">formulaNotes</code>
-          emits one MIDI note per step straight into oscillators, delays, or VST3 instruments.
-        </p>
-      </article>
-      <article class="card">
-        <span class="card-tag is-monitor">Isolated VST3 Workers</span>
-        <h3>Sandboxed Plug-In Execution</h3>
-        <p>
-          Point Settings at your VST3 folder. Each discovered instrument or effect runs in its own
-          separate worker process with sample-positioned MIDI, parameter automation, and state restore.
-        </p>
-      </article>
-    </div>
   </div>
 </section>

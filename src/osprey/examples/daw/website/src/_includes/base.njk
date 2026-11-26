@@ -33,22 +33,17 @@
         </span>
         <span class="brand-copy">
           <span class="brand-name">{{ site.name }}</span>
-          <span class="brand-sub">Modular DAW</span>
+          <span class="brand-sub">Synth · VST3 · DAW</span>
         </span>
       </a>
 
       <nav class="studio-nav" aria-label="Primary">
         {% for item in site.nav %}
-        <a class="studio-tab{% if page.url == item.href %} is-active{% endif %}" href="{{ item.href }}"{% if page.url == item.href %} aria-current="page"{% endif %}>
+        <a class="studio-tab{% if page.url == item.href or (item.href != '/' and page.url.startsWith(item.href)) %} is-active{% endif %}" href="{{ item.href }}"{% if page.url == item.href %} aria-current="page"{% endif %}>
           {{ item.label }}
         </a>
         {% endfor %}
       </nav>
-
-      <div class="studio-readout" aria-label="Engine specification">
-        <span class="readout-pill"><span class="dot dot-signal" aria-hidden="true"></span>{{ site.sampleRate }}</span>
-        <span class="readout-pill">{{ site.channels }}</span>
-      </div>
     </div>
   </header>
 
@@ -61,13 +56,12 @@
       <div class="footer-brand">
         <span class="status-led" aria-hidden="true"></span>
         <strong>{{ site.name }}</strong>
-        <span class="dim">Every node visible. Master-only playback &amp; rendering.</span>
+        <span class="dim">Modular synth studio, VST3 plug-in, and hardware synth factory.</span>
       </div>
       <div class="footer-meta">
-        <span>48 kHz · 32-bit float · Stereo</span>
-        <span aria-hidden="true">·</span>
-        <a href="/architecture/">Architecture</a>
         <a href="/modules/">Modules</a>
+        <a href="/architecture/">Proofs &amp; Hardware</a>
+        <a href="/blog/">Blog</a>
         <a href="/tracks/">Tracks</a>
       </div>
     </div>

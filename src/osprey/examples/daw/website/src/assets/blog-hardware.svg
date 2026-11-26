@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" fill="none">
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="42%" r="60%">
+      <stop offset="0%" stop-color="#AA9EE6" stop-opacity="0.22"/>
+      <stop offset="55%" stop-color="#18142C" stop-opacity="0.06"/>
+      <stop offset="100%" stop-color="#100D21" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="box" x1="220" y1="110" x2="1060" y2="610" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#221C3E"/>
+      <stop offset="100%" stop-color="#141028"/>
+    </linearGradient>
+    <linearGradient id="oled" x1="360" y1="185" x2="920" y2="335" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0B0918"/>
+      <stop offset="100%" stop-color="#11162E"/>
+    </linearGradient>
+    <linearGradient id="wave" x1="390" y1="260" x2="890" y2="260" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#4FDAD3"/>
+      <stop offset="60%" stop-color="#AA9EE6"/>
+      <stop offset="100%" stop-color="#FF8442"/>
+    </linearGradient>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M 32 0 L 0 0 0 32" fill="none" stroke="#AA9EE6" stroke-opacity="0.06" stroke-width="1"/>
+    </pattern>
+  </defs>
+
+  <rect width="1280" height="720" fill="#100D21"/>
+  <rect width="1280" height="720" fill="url(#grid)"/>
+  <rect width="1280" height="720" fill="url(#glow)"/>
+
+  <!-- Hardware Enclosure -->
+  <rect x="210" y="105" width="860" height="510" rx="28" fill="url(#box)" stroke="#3E3666" stroke-width="2.5"/>
+  <rect x="228" y="123" width="824" height="474" rx="20" fill="none" stroke="#AA9EE6" stroke-opacity="0.14" stroke-width="1.5"/>
+
+  <!-- Top Patch Jacks -->
+  <g stroke="#3E3666" stroke-width="3">
+    <circle cx="310" cy="155" r="14" fill="#0C091A"/>
+    <circle cx="360" cy="155" r="14" fill="#0C091A"/>
+    <circle cx="920" cy="155" r="14" fill="#0C091A"/>
+    <circle cx="970" cy="155" r="14" fill="#0C091A"/>
+  </g>
+  <g>
+    <circle cx="310" cy="155" r="6" fill="#FF8442"/>
+    <circle cx="360" cy="155" r="6" fill="#AA9EE6"/>
+    <circle cx="920" cy="155" r="6" fill="#4FDAD3"/>
+    <circle cx="970" cy="155" r="6" fill="#FF8442"/>
+  </g>
+
+  <!-- OLED Oscilloscope Screen -->
+  <rect x="350" y="195" width="580" height="150" rx="14" fill="url(#oled)" stroke="#342E54" stroke-width="2"/>
+  <line x1="366" y1="270" x2="914" y2="270" stroke="#4FDAD3" stroke-opacity="0.16" stroke-width="1"/>
+  <path d="M 374 270 C 414 210, 454 210, 494 270 C 534 330, 574 330, 614 270 C 654 205, 694 205, 734 270 C 774 335, 814 335, 854 270 C 874 240, 894 245, 906 270"
+        stroke="url(#wave)" stroke-width="4" stroke-linecap="round"/>
+  <path d="M 374 270 C 424 235, 474 305, 524 270 C 574 235, 624 305, 674 270 C 724 235, 774 305, 824 270 C 864 245, 888 265, 906 270"
+        stroke="#4FDAD3" stroke-opacity="0.35" stroke-width="2" stroke-dasharray="6 6"/>
+
+  <!-- Four Macro Rotary Encoders -->
+  <g transform="translate(340, 470)">
+    <circle r="54" fill="#100D21" stroke="#342E54" stroke-width="2"/>
+    <path d="M -38 38 A 54 54 0 1 1 38 -38" stroke="#FF8442" stroke-width="5" stroke-linecap="round"/>
+    <circle r="38" fill="#1D1736" stroke="#494076" stroke-width="2"/>
+    <line x1="0" y1="-8" x2="22" y2="-24" stroke="#FF8442" stroke-width="4" stroke-linecap="round"/>
+  </g>
+  <g transform="translate(540, 470)">
+    <circle r="54" fill="#100D21" stroke="#342E54" stroke-width="2"/>
+    <path d="M -38 38 A 54 54 0 1 1 10 -53" stroke="#AA9EE6" stroke-width="5" stroke-linecap="round"/>
+    <circle r="38" fill="#1D1736" stroke="#494076" stroke-width="2"/>
+    <line x1="0" y1="-8" x2="6" y2="-30" stroke="#AA9EE6" stroke-width="4" stroke-linecap="round"/>
+  </g>
+  <g transform="translate(740, 470)">
+    <circle r="54" fill="#100D21" stroke="#342E54" stroke-width="2"/>
+    <path d="M -38 38 A 54 54 0 1 1 48 24" stroke="#4FDAD3" stroke-width="5" stroke-linecap="round"/>
+    <circle r="38" fill="#1D1736" stroke="#494076" stroke-width="2"/>
+    <line x1="0" y1="0" x2="26" y2="12" stroke="#4FDAD3" stroke-width="4" stroke-linecap="round"/>
+  </g>
+  <g transform="translate(940, 470)">
+    <circle r="54" fill="#100D21" stroke="#342E54" stroke-width="2"/>
+    <path d="M -38 38 A 54 54 0 0 1 -22 -49" stroke="#FF8442" stroke-width="5" stroke-linecap="round"/>
+    <circle r="38" fill="#1D1736" stroke="#494076" stroke-width="2"/>
+    <line x1="0" y1="-8" x2="-14" y2="-28" stroke="#FF8442" stroke-width="4" stroke-linecap="round"/>
+  </g>
+
+  <!-- Braided Patch Cable Arcs -->
+  <path d="M 310 155 C 270 60, 140 90, 95 220" stroke="#FF8442" stroke-width="4" stroke-linecap="round" opacity="0.85"/>
+  <path d="M 970 155 C 1020 50, 1140 85, 1190 230" stroke="#4FDAD3" stroke-width="4" stroke-linecap="round" opacity="0.8"/>
+</svg>

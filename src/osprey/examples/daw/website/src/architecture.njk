@@ -1,99 +1,83 @@
 ---
 layout: base.njk
-title: "Architecture"
-description: "Perception's signal transparency invariant, Master-only playback and rendering contract, and schema-validated JSON project format."
+title: "Proofs & Hardware Factory"
+description: "Mathematically proven DSP in Lean, unlimited signal routing, VST3 plug-in integration, and Perception's hardware synth factory."
 ---
 
 <section class="section grid-backdrop">
   <div class="shell">
     <article class="prose">
-      <p class="eyebrow"><span class="dot dot-monitor" aria-hidden="true"></span>Design Contract</p>
-      <h1>Signal Transparency &amp; Master-Only Architecture</h1>
+      <p class="eyebrow"><span class="dot dot-monitor" aria-hidden="true"></span>Verified Audio Engineering</p>
+      <h1>Mathematically Proven DSP &amp; Hardware Synth Factory</h1>
       <p>
-        Perception is engineered around two non-negotiable invariants that keep what you see on
-        screen identical to what reaches your monitors and export file.
+        Perception treats audio synthesis as an exact engineering discipline: unlimited routing in
+        software, machine-checked DSP proofs under the hood, and a direct path from desktop patch
+        to standalone hardware.
       </p>
 
       <div class="prose-callout">
         <p>
-          <strong>Total Signal Transparency:</strong> Every module, cable, gain, EQ, compressor,
-          limiter, and send is a visible node or control in the UI. There is no hidden limiter,
-          clipper, normaliser, or automatic gain anywhere — Master included.
+          <strong>Zero hidden processing:</strong> Every gain, filter, EQ, compressor, send, and
+          limiter is a visible node. No secret clipper or auto-gain ever colours your patch.
         </p>
       </div>
 
-      <h2>Playing and rendering take Master only</h2>
+      <h2>Machine-checked synthesis proofs</h2>
       <p>
-        Both live playback and offline rendering advance the entire project graph forward one block
-        at a time: every track, internal outlet send, stereo group bus, Space return, and Master
-        process together.
+        Core DSP formulas are formally verified in Lean with zero axioms and replayed in CI.
+        Mutating a formula breaks its proof immediately:
       </p>
-      <ul>
-        <li><strong>Playing</strong> streams Master blocks directly to the audio device and writes no files.</li>
-        <li><strong>Rendering</strong> writes Master's stereo output untouched to <code class="mono">song.wav</code> and plays nothing.</li>
-        <li><strong>No hidden stems or pre-rendered note caches:</strong> nothing outside the running graph ever produces audio.</li>
-      </ul>
-
-      <h2>One schema-validated JSON project</h2>
-      <p>
-        Every note, modular patch, cable, bus group, outlet send, and canvas coordinate is stored
-        in a single human-readable JSON project file validated against <code class="mono">daw.td</code>.
-      </p>
-
       <div class="prose-table-wrap">
         <table class="prose-table">
           <thead>
             <tr>
-              <th>Key</th>
-              <th>Meaning</th>
+              <th>Theorem</th>
+              <th>Guarantee</th>
             </tr>
           </thead>
           <tbody>
-            <tr>
-              <td><code>title</code></td>
-              <td>Arrangement title displayed in the studio header.</td>
-            </tr>
-            <tr>
-              <td><code>tempo</code></td>
-              <td>Beats per minute (20–400 BPM).</td>
-            </tr>
-            <tr>
-              <td><code>sampleRate</code></td>
-              <td>Frames per second (8,000–192,000 Hz; default 48,000).</td>
-            </tr>
-            <tr>
-              <td><code>buses</code></td>
-              <td>Named stereo groups with gain, 3-band EQ, sidechain compressor, and cycle-checked <code>output</code>.</td>
-            </tr>
-            <tr>
-              <td><code>tracks</code></td>
-              <td>Per-track instrument or routed patch, gain (0–4×), pan (−1 to +1), dry bus, outlet sends, positions, and notes.</td>
-            </tr>
+            <tr><td><code>travelingWavePropagation</code></td><td>Waveguide delay-line energy and propagation stay exact.</td></tr>
+            <tr><td><code>allpassMagnitude</code></td><td>Allpass dispersion preserves unit magnitude across frequencies.</td></tr>
+            <tr><td><code>weightedOverlapAdd</code></td><td>Spectral STFT frames reconstruct cleanly without window ripple.</td></tr>
+            <tr><td><code>antiderivativeAverage</code></td><td>Nonlinear waveshapers suppress aliasing via ADAA bounds.</td></tr>
+            <tr><td><code>radixTwoSplit</code></td><td>FFT butterfly decomposition matches exact DFT bins.</td></tr>
+            <tr><td><code>macroCurveMonotone</code></td><td>Hardware and UI macro exponents (0.25–4.0) stay strictly in range.</td></tr>
           </tbody>
         </table>
       </div>
 
-      <h3>Internal outlet send example</h3>
+      <h2>Hardware synth factory</h2>
       <p>
-        Tap any internal module outlet inside a track's patch straight into a stereo bus while
-        leaving its dry cable untouched:
+        Perception is the factory; hardware boxes are typed <strong>device profiles</strong>.
+        A 4-knob pedal, a 16-knob desktop synth, or the reference <strong>Raspberry Pi 5 + Perception HAT</strong>
+        enclosure all run the exact same DSP engine:
+      </p>
+      <ul>
+        <li><strong>Profile-driven faces:</strong> Perception reads a box's physical controls over the link and binds your patch macros directly to its encoders and switches.</li>
+        <li><strong>Real-time Linux audio:</strong> Dedicated isolated CPU core, <code class="mono">SCHED_FIFO</code> audio thread, locked memory, direct ALSA I/O at 64-frame periods (&lt; 10 ms bound), and a hardware watchdog with relay bypass.</li>
+      </ul>
+
+      <h2>Standalone DAW &amp; VST3 plug-in</h2>
+      <p>
+        Run Perception standalone for full arrangement and bus routing, or drop it into Ableton,
+        Reaper, Bitwig, Cubase, or Logic as a <strong>VST3 plug-in</strong>. Inside any patch,
+        third-party VST3 instruments and effects run in isolated worker processes so a crashing
+        plug-in never takes down your session.
+      </p>
+
+      <h2>One human-readable JSON patch &amp; song file</h2>
+      <p>
+        Every note, module, cable, parallel outlet send, stereo bus, and layout coordinate lives
+        in one schema-validated JSON file:
       </p>
       <pre class="prose-code"><code>{
   "sendId": 1,
   "source": 3,
   "outlet": 0,
-  "bus": "pads",
-  "level": 0.25,
+  "bus": "undertow",
+  "level": 0.19,
   "enabled": true
 }</code></pre>
-
-      <h3>Parameter followers</h3>
-      <p>
-        Every setting inside a <code class="mono">PatchInstrument</code> node declares one of three
-        deterministic followers: <code class="mono">Constant</code>, <code class="mono">Pitched</code>
-        (multiplied by the note's frequency), or <code class="mono">Struck</code> (multiplied by the
-        note's velocity). Unknown components or settings fail validation immediately.
-      </p>
     </article>
   </div>
 </section>

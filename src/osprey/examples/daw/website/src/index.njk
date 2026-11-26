@@ -1,175 +1,137 @@
 ---
 layout: base.njk
 title: ""
-description: "Perception is a transparent modular digital audio workstation: timeline, signal-flow patch bay, and bus routing in one native studio."
+description: "Perception is a modular synth studio, VST3 plug-in, and hardware synth factory with unlimited routing, granular and spectral engines, and mathematically proven DSP."
 ---
 
 <section class="hero grid-backdrop">
   <div class="shell">
     <div class="hero-header">
-      <p class="eyebrow"><span class="dot dot-signal" aria-hidden="true"></span>Transparent Modular DAW</p>
-      <h1>Every wire visible.<br>Every sample earned.</h1>
+      <p class="eyebrow">Standalone DAW · VST3 Plug-In · Hardware Synth Factory</p>
+      <h1>Unlimited routing.<br>Proven DSP.</h1>
       <p class="hero-lead">
-        <strong>Perception</strong> unites an arrangement timeline, a per-track modular signal-flow studio,
-        and a transparent stereo bus mixer in one native application — with zero hidden processing,
-        isolated VST3 workers, and one clean JSON project file.
+        Patch any outlet to any bus, run Perception as a VST3 inside your DAW,
+        or flash your instrument straight to hardware.
       </p>
       <div class="hero-actions">
-        <a class="btn btn-primary" href="#patch-bay">Explore the signal flow</a>
-        <a class="btn btn-ghost" href="/modules/">Browse 36+ DSP modules</a>
-        <a class="btn btn-ghost" href="/architecture/">Read the architecture</a>
+        <a class="btn btn-primary" href="/modules/">Explore 36+ modules</a>
+        <a class="btn btn-ghost" href="/architecture/">Proofs &amp; hardware</a>
       </div>
     </div>
 
-    <div class="studio-window" aria-label="Perception studio views">
-      <div class="window-chrome">
-        <div class="window-dots" aria-hidden="true"><span></span><span></span><span></span></div>
-        <div class="view-tabs" role="tablist" aria-label="Studio pages">
-          {% for view in site.views %}
-          <button
-            type="button"
-            class="view-tab"
-            role="tab"
-            id="tab-{{ view.id }}"
-            aria-controls="panel-{{ view.id }}"
-            aria-selected="{% if loop.first %}true{% else %}false{% endif %}"
-            data-view-tab="{{ view.id }}"
-          >{{ view.label }}</button>
-          {% endfor %}
-        </div>
-        <span class="mono dim" style="font-size:0.76rem">Click preview to inspect</span>
-      </div>
+    <div class="stage-switch" role="tablist" aria-label="Studio screenshots">
+      {% for view in site.views %}
+      <button
+        type="button"
+        class="view-tab"
+        role="tab"
+        id="tab-{{ view.id }}"
+        aria-controls="panel-{{ view.id }}"
+        aria-selected="{% if loop.first %}true{% else %}false{% endif %}"
+        data-view-tab="{{ view.id }}"
+      >{{ view.label }}</button>
+      {% endfor %}
+    </div>
 
-      <div class="window-stage">
-        {% for view in site.views %}
-        <figure
-          class="stage-panel"
-          id="panel-{{ view.id }}"
-          role="tabpanel"
-          aria-labelledby="tab-{{ view.id }}"
-          data-view-panel="{{ view.id }}"
-          {% if not loop.first %}hidden{% endif %}
+    <div class="studio-frame">
+      {% for view in site.views %}
+      <figure
+        class="stage-panel"
+        id="panel-{{ view.id }}"
+        role="tabpanel"
+        aria-labelledby="tab-{{ view.id }}"
+        data-view-panel="{{ view.id }}"
+        {% if not loop.first %}hidden{% endif %}
+      >
+        <button
+          type="button"
+          class="stage-trigger"
+          data-lightbox-src="{{ view.image }}"
+          data-lightbox-alt="{{ view.alt }}"
+          data-lightbox-title="Perception — {{ view.label }}"
+          data-lightbox-caption="{{ view.caption }}"
         >
-          <button
-            type="button"
-            class="stage-trigger"
-            data-lightbox-src="{{ view.image }}"
-            data-lightbox-alt="{{ view.alt }}"
-            data-lightbox-title="Perception — {{ view.label }}"
-            data-lightbox-caption="{{ view.caption }}"
+          <img
+            src="{{ view.image }}"
+            alt="{{ view.alt }}"
+            {% if loop.first %}fetchpriority="high"{% else %}fetchpriority="low" loading="lazy"{% endif %}
+            decoding="async"
           >
-            <img
-              src="{{ view.image }}"
-              alt="{{ view.alt }}"
-              {% if loop.first %}fetchpriority="high"{% else %}fetchpriority="low" loading="lazy"{% endif %}
-              decoding="async"
-            >
-          </button>
-          <figcaption class="stage-caption">
-            <span>{{ view.caption }}</span>
-            <span class="mono">48 kHz · Stereo · Master only</span>
-          </figcaption>
-        </figure>
-        {% endfor %}
-      </div>
-    </div>
-
-    <div class="signal-legend" aria-label="Signal cable legend">
-      <span class="legend-item"><span class="wire-sample wire-signal" aria-hidden="true"></span>Audio / Signal (solid)</span>
-      <span class="legend-item"><span class="wire-sample wire-mod" aria-hidden="true"></span>Modulation / Control (dashed)</span>
-      <span class="legend-item"><span class="wire-sample wire-monitor" aria-hidden="true"></span>Monitor / Analysis (solid)</span>
+        </button>
+        <figcaption class="stage-caption">{{ view.caption }}</figcaption>
+      </figure>
+      {% endfor %}
     </div>
   </div>
 </section>
 
-<section class="section" id="patch-bay">
+<section class="section">
   <div class="shell">
     <div class="section-head">
-      <p class="eyebrow"><span class="dot dot-mod" aria-hidden="true"></span>Interactive Signal Flow</p>
-      <h2>Click any node to inspect the live graph</h2>
-      <p>
-        Every track in Perception is a typed signal graph. Select a module below to see its
-        parameters, modulation inlets, and route to Master.
-      </p>
+      <h2>Built for synth nerds</h2>
+      <p>Zero hidden processing. Every cable, grain cloud, and proof in plain sight.</p>
     </div>
 
-    <div class="patch-studio">
-      <div class="patch-canvas">
-        <div class="patch-grid">
-          <button type="button" class="node-card is-selected" data-node="exciter" aria-pressed="true">
-            <div class="node-kicker"><span>Node 0</span><span>Source</span></div>
-            <p class="node-title">Exciter 0</p>
-            <div class="node-readout">Strength: 0.90</div>
-            <div class="node-ports">
-              <span class="port-badge">Gate</span>
-              <span class="port-badge">Out <span class="socket" aria-hidden="true"></span></span>
-            </div>
-          </button>
+    <div class="pillar-grid">
+      <article class="card">
+        <span class="card-tag">Unlimited Routing</span>
+        <h3>Patch any outlet to any bus</h3>
+        <p>
+          Tap internal module outlets straight into sidechained stereo buses, nest groups with
+          cycle detection, modulate filters at audio rate, and drive voices with formula melodies.
+        </p>
+      </article>
+      <article class="card">
+        <span class="card-tag is-monitor">Mathematically Proven DSP</span>
+        <h3>Machine-checked synthesis math</h3>
+        <p>
+          Waveguides, weighted overlap-add, allpass magnitude, radix-2 FFT, and antiderivative
+          anti-aliasing carry Lean proofs verified in CI.
+        </p>
+      </article>
+      <article class="card">
+        <span class="card-tag is-mod">Hardware Synth Factory</span>
+        <h3>From desktop patch to hardware box</h3>
+        <p>
+          Bind macros to a typed device profile — pedal, desktop synth, or Raspberry Pi 5 + HAT —
+          and run the exact same engine on real-time Linux hardware.
+        </p>
+      </article>
+      <article class="card">
+        <span class="card-tag">DAW + VST3 · Granular &amp; Spectral</span>
+        <h3>Standalone studio or VST3 plug-in</h3>
+        <p>
+          Run standalone or load Perception as a VST3 inside Ableton, Reaper, or Bitwig — packed
+          with 16-voice WAV grain clouds, FFT pitch shifting, and isolated VST3 hosting.
+        </p>
+      </article>
+    </div>
+  </div>
+</section>
 
-          <button type="button" class="node-card" data-node="waveguide" aria-pressed="false">
-            <div class="node-kicker"><span>Node 2</span><span>Physical</span></div>
-            <p class="node-title">Waveguide 2</p>
-            <div class="node-readout">Pitch: 261.63 Hz</div>
-            <div class="node-ports">
-              <span class="port-badge"><span class="socket" aria-hidden="true"></span> In</span>
-              <span class="port-badge">Out <span class="socket" aria-hidden="true"></span></span>
-            </div>
-          </button>
+<section class="section">
+  <div class="shell">
+    <div class="section-head">
+      <h2>Engineering blog</h2>
+      <p>Deep dives on modular routing, Lean DSP proofs, and hardware profiles.</p>
+    </div>
 
-          <button type="button" class="node-card" data-node="filter" aria-pressed="false">
-            <div class="node-kicker"><span>Node 3</span><span>Filter</span></div>
-            <p class="node-title">Mod Lowpass 3</p>
-            <div class="node-readout">Cutoff: 1,840 Hz</div>
-            <div class="node-ports">
-              <span class="port-badge"><span class="socket socket-mod" aria-hidden="true"></span> Cutoff</span>
-              <span class="port-badge">Scope <span class="socket socket-monitor" aria-hidden="true"></span></span>
-            </div>
-          </button>
-
-          <button type="button" class="node-card" data-node="grain" aria-pressed="false">
-            <div class="node-kicker"><span>Node 4</span><span>Granular</span></div>
-            <p class="node-title">Grain Cloud 4</p>
-            <div class="node-readout">Pool: 16 · Rate -0.5×</div>
-            <div class="node-ports">
-              <span class="port-badge">WAV 48k</span>
-              <span class="port-badge">Stereo <span class="socket" aria-hidden="true"></span></span>
-            </div>
-          </button>
-
-          <button type="button" class="node-card" data-node="bus" aria-pressed="false">
-            <div class="node-kicker"><span>Group</span><span>Stereo Bus</span></div>
-            <p class="node-title">Undertow Bus</p>
-            <div class="node-readout">Detector: kick · 4.0×</div>
-            <div class="node-ports">
-              <span class="port-badge"><span class="socket" aria-hidden="true"></span> Dry + Send</span>
-              <span class="port-badge">Master <span class="socket" aria-hidden="true"></span></span>
-            </div>
-          </button>
-
-          <button type="button" class="node-card" data-node="master" aria-pressed="false">
-            <div class="node-kicker"><span>Sink</span><span>Master Only</span></div>
-            <p class="node-title">Master</p>
-            <div class="node-readout">Stereo · No hidden DSP</div>
-            <div class="node-ports">
-              <span class="port-badge"><span class="socket" aria-hidden="true"></span> Sum L/R</span>
-              <span class="port-badge">DAC / WAV</span>
-            </div>
-          </button>
+    <div class="blog-grid">
+      {% for post in site.posts %}
+      <a class="blog-card" href="{{ post.url }}">
+        <div class="blog-cover">
+          <img src="{{ post.image }}" alt="{{ post.alt }}" loading="lazy" decoding="async">
         </div>
-      </div>
-
-      <aside class="patch-inspector" aria-live="polite">
-        <p class="inspector-kicker" id="inspector-kicker">Source · Node 0</p>
-        <h3 class="inspector-title" id="inspector-title">Exciter 0</h3>
-        <p class="inspector-desc" id="inspector-desc">
-          Single-period filtered noise impulse that energizes waveguide and modal chains.
-        </p>
-        <ul class="inspector-list" id="inspector-list">
-          <li><span class="dim">Strength</span><span class="mono">0.90</span></li>
-          <li><span class="dim">Follow</span><span class="mono">Struck (velocity)</span></li>
-          <li><span class="dim">Outlet 0</span><span class="mono">→ Strike comb 1</span></li>
-        </ul>
-      </aside>
+        <div class="blog-body">
+          <div class="blog-meta">
+            <span class="card-tag">{{ post.tag }}</span>
+            <span>{{ post.date }}</span>
+          </div>
+          <h3>{{ post.title }}</h3>
+          <p>{{ post.summary }}</p>
+        </div>
+      </a>
+      {% endfor %}
     </div>
   </div>
 </section>
@@ -177,64 +139,12 @@ description: "Perception is a transparent modular digital audio workstation: tim
 <section class="section">
   <div class="shell">
     <div class="section-head">
-      <p class="eyebrow"><span class="dot dot-monitor" aria-hidden="true"></span>Core Invariants</p>
-      <h2>Built for sound designers who refuse black boxes</h2>
-      <p>
-        Perception replaces hidden mixers, proprietary binary blobs, and fragile plug-in crashes
-        with verifiable signal-flow invariants.
-      </p>
-    </div>
-
-    <div class="card-grid">
-      <article class="card">
-        <span class="card-tag">Signal Transparency</span>
-        <h3>Zero hidden processing</h3>
-        <p>
-          Every gain, EQ, compressor, send, and limiter is a visible node or control.
-          There is no secret limiter, clipper, or auto-gain anywhere — Master included.
-        </p>
-      </article>
-      <article class="card">
-        <span class="card-tag is-monitor">Master-Only Engine</span>
-        <h3>One graph for Play and Render</h3>
-        <p>
-          Playing streams Master blocks straight to the speakers without writing files.
-          Rendering writes Master untouched to <code class="mono">song.wav</code>. No hidden stems.
-        </p>
-      </article>
-      <article class="card">
-        <span class="card-tag is-mod">Isolated VST3 Workers</span>
-        <h3>Crash-proof plug-in hosting</h3>
-        <p>
-          Every scanned VST3 bundle runs in its own bounded worker process with sample-accurate
-          MIDI, automation, and state restoration — never inside the UI thread.
-        </p>
-      </article>
-      <article class="card">
-        <span class="card-tag">One JSON File</span>
-        <h3>Human-readable projects</h3>
-        <p>
-          Arrangement notes, per-track modular patches, bus trees, outlet sends, and canvas
-          positions all save into one schema-validated JSON project file.
-        </p>
-      </article>
-    </div>
-  </div>
-</section>
-
-<section class="section">
-  <div class="shell">
-    <div class="section-head">
-      <p class="eyebrow"><span class="dot dot-signal" aria-hidden="true"></span>Real Studio Captures</p>
-      <h2>From hand-written arrangements to complex bus trees</h2>
-      <p>
-        Every screenshot below is captured straight from the native Perception studio running real
-        hand-composed projects like <em>Silt Relay</em> and <em>Broken Circuitry: Reassembly</em>.
-      </p>
+      <h2>Real studio captures</h2>
+      <p>Live signal graphs from hand-composed tracks. <a href="/tracks/" style="color:var(--signal); text-decoration:none;">View all captures →</a></p>
     </div>
 
     <div class="gallery-grid">
-      {% for shot in site.gallery %}
+      {% for shot in site.gallery.slice(0, 3) %}
       <article class="shot-card">
         <button
           type="button"
