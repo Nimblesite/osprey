@@ -9,7 +9,7 @@ module Dispatch {
     let planned = ["login", "audit", "yank"]
     let usage = [
         "usage: osprey-pkg [--json] <command>",
-        "commands: help, doctor, package init, add, remove, update, use, lock, fetch, verify, build, tree, why, publish --folder",
+        "commands: help, doctor, package init, add, remove, update, use, lock, fetch, verify, build, docs, tree, why, publish --folder",
         "specified, not yet implemented: login, audit, yank"
     ]
 
@@ -50,6 +50,7 @@ module Dispatch {
         "fetch" => fetchOrInstall(Flags::tail(args))
         "lock" => Lock::run(Flags::tail(args))
         "verify" => Verify::run(Flags::tail(args))
+        "docs" => Build::docs(Flags::tail(args))
         "build" => Build::run(Flags::tail(args))
         "tree" => Tree::run(Flags::tail(args))
         "why" => Why::run(Flags::tail(args))

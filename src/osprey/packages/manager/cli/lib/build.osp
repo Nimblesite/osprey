@@ -31,13 +31,14 @@ module Build {
     let buildDir = ".osprey/build"
     let buildManifest = ".osprey/build/osprey.toml"
 
-    type CommandLine = { run: bool, release: bool, compiler: string, project: string }
+    type CommandLine = { run: bool, release: bool, compiler: string, project: string, docsDir: string }
     /// One locked package's tree and its accepted manifest.
     type PackageManifest = { dir: string, manifest: ManifestModel::Manifest }
 
     let usageText = ["usage: osprey-pkg build [--run] [--release] [--compiler <path>] [--project <dir>]"]
 
     fn commandLine(parsed) = CommandLine {
+        docsDir: Flags::given(parsed, "--docs-dir", ""),
         run: Flags::has(parsed, runFlag),
         release: Flags::has(parsed, releaseFlag),
         compiler: Flags::given(parsed, compilerFlag, defaultCompiler),
@@ -121,7 +122,9 @@ module Build {
         fn(_dir) => andThen(perform Host::Files.write(Project::pathAt(cmd.project, buildManifest), derivedText(manifest, pms)), fn(_written) => Success { value: 0 }))
 
     /// The compiler invocation, every variable word shell-quoted ([PACKAGE-HARDENING] C6).
-    fn command(cmd: CommandLine, manifest) = if cmd.run {
+    fn command(cmd: CommandLine, manifest) = if cmd.docsDir != "" {
+        "${Host::shellWord(cmd.compiler)} --docs ${Host::shellWord(Project::pathAt(cmd.project, buildDir))} --docs-format html --docs-dir ${Host::shellWord(cmd.docsDir)}"
+    } else if cmd.run {
         "${Host::shellWord(cmd.compiler)} ${Host::shellWord(Project::pathAt(cmd.project, buildDir))} --run"
     } else {
         "${Host::shellWord(cmd.compiler)} build ${Host::shellWord(Project::pathAt(cmd.project, buildDir))} -o ${Host::shellWord(Project::pathAt(cmd.project, buildDir + "/" + manifest.projectName))}"
@@ -162,6 +165,9 @@ module Build {
         else { releaseVerified(cmd) }
 
     fn build(cmd: CommandLine) = Reports::checked(Overlay::readAt(cmd.project), fn(value) => withOverlay(cmd, value))
+
+    export fn docs(args) = Flags::dispatch(args, [compilerFlag, Flags::projectFlag, "--docs-dir"], [], "docs.usage", ["usage: osprey-pkg docs --docs-dir <directory> [--compiler <path>] [--project <dir>]"],
+        fn(parsed) => if Flags::given(parsed, "--docs-dir", "") == "" { Reports::usage(["missing --docs-dir"]) } else { build(commandLine(parsed)) })
 
     /// The whole command: verify, then compile; `--run` runs the built program.
     export fn run(args) = Flags::dispatch(args, [compilerFlag, Flags::projectFlag], [runFlag, releaseFlag], usageCode, usageText,

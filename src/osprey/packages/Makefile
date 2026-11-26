@@ -164,7 +164,7 @@ registry-website: $(BIN) | _runtime_wasm
 
 .PHONY: registry-website-preview
 ## registry-website-preview: Render searchable local packages from registry-serve into target/registry-site-preview.
-registry-website-preview: registry-website
+registry-website-preview: registry-website target/osprey-pkg
 	bash scripts/packages/registry-preview.sh
 
 ## registry-test: Run the Osprey package-system suites.

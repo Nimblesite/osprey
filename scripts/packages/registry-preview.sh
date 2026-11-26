@@ -8,6 +8,19 @@ out="$work/site"
 api=http://127.0.0.1:8787/v1
 render() { printf '%s\n' "$@" | wasmtime target/registry-site-build/site.wasm; }
 fetch() { curl --noproxy '*' --fail --silent --show-error --max-time 120 "$api/$1"; }
+pkg() {
+  printf '%s\n' "$*" | target/osprey-pkg > "$work/client-report"
+  if ! grep -Fxq 'status: 0' "$work/client-report"; then cat "$work/client-report" >&2; return 1; fi
+}
+release_docs() {
+  if [[ $(yq -o yaml -p toml '.dependencies | length' "$work/manifest.toml") -gt 0 ]]; then
+    pkg lock --registry "${api%/v1}" --project "$release_source" &&
+      pkg fetch --registry "${api%/v1}" --project "$release_source" &&
+      pkg docs --project "$release_source" --compiler target/release/osprey --docs-dir "$docs"
+  else
+    target/release/osprey --docs "$release_source" --docs-dir "$docs" --docs-format html
+  fi
+}
 mkdir -p "$out/sources"
 cp "$site/registry-mark.svg" "$out/"
 cp -R "$site/guide" "$site/publishing" "$site/upload" "$out/"
@@ -31,12 +44,33 @@ while IFS= read -r key; do
     summary=$(yq -p toml -o yaml -r '.package.summary // ""' "$work/manifest.toml")
     [[ "$summary" != *$'\n'* && "$summary" != *$'\r'* ]]
     version="e$epoch.r$ordinal"
+    release_source=$(mktemp -d "$work/source.XXXXXX")
+    node - "$source_file" "$release_source" <<'NODE'
+const fs = require('node:fs');
+const path = require('node:path');
+const [bundle, root] = process.argv.slice(2);
+for (const file of JSON.parse(fs.readFileSync(bundle)).files) {
+  if (file.path.split('/').some(part => !part || part === '.' || part === '..') || file.path.includes('\\')) {
+    throw new Error('Invalid source path');
+  }
+  const target = path.join(root, file.path);
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  fs.writeFileSync(target, file.text, { flag: 'wx' });
+}
+NODE
+    docs="$out/packages/$key/$version/docs"
+    docs_status=unavailable
+    if release_docs && [[ -s "$docs/api/index.html" ]]; then
+      docs_status=generated
+    else
+      printf 'Documentation unavailable for %s %s\n' "$key" "$version" >&2
+    fi
     receipt=unrecorded
     if [[ -f target/local-registry.receipts ]] && grep -Fxq "published $key $version $digest" target/local-registry.receipts; then
       receipt=recorded
-      render credit "$key" "$version" >> "$work/credits"
+      render credit "$key" "$version" "$summary" >> "$work/credits"
     fi
-    render release "$version" "$digest" "$receipt" >> "$work/links"
+    render release "$version" "$digest" "$receipt" "$docs_status" >> "$work/links"
   done < "$work/versions"
   render row "$key" "$summary" >> "$work/rows"
   metadata=$(yq -p toml -o json '.' "$work/manifest.toml")

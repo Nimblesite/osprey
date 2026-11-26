@@ -65,7 +65,7 @@ fn row() = {
 
 fn publisherPage() = {
     let releases = trim(input())
-    Shell::withEscapedTitle(publisherName, "<main><h1>${publisherName}</h1><p>Automated publisher for the Osprey repository’s local folder registry.</p><section><h2>Published releases</h2><ul>${releases}</ul></section></main>")
+    Shell::withEscapedTitle(publisherName, "<main><header class=\"prose-publisher\"><a href=\"/\">← Packages</a><h1>${publisherName}</h1><p>Libraries published from the Osprey repository to the local registry.</p></header><section><h2>Published releases</h2><ul class=\"prose-credits\">${releases}</ul></section></main>")
 }
 
 fn main() = print(match trim(input()) {
@@ -81,13 +81,15 @@ fn main() = print(match trim(input()) {
     "credit" => {
         let key = trim(input())
         let version = trim(input())
-        "<li><a href=\"/packages/${key}/\">${key}</a> · ${version}</li>"
+        let summary = escaped(trim(input()))
+        "<li><a href=\"/packages/${key}/#${version}\">${key}</a><code>${version}</code><p>${summary}</p></li>"
     }
     "release" => {
         let version = trim(input())
         let digest = trim(input())
         let publisher = publisherLink(trim(input()))
-        "<article class=\"prose-release\"><h3>${version}</h3><a class=\"prose-download\" download href=\"/sources/${digest}.json\">Download ${version}</a><p>Published by ${publisher}</p><code>${digest}</code></article>"
+        let docs = if trim(input()) == "generated" { "<a href=\"${version}/docs/api/index.html\">API documentation</a>" } else { "API documentation unavailable for this release" }
+        "<article id=\"${version}\" class=\"prose-release\"><h3>${version}</h3><a class=\"prose-download\" download href=\"/sources/${digest}.json\">Download ${version}</a><p>${docs}</p><p>Published by ${publisher}</p><code>${digest}</code></article>"
     }
     _ => catalog(false, "")
 })
