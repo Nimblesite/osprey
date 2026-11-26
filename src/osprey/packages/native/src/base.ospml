@@ -171,7 +171,7 @@ module Lists
     print "${toString (Lists::sortBy (["pear", "fig", "date", "apple"], shorter))}"
     ```
     ```output
-    [fig, pear, date, apple]
+    ["fig", "pear", "date", "apple"]
     ```
     *)
     export sortBy<T> : (List<T>, (T, T) -> bool) -> List<T>
