@@ -22,7 +22,7 @@ test.afterAll(async () => {
   }
 });
 
-test("Osprey Native website renders cleanly, obeys design system & a11y rules, and passes interactive journeys", async ({ page }) => {
+test("Osprey Native website renders cleanly with flagship media, logo/favicon, and passes interactive journeys", async ({ page, request }) => {
   const errors = [];
   page.on("pageerror", (err) => errors.push(err.message));
   page.on("response", (res) => {
@@ -30,11 +30,17 @@ test("Osprey Native website renders cleanly, obeys design system & a11y rules, a
   });
 
   await page.goto(serverHandle.url, { waitUntil: "networkidle" });
+  expect(await page.evaluate(() => window.scrollY), "page opens at top of hero").toBe(0);
 
-  // 1. Metadata, landmarks, headings, and content-hashed assets
+  // 1. Metadata, landmarks, headings, logo, favicon, and content-hashed assets
   await expect(page.locator('meta[name="color-scheme"]')).toHaveAttribute("content", "light dark");
   await expect(page.locator("h1")).toHaveCount(1);
   await expect(page.locator("header, nav[aria-label='Primary'], main, footer")).toHaveCount(4);
+
+  const faviconHref = await page.locator('link[rel="icon"]').getAttribute("href");
+  expect(faviconHref).toMatch(/^\/assets\/brand\/favicon\.svg\?v=[0-9a-f]{12}$/);
+  const favRes = await request.get(`${serverHandle.url}${faviconHref}`);
+  expect(favRes.status()).toBe(200);
 
   const cssHrefs = await page.locator('link[rel="stylesheet"]').evaluateAll((els) => els.map((e) => e.getAttribute("href")));
   expect(cssHrefs.length).toBe(5);
@@ -44,47 +50,69 @@ test("Osprey Native website renders cleanly, obeys design system & a11y rules, a
   const jsSrc = await page.locator("script[src]").getAttribute("src");
   expect(jsSrc).toMatch(/^\/js\/site\.js\?v=[0-9a-f]{12}$/);
 
-  // 2. All verified platform screenshots load without broken images
-  const images = page.locator("img");
-  const imgCount = await images.count();
-  expect(imgCount).toBeGreaterThanOrEqual(6);
-  for (let i = 0; i < imgCount; i++) {
-    const img = images.nth(i);
+  // 2. Flagship screenshots load cleanly; no toy Tally/Flock screenshots on homepage
+  const allImgSrcs = await page.locator("img").evaluateAll((els) => els.map((e) => e.getAttribute("src") || ""));
+  expect(allImgSrcs.some((s) => /tally|flock/i.test(s))).toBe(false);
+
+  const visibleImgs = page.locator("img:visible");
+  const visibleCount = await visibleImgs.count();
+  expect(visibleCount).toBeGreaterThanOrEqual(8);
+  for (let i = 0; i < visibleCount; i++) {
+    const img = visibleImgs.nth(i);
     await img.scrollIntoViewIfNeeded();
-    await expect(img).toBeVisible();
     const naturalWidth = await img.evaluate((el) => el.naturalWidth);
-    expect(naturalWidth, `image ${i} loaded`).toBeGreaterThan(0);
+    expect(naturalWidth, `visible image ${i} loaded`).toBeGreaterThan(0);
   }
 
-  // 3. Syntax flavor tabs: click + keyboard arrow navigation + hidden="until-found"
+  // 3. Playable videos have posters and English WebVTT caption tracks
+  const videos = page.locator("video");
+  await expect(videos).toHaveCount(3);
+  for (let i = 0; i < 3; i++) {
+    const poster = await videos.nth(i).getAttribute("poster");
+    expect(poster).toMatch(/^\/assets\/videos\/.+\.jpg$/);
+    const posterRes = await request.get(`${serverHandle.url}${poster}`);
+    expect(posterRes.status()).toBe(200);
+    await expect(videos.nth(i).locator('track[kind="captions"]')).toHaveCount(1);
+  }
+
+  // 4. Dual-engine rendering mode switcher (Native Platform Controls <-> FerroUI GPU Canvas)
+  const modeNative = page.getByRole("tab", { name: "Native Platform Controls" });
+  const modeCanvas = page.getByRole("tab", { name: "FerroUI / GPUI GPU Canvas" });
+  await expect(modeNative).toHaveAttribute("aria-selected", "true");
+  await modeCanvas.click();
+  await expect(modeCanvas).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("tabpanel", { name: "FerroUI / GPUI GPU Canvas" })).toContainText("Sherbet Signal");
+  await modeNative.click();
+
+  // 5. Syntax flavor tabs: click + keyboard arrow navigation + hidden="until-found"
   const tabDefault = page.getByRole("tab", { name: "Default (.osp)" });
   const tabMl = page.getByRole("tab", { name: "ML (.ospml)" });
-  const tabPython = page.getByRole("tab", { name: "Python Flavor" });
-  const tabTs = page.getByRole("tab", { name: "TypeScript Flavor" });
-  const tabRoadmap = page.getByRole("tab", { name: "Dart & Kotlin (Roadmap)" });
+  const tabPython = page.getByRole("tab", { name: "Python" });
+  const tabTs = page.getByRole("tab", { name: "TypeScript" });
+  const tabRoadmap = page.getByRole("tab", { name: "Dart & Kotlin" });
 
   await expect(tabDefault).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByRole("tabpanel", { name: "Default (.osp)" })).toContainText("satAdd(store.count, 1)");
+  await expect(page.getByRole("tabpanel", { name: "Default (.osp)" })).toContainText("Signal<Accounts>.read()");
 
   await tabDefault.focus();
   await page.keyboard.press("ArrowRight");
   await expect(tabMl).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByRole("tabpanel", { name: "ML (.ospml)" })).toContainText("update (store, action)");
+  await expect(page.getByRole("tabpanel", { name: "ML (.ospml)" })).toContainText("Keyed::region");
 
   await tabPython.click();
   await expect(tabPython).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByRole("tabpanel", { name: "Python Flavor" })).toContainText("# osprey: flavor=python");
+  await expect(page.getByRole("tabpanel", { name: "Python" })).toContainText("# osprey: flavor=python");
 
   await tabTs.click();
   await expect(tabTs).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByRole("tabpanel", { name: "TypeScript Flavor" })).toContainText("// osprey: flavor=typescript");
+  await expect(page.getByRole("tabpanel", { name: "TypeScript" })).toContainText("// osprey: flavor=typescript");
 
   await page.keyboard.press("End");
   await expect(tabRoadmap).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByRole("tabpanel", { name: "Dart & Kotlin (Roadmap)" })).toContainText("Dart Flavor");
-  await expect(page.getByRole("tabpanel", { name: "Dart & Kotlin (Roadmap)" })).toContainText("Kotlin Flavor");
+  await expect(page.getByRole("tabpanel", { name: "Dart & Kotlin" })).toContainText("Dart Flavor");
+  await expect(page.getByRole("tabpanel", { name: "Dart & Kotlin" })).toContainText("Kotlin Flavor");
 
-  // 4. Interactive Accessibility Tree & @osprey/uitest Explorer
+  // 6. Interactive Accessibility Tree & @osprey/uitest Explorer
   const controls = [
     ["Volume", "Slidable", 'tapAt ("Volume", 0.5)'],
     ["Position", "Slidable", 'expect (letters "00:50", true)'],
@@ -103,7 +131,7 @@ test("Osprey Native website renders cleanly, obeys design system & a11y rules, a
     await expect(page.locator("#a11y-live-region")).toContainText(label);
   }
 
-  // 5. Theme Toggle switches cleanly between Auto, Light, and Dark surfaces
+  // 7. Theme Toggle switches cleanly between Light and Dark surfaces
   const themeBtn = page.locator("#theme-toggle");
   await themeBtn.click(); // Light
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
@@ -117,7 +145,7 @@ test("Osprey Native website renders cleanly, obeys design system & a11y rules, a
   await themeBtn.click(); // Auto
   await expect(page.locator("html")).not.toHaveAttribute("data-theme");
 
-  // 6. Comparison table covers CMP, Flutter, React Native & desktop/mobile overflow checks
+  // 8. Comparison table & zero horizontal overflow at 1440px and 375px
   const compareRegion = page.getByRole("region", { name: /Architectural comparison/i });
   for (const framework of ["Osprey Native", "Compose Multiplatform (CMP)", "Flutter", "React Native"]) {
     await expect(compareRegion).toContainText(framework);
@@ -129,14 +157,12 @@ test("Osprey Native website renders cleanly, obeys design system & a11y rules, a
     expect(fits, `no horizontal overflow at ${width}px`).toBe(true);
   }
 
-  // At 375px, comparison table thead collapses to display:none via @container query
   const theadDisplay = await page.locator(".compare-table thead").evaluate((el) => getComputedStyle(el).display);
   expect(theadDisplay).toBe("none");
 
-  // 7. Blog grid on homepage, dedicated /blog/ index, and blog article page
+  // 9. Blog grid on homepage, dedicated /blog/ index, and blog article page
   await page.setViewportSize({ width: 1440, height: 900 });
-  const homeBlogCards = page.locator("#blog .blog-grid .blog-card");
-  await expect(homeBlogCards).toHaveCount(3);
+  await expect(page.locator("#blog .blog-grid .blog-card")).toHaveCount(3);
 
   await page.locator('nav[aria-label="Primary"] a[href="/blog/"]').click();
   await expect(page).toHaveURL(/\/blog\/$/);

@@ -9,14 +9,14 @@
     {% endif %}
     <div class="blog-card-body">
       <div class="blog-card-meta">
-        <span class="badge {{ post.data.badgeClass or 'badge-canvas' }}">{{ post.data.category or "Engineering" }}</span>
+        <span class="blog-category">{{ post.data.category or "Engineering" }}</span>
         <time datetime="{{ post.date | isoDate }}" class="prose-meta">{{ post.date | readableDate }}</time>
       </div>
       <h3 class="prose-h3 blog-card-title">
         <a href="{{ post.url }}">{{ post.data.title }}</a>
       </h3>
-      <p class="prose-body blog-card-excerpt">{{ post.data.excerpt or post.data.description }}</p>
-      <p class="prose-meta blog-card-footer">
+      <p class="blog-card-excerpt">{{ post.data.excerpt or post.data.description }}</p>
+      <p class="blog-card-footer">
         {% if post.data.readingTime %}{{ post.data.readingTime }} min read &middot; {% endif %}
         <a href="{{ post.url }}" aria-label="Read {{ post.data.title }}">Read article &rarr;</a>
       </p>

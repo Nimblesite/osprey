@@ -10,7 +10,7 @@
     const tabs = Array.from(shell.querySelectorAll('[role="tab"]'));
     const panels = Array.from(shell.querySelectorAll('[role="tabpanel"]'));
 
-    function activate(selectedTab, { focus = false } = {}) {
+    function activate(selectedTab, { focus = false, scroll = true } = {}) {
       const idx = tabs.indexOf(selectedTab);
       if (idx === -1) return;
 
@@ -32,13 +32,13 @@
         }
       });
 
-      selectedTab.scrollIntoView({ block: "nearest", inline: "nearest" });
+      if (scroll) selectedTab.scrollIntoView({ block: "nearest", inline: "nearest" });
       if (focus) selectedTab.focus();
     }
 
     // Initialize roving tabindex fallback for browsers without native focusgroup
     const initial = tabs.find((t) => t.getAttribute("aria-selected") === "true") || tabs[0];
-    if (initial) activate(initial);
+    if (initial) activate(initial, { scroll: false });
 
     tabs.forEach((tab) => {
       tab.addEventListener("click", () => activate(tab));

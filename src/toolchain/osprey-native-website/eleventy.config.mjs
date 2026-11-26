@@ -50,6 +50,7 @@ export default function (eleventyConfig) {
 
   eleventyConfig.addPassthroughCopy({ "src/css": "css" });
   eleventyConfig.addPassthroughCopy({ "src/js": "js" });
+  eleventyConfig.addPassthroughCopy({ "src/assets/brand": "assets/brand" });
 
   for (const [srcRel, dstRel] of MEDIA_PASSTHROUGH) {
     const srcPath = path.join(sharedAssets, srcRel);

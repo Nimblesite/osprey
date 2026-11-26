@@ -87,7 +87,7 @@
 
 .device-phone {
   border-radius: 26px;
-  border: 4px solid var(--ink);
+  border: 4px solid #1e293b;
 }
 
 .device-desktop img,

@@ -1,282 +1,141 @@
 ---
 layout: layouts/base.njk
 title: "Osprey Native"
-description: "Build real native apps on macOS, Windows, iOS, Android, and Web. Render real platform controls (SwiftUI, WinUI, Android) or a GPU canvas (FerroUI / GPUI) with compiler-derived signals, multi-flavor syntax, and framework-enforced accessibility."
+description: "Build real native apps for macOS, Windows, iOS, Android, and Web. Render genuine SwiftUI, WinUI, and Android controls or a FerroUI GPU canvas from one AOT codebase."
 permalink: /
 ---
 {% from "blog-grid.njk" import blogGrid %}
 
-<!-- HERO -->
-<section class="prose-section">
-  <div class="site-container hero-grid">
-    <div>
+<!-- HERO: Flutter.dev / ReactNative.dev product-first stage -->
+<section class="hero-section">
+  <div class="site-container">
+    <div class="prose-header-center">
       <p class="prose-eyebrow">@osprey/native &middot; Ahead-of-time cross-platform UI</p>
-      <h1 id="main-content" tabindex="-1" class="prose-h1">Real native controls or GPU canvas. Not either/or.</h1>
+      <h1 id="main-content" tabindex="-1" class="prose-h1">
+        Build native apps for <span class="prose-gradient">any screen.</span>
+      </h1>
       <p class="prose-lead">
-        Osprey Native builds real native apps from one ahead-of-time compiled codebase. Render genuine platform controls
-        (SwiftUI, WinUI, Android) <strong>or</strong> render straight to a pixel-consistent GPU canvas (FerroUI / GPUI)
-        &mdash; with compiler-derived signals, multi-flavor syntax, and an enforced accessibility tree built for humans and AI agents.
+        Render genuine SwiftUI, WinUI, and Android controls <strong>or</strong> draw straight to a pixel-identical GPU canvas
+        with FerroUI. One AOT codebase, compiler-derived signals, and enforced accessibility built for humans and AI agents.
       </p>
 
       <div class="btn-row">
         <a href="#flavors" class="btn btn-primary">Explore Syntax Flavors</a>
-        <a href="#compare" class="btn btn-secondary">Compare vs. CMP, Flutter &amp; RN</a>
+        <a href="#videos" class="btn btn-secondary">Watch Apps in Action</a>
       </div>
 
-      <ul class="platform-strip" aria-label="Supported target platforms">
-        <li class="platform-chip">macOS (SwiftUI &amp; FerroUI)</li>
-        <li class="platform-chip">Windows (WinUI)</li>
-        <li class="platform-chip">iOS (SwiftUI)</li>
-        <li class="platform-chip">Android (Native Views)</li>
-        <li class="platform-chip">Web (WebAssembly)</li>
-        <li class="platform-chip">VS Code Webview</li>
-      </ul>
+      <p class="hero-platforms">macOS &middot; Windows &middot; iOS &middot; Android &middot; Web (WebAssembly) &middot; VS Code</p>
     </div>
 
-    <aside class="blueprint-card" aria-label="Architecture summary">
-      <span class="badge badge-verified">&#10003; One AOT Core &middot; Zero JS Engine on Native</span>
-      <div class="blueprint-lanes">
-        <div class="blueprint-lane blueprint-lane-native">
-          <span class="badge badge-native">&#9635; Native Controls</span>
-          <h3>Platform Look &amp; Feel</h3>
-          <p>SwiftUI on macOS &amp; iOS, WinUI on Windows, native views on Android. Real text fields, IME, scrolling, and system chrome.</p>
-        </div>
-        <div class="blueprint-lane blueprint-lane-canvas">
-          <span class="badge badge-canvas">&#9670; GPU Canvas</span>
-          <h3>FerroUI / GPUI</h3>
-          <p>Identical pixels across platforms like Flutter. GPU-accelerated scenes, DAW timelines, vector boards, and skinnable artboards.</p>
-        </div>
-      </div>
+    <div class="device-stage" aria-label="Flagship Osprey Native apps running on Android, macOS, and iOS">
+      <figure class="device-phone">
+        <img src="/assets/images/issue-inbox-android.png" alt="Issue Inbox running natively on Android with Android views" width="1080" height="2400">
+        <figcaption class="device-caption">Android &middot; Native Views</figcaption>
+      </figure>
 
-      <div class="bridge-strip" aria-label="Shared-memory frame layout">
-        <div class="bridge-cell">
-          <strong>ViewRow</strong>
-          <span>152 B &middot; native controls</span>
-        </div>
-        <div class="bridge-cell">
-          <strong>SceneShape</strong>
-          <span>88 B &middot; GPU primitives</span>
-        </div>
-        <div class="bridge-cell">
-          <strong>UTF-8 Run</strong>
-          <span>offset + len &middot; zero JSON</span>
-        </div>
-        <div class="bridge-cell">
-          <strong>AskRow</strong>
-          <span>32 B &middot; typed effects</span>
-        </div>
-      </div>
-      <p class="prose-meta">
-        One schema (<code>native.td</code>) &rarr; one lease-checked shared-memory frame per update. No JSON serialization, no virtual DOM, no panics.
+      <figure class="device-desktop">
+        <img src="/assets/images/macos-synth.png" alt="Prism Synth modular audio studio rendered on macOS GPU canvas" width="2304" height="1512">
+        <figcaption class="device-caption">macOS &middot; Prism Synth on FerroUI / GPUI GPU Canvas</figcaption>
+      </figure>
+
+      <figure class="device-phone">
+        <img src="/assets/images/issue-inbox-ios.png" alt="Issue Inbox running natively on iOS with SwiftUI" width="1179" height="2556">
+        <figcaption class="device-caption">iOS &middot; SwiftUI</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<!-- BAND 1: NOT EITHER/OR — NATIVE CONTROLS OR GPU CANVAS -->
+<section id="rendering" class="prose-section prose-section-alt">
+  <div class="site-container">
+    <div class="prose-header-center">
+      <p class="prose-eyebrow prose-eyebrow-canvas">Not Either / Or</p>
+      <h2 class="prose-h2">Native platform controls or GPU canvas &mdash; your call</h2>
+      <p class="prose-lead">
+        Flutter and Compose Multiplatform lock you into canvas-drawn widget copies. React Native wraps platform views behind a
+        JavaScript engine. Osprey Native runs both rendering models over the exact same AOT library and zero-serialization shared-memory frame.
       </p>
-    </aside>
-  </div>
-</section>
-
-<!-- DUAL RENDERING MODEL -->
-<section id="rendering" class="prose-section">
-  <div class="site-container">
-    <p class="prose-eyebrow prose-eyebrow-native">Architecture &middot; Dual rendering</p>
-    <h2 class="prose-h2">Choose native look-and-feel or a GPU canvas &mdash; per app or per screen</h2>
-    <p class="prose-lead">
-      Other cross-platform frameworks lock you into one side of the trade-off: Flutter and Compose Multiplatform draw their own
-      widget copies on a canvas; React Native wraps platform views behind a JavaScript engine. Osprey Native runs both rendering
-      paths over the exact same typed store, signals, and shared-memory bridge.
-    </p>
-
-    <div class="prose-grid-2">
-      <article class="prose-card prose-card-native">
-        <span class="badge badge-native">&#9635; Native Controls Mode</span>
-        <h3 class="prose-h3">Authentic OS widgets everywhere</h3>
-        <p class="prose-body">
-          Write semantic <code>Node&lt;A&gt;</code> trees (<code>Split</code>, <code>Screen</code>, <code>Rows</code>, <code>Button</code>, <code>Field</code>, <code>Toggle</code>, <code>Sheet</code>).
-          Each host leases the frame in place and draws real platform widgets:
-        </p>
-        <ul class="prose-list">
-          <li><strong>macOS &amp; iOS:</strong> SwiftUI stacks, toolbars, native search fields, and SF Symbols.</li>
-          <li><strong>Windows:</strong> WinUI from the Windows App SDK, Segoe Fluent Icons, sandboxed MSIX AppContainer.</li>
-          <li><strong>Android:</strong> JNI direct byte buffers read by Kotlin into Android's own views.</li>
-          <li><strong>Web &amp; VS Code:</strong> WebAssembly module reading the exact same row offsets via <code>DataView</code>.</li>
-        </ul>
-      </article>
-
-      <article class="prose-card prose-card-canvas">
-        <span class="badge badge-canvas">&#9670; FerroUI / GPUI Canvas Mode</span>
-        <h3 class="prose-h3">Pixel-identical GPU rendering like Flutter</h3>
-        <p class="prose-body">
-          Need custom audio timelines, interactive boards, vector painting, or bespoke skins that look identical on every OS?
-          Target the <strong>FerroUI</strong> (or GPUI) GPU-accelerated host using the same Osprey library:
-        </p>
-        <ul class="prose-list">
-          <li><strong>Same AOT binary:</strong> your compiled C-ABI archive runs unchanged on FerroUI's drawing context.</li>
-          <li><strong>High-throughput scenes:</strong> Flock streams 5,000 live sprites in ~7 ms per frame, <code>update</code> included.</li>
-          <li><strong>UI machines &amp; skins:</strong> declare parallel state machines and atlas skins in validated documents with built-in hit testing.</li>
-          <li><strong>No JavaScript engine:</strong> native desktop and mobile builds ship zero JS runtime and zero JIT warm-up.</li>
-        </ul>
-      </article>
     </div>
-  </div>
-</section>
 
-<!-- SIGNALS FROM THE GROUND UP -->
-<section id="signals" class="prose-section">
-  <div class="site-container">
-    <p class="prose-eyebrow prose-eyebrow-verified">Reactivity &middot; Compiler-derived</p>
-    <h2 class="prose-h2">Signals from the ground up &mdash; zero dependency arrays</h2>
-    <p class="prose-lead">
-      Reactivity is not a library bolted onto a widget tree. Osprey's compiler tracks which <code>Signal&lt;T&gt;</code> slices
-      each keyed region reads, refreshing only the regions whose inputs changed and retaining everything else.
-    </p>
-
-    <div class="prose-grid-3">
-      <article class="prose-card prose-card-verified">
-        <h3 class="prose-h3">1. Typed Slice Signals</h3>
-        <p class="prose-body">
-          Every state slice has its own record type and identity (<code>Signal&lt;Query&gt;</code>, <code>Signal&lt;Selection&gt;</code>).
-          Reads happen through typed effects; writes happen only in pure <code>update</code> functions.
-        </p>
-      </article>
-
-      <article class="prose-card prose-card-verified">
-        <h3 class="prose-h3">2. Keyed Regions</h3>
-        <p class="prose-body">
-          <code>Keyed::region</code> snapshots each region's compiler-derived dependencies. When one slice updates, unchanged
-          regions keep their revision, focus, scroll anchor, and IME state intact.
-        </p>
-      </article>
-
-      <article class="prose-card prose-card-verified">
-        <h3 class="prose-h3">3. Effects at the Edges</h3>
-        <p class="prose-body">
-          Files, networking, host-held slices (<code>Slices.fetch</code>), and frame output (<code>ViewStream</code>) are typed
-          algebraic effects. Production handlers talk to the OS; test handlers swap in deterministic fixtures.
-        </p>
-      </article>
-    </div>
-  </div>
-</section>
-
-<!-- MULTI-FLAVOR SYNTAX -->
-<section id="flavors" class="prose-section">
-  <div class="site-container">
-    <p class="prose-eyebrow">Authoring &middot; Syntax flavors</p>
-    <h2 class="prose-h2">Write in the syntax flavor your team already thinks in</h2>
-    <p class="prose-lead">
-      A <strong>syntax flavor</strong> changes how you write source code while sharing one Hindley-Milner type checker,
-      one effect system, and one LLVM AOT compiler. Pick Default Osprey, ML, Python, or TypeScript flavor today &mdash;
-      with <strong>Dart flavor coming soon</strong> and <strong>Kotlin flavor</strong> under consideration.
-    </p>
-
-    <div class="tabs-shell" data-tabs>
-      <div class="tablist" focusgroup="tablist nomemory" role="tablist" aria-label="Osprey Native syntax flavors">
-        <button type="button" role="tab" class="tab-btn" id="tab-default" aria-selected="true" focusgroupstart>Default (.osp)</button>
-        <button type="button" role="tab" class="tab-btn" id="tab-ml" aria-selected="false">ML (.ospml)</button>
-        <button type="button" role="tab" class="tab-btn" id="tab-python" aria-selected="false">Python Flavor</button>
-        <button type="button" role="tab" class="tab-btn" id="tab-ts" aria-selected="false">TypeScript Flavor</button>
-        <button type="button" role="tab" class="tab-btn" id="tab-roadmap" aria-selected="false">Dart &amp; Kotlin (Roadmap)</button>
+    <div data-tabs>
+      <div style="text-align: center;">
+        <div class="mode-switcher" focusgroup="tablist nomemory" role="tablist" aria-label="Choose rendering mode showcase">
+          <button type="button" role="tab" class="mode-btn" id="mode-native" aria-selected="true" focusgroupstart>Native Platform Controls</button>
+          <button type="button" role="tab" class="mode-btn" id="mode-canvas" aria-selected="false">FerroUI / GPUI GPU Canvas</button>
+        </div>
       </div>
 
       <div class="tabpanels-stack">
-        <div role="tabpanel" aria-labelledby="tab-default" tabindex="0">
+        <div role="tabpanel" aria-labelledby="mode-native" tabindex="0">
           <div class="tabpanel-inner">
-            <p class="prose-meta">Default Osprey (.osp) &mdash; brace-delimited, full type inference, exhaustive action matching.</p>
-<pre><code>type Act = Add | Take | Clear
+            <div class="showcase-grid">
+              <figure class="showcase-figure">
+                <div class="showcase-media">
+                  <img src="/assets/images/windows-storage.png" alt="Storage app running in WinUI on Windows" width="1164" height="741" loading="lazy">
+                </div>
+                <figcaption>
+                  <strong>Storage &middot; Windows (WinUI)</strong>
+                  Genuine WinUI controls, Segoe Fluent Icons, and sandboxed MSIX AppContainer over shared Osprey logic.
+                </figcaption>
+              </figure>
 
-fn update(store, action) = match action {
-    Add =&gt; store(count = satAdd(store.count, 1))
-    Take =&gt; store(count = max(0, satSub(store.count, 1)))
-    Clear =&gt; store(count = 0)
-}
+              <figure class="showcase-figure">
+                <div class="showcase-media">
+                  <img src="/assets/images/macos-agent.png" alt="Osprey Agent running natively on macOS with SwiftUI" width="2304" height="1512" loading="lazy">
+                </div>
+                <figcaption>
+                  <strong>Osprey Agent &middot; macOS (SwiftUI)</strong>
+                  Native split view, toolbars, and keyboard navigation compiled ahead of time with zero JS runtime.
+                </figcaption>
+              </figure>
 
-fn view(store) = ui::Column(
-    columnItems = [
-        ui::Wording(wordsText = "Count: ${store.count}"),
-        ui::Press(pressWords = "Add one", pressAction = Add),
-    ]
-)</code></pre>
-          </div>
-        </div>
-
-        <div role="tabpanel" aria-labelledby="tab-ml" hidden="until-found">
-          <div class="tabpanel-inner">
-            <p class="prose-meta">ML Flavor (.ospml) &mdash; indentation-significant, minimal brackets, identical AST &amp; binary.</p>
-<pre><code>type Act = Add | Take | Clear
-
-update (store, action) = match action
-    Add =&gt; store(count = satAdd store.count 1)
-    Take =&gt; store(count = max (0, satSub store.count 1))
-    Clear =&gt; store(count = 0)
-
-view store = ui::Column(columnItems = [
-    ui::Wording(wordsText = "Count: ${store.count}"),
-    ui::Press(pressWords = "Add one", pressAction = Add),
-])</code></pre>
-          </div>
-        </div>
-
-        <div role="tabpanel" aria-labelledby="tab-python" hidden="until-found">
-          <div class="tabpanel-inner">
-            <p class="prose-meta">Python Flavor &mdash; starts with <code># osprey: flavor=python</code>; static types &amp; LLVM AOT, not CPython.</p>
-<pre><code># osprey: flavor=python
-def update(store, action):
-    match action:
-        case Add():
-            return store(count=satAdd(store.count, 1))
-        case Take():
-            return store(count=max(0, satSub(store.count, 1)))
-        case Clear():
-            return store(count=0)
-
-def view(store):
-    return ui.Column(columnItems=[
-        ui.Wording(wordsText=f"Count: {store.count}"),
-        ui.Press(pressWords="Add one", pressAction=Add()),
-    ])</code></pre>
-          </div>
-        </div>
-
-        <div role="tabpanel" aria-labelledby="tab-ts" hidden="until-found">
-          <div class="tabpanel-inner">
-            <p class="prose-meta">TypeScript Flavor &mdash; familiar JS/TS surface compiled ahead of time to native machine code (no Node/Hermes).</p>
-<pre><code>// osprey: flavor=typescript
-function update(store, action) {
-    if (action == Add) return store({ count: satAdd(store.count, 1) });
-    if (action == Take) return store({ count: max(0, satSub(store.count, 1)) });
-    return store({ count: 0 });
-}
-
-function view(store) {
-    return ui.Column({ columnItems: [
-        ui.Wording({ wordsText: `Count: ${store.count}` }),
-        ui.Press({ pressWords: "Add one", pressAction: Add }),
-    ]});
-}</code></pre>
-          </div>
-        </div>
-
-        <div role="tabpanel" aria-labelledby="tab-roadmap" hidden="until-found">
-          <div class="tabpanel-inner">
-            <div class="prose-grid-2">
-              <div class="prose-card prose-card-canvas">
-                <span class="badge badge-canvas">&#9733; Coming Soon</span>
-                <h3 class="prose-h3">Dart Flavor</h3>
-                <p class="prose-body">
-                  Designed for Flutter teams who want familiar Dart-style syntax with Osprey's Hindley-Milner type safety,
-                  algebraic effects, and the freedom to render either native controls or FerroUI GPU canvas.
-                </p>
-              </div>
-              <div class="prose-card prose-card-native">
-                <span class="badge badge-native">&#9675; Under Consideration</span>
-                <h3 class="prose-h3">Kotlin Flavor</h3>
-                <p class="prose-body">
-                  Under evaluation for Kotlin &amp; CMP developers who want native SwiftUI/WinUI controls without JVM desktop
-                  overhead, while keeping familiar expression-oriented syntax.
-                </p>
-              </div>
+              <figure class="showcase-figure">
+                <div class="showcase-media">
+                  <img src="/assets/images/web-bank.png" alt="Talon Bank running in Chromium via WebAssembly" width="1440" height="960" loading="lazy">
+                </div>
+                <figcaption>
+                  <strong>Talon Bank &middot; Web (WebAssembly)</strong>
+                  The same Osprey Native source compiled to <code>wasm32</code>, reading fixed-width shared rows in the browser.
+                </figcaption>
+              </figure>
             </div>
-            <p class="prose-meta">
-              Note: Syntax flavors share Osprey's compiler and standard packages; they do not execute unmodified CPython, npm, pub.dev, or Maven packages.
-            </p>
+          </div>
+        </div>
+
+        <div role="tabpanel" aria-labelledby="mode-canvas" hidden="until-found">
+          <div class="tabpanel-inner">
+            <div class="showcase-grid">
+              <figure class="showcase-figure">
+                <div class="showcase-media">
+                  <img src="/assets/images/prism-spectral.webp" alt="Prism DAW spectral processor track patch rendered on FerroUI" width="2304" height="1512" loading="lazy">
+                </div>
+                <figcaption>
+                  <strong>Prism DAW &middot; FerroUI GPU Canvas</strong>
+                  Modular spectral routing, custom rotary dials, and timelines drawn identically across platforms.
+                </figcaption>
+              </figure>
+
+              <figure class="showcase-figure">
+                <div class="showcase-media">
+                  <img src="/assets/images/chromecast-player.webp" alt="Sherbet Signal Chromecast player on GPUI" width="868" height="1114" loading="lazy">
+                </div>
+                <figcaption>
+                  <strong>Sherbet Signal &middot; GPUI UI Machine</strong>
+                  Skinnable GPU artboard backed by validated parallel state machines and an enforced accessibility tree.
+                </figcaption>
+              </figure>
+
+              <figure class="showcase-figure">
+                <div class="showcase-media">
+                  <img src="/assets/images/macos-synth.png" alt="Prism Synth modular audio studio on macOS" width="2304" height="1512" loading="lazy">
+                </div>
+                <figcaption>
+                  <strong>Prism Synth &middot; Signal Flow &amp; Keyboard</strong>
+                  Live waveforms, patch cables, and synthesizer voices rendered straight on the GPU.
+                </figcaption>
+              </figure>
+            </div>
           </div>
         </div>
       </div>
@@ -284,22 +143,190 @@ function view(store) {
   </div>
 </section>
 
-<!-- ACCESSIBILITYMAXXING & AUTOMATED TESTING -->
+<!-- BAND 2: PLAYABLE APP VIDEOS -->
+<section id="videos" class="prose-section">
+  <div class="site-container">
+    <div class="prose-header-center">
+      <p class="prose-eyebrow">Real Apps in Motion</p>
+      <h2 class="prose-h2">See native speed &mdash; no mockups, no JS bundle</h2>
+      <p class="prose-lead">
+        Watch real desktop apps built with <code>@osprey/native</code>: GPU-accelerated audio synthesis on FerroUI and a native
+        SwiftUI coding agent on macOS.
+      </p>
+    </div>
+
+    <div class="video-grid">
+      <figure class="video-card">
+        <video controls preload="metadata" poster="/assets/videos/osprey-prism-daw-poster.jpg">
+          <source src="/assets/videos/osprey-prism-daw.mp4" type="video/mp4">
+          <track src="/assets/videos/osprey-prism-daw.en.vtt" kind="captions" srclang="en" label="English">
+        </video>
+        <figcaption>
+          <strong>Prism DAW &middot; FerroUI GPU Canvas</strong>
+          <span>Every voice synthesised by <code>@osprey/synth</code>; timeline, mix bus, and patches rendered through the FerroUI host.</span>
+        </figcaption>
+      </figure>
+
+      <figure class="video-card">
+        <video controls preload="metadata" poster="/assets/videos/osprey-agent-native-poster.jpg">
+          <source src="/assets/videos/osprey-agent-native.mp4" type="video/mp4">
+          <track src="/assets/videos/osprey-agent-native.en.vtt" kind="captions" srclang="en" label="English">
+        </video>
+        <figcaption>
+          <strong>Osprey Agent &middot; Native SwiftUI</strong>
+          <span>A native macOS coding agent built with Osprey Native (note: Osprey Agent is not sandboxed).</span>
+        </figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<!-- BAND 3: CODE BESIDE APP — SYNTAX FLAVORS & SIGNALS -->
+<section id="flavors" class="prose-section prose-section-alt">
+  <div class="site-container">
+    <div class="prose-grid-2">
+      <div>
+        <p class="prose-eyebrow prose-eyebrow-signal">Signals + Multi-Flavor Authoring</p>
+        <h2 class="prose-h2">Signals from the ground up. In the syntax flavor you know.</h2>
+        <p class="prose-lead">
+          Reactivity is built into the compiler: <code>Signal&lt;T&gt;</code> and <code>Keyed::region</code> derive every view's
+          dependencies automatically &mdash; no hooks, no dependency arrays, no virtual DOM diffing.
+        </p>
+        <ul class="prose-list">
+          <li><strong>Four syntax flavors today:</strong> Default Osprey (<code>.osp</code>), ML (<code>.ospml</code>), Python flavor, and TypeScript flavor share one Hindley-Milner type checker and LLVM AOT compiler.</li>
+          <li><strong>Coming soon:</strong> <strong>Dart flavor</strong> is on the roadmap for Flutter teams, with <strong>Kotlin flavor</strong> under consideration.</li>
+          <li><strong>Zero-serialization bridge:</strong> every update writes fixed-width <code>ViewRow</code> (152 B) and <code>SceneShape</code> (88 B) rows into lease-checked shared memory defined by <code>native.td</code>.</li>
+        </ul>
+      </div>
+
+      <div class="code-window" data-tabs>
+        <div class="tablist" focusgroup="tablist nomemory" role="tablist" aria-label="Osprey Native syntax flavors">
+          <button type="button" role="tab" class="tab-btn" id="tab-default" aria-selected="true" focusgroupstart>Default (.osp)</button>
+          <button type="button" role="tab" class="tab-btn" id="tab-ml" aria-selected="false">ML (.ospml)</button>
+          <button type="button" role="tab" class="tab-btn" id="tab-python" aria-selected="false">Python</button>
+          <button type="button" role="tab" class="tab-btn" id="tab-ts" aria-selected="false">TypeScript</button>
+          <button type="button" role="tab" class="tab-btn" id="tab-roadmap" aria-selected="false">Dart &amp; Kotlin</button>
+        </div>
+
+        <div class="tabpanels-stack">
+          <div role="tabpanel" aria-labelledby="tab-default" tabindex="0">
+            <div class="tabpanel-inner">
+              <p class="code-meta-bar">Default Osprey (.osp) &middot; compiler-derived signals &amp; exhaustive actions</p>
+<pre><code>type Action = SelectAccount(int) | Refresh
+
+fn accountRegion(frames, changed) =
+    Keyed::region(frames, "accounts", changed, || =&gt; {
+        let accounts = perform Signal&lt;Accounts&gt;.read()
+        ui::Rows(rowsItems = mapList(accounts.items, renderRow))
+    })
+
+fn update(ctx, store, msg) = match msg {
+    SelectAccount(id) =&gt; Step::store(store(selected = id))
+    Refresh =&gt; Step::ask(store, Capability::fetchAccounts)
+}</code></pre>
+            </div>
+          </div>
+
+          <div role="tabpanel" aria-labelledby="tab-ml" hidden="until-found">
+            <div class="tabpanel-inner">
+              <p class="code-meta-bar">ML Flavor (.ospml) &middot; minimal brackets, identical AST &amp; native binary</p>
+<pre><code>type Action = SelectAccount int | Refresh
+
+accountRegion (frames, changed) =
+    Keyed::region (frames, "accounts", changed, \() =&gt;
+        accounts = perform Signal&lt;Accounts&gt;.read ()
+        ui::Rows (rowsItems = mapList (accounts.items, renderRow)))
+
+update (ctx, store, msg) = match msg
+    SelectAccount id =&gt; Step::store (store(selected = id))
+    Refresh =&gt; Step::ask (store, Capability::fetchAccounts)</code></pre>
+            </div>
+          </div>
+
+          <div role="tabpanel" aria-labelledby="tab-python" hidden="until-found">
+            <div class="tabpanel-inner">
+              <p class="code-meta-bar">Python Flavor &middot; starts with # osprey: flavor=python (LLVM AOT, not CPython)</p>
+<pre><code># osprey: flavor=python
+def account_region(frames, changed):
+    def render():
+        accounts = perform(Signal[Accounts].read())
+        return ui.Rows(rowsItems=mapList(accounts.items, render_row))
+    return Keyed.region(frames, "accounts", changed, render)
+
+def update(ctx, store, msg):
+    match msg:
+        case SelectAccount(id):
+            return Step.store(store(selected=id))
+        case Refresh():
+            return Step.ask(store, Capability.fetchAccounts)</code></pre>
+            </div>
+          </div>
+
+          <div role="tabpanel" aria-labelledby="tab-ts" hidden="until-found">
+            <div class="tabpanel-inner">
+              <p class="code-meta-bar">TypeScript Flavor &middot; compiled AOT to native code (no Hermes / Node)</p>
+<pre><code>// osprey: flavor=typescript
+function accountRegion(frames, changed) {
+    return Keyed.region(frames, "accounts", changed, () =&gt; {
+        const accounts = perform Signal&lt;Accounts&gt;.read();
+        return ui.Rows({ rowsItems: mapList(accounts.items, renderRow) });
+    });
+}
+
+function update(ctx, store, msg) {
+    if (msg.kind == "Refresh") return Step.ask(store, Capability.fetchAccounts);
+    return Step.store(store({ selected: msg.id }));
+}</code></pre>
+            </div>
+          </div>
+
+          <div role="tabpanel" aria-labelledby="tab-roadmap" hidden="until-found">
+            <div class="tabpanel-inner roadmap-panel">
+              <div class="roadmap-item">
+                <h3>Dart Flavor &mdash; Coming Soon</h3>
+                <p>Built for Flutter teams who want familiar Dart syntax with Osprey's type inference, algebraic effects, and choice of real native controls or FerroUI GPU canvas.</p>
+              </div>
+              <div class="roadmap-item">
+                <h3>Kotlin Flavor &mdash; Under Consideration</h3>
+                <p>Under evaluation for Kotlin &amp; CMP developers who want genuine SwiftUI/WinUI controls without JVM desktop overhead.</p>
+              </div>
+              <p class="code-meta-bar" style="padding: 0;">Syntax flavors share Osprey's compiler and packages; they do not run raw CPython, npm, pub.dev, or Maven packages unchanged.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- BAND 4: ACCESSIBILITYMAXXING & AUTOMATED TESTING -->
 <section id="accessibility" class="prose-section">
   <div class="site-container">
-    <p class="prose-eyebrow prose-eyebrow-verified">Accessibilitymaxxing &amp; @osprey/uitest</p>
-    <h2 class="prose-h2">Enforced accessibility built into the framework &mdash; made for screen readers and AI agents</h2>
-    <p class="prose-lead">
-      Computer-use agents squint at screenshots and guess pixel coordinates. Osprey Native builds an enforced accessibility tree
-      (<code>Accessible</code> in <code>accessibility.td</code>) straight into its UI machines: every live control has a typed
-      <code>AccessRole</code>, a resolved label, bounds, and value. Screen readers (via AccessKit), automated tests
-      (<code>@osprey/uitest</code>), and AI agents all drive the exact same verified tree.
-    </p>
+    <div class="prose-header-center">
+      <p class="prose-eyebrow prose-eyebrow-signal">Accessibilitymaxxing &amp; @osprey/uitest</p>
+      <h2 class="prose-h2">Enforced accessibility &mdash; built for screen readers and AI agents</h2>
+      <p class="prose-lead">
+        Computer-use agents squint at screenshots and guess coordinates. Osprey Native emits a live, typed
+        <code>Accessible</code> tree straight from UI machines so screen readers (AccessKit), headless
+        <code>@osprey/uitest</code> journeys, and AI agents all operate controls by name.
+      </p>
+    </div>
 
-    <div class="a11y-explorer">
+    <div class="a11y-grid">
+      <figure class="video-card">
+        <video controls preload="metadata" poster="/assets/videos/osprey-ui-testing-by-label-poster.jpg">
+          <source src="/assets/videos/osprey-ui-testing-by-label.mp4" type="video/mp4">
+          <track src="/assets/videos/osprey-ui-testing-by-label.en.vtt" kind="captions" srclang="en" label="English">
+        </video>
+        <figcaption>
+          <strong>Automated UI Testing by Label &middot; @osprey/uitest</strong>
+          <span>Real pointer press/release events at control bounds, algebraic effect mocks for network/TV I/O, zero windows or simulators.</span>
+        </figcaption>
+      </figure>
+
       <div class="prose-card">
-        <h3 class="prose-h3">Live Accessibility Tree (Casting Player)</h3>
-        <p class="prose-body">Select a control to inspect its <code>Accessible</code> record and the headless <code>@osprey/uitest</code> call it drives:</p>
+        <h3 class="prose-h3">Interactive Accessibility Tree Inspector</h3>
+        <p class="prose-body">Click any control to inspect its <code>Accessible</code> record and headless <code>@osprey/uitest</code> assertion:</p>
         <ul class="a11y-tree-list" id="a11y-tree-list">
           <li>
             <button type="button" class="a11y-node-btn" aria-pressed="true"
@@ -362,25 +389,18 @@ function view(store) {
             </button>
           </li>
         </ul>
-      </div>
 
-      <div class="prose-card prose-card-verified">
-        <span class="badge badge-verified">&#10003; Headless &middot; No Window &middot; No Flakiness</span>
-        <h3 class="prose-h3" id="a11y-inspector-title">Inspected Control: Play</h3>
-        <div class="a11y-output-meta" id="a11y-inspector-meta">
+        <h4 class="prose-h3" id="a11y-inspector-title" style="margin-block-start: 0.75rem;">Inspected Control: Play</h4>
+        <div class="a11y-output-meta">
           <div><strong>AccessRole:</strong> <span id="a11y-role">Pressable</span></div>
           <div><strong>Bounds:</strong> <span id="a11y-bounds">x: 118, y: 642, w: 72, h: 72</span></div>
-          <div><strong>State / Value:</strong> <span id="a11y-value">action: cast.start</span></div>
-          <div><strong>AccessKit / Pointer:</strong> <span id="a11y-bridge">NSAccessibilityButton / UIA_ButtonControlTypeId &rarr; pointer press + release at (154, 678)</span></div>
+          <div><strong>State:</strong> <span id="a11y-value">action: cast.start</span></div>
+          <div><strong>AccessKit:</strong> <span id="a11y-bridge">NSAccessibilityButton / UIA_ButtonControlTypeId &rarr; pointer press + release at (154, 678)</span></div>
         </div>
-        <p class="prose-meta">Real <code>@osprey/uitest</code> journey (runs in milliseconds without opening a window):</p>
+        <div class="code-window" style="box-shadow: none; border-radius: var(--radius-sm);">
 <pre><code id="a11y-test-code">tap "Play"
 expect (heardTypes (), "CONNECT LAUNCH ")</code></pre>
-        <p class="prose-body">
-          <code>tap</code> dispatches a real pointer press and release at the control's computed bounds (catching overlapping
-          hit targets), while <code>letters</code> checks the actual text drawn to the canvas. Disabled or closed controls are
-          omitted from the tree, so neither a user nor an AI agent can invoke an illegal action.
-        </p>
+        </div>
         <div class="visually-hidden" aria-live="polite" id="a11y-live-region"></div>
       </div>
     </div>
@@ -388,22 +408,24 @@ expect (heardTypes (), "CONNECT LAUNCH ")</code></pre>
     <div class="prose-callout">
       <p>
         <strong>Current accessibility scope:</strong> The GPUI host maps the UI-machine tree to AccessKit (NSAccessibility on macOS,
-        UI Automation on Windows, AT-SPI on Linux) today. Mapping the same tree on WinUI, SwiftUI, and VS Code hosts, emitting
-        it from direct view code, and shipping an external MCP server over <code>semantics</code>/<code>act</code> remain active delivery work.
+        UI Automation on Windows, AT-SPI on Linux) today. Mapping the same tree on WinUI, SwiftUI, and VS Code hosts, emitting it
+        from direct view code, and shipping an external MCP server over <code>semantics</code>/<code>act</code> remain active delivery work.
       </p>
     </div>
   </div>
 </section>
 
-<!-- COMPARISON: FLUTTER, REACT NATIVE, COMPOSE MULTIPLATFORM -->
-<section id="compare" class="prose-section">
+<!-- BAND 5: COMPARISON — CMP, FLUTTER, REACT NATIVE -->
+<section id="compare" class="prose-section prose-section-alt">
   <div class="site-container">
-    <p class="prose-eyebrow">Positioning &middot; Framework comparison</p>
-    <h2 class="prose-h2">Where Osprey Native stands among CMP, Flutter, and React Native</h2>
-    <p class="prose-lead">
-      You should not have to choose between authentic platform widgets and a GPU canvas &mdash; or accept a JavaScript engine
-      or JVM on desktop just to share code.
-    </p>
+    <div class="prose-header-center">
+      <p class="prose-eyebrow">Framework Comparison</p>
+      <h2 class="prose-h2">Positioned beside CMP, Flutter, and React Native</h2>
+      <p class="prose-lead">
+        Keep real native controls when users expect OS fidelity, and switch to a GPU canvas when your product demands custom pixels &mdash;
+        without a JavaScript engine or desktop JVM.
+      </p>
+    </div>
 
     <div tabindex="0" role="region" aria-labelledby="compare-caption" class="table-wrapper">
       <table class="compare-table">
@@ -471,113 +493,36 @@ expect (heardTypes (), "CONNECT LAUNCH ")</code></pre>
       </table>
     </div>
 
-    <h3 class="prose-h3" style="margin-block-start: var(--space-5);">Where Osprey Native pulls ahead of Compose Multiplatform (CMP)</h3>
-    <div class="prose-grid-3" style="margin-block-start: var(--space-2);">
-      <article class="prose-card prose-card-native">
-        <span class="badge badge-native">&#9635; Beyond Skia-Only UI</span>
-        <h4 class="prose-h3">True native controls on iOS, macOS &amp; Windows</h4>
-        <p class="prose-body">
-          CMP draws shared UI on Skia and hosts desktop in a JVM/Swing shell. Osprey Native renders real SwiftUI on Apple
-          and real WinUI on Windows &mdash; and lets you switch to FerroUI's GPU canvas whenever you want pixel-identical scenes.
-        </p>
-      </article>
-
-      <article class="prose-card prose-card-canvas">
-        <span class="badge badge-canvas">&#9670; No JVM &middot; No Kotlin Lock-In</span>
-        <h4 class="prose-h3">AOT native everywhere, in your flavor</h4>
-        <p class="prose-body">
-          No JVM startup cost on desktop, no JSON bridge, and no single-language mandate. Teams write in Default Osprey, ML,
-          Python, or TypeScript flavor (with Dart coming soon) over one lease-checked shared-memory ABI.
-        </p>
-      </article>
-
-      <article class="prose-card prose-card-verified">
-        <span class="badge badge-verified">&#10003; Built for AI Agents</span>
-        <h4 class="prose-h3">Structural accessibility + effect-mocked tests</h4>
-        <p class="prose-body">
-          UI machines make roles and live labels structural rather than optional modifiers, so screen readers, headless
-          <code>@osprey/uitest</code> runs, and AI agents share the exact same verified interaction surface.
-        </p>
-      </article>
+    <div class="cmp-highlights">
+      <h3 class="prose-h3">Where Osprey Native pulls ahead of Compose Multiplatform (CMP)</h3>
+      <div class="prose-grid-3" style="margin-block-start: 1.25rem;">
+        <article class="prose-card">
+          <h4 class="prose-h3">True native controls on Apple &amp; Windows</h4>
+          <p class="prose-body">
+            CMP paints shared UI onto Skia and hosts desktop in a JVM/Swing shell. Osprey Native renders real SwiftUI on macOS/iOS
+            and real WinUI on Windows &mdash; or switches to FerroUI's GPU canvas whenever you want identical pixels.
+          </p>
+        </article>
+        <article class="prose-card">
+          <h4 class="prose-h3">No JVM on desktop, no Kotlin lock-in</h4>
+          <p class="prose-body">
+            Every native target compiles AOT to machine code with a zero-serialization shared-memory ABI. Teams write in Default Osprey,
+            ML, Python, or TypeScript flavor today, with Dart flavor coming soon.
+          </p>
+        </article>
+        <article class="prose-card">
+          <h4 class="prose-h3">Structural accessibility for AI agents</h4>
+          <p class="prose-body">
+            UI machines make roles and live labels structural instead of optional modifiers, so screen readers, headless
+            <code>@osprey/uitest</code> runs, and AI agents share one verified interaction surface.
+          </p>
+        </article>
+      </div>
     </div>
   </div>
 </section>
 
-<!-- REAL APPS GALLERY -->
-<section id="apps" class="prose-section">
-  <div class="site-container">
-    <p class="prose-eyebrow">Proof &middot; Real applications running today</p>
-    <h2 class="prose-h2">One codebase across macOS, Windows, iOS, Android, and Web</h2>
-    <p class="prose-lead">
-      Every capture below comes from a real Osprey Native application built and tested in this repository &mdash; spanning
-      SwiftUI, WinUI, Android native views, FerroUI / GPUI GPU canvases, and WebAssembly.
-    </p>
-
-    <div class="gallery-grid">
-      <figure class="capture-figure">
-        <div class="capture-media">
-          <img src="/assets/images/windows-storage.png" alt="Osprey Storage running in WinUI on Windows showing folder sizes and native buttons" width="1164" height="741" loading="lazy">
-        </div>
-        <figcaption>
-          <strong>Storage &middot; Windows (WinUI)</strong>
-          Real WinUI controls and native buttons over shared Osprey logic.
-        </figcaption>
-      </figure>
-
-      <figure class="capture-figure">
-        <div class="capture-media">
-          <img src="/assets/images/macos-synth.png" alt="Prism Synth native macOS app with signal flow editor and piano keyboard" width="2304" height="1512" loading="lazy">
-        </div>
-        <figcaption>
-          <strong>Prism Synth &middot; macOS (GPU Canvas)</strong>
-          Patch studio and keyboard rendered on GPU canvas with <code>@osprey/synth</code>.
-        </figcaption>
-      </figure>
-
-      <figure class="capture-figure">
-        <div class="capture-media">
-          <img src="/assets/images/tally-ios.webp" alt="Tally counter app on iOS drawn with SwiftUI" width="600" height="498" loading="lazy">
-        </div>
-        <figcaption>
-          <strong>Tally &middot; iOS (SwiftUI)</strong>
-          One Osprey screen drawn natively with SwiftUI controls.
-        </figcaption>
-      </figure>
-
-      <figure class="capture-figure">
-        <div class="capture-media">
-          <img src="/assets/images/tally-android.webp" alt="Tally counter app on Android drawn with Android native views" width="600" height="500" loading="lazy">
-        </div>
-        <figcaption>
-          <strong>Tally &middot; Android (Native Views)</strong>
-          The exact same shared-memory rows drawn with Android's own views.
-        </figcaption>
-      </figure>
-
-      <figure class="capture-figure">
-        <div class="capture-media">
-          <img src="/assets/images/windows-flock.png" alt="Flock boids simulation running on Windows with 5,000 sprites" width="1168" height="745" loading="lazy">
-        </div>
-        <figcaption>
-          <strong>Flock &middot; Windows (Scene Rows)</strong>
-          Streams 5,000 live sprites across the bridge in ~7 ms/frame.
-        </figcaption>
-      </figure>
-
-      <figure class="capture-figure">
-        <div class="capture-media">
-          <img src="/assets/images/web-bank.png" alt="Talon Bank running in Chromium via WebAssembly" width="1440" height="960" loading="lazy">
-        </div>
-        <figcaption>
-          <strong>Talon Bank &middot; Web (WebAssembly)</strong>
-          The same Osprey Native source compiled to <code>wasm32</code> in Chromium.
-        </figcaption>
-      </figure>
-    </div>
-  </div>
-</section>
-
-<!-- BLOG GRID -->
+<!-- BAND 6: EDITORIAL BLOG GRID -->
 <section id="blog" class="prose-section">
   <div class="site-container">
     <div class="section-header-row">
@@ -591,9 +536,8 @@ expect (heardTypes (), "CONNECT LAUNCH ")</code></pre>
 
     <div class="prose-callout">
       <p>
-        <strong>Maturity &amp; honest boundaries:</strong> Osprey Native is <strong>actively evolving</strong>. Try it on your
-        projects, validate it against your workload, and assess the risks before relying on it in production. Common host
-        conformance across all hosts remains active delivery work (plan 0037).
+        <strong>Osprey Native is actively evolving.</strong> Try it on your projects, validate it against your workload, and
+        assess the risks before relying on it in production. Common host conformance across all hosts remains active delivery work (plan 0037).
       </p>
     </div>
   </div>
