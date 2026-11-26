@@ -15,10 +15,14 @@
 // timing, never the bytes, so captured/differential output is unaffected. It is
 // also why the guard below needs no flush: every whole line is already out.
 // Here, in the memory backend every program links, rather than in a runtime
-// unit a program may not pull in.
+// unit a program may not pull in. Not on Windows: its C runtime has no line
+// buffering (_IOLBF is _IOFBF there) and takes a size of 0 as an invalid
+// parameter, which fail-fasts every program and app DLL at load (0xC0000409).
+#if !defined(_WIN32)
 __attribute__((constructor)) static void osprey_stdio_lbf(void) {
   setvbuf(stdout, NULL, _IOLBF, 0);
 }
+#endif
 
 #if (defined(__APPLE__) || defined(__linux__)) && !defined(OSP_SYMBOLIC)
 #include <pthread.h>
