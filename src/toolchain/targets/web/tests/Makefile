@@ -23,8 +23,9 @@ bank: _bank-web $(BANK_E2E_NODE_DEPS)
 	  test ! -e "$$run/hold" || { echo "FAIL: bank e2e left its hold marker behind"; status=1; }; \
 	  rm -f "$$run/ledger.db" "$$run/ledger.db-journal" "$$run/ledger.db-wal" "$$run/ledger.db-shm"; rmdir "$$run" || status=1; exit $$status
 
-## cms: Browser end-to-end journey for the Git CMS editor (src/osprey/examples/cms): real Chromium
-##      drives the Osprey Native editor: tree, selection, syntax colours, blocks, save, publish.
+## cms: Browser end-to-end journeys for the Git CMS (src/osprey/examples/cms): real Chromium drives
+##      the Osprey Native editor (tree, selection, syntax colours, blocks, ribbon, save, publish, upload,
+##      delete) and an author's post from the editor to the built Eleventy site.
 cms: export PATH := $(WASM_PATH_PREFIX)$(PATH)
 cms: build _runtime_wasm $(CMS_E2E_NODE_DEPS)
 	cd src/osprey/examples/cms/tests && npx playwright install chromium && OSPREY="$(CURDIR)/$(BIN)" npx playwright test

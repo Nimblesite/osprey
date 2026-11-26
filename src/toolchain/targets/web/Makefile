@@ -26,8 +26,9 @@ bank: _bank-web
 	  fi) & \
 	  ./$(BIN) src/osprey/examples/talon/backend --run
 
-## cms: Build and run the Git CMS (src/osprey/examples/cms) on a fresh throwaway site with a bare
-##      "published" remote: the Osprey Native editor at http://127.0.0.1:4397 (Ctrl-C to stop).
+## cms: Build and run the Git CMS (src/osprey/examples/cms) on fresh throwaway sites, each with a bare
+##      "published" remote: the fixture at http://127.0.0.1:4397 and a copy of the Eleventy sample
+##      site at http://127.0.0.1:4398 (Ctrl-C to stop).
 cms: export PATH := $(WASM_PATH_PREFIX)$(PATH)
 cms: build _runtime_wasm $(CMS_E2E_NODE_DEPS)
 	@(sleep 20; command -v open >/dev/null && open http://127.0.0.1:4397) &
