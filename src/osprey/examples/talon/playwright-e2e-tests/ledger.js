@@ -38,7 +38,13 @@ async function start() {
   mkdirSync(RUN_DIR, { recursive: true });
   writeFileSync(HOLD, '');
   const running = launch();
+  let stopping = false;
+  // A server that dies mid-journey is otherwise silent: the browser only sees refused requests.
+  running.exited.then((code) => {
+    if (!stopping) console.error(`FAIL: the Talon server exited (${code ?? running.child.signalCode}) while serving:\n${running.output()}`);
+  });
   const stop = async () => {
+    stopping = true;
     rmSync(HOLD, { force: true });
     await Promise.race([running.exited, new Promise((resolve) => setTimeout(resolve, 10_000))]);
     if (running.child.exitCode === null && running.child.signalCode === null) running.child.kill('SIGTERM');

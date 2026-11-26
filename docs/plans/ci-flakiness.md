@@ -36,6 +36,14 @@ Root-cause fixes only: no retries, no wider timeouts used to hide a race, no ski
   - `TALON_API_PORT`, `TALON_HOLD` and `TALON_DB` give each run free ports, its own hold marker and its own database.
   - Only the process that created the run directory removes it.
   - `make -C src/toolchain/targets/web/tests bank` passed 15 of 15, and the journey passed 2 of 2.
+- [ ] **Talon Bank iOS journey: the ledger server dies mid-run.** Found by the 2026-11-26 hunt in CI run 45541374510, which went green on attempt 3.
+  - On attempt 1, the step "Operation refused" gave up after 30 s and the UI showed "Bank data unavailable".
+  - On attempt 2, job 138973933972 passed goldens 1–4, then went silent for 13 minutes until the 22-minute timeout.
+  - Suspect: `hold ()` in `talon/backend/main.ospml` stops serving on any `readFile` error, not only on a missing marker.
+  - `ledger.js` now prints the server's output when it exits while serving, so the next failure names its cause.
+- [ ] **VS Code workbench-browser profiler tests** (run 44700948779, green on attempt 3):
+  - Attempt 1 hit a 3000 ms locator timeout at `vscode-extension/test/suite/profiler-kit.ts:53`.
+  - Attempt 2 found the Library button still disabled after a 5 s idle wait at `profiler-kit.ts:21`.
 
 ## Open issues blocking PR #428 (2026-11-23 hand-off)
 
