@@ -16,7 +16,7 @@ module View
     export exists model wanted =
         doc = jsonParse model.items ?: 0
         found = containsId doc 0 (jsonLength doc "") wanted
-        freed = jsonFree doc ?: 0
+        _freed = jsonFree doc ?: 0
         found
 
     containsId doc index count wanted = match index >= count
@@ -68,5 +68,5 @@ module View
         doc = jsonParse model.items ?: 0
         result = rows model doc 0 (jsonLength doc "") "" 0
         output = document model result (detail model doc 0 (jsonLength doc ""))
-        freed = jsonFree doc ?: 0
+        _freed = jsonFree doc ?: 0
         output

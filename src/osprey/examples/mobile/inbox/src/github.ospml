@@ -14,7 +14,7 @@ module Github
 
     (** Whether `source` is an owner/repository name: two components of letters, digits, hyphens, underscores or dots, at most 100 characters each, neither `.` nor `..`. *)
     export validRepository source = match indexOf source "/"
-        Error why => false
+        Error _ => false
         Success slash => component (take source slash) && component (drop source ((satAdd slash 1) ))
 
     (** The GitHub API URL of `repo`'s first 30 open issues. *)
@@ -63,7 +63,7 @@ module Github
             Error why => Error(message = "GitHub returned invalid JSON: ${why}")
             Success doc =>
                 result = parseDocument doc
-                freed = jsonFree doc ?: 0
+                _freed = jsonFree doc ?: 0
                 result
 
     (** Why the HTTP answer `event` failed, in words: the network error, or GitHub's status and message. *)

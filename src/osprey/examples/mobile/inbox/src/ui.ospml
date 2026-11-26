@@ -140,5 +140,5 @@ module Ui
         Success doc =>
             body = screen doc
             tree = group "scroll" "screen" (group "column" "page" body)
-            freed = jsonFree doc ?: 0
+            _freed = jsonFree doc ?: 0
             tree

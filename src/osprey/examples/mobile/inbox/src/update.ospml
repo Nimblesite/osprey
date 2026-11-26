@@ -24,7 +24,7 @@ module Update
     export initial () = result (Model::initial ()) (perform Storage::Requests.sql (Storage::schema ()))
 
     fetch model = match checkedAdd (nextSequence model) 1
-        Error why => failure model "Request counter exhausted. Close and reopen the app."
+        Error _ => failure model "Request counter exhausted. Close and reopen the app."
         Success sequence =>
             prepared = Model::set (Model::set (Model::set model "seq" (toString sequence)) "loading" "true") "error" ""
             pending = Model::set (Model::set prepared "pending" "fetch:${sequence}:${model.repo}") "status" "Refreshing ${model.repo}…"
@@ -33,7 +33,7 @@ module Update
     persist model = match model.dbReady == "true"
         false => unchanged (Model::set model "storageError" "SQLite is unavailable; these changes are only in memory.")
         true => match checkedAdd (nextSequence model) 1
-            Error why => unchanged (Model::set model "storageError" "Request counter exhausted; changes were not saved. Close and reopen the app.")
+            Error _ => unchanged (Model::set model "storageError" "Request counter exhausted; changes were not saved. Close and reopen the app.")
             Success sequence =>
                 pending = Model::set (Model::set model "seq" (toString sequence)) "write" "save:${sequence}"
                 result pending (perform Storage::Requests.sql (Storage::save pending))
@@ -59,7 +59,7 @@ module Update
         true =>
             doc = jsonParse event ?: 0
             count = jsonLength doc "rows"
-            freed = jsonFree doc ?: 0
+            _freed = jsonFree doc ?: 0
             match count
                 0 => fetch (ready model)
                 1 => restore model (eventValue event "rows[0].value")

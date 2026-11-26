@@ -20,7 +20,7 @@ module Annotations
     export get source id =
         doc = jsonParse source ?: 0
         found = find doc id 0 (jsonLength doc "")
-        freed = jsonFree doc ?: 0
+        _freed = jsonFree doc ?: 0
         found
 
     row id note priority = Json::obj (Json::strField "id" id + "," + Json::strField "note" note + "," + Json::strField "priority" priority)
@@ -41,7 +41,7 @@ module Annotations
         output = match note == "" && priority == "normal"
             true => Json::arr (drop rest 1)
             false => Json::arr (row id note priority + rest)
-        freed = jsonFree doc ?: 0
+        _freed = jsonFree doc ?: 0
         output
 
     validRow doc index =
@@ -60,5 +60,5 @@ module Annotations
         doc = jsonParse source ?: 0
         count = jsonLength doc ""
         existing = find doc id 0 count
-        freed = jsonFree doc ?: 0
+        _freed = jsonFree doc ?: 0
         count < 200 || existing.note != "" || existing.priority != "normal"

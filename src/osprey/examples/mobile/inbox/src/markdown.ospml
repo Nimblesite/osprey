@@ -95,7 +95,7 @@ module Markdown
 
     line s = match indexOf s "\n"
         Success i => Cut(head = take s i, tail = drop s (satAdd i 1))
-        Error message => Cut(head = s, tail = "")
+        Error _ => Cut(head = s, tail = "")
 
     flushParagraph doc = match length doc.paragraph == 0
         true => doc
