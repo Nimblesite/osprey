@@ -431,8 +431,9 @@ static const char *const WS_CONNECTION_SPELLINGS[] = {
     "Connection: Upgrade",             "Connection: upgrade",
     "connection: keep-alive, Upgrade", "CONNECTION: KEEP-ALIVE, UPGRADE",
     "Connection:\tupgrade  ",          "Connection: keep-alive,upgrade"};
-static const char *const WS_KEY_SPELLINGS[] = {"Sec-WebSocket-Key", "sec-websocket-key",
-                                               "SEC-WEBSOCKET-KEY", "Sec-WebSocket-Key:  "};
+static const char *const WS_KEY_SPELLINGS[] = {
+    WS_SAMPLE_KEY_LINE, "sec-websocket-key: " WS_SAMPLE_KEY "\r\n",
+    "SEC-WEBSOCKET-KEY: " WS_SAMPLE_KEY "\r\n", "Sec-WebSocket-Key:   " WS_SAMPLE_KEY "\r\n"};
 #define WS_SPELLINGS(list) (sizeof(list) / sizeof((list)[0]))
 
 // Every combination of those spellings is a handshake, answered with the same
@@ -442,8 +443,8 @@ static void test_handshake_spellings(void) {
   for (size_t u = 0; u < WS_SPELLINGS(WS_UPGRADE_SPELLINGS); u++) {
     for (size_t c = 0; c < WS_SPELLINGS(WS_CONNECTION_SPELLINGS); c++) {
       for (size_t k = 0; k < WS_SPELLINGS(WS_KEY_SPELLINGS); k++) {
-        snprintf(fields, sizeof(fields), "%s\r\n%s\r\n%s: %s\r\n", WS_UPGRADE_SPELLINGS[u],
-                 WS_CONNECTION_SPELLINGS[c], WS_KEY_SPELLINGS[k], WS_SAMPLE_KEY);
+        snprintf(fields, sizeof(fields), "%s\r\n%s\r\n%s", WS_UPGRADE_SPELLINGS[u],
+                 WS_CONNECTION_SPELLINGS[c], WS_KEY_SPELLINGS[k]);
         int fd = ws_raw_connect(WS_LIVE_PORT);
         ws_send_upgrade_fields(fd, fields);
         assert(ws_read_reply(fd, headers, sizeof(headers)) && "a valid upgrade got no reply");

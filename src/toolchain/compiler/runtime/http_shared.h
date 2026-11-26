@@ -113,6 +113,30 @@ char *base64_encode(const unsigned char *data, size_t input_length);
 char *generate_websocket_key(void);
 int64_t get_next_id(void);
 
+// One field line of an HTTP head: its name before the colon, and its value after
+// it with the optional whitespace trimmed (RFC 9110 5.5). Both point into the
+// caller's head and are not terminated [HTTP-FIELDS].
+typedef struct {
+  const char *name;
+  size_t name_len;
+  const char *value;
+  size_t value_len;
+} HttpField;
+
+// The first optional whitespace at `start` left off, and the last before `end`.
+const char *http_skip_ows(const char *start, const char *end);
+const char *http_trim_ows(const char *start, const char *end);
+// Whether `length` bytes at `text` spell `expected`, the same ASCII letters in any case.
+bool http_text_is(const char *text, size_t length, const char *expected);
+// The next field line at or after *cursor in a head of `length` bytes. A line
+// ends at CRLF, or where the head ends for its last line; the blank line ends
+// the field section. A line without a colon, the request or status line, is
+// passed over. Nothing past `length` is read.
+bool http_next_field(const char *head, size_t length, size_t *cursor, HttpField *field);
+// Whether a comma-separated list (RFC 9110 5.6.1) lists `token` as a whole
+// item, in any case.
+bool http_value_lists(const char *value, size_t length, const char *token);
+
 // A handle an HTTP server could be registered under.
 static inline bool http_valid_server_id(int64_t server_id) {
   return server_id > 0 && server_id < MAX_SERVERS;
@@ -177,6 +201,24 @@ typedef struct {
 WsEvent ws_stream_next(WsStream *stream);
 void ws_stream_release(WsStream *stream);
 char *create_websocket_handshake_response(const char *key);
+
+// What an upgrade request asks for, read as fields (http_next_field) rather
+// than found as substrings (#434) [BUILTIN-WEBSOCKET-HANDSHAKE]: RFC 9110 5.1
+// makes every field name case-insensitive; RFC 6455 4.2.1 wants `Upgrade` to
+// list `websocket` and `Connection` to list the token `Upgrade`, in any case
+// and among any others. Repeated lines all count. `key` points into the head,
+// key_len bytes, and is "" when the request has none.
+typedef struct {
+  bool upgrade;    // Upgrade lists websocket
+  bool connection; // Connection lists upgrade
+  const char *key; // the first Sec-WebSocket-Key
+  size_t key_len;
+} HttpUpgrade;
+
+HttpUpgrade http_read_upgrade(const char *head, size_t length);
+// The 101 of a complete upgrade, or NULL when it is not a handshake: no
+// `Upgrade` connection option, or a key that is not a key.
+char *create_websocket_accept_response(const HttpUpgrade *upgrade);
 
 // The value of one hexadecimal digit, either case, or -1 for any other byte.
 static inline int hex_digit_value(char c) {

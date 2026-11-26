@@ -210,19 +210,27 @@ static void serve_messages(const WebSocketServer *server, int fd) {
   ws_stream_release(stream);
 }
 
-// Sends the handshake's answer and serves the connection while it lives.
-static void serve_upgrade(WebSocketServer *server, int fd, char *request) {
-  if (!strstr(request, "Upgrade: websocket") || !strstr(request, "Connection: Upgrade")) {
+// An upgrade request that is not a handshake is answered 400, as the HTTP
+// server answers a request it cannot read, rather than left waiting or served.
+static void refuse_upgrade(int fd) {
+  static const char refusal[] =
+      "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+  (void)osp_socket_send(fd, refusal, sizeof(refusal) - 1);
+}
+
+// Sends the handshake's answer and serves the connection while it lives. A
+// request that asks for websocket but is not a handshake is refused.
+static void serve_upgrade(WebSocketServer *server, int fd, const char *request) {
+  HttpUpgrade upgrade = http_read_upgrade(request, strlen(request));
+  if (!upgrade.upgrade) {
     return;
   }
-  char *key_line = strstr(request, "Sec-WebSocket-Key: ");
-  char *key_end = key_line ? strstr(key_line, "\r\n") : NULL;
-  if (!key_end) {
+  char *response = create_websocket_accept_response(&upgrade);
+  if (!response) {
+    refuse_upgrade(fd);
     return;
   }
-  *key_end = '\0';
-  char *response = create_websocket_handshake_response(key_line + strlen("Sec-WebSocket-Key: "));
-  if (response && osp_socket_send(fd, response, strlen(response)) > 0) {
+  if (osp_socket_send(fd, response, strlen(response)) > 0) {
     WebSocket *ws = register_connection(server, fd);
     if (ws) {
       serve_messages(server, fd);
