@@ -49,6 +49,9 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .osp-editor-feedback:empty { display: none; }
 .osp-editor-inline .osp-editor-label, .osp-editor-inline .osp-editor-mirror { display: none; }
 .osp-editor-inline textarea { color: var(--osp-text); resize: none; padding: 12px 0; border: 0; box-shadow: none; width: 100%; background: transparent; }
+/* A compact editor is as tall as its text, not a document page. */
+.osp-editor-inline .osp-editor-surface, .osp-editor-inline textarea { min-height: 0; }
+.osp-editor-inline textarea { field-sizing: content; }
 .osp-editor-inline textarea::placeholder { font-style: italic; color: var(--osp-muted); }
 .osp-editor-feedback li { margin-top: 8px; }
 .osp-board { position: relative; width: 100%; height: min(70vh, 900px); min-height: 320px; overflow: hidden; background: var(--osp-board, #202723); }

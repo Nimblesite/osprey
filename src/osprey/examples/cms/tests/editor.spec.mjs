@@ -48,6 +48,8 @@ async function search(page) {
 async function highlighted(page) {
   await row(page, POST).click();
   await expect(page.getByRole("textbox", { name: "h1" })).toHaveValue("First post");
+  const heading = await page.getByRole("textbox", { name: "h1" }).boundingBox();
+  expect(heading.height).toBeLessThan(90);
   await expect(page.locator(".osp-frame-code")).toBeVisible();
   const coloured = await runs(page);
   expect(coloured.map(([text]) => text).join("")).toBe('fn main() = print("hi")');
