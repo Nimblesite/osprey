@@ -1,6 +1,6 @@
 # KLEE code generation
 
-**Status: symbolic codegen (`compile_program_symbolic`) and the runtime bitcode (`_runtime_klee`) are implemented; the synthetic entry point is not.** [Plan 0034](../../plans/0034-symbolic-execution.md) tracks delivery. The tool that consumes this output is specified in [Symbolic bug hunting with KLEE](../tooling/SymbolicExecution.md).
+**Status: symbolic codegen (`compile_program_symbolic`) and the runtime bitcode (`_runtime_klee`) are implemented; the synthetic entry point is not.** [Plan 0045](../../plans/0045-compile-time-ownership.md#symbolic-bug-hunting) tracks delivery. The tool that consumes this output is specified in [Symbolic bug hunting with KLEE](../tooling/SymbolicExecution.md).
 
 This document owns the compiler's side of symbolic bug hunting: the symbolic code generation mode, the synthetic entry point for function-level exploration, and the runtime bitcode archive. The mock C library, the `osprey hunt` command, findings, replay and the corpus are tooling contracts.
 

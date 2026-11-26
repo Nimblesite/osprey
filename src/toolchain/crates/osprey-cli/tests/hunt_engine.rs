@@ -1,7 +1,8 @@
 //! Real-engine `osprey hunt` gates over `src/osprey/tests/hunt/` [SYMEX-CLI],
 //! [SYMEX-CRASH-GATE]. Every test needs KLEE and the KLEE runtime bitcode, so
 //! each is ignored by default and run by hand through `make _test_hunt`,
-//! `make _test_hunt_clean` and `make _test_hunt_crashes` (plan 0034).
+//! `make _test_hunt_clean` and `make _test_hunt_crashes` (the symbolic bug
+//! hunting section of plan 0045).
 //!
 //! An expectation file lists one finding per line as `<class> <file>:<line>`,
 //! or holds the single word `none`; blank lines and `#` comments are ignored.
