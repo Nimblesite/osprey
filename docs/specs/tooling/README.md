@@ -14,3 +14,4 @@ Language server, editor, documentation and test tools.
 - [Symbolic bug hunting with KLEE](SymbolicExecution.md)
 - [Math to code [MATH-CODE]](MathToCode.md): native Osprey formulas, source-derived Lean proofs, and the Lean importer.
 - [IR to Lean [IR-LEAN]](IrToLean.md): the compiler's IR read through MLIR into a Lean semantics, the ledger theorem for every run, and theorems about emitted functions.
+- [Macro tooling [LSP-MACRO]](MacroTooling.md): diagnostics, navigation, expansion views and debugging for code that uses macros.

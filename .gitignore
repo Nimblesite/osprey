@@ -81,3 +81,6 @@ src/osprey/examples/llms/gpt2/weights/
 
 # Playwright MCP page snapshots (tool output, never source)
 .playwright-mcp/
+
+# Downloaded research papers: fetched from the addresses in each research README, never committed
+/docs/research/**/papers/

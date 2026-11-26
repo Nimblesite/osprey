@@ -14,3 +14,4 @@ Target lowering, generated ABIs and debug artifacts.
 - [iOS code generation](iOSCodegen.md)
 - [Embedded targets [TARGET-EMBEDDED]](EmbeddedTargets.md)
 - [KLEE code generation](KleeCodegen.md)
+- [Expansion engine [EXPAND]](ExpansionEngine.md): the language-neutral engine that runs macros, enforces hygiene and validation, and caches expansions.
