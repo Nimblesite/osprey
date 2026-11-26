@@ -408,5 +408,8 @@ fn a_flavor_override_lints_the_source_under_the_flavor_it_was_compiled_with() {
         .filter(|warning| warning.rule == "closing-run")
         .collect();
     let _ = std::fs::remove_dir_all(&dir);
-    assert!(runs.is_empty(), "Python is exempt from the closing-run lint: {runs:?}");
+    assert!(
+        runs.is_empty(),
+        "Python is exempt from the closing-run lint: {runs:?}"
+    );
 }

@@ -232,10 +232,11 @@ fn a_json_line_on_stdin_becomes_outputs_and_an_exit_status() {
     }
 }
 
-/// The compiler answers which namespaces and modules each source declares, in both
-/// flavors, nested and repeated across files. [EDITOR-MODULE-EXPLORER]
+/// The compiler answers which namespaces, modules and members (functions, externs,
+/// types, effects, variables) each source declares, in both flavors, nested and
+/// repeated across files. [EDITOR-MODULE-EXPLORER]
 #[test]
-fn the_source_graph_names_each_sources_namespaces_and_modules() {
+fn the_source_graph_names_each_sources_namespaces_modules_and_members() {
     let dir = temp_dir("source_graph_declarations");
     std::fs::create_dir_all(dir.join("src")).expect("create project");
     for (file, text) in [
@@ -245,11 +246,11 @@ fn the_source_graph_names_each_sources_namespaces_and_modules() {
         ),
         (
             "src/main.ospml",
-            "namespace app\n\nmodule Outer\n    export module Inner\n        export one = 1\n\nprint \"${Outer::Inner::one}\"\n",
+            "namespace app\n\nmodule Outer\n    export module Inner\n        export one = 1\n    export keep x = x\n\neffect Counter\n    increment : int => Unit\n\nlimit = 3\n\nprint \"${Outer::Inner::one} ${Outer::keep limit}\"\n",
         ),
         (
             "src/more.osp",
-            "namespace app;\n\nmodule Extra {\n    export fn two() = 2\n}\n",
+            "namespace app;\n\nmodule Extra {\n    export fn two() = 2\n    export type Shape = Circle | Square\n}\n\nextern fn strlen(s: string) -> int\n\nlet total = 0\n",
         ),
     ] {
         std::fs::write(dir.join(file), text).expect("write project file");
@@ -291,10 +292,23 @@ fn the_source_graph_names_each_sources_namespaces_and_modules() {
         ("module", "app::Outer::Inner", "main.ospml"),
         ("namespace", "app", "more.osp"),
         ("module", "app::Extra", "more.osp"),
+        ("variable", "app::Outer::Inner::one", "main.ospml"),
+        ("function", "app::Outer::keep", "main.ospml"),
+        ("effect", "app::Counter", "main.ospml"),
+        ("variable", "app::limit", "main.ospml"),
+        ("function", "app::Extra::two", "more.osp"),
+        ("type", "app::Extra::Shape", "more.osp"),
+        ("extern", "app::strlen", "more.osp"),
+        ("variable", "app::total", "more.osp"),
     ] {
         let want = (kind.to_owned(), name.to_owned(), file.to_owned(), true);
         assert!(found.contains(&want), "{want:?} missing from {found:?}");
     }
+    assert_eq!(
+        found.len(),
+        13,
+        "statements and locals are not declarations: {found:?}"
+    );
 }
 
 /// `--warnings-as-errors` keeps the warning text and fails; the default stays

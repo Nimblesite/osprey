@@ -1,12 +1,12 @@
-// The Module Explorer [EDITOR-MODULE-EXPLORER]: each workspace project's namespaces,
-// modules and sources from the compiler's checked source graph, and its dependencies
+// The Module Explorer [EDITOR-MODULE-EXPLORER]: each workspace project's code tree
+// (folder, file, namespace, module, member) and sources from the compiler's checked source graph, and its dependencies
 // and verification findings from the Osprey package client. Nothing here resolves names or reads a manifest, and
 // a failed source shows its failure, never an empty tree.
 import { execFile } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 import {
-  commands, EventEmitter, RelativePattern, Selection, ThemeIcon, TreeItem, TreeItemCollapsibleState,
+  commands, EventEmitter, RelativePattern, Selection, ThemeColor, ThemeIcon, TreeItem, TreeItemCollapsibleState,
   Uri, window, workspace,
 } from "vscode";
 import type { Event, ExtensionContext, TreeDataProvider } from "vscode";
@@ -20,7 +20,7 @@ export const MANAGE_PACKAGES_COMMAND = "osprey.modules.managePackages";
 const GRAPH_TIMEOUT_MS = 120_000;
 const NO_LOCK_CODE = "tree.no-lock";
 
-/** One namespace or module a source declares. Lines are one-based, columns zero-based. */
+/** One namespace, module or member a source declares. Lines are one-based, columns zero-based. */
 export interface Declaration {
   readonly kind: string;
   readonly name: string;
@@ -41,6 +41,8 @@ export interface ModuleNode {
   readonly label: string;
   readonly parent?: ModuleNode;
   readonly icon?: string;
+  /** The theme colour id tinting `icon`. */
+  readonly color?: string;
   readonly description?: string;
   readonly tooltip?: string;
   /** Opens here when selected. */
@@ -78,27 +80,61 @@ function stateNode(parent: ModuleNode, key: string, label: string, detail: strin
   return { id: `${parent.id}/${key}`, parent, label, description: detail, tooltip: detail, icon };
 }
 
-function fileNode(parent: ModuleNode, root: string, file: string, line = 1, column = 0): ModuleNode {
+function fileNode(parent: ModuleNode, root: string, file: string): ModuleNode {
   return {
     id: `${parent.id}/${file}`, parent, label: path.relative(root, file) || path.basename(file),
-    icon: "file-code", location: { file, line, column },
+    icon: "file-code", location: { file, line: 1, column: 0 },
   };
 }
 
-function declarationNodes(parent: ModuleNode, root: string, graph: SourceGraph): ModuleNode[] {
-  const names = [...new Set(graph.declarations.map((item) => item.name))].sort();
-  return names.map((name) => {
-    const homes = graph.declarations.filter((item) => item.name === name);
-    const first = homes[0];
-    const node: ModuleNode = {
-      id: `${parent.id}/${first.kind}:${name}`, parent, label: name,
-      icon: first.kind === "namespace" ? "symbol-namespace" : "symbol-module",
-      location: homes.length === 1 ? { file: first.source, line: first.line, column: first.column } : undefined,
-    };
-    return homes.length === 1
-      ? node
-      : attach(node, (self) => homes.map((home) => fileNode(self, root, home.source, home.line, home.column)));
-  });
+/** Codicon and theme colour per declaration kind, as the editor's outline colours symbols. */
+const KIND_ICONS: Readonly<Record<string, readonly [string, string]>> = {
+  namespace: ["symbol-namespace", "symbolIcon.namespaceForeground"],
+  module: ["symbol-module", "symbolIcon.moduleForeground"],
+  function: ["symbol-function", "symbolIcon.functionForeground"],
+  extern: ["symbol-interface", "symbolIcon.interfaceForeground"],
+  type: ["symbol-class", "symbolIcon.classForeground"],
+  effect: ["symbol-event", "symbolIcon.eventForeground"],
+  variable: ["symbol-variable", "symbolIcon.variableForeground"],
+};
+
+const byLabel = (a: ModuleNode, b: ModuleNode) => a.label.localeCompare(b.label);
+const isScope = (item: Declaration) => item.kind === "namespace" || item.kind === "module";
+
+function declarationNode(parent: ModuleNode, item: Declaration, scope: string): ModuleNode {
+  const label = scope ? item.name.slice(scope.length + 2) : item.name;
+  const [icon, color] = KIND_ICONS[item.kind] ?? ["symbol-misc", undefined];
+  return {
+    id: `${parent.id}/${item.kind}:${label}`, parent, label, icon, color, tooltip: `${item.kind} ${item.name}`,
+    location: { file: item.source, line: item.line, column: item.column },
+  };
+}
+
+/** One file's declarations nested by qualified name; a scope repeated in the file is one node. */
+function declarationNodes(parent: ModuleNode, items: readonly Declaration[]): ModuleNode[] {
+  const scopes = new Map(items.filter(isScope).reverse().map((item) => [item.name, item] as const));
+  const entries = [...scopes.values(), ...items.filter((item) => !isScope(item))];
+  const owner = (name: string) => [...scopes.keys()].filter((scope) => name.startsWith(`${scope}::`))
+    .reduce((best, scope) => (scope.length > best.length ? scope : best), "");
+  const build = (node: ModuleNode, scope: string): ModuleNode[] => entries
+    .filter((item) => owner(item.name) === scope)
+    .map((item) => attach(declarationNode(node, item, scope), (self) => (isScope(item) ? build(self, item.name) : [])))
+    .sort(byLabel);
+  return build(parent, "");
+}
+
+/** Folders first, then files with their declarations, below `depth` path segments of `root`. */
+function folderNodes(parent: ModuleNode, root: string, files: readonly string[], graph: SourceGraph, depth = 0): ModuleNode[] {
+  const segments = (file: string) => path.relative(root, file).split(path.sep);
+  const nested = files.filter((file) => segments(file).length > depth + 1);
+  const folders = [...new Set(nested.map((file) => segments(file)[depth]))].sort();
+  return [
+    ...folders.map((name) => attach({ id: `${parent.id}/${name}`, parent, label: name, icon: "folder" }, (self) =>
+      folderNodes(self, root, nested.filter((file) => segments(file)[depth] === name), graph, depth + 1))),
+    ...files.filter((file) => !nested.includes(file)).map((file) =>
+      attach(fileNode(parent, path.dirname(file), file), (self) =>
+        declarationNodes(self, graph.declarations.filter((item) => item.source === file)))).sort(byLabel),
+  ];
 }
 
 /** One package of `osprey-pkg tree --graph`, the editor's projection of the lock. */
@@ -186,9 +222,9 @@ export function projectChildren(
   }
   return [
     attach(group("modules", "Modules", "symbol-module"), (self) =>
-      graph.ok.declarations.length
-        ? declarationNodes(self, root, graph.ok)
-        : [stateNode(self, "none", "No namespaces or modules", "The compiler found none in this project.", "info")]),
+      graph.ok.sources.length
+        ? folderNodes(self, root, graph.ok.sources, graph.ok)
+        : [stateNode(self, "none", "No sources", "The compiler found none in this project.", "info")]),
     attach(group("sources", "Sources", "files"), (self) =>
       [...graph.ok.sources].sort().map((file) => fileNode(self, root, file))),
     dependencies,
@@ -229,7 +265,7 @@ export class ModuleExplorerProvider implements TreeDataProvider<ModuleNode> {
     item.id = node.id;
     item.description = node.description;
     item.tooltip = node.tooltip;
-    item.iconPath = node.icon ? new ThemeIcon(node.icon) : undefined;
+    item.iconPath = node.icon ? new ThemeIcon(node.icon, node.color ? new ThemeColor(node.color) : undefined) : undefined;
     item.contextValue = node.projectRoot ? "ospreyProject" : undefined;
     item.command = node.location
       ? { command: OPEN_SOURCE_COMMAND, title: "Open", arguments: [node.location] }
