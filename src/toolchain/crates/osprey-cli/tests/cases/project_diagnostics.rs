@@ -18,8 +18,8 @@ fn project_type_diagnostics_map_back_to_physical_source_lines() {
     let (project, _, _) = rewritten_fixture(
         "diagnostic_names",
         "main.ospml",
-        "serve : Ptr -> int ! [Ledger::Store, Metrics::MetricsFx, Api::Audit]",
-        "serve : Ptr -> int ! [Ledger::Store, Metrics::MetricsFx]",
+        "serve : Ptr -> int -> int ! [Ledger::Store, Metrics::MetricsFx, Api::Audit]",
+        "serve : Ptr -> int -> int ! [Ledger::Store, Metrics::MetricsFx]",
     );
     let output = run(&[arg(&project), "--check".to_string()]);
     assert_ne!(output.code, Some(0), "stdout={}", output.stdout);

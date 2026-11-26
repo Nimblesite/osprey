@@ -12,64 +12,26 @@ fn module_files_use_the_assembled_project_graph() {
 
 fn bank_warnings() -> Vec<(&'static str, &'static str, crate::model::Span)> {
     vec![
-        (
-            "namespace-folder-drift",
-            "namespace `bank` spans 5 folders; source paths do not change its identity",
-            (3, 0, 3, 14),
-        ),
-        (
-            "unused-pattern-binding",
-            "unused pattern binding `message`",
-            (14, 22, 14, 29),
-        ),
-        (
-            "unused-variable",
-            "unused variable `freed`",
-            (15, 12, 15, 17),
-        ),
-        (
-            "unused-pattern-binding",
-            "unused pattern binding `message`",
-            (17, 14, 17, 21),
-        ),
-        (
-            "unused-pattern-binding",
-            "unused pattern binding `message`",
-            (40, 14, 40, 21),
-        ),
-        (
-            "unused-pattern-binding",
-            "unused pattern binding `value`",
-            (41, 16, 41, 21),
-        ),
-        (
-            "unused-variable",
-            "unused variable `slept`",
-            (42, 12, 42, 17),
-        ),
-        (
-            "unused-variable",
-            "unused variable `listening`",
-            (62, 4, 62, 13),
-        ),
+        ("namespace-folder-drift", "namespace `bank` spans 5 folders; source paths do not change its identity", (3, 0, 3, 14)),
+        ("unused-pattern-binding", "unused pattern binding `message`", (14, 22, 14, 29)),
+        ("unused-variable", "unused variable `freed`", (15, 12, 15, 17)),
+        ("unused-pattern-binding", "unused pattern binding `message`", (17, 14, 17, 21)),
+        ("unused-pattern-binding", "unused pattern binding `message`", (43, 14, 43, 21)),
+        ("unused-pattern-binding", "unused pattern binding `value`", (44, 16, 44, 21)),
+        ("unused-variable", "unused variable `slept`", (45, 12, 45, 17)),
         ("unused-variable", "unused variable `held`", (68, 4, 68, 8)),
-        (
-            "unused-variable",
-            "unused variable `stopped`",
-            (69, 4, 69, 11),
-        ),
-        (
-            "unused-variable",
-            "unused variable `closed`",
-            (70, 4, 70, 10),
-        ),
-        ("unused-variable", "unused variable `made`", (77, 4, 77, 8)),
-        (
-            "unused-parameter",
-            "unused parameter `headers`",
-            (85, 29, 85, 36),
-        ),
-        ("unused-variable", "unused variable `seen`", (86, 4, 86, 8)),
+        ("unused-variable", "unused variable `stopped`", (69, 4, 69, 11)),
+        ("unused-variable", "unused variable `closed`", (70, 4, 70, 10)),
+        ("unused-variable", "unused variable `stopped`", (74, 4, 74, 11)),
+        ("unused-variable", "unused variable `closed`", (75, 4, 75, 10)),
+        ("unused-variable", "unused variable `report`", (76, 4, 76, 10)),
+        ("unused-variable", "unused variable `closed`", (82, 8, 82, 14)),
+        ("unused-variable", "unused variable `report`", (83, 8, 83, 14)),
+        ("unused-pattern-binding", "unused pattern binding `listening`", (87, 16, 87, 25)),
+        ("unused-variable", "unused variable `made`", (94, 4, 94, 8)),
+        ("unused-parameter", "unused parameter `headers`", (102, 29, 102, 36)),
+        ("unused-variable", "unused variable `seen`", (103, 4, 103, 8)),
+        ("unused-variable", "unused variable `reported`", (110, 12, 110, 20)),
         ("repeated-literal", "the literal `\"/api/accounts\"` is written 4 times in this file; name it once as a constant", (20, 4, 20, 82)),
         ("repeated-literal", "the literal `\"/api/deposit\"` is written 3 times in this file; name it once as a constant", (23, 4, 23, 131)),
         ("consecutive-print", "4 `print` calls in a row: join them into one interpolated `print`", (29, 4, 29, 141)),
@@ -140,7 +102,10 @@ fn project_diagnostics_map_resolution_and_type_errors_to_the_open_file() {
         "project-error",
     );
 
-    let ill_typed = main.replace("served = Metrics::track boot", "served = Metrics::track 42");
+    let ill_typed = main.replace(
+        "served = Metrics::track (\\() => boot port)",
+        "served = Metrics::track 42",
+    );
     assert_code(
         &ill_typed,
         &format!("file://{}", main_path.display()),
