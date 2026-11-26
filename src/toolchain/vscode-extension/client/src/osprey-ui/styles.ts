@@ -52,6 +52,10 @@ button, input, textarea, select { font: inherit; color: inherit; }
 /* A compact editor is as tall as its text, not a document page. */
 .osp-editor-inline .osp-editor-surface, .osp-editor-inline textarea { min-height: 0; }
 .osp-editor-inline textarea { field-sizing: content; }
+/* A document editor in a frame sized to the window fills it; the frame owns the height, so no grip. */
+.osp-framed[style*="100dvh"] > .osp-editor:not(.osp-editor-inline), .osp-framed[style*="100dvh"] > .osp-editor:not(.osp-editor-inline) > label { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.osp-framed[style*="100dvh"] > .osp-editor:not(.osp-editor-inline) .osp-editor-surface { flex: 1; min-height: 0; }
+.osp-framed[style*="100dvh"] > .osp-editor:not(.osp-editor-inline) textarea { height: 100%; resize: none; }
 .osp-editor-inline textarea::placeholder { font-style: italic; color: var(--osp-muted); }
 .osp-editor-feedback li { margin-top: 8px; }
 .osp-board { position: relative; width: 100%; height: min(70vh, 900px); min-height: 320px; overflow: hidden; background: var(--osp-board, #202723); }
@@ -75,7 +79,10 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .osp-framed[style*="--osp-frame-symbol-size:"] :is(.osp-symbol, .codicon):not(.osp-icon *) { font-size: var(--osp-frame-symbol-size) !important; }
 .osp-framed[style*="--osp-frame-button-padding:"] .osp-button { padding: var(--osp-frame-button-padding); width: 100%; }
 .osp-axis-horizontal > .osp-framed[data-frame-width="fill"] { flex: 1; min-width: 0; }
+/* A growing frame sized to the window still shares a row's width; its height stays the window's. */
+.osp-axis-horizontal > .osp-framed[data-frame-grow="true"][style*="100dvh"] { flex: 1 1 0 !important; }
 .osp-framed[style*="--osp-frame-row-padding:"] .osp-row { padding: var(--osp-frame-row-padding); border: var(--osp-frame-row-border); border-radius: var(--osp-frame-row-radius); background: transparent; box-shadow: none; }
+.osp-framed[style*="--osp-frame-row-padding:"] .osp-row:hover { background: color-mix(in srgb, var(--osp-accent) 7%, transparent); }
 .osp-framed[style*="--osp-frame-row-padding:"] .osp-row.osp-selected { background: var(--osp-brand-selection); }
 .osp-framed[style*="--osp-frame-row-padding:"] .osp-rows { gap: var(--osp-stack-gap, 6px); }
 .osp-framed[style*="--osp-frame-line-height:"] .osp-text { line-height: var(--osp-frame-line-height) !important; }

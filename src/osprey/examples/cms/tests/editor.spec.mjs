@@ -15,6 +15,10 @@ const LISTED = Object.keys(SITE).filter((file) => /^(content|media)\//.test(file
 const row = (page, key) => page.locator(`.osp-row[data-row-key="${key}"]`);
 const disk = (file) => readFileSync(path.join(BROWSER_SITE, file), "utf8");
 const brand = (token) => `var(--osp-brand-${token})`;
+/** The status pill whose words are exactly `words` (case-sensitive, so "Saved" never matches "Unsaved"). */
+const status = (page, words) => page.locator(".osp-frame-status").filter({ hasText: new RegExp(`(^|[^A-Za-z])${words}$`) });
+/** Whether the ribbon lights the tool named `label`. */
+const lit = (page, label) => page.getByRole("button", { name: label, exact: true }).evaluate((button) => button.closest(".osp-framed").getAttribute("style").includes("accentSoft"));
 
 /** Every coloured run of the code block, as [text, colour]. */
 async function runs(page) {
@@ -33,9 +37,13 @@ async function treeAndChrome(page) {
   expect(label.x - item.x).toBeLessThan(40);
   await expect(page.getByText("Search files", { exact: true }).filter({ visible: true })).toHaveCount(0);
   await expect(page.getByPlaceholder("Search files")).toHaveCount(1);
-  const pill = await page.locator(".osp-frame-status").boundingBox();
-  expect(pill.height).toBeLessThan(34);
-  await expect(page.getByRole("button", { name: /Publish/ })).toBeDisabled();
+  const live = status(page, "Live");
+  await expect(live).toBeVisible();
+  expect((await live.boundingBox()).height).toBeLessThan(34);
+  await expect(status(page, "Saved")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Publish/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Delete" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "New page" })).toHaveCount(2);
 }
 
 async function search(page) {
@@ -48,6 +56,10 @@ async function search(page) {
 async function highlighted(page) {
   await row(page, POST).click();
   await expect(page.getByRole("textbox", { name: "h1" })).toHaveValue("First post");
+  expect(await lit(page, "H1")).toBe(true);
+  expect(await lit(page, "Body")).toBe(false);
+  await expect(page.getByRole("button", { name: "Delete" })).toHaveCount(1);
+  await expect(page.getByText("›", { exact: true })).toHaveCount(2);
   const heading = await page.getByRole("textbox", { name: "h1" }).boundingBox();
   expect(heading.height).toBeLessThan(90);
   await expect(page.locator(".osp-frame-code")).toBeVisible();
@@ -114,7 +126,7 @@ async function typing(page) {
     return seen;
   });
   expect(opacity).toEqual([1, 1, 1, 1, 1, 1]);
-  await expect(page.locator(".osp-frame-status")).toHaveText(/Unsaved/);
+  await expect(status(page, "Unsaved changes")).toBeVisible();
   await expect(editor).toHaveValue("Welcome 👋 home");
 }
 
@@ -128,7 +140,7 @@ async function restyled(page) {
 async function saveAndPublish(page) {
   const live = published(BROWSER_SITE);
   await page.getByRole("button", { name: "Save" }).click();
-  await expect(page.locator(".osp-frame-status")).toHaveText(/Saved/);
+  await expect(status(page, "Saved")).toBeVisible();
   expect(disk(HOME)).toContain("# Welcome 👋 home\n");
   expect(git(BROWSER_SITE, "log", "-1", "--format=%s")).toBe(`Edit ${HOME}`);
   expect(published(BROWSER_SITE)).toBe(live);
@@ -137,7 +149,8 @@ async function saveAndPublish(page) {
   await publish.click();
   await expect(page.getByText("Published", { exact: true })).toBeVisible();
   expect(published(BROWSER_SITE)).toBe(head(BROWSER_SITE));
-  await expect(page.getByRole("button", { name: /Publish/ })).toBeDisabled();
+  await expect(page.getByRole("button", { name: /Publish/ })).toHaveCount(0);
+  await expect(status(page, "Live")).toBeVisible();
 }
 
 /** A picture bigger than one request: the browser's chooser, several parts, one commit, a preview. [CMS-API-UPLOAD] */
@@ -168,6 +181,8 @@ async function rawMarkdown(page) {
   await page.getByRole("button", { name: "Markdown" }).click();
   const source = page.getByRole("textbox", { name: "Markdown" });
   await expect(source).toHaveValue(disk(HOME));
+  expect((await source.boundingBox()).width).toBeGreaterThan(450);
+  expect((await source.boundingBox()).height).toBeGreaterThan(500);
   await expect(page.locator(".osp-frame-code")).toHaveCount(0);
   await page.getByRole("button", { name: "Formatted" }).click();
   await expect(page.getByRole("textbox", { name: "Markdown" })).toHaveCount(0);

@@ -16,8 +16,10 @@ import studio::Preview
 module Screens
     symbolOf kind = match kind
         "markdown" => "document"
-        "other" => "package"
-        _ => "star"
+        "image" => "sparkle"
+        "video" => "play"
+        "audio" => "play"
+        _ => "package"
 
     shown (store, item) = store.filter == "" || contains (toLowerCase item.entryPath) (toLowerCase store.filter)
 
@@ -40,46 +42,74 @@ module Screens
 
     uploader store =
         style = Kit::surface ("sidebarRaised", "", Design::radius "md", 14)
-        Ui::framed (style(frameGap = 10), Ui::column [Kit::eyebrow ("Add media", "sidebarMuted"), Kit::button ("primary", "Upload image, video or audio", "add", store.busy == false, ChooseMedia), Kit::say ("Saved into ${store.folder}/ and committed.", "micro", "sidebarMuted")])
+        Ui::framed (style(frameGap = 10), Ui::column [Kit::eyebrow ("Add media", "sidebarMuted"), Kit::button ("primary", "Upload media", "add", store.busy == false, ChooseMedia), Kit::say ("Saved into ${store.folder}/ and committed.", "micro", "sidebarMuted")])
 
     (** The dark sidebar: brand, search, the tree and the uploader. *)
     export sidebar store =
         style = Kit::surface ("sidebar", "edge", 0, 16)
         Ui::framed (style(frameName = "sidebar", frameLineEdge = "right", frameWidth = 280, frameViewportHeightInset = 0, frameGap = 16), Ui::column [brand (), Kit::input ("Search files", store.filter, Search), tree store, uploader store])
 
-    crumbs path = Kit::cluster (6, mapList (split path "/" ?: [], \part => Kit::say (part, "small", "inkMuted")))
+    // Folders muted with a separator after each, the open file itself in ink.
+    crumb part = [Kit::say (part, "small", "inkMuted"), Kit::say ("›", "small", "inkMuted")]
 
+    crumbs path =
+        parts = split path "/" ?: []
+        folders = range (0, satSub (length parts) 1) |> fold [] (\(out, index) => listConcat out (crumb (listGet parts index ?: "")))
+        Kit::cluster (6, listAppend folders (Kit::strong (Names::base path, "small", "ink")))
+
+    edited store = match store.text == store.saved
+        true => [Kit::status ("good", "Saved")]
+        false => [Kit::status ("accent", "Unsaved changes")]
+
+    // The open file's state; with nothing open there is nothing to report.
     stateOf store = match store.loads > 0 || store.busy
-        true => Kit::status ("warn", "Saving…")
-        false => match store.text == store.saved
-            true => Kit::status ("good", "Saved")
-            false => Kit::status ("accent", "Unsaved changes")
+        true => [Kit::status ("warn", "Working…")]
+        false => match store.opened
+            "" => []
+            _ => edited store
 
     commitChip store = match store.commit
         "" => []
         sha => [Kit::chip (take sha 7)]
 
-    // Publish names how many saved commits are not yet live, and is off when there are none or no remote.
-    publishButton store = Kit::button ("primary", "Publish ${store.unpublished}", "send", store.remote && store.unpublished > 0, Publish)
+    // Publish names how many saved commits are not yet live; with none, the site is simply live.
+    publishing store = match store.unpublished > 0
+        true => [Kit::button ("primary", "Publish ${store.unpublished}", "send", true, Publish)]
+        false => [Kit::status ("good", "Live")]
+
+    publishArea store = match store.remote
+        true => publishing store
+        false => []
 
     (** The bar over the work: where you are, its state, and what you can do. *)
     export topbar store =
         style = Kit::surface ("panel", "edge", 0, 14)
-        actions = [Kit::iconButton ("History", "clock", store.showingHistory, ToggleHistory), Kit::iconButton ("Refresh", "refresh", false, Refresh), Kit::button ("secondary", "New page", "add", true, NewPage), Kit::button ("danger", "Delete", "delete", store.opened != "", Delete), Kit::button ("primary", "Save", "check", store.text != store.saved, Save), publishButton store]
-        Ui::framed (style(frameLineEdge = "bottom", frameRadius = 0), Ui::row (listConcat (listConcat [Kit::grow (crumbs store.opened), stateOf store] (commitChip store)) actions))
+        actions = [Kit::iconButton ("History", "clock", store.showingHistory, ToggleHistory), Kit::iconButton ("Refresh", "refresh", false, Refresh), Kit::button ("secondary", "New page", "add", true, NewPage), Kit::button ("secondary", "Save", "check", store.text != store.saved, Save)]
+        place = listConcat [Kit::grow (Kit::row (12, listConcat [crumbs store.opened] (deleting store)))] (stateOf store)
+        Ui::framed (style(frameLineEdge = "bottom", frameRadius = 0), Ui::row (listConcat (listConcat (listConcat place (commitChip store)) actions) (publishArea store)))
+
+    // Delete sits by the file it deletes, quiet until wanted, and only when a file is open.
+    deleting store = match store.opened
+        "" => []
+        _ => [Kit::iconButton ("Delete", "delete", false, Delete)]
 
     modes store = Kit::segmented [Kit::choice ("Formatted", store.mode == "formatted", Formatted), Kit::choice ("Markdown", store.mode == "markdown", Raw)]
 
-    styleTools () = [Kit::tool ("Body", false, Restyle(styleName = "paragraph")), Kit::tool ("H1", false, Restyle(styleName = "h1")), Kit::tool ("H2", false, Restyle(styleName = "h2")), Kit::tool ("H3", false, Restyle(styleName = "h3"))]
+    // The focused block's style, which the ribbon lights.
+    current store = (Blocks::blockAt ((Blocks::page store.text).pageBlocks, store.focus)).blockStyle
+
+    styled (store, label, style) = Kit::tool (label, store.mode == "formatted" && current store == style, Restyle(styleName = style))
+
+    styleTools store = [styled (store, "Body", "paragraph"), styled (store, "H1", "h1"), styled (store, "H2", "h2"), styled (store, "H3", "h3")]
 
     inlineTools () = [Kit::tool ("B", false, Emphasis(marker = "**")), Kit::tool ("I", false, Emphasis(marker = "*")), Kit::tool ("Code", false, Emphasis(marker = "`"))]
 
-    blockTools () = [Kit::tool ("• List", false, Restyle(styleName = "bullets")), Kit::tool ("❝ Quote", false, Restyle(styleName = "quote"))]
+    blockTools store = [styled (store, "• List", "bullets"), styled (store, "❝ Quote", "quote")]
 
     insertTools () = [Kit::tool ("Link", false, Insert(snippet = "[link text](https://)")), Kit::tool ("Image", false, Insert(snippet = "![Describe the image](/media/)"))]
 
     (** The ribbon: modes, then styles, emphasis, blocks and inserts. *)
-    export ribbon store = Kit::row (12, [modes store, Kit::ribbon [styleTools (), inlineTools (), blockTools (), insertTools ()]])
+    export ribbon store = Kit::row (12, [modes store, Kit::ribbon [styleTools store, inlineTools (), blockTools store, insertTools ()]])
 
     paperStyle () =
         style = Kit::surface ("panel", "edge", Design::radius "lg", 48)
@@ -123,8 +153,9 @@ module Screens
     raw store =
         source = Kit::surface ("panel", "edge", Design::radius "lg", 20)
         reader = Kit::surface ("panel", "edge", Design::radius "lg", 32)
-        editor = Ui::framed (source(frameFont = Design::mono (), frameTextSize = Design::size "body", frameGrow = true), Editors::editor ("Markdown", store.text, store.cursor, [], Edit, Place))
-        Kit::row (16, [editor, Ui::framed (reader(frameGrow = true, frameScrollY = true), Preview::page store.text)])
+        editor = Ui::framed (source(frameFont = Design::mono (), frameTextSize = Design::size "body", frameGrow = true, frameViewportHeightInset = 220), Editors::editor ("Markdown", store.text, store.cursor, [], Edit, Place))
+        split = Frames::plain
+        Ui::framed (split(frameGap = 16, frameGrow = true), Ui::row [editor, Ui::framed (reader(frameGrow = true, frameScrollY = true, frameViewportHeightInset = 220), Preview::page store.text)])
 
     workStyle () =
         style = Kit::surface ("bg", "", 0, 24)
@@ -135,7 +166,14 @@ module Screens
         _ => formatted store
 
     (** The open page: the ribbon over the formatted or raw editor. *)
-    export markdown store = Ui::framed (workStyle (), Ui::column [ribbon store, surfaceOf store])
+    export markdown store = Ui::framed (pageStyle store, Ui::column [ribbon store, surfaceOf store])
+
+    // The formatted page is a centred sheet; the Markdown split stretches across the work area.
+    pageStyle store = match store.mode
+        "markdown" =>
+            style = workStyle ()
+            style(frameCross = "stretch")
+        _ => workStyle ()
 
     // A picture shows once its bytes arrive; until then the card says it is loading.
     picture store = match store.preview
@@ -152,4 +190,7 @@ module Screens
     export media store = Ui::framed (workStyle (), Ui::column [Kit::card (24, [Kit::heading (Names::base store.opened, "h3", "ink"), Kit::chip store.opened, mediaOf store])])
 
     (** Nothing open yet. *)
-    export welcome () = Ui::framed (workStyle (), Kit::empty ("document", "Pick a page to edit", "Choose a page or media file on the left, or start a new page."))
+    export welcome () =
+        style = Kit::surface ("bg", "", 0, 24)
+        start = Kit::button ("primary", "New page", "add", true, NewPage)
+        Ui::framed (style(frameGrow = true, frameAlign = "center", frameCross = "center", frameGap = 16), Ui::column [Kit::empty ("document", "Pick a page to edit", "Choose a page or media file on the left, or start a new page."), start])
