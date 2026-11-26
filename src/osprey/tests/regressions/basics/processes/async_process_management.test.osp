@@ -117,9 +117,15 @@ effect ExitTally {
     saw: fn(int) -> Unit
 }
 
+/// One for an exit event, zero for output.
+fn exitWeight(kind) = match kind {
+    3 => 1
+    _ => 0
+}
+
 fn quietEvent(_processID, eventType, _data) = {
     handle ExitTally {
-        saw kind => { quietExits = satAdd(quietExits, if kind == 3 { 1 } else { 0 }) }
+        saw kind => { quietExits = satAdd(quietExits, exitWeight(kind)) }
     }
     perform ExitTally.saw(eventType)
 }
@@ -134,10 +140,16 @@ fn spawnedAndReleased() = match spawnProcess("exit 0", quietEvent) {
     Error => false
 }
 
+/// `clean` plus one when the next spawn exits cleanly and is released.
+fn counted(clean) = match spawnedAndReleased() {
+    true => satAdd(clean, 1)
+    false => clean
+}
+
 /// Spawns, awaits and releases `remaining` processes in turn, counting clean exits.
 fn recycled(remaining, clean) = match remaining {
     0 => clean
-    _ => recycled(satSub(remaining, 1), if spawnedAndReleased() { satAdd(clean, 1) } else { clean })
+    _ => recycled(satSub(remaining, 1), counted(clean))
 }
 
 /// A released handle's slot is reused, so a long-running program (a server

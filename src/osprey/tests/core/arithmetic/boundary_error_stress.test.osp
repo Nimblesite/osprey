@@ -7,9 +7,6 @@ fn runtimeValue(n) = n
 fn maxValue() = runtimeValue(9223372036854775807)
 fn minValue() = (0 - maxValue()) - 1
 
-// The text a faulted checked op renders as, which the overflow cases assert on.
-let integerOverflowText = "Error(integer overflow)"
-
 /// The maximum and minimum boundary paths, one helper per repeated expression.
 fn maxMinus(delta) = maxValue() - delta
 fn maxRestored(delta) = maxMinus(delta) + delta
@@ -18,6 +15,9 @@ fn minPlus(delta) = minValue() + delta
 
 /// The one fault the intermediate overflow raises for every delta.
 let maxOverflowFault = "overflow(+,9223372036854775807,1,-9223372036854775808);"
+
+/// The text a faulted checked op renders as, which the overflow cases assert on.
+let integerOverflowText = "Error(integer overflow)"
 
 /// A test body that checks `work` through `faultsAre` and the faults it must raise.
 fn checking(work, expected, wantedFaults) = fn() => faultsAre(work, expected, wantedFaults)
