@@ -100,7 +100,8 @@ function fileNode(parent: ModuleNode, root: string, file: string): ModuleNode {
 /** Codicon and theme colour per declaration kind, as the editor's outline colours symbols. */
 const KIND_ICONS: Readonly<Record<string, readonly [string, string]>> = {
   namespace: ["symbol-namespace", "symbolIcon.namespaceForeground"],
-  module: ["symbol-module", "symbolIcon.moduleForeground"],
+  // Codicons draw symbol-module as the namespace braces; a module must not read as a namespace.
+  module: ["symbol-structure", "symbolIcon.moduleForeground"],
   function: ["symbol-function", "symbolIcon.functionForeground"],
   extern: ["symbol-interface", "symbolIcon.interfaceForeground"],
   type: ["symbol-class", "symbolIcon.classForeground"],
@@ -218,7 +219,7 @@ export function projectChildren(
     return [stateNode(project, "analysis", "Analysis failed", graph.error), dependencies];
   }
   return [
-    attach(group("modules", "Modules", "symbol-module"), (self) =>
+    attach(group("namespaces", "Namespaces", "symbol-namespace"), (self) =>
       !graph.ok.sources.length
         ? [stateNode(self, "none", "No sources", "The compiler found none in this project.", "info")]
         : graph.ok.declarations.length

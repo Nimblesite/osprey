@@ -90,7 +90,7 @@ suite("Module Explorer [EDITOR-MODULE-EXPLORER]", () => {
     assert.strictEqual(tree.getTreeItem(node).collapsibleState, vscode.TreeItemCollapsibleState.Collapsed);
 
     const groups = await tree.getChildren(node);
-    assert.deepStrictEqual(labels(groups), ["Modules", "Sources", "Dependencies"]);
+    assert.deepStrictEqual(labels(groups), ["Namespaces", "Sources", "Dependencies"]);
     const [modules, sources, dependencies] = groups;
     const child = async (parent: ModuleNode, label: string) => {
       const found = (await tree.getChildren(parent)).find((item) => item.label === label);
@@ -102,7 +102,7 @@ suite("Module Explorer [EDITOR-MODULE-EXPLORER]", () => {
       return [shown.id, shown.color?.id];
     };
 
-    // Modules -> namespace -> module -> members; folders and files are not code
+    // Namespaces -> namespace -> module -> members: a module sits inside its namespace, never the reverse; folders and files are not code
     // elements, so a namespace three files in two folders share is one node.
     assert.deepStrictEqual(labels(await tree.getChildren(modules)), ["app"]);
     const mainApp = await child(modules, "app");
@@ -119,7 +119,9 @@ suite("Module Explorer [EDITOR-MODULE-EXPLORER]", () => {
     assert.deepStrictEqual(labels(await tree.getChildren(deep)), ["three"]);
     assert.strictEqual(deep.location?.file, path.join(root, "src", "sub", "deep.osp"));
     const outer = await child(mainApp, "Outer");
-    assert.deepStrictEqual(icon(outer), ["symbol-module", "symbolIcon.moduleForeground"]);
+    assert.deepStrictEqual(icon(outer), ["symbol-structure", "symbolIcon.moduleForeground"]);
+    assert.notStrictEqual(icon(outer)[0], icon(mainApp)[0], "a module never wears the namespace glyph");
+    assert.strictEqual(modules.icon, "symbol-namespace", "the group holds namespaces and says so");
     assert.deepStrictEqual(labels(await tree.getChildren(outer)), ["Inner", "keep"]);
     const inner = await child(outer, "Inner");
     assert.deepStrictEqual(labels(await tree.getChildren(inner)), ["one"]);
@@ -168,7 +170,7 @@ suite("Module Explorer [EDITOR-MODULE-EXPLORER]", () => {
     tree.filterBy("  ");
     assert.strictEqual(tree.filterText, "");
     assert.deepStrictEqual(labels(await tree.getChildren(mainApp)), ["Counter", "Deep", "Extra", "limit", "Outer", "strlen", "total"]);
-    assert.deepStrictEqual(labels(await tree.getChildren(node)), ["Modules", "Sources", "Dependencies"], "the filter leaves groups alone");
+    assert.deepStrictEqual(labels(await tree.getChildren(node)), ["Namespaces", "Sources", "Dependencies"], "the filter leaves groups alone");
     assert.strictEqual((await child(moreApp, "strlen")).location?.file, path.join(root, "src", "more.osp"));
     assert.strictEqual((await child(mainApp, "limit")).location?.file, path.join(root, "src", "main.ospml"));
 
