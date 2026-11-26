@@ -73,6 +73,8 @@ The canonical typeDiagram and DataProvider migration define organization/members
 
 Osprey Packages is the public website for finding, evaluating and downloading Osprey packages. A visitor can complete this journey without an account, editor or CLI.
 
+The registry owns its navigation, search results, package descriptions, release pages, publisher profiles and package-management help on its own website. The download button may deliver bytes from the dedicated content origin. A link to the Osprey Language website is appropriate for optional language reference material; every registry journey must work when that website is unavailable.
+
 | Page or action | Required visitor experience |
 | --- | --- |
 | Browse at `/` | Open directly on a browsable catalog of published packages with a prominent search field. Each result links to the package and shows its scoped name, short description and known security warnings. Visitors can browse further results without entering a query. Documentation is secondary navigation. |

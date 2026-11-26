@@ -62,9 +62,9 @@ module SchemaCheckTests {
         "ReleaseLockfile", "DevelopmentLockfile", "DevelopmentStateGeneration",
         "WorkspaceTransaction", "ScanVerdict", "Evidence", "MaintenanceAssessment",
         "DiscoveryAssessment", "ReleaseAssessment",
-        "OrganizationId", "MembershipId", "PackageId", "GovernanceId", "AuthorityEpoch",
+        "AuthorityEpoch",
         "PrincipalKind", "HumanPrincipalKind", "PrincipalState", "OrganizationState", "OrganizationRole",
-        "MembershipState", "ActiveMembershipState", "OrganizationRecoveryAuthority", "RegistryPackageState", "PackagePermission", "PermissionState",
+        "AccessState", "ActiveMembershipState", "OrganizationRecoveryAuthority", "RegistryPackageState", "PackagePermission",
         "AdminTransferState", "InvitationState", "MaintenanceReportState", "RegistryPrincipal",
         "RegistryAuthBinding", "Organization", "OrganizationMembership", "RegistryPackage",
         "PackagePermissionGrant", "PackageAdminTransfer", "OrganizationInvitation",
@@ -75,9 +75,9 @@ module SchemaCheckTests {
         let result = TypeDiagram::parse(readFile(schemaPath) ?: "")
         match result {
             Success { value } => checkAll("schema model declares every type exactly once", [
-                    structuralEquals([length(value.decls), length(filterList(value.decls, isAlias))], [113, 14]),
+                    structuralEquals([length(value.decls), length(filterList(value.decls, isAlias))], [108, 10]),
                     length(filterList(value.decls, isStruct)) == 71,
-                    length(filterList(value.decls, isUnion)) == 28,
+                    length(filterList(value.decls, isUnion)) == 27,
                     everyNameResolves(value)
             ])
             Error { message } => check(diagramParses, "ok", message)
@@ -140,7 +140,8 @@ module SchemaCheckTests {
     fn tokenizerBounds() = checkAll("tokenization has bounded stack depth", [
             declarationCount((repeat(" ", 100000) ?: "") + "typeDiagram alias A = String") == 1,
             declarationCount("typeDiagram alias " + (repeat("a", 100000) ?: "") + " = String") == 1,
-            declarationCount("typeDiagram type Box{items:List<Option<String>>}") == 1
+            declarationCount("typeDiagram type Box{items:List<Option<String>>}") == 1,
+            declarationCount("typeDiagram\n# type Pretend { }\nalias A = String # hidden\ntype B { value: A }") == 2
     ])
 
     /// Every schema-check case, run from the shared registry test entry.

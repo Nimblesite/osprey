@@ -38,7 +38,7 @@ package-checks: build
 	python3 scripts/packages/test-package-sha256.py
 	$(BIN) src/osprey/packages/manager/fixture-check --run
 	for filter in "schema-check: model declarations" "schema-check: accepted values" "schema-check: rejected values" \
-	  "schema: spec block equals canonical file" "fixtures: names"; do \
+	  "schema: spec references canonical model" "fixtures: names"; do \
 	  $(BIN) test src/osprey/packages/manager/tests --filter "$$filter" || exit 1; \
 	done
 	for filter in "publish: licenses survive publication" "fetch: licenses and attribution are preserved"; do \
@@ -143,7 +143,11 @@ registry-infra-check:
 registry-website: $(BIN) | _runtime_wasm
 	@mkdir -p target/registry-site-build $(REGISTRY_SITE_OUT)
 	$(BIN) build $(REGISTRY_WEB)/site --target=wasm32 --quiet --no-warnings -o target/registry-site-build/site.wasm
-	wasmtime target/registry-site-build/site.wasm > target/registry-site-build/index.html
+	printf 'home\n' | wasmtime target/registry-site-build/site.wasm > target/registry-site-build/index.html
+	@set -eu; for page in guide publishing; do \
+	  mkdir -p "$(REGISTRY_SITE_OUT)/$$page"; \
+	  printf '%s\n' "$$page" | wasmtime target/registry-site-build/site.wasm > "$(REGISTRY_SITE_OUT)/$$page/index.html"; \
+	done
 	@set -eu; digest=$$(shasum -a 256 $(REGISTRY_WEB)/assets/registry.css | cut -c1-12); \
 	  asset="registry.$$digest.css"; grep -Fq "href=\"/$$asset\"" target/registry-site-build/index.html; \
 	  cp $(REGISTRY_WEB)/assets/registry.css "$(REGISTRY_SITE_OUT)/$$asset"

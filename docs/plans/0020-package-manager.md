@@ -119,6 +119,9 @@ Depends on: hosted Stages B–G on parent Milestone B (Phases 5–9) and Milesto
 
 The public website opens on the registry catalog. The existing documentation landing page demonstrates the visual shell only. Track the visitor experience against [the public catalog contract](../specs/ecosystem/0044-PackageRegistryDeploymentAndOwnership.md#public-package-catalog-package-hosted-routes-catalog).
 
+- [x] Serve the package guide, editor and CLI instructions, and publishing guide from the standalone registry site. `[PACKAGE-HOSTED-ROUTES-CATALOG]`
+- [ ] Run the complete catalog acceptance journey with the Osprey Language website blocked. All navigation, package and publisher pages must resolve on the registry site, with release downloads served through the approved content origin. `[PACKAGE-HOSTED-ROUTES-CATALOG]`
+
 - [ ] Make `/` browse published packages from the API without signing in. Show linked scoped names, descriptions and warnings, and let visitors page through results. `[PACKAGE-HOSTED-ROUTES-CATALOG]`
 - [ ] Connect homepage search to the catalog. Test name, organization and descriptive queries, shareable results, back navigation, no matches and service failure. `[PACKAGE-HOSTED-ROUTES-CATALOG]`
 - [ ] Build permanent package pages with descriptions, release history, dependencies, advisories and linked publisher attribution for each release. `[PACKAGE-HOSTED-ROUTES-CATALOG]`

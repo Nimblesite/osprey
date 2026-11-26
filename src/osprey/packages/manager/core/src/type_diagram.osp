@@ -38,9 +38,15 @@ module TypeDiagram {
         TokenState { tokens: if isPunct(b) { listAppend(words, substring(text, i, i + 1) ?: "") } else { words }, wordStart: -1 }
     }
 
+    let inComment = -2
+
     fn tokenStep(text, acc, i) = match byteAt(text, i) {
         Error => tokenBoundary(text, i, acc, 0)
-        Success { value } => if isWordByte(value) {
+        Success { value } => if acc.wordStart == inComment {
+            if value == 10 || value == 13 { TokenState { tokens: acc.tokens, wordStart: -1 } } else { acc }
+        } else if value == 35 {
+            TokenState { tokens: finishWord(text, i, acc), wordStart: inComment }
+        } else if isWordByte(value) {
             TokenState { tokens: acc.tokens, wordStart: if acc.wordStart < 0 { i } else { acc.wordStart } }
         } else { tokenBoundary(text, i, acc, value) }
     }

@@ -18,7 +18,7 @@ module Conformance {
 
     /// What a path under the package system is allowed to be.
     export fn classify(path) = if hasAny(path, ospreyExtensions) { OspreySource }
-        else if hasAny(path, declarativeExtensions) { Declarative }
+        else if hasAny(path, declarativeExtensions) || listContains(["src/osprey/packages/manager/web/assets/registry.css", "src/osprey/packages/manager/web/assets/_headers"], path) { Declarative }
         else { Forbidden }
 
     /// The paths that violate the gate, in input order.

@@ -397,6 +397,131 @@
       },
       "code": "schema.unknown-variant",
       "at": "/Owner"
+    },
+    {
+      "type": "PackagePermissionGrant",
+      "value": {
+        "id": "00000000-0000-0000-0000-000000000029",
+        "organizationId": "00000000-0000-0000-0000-00000000000b",
+        "packageId": "00000000-0000-0000-0000-00000000001f",
+        "membershipId": "not-a-uuid",
+        "permission": {
+          "PublishRelease": {}
+        },
+        "state": {
+          "Active": {}
+        },
+        "grantedByMembershipId": "00000000-0000-0000-0000-000000000015",
+        "authorityEpoch": 1,
+        "membershipAuthorityEpoch": 1,
+        "grantedAt": "2026-10-25T00:00:00.000Z"
+      },
+      "code": "schema.uuid",
+      "at": "/membershipId"
+    },
+    {
+      "type": "PackagePermissionGrant",
+      "value": {
+        "id": "00000000-0000-0000-0000-000000000029",
+        "organizationId": "00000000-0000-0000-0000-00000000000b",
+        "packageId": "not-a-uuid",
+        "membershipId": "00000000-0000-0000-0000-000000000016",
+        "permission": {
+          "PublishRelease": {}
+        },
+        "state": {
+          "Active": {}
+        },
+        "grantedByMembershipId": "00000000-0000-0000-0000-000000000015",
+        "authorityEpoch": 1,
+        "membershipAuthorityEpoch": 1,
+        "grantedAt": "2026-10-25T00:00:00.000Z"
+      },
+      "code": "schema.uuid",
+      "at": "/packageId"
+    },
+    {
+      "type": "PackagePermissionGrant",
+      "value": {
+        "id": "00000000-0000-0000-0000-000000000029",
+        "organizationId": "not-a-uuid",
+        "packageId": "00000000-0000-0000-0000-00000000001f",
+        "membershipId": "00000000-0000-0000-0000-000000000016",
+        "permission": {
+          "PublishRelease": {}
+        },
+        "state": {
+          "Active": {}
+        },
+        "grantedByMembershipId": "00000000-0000-0000-0000-000000000015",
+        "authorityEpoch": 1,
+        "membershipAuthorityEpoch": 1,
+        "grantedAt": "2026-10-25T00:00:00.000Z"
+      },
+      "code": "schema.uuid",
+      "at": "/organizationId"
+    },
+    {
+      "type": "PackagePermissionGrant",
+      "value": {
+        "id": "00000000-0000-0000-0000-000000000029",
+        "organizationId": "00000000-0000-0000-0000-00000000000b",
+        "packageId": "00000000-0000-0000-0000-00000000001f",
+        "membershipId": "00000000-0000-0000-0000-000000000016",
+        "permission": {
+          "PublishRelease": {}
+        },
+        "state": {
+          "Active": {}
+        },
+        "grantedByMembershipId": "not-a-uuid",
+        "authorityEpoch": 1,
+        "membershipAuthorityEpoch": 1,
+        "grantedAt": "2026-10-25T00:00:00.000Z"
+      },
+      "code": "schema.uuid",
+      "at": "/grantedByMembershipId"
+    },
+    {
+      "type": "PackagePermissionGrant",
+      "value": {
+        "id": "not-a-uuid",
+        "organizationId": "00000000-0000-0000-0000-00000000000b",
+        "packageId": "00000000-0000-0000-0000-00000000001f",
+        "membershipId": "00000000-0000-0000-0000-000000000016",
+        "permission": {
+          "PublishRelease": {}
+        },
+        "state": {
+          "Active": {}
+        },
+        "grantedByMembershipId": "00000000-0000-0000-0000-000000000015",
+        "authorityEpoch": 1,
+        "membershipAuthorityEpoch": 1,
+        "grantedAt": "2026-10-25T00:00:00.000Z"
+      },
+      "code": "schema.uuid",
+      "at": "/id"
+    },
+    {
+      "type": "PackagePermissionGrant",
+      "value": {
+        "id": "00000000-0000-0000-0000-000000000029",
+        "organizationId": "00000000-0000-0000-0000-00000000000b",
+        "packageId": "00000000-0000-0000-0000-00000000001f",
+        "membershipId": "00000000-0000-0000-0000-000000000016",
+        "permission": {
+          "PublishRelease": {}
+        },
+        "state": {
+          "Active": {}
+        },
+        "grantedByMembershipId": "00000000-0000-0000-0000-000000000015",
+        "authorityEpoch": 1,
+        "grantedAt": "2026-10-25T00:00:00.000Z"
+      },
+      "code": "schema.missing-field",
+      "at": "/membershipAuthorityEpoch"
     }
   ]
 }

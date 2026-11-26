@@ -6,6 +6,8 @@ const repo = path.resolve(__dirname, '../../../..');
 const source = path.join(repo, 'docs/specs');
 const destination = path.resolve(__dirname, '../src/spec');
 const sections = require('../../../../docs/specs/sections.json');
+const registryModelMarker = '<!-- registry-model -->';
+const registryModelPath = path.join(repo, 'src/toolchain/schemas/package-registry.td');
 const metadataFiles = new Set(['README.md', 'index.md']);
 const slugOf = (file) => path.basename(file, '.md').toLowerCase();
 const urlOf = (file) => `/spec/${slugOf(file)}/`;
@@ -75,7 +77,8 @@ function pagesFrom(specs) {
     const slug = slugOf(file);
     if (seen.has(slug)) throw new Error(`Duplicate specification URL: ${slug}`);
     seen.add(slug);
-    const content = fs.readFileSync(file, 'utf8');
+    const content = fs.readFileSync(file, 'utf8').replace(registryModelMarker, () =>
+      ['```typediagram', fs.readFileSync(registryModelPath, 'utf8').trimEnd(), '```'].join('\n'));
     return { file, section, slug, content, title: titleOf(content, file), permalink: urlOf(file), date: gitDate(file) };
   }).sort((left, right) => left.slug.localeCompare(right.slug));
 }

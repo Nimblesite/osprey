@@ -56,3 +56,4 @@ ul.warnings { padding-inline-start: 2rem }
   .prose-stack { width: 6rem; height: 6rem }
   .prose-resources { gap: 0; margin-top: 2rem }
 }
+pre { overflow-x: auto; padding: 1rem; background: #e6eae1; border-radius: .35rem }
