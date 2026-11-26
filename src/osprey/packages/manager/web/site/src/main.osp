@@ -49,6 +49,7 @@ fn publisherPage() = {
 }
 
 fn main() = print(match trim(input()) {
+    "missing" => Shell::withEscapedTitle("Page not found · Osprey Packages", "<main><h1>Page not found</h1><a href=\"/\">Browse packages</a></main>")
     "guide" => Guides::packages()
     "publishing" => Guides::publishers()
     "upload" => upload()

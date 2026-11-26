@@ -93,7 +93,6 @@ express-oracle:
 .PHONY: registry-test registry-serve registry-serve-sample registry-blockers
 
 REGISTRY_WEB = src/osprey/packages/manager/web
-REGISTRY_SITE_OUT = target/registry-site
 REGISTRY_TERRAFORM = src/osprey/packages/manager/ops/terraform
 REGISTRY_MIGRATOR_REV = 3b4e356522affc61b466d8e87ef5232319c9d7a0
 REGISTRY_MIGRATOR_SHA256 = 87192312ca3a313fa0c786705c2fa2cbafebe76a0afb522b39df82f08aaa740a
@@ -141,18 +140,20 @@ registry-infra-check:
 .PHONY: registry-website
 ## registry-website: Compile the registry website to WASM and render its Cloudflare Pages directory.
 registry-website: $(BIN) | _runtime_wasm
-	@mkdir -p target/registry-site-build $(REGISTRY_SITE_OUT)
+	@mkdir -p target/registry-site-build target/registry-site
 	$(BIN) build $(REGISTRY_WEB)/site --target=wasm32 --quiet --no-warnings -o target/registry-site-build/site.wasm
-	printf 'home\n' | wasmtime target/registry-site-build/site.wasm > target/registry-site-build/index.html
-	@set -eu; for page in guide publishing upload; do \
-	  mkdir -p "$(REGISTRY_SITE_OUT)/$$page"; \
-	  printf '%s\n' "$$page" | wasmtime target/registry-site-build/site.wasm > "$(REGISTRY_SITE_OUT)/$$page/index.html"; \
-	done
-	@set -eu; digest=$$(shasum -a 256 $(REGISTRY_WEB)/assets/registry.css | cut -c1-12); \
-	  asset="registry.$$digest.css"; grep -Fq "href=\"/$$asset\"" target/registry-site-build/index.html; \
-	  cp $(REGISTRY_WEB)/assets/registry.css "$(REGISTRY_SITE_OUT)/$$asset"
-	cp $(REGISTRY_WEB)/assets/_headers $(REGISTRY_SITE_OUT)/_headers
-	cp target/registry-site-build/index.html $(REGISTRY_SITE_OUT)/index.html
+	@set -eu; out=$$(mktemp -d target/registry-site-build/pages.XXXXXX); \
+	  trap 'rm -rf "$$out"' EXIT; \
+	  render() { printf '%s\n' "$$1" | wasmtime target/registry-site-build/site.wasm; }; \
+	  render home > "$$out/index.html"; render missing > "$$out/404.html"; \
+	  for page in guide publishing upload; do \
+	    mkdir "$$out/$$page"; render "$$page" > "$$out/$$page/index.html"; \
+	  done; \
+	  digest=$$(shasum -a 256 $(REGISTRY_WEB)/assets/registry.css | cut -c1-12); \
+	  asset="registry.$$digest.css"; grep -Fq "href=\"/$$asset\"" "$$out/index.html"; \
+	  cp $(REGISTRY_WEB)/assets/registry.css "$$out/$$asset"; \
+	  cp $(REGISTRY_WEB)/assets/_headers "$$out/"; \
+	  rsync -a --delete "$$out/" target/registry-site/
 
 .PHONY: registry-website-preview
 ## registry-website-preview: Render searchable local packages from registry-serve into target/registry-site-preview.
