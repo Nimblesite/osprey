@@ -180,7 +180,7 @@ module Kit
         seat = Frames::plain
         style = surface ("raised", "edge", 0, 24)
         top = row (8, [grow (title (headline, "ink")), iconButton ("Close", "dismiss", false, act)])
-        Ui::framed (seat(frameAlign = "end", frameGrow = true), Ui::framed (style(frameWidth = 420, frameShadow = "floating", frameScrollY = true, frameGap = 16), Ui::column (listPrepend children top)))
+        Ui::framed (seat(frameAlign = "end", frameGrow = true), Ui::framed (style(frameName = "drawer", frameWidth = 420, frameShadow = "floating", frameScrollY = true, frameGap = 16), Ui::column (listPrepend children top)))
 
     (** An empty state: a symbol, a title and why there is nothing here yet. *)
     export empty<A> : (string, string, string) -> ui::Node<A>

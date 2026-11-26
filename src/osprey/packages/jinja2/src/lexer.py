@@ -271,7 +271,7 @@ def scan(template, trim_blocks, lstrip_blocks) -> Result[list[Chunk], str]:
     return scan_from(norm(template), trim_blocks, lstrip_blocks, 0, [], True)
 
 
-def scan_from(src, tb, lb, pos, chunks, at_line_start) -> Result[list[Chunk], str]:
+def scan_from(src, tb, lb, pos, chunks, _at_line_start) -> Result[list[Chunk], str]:
     """The lexing loop: emit the data before the next tag, then the tag itself."""
     n = length(src)
     if pos >= n:

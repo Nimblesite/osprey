@@ -104,7 +104,7 @@ def pseudo_huber(delta: float, r: float) -> float:
 
 def ones_like(a) -> list[float]:
     """A list of 1.0 the length of `a`, the unweighted logsumexp weights."""
-    return mapList(a, lambda v: 1.0)
+    return mapList(a, lambda _v: 1.0)
 
 
 def out_inf_from(s: float) -> float:

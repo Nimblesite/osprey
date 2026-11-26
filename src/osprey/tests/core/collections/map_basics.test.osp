@@ -1,5 +1,9 @@
 // Assertion-driven migration of the persistent Map golden example.
 
+// The string-key fixtures the construction and merge cases share.
+let aliceBobCharlie = ["alice", "bob", "charlie"]
+let xyzwKeys = ["x", "y", "z", "w"]
+
 /// Entry is a record value, so `mapGet` must hand back the whole record.
 type Entry = { title: string, score: float, active: bool }
 
@@ -117,12 +121,12 @@ fn constructionAndOverwriteCase() = {
     // Every legacy empty, growth, contains, and overwrite-length observation remains independent.
     checkAll("legacy map construction observations", [
         lengthsHold([empty, m1, m2, m3, m4, m3], [0, 1, 2, 3, 3, 3]) && nonePresent(empty, ["missing"]),
-        allPresent(m3, ["alice", "bob", "charlie"]) && nonePresent(m3, ["dave"])
+        allPresent(m3, aliceBobCharlie) && nonePresent(m3, ["dave"])
     ])
 
     // Added value checks ensure correct bindings and persistence rather than length-only success.
     checkAll("map construction values and isolation", [
-        allIntValuesHold([m1, m2, m3, m4], [["alice"], ["alice", "bob"], ["alice", "bob", "charlie"], ["alice", "bob", "charlie"]], [[25], [25, 30], [25, 30, 35], [99, 30, 35]]) && nonePresent(m1, ["bob"]),
+        allIntValuesHold([m1, m2, m3, m4], [["alice"], ["alice", "bob"], aliceBobCharlie, aliceBobCharlie], [[25], [25, 30], [25, 30, 35], [99, 30, 35]]) && nonePresent(m1, ["bob"]),
         nonePresent(m2, ["charlie"]) && intAtKey(m3, "alice") == 25 && missingKey(m4, "dave")
     ])
 }
@@ -179,7 +183,7 @@ fn removalAndMergeCase() = {
 
     // Exact lookups pin right-biased merge semantics in both directions and through the plus alias.
     checkAll("map merge right-biased values", [
-        allIntValuesHold([mergedAB, mergedBA, mergedPlus], [["x", "y", "z", "w"], ["x", "y", "z", "w"], ["x", "y", "z", "w"]], [[1, 20, 30, 40], [1, 2, 3, 40], [1, 20, 30, 40]]) && intAtKey(a, "y") == 2 && intAtKey(b, "y") == 20
+        allIntValuesHold([mergedAB, mergedBA, mergedPlus], [xyzwKeys, xyzwKeys, xyzwKeys], [[1, 20, 30, 40], [1, 2, 3, 40], [1, 20, 30, 40]]) && intAtKey(a, "y") == 2 && intAtKey(b, "y") == 20
     ])
 }
 

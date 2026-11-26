@@ -3,10 +3,32 @@ namespace ui
 
 (** Typed constructors for media; neither carries a binding ([UI-COMPONENTS-MEDIA]). *)
 module Media
-    (** A still picture with required alternative text, scaled to fit its width and keeping its aspect ratio; it carries no binding. *)
+    (** A still picture with required alternative text, scaled to fit its width and keeping its aspect ratio; it carries no binding.
+    # Examples
+    ```osprey
+    shown = match Media::image ("cover.png", "The album cover", 120, 80)
+        Image source alt width height => "${source} ${alt} ${width}x${height}"
+        _ => "not an image"
+    print shown
+    ```
+    ```output
+    cover.png The album cover 120x80
+    ```
+    *)
     export image<A> : (string, string, int, int) -> Node<A>
     image (source, alt, width, height) = Image(imageSource = source, imageAlt = alt, imageWidth = width, imageHeight = height)
 
-    (** A film the person starts, showing its poster and a play control until then; captions are on by default and it never autoplays, and it carries no binding. *)
+    (** A film the person starts, showing its poster and a play control until then; captions are on by default and it never autoplays, and it carries no binding.
+    # Examples
+    ```osprey
+    shown = match Media::video ("reel.mp4", "reel.png", "en", "A demo reel", 12)
+        Video _ _ captions _ seconds => "${captions} ${seconds}"
+        _ => "not a video"
+    print shown
+    ```
+    ```output
+    en 12
+    ```
+    *)
     export video<A> : (string, string, string, string, int) -> Node<A>
     video (source, poster, captions, alt, seconds) = Video(videoSource = source, videoPoster = poster, videoCaptions = captions, videoAlt = alt, videoSeconds = seconds)

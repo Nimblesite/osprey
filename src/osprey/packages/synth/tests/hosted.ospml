@@ -435,7 +435,7 @@ registerHostedJourneys () =
         succeeds (synth::HostResponses::clip (short, layout, 2), \reply => sameSamples (reply.renderSamples, [0.25, -0.5, 0.25, -0.5]))
         forEachList (["4F535631ZZZZZZZZ", "4F53563102000000ZZZZZZZZ", "4F5356310200000002000000ZZZZZZZZ", "4F535631020000000200000000000000ZZZZZZZZ", "4F53563102000000020000000000000002000000ZZZZZZZZ", "4F53563102000000020000000000000002000000FFFFFFFF", "4F5356310200000002000000000000000100000000000000", "4F53563102000000020000000000000002000000000000000000807F000000000000000000000000"], \reply => renderRefused (synth::HostResponses::clip (reply, layout, 2)))
         // [SYNTH-HOST-STREAM] A wide input can exceed the worker's one-MiB read limit even with a mono output.
-        wide = block(frames = 4096, samples = mapList (toList (range (0, 262144)), \_ => 0.0), notes = [], parameters = [])
+        wide = block(frames = 4096, samples = synth::Sequences::zeros 262144, notes = [], parameters = [])
         renderRefused (synth::HostPackets::clip (layout(inputChannels = 64, outputChannels = 1), wide))
         forgedInput = "4F53563141000000" + drop short 16
         renderRefused (synth::HostResponses::clip (forgedInput, layout(inputChannels = 65), 2))

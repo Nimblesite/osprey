@@ -63,7 +63,7 @@ def expect_value(name, result, render, want):
 
 def expect_error(name, result, want):
     match result:
-        case Success(value=value):
+        case Success(value=_):
             return Check.failed(name, "invalid input was accepted")
         case Error(message=message):
             return Check.equal(name, message, want)

@@ -10,14 +10,6 @@ fn andThen(result, next) = match result {
     Error { message } => Error { message: message }
 }
 
-/// The test body for `work` whose setup answers a `Result`, as a fallible
-/// constructor such as `Channel(capacity)` does: a `Success` is the work's own
-/// outcome and an `Error` is a failed assertion that names its message.
-fn settled(work) = fn() => match work() {
-    Success { value } => value
-    Error { message } => check("setup refused", "none", message)
-}
-
 /// A Result API over `/` that deliberately converts a recorded zero-divisor
 /// fault at its boundary into `Error { message: "division by zero" }`.
 fn divideResult(a, b) = {

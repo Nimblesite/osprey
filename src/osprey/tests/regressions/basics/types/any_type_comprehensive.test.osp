@@ -1,6 +1,10 @@
 
 // Erased compatibility values [TYPE-ANY].
 
+// The strings the erased-value cases assert on.
+let processedAny = "Processed any"
+let differentColors = "Different colors"
+
 fn getDynamicValue() -> any = 42
 
 /// This should also pass - explicit any with parameter
@@ -44,7 +48,7 @@ let argResult = testArgs(a: 5, b: "value", c: true)
 print("testArgs result: ${argResult}")
 
 /// Test type inference edge cases with any
-fn processAny(_x: any) = "Processed any"
+fn processAny(_x: any) = processedAny
 
 let anyProcessed1 = processAny(42)
 let anyProcessed2 = processAny("hello")
@@ -120,15 +124,15 @@ let color3 = Blue
 fn compareColors(c1, c2) = match c1 {
     Red => match c2 {
         Red => "Both red"
-        _ => "Different colors"
+        _ => differentColors
     }
     Green => match c2 {
         Green => "Both green"
-        _ => "Different colors"
+        _ => differentColors
     }
     Blue => match c2 {
         Blue => "Both blue"
-        _ => "Different colors"
+        _ => differentColors
     }
 }
 
@@ -261,10 +265,10 @@ fn anyTypeBehaviorCase() = {
         toString(erasedPoint()) == "{ x: 1, y: 2 }",
         toString(getDynamicValue()) == "42",
         toString(processAnyValue(5)) == "15",
-        forwardedHeap() == "Processed any",
-        processAny(42) == "Processed any",
-        processAny("hello") == "Processed any",
-        processAny(true) == "Processed any",
+        forwardedHeap() == processedAny,
+        processAny(42) == processedAny,
+        processAny("hello") == processedAny,
+        processAny(true) == processedAny,
         getAnyField(object) == "payload",
         testArgs(a: 3, b: "value", c: false) == "value positive",
         testArgs(a: 0, b: "value", c: true) == "value zero or negative true",
@@ -274,7 +278,7 @@ fn anyTypeBehaviorCase() = {
         processSimple(B) == "Got B",
         processSimple(C) == "Got C",
         compareColors(c1: Red, c2: Red) == "Both red",
-        compareColors(c1: Red, c2: Blue) == "Different colors"
+        compareColors(c1: Red, c2: Blue) == differentColors
     ])
 }
 

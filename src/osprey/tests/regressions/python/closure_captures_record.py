@@ -17,4 +17,4 @@ def f(r):
 
 
 def main():
-    return print(toString(len(toList(map(range(13), lambda i: f(Rec(xs=[1, 2, 3])))))))
+    return print(toString(len(toList(map(range(13), lambda _i: f(Rec(xs=[1, 2, 3])))))))

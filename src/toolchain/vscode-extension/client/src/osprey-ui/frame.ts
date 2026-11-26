@@ -96,7 +96,7 @@ function declarations(style: Record<string, unknown>): string[] {
   const edge = style.lineEdge ?? "all";
   if (!["all", "top", "right", "bottom", "left"].includes(String(edge))) throw new Error("Frame lineEdge must name an edge");
   const border = edge === "all" ? "border" : `border-${edge}`;
-  const surfaces = [["fill", "background"], ["ink", "color"], ["line", border]].flatMap(([key, property]) => {
+  const surfaces = [{ key: "fill", property: "background" }, { key: "ink", property: "color" }, { key: "line", property: border }].flatMap(({ key, property }) => {
     const colour = token(style, key);
     if (colour === "") return [];
     // [UI-COMPONENTS-FRAMED] A plain button inside takes the frame's ink.

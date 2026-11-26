@@ -18,11 +18,14 @@ edgeOf (edge, label) = match edge
 // The horizontal distance between two labelled elements.
 gapBetween (left, right) = edgeOf ("left", left) - edgeOf ("left", right)
 
-// The folder each journey writes into: `target/daw-tests` first, then its own named room.
+// The folder every suite output goes under: the repository's `target/daw-tests`, whichever folder the suite runs from.
+outputFolder () = signalflow::App::fromRepository "target/daw-tests"
+
+// The folder each journey writes into: that folder first, then its own named room.
 madeRoom name =
-    _root = makeDir "target/daw-tests"
-    _room = makeDir "target/daw-tests/${name}"
-    "target/daw-tests/${name}"
+    _root = makeDir (outputFolder ())
+    _room = makeDir "${outputFolder ()}/${name}"
+    "${outputFolder ()}/${name}"
 
 // A middle C struck at beat 0 with full velocity, ringing for `beats` beats.
 beatNote beats = daw::Note(pitch = 60, start = 0.0, length = beats, velocity = 1.0)

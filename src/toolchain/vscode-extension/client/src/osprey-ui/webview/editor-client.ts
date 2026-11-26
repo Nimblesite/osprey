@@ -5,6 +5,7 @@
 
 import { type FramePosted } from "./client.js";
 import { fieldSignature, type Client } from "./client.js";
+import { caretWords, isEditor } from "./caret.js";
 
 interface Position {
   readonly value: string;
@@ -36,15 +37,6 @@ function mirrorEdit(element: HTMLTextAreaElement): void {
   mirror.scrollLeft = element.scrollLeft;
 }
 
-function bytesTo(element: HTMLTextAreaElement, at: number): number {
-  return new TextEncoder().encode(element.value.slice(0, at)).length;
-}
-
-/** The caret as "start", or a selection as "start end", in UTF-8 bytes. */
-function caretWords(element: HTMLTextAreaElement): string {
-  const start = bytesTo(element, element.selectionStart), end = bytesTo(element, element.selectionEnd);
-  return start === end ? String(start) : `${start} ${end}`;
-}
 
 function reportCaret(caret: Caret): void {
   const element = document.activeElement;
@@ -63,6 +55,7 @@ function caretBounds(element: HTMLTextAreaElement, prefix: string): DOMRect {
   const saved = mirror.style.cssText;
   const style = getComputedStyle(element);
   const lines = prefix.split("\n");
+  const last = lines[lines.length - 1] ?? "";
   const line = mirror.children[lines.length - 1];
   if (line === undefined || line.firstChild === null) throw new Error("The authored editor caret has no source line");
   mirror.style.setProperty("display", "block", "important");
@@ -72,7 +65,7 @@ function caretBounds(element: HTMLTextAreaElement, prefix: string): DOMRect {
   }
   try {
     const range = document.createRange();
-    range.setStart(line.firstChild, lines[lines.length - 1].length);
+    range.setStart(line.firstChild, last.length);
     range.collapse(true);
     return range.getBoundingClientRect();
   } finally {
@@ -113,11 +106,11 @@ function authoredCaret(caret: Caret, element: HTMLTextAreaElement, previous: Pos
 // (a Formatted block splits), so they wait for it and land where the caret went ([CMS-EDITOR]).
 let held: string[] | null = null;
 let holdTimer: number | undefined;
+// The editor whose line break is in flight: a frame that still shows its draft unsettled answers an
+// earlier event, so the keys keep waiting for the one that settles, re-authors or removes it.
+let breaking = "";
 const HOLD_MS = 600;
 
-function isEditor(element: EventTarget | null): element is HTMLTextAreaElement {
-  return element instanceof HTMLTextAreaElement && element.matches("textarea[data-native-editor]");
-}
 
 /** Type `words` into the focused editor as the person would have, one line break at a time. */
 function replay(words: string): void {
@@ -134,6 +127,7 @@ function replay(words: string): void {
 
 function releaseTyping(): void {
   if (held === null) return;
+  breaking = "";
   const words = held.join("");
   held = null;
   window.clearTimeout(holdTimer);
@@ -168,7 +162,7 @@ export function refreshEditors(caret: Caret): void {
     });
   }
   for (const signature of [...epochs.keys()]) if (!positions.has(signature)) epochs.delete(signature);
-  releaseTyping();
+  if (!caret.edits.has(breaking)) releaseTyping();
   queueMicrotask(() => reportCaret(caret));
 }
 
@@ -181,6 +175,7 @@ export function installEditors(caret: Caret): void {
     mirrorEdit(element);
     if (!(event instanceof InputEvent) || event.inputType !== "insertLineBreak") return;
     held = [];
+    breaking = fieldSignature(element);
     window.clearTimeout(holdTimer);
     holdTimer = window.setTimeout(releaseTyping, HOLD_MS);
   });

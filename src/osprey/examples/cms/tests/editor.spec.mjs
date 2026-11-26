@@ -5,18 +5,15 @@
 import { expect, test } from "@playwright/test";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { BROWSER_SITE, SITE, git, head, published } from "./fixture.mjs";
+import { BROWSER_SITE, SITE, git, head, published, row, selectWord, status } from "./fixture.mjs";
 
 const HOME = "content/index.md";
 const POST = "content/blog/first.md";
 /** The files the tree may show: under a root, none hidden. [CMS-PATH-SAFE] [CMS-API-TREE] */
 const LISTED = Object.keys(SITE).filter((file) => /^(content|media)\//.test(file) && !file.split("/").some((part) => part.startsWith("."))).sort();
 
-const row = (page, key) => page.locator(`.osp-row[data-row-key="${key}"]`);
 const disk = (file) => readFileSync(path.join(BROWSER_SITE, file), "utf8");
 const brand = (token) => `var(--osp-brand-${token})`;
-/** The status pill whose words are exactly `words` (case-sensitive, so "Saved" never matches "Unsaved"). */
-const status = (page, words) => page.locator(".osp-frame-status").filter({ hasText: new RegExp(`(^|[^A-Za-z])${words}$`) });
 /** Whether the ribbon lights the tool named `label`. */
 const lit = (page, label) => page.getByRole("button", { name: label, exact: true }).evaluate((button) => button.closest(".osp-framed").getAttribute("style").includes("accentSoft"));
 
@@ -48,7 +45,7 @@ async function treeAndChrome(page) {
   await row(page, HOME).click();
   const save = page.getByRole("button", { name: "Save" });
   await expect(save).toBeDisabled();
-  expect(await save.evaluate((button) => button.closest(".osp-framed").getAttribute("style"))).toContain("--osp-brand-sunken");
+  await expect.poll(() => save.evaluate((button) => button.closest(".osp-framed").getAttribute("style"))).toContain("--osp-brand-sunken");
   await page.getByRole("button", { name: "Markdown" }).click();
   await page.getByRole("button", { name: "Formatted" }).click();
 }
@@ -181,12 +178,15 @@ async function saveAndPublish(page) {
   await expect(status(page, "Live")).toBeVisible();
 }
 
-/** The open file goes with one tap on its Delete button: one commit, gone from disk and from the tree. */
+/** The open file goes from its Delete button once the author confirms: one commit, gone from disk and from the tree. */
 async function deleted(page, file) {
   const before = head(BROWSER_SITE);
   await expect(page.getByRole("button", { name: "Delete", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Delete file" })).toBeVisible();
   await page.getByRole("button", { name: "Delete file" }).click();
+  await expect(page.getByText(`Delete ${path.basename(file)}?`)).toBeVisible();
+  expect(head(BROWSER_SITE)).toBe(before);
+  await page.getByRole("button", { name: "Yes, delete" }).click();
   await expect(row(page, file)).toHaveCount(0);
   expect(git(BROWSER_SITE, "log", "-1", "--format=%s")).toBe(`Delete ${file}`);
   expect(git(BROWSER_SITE, "rev-list", "--count", `${before}..HEAD`)).toBe("1");
@@ -218,16 +218,6 @@ async function upload(page) {
   expect(head(BROWSER_SITE)).toBe(uploaded);
   await expect(page.getByRole("button", { name: "Publish 1" })).toBeEnabled();
   await deleted(page, "media/team-photo.png");
-}
-
-/** Select `word` (the `nth` occurrence) in `area` as a person dragging over it would. */
-async function selectWord(area, word, nth = 0) {
-  await area.focus();
-  await area.evaluate((field, [target, which]) => {
-    let at = -1;
-    for (let seen = 0; seen <= which; seen += 1) at = field.value.indexOf(target, at + 1);
-    field.setSelectionRange(at, at + target.length);
-  }, [word, nth]);
 }
 
 /** The ribbon wraps exactly the selected words, in raw Markdown and in a Formatted block, after

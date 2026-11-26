@@ -13,6 +13,12 @@ import { activateWithServer, connectEditorBrowser } from "./profiler-kit";
 
 const labels = (nodes: readonly ModuleNode[]) => nodes.map((node) => node.label);
 
+/** `value`, asserted present: the tree or report answered it. */
+const present = <T>(value: T | undefined, what: string): T => {
+  assert.ok(value !== undefined, `${what} is present`);
+  return value;
+};
+
 function project(files: Record<string, string>): string {
   const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "osprey-modules-")));
   for (const [file, text] of Object.entries(files)) {
@@ -89,12 +95,14 @@ suite("Module Explorer [EDITOR-MODULE-EXPLORER]", () => {
     });
     const tree = provider([root], ["@org/left", "@org/right"]);
     const [node] = await tree.getChildren();
+    assert.ok(node, "the project node");
     assert.strictEqual(node.label, path.basename(root));
     assert.strictEqual(tree.getTreeItem(node).collapsibleState, vscode.TreeItemCollapsibleState.Collapsed);
 
     const groups = await tree.getChildren(node);
     assert.deepStrictEqual(labels(groups), ["Namespaces", "Sources", "Dependencies"]);
     const [modules, sources, dependencies] = groups;
+    assert.ok(modules && sources && dependencies, "the three groups");
     const child = async (parent: ModuleNode, label: string) => {
       const found = (await tree.getChildren(parent)).find((item) => item.label === label);
       assert.ok(found, `${label} under ${parent.label}`);
@@ -168,7 +176,7 @@ suite("Module Explorer [EDITOR-MODULE-EXPLORER]", () => {
     tree.nextSort();
     tree.nextSort();
     tree.filterBy("zzz");
-    const [none] = await tree.getChildren(modules);
+    const none = present((await tree.getChildren(modules))[0], "the no-matches row");
     assert.deepStrictEqual([none.label, none.description, none.icon], ["No matches", "zzz", "info"], "a filter that hides all says so");
     tree.filterBy("  ");
     assert.strictEqual(tree.filterText, "");
@@ -258,6 +266,7 @@ suite("Module Explorer [EDITOR-MODULE-EXPLORER]", () => {
       trusted: () => false,
     });
     const [only] = await untrusted.getChildren();
+    assert.ok(only, "the untrusted project node");
     const shown = await untrusted.getChildren(only);
     assert.deepStrictEqual(labels(shown), ["Analysis needs a trusted workspace", "Sources"]);
     assert.deepStrictEqual(labels(await untrusted.getChildren(shown[1])), ["a.osp", "b.osp"]);
@@ -313,9 +322,10 @@ suite("Module Explorer [EDITOR-MODULE-EXPLORER]", () => {
 
     // Two projects in one workspace answer independently.
     const [one, two] = await tree.getChildren();
+    assert.ok(one && two, "both projects");
     assert.deepStrictEqual(labels(await dependencies(one)), ["No lock file"]);
     assert.deepStrictEqual(labels(await dependencies(two)), ["No lock file", "@org/other"]);
-    assert.strictEqual((await dependencies(two))[1].description, "not locked · direct");
+    assert.strictEqual(present((await dependencies(two))[1], "the @org/other row").description, "not locked · direct");
 
     // An edit made outside the view shows after a refresh.
     fs.writeFileSync(path.join(first, "osprey.toml"), manifest('"@org/added" = { epoch = 2 }\n'));
@@ -327,7 +337,7 @@ suite("Module Explorer [EDITOR-MODULE-EXPLORER]", () => {
     // A manifest the client rejects is that client's error, never an empty list.
     fs.writeFileSync(path.join(first, "osprey.toml"), "[project]\n");
     tree.refresh();
-    const [broken] = await dependencies(one);
+    const broken = present((await dependencies(one))[0], "the failed Dependencies group");
     assert.strictEqual(broken.label, "Dependencies unavailable");
     assert.ok((broken.description ?? "").length > 0);
     fs.rmSync(first, { recursive: true, force: true });
@@ -338,8 +348,9 @@ suite("Module Explorer [EDITOR-MODULE-EXPLORER]", () => {
     const owner: ModuleNode = { id: "p", label: "p", projectRoot: "/p" };
     const source = { ok: { sources: ["/p/a.osp"], declarations: [] } };
     const [modules, sources, none] = projectChildren(owner, source, { ok: { direct: [], packages: [], findings: [] } });
+    assert.ok(modules && sources && none, "the three groups");
     assert.deepStrictEqual(labels(modules.children ?? []), ["No declarations"], "files alone are not code elements");
-    const [empty] = projectChildren(owner, { ok: { sources: [], declarations: [] } }, { ok: NO_LOCK([]) });
+    const empty = present(projectChildren(owner, { ok: { sources: [], declarations: [] } }, { ok: NO_LOCK([]) })[0], "the empty Namespaces group");
     assert.deepStrictEqual(labels(empty.children ?? []), ["No sources"]);
     assert.deepStrictEqual(labels(sources.children ?? []), ["a.osp"]);
     assert.deepStrictEqual(labels(none.children ?? []), ["No dependencies"]);
@@ -354,32 +365,36 @@ suite("Module Explorer [EDITOR-MODULE-EXPLORER]", () => {
         { ...clean, key: "@org/gone", version: "e1.r0", findings: ["verify.missing"], present: false },
       ],
     };
-    const [, , dependencies] = projectChildren(owner, source, { ok: graph });
+    const dependencies = present(projectChildren(owner, source, { ok: graph })[2], "the Dependencies group");
     const [global, a, unlocked] = dependencies.children ?? [];
+    assert.ok(global && a && unlocked, "the three top-level rows");
     assert.strictEqual(global.description, "verify.lock");
     assert.strictEqual(a.description, "e1.r2 · direct");
     assert.strictEqual(a.icon, "package");
     assert.strictEqual(unlocked.description, "not locked · direct");
     assert.strictEqual(unlocked.icon, "warning");
     const [b, gone] = a.children ?? [];
+    assert.ok(b && gone, "both transitive rows");
     assert.strictEqual(b.description, "e3.r0 · transitive · verify.digest");
     assert.strictEqual(b.icon, "warning");
     assert.deepStrictEqual(b.children, [], "a cycle back to @org/a stops");
     assert.strictEqual(gone.description, "e1.r0 · transitive · verify.missing · not installed");
     assert.strictEqual(a.parent, dependencies);
 
-    const local = projectChildren(owner, source, { ok: {
+    const local = present(projectChildren(owner, source, { ok: {
       direct: ["@org/a"], findings: [], packages: [{ ...clean, key: "@org/a", version: "e1.r2", override: "../a" }],
-    } })[2].children ?? [];
-    assert.strictEqual(local[0].description, "e1.r2 · direct · local: ../a");
-    assert.strictEqual(local[0].icon, "package");
+    } })[2], "the Dependencies group").children ?? [];
+    const localA = present(local[0], "the local @org/a row");
+    assert.strictEqual(localA.description, "e1.r2 · direct · local: ../a");
+    assert.strictEqual(localA.icon, "package");
 
     const [lockState, bare] = projectChildren(owner, source, { ok: NO_LOCK(["@org/a"]) })[2].children ?? [];
+    assert.ok(lockState && bare, "the lock-state row and the bare dependency");
     assert.strictEqual(lockState.label, "No lock file");
     assert.strictEqual(bare.description, "not locked · direct");
-    const failed = projectChildren(owner, source, { error: "lock.corrupt" })[2].children ?? [];
+    const failed = present(projectChildren(owner, source, { error: "lock.corrupt" })[2], "the Dependencies group").children ?? [];
     assert.deepStrictEqual(labels(failed), ["Dependencies unavailable"]);
-    assert.strictEqual(failed[0].description, "lock.corrupt");
+    assert.strictEqual(present(failed[0], "the failed row").description, "lock.corrupt");
   });
 
   test("a graph or dependency report that is not complete is refused", async () => {

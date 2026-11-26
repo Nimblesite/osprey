@@ -17,6 +17,9 @@ effect Range {
     clamp: fn(int, int) -> int
 }
 
+/// The map key the nested-channel cases file results and assert under.
+let outerInnerOuter = "outer-inner-outer"
+
 /// The row scopes these performs; rows are not yet propagated through calls.
 fn loadConfig() ![Parse, Missing, Range, Arith] = {
     let port = perform Parse.bad("=80=") // Parse channel: not a number
@@ -153,7 +156,7 @@ fn typedErrorChannelCase() = {
         "range": clampUnder(500, 10)
     }
     let nested = {
-        "outer-inner-outer": trace,
+        outerInnerOuter: trace,
         "healthy-inner-healthy": healthyTrace
     }
     let grown = mapSet(nested, "forced", [forceUnder(9, 10, 4), forceUnder(99, 10, 4)])
@@ -193,8 +196,8 @@ fn typedErrorChannelCase() = {
             (scalars.mapGet("absent") ?: 99) == 99,
             mapLength(nested) == 2,
             mapLength(grown) == 3,
-            listLength(nested.mapGet("outer-inner-outer") ?: [99]) == 3,
-            ((nested.mapGet("outer-inner-outer") ?: [99]).listGet(1) ?: 99) == 1,
+            listLength(nested.mapGet(outerInnerOuter) ?: [99]) == 3,
+            ((nested.mapGet(outerInnerOuter) ?: [99]).listGet(1) ?: 99) == 1,
             ((nested.mapGet("healthy-inner-healthy") ?: [99]).listGet(2) ?: 99) == 5,
             listLength(grown.mapGet("forced") ?: [99]) == 2,
             ((grown.mapGet("forced") ?: [99]).listGet(0) ?: 99) == 4,

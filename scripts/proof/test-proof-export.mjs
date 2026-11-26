@@ -254,11 +254,37 @@ const PROOF_MK = path.join(REPO, 'scripts/make/proof.mk');
 const CONFIG_MK = path.join(REPO, 'scripts/make/config.mk');
 const GOLDEN_PIPE = /\| diff - (\S*examples\/disciplines\/\S+)$/;
 const CRASH_STATUS = 23;
+const FIXTURE_BIN = 'fake-osprey';
+
+// The `define discipline_roundtrip` macro carries its own `$(1)`/`$(2)`
+// parameters, so only make knows the paths each `$(call ...)` expands to: the
+// define and its calls are copied verbatim into a dry run and make prints the
+// lines it would run. `$(BIN)` is put back so each replays through the same
+// fixture as a plain recipe line.
+const ROUND_TRIP_MACRO = /^define discipline_roundtrip\n[\s\S]*?^endef$/m;
+const ROUND_TRIP_CALL = /^\$\(call discipline_roundtrip,/;
+
+const expandedRoundTrips = () => {
+  const text = fs.readFileSync(PROOF_MK, 'utf8');
+  const macro = ROUND_TRIP_MACRO.exec(text);
+  const calls = text.split('\n').filter((line) => ROUND_TRIP_CALL.test(line.trim()));
+  assert.ok(macro && calls.length > 0, 'the discipline_roundtrip macro moved; re-point this guard');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'discipline-macro-'));
+  try {
+    fs.writeFileSync(
+      path.join(root, 'fixture.mk'),
+      `include ${CONFIG_MK}\n${macro[0]}\n\n.PHONY: check\ncheck:\n${calls.map((line) => `\t${line.trim()}`).join('\n')}\n`,
+    );
+    const dry = spawnSync('make', ['-n', '-f', 'fixture.mk', 'check', `BIN=${FIXTURE_BIN}`], { cwd: root, encoding: 'utf8' });
+    assert.equal(dry.status, 0, dry.stderr);
+    return dry.stdout.split('\n').map((line) => line.replaceAll(FIXTURE_BIN, '$(BIN)'));
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+};
 
 const goldenPipelines = () =>
-  fs
-    .readFileSync(PROOF_MK, 'utf8')
-    .split('\n')
+  [...fs.readFileSync(PROOF_MK, 'utf8').replace(ROUND_TRIP_MACRO, '').split('\n'), ...expandedRoundTrips()]
     .filter((line) => line.includes('$(BIN)') && GOLDEN_PIPE.test(line.trim()))
     .map((line) => line.trim());
 
@@ -268,12 +294,12 @@ const goldenPipelines = () =>
 const runMakeFixture = (lines, setup) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'discipline-pipe-'));
   try {
-    writeExecutable(path.join(root, 'fake-osprey'), `#!/bin/bash\n${setup(root)}\n`);
+    writeExecutable(path.join(root, FIXTURE_BIN), `#!/bin/bash\n${setup(root)}\n`);
     fs.writeFileSync(
       path.join(root, 'fixture.mk'),
       `include ${CONFIG_MK}\n\n.PHONY: check\ncheck:\n${lines.map((line) => `\t${line}`).join('\n')}\n`,
     );
-    return spawnSync('make', ['-f', 'fixture.mk', 'check', 'BIN=fake-osprey'], { cwd: root, encoding: 'utf8' });
+    return spawnSync('make', ['-f', 'fixture.mk', 'check', `BIN=${FIXTURE_BIN}`], { cwd: root, encoding: 'utf8' });
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

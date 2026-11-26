@@ -50,7 +50,7 @@ def render_internal(env, template, context) -> Result[str, str]:
             return Error(message=message)
 
 
-def parse_and_render(chunks, env, context) -> Result[str, str]:
+def parse_and_render(chunks, _env, context) -> Result[str, str]:
     """Parse chunks and render the resulting tree."""
     match P.parse(chunks):
         case Success(value=value):
@@ -226,7 +226,7 @@ def for_loop_cond(node, elems, i, env, acc, loop_env) -> Result[Out, str]:
             return Error(message=message)
 
 
-def for_loop_body(node, elems, i, env, acc, loop_env) -> Result[Out, str]:
+def for_loop_body(node, elems, i, _env, acc, loop_env) -> Result[Out, str]:
     """Render one loop body and continue."""
     match render_nodes(node.body, loop_env):
         case Success(value=value):

@@ -143,13 +143,13 @@ module WebFixtures {
     /// reason must hold, folded the same way as `shows`.
     export fn hides(name, view, verify) = match view {
         Model::Hidden { reason } => check(name, true, verify(reason))
-        Model::Shown { html } => check(name, "hidden screen", "shown")
+        Model::Shown { _ } => check(name, "hidden screen", "shown")
     }
 
     /// The screen must be hidden and answer `expected`.
     export fn hidesExpecting(name, view, expected) = match view {
         Model::Hidden { reason } => check(name, expected, reason)
-        Model::Shown { html } => check(name, "hidden screen", "shown")
+        Model::Shown { _ } => check(name, "hidden screen", "shown")
     }
 
     /// True when the screen is shown and `holds` accepts its HTML.

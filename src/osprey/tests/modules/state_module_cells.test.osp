@@ -55,7 +55,7 @@ fn addThenCount() = {
 
 /// Clears the cell and reports the value it held.
 fn addThenReset() = {
-    let ignored = perform Tally::Counter.add(9)
+    let _ignored = perform Tally::Counter.add(9)
     let cleared = perform Tally::Counter.reset()
     "${cleared}->${perform Tally::Counter.reads()}"
 }

@@ -4,13 +4,11 @@ namespace synth
 
 (** Component dispatch shared by offline graph execution. *)
 module RenderKernels
-    sine (rate, snapshot, frame, held, waveform, shape) = match RenderInputs::parameter (snapshot, held.identity, "frequency")
-        Error why => Error(message = why)
-        Success frequency => match Oscillators::configure (OscillatorConfig(sampleRate = rate, frequency = frequency, pulseWidth = 0.5, waveform = waveform))
-            Error why => Error(message = why)
-            Success config =>
-                sample = Oscillators::next (config, OscillatorState(phase = held.phase))
-                Success(value = RenderInputs::emitted (frame, held(phase = sample.next.phase), shape sample.sample))
+    sine (rate, snapshot, frame, held, waveform, shape) =
+        use frequency <- Outcomes::carried (RenderInputs::parameter (snapshot, held.identity, "frequency"))
+        use config <- Outcomes::carried (Oscillators::configure (OscillatorConfig(sampleRate = rate, frequency = frequency, pulseWidth = 0.5, waveform = waveform)))
+        sample = Oscillators::next (config, OscillatorState(phase = held.phase))
+        Success(value = RenderInputs::emitted (frame, held(phase = sample.next.phase), shape sample.sample))
 
     filtered (frame, held, coefficients, input) =
         sample = Filters::next (coefficients, FilterState(integratorOne = held.integratorOne, integratorTwo = held.integratorTwo), input)
@@ -30,33 +28,30 @@ module RenderKernels
         LiveFilter => Outcomes::carried (cutoff (plan, snapshot, frame, held.identity), \value =>
             Outcomes::carried (filterSettings (rate, snapshot, held.identity, value), \c => filtered (frame, held, c, input)))
 
-    cutoff (plan, snapshot, frame, identity) = match RenderInputs::parameter (snapshot, identity, "cutoff")
-        Error why => Error(message = why)
-        Success base => RenderInputs::controlledWith (plan, frame, identity, 1, base, \(value, control) => Waves::controlledCutoff (value, control), "Cutoff modulation must stay between zero and one.")
+    cutoff (plan, snapshot, frame, identity) = Outcomes::carried (RenderInputs::parameter (snapshot, identity, "cutoff"), \base => RenderInputs::controlledWith (plan, frame, identity, 1, base, \(value, control) => Waves::controlledCutoff (value, control), "Cutoff modulation must stay between zero and one."))
 
-    gain (snapshot, frame, held, input) = match RenderInputs::parameter (snapshot, held.identity, "gain")
-        Error why => Error(message = why)
-        Success level => match level >= 0.0 && level <= 8.0
+    // The gain setting of the plain and modulated gain nodes: linear 0–8.
+    level (snapshot, held) =
+        use value <- Outcomes::carried (RenderInputs::parameter (snapshot, held.identity, "gain"))
+        match value >= 0.0 && value <= 8.0
             false => Error(message = InvalidConfiguration(detail = "Invalid gain."))
-            true => Success(value = RenderInputs::output (frame, held.identity, input * level))
+            true => Success(value = value)
 
-    mixer (plan, snapshot, frame, held, first) = match RenderInputs::input (plan, frame, held.identity, 1)
-        Error why => Error(message = why)
-        Success second => RenderInputs::bound (snapshot, held, "firstGain", \a =>
-            RenderInputs::bound (snapshot, held, "secondGain", \b =>
-                match a >= 0.0 && a <= 1.0 && b >= 0.0 && b <= 1.0
-                    false => Error(message = InvalidConfiguration(detail = "Mixer input gains must be between zero and one."))
-                    true => Success(value = RenderInputs::output (frame, held.identity, WaveMath::mixed (first, a, second, b)))))
+    gain (snapshot, frame, held, input) = Outcomes::carried (level (snapshot, held), \amount => Success(value = RenderInputs::output (frame, held.identity, input * amount)))
 
-    controlled (plan, snapshot, frame, held, input) = match RenderInputs::input (plan, frame, held.identity, 1)
-        Error why => Error(message = why)
-        Success control => match control >= 0.0 && control <= 1.0
+    mixer (plan, snapshot, frame, held, first) =
+        use second <- Outcomes::carried (RenderInputs::input (plan, frame, held.identity, 1))
+        use a <- RenderInputs::bound (snapshot, held, "firstGain")
+        use b <- RenderInputs::bound (snapshot, held, "secondGain")
+        match a >= 0.0 && a <= 1.0 && b >= 0.0 && b <= 1.0
+            false => Error(message = InvalidConfiguration(detail = "Mixer input gains must be between zero and one."))
+            true => Success(value = RenderInputs::output (frame, held.identity, WaveMath::mixed (first, a, second, b)))
+
+    controlled (plan, snapshot, frame, held, input) =
+        use control <- Outcomes::carried (RenderInputs::input (plan, frame, held.identity, 1))
+        match control >= 0.0 && control <= 1.0
             false => Error(message = InvalidConfiguration(detail = "Gain modulation must stay between zero and one."))
-            true => match RenderInputs::parameter (snapshot, held.identity, "gain")
-                Error why => Error(message = why)
-                Success level => match level >= 0.0 && level <= 8.0
-                    false => Error(message = InvalidConfiguration(detail = "Invalid gain."))
-                    true => Success(value = RenderInputs::output (frame, held.identity, Waves::controlledGain (input, level, control)))
+            true => Outcomes::carried (level (snapshot, held), \amount => Success(value = RenderInputs::output (frame, held.identity, Waves::controlledGain (input, amount, control))))
 
     passthrough (frame, held, input) = Success(value = RenderInputs::output (frame, held.identity, input))
 
@@ -163,12 +158,11 @@ module RenderKernels
                 Error _ => Error(message = Outcomes::indexOutOfBounds)
                 Success held => match scheduled.switchable
                     false => selected (plan, rate, snapshot, frame, held, scheduled)
-                    true => match RenderInputs::parameter (snapshot, held.identity, "enabled")
-                        Error why => Error(message = why)
-                        Success enabled => match enabled
+                    true => Outcomes::carried (RenderInputs::parameter (snapshot, held.identity, "enabled"), \enabled =>
+                        match enabled
                             1.0 => selected (plan, rate, snapshot, frame, held, scheduled)
                             0.0 => bypassed (plan, frame, held, scheduled.node)
-                            _ => Error(message = InvalidConfiguration(detail = "Enabled must be zero or one."))
+                            _ => Error(message = InvalidConfiguration(detail = "Enabled must be zero or one.")))
 
     waveform (snapshot, scheduled) = match scheduled.selectableWave
         false => Success(value = Sine)

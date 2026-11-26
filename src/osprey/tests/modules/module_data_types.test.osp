@@ -32,8 +32,8 @@ module Geo {
 
     /// The lower-case kind of `shape`, as text.
     export fn name(shape) = match shape {
-        Circle { radius } => "circle"
-        Square { side } => "square"
+        Circle { _ } => "circle"
+        Square { _ } => "square"
     }
 
     /// The bounding box of `shape`: a circle spans twice its radius, a square its side.

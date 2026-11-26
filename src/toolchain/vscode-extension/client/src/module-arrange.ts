@@ -25,7 +25,7 @@ const COMPARE: Readonly<Record<SortOrder, (a: Arrangeable, b: Arrangeable) => nu
 
 /** The order after `order`, wrapping round. */
 export const nextOrder = (order: SortOrder): SortOrder =>
-  SORT_ORDERS[(SORT_ORDERS.indexOf(order) + 1) % SORT_ORDERS.length];
+  SORT_ORDERS[(SORT_ORDERS.indexOf(order) + 1) % SORT_ORDERS.length] ?? order;
 
 /** Whether `node` or anything under it names `text` (already lower-case). */
 function matches(node: Arrangeable, text: string): boolean {

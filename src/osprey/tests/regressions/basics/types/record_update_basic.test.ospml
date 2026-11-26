@@ -1,5 +1,8 @@
 // Record Update Tests - Non-destructive updates per spec 3.7.4
 
+(** The text a Delivered 2.5 answer renders as, which three cases assert on. *)
+successTwoPointFive = "Success(2.5)"
+
 print "=== RECORD UPDATE BASIC TESTS ==="
 
 (** Print a label followed by the two field values it describes. *)
@@ -212,7 +215,7 @@ genericResultRecordCase () =
     point = match readOutcome nested
         Success value => value
         Error _ => Point(x = 0, y = 0)
-    toString floating.answer == "Success(2.5)" && toString failed.answer == "Error(float error)" && toString promoted.answer == "Success(1.25)" && point.x == 4 && point.y == 5 && toString erasedFloat == "{ answer: Success(2.5), note: \"float\" }" && toString erasedError == "{ answer: Error(float error), note: \"float\" }" && toString erasedNested == "{ answer: Success({ x: 4, y: 5 }), note: \"nested\" }"
+    toString floating.answer == successTwoPointFive && toString failed.answer == "Error(float error)" && toString promoted.answer == "Success(1.25)" && point.x == 4 && point.y == 5 && toString erasedFloat == "{ answer: Success(2.5), note: \"float\" }" && toString erasedError == "{ answer: Error(float error), note: \"float\" }" && toString erasedNested == "{ answer: Success({ x: 4, y: 5 }), note: \"nested\" }"
 anonymousResultRecordCase () =
     original = { answer = Success(value = false), note = "anonymous" }
     failed = original(answer = Error(message = "bool error"))
@@ -238,7 +241,7 @@ resultTransportCase () =
     changed = perform ReplaceOutcome.replace 42
     boxed = Box(held = read ())
     errorBox = Box(held = Error(message = "generic error"))
-    changed == 42 && toString before == "Error(initial)" && toString (read ()) == "Success(42)" && toString boxed.held == "Success(42)" && toString errorBox.held == "Error(generic error)" && deliveryResult (Delivered(answer = 2.5)) == "Success(2.5)" && deliveryResult (Delivered(answer = Error(message = "delivery"))) == "Error(delivery)" && deliveryResult Waiting == "waiting"
+    changed == 42 && toString before == "Error(initial)" && toString (read ()) == "Success(42)" && toString boxed.held == "Success(42)" && toString errorBox.held == "Error(generic error)" && deliveryResult (Delivered(answer = 2.5)) == successTwoPointFive && deliveryResult (Delivered(answer = Error(message = "delivery"))) == "Error(delivery)" && deliveryResult Waiting == "waiting"
 
 (** [TYPE-RECORD-RESULT] Generic union slots preserve concrete Result payloads. *)
 type Parcel T = Absent | Packed(answer: Result<T, string>)
@@ -253,7 +256,7 @@ genericUnionResultCase () =
     erasedFloat = floating
     erasedBool : any
     erasedBool = boolean
-    parcelText floating == "Success(2.5)" && parcelText boolean == "Success(false)" && parcelText failed == "Error(parcel)" && parcelText Absent == "absent" && toString erasedFloat == "Packed { answer: Success(2.5) }" && toString erasedBool == "Packed { answer: Success(false) }"
+    parcelText floating == successTwoPointFive && parcelText boolean == "Success(false)" && parcelText failed == "Error(parcel)" && parcelText Absent == "absent" && toString erasedFloat == "Packed { answer: Success(2.5) }" && toString erasedBool == "Packed { answer: Success(false) }"
 
 (** [BUILTIN-PRINT-FORM] A recursive type renders at any depth: the compiler
     renders each type once and the nested value calls back into it. *)

@@ -19,6 +19,11 @@ export const INIT = "Init site";
 /** The site the browser session edits, and the port its server listens on. */
 export const BROWSER_SITE = path.join(out, "site-browser");
 export const BROWSER_PORT = 4397;
+/** The real Eleventy sample site under the CMS, for the author's journey from editor to built site. [CMS-SITE] */
+export const ELEVENTY_SITE = path.join(root, "src/osprey/examples/cms/site");
+export const AUTHOR_SITE = path.join(out, "site-author");
+export const AUTHOR_PORT = 4398;
+export const ELEVENTY = path.join(root, "src/toolchain/website/node_modules/.bin/eleventy");
 export const BUILD_MS = 300_000;
 const LISTEN_MS = 10_000;
 
@@ -50,10 +55,16 @@ export function buildEditor() {
     { env: { ...process.env, OSPREY_BIN: osprey }, stdio: ["ignore", "inherit", "inherit"], timeout: BUILD_MS });
 }
 
-/** Create the throwaway site repository at `site`: the developer's files, one commit, a local identity. */
-export function createSite(site) {
+/** Every tracked file of the site at `folder`, as `SITE` spells them; build output stays out. */
+export function siteFiles(folder) {
+  const names = git(folder, "ls-files", "--", ".").split("\n").filter(Boolean);
+  return Object.fromEntries(names.map((name) => [name, readFileSync(path.join(folder, name))]));
+}
+
+/** Create the throwaway site repository at `site`: the developer's `files`, one commit, a local identity. */
+export function createSite(site, files = SITE) {
   rmSync(site, { recursive: true, force: true });
-  for (const [file, bytes] of Object.entries(SITE)) {
+  for (const [file, bytes] of Object.entries(files)) {
     mkdirSync(path.dirname(path.join(site, file)), { recursive: true });
     writeFileSync(path.join(site, file), bytes);
   }
@@ -69,6 +80,40 @@ export function createSite(site) {
   execFileSync("git", ["init", "-q", "--bare", remote]);
   git(site, "remote", "add", "origin", remote);
   git(site, "push", "-q", "-u", "origin", "HEAD");
+}
+
+/** The tree's row for `key`. */
+export const row = (page, key) => page.locator(`.osp-row[data-row-key="${key}"]`);
+
+/** The status pill whose words are exactly `words` (case-sensitive, so "Saved" never matches "Unsaved"). */
+export const status = (page, words) => page.locator(".osp-frame-status").filter({ hasText: new RegExp(`(^|[^A-Za-z])${words}$`) });
+
+/** Select `word` (the `nth` occurrence) in `area` as a person dragging over it would. */
+export async function selectWord(area, word, nth = 0) {
+  await area.focus();
+  await area.evaluate((field, [target, which]) => {
+    let at = -1;
+    for (let seen = 0; seen <= which; seen += 1) at = field.value.indexOf(target, at + 1);
+    if (at < 0) throw new Error(`"${target}" is not in the field`);
+    field.setSelectionRange(at, at + target.length);
+  }, [word, nth]);
+}
+
+/** Build the Eleventy site in `folder` into `built`, as the site's own pipeline would. [CMS-SITE] */
+export function buildSite(folder, built) {
+  rmSync(built, { recursive: true, force: true });
+  execFileSync(ELEVENTY, ["--output", built], { cwd: folder, stdio: "pipe", timeout: 120_000 });
+}
+
+/** Serve the built site in `built` on `port` and resolve once it answers; kill the process to stop it. */
+export async function serveSite(built, port) {
+  const server = spawn("python3", ["-m", "http.server", String(port), "--bind", "127.0.0.1"], { cwd: built, stdio: "ignore" });
+  const deadline = Date.now() + 10_000;
+  while (await fetch(`http://127.0.0.1:${port}/`).then((reply) => reply.status, () => 0) !== 200) {
+    if (Date.now() > deadline) throw new Error(`the built site never answered on ${port}`);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  return server;
 }
 
 /** The commit the published site (the bare remote) holds. */

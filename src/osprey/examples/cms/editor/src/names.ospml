@@ -58,7 +58,10 @@ module Names
     (** The last segment of `path`. *)
     export base path = listGet (listReverse (split path "/" ?: [])) 0 ?: path
 
-    titleOf path = replace (replace (base path) ".md" "" ?: "Untitled") "-" " " ?: "Untitled"
+    capital word = toUpperCase (take word 1) + drop word 1
+
+    // `field-notes.md` reads as "Field Notes".
+    titleOf path = join (mapList (split (replace (base path) ".md" "" ?: "Untitled") "-" ?: ["Untitled"], capital)) " "
 
     (** What a new page starts with: front matter and a heading named after its file. *)
     export starter path = "---\ntitle: ${titleOf path}\n---\n\n# ${titleOf path}\n\nStart writing here.\n"

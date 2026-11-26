@@ -6,6 +6,10 @@
 // [EFFECTS-HANDLER-STATE], [EFFECTS-GENERIC-DECL],
 // [EFFECTS-GENERIC-INSTANTIATION], and [EFFECTS-GENERIC-RUNTIME].
 
+// The describe() outputs the cases assert on.
+let errMissing = "err: missing"
+let errOffline = "err: offline"
+
 type Outcome = Ok { value: string } | Err { message: string }
 
 type Status = Active | Inactive
@@ -135,9 +139,9 @@ fn userDefinedUnionCase() = {
 
     checkAll("union tags and payloads survive direct construction", [
             describe(loaded) == "ok: loaded",
-            describe(missing) == "err: missing",
+            describe(missing) == errMissing,
             describe(cached) == "ok: cached",
-            describe(Err { message: "offline" }) == "err: offline",
+            describe(Err { message: "offline" }) == errOffline,
             label(Active) == "active",
             label(Inactive) == "inactive",
             label(Active) != label(Inactive)
@@ -145,10 +149,10 @@ fn userDefinedUnionCase() = {
 
     checkAll("union lists preserve order patterns Results and persistence", [
             answersHold(fn(x) => listLength(x), [outcomes, grown, prefixed, reversed], [2, 3, 4, 4]),
-            answersHold(fn(index) => describeAt(outcomes, index, fallback), [0, 1, 9], ["ok: loaded", "err: missing", "err: fallback"]),
-            answersHold(fn(index) => describeAt(reversed, index, fallback), [0, 3], ["ok: cached", "err: offline"]),
+            answersHold(fn(index) => describeAt(outcomes, index, fallback), [0, 1, 9], ["ok: loaded", errMissing, "err: fallback"]),
+            answersHold(fn(index) => describeAt(reversed, index, fallback), [0, 3], ["ok: cached", errOffline]),
             describeAt(grown, 2, fallback) == "ok: cached",
-            describeAt(prefixed, 0, fallback) == "err: offline",
+            describeAt(prefixed, 0, fallback) == errOffline,
             listLength(outcomes) == 2,
             outcomeShape([]) == "empty",
             outcomeShape([loaded]) == "one:ok: loaded",
@@ -161,11 +165,11 @@ fn userDefinedUnionCase() = {
     checkAll("union maps preserve replacement removal lookup and generic choices", [
             answersHold(fn(x) => mapLength(x), [byName, updated, withoutFailure, merged], [2, 3, 2, 3]),
             describeKey(byName, "primary", fallback) == "ok: loaded",
-            describeKey(byName, "failure", fallback) == "err: missing",
+            describeKey(byName, "failure", fallback) == errMissing,
             describeKey(updated, "cached", fallback) == "ok: cached",
             describeKey(withoutFailure, "failure", fallback) == "err: fallback",
             describeKey(merged, "primary", fallback) == "ok: cached",
-            describeKey(merged, "offline", fallback) == "err: offline",
+            describeKey(merged, "offline", fallback) == errOffline,
             mapContains(byName, "primary"),
             mapContains(updated, "cached"),
             !mapContains(withoutFailure, "failure"),

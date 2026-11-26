@@ -1,0 +1,12 @@
+//! The test body for work whose setup is fallible. Its own unit: it calls
+//! `check`, so it attaches only to a program that names `settled`, and a
+//! program that merely chains `andThen` is never compiled as a test.
+//! Implements [FAILURE-EXPLICIT] and [TESTING-TAP].
+
+/// The test body for `work` whose setup answers a `Result`, as a fallible
+/// constructor such as `Channel(capacity)` does: a `Success` is the work's own
+/// outcome and an `Error` is a failed assertion that names its message.
+fn settled(work) = fn() => match work() {
+    Success { value } => value
+    Error { message } => check("setup refused", "none", message)
+}

@@ -159,14 +159,16 @@ def emittedChildDrop (child : α) : Option Nat → List (HeaderEffect α)
 -- CHILD DROP
 
 /-- A registry miss does nothing. For a hit the trace includes every header
-    access and call to the worklist push, quantified over the state's bit value. -/
+    access and call to the worklist push, quantified over the state's bit value:
+    an owned body is queued, a moving one becomes owned, and a handle loses one
+    sharer, its last one making it owned [MEM-OWNERSHIP-STATIC-HANDLES]. -/
 theorem compiledChildDrop (child : α) (state : Option Nat) :
     emittedChildDrop child state = (match state with
       | none => []
-      | some word => .read 8 :: (match word with
+      | some state => .read 8 :: (match state with
         | 1 => [.queue child]
         | 2 => [.write 1]
-        | _ => [])) := by rfl
+        | word => if 16 < word then [.write (if word = 17 then 1 else word - 1)] else [])) := by rfl
 
 /-- New depth, byte offset written in the existing buffer, and stored pointer.
     The buffer and its full declared capacity must be valid native storage. -/

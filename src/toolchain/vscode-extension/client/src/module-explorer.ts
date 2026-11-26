@@ -391,7 +391,8 @@ export function clientPackageGraph(frontend: FrontendRunner): (root: string) => 
   return async (root) => {
     try {
       const report = await frontend.run("--json tree --graph --project .", root);
-      const graph = report.status === 0 && report.lines.length === 1 ? parsePackageGraph(report.lines[0]) : undefined;
+      const line = report.lines.length === 1 ? report.lines[0] : undefined;
+      const graph = report.status === 0 && line !== undefined ? parsePackageGraph(line) : undefined;
       return graph ? { ok: graph } : { error: report.lines.join("; ") || `The package client answered status ${report.status}.` };
     } catch (error) {
       return { error: error instanceof Error ? error.message : String(error) };
@@ -428,8 +429,10 @@ const PROJECT_TABLE = /^\s*\[project\]\s*(#.*)?$/m;
 async function workspaceProjects(): Promise<string[]> {
   const manifests = await workspace.findFiles(`**/${MANIFEST_FILE}`, GENERATED_GLOB);
   const texts = await Promise.all(manifests.map((manifest) => workspace.fs.readFile(manifest)));
-  return manifests.filter((_, index) => PROJECT_TABLE.test(Buffer.from(texts[index]).toString("utf8")))
-    .map((manifest) => path.dirname(manifest.fsPath)).sort();
+  return manifests.flatMap((manifest, index) => {
+    const text = texts[index];
+    return text !== undefined && PROJECT_TABLE.test(Buffer.from(text).toString("utf8")) ? [path.dirname(manifest.fsPath)] : [];
+  }).sort();
 }
 
 /** Open a source at its position, refusing anything outside `roots`. */

@@ -49,7 +49,7 @@ addThenCount () =
 
 (** Clears the cell and reports the value it held. *)
 addThenReset () =
-    ignored = perform Tally::Counter.add 9
+    _ignored = perform Tally::Counter.add 9
     cleared = perform Tally::Counter.reset ()
     "${cleared}->${perform Tally::Counter.reads ()}"
 

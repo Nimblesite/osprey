@@ -135,7 +135,7 @@ spectrumJourney () =
     spectrumCase ([{ frequency = 250.0, amplitude = 0.5, band = 250.0, level = -6.0206 }], 48000)
     spectrumCase ([{ frequency = 125.0, amplitude = 0.5, band = 125.0, level = -6.0206 }, { frequency = 4000.0, amplitude = 0.25, band = 4000.0, level = -12.0412 }], 48000)
     spectrumCase ([{ frequency = 2100.0, amplitude = 0.1, band = 2000.0, level = -20.0 }, { frequency = 9000.0, amplitude = 0.7, band = 8000.0, level = -3.098 }], 30000)
-    succeeds (Spectra::bands (mapList (toList (range (0, 9000)), \_ => 0.0), rate, 2048, 512), spectrumSilent)
+    succeeds (Spectra::bands (synth::Sequences::zeros 9000, rate, 2048, 512), spectrumSilent)
     succeeds (Spectra::bands ([], rate, 1024, 256), spectrumSilent)
     succeeds (Spectra::bands (mapList (toList (range (0, 49152)), spectrumHalf), rate, 4096, 4096), spectrumHalves)
     forEachList ([{ size = 100, hop = 256, rate = 48000.0 }, { size = 8192, hop = 256, rate = 48000.0 }, { size = 1024, hop = 0, rate = 48000.0 }, { size = 1024, hop = 256, rate = 4000.0 }], \r => refusedWith (Spectra::bands ([0.0], r.rate, r.size, r.hop), spectrumWhy))

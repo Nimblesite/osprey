@@ -90,14 +90,15 @@ module Blocks
         _ => unfenced (scan, line, lineStyle line)
 
     // Blocks are read line by line, so a heading, a fence or a list needs no blank line around it.
-    body text = (closed (foldList (lines (trim text), Scan(scanned = [], pending = [], pendingStyle = ""), readLine))).scanned
+    body text = (closed (foldList (lines text, Scan(scanned = [], pending = [], pendingStyle = ""), readLine))).scanned
 
     (** `text` taken apart into front matter and blocks. *)
     export page text = parted text
 
+    // The front matter keeps its closing fence's line, then one blank line before the first block.
     gapAfter front = match front
         "" => ""
-        _ => "\n"
+        _ => "\n\n"
 
     (** The page put back together: front matter, then blocks one blank line apart, ending in a newline. *)
     export joined page = match length page.pageBlocks
@@ -144,10 +145,7 @@ module Blocks
     export blockAt (blocks, index) = listGet blocks index ?: Block(blockStyle = "paragraph", blockText = "")
 
     (** Page `text` with block `index` holding `words`, its style kept. *)
-    export edited (text, index, words) =
-        whole = page text
-        held = blockAt (whole.pageBlocks, index)
-        joined (whole(pageBlocks = replaced (whole.pageBlocks, index, held(blockText = words))))
+    export edited (text, index, words) = within (text, index, \_ => words)
 
     // Turning a block's style on twice turns it back into a paragraph, as a ribbon toggle does.
     toggled (current, wanted) = match current == wanted
@@ -160,26 +158,70 @@ module Blocks
         held = blockAt (whole.pageBlocks, index)
         joined (whole(pageBlocks = replaced (whole.pageBlocks, index, held(blockStyle = toggled (held.blockStyle, style)))))
 
-    (** `text` with `marker` on both sides of the bytes from `start` to `reach`, such as `**` for bold; a caret gets an empty pair. *)
-    export wrapped (text, start, reach, marker) =
+    // The last and first `count` bytes of `words`.
+    tail (words, count) = drop words (satSub (length words) count)
+
+    // How many `*` end `before` (up to three), and how many start `after`.
+    trailing before = match tail (before, 3) == "***"
+        true => 3
+        false => match tail (before, 2) == "**"
+            true => 2
+            false => match tail (before, 1) == "*"
+                true => 1
+                false => 0
+
+    leading after = trailing (reverse (take after 3))
+
+    odd count = count == 1 || count == 3
+
+    // Whether `marker` closes `before` and opens `after`: `*` and `**` share stars, so `***` holds both.
+    around (before, after, marker) = match marker
+        "*" => odd (trailing before) && odd (leading after)
+        "**" => trailing before >= 2 && leading after >= 2
+        _ => tail (before, length marker) == marker && take after (length marker) == marker
+
+    // The selection itself carries the markers, such as `**coast**` selected whole.
+    carries (chosen, marker) = length chosen > 2 * length marker && around (chosen, chosen, marker)
+
+    unmarked (chosen, marker) = drop (take chosen (satSub (length chosen) (length marker))) (length marker)
+
+    // The bytes `start` to `reach` of `text`, clamped and in order: before, chosen, after.
+    spans (text, start, reach) =
         from = max 0 (min start (length text))
         to = max from (min reach (length text))
-        take text from + marker + drop (take text to) from + marker + drop text to
+        [take text from, drop (take text to) from, drop text to]
 
-    (** `text` with `snippet` inserted at byte `cursor`. *)
-    export inserted (text, cursor, snippet) =
-        spot = max 0 (min cursor (length text))
-        take text spot + snippet + drop text spot
+    toggledMarks (before, chosen, after, marker) = match carries (chosen, marker)
+        true => before + unmarked (chosen, marker) + after
+        false => match around (before, after, marker)
+            true => take before (satSub (length before) (length marker)) + chosen + drop after (length marker)
+            false => before + marker + chosen + marker + after
 
-    (** Page `text` with `marker` either side of bytes `start` to `reach` of block `index`. *)
-    export marked (text, index, start, reach, marker) =
+    (** `text` with `marker` (such as `**` for bold) toggled on the bytes `start` to `reach`: added around
+        them, or removed when they already sit inside it or carry it; a caret gets an empty pair. *)
+    export wrapped (text, start, reach, marker) =
+        parts = spans (text, start, reach)
+        toggledMarks (listGet parts 0 ?: "", listGet parts 1 ?: "", listGet parts 2 ?: "", marker)
+
+    (** `text` with the bytes `start` to `reach` replaced by `snippet`, as typing over a selection does. *)
+    export inserted (text, start, reach, snippet) =
+        parts = spans (text, start, reach)
+        (listGet parts 0 ?: "") + snippet + (listGet parts 2 ?: "")
+
+    (** Page `text` with block `index`'s text changed by `change`. *)
+    export within (text, index, change) =
         whole = page text
         held = blockAt (whole.pageBlocks, index)
-        joined (whole(pageBlocks = replaced (whole.pageBlocks, index, held(blockText = wrapped (held.blockText, start, reach, marker)))))
+        joined (whole(pageBlocks = replaced (whole.pageBlocks, index, held(blockText = change held.blockText))))
 
     lineStart (text, cursor) =
         before = reverse (take text (max 0 cursor))
         satSub (length before) (indexOf before "\n" ?: length before)
 
-    (** Raw `text` with the line holding byte `cursor` marked as `style`. *)
-    export lineStyled (text, cursor, style) = inserted (text, lineStart (text, cursor), prefixOf style)
+    (** Raw `text` with the line holding byte `cursor` in `style`: its old prefix replaced, or dropped when it already was. *)
+    export lineStyled (text, cursor, style) =
+        from = lineStart (text, cursor)
+        rest = drop text from
+        cut = indexOf rest "\n" ?: length rest
+        held = styled (take rest cut)
+        take text from + markdown (held(blockStyle = toggled (held.blockStyle, style))) + drop rest cut

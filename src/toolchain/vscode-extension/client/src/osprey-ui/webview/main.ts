@@ -22,9 +22,17 @@ const client: Client = {
   pendingLoss: undefined,
   runtimeBusy: false,
   runtimeTracked: false,
+  posted: 0,
+  answered: 0,
   post: {
-    control: (ordinal, words) => vscode.postMessage({ type: "event", kind: 0, ordinal, words }),
-    event: (event) => vscode.postMessage(event),
+    control: (ordinal, words) => {
+      client.posted += 1;
+      vscode.postMessage({ type: "event", kind: 0, ordinal, words });
+    },
+    event: (event) => {
+      client.posted += 1;
+      vscode.postMessage(event);
+    },
     external: (url) => vscode.postMessage({ type: "external", url }),
   },
 };

@@ -9,6 +9,12 @@ effect Invalid {
     report: fn(string) -> Unit
 }
 
+/// The fixture values and verdict snippets the case assertions share.
+let ariEmail = "ari@example.com"
+let nameEmptyLine = "#1 name is empty"
+let acceptedClean = "ACCEPTED (0 errors)"
+let rejectedOnePrefix = "REJECTED (1 errors"
+
 /// Both branches return Unit, so validation continues after a report.
 fn flag(broken, msg) !Invalid = match broken {
     true => perform Invalid.report(msg)
@@ -60,9 +66,9 @@ fn collectAllErrorsCase() = {
     let owen = audit("Owen", 34, 88, "owen@example.com")
     let blank = audit("", 40, 60, "")
     let onlyName = audit("", 20, 50, "name@example.com")
-    let onlyAge = audit("Ari", (0 - 1) , 50, "ari@example.com")
-    let onlyLowScore = audit("Ari", 20, (0 - 1) , "ari@example.com")
-    let onlyHighScore = audit("Ari", 20, 101, "ari@example.com")
+    let onlyAge = audit("Ari", (0 - 1) , 50, ariEmail)
+    let onlyLowScore = audit("Ari", 20, (0 - 1) , ariEmail)
+    let onlyHighScore = audit("Ari", 20, 101, ariEmail)
     let onlyMissingAt = audit("Ari", 20, 50, "ari.example.com")
     let scoreZero = audit("Zero", 0, 0, "zero@example.com")
     let scoreHundred = audit("Hundred", 0, 100, "hundred@example.com")
@@ -74,31 +80,31 @@ fn collectAllErrorsCase() = {
     }
 
     checkAll("multi-error validation preserves exact order and count", [
-            containsAll(nadia, ["#1 name is empty", "#2 age is negative (-3)", "#3 score above 100 (250)", "#4 email is missing '@'", "REJECTED (4 errors"]),
+            containsAll(nadia, [nameEmptyLine, "#2 age is negative (-3)", "#3 score above 100 (250)", "#4 email is missing '@'", "REJECTED (4 errors"]),
             !contains(nadia, "score below 0"),
             !contains(nadia, "email is empty"),
             (indexOf(nadia, "#1 name") ?: 999) < (indexOf(nadia, "#2 age") ?: 999),
             (indexOf(nadia, "#2 age") ?: 999) < (indexOf(nadia, "#3 score") ?: 999),
             (indexOf(nadia, "#3 score") ?: 999) < (indexOf(nadia, "#4 email") ?: 999),
-            contains(owen, "ACCEPTED (0 errors)"),
-            containsAll(blank, ["#1 name is empty", "#2 email is empty", "#3 email is missing '@'", "REJECTED (3 errors"]),
+            contains(owen, acceptedClean),
+            containsAll(blank, [nameEmptyLine, "#2 email is empty", "#3 email is missing '@'", "REJECTED (3 errors"]),
             (indexOf(blank, "#1 name") ?: 999) < (indexOf(blank, "#2 email") ?: 999),
             (indexOf(blank, "#2 email") ?: 999) < (indexOf(blank, "#3 email") ?: 999)
     ])
 
     checkAll("single failures and inclusive boundaries remain independent", [
-            onlyName.contains("#1 name is empty"),
-            onlyName.contains("REJECTED (1 errors"),
+            onlyName.contains(nameEmptyLine),
+            onlyName.contains(rejectedOnePrefix),
             onlyAge.contains("#1 age is negative (-1)"),
-            onlyAge.contains("REJECTED (1 errors"),
+            onlyAge.contains(rejectedOnePrefix),
             onlyLowScore.contains("#1 score below 0 (-1)"),
-            onlyLowScore.contains("REJECTED (1 errors"),
+            onlyLowScore.contains(rejectedOnePrefix),
             onlyHighScore.contains("#1 score above 100 (101)"),
-            onlyHighScore.contains("REJECTED (1 errors"),
+            onlyHighScore.contains(rejectedOnePrefix),
             onlyMissingAt.contains("#1 email is missing '@'"),
-            onlyMissingAt.contains("REJECTED (1 errors"),
-            scoreZero.contains("ACCEPTED (0 errors)"),
-            scoreHundred.contains("ACCEPTED (0 errors)"),
+            onlyMissingAt.contains(rejectedOnePrefix),
+            scoreZero.contains(acceptedClean),
+            scoreHundred.contains(acceptedClean),
             !scoreZero.contains("REJECTED"),
             !scoreHundred.contains("REJECTED")
     ])
@@ -106,14 +112,14 @@ fn collectAllErrorsCase() = {
     checkAll("validation reports retain strings inside nested collections", [
             listLength(reports) == 8,
             (reports.listGet(0) ?: "missing").contains("REJECTED (4 errors"),
-            (reports.listGet(1) ?: "missing").contains("ACCEPTED (0 errors)"),
+            (reports.listGet(1) ?: "missing").contains(acceptedClean),
             (reports.listGet(7) ?: "missing").contains("missing '@'"),
             mapLength(byKind) == 3,
             listLength(byKind.mapGet("multi") ?: ["missing"]) == 2,
             listLength(byKind.mapGet("clean") ?: ["missing"]) == 3,
             listLength(byKind.mapGet("single") ?: ["missing"]) == 5,
             ((byKind.mapGet("multi") ?: ["missing"]).listGet(1) ?: "missing").contains("REJECTED (3 errors"),
-            ((byKind.mapGet("clean") ?: ["missing"]).listGet(2) ?: "missing").contains("ACCEPTED (0 errors)"),
+            ((byKind.mapGet("clean") ?: ["missing"]).listGet(2) ?: "missing").contains(acceptedClean),
             ((byKind.mapGet("single") ?: ["missing"]).listGet(3) ?: "missing").contains("score above 100"),
             listLength(mapKeys(byKind)) == 3,
             listLength(mapValues(byKind)) == 3,

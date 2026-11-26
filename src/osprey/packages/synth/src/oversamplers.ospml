@@ -12,10 +12,8 @@ module Oversamplers
     (** The 31 fixed half-band taps shared by the upsampler and decimator. *)
     export coefficients () = mapList (toList (range (0, taps)), \index => NonlinearMath::halfband (toFloat index, toFloat taps))
 
-    zeros () = mapList (toList (range (0, taps)), \_ => 0.0)
-
     (** Silent shaper and filter histories. *)
-    export initial () = OversampledState(shaper = Waveshapers::initial, up = zeros (), down = zeros ())
+    export initial () = OversampledState(shaper = Waveshapers::initial, up = Sequences::zeros taps, down = Sequences::zeros taps)
 
     accumulated (history, weights, index, sum) = match listGet weights index
         Error _ => sum

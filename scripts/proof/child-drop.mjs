@@ -14,30 +14,84 @@ function lookupForwarder(ir) {
     throw Error('unsupported child lookup or header forwarding')
 }
 
-function recordAction(line, child, field, addresses, actions) {
-  const store = /^store i32 (\d+), ptr (%[\w.]+), align \d+(?:, !tbaa !\d+)?$/.exec(line)
-  const cast = addressCast.exec(line)
-  const push = /^(?:tail )?call (?:fastcc )?void @arc_wl_push\(i64 (?:noundef )?(%[\w.]+)\)$/.exec(line)
-  if (field && store?.[2] === field) actions.push('.write ' + store[1])
-  else if (cast?.[2] === child) addresses.add(cast[1])
-  else if (push && addresses.has(push[1])) actions.push('.queue child')
-  else throw Error('unsupported child drop action: ' + line)
+// The header word as one path knows it: a number the compiler folded, or a
+// Lean term over the matched `word`. The state field holds the switch's own
+// value when an arm starts, and a load of it reads the path's latest store.
+const WORD = 'word'
+const number = /^\d+$/
+const atom = term => /^[\w.]+$/.test(term) ? term : '(' + term + ')'
+
+function known(regs, name) {
+  if (number.test(name)) return name
+  if (!regs.has(name)) throw Error('unknown child drop operand: ' + name)
+  return regs.get(name)
 }
 
-function effects(cfg, start, child, field) {
+// `left op right` folds to a number once both operands are known; otherwise
+// the Lean term stands for it.
+function binary(regs, left, right, op, term) {
+  const a = known(regs, left)
+  const b = known(regs, right)
+  return number.test(a) && number.test(b) ? String(op(+a, +b)) : term(a, b)
+}
+
+// The compiler's arithmetic on the word: `icmp sgt i32 a, k` is `k < a` on the
+// Nat word, `add nsw i32 a, -k` is `a - k`, and a select keeps both arms while
+// its condition is unresolved.
+function compute(regs, line) {
+  const test = /^(%[\w.]+) = icmp (sgt|eq) i32 (%[\w.]+), (\d+)$/.exec(line)
+  const sum = /^(%[\w.]+) = add nsw i32 (%[\w.]+), -(\d+)$/.exec(line)
+  const choose = /^(%[\w.]+) = select i1 (%[\w.]+), i32 (%[\w.]+|\d+), i32 (%[\w.]+|\d+)$/.exec(line)
+  if (test) {
+    const greater = test[2] === 'sgt'
+    regs.set(test[1], binary(regs, test[3], test[4],
+      greater ? (a, b) => a > b : (a, b) => a === b,
+      greater ? (a, b) => `${b} < ${a}` : (a, b) => `${a} = ${b}`))
+  } else if (sum) regs.set(sum[1], binary(regs, sum[2], sum[3], (a, b) => a - b, (a, b) => `${a} - ${b}`))
+  else if (choose) {
+    const condition = known(regs, choose[2])
+    const pick = { true: choose[3], false: choose[4] }[condition]
+    regs.set(choose[1], pick ? known(regs, pick) : `if ${condition} then ${known(regs, choose[3])} else ${known(regs, choose[4])}`)
+  } else return false
+  return true
+}
+
+function recordAction(line, child, field, addresses, actions, regs) {
+  const load = /^(%[\w.]+) = load i32, ptr (%[\w.]+), align \d+(?:, !tbaa !\d+)?$/.exec(line)
+  const store = /^store i32 (%[\w.]+|\d+), ptr (%[\w.]+), align \d+(?:, !tbaa !\d+)?$/.exec(line)
+  const cast = addressCast.exec(line)
+  const push = /^(?:tail )?call (?:fastcc )?void @arc_wl_push\(i64 (?:noundef )?(%[\w.]+)\)$/.exec(line)
+  if (load && load[2] === field) regs.set(load[1], known(regs, field))
+  else if (store && store[2] === field) {
+    regs.set(field, known(regs, store[1]))
+    actions.push('.write ' + atom(regs.get(field)))
+  } else if (cast?.[2] === child) addresses.add(cast[1])
+  else if (push && addresses.has(push[1])) actions.push('.queue child')
+  else if (!compute(regs, line)) throw Error('unsupported child drop action: ' + line)
+}
+
+// Walk one path from `start` to the function's return, recording every effect
+// on the state field and the worklist in order. A branch on a folded word takes
+// its one edge; a branch on the word itself splits the rest of the path into an
+// if-then-else over the two continuations.
+function effects(cfg, start, child, field, regs = new Map(), addresses = new Set()) {
   const seen = new Set()
   const actions = []
-  const addresses = new Set()
   let label = start
   while (!seen.has(label)) {
     seen.add(label)
     const body = cfg.get(label)
     if (!body) throw Error('missing child drop block: ' + label)
-    for (const line of body.slice(0, -1)) {
-      recordAction(line, child, field, addresses, actions)
-    }
-    if (body.at(-1) === 'ret void') return '[' + actions.join(', ') + ']'
-    label = jumpTarget(body.at(-1))
+    for (const line of body.slice(0, -1)) recordAction(line, child, field, addresses, actions, regs)
+    const end = body.at(-1)
+    if (end === 'ret void') return '[' + actions.join(', ') + ']'
+    const branch = /^br i1 (%[\w.]+), label %([\w.]+), label %([\w.]+)$/.exec(end)
+    if (!branch) { label = jumpTarget(end); continue }
+    const condition = known(regs, branch[1])
+    if (condition === 'true' || condition === 'false') { label = condition === 'true' ? branch[2] : branch[3]; continue }
+    const path = target => effects(cfg, target, child, field, new Map(regs), new Set(addresses))
+    const split = 'if ' + condition + ' then ' + path(branch[2]) + ' else ' + path(branch[3])
+    return actions.length ? '[' + actions.join(', ') + '] ++ (' + split + ')' : split
   }
   throw Error('cycle in child drop')
 }
@@ -53,14 +107,16 @@ export function childDrop(ir) {
   const sw = /^switch i32 (%[\w.]+), label %([\w.]+) \[$/.exec(dispatch[2])
   if (!field || !load || !sw || field[2] !== header || load[2] !== field[1] || sw[1] !== load[1] || dispatch.at(-1) !== ']')
     throw Error('unsupported child header switch')
-  const run = label => effects(cfg, label, child, field[1])
+  // An arm starts knowing the field holds the switch's own value: its case, or
+  // the matched `word` on the default edge.
+  const run = (label, word) => effects(cfg, label, child, field[1], new Map([[field[1], word]]))
   const arms = dispatch.slice(3, -1).map(line => {
     const arm = /^i32 (\d+), label %([\w.]+)$/.exec(line)
     if (!arm) throw Error('unsupported child switch case')
-    return '    | ' + arm[1] + ' => ' + run(arm[2])
+    return '    | ' + arm[1] + ' => ' + run(arm[2], arm[1])
   })
   return ['  | none => ' + effects(cfg, absent, child, null),
-    '  | some state => .read ' + field[3] + ' :: (match state with', ...arms, '    | _ => ' + run(sw[2]) + ')'].join('\n')
+    '  | some state => .read ' + field[3] + ' :: (match state with', ...arms, '    | ' + WORD + ' => ' + run(sw[2], WORD) + ')'].join('\n')
 }
 
 // The spare-capacity theorem follows the selected edge only. Uninterpreted

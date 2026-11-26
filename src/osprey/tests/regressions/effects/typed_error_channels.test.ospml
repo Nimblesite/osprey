@@ -17,6 +17,9 @@ effect Range
     (** Clamp `value` into range, returning the bound it was pinned to. *)
     clamp : (int, int) => int
 
+(** The map key the nested-channel cases file results and assert under. *)
+outerInnerOuter = "outer-inner-outer"
+
 (** The row scopes these performs; rows are not yet propagated through calls. *)
 loadConfig : Unit -> int ![Parse, Missing, Range, Arith]
 loadConfig () =
@@ -134,7 +137,7 @@ typedErrorChannelCase () =
         "range" => clampUnder (500, 10)
     ]
     nested = [
-        "outer-inner-outer" => trace,
+        outerInnerOuter => trace,
         "healthy-inner-healthy" => healthyTrace
     ]
     grown = nested |> mapSet "forced" [forceUnder (9, 10, 4), forceUnder (99, 10, 4)]
@@ -174,8 +177,8 @@ typedErrorChannelCase () =
         (mapGet scalars "absent" ?: 99) == 99,
         mapLength nested == 2,
         mapLength grown == 3,
-        listLength (mapGet nested "outer-inner-outer" ?: [99]) == 3,
-        (listGet (mapGet nested "outer-inner-outer" ?: [99]) 1 ?: 99) == 1,
+        listLength (mapGet nested outerInnerOuter ?: [99]) == 3,
+        (listGet (mapGet nested outerInnerOuter ?: [99]) 1 ?: 99) == 1,
         (listGet (mapGet nested "healthy-inner-healthy" ?: [99]) 2 ?: 99) == 5,
         listLength (mapGet grown "forced" ?: [99]) == 2,
         (listGet (mapGet grown "forced" ?: [99]) 0 ?: 99) == 4,

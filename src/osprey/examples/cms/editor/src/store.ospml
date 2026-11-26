@@ -51,6 +51,8 @@ type Studio =
     remote : bool
     showingHistory : bool
     creating : bool
+    leaving : string
+    confirming : bool
     draftPath : string
     folder : string
     upload : Upload
@@ -88,3 +90,7 @@ type Act =
         placedIndex : int
     FocusBlock
     EditFresh
+    KeepEditing
+    Discard
+    ConfirmDelete
+    CancelDelete

@@ -15,7 +15,7 @@ module Update
     idle () = Upload(uploadPath = "", uploadParts = [], uploadNext = 0)
 
     (** The store a launch starts from, talking to the CMS at `server`, before anything has loaded. *)
-    export launched server = Studio(server = server, roots = [], files = [], filter = "", opened = "", text = "", saved = "", cursor = 0, reach = 0, mode = "formatted", focus = 0, focusEpoch = 0, fresh = -1, blockCursor = 0, blockReach = 0, preview = "", commit = "", loads = 0, busy = false, history = [], unpublished = 0, remote = false, showingHistory = false, creating = false, draftPath = "", folder = "media", upload = idle (), notice = quiet ())
+    export launched server = Studio(server = server, roots = [], files = [], filter = "", opened = "", text = "", saved = "", cursor = 0, reach = 0, mode = "formatted", focus = 0, focusEpoch = 0, fresh = -1, blockCursor = 0, blockReach = 0, preview = "", commit = "", loads = 0, busy = false, history = [], unpublished = 0, remote = false, showingHistory = false, creating = false, leaving = "", confirming = false, draftPath = "", folder = "media", upload = idle (), notice = quiet ())
 
     (** The tree, the history and what is still unpublished, fetched together. *)
     export hydrate store = Runtime::asking (store(loads = 3), refreshes store)
@@ -40,6 +40,14 @@ module Update
         true => Runtime::step store
         false => Runtime::asking (store(busy = true, notice = quiet ()), [Api::call (store.server, ticket, method, path, body)])
 
+    // Unsaved words in the open page: anything that would replace them asks first.
+    unsaved store = Names::kind store.opened == "markdown" && store.text != store.saved
+
+    // Choosing another file with unsaved words asks first; the open file itself just stays.
+    guarded (store, path) = match unsaved store && path != store.opened
+        true => Runtime::step (store(leaving = path))
+        false => opening (store, path)
+
     // Opening a page asks for its text; opening media asks for its bytes; anything else just shows.
     opening (store, path) =
         chosen = store(opened = path, text = "", saved = "", cursor = 0, reach = 0, focus = 0, fresh = -1, blockCursor = 0, blockReach = 0, preview = "", creating = false)
@@ -60,7 +68,16 @@ module Update
     // A new page starts in the first root, named so a person sees where it will live.
     drafting store = Runtime::step (store(creating = true, draftPath = "${listGet store.roots 0 ?: "content"}/new-page.md"))
 
-    create store = match Names::kind store.draftPath == "markdown"
+    exists (store, path) = length (filterList (store.files, \item => item.entryPath == path)) > 0
+
+    // A new page never replaces a page that exists, nor unsaved words in the open one.
+    create store = match exists (store, store.draftPath)
+        true => refused (store, "That page already exists", "${store.draftPath} is already a page. Open it from the tree, or choose another path.")
+        false => match unsaved store
+            true => refused (store, "Unsaved changes", "Save ${Names::base store.opened} or discard its changes before starting a new page.")
+            false => made store
+
+    made store = match Names::kind store.draftPath == "markdown"
         true => sending (store(opened = store.draftPath, text = Names::starter store.draftPath, saved = "", preview = ""), "create", "PUT", Api::at ("/api/file", store.draftPath), Names::starter store.draftPath)
         false => refused (store, "Pages are Markdown", "A new page's path must end in .md, such as content/blog/hello.md.")
 
@@ -74,7 +91,7 @@ module Update
     export tapped (store, action) = match action
         Refresh => hydrate store
         Save => save store
-        Delete => delete store
+        Delete => Runtime::step (store(confirming = store.opened != ""))
         NewPage => drafting store
         CreatePage => create store
         CancelDraft => Runtime::step (store(creating = false))
@@ -86,7 +103,11 @@ module Update
         Raw => Runtime::step (store(mode = "markdown"))
         Restyle style => restyle (store, style)
         Emphasis marker => emphasise (store, marker)
-        Insert snippet => Runtime::step (store(text = Blocks::inserted (store.text, store.cursor, snippet)))
+        Insert snippet => insert (store, snippet)
+        KeepEditing => Runtime::step (store(leaving = ""))
+        Discard => opening (store(leaving = ""), store.leaving)
+        CancelDelete => Runtime::step (store(confirming = false))
+        ConfirmDelete => delete (store(confirming = false))
         _ => Runtime::step store
 
     // The ribbon's styles: on the focused block when formatted, on the caret's line in Markdown.
@@ -96,8 +117,13 @@ module Update
 
     // Bold, italic and code: markers either side of the selection (or the caret), in the focused block or the raw text.
     emphasise (store, marker) = match store.mode
-        "formatted" => Runtime::step (store(text = Blocks::marked (store.text, store.focus, store.blockCursor, store.blockReach, marker)))
+        "formatted" => Runtime::step (store(text = Blocks::within (store.text, store.focus, \words => Blocks::wrapped (words, store.blockCursor, store.blockReach, marker))))
         _ => Runtime::step (store(text = Blocks::wrapped (store.text, store.cursor, store.reach, marker)))
+
+    // Link and image snippets replace the selection (or land at the caret) where the author is writing.
+    insert (store, snippet) = match store.mode
+        "formatted" => Runtime::step (store(text = Blocks::within (store.text, store.focus, \words => Blocks::inserted (words, store.blockCursor, store.blockReach, snippet))))
+        _ => Runtime::step (store(text = Blocks::inserted (store.text, store.cursor, store.reach, snippet)))
 
     // Move the editor to block `index` and ask the host to focus it there.
     focused (store, index) = store(focus = index, fresh = -1, blockCursor = 0, blockReach = 0, focusEpoch = satAdd store.focusEpoch 1)
@@ -138,15 +164,16 @@ module Update
         Edit => Runtime::step (store(text = words))
         EditDraft => Runtime::step (store(draftPath = trim words))
         Search => Runtime::step (store(filter = words))
-        Open => opening (store, words)
+        Open => guarded (store, words)
         EditFresh => freshTyped (store, words)
         FocusBlock => Runtime::step (focused (store, parseInt words ?: 0))
         PickFolder => Runtime::step (store(folder = words))
         EditBlock index => blockTyped (store, index, words)
         _ => Runtime::step store
 
-    (** A caret move or selection, from UTF-8 byte `start` to `reach`. *)
+    (** A caret move or selection, from UTF-8 byte `start` to `reach`. It never moves focus, so the view
+        (and every control's ordinal) stays as the host drew it. *)
     export placed (store, action, start, reach) = match action
         Place => Runtime::step (store(cursor = start, reach = reach))
-        PlaceBlock index => Runtime::step (store(focus = index, blockCursor = start, blockReach = reach))
+        PlaceBlock _ => Runtime::step (store(blockCursor = start, blockReach = reach))
         _ => Runtime::step store

@@ -45,8 +45,17 @@ module App
 
     history store = Kit::drawer ("History", mapList (store.history, commitRow), ToggleHistory)
 
-    dialogs store = match store.creating
-        true => [Ui::framed (Kit::surface ("", "", 0, 80), dialog store)]
+    // A question over the work: its heading, what it means, and the safe choice before the other.
+    asking (heading, detail, buttons) = Ui::framed (Kit::surface ("", "", 0, 80), Kit::card (24, [Kit::heading (heading, "h3", "ink"), Kit::say (detail, "small", "inkMuted"), Kit::row (8, listPrepend buttons (Kit::grow (Ui::column [])))]))
+
+    leavingDialog store = asking ("Unsaved changes", "${Names::base store.opened} has changes that are not saved. Keep editing to save them, or discard them and open ${Names::base store.leaving}.", [Kit::button ("ghost", "Discard changes", "", true, Discard), Kit::button ("primary", "Keep editing", "", true, KeepEditing)])
+
+    deleteDialog store = asking ("Delete ${Names::base store.opened}?", "This removes ${store.opened} and commits the deletion. Publishing takes it off the site; the history keeps it.", [Kit::button ("ghost", "Cancel", "", true, CancelDelete), Kit::button ("danger", "Yes, delete", "delete", true, ConfirmDelete)])
+
+    dialogs store = listConcat (listConcat (when (store.creating, \() => Ui::framed (Kit::surface ("", "", 0, 80), dialog store))) (when (store.leaving != "", \() => leavingDialog store))) (when (store.confirming, \() => deleteDialog store))
+
+    when (shown, node) = match shown
+        true => [node ()]
         false => []
 
     drawers store = match store.showingHistory

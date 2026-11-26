@@ -2,14 +2,11 @@
 // Markdown and media the editor changes, and a reader sees a navigable site: a nav that marks the
 // page, a hero, the latest post, a journal grid of every post newest first, articles and an about page.
 import { expect, test } from "@playwright/test";
-import { execFileSync, spawn } from "node:child_process";
-import { readdirSync, readFileSync, rmSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { out, root } from "./fixture.mjs";
+import { ELEVENTY_SITE as SITE, buildSite, out, serveSite } from "./fixture.mjs";
 
-const SITE = path.join(root, "src/osprey/examples/cms/site");
 const BUILT = path.join(out, "site-build");
-const ELEVENTY = path.join(root, "src/toolchain/website/node_modules/.bin/eleventy");
 const PORT = 4396;
 const BASE = `http://127.0.0.1:${PORT}`;
 
@@ -25,10 +22,8 @@ function posts() {
 
 let server;
 test.beforeAll(async () => {
-  rmSync(BUILT, { recursive: true, force: true });
-  execFileSync(ELEVENTY, ["--output", BUILT], { cwd: SITE, stdio: "pipe", timeout: 120_000 });
-  server = spawn("python3", ["-m", "http.server", String(PORT), "--bind", "127.0.0.1"], { cwd: BUILT, stdio: "ignore" });
-  await expect.poll(() => fetch(BASE).then((reply) => reply.status, () => 0), { timeout: 10_000 }).toBe(200);
+  buildSite(SITE, BUILT);
+  server = await serveSite(BUILT, PORT);
 });
 test.afterAll(() => server?.kill());
 

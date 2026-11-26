@@ -15,18 +15,18 @@ from einops.Reconstruct import reconstruct
 def run():
     pattern = input()
     match parse(pattern, False, False):
-        case Error(message=message):
+        case Error(message=_):
             print("parse-error")
-        case Success(value=value):
+        case Success(value=_):
             print("parsed")
     match prepare(pattern, "rearrange", [], 4):
-        case Error(message=message):
+        case Error(message=_):
             print("prepare-error")
         case Success(value=value):
             match reconstruct(value, [2, 3, 4, 5], []):
-                case Error(message=message):
+                case Error(message=_):
                     print("reconstruct-error")
-                case Success(value=value):
+                case Success(value=_):
                     print("cooked")
 
 

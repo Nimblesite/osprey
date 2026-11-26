@@ -269,4 +269,6 @@ module ExportTests
             (Pi "g" (Pi "x" (BVar 1) (BVar 1)) (Pi "f" (Pi "x" (BVar 3) (BVar 3))
                 (Pi "hg" (bijective (BVar 3, BVar 2, BVar 1, "u₂", "u₃"))
                     (Pi "hf" (bijective (BVar 5, BVar 4, BVar 1, "u₁", "u₂"))
-                        (bijective (BVar 6, BVar 4, Terms::apps (Const "Function.comp" [level "u₁", level "u₂", level "u₃"], [BVar 6, BVar 5, BVar 4, BVar 3, BVar 2]), "u₁", "u₃"))))))))
+                        (bijective (BVar 6, BVar 4, Terms::apps (Const "Function.comp" [level "u₁", level "u₂", level "u₃"], [BVar 6, BVar 5, BVar 4, BVar 3, BVar 2]), "u₁", "u₃"
+                        )))))))
+                        )

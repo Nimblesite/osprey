@@ -146,7 +146,7 @@ def parse_braces_lo(cps, j, n):
     else:
         return []
 
-def parse_braces_hi(cps, j, k, n, mn):
+def parse_braces_hi(cps, _j, k, n, mn):
     """Parse the `,hi}` tail of a brace quantifier."""
     hi = read_number(cps, k + 1, n)
     k2 = Program.pair_next(hi, k + 1)
@@ -384,7 +384,7 @@ def lookbehind_frag(cps, i, j, r, negate):
         op = "lookbehind_not" if negate == 1 else "lookbehind"
         return zero_width_frag(r, op, width)
 
-def parse_comment(cps, i, j, n, flags, gs):
+def parse_comment(cps, i, j, n, _flags, gs):
     """A `(?#...)` comment, which matches nothing."""
     end = skip_to(cps, j, n, 41)
     if end >= n:

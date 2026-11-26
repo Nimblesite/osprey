@@ -223,7 +223,7 @@ chosenSkin key =
     readAs key
 viewedAs (width, height) = post (\d => Drive::viewed (d, width, height))
 // A closed native shell releases its connection and media server exactly once ([CAST-MOBILE-DELIVERY]).
-closedAt now =
+closedAt _now =
     post (\d => Drive::phase (d, "closed"))
     services (1, 1)
 services (closed, stopped) =

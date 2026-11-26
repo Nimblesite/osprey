@@ -890,8 +890,8 @@ mixFromRow (editor, action, path) = match action
     _ => expect (false, true)
 
 saveJourney arrangement =
-    path = "target/daw-tests/project.json"
-    succeeds (makeDir "target/daw-tests", \_ => expect (true, true))
+    path = "${outputFolder ()}/project.json"
+    succeeds (makeDir (outputFolder ()), \_ => expect (true, true))
     succeeds (daw::Projects::saved (arrangement, path), \written => succeeds (readFile written, \source => decoded (source, \back => encoded (back, \again => encoded (arrangement, \text => expect (again, text))))))
     failsWith (daw::Projects::saved (arrangement, "target/it's.json"), "A project path cannot contain a quote.")
     old = synth::EditorState::initial ()
@@ -914,7 +914,7 @@ projectJourney () =
     hosted timingJourney
 
 timingJourney () =
-    path = "target/daw-tests/timing.json"
+    path = "${outputFolder ()}/timing.json"
     succeeds (daw::Projects::saved (song (), path), \_ => expect (true, true))
     session = editorLaunched ["--song", path]
     editing = prismTap (session, "Edit BPM")
@@ -933,7 +933,7 @@ test ("a project file saves and reopens its notes, mix and patches; mix edits ar
 // [DAW-TRANSPORT-LIVE] Play is real time: it writes the project as it stands, edits included, beside the renderer
 // and at once streams the range from the start marker to the end marker into the audio device. Nothing renders
 // first. The playhead follows the frames the device has sounded, Loop repeats the range, and Stop cancels it.
-transportRoot = "target/daw-tests/transport"
+transportRoot () = "${outputFolder ()}/transport"
 
 asked step = mapList (step.requests, \r => r.capability)
 
@@ -949,11 +949,11 @@ said (step, ticket, message) =
 
 rendererSaid output = Success(value = "{\"status\":0,\"stdout\":\"${output}\",\"stderr\":\"\"}")
 
-liveFolder = "${transportRoot}/bin/song/live"
+liveFolder () = "${transportRoot ()}/bin/song/live"
 
 // One shell pipeline, renderer to audio device, and the frame clock on; the old receipt is emptied.
 streams (step, message, from, beats, mode) =
-    said (step, "daw-song:live:${liveFolder}", message)
+    said (step, "daw-song:live:${liveFolder ()}", message)
     match asked step
         [ui::Run ran given _ _ _ _, ui::Animate on] =>
             expect (ran, "/bin/sh")
@@ -963,19 +963,19 @@ streams (step, message, from, beats, mode) =
             command = listGet given 1 ?: ""
             expect (contains command " warm ", false)
             expect (contains command "\"$3/controls\";", true)
-            expect (mapList ([2, 3, 4, 5, 6, 7, 8], \index => listGet given index ?: ""), ["${transportRoot}/bin/worker", "${transportRoot}/bin/daw", "${liveFolder}/project.json", liveFolder, from, beats, mode])
+            expect (mapList ([2, 3, 4, 5, 6, 7, 8], \index => listGet given index ?: ""), ["${transportRoot ()}/bin/worker", "${transportRoot ()}/bin/daw", "${liveFolder ()}/project.json", liveFolder (), from, beats, mode])
             expect (on, true)
         _ => expect (length step.requests, 2)
     expect (synth::DawSession::phase step.stepStore, "Playing")
     expect (step.stepStore.playClock, 0.0)
-    expect (readFile "${liveFolder}/played.json" ?: "unread", "")
+    expect (readFile "${liveFolder ()}/played.json" ?: "unread", "")
 
 // What the audio device answers after a block: frames accepted, frames finished, and whether it runs.
 deviceSaid (accepted, returned, running) = "{\"status\":0,\"acceptedFrames\":${accepted},\"returnedFrames\":${returned},\"queuedFrames\":${satSub accepted returned},\"channels\":2,\"emptyCallbacks\":0,\"running\":${running}}"
 
 // The editor one display frame of `elapsed` seconds after the device answered `text`.
 framedAfter (editor, text, elapsed) =
-    _answered = writeFile "${liveFolder}/played.json" text
+    _answered = writeFile "${liveFolder ()}/played.json" text
     step = synth::DawSession::framed (editor, elapsed)
     expect (length step.requests, 0)
     step.stepStore
@@ -1004,7 +1004,7 @@ followJourney playing =
     expect (synth::TimelineGeometry::rollPage (paged.playBeat, 1.0, 4.0), 3.0)
     advanced (paged, 480000, 480000, 0.0, 13.0, 10.0)
     expect (paged.rollBar, 1)
-    expect (paged.songTicket, "daw-song:live:${liveFolder}")
+    expect (paged.songTicket, "daw-song:live:${liveFolder ()}")
 
 // [DAW-TRANSPORT-LOOP] Loop repeats the range: ten beats into a nine-beat loop is its second beat.
 loopJourney ready =
@@ -1014,7 +1014,7 @@ loopJourney ready =
     looping = synth::DawSession::play on.stepStore
     streams (looping, "Looping bars 2–4 of Bridge.", "4.0", "9.0", "loop")
     heardAt (framedAfter (looping.stepStore, deviceSaid (480000, 240000, "true"), 0.0), 5.0, 5.0)
-    said (synth::DawSession::looped looping.stepStore, "daw-song:live:${liveFolder}", "Stop first to change Loop.")
+    said (synth::DawSession::looped looping.stepStore, "daw-song:live:${liveFolder ()}", "Stop first to change Loop.")
     off = synth::DawSession::looped on.stepStore
     said (off, "", "Loop off: Play runs once to the end marker.")
     expect (off.stepStore.looping, false)
@@ -1066,8 +1066,8 @@ rangeJourney ready =
     expect (synth::TimelineGeometry::grabs (100.0, 106.5), false)
     said (synth::DawSession::play (ready(rollBar = 4)), "", "The start marker is at the song's end; move it back to play.")
     playing = synth::DawSession::play ready
-    said (synth::DawSession::ended (playing.stepStore, 3), "daw-song:live:${liveFolder}", "Stop first to move the end marker.")
-    said (synth::DawSession::started (playing.stepStore, 0), "daw-song:live:${liveFolder}", "Stop first to move the start marker.")
+    said (synth::DawSession::ended (playing.stepStore, 3), "daw-song:live:${liveFolder ()}", "Stop first to move the end marker.")
+    said (synth::DawSession::started (playing.stepStore, 0), "daw-song:live:${liveFolder ()}", "Stop first to move the start marker.")
 
 gainOf (editor, index) = match listGet editor.song.tracks index
     Error _ => -1.0
@@ -1106,50 +1106,51 @@ faderJourney opened =
 remixed (ready, louder) =
     edited = ready(song = louder)
     streams (synth::DawSession::play edited, "Playing bars 2–4 of Bridge.", "4.0", "9.0", "live")
-    encoded (louder, \text => expect (readFile "${liveFolder}/project.json" ?: "", text))
+    encoded (louder, \text => expect (readFile "${liveFolder ()}/project.json" ?: "", text))
 
-songFolder = "${transportRoot}/bin/song/song"
+songFolder () = "${transportRoot ()}/bin/song/song"
 
 // [DAW-RENDER] The whole project renders to its own folder: refused while busy, only real audio counts, unchanged audio is kept.
 // FerroUI publishes the renderer transcript in the requested slice and only status/stderr in the receipt.
 rendererTranscript (first, transcript, expected) =
     handle ui::Slices
         fetch key => ui::Pick::either (key == "prism-song-report", transcript, "")
-    said (synth::DawSession::completed (first.stepStore, "daw-song:render:${songFolder}", Success(value = "{\"status\":0,\"stderr\":\"\"}")), "", expected)
+    said (synth::DawSession::completed (first.stepStore, "daw-song:render:${songFolder ()}", Success(value = "{\"status\":0,\"stderr\":\"\"}")), "", expected)
 
 // The copy runs through the native process callback.
 fixtureCopyEvent (_pid, _kind, _text) = print ""
 
 renderSongJourney ready =
     // A previous run's finished render would otherwise count as this project's audio.
-    _made = makeDir songFolder
-    _cleared = writeFile "${songFolder}/song.wav" ""
+    _made = makeDir (songFolder ())
+    _cleared = writeFile "${songFolder ()}/song.wav" ""
     expect (synth::Header::songAction (ready, 0), synth::ShowPage(page = synth::TimelinePage))
     expect (synth::Header::songAction (ready, 1), synth::ShowPage(page = synth::PatchPage))
     expect (synth::Header::songAction (ready, 2), synth::ShowPage(page = synth::MixPage))
     said (synth::DawSession::renderSong (ready(renderer = "")), "", "Prism was launched without its song renderer, so it cannot play or render this song.")
     first = synth::DawSession::renderSong ready
-    said (first, "daw-song:render:${songFolder}", "Rendering all of Bridge.")
-    ranWith (first, "${transportRoot}/bin/daw", ["${songFolder}/project.json", songFolder])
-    expect (fileSize "${songFolder}/song.wav" ?: -1, 0)
-    encoded (song (), \text => expect (readFile "${songFolder}/project.json" ?: "", text))
+    said (first, "daw-song:render:${songFolder ()}", "Rendering all of Bridge.")
+    ranWith (first, "${transportRoot ()}/bin/daw", ["${songFolder ()}/project.json", songFolder ()])
+    expect (fileSize "${songFolder ()}/song.wav" ?: -1, 0)
+    encoded (song (), \text => expect (readFile "${songFolder ()}/project.json" ?: "", text))
     expect (synth::DawSession::phase first.stepStore, "Rendering…")
-    said (synth::DawSession::renderSong first.stepStore, "daw-song:render:${songFolder}", "The song is already playing; Stop first.")
-    said (synth::DawSession::play first.stepStore, "daw-song:render:${songFolder}", "The song is already playing; Stop first.")
-    said (synth::DawSession::completed (first.stepStore, "daw-song:render:${songFolder}", rendererSaid "daw: refused"), "", "Rendering failed: daw: refused")
+    said (synth::DawSession::renderSong first.stepStore, "daw-song:render:${songFolder ()}", "The song is already playing; Stop first.")
+    said (synth::DawSession::play first.stepStore, "daw-song:render:${songFolder ()}", "The song is already playing; Stop first.")
+    said (synth::DawSession::completed (first.stepStore, "daw-song:render:${songFolder ()}", rendererSaid "daw: refused"), "", "Rendering failed: daw: refused")
     rendererTranscript (first, "daw: Bridge\ndaw: unknown patch setting.\n", "Rendering failed: daw: unknown patch setting.")
     rendererTranscript (first, "", "Rendering failed: The renderer produced no audio.")
-    succeeds (writeFile "${songFolder}/song.wav" (join (mapList (toList (range (0, 64)), \_ => "RIFF")) ""), \_ => expect (true, true))
+    succeeds (writeFile "${songFolder ()}/song.wav" (join (mapList (toList (range (0, 64)), \_ => "RIFF")) ""), \_ => expect (true, true))
     rendererTranscript (first, "daw: interrupted", "Rendering failed: daw: interrupted")
-    said (synth::DawSession::renderSong ready, "daw-song:render:${songFolder}", "Rendering all of Bridge.")
-    succeeds (spawnProcess "cp src/osprey/examples/daw/tracks/samples/808-hat.wav '${songFolder}/song.wav'" fixtureCopyEvent, \process =>
+    said (synth::DawSession::renderSong ready, "daw-song:render:${songFolder ()}", "Rendering all of Bridge.")
+    hat = signalflow::App::fromRepository "src/osprey/examples/daw/tracks/samples/808-hat.wav"
+    succeeds (spawnProcess "cp ${hat} '${songFolder ()}/song.wav'" fixtureCopyEvent, \process =>
         expect (awaitProcess process, 0)
         _closed = cleanupProcess process
-        expect ((fileSize "${songFolder}/song.wav" ?: 0) > 44, true))
-    done = synth::DawSession::completed (first.stepStore, "daw-song:render:${songFolder}", rendererSaid "daw: wrote it")
-    said (done, "", "Rendered ${songFolder}/song.wav.")
+        expect ((fileSize "${songFolder ()}/song.wav" ?: 0) > 44, true))
+    done = synth::DawSession::completed (first.stepStore, "daw-song:render:${songFolder ()}", rendererSaid "daw: wrote it")
+    said (done, "", "Rendered ${songFolder ()}/song.wav.")
     expect (length done.requests, 0)
-    said (synth::DawSession::renderSong ready, "", "${songFolder}/song.wav is already this project.")
+    said (synth::DawSession::renderSong ready, "", "${songFolder ()}/song.wav is already this project.")
     said (synth::DawSession::stop first.stepStore, "", "Stopped.")
 
 // A song whose last note ends on a bar line: the end of the ruler is that last bar, never the empty one after it,
@@ -1269,11 +1270,11 @@ halted (step, asks) =
 
 transportJourney () =
     liveDialJourney ()
-    succeeds (makeDir "target/daw-tests", \_ => expect (true, true))
-    _made = makeDir transportRoot
-    _bin = makeDir "${transportRoot}/bin"
+    succeeds (makeDir (outputFolder ()), \_ => expect (true, true))
+    _made = makeDir (transportRoot ())
+    _bin = makeDir "${transportRoot ()}/bin"
     editor = synth::EditorState::initial ()
-    ready = editor(song = song (), songPath = "${transportRoot}/song.json", renderer = "${transportRoot}/bin/daw", workerPath = "${transportRoot}/bin/worker", rollBar = 1)
+    ready = editor(song = song (), songPath = "${transportRoot ()}/song.json", renderer = "${transportRoot ()}/bin/daw", workerPath = "${transportRoot ()}/bin/worker", rollBar = 1)
     stopJourney ready
     expect (ready.playBeat, -1.0)
     // [DAW-TRANSPORT-REFUSAL] Each refusal names its own cause and keeps the project.
@@ -1286,27 +1287,27 @@ transportJourney () =
     expect (length idle.requests, 0)
     first = synth::DawSession::play ready
     streams (first, "Playing bars 2–4 of Bridge.", "4.0", "9.0", "live")
-    encoded (song (), \text => expect (readFile "${liveFolder}/project.json" ?: "", text))
-    said (synth::DawSession::play first.stepStore, "daw-song:live:${liveFolder}", "The song is already playing; Stop first.")
+    encoded (song (), \text => expect (readFile "${liveFolder ()}/project.json" ?: "", text))
+    said (synth::DawSession::play first.stepStore, "daw-song:live:${liveFolder ()}", "The song is already playing; Stop first.")
     expect (length (synth::DawSession::play first.stepStore).requests, 0)
     followJourney first.stepStore
     // The start marker moves while the song plays; the stream launched is the one that ends.
     moved = first.stepStore
-    said (synth::DawSession::completed (moved(rollBar = 5), "daw-song:other", rendererSaid ""), "daw-song:live:${liveFolder}", "Playing bars 2–4 of Bridge.")
-    over = synth::DawSession::completed (moved(rollBar = 5), "daw-song:live:${liveFolder}", rendererSaid "")
+    said (synth::DawSession::completed (moved(rollBar = 5), "daw-song:other", rendererSaid ""), "daw-song:live:${liveFolder ()}", "Playing bars 2–4 of Bridge.")
+    over = synth::DawSession::completed (moved(rollBar = 5), "daw-song:live:${liveFolder ()}", rendererSaid "")
     said (over, "", "Bridge finished.")
     halted (over, [ui::Animate(animated = false)])
-    succeeds (writeFile "${liveFolder}/fault.txt" "Track keys: unknown patch setting.\n", \_ => expect (true, true))
-    said (synth::DawSession::completed (first.stepStore, "daw-song:live:${liveFolder}", rendererSaid ""), "", "Playback failed: Track keys: unknown patch setting.")
-    said (synth::DawSession::completed (first.stepStore, "daw-song:live:${liveFolder}", Error(message = "The audio device failed.")), "", "Song playback failed: The audio device failed.")
+    succeeds (writeFile "${liveFolder ()}/fault.txt" "Track keys: unknown patch setting.\n", \_ => expect (true, true))
+    said (synth::DawSession::completed (first.stepStore, "daw-song:live:${liveFolder ()}", rendererSaid ""), "", "Playback failed: Track keys: unknown patch setting.")
+    said (synth::DawSession::completed (first.stepStore, "daw-song:live:${liveFolder ()}", Error(message = "The audio device failed.")), "", "Song playback failed: The audio device failed.")
     again = synth::DawSession::play ready
     streams (again, "Playing bars 2–4 of Bridge.", "4.0", "9.0", "live")
-    expect (readFile "${liveFolder}/fault.txt" ?: "unread", "")
+    expect (readFile "${liveFolder ()}/fault.txt" ?: "unread", "")
     resumed = again.stepStore
     playing = synth::DawSession::completed (resumed(rollBar = 5), "daw-song:other", rendererSaid "")
     stopped = synth::DawSession::stop (framedAfter (playing.stepStore, deviceSaid (48000, 0, "true"), 0.25))
     said (stopped, "", "Stopped.")
-    halted (stopped, [ui::Cancel(cancelled = "daw-song:live:${liveFolder}"), ui::Animate(animated = false)])
+    halted (stopped, [ui::Cancel(cancelled = "daw-song:live:${liveFolder ()}"), ui::Animate(animated = false)])
     loopJourney ready
     rangeJourney ready
     expect (synth::Header::songAction (ready, 5), synth::ToggleLoop)
@@ -1410,7 +1411,7 @@ busJourney () =
     routed = timeline [onPads (bellTrack ())]
     failsWith (trackBuses (routed, daw::Arrangements::empty, onPads (bellTrack ()), 10), "bell: Bus pads is not in the song.")
     succeeds (trackBuses (routedTo (routed, [padsBus (4.0, "bell")]), daw::Arrangements::empty, onPads (bellTrack ()), 10), keyedRoute)
-    succeeds (readFile "src/osprey/examples/daw/tracks/codex-version.json", \text => decoded (text, projectBuses))
+    succeeds (readFile (signalflow::App::fromRepository "src/osprey/examples/daw/tracks/codex-version.json"), \text => decoded (text, projectBuses))
 
 test ("bus EQ passes at 0 dB, the sidechain ducks a bus by exactly its curve, routing and project buses are checked", \() => Runtime::guarded busJourney)
 
@@ -1448,7 +1449,7 @@ showcaseProject project =
     succeeds (daw::BusPaths::path (project.buses, "Pin bed"), \path => expect (path, ["Pin bed", "Objects", "Master"]))
     forEachList (project.tracks, showcaseVoice)
 
-test ("Silt Relay opens its wired synth families and sounds its granular and MIDI channel paths", \() => ui::Runtime::guarded (\() => succeeds (readFile "src/osprey/examples/daw/tracks/silt-relay.json", \source => decoded (source, showcaseProject))))
+test ("Silt Relay opens its wired synth families and sounds its granular and MIDI channel paths", \() => ui::Runtime::guarded (\() => succeeds (readFile (signalflow::App::fromRepository "src/osprey/examples/daw/tracks/silt-relay.json"), \source => decoded (source, showcaseProject))))
 
 test ("every synthesis family plays a real, finite, repeatable note through the song renderer, pitched ones in tune", \() => Runtime::guarded familiesJourney)
 
@@ -1460,21 +1461,21 @@ test ("a track carries the project's stereo channels to Master: a left-only patc
 
 // [DAW-PROJECT-MODEL] Every shipped score must open through the production project reader.
 test ("every example song opens with playable tracks", \() => Runtime::guarded (\() =>
-    succeeds (listDir "src/osprey/examples/daw/tracks", \entries =>
+    succeeds (listDir (signalflow::App::fromRepository "src/osprey/examples/daw/tracks"), \entries =>
         scores = filterList (entries, \path => endsWith path ".json")
         expect (ui::Lists::any (scores, \path => endsWith path "/codex-version2.json"), true)
         forEachList (scores, \path => succeeds (readFile path, \source =>
             decoded (source, \song => expect (length song.tracks > 0, true)))))))
 
 test ("Violet Static opens the kick as a wired WAV sample", \() => ui::Runtime::guarded (\() =>
-    succeeds (readFile "src/osprey/examples/daw/tracks/violet-static.json", \source =>
+    succeeds (readFile (signalflow::App::fromRepository "src/osprey/examples/daw/tracks/violet-static.json"), \source =>
         decoded (source, \song =>
             succeeds (ui::Lists::find (song.tracks, \t => t.name == "Kick"), \kick =>
                 routing = daw::TrackPatches::routing kick.instrument
                 expect (structuralEquals (mapList (routing.nodes, \n => n.component), ["sample", "output"]), true)
                 reads (listGet routing.nodes 0, \n =>
                     expect (daw::PatchVoices::fileName n.asset, "808-kick.wav")
-                    succeeds (daw::PatchVoices::sampled n.asset, \resource =>
+                    succeeds (daw::PatchVoices::sampled (signalflow::App::fromRepository n.asset), \resource =>
                         note = beamed (32, 0.0, 0.2, 1.0)
                         song = timeline [kick]
                         succeeds (trackPart (song, kick(notes = [note]), 256), \audio =>

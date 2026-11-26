@@ -58,7 +58,7 @@ def escape_dispatch(cps, i, n, flags, gs):
         return literal_escape(cps, i, n, flags, gs)
 
 
-def backref(cps, i, n, gs, gid):
+def backref(_cps, i, _n, gs, gid):
     """A `\\1`-`\\9` backreference, when the group exists."""
     if gid <= gs.count:
         return Success(value=Program.PRes(frag=[Program.ins_a("backref", gid)], next=i + 2, gs=gs))

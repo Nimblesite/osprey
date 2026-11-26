@@ -37,7 +37,7 @@ export async function folderFor(resource?: Uri): Promise<Uri | undefined> {
   const invoking = resource ? workspace.getWorkspaceFolder(resource) : undefined;
   if (resource && invoking) return projectAt(resource, invoking.uri);
   const folders = workspace.workspaceFolders ?? [];
-  if (folders.length === 1) return folders[0].uri;
+  if (folders.length === 1) return folders[0]?.uri;
   if (folders.length === 0) return undefined;
   const selected = await window.showQuickPick(
     folders.map((folder) => ({ label: folder.name, description: folder.uri.fsPath, uri: folder.uri })),

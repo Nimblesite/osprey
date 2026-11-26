@@ -108,6 +108,10 @@ gen n = range (1, n + 1) |> fold (Map ()) (\(m, i) => mapSet m "k${i}" i)
     one call per generation. *)
 chainRange (chain, from, to) = range (from, to) |> map (\i => chain i) |> toList
 
+(** The string-key fixtures the construction and merge cases share. *)
+aliceBobCharlie = ["alice", "bob", "charlie"]
+xyzwKeys = ["x", "y", "z", "w"]
+
 (** Exercise construction, overwrite, membership, and source isolation. *)
 constructionAndOverwriteCase () =
     empty = Map ()
@@ -119,12 +123,12 @@ constructionAndOverwriteCase () =
     // Check empty, growth, membership, and overwrite state.
     checkAll "legacy map construction observations" [
         lengthsHold ([empty, m1, m2, m3, m4, m3], [0, 1, 2, 3, 3, 3]) && nonePresent (empty, ["missing"]),
-        allPresent (m3, ["alice", "bob", "charlie"]) && nonePresent (m3, ["dave"])
+        allPresent (m3, aliceBobCharlie) && nonePresent (m3, ["dave"])
     ]
 
     // Check exact values and source isolation.
     checkAll "map construction values and isolation" [
-        allIntValuesHold ([m1, m2, m3, m4], [["alice"], ["alice", "bob"], ["alice", "bob", "charlie"], ["alice", "bob", "charlie"]], [[25], [25, 30], [25, 30, 35], [99, 30, 35]]) && nonePresent (m1, ["bob"]),
+        allIntValuesHold ([m1, m2, m3, m4], [["alice"], ["alice", "bob"], aliceBobCharlie, aliceBobCharlie], [[25], [25, 30], [25, 30, 35], [99, 30, 35]]) && nonePresent (m1, ["bob"]),
         nonePresent (m2, ["charlie"]) && intAtKey (m3, "alice") == 25 && missingKey (m4, "dave")
     ]
 
@@ -179,7 +183,7 @@ removalAndMergeCase () =
 
     // Check exact right-biased values in both directions.
     checkAll "map merge right-biased values" [
-        allIntValuesHold ([mergedAB, mergedBA, mergedPlus], [["x", "y", "z", "w"], ["x", "y", "z", "w"], ["x", "y", "z", "w"]], [[1, 20, 30, 40], [1, 2, 3, 40], [1, 20, 30, 40]]) && intAtKey (a, "y") == 2 && intAtKey (b, "y") == 20
+        allIntValuesHold ([mergedAB, mergedBA, mergedPlus], [xyzwKeys, xyzwKeys, xyzwKeys], [[1, 20, 30, 40], [1, 2, 3, 40], [1, 20, 30, 40]]) && intAtKey (a, "y") == 2 && intAtKey (b, "y") == 20
     ]
 
 (** Exercise key/value views beside persistent lists. *)

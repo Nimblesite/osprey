@@ -110,7 +110,7 @@ def group_texts(prog, cps, saves):
     return fold(range(1, prog.groups + 1), [""], lambda acc, i: listAppend(acc, group_text_at(prog, cps, saves, i)))
 
 
-def group_text_at(prog, cps, saves, i):
+def group_text_at(_prog, cps, saves, i):
     """Group i's text, or "" when it did not participate."""
     s = Unicode.at(saves, 2 * i)
     e = Unicode.at(saves, 2 * i + 1)
