@@ -2,6 +2,10 @@
 
 This brief governs every word about **Perception Studio** (**Perception** for short): the website, README, blog posts, launch copy, and videos.
 
+## Headline
+
+> **Unlimited routing. Proven DSP.**
+
 ## The answer
 
 > **Perception Studio is a transparent modular synth DAW, VST3 plug-in, and hardware synth factory — with unlimited routing, granular and spectral engines, and mathematically proven DSP.**
