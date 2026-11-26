@@ -27,7 +27,6 @@ Depends on: lspkit shared profiler + memory contracts ([`LSP-PROFILER-SPEC.md`](
 
 - [ ] Migrate the textual `@llvm.dbg.value`/`@llvm.dbg.declare` compatibility intrinsics to `#dbg_value`/`#dbg_declare` debug records in `src/toolchain/crates/osprey-codegen/src/builder/debug_variables.rs` once the pinned LLVM floor accepts them [DEBUGGER-DBG-DECLARE]. Check: emitted IR uses the `#dbg_*` form and the golden IR tests in `src/toolchain/crates/osprey-codegen/src/ir_tests/lowering_1.rs` plus LLDB-DAP cases still inspect values.
 - [ ] Extend value-location records to the remaining capture representations in `src/toolchain/crates/osprey-codegen/src/builder/debug_variables.rs` / `debug_scopes.rs`. Check: each remaining capture representation carries a `DILocalVariable` + location and LLDB-DAP reads it.
-- [x] The 14 lexical-scope VS Code tests inspect `observed` while it is live, then watch it again after leaving scope and require LLDB-DAP to report the unknown identifier. All 14 passed on macOS in Default and ML on 2026-11-23.
 
 ## Phase 4 - Type and value rendering tails
 
@@ -90,24 +89,10 @@ Depends on: lspkit shared profiler + memory contracts ([`LSP-PROFILER-SPEC.md`](
 - [ ] Add source-level dynamic call-tree validation for representative programs. Check: optimized-vs-unoptimized call-tree diff classifies each divergence.
 - [ ] Enable `--debug-opt=limited`, then `--debug-opt=optimized`, only after the tests define the contract [DEBUGGER-BUILD-OPTIONS]. Check: flags accepted only with the validation suite green; unavailable variables reported honestly.
 
-## Hover [LSP-HOVER]
 
-- [x] Hover match-arm pattern binders and lambda parameters with their inferred types, at the binding and at every use [LSP-HOVER-BINDERS] ([#390](https://github.com/Nimblesite/osprey/issues/390)). Check: `hover_on_pattern_binders_and_lambda_parameters_shows_their_inferred_types` in `src/toolchain/crates/osprey-lsp/src/features/tests.rs` passes for list, constructor, tuple and lambda binders in the ML and Default flavors.
-- [x] Answer hover, signature help, completion details and the outline from the assembled project, so a type fixed only by another package (`ui::CubicTo(toX = x)`) is shown and not a hole [LSP-HOVER-PROJECT] ([#391](https://github.com/Nimblesite/osprey/issues/391)). Check: `hover_infers_from_the_whole_project` in `src/toolchain/crates/osprey-lsp/src/project_cache.rs` passes; hovering `x` in `src/osprey/examples/gpui/painting/src/logo.ospml` shows `x : float` and `segment` shows `List<float> -> ui::PathStep`.
-- [x] Let `osprey.analysis.scope = "file"` turn project inference off, live, with `project` the default [LSP-ANALYSIS-SCOPE]. Check: `analysis_scope_setting_turns_project_inference_off_and_on` in `src/toolchain/crates/osprey-lsp/src/server/tests/project_features.rs` passes, and the setting appears under Osprey in VS Code's settings.
-- [x] Answer member and pattern-constructor completion from the assembled project. The transport test `a_consumer_completes_dependency_fields_and_patterns` checks the fields and types of an imported record in an unsaved buffer and both constructors of an imported union.
-
-## Module explorer
-
-- [x] The real VS Code module explorer responds to Home and the arrow keys across two project roots. The test checks focus, expansion, parent traversal and collapse in the native tree [EDITOR-MODULE-EXPLORER]. All seven module-explorer tests passed on 2026-11-23.
 
 ## Zed integration [EDITOR-ZED]
 
 The Zed client uses the existing `osprey lsp` server; semantic features and project/flavor selection remain in the compiler. The earlier referenced Zed-specific plan was not present in the checkout or searched history; this checklist records the explicit plugin/testing objective against the shared editor contract, without claiming that missing plan was recovered.
 
-- [x] Implement and test configured binary, arguments and environment, PATH discovery and explicit missing-server errors [EDITOR-ZED-LAUNCH]. Check: `cargo test --manifest-path src/toolchain/Cargo.toml -p osprey-zed` passes loaded launch-policy cases; the unimplemented-policy failure was reproduced first.
-- [x] Register Osprey syntax flavors without taking over ordinary Python files; reuse canonical grammar/query assets where applicable and verify actual parsing/highlighting. Check: manifest/canonical grammar checks pass; real Zed shows Default highlighting and all three flavors' live hover. Ordinary Python remains Python; `.py` requires explicit Osprey Python selection. ML/Python have no supplied structural grammar, documented explicitly.
-- [x] Build the extension for Zed's WASM target and run strict static analysis. Check: `make -C src/toolchain/zed-extension build lint` passes (`wasm32-wasip2`, warnings denied).
-- [x] Exercise the actual stdio server with Zed language IDs: diagnostics after edits, hover, completion, navigation, formatting and UTF-16 positions. Check: five manifest/stdio acceptance tests pass against a fresh debug compiler, including references, callee signature help, versioned quick-fix application, mixed-flavor navigation and unsaved helper errors. The helper-location defect was reproduced before fixing the compiler's lost error position; all 250 LSP tests pass.
 - [x] Install the dev extension in Zed and verify real editor startup and behavior; document reproducible commands and remaining limits. Check: Zed 1.27.0 installed the component and grammar, started the configured compiler and displayed real hover for all three flavors; ordinary Python retained its integration. Limits: Zed's built-in `.py` association beats the first-line marker, so select Osprey Python or set project `file_types`; ML and Python have no structural grammar, so only Default is highlighted; Zed sends workspace settings after initialization, so diagnostic settings belong in `lsp.osprey.settings`.
-- [x] Wire build, analysis and tests into the existing three CI phases without duplicate test execution. Check: CI builds/uploads WASM in phase one; existing Rust coverage runs launch tests; the editor test job reuses the compiler for stdio acceptance. The wiring contract passes; full shared CI is separate integration evidence, not claimed here.
