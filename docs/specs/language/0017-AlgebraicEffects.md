@@ -95,6 +95,28 @@ resolved type arguments, operation and scoped instance. Lowering must preserve
 that identity and full payload/result types; a runtime name or erased ABI is
 not permission to merge distinct instantiations.
 
+### Implicit effects `[EFFECTS-IMPLICIT]`
+
+**Specified, not implemented** ([plan 0064](../../plans/0064-local-and-implicit-effects.md)).
+
+An effect may be used without a declaration. Its interface is implied by the code that performs and handles it.
+
+```osprey
+fn audit(order) = perform Audit.record("accepted ${order}")
+
+let memory = handler Audit { record line => print(line) }
+memory(|| => audit("A-17"))
+```
+
+`Audit` is declared nowhere. The compiler implies `effect Audit { record: fn(string) -> Unit }`.
+
+- `[EFFECTS-IMPLICIT-SCOPE]` An effect name in `perform`, `handler`, `handle` or `mask` that resolves to no declaration implies an effect owned by the module where it is performed. A module that only handles a name and imports no effect of that name has an unknown effect: an error. The same name implied in two modules is two effects; a handler outside both names the one it means by module path, and an ambiguous name is an error listing both.
+- `[EFFECTS-IMPLICIT-OPS]` The implied operations are those named by the owning module's performs and handler arms. Each operation's type is inferred by unification over all of them, and is generalised like a top-level function's. A use that leaves a type unconstrained is an error that asks for a declaration; no type is defaulted. A handler in another module is checked against the implied interface: an arm for an operation the interface lacks is an error with the nearest operation suggested, and an implied operation no perform uses is a warning.
+- `[EFFECTS-IMPLICIT-MODE]` Implied operations are value operations of a dynamic effect, and may be installed statically ([STAGE-HANDLE-STATIC](#static-handlers--stage-handle-static)). Control operations, `replayable`, `static effect`, type parameters and variance require a written declaration.
+- `[EFFECTS-IMPLICIT-SAME]` An implied effect is identical to the written declaration of its interface: rows, identity, discharge, lowering and diagnostics. Writing the declaration out changes no output. Test: every corpus program with an implicit effect compiles to the same IR with the implied declaration inserted.
+- `[EFFECTS-IMPLICIT-OUTLINE]` The effect and operation names are known from the parse, so they are part of the module's outline ([META-ORDER-OUTLINE](0056-Metaprogramming.md#order-of-expansion-meta-order)); the operation types are known after inference.
+- `[EFFECTS-IMPLICIT-SHOW]` Diagnostics and hovers print the implied declaration, and the editor offers to write it out ([LSP-EFFECTS-IMPLICIT](../tooling/0020-LanguageServerAndEditors.md#implied-effect-interfaces-lsp-effects-implicit)).
+
 <a id="handlers"></a>
 
 ## Scope, composition and instances
@@ -259,6 +281,14 @@ type Control = { label: string, press: fn(string) -> int ![] }
 let quiet = Control { label: "go", press: fn(text) => length(text) }       // accepted
 let loud = Control { label: "go", press: fn(text) => perform Alarm.ring() } // rejected
 ```
+
+## Host operations `[EFFECTS-HOST]`
+
+**Specified, not implemented** ([plan 0064](../../plans/0064-local-and-implicit-effects.md)).
+
+- `[EFFECTS-HOST-OPS]` Each host operation the compiler provides (console output, files, clock, network, process) is an operation of a declared builtin effect, such as `print` as `Stdout.write`. Calling the builtin performs the operation; no `perform` is written.
+- `[EFFECTS-HOST-DEFAULT]` The program entry installs each builtin effect's default interpretation, the runtime call the builtin makes today. A handler for that effect inside the program takes precedence by the innermost rule. A build in which no such handler exists compiles each host operation to the same direct call as before ([META-EFFECTS-PERF-HOST](0056-Metaprogramming.md#performance-meta-effects-perf)).
+- `[EFFECTS-HOST-CAPABILITY]` A handler for a builtin effect replaces the interpretation, not the target capability check: a host operation that a target lacks is still rejected where it is performed, unless every path to it in that build is covered by a substitute.
 
 ## Handler-owned state
 

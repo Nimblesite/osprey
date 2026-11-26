@@ -8,6 +8,8 @@ Contract: [spec 0056](../specs/language/0056-Metaprogramming.md) (language) · [
 
 Top-tier compile-time metaprogramming, macros and templates in Osprey, delivered as several mechanisms above one kernel, so no single approach is the only one. Proved by programs that use each mechanism under GC, ARC, ownership and wasm32, by diagnostics tested in the language server and the CLI, and by measured editor latency.
 
+Effect substitution chosen at compile time and implicit effects ([META-EFFECTS-PERF], [META-EFFECTS-LOCAL]) are delivered by [plan 0064](0064-local-and-implicit-effects.md), not here.
+
 ## Design rules
 
 The normative rules and their sources are [META-PRINCIPLES](../specs/language/0056-Metaprogramming.md#design-principles-from-the-literature-meta-principles). Every step meets one of them or names the one it leaves open. Each step is test-first, lands with its tests and expands existing corpus programs where it can.
@@ -99,7 +101,7 @@ Stated and checked with Osprey's proof kernel, with the executable definitions d
 
 ## References
 
-Every address below was tested on 2026-11-27: a PDF address returns the same bytes as the downloaded copy, and a DOI resolves to the work's record, whose title Crossref confirms. The [research basis](../../research/metaprogramming/README.md) says what each work establishes and what Osprey takes from it.
+Every address below was tested on 2026-11-27: a PDF address returns the same bytes as the downloaded copy, and a DOI resolves to the work's record, whose title Crossref confirms. The [research basis](../research/metaprogramming/README.md) says what each work establishes and what Osprey takes from it.
 
 - [Adams 2015, *Towards the essence of hygiene*, POPL](https://michaeldadams.org/papers/hygiene/hygiene-2015-popl-authors-copy.pdf)
 - [Flatt 2016, *Binding as sets of scopes*, POPL](https://www.cs.utah.edu/plt/publications/popl16-f.pdf)

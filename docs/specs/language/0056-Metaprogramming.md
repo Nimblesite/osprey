@@ -76,18 +76,19 @@ The spelling below is provisional; [plan 0064](../../plans/0064-local-and-implic
 
 ```osprey
 fn quote(symbol) = perform Prices.latest(symbol)
-fn report(symbols) = symbols |> map(quote) |> sum |> print
+fn report(first, second) = print("${quote(first) + quote(second)}")
 
-test "report adds the latest prices" {
+fn reportCase() = {
     mut printed = ""
     handle static Prices within quote { latest symbol => 10 }
-    handle static Console { write text => { printed = text } }
-    report(["ACME", "INIT"])
-    expect(printed == "20")
+    handle static Stdout { write text => { printed = text } }
+    report("ACME", "INIT")
+    check("the latest prices are added", "20", printed)
 }
+test("report adds the latest prices", reportCase)
 ```
 
-`quote` and `report` are written as production code. `Prices` is implicit: no declaration exists. The test replaces `Prices.latest` within `quote` and the console everywhere it reaches. In the production build the same `print` is a direct runtime call.
+`quote` and `report` are written as production code, and `Prices` is implicit: it has no declaration. The test replaces `Prices.latest` within `quote` only, and `print` (the host operation `Stdout.write`) everywhere the region reaches. In the production build the same `print` is a direct runtime call.
 
 ### Expander effects `[META-EFFECTS-EXPANDER]`
 

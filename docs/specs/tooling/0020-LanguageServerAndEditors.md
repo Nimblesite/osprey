@@ -407,6 +407,17 @@ uses the active authoring flavor: `Audit.step: fn(string) -> int` in Default and
 its OWN documentation (`[DOC-EFFECT-OP]`), which the hover appends; the owning
 effect declaration's documentation is the fallback when the operation has none.
 
+### Implied effect interfaces `[LSP-EFFECTS-IMPLICIT]`
+
+**Specified, not implemented** ([plan 0064](../../plans/0064-local-and-implicit-effects.md)).
+
+For an implicit effect ([EFFECTS-IMPLICIT](../language/0017-AlgebraicEffects.md#implicit-effects-effects-implicit)):
+
+- Hovering the effect name in any `perform`, `handler`, `handle` or `mask` shows the implied declaration in the authoring flavor, followed by the perform sites that implied each operation.
+- Go to definition on the effect or an operation goes to the first perform, in source order, in the owning module.
+- A code action **Declare effect** inserts the implied declaration at the top of the owning module. After it the module's output, rows and diagnostics are unchanged ([EFFECTS-IMPLICIT-SAME](../language/0017-AlgebraicEffects.md#implicit-effects-effects-implicit)).
+- A handler arm the interface lacks is a diagnostic on the arm, with a quick fix for the nearest operation name.
+
 ## Go to definition `[LSP-DEFINITION-BUILTIN]`
 
 `textDocument/definition` resolves the identifier under the cursor to its
