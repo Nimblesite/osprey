@@ -5,15 +5,20 @@ namespace proof
     family and signature. Other assumptions retain their explicit names;
     checking remains relative to those assumptions. Implements [PROOF-KERNEL-AXIOMS]. *)
 module Axioms
+    (** Whether `name` is the one name only the standard choice axiom may take. *)
     export reserved name = name == "Classical.choice"
 
+    (** `decl` checked as the standard choice axiom and returned, or an error when
+        its body is not an axiom, it does not take exactly one universe parameter,
+        or its type is not the derived choice signature over the genuine
+        `Nonempty` family. *)
     export declare (env, decl) = match decl.body
         Axiom => universal (env, decl)
-        other => Error(message = "`${decl.name}` is reserved for the standard choice axiom")
+        _ => Error(message = "`${decl.name}` is reserved for the standard choice axiom")
 
     universal (env, decl) = match decl.params
         [u] => claim (env, decl, Param u)
-        other => Error(message = "Classical.choice takes one universe parameter")
+        _ => Error(message = "Classical.choice takes one universe parameter")
 
     claim (env, decl, u) = match genuine env && Terms::equal (decl.ty, choiceSignature u)
         false => Error(message = "`Classical.choice` does not have its derived choice signature over the genuine `Nonempty` family")
@@ -23,7 +28,7 @@ module Axioms
 
     genuine env = matched (env, "Nonempty", former) && introduced env
 
-    former decl = derived (decl, formerType, \body => tagged (body, familyOk, \info => false))
+    former decl = derived (decl, formerType, \body => tagged (body, familyOk, \_info => false))
 
     formerType u = overUniverse (u, Sort Zero)
 
@@ -31,35 +36,50 @@ module Axioms
 
     introduced env = matched (env, "Nonempty.intro", constructor)
 
-    constructor decl = derived (decl, introType, \body => tagged (body, \info => false, ctorOk))
+    constructor decl = derived (decl, introType, \body => tagged (body, \_info => false, ctorOk))
 
     ctorOk info = ctorShape (info, "Nonempty", 1, 1)
 
     introType u = overUniverse (u, Pi "val" (BVar 0) (App (Const "Nonempty" [u]) (BVar 1)))
 
+    (** Whether the declaration `name` is in `env` and `ok` holds of it; false when
+        it is absent or `ok` refuses it. *)
     export matched (env, name, ok) = match Environment::find (env, name)
         Success decl => ok decl
         Error _ => false
 
+    (** Whether `decl` takes one universe parameter `u`, its type equals `tyOf` at
+        `u`, and `bodyOk` holds of its body. *)
     export derived (decl, tyOf, bodyOk) = match decl.params
         [u] => Terms::equal (decl.ty, tyOf (Param u)) && bodyOk decl.body
-        other => false
+        _ => false
 
+    (** Whether `body` is a type former `formerOk` accepts or a constructor
+        `ctorOk` accepts; any other body is refused. *)
     export tagged (body, formerOk, ctorOk) = match body
         TypeFormer info => formerOk info
         Constructor info => ctorOk info
-        other => false
+        _ => false
 
+    (** Whether a constructor is the first constructor of `family` and takes
+        `params` parameters and `fields` fields. *)
     export ctorShape (info, family, params, fields) = info.ctorFamily == family && info.ctorIndex == 0 && info.ctorParams == params && info.ctorFields == fields
 
+    (** `body` under one more binder, `α : Sort u`. *)
     export overUniverse (u, body) = Pi "α" (Sort u) body
 
 (** The four primitive quotient signatures, independently derived from
     Lean 4.25 kernel/quot.cpp. Exported claims never define their theory.
     Implements [PROOF-KERNEL-THEORY] [PROOF-KERNEL-AXIOMS]. *)
 module Quotients
+    (** Whether `name` is reserved: `Classical.choice`, or one of `Quot`, `Quot.mk`,
+        `Quot.lift`, `Quot.ind` and `Quot.sound`. *)
     export reserved name = Axioms::reserved name || listContains (["Quot", "Quot.mk", "Quot.lift", "Quot.ind", "Quot.sound"], name)
 
+    (** `env` with the reserved `decl` added once it checks, or an error naming what
+        is wrong: the choice axiom as `Axioms::declare` checks it, a quotient
+        primitive only in initialization order with its derived signature and a
+        checked `Eq` in place, and `Quot.sound` only after `Quot.ind`. *)
     export declare (env, decl) = match Axioms::reserved decl.name
         true => choice (env, decl)
         false => listed (env, decl)
@@ -71,7 +91,7 @@ module Quotients
     listed (env, decl) = match decl.body
         Quotient kind => primitive (env, decl, kind)
         Axiom => sound (env, decl)
-        other => Error(message = "`${decl.name}` is reserved for quotient theory")
+        _ => Error(message = "`${decl.name}` is reserved for quotient theory")
 
     primitive (env, decl, kind) = match decl.name == Environment::quotName kind && previous (env, kind) && equalityReady env
         false => Error(message = "invalid quotient primitive `${decl.name}` or initialization order")
@@ -98,15 +118,15 @@ module Quotients
     installed (env, name) = match Environment::find (env, name)
         Success decl => match decl.body
             Quotient kind => Environment::quotName kind == name
-            other => false
+            _ => false
         Error _ => false
 
     expected (kind, params) = match params
         [u] => singleUniverse (kind, Param u)
         [u, v] => match kind
             QuotLift => Success(value = liftType (Param u, Param v))
-            other => Error(message = "this quotient primitive takes one universe parameter")
-        other => Error(message = "invalid quotient universe parameters")
+            _ => Error(message = "this quotient primitive takes one universe parameter")
+        _ => Error(message = "invalid quotient universe parameters")
 
     singleUniverse (kind, u) = match kind
         QuotType => Success(value = quotientType u)
@@ -116,7 +136,7 @@ module Quotients
 
     soundParameters params = match params
         [u] => Success(value = soundType (Param u))
-        other => Error(message = "Quot.sound takes one universe parameter")
+        _ => Error(message = "Quot.sound takes one universe parameter")
 
     relation depth = Pi "a" (BVar depth) (Pi "b" (BVar (satAdd depth 1)) (Sort Zero))
 
@@ -140,7 +160,7 @@ module Quotients
 
     equalityReady env = Axioms::matched (env, "Eq", equalityFormer) && equalityConstructor env
 
-    equalityFormer decl = Axioms::derived (decl, equalityType, \body => Axioms::tagged (body, equalityFamily, \info => false))
+    equalityFormer decl = Axioms::derived (decl, equalityType, \body => Axioms::tagged (body, equalityFamily, \_info => false))
 
     equalityType u = Axioms::overUniverse (u, Pi "a" (BVar 0) (Pi "b" (BVar 1) (Sort Zero)))
 
@@ -148,7 +168,7 @@ module Quotients
 
     equalityConstructor env = Axioms::matched (env, "Eq.refl", reflexivity)
 
-    reflexivity decl = Axioms::derived (decl, reflexivityType, \body => Axioms::tagged (body, \info => false, reflexivityBody))
+    reflexivity decl = Axioms::derived (decl, reflexivityType, \body => Axioms::tagged (body, \_info => false, reflexivityBody))
 
     reflexivityType u = Axioms::overUniverse (u, Pi "a" (BVar 0) (equality (u, BVar 1, BVar 0, BVar 0)))
 

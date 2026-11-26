@@ -14,6 +14,7 @@ import proof
 (** Literal inference is tied to the checked Nat family, not its spelling.
     Implements [PROOF-KERNEL-THEORY] [PROOF-RUNNABLE-LIBRARY]. *)
 module NaturalLiteralTests
+    (** Runs the literal cases: typing, reduction and reading; the testing built-ins report the TAP lines. *)
     export run () =
         typing ()
         reduction ()
@@ -44,14 +45,14 @@ module NaturalLiteralTests
         Error message => failed message
 
     firstBlock (items) = match items
-        [item, ...rest] => blockEnvironment item
-        other => failed "the first item must be the checked Nat block"
+        [item, ..._] => blockEnvironment item
+        _ => failed "the first item must be the checked Nat block"
 
     blockEnvironment (item) = match item
         Group block => match Inductive::add (Environment::empty (), block)
             Success env => env
             Error message => failed message
-        other => failed "the first item must be the checked Nat block"
+        _ => failed "the first item must be the checked Nat block"
 
     failed (message) =
         check "the canonical Nat declaration checks" "success" message

@@ -63,14 +63,14 @@ module OpaqueTests
     bodied (body) = match body
         Opaque value => "opaque ${Terms::show (value, [])}"
         Theorem value => "theorem ${Terms::show (value, [])}"
-        other => "neither"
+        _ => "neither"
 
     (** A checked export, or a failed case before any use of the empty
         fallback. *)
     declaredEnv (outcome) = Support::verified ("the export declares the opaque", "no error", Environment::empty (), outcome)
 
     declaredOutcome (outcome) = match outcome
-        Success env => "declared"
+        Success _ => "declared"
         Error message => message
 
     (** The recorded export's `meta` line, so every hand-written export

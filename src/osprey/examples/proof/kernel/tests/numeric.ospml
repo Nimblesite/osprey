@@ -17,6 +17,7 @@ module NumericTests
     checkedOr (result, label, next) = match result
         Error message => check label "success" message
         Success value => next value
+    (** Runs the numeric-reduction cases once the canonical environment loads; the testing built-ins report the TAP lines. *)
     export run () = checkedOr (loaded "canonical-defs.ndjson", "canonical environment loads", runLoaded)
 
     (** The canonical environment's suite sections, in order. *)
@@ -36,7 +37,7 @@ module NumericTests
         "forged-ble-defs.ndjson" => match Fixtures::numericFalse ()
             Error message => Error(message = message)
             Success text => exportedEmpty text
-        other => Error(message = "unknown numeric test fixture")
+        _ => Error(message = "unknown numeric test fixture")
 
     (** A nat literal with the given limbs, well formed or forged. *)
     limbs (values) = NatLit (Natural(naturalLimbs = values))
@@ -97,7 +98,7 @@ module NumericTests
     productCase (env, label, left, right, text) = test (label, \() => productExpected (env, left, right, text))
 
     (** A forged `result` environment judged on the checked product of two and three. *)
-    forgedProduct (env, label, result) = forged (result, label, multiplied (small 2, small 3))
+    forgedProduct (_env, label, result) = forged (result, label, multiplied (small 2, small 3))
 
     productExpected (env, left, right, text) = match Naturals::parse text
         Error message => check "expected product parses" "success" message
@@ -115,14 +116,14 @@ module NumericTests
     (** The `${name}` differential case over its `[left, right]` operand row. *)
     differential (env, name, terms) = match terms
         [left, right] => test ("${name} agrees with ordinary beta-wrapped reduction", \() => differentialResult (env, name, left, right, betaEnvironment (env, name)))
-        other => check "each differential row has a left and a right operand" "two operands" "malformed row"
+        _ => check "each differential row has a left and a right operand" "two operands" "malformed row"
 
     betaEnvironment (env, name) = withDeclaration (env, name, \decl => betaReference (env, decl))
 
     (** `decl`'s definition body wrapped as `(fun f => body) f` and re-checked at its own type. *)
     betaReference (env, decl) = match decl.body
         Definition value => checkedBeta (env, decl, App (Lam "f" decl.ty (BVar 0)) value)
-        other => Error(message = "the numeric reference is not a definition")
+        _ => Error(message = "the numeric reference is not a definition")
 
     checkedBeta (env, decl, value) = match Infer::check (env, [], value, decl.ty)
         Error message => Error(message = message)
@@ -194,8 +195,8 @@ module NumericTests
         Recursor elim => match kind
             "k" => mutated (env, decl.name, Recursor (elim(elimK = true)))
             "minors" => mutated (env, decl.name, Recursor (elim(elimMinors = 1)))
-            other => changedRule (env, decl.name, elim, kind, elim.elimRules)
-        other => Error(message = "missing recursor body")
+            _ => changedRule (env, decl.name, elim, kind, elim.elimRules)
+        _ => Error(message = "missing recursor body")
     changedRule (env, name, elim, kind, rules) = match rules
         [] => Error(message = "missing recursor rule")
         [first, ...rest] => match kind == "rhs"

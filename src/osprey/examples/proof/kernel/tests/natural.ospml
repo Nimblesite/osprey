@@ -49,6 +49,7 @@ module NaturalTests
         order ()
         products ()
 
+    (** The multiplication cases: exact products past the machine range, and malformed operands refused. *)
     export products () =
         test ("multiply handles zero, one and small exact products", \() => expectAll [product ("0", "18446744073709551616") == "0", product ("18446744073709551616", "0") == "0", product ("1", "18446744073709551616") == "18446744073709551616", product ("123", "456") == "56088", product ("456", "123") == "56088"])
         test ("multiply carries exactly beyond the machine integer range", \() => expectAll [product ("999999999", "999999999") == "999999998000000001", product ("4294967296", "4294967296") == "18446744073709551616", product ("12345678901234567890", "98765432109876543210") == "1219326311370217952237463801111263526900"])

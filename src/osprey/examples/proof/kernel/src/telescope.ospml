@@ -25,14 +25,14 @@ module Telescope
 
     annotationHead (env, term, spine) = match spine.spineHead
         Const name levels => annotationArity (env, term, spine.spineArgs, name, levels, annotationCount name)
-        other => term
+        _ => term
 
     annotationCount (name) = match name
         "outParam" => 1
         "semiOutParam" => 1
         "optParam" => 2
         "autoParam" => 2
-        other => 0
+        _ => 0
 
     annotationArity (env, term, args, name, levels, count) = match count > 0 && listLength args == count
         false => term
@@ -47,9 +47,9 @@ module Telescope
             Error _ => term
 
     identity (value, remaining, index) = match value
-        Lam name domain body => remaining > 0 && identity (body, satSub remaining 1, index)
+        Lam _ _ body => remaining > 0 && identity (body, satSub remaining 1, index)
         BVar found => remaining == 0 && found == index
-        other => false
+        _ => false
 
     (** `body` under Pi binders `binders`, outermost first. *)
     export piOver (binders, body) = foldList (listReverse binders, body, \(inner, binder) => Pi binder.name binder.ty inner)
@@ -65,8 +65,8 @@ module Telescope
         [first, ...rest] => appliedInto (ty, first, rest)
 
     appliedInto (ty, first, rest) = match ty
-        Pi name domain body => applied (Terms::instantiate (body, first), rest)
-        other => Error(message = "not enough Pi binders to instantiate the type")
+        Pi _ _ body => applied (Terms::instantiate (body, first), rest)
+        _ => Error(message = "not enough Pi binders to instantiate the type")
 
     (** `binders` with every variable at or above `cutoff` raised by `by`;
         each binder sits under the ones before it, so its cutoff is one
@@ -93,7 +93,7 @@ module Telescope
 
     innerFrom (binders, count) = match binders
         [] => []
-        [first, ...rest] => inner (rest, satSub count 1)
+        [_, ...rest] => inner (rest, satSub count 1)
 
     (** A telescope as the context `Infer` takes: innermost first. *)
     export context (binders) = listReverse binders

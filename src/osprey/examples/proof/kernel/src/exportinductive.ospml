@@ -15,7 +15,7 @@ namespace proof
     recursor, and any member the format does not define. *)
 module ExportInductive
     (** The block the line states, or why it cannot be read. *)
-    export blocked (tables, json) = Terms::upon (ExportJson::fieldIn (json, "inductive"), \group => Terms::upon (strict (group, groupMembers (), "inductive"), \known => grouped (tables, group)))
+    export blocked (tables, json) = Terms::upon (ExportJson::fieldIn (json, "inductive"), \group => Terms::upon (strict (group, groupMembers (), "inductive"), \_known => grouped (tables, group)))
 
     (** Each reads one export field and continues with it, or stops at the first failure. *)
     intAt (json, key, next) = Terms::upon (ExportJson::intIn (json, key), next)
@@ -37,7 +37,7 @@ module ExportInductive
     (** A member list that must hold at least one entry. *)
     nonEmpty (items, what) = match items
         [] => Error(message = "no ${what}")
-        [first, ...rest] => Success(value = items)
+        [_, ..._] => Success(value = items)
 
     formerOf (tables, json) = declared (tables, json, strict (json, typeMembers (), "type"), familyBody)
 
@@ -66,7 +66,7 @@ module ExportInductive
 
     recursorOf (tables, json) = declared (tables, json, strict (json, recMembers (), "recursor"), elimBody)
 
-    elimBody (tables, json) = intAt (json, "numMotives", \motives => Terms::upon (elimOf (tables, json), \elim => Success(value = Recursor elim)))
+    elimBody (tables, json) = intAt (json, "numMotives", \_motives => Terms::upon (elimOf (tables, json), \elim => Success(value = Recursor elim)))
 
     elimOf (tables, json) =
         use name <- Terms::upon (ExportJson::declName (tables, json))
@@ -97,7 +97,7 @@ module ExportInductive
         [first, ...rest] => Terms::upon (step first, \decl => Terms::upon (eachOf (step, rest, done), \more => Success(value = listPrepend (more, decl))))
 
     ruleOf (tables, json) =
-        use known <- Terms::upon (strict (json, ruleMembers (), "rule"))
+        use _known <- Terms::upon (strict (json, ruleMembers (), "rule"))
         use name <- Terms::upon (nameAt (tables, json, "ctor"))
         use fields <- intAt (json, "nfields")
         use rhs <- intAt (json, "rhs")
@@ -107,8 +107,8 @@ module ExportInductive
     (** A block member: its `membership` check passed and marked safe, read by
         `readBody`, then recorded exactly like a theorem's declaration. *)
     declared (tables, json, membership, readBody) =
-        use known <- Terms::upon membership
-        use safe <- Terms::upon (clean (json))
+        use _known <- Terms::upon membership
+        use _safe <- Terms::upon (clean (json))
         use body <- Terms::upon (readBody (tables, json))
         use name <- Terms::upon (ExportJson::declName (tables, json))
         use params <- Terms::upon (ExportJson::paramsOf (tables, json))
@@ -131,17 +131,17 @@ module ExportInductive
         define is refused, never dropped. *)
     strict (json, allowed, kind) = match json
         JsonObject members => scanned (members, allowed, kind)
-        other => Error(message = "not an object")
+        _ => Error(message = "not an object")
 
     scanned (members, allowed, kind) = match members
         [] => Success(value = true)
-        [first, ...rest] => Terms::upon (knownMember (first, allowed, kind), \ok => scanned (rest, allowed, kind))
+        [first, ...rest] => Terms::upon (knownMember (first, allowed, kind), \_ok => scanned (rest, allowed, kind))
 
     knownMember (member, allowed, kind) = match member
-        JsonMember name value => match listContains (allowed, name)
+        JsonMember name _ => match listContains (allowed, name)
             true => Success(value = true)
             false => Error(message = "unknown ${kind} member `${name}`")
-        other => Error(message = "not a member")
+        _ => Error(message = "not a member")
 
     groupMembers () = ["ctors", "recs", "types"]
 

@@ -96,14 +96,14 @@ module Nesting
 
     (** What the lowering needs to know about the declaration. *)
     declared (env, formers, params) = match formers
-        [first, ...rest] => declaredWith (Telescope::peel (env, first.ty), formers, first, params)
+        [first, ..._] => declaredWith (Telescope::peel (env, first.ty), formers, first, params)
         [] => Error(message = "an inductive block with no family")
 
     declaredWith (peeled, formers, first, params) = match listLength peeled.peeledBinders >= params && params >= 0
         true => Success(value = Declared(declaredParams = Telescope::outer (peeled.peeledBinders, params), declaredLevels = first.params, declaredNames = mapList (formers, \former => former.name)))
         false => Error(message = "`${first.name}` has fewer than ${toString params} parameters")
 
-    started (formers, ctors) = Lowering(lowerOriginal = formers, lowerCtors = [], lowerAux = [], lowerNests = [], lowerNext = 1)
+    started (formers, _ctors) = Lowering(lowerOriginal = formers, lowerCtors = [], lowerAux = [], lowerNests = [], lowerNext = 1)
 
     (** The declaration's own constructors with every nested occurrence
         replaced; the auxiliary families their discovery created wait in
@@ -152,7 +152,7 @@ module Nesting
     rewrittenFound (lowering, env, known, term, found, depth) = match found
         [] => rewriteInside (lowering, env, known, term, depth)
         [one] => nestedReplaced (lowering, env, known, one, depth)
-        other => Error(message = "internal: nested occurrence")
+        _ => Error(message = "internal: nested occurrence")
 
     rewriteInside (lowering, env, known, term, depth) = match term
         App head arg => Terms::upon (rewrite (lowering, env, known, head, depth), \first => Terms::upon (rewrite (first.rewrittenLowering, env, known, arg, depth), \second => Success(value = Rewritten(rewrittenLowering = second.rewrittenLowering, rewrittenTerm = App first.rewrittenTerm second.rewrittenTerm))))
@@ -160,11 +160,11 @@ module Nesting
         Pi name domain body => rewriteBound (lowering, env, known, term, name, domain, body, depth, false)
         Proj family index target => Terms::upon (rewrite (lowering, env, known, target, depth), \first => Success(value = Rewritten(rewrittenLowering = first.rewrittenLowering, rewrittenTerm = Proj family index first.rewrittenTerm)))
         Let name ty value body => rewriteLet (lowering, env, known, name, ty, value, body, depth)
-        other => Success(value = Rewritten(rewrittenLowering = lowering, rewrittenTerm = term))
+        _ => Success(value = Rewritten(rewrittenLowering = lowering, rewrittenTerm = term))
 
     rewriteLet (lowering, env, known, name, ty, value, body, depth) = Terms::upon (rewrite (lowering, env, known, ty, depth), \first => Terms::upon (rewrite (first.rewrittenLowering, env, known, value, depth), \second => Terms::upon (rewrite (second.rewrittenLowering, env, known, body, satAdd depth 1), \third => Success(value = Rewritten(rewrittenLowering = third.rewrittenLowering, rewrittenTerm = Let name first.rewrittenTerm second.rewrittenTerm third.rewrittenTerm)))))
 
-    rewriteBound (lowering, env, known, term, name, domain, body, depth, lambda) = Terms::upon (rewrite (lowering, env, known, domain, depth), \first => Terms::upon (rewrite (first.rewrittenLowering, env, known, body, satAdd depth 1), \second => Success(value = Rewritten(rewrittenLowering = second.rewrittenLowering, rewrittenTerm = boundForm (lambda, name, first.rewrittenTerm, second.rewrittenTerm)))))
+    rewriteBound (lowering, env, known, _term, name, domain, body, depth, lambda) = Terms::upon (rewrite (lowering, env, known, domain, depth), \first => Terms::upon (rewrite (first.rewrittenLowering, env, known, body, satAdd depth 1), \second => Success(value = Rewritten(rewrittenLowering = second.rewrittenLowering, rewrittenTerm = boundForm (lambda, name, first.rewrittenTerm, second.rewrittenTerm)))))
 
     boundForm (lambda, name, domain, body) = match lambda
         true => Lam name domain body
@@ -234,7 +234,7 @@ module Nesting
     (** The inductive family a declaration's body is, or a refusal. *)
     familyOf (decl) = match decl.body
         TypeFormer family => Success(value = family)
-        other => Error(message = "`${decl.name}` is not an inductive family")
+        _ => Error(message = "`${decl.name}` is not an inductive family")
 
     memberBuilt (env, known, occurrence, former, family, aux) = Terms::upon (memberCtors (env, known, occurrence, family, aux, 0, []), \ctors => Terms::upon (memberType (known, occurrence, former), \ty => Success(value = Copied(copiedMembers = Members(membersFormer = axiomed (known, aux, ty), membersCtors = ctors), copiedNest = Nest(nestAux = aux, nestContainer = former.name, nestLevels = occurrence.occurLevels, nestArgs = occurrence.occurArgs, nestRec = "", nestCtors = mapped (family.familyCtors, aux, 0, []), nestParamCount = listLength known.declaredParams)))))
 
@@ -257,7 +257,7 @@ module Nesting
         family has taken. *)
     auxName (env, name, n) = match Environment::find (env, "${name}._nest.${toString n}")
         Error _ => "${name}._nest.${toString n}"
-        Success decl => auxName (env, name, satAdd n 1)
+        Success _ => auxName (env, name, satAdd n 1)
 
     (** Whether `term` at `depth` binders is a nested occurrence: an
         already checked family that is not one of the declared families,
@@ -267,7 +267,7 @@ module Nesting
         parameter mentions a local variable. *)
     nestedSpine (env, known, spine, depth) = match spine.spineHead
         Const name levels => nestedHead (env, known, name, levels, spine.spineArgs, depth)
-        other => Success(value = [])
+        _ => Success(value = [])
 
     nestedHead (env, known, name, levels, args, depth) = match listContains (known.declaredNames, name)
         true => Success(value = [])
@@ -281,7 +281,7 @@ module Nesting
         TypeFormer family => match listLength levels == listLength declParams && listLength args >= family.familyParams
             true => nestedArgs (known, name, levels, args, depth, family.familyParams)
             false => Success(value = [])
-        other => Success(value = [])
+        _ => Success(value = [])
 
     nestedArgs (known, name, levels, args, depth, params) = nestedMentions (known, name, levels, args, depth, params, Terms::prefix (args, params))
 
@@ -311,7 +311,7 @@ module Nesting
         Pi name domain body => Terms::upon (rebased (domain, inner, depth, params), \dom => Terms::upon (rebased (body, satAdd inner 1, depth, params), \bod => Success(value = Pi name dom bod)))
         Proj family index target => Terms::upon (rebased (target, inner, depth, params), \one => Success(value = Proj family index one))
         Let name ty value body => Terms::upon (rebased (ty, inner, depth, params), \first => Terms::upon (rebased (value, inner, depth, params), \second => Terms::upon (rebased (body, satAdd inner 1, depth, params), \third => Success(value = Let name first second third))))
-        other => Success(value = term)
+        _ => Success(value = term)
 
     (** A variable outside the argument's own binders must name one of the
         declaration's shared parameters. The inner binders are kept by the
@@ -341,13 +341,13 @@ module Nesting
     mentionsNest (nest, term) = Terms::occurs (term, nest.nestAux) || Terms::occurs (term, "${nest.nestAux}.rec") || foldList (nest.nestCtors, false, \(seen, ctor) => seen || Terms::occurs (term, ctor.nestCtorAux))
 
     restored (nests, term, depth) = match term
-        App head arg => restoredSpine (nests, depth, Terms::spine term)
-        Const name levels => restoredSpine (nests, depth, Spine(spineHead = term, spineArgs = []))
+        App _ _ => restoredSpine (nests, depth, Terms::spine term)
+        Const _ _ => restoredSpine (nests, depth, Spine(spineHead = term, spineArgs = []))
         Lam name domain body => boundForm (true, name, restored (nests, domain, depth), restored (nests, body, satAdd depth 1))
         Pi name domain body => boundForm (false, name, restored (nests, domain, depth), restored (nests, body, satAdd depth 1))
         Let name ty value body => Let name (restored (nests, ty, depth)) (restored (nests, value, depth)) (restored (nests, body, satAdd depth 1))
         Proj family index target => Proj family index (restored (nests, target, depth))
-        other => term
+        _ => term
 
     (** The restored spine: an auxiliary head restored to the nested form it
         stands for, any other head kept — `restored` on a `Const` head would

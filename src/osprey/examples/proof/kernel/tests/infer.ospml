@@ -24,6 +24,7 @@ module InferTests
     (** `id.{u} : Sort u → Sort u := fun a => a`, which unfolds at any level. *)
     polyDef () = Support::envWithDecl (Decl(name = "id", params = ["u"], ty = Pi "a" (Sort (Param "u")) (Sort (Param "u")), body = Definition (Lam "a" (Sort (Param "u")) (BVar 0))))
 
+    (** Runs the inference, checking and universe cases, each refusal included; the testing built-ins report the TAP lines. *)
     export run () =
         test ("repeated binder names cannot smuggle a proof of q → p past q → q", \() => expectAll [Support::checked (Environment::empty (), shadowedProof (), shadowedType ()) == "ok: (Prop → (∀ (x : Prop), (x → x)))", Support::checked (Environment::empty (), shadowedProof (), shadowedWrong ()) == "error: type mismatch: `(fun (x : Prop) => (fun (x : Prop) => (fun (x : x) => x)))` has type `(Prop → (∀ (x : Prop), (x → x)))` but `(∀ (x : Prop), (∀ (x : Prop), (x → x)))` was expected"])
 

@@ -14,6 +14,7 @@ module ReduceTests
     closed () = Sort (Succ Zero)
     f () = Const "f" []
 
+    (** Runs the reduction cases: whnf by beta, delta and zeta, and eta in defeq; the testing built-ins report the TAP lines. *)
     export run () =
         computations ()
         equalities ()
@@ -85,7 +86,7 @@ module ReduceTests
     sameBeta (term, args) = structuralEquals (Reduce::whnf (Environment::empty (), Terms::apps (term, args)), Reduce::whnf (Environment::empty (), foldList (args, term, referenceBeta)))
 
     referenceBeta (term, arg) = match term
-        Lam name domain body => Terms::instantiate (body, arg)
+        Lam _ _ body => Terms::instantiate (body, arg)
         other => App other arg
 
     kReduction () =
@@ -124,7 +125,7 @@ module ReduceTests
     deltaEnvironment count = foldList (toList (range (0, count)), Success(value = Environment::empty ()), addDelta)
 
     addDelta (prior, index) = match prior
-        Error message => prior
+        Error _ => prior
         Success env => Checked::declare (env, Decl(name = "alias${index}", params = [], ty = Sort (Succ Zero), body = Definition (previousDelta index)))
 
     previousDelta index = match index == 0

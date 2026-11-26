@@ -61,8 +61,12 @@ module Recursors
         motive indices t` for the family at index `d` of the group. *)
     export recursorType (env, spec, d) = Telescope::piOver (spec.specParams, Telescope::piOver (motiveTelescope (spec), Telescope::piOver (minors (env, spec), majorPart (spec, d))))
 
+    (** How many families the checked group has, so how many motives each of its
+        recursors takes. *)
     export familyCount (spec) = listLength spec.specFormers
 
+    (** How many parameters the group shares, so how many each of its recursors
+        takes before its motives. *)
     export paramCount (spec) = listLength spec.specParams
 
     (** Every minor premise of the group: one per constructor, family-major. *)
@@ -106,7 +110,7 @@ module Recursors
         motives are numbered in family order. *)
     motiveName (spec, e) = match familyCount spec
         1 => "motive"
-        other => "motive_${toString (satAdd e 1)}"
+        _ => "motive_${toString (satAdd e 1)}"
 
     (** The target family's indices and major premise, under the shared
         parameters, every motive and every minor. *)
@@ -173,7 +177,7 @@ module Recursors
 
     recursionHead (spec, peeled, spine) = match spine.spineHead
         Const name levels => recursionNamed (spec, peeled, spine, familyOf (spec, name, levels))
-        other => Error(message = "not recursive")
+        _ => Error(message = "not recursive")
 
     (** The index of the group family `name` at exactly the group's
         universe arguments. *)
@@ -223,6 +227,8 @@ module Recursors
         the parameters, every motive, every minor and the `m` fields. *)
     ruleHypTerm (spec, m, j, rec, s) = Telescope::lamOver (rec.recursionBinders, Terms::apps (Const (formerRec (spec, rec.recursionFamily)) spec.specRecLevels, listConcat (listConcat (listConcat (Terms::vars (satAdd s (satAdd m (satAdd (minorCount spec) (familyCount spec))), paramCount spec), Terms::vars (satAdd s (satAdd m (minorCount spec)), familyCount spec)), Terms::vars (satAdd s m, minorCount spec)), listAppend (rec.recursionIndices, Terms::apps (BVar (satAdd s (satSub (satSub m 1) j)), Terms::vars (0, s))))))
 
+    (** `wanted` as a universe parameter name when it is neither empty nor among
+        `taken`; otherwise the first of `u`, `u_1`, `u_2`… that is free. *)
     export freshElim (taken, wanted) = pickName (taken, wanted, 0)
 
     pickName (taken, wanted, n) = match wanted == "" || listContains (taken, wanted)

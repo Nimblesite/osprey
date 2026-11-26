@@ -23,7 +23,7 @@ module Shapes
     (** The kind a kernel message opens with: the text before its first `: `. *)
     export kindOf (message) = match indexOf (message, ": ")
         Success at => substring (message, 0, at) ?: message
-        Error reason => message
+        Error _ => message
 
     (** `equal` when `actual` is `expected` up to binder names, else the
         term that differs, printed with no names. *)
@@ -59,7 +59,7 @@ module Shapes
         Error message => "error: ${message}"
 
     sortKind (result) = match result
-        Success level => "a type"
+        Success _ => "a type"
         Error message => kindOf message
 
     (** `shapeOf` the type of the body under every binder of `name`'s
@@ -108,4 +108,4 @@ module Shapes
         Theorem value => Infer::infer (env, [], value)
         Definition value => Infer::infer (env, [], value)
         Axiom => Error(message = "an axiom has no value")
-        other => Error(message = "an inductive constant has no value")
+        _ => Error(message = "an inductive constant has no value")

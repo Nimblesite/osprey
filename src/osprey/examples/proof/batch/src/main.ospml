@@ -26,7 +26,7 @@ malformed parts = fail (named parts) "malformed input, expected \"<path><TAB><na
 
 named parts = match parts
     [_, name] => name
-    other => ""
+    _ => ""
 
 run (path, name) = match readFile path
     Success text => checked (name, text)

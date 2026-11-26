@@ -145,7 +145,7 @@ module Levels
     vanishOn level = match level
         Param name => name
         Max a b => firstOf (vanishOn a, vanishOn b)
-        IMax a b => vanishOn b
+        IMax _ b => vanishOn b
         _ => ""
 
     (** The max-plus arms of a level whose every `imax` is settled: a
