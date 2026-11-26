@@ -4,8 +4,8 @@
 // ([NATIVE-SHM-EVENT]).
 
 import { type FramePosted } from "./client.js";
-import { fieldSignature, type Client } from "./client.js";
-import { caretWords, isEditor } from "./caret.js";
+import { type Client } from "./client.js";
+import { caretWords, fieldSignature, isEditor } from "./fields.js";
 
 interface Position {
   readonly value: string;

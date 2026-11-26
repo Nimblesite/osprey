@@ -6,7 +6,7 @@
 import { controlEvent, type HostEvent, wordsOf } from "./events.js";
 import { installActions, patchHeldAction, type ActionState } from "./action.js";
 import { morphFrame } from "./morph.js";
-import { caretWords, isEditor } from "./caret.js";
+import { caretWords, epochOf, fieldSignature, fieldsBySignature, isEditor } from "./fields.js";
 
 export interface FramePosted {
   /** A control event: the ordinal and its value as words. */
@@ -27,9 +27,6 @@ interface FieldEdit {
   answeredBy: number;
 }
 
-function epochOf(field: Element): number {
-  return Number(field.getAttribute("data-focus-epoch") || 0);
-}
 
 /** A focused field keeps its draft until a frame shows the sent draft's own value, which settles it, or
  * re-authors the field with a higher focus epoch. A settled field reports its caret again. */
@@ -84,26 +81,8 @@ function wordsOfElement(element: Element, override?: unknown): string {
   return wordsOf(kind === "number" ? Number(raw) : kind === "bool" ? raw === "true" : kind === "string" ? raw : null);
 }
 
-export function fieldSignature(element: Element): string {
-  const label = element.closest("label");
-  const labelSpan = label?.querySelector("span") ?? null;
-  return JSON.stringify([
-    element.getAttribute("data-focus"),
-    element.tagName,
-    element.getAttribute("type"),
-    element.getAttribute("data-value-kind"),
-    element.getAttribute("data-commit"),
-    element.getAttribute("placeholder") || "",
-    labelSpan !== null ? labelSpan.textContent : "",
-  ]);
-}
 
-type Field = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
 
-function fieldsBySignature(signature: string): Field[] {
-  return Array.from(document.querySelectorAll<Field>("input, textarea, select"))
-    .filter((element) => fieldSignature(element) === signature);
-}
 
 function notice(client: Client): void {
   const combined = [...new Set([...client.hostDiagnostics, ...(client.pendingLoss === undefined ? [] : [client.pendingLoss])])];
@@ -328,7 +307,8 @@ function restoreScroll(saved: readonly { path: string; top: number; left: number
 function rebaseEdits(client: Client): void {
   for (const [signature, edit] of [...client.edits.entries()]) {
     const matches = fieldsBySignature(signature);
-    if (edit.sent && matches.some((field) => epochOf(field) > edit.epoch)) {
+    // Answered, or re-authored: the frame is the truth now, focused or not, so caret reports resume.
+    if (edit.sent && (client.answered >= edit.answeredBy || matches.some((field) => epochOf(field) > edit.epoch))) {
       client.edits.delete(signature);
       continue;
     }
