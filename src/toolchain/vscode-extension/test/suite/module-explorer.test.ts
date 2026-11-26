@@ -58,6 +58,9 @@ suite("Module Explorer [EDITOR-MODULE-EXPLORER]", () => {
       const first = page.getByRole("treeitem", { name: /^first(?:,| |$)/ });
       const second = page.getByRole("treeitem", { name: /^second(?:,| |$)/ });
       await first.waitFor();
+      await second.waitFor();
+      assert.strictEqual(await page.getByRole("treeitem", { name: /^discipline(?:,| |$)/ }).count(), 0,
+        "a manifest with no [project] table is a package, never a project");
       await page.keyboard.press("Home");
       await page.keyboard.press("ArrowDown");
       await second.and(page.locator(".focused")).waitFor();

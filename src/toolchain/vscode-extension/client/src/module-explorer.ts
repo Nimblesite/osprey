@@ -422,9 +422,14 @@ export function isContained(file: string, roots: readonly string[]): boolean {
   }
 }
 
+/** A manifest is a project when it has a `[project]` table; a discipline-only package has none. */
+const PROJECT_TABLE = /^\s*\[project\]\s*(#.*)?$/m;
+
 async function workspaceProjects(): Promise<string[]> {
   const manifests = await workspace.findFiles(`**/${MANIFEST_FILE}`, GENERATED_GLOB);
-  return manifests.map((manifest) => path.dirname(manifest.fsPath)).sort();
+  const texts = await Promise.all(manifests.map((manifest) => workspace.fs.readFile(manifest)));
+  return manifests.filter((_, index) => PROJECT_TABLE.test(Buffer.from(texts[index]).toString("utf8")))
+    .map((manifest) => path.dirname(manifest.fsPath)).sort();
 }
 
 /** Open a source at its position, refusing anything outside `roots`. */
