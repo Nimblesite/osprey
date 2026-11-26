@@ -518,6 +518,18 @@ static void test_upgrade_reader_edges(void) {
   assert(last && http_text_is(field.name, field.name_len, "B") && field.value_len == 3 &&
          memcmp(field.value, "two", 3) == 0);
   assert(!http_next_field(unterminated, sizeof(unterminated) - 1, &cursor, &field));
+
+  // A colon-free request line is skipped, a value loses its trailing blanks,
+  // and the blank line ends the section before any field after it.
+  static const char head[] = "GET / HTTP/1.1\r\nC: up, Upgrade \t\r\n\r\nD: late\r\n";
+  cursor = 0;
+  bool listed = http_next_field(head, sizeof(head) - 1, &cursor, &field);
+  assert(listed && http_text_is(field.name, field.name_len, "C") && field.value_len == 11 &&
+         memcmp(field.value, "up, Upgrade", 11) == 0);
+  assert(!http_text_is(field.name, field.name_len, "D") && "same length, other name");
+  assert(http_value_lists(field.value, field.value_len, "upgrade") && "a later list item matches");
+  assert(!http_value_lists(field.value, field.value_len, "down") && "no list item matches");
+  assert(!http_next_field(head, sizeof(head) - 1, &cursor, &field) && "the blank line ends the section");
 }
 
 // A request line may carry a colon, an absolute-form target: it matches no
