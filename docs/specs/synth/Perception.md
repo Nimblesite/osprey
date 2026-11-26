@@ -757,7 +757,7 @@ Status — proposed application specification. Implementation and platform verif
 
 Pocket Orchestra lets people turn their phones into musical instruments and play together through a desktop's speakers and animated stage. A desktop application hosts the session. Native phone applications, browser controllers and additional desktop controllers connect to it over WebSockets on the local network. The desktop owns musical time, synthesis, mixing and session state.
 
-The delivery sequence and evidence checklist live in [the implementation plan](../../plans/synth/pocket-orchestra.md). This specification defines acceptance requirements, rather than claiming current host support.
+The delivery sequence and evidence checklist live in [the implementation plan](../../plans/synth/daw.md#pocket-orchestra-orchestra-plan). This specification defines acceptance requirements, rather than claiming current host support.
 
 ### The performance [ORCHESTRA-EXPERIENCE]
 
