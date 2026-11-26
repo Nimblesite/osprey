@@ -5,17 +5,19 @@ namespace registry_api;
 module ProviderNative {
     let timeoutMs = 5000
     let bodyLimit = 131072
+    /// The refusal code of every failed provider exchange.
+    let transportFailure = "auth.provider-transport"
 
     fn response(responseId) = {
         let status = httpResponseStatus(responseId)
         let body = httpResponseBody(responseId)
         let freed = httpResponseFree(responseId)
         match freed {
-            Error => Error { message: "auth.provider-transport" }
+            Error => Error { message: transportFailure }
             Success => match body {
-                Error => Error { message: "auth.provider-transport" }
+                Error => Error { message: transportFailure }
                 Success { value } => if status < 100 || status > 599 || byteLength(value) > bodyLimit {
-                    Error { message: "auth.provider-transport" }
+                    Error { message: transportFailure }
                 } else { Success { value: Supabase::Reply { status: status, body: value } } }
             }
         }
@@ -29,19 +31,19 @@ module ProviderNative {
 
     fn performRequest(client, method, path, headers, body) = {
         let received = match requestHandle(client, method, path, headers, body) {
-            Error => Error { message: "auth.provider-transport" }
+            Error => Error { message: transportFailure }
             Success { value } => response(value)
         }
         match httpCloseClient(client) {
             Success => received
-            Error => Error { message: "auth.provider-transport" }
+            Error => Error { message: transportFailure }
         }
     }
 
     fn request(method, base, path, headers, body) = {
         match httpCreateClient(base, timeoutMs) {
             Success { value } => performRequest(value, method, path, headers, body)
-            Error => Error { message: "auth.provider-transport" }
+            Error => Error { message: transportFailure }
         }
     }
 

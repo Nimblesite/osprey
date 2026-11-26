@@ -67,7 +67,10 @@ fourier (shape, k) = match shape.wave
     synth::Triangle => ProbeMath::triangleHarmonic k
     synth::Sine => ProbeMath::sineHarmonic k
 
-shapes () = [{ name = "sine", wave = synth::Sine, width = 0.5, exact = true }, { name = "saw", wave = synth::Saw, width = 0.5, exact = true }, { name = "square", wave = synth::Pulse, width = 0.5, exact = true }, { name = "pulse 1/4", wave = synth::Pulse, width = 0.25, exact = true }, { name = "pulse 1/10", wave = synth::Pulse, width = 0.1, exact = false }, { name = "triangle", wave = synth::Triangle, width = 0.5, exact = true }]
+sawShape () = { name = "saw", wave = synth::Saw, width = 0.5, exact = true }
+squareShape () = { name = "square", wave = synth::Pulse, width = 0.5, exact = true }
+
+shapes () = [{ name = "sine", wave = synth::Sine, width = 0.5, exact = true }, sawShape (), squareShape (), { name = "pulse 1/4", wave = synth::Pulse, width = 0.25, exact = true }, { name = "pulse 1/10", wave = synth::Pulse, width = 0.1, exact = false }, { name = "triangle", wave = synth::Triangle, width = 0.5, exact = true }]
 
 // Each partial holds its Fourier amplitude, never louder and at most polyBLEP's roll-off quieter; a partial the
 // series lacks is absent to the probe's floor.
@@ -115,7 +118,7 @@ responses () = foldList ([250.0, 1000.0, 5000.0, 15000.0], [], \(all, cutoff) =>
 registerSpectrumJourneys () =
     test ("every oscillator shape's partials hold the Fourier series of its shape at three pitches, in tune to 0.05 cents, and its folded partials stay 34 dB down [SYNTH-TEST-SPECTRUM]", \() => arithmetic (\() =>
         forEachList (shapes (), \shape => forEachList ([500.0, 1000.0, 2000.0], \fundamental => seriesHeld (shape, fundamental)))
-        forEachList ([{ name = "saw", wave = synth::Saw, width = 0.5, exact = true }, { name = "square", wave = synth::Pulse, width = 0.5, exact = true }], \shape => aliasHeld (shape, 1100.0, [22700.0, 20500.0, 18300.0]))))
+        forEachList ([sawShape (), squareShape ()], \shape => aliasHeld (shape, 1100.0, [22700.0, 20500.0, 18300.0]))))
     test ("the state-variable filter's low, band and high outputs follow the bilinear second-order response within 0.001 dB at four cutoffs, four Qs and six frequencies [SYNTH-TEST-SPECTRUM]", \() => arithmetic (\() =>
         forEachList (responses (), responseHeld)))
     registerSpectrumEffects ()

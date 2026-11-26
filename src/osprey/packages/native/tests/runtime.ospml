@@ -171,7 +171,11 @@ toldAt (items, index) = listGet items index ?: blankTold ()
 // The `index`th child of the record `told`, or the empty record.
 childTold (told, index) = toldAt (memberItems (insideTold told, "children"), index)
 
-childEvent (node, index) = memberCount (insideTold (childTold (toldOf node, index)), "event", 0 - 1)
+// The control ordinal the component `told` spells, or -1 when it binds none.
+eventOf told = memberCount (insideTold told, "event", 0 - 1)
+
+// The ordinal of the control `node`'s `index`th child binds, or -1 when it binds none.
+childEvent (node, index) = eventOf (childTold (toldOf node, index))
 
 // `part` under the member name `name`, or alone when the name is empty.
 spelledName (name, part) = match name

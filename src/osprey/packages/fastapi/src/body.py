@@ -12,6 +12,9 @@ from fastapi import Uuids
 
 __all__ = ["bind", "bind_binary", "object_body", "object_at", "nested", "text", "text_at", "optional_text", "optional_alias", "uuid", "extras", "filtered_response", "optional_json", "array", "array_at", "string"]
 
+REQUIRED = "Field required"
+"""The message of every `missing` validation error, as pydantic words it."""
+
 
 def invalid(location, kind, message, input):
     return invalid_at(mapList(location, lambda name: M.Field(name=name)), kind, message, input)
@@ -70,7 +73,7 @@ def required_member(document, name, parent, decoder):
     path = listConcat(parent, [M.Field(name=name)])
     match jsonField(document, name):
         case Error():
-            return invalid_at(path, "missing", "Field required", document)
+            return invalid_at(path, "missing", REQUIRED, document)
         case Success(value=field):
             return decoder(field, path)
 
@@ -167,7 +170,7 @@ def optional_alias(document, alias, name):
 def uuid(document, name):
     match jsonField(document, name):
         case Error():
-            return invalid(["body", name], "missing", "Field required", document)
+            return invalid(["body", name], "missing", REQUIRED, document)
         case Success(value=field):
             match field:
                 case JsonString(value):
@@ -276,7 +279,7 @@ def json_media(media):
 
 def bind(request, decoder, endpoint):
     if request.body == "":
-        return rendered(invalid(["body"], "missing", "Field required", JsonNull()), endpoint)
+        return rendered(invalid(["body"], "missing", REQUIRED, JsonNull()), endpoint)
     elif json_media(trim(toLowerCase(media_type(request)))):
         source = drop(request.body, len("\ufeff")) if startsWith(request.body, "\ufeff") else request.body
         match jsonDecodePython(source):
@@ -304,7 +307,7 @@ def rendered(result, endpoint):
 def bound_document(document, decoder, endpoint):
     match document:
         case JsonNull():
-            return rendered(invalid(["body"], "missing", "Field required", document), endpoint)
+            return rendered(invalid(["body"], "missing", REQUIRED, document), endpoint)
         case _:
             return rendered(decoder(document), endpoint)
 

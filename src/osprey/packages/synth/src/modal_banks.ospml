@@ -22,12 +22,29 @@ module ModalBanks
                 // Impulse-normalised: a unit impulse starts each mode at its strike weight over the mode count.
                 Resonators::coefficients (ResonatorConfig(sampleRate = config.sampleRate, frequency = frequency, decay = PhysicalMath::modeDecay (config.decay, r, config.brightness), gain = PhysicalMath::positionWeight (toFloat index, config.strike) / toFloat config.count, scale = ImpulseScale))
 
-    (** Fundamental below 0.45 of the rate, decay 1 ms–60 s, brightness 0–1, strike 0.01–0.99 and 1–8 modes. *)
+    (** Fundamental below 0.45 of the rate, decay 1 ms–60 s, brightness 0–1, strike 0.01–0.99 and 1–8 modes.
+    # Examples
+    ```osprey
+    print "${ModalBanks::configure (ModalConfig(sampleRate = 48000.0, frequency = 220.0, decay = 1.0, brightness = 0.5, strike = 0.13, count = 0, modes = BellModes))}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export configure config = match config.sampleRate >= 8000.0 && config.sampleRate <= 384000.0 && config.frequency > 0.0 && config.frequency < config.sampleRate * 0.45 && config.decay >= 0.001 && config.decay <= 60.0 && config.brightness >= 0.0 && config.brightness <= 1.0 && config.strike >= 0.01 && config.strike <= 0.99 && config.count >= 1 && config.count <= 8
         true => Success(value = ModalBank(modes = mapList (toList (range (0, 8)), \index => mode (config, index))))
         false => Error(message = InvalidConfiguration(detail = "Invalid modal rate, frequency, decay, brightness, strike or mode count."))
 
-    (** Zero stored energy in every mode. *)
+    (** Zero stored energy in every mode.
+    # Examples
+    ```osprey
+    bank = ModalBank(modes = [ResonatorCoefficients(input = 0.5, cosine = 0.5, sine = 0.25)])
+    print "${ModalBanks::initial bank}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export initial bank = ModalState(modes = mapList (bank.modes, \_ => Resonators::initial))
 
     mismatch () = Error(message = IncompatibleLayout(detail = "Modal state does not match its bank."))
@@ -42,7 +59,20 @@ module ModalBanks
                     step = Resonators::next (c, held, input)
                     stepped (modes, states, satAdd index 1, input, total + step.sample, listAppend next step.next)
 
-    (** Excite every mode with the same input and sum them; mismatched state is an error. *)
+    (** Excite every mode with the same input and sum them; mismatched state is an error.
+    # Examples
+    ```osprey
+    bank = ModalBank(modes = [ResonatorCoefficients(input = 0.5, cosine = 0.5, sine = 0.25)])
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => ModalBanks::next (bank, ModalBanks::initial bank, 1.0))} ${arithmetic (\() => ModalBanks::next (bank, ModalState(modes = []), 1.0))}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export next (bank, held, input) = match length bank.modes == length held.modes
         false => mismatch ()
         true => stepped (bank.modes, held.modes, 0, input, 0.0, [])

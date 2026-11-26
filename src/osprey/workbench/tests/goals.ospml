@@ -12,9 +12,6 @@ module GoalCases
         shared fixture helper returns a typed failure to the case boundary. *)
     formula text = FixtureFiles::formula ("goal", text)
 
-    // Both cases must hold; the first typed fixture failure is returned unchanged.
-    both (first, second) = FixtureFiles::bind (first, \_ => second)
-
     claim text =
         FixtureFiles::bind (formula text, \read =>
             FixtureFiles::ok (workbench::Statement(name = "t", named = true, variables = ["p", "q", "r"], claim = read)))
@@ -169,14 +166,23 @@ module GoalCases
 
     (** [WORKBENCH-GOALS]: a disjunction splits into two goals, and left, right, apply and absurd each act on the first. *)
     export rows () =
-        both (disjunctionRows (),
-        both (implicationRow (),
-        both (absurds (),
-        both (negatedRows (),
-        both (stuckRows (),
-        both (conjunctions (),
-        both (plainRows (),
-            equivalences ())))))))
+        // Every row runs before the results are sequenced; the first typed fixture failure is returned unchanged.
+        disjunction = disjunctionRows ()
+        implication = implicationRow ()
+        absurd = absurds ()
+        negation = negatedRows ()
+        stuck = stuckRows ()
+        conjunction = conjunctions ()
+        plain = plainRows ()
+        equivalence = equivalences ()
+        use _ <- FixtureFiles::bind (disjunction)
+        use _ <- FixtureFiles::bind (implication)
+        use _ <- FixtureFiles::bind (absurd)
+        use _ <- FixtureFiles::bind (negation)
+        use _ <- FixtureFiles::bind (stuck)
+        use _ <- FixtureFiles::bind (conjunction)
+        use _ <- FixtureFiles::bind (plain)
+        equivalence
 
     (** [WORKBENCH-GOALS]: a step that does not fit names the goal and what the step offers. *)
     export mismatches () =

@@ -19,7 +19,9 @@ fn unit_builtins_discard_native_status_values() {
         let start = ir
             .find(&marker)
             .unwrap_or_else(|| panic!("missing {function}"));
-        let body = &ir[start..ir[start..].find("\n}").map_or(ir.len(), |n| start + n)];
+        let rest = ir.get(start..).expect("char boundary");
+        let end = rest.find("\n}").map_or(ir.len(), |n| start + n);
+        let body = ir.get(start..end).expect("char boundary");
         assert!(body.contains(&format!("call i64 @{callee}")), "{body}");
         crate::testkit::shows(body, &["ret i64 0"]);
     }

@@ -5,17 +5,43 @@ namespace synth
     the Courant number λ ≤ 1/√2 (checked); loss σ ≥ 0 only removes energy. Grids are 2–32 points per side.
     Discretisation is coarse: mode ratios approach the ideal membrane only as the grid grows (dispersion). *)
 module Meshes
-    (** λ in (0, 0.7071], decay 0.01–60 s, excitation and pickup points inside the grid. *)
+    (** λ in (0, 0.7071], decay 0.01–60 s, excitation and pickup points inside the grid.
+    # Examples
+    ```osprey
+    config = MeshConfig(sampleRate = 48000.0, width = 2, height = 2, courant = 0.5, decay = 1.0, exciteX = 0, exciteY = 0, pickX = 1, pickY = 1)
+    print "${Meshes::configure config} ${Meshes::configure (config(courant = 0.9))}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export configure config = match config.sampleRate >= 8000.0 && config.sampleRate <= 384000.0 && config.width >= 2 && config.width <= 32 && config.height >= 2 && config.height <= 32 && config.courant > 0.0 && config.courant <= 0.7071 && config.decay >= 0.01 && config.decay <= 60.0 && config.exciteX >= 0 && config.exciteX < config.width && config.exciteY >= 0 && config.exciteY < config.height && config.pickX >= 0 && config.pickX < config.width && config.pickY >= 0 && config.pickY < config.height
         true => Success(value = config)
         false => Error(message = InvalidConfiguration(detail = "Invalid mesh size, Courant number (must be <= 1/sqrt 2), decay or point."))
 
     zeros (width, height) = mapList (toList (range (0, height)), \_ => Sequences::zeros width)
 
-    (** Silent membrane. *)
+    (** Silent membrane.
+    # Examples
+    ```osprey
+    config = MeshConfig(sampleRate = 48000.0, width = 2, height = 2, courant = 0.5, decay = 1.0, exciteX = 0, exciteY = 0, pickX = 1, pickY = 1)
+    print "${Meshes::initial config}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export initial config = MeshState(current = zeros (config.width, config.height), previous = zeros (config.width, config.height))
 
-    (** The lowest mode in hertz for this grid and Courant number. *)
+    (** The lowest mode in hertz for this grid and Courant number.
+    # Examples
+    ```osprey
+    print "${Meshes::fundamental (MeshConfig(sampleRate = 48000.0, width = 2, height = 2, courant = 0.5, decay = 1.0, exciteX = 0, exciteY = 0, pickX = 1, pickY = 1))}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export fundamental config = PhysicalMath::meshFundamental (toFloat config.width, toFloat config.height, config.courant, config.sampleRate)
 
     silentRow row = mapList (row, \_ => 0.0)
@@ -68,7 +94,16 @@ module Meshes
         true => value
         false => 0.0
 
-    (** One sample: `input` is added at the excitation point; the output is the pickup point's displacement. *)
+    (** One sample: `input` is added at the excitation point; the output is the pickup point's displacement.
+    # Examples
+    ```osprey
+    config = MeshConfig(sampleRate = 48000.0, width = 2, height = 2, courant = 0.5, decay = 1.0, exciteX = 0, exciteY = 0, pickX = 1, pickY = 1)
+    print "${Meshes::next (config, MeshState(current = [], previous = []), 1.0)} ${Meshes::next (config(height = 0), MeshState(current = [], previous = []), 1.0)}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export next (config, held, input) = match length held.current == config.height && length held.previous == config.height
         false => Error(message = IncompatibleLayout(detail = "Mesh state does not match its configuration."))
         true => match held.current

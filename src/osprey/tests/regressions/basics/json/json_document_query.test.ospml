@@ -36,7 +36,10 @@ reportDeepString value =
         JsonBoolean _value => print "unexpected boolean"
         JsonNumber _value => print "unexpected number"
 
-deepestValue = JsonString(value = "devon@osprey.dev")
+(** The email nested deepest in the fixture document. *)
+contactEmail = "devon@osprey.dev"
+
+deepestValue = JsonString(value = contactEmail)
 innerArray = JsonArray(values = List() |> listAppend deepestValue)
 outerArray = JsonArray(values = List() |> listAppend innerArray)
 document = JsonObject(fields = Map() |> mapSet "workspace" outerArray)
@@ -69,7 +72,7 @@ objectFieldCount value =
 
 (** Rebuild and traverse the recursive document under the test runner. *)
 jsonDocumentCase () =
-    deepest = JsonString(value = "devon@osprey.dev")
+    deepest = JsonString(value = contactEmail)
     inner = JsonArray(values = List() |> listAppend deepest)
     outer = JsonArray(values = List() |> listAppend inner)
     root = JsonObject(fields = Map() |> mapSet "workspace" outer)
@@ -80,7 +83,7 @@ jsonDocumentCase () =
         describe (JsonNumber(value = 17)) == "number",
         describe deepest == "string", describe outer == "array",
         describe root == "object", objectFieldCount root == 1,
-        deepString root == "devon@osprey.dev",
+        deepString root == contactEmail,
         deepString JsonNull == ""
     ]
 test "recursive JSON traversal preserves the nested value" jsonDocumentCase

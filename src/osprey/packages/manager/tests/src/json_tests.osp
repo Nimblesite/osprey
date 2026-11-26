@@ -6,6 +6,11 @@ import registry::Json
 /// at exact byte offsets, UTF-16 key ordering, escaping and idempotence.
 /// Implements [PACKAGE-PUBLISH] and [PACKAGE-TYPE-INVARIANTS].
 module JsonTests {
+    /// The refusal of a non-integer where the schema wants one.
+    let nonInteger = "json.non-integer"
+    /// The refusal of a missing object member.
+    let missingKey = "json.missing-key"
+
     fn cp(n) = fromCodePoint(n) ?: ""
 
     /// "code@offset" of the first parse problem, or "ok".
@@ -74,8 +79,8 @@ module JsonTests {
     ])
 
     fn shapes() = checkAll("non-integer numbers report at the number start", [
-        problemsAt(["1.5", "1e3", "1E3", "01", "-0", "-01"], "json.non-integer", [0, 0, 0, 0, 0, 0]),
-        problemsAt(["[1.0]", "0.0"], "json.non-integer", [1, 0])
+        problemsAt(["1.5", "1e3", "1E3", "01", "-0", "-01"], nonInteger, [0, 0, 0, 0, 0, 0]),
+        problemsAt(["[1.0]", "0.0"], nonInteger, [1, 0])
     ])
 
     fn problems() = checkAll("structural problems carry exact byte offsets", [
@@ -153,13 +158,13 @@ module JsonTests {
 
     fn lookups() = checkAll("member lookup and problem description", [
         structuralEquals([found("{\"a\":1}", "a"), found("{\"a\":{\"b\":2}}", "a")], ["1", "{\"b\":2}"]),
-        structuralEquals([found("{\"a\":1}", "b"), found("[1]", "a")], ["json.missing-key", "json.not-an-object"]),
+        structuralEquals([found("{\"a\":1}", "b"), found("[1]", "a")], [missingKey, "json.not-an-object"]),
         found("null", "a") == "json.not-an-object",
         Json::describe("json.depth@12") == "json.depth at byte 12",
-        Json::problemCode("json.non-integer@3") == "json.non-integer",
+        Json::problemCode("json.non-integer@3") == nonInteger,
         Json::problemOffset("json.non-integer@3") == 3,
-        Json::problemCode("json.missing-key") == "json.missing-key",
-        Json::problemOffset("json.missing-key") == -1
+        Json::problemCode(missingKey) == missingKey,
+        Json::problemOffset(missingKey) == -1
     ])
 
     let longRun = 100000

@@ -25,7 +25,16 @@ module PhysicalKernels
         use colour <- RenderInputs::setting (snapshot, identity, "colour")
         exciterConfig (strength, duration, interval, kind, colour)
 
-    (** Resolve the burst controls once when there are no automation events in this block. *)
+    (** Resolve the burst controls once when there are no automation events in this block.
+    # Examples
+    ```osprey
+    snapshot = Parameters::initial (Graph(nodes = [Components::exciter (1, 7)], cables = []))
+    print "${PhysicalKernels::prepareExciter (snapshot, 1)} ${PhysicalKernels::prepareExciter (Parameters::initial Graphs::empty, 1)}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export prepareExciter (snapshot, identity) = match excitationSettings (snapshot, identity)
         Success config => FixedExciter(config = config)
         Error _ => LivePhysical
@@ -34,7 +43,20 @@ module PhysicalKernels
         step = Exciters::next (config, ExciterState(age = held.phase, seed = held.integratorOne, smoothed = held.integratorTwo))
         published (frame, held(phase = step.next.age, integratorOne = step.next.seed, integratorTwo = step.next.smoothed), step.sample)
 
-    (** Advance one burst sample, retaining its age, noise seed and colour filter. *)
+    (** Advance one burst sample, retaining its age, noise seed and colour filter.
+    # Examples
+    ```osprey
+    held = KernelState(identity = 1, phase = 0.0, integratorOne = 0.0, integratorTwo = 0.0, delay = [], memory = KernelIdle)
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => PhysicalKernels::excite (Parameters::initial Graphs::empty, SampleFrame(states = [KernelState(identity = 1, phase = 0.0, integratorOne = 0.0, integratorTwo = 0.0, delay = [], memory = KernelIdle)], values = []), held, LivePhysical))} ${arithmetic (\() => PhysicalKernels::excite (Parameters::initial Graphs::empty, SampleFrame(states = [KernelState(identity = 1, phase = 0.0, integratorOne = 0.0, integratorTwo = 0.0, delay = [], memory = KernelIdle)], values = []), held, FixedExciter(config = ExciterConfig(strength = 0.8, duration = 96, interval = 0, excitation = ImpulseExcitation))))}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export excite (snapshot, frame, held, prepared) = match prepared
         FixedExciter config => excited (frame, held, config)
         _ => Outcomes::carried (excitationSettings (snapshot, held.identity), \config => excited (frame, held, config))
@@ -82,7 +104,16 @@ module PhysicalKernels
         use modes, whole <- bodied (selector, count)
         ModalConfig(sampleRate = rate, frequency = frequency, decay = decay, brightness = brightness, strike = strike, count = whole, modes = modes)
 
-    (** Resolve constant modal controls once per block, retaining the running resonator state. *)
+    (** Resolve constant modal controls once per block, retaining the running resonator state.
+    # Examples
+    ```osprey
+    snapshot = Parameters::initial (Graph(nodes = [Components::modalBank (1, 220.0, 3.0)], cables = []))
+    print "${PhysicalKernels::prepareModal (48000.0, snapshot, 1)} ${PhysicalKernels::prepareModal (48000.0, Parameters::initial Graphs::empty, 1)}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export prepareModal (rate, snapshot, identity) = match modalSettings (rate, snapshot, identity)
         Error _ => LivePhysical
         Success config => FixedModal(config = config)
@@ -99,7 +130,16 @@ module PhysicalKernels
         use pickup <- RenderInputs::setting (snapshot, identity, "pickup")
         Waveguides::configure (WaveguideConfig(sampleRate = rate, frequency = frequency, decay = decay, brightness = brightness, dispersion = dispersion, pickup = pickup, capacity = capacity))
 
-    (** Prepare physical string tuning for a fixed snapshot. *)
+    (** Prepare physical string tuning for a fixed snapshot.
+    # Examples
+    ```osprey
+    snapshot = Parameters::initial (Graph(nodes = [Components::waveguide (1, 110.0, 480)], cables = []))
+    print "${PhysicalKernels::prepare (48000.0, snapshot, 1, 480)} ${PhysicalKernels::prepare (48000.0, Parameters::initial Graphs::empty, 1, 480)}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export prepare (rate, snapshot, identity, capacity) = match guideSettings (rate, snapshot, identity, capacity)
         Success config => FixedGuide(coefficients = Waveguides::coefficients config)
         Error _ => LivePhysical
@@ -127,7 +167,20 @@ module PhysicalKernels
 
     allpass (snapshot, frame, held, input) = RenderInputs::bound (snapshot, held, "coefficient", \value => allpassed (frame, held, input, Allpasses::configure value))
 
-    (** Process one routed input sample; non-physical processors are an explicit error. *)
+    (** Process one routed input sample; non-physical processors are an explicit error.
+    # Examples
+    ```osprey
+    held = KernelState(identity = 1, phase = 0.0, integratorOne = 0.0, integratorTwo = 0.0, delay = [], memory = KernelIdle)
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => PhysicalKernels::process (48000.0, Parameters::initial Graphs::empty, SampleFrame(states = [KernelState(identity = 1, phase = 0.0, integratorOne = 0.0, integratorTwo = 0.0, delay = [], memory = KernelIdle)], values = []), held, Components::gain (1, 1.0), 0.0, LivePhysical))} ${arithmetic (\() => PhysicalKernels::process (48000.0, Parameters::initial Graphs::empty, SampleFrame(states = [KernelState(identity = 1, phase = 0.0, integratorOne = 0.0, integratorTwo = 0.0, delay = [], memory = KernelIdle)], values = []), held, Components::lossFilter (1, 0.9, 0.5), 0.0, LivePhysical))}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export process (rate, snapshot, frame, held, n, input, guide) = match n.processor
         Resonator => resonator (rate, snapshot, frame, held, input)
         Modal => modalBank (rate, snapshot, frame, held, input, guide)
@@ -154,7 +207,20 @@ module PhysicalKernels
         Error why => Error(message = why)
         Success config => Outcomes::carried (bowMemory (held, config), \bow => Outcomes::carried (BowedStrings::next (config, bow), \step => published (frame, held(memory = BowRunning(bow = step.next)), step.sample)))
 
-    (** The neck and bridge keep their independent delay lines across samples. *)
+    (** The neck and bridge keep their independent delay lines across samples.
+    # Examples
+    ```osprey
+    held = KernelState(identity = 1, phase = 0.0, integratorOne = 0.0, integratorTwo = 0.0, delay = [], memory = KernelIdle)
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => PhysicalKernels::bowed (48000.0, Parameters::initial Graphs::empty, SampleFrame(states = [KernelState(identity = 1, phase = 0.0, integratorOne = 0.0, integratorTwo = 0.0, delay = [], memory = KernelIdle)], values = []), held, 480))}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export bowed (rate, snapshot, frame, held, capacity) =
         use frequency <- RenderInputs::bound (snapshot, held, "frequency")
         use decay <- RenderInputs::bound (snapshot, held, "decay")

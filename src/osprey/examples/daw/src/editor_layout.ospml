@@ -227,7 +227,7 @@ module PrismArt
     export keyboardAccess editor = filterList (ui::Canvases::semantics (ui::Machines::feed (editor.skin, [fact ("keys", 1.0)])), \area => startsWith area.accessLabel "Play ")
 
     (** Decode only a key the original keyboard actually exposes. *)
-    export keyAt (editor, x, y) = match listGet (filterList (keyboardAccess editor, \a => x >= a.accessLeft && x <= a.accessLeft + a.accessWidth && y >= a.accessTop && y <= a.accessTop + a.accessHeight)) 0
+    export keyAt (editor, x, y) = match listGet (filterList (keyboardAccess editor, \a => EditorView::covers (a, x, y))) 0
         Error _ => Error(message = "index out of bounds")
         Success area =>
             index = ui::Lists::position (noteNames, \name => "Play ${name}" == area.accessLabel)
@@ -266,7 +266,7 @@ module PrismArt
         "custom" => []
         _ => filterList (ui::Canvases::semantics (prepared (editor, n)), \a => !inspectorArea a && supports (n, a))
 
-    sliderAt (editor, n, px, py) = length (filterList (CardArts::controls (editor, n), \a => px >= a.accessLeft && px <= a.accessLeft + a.accessWidth && py >= a.accessTop && py <= a.accessTop + a.accessHeight)) > 0
+    sliderAt (editor, n, px, py) = length (filterList (CardArts::controls (editor, n), \a => EditorView::covers (a, px, py))) > 0
 
     numberChange (editor, n, before, after, input, key, convert) = match ui::Machines::number (before, input) == ui::Machines::number (after, input)
         true => editor
@@ -380,13 +380,10 @@ module CableCanvas
             [EditorView::panel (at.x - 67.0, at.y + 18.0, 134.0, 32.0, 2563389, 30001), EditorView::text ("Delete cable ×", at.x - 53.0, at.y + 26.0, 14.0, 240, 30002)]
 
     (** The close button and drag preview remain above the node layers. *)
-    export shapes editor = listConcat (indexed (editor, [], wire)) (listConcat (preview editor) (deletion editor))
+    export shapes editor = listConcat (cables (editor, [], wire)) (listConcat (preview editor) (deletion editor))
 
     (** Each cable with its index, appended after `first`. *)
-    indexed (editor, first, each) = foldList (toList (range (0, length editor.graph.cables)), first, \(all, index) =>
-        match listGet editor.graph.cables index
-            Error _ => all
-            Success cable => listAppend all (each (editor, cable, index)))
+    cables (editor, first, each) = EditorView::indexed (editor.graph.cables, first, \(cable, index) => [each (editor, cable, index)])
 
     cableAccess (editor, cable, index) =
         at = midpoint (editor, cable)
@@ -394,7 +391,7 @@ module CableCanvas
 
     (** Screen readers and host tests invoke the same physical canvas hit areas. *)
     export access editor =
-        wires = indexed (editor, mapList (filterList (editor.graph.nodes, \n => n.processor == Filter), \n => monitorAccess (editor, n)), cableAccess)
+        wires = cables (editor, mapList (filterList (editor.graph.nodes, \n => n.processor == Filter), \n => monitorAccess (editor, n)), cableAccess)
         match listGet editor.graph.cables editor.selectedCable
             Error _ => wires
             Success cable =>

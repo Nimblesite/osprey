@@ -13,27 +13,81 @@ module SpectralStreams
         SpectralPitch ratio formant => ratio >= 0.25 && ratio <= 4.0 && formant >= 0.25 && formant <= 4.0
         SpectralSeries steps => SpectralFrames::compatible steps && length (filterList (steps, \step => transformValid (config(transform = step)))) == length steps
 
-    (** Size 64–4,096 (power of two), hop size/4 or size/8, mix 0 (dry) to 1 (processed). *)
+    (** Size 64–4,096 (power of two), hop size/4 or size/8, mix 0 (dry) to 1 (processed).
+    # Examples
+    ```osprey
+    config = SpectralConfig(sampleRate = 48000.0, size = 64, hop = 16, transform = SpectralPass, mix = 1.0)
+    print "${SpectralStreams::configure config} ${SpectralStreams::configure (config(hop = 60))}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export configure config = match config.sampleRate >= 8000.0 && config.sampleRate <= 384000.0 && Ffts::valid config.size && (config.hop == intDiv config.size 4 || config.hop == intDiv config.size 8) && config.mix >= 0.0 && config.mix <= 1.0 && transformValid config
         true => Success(value = config)
         false => Error(message = InvalidConfiguration(detail = "Invalid spectral rate, size, hop, mix or transformation range."))
 
-    (** Algorithmic latency in samples of a transform of `size`, for aligning parallel routes. *)
+    (** Algorithmic latency in samples of a transform of `size`, for aligning parallel routes.
+    # Examples
+    ```osprey
+    print "${SpectralStreams::latency 256} ${SpectralStreams::latency 64}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export latency size = satSub size 1
 
     (** Tail in samples after input stops: the last frame holding the final input sample ends up to `size − 1`
         samples later and resynthesises a whole window, emitted over `size − 1` more; past `2 · (size − 1)` the
-        output is exactly silent. Freeze keeps sounding until released. *)
+        output is exactly silent. Freeze keeps sounding until released.
+    # Examples
+    ```osprey
+    print "${SpectralStreams::tail 64}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export tail size = satMul 2 (satSub size 1)
 
     silent config = mapList (toList (range (0, satAdd (intDiv config.size 2) 1)), \_ => Complex(re = 0.0, im = 0.0))
 
     (** Transport discontinuity policy: analysis buffers restart silent and the hop clock restarts, while the
         overlap-add output (the already-synthesised tail), a held freeze capture and synthesis phases continue,
-        so a jump never clicks from discarded output; pitch-shift frequency estimates settle after one frame. *)
+        so a jump never clicks from discarded output; pitch-shift frequency estimates settle after one frame.
+    # Examples
+    ```osprey
+    config = SpectralConfig(sampleRate = 48000.0, size = 64, hop = 16, transform = SpectralPass, mix = 1.0)
+    held = SpectralStreams::initial config
+    moved = SpectralStreams::relocated (config, held(frames = 3))
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => moved.countdown)} ${arithmetic (\() => moved.frames)} ${arithmetic (\() => listLength moved.input)}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export relocated (config, held) = held(input = Sequences::zeros config.size, side = Sequences::zeros config.size, countdown = config.hop)
 
-    (** Silent buffers; the first frame completes after one hop. *)
+    (** Silent buffers; the first frame completes after one hop.
+    # Examples
+    ```osprey
+    config = SpectralConfig(sampleRate = 48000.0, size = 64, hop = 16, transform = SpectralPass, mix = 1.0)
+    held = SpectralStreams::initial config
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => held.countdown)} ${arithmetic (\() => listLength held.output)} ${arithmetic (\() => listLength held.memory)}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export initial config = SpectralState(input = Sequences::zeros config.size, side = Sequences::zeros config.size, output = Sequences::zeros config.size, memory = silent config, motion = silent config, countdown = config.hop, frames = 0, captured = false)
 
     windowed (samples, size) = Sequences::mapIndexed (samples, \(index, value) => value * SpectralMath::hann (toFloat index, toFloat size))
@@ -79,7 +133,21 @@ module SpectralStreams
             [] => Error(message = MissingResource(detail = "Spectral input buffer is empty."))
             [dry, ..._older] => Success(value = SpectralSample(sample = Interpolation::linear (dry, wet, config.mix), next = held(output = listAppend rest 0.0)))
 
-    (** One sample of main and side input; a frame is analysed and overlap-added every hop. *)
+    (** One sample of main and side input; a frame is analysed and overlap-added every hop.
+    # Examples
+    ```osprey
+    config = SpectralConfig(sampleRate = 48000.0, size = 64, hop = 16, transform = SpectralPass, mix = 1.0)
+    held = SpectralStreams::initial config
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => SpectralStreams::next (config, held(countdown = 0), 0.0, 0.0))}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export next (config, held, input, side) = match valid (config, held)
         false => Error(message = IncompatibleLayout(detail = "Spectral state does not match its configuration."))
         true => Outcomes::carried (framed (config, held(input = Sequences::shifted (held.input, input), side = Sequences::shifted (held.side, side), countdown = satSub held.countdown 1)), \advanced => emitted (config, advanced))
@@ -88,6 +156,20 @@ module SpectralStreams
 
     (** A typed snapshot of the current analysis window for observers: channel, the absolute sample
         position of its newest input, bin frequencies, magnitudes and unit phase phasors. Compute it off
-        the audio thread; it allocates a transform. *)
+        the audio thread; it allocates a transform.
+    # Examples
+    ```osprey
+    config = SpectralConfig(sampleRate = 48000.0, size = 64, hop = 16, transform = SpectralPass, mix = 1.0)
+    held = SpectralStreams::initial config
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => SpectralStreams::view (config, held(input = []), 0, 0))}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export view (config, held, channel, position) = Outcomes::carried (Ffts::forward (windowed (held.input, config.size)), \bins => Success(value = SpectralView(channel = channel, position = position, size = config.size, bins = Sequences::mapIndexed (bins, \(index, value) => bin (config, index, value)))))
 

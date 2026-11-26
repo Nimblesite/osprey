@@ -16,6 +16,12 @@ import proof
     gate and the example entry use, so nothing here is checked by a code
     path the gate does not time. *)
 module ExportMutationTests
+    // The kernel's verdict kind for a statement that is a type but not the
+    // proof's own type, and the one `sort` expression line every swapped
+    // export starts from.
+    statementMismatch = "type mismatch | a type | equal | equal"
+    sortLine = "{\"ie\":0,\"sort\":0}"
+
 
     (** Runs the mutated-export cases; the testing built-ins report the TAP lines. *)
     export run () =
@@ -27,19 +33,19 @@ module ExportMutationTests
 
         test ("control: the theorem over Type instead of Prop still checks", \() => expect (verdict (overType ()), "checked"))
 
-        test ("the proof returning the proposition instead of the hypothesis is a type mismatch", \() => expect (mismatch (edit ("\"body\":1,\"name\":15", "\"body\":2,\"name\":15"), "id_imp", idType (), Pi "p" (prop ()) (Pi "h" (BVar 0) (prop ()))), "type mismatch | a type | equal | equal"))
+        test ("the proof returning the proposition instead of the hypothesis is a type mismatch", \() => expect (mismatch (edit ("\"body\":1,\"name\":15", "\"body\":2,\"name\":15"), "id_imp", idType (), Pi "p" (prop ()) (Pi "h" (BVar 0) (prop ()))), statementMismatch))
 
         test ("the outer binder typed by an unbound variable is rejected", \() => expect (Shapes::views [verdict (edit ("\"body\":5,\"name\":14,\"type\":0", "\"body\":5,\"name\":14,\"type\":1")), Shapes::statementKind (edit ("\"body\":5,\"name\":14,\"type\":0", "\"body\":5,\"name\":14,\"type\":1"), "id_imp")], "unbound variable #0 | a type"))
 
-        test ("the statement replaced by Prop makes the proof a mismatch", \() => expect (mismatch (restated ("0", "6"), "id_imp", prop (), idType ()), "type mismatch | a type | equal | equal"))
+        test ("the statement replaced by Prop makes the proof a mismatch", \() => expect (mismatch (restated ("0", "6"), "id_imp", prop (), idType ()), statementMismatch))
 
         test ("an open statement is rejected before the proof is looked at", \() => expect (Shapes::views [verdict (restated ("3", "6")), Shapes::shapeOf (Shapes::statementOf (restated ("3", "6"), "id_imp"), Pi "a" (BVar 0) (BVar 1))], "unbound variable #0 | equal"))
 
         test ("the inner lambda alone as the proof is open", \() => expect (verdict (restated ("4", "5")), "unbound variable #0"))
 
-        test ("the statement offered as its own proof is a mismatch", \() => expect (mismatch (restated ("4", "4"), "id_imp", idType (), prop ()), "type mismatch | a type | equal | equal"))
+        test ("the statement offered as its own proof is a mismatch", \() => expect (mismatch (restated ("4", "4"), "id_imp", idType (), prop ()), statementMismatch))
 
-        test ("a weaker statement than the proof proves is a mismatch", \() => expect (mismatch (edit ("\"body\":3,\"name\":2,\"type\":0", "\"body\":1,\"name\":2,\"type\":0"), "id_imp", Pi "p" (prop ()) (BVar 0), idType ()), "type mismatch | a type | equal | equal"))
+        test ("a weaker statement than the proof proves is a mismatch", \() => expect (mismatch (edit ("\"body\":3,\"name\":2,\"type\":0", "\"body\":1,\"name\":2,\"type\":0"), "id_imp", Pi "p" (prop ()) (BVar 0), idType ()), statementMismatch))
 
         test ("a statement whose body is a proof, not a type, is rejected as not a type", \() => expect (notAType (edit ("\"body\":2,\"name\":7,\"type\":1", "\"body\":1,\"name\":7,\"type\":1")), "not a type | not a type | equal | equal"))
 
@@ -67,9 +73,9 @@ module ExportMutationTests
 
         test ("a level index defined twice is refused on its second line", \() => expect (verdict (swapped (overType (), "{\"il\":1,\"succ\":0}", "{\"il\":1,\"succ\":0}\n{\"il\":1,\"succ\":0}")), "line 5: level 1 is already defined"))
 
-        test ("a negative expression index is refused", \() => expect (verdict (edit ("{\"ie\":0,\"sort\":0}", "{\"ie\":-1,\"sort\":0}")), "line 4: expr -1 is reserved"))
+        test ("a negative expression index is refused", \() => expect (verdict (edit (sortLine, "{\"ie\":-1,\"sort\":0}")), "line 4: expr -1 is reserved"))
 
-        test ("an expression line carrying a second kind is refused, not read as the first", \() => expect (verdict (edit ("{\"ie\":0,\"sort\":0}", "{\"ie\":0,\"sort\":0,\"bvar\":0}")), "line 4: 3 members where one kind is expected"))
+        test ("an expression line carrying a second kind is refused, not read as the first", \() => expect (verdict (edit (sortLine, "{\"ie\":0,\"sort\":0,\"bvar\":0}")), "line 4: 3 members where one kind is expected"))
 
         test ("a name line carrying an expression index is refused", \() => expect (verdict (edit ("{\"in\":2,\"str\":{\"pre\":0,\"str\":\"p\"}}", "{\"in\":2,\"ie\":9,\"str\":{\"pre\":0,\"str\":\"p\"}}")), "line 3: 3 members where one kind is expected"))
 
@@ -77,7 +83,7 @@ module ExportMutationTests
 
         test ("a theorem whose statement needs a definition to unfold checks", \() => expect (named (throughDefinition (1), "t"), "checked"))
 
-        test ("the same theorem with the wrong proof is rejected after the unfold", \() => expect (mismatch (throughDefinition (6), "t", Pi "p" (prop ()) (Pi "h" (idP ()) (BVar 1)), Pi "p" (prop ()) (Pi "h" (idP ()) (prop ()))), "type mismatch | a type | equal | equal"))
+        test ("the same theorem with the wrong proof is rejected after the unfold", \() => expect (mismatch (throughDefinition (6), "t", Pi "p" (prop ()) (Pi "h" (idP ()) (BVar 1)), Pi "p" (prop ()) (Pi "h" (idP ()) (prop ()))), statementMismatch))
 
         test ("the same theorem without its definition names the missing constant", \() => expect (named (swapped (throughDefinition (1), definitionLine () + "\n", ""), "t"), "unknown constant `idP`"))
 
@@ -132,7 +138,7 @@ module ExportMutationTests
 
     (** `Prop` replaced by `Type` in the one `sort` line, with the level
         `succ 0` added for it: `∀ (p : Type), p → p` is still a theorem. *)
-    overType () = swapped (Fixtures::idImp (), "{\"ie\":0,\"sort\":0}", "{\"il\":1,\"succ\":0}\n{\"ie\":0,\"sort\":1}")
+    overType () = swapped (Fixtures::idImp (), sortLine, "{\"il\":1,\"succ\":0}\n{\"ie\":0,\"sort\":1}")
 
     definitionLine () = "{\"def\":{\"all\":[1],\"levelParams\":[],\"name\":1,\"type\":2,\"value\":3}}"
 

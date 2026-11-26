@@ -158,6 +158,7 @@ def varlen_cases():
 
 def core_checks():
     """One assertion per Core export: records and scalars, indices, masks and ALiBi."""
+    short = "slice_flat: elements [0, 2) are outside a list of 1"
     s = shapes(2, 3, 4, 2, 2)
     hd2 = shapes(1, 1, 1, 1, 2)
     gqa = shapes(1, 1, 2, 1, 2)
@@ -182,10 +183,10 @@ def core_checks():
         Check.equal("core.slice_flat.empty", toString(Core.slice_flat([1.0, 2.0], 2, 0)), "Success([])"),
         Check.equal("core.slice_flat.past_end", toString(Core.slice_flat([1.0, 2.0], 1, 2)), "Error(slice_flat: elements [1, 3) are outside a list of 2)"),
         Check.equal("core.slice_flat.negative", toString(Core.slice_flat([1.0, 2.0], -1, 1)), "Error(slice_flat: elements [-1, 0) are outside a list of 2)"),
-        Check.equal("varlen.short_input", varlen_error([1.0], [1.0], [1.0], [0, 2]), "slice_flat: elements [0, 2) are outside a list of 1"),
-        Check.equal("varlen.short_keys", varlen_error([1.0, 2.0], [1.0], [1.0, 2.0], [0, 2]), "slice_flat: elements [0, 2) are outside a list of 1"),
-        Check.equal("varlen.short_values", varlen_error([1.0, 2.0], [1.0, 2.0], [1.0], [0, 2]), "slice_flat: elements [0, 2) are outside a list of 1"),
-        Check.equal("varlen.first_run_error_carries", varlen_error([1.0], [1.0], [1.0], [0, 2, 3]), "slice_flat: elements [0, 2) are outside a list of 1"),
+        Check.equal("varlen.short_input", varlen_error([1.0], [1.0], [1.0], [0, 2]), short),
+        Check.equal("varlen.short_keys", varlen_error([1.0, 2.0], [1.0], [1.0, 2.0], [0, 2]), short),
+        Check.equal("varlen.short_values", varlen_error([1.0, 2.0], [1.0, 2.0], [1.0], [0, 2]), short),
+        Check.equal("varlen.first_run_error_carries", varlen_error([1.0], [1.0], [1.0], [0, 2, 3]), short),
         Check.equal("core.mask_bounds.causal", Core.mask_bounds(sq_sk, True, -1, -1, 1).hi, 2),
         Check.equal("core.mask_bounds.window.lo", Core.mask_bounds(sq_sk, False, 1, -1, 2).lo, 1),
         Check.equal("core.mask_bounds.empty", Core.mask_bounds(long_q, True, -1, -1, 0).hi, 0),

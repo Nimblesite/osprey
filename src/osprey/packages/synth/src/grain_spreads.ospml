@@ -11,7 +11,17 @@ module GrainSpreads
 
     boundary (c, size, s, upper) = Outcomes::whole ((bound (toFloat c.duration, toFloat s.duration, 3.0, 65536.0, upper)), \duration => Success(value = c(start = bound (c.start, s.position, 0.0, toFloat (satSub size 1), upper), rate = bound (c.rate, s.rate, -16.0, 16.0, upper), duration = duration, amplitude = bound (c.amplitude, s.amplitude, 0.0, 1.0, upper), pan = bound (c.pan, s.pan, -1.0, 1.0, upper))))
 
-    (** Width zero holds a parameter; positive widths near a boundary produce a clipped range. *)
+    (** Width zero holds a parameter; positive widths near a boundary produce a clipped range.
+    # Examples
+    ```osprey
+    controls = GrainControls(window = HannWindow, start = 0.0, rate = 1.0, duration = 4800, amplitude = 0.5, pan = 0.0)
+    spread = GrainSpread(position = 5.0, rate = 0.0, duration = 0, amplitude = 0.5, pan = 1.0)
+    print "${GrainSpreads::around (controls, 100, spread)} ${GrainSpreads::around (controls, 100, spread(position = 100.0))}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export around (controls, size, spread) = match size >= 2 && size <= 1048576 && Grains::controls (size, controls) && controls.start <= toFloat (satSub size 1) && valid (size, spread)
         false => Error(message = InvalidConfiguration(detail = "Invalid grain variation center or spread."))
         true => match boundary (controls, size, spread, false)

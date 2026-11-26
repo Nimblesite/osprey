@@ -6,6 +6,9 @@ import registry::TomlLexer
 /// array-of-tables and dotted-key documents, accessors, escape decoding,
 /// integer edges and every rejection reason with its byte position.
 module TomlTests {
+    /// The located refusal of a dotted key or table header over a non-table.
+    let notATableAt2 = "toml.not-a-table at 2:1"
+
     fn render(v) = match v {
         Toml::Str { text } => "\"${text}\""
         Toml::Int { value } => toString(value)
@@ -56,11 +59,11 @@ module TomlTests {
         let actual = renderRoot(Toml::parse(source))
         checkAll("uv metadata belongs to the latest package: ${actual}", [
             actual == "{version=1,package=[{name=\"root\",source={virtual=\".\"},metadata={requires-dist=[{name=\"member\",directory=\"../member\"}]}},{name=\"member\",source={directory=\"../member\"},metadata={note=\"second\"}}],other={value=1}}",
-            rejected("package = [{}]\n[package.metadata]\nx = 1\n", "toml.not-a-table at 2:1"),
+            rejected("package = [{}]\n[package.metadata]\nx = 1\n", notATableAt2),
             renderRoot(Toml::parse("[[package]]\n[[package.artifact]]\n[package.artifact.metadata]\nlabel = \"first\"\n[[package]]\n[[package.artifact]]\n[package.artifact.metadata]\nlabel = \"second\"\n")) == "{package=[{artifact=[{metadata={label=\"first\"}}]},{artifact=[{metadata={label=\"second\"}}]}]}",
             rejected("[[package]]\n[[package.artifact]]\n[[package]]\nartifact = [{}]\n[package.artifact.metadata]\nx = 1\n", "toml.not-a-table at 5:1"),
             rejected("[[package]]\n[package.metadata]\nx = 1\n[package.metadata]\ny = 2\n", "toml.duplicate-key at 4:1"),
-            rejected("package = []\n[[package]]\nx = 1\n", "toml.not-a-table at 2:1")
+            rejected("package = []\n[[package]]\nx = 1\n", notATableAt2)
         ])
     }
 
@@ -111,7 +114,7 @@ module TomlTests {
         rejected("a = 1979-05-27", "toml.unsupported-datetime at 1:5"),
         rejected("a = \"\"\"x\"\"\"", "toml.unsupported-multiline-string at 1:5"),
         rejected("a = 1\na = 2", "toml.duplicate-key at 2:1"),
-        rejected("a = 1\na.b = 2", "toml.not-a-table at 2:1"),
+        rejected("a = 1\na.b = 2", notATableAt2),
         rejected("a = \"\\q\"", "toml.bad-escape at 1:7"),
         rejected("a = \"x" + ctrl1() + "\"", "toml.control-character at 1:7"),
         rejected("a = \"abc", "toml.unterminated-string at 1:5"),

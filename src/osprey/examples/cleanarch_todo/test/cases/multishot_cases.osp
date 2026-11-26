@@ -16,8 +16,17 @@ let seededTitles = ["Shopping", "Banking"]
 /// The seven titles of list 1, in id order.
 let sevenTitles = ["A", "B", "C", "D", "E", "F", "G"]
 
+/// What the title length rule says.
+let titleTooLongProblem = "'Title' must be at most 200 characters."
+
 /// What the title length rule answers.
-let titleTooLong = ValidationFault { problems: ["'Title' must be at most 200 characters."] }
+let titleTooLong = ValidationFault { problems: [titleTooLongProblem] }
+
+/// What the colour rule says about #HotPink.
+let hotPinkUnsupported = "UnsupportedColour: '#HotPink' is not a supported colour"
+
+/// Both problems of a request whose title is too long and whose colour is unsupported.
+let tooLongAndHotPink = ValidationFault { problems: [titleTooLongProblem, hotPinkUnsupported] }
 
 /// The page a plan branch answers.
 fn pageOfTitles(titles, hasPrevious, hasNext) = Success { value: ItemsPageView {
@@ -104,17 +113,9 @@ module MultishotCases {
     export fn whichFixesWorkCase() = {
         let hopeless = TodoHarness::probed(TodoHarness::admin(), authzTwoLists(), [], WhichFixesWork { request: newList(retryWide(201), "#HotPink") })
         expect(hopeless.answers, [
-            Error { message: ValidationFault { problems: [
-                "'Title' must be at most 200 characters.",
-                "UnsupportedColour: '#HotPink' is not a supported colour"
-            ] } },
-            Error { message: ValidationFault { problems: [
-                "'Title' must be at most 200 characters.",
-                "UnsupportedColour: '#HotPink' is not a supported colour"
-            ] } },
-            Error { message: ValidationFault { problems: [
-                "UnsupportedColour: '#HotPink' is not a supported colour"
-            ] } },
+            Error { message: tooLongAndHotPink },
+            Error { message: tooLongAndHotPink },
+            Error { message: ValidationFault { problems: [hotPinkUnsupported] } },
             Error { message: titleTooLong }
         ])
         let fixable = TodoHarness::probed(TodoHarness::admin(), authzTwoLists(), [], WhichFixesWork { request: newList(retryWide(201), "#AB47BC") })

@@ -3,7 +3,15 @@ namespace synth
 
 (** Linear sample interpolation and crossfade. *)
 module Interpolation
-    (** Return an endpoint directly to preserve it even when the difference loses precision. *)
+    (** Return an endpoint directly to preserve it even when the difference loses precision.
+    # Examples
+    ```osprey
+    print "${Interpolation::linear (0.25, 0.75, 0.0)} ${Interpolation::linear (0.25, 0.75, 1.0)} ${Interpolation::linear (0.25, 0.75, 0.5)}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export linear (a, b, fraction) = match fraction == 0.0
         true => a
         false => match fraction == 1.0

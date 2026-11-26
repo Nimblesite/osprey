@@ -4,7 +4,15 @@ namespace synth
 (** Each stage is `v = x + g·v[n−D]`, `y = v[n−D] − g·v`: unity magnitude at every frequency for |g| < 1,
     so a chain smears transients in time without colouring their spectrum. *)
 module Diffusers
-    (** Gain must satisfy |g| <= 0.9 for a stability margin; delays are fractional samples per stage. *)
+    (** Gain must satisfy |g| <= 0.9 for a stability margin; delays are fractional samples per stage.
+    # Examples
+    ```osprey
+    print "${Diffusers::valid ([1.0, 2.5], 0.7)} ${Diffusers::valid ([0.5], 0.7)} ${Diffusers::valid ([1.0], 0.95)}"
+    ```
+    ```output
+    true false false
+    ```
+    *)
     export valid (delays, gain) = abs gain <= 0.9 && length delays >= 1 && length (filterList (delays, \d => d >= 1.0)) == length delays
 
     stage (remaining, delays, gain, input, done) = match remaining
@@ -17,7 +25,20 @@ module Diffusers
                     internal = NonlinearMath::schroederIn (input, delayed, gain)
                     stage (rest, others, gain, NonlinearMath::schroederOut (internal, delayed, gain), listAppend done (DelayLines::push (line, internal)))
 
-    (** One sample through every stage in order, returning the output and every stage's next line. *)
+    (** One sample through every stage in order, returning the output and every stage's next line.
+    # Examples
+    ```osprey
+    lines = [DelayLine(samples = [0.0, 0.0]), DelayLine(samples = [0.25, 0.0])]
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => Diffusers::next (lines, [1.0, 1.5], 0.5, 1.0))} ${arithmetic (\() => Diffusers::next ([], [1.0], 0.5, 1.0))}"
+    ```
+    ```output
+    Success({ sample: 0.34375, lines: [{ samples: [0.0, 1.0] }, { samples: [0.0, -0.4375] }] }) Error(InvalidConfiguration { detail: "Diffusers need one fractional delay >= 1 per line and |gain| <= 0.9." })
+    ```
+    *)
     export next (lines, delays, gain, input) = match valid (delays, gain) && length lines == length delays
         false => Error(message = InvalidConfiguration(detail = "Diffusers need one fractional delay >= 1 per line and |gain| <= 0.9."))
         true => stage (lines, delays, gain, input, [])

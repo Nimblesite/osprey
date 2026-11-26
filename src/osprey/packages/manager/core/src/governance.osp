@@ -280,14 +280,17 @@ module Governance {
     /// The statement declining handover proposal `id` signs.
     export fn declineStatement(id) = "handover-decline|${id}"
 
+    /// `rows` with `updated` in place of the row of the same id; a missing id changes nothing.
+    fn swapped(rows, updated) = mapList(rows, fn(row) => if row.id == updated.id { updated } else { row })
+
     /// Replace one row in place; historical evidence rows are never deleted.
-    export fn replaceMembership(registry, updated: Membership) = registry { memberships: mapList(registry.memberships, fn(m: Membership) => if m.id == updated.id { updated } else { m }) }
+    export fn replaceMembership(registry, updated: Membership) = registry { memberships: swapped(registry.memberships, updated) }
     /// The registry with `updated` in place of the package of the same id; a missing id changes nothing.
-    export fn replacePackage(registry, updated: Package) = registry { packages: mapList(registry.packages, fn(p: Package) => if p.id == updated.id { updated } else { p }) }
+    export fn replacePackage(registry, updated: Package) = registry { packages: swapped(registry.packages, updated) }
     /// The registry with `updated` in place of the grant of the same id; a missing id changes nothing.
-    export fn replaceGrant(registry, updated: Grant) = registry { grants: mapList(registry.grants, fn(g: Grant) => if g.id == updated.id { updated } else { g }) }
+    export fn replaceGrant(registry, updated: Grant) = registry { grants: swapped(registry.grants, updated) }
     /// The registry with `updated` in place of the handover proposal of the same id; a missing id changes nothing.
-    export fn replaceTransfer(registry, updated: Transfer) = registry { transfers: mapList(registry.transfers, fn(t: Transfer) => if t.id == updated.id { updated } else { t }) }
+    export fn replaceTransfer(registry, updated: Transfer) = registry { transfers: swapped(registry.transfers, updated) }
 
     /// Revoke every grant row of one package, the outgoing administrator's
     /// included [PACKAGE-OWNERSHIP-ADMIN]; the rows stay as audit evidence.

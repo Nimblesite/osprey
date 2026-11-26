@@ -129,7 +129,20 @@ module RenderKernels
             true => index
             false => stateSlot (states, identity, satAdd index 1)
 
-    (** Resolve optional parameter declarations once for the scheduled node. *)
+    (** Resolve optional parameter declarations once for the scheduled node.
+    # Examples
+    ```osprey
+    snapshot = Parameters::initial (Graph(nodes = [Components::gain (1, 1.0)], cables = []))
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => RenderKernels::schedule (Prepared(graph = Graph(nodes = [Components::gain (1, 1.0)], cables = []), order = [1], feedback = []), 2, 48000.0, snapshot, true, []))} ${arithmetic (\() => RenderKernels::schedule (Prepared(graph = Graph(nodes = [Components::gain (1, 1.0)], cables = []), order = [1], feedback = []), 1, 48000.0, snapshot, true, []))}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export schedule (plan, identity, rate, snapshot, fixed, states) = match Graphs::node (plan.graph, identity)
         Invalid why => Invalid(fault = why)
         Valid n =>
@@ -144,10 +157,36 @@ module RenderKernels
                 false => LiveFilter
             Valid(value = { filter = filter, phase = phase, node = n, slot = stateSlot (states, identity, 0), physical = physical (rate, controls, n, fixed), spectrum = SpectralKernels::prepare (rate, controls, identity, n.processor, fixed), bank = bankFor (n, rate, controls, fixed), controls = controls, fixed = fixed, switchable = declared (n, "enabled"), selectableWave = n.processor == Oscillator && declared (n, "waveform") })
 
-    (** Render one scheduled component or return its explicit fault. *)
+    (** Render one scheduled component or return its explicit fault.
+    # Examples
+    ```osprey
+    snapshot = Parameters::initial (Graph(nodes = [Components::gain (1, 1.0)], cables = []))
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => RenderKernels::step (Prepared(graph = Graph(nodes = [Components::gain (1, 1.0)], cables = []), order = [1], feedback = []), 48000.0, snapshot, SampleFrame(states = [KernelState(identity = 1, phase = 0.0, integratorOne = 0.0, integratorTwo = 0.0, delay = [], memory = KernelIdle)], values = []), 1))} ${arithmetic (\() => RenderKernels::step (Prepared(graph = Graph(nodes = [Components::gain (1, 1.0)], cables = []), order = [1], feedback = []), 48000.0, snapshot, SampleFrame(states = [KernelState(identity = 1, phase = 0.0, integratorOne = 0.0, integratorTwo = 0.0, delay = [], memory = KernelIdle)], values = []), 2))}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export step (plan, rate, snapshot, frame, identity) = resolved (plan, rate, snapshot, frame, schedule (plan, identity, rate, snapshot, false, frame.states))
 
-    (** Run a scheduled component resolved for this block. *)
+    (** Run a scheduled component resolved for this block.
+    # Examples
+    ```osprey
+    snapshot = Parameters::initial (Graph(nodes = [Components::gain (1, 1.0)], cables = []))
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => RenderKernels::resolved (Prepared(graph = Graph(nodes = [Components::gain (1, 1.0)], cables = []), order = [1], feedback = []), 48000.0, snapshot, SampleFrame(states = [KernelState(identity = 1, phase = 0.0, integratorOne = 0.0, integratorTwo = 0.0, delay = [], memory = KernelIdle)], values = []), Invalid(fault = MissingNode)))}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export resolved (plan, rate, current, frame, component) = match component
         Invalid _ => Error(message = MissingResource(detail = "Render schedule names an absent component."))
         Valid scheduled =>

@@ -5,6 +5,9 @@ import registry_api::HostedHeaders
 /// whitespace/controls, size limits and duplicate sensitive headers.
 /// Implements [PACKAGE-HOSTED-EDGE] header controls.
 module HeaderTests {
+    /// The located rejection of a repeated sensitive header.
+    let duplicateHeader = "req.duplicate-header"
+
     fn flatHeaders() = {
         let parsed = HostedHeaders::parse("X-One:one\nX-Two:two")
         let headers = HostedHeaders::headers(parsed)
@@ -40,9 +43,9 @@ module HeaderTests {
 
     fn duplicates() = checkAll("headers: duplicate sensitive headers rejected", [
         HostedHeaders::statusOf(HostedHeaders::parse("Host: a\r\nhost: b")) == 400,
-        HostedHeaders::codeOf(HostedHeaders::parse("Authorization: a\r\nAUTHORIZATION: b")) == "req.duplicate-header",
-        HostedHeaders::codeOf(HostedHeaders::parse("Cookie: a=b\r\nCookie: c=d")) == "req.duplicate-header",
-        HostedHeaders::codeOf(HostedHeaders::parse("X-Edge-Secret: s\r\nx-edge-secret: t")) == "req.duplicate-header",
+        HostedHeaders::codeOf(HostedHeaders::parse("Authorization: a\r\nAUTHORIZATION: b")) == duplicateHeader,
+        HostedHeaders::codeOf(HostedHeaders::parse("Cookie: a=b\r\nCookie: c=d")) == duplicateHeader,
+        HostedHeaders::codeOf(HostedHeaders::parse("X-Edge-Secret: s\r\nx-edge-secret: t")) == duplicateHeader,
         HostedHeaders::isOk(HostedHeaders::parse("X-Trace-Id: a\r\nX-Trace-Id: b"))
     ])
 

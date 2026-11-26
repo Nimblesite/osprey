@@ -43,7 +43,20 @@ module SpectralPartials
 
     magnitudes bins = mapList (bins, \value => SpectralMath::magnitude (value.re, value.im))
 
-    (** One morphed frame; `held.motion` carries each output bin's synthesis phase between frames. *)
+    (** One morphed frame; `held.motion` carries each output bin's synthesis phase between frames.
+    # Examples
+    ```osprey
+    config = SpectralConfig(sampleRate = 48000.0, size = 64, hop = 16, transform = SpectralPass, mix = 1.0)
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => SpectralPartials::morphed (config, [], [], SpectralFrame(bins = [], memory = [], motion = [], captured = false), 0.5))}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export morphed (config, bins, sides, held, amount) =
         out = drawn (length bins, paired (partials (magnitudes bins), partials (magnitudes sides), amount))
         // Phase-locked lobes: the centre bin turns at the partial's frequency and each neighbour sits π

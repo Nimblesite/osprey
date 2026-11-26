@@ -36,6 +36,9 @@ module Probes {
 
     fn sh(command) = perform Host::Process.run(command)
 
+    /// The client against the served registry for the project at `dir`, with `words` before the flags.
+    fn against(dir, words) = Dispatch::run(listConcat(words, ["--registry", base, "--project", dir]))
+
     fn configured(key, fallback) = {
         let value = trim(sh("printenv ${Host::shellWord(key)}").stdout)
         if value == "" { fallback } else { value }
@@ -233,8 +236,8 @@ module Probes {
         let dir = freshProject(consumerDir(cwd))
         let _manifest = perform Host::Files.write("${dir}/osprey.toml", readFile("${managerDir}/e2e/consumer/osprey.toml") ?: "")
         let _main = perform Host::Files.write("${dir}/src/main.osp", readFile("${managerDir}/e2e/consumer/src/main.osp") ?: "")
-        let locked = Dispatch::run(["lock", "--registry", base, "--project", dir])
-        let _fetched = Dispatch::run(["fetch", "--registry", base, "--project", dir])
+        let locked = against(dir, ["lock"])
+        let _fetched = against(dir, ["fetch"])
         let verified = Dispatch::run(["verify", "--offline", "--project", dir])
         let built = buildProcess(cwd)(fn() => Dispatch::run(["build", "--compiler", compiler(cwd), "--run", "--project", dir]))
         [
@@ -301,7 +304,7 @@ module Probes {
     fn rejectedPythonLink(dir) = {
         let link = "${dir}/untrusted-link"
         let made = sh("ln -s ${Host::shellWord(dir + "/osprey_consumer_probe.py")} ${Host::shellWord(link)}")
-        let rejected = Dispatch::run(["fetch", "--registry", base, "--project", dir])
+        let rejected = against(dir, ["fetch"])
         let removed = sh("rm -f ${Host::shellWord(link)}")
         Probe { label: "Python mirror rejects symbolic links", expected: "0 1 0", actual: "${made.status} ${rejected.status} ${removed.status}" }
     }
@@ -309,7 +312,7 @@ module Probes {
     /// With uv on the host: sync preserves every installed source byte and verifies offline.
     fn withUv(dir, locked, original) = {
         let before = pythonFiles(dir)
-        let fetched = Dispatch::run(["fetch", "--registry", base, "--project", dir])
+        let fetched = against(dir, ["fetch"])
         let unchanged = samePythonFiles(before, pythonFiles(dir))
         let verified = Dispatch::run(["verify", "--offline", "--project", dir])
         let imported = sh("${Host::shellWord(dir + "/.osprey/python/.venv/bin/python")} -c ${Host::shellWord("import osprey_consumer_probe; print(osprey_consumer_probe.answer())")}")
@@ -339,7 +342,7 @@ module Probes {
         let _python = perform Host::Files.write("${dir}/osprey_consumer_probe.py", consumerPython)
         let _pyproject = perform Host::Files.write("${dir}/pyproject.toml", consumerPyproject)
         let original = rootPythonFiles(dir)
-        let locked = Dispatch::run(["lock", "--registry", base, "--project", dir])
+        let locked = against(dir, ["lock"])
         if uvFound().status == 0 { withUv(dir, locked, original) } else { withoutUv(dir, locked) }
     }
 

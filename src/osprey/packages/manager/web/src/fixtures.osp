@@ -8,6 +8,9 @@ import registry::Names
 /// grant, a publisher, and hostile strings. Implements the website halves
 /// of the [PACKAGE-OWNERSHIP-CONFORMANCE] scenarios the suites assert.
 module WebFixtures {
+    /// The membership id of `@atlas`'s administrator, the admin of every access fixture.
+    let atlasAdmin = "mem-admin-atlas"
+
     fn key(scope, name) = Names::Key { scope: scope, name: name }
 
     fn pkg(id, scope, name, status) = Governance::Package {
@@ -53,41 +56,41 @@ module WebFixtures {
 
     fn grant(id, membership, permission, expiresAt) = Governance::Grant {
         id: id, package: "pkg-1", membership: membership, permission: permission,
-        grantor: "mem-admin-atlas", packageEpoch: 1, memberEpoch: 1,
+        grantor: atlasAdmin, packageEpoch: 1, memberEpoch: 1,
         expiresAt: Maybe::some(expiresAt), status: Governance::GrantActive }
 
     /// The administrator of @atlas/util holding only edit-metadata: the
     /// admin-without-publish case [PACKAGE-OWNERSHIP-ADMIN] requires the
     /// website to warn about.
     export fn adminWithoutPublish() = Model::Access {
-        viewer: Model::Member { principal: "prin-admin-1", membership: "mem-admin-atlas", orgHandle: "atlas" },
-        admin: "mem-admin-atlas",
-        grants: [grant("g-1", "mem-admin-atlas", Governance::EditMetadata, now() + 1000000)] }
+        viewer: Model::Member { principal: "prin-admin-1", membership: atlasAdmin, orgHandle: "atlas" },
+        admin: atlasAdmin,
+        grants: [grant("g-1", atlasAdmin, Governance::EditMetadata, now() + 1000000)] }
 
     /// The same administrator, holding the explicit publishing grant too.
     export fn adminWithPublish() = {
         let base = adminWithoutPublish()
-        base { grants: listAppend(base.grants, grant("g-2", "mem-admin-atlas", Governance::PublishRelease, now() + 1000000)) }
+        base { grants: listAppend(base.grants, grant("g-2", atlasAdmin, Governance::PublishRelease, now() + 1000000)) }
     }
 
     /// A fellow member who holds the publishing grant but not the seat.
     export fn publisher() = Model::Access {
         viewer: Model::Member { principal: "prin-pub-1", membership: "mem-pub-1", orgHandle: "atlas" },
-        admin: "mem-admin-atlas",
+        admin: atlasAdmin,
         grants: [grant("g-3", "mem-pub-1", Governance::PublishRelease, now() + 1000000)] }
 
     /// A member of the other organization: a legitimate viewer who is
     /// nonetheless outside this package's organization.
     export fn outsider() = Model::Access {
         viewer: Model::Member { principal: "prin-out-1", membership: "mem-out-1", orgHandle: "border" },
-        admin: "mem-admin-atlas", grants: [] }
+        admin: atlasAdmin, grants: [] }
 
     /// No actor at all.
-    export fn anonymous() = Model::Access { viewer: Model::Anonymous, admin: "mem-admin-atlas", grants: [] }
+    export fn anonymous() = Model::Access { viewer: Model::Anonymous, admin: atlasAdmin, grants: [] }
 
     /// The package's full grant ledger as its administrator fetched it.
     export fn atlasGrantLedger() = [
-        grant("g-1", "mem-admin-atlas", Governance::EditMetadata, now() + 1000000),
+        grant("g-1", atlasAdmin, Governance::EditMetadata, now() + 1000000),
         grant("g-3", "mem-pub-1", Governance::PublishRelease, now() + 1000000) ]
 
     /// A ledger whose membership ids are hostile: the table must escape them.

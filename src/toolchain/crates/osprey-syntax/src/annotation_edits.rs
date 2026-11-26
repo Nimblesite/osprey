@@ -82,10 +82,8 @@ pub(crate) fn token_edits(
 ) -> Vec<SourceEdit> {
     let mut ranges: Vec<Range<usize>> = Vec::new();
     for token in tokens.iter().filter(|r| !r.is_empty()) {
-        if let Some(last) = ranges
-            .last_mut()
-            .filter(|last| source[last.end..token.start].trim().is_empty())
-        {
+        let gap = |last: &Range<usize>| source.get(last.end..token.start).unwrap_or_default();
+        if let Some(last) = ranges.last_mut().filter(|last| gap(last).trim().is_empty()) {
             last.end = token.end;
         } else {
             ranges.push(token.clone());
@@ -101,24 +99,22 @@ pub(crate) fn token_edits(
 }
 
 fn trim_erasure(source: &str, range: Range<usize>, whole_line: bool) -> Range<usize> {
-    let line_start = source[..range.start].rfind('\n').map_or(0, |i| i + 1);
-    let line_end = source[range.end..]
-        .find('\n')
-        .map_or(source.len(), |i| range.end + i + 1);
-    if whole_line
-        && source[line_start..range.start].trim().is_empty()
-        && source[range.end..line_end].trim().is_empty()
-    {
+    let before = source.get(..range.start).unwrap_or_default();
+    let after = source.get(range.end..).unwrap_or_default();
+    let line_start = before.rfind('\n').map_or(0, |i| i + 1);
+    let line_end = after.find('\n').map_or(source.len(), |i| range.end + i + 1);
+    let line_head = source.get(line_start..range.start).unwrap_or_default();
+    let line_tail = source.get(range.end..line_end).unwrap_or_default();
+    if whole_line && line_head.trim().is_empty() && line_tail.trim().is_empty() {
         return line_start..line_end;
     }
     let start = if whole_line {
         range.start
     } else {
-        source[..range.start].trim_end_matches([' ', '\t']).len()
+        before.trim_end_matches([' ', '\t']).len()
     };
     let end = if whole_line {
-        range.end + source[range.end..].len()
-            - source[range.end..].trim_start_matches([' ', '\t']).len()
+        range.end + after.len() - after.trim_start_matches([' ', '\t']).len()
     } else {
         range.end
     };

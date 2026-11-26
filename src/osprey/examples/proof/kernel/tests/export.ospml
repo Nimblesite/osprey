@@ -14,6 +14,8 @@ import proof
     statement and proof, the wrong proof of the same statement reads as
     itself, and a file the reader must refuse names its line and kind. *)
 module ExportTests
+    // The Lean name of the recorded commutativity theorem.
+    natAddCommName = "Nat.add_comm"
 
     (** Runs the export-reader cases; the testing built-ins report the TAP lines. *)
     export run () =
@@ -38,7 +40,7 @@ module ExportTests
             expect (Shapes::shapeOf (Shapes::statementOf (Fixtures::andSwap (), "and_swap"), Pi "p" (Sort Zero) (Pi "q" (Sort Zero) (Pi "h" (Terms::apps (Const "And" [], [BVar 1, BVar 0])) (Terms::apps (Const "And" [], [BVar 1, BVar 2]))))), "equal"))
 
         test ("the actual Lean Nat.add_comm export checks from an empty environment", \() =>
-            expect (declaredOutcome (Checked::exportedDeclaring (Environment::empty (), Fixtures::natAddComm (), "Nat.add_comm")), "declared"))
+            expect (declaredOutcome (Checked::exportedDeclaring (Environment::empty (), Fixtures::natAddComm (), natAddCommName)), "declared"))
 
         test ("a genuine Lean nested List tree checks from an empty environment", \() =>
             expect (declaredOutcome (Checked::exportedDeclaring (Environment::empty (), nestedTree (), "NestedTree.node_nil")), "declared"))
@@ -54,9 +56,9 @@ module ExportTests
             expect (declaredOutcome (Checked::exportedDeclaring (Environment::empty (), haddExport (), "HAdd.rec")), "declared"))
 
         test ("Nat.add_comm states addition commutativity over all natural numbers", \() =>
-            expect (Shapes::shapeOf (Shapes::statementOf (Fixtures::natAddComm (), "Nat.add_comm"), natCommutativity ()), "equal"))
+            expect (Shapes::shapeOf (Shapes::statementOf (Fixtures::natAddComm (), natAddCommName), natCommutativity ()), "equal"))
 
-        test ("the false arithmetic statement n plus m equals m is rejected", \() => expectAll [Shapes::shapeOf (Shapes::statementOf (Fixtures::natAddCommWrong (), "Nat.add_comm"), natWrongStatement ()) == "equal", Shapes::kindOf (declaredOutcome (Checked::exportedDeclaring (Environment::empty (), Fixtures::natAddCommWrong (), "Nat.add_comm"))) == "type mismatch"])
+        test ("the false arithmetic statement n plus m equals m is rejected", \() => expectAll [Shapes::shapeOf (Shapes::statementOf (Fixtures::natAddCommWrong (), natAddCommName), natWrongStatement ()) == "equal", Shapes::kindOf (declaredOutcome (Checked::exportedDeclaring (Environment::empty (), Fixtures::natAddCommWrong (), natAddCommName))) == "type mismatch"])
 
         test ("the recorded Nat.add_comm dependency closure contains no axioms", \() =>
             expect (axioms (Export::read (Fixtures::natAddComm ())), "0"))

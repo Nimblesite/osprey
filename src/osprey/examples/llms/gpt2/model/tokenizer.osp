@@ -63,6 +63,16 @@ module Tokenizer {
 
     /// The merge table from merges.txt: line i (after the version line) is the
     /// pair "a b" with rank i - 1, producing token "ab" with id 255 + i.
+    /// # Examples
+    /// ```osprey
+    /// match Backends::strictly(fn() => loadBpe("no-such-merges.txt")) {
+    ///     Success { value } => print("${listLength(value.merges)} merges")
+    ///     Error { message } => print(message)
+    /// }
+    /// ```
+    /// ```output
+    /// 0 merges
+    /// ```
     export fn loadBpe(path) = {
         let rows = lines(readFile(path) ?: "")
         let merges = range(1, listLength(rows)) |> fold(Bpe { merges: [], ranks: Map(), ids: Map() }, fn(acc, i) => {
@@ -192,6 +202,14 @@ module Tokenizer {
     fn encodePiece(bpe, piece) = bpeEncode(bpe, symbolsOf(piece, 0, [])) |> fn(syms) => range(0, listLength(syms)) |> fold([], fn(acc, i) => listAppend(acc, idOf(bpe, symbolAt(syms, i))))
 
     /// The token ids of a prompt.
+    /// # Examples
+    /// ```osprey
+    /// let ids = Backends::strictly(fn() => encode(loadBpe("no-such-merges.txt"), "hi"))
+    /// print("${ids}")
+    /// ```
+    /// ```output
+    /// Success([71, 72])
+    /// ```
     export fn encode(bpe, text) = {
         let pieces = scanPieces(text, 0, Scan { pieces: [], current: "", kind: 0, spaces: "" })
         range(0, listLength(pieces)) |> fold([], fn(acc, i) => listConcat(acc, encodePiece(bpe, listGet(pieces, i) ?: "")))
@@ -220,10 +238,27 @@ module Tokenizer {
     }
 
     /// The ids as the space-led list both programs print after `tokens:`.
+    /// # Examples
+    /// ```osprey
+    /// print("[${idsText([])}][${idsText([71, 72])}]")
+    /// ```
+    /// ```output
+    /// [][ 71 72]
+    /// ```
     export fn idsText(ids) = range(0, listLength(ids)) |> fold("", fn(acc, i) => acc + " " + toString(listGet(ids, i) ?: 0))
 
     /// The text `ids` stand for: each token's bytes, read as UTF-8, with a
     /// malformed sequence as '?'.
+    /// # Examples
+    /// ```osprey
+    /// match Backends::strictly(fn() => decode(loadBpe("no-such-merges.txt"), [71, 72, 256])) {
+    ///     Success { value } => print("[${value}]")
+    ///     Error { message } => print(message)
+    /// }
+    /// ```
+    /// ```output
+    /// [hi]
+    /// ```
     export fn decode(bpe, ids) = {
         let bytes = range(0, listLength(ids)) |> fold([], fn(acc, i) => bytesOfToken(bpe, listGet(ids, i) ?: 0, acc))
         textOf(bytes, 0, "")

@@ -31,7 +31,10 @@ fn reportDeepString(value) = match value {
     JsonNumber(_value) => print("unexpected number")
 }
 
-let deepestValue = JsonString { value: "devon@osprey.dev" }
+/// The email nested deepest in the fixture document.
+let contactEmail = "devon@osprey.dev"
+
+let deepestValue = JsonString { value: contactEmail }
 let innerArray = JsonArray { values: List() |> listAppend(deepestValue) }
 let outerArray = JsonArray { values: List() |> listAppend(innerArray) }
 let document = JsonObject { fields: Map() |> mapSet("workspace", outerArray) }
@@ -66,7 +69,7 @@ fn objectFieldCount(value) = match value {
 
 /// Rebuilds and traverses the recursive document under the test runner.
 fn jsonDocumentCase() = {
-    let deepest = JsonString { value: "devon@osprey.dev" }
+    let deepest = JsonString { value: contactEmail }
     let inner = JsonArray { values: List() |> listAppend(deepest) }
     let outer = JsonArray { values: List() |> listAppend(inner) }
     let root = JsonObject { fields: Map() |> mapSet("workspace", outer) }
@@ -77,7 +80,7 @@ fn jsonDocumentCase() = {
         describe(JsonNumber { value: 17 }) == "number",
         describe(deepest) == "string", describe(outer) == "array",
         describe(root) == "object", objectFieldCount(root) == 1,
-        deepString(root) == "devon@osprey.dev",
+        deepString(root) == contactEmail,
         deepString(JsonNull) == ""
     ])
 }

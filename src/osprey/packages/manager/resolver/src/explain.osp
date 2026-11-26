@@ -95,6 +95,9 @@ module Explain {
         if isEmpty(hits) { none() } else { found(code, [listGet(hits, 0) ?: Names::blank()]) }
     }
 
+    /// `code` naming the first of `keys` for which `cause` holds, as one deferred cause.
+    fn keyCause(graph, keys, code, cause) = fn() => firstKey(keys, code, fn(k) => cause(graph, k))
+
     /// Every key that reaches itself, as one cycle explanation.
     fn cycleOutcome(graph, keys) = {
         let cyc = filterList(keys, fn(k) => unionReaches(graph, k, k, []))
@@ -117,13 +120,13 @@ module Explain {
     /// The first cause, in the spec order, that holds for one of `keys`; the
     /// floor code over all of them when none does.
     fn within(graph, keys) = firstCause([
-        fn() => firstKey(keys, missing, fn(k) => missingAt(graph, k)),
-        fn() => firstKey(keys, epochConflict, fn(k) => epochConflictAt(graph, k)),
+        keyCause(graph, keys, missing, missingAt),
+        keyCause(graph, keys, epochConflict, epochConflictAt),
         fn() => cycleOutcome(graph, keys),
-        fn() => firstKey(keys, revoked, fn(k) => revokedAt(graph, k)),
-        fn() => firstKey(keys, noTarget, fn(k) => noTargetAt(graph, k)),
-        fn() => firstKey(keys, capability, fn(k) => capabilityAt(graph, k)),
-        fn() => firstKey(keys, floor, fn(k) => floorAt(graph, k))
+        keyCause(graph, keys, revoked, revokedAt),
+        keyCause(graph, keys, noTarget, noTargetAt),
+        keyCause(graph, keys, capability, capabilityAt),
+        keyCause(graph, keys, floor, floorAt)
     ], Resolution::Explain { code: floor, packages: keys })
 
     /// The first cause that holds, in order, else `fallback`.

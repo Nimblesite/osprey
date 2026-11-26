@@ -95,7 +95,7 @@ module GovernanceTransitions {
     export fn createPackage(registry, org, key: Names::Key, id, admin, custodianEvidence, adminAcceptance) = {
         use o <- andThen(Governance::organizationOf(registry, org))
         use _ <- andThen(keyChecks(registry, o, key, id))
-        use m <- andThen(adminMember(registry, org, admin))
+        use m <- andThen(activeMemberOfOrg(registry, org, admin))
         use _ <- andThen(Governance::humanMemberOf(registry, m))
         use _ <- andThen(custodianProof(registry, org, Governance::creationStatement(id, key, admin), custodianEvidence))
         use _ <- andThen(Governance::requireProof(adminAcceptance, m.principal, admin,
@@ -213,8 +213,9 @@ module GovernanceTransitions {
         Governance::humanPrincipal(p)
     }
 
-    fn adminMember(registry, org, admin) = {
-        use m <- andThen(Governance::activeMembershipOf(registry, admin))
+    /// The membership `member` of `org` when it is active, else its missing, inactive or other-org refusal.
+    fn activeMemberOfOrg(registry, org, member) = {
+        use m <- andThen(Governance::activeMembershipOf(registry, member))
         Governance::sameOrgMember(m, org)
     }
 
@@ -277,10 +278,8 @@ module GovernanceTransitions {
         code => Error { message: code }
     }
 
-    fn subject(registry, pkg: Governance::Package, membership) = {
-        use m <- andThen(Governance::activeMembershipOf(registry, membership))
-        Governance::sameOrgMember(m, pkg.org)
-    }
+    /// The active same-organization membership a grant or an authorization is for.
+    fn subject(registry, pkg: Governance::Package, membership) = activeMemberOfOrg(registry, pkg.org, membership)
 
     fn freshExpiry(expiresAt, now) = Maybe::fold(expiresAt, Success { value: now }, fn(at) =>
         match at > now {

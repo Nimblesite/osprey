@@ -5,7 +5,16 @@ namespace synth
 module Parameters
     values n = mapList (n.parameters, \p => ParameterValue(node = n.identity, key = p.key, value = p.initial))
 
-    (** Initial applied values are the graph's declared defaults. *)
+    (** Initial applied values are the graph's declared defaults.
+    # Examples
+    ```osprey
+    graph = Graph(nodes = [Components::gain (1, 1.0)], cables = [])
+    print "${Parameters::initial graph}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export initial graph = Observation(revision = 0, samplePosition = 0, parameters = foldList (graph.nodes, [], \(all, n) => listConcat all (values n)), components = [])
 
     descriptor (graph, edit) = match Graphs::node (graph, edit.node)
@@ -14,7 +23,16 @@ module Parameters
             Error _ => Invalid(fault = MissingParameter)
             Success p => Valid(value = p)
 
-    (** Whether a value is inside the parameter’s inclusive bounds. *)
+    (** Whether a value is inside the parameter’s inclusive bounds.
+    # Examples
+    ```osprey
+    gain = Parameter(key = "gain", label = "Gain", unit = Amplitude, minimum = 0.0, maximum = 8.0, initial = 1.0, automatable = true)
+    print "${Parameters::validValue (gain, 8.0)} ${Parameters::validValue (gain, 8.5)}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export validValue (p, value) = value >= p.minimum && value <= p.maximum
 
     replaced (edit, p) = match p.node == edit.node && p.key == edit.key
@@ -31,7 +49,22 @@ module Parameters
                 false => Invalid(fault = MissingParameter)
                 true => Valid(value = applied (snapshot, edit))
 
-    (** Called when an event reaches its sample position; stale UI edits cannot overwrite new values. *)
+    (** Called when an event reaches its sample position; stale UI edits cannot overwrite new values.
+    # Examples
+    ```osprey
+    graph = Graph(nodes = [Components::gain (1, 1.0)], cables = [])
+    snapshot = Parameters::initial graph
+    edit = ParameterChange(node = 1, key = "gain", value = 2.0, revision = 0, samplePosition = 0)
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => Parameters::apply (graph, snapshot, edit))} ${arithmetic (\() => Parameters::apply (graph, snapshot, edit(revision = 1)))} ${arithmetic (\() => Parameters::apply (graph, snapshot, edit(value = 9.0)))} ${arithmetic (\() => Parameters::apply (graph, snapshot, edit(key = "cutoff")))} ${arithmetic (\() => Parameters::apply (graph, snapshot, edit(samplePosition = 1)))}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export apply (graph, snapshot, edit) = match snapshot.revision != edit.revision || snapshot.revision == 9223372036854775807
         true => Invalid(fault = StaleRevision)
         false => match edit.samplePosition != snapshot.samplePosition || edit.samplePosition < 0
@@ -46,7 +79,21 @@ module FitReports
 
     distinct (training, evaluation) = training.source.identifier != evaluation.source.identifier && structuralEquals (training.samples, evaluation.samples) == false
 
-    (** Fit on the training clip alone. Score the winning values on the separately labelled evaluation clip. *)
+    (** Fit on the training clip alone. Score the winning values on the separately labelled evaluation clip.
+    # Examples
+    ```osprey
+    config = FitConfig(parameters = [], seed = 1, evaluations = 8, tolerance = 0.001)
+    reference = FitReference(source = FitSource(identifier = "a", licence = "MIT", sampleRate = 4000), samples = [])
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => FitReports::fit (Graphs::empty, config, reference, reference))}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export fit (graph, config, training, evaluation) = match valid training && valid evaluation
         false => Error(message = InvalidConfiguration(detail = "Fit references need labelled, licensed, finite mono clips at 48 kHz and a supported FFT length."))
         true => match distinct (training, evaluation)

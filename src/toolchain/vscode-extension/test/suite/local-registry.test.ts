@@ -11,6 +11,7 @@ import * as path from "path";
 import { commands, ConfigurationTarget, extensions, workspace } from "vscode";
 import { shipwrightPlatform } from "../../client/src/client-config";
 import { freePort } from "./real-registry-kit";
+import { present } from "./osprey-test-env";
 import {
   failureOf,
   healthCheck,
@@ -112,7 +113,7 @@ suite("local package registry", () => {
   test("start writes the configuration, runs the bundled server and waits for health", async () => {
     const r = recorded({ health: [false, false, false, true] });
     assert.strictEqual(await new LocalRegistry(r.deps, 10_000, 1).start(), true);
-    assert.deepStrictEqual(JSON.parse(r.configs[0]), { root: "/ext/bin/registry", address: "127.0.0.1", port: 8787 });
+    assert.deepStrictEqual(JSON.parse(present(r.configs[0], "the written server configuration")), { root: "/ext/bin/registry", address: "127.0.0.1", port: 8787 });
     assert.deepStrictEqual(r.starts, [{ executable: "/ext/bin/osprey-registry", cwd: "/storage/local-registry" }]);
     assert.deepStrictEqual(r.states, ["starting", "running"]);
     assert.deepStrictEqual(r.infos, ["Local package registry running at http://127.0.0.1:8787."]);
@@ -138,14 +139,16 @@ suite("local package registry", () => {
       const r = recorded({ missing: [missing] });
       assert.strictEqual(await new LocalRegistry(r.deps).start(), false);
       assert.strictEqual(r.starts.length, 0);
-      assert.ok(r.errors[0].includes(missing), r.errors[0]);
+      const error = present(r.errors[0], "the reported error");
+      assert.ok(error.includes(missing), error);
     }
   });
 
   test("a remote registry has no local server to start", async () => {
     const r = recorded({ registry: "https://packages.example" });
     assert.strictEqual(await new LocalRegistry(r.deps).start(), false);
-    assert.ok(r.errors[0].includes("not a loopback HTTP origin"), r.errors[0]);
+    const error = present(r.errors[0], "the reported error");
+    assert.ok(error.includes("not a loopback HTTP origin"), error);
   });
 
   test("a server that exits before answering is reported with its error", async () => {
@@ -165,7 +168,8 @@ suite("local package registry", () => {
     const r = recorded({ health: [false] });
     assert.strictEqual(await new LocalRegistry(r.deps, 5, 1).start(), false);
     assert.strictEqual(r.server.killed, true);
-    assert.ok(r.errors[0].includes("did not answer http://127.0.0.1:8787/v1/health"), r.errors[0]);
+    const error = present(r.errors[0], "the reported error");
+    assert.ok(error.includes("did not answer http://127.0.0.1:8787/v1/health"), error);
   });
 
   test("stop kills only the server this window started", async () => {
@@ -258,7 +262,7 @@ suite("local package registry server", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "osprey-local-registry-"));
     const keys = ["@osprey/graphics", "@osprey/json", "@osprey/native", "@osprey/re", "@osprey/torch"];
     for (const key of keys) {
-      const project = path.resolve(__dirname, "../../../../../osprey/packages", key.split("/")[1]);
+      const project = path.resolve(__dirname, "../../../../../osprey/packages", present(key.split("/")[1], `the folder of ${key}`));
       const report = execFileSync(path.join(bundle, process.platform === "win32" ? "osprey-pkg.exe" : "osprey-pkg"), [],
         { input: `publish --folder ${root} --project ${project}\n`, encoding: "utf8", timeout: 60_000 });
       assert.ok(report.split(/\r?\n/).includes("status: 0"), `osprey-pkg publishes ${key}: ${report}`);

@@ -27,6 +27,45 @@ from pydantic_ai import Usage
 from pydantic_ai_expected import Expected
 from testing import Check
 
+GET_TEMPERATURE = "get_temperature"
+"""The one tool definition every tool-calling scenario declares."""
+MAX_COMPLETION_TOKENS = "openai_chat_supports_max_completion_tokens"
+"""The profile member switching `max_completion_tokens` for `max_tokens`."""
+DEEPSEEK_CHAT = "deepseek-chat"
+"""DeepSeek's plain chat model, as its provider names it."""
+REASONING_EFFORT = "openai_reasoning_effort"
+"""The setting carrying an OpenAI model's reasoning effort."""
+UNKNOWN_KIND = "unknown message kind: other"
+"""The refusal of a message wire form whose kind is neither request nor response."""
+DEEPSEEK_REASONER = "deepseek-reasoner"
+"""DeepSeek's reasoning model, as its provider names it."""
+SUPPORTS_THINKING = "supports_thinking"
+"""The profile members the provider flag cases read."""
+THINKING_ALWAYS_ENABLED = "thinking_always_enabled"
+"""The profile member saying a model never stops thinking."""
+TOOL_CHOICE_REQUIRED = "openai_supports_tool_choice_required"
+"""The profile member saying `tool_choice="required"` is honoured."""
+THINKING_FIELD = "openai_chat_thinking_field"
+"""The profile member naming the response member carrying reasoning."""
+SEND_BACK_PARTS = "openai_chat_send_back_thinking_parts"
+"""The profile member saying sent-back thinking parts are enabled."""
+DEEPSEEK_V4_FLASH = "deepseek-v4-flash"
+"""DeepSeek's flash model, as its provider names it."""
+MOONSHOT_V1_8K = "moonshot-v1-8k"
+"""Moonshot's 8k-context model, as its provider names it."""
+ZAI_THINKING_BODY = "zai_thinking_body"
+"""The profile member naming Z.ai's request body member switching thinking."""
+NOT_JSON = "prefix:not JSON"
+"""The MCP reader's verdict for a line that is not JSON at all."""
+BAD_ID = "exact:malformed:id must be a string or a number"
+"""The MCP reader's verdict for an id of the wrong JSON type."""
+EVENT_STREAM = "text/event-stream"
+"""The content type of an MCP reply streamed as server-sent events."""
+APPLICATION_JSON = "application/json"
+"""The content type of an MCP reply sent as one JSON document."""
+REASONING_TOKENS = "reasoning_tokens"
+"""The usage detail counting tokens spent on reasoning."""
+
 
 def ats(xs, i):
     """The string element of a list at i, "" past the end."""
@@ -169,7 +208,7 @@ LOOSE_SCHEMA = "{\"type\":\"object\",\"properties\":{\"q\":{\"type\":\"string\",
 
 def tools():
     return [
-        Tools.tool_definition("get_temperature", "The current temperature of a city in degrees Celsius.", schema(TEMPERATURE_SCHEMA)),
+        Tools.tool_definition(GET_TEMPERATURE, "The current temperature of a city in degrees Celsius.", schema(TEMPERATURE_SCHEMA)),
         Tools.tool_definition("add", "Adds two numbers.", schema(ADD_SCHEMA)),
         Tools.tool_definition("search", "", schema(LOOSE_SCHEMA)),
     ]
@@ -198,8 +237,8 @@ def history():
     return listConcat(plain(), [
         M.of_response(M.model_response([M.ThinkingPart(content="hmm"), M.TextPart(content="calling"), M.ToolCallPart(tool_name="add", args="{\"a\": 1, \"b\": 2}", tool_call_id="c1")], "")),
         M.of_request(M.ModelRequest(parts=[M.ToolReturnPart(tool_name="add", content="3", tool_call_id="c1"), M.RetryPromptPart(content="bad", tool_name="add", tool_call_id="c2"), M.RetryPromptPart(content="plain", tool_name="", tool_call_id="c0")], instructions="be brief")),
-        M.of_response(M.model_response([M.TextPart(content="first"), M.TextPart(content="second"), M.ToolCallPart(tool_name="get_temperature", args="", tool_call_id="c3")], "")),
-        M.of_request(M.ModelRequest(parts=[M.ToolReturnPart(tool_name="get_temperature", content="21", tool_call_id="c3"), M.UserPromptPart(content="and?")], instructions="")),
+        M.of_response(M.model_response([M.TextPart(content="first"), M.TextPart(content="second"), M.ToolCallPart(tool_name=GET_TEMPERATURE, args="", tool_call_id="c3")], "")),
+        M.of_request(M.ModelRequest(parts=[M.ToolReturnPart(tool_name=GET_TEMPERATURE, content="21", tool_call_id="c3"), M.UserPromptPart(content="and?")], instructions="")),
     ])
 
 
@@ -232,13 +271,13 @@ def scenario(i):
         settings = {"max_tokens": JsonInt(50), "temperature": JsonFloat(0.2), "top_p": JsonFloat(0.9), "seed": JsonInt(7), "stop_sequences": JsonArray([JsonString("END")]), "presence_penalty": JsonFloat(0.1), "frequency_penalty": JsonFloat(0.2), "extra_body": JsonObject([JsonMember("foo", JsonInt(1))])}
         return Scenario(model=gpt4o(), messages=plain(), settings=settings, parameters=Models.with_tools(tools()))
     elif name == "no_max_completion":
-        return Scenario(model=openai_model("gpt-4o", {"openai_chat_supports_max_completion_tokens": JsonBool(False)}), messages=plain(), settings={"max_tokens": JsonInt(10)}, parameters=Models.model_request_parameters())
+        return Scenario(model=openai_model("gpt-4o", {MAX_COMPLETION_TOKENS: JsonBool(False)}), messages=plain(), settings={"max_tokens": JsonInt(10)}, parameters=Models.model_request_parameters())
     elif name == "history":
         return Scenario(model=gpt4o(), messages=history(), settings={}, parameters=params_with(two_of(tools(), 0), True, [M.InstructionPart(content="inst")]))
     elif name == "deepseek_history":
-        return Scenario(model=ModelsOpenai.OpenAIChatModel("deepseek-chat", ProvidersHttp.DeepSeekProvider("k"), {}), messages=history(), settings={}, parameters=Models.with_tools(two_of(tools(), 0)))
+        return Scenario(model=ModelsOpenai.OpenAIChatModel(DEEPSEEK_CHAT, ProvidersHttp.DeepSeekProvider("k"), {}), messages=history(), settings={}, parameters=Models.with_tools(two_of(tools(), 0)))
     elif name == "o1_mini":
-        return Scenario(model=openai_model("o1-mini", {}), messages=plain(), settings={"temperature": JsonFloat(0.5), "max_tokens": JsonInt(5), "openai_reasoning_effort": JsonString("low")}, parameters=Models.model_request_parameters())
+        return Scenario(model=openai_model("o1-mini", {}), messages=plain(), settings={"temperature": JsonFloat(0.5), "max_tokens": JsonInt(5), REASONING_EFFORT: JsonString("low")}, parameters=Models.model_request_parameters())
     elif name == "ollama":
         return Scenario(model=ModelsOpenai.OpenAIChatModel("llama3", ProvidersHttp.OllamaProvider("http://localhost:11434/v1"), {}), messages=plain(), settings={}, parameters=Models.with_tools(two_of(tools(), 1)))
     else:
@@ -270,7 +309,7 @@ def describe(response):
 
 def parse_case(i):
     provider = ats(Expected.REPLY_PROVIDERS, i)
-    model = ModelsOpenai.OpenAIChatModel("deepseek-chat", ProvidersHttp.DeepSeekProvider("k"), {}) if provider == "deepseek" else gpt4o()
+    model = ModelsOpenai.OpenAIChatModel(DEEPSEEK_CHAT, ProvidersHttp.DeepSeekProvider("k"), {}) if provider == "deepseek" else gpt4o()
     expected_error = ats(Expected.PARSED_ERRORS, i)
     match ModelsOpenai.process_response(model.model_name, provider, model.profile, ats(Expected.REPLY_BODIES, i)):
         case E.Ok(value=response):
@@ -333,8 +372,8 @@ def validate_error_cases():
     bad_kind = M.validate_messages(decode("[{\"kind\":\"other\"}]"))
     return [
         Check.equal("validate.bad_part", error_text(bad_part), "unknown request part_kind: mystery"),
-        Check.equal("validate.bad_kind", error_text(bad_kind), "unknown message kind: other"),
-        Check.equal("json_util.rewrap.error", error_text(J.rewrap(bad_kind, lambda messages: len(messages))), "unknown message kind: other"),
+        Check.equal("validate.bad_kind", error_text(bad_kind), UNKNOWN_KIND),
+        Check.equal("json_util.rewrap.error", error_text(J.rewrap(bad_kind, lambda messages: len(messages))), UNKNOWN_KIND),
         Check.equal("json_util.rewrap.value", ok_value(J.rewrap(M.validate_messages(decode("[]")), lambda messages: len(messages) + 3), -1), 3),
         Check.ints_equal("messages.map_indexed", M.map_indexed(["a", "b"], lambda i: i * 5), [0, 5]),
     ]
@@ -371,7 +410,7 @@ def add(args):
 
 def build(model, retry):
     a = Agent.agent(model, "sys")
-    with_temperature = Agent.tool_plain(a, Tools.tool("get_temperature", "The current temperature of a city in degrees Celsius.", decode(ats(Expected.TEST_AGENT_SCHEMAS, 0)), lambda args: temperature(args, retry)))
+    with_temperature = Agent.tool_plain(a, Tools.tool(GET_TEMPERATURE, "The current temperature of a city in degrees Celsius.", decode(ats(Expected.TEST_AGENT_SCHEMAS, 0)), lambda args: temperature(args, retry)))
     return Agent.tool_plain(with_temperature, Tools.tool("add", "Adds two numbers.", decode(ats(Expected.TEST_AGENT_SCHEMAS, 1)), add))
 
 
@@ -509,13 +548,13 @@ def usage_limit_case():
 # Profiles, settings, usage, direct
 
 def profile_cases():
-    deepseek = Profiles.deepseek_model_profile("deepseek-reasoner")
+    deepseek = Profiles.deepseek_model_profile(DEEPSEEK_REASONER)
     return [
-        same("profile.flags", listConcat(flags(deepseek, ["supports_thinking", "thinking_always_enabled", "openai_supports_tool_choice_required"], [False, False, True]), [
+        same("profile.flags", listConcat(flags(deepseek, [SUPPORTS_THINKING, THINKING_ALWAYS_ENABLED, TOOL_CHOICE_REQUIRED], [False, False, True]), [
             Profiles.profile_bool(Profiles.ollama_model_profile("llama3"), "openai_supports_strict_tool_definition", True),
-            Profiles.profile_bool(Profiles.openai_model_profile_with({"openai_chat_supports_max_completion_tokens": JsonBool(False)}), "openai_chat_supports_max_completion_tokens", True),
+            Profiles.profile_bool(Profiles.openai_model_profile_with({MAX_COMPLETION_TOKENS: JsonBool(False)}), MAX_COMPLETION_TOKENS, True),
         ]), Expected.PROFILE_FLAGS),
-        same("profile.texts", listConcat(texts(deepseek, ["openai_chat_thinking_field", "openai_chat_send_back_thinking_parts"], ["", ""]), [
+        same("profile.texts", listConcat(texts(deepseek, [THINKING_FIELD, SEND_BACK_PARTS], ["", ""]), [
             Profiles.profile_text(Profiles.model_profile(), "openai_system_prompt_role", ""),
         ]), Expected.PROFILE_TEXTS),
         Check.equal("profile.merge", Profiles.profile_bool(Profiles.merge_profile(Profiles.openai_model_profile("gpt-4o"), {"supports_tools": JsonBool(False)}), "supports_tools", True), False),
@@ -530,7 +569,7 @@ def settings_cases():
         Check.close("settings.float", Settings.setting_float(merged, "temperature", 0.0), 0.5, 0.0, 0.0),
         Check.close("settings.int_as_float", Settings.setting_float(merged, "max_tokens", 0.0), 2.0, 0.0, 0.0),
         same("settings.has", [Settings.has_setting(merged, "temperature"), Settings.has_setting(Settings.model_settings(), "temperature")], [True, False]),
-        Check.equal("settings.text", Settings.setting_text({"openai_reasoning_effort": JsonString("low")}, "openai_reasoning_effort", ""), "low"),
+        Check.equal("settings.text", Settings.setting_text({REASONING_EFFORT: JsonString("low")}, REASONING_EFFORT, ""), "low"),
     ]
 
 
@@ -543,15 +582,15 @@ THINKING_VALUES = ["absent", "true", "false", "minimal", "low", "medium", "high"
 """The unified `thinking` permutations, in THINKING_TABLE column order."""
 
 THINKING_TABLE = [
-    ["deepseek", "deepseek-chat", "||required;||required;||required;||required;||required;||required;||required;||required", ""],
-    ["deepseek", "deepseek-reasoner", "||auto;medium||auto;||auto;minimal||auto;low||auto;medium||auto;high||auto;xhigh||auto", ""],
-    ["deepseek", "deepseek-v4-flash", "||auto;medium||auto;none||required;minimal||auto;low||auto;medium||auto;high||auto;xhigh||auto", "off,on,minimal,low,medium,high,xhigh"],
+    ["deepseek", DEEPSEEK_CHAT, "||required;||required;||required;||required;||required;||required;||required;||required", ""],
+    ["deepseek", DEEPSEEK_REASONER, "||auto;medium||auto;||auto;minimal||auto;low||auto;medium||auto;high||auto;xhigh||auto", ""],
+    ["deepseek", DEEPSEEK_V4_FLASH, "||auto;medium||auto;none||required;minimal||auto;low||auto;medium||auto;high||auto;xhigh||auto", "off,on,minimal,low,medium,high,xhigh"],
     ["openai", "gpt-4o", "||required;||required;||required;||required;||required;||required;||required;||required", ""],
     ["openai", "o1-mini", "||required;medium||required;none||required;minimal||required;low||required;medium||required;high||required;xhigh||required", "off,minimal,low,medium,high,xhigh"],
     ["moonshotai", "kimi-k3", "||auto;medium||auto;||auto;minimal||auto;low||auto;medium||auto;high||auto;xhigh||auto", "minimal,low,medium,high"],
     ["moonshotai", "kimi-k2.6", "||auto;medium||auto;||auto;minimal||auto;low||auto;medium||auto;high||auto;xhigh||auto", "minimal,low,medium,high"],
     ["moonshotai", "kimi-thinking-preview", "||auto;medium||auto;||auto;minimal||auto;low||auto;medium||auto;high||auto;xhigh||auto", "minimal,low,medium,high"],
-    ["moonshotai", "moonshot-v1-8k", "||auto;||auto;||auto;||auto;||auto;||auto;||auto;||auto", ""],
+    ["moonshotai", MOONSHOT_V1_8K, "||auto;||auto;||auto;||auto;||auto;||auto;||auto;||auto", ""],
     ["zai", "glm-5.3", '|{"clear_thinking":false}|required;|{"clear_thinking":false,"type":"enabled"}|required;|{"clear_thinking":false}|required;low|{"clear_thinking":false,"type":"enabled"}|required;low|{"clear_thinking":false,"type":"enabled"}|required;high|{"clear_thinking":false,"type":"enabled"}|required;high|{"clear_thinking":false,"type":"enabled"}|required;max|{"clear_thinking":false,"type":"enabled"}|required', "low,high,max"],
     ["zai", "glm-5.2", '|{"clear_thinking":false}|required;|{"clear_thinking":false,"type":"enabled"}|required;|{"clear_thinking":false,"type":"disabled"}|required;minimal|{"clear_thinking":false,"type":"enabled"}|required;low|{"clear_thinking":false,"type":"enabled"}|required;medium|{"clear_thinking":false,"type":"enabled"}|required;high|{"clear_thinking":false,"type":"enabled"}|required;xhigh|{"clear_thinking":false,"type":"enabled"}|required', "off,minimal,low,medium,high,xhigh"],
     ["zai", "glm-4.7", '|{"clear_thinking":false}|required;|{"clear_thinking":false,"type":"enabled"}|required;|{"clear_thinking":false,"type":"disabled"}|required;|{"clear_thinking":false,"type":"enabled"}|required;|{"clear_thinking":false,"type":"enabled"}|required;|{"clear_thinking":false,"type":"enabled"}|required;|{"clear_thinking":false,"type":"enabled"}|required;|{"clear_thinking":false,"type":"enabled"}|required', "off,on"],
@@ -644,33 +683,33 @@ def thinking_pick_cases():
         pick_case("glm-5.3", "zai", f"low|{enabled}|required;high|{enabled}|required;max|{enabled}|required"),
         pick_case("kimi-k3", "moonshotai", "minimal||auto;low||auto;medium||auto;high||auto"),
         pick_case("glm-4.7", "zai", '|{"clear_thinking":false,"type":"disabled"}|required;|' + enabled + "|required"),
-        pick_case("deepseek-v4-flash", "deepseek", "none||required;medium||auto;minimal||auto;low||auto;medium||auto;high||auto;xhigh||auto"),
+        pick_case(DEEPSEEK_V4_FLASH, "deepseek", "none||required;medium||auto;minimal||auto;low||auto;medium||auto;high||auto;xhigh||auto"),
     ]
 
 
 def provider_flag_cases():
     kimi = Profiles.moonshotai_provider_profile("kimi-k3")
-    v1 = Profiles.moonshotai_provider_profile("moonshot-v1-8k")
+    v1 = Profiles.moonshotai_provider_profile(MOONSHOT_V1_8K)
     glm53 = Profiles.zai_provider_profile("glm-5.3")
     glm47 = Profiles.zai_provider_profile("glm-4.7")
     glm3 = Profiles.zai_provider_profile("glm-3-turbo")
-    v4 = Profiles.deepseek_model_profile("deepseek-v4-flash")
-    reasoner = Profiles.deepseek_model_profile("deepseek-reasoner")
+    v4 = Profiles.deepseek_model_profile(DEEPSEEK_V4_FLASH)
+    reasoner = Profiles.deepseek_model_profile(DEEPSEEK_REASONER)
     kimi_model = Profiles.moonshotai_model_profile("kimi-k3")
     return [
-        same("providers.kimi_flags", listConcat(listConcat(flags(kimi, ["openai_supports_tool_choice_required", "thinking_always_enabled", "supports_thinking", "supports_json_object_output"], [True, False, False, False]), flags(kimi_model, ["supports_thinking", "ignore_streamed_leading_whitespace"], [False, False])), [
-            Profiles.profile_bool(Profiles.moonshotai_model_profile("moonshot-v1-8k"), "supports_thinking", True),
+        same("providers.kimi_flags", listConcat(listConcat(flags(kimi, [TOOL_CHOICE_REQUIRED, THINKING_ALWAYS_ENABLED, SUPPORTS_THINKING, "supports_json_object_output"], [True, False, False, False]), flags(kimi_model, [SUPPORTS_THINKING, "ignore_streamed_leading_whitespace"], [False, False])), [
+            Profiles.profile_bool(Profiles.moonshotai_model_profile(MOONSHOT_V1_8K), SUPPORTS_THINKING, True),
         ]), [False, True, True, True, True, True, False]),
-        same("providers.kimi_texts", texts(kimi, ["json_schema_transformer", "openai_chat_thinking_field", "openai_chat_send_back_thinking_parts"], ["", "", ""]), ["openai", "reasoning_content", "field"]),
-        same("providers.kimi_v1", flags(v1, ["supports_thinking", "thinking_always_enabled", "openai_supports_tool_choice_required"], [True, True, True]), [False, False, False]),
-        same("providers.zai_glm-5.3", flags(glm53, ["supports_thinking", "thinking_always_enabled", "zai_supports_reasoning_effort", "zai_thinking_body"], [False, False, False, False]), [True, True, True, True]),
+        same("providers.kimi_texts", texts(kimi, ["json_schema_transformer", THINKING_FIELD, SEND_BACK_PARTS], ["", "", ""]), ["openai", "reasoning_content", "field"]),
+        same("providers.kimi_v1", flags(v1, [SUPPORTS_THINKING, THINKING_ALWAYS_ENABLED, TOOL_CHOICE_REQUIRED], [True, True, True]), [False, False, False]),
+        same("providers.zai_glm-5.3", flags(glm53, [SUPPORTS_THINKING, THINKING_ALWAYS_ENABLED, "zai_supports_reasoning_effort", ZAI_THINKING_BODY], [False, False, False, False]), [True, True, True, True]),
         Check.equal("providers.zai_mapping", canon(unwrap_or(mapGet(glm53, "zai_reasoning_effort_mapping"), JsonNull())), "{\"high\":\"high\",\"low\":\"low\",\"medium\":\"high\",\"minimal\":\"low\",\"xhigh\":\"max\"}"),
-        same("providers.zai_glm-4.7_texts", texts(glm47, ["openai_chat_thinking_field", "openai_chat_send_back_thinking_parts"], ["", ""]), ["reasoning_content", "field"]),
-        same("providers.zai_glm-4.7_flags", listConcat(flags(glm47, ["supports_thinking", "thinking_always_enabled", "zai_supports_reasoning_effort"], [False, True, True]), [
+        same("providers.zai_glm-4.7_texts", texts(glm47, [THINKING_FIELD, SEND_BACK_PARTS], ["", ""]), ["reasoning_content", "field"]),
+        same("providers.zai_glm-4.7_flags", listConcat(flags(glm47, [SUPPORTS_THINKING, THINKING_ALWAYS_ENABLED, "zai_supports_reasoning_effort"], [False, True, True]), [
             len(J.members_of(unwrap_or(mapGet(glm47, "zai_reasoning_effort_mapping"), JsonNull()))) == 0,
         ]), [True, False, False, True]),
-        same("providers.zai_glm-3-turbo", listConcat(flags(glm3, ["supports_thinking", "zai_thinking_body"], [True, False]), [Profiles.profile_bool(Profiles.zai_model_profile("glm-3-turbo"), "supports_thinking", True)]), [False, True, False]),
-        same("providers.deepseek_defaults", listConcat(flags(v4, ["openai_reasoning_enabled_by_default", "openai_supports_forced_tool_choice_with_thinking"], [True, True]), flags(reasoner, ["openai_reasoning_enabled_by_default", "openai_supports_forced_tool_choice_with_thinking", "openai_supports_tool_choice_required"], [True, True, True])), [True, False, True, True, False]),
+        same("providers.zai_glm-3-turbo", listConcat(flags(glm3, [SUPPORTS_THINKING, ZAI_THINKING_BODY], [True, False]), [Profiles.profile_bool(Profiles.zai_model_profile("glm-3-turbo"), SUPPORTS_THINKING, True)]), [False, True, False]),
+        same("providers.deepseek_defaults", listConcat(flags(v4, ["openai_reasoning_enabled_by_default", "openai_supports_forced_tool_choice_with_thinking"], [True, True]), flags(reasoner, ["openai_reasoning_enabled_by_default", "openai_supports_forced_tool_choice_with_thinking", TOOL_CHOICE_REQUIRED], [True, True, True])), [True, False, True, True, False]),
         Check.equal("providers.dispatch", Profiles.profile_text(ModelsOpenai.OpenAIChatModel("glm-5.3", ProvidersHttp.ZaiProvider("k"), {}).profile, "json_schema_transformer", ""), "openai"),
         Check.equal("providers.moonshotai_url", ProvidersHttp.MoonshotAIProvider("k").base_url, "https://api.moonshot.ai/v1"),
         Check.equal("providers.zai_url", ProvidersHttp.ZaiProvider("k").base_url, "https://api.z.ai/api/paas/v4"),
@@ -686,7 +725,7 @@ def coding_plan_model():
 def provider_reuse_cases():
     model = coding_plan_model()
     return [
-        same("providers.reuse_flags", flags(model.profile, ["zai_thinking_body", "thinking_always_enabled"], [False, False]), [True, True]),
+        same("providers.reuse_flags", flags(model.profile, [ZAI_THINKING_BODY, THINKING_ALWAYS_ENABLED], [False, False]), [True, True]),
         Check.equal("providers.reuse_body", body_projection(ModelsOpenai.completions_body("glm-5.3", model.profile, plain(), {"thinking": JsonString("minimal")}, forced_tools())), 'low|{"clear_thinking":false,"type":"enabled"}|required'),
     ]
 
@@ -701,12 +740,12 @@ def thinking_extra_cases():
     glm52 = profile_of("glm-5.2", "zai")
     glm47 = profile_of("glm-4.7", "zai")
     glm3 = profile_of("glm-3-turbo", "zai")
-    v4 = profile_of("deepseek-v4-flash", "deepseek")
+    v4 = profile_of(DEEPSEEK_V4_FLASH, "deepseek")
     merged = settings_body("glm-5.3", glm53, {"thinking": JsonBool(True), "extra_body": decode("{\"foo\":1}")})
     clash = settings_body("glm-5.3", glm53, {"thinking": JsonBool(True), "extra_body": decode("{\"thinking\":{\"type\":\"disabled\"}}")})
     clear = settings_body("glm-4.7", glm47, {"thinking": JsonBool(True), "zai_clear_thinking": JsonBool(True)})
-    explicit = settings_body("deepseek-v4-flash", v4, {"thinking": JsonString("high"), "openai_reasoning_effort": JsonString("low")})
-    zai_explicit = settings_body("glm-5.2", glm52, {"thinking": JsonString("low"), "openai_reasoning_effort": JsonString("high")})
+    explicit = settings_body(DEEPSEEK_V4_FLASH, v4, {"thinking": JsonString("high"), REASONING_EFFORT: JsonString("low")})
+    zai_explicit = settings_body("glm-5.2", glm52, {"thinking": JsonString("low"), REASONING_EFFORT: JsonString("high")})
     nonthinking = settings_body("glm-3-turbo", glm3, {"thinking": JsonBool(True), "zai_clear_thinking": JsonBool(True)})
     return [
         Check.truth("thinking.extra_body_kept", contains(canon(merged), "\"foo\":1") and body_projection(merged) == '|{"clear_thinking":false,"type":"enabled"}|required', canon(merged)),
@@ -722,7 +761,7 @@ def reasoning_round_trip_cases():
     reply = '{"id":"r1","model":"m","choices":[{"message":{"role":"assistant","content":"calling","reasoning_content":"hmm","tool_calls":[{"id":"c1","type":"function","function":{"name":"add","arguments":"{}"}}]},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":1,"completion_tokens":2}}'
     kimi = profile_of("kimi-k3", "moonshotai")
     glm = profile_of("glm-4.7", "zai")
-    second = M.of_response(M.model_response([M.ToolCallPart(tool_name="get_temperature", args="{}", tool_call_id="c3")], ""))
+    second = M.of_response(M.model_response([M.ToolCallPart(tool_name=GET_TEMPERATURE, args="{}", tool_call_id="c3")], ""))
     parameters = Models.with_tools([one_tool()])
     match ModelsOpenai.process_response("kimi-k3", "moonshotai", kimi, reply):
         case E.Ok(value=response):
@@ -871,22 +910,22 @@ def mcp_session_cases():
 
 
 MALFORMED_MESSAGES = [
-    ["", "prefix:not JSON"],
-    ["nope", "prefix:not JSON"],
+    ["", NOT_JSON],
+    ["nope", NOT_JSON],
     ["[1,2]", "exact:malformed:a message must be a JSON object"],
     ["42", "exact:malformed:a message must be a JSON object"],
     ['{"jsonrpc":"2.0"}', "exact:malformed:a message needs a method, a result or an error"],
     ['{"method":"x"}', "exact:notification:x"],
     ['{"method":1,"id":1}', "exact:malformed:method must be a string"],
     ['{"id":1,"result":{"a":1}}', "exact:ok:1:{\"a\":1}"],
-    ['{"id":null,"result":1}', "exact:malformed:id must be a string or a number"],
-    ['{"id":true,"result":1}', "exact:malformed:id must be a string or a number"],
-    ['{"id":1.5,"result":1}', "exact:malformed:id must be a string or a number"],
+    ['{"id":null,"result":1}', BAD_ID],
+    ['{"id":true,"result":1}', BAD_ID],
+    ['{"id":1.5,"result":1}', BAD_ID],
     ['{"id":"s","result":null}', 'exact:ok:"s":null'],
     ['{"id":1,"error":{"message":"m"}}', "exact:malformed:an error response needs an integer code"],
     ['{"id":1,"error":{"code":"x","message":"m"}}', "exact:malformed:an error response needs an integer code"],
     ['{"id":1,"error":{"code":-32000,"message":"m"}}', "exact:error:1:m (code: -32000)"],
-    ['{"id":123456789012345678901234567890,"result":1}', "prefix:not JSON"],
+    ['{"id":123456789012345678901234567890,"result":1}', NOT_JSON],
     ['{"id":9007199254740993,"result":1}', "exact:ok:9007199254740993:1"],
     ['{"id":"標","result":{"文":"🚀"}}', 'exact:ok:"標":{"文":"🚀"}'],
     ['  {"id":1,"result":1}  ', "exact:ok:1:1"],
@@ -952,13 +991,13 @@ SSE_FORMS = [
 
 def mcp_sse_case(i):
     body = ats(atl(SSE_FORMS, i), 0)
-    got = join(mapList(Mcp.reply_messages("text/event-stream", body), incoming_text), ";")
+    got = join(mapList(Mcp.reply_messages(EVENT_STREAM, body), incoming_text), ";")
     return matched(f"mcp.sse[{i}]", got, ats(atl(SSE_FORMS, i), 1))
 
 
 def mcp_sse_broken_case():
     """A good event followed by a malformed one: the first is kept, the second typed as `Malformed`."""
-    messages = Mcp.reply_messages("text/event-stream", 'data: {"id":1,"result":1}\n\ndata: broken\n\n')
+    messages = Mcp.reply_messages(EVENT_STREAM, 'data: {"id":1,"result":1}\n\ndata: broken\n\n')
     return [
         Check.equal("mcp.sse_broken_first", incoming_text(unwrap_or(listGet(messages, 0), Mcp.Malformed(reason=""))), "ok:1:1"),
         Check.truth("mcp.sse_broken_second", contains(incoming_text(unwrap_or(listGet(messages, 1), Mcp.Malformed(reason=""))), "malformed:not JSON"), "the second event was not typed as Malformed"),
@@ -968,8 +1007,8 @@ def mcp_sse_broken_case():
 def mcp_http_cases():
     json_body = '{"id":1,"result":1}'
     return [
-        Check.equal("mcp.http_json", join(mapList(Mcp.reply_messages("application/json", json_body), incoming_text), ";"), "ok:1:1"),
-        same("mcp.http_empty", [len(Mcp.reply_messages("application/json", "")), len(Mcp.reply_messages("application/json", "  \n")), len(Mcp.reply_messages("text/event-stream", ""))], [0, 0, 0]),
+        Check.equal("mcp.http_json", join(mapList(Mcp.reply_messages(APPLICATION_JSON, json_body), incoming_text), ";"), "ok:1:1"),
+        same("mcp.http_empty", [len(Mcp.reply_messages(APPLICATION_JSON, "")), len(Mcp.reply_messages(APPLICATION_JSON, "  \n")), len(Mcp.reply_messages(EVENT_STREAM, ""))], [0, 0, 0]),
         Check.equal("mcp.http_headers", Mcp.request_headers("", ""), "Accept: application/json, text/event-stream\r\nMCP-Protocol-Version: 2025-06-18"),
         Check.equal("mcp.http_headers_session", Mcp.request_headers("s1", ""), "Accept: application/json, text/event-stream\r\nMCP-Protocol-Version: 2025-06-18\r\nMcp-Session-Id: s1"),
         Check.equal("mcp.http_headers_extra", Mcp.request_headers("s1", "Authorization: Bearer t"), "Accept: application/json, text/event-stream\r\nMCP-Protocol-Version: 2025-06-18\r\nMcp-Session-Id: s1\r\nAuthorization: Bearer t"),
@@ -1155,12 +1194,12 @@ def mcp_surface_cases():
 
 
 def usage_cases():
-    first = Usage.RequestUsage(input_tokens=10, cache_write_tokens=1, cache_read_tokens=2, output_tokens=3, input_audio_tokens=0, cache_audio_read_tokens=0, output_audio_tokens=0, details={"reasoning_tokens": 4})
-    second = Usage.RequestUsage(input_tokens=20, cache_write_tokens=0, cache_read_tokens=0, output_tokens=5, input_audio_tokens=0, cache_audio_read_tokens=0, output_audio_tokens=0, details={"reasoning_tokens": 1, "other": 2})
+    first = Usage.RequestUsage(input_tokens=10, cache_write_tokens=1, cache_read_tokens=2, output_tokens=3, input_audio_tokens=0, cache_audio_read_tokens=0, output_audio_tokens=0, details={REASONING_TOKENS: 4})
+    second = Usage.RequestUsage(input_tokens=20, cache_write_tokens=0, cache_read_tokens=0, output_tokens=5, input_audio_tokens=0, cache_audio_read_tokens=0, output_audio_tokens=0, details={REASONING_TOKENS: 1, "other": 2})
     run = Usage.incr(Usage.incr(Usage.run_usage(), first), second)
     return [
         Check.ints_equal("usage.incr", [run.requests, run.input_tokens, run.output_tokens, run.cache_write_tokens, run.cache_read_tokens, Usage.run_total_tokens(run)], [2, 30, 8, 1, 2, 38]),
-        Check.ints_equal("usage.details", [unwrap_or(mapGet(run.details, "reasoning_tokens"), 0), unwrap_or(mapGet(run.details, "other"), 0)], [5, 2]),
+        Check.ints_equal("usage.details", [unwrap_or(mapGet(run.details, REASONING_TOKENS), 0), unwrap_or(mapGet(run.details, "other"), 0)], [5, 2]),
         Check.equal("usage.total", Usage.total_tokens(first), 13),
     ]
 
@@ -1312,7 +1351,7 @@ def export_cases():
         Check.equal("export.dump_message", canon(M.dump_message(message)), canon(M.dump_request(request))),
         Check.equal("export.dump_response", canon(M.dump_message(answer)), canon(M.dump_response(response))),
         Check.equal("export.validate_message", error_text(M.validate_message(M.dump_message(answer))), ""),
-        Check.equal("export.validate_message_bad", error_text(M.validate_message(decode("{\"kind\":\"other\"}"))), "unknown message kind: other"),
+        Check.equal("export.validate_message_bad", error_text(M.validate_message(decode("{\"kind\":\"other\"}"))), UNKNOWN_KIND),
         same("export.is_text", mapList(response.parts, M.is_text), [True, False]),
         same("export.is_tool_call", mapList(response.parts, M.is_tool_call), [False, True]),
         Check.equal("export.responses", len(M.responses([message, answer, message])), 1),

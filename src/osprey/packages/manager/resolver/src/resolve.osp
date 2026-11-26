@@ -19,7 +19,7 @@ module Resolve {
 
     fn refuted(vars, clauses) = match Sat::solve(vars, clauses) {
         Success { value } => match value {
-            Sat::Unsatisfiable { core, learned } => true
+            Sat::Unsatisfiable { _ } => true
             _ => false
         }
         Error => false
@@ -34,8 +34,8 @@ module Resolve {
     fn explained(graph, problem, core) = Explain::fromCore(graph, Clauses::mentioned(problem, minimalCore(varsOf(problem), clausesOf(problem), core)))
 
     fn outcome(graph, problem, verdict) = match verdict {
-        Sat::Satisfiable { model } => Resolution::Lock { releases: Optimize::select(graph, problem) }
-        Sat::Unsatisfiable { core, learned } => explained(graph, problem, core)
+        Sat::Satisfiable { _ } => Resolution::Lock { releases: Optimize::select(graph, problem) }
+        Sat::Unsatisfiable { core, _ } => explained(graph, problem, core)
     }
 
     fn solveCanonical(graph) = {

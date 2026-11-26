@@ -136,6 +136,9 @@ fn run_example(
         .collect::<Vec<_>>()
         .join("\n");
     let source = format!("{context}\n{}", example.code);
-    let input = CompilationInput::doctest(name, source, synthesized.checked, warnings);
+    // The package was checked whole before any example ran, so each example
+    // checks only the declarations it reaches.
+    let checked = synthesize::reachable(synthesized.checked);
+    let input = CompilationInput::doctest(name, source, checked, warnings);
     execute::check(cli, &input, synthesized.backend, example)
 }

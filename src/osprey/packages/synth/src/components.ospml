@@ -11,7 +11,17 @@ module Components
 
     parameter (key, label, unit, low, high, value) = Parameter(key = key, label = label, unit = unit, minimum = low, maximum = high, initial = value, automatable = true)
 
-    (** Attach an optional Prism control; the project reader uses the same descriptor when reopening a patch. *)
+    (** Attach an optional Prism control; the project reader uses the same descriptor when reopening a patch.
+    # Examples
+    ```osprey
+    n = Components::gain (1, 0.5)
+    shaped = Components::withOption (n, "gain", "Gain", 4.0, 2.0)
+    print "${mapList (shaped.parameters, \p => p.key + " " + toString (p.maximum) + " " + toString (p.initial))}"
+    ```
+    ```output
+    ["gain 4.0 2.0"]
+    ```
+    *)
     export withOption (n, key, label, maximum, value) =
         descriptor = parameter (key, label, Ratio, 0.0, maximum, value)
         n(parameters = listAppend (filterList (n.parameters, \p => p.key != key)) descriptor)
@@ -36,121 +46,417 @@ module Components
 
     processing (identity, processor, parameters) = node (identity, processor, [port "audio"], [port "audio"], parameters)
 
-    (** Play the prepared waveform once from its first frame. *)
+    (** Play the prepared waveform once from its first frame.
+    # Examples
+    ```osprey
+    summary n = "${n.processor} ${mapList (n.inputs, \p => p.channels)} ${mapList (n.outputs, \p => p.channels)} ${mapList (n.parameters, \p => p.initial)}"
+    print "${summary (Components::samplePlayer (1, SampleResource(name = "kick", sampleRate = 48000, sourceChannels = 1, rootFrequency = 100.0, samples = [0.0])))}"
+    ```
+    ```output
+    SamplePlayer { resource: { name: "kick", sampleRate: 48000, sourceChannels: 1, rootFrequency: 100.0, samples: [0.0] } } [] [1] [1.0, 1.0]
+    ```
+    *)
     export samplePlayer (identity, resource) = source (identity, SamplePlayer(resource = resource), [parameter ("rate", "Playback speed", Ratio, 0.01, 32.0, 1.0), amplitude ("gain", "Level", 1.0)])
 
-    (** Sine oscillator. Its frequency is a parameter, separate from its phase state. A graph can feed a custom oscillator node's optional notes inlet instead; the built-in factory stays input-free. *)
+    (** Sine oscillator. Its frequency is a parameter, separate from its phase state. A graph can feed a custom oscillator node's optional notes inlet instead; the built-in factory stays input-free.
+    # Examples
+    ```osprey
+    summary n = "${n.processor} ${mapList (n.inputs, \p => p.channels)} ${mapList (n.outputs, \p => p.channels)} ${mapList (n.parameters, \p => p.initial)}"
+    print "${summary (Components::sine (1, 440.0))}"
+    ```
+    ```output
+    Oscillator [] [1] [440.0]
+    ```
+    *)
     export sine (identity, frequency) = source (identity, Oscillator, [parameter ("frequency", "Frequency", Hertz, 0.0, 19000.0, frequency)])
 
-    (** Stateful low-pass with cutoff in Hz and resonance expressed as Q. *)
+    (** Stateful low-pass with cutoff in Hz and resonance expressed as Q.
+    # Examples
+    ```osprey
+    summary n = "${n.processor} ${mapList (n.inputs, \p => p.channels)} ${mapList (n.outputs, \p => p.channels)} ${mapList (n.parameters, \p => p.initial)}"
+    print "${summary (Components::lowpass (1, 1000.0, 0.7))}"
+    ```
+    ```output
+    Filter [1] [1] [1000.0, 0.7]
+    ```
+    *)
     export lowpass (identity, cutoff, resonance) = processing (identity, Filter, [parameter ("cutoff", "Cutoff", Hertz, 1.0, 19000.0, cutoff), parameter ("resonance", "Resonance (Q)", Ratio, 0.1, 20.0, resonance)])
 
-    (** The optional normalized cutoff inlet scales the cutoff parameter; unplugged retains it. *)
+    (** The optional normalized cutoff inlet scales the cutoff parameter; unplugged retains it.
+    # Examples
+    ```osprey
+    summary n = "${n.processor} ${mapList (n.inputs, \p => p.channels)} ${mapList (n.outputs, \p => p.channels)} ${mapList (n.parameters, \p => p.initial)}"
+    print "${summary (Components::modulatedLowpass (1, 1000.0, 0.7))}"
+    ```
+    ```output
+    Filter [1, 1] [1] [1000.0, 0.7]
+    ```
+    *)
     export modulatedLowpass (identity, cutoff, resonance) =
         base = lowpass (identity, cutoff, resonance)
         base(inputs = listAppend base.inputs (controlInlet "cutoff"))
 
-    (** Linear gain; values above unity are explicit and may exceed output headroom. *)
+    (** Linear gain; values above unity are explicit and may exceed output headroom.
+    # Examples
+    ```osprey
+    summary n = "${n.processor} ${mapList (n.inputs, \p => p.channels)} ${mapList (n.outputs, \p => p.channels)} ${mapList (n.parameters, \p => p.initial)}"
+    print "${summary (Components::gain (1, 1.0))}"
+    ```
+    ```output
+    Amplifier [1] [1] [1.0]
+    ```
+    *)
     export gain (identity, level) = processing (identity, Amplifier, [headroom level])
 
-    (** [SYNTH-GRAPH-CHANNELS] Two equal-width inputs, each with an independent linear gain. *)
+    (** [SYNTH-GRAPH-CHANNELS] Two equal-width inputs, each with an independent linear gain.
+    # Examples
+    ```osprey
+    summary n = "${n.processor} ${mapList (n.inputs, \p => p.channels)} ${mapList (n.outputs, \p => p.channels)} ${mapList (n.parameters, \p => p.initial)}"
+    print "${summary (Components::mix (1, 2, 0.5, 0.25))}"
+    ```
+    ```output
+    Mixer [2, 2] [2] [0.5, 0.25]
+    ```
+    *)
     export mix (identity, channels, firstGain, secondGain) = node (identity, Mixer, [audioPort ("first", channels), audioPort ("second", channels)], [audioPort ("audio", channels)], [amplitude ("firstGain", "First input gain", firstGain), amplitude ("secondGain", "Second input gain", secondGain)])
 
-    (** The mixer inserted from the palette sums both mono inputs at unity. *)
+    (** The mixer inserted from the palette sums both mono inputs at unity.
+    # Examples
+    ```osprey
+    summary n = "${n.processor} ${mapList (n.inputs, \p => p.channels)} ${mapList (n.outputs, \p => p.channels)} ${mapList (n.parameters, \p => p.initial)}"
+    print "${summary (Components::mixer 1)}"
+    ```
+    ```output
+    Mixer [1, 1] [1] [1.0, 1.0]
+    ```
+    *)
     export mixer identity = mix (identity, 1, 1.0, 1.0)
 
-    (** Place mono audio between adjacent output channels, from the first (-1) to the last (+1). *)
+    (** Place mono audio between adjacent output channels, from the first (-1) to the last (+1).
+    # Examples
+    ```osprey
+    summary n = "${n.processor} ${mapList (n.inputs, \p => p.channels)} ${mapList (n.outputs, \p => p.channels)} ${mapList (n.parameters, \p => p.initial)}"
+    print "${summary (Components::panner (1, 2, -1.0))}"
+    ```
+    ```output
+    Panner [1] [2] [-1.0]
+    ```
+    *)
     export panner (identity, channels, pan) = node (identity, Panner, [port "audio"], [audioPort ("audio", channels)], [parameter ("pan", "Pan", Ratio, -1.0, 1.0, pan)])
 
-    (** A mono graph output. *)
+    (** A mono graph output.
+    # Examples
+    ```osprey
+    summary n = "${n.processor} ${mapList (n.inputs, \p => p.channels)} ${mapList (n.outputs, \p => p.channels)} ${mapList (n.parameters, \p => p.initial)}"
+    print "${summary (Components::output 1)}"
+    ```
+    ```output
+    Sink [1] [] []
+    ```
+    *)
     export output identity = node (identity, Sink, [port "audio"], [], [])
 
-    (** Explicit sample delay; feedback scheduling reads it before writing the next sample. *)
+    (** Explicit sample delay; feedback scheduling reads it before writing the next sample.
+    # Examples
+    ```osprey
+    summary n = "${n.processor} ${mapList (n.inputs, \p => p.channels)} ${mapList (n.outputs, \p => p.channels)} ${mapList (n.parameters, \p => p.initial)}"
+    print "${summary (Components::delay (1, 64))}"
+    ```
+    ```output
+    Delay { samples: 64 } [1] [1] []
+    ```
+    *)
     export delay (identity, count) = processing (identity, Delay(samples = count), [])
 
     notesOutlet () = Port(name = "notes", rate = Events, channels = 1, unit = Notes)
 
     gate gateFrames = parameter ("gateFrames", "Gate (frames)", Ratio, 1.0, 65535.0, gateFrames)
 
-    (** A note-on/off generator; gate length is an exact sample count at the render rate. *)
+    (** A note-on/off generator; gate length is an exact sample count at the render rate.
+    # Examples
+    ```osprey
+    summary n = "${n.processor} ${mapList (n.inputs, \p => p.channels)} ${mapList (n.outputs, \p => p.channels)} ${mapList (n.parameters, \p => p.initial)}"
+    print "${summary (Components::midiNote (1, 60.0, 0.8, 4800.0))}"
+    ```
+    ```output
+    MidiNotes [] [1] [60.0, 0.8, 4800.0]
+    ```
+    *)
     export midiNote (identity, pitch, velocity, gateFrames) = node (identity, MidiNotes, [], [notesOutlet ()], [parameter ("pitch", "Pitch", Notes, 0.0, 127.0, pitch), normalised ("velocity", "Velocity", velocity), gate gateFrames])
 
     (** A melody source [SYNTH-FORMULA-NOTES]: `formula` over the step number `t` names one note per step, `stepFrames`
-        apart; a gate longer than its step is cut to the step. *)
+        apart; a gate longer than its step is cut to the step.
+    # Examples
+    ```osprey
+    summary n = "${n.processor} ${mapList (n.inputs, \p => p.channels)} ${mapList (n.outputs, \p => p.channels)} ${mapList (n.parameters, \p => p.initial)}"
+    print "${summary (Components::formulaNotes (1, "60 + t", 0.8, 6000.0, 4800.0, 16.0))}"
+    ```
+    ```output
+    FormulaNotes { formula: "60 + t" } [] [1] [0.8, 6000.0, 4800.0, 16.0]
+    ```
+    *)
     export formulaNotes (identity, formula, velocity, stepFrames, gateFrames, steps) = node (identity, FormulaNotes(formula = formula), [], [notesOutlet ()], [normalised ("velocity", "Velocity", velocity), parameter ("stepFrames", "Step (frames)", Ratio, 16.0, 65535.0, stepFrames), gate gateFrames, parameter ("steps", "Steps", Ratio, 1.0, 256.0, steps)])
 
-    (** A formula melody at Prism's defaults: 16 steps of 6,000 frames (125 ms at 48 kHz), each gated for 4,800, at velocity 0.8. *)
+    (** A formula melody at Prism's defaults: 16 steps of 6,000 frames (125 ms at 48 kHz), each gated for 4,800, at velocity 0.8.
+    # Examples
+    ```osprey
+    summary n = "${n.processor} ${mapList (n.inputs, \p => p.channels)} ${mapList (n.outputs, \p => p.channels)} ${mapList (n.parameters, \p => p.initial)}"
+    print "${summary (Components::formulaMelody (1, "60 + t"))}"
+    ```
+    ```output
+    FormulaNotes { formula: "60 + t" } [] [1] [0.8, 6000.0, 4800.0, 16.0]
+    ```
+    *)
     export formulaMelody (identity, formula) = formulaNotes (identity, formula, 0.8, 6000.0, 4800.0, 16.0)
 
-    (** Explicit mono-to-stereo duplication; routing never changes channel counts implicitly. *)
+    (** Explicit mono-to-stereo duplication; routing never changes channel counts implicitly.
+    # Examples
+    ```osprey
+    summary n = "${n.processor} ${mapList (n.inputs, \p => p.channels)} ${mapList (n.outputs, \p => p.channels)} ${mapList (n.parameters, \p => p.initial)}"
+    print "${summary (Components::stereo 1)}"
+    ```
+    ```output
+    Stereo [1] [2] []
+    ```
+    *)
     export stereo identity = node (identity, Stereo, [port "audio"], [audioPort ("audio", 2)], [])
 
-    (** Explicit stereo-to-mono downmix, (left + right) / 2; routing never changes channel counts implicitly. *)
+    (** Explicit stereo-to-mono downmix, (left + right) / 2; routing never changes channel counts implicitly.
+    # Examples
+    ```osprey
+    summary n = "${n.processor} ${mapList (n.inputs, \p => p.channels)} ${mapList (n.outputs, \p => p.channels)} ${mapList (n.parameters, \p => p.initial)}"
+    print "${summary (Components::downmix 1)}"
+    ```
+    ```output
+    Downmix [2] [1] []
+    ```
+    *)
     export downmix identity = node (identity, Downmix, [audioPort ("audio", 2)], [port "audio"], [])
 
     outlet name = audioPort (name, 1)
 
-    (** [SYNTH-GRAPH-CHANNELS] One N-channel input becomes N one-channel outlets, in layout order. *)
+    (** [SYNTH-GRAPH-CHANNELS] One N-channel input becomes N one-channel outlets, in layout order.
+    # Examples
+    ```osprey
+    summary n = "${n.processor} ${mapList (n.inputs, \p => p.channels)} ${mapList (n.outputs, \p => p.channels)} ${mapList (n.parameters, \p => p.initial)}"
+    print "${summary (Components::split (1, 3))}"
+    ```
+    ```output
+    Split [3] [1, 1, 1] []
+    ```
+    *)
     export split (identity, channels) = node (identity, Split, [audioPort ("audio", channels)], mapList (toList (range (0, channels)), \index => outlet "channel ${index}"), [])
 
-    (** [SYNTH-GRAPH-CHANNELS] N one-channel inlets become one N-channel output, in inlet order. *)
+    (** [SYNTH-GRAPH-CHANNELS] N one-channel inlets become one N-channel output, in inlet order.
+    # Examples
+    ```osprey
+    summary n = "${n.processor} ${mapList (n.inputs, \p => p.channels)} ${mapList (n.outputs, \p => p.channels)} ${mapList (n.parameters, \p => p.initial)}"
+    print "${summary (Components::join (1, 3))}"
+    ```
+    ```output
+    Join [1, 1, 1] [3] []
+    ```
+    *)
     export join (identity, channels) = node (identity, Join, mapList (toList (range (0, channels)), \index => outlet "channel ${index}"), [audioPort ("audio", channels)], [])
 
     (** [SYNTH-GRAPH-CHANNELS] One `inputs`-channel input is remapped: output channel i takes input channel
-        channelMap[i], or silence when the entry is -1. Graph validation rejects any other entry. *)
+        channelMap[i], or silence when the entry is -1. Graph validation rejects any other entry.
+    # Examples
+    ```osprey
+    summary n = "${n.processor} ${mapList (n.inputs, \p => p.channels)} ${mapList (n.outputs, \p => p.channels)} ${mapList (n.parameters, \p => p.initial)}"
+    print "${summary (Components::routeChannels (1, 2, [1, -1, 0]))}"
+    ```
+    ```output
+    Route { channelMap: [1, -1, 0] } [2] [3] []
+    ```
+    *)
     export routeChannels (identity, inputs, channelMap) = node (identity, Route(channelMap = channelMap), [audioPort ("audio", inputs)], [audioPort ("audio", length channelMap)], [])
 
-    (** A stereo graph output for native instruments and effects. *)
+    (** A stereo graph output for native instruments and effects.
+    # Examples
+    ```osprey
+    summary n = "${n.processor} ${mapList (n.inputs, \p => p.channels)} ${mapList (n.outputs, \p => p.channels)} ${mapList (n.parameters, \p => p.initial)}"
+    print "${summary (Components::stereoOutput 1)}"
+    ```
+    ```output
+    Sink [2] [] []
+    ```
+    *)
     export stereoOutput identity = node (identity, Sink, [audioPort ("audio", 2)], [], [])
 
     control () = controlInlet "control"
 
-    (** A normalized sine LFO, routed independently of any audio source. *)
+    (** A normalized sine LFO, routed independently of any audio source.
+    # Examples
+    ```osprey
+    summary n = "${n.processor} ${mapList (n.inputs, \p => p.channels)} ${mapList (n.outputs, \p => p.channels)} ${mapList (n.parameters, \p => p.initial)}"
+    print "${summary (Components::lfo (1, 2.0))}"
+    ```
+    ```output
+    Lfo [] [1] [2.0]
+    ```
+    *)
     export lfo (identity, frequency) = node (identity, Lfo, [], [control ()], [parameter ("frequency", "Frequency", Hertz, 0.0, 20.0, frequency)])
 
-    (** One control signal applies equally to every audio channel. *)
+    (** One control signal applies equally to every audio channel.
+    # Examples
+    ```osprey
+    summary n = "${n.processor} ${mapList (n.inputs, \p => p.channels)} ${mapList (n.outputs, \p => p.channels)} ${mapList (n.parameters, \p => p.initial)}"
+    print "${summary (Components::modulatedGain (1, 2, 1.0))}"
+    ```
+    ```output
+    ModulatedGain [2, 1] [2] [1.0]
+    ```
+    *)
     export modulatedGain (identity, channels, level) =
         audio = audioPort ("audio", channels)
         node (identity, ModulatedGain, [audio, control ()], [audio], [headroom level])
 
-    (** Stereo grain cloud with an immutable mono source; timing parameters are exact sample counts at 48 kHz. *)
+    (** Stereo grain cloud with an immutable mono source; timing parameters are exact sample counts at 48 kHz.
+    # Examples
+    ```osprey
+    summary n = "${n.processor} ${mapList (n.inputs, \p => p.channels)} ${mapList (n.outputs, \p => p.channels)} ${mapList (n.parameters, \p => p.initial)}"
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => summary (Components::granular (1, SampleResource(name = "voice", sampleRate = 48000, sourceChannels = 1, rootFrequency = 220.0, samples = [0.0, 0.5, -0.5, 0.25, 0.1]), 8, 7)))}"
+    ```
+    ```output
+    Granular { resource: { name: "voice", sampleRate: 48000, sourceChannels: 1, rootFrequency: 220.0, samples: [0.0, 0.5, -0.5, 0.25, 0.1] }, capacity: 8, seed: 7 } [] [2] [0.0, 1.0, 4800.0, 0.15, 0.0, 2400.0, 600.0, 0.0, 0.25, 0.25, 0.0, 9600.0, 0.0, 0.0, 0.0, 0.0, 0.0, 7.0, 0.0, 5.0, 0.0]
+    ```
+    *)
     export granular (identity, resource, capacity, seed) =
         lastSample = toFloat (satSub (SampleResources::frames resource) 1)
         sampleCount = toFloat (SampleResources::frames resource)
         node (identity, Granular(resource = resource, capacity = capacity, seed = seed), [], [audioPort ("audio", 2)], [parameter ("start", "Source position (samples)", Ratio, 0.0, lastSample, 0.0), bipolarRatio ("rate", "Playback rate", WaveMath::playbackRate (toFloat resource.sampleRate, 48000.0, resource.rootFrequency, resource.rootFrequency)), parameter ("duration", "Grain length (frames)", Ratio, 3.0, 65536.0, 4800.0), amplitude ("gain", "Grain gain", 0.15), parameter ("pan", "Pan", Ratio, -1.0, 1.0, 0.0), parameter ("period", "Onset interval / mean (frames)", Ratio, 1.0, 1048576.0, 2400.0), parameter ("jitter", "Timing jitter (frames)", Ratio, 0.0, 1048575.0, 600.0), ratio ("window", "Window (0 Hann, 1 ASR)", 0.0), parameter ("attack", "Grain attack (fraction)", Ratio, 0.000001, 0.999999, 0.25), parameter ("release", "Grain release (fraction)", Ratio, 0.000001, 0.999999, 0.25), ratio ("timing", "Timing (0 jitter, 1 exponential)", 0.0), parameter ("maximumGap", "Maximum exponential gap (frames)", Ratio, 1.0, 1048576.0, 9600.0), parameter ("positionSpread", "Position spread (samples)", Ratio, 0.0, lastSample, 0.0), parameter ("rateSpread", "Playback rate spread", Ratio, 0.0, 32.0, 0.0), parameter ("durationSpread", "Duration spread (frames)", Ratio, 0.0, 65533.0, 0.0), ratio ("gainSpread", "Gain spread", 0.0), parameter ("panSpread", "Pan spread", Ratio, 0.0, 2.0, 0.0), parameter ("variationSeed", "Variation seed (restart)", Ratio, 1.0, 2147483646.0, toFloat seed), parameter ("regionStart", "Region first frame", Ratio, 0.0, lastSample, 0.0), parameter ("regionEnd", "Region end frame (exclusive)", Ratio, 1.0, sampleCount, sampleCount), ratio ("boundary", "Boundary (0 loop, 1 one-shot)", 0.0)])
 
-    (** [SYNTH-ADVANCED-PHYSICAL] Impulse (0) or seeded coloured-noise (1) bursts; interval 0 fires once at start. *)
+    (** [SYNTH-ADVANCED-PHYSICAL] Impulse (0) or seeded coloured-noise (1) bursts; interval 0 fires once at start.
+    # Examples
+    ```osprey
+    summary n = "${n.processor} ${mapList (n.inputs, \p => p.channels)} ${mapList (n.outputs, \p => p.channels)} ${mapList (n.parameters, \p => p.initial)}"
+    print "${summary (Components::exciter (1, 7))}"
+    ```
+    ```output
+    Exciter { seed: 7 } [] [1] [0.8, 96.0, 24000.0, 1.0, 0.3]
+    ```
+    *)
     export exciter (identity, seed) = source (identity, Exciter(seed = seed), [amplitude ("strength", "Strength", 0.8), parameter ("duration", "Burst length (frames)", Ratio, 1.0, 48000.0, 96.0), parameter ("interval", "Repeat interval (frames, 0 once)", Ratio, 0.0, 1048576.0, 24000.0), ratio ("excitation", "Excitation (0 impulse, 1 noise)", 1.0), normalised ("colour", "Noise colour (0 white)", 0.3)])
 
-    (** Two-pole resonator: 60 dB decay time in seconds; gain is the band-pass peak or the struck starting level. *)
+    (** Two-pole resonator: 60 dB decay time in seconds; gain is the band-pass peak or the struck starting level.
+    # Examples
+    ```osprey
+    summary n = "${n.processor} ${mapList (n.inputs, \p => p.channels)} ${mapList (n.outputs, \p => p.channels)} ${mapList (n.parameters, \p => p.initial)}"
+    print "${summary (Components::resonator (1, 440.0))}"
+    ```
+    ```output
+    Resonator [1] [1] [440.0, 1.5, 0.15, 1.0]
+    ```
+    *)
     export resonator (identity, frequency) = processing (identity, Resonator, [parameter ("frequency", "Frequency", Hertz, 1.0, 21000.0, frequency), decayT60 (0.001, 60.0, 1.5), headroom 0.15, ratio ("response", "Response (0 band-pass peak, 1 struck)", 1.0)])
 
-    (** Eight-mode bank; body 0 string, 1 bar, 2 membrane, 3 bell. Modes above 0.45 of the rate are silent. *)
+    (** Eight-mode bank; body 0 string, 1 bar, 2 membrane, 3 bell. Modes above 0.45 of the rate are silent.
+    # Examples
+    ```osprey
+    summary n = "${n.processor} ${mapList (n.inputs, \p => p.channels)} ${mapList (n.outputs, \p => p.channels)} ${mapList (n.parameters, \p => p.initial)}"
+    print "${summary (Components::modalBank (1, 220.0, 3.0))}"
+    ```
+    ```output
+    Modal [1] [1] [3.0, 8.0, 220.0, 2.5, 0.5, 0.13]
+    ```
+    *)
     export modalBank (identity, frequency, body) = processing (identity, Modal, [parameter ("body", "Body (0 string, 1 bar, 2 membrane, 3 bell)", Ratio, 0.0, 3.0, body), parameter ("modes", "Active modes", Ratio, 1.0, 8.0, 8.0), parameter ("frequency", "Fundamental", Hertz, 1.0, 21000.0, frequency), decayT60 (0.001, 60.0, 2.5), normalised ("brightness", "Brightness", 0.5), parameter ("strike", "Strike position", Normalised, 0.01, 0.99, 0.13)])
 
-    (** Single-delay-loop string; capacity in samples bounds the lowest tunable pitch. *)
+    (** Single-delay-loop string; capacity in samples bounds the lowest tunable pitch.
+    # Examples
+    ```osprey
+    summary n = "${n.processor} ${mapList (n.inputs, \p => p.channels)} ${mapList (n.outputs, \p => p.channels)} ${mapList (n.parameters, \p => p.initial)}"
+    print "${summary (Components::waveguide (1, 110.0, 480))}"
+    ```
+    ```output
+    Waveguide { capacity: 480 } [1] [1] [110.0, 3.0, 0.6, 0.0, 0.0]
+    ```
+    *)
     export waveguide (identity, frequency, capacity) = processing (identity, Waveguide(capacity = capacity), [parameter ("frequency", "Pitch", Hertz, 20.0, 21000.0, frequency), decayT60 (0.01, 60.0, 3.0), normalised ("brightness", "Brightness", 0.6), parameter ("dispersion", "Dispersion (allpass)", Ratio, -0.95, 0.95, 0.0), parameter ("pickup", "Pickup position", Normalised, 0.0, 0.5, 0.0)])
 
-    (** Linear-interpolated fractional delay, 1 sample to capacity. *)
+    (** Linear-interpolated fractional delay, 1 sample to capacity.
+    # Examples
+    ```osprey
+    summary n = "${n.processor} ${mapList (n.inputs, \p => p.channels)} ${mapList (n.outputs, \p => p.channels)} ${mapList (n.parameters, \p => p.initial)}"
+    print "${summary (Components::fractionalDelay (1, 12.5, 64))}"
+    ```
+    ```output
+    FractionalDelay { capacity: 64 } [1] [1] [12.5]
+    ```
+    *)
     export fractionalDelay (identity, delay, capacity) = processing (identity, FractionalDelay(capacity = capacity), [parameter ("delay", "Delay (samples)", Ratio, 1.0, toFloat capacity, delay)])
 
-    (** Frequency-dependent loss; gain at most unity so feedback cannot gain energy. *)
+    (** Frequency-dependent loss; gain at most unity so feedback cannot gain energy.
+    # Examples
+    ```osprey
+    summary n = "${n.processor} ${mapList (n.inputs, \p => p.channels)} ${mapList (n.outputs, \p => p.channels)} ${mapList (n.parameters, \p => p.initial)}"
+    print "${summary (Components::lossFilter (1, 0.996, 0.5))}"
+    ```
+    ```output
+    LossFilter [1] [1] [0.996, 0.5]
+    ```
+    *)
     export lossFilter (identity, gain, brightness) = processing (identity, LossFilter, [amplitude ("gain", "Loss gain", gain), normalised ("brightness", "Brightness", brightness)])
 
-    (** First-order allpass dispersion. *)
+    (** First-order allpass dispersion.
+    # Examples
+    ```osprey
+    summary n = "${n.processor} ${mapList (n.inputs, \p => p.channels)} ${mapList (n.outputs, \p => p.channels)} ${mapList (n.parameters, \p => p.initial)}"
+    print "${summary (Components::allpass (1, 0.5))}"
+    ```
+    ```output
+    Allpass [1] [1] [0.5]
+    ```
+    *)
     export allpass (identity, coefficient) = processing (identity, Allpass, [parameter ("coefficient", "Coefficient", Ratio, -0.95, 0.95, coefficient)])
 
     (** [SYNTH-ADVANCED-TABLES] Prepared wavetable source; position 0–1 morphs frames, negative pitch reverses.
         Optional control inlets: `position` replaces the position, `amplitude` multiplies the level,
-        `pitch` scales frequency by ±2 octaves and `phase` offsets the read point. *)
+        `pitch` scales frequency by ±2 octaves and `phase` offsets the read point.
+    # Examples
+    ```osprey
+    summary n = "${n.processor} ${mapList (n.inputs, \p => p.channels)} ${mapList (n.outputs, \p => p.channels)} ${mapList (n.parameters, \p => p.initial)}"
+    print "${summary (Components::wavetable (1, Wavetable(size = 2048, harmonics = 1, frames = [TableFrame(levels = [])]), 220.0))}"
+    ```
+    ```output
+    TableOscillator { table: { size: 2048, harmonics: 1, frames: [{ levels: [] }] } } [1, 1, 1, 1] [1] [220.0, 0.0, 0.5]
+    ```
+    *)
     export wavetable (identity, table, frequency) = node (identity, TableOscillator(table = table), [controlInlet "position", controlInlet "amplitude", controlInlet "pitch", controlInlet "phase"], [port "audio"], [bipolar ("frequency", "Pitch", frequency), normalised ("position", "Table position", 0.0), amplitude ("amplitude", "Level", 0.5)])
 
-    (** 64-partial additive source; inharmonicity 0 and stretch 1 are harmonic, interval 0 never retriggers. *)
+    (** 64-partial additive source; inharmonicity 0 and stretch 1 are harmonic, interval 0 never retriggers.
+    # Examples
+    ```osprey
+    summary n = "${n.processor} ${mapList (n.inputs, \p => p.channels)} ${mapList (n.outputs, \p => p.channels)} ${mapList (n.parameters, \p => p.initial)}"
+    print "${summary (Components::additive (1, 220.0))}"
+    ```
+    ```output
+    Additive [] [1] [220.0, 16.0, 1.0, 0.0, 600.0, 0.0, 0.5, 0.0, 1.0, 0.0]
+    ```
+    *)
     export additive (identity, frequency) = source (identity, Additive, [parameter ("frequency", "Pitch", Hertz, 0.0, 21000.0, frequency), parameter ("partials", "Partials", Ratio, 0.0, 64.0, 16.0), parameter ("tilt", "Spectral tilt", Ratio, 0.0, 4.0, 1.0), parameter ("parity", "Odd/even balance", Ratio, -1.0, 1.0, 0.0), decayT60 (0.01, 600.0, 600.0), parameter ("damping", "Upper-partial damping", Ratio, 0.0, 10.0, 0.0), amplitude ("amplitude", "Level", 0.5), parameter ("inharmonicity", "Inharmonicity (B)", Ratio, 0.0, 0.1, 0.0), parameter ("stretch", "Stretch exponent", Ratio, 0.5, 2.0, 1.0), parameter ("interval", "Retrigger interval (frames, 0 never)", Ratio, 0.0, 1048576.0, 0.0)])
 
     (** [SYNTH-ADVANCED-SPECTRAL] STFT processor (latency size - 1); the side input feeds morphing only.
         Transform 0 pass, 1 freeze (hold), 2 band (low/high Hz), 3 shift (bins), 4 smear, 5 morph (amount),
-        6 phase-vocoder pitch shift (ratio 0.25–4, no transient handling). *)
+        6 phase-vocoder pitch shift (ratio 0.25–4, no transient handling).
+    # Examples
+    ```osprey
+    summary n = "${n.processor} ${mapList (n.inputs, \p => p.channels)} ${mapList (n.outputs, \p => p.channels)} ${mapList (n.parameters, \p => p.initial)}"
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => summary (Components::spectral (1, 1024, 256, 6.0)))}"
+    ```
+    ```output
+    Spectral { size: 1024, hop: 256 } [1, 1] [1] [6.0, 1.0, 200.0, 4000.0, 0.0, 0.5, 1.0, 0.0, 0.0, 0.0, 0.0]
+    ```
+    *)
     export spectral (identity, size, hop, transform) = node (identity, Spectral(size = size, hop = hop), [port "audio", port "side"], [port "audio"], [parameter ("transform", "Transform (0 pass, 1 freeze, 2 band, 3 shift, 4 smear, 5 morph, 6 pitch)", Ratio, 0.0, 6.0, transform), ratio ("hold", "Freeze hold", 1.0), parameter ("low", "Band low", Hertz, 0.0, 24000.0, 200.0), parameter ("high", "Band high", Hertz, 0.0, 24000.0, 4000.0), parameter ("shift", "Shift (bins)", Ratio, toFloat (satSub 1 (intDiv size 2)), toFloat (satSub (intDiv size 2) 1), 0.0), parameter ("amount", "Smear / morph amount", Normalised, 0.0, 0.999, 0.5), normalised ("mix", "Dry/processed mix", 1.0), parameter ("semitones", "Pitch shift (semitones)", Ratio, -12.0, 12.0, 0.0), parameter ("cents", "Fine tune (cents)", Ratio, -100.0, 100.0, 0.0), ratio ("keepFormants", "Keep formants (0 off, 1 on)", 0.0), parameter ("morphMode", "Morph (0 blend, 1 envelope, 2 partial)", Ratio, 0.0, 2.0, 0.0)])
 
     preset (key, value, p) = match p.key == key
@@ -159,32 +465,116 @@ module Components
 
     (** [SYNTH-SPECTRAL-PITCH-EFFECT] FFT pitch shifter effect: the peak-locked STFT phase vocoder (transform 6) at
         hop size / 4, moving pitch by `semitones` (-12 to 12) plus `cents` (-100 to 100) of fine tuning. Formants move
-        with the pitch unless `keepFormants` is on. Latency is size − 1. *)
+        with the pitch unless `keepFormants` is on. Latency is size − 1.
+    # Examples
+    ```osprey
+    summary n = "${n.processor} ${mapList (n.inputs, \p => p.channels)} ${mapList (n.outputs, \p => p.channels)} ${mapList (n.parameters, \p => p.initial)}"
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => summary (Components::pitchShifter (1, 1024, 7.0, 0.0)))}"
+    ```
+    ```output
+    Spectral { size: 1024, hop: 256 } [1, 1] [1] [6.0, 1.0, 200.0, 4000.0, 0.0, 0.5, 1.0, 7.0, 0.0, 0.0, 0.0]
+    ```
+    *)
     export pitchShifter (identity, size, semitones, cents) =
         n = spectral (identity, size, intDiv size 4, 6.0)
         n(parameters = mapList (mapList (n.parameters, \p => preset ("semitones", semitones, p)), \p => preset ("cents", cents, p)))
 
-    (** [SYNTH-ADVANCED-NONLINEAR] Waveshaper: curve 0 tanh, 1 hard, 2 cubic, 3 fold; ADAA and 2× oversampling switches. *)
+    (** [SYNTH-ADVANCED-NONLINEAR] Waveshaper: curve 0 tanh, 1 hard, 2 cubic, 3 fold; ADAA and 2× oversampling switches.
+    # Examples
+    ```osprey
+    summary n = "${n.processor} ${mapList (n.inputs, \p => p.channels)} ${mapList (n.outputs, \p => p.channels)} ${mapList (n.parameters, \p => p.initial)}"
+    print "${summary (Components::shaper (1, 2.0, 4.0))}"
+    ```
+    ```output
+    Shaper [1] [1] [2.0, 4.0, 0.0, 0.5, 1.0, 0.0]
+    ```
+    *)
     export shaper (identity, curve, drive) = processing (identity, Shaper, [parameter ("curve", "Curve (0 tanh, 1 hard, 2 cubic, 3 fold)", Ratio, 0.0, 3.0, curve), parameter ("drive", "Drive", Ratio, 0.1, 50.0, drive), parameter ("bias", "Bias (asymmetry)", Ratio, -1.0, 1.0, 0.0), amplitude ("level", "Output level", 0.5), ratio ("antialias", "Antiderivative antialiasing", 1.0), ratio ("oversample", "2x oversampling (+15 samples latency)", 0.0)])
 
-    (** Four-line FDN reverb; freeze conserves stored energy and mutes the input. *)
+    (** Four-line FDN reverb; freeze conserves stored energy and mutes the input.
+    # Examples
+    ```osprey
+    summary n = "${n.processor} ${mapList (n.inputs, \p => p.channels)} ${mapList (n.outputs, \p => p.channels)} ${mapList (n.parameters, \p => p.initial)}"
+    print "${summary (Components::reverb (1, 2.5))}"
+    ```
+    ```output
+    Reverb [1] [1] [1.0, 2.5, 0.3, 0.6, 0.35, 0.0]
+    ```
+    *)
     export reverb (identity, decay) = processing (identity, Reverb, [parameter ("size", "Size", Ratio, 0.25, 2.0, 1.0), decayT60 (0.1, 60.0, decay), parameter ("damping", "Damping", Normalised, 0.0, 0.95, 0.3), parameter ("diffusion", "Diffusion", Normalised, 0.0, 0.9, 0.6), normalised ("mix", "Dry/wet mix", 0.35), ratio ("freeze", "Freeze", 0.0)])
 
-    (** Single-sideband frequency shifter, or ring modulator when ring is 1. *)
+    (** Single-sideband frequency shifter, or ring modulator when ring is 1.
+    # Examples
+    ```osprey
+    summary n = "${n.processor} ${mapList (n.inputs, \p => p.channels)} ${mapList (n.outputs, \p => p.channels)} ${mapList (n.parameters, \p => p.initial)}"
+    print "${summary (Components::shifter (1, 440.0))}"
+    ```
+    ```output
+    Shifter [1] [1] [440.0, 0.0, 1.0]
+    ```
+    *)
     export shifter (identity, shift) = processing (identity, Shifter, [parameter ("shift", "Shift", Hertz, -5000.0, 5000.0, shift), ratio ("ring", "Ring modulation", 0.0), normalised ("mix", "Dry/shifted mix", 1.0)])
 
     (** [SYNTH-ADVANCED-PHASE] Phase operator: shape 0 plain, 1 PD, 2 windowed PM, 3 WPPM (Smart, DAFx25).
-        Optional inlets: audio-rate modulation (depth in cycles, spread in Hz) and rising-edge sync. *)
+        Optional inlets: audio-rate modulation (depth in cycles, spread in Hz) and rising-edge sync.
+    # Examples
+    ```osprey
+    summary n = "${n.processor} ${mapList (n.inputs, \p => p.channels)} ${mapList (n.outputs, \p => p.channels)} ${mapList (n.parameters, \p => p.initial)}"
+    print "${summary (Components::phaseOperator (1, 220.0, 2.0))}"
+    ```
+    ```output
+    PhaseOperator [1, 1] [1] [220.0, 2.0, 0.5, 0.5, 1.0, 0.0, 0.5, 1.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.0]
+    ```
+    *)
     export phaseOperator (identity, frequency, shape) = node (identity, PhaseOperator, [port "modulation", port "sync"], [port "audio"], [bipolar ("frequency", "Frequency", frequency), parameter ("shape", "Shape (0 plain, 1 PD, 2 PM, 3 WPPM)", Ratio, 0.0, 3.0, shape), parameter ("breakpoint", "Breakpoint d", Normalised, 0.001, 0.999, 0.5), bipolarRatio ("index", "Pulse 1 index", 0.5), parameter ("ratio", "Pulse 1 ratio", Ratio, 0.0, 64.0, 1.0), normalised ("offset", "Pulse 1 phase offset", 0.0), bipolarRatio ("index2", "Pulse 2 index", 0.5), parameter ("ratio2", "Pulse 2 ratio", Ratio, 0.0, 64.0, 1.0), normalised ("offset2", "Pulse 2 phase offset", 0.0), bipolarRatio ("depth", "PM depth (cycles)", 0.0), bipolar ("spread", "FM spread (Hz)", 0.0), normalised ("feedback", "Self feedback", 0.0), amplitude ("amplitude", "Level", 0.5), ratio ("oversample", "2x oversampling (+7.5 samples latency)", 0.0)])
 
-    (** Bowed string (Smith/STK topology); velocity and pressure are the expressive controls. *)
+    (** Bowed string (Smith/STK topology); velocity and pressure are the expressive controls.
+    # Examples
+    ```osprey
+    summary n = "${n.processor} ${mapList (n.inputs, \p => p.channels)} ${mapList (n.outputs, \p => p.channels)} ${mapList (n.parameters, \p => p.initial)}"
+    print "${summary (Components::bowed (1, 220.0, 480))}"
+    ```
+    ```output
+    Bowed { capacity: 480 } [] [1] [220.0, 2.0, 0.5, 0.127, 0.5, 0.3]
+    ```
+    *)
     export bowed (identity, frequency, capacity) = source (identity, Bowed(capacity = capacity), [parameter ("frequency", "Pitch", Hertz, 20.0, 12000.0, frequency), decayT60 (0.01, 60.0, 2.0), normalised ("brightness", "Brightness", 0.5), parameter ("position", "Bow position (from bridge)", Normalised, 0.05, 0.5, 0.127), normalised ("pressure", "Bow pressure", 0.5), normalised ("velocity", "Bow velocity", 0.3)])
 
-    (** One-pole (63% after time) or linear (full scale in time) smoothing of any mono signal. *)
+    (** One-pole (63% after time) or linear (full scale in time) smoothing of any mono signal.
+    # Examples
+    ```osprey
+    summary n = "${n.processor} ${mapList (n.inputs, \p => p.channels)} ${mapList (n.outputs, \p => p.channels)} ${mapList (n.parameters, \p => p.initial)}"
+    print "${summary (Components::smoother (1, 0.01))}"
+    ```
+    ```output
+    Smoother [1] [1] [0.01, 0.0]
+    ```
+    *)
     export smoother (identity, time) = processing (identity, Smoother, [parameter ("time", "Time", Seconds, 0.0001, 10.0, time), ratio ("linear", "Linear slew", 0.0)])
 
-    (** Strike position comb for an excitation: harmonics that are multiples of 1/position vanish. *)
+    (** Strike position comb for an excitation: harmonics that are multiples of 1/position vanish.
+    # Examples
+    ```osprey
+    summary n = "${n.processor} ${mapList (n.inputs, \p => p.channels)} ${mapList (n.outputs, \p => p.channels)} ${mapList (n.parameters, \p => p.initial)}"
+    print "${summary (Components::strikeComb (1, 110.0, 480))}"
+    ```
+    ```output
+    StrikeComb { capacity: 480 } [1] [1] [110.0, 0.13]
+    ```
+    *)
     export strikeComb (identity, frequency, capacity) = processing (identity, StrikeComb(capacity = capacity), [parameter ("frequency", "String pitch", Hertz, 20.0, 21000.0, frequency), parameter ("position", "Strike position", Normalised, 0.01, 0.5, 0.13)])
 
-    (** One typed connection; graph validation checks both endpoints. *)
+    (** One typed connection; graph validation checks both endpoints.
+    # Examples
+    ```osprey
+    print "${Components::route (1, 0, 2, 1)}"
+    ```
+    ```output
+    { source: 1, outlet: 0, destination: 2, inlet: 1 }
+    ```
+    *)
     export route (source, outlet, destination, inlet) = Cable(source = source, outlet = outlet, destination = destination, inlet = inlet)

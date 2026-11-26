@@ -5,6 +5,9 @@
 from fastapi import Results as B
 __all__ = ['bind', 'matches']
 
+NO_MATCH = 'Path does not match'
+"""The refusal of a path that leaves segments over or contradicts the pattern."""
+
 def name_of(segment):
     return B.mapped(checkedSub(len(segment), 2), lambda size: take(drop(segment, 1), size))
 
@@ -40,7 +43,7 @@ def bind(pattern, path):
 def walk(patterns, segments, params):
     match patterns:
         case []:
-            return Success(value=params) if len(segments) == 0 else Error(message='Path does not match')
+            return Success(value=params) if len(segments) == 0 else Error(message=NO_MATCH)
         case [head, *tail]:
             if greedy(head) and len(tail) == 0 and (len(segments) > 0):
                 return andThen(name_of(head), lambda name: B.mapped(indexOf(name, ':'), lambda index: mapSet(params, take(name, index), join(segments, '/'))))
@@ -50,12 +53,12 @@ def walk(patterns, segments, params):
 def segment(pattern, patterns, segments, params):
     match segments:
         case []:
-            return Error(message='Path does not match')
+            return Error(message=NO_MATCH)
         case [head, *tail]:
             if parameter(pattern):
                 return andThen(name_of(pattern), lambda name: walk(patterns, tail, mapSet(params, name, head))) if head != '' else Error(message='Empty path segment')
             else:
-                return walk(patterns, tail, params) if pattern == head else Error(message='Path does not match')
+                return walk(patterns, tail, params) if pattern == head else Error(message=NO_MATCH)
 
 def matches(pattern, path):
     """Whether the pattern matches the complete decoded path.

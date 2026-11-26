@@ -64,7 +64,7 @@ pub(crate) fn bound_symbols(ir: &str) -> BTreeSet<String> {
             continue;
         }
         if let Some(at) = line.find('@') {
-            if let Some(name) = symbol_at(&line[at + 1..]) {
+            if let Some(name) = symbol_at(line.get(at + 1..).unwrap_or_default()) {
                 let _ = bound.insert(name);
             }
         }
@@ -84,7 +84,7 @@ pub(crate) fn undefined_symbols(ir: &str) -> BTreeSet<String> {
     let mut missing = BTreeSet::new();
     for line in ir.lines() {
         for index in uses(line) {
-            if let Some(name) = symbol_at(&line[index + 1..]) {
+            if let Some(name) = symbol_at(line.get(index + 1..).unwrap_or_default()) {
                 if !bound.contains(&name) {
                     let _ = missing.insert(name);
                 }

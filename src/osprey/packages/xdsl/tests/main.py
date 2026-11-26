@@ -15,6 +15,8 @@ from xdsl_expected import Expected
 # refused, where xDSL reads a float.
 TYPE_DIFFERENCES = ["!llvm.array<x i8>", "!llvm.struct<(i64>", "ix"]
 ATTR_DIFFERENCES = ["0x7FF0000000000000 : f64", "\"a\\nb\\t\\\\\\\"\\41\" : i8", "#loc"]
+SEGMENT_SIZES = "operandSegmentSizes"
+"""The property carrying an llvm.call's operand and bundle segment sizes."""
 
 
 def shows(xs, kept):
@@ -61,7 +63,7 @@ def visible(text):
     return f"raw({text})"
 
 
-def hidden(text):
+def hidden(_text):
     """A raw form as the oracle prints it, without its text."""
     return "raw"
 
@@ -279,10 +281,10 @@ def check_grow(fn):
     call = op_at(body(fn, 0), 0, 1)
     expect(f"{call.name} {join(call.results, ',')} {join(call.operands, ',')} {shows(call.operand_types, hidden)} -> {shows(call.result_types, hidden)} line {call.line}", "llvm.call %1 %arg0,%arg1,%0 ptr, i64, i32 -> ptr line 5")
     expect(Ir.symbol_attr(call.properties, "callee"), Success(value="osprey_list_append_of"))
-    expect(Ir.dense_attr(call.properties, "operandSegmentSizes"), Success(value=[3, 0]))
+    expect(Ir.dense_attr(call.properties, SEGMENT_SIZES), Success(value=[3, 0]))
     expect(Ir.dense_attr(call.properties, "op_bundle_sizes"), Success(value=[]))
     expect(Ir.dense_attr(call.properties, "callee"), Error(message="not a dense array"))
-    expect(Ir.symbol_attr(call.properties, "operandSegmentSizes"), Error(message="not a symbol reference"))
+    expect(Ir.symbol_attr(call.properties, SEGMENT_SIZES), Error(message="not a symbol reference"))
     expect(Ir.int_attr(op_at(body(fn, 0), 0, 0).properties, "value"), Success(value=0))
     free = op_at(body(fn, 0), 0, 2)
     expect(f"{free.name} {len(free.results)} {join(free.operands, ',')} {len(free.result_types)}", "llvm.call 0 %arg0 0")
@@ -294,7 +296,7 @@ def check_pick(fn):
     expect(join(mapList(region.blocks, lambda b: f"{b.name}({join(b.args, ',')})={len(b.ops)}"), " "), "^bb0(%arg0)=2 ^bb1()=1 ^bb2()=1 ^bb3(%3)=1")
     branch = op_at(region, 0, 1)
     expect(f"{branch.name} {join(branch.successors, ',')}", "llvm.cond_br ^bb1,^bb2")
-    expect(Ir.dense_attr(branch.properties, "operandSegmentSizes"), Success(value=[1, 0, 0]))
+    expect(Ir.dense_attr(branch.properties, SEGMENT_SIZES), Success(value=[1, 0, 0]))
     expect(outcome(Ir.done(unwrap_or(Ir.get_attr(op_at(region, 0, 0).properties, "value"), Ir.UnitAttr()), 0), written), "raw(dense < 0 >)")
     return expect(join(op_at(region, 2, 0).successors, ","), "^bb3")
 

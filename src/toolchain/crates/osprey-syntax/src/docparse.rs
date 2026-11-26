@@ -297,16 +297,16 @@ pub fn doc_links(text: &str) -> Vec<String> {
     // `char_indices` (no byte indexing, so multi-byte prose can't panic).
     let mut rest = text;
     while let Some(open) = rest.find('[') {
-        let after_open = &rest[open + 1..];
+        let after_open = rest.get(open + 1..).unwrap_or_default();
         let Some(close) = after_open.find(']') else {
             break;
         };
-        let inner = &after_open[..close];
-        let after = after_open[close + 1..].chars().next();
+        let inner = after_open.get(..close).unwrap_or_default();
+        rest = after_open.get(close + 1..).unwrap_or_default();
+        let after = rest.chars().next();
         if is_symbol_link(inner) && after != Some('(') {
             out.push(inner.to_string());
         }
-        rest = &after_open[close + 1..];
     }
     out
 }

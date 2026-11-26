@@ -53,6 +53,11 @@ mod tests {
         found
     }
 
+    /// The source text `node` covers.
+    fn node_text<'a>(source: &'a str, node: tree_sitter::Node<'_>) -> &'a str {
+        source.get(node.byte_range()).expect("char boundary")
+    }
+
     fn binary_expressions<'a>(
         node: tree_sitter::Node<'_>,
         source: &'a str,
@@ -65,7 +70,7 @@ mod tests {
                     let operator = node
                         .child_by_field_name("operator")
                         .expect("operator field");
-                    (&source[node.byte_range()], &source[operator.byte_range()])
+                    (node_text(source, node), node_text(source, operator))
                 }),
         );
     }
@@ -93,19 +98,16 @@ mod tests {
         let tree = parse(source);
         let root = tree.root_node();
         let holes = descendants(root, "interpolation");
-        let hole_texts: Vec<&str> = holes
-            .iter()
-            .map(|node| &source[node.byte_range()])
-            .collect();
+        let hole_texts: Vec<&str> = holes.iter().map(|node| node_text(source, *node)).collect();
         assert_eq!(hole_texts, ["${x + 1}"]);
         let text: String = descendants(root, "string_content")
             .iter()
-            .map(|node| &source[node.byte_range()])
+            .map(|node| node_text(source, *node))
             .collect();
         assert_eq!(text, "  before \\  after $  ");
         let escapes: Vec<_> = descendants(root, "escape_sequence")
             .iter()
-            .map(|node| &source[node.byte_range()])
+            .map(|node| node_text(source, *node))
             .collect();
         assert_eq!(escapes, [r"\t", r#"\""#]);
     }
@@ -205,7 +207,7 @@ mod tests {
                 .ok()
                 .and_then(|index| query.capture_names().get(index))
                 .map_or_else(String::new, |name| (*name).to_owned()),
-            source[capture.node.byte_range()].to_owned(),
+            node_text(source, capture.node).to_owned(),
         )
     }
 

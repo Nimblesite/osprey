@@ -17,6 +17,9 @@ from tokenizers.Tokenizer import QwenTokenizer
 
 __all__ = ["load_qwen_tokenizer"]
 
+PRE_TOKENIZER = "pre_tokenizer.pretokenizers[0]"
+"""The JSON path of the one pre-tokenizer the Qwen tokenizer.json declares."""
+
 def load_qwen_tokenizer(text) -> Result[QwenTokenizer, str]:
     """The tokenizer a `tokenizer.json` document declares."""
     match jsonDecode(text):
@@ -47,9 +50,9 @@ def pipeline_facts(doc) -> list[list[str]]:
     head = [
         member_fact("normalizer", field(doc, "normalizer"), "type", q("NFC")),
         member_fact("pre_tokenizer", pre, "type", q("Sequence")),
-        member_fact("pre_tokenizer.pretokenizers[0]", split_pt, "type", q("Split")),
-        member_fact("pre_tokenizer.pretokenizers[0]", split_pt, "behavior", q("Isolated")),
-        member_fact("pre_tokenizer.pretokenizers[0]", split_pt, "invert", "false"),
+        member_fact(PRE_TOKENIZER, split_pt, "type", q("Split")),
+        member_fact(PRE_TOKENIZER, split_pt, "behavior", q("Isolated")),
+        member_fact(PRE_TOKENIZER, split_pt, "invert", "false"),
         declared("pre_tokenizer.pretokenizers[0].pattern.Regex", q(QWEN_PATTERN), field(field(split_pt, "pattern"), "Regex")),
     ]
     return concat_facts([

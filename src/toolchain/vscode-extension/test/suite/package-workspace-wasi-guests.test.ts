@@ -17,6 +17,7 @@ import { frame } from "./native-rows-kit";
 import {
   ERRNO, I32, expect, forever, guestModule, integer, iovec, load32, load8, ok, probe, runProbe, spin, store32, store8, stubApplication, wasi, wide, type StubBodies,
 } from "./wasm-guest-kit";
+import { present } from "../present";
 
 const open = { now: 1, offset: 0, platform: "vscode", home: "/home", dark: false, arguments: [] };
 const touch = { kind: 0, ordinal: 0, words: "", detail: "", x: 0, y: 0, down: false, shift: false };
@@ -389,8 +390,9 @@ suite("package workspace in-memory WASI", () => {
     assert.strictEqual(await runProbe(probe([...refused, ...clock, ...outside])), 0);
     // Before the instance's memory exists, or with arguments it cannot read, nothing is polled.
     const early = wasiImports(createWasi(), () => undefined).wasi_snapshot_preview1 as Record<string, (...args: unknown[]) => unknown>;
+    const pollOneoff = present(early.poll_oneoff, "the guest imports expose poll_oneoff");
     for (const args of [[1024, 2048, 1, 16], ["1024", 2048, 1, 16], [1024, 2048, undefined, 16]]) {
-      assert.strictEqual(early.poll_oneoff(...args), ERRNO.badf, `poll_oneoff(${String(args)})`);
+      assert.strictEqual(pollOneoff(...args), ERRNO.badf, `poll_oneoff(${String(args)})`);
     }
   });
 

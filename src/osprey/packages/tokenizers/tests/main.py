@@ -414,7 +414,7 @@ def utf8_cases():
     regression: 150,000 three-byte characters in one byte list.
     """
     long_cps = toList(map(range(450000), wide_byte))
-    long_text = cps_text(toList(map(range(150000), lambda i: 26085)))
+    long_text = cps_text(toList(map(range(150000), lambda _i: 26085)))
     names = ["utf8.empty", "utf8.ascii", "utf8.two", "utf8.three", "utf8.four", "utf8.long"]
     byte_rows = [[], [104, 105], [195, 169], [230, 151, 165], [240, 159, 152, 128], long_cps]
     text_rows = ["", "hi", cps_text([233]), cps_text([26085]), cps_text([128512]), long_text]

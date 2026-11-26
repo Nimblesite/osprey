@@ -9,7 +9,9 @@ from tiktoken import Bpe, Core, Educational, Pattern, Unicode
 from tiktoken_expected import Expected
 from tiktoken_tests import Contracts
 
-ALL_SPECIALS = ["<|endoftext|>", "<|fim_prefix|>", "<|fim_middle|>"]
+ENDOFTEXT = "<|endoftext|>"
+"""The one special token every truncated encoding keeps."""
+ALL_SPECIALS = [ENDOFTEXT, "<|fim_prefix|>", "<|fim_middle|>"]
 
 def at(xs, i, missing):
     """The element of a list at i, `missing` past the end."""
@@ -97,7 +99,7 @@ def truth_list(label, count, run, want_error, verdict, describe):
 
 def bytes_list(label, count, run, want_error, want):
     """`count` byte-list cases `label[i]`, each equal to want[i]."""
-    return truth_list(label, count, run, want_error, lambda i, value: structuralEquals(value, at(want, i, [])), lambda i, value: f"got {Unicode.ints_text(value)}")
+    return truth_list(label, count, run, want_error, lambda i, value: structuralEquals(value, at(want, i, [])), lambda _i, value: f"got {Unicode.ints_text(value)}")
 
 def refused_list(label, why, seqs, enc):
     """Failure of every decode sequence list in seqs, reported as `why` when it answers."""
@@ -112,7 +114,7 @@ def trained_ranks():
 def trained_specials():
     """The three special tokens of the trained encoding."""
     return {
-        "<|endoftext|>": Expected.TRAIN_VOCAB,
+        ENDOFTEXT: Expected.TRAIN_VOCAB,
         "<|fim_prefix|>": Expected.TRAIN_VOCAB + 1,
         "<|fim_middle|>": Expected.TRAIN_VOCAB + 2,
     }
@@ -129,10 +131,10 @@ def ranks_from(base_ranks_list, merges):
     return fold(range(len(merges)), base, lambda acc, i: mapSet(acc, Bpe.key(at(merges, i, [])), 256 + i))
 
 def gpt2_trunc_enc():
-    return Core.build("gpt2-trunc", ranks_from(Expected.GPT2_TRUNC_BASE, Expected.GPT2_TRUNC_MERGES), {"<|endoftext|>": 256 + len(Expected.GPT2_TRUNC_MERGES)}, Pattern.Gpt2())
+    return Core.build("gpt2-trunc", ranks_from(Expected.GPT2_TRUNC_BASE, Expected.GPT2_TRUNC_MERGES), {ENDOFTEXT: 256 + len(Expected.GPT2_TRUNC_MERGES)}, Pattern.Gpt2())
 
 def cl100k_trunc_enc():
-    return Core.build("cl100k-trunc", ranks_from(Expected.CL100K_TRUNC_BASE, Expected.CL100K_TRUNC_MERGES), {"<|endoftext|>": 100257}, Pattern.Cl100kBase())
+    return Core.build("cl100k-trunc", ranks_from(Expected.CL100K_TRUNC_BASE, Expected.CL100K_TRUNC_MERGES), {ENDOFTEXT: 100257}, Pattern.Cl100kBase())
 
 def simple_enc():
     return Educational.simple(Pattern.Gpt2(), trained_ranks())
@@ -169,7 +171,7 @@ def encode_cases(enc):
     return concat([
         result_list("encode.ordinary", len(Expected.ENC_TEXTS), lambda i: Core.encode_ordinary(enc, text(at(Expected.ENC_TEXTS, i, []))), Check.ints_equal, Expected.ENC_ORDINARY, []),
         result_list("encode.all", len(Expected.ENC_ALL_TEXTS), lambda i: Core.encode(enc, text(at(Expected.ENC_ALL_TEXTS, i, [])), ALL_SPECIALS), Check.ints_equal, Expected.ENC_ALL_IDS, []),
-        bytes_list("encode.one", len(Expected.ENC_ONE_TEXTS), lambda i: Core.encode(enc, text(at(Expected.ENC_ONE_TEXTS, i, [])), ["<|endoftext|>"]), Expected.ENC_ONE_ERROR, Expected.ENC_ONE_IDS),
+        bytes_list("encode.one", len(Expected.ENC_ONE_TEXTS), lambda i: Core.encode(enc, text(at(Expected.ENC_ONE_TEXTS, i, [])), [ENDOFTEXT]), Expected.ENC_ONE_ERROR, Expected.ENC_ONE_IDS),
         cases(len(Expected.ENC_NONE_TEXTS), lambda i: encode_none_case(enc, i)),
     ])
 
@@ -180,7 +182,7 @@ def decode_cases(enc):
     return concat([
         result_list("decode.replace", seqs, lambda i: Core.decode(enc, at(Expected.DECODE_SEQS, i, [])), Check.equal, Expected.DECODE_REPLACE, ""),
         result_list("decode.ignore", seqs, lambda i: Core.decode_errors(enc, at(Expected.DECODE_SEQS, i, []), "ignore"), Check.equal, Expected.DECODE_IGNORE, ""),
-        truth_list("decode.strict", seqs, lambda i: Core.decode_errors(enc, at(Expected.DECODE_SEQS, i, []), "strict"), mapList(Expected.DECODE_STRICT_OK, lambda ok: not ok), lambda i, value: True, lambda i, value: "expected a strict error"),
+        truth_list("decode.strict", seqs, lambda i: Core.decode_errors(enc, at(Expected.DECODE_SEQS, i, []), "strict"), mapList(Expected.DECODE_STRICT_OK, lambda ok: not ok), lambda _i, _value: True, lambda _i, _value: "expected a strict error"),
         refused_list("decode.nul", "expected an error for NUL", Expected.DECODE_NUL_SEQS, enc),
         refused_list("decode.unknown", "expected an unknown-token error", Expected.DECODE_UNKNOWN_SEQS, enc),
         result_list("decode.bytes", len(Expected.DECODE_BYTES_CASES), lambda i: Core.decode_bytes(enc, at(Expected.DECODE_BYTES_CASES, i, [])), Check.ints_equal, Expected.DECODE_BYTES, []),
@@ -194,7 +196,7 @@ def special_probe(i):
 
 def single_cases(enc):
     return concat([
-        truth_list("single.token", len(Expected.SINGLE_TOKEN_TEXTS), lambda i: Core.encode_single_token(enc, at(Expected.SINGLE_TOKEN_TEXTS, i, "")), Expected.SINGLE_TOKEN_ERROR, lambda i, value: value == at(Expected.SINGLE_TOKEN_IDS, i, 0), lambda i, value: f"got {value}"),
+        truth_list("single.token", len(Expected.SINGLE_TOKEN_TEXTS), lambda i: Core.encode_single_token(enc, at(Expected.SINGLE_TOKEN_TEXTS, i, "")), Expected.SINGLE_TOKEN_ERROR, lambda i, value: value == at(Expected.SINGLE_TOKEN_IDS, i, 0), lambda _i, value: f"got {value}"),
         bytes_list("single.bytes", len(Expected.SINGLE_BYTES_TOKENS), lambda i: Core.decode_single_token_bytes(enc, at(Expected.SINGLE_BYTES_TOKENS, i, 0)), Expected.SINGLE_BYTES_ERROR, Expected.SINGLE_BYTES),
         result_list("tokens.bytes", len(Expected.TOKENS_BYTES_SEQS), lambda i: Core.decode_tokens_bytes(enc, at(Expected.TOKENS_BYTES_SEQS, i, [])), nested_equal, Expected.TOKENS_BYTES, []),
     ])
@@ -232,7 +234,7 @@ def trunc_encoding_cases(label, enc, texts, ids, special_ids):
     """One truncated encoding: its ordinary ids cases, then its special-token ids cases."""
     return concat([
         result_list(label, len(texts), lambda i: Core.encode_ordinary(enc, text(at(texts, i, []))), Check.ints_equal, ids, []),
-        result_list(f"{label}.special", len(texts), lambda i: Core.encode(enc, text(at(texts, i, [])), ["<|endoftext|>"]), Check.ints_equal, special_ids, []),
+        result_list(f"{label}.special", len(texts), lambda i: Core.encode(enc, text(at(texts, i, [])), [ENDOFTEXT]), Check.ints_equal, special_ids, []),
     ])
 
 def trunc_cases():

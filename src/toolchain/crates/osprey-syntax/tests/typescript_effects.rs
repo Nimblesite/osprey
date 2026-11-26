@@ -221,7 +221,7 @@ fn typescript_nesting_past_the_limit_is_a_diagnostic() {
                 .iter()
                 .any(|error| error.message.contains("syntax nesting limit exceeded")),
             "{}…: {:?}",
-            &source[..40.min(source.len())],
+            source.get(..40.min(source.len())).expect("char boundary"),
             parsed.errors.first()
         );
     }

@@ -189,7 +189,14 @@ module EditorView
             Oscillator => -0.5
             _ => 1.5
 
-    indices ports = toList (range (0, length ports))
+    (** The index of every item of `items`, in order. *)
+    export indices items = toList (range (0, length items))
+
+    (** `first`, then every item of `items` with its index, each followed by the list `each` gives it. *)
+    export indexed (items, first, each) = foldList (indices items, first, \(all, index) =>
+        match listGet items index
+            Error _ => all
+            Success item => listConcat all (each (item, index)))
 
     (** Consistent audio, modulation and event cable colours. *)
     export ink rate = match rate
@@ -220,6 +227,9 @@ module EditorView
 
     (** Inclusive bounds for canvas hit testing. *)
     export inside (px, py, cx, cy, halfWidth, halfHeight) = px >= cx - halfWidth && px <= cx + halfWidth && py >= cy - halfHeight && py <= cy + halfHeight
+
+    (** Whether the point `px`, `py` lies within the inclusive bounds of the accessible `area`. *)
+    export covers (area, px, py) = px >= area.accessLeft && px <= area.accessLeft + area.accessWidth && py >= area.accessTop && py <= area.accessTop + area.accessHeight
 
     (** Resolve a pointer to a declared socket, never decorative artwork. *)
     export hitPort (editor, index, ports, output, px, py) = listGet (filterList (indices ports, \port => inside (px, py, portX (editor, index, output, port), portY (editor, index, output, port), 14.0, 14.0))) 0
@@ -412,7 +422,7 @@ module EditorView
     export toolbarAt (editor, x, y) = listGet (filterList (toList (range (0, length (toolbarItems editor))), \i =>
         match listGet (toolbarItems editor) i
             Error _ => false
-            Success a => x >= a.accessLeft && x <= a.accessLeft + a.accessWidth && y >= a.accessTop && y <= a.accessTop + a.accessHeight)) 0
+            Success a => covers (a, x, y))) 0
 
     // [DAW-LAYOUT-FIXED-SCALE] One scene unit is one point at every window size (a negative zoom is that scale
     // exactly): resizing the window shows more or less of the page and never resizes a control.

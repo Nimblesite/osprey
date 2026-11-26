@@ -110,23 +110,31 @@ fn checkFloatPair(label, left, right, expected) = checkAll(label, [
 fn nanComparisonsCase() = {
     let huge = growFloat(2.0, 10)
     let nan = huge - huge
-    checkFloatPair("NaN/NaN", nan, nan, "false,true,false,false,false,false")
-    checkFloatPair("NaN/float", nan, 1.0, "false,true,false,false,false,false")
-    checkFloatPair("float/NaN", 1.0, nan, "false,true,false,false,false,false")
-    checkFloatPair("NaN/zero", nan, 0.0, "false,true,false,false,false,false")
-    checkFloatPair("zero/NaN", 0.0, nan, "false,true,false,false,false,false")
+    // An unordered pair: only != holds.
+    let unordered = "false,true,false,false,false,false"
+    checkFloatPair("NaN/NaN", nan, nan, unordered)
+    checkFloatPair("NaN/float", nan, 1.0, unordered)
+    checkFloatPair("float/NaN", 1.0, nan, unordered)
+    checkFloatPair("NaN/zero", nan, 0.0, unordered)
+    checkFloatPair("zero/NaN", 0.0, nan, unordered)
 }
 fn orderedFloatComparisonsCase() = {
     let huge = growFloat(2.0, 10)
-    checkFloatPair("less", 1.0, 2.0, "false,true,true,true,false,false")
-    checkFloatPair("greater", 2.0, 1.0, "false,true,false,false,true,true")
-    checkFloatPair("equal", 2.0, 2.0, "true,false,false,true,false,true")
-    checkFloatPair("positive infinity", huge, huge, "true,false,false,true,false,true")
-    checkFloatPair("negative infinity", -huge, -huge, "true,false,false,true,false,true")
-    checkFloatPair("opposite infinities", -huge, huge, "false,true,true,true,false,false")
-    checkFloatPair("infinity/finite", huge, 1.0, "false,true,false,false,true,true")
-    checkFloatPair("negative infinity/finite", -huge, 1.0, "false,true,true,true,false,false")
-    checkFloatPair("signed zeros", -0.0, 0.0, "true,false,false,true,false,true")
+    // An ordered pair: left < right, left <= right.
+    let lessRow = "false,true,true,true,false,false"
+    // An ordered pair: left > right, left >= right.
+    let greaterRow = "false,true,false,false,true,true"
+    // An ordered pair whose sides are equal.
+    let equalRow = "true,false,false,true,false,true"
+    checkFloatPair("less", 1.0, 2.0, lessRow)
+    checkFloatPair("greater", 2.0, 1.0, greaterRow)
+    checkFloatPair("equal", 2.0, 2.0, equalRow)
+    checkFloatPair("positive infinity", huge, huge, equalRow)
+    checkFloatPair("negative infinity", -huge, -huge, equalRow)
+    checkFloatPair("opposite infinities", -huge, huge, lessRow)
+    checkFloatPair("infinity/finite", huge, 1.0, greaterRow)
+    checkFloatPair("negative infinity/finite", -huge, 1.0, lessRow)
+    checkFloatPair("signed zeros", -0.0, 0.0, equalRow)
 }
 exactTests([
     { name: "NaN comparison truth table", work: nanComparisonsCase },

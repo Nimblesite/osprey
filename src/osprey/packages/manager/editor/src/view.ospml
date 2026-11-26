@@ -13,6 +13,9 @@ module View
     // contract exists, so an empty findings list stays a caution everywhere.
     unverified = "No findings recorded; audit status unverified"
     unverifiedSymbol = "questionmark.shield"
+    // The symbols of an installed package and of one the disk no longer holds.
+    installedSymbol = "checkmark.circle"
+    missingSymbol = "questionmark.folder"
     auditBanner = "No verified security audit is available. Review each package's warnings before adding it."
     pausedNote = "Package actions are paused while package work is in progress."
     idleNote = "Actions apply to the selected package."
@@ -28,8 +31,8 @@ module View
     catalogRows snapshot = mapList (filterList (snapshot.packageCatalog, \item => matches (snapshot.packageSearch, catalogKey item)), \item => catalogRow item)
 
     presenceBadge item = match item.entryPresent
-        true => Ui::badge ("Installed", "checkmark.circle", ui::Good)
-        false => Ui::badge ("Missing from disk", "questionmark.folder", ui::Caution)
+        true => Ui::badge ("Installed", installedSymbol, ui::Good)
+        false => Ui::badge ("Missing from disk", missingSymbol, ui::Caution)
 
     dependencyBadge item = match item.entryDirect
         true => Ui::badge ("Direct", "link", ui::Accent)
@@ -178,7 +181,7 @@ module View
     confirmation snapshot = Ui::column [
         ui::Alert(title = "Confirm ${snapshot.packageConfirming} ${snapshot.packageConfirmKey}", message = confirmationMessage snapshot, visible = true, dismiss = DismissAlert),
         Ui::row [
-            Ui::action ("Confirm ${snapshot.packageConfirming} ${snapshot.packageConfirmKey}", "checkmark.circle", ui::Destructive, true, Confirm),
+            Ui::action ("Confirm ${snapshot.packageConfirming} ${snapshot.packageConfirmKey}", installedSymbol, ui::Destructive, true, Confirm),
             Ui::button ("Cancel", "xmark", DismissAlert),
         ],
     ]
@@ -202,7 +205,7 @@ module View
         true => ui::Progress(label = "Package work in progress", detail = snapshot.packageNotice)
         false => match snapshot.packageFault
             true => Ui::badge (snapshot.packageNotice, "exclamationmark.triangle", ui::Danger)
-            false => Ui::badge (snapshot.packageNotice, "checkmark.circle", ui::Secondary)
+            false => Ui::badge (snapshot.packageNotice, installedSymbol, ui::Secondary)
 
     metrics snapshot = Ui::row [
         Ui::pair ("Installed", "${installedCount snapshot}"),
@@ -212,9 +215,9 @@ module View
         Ui::pair ("Catalog", "${length snapshot.packageCatalog}"),
     ]
 
-    missingBadge item = Ui::badge ("${installedKey item} · missing from disk", "questionmark.folder", ui::Caution)
+    missingBadge item = Ui::badge ("${installedKey item} · missing from disk", missingSymbol, ui::Caution)
 
-    missingRow item = Ui::entry (installedKey item, "questionmark.folder", groupOf item, Ui::column [missingBadge item, findingsBadge item.entryFindings])
+    missingRow item = Ui::entry (installedKey item, missingSymbol, groupOf item, Ui::column [missingBadge item, findingsBadge item.entryFindings])
 
     missingSection snapshot = match isEmpty (missingItems snapshot)
         true => Ui::column []

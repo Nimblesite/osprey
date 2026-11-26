@@ -14,6 +14,13 @@ from fastapi import Urls
 from fastapi_tests import Fixture
 from fastapi_expected import Expected
 
+OK = "{\"status\":\"ok\"}"
+"""The health probe's body, whichever of its three paths answers."""
+TRACE = "/dependency-trace"
+"""The route whose body records dependency setup and teardown."""
+LIFESPAN_LOG = "start\nwork\nstop\n"
+"""What a lifespan that starts, works and stops appends to its trace file."""
+
 
 def assert_reply(result, status, body):
     match result:
@@ -183,9 +190,9 @@ def manual_contract_cases(client):
 
 
 def requests(client):
-    assert_reply(httpGetResponse(client, "/health", ""), 200, "{\"status\":\"ok\"}")
-    assert_reply(httpGetResponse(client, "/health?probe=1", ""), 200, "{\"status\":\"ok\"}")
-    assert_reply(httpGetResponse(client, "/api/health", ""), 200, "{\"status\":\"ok\"}")
+    assert_reply(httpGetResponse(client, "/health", ""), 200, OK)
+    assert_reply(httpGetResponse(client, "/health?probe=1", ""), 200, OK)
+    assert_reply(httpGetResponse(client, "/api/health", ""), 200, OK)
     assert_reply(httpGetResponse(client, "/api/contract/exception", "X-Trace-Id: mounted"), 429, '{"error":"limit reached","trace_id":"mounted"}')
     assert_reply(httpGetResponse(client, "/readyz", ""), 503, "{\"detail\":\"database unavailable\"}")
     assert_reply(httpGetResponse(client, "/health/", ""), 307, "")
@@ -320,10 +327,10 @@ def lifespan_case(path, port, mode, trace):
 def lifespan_cases(port):
     path = f"target/fastapi-lifespan-{port}.trace"
     expect(lifespan_case(path, port, "startup", "start\n"), Error(message="startup refused"))
-    expect(lifespan_case(path, port, "normal", "start\nwork\nstop\n"), Success(value=42))
-    expect(lifespan_case(path, port, "work", "start\nwork\nstop\n"), Error(message="work failed"))
-    expect(lifespan_case(path, port, "shutdown", "start\nwork\nstop\n"), Error(message="shutdown refused"))
-    return expect(lifespan_case(path, port, "combined", "start\nwork\nstop\n"), Error(message="work failed; lifespan shutdown failed: shutdown refused"))
+    expect(lifespan_case(path, port, "normal", LIFESPAN_LOG), Success(value=42))
+    expect(lifespan_case(path, port, "work", LIFESPAN_LOG), Error(message="work failed"))
+    expect(lifespan_case(path, port, "shutdown", LIFESPAN_LOG), Error(message="shutdown refused"))
+    return expect(lifespan_case(path, port, "combined", LIFESPAN_LOG), Error(message="work failed; lifespan shutdown failed: shutdown refused"))
 
 
 def lifecycle():
@@ -429,11 +436,11 @@ def parameter_cases(client):
 
 def configuration_cases(client):
     assert_reply(httpGetResponse(client, "/deps/cycle", ""), 500, '{"detail":"Dependency cycle: cycle"}')
-    assert_reply(httpGetResponse(client, "/dependency-trace", ""), 200, '{"trace":["open:1","close:1"]}')
+    assert_reply(httpGetResponse(client, TRACE, ""), 200, '{"trace":["open:1","close:1"]}')
     assert_reply(httpGetResponse(client, "/deps/missing", ""), 500, '{"detail":"Expected exactly one dependency provider: missing"}')
-    assert_reply(httpGetResponse(client, "/dependency-trace", ""), 200, '{"trace":["open:1","close:1"]}')
+    assert_reply(httpGetResponse(client, TRACE, ""), 200, '{"trace":["open:1","close:1"]}')
     assert_reply(httpGetResponse(client, "/deps/duplicate", ""), 500, '{"detail":"Expected exactly one dependency provider: session"}')
-    return assert_reply(httpGetResponse(client, "/dependency-trace", ""), 200, '{"trace":[]}')
+    return assert_reply(httpGetResponse(client, TRACE, ""), 200, '{"trace":[]}')
 
 
 

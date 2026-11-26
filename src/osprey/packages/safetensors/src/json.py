@@ -187,7 +187,7 @@ def string_body(text, pos, pieces) -> Result[Parsed, str]:
     match codePointAt(text, pos):
         case Success(value=value):
             return string_char(text, pos, value, pieces)
-        case Error(message=message):
+        case Error(message=_):
             return Error(message="invalid JSON: unterminated string")
 
 
@@ -208,7 +208,7 @@ def string_escape(text, pos, pieces):
     match codePointAt(text, pos + 1):
         case Success(value=value):
             return escape_char(text, pos, value, pieces)
-        case Error(message=message):
+        case Error(message=_):
             return Error(message="invalid JSON: unterminated escape")
 
 
@@ -325,7 +325,7 @@ def number_from(parsed, end, wrap):
     match parsed:
         case Success(value=value):
             return Success(value=Parsed(value=wrap(value), next=end))
-        case Error(message=message):
+        case Error(message=_):
             return Error(message="invalid JSON: bad number")
 
 

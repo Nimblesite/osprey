@@ -50,7 +50,7 @@ def qwen_from_vocabulary(tokens, types, merges) -> Result[QwenTokenizer, str]:
             return Error(message=message)
 
 
-def with_merges(tokens, types, ids, bytes_ids, merges) -> Result[QwenTokenizer, str]:
+def with_merges(tokens, types, _ids, bytes_ids, merges) -> Result[QwenTokenizer, str]:
     if merges.bad >= 0:
         return Error(message="merge " + toString(merges.bad) + " names a spelling the vocabulary lacks")
     else:

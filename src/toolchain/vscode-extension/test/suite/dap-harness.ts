@@ -288,7 +288,7 @@ const SOURCE_RESOLVE_GRACE_MS = 2_000;
 function topFrameResolved(stop: DapStop): boolean {
   const top = stop.stack.stackFrames[0];
   const path = top?.source?.path;
-  return path !== undefined && path !== "" && path !== "." && top.line >= 1;
+  return path !== undefined && path !== "" && path !== "." && top !== undefined && top.line >= 1;
 }
 
 async function stoppedThreadIds(

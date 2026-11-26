@@ -26,14 +26,16 @@ fn helloSmokeCase() = {
     let numbers = [2, 3, 5, 8]
     let numberBuckets = { "small": numbers, "large": [13, 21, 34] }
 
+    // The greeting the legacy line carried, kept as its own text to compare against.
+    let expectedGreeting = "Hello from the ML flavor"
     // Reconstruct both complete legacy lines byte-for-byte as string values.
     checkAll("hello legacy rendered lines", [
-            greeting == "Hello from the ML flavor",
+            greeting == expectedGreeting,
             "2 + 3 = ${2 + 3}" == "2 + 3 = 5"
     ])
     // Split the two dynamic constituents from their rendered presentation.
     checkAll("hello legacy constituent values", [
-            greeting == "Hello from the ML flavor",
+            greeting == expectedGreeting,
             (2 + 3 ) == 5
     ])
     // Confirm useful boundaries of the greeting rather than only whole equality.

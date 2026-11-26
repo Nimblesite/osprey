@@ -175,23 +175,26 @@ module Recursors
 
     recursionOf (spec, peeled) = recursionHead (spec, peeled, Terms::spine peeled.peeledRest)
 
+    // What every branch answers when the type ends in no family of the group.
+    notRecursive = Error(message = "not recursive")
+
     recursionHead (spec, peeled, spine) = match spine.spineHead
         Const name levels => recursionNamed (spec, peeled, spine, familyOf (spec, name, levels))
-        _ => Error(message = "not recursive")
+        _ => notRecursive
 
     (** The index of the group family `name` at exactly the group's
         universe arguments. *)
     familyOf (spec, name, levels) = familyFrom (spec, spec.specFormers, name, levels, 0)
 
     familyFrom (spec, formers, name, levels, e) = match formers
-        [] => Error(message = "not recursive")
+        [] => notRecursive
         [first, ...rest] => match first.formerName == name && Terms::equalLevels (levels, spec.specLevels)
             true => Success(value = e)
             false => familyFrom (spec, rest, name, levels, satAdd e 1)
 
     recursionNamed (spec, peeled, spine, found) = match found
         Success e => Success(value = Recursion(recursionFamily = e, recursionBinders = peeled.peeledBinders, recursionIndices = Terms::suffix (spine.spineArgs, paramCount spec)))
-        Error _ => Error(message = "not recursive")
+        Error _ => notRecursive
 
     (** One ι rule per constructor of family `d`, in order; each
         right-hand side closes over the shared parameters, every motive

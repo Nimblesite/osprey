@@ -28,15 +28,17 @@ fn preview() = match load() {
     Error { message } => "Cannot load: ${message}"
 }
 
+let flightLogTitle = "Build a small Osprey CLI"
+
 fn saveAndLoad() =
-    match perform Store.write("Build a small Osprey CLI") {
+    match perform Store.write(flightLogTitle) {
         Success { value } => "Saved ${value} bytes; ${preview()}"
         Error { message } => "Cannot save: ${message}"
     }
 
 fn fixture(raw) = handler Store {
     read => Success { value: raw }
-    write text => if text == "Build a small Osprey CLI" {
+    write text => if text == flightLogTitle {
         Success { value: byteLength(text) }
     } else {
         Error { message: "unexpected title" }
@@ -44,7 +46,7 @@ fn fixture(raw) = handler Store {
 }
 
 fn fixtureExamples() = {
-    let ready = fixture("Build a small Osprey CLI")
+    let ready = fixture(flightLogTitle)
     let invalid = fixture("  \n  ")
     let unreadable = handler Store {
         read => Error { message: "permission denied" }

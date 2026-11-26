@@ -18,6 +18,8 @@ from jinja2 import Render, Value as V
 from port_common import Policy
 
 ROUGE_TYPES = ["rouge1", "rouge2", "rougeL", "rougeLsum"]
+# The suite every check group, test and policy runs under.
+SUITE = "text-evaluation"
 CLS_ID = 2
 SEP_ID = 3
 UNK_ID = 1
@@ -176,7 +178,7 @@ def score_of(run, index, metric):
 
 
 def report_checks(run_value):
-    return checkAll("text-evaluation", [
+    return checkAll(SUITE, [
         len(run_value.evaluations) == len(CANDIDATES),
         score_of(run_value, 0, 0) > score_of(run_value, 2, 0),
         score_of(run_value, 0, 3) > score_of(run_value, 2, 3),
@@ -197,8 +199,8 @@ def report_checks(run_value):
 def application():
     run_value = run()
     print(run_value.report)
-    test("text-evaluation", lambda: report_checks(run_value))
+    test(SUITE, lambda: report_checks(run_value))
 
 
 def main():
-    return Policy.execute("text-evaluation", application)
+    return Policy.execute(SUITE, application)

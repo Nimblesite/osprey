@@ -49,22 +49,35 @@ module Objective {
         lag: a.lag + b.lag
     }
 
+    /// Lexicographic order of a tuple of comparisons, component by component:
+    /// the first non-zero verdict decides, and `0` means equal.
+    fn chain(comparisons) = foldList(comparisons, 0, Order::thenCompare)
+
     /// Lexicographic order of the objective tuple: smaller is better.
-    export fn compare(a, b) = Order::thenCompare(Order::compareInts(a.vulnerability, b.vulnerability),
-        Order::thenCompare(Order::compareInts(a.overdue, b.overdue),
-            Order::thenCompare(Order::compareInts(a.unknown, b.unknown),
-                Order::thenCompare(Order::compareInts(a.evidence, b.evidence),
-                    Order::thenCompare(Order::compareInts(a.changed, b.changed),
-                        Order::thenCompare(Order::compareInts(a.size, b.size), Order::compareInts(a.lag, b.lag)))))))
+    export fn compare(a, b) = chain([
+            Order::compareInts(a.vulnerability, b.vulnerability),
+            Order::compareInts(a.overdue, b.overdue),
+            Order::compareInts(a.unknown, b.unknown),
+            Order::compareInts(a.evidence, b.evidence),
+            Order::compareInts(a.changed, b.changed),
+            Order::compareInts(a.size, b.size),
+            Order::compareInts(a.lag, b.lag)
+    ])
 
     // `ReleaseId` and `SystemTuple` share `digest`; issue #273 needs the receivers spelled out.
     /// Tie-break for package nodes: `(key, epoch, ordinal DESC, digest)`.
-    export fn comparePackageTie(a: Identity::ReleaseId, b: Identity::ReleaseId) = Order::thenCompare(Names::compare(a.key, b.key),
-        Order::thenCompare(Order::compareInts(a.epoch, b.epoch),
-            Order::thenCompare(Order::compareInts(b.ordinal, a.ordinal), Order::compareStrings(a.digest, b.digest))))
+    export fn comparePackageTie(a: Identity::ReleaseId, b: Identity::ReleaseId) = chain([
+            Names::compare(a.key, b.key),
+            Order::compareInts(a.epoch, b.epoch),
+            Order::compareInts(b.ordinal, a.ordinal),
+            Order::compareStrings(a.digest, b.digest)
+    ])
 
     /// Tie-break for system inputs: `(capability, provider, revision, digest)`.
-    export fn compareSystemTie(a: SystemTuple, b: SystemTuple) = Order::thenCompare(Order::compareStrings(a.capability, b.capability),
-        Order::thenCompare(Order::compareStrings(a.provider, b.provider),
-            Order::thenCompare(Order::compareInts(a.revision, b.revision), Order::compareStrings(a.digest, b.digest))))
+    export fn compareSystemTie(a: SystemTuple, b: SystemTuple) = chain([
+            Order::compareStrings(a.capability, b.capability),
+            Order::compareStrings(a.provider, b.provider),
+            Order::compareInts(a.revision, b.revision),
+            Order::compareStrings(a.digest, b.digest)
+    ])
 }

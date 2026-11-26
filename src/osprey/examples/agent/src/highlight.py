@@ -14,7 +14,18 @@ __all__ = ["Token", "tokens_of", "language_of_path", "MAX_BYTES"]
 MAX_BYTES = 200000
 """The most bytes of code that are scanned into tokens; a longer block draws as
 one plain stretch, because the transcript is rebuilt on every change. A
-2,000-line file is well under this and scans in milliseconds."""
+2,000-line file is well under this and scans in milliseconds.
+
+# Examples
+```osprey
+from agent import Highlight
+
+print(f"a block over {Highlight.MAX_BYTES} bytes draws as one plain stretch")
+```
+```output
+a block over 200000 bytes draws as one plain stretch
+```
+"""
 
 
 class Token:
@@ -154,7 +165,24 @@ def from_end(text, mark):
 
 
 def language_of_path(path):
-    """The language a file path's extension names, "" when it names none: a dotfile has no extension."""
+    """The language a file path's extension names, "" when it names none: a dotfile has no extension.
+
+    # Examples
+    ```osprey
+    from agent import Highlight
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, value):
+            return value
+
+    with wrapped:
+        print(f"[{Highlight.language_of_path('src/Main.swift')}] [{Highlight.language_of_path('.gitignore')}] [{Highlight.language_of_path('notes.txt')}] [{Highlight.language_of_path('a/README.MD')}]")
+    ```
+    ```output
+    [swift] [] [] [markdown]
+    ```
+    """
     name = drop(path, from_end(path, "/") + 1)
     at = from_end(name, ".")
     ext = toLowerCase(drop(name, at + 1))
@@ -187,7 +215,27 @@ class Scan:
 def tokens_of(language, code):
     """The tokens of `code` written in `language`: joining every token's text
     gives `code` back exactly. An unknown language tries nothing, and code past
-    `MAX_BYTES` draws as one plain stretch."""
+    `MAX_BYTES` draws as one plain stretch.
+
+    # Examples
+    ```osprey
+    from agent import Highlight
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, value):
+            return value
+
+    with wrapped:
+        code = 'fn main() { println!("hi") }'
+        tokens = Highlight.tokens_of("rust", code)
+        first = unwrap_or(tokens[0], Highlight.Token(tokenText="", tokenKind=""))
+        print(f"{first.tokenKind} {first.tokenText} {join(mapList(tokens, lambda t: t.tokenText), '') == code} {len(Highlight.tokens_of('nope', code))}")
+    ```
+    ```output
+    keyword fn true 1
+    ```
+    """
     lang = table_of(language)
     return [Token(tokenText=code, tokenKind="")] if length(lang.langNames) == 0 or byteLength(code) > MAX_BYTES else scan_code(lang, code)
 

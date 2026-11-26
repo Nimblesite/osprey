@@ -231,6 +231,7 @@ def receiver_cases(l):
 
 def quiet_case(l):
     """A quiet device gets a PING; the frame that follows is still delivered."""
+    case = "device.quiet"
     pid = serve(l, 5, [1], 2, 1)
     match Session.open("127.0.0.1", l.port + 5):
         case Success(value=session):
@@ -239,12 +240,12 @@ def quiet_case(l):
             _done = done(pid)
             match got:
                 case Success(value=message):
-                    return Check.equal("device.quiet", message.payload, unwrap_or(listGet(Expected.RECEIVED_TEXT, 1), ""))
+                    return Check.equal(case, message.payload, unwrap_or(listGet(Expected.RECEIVED_TEXT, 1), ""))
                 case Error(message=failure):
-                    return Check.failed("device.quiet", failure)
+                    return Check.failed(case, failure)
         case Error(message=failure):
             _done = done(pid)
-            return Check.failed("device.quiet", failure)
+            return Check.failed(case, failure)
 
 
 def closed_case(l):
@@ -280,12 +281,13 @@ def body_of(response):
 
 def stale_cases():
     """A cast whose session is gone fails every call instead of hanging."""
+    send_failed = "error send failed (-1)"
     stale = update(stale_player(999), media_session="1")
     return [
         Check.equal("stale.poll", outcome(Player.poll(stale, 0, 1), lambda p: p.phase), "error read failed"),
-        Check.equal("stale.pause", outcome(Player.pause(stale), lambda p: p.phase), "error send failed (-1)"),
-        Check.equal("stale.volume", outcome(Player.volume(stale, 0.5), lambda p: p.phase), "error send failed (-1)"),
-        Check.equal("stale.write", outcome(Session.write(stale.session, "receiver-0", "receiver", Protocol.ping()), lambda _u: "sent"), "error send failed (-1)"),
+        Check.equal("stale.pause", outcome(Player.pause(stale), lambda p: p.phase), send_failed),
+        Check.equal("stale.volume", outcome(Player.volume(stale, 0.5), lambda p: p.phase), send_failed),
+        Check.equal("stale.write", outcome(Session.write(stale.session, "receiver-0", "receiver", Protocol.ping()), lambda _u: "sent"), send_failed),
         Check.equal("stale.end", Player.end(stale), -1),
         Check.equal("stale.unserve.nothing", Media.unserve(Media.NOTHING), -1),
         Check.equal("stale.quiet_ms", Session.QUIET_MS, 10000),

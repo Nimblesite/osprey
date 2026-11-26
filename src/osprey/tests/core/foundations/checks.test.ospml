@@ -6,6 +6,9 @@ classify 0 = "zero"
 classify 1 = "one"
 classify _ = "many"
 
+(** tens is the three-element int list the length, index and readAt cases share. *)
+tens = [10, 20, 30]
+
 (** Exercise arithmetic values and relational properties. *)
 arithmeticCase () =
     // Check results and ordering independently.
@@ -40,7 +43,7 @@ stringsAndListsCase () =
         toUpperCase "Osprey" == "OSPREY",
         startsWith "osprey language" "osprey",
         !(endsWith "osprey language" "compiler"),
-        listLength [10, 20, 30] == 3
+        listLength tens == 3
     ]
 
 (** Exact-value tests record any arithmetic fault as a failed assertion. *)
@@ -172,8 +175,8 @@ typedErrorCase () =
     expect "${code (-7)} ${flag 10} ${frac 10} ${toString (nested 12)} ${code 3}" "Error(-7) Error(true) Error(2.5) Error(Error(-3)) Success(3)"
     forEachList [-1, -2, -3] (\n => expectError (code n) n)
     expect (range (-2) 3 |> fold 0 (\(sum, n) => satAdd sum (code n ?: 100))) 203
-    expectError (listGet [10, 20, 30] 7) (IndexOutOfBounds(index = 7, length = 3))
-    expectError ((listAppend [10, 20, 30] 40)[-2]) (IndexOutOfBounds(index = -2, length = 4))
+    expectError (listGet tens 7) (IndexOutOfBounds(index = 7, length = 3))
+    expectError ((listAppend tens 40)[-2]) (IndexOutOfBounds(index = -2, length = 4))
     expect "${parseLen ""} ${ratio 500} ${ratio 0} ${toString (ParseError(code = 2, why = "odd"))}" "Error({ code: 1, why: \"empty\" }) Error(Overflow { by: 500 }) Error(DivZero) { code: 2, why: \"odd\" }"
     expect "${[Overflow(by = 1), DivZero]} ${[["a"], []]} ${[parseLen "", parseLen "ab"]}" "[Overflow { by: 1 }, DivZero] [[\"a\"], []] [Error({ code: 1, why: \"empty\" }), Success(2)]"
     inline = match listLength [1] > 0
@@ -183,7 +186,7 @@ typedErrorCase () =
     expect (ParseError(code = 1, why = "x")) (ParseError(code = 1, why = "x"))
     check "lists and unions compare by rendering" [Overflow(by = 2), DivZero] [Overflow(by = 2), DivZero]
     check "a record payload compares whole" (parseLen "") (parseLen "")
-    expect "${readAt ([10, 20, 30], 1)} ${readAt ([10, 20, 30], 3)} ${readAt ((listAppend (List ()) 5), 9)} ${[1, 2][4] ?: -1}" "got 20 3 of 3 9 of 1 -1"
+    expect "${readAt (tens, 1)} ${readAt (tens, 3)} ${readAt ((listAppend (List ()) 5), 9)} ${[1, 2][4] ?: -1}" "got 20 3 of 3 9 of 1 -1"
     expect "${["a\"b", "c\\d", "e\nf\tg"]} ${ParseError(code = 3, why = "say \"hi\"")} ${[["\\"]]} ${toString "a\"b"}" "[\"a\\\"b\", \"c\\\\d\", \"e\\nf\\tg\"] { code: 3, why: \"say \\\"hi\\\"\" } [[\"\\\\\"]] a\"b"
 
 (** A binary tree, taken apart several levels deep in one arm. [PATTERN-NESTED] *)

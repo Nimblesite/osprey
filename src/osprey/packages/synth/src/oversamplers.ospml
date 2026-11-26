@@ -3,16 +3,48 @@ namespace synth
 
 (** 31-tap Blackman half-band filters up and down; latency is 15 base-rate samples plus the shaper's. *)
 module Oversamplers
-    (** Filter length; odd so the centre tap is exact. *)
+    (** Filter length; odd so the centre tap is exact.
+    # Examples
+    ```osprey
+    print "${Oversamplers::taps}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export taps = 31
 
-    (** Base-rate latency of the resampling filters. *)
+    (** Base-rate latency of the resampling filters.
+    # Examples
+    ```osprey
+    print "${Oversamplers::latency}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export latency = 15
 
-    (** The 31 fixed half-band taps shared by the upsampler and decimator. *)
+    (** The 31 fixed half-band taps shared by the upsampler and decimator.
+    # Examples
+    ```osprey
+    print "${listLength (Oversamplers::coefficients ())} ${listGet (Oversamplers::coefficients ()) 15}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export coefficients () = mapList (toList (range (0, taps)), \index => NonlinearMath::halfband (toFloat index, toFloat taps))
 
-    (** Silent shaper and filter histories. *)
+    (** Silent shaper and filter histories.
+    # Examples
+    ```osprey
+    print "${Oversamplers::initial ()}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export initial () = OversampledState(shaper = Waveshapers::initial, up = Sequences::zeros taps, down = Sequences::zeros taps)
 
     accumulated (history, weights, index, sum) = match listGet weights index
@@ -21,7 +53,15 @@ module Oversamplers
             Error _ => sum
             Success sample => accumulated (history, weights, satAdd index 1, sum + sample * tap)
 
-    (** Apply the half-band FIR from oldest to newest in the stored sample history. *)
+    (** Apply the half-band FIR from oldest to newest in the stored sample history.
+    # Examples
+    ```osprey
+    print "${Oversamplers::filtered (Sequences::zeros 31)}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export filtered history = accumulated (history, coefficients (), 0, 0.0)
 
     // Run the shaper at twice the rate, telling it so: its 5 Hz DC blocker keeps its corner in real time.
@@ -34,10 +74,31 @@ module Oversamplers
         downed = Sequences::shifted (Sequences::shifted (held.down, first.sample), second.sample)
         OversampledSample(sample = accumulated (downed, weights, 0, 0.0), next = OversampledState(shaper = second.next, up = upSecond, down = downed))
 
-    (** One base-rate sample; histories of the wrong length are an error rather than a guessed filter. *)
+    (** One base-rate sample; histories of the wrong length are an error rather than a guessed filter.
+    # Examples
+    ```osprey
+    config = ShaperConfig(sampleRate = 48000.0, curve = TanhCurve, drive = 1.0, bias = 0.0, level = 1.0, antialias = false)
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => Oversamplers::next (config, Oversamplers::initial (), 0.0))}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export next (config, held, input) = prepared (config, held, input, coefficients ())
 
-    (** Apply a prepared half-band filter to one base-rate sample. *)
+    (** Apply a prepared half-band filter to one base-rate sample.
+    # Examples
+    ```osprey
+    print "${Oversamplers::prepared (ShaperConfig(sampleRate = 48000.0, curve = TanhCurve, drive = 1.0, bias = 0.0, level = 1.0, antialias = false), Oversamplers::initial (), 0.0, [])}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export prepared (config, held, input, weights) = match length weights == taps && length held.up == taps && length held.down == taps
         false => Error(message = IncompatibleLayout(detail = "Oversampler history does not match its filter."))
         true => Success(value = shapedPair (config, held, input, weights))

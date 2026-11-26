@@ -733,7 +733,7 @@ testing ("the provider's own API names the models, the pickers cascade and every
     failed = (completed (listed, "models:deepseek", Error(message = "offline"))).stepStore
     forEachList ([refused, failed], \store => composerShows (store, "deepseek-v9"))
     // Saving a key asks that provider; its list then offers its models, and removing the key forgets them.
-    typedKey = zaiKeyTyped listed
+    _typedKey = zaiKeyTyped listed
     savedKey = zaiKeySaved listed
     expectAskedKinds (savedKey, "store-write,http", 1, "url", "https://api.z.ai/api/paas/v4/models")
     zai = modelsSettled (savedKey.stepStore, "zai", 200, modelsList ["glm-9"])
@@ -1062,7 +1062,7 @@ expectLocalOn step want = match Lists::find (step.stepStore.mcp.stateServers, \o
     Error _ => expect ("local", "found")
 
 testing ("launch asks for the MCP documents, connects enabled servers and keeps project servers off", \() =>
-    first = launchAsk ()
+    _first = launchAsk ()
     started = mcpLaunched ()
     // The demo stdio server starts with its configured environment.
     request = askedAt (started, 0)

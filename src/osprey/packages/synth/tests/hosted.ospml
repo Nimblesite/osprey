@@ -492,7 +492,7 @@ registerHostedJourneys () =
         invalidGain = gain(parameters = [synth::Parameter(key = "gain", label = "Gain", unit = synth::Amplitude, minimum = -1.0, maximum = 8.0, initial = -1.0, automatable = true)])
         forEachList ([gain(parameters = []), invalidGain, filtered(parameters = []), missingResonance, Components::lowpass (2, 0.0, 0.7), Components::mixer 2, Components::delay (2, 0)], \bad => renderRefused (synth::ClipKernels::render (plan(graph = graph(nodes = [source, bad, Components::output 3])), [clip], bad, 2, 1)))
         controlledGain = Components::modulatedGain (2, 1, 1.0)
-        controlGraph = graph(nodes = [source, controlledGain, Components::lfo (4, 2.0), Components::output 3], cables = [cable (1, 2), Components::route (4, 0, 2, 1), cable (2, 3)])
+        controlGraph = graph(nodes = [source, controlledGain, Components::lfo (4, 2.0), Components::output 3], cables = modulatedRoute ())
         controlClip = nodeClipAt (4, [0.5, 0.5])
         renderRefused (synth::ClipKernels::render (plan(graph = controlGraph), [clip, controlClip(clipSamples = [1.1, 1.1])], controlledGain, 2, 1))
         forEachList ([controlledGain(parameters = []), controlledGain(parameters = invalidGain.parameters)], \bad => renderRefused (synth::ClipKernels::render (plan(graph = controlGraph(nodes = [source, bad, Components::lfo (4, 2.0), Components::output 3])), [clip, controlClip], bad, 2, 1)))

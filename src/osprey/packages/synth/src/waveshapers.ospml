@@ -3,15 +3,40 @@ namespace synth
 
 (** Curves are bounded to ±1. ADAA adds half a sample of delay and is exact only for its first-order model. *)
 module Waveshapers
-    (** Silent history. *)
+    (** Silent history.
+    # Examples
+    ```osprey
+    print "${Waveshapers::initial}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export initial = ShaperState(previous = 0.0, blockerInput = 0.0, blockerOutput = 0.0)
 
-    (** Drive 0.1–50 (linear input gain), bias −1–1 (asymmetry, removed again by a 5 Hz DC blocker), level 0–1. *)
+    (** Drive 0.1–50 (linear input gain), bias −1–1 (asymmetry, removed again by a 5 Hz DC blocker), level 0–1.
+    # Examples
+    ```osprey
+    config = ShaperConfig(sampleRate = 48000.0, curve = TanhCurve, drive = 4.0, bias = 0.0, level = 0.5, antialias = false)
+    print "${Waveshapers::configure config} ${Waveshapers::configure (config(drive = 0.0))}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export configure config = match config.sampleRate >= 8000.0 && config.sampleRate <= 384000.0 && config.drive >= 0.1 && config.drive <= 50.0 && config.bias >= -1.0 && config.bias <= 1.0 && config.level >= 0.0 && config.level <= 1.0
         true => Success(value = config)
         false => Error(message = InvalidConfiguration(detail = "Invalid shaper rate, drive, bias or level."))
 
-    (** The memoryless curve. *)
+    (** The memoryless curve.
+    # Examples
+    ```osprey
+    print "${Waveshapers::curve (TanhCurve, 0.0)} ${Waveshapers::curve (HardCurve, 2.0)} ${Waveshapers::curve (CubicCurve, 2.0)} ${Waveshapers::curve (FoldCurve, 1.0)}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export curve (shape, x) = match shape
         TanhCurve => NonlinearMath::tanh x
         HardCurve => NonlinearMath::hard x
@@ -32,7 +57,20 @@ module Waveshapers
                 true => curve (config.curve, 0.5 * (current + previous))
                 false => (integral (config.curve, current) - integral (config.curve, previous)) / difference
 
-    (** One sample with an accepted configuration. *)
+    (** One sample with an accepted configuration.
+    # Examples
+    ```osprey
+    config = ShaperConfig(sampleRate = 48000.0, curve = TanhCurve, drive = 4.0, bias = 0.0, level = 0.5, antialias = false)
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => Waveshapers::next (config, Waveshapers::initial, 0.0))}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export next (config, held, input) =
         driven = config.drive * input + config.bias
         value = shaped (config, driven, held.previous)

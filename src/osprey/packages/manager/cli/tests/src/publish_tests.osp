@@ -8,14 +8,16 @@ namespace registry_tests;
 /// without `--folder` is refused before anything is written.
 module PublishTests {
     let project = "/abs"
+    /// The manifest's entry file.
+    let mainPath = "src/main.osp"
     let folder = "/reg"
 
     fn manifestText() = "[project]\nname = \"one\"\nsource_roots = [\"src\"]\n\n[package]\nname = \"@demo/one\"\nlicense = \"MIT\"\nsummary = \"one\"\nkeywords = [\"one\"]\n"
 
-    fn files() = [Fixture::file("osprey.toml", manifestText()), Fixture::file("src/main.osp", "fn main() = 0\n")]
+    fn files() = [Fixture::file("osprey.toml", manifestText()), Fixture::file(mainPath, "fn main() = 0\n")]
 
     /// The project directory holds more than the release: a lock and notes.
-    fn projectWalk() = Fixture::walkRoute(project, ["notes.md", "osprey.lock", "osprey.toml", "src/main.osp", "src/.deslop/cache/fingerprint.bin", "src/.osprey/cache/entry.bin", "src/__pycache__/module.pyc", "src/nested/.git/index"])
+    fn projectWalk() = Fixture::walkRoute(project, ["notes.md", "osprey.lock", "osprey.toml", mainPath, "src/.deslop/cache/fingerprint.bin", "src/.osprey/cache/entry.bin", "src/__pycache__/module.pyc", "src/nested/.git/index"])
 
     fn projectReads() = listConcat(mapList(files(), fn(f) => Fixture::readRoute("${project}/${f.relPath}", f.content)), [
         Fixture::readRoute("${project}/notes.md", "scratch"),
@@ -62,7 +64,7 @@ module PublishTests {
     fn refusals() = {
         let plain = RegistryFixture::runWith([Fixture::readRoute("${project}/osprey.toml", RegistryFixture::manifestText("app"))], [projectWalk()], [], ["publish", "--folder", folder, "--project", project])
         let noFolder = RegistryFixture::runWith(projectReads(), [projectWalk()], [], ["publish", "--project", project])
-        let badPython = RegistryFixture::runWith(listAppend(projectReads(), Fixture::readRoute("${project}/src/model.py", "print(1)\n")), [Fixture::walkRoute(project, ["osprey.toml", "src/main.osp", "src/model.py"])], [], ["publish", "--folder", folder, "--project", project])
+        let badPython = RegistryFixture::runWith(listAppend(projectReads(), Fixture::readRoute("${project}/src/model.py", "print(1)\n")), [Fixture::walkRoute(project, ["osprey.toml", mainPath, "src/model.py"])], [], ["publish", "--folder", folder, "--project", project])
         checkAll("publish.no-package, publish.usage and the source rules refuse before writing", [
             structuralEquals([RegistryFixture::statusOf(plain), RegistryFixture::statusOf(noFolder)], [1, 2]),
             RegistryFixture::statusOf(badPython) == 1,

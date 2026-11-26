@@ -14,10 +14,16 @@ import registry::Png
 /// table; code here only interprets it. Each case is reported with the input
 /// so a failure names the exact row.
 module FixtureTests {
+    /// A text the judge accepts: its verdict on the text alone is success.
+    fn accepts(judge) = fn(t) => Fixtures::code(judge(t)) == ""
+
+    /// A case the judge refuses: its verdict on the case's `key` member is exactly the error code the case names.
+    fn refuses(key, judge) = fn(c) => Fixtures::code(judge(Fixtures::textOf(c, key))) == Fixtures::textOf(c, "code")
+
     fn names() = {
         let fx = Fixtures::load("names.json")
-        Fixtures::report("names valid", Fixtures::textsOf(fx, "valid"), fn(t) => Fixtures::code(Names::parse(t)) == "")
-        Fixtures::report("names invalid", Fixtures::itemsOf(fx, "invalid"), fn(c) => Fixtures::code(Names::parse(Fixtures::textOf(c, "text"))) == Fixtures::textOf(c, "code"))
+        Fixtures::report("names valid", Fixtures::textsOf(fx, "valid"), accepts(Names::parse))
+        Fixtures::report("names invalid", Fixtures::itemsOf(fx, "invalid"), refuses("text", Names::parse))
     }
 
     fn releaseIds() = {
@@ -26,13 +32,13 @@ module FixtureTests {
             Success { value } => Identity::display(value) == t
             Error => false
         })
-        Fixtures::report("release ids invalid", Fixtures::itemsOf(fx, "invalid"), fn(c) => Fixtures::code(Identity::parse(Fixtures::textOf(c, "text"))) == Fixtures::textOf(c, "code"))
+        Fixtures::report("release ids invalid", Fixtures::itemsOf(fx, "invalid"), refuses("text", Identity::parse))
     }
 
     fn pathRows() = {
         let fx = Fixtures::load("paths.json")
-        Fixtures::report("paths valid", Fixtures::textsOf(fx, "valid"), fn(p) => Fixtures::code(Paths::validate(p)) == "")
-        Fixtures::report("paths invalid", Fixtures::itemsOf(fx, "invalid"), fn(c) => Fixtures::code(Paths::validate(Fixtures::textOf(c, "path"))) == Fixtures::textOf(c, "code"))
+        Fixtures::report("paths valid", Fixtures::textsOf(fx, "valid"), accepts(Paths::validate))
+        Fixtures::report("paths invalid", Fixtures::itemsOf(fx, "invalid"), refuses("path", Paths::validate))
         Fixtures::report("path collisions", Fixtures::itemsOf(fx, "collisions"), fn(c) => Fixtures::code(Paths::canonicalSet(Fixtures::textsOf(c, "paths"))) == Fixtures::textOf(c, "code"))
         Fixtures::report("excluded paths", Fixtures::textsOf(fx, "excluded"), Paths::excluded)
         Fixtures::report("included paths", Fixtures::textsOf(fx, "included"), fn(p) => !Paths::excluded(p))
@@ -80,9 +86,9 @@ module FixtureTests {
 
     fn confusables() = {
         let fx = Fixtures::load("malicious/confusables.json")
-        Fixtures::report("confusable names", Fixtures::itemsOf(fx, "names"), fn(c) => Fixtures::code(Names::parse(Fixtures::textOf(c, "text"))) == Fixtures::textOf(c, "code"))
+        Fixtures::report("confusable names", Fixtures::itemsOf(fx, "names"), refuses("text", Names::parse))
         Fixtures::report("confusable lookalikes are valid names", Fixtures::itemsOf(fx, "names"), fn(c) => Fixtures::code(Names::parse(Fixtures::textOf(c, "lookalike"))) == "")
-        Fixtures::report("confusable paths", Fixtures::itemsOf(fx, "paths"), fn(c) => Fixtures::code(Paths::validate(Fixtures::textOf(c, "path"))) == Fixtures::textOf(c, "code"))
+        Fixtures::report("confusable paths", Fixtures::itemsOf(fx, "paths"), refuses("path", Paths::validate))
     }
 
     /// The structural verdict a case expects: `structure` when the full

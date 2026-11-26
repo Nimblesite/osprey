@@ -23,6 +23,20 @@ module ManifestTests {
     let packageTail = "summary = \"s\"\nkeywords = []\n"
     let httpDependency = "[dependencies]\n\"@osprey/http\" = "
 
+    /// The fixture fragments the asset, system-table and located-refusal cases repeat.
+    /// The asset kind every well-formed asset declares.
+    let docsKind = "documentation"
+    /// A system table's accepted `min_revision` line.
+    let minRevisionOne = "min_revision = 1\n"
+    /// The one capability name every system-table case uses.
+    let sqliteCapability = "sqlite/c-api"
+    /// The located refusal of a bad `source_roots`.
+    let sourceRootsRefusal = "manifest.project.source-roots at 3:1"
+    /// The located refusal of a bad `typescript_sources`.
+    let typescriptSourcesRefusal = "manifest.project.typescript-sources at 3:1"
+    /// The located refusal of a bad dependency version.
+    let dependencyVersionRefusal = "manifest.dependency.version at 4:1"
+
     /// The digest shape an asset declares: an algorithm and 64 hex digits.
     fn hexDigest(algorithm) = "\"${algorithm}:${repeat("a", 64) ?: ""}\""
 
@@ -110,7 +124,7 @@ module ManifestTests {
     fn asset(path, role, kind, byteLength, digest, extra) = "[[assets]]\npath = \"${path}\"\nrole = \"${role}\"\nkind = \"${kind}\"\nbyte_length = ${byteLength}\ndigest = ${digest}\n${extra}"
 
     /// A documented, `sha256`-hashed asset of `byteLength` bytes and no extra key.
-    fn assetAt(path, kind, byteLength) = asset(path, "documentation", kind, byteLength, hexDigest("sha256"), "")
+    fn assetAt(path, kind, byteLength) = asset(path, docsKind, kind, byteLength, hexDigest("sha256"), "")
 
     fn identityOf(text) = projected(text, publicationKey)
 
@@ -154,9 +168,9 @@ module ManifestTests {
         refused("[project]\nname = 7\n", "manifest.project.name at 2:1"),
         refused("[project]\nname = \"\"\n", "manifest.project.name at 2:1"),
         refused("[project]\nsource_roots = [\"src\"]\n", "manifest.project.name at 1:1"),
-        rejected("source_roots = [\"../up\"]\n", "manifest.project.source-roots at 3:1"),
-        rejected("source_roots = [\"src\", \"src\"]\n", "manifest.project.source-roots at 3:1"),
-        rejected("source_roots = \"src\"\n", "manifest.project.source-roots at 3:1"),
+        rejected("source_roots = [\"../up\"]\n", sourceRootsRefusal),
+        rejected("source_roots = [\"src\", \"src\"]\n", sourceRootsRefusal),
+        rejected("source_roots = \"src\"\n", sourceRootsRefusal),
         rejected("entry = \"/abs/main.osp\"\n", "manifest.project.entry at 3:1"),
         rejected("flavor = \"python\"\n", "manifest.project.flavor at 3:1"),
         rejected("test_roots = [\"test\", \"TEST\"]\n", "manifest.project.test-roots at 3:1"),
@@ -176,10 +190,10 @@ module ManifestTests {
         rejected("python_sources = [\"py\"]\n", "manifest.project.python-sources at 3:1"),
         rejected("python_sources = \"src/model.py\"\n", "manifest.project.python-sources at 3:1"),
         typescriptProjectRefused("lib/express.ts", "manifest.typescript-source-unrooted at 1:1"),
-        rejected("typescript_sources = [\"src/express.py\"]\n", "manifest.project.typescript-sources at 3:1"),
-        rejected("typescript_sources = [\"src/types.d.ts\"]\n", "manifest.project.typescript-sources at 3:1"),
-        rejected("typescript_sources = [\"../up.ts\"]\n", "manifest.project.typescript-sources at 3:1"),
-        rejected("typescript_sources = \"src/express.ts\"\n", "manifest.project.typescript-sources at 3:1")
+        rejected("typescript_sources = [\"src/express.py\"]\n", typescriptSourcesRefusal),
+        rejected("typescript_sources = [\"src/types.d.ts\"]\n", typescriptSourcesRefusal),
+        rejected("typescript_sources = [\"../up.ts\"]\n", typescriptSourcesRefusal),
+        rejected("typescript_sources = \"src/express.ts\"\n", typescriptSourcesRefusal)
     ])
 
     fn rejectsPackage() = checkAll("[package]: names, licenses, summaries, keywords", [
@@ -201,9 +215,9 @@ module ManifestTests {
     ])
 
     fn rejectsDependencies() = checkAll("dependencies: SemVer, paths, forges, peers, options, epochs", [
-        httpRefused("\"^2.0\"\n", "manifest.dependency.version at 4:1"),
-        httpRefused("{ version = \"2.0\" }\n", "manifest.dependency.version at 4:1"),
-        httpRefused("{ epoch = 2, max_release = 9 }\n", "manifest.dependency.version at 4:1"),
+        httpRefused("\"^2.0\"\n", dependencyVersionRefusal),
+        httpRefused("{ version = \"2.0\" }\n", dependencyVersionRefusal),
+        httpRefused("{ epoch = 2, max_release = 9 }\n", dependencyVersionRefusal),
         httpRefused("{ path = \"../http\" }\n", "manifest.dependency.path at 4:1"),
         httpRefused("{ git = \"https://x\" }\n", "manifest.dependency.forge at 4:1"),
         httpRefused("{ epoch = 2, tag = \"v2\" }\n", "manifest.dependency.forge at 4:1"),
@@ -220,21 +234,21 @@ module ManifestTests {
     ])
 
     fn rejectsSystemsAndAssets() = checkAll("system capabilities and asset declarations", [
-        rejected(systemTable("sqlite", "SQLite/C-API", "min_revision = 1\n"), "manifest.system.capability at 3:1"),
-        rejected(systemTable("sqlite", "sqlite//c", "min_revision = 1\n"), "manifest.system.capability at 3:1"),
-        rejected(systemTable("sqlite", "sqlite/c-api", ""), "manifest.system.min-revision at 3:1"),
-        rejected(systemTable("sqlite", "sqlite/c-api", "min_revision = -1\n"), "manifest.system.min-revision at 5:1"),
-        rejected(systemTable("sqlite", "sqlite/c-api", "min_revision = 1\nprovider = \"brew\"\n"), "manifest.system.unknown-key at 6:1"),
-        rejected(systemTable("a", "sqlite/c-api", "min_revision = 1\n") + systemTable("b", "sqlite/c-api", "min_revision = 2\n"), "manifest.system.duplicate at 3:1"),
-        ManifestDeps::capabilityOk("sqlite/c-api") && ManifestDeps::capabilityOk("zlib") && !ManifestDeps::capabilityOk("") && !ManifestDeps::capabilityOk("/x") && !ManifestDeps::capabilityOk("a/.b") && !ManifestDeps::capabilityOk("${repeat("a", 65) ?: ""}"),
-        rejected(asset("x.md", "documentation", "text", 1, hexDigest("sha256"), "mime = \"text/markdown\"\n"), "manifest.asset.unknown-key at 9:1"),
+        rejected(systemTable("sqlite", "SQLite/C-API", minRevisionOne), "manifest.system.capability at 3:1"),
+        rejected(systemTable("sqlite", "sqlite//c", minRevisionOne), "manifest.system.capability at 3:1"),
+        rejected(systemTable("sqlite", sqliteCapability, ""), "manifest.system.min-revision at 3:1"),
+        rejected(systemTable("sqlite", sqliteCapability, "min_revision = -1\n"), "manifest.system.min-revision at 5:1"),
+        rejected(systemTable("sqlite", sqliteCapability, "min_revision = 1\nprovider = \"brew\"\n"), "manifest.system.unknown-key at 6:1"),
+        rejected(systemTable("a", sqliteCapability, minRevisionOne) + systemTable("b", sqliteCapability, "min_revision = 2\n"), "manifest.system.duplicate at 3:1"),
+        ManifestDeps::capabilityOk(sqliteCapability) && ManifestDeps::capabilityOk("zlib") && !ManifestDeps::capabilityOk("") && !ManifestDeps::capabilityOk("/x") && !ManifestDeps::capabilityOk("a/.b") && !ManifestDeps::capabilityOk("${repeat("a", 65) ?: ""}"),
+        rejected(asset("x.md", docsKind, "text", 1, hexDigest("sha256"), "mime = \"text/markdown\"\n"), "manifest.asset.unknown-key at 9:1"),
         rejected(assetAt("x.md", "html", 1), "manifest.asset.kind at 6:1"),
         rejected(assetAt("x.html", "text", 1), "manifest.asset.extension at 4:1"),
         rejected(assetAt("../x.md", "text", 1), "manifest.asset.path at 4:1"),
         rejected(assetAt("x.md", "text", -1), "manifest.asset.byte-length at 7:1"),
-        rejected(asset("x.md", "documentation", "text", 1, hexDigest("md5"), ""), "digest.algorithm at 8:1"),
+        rejected(asset("x.md", docsKind, "text", 1, hexDigest("md5"), ""), "digest.algorithm at 8:1"),
         rejected(asset("x.md", "attachment", "text", 1, hexDigest("sha256"), ""), "manifest.asset.role at 5:1"),
-        rejected(asset("x.md", "documentation", "text", 1, hexDigest("sha256"), "required_capability = \"asset.read\"\n"), "manifest.asset.capability at 5:1"),
+        rejected(asset("x.md", docsKind, "text", 1, hexDigest("sha256"), "required_capability = \"asset.read\"\n"), "manifest.asset.capability at 5:1"),
         rejected(asset("x.json", "runtime-data", "json", 1, hexDigest("sha256"), ""), "manifest.asset.capability at 5:1"),
         rejected(assetAt("x.md", "text", 1) + assetAt("X.md", "text", 1), "path.case-collision at 3:1")
     ])

@@ -5,10 +5,31 @@ namespace synth
     `Pending`, then `Applied` with the new revision or `Rejected` with the typed graph fault (stale revision,
     missing parameter, out-of-range value). The snapshot only changes when the edit is applied. *)
 module Commands
-    (** A submitted edit that the renderer has not yet reached. *)
+    (** A submitted edit that the renderer has not yet reached.
+    # Examples
+    ```osprey
+    snapshot = Observation(revision = 1, samplePosition = 0, parameters = [], components = [])
+    edit = ParameterChange(node = 1, key = "gain", value = 0.5, revision = 2, samplePosition = 0)
+    print "${Commands::pending (snapshot, edit)}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export pending (snapshot, edit) = CommandReceipt(status = Pending(edit = edit), snapshot = snapshot)
 
-    (** Resolve a pending edit against the graph's descriptors and the current snapshot. *)
+    (** Resolve a pending edit against the graph's descriptors and the current snapshot.
+    # Examples
+    ```osprey
+    snapshot = Observation(revision = 1, samplePosition = 0, parameters = [], components = [])
+    edit = ParameterChange(node = 1, key = "gain", value = 0.5, revision = 2, samplePosition = 0)
+    applied = CommandReceipt(status = Applied(revision = 3), snapshot = snapshot)
+    print "${Commands::resolve (Graphs::empty, Commands::pending (snapshot, edit))} ${Commands::resolve (Graphs::empty, applied)}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export resolve (graph, receipt) = match receipt.status
         Pending edit => match Parameters::apply (graph, receipt.snapshot, edit)
             Valid next => CommandReceipt(status = Applied(revision = next.revision), snapshot = next)

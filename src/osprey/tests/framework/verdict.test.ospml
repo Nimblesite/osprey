@@ -155,13 +155,16 @@ verdictAlgebraCase () =
     fail2 = Fail "two"
     skip1 = Skip "first"
     skip2 = Skip "second"
+    // How `skip2` and a refused precondition each render.
+    skip2Label = "skip(second)"
+    preconditionSkipped = "skip(precondition not met)"
     sumCheck = checkVerdict "sum"
     mismatch = verdictLabel (checkVerdict "sum" "5" "6")
 
     // Nine ordered pairs over {Pass, Fail, Skip}: the first non-Pass wins, and
     // the second operand's payload must never surface when it does.
     checkAll "andThen retains the first non-Pass verdict" [
-        thenRenders Pass Pass "pass", thenRenders Pass fail2 "fail(two)", thenRenders Pass skip2 "skip(second)", thenRenders fail1 Pass "fail(one)", thenRenders fail1 fail2 "fail(one)", thenRenders fail1 skip2 "fail(one)", thenRenders skip1 Pass "skip(first)", thenRenders skip1 fail2 "skip(first)", thenRenders skip1 skip2 "skip(first)",
+        thenRenders Pass Pass "pass", thenRenders Pass fail2 "fail(two)", thenRenders Pass skip2 skip2Label, thenRenders fail1 Pass "fail(one)", thenRenders fail1 fail2 "fail(one)", thenRenders fail1 skip2 "fail(one)", thenRenders skip1 Pass "skip(first)", thenRenders skip1 fail2 "skip(first)", thenRenders skip1 skip2 "skip(first)",
         all [verdictLabel (andThen fail1 fail2) != verdictLabel fail2, verdictLabel (andThen skip1 skip2) != verdictLabel skip2, startsWith (verdictLabel (andThen fail1 skip2)) "fail(", endsWith (verdictLabel (andThen skip1 fail2)) ")", contains (verdictLabel (andThen fail1 fail2)) "one", !(contains (verdictLabel (andThen fail1 fail2)) "two"), !(contains (verdictLabel (andThen skip1 fail2)) "two")]
     ]
 
@@ -169,7 +172,7 @@ verdictAlgebraCase () =
     // regrouped fold cannot change the reported outcome.
     checkAll "Pass is the identity of andThen and andThen associates" [
         identityAround Pass, identityAround fail1, identityAround skip1, associates (andThen (andThen Pass fail1) skip2) (andThen Pass (andThen fail1 skip2)), associates (andThen (andThen fail1 Pass) skip2) (andThen fail1 (andThen Pass skip2)), associates (andThen (andThen skip1 fail2) Pass) (andThen skip1 (andThen fail2 Pass)),
-        all [thenRenders (andThen Pass Pass) fail2 "fail(two)", thenRenders Pass (andThen Pass fail2) "fail(two)", thenRenders (andThen Pass Pass) Pass "pass", thenRenders (andThen fail1 fail2) skip1 "fail(one)", thenRenders fail1 (andThen fail2 skip1) "fail(one)", thenRenders (andThen Pass Pass) (andThen Pass skip2) "skip(second)", thenRenders (andThen Pass skip2) (andThen Pass fail1) "skip(second)", thenRenders (andThen Pass fail1) (andThen Pass skip2) "fail(one)"]
+        all [thenRenders (andThen Pass Pass) fail2 "fail(two)", thenRenders Pass (andThen Pass fail2) "fail(two)", thenRenders (andThen Pass Pass) Pass "pass", thenRenders (andThen fail1 fail2) skip1 "fail(one)", thenRenders fail1 (andThen fail2 skip1) "fail(one)", thenRenders (andThen Pass Pass) (andThen Pass skip2) skip2Label, thenRenders (andThen Pass skip2) (andThen Pass fail1) skip2Label, thenRenders (andThen Pass fail1) (andThen Pass skip2) "fail(one)"]
     ]
 
     // The Fail payload is the whole labeled mismatch, verbatim: 28 chars rendered.
@@ -181,7 +184,7 @@ verdictAlgebraCase () =
 
     // assume is the precondition gate: 26 rendered characters, and a Skip absorbs what follows.
     checkAll "assume converts a precondition into Pass or Skip" [
-        gateRenders true "pass", gateRenders false "skip(precondition not met)", gateRenders (2 > 3) "skip(precondition not met)", gateRenders ("a" == "b") "skip(precondition not met)", gateRenders (5 >= 5) "pass", gateRenders (5 > 5) "skip(precondition not met)", all [thenRenders (assume true) fail1 "fail(one)", thenRenders (assume false) fail1 "skip(precondition not met)", thenRenders fail1 (assume false) "fail(one)", thenRenders (assume true) (assume false) "skip(precondition not met)", thenRenders (assume true) (assume true) "pass"],
+        gateRenders true "pass", gateRenders false preconditionSkipped, gateRenders (2 > 3) preconditionSkipped, gateRenders ("a" == "b") preconditionSkipped, gateRenders (5 >= 5) "pass", gateRenders (5 > 5) preconditionSkipped, all [thenRenders (assume true) fail1 "fail(one)", thenRenders (assume false) fail1 preconditionSkipped, thenRenders fail1 (assume false) "fail(one)", thenRenders (assume true) (assume false) preconditionSkipped, thenRenders (assume true) (assume true) "pass"],
         structuralEquals [verdictLabel (assume (3 > 2)), verdictLabel (assume (0 == 0))] ["pass", "pass"], all [startsWith (verdictLabel (assume false)) "skip(", length (verdictLabel (assume false)) == 26, !(contains (verdictLabel (assume true)) "skip")]
     ]
 
@@ -217,6 +220,8 @@ curriedArityLadderCase () =
     openTag = tag3 "<"
     bothTrue = all3 true
     scaled = blend3 2.0
+    // The two boolean inputs the boolean ladder runs over.
+    boolInputs = [true, false]
 
     // 1+2 = 3, 1+2+3+4 = 10, 1+..+5 = 15, 1+..+6 = 21.
     checkAll "every curried arity answers its own sum" [
@@ -236,7 +241,7 @@ curriedArityLadderCase () =
     // The same ladder over strings, booleans and floats: blend3 a b c = a*b+c, so
     // blend3 2.0 3.0 1.0 = 7.0 and scaled = blend3 2.0 keeps its 2.0 factor.
     checkAll "currying is not integer-specific" [
-        structuralEquals [tag3 "a" "b" "c", (tag3 "a") "b" "c", (tag3 "a" "b") "c", openTag "x" ">", openTag "" ">", openTag "abc" "", tag3 "" "" ""] ["abc", "abc", "abc", "<x>", "<>", "<abc", ""], all [length (openTag "x" ">") == 3, answersHold (\c => all3 true true c) [true, false] [true, false], answersHold (\a => all3 a false true) [true, false] [false, false], answersHold (\a => bothTrue a true) [true] [true], answersHold (\a => bothTrue a false) [true, false] [false, false]],
+        structuralEquals [tag3 "a" "b" "c", (tag3 "a") "b" "c", (tag3 "a" "b") "c", openTag "x" ">", openTag "" ">", openTag "abc" "", tag3 "" "" ""] ["abc", "abc", "abc", "<x>", "<>", "<abc", ""], all [length (openTag "x" ">") == 3, answersHold (\c => all3 true true c) boolInputs [true, false], answersHold (\a => all3 a false true) boolInputs [false, false], answersHold (\a => bothTrue a true) [true] [true], answersHold (\a => bothTrue a false) boolInputs [false, false]],
         structuralEquals [blend3 2.0 3.0 1.0, blend3 2.0 0.0 1.0, blend3 0.0 9.0 4.5, scaled 3.0 1.0, scaled 0.5 0.0] [7.0, 1.0, 4.5, 7.0, 1.0], scaled 3.0 1.0 != blend3 2.0 3.0 2.0
     ]
 

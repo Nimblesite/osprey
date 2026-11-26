@@ -502,9 +502,9 @@ print("${listening}${alsoListening}")
         let Some(start) = module.find(&opener) else {
             panic!("`@{symbol}` is not defined by the module:\n{module}")
         };
-        let rest = &module[start..];
+        let rest = module.get(start..).expect("char boundary");
         match rest.find("\n}") {
-            Some(end) => &rest[..end],
+            Some(end) => rest.get(..end).expect("char boundary"),
             None => rest,
         }
     }

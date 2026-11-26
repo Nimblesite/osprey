@@ -6,6 +6,7 @@ import {
   diagnostics,
   ExpectedDiagnostic,
   openSource,
+  present,
   rangeOf,
   replace,
   save,
@@ -46,19 +47,19 @@ suite("Installed VSIX unused symbol diagnostics and editing", () => {
   teardown(closeEditors);
 
   test("repeated top-level pattern binders in both flavors retain distinct ranges through rename, use, undo and redo", async () => {
-    for (const [name, source, body, read] of [
-      [
-        "top-level-patterns.osp",
-        'match 1 { unused => print("a") }\nmatch 2 { unused => print("b") }\n',
-        'print("b")',
-        "print(unused)",
-      ],
-      [
-        "top-level-patterns.ospml",
-        'match 1\n    unused => print "a"\nmatch 2\n    unused => print "b"\n',
-        'print "b"',
-        "print unused",
-      ],
+    for (const { name, source, body, read } of [
+      {
+        name: "top-level-patterns.osp",
+        source: 'match 1 { unused => print("a") }\nmatch 2 { unused => print("b") }\n',
+        body: 'print("b")',
+        read: "print(unused)",
+      },
+      {
+        name: "top-level-patterns.ospml",
+        source: 'match 1\n    unused => print "a"\nmatch 2\n    unused => print "b"\n',
+        body: 'print "b"',
+        read: "print unused",
+      },
     ]) {
       const editor = await openSource(name, source);
       const first = unused("pattern-binding", "unused", "pattern binding", 0);
@@ -148,7 +149,7 @@ suite("Installed VSIX unused symbol diagnostics and editing", () => {
       "fn shadow(value) = { let value = 7\nvalue }\nlet result = shadow(1)\n";
     const editor = await openSource("unused-shadow.osp", source);
     const warning = unused("parameter", "value", "parameter", 0);
-    const [diagnostic] = await diagnostics(editor.document, [warning]);
+    const diagnostic = present((await diagnostics(editor.document, [warning]))[0], "the shadowing warning");
     assert.ok(diagnostic.range.isEqual(rangeOf(editor.document, "value", 0)));
     assert.ok(!diagnostic.range.isEqual(rangeOf(editor.document, "value", 1)));
     await replace(editor, "= 7", "= value");
@@ -219,15 +220,17 @@ suite("Installed VSIX unused symbol diagnostics and editing", () => {
   });
 
   test("public declarations, extern contracts and intentional names remain unflagged in both flavors", async () => {
-    for (const [name, source] of [
-      [
-        "unused-exempt.osp",
-        "extern fn native(input: int) -> int\nfn public(_unused, _) = { let _spare = 1\n2 }\nlet externallyVisible = 3\n",
-      ],
-      [
-        "unused-exempt.ospml",
-        "keep _unused _ =\n    _spare = 1\n    2\nextern native (input : int) -> int\nexternallyVisible = 3\n",
-      ],
+    for (const { name, source } of [
+      {
+        name: "unused-exempt.osp",
+        source:
+          "extern fn native(input: int) -> int\nfn public(_unused, _) = { let _spare = 1\n2 }\nlet externallyVisible = 3\n",
+      },
+      {
+        name: "unused-exempt.ospml",
+        source:
+          "keep _unused _ =\n    _spare = 1\n    2\nextern native (input : int) -> int\nexternallyVisible = 3\n",
+      },
     ]) {
       const editor = await openSource(name, source);
       await diagnostics(editor.document, []);

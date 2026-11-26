@@ -330,7 +330,7 @@ dialAccess (d, index) = match listGet d.drivenSeen.renderedScenes index
 
 // The Patch Controls dial of the parameter `label`, as the host sees it.
 dialOf (d, label) =
-    scenes = toList (range (0, length d.drivenSeen.renderedScenes))
+    scenes = synth::EditorView::indices d.drivenSeen.renderedScenes
     accessible = ui::Lists::flatten (mapList (scenes, \index => dialAccess (d, index)))
     listGet (filterList (accessible, \a => endsWith a.accessLabel " ${label}")) 0
 

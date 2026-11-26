@@ -65,7 +65,10 @@ fn erasedResultRows(items) = match items {
 fn erasedListReturn() -> List<any> = [NestedBox { held: "returned list", tag: 3 }]
 fn erasedResultReturn() -> Result<List<any>, string> = [NestedBox { held: "returned result", tag: 4 }]
 
-fn concreteCallback() = [NestedBox { held: "named callback", tag: 10 }]
+/// The text the named callback fixture holds.
+let callbackText = "named callback"
+
+fn concreteCallback() = [NestedBox { held: callbackText, tag: 10 }]
 fn useErasedList(work) = nestedErased(work())
 fn useErasedResult(work) = nestedErasedResult(work())
 fn held(items, want) = toString(nestedErased(items)) == want
@@ -210,7 +213,8 @@ fn patternMatchingCase() = {
     let resultCallback: fn() -> Result<List<any>, string> = fn() => [NestedBox { held: "typed result callback", tag: 16 }]
     let erasedBinding: List<any> = [NestedBox { held: "bound list", tag: 5 }]
     let erasedResultBinding: Result<List<any>, string> = [NestedBox { held: "bound result", tag: 6 }]
-    let deepBinding: List<List<any>> = [[NestedBox { held: "deep binding", tag: 22 }]]
+    let deepHeld = "deep binding"
+    let deepBinding: List<List<any>> = [[NestedBox { held: deepHeld, tag: 22 }]]
     let localAlice = PersonData { name: "Alice", age: 30 }
     let localCircle = sampleCircle()
     let localSquare = sampleSquare()
@@ -231,8 +235,8 @@ fn patternMatchingCase() = {
         deeplyHoldsResult(Success { value: [[NestedBox { held: "deep success", tag: 21 }]] }, "deep success"),
         deeplyHoldsResult(Error { message: "deep error" }, "deep error"),
         structuralEquals([toString(deeplyErased([])), toString(deeplyErased([[]]))], ["other", "other"]),
-        deeplyHolds(deepBinding, "deep binding"),
-        deeplyHolds(deepBinding, "deep binding"),
+        deeplyHolds(deepBinding, deepHeld),
+        deeplyHolds(deepBinding, deepHeld),
         toString(threeLevelsErased([[[NestedBox { held: "three levels", tag: 23 }]]])) == "three levels",
         toString(erasedResultRows([Success { value: [NestedBox { held: "result row", tag: 24 }] }])) == "result row",
         toString(erasedResultRows([Error { message: "row error" }])) == "row error",
@@ -247,9 +251,9 @@ fn patternMatchingCase() = {
         textIs(useErasedResult(fn() => [NestedBox { held: "callback result", tag: 8 }]), "callback result"),
         textIs(useErasedResult(fn() => Success { value: [NestedBox { held: "callback success", tag: 9 }] }), "callback success"),
         textIs(useErasedResult(fn() => Error { message: "callback error" }), "callback error"),
-        held(concreteCallback(), "named callback"),
-        textIs(useErasedList(concreteCallback), "named callback"),
-        textIs(useErasedResult(concreteCallback), "named callback"),
+        held(concreteCallback(), callbackText),
+        textIs(useErasedList(concreteCallback), callbackText),
+        textIs(useErasedResult(concreteCallback), callbackText),
         textIs(useErasedList(fn() => []), "other"),
         textIs(useErasedResult(fn() => [7]), "other"),
         held(loader.load(), "field"),
@@ -257,10 +261,10 @@ fn patternMatchingCase() = {
         held(callback(), "typed callback"),
         heldResult(resultCallback(), "typed result callback"),
         structuralEquals([toString(nestedErased(escaped.plain.load())), toString(nestedErased(escaped.plain.load())), toString(nestedErasedResult(escaped.wrapped.load())), toString(nestedErasedResult(escaped.wrapped.load()))], ["escaped!", "escaped!", "escaped!", "escaped!"]),
-        toString(genericRows()) == "named callback",
-        toString(genericResultRows()) == "named callback",
+        toString(genericRows()) == callbackText,
+        toString(genericResultRows()) == callbackText,
         toString(genericWholeResult()) == "Error(generic error)",
-        structuralEquals([toString(effectRows()), toString(effectResultRows())], ["named callback", "named callback"]),
+        structuralEquals([toString(effectRows()), toString(effectResultRows())], [callbackText, callbackText]),
         structuralEquals([toString(effectWrappedRows()), toString(effectErrorRows())], ["named callback", "effect 42"]),
         held([7], "other"),
         structuralEquals([nestedTuple([NestedPair(3, "q"), NestedPair(4, "r")]), nestedTuple([])], ["3:q:1", "other"]),

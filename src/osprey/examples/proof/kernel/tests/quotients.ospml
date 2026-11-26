@@ -18,6 +18,11 @@ import proof
     Refusal cases never accept a reader or inference failure in place of a
     theory refusal: each asserts a message only `Quotients` produces. *)
 module QuotientTests
+    // The theory refusal every malformed or mis-ordered primitive gets, and the
+    // Lean name of the recorded relation the reduction cases build on.
+    invalidPrimitive = "invalid quotient primitive `Quot` or initialization order"
+    relatedName = "QuotientCases.related"
+
     (** Runs the quotient cases against the recorded export; the testing built-ins report the TAP lines. *)
     export run () =
         recorded ()
@@ -50,7 +55,7 @@ module QuotientTests
         test ("Quot.sound's changed statement is refused", \() => expect (verdict (edited (soundLine (), "{\"axiom\":{\"isUnsafe\":false,\"levelParams\":[6],\"name\":73,\"type\":0}}")), "`Quot.sound` does not have its derived quotient signature"))
 
     primitiveNames () =
-        test ("Quot declared with the constructor's kind is refused", \() => expect (verdict (edited (typeLine (), claimed ("ctor", "[6]", 23, 74))), "invalid quotient primitive `Quot` or initialization order"))
+        test ("Quot declared with the constructor's kind is refused", \() => expect (verdict (edited (typeLine (), claimed ("ctor", "[6]", 23, 74))), invalidPrimitive))
 
         test ("Quot.mk declared under Quot.lift's name is refused", \() => expect (verdict (edited (ctorLine (), "{\"in\":99998,\"str\":{\"pre\":23,\"str\":\"lift\"}}\n" + claimed ("ctor", "[6]", 99998, 80))), "invalid quotient primitive `Quot.lift` or initialization order"))
 
@@ -59,7 +64,7 @@ module QuotientTests
         test ("Quot.sound declared before Quot.ind is a soundness refusal", \() => expect (Support::messageOf (Quotients::declare (without ("Quot.ind"), declOf ("Quot.sound"))), "invalid quotient soundness axiom `Quot.sound`"))
 
     initialization () =
-        test ("Quot is refused when the checked Eq family is absent", \() => expect (Support::messageOf (Quotients::declare (without ("Eq"), declOf ("Quot"))), "invalid quotient primitive `Quot` or initialization order"))
+        test ("Quot is refused when the checked Eq family is absent", \() => expect (Support::messageOf (Quotients::declare (without ("Eq"), declOf ("Quot"))), invalidPrimitive))
 
         test ("an axiom named Quot is refused, not accepted as the primitive", \() => expect (verdict (edited (typeLine (), "{\"axiom\":{\"isUnsafe\":false,\"levelParams\":[6],\"name\":23,\"type\":74}}")), "invalid quotient soundness axiom `Quot`"))
 
@@ -67,7 +72,7 @@ module QuotientTests
 
         test ("a second Quot.sound axiom is refused as a duplicate constant", \() => expect (verdict (edited (soundLine (), soundLine () + "\n" + soundLine ())), "constant `Quot.sound` is already declared"))
 
-        test ("an axiom named Eq cannot initialize quotient primitives", \() => expect (Support::messageOf (Quotients::declare (forgedEquality (base ()), declOf "Quot")), "invalid quotient primitive `Quot` or initialization order"))
+        test ("an axiom named Eq cannot initialize quotient primitives", \() => expect (Support::messageOf (Quotients::declare (forgedEquality (base ()), declOf "Quot")), invalidPrimitive))
 
     universes () =
         test ("Quot.lift repeating its universe parameter is refused", \() => expect (Support::messageOf (Quotients::declare (without ("Quot.lift"), repeatedLift ())), "constant `Quot.lift` uses a universe parameter it does not declare, or declares one twice"))
@@ -206,14 +211,14 @@ module QuotientTests
     (** `QuotientCases.zeroOnQuotient (@Quot.mk Nat related 0)`. *)
     computed () = App (Const "QuotientCases.zeroOnQuotient" []) (constructed ())
 
-    constructed () = Terms::apps (Const "Quot.mk" [Succ Zero], [Const "Nat" [], Const "QuotientCases.related" [], Const "Nat.zero" []])
+    constructed () = Terms::apps (Const "Quot.mk" [Succ Zero], [Const "Nat" [], Const relatedName [], Const "Nat.zero" []])
 
     (** `@Quot.lift Nat r (Nat → Nat) (fun x y => 0) h (mk 0) 0`, whose own
         result is `f 0` applied to the extra `0`: Lean's `quot_reduce_rec`
         appends every argument past the eliminator's arity. *)
     extraApplied () = App (lifted ()) (Const "Nat.zero" [])
 
-    lifted () = Terms::apps (Const "Quot.lift" [Succ Zero, Succ Zero], [Const "Nat" [], Const "QuotientCases.related" [], arrow (), constantly (), respects (), constructed ()])
+    lifted () = Terms::apps (Const "Quot.lift" [Succ Zero, Succ Zero], [Const "Nat" [], Const relatedName [], arrow (), constantly (), respects (), constructed ()])
 
     arrow () = Pi "y" (Const "Nat" []) (Const "Nat" [])
 
@@ -221,7 +226,7 @@ module QuotientTests
 
     (** `fun a b h => @Eq.refl (Nat → Nat) (fun y => 0)`: `f a` and `f b`
         both β-reduce to that function. *)
-    respects () = Lam "a" (Const "Nat" []) (Lam "b" (Const "Nat" []) (Lam "h" (App (App (Const "QuotientCases.related" []) (BVar 1)) (BVar 0)) (refl ())))
+    respects () = Lam "a" (Const "Nat" []) (Lam "b" (Const "Nat" []) (Lam "h" (App (App (Const relatedName []) (BVar 1)) (BVar 0)) (refl ())))
 
     refl () = App (App (Const "Eq.refl" [Succ Zero]) (arrow ())) (Lam "y" (Const "Nat" []) (Const "Nat.zero" []))
 

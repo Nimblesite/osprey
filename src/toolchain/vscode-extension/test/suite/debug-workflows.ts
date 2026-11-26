@@ -16,6 +16,7 @@ import {
   setSourceBreakpoints,
   type DapStop,
 } from "./dap-harness";
+import { present } from "./osprey-test-env";
 
 type Launch = (
   specs: Parameters<typeof setSourceBreakpoints>[1],
@@ -89,10 +90,8 @@ export function registerDebugTailTests(
   test("profiler links a real debugger variable and clears it on continue", async function () {
     this.timeout(TEST_TIMEOUT_MS);
     const { session, stop } = await launchToFirstStop([6]);
-    const variables = await readFrameVariables(
-      session,
-      stop.stack.stackFrames[0].id,
-    );
+    const top = present(stop.stack.stackFrames[0], "the top frame at the final print");
+    const variables = await readFrameVariables(session, top.id);
     const variable = variables.find((item) => item.name === "first");
     assert.ok(variable);
     await vscode.commands.executeCommand("osprey.profiler.inspectVariable", {
@@ -112,8 +111,7 @@ export function registerDebugTailTests(
 
     // Stop on the final print, by which point every let is assigned and live.
     const { session, stop } = await launchToFirstStop([6]);
-    assertCurrentLine(stop.stack, 6, getSource());
-    const frameId = stop.stack.stackFrames[0].id;
+    const frameId = assertCurrentLine(stop.stack, 6, getSource()).id;
 
     const { scopes } = await getScopes(session, frameId);
     assert.ok(

@@ -30,7 +30,8 @@ fn conversion_program(source: &str, builtin: &str, values: &str) -> String {
 
 fn assert_conversion_pair(source: Numeric, target: Numeric) {
     let name = target.name();
-    let builtin = format!("to{}{}", name[..1].to_uppercase(), &name[1..]);
+    let head = name.get(..1).expect("char boundary").to_uppercase();
+    let builtin = format!("to{head}{}", name.get(1..).expect("char boundary"));
     let ty = source.name();
     let values = if source.is_float() {
         "0.0, 1.0, 2.0"
@@ -124,8 +125,9 @@ fn gpu_get_checks_readback_before_loading_a_scalar() {
         .expect("checked readback");
     let value = body.find("call i64 @osprey_gpu_get(").expect("scalar read");
     assert!(ready < value);
-    assert!(body[ready..value].contains("icmp sle i32"), "{body}");
-    assert!(body[ready..value].contains("br i1"), "{body}");
+    let between = body.get(ready..value).expect("char boundary");
+    assert!(between.contains("icmp sle i32"), "{body}");
+    assert!(between.contains("br i1"), "{body}");
 }
 #[test]
 fn gpu_materialization_checks_readback_before_loading_any_scalar() {
@@ -137,7 +139,8 @@ fn gpu_materialization_checks_readback_before_loading_any_scalar() {
         .expect("checked bulk readback");
     let value = body.find("call i64 @osprey_gpu_get(").expect("scalar copy");
     assert!(ready < value, "{body}");
-    assert!(body[ready..value].contains("select i1"), "{body}");
+    let between = body.get(ready..value).expect("char boundary");
+    assert!(between.contains("select i1"), "{body}");
     assert!(ir.contains("fromGpu: buffer unavailable"), "{body}");
 }
 #[test]

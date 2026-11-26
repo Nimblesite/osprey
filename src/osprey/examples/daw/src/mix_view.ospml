@@ -22,10 +22,7 @@ module MixView
             Scenes::disc (380.0, mid, 5.0, TimelineView::accent (), 4), Scenes::disc (380.0, mid, 2.8, fill, 5), label (TimelineView::destination voice, 396.0, mid - 8.0, 13.0, TimelineView::ink (), 0), label ("⌄", 480.0, mid - 8.0, 13.0, TimelineView::dim (), 1)], rail (215.0, mid + 10.0, 55.0, voice.gain, 4.0, chosen), rail (294.0, mid + 10.0, 56.0, voice.pan + 1.0, 2.0, chosen)]
 
     table editor = listConcat [label ("Track routing", 24.0, 161.0, 19.0, TimelineView::ink (), 0), label ("${length editor.song.tracks} tracks", 151.0, 167.0, 12.0, TimelineView::dim (), 0), TimelineView::box (0.0, 201.0, 710.0, 34.0, TimelineView::panelInk (), 2),
-        label ("TRACK", 24.0, 213.0, 11.0, TimelineView::dim (), 0), label ("GAIN", 215.0, 213.0, 11.0, TimelineView::dim (), 0), label ("PAN", 294.0, 213.0, 11.0, TimelineView::dim (), 0), label ("OUTPUT", 375.0, 213.0, 11.0, TimelineView::dim (), 0)] (foldList (toList (range (0, length editor.song.tracks)), [], \(all, index) =>
-        match listGet editor.song.tracks index
-            Error _ => all
-            Success voice => listConcat all (row (editor, index, voice))))
+        label ("TRACK", 24.0, 213.0, 11.0, TimelineView::dim (), 0), label ("GAIN", 215.0, 213.0, 11.0, TimelineView::dim (), 0), label ("PAN", 294.0, 213.0, 11.0, TimelineView::dim (), 0), label ("OUTPUT", 375.0, 213.0, 11.0, TimelineView::dim (), 0)] (EditorView::indexed (editor.song.tracks, [], \(voice, index) => row (editor, index, voice)))
 
     edge = 6246296
 
@@ -178,4 +175,4 @@ module MixView
         Success voice => ui::Lists::flatten [rows editor, busAreas (editor, voice), sendAreas voice]
         Error _ => rows editor
 
-    rows editor = mapList (toList (range (0, length editor.song.tracks)), \index => TimelineView::area ("Mix track ${satAdd index 1}", 0.0, TimelineGeometry::mixY (toFloat index, height editor), 710.0, height editor, index == editor.track))
+    rows editor = mapList (EditorView::indices editor.song.tracks, \index => TimelineView::area ("Mix track ${satAdd index 1}", 0.0, TimelineGeometry::mixY (toFloat index, height editor), 710.0, height editor, index == editor.track))

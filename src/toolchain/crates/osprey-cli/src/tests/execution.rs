@@ -293,14 +293,17 @@ fn definition<'a>(module: &'a str, name: &str) -> Option<&'a str> {
     let marker = format!("@{name}(");
     module
         .match_indices("define ")
-        .filter(|(at, _)| *at == 0 || module[..*at].ends_with('\n'))
-        .map(|(at, _)| &module[at..])
+        .filter(|(at, _)| *at == 0 || module.get(..*at).expect("char boundary").ends_with('\n'))
+        .map(|(at, _)| module.get(at..).expect("char boundary"))
         .find(|def| {
             def.lines()
                 .next()
                 .is_some_and(|head| head.contains(&marker))
         })
-        .map(|def| &def[..def.find("\n}").map_or(def.len(), |end| end + 2)])
+        .map(|def| {
+            let end = def.find("\n}").map_or(def.len(), |end| end + 2);
+            def.get(..end).expect("char boundary")
+        })
 }
 
 #[test]

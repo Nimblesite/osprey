@@ -213,8 +213,8 @@ module AdditionCases
             { index = 1, wanted = "{kind=\"image\",source=\"media/a.jpg\",alt=\"A chain\",width=#1920,height=#1080}" },
             { index = 2, wanted = "{kind=\"video\",source=\"media/a.mp4\",poster=\"media/a.jpg\",captions=\"media/a.vtt\",alt=\"A film\",seconds=#40}" }])
         // Neither leaf binds a control, so both spell no event member.
-        expect (memberCount (insideTold (childTold (toldOf media, 1)), "event", 0 - 1), 0 - 1)
-        expect (memberCount (insideTold (childTold (toldOf media, 2)), "event", 0 - 1), 0 - 1)
+        expect (childEvent (media, 1), 0 - 1)
+        expect (childEvent (media, 2), 0 - 1)
 
     (** [UI-COMPONENTS-FRAME] A frame's authored fields, checked as the typed record it is. *)
     export frameTypography style =

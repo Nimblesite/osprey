@@ -30,7 +30,7 @@ import {
   profileSink,
   registerTestProfileProfile,
 } from "../../client/src/test-profile";
-import { resolveBuiltOsprey } from "./osprey-test-env";
+import { present, resolveBuiltOsprey } from "./osprey-test-env";
 import { activateWithServer, waitFor } from "./profiler-kit";
 import {
   controllerFactory,
@@ -307,7 +307,7 @@ suite("Osprey test documentation and profiling", () => {
       await runItems(controller, [file], sink);
       const failed = sink.ofKind("failed");
       assert.strictEqual(failed.length, 1, "the one case failed");
-      const message = failed[0].message ?? "";
+      const message = present(failed[0], "the failed case").message ?? "";
       assert.ok(
         message.includes("Proves the broken invariant."),
         `documentation present:\n${message}`,
@@ -365,11 +365,12 @@ suite("Osprey test documentation and profiling", () => {
       );
       assert.ok(markdown, "markdown returned");
       assert.strictEqual(shown.length, 1);
-      assert.ok(shown[0].startsWith("### documented case\n"), shown[0]);
-      assert.ok(shown[0].includes("**Parameters**"), shown[0]);
+      const shownMarkdown = present(shown[0], "the shown markdown");
+      assert.ok(shownMarkdown.startsWith("### documented case\n"), shownMarkdown);
+      assert.ok(shownMarkdown.includes("**Parameters**"), shownMarkdown);
       assert.ok(
-        shown[0].includes(`Declared at \`${docUri.fsPath}:23\``),
-        shown[0],
+        shownMarkdown.includes(`Declared at \`${docUri.fsPath}:23\``),
+        shownMarkdown,
       );
     });
 
@@ -437,8 +438,10 @@ suite("Osprey test documentation and profiling", () => {
     // the file.
     test("an id with no documentation cannot win the cursor race", () => {
       const uri = vscode.Uri.file("/w/a.test.osp");
-      const known = [`${uri.toString()} phantom`, `${uri.toString()} real`];
-      const lines = new Map([[known[1], 5]]);
+      const phantom = `${uri.toString()} phantom`;
+      const real = `${uri.toString()} real`;
+      const known = [phantom, real];
+      const lines = new Map([[real, 5]]);
       const docOf = (id: string) => {
         const line = lines.get(id);
         return line === undefined
@@ -447,13 +450,13 @@ suite("Osprey test documentation and profiling", () => {
       };
       assert.strictEqual(
         resolveTargetId(undefined, uri, 10, known, docOf),
-        known[1],
+        real,
         "the documented case owns the cursor",
       );
       // With the only documented case removed, nothing resolves -- the phantom
       // does not step in at line 0.
       assert.strictEqual(
-        resolveTargetId(undefined, uri, 10, [known[0]], docOf),
+        resolveTargetId(undefined, uri, 10, [phantom], docOf),
         undefined,
       );
     });
@@ -582,8 +585,9 @@ suite("Osprey test documentation and profiling", () => {
         assert.ok(sink.output.includes("ok 1 - profiled work"), sink.output);
         // And the artifacts landed in this run's directory.
         assert.strictEqual(sink.profiles.length, 1, "one suite profiled");
-        assert.strictEqual(sink.profiles[0].path, profileUri.fsPath);
-        const dir = sink.profiles[0].dir;
+        const profile = present(sink.profiles[0], "the suite profile");
+        assert.strictEqual(profile.path, profileUri.fsPath);
+        const dir = profile.dir;
         assert.ok(dir.startsWith(root), `${dir} is under ${root}`);
         for (const ext of [
           "profile.json",
@@ -627,7 +631,7 @@ suite("Osprey test documentation and profiling", () => {
           "flame panel opened",
         );
         assert.strictEqual(applied.length, 1, "heat decorations applied");
-        assert.ok(applied[0] > 0, "the profile really collected samples");
+        assert.ok(present(applied[0], "the applied sample count") > 0, "the profile really collected samples");
         assert.ok(outcome.detail.length > 0, "a summary line for the output");
       });
     });

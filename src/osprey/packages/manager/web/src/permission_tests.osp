@@ -7,16 +7,19 @@ namespace registry_web;
 module PermissionTests {
     let adminOnlyCode = "web.permissions.admin-only"
 
+    /// The control screen for `member` over `ledger`, at the fixture clock.
+    fn controlScreen(member, ledger) = Permissions::render(WebFixtures::warnedAtlasUtil(), member, ledger, WebFixtures::now())
+
     /// The administrator holds only edit-metadata: the control screen
     /// shows the ledger and explicitly denies implied publication.
     fn adminWithoutPublish() = WebFixtures::showsTexts("web: admin without publish warned",
-        Permissions::render(WebFixtures::warnedAtlasUtil(), WebFixtures::adminWithoutPublish(), WebFixtures::atlasGrantLedger(), WebFixtures::now()),
+        controlScreen(WebFixtures::adminWithoutPublish(), WebFixtures::atlasGrantLedger()),
         ["Package administrator: mem-admin-atlas", "edit-metadata", "publish-release",
             "administration alone does not authorize publication"], [])
 
     /// With the explicit grant, the warning is gone.
     fn adminWithPublish() = WebFixtures::showsExpecting("web: admin with publish not warned",
-        Permissions::render(WebFixtures::warnedAtlasUtil(), WebFixtures::adminWithPublish(), WebFixtures::atlasGrantLedger(), WebFixtures::now()),
+        controlScreen(WebFixtures::adminWithPublish(), WebFixtures::atlasGrantLedger()),
         "no admin-publish warning")
 
     /// The package page carries the same context and warning for members.
@@ -40,9 +43,9 @@ module PermissionTests {
     /// The control screen is admin-only: a publisher, an outsider and an
     /// anonymous visitor all get the hidden screen.
     fn controlScreenAdminOnly() = checkAll("web: control screen admin only", [
-        WebFixtures::hiddenFor(Permissions::render(WebFixtures::warnedAtlasUtil(), WebFixtures::publisher(), WebFixtures::atlasGrantLedger(), WebFixtures::now()), adminOnlyCode),
-        WebFixtures::hiddenFor(Permissions::render(WebFixtures::warnedAtlasUtil(), WebFixtures::outsider(), WebFixtures::atlasGrantLedger(), WebFixtures::now()), adminOnlyCode),
-        WebFixtures::hiddenFor(Permissions::render(WebFixtures::warnedAtlasUtil(), WebFixtures::anonymous(), WebFixtures::atlasGrantLedger(), WebFixtures::now()), adminOnlyCode)
+        WebFixtures::hiddenFor(controlScreen(WebFixtures::publisher(), WebFixtures::atlasGrantLedger()), adminOnlyCode),
+        WebFixtures::hiddenFor(controlScreen(WebFixtures::outsider(), WebFixtures::atlasGrantLedger()), adminOnlyCode),
+        WebFixtures::hiddenFor(controlScreen(WebFixtures::anonymous(), WebFixtures::atlasGrantLedger()), adminOnlyCode)
     ])
 
     /// A member of another organization never sees this package's access
@@ -52,7 +55,7 @@ module PermissionTests {
 
     /// The grant table escapes hostile membership ids.
     fn hostileLedger() = WebFixtures::showsTexts("web: hostile ledger escaped",
-        Permissions::render(WebFixtures::warnedAtlasUtil(), WebFixtures::adminWithoutPublish(), WebFixtures::hostileGrantLedger(), WebFixtures::now()),
+        controlScreen(WebFixtures::adminWithoutPublish(), WebFixtures::hostileGrantLedger()),
         ["&lt;td&gt;injected&lt;/td&gt;"], ["<td>injected</td>"])
 
     /// The suite.

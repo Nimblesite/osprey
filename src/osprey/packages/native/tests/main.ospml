@@ -170,8 +170,8 @@ test ("an aside's splitter carries the column width and its limits and binds aft
     expect (Splitters::keep, 340)
     // The pane's rows bind 0, the column's button 1, and the splitter 2 after both columns' controls.
     expect (memberCount (members, "event", 0 - 1), 2)
-    expect (memberCount (insideTold (memberTold (members, "pane")), "event", 0 - 1), 0)
-    expect (memberCount (insideTold (childTold (memberTold (members, "aside"), 2)), "event", 0 - 1), 1)))
+    expect (eventOf (memberTold (members, "pane")), 0)
+    expect (eventOf (childTold (memberTold (members, "aside"), 2)), 1)))
 
 resized value =
     delivered = match Surfaces::told (ui::SizeInput(action = Typed), value)
@@ -204,11 +204,11 @@ test ("an encoded region decodes with its components and text intact", \() => ui
 test ("a control carries the ordinal of its binding", \() => ui::Runtime::guarded (\() =>
     children = memberItems (insideTold (toldOf (tree ())), "children")
     // The text and its section take no ordinal; the button, the section's field and the picker take 0, 1 and 2.
-    expect (memberCount (insideTold (toldAt (children, 0)), "event", 0 - 1), 0 - 1)
-    expect (memberCount (insideTold (toldAt (children, 1)), "event", 0 - 1), 0)
+    expect (eventOf (toldAt (children, 0)), 0 - 1)
+    expect (eventOf (toldAt (children, 1)), 0)
     sectionField = childTold (toldAt (children, 2), 0)
-    expect (memberCount (insideTold sectionField, "event", 0 - 1), 1)
-    expect (memberCount (insideTold (toldAt (children, 3)), "event", 0 - 1), 2)
+    expect (eventOf sectionField, 1)
+    expect (eventOf (toldAt (children, 3)), 2)
     delivers (tree (), [ui::Tap(action = Increment), ui::TextInput(action = Typed), ui::ChoiceInput(action = Load)])))
 test ("start sends every region once with the theme", \() => ui::Runtime::guarded (\() =>
     first = Probes::started ()
@@ -537,7 +537,7 @@ test ("presentation frames preserve exact dimensions and inner control provenanc
     AdditionCases::frameTypography style
     binds (walked, 1)
     // The frame's only control keeps its provenance: the button inside binds first.
-    expect (memberCount (insideTold (memberTold (insideTold (toldOf framed), "body")), "event", 0 - 1), 0)
+    expect (eventOf (memberTold (insideTold (toldOf framed), "body")), 0)
     delivers (framed, [ui::Tap(action = Increment)])))
 
 // A theme scoped to the single token `name`, its spacing and timing the probe's.

@@ -29,7 +29,7 @@ fn annotation_edits_preserve_default_bodies_and_comments() {
     assert_eq!(
         edits
             .iter()
-            .map(|e| &source[e.highlight.clone()])
+            .map(|e| source.get(e.highlight.clone()).expect("char boundary"))
             .collect::<Vec<_>>(),
         [
             ": int",
@@ -51,11 +51,12 @@ fn annotation_edits_remove_ml_headers_and_preserve_exports() {
     let source = "module Math\n    // 😀 documentation\n    export smaller : int -> int -> int\n    // definition comment\n    smaller a b = if a < b then a else b\n";
     let candidates = annotation_edits(source, Flavor::Ml);
     assert_eq!(candidates.len(), 1);
+    let highlight = candidates
+        .first()
+        .map(|e| e.highlight.clone())
+        .unwrap_or(0..0);
     assert_eq!(
-        &source[candidates
-            .first()
-            .map(|e| e.highlight.clone())
-            .unwrap_or(0..0)],
+        source.get(highlight).expect("char boundary"),
         "smaller : int -> int -> int"
     );
     assert_eq!(erased(source, Flavor::Ml, |_| true), "module Math\n    // 😀 documentation\n    // definition comment\n    export smaller a b = if a < b then a else b\n");

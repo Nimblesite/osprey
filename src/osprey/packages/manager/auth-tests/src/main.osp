@@ -23,10 +23,11 @@ fn pinnedRedirect() = match OAuth::authorizeUrl(config(), "E9Melhoa2OwvFrEMTJguC
 
 fn badConfiguration() = {
     let c = config()
+    let refused = "auth.configuration"
     checkAll("OAuth rejects unsafe origins and challenge injection", [
-            OAuth::configCode(c { supabaseOrigin: "http://project.supabase.co" }) == "auth.configuration",
-            OAuth::configCode(c { supabaseOrigin: "https://trusted.test@evil.test" }) == "auth.configuration",
-            OAuth::configCode(c { websiteOrigin: "https://site.test/path" }) == "auth.configuration",
+            OAuth::configCode(c { supabaseOrigin: "http://project.supabase.co" }) == refused,
+            OAuth::configCode(c { supabaseOrigin: "https://trusted.test@evil.test" }) == refused,
+            OAuth::configCode(c { websiteOrigin: "https://site.test/path" }) == refused,
             OAuth::challengeCode("x&redirect_to=https://evil.test") == "auth.pkce",
             OAuth::challengeCode(repeat("a", 42) ?: "") == "auth.pkce"
     ])

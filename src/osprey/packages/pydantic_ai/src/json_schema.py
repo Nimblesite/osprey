@@ -26,6 +26,8 @@ STRICT_COMPATIBLE_STRING_FORMATS = ["date-time", "time", "date", "duration", "em
 
 TYPE_BEARING_KEYS = ["type", "$ref", "anyOf", "oneOf", "allOf", "enum", "const"]
 """`_TYPE_BEARING_KEYS`: keys that give array items a type."""
+ADDITIONAL_PROPS = "additionalProperties"
+"""The schema member that says whether extra properties are allowed."""
 
 DROPPED_KEYS = ["title", "$schema", "discriminator"]
 
@@ -116,7 +118,7 @@ def handle_object(members):
     props = J.members_of(J.object_at(schema, "properties"))
     walked = foldList(props, Transformed(schema=J.obj([]), is_strict_compatible=True), def_step)
     with_props = replaced(members, "properties", walked.schema) if len(props) > 0 else schema
-    return handle_child(walked, "additionalProperties", with_props)
+    return handle_child(walked, ADDITIONAL_PROPS, with_props)
 
 
 def handle_array(members) -> Transformed:
@@ -137,13 +139,13 @@ def transform_node(schema, compatible) -> Transformed:
     bad_format = format_ != "" and not listContains(STRICT_COMPATIBLE_STRING_FORMATS, format_)
     still = compatible and not J.has(schema, "default") and not incompatible and not bad_format and not J.has(schema, "oneOf")
     if type_ == "object":
-        additional = J.object_at(schema, "additionalProperties")
+        additional = J.object_at(schema, ADDITIONAL_PROPS)
         allows_extra = not J.is_null(additional) and not J.encode(additional) == "false"
         props = J.members_of(J.object_at(schema, "properties"))
         required = mapList(J.list_at(schema, "required"), lambda r: unwrap_or(jsonText(r), ""))
         all_required = J.has(schema, "properties") and J.has(schema, "required") and len(filterList(props, lambda m: not listContains(required, J.member_name(m)))) == 0
         with_props = members if J.has(schema, "properties") else listAppend(members, J.member("properties", J.obj([])))
-        closed = listAppend(without(with_props, ["additionalProperties"]), J.member("additionalProperties", JsonBool(False))) if not allows_extra else with_props
+        closed = listAppend(without(with_props, [ADDITIONAL_PROPS]), J.member(ADDITIONAL_PROPS, JsonBool(False))) if not allows_extra else with_props
         return Transformed(schema=J.obj(closed), is_strict_compatible=still and not allows_extra and all_required)
     elif type_ == "array":
         items = J.object_at(schema, "items")

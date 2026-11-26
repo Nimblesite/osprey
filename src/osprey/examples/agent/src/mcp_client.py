@@ -24,7 +24,27 @@ __all__ = [
 
 
 def parse_config(text):
-    """Parses the standard `mcpServers` shape with no host environment."""
+    """Parses the standard `mcpServers` shape with no host environment.
+
+    # Examples
+    ```osprey
+    from agent import McpClient
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, value):
+            return value
+
+    with wrapped:
+        ok = McpClient.parse_config('{"mcpServers":{"fs":{"command":"npx","args":["fs"]}}}')
+        bad = McpClient.parse_config('{"mcpServers":{"empty":{}}}')
+        junk = McpClient.parse_config("not json")
+        print(f"{len(ok.servers)} {ok.problems} | {len(bad.servers)} {bad.problems} | {junk.problems}")
+    ```
+    ```output
+    1 [] | 0 ["MCP server config 'empty' must have either 'command' or 'url'"] | ["not valid JSON: jsonDecode: byte 0: unexpected character"]
+    ```
+    """
     empty: dict[str, str] = {}
     return Mcp.parse_config(text, empty)
 
@@ -36,7 +56,28 @@ def json_map(values):
 
 
 def config_value(config):
-    """One serializable server entry, including its private values."""
+    """One serializable server entry, including its private values.
+
+    # Examples
+    ```osprey
+    from agent import McpClient
+    from pydantic_ai import JsonUtil as J
+    from pydantic_ai import Mcp
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, value):
+            return value
+
+    with wrapped:
+        load = McpClient.parse_config('{"mcpServers":{"fs":{"command":"npx","args":["-y","fs"],"env":{"A":"1"}}}}')
+        blank = Mcp.StdioServer(name="", command="", args=[], env={}, cwd="")
+        print(J.encode(McpClient.config_value(unwrap_or(load.servers[0], blank))))
+    ```
+    ```output
+    {"command":"npx","args":["-y","fs"],"env":{"A":"1"}}
+    ```
+    """
     match config:
         case Mcp.StdioServer(command=command, args=args, env=env, cwd=cwd):
             members = [J.member("command", JsonString(command)), J.member("args", JsonArray(mapList(args, lambda text: JsonString(text)))), J.member("env", J.of_map(json_map(env)))]
@@ -46,7 +87,25 @@ def config_value(config):
 
 
 def config_json(servers):
-    """The standard private `mcp.json` document."""
+    """The standard private `mcp.json` document.
+
+    # Examples
+    ```osprey
+    from agent import McpClient
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, value):
+            return value
+
+    with wrapped:
+        load = McpClient.parse_config('{"mcpServers":{"fs":{"command":"npx","args":["fs"]}}}')
+        print(McpClient.config_json(load.servers))
+    ```
+    ```output
+    {"mcpServers":{"fs":{"command":"npx","args":["fs"],"env":{}}}}
+    ```
+    """
     return J.encode(J.obj([J.member("mcpServers", J.obj(mapList(servers, lambda server: J.member(Mcp.name_of(server), config_value(server)))))]))
 
 
@@ -85,7 +144,21 @@ def names_of(text):
 
 
 def add_global(global_text, name, entry_json):
-    """`mcp.json` with one more server, or a naming problem."""
+    """`mcp.json` with one more server, or a naming problem.
+
+    # Examples
+    ```osprey
+    from agent import McpClient
+
+    doc = '{"mcpServers":{"fs":{"command":"npx","args":["fs"],"env":{}}}}'
+    entry = '{"command":"git","args":[]}'
+    added = McpClient.add_global(doc, "git", entry)
+    print(f"[{McpClient.add_global(doc, "fs", entry).problem}] [{added.problem}] {added.text}")
+    ```
+    ```output
+    [An MCP server named 'fs' already exists.] [] {"mcpServers":{"fs":{"command":"npx","args":["fs"],"env":{}},"git":{"command":"git","args":[]}}}
+    ```
+    """
     match J.decode(entry_json):
         case Success(value=entry):
             taken = names_of(global_text)
@@ -108,7 +181,28 @@ def paste_problem(problems, clash):
 
 
 def paste_global(global_text, pasted):
-    """`mcp.json` with every server a pasted block configures, or one problem naming the first fault. Atomic: nothing is added when anything is wrong."""
+    """`mcp.json` with every server a pasted block configures, or one problem naming the first fault. Atomic: nothing is added when anything is wrong.
+
+    # Examples
+    ```osprey
+    from agent import McpClient
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, value):
+            return value
+
+    with wrapped:
+        doc = '{"mcpServers":{"fs":{"command":"npx","args":["fs"],"env":{}}}}'
+        pasted = '{"mcpServers":{"git":{"command":"git"},"fs":{"command":"other"}}}'
+        clash = McpClient.paste_global(doc, pasted)
+        both = McpClient.paste_global("{}", pasted)
+        print(f"[{clash.problem}] [{both.problem}] {both.text}")
+    ```
+    ```output
+    [An MCP server named 'fs' already exists.] [] {"mcpServers":{"git":{"command":"git","args":[],"env":{}},"fs":{"command":"other","args":[],"env":{}}}}
+    ```
+    """
     loaded = parse_config(pasted)
     existing = names_of(global_text)
     pasted_names = mapList(loaded.servers, lambda server: Mcp.name_of(server))
@@ -119,7 +213,19 @@ def paste_global(global_text, pasted):
 
 
 def remove_global_text(global_text, name):
-    """`mcp.json` without one server."""
+    """`mcp.json` without one server.
+
+    # Examples
+    ```osprey
+    from agent import McpClient
+
+    doc = '{"mcpServers":{"fs":{"command":"npx","args":["fs"],"env":{}},"git":{"command":"git","args":[],"env":{}}}}'
+    print(f"{McpClient.remove_global_text(doc, "fs")} {McpClient.remove_global_text(doc, "nope")}")
+    ```
+    ```output
+    {"mcpServers":{"git":{"command":"git","args":[],"env":{}}}} {"mcpServers":{"fs":{"command":"npx","args":["fs"],"env":{}},"git":{"command":"git","args":[],"env":{}}}}
+    ```
+    """
     members = filterList(J.members_of(servers_member(global_text)), lambda member: J.member_name(member) != name)
     return J.encode(J.obj([J.member("mcpServers", J.obj(members))]))
 
@@ -170,7 +276,27 @@ def file_problems(label, load):
 
 
 def merge_view(global_text, project_text):
-    """The servers both documents configure, as primitives, with their problems in words."""
+    """The servers both documents configure, as primitives, with their problems in words.
+
+    # Examples
+    ```osprey
+    from agent import McpClient
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, value):
+            return value
+
+    with wrapped:
+        doc = '{"mcpServers":{"fs":{"command":"npx","args":["fs"]},"web":{"url":"http://evil.example"}}}'
+        merged = McpClient.merge_view(doc, '{"mcpServers":{"fs":{"command":"other"}}}')
+        named = mapList(merged.mergedServers, lambda s: s.viewName + ":" + s.viewOrigin + ":" + s.viewEndpoint)
+        print(f"{named} {merged.mergedProblems}")
+    ```
+    ```output
+    ["fs:project:other"] ["mcp.json: MCP server config 'web' needs an HTTPS URL, or an HTTP URL on this machine"]
+    ```
+    """
     globe = parse_config(global_text)
     project = parse_config(project_text)
     merged = Mcp.merge_configs(filterList(globe.servers, lambda server: entry_problem(server) == ""), filterList(project.servers, lambda server: entry_problem(server) == ""))
@@ -203,7 +329,22 @@ def pair_step(acc, line, label):
 
 
 def valid_url(url):
-    """HTTPS anywhere, or plain HTTP only to a loopback test/local server."""
+    """HTTPS anywhere, or plain HTTP only to a loopback test/local server.
+
+    # Examples
+    ```osprey
+    from agent import McpClient
+
+    secure = McpClient.valid_url("https://api.example.com/mcp")
+    local = McpClient.valid_url("http://localhost:8080")
+    spoof = McpClient.valid_url("http://localhost.attacker")
+    bare = McpClient.valid_url("https://")
+    print(f"{secure} {local} {spoof} {bare}")
+    ```
+    ```output
+    true true false false
+    ```
+    """
     if contains(url, " ") or contains(url, "\n") or contains(url, "\t"):
         return False
     elif startsWith(url, "https://"):
@@ -220,7 +361,28 @@ def loopback_url(url, host):
 
 
 def form_problem(name, kind, command, url, environment, headers):
-    """The first problem in an Add server form, empty when it is valid."""
+    """The first problem in an Add server form, empty when it is valid.
+
+    # Examples
+    ```osprey
+    from agent import McpClient
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, value):
+            return value
+
+    with wrapped:
+        unnamed = McpClient.form_problem("", "command", "npx", "", "", "")
+        remote = McpClient.form_problem("fs", "url", "", "http://evil.example", "", "")
+        env = McpClient.form_problem("fs", "command", "npx", "", "TOKEN", "")
+        fine = McpClient.form_problem("fs", "command", "npx", "", "TOKEN=x", "")
+        print(f"[{unnamed}] [{remote}] [{env}] [{fine}]")
+    ```
+    ```output
+    [Enter a server name.] [Enter an HTTPS URL, or an HTTP URL on this machine.] [Environment lines must look like NAME=value.] []
+    ```
+    """
     if trim(name) == "":
         return "Enter a server name."
     elif kind == "command" and trim(command) == "":
@@ -240,7 +402,26 @@ def form_problem(name, kind, command, url, environment, headers):
 
 
 def form_config(name, kind, command, arguments, url, environment, headers):
-    """A validated form as the server entry `mcp.json` holds, or the words saying why not."""
+    """A validated form as the server entry `mcp.json` holds, or the words saying why not.
+
+    # Examples
+    ```osprey
+    from agent import McpClient
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, value):
+            return value
+
+    with wrapped:
+        entry = McpClient.form_config("fs", "command", "npx", "-y\\nfs", "", "A=1", "")
+        refused = McpClient.form_config("fs", "command", "npx", "", "", "A", "")
+        print(f"{entry.text} [{entry.problem}] [{refused.problem}]")
+    ```
+    ```output
+    {"command":"npx","args":["-y","fs"],"env":{"A":"1"}} [] [Environment lines must look like NAME=value.]
+    ```
+    """
     problem = form_problem(name, kind, command, url, environment, headers)
     if problem != "":
         return refused(problem)
@@ -259,7 +440,28 @@ def form_config(name, kind, command, arguments, url, environment, headers):
 
 
 def form_server(name, kind, command, arguments, url, environment, headers):
-    """A validated form as one typed server config, kept for the host-free suite."""
+    """A validated form as one typed server config, kept for the host-free suite.
+
+    # Examples
+    ```osprey
+    from agent import McpClient
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, value):
+            return value
+
+    with wrapped:
+        match McpClient.form_server("fs", "url", "", "", "https://api.example.com", "", "X-Token: abc"):
+            case Success():
+                print("parsed")
+            case Error(message=problem):
+                print(problem)
+    ```
+    ```output
+    Header lines must look like NAME=value.
+    ```
+    """
     entry = form_config(name, kind, command, arguments, url, environment, headers)
     if entry.problem != "":
         return Error(message=entry.problem)
@@ -273,7 +475,20 @@ def form_server(name, kind, command, arguments, url, environment, headers):
 
 
 def start_brief(entry_json):
-    """How to reach one server, as JSON: a child process with its environment, or a URL with its headers."""
+    """How to reach one server, as JSON: a child process with its environment, or a URL with its headers.
+
+    # Examples
+    ```osprey
+    from agent import McpClient
+
+    stdio = McpClient.start_brief('{"command":"npx","args":["fs"],"env":{"A":"1"}}')
+    http = McpClient.start_brief('{"url":"https://x","headers":{"A":"1"}}')
+    print(f"{stdio} {http} {McpClient.start_brief('{}')}")
+    ```
+    ```output
+    {"kind":"stdio","command":"npx","args":["fs"],"env":[{"name":"A","value":"1"}]} {"kind":"http","url":"https://x","headers":[{"name":"A","value":"1"}]} {"kind":"unsupported","problem":"The server entry needs a URL."}
+    ```
+    """
     match J.decode(entry_json):
         case Success(value=entry):
             match entry:
@@ -320,7 +535,25 @@ def text_map_step(acc, member):
 
 
 def read_step(buffer, chunk):
-    """The complete lines a chunk of standard output ends, and the buffer the next chunk starts from."""
+    """The complete lines a chunk of standard output ends, and the buffer the next chunk starts from.
+
+    # Examples
+    ```osprey
+    from agent import McpClient
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, value):
+            return value
+
+    with wrapped:
+        step = McpClient.read_step("", "{\\"a\\":1}\\n{\\"b\\"")
+        print(f"{step.lines} [{step.buffer}]")
+    ```
+    ```output
+    ["{\\"a\\":1}"] [{"b"]
+    ```
+    """
     lines = Mcp.lines_of(Mcp.LineBuffer(pending=buffer), chunk)
     return ReadStep(lines=lines.lines, buffer=lines.buffer.pending)
 
@@ -332,7 +565,18 @@ class ReadStep:
 
 
 def message_json(line):
-    """One line from a server as tagged JSON text, so no protocol union crosses the flavor boundary."""
+    """One line from a server as tagged JSON text, so no protocol union crosses the flavor boundary.
+
+    # Examples
+    ```osprey
+    from agent import McpClient
+
+    print(f"{McpClient.message_json('{"id":1,"result":{"x":2}}')} {McpClient.message_json('garbage')}")
+    ```
+    ```output
+    {"kind":"ok","id":1,"result":{"x":2}} {"kind":"malformed","reason":"not JSON: jsonDecode: byte 0: unexpected character"}
+    ```
+    """
     return J.encode(tag_of(Mcp.read_message(line)))
 
 
@@ -361,20 +605,45 @@ def id_text(message):
 
 
 def find_response(texts, wanted):
-    """The response message whose id matches `wanted` as JSON text, or `{}` when there is none."""
+    """The response message whose id matches `wanted` as JSON text, or `{}` when there is none.
+
+    # Examples
+    ```osprey
+    from agent import McpClient
+
+    texts = [McpClient.message_json('{"id":1,"result":{"x":2}}'), McpClient.message_json('{"id":2,"result":{}}')]
+    print(f"{McpClient.find_response(texts, "1")} {McpClient.find_response(texts, "9")}")
+    ```
+    ```output
+    {"kind":"ok","id":1,"result":{"x":2}} {}
+    ```
+    """
     found = filterList(decode_messages(texts), lambda message: (J.text_at(message, "kind", "") == "ok" or J.text_at(message, "kind", "") == "error") and id_text(message) == wanted)
     return J.encode(unwrap_or(listGet(found, 0), J.obj([])))
 
 
 def initialize_outcome(text):
-    """The `initialize` reply as `{"ok", "problem"}`: our protocol version, or the server's refusal in words."""
+    """The `initialize` reply as `{"ok", "problem"}`: our protocol version, or the server's refusal in words.
+
+    # Examples
+    ```osprey
+    from agent import McpClient
+
+    agreed = McpClient.message_json('{"id":1,"result":{"protocolVersion":"2025-06-18","capabilities":{},"serverInfo":{"name":"fs","version":"1"}}}')
+    refused = McpClient.message_json('{"id":1,"error":{"code":-32602,"message":"bad"}}')
+    print(f"{McpClient.initialize_outcome(agreed)} {McpClient.initialize_outcome(refused)}")
+    ```
+    ```output
+    {"ok":true,"problem":""} {"ok":false,"problem":"bad (code: -32602)"}
+    ```
+    """
     message = unwrap_or(J.decode(text), JsonNull())
     match J.text_at(message, "kind", ""):
         case "error":
             return J.encode(J.obj([J.member("ok", JsonBool(False)), J.member("problem", JsonString(error_words(message)))]))
         case _:
             match Mcp.initialize_result(J.object_at(message, "result")):
-                case Mcp.Ok(session=session):
+                case Mcp.Ok(session=_):
                     return J.encode(J.obj([J.member("ok", JsonBool(True)), J.member("problem", JsonString(""))]))
                 case Mcp.Failed(error=error):
                     return J.encode(J.obj([J.member("ok", JsonBool(False)), J.member("problem", JsonString(Mcp.message_of(error)))]))
@@ -385,7 +654,20 @@ def error_words(message):
 
 
 def tools_page(text):
-    """A `tools/list` reply as `{"tools", "cursor", "problems"}`."""
+    """A `tools/list` reply as `{"tools", "cursor", "problems"}`.
+
+    # Examples
+    ```osprey
+    from agent import McpClient
+
+    listed = McpClient.message_json('{"id":1,"result":{"tools":[{"name":"read","description":"Reads","inputSchema":{"type":"object"}}],"nextCursor":"c2"}}')
+    failed = McpClient.message_json('{"id":1,"error":{"code":1,"message":"nope"}}')
+    print(f"{McpClient.tools_page(listed)} {McpClient.tools_page(failed)}")
+    ```
+    ```output
+    {"tools":[{"name":"read","description":"Reads","inputSchema":{"type":"object"}}],"cursor":"c2","problems":[]} {"tools":[],"cursor":"","problems":["nope (code: 1)"]}
+    ```
+    """
     message = unwrap_or(J.decode(text), JsonNull())
     match J.text_at(message, "kind", ""):
         case "error":
@@ -398,7 +680,27 @@ def tools_page(text):
 
 
 def call_text_of(text):
-    """A `tools/call` reply as the tool's text; an `isError` reply is that text, an error response is its words."""
+    """A `tools/call` reply as the tool's text; an `isError` reply is that text, an error response is its words.
+
+    # Examples
+    ```osprey
+    from agent import McpClient
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, value):
+            return value
+
+    with wrapped:
+        text = McpClient.message_json('{"id":1,"result":{"content":[{"type":"text","text":"hi"}]}}')
+        fault = McpClient.message_json('{"id":1,"result":{"isError":true,"content":[{"type":"text","text":"boom"}]}}')
+        missing = McpClient.message_json('{"id":1,"error":{"code":1,"message":"nope"}}')
+        print(f"[{McpClient.call_text_of(text)}] [{McpClient.call_text_of(fault)}] [{McpClient.call_text_of(missing)}]")
+    ```
+    ```output
+    [hi] [boom] [nope (code: 1)]
+    ```
+    """
     message = unwrap_or(J.decode(text), JsonNull())
     match J.text_at(message, "kind", ""):
         case "error":
@@ -412,25 +714,93 @@ def call_text_of(text):
 
 
 def ping_replies(texts):
-    """The encoded `ping` responses a server's own pings ask for, one per line, empty when it sent none."""
+    """The encoded `ping` responses a server's own pings ask for, one per line, empty when it sent none.
+
+    # Examples
+    ```osprey
+    from agent import McpClient
+
+    lines = [McpClient.message_json('{"id":7,"method":"ping"}'), McpClient.message_json('{"id":1,"result":{}}')]
+    print(f"[{McpClient.ping_replies(lines)}]")
+    ```
+    ```output
+    [{"jsonrpc":"2.0","id":7,"result":{}}
+    ]
+    ```
+    """
     pings = filterList(decode_messages(texts), lambda message: J.text_at(message, "kind", "") == "request" and J.text_at(message, "method", "") == "ping")
     return join(mapList(pings, lambda message: Mcp.encode_line(Mcp.ping_response(J.object_at(message, "id")))), "\n")
 
 
 def header_value(result, wanted):
-    """One HTTP response header, case-insensitively, empty when absent."""
+    """One HTTP response header, case-insensitively, empty when absent.
+
+    # Examples
+    ```osprey
+    from agent import McpClient
+    from pydantic_ai import JsonUtil as J
+
+    type = J.obj([J.member("name", JsonString("Content-Type")), J.member("value", JsonString("text/event-stream"))])
+    result = J.obj([J.member("headers", JsonArray([type]))])
+    print(f"[{McpClient.header_value(result, "content-type")}] [{McpClient.header_value(result, "X-Token")}]")
+    ```
+    ```output
+    [text/event-stream] []
+    ```
+    """
     headers = J.list_at(result, "headers")
     found = filterList(headers, lambda header: toLowerCase(J.text_at(header, "name", "")) == toLowerCase(wanted))
     return J.text_at(unwrap_or(listGet(found, 0), JsonNull()), "value", "")
 
 
 def http_messages(result, body):
-    """The JSON-RPC messages in one JSON or SSE HTTP response, each as tagged JSON text."""
+    """The JSON-RPC messages in one JSON or SSE HTTP response, each as tagged JSON text.
+
+    # Examples
+    ```osprey
+    from agent import McpClient
+    from pydantic_ai import JsonUtil as J
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, value):
+            return value
+
+    with wrapped:
+        whole = J.obj([J.member("headers", JsonArray([J.obj([J.member("name", JsonString("Content-Type")), J.member("value", JsonString("application/json"))])]))])
+        stream = J.obj([J.member("headers", JsonArray([J.obj([J.member("name", JsonString("Content-Type")), J.member("value", JsonString("text/event-stream"))])]))])
+        print(f"{McpClient.http_messages(whole, '{"id":1,"result":{}}')} {McpClient.http_messages(stream, "event: message\\ndata: {\\"id\\":2,\\"result\\":{}}\\n\\n")}")
+    ```
+    ```output
+    ["{\\"kind\\":\\"ok\\",\\"id\\":1,\\"result\\":{}}"] ["{\\"kind\\":\\"ok\\",\\"id\\":2,\\"result\\":{}}"]
+    ```
+    """
     return mapList(Mcp.reply_messages(header_value(result, "content-type"), body), lambda incoming: J.encode(tag_of(incoming)))
 
 
 def arguments_of(text):
-    """A tool call's JSON object as the map `tools/call` requires."""
+    """A tool call's JSON object as the map `tools/call` requires.
+
+    # Examples
+    ```osprey
+    from agent import McpClient
+
+    match McpClient.arguments_of('{"path":"a"}'):
+        case Success(value=values):
+            print(mapKeys(values))
+        case Error():
+            print("refused")
+    match McpClient.arguments_of('[]'):
+        case Success():
+            print("accepted")
+        case Error(message=problem):
+            print(problem)
+    ```
+    ```output
+    ["path"]
+    Tool arguments must be a JSON object.
+    ```
+    """
     match J.decode(text):
         case Success(value=value):
             match value:
@@ -449,22 +819,73 @@ class Wire:
 
 
 def initialize_line(ident):
-    """The `initialize` request as one stdio line."""
+    """The `initialize` request as one stdio line.
+
+    # Examples
+    ```osprey
+    from agent import McpClient
+
+    print(McpClient.initialize_line(1))
+    ```
+    ```output
+    {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"Osprey Agent","version":"1"}}}
+
+    ```
+    """
     return Mcp.encode_line(Mcp.initialize_request(JsonInt(ident), "Osprey Agent", "1"))
 
 
 def initialized_line():
-    """The `notifications/initialized` line."""
+    """The `notifications/initialized` line.
+
+    # Examples
+    ```osprey
+    from agent import McpClient
+
+    print(McpClient.initialized_line())
+    ```
+    ```output
+    {"jsonrpc":"2.0","method":"notifications/initialized"}
+
+    ```
+    """
     return Mcp.encode_line(Mcp.initialized_notification())
 
 
 def list_tools_line(ident, cursor):
-    """The `tools/list` request as one stdio line, paging by cursor."""
+    """The `tools/list` request as one stdio line, paging by cursor.
+
+    # Examples
+    ```osprey
+    from agent import McpClient
+
+    print(f"{McpClient.list_tools_line(2, "")}{McpClient.list_tools_line(3, "c2")}")
+    ```
+    ```output
+    {"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}
+    {"jsonrpc":"2.0","id":3,"method":"tools/list","params":{"cursor":"c2"}}
+
+    ```
+    """
     return Mcp.encode_line(Mcp.list_tools_request(JsonInt(ident), cursor))
 
 
 def call_line(ident, tool, arguments_json):
-    """The `tools/call` request as one stdio line; arguments that are not a JSON object are a problem in words."""
+    """The `tools/call` request as one stdio line; arguments that are not a JSON object are a problem in words.
+
+    # Examples
+    ```osprey
+    from agent import McpClient
+
+    call = McpClient.call_line(4, "fs_read", '{"path":"a"}')
+    bad = McpClient.call_line(4, "fs_read", "[]")
+    print(f"{call.text}[{call.problem}] [{bad.problem}]")
+    ```
+    ```output
+    {"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"fs_read","arguments":{"path":"a"}}}
+    [] [Tool arguments must be a JSON object.]
+    ```
+    """
     match arguments_of(arguments_json):
         case Success(value=arguments):
             return Wire(text=Mcp.encode_line(Mcp.call_tool_request(JsonInt(ident), tool, arguments)), problem="")
@@ -473,10 +894,38 @@ def call_line(ident, tool, arguments_json):
 
 
 def protocol_version():
-    """The MCP protocol version this client speaks."""
+    """The MCP protocol version this client speaks.
+
+    # Examples
+    ```osprey
+    from agent import McpClient
+
+    print(McpClient.protocol_version())
+    ```
+    ```output
+    2025-06-18
+    ```
+    """
     return Mcp.PROTOCOL_VERSION
 
 
 def bare_tool(server_name, call_name):
-    """The tool name a `<server>_<tool>` call names."""
+    """The tool name a `<server>_<tool>` call names.
+
+    # Examples
+    ```osprey
+    from agent import McpClient
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, value):
+            return value
+
+    with wrapped:
+        print(f"{McpClient.bare_tool('fs', 'fs_read')} {McpClient.bare_tool('fs', 'other')}")
+    ```
+    ```output
+    read other
+    ```
+    """
     return Mcp.original_tool_name(server_name, call_name)

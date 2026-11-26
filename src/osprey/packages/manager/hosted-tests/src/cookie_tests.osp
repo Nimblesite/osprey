@@ -4,6 +4,9 @@ import registry_api::HostedCookies
 /// Strict cookie selection from a Cookie header value: exact-name lookup,
 /// duplicate session cookies and malformed pairs. Implements [PACKAGE-HOSTED-AUTH].
 module CookieTests {
+    /// The located rejection every malformed pair answers.
+    let malformedPair = "reject:req.cookie-malformed"
+
     fn found(cookie, name) = {
         let selection = HostedCookies::select(cookie, name)
         if HostedCookies::statusOf(selection) != 0 { "reject:${HostedCookies::codeOf(selection)}" }
@@ -20,16 +23,16 @@ module CookieTests {
     ])
 
     fn malformed() = checkAll("cookies: malformed pairs rejected", [
-        found("session", "session") == "reject:req.cookie-malformed",
-        found("=v", "session") == "reject:req.cookie-malformed",
-        found("session=a; trailing", "session") == "reject:req.cookie-malformed",
-        found("sess ion=a", "session") == "reject:req.cookie-malformed",
-        found("", "session") == "reject:req.cookie-malformed"
+        found("session", "session") == malformedPair,
+        found("=v", "session") == malformedPair,
+        found("session=a; trailing", "session") == malformedPair,
+        found("sess ion=a", "session") == malformedPair,
+        found("", "session") == malformedPair
     ])
 
     fn spacing() = checkAll("cookies: one optional space after the separator", [
         found("a=1; session=s", "session") == "s",
-        found("session=s ; a=1", "session") == "reject:req.cookie-malformed"
+        found("session=s ; a=1", "session") == malformedPair
     ])
 
     /// Strict cookie selection: exact-name lookup, malformed pairs and

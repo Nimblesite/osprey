@@ -1,6 +1,10 @@
 namespace registry_editor
 import ui::Doc
 
+// The registry the wire journeys talk to and the package they add.
+registryHome = "http://localhost:8787"
+reportKey = "@demo/report"
+
 reportStatus result = match result
     Success report => report.reportStatus
     Error _ => -1
@@ -21,7 +25,7 @@ test ("editor rejects crashed and ambiguous subprocess reports", \() =>
 test ("editor rejects loopback hostname prefix spoofs", \() =>
     expect (Packages::isLoopback "http://localhost.attacker.test", false)
     expect (Packages::isLoopback "http://127.0.0.1.attacker.test", false)
-    expect (Packages::isLoopback "http://localhost:8787", true))
+    expect (Packages::isLoopback registryHome, true))
 
 catalogHasEvidence catalog = match Packages::validCatalog catalog
     Success items => match listGet items 0
@@ -38,39 +42,39 @@ unitContext () = ui::Context(now = 1, offset = 0, platform = "vscode", home = "/
 stepFor (current, action) = Update::apply (unitContext (), current, ui::Act(act = action))
 
 catalogState (registry, findings) =
-    entry = CatalogEntry(catalogKey = "@demo/report", catalogVersions = ["e1.r1"], catalogFindings = findings, catalogEvidence = false)
+    entry = CatalogEntry(catalogKey = reportKey, catalogVersions = ["e1.r1"], catalogFindings = findings, catalogEvidence = false)
     current = Store::withCatalog (Store::create ("file:///work/project", registry), [entry], 0)
-    Store::edit (current, "", "@demo/report", "browse")
+    Store::edit (current, "", reportKey, "browse")
 
 test ("editor blocks recorded findings even in a local registry", \() =>
-    step = stepFor (catalogState ("http://localhost:8787", ["source.extern"]), Add)
+    step = stepFor (catalogState (registryHome, ["source.extern"]), Add)
     expect (isEmpty step.requests, true)
     expect (step.stepStore.packageConfirming, "")
     expect (step.stepStore.packageFault, true))
 
 transitiveState registry =
     identity = EntryIdentity(entryKey = "@demo/base", entryVersion = "e1.r1", entryDigest = "sha256:fixture")
-    entry = PackageEntry(entryIdentity = identity, entryDirect = false, entryPresent = true, entryDependencies = [], entryDependents = ["@demo/report"], entryFindings = [])
+    entry = PackageEntry(entryIdentity = identity, entryDirect = false, entryPresent = true, entryDependencies = [], entryDependents = [reportKey], entryFindings = [])
     graph = Workspace(workspaceProject = "fixture", workspacePackages = [entry], workspaceDirect = [], workspaceFindings = [], workspaceMissing = false, workspaceReason = "")
     current = Store::withGraph (Store::create ("file:///work/project", registry), graph, 0)
     Store::edit (current, "", "@demo/base", "installed")
 
 test ("editor cannot bypass audit safeguards by promoting a transitive dependency", \() =>
     hosted = stepFor (transitiveState "https://registry.example.test", Add)
-    local = stepFor (transitiveState "http://localhost:8787", Add)
+    local = stepFor (transitiveState registryHome, Add)
     expect (isEmpty hosted.requests, true)
     expect (hosted.stepStore.packageFault, true)
     expect (isEmpty local.requests, true)
     expect (local.stepStore.packageConfirming, "add"))
 
 test ("changing package selection cancels the previous confirmation", \() =>
-    current = Store::confirm (catalogState ("http://localhost:8787", []), "add", "@demo/report")
+    current = Store::confirm (catalogState (registryHome, []), "add", reportKey)
     changed = Store::edit (current, "", "@demo/other", "browse")
     expect (changed.packageConfirming, "")
     expect (changed.packageConfirmKey, ""))
 
 test ("a missing lock leaves installation counts unknown", \() =>
-    graph = Graph(graphProject = "new-project", graphPackages = [], graphDirect = ["@demo/report"], graphFindings = ["tree.no-lock"])
+    graph = Graph(graphProject = "new-project", graphPackages = [], graphDirect = [reportKey], graphFindings = ["tree.no-lock"])
     workspace = Store::workspaceOf graph
     expect (workspace.workspaceMissing, true)
-    expect (structuralEquals (workspace.workspaceDirect, ["@demo/report"]), true))
+    expect (structuralEquals (workspace.workspaceDirect, [reportKey]), true))

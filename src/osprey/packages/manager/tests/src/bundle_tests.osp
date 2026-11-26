@@ -9,6 +9,9 @@ import registry::Source
 
 /// [PACKAGE-FOLDER-REGISTRY] release assembly and the canonical source bundle.
 module BundleTests {
+    /// The release the assembly cases bundle.
+    let ledgerRelease = "@finch/ledger/1.3"
+
     // Independently computed golden `SourceDigest` for the two files below:
     //   entry = u32be(len(path)) || path || 0x00 || u64be(len(text)) || sha256(text)
     //   body  = entries sorted by path bytes; envelope = "osprey.source.v1" 0x00 u32be(2) || body
@@ -45,7 +48,7 @@ module BundleTests {
         Names::display(value.id.key) == "@finch/ledger" &&
         joined(value.files) == "osprey.toml:key = ledger\n|src/main.osp:fn main() = 0\n"
 
-    fn assemblesGolden() = match ReleaseFiles::assemble("@finch/ledger/1.3", twoFiles()) {
+    fn assemblesGolden() = match ReleaseFiles::assemble(ledgerRelease, twoFiles()) {
         Error => checkAll("assemble computes the golden digest and sorts files", [false])
         Success { value } => checkAll("assemble computes the golden digest and sorts files", [isGoldenRelease(value)])
     }
@@ -55,18 +58,21 @@ module BundleTests {
         checkAll("assemble rejects bad paths, bad trees and empty releases", [
             codeOf(ReleaseFiles::assemble("@finch/ledger", twoFiles())) == "release-path.segments",
             codeOf(ReleaseFiles::assemble("@Finch/ledger/1.3", twoFiles())) == "name.scope.chars",
-            codeOf(ReleaseFiles::assemble("@finch/ledger/1.3", empty)) == "release.empty",
-            codeOf(ReleaseFiles::assemble("@finch/ledger/1.3", [Release::File { relPath: "../evil", content: "x" }])) == "path.dot-segment",
-            codeOf(ReleaseFiles::assemble("@finch/ledger/1.3", [Release::File { relPath: "src/model.py", content: "import os\n" }])) == "source.python-flavor-header",
-            codeOf(ReleaseFiles::assemble("@finch/ledger/1.3", [Release::File { relPath: "src/model.py", content: "# osprey: flavor=python\n" }])) == ""
+            codeOf(ReleaseFiles::assemble(ledgerRelease, empty)) == "release.empty",
+            codeOf(ReleaseFiles::assemble(ledgerRelease, [Release::File { relPath: "../evil", content: "x" }])) == "path.dot-segment",
+            codeOf(ReleaseFiles::assemble(ledgerRelease, [Release::File { relPath: "src/model.py", content: "import os\n" }])) == "source.python-flavor-header",
+            codeOf(ReleaseFiles::assemble(ledgerRelease, [Release::File { relPath: "src/model.py", content: "# osprey: flavor=python\n" }])) == ""
         ])
     }
 
-    fn goodBundle() = "{\"digest\":\"${goldenDigest}\",\"epoch\":1,\"files\":[{\"path\":\"osprey.toml\",\"text\":\"key = ledger\\n\"},{\"path\":\"src/main.osp\",\"text\":\"fn main() = 0\\n\"}],\"key\":\"@finch/ledger\",\"ordinal\":3}"
+    /// The canonical bundle text of the two-file release under `digest`, with `key` in its manifest.
+    fn bundleText(digest, key) = "{\"digest\":\"${digest}\",\"epoch\":1,\"files\":[{\"path\":\"osprey.toml\",\"text\":\"key = ${key}\\n\"},{\"path\":\"src/main.osp\",\"text\":\"fn main() = 0\\n\"}],\"key\":\"@finch/ledger\",\"ordinal\":3}"
 
-    fn tamperedTextBundle() = "{\"digest\":\"${goldenDigest}\",\"epoch\":1,\"files\":[{\"path\":\"osprey.toml\",\"text\":\"key = tampered\\n\"},{\"path\":\"src/main.osp\",\"text\":\"fn main() = 0\\n\"}],\"key\":\"@finch/ledger\",\"ordinal\":3}"
+    fn goodBundle() = bundleText(goldenDigest, "ledger")
 
-    fn tamperedDigestBundle() = "{\"digest\":\"${wrongDigest}\",\"epoch\":1,\"files\":[{\"path\":\"osprey.toml\",\"text\":\"key = ledger\\n\"},{\"path\":\"src/main.osp\",\"text\":\"fn main() = 0\\n\"}],\"key\":\"@finch/ledger\",\"ordinal\":3}"
+    fn tamperedTextBundle() = bundleText(goldenDigest, "tampered")
+
+    fn tamperedDigestBundle() = bundleText(wrongDigest, "ledger")
 
     fn missingFieldBundle() = "{\"digest\":\"${goldenDigest}\",\"epoch\":1,\"files\":[{\"path\":\"osprey.toml\",\"text\":\"key = ledger\\n\"},{\"path\":\"src/main.osp\",\"text\":\"fn main() = 0\\n\"}],\"ordinal\":3}"
 
@@ -75,13 +81,13 @@ module BundleTests {
         Success { value } => Bundle::encode(value)
     }
 
-    fn encodesCanonically() = match encodeText("@finch/ledger/1.3", twoFiles()) {
+    fn encodesCanonically() = match encodeText(ledgerRelease, twoFiles()) {
         Success { value } => checkAll("encode emits canonical JSON byte-for-byte", [value == goodBundle()])
         Error { message } => checkAll("encode emits canonical JSON byte-for-byte", [message == ""])
     }
 
     fn roundTrips() = {
-        let served = ReleaseFiles::assemble("@finch/ledger/1.3", twoFiles()) ?: missingServed()
+        let served = ReleaseFiles::assemble(ledgerRelease, twoFiles()) ?: missingServed()
         let text = Bundle::encode(served) ?: ""
         let back = Bundle::decode(text) ?: missingServed()
         checkAll("decode(encode(x)) round-trips", [

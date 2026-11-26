@@ -19,14 +19,35 @@ module Hosted
         Invalid fault => Invalid(fault = fault)
         Valid _ => Valid(value = n)
 
-    (** Reject malformed metadata before publishing any ports or parameters to clients. *)
+    (** Reject malformed metadata before publishing any ports or parameters to clients.
+    # Examples
+    ```osprey
+    descriptor = HostDescriptor(latency = 0, identifier = "com.acme.fx", name = "FX", inputChannels = 2, outputChannels = 2, notes = true, controls = [HostControl(identity = 7, name = "Mix", initial = 0.5, automatable = true)])
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => Hosted::component (1, descriptor))} ${arithmetic (\() => Hosted::component (1, descriptor(identifier = "")))} ${arithmetic (\() => Hosted::component (1, descriptor(controls = [HostControl(identity = 7, name = "", initial = 0.5, automatable = true)])))}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export component (identity, descriptor) = match descriptor.latency >= 0 && descriptor.latency <= 1920000 && descriptor.inputChannels >= 0 && descriptor.inputChannels <= 64 && descriptor.outputChannels >= 1 && descriptor.outputChannels <= 64 && descriptor.identifier != "" && length descriptor.controls <= 1024
         false => Invalid(fault = InvalidNode)
         true => match length (filterList (descriptor.controls, \c => c.identity < 0 || c.identity > 4294967295 || c.name == "")) > 0
             true => Invalid(fault = InvalidParameter)
             false => checked (Node(identity = identity, processor = External(latency = descriptor.latency, identifier = descriptor.identifier), inputs = inputs descriptor, outputs = [audio descriptor.outputChannels], parameters = mapList (descriptor.controls, parameter)))
 
-    (** Reported processing latency in frames, independent of deliberately authored delay effects. *)
+    (** Reported processing latency in frames, independent of deliberately authored delay effects.
+    # Examples
+    ```osprey
+    print "${Hosted::latency (Components::gain (1, 1.0))} ${Hosted::latency (Node(identity = 1, processor = External(identifier = "x", latency = 512), inputs = [], outputs = [], parameters = []))}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export latency n = match n.processor
         External _ frames => frames
         _ => 0
@@ -81,7 +102,20 @@ module Hosted
         Invalid _ => Error(message = "The latency schedule contains a missing node.")
         Valid n => Outcomes::carried (carry, \draft => alignedNode (graph, draft, n))
 
-    (** Prepare a playback copy whose audio inputs meet at the same sample. Stored cables keep their original endpoints. *)
+    (** Prepare a playback copy whose audio inputs meet at the same sample. Stored cables keep their original endpoints.
+    # Examples
+    ```osprey
+    loop = Graph(nodes = [Node(identity = 2, processor = External(identifier = "com.acme.fx", latency = 512), inputs = [Port(name = "audio", rate = Audio, channels = 1, unit = Amplitude)], outputs = [Port(name = "audio", rate = Audio, channels = 1, unit = Amplitude)], parameters = []), Components::gain (3, 1.0)], cables = [Cable(source = 2, outlet = 0, destination = 3, inlet = 0), Cable(source = 3, outlet = 0, destination = 2, inlet = 0)])
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => Hosted::compensated (Graphs::empty))} ${arithmetic (\() => Hosted::compensated loop)}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export compensated graph = match length (filterList (graph.nodes, \n => latency n != 0)) == 0
         true => Success(value = graph)
         false => match GraphClips::ordered graph

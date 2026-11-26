@@ -4,6 +4,9 @@ import registry::Order
 
 /// [PACKAGE-NAMES] grammar, reason codes and canonical key order.
 module NamesTests {
+    /// The refusal of a package name with a forbidden character.
+    let badChars = "name.name.chars"
+
     fn code(text) = Fixtures::code(Names::parse(text))
 
     fn shown(text) = match Names::parse(text) {
@@ -24,9 +27,9 @@ module NamesTests {
         structuralEquals([code("@finch/ledger/extra"), code("@/ledger")], ["name.extra-slash", "name.scope.length"]),
         structuralEquals([code("@finch/"), code("@${longest(40)}/x")], ["name.name.length", "name.scope.length"]),
         structuralEquals([code("@x/${longest(64)}"), code("@Finch/ledger")], ["name.name.length", "name.scope.chars"]),
-        structuralEquals([code("@finch/Ledger"), code("@finch/-ledger")], ["name.name.chars", "name.name.chars"]),
-        structuralEquals([code("@finch-/ledger"), code("@finch/led_ger")], ["name.scope.chars", "name.name.chars"]),
-        structuralEquals([code("@finch/lédger"), code("@finch/led ger")], ["name.name.chars", "name.name.chars"])
+        structuralEquals([code("@finch/Ledger"), code("@finch/-ledger")], [badChars, badChars]),
+        structuralEquals([code("@finch-/ledger"), code("@finch/led_ger")], ["name.scope.chars", badChars]),
+        structuralEquals([code("@finch/lédger"), code("@finch/led ger")], [badChars, badChars])
     ])
 
     fn key(scope, name) = Names::Key { scope: scope, name: name }

@@ -7,6 +7,10 @@ from safetensors_expected import Expected
 
 RTOL = 0.000000001
 ATOL = 0.00000000000001
+LOADED = "load succeeded"
+"""What a load that should have been refused reports instead."""
+OPERATED = "operation succeeded instead of rejecting invalid input"
+"""What a rejected-input check reports when the call wrongly succeeds."""
 F16_WORD = [0, 62]
 BF16_WORD = [192, 63]
 F32_WORD = [0, 0, 192, 63]
@@ -106,9 +110,9 @@ def header_edge_cases():
     same_start_reversed = '{"q":{"dtype":"F32","shape":[1],"data_offsets":[0,8]},"p":{"dtype":"F32","shape":[1],"data_offsets":[0,4]}}'
     zeros = [0, 0, 0, 0, 0, 0, 0, 0]
     return [
-        rejection_check("hdr.dtype_unknown", SafeTensors.load(header_file('{"t":{"dtype":"Q9","shape":[1],"data_offsets":[0,4]}}', zeros)), "invalid JSON in header: unknown dtype Q9", "load succeeded"),
-        rejection_check("hdr.same_start", SafeTensors.load(header_file(same_start, zeros)), "invalid offset for tensor `q`", "load succeeded"),
-        rejection_check("hdr.same_start_reversed", SafeTensors.load(header_file(same_start_reversed, zeros)), "invalid offset for tensor `q`", "load succeeded"),
+        rejection_check("hdr.dtype_unknown", SafeTensors.load(header_file('{"t":{"dtype":"Q9","shape":[1],"data_offsets":[0,4]}}', zeros)), "invalid JSON in header: unknown dtype Q9", LOADED),
+        rejection_check("hdr.same_start", SafeTensors.load(header_file(same_start, zeros)), "invalid offset for tensor `q`", LOADED),
+        rejection_check("hdr.same_start_reversed", SafeTensors.load(header_file(same_start_reversed, zeros)), "invalid offset for tensor `q`", LOADED),
         str_list_equal("hdr.offsets_out_of_order", SafeTensors.offset_keys(ordered), ["a", "b"]),
         str_list_equal("hdr.repeated_name_keys", SafeTensors.keys(repeated), ["a", "a"]),
     ]
@@ -176,7 +180,7 @@ def special_cases():
 
 def err_table(tags, files, wants):
     """One malformed file per index of parallel tag, file and message lists: load must fail with exactly `want`."""
-    return per_index_all(tags, lambda i: [rejection_check(slot(tags, i, ""), SafeTensors.load(slot(files, i, [])), slot(wants, i, ""), "load succeeded")])
+    return per_index_all(tags, lambda i: [rejection_check(slot(tags, i, ""), SafeTensors.load(slot(files, i, [])), slot(wants, i, ""), LOADED)])
 
 
 def error_cases():
@@ -299,7 +303,7 @@ def has_prefix(message, prefix):
 
 def header_prefix_case(tag, data, prefix):
     """A malformed header must fail inside the crate's JSON error family."""
-    return [expect_error(tag, SafeTensors.load(data), lambda message: Check.truth(tag, has_prefix(message, prefix), message), lambda _value: "load succeeded")]
+    return [expect_error(tag, SafeTensors.load(data), lambda message: Check.truth(tag, has_prefix(message, prefix), message), lambda _value: LOADED)]
 
 
 def prefix_table(tags, files, prefix):
@@ -330,7 +334,7 @@ def slice_edge_cases():
         floats_close("slice.one_row", row, Expected.SLICE_ONE_ROW),
         floats_close("slice.empty_rows", none, Expected.SLICE_EMPTY_ROWS),
         floats_close("slice.vector", part, Expected.VECTOR_SLICE),
-        rejection_check("slice.scalar", SafeTensors.get_slice(s, "x", 0, 1), Expected.SCALAR_SLICE_ERROR, "operation succeeded instead of rejecting invalid input"),
+        rejection_check("slice.scalar", SafeTensors.get_slice(s, "x", 0, 1), Expected.SCALAR_SLICE_ERROR, OPERATED),
         floats_close("slice.scalar_whole", whole, Expected.SCALAR_VALUE),
     ]
 
@@ -359,11 +363,12 @@ def zero_shape_cases():
 
 def byte_guard_cases():
     """Byte readers reject negative, past-the-end and oversized ranges."""
+    read_ok = "read succeeded"
     return [
-        rejection("bytes.read_negative", Bytes.read_bytes([1, 2, 3], -1, 2), lambda _value: "read succeeded"),
-        rejection("bytes.read_past_end", Bytes.read_bytes([1, 2, 3], 2, 2), lambda _value: "read succeeded"),
-        rejection("bytes.u64_short", Bytes.read_u64([1, 2, 3], 0), lambda _value: "read succeeded"),
-        rejection("bytes.u64_huge", Bytes.read_u64(Expected.U64_HUGE_BYTES, 0), lambda _value: "read succeeded"),
+        rejection("bytes.read_negative", Bytes.read_bytes([1, 2, 3], -1, 2), lambda _value: read_ok),
+        rejection("bytes.read_past_end", Bytes.read_bytes([1, 2, 3], 2, 2), lambda _value: read_ok),
+        rejection("bytes.u64_short", Bytes.read_u64([1, 2, 3], 0), lambda _value: read_ok),
+        rejection("bytes.u64_huge", Bytes.read_u64(Expected.U64_HUGE_BYTES, 0), lambda _value: read_ok),
     ]
 
 
@@ -437,8 +442,8 @@ def json_number_checks(value):
 def json_reject_cases():
     """Each malformed JSON text CPython rejects is an error here too."""
     return listConcat(per_index(Expected.JSON_INVALID, lambda i: rejection("json.reject_" + toString(i), JsonParser.parse(slot(Expected.JSON_INVALID, i, "")), lambda value: "parsed as " + value.kind)), [
-        rejection_check('json.unterminated_escape', JsonParser.parse('"\\'), "invalid JSON: unterminated escape", "operation succeeded instead of rejecting invalid input"),
-        rejection_check('json.unterminated_member_escape', JsonParser.parse('{"\\'), "invalid JSON: unterminated escape", "operation succeeded instead of rejecting invalid input"),
+        rejection_check('json.unterminated_escape', JsonParser.parse('"\\'), "invalid JSON: unterminated escape", OPERATED),
+        rejection_check('json.unterminated_member_escape', JsonParser.parse('{"\\'), "invalid JSON: unterminated escape", OPERATED),
     ])
 
 

@@ -111,7 +111,7 @@ module Goals
         true => Held hypothesis.formula
         false => found
 
-    unknown (goal, name) = stopped ("there is no hypothesis `" + name + "`")
+    unknown (_goal, name) = stopped ("there is no hypothesis `" + name + "`")
 
     holds (formula, target) = Formulas::equivalent (formula, target)
 

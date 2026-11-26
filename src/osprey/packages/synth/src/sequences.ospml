@@ -3,7 +3,15 @@ namespace synth
 
 (** Pure helpers that never fail: short inputs give short results, which callers check by length. *)
 module Sequences
-    (** The first `count` items, or the whole list when it is shorter. *)
+    (** The first `count` items, or the whole list when it is shorter.
+    # Examples
+    ```osprey
+    print "${Sequences::take ([1, 2, 3], 2)} ${Sequences::take ([1], 3)}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     // Generic recursion: codegen needs these signatures to emit real functions.
     export take<T> : (List<T>, int) -> List<T>
     take (items, count) = match count <= 0
@@ -12,7 +20,15 @@ module Sequences
             [] => []
             [item, ...rest] => listPrepend (take (rest, satSub count 1)) item
 
-    (** Everything after the first `count` items. *)
+    (** Everything after the first `count` items.
+    # Examples
+    ```osprey
+    print "${Sequences::drop ([1, 2, 3], 1)} ${Sequences::drop ([1, 2, 3], 5)}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export drop<T> : (List<T>, int) -> List<T>
     drop (items, count) = match count <= 0
         true => items
@@ -25,10 +41,26 @@ module Sequences
         [] => []
         [item, ...rest] => listPrepend (indexedFrom (rest, satAdd index 1, apply)) (apply (index, item))
 
-    (** Map with each item's zero-based position. *)
+    (** Map with each item's zero-based position.
+    # Examples
+    ```osprey
+    print "${Sequences::mapIndexed ([10.0, 20.0], \(index, value) => value + toFloat index)}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export mapIndexed (items, apply) = indexedFrom (items, 0, apply)
 
-    (** Pairwise combination; the result has the shorter length, which callers check. *)
+    (** Pairwise combination; the result has the shorter length, which callers check.
+    # Examples
+    ```osprey
+    print "${Sequences::combined ([1, 2, 3], [10, 20], \(a, b) => a * b)}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export combined<A, B, C> : (List<A>, List<B>, (A, B) -> C) -> List<C>
     combined (one, other, apply) = match one
         [] => []
@@ -36,24 +68,64 @@ module Sequences
             [] => []
             [b, ...moreOther] => listPrepend (combined (moreOne, moreOther, apply)) (apply (a, b))
 
-    (** Discard the oldest value and append the newest, keeping the length. *)
+    (** Discard the oldest value and append the newest, keeping the length.
+    # Examples
+    ```osprey
+    print "${Sequences::shifted ([1, 2, 3], 4)} ${Sequences::shifted ([], 4)}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export shifted (items, value) = listAppend (drop (items, 1)) value
 
-    (** `count` silent samples: zero storage for a buffer of exactly `count` floats. *)
+    (** `count` silent samples: zero storage for a buffer of exactly `count` floats.
+    # Examples
+    ```osprey
+    print "${Sequences::zeros 3} ${Sequences::zeros 0}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export zeros count = mapList (toList (range (0, count)), \_ => 0.0)
 
-    (** Cut a flat list into consecutive chunks of the given sizes; a short list gives short chunks. *)
+    (** Cut a flat list into consecutive chunks of the given sizes; a short list gives short chunks.
+    # Examples
+    ```osprey
+    print "${Sequences::chunks ([1, 2, 3, 4, 5], [2, 1, 2])} ${Sequences::chunks ([1, 2, 3], [2, 2])}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export chunks<T> : (List<T>, List<int>) -> List<List<T>>
     chunks (items, sizes) = match sizes
         [] => []
         [size, ...rest] => listPrepend (chunks (drop (items, size), rest)) (take (items, size))
 
     (** `left` then `right`, appending `right` element by element: linear in `right`, where `listConcat` copies
-        `left` too and turns block-by-block accumulation quadratic. *)
+        `left` too and turns block-by-block accumulation quadratic.
+    # Examples
+    ```osprey
+    print "${Sequences::joined ([1, 2], [3])}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export joined (left, right) = foldList (right, left, \(all, value) => listAppend all value)
 
     (** Join chunks back into one flat list. The lambda is load-bearing: passing `joined` by name instantiates it
-        at an int-defaulted signature and puns float chunks (docs/regressions.md). *)
+        at an int-defaulted signature and puns float chunks (docs/regressions.md).
+    # Examples
+    ```osprey
+    print "${Sequences::flattened [[1, 2], [], [3]]}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export flattened<T> : List<List<T>> -> List<T>
     flattened parts = foldList (parts, [], \(all, part) => joined (all, part))
 

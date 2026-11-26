@@ -24,10 +24,13 @@ match readResult {
 // Tests Result<string> toString
 print("-- Step 3: Testing Result<string> toString --\nWrite Result toString: ${toString(writeResult)}\nRead Result toString: ${toString(readResult)}")
 
+/// A path no file lives at: reading it must fail with a reason that names it.
+let missingPath = "nonexistent_file_xyz123.txt"
+
 /// A failure must say WHY [BUILTIN-FILE-ERRMSG]: the operation, the path and
 /// the operating system's own reason, never a placeholder that reads the same
 /// for a missing file, a permissions denial and a full disk.
-let errorResult = readFile("nonexistent_file_xyz123.txt")
+let errorResult = readFile(missingPath)
 print("Error Result toString: ${toString(errorResult)}\n=== Test Complete ===")
 
 /// Repeats the real write/read workflow and verifies both Result payloads.
@@ -35,7 +38,7 @@ fn fileWorkflowCase() = {
     let expected = "Hello, Osprey file I/O!"
     let written = writeFile(filename, expected)
     let readBack = readFile(filename)
-    let missing = readFile("nonexistent_file_xyz123.txt")
+    let missing = readFile(missingPath)
     let writeMatches = match written {
         Success { value } => value == byteLength(expected)
         Error => false
@@ -50,7 +53,7 @@ fn fileWorkflowCase() = {
     let missingFails = match missing {
         Success => false
         Error { message } => contains(message, "readFile")
-            && contains(message, "nonexistent_file_xyz123.txt")
+            && contains(message, missingPath)
             && contains(message, "No such file or directory")
     }
     let unwritableFails = match writeFile("no_such_dir_xyz123/out.txt", "x") {

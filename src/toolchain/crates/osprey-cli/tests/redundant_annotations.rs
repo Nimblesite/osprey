@@ -74,11 +74,12 @@ fn return_annotation(line: &str) -> Option<(usize, usize, String)> {
     if !(trimmed.starts_with("fn ") || trimmed.starts_with("export fn ")) {
         return None;
     }
-    let body = line
-        .find(" = ")
-        .or_else(|| line.find(" =").filter(|i| line[*i..].trim() == "="))?;
-    let arrow = line[..body].rfind(" -> ")?;
-    let spelling = line[arrow + 4..body].trim().to_string();
+    let body = line.find(" = ").or_else(|| {
+        line.find(" =")
+            .filter(|i| line.get(*i..).unwrap_or_default().trim() == "=")
+    })?;
+    let arrow = line.get(..body)?.rfind(" -> ")?;
+    let spelling = line.get(arrow + 4..body)?.trim().to_string();
     // An effect row rides on the return type; the body alone may not pin it.
     if spelling.is_empty() || spelling.contains('!') || LOAD_BEARING.contains(&spelling.as_str()) {
         return None;
@@ -109,7 +110,7 @@ fn redundant_in(path: &Path, source: &str) -> Vec<(usize, String)> {
         .enumerate()
         .filter_map(|(index, line)| {
             let (arrow, body, spelling) = return_annotation(line)?;
-            let stripped = format!("{}{}", &line[..arrow], &line[body..]);
+            let stripped = format!("{}{}", line.get(..arrow)?, line.get(body..)?);
             let rebuilt = rebuild(&lines, index, &stripped);
             (compiles(path, &rebuilt) && outline(&rebuilt) == before).then(|| (index + 1, spelling))
         })

@@ -5,7 +5,15 @@ namespace synth
     sounding after its input stops (to −60 dB for decaying models). Both are in samples at the 48 kHz graph
     rate and read the node's current parameter values, so a host can align routes and dispose of tails. *)
 module Timings
-    (** The graph rendering rate these sample counts assume. *)
+    (** The graph rendering rate these sample counts assume.
+    # Examples
+    ```osprey
+    print "${Timings::rate}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export rate = 48000.0
 
     value (n, key) = match Graphs::parameterNamed (n, key)
@@ -26,7 +34,15 @@ module Timings
         Error why => Error(message = why)
         Success extra => switched (n, "antialias", 0.5 + extra)
 
-    (** Fixed input-to-output delay in samples. *)
+    (** Fixed input-to-output delay in samples.
+    # Examples
+    ```osprey
+    print "${Timings::latency (Components::delay (1, 64))} ${Timings::latency (Components::shaper (1, 0.0, 1.0))} ${Timings::latency (Components::gain (1, 1.0))}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export latency n = match n.processor
         Spectral size _ => Success(value = toFloat (SpectralStreams::latency size))
         Shaper => shaperLatency n
@@ -35,7 +51,15 @@ module Timings
         FractionalDelay _ => value (n, "delay")
         _ => Success(value = 0.0)
 
-    (** Samples the component may keep sounding after its input stops; sources report their own decay. *)
+    (** Samples the component may keep sounding after its input stops; sources report their own decay.
+    # Examples
+    ```osprey
+    print "${Timings::tail (Components::reverb (1, 2.5))} ${Timings::tail (Components::smoother (1, 0.01))} ${Timings::tail (Components::gain (1, 1.0))}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export tail n = match n.processor
         Waveguide _ => scaled (n, "decay", rate)
         Bowed _ => scaled (n, "decay", rate)

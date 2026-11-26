@@ -39,6 +39,8 @@ ARCHITECTURE = "qwen35"
 """The `general.architecture` llama.cpp's converter writes for `Qwen3_5ForCausalLM`."""
 HEADER_READ = 1048576
 """Bytes of the first header read; `Reader.read_path` doubles it until the tensor infos fit."""
+EMBEDDING = "token_embd.weight"
+"""The embedding table's tensor name; the head reads it too when the file ties them."""
 
 
 class Source:
@@ -154,7 +156,7 @@ def layer_types(layers, interval):
 
 def vocab_of(file):
     """The vocabulary size: the embedding's row count."""
-    return positive("token_embd.weight rows", unwrap_or(listGet(info_of(file, "token_embd.weight").dims, 1), 0))
+    return positive("token_embd.weight rows", unwrap_or(listGet(info_of(file, EMBEDDING).dims, 1), 0))
 
 
 def key_head_dim(file, v_dim):
@@ -324,7 +326,7 @@ def layer_of(source, i, config) -> Model.Layer:
 def embedding(source, config):
     """`token_embd.weight`: a dense table when `F32`, else rows read from the mapping."""
     hidden = config.hidden_size
-    info = tensor(source, "token_embd.weight", [hidden, config.vocab_size])
+    info = tensor(source, EMBEDDING, [hidden, config.vocab_size])
     if info.type == "F32":
         return Model.Table(values=mapped_floats(source, info))
     else:
@@ -333,7 +335,7 @@ def embedding(source, config):
 
 def head(source, config):
     """`output.weight`, or the embedding when the file ties them."""
-    name = "output.weight" if has_tensor(source.file, "output.weight") else "token_embd.weight"
+    name = "output.weight" if has_tensor(source.file, "output.weight") else EMBEDDING
     return linear(source, name, config.hidden_size, config.vocab_size)
 
 

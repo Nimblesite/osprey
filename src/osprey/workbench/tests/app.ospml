@@ -446,11 +446,14 @@ module Drive
         ui::Disclosure title expanded _ items => tagged ("disclosure", [text ("title", title), flag ("expanded", expanded), eventField (), childrenJson items])
         _ => JsonNull
 
+    // A picker's choices, each an option carrying its label and key.
+    optionJson choice = tagged ("option", [text ("label", choice.choiceLabel), text ("key", choice.choiceKey)])
+
     controlTree node = match node
         ui::Button label symbol role enabled _ => tagged ("button", [text ("label", label), text ("symbol", symbol), text ("role", roleName role), flag ("enabled", enabled), eventField ()])
         ui::Field label value prompt _ _ _ _ => tagged ("field", [text ("label", label), text ("value", value), text ("prompt", prompt), eventField ()])
         ui::Toggle label on _ => tagged ("toggle", [text ("label", label), flag ("on", on), eventField ()])
-        ui::Picker label choices selected _ => tagged ("picker", [text ("label", label), text ("selected", selected), eventField (), member ("children", JsonArray (mapList (choices, \choice => tagged ("option", [text ("label", choice.choiceLabel), text ("key", choice.choiceKey)]))))])
+        ui::Picker label choices selected _ => tagged ("picker", [text ("label", label), text ("selected", selected), eventField (), member ("children", JsonArray (mapList (choices, optionJson)))])
         ui::Alert title message _ _ => tagged ("alert", [text ("title", title), text ("text", message), eventField ()])
         ui::Editor label value _ cursor epoch _ _ _ => tagged ("editor", [text ("label", label), text ("value", value), whole ("caret", cursor), whole ("focusEpoch", epoch), eventField (), whole ("placeEvent", 0)])
         ui::Board _ _ _ backdrop _ _ _ _ _ => tagged ("board", [text ("backdrop", backdrop), eventField ()])

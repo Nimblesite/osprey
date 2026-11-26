@@ -47,14 +47,17 @@ module Phone
             (Disk::formatBytes bytes) (Disk::shareText (bytes, whole))
             (toString (Disk::permille (bytes, whole))))
 
+    // The title of the photos library's row and section.
+    libraryTitle = "Photos & Videos"
+
     waiting detail action =
         Native::node "entry" (listConcat
-            (entryFields "Photos & Videos" "photo.on.rectangle.angled" "orange" "gray" detail "" "0") action)
+            (entryFields libraryTitle "photo.on.rectangle.angled" "orange" "gray" detail "" "0") action)
 
     counts photos = photos.status == "ready" || photos.status == "limited"
 
     library photos used = match counts photos
-        true => sized "Photos & Videos" "photo.on.rectangle.angled" "orange" photos.bytes used
+        true => sized libraryTitle "photo.on.rectangle.angled" "orange" photos.bytes used
         false => match photos.status
             "measuring" => waiting "Measuring…" []
             "denied" => waiting "Allow in Settings" [Native::event "settings" ""]
@@ -106,7 +109,7 @@ module Phone
     kinds photos =
         rows = range (0, length photos.kinds) |> fold [] (\(output, index) => kindRow photos output index)
         footer = "${Disk::formatCount photos.items} items, hidden ones included. Only what is stored on this device counts; Optimise iPhone Storage keeps full-size originals in iCloud, where they take no space here.${limits photos}"
-        Native::section "Photos & Videos" footer (listConcat rows (cloudRow photos))
+        Native::section libraryTitle footer (listConcat rows (cloudRow photos))
 
     (** Whether the browser is at an iPhone app's own folder, where the screen shows the whole device. *)
     export device model = model.platform == "ios" && model.root == model.home && model.path == model.root

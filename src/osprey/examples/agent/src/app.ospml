@@ -350,7 +350,7 @@ module Answers
                 saving(requests = listAppend saving.requests (Requests::ask ("mcp-project", Model::readTextAt (moved.settings.platform, "${folder}/.mcp.json", mcpProjectFile))))
 
     // The MCP state from the document read for `slice`: `load` of its words when the read was `found` with words, else `missing`.
-    mcpDocument (store, slice, found, load, missing) =
+    mcpDocument (_store, slice, found, load, missing) =
         text = perform ui::Slices.fetch slice
         Pick::either (found && text != "", load text, missing)
 

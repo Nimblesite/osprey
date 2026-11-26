@@ -7,15 +7,45 @@ namespace synth
 module StrikeCombs
     delay config = config.position * config.sampleRate / config.frequency
 
-    (** Position 0.01–0.5 of the string; the delayed tap must fit the capacity. *)
+    (** Position 0.01–0.5 of the string; the delayed tap must fit the capacity.
+    # Examples
+    ```osprey
+    config = StrikeConfig(sampleRate = 48000.0, frequency = 12000.0, position = 0.5, capacity = 3)
+    print "${StrikeCombs::configure config} ${StrikeCombs::configure (config(capacity = 2))}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export configure config = match config.sampleRate >= 8000.0 && config.sampleRate <= 384000.0 && config.frequency >= 20.0 && config.frequency < config.sampleRate * 0.45 && config.position >= 0.01 && config.position <= 0.5 && config.capacity >= 2 && config.capacity <= 96000 && delay config >= 1.0 && delay config + 1.0 <= toFloat config.capacity
         true => Success(value = config)
         false => Error(message = ExhaustedCapacity(detail = "Invalid strike rate, pitch or position, or the comb does not fit its capacity."))
 
-    (** Silent excitation history. *)
+    (** Silent excitation history.
+    # Examples
+    ```osprey
+    print "${StrikeCombs::initial (StrikeConfig(sampleRate = 48000.0, frequency = 12000.0, position = 0.5, capacity = 3))} ${StrikeCombs::initial (StrikeConfig(sampleRate = 48000.0, frequency = 12000.0, position = 0.5, capacity = 1))}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export initial config = DelayLines::prepare config.capacity
 
-    (** One sample of the strike-filtered excitation. *)
+    (** One sample of the strike-filtered excitation.
+    # Examples
+    ```osprey
+    config = StrikeConfig(sampleRate = 48000.0, frequency = 12000.0, position = 0.5, capacity = 3)
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => StrikeCombs::next (config, DelayLine(samples = [0.0, 0.0, 0.0]), 1.0))} ${arithmetic (\() => StrikeCombs::next (config, DelayLine(samples = [1.0, 0.0, 0.0]), 0.0))}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export next (config, held, input) =
         // After the push, a one-sample tap is x[n], so x[n − d] is a (d + 1)-sample tap.
         line = DelayLines::push (held, input)

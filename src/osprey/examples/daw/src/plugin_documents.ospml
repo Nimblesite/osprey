@@ -5,13 +5,24 @@ import ui::Doc
 
 (** Strict worker receipts become typed metadata before reaching the editor. *)
 module PluginDocuments
-    isText (doc, key) = Doc::kind (Doc::field (doc, key)) == "text"
+    (** Whether the member `key` of `doc` holds a JSON value of `kind`; an absent member reads as null. *)
+    export isKind (doc, key, kind) = Doc::kind (Doc::field (doc, key)) == kind
+
+    (** Whether the member `key` of `doc` holds text. *)
+    export isText (doc, key) = isKind (doc, key, "text")
+
+    (** Whether the member `key` of `doc` holds a number. *)
+    export isNumber (doc, key) = isKind (doc, key, "number")
+
+    (** Whether the member `key` of `doc` holds a Boolean. *)
+    export isBool (doc, key) = isKind (doc, key, "bool")
 
     isInt (doc, key) = match jsonInt (Doc::field (doc, key))
         Success _ => true
         Error _ => false
 
-    isBool (doc, key) = Doc::kind (Doc::field (doc, key)) == "bool"
+    (** Whether the member `key` of `doc` is a list of at most `limit` items. *)
+    export isList (doc, key, limit) = isKind (doc, key, "list") && length (Doc::fieldItems (doc, key)) <= limit
 
     scanned text = match jsonDecode text
         Error why => Error(message = why)
@@ -44,7 +55,7 @@ module PluginDocuments
                 true => Success(value = paths)
                 false => Error(message = "Invalid VST3 folder inventory.")
 
-    control doc = match isInt (doc, "id") && isText (doc, "name") && Doc::kind (Doc::field (doc, "initial")) == "number" && isBool (doc, "automatable")
+    control doc = match isInt (doc, "id") && isText (doc, "name") && isNumber (doc, "initial") && isBool (doc, "automatable")
         false => Error(message = "The worker returned an invalid VST parameter.")
         true => Success(value = HostControl(identity = Doc::number (doc, "id"), name = Doc::text (doc, "name"), initial = Doc::decimal (doc, "initial"), automatable = Doc::flag (doc, "automatable")))
 
@@ -52,7 +63,7 @@ module PluginDocuments
         Error why => Error(message = why)
         Success controls => synth::Outcomes::carried (control doc, \entry => Success(value = listAppend controls entry))
 
-    metadata doc = match (!Doc::has (doc, "latency") || isInt (doc, "latency")) && isText (doc, "id") && isText (doc, "name") && isInt (doc, "inputs") && isInt (doc, "outputs") && isBool (doc, "notes") && Doc::kind (Doc::field (doc, "parameters")) == "list" && length (Doc::fieldItems (doc, "parameters")) <= 1024
+    metadata doc = match (!Doc::has (doc, "latency") || isInt (doc, "latency")) && isText (doc, "id") && isText (doc, "name") && isInt (doc, "inputs") && isInt (doc, "outputs") && isBool (doc, "notes") && isList (doc, "parameters", 1024)
         false => Error(message = "The worker returned an incomplete VST descriptor.")
         true => synth::Outcomes::carried (foldList (Doc::fieldItems (doc, "parameters"), Success(value = []), readControl), \controls => Success(value = HostDescriptor(latency = Doc::number (doc, "latency"), identifier = Doc::text (doc, "id"), name = Doc::text (doc, "name"), inputChannels = Doc::number (doc, "inputs"), outputChannels = Doc::number (doc, "outputs"), notes = Doc::flag (doc, "notes"), controls = controls)))
 

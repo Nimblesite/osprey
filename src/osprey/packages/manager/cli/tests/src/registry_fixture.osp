@@ -20,6 +20,8 @@ module RegistryFixture {
     export let base = "http://127.0.0.1:8787"
     /// The absolute project directory every fixture command runs in.
     export let project = "/abs"
+    /// The TOML section header every dependency-bearing fixture manifest appends.
+    let depsHeader = "\n[dependencies]\n"
     /// The release lock beside the fixture project's manifest: where `lock` writes.
     export let lockPath = "/abs/osprey.lock"
     /// The root manifest of the fixture project, read and rewritten by its commands.
@@ -171,13 +173,13 @@ module RegistryFixture {
 
     fn depLine(name, epoch, floor) = "\"@demo/${name}\" = { epoch = ${epoch}, min_release = ${floor} }\n"
 
-    fn oneManifest() = manifestText("one") + "\n[dependencies]\n" + depLine("two", 1, 1)
+    fn oneManifest() = manifestText("one") + depsHeader + depLine("two", 1, 1)
 
     /// The root manifest depending on `@demo/one` e1 at `floor`.
-    export fn rootManifest(floor) = manifestText("app") + "\n[dependencies]\n" + depLine("one", 1, floor)
+    export fn rootManifest(floor) = manifestText("app") + depsHeader + depLine("one", 1, floor)
 
     /// The root manifest depending on `@demo/one` at `epoch` e`.r1`.
-    export fn rootManifestAt(epoch) = manifestText("app") + "\n[dependencies]\n" + depLine("one", epoch, 1)
+    export fn rootManifestAt(epoch) = manifestText("app") + depsHeader + depLine("one", epoch, 1)
 
     fn filesOf(manifest) = [Fixture::file("osprey.toml", manifest), Fixture::file("src/main.osp", "fn main() = 0\n")]
 

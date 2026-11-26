@@ -73,7 +73,20 @@ module SpectralPeaks
         Success index => listGet levels index ?: 0.0
 
     (** The envelope [SYNTH-ADVANCED-SPECTRAL-FORMANT]: the loudest magnitude (each bin's real part) within
-        about 150 Hz, which runs through a harmonic sound's partial peaks rather than the gaps between them. *)
+        about 150 Hz, which runs through a harmonic sound's partial peaks rather than the gaps between them.
+    # Examples
+    ```osprey
+    config = SpectralConfig(sampleRate = 48000.0, size = 64, hop = 16, transform = SpectralPass, mix = 1.0)
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => SpectralPeaks::envelope (config, []))} ${arithmetic (\() => SpectralPeaks::envelope (config, [Complex(re = 1.0, im = 0.0), Complex(re = 0.5, im = 0.0), Complex(re = 0.25, im = 0.0)]))}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export envelope (config, sources) =
         radius = floatToInt (SpectralMath::envelopeRadius (toFloat config.size, config.sampleRate)) ?: 1
         Sequences::mapIndexed (sources, \(index, _) => foldList (toList (range (atLeastZero (satSub index radius), atMost (satAdd index (satAdd radius 1), length sources))), 0.0, \(most, k) => TableMath::larger (most, (part (sources, k)).re)))
@@ -104,7 +117,20 @@ module SpectralPeaks
         { at = found.at, bins = listAppend run.bins value, motion = listAppend run.motion (Complex(re = phaseOf (config, motion, j, found.sum), im = 0.0)) }
 
     (** One frame shifted by `ratio` with its formants moved by `formant`, from its (magnitude, true bin)
-        `sources`, analysed `phases` and the last frame's output phases `motion`. *)
+        `sources`, analysed `phases` and the last frame's output phases `motion`.
+    # Examples
+    ```osprey
+    config = SpectralConfig(sampleRate = 48000.0, size = 64, hop = 16, transform = SpectralPass, mix = 1.0)
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => SpectralPeaks::shifted (config, [], [], [], 1.0, 1.0))}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export shifted (config, sources, phases, motion, ratio, formant) =
         owned = owners sources
         shape = { sources = sources, phases = phases, owners = owned, ratio = ratio, formant = formant, levels = envelope (config, sources) }

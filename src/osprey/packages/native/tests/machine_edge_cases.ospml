@@ -201,14 +201,14 @@ completeLayerLimits () =
 completeRequestPayloads () =
     native = realSkinned (playerMachine (), "midnight")
     ready = Machines::feed (native, [Machines::fact ("receiver", Values::text "Living Room TV"), Machines::fact ("file", Values::text "/music/demo.mp3")])
-    connecting = Machines::pull (ready, ui::Fire(fireName = "play"), Values::none ())
+    connecting = realFire (ready, "play")
     start = asked (connecting, "cast.start")
     expectAskedTexts (start, [{ name = "file", value = "/music/demo.mp3" }, { name = "receiver", value = "Living Room TV" }, { name = "missing", value = "" }])
     expect (Machines::askedNumber (start, "file"), 0.0)
     playing = Machines::feed (Machines::taken connecting, [Machines::fact ("player", Values::text "PLAYING"), Machines::fact ("position", Values::number 50.0)])
     turning = Machines::pull (playing, ui::Assign(assignName = "wantVolume", assignFire = "chooseVolume"), Values::text "0.5")
     expectAskedNumbers (asked (turning, "cast.volume"), [{ name = "wantVolume", value = 0.5 }, { name = "missing", value = 0.0 }])
-    seeking = Machines::pull (playing, ui::Fire(fireName = "seek"), Values::none ())
+    seeking = realFire (playing, "seek")
     expectAskedNumbers (asked (seeking, "cast.seek"), [{ name = "position", value = 50.0 }, { name = "skip", value = 0.0 }])
 
 deniedOf : ui::Message<Act> -> string

@@ -140,14 +140,35 @@ module SpectralFrames
         SpectralMorph amount mode => morph (config, bins, sides, amount, mode)
         _ => bins
 
-    (** Whether a series shares one analysis compatibly: 1–8 stateless steps (band, shift, morph). *)
+    (** Whether a series shares one analysis compatibly: 1–8 stateless steps (band, shift, morph).
+    # Examples
+    ```osprey
+    print "${SpectralFrames::compatible []} ${SpectralFrames::compatible [SpectralBand(low = 100.0, high = 2000.0), SpectralShift(bins = 2)]} ${SpectralFrames::compatible [SpectralPitch(ratio = 1.0, formant = 1.0)]}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export compatible steps = length steps >= 1 && length steps <= 8 && length (filterList (steps, stateless)) == length steps
 
     series (config, bins, sides, held, steps) = match compatible steps
         false => Error(message = InvalidConfiguration(detail = "A spectral series accepts 1-8 band, shift or morph steps only."))
         true => Success(value = unchanged (foldList (steps, bins, \(current, step) => seriesStep (config, sides, held, current, step)), held.memory, held.motion, false))
 
-    (** Apply the configured transformation to one analysed frame; pitch and series can fail. *)
+    (** Apply the configured transformation to one analysed frame; pitch and series can fail.
+    # Examples
+    ```osprey
+    config = SpectralConfig(sampleRate = 48000.0, size = 64, hop = 16, transform = SpectralSeries(steps = []), mix = 1.0)
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => SpectralFrames::apply (config, [], [], SpectralFrame(bins = [], memory = [], motion = [], captured = false)))} ${arithmetic (\() => SpectralFrames::apply (SpectralConfig(sampleRate = 48000.0, size = 64, hop = 16, transform = SpectralPass, mix = 1.0), [], [], SpectralFrame(bins = [], memory = [], motion = [], captured = false)))}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export apply (config, bins, sides, held) = match config.transform
         SpectralPass => Success(value = unchanged (bins, held.memory, held.motion, held.captured))
         SpectralFreeze hold => Success(value = freeze (bins, held.memory, held.motion, held.captured, hold))

@@ -179,7 +179,7 @@ def prov_strict(model):
     return pid == "deepseek" or pid == "zai" or pid == "zai-coding"
 
 
-def prov_effort(model, level):
+def prov_effort(_model, level):
     return "" if level == "" or level == "off" else level
 
 

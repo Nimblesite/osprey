@@ -67,6 +67,9 @@ soundedClip (clip) =
 // One processor between a 440 Hz sine and the output.
 through n = serial ([Components::sine (1, 440.0), n, Components::output 3])
 
+// A source modulated: 1 -> 2, the LFO on 4 drives inlet 1 of 2, then 2 -> 3.
+modulatedRoute () = [cable (1, 2), Components::route (4, 0, 2, 1), cable (2, 3)]
+
 // A plan whose schedule skips one node.
 without (plan, identity) = plan(order = filterList (plan.order, \scheduled => scheduled != identity))
 
@@ -360,7 +363,7 @@ registerClipJourneys () =
             { graph = built ([Components::sine (1, 440.0), Components::mixer 2, Components::output 3], [cable (1, 2), Components::route (1, 0, 2, 1), cable (2, 3)]), n = Components::mixer 2, copies = 1, clips = [] },
             { graph = through (Components::gain (2, 8.0)), n = Components::gain (2, 8.0), copies = 1, clips = [nodeClipAt (1, [200000.0, 200000.0])] }],
             \fault => renderRefused (synth::ClipKernels::block (planFor fault.graph, fault.clips, fault.n, 2, mapList (toList (range (0, fault.copies)), \_ => synth::RenderInputs::initialState fault.n))))
-        swept = built ([Components::sine (1, 440.0), Components::modulatedLowpass (2, 1000.0, 0.7), Components::lfo (4, 2.0), Components::output 3], [cable (1, 2), Components::route (4, 0, 2, 1), cable (2, 3)])
+        swept = built ([Components::sine (1, 440.0), Components::modulatedLowpass (2, 1000.0, 0.7), Components::lfo (4, 2.0), Components::output 3], modulatedRoute ())
         forEachList ([[1.5, 1.5], [-0.5, -0.5]], \control => renderRefused (synth::GraphClips::advance (swept, [nodeClipAt (4, control)], 2)))
         delayedGraph = serial ([Components::sine (1, 440.0), Components::delay (2, 2), Components::output 3])
         delayedStart = rendered (Renderer::start delayedGraph)

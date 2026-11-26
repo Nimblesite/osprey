@@ -9,6 +9,10 @@ import registry::Names
 /// grants and lifecycle, and the seat itself grants no operational
 /// capability.
 module AdminTests {
+    /// The refusal of a member who lacks the permission.
+    let permissionMissing = "governance.permission.missing"
+    /// The refusal of an administrator whose seat is stale.
+    let adminNotCurrent = "governance.admin.not-current"
     fn key(scope, name) = Names::Key { scope: scope, name: name }
 
     /// The reason code of one live authorization decision, or "" when granted.
@@ -57,7 +61,7 @@ module AdminTests {
             authorizeCode(draft, "pkg-f2", "m-bob", Governance::PublishRelease, 100) == "governance.package.draft",
             Fixture::code(GovernanceTransitions::activatePackage(draft, "pkg-f2")) == "",
             Fixture::code(GovernanceTransitions::activatePackage(active, "pkg-f2")) == "governance.package.not-draft",
-            authorizeCode(active, "pkg-f2", "m-bob", Governance::PublishRelease, 100) == "governance.permission.missing"
+            authorizeCode(active, "pkg-f2", "m-bob", Governance::PublishRelease, 100) == permissionMissing
         ])
     }
 
@@ -68,9 +72,9 @@ module AdminTests {
         let world = Fixture::world()
         let withSelfGrant = Fixture::grantOn(world, "pkg-f1", "g-alice", "m-alice", Governance::PublishRelease, Maybe::none(), 100)
         checkAll("the administrator has no implicit operational capability", [
-            authorizeCode(world, "pkg-f1", "m-alice", Governance::PublishRelease, 100) == "governance.permission.missing",
-            authorizeCode(world, "pkg-f1", "m-alice", Governance::YankRelease, 100) == "governance.permission.missing",
-            authorizeCode(world, "pkg-f1", "m-alice", Governance::ManageSecurity, 100) == "governance.permission.missing",
+            authorizeCode(world, "pkg-f1", "m-alice", Governance::PublishRelease, 100) == permissionMissing,
+            authorizeCode(world, "pkg-f1", "m-alice", Governance::YankRelease, 100) == permissionMissing,
+            authorizeCode(world, "pkg-f1", "m-alice", Governance::ManageSecurity, 100) == permissionMissing,
             authorizeCode(withSelfGrant, "pkg-f1", "m-alice", Governance::PublishRelease, 100) == "",
             join(mapList([Governance::PublishRelease, Governance::YankRelease, Governance::EditMetadata,
                 Governance::ManageMaintenance, Governance::ManageSecurity], Governance::permissionName), ",") == "publish-release,yank-release,edit-metadata,manage-maintenance,manage-security"
@@ -93,10 +97,10 @@ module AdminTests {
         let world = Fixture::world()
         checkAll("grant control belongs to the current administrator alone", [
             Fixture::code(grantBy(world, "p-alice", "m-alice", "m-carol", Governance::EditMetadata)) == "",
-            Fixture::code(grantBy(world, "p-erin", "m-erin", "m-carol", Governance::EditMetadata)) == "governance.admin.not-current",
-            Fixture::code(grantBy(world, "p-bob", "m-bob", "m-carol", Governance::EditMetadata)) == "governance.admin.not-current",
-            Fixture::code(grantBy(world, "p-dave", "m-dave", "m-carol", Governance::EditMetadata)) == "governance.admin.not-current",
-            Fixture::code(grantBy(world, "p-bot", "m-bot", "m-carol", Governance::EditMetadata)) == "governance.admin.not-current",
+            Fixture::code(grantBy(world, "p-erin", "m-erin", "m-carol", Governance::EditMetadata)) == adminNotCurrent,
+            Fixture::code(grantBy(world, "p-bob", "m-bob", "m-carol", Governance::EditMetadata)) == adminNotCurrent,
+            Fixture::code(grantBy(world, "p-dave", "m-dave", "m-carol", Governance::EditMetadata)) == adminNotCurrent,
+            Fixture::code(grantBy(world, "p-bot", "m-bot", "m-carol", Governance::EditMetadata)) == adminNotCurrent,
             Fixture::code(GovernanceTransitions::grantPermission(world, "pkg-f1", "g-y",
                 Fixture::workflow("p-alice", "m-alice", grantStatementFor(world, "m-carol", Governance::EditMetadata)),
                 "m-carol", Governance::EditMetadata, Maybe::none(), 100)) == "governance.proof.ceremony"
@@ -113,7 +117,7 @@ module AdminTests {
             Fixture::verified("p-alice", "m-alice", Governance::deprecateStatement(k, 1))))
         checkAll("lifecycle decisions need the administrator's exact proof", [
             Fixture::code(deprecateAs("p-alice", "m-alice", 1)) == "",
-            Fixture::code(deprecateAs("p-erin", "m-erin", 1)) == "governance.admin.not-current",
+            Fixture::code(deprecateAs("p-erin", "m-erin", 1)) == adminNotCurrent,
             Fixture::code(deprecateAs("p-alice", "m-alice", 2)) == "governance.proof.statement-mismatch",
             Fixture::code(GovernanceTransitions::tombstone(deprecated, "pkg-f1", Fixture::verified("p-alice", "m-alice", Governance::tombstoneStatement(k, 1)))) == "governance.package.deprecated",
             authorizeCode(deprecated, "pkg-f1", "m-alice", Governance::PublishRelease, 100) == "governance.package.deprecated"

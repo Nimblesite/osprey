@@ -15,7 +15,7 @@ def vocab():
     match Educational.bpe_train("hello world hello there", 262, Pattern.Gpt2()):
         case Success(value=value):
             return value
-        case Error(message=message):
+        case Error(message=_):
             return Bpe.base_ranks()
 
 

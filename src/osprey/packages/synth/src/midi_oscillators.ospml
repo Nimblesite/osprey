@@ -3,16 +3,45 @@ namespace synth
 
 (** Monophonic last-note-priority oscillator; unrelated note-offs never silence the current note. *)
 module MidiOscillators
-    (** Whether the oscillator has an explicit event route. *)
+    (** Whether the oscillator has an explicit event route.
+    # Examples
+    ```osprey
+    print "${MidiOscillators::connected (Graphs::empty, Components::sine (1, 440.0))} ${MidiOscillators::connected (Graph(nodes = [Components::sine (1, 440.0)], cables = [Cable(source = 2, outlet = 0, destination = 1, inlet = 0)]), Components::sine (1, 440.0))}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export connected (graph, n) = n.processor == Oscillator && length (filterList (graph.cables, \c => c.destination == n.identity && c.inlet == 0)) == 1
 
-    (** A fresh connected instrument is silent until its first note-on. *)
+    (** A fresh connected instrument is silent until its first note-on.
+    # Examples
+    ```osprey
+    print "${MidiOscillators::initial (Components::sine (1, 440.0))}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export initial n = MidiVoice(kernel = RenderInputs::initialState n, pitch = 0, channel = 0, noteIdentity = 0, velocity = 0.0, active = false, releaseRemaining = 0, releaseLength = 0)
 
     // [SYNTH-HOST-MIDI-OSCILLATOR] The reference release tail: 240 frames (5 ms at 48 kHz), fixed until a public per-voice control is specified.
     release = 240
 
-    (** Validate public retained voice state before consuming another block. *)
+    (** Validate public retained voice state before consuming another block.
+    # Examples
+    ```osprey
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    loud = MidiOscillators::initial (Components::sine (1, 440.0))
+    print "${arithmetic (\() => MidiOscillators::valid (Components::sine (1, 440.0), MidiOscillators::initial (Components::sine (1, 440.0))))} ${arithmetic (\() => MidiOscillators::valid (Components::gain (1, 1.0), MidiOscillators::initial (Components::sine (1, 440.0))))} ${arithmetic (\() => MidiOscillators::valid (Components::sine (1, 440.0), loud(velocity = 2.0)))}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export valid (n, voice) = n.processor == Oscillator && voice.kernel.identity == n.identity && voice.kernel.phase >= 0.0 && voice.kernel.phase < 1.0 && voice.pitch >= 0 && voice.pitch <= 127 && voice.channel >= 0 && voice.channel <= 15 && voice.noteIdentity >= 0 && voice.noteIdentity <= 2147483647 && voice.velocity >= 0.0 && voice.velocity <= 1.0 && releaseValid voice
 
     releaseValid voice = voice.releaseRemaining >= 0 && voice.releaseRemaining <= voice.releaseLength && voice.releaseLength <= 480000 && (voice.releaseLength == 0 || voice.releaseLength >= 2) && match voice.active
@@ -60,7 +89,19 @@ module MidiOscillators
         [] => true
         [note, ...rest] => note.offset >= previous && ordered (rest, note.offset)
 
-    (** Retain note ownership and oscillator phase across blocks; events at a boundary belong to the next block. *)
+    (** Retain note ownership and oscillator phase across blocks; events at a boundary belong to the next block.
+    # Examples
+    ```osprey
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => MidiOscillators::block (Prepared(graph = Graph(nodes = [Components::gain (1, 1.0)], cables = []), order = [1], feedback = []), [], Components::sine (1, 440.0), MidiOscillators::initial (Components::sine (1, 440.0)), 0))} ${arithmetic (\() => MidiOscillators::block (Prepared(graph = Graph(nodes = [Components::gain (1, 1.0)], cables = []), order = [1], feedback = []), [], Components::sine (1, 440.0), MidiOscillators::initial (Components::sine (1, 440.0)), 16))}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export block (plan, clips, n, voice, frames) = match valid (n, voice) && frames >= 1 && frames <= 32768
         false => Error(message = InvalidConfiguration(detail = "Invalid MIDI oscillator state or frame capacity."))
         true => match ClipInputs::routed (plan.graph, clips, n.identity, 0)

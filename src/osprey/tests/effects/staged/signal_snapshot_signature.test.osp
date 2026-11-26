@@ -13,20 +13,23 @@ fn title() = (perform Signal<Title>.read()).text
 fn countLabel() = "count=${count()}"
 fn titleLength() = length(title())
 
+/// The one dependency a never-built snapshot names.
+let unknownDependency = ["<unknown>"]
+
 /// A never-built snapshot: its unknown dependency makes the first refresh rebuild.
-fn blank<T>(seed) -> SignalSnapshot<T> = { dependencies: ["<unknown>"], revision: 0, value: seed }
+fn blank<T>(seed) -> SignalSnapshot<T> = { dependencies: unknownDependency, revision: 0, value: seed }
 
 /// One refresh of `cached`, whatever its value type.
 fn refreshed<T>(cached, changed, work) -> SignalSnapshot<T> = signalRefresh(cached, changed, work)
 
 fn labels(n, cached) = {
     handle static Signal<Count> { read => Count { value: n } }
-    refreshed(cached, ["<unknown>"], countLabel)
+    refreshed(cached, unknownDependency, countLabel)
 }
 
 fn lengths(text, cached) = {
     handle static Signal<Title> { read => Title { text: text } }
-    refreshed(cached, ["<unknown>"], titleLength)
+    refreshed(cached, unknownDependency, titleLength)
 }
 
 fn oneHelperServesEveryValueType() = {
@@ -51,10 +54,10 @@ fn trackedLabels(n, cached, changed) = {
 }
 
 fn theHelperTracksWhatTheDirectFormTracks() = {
-    let built = trackedLabels(1, blank(""), ["<unknown>"])
+    let built = trackedLabels(1, blank(""), unknownDependency)
     let unrelated = trackedLabels(2, built, signalDependencies(title))
     let related = trackedLabels(3, unrelated, signalDependencies(count))
-    let direct = directLabels(1, blank(""), ["<unknown>"])
+    let direct = directLabels(1, blank(""), unknownDependency)
     checkAll("a refresh through the helper reads the callback's own signals", [
         join(built.dependencies, ",") == join(direct.dependencies, ","),
         join(built.dependencies, ",") == join(signalDependencies(countLabel), ","),

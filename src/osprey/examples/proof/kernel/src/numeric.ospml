@@ -64,20 +64,23 @@ module Numeric
         NatLit value => canonicalLimbs (value, count)
         _ => view (env, Terms::spine (Reduce::whnf (env, term)), count)
 
+    // What every branch answers when the term is no numeral.
+    notANumeral = Error(message = "not a numeral")
+
     view (env, spine, count) = match spine.spineHead
         Const name levels => headView (env, name, levels, spine.spineArgs, count)
-        _ => Error(message = "not a numeral")
+        _ => notANumeral
 
     headView (env, name, levels, args, count) = match name == "Nat.zero" && isEmpty levels && isEmpty args
         true => Success(value = count)
         false => succView (env, name, levels, args, count)
 
     succView (env, name, levels, args, count) = match name == "Nat.succ" && isEmpty levels && listLength args == 1
-        false => Error(message = "not a numeral")
+        false => notANumeral
         true => succLiteral (env, listGet (args, 0), count)
 
     succLiteral (env, found, count) = match found
-        Error _ => Error(message = "not a numeral")
+        Error _ => notANumeral
         Success value => decoded (env, value, Naturals::succ count)
 
     (** Literal limbs must be the one canonical spelling `Infer` types

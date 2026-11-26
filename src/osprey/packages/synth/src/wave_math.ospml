@@ -2,7 +2,15 @@ namespace synth
 
 (** Normalised PCM decoding [SYNTH-ADVANCED-GRAINS-IMPORT]. *)
 module WaveMath
-    (** Eight-bit PCM is offset binary; wider PCM is two's complement. *)
+    (** Eight-bit PCM is offset binary; wider PCM is two's complement.
+    # Examples
+    ```osprey
+    print "${WaveMath::pcm (128.0, 8.0)} ${WaveMath::pcm (255.0, 8.0)} ${WaveMath::pcm (32768.0, 16.0)} ${WaveMath::pcm (1.0, 16.0)}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export pcm (word, bits) = match bits == 8.0
         true => (word - 128.0) / 128.0
         false =>
@@ -12,24 +20,72 @@ module WaveMath
                 false => word
             floatDiv (signed, half)
 
-    (** Explicit stereo-to-mono downmix, preserving bounded input headroom. *)
+    (** Explicit stereo-to-mono downmix, preserving bounded input headroom.
+    # Examples
+    ```osprey
+    print "${WaveMath::mono (0.5, -0.5)} ${WaveMath::mono (0.25, 0.5)}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export mono (left, right) = (left + right) * 0.5
 
-    (** Per-channel sum with independent linear gains at the two mixer inlets. *)
+    (** Per-channel sum with independent linear gains at the two mixer inlets.
+    # Examples
+    ```osprey
+    print "${WaveMath::mixed (0.5, 0.5, 1.0, 0.25)}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export mixed (first: float, firstGain, second, secondGain) = first * firstGain + second * secondGain
 
-    (** Equal-power interpolation between adjacent lanes in an ordered output layout. *)
+    (** Equal-power interpolation between adjacent lanes in an ordered output layout.
+    # Examples
+    ```osprey
+    print "${WaveMath::panGain (2.0, 0.0, -1.0)} ${WaveMath::panGain (2.0, 1.0, -1.0)}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export panGain (width, lane, pan) =
         distance = abs (lane - (pan + 1.0) * 0.5 * (width - 1.0))
         match distance >= 1.0
             true => 0.0
             false => cos (1.5707963267948966 * distance)
 
-    (** Source-sample advance per output sample, independent of recording duration. *)
+    (** Source-sample advance per output sample, independent of recording duration.
+    # Examples
+    ```osprey
+    print "${WaveMath::playbackRate (48000.0, 48000.0, 440.0, 440.0)} ${WaveMath::playbackRate (48000.0, 24000.0, 880.0, 440.0)}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export playbackRate (sourceRate, outputRate, targetFrequency, rootFrequency) = floatDiv (sourceRate, outputRate) * floatDiv (targetFrequency, rootFrequency)
 
-    (** Duration of a complete decoded sample at its original sample rate. *)
+    (** Duration of a complete decoded sample at its original sample rate.
+    # Examples
+    ```osprey
+    print "${WaveMath::seconds (48000, 48000.0)} ${WaveMath::seconds (44100, 48000.0)}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export seconds (frames, rate) = floatDiv (frames, rate)
 
-    (** Whole frames at `rate` covering a tail declared in samples at the 48 kHz graph rate. *)
+    (** Whole frames at `rate` covering a tail declared in samples at the 48 kHz graph rate.
+    # Examples
+    ```osprey
+    print "${WaveMath::tailFrames (48000.0, 48000.0)} ${WaveMath::tailFrames (24000.0, 44100.0)}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export tailFrames (samples, rate) = ceil (samples * rate / 48000.0)

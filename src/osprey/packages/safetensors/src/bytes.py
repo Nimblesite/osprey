@@ -31,7 +31,7 @@ def pow2i(e):
     [1024] [2] [1]
     ```
     """
-    return fold(range(e), 1, lambda acc, i: acc * 2)
+    return fold(range(e), 1, lambda acc, _i: acc * 2)
 
 
 def le_bytes(data, off, n):
@@ -213,9 +213,9 @@ def pow2(e):
     ```
     """
     if e >= 0:
-        return fold(range(e), 1.0, lambda acc, i: acc * 2.0)
+        return fold(range(e), 1.0, lambda acc, _i: acc * 2.0)
     else:
-        return fold(range(0 - e), 1.0, lambda acc, i: acc / 2.0)
+        return fold(range(0 - e), 1.0, lambda acc, _i: acc / 2.0)
 
 
 def float_from_fields(sign, exponent, fraction, exponent_limit, fraction_base, shift):
@@ -478,7 +478,7 @@ def is_neg_zero(x):
 
 def scale_up_by(v, n):
     """v doubled exactly n times."""
-    return fold(range(n), v, lambda acc, i: acc * 2.0)
+    return fold(range(n), v, lambda acc, _i: acc * 2.0)
 
 
 class FloatUnit:

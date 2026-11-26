@@ -5,6 +5,7 @@ import * as path from "node:path";
 
 import { ASK_ROW, ASK_ROW_BYTES, SCENE_SHAPE, SCENE_SHAPE_BYTES, VIEW_ROW, VIEW_ROW_BYTES } from "../../client/src/osprey-ui/generated/native-abi";
 import type { FrameRuns } from "../../client/src/osprey-ui/webview/rows";
+import { present } from "../present";
 
 /** Accumulates a frame's UTF-8 text run and names each appended range. */
 export class TextRun {
@@ -163,7 +164,8 @@ export function unionKinds(file: string, header: string, renamed: Record<string,
   const source = fs.readFileSync(native, "utf8").replace(/\r/g, "");
   const block = source.slice(source.indexOf(header));
   const body = block.slice(0, block.search(/\n\S/));
-  return [...body.matchAll(/^ {4}([A-Z]\w*)$/gm)].map(
-    (match) => renamed[match[1]] ?? match[1].replace(/(?<!^)([A-Z])/g, "-$1").toLowerCase(),
-  );
+  return [...body.matchAll(/^ {4}([A-Z]\w*)$/gm)].map((match) => {
+    const constructor = present(match[1], "the constructor name the pattern captured");
+    return renamed[constructor] ?? constructor.replace(/(?<!^)([A-Z])/g, "-$1").toLowerCase();
+  });
 }

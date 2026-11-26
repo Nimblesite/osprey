@@ -784,12 +784,12 @@ registerGrainJourneys () =
         refusedWith (SampleResources::prepare (kit(samples = [0.5, 1.5])), grainBadSource ())
         refusedWith (SampleResources::prepare (kit(sampleRate = 192001)), "Invalid sample resource name, sample rate, source channels or root frequency.")
         // A frozen capture becomes the same tuned mono resource the graph consumes.
-        succeeds (GrainCapture::prepare (2, 48000), \writer =>
-            succeeds (GrainCapture::write (writer, [0.25, -0.25]), \held =>
-                succeeds (GrainCapture::freeze held, \frozen =>
-                    succeeds (GrainCapture::resource (frozen, "capture", 69.0), \resource =>
-                        expect (SampleResources::metadata resource, true)
-                        expect (resource.rootFrequency, 440.0)
-                        expect (length resource.samples, 2)
-                        succeeds (GrainGraph::prepare (grainTestNode (resource, 4, 7)), \cloud =>
-                            exactRows ([{ got = cloud.pool.capacity, want = 4 }, { got = cloud.pool.region.limit, want = 2 }]))))))))
+        use writer <- succeeds (GrainCapture::prepare (2, 48000))
+        use held <- succeeds (GrainCapture::write (writer, [0.25, -0.25]))
+        use frozen <- succeeds (GrainCapture::freeze held)
+        use resource <- succeeds (GrainCapture::resource (frozen, "capture", 69.0))
+        expect (SampleResources::metadata resource, true)
+        expect (resource.rootFrequency, 440.0)
+        expect (length resource.samples, 2)
+        use cloud <- succeeds (GrainGraph::prepare (grainTestNode (resource, 4, 7)))
+        exactRows ([{ got = cloud.pool.capacity, want = 4 }, { got = cloud.pool.region.limit, want = 2 }])))

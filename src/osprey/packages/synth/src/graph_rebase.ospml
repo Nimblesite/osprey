@@ -30,7 +30,19 @@ module GraphRebase
             false => Success(value = banks)
             true => Outcomes::carried (fresh (graph, n), \bank => Success(value = listAppend banks bank))
 
-    (** The running state carried into an edited graph; the graph must already pass `Graphs.prepare`. *)
+    (** The running state carried into an edited graph; the graph must already pass `Graphs.prepare`.
+    # Examples
+    ```osprey
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => GraphRebase::rebased (Graphs::empty, GraphState(graphPosition = 0, graphHosted = [], graphKernels = [])))} ${arithmetic (\() => GraphRebase::rebased (Graph(nodes = [Components::gain (-1, 1.0)], cables = []), GraphState(graphPosition = 0, graphHosted = [], graphKernels = [])))} ${arithmetic (\() => GraphRebase::rebased (Graph(nodes = [Components::granular (1, SampleResource(name = "voice", sampleRate = 48000, sourceChannels = 1, rootFrequency = 220.0, samples = [0.0, 0.5]), 8, 7)], cables = []), GraphState(graphPosition = 0, graphHosted = [], graphKernels = [])))}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export rebased (graph, held) =
         use _ <- Renderer::validated (graph, InvalidConfiguration(detail = "The edited graph is invalid; keep the previous graph and state."))
         kept = filterList (held.graphKernels, \bank => surviving (graph, held, bank))

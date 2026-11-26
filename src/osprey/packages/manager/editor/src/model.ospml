@@ -75,15 +75,18 @@ module Store
     (** A missing workspace view for a project whose graph is unknown, showing `reason`. *)
     export absent reason = emptyWorkspace reason
 
+    (** The notice shown from the moment a refresh starts until its answers arrive. *)
+    refreshingNotice = "Refreshing packages…"
+
     waitingNotice waiting = match waiting > 0
-        true => "Refreshing packages…"
+        true => refreshingNotice
         false => "Workspace refreshed"
 
     (** The state after the catalog arrives: the entries stored, the refreshing or refreshed notice by `waiting`, nothing faulted. *)
     export withCatalog (current, entries, waiting) = awaiting (current(packageCatalog = entries), waitingNotice waiting, waiting)
 
     graphNotice (workspace, waiting) = match waiting > 0
-        true => "Refreshing packages…"
+        true => refreshingNotice
         false => match workspace.workspaceMissing
             true => workspace.workspaceReason
             false => "Workspace refreshed"
@@ -106,7 +109,7 @@ module Store
     (** A refresh as a runtime step: a new generation with two requests outstanding, then the catalog and graph requests asked together; a graph request the editor cannot build steps to the fault screen instead. *)
     export refresh current =
         generation = satAdd current.packageGeneration 1
-        ready = cleared (current(packageNotice = "Refreshing packages…", packagePending = true, packageFault = false, packageGeneration = generation, packageWaiting = 2))
+        ready = cleared (current(packageNotice = refreshingNotice, packagePending = true, packageFault = false, packageGeneration = generation, packageWaiting = 2))
         catalog = Requests::ask ("package/catalog:${generation}", ui::Http(method = "GET", url = current.packageRegistry + "/v1/packages", headers = [], body = "", responseLimit = 1048576, deadline = 15000, httpSlice = "package/catalog"))
         match graphRequest (ready, "package/graph:${generation}")
             Error problem => Runtime::step (fault (ready, problem))

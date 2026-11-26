@@ -14,6 +14,9 @@ from qwen_tests.TiledCases import model_fault_cases, refusal_cases, tiled_cases
 
 __all__ = ["model_fixture_cases"]
 
+SINGLE_CASE = "model_single"
+"""The case name every single-token check and refusal carries."""
+
 
 def manifest_cases(parameter_values):
     """The fixture's own counts: the declared parameter count is the sum of the recorded
@@ -202,15 +205,15 @@ def head_norm_cases():
 
 def single_cases(model):
     """`MODEL_INPUTS[0]`, one token at position 0, from a fresh cache."""
-    return started(model, "model_single", lambda cache: single_run(model, cache))
+    return started(model, SINGLE_CASE, lambda cache: single_run(model, cache))
 
 
 def single_run(model, cache):
     match Qwen3_5Model.decode(model, cache, token_in(input_tokens(0), 0)):
         case Error(message=message):
-            return [Check.failed("model_single", message)]
+            return [Check.failed(SINGLE_CASE, message)]
         case Success(value=next):
-            return listConcat(stage_cases("model_single", next, SINGLE, 0), [greedy_case("model_single", next), public_greedy_case(model, next)])
+            return listConcat(stage_cases(SINGLE_CASE, next, SINGLE, 0), [greedy_case(SINGLE_CASE, next), public_greedy_case(model, next)])
 
 
 def public_greedy_case(model, next):

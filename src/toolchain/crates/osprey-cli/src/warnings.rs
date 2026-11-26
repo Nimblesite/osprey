@@ -337,7 +337,8 @@ mod tests {
                 assert!(runs.is_empty(), "depth {depth}: {runs:?}");
                 continue;
             }
-            let line_two = &source[source.find('\n').unwrap_or(0) + 1..];
+            let first_line = source.find('\n').unwrap_or(0) + 1;
+            let line_two = source.get(first_line..).expect("char boundary");
             let column = line_two.find("})").unwrap_or(0);
             let expected = format!(
                 "\npyramid.osp\n  2:{column}  warning: {} brackets close here at once: this code nests {} deep; flatten its callbacks into `use x <- f(...)` lines and name its inner values\n\n1 warning (closing-run)",

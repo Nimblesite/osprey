@@ -9,15 +9,21 @@ import storage::View
 
 home = "/Users/ada"
 
+// The fixture folders the browser opens and measures, and the device they sit on.
+code = home + "/Code"
+downloads = home + "/Downloads"
+deviceName = "Macintosh HD"
+restTitle = "Other apps & iOS"
+
 entry path bytes visible hidden folder = storage::Entry(path = path, bytes = bytes, visible = visible, hidden = hidden, folder = folder, guarded = false, link = false)
 
 guarded path = storage::Entry(path = path, bytes = 0, visible = 0, hidden = false, folder = true, guarded = true, link = false)
 
 homeEntries () = [
-    entry "/Users/ada/Downloads" 30000000000 30000000000 false true,
+    entry downloads 30000000000 30000000000 false true,
     entry "/Users/ada/Library" 450000000000 450000000000 true true,
     entry "/Users/ada/notes.txt" 4096 4096 false false,
-    entry "/Users/ada/Code" 120000000000 20000000000 false true,
+    entry code 120000000000 20000000000 false true,
     entry "/Users/ada/.cache" 99000000000 0 true true,
 ]
 
@@ -31,7 +37,7 @@ listingFor path = match path
     "/Users/ada/Library/Containers" => listed [entry "/Users/ada/Library/Containers/org.example" 2000 2000 false true, guarded mail] 0
     _ => storage::Listing(entries = [], blocked = 0, measured = false)
 
-ssd = storage::Volume(name = "Macintosh HD", total = 1000000000000, available = 250000000000, important = 300000000000)
+ssd = storage::Volume(name = deviceName, total = 1000000000000, available = 250000000000, important = 300000000000)
 
 browser path hidden stage = storage::Browser(platform = "macos", full = false, home = home, root = home, path = path, hidden = hidden, stage = stage, walking = home, items = 0, bytes = 0)
 
@@ -122,12 +128,12 @@ rankCase () =
 
 pathCase () =
     check "name" "Library" (Disk::name "" "/Users/ada/Library")
-    check "volume root" "Macintosh HD" (Disk::name "Macintosh HD" "/")
+    check "volume root" deviceName (Disk::name deviceName "/")
     check "parent" "/Users" (Disk::parent "/Users/ada")
     check "parent of a top folder" "/" (Disk::parent "/Users")
     check "trail" "/Users/ada|/Users/ada/Code|/Users/ada/Code/app" (join (Disk::trail home "/Users/ada/Code/app") "|")
     check "trail at the root" "/Users/ada" (join (Disk::trail home home) "|")
-    answers "an app and a Finder folder name their symbols" ["app.fill", "arrow.down.circle.fill"] (\disk => (Disk::look disk).symbol) [entry "/Applications/Xcode.app" 1 1 false true, entry "/Users/ada/Downloads" 1 1 false true]
+    answers "an app and a Finder folder name their symbols" ["app.fill", "arrow.down.circle.fill"] (\disk => (Disk::look disk).symbol) [entry "/Applications/Xcode.app" 1 1 false true, entry downloads 1 1 false true]
     checkTrue "a movie's tint and an unknown file's symbol" (answersHold (\disk => (Disk::look disk).tint) [entry "/a/Trip.MOV" 1 1 false false] ["purple"] && answersHold (\disk => (Disk::look disk).symbol) [entry "/Users/ada/README" 1 1 false false] ["doc.fill"])
 
 browseCase () =
@@ -148,8 +154,8 @@ browseCase () =
     check "walk finished" "ready" ready.stage
     stale = Browse::dispatch chosen.model (walkReport "/Volumes/Old")
     check "a stale walk is ignored" "measuring" stale.model.stage
-    inside = entered ready (wired "open" "/Users/ada/Code")
-    check "opens a folder" "/Users/ada/Code" inside.path
+    inside = entered ready (wired "open" code)
+    check "opens a folder" code inside.path
     check "never leaves the measured folder" home (pathAfter ready (wired "open" "/Users/adam"))
     check "up" home (pathAfter inside (wire "up"))
     check "up stops at the root" home (pathAfter ready (wire "up"))
@@ -164,7 +170,7 @@ browseCase () =
     check "and keeps the measured folder" home granted.model.root
     check "and opens the chosen one" mail granted.model.path
     check "its walk reports by its own path" "ready" (entered granted.model (walkReport mail)).stage
-    check "a folder opens in Finder" (requested "reveal" "/Users/ada/Code") (requestsFrom ready (wired "reveal" "/Users/ada/Code"))
+    check "a folder opens in Finder" (requested "reveal" code) (requestsFrom ready (wired "reveal" code))
     check "but only inside the measured folder" "[]" (requestsFrom ready (wired "reveal" "/Users/adam"))
     check "an app's data is chosen in the picker" (requested "pick" mail) (requestsFrom ready (wired "grant" mail))
     counted = entered chosen.model (progress "/Users/ada" 1200 5000)
@@ -187,7 +193,7 @@ screenCase () =
     containers = screen (browser "/Users/ada/Library/Containers" true "ready")
     phone = phoneScreen (pictures "ready" 40000000000)
     sighted = screen (browser home false "ready")
-    deeper = screen (browser "/Users/ada/Code" false "ready")
+    deeper = screen (browser code false "ready")
     plain = browser home true "ready"
     walking = screen (Browse::dispatch (Browse::start home "macos" false).model (progress "/" 1200 5000)).model
     settles (shown, true, [
@@ -200,8 +206,8 @@ screenCase () =
         claim "unreadable folders explained" "2 folders here could not be read",
         claim "and says Full Disk Access counts the rest" "need Full Disk Access",
         claim "offers Full Disk Access" ("\"text\":\"Allow Full Disk Access…\"," + eventHead "settings"),
-        claim "folders open" (eventOf "open" "/Users/ada/Code"),
-        claim "a folder's context menu opens it in Finder" ("\"menu\":[{\"kind\":\"button\",\"symbol\":\"folder\",\"text\":\"Open in Finder\"," + eventOf "reveal" "/Users/ada/Code" + "}]"),
+        claim "folders open" (eventOf "open" code),
+        claim "a folder's context menu opens it in Finder" ("\"menu\":[{\"kind\":\"button\",\"symbol\":\"folder\",\"text\":\"Open in Finder\"," + eventOf "reveal" code + "}]"),
         claim "toggle reflects the setting" "\"text\":\"Hidden Files\",\"value\":\"true\""])
     settles (screen (disk(root = "/")), true, [claim "disk title uses the same used space as its gauge" "700.0 GB used"])
     settles (containers, true, [
@@ -212,14 +218,14 @@ screenCase () =
     settles (deeper, true, [
         claim "everything inside is hidden" "Everything here is hidden",
         claim "path bar starts at Home" "\"kind\":\"pathbar\",\"children\":[{\"kind\":\"button\",\"symbol\":\"house.fill\",\"text\":\"Home\"",
-        claim "a folder below Home goes by its name" (navigation "/Users/ada/Code" "Code"),
+        claim "a folder below Home goes by its name" (navigation code "Code"),
         claim "way up" "Enclosing Folder"])
     settles (walking, true, [
         claim "progress" "Measuring Macintosh HD…",
         claim "counts so far" "1,200 items · 5.0 KB so far",
         claim "and says macOS asks once for Documents" "macOS asks once before the app reads Desktop, Documents"])
     settles (screen (browser home true "failed"), true, [claim "failure" "Cannot measure Home"])
-    settles (screen (browser "/Users/ada/Downloads" true "ready"), true, [claim "unmeasured folder" "Not measured yet"])
+    settles (screen (browser downloads true "ready"), true, [claim "unmeasured folder" "Not measured yet"])
     settles (screen (plain(full = true)), false, [claim "until it is granted" "Allow Full Disk Access"])
     settles (shown, false, [
         claim "a file has no Finder item" "\"value\":\"/Users/ada/notes.txt\"",
@@ -237,14 +243,14 @@ phoneCase () =
         claim "what uses the device" "On this Macintosh HD",
         claim "photos measured" (item "Photos & Videos" "photo.on.rectangle.angled" "orange" "40.0 GB"),
         claim "this app" (item "Osprey Storage" "app.fill" "indigo" "5.0 GB"),
-        claim "the rest, which iOS keeps from apps" (item "Other apps & iOS" "square.stack.3d.up.fill" "gray" "655.0 GB"),
+        claim "the rest, which iOS keeps from apps" (item restTitle "square.stack.3d.up.fill" "gray" "655.0 GB"),
         claim "and says where to split it by app" "Settings › General › iPhone Storage",
         claim "a folder in Files can be measured" "Measure a Folder in Files…",
         claim "the library by kind, with counts" (captioned (item "Videos · 400" "video.fill" "purple" "30.0 GB") "75%"),
         claim "screenshots apart" "\"text\":\"Screenshots · 600\"",
         claim "what only iCloud holds" (item "Only in iCloud" "icloud.fill" "gray" "60.0 GB"),
         claim "and why it takes no space here" "9,000 items, hidden ones included"])
-    settles (crowded, true, [claim "the rest never goes below nothing" (captioned (item "Other apps & iOS" "square.stack.3d.up.fill" "gray" "0 B") "0%")])
+    settles (crowded, true, [claim "the rest never goes below nothing" (captioned (item restTitle "square.stack.3d.up.fill" "gray" "0 B") "0%")])
     settles (denied, true, [
         claim "denied photos lead to Settings" ("\"detail\":\"Allow in Settings\",\"caption\":\"\",\"value\":\"0\"," + eventHead "settings"),
         claim "and count toward the rest" "\"detail\":\"695.0 GB\""])
@@ -256,7 +262,7 @@ phoneCase () =
         claim "nor the app's own files" "Largest items",
         claim "a kind with nothing is left out" "Live Photos",
         claim "no Full Disk Access on iPhone" "Full Disk Access"])
-    settles (small, false, [claim "and the device story stays at the top" "Other apps & iOS"])
+    settles (small, false, [claim "and the device story stays at the top" restTitle])
     settles (denied, false, [claim "with no breakdown" "Only in iCloud"])
 
 testCases [

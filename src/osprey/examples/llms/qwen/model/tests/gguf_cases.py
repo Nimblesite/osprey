@@ -20,6 +20,8 @@ FIXTURES = "src/osprey/examples/llms/qwen/model/tests/fixtures/"
 """Where the oracle wrote the tiny files, relative to the repository root the suite runs from."""
 Q8_CACHED = 5
 """`MODEL_Q8_HIDDEN_VALUES` index of the cached run's embeddings; its stages follow."""
+HEAD_CASE = "gguf_f32_head"
+"""The case name every tied-head check and refusal carries."""
 
 
 def path(name):
@@ -130,15 +132,15 @@ def head_cases(model):
     """The tied head's logits match the Transformers-layout model's for the same token."""
     match Qwen3_5Hf.load(fixture_params(Expected.MODEL_PARAM_VALUES), model_config()):
         case Error(message=message):
-            return [Check.failed("gguf_f32_head", message)]
+            return [Check.failed(HEAD_CASE, message)]
         case Success(value=reference):
-            return started(model, "gguf_f32_head", lambda cache: head_run(model, reference, cache))
+            return started(model, HEAD_CASE, lambda cache: head_run(model, reference, cache))
 
 
 def head_run(model, reference, cache):
     match Qwen3_5Model.decode(model, cache, token_in(input_tokens(0), 0)):
         case Error(message=message):
-            return [Check.failed("gguf_f32_head", message)]
+            return [Check.failed(HEAD_CASE, message)]
         case Success(value=next):
             return against_reference(next, Qwen3_5Model.decode(reference, cache, token_in(input_tokens(0), 0)))
 

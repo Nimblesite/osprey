@@ -186,7 +186,7 @@ def macro_parse():
 def defaulted_macro_node(chunks):
     """The parameters and defaults of a macro that declares a default."""
     node = first_node(chunks)
-    return [same("defaulted macro parameters", node.params, ["a", "b", "c"]),
+    return [same("defaulted macro parameters", node.params, ABC),
             same("defaulted macro defaults", node.defaults, ["", "7", "a + b"])]
 
 
@@ -228,10 +228,17 @@ def macro_cases():
     return all_of([macro_parse(), defaulted_macro_parse(), macro_table_cases()])
 
 
+ABC = ["a", "b", "c"]
+"""Three keys, the fixture of the list, map and dict value cases."""
+BAD_PAREN = "unexpected token `)` in expression"
+"""The diagnostic of a stray closing parenthesis."""
+BOGUS_TAG = "unknown statement `bogus`"
+"""The diagnostic of a statement the port does not know."""
+
 # Expression diagnostics the port reports verbatim (CPython Jinja 3.1.6 also
 # rejects each template; probes live in target/logs/jinja-coverage-work/).
 EXPR_ERRORS = [
-    ["unexpected token", "{{ ) }}", "unexpected token `)` in expression"],
+    ["unexpected token", "{{ ) }}", BAD_PAREN],
     ["attribute name", "{{ obj.+ }}", "expected attribute name after '.'"],
     ["test name", "{{ 1 is }}", "expected test name after 'is'"],
 ]
@@ -261,14 +268,14 @@ MALFORMED_EXPR = [
 # and lexer.py). CPython Jinja 3.1.6 fails every template too, with its own
 # 'Encountered unknown tag' / 'unexpected end of template' wording.
 STATEMENT_ERRORS = [
-    ["unknown statement", "{% bogus %}", "unknown statement `bogus`"],
-    ["unknown in if body", "{% if enabled %}{% bogus %}{% endif %}", "unknown statement `bogus`"],
+    ["unknown statement", "{% bogus %}", BOGUS_TAG],
+    ["unknown in if body", "{% if enabled %}{% bogus %}{% endif %}", BOGUS_TAG],
     ["endfor closes if", "{% if enabled %}{% endfor %}", "unknown statement `endfor`"],
-    ["unknown in elif body", "{% if enabled %}{% elif nothing %}{% bogus %}{% endif %}", "unknown statement `bogus`"],
-    ["unknown in else body", "{% if enabled %}{% else %}{% bogus %}{% endif %}", "unknown statement `bogus`"],
-    ["unknown in for body", "{% for n in nums %}{% bogus %}{% endfor %}", "unknown statement `bogus`"],
-    ["unknown in for else", "{% for n in nums %}{% else %}{% bogus %}{% endfor %}", "unknown statement `bogus`"],
-    ["unknown in macro body", "{% macro m() %}{% bogus %}{% endmacro %}", "unknown statement `bogus`"],
+    ["unknown in elif body", "{% if enabled %}{% elif nothing %}{% bogus %}{% endif %}", BOGUS_TAG],
+    ["unknown in else body", "{% if enabled %}{% else %}{% bogus %}{% endif %}", BOGUS_TAG],
+    ["unknown in for body", "{% for n in nums %}{% bogus %}{% endfor %}", BOGUS_TAG],
+    ["unknown in for else", "{% for n in nums %}{% else %}{% bogus %}{% endfor %}", BOGUS_TAG],
+    ["unknown in macro body", "{% macro m() %}{% bogus %}{% endmacro %}", BOGUS_TAG],
     ["unterminated tag", "{{ name", "unexpected end of template, expected 'end of print statement'"],
     ["unterminated string", "{{ 'abc", "unexpected end of template, expected 'end of print statement'"],
 ]
@@ -285,12 +292,12 @@ LOOKUP_ERRORS = [
     ["unknown dict method", "{{ obj.foo() }}", "method `foo` is not supported on dicts"],
     ["raise exception", "{{ raise_exception('boom') }}", "boom"],
     ["strftime_now", "{{ strftime_now('%Y') }}", "strftime_now is not available in the Osprey port"],
-    ["loop cond error", "{% for n in nums if ) %}{% endfor %}", "unexpected token `)` in expression"],
-    ["loop filtered body error", "{% for n in nums if true %}{{ ) }}{% endfor %}", "unexpected token `)` in expression"],
-    ["loop iterable error", "{% for n in ) %}{% endfor %}", "unexpected token `)` in expression"],
-    ["loop body error", "{% for n in nums %}{{ ) }}{% endfor %}", "unexpected token `)` in expression"],
-    ["set expression error", "{% set x = ) %}", "unexpected token `)` in expression"],
-    ["branch cond error", "{% if ) %}a{% endif %}", "unexpected token `)` in expression"],
+    ["loop cond error", "{% for n in nums if ) %}{% endfor %}", BAD_PAREN],
+    ["loop filtered body error", "{% for n in nums if true %}{{ ) }}{% endfor %}", BAD_PAREN],
+    ["loop iterable error", "{% for n in ) %}{% endfor %}", BAD_PAREN],
+    ["loop body error", "{% for n in nums %}{{ ) }}{% endfor %}", BAD_PAREN],
+    ["set expression error", "{% set x = ) %}", BAD_PAREN],
+    ["branch cond error", "{% if ) %}a{% endif %}", BAD_PAREN],
 ]
 
 
@@ -334,7 +341,7 @@ def error_cases(context):
 def fallback_cases():
     return [
         same("chars of empty", V.chars(""), []),
-        same("indexed rebuild", V.map_indexed(["a", "b", "c"], lambda i: i + 10), [10, 11, 12]),
+        same("indexed rebuild", V.map_indexed(ABC, lambda i: i + 10), [10, 11, 12]),
         same("length of undefined", F.apply_filter("length", V.undefined("x"), [], []), V.int_(0)),
         same("method on int", V.is_error(F.call_method(V.int_(1), "upper", [])), True),
         same("bind fallback innermost", V.lookup(V.bind_found(V.Env(frames=[{}, {}], macros=[]), "x", V.int_(1)), "x"), V.int_(1)),
@@ -342,7 +349,7 @@ def fallback_cases():
 
 
 def dict_write_cases():
-    d = V.dict_(["a", "b", "c"], [V.int_(1), V.int_(2), V.int_(3)])
+    d = V.dict_(ABC, [V.int_(1), V.int_(2), V.int_(3)])
     appended = V.dict_set(d, "d", V.int_(4))
     replaced = V.dict_set(d, "b", V.int_(9))
     return [

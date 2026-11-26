@@ -5,7 +5,15 @@ namespace synth
     level is its mean power over every frame and its peak the loudest frame, both in dB where a full-scale sine
     reads 0. A signal shorter than one frame is read as one zero-padded frame. Formulas: spectral_math.ospml. *)
 module Spectra
-    (** The bands' centre frequencies in Hz, one octave apart. *)
+    (** The bands' centre frequencies in Hz, one octave apart.
+    # Examples
+    ```osprey
+    print "${Spectra::centres}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export centres = [31.25, 62.5, 125.0, 250.0, 500.0, 1000.0, 2000.0, 4000.0, 8000.0, 16000.0]
 
     frame (samples, size, start) = mapList (toList (range (0, size)), \i => SpectralMath::windowedSample (listGet samples (satAdd start i) ?: 0.0, toFloat i, toFloat size))
@@ -37,7 +45,19 @@ module Spectra
     valid (rate, size, hop) = Ffts::valid size && hop >= 1 && rate >= 8000.0 && rate <= 384000.0
 
     (** The octave-band spectrum of `samples` at `rate`, from `size`-point frames (64–4096, a power of two)
-        every `hop` samples. *)
+        every `hop` samples.
+    # Examples
+    ```osprey
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => Spectra::bands ([], 48000.0, 100, 16))}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export bands (samples, rate, size, hop) = match valid (rate, size, hop)
         false => Error(message = InvalidConfiguration(detail = "A spectrum needs a power-of-two frame of 64 to 4096, a hop of at least 1 and a rate of 8 to 384 kHz."))
         true => Outcomes::carried (collected (samples, rate, size, hop), \frames => Success(value = Sequences::mapIndexed (centres, \(band, centre) => summary (frames, size, band, centre))))

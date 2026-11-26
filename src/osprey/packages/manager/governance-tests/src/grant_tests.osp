@@ -9,6 +9,10 @@ import registry::Maybe
 /// checked live, and a CI workflow principal holds exactly what a human
 /// sponsor signed for it.
 module GrantTests {
+    /// The refusal of a member who lacks the permission.
+    let permissionMissing = "governance.permission.missing"
+    /// The refusal of an administrator whose seat is stale.
+    let adminNotCurrent = "governance.admin.not-current"
 
     fn grantPkgF1(world, grantId, to, permission, expiresAt) = Fixture::grantOn(world, "pkg-f1", grantId, to, permission, expiresAt, 100)
 
@@ -40,9 +44,9 @@ module GrantTests {
             structuralEquals([grantRow(granted, "g-1").packageEpoch, grantRow(granted, "g-1").memberEpoch], [1, 1]),
             Maybe::isPresent(grantRow(granted, "g-1").expiresAt) == false,
             authorizeCode(granted, "pkg-f1", "m-carol", Governance::PublishRelease, 100) == "",
-            authorizeCode(granted, "pkg-f1", "m-bob", Governance::PublishRelease, 100) == "governance.permission.missing",
-            authorizeCode(granted, "pkg-f1", "m-carol", Governance::YankRelease, 100) == "governance.permission.missing",
-            authorizeCode(granted, "pkg-f1", "m-carol", Governance::EditMetadata, 100) == "governance.permission.missing",
+            authorizeCode(granted, "pkg-f1", "m-bob", Governance::PublishRelease, 100) == permissionMissing,
+            authorizeCode(granted, "pkg-f1", "m-carol", Governance::YankRelease, 100) == permissionMissing,
+            authorizeCode(granted, "pkg-f1", "m-carol", Governance::EditMetadata, 100) == permissionMissing,
             authorizeCode(granted, "pkg-w1", "m-carol", Governance::PublishRelease, 100) == "governance.membership.other-org"
         ])
     }
@@ -56,8 +60,8 @@ module GrantTests {
             authorizeCode(both, "pkg-f1", "m-bob", Governance::PublishRelease, 100) == "",
             authorizeCode(both, "pkg-f1", "m-carol", Governance::PublishRelease, 100) == "",
             Fixture::code(grantPkgF1(both, "g-3", "m-bob", Governance::PublishRelease, Maybe::none())) != "governance.permission.duplicate",
-            Fixture::code(GovernanceTransitions::grantPermission(both, "pkg-f1", "g-3", Fixture::verified("p-bob", "m-bob", "self-delegation"), "m-carol", Governance::EditMetadata, Maybe::none(), 100)) == "governance.admin.not-current",
-            Fixture::code(renewWith(both, "g-1", "g-3", Fixture::verified("p-bob", "m-bob", "self-renewal"), Maybe::some(200))) == "governance.admin.not-current"
+            Fixture::code(GovernanceTransitions::grantPermission(both, "pkg-f1", "g-3", Fixture::verified("p-bob", "m-bob", "self-delegation"), "m-carol", Governance::EditMetadata, Maybe::none(), 100)) == adminNotCurrent,
+            Fixture::code(renewWith(both, "g-1", "g-3", Fixture::verified("p-bob", "m-bob", "self-renewal"), Maybe::some(200))) == adminNotCurrent
         ])
     }
 
@@ -96,10 +100,10 @@ module GrantTests {
         let renewed = Fixture::orKeep(regranted, fn(w) => renewWith(w, "g-2", "g-3",
             Fixture::adminProof(w, "pkg-f1", renewalStatement(w, "g-2", Maybe::some(300))), Maybe::some(300)))
         checkAll("revoked and renewed rows stay auditable and never double-grant", [
-            authorizeCode(revoked, "pkg-f1", "m-carol", Governance::EditMetadata, 100) == "governance.permission.missing",
+            authorizeCode(revoked, "pkg-f1", "m-carol", Governance::EditMetadata, 100) == permissionMissing,
             Governance::isActiveGrant(grantRow(revoked, "g-1")) == false,
-            Fixture::code(GovernanceTransitions::revokeGrant(granted, "g-1", Fixture::verified("p-erin", "m-erin", "not-admin"))) == "governance.admin.not-current",
-            Fixture::code(renewWith(regranted, "g-2", "g-3", Fixture::verified("p-carol", "m-carol", "self-renewal"), Maybe::some(300))) == "governance.admin.not-current",
+            Fixture::code(GovernanceTransitions::revokeGrant(granted, "g-1", Fixture::verified("p-erin", "m-erin", "not-admin"))) == adminNotCurrent,
+            Fixture::code(renewWith(regranted, "g-2", "g-3", Fixture::verified("p-carol", "m-carol", "self-renewal"), Maybe::some(300))) == adminNotCurrent,
             Maybe::orElse(grantRow(renewed, "g-3").expiresAt, 0) == 300,
             Governance::isActiveGrant(grantRow(renewed, "g-2")) == false,
             authorizeCode(renewed, "pkg-f1", "m-carol", Governance::EditMetadata, 299) == "",
@@ -150,7 +154,7 @@ module GrantTests {
         let sponsor = Fixture::verified("p-dave", "m-dave", Governance::custodianStatement("o-wren", "m-ci"))
         checkAll("a workflow principal holds exactly its sponsored grant", [
             authorizeCode(granted, "pkg-w1", "m-ci", Governance::PublishRelease, 100) == "",
-            authorizeCode(granted, "pkg-w1", "m-ci", Governance::EditMetadata, 100) == "governance.permission.missing",
+            authorizeCode(granted, "pkg-w1", "m-ci", Governance::EditMetadata, 100) == permissionMissing,
             Fixture::code(GovernanceTransitions::grantCustodianship(granted, "o-wren", "m-ci", sponsor, sponsor)) == "governance.custodian.quorum",
             Fixture::code(GovernanceTransitions::grantPermission(granted, "pkg-w1", "g-ci2", Fixture::workflow("p-dave", "m-dave", "ci-sponsorship"), "m-ci", Governance::YankRelease, Maybe::none(), 100)) == "governance.proof.ceremony"
         ])

@@ -232,6 +232,9 @@ routedCarries (route, join, f, out, source) = match source < 0
     true => near (channelOf (route, f, out), 0.0, 0.0)
     false => near (channelOf (route, f, out), channelOf (join, f, source), 0.0)
 
+// The five-channel chain ends in route map `routeMap` on 9 and a sink of `width` channels on 10.
+routedChain (routeMap, width) = built (listConcat (channelChain (1, 2, 3, 8, 5)) [Components::routeChannels (9, 5, routeMap), sinkOf (10, width)], listConcat (channelCables (1, 2, 3, 8, 5)) [cable (8, 9), cable (9, 10)])
+
 test ("an 8-channel graph splits, joins and route-reorders every 7.1 channel sample-for-sample", \() => arithmetic (\() =>
     forEachList ([1, 2, 6, 8, 12], \width => forEachList ([-1.0, -0.4, 0.0, 0.7, 1.0], \pan => pannerJourney (width, pan)))
     frames = toList (range (0, 64))
@@ -265,9 +268,7 @@ test ("an 8-channel graph splits, joins and route-reorders every 7.1 channel sam
 
 test ("a five-channel graph duplicates, silences and resizes channels through explicit route maps", \() => arithmetic (\() =>
     frames = toList (range (0, 64))
-    nodes = listConcat (channelChain (1, 2, 3, 8, 5)) [Components::routeChannels (9, 5, [1, 1, -1, 4, 0, 0]), sinkOf (10, 6)]
-    cables = listConcat (channelCables (1, 2, 3, 8, 5)) [cable (8, 9), cable (9, 10)]
-    succeeds (clipsOf (built (nodes, cables), 64), \clips =>
+    succeeds (clipsOf (routedChain ([1, 1, -1, 4, 0, 0], 6), 64), \clips =>
         join = clipFrom (clips, 8)
         route = clipFrom (clips, 9)
         clipIs (join, 5, 320)
@@ -275,7 +276,7 @@ test ("a five-channel graph duplicates, silences and resizes channels through ex
         forEachList (frames, \f => forEachList ([{ out = 0, src = 1 }, { out = 1, src = 1 }, { out = 2, src = -1 }, { out = 3, src = 4 }, { out = 4, src = 0 }, { out = 5, src = 0 }], \m => routedCarries (route, join, f, m.out, m.src)))
         forEachList (toList (range (0, 5)), \c => forEachList (frames, \f => near (channelOf (join, f, c), channelOf (clipFrom (clips, satAdd 3 c), f, 0), 0.0))))
     // The same five-channel join shrinks to three: duplicated, duplicated, silenced.
-    succeeds (clipsOf (built (listConcat (channelChain (1, 2, 3, 8, 5)) [Components::routeChannels (9, 5, [4, 4, -1]), sinkOf (10, 3)], listConcat (channelCables (1, 2, 3, 8, 5)) [cable (8, 9), cable (9, 10)]), 64), \clips =>
+    succeeds (clipsOf (routedChain ([4, 4, -1], 3), 64), \clips =>
         join = clipFrom (clips, 8)
         route = clipFrom (clips, 9)
         clipIs (route, 3, 192)

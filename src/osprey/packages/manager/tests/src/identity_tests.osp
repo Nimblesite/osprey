@@ -7,6 +7,11 @@ import registry::Domains
 
 /// [PACKAGE-IDENTITY] display grammar, digest envelopes and release order.
 module IdentityTests {
+    /// The refusal of a digest with the wrong algorithm prefix.
+    let badDigest = "digest.algorithm"
+    /// The refusal of a release ordinal that is not a positive integer.
+    let badOrdinal = "release.ordinal"
+
     let hex = "7c4a8d09ca3762af61e59520943dc26494f8941b7c4a8d09ca3762af61e59520"
     let digest = "sha256:7c4a8d09ca3762af61e59520943dc26494f8941b7c4a8d09ca3762af61e59520"
 
@@ -24,8 +29,8 @@ module IdentityTests {
 
     fn digests() = checkAll("digest envelopes carry one algorithm and 64 lowercase hex digits", [
         (Digests::parse(digest) ?: "") == digest,
-        code(Digests::parse("sha512:${hex}")) == "digest.algorithm",
-        code(Digests::parse(hex)) == "digest.algorithm",
+        code(Digests::parse("sha512:${hex}")) == badDigest,
+        code(Digests::parse(hex)) == badDigest,
         code(Digests::parse("sha256:${take(hex, 63)}")) == "digest.length",
         code(Digests::parse("sha256:${toUpperCase(hex)}")) == "digest.hex",
         code(Digests::parse("sha256:${take(hex, 63)}g")) == "digest.hex",
@@ -40,16 +45,16 @@ module IdentityTests {
         shown("@finch/ledger@e1.r1#${digest}") == "@finch/ledger@e1.r1#${digest}",
         shown("@finch/ledger@e3.r42") == "release.missing-digest",
         shown("@finch/ledger@e3.r42#${digest}#x") == "release.missing-digest",
-        shown("@finch/ledger@e3.r42#sha1:${hex}") == "digest.algorithm",
+        shown("@finch/ledger@e3.r42#sha1:${hex}") == badDigest,
         shown("@finch/ledger#${digest}") == "release.missing-version",
         shown("@finch/ledger@3.r42#${digest}") == "release.version",
         shown("@finch/ledger@e3r42#${digest}") == "release.version",
-        shown("@finch/ledger@e3.r42.x#${digest}") == "release.ordinal",
+        shown("@finch/ledger@e3.r42.x#${digest}") == badOrdinal,
         shown("@finch/ledger@e0.r42#${digest}") == "release.epoch",
         shown("@finch/ledger@e03.r42#${digest}") == "release.epoch",
-        shown("@finch/ledger@e3.r0#${digest}") == "release.ordinal",
-        shown("@finch/ledger@e3.r+4#${digest}") == "release.ordinal",
-        shown("@finch/ledger@e3.rx#${digest}") == "release.ordinal",
+        shown("@finch/ledger@e3.r0#${digest}") == badOrdinal,
+        shown("@finch/ledger@e3.r+4#${digest}") == badOrdinal,
+        shown("@finch/ledger@e3.rx#${digest}") == badOrdinal,
         shown("@Finch/ledger@e3.r42#${digest}") == "name.scope.chars",
         shown("finch/ledger@e3.r42#${digest}") == "name.missing-at"
     ])

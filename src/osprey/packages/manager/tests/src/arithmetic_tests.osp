@@ -7,6 +7,9 @@ import registry::Policy
 
 /// [PACKAGE-EVIDENCE-ARITHMETIC] formulas and the [PACKAGE-RESOLUTION] cost tuple.
 module ArithmeticTests {
+    /// The one capability name the manifest arithmetic fixes.
+    let sqliteCapability = "sqlite/c-api"
+
     fn w(weight, value) = Arithmetic::Weighted { weight: weight, value: value }
 
     /// A domain violation aborts; here the abort is caught and reported as -1.
@@ -86,8 +89,8 @@ module ArithmeticTests {
         Objective::comparePackageTie(id("a", 9, "sha256:aa"), id("a", 3, "sha256:aa")) < 0,
         Objective::comparePackageTie(id("a", 3, "sha256:aa"), id("a", 3, "sha256:ab")) < 0,
         Objective::comparePackageTie(id("a", 1, "sha256:zz"), id("b", 9, "sha256:aa")) < 0,
-        Objective::compareSystemTie(sys("sqlite/c-api", "homebrew", 1, "sha256:a"), sys("sqlite/c-api", "homebrew", 2, "sha256:a")) < 0,
-        Objective::compareSystemTie(sys("sqlite/c-api", "apt", 9, "sha256:a"), sys("sqlite/c-api", "homebrew", 1, "sha256:a")) < 0,
+        Objective::compareSystemTie(sys(sqliteCapability, "homebrew", 1, "sha256:a"), sys(sqliteCapability, "homebrew", 2, "sha256:a")) < 0,
+        Objective::compareSystemTie(sys(sqliteCapability, "apt", 9, "sha256:a"), sys(sqliteCapability, "homebrew", 1, "sha256:a")) < 0,
         Objective::compareSystemTie(sys("a", "x", 1, "sha256:b"), sys("a", "x", 1, "sha256:a")) > 0
     ])
 

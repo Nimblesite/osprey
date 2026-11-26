@@ -47,7 +47,18 @@ class Item:
 
 
 def plain_item(kind, key, text):
-    """An item of one kind holding only text, with no blocks or steps."""
+    """An item of one kind holding only text, with no blocks or steps.
+
+    # Examples
+    ```osprey
+    from agent import Transcript
+
+    print(Transcript.plain_item("user", "u0", "hello"))
+    ```
+    ```output
+    { itemKind: "user", itemKey: "u0", itemText: "hello", itemBlocks: [], itemSteps: [] }
+    ```
+    """
     return Item(itemKind=kind, itemKey=key, itemText=text, itemBlocks=[], itemSteps=[])
 
 
@@ -143,7 +154,27 @@ def filterIndex(items, count):
 
 
 def items_of(history):
-    """Everything the transcript shows, in order."""
+    """Everything the transcript shows, in order.
+
+    # Examples
+    ```osprey
+    from agent import Engine
+    from agent import Transcript
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, value):
+            return value
+
+    with wrapped:
+        empty = Transcript.items_of(Engine.new_history())
+        opened = Transcript.items_of(Engine.add_user(Engine.new_history(), "/p", "hello"))
+        print(f"{empty} {mapList(opened, lambda i: i.itemKey + ':' + i.itemText)}")
+    ```
+    ```output
+    [] ["u0:hello"]
+    ```
+    """
     messages = unwrap_or(M.validate_messages(history), [])
     returns = returns_of(messages)
     flat = fold(range(len(messages)), [], lambda acc, index: listConcat(acc, message_items(returns, messages, index)))
@@ -151,13 +182,49 @@ def items_of(history):
 
 
 def title_of(text):
-    """A conversation's title: its first line, cut to fit a sidebar."""
+    """A conversation's title: its first line, cut to fit a sidebar.
+
+    # Examples
+    ```osprey
+    from agent import Transcript
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, value):
+            return value
+
+    with wrapped:
+        print(f"[{Transcript.title_of('  Fix the bug\\nsecond line  ')}] [{Transcript.title_of('This title is far too long to fit inside the sidebar of the application')}]")
+    ```
+    ```output
+    [Fix the bug] [This title is far too long to fit inside t…]
+    ```
+    """
     first = trim(unwrap_or(listGet(unwrap_or(split(text, "\n"), [text]), 0), text))
     return Engine.cut_text(first, 42) + "…" if length(first) > 42 else first
 
 
 def step_title(steps):
-    """The disclosure's words: what was done, in the past tense."""
+    """The disclosure's words: what was done, in the past tense.
+
+    # Examples
+    ```osprey
+    from agent import Transcript
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, value):
+            return value
+
+    with wrapped:
+        tools = ["read_file", "write_file", "run_command", "run_command", "fs_read"]
+        steps = mapList(tools, lambda tool: Transcript.Step(stepId="", stepTool=tool, stepSummary="", stepOutput="", stepDone=False, stepFailed=False))
+        print(Transcript.step_title(steps))
+    ```
+    ```output
+    Edited 1 file, Ran 2 commands, Read 1 file, Used 1 tool
+    ```
+    """
     count = len(steps)
     commands = len(filterList(steps, lambda s: s.stepTool == "run_command"))
     edits = len(filterList(steps, lambda s: s.stepTool == "write_file"))
@@ -183,7 +250,24 @@ class Reading:
 
 
 def block(kind, level, text):
-    """A block of one kind and level whose text reads as spans."""
+    """A block of one kind and level whose text reads as spans.
+
+    # Examples
+    ```osprey
+    from agent import Transcript
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, value):
+            return value
+
+    with wrapped:
+        print(Transcript.block("heading", 2, "Notes **todo**"))
+    ```
+    ```output
+    { blockKind: "heading", blockLevel: 2, blockSpans: [{ spanText: "Notes ", spanKind: "" }, { spanText: "todo", spanKind: "strong" }], blockLanguage: "", blockCode: "", blockRows: [] }
+    ```
+    """
     return Block(blockKind=kind, blockLevel=level, blockSpans=spans_of(text), blockLanguage="", blockCode="", blockRows=[])
 
 
@@ -271,7 +355,27 @@ def read_line(reading, raw):
 
 
 def blocks_of(text):
-    """The Markdown document in `text`; an unclosed fence still shows its code."""
+    """The Markdown document in `text`; an unclosed fence still shows its code.
+
+    # Examples
+    ```osprey
+    from agent import Transcript
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, value):
+            return value
+
+    with wrapped:
+        doc = "# Title\\n\\n- one\\n- two\\n\\n```python\\nprint(1)\\n```\\n"
+        kinds = mapList(Transcript.blocks_of(doc), lambda b: b.blockKind)
+        open = mapList(Transcript.blocks_of("```rust\\nfn main()"), lambda b: b.blockLanguage + ":" + b.blockCode)
+        print(f"{kinds} {open}")
+    ```
+    ```output
+    ["heading", "bullet", "bullet", "code"] ["rust:fn main()"]
+    ```
+    """
     start = Reading(readBlocks=[], readLines=[], inFence=False, fenceLanguage="", fenceLines=[])
     read = foldList(unwrap_or(split(text, "\n"), [text]), start, read_line)
     if read.inFence:
@@ -325,7 +429,24 @@ def inner_spans(inner, marker):
 
 
 def spans_of(text):
-    """The inline runs of `text`: `code`, **strong** and *em*; an unclosed marker is plain text."""
+    """The inline runs of `text`: `code`, **strong** and *em*; an unclosed marker is plain text.
+
+    # Examples
+    ```osprey
+    from agent import Transcript
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, value):
+            return value
+
+    with wrapped:
+        print(f"{Transcript.spans_of('a **`x`** and *em*')} {Transcript.spans_of('unclosed **mark')}")
+    ```
+    ```output
+    [{ spanText: "a ", spanKind: "" }, { spanText: "x", spanKind: "code" }, { spanText: " and ", spanKind: "" }, { spanText: "em", spanKind: "em" }] [{ spanText: "unclosed **", spanKind: "" }, { spanText: "mark", spanKind: "" }]
+    ```
+    """
     found = next_marker(text)
     if found.markerAt < 0:
         return plain_span(text)

@@ -209,7 +209,7 @@ clipReady3 action = match action
     synth::ClipReady clips => synth::ClipInputs::completed (clips, 3)
 
 // A sine through a low-pass whose cutoff inlet an LFO drives.
-switchedRender (oscillator, filter, lfo) = clipOf (built ([oscillator, filter, lfo, Components::output 3], [cable (1, 2), Components::route (4, 0, 2, 1), cable (2, 3)]))
+switchedRender (oscillator, filter, lfo) = clipOf (built ([oscillator, filter, lfo, Components::output 3], modulatedRoute ()))
 
 clipSamples outcome = match outcome
     Success clip => clip.clipSamples

@@ -26,7 +26,8 @@ pub(crate) fn instrument(cg: &mut Codegen, count: usize, lines: Vec<String>) -> 
 /// function it can inline, inside a function that has debug info, and the
 /// symbolic engine links the runtime with its definitions ([SYMEX-CORPUS]).
 fn location(line: &str) -> &str {
-    line.rfind(", !dbg !").map_or("", |at| &line[at..])
+    line.rfind(", !dbg !")
+        .map_or("", |at| line.get(at..).unwrap_or_default())
 }
 
 fn attach(lines: Vec<String>, prologue: &[String]) -> Vec<String> {

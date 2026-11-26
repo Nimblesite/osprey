@@ -13,6 +13,9 @@ import proof::Fixtures
 
 (** Exact numeric reductions and forged/malformed controls. Implements [PROOF-KERNEL-THEORY]. *)
 module NumericTests
+    // How a `Nat.beq` reduction that finds its sides equal reports itself.
+    reducedTrue = "reduced:Bool.true"
+
     (** `result`'s value through `next`, or the refusal `label` names for its error. *)
     checkedOr (result, label, next) = match result
         Error message => check label "success" message
@@ -238,7 +241,7 @@ module NumericTests
         test ("an exponent above 2^24 stays on the ordinary path", \() => expect (outcome (env, pow (small 2, small 16777217)), "disabled"))
         test ("a variable operand is never computed", \() => expect (outcome (env, pow (small 2, BVar 0)), "disabled"))
         test ("Nat.pow with another body disables the power rule", \() => expect (forgedPower (), "disabled"))
-        test ("Nat.beq decides literal equality exactly, past one limb", \() => expectAll [outcome (env, beq (small 7, small 7)) == "reduced:Bool.true", outcome (env, beq (small 7, small 8)) == "reduced:Bool.false", outcome (env, beq (small 0, small 0)) == "reduced:Bool.true", outcome (env, beq (word (), word ())) == "reduced:Bool.true", outcome (env, beq (word (), limbs [294967295, 4])) == "reduced:Bool.false"])
+        test ("Nat.beq decides literal equality exactly, past one limb", \() => expectAll [outcome (env, beq (small 7, small 7)) == reducedTrue, outcome (env, beq (small 7, small 8)) == "reduced:Bool.false", outcome (env, beq (small 0, small 0)) == reducedTrue, outcome (env, beq (word (), word ())) == reducedTrue, outcome (env, beq (word (), limbs [294967295, 4])) == "reduced:Bool.false"])
         test ("Nat.beq on a non-canonical literal stays on the ordinary path", \() => expect (outcome (env, beq (small 4294967295, small 1)), "disabled"))
         test ("Nat.beq on a variable operand is never computed", \() => expect (outcome (env, beq (BVar 0, small 1)), "disabled"))
         test ("Nat.beq with another body disables the equality rule", \() => expect (forgedEquality (), "disabled"))

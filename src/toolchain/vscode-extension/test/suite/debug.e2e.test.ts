@@ -14,6 +14,7 @@ import {
 import { defaultDebugOutputPath } from "../../client/src/client-config";
 import {
   pinOspreySettings,
+  present,
   resolveBuiltOsprey,
   resolveRequiredLldbDap,
   type PinnedOspreySettings,
@@ -219,19 +220,20 @@ suite("Osprey Debugger E2E Workflows", function () {
     );
   });
 
-  const topName = (stop: DapStop): string => stop.stack.stackFrames[0].name;
+  const topName = (stop: DapStop): string =>
+    stop.stack.stackFrames[0]?.name ?? "no frame";
   const hasFrame = (stop: DapStop, name: string): boolean =>
     stop.stack.stackFrames.some((frame) => frame.name.includes(name));
 
-  for (const [extension, text] of [
-    [
-      "osp",
-      'namespace "billing/api";\nmodule Tax {\n export fn add(n) = satAdd(n, 1)\n}\nfn main() = print(Tax::add(41))\n',
-    ],
-    [
-      "ospml",
-      'namespace "billing/api"\nmodule Tax\n    export add n = satAdd n 1\nmain () = print (Tax::add 41)\n',
-    ],
+  for (const { extension, text } of [
+    {
+      extension: "osp",
+      text: 'namespace "billing/api";\nmodule Tax {\n export fn add(n) = satAdd(n, 1)\n}\nfn main() = print(Tax::add(41))\n',
+    },
+    {
+      extension: "ospml",
+      text: 'namespace "billing/api"\nmodule Tax\n    export add n = satAdd n 1\nmain () = print (Tax::add 41)\n',
+    },
   ]) {
     test(`module stack frames retain their source names (${extension})`, async function () {
       this.timeout(TEST_TIMEOUT_MS);
@@ -288,7 +290,7 @@ suite("Osprey Debugger E2E Workflows", function () {
           program,
           source.line,
           fixture.prefix,
-          fixture.arguments[0],
+          present(fixture.arguments[0], "the first call's argument"),
           42,
           fixture.record,
         );
@@ -300,7 +302,7 @@ suite("Osprey Debugger E2E Workflows", function () {
           program,
           source.line,
           fixture.prefix,
-          fixture.arguments[1],
+          present(fixture.arguments[1], "the second call's argument"),
           43,
           fixture.record,
         );
@@ -441,7 +443,7 @@ suite("Osprey Debugger E2E Workflows", function () {
     // Step IN: we land inside addThree.
     await stepIn(session, stop.threadId);
     const inside = await waitForStop(session, LAUNCH_TIMEOUT_MS);
-    assertCurrentLine(inside.stack, 2, source);
+    const insideTop = assertCurrentLine(inside.stack, 2, source);
     assert.ok(
       hasFrame(inside, "addThree"),
       `stepped into addThree (was ${topName(inside)})`,
@@ -450,7 +452,7 @@ suite("Osprey Debugger E2E Workflows", function () {
     await assertTopLocal(session, inside, "n", /\b49\b/);
     await assertWatch(
       session,
-      inside.stack.stackFrames[0].id,
+      insideTop.id,
       "n + 3",
       /\b52\b/,
     );

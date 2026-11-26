@@ -45,7 +45,7 @@ module SongFiles
     failed (doc, why) = Error(message = "${ui::Doc::text (doc, "name")}: ${why}")
 
     position doc = match jsonInt (ui::Doc::field (doc, "layoutNode"))
-        Success id => match id >= 0 && ui::Doc::kind (ui::Doc::field (doc, "layoutX")) == "number" && ui::Doc::kind (ui::Doc::field (doc, "layoutY")) == "number"
+        Success id => match id >= 0 && synth::PluginDocuments::isNumber (doc, "layoutX") && synth::PluginDocuments::isNumber (doc, "layoutY")
             true => Success(value = ProjectCodec::readNodePosition doc)
             false => Error(message = "A node position needs a node identity and numeric layoutX and layoutY.")
         Error _ => Error(message = "A node position needs a whole layoutNode identity.")
@@ -55,21 +55,21 @@ module SongFiles
         false => Error(message = "A patch node has two layout positions.")
 
     // [DAW-MIX-BUS] A bus with its EQ and compressor.
-    bus doc = match ui::Doc::has (doc, "output") && ui::Doc::kind (ui::Doc::field (doc, "output")) != "text"
+    bus doc = match ui::Doc::has (doc, "output") && !synth::PluginDocuments::isText (doc, "output")
         true => Error(message = "A bus output must be a bus name or the empty Master output.")
         false => Success(value = ProjectCodec::readBus (doc, ProjectCodec::readEqualiser (ui::Doc::field (doc, "equaliser")), ProjectCodec::readCompressor (ui::Doc::field (doc, "compressor"))))
 
     routeSend doc = match jsonInt (ui::Doc::field (doc, "sendId"))
         Success identity => match jsonInt (ui::Doc::field (doc, "source"))
             Success source => match jsonInt (ui::Doc::field (doc, "outlet"))
-                Success outlet => match identity >= 0 && source >= 0 && outlet >= 0 && ui::Doc::kind (ui::Doc::field (doc, "bus")) == "text" && ui::Doc::kind (ui::Doc::field (doc, "level")) == "number" && ui::Doc::kind (ui::Doc::field (doc, "enabled")) == "bool"
+                Success outlet => match identity >= 0 && source >= 0 && outlet >= 0 && synth::PluginDocuments::isText (doc, "bus") && synth::PluginDocuments::isNumber (doc, "level") && synth::PluginDocuments::isBool (doc, "enabled")
                     true => Success(value = ProjectCodec::readAudioSend doc)
                     false => Error(message = "A send needs a bus, level and enabled flag.")
                 Error _ => Error(message = "The send outlet must be a whole number.")
             Error _ => Error(message = "The send needs a source node identity.")
         Error _ => Error(message = "The send needs an identity.")
 
-    sends doc = match ui::Doc::has (doc, "sends") && ui::Doc::kind (ui::Doc::field (doc, "sends")) != "list"
+    sends doc = match ui::Doc::has (doc, "sends") && !synth::PluginDocuments::isKind (doc, "sends", "list")
         true => Error(message = "A track’s sends must be a list.")
         false => folded (doc, "sends", routeSend)
 

@@ -8,6 +8,8 @@ import registry::Names
 /// scope is the owning organization's handle, and `(organization, name)` is
 /// the only uniqueness key — tombstones included.
 module IdentityTests {
+    /// The refusal of a package name no release occupies.
+    let nameMissingAt = "name.missing-at"
     fn key(scope, name) = Names::Key { scope: scope, name: name }
 
     fn create(world, org, custodianPrincipal, custodianMembership, k, id, admin, adminPrincipal) = {
@@ -53,9 +55,9 @@ module IdentityTests {
         Fixture::code(createFinch(Fixture::world(), key("Finch", "toolkit"), "pkg-x", "m-bob", "p-bob")) == "name.scope.chars",
         Fixture::code(createFinch(Fixture::world(), key("finch", "Toolkit"), "pkg-x", "m-bob", "p-bob")) == "name.name.chars",
         Fixture::code(createFinch(Fixture::world(), key("finch", ""), "pkg-x", "m-bob", "p-bob")) == "name.name.length",
-        Fixture::code(Names::parse("ledger")) == "name.missing-at",
-        Fixture::code(Names::parse("finch/ledger")) == "name.missing-at",
-        Fixture::code(Names::parse("HelperFunctions")) == "name.missing-at"
+        Fixture::code(Names::parse("ledger")) == nameMissingAt,
+        Fixture::code(Names::parse("finch/ledger")) == nameMissingAt,
+        Fixture::code(Names::parse("HelperFunctions")) == nameMissingAt
     ])
 
     /// A tombstone keeps occupying its organization's key forever.

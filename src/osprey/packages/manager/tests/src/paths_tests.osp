@@ -6,6 +6,15 @@ import registry::Bytes
 /// [PACKAGE-SOURCE-CANONICAL] path grammar, collisions, exclusions and the
 /// exact envelope bytes.
 module PathsTests {
+    /// A source file path inside a package's declared roots.
+    let mainPath = "src/main.osp"
+    /// The refusal of a `.` or `..` path segment.
+    let dotSegment = "path.dot-segment"
+    /// The refusal of a Windows device stem in a path.
+    let deviceStem = "path.device-stem"
+    /// The refusal of two paths differing only by case.
+    let caseCollision = "path.case-collision"
+
     fn code(result) = match result {
         Success => ""
         Error { message } => message
@@ -16,7 +25,7 @@ module PathsTests {
     fn ctrl() = fromCodePoint(7) ?: ""
 
     fn grammar() = checkAll("every rule of the ASCII relative path grammar has a reason code", [
-        structuralEquals([code(Paths::validate("src/main.osp")), code(Paths::validate("osprey.toml"))], ["", ""]),
+        structuralEquals([code(Paths::validate(mainPath)), code(Paths::validate("osprey.toml"))], ["", ""]),
         code(Paths::validate("docs/a-b_c.d/README.md")) == "",
         code(Paths::validate("${long(128)}/${long(128)}")) == "",
         code(Paths::validate("")) == "path.empty",
@@ -26,14 +35,14 @@ module PathsTests {
         code(Paths::validate("src/mäin.osp")) == "path.non-ascii",
         code(Paths::validate("src/")) == "path.trailing-separator",
         code(Paths::validate("src//main.osp")) == "path.empty-segment",
-        code(Paths::validate("./main.osp")) == "path.dot-segment",
-        code(Paths::validate("src/../main.osp")) == "path.dot-segment",
+        code(Paths::validate("./main.osp")) == dotSegment,
+        code(Paths::validate("src/../main.osp")) == dotSegment,
         code(Paths::validate("${long(129)}")) == "path.segment-length",
         code(Paths::validate("src/ma in.osp")) == "path.segment-chars",
         code(Paths::validate("src/main:osp")) == "path.segment-chars",
-        code(Paths::validate("src/CON")) == "path.device-stem",
-        code(Paths::validate("nul.txt")) == "path.device-stem",
-        code(Paths::validate("docs/com9.md")) == "path.device-stem",
+        code(Paths::validate("src/CON")) == deviceStem,
+        code(Paths::validate("nul.txt")) == deviceStem,
+        code(Paths::validate("docs/com9.md")) == deviceStem,
         structuralEquals([code(Paths::validate("lpt0.md")), code(Paths::validate("console.osp"))], ["", ""]),
         code(Paths::validate("${long(100)}/${long(100)}/${long(100)}/${long(100)}/${long(100)}/${long(100)}/${long(100)}/${long(100)}/${long(100)}/${long(100)}/${long(16)}")) == "path.length"
     ])
@@ -41,8 +50,8 @@ module PathsTests {
     fn setsAndExclusions() = checkAll("collisions and excluded control paths", [
         join(Paths::canonicalSet(["src/b.osp", "src/a.osp"]) ?: [], ",") == "src/a.osp,src/b.osp",
         code(Paths::canonicalSet(["src/a.osp", "src/a.osp"])) == "path.duplicate",
-        code(Paths::canonicalSet(["src/a.osp", "src/A.osp"])) == "path.case-collision",
-        code(Paths::canonicalSet(["README.md", "readme.MD"])) == "path.case-collision",
+        code(Paths::canonicalSet(["src/a.osp", "src/A.osp"])) == caseCollision,
+        code(Paths::canonicalSet(["README.md", "readme.MD"])) == caseCollision,
         structuralEquals([Paths::excluded("osprey.lock"), Paths::excluded("osprey.local.toml")], [true, true]),
         structuralEquals([Paths::excluded("osprey.local.lock"), Paths::excluded(".osprey/scratch/x")], [true, true]),
         structuralEquals([Paths::excluded("osprey.toml"), Paths::excluded("src/osprey.lock")], [false, false]),
@@ -60,7 +69,7 @@ module PathsTests {
     fn entry(path, size, digest) = Source::Entry { path: path, byteLength: size, digest: digest }
 
     fn envelopeBytes() = {
-        let one = Source::envelope([entry("src/main.osp", 5, zeros(32))]) ?: []
+        let one = Source::envelope([entry(mainPath, 5, zeros(32))]) ?: []
         let two = Source::envelope([entry("src/b.osp", 1, zeros(32)), entry("src/a.osp", 2, zeros(32))]) ?: []
         checkAll("the envelope is domain, count, then sorted entries", [
             structuralEquals([length(one), (listGet(two, 21 + 3) ?: -1)], [78, 9]),
@@ -73,12 +82,12 @@ module PathsTests {
     }
 
     fn envelopeRejections() = checkAll("an invalid tree never hashes", [
-        code(Source::envelope([entry("src/../x.osp", 1, zeros(32))])) == "path.dot-segment",
+        code(Source::envelope([entry("src/../x.osp", 1, zeros(32))])) == dotSegment,
         code(Source::envelope([entry("osprey.local.lock", 1, zeros(32))])) == "source.excluded-path",
         code(Source::envelope([entry(".osprey/state", 1, zeros(32))])) == "source.excluded-path",
         code(Source::envelope([entry("a.osp", -1, zeros(32))])) == "source.negative-length",
         code(Source::envelope([entry("a.osp", 1, zeros(31))])) == "source.digest-length",
-        code(Source::envelope([entry("a.osp", 1, zeros(32)), entry("A.osp", 1, zeros(32))])) == "path.case-collision",
+        code(Source::envelope([entry("a.osp", 1, zeros(32)), entry("A.osp", 1, zeros(32))])) == caseCollision,
         code(Source::envelope([entry("a.osp", 1, zeros(32)), entry("a.osp", 2, zeros(32))])) == "path.duplicate"
     ])
 
@@ -104,8 +113,8 @@ module PathsTests {
     /// Goldens from src/osprey/packages/manager/tests/fixtures/source/*.json, computed independently.
     fn treeDigests() = {
         let manifest = file("osprey.toml", "[project]\nname = \"ledger\"\nsource_roots = [\"src\"]\n")
-        let program = file("src/main.osp", "fn main() = print(\"ledger\")\n")
-        let tampered = Source::Entry { path: "src/main.osp", byteLength: program.byteLength, digest: zeros(32) }
+        let program = file(mainPath, "fn main() = print(\"ledger\")\n")
+        let tampered = Source::Entry { path: mainPath, byteLength: program.byteLength, digest: zeros(32) }
         checkAll("SourceDigest matches the fixture trees and changes under digest substitution", [
             (Source::digest([]) ?: "") == "sha256:cc0dd61db3bb1b7fd165e5a83cfa2819c241038e830ba14e5ce287481f2eb1e7",
             (Source::digest([program, manifest]) ?: "") == "sha256:18c999dea56029b5d76cc9a44eba947ea93548c695f6d5202d0730b7abf4f394",

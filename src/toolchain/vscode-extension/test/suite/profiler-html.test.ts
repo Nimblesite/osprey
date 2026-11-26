@@ -11,6 +11,7 @@ import { nativeProfileResult } from "../../client/src/profiler/native-profile";
 import { OSPREY_PALETTE } from "../../client/src/profiler/palette";
 import "../../client/src/profiler/profiler-panel";
 import type { ProfileSummary } from "../../client/src/profiler/summary";
+import { present } from "../present";
 
 const DOC: SpeedscopeFile = {
   shared: {
@@ -109,7 +110,7 @@ function chipsShowOnCpuShare(): void {
 // summary interleaves an idle zero-sample row. Chip indices must stay aligned
 // with model.fibers, or clicking "beta" selects the wrong fiber.
 async function idleFibersShiftNoChip(): Promise<void> {
-  const profile = DOC.profiles[0];
+  const profile = present(DOC.profiles[0], "the sampled profile");
   const model = buildFlameModel({ shared: DOC.shared, profiles: [{ ...profile, name: "alpha" }, { ...profile, name: "beta" }] });
   const withIdleRow = await panelHtml({ ...SUMMARY, fibers: [
     { id: 0, label: "alpha", samples: 80, oncpuSamples: 40 },
@@ -119,7 +120,7 @@ async function idleFibersShiftNoChip(): Promise<void> {
   assert.ok(withIdleRow.includes('data-fiber="0">alpha · 50% on-CPU'));
   assert.ok(withIdleRow.includes('data-fiber="1">beta · 100% on-CPU'));
   assert.ok(!withIdleRow.includes(">idle ·"), "no chip for the idle fiber");
-  assert.strictEqual(model.fibers[1].name, "beta", "chip 1 selects model fiber 1 = beta");
+  assert.strictEqual(present(model.fibers[1], "model fiber 1").name, "beta", "chip 1 selects model fiber 1 = beta");
 }
 
 suite("flame panel header and fiber controls", () => {

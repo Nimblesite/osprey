@@ -58,7 +58,7 @@ snapshot ticket =
     result
 
 test ("editor workspace requests use the shared framework envelope", \() =>
-    result = snapshot "workspace:1")
+    _result = snapshot "workspace:1")
 
 test ("opening a document preserves its URI and source location", \() =>
     result = Editor::openDocument ("open:1", "file:///work/my%20app/main.osp", 12, 4)
@@ -162,7 +162,7 @@ test ("WASM frames route opaque state through real application entry points", \(
     expect (refused.surfaceSession.sessionStore.count, 1)
     expect (contains webRows "Count 1", true)
     // An event kind the boundary does not know refuses the same way, and a lifecycle phase delivers.
-    odd = delivered (edited, webTouch (42, 0, ""), 1)
+    _odd = delivered (edited, webTouch (42, 0, ""), 1)
     expect (webAsks, "0/101/Unknown control 9;0/101/Unknown event kind 42;")
     phased = delivered (edited, webTouch (Hosting::phase, 0, "active"), 0)
     expect (phased.surfaceSession.sessionStore.count, 1)))

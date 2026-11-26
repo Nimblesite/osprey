@@ -304,7 +304,7 @@ fn fn_parts(sig: &str, keyword: &str) -> Option<(String, String, String)> {
 fn split_params(rest: &str) -> Option<(String, String, String)> {
     let open = rest.find('(')?;
     let mut depth = 0usize;
-    let close = rest[open..].char_indices().find_map(|(offset, c)| {
+    let close = rest.get(open..)?.char_indices().find_map(|(offset, c)| {
         match c {
             '(' => depth += 1,
             ')' => depth -= 1,
@@ -313,9 +313,9 @@ fn split_params(rest: &str) -> Option<(String, String, String)> {
         (depth == 0).then_some(open + offset)
     })?;
     Some((
-        rest[..open].to_owned(),
-        rest[open + 1..close].to_owned(),
-        rest[close + 1..].to_owned(),
+        rest.get(..open)?.to_owned(),
+        rest.get(open + 1..close)?.to_owned(),
+        rest.get(close + 1..)?.to_owned(),
     ))
 }
 
@@ -330,13 +330,13 @@ fn split_top(list: &str) -> Vec<String> {
             '(' | '<' => depth += 1,
             ')' | '>' => depth = depth.saturating_sub(1),
             ',' if depth == 0 => {
-                out.push(list[start..i].trim().to_owned());
+                out.push(list.get(start..i).unwrap_or_default().trim().to_owned());
                 start = i + 1;
             }
             _ => (),
         }
     }
-    out.push(list[start..].trim().to_owned());
+    out.push(list.get(start..).unwrap_or_default().trim().to_owned());
     out.retain(|item| !item.is_empty());
     out
 }

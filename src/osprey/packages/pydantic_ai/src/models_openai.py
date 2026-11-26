@@ -119,11 +119,14 @@ def thinking_text(part):
 
 THINK_START = "<think>"
 THINK_END = "</think>"
+THINKING_FIELD = "openai_chat_thinking_field"
+SEND_BACK_PARTS = "openai_chat_send_back_thinking_parts"
+REASONING_EFFORT = "reasoning_effort"
 
 
 def sent_text(profile, part):
     """`_map_response_text_part`/`_map_response_thinking_part`: a text part's content; a thinking part wrapped in the thinking tags unless the profile sends it back as a field."""
-    send_back = Profiles.profile_text(profile, "openai_chat_send_back_thinking_parts", "auto")
+    send_back = Profiles.profile_text(profile, SEND_BACK_PARTS, "auto")
     match part:
         case M.TextPart(content=content):
             return content
@@ -138,8 +141,8 @@ def map_response(profile, response) -> list[Json]:
     texts = filterList(mapList(response.parts, lambda p: sent_text(profile, p)), lambda s: s != "")
     thinkings = filterList(mapList(response.parts, thinking_text), lambda s: s != "")
     calls = mapList(M.tool_calls(response), map_tool_call)
-    thinking_field = Profiles.profile_text(profile, "openai_chat_thinking_field", "")
-    send_back = Profiles.profile_text(profile, "openai_chat_send_back_thinking_parts", "auto")
+    thinking_field = Profiles.profile_text(profile, THINKING_FIELD, "")
+    send_back = Profiles.profile_text(profile, SEND_BACK_PARTS, "auto")
     if len(texts) == 0 and len(calls) == 0:
         return []
     else:
@@ -175,7 +178,7 @@ def has_thinking(response):
 
 def backfill(profile, mapped):
     """`_map_messages`' backfill: an assistant message with tool calls and no thinking field gets an empty one, so a provider that must see reasoning on every turn is satisfied."""
-    field = Profiles.profile_text(profile, "openai_chat_thinking_field", "")
+    field = Profiles.profile_text(profile, THINKING_FIELD, "")
     needs = J.text_at(mapped, "role", "") == "assistant" and len(J.list_at(mapped, "tool_calls")) > 0 and not J.has(mapped, field)
     return J.obj(listAppend(J.members_of(mapped), J.member(field, JsonString("")))) if needs else mapped
 
@@ -200,7 +203,7 @@ def count_leading(mapped, role, i):
 def map_messages(profile, messages, parameters) -> list[Json]:
     """`_map_messages`: the chat messages, with the instructions inserted after the leading system messages."""
     thinking_active = len(filterList(M.responses(messages), has_thinking)) > 0
-    backfill_field = thinking_active and Profiles.profile_text(profile, "openai_chat_send_back_thinking_parts", "auto") == "field" and Profiles.profile_text(profile, "openai_chat_thinking_field", "") != ""
+    backfill_field = thinking_active and Profiles.profile_text(profile, SEND_BACK_PARTS, "auto") == "field" and Profiles.profile_text(profile, THINKING_FIELD, "") != ""
     mapped = foldList(messages, [], lambda acc, m: listConcat(acc, map_message(profile, backfill_field, m)))
     instructions = Models.instructions_text(messages, parameters)
     if instructions == "":
@@ -305,10 +308,10 @@ def reasoning_members(profile, settings):
     `none`)."""
     effort = Settings.setting_text(settings, "openai_reasoning_effort", "")
     if effort != "":
-        return [J.member("reasoning_effort", JsonString(effort))]
+        return [J.member(REASONING_EFFORT, JsonString(effort))]
     else:
         value = resolved_thinking(profile, settings)
-        return [] if J.is_null(value) else [J.member("reasoning_effort", JsonString(effort_of(value)))]
+        return [] if J.is_null(value) else [J.member(REASONING_EFFORT, JsonString(effort_of(value)))]
 
 
 def effort_of(value):
@@ -377,7 +380,7 @@ def zai_effort_member(profile, settings):
         match value:
             case JsonString(level):
                 mapping = J.to_map(unwrap_or(mapGet(profile, "zai_reasoning_effort_mapping"), JsonNull()))
-                return [J.member("reasoning_effort", JsonString(unwrap_or(jsonText(unwrap_or(mapGet(mapping, level), JsonNull())), level)))]
+                return [J.member(REASONING_EFFORT, JsonString(unwrap_or(jsonText(unwrap_or(mapGet(mapping, level), JsonNull())), level)))]
             case _:
                 return []
 
@@ -447,7 +450,7 @@ def map_tool_call_part(call):
 
 def thinking_parts(profile, message):
     """`_process_thinking`: the first non-empty of the profile's thinking field, `reasoning`, `reasoning_content`."""
-    custom = Profiles.profile_text(profile, "openai_chat_thinking_field", "")
+    custom = Profiles.profile_text(profile, THINKING_FIELD, "")
     fields = filterList([custom, "reasoning", "reasoning_content"], lambda f: f != "")
     found = filterList(mapList(fields, lambda f: J.text_at(message, f, "")), lambda t: t != "")
     return [] if len(found) == 0 else [M.ThinkingPart(content=unwrap_or(listGet(found, 0), ""))]

@@ -4,6 +4,9 @@
 namespace todo;
 
 
+/// The titles of the anonymous plan's four rows, in title order.
+let anonymousTitles = ["p1", "p2", "p3", "p4"]
+
 fn wideOrder(answers, count, shape, first, last) = {
     let widths = planWidths(first, last)
     structuralEquals(planTitles(answers, shape), mapList(widths, retryWide)) &&
@@ -101,8 +104,8 @@ module MultishotPlanListsCases {
         expect(plan.answers, planWhole(rows, 4))
         checkAll("no sign-in needed to plan pages; four answers, store untouched", [
             planCalm(plan),
-            structuralEquals(planTitles(plan.answers, 0), ["p1", "p2", "p3", "p4"]), structuralEquals(planTitles(plan.answers, 1), []),
-            structuralEquals(planTitles(plan.answers, 2), ["p1", "p2", "p3", "p4"]), structuralEquals(planTitles(plan.answers, 3), ["p1", "p2", "p3", "p4"]),
+            structuralEquals(planTitles(plan.answers, 0), anonymousTitles), structuralEquals(planTitles(plan.answers, 1), []),
+            structuralEquals(planTitles(plan.answers, 2), anonymousTitles), structuralEquals(planTitles(plan.answers, 3), anonymousTitles),
             structuralEquals(planIds(plan.answers, 0), [2, 4, 3, 1]), structuralEquals(planIds(plan.answers, 2), [2, 4, 3, 1]),
             planShaped(plan.answers, 4, [4, 0, 4, 4], [false, false, false, false]),
             planRowIs(plan.answers, 0, 1, planSpec(4, "p2", true)), planRowIs(plan.answers, 3, 3, planSpec(1, "p4", false)),

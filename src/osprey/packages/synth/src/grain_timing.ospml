@@ -3,23 +3,55 @@ namespace synth
 
 (** Inter-onset policies; exponential mode is rounded and capped, not an exact Poisson process. *)
 module GrainTimings
-    (** Bounds limit onset density and gaps independently of the host block size. *)
+    (** Bounds limit onset density and gaps independently of the host block size.
+    # Examples
+    ```osprey
+    print "${GrainTimings::valid (PeriodicTiming(period = 2400, jitter = 0))} ${GrainTimings::valid (PeriodicTiming(period = 10, jitter = 10))} ${GrainTimings::valid (ExponentialTiming(mean = 0.5, maximum = 100))}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export valid timing = match timing
         PeriodicTiming period jitter => period >= 1 && period <= 1048576 && jitter >= 0 && jitter < period
         ExponentialTiming mean maximum => mean >= 1.0 && mean <= 1048576.0 && maximum >= 1 && maximum <= 1048576
 
-    (** Called with a checked policy and a newly advanced Park–Miller seed. *)
+    (** Called with a checked policy and a newly advanced Park–Miller seed.
+    # Examples
+    ```osprey
+    print "${GrainTimings::interval (PeriodicTiming(period = 2400, jitter = 100), 1.0)} ${GrainTimings::interval (ExponentialTiming(mean = 100.0, maximum = 400), 2147483646.0)}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export interval (timing, seed) = match timing
         PeriodicTiming period jitter => GrainMath::interval (toFloat period, toFloat jitter, toFloat seed)
         ExponentialTiming mean maximum => GrainMath::exponentialInterval (mean, toFloat maximum, toFloat seed)
 
-    (** Discrete graph timing selectors are exact; inactive settings do not alter the selected distribution. *)
+    (** Discrete graph timing selectors are exact; inactive settings do not alter the selected distribution.
+    # Examples
+    ```osprey
+    print "${GrainTimings::decode (0.0, 2400.0, 0.0, 9600.0)} ${GrainTimings::decode (1.0, 100.0, 0.0, 400.0)} ${GrainTimings::decode (2.0, 2400.0, 0.0, 9600.0)}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export decode (mode, period, jitter, maximum) = match mode
         0.0 => checked (PeriodicTiming(period = period, jitter = jitter))
         1.0 => checked (ExponentialTiming(mean = toFloat period, maximum = maximum))
         _ => Error(message = InvalidConfiguration(detail = "Grain timing must be 0 (periodic jitter) or 1 (bounded exponential)."))
 
-    (** Accept `value` when `test` holds, reporting `failure` otherwise. *)
+    (** Accept `value` when `test` holds, reporting `failure` otherwise.
+    # Examples
+    ```osprey
+    print "${GrainTimings::accepted (true, 1.0, MissingResource(detail = "none"))} ${GrainTimings::accepted (false, 1.0, MissingResource(detail = "none"))}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export accepted (test, value, failure) = match test
         true => Success(value = value)
         false => Error(message = failure)

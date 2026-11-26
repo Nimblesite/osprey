@@ -3,10 +3,27 @@ namespace synth
 
 (** Checked configuration and explicit phase continuity, independent of any audio device. *)
 module Oscillators
-    (** An oscillator starts at zero phase . *)
+    (** An oscillator starts at zero phase .
+    # Examples
+    ```osprey
+    print "${Oscillators::initial}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export initial = OscillatorState(phase = 0.0)
 
-    (** Preparation validates finite controls and a strictly sub-Nyquist frequency. *)
+    (** Preparation validates finite controls and a strictly sub-Nyquist frequency.
+    # Examples
+    ```osprey
+    config = OscillatorConfig(sampleRate = 48000.0, frequency = 12000.0, pulseWidth = 0.5, waveform = Sine)
+    print "${Oscillators::configure config} ${Oscillators::configure (config(pulseWidth = 0.0))}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export configure config = match config.sampleRate >= 8000.0 && config.sampleRate <= 384000.0 && config.frequency >= 0.0 && config.frequency < config.sampleRate * 0.5 && config.pulseWidth >= 0.01 && config.pulseWidth <= 0.99
         true => Success(value = config)
         false => Error(message = InvalidConfiguration(detail = "Invalid oscillator sample rate, frequency or pulse width."))
@@ -17,7 +34,20 @@ module Oscillators
         Pulse => Waves::pulse (held.phase, step, config.pulseWidth)
         Triangle => Waves::triangle (held.phase, step)
 
-    (** One reference sample; call only with accepted configuration and a state from this module. *)
+    (** One reference sample; call only with accepted configuration and a state from this module.
+    # Examples
+    ```osprey
+    config = OscillatorConfig(sampleRate = 48000.0, frequency = 12000.0, pulseWidth = 0.5, waveform = Sine)
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => Oscillators::next (config, Oscillators::initial))} ${arithmetic (\() => Oscillators::next (config, OscillatorState(phase = 0.25)))}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export next (config, held) =
         step = config.frequency / config.sampleRate
         value = shaped (config, held, step)

@@ -386,12 +386,12 @@ def softmax_family(tape, a, dim, name, finish):
 def softmax(tape, a, dim):
     """Tape softmax along `dim`: torch's max-subtracted form, backward
     `out * (g - sum(g * out, dim, keepdim))`."""
-    return softmax_family(tape, a, dim, "softmax", lambda shifted, e, s: Tensor.bdiv(e, s))
+    return softmax_family(tape, a, dim, "softmax", lambda _shifted, e, s: Tensor.bdiv(e, s))
 
 
 def log_softmax(tape, a, dim):
     """Tape log-softmax along `dim`: backward `g - exp(out) * sum(g, dim)`."""
-    return softmax_family(tape, a, dim, "log_softmax", lambda shifted, e, s: Tensor.bsub(shifted, Array.log(s)))
+    return softmax_family(tape, a, dim, "log_softmax", lambda shifted, _e, s: Tensor.bsub(shifted, Array.log(s)))
 
 
 # Activation math ----------------------------------------------------------

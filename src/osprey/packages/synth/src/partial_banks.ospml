@@ -3,13 +3,38 @@ namespace synth
 
 (** Up to 64 sine partials. Every partial keeps its own phase, so count and layout edits never reset it. *)
 module PartialBanks
-    (** The fixed number of partial phases a bank carries. *)
+    (** The fixed number of partial phases a bank carries.
+    # Examples
+    ```osprey
+    print "${PartialBanks::capacity}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export capacity = 64
 
-    (** Zero phases at age zero. *)
+    (** Zero phases at age zero.
+    # Examples
+    ```osprey
+    held = PartialBanks::initial ()
+    print "${held.age} ${listLength held.phases}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export initial () = PartialState(phases = Sequences::zeros capacity, age = 0.0)
 
-    (** Restart every partial envelope; phases continue so a retrigger does not click from a phase jump. *)
+    (** Restart every partial envelope; phases continue so a retrigger does not click from a phase jump.
+    # Examples
+    ```osprey
+    print "${PartialBanks::retrigger (PartialState(phases = [0.5], age = 10.0))}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export retrigger held = held(age = 0.0)
 
     validRatio ratio = ratio > 0.0 && ratio <= 1000.0
@@ -19,7 +44,16 @@ module PartialBanks
         StiffLayout inharmonicity stretch => inharmonicity >= 0.0 && inharmonicity <= 0.1 && stretch >= 0.5 && stretch <= 2.0
         RatioLayout ratios => length ratios >= 1 && length ratios <= capacity && length (filterList (ratios, validRatio)) == length ratios
 
-    (** Fundamental 0 to 0.45 of the rate, count 0–64 (fractional counts fade the last partial in). *)
+    (** Fundamental 0 to 0.45 of the rate, count 0–64 (fractional counts fade the last partial in).
+    # Examples
+    ```osprey
+    config = PartialConfig(sampleRate = 48000.0, frequency = 220.0, count = 4.0, tilt = 1.0, parity = 0.0, decay = 1.0, damping = 0.0, amplitude = 0.5, layout = HarmonicLayout)
+    print "${PartialBanks::configure config} ${PartialBanks::configure (config(count = 100.0))}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export configure config = match config.sampleRate >= 8000.0 && config.sampleRate <= 384000.0 && config.frequency >= 0.0 && config.frequency < config.sampleRate * 0.45 && config.count >= 0.0 && config.count <= toFloat capacity && config.tilt >= 0.0 && config.tilt <= 4.0 && config.parity >= -1.0 && config.parity <= 1.0 && config.decay >= 0.01 && config.decay <= 600.0 && config.damping >= 0.0 && config.damping <= 10.0 && config.amplitude >= 0.0 && config.amplitude <= 1.0 && layout config
         true => Success(value = config)
         false => Error(message = InvalidConfiguration(detail = "Invalid partial-bank rate, frequency, count, shaping, decay, amplitude or layout."))
@@ -42,7 +76,20 @@ module PartialBanks
         frequency = config.frequency * stiffRatio (index, stiffness, stretch)
         PartialCoefficient(increment = frequency / config.sampleRate, weight = weight (config, index, frequency))
 
-    (** Phase increments and spectral weights stay fixed until the next control change. *)
+    (** Phase increments and spectral weights stay fixed until the next control change.
+    # Examples
+    ```osprey
+    config = PartialConfig(sampleRate = 48000.0, frequency = 220.0, count = 4.0, tilt = 1.0, parity = 0.0, decay = 1.0, damping = 0.0, amplitude = 0.5, layout = HarmonicLayout)
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => listLength (PartialBanks::stiffCoefficients (config, 0.0, 1.0)))}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export stiffCoefficients (config, stiffness, stretch) = mapList (toList (range (0, capacity)), \index => coefficient (config, index, stiffness, stretch))
 
 
@@ -63,7 +110,20 @@ module PartialBanks
 
     finished (config, age, voice) = Success(value = PartialSample(sample = TableMath::normalised (voice.sample, voice.gain, config.amplitude), next = PartialState(phases = voice.phases, age = age + 1.0)))
 
-    (** Advance a live bank with potentially different controls on every sample. *)
+    (** Advance a live bank with potentially different controls on every sample.
+    # Examples
+    ```osprey
+    config = PartialConfig(sampleRate = 48000.0, frequency = 220.0, count = 4.0, tilt = 1.0, parity = 0.0, decay = 1.0, damping = 0.0, amplitude = 0.5, layout = HarmonicLayout)
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => PartialBanks::next (config, PartialState(phases = [], age = 0.0)))}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export next (config, held) = match length held.phases == capacity
         false => Error(message = IncompatibleLayout(detail = "Partial state does not have one phase per partial."))
         true => finished (config, held.age, stepped (config, held.age, held.phases, 0, 0.0, 0.0, []))
@@ -81,7 +141,20 @@ module PartialBanks
                         level = decayed (config, age, index, partial.weight)
                         fixed (config, age, phases, prepared, satAdd index 1, sample + level * TableMath::sinePhase phase, gain + TableMath::magnitude level, next)
 
-    (** Advance one sample using coefficients prepared for this block, or live controls for an empty schedule. *)
+    (** Advance one sample using coefficients prepared for this block, or live controls for an empty schedule.
+    # Examples
+    ```osprey
+    config = PartialConfig(sampleRate = 48000.0, frequency = 220.0, count = 4.0, tilt = 1.0, parity = 0.0, decay = 1.0, damping = 0.0, amplitude = 0.5, layout = HarmonicLayout)
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => PartialBanks::withCoefficients (config, [PartialCoefficient(increment = 0.1, weight = 0.5)], PartialBanks::initial ()))}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
     export withCoefficients (config, prepared, held) = match length prepared
         0 => next (config, held)
         n => match n == capacity && length held.phases == capacity
