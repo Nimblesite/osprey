@@ -885,7 +885,7 @@ The following thresholds are proposed release targets, to be confirmed against n
 
 The [runtime WebSocket contract](../runtime/0015-WebSockets.md) currently describes a send-only native client surface, an echo/broadcast server without an application receive interface, rejected `wss://`, rejected binary messages, ignored server paths and unchecked UTF-8. Pocket Orchestra requires a bidirectional, per-peer adapter with validated routing, authentication and lifecycle. Select and test the host capability implementation before relying on this runtime surface.
 
-The [Perception synth](../../../src/osprey/examples/daw/PRISM.md) provides reusable musical and canvas examples, while continuous real-time output remains a delivery gap. The [mobile casting plan](../../plans/0053-casting-gpui-mobile.md) records incomplete mobile host verification. Every required native/canvas combination must be proved for this application, including multitouch and accessible controls.
+The [Perception synth](../../../src/osprey/examples/daw/PRISM.md) provides reusable musical and canvas examples, while continuous real-time output remains a delivery gap. The [Osprey Native plan](../../plans/0037-osprey-native.md#9-casting-on-phones-cast-mobile-gpui) records incomplete mobile host verification. Every required native/canvas combination must be proved for this application, including multitouch and accessible controls.
 
 ### Current playable delivery [ORCHESTRA-DELIVERY-PLAYABLE]
 
