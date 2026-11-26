@@ -7,9 +7,9 @@ description: "Mathematically proven DSP in Lean, unlimited signal routing, VST3 
 <section class="section grid-backdrop" style="border-top:0">
   <div class="shell">
     <article class="prose">
-      <p class="eyebrow"><a href="/learn/" style="text-decoration:none">← Learn</a> · Proofs &amp; Hardware</p>
+      <p class="prose-eyebrow"><a href="/learn/" style="text-decoration:none">← Learn</a> · Proofs &amp; Hardware</p>
       <h1>Mathematically Proven DSP &amp; Hardware Synth Factory</h1>
-      <p>
+      <p class="prose-lead">
         Perception Studio treats audio synthesis as an exact engineering discipline: unlimited
         routing in software, machine-checked DSP proofs under the hood, and a direct path from
         desktop patch to standalone hardware.
@@ -66,14 +66,15 @@ description: "Mathematically proven DSP in Lean, unlimited signal routing, VST3 
       </p>
 
       <h2>One human-readable JSON patch &amp; song file</h2>
-      <pre class="prose-code"><code>{
+      {% set sampleSend %}{
   "sendId": 1,
   "source": 3,
   "outlet": 0,
   "bus": "undertow",
   "level": 0.19,
   "enabled": true
-}</code></pre>
+}{% endset %}
+      <pre class="prose-code"><code>{{ sampleSend | highlightJson | safe }}</code></pre>
     </article>
   </div>
 </section>

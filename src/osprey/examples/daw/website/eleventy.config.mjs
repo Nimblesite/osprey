@@ -26,6 +26,27 @@ export default function (eleventyConfig) {
     return hash ? `${assetPath}?v=${hash}` : assetPath;
   });
 
+  // Build-time syntax highlighting (JSON & code blocks) using Perception tokens.
+  eleventyConfig.addFilter("highlightJson", (code) => {
+    const escaped = String(code)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+    return escaped.replace(
+      /(&quot;|")([^"]*)\1(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d+)?(?=[,\s}\]])|[{}[\]:,]/g,
+      (match, quote, _inner, isKey, keyword) => {
+        if (isKey) {
+          const idx = match.lastIndexOf(":");
+          return `<span class="tok-key">${match.slice(0, idx)}</span><span class="tok-punct">:</span>`;
+        }
+        if (quote) return `<span class="tok-str">${match}</span>`;
+        if (keyword) return `<span class="tok-kw">${match}</span>`;
+        if (/^-?\d/.test(match)) return `<span class="tok-num">${match}</span>`;
+        return `<span class="tok-punct">${match}</span>`;
+      }
+    );
+  });
+
   return {
     dir: {
       input: "src",

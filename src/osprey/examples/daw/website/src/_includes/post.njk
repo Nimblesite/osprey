@@ -2,23 +2,23 @@
 layout: base.njk
 ---
 
-<article class="section grid-backdrop">
+<article class="section grid-backdrop" style="border-top:0">
   <div class="shell">
     <div class="prose">
-      <p class="eyebrow"><span class="dot dot-signal" aria-hidden="true"></span>{{ tag }} · {{ date }} · {{ readTime }}</p>
+      <p class="prose-eyebrow"><span class="dot dot-signal" aria-hidden="true"></span>{{ tag }} · {{ date }} · {{ readTime }}</p>
       <h1>{{ title }}</h1>
-      <p class="hero-lead">{{ description }}</p>
+      <p class="prose-lead">{{ description }}</p>
     </div>
 
     {% if image %}
-    <figure class="blog-hero">
+    <figure class="prose-hero">
       <img src="{{ image }}" alt="{{ alt or title }}" fetchpriority="high" decoding="async">
     </figure>
     {% endif %}
 
     <div class="prose">
       {{ content | safe }}
-      <p style="margin-top:32px"><a class="btn btn-ghost" href="/blog/">← All posts</a></p>
+      <p class="prose-actions"><a class="btn btn-ghost" href="/blog/">← All posts</a></p>
     </div>
   </div>
 </article>
