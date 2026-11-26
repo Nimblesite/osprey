@@ -197,8 +197,9 @@ static void expect_cut_off(const char *reply, int64_t timeout_ms) {
   long live = test_alloc_live();
   uint64_t started = osp_monotonic_ms();
   osp_io_error_clear();
-  expect_bounded_failure(origin_exchange(reply, strlen(reply)), started, timeout_ms, OVER_TIME,
-                         origin_last_peer_closed);
+  // Sequenced: argument evaluation order is unspecified, so the flag is read after the exchange.
+  int64_t code = origin_exchange(reply, strlen(reply));
+  expect_bounded_failure(code, started, timeout_ms, OVER_TIME, origin_last_peer_closed);
   assert(test_alloc_live() == live);
 }
 
