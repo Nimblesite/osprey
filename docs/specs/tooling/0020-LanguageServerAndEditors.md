@@ -409,7 +409,7 @@ effect declaration's documentation is the fallback when the operation has none.
 
 ### Implied effect interfaces `[LSP-EFFECTS-IMPLICIT]`
 
-**Specified, not implemented** ([plan 0064](../../plans/0064-local-and-implicit-effects.md)).
+**Specified, not implemented** ([algebraic-effects plan](../../plans/0016-algebraic-effects-and-handlers.md#implicit-effects-effects-implicit)).
 
 For an implicit effect ([EFFECTS-IMPLICIT](../language/0017-AlgebraicEffects.md#implicit-effects-effects-implicit)):
 

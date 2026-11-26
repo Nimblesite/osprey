@@ -1,6 +1,6 @@
 # Plan 0016 — Algebraic effects and handlers
 
-**Contract:** [Algebraic Effects](../specs/language/0017-AlgebraicEffects.md). Tooling tasks also touch [Language Server](../specs/tooling/0020-LanguageServerAndEditors.md), [Debugger](../specs/tooling/0021-Debugger.md), [WebAssembly target](../specs/compiler/0022-WebAssemblyTarget.md).
+**Contract:** [Algebraic Effects](../specs/language/0017-AlgebraicEffects.md), including implicit effects and host operations, and [compile-time effects](../specs/language/0056-Metaprogramming.md#compile-time-effects-meta-effects). Tooling tasks also touch [Language Server](../specs/tooling/0020-LanguageServerAndEditors.md), [Debugger](../specs/tooling/0021-Debugger.md), [WebAssembly target](../specs/compiler/0022-WebAssemblyTarget.md).
 **Depends on:** [Plan 0026 — Structured Concurrency](0026-structured-concurrency.md) (region unwinding and cancellation-time finalization for `control abort`).
 
 ## Invariant — [EFFECTS-INV-MULTISHOT-REAL]
@@ -46,10 +46,6 @@ Callable handler values, block-scoped `handle`, declared value/control modes, re
 
 ## Phase 3 — Reusable continuations
 
-- [x] Build a reusable continuation representation (CPS/frames or another portable backend) that preserves the captured remainder independently per branch, replacing the single-shot pthread stack ([MULTI-HANDLE-MANY], [MULTI-HANDLE-MANY-LEXICAL], [MULTI-COST]). Files: `src/toolchain/compiler/runtime/effects_coro.c` / `effects_runtime.c`, `src/toolchain/crates/osprey-codegen`. Remove `unimplemented_many` in `src/toolchain/crates/osprey-types/src/multiplicity.rs`. Keep the existing handle-site rejections (`many` over a non-replayable body, captured mutable state, or a fiber-spanning continuation) as fixtures ([MULTI-REPLAY-CHECK], [MULTI-REPLAY-STATE], [MULTI-REPLAY-FIBER]). Acceptance: a pure search yields all alternatives; independent branch state; no replay of work before capture; retrying one operation does not replay later work; add a positive `many` case to `src/toolchain/crates/osprey-cli/tests/staged_multiplicity.rs` and `src/osprey/tests/effects/multiplicity/`. Done in `src/toolchain/crates/osprey-types/src/many/`: the code after a request becomes a closure and a handler becomes a function over requests. Evidence: `src/toolchain/crates/osprey-cli/tests/staged_many.rs` and `src/osprey/tests/regressions/effects/multishot_many.test.{osp,ospml}`, byte-exact under GC, ARC and wasm32.
-
-- [x] Let a `many` continuation cross the list builtins `mapList`, `foldList`, `forEachList` and `filterList`: each has a step-returning form in `src/toolchain/crates/osprey-types/src/many/helpers.rs`, pinned by `staged_many.rs`.
-
 - [ ] Let a `many` continuation cross an iterator stage (`range(..) |> fold(..)`), and lower a captured effect with type parameters by instantiating its request layout per use. Both are rejected by name today (`what_a_many_continuation_cannot_cross_is_rejected_by_name`). Acceptance: those programs run and print every branch, and their rejection cases are deleted.
 
 ## Phase 4 — Targets, traces, editor
@@ -62,11 +58,54 @@ Callable handler values, block-scoped `handle`, declared value/control modes, re
 
 - [ ] Ship the LSP replay-boundary view ([LSP-EFFECT-MULTIPLICITY]): on a `many` handler arm, `textDocument/implementation` returns the perform sites that arm can answer (its replay set); a handler region whose arms are all tail-resumptive over `once` operations publishes the "declaring Log static would remove it from the runtime" hint. Files: `src/toolchain/crates/osprey-lsp/src/effects/implementations.rs`, `src/toolchain/crates/osprey-lsp/src/effects/tests.rs`. Acceptance: tests pin both reports.
 
-- [x] The ML editor grammar requires `control` before a multiplicity marker [MULTI-DECL]. The grammar corpus rejects `many op : int => int` and checks all three control multiplicities, replayable operations and contextual names. The rejection failed before the fix and all four corpus cases passed afterward (2026-11-23).
+## Local and implicit effects
+
+Write a program directly, performing each effect where the work happens, and run it against test doubles without editing it. Effects need no declaration when their use implies one, host operations can be substituted like any other effect, and a substitution can be aimed at one function. A build that substitutes nothing compiles to the same IR as today. This work remains gated by stabilization mode.
+
+### Surface syntax
+
+- [ ] Fix the spelling of a directed substitution (provisionally `handle static E within f { arms }`) in Default, ML and Python. It must parse with each flavor's fixed grammar. Acceptance: grammar tests in every flavor and `failscompilation/` programs for a missing target, a target that is not a function and a `within` on a non-static handler where the plan decides that is refused.
+- [ ] Name the builtin effects and their operations ([EFFECTS-HOST-OPS]), one table in the effects spec, cited by the prelude.
+
+### Implicit effects `[EFFECTS-IMPLICIT]`
+
+- [ ] Resolve an undeclared effect name to an implied effect owned by the performing module ([EFFECTS-IMPLICIT-SCOPE]). Acceptance: the `Audit` example of the spec runs; rejected twins for a handler-only module, the same name implied in two modules and handled unqualified, and a module path that names no implied effect.
+- [ ] Infer operation types by unification over performs and arms, generalised like top-level functions ([EFFECTS-IMPLICIT-OPS]). Acceptance: one corpus program implies an effect with three operations of different types used from two modules; rejected twins for an unconstrained operation type, an arm the interface lacks (with the suggestion in the expected diagnostic) and a conflicting perform type; a warning test for an operation no perform uses.
+- [ ] Mode limits ([EFFECTS-IMPLICIT-MODE]). Acceptance: `handle static` on an implied effect discharges with zero residue; rejected twins for `resume` in an implied operation's arm and for a generic use.
+- [ ] Equivalence gate ([EFFECTS-IMPLICIT-SAME]): CI inserts the implied declaration into every corpus program with an implicit effect and compares IR, output and diagnostics byte for byte.
+- [ ] Editor ([LSP-EFFECTS-IMPLICIT]): hover, go to definition, **Declare effect** and the arm quick fix, each with a language-server test that applies the action and asserts unchanged diagnostics.
+
+### Host operations as effects `[EFFECTS-HOST]`
+
+- [ ] Model each host operation as an operation of its builtin effect with a default interpretation at the entry ([EFFECTS-HOST-DEFAULT]). Acceptance: the whole corpus compiles to identical IR before and after ([META-EFFECTS-PERF-HOST]).
+- [ ] Substitute a host operation in a test. Acceptance: corpus tests that replace console output, the clock and a file read with static handlers and assert what was recorded, under every memory mode and wasm32.
+- [ ] Target capability ([EFFECTS-HOST-CAPABILITY]). Acceptance: on wasm32, a file read covered by a substitute on every path builds and runs; an uncovered one is rejected at the perform.
+
+### Directed substitution `[META-EFFECTS-LOCAL]`
+
+- [ ] Region and function targets ([META-EFFECTS-LOCAL-TARGET]). Acceptance: the `report` example of the spec; a program where the same operation is substituted within one function and left real elsewhere, asserted from both paths; overlapping region and function substitutions resolved innermost first; rejected twins for an unknown and an ambiguous target.
+- [ ] Selection ([META-EFFECTS-LOCAL-SELECT]): substitutions stated by a test or entry, and a target profile in `osprey.toml` naming a substitution module. Acceptance: the selection changes the cache key, and `osprey expand` prints the substitutions in force.
+- [ ] Unchanged performing code ([META-EFFECTS-LOCAL-SUBSTITUTE]). Acceptance: the performing module's inferred rows and diagnostics are compared with and without the substitution and are equal.
+
+### Performance gates `[META-EFFECTS-PERF]`
+
+- [ ] [META-EFFECTS-PERF-ZERO]: for each corpus static substitution, the emitted IR equals, apart from names, the hand-written direct call of the arm's code.
+- [ ] [META-EFFECTS-PERF-DYNAMIC]: a dynamic substitute's dispatch appears only in builds that select it, checked by IR inspection of a build without it.
+- [ ] A benchmark in `src/toolchain/benchmarks/` comparing a local-effect program under a static substitute with the hand-written version; the result is recorded here with the machine named.
+
+## Proof obligations
+
+Each is stated in the proof kernel where the rule is within its reach, and must fail on a relevant mutation of the implementation:
+
+- [ ] [EFFECTS-IMPLICIT-SAME]: inserting the implied declaration preserves the checked program.
+- [ ] [META-EFFECTS-LOCAL-TARGET]: a function-targeted substitution equals installing the same handler around every call of that function in the region.
+- [ ] [EFFECTS-HOST-DEFAULT]: the default interpretation of each builtin effect is the runtime call the builtin made before this plan.
 
 ## Constraints
 
-- Each task needs executable positive and negative cases in both flavors.
+- Each task needs executable positive and negative cases in both flavors. Local and implicit effect programs also run under ownership; existing corpus programs are expanded before new ones are added.
+- [META-NO-HARM](../specs/language/0056-Metaprogramming.md#the-existing-language-is-untouched-meta-no-harm) holds at every step: corpus output, diagnostics and IR are byte-identical for programs that use no local or implicit effects.
+- Corpus, `failscompilation/`, IR and equivalence checks run in the existing CI phases without a new required job.
 - No backend may silently weaken multiplicity or cleanup guarantees; reject before linking when a capability is absent.
 - Keep static discharge a separate checked pass; MLIR stays an optional backend and cannot change source semantics.
 - Keep the existing implementation where it satisfies the contract; do not add a separate handler-object hierarchy when an ordinary closure is sufficient.

@@ -72,7 +72,7 @@ An effect whose interpretation is chosen at compile time obeys two rules. It cos
 - `[META-EFFECTS-LOCAL-DOUBLE]` A substitute is an ordinary handler. A static substitute covers every operation it replaces ([STAGE-STATIC-TOTAL](0017-AlgebraicEffects.md#static-handlers--stage-handle-static)) and may record calls in captured cells ([EFFECTS-HANDLER-VALUE-STATE](0017-AlgebraicEffects.md#callable-handler-values-effects-handler-value)). An operation the substitute does not cover keeps its outer interpretation.
 - `[META-EFFECTS-LOCAL-KERNEL]` A substitution installs a handler and rewrites no code, so [META-KERNEL-ADDITIVE] holds.
 
-The spelling below is provisional; [plan 0064](../../plans/0064-local-and-implicit-effects.md) fixes it per flavor.
+The spelling below is provisional; the [algebraic-effects plan](../../plans/0016-algebraic-effects-and-handlers.md#surface-syntax) fixes it per flavor.
 
 ```osprey
 fn quote(symbol) = perform Prices.latest(symbol)

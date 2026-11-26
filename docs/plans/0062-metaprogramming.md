@@ -8,7 +8,7 @@ Contract: [spec 0056](../specs/language/0056-Metaprogramming.md) (language) · [
 
 Top-tier compile-time metaprogramming, macros and templates in Osprey, delivered as several mechanisms above one kernel, so no single approach is the only one. Proved by programs that use each mechanism under GC, ARC, ownership and wasm32, by diagnostics tested in the language server and the CLI, and by measured editor latency.
 
-Effect substitution chosen at compile time and implicit effects ([META-EFFECTS-PERF], [META-EFFECTS-LOCAL]) are delivered by [plan 0064](0064-local-and-implicit-effects.md), not here.
+Effect substitution chosen at compile time and implicit effects ([META-EFFECTS-PERF], [META-EFFECTS-LOCAL]) are delivered by [the algebraic-effects plan](0016-algebraic-effects-and-handlers.md#local-and-implicit-effects), not here.
 
 ## Design rules
 

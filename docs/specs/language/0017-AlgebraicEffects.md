@@ -97,7 +97,7 @@ not permission to merge distinct instantiations.
 
 ### Implicit effects `[EFFECTS-IMPLICIT]`
 
-**Specified, not implemented** ([plan 0064](../../plans/0064-local-and-implicit-effects.md)).
+**Specified, not implemented** ([algebraic-effects plan](../../plans/0016-algebraic-effects-and-handlers.md#implicit-effects-effects-implicit)).
 
 An effect may be used without a declaration. Its interface is implied by the code that performs and handles it.
 
@@ -284,7 +284,7 @@ let loud = Control { label: "go", press: fn(text) => perform Alarm.ring() } // r
 
 ## Host operations `[EFFECTS-HOST]`
 
-**Specified, not implemented** ([plan 0064](../../plans/0064-local-and-implicit-effects.md)).
+**Specified, not implemented** ([algebraic-effects plan](../../plans/0016-algebraic-effects-and-handlers.md#host-operations-as-effects-effects-host)).
 
 - `[EFFECTS-HOST-OPS]` Each host operation the compiler provides (console output, files, clock, network, process) is an operation of a declared builtin effect, such as `print` as `Stdout.write`. Calling the builtin performs the operation; no `perform` is written.
 - `[EFFECTS-HOST-DEFAULT]` The program entry installs each builtin effect's default interpretation, the runtime call the builtin makes today. A handler for that effect inside the program takes precedence by the innermost rule. A build in which no such handler exists compiles each host operation to the same direct call as before ([META-EFFECTS-PERF-HOST](0056-Metaprogramming.md#performance-meta-effects-perf)).
