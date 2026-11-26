@@ -26,7 +26,6 @@ enum {
   CHANNEL_MESSAGES = 8,
   CHANNEL_FIRST_VALUE = 10,
   CHANNEL_HANDOFF_VALUE = 4242,
-  CHANNEL_SETTLE_US = 50000,
   CHANNEL_WRAP_TAG = 1000,
 };
 
@@ -54,10 +53,27 @@ static int64_t channel_overfiller(void *env) {
   return CHANNEL_MESSAGES;
 }
 
-// Sends exactly once, late, so a recv issued first must park on `not_empty`.
+// fiber_runtime.c: how many fibers are parked on a channel right now.
+int fiber_channel_waits(void);
+
+// Waits until the runtime's channel-wait count reads `expected`: a fiber has
+// then parked on, or left, its channel — a signal, never a timer a loaded
+// runner can outrun. The deadline is a generous bound against a hang only.
+enum { WAIT_HANDSHAKE_TRIES = 30000, WAIT_HANDSHAKE_POLL_US = 1000 };
+
+static void wait_for_channel_waits(int expected) {
+  for (int i = 0; i < WAIT_HANDSHAKE_TRIES && fiber_channel_waits() != expected; i++) {
+    usleep(WAIT_HANDSHAKE_POLL_US);
+  }
+  assert(fiber_channel_waits() == expected && "the channel waiters never settled");
+}
+
+// Sends exactly once the receiving end has parked on `not_empty`, so a recv
+// issued first always meets the blocking side of the handshake, whatever the
+// scheduler does with either thread.
 static int64_t channel_late_sender(void *env) {
   (void)env;
-  usleep(CHANNEL_SETTLE_US);
+  wait_for_channel_waits(1);
   return channel_send(blocking_channel, CHANNEL_HANDOFF_VALUE, 0);
 }
 
@@ -130,7 +146,9 @@ void test_channel_blocks_both_directions(void) {
   assert(blocking_channel != NULL);
   void *producer = spawn_fiber(channel_overfiller, NULL);
   assert(producer != NULL);
-  usleep(CHANNEL_SETTLE_US);
+  // The sender is parked on `not_full` (2 < 8 messages), so "still parked"
+  // is a fact about blocking, not about a 50 ms head start.
+  wait_for_channel_waits(1);
   assert(fiber_done(producer) == 0 &&
          "with CHANNEL_MESSAGES > CHANNEL_CAP the sender must still be parked");
   for (int64_t i = 0; i < CHANNEL_MESSAGES; i++) {
@@ -216,9 +234,6 @@ void test_rejected_managed_send_releases_its_value(void) {
 enum { WAITING_FIBERS = 40, SCRUBBED_WORDS = 4096 };
 static void *named_channels[WAITING_FIBERS];
 
-// fiber_runtime.c: how many fibers are parked on a channel right now.
-int fiber_channel_waits(void);
-
 static int64_t receives_when_sent(void *channel) { return channel_recv(channel); }
 
 // Spawns a fiber that waits on a fresh channel, in a frame of its own, so no
@@ -240,18 +255,6 @@ __attribute__((noinline)) static uintptr_t scrub_stack(void) {
 }
 
 size_t osp_gc_collections(void); // the tracing collector this suite links
-
-// Waits until the runtime's channel-wait count reads `expected`: every
-// spawned fiber has then parked on, or left, its channel. The deadline is a
-// generous safety bound against a hang, never the mechanism.
-enum { WAIT_HANDSHAKE_TRIES = 30000, WAIT_HANDSHAKE_POLL_US = 1000 };
-
-static void wait_for_channel_waits(int expected) {
-  for (int i = 0; i < WAIT_HANDSHAKE_TRIES && fiber_channel_waits() != expected; i++) {
-    usleep(WAIT_HANDSHAKE_POLL_US);
-  }
-  assert(fiber_channel_waits() == expected && "the channel waiters never settled");
-}
 
 // Collects once every fiber has had time to block; a verdict needs a collection.
 static size_t stuck_after_collecting(int channel_waits) {

@@ -11,6 +11,7 @@
 #include "test_loopback.h"
 
 #include <assert.h>
+#include <dlfcn.h>
 #include <openssl/err.h>
 #include <openssl/pem.h>
 #include <openssl/ssl.h>
@@ -31,6 +32,35 @@ char *osprey_net_local_address(char *host, int64_t port);
 
 static char LOOPBACK[] = "127.0.0.1";
 static char NOWHERE[] = "no-such-host.invalid";
+
+// ---------------------------------------------------------------------------
+// NOWHERE must resolve to nothing on every network this binary runs on. The
+// `.invalid` TLD is reserved (RFC 2606), but the answer still comes from
+// whatever resolver the host has: search-domain suffixing, a captive portal
+// or a wildcard resolver can hand back an address, and the -2 contract of
+// [FFI-TLS-CLIENT] then fails only on that machine. Defining getaddrinfo in
+// this translation unit replaces it for every object of this binary at
+// static-link time, on Mach-O and ELF alike (the same interposition
+// test_spawn_seam.h uses for fork), so NOWHERE answers EAI_NONAME with no
+// resolver involved while every other name still reaches the real one.
+// ---------------------------------------------------------------------------
+static unsigned nowhere_calls;
+static int (*real_getaddrinfo)(const char *, const char *,
+                               const struct addrinfo *, struct addrinfo **);
+
+int getaddrinfo(const char *__restrict node, const char *__restrict service,
+                const struct addrinfo *__restrict hints,
+                struct addrinfo **__restrict res) {
+  if (node != NULL && strcmp(node, NOWHERE) == 0) {
+    nowhere_calls++;
+    return EAI_NONAME; // what a resolver with no record answers
+  }
+  if (real_getaddrinfo == NULL) {
+    *(void **)&real_getaddrinfo = dlsym(RTLD_NEXT, "getaddrinfo");
+    assert(real_getaddrinfo != NULL);
+  }
+  return real_getaddrinfo(node, service, hints, res);
+}
 
 // ---------------------------------------------------------------------------
 // A self-signed certificate, generated in memory, so the suite needs no files.
@@ -224,7 +254,12 @@ static void test_tls_argument_rejections(void) {
   assert(osprey_tls_connect(LOOPBACK, ECHO_PORT, -1) == -1);
   assert(osprey_tls_connect(LOOPBACK, ECHO_PORT, 60001) == -1);
   assert(osprey_tls_connect(LOOPBACK, 0, 100) == -1);
+  // The -2 must come from the interposed resolver, not the host's answer
+  // happening to be empty: exactly one NOWHERE resolution served the dial.
+  unsigned nowhere_before = nowhere_calls;
   assert(osprey_tls_connect(NOWHERE, ECHO_PORT, 100) == -2);
+  assert(nowhere_calls == nowhere_before + 1 &&
+         "the interposed getaddrinfo answered NOWHERE");
   // Nothing listens on this port: the dial is refused.
   assert(osprey_tls_connect(LOOPBACK, CLOSED_PORT, 500) == -4);
 }
