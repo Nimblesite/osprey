@@ -79,9 +79,13 @@ static void wait_for_channel_waits(int expected) {
 // Sends exactly once the receiving end has parked on `not_empty`, so a recv
 // issued first always meets the blocking side of the handshake, whatever the
 // scheduler does with either thread.
+// The count before the receiver parks: fibers an earlier test left blocked
+// for ever stay parked, so every wait is for a count above a baseline.
+static int late_sender_parked;
+
 static int64_t channel_late_sender(void *env) {
   (void)env;
-  wait_for_channel_waits(1);
+  wait_for_channel_waits(late_sender_parked + 1);
   return channel_send(blocking_channel, CHANNEL_HANDOFF_VALUE, 0);
 }
 
@@ -152,11 +156,12 @@ void test_channel_blocks_both_directions(void) {
   assert(fiber_set_deterministic_mode(false) == 0);
   blocking_channel = channel_create(CHANNEL_CAP);
   assert(blocking_channel != NULL);
+  int parked = fiber_channel_waits();
   void *producer = spawn_fiber(channel_overfiller, NULL);
   assert(producer != NULL);
   // The sender is parked on `not_full` (2 < 8 messages), so "still parked"
   // is a fact about blocking, not about a 50 ms head start.
-  wait_for_channel_waits(1);
+  wait_for_channel_waits(parked + 1);
   assert(fiber_done(producer) == 0 &&
          "with CHANNEL_MESSAGES > CHANNEL_CAP the sender must still be parked");
   for (int64_t i = 0; i < CHANNEL_MESSAGES; i++) {
@@ -166,6 +171,7 @@ void test_channel_blocks_both_directions(void) {
   assert(fiber_await(producer) == CHANNEL_MESSAGES &&
          "every send reported success");
 
+  late_sender_parked = fiber_channel_waits();
   void *sender = spawn_fiber(channel_late_sender, NULL);
   assert(sender != NULL);
   assert(channel_recv(blocking_channel) == CHANNEL_HANDOFF_VALUE &&
@@ -274,24 +280,25 @@ static size_t stuck_after_collecting(int channel_waits) {
 }
 
 // Spawns WAITING_FIBERS waiting fibers, lets them block, and collects.
-static size_t stuck_after_spawning(bool keep) {
+static size_t stuck_after_spawning(bool keep, int parked) {
   for (size_t i = 0; i < WAITING_FIBERS; i++) {
     spawn_waiting(i, keep);
   }
   (void)scrub_stack();
-  return stuck_after_collecting(WAITING_FIBERS);
+  return stuck_after_collecting(parked + WAITING_FIBERS);
 }
 
 void test_fibers_blocked_for_ever_are_found(void) {
   assert(fiber_set_deterministic_mode(false) == 0);
   size_t before = osp_mem_stuck_waits();
-  assert(stuck_after_spawning(true) == before && "a channel the program names can still wake its fiber");
+  int parked = fiber_channel_waits();
+  assert(stuck_after_spawning(true, parked) == before && "a channel the program names can still wake its fiber");
   for (size_t i = 0; i < WAITING_FIBERS; i++) {
     assert(channel_send(named_channels[i], (int64_t)i, 0) == 1);
     named_channels[i] = NULL;
   }
-  assert(stuck_after_collecting(0) == before && "a woken fiber was never stuck");
-  size_t found = stuck_after_spawning(false) - before;
+  assert(stuck_after_collecting(parked) == before && "a woken fiber was never stuck");
+  size_t found = stuck_after_spawning(false, parked) - before;
   printf("  %zu of %d fibers found blocked for ever\n", found, WAITING_FIBERS);
   // A stale stack word can still name a channel, so a few may go unfound;
   // none is ever found twice, and none that could be woken is found at all.
