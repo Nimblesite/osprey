@@ -111,39 +111,57 @@ _conformance-ownership:
 	@echo "==> [conformance] assertion corpus under --memory=ownership..."
 	@OSPREY_CC="$(CURDIR)/scripts/ci/ownership-asan-clang.sh" OSPREY_SCRIBBLE_FREES=1 OSPREY_TEST_JOBS=1 zsh src/toolchain/crates/run_test_corpus.sh ownership
 
-# _test_disciplines: the reference type disciplines of [TYPES-DISCIPLINE-REFERENCE]
-# (spec 0050). The `bounded` package reads `// @bound p in 0..100`, holds every
-# call site inside the module to it by interval arithmetic, and erases to plain
-# `int`; `bounded_roundtrip` links that erased module into an `hm` program, so a
-# green run proves the whole seam — checker build, protocol, erasure, signature
-# ascription — and not just the checker. Every leg is byte-exact: the program's
-# stdout against its golden under GC and ARC, the compiled wasm module against
-# the same golden under WASI, and the out-of-range call site against the
-# compiler's own stderr. The scratch copy keeps `path = "../bounded"` resolvable
-# (`target/disciplines/bounded` beside `target/disciplines/bounded_roundtrip`),
-# and `sed` drops the absolute prefix so the golden holds no checkout path.
-# The checker's assertion suite drives the built binary through the protocol.
-_test_disciplines:
-	@echo "==> [disciplines] bounded: GC, ARC, wasm32 against expectedoutput..."
-	set -o pipefail && ./$(BIN) src/osprey/examples/disciplines/bounded_roundtrip --run --memory=gc 2>/dev/null | diff - src/osprey/examples/disciplines/bounded_roundtrip/expectedoutput
-	set -o pipefail && ./$(BIN) src/osprey/examples/disciplines/bounded_roundtrip --run --memory=arc 2>/dev/null | diff - src/osprey/examples/disciplines/bounded_roundtrip/expectedoutput
+# The certificate the rejected `leanexport` module cites: Lean's real `Nat.add_comm`
+# export with its proof replaced by its own statement, the same corruption the
+# kernel's `natAddCommBad` fixture makes. Forged at test time, never committed.
+LEAN_TAMPER = sed 's/"name":235,"type":730,"value":817/"name":235,"type":730,"value":730/' src/osprey/examples/proof/kernel/exports/nat_add_comm.ndjson > target/disciplines/lean_roundtrip/tampered.ndjson
+
+# discipline_roundtrip: one reference discipline proved through the whole seam
+# (checker build, protocol, erasure, signature ascription), not just its
+# checker. $(1) is the package, $(2) its round-trip program, $(3) the module the
+# program's `src/bad.ospml.rejected` replaces, and $(4) an optional command run
+# in the scratch copy first (to forge an input the rejected module cites). Every leg is byte-exact: the
+# program's stdout against its golden under GC and ARC, the compiled wasm
+# module against the same golden under WASI, and the rejected variant against
+# the compiler's own stderr. The scratch copy points its dependency back at the
+# package in the checkout, and `sed` drops the absolute prefix so the golden
+# holds no checkout path.
+define discipline_roundtrip
+	@echo "==> [disciplines] $(1): GC, ARC, wasm32 against expectedoutput..."
+	set -o pipefail && ./$(BIN) src/osprey/examples/disciplines/$(2) --run --memory=gc 2>/dev/null | diff - src/osprey/examples/disciplines/$(2)/expectedoutput
+	set -o pipefail && ./$(BIN) src/osprey/examples/disciplines/$(2) --run --memory=arc 2>/dev/null | diff - src/osprey/examples/disciplines/$(2)/expectedoutput
 	@$(MKDIR) target/disciplines
-	./$(BIN) src/osprey/examples/disciplines/bounded_roundtrip --target=wasm32 --compile -o target/disciplines/bounded.wasm >/dev/null 2>&1
-	node scripts/wasm/wasm-smoke.mjs target/disciplines/bounded.wasm src/osprey/examples/disciplines/bounded_roundtrip/expectedoutput
-	@echo "==> [disciplines] bounded: an out-of-range call site is rejected..."
-	@$(RM) target/disciplines/bounded target/disciplines/bounded_roundtrip
-	cp -R src/osprey/examples/disciplines/bounded target/disciplines/bounded
-	cp -R src/osprey/examples/disciplines/bounded_roundtrip target/disciplines/bounded_roundtrip
-	cp target/disciplines/bounded_roundtrip/src/bad.ospml.rejected target/disciplines/bounded_roundtrip/src/percent.ospml
-	$(RM) target/disciplines/bounded_roundtrip/src/bad.ospml.rejected target/disciplines/bounded_roundtrip/expectedoutput
-	$(RM) target/disciplines/bounded/.osprey target/disciplines/bounded_roundtrip/.osprey
-	@./$(BIN) target/disciplines/bounded_roundtrip --check > target/disciplines/rejected.txt 2>&1; test $$? -ne 0
-	sed -e "s|$(CURDIR)/||g" target/disciplines/rejected.txt | diff - src/osprey/examples/disciplines/bounded_roundtrip/rejected.expectedoutput
+	./$(BIN) src/osprey/examples/disciplines/$(2) --target=wasm32 --compile -o target/disciplines/$(1).wasm >/dev/null 2>&1
+	node scripts/wasm/wasm-smoke.mjs target/disciplines/$(1).wasm src/osprey/examples/disciplines/$(2)/expectedoutput
+	@echo "==> [disciplines] $(1): the rejected variant is refused..."
+	@$(RM) target/disciplines/$(2)
+	cp -R src/osprey/examples/disciplines/$(2) target/disciplines/$(2)
+	cp target/disciplines/$(2)/src/bad.ospml.rejected target/disciplines/$(2)/src/$(3)
+	$(RM) target/disciplines/$(2)/src/bad.ospml.rejected target/disciplines/$(2)/expectedoutput target/disciplines/$(2)/.osprey
+	sed 's|"../$(1)"|"../../../src/osprey/examples/disciplines/$(1)"|' src/osprey/examples/disciplines/$(2)/osprey.toml > target/disciplines/$(2)/osprey.toml
+	$(if $(4),$(4),@true)
+	@./$(BIN) target/disciplines/$(2) --check > target/disciplines/$(1)-rejected.txt 2>&1; test $$? -ne 0
+	sed -e "s|$(CURDIR)/||g" target/disciplines/$(1)-rejected.txt | diff - src/osprey/examples/disciplines/$(2)/rejected.expectedoutput
+	@$(RM) src/osprey/examples/disciplines/$(1)/.osprey src/osprey/examples/disciplines/$(2)/.osprey
+endef
+
+# _test_disciplines: the reference type disciplines of [TYPES-DISCIPLINE-REFERENCE]
+# (spec 0050). `bounded` reads `// @bound p in 0..100`, holds every call site
+# inside the module to it by interval arithmetic, and erases to plain `int`.
+# `dependent` checks the `theorem` lines of a module with the proof kernel and
+# erases them; `leanexport` re-checks the pinned Lean certificates a module cites with
+# the same kernel ([PROOF-DISCIPLINE]). Each round trip links the erased module into
+# an `hm` program. The bounded checker's assertion suite then drives its built
+# binary through the protocol, and `passthrough` proves the identity discipline.
+_test_disciplines:
+	$(call discipline_roundtrip,bounded,bounded_roundtrip,percent.ospml)
+	$(call discipline_roundtrip,dependent,dependent_roundtrip,access.ospml)
+	$(call discipline_roundtrip,lean,lean_roundtrip,tally.ospml,$(LEAN_TAMPER))
 	@echo "==> [disciplines] bounded: the checker's protocol assertion suite..."
 	@$(RM) src/osprey/examples/disciplines/bounded/.osprey
 	@OSPREY_BIN="$(abspath $(BIN))" ./$(BIN) test src/osprey/examples/disciplines/bounded --memory=gc 2>/dev/null > target/disciplines/bounded-suite.txt; status=$$?; tail -2 target/disciplines/bounded-suite.txt; exit $$status
 	grep -q "failed=0" target/disciplines/bounded-suite.txt
-	@$(RM) src/osprey/examples/disciplines/bounded/.osprey src/osprey/examples/disciplines/bounded_roundtrip/.osprey
+	@$(RM) src/osprey/examples/disciplines/bounded/.osprey
 	$(MAKE) _test_disciplines_passthrough
 
 .PHONY: _test_proof_kernel _test_proof_kernel_gc _test_proof_kernel_arc _test_proof_kernel_wasm

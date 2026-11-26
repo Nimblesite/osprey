@@ -106,6 +106,11 @@ pub struct Response {
     /// Diagnostics, present when rejected and allowed as warnings when accepted.
     #[serde(default)]
     pub diagnostics: Vec<Diagnostic>,
+    /// Files outside the request the checker read to decide (a proof
+    /// certificate, say), relative to the project root. A cached answer is
+    /// reused only while every one of them is unchanged.
+    #[serde(default)]
+    pub dependencies: Vec<String>,
 }
 
 impl Request {

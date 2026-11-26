@@ -1,0 +1,17 @@
+//! The `dependent` reference type discipline of [TYPES-DISCIPLINE-REFERENCE]
+//! and [PROOF-DISCIPLINE] (specs 0050 and 0049): a module marked
+//! `// osprey: types=dependent` may state and prove theorems of the
+//! dependent theory beside its ordinary code. Each `theorem` line is read by
+//! the kernel's surface reader and checked by the kernel; a proof erases to
+//! nothing ([PROOF-ERASE]), so the HM pipeline receives the rest of the
+//! module unchanged.
+//!
+//! This directory is the checker project: the compiler builds it as one
+//! program with `<compiler> <checker-directory> --compile`.
+
+namespace dependent
+
+import bounded::Checker
+
+
+main () = Checker::serve Theorems::judge

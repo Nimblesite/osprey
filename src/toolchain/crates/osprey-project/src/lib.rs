@@ -279,7 +279,7 @@ pub fn load_selected(
 ) -> Result<(ProjectConfig, Vec<SourceFile>), Vec<ProjectError>> {
     let (config, mut paths) = discover(root)?;
     paths.retain(|path| keep(path));
-    let sources = parse_sources(paths, config.flavor)?;
+    let sources = parse_sources(paths, config.flavor, config.types.as_deref())?;
     let runner = discipline::ProcessRunner::new(
         compiler_binary(),
         root.join(".osprey/cache/disciplines/build"),
@@ -394,11 +394,12 @@ fn load_config(root: &Path, manifest_path: &Path) -> Result<ProjectConfig, Vec<P
 fn parse_sources(
     paths: Vec<PathBuf>,
     configured: Option<Flavor>,
+    types: Option<&str>,
 ) -> Result<Vec<SourceFile>, Vec<ProjectError>> {
     let mut sources = Vec::new();
     let mut errors = Vec::new();
     for path in paths {
-        match parse_source(path, configured) {
+        match parse_source(path, configured, types) {
             Ok(source) => sources.push(source),
             Err(mut source_errors) => errors.append(&mut source_errors),
         }
@@ -413,10 +414,11 @@ fn parse_sources(
 fn parse_source(
     path: PathBuf,
     configured: Option<Flavor>,
+    types: Option<&str>,
 ) -> Result<SourceFile, Vec<ProjectError>> {
     let source =
         std::fs::read_to_string(&path).map_err(|error| vec![ProjectError::io(&path, &error)])?;
-    parse_text(path, source, configured)
+    parse_text_in(path, source, configured, types)
 }
 
 /// Parse disk or unsaved text using the project's flavor configuration. A
@@ -428,6 +430,23 @@ pub fn parse_text(
     path: PathBuf,
     source: String,
     configured: Option<Flavor>,
+) -> Result<SourceFile, Vec<ProjectError>> {
+    parse_text_in(path, source, configured, None)
+}
+
+/// [`parse_text`] for a project whose `[project].types` is `types`. A source
+/// checked by a discipline other than `hm` belongs to that discipline's
+/// checker, whose theory may use syntax the HM frontend rejects
+/// ([PROOF-SOURCE-DISCIPLINE]); its HM syntax errors are not this frontend's
+/// to report. The error-recovered tree is kept only as the outline the seam
+/// reads (namespaces, modules, imports), and the seam replaces the whole
+/// source with the checker's erased module, which must parse strictly
+/// ([TYPES-DISCIPLINE-SEAM]).
+fn parse_text_in(
+    path: PathBuf,
+    source: String,
+    configured: Option<Flavor>,
+    types: Option<&str>,
 ) -> Result<SourceFile, Vec<ProjectError>> {
     if math::is_math(&path) {
         return math::parse(&path, &source);
@@ -442,7 +461,11 @@ pub fn parse_text(
         }]
     })?;
     let parsed = osprey_syntax::parse_program_with_flavor(&source, flavor);
-    if !parsed.errors.is_empty() {
+    let outline_only = discipline::marker(&source)
+        .or(types)
+        .unwrap_or(discipline::HM)
+        != discipline::HM;
+    if !parsed.errors.is_empty() && !outline_only {
         return Err(parsed
             .errors
             .into_iter()

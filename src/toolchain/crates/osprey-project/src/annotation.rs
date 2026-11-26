@@ -28,6 +28,7 @@ impl Resolver<'_> {
             }
             (
                 Stmt::Function {
+                    type_params,
                     parameters,
                     return_type,
                     effects,
@@ -37,6 +38,7 @@ impl Resolver<'_> {
                     ..
                 },
                 SignatureItem::Function {
+                    type_params: contract_params,
                     parameters: contracts,
                     return_type: contract_return,
                     effects: contract_effects,
@@ -51,6 +53,13 @@ impl Resolver<'_> {
                         *position,
                         "function implementation arity does not match its signature",
                     );
+                }
+                // An inferred implementation takes the signature's binders with
+                // its types, so `A` in `pick<A, B> : (A, B) -> B` is the
+                // function's own parameter, generalized at each use, and not an
+                // unknown rigid name ([MODULES-SIGNATURE]).
+                if type_params.is_empty() {
+                    type_params.clone_from(contract_params);
                 }
                 for (parameter, contract) in parameters.iter_mut().zip(contracts) {
                     if parameter.ty.is_none() {

@@ -1,0 +1,10 @@
+[package]
+name = "@osprey/lean"
+
+# What the compiler reads when a project marks a source
+# `// osprey: types=leanexport` ([TYPES-DISCIPLINE-REGISTRY]): the checker is the
+# project under `src/`. Its tests are the accepted and rejected round trips of
+# `../lean_roundtrip`, run by `make _test_disciplines`.
+[discipline]
+name = "leanexport"
+checker = "src"

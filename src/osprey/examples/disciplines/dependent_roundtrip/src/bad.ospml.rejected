@@ -1,0 +1,17 @@
+// osprey: types=dependent
+
+namespace roundtrip
+
+(** Who may read a document. The policy's rules are stated as theorems the
+    kernel checks: an editor may read, every admin is an editor, so every
+    admin may read. The code below mirrors the rules; that it matches them is
+    the reader's step, not a checked one. *)
+module Access
+    theorem editor_reads (Editor Reader : Prop) (read : Editor → Reader) (e : Editor) : Reader := read e
+    theorem admin_reads (Admin Editor Reader : Prop) (promote : Admin → Editor) (read : Editor → Reader) : Admin → Reader := fun (a : Admin) => promote (read a)
+
+    (** Whether `role` may read, by the policy above. *)
+    export canRead role = role == "admin" || role == "editor" || role == "viewer"
+
+    (** A grant through an intermediate role: the program shape of `admin_reads`. *)
+    export grantVia (promote, read, who) = read (promote who)

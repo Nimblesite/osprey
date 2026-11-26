@@ -33,7 +33,7 @@ label text = Text(content = text)
 entry<A> : (string, Node<A>) -> Row<A>
 entry (key, cell) = Row(rowKey = key, cell = cell)
 
-rows<A> : (List<Row<A>>, A, int) -> Node<A>
+rows : (List<Row<Action>>, Action, int) -> Node<Action>
 rows (entries, picked, extra) = match picked
     Navigate => Text(content = "${length entries}:${extra}")
 

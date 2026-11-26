@@ -6,7 +6,7 @@ Depends on: [plan 0041](0041-dependent-types-and-mathlib.md) phase 0 (delete the
 
 ## Prerequisites in place
 
-- The `feat/type-disciplines` PR merged (`ca35a22a`); the `.lean`-only direction of [PROOF-SOURCE](../specs/language/0049-DependentTypesAndProofs.md#proof-source-proof-source) is in force.
+- The `feat/type-disciplines` PR merged (`ca35a22a`); the workbench's document is `.lean` ([PROOF-SOURCE-LEAN](../specs/language/0055-ProofKernelAndLeanBridge.md#lean-source-proof-source-lean-files)).
 - `@osprey/native` already ships `Maths::decode`, `Media` `Image`/`Video` with encodings, and the `Run`/`SaveFile` capabilities.
 - The three lesson films, posters, captions and image stills exist under `src/osprey/workbench/lessons/media/` and meet the [LESSONS-MEDIA] budget; narration re-verification is the remaining media task.
 - `src/osprey/workbench/assets/proof-libraries.json` and `scripts/proof/workbench-proof-assets.py` stage the bundled exports and licences.
@@ -14,7 +14,7 @@ Depends on: [plan 0041](0041-dependent-types-and-mathlib.md) phase 0 (delete the
 
 ## Constraints
 
-- Only `.lean` is read or written as proof text [PROOF-SOURCE-DELETED].
+- The workbench reads and writes only `.lean` as proof text [WORKBENCH-AIM]; it never reads or writes English as proof [WORKBENCH-NO-ENGLISH].
 - The application never parses, elaborates, judges or generates proof text: Lean and the kernel decide, the application displays.
 - A host draws and completes capabilities; it never filters, labels, validates or decides.
 - No service exists that only the workbench can call [WORKBENCH-NO-SPECIAL].

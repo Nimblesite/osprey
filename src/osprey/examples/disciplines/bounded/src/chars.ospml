@@ -23,3 +23,20 @@ module Chars
 
     (** The column the line's first non-blank character sits at. *)
     export indent text = spaced (text, 0)
+
+(** Whole lines of a module, for a judge that reads one declaration per line. *)
+module Lines
+    (** Every line whose trimmed text opens with `opening`, numbered from one,
+        trimmed, with its indentation. *)
+    export opening (source, opening) = kept (lines source, opening, 1, [])
+
+    kept (rows, opening, number, acc) = match rows
+        [] => acc
+        [text, ...rest] => kept (rest, opening, number + 1, taken (acc, opening, number, text))
+
+    taken (acc, opening, number, text) = match startsWith (trim text) opening
+        true => listAppend (acc, Words::Line(number = number, indent = Chars::indent text, text = trim text))
+        false => acc
+
+    (** A problem reported at the first character of `line`. *)
+    export problem (line, code, message) = Words::Problem(code = code, line = line.number, column = line.indent + 1, message = message)

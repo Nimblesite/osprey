@@ -1,0 +1,11 @@
+[project]
+name = "dependent-checker"
+# This directory holds only the judge. The checker protocol (request, erasure,
+# signature, reply) is the `bounded` reference checker's, and the theory is
+# the proof kernel of plan 0041, both compiled in by path so neither is copied.
+source_roots = [".", "../../bounded/src/annotations.ospml", "../../bounded/src/arguments.ospml", "../../bounded/src/bounds.ospml", "../../bounded/src/calls.ospml", "../../bounded/src/chars.ospml", "../../bounded/src/checker.ospml", "../../bounded/src/erasure.ospml", "../../bounded/src/intervals.ospml", "../../bounded/src/replies.ospml", "../../bounded/src/signature.ospml", "../../bounded/src/words.ospml", "../../../proof/kernel/src/level.ospml", "../../../proof/kernel/src/natural.ospml", "../../../proof/kernel/src/numeric.ospml", "../../../proof/kernel/src/numeric-canonical.ospml", "../../../proof/kernel/src/term.ospml", "../../../proof/kernel/src/env.ospml", "../../../proof/kernel/src/reduce.ospml", "../../../proof/kernel/src/infer.ospml", "../../../proof/kernel/src/surface.ospml", "../../../proof/kernel/src/export.ospml", "../../../proof/kernel/src/exportjson.ospml", "../../../proof/kernel/src/nesting.ospml", "../../../proof/kernel/src/exportinductive.ospml", "../../../proof/kernel/src/telescope.ospml", "../../../proof/kernel/src/recursor.ospml", "../../../proof/kernel/src/inductive.ospml", "../../../proof/kernel/src/checked.ospml", "../../../proof/kernel/src/quotient.ospml", "../../../proof/kernel/src/literal.ospml", "../../../proof/kernel/src/trust.ospml"]
+default_namespace = "dependent"
+entry = "main.ospml"
+
+[modules]
+allow_wildcard_imports = false

@@ -1,0 +1,11 @@
+[project]
+name = "lean-roundtrip"
+source_roots = ["src"]
+default_namespace = "roundtrip"
+entry = "main.ospml"
+
+[dependencies]
+"@osprey/lean" = { path = "../lean" }
+
+[modules]
+allow_wildcard_imports = false

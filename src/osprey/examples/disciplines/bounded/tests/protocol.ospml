@@ -117,14 +117,16 @@ module Protocol
             field ("result", JsonString "accepted"),
             field ("signature", JsonString sig),
             field ("erased", JsonObject [field ("flavor", JsonString "ml"), field ("source", JsonString erased)]),
-            field ("diagnostics", JsonArray [])
+            field ("diagnostics", JsonArray []),
+            field ("dependencies", JsonArray [])
         ])
 
     rejected (problems) =
         encoded (JsonObject [
             field ("version", JsonInt 2),
             field ("result", JsonString "rejected"),
-            field ("diagnostics", JsonArray (mapList problems described))
+            field ("diagnostics", JsonArray (mapList problems described)),
+            field ("dependencies", JsonArray [])
         ])
 
     described (problem) = match problem.line == 0

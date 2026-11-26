@@ -9,7 +9,7 @@ module Signature
         Error message => Words::Unsigned ("writeFile: " + message)
         Success _ => compiled request
 
-    modulePath (request) = request.cache + "/bounded-" + stem request.path
+    modulePath (request) = request.cache + "/erased-" + stem request.path
 
     signaturePath (request) = modulePath request + ".signature"
 

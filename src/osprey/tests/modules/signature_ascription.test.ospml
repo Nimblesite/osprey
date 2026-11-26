@@ -23,6 +23,10 @@ signature TreeApi
     module Leaf : LeafApi
     doubled : Unit -> int
 
+signature PickerApi
+    pick<A, B> : (A, B) -> B
+    keep<T> : T -> T
+
 (** An ascribed module's signature is its whole public surface. *)
 module Counters : CounterApi
     type Counter =
@@ -62,6 +66,12 @@ module Trees : TreeApi
         value () = 21
 
     doubled () = (Leaf::value () * 2) 
+
+(** Unannotated implementations take the signature's binders, which stay
+    rigid and are instantiated afresh at every use ([TYPE-GENERICS-FN]). *)
+module Pickers : PickerApi
+    pick (_a, b) = b
+    keep x = x
 
 (** An unascribed module reaches the same surface through plain `export`. *)
 module Extended
@@ -103,11 +113,20 @@ nestedAndExtraCase () = checkAll ("nested ascription and extra exports", [
     structuralEquals [Extended::size (Extended::bump (Extended::empty ())), Extended::seeded ()] [7, 5]
 ])
 
+(** One generic signature item used at several types in one program. *)
+genericCase () = checkAll ("generic signature binders instantiate per use", [
+    Pickers::pick (1, "two") == "two",
+    Pickers::pick ("one", 2) == 2,
+    Pickers::keep (Pickers::keep 9) == 9,
+    Pickers::keep "x" == "x"
+])
+
 exactArithmetic (\() =>
     print "${Counters::size (Counters::bump (Counters::empty ()))} ${Trees::doubled ()} ${Extended::seeded ()}")
 
 exactTests [
     { name = "abstract signature types stay abstract", work = abstractTypeCase },
     { name = "signature effects remain performable", work = signatureEffectCase },
-    { name = "nested ascription and extra exports conform", work = nestedAndExtraCase }
+    { name = "nested ascription and extra exports conform", work = nestedAndExtraCase },
+    { name = "generic signatures instantiate per use", work = genericCase }
 ]

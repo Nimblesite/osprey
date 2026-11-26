@@ -1,0 +1,17 @@
+// osprey: flavor=ml
+// The binders a module signature supplies are rigid too: an unannotated
+// implementation that returns the wrong argument is less general than the
+// signature it is ascribed to. Implements [TYPE-GENERICS-FN] and
+// [MODULES-SIGNATURE].
+
+namespace demo
+
+signature Picker
+    pick<A, B> : (A, B) -> B
+    keep<T> : T -> T
+
+module Choose : Picker
+    pick (a, _b) = a
+    keep x = x
+
+print "${Choose::keep "fine"}"

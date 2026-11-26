@@ -206,6 +206,13 @@ checked in and across a mutually recursive group: every call site, including
 one in an earlier file or a sibling of a recursive cycle, instantiates fresh
 variables. The Default/ML `generic_mutual_recursion` pair pins a two-function
 cycle used at two types in one program.
+A declared binder is rigid: the body must work for every type it stands for.
+A body that fixes a binder to a concrete type (`fn bump<T>(x: T) -> T = x + 1`)
+or merges two binders (`fn pick<A, B>(a: A, b: B) -> B = a`) is less general than its declaration and is rejected with "less general than
+its declared type". The same holds for a binder a module signature supplies
+to an unannotated implementation ([MODULES-SIGNATURE]). Annotated type
+variables are skolems (Peyton Jones, Vytiniotis, Weirich and Shields,
+"Practical type inference for arbitrary-rank types", JFP 2007).
 Variance markers are **not** permitted on function binders (variance is
 declaration-site on types and effects only — [TYPE-VARIANCE-DECL]).
 

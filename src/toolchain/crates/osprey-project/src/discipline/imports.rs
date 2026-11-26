@@ -77,7 +77,7 @@ fn owners(sources: &[SourceFile]) -> HashMap<String, Vec<usize>> {
 }
 
 /// `ns` for every namespace of the file and `ns::Module` for every module.
-fn declared_keys(source: &SourceFile) -> Vec<String> {
+pub(super) fn declared_keys(source: &SourceFile) -> Vec<String> {
     let mut keys = Vec::new();
     for statement in &source.program.statements {
         if let Stmt::Namespace { name, body, .. } = statement {
@@ -98,7 +98,7 @@ fn module_keys(namespace: &NamespaceName, body: &[Stmt]) -> Vec<String> {
 }
 
 /// The `ns` or `ns::Module` keys a file imports, in source order.
-fn import_keys(source: &SourceFile) -> Vec<String> {
+pub(super) fn import_keys(source: &SourceFile) -> Vec<String> {
     let mut keys = Vec::new();
     for statement in &source.program.statements {
         match statement {

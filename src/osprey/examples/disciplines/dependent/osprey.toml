@@ -1,0 +1,11 @@
+[package]
+name = "@osprey/dependent"
+
+# What the compiler reads when a project marks a source
+# `// osprey: types=dependent` ([TYPES-DISCIPLINE-REGISTRY]): the checker is
+# the project under `src/`, built as one program whose entry is
+# `src/main.ospml`. Its tests are the accepted and rejected round trips of
+# `../dependent_roundtrip`, run by `make _test_disciplines`.
+[discipline]
+name = "dependent"
+checker = "src"

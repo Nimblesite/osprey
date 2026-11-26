@@ -1,0 +1,59 @@
+namespace lean
+
+import bounded::Lines
+import bounded::Words
+import proof::Checked
+import proof::Environment
+
+
+(** One cited Lean declaration. *)
+type Citation =
+    line : Words::Line
+    name : string
+    certificate : string
+
+(** A citation line, or one the checker cannot read. *)
+type Read = Cites Citation | Malformed Words::Problem
+
+(** The citations of one `types=leanexport` module, each checked on its own. *)
+module Citations
+    (** The words of a citation line: `uses lean <Name> from <certificate>`. *)
+    opening = "uses lean "
+
+    separator = " from "
+
+    (** The diagnostic code of a certificate the kernel refused. *)
+    codeKernel = "kernel"
+
+    (** The diagnostic code of a citation line the checker cannot read. *)
+    codeSyntax = "syntax"
+
+    (** Every citation's certificate through the kernel: the refusals reject
+        the module, the citation lines erase, and every certificate read is a
+        dependency the compiler's cache watches. *)
+    export judge (request) =
+        readings = mapList (Lines::opening (request.source, opening), readLine)
+        found = gathered (readings, citationOf)
+        Words::Judgement(problems = gathered (readings, \reading => problemOf (request, reading)), erased = mapList (found, \citation => citation.line.number), reads = mapList (found, \citation => citation.certificate))
+
+    readLine (line) = match split (drop (line.text, length opening), separator)
+        Success [name, certificate] => Cites (Citation(line = line, name = trim name, certificate = trim certificate))
+        other => Malformed (Lines::problem (line, codeSyntax, "expected `uses lean <Name> from <certificate>`"))
+
+    citationOf (reading) = match reading
+        Cites citation => [citation]
+        Malformed _ => []
+
+    problemOf (request, reading) = match reading
+        Cites citation => checked (request, citation)
+        Malformed found => [found]
+
+    checked (request, citation) = match readFile (request.root + "/" + citation.certificate)
+        Error message => [Lines::problem (citation.line, codeKernel, "cannot read the certificate `${citation.certificate}`: ${message}")]
+        Success text => verdict (citation, Checked::exportedDeclaring (Environment::empty (), text, citation.name))
+
+    verdict (citation, outcome) = match outcome
+        Success _ => []
+        Error message => [Lines::problem (citation.line, codeKernel, "`${citation.name}` from `${citation.certificate}`: ${message}")]
+
+    gathered (items, each) = foldList (items, [], \(acc, item) => listConcat acc (each item))

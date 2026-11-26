@@ -1,10 +1,10 @@
-# Plan 0041 — Dependent types as a pluggable discipline, and Mathlib on Osprey
+# Plan 0041 — Proof kernel, Lean bridge and Mathlib on Osprey
 
-Contract: [spec 0049](../specs/language/0049-DependentTypesAndProofs.md) · [spec 0050](../specs/language/0050-TypeDisciplines.md) · [spec 0051](../specs/applications/0051-ProofWorkbench.md) · [spec 0052](../specs/applications/0052-WorkbenchLessons.md)
+Contract: [spec 0055](../specs/language/0055-ProofKernelAndLeanBridge.md) · [spec 0049](../specs/language/0049-DependentTypesAndProofs.md) · [spec 0051](../specs/applications/0051-ProofWorkbench.md) · [spec 0052](../specs/applications/0052-WorkbenchLessons.md)
 Depends on: [plan 0042](0042-proof-workbench.md) for the workbench phases (resumes behind this plan).
 
 ## Constraints
-- One proof format, `.lean`: no keyword, marker, header, dialect or second format, and no reader, writer, test or lesson kept for a deleted format.
+- The discipline mechanism and the `dependent` and `leanexport` disciplines are [plan 0061](0061-pluggable-type-disciplines.md). This plan is the kernel they share, the Lean-source `lean4` target and Mathlib; Lean compatibility is never a precondition for another discipline.
 - No timing gates CI. No verdict is reported unless the Lean toolchain or Osprey's front end gave it.
 
 ## Prerequisites in place
@@ -15,14 +15,13 @@ Depends on: [plan 0042](0042-proof-workbench.md) for the workbench phases (resum
 ## Stabilize and close the retained regressions
 - [ ] Freeze the repaired compiler and kernel, then run the complete proof-CI graph `make -j3 _test_proof_ci` from clean inputs; record compiler/checker/source hashes, every root check, every corrupted-proof/false-statement refusal and a fresh independent Lean replay. Acceptance: a receipt under `target/proof/` with all matrices green after the later compiler-conversion/reducer changes.
 
-## Delete the two banned proof formats [PROOF-SOURCE-DELETED]
+## Delete the workbench's English proof format [WORKBENCH-NO-ENGLISH]
 - [x] Deleted every English reader and writer ([WORKBENCH-NO-ENGLISH], 2026-11-24): the statement and step readers, the formula reader's sentence spellings, `emit`, `review`, `goalview`, the draft editor, workspace files, `tests/golden/` and the English lesson challenges; suite 78/78 under GC and ARC.
-- [ ] **On hold ([WORKBENCH-DELETED-HOLD]): do not hard delete the notation-only remainder; consider an Osprey mathematics format first.** Delete `src/osprey/workbench/src/{formula,statement,step,goals,emit,kernel}.ospml` and the step-elaborating half of `verdict.ospml`, their tests, `src/osprey/workbench/tests/golden/`, and every fixture holding English steps or `// osprey: types=lean4`. Acceptance: `make ci` green with `src/osprey/workbench` still at its coverage floor.
-- [ ] Delete `src/osprey/examples/proof/kernel/src/surface.ospml` and its tests (`id_imp_typed`, `imp_trans`, `forall_typed`, `wrong_typed`), and remove those M2 `checked:`/`rejected:` lines from `src/osprey/examples/proof/kernel/expectedoutput` (the entry `src/osprey/examples/proof/kernel/src/main.ospml` still imports `proof::Surface`).
+- [ ] **On hold ([WORKBENCH-DELETED-HOLD]): do not hard delete the notation-only remainder; consider an Osprey mathematics format first.** Delete `src/osprey/workbench/src/{formula,statement,step,goals,emit,kernel}.ospml` and the step-elaborating half of `verdict.ospml`, their tests, `src/osprey/workbench/tests/golden/`, and every fixture holding English steps. Acceptance: `make ci` green with `src/osprey/workbench` still at its coverage floor.
 - [x] Rewrite `src/osprey/workbench/lessons/*.json` to drop the old-notation `statement`, `given`, `solution`, `steps`, `expected` and `formula` blocks (phase 3 below ships the `.lean`+`.json` form).
 - [ ] Delete `src/toolchain/benchmarks/proof/m0_identity`, and remove the speed gate from `src/toolchain/benchmarks/proof/run.sh`, `scripts/make/proof.mk` (the `zsh src/toolchain/benchmarks/proof/run.sh` step of `_test_proof_ci`) and `.github/workflows/ci.yml` (the `test-proof` job); drop the ordering requirement in `src/toolchain/benchmarks/proof/README.md`. Reports keep numbers only.
-- [ ] Remove every mention of the deleted formats in `src/osprey/workbench/README.md`, `docs/designs/proof-workbench/` and AGENTS.md Commands (the formula-generation spec is done: [MATH-CODE-DELETED](../specs/tooling/MathToCode.md)).
-- [ ] Add a grep gate to `make ci` that fails on `types=lean4`, `Assume h`, `By cases on`, `It suffices to show`, `by imported`, `prove port` anywhere outside git history, this plan and the deletion notices of specs 0049 and 0051. Acceptance: the gate exists and `make ci` is green with it.
+- [ ] Remove every mention of the deleted English format in `src/osprey/workbench/README.md`, `docs/designs/proof-workbench/` and AGENTS.md Commands (the formula-generation spec is done: [MATH-CODE-DELETED](../specs/tooling/MathToCode.md)).
+- [ ] Add a grep gate to `make ci` that fails on `Assume h`, `By cases on`, `It suffices to show` anywhere outside git history, this plan and the deletion notice of spec 0051. Acceptance: the gate exists and `make ci` is green with it.
 
 ## Completion milestones [PROOF-COMPLETION]
 
@@ -36,12 +35,7 @@ Depends on: [plan 0042](0042-proof-workbench.md) for the workbench phases (resum
 - [ ] Seed `tests/proof/adversarial/` (does not exist) with the pinned issue-14576 wrong-structure projection proof of `False`, a hash-collision test and an overflow test ([PROOF-TRUST-LESSONS]); record the primary report and affected/fixed checker revision for each.
 
 ### Milestone 2: replace and fork disciplines safely [PROOF-COMPLETION-DISCIPLINES]
-- [ ] Finish the generic seam obligations: render exported types and values in an inferred `hm` signature instead of `omitted[]` (`src/toolchain/crates/osprey-project/src/discipline/imports.rs`, `omitted_of`), keep byte-identical output and diagnostics for every markerless program, and unchanged ordinary-program/`hm` benchmark behaviour. Keep discipline names, logical rules, tactics and theory decisions outside `src/toolchain/crates/` ([TYPES-DISCIPLINE-NO-HARM]).
-- [ ] Identify a checked artifact by discipline package/version, checker binary, logical-rule revision, axiom policy, imported signature identities and source hashes; include those identities in proof receipts, environments, caches, saved projects and package locks; a dependency or theory change invalidates affected downstream results.
-- [ ] Demonstrate project/module selection, replacement and side-by-side use of independently named discipline packages through the existing registry and protocol; changing selection triggers a rebuild and fresh validation (a Checked result cannot survive a relabelled marker or cache).
-- [ ] Maintain the compatible discipline as a reference profile; demonstrate one fork restricting an axiom policy and one independently implemented non-Lean discipline built on `bounded` and the refinement checker; share theory-neutral infrastructure; keep the `src/toolchain/crates/` purity contract green with both packages installed.
-- [ ] Separate three repair paths: a checker implementation fix preserves rules but replays affected certificates; withdrawing/changing axioms creates a new policy and rejects dependent proofs; changing inference/equality rules creates a distinct theory profile with its own specification and fixtures. Retain the parent revision and a machine-readable migration/recheck report.
-- [ ] Pin an unsound-certificate regression before each repair, including the [wrong-structure projection case](https://github.com/leanprover/lean4/issues/14576). For the restricted-axiom fork, use the concrete controls: removing `Quot.sound` must refuse `OAI.PrefixFlows.Interspersed.push_inj` while the axiom-free `Nat.add_comm` still checks. Test cross-profile cache reuse, same-name theorem substitution and stale Workbench verdicts as rejections.
+Moved to [plan 0061](0061-pluggable-type-disciplines.md#open).
 
 ### Milestone 3: author proofs from `.lean` source [PROOF-COMPLETION-FRONTEND]
 - [ ] Stage 1 ([PROOF-SOURCE-STAGES]): add `osprey prove check <file.lean | Lake project>` — locate the pinned toolchain, run `lake build`/`lean`, run the pinned `lean4export` on the built module, check the export with the kernel, print Lean's diagnostics verbatim, exit 0 only when both accept; document the exact command/output in AGENTS.md Commands. Add the `Lean` host capability in `@osprey/native` (`LeanCheck`, `LeanGoals`) over Lean's language server with revision tickets, and `src/osprey/workbench/src/document.ospml`/`lean.ospml`/`verdict.ospml` per spec 0051. Acceptance: Lean's own `tests/lean` at v4.25.0, every file in `src/toolchain/benchmarks/proof/tools/` and `src/osprey/examples/proof/openai/` give the same accept/reject verdict and first error.

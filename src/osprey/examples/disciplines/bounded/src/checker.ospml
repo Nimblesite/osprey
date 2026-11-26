@@ -13,10 +13,17 @@ module Checker
     (** The checker itself could not answer. *)
     codeInternal = "internal"
 
+    (** The `bounded` checker: `serve` with interval arithmetic as the judge. *)
+    export run () = serve inspect
+
     (** Answer the one request line [TYPES-DISCIPLINE-PROTOCOL] writes to
-        standard input. With no line at all — somebody running the built
-        checker by hand — the program prints nothing and exits cleanly. *)
-    export run () =
+        standard input with `judge`'s verdict on the decoded request: its
+        problems reject the module, or the lines it names are erased and the
+        rest goes to the compiler for the export signature. Any discipline
+        whose erasure drops whole lines reuses this protocol through it. With
+        no line at all — somebody running the built checker by hand — the
+        program prints nothing and exits cleanly. *)
+    export serve (judge) =
         handle Arith
             overflow _ _ _ wrapped => wrapped
             divideByZero _ _ => 0.0
@@ -24,13 +31,17 @@ module Checker
         line = input ()
         match isEmpty line
             true => nothing ()
-            false => print (answer line)
+            false => print (answer (line, judge))
 
     nothing () = cleanupProcess 0
 
-    answer (line) = match decoded line
-        Words::Parsed request => inspect request
+    answer (line, judge) = match decoded line
+        Words::Parsed request => replied (request, judge request)
         Words::NotRequest => Replies::failure (protocolVersion, codeInternal, "the request line is not one JSON object of the checker protocol")
+
+    replied (request, judgement) = match judgement.problems
+        [] => accept (request, judgement)
+        problems => Replies::rejected (request.version, problems, judgement.reads)
 
     decoded (line) = match jsonDecode line
         Error _ => Words::NotRequest
@@ -42,22 +53,20 @@ module Checker
         cache = textIn (document, "options", "cache_dir")
         compiler = textIn (document, "options", "compiler")
         match version > 0 && !isEmpty source && !isEmpty cache && !isEmpty compiler
-            true => Words::Parsed (Words::Request(version = version, path = textIn (document, "module", "path"), source = source, cache = cache, compiler = compiler))
+            true => Words::Parsed (Words::Request(version = version, root = textIn (document, "options", "project_root"), path = textIn (document, "module", "path"), source = source, cache = cache, compiler = compiler))
             false => Words::NotRequest
 
     textIn (document, section, key) = jsonText (field (field (document, section), key)) ?: ""
 
     field (json, name) = jsonField (json, name) ?: JsonNull
 
+    (** Every call site against its bounds; the annotation lines erase. *)
     inspect (request) =
         readings = Annotations::collect request.source
-        problems = Calls::violations (readings.definitions, request.source)
-        match problems
-            [] => accept (request, readings)
-            _ => Replies::rejected (request.version, problems)
+        Words::Judgement(problems = Calls::violations (readings.definitions, request.source), erased = readings.annotations, reads = [])
 
-    accept (request, readings) =
-        erased = Erasure::of (request.source, readings.annotations)
+    accept (request, judgement) =
+        erased = Erasure::of (request.source, judgement.erased)
         match Signature::of (request, erased)
-            Words::Signed sig => Replies::accepted (request.version, sig, erased)
+            Words::Signed sig => Replies::accepted (request.version, sig, erased, judgement.reads)
             Words::Unsigned message => Replies::failure (request.version, codeCheck, "the erased module did not pass the compiler: " + message)

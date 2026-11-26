@@ -1,6 +1,7 @@
 //! Result cache of [TYPES-DISCIPLINE-PROTOCOL]: a response is kept under the
-//! hash of its request and the checker binary that answered it, so only an
-//! unchanged module handed to an unchanged binary is answered from disk.
+//! hash of its request and the checker binary that answered it, beside the
+//! digests of the files it says it read, so only an unchanged module handed
+//! to an unchanged binary over unchanged dependencies is answered from disk.
 
 use super::protocol::{Request, Response};
 use super::{CheckerRunner, Discipline};
@@ -27,7 +28,8 @@ pub(super) fn run_cached(
     let line = request.to_line()?;
     let binary = runner.binary_digest(discipline)?;
     let entry = entry_path(config, discipline, &line, binary);
-    if let Some(response) = cached(&entry) {
+    let root = &config.directory;
+    if let Some(response) = cached(&entry).filter(|hit| fresh(&entry, root, hit)) {
         return remaining(discipline, started).map(|_left| response);
     }
     let answer = runner.run(&budgeted(discipline, started)?, &line)?;
@@ -35,7 +37,36 @@ pub(super) fn run_cached(
     // The checker can exit a poll after the deadline: a late answer is not one.
     let _left = remaining(discipline, started)?;
     store(&entry, &answer);
+    store(
+        &dependencies_path(&entry),
+        &dependency_digests(root, &response.dependencies),
+    );
     Ok(response)
+}
+
+/// Whether every file a cached answer depended on still has the digest it
+/// had when the answer was written.
+fn fresh(entry: &Path, root: &Path, hit: &Response) -> bool {
+    std::fs::read_to_string(dependencies_path(entry))
+        .is_ok_and(|recorded| recorded == dependency_digests(root, &hit.dependencies))
+}
+
+fn dependencies_path(entry: &Path) -> PathBuf {
+    entry.with_extension("dependencies")
+}
+
+/// One `path digest` line per dependency; an unreadable file is `missing`,
+/// so a file that appears or vanishes invalidates the answer too.
+fn dependency_digests(root: &Path, dependencies: &[String]) -> String {
+    use std::fmt::Write as _;
+    dependencies.iter().fold(String::new(), |mut lines, path| {
+        let state = std::fs::read(root.join(path)).map_or_else(
+            |_| "missing".to_string(),
+            |bytes| format!("{:016x}", digest(&bytes)),
+        );
+        let _ = writeln!(lines, "{path} {state}");
+        lines
+    })
 }
 
 /// The discipline as the checker sees it: only what is left of its limit.

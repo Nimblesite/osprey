@@ -77,6 +77,7 @@ module Words
     (** One request line of the checker protocol, decoded. *)
     export type Request =
         version : int
+        root : string
         path : string
         source : string
         cache : string
@@ -84,6 +85,15 @@ module Words
 
     (** A decoded request, or a line that is not one. *)
     export type Decoded = Parsed Request | NotRequest
+
+    (** A discipline's verdict on one module: the problems that reject it
+        (none accepts it), the line numbers its erasure drops, and the files
+        outside the request it read to decide, relative to the project root,
+        which the compiler's cache watches. *)
+    export type Judgement =
+        problems : List<Problem>
+        erased : List<int>
+        reads : List<string>
 
     (** The compiler's answer, or its refusal, for the erased module. *)
     export type Outcome = Signed string | Unsigned string
