@@ -1,6 +1,6 @@
 # Osprey design system
 
-Osprey looks safe, elegant and fast: a midnight canvas, luminous cyan, precise type, and room to think. This applies to the website, diagrams, video, captions, and posters. Start every brief with [the messaging guide](../../../docs/messaging.md): show a need, choose a handler, show the result.
+Osprey looks safe, elegant and fast: a midnight canvas, luminous cyan, precise type, and room to think. This applies to the website, diagrams, video, captions, and posters. Start every brief with [the messaging guide](../../../docs/messaging/osprey.md): show a need, choose a handler, show the result.
 
 ## Source of truth
 
@@ -48,4 +48,4 @@ Narration explains what the viewer sees in concrete language. Use the TikTok fac
 
 ## Review
 
-Read [messaging](../../../docs/messaging.md) before writing a frame. Check every code excerpt against its source and every claim against demonstrated behavior. Inspect the poster and representative frames; watch the encoded film with sound. Check the homepage at desktop and phone widths, automatic bird playback, offscreen pause/resume, reduced motion, captions, keyboard focus, and overflow. Build and run the website tests before handoff.
+Read [messaging](../../../docs/messaging/osprey.md) before writing a frame. Check every code excerpt against its source and every claim against demonstrated behavior. Inspect the poster and representative frames; watch the encoded film with sound. Check the homepage at desktop and phone widths, automatic bird playback, offscreen pause/resume, reduced motion, captions, keyboard focus, and overflow. Build and run the website tests before handoff.

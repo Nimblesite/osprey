@@ -1,0 +1,470 @@
+/* Signature Osprey Native components: Hero, Dual-Engine, Tabs, Tables, A11y Explorer, Gallery */
+
+/* Buttons & Badges */
+.btn-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-block: var(--space-3);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  min-block-size: 2.75rem;
+  padding: 0.6rem 1.2rem;
+  border-radius: var(--radius-sm);
+  border: 1.5px solid transparent;
+  font-weight: 650;
+  font-size: 0.96rem;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.btn-primary {
+  background-color: var(--accent-canvas);
+  color: var(--on-accent);
+  border-color: var(--accent-canvas);
+}
+
+.btn-secondary {
+  background-color: var(--surface-raised);
+  color: var(--ink);
+  border-color: var(--border-strong);
+}
+
+.btn-secondary:hover {
+  border-color: var(--accent-native);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.22rem 0.65rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 600;
+  inline-size: fit-content;
+}
+
+.badge-canvas {
+  background-color: var(--tint-canvas);
+  color: var(--accent-canvas);
+  border-color: var(--accent-canvas);
+}
+
+.badge-native {
+  background-color: var(--tint-native);
+  color: var(--accent-native);
+  border-color: var(--accent-native);
+}
+
+.badge-verified {
+  background-color: var(--tint-verified);
+  color: var(--accent-verified);
+  border-color: var(--accent-verified);
+}
+
+/* Hero & Platform Strip */
+.hero-grid {
+  display: grid;
+  gap: var(--space-5);
+  align-items: start;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.95fr);
+}
+
+@media (max-width: 58rem) {
+  .hero-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.platform-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  list-style: none;
+  margin: var(--space-3) 0 0;
+  padding: 0;
+}
+
+.platform-chip {
+  padding: 0.3rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background-color: var(--surface-raised);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* Hero Architectural Blueprint Card */
+.blueprint-card {
+  background-color: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  display: grid;
+  gap: var(--space-2);
+}
+
+.blueprint-lanes {
+  display: grid;
+  gap: var(--space-2);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 34rem) {
+  .blueprint-lanes {
+    grid-template-columns: 1fr;
+  }
+}
+
+.blueprint-lane {
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background-color: var(--surface-inset);
+}
+
+.blueprint-lane-native {
+  border-inline-start: 3px solid var(--accent-native);
+}
+
+.blueprint-lane-canvas {
+  border-inline-start: 3px solid var(--accent-canvas);
+}
+
+.blueprint-lane h3 {
+  margin: 0.35rem 0 0.25rem;
+  font-size: 0.95rem;
+}
+
+.blueprint-lane p {
+  margin: 0;
+  font-size: 0.86rem;
+  color: var(--ink-muted);
+}
+
+.bridge-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
+  gap: 0.5rem;
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  background-color: var(--surface-inset);
+  border: 1px dashed var(--border-strong);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+}
+
+.bridge-cell strong {
+  display: block;
+  color: var(--ink);
+}
+
+.bridge-cell span {
+  color: var(--ink-muted);
+}
+
+/* Accessible Tabs (focusgroup="tablist nomemory" + hidden="until-found") */
+.tabs-shell {
+  margin-block-start: var(--space-3);
+}
+
+.tablist {
+  display: flex;
+  overflow-x: auto;
+  gap: 0.25rem;
+  border-block-end: 1px solid var(--border);
+  scroll-snap-type: inline proximity;
+}
+
+.tab-btn {
+  position: relative;
+  flex: none;
+  scroll-snap-align: start;
+  min-block-size: 2.75rem;
+  padding: 0.6rem 1rem;
+  border: 0;
+  background: transparent;
+  color: var(--ink-muted);
+  font-family: var(--font-mono);
+  font-size: 0.86rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tab-btn:hover {
+  color: var(--ink);
+}
+
+/* Border-based underline on ::after so Forced Colors Mode preserves the active indicator */
+.tab-btn[aria-selected="true"] {
+  color: var(--accent-canvas);
+}
+
+.tab-btn[aria-selected="true"]::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0;
+  border-block-end: 3px solid var(--accent-canvas);
+}
+
+/* Place all panels in the same grid cell; style only the inner wrapper so hidden="until-found" never leaks empty strips */
+.tabpanels-stack {
+  display: grid;
+}
+
+.tabpanels-stack > [role="tabpanel"] {
+  grid-area: 1 / 1;
+  min-inline-size: 0;
+}
+
+.tabpanel-inner {
+  min-inline-size: 0;
+  padding-block-start: var(--space-3);
+  display: grid;
+  gap: var(--space-2);
+}
+
+/* Interactive Accessibility Tree & @osprey/uitest Explorer */
+.a11y-explorer {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+  margin-block-start: var(--space-3);
+}
+
+@media (max-width: 54rem) {
+  .a11y-explorer {
+    grid-template-columns: 1fr;
+  }
+}
+
+.a11y-tree-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.a11y-node-btn {
+  inline-size: 100%;
+  min-block-size: 2.75rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.65rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background-color: var(--surface-raised);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.92rem;
+  text-align: start;
+  cursor: pointer;
+}
+
+.a11y-node-btn[aria-pressed="true"] {
+  border-color: var(--accent-verified);
+  border-inline-start: 4px solid var(--accent-verified);
+  background-color: var(--tint-verified);
+}
+
+.a11y-role-tag {
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  color: var(--accent-verified);
+  font-weight: 600;
+}
+
+.a11y-output-meta {
+  display: grid;
+  gap: 0.4rem;
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  background-color: var(--surface-inset);
+  border: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 0.84rem;
+  overflow-wrap: anywhere;
+}
+
+/* Responsive Comparison Table (@container stacked cards + sticky headers) */
+.table-wrapper {
+  margin-block-start: var(--space-3);
+  overflow: auto;
+  max-inline-size: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background-color: var(--surface-raised);
+  container-type: inline-size;
+}
+
+.compare-table {
+  inline-size: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.92rem;
+  text-align: start;
+  --col-2: "Osprey Native";
+  --col-3: "Compose Multiplatform (CMP)";
+  --col-4: "Flutter";
+  --col-5: "React Native";
+}
+
+.compare-table caption {
+  padding: var(--space-2) var(--space-3);
+  text-align: start;
+  font-weight: 700;
+  color: var(--ink);
+  border-block-end: 1px solid var(--border);
+  background-color: var(--surface-inset);
+}
+
+.compare-table th,
+.compare-table td {
+  padding: 0.85rem 1rem;
+  border-block-end: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.compare-table thead {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 2;
+  background-color: var(--surface-inset);
+}
+
+.compare-table thead th {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  color: var(--ink);
+}
+
+.compare-table thead th.col-osprey,
+.compare-table tbody td.col-osprey {
+  background-color: var(--tint-canvas);
+}
+
+.compare-table tbody th {
+  position: sticky;
+  inset-inline-start: 0;
+  z-index: 1;
+  background-color: var(--surface-raised);
+  font-weight: 700;
+  color: var(--ink);
+  min-inline-size: 10rem;
+}
+
+@container (width < 640px) {
+  .compare-table,
+  .compare-table thead,
+  .compare-table tbody,
+  .compare-table tr,
+  .compare-table th,
+  .compare-table td {
+    display: block;
+  }
+
+  .compare-table thead {
+    display: none;
+  }
+
+  .compare-table tbody tr {
+    margin: var(--space-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+  }
+
+  .compare-table tbody th {
+    position: sticky;
+    inset-block-start: 0;
+    z-index: 2;
+    background-color: var(--surface-inset);
+    border-block-end: 1px solid var(--border);
+  }
+
+  .compare-table td:nth-child(2)::before {
+    content: var(--col-2) ": ";
+    font-weight: 700;
+    color: var(--accent-canvas);
+  }
+
+  .compare-table td:nth-child(3)::before {
+    content: var(--col-3) ": ";
+    font-weight: 700;
+    color: var(--ink);
+  }
+
+  .compare-table td:nth-child(4)::before {
+    content: var(--col-4) ": ";
+    font-weight: 700;
+    color: var(--ink);
+  }
+
+  .compare-table td:nth-child(5)::before {
+    content: var(--col-5) ": ";
+    font-weight: 700;
+    color: var(--ink);
+  }
+}
+
+/* Platform Showcase Gallery */
+.gallery-grid {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 19rem), 1fr));
+  margin-block-start: var(--space-3);
+}
+
+.capture-figure {
+  margin: 0;
+  background-color: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.capture-media {
+  background-color: var(--surface-inset);
+  aspect-ratio: 16 / 10;
+  display: grid;
+  place-items: center;
+  padding: 0.75rem;
+  overflow: hidden;
+}
+
+.capture-media img {
+  max-block-size: 100%;
+  inline-size: auto;
+  max-inline-size: 100%;
+  object-fit: contain;
+  border-radius: 4px;
+}
+
+.capture-figure figcaption {
+  padding: var(--space-2);
+  border-block-start: 1px solid var(--border);
+  font-size: 0.88rem;
+  color: var(--ink-muted);
+}
+
+.capture-figure figcaption strong {
+  display: block;
+  color: var(--ink);
+  margin-block-end: 0.2rem;
+}

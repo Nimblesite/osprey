@@ -77,7 +77,7 @@ Three phases, each once — ❌ mixing them:
 ## Documentation
 - **Spec IDs:** hierarchical slugs (`[GROUP-TOPIC-DETAIL]`), ❌ numbers; cite in code (`// Implements [PARSER-EFFECTS-HANDLE]`) and tests. On disagreement, fix the stale source
 - Prose wraps naturally. ❌ ASCII art: [typeDiagram](https://typediagram.dev/docs/language-reference.html) for data types, mermaid otherwise
-- Read [`docs/messaging.md`](docs/messaging.md) before touching user-facing text
+- Read [`docs/messaging/osprey.md`](docs/messaging/osprey.md) (and [`docs/messaging/osprey-native.md`](docs/messaging/osprey-native.md) for Osprey Native) before touching user-facing text
 - Given any page, ask the question "what concept am I explaining to the user?". Then ask, "does this clearly introduce the concept and then give examples, videos and screenshots of how to implement the concept?". If not correct it.
 
 ## Commands

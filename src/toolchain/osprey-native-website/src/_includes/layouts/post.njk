@@ -1,0 +1,35 @@
+---
+layout: layouts/base.njk
+---
+<article class="prose-section">
+  <div class="site-container prose-article">
+    <p class="prose-eyebrow">{{ category or "Engineering" }}</p>
+    <h1 id="main-content" tabindex="-1" class="prose-h1">{{ title }}</h1>
+    <p class="prose-meta">
+      <time datetime="{{ page.date | isoDate }}">{{ page.date | readableDate }}</time>
+      {% if readingTime %} &middot; {{ readingTime }} min read{% endif %}
+      {% if author %} &middot; {{ author }}{% endif %}
+    </p>
+    {% if image %}
+    <figure class="capture-figure post-hero-figure">
+      <div class="capture-media">
+        <img src="{{ image }}" alt="{{ imageAlt or title }}" width="{{ imageWidth or 1200 }}" height="{{ imageHeight or 750 }}">
+      </div>
+      {% if imageCaption %}
+      <figcaption>{{ imageCaption }}</figcaption>
+      {% endif %}
+    </figure>
+    {% endif %}
+
+    <div class="prose-article-body">
+      {{ content | safe }}
+    </div>
+
+    <div class="prose-callout">
+      <p>
+        <strong>Osprey Native is actively evolving.</strong> Try it on your projects, validate it against your workload,
+        and assess the risks before relying on it in production. <a href="/blog/">Back to all posts &rarr;</a>
+      </p>
+    </div>
+  </div>
+</article>

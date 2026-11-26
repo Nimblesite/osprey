@@ -257,7 +257,7 @@ test("the homepage presents Osprey Native in one panel with the showcase film an
   }
   await native.getByRole("link", { name: "Explore Osprey Native" }).click();
   await expect(page).toHaveURL(/\/docs\/osprey-native\/$/);
-  const messaging = fs.readFileSync(path.resolve(__dirname, "../../../../docs/messaging.md"), "utf8");
+  const messaging = fs.readFileSync(path.resolve(__dirname, "../../../../docs/messaging/osprey.md"), "utf8");
   expect(messaging).toContain("## Osprey Native");
   for (const rival of ["Flutter", "React Native", "Compose Multiplatform"]) expect(messaging).toContain(rival);
 });

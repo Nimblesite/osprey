@@ -1,0 +1,137 @@
+/* Osprey Native Design System — "Drafting Studio" Tokens
+ * Implements light/dark support via color-scheme + light-dark() with
+ * prefers-color-scheme fallback and Forced Colors Mode overrides.
+ */
+
+:root {
+  color-scheme: light dark;
+
+  /* Raw palette — Light (Architectural Alabaster) */
+  --surface-light: #f7f5f0;
+  --surface-raised-light: #ffffff;
+  --surface-inset-light: #edeae2;
+  --ink-light: #14171d;
+  --ink-muted-light: #4a5260;
+  --border-light: #c8c4b8;
+  --border-strong-light: #6e7580;
+  --accent-canvas-light: #b83915;
+  --accent-native-light: #184fb8;
+  --accent-verified-light: #0d6e4b;
+  --on-accent-light: #ffffff;
+  --tint-canvas-light: #fbeae4;
+  --tint-native-light: #e6effd;
+  --tint-verified-light: #e3f5ee;
+
+  /* Raw palette — Dark (Carbon Graphite Studio) */
+  --surface-dark: #111317;
+  --surface-raised-dark: #181c22;
+  --surface-inset-dark: #0b0d10;
+  --ink-dark: #f2f4f7;
+  --ink-muted-dark: #a8b0be;
+  --border-dark: #343b46;
+  --border-strong-dark: #808998;
+  --accent-canvas-dark: #ff7a4d;
+  --accent-native-dark: #6ea8fe;
+  --accent-verified-dark: #3dd69d;
+  --on-accent-dark: #111317;
+  --tint-canvas-dark: #341b14;
+  --tint-native-dark: #14243d;
+  --tint-verified-dark: #112e24;
+
+  /* Default (light) semantic tokens — fallback for browsers without light-dark() */
+  --surface: var(--surface-light);
+  --surface-raised: var(--surface-raised-light);
+  --surface-inset: var(--surface-inset-light);
+  --ink: var(--ink-light);
+  --ink-muted: var(--ink-muted-light);
+  --border: var(--border-light);
+  --border-strong: var(--border-strong-light);
+  --accent-canvas: var(--accent-canvas-light);
+  --accent-native: var(--accent-native-light);
+  --accent-verified: var(--accent-verified-light);
+  --on-accent: var(--on-accent-light);
+  --tint-canvas: var(--tint-canvas-light);
+  --tint-native: var(--tint-native-light);
+  --tint-verified: var(--tint-verified-light);
+
+  @media (prefers-color-scheme: dark) {
+    --surface: var(--surface-dark);
+    --surface-raised: var(--surface-raised-dark);
+    --surface-inset: var(--surface-inset-dark);
+    --ink: var(--ink-dark);
+    --ink-muted: var(--ink-muted-dark);
+    --border: var(--border-dark);
+    --border-strong: var(--border-strong-dark);
+    --accent-canvas: var(--accent-canvas-dark);
+    --accent-native: var(--accent-native-dark);
+    --accent-verified: var(--accent-verified-dark);
+    --on-accent: var(--on-accent-dark);
+    --tint-canvas: var(--tint-canvas-dark);
+    --tint-native: var(--tint-native-dark);
+    --tint-verified: var(--tint-verified-dark);
+  }
+
+  @supports (color: light-dark(white, black)) {
+    --surface: light-dark(var(--surface-light), var(--surface-dark));
+    --surface-raised: light-dark(var(--surface-raised-light), var(--surface-raised-dark));
+    --surface-inset: light-dark(var(--surface-inset-light), var(--surface-inset-dark));
+    --ink: light-dark(var(--ink-light), var(--ink-dark));
+    --ink-muted: light-dark(var(--ink-muted-light), var(--ink-muted-dark));
+    --border: light-dark(var(--border-light), var(--border-dark));
+    --border-strong: light-dark(var(--border-strong-light), var(--border-strong-dark));
+    --accent-canvas: light-dark(var(--accent-canvas-light), var(--accent-canvas-dark));
+    --accent-native: light-dark(var(--accent-native-light), var(--accent-native-dark));
+    --accent-verified: light-dark(var(--accent-verified-light), var(--accent-verified-dark));
+    --on-accent: light-dark(var(--on-accent-light), var(--on-accent-dark));
+    --tint-canvas: light-dark(var(--tint-canvas-light), var(--tint-canvas-dark));
+    --tint-native: light-dark(var(--tint-native-light), var(--tint-native-dark));
+    --tint-verified: light-dark(var(--tint-verified-light), var(--tint-verified-dark));
+  }
+
+  /* Typography */
+  --font-sans: "Instrument Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* 8px rhythm scale */
+  --space-1: 0.5rem;
+  --space-2: 1rem;
+  --space-3: 1.5rem;
+  --space-4: 2rem;
+  --space-5: 2.5rem;
+  --space-6: 3rem;
+  --space-8: 4rem;
+  --space-10: 5rem;
+
+  /* Layout and radii */
+  --container-max: 77.5rem;
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --radius-pill: 999px;
+
+  accent-color: var(--accent-canvas);
+}
+
+/* Explicit user theme override via data-theme */
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+@media (forced-colors: active) {
+  :root {
+    --surface: Canvas;
+    --surface-raised: Canvas;
+    --surface-inset: Canvas;
+    --ink: CanvasText;
+    --ink-muted: CanvasText;
+    --border: ButtonBorder;
+    --border-strong: ButtonBorder;
+    --accent-canvas: Highlight;
+    --accent-native: LinkText;
+    --accent-verified: Highlight;
+    --on-accent: HighlightText;
+  }
+}

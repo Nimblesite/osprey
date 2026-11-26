@@ -1,6 +1,6 @@
 # Writing about Osprey
 
-This brief governs every word about Osprey: the homepage, README, videos, docs, talks and posts. Pair it with the [design system](../src/toolchain/website/design_system.md).
+This brief governs every word about Osprey: the homepage, README, videos, docs, talks and posts. Pair it with the [design system](../../src/toolchain/website/design_system.md).
 
 ## The answer
 
@@ -84,7 +84,7 @@ A short intro needs point 1, proof and one next step: the playground, an example
 - Value operations return to their callers. Declared `control` operations may resume or answer directly; resumption restores the handled scope.
 - Static handler selection removes runtime effect dispatch, not every call or allocation. Never say "zero-cost".
 - Compare other languages through specific semantics and executed examples. No claims of completeness, unmeasured speed, or replacing Swift, Python or Rust: Osprey hosts and interoperates with platform code.
-- A specification is not proof of implementation. The [effects spec](specs/language/0017-AlgebraicEffects.md) defines semantics, [plan 0016](plans/0016-algebraic-effects-and-handlers.md) records limits, and the [handler examples](../src/osprey/examples/handlers/README.md), [bank](../src/osprey/examples/talon/README.md) and [mobile apps](../src/osprey/examples/mobile/README.md) demonstrate them.
+- A specification is not proof of implementation. The [effects spec](../specs/language/0017-AlgebraicEffects.md) defines semantics, [plan 0016](../plans/0016-algebraic-effects-and-handlers.md) records limits, and the [handler examples](../../src/osprey/examples/handlers/README.md), [bank](../../src/osprey/examples/talon/README.md) and [mobile apps](../../src/osprey/examples/mobile/README.md) demonstrate them.
 
 ## Banned
 
@@ -96,14 +96,14 @@ A short intro needs point 1, proof and one next step: the playground, an example
 
 ## Qualifications to preserve
 
-- **Effects:** multi-shot (`many`) continuations run on every target, WebAssembly included, with identical output. This is an invariant ([MULTI-WASM-MANY](specs/language/0017-AlgebraicEffects.md)): never write that WebAssembly lacks them. A `once` continuation outside a `many` region is deep, single-shot and native only; WebAssembly and mobile C ABI targets reject that one capability before linking, and support value effects, static discharge and `many` regions. Owned escaping resumptions and full scoped row polymorphism are plan 0016 work.
-- **Arithmetic:** integer arithmetic follows explicit `Arith` policies called by the host runtime; device-kernel faults abort instead of calling a recovering policy, so qualify no-trap claims. Formulas generated from Lean keep IEEE float division. `checkedAdd`, `checkedSub` and `checkedMul` return `Result`. See [arithmetic effects](specs/language/0037-ArithmeticEffects.md).
+- **Effects:** multi-shot (`many`) continuations run on every target, WebAssembly included, with identical output. This is an invariant ([MULTI-WASM-MANY](../specs/language/0017-AlgebraicEffects.md)): never write that WebAssembly lacks them. A `once` continuation outside a `many` region is deep, single-shot and native only; WebAssembly and mobile C ABI targets reject that one capability before linking, and support value effects, static discharge and `many` regions. Owned escaping resumptions and full scoped row polymorphism are plan 0016 work.
+- **Arithmetic:** integer arithmetic follows explicit `Arith` policies called by the host runtime; device-kernel faults abort instead of calling a recovering policy, so qualify no-trap claims. Formulas generated from Lean keep IEEE float division. `checkedAdd`, `checkedSub` and `checkedMul` return `Result`. See [arithmetic effects](../specs/language/0037-ArithmeticEffects.md).
 - **Memory:** native builds default to tracing GC; ARC is the alternative, and Windows native users must select ARC. Explain the GC tradeoff concretely: no reference-count updates, but delayed reclamation and collection pauses. Neither needs ownership annotations, and neither is universally faster. Compile-time ownership rejects transfers the compiler cannot prove. Tail-call optimization remains planned.
-- **Mobile ABI:** mobile C ABI targets default to ARC. [Host ABI version 1](specs/compiler/iOSCodegen.md#calling-the-host-ios-host-imports) copies host-import strings into Osprey memory; hosts copy exported text, then call `osprey_release_string` exactly once and never libc `free`. Platform networking belongs to the native host.
-- **Packages:** the folder registry, publication, resolution, verified fetching and locked builds run today (plan 0020). The hosted package site, authenticated public publishing and trust services are planned. See the [package guide](../src/toolchain/website/src/docs/package-manager.md).
-- **GPU:** vendor-neutral Metal and OpenCL with software binary64; CUDA interop is separate. Buffers stay on the device; tokenization, loading and readback stay on the host; kernels are not fused. Device transcendentals can differ from host libm in the last digit. Never claim automatic offloading, universal acceleration or bit-for-bit transcendental parity. Shared tensor storage over the Python bridge is planned. See the [GPU contract](specs/runtime/0034-GPUComputation.md).
+- **Mobile ABI:** mobile C ABI targets default to ARC. [Host ABI version 1](../specs/compiler/iOSCodegen.md#calling-the-host-ios-host-imports) copies host-import strings into Osprey memory; hosts copy exported text, then call `osprey_release_string` exactly once and never libc `free`. Platform networking belongs to the native host.
+- **Packages:** the folder registry, publication, resolution, verified fetching and locked builds run today (plan 0020). The hosted package site, authenticated public publishing and trust services are planned. See the [package guide](../../src/toolchain/website/src/docs/package-manager.md).
+- **GPU:** vendor-neutral Metal and OpenCL with software binary64; CUDA interop is separate. Buffers stay on the device; tokenization, loading and readback stay on the host; kernels are not fused. Device transcendentals can differ from host libm in the last digit. Never claim automatic offloading, universal acceleration or bit-for-bit transcendental parity. Shared tensor storage over the Python bridge is planned. See the [GPU contract](../specs/runtime/0034-GPUComputation.md).
 - **Audio:** Prism renders offline and then plays; there is no real-time audio callback yet. VST3 hosting is incomplete. The full DAW runs on macOS; Windows runs the patch editor.
-- **C interop:** calling C crosses Osprey's memory-safety boundary. Package publication rejects native `extern` declarations, which does not confine untrusted packages at runtime; see [supply-chain controls](../src/toolchain/website/src/docs/package-manager.md#supply-chain-controls-and-remaining-work).
+- **C interop:** calling C crosses Osprey's memory-safety boundary. Package publication rejects native `extern` declarations, which does not confine untrusted packages at runtime; see [supply-chain controls](../../src/toolchain/website/src/docs/package-manager.md#supply-chain-controls-and-remaining-work).
 
 Update a claim when its implementation and verification change.
 
@@ -115,4 +115,4 @@ Lean accepting a certificate is reference evidence, never permission for Osprey 
 
 The compiler owns only the discipline protocol. Each theory is a versioned package that can be fixed, replaced or forked without touching Hindley-Milner rules. Changing a checker, rule or axiom policy invalidates the affected proof receipts and requires fresh checking. A fork inherits no validity from its parent, and pluggability alone proves no consistency.
 
-Independence means Osprey authors, checks and replays the supported proofs, builds its maths library and compiles verified programs without Lean installed. Lean stays as an external oracle afterwards. Track it through the [completion milestones](plans/0041-dependent-types-and-mathlib.md#completion-milestones-proof-completion), reporting imported certificates, source translation and locally reconstructed proofs separately.
+Independence means Osprey authors, checks and replays the supported proofs, builds its maths library and compiles verified programs without Lean installed. Lean stays as an external oracle afterwards. Track it through the [completion milestones](../plans/0041-dependent-types-and-mathlib.md#completion-milestones-proof-completion), reporting imported certificates, source translation and locally reconstructed proofs separately.
