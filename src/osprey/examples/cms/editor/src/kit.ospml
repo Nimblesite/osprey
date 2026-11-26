@@ -81,15 +81,20 @@ module Kit
         style = Frames::plain
         style(frameFill = fill, frameInk = ink, frameLine = line, frameRadius = Design::radius "sm", frameHug = true, frameQuietControls = true, frameControlHeight = height, frameControlPadding = 14, frameFont = Design::sans (), frameTextSize = Design::size "small")
 
-    look variant = match variant
+    live variant = match variant
         "primary" => pill ("accent", "accentInk", "", 36)
         "danger" => pill ("badSoft", "bad", "", 36)
         "ghost" => pill ("", "inkSoft", "", 36)
         _ => pill ("panel", "ink", "edgeStrong", 36)
 
+    // An unavailable button is quiet whatever its variant, so only what can run is saturated.
+    look (variant, enabled) = match enabled
+        true => live variant
+        false => pill ("sunken", "inkMuted", "edge", 36)
+
     (** A button: `primary`, `secondary`, `ghost` or `danger`, with a label and symbol. *)
     export button<A> : (string, string, string, bool, A) -> ui::Node<A>
-    button (variant, label, symbol, enabled, act) = Ui::framed (look variant, Ui::action (label, symbol, ui::Plain, enabled, act))
+    button (variant, label, symbol, enabled, act) = Ui::framed (look (variant, enabled), Ui::action (label, symbol, ui::Plain, enabled, act))
 
     (** A square button drawn as its symbol; its label stays its accessible name. *)
     export iconButton<A> : (string, string, bool, A) -> ui::Node<A>
@@ -124,14 +129,14 @@ module Kit
     // ---- choices ----
 
     segment (label, chosen, act) =
-        style = pill (Pick::either (chosen, "panel", ""), Pick::either (chosen, "ink", "inkMuted"), Pick::either (chosen, "edge", ""), 30)
+        style = pill (Pick::either (chosen, "panel", ""), Pick::either (chosen, "ink", "inkMuted"), Pick::either (chosen, "edge", "sunken"), 32)
         Ui::framed (style(frameControlPadding = 12), Ui::button (label, "", act))
 
     (** A segmented control of `(label, chosen, act)` choices on a sunken track. *)
     export segmented<A> : List<ui::Node<A>> -> ui::Node<A>
     segmented items =
-        style = surface ("sunken", "", Design::radius "sm", 3)
-        Ui::framed (style(frameGap = 2, frameHug = true), Ui::row items)
+        style = surface ("sunken", "edge", Design::radius "md", 6)
+        Ui::framed (style(frameGap = 2, frameHug = true, frameAlign = "center"), Ui::row items)
 
     (** One choice of a segmented control. *)
     export choice<A> : (string, bool, A) -> ui::Node<A>

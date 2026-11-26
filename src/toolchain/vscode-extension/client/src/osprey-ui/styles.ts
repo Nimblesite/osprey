@@ -226,6 +226,8 @@ button[data-paused]:disabled { opacity: 1; animation: osp-paused 0s 250ms forwar
 .osp-framed[style*="--osp-frame-control-height:"] .osp-field input { min-height: var(--osp-frame-control-height); }
 .osp-field input:focus, .osp-field textarea:focus, .osp-field select:focus { border-color: var(--osp-accent); box-shadow: 0 0 0 1px var(--osp-accent); }
 .osp-field textarea { resize: vertical; min-height: 72px; }
+.osp-field input::placeholder, .osp-field textarea::placeholder { color: var(--osp-muted); }
+.osp-root ::selection { background: color-mix(in srgb, var(--osp-accent) 30%, transparent); }
 /* Quiet controls draw no chrome of their own: the frame is the field, the placeholder its caption. */
 .osp-framed[style*="--osp-frame-control-fill:"] .osp-field > span { display: none; }
 .osp-framed[style*="--osp-frame-control-fill:"] .osp-field input { border: 0; background: transparent; box-shadow: none; outline: none; }

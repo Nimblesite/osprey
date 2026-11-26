@@ -37,6 +37,7 @@ async function treeAndChrome(page) {
   expect(label.x - item.x).toBeLessThan(40);
   await expect(page.getByText("Search files", { exact: true }).filter({ visible: true })).toHaveCount(0);
   await expect(page.getByPlaceholder("Search files")).toHaveCount(1);
+  expect(await page.getByPlaceholder("Search files").evaluate((input) => getComputedStyle(input, "::placeholder").color)).not.toBe("rgb(117, 117, 117)");
   const live = status(page, "Live");
   await expect(live).toBeVisible();
   expect((await live.boundingBox()).height).toBeLessThan(34);
@@ -44,6 +45,12 @@ async function treeAndChrome(page) {
   await expect(page.getByRole("button", { name: /Publish/ })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Delete" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "New page" })).toHaveCount(2);
+  await row(page, HOME).click();
+  const save = page.getByRole("button", { name: "Save" });
+  await expect(save).toBeDisabled();
+  expect(await save.evaluate((button) => button.closest(".osp-framed").getAttribute("style"))).toContain("--osp-brand-sunken");
+  await page.getByRole("button", { name: "Markdown" }).click();
+  await page.getByRole("button", { name: "Formatted" }).click();
 }
 
 async function search(page) {
