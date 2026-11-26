@@ -9,7 +9,7 @@ This plan adds both. The specs are written; nothing is built yet.
 
 ## 🚨 Priority
 
-This is a language gap that blocks top tier, ranked with the gaps in [generic error payloads](generic-error-payload.md). It was found while writing the multi-shot test matrix for the Clean Architecture sample: the tests needed a clamp helper and one arm per request variant where a single or-pattern arm would do. Tick an item only with a corpus regression that passes under GC, ARC and wasm32.
+This is a language gap that blocks top tier, ranked with the gaps in the [Result and error-handling plan](0060-flat-result-binding.md). It was found while writing the multi-shot test matrix for the Clean Architecture sample: the tests needed a clamp helper and one arm per request variant where a single or-pattern arm would do. Tick an item only with a corpus regression that passes under GC, ARC and wasm32.
 
 ## Rules being implemented
 

@@ -1,20 +1,22 @@
-# Plan 0060: Flat Binding — No More Callback Pyramids
+# Plan 0060 — Result and error handling
 
-Code that runs fallible steps one after another must read top to bottom, one
-step per line, with no nesting and no run of closing brackets. Today the only
-way to sequence `Result`s without a hand-written `match` ladder is to nest
-`andThen(x, fn(v) => andThen(...))`. That nesting is now banned, and so is the
-equivalent `match` ladder.
+Osprey's error-handling work has two parts: `Result<T, E>` carries an exact error payload at type `E` end to end, and fallible steps read top to bottom through flat `use` binding rather than callback pyramids or `match` ladders. The remaining work finishes the source rewrite and nesting lint, delivers the related or-pattern and `min`/`max` gaps, and proves the complete result contract in CI.
 
-Spec homes: [Block Expressions](../specs/language/0008-BlockExpressions.md),
-[Error Handling](../specs/language/0013-ErrorHandling.md) and
-[ML Flavor Syntax](../specs/language/0024-MLFlavorSyntax.md). The `[BLOCK-USE-*]`
-and `[LINT-NESTING-*]` rules below are added to them when this plan lands.
+Spec homes: [Block Expressions](../specs/language/0008-BlockExpressions.md), [Error Handling](../specs/language/0013-ErrorHandling.md), [Type System](../specs/language/0004-TypeSystem.md), [Pattern Matching](../specs/language/0007-PatternMatching.md), [Testing](../specs/language/0027-TestingFramework.md), [Built-ins](../specs/runtime/0012-Built-InFunctions.md) and [ML Flavor Syntax](../specs/language/0024-MLFlavorSyntax.md). Related contracts include [TYPE-CONSTRAINTS], [PATTERN-NESTED], [TYPE-UNION-POSITIONAL] and [FLAVOR-ML-MATCH]. The `[BLOCK-USE-*]` and `[LINT-NESTING-*]` rules below are added to them when this plan lands.
 
 > **Gate:** `AGENTS.md` puts the repo in stabilization mode. `use` is new
 > syntax, so the user must approve this plan before Phases 1–3 start. Phase 4
 > (the lint, shipped red with its findings as the backlog) does not depend on
 > the new syntax.
+
+## Result and assertion contract
+
+- [ERR-RESULT]: `T` and `E` are both generic, inferred, exact and must agree. There is no built-in `Error` type; `Error` is only the `Result` constructor.
+- [ERR-PAYLOAD]: `Error { message }` binds the producer's value at type `E` on GC, ARC and wasm32. Each fallible builtin states its own `E`: `IndexOutOfBounds { index, length }` for a list read ([BUILTIN-LIST-GET]), `string` for the rest.
+- [ERR-RESULT-FORMAT]: `Error(<payload>)` renders the payload at its own type. Records, unions and lists print by their literal form, with strings escaped unambiguously ([BUILTIN-PRINT-FORM], [BUILTIN-PRINT]). `Map` remains unprintable because its iteration order is unspecified.
+- [TESTING-BUILTIN-EXPECT], [TESTING-BUILTIN-CHECK], [TESTING-BUILTIN-EXPECT-ERROR] and [TESTING-EQUALITY]: assertion operands share one inferred type; `expectError` takes the Result's own `E`, including an inline `if`, and failure messages render both values at any printable payload depth.
+
+The checker, backends, prelude, corpus and rejection fixtures implement these rules. The final whole-repository gate remains open below.
 
 ## Evidence: the problem, measured
 
@@ -172,62 +174,20 @@ The binder is on the left of every step, and the answer is the last line.
 
 ## Phases
 
-- [x] **1. Tests first (red).** Done 2026-11-23: `regressions/basics/blocks/use_binding.test.{osp,ospml}` (1, 2, 8 and 12 binds, an Error at every position, guards, `use <-`, two binders, match arms, a handler arm, lambdas, a resource scope, `x<-1`), seven `failscompilation/*use_*` programs and `cross_flavor_ir_equiv/use_binding.rs` (IR identical to the pyramid). The golden came from running the hand-written pyramid; both twins were red until Phase 2.
-  - Add a regression to `src/osprey/tests/regressions/` with ML and Default
-    twins that share one golden output. It covers:
-    - 1, 2, 8 and 12 binds in a row;
-    - an `Error` at every position, with the exact payload checked;
-    - `_` guards and the binder-less `use <-`;
-    - binders with several parameters;
-    - `use` inside `match` arms, handler arms and lambdas;
-    - a non-`Result` callee (a resource scope);
-    - a check that the IR is byte-identical to the equivalent hand-written
-      pyramid.
-  - Add one `failscompilation` program per rule in `[BLOCK-USE-REJECT]`.
-  - Add a `[LEX-USE-ARROW]` test showing that `x<-1` is still a comparison.
-- [x] **2. Compiler.** Done 2026-11-23: `use_statement` in the tree-sitter grammar, `use` in the ML parser (`ml/parser/uses.rs`), lowering beside `handle` in both flavors, `use` binds through the prelude `andThen` (a `try` copy was added, then deleted: `try` is reserved in Python and TypeScript), the callback-arity message in the checker, `[BLOCK-USE]` and `[LEX-USE-ARROW]` in spec 0008, `[BLOCK-USE-RESULT]` in 0013, `[FLAVOR-ML-USE]` in 0024, hover and highlighting. Both twins match the golden under GC, ARC and wasm32. `use` is now reserved, so four synth test parameters named `use` became `consume`.
-  The ML editor grammar parses the full use-binding fixture, including pair and wildcard binders, tight comparisons and generic calls. Its 18 Rust tests and four layout tests pass.
-  - Add `use` and `<-` to the tree-sitter grammar and the ML lexer.
-  - Add the `use` statement to both parsers.
-  - Desugar it in AST lowering.
-  - Bind through the prelude `andThen`.
-  - Update the specs, and the LSP's hover and highlighting.
-- [ ] **3. Rewrite every pyramid.** Work through the 46 files, deepest first:
-  - Rewrite each pyramid with `use`. Progress 2026-11-24: the manager is
-    free of chains deeper than two lambdas, and so are the GPU corpus twins,
-    `tensor_backends`, `stress`, `transformer`, `synth/tests/grain_journeys`
-    and the fastapi bench report (about 260 functions). The corpus and project
-    rewrites were checked by emitting each file's or project's LLVM IR before
-    and after: every one is byte-identical. Left: 38 closing runs in 19 files.
-    These are the curried `RenderInputs::setting` chains in four synth kernels,
-    the DAW tests, the proof kernel's `export`, `exportinductive` and
-    `numeric-canonical` (being edited by others), and the workbench tests (their
-    project IR could not be compared while the proof kernel they import was
-    changing). The rest is nested data, not callbacks: Lean term trees in
-    `numeric-canonical`, a fiber `await` chain and nested JSON values. Those need
-    inner values named, not `use`.
-  - [x] Delete every module-local `andThen`. Done 2026-11-24: `Checked::andThen` (316 calls in 36 manager files) and the tensor tests' `Backends::andThen` (60 calls) were copies of the prelude `andThen`; every caller now uses the prelude one. Manager suites 521/521 under GC, tensor twins match their golden under GC and ARC.
-  - Remove the lambda type annotations the rewrite makes unnecessary.
-  - Import `registry::Governance as G`.
-  - [x] Flatten the nested `match bool` ladders (`withinHold`, `stillCurrent`)
-    into guard steps. Done 2026-11-24: each is two `Governance::required` steps.
-  - [x] Merge the duplicate guard helpers (`requiredTransfer` and
-    `Governance::required`). Done 2026-11-24: `required` is exported and
-    `requiredTransfer` is gone. `governance_handover.osp` and
-    `governance_transitions.osp` are pyramid-free.
-  - Hand the mechanical rewrites to pi, in the order AGENTS.md sets. Review
-    every diff by hand.
-- [ ] **4. Lint.** Add `[LINT-NESTING-LAMBDA]` to CI phase 1. It must be green
-  on the whole tree after Phase 3, with no exclusions.
-  - [x] The closing-run rule, as a `closing-run` warning in the compiler and the
-    editor (`osprey-syntax/src/closing_runs.rs`, spec 0004).
-  - [ ] The lambda-depth and `match`-depth rules.
+- [ ] **3. Rewrite every pyramid.** Work through the remaining files, deepest first. Rewrite each callback pyramid with `use`; name inner values where the nesting is data rather than callbacks. Remove lambda type annotations the rewrite makes unnecessary, import `registry::Governance as G`, compare emitted IR before and after each project rewrite, and review every mechanical rewrite by hand.
+- [ ] **4. Lint.** Add `[LINT-NESTING-LAMBDA]` to CI phase 1. It must be green on the whole tree after Phase 3, with no exclusions.
+  - [ ] Add the lambda-depth and `match`-depth rules beside the existing closing-run rule.
   - [ ] Make all three an error once Phase 3 leaves no site.
 - [ ] **5. Prove it.**
+  - Run `make ci` green with all generic-error, flat-binding and assertion regressions.
   - All three corpus runs pass: `run_test_corpus.sh` under GC, ARC and wasm32.
   - Run the manager packages' E2E suites.
   - `coverage-thresholds.json` does not go down.
   - deslop `top-offenders` shows no new duplication.
+
+## Related language gap
+
+- [ ] Deliver or-patterns ([PATTERN-OR](../specs/language/0007-PatternMatching.md#or-patterns--pattern-or)) and `min` / `max` ([BUILTIN-MIN-MAX](../specs/runtime/0012-Built-InFunctions.md)) in [their plan](or-patterns-and-min-max.md), including the remaining tooling, builtin and source-migration work.
 
 ## Done when
 
