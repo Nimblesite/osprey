@@ -2,7 +2,7 @@
 
 Build the advanced synthesis ecosystem on `@osprey/synth`: independent, composable DSP modules that can be routed, modulated, automated and combined in Prism, Light Orchestra and future hosts. Prism is the first complete integration, not the definition of the library. Every module must produce real audio; a name in the palette or an attractive waveform is not implementation.
 
-The authoritative contracts are [Synthesis.md](../../specs/synth/Synthesis.md), especially [SYNTH-GRAPH], [SYNTH-SIGNALS], [SYNTH-RENDER] and [SYNTH-DSP]. The [research catalogue](../../research/synthesis/README.md) supplies sources and comparison experiments. The existing [Prism routing plan](prism-routing.md) remains responsible for host lifecycle, live replacement, VST integration and release readiness; this plan adds the advanced DSP families and their complete user journeys.
+The authoritative contracts are [Synthesis.md](../../specs/synth/Synthesis.md), especially [SYNTH-GRAPH], [SYNTH-SIGNALS], [SYNTH-RENDER] and [SYNTH-DSP]. The [research catalogue](../../specs/synth/SynthDsp.md#sources-and-experiments-synth-research) supplies sources and comparison experiments. The existing [Prism routing plan](prism-routing.md) remains responsible for host lifecycle, live replacement, VST integration and release readiness; this plan adds the advanced DSP families and their complete user journeys.
 
 **Current instruction (21 November 2026):** testing has resumed. Every change comes with loaded journey tests that run under GC and ARC; mark an item done only with recorded evidence, and never mark an unverified feature production-ready.
 
@@ -12,13 +12,7 @@ Existing code provides oscillator/envelope/filter primitives, typed graphs, para
 
 Deliver in this order, finishing a playable vertical slice before beginning the next large family:
 
-- [x] Move all eleven production synth math modules to native `.ospml` and check properties derived from their source [SYNTH-DSP-PROOFS-PRODUCTION]. Commit `4f8ad8a14` removes the eleven production Lean inputs. The synth suite passed all 70 cases on both GC and ARC. The synthesis spec records the scope of each theorem.
 - [ ] Establish shared resource, state, modulation and scheduling contracts under [SYNTH-ADVANCED-CORE]. Done 21 Nov: typed `Fault`s, the `Lifecycles` transitions and `ResourceIdentity` hashes. Open: removing the fixed-demo `Voice` (its last caller is the Prism key preview), unlimited channels, polarity and rate adapter nodes, mixed note, parameter and trigger events in one frame, and the realtime render-path rules (preparation outside the callback, no allocation or locks).
-- [x] Deliver granular playback, scheduling and a playable Prism grain-cloud patch under [SYNTH-ADVANCED-GRAINS]. Grain cloud → downmix → output plays; `sampleFileJourney` (fbe2dd1ab) covers WAV import refusals and stale results. Slice evidence (21 Nov): `familiesJourney` (d018db43a) renders a note through the song renderer, finite, repeatable and, where pitched, in tune at middle C by autocorrelation; the Prism module browser adds it; the project file saves its routing. Open items in its section stay open.
-- [x] Deliver modular excitation/resonators and playable physical instruments under [SYNTH-ADVANCED-PHYSICAL]. Exciter → waveguide plays in tune; the codex song plays keys, chime, echoes and cello from these modules. Slice evidence (21 Nov): `familiesJourney` (d018db43a) renders a note through the song renderer, finite, repeatable and, where pitched, in tune at middle C by autocorrelation; the Prism module browser adds it; the project file saves its routing. Open items in its section stay open.
-- [x] Deliver wavetable and additive instruments under [SYNTH-ADVANCED-TABLES]. Both play in tune; the codex song uses them (tablepad, glass). Slice evidence (21 Nov): `familiesJourney` (d018db43a) renders a note through the song renderer, finite, repeatable and, where pitched, in tune at middle C by autocorrelation; the Prism module browser adds it; the project file saves its routing. Open items in its section stay open.
-- [x] Deliver spectral analysis, freeze, morphing and resynthesis under [SYNTH-ADVANCED-SPECTRAL]. Sine → spectral (1024) passes the note in tune; freeze, morph and phase-vocoder pitch/formant are in `SpectralFrames`. Slice evidence (21 Nov): `familiesJourney` (d018db43a) renders a note through the song renderer, finite, repeatable and, where pitched, in tune at middle C by autocorrelation; the Prism module browser adds it; the project file saves its routing. Open items in its section stay open.
-- [x] Deliver nonlinear/feedback effects and expressive phase synthesis under [SYNTH-ADVANCED-NONLINEAR] and [SYNTH-ADVANCED-PHASE]. Sine → waveshaper (drive 3) and the phase operator both play in tune; the codex song uses shaper, shifter and operator patches. Slice evidence (21 Nov): `familiesJourney` (d018db43a) renders a note through the song renderer, finite, repeatable and, where pitched, in tune at middle C by autocorrelation; the Prism module browser adds it; the project file saves its routing. Open items in its section stay open.
 - [ ] Deliver offline parameter fitting and learned-control adapters under [SYNTH-ADVANCED-LEARNED]. Done: `Fitting` works offline and `FitReports` records algorithm, licence and training/evaluation provenance (e971fb90f). Open: the preview/apply/reject controls in the app.
 - [ ] Finish cross-platform application integration, documentation and the deferred verification gates under [SYNTH-ADVANCED-DELIVERY]. Open: Windows/browser/mobile hosts, the module reference, realtime measurements and a green `make ci` push.
 
@@ -52,63 +46,31 @@ Deliver the first milestone before expanding to another synthesis family. Shared
 - [ ] Demonstrate sustained playback and stop/restart manually; keep automated correctness/performance acceptance unchecked during the pause.
 - [ ] Add scheduler/source nodes and typed modulation adapters, then finish granular presets before beginning physical models.
 
-### Evidence and change discipline [SYNTH-ADVANCED-MILESTONES-EVIDENCE]
-
-- [x] For each delivered slice, record the commit, relevant specification IDs, module paths and exact limitations beside its checklist section. Done in [SYNTH-ADVANCED-FAMILIES-CHECKPOINT].
-- [x] Record compilation/static-analysis results separately from manual interaction, captured audio and automated-test results. The checkpoint separates strict checks, scratch measurements and (absent) automated tests.
-- [x] Record reference/offline versus realtime capability per module; never infer realtime readiness from native compilation alone. Every advanced family is recorded as reference/offline only.
-- [x] Keep failures, partial work and deferred verification unchecked; split a mixed item when only one part is complete. Mixed items stay unchecked with notes.
-- [x] Commit each coherent implementation step, preserve unrelated work and avoid a push that implicitly claims deferred CI has passed. One commit per family/slice on `feat/synth-advanced`; nothing pushed.
-
 ## Shared component foundation [SYNTH-ADVANCED-CORE]
 
 ### Canonical models and module boundaries [SYNTH-ADVANCED-CORE-MODELS]
 
-- [x] Declare configuration, prepared resources, persistent DSP state, commands, observations and faults in typeDiagram; generate their Osprey representations. Twelve schemas (`dsp`, `graph`, `grains`, `host`, `physical`, `phase`, `fitting`, `render`, `wave`, `tables`, `patch`, `spectral` .td) generate every type in `src/*_model.ospml`; no hand-written type is left (checked 21 Nov). Configs, `SampleResource`/`Wavetable`, per-family state, `ParameterChange`/`CommandReceipt`, `Observation` and `GraphFault` are all declared there; module refusals as typed faults are tracked under the typed-failures item.
-- [x] Keep application models, canvas/native widgets, networking, file dialogs and operating-system audio devices outside the library. All advanced modules live in `@osprey/synth` with no UI, file, network or device imports.
-- [x] Author DSP formulas in native Osprey and derive the definitions used by the proofs from those modules. PhysicalMath, TableMath, SpectralMath, NonlinearMath, PhaseMath and FitMath.
-- [x] Give each component a stable kind/version and each instance an independent identity; never share mutable phase, delay memory, random state or voices between instances. `Kinds.kind` / `Kinds.version` / `Kinds.compatible` name every processor and version output-changing revisions; instances are keyed by node identity and each holds its own kernel state (no shared phase, delay memory, seeds or voices).
-- [x] Define prepare, activate, render, reset, release/tail and dispose transitions, including sample-rate/block-size changes. `Lifecycles` with `Stage`, `Transition` and `Instance` in `render.td`, specified in [Synthesis.md](../../specs/synth/Synthesis.md). The clip journey "a graph instance prepares, activates, renders, releases exactly its tail…" (GC and ARC) checks every refused transition by its message, the 200-frame tail at 48 kHz (184 at 44.1, 400 at 96), that running, release and tail equal one uninterrupted render, reset restarting the opening, and re-preparation at 96 kHz: the same sine read at 48 kHz is in tune an octave down (spectral probe, 0.5 cents, −12.04 dB).
-- [x] Separate immutable prepared resources from per-instance render state so multiple voices can share sample/table data safely. Sample resources and prepared wavetables live immutably in the node's `Processor`; per-instance state (phases, lines, voices, grains) lives in that node's kernel memory, so voices and instances read shared data without sharing mutable state.
-- [x] Expose typed failures for invalid configuration, exhausted capacity, missing resources, incompatible layouts and numerical failures; never fabricate a successful silent result. Every module refusal is a `Fault` union (`dsp.td`: `InvalidConfiguration`, `ExhaustedCapacity`, `MissingResource`, `IncompatibleLayout`, `NumericalFailure`) carrying its sentence, read with `Faults.detail`; builtin conversions go through `Outcomes.whole` as `NumericalFailure`. Specified in [Synthesis.md](../../specs/synth/Synthesis.md). Tests assert class and exact text with `refusedAs` (configuration: lifecycle settings; layout: a two-output graph; resource: a 4-byte WAV; capacity: transposition past the grain rate limit; numerical: NaN, ±∞ and 10⁶ graph output). Synth suite 63/63 under GC and under ARC (21 Nov); the DAW converts at its display boundary.
 - [ ] Remove superseded fixed-demo DSP after callers migrate; do not retain parallel implementations that drift.
 
 ### Ports, parameters and automation [SYNTH-ADVANCED-CORE-PORTS]
 
-- [x] Declare audio, control and timestamped-event ports, channel layouts and physical units for every new component. `Port` (graph.td) carries rate, channels and unit; the synth test "every component declares coherent port rates…" checks 32 components: audio is amplitude on 1+ channels, control is one normalised channel, events are one channel of notes, names unique per side (50/50 ARC).
 - [ ] Unlimited channels [SYNTH-GRAPH-CHANNELS]: declare `ChannelLayout` (ordered named channels, stereo default, 5.1/7.1/7.1.4/any N) in `graph.td`; every port carries one.
 - [ ] **[DAW-MODULAR-LAYOUT]: every track carries two channels.** Done: a patch's stereo output keeps its left and right to Master, a mono output and every built-in voice sit in the centre at equal power, and track pan is a balance with unity at the centre. Open: layouts other than stereo, `Grains` stereo summing and the `GraphClips` mono-to-stereo component.
-- [x] Add Split, Join, Route (channel matrix) and Mix (per-input gain) graph components and Prism cards; an any-layout equal-power panner whose gain formula lives in native Osprey. Prism’s picker inserts all five cards and preserves their ports through Undo/Redo. The panner and mixer retain their width and settings through project save/reopen. The prepared graph currently accepts 1–64 channels.
 - [ ] Track and Master output layouts in the project file (`daw.td`); sample import keeps every source channel; the macOS device queue plays any layout CoreAudio offers.
-  - [x] WAV import preserves each PCM word in channel order for the supported mono and stereo layouts. Swapping the left and right channels changes the resource hash. The mono grain consumer averages each pair once at preparation.
-- [x] Verify a 7.1 patch through Split, Join, Route and Mix, and reject a stereo-to-5.1 cable without Route. On 21 November 2026 the two channel journeys in [the synth suite](../../../src/osprey/packages/synth/tests/main.ospml) passed under GC and ARC. The mixer receives eight distinct channels in forward and reversed order. The test checks all 512 output samples against independent gains of 0.25 and 0.75.
 - [ ] Define explicit adapters for hertz/normalised values, bipolar/unipolar signals and control/audio rates. Partial: hertz/normalised is `Descriptors.fromControl`/`toControl` (logarithmic for positive frequencies and times), tested on every parameter of 24 components: ends, nine-point round trip, range and monotonicity (synth 49/49 ARC). Bipolar/unipolar exists only inside the LFO (`Waves.unipolar`); there are no adapter graph nodes for signal polarity or control/audio rate.
-- [x] Declare names, units, defaults, minimum/maximum values, linear/logarithmic scaling, modulation semantics and automation eligibility for every parameter. Descriptors carry key, label, unit, default, bounds and `automatable`; `Descriptors.scale` declares logarithmic scaling for positive frequency/time ranges (probe: 220 Hz → control 0.3447 → 220 Hz), and `Descriptors.modulation` declares each parameter's inlet rule.
-- [x] Define modulation as explicit additive, multiplicative or replacement operations; reject ambiguous multiple writers unless a combiner is present. `ModulationRule` is `Unmodulated`, `Replacing`, `Multiplying` or `Exponential` per parameter; each inlet accepts exactly one cable (`OccupiedInput`), so multiple writers need an explicit mixer.
-- [x] Add reusable smoothing/slew components with declared response and state continuity; avoid hiding unrelated smoothing inside each module. `Smoothers` (one-pole: 0.632 after τ; linear: full scale in `time`, measured 0.5 at τ/2) and the `smoother` graph node.
 - [ ] Deliver sample-offset events in deterministic order, including simultaneous note, parameter and trigger events. Partial: same-frame parameter events apply in order and nine block splits render identical samples (synth test "same-frame automation…", 47/47 ARC); note on/off ownership across exact partitions is the daw MIDI timing test. Trigger events and mixed note+parameter frames remain unproven.
-- [x] Define which changes apply at a sample boundary, block boundary or prepared-resource swap; expose pending versus applied values. Defined in [Synthesis.md](../../specs/synth/Synthesis.md): parameter events apply before their exact sample; topology and resource replacement (`Repatch.apply`) publish at a block boundary; `Commands` receipts are `Pending`, `Applied(revision)` or `Rejected(fault)`. Tests: same-frame automation with nine block splits, "replace a playing graph without resetting phase", and the controller-write journey (synth 51/51 ARC).
-- [x] Preserve surviving state across valid graph changes, and keep the previous running graph if preparation fails. `GraphRebase.rebased` carries surviving components' memory into an edited graph (layout and storage must still fit), starts new components silent and drops removed ones; an invalid edit returns an error and the caller keeps its previous graph and state. Probe: inserting a reverb into a running sine → gain graph continues rendering with the oscillator phase unchanged (0.16667); without rebasing the edit is rejected. New grain clouds still need a restart.
 
 ### Resources and bounded rendering [SYNTH-ADVANCED-CORE-RESOURCES]
 
-- [x] Define sample/table/impulse resources with identity, content hash, channel count, sample rate, length and version. `Resources.sample` and `Resources.table` derive a `ResourceIdentity` (`graph.td`): name, 64-bit FNV-1a hash over every sample word and its metadata, channels, rate, frames and version; an impulse response is a sample resource. `Resources.matches` refuses a changed or renamed resource as `MissingResource`. The wave journey "sample, impulse and table resources carry a content identity…" checks ten variants hash distinctly (one bit, -0.0, rate, channels, root, order, length, empty), frame counts for five layouts and four tables (GC and ARC).
 - [ ] Decode files, prepare tables, allocate pools and construct transforms outside the audio callback.
-- [x] Set explicit limits for voices, grains, modes, partials, FFT sizes, delay memory, automation queues and resource bytes. Voices ≤ 16, grains ≤ 256, modes 8, partials 64, FFT 64–4096, fitting ≤ 16 parameters/10,000 evaluations, delay storage ≤ 1,920,000 samples.
-- [x] Define a capacity policy per resource: reject, steal with a release, or drop with a diagnostic; do not allocate on exhaustion. Grains reject new onsets (counted); `StringVoices` steal with a release (counted); spectral nodes over the per-graph budget and graphs over the storage budget are rejected before allocation; fitting rejects jobs over 16 parameters or 10,000 evaluations.
-- [x] Specify source-boundary behaviour separately for looping, one-shot, reverse playback and interpolation. Specified in [Synthesis.md](../../specs/synth/Synthesis.md) [SYNTH-ADVANCED-GRAINS-BOUNDARY]: loop wraps (tap after the end is the region start), one-shot stops (tap repeats the last frame, the grain ends outside), reverse is a negative rate, interpolation is linear. `regionJourney` in grain_journeys.ospml checks loop/one-shot × forward/reverse/held. Reflect is not implemented.
+- [ ] Reflect source-boundary mode for grains ([SYNTH-ADVANCED-GRAINS-BOUNDARY]); loop, one-shot and reverse are done.
+- [ ] Align parallel routes automatically in preparation from the latency each component declares in `Timings.latency`.
+- [ ] A grain cloud added to a running graph starts without a restart; `GraphRebase.rebased` already carries every other component across an edit.
 - [ ] Avoid allocation, blocking locks, filesystem/network access, logging formatting and observer callbacks in production render paths.
-- [x] Define denormal handling, nonfinite-input policy, maximum internal levels and output headroom; do not silently clip intermediate graph signals. Denormals: every feedback loop (waveguide, bowed, resonator/modal, reverb, mesh) flushes state below 1e-30 to zero (`PhysicalMath.flushed`; probe: a 10 ms resonator reaches exactly 0.0). Nonfinite or |x| > 1e6 node outputs are rejected by `RenderInputs.sample`; intermediate signals are never clipped; module docs state headroom (unnormalised sums for voices/grains, peak-safe additive).
-- [x] Declare algorithmic latency and tail length so preparation can align parallel routes and dispose of tails correctly. `Timings.latency` / `Timings.tail` declare samples at 48 kHz for every component from its current parameters (e.g. spectral 1024/256: latency 1,023, tail 1,279; reverb T60 2 s: tail 192,000). Route alignment in preparation is not yet automatic.
 
 ### Signals and observers [SYNTH-ADVANCED-CORE-SIGNALS]
 
-- [x] Publish applied parameter revision and audio sample position with each coherent observation. `Observation` carries `revision` and `samplePosition`; `Renderer.observed` and `Grains.observation` stamp both, and selected views keep them.
-- [x] Expose active voices/grains/modes, envelope state, meters, resource readiness, capacity pressure and typed diagnostics as appropriate to each family. Grains: `Grains.observation` (active, capacity, requested/accepted/rejected). Advanced families: `Activities.strings` (sounding/capacity/stolen/energy; probe 5 notes on 4 voices → 4/4, 1 stolen), `modes` (ringing slots and energy; probe 5 of 8 bell modes ringing), `spectral` (frames, bins, freeze held) and `reverb` (stored energy); meters come from `Renderer.observed`; diagnostics are the typed errors each module returns.
-- [x] Keep `Signal<T>` observation distinct from audio-rate DSP streams; observers must not execute on the audio thread. Advanced modules return samples and state only; observation is the separate `Observations`/`Grains.observe` Signal path, and `SpectralStreams.view` is an explicit off-thread snapshot.
-- [x] Publish through bounded storage; let slow subscribers coalesce snapshots without blocking rendering. `SnapshotSlots` holds only the latest snapshot: `publish` replaces it in constant storage and `read` returns the newest plus how many were skipped. Probe: five publications before a slow read → revision 5 with 4 coalesced; the next read → revision 6, 0 coalesced.
-- [x] Support selected-field subscriptions and independent observations of multiple same-kind instances. `Observations.selected` / `subscribed` filter a snapshot to chosen nodes and keys, keeping its revision and sample position; entries are keyed by node identity, so two sine instances read independently (probe: node 1's frequency 220 Hz selected from two oscillators with revision 7, position 4,800 retained).
-- [x] Make UI/controller writes typed commands; show whether a request is pending, applied or rejected. `Commands.pending` / `resolve` turn a typed `ParameterChange` into a `CommandReceipt` of `Pending`, `Applied(revision)` or `Rejected(fault)`; probe: a valid edit is applied as revision 1, a stale revision and an out-of-range value are rejected.
+Complete. The modules and journeys that cite this ID hold the evidence.
 
 ## Prism and external-controller experience [SYNTH-ADVANCED-PRISM]
 
@@ -118,27 +80,14 @@ Deliver the first milestone before expanding to another synthesis family. Shared
 - [ ] Make cable creation/removal, node movement/removal and Undo/Redo work for every advanced family.
 - [ ] Show resource-loading and failure states on the affected node; avoid treating unavailable samples/models/plugins as a silent working instrument.
 - [ ] Bind controls to applied parameter Signals and show pending/rejected changes distinctly.
-  - [x] Play Patch applies an accepted gain edit on the following device block. The same running audition reaches exact silence at zero and sounds again at 0.5 under GC and ARC.
-  - [x] Song playback reads accepted Prism patch edits between device blocks. A held note follows gain and pitch changes, and a 17-track codex song device run confirmed that tablepad gain changed the next audio packet. See [live song controls](daw.md#slider-drag-lag-daw-mix-drag).
 - [ ] Provide macro controls that map to ordinary typed parameters with declared ranges and smoothing. Library part done: `Macros` validates and writes normalised amounts onto declared parameters through per-target ranges and curves; hosts smooth amounts with `Smoothers`. Prism controls remain open.
 - [ ] Expose the same control commands to Light Orchestra/phone adapters without adding networking or session state to the synth library.
 - [ ] Save complete patches, resources, seeds, module versions, automation and controller mappings; load incompatible/missing resources explicitly.
-- [x] Keep advanced modules available to headless/offline consumers without requiring Prism or the native UI package. Evidence: `src/osprey/examples/daw` builds from the synth and JSON source roots only and renders strings, modal banks, operators, the reverb and the spectral freeze from a command line.
 
 ## Arrangements and the daw [SYNTH-ARRANGEMENT]
 
 Added on request after the families: a piano-roll project file rendered offline by the advanced modules, and a command-line player that continues an existing recording. Nothing here is covered by an automated test yet; the evidence below is from rendering the included song.
 
-- [x] Declare the arrangement (tempo, rate, master drive, reverb space, sustain appearances, tracks, notes, six instruments) in `src/osprey/examples/daw/daw.td`; formulas in its `arrange_math.ospml`.
-- [x] Render one note per instrument from the existing modules (`NoteRenders`): plucked and bowed strings, bell and bar modal banks, a detuned phase-distortion operator pair and a drum; each module validates its own controls.
-- [x] Hold the end of a recording with the spectral freeze and replay the hold at a pitch ratio with its own rise, hold and fade (`Sustains`) [SYNTH-ARRANGEMENT-SUSTAIN]. The freeze gained identity phase locking: every bin turns with its nearest magnitude peak.
-- [x] Decode the JSON project in one boundary module (`SongFiles`) into the typed arrangement [SYNTH-ARRANGEMENT-FILE]; malformed JSON, unknown instruments and malformed notes are errors.
-- [x] Command-line player `src/osprey/examples/daw` and `make -C src/toolchain/targets/macos daw-render` and `daw-play` [SYNTH-ARRANGEMENT-PLAYER]: renders, writes WAV parts through `xxd` and joins them after the intro with `ffmpeg`; `daw-play` plays with `afplay`; every host command runs under `timeout`.
-- [x] A song project written to continue the Broken Circuitry recording (first a melodic version: 44 bars, 14 tracks, 2,074 notes; now `phosphor-drift.json`, below, 2,904 notes).
-- [x] Routed instruments (`PatchVoices`) [SYNTH-ARRANGEMENT-PATCH]: a note builds a graph from named modules and cables, with settings that follow pitch or velocity, and renders through `Renderer`. The mono renderer rejects LFO routing and granular; `spectral` and `reverb` nodes are too slow per note.
-- [x] `phosphor-drift.json` ("Phosphor Drift", a new piece, not part of Broken Circuitry): 40 bars, 17 tracks (8 routed patches), 8 sustain appearances; rendered at 48 kHz after the recording, level across the join 0.18 → 0.13 RMS, sides within 0.2 dB.
-- [x] The project file names its own intro (`Intro`: recording, tail, crossfade) in `daw.td`; the player only renders, and `daw-render` / `daw-play` render and play [SYNTH-ARRANGEMENT-PLAYER].
-- [x] The daw (`src/osprey/examples/daw`, formerly `songs`) owns the project model, `daw.td`, and the arrangement modules; `@osprey/synth` keeps only the synthesis modules.
 - [ ] Automated tests for `NoteRenders`, `Arrangements`, `Sustains`, `SongFiles` and the player (paused with the other suites).
 - [ ] Bandlimited sustain transposition, an oversampled or look-ahead limiter and stereo instruments. Partial: `synth::Limiters`, a linked true-peak (four-times oversampled) lookahead brick-wall, is done as a module. It belongs only where the user places it. The engine must never put it on Master by itself ([DAW-TRANSPARENCY]). Bandlimited sustain transposition and stereo instruments remain.
 - [ ] Playback on Windows and Linux; `afplay` is macOS only.
@@ -171,7 +120,6 @@ Testing resumed on 21 November 2026. Record results for the stated workload, bac
 - [ ] Run loaded end-to-end patch journeys with repeated same-kind instances, fan-out, modulation, removal, undo, save/load and failures.
 - [ ] Compare arbitrary block partitions against continuous rendering while preserving event ownership at exact boundaries.
 - [ ] Exercise sample rates 44.1/48/96/192 kHz and supported block sizes, including unequal and one-sample partitions.
-- [x] Verify grain windows, wrapping, reverse playback, deterministic schedules, pool exhaustion and resource replacement. The GC and ARC suites exercised rendered Hann and ASR envelopes, reverse and fractional-rate loop crossings, seeded onset replay, rejection counts at capacity and immutable source replacement while an old grain finishes. [Window rendering](../../../src/osprey/packages/synth/tests/main.ospml) · [Loop and capacity tests](../../../src/osprey/packages/synth/tests/grain_limits.ospml) · [Source replacement](../../../src/osprey/packages/synth/tests/grain_journeys.ospml)
 - [ ] Verify physical-model tuning, decay/energy bounds, rate changes and extreme stable parameter values.
 - [ ] Verify wavetable/additive spectral behaviour, phase continuity, modulation and partial/table replacement.
 - [ ] Verify spectral reconstruction, overlap/add normalisation, latency, freeze/release and transport discontinuities.
@@ -182,7 +130,6 @@ Testing resumed on 21 November 2026. Record results for the stated workload, bac
 
 - [ ] Instrument allocation, locking and unbounded operations in the compiled native callback path.
 - [ ] Measure worst observed callback time, queue starvation, CPU, memory and latency on named hardware with declared workloads.
-- [x] Exercise simultaneous grains, modes, spectral transforms, feedback and VST nodes under explicit resource budgets. The combined preset routes its grain cloud, modal bank, spectral transform and feedback reverb through a hosted effect and verifies its output. The same journey rejects out-of-range blocks and excessive delay storage.
 - [ ] Verify slow/detached Signal subscribers never stall rendering and observations retain coherent revisions/sample positions.
 - [ ] Verify live graph/resource swaps, state transfer, crossfade policy, tail disposal and failure rollback.
 - [ ] Separate reference/offline availability from verified realtime capability in public descriptors and documentation.
@@ -200,9 +147,7 @@ Testing resumed on 21 November 2026. Record results for the stated workload, bac
 ## Completion and handoff [SYNTH-ADVANCED-DELIVERY]
 
 - [ ] Document each module's ports, units, scaling, defaults, state/reset semantics, latency, capacity and supported rates/channels.
-- [x] Record the source paper/reference and exact algorithm/version for each research-derived implementation.
 - [ ] Link code, specifications, patches and eventual test evidence through the section IDs in this plan.
-- [x] Include reproducible example patches for every delivered DSP family and a combined patch. `Patches.combined()` routes seeded grains through a downmix, modal body, spectral processor, waveshaper, LFO-controlled gain and reverb. The GC and ARC journey checks the emitting grain, physical, spectral, modulated and output stages after a 1,024-frame render. [Patch factories](../../../src/osprey/packages/synth/src/patches.ospml) · [Combined journey](../../../src/osprey/packages/synth/tests/clip_journeys.ospml) · [Single-family journeys](../../../src/osprey/packages/synth/tests/spectrum_sources.ospml)
 - [ ] Mark experimental/production status from measured evidence; record remaining limitations without weakening the contracts.
 - [ ] Reconcile this checklist with [Synthesis.md](../../specs/synth/Synthesis.md) and the [Prism routing plan](prism-routing.md), preserving their unfinished requirements.
 - [ ] Commit work in reviewable module-sized steps, preserve unrelated unfinished work and remove only task-owned temporary processes/artifacts.
@@ -234,3 +179,177 @@ Recorded 20 November 2026 on `feat/synth-advanced`. Strict package and Prism sou
 | Phase [SYNTH-ADVANCED-PHASE] | 6ebc380ac, 2ba9fa938 | `PhaseOperators`, `OperatorKernels` | WPPM (d 0.5, I 0) and PD (d 0.5) are pure sines; windowed PM with R 1.3 stays harmonic | Not antialiased |
 | Learned/offline [SYNTH-ADVANCED-LEARNED] | a7f657df4 | `Fitting` | Waveguide started at 250 Hz fits a 330 Hz target to 329.93 Hz (loss 21.7 → 0.048, 49 evaluations, seed 12345) | Spectral objective only; no provenance records, neural components or application preview UI |
 | Example patches [SYNTH-ADVANCED-DELIVERY] | ee2d13f1f | `Patches` | All eight patches render 4,096 samples with peak ≤ 0.5; the combined patch runs through `GraphClips` | Prism palette cards, observation Signals and saved patch files for these families are not built |
+
+## Granular synthesis [SYNTH-ADVANCED-GRAINS]
+
+Reference: [Truax's granular synthesis overview](https://www.sfu.ca/~truax/gran.html) and the Roads material in [SYNTH-RESEARCH-MODELS]. The deliverable is an editable grain engine, with scheduling separate from grain playback.
+
+| Module | Inputs and output | Main controls |
+| --- | --- | --- |
+| Sample source | Prepared sample resource → addressable audio | Resource, channel policy, loop range |
+| Grain scheduler | Clock, trigger, modulation → grain events | Density, timing jitter, seed, distribution |
+| Grain player/pool | Sample source, grain events → stereo audio | Source position, duration, playback rate, gain, pan |
+| Grain window | Normalised lifetime → amplitude | Window shape, attack/decay shape |
+| Live grain capture | Audio input → bounded capture resource | Capture duration, freeze, write position |
+
+### Playback kernel and pool [SYNTH-ADVANCED-GRAINS-PLAYBACK]
+
+Complete. The modules and journeys that cite this ID hold the evidence. The deferred verification gates under [SYNTH-ADVANCED-VERIFY] still apply.
+
+### Schedulers and sample resources [SYNTH-ADVANCED-GRAINS-SCHEDULING]
+
+Implementation: `grain_scheduler.ospml`, `grains.ospml` and the `GrainClouds` composition; strict static checking only while automated verification is paused. Scheduler and playback clocks are retained independently, and a caller commits both only after successful rendering.
+
+- [ ] Verify native distribution controls, replay, partition invariance and observed statistics. Partial: the clip journey "grain position, rate, duration, gain and pan distributions…" (GC and ARC) checks 2,000 events at three seeds: every field inside its bounds, its mean within 4% of the midpoint, both ends reached within 1%, splits at 1, 700 and 1,999 reproduce the batch and seeds, empty batches consume nothing, seeds replay exactly and differ from each other, and a collapsed range plays its one setting. The Prism inspector driving these spreads is not yet verified.
+
+### Real sample loading and ownership [SYNTH-ADVANCED-GRAINS-IMPORT]
+
+The first import path is bounded local WAV loading, not a general codec framework. File selection and reading belong to the application; decoding and sample validation are pure library operations. No file access, decoding or allocation may be moved into the audio callback. Initial supported encodings and limits must be visible in the application and package documentation.
+
+- [ ] Declare generated models for decoded sample metadata, prepared sample identity, channel policy and typed import errors. Partial: decoded metadata is `WaveSamples`/`WaveFormat` (`wave.td`), prepared identity is `ResourceIdentity` (`graph.td`, fb56cac8d) and import errors are typed `Fault`s (a malformed WAV is `MissingResource`). Import keeps the original interleaved lanes. A mono consumer requests an equal-weight mix. A generated channel-policy model remains open.
+- [ ] Show the loaded resource name, duration/rate/channel metadata, waveform and current source position using bounded observations.
+- [ ] Include sample replacement in Undo/Redo without invalidating resources still owned by playing grains or history snapshots.
+- [ ] Define an initial import-during-playback policy and show it clearly; do not block rendering while preparing a replacement.
+- [ ] Persist resource identity/content hash and a portable resolution strategy; missing or changed files require an explicit recoverable result.
+
+Implementation checkpoint: `WaveImport.decode` now prepares bounded PCM 8/16/24/32 or float32 WAV resources (mono/stereo, 8–192 kHz, at most 8 MiB and 1048576 frames), with original channels and generated metadata. Strict package checking passed; numerical/parser execution and application file selection remain outstanding. `SampleResources.decodeWave` now returns a checked immutable `SampleResource` for `Components.granular`, carrying original rate/channel count and explicit root tuning; the grain kernel uses `(left + right) / 2` and the bank retains both channels. Graphs retain that resource, and keyboard transposition uses its rate and root frequency instead of its buffer length. Content hashes, portable persistence and live resource replacement remain unfinished. Format references: [Microsoft WAVEFORMATEX](https://learn.microsoft.com/en-us/windows/win32/api/mmreg/ns-mmreg-waveformatex) and the [RIFF specification](https://www.mmsp.ece.mcgill.ca/Documents/AudioFormats/WAVE/Docs/riffmci.pdf).
+
+Deferred verification: after the pause, cover supported encodings, empty/truncated/oversized files, malformed chunk arithmetic, cancellation, stale completions, node removal, repeated replacement, Undo/Redo, missing resources and pitch consistency across source/output sample rates through loaded application/library journeys.
+
+### Graph and Prism integration [SYNTH-ADVANCED-GRAINS-INTEGRATION]
+
+Evidence on 19 November 2026: strict package/app checks and compilation checks of their existing test sources passed; no tests were executed. Native archive and host builds passed (cached host rebuild: 16 seconds). Manual native UI inspection confirmed **Add Grain cloud**, creation of **Grain cloud 5**, its built-in source waveform and seven editable inspector fields, with the Prism logo, original nodes and docked keyboard retained. Manual native routing subsequently created cable `5:0 → 6:0` from Grain Cloud to a new stereo output, and the audition completed. Its receipt reported three empty-queue callbacks; this is not direct speaker-underrun measurement and does not establish reliable audio. Granular PCM correctness, error journeys and sustained playback remain unverified.
+
+- [ ] Add independent sample-source/scheduler graph factories and event/control modulation ports; do not make a Prism-only synthesis path.
+- [ ] Add Grain Scheduler and Sample Source entries to the module browser.
+- [ ] Provide source selection, waveform/position display, density, duration, pitch, spread, seed and freeze controls in the existing inspector design.
+- [ ] Map keyboard/phone expression to declared parameters rather than hard-coded instrument-specific commands.
+- [ ] Save resource identity and scheduler state in patches; make unavailable samples a visible recoverable error.
+
+## Physical and modal synthesis [SYNTH-ADVANCED-PHYSICAL]
+
+Reference: Smith's waveguide material and Bilbao's numerical synthesis references in [SYNTH-RESEARCH-MODELS]. Physical instruments are compositions of excitation, propagation, losses and resonators, not opaque presets.
+
+| Module | Inputs and output | Main controls |
+| --- | --- | --- |
+| Exciter | Trigger/envelope/noise or audio → excitation | Strength, duration, colour, seed, strike position |
+| Fractional delay | Audio → delayed audio | Delay/tuning, interpolation policy |
+| Loss filter | Audio → damped audio | Frequency-dependent loss, brightness |
+| Resonator | Excitation → resonant audio | Frequency, decay, gain |
+| Modal bank | Excitation → summed modes | Mode ratios, mode decay, weights, coupling |
+| Waveguide instrument | Excitation and controls → audio | Pitch, damping, dispersion, pickup/strike position |
+
+### Shared physical primitives [SYNTH-ADVANCED-PHYSICAL-PRIMITIVES]
+
+Complete. The modules and journeys that cite this ID hold the evidence.
+
+### Playable instruments [SYNTH-ADVANCED-PHYSICAL-INSTRUMENTS]
+
+Complete. The modules and journeys that cite this ID hold the evidence.
+
+### Graph and Prism integration [SYNTH-ADVANCED-PHYSICAL-INTEGRATION]
+
+- [ ] Show meaningful activity/decay observations rather than decorative waveforms disconnected from audio.
+
+## Wavetable and additive synthesis [SYNTH-ADVANCED-TABLES]
+
+- [ ] Add prepared wavetable banks with explicit sample rate, table length, phase alignment and resource ownership.
+- [ ] Add Wavetable and Partial Bank module cards and resource controls in Prism.
+
+## Spectral synthesis and processing [SYNTH-ADVANCED-SPECTRAL]
+
+### Transform and resynthesis foundation [SYNTH-ADVANCED-SPECTRAL-CORE]
+
+Complete. The modules and journeys that cite this ID hold the evidence.
+
+### Modules and expressive controls [SYNTH-ADVANCED-SPECTRAL-MODULES]
+
+- [ ] Add pitch/time manipulation only with its own phase/transient handling and latency contract. Partial: `SpectralPitch` (transform 6) is now a peak-locked phase vocoder (Laroche and Dolson): each spectral peak's region moves by the whole bins nearest its true frequency's shift and keeps its lobe, the peak's phase advances at the shifted frequency and the bins around it keep their analysed offset (identity phase locking) ([spectral_peaks.ospml](../../../src/osprey/packages/synth/src/spectral_peaks.ospml), 4e212e09f, 1b45a3ba0). Latency is size − 1. The `pitchShifter` component is the FFT pitch-shift effect module (Prism palette "FFT pitch shifter", project component `pitchShifter`), preset to a plain shift (formant = ratio). Evidence, middle C through the song renderer at 1024 points: a sine keeps 60% of its energy a fifth up (ratio 1.5), 76% an octave up and 96% an octave down (the bin-by-bin mapping it replaced kept 12% an octave up); the shortfall is amplitude ripple, which [SYNTH-SPECTRAL-PITCH-EFFECT] requires removed. Shifts beyond an octave are out of scope; the daw test asserts G4 and C5 periods, half-period anti-correlation and more than half the level. Transient handling and time stretching remain open.
+- [ ] Spectral morphing ([SYNTH-SPECTRAL-MORPH]), tests still owed at 48 kHz, size 4,096, hop 1,024: unmatched Partial peaks fade to 0.75 and 0.25 of their level within 1 dB at amount 0.25 (220 Hz against 277 Hz); a held amount of 0.5 keeps per-hop rms within 0.5 dB; an amount ramp from 0 to 1 over 0.5 s has no frame-to-frame jump over 2 dB beyond the trend. Then cross-frame peak tracking for inharmonic sounds, and a crossfade of phase donors near 0.5 in Blend ([failure modes](../../specs/synth/SynthDsp.md#failure-modes)).
+- [ ] Real-time autotune ([SYNTH-SPECTRAL-AUTOTUNE]): YIN-style fundamental detection with confidence, snapping to key/scale or the timeline's notes, retune speed, amount and humanise, formant-preserving FFT correction, unvoiced frames passed dry, bounded per-hop work without allocation, declared latency; native Osprey formulas; tests for a 30-cent-flat vibrato line, glide timing, unvoiced noise and block-split invariance.
+- [ ] Showcase songs [SYNTH-SHOWCASE]: the shipped songs play every family (granular and spectral morph are missing today). The renderer must play granular and spectral nodes per note at usable speed. A test opens each song and checks every family is present.
+- [ ] Synthesis coverage to 100%: `@osprey/synth` measured 63.4% (2,650 of 4,180 lines) on 21 November 2026; loaded journey tests per family raise it, and the threshold only goes up.
+- [ ] Prism and the daw expose Pitch and Formant controls on the spectral node; the project file stores both.
+- [ ] Add spectral displays driven by bounded observer snapshots, not analysis on the UI thread.
+
+## Nonlinear, spatial and feedback processing [SYNTH-ADVANCED-NONLINEAR]
+
+- [ ] Expose Delay, Diffuser, Feedback Matrix, Waveshaper, Frequency Shifter and Reverb in Prism.
+
+## Phase transformation and experimental oscillators [SYNTH-ADVANCED-PHASE]
+
+- [ ] Add phase/operator modules and editable routing in Prism, including modulation depth and scaling adapters.
+
+## Learned controls and offline discovery [SYNTH-ADVANCED-LEARNED]
+
+- [ ] Add application controls to preview/apply/reject fitted parameters without overwriting a working patch silently.
+
+## Advanced synthesis delivery plan [PRISM-ADVANCED-PLAN]
+
+The 2026-11-17 handoff supplies the proposed delivery sequence below. The [active implementation checklist](advanced-synthesis.md) owns processor milestones and their status. The [package and UI specification](../../specs/synth/SynthAdvanced.md#advanced-synthesis-proposal-synth-advanced) defines acceptance. The [research guide](../../specs/synth/SynthAdvanced.md#sources-neural-granular-and-physical-synthesis-synth-research-focused) compares the papers and instruments behind these choices.
+
+### Repository baseline and dependencies [PRISM-ADVANCED-BASELINE]
+
+The proposal started from the package's `graph.td`, `render.td`, `src/clip_kernels.ospml`, README and Prism's `editor.td`. Reuse graph identities, typed cables, parameter revisions and retained block processing. The 17 November baseline used basic/external processor variants, oscillator/filter/delay kernel state and a fixed 48000 Hz clip path. The [family checkpoint](advanced-synthesis.md#advanced-family-checkpoint-synth-advanced-families-checkpoint) records subsequent changes. Keep the 16 November sustained-device failure open until fresh device evidence meets the contract.
+
+| Layer | Integration and evidence |
+| --- | --- |
+| Schemas | Extend typeDiagram sources and regenerate. Round-trip old graphs and exercise missing and unknown fields. |
+| DSP mathematics | Implement native Osprey formulas and prove properties of their parsed bodies for windows, interpolation, modal transitions, waveguide tuning, energy accounting and controller mappings. Check reference parity. |
+| Package processing | Carry grain scheduling, body state and neural request descriptors through public preparation/block interfaces, validation and observations. |
+| Host adapters | Bound asset decoding, model execution and generated-asset jobs. Reuse worker ownership/cancellation with a dedicated typed model protocol. |
+| Prism | Extend existing editor state, palette, cards, inspector and keyboard gestures within the single accessible routing workspace. |
+| Evidence | Extend loaded package/app journeys and platform screenshots. Keep artifacts below `target/`. |
+
+### Shared foundation [PRISM-ADVANCED-FOUNDATION]
+
+Follow the [shared component checklist](advanced-synthesis.md#shared-component-foundation-synth-advanced-core). Exercise invalid state, rate changes, asset generations, irregular partitions, unavailable models, cancellation and migration before extending behavior. Validate dimensions, products, limits, finite data and model operators before preparation. Thread format, processor-specific state and asset lifetimes through scalar and graph execution. Measure producer queues, fault publication, latency, cancellation ownership and device starvation. Preserve seeds, applied parameter semantics and hashes across save/reload and relinking.
+
+Exit evidence covers old-processor results, rejected state, irregular-block parity and transactional replacement under GC and ARC on supported hosts. Exercise wasm32 package execution and explicit backend unavailability. Use the supported memory backend on native Windows.
+
+### Granular package and interface [PRISM-ADVANCED-GRANULAR]
+
+The [granular checklist](advanced-synthesis.md#granular-synthesis-synth-advanced-grains) records the current kernel, scheduler, asset and graph work. Use seeded event traces and window/resampling oracles for reverse and single-frame sources, replacement, capture wrap, zero/max density and exhaustion. Verify the shared sample/live kernel, independent pitch and scan, region boundaries, source retention and visible overload counts.
+
+Drive sample import, notes, pitch changes at fixed scan, freeze, replacement during tails, capacity exhaustion, undo and save/reload through the Granular card and inspector. Exercise Size, Density, Pitch, Scan, Capture, Freeze, waveform/region gestures and numeric equivalents. Compare audio, applied state and screenshots; measure pitch and alias energy against the reference resampler. Demonstrate a frozen pad and time-stretched transient with reproducible event traces. GR-1 and Morphagene inform navigation, Quanta and Pigments inform sample voices, and Portal informs live capture.
+
+### Physical package and interface [PRISM-ADVANCED-PHYSICAL]
+
+Use the [physical processor checklist](advanced-synthesis.md#physical-and-modal-synthesis-synth-advanced-physical) for implementation status. Pin equations, boundary conditions, modal weights and ranges for bars, plates, membranes, strings and tubes. Establish impulse, tuning, decay and energy oracles. Progress from modal bodies and strike/pluck through fractional-delay strings/tubes to bounded bow/blow feedback. Exercise convergence failure, joint coupling, automation and material changes before live use.
+
+Drive Exciter, Modal Body, String and Tube through palette selection, conditional controls, pickup/contact gestures and mode/energy observations. Save and reload struck metal, damped membrane, plucked/bowed string and blown tube patches after varying velocity, pickup, material and coupling. Collect isolated-mode tuning/T60, decay/energy bounds, solver-exhaustion evidence and headless/windowed screenshots. Rings/Elements inform exciter/body controls, Chromaphone informs coupling, and Collision/Tension inform gestures.
+
+### Neural package and interface [PRISM-ADVANCED-NEURAL]
+
+1. Select redistributable RAVE, DDSP, codec and text-to-audio fixtures independently. Record exact hashes, operator/runtime compatibility, licenses and available training-data provenance.
+2. Benchmark load, warm-up, execution distribution, memory, hop/lookahead and cancellation on Windows and other target hosts. Select a backend only after the chosen models execute with bounded operator support. ONNX export and TorchScript are candidates.
+3. Exercise manifest rejection, worker loss, late replies, shape errors and codebook bounds before wiring real inference through typed effects. Retain history across irregular blocks.
+4. Verify RAVE transfer and DDSP Audio/MIDI with latency-compensated mixing and pitch confidence. Run real codec encode/decode fixtures.
+5. Generate validated assets with cancellation. Preserve prompt, duration, seed and model revision. Exercise Preview and Insert independently.
+6. Drive model selection, capability/error display, latent or harmonic/noise controls, codec inspection and generation. Cover missing assets, replacement, stale results, cancellation and save/reload.
+
+Collect genuine audio, held-out measurements and lifecycle evidence for each capability. Record backend-specific nondeterminism in replay metadata. Offline text generation has an independent delivery gate. Live transfer also requires measured deadlines.
+
+### Combined synthesis experiments [PRISM-ADVANCED-HYBRID]
+
+Use one evolving body and learned grain contacts. Its energy affects the timing, location and texture of later contacts. The [combined-method contract](../../specs/synth/SynthAdvanced.md#combined-grain-and-body-method-synth-advanced-hybrid) defines the state transition and work budget.
+
+| Experiment | Deliverable | Decision evidence |
+| --- | --- | --- |
+| Body-dependent contacts | Analytic controller, then learned scheduler/texture decoder with energy-constrained forces | Initial body state changes future contact traces only with Interaction enabled. |
+| Joint sound analysis | Estimate editable grain dictionary, contact envelope and material from reference audio | Held-out reconstruction and edits compared with independent parameter fitting. |
+| Text-directed interactions | Generate contact/material trajectories for the same body | Prompt relevance, valid trajectories and predictable manual edits compared with generated-audio resampling. |
+
+Review the full neural-granular, haptic modal/granular and differentiable-modal papers and broaden the prior-art search around contact-state feedback and energy-constrained learning. Define state units, force projection, material-change work, bounded transitions and failure behavior in native Osprey. Prove the energy bound against the production transition function. Establish analytic controls and ablation fixtures before training with disjoint recording/body splits, fixed seeds and matched budgets.
+
+Evaluate offline, then run the learned controller through the neural lifecycle. Capture event traces, constrained updates, energy, latency and audio. Exercise the Combined module's Texture, Material, Body memory, Interaction and Energy controls, contact map, timeline, energy inspector, numeric/keyboard alternatives and controller selection. Compare ordinary routed grains/resonator, open-loop contacts, analytic feedback, learned control without energy features and the full method under matched loudness and latency. Retain negative results. Production work needs repeatable musical value within energy/resource limits. Joint analysis and text trajectories require independent evidence.
+
+### Verification and delivery sequence [PRISM-ADVANCED-DELIVERY]
+
+Shared preparation/assets/state precede granular and physical processing. Deliver the matching UI and journey at each stage. Neural work depends on backend selection and worker lifetime handling. The combined renderer depends on all three foundations, its native energy model, checked energy bound and analytic baseline. Measure that baseline before training the controller.
+
+Use `make -C src/osprey/packages synth` for package verification and `make -C src/toolchain/targets/tests synth` for the host-free Prism suite when verification resumes. Windows has a synth launch target in its [platform Makefile](../../../src/toolchain/targets/windows/Makefile). Verify platform-specific launch, windowed and headless journeys through the appropriate scoped targets.
+
+Delivery requires the [acceptance matrix](../../specs/synth/SynthAdvanced.md#acceptance-contract-synth-advanced-verify) with real assets/models and public entry points. Verify Windows sandbox capabilities, keyboard accessibility, resize behavior and screenshots on every advertised host. Require a ten-minute maximum-workload run with zero starvation and callback allocation/lock instrumentation before claiming continuous playback. Record delivered capabilities and constraints in package and Prism documentation. Keep unverified milestones open.
+
+Resolve resampling quality thresholds, membrane/tube reference models, runtime and redistributable model selection, platform memory/performance limits and the hybrid training dataset with their named experiments before optimizing dependent paths. Numerical defaults remain testable starting points.

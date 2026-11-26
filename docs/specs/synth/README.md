@@ -30,4 +30,4 @@ The synthesis toolkit, the Prism daw, Pocket Orchestra, instruments and macros, 
 - [Prism device [DEVICE]](PrismDevice.md): firmware, engine, controls, the link to Prism and the factory.
 - [Prism device hardware [DEVICE-HW]](PrismDeviceHardware.md): the Compute Module 5 board, latency budget, compute, enclosure constraints and the AUD 500 budget.
 
-The device is compiled with the [embedded targets](../compiler/EmbeddedTargets.md). Delivery plans are in [docs/plans/synth](../../plans/synth/README.md); research is in [docs/research/synthesis](../../research/synthesis/README.md).
+The device is compiled with the [embedded targets](../compiler/EmbeddedTargets.md). Delivery plans are in [docs/plans/synth](../../plans/synth/README.md); each specification cites its own sources.

@@ -4,7 +4,7 @@ Pure synthesis components for Osprey, extracted from Prism. The library contains
 
 The initial `synth::Voice` module supplies pitch conversion, periodic wave shapes, LFO rates, patch sampling and WAV encoding. `synth::Patch` is generated from [patch.td](patch.td). This initial renderer retains Prism's 11,025 Hz/8-bit preview behaviour and approximate filtering; it is not yet a real-time, bandlimited production engine.
 
-The [library contract](../../../../docs/specs/synth/Synthesis.md) defines modular typed graphs, routable/chained components, stateful audio processing, UI-independent Signals and future VST3 hosting. The [research collection](../../../../docs/research/synthesis/README.md) links fundamentals and modern papers to concrete experiments. These are delivery requirements; unimplemented features are marked as such.
+The [library contract](../../../../docs/specs/synth/Synthesis.md) defines modular typed graphs, routable/chained components, stateful audio processing, UI-independent Signals and future VST3 hosting. The [research collection](../../../../docs/specs/synth/SynthDsp.md#sources-and-experiments-synth-research) links fundamentals and modern papers to concrete experiments. These are delivery requirements; unimplemented features are marked as such.
 
 Regenerate a model with the upstream typeDiagram emitter:
 

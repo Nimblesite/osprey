@@ -2,7 +2,7 @@
 
 The [advanced synthesis proposal](SynthAdvanced.md#advanced-synthesis-proposal-synth-advanced) specifies neural, granular, physical and combined methods with their Prism interfaces. The [implementation checklist](../../plans/synth/advanced-synthesis.md) tracks delivery and verification.
 
-Status — implementation in progress. The initial package extracts Prism's pure pitch, waveform, modulation, sample and WAV functions. Typed graph validation/scheduling, reactive parameter snapshots and stateful scalar reference oscillators, ADSR and filters now have passing package journeys. The real-time renderer and advanced algorithms remain requirements, not completed features. Research sources and candidate experiments are in [the research guide](../../research/synthesis/README.md).
+Status — implementation in progress. The initial package extracts Prism's pure pitch, waveform, modulation, sample and WAV functions. Typed graph validation/scheduling, reactive parameter snapshots and stateful scalar reference oscillators, ADSR and filters now have passing package journeys. The real-time renderer and advanced algorithms remain requirements, not completed features. Research sources and candidate experiments are in [the research guide](SynthDsp.md#sources-and-experiments-synth-research).
 
 `@osprey/synth` is an independent synthesis library for instruments, effects, offline rendering and future plug-in hosting. It contains no UI, native widgets, canvas rendering, networking, session management or operating-system audio-device code. Prism and Light Orchestra are examples using the library. The orchestra's number of phones and instruments must not constrain library design.
 

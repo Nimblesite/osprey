@@ -6,14 +6,6 @@ The shared audio foundation is the independent [`@osprey/synth` toolkit](../../s
 
 The normative requirements are in [Pocket Orchestra](../../specs/synth/PocketOrchestra.md). The working name is Pocket Orchestra. The first delivery uses a desktop session host, LAN WebSockets, host-generated audio, three instruments and native/canvas presentations across macOS, Windows, iOS, Android and web. Linux is a follow-on target.
 
-## Planning checklist [ORCHESTRA-PLAN-DOCUMENTS]
-
-- [x] Define the ensemble experience, topology and platform roles.
-- [x] Define native and canvas widget acceptance on every required platform.
-- [x] Define protocol ownership, clock behaviour, disconnect handling and trust boundaries.
-- [x] Identify existing runtime, audio and mobile-host gaps.
-- [x] Specify implementation phases and measurable acceptance evidence.
-
 ## Feasibility and measured baseline [ORCHESTRA-PLAN-SPIKE]
 
 - [ ] Inventory existing native capabilities, host canvas support, multitouch, audio and transport adapters. Record implementation evidence for each platform against [ORCHESTRA-PLATFORMS].
@@ -28,7 +20,6 @@ Exit evidence consists of runnable spikes, reviewed model generation, a host cap
 
 ## Shared session core [ORCHESTRA-PLAN-CORE]
 
-- [x] Add the shared application under `src/osprey/examples/pocket_orchestra/`, with canonical typeDiagram models and generated bindings following the existing repository conventions.
 - [ ] Implement typed session transitions, admission, roster, player ownership, sequence/epoch validation and state snapshots under [ORCHESTRA-NETWORK-PROTOCOL].
 - [ ] Implement bounded queues, update coalescing, heartbeat expiry, reconnect and explicit voice release under [ORCHESTRA-NETWORK-TIMING].
 - [ ] Implement production and deterministic test handlers for the effects in [ORCHESTRA-EFFECTS]. Reuse the existing native capability boundary and standard diagnostics package.
@@ -86,12 +77,6 @@ Linux desktop hosting, trusted HTTPS/WSS provisioning, motion instruments, saved
 
 ## First playable pair evidence [ORCHESTRA-PLAN-PLAYABLE]
 
-- [x] Build a native macOS session app that serves phone controllers and plays Osprey oscillator output through AVAudioEngine.
-- [x] Deliver the browser pentatonic multitouch ribbon over authenticated WebSocket, with keyboard access and note release on disconnect or suspension.
-- [x] Add native QR/invite, controller/note counts, master volume, output meter and ensemble silence controls.
-- [x] Exercise the native server with eight controllers and eighty notes; verify PCM bounds, ownership, malformed input, expiry and silence after release.
-- [x] Exercise a mobile-sized browser controller and run the same transport/audio journey through the actual Mac output device.
-- [x] Verify the audio ring with two million ordered samples under address/undefined-behaviour sanitizers and ThreadSanitizer.
 - [ ] Measure physical iPhone/Android-to-speaker latency on Wi-Fi and record device/browser versions.
 - [ ] Complete Windows hosting, native phone controllers and the full native/canvas presentation matrix above.
 
@@ -99,11 +84,6 @@ Run commands and honest delivery boundaries are in `src/osprey/examples/pocket_o
 
 ## Playable sound and recovery [ORCHESTRA-PLAN-SOUND]
 
-- [x] Expose independent instrument selection, tone, echo, reverb and metallic warp through authenticated sequenced edits.
-- [x] Connect the phone expression selector and range control to real native synthesis and per-controller feedback racks.
-- [x] Add persistent cross-cutting controller/backend diagnostics and the Osprey app icon.
-- [x] Reproduce stopped output with a real engine configuration notification and restart it while retaining the held note.
-- [x] Verify final headless and visible browser/audio journeys for the four-instrument palette, including real output recovery and zero callback underruns.
 - [ ] Extract host echo/reverb storage into reusable synth graph processors and measure alias rejection and physical-device latency.
 
 Validation on 2026-11-14 used the real native kernel and captured PCM. Both app make targets passed with Chromium/WebKit controllers, eight peers/eighty voices, distinct timbres, all four audible expressions, feedback tails, malformed/stale settings and persistent logs. GC and ARC each passed three session journeys and thirteen synth journeys. Generated Osprey/Swift models reproduced byte-for-byte. Deslop reported no visible duplicate groups in the supported Mac test files after sharing the native-fixture compiler. Full-branch CI retains the previously recorded coverage gaps above. Physical-phone and physical output-route switching remain unverified.

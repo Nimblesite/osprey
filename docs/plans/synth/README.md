@@ -1,15 +1,14 @@
 # Synthesis, Prism and device plans
 
-Delivery plans for the [synthesis, Prism and device specifications](../../specs/synth/README.md).
+Delivery plans for the [synthesis, Prism and device specifications](../../specs/synth/README.md). Each plan lists open work only: a finished check is deleted, and its evidence stays in the tests and commits that carry its specification ID.
 
 | Plan | Covers |
 | --- | --- |
-| [Advanced synthesis](advanced-synthesis.md) and [its methods](synthesis-methods.md) | The `@osprey/synth` package: foundation, grains, physical, tables, spectral, phase, learned controls |
-| [The daw](daw.md) and [its performance](daw-performance.md) | Prism as a daw: real-time play, pages, project, buses, MIDI, OSC, profiling |
-| [Prism routing](prism-routing.md), [its evidence](prism-routing-evidence.md) and [advanced Prism](prism-advanced.md) | The modular patch editor, VST3 hosting and advanced module interfaces |
+| [Advanced synthesis](advanced-synthesis.md) | The `@osprey/synth` package: foundation, grains, physical, tables, spectral, phase, learned controls, and the advanced Prism module interfaces |
+| [The daw](daw.md) | Prism as a daw: real-time play, pages, project, buses, MIDI, OSC, and engine, interface and build performance |
+| [Prism routing](prism-routing.md) | The modular patch editor, VST3 hosting and the native boundary evidence |
 | [Pocket Orchestra](pocket-orchestra.md) | Phones as instruments around one host |
 | [Instrument builder and macros](instrument.md) | Macro amounts, smoothing, proofs, instrument faces and device faces |
-| [Prism device](device.md) | Engine speed gate, virtual device, firmware and factory |
-| [Prism device hardware](hardware.md) | Prototype, Prism board and enclosure |
+| [Prism device and hardware](device.md) | Engine speed gate, virtual device, firmware, factory, prototype, Prism board and enclosure |
 
 The compiler work the device needs is in the [embedded targets plan](../embedded-targets.md).
