@@ -10,7 +10,6 @@ export interface Config {
   readonly repo: string;
   readonly roots: List<string>;
   readonly port: int;
-  readonly push: boolean;
   readonly editor: string;
   readonly author: string;
   readonly email: string;
@@ -46,7 +45,7 @@ function identity(author, email) {
 }
 
 function assembled(repo, roots, port, author, email): Config {
-  return { repo: repo, roots: roots, port: port, push: setting("CMS_PUSH", "") === "1", editor: setting("CMS_EDITOR", DEFAULT_EDITOR), author: author, email: email };
+  return { repo: repo, roots: roots, port: port, editor: setting("CMS_EDITOR", DEFAULT_EDITOR), author: author, email: email };
 }
 
 /** The configuration, or the first setting that is missing or unsafe. */

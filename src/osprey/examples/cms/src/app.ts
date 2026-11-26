@@ -4,9 +4,9 @@
 /** Every route of the CMS, registered on one application. [CMS-API] */
 import express, { type Request, type Response } from "express";
 import { type Config } from "./settings.ts";
-import { history } from "./git.ts";
+import { history, publish, unpublished } from "./git.ts";
 import { isMedia } from "./paths.ts";
-import { failed, historyJson, problem, treeJson } from "./replies.ts";
+import { failed, historyJson, problem, publishedJson, statusJson, treeJson } from "./replies.ts";
 import { asset, opened, previewed, removed, withPath, written } from "./routes.ts";
 import { tree } from "./tree.ts";
 import { partsOf, progressJson, progressStatus, receive } from "./upload.ts";
@@ -48,6 +48,24 @@ function listed(res: Response, commits) {
   }
 }
 
+function status(res: Response, count) {
+  switch (count.kind) {
+    case "success":
+      return res.json(statusJson(count.value, true, ""));
+    case "error":
+      return res.json(statusJson(0, false, count.message));
+  }
+}
+
+function published(res: Response, outcome) {
+  switch (outcome.kind) {
+    case "success":
+      return res.json(publishedJson(outcome.value));
+    case "error":
+      return failed(res, outcome.message);
+  }
+}
+
 /** The application over `config`'s working tree. */
 export function cms(config: Config) {
   const app = express();
@@ -61,6 +79,8 @@ export function cms(config: Config) {
   app.post("/api/upload", (req, res) => withPath(config, req, res, (path) => uploaded(config, req, res, path)));
   app.get("/api/media", (req, res) => withPath(config, req, res, (path) => previewed(config, res, path)));
   app.get("/api/history", (_req, res) => listed(res, history(config)));
+  app.get("/api/status", (_req, res) => status(res, unpublished(config)));
+  app.post("/api/publish", (_req, res) => published(res, publish(config)));
   return app.use("/", (req, res) => problem(res, 404, `no route for ${req.method} ${req.path}`));
 }
 

@@ -15,10 +15,13 @@ module Update
     idle () = Upload(uploadPath = "", uploadParts = [], uploadNext = 0)
 
     (** The store a launch starts from, talking to the CMS at `server`, before anything has loaded. *)
-    export launched server = Studio(server = server, roots = [], files = [], filter = "", opened = "", text = "", saved = "", cursor = 0, mode = "formatted", focus = 0, blockCursor = 0, preview = "", commit = "", loads = 0, busy = false, history = [], showingHistory = false, creating = false, draftPath = "", folder = "media", upload = idle (), notice = quiet ())
+    export launched server = Studio(server = server, roots = [], files = [], filter = "", opened = "", text = "", saved = "", cursor = 0, mode = "formatted", focus = 0, blockCursor = 0, preview = "", commit = "", loads = 0, busy = false, history = [], unpublished = 0, remote = false, showingHistory = false, creating = false, draftPath = "", folder = "media", upload = idle (), notice = quiet ())
 
-    (** The tree and the history, fetched together. *)
-    export hydrate store = Runtime::asking (store(loads = 2), [Api::call (store.server, "tree", "GET", "/api/tree", ""), Api::call (store.server, "history", "GET", "/api/history", "")])
+    (** The tree, the history and what is still unpublished, fetched together. *)
+    export hydrate store = Runtime::asking (store(loads = 3), [Api::call (store.server, "tree", "GET", "/api/tree", ""), Api::call (store.server, "history", "GET", "/api/history", ""), Api::call (store.server, "status", "GET", "/api/status", "")])
+
+    // Publishing pushes every saved commit to the site's remote, whose pipeline deploys it ([CMS-PUBLISH]).
+    publish store = Runtime::asking (store(busy = true, notice = quiet ()), [Api::call (store.server, "publish", "POST", "/api/publish", "")])
 
     (** `store` showing a notice in `tone`. *)
     export noticed (store, tone, heading, detail) = store(notice = Notice(noticeTone = tone, noticeHeading = heading, noticeDetail = detail))
@@ -70,6 +73,7 @@ module Update
         CreatePage => create store
         CancelDraft => Runtime::step (store(creating = false))
         ToggleHistory => history store
+        Publish => publish store
         Dismiss => Runtime::step (store(notice = quiet ()))
         ChooseMedia => choose store
         Formatted => Runtime::step (store(mode = "formatted"))

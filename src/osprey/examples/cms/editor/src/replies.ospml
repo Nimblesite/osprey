@@ -17,15 +17,17 @@ module Replies
 
     failed (store, ticket, outcome) = Runtime::step (Update::noticed (settled (store(busy = false)), "bad", "That didn't work", Api::refusal (ticket, outcome)))
 
-    pushNote text = match Api::pushed text
-        "pushed" => "Committed and pushed: the site will redeploy."
-        "off" => "Committed to the site's repository."
-        other => "Committed here, but the push failed: ${other}"
-
     // A commit landed: say so, keep what the editor holds as saved, and refresh the tree and history.
     committed (store, heading, text) =
-        done = Update::noticed (store(busy = false, saved = store.text, commit = Api::committed text, creating = false), "good", heading, "${pushNote text} ${take (Api::committed text) 7}")
+        done = Update::noticed (store(busy = false, saved = store.text, commit = Api::committed text, creating = false), "good", heading, "Committed ${take (Api::committed text) 7}. Publish to put it live.")
         Update::hydrate done
+
+    // A publish landed: the remote holds every saved commit and the site's pipeline deploys them.
+    publishedNote text = match Api::published text
+        0 => "Nothing new to publish: the live site already has every saved change."
+        count => "Published ${count} commit(s). The site's pipeline is deploying them."
+
+    published (store, text) = Update::hydrate (Update::noticed (store(busy = false), "good", "Published", publishedNote text))
 
     deleted store = Update::hydrate (Update::noticed (store(busy = false, opened = "", text = "", saved = "", preview = ""), "good", "Deleted", "The file is gone from the site."))
 
@@ -66,6 +68,7 @@ module Replies
         match ticket
             "tree" => Runtime::step (held(files = Api::files text, roots = Api::roots text))
             "history" => Runtime::step (held(history = Api::history text))
+            "status" => Runtime::step (held(unpublished = Api::unpublished text, remote = Api::remote text))
             "file" => Runtime::step (held(text = text, saved = text))
             "media" => Runtime::step (held(preview = "data:${Names::mime store.opened};base64,${text}"))
             _ => Runtime::step held
@@ -74,6 +77,7 @@ module Replies
         "save" => committed (store, "Saved", Api::body ticket)
         "create" => committed (store, "Page created", Api::body ticket)
         "delete" => deleted store
+        "publish" => published (store, Api::body ticket)
         "part" => parted (store, Api::body ticket)
         "chosen" => picked (store, outcome)
         _ => loaded (store, ticket)

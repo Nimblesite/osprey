@@ -3,7 +3,7 @@
 
 /** The JSON encoders and reply shapes of the API; JSON stays at this edge. [CMS-API] */
 import { type Response } from "express";
-import { type Commit, type Saved } from "./git.ts";
+import { type Commit, type Published, type Saved } from "./git.ts";
 import { type Entry } from "./tree.ts";
 
 /** `{"error": message}` with `status`. */
@@ -16,9 +16,19 @@ export function failed(res: Response, message: string) {
   return problem(res, 500, message);
 }
 
-/** A commit reply: `{"commit", "path", "push"}`. [CMS-API-SAVE] */
+/** A commit reply: `{"commit", "path"}`. [CMS-API-SAVE] */
 export function savedJson(path: string, saved: Saved) {
-  return JsonObject([JsonMember("commit", JsonString(saved.commit)), JsonMember("path", JsonString(path)), JsonMember("push", JsonString(saved.push))]);
+  return JsonObject([JsonMember("commit", JsonString(saved.commit)), JsonMember("path", JsonString(path))]);
+}
+
+/** A publish reply: `{"published", "commit"}`. [CMS-PUBLISH] */
+export function publishedJson(published: Published) {
+  return JsonObject([JsonMember("published", JsonInt(published.count)), JsonMember("commit", JsonString(published.commit))]);
+}
+
+/** The status reply: `{"unpublished", "remote"}`, with `reason` when there is no remote. [CMS-PUBLISH] */
+export function statusJson(count: int, remote: boolean, reason: string) {
+  return JsonObject([JsonMember("unpublished", JsonInt(count)), JsonMember("remote", JsonBool(remote)), JsonMember("reason", JsonString(reason))]);
 }
 
 function entryJson(entry: Entry) {

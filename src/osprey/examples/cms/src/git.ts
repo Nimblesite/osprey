@@ -2,17 +2,23 @@
 // osprey: module=Git
 
 /**
- * Every change the editor makes is one git commit in the site's working tree,
- * pushed at once when `CMS_PUSH=1`. [CMS-API-SAVE] [CMS-DEPLOY]
+ * Every change the editor makes is one git commit in the site's working tree.
+ * Saving never publishes: publishing pushes the saved commits to the site's
+ * remote, which the site's pipeline deploys. [CMS-API-SAVE] [CMS-PUBLISH]
  */
 import { type Config } from "./settings.ts";
 import { folderOf } from "./paths.ts";
 import { run, succeeds } from "./shell.ts";
 
-/** A commit, and what became of pushing it: `off`, `pushed` or `failed: <reason>`. */
+/** The commit a change made. */
 export interface Saved {
   readonly commit: string;
-  readonly push: string;
+}
+
+/** How many commits a publish pushed, and the commit the site now holds. */
+export interface Published {
+  readonly count: int;
+  readonly commit: string;
 }
 
 /** One commit of the history. */
@@ -28,30 +34,17 @@ function head(config: Config) {
   return run(config.repo, "git rev-parse HEAD");
 }
 
-function pushOutcome(config: Config) {
-  if (!config.push) {
-    return "off";
-  }
-  const pushed = run(config.repo, "git push -q");
-  switch (pushed.kind) {
-    case "success":
-      return "pushed";
-    case "error":
-      return `failed: ${pushed.message}`;
-  }
-}
-
-function saved(config: Config, sha) {
-  return { commit: sha, push: pushOutcome(config) } satisfies Saved;
+function saved(sha) {
+  return { commit: sha } satisfies Saved;
 }
 
 /** Commit what is staged for `path` under `subject`; an unchanged path keeps the current HEAD. */
 function committed(config: Config, path, subject) {
   if (succeeds(config.repo, `git diff --cached --quiet -- '${path}'`)) {
-    return andThen(head(config), (sha) => Success({ commit: sha, push: "off" } satisfies Saved));
+    return andThen(head(config), (sha) => Success(saved(sha)));
   }
   const identity = `-c user.name='${config.author}' -c user.email='${config.email}'`;
-  return andThen(run(config.repo, `git ${identity} commit -q -m '${subject}' -- '${path}'`), (_) => andThen(head(config), (sha) => Success(saved(config, sha))));
+  return andThen(run(config.repo, `git ${identity} commit -q -m '${subject}' -- '${path}'`), (_) => andThen(head(config), (sha) => Success(saved(sha))));
 }
 
 function staged(config: Config, path, subject) {
@@ -83,4 +76,15 @@ function commitOf(line) {
 /** The newest 20 commits, newest first. */
 export function history(config: Config): Result<List<Commit>, string> {
   return andThen(run(config.repo, HISTORY), (text) => Success(lines(text).filter((line) => line !== "").map(commitOf)));
+}
+
+/** How many saved commits the remote does not have; an error when the site has no remote to publish to. */
+export function unpublished(config: Config): Result<int, string> {
+  return andThen(run(config.repo, "git rev-list --count @{upstream}..HEAD"), (count) => parseInt(count));
+}
+
+/** Push every saved commit to the site's remote. */
+export function publish(config: Config): Result<Published, string> {
+  return andThen(unpublished(config), (count) =>
+    andThen(run(config.repo, "git push -q"), (_) => andThen(head(config), (sha) => Success({ count: count, commit: sha } satisfies Published))));
 }

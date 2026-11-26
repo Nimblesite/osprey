@@ -19,6 +19,8 @@ const root = path.resolve(here, "../../../../..");
 const osprey = process.env.OSPREY ?? path.join(root, "target/release/osprey");
 const project = path.join(root, "src/osprey/examples/cms");
 const out = path.join(root, "target/cms");
+/** The Osprey Native editor's web build, made once per run by the browser host's build script. [CMS-EDITOR] */
+const EDITOR = path.join(out, "editor-web");
 const PORT = 4399;
 const ROOTS = ["content", "media"];
 const MEMORIES = ["gc", "arc"];
@@ -187,7 +189,16 @@ function createSite(site) {
   }
   git(site, "add", "-A");
   git(site, "commit", "-q", "-m", INIT);
+  // The published site: a bare repository the working tree pushes to, as a bucket-backed remote would be. [CMS-PUBLISH]
+  const remote = `${site}.git`;
+  rmSync(remote, { recursive: true, force: true });
+  execFileSync("git", ["init", "-q", "--bare", remote]);
+  git(site, "remote", "add", "origin", remote);
+  git(site, "push", "-q", "-u", "origin", "HEAD");
 }
+
+/** The commit the published site (the bare remote) holds. */
+const published = (site) => execFileSync("git", ["--git-dir", `${site}.git`, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
 
 /** Compile the server under `memory` and return its binary. */
 function build(memory) {
@@ -248,7 +259,7 @@ async function start(ctx, binary) {
   const log = openSync(logPath, "w");
   const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("CMS_")));
   const server = spawn(binary, [], { cwd: root, stdio: ["ignore", log, log],
-    env: { ...env, CMS_REPO: ctx.site, CMS_PORT: String(PORT), CMS_ROOTS: ROOTS.join(",") } });
+    env: { ...env, CMS_REPO: ctx.site, CMS_PORT: String(PORT), CMS_ROOTS: ROOTS.join(","), CMS_EDITOR: EDITOR } });
   try {
     await listening(server);
   } catch (error) {
@@ -313,6 +324,7 @@ function committed(ctx, reply, file, verb) {
   equal(log(ctx.site).length, ctx.made.length + 2, `${label}: one new commit`);
   equal(lastSubject(ctx.site), done, `${label}: git log -1 --format=%s`);
   equal(git(ctx.site, "status", "--porcelain"), "", `${label}: working tree clean`);
+  equal(published(ctx.site), ctx.live, `${label}: saving never publishes`);
   alive(ctx, label);
   ctx.made.push({ sha: reply.commit, subject: done });
 }
@@ -330,8 +342,11 @@ async function tree(ctx) {
 async function browse(ctx) {
   const page = await call(ctx.port, "GET", "/");
   const label = say(ctx, "GET /");
-  ok(typed(page, 200, "text/html", label).equals(readFileSync(path.join(project, "editor/index.html"))), `${label}: the editor page as it is on disk`);
-  ok(page.body.includes('id="tree"'), `${label}: the page holds the tree`);
+  ok(typed(page, 200, "text/html", label).equals(readFileSync(path.join(EDITOR, "index.html"))), `${label}: the editor page as built`);
+  ok(page.body.includes('id="osprey-root"'), `${label}: the page holds the Osprey Native root`);
+  for (const [file, type] of [["host.js", "text/javascript"], ["host.css", "text/css"]]) {
+    ok(typed(await call(ctx.port, "GET", `/${file}`), 200, type, `${label} ${file}`).equals(readFileSync(path.join(EDITOR, file))), `${label}: ${file} as built`);
+  }
   await tree(ctx);
   for (const file of shown(ctx, "markdown")) {
     ok((await fetched(ctx, file)).equals(disk(ctx.site, file)), say(ctx, `GET /api/file ${file}: the bytes on disk`));
@@ -585,10 +600,37 @@ async function historySteps(ctx) {
   await history(ctx, `after ${BURST} more saves`);
 }
 
+/** GET /api/status: how many saved commits the published site does not have yet. [CMS-PUBLISH] */
+async function unpublished(ctx, label) {
+  const status = json(await call(ctx.port, "GET", "/api/status"), 200, `${label}: GET /api/status`);
+  const expected = Number(git(ctx.site, "rev-list", "--count", `${ctx.live}..HEAD`));
+  equal(status.unpublished, expected, `${label}: unpublished counts the commits since the last publish`);
+  equal(status.remote, true, `${label}: the site has a remote to publish to`);
+  return status.unpublished;
+}
+
+/** POST /api/publish pushes every saved commit, and only then does the published site move. [CMS-PUBLISH] */
+async function publishSteps(ctx) {
+  const label = say(ctx, "publish");
+  const waiting = await unpublished(ctx, `${label} before`);
+  ok(waiting > 0, `${label}: there are saved changes to publish`);
+  equal(published(ctx.site), ctx.live, `${label}: nothing published until asked`);
+  const reply = json(await call(ctx.port, "POST", "/api/publish"), 200, `${label}: POST /api/publish`);
+  equal(reply.published, waiting, `${label}: every waiting commit published`);
+  equal(reply.commit, head(ctx.site), `${label}: the published commit is HEAD`);
+  equal(published(ctx.site), head(ctx.site), `${label}: the remote now holds HEAD`);
+  ctx.live = head(ctx.site);
+  equal(await unpublished(ctx, `${label} after`), 0, `${label}: nothing left to publish`);
+  const again = json(await call(ctx.port, "POST", "/api/publish"), 200, `${label}: POST /api/publish again`);
+  equal(again.published, 0, `${label}: publishing twice publishes nothing`);
+  equal(published(ctx.site), head(ctx.site), `${label}: the remote is unchanged`);
+  alive(ctx, label);
+}
+
 /** One editor session, in the order an editor lives it. */
 const STEPS = [
-  browse, editHome, nestedPage, namedPage, emptiedPage, deletedMedia,
-  uploaded, uploadedImage, rejectedUploads, retriedUpload, unsafePaths, longestPath, historySteps,
+  browse, editHome, publishSteps, nestedPage, namedPage, emptiedPage, deletedMedia,
+  uploaded, uploadedImage, rejectedUploads, retriedUpload, unsafePaths, longestPath, historySteps, publishSteps,
 ];
 
 /** One editor session against the server built for `memory`. */
@@ -596,7 +638,7 @@ async function session(memory) {
   const binary = build(memory);
   const site = path.join(out, `site-${memory}`);
   createSite(site);
-  const ctx = { memory, site, port: PORT, files: new Set(Object.keys(SITE)), made: [], init: head(site), server: null };
+  const ctx = { memory, site, port: PORT, files: new Set(Object.keys(SITE)), made: [], init: head(site), live: head(site), server: null };
   equal(log(site).length, 1, say(ctx, "the site starts with one commit"));
   deepEqual(git(site, "ls-files").split("\n"), Object.keys(SITE).sort(), say(ctx, "the site holds the files the developer committed"));
   await unused(PORT);
@@ -609,6 +651,8 @@ async function session(memory) {
 }
 
 mkdirSync(out, { recursive: true });
+execFileSync("node", [path.join(root, "src/toolchain/hosts/web/scripts/build.mjs"), "--app", path.join(project, "editor"), "--title", "Osprey Studio", "--out", EDITOR],
+  { env: { ...process.env, OSPREY_BIN: osprey }, stdio: ["ignore", "inherit", "inherit"], timeout: BUILD_MS });
 for (const memory of MEMORIES) {
   const before = assertions;
   await session(memory);

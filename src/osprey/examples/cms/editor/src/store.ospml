@@ -43,6 +43,8 @@ type Studio =
     loads : int
     busy : bool
     history : List<Commit>
+    unpublished : int
+    remote : bool
     showingHistory : bool
     creating : bool
     draftPath : string
@@ -64,6 +66,7 @@ type Act =
     CreatePage
     CancelDraft
     ToggleHistory
+    Publish
     Dismiss
     Search
     PickFolder

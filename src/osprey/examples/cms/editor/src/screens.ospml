@@ -58,10 +58,13 @@ module Screens
         "" => []
         sha => [Kit::chip (take sha 7)]
 
+    // Publish names how many saved commits are not yet live, and is off when there are none or no remote.
+    publishButton store = Kit::button ("primary", "Publish ${store.unpublished}", "send", store.remote && store.unpublished > 0, Publish)
+
     (** The bar over the work: where you are, its state, and what you can do. *)
     export topbar store =
         style = Kit::surface ("panel", "edge", 0, 14)
-        actions = [Kit::iconButton ("History", "clock", store.showingHistory, ToggleHistory), Kit::iconButton ("Refresh", "refresh", false, Refresh), Kit::button ("secondary", "New page", "add", true, NewPage), Kit::button ("danger", "Delete", "delete", store.opened != "", Delete), Kit::button ("primary", "Save", "check", store.text != store.saved, Save)]
+        actions = [Kit::iconButton ("History", "clock", store.showingHistory, ToggleHistory), Kit::iconButton ("Refresh", "refresh", false, Refresh), Kit::button ("secondary", "New page", "add", true, NewPage), Kit::button ("danger", "Delete", "delete", store.opened != "", Delete), Kit::button ("primary", "Save", "check", store.text != store.saved, Save), publishButton store]
         Ui::framed (style(frameLineEdge = "bottom", frameRadius = 0), Ui::row (listConcat (listConcat [Kit::grow (crumbs store.opened), stateOf store] (commitChip store)) actions))
 
     modes store = Kit::segmented [Kit::choice ("Formatted", store.mode == "formatted", Formatted), Kit::choice ("Markdown", store.mode == "markdown", Raw)]
