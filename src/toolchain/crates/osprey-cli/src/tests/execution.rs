@@ -32,31 +32,26 @@ fn link_args_adds_ffi_directives_and_openssl_for_http() {
 
 #[test]
 fn link_args_selects_gc_archive_and_validates_backend() {
-    // [MEM-BACKENDS] Each managed backend selects only its own archive.
-    let gc = link_args("call void @osprey_list_empty()", "", "gc");
-    assert!(
-        gc.iter().any(|a| a.contains("_gc.a")) || gc.is_empty(),
-        "gc backend must select a *_gc archive when one is present: {gc:?}"
-    );
-    let arc = link_args("call void @osprey_list_empty()", "", "arc");
-    assert!(
-        arc.iter().any(|a| a.contains("_arc.a")) || arc.is_empty(),
-        "arc backend must select a *_arc archive when one is present: {arc:?}"
-    );
-    assert!(!arc.iter().any(|a| a.contains("_gc.a")), "{arc:?}");
-    assert!(!gc.iter().any(|a| a.contains("_arc.a")), "{gc:?}");
-    // [MEM-OWNERSHIP-STATIC] Ownership links its own runtime, never ARC's.
-    let owned = link_args("call void @osprey_list_empty()", "", "ownership");
-    assert!(
-        owned.iter().any(|a| a.contains("_ownership.a")) || owned.is_empty(),
-        "ownership backend must select a *_ownership archive when one is present: {owned:?}"
-    );
-    assert!(
-        !owned
-            .iter()
-            .any(|a| a.contains("_arc.a") || a.contains("_gc.a")),
-        "{owned:?}"
-    );
+    // [MEM-BACKENDS] Each managed backend selects only its own archive;
+    // [MEM-OWNERSHIP-STATIC] ownership links its own runtime, never ARC's or GC's.
+    let archives = [
+        ("gc", "_gc.a"),
+        ("arc", "_arc.a"),
+        ("ownership", "_ownership.a"),
+    ];
+    for (backend, own) in archives {
+        let args = link_args("call void @osprey_list_empty()", "", backend);
+        assert!(
+            args.iter().any(|a| a.contains(own)) || args.is_empty(),
+            "{backend} backend must select a *{own} archive when one is present: {args:?}"
+        );
+        for (_, other) in archives.into_iter().filter(|&(_, archive)| archive != own) {
+            assert!(
+                !args.iter().any(|a| a.contains(other)),
+                "{backend} backend selected {other}: {args:?}"
+            );
+        }
+    }
     let names =
         ["libfiber_runtime.a", "libhttp_runtime.a"].map(|base| runtime_name(base, "ownership"));
     assert_eq!(
