@@ -63,8 +63,7 @@ module WebFixtures {
     /// admin-without-publish case [PACKAGE-OWNERSHIP-ADMIN] requires the
     /// website to warn about.
     export fn adminWithoutPublish() = Model::Access {
-        viewer: Model::Member { principal: "prin-admin-1", membership: atlasAdmin, orgHandle: "atlas" },
-        admin: atlasAdmin,
+        viewer: Model::Member { principal: "prin-admin-1", membership: atlasAdmin, orgHandle: "atlas", memberEpoch: 1 },
         grants: [grant("g-1", atlasAdmin, Governance::EditMetadata, now() + 1000000)] }
 
     /// The same administrator, holding the explicit publishing grant too.
@@ -75,23 +74,25 @@ module WebFixtures {
 
     /// A fellow member who holds the publishing grant but not the seat.
     export fn publisher() = Model::Access {
-        viewer: Model::Member { principal: "prin-pub-1", membership: "mem-pub-1", orgHandle: "atlas" },
-        admin: atlasAdmin,
-        grants: [grant("g-3", "mem-pub-1", Governance::PublishRelease, now() + 1000000)] }
+        viewer: Model::Member { principal: "prin-pub-1", membership: "mem-pub-1", orgHandle: "atlas", memberEpoch: 1 },
+        grants: [publisherGrant()] }
 
     /// A member of the other organization: a legitimate viewer who is
     /// nonetheless outside this package's organization.
     export fn outsider() = Model::Access {
-        viewer: Model::Member { principal: "prin-out-1", membership: "mem-out-1", orgHandle: "border" },
-        admin: atlasAdmin, grants: [] }
+        viewer: Model::Member { principal: "prin-out-1", membership: "mem-out-1", orgHandle: "border", memberEpoch: 1 },
+        grants: [] }
 
     /// No actor at all.
-    export fn anonymous() = Model::Access { viewer: Model::Anonymous, admin: atlasAdmin, grants: [] }
+    export fn anonymous() = Model::Access { viewer: Model::Anonymous, grants: [] }
+
+    /// An explicit release grant to the publisher of this fixture package.
+    export fn publisherGrant() = grant("g-3", "mem-pub-1", Governance::PublishRelease, now() + 1000000)
 
     /// The package's full grant ledger as its administrator fetched it.
     export fn atlasGrantLedger() = [
         grant("g-1", atlasAdmin, Governance::EditMetadata, now() + 1000000),
-        grant("g-3", "mem-pub-1", Governance::PublishRelease, now() + 1000000) ]
+        publisherGrant() ]
 
     /// A ledger whose membership ids are hostile: the table must escape them.
     export fn hostileGrantLedger() = [grant("g-x", "<td>injected</td>", Governance::ManageSecurity, now() + 1000000)]

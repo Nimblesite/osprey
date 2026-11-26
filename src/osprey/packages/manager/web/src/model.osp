@@ -34,14 +34,14 @@ module Model {
 
     /// The actor viewing a screen: anonymous, or an organization member by
     /// stable principal and membership IDs (never a mutable handle).
-    export type Viewer = Anonymous | Member { principal: Governance::PrincipalId, membership: Governance::MembershipId, orgHandle: string }
+    export type Viewer = Anonymous | Member { principal: Governance::PrincipalId, membership: Governance::MembershipId, orgHandle: string, memberEpoch: int }
 
     /// What the website knows about the actor on one package: the viewer,
-    /// the package's single administrator seat, and this package's grant
+    /// their authenticated membership and their package permission grant
     /// rows. The live authorization predicate is the API's
     /// ([PACKAGE-OWNERSHIP-PERMISSIONS]); these rows arrive already scoped
     /// to this package.
-    export type Access = { viewer: Viewer, admin: Governance::MembershipId, grants: List<Governance::Grant> }
+    export type Access = { viewer: Viewer, grants: List<Governance::Grant> }
 
     /// Why a publication is not an accepted release. A pending intent is a
     /// proposal, a rejection names its reasons, and quarantined source is
@@ -104,18 +104,22 @@ module Model {
     /// Whether the viewer occupies the package's single administrator seat.
     /// The seat is a membership reference, not a permission
     /// [PACKAGE-OWNERSHIP-ADMIN].
-    export fn isAdministeredBy(access: Access) = match access.viewer {
+    export fn isAdministeredBy(access: Access, pkg: Governance::Package) = match access.viewer {
         Anonymous => false
-        Member { membership } => membership == access.admin
+        Member { membership } => membership == pkg.admin
     }
 
     fn liveGrant(grant: Governance::Grant, now) = Governance::isActiveGrant(grant)
-        && Maybe::orElse(grant.expiresAt, now + 1) > now
+        && Maybe::fold(grant.expiresAt, true, fn(expires) => expires > now)
 
     /// Whether the viewer holds an active, unexpired grant for exactly this
     /// permission at `now`.
-    export fn holdsNow(access: Access, permission: Governance::Permission, now) = foldList(access.grants, false,
-        fn(held, grant: Governance::Grant) => held || (Governance::samePermission(grant.permission, permission) && liveGrant(grant, now)))
+    export fn holdsNow(access: Access, pkg: Governance::Package, permission: Governance::Permission, now) = match access.viewer {
+        Anonymous => false
+        Member { membership, orgHandle, memberEpoch } => orgHandle == pkg.key.scope && foldList(access.grants, false,
+            fn(held, g: Governance::Grant) => held || (g.membership == membership && g.package == pkg.id && g.packageEpoch == pkg.authorityEpoch && g.memberEpoch == memberEpoch &&
+                Governance::samePermission(g.permission, permission) && liveGrant(g, now)))
+    }
 
     /// The grantable permissions, in canonical order.
     export fn allPermissions() = [
@@ -127,9 +131,9 @@ module Model {
     ]
 
     /// The viewer's effective permission names at `now`, or `"none"`.
-    export fn permissionsOf(access: Access, now) = {
+    export fn permissionsOf(access: Access, pkg, now) = {
         let held = foldList(allPermissions(), [], fn(names, p) =>
-            if holdsNow(access, p, now) { listAppend(names, Governance::permissionName(p)) } else { names })
+            if holdsNow(access, pkg, p, now) { listAppend(names, Governance::permissionName(p)) } else { names })
         if isEmpty(held) { "none" } else { join(held, ", ") }
     }
 

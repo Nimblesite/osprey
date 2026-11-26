@@ -56,10 +56,14 @@ module GrantTests {
     fn concurrentHolders() = {
         let world = Fixture::world()
         let both = grantPkgF1(grantPkgF1(world, "g-1", "m-bob", Governance::PublishRelease, Maybe::none()), "g-2", "m-carol", Governance::PublishRelease, Maybe::none())
+        let revoked = Fixture::orKeep(both, fn(w) => GovernanceTransitions::revokeGrant(w, "g-1", adminRevokeProof(w, "g-1")))
         checkAll("several members may hold the same permission simultaneously", [
             authorizeCode(both, "pkg-f1", "m-bob", Governance::PublishRelease, 100) == "",
             authorizeCode(both, "pkg-f1", "m-carol", Governance::PublishRelease, 100) == "",
-            Fixture::code(grantPkgF1(both, "g-3", "m-bob", Governance::PublishRelease, Maybe::none())) != "governance.permission.duplicate",
+            Fixture::grantCode(both, "pkg-f1", "g-3", "m-bob", Governance::PublishRelease, Maybe::none(), 100) == "governance.permission.duplicate",
+            Fixture::grantCode(both, "pkg-f1", "g-1", "m-carol", Governance::EditMetadata, Maybe::none(), 100) == "governance.grant.id-taken",
+            authorizeCode(revoked, "pkg-f1", "m-bob", Governance::PublishRelease, 100) == permissionMissing,
+            authorizeCode(revoked, "pkg-f1", "m-carol", Governance::PublishRelease, 100) == "",
             Fixture::code(GovernanceTransitions::grantPermission(both, "pkg-f1", "g-3", Fixture::verified("p-bob", "m-bob", "self-delegation"), "m-carol", Governance::EditMetadata, Maybe::none(), 100)) == adminNotCurrent,
             Fixture::code(renewWith(both, "g-1", "g-3", Fixture::verified("p-bob", "m-bob", "self-renewal"), Maybe::some(200))) == adminNotCurrent
         ])

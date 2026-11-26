@@ -97,6 +97,15 @@ express-oracle:
 
 REGISTRY_WEB = src/osprey/packages/manager/web
 REGISTRY_SITE_OUT = target/registry-site
+REGISTRY_TERRAFORM = src/osprey/packages/manager/ops/terraform
+
+.PHONY: registry-infra-check
+## registry-infra-check: Validate pinned registry infrastructure without contacting a state backend.
+registry-infra-check: export TF_DATA_DIR = $(CURDIR)/target/registry-infra/data
+registry-infra-check:
+	terraform -chdir=$(REGISTRY_TERRAFORM) fmt -check
+	terraform -chdir=$(REGISTRY_TERRAFORM) init -backend=false -lockfile=readonly -input=false
+	terraform -chdir=$(REGISTRY_TERRAFORM) validate
 
 .PHONY: registry-website
 ## registry-website: Compile the registry website to WASM and render its Cloudflare Pages directory.

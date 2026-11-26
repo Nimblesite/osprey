@@ -25,10 +25,6 @@ variable "cloudflare_zone_id" {
 
 variable "api_hostname" {
   type = string
-  validation {
-    condition     = can(regex("^[a-z0-9-]+(\\.[a-z0-9-]+)+$", var.api_hostname))
-    error_message = "Supply the approved API DNS hostname without a URL path."
-  }
 }
 
 variable "website_hostname" {
@@ -89,6 +85,17 @@ variable "github_owner_id" {
 }
 
 locals {
+  management_port  = 8081
+  public_hostnames = [var.website_hostname, var.api_hostname, var.content_hostname]
+  hostname_pattern = "^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$"
+  # Reviewed origin ranges for the IPv4 forwarding rule. Changes to the
+  # upstream list at https://www.cloudflare.com/ips-v4/ require a reviewed diff.
+  cloudflare_ipv4 = [
+    "173.245.48.0/20", "103.21.244.0/22", "103.22.200.0/22", "103.31.4.0/22",
+    "141.101.64.0/18", "108.162.192.0/18", "190.93.240.0/20", "188.114.96.0/20",
+    "197.234.240.0/22", "198.41.128.0/17", "162.158.0.0/15", "104.16.0.0/13",
+    "104.24.0.0/14", "172.64.0.0/13", "131.0.72.0/22"
+  ]
   name = "osprey-registry-${var.environment}"
   required_services = toset([
     "artifactregistry.googleapis.com", "run.googleapis.com", "compute.googleapis.com",

@@ -50,6 +50,16 @@ resource "google_cloud_run_v2_service" "api" {
   ingress              = "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER"
   default_uri_disabled = true
   deletion_protection  = true
+  lifecycle {
+    precondition {
+      condition     = length(distinct(local.public_hostnames)) == 3 && alltrue([for host in local.public_hostnames : length(host) <= 253 && can(regex(local.hostname_pattern, host))])
+      error_message = "Supply distinct valid hostnames for the API, website and cookieless content origin."
+    }
+    precondition {
+      condition     = startswith(var.image, "${var.region}-docker.pkg.dev/${var.project_id}/${local.name}/")
+      error_message = "Select an immutable image from this environment's Artifact Registry repository."
+    }
+  }
   template {
     service_account                  = google_service_account.runtime.email
     timeout                          = "30s"
@@ -73,10 +83,19 @@ resource "google_cloud_run_v2_service" "api" {
       startup_probe {
         http_get {
           path = "/v1/ready"
-          port = 8080
+          port = local.management_port
         }
         period_seconds    = 5
         failure_threshold = 12
+        timeout_seconds   = 2
+      }
+      liveness_probe {
+        http_get {
+          path = "/v1/ready"
+          port = local.management_port
+        }
+        period_seconds    = 30
+        failure_threshold = 3
         timeout_seconds   = 2
       }
     }
@@ -114,12 +133,10 @@ resource "google_compute_region_network_endpoint_group" "api" {
   }
 }
 
-data "cloudflare_ip_ranges" "edge" {}
-
 resource "google_compute_security_policy" "edge" {
   name = local.name
   dynamic "rule" {
-    for_each = chunklist(data.cloudflare_ip_ranges.edge.ipv4_cidrs, 10)
+    for_each = chunklist(local.cloudflare_ipv4, 10)
     content {
       action   = "allow"
       priority = 1000 + rule.key

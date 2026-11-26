@@ -51,7 +51,7 @@ module PublicationTests {
         let pub = WebFixtures::hostilePublication()
         let access = WebFixtures::publisher()
         WebFixtures::shows("web: hostile publication strings escaped",
-        Publications::render([WebFixtures::hostilePublication()], access { viewer: Model::Member { principal: pub.actor, membership: "mem-pub-1", orgHandle: "atlas" } }),
+        Publications::render([WebFixtures::hostilePublication()], access { viewer: Model::Member { principal: pub.actor, membership: "mem-pub-1", orgHandle: "atlas", memberEpoch: 1 } }),
         fn(html) => contains(html, "&lt;/article&gt;&lt;script&gt;alert(1)&lt;/script&gt;") &&
             !contains(html, "<script>") &&
             contains(html, "Actor: prin-&#39;-(1)"))

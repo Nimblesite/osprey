@@ -58,8 +58,20 @@ module PermissionTests {
         controlScreen(WebFixtures::adminWithoutPublish(), WebFixtures::hostileGrantLedger()),
         ["&lt;td&gt;injected&lt;/td&gt;"], ["<td>injected</td>"])
 
+    /// A grant to a different user or package must never appear as the viewer's publishing authority.
+    fn scopedPublisher() = {
+        let base = WebFixtures::adminWithoutPublish()
+        let ledger = WebFixtures::atlasGrantLedger()
+        let pub = WebFixtures::publisherGrant()
+        let admin = pub { membership: "mem-admin-atlas" }
+        let mixed = base { grants: [pub, admin { package: "other-package" }, admin { packageEpoch: 2 }, admin { memberEpoch: 2 }] }
+        WebFixtures::showsTexts("web: publisher delegation is scoped", controlScreen(mixed, ledger),
+            ["Publishers", "mem-pub-1", "administration alone does not authorize publication"], [])
+    }
+
     /// The suite.
     export fn run() = {
+        test("web: delegated publisher scope", scopedPublisher)
         test("web: admin without publish warned", adminWithoutPublish)
         test("web: admin with publish not warned", adminWithPublish)
         test("web: package page shows access context", packageViewShowsAccess)

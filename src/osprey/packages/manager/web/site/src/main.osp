@@ -6,7 +6,8 @@ fn landing() = {
     let hero = "<div class=\"prose-hero\"><div><h1>Osprey<br>Packages</h1><p>Pin source packages by digest and build them offline. Start with a local registry while public publishing is in development.</p><a class=\"prose-action\" href=\"${guide}\">Use the package manager &#8599;</a></div><div class=\"prose-art\" aria-hidden=\"true\"><div class=\"prose-stack\"><i></i><i></i><i></i></div></div></div>"
     let editor = "<article><h2>In the editor</h2><p>Browse your local catalog, inspect a dependency and add it to your project in VS Code.</p><a href=\"${guide}#add-and-remove-packages-in-vs-code\">Open the editor guide &#8599;</a></article>"
     let cli = "<article><h2>At the terminal</h2><p>Lock exact releases, fetch their source and verify the installed tree before compiling.</p><a href=\"${guide}#commands\">Read the command reference &#8599;</a></article>"
-    Shell::withEscapedTitle("Osprey Packages", "<main>${hero}<div class=\"prose-resources\">${editor}${cli}</div></main>")
+    let publishers = "<section id=\"publishers\"><h2>Publishers</h2><p>In the hosted registry design, an organization owns each package. Its administrator chooses which users can publish releases and can revoke each grant separately.</p><a href=\"${guide}#publishers-and-package-ownership\">How publishing permissions work &#8599;</a></section>"
+    Shell::withEscapedTitle("Osprey Packages", "<main>${hero}<div class=\"prose-resources\">${editor}${cli}</div>${publishers}</main>")
 }
 
 fn main() = print(landing())

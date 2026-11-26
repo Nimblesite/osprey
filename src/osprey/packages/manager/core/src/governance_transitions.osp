@@ -145,6 +145,7 @@ module GovernanceTransitions {
             Governance::grantStatement(pkg.key, pkg.authorityEpoch, membership, permission, expiresAt)))
         use _ <- andThen(freshExpiry(expiresAt, now))
         use _ <- andThen(unduplicated(registry, id, membership, permission))
+        use _ <- andThen(unusedGrantId(registry, grantId))
         Success { value: recorded(registry, pkg, m, grantId, membership, permission, expiresAt) }
     }
 
@@ -182,6 +183,7 @@ module GovernanceTransitions {
         use _ <- andThen(freshExpiry(expiresAt, now))
         use _ <- andThen(Governance::requireAdmin(registry, pkg, proof,
             Governance::renewalStatement(pkg.key, pkg.authorityEpoch, old.membership, old.permission, expiresAt)))
+        use _ <- andThen(unusedGrantId(registry, newGrantId))
         Success { value: renewed(registry, pkg, old, newGrantId, expiresAt) }
     }
 
@@ -286,6 +288,11 @@ module GovernanceTransitions {
             true => Success { value: at }
             false => Error { message: "governance.permission.expiry-past" }
         })
+
+    fn unusedGrantId(registry, id) = match Governance::grantOf(registry, id) {
+        Success => Error { message: "governance.grant.id-taken" }
+        Error => Success { value: id }
+    }
 
     fn unduplicated(registry, id, membership, permission) = match length(liveSlot(registry, id, membership, permission)) {
         0 => Success { value: membership }

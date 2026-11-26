@@ -16,7 +16,7 @@ Depends on: hosted Stages B–G on parent Milestone B (Phases 5–9) and Milesto
 
 ## Milestone 0 — Stand it up anywhere
 
-- [ ] Bind the server to a non-loopback address and serve a second machine on the same network; record the measured result. `0.0.0.0` binding from an automated session is refused by the permission policy, so this stays a manual step. `[PACKAGE-FOLDER-REGISTRY]`
+- [x] Bind the server to a non-loopback address and serve a second machine on the same network. On 2026-11-27, a separate Linux aarch64 Colima VM fetched the macOS folder registry at its LAN address on port 18792. `GET /v1/health` returned HTTP 200 in 3.36 ms with five releases and zero refusals. `GET /v1/packages/@demo/maths` returned both release ordinals and their digests. `[PACKAGE-FOLDER-REGISTRY]`
 
 ## Milestone A — Local package engine
 
@@ -149,6 +149,8 @@ Depends on: hosted Stages B–G on parent Milestone B (Phases 5–9) and Milesto
 
 ## Hosted rollout — Stage B (Supabase ownership and RLS)
 
+- [x] Verify the package governance transitions for delegated human publishers. One administrator grants two organization members independent publishing access, revokes one while the other retains access, and rejects duplicate grant identifiers and attempts by a publisher to delegate. The scoped website permission checks and governance suites pass under GC and ARC. Database persistence and the authenticated permission routes remain tracked below. `[PACKAGE-OWNERSHIP-PERMISSIONS]`
+
 Governed by spec 0045 and `src/osprey/packages/manager/supabase/migrations/schema.yaml`; provision the private `registry` schema as a platform resource before table migration; keep the bootstrap FORCE-RLS/default-deny with no runtime grants and reject `ownership.not-ready` until policies/handlers/tests ship together.
 
 - [ ] Create isolated local/staging projects and apply the pinned DataProvider migration YAML: same-org composite FKs, one non-null active-member administrator, organization/name uniqueness, immutable identities and non-cascading history; no handwritten SQL/ORM schema. `[PACKAGE-OWNERSHIP-DATABASE]`
@@ -179,6 +181,9 @@ Governed by spec 0045 and `src/osprey/packages/manager/supabase/migrations/schem
 - [ ] Prove storage overwrite/upsert/list/signed-upload refusal and quarantine isolation; run malicious source/prose, archive/path, SSRF and build-sandbox tests. `[PACKAGE-HOSTED-PUBLISH]`
 
 ## Hosted rollout — Stage E (Cloudflare and read-only staging)
+
+- [x] Build the dedicated landing page from Osprey WASM and verify the responsive layout in Chromium at 390 px and 1440 px. Run `make -C src/osprey/packages registry-website`. Catalog and authenticated routes are tracked below. `[PACKAGE-IMPLEMENTATION-LANGUAGE]`
+- [x] Validate the locked Terraform providers and inspect a local staging plan. The 45 planned resources included the API listener on 8080, both probes on 8081, 15 reviewed Cloudflare IPv4 ranges and a default deny. Separate negative plans rejected a shared hostname, malformed hostname and foreign image repository. Staging ingress and probes still require runtime verification. `[PACKAGE-HOSTED-EDGE]`
 
 - [ ] Provision Cloudflare proxy/TLS/WAF, separate static website deployment, cookieless content origin, GCP load balancer/Cloud Armor/NEG, restricted Cloud Run and DNS-validated origin certificates. `[PACKAGE-HOSTED-TOPOLOGY]`
 - [ ] Install the hostname-scoped header-overwrite transform and constant-time API secret guard; test secret rotation with a short dual-version overlap, then prove the retired secret fails; test missing-secret startup failure. `[PACKAGE-HOSTED-EDGE]`
