@@ -330,7 +330,7 @@ The [Timeline designs](../../designs/prism-timeline/README.md) propose more than
 ## Instrument builder [PRISM-INSTRUMENT]
 
 
-Status: specified, not built. The synth package's `Macros` module validates and applies macros today ([SYNTH-ADVANCED-PRISM]); Perception has no instrument face yet. The [instrument builder plan](../../plans/synth/instrument.md) tracks delivery. The [design screenshots](../../designs/prism-timeline/README.md#instrument-builder-prism-instrument) show Play, Edit and MIDI learn.
+Status: specified, not built. The synth package's `Macros` module validates and applies macros today ([SYNTH-ADVANCED-PRISM]); Perception has no instrument face yet. The [instrument builder plan](../../plans/synth/prism-routing.md#instrument-face-prism-instrument-face) tracks delivery. The [design screenshots](../../designs/prism-timeline/README.md#instrument-builder-prism-instrument) show Play, Edit and MIDI learn.
 
 This contract belongs to [the daw](Perception.md#perception-studio-the-daw-daw): an instrument is stored in the project file and played through the project graph ([DAW-GRAPH-OUTPUT]).
 

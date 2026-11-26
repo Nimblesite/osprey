@@ -11,7 +11,7 @@
 
 The [Prism device specification](../../specs/synth/Perception.md#perception-device-device) defines the engine, firmware, controls, link and factory. The board and enclosure are under [Hardware](#hardware-device-hw-plan) below, and the compiler work has the [embedded targets plan](../embedded-targets.md). Research and citations are in the [hardware specification](../../specs/synth/Perception.md#research-findings-device-research).
 
-Macros work in Prism first ([instrument plan](instrument.md)). Then the concept is tested on the Mac with the virtual device, before any hardware is bought ([DEVICE-VERIFY-CONCEPT]). After that the embedded target, the firmware, the prototype and the board proceed in parallel, with performance optimisation running beside all of them ([DEVICE-PERF]). Each phase ships something usable on its own.
+Macros work in Prism first ([instrument plan](prism-routing.md#macros-in-the-patch-prism-instrument-patch)). Then the concept is tested on the Mac with the virtual device, before any hardware is bought ([DEVICE-VERIFY-CONCEPT]). After that the embedded target, the firmware, the prototype and the board proceed in parallel, with performance optimisation running beside all of them ([DEVICE-PERF]). Each phase ships something usable on its own.
 
 ## Performance optimisation, in parallel with everything [DEVICE-PLAN-SPEED]
 
@@ -83,5 +83,5 @@ The die-cast road case is the eventual case and comes last, with the Prism board
 
 ## Open questions [DEVICE-PLAN-OPEN]
 
-- **Stabilisation mode.** The repository is in stabilisation mode (no new features). The [instrument plan](instrument.md) completes an already specified feature; the device, firmware, hardware and embedded target work are new features and start only when the user lifts stabilisation for them.
+- **Stabilisation mode.** The repository is in stabilisation mode (no new features). The [instrument plan](prism-routing.md#macros-in-the-patch-prism-instrument-patch) completes an already specified feature; the device, firmware, hardware and embedded target work are new features and start only when the user lifts stabilisation for them.
 - **Cost.** ARM runner minutes and any hardware runner are new spend; hardware journeys stay local until a runner is approved.
