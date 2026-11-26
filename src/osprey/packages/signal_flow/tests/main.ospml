@@ -468,4 +468,8 @@ test ("undo and redo at the edges of their history, a refused document shown in 
     unreadable ("src/osprey/packages/signal_flow/tests", "Is a directory")
     expect (launchFault "src/osprey/packages/signal_flow/tests/osprey.toml", "the machine document is not JSON")
     expect (length refused.past, 0)
-    forEachList (["", "topology", "paper"], \skin => expect (length (App::theme skin).tokens > 0, true))))
+    forEachList (["", "topology", "paper"], \skin => expect (length (App::theme skin).tokens > 0, true))
+    // The repository copy is found from wherever the suite runs; a marker no ancestor holds climbs every level and gives up.
+    expect (kindOf (App::fromRepository "src/osprey/packages/signal_flow/signal_flow.machine.json") ?: "", "file")
+    forEachList ([0, 1, 3], \levels => expect (App::climbed ("no/such/marker.json", "", levels), ""))
+    expect (App::climbed ("osprey.toml", "", 0), "")))
