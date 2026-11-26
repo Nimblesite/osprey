@@ -120,11 +120,11 @@ fn operandsEvaluateOnceInOrder() = {
 }
 
 exactTests([
-    { name: "ready arms run in source order", work: settled(tieBreaksInSourceOrder) },
-    { name: "send arms respect capacity", work: settled(sendArmsRespectCapacity) },
-    { name: "receive bindings have the element type", work: settled(bindingsHaveTheElementType) },
-    { name: "managed sends keep their ownership", work: settled(managedSendsKeepTheirOwnership) },
-    { name: "timeouts decide only when nothing is ready", work: settled(timeoutsDecideOnlyWhenNothingIsReady) },
-    { name: "a fiber wakes a blocked select", work: settled(aFiberWakesABlockedSelect) },
-    { name: "operands evaluate once in order", work: settled(operandsEvaluateOnceInOrder) }
+    { name: "ready arms run in source order", work: fn() => settledWork(tieBreaksInSourceOrder) },
+    { name: "send arms respect capacity", work: fn() => settledWork(sendArmsRespectCapacity) },
+    { name: "receive bindings have the element type", work: fn() => settledWork(bindingsHaveTheElementType) },
+    { name: "managed sends keep their ownership", work: fn() => settledWork(managedSendsKeepTheirOwnership) },
+    { name: "timeouts decide only when nothing is ready", work: fn() => settledWork(timeoutsDecideOnlyWhenNothingIsReady) },
+    { name: "a fiber wakes a blocked select", work: fn() => settledWork(aFiberWakesABlockedSelect) },
+    { name: "operands evaluate once in order", work: fn() => settledWork(operandsEvaluateOnceInOrder) }
 ])

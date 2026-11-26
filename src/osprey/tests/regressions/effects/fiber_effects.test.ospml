@@ -753,7 +753,7 @@ channelHandoffKeepsFibersIsolatedCase () =
     ])
 
 // Register channel handoff plus a perform escaping the producer fiber.
-test "a channel hands values between fibers while the effect reaches outside" (exactly (settled channelHandoffKeepsFibersIsolatedCase))
+test "a channel hands values between fibers while the effect reaches outside" (exactly (\() => settledWork channelHandoffKeepsFibersIsolatedCase))
 
 (** Handler lookup "is per effect and operation. Nested handlers may override
     selected operations; the innermost matching arm wins and an outer arm remains

@@ -122,11 +122,11 @@ operandsEvaluateOnceInOrder () =
     Success(value = checkAll "operands" [picked == 100, recv log == 1, recv log == 2, recv log == 3, recv channel == 10])
 
 exactTests [
-    { name = "ready arms run in source order", work = settled tieBreaksInSourceOrder },
-    { name = "send arms respect capacity", work = settled sendArmsRespectCapacity },
-    { name = "receive bindings have the element type", work = settled bindingsHaveTheElementType },
-    { name = "managed sends keep their ownership", work = settled managedSendsKeepTheirOwnership },
-    { name = "timeouts decide only when nothing is ready", work = settled timeoutsDecideOnlyWhenNothingIsReady },
-    { name = "a fiber wakes a blocked select", work = settled aFiberWakesABlockedSelect },
-    { name = "operands evaluate once in order", work = settled operandsEvaluateOnceInOrder }
+    { name = "ready arms run in source order", work = \() => settledWork tieBreaksInSourceOrder },
+    { name = "send arms respect capacity", work = \() => settledWork sendArmsRespectCapacity },
+    { name = "receive bindings have the element type", work = \() => settledWork bindingsHaveTheElementType },
+    { name = "managed sends keep their ownership", work = \() => settledWork managedSendsKeepTheirOwnership },
+    { name = "timeouts decide only when nothing is ready", work = \() => settledWork timeoutsDecideOnlyWhenNothingIsReady },
+    { name = "a fiber wakes a blocked select", work = \() => settledWork aFiberWakesABlockedSelect },
+    { name = "operands evaluate once in order", work = \() => settledWork operandsEvaluateOnceInOrder }
 ]

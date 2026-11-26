@@ -22,4 +22,4 @@ fn channelElementCase() = {
         structuralEquals([(listGet(row, 1) ?: 99), (listGet(row, 2) ?: 99)], [2, 3])
     ]) }
 }
-test("generic record fields preserve nested channel elements", settled(channelElementCase))
+test("generic record fields preserve nested channel elements", fn() => settledWork(channelElementCase))

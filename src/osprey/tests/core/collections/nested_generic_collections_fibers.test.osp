@@ -230,15 +230,8 @@ fn channelThroughClosureCase() = {
     ]) }
 }
 
-/// The outcome of `work`, whose setup answers a `Result` as `Channel(capacity)`
-/// does: an `Error` is a failed assertion that names its message.
-fn settled(work) = match work() {
-    Success { value } => value
-    Error { message } => check("setup refused", "none", message)
-}
-
 testCases([
-    { name: "fibers channels Results and persistence retain generic collection types", work: fn() => settled(fiberChannelCollectionCase) },
+    { name: "fibers channels Results and persistence retain generic collection types", work: fn() => settledWork(fiberChannelCollectionCase) },
     { name: "generic effects inside fibers retain nested collection types", work: fiberEffectCollectionCase },
-    { name: "a channel reached through a closure keeps its element descriptor", work: fn() => settled(channelThroughClosureCase) }
+    { name: "a channel reached through a closure keeps its element descriptor", work: fn() => settledWork(channelThroughClosureCase) }
 ])
