@@ -91,7 +91,7 @@ module Screens
     // Delete sits by the file it deletes, quiet until wanted, and only when a file is open.
     deleting store = match store.opened
         "" => []
-        _ => [Kit::iconButton ("Delete", "delete", false, Delete)]
+        _ => [Kit::button ("danger", "Delete", "delete", true, Delete)]
 
     modes store = Kit::segmented [Kit::choice ("Formatted", store.mode == "formatted", Formatted), Kit::choice ("Markdown", store.mode == "markdown", Raw)]
 
@@ -187,7 +187,9 @@ module Screens
         _ => Kit::say ("This file has no preview.", "body", "inkMuted")
 
     (** An open image, video or audio file. *)
-    export media store = Ui::framed (workStyle (), Ui::column [Kit::card (24, [Kit::heading (Names::base store.opened, "h3", "ink"), Kit::chip store.opened, mediaOf store])])
+    export media store =
+        title = Kit::row (12, [Kit::grow (Kit::heading (Names::base store.opened, "h3", "ink")), Kit::button ("danger", "Delete file", "delete", true, Delete)])
+        Ui::framed (workStyle (), Ui::column [Kit::card (24, [title, Kit::chip store.opened, mediaOf store])])
 
     (** Nothing open yet. *)
     export welcome () =

@@ -3,7 +3,7 @@
 // code, restyles and edits blocks, saves (a commit only), publishes (a push) and checks the raw
 // Markdown, asserting the page, the layout and the site's git history at every step.
 import { expect, test } from "@playwright/test";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { BROWSER_SITE, SITE, git, head, published } from "./fixture.mjs";
 
@@ -65,7 +65,7 @@ async function highlighted(page) {
   await expect(page.getByRole("textbox", { name: "h1" })).toHaveValue("First post");
   expect(await lit(page, "H1")).toBe(true);
   expect(await lit(page, "Body")).toBe(false);
-  await expect(page.getByRole("button", { name: "Delete" })).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Delete", exact: true })).toHaveCount(1);
   await expect(page.getByText("›", { exact: true })).toHaveCount(2);
   const heading = await page.getByRole("textbox", { name: "h1" }).boundingBox();
   expect(heading.height).toBeLessThan(90);
@@ -160,6 +160,20 @@ async function saveAndPublish(page) {
   await expect(status(page, "Live")).toBeVisible();
 }
 
+/** The open file goes with one tap on its Delete button: one commit, gone from disk and from the tree. */
+async function deleted(page, file) {
+  const before = head(BROWSER_SITE);
+  await expect(page.getByRole("button", { name: "Delete", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Delete file" })).toBeVisible();
+  await page.getByRole("button", { name: "Delete file" }).click();
+  await expect(row(page, file)).toHaveCount(0);
+  expect(git(BROWSER_SITE, "log", "-1", "--format=%s")).toBe(`Delete ${file}`);
+  expect(git(BROWSER_SITE, "rev-list", "--count", `${before}..HEAD`)).toBe("1");
+  expect(existsSync(path.join(BROWSER_SITE, file))).toBe(false);
+  await expect(page.getByRole("button", { name: /Delete/ })).toHaveCount(0);
+  await expect(page.getByText("Pick a page to edit")).toBeVisible();
+}
+
 /** A picture bigger than one request: the browser's chooser, several parts, one commit, a preview. [CMS-API-UPLOAD] */
 async function upload(page) {
   const bytes = Buffer.alloc(2_000_000 + 17, 0);
@@ -182,6 +196,7 @@ async function upload(page) {
   await page.waitForTimeout(500);
   expect(head(BROWSER_SITE)).toBe(uploaded);
   await expect(page.getByRole("button", { name: "Publish 1" })).toBeEnabled();
+  await deleted(page, "media/team-photo.png");
 }
 
 async function rawMarkdown(page) {
