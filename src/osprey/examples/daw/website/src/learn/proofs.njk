@@ -34,8 +34,42 @@ description: "Mathematically proven DSP in Lean, unlimited signal routing, VST3 
       <h2>Machine-checked synthesis proofs</h2>
       <p>
         Core DSP formulas are formally verified in Lean with zero axioms and replayed in CI.
-        Mutating a formula breaks its proof immediately:
+        For example, <code>allpassMagnitude</code> proves that our first-order allpass disperser
+        preserves exact unit gain at every frequency on the unit circle:
       </p>
+
+      <div class="prose-math">
+        <math display="block" xmlns="http://www.w3.org/1998/Math/MathML">
+          <mrow>
+            <mo>|</mo>
+            <mi>H</mi>
+            <mo>(</mo><msup><mi>e</mi><mrow><mi>j</mi><mi>ω</mi></mrow></msup><mo>)</mo>
+            <mo>|</mo>
+            <mo>=</mo>
+            <mo>|</mo>
+            <mfrac>
+              <mrow><mi>a</mi><mo>+</mo><msup><mi>z</mi><mrow><mo>−</mo><mn>1</mn></mrow></msup></mrow>
+              <mrow><mn>1</mn><mo>+</mo><mi>a</mi><msup><mi>z</mi><mrow><mo>−</mo><mn>1</mn></mrow></msup></mrow>
+            </mfrac>
+            <mo>|</mo>
+            <mo>=</mo>
+            <mn>1</mn>
+            <mspace width="1.2em"/>
+            <mtext>since</mtext>
+            <mspace width="0.6em"/>
+            <mo>|</mo><mi>a</mi><mo>+</mo><msup><mi>z</mi><mrow><mo>−</mo><mn>1</mn></mrow></msup><mo>|</mo>
+            <mo>=</mo>
+            <mo>|</mo><mn>1</mn><mo>+</mo><mi>a</mi><msup><mi>z</mi><mrow><mo>−</mo><mn>1</mn></mrow></msup><mo>|</mo>
+          </mrow>
+        </math>
+        <p class="prose-math-caption">
+          Real coefficient <math><mrow><mi>a</mi><mo>∈</mo><mi>ℝ</mi></mrow></math>,
+          unit-circle delay <math><mrow><mover><mi>z</mi><mo>¯</mo></mover><mi>z</mi><mo>=</mo><mn>1</mn></mrow></math>
+          — proved by <code>Synthesis.allpassMagnitude</code> with zero axioms.
+        </p>
+      </div>
+
+      <p>Mutating any proved formula breaks its proof immediately:</p>
       <div class="prose-table-wrap">
         <table class="prose-table">
           <thead>
