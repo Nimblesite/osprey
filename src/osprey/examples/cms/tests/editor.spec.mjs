@@ -18,7 +18,7 @@ const brand = (token) => `var(--osp-brand-${token})`;
 
 /** Every coloured run of the code block, as [text, colour]. */
 async function runs(page) {
-  return page.locator(".osp-frame-code span").evaluateAll((spans) => spans.map((span) => [span.textContent, span.style.color]));
+  return page.locator(".osp-frame-source [style*=color]").evaluateAll((spans) => spans.map((span) => [span.textContent, span.style.color]));
 }
 
 async function treeAndChrome(page) {

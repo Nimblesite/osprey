@@ -13,6 +13,12 @@ type Page =
     pageFront : string
     pageBlocks : List<Block>
 
+(** A page read line by line: the blocks so far, and the lines and style of the block still open. *)
+type Scan =
+    scanned : List<Block>
+    pending : List<string>
+    pendingStyle : string
+
 (** Markdown pages as blocks, and the ribbon's edits on them. *)
 module Blocks
     prefixes () = [["h1", "# "], ["h2", "## "], ["h3", "### "], ["bullets", "- "], ["quote", "> "]]
@@ -43,7 +49,48 @@ module Blocks
             Page(pageFront = take text cut, pageBlocks = body (drop text cut))
         false => Page(pageFront = "", pageBlocks = body text)
 
-    body text = mapList (filterList (split (trim text) "\n\n" ?: [], \part => trim part != ""), \part => block (trim part))
+    // What a line starts: a fence, a heading, a list item, a quote, a paragraph line, or nothing.
+    lineStyle line = match startsWith line "```"
+        true => "code"
+        false => match startsWith line "#"
+            true => "heading"
+            false => listedStyle line
+
+    listedStyle line = match startsWith line "- "
+        true => "bullets"
+        false => match startsWith line "> "
+            true => "quote"
+            false => match trim line == ""
+                true => "blank"
+                false => "paragraph"
+
+    closed scan = match length scan.pending
+        0 => scan
+        _ => Scan(scanned = listAppend scan.scanned (block (join scan.pending "\n")), pending = [], pendingStyle = "")
+
+    opened (scan, style, line) = Scan(scanned = (closed scan).scanned, pending = [line], pendingStyle = style)
+
+    grown (scan, line) = scan(pending = listAppend scan.pending line)
+
+    // Inside a fence every line belongs to the code, until the closing fence ends the block.
+    fenced (scan, line) = match startsWith line "```"
+        true => closed (grown (scan, line))
+        false => grown (scan, line)
+
+    // A line outside a fence: a heading stands alone, like lines run on, a blank line ends a block.
+    unfenced (scan, line, style) = match style
+        "blank" => closed scan
+        "heading" => closed (opened (scan, style, line))
+        _ => match style == scan.pendingStyle
+            true => grown (scan, line)
+            false => opened (scan, style, line)
+
+    readLine (scan, line) = match scan.pendingStyle
+        "code" => fenced (scan, line)
+        _ => unfenced (scan, line, lineStyle line)
+
+    // Blocks are read line by line, so a heading, a fence or a list needs no blank line around it.
+    body text = (closed (foldList (lines (trim text), Scan(scanned = [], pending = [], pendingStyle = ""), readLine))).scanned
 
     (** `text` taken apart into front matter and blocks. *)
     export page text = parted text

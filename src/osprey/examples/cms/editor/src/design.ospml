@@ -8,9 +8,12 @@ module Design
     // name, light, dark
     neutrals () = [["bg", "#F6F7FB", "#0B0D12"], ["panel", "#FFFFFF", "#11141B"], ["sunken", "#EEF0F6", "#0E1117"], ["raised", "#FFFFFF", "#171B24"], ["hover", "#F1F2F8", "#1C212C"], ["edge", "#E3E6EF", "#232836"], ["edgeStrong", "#CDD2DF", "#2E3546"], ["ink", "#0F1222", "#EDEFF7"], ["inkSoft", "#3B4257", "#B7BDD0"], ["inkMuted", "#6B7390", "#7E869E"], ["inkFaint", "#9AA1B8", "#596079"]]
 
-    accents () = [["accent", "#6D5DFC", "#8B7CFF"], ["accentHover", "#5A49F0", "#9D90FF"], ["accentSoft", "#EEEBFF", "#211D3D"], ["accentInk", "#FFFFFF", "#0B0D12"], ["sidebar", "#0F1222", "#080A0F"], ["sidebarRaised", "#1A1E33", "#12151F"], ["sidebarInk", "#E8EAF6", "#E8EAF6"], ["sidebarMuted", "#8C93B3", "#7A819F"], ["sidebarActive", "#2A2552", "#231F45"]]
+    accents () = [["accent", "#6D5DFC", "#8B7CFF"], ["accentHover", "#5A49F0", "#9D90FF"], ["accentSoft", "#EEEBFF", "#211D3D"], ["accentInk", "#FFFFFF", "#0B0D12"], ["sidebar", "#FBFBFE", "#0E1016"], ["sidebarRaised", "#F1F1F8", "#151822"], ["sidebarInk", "#0F1222", "#E8EAF6"], ["sidebarMuted", "#6B7390", "#7E869E"]]
 
     statuses () = [["good", "#15803D", "#4ADE80"], ["goodSoft", "#E8F7EE", "#0F2A1B"], ["warn", "#B45309", "#FBBF24"], ["warnSoft", "#FFF4E0", "#2E2210"], ["bad", "#DC2626", "#F87171"], ["badSoft", "#FDECEC", "#2D1414"]]
+
+    // Syntax colours for code blocks ([CMS-EDITOR-SYNTAX]).
+    syntax () = [["synKeyword", "#7C3AED", "#C4B5FD"], ["synString", "#047857", "#6EE7B7"], ["synNumber", "#B45309", "#FCD34D"], ["synComment", "#8A90A6", "#6B7390"], ["synType", "#0369A1", "#7DD3FC"], ["synPunct", "#4B5268", "#A3AAC2"]]
 
     // The roles every host reads, named onto the palette.
     roles () = [["canvas", "#F6F7FB", "#0B0D12"], ["text", "#0F1222", "#EDEFF7"], ["primary", "#0F1222", "#EDEFF7"], ["secondary", "#6B7390", "#7E869E"], ["onAccent", "#FFFFFF", "#0B0D12"], ["danger", "#DC2626", "#F87171"], ["caution", "#B45309", "#FBBF24"], ["inset", "#FFFFFF", "#11141B"], ["surface", "#FFFFFF", "#11141B"], ["border", "#E3E6EF", "#232836"], ["line", "#E3E6EF", "#232836"], ["selection", "#EEEBFF", "#211D3D"]]
@@ -18,7 +21,7 @@ module Design
     token row = ui::Token(tokenName = listGet row 0 ?: "", tokenLight = listGet row 1 ?: "", tokenDark = listGet row 2 ?: "")
 
     (** The studio theme: every token, a 4-point spacing scale and quick, calm motion. *)
-    export theme () = ui::Theme(tokens = mapList (listConcat (listConcat (neutrals ()) (accents ())) (listConcat (statuses ()) (roles ())), token), spacing = [4, 8, 12, 16, 20, 24, 32, 40], feedback = 120, settle = 220)
+    export theme () = ui::Theme(tokens = mapList (listConcat (listConcat (neutrals ()) (accents ())) (listConcat (listConcat (statuses ()) (syntax ())) (roles ())), token), spacing = [4, 8, 12, 16, 20, 24, 32, 40], feedback = 120, settle = 220)
 
     (** The type scale in points: display, h1, h2, h3, body, small and micro. *)
     export size step = match step

@@ -8,6 +8,7 @@ import ui::Ui
 import studio::Blocks
 import studio::Design
 import studio::Kit
+import studio::Syntax
 
 (** The page as a reader sees it. *)
 module Preview
@@ -57,9 +58,27 @@ module Preview
         style = Kit::surface ("accentSoft", "", Design::radius "sm", 14)
         Ui::framed (style(frameLine = "accent", frameLineEdge = "left"), para (text, "h3", "inkSoft", ui::Body))
 
+    fence text = listGet (lines text) 0 ?: ""
+
+    languageOf text = match trim (drop (fence text) 3)
+        "" => "code"
+        named => named
+
+    // The lines between a code block's fences: the opening fence always, the closing one when present.
+    source text =
+        all = lines text
+        closing = match length all > 1 && startsWith (listGet all (satSub (length all) 1) ?: "") "```"
+            true => 1
+            false => 0
+        join (range (1, satSub (length all) closing) |> fold [] (\(out, index) => listAppend out (listGet all index ?: ""))) "\n"
+
+    // A code block: its language over its source, each token in its syntax colour ([CMS-EDITOR-SYNTAX]).
     code text =
-        style = Kit::surface ("sunken", "edge", Design::radius "sm", 14)
-        Ui::framed (style, Kit::mono (text, "ink"))
+        style = Kit::surface ("sunken", "edge", Design::radius "md", 16)
+        face = Frames::text (Design::mono (), Design::size "small", false)
+        language = Kit::eyebrow (languageOf text, "inkMuted")
+        body = Ui::framed (face(frameName = "source", frameLineHeight = 21.0), Ui::rich (Syntax::runs (source text), ui::Body))
+        Ui::framed (style(frameName = "code", frameGap = 10), Ui::column [language, body])
 
     (** One block with its typography. *)
     export block item = match item.blockStyle

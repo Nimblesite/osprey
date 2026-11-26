@@ -21,12 +21,15 @@ module Screens
 
     shown (store, item) = store.filter == "" || contains (toLowerCase item.entryPath) (toLowerCase store.filter)
 
-    depthOf path = satSub (length (split path "/" ?: [])) 1
+    rootOf path = listGet (split path "/" ?: []) 0 ?: ""
 
-    treeRow (store, item) = Kit::treeItem (depthOf item.entryPath, symbolOf item.entryKind, Names::base item.entryPath, item.entryPath == store.opened, Open(openPath = item.entryPath))
+    // A file in the tree: its kind's symbol, its path inside its root, grouped under that root.
+    treeEntry item = Ui::entry (item.entryPath, symbolOf item.entryKind, rootOf item.entryPath, Kit::say (drop item.entryPath (satAdd (length (rootOf item.entryPath)) 1), "small", "ink"))
 
-    // The files under each root, each root under its own heading.
-    treeRows (store, items) = foldList (store.roots, [], \(out, root) => listConcat (listAppend out (Kit::treeFolder (0, root))) (mapList (filterList (items, \item => startsWith item.entryPath "${root}/"), \item => treeRow (store, item))))
+    tree store =
+        style = Frames::plain
+        files = mapList (filterList (store.files, \item => shown (store, item)), treeEntry)
+        Ui::framed (style(frameGrow = true, frameScrollY = true, frameFlatRows = true, frameGap = 2), Ui::rows (files, store.opened, Open))
 
     brand () =
         mark = Kit::surface ("accent", "", Design::radius "sm", 0)
@@ -41,10 +44,8 @@ module Screens
 
     (** The dark sidebar: brand, search, the tree and the uploader. *)
     export sidebar store =
-        style = Kit::surface ("sidebar", "", 0, 16)
-        items = filterList (store.files, \item => shown (store, item))
-        tree = Ui::framed (style(frameFill = "", frameGrow = true, frameScrollY = true, frameGap = 2), Ui::column (treeRows (store, items)))
-        Ui::framed (style(frameWidth = 292, frameGap = 16), Ui::column [brand (), Kit::input ("Search files", store.filter, Search), tree, uploader store])
+        style = Kit::surface ("sidebar", "edge", 0, 16)
+        Ui::framed (style(frameName = "sidebar", frameLineEdge = "right", frameWidth = 280, frameViewportHeightInset = 0, frameGap = 16), Ui::column [brand (), Kit::input ("Search files", store.filter, Search), tree store, uploader store])
 
     crumbs path = Kit::cluster (6, mapList (split path "/" ?: [], \part => Kit::say (part, "small", "inkMuted")))
 
@@ -91,14 +92,32 @@ module Screens
         "quote" => "h3"
         _ => "body"
 
-    // One block, editable in place in its own type: the Word-style view.
+    faceOf style = match style
+        "code" => Design::mono ()
+        _ => Design::sans ()
+
+    // The focused block, editable in place in its own type; code edits as monospaced lines.
     blockEditor (store, index, item) =
-        style = Frames::text (Design::sans (), Design::size (typeOf item.blockStyle), false)
-        Ui::framed (style(frameHug = false, frameQuietControls = true, frameLineHeight = toFloat (Design::size (typeOf item.blockStyle)) * 1.5), Editors::inline (item.blockStyle, item.blockText, 0, EditBlock(blockIndex = index), PlaceBlock(placedIndex = index)))
+        style = Frames::text (faceOf item.blockStyle, Design::size (typeOf item.blockStyle), false)
+        edit = EditBlock(blockIndex = index)
+        place = PlaceBlock(placedIndex = index)
+        field = match item.blockStyle
+            "code" => Editors::editor ("code", item.blockText, store.blockCursor, [], edit, place)
+            style => Editors::inline (style, item.blockText, store.blockCursor, edit, place)
+        Ui::framed (style(frameHug = false, frameQuietControls = true, frameLineHeight = toFloat (Design::size (typeOf item.blockStyle)) * 1.5), field)
+
+    flat () =
+        style = Frames::plain
+        style(frameFlatRows = true)
+
+    // Every other block reads as it will publish; choosing it moves the editor there.
+    blockView (store, index, item) = match index == store.focus
+        true => blockEditor (store, index, item)
+        false => Ui::framed (flat (), Ui::rows ([Ui::item (toString index, Preview::block item)], "", FocusBlock))
 
     formatted store =
         blocks = (Blocks::page store.text).pageBlocks
-        page = Ui::framed (paperStyle (), Ui::column (range (0, length blocks) |> fold [] (\(out, index) => listAppend out (blockEditor (store, index, Blocks::blockAt (blocks, index))))))
+        page = Ui::framed (paperStyle (), Ui::column (range (0, length blocks) |> fold [] (\(out, index) => listAppend out (blockView (store, index, Blocks::blockAt (blocks, index))))))
         Kit::stack (0, [page])
 
     raw store =

@@ -56,7 +56,6 @@ type Studio =
 type Act =
     Refresh
     Open
-        openPath : string
     Edit
     Place
     Save
@@ -83,3 +82,4 @@ type Act =
         blockIndex : int
     PlaceBlock
         placedIndex : int
+    FocusBlock

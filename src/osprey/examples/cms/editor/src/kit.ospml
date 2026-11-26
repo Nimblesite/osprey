@@ -8,13 +8,13 @@ import ui::Pick
 import ui::Ui
 import studio::Design
 
-(** The studio's components: type, layout, buttons, the ribbon, fields, status, tree rows and overlays. *)
+(** The studio's components: type, layout, buttons, the ribbon, fields, status and overlays. *)
 module Kit
     // ---- type ----
 
     face (step, tracking) =
         style = Frames::text (Design::sans (), Design::size step, false)
-        style(frameHug = false, frameLineHeight = toFloat (Design::size step) * 1.5, frameTracking = tracking)
+        style(frameHug = true, frameLineHeight = toFloat (Design::size step) * 1.5, frameTracking = tracking)
 
     said (words, step, tracking, ink, emphasis, role) = Ui::framed (face (step, tracking), Ui::rich ([Ui::emphasised (words, ink, emphasis)], role))
 
@@ -149,7 +149,7 @@ module Kit
     export status<A> : (string, string) -> ui::Node<A>
     status (tone, label) =
         style = surface ("${tone}Soft", "", Design::radius "pill", 0)
-        Ui::framed (style(frameTop = 4, frameBottom = 4, frameLeft = 10, frameRight = 12, frameGap = 6, frameHug = true, frameAlign = "center"), Ui::row [strong ("●", "micro", tone), strong (label, "small", tone)])
+        Ui::framed (style(frameName = "status", frameTop = 4, frameBottom = 4, frameLeft = 10, frameRight = 12, frameGap = 6, frameHug = true, frameAlign = "center"), Ui::row [strong ("●", "micro", tone), strong (label, "small", tone)])
 
     (** A quiet chip holding monospaced words. *)
     export chip<A> : string -> ui::Node<A>
@@ -158,19 +158,6 @@ module Kit
         Ui::framed (style(frameTop = 3, frameBottom = 3, frameLeft = 8, frameRight = 8, frameHug = true), mono (words, "inkSoft"))
 
     // ---- navigation ----
-
-    (** A row of the sidebar's tree at `depth`, lit while `selected`. *)
-    export treeItem<A> : (int, string, string, bool, A) -> ui::Node<A>
-    treeItem (depth, symbol, label, selected, act) =
-        style = pill (Pick::either (selected, "sidebarActive", ""), Pick::either (selected, "sidebarInk", "sidebarMuted"), "", 32)
-        seat = Frames::inset (0, 0, 0, satMul depth 14)
-        Ui::framed (seat, Ui::framed (style(frameHug = false, frameControlPadding = 10, frameAlign = "start"), Ui::button (label, symbol, act)))
-
-    (** A folder's heading in the sidebar's tree at `depth`. *)
-    export treeFolder<A> : (int, string) -> ui::Node<A>
-    treeFolder (depth, label) =
-        seat = Frames::inset (8, 0, 2, satAdd 10 (satMul depth 14))
-        Ui::framed (seat, eyebrow (label, "sidebarMuted"))
 
     // ---- overlays ----
 

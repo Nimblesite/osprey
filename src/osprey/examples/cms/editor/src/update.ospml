@@ -66,7 +66,6 @@ module Update
     (** A tap. *)
     export tapped (store, action) = match action
         Refresh => hydrate store
-        Open path => opening (store, path)
         Save => save store
         Delete => delete store
         NewPage => drafting store
@@ -98,6 +97,8 @@ module Update
         Edit => Runtime::step (store(text = words))
         EditDraft => Runtime::step (store(draftPath = trim words))
         Search => Runtime::step (store(filter = words))
+        Open => opening (store, words)
+        FocusBlock => Runtime::step (store(focus = parseInt words ?: 0, blockCursor = 0))
         PickFolder => Runtime::step (store(folder = words))
         EditBlock index => Runtime::step (store(text = Blocks::edited (store.text, index, words), focus = index))
         _ => Runtime::step store
