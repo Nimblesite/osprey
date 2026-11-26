@@ -6,7 +6,7 @@
 // [EFFECTS-HANDLER-STATE], [EFFECTS-GENERIC-DECL],
 // [EFFECTS-GENERIC-INSTANTIATION], and [EFFECTS-GENERIC-RUNTIME].
 
-// The describe() outputs the cases assert on.
+/// The describe() outputs the cases assert on.
 let errMissing = "err: missing"
 let errOffline = "err: offline"
 

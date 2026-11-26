@@ -1,7 +1,7 @@
 
 // Erased compatibility values [TYPE-ANY].
 
-// The strings the erased-value cases assert on.
+/// The strings the erased-value cases assert on.
 let processedAny = "Processed any"
 let differentColors = "Different colors"
 

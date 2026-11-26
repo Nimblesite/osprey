@@ -1,6 +1,6 @@
 // Assertion-driven migration of the persistent Map golden example.
 
-// The string-key fixtures the construction and merge cases share.
+/// The string-key fixtures the construction and merge cases share.
 let aliceBobCharlie = ["alice", "bob", "charlie"]
 let xyzwKeys = ["x", "y", "z", "w"]
 

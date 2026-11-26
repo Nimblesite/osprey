@@ -1,6 +1,6 @@
 // Record Update Tests - Non-destructive updates per spec 3.7.4
 
-// The text a Delivered 2.5 answer renders as, which three cases assert on.
+/// The text a Delivered 2.5 answer renders as, which three cases assert on.
 let successTwoPointFive = "Success(2.5)"
 
 print("=== RECORD UPDATE BASIC TESTS ===")
