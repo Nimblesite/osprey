@@ -576,7 +576,7 @@ def settings_cases():
 # Providers, profiles and the unified `thinking` setting: expected values read from
 # upstream's providers/moonshotai.py, providers/zai.py, profiles/moonshotai.py,
 # profiles/zai.py, models/zai.py, providers/deepseek.py and the thinking handling in
-# models/openai.py and models/__init__.py (2.46.0), per docs/plans/0052-agent.md.
+# models/openai.py and models/__init__.py (2.46.0), per docs/plans/0049-local-coding-model.md.
 
 THINKING_VALUES = ["absent", "true", "false", "minimal", "low", "medium", "high", "xhigh"]
 """The unified `thinking` permutations, in THINKING_TABLE column order."""
@@ -784,7 +784,7 @@ def reasoning_round_trip_cases():
 
 
 # The MCP client (pydantic_ai.mcp as a sans-IO port; the recorded flows follow upstream's
-# mcp.py and the MCP specification, per docs/plans/0052-agent.md)
+# mcp.py and the MCP specification, per docs/plans/0049-local-coding-model.md)
 
 INIT_REPLY = '{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-06-18","capabilities":{"tools":{"listChanged":true},"logging":{},"experimental":{"e1":{}}},"serverInfo":{"name":"srv","title":"Server","version":"2.0"},"instructions":"be helpful"}}'
 """A recorded `initialize` reply."""
