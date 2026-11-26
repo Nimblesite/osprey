@@ -34,9 +34,15 @@ fn parses_llvm_symbolizer_blocks() {
     );
     let run = chains.get(1).expect("entry 1").first().unwrap();
     assert_eq!((run.file.as_str(), run.line), ("C:\\proj\\app.osp", 14));
-    assert_eq!(chains.get(2).expect("entry 2").first().unwrap().name, "0x30");
+    assert_eq!(
+        chains.get(2).expect("entry 2").first().unwrap().name,
+        "0x30"
+    );
     // Fewer blocks than addresses: the tail pads out as hex chains.
-    assert_eq!(chains.get(3).expect("entry 3").first().unwrap().name, "0x40");
+    assert_eq!(
+        chains.get(3).expect("entry 3").first().unwrap().name,
+        "0x40"
+    );
 }
 
 #[test]

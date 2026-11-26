@@ -177,7 +177,15 @@ fn stacks_resolve_through_per_image_batches_with_dedup() {
         ["fn_1400", "fn_1400", "fn_9199"]
     );
     // pc 500 sits below every image base -> raw hex fallback.
-    assert_eq!(stacks.get(1).expect("entry 1").get(1).expect("entry 1").name, "0x1f4");
+    assert_eq!(
+        stacks
+            .get(1)
+            .expect("entry 1")
+            .get(1)
+            .expect("entry 1")
+            .name,
+        "0x1f4"
+    );
 }
 
 #[test]
