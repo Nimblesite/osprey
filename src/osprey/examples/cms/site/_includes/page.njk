@@ -1,0 +1,10 @@
+{% extends "base.njk" %}
+{% block main %}
+{%- if page.inputPath.includes("/blog/") %}
+{% include "post-body.njk" %}
+{%- else %}
+<article class="prose page">
+  {{ content | safe }}
+</article>
+{%- endif %}
+{% endblock %}

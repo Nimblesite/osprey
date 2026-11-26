@@ -1,0 +1,10 @@
+<article class="card">
+  <a class="card-link" href="{{ post.url }}">
+    <img class="card-cover" src="{{ post.data.cover or '/media/logo.svg' }}" alt="" loading="lazy">
+    <div class="card-body">
+      <p class="meta"><time datetime="{{ post.date.toISOString() }}">{{ post.date | readable }}</time>{% if post.data.topic %} · {{ post.data.topic }}{% endif %}</p>
+      <h3>{{ post.data.title }}</h3>
+      <p class="summary">{{ post.data.summary }}</p>
+    </div>
+  </a>
+</article>

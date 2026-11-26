@@ -1,0 +1,10 @@
+<article class="post">
+  <header class="post-head">
+    <p class="eyebrow"><a href="/blog/">Journal</a>{% if topic %} · {{ topic }}{% endif %}</p>
+    <h1>{{ title }}</h1>
+    <p class="meta"><time datetime="{{ page.date.toISOString() }}">{{ page.date | readable }}</time> · {{ content | striptags | minutes }} min read</p>
+  </header>
+  {% if cover %}<img class="post-cover" src="{{ cover }}" alt="">{% endif %}
+  <div class="prose">{{ content | safe }}</div>
+  <p class="back"><a href="/blog/">← All posts</a></p>
+</article>

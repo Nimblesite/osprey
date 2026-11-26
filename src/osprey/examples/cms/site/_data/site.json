@@ -1,0 +1,9 @@
+{
+  "title": "Northwind Studio",
+  "tagline": "Design and engineering notes from a small studio by the sea.",
+  "nav": [
+    { "label": "Home", "url": "/" },
+    { "label": "Journal", "url": "/blog/" },
+    { "label": "About", "url": "/about/" }
+  ]
+}

@@ -1,0 +1,9 @@
+{% extends "base.njk" %}
+{% block main %}
+<section class="section">
+  <header class="page-head prose">{{ content | safe }}</header>
+  <div class="grid">
+    {%- for post in collections.posts %}{% include "card.njk" %}{% endfor %}
+  </div>
+</section>
+{% endblock %}

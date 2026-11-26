@@ -85,8 +85,13 @@ The back-office editor is an Osprey Native app (`src/osprey/examples/cms/editor/
 
 A fenced code block shows its language and its source with syntax colours: keywords, strings, numbers, comments and capitalised type names each have a theme token (`synKeyword`, `synString`, `synNumber`, `synComment`, `synType`, `synPunct`) with a light and a dark value. Anything the lexer does not recognise stays plain, so drawing never fails.
 
+## Sample site — [CMS-SITE]
+
+`src/osprey/examples/cms/site/` is the Eleventy site the tests hand over: a sticky nav that marks the current page, a home hero, the latest post featured, a journal grid of every post (newest first, each with its cover, date, topic and summary), article pages with reading time, and an about page, in light and dark. Layouts (`_includes/`), data (`_data/`) and styles (`assets/`) are the developer's; posts are Markdown files in `content/blog/` whose front matter carries `title`, `date`, `topic`, `summary` and `cover`, and covers are media. `.markdown` pages build like `.md` ones.
+
 ## Tests — [CMS-E2E]
 
 - `make -C src/toolchain/targets/tests cms` builds the server under GC and ARC, creates a throwaway site repository with a bare remote, and drives the API as an editor would: list, open, edit, create, delete, upload an image in several parts, preview it, read the history, check that saves never reach the remote, publish and publish again, and send every unsafe path in [CMS-PATH-SAFE]. Each step asserts the reply and the resulting git log and file bytes.
 - `make -C src/toolchain/targets/web/tests cms` runs one long editor session in Chromium against the real editor: the tree and layout, search, syntax colours, editing a code block, selecting by drag and double-click without the editor being replaced, typing without the toolbar flashing, restyling, saving (a commit, not a publish), publishing, and the raw Markdown.
+- The same browser suite builds the sample site with Eleventy and reads it as a visitor would: the nav on every page, the hero, the featured post, the journal grid against every post's front matter, each article and back, the about page, and the phone and dark layouts ([CMS-SITE]).
 - `make -C src/toolchain/targets/web cms` serves the editor on a fresh site at `http://127.0.0.1:4397` for manual testing.
