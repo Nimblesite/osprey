@@ -1,6 +1,6 @@
 # The synth package [SYNTH]
 
-The [advanced synthesis proposal](#advanced-synthesis-proposal-synth-advanced) specifies the neural, granular, physical and combined methods; the application built on this package is specified in [Perception](Perception.md). The [implementation checklist](../../plans/synth/advanced-synthesis.md) tracks delivery and verification.
+The [advanced synthesis proposal](#advanced-synthesis-proposal-synth-advanced) specifies the neural, granular, physical and combined methods; the application built on this package is specified in [Perception](Perception.md). The [implementation checklist](../../plans/synth/prism.md) tracks delivery and verification.
 
 Status — implementation in progress. The initial package extracts Perception's pure pitch, waveform, modulation, sample and WAV functions. Typed graph validation/scheduling, reactive parameter snapshots and stateful scalar reference oscillators, ADSR and filters now have passing package journeys. The real-time renderer and advanced algorithms remain requirements, not completed features. Research sources and candidate experiments are in [the research guide](Synth.md#sources-and-experiments-synth-research).
 
@@ -94,7 +94,7 @@ Oscillator quality is evaluated under pitch changes, pulse-width modulation, pha
 
 The `Grains` reference kernel [SYNTH-ADVANCED-GRAINS-PLAYBACK] implements immutable mono-source grain pools with stereo summing, periodic linear interpolation, independent lifetime/rate, symmetric Hann or configurable linear ASR windows and equal-power placement. Preparation validates source data and capacity; trigger/render operations reject invalid state and exhausted counters. Its generated models expose coherent sample position, trigger revision and active-count observations through a UI-independent Signal effect. Strict static checking has passed; automated audio verification is paused. `GrainScheduler` now supplies periodic and seeded bounded-jitter onset clocks; `Grains.scheduled` consumes ordered absolute sample events before the corresponding sample, preserving equal-position input order and rejecting events outside the current half-open block. Both clock and player state remain immutable on failure. `Components.granular` and `GrainGraph` now connect that engine to the shared stereo graph renderer with typed retained processor memory. Perception exposes Grain Cloud insertion, its existing parameter inspector, source waveform and keyboard pitch mapping. Independent distributions, resource replacement/file loading, separate scheduler/source nodes, modulation ports and realtime guarantees remain requirements in the advanced plan; manual native insertion/inspector inspection is complete, while audio and automated UI verification remain deferred.
 
-Research candidates include bandlimited/corrected oscillators, wavetable/additive/spectral synthesis, physical/modal models, granular engines, expressive phase shaping and differentiable/learned controls. The detailed implementation and acceptance checklist is the [advanced synthesis plan](../../plans/synth/advanced-synthesis.md) [SYNTH-ADVANCED]. Adoption requires the [research experiments](#research-to-delivery-experiments-synth-research-experiments), not a novelty claim. Training and expensive patch inference remain outside the required audio callback.
+Research candidates include bandlimited/corrected oscillators, wavetable/additive/spectral synthesis, physical/modal models, granular engines, expressive phase shaping and differentiable/learned controls. The detailed implementation and acceptance checklist is the [advanced synthesis plan](../../plans/synth/prism.md) [SYNTH-ADVANCED]. Adoption requires the [research experiments](#research-to-delivery-experiments-synth-research-experiments), not a novelty claim. Training and expensive patch inference remain outside the required audio callback.
 
 ### Mathematical sources and proof obligations [SYNTH-DSP-PROOFS]
 
@@ -422,7 +422,7 @@ Bibliographic records; links only where a stable public source is known. Entries
 
 ## VST3 hosting [SYNTH-HOST-VST]
 
-VST3 **hosting** is an active requirement of the [Perception expansion](../../plans/synth/prism-routing.md). The isolated worker now scans, describes and processes real plug-ins, and Perception can create and route their typed graph nodes, then audition a real instrument/effect chain as stereo PCM. Continuous device rendering remains in progress. The purpose is to load existing VST3 instruments/effects into a synthesis graph. Producing Osprey VST3 plug-ins is a separate capability and is not substituted for hosting.
+VST3 **hosting** is an active requirement of the [Perception expansion](../../plans/synth/prism.md). The isolated worker now scans, describes and processes real plug-ins, and Perception can create and route their typed graph nodes, then audition a real instrument/effect chain as stereo PCM. Continuous device rendering remains in progress. The purpose is to load existing VST3 instruments/effects into a synthesis graph. Producing Osprey VST3 plug-ins is a separate capability and is not substituted for hosting.
 
 An external node declares audio buses, event buses, parameter identifiers, sample-accurate automation support, latency, tail length and saved state. Host adapters map these to the same graph ports and parameter Signals as built-in components. Plug-in metadata/parameter IDs remain stable across graph saves; missing binaries or changed layouts produce visible errors rather than loading a different plug-in silently.
 
@@ -484,7 +484,7 @@ Graph variation [SYNTH-ADVANCED-GRAINS-DISTRIBUTIONS-GRAPH]: `positionSpread`, `
 
 ## Advanced synthesis proposal [SYNTH-ADVANCED]
 
-The 2026-11-17 proposal defines package behavior and Perception UI requirements. Numerical defaults below are initial engineering choices to validate. The [source collection](#sources-neural-granular-and-physical-synthesis-synth-research-focused) supplies the sources. The [delivery plan](../../plans/synth/advanced-synthesis.md#advanced-synthesis-delivery-plan-prism-advanced-plan) records dependencies and acceptance evidence. For current implementation and verification status, see the [active synthesis checklist](../../plans/synth/advanced-synthesis.md).
+The 2026-11-17 proposal defines package behavior and Perception UI requirements. Numerical defaults below are initial engineering choices to validate. The [source collection](#sources-neural-granular-and-physical-synthesis-synth-research-focused) supplies the sources. The [delivery plan](../../plans/synth/prism.md#advanced-synthesis-delivery-plan-prism-advanced-plan) records dependencies and acceptance evidence. For current implementation and verification status, see the [active synthesis checklist](../../plans/synth/prism.md).
 
 ### Shared package contract [SYNTH-ADVANCED-CONTRACT]
 

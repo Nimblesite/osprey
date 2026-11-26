@@ -330,7 +330,7 @@ The [Timeline designs](../../designs/prism-timeline/README.md) propose more than
 ## Instrument builder [PRISM-INSTRUMENT]
 
 
-Status: specified, not built. The synth package's `Macros` module validates and applies macros today ([SYNTH-ADVANCED-PRISM]); Perception has no instrument face yet. The [instrument builder plan](../../plans/synth/prism-routing.md#instrument-face-prism-instrument-face) tracks delivery. The [design screenshots](../../designs/prism-timeline/README.md#instrument-builder-prism-instrument) show Play, Edit and MIDI learn.
+Status: specified, not built. The synth package's `Macros` module validates and applies macros today ([SYNTH-ADVANCED-PRISM]); Perception has no instrument face yet. The [instrument builder plan](../../plans/synth/prism.md#instrument-face-prism-instrument-face) tracks delivery. The [design screenshots](../../designs/prism-timeline/README.md#instrument-builder-prism-instrument) show Play, Edit and MIDI learn.
 
 This contract belongs to [the daw](Perception.md#perception-studio-the-daw-daw): an instrument is stored in the project file and played through the project graph ([DAW-GRAPH-OUTPUT]).
 
@@ -370,7 +370,7 @@ Per [MATH-CODE], the mapping formulas are written in Osprey and proved in Lean a
 
 ## Perception device [DEVICE]
 
-Status: specified, not built. Delivery is tracked in the [device plan](../../plans/synth/device.md). The typed models are in [device.td](../../designs/prism-device/device.td) and the hardware and face designs in [Perception device designs](../../designs/prism-device/README.md).
+Status: specified, not built. Delivery is tracked in the [device plan](../../plans/synth/prism.md). The typed models are in [device.td](../../designs/prism-device/device.td) and the hardware and face designs in [Perception device designs](../../designs/prism-device/README.md).
 
 A Perception device is a small box that plays a Perception patch with no computer attached. It is either a **sound source** (MIDI in, audio out) or an **effects pedal** (audio in, audio out). It runs the synthesis engine from `@osprey/synth` and nothing else: no Perception, no screen, no editor. Its knobs and switches turn the patch's macros ([PRISM-INSTRUMENT]). Plugged into a computer, Perception shows which patch the device is playing, follows its knobs live and deploys a new patch to it.
 
@@ -494,7 +494,7 @@ What this cannot show, and what the prototype is for: real latency and dropouts,
 
 ## Perception device hardware [DEVICE-HW]
 
-Status: specified, not built. This is the reference hardware for the [Perception device](Perception.md#perception-device-device). The [hardware plan](../../plans/synth/device.md#hardware-device-hw-plan) tracks delivery. Every choice below cites the [hardware research](#research-findings-device-research); the [device designs](../../designs/prism-device/README.md) hold the panel and enclosure drawings.
+Status: specified, not built. This is the reference hardware for the [Perception device](Perception.md#perception-device-device). The [hardware plan](../../plans/synth/prism.md#hardware-device-hw-plan) tracks delivery. Every choice below cites the [hardware research](#research-findings-device-research); the [device designs](../../designs/prism-device/README.md) hold the panel and enclosure drawings.
 
 The product is a **Raspberry Pi Compute Module 5 on one purpose-built carrier**, the **Perception board**, in a die-cast pedal enclosure. The prototype is a **stock Raspberry Pi 5 with an audio HAT** ([DEVICE-HW-PROTOTYPE]). A Raspberry Pi plus one purpose-built audio and control board is the pattern norns, Zynthian and PiPedal already proved ([DEVICE-RESEARCH-PRIOR]). The compute module is the product's choice because a Pi 5 with a HAT and cooler does not fit under the controls in a 35 mm-deep pedal shell ([DEVICE-HW-ENCLOSURE]). It must meet three requirements:
 
