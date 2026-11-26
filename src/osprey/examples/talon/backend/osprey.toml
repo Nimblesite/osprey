@@ -6,3 +6,9 @@ entry = "main.ospml"
 
 [modules]
 allow_wildcard_imports = false
+
+# The layer folders share one namespace by design, and Metrics keeps its one
+# cell behind its exported effect, as [MODULES-STATE] asks ([LINT-LEVELS]).
+[lints]
+namespace-folder-drift = "allow"
+state-boundary = "info"
