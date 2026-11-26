@@ -119,7 +119,7 @@ _bank-web: build _runtime_wasm $(BANK_WEB_NODE_DEPS) $(EXT_NODE_DEPS)
 	OSPREY_BIN="$(CURDIR)/$(BIN)" node src/toolchain/hosts/web/scripts/build.mjs --app src/osprey/examples/talon/app --title "Talon Bank" \
 		--out src/toolchain/hosts/web/build/talon --argument http://127.0.0.1:18790
 
-# GPT-2 settings and the one-time weight download behind gpt2 and gpt2-train.
+# GPT-2 settings and the one-time weight download behind gpt2, gpt2-train and _test_gpt2_parity.
 GPT2_DIR    := src/osprey/examples/llms/gpt2
 GPT2_SOURCE := https://huggingface.co/openai-community/gpt2/resolve/main
 PROMPT      ?= The capital of France is
@@ -133,6 +133,11 @@ $(GPT2_DIR)/weights/%:
 	@$(MKDIR) $(GPT2_DIR)/weights
 	@echo "==> downloading $* from openai-community/gpt2"
 	curl -fsSL --retry 3 -o $@ $(GPT2_SOURCE)/$*
+
+## _gpt2_weights: The published GPT-2 checkpoint (model.safetensors and merges.txt, about 550 MB) in
+##                src/osprey/examples/llms/gpt2/weights, ignored by git; downloaded once, present afterwards.
+.PHONY: _gpt2_weights
+_gpt2_weights: $(GPT2_DIR)/weights/model.safetensors $(GPT2_DIR)/weights/merges.txt
 
 # _uninstall: Remove osprey + runtime archives from the system
 _uninstall:

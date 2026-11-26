@@ -175,29 +175,66 @@ fn python_gpt2_generator_prints_the_default_generator_messages() -> std::io::Res
     Ok(())
 }
 
+/**
+ * The identity the runtime reports for `OSPREY_GPU=<selection>` ([GPU-DEVICE]): `host`,
+ * `<adapter>:<index> (<device>)` for a device, `<adapter>:unavailable` without one.
+ */
+fn device_identity(selection: &str) -> std::io::Result<String> {
+    let directory = std::env::temp_dir().join(format!("osprey_gpt2_device_{}", std::process::id()));
+    std::fs::create_dir_all(&directory)?;
+    let path = directory.join("device.osp");
+    std::fs::write(&path, "print(gpuDevice())\n")?;
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_osprey"))
+        .arg(&path)
+        .arg("--run")
+        .env("OSPREY_GPU", selection)
+        .output();
+    let _ = std::fs::remove_dir_all(&directory);
+    let output = output?;
+    assert!(
+        output.status.success(),
+        "{selection}: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_owned())
+}
+
 /// The whole model in Python flavor: tokenizer, checkpoint loader, forward
 /// pass, KV-cached steps and greedy sampling print the Default example's
 /// output byte for byte on the host surface, over host lists and on the GPU
-/// hardware this host has ([GPU-DEVICE], [FLAVOR-PYTHON-GPU]). It needs the
-/// published checkpoint in src/osprey/examples/llms/gpt2/weights, which `make -C src/toolchain/targets/llms gpt2` downloads.
+/// hardware this host has ([GPU-DEVICE], [FLAVOR-PYTHON-GPU]): Metal and
+/// `OpenCL` on macOS, elsewhere the `OpenCL` device `auto` resolves to. A run
+/// that fell back to the host can never pass: the device leg asserts the
+/// identity the runtime reported beforehand, and without a device (`auto` is
+/// `unavailable`) that leg is not run. It needs the published checkpoint in
+/// src/osprey/examples/llms/gpt2/weights, which `make _test_gpt2_parity` downloads once before
+/// running this test; CI's `test-gpt2-parity` job restores that checkpoint from cache.
 #[test]
-#[ignore = "needs the GPT-2 checkpoint (`make -C src/toolchain/targets/llms gpt2` downloads it): run with --ignored"]
+#[ignore = "needs the GPT-2 checkpoint: `make _test_gpt2_parity` downloads it and runs this test"]
 fn python_gpt2_generator_output_is_byte_identical_to_the_default_generator() -> std::io::Result<()>
 {
-    let devices: &[&str] = if cfg!(target_os = "macos") {
-        &["host", "metal", "opencl"]
+    // Each leg's `OSPREY_GPU` selection and the identity the generator must report for it.
+    let mut devices = vec![("host", "host".to_owned())];
+    if cfg!(target_os = "macos") {
+        devices.extend(
+            [("metal", "metal"), ("opencl", "opencl")]
+                .map(|(selection, identity)| (selection, identity.to_owned())),
+        );
     } else {
-        &["host", "auto"]
-    };
-    for device in devices {
-        let stdout = assert_generators_agree("The capital of France is\n20\ngpu\n", device)?;
+        let auto = device_identity("auto")?;
+        if !auto.contains("unavailable") {
+            devices.push(("auto", auto));
+        }
+    }
+    for (selection, identity) in &devices {
+        let stdout = assert_generators_agree("The capital of France is\n20\ngpu\n", selection)?;
         assert!(
-            stdout.starts_with(&format!("gpt2 (124M) on {device}")),
-            "{device}: {stdout}"
+            stdout.starts_with(&format!("gpt2 (124M) on {identity}")),
+            "{selection}: {stdout}"
         );
         assert!(
             stdout.contains("\ngenerated 20 tokens\n"),
-            "{device}: {stdout}"
+            "{selection}: {stdout}"
         );
     }
     let lists = assert_generators_agree("Melbourne is the capital of\n1\nlists\n", "host")?;

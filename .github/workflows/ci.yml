@@ -544,6 +544,51 @@ jobs:
       - name: Python application ports under every memory backend
         run: make _test_python_app_ports
 
+  # [FLAVOR-PYTHON-GPU] The Python-flavor GPT-2 generator prints the Default generator's bytes on
+  # every surface the runner has (the GPU kernels on the host, host lists). The Rust test is
+  # #[ignore]d because it needs the published 124M checkpoint, so no Rust shard runs it; this job
+  # restores the checkpoint from cache, downloads it once on a miss, and runs the test by name
+  # against the release binary Build staged: `--release` makes the binary the test spawns
+  # (CARGO_BIN_EXE_osprey) target/release/osprey. Issue #366. The device legs (Metal, OpenCL) need
+  # GPU hardware this runner lacks and run on a macOS host by hand; the host legs are what CI proves.
+  test-gpt2-parity:
+    name: "Tests: GPT-2 cross-flavor parity"
+    needs: [changes, build]
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - name: Setup Osprey toolchain (no rebuild)
+        uses: ./.github/actions/setup-osprey-compiler
+        with:
+          build: "false"
+      - uses: actions/download-artifact@v8
+        with:
+          name: osprey-build
+      - name: Restore artifact permissions
+        run: chmod +x target/release/osprey
+      # About 550 MB from huggingface.co. The key is the recipe that downloads the checkpoint, so a
+      # changed source or file list is a new entry and a stale one is never restored. The entry is
+      # saved only after the download succeeded, so a partial file is never cached.
+      - name: Restore the GPT-2 checkpoint
+        id: gpt2-weights
+        uses: actions/cache/restore@v6
+        with:
+          path: src/osprey/examples/llms/gpt2/weights
+          key: gpt2-weights-${{ runner.os }}-${{ hashFiles('scripts/make/apps.mk') }}
+      - name: Download the GPT-2 checkpoint
+        if: steps.gpt2-weights.outputs.cache-hit != 'true'
+        run: make _gpt2_weights
+      - name: Save the GPT-2 checkpoint
+        if: steps.gpt2-weights.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: src/osprey/examples/llms/gpt2/weights
+          key: ${{ steps.gpt2-weights.outputs.cache-primary-key }}
+      - name: Python-flavor generator parity with the Default generator
+        run: make _test_gpt2_parity
+
   # The assertion corpus, once per memory backend. `run_test_corpus.sh` checks
   # BOTH the in-language assertions and the byte-exact stdout golden in a
   # single pass, and comparing one golden across every backend is the
@@ -1641,6 +1686,7 @@ jobs:
       - test-registry-gc
       - test-registry-arc
       - test-python-app-ports
+      - test-gpt2-parity
       - test-corpus-gc
       - test-instructions
       - test-corpus-arc

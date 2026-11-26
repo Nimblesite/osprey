@@ -30,6 +30,20 @@ _test_rust_shard: _runtime_wasm
 	@$(MKDIR) $(COVERAGE_DIR) $(LOG_DIR)
 	set -o pipefail && RUST_TEST_THREADS=$${RUST_TEST_THREADS:-4} cargo llvm-cov --manifest-path src/toolchain/Cargo.toml --workspace --profile ci --lcov --output-path $(RUST_LCOV) $(RUST_SHARD_ARGS_$(RUST_SHARD)) 2>&1 | tee $(RUST_LOG)
 
+# [FLAVOR-PYTHON-GPU] The Python-flavor GPT-2 generator prints the Default generator's bytes on every
+# surface this host has (osprey-cli/tests/cross_flavor_equiv.rs). That test is #[ignore]d because it needs
+# the published checkpoint, so no shard above runs it: CI's test-gpt2-parity job restores the checkpoint
+# from cache and runs it here by name. `--release` makes the binary the test spawns (CARGO_BIN_EXE_osprey)
+# target/release/osprey, the one the Build job staged; scripts/ci/ci-scope.test.mjs holds the name to
+# the test, because `--exact` on a renamed test would run nothing and pass [CI-GPT2-PARITY].
+## _test_gpt2_parity: The ignored GPT-2 cross-flavor parity test by name, after _gpt2_weights downloads
+##       the checkpoint once. Expected: `test python_gpt2_generator_output_is_byte_identical_to_the_default_generator ... ok`.
+.PHONY: _test_gpt2_parity
+GPT2_PARITY_TEST := python_gpt2_generator_output_is_byte_identical_to_the_default_generator
+_test_gpt2_parity: _gpt2_weights
+	@echo "==> [gpt2] Python-flavor generator parity with the Default generator..."
+	cargo test --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli --test cross_flavor_equiv -- --ignored --exact $(GPT2_PARITY_TEST)
+
 # Every crate under src/toolchain/crates/ must have a valid threshold and measured lines.
 # Check inventory before results so an omitted crate cannot silently pass.
 _coverage_check_rust:

@@ -434,6 +434,28 @@ test('application ports have an independent complete backend gate', () => {
   assert.match(apps, /run: make _test_python_app_ports/)
 })
 
+// [CI-GPT2-PARITY] The GPT-2 cross-flavor parity test is #[ignore]d for its checkpoint, so the
+// Rust shards never run it: the dedicated job must restore the checkpoint from cache before it
+// downloads one, save it only after that download, and run the ignored test by its exact name.
+// `--exact` on a renamed test runs nothing and passes, so the name the recipe passes is held to the
+// #[ignore]d test in the source.
+test('the ignored GPT-2 parity test runs in CI from a cached checkpoint, by name', () => {
+  const parity = ciJob('test-gpt2-parity')
+  assert.match(parity, /needs: \[changes, build\]/)
+  assert.match(parity, /if:.*needs\.changes\.outputs\.code/)
+  assert.match(parity, /- name: Restore the GPT-2 checkpoint\n\s+id: gpt2-weights\n\s+uses: actions\/cache\/restore@v6\n\s+with:\n\s+path: src\/osprey\/examples\/llms\/gpt2\/weights\n\s+key: gpt2-weights-/)
+  assert.match(parity, /- name: Download the GPT-2 checkpoint\n\s+if: steps\.gpt2-weights\.outputs\.cache-hit != 'true'\n\s+run: make _gpt2_weights\n\s+- name: Save the GPT-2 checkpoint\n\s+if: steps\.gpt2-weights\.outputs\.cache-hit != 'true'\n\s+uses: actions\/cache\/save@v6/)
+  assert.match(parity, /run: make _test_gpt2_parity\s*$/m)
+  const recipe = makeRecipe('_test_gpt2_parity').join('\n')
+  assert.match(recipe, /cargo test --manifest-path src\/toolchain\/Cargo\.toml --release -p osprey-cli --test cross_flavor_equiv -- --ignored --exact \$\(GPT2_PARITY_TEST\)/)
+  assert.match(testsMk, /^_test_gpt2_parity: _gpt2_weights$/m)
+  assert.deepEqual(makeRecipe('_gpt2_weights'), [])
+  const name = testsMk.match(/^GPT2_PARITY_TEST := ([\w]+)$/m)?.[1]
+  assert.ok(name, 'the recipe must name the test in one variable')
+  const source = readFileSync('src/toolchain/crates/osprey-cli/tests/cross_flavor_equiv.rs', 'utf8')
+  assert.match(source, new RegExp(`#\\[ignore[^\\n]*\\nfn ${name}\\(\\)`), `${name} must be the #[ignore]d test`)
+})
+
 registerProofContracts(ciJob('test-proof'))
 
 registerRegistryContracts()
