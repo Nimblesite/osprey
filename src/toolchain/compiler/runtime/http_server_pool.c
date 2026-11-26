@@ -19,9 +19,6 @@
 #define POOL_QUEUE 1024U
 #define POOL_IDLE_MAX 1024U
 #define POOL_POLL_MS 100
-// Node.js closes a keep-alive connection that sends nothing for 5 seconds,
-// and says so in every kept reply (`Keep-Alive: timeout=5`).
-#define POOL_KEEP_ALIVE_MS 5000U
 
 typedef struct HttpPool HttpPool;
 
