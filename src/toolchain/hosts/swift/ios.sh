@@ -128,6 +128,23 @@ documents() { echo "$(xcrun simctl get_app_container "$device" "$identifier" dat
 # Launches the app with the console attached and `$@` as its arguments, writing the console to the
 # log named first, and gives it 300 s to end. The app also writes its verdict to a file: simctl's
 # console capture sometimes drops the app's output, so either source counts.
+# Runs a command, failing loudly once it outlives `limit` seconds: one stalled
+# comparison once ate a whole CI job budget without naming itself.
+bounded() {
+    local limit=$1 pid ticks=0
+    shift
+    "$@" &
+    pid=$!
+    while kill -0 "$pid" 2>/dev/null && (( ticks < limit * 5 )); do
+        sleep 0.2; ticks=$((ticks + 1))
+    done
+    if kill -0 "$pid" 2>/dev/null; then
+        kill "$pid"
+        echo "FAIL: gave up after ${limit} s: $*" >&2
+    fi
+    wait "$pid"
+}
+
 attended() {
     local log=$1 launched seconds=0
     shift
@@ -170,7 +187,8 @@ journey() {
     [[ ! -f "$folder/self-test.txt" ]] || echo "verdict file: $(cat "$folder/self-test.txt")"
     grep -qs OSPREY_IOS_SELF_TEST_OK "$folder/self-test.txt" || return 1
     for shot in "$folder"/shots/*.png; do
-        (cd "$repo" && node scripts/mobile/goldens.mjs "$shot" "$app/goldens/ios" --name "$(basename "$shot" .png)" --top 0 --bottom 0) || failed=1
+        echo "comparing $(basename "$shot")"
+        (cd "$repo" && bounded 60 node scripts/mobile/goldens.mjs "$shot" "$app/goldens/ios" --name "$(basename "$shot" .png)" --top 0 --bottom 0) || failed=1
     done
     return "$failed"
 }

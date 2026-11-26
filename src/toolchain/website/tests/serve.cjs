@@ -69,8 +69,11 @@ const server = http.createServer((req, res) => {
 
 const listen = () => server.listen(PORT);
 server.once("listening", () => console.log(`test server: http://localhost:${server.address().port} (root: ${ROOT})`));
+// The free port was chosen before this process bound it, so another may take it first:
+// wait a little for it, then fail by name instead of hanging until Playwright gives up.
+let attempts = 50;
 server.on("error", (error) => {
-  if (error.code !== "EADDRINUSE") throw error;
+  if (error.code !== "EADDRINUSE" || --attempts === 0) throw error;
   setTimeout(listen, 100);
 });
 listen();

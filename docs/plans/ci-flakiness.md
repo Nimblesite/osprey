@@ -41,6 +41,14 @@ Root-cause fixes only: no retries, no wider timeouts used to hide a race, no ski
   - On attempt 2, job 138973933972 passed goldens 1–4, then went silent for 13 minutes until the 22-minute timeout.
   - Suspect: `hold ()` in `talon/backend/main.ospml` stops serving on any `readFile` error, not only on a missing marker.
   - `ledger.js` now prints the server's output when it exits while serving, so the next failure names its cause.
+- [x] **The iOS golden comparison stalled until the 22-minute job timeout** (run 45541374510, attempt 2: goldens 1–4 passed, then 13 minutes of silence). `ios.sh` now names each shot before comparing it and runs the comparison under `bounded 60`, so a stall fails with the shot named. Proven: `bounded` kills a stall (exit 143) and passes success and failure through.
+- [x] **`serve.cjs` retried a held port forever.** It now gives up after 50 tries, 5 s in total. Proven by holding the port.
+- [ ] **Hunt 2026-11-26, open code-sweep findings** (full report in `PiNotes/2026-11-26-osprey-ci-flake-hunt.md`):
+  - `file_server_tests.c:288` sleeps 300 ms and then stops the server, assuming the fetch thread has connected by then.
+  - `fiber_channel_tests.c:181` waits 50 ms to settle, and `:243` waits 200 ms, assuming 40 fibers have parked by then.
+  - VS Code `profiler-cpu-sessions.test.ts:81-106` and `profiler-cpu-e2e.test.ts:78` sleep, then assert that samples arrived. `debug-panel.test.ts:277-283` sleeps 30 ms before asserting an async update.
+  - `agent_check_budget.rs:78-106` gates lowering growth on a wall-clock ratio; counting the IR would be deterministic.
+  - Job `timeout-minutes` overruns in seven jobs on reruns that later went green. Measure each job's p95 and size its timeout from that.
 - [ ] **VS Code workbench-browser profiler tests** (run 44700948779, green on attempt 3):
   - Attempt 1 hit a 3000 ms locator timeout at `vscode-extension/test/suite/profiler-kit.ts:53`.
   - Attempt 2 found the Library button still disabled after a 5 s idle wait at `profiler-kit.ts:21`.
