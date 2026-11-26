@@ -32,8 +32,12 @@ def run(command):
             return -1
 
 
-def discover(seconds) -> list[Discovery.Device]:
-    """The Cast devices that answer a browse lasting `seconds` seconds."""
+def discover(seconds: int) -> list[Discovery.Device]:
+    """The Cast devices that answer a browse lasting `seconds` seconds.
+
+    `seconds` goes into a shell command, so it is pinned to `int`: inferred from
+    the interpolation alone it would accept any printable value, a string
+    carrying shell syntax included (#351)."""
     out = f"{SCRATCH}/googlecast-{random()}.txt"
     _browsed = run(f"mkdir -p {SCRATCH} && perl -e 'alarm {seconds}; exec @ARGV' dns-sd -Z _googlecast._tcp local > {out} 2>/dev/null")
     text = unwrap_or(readFile(out), "")
