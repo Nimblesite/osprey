@@ -1,6 +1,6 @@
 [project]
 name = "registry-web"
-source_roots = ["src", "../core/src"]
+source_roots = ["src", "shell", "../core/src"]
 default_namespace = "registry_web"
 entry = "src/main.osp"
 

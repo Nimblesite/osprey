@@ -95,6 +95,21 @@ express-oracle:
 
 .PHONY: registry-test registry-serve registry-serve-sample registry-blockers
 
+REGISTRY_WEB = src/osprey/packages/manager/web
+REGISTRY_SITE_OUT = target/registry-site
+
+.PHONY: registry-website
+## registry-website: Compile the registry website to WASM and render its Cloudflare Pages directory.
+registry-website: $(BIN) | _runtime_wasm
+	@mkdir -p target/registry-site-build $(REGISTRY_SITE_OUT)
+	$(BIN) build $(REGISTRY_WEB)/site --target=wasm32 --quiet --no-warnings -o target/registry-site-build/site.wasm
+	wasmtime target/registry-site-build/site.wasm > target/registry-site-build/index.html
+	@set -eu; digest=$$(shasum -a 256 $(REGISTRY_WEB)/assets/registry.css | cut -c1-12); \
+	  asset="registry.$$digest.css"; grep -Fq "href=\"/$$asset\"" target/registry-site-build/index.html; \
+	  cp $(REGISTRY_WEB)/assets/registry.css "$(REGISTRY_SITE_OUT)/$$asset"
+	cp $(REGISTRY_WEB)/assets/_headers $(REGISTRY_SITE_OUT)/_headers
+	cp target/registry-site-build/index.html $(REGISTRY_SITE_OUT)/index.html
+
 ## registry-test: Run the Osprey package-system suites.
 registry-test: build
 	$(MAKE) _test_registry
