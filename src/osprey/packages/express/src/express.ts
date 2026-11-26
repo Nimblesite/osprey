@@ -45,6 +45,8 @@ export interface Response {
   readonly headers: string;
   status(code: int): Requires<Response, []>;
   set(name: string, value: string): Requires<Response, []>;
+  /** `res.type(mediaType)` sets the Content-Type that `send` keeps; the port takes a full media type, not an extension. */
+  type(mediaType: string): Requires<Response, []>;
   send(body: string): Requires<Response, []>;
   json(value: Json): Requires<Response, []>;
 }
@@ -295,6 +297,7 @@ function signalled(signal, statusCode, body, contentType, headers) {
     headers: headers,
     status: (code) => reply(code, body, contentType, headers),
     set: (name, value) => reply(statusCode, body, contentType, `${headers}${name}: ${value}\r\n`),
+    type: (mediaType) => reply(statusCode, body, mediaType, headers),
     send: (text) => reply(statusCode, text, contentType === "" ? HTML : contentType, headers),
     json: (value) => encoded(statusCode, jsonEncode(value), headers),
   } satisfies Response;

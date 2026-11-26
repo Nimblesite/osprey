@@ -96,7 +96,7 @@ The compiler rejects the cases where rebinding would differ from in-place update
 | `express()` | `express()` |
 | `app.get`, `app.post`, `app.put`, `app.delete` | the same names; each returns the extended application |
 | route paths with `:name` captures | matched in registration order; a literal segment ignores case and one trailing slash is optional, as in Express's default routing |
-| `res.status(code)`, `res.set(name, value)`, `res.send(text)` | the same names; each returns the extended response |
+| `res.status(code)`, `res.set(name, value)`, `res.type(mediaType)`, `res.send(text)` | the same names; each returns the extended response. `res.type` takes a full media type such as `text/plain; charset=utf-8`; Express also accepts an extension and looks it up, which the port does not |
 | `res.json(value)` | takes Osprey's built-in `Json` value, built with `JsonObject`, `JsonArray` and the other constructors, and replies with `application/json; charset=utf-8` |
 | `req.params`, `req.query` | maps from name to text, read with `mapGet`; the query is parsed as Node's `querystring.parse` parses it |
 | `req.get(name)` | the header's value as a `Result`, matched without regard to case |
