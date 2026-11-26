@@ -234,6 +234,12 @@ channelThroughClosureCase () =
 
 type Verdict = Pass | Fail string | Skip string
 
+(** The outcome of `work`, whose setup answers a `Result` as `Channel capacity`
+   does: an `Error` is a failed assertion that names its message. *)
+settled work = match work ()
+    Success value => value
+    Error message => check ("setup refused", "none", message)
+
 testCases [
     { name = "fibers channels Results and persistence retain generic collection types", work = \() => settled fiberChannelCollectionCase },
     { name = "generic effects inside fibers retain nested collection types", work = fiberEffectCollectionCase },

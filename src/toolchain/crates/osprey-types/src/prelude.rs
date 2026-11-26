@@ -18,7 +18,6 @@ const SIGNALS: &str = include_str!("prelude/signals.osp");
 const TESTING: &str = include_str!("prelude/testing.osp");
 const TESTING_GPU: &str = include_str!("prelude/testing_gpu.osp");
 const TESTING_RESULT: &str = include_str!("prelude/testing_result.osp");
-const TESTING_SETUP: &str = include_str!("prelude/testing_setup.osp");
 
 /// Prelude positions start here, past any assembled project, so no prelude
 /// inference site shares a key with a source one and coverage can leave the
@@ -59,7 +58,6 @@ struct Units {
     testing: Loaded,
     testing_gpu: Loaded,
     testing_result: Loaded,
-    testing_setup: Loaded,
     errors: Loaded,
 }
 
@@ -73,7 +71,6 @@ fn units() -> &'static Units {
         testing_gpu: at(TESTING_GPU, 3),
         testing_result: at(TESTING_RESULT, 4),
         errors: at(ERRORS, 5),
-        testing_setup: at(TESTING_SETUP, 6),
     })
 }
 
@@ -109,7 +106,6 @@ pub(crate) fn with_prelude(program: &Program) -> Cow<'_, Program> {
         (want(&all.testing), &all.testing),
         (gpu_wanted, &all.testing_gpu),
         (want(&all.testing_result), &all.testing_result),
-        (want(&all.testing_setup), &all.testing_setup),
     ]
     .into_iter()
     .filter_map(|(want, unit)| want.then_some(unit))
