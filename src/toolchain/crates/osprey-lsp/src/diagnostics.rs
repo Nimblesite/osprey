@@ -62,6 +62,45 @@ pub(crate) fn analyze_cached(
     cache: &crate::project_cache::ProjectCache,
     prove: bool,
 ) -> Analysis {
+    let mut analysis = analyze_every_rule(source, path, encoding, vfs, cache, prove);
+    let file = file_path(path).unwrap_or_else(|| PathBuf::from(path));
+    leveled(
+        &mut analysis.diagnostics,
+        &osprey_project::ProjectConfig::lint_levels(&file),
+    );
+    analysis
+}
+
+/// Every finding at the severity of the project's lint levels, the compiler's
+/// own ([LINT-LEVELS]): an allowed rule is dropped and a denied one is an
+/// error. Errors stay errors; only advice is re-levelled.
+fn leveled(diagnostics: &mut Vec<Diagnostic>, levels: &osprey_types::LintLevels) {
+    use osprey_types::LintLevel;
+    diagnostics.retain_mut(|diagnostic| {
+        let Some(code) = diagnostic.code.as_deref() else {
+            return true;
+        };
+        if diagnostic.severity == Severity::Error {
+            return true;
+        }
+        diagnostic.severity = match levels.level(code) {
+            LintLevel::Allow => return false,
+            LintLevel::Info => Severity::Information,
+            LintLevel::Warn => diagnostic.severity,
+            LintLevel::Deny => Severity::Error,
+        };
+        true
+    });
+}
+
+fn analyze_every_rule(
+    source: &str,
+    path: &str,
+    encoding: PositionEncoding,
+    vfs: Option<&lspkit::vfs::Vfs>,
+    cache: &crate::project_cache::ProjectCache,
+    prove: bool,
+) -> Analysis {
     let snapshot = cache.sources(path, vfs, Some(source));
     let view = snapshot
         .as_ref()
@@ -259,7 +298,7 @@ fn diagnostic(
 }
 
 /// Build one warning diagnostic spanning the offending line from `pos` onward;
-/// an information-level rule is reported as information.
+/// [`leveled`] then sets the project's level for its rule.
 pub(crate) fn warning(
     source: &str,
     pos: Position,
@@ -267,12 +306,7 @@ pub(crate) fn warning(
     code: &str,
     encoding: PositionEncoding,
 ) -> Diagnostic {
-    let severity = if osprey_types::is_info(code) {
-        Severity::Information
-    } else {
-        Severity::Warning
-    };
-    ranged(source, pos, severity, message, code, encoding)
+    ranged(source, pos, Severity::Warning, message, code, encoding)
 }
 
 fn ranged(

@@ -123,7 +123,11 @@ pub(crate) fn unused_symbols_with_types(
     let mut analysis = Analysis {
         bindings: Vec::new(),
         scope: Vec::new(),
-        method_reads: method_reads(program, &types.methods, Some(&types.resolved_deferred_methods)),
+        method_reads: method_reads(
+            program,
+            &types.methods,
+            Some(&types.resolved_deferred_methods),
+        ),
         constructors: types.ctors.keys().cloned().collect(),
     };
     let owner = Owner {

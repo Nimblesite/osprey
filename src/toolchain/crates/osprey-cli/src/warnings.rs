@@ -12,7 +12,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use osprey_types::TypeWarning;
+use osprey_types::{LintLevel, LintLevels, TypeWarning};
 
 use crate::project::CompilationInput;
 
@@ -76,34 +76,68 @@ fn in_source_order(warnings: &mut [TypeWarning]) {
     });
 }
 
-/// Print `warnings` to stderr. A clean build prints nothing.
-pub(crate) fn report(input: &CompilationInput, warnings: &[TypeWarning]) -> usize {
+/// How many reported findings fail every build, and how many fail only
+/// under `--warnings-as-errors`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Reported {
+    pub(crate) denied: usize,
+    pub(crate) warned: usize,
+}
+
+/// Print `warnings` at the levels the project sets ([LINT-LEVELS]) to stderr,
+/// dropping allowed rules and, when `denied_only`, everything below `deny`.
+/// A clean build prints nothing.
+pub(crate) fn report(
+    input: &CompilationInput,
+    warnings: &[TypeWarning],
+    denied_only: bool,
+) -> Reported {
+    let levels = input.lint_levels();
     let mut warnings = warnings.to_vec();
     warnings.extend(input.project_warnings().iter().map(|warning| TypeWarning {
         rule: warning.rule,
         message: warning.message.clone(),
         position: Some(warning.position),
     }));
+    warnings.retain(|w| match levels.level(w.rule) {
+        LintLevel::Allow => false,
+        LintLevel::Deny => true,
+        LintLevel::Info | LintLevel::Warn => !denied_only,
+    });
     in_source_order(&mut warnings);
-    if let Some(text) = render(input, &warnings) {
+    if let Some(text) = render(input, &warnings, &levels) {
         eprintln!("{text}");
     }
-    warnings
-        .iter()
-        .filter(|w| !osprey_types::is_info(w.rule))
-        .count()
+    let count = |level| {
+        warnings
+            .iter()
+            .filter(|w| levels.level(w.rule) == level)
+            .count()
+    };
+    Reported {
+        denied: count(LintLevel::Deny),
+        warned: count(LintLevel::Warn),
+    }
 }
 
 /// The whole warning block, or `None` when there is nothing to say.
-pub(crate) fn render(input: &CompilationInput, warnings: &[TypeWarning]) -> Option<String> {
+pub(crate) fn render(
+    input: &CompilationInput,
+    warnings: &[TypeWarning],
+    levels: &LintLevels,
+) -> Option<String> {
     if warnings.is_empty() {
         return None;
     }
-    let blocks: Vec<String> = group(input, warnings)
+    let blocks: Vec<String> = group(input, warnings, levels)
         .into_iter()
         .map(|(file, listing)| block(&file, &listing))
         .collect();
-    Some(format!("{}\n{}", blocks.join("\n"), summary(warnings)))
+    Some(format!(
+        "{}\n{}",
+        blocks.join("\n"),
+        summary(warnings, levels)
+    ))
 }
 
 /// One file's heading and its aligned listing.
@@ -122,13 +156,17 @@ fn block(file: &str, listing: &Listing) -> String {
 }
 
 /// Group warnings by file, keeping each file's own source order.
-fn group(input: &CompilationInput, warnings: &[TypeWarning]) -> BTreeMap<String, Listing> {
+fn group(
+    input: &CompilationInput,
+    warnings: &[TypeWarning],
+    levels: &LintLevels,
+) -> BTreeMap<String, Listing> {
     let mut grouped: BTreeMap<String, Listing> = BTreeMap::new();
     for warning in warnings {
         let (file, gutter) = locate(input, warning);
         grouped.entry(file).or_default().push((
             gutter,
-            format!("{}: {}", label(warning.rule), warning.message),
+            format!("{}: {}", label(levels.level(warning.rule)), warning.message),
         ));
     }
     grouped
@@ -146,31 +184,40 @@ fn locate(input: &CompilationInput, warning: &TypeWarning) -> (String, String) {
     }
 }
 
-/// How a diagnostic of `rule` is labelled.
-fn label(rule: &str) -> &'static str {
-    if osprey_types::is_info(rule) {
-        "info"
-    } else {
-        "warning"
+/// How a diagnostic at `level` is labelled.
+const fn label(level: LintLevel) -> &'static str {
+    match level {
+        LintLevel::Deny => "error",
+        LintLevel::Info => "info",
+        LintLevel::Allow | LintLevel::Warn => "warning",
     }
 }
 
-/// The closing line: how many warnings and notes there are and which rules raised them.
-fn summary(warnings: &[TypeWarning]) -> String {
+/// The closing line: how many errors, warnings and notes there are and which
+/// rules raised them.
+fn summary(warnings: &[TypeWarning], levels: &LintLevels) -> String {
     let rules: BTreeSet<&str> = warnings.iter().map(|w| w.rule).collect();
-    let infos = warnings
-        .iter()
-        .filter(|w| osprey_types::is_info(w.rule))
-        .count();
-    let count = warnings.len() - infos;
+    let count = |level| {
+        warnings
+            .iter()
+            .filter(|w| levels.level(w.rule) == level)
+            .count()
+    };
+    let (errors, infos) = (count(LintLevel::Deny), count(LintLevel::Info));
+    let count = warnings.len() - errors - infos;
     let plural = if count == 1 { "" } else { "s" };
+    let errors = match errors {
+        0 => String::new(),
+        1 => "1 error, ".to_owned(),
+        n => format!("{n} errors, "),
+    };
     let notes = if infos == 0 {
         String::new()
     } else {
         format!(", {infos} info")
     };
     format!(
-        "{count} warning{plural}{notes} ({})",
+        "{errors}{count} warning{plural}{notes} ({})",
         rules.into_iter().collect::<Vec<_>>().join(", ")
     )
 }
@@ -180,7 +227,7 @@ mod tests {
     use super::render;
     use crate::project::CompilationInput;
     use osprey_ast::Position;
-    use osprey_types::{TypeWarning, REDUNDANT_ANNOTATION};
+    use osprey_types::{LintLevels, TypeWarning, REDUNDANT_ANNOTATION};
 
     /// The program must type-check with no error at all.
     fn assert_checks_clean(program: &osprey_ast::Program) {
@@ -215,14 +262,14 @@ mod tests {
 
     #[test]
     fn a_clean_program_renders_nothing_at_all() {
-        assert_eq!(render(&unit(), &[]), None);
+        assert_eq!(render(&unit(), &[], &LintLevels::default()), None);
     }
 
     #[test]
     fn one_warning_renders_its_file_gutter_message_and_singular_summary() {
         let raised = [warning(3, 4, "redundant return type annotation on `greet`")];
         assert_eq!(
-            render(&unit(), &raised),
+            render(&unit(), &raised, &LintLevels::default()),
             Some(
                 "\nmain.osp\n  3:4  warning: redundant return type annotation on `greet`\n\n1 warning (redundant-annotation)"
                     .to_string()
@@ -234,9 +281,58 @@ mod tests {
     fn gutters_are_right_aligned_so_messages_line_up() {
         let raised = [warning(9, 1, "first"), warning(100, 12, "second")];
         assert_eq!(
-            render(&unit(), &raised),
+            render(&unit(), &raised, &LintLevels::default()),
             Some(
                 "\nmain.osp\n     9:1  warning: first\n  100:12  warning: second\n\n2 warnings (redundant-annotation)"
+                    .to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn each_finding_is_labelled_and_counted_at_its_projects_level() {
+        // Implements [LINT-LEVELS].
+        let rule = |line, rule| TypeWarning {
+            rule,
+            ..warning(line, 0, rule)
+        };
+        let raised = [
+            rule(1, osprey_types::UNDOCUMENTED_EXPORT),
+            rule(2, osprey_types::UNDOCUMENTED_EXPORT),
+            rule(3, osprey_types::UNEXAMPLED_EXPORT),
+            rule(4, REDUNDANT_ANNOTATION),
+        ];
+        let package = LintLevels {
+            package: true,
+            overrides: Vec::new(),
+        };
+        assert_eq!(
+            render(&unit(), &raised, &package),
+            Some(
+                "\nmain.osp\n  1:0  error: undocumented-export\n  2:0  error: undocumented-export\n  \
+                 3:0  info: unexampled-export\n  4:0  warning: redundant-annotation\n\n\
+                 2 errors, 1 warning, 1 info (redundant-annotation, undocumented-export, unexampled-export)"
+                    .to_string()
+            )
+        );
+        let tuned = LintLevels {
+            package: true,
+            overrides: vec![
+                (
+                    REDUNDANT_ANNOTATION.to_owned(),
+                    osprey_types::LintLevel::Deny,
+                ),
+                (
+                    osprey_types::UNDOCUMENTED_EXPORT.to_owned(),
+                    osprey_types::LintLevel::Warn,
+                ),
+            ],
+        };
+        assert_eq!(
+            render(&unit(), &raised[2..], &tuned),
+            Some(
+                "\nmain.osp\n  3:0  info: unexampled-export\n  4:0  error: redundant-annotation\n\n\
+                 1 error, 0 warnings, 1 info (redundant-annotation, unexampled-export)"
                     .to_string()
             )
         );
@@ -250,7 +346,7 @@ mod tests {
             rule: REDUNDANT_ANNOTATION,
         }];
         assert_eq!(
-            render(&unit(), &raised),
+            render(&unit(), &raised, &LintLevels::default()),
             Some(
                 "\nmain.osp\n  -  warning: nowhere in particular\n\n1 warning (redundant-annotation)"
                     .to_string()
@@ -269,7 +365,7 @@ mod tests {
                 rule: "some-other-rule",
             },
         ];
-        let text = render(&unit(), &raised).unwrap_or_default();
+        let text = render(&unit(), &raised, &LintLevels::default()).unwrap_or_default();
         assert!(
             text.ends_with("\n3 warnings (redundant-annotation, some-other-rule)"),
             "{text}"
@@ -284,7 +380,7 @@ mod tests {
         assert_checks_clean(&parsed.program);
         let warnings = super::of(&parsed.program, &|_| false, true, None);
         let input = CompilationInput::script("mixed.osp", source.to_owned(), parsed.program);
-        assert_eq!(render(&input, &warnings), Some(
+        assert_eq!(render(&input, &warnings, &LintLevels::default()), Some(
             "\nmixed.osp\n  1:3  warning: unused parameter `ignored`\n  2:1  warning: redundant type annotation on `spare`: inference derives `int` without it\n  2:1  warning: unused variable `spare`\n\n3 warnings (redundant-annotation, unused-parameter, unused-variable)".to_owned()
         ));
     }
@@ -298,7 +394,7 @@ mod tests {
         let warnings = super::of(&parsed.program, &|_| false, true, None);
         assert_eq!(warnings.len(), 1, "{warnings:?}");
         let input = CompilationInput::script("callback.osp", source.to_owned(), parsed.program);
-        assert_eq!(render(&input, &warnings), Some(
+        assert_eq!(render(&input, &warnings, &LintLevels::default()), Some(
             "\ncallback.osp\n  3:19  warning: redundant callback wrapper: pass `work` directly; it already takes no arguments\n\n1 warning (redundant-callback)".to_owned()
         ));
     }
@@ -344,7 +440,11 @@ mod tests {
                 "\npyramid.osp\n  2:{column}  warning: {} brackets close here at once: this code nests {} deep; flatten its callbacks into `use x <- f(...)` lines and name its inner values\n\n1 warning (closing-run)",
                 depth + 1, depth + 1
             );
-            assert_eq!(render(&input, &warnings), Some(expected), "depth {depth}");
+            assert_eq!(
+                render(&input, &warnings, &LintLevels::default()),
+                Some(expected),
+                "depth {depth}"
+            );
         }
     }
 
@@ -429,7 +529,7 @@ mod tests {
             assert_checks_clean(&parsed.program);
             let warnings = super::of(&parsed.program, &|_| false, true, None);
             let input = CompilationInput::script("top-level", source.to_owned(), parsed.program);
-            assert_eq!(render(&input, &warnings), Some("\ntop-level\n  1:0  warning: unused pattern binding `unused`\n\n1 warning (unused-pattern-binding)".to_owned()));
+            assert_eq!(render(&input, &warnings, &LintLevels::default()), Some("\ntop-level\n  1:0  warning: unused pattern binding `unused`\n\n1 warning (unused-pattern-binding)".to_owned()));
         }
     }
 }

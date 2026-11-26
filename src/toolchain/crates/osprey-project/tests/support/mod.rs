@@ -26,6 +26,7 @@ pub(crate) fn config(entry: &str) -> ProjectConfig {
         types: None,
         dependencies: Vec::new(),
         discipline: None,
+        lints: osprey_types::LintLevels::default(),
     }
 }
 

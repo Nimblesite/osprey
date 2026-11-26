@@ -45,6 +45,9 @@ pub struct ProjectConfig {
     /// The `[discipline]` table a package declares when it is a type discipline
     /// ([TYPES-DISCIPLINE-REGISTRY], spec 0050).
     pub discipline: Option<DisciplineDecl>,
+    /// `[lints]` levels over the defaults; a `[package]` manifest is a package
+    /// ([LINT-LEVELS]).
+    pub lints: osprey_types::LintLevels,
 }
 
 /// One `[dependencies]` entry as the compiler reads it.
@@ -72,6 +75,22 @@ pub struct DisciplineDecl {
 pub(crate) const DEFAULT_TIMEOUT_SECONDS: u64 = 600;
 
 impl ProjectConfig {
+    /// The lint levels of the project nearest `path`, a source, a project
+    /// directory or its manifest; a path under no manifest is an application
+    /// with the default levels ([LINT-LEVELS]).
+    #[must_use]
+    pub fn lint_levels(path: &Path) -> osprey_types::LintLevels {
+        let path = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+        path.ancestors()
+            .map(|directory| directory.join("osprey.toml"))
+            .find(|manifest| manifest.is_file())
+            .and_then(|manifest| {
+                let text = std::fs::read_to_string(&manifest).ok()?;
+                Self::parse(&text, &manifest).ok()
+            })
+            .map_or_default(|config| config.lints)
+    }
+
     /// Whether a saved or unsaved path belongs to the configured source roots.
     #[must_use]
     pub fn contains_source(&self, root: &Path, path: &Path) -> bool {
@@ -105,6 +124,7 @@ impl ProjectConfig {
             types: None,
             dependencies: Vec::new(),
             discipline: None,
+            lints: osprey_types::LintLevels::default(),
         }
     }
 
@@ -143,6 +163,7 @@ fn parse_line(
     if let Some(name) = content.strip_prefix('[').and_then(|s| s.strip_suffix(']')) {
         section.clear();
         section.push_str(name.trim());
+        config.lints.package |= section == "package";
         return;
     }
     let Some((key, value)) = codec::split_assignment(content) else {
@@ -185,6 +206,9 @@ fn apply_key(
             parse_dependency(name, value).map(|d| config.dependencies.push(d))
         }
         ("discipline", key) => apply_discipline_key(key, value, config),
+        ("lints", rule) => codec::parse_string(value)
+            .and_then(|level| osprey_types::LintLevel::parse(&level))
+            .map(|level| config.lints.overrides.push((rule.to_owned(), level))),
         _ => return,
     };
     if let Err(message) = result {
@@ -271,6 +295,36 @@ mod tests {
         assert_eq!(config.entry, Some(PathBuf::from("src/main.ospml")));
         assert_eq!(config.flavor, Some(Flavor::Ml));
         assert!(config.allow_wildcard_imports);
+    }
+
+    #[test]
+    fn lint_levels_default_by_project_kind_and_obey_the_lints_table() {
+        // Implements [LINT-LEVELS].
+        use osprey_types::{LintLevel as L, UNDOCUMENTED_EXPORT as DOC, UNEXAMPLED_EXPORT as EX};
+        let parse = |text: &str| ProjectConfig::parse(text, Path::new("/p/osprey.toml"));
+        let levels = |text: &str| parse(text).map_or_default(|config| config.lints);
+        let app = levels("[project]\nname = \"app\"\n");
+        assert!(!app.package);
+        assert_eq!((app.level(DOC), app.level(EX)), (L::Allow, L::Allow));
+        assert_eq!(app.level("closing-run"), L::Warn);
+        let package = levels("[project]\nname = \"p\"\n[package]\nname = \"@o/p\"\n");
+        assert!(package.package);
+        assert_eq!((package.level(DOC), package.level(EX)), (L::Deny, L::Info));
+        assert_eq!(package.level("closing-run"), L::Warn);
+        let tuned = levels(
+            "[package]\nname = \"@o/p\"\n[lints]\nundocumented-export = \"warn\"\n\
+             unexampled-export = \"deny\"\nclosing-run = \"allow\"\nclosing-run = \"info\"\n",
+        );
+        assert_eq!(tuned.level(DOC), L::Warn);
+        assert_eq!(tuned.level(EX), L::Deny);
+        assert_eq!(tuned.level("closing-run"), L::Info, "a later entry wins");
+        let strict_app = levels("[lints]\nundocumented-export = \"deny\"\n");
+        assert_eq!(
+            (strict_app.level(DOC), strict_app.level(EX)),
+            (L::Deny, L::Allow)
+        );
+        let bad = parse("[lints]\nundocumented-export = \"loud\"\nclosing-run = bare\n");
+        assert_eq!(bad.map_err(|errors| errors.len()), Err(2));
     }
 
     #[test]

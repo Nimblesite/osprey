@@ -358,8 +358,15 @@ fn warnings_as_errors_fails_only_on_opt_in_and_keeps_the_diagnostics() {
 
     // [DOC-EXPORT-EXAMPLE-REQUIRED] Check documentation coverage while it is
     // being completed, and keep strict code generation for other warnings.
-    let staged = temp_osp(
-        "strict_staged_documentation",
+    // A package's documentation rules apply ([LINT-LEVELS]).
+    let package = temp_dir("strict_staged_package");
+    let _ = std::fs::write(
+        package.join("osprey.toml"),
+        "[package]\nname = \"@o/staged\"\n",
+    );
+    let staged = package.join("staged.osp");
+    let _ = std::fs::write(
+        &staged,
         "namespace app;\n/// Public API.\nmodule Api {\n    /// Returns the answer.\n    export fn answer() = 42\n}\nprint(Api::answer())\n",
     );
     let missing_example = "exported function `Api::answer` has no example";
@@ -376,6 +383,80 @@ fn warnings_as_errors_fails_only_on_opt_in_and_keeps_the_diagnostics() {
         "{}",
         strict_ir.stderr
     );
+}
+
+/// A project directory holding `manifest` and an undocumented export.
+fn lint_project(name: &str, manifest: &str) -> std::path::PathBuf {
+    let root = temp_dir(name);
+    let _ = std::fs::write(root.join("osprey.toml"), manifest);
+    let script = root.join("api.osp");
+    let _ = std::fs::write(
+        &script,
+        "namespace app;\n/// Public API.\nmodule Api {\n    export fn answer() = 42\n}\nprint(Api::answer())\n",
+    );
+    script
+}
+
+#[test]
+fn lint_levels_make_package_docs_errors_and_application_docs_silent() {
+    // Implements [LINT-LEVELS], [DOC-EXPORT-REQUIRED].
+    let undocumented = "exported function `Api::answer` has no documentation comment";
+    let app = lint_project("lint_app", "[project]\nname = \"app\"\n");
+    let package = lint_project("lint_package", "[package]\nname = \"@o/api\"\n");
+    let relaxed = lint_project(
+        "lint_relaxed",
+        "[package]\nname = \"@o/api\"\n[lints]\nundocumented-export = \"warn\"\n",
+    );
+    let strict_app = lint_project(
+        "lint_strict_app",
+        "[lints]\nundocumented-export = \"deny\"\n",
+    );
+    let silent = lint_project(
+        "lint_silent",
+        "[package]\nname = \"@o/api\"\n[lints]\nundocumented-export = \"allow\"\n",
+    );
+    for mode in ["--check", "--run", "--llvm"] {
+        for extra in [&[][..], &["--warnings-as-errors"], &["--no-warnings"]] {
+            let quiet = accepted(&app, mode, extra);
+            assert!(
+                !quiet.stderr.contains(undocumented),
+                "{mode} {extra:?}: {}",
+                quiet.stderr
+            );
+            let quiet = accepted(&silent, mode, extra);
+            assert!(
+                !quiet.stderr.contains(undocumented),
+                "{mode} {extra:?}: {}",
+                quiet.stderr
+            );
+            let error = format!("error: {undocumented}");
+            for denied in [&package, &strict_app] {
+                let refused = run_file(denied, &[&[mode][..], extra].concat());
+                refused.expect_rejected(&[&error, "1 error, 0 warnings (undocumented-export)"]);
+                assert!(
+                    !refused.stdout.contains("ok ("),
+                    "{mode}: {}",
+                    refused.stdout
+                );
+            }
+        }
+        let warned = accepted(&relaxed, mode, &[]);
+        assert!(
+            warned.stderr.contains(&format!("warning: {undocumented}")),
+            "{}",
+            warned.stderr
+        );
+        assert!(
+            warned.stderr.contains("1 warning (undocumented-export)"),
+            "{}",
+            warned.stderr
+        );
+        run_file(&relaxed, &[mode, "--warnings-as-errors"]).expect_rejected(&[undocumented]);
+        let skipped = accepted(&relaxed, mode, &["--no-warnings"]);
+        assert!(!skipped.stderr.contains(undocumented), "{}", skipped.stderr);
+    }
+    let bad = lint_project("lint_bad", "[lints]\nundocumented-export = \"loud\"\n");
+    run_file(&bad.with_file_name(""), &["--check"]).expect_rejected(&["unknown lint level `loud`"]);
 }
 
 #[test]

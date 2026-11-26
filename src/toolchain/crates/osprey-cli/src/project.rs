@@ -334,6 +334,11 @@ impl CompilationInput {
         }
     }
 
+    /// The levels this input's project sets for every rule ([LINT-LEVELS]).
+    pub(crate) fn lint_levels(&self) -> osprey_types::LintLevels {
+        ProjectConfig::lint_levels(Path::new(&self.display_path))
+    }
+
     /// The assembled project, or `None` when this input is a plain script.
     fn project(&self) -> Option<&AssembledProject> {
         match &self.unit {
