@@ -1,6 +1,6 @@
 # Osprey package system
 
-The registry and package client are written in Osprey and built by the existing compiler. [Plan 0020](../../../../docs/plans/0020-package-manager.md) tracks delivery against [specs 0029–0032](../../../../docs/specs/ecosystem/README.md). The folder registry, source verification, deterministic resolution, locks, local overrides, folder publication and uv integration run today. Authenticated public publishing, the dedicated package website and trust services remain planned.
+The registry and package client are written in Osprey and built by the existing compiler. [Plan 0020](../../../../docs/plans/0020-package-manager.md) tracks delivery against [specs 0029–0032](../../../../docs/specs/ecosystem/README.md). The folder registry, source verification, deterministic resolution, locks, local overrides, folder publication and uv integration run today. The dedicated registry website builds locally. Authenticated public publishing and trust services remain planned.
 
 The loopback consumer uses Default-flavor source. Real compiler checks also pass for Python-flavor packages: bare `build`, `build --run`, and relative or absolute `--project` paths from another directory. Derived compiler manifests live under the selected project's `.osprey/build/`; see the [package guide](../../../toolchain/website/src/docs/package-manager.md) for usage and remaining limits.
 
@@ -109,6 +109,10 @@ The table links the implemented folder-registry checks to their tests. Runtime r
 | Python plane (P1–P3): the generated `.osprey/python/pyproject.toml` names no index and pins `index-strategy = "first-index"`; a member's own `pyproject.toml` may name no `[[tool.uv.index]]` (`python.index-forbidden`) and no `git`, `url` or outside-tree `path` source (`python.source-forbidden`); every sdist and wheel in `uv.lock` carries a hash or `lock` refuses it (`python.uv-lock-hashes`); each refusal runs no uv and writes no lock; sync is `uv sync --frozen`, verification `uv lock --check --offline` | `PythonPlane` | `cli/tests` python suite |
 
 Named tests above cover the folder-registry subset. Python publisher-attestation identity checks and the public trust plane remain unfinished.
+
+## Registry website
+
+Run `make -C src/osprey/packages registry-website` with Wasmtime installed. The build compiles the Osprey landing page to WebAssembly, renders it to HTML, and verifies that the stylesheet matches its content-hashed URL. Serve `target/registry-site/` as the document root to preview the standalone site. The included `_headers` file configures Cloudflare Pages. Public catalog and account routes still require the hosted API.
 
 ## Hosted ownership model
 

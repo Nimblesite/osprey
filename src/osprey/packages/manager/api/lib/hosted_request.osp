@@ -38,7 +38,7 @@ module HostedRequest {
 
     fn rejected(status, code) = HostedHeaders::Reject { status: status, code: code }
     fn stop(status, code) = Stop { verdict: rejected(status, code) }
-    fn admitted(method, uri, body) = HostedHeaders::Ok { value: Admission { method: method, uri: uri, body: body } }
+    fn admitted(request: Incoming) = HostedHeaders::Ok { value: Admission { method: request.method, uri: request.uri, body: request.body } }
 
     /// The edge secret first, before routing, auth parsing or body work.
     /// Ordinary equality here; a constant-time comparison primitive belongs
@@ -80,26 +80,33 @@ module HostedRequest {
     /// Credentialed requests: a present session cookie forces the exact
     /// website origin, and mutations additionally force the CSRF token.
     /// Bearer-only requests carry no cookie and skip the browser challenge.
-    fn credentialGate(headers, policy, method) = match HostedHeaders::find(headers, "cookie") {
-        Error => admitted(method, "", "")
+    fn checkOrigin(headers, policy, request) = match HostedHeaders::find(headers, "origin") {
+        Success { value } => if toLowerCase(value) != toLowerCase(policy.allowedOrigin) {
+            rejected(forbidden, "req.origin-mismatch")
+        } else { credentialGate(headers, policy, request) }
+        Error => credentialGate(headers, policy, request)
+    }
+
+    fn credentialGate(headers, policy, request) = match HostedHeaders::find(headers, "cookie") {
+        Error => admitted(request)
         Success { value } => {
             let cookie = value
             let selection = HostedCookies::select(cookie, policy.cookieName)
             if HostedCookies::statusOf(selection) != 0 { rejected(HostedCookies::statusOf(selection), HostedCookies::codeOf(selection)) }
-            else if HostedCookies::foundValue(selection) == "" { admitted(method, "", "") }
-            else { originChain(headers, policy, method) }
+            else if HostedCookies::foundValue(selection) == "" { admitted(request) }
+            else { originChain(headers, policy, request) }
         }
     }
 
-    fn originChain(headers, policy, method) = {
-        let origin = HostedOrigin::check((HostedHeaders::find(headers, "origin") ?: ""), policy.allowedOrigin, method)
+    fn originChain(headers, policy, request) = {
+        let origin = HostedOrigin::check((HostedHeaders::find(headers, "origin") ?: ""), policy.allowedOrigin, request.method)
         if !HostedHeaders::isOk(origin) { rejected(HostedHeaders::statusOf(origin), HostedHeaders::codeOf(origin)) }
-        else { csrfChain(headers, policy, method) }
+        else { csrfChain(headers, policy, request) }
     }
 
-    fn csrfChain(headers, policy, method) = {
+    fn csrfChain(headers, policy, request) = {
         let token = HostedOrigin::csrf((HostedHeaders::find(headers, "x-csrf-token") ?: ""), policy.csrfToken)
-        if !listContains(mutationMethods, toUpperCase(method)) || HostedHeaders::isOk(token) { admitted(method, "", "") }
+        if !listContains(mutationMethods, toUpperCase(request.method)) || HostedHeaders::isOk(token) { admitted(request) }
         else { rejected(HostedHeaders::statusOf(token), HostedHeaders::codeOf(token)) }
     }
 
@@ -115,7 +122,7 @@ module HostedRequest {
             Pass => match methodStage(incoming.method) {
                 Pass => match uriStage(incoming.uri) {
                     Pass => match bodyStage(headers, incoming, policy) {
-                        Pass => credentialGate(headers, policy, incoming.method)
+                        Pass => checkOrigin(headers, policy, incoming)
                         Stop { verdict } => verdict
                     }
                     Stop { verdict } => verdict

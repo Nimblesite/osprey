@@ -22,22 +22,25 @@ module RequestTests {
     fn verdictOf(v) = if HostedHeaders::isOk(v) { "admitted" }
         else { "${HostedHeaders::statusOf(v)}:${HostedHeaders::codeOf(v)}" }
 
-    fn headers(method, extra) = "X-Edge-Secret: s3cr3t-edge\r\nHost: api.example.test\r\n" + extra
-        + (if method == "GET" { "" } else { "\r\nX-Csrf-Token: csrf-tok" })
+    fn raw(method, uri, headers, body) = verdictOf(HostedRequest::admit(incoming(method, uri, headers, body), policy))
 
-    fn verdict(method, uri, extra, body) = verdictOf(HostedRequest::admit(incoming(method, uri, headers(method, extra), body), policy))
+    fn verdict(method, uri, extra, body) = raw(method, uri, "X-Edge-Secret: s3cr3t-edge\r\nHost: api.example.test" + (if extra == "" { "" } else { "\r\n" + extra }), body)
 
     fn admitted() = checkAll("request: clean requests admitted", [
+        match HostedRequest::admit(incoming("POST", "/v1/publish", "Host: api.example.test\r\nX-Edge-Secret: s3cr3t-edge", "release"), policy) {
+            HostedHeaders::Ok { value } => value.method == "POST" && value.uri == "/v1/publish" && value.body == "release"
+            _ => false
+        },
         verdict("GET", "/v1/packages", "", "") == "admitted",
         verdict("GET", "/v1/packages", "Cookie: theme=1", "") == "admitted",
-        verdict("POST", "/v1/auth/logout", "Origin: https://packages.example.test\r\nCookie: session=abc", "") == "admitted"
+        verdict("POST", "/v1/auth/logout", "Origin: https://packages.example.test\r\nCookie: session=abc\r\nX-Csrf-Token: csrf-tok", "") == "admitted"
     ])
 
     fn edgeAndHost() = checkAll("request: edge secret and host gates", [
-        verdict("GET", "/v1/health", "Host: api.example.test", "") == "403:req.edge-secret",
-        verdict("GET", "/v1/health", "X-Edge-Secret: wrong\r\nHost: api.example.test", "") == "403:req.edge-secret",
-        verdict("GET", "/v1/health", "X-Edge-Secret: s3cr3t-edge\r\nHost: run.app", "") == "421:req.host",
-        verdict("GET", "/v1/health", "X-Edge-Secret: s3cr3t-edge", "") == "421:req.host"
+        raw("GET", "/v1/health", "Host: api.example.test", "") == "403:req.edge-secret",
+        raw("GET", "/v1/health", "X-Edge-Secret: wrong\r\nHost: api.example.test", "") == "403:req.edge-secret",
+        raw("GET", "/v1/health", "X-Edge-Secret: s3cr3t-edge\r\nHost: run.app", "") == "421:req.host",
+        raw("GET", "/v1/health", "X-Edge-Secret: s3cr3t-edge", "") == "421:req.host"
     ])
 
     fn shape() = checkAll("request: method, URI and body bounds", [

@@ -526,6 +526,11 @@ _test_registry:
 	./$(BIN) test src/osprey/packages/manager/tests --memory=$(REGISTRY_MEMORY)
 	@echo "==> Registry end-to-end: server, fetch and consumer build..."
 	./$(BIN) test src/osprey/packages/manager/e2e --memory=$(REGISTRY_MEMORY)
+	./$(BIN) test src/osprey/packages/manager/auth-tests --memory=$(REGISTRY_MEMORY)
+	./$(BIN) test src/osprey/packages/manager/database-tests --memory=$(REGISTRY_MEMORY)
+	./$(BIN) test src/osprey/packages/manager/governance-tests --memory=$(REGISTRY_MEMORY)
+	./$(BIN) test src/osprey/packages/manager/hosted-tests --memory=$(REGISTRY_MEMORY)
+	./$(BIN) test src/osprey/packages/manager/web --memory=$(REGISTRY_MEMORY)
 	@echo "==> Native publication and installed-source integrity regressions..."
 	@if [ "$(REGISTRY_MEMORY)" = arc ] && [ -z "$$OSPREY_PACKAGE_CLIENT" ]; then \
 	  mkdir -p "$(CURDIR)/target/registry-tests" && \

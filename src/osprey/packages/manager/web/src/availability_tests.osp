@@ -14,8 +14,8 @@ module AvailabilityTests {
     ])
 
     /// No rendering may claim anything about the leaf name globally.
-    fn neverGlobal() = WebFixtures::showsExpecting("web: availability never global",
-        Availability::render("atlas", "util", true), "no global claim")
+    fn neverGlobal() = WebFixtures::showsTexts("web: availability never global",
+        Availability::render("atlas", "util", true), ["scoped to @atlas only", "another organization is unaffected"], ["globally taken", "globally available"])
 
     fn hostileLeaf() = WebFixtures::shows("web: availability escapes hostile leaf",
         Availability::render("atlas", "<b>owned</b>", false),

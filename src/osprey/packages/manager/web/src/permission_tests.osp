@@ -18,9 +18,9 @@ module PermissionTests {
             "administration alone does not authorize publication"], [])
 
     /// With the explicit grant, the warning is gone.
-    fn adminWithPublish() = WebFixtures::showsExpecting("web: admin with publish not warned",
+    fn adminWithPublish() = WebFixtures::showsTexts("web: admin with publish not warned",
         controlScreen(WebFixtures::adminWithPublish(), WebFixtures::atlasGrantLedger()),
-        "no admin-publish warning")
+        ["Package administrator: mem-admin-atlas", "publish-release"], ["administration alone does not authorize publication"])
 
     /// The package page carries the same context and warning for members.
     fn packageViewShowsAccess() = WebFixtures::showsTexts("web: package page shows access context",
@@ -50,8 +50,8 @@ module PermissionTests {
 
     /// A member of another organization never sees this package's access
     /// context on the package page.
-    fn outsiderSeesNoAccess() = WebFixtures::showsExpecting("web: outsider sees no access context",
-        PackageView::render(WebFixtures::warnedAtlasUtil(), WebFixtures::outsider(), WebFixtures::now()), "no access context")
+    fn outsiderSeesNoAccess() = WebFixtures::showsTexts("web: outsider sees no access context",
+        PackageView::render(WebFixtures::warnedAtlasUtil(), WebFixtures::outsider(), WebFixtures::now()), ["@atlas/util", "OSA-2026-0001"], ["Organization and permissions", "Package administrator", "Your effective permissions"])
 
     /// The grant table escapes hostile membership ids.
     fn hostileLedger() = WebFixtures::showsTexts("web: hostile ledger escaped",

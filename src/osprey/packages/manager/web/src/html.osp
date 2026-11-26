@@ -63,7 +63,7 @@ module Html {
     export fn paragraph(text) = el("p", escape(text))
 
     /// One escaped `term: value` field.
-    export fn field(term, value) = el("p", "<strong>${escape(term)}:</strong> ${escape(value)}")
+    export fn field(term, value) = el("p", "${escape(term)}: ${escape(value)}")
 
     /// One escaped advisory note.
     export fn note(text) = "<p class=\"notice\" role=\"note\">${escape(text)}</p>"

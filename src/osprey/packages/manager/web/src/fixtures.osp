@@ -130,12 +130,6 @@ module WebFixtures {
         Model::Hidden { reason } => check(name, "shown screen", "hidden: ${reason}")
     }
 
-    /// The screen must be shown and answer `expected`.
-    export fn showsExpecting(name, view, expected) = match view {
-        Model::Shown { html } => check(name, expected, html)
-        Model::Hidden { reason } => check(name, "shown screen", "hidden: ${reason}")
-    }
-
     /// The screen must be shown, carrying every `wanted` text and none of
     /// the `unwanted` ones.
     export fn showsTexts(name, view, wanted, unwanted) = shows(name, view, fn(html) =>

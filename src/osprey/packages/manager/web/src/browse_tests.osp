@@ -37,7 +37,7 @@ module BrowseTests {
 
     /// The package page hides for the same reason, per package.
     fn packagePageHidesWithoutEvidence() = WebFixtures::hidesExpecting("web: package page hides when evidence unavailable",
-        PackageView::render(WebFixtures::orphanWithoutEvidence(), WebFixtures::anonymous(), WebFixtures::now()), "web.evidence-unavailable...")
+        PackageView::render(WebFixtures::orphanWithoutEvidence(), WebFixtures::anonymous(), WebFixtures::now()), "web.evidence-unavailable: @atlas/orphan: registry.status-service-unreachable")
 
     /// The suite.
     export fn run() = {

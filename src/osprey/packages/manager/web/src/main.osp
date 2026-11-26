@@ -1,6 +1,11 @@
 namespace registry_web;
 import registry::Policy
 fn suites() = {
+    EscapeTests::run()
+    BrowseTests::run()
+    AvailabilityTests::run()
+    PermissionTests::run()
+    PublicationTests::run()
     0
 }
 fn main() = Policy::guarded(suites)
