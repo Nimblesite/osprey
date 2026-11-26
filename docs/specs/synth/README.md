@@ -9,4 +9,4 @@ Two specifications, one for each thing that is built:
 
 Perception depends on the synth package; the package never depends on Perception. The synthesis engine must get much faster for both, and most of all on the device: see [DEVICE-PERF](Perception.md).
 
-The device is compiled with the [embedded targets](../compiler/EmbeddedTargets.md). Delivery plans are in [docs/plans/synth](../../plans/synth/README.md).
+The device is compiled with the [embedded targets](../compiler/EmbeddedTargets.md). Delivery plans are [Prism, routing, synthesis and the device](../../plans/synth/prism.md) and [the daw and Pocket Orchestra](../../plans/synth/daw.md).
