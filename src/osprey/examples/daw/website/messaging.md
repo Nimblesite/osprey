@@ -1,10 +1,10 @@
-# Writing about Perception
+# Writing about Perception Studio
 
-This brief governs every word about **Perception**: the website, README, blog posts, launch copy, and videos.
+This brief governs every word about **Perception Studio** (**Perception** for short): the website, README, blog posts, launch copy, and videos.
 
 ## The answer
 
-> **Perception is a transparent modular synth studio, VST3 plug-in, and hardware synth factory — with unlimited routing, granular and spectral engines, and mathematically proven DSP.**
+> **Perception Studio is a transparent modular synth DAW, VST3 plug-in, and hardware synth factory — with unlimited routing, granular and spectral engines, and mathematically proven DSP.**
 
 Second sentence, when there is room:
 

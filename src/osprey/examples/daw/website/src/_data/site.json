@@ -1,5 +1,6 @@
 {
-  "name": "Perception",
+  "name": "Perception Studio",
+  "shortName": "Perception",
   "tagline": "Modular synth studio, VST3 plug-in, and hardware synth factory.",
   "description": "Perception: unlimited modular routing, granular and spectral synthesis, mathematically proven DSP, VST3 plug-in hosting and export, and hardware synth profiles.",
   "sampleRate": "48 kHz",
