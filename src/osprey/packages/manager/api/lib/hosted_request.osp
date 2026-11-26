@@ -41,11 +41,9 @@ module HostedRequest {
     fn admitted(request: Incoming) = HostedHeaders::Ok { value: Admission { method: request.method, uri: request.uri, body: request.body } }
 
     /// The edge secret first, before routing, auth parsing or body work.
-    /// Ordinary equality here; a constant-time comparison primitive belongs
-    /// to the native runtime adapter, not this pure module.
     fn edgeStage(headers, policy) = match HostedHeaders::find(headers, "x-edge-secret") {
         Success { value } => {
-            if value == policy.edgeSecret { Pass } else { stop(forbidden, "req.edge-secret") }
+            if policy.edgeSecret != "" && Bytes::equalToken(policy.edgeSecret, value) { Pass } else { stop(forbidden, "req.edge-secret") }
         }
         Error => stop(forbidden, "req.edge-secret")
     }
@@ -111,8 +109,9 @@ module HostedRequest {
     }
 
     /// The full admission decision for one raw request against one policy.
-    export fn admit(incoming, policy) = {
-        let parsed = HostedHeaders::parse(incoming.headerBlock)
+    export fn admit(incoming, policy) = admitParsed(HostedHeaders::parse(incoming.headerBlock), incoming, policy)
+
+    export fn admitParsed(parsed, incoming, policy) = {
         if !HostedHeaders::isOk(parsed) { rejected(HostedHeaders::statusOf(parsed), HostedHeaders::codeOf(parsed)) }
         else { stages(HostedHeaders::headers(parsed), incoming, policy) }
     }

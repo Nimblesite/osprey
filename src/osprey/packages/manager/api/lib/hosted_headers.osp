@@ -17,7 +17,8 @@ module HostedHeaders {
     let maxCount = 64
     let sensitive = [
         "authorization", "cookie", "host", "origin",
-        "content-length", "content-type", "x-edge-secret", "x-csrf-token"
+        "content-length", "content-type", "x-edge-secret", "x-csrf-token",
+        "access-control-request-method", "access-control-request-headers"
     ]
 
     fn reject(status, code) = Reject { status: status, code: code }

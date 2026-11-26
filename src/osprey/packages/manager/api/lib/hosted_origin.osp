@@ -1,4 +1,5 @@
 namespace registry_api;
+import registry::Bytes
 
 /// Origin validation for credentialed browser requests and CSRF token
 /// checks. The Origin header is a request attribute, never authentication;
@@ -26,11 +27,9 @@ module HostedOrigin {
     }
 
     /// `Ok` only when the presented CSRF token is non-empty and equal to the
-    /// expected token. Comparison is ordinary equality here; a
-    /// constant-time comparison belongs to the native runtime adapter, not
-    /// this pure module.
+    /// expected token.
     export fn csrf(presented, expected) = if expected == "" { reject("req.csrf-unconfigured") }
         else if presented == "" { reject("req.csrf-missing") }
-        else if presented == expected { passed() }
+        else if Bytes::equalToken(expected, presented) { passed() }
         else { reject("req.csrf-mismatch") }
 }

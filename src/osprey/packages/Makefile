@@ -137,6 +137,13 @@ registry-infra-check:
 	terraform -chdir=$(REGISTRY_TERRAFORM) init -backend=false -lockfile=readonly -input=false
 	terraform -chdir=$(REGISTRY_TERRAFORM) validate
 
+.PHONY: registry-hosted-api
+## registry-hosted-api: Compile the native Cloud Run API listener for the current platform.
+registry-hosted-api: target/osprey-registry-hosted
+
+target/osprey-registry-hosted: $(BIN) $(REGISTRY_CLIENT_SOURCES)
+	$(BIN) build src/osprey/packages/manager/api/hosted --quiet --no-warnings -o $@
+
 .PHONY: registry-website
 ## registry-website: Compile the registry website to WASM and render its Cloudflare Pages directory.
 registry-website: $(BIN) | _runtime_wasm

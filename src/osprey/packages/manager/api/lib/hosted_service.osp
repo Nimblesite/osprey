@@ -25,9 +25,11 @@ module HostedService {
         }
     }
 
-    fn reply(status, mime, body) = HttpResponse { status: status, contentType: mime,
-        headers: "Cache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\n",
+    fn replyWith(status, mime, body, extra) = HttpResponse { status: status, contentType: mime,
+        headers: "Content-Type: ${mime}\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\n" + extra,
         streamFd: -1, isComplete: true, partialBody: body }
+
+    fn reply(status, mime, body) = replyWith(status, mime, body, "")
 
     fn problem(status, code) = reply(status, "application/problem+json", "{\"code\":\"${code}\",\"status\":${status}}")
 
@@ -35,11 +37,39 @@ module HostedService {
         reply(200, "text/plain", "")
     } else { reply(404, "text/plain", "") }
 
-    fn publicRequest(policy, method, path, headers, body) = match HostedRequest::admit(HostedRequest::Incoming {
-        method: method, uri: path, headerBlock: headers, body: body }, policy) {
-        HostedHeaders::Reject { status, code } => problem(status, code)
-        _ => if path == "/v1/ready" { problem(404, "api.not-found") }
-            else { problem(503, "registry.not-ready") }
+    fn browserHeaders(origin) = "Access-Control-Allow-Origin: ${origin}\r\nAccess-Control-Allow-Credentials: true\r\nVary: Origin\r\n"
+
+    fn requestedHeaders(headers) = match HostedHeaders::find(headers, "access-control-request-headers") {
+        Error => true
+        Success { value } => foldList(split(value, ",") ?: [], true, fn(ok, part) => ok && listContains(
+            ["authorization", "content-type", "x-csrf-token", "idempotency-key"], toLowerCase(trim(part))))
+    }
+
+    fn preflight(headers, origin) = {
+        let method = HostedHeaders::find(headers, "access-control-request-method") ?: ""
+        if origin == "" || !listContains(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"], method) || !requestedHeaders(headers) {
+            problem(403, "req.preflight")
+        } else {
+            replyWith(204, "text/plain", "", browserHeaders(origin) + "Access-Control-Allow-Methods: ${method}\r\nAccess-Control-Allow-Headers: Authorization, Content-Type, X-CSRF-Token, Idempotency-Key\r\nVary: Access-Control-Request-Method, Access-Control-Request-Headers\r\n")
+        }
+    }
+
+    fn dispatch(headers, policy, method, path) = {
+        let origin = if HostedHeaders::has(headers, "origin") { policy.allowedOrigin } else { "" }
+        if path == "/v1/ready" { problem(404, "api.not-found") }
+        else if method == "OPTIONS" { preflight(headers, origin) }
+        else {
+            replyWith(503, "application/problem+json", "{\"code\":\"registry.not-ready\",\"status\":503}", if origin == "" { "" } else { browserHeaders(origin) })
+        }
+    }
+
+    export fn publicRequest(policy, method, path, headers, body) = {
+        let request = HostedRequest::Incoming { method: method, uri: path, headerBlock: headers, body: body }
+        let parsed = HostedHeaders::parse(headers)
+        match HostedRequest::admitParsed(parsed, request, policy) {
+            HostedHeaders::Reject { status, code } => problem(status, code)
+            _ => dispatch(HostedHeaders::headers(parsed), policy, method, path)
+        }
     }
 
     fn waitForRequests() -> Result<int, string> = {

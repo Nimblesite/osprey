@@ -5,6 +5,11 @@ namespace registry;
 /// Implements the `u32be`/`u64be`/hex encodings of [PACKAGE-SOURCE-CANONICAL]
 /// and the digest spelling of [PACKAGE-TYPE-INVARIANTS].
 module Bytes {
+    /// Compare every byte of equal-length tokens without stopping at the first difference.
+    export fn equalToken(expected, actual) = byteLength(expected) == byteLength(actual)
+        && fold(range(0, byteLength(expected)), 0, fn(difference, i) =>
+            bitOr(difference, bitXor(byteAt(expected, i) ?: 0, byteAt(actual, i) ?: 0))) == 0
+
     let hexDigits = "0123456789abcdef"
     let byteRange = 256
     let wordRange = 4294967296
