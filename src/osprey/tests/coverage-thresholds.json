@@ -259,6 +259,9 @@
       "http_shared": {
         "language": "c"
       },
+      "http_fields": {
+        "language": "c"
+      },
       "socket_safety": {
         "threshold": 100,
         "language": "c"
