@@ -350,17 +350,25 @@ fn lists_and_profiles(flavor: Flavor, name: &str) {
     assert_eq!(shutdown.get("result"), Some(&Value::Null), "{shutdown}");
 }
 
-/// Open `text` as `uri` and return the diagnostics published for it.
-fn published_diagnostics(server: &mut Server, uri: &str, text: &str) -> Vec<Value> {
-    server.send(
-        &json!({ "jsonrpc": "2.0", "method": "textDocument/didOpen", "params": {
-            "textDocument": { "uri": uri, "languageId": "osprey", "version": 1, "text": text }
-        }}),
-    );
+/// Send `method` with `params` and return the diagnostics then published for
+/// `uri`, for `version` when one is named.
+fn diagnostics_after(
+    server: &mut Server,
+    method: &str,
+    params: Value,
+    uri: &str,
+    version: Option<i64>,
+) -> Vec<Value> {
+    server.send(&json!({ "jsonrpc": "2.0", "method": method, "params": params }));
     loop {
         let message = server.read();
         if message.get("method") == Some(&json!("textDocument/publishDiagnostics"))
             && message.pointer("/params/uri") == Some(&json!(uri))
+            && version.is_none_or(|version| {
+                message
+                    .pointer("/params/version")
+                    .is_none_or(|v| v == &json!(version))
+            })
         {
             return message
                 .pointer("/params/diagnostics")
@@ -369,6 +377,14 @@ fn published_diagnostics(server: &mut Server, uri: &str, text: &str) -> Vec<Valu
                 .expect("diagnostics");
         }
     }
+}
+
+/// Open `text` as `uri` and return the diagnostics published for it.
+fn published_diagnostics(server: &mut Server, uri: &str, text: &str) -> Vec<Value> {
+    let params = json!({
+        "textDocument": { "uri": uri, "languageId": "osprey", "version": 1, "text": text }
+    });
+    diagnostics_after(server, "textDocument/didOpen", params, uri, None)
 }
 
 /// Exactly one diagnostic, the nesting limit, on the source's first line.
@@ -409,27 +425,11 @@ fn editor_handles_depth_boundaries_without_aborting() {
 /// Send the whole new `text` of an open `uri` and return the diagnostics
 /// published for that version.
 fn edited_diagnostics(server: &mut Server, uri: &str, version: i64, text: &str) -> Vec<Value> {
-    server.send(
-        &json!({ "jsonrpc": "2.0", "method": "textDocument/didChange", "params": {
-            "textDocument": { "uri": uri, "version": version },
-            "contentChanges": [{ "text": text }]
-        }}),
-    );
-    loop {
-        let message = server.read();
-        if message.get("method") == Some(&json!("textDocument/publishDiagnostics"))
-            && message.pointer("/params/uri") == Some(&json!(uri))
-            && message
-                .pointer("/params/version")
-                .is_none_or(|v| v == &json!(version))
-        {
-            return message
-                .pointer("/params/diagnostics")
-                .and_then(Value::as_array)
-                .cloned()
-                .expect("diagnostics");
-        }
-    }
+    let params = json!({
+        "textDocument": { "uri": uri, "version": version },
+        "contentChanges": [{ "text": text }]
+    });
+    diagnostics_after(server, "textDocument/didChange", params, uri, Some(version))
 }
 
 /// The codes and messages of every error (severity 1) in `diagnostics`.
