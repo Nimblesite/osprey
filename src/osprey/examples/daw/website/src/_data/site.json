@@ -1,0 +1,140 @@
+{
+  "name": "Perception",
+  "tagline": "Every wire visible. Every sample earned.",
+  "description": "Perception is a transparent modular digital audio workstation: timeline, signal-flow patch bay, and bus routing in one native studio.",
+  "sampleRate": "48 kHz",
+  "channels": "Stereo",
+  "nav": [
+    { "label": "Studio", "href": "/", "icon": "timeline" },
+    { "label": "Modules", "href": "/modules/", "icon": "patch" },
+    { "label": "Architecture", "href": "/architecture/", "icon": "mix" },
+    { "label": "Tracks", "href": "/tracks/", "icon": "tracks" }
+  ],
+  "views": [
+    {
+      "id": "timeline",
+      "label": "Timeline",
+      "caption": "Arrangement & Piano Roll — 17 tracks, velocity lanes, and live track inspector.",
+      "image": "/screens/timeline.png",
+      "alt": "Perception Timeline view showing 17-track arrangement, piano roll with note velocities, and Track Inspector panel"
+    },
+    {
+      "id": "patch",
+      "label": "Track patch",
+      "caption": "Modular Signal Flow — Exciter, strike comb, waveguide string, loss filter, waveshaper, delay, and live oscilloscope.",
+      "image": "/screens/track-patch.png",
+      "alt": "Perception Track Patch view showing connected DSP modules, glowing orange audio cables, and live oscilloscope"
+    },
+    {
+      "id": "mix",
+      "label": "Bus routing",
+      "caption": "Transparent Mix & Signal Flow — Every gain, pan, group bus, Space send, and compressor detector wired to Master.",
+      "image": "/screens/mix.png",
+      "alt": "Perception Bus Routing view showing track routing table, orthogonal signal flow graph to Master, and Bus Inspector"
+    }
+  ],
+  "gallery": [
+    {
+      "title": "Silt Relay — Undertow Bus",
+      "tag": "Bus Routing",
+      "image": "/screens/silt-relay.png",
+      "caption": "Kick-keyed Undertow bus ducking the sub in Silt Relay (138 BPM, 18 bars)."
+    },
+    {
+      "title": "Rivet Pulse — Three-Way Routing",
+      "tag": "Parallel Sends",
+      "image": "/screens/silt-rivet.png",
+      "caption": "Dry path through Objects, 6% channel-swap tap into Undertow, and 19% Space send."
+    },
+    {
+      "title": "Glass Pins — Dual-Bus Lift",
+      "tag": "Spectral Pitch",
+      "image": "/screens/silt-pin-bed.png",
+      "caption": "FFT pitch shifter mixing a formant-preserved fifth at 22% wet into Pin bed and Objects."
+    },
+    {
+      "title": "Bus Outputs & Cycle Guard",
+      "tag": "Group Graph",
+      "image": "/screens/bus-outputs.png",
+      "caption": "Feed any stereo group into another with automatic cycle detection that preserves valid routes."
+    },
+    {
+      "title": "Patch Sends Inspector",
+      "tag": "Outlet Taps",
+      "image": "/screens/patch-sends.png",
+      "caption": "Tap any internal module outlet straight into a stereo bus without disturbing the dry cable."
+    },
+    {
+      "title": "Direct Piano Roll Editing",
+      "tag": "Timeline",
+      "image": "/screens/dragged-note.png",
+      "caption": "Drag notes in pitch and time with immediate beat, length, and velocity readouts."
+    }
+  ],
+  "instruments": [
+    {
+      "kind": "PatchInstrument",
+      "category": "modular",
+      "summary": "Full routed DSP graph built per note with pitch- and velocity-following parameters.",
+      "controls": "nodes, cables, attack, release, Constant / Pitched / Struck followers"
+    },
+    {
+      "kind": "PluckInstrument",
+      "category": "physical",
+      "summary": "Waveguide string excited by a single-period noise burst, naturally damped on release.",
+      "controls": "brightness (0–1), decay (seconds)"
+    },
+    {
+      "kind": "BowInstrument",
+      "category": "physical",
+      "summary": "Bowed string model with gated bow velocity and fading 5.4 Hz vibrato.",
+      "controls": "pressure (0–1), brightness (0–1), vibrato (0–0.02)"
+    },
+    {
+      "kind": "BellInstrument",
+      "category": "physical",
+      "summary": "Eight coupled modal resonators tuned to harmonic bell ratios from a single strike.",
+      "controls": "decay (seconds), brightness (0–1)"
+    },
+    {
+      "kind": "MalletInstrument",
+      "category": "physical",
+      "summary": "Eight bar-mode resonators struck once for marimba, vibraphone, and metallic percussion.",
+      "controls": "decay (seconds), brightness (0–1)"
+    },
+    {
+      "kind": "OperatorInstrument",
+      "category": "synth",
+      "summary": "Dual detuned phase-distortion operators that bloom smoothly toward a pure sine.",
+      "controls": "breakpoint, feedback, attack, release, bloom, detune (cents)"
+    },
+    {
+      "kind": "DrumInstrument",
+      "category": "percussion",
+      "summary": "Pitch-swept sine body layered with a coloured noise burst up to 1 second.",
+      "controls": "sweep (0–8), noise (0–1), colour (0–1), decay (≤ 1 s)"
+    }
+  ],
+  "moduleGroups": [
+    {
+      "name": "Sources & Generators",
+      "accent": "signal",
+      "items": ["exciter", "sine", "wavetable", "additive", "operator", "bowed", "grainCloud", "midiOscillator"]
+    },
+    {
+      "name": "Physical & Spectral",
+      "accent": "monitor",
+      "items": ["resonator", "modal", "waveguide", "strikeComb", "fractionalDelay", "lossFilter", "allpass", "shifter", "spectral"]
+    },
+    {
+      "name": "Filters, Dynamics & Space",
+      "accent": "signal",
+      "items": ["lowpass", "modulatedLowpass", "shaper", "reverb", "delay", "smoother", "gain", "modulatedGain", "stereoModulatedGain"]
+    },
+    {
+      "name": "Control, MIDI & Routing",
+      "accent": "mod",
+      "items": ["lfo", "midiNote", "formulaNotes", "mixer", "stereo", "downmix", "split", "join", "route", "output", "stereoOutput"]
+    }
+  ]
+}

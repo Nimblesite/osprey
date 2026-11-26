@@ -1,0 +1,70 @@
+---
+layout: base.njk
+title: "Hand-Written Tracks"
+description: "Every arrangement in Perception is composed by hand — notes, patches, sends, and mix settings written directly into the project file."
+---
+
+<section class="section grid-backdrop">
+  <div class="shell">
+    <div class="section-head">
+      <p class="eyebrow"><span class="dot dot-signal" aria-hidden="true"></span>Hand-Composed Arrangements</p>
+      <h1>Music written note by note</h1>
+      <p>
+        Every showcase composition in Perception is hand-written — each note, synthesis patch,
+        parallel outlet send, and bus compressor setting crafted deliberately in one JSON project.
+      </p>
+    </div>
+
+    <div class="card-grid" style="margin-bottom:36px">
+      <article class="card">
+        <span class="card-tag">138 BPM · 18 Bars</span>
+        <h3>Silt Relay</h3>
+        <p>
+          Pressure kick ducks the sub through the Undertow bus. Struck wire answers the bass on
+          offbeats while <strong>Throat / metal</strong> runs a two-source spectral morph,
+          <strong>Spore wheel</strong> drives a seeded granular cloud, and <strong>Glass pins</strong>
+          mixes a formant-preserved FFT fifth at 22% wet.
+        </p>
+      </article>
+      <article class="card">
+        <span class="card-tag is-mod">97.5 BPM · 17 Tracks</span>
+        <h3>Broken Circuitry: Reassembly</h3>
+        <p>
+          Seventeen interleaved operator and modular patch tracks routed across dedicated
+          <code class="mono">pads</code> and <code class="mono">Keys bus</code> groups with a
+          6.50 s Space reverb return and sidechained group compression.
+        </p>
+      </article>
+      <article class="card">
+        <span class="card-tag is-monitor">10 Tracks · Timeline</span>
+        <h3>Violet Static &amp; Phosphor Drift</h3>
+        <p>
+          Full multi-track studio arrangements exercising modal bells, bowed strings, waveguide
+          plucks, and custom modular patches across Timeline, Patch, and Bus routing.
+        </p>
+      </article>
+    </div>
+
+    <div class="gallery-grid">
+      {% for shot in site.gallery %}
+      <article class="shot-card">
+        <button
+          type="button"
+          class="shot-btn"
+          data-lightbox-src="{{ shot.image }}"
+          data-lightbox-alt="{{ shot.title }}"
+          data-lightbox-title="{{ shot.title }}"
+          data-lightbox-caption="{{ shot.caption }}"
+        >
+          <img src="{{ shot.image }}" alt="{{ shot.title }}" loading="lazy" decoding="async">
+        </button>
+        <div class="shot-meta">
+          <span class="card-tag">{{ shot.tag }}</span>
+          <h3>{{ shot.title }}</h3>
+          <p>{{ shot.caption }}</p>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+  </div>
+</section>

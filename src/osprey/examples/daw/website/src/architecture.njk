@@ -1,0 +1,99 @@
+---
+layout: base.njk
+title: "Architecture"
+description: "Perception's signal transparency invariant, Master-only playback and rendering contract, and schema-validated JSON project format."
+---
+
+<section class="section grid-backdrop">
+  <div class="shell">
+    <article class="prose">
+      <p class="eyebrow"><span class="dot dot-monitor" aria-hidden="true"></span>Design Contract</p>
+      <h1>Signal Transparency &amp; Master-Only Architecture</h1>
+      <p>
+        Perception is engineered around two non-negotiable invariants that keep what you see on
+        screen identical to what reaches your monitors and export file.
+      </p>
+
+      <div class="prose-callout">
+        <p>
+          <strong>Total Signal Transparency:</strong> Every module, cable, gain, EQ, compressor,
+          limiter, and send is a visible node or control in the UI. There is no hidden limiter,
+          clipper, normaliser, or automatic gain anywhere — Master included.
+        </p>
+      </div>
+
+      <h2>Playing and rendering take Master only</h2>
+      <p>
+        Both live playback and offline rendering advance the entire project graph forward one block
+        at a time: every track, internal outlet send, stereo group bus, Space return, and Master
+        process together.
+      </p>
+      <ul>
+        <li><strong>Playing</strong> streams Master blocks directly to the audio device and writes no files.</li>
+        <li><strong>Rendering</strong> writes Master's stereo output untouched to <code class="mono">song.wav</code> and plays nothing.</li>
+        <li><strong>No hidden stems or pre-rendered note caches:</strong> nothing outside the running graph ever produces audio.</li>
+      </ul>
+
+      <h2>One schema-validated JSON project</h2>
+      <p>
+        Every note, modular patch, cable, bus group, outlet send, and canvas coordinate is stored
+        in a single human-readable JSON project file validated against <code class="mono">daw.td</code>.
+      </p>
+
+      <div class="prose-table-wrap">
+        <table class="prose-table">
+          <thead>
+            <tr>
+              <th>Key</th>
+              <th>Meaning</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>title</code></td>
+              <td>Arrangement title displayed in the studio header.</td>
+            </tr>
+            <tr>
+              <td><code>tempo</code></td>
+              <td>Beats per minute (20–400 BPM).</td>
+            </tr>
+            <tr>
+              <td><code>sampleRate</code></td>
+              <td>Frames per second (8,000–192,000 Hz; default 48,000).</td>
+            </tr>
+            <tr>
+              <td><code>buses</code></td>
+              <td>Named stereo groups with gain, 3-band EQ, sidechain compressor, and cycle-checked <code>output</code>.</td>
+            </tr>
+            <tr>
+              <td><code>tracks</code></td>
+              <td>Per-track instrument or routed patch, gain (0–4×), pan (−1 to +1), dry bus, outlet sends, positions, and notes.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Internal outlet send example</h3>
+      <p>
+        Tap any internal module outlet inside a track's patch straight into a stereo bus while
+        leaving its dry cable untouched:
+      </p>
+      <pre class="prose-code"><code>{
+  "sendId": 1,
+  "source": 3,
+  "outlet": 0,
+  "bus": "pads",
+  "level": 0.25,
+  "enabled": true
+}</code></pre>
+
+      <h3>Parameter followers</h3>
+      <p>
+        Every setting inside a <code class="mono">PatchInstrument</code> node declares one of three
+        deterministic followers: <code class="mono">Constant</code>, <code class="mono">Pitched</code>
+        (multiplied by the note's frequency), or <code class="mono">Struck</code> (multiplied by the
+        note's velocity). Unknown components or settings fail validation immediately.
+      </p>
+    </article>
+  </div>
+</section>

@@ -1,0 +1,93 @@
+---
+layout: base.njk
+title: "Modules & Instruments"
+description: "Complete reference of Perception's built-in physical instruments, 36+ modular DSP components, grain clouds, formula melodies, and isolated VST3 workers."
+---
+
+<section class="section grid-backdrop">
+  <div class="shell">
+    <div class="section-head">
+      <p class="eyebrow"><span class="dot dot-signal" aria-hidden="true"></span>Modular DSP &amp; Built-In Voices</p>
+      <h1>Instruments &amp; 36+ Signal Modules</h1>
+      <p>
+        Start with a physical waveguide string, bowed string, bell, mallet, or phase-distortion
+        operator — or patch custom per-note graphs from 36+ typed DSP components and isolated VST3 plug-ins.
+      </p>
+    </div>
+
+    <div class="filter-bar" role="group" aria-label="Filter instruments by category">
+      <button type="button" class="filter-btn" data-filter="all" aria-pressed="true">All instruments</button>
+      <button type="button" class="filter-btn" data-filter="modular" aria-pressed="false">Modular</button>
+      <button type="button" class="filter-btn" data-filter="physical" aria-pressed="false">Physical</button>
+      <button type="button" class="filter-btn" data-filter="synth" aria-pressed="false">Synthesis</button>
+      <button type="button" class="filter-btn" data-filter="percussion" aria-pressed="false">Percussion</button>
+    </div>
+
+    <div class="card-grid">
+      {% for inst in site.instruments %}
+      <article class="card" data-category="{{ inst.category }}">
+        <span class="card-tag{% if inst.category == 'physical' %} is-monitor{% elif inst.category == 'modular' %} is-mod{% endif %}">{{ inst.category }}</span>
+        <h3 class="mono">{{ inst.kind }}</h3>
+        <p>{{ inst.summary }}</p>
+        <p class="mono" style="font-size:0.78rem; color: var(--ink);">{{ inst.controls }}</p>
+      </article>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="shell">
+    <div class="section-head">
+      <p class="eyebrow"><span class="dot dot-mod" aria-hidden="true"></span>Patch Graph Library</p>
+      <h2>Typed DSP Components</h2>
+      <p>
+        Perception validates port rates, units, channel counts, and feedback cycles on every cable.
+        Invalid connections leave the previous graph intact; Undo restores deleted nodes and cables together.
+      </p>
+    </div>
+
+    {% for group in site.moduleGroups %}
+    <div class="module-group">
+      <h3>
+        <span class="dot dot-{{ group.accent }}" aria-hidden="true"></span>
+        {{ group.name }}
+      </h3>
+      <ul class="chip-list">
+        {% for item in group.items %}
+        <li class="chip">{{ item }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endfor %}
+
+    <div class="card-grid" style="margin-top:28px">
+      <article class="card">
+        <span class="card-tag">Grain Cloud</span>
+        <h3>16-Voice Granular Synthesis</h3>
+        <p>
+          Load little-endian RIFF/WAVE files up to 8 MiB (8–192 kHz, 8/16/24/32-bit PCM or float32).
+          Control source position, playback rate (zero holds, negative reverses), grain duration,
+          pan, onset interval, and jitter — with full sample undo history.
+        </p>
+      </article>
+      <article class="card">
+        <span class="card-tag is-mod">Formula Melodies</span>
+        <h3>Deterministic Step Expressions</h3>
+        <p>
+          Type a formula over step <code class="mono">t</code> — such as
+          <code class="mono">60 + t * 7 % 12</code> — and <code class="mono">formulaNotes</code>
+          emits one MIDI note per step straight into oscillators, delays, or VST3 instruments.
+        </p>
+      </article>
+      <article class="card">
+        <span class="card-tag is-monitor">Isolated VST3 Workers</span>
+        <h3>Sandboxed Plug-In Execution</h3>
+        <p>
+          Point Settings at your VST3 folder. Each discovered instrument or effect runs in its own
+          separate worker process with sample-positioned MIDI, parameter automation, and state restore.
+        </p>
+      </article>
+    </div>
+  </div>
+</section>
