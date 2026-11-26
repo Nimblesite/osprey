@@ -1,7 +1,10 @@
 // Runs in the two-project fixture workspace (.vscode-test.js): which project a package command
 // manages, and which registry setting it accepts.
 import * as assert from "assert";
+import * as fs from "fs";
 import * as http from "http";
+import * as os from "os";
+import * as path from "path";
 import * as sinon from "sinon";
 import { commands, ExtensionContext, Uri, WebviewPanel, window, workspace } from "vscode";
 import { folderFor, hostBridge } from "../../client/src/package-workspace";
@@ -43,6 +46,29 @@ suite("package workspace project safety", () => {
     const picker = sinon.stub(window, "showQuickPick");
     assert.strictEqual((await folderFor(Uri.file("/work/two/osprey.toml")))?.toString(), roots[1].uri.toString());
     assert.strictEqual(picker.callCount, 0);
+  });
+
+  test("a project nested in a workspace folder is managed itself, never the folder above it", async () => {
+    const top = fs.mkdtempSync(path.join(os.tmpdir(), "osprey-nested-"));
+    const project = path.join(top, "examples", "hunt");
+    fs.mkdirSync(path.join(project, "src"), { recursive: true });
+    fs.writeFileSync(path.join(project, "osprey.toml"), "[project]\nname = \"hunt\"\n");
+    fs.writeFileSync(path.join(project, "src", "main.ospml"), "");
+    fs.mkdirSync(path.join(top, "docs"));
+    const folder = { name: "repo", index: 0, uri: Uri.file(top) };
+    sinon.stub(workspace, "workspaceFolders").get(() => [folder, roots[1]]);
+    sinon.stub(workspace, "getWorkspaceFolder").returns(folder);
+    const picker = sinon.stub(window, "showQuickPick");
+    try {
+      const managed = async (at: string) => (await folderFor(Uri.file(at)))?.fsPath;
+      assert.strictEqual(await managed(project), project, "the Module Explorer passes the project root");
+      assert.strictEqual(await managed(path.join(project, "src", "main.ospml")), project, "a source file finds its project");
+      assert.strictEqual(await managed(path.join(project, "osprey.toml")), project, "the manifest finds its project");
+      assert.strictEqual(await managed(path.join(top, "docs")), top, "outside any project, the workspace folder");
+      assert.strictEqual(picker.callCount, 0);
+    } finally {
+      fs.rmSync(top, { recursive: true, force: true });
+    }
   });
 });
 

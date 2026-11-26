@@ -22,10 +22,20 @@ function executableName(name: string): string {
   return process.platform === "win32" ? `${name}.exe` : name;
 }
 
+/** The nearest project (a folder with osprey.toml) at or above `resource`, or else its workspace folder. */
+function projectAt(resource: Uri, folder: Uri): Uri {
+  const inside = (dir: string) => !path.relative(folder.fsPath, dir).startsWith("..");
+  for (let dir = resource.fsPath; inside(dir); dir = path.dirname(dir)) {
+    if (fs.existsSync(path.join(dir, "osprey.toml"))) return Uri.file(dir);
+    if (dir === folder.fsPath) break;
+  }
+  return folder;
+}
+
 /** Resolve the invoking project, asking when a command has no root context. */
 export async function folderFor(resource?: Uri): Promise<Uri | undefined> {
   const invoking = resource ? workspace.getWorkspaceFolder(resource) : undefined;
-  if (invoking) return invoking.uri;
+  if (resource && invoking) return projectAt(resource, invoking.uri);
   const folders = workspace.workspaceFolders ?? [];
   if (folders.length === 1) return folders[0].uri;
   if (folders.length === 0) return undefined;
