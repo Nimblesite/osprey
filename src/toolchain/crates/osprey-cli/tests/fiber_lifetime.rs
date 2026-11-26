@@ -30,43 +30,11 @@ const FINISHED_FIBERS_PEAK_MB: u64 = 64;
 /// million sequential `await(spawn ...)` reached 330 MiB (#359).
 #[test]
 fn finished_fibers_are_reclaimed_in_every_backend() -> io::Result<()> {
-    let cases = [
-        ("gc", "native", FINISHED_FIBERS, FINISHED_FIBERS_ANSWER),
-        ("arc", "native", FINISHED_FIBERS, FINISHED_FIBERS_ANSWER),
-        (
-            "ownership",
-            "native",
-            FINISHED_INT_FIBERS,
-            FINISHED_INT_FIBERS_ANSWER,
-        ),
-        ("arc", "wasm32", FINISHED_FIBERS, FINISHED_FIBERS_ANSWER),
-        (
-            "ownership",
-            "wasm32",
-            FINISHED_INT_FIBERS,
-            FINISHED_INT_FIBERS_ANSWER,
-        ),
-    ];
-    let mut wrong = Vec::new();
-    for (memory, target, source, answer) in cases {
-        let run = compiled_run(
-            &format!("finished_fibers_{memory}_{target}"),
-            source,
-            memory,
-            target,
-        )?;
-        let answered = run.code == Some(0) && run.stdout == answer;
-        if !answered || run.peak_mb > FINISHED_FIBERS_PEAK_MB {
-            wrong.push(format!(
-                "{memory}/{target}: {}, stdout {:?}, stderr {:?}",
-                run.summary(),
-                run.stdout,
-                run.stderr
-            ));
-        }
-    }
-    assert!(wrong.is_empty(), "{}", wrong.join("\n"));
-    Ok(())
+    reclaimed_in_every_backend(
+        "finished_fibers",
+        (FINISHED_FIBERS, FINISHED_FIBERS_ANSWER),
+        (FINISHED_INT_FIBERS, FINISHED_INT_FIBERS_ANSWER),
+    )
 }
 
 /// Makes, fills and drains a fresh 256-slot channel one after another, half
@@ -85,43 +53,53 @@ const FINISHED_INT_CHANNELS_ANSWER: &str = "179999700000\n";
 /// `Channel(256)` reached 1.4 GiB under ARC and 1.8 GiB under the GC.
 #[test]
 fn finished_channels_are_reclaimed_in_every_backend() -> io::Result<()> {
+    reclaimed_in_every_backend(
+        "finished_channels",
+        (FINISHED_CHANNELS, FINISHED_CHANNELS_ANSWER),
+        (FINISHED_INT_CHANNELS, FINISHED_INT_CHANNELS_ANSWER),
+    )
+}
+
+/// A program and the stdout it must print.
+type Answered = (&'static str, &'static str);
+
+/// Runs `mixed` under GC and ARC (native and wasm32) and `ints`, its
+/// int-only twin, under ownership, each within [`FINISHED_FIBERS_PEAK_MB`].
+fn reclaimed_in_every_backend(stem: &str, mixed: Answered, ints: Answered) -> io::Result<()> {
     let cases = [
-        ("gc", "native", FINISHED_CHANNELS, FINISHED_CHANNELS_ANSWER),
-        ("arc", "native", FINISHED_CHANNELS, FINISHED_CHANNELS_ANSWER),
-        (
-            "ownership",
-            "native",
-            FINISHED_INT_CHANNELS,
-            FINISHED_INT_CHANNELS_ANSWER,
-        ),
-        ("arc", "wasm32", FINISHED_CHANNELS, FINISHED_CHANNELS_ANSWER),
-        (
-            "ownership",
-            "wasm32",
-            FINISHED_INT_CHANNELS,
-            FINISHED_INT_CHANNELS_ANSWER,
-        ),
+        ("gc", "native", mixed),
+        ("arc", "native", mixed),
+        ("ownership", "native", ints),
+        ("arc", "wasm32", mixed),
+        ("ownership", "wasm32", ints),
     ];
     let mut wrong = Vec::new();
-    for (memory, target, source, answer) in cases {
-        let run = compiled_run(
-            &format!("finished_channels_{memory}_{target}"),
-            source,
-            memory,
-            target,
-        )?;
+    for (memory, target, (source, answer)) in cases {
+        let run = compiled_run(&format!("{stem}_{memory}_{target}"), source, memory, target)?;
         let answered = run.code == Some(0) && run.stdout == answer;
         if !answered || run.peak_mb > FINISHED_FIBERS_PEAK_MB {
-            wrong.push(format!(
-                "{memory}/{target}: {}, stdout {:?}, stderr {:?}",
-                run.summary(),
-                run.stdout,
-                run.stderr
-            ));
+            wrong.push(failure(&format!("{memory}/{target}"), &run));
         }
     }
-    assert!(wrong.is_empty(), "{}", wrong.join("\n"));
+    assert!(
+        wrong.is_empty(),
+        "{}",
+        wrong.join(
+            "
+"
+        )
+    );
     Ok(())
+}
+
+/// One wrong run, named by `label`, with everything it printed.
+fn failure(label: &str, run: &bounded::Bounded) -> String {
+    format!(
+        "{label}: {}, stdout {:?}, stderr {:?}",
+        run.summary(),
+        run.stdout,
+        run.stderr
+    )
 }
 
 /// Fibers that share channels: one made per call and shared by two fibers (with
@@ -166,12 +144,7 @@ fn shared_channels_end_with_their_last_sharer() -> io::Result<()> {
             || !run.stderr.contains(nothing_live)
             || run.stderr.contains("shared:") && !run.stderr.contains("shared: 0 blocks")
         {
-            wrong.push(format!(
-                "{memory}/{target}: {}, stdout {:?}, stderr {:?}",
-                run.summary(),
-                run.stdout,
-                run.stderr
-            ));
+            wrong.push(failure(&format!("{memory}/{target}"), &run));
         }
     }
     assert!(wrong.is_empty(), "{}", wrong.join("\n"));
@@ -258,12 +231,7 @@ fn fibers_blocked_for_ever_are_named_by_the_collector() -> io::Result<()> {
         )?;
         let answered = run.code == Some(0) && run.stdout == "20\n";
         if !answered || run.stderr.contains(STRANDED_REPORT) != reported {
-            wrong.push(format!(
-                "{memory}: {}, stdout {:?}, stderr {:?}",
-                run.summary(),
-                run.stdout,
-                run.stderr
-            ));
+            wrong.push(failure(memory, &run));
         }
     }
     assert!(wrong.is_empty(), "{}", wrong.join("\n"));
@@ -290,12 +258,7 @@ fn a_wasm_wait_nothing_can_wake_stops_by_name() -> io::Result<()> {
             .stderr
             .contains("osprey: every fiber is blocked: this wait can never be woken");
         if run.stopped.is_some() || run.code != Some(70) || run.stdout != "started\n" || !named {
-            wrong.push(format!(
-                "{memory}: {}, stdout {:?}, stderr {:?}",
-                run.summary(),
-                run.stdout,
-                run.stderr
-            ));
+            wrong.push(failure(memory, &run));
         }
     }
     assert!(wrong.is_empty(), "{}", wrong.join("\n"));
