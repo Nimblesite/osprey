@@ -238,7 +238,7 @@ fn compile_ir_and_debug_helpers_switch_on_the_build_kind() {
     );
 }
 
-/// The optimisation oracle (plan 0033): the emitted module after the same
+/// The optimisation oracle (plan 0055): the emitted module after the same
 /// clang driver and `-O2` the compiler uses, so a test can assert what LLVM
 /// did with Osprey's IR without timing anything.
 fn optimised_ir(src: &str) -> String {
@@ -325,7 +325,7 @@ fn an_executable_drops_a_helper_once_it_is_inlined() {
     );
 }
 
-/// Plan 0033 phase 4: only the outlined cold fault functions reach the handler
+/// Plan 0055 (generated-code performance): only the outlined cold fault functions reach the handler
 /// stack, so a checked operation adds one rarely taken branch to a hot function.
 #[test]
 fn a_checked_operation_keeps_its_slow_path_out_of_line() {

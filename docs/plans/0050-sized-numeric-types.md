@@ -190,7 +190,7 @@ Current forced-Metal ARC verification (2026-11-12) returns failure in both flavo
 
 Checks this adds:
 
-- [ ] Device division by zero in cases 8, 11 and 12: make the device match the host's total result or change the case's documented contract with the reason, under [ARITH-DEVICE-RECOVERY] in plan 0023.
+- [ ] Device division by zero in cases 8, 11 and 12: make the device match the host's total result or change the case's documented contract with the reason, under [ARITH-DEVICE-RECOVERY] in plan 0055.
 - [ ] `rowDot` declines in cases 15 and 16: give the kernel a device form.
 - [x] Correct the repeated kernel-decline diagnostic. An E2E compiler regression reproduces 24 repeated helper prefixes and an acyclic chain falsely labelled recursive; the fix reports the unchanged inline-depth limit, collapses adjacent identical helper contexts, and preserves distinct contexts. RED/GREEN receipts: `target/logs/goal-plan-audit/diagnostic-{red,green}.log` (2026-11-12). This does not make recursive kernels executable.
 - [ ] Twin parity on the device: the ML twin declines `degenerate` in cases 10 and 11 where the Default twin compiles it. Twins must emit identical IR, so find out why they diverge, and add a regression.

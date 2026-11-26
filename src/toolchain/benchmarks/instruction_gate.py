@@ -3,7 +3,7 @@
 
 Wall-clock time on hosted runners is too noisy to gate on. Cachegrind's instruction
 count depends only on the binary and its input, so the Osprey / `rust-checked` ratio of
-each case is compared with instruction-ratios.json, which only goes down. See plan 0033.
+each case is compared with instruction-ratios.json, which only goes down. See plan 0055.
 
 Usage: instruction_gate.py [--record]
   --record  lower the recorded ratios to today's and add any missing case.

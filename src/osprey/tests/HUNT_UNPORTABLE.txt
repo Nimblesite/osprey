@@ -6,7 +6,7 @@
 # libraries), or on the engine's own limit where the row says so. Fibers and
 # channels are in the module [SYMEX-MOCK-THREADS]. `--all` hunts them anyway, which is how this list was produced
 # from the corpus sweeps of 2026-10-24. The hunt app refuses to sweep while a row names a program it does not enumerate (#341).
-# Work to shrink it: docs/plans/0055-corpus-target-gaps.md [CORPUS-TARGET-GAPS].
+# Work to shrink it: docs/plans/0055-targets.md [CORPUS-TARGET-GAPS].
 #
 src/osprey/examples/db_postgres/pg_smoke.osp `PQlibVersion` is native code outside the module (not in the portable runtime)
 src/osprey/examples/llms/gpt2/generate fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module
