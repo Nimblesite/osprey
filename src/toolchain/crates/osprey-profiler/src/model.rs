@@ -357,7 +357,7 @@ mod tests {
             (fib.name.as_str(), fib.self_samples, fib.total_samples),
             ("fib", 2, 2)
         );
-        let main = model.funcs.get(1).unwrap();
+        let main = model.funcs.get(1).expect("entry 1");
         assert_eq!(
             (main.name.as_str(), main.self_samples, main.total_samples),
             ("main", 0, 2)
@@ -400,7 +400,7 @@ mod tests {
             (fib.name.as_str(), fib.self_samples, fib.total_samples),
             ("fib", 2, 2)
         );
-        let main = model.funcs.get(1).unwrap();
+        let main = model.funcs.get(1).expect("entry 1");
         assert_eq!((main.self_samples, main.total_samples), (1, 3));
     }
 
@@ -457,9 +457,9 @@ mod tests {
         assert_eq!(labels, ["main", "fiber-2", "effect-2"]);
         let main = model.fibers.first().unwrap();
         assert_eq!((main.id, main.samples, main.oncpu_samples), (0, 2, 1));
-        let fiber = model.fibers.get(1).unwrap();
+        let fiber = model.fibers.get(1).expect("entry 1");
         assert_eq!((fiber.samples, fiber.oncpu_samples), (1, 0));
-        assert_eq!(model.fibers.get(2).unwrap().id, -1);
+        assert_eq!(model.fibers.get(2).expect("entry 2").id, -1);
     }
 
     #[test]

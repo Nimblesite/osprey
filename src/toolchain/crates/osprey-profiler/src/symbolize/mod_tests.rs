@@ -177,7 +177,7 @@ fn stacks_resolve_through_per_image_batches_with_dedup() {
         ["fn_1400", "fn_1400", "fn_9199"]
     );
     // pc 500 sits below every image base -> raw hex fallback.
-    assert_eq!(stacks.get(1).unwrap().get(1).unwrap().name, "0x1f4");
+    assert_eq!(stacks.get(1).expect("entry 1").get(1).expect("entry 1").name, "0x1f4");
 }
 
 #[test]
@@ -247,5 +247,5 @@ fn fixed_symbolizer_maps_known_addresses_and_hexes_the_rest() {
         .insert(7, vec![SymFrame::new("seven", "/s.osp", 2)]);
     let chains = fixed.symbolize(Path::new("/bin/app"), &[7, 8]).unwrap();
     assert_eq!(chains.first().unwrap().first().unwrap().name, "seven");
-    assert_eq!(chains.get(1).unwrap().first().unwrap().name, "0x8");
+    assert_eq!(chains.get(1).expect("entry 1").first().unwrap().name, "0x8");
 }

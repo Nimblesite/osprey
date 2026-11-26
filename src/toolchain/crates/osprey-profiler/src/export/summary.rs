@@ -147,7 +147,7 @@ mod tests {
         field_str(main, "label", "main");
         field_u64(main, "samples", 3);
         field_u64(main, "oncpuSamples", 3);
-        let fiber = fibers.get(1).unwrap();
+        let fiber = fibers.get(1).expect("entry 1");
         field_str(fiber, "label", "fiber-4");
         field_u64(fiber, "oncpuSamples", 0);
     }

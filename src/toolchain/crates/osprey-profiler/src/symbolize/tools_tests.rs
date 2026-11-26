@@ -32,11 +32,11 @@ fn parses_llvm_symbolizer_blocks() {
         (add.name.as_str(), add.file.as_str(), add.line),
         ("add", "/tmp/t.c", 2)
     );
-    let run = chains.get(1).unwrap().first().unwrap();
+    let run = chains.get(1).expect("entry 1").first().unwrap();
     assert_eq!((run.file.as_str(), run.line), ("C:\\proj\\app.osp", 14));
-    assert_eq!(chains.get(2).unwrap().first().unwrap().name, "0x30");
+    assert_eq!(chains.get(2).expect("entry 2").first().unwrap().name, "0x30");
     // Fewer blocks than addresses: the tail pads out as hex chains.
-    assert_eq!(chains.get(3).unwrap().first().unwrap().name, "0x40");
+    assert_eq!(chains.get(3).expect("entry 3").first().unwrap().name, "0x40");
 }
 
 #[test]
@@ -49,7 +49,7 @@ fn parses_two_deep_inline_blocks_innermost_first() {
     let chain = chains.first().unwrap();
     let got: Vec<(&str, u32)> = chain.iter().map(|f| (f.name.as_str(), f.line)).collect();
     assert_eq!(got, [("inner", 4), ("outer", 9)]);
-    assert_eq!(chains.get(1).unwrap().len(), 1);
+    assert_eq!(chains.get(1).expect("entry 1").len(), 1);
 }
 
 #[test]

@@ -30,6 +30,8 @@ mod tests {
         reason = "drives the sealed FFI boundary this crate declares"
     )]
     fn cell_roundtrip_and_free() {
+        // SAFETY: the cell is allocated, read and freed once, in that order,
+        // through the runtime's own entry points.
         unsafe {
             let cell = osprey_ffi_cell();
             assert!(!cell.is_null());

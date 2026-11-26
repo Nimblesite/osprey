@@ -145,7 +145,7 @@ mod tests {
         assert_eq!(samples.len(), 3);
         // Raw stack 0 is leaf-first [fib, main] -> exported root-first.
         assert_eq!(samples.first().unwrap(), &json!([1, 0]));
-        assert_eq!(samples.get(2).unwrap(), &json!([1, 0]));
+        assert_eq!(samples.get(2).expect("entry 2"), &json!([1, 0]));
     }
 
     #[test]
