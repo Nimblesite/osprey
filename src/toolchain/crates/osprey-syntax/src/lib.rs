@@ -226,6 +226,24 @@ pub fn flavor_marker(source: &str) -> Option<&str> {
         })
 }
 
+/// The identity discipline: `check_program`, in process, no erasure.
+pub const HM_DISCIPLINE: &str = "hm";
+
+/// The value of a leading `// osprey: types=<name>` marker (`# osprey:` in
+/// Python flavor), read by the same header scan as the flavor marker.
+/// Implements [TYPES-DISCIPLINE-SELECT].
+#[must_use]
+pub fn discipline_marker(source: &str) -> Option<&str> {
+    source.lines().find_map(|line| {
+        let t = line.trim();
+        t.strip_prefix("// osprey: types=")
+            .or_else(|| t.strip_prefix("//osprey: types="))
+            .or_else(|| t.strip_prefix("# osprey: types="))
+            .or_else(|| t.strip_prefix("#osprey: types="))
+            .map(str::trim)
+    })
+}
+
 /// The flavor implied by an extension: `.ospml` ⇒ ML, `.osp` ⇒ Default, `.py` ⇒ Python.
 /// Any other extension yields `None` (no opinion). [FLAVOR-SELECT]
 #[must_use]
