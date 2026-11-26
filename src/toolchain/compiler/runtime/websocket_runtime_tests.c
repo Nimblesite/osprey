@@ -506,6 +506,36 @@ static void test_field_values_are_not_upgrade(void) {
   }
 }
 
+// The field reader at its edge (#434): a last field line the section ends
+// without its CRLF is still read (the HTTP client stores its header block so).
+static void test_upgrade_reader_edges(void) {
+  static const char unterminated[] = "A: 1\r\nB: two";
+  HttpField field;
+  size_t cursor = 0;
+  bool first = http_next_field(unterminated, sizeof(unterminated) - 1, &cursor, &field);
+  assert(first && http_text_is(field.name, field.name_len, "A"));
+  bool last = http_next_field(unterminated, sizeof(unterminated) - 1, &cursor, &field);
+  assert(last && http_text_is(field.name, field.name_len, "B") && field.value_len == 3 &&
+         memcmp(field.value, "two", 3) == 0);
+  assert(!http_next_field(unterminated, sizeof(unterminated) - 1, &cursor, &field));
+}
+
+// A request line may carry a colon, an absolute-form target: it matches no
+// field name, and the handshake after it is served like any other.
+static void test_request_line_colon(void) {
+  char request[512], headers[1024];
+  int n = snprintf(request, sizeof(request),
+                   "GET http://h:1/ HTTP/1.1\r\nHost: 127.0.0.1\r\nUpgrade: websocket\r\n"
+                   "Connection: Upgrade\r\n" WS_SAMPLE_KEY_LINE "\r\n");
+  assert(n > 0 && (size_t)n < sizeof(request));
+  int fd = ws_raw_connect(WS_LIVE_PORT);
+  ws_send_all(fd, request, (size_t)n);
+  assert(ws_read_reply(fd, headers, sizeof(headers)));
+  assert(strstr(headers, "HTTP/1.1 101 Switching Protocols\r\n") == headers);
+  ws_expect_text(fd, "\"type\":\"welcome\"", NULL, NULL);
+  close(fd);
+}
+
 // Connections the server must refuse: one that says nothing, one that is not
 // an upgrade, and one that upgrades without a key. Each is closed, not served.
 static void test_non_websocket_connections(void) {
@@ -532,6 +562,8 @@ static void test_non_websocket_connections(void) {
   test_handshake_spellings();
   test_malformed_upgrades_get_400();
   test_field_values_are_not_upgrade();
+  test_upgrade_reader_edges();
+  test_request_line_colon();
   assert(websocket_stop_server(server_id) == 0);
 }
 
