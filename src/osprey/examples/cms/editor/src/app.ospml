@@ -1,0 +1,67 @@
+// Implements [UI-STORE], [UI-REGIONS] and [UI-THEME] for the CMS editor [CMS-EDITOR]: the program every
+// host runs. The sidebar and the work area sit side by side; the new-page dialog, the history drawer
+// and the notice sit over them while they apply.
+namespace studio
+
+import ui::Keyed
+import ui::Messages
+import ui::Runtime
+import ui::Surfaces
+import ui::Ui
+import studio::Design
+import studio::Kit
+import studio::Names
+import studio::Replies
+import studio::Screens
+import studio::Update
+
+(** The CMS editor as the framework runs it. *)
+module App
+    (** The store at launch, talking to the CMS that served the page, with the tree and history asked for. *)
+    export initial context = Update::hydrate (Update::launched (listGet context.arguments 0 ?: "http://127.0.0.1:4321"))
+
+    (** Applies one message: a tap, an edit or choice, a caret move or a completed request. *)
+    export update (_, store, message) = Messages::route (message, \action => Update::tapped (store, action), \(action, words) => Update::typed (store, action, words), \(_, _) => Runtime::step store, \(action, offset) => Update::placed (store, action, offset), \(ticket, outcome) => Replies::completed (store, ticket, outcome), \_ => Runtime::step store, \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \_ => Runtime::step store, \(_, _) => Runtime::step store)
+
+    work store = match store.opened
+        "" => Screens::welcome ()
+        path => match Names::kind path
+            "markdown" => Screens::markdown store
+            _ => Screens::media store
+
+    main store =
+        style = Kit::surface ("bg", "", 0, 0)
+        Ui::framed (style(frameGrow = true), Ui::column [Screens::topbar store, work store])
+
+    shell store =
+        window = Kit::surface ("bg", "", 0, 0)
+        Ui::framed (window(frameViewportHeightInset = 0, frameGrow = true, frameGap = 0), Ui::row [Screens::sidebar store, Kit::grow (main store)])
+
+    dialog store = Kit::card (24, [Kit::heading ("New page", "h3", "ink"), Kit::say ("Where should it live? Pages are Markdown files under your content folders.", "small", "inkMuted"), Kit::input ("Path, such as content/blog/hello.md", store.draftPath, EditDraft), Kit::row (8, [Kit::grow (Ui::column []), Kit::button ("ghost", "Cancel", "", true, CancelDraft), Kit::button ("primary", "Create page", "add", true, CreatePage)])])
+
+    commitRow item = Kit::stack (4, [Kit::strong (item.commitSubject, "body", "ink"), Kit::row (8, [Kit::chip (take item.commitSha 7), Kit::say (item.commitDate, "micro", "inkMuted")])])
+
+    history store = Kit::drawer ("History", mapList (store.history, commitRow), ToggleHistory)
+
+    dialogs store = match store.creating
+        true => [Ui::framed (Kit::surface ("", "", 0, 80), dialog store)]
+        false => []
+
+    drawers store = match store.showingHistory
+        true => [history store]
+        false => []
+
+    notices store = match store.notice.noticeHeading
+        "" => []
+        _ => [Kit::toast (store.notice.noticeTone, store.notice.noticeHeading, store.notice.noticeDetail, Dismiss)]
+
+    overlays store = listConcat (listConcat (dialogs store) (drawers store)) (notices store)
+
+    (** The whole window: the shell, and over it whatever applies. *)
+    export root store = Ui::layer (listPrepend (overlays store) (shell store))
+
+    (** One region, rebuilt on every step. *)
+    export regions (_, store, frames, _) = [Keyed::region (frames, Surfaces::rootKey, [], \() => root store)]
+
+    (** The CMS editor as its boundary runs it. *)
+    export program () = ui::Surfaces::themed (initial, update, regions, Design::theme ())

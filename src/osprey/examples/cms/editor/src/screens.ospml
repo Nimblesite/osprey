@@ -1,0 +1,127 @@
+// Implements [CMS-EDITOR] screens: the sidebar's tree and upload, the top bar, the formatted and raw
+// editors with their ribbon, the media view and the empty state, assembled only from studio::Kit.
+namespace studio
+
+import ui::Editors
+import ui::Frames
+import ui::Media
+import ui::Ui
+import studio::Blocks
+import studio::Design
+import studio::Kit
+import studio::Names
+import studio::Preview
+
+(** The studio's screens. *)
+module Screens
+    symbolOf kind = match kind
+        "markdown" => "document"
+        "other" => "package"
+        _ => "star"
+
+    shown (store, item) = store.filter == "" || contains (toLowerCase item.entryPath) (toLowerCase store.filter)
+
+    depthOf path = satSub (length (split path "/" ?: [])) 1
+
+    treeRow (store, item) = Kit::treeItem (depthOf item.entryPath, symbolOf item.entryKind, Names::base item.entryPath, item.entryPath == store.opened, Open(openPath = item.entryPath))
+
+    // The files under each root, each root under its own heading.
+    treeRows (store, items) = foldList (store.roots, [], \(out, root) => listConcat (listAppend out (Kit::treeFolder (0, root))) (mapList (filterList (items, \item => startsWith item.entryPath "${root}/"), \item => treeRow (store, item))))
+
+    brand () =
+        mark = Kit::surface ("accent", "", Design::radius "sm", 0)
+        logo = Ui::framed (mark(frameWidth = 34, frameHeight = 34, frameInk = "accentInk", frameAlign = "center", frameCross = "center", frameSymbolSize = 18), Ui::icon "sparkle")
+        Kit::row (10, [logo, Kit::stack (0, [Kit::strong ("Osprey Studio", "body", "sidebarInk"), Kit::say ("Content, versioned in git", "micro", "sidebarMuted")])])
+
+    folders store = Kit::segmented (mapList (store.roots, \root => Kit::choice (root, root == store.folder, PickFolder)))
+
+    uploader store =
+        style = Kit::surface ("sidebarRaised", "", Design::radius "md", 14)
+        Ui::framed (style(frameGap = 10), Ui::column [Kit::eyebrow ("Add media", "sidebarMuted"), Kit::button ("primary", "Upload image, video or audio", "add", store.busy == false, ChooseMedia), Kit::say ("Saved into ${store.folder}/ and committed.", "micro", "sidebarMuted")])
+
+    (** The dark sidebar: brand, search, the tree and the uploader. *)
+    export sidebar store =
+        style = Kit::surface ("sidebar", "", 0, 16)
+        items = filterList (store.files, \item => shown (store, item))
+        tree = Ui::framed (style(frameFill = "", frameGrow = true, frameScrollY = true, frameGap = 2), Ui::column (treeRows (store, items)))
+        Ui::framed (style(frameWidth = 292, frameGap = 16), Ui::column [brand (), Kit::input ("Search files", store.filter, Search), tree, uploader store])
+
+    crumbs path = Kit::cluster (6, mapList (split path "/" ?: [], \part => Kit::say (part, "small", "inkMuted")))
+
+    stateOf store = match store.loads > 0 || store.busy
+        true => Kit::status ("warn", "Saving…")
+        false => match store.text == store.saved
+            true => Kit::status ("good", "Saved")
+            false => Kit::status ("accent", "Unsaved changes")
+
+    commitChip store = match store.commit
+        "" => []
+        sha => [Kit::chip (take sha 7)]
+
+    (** The bar over the work: where you are, its state, and what you can do. *)
+    export topbar store =
+        style = Kit::surface ("panel", "edge", 0, 14)
+        actions = [Kit::iconButton ("History", "clock", store.showingHistory, ToggleHistory), Kit::iconButton ("Refresh", "refresh", false, Refresh), Kit::button ("secondary", "New page", "add", true, NewPage), Kit::button ("danger", "Delete", "delete", store.opened != "", Delete), Kit::button ("primary", "Save", "check", store.text != store.saved, Save)]
+        Ui::framed (style(frameLineEdge = "bottom", frameRadius = 0), Ui::row (listConcat (listConcat [Kit::grow (crumbs store.opened), stateOf store] (commitChip store)) actions))
+
+    modes store = Kit::segmented [Kit::choice ("Formatted", store.mode == "formatted", Formatted), Kit::choice ("Markdown", store.mode == "markdown", Raw)]
+
+    styleTools () = [Kit::tool ("Body", false, Restyle(styleName = "paragraph")), Kit::tool ("H1", false, Restyle(styleName = "h1")), Kit::tool ("H2", false, Restyle(styleName = "h2")), Kit::tool ("H3", false, Restyle(styleName = "h3"))]
+
+    inlineTools () = [Kit::tool ("B", false, Emphasis(marker = "**")), Kit::tool ("I", false, Emphasis(marker = "*")), Kit::tool ("Code", false, Emphasis(marker = "`"))]
+
+    blockTools () = [Kit::tool ("• List", false, Restyle(styleName = "bullets")), Kit::tool ("❝ Quote", false, Restyle(styleName = "quote"))]
+
+    insertTools () = [Kit::tool ("Link", false, Insert(snippet = "[link text](https://)")), Kit::tool ("Image", false, Insert(snippet = "![Describe the image](/media/)"))]
+
+    (** The ribbon: modes, then styles, emphasis, blocks and inserts. *)
+    export ribbon store = Kit::row (12, [modes store, Kit::ribbon [styleTools (), inlineTools (), blockTools (), insertTools ()]])
+
+    paperStyle () =
+        style = Kit::surface ("panel", "edge", Design::radius "lg", 48)
+        style(frameShadow = "floating", frameWidth = 820, frameGap = 18)
+
+    typeOf style = match style
+        "h1" => "h1"
+        "h2" => "h2"
+        "h3" => "h3"
+        "quote" => "h3"
+        _ => "body"
+
+    // One block, editable in place in its own type: the Word-style view.
+    blockEditor (store, index, item) =
+        style = Frames::text (Design::sans (), Design::size (typeOf item.blockStyle), false)
+        Ui::framed (style(frameHug = false, frameQuietControls = true, frameLineHeight = toFloat (Design::size (typeOf item.blockStyle)) * 1.5), Editors::inline (item.blockStyle, item.blockText, 0, EditBlock(blockIndex = index), PlaceBlock(placedIndex = index)))
+
+    formatted store =
+        blocks = (Blocks::page store.text).pageBlocks
+        page = Ui::framed (paperStyle (), Ui::column (range (0, length blocks) |> fold [] (\(out, index) => listAppend out (blockEditor (store, index, Blocks::blockAt (blocks, index))))))
+        Kit::stack (0, [page])
+
+    raw store =
+        source = Kit::surface ("panel", "edge", Design::radius "lg", 20)
+        reader = Kit::surface ("panel", "edge", Design::radius "lg", 32)
+        editor = Ui::framed (source(frameFont = Design::mono (), frameTextSize = Design::size "body", frameGrow = true), Editors::editor ("Markdown", store.text, store.cursor, [], Edit, Place))
+        Kit::row (16, [editor, Ui::framed (reader(frameGrow = true, frameScrollY = true), Preview::page store.text)])
+
+    workStyle () =
+        style = Kit::surface ("bg", "", 0, 24)
+        style(frameGrow = true, frameScrollY = true, frameGap = 18, frameCross = "center")
+
+    surfaceOf store = match store.mode
+        "markdown" => raw store
+        _ => formatted store
+
+    (** The open page: the ribbon over the formatted or raw editor. *)
+    export markdown store = Ui::framed (workStyle (), Ui::column [ribbon store, surfaceOf store])
+
+    mediaOf store = match Names::kind store.opened
+        "video" => Media::video (store.preview, "", "", Names::base store.opened, 0)
+        "image" => Media::image (store.preview, Names::base store.opened, 640, 400)
+        _ => Kit::say ("Audio files play on the site; there is no preview here.", "body", "inkMuted")
+
+    (** An open image, video or audio file. *)
+    export media store = Ui::framed (workStyle (), Ui::column [Kit::card (24, [Kit::heading (Names::base store.opened, "h3", "ink"), Kit::chip store.opened, mediaOf store])])
+
+    (** Nothing open yet. *)
+    export welcome () = Ui::framed (workStyle (), Kit::empty ("document", "Pick a page to edit", "Choose a page or media file on the left, or start a new page."))

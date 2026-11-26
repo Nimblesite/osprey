@@ -52,8 +52,8 @@ function listed(res: Response, commits) {
 export function cms(config: Config) {
   const app = express();
   app.get("/", (_req, res) => asset(config, res, "index.html", "text/html; charset=utf-8"));
-  app.get("/editor.css", (_req, res) => asset(config, res, "editor.css", "text/css; charset=utf-8"));
-  app.get("/editor.js", (_req, res) => asset(config, res, "editor.js", "text/javascript; charset=utf-8"));
+  app.get("/host.css", (_req, res) => asset(config, res, "host.css", "text/css; charset=utf-8"));
+  app.get("/host.js", (_req, res) => asset(config, res, "host.js", "text/javascript; charset=utf-8"));
   app.get("/api/tree", (_req, res) => res.json(treeJson(config.roots, tree(config))));
   app.get("/api/file", (req, res) => withPath(config, req, res, (path) => opened(config, res, path)));
   app.put("/api/file", (req, res) => withPath(config, req, res, (path) => written(config, req, res, path)));
