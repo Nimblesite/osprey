@@ -29,7 +29,11 @@ static void expect_bounded_failure(int64_t code, uint64_t started, int64_t timeo
   int64_t took = elapsed_ms_since(started);
   assert(took >= timeout_ms * HTTP_READ_BOUND_FACTOR - 100);
   assert(took < timeout_ms * (HTTP_READ_BOUND_FACTOR + 5));
-  assert(peer_closed && "the client must close the origin at the operation deadline");
+  if (!peer_closed) {
+    fprintf(stderr, "origin never saw the client close: %s, timeout %lld ms, took %lld ms\n", text,
+            (long long)timeout_ms, (long long)took);
+  }
+  assert(peer_closed &&"the client must close the origin at the operation deadline");
   assert(strcmp(osp_io_error(), text) == 0);
   osp_io_error_clear();
 }
