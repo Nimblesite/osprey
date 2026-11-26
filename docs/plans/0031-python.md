@@ -1,6 +1,6 @@
 # Plan 0031: Python flavor, Python interoperability and flavor conversion
 
-Goal: the Python flavor and its Default and ML twins are verified end to end, `--target=python` hosts real Python calls from Windows as well as macOS and Linux, and any source converts mechanically between the three flavors. Contracts: [spec 0041](../specs/language/0041-PythonFlavorSyntax.md), [spec 0042](../specs/platforms/0042-PythonInterop.md) and [Language Flavors](../specs/language/0023-LanguageFlavors.md), which hold the port's rules (no CPython fall-through, original source positions, identical IR across twins, no implicit `Any`). Depends on [plan 0023](0023-gpu.md) for device runs and measurement records.
+Goal: the Python flavor and its Default and ML twins are verified end to end, `--target=python` hosts real Python calls from Windows as well as macOS and Linux, and any source converts mechanically between the three flavors. Contracts: [spec 0041](../specs/language/0041-PythonFlavorSyntax.md), [spec 0042](../specs/platforms/0042-PythonInterop.md) and [Language Flavors](../specs/language/0023-LanguageFlavors.md), which hold the port's rules (no CPython fall-through, original source positions, identical IR across twins, no implicit `Any`). Depends on [plan 0055](0055-targets.md) for device runs and measurement records.
 
 ## Flavor verification
 
