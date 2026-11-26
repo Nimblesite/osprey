@@ -1,19 +1,34 @@
 (() => {
   // 0. Single-Nav Dropdown Submenu (Learn)
+  const finePointer = window.matchMedia("(hover: hover) and (pointer: fine)");
   document.querySelectorAll("[data-dropdown]").forEach((group) => {
     const trigger = group.querySelector("[data-dropdown-trigger]");
     const menu = group.querySelector("[data-dropdown-menu]");
     if (!trigger || !menu) return;
+    let openedByHover = false;
     const setOpen = (open) => {
       trigger.setAttribute("aria-expanded", String(open));
       menu.hidden = !open;
+      if (!open) openedByHover = false;
     };
     trigger.addEventListener("click", (event) => {
       event.stopPropagation();
+      if (openedByHover) {
+        openedByHover = false;
+        return;
+      }
       setOpen(menu.hidden);
     });
-    group.addEventListener("mouseenter", () => setOpen(true));
-    group.addEventListener("mouseleave", () => setOpen(false));
+    group.addEventListener("mouseenter", () => {
+      if (!finePointer.matches) return;
+      if (menu.hidden) {
+        setOpen(true);
+        openedByHover = true;
+      }
+    });
+    group.addEventListener("mouseleave", () => {
+      if (finePointer.matches) setOpen(false);
+    });
     document.addEventListener("click", (event) => {
       if (!group.contains(event.target)) setOpen(false);
     });
@@ -22,7 +37,7 @@
     });
   });
 
-  // 1. Studio 3-View Screenshot Tabs (Track patch / Timeline / Bus routing)
+  // 1. Studio 3-View Screenshot Tabs
   const tabButtons = document.querySelectorAll("[data-view-tab]");
   const tabPanels = document.querySelectorAll("[data-view-panel]");
   tabButtons.forEach((btn) => {
@@ -37,7 +52,7 @@
     });
   });
 
-  // 2. Instrument Category Filter (/modules/)
+  // 2. Module Category Filter (/learn/modules/)
   const filterButtons = document.querySelectorAll("[data-filter]");
   const filterItems = document.querySelectorAll("[data-category]");
   const filterStatus = document.getElementById("filter-status");
@@ -57,80 +72,53 @@
       if (filterStatus) {
         filterStatus.textContent =
           wanted === "all"
-            ? `Showing all ${shown} instruments`
-            : `Showing ${shown} ${wanted} instrument${shown === 1 ? "" : "s"}`;
+            ? `Showing all ${shown} modules`
+            : `Showing ${shown} ${wanted} module${shown === 1 ? "" : "s"}`;
       }
     });
   });
 
-  // 3. Interactive DSP Module Chip Inspector (/modules/)
-  const moduleSpecs = {
-    grainCloud: ["Stereo · 16 grains", "Granular engine with 8–192 kHz WAV import, reverse/freeze playback rate, pan, and timing jitter."],
-    exciter: ["Mono · Audio", "Single-period filtered noise burst for plucking waveguides and striking modal banks."],
-    sine: ["Mono · Audio", "Pure phase-accurate sine oscillator with optional MIDI note inlet."],
-    wavetable: ["Mono · Audio", "Interpolated wavetable oscillator with proved linear endpoints and harmonic morphing."],
-    additive: ["Mono · Audio", "Harmonic bank synthesizer with proved additive period invariance."],
-    operator: ["Mono · Audio", "Phase-distortion FM operator with feedback and bloom control."],
-    bowed: ["Mono · Physical", "Continuous stick-slip bowed string model with gated bow pressure and vibrato."],
-    midiOscillator: ["Events → Audio", "Note-driven oscillator responding directly to MIDI pitch and velocity streams."],
-    waveguide: ["Mono · Physical", "Traveling-wave string resonator backed by Lean proof travelingWavePropagation."],
-    modal: ["Mono · Physical", "8-mode coupled resonator bank for bells, bars, and metallic percussion."],
-    resonator: ["Mono · Physical", "Tunable resonant body filter for acoustic coloration."],
-    strikeComb: ["Mono · Physical", "Comb delay line tuned to string pitch for struck-wire transients."],
-    fractionalDelay: ["Mono · DSP", "Sub-sample interpolated delay line for precision pitch waveguides."],
-    lossFilter: ["Mono · DSP", "Frequency-dependent damping inside physical feedback loops."],
-    allpass: ["Mono · DSP", "Unit-magnitude phase disperser backed by Lean proof allpassMagnitude."],
-    shifter: ["Mono · Spectral", "Formant-preserving FFT pitch shifter with wet/dry harmonic blending."],
-    spectral: ["Mono · Spectral", "Two-source spectral morphing and phase-locked spectral freeze."],
-    modulatedLowpass: ["Audio + Mod → Audio", "Resonant low-pass filter with normalized purple CUTOFF modulation inlet and cyan Scope monitor."],
-    lowpass: ["Mono · Filter", "Clean fixed-cutoff low-pass filter."],
-    shaper: ["Mono · Nonlinear", "Tanh, hard clip, cubic, and wavefolder shaper with proved antiderivative anti-aliasing."],
-    reverb: ["Stereo · Space", "Lush stereo algorithmic reverb for Space sends and ambient tails."],
-    delay: ["Mono/Stereo · Time", "Feedback delay line for rhythmic echoes and stereo Haas spreads."],
-    smoother: ["Control · DSP", "Zipper-free parameter smoother for live dial and macro sweeps."],
-    gain: ["Mono · Utility", "Visible linear gain stage — zero hidden auto-gain."],
-    modulatedGain: ["Audio + Mod → Audio", "VCA controlled by LFOs or envelopes for tremolo and AM."],
-    stereoModulatedGain: ["Stereo + Mod → Stereo", "True-stereo modulated VCA for granular clouds and wide buses."],
-    lfo: ["Control · Mod", "Normalized low-frequency oscillator driving filter cutoffs, gain, and pan."],
-    formulaNotes: ["Events · Generative", "Type a step expression like 60 + t * 7 % 12 to emit deterministic MIDI melodies."],
-    midiNote: ["Events · MIDI", "Fixed or triggered MIDI note generator for self-playing modular patches."],
-    mixer: ["Multi → Mono", "Sum arbitrary audio signals with explicit per-channel levels."],
-    stereo: ["Mono → Stereo", "Promote mono signals into stereo space with pan control."],
-    downmix: ["Stereo → Mono", "Sum stereo buses cleanly to mono for sidechain or mono FX."],
-    split: ["Stereo → 2×Mono", "Split left and right channels for independent per-channel processing."],
-    join: ["2×Mono → Stereo", "Recombine dual-mono chains into a stereo pair."],
-    route: ["N-in → N-out", "Arbitrary channel matrix and L/R swapper (e.g. channel0 / channel1)."],
-    output: ["Mono · Sink", "Mono track patch output."],
-    stereoOutput: ["Stereo · Sink", "Stereo track patch output feeding your bus tree or VST3 host."],
+  // Shared Safari closedBy light-dismiss fallback
+  const wireLightDismiss = (dialog) => {
+    if (!dialog || "closedBy" in HTMLDialogElement.prototype) return;
+    dialog.addEventListener("click", (event) => {
+      if (event.target !== dialog) return;
+      const rect = dialog.getBoundingClientRect();
+      const inside =
+        rect.top <= event.clientY &&
+        event.clientY <= rect.top + rect.height &&
+        rect.left <= event.clientX &&
+        event.clientX <= rect.left + rect.width;
+      if (!inside) dialog.close();
+    });
   };
 
-  const chipButtons = document.querySelectorAll("[data-module]");
-  const modTitle = document.getElementById("module-detail-title");
-  const modRate = document.getElementById("module-detail-rate");
-  const modDesc = document.getElementById("module-detail-desc");
-
-  chipButtons.forEach((chip) => {
-    chip.addEventListener("click", () => {
-      const name = chip.getAttribute("data-module");
-      const spec = moduleSpecs[name];
-      if (!spec || !modTitle || !modRate || !modDesc) return;
-      chipButtons.forEach((c) => {
-        const active = c === chip;
-        c.classList.toggle("is-active", active);
-        c.setAttribute("aria-pressed", String(active));
+  // 3. Module Detail Popup Modal (/learn/modules/)
+  const modDialog = document.getElementById("module-dialog");
+  if (modDialog) {
+    const title = document.getElementById("mod-modal-title");
+    const cat = document.getElementById("mod-modal-cat");
+    const details = document.getElementById("mod-modal-details");
+    const ports = document.getElementById("mod-modal-ports");
+    const controls = document.getElementById("mod-modal-controls");
+    document.querySelectorAll("[data-module-card]").forEach((card) => {
+      card.addEventListener("click", () => {
+        title.textContent = card.getAttribute("data-mod-name") || "";
+        cat.textContent = card.getAttribute("data-mod-cat") || "";
+        details.textContent = card.getAttribute("data-mod-details") || "";
+        ports.textContent = card.getAttribute("data-mod-ports") || "";
+        controls.textContent = card.getAttribute("data-mod-controls") || "";
+        modDialog.showModal();
       });
-      modTitle.textContent = name;
-      modRate.textContent = spec[0];
-      modDesc.textContent = spec[1];
     });
-  });
+    wireLightDismiss(modDialog);
+  }
 
-  // 4. Native Modal Lightbox with Safari closedBy fallback
+  // 4. Screenshot Lightbox Modal
   const dialog = document.getElementById("lightbox");
   const lbImg = document.getElementById("lightbox-img");
   const lbTitle = document.getElementById("lightbox-title");
   const lbCaption = document.getElementById("lightbox-caption");
-
   if (dialog && lbImg && lbTitle && lbCaption) {
     document.querySelectorAll("[data-lightbox-src]").forEach((trigger) => {
       trigger.addEventListener("click", () => {
@@ -141,18 +129,6 @@
         dialog.showModal();
       });
     });
-
-    if (!("closedBy" in HTMLDialogElement.prototype)) {
-      dialog.addEventListener("click", (event) => {
-        if (event.target !== dialog) return;
-        const rect = dialog.getBoundingClientRect();
-        const inside =
-          rect.top <= event.clientY &&
-          event.clientY <= rect.top + rect.height &&
-          rect.left <= event.clientX &&
-          event.clientX <= rect.left + rect.width;
-        if (!inside) dialog.close();
-      });
-    }
+    wireLightDismiss(dialog);
   }
 })();

@@ -1,76 +1,73 @@
 ---
 layout: base.njk
 title: "Modules & Instruments"
-description: "Physical models, 16-voice granular clouds, spectral morphing, formula melodies, and 36+ typed DSP modules in Perception Studio."
+description: "Physical models, 16-voice granular clouds, spectral morphing, and modular DSP instruments in Perception Studio."
 ---
 
 <section class="section grid-backdrop" style="border-top:0">
   <div class="shell">
-    <p class="eyebrow"><a href="/learn/" style="text-decoration:none">← Learn</a> · Reference</p>
-    <div class="section-head">
-      <h1>Voices &amp; 36+ Signal Modules</h1>
-      <p>
-        Physical waveguides, modal bells, phase-distortion operators, granular clouds, and
-        isolated VST3 plug-ins — all patchable in one typed graph.
+    <div class="prose">
+      <p class="prose-eyebrow"><a href="/learn/" style="text-decoration:none">← Learn</a> · Modules</p>
+      <h1>Instruments &amp; DSP Modules</h1>
+      <p class="prose-lead">
+        Filter by synthesis family and tap any card to inspect its signal path, parameters, and architecture.
       </p>
     </div>
 
-    <div class="filter-bar" role="group" aria-label="Filter instruments by category">
-      <button type="button" class="filter-btn" data-filter="all" aria-pressed="true">All instruments</button>
+    <div class="filter-bar" role="group" aria-label="Filter modules by category">
+      <button type="button" class="filter-btn" data-filter="all" aria-pressed="true">All</button>
       <button type="button" class="filter-btn" data-filter="modular" aria-pressed="false">Modular</button>
+      <button type="button" class="filter-btn" data-filter="spectral" aria-pressed="false">Granular &amp; Spectral</button>
       <button type="button" class="filter-btn" data-filter="physical" aria-pressed="false">Physical</button>
       <button type="button" class="filter-btn" data-filter="synth" aria-pressed="false">Synthesis</button>
       <button type="button" class="filter-btn" data-filter="percussion" aria-pressed="false">Percussion</button>
     </div>
-    <p id="filter-status" class="mono dim" style="font-size:0.8rem; margin: -12px 0 18px;" aria-live="polite">
-      Showing all {{ site.instruments.length }} instruments
+    <p id="filter-status" class="mono dim" style="font-size:0.8rem; margin: -10px 0 20px;" aria-live="polite">
+      Showing all {{ site.instruments.length }} modules
     </p>
 
     <div class="card-grid">
       {% for inst in site.instruments %}
-      <article class="card" data-category="{{ inst.category }}">
-        <span class="card-tag{% if inst.category == 'physical' %} is-monitor{% elif inst.category == 'modular' %} is-mod{% endif %}">{{ inst.category }}</span>
+      <button
+        type="button"
+        class="card card-interactive"
+        data-category="{{ inst.category }}"
+        data-module-card
+        data-mod-name="{{ inst.kind }}"
+        data-mod-cat="{{ inst.category }}"
+        data-mod-ports="{{ inst.ports }}"
+        data-mod-controls="{{ inst.controls }}"
+        data-mod-details="{{ inst.details }}"
+      >
+        <span class="card-tag{% if inst.category == 'physical' or inst.category == 'spectral' %} is-monitor{% elif inst.category == 'modular' %} is-mod{% endif %}">{{ inst.category }}</span>
         <h3 class="mono">{{ inst.kind }}</h3>
         <p>{{ inst.summary }}</p>
-        <p class="mono" style="font-size:0.78rem; color: var(--ink);">{{ inst.controls }}</p>
-      </article>
+        <span class="card-cta">Inspect specs →</span>
+      </button>
       {% endfor %}
     </div>
   </div>
 </section>
 
-<section class="section">
-  <div class="shell">
-    <div class="section-head">
-      <h2>Click any module for port &amp; DSP specs</h2>
-      <p>Port rates, units, channel counts, and feedback cycles are checked on every cable.</p>
+<dialog id="module-dialog" class="lightbox module-modal" closedby="any" aria-labelledby="mod-modal-title">
+  <div class="lightbox-frame">
+    <div class="lightbox-head">
+      <span id="mod-modal-cat" class="card-tag">modular</span>
+      <form method="dialog">
+        <button type="submit" class="btn btn-ghost" aria-label="Close module details">Close ✕</button>
+      </form>
     </div>
-
-    <div class="module-detail" aria-live="polite">
-      <div>
-        <h3 class="mono" id="module-detail-title">grainCloud</h3>
-        <p id="module-detail-desc">Granular engine with 8–192 kHz WAV import, reverse/freeze playback rate, pan, and timing jitter.</p>
-      </div>
-      <span class="readout-pill" id="module-detail-rate">Stereo · 16 grains</span>
-    </div>
-
-    {% for group in site.moduleGroups %}
-    <div class="module-group">
-      <h3>
-        <span class="dot dot-{{ group.accent }}" aria-hidden="true"></span>
-        {{ group.name }}
-      </h3>
-      <div class="chip-list" role="group" aria-label="{{ group.name }}">
-        {% for item in group.items %}
-        <button
-          type="button"
-          class="chip{% if item == 'grainCloud' %} is-active{% endif %}"
-          data-module="{{ item }}"
-          aria-pressed="{% if item == 'grainCloud' %}true{% else %}false{% endif %}"
-        >{{ item }}</button>
-        {% endfor %}
+    <div class="module-modal-body prose">
+      <h2 id="mod-modal-title" class="mono" style="margin-top:0">PatchInstrument</h2>
+      <p id="mod-modal-details"></p>
+      <div class="prose-table-wrap">
+        <table class="prose-table">
+          <tbody>
+            <tr><th>Signal path</th><td><code id="mod-modal-ports"></code></td></tr>
+            <tr><th>Controls</th><td><code id="mod-modal-controls"></code></td></tr>
+          </tbody>
+        </table>
       </div>
     </div>
-    {% endfor %}
   </div>
-</section>
+</dialog>
