@@ -14,16 +14,18 @@ The implementation language contract `[PACKAGE-IMPLEMENTATION-LANGUAGE]` applies
 
 ```mermaid
 flowchart LR
-    U[Browser or CLI] --> CF[Cloudflare DNS, TLS, WAF and rate limits]
-    CF --> LB[GCP HTTPS load balancer and Cloud Armor]
-    LB --> API[Osprey API and browser session endpoints on Cloud Run]
-    CF --> WEB[Versioned static Osprey WebAssembly website]
-    API --> AUTH[Supabase Auth and GitHub OAuth]
-    API --> DB[Supabase PostgreSQL with restricted roles and RLS]
-    API --> JOB[Isolated publication workers]
-    JOB --> GH[GitHub App source collection]
-    JOB --> CAS[Private immutable CAS replicas]
-    JOB --> TRUST[Independent builders, signers, log and witnesses]
+    Pages["Cloudflare Pages"] -->|Serves the website| Web["Osprey Packages in the browser"]
+    Web -->|Search, package details, publisher profiles, downloads, publication intents| Edge["Cloudflare API edge"]
+    CLI["Package client"] --> Edge
+    Edge --> LB["GCP HTTPS load balancer and Cloud Armor"]
+    LB --> API["Osprey Package Manager API on Cloud Run"]
+    API -->|Sessions and GitHub OAuth| Auth["Supabase Auth"]
+    API -->|Catalog, releases, publisher attribution and grants| DB["Supabase PostgreSQL with RLS"]
+    API -->|Queue authorized publication| Worker["Isolated publication workers"]
+    Worker -->|Fetch bound commit| GitHub["GitHub App"]
+    Worker --> Verify["Independent builders, signers and witnesses"]
+    Worker -->|Store release source| CAS["Private digest-addressed storage"]
+    API -->|Read eligible release by digest| CAS
 ```
 
 Use distinct local, staging and production Supabase projects, GCP resources, storage, GitHub OAuth applications, GitHub Apps, signing identities and secrets. Default runtime region is `australia-southeast1`; select a compatible Supabase region and record the actual choice and latency. Account IDs, domains and capacity limits MUST be inventoried before provisioning; reference projects' IDs and secrets MUST NOT be reused.
