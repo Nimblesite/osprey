@@ -15,6 +15,15 @@ const { chromium } = require('../../src/toolchain/website/node_modules/playwrigh
       await page.getByRole('link', { name: '@osprey/re', exact: true }).click();
       await page.getByRole('heading', { name: '@osprey/re' }).waitFor();
       assert.equal(await page.evaluate(() => document.body.scrollWidth <= innerWidth), true);
+      await page.goto('http://127.0.0.1:4187/?q=regular-expression');
+      await page.locator('.prose-package[hidden]').first().waitFor({ state: 'attached' });
+      assert.deepEqual(await page.locator('.prose-package:visible h3').allTextContents(), ['@osprey/re']);
+      await page.goto('http://127.0.0.1:4187/?q=nonexistent-fixture');
+      await page.getByText('No matching packages.').waitFor();
+      await page.route('**/*.wasm', route => route.abort());
+      await page.reload();
+      await page.getByText('Search is unavailable.').waitFor();
+      assert.equal(await page.locator('.prose-package:visible').count(), 0);
       await page.close();
     }
   } finally {

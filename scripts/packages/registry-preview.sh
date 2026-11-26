@@ -12,7 +12,7 @@ mkdir -p "$out/sources"
 cp "$site/registry-mark.svg" "$out/"
 cp -R "$site/guide" "$site/publishing" "$site/upload" "$out/"
 cp "$site/registry.$(shasum -a 256 src/osprey/packages/manager/web/assets/registry.css | cut -c1-12).css" "$out/"
-sed "s/form-action 'none'/script-src 'self'; form-action 'self'/" "$site/_headers" > "$out/_headers"
+sed "s/form-action 'none'/connect-src 'self'; script-src 'self' 'wasm-unsafe-eval'; form-action 'self'/" "$site/_headers" > "$out/_headers"
 fetch packages > "$work/catalog"
 jq -er '.packages | type == "array"' "$work/catalog" >/dev/null
 jq -r '.packages[].key' "$work/catalog" > "$work/keys"
@@ -50,10 +50,15 @@ if [[ -s "$work/credits" ]]; then
   mkdir -p "$out/publishers/osprey-repository"
   render publisher "$(tr -d '\n' < "$work/credits")" > "$out/publishers/osprey-repository/index.html"
 fi
-render local "$(tr -d '\n' < "$work/rows")" > "$out/index.html"
-filter=src/osprey/packages/manager/web/assets/filter.js
-asset="filter.$(shasum -a 256 "$filter" | cut -c1-12).js"
-grep -Fq "/$asset" "$out/index.html"
-cp "$filter" "$out/$asset"
+asset() {
+  local source="$1" name="$2" ext="$3" digest
+  digest=$(shasum -a 256 "$source" | cut -c1-12)
+  cp "$source" "$out/$name.$digest.$ext"
+  printf '%s' "$name.$digest.$ext"
+}
+adapter=$(asset src/toolchain/hosts/web/src/list-filter.mjs filter mjs)
+host=$(asset src/osprey/examples/wasm/wasi-shim.mjs wasi mjs)
+guest=$(asset target/registry-site-build/site.wasm site wasm)
+render local "$(tr -d '\n' < "$work/rows")" "$adapter" "$host" "$guest" > "$out/index.html"
 mkdir -p target/registry-site-preview
 rsync -a --delete "$out/" target/registry-site-preview/

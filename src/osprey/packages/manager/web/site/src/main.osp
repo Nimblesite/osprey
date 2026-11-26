@@ -5,8 +5,23 @@ fn catalog(local, entries) = {
     let notice = if local { "<p>Local folder registry · Audit unverified</p>" } else { "<p role=\"status\">The public catalog is unavailable.</p>" }
     let disabled = if local { "" } else { " disabled" }
     let form = "<form role=\"search\" method=\"get\" action=\"/\"><label for=\"q\">Search packages</label><div class=\"prose-search\"><input id=\"q\" name=\"q\" type=\"search\" placeholder=\"Package name or description\"${disabled}><button${disabled}>Search</button></div></form>"
-    let behavior = if local { "<script src=\"/filter.1ae1cf977c5e.js\" defer></script>" } else { "" }
-    Shell::withEscapedTitle("Osprey Packages", "<main><header class=\"prose-intro\"><h1>Osprey Packages</h1><p>The package registry for the Osprey language. Find libraries for your next project, see who published them, and download the source for a specific release.</p></header>${form}<section><h2>Browse packages</h2>${notice}<div id=\"results\">${entries}</div></section></main>${behavior}")
+    let behavior = if local { localFilter() } else { "" }
+    Shell::withEscapedTitle("Osprey Packages", "<main><header class=\"prose-intro\"><h1>Osprey Packages</h1><p>The package registry for the Osprey language. Find libraries for your next project, see who published them, and download the source for a specific release.</p></header>${form}<section><h2>Browse packages</h2>${notice}<div id=\"results\">${entries}</div>${behavior}</section></main>")
+}
+
+fn localFilter() = {
+    let adapter = trim(input())
+    let host = trim(input())
+    let guest = trim(input())
+    "<p id=\"filter-status\" role=\"status\" data-empty=\"No matching packages.\" data-error=\"Search is unavailable.\"></p><script type=\"module\" src=\"/${adapter}\" data-list-filter=\"results\" data-status=\"filter-status\" data-host=\"/${host}\" data-guest=\"/${guest}\"></script>"
+}
+
+fn visibility(terms, text) = if foldList(terms, true, fn(matches, term) => matches && contains(text, term)) { "1" } else { "0" }
+
+fn filtered() = {
+    let terms = split(toLowerCase(trim(input())), " ") ?: []
+    let count = parseInt(trim(input())) ?: 0
+    join(mapList(range(0, count) |> toList, fn(_i) => visibility(terms, toLowerCase(input()))), "")
 }
 
 fn upload() = Shell::withEscapedTitle("Upload a package · Osprey Packages", "<main><h1>Upload a package</h1><p role=\"status\">Public uploads are unavailable.</p><a href=\"/\">Browse packages</a></main>")
@@ -54,6 +69,7 @@ fn publisherPage() = {
 }
 
 fn main() = print(match trim(input()) {
+    "filter" => filtered()
     "missing" => Shell::withEscapedTitle("Page not found · Osprey Packages", "<main><h1>Page not found</h1><a href=\"/\">Browse packages</a></main>")
     "guide" => Guides::packages()
     "publishing" => Guides::publishers()

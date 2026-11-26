@@ -13,7 +13,9 @@ const ESUCCESS = 0;
 const ENOSYS = 52;
 
 /// Build a WASI shim that routes stdout/stderr `fd_write` to `write`.
-export function makeWasi(write) {
+export function makeWasi(write, stdin = "") {
+  const input = new TextEncoder().encode(stdin);
+  let consumed = 0;
   let memory = null;
   let pending = "";
   const view = () => new DataView(memory.buffer);
@@ -50,6 +52,20 @@ export function makeWasi(write) {
     return ESUCCESS;
   };
   const base = {
+    fd_read: (fd, iovs, count, out) => {
+      if (fd !== 0) return 8; // WASI EBADF
+      const dv = view();
+      const start = consumed;
+      for (let i = 0; i < count && consumed < input.length; i++) {
+        const ptr = dv.getUint32(iovs + i * 8, true);
+        const length = dv.getUint32(iovs + i * 8 + 4, true);
+        const chunk = input.subarray(consumed, consumed + length);
+        bytes().set(chunk, ptr);
+        consumed += chunk.length;
+      }
+      dv.setUint32(out, consumed - start, true);
+      return ESUCCESS;
+    },
     fd_write: fdWrite,
     proc_exit: () => flush(),
     fd_close: () => ESUCCESS,
@@ -82,8 +98,8 @@ export function makeWasi(write) {
 
 /// Instantiate `wasmBytes` as a WASI command module under the shim, run `_start`,
 /// and return the raw wasm exports. `write` receives decoded stdout/stderr text.
-export async function runModule(wasmBytes, write) {
-  const wasi = makeWasi(write);
+export async function runModule(wasmBytes, write, stdin = "") {
+  const wasi = makeWasi(write, stdin);
   const { instance } = await WebAssembly.instantiate(wasmBytes, {
     wasi_snapshot_preview1: wasi.imports,
   });
