@@ -303,11 +303,16 @@ void test_fibers_blocked_for_ever_are_found(void) {
   // A stale stack word can still name a channel, so a few may go unfound;
   // none is ever found twice, and none that could be woken is found at all.
   assert(found >= WAITING_FIBERS * 3 / 4 && found <= WAITING_FIBERS);
+  // A later collection may find one a stale word hid, never more than there
+  // are; collecting again from the same stack finds no one a second time.
   osp_collect();
   osp_collect();
-  assert(osp_mem_stuck_waits() - before == found && "each is counted once");
+  size_t settled = osp_mem_stuck_waits() - before;
+  assert(settled >= found && settled <= WAITING_FIBERS && "a hidden fiber is found later, never twice");
+  osp_collect();
+  assert(osp_mem_stuck_waits() - before == settled && "each is counted once");
   fiber_cleanup_results();
-  assert(osp_mem_stuck_waits() - before >= found);
+  assert(osp_mem_stuck_waits() - before >= settled);
 }
 
 static void *select_late_sender(void *channel) {
