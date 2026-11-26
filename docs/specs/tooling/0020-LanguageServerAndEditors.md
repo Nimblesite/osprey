@@ -184,6 +184,10 @@ The VS Code language client converts protocol edits to a `WorkspaceEdit` without
 
 Unused-symbol diagnostics use the four rules in [TYPE-WARNINGS-UNUSED](../language/0004-TypeSystem.md#unused-symbols-type-warnings-unused). They have Warning severity, source `osprey`, an identifier range and the LSP `Unnecessary` tag. They have no removal action.
 
+## Unused import quick fix `[LSP-CODE-ACTIONS-IMPORTS]`
+
+An `unused-import` warning ([MODULES-IMPORT-UNUSED]), whether the import is never used or is redundant because its module is in the file's own namespace, offers the `quickfix` "Remove unused import". It deletes the whole lines the import is written on, and is offered only when nothing else is written on them. The server recomputes the warning from current source, as for annotation fixes, and the extension applies the edit only against the exact document and open project it was proved on. The fix is not part of `source.fixAll.osprey`.
+
 ## Hover `[LSP-HOVER]`
 
 `textDocument/hover` locates the word through `[LSP-REUSE-LSPKIT]`, walks the

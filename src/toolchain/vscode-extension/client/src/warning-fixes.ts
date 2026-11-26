@@ -93,6 +93,15 @@ function guardedAction(
   return action;
 }
 
+// Warnings whose fixes delete source: each is applied only against the exact
+// document and project it was proved on ([LSP-CODE-ACTIONS-ANNOTATIONS],
+// [LSP-CODE-ACTIONS-IMPORTS]).
+const guardedCodes = new Set(["redundant-annotation", "unused-import"]);
+
+function guardedCode(code: unknown): boolean {
+  return typeof code === "string" && guardedCodes.has(code);
+}
+
 // vscode-languageclient converts versioned TextDocumentEdits to WorkspaceEdit
 // and drops their versions. Keep the source version until the user invokes the
 // action, so a cached lightbulb cannot delete text from a newer document.
@@ -113,9 +122,7 @@ export const warningFixMiddleware: Pick<Middleware, "provideCodeActions"> = {
     const actions = await next(document, range, context, token);
     return actions?.map((action) =>
       action instanceof CodeAction &&
-      action.diagnostics?.some(
-        (diagnostic) => diagnostic.code === "redundant-annotation",
-      )
+      action.diagnostics?.some((diagnostic) => guardedCode(diagnostic.code))
         ? guardedAction(action, document, snapshot)
         : action,
     );
@@ -142,7 +149,7 @@ function matchesFreshAction(
     action.disabled ||
     action.title !== fix.title ||
     action.kind !== fix.kind ||
-    !action.diagnostics?.some((item) => item.code === "redundant-annotation")
+    !action.diagnostics?.some((item) => guardedCode(item.code))
   )
     return false;
   const changes = action.edit?.documentChanges;
