@@ -63,10 +63,7 @@ env:
   # no wasm trap), or silently dropped output where the stale page is still
   # mapped. Node 24 is the first release that runs the assertion corpus clean.
   NODE_VERSION: "24"
-  # wasi-sdk 32 (wasi-libc 32): its single-threaded pthread stubs link without the
-  # emulated-pthread gate that wasi-sdk 25 compiles to a static assertion, so the
-  # fiber runtime builds for wasm32 as it does locally.
-  WASI_SDK_VERSION: "32"
+  WASI_SDK_VERSION: "25"
 
 jobs:
   # ─── Change detection ───────────────────────────────────────────────────────
