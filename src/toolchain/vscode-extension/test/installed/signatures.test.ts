@@ -12,6 +12,7 @@ import {
   ExpectedDiagnostic,
   invokeFix,
   openSource,
+  present,
   rangeOf,
   redoTo,
   replace,
@@ -60,9 +61,10 @@ async function assertSingleFix(
 ): Promise<vscode.CodeAction> {
   const fixes = await requiredActions(editor.document, diagnostic.range);
   assert.strictEqual(fixes.length, 1);
-  assertAction(fixes[0], title, diagnostic);
-  assertEdit(fixes[0], editor.document, expected);
-  return fixes[0];
+  const fix = present(fixes[0], "the single fix");
+  assertAction(fix, title, diagnostic);
+  assertEdit(fix, editor.document, expected);
+  return fix;
 }
 
 /** Apply the single `title` fix for `diagnostic` and assert it landed. */
@@ -109,9 +111,10 @@ async function cachedFix(
   name: string,
   header: string,
 ): Promise<{ warning: vscode.Diagnostic; cached: vscode.CodeAction[] }> {
-  const [warning] = await diagnostics(editor.document, [
-    signature(name, "(string) -> string", header),
-  ]);
+  const warning = present(
+    (await diagnostics(editor.document, [signature(name, "(string) -> string", header)]))[0],
+    "the signature warning",
+  );
   const cached = await requiredActions(editor.document, warning.range);
   assert.strictEqual(cached.length, 1);
   return { warning, cached };
@@ -124,7 +127,7 @@ async function singleFix(
   warning: ExpectedDiagnostic,
 ): Promise<vscode.TextEditor> {
   const editor = await openSource(name, source);
-  const [diagnostic] = await diagnostics(editor.document, [warning]);
+  const diagnostic = present((await diagnostics(editor.document, [warning]))[0], "the diagnostic");
   await applySingleFix(editor, diagnostic, signatureTitle, expected);
   await assertNoActions(editor.document, rangeOf(editor.document, "greet"));
   await save(editor.document);
@@ -148,17 +151,18 @@ async function applyFixAll(
   const range = rangeOf(editor.document, anchor);
   const fixes = await requiredActions(editor.document, range, fixAllKind);
   assert.strictEqual(fixes.length, 1);
+  const fix = present(fixes[0], "the fix-all action");
   if (options.editCount) {
     assert.strictEqual(
-      fixes[0].command?.arguments?.[0].edits.length,
+      fix.command?.arguments?.[0].edits.length,
       options.editCount.count,
       options.editCount.message,
     );
   }
-  assertEdit(fixes[0], editor.document, expected);
+  assertEdit(fix, editor.document, expected);
   await invokeFix(editor, range, expected, fixAllKind.value);
   await diagnostics(editor.document, options.remaining ?? []);
-  return fixes[0];
+  return fix;
 }
 
 /** Create `workspace/<name>` with its manifest and return its path. */
@@ -360,12 +364,12 @@ suite("Installed VSIX compiler warnings and signature edits", () => {
     const source = 'prefix = "🦅é" + (\\(value: string) => value + "!") "x"\n';
     const expected = source.replace(": string", "");
     const editor = await openSource("unicode-lambda.ospml", source);
-    const [diagnostic] = await diagnostics(editor.document, [
+    const diagnostic = present((await diagnostics(editor.document, [
       inline(
         "redundant type annotation on parameter `value` of `<lambda>`: inference derives `string` without it",
         ": string",
       ),
-    ]);
+    ]))[0], "the lambda annotation warning");
     assert.strictEqual(
       diagnostic.range.start.character,
       source.indexOf(": string"),
@@ -392,16 +396,18 @@ suite("Installed VSIX compiler warnings and signature edits", () => {
       ),
       unused,
     ]);
+    const valueWarning = present(raised[0], "the lambda annotation warning");
     assert.strictEqual(
-      raised[0].range.start.line,
+      valueWarning.range.start.line,
       0,
       "The escaped newline does not create a source line",
     );
-    const fixes = await requiredActions(editor.document, raised[0].range);
+    const fixes = await requiredActions(editor.document, valueWarning.range);
     assert.strictEqual(fixes.length, 1);
-    assertAction(fixes[0], annotationTitle, raised[0]);
-    assertEdit(fixes[0], editor.document, expected);
-    await invokeFix(editor, raised[0].range, expected);
+    const fix = present(fixes[0], "the lambda annotation fix");
+    assertAction(fix, annotationTitle, valueWarning);
+    assertEdit(fix, editor.document, expected);
+    await invokeFix(editor, valueWarning.range, expected);
     await diagnostics(editor.document, [unused]);
     await save(editor.document);
   });
@@ -465,9 +471,12 @@ ${body}`;
       "module-contract.ospml",
       `${contract}${greet}    ${helperHeader}\n${helperBody}`,
     );
-    const [diagnostic] = await diagnostics(editor.document, [
-      signature("warnings::M::helper", "(string) -> string", helperHeader),
-    ]);
+    const diagnostic = present(
+      (await diagnostics(editor.document, [
+        signature("warnings::M::helper", "(string) -> string", helperHeader),
+      ]))[0],
+      "the helper signature warning",
+    );
     for (const occurrence of [0, 1]) {
       await assertNoActions(
         editor.document,
@@ -510,10 +519,11 @@ ${body}`;
       fixAllKind,
     );
     assert.strictEqual(fixes.length, 1);
-    assert.strictEqual(fixes[0].title, "Remove all redundant type annotations");
-    assert.strictEqual(fixes[0].kind?.value, fixAllKind.value);
-    assertEdit(fixes[0], editor.document, result);
-    await invokeFix(editor, raised[0].range, result, fixAllKind.value);
+    const fix = present(fixes[0], "the fix-all action");
+    assert.strictEqual(fix.title, "Remove all redundant type annotations");
+    assert.strictEqual(fix.kind?.value, fixAllKind.value);
+    assertEdit(fix, editor.document, result);
+    await invokeFix(editor, present(raised[0], "the first raised diagnostic").range, result, fixAllKind.value);
     await saveClean(editor.document);
   });
 
@@ -626,7 +636,7 @@ ${body}`;
     await assertNoActions(editor.document, warning.range, fixAllKind);
     const changed = editor.document.getText();
     assert.strictEqual(
-      await replayFix(cached[0]),
+      await replayFix(present(cached[0], "the cached fix")),
       false,
       "A cached pre-edit action must reject the newer document",
     );
@@ -670,14 +680,15 @@ ${body}`;
       "warning_project::greet",
       greetHeader,
     );
-    assert.ok(cached[0].command);
+    const cachedFixAction = present(cached[0], "the cached fix");
+    assert.ok(cachedFixAction.command);
     const siblingEditor = await vscode.window.showTextDocument(
       sibling.document,
     );
     await replace(siblingEditor, 'text + "!"', "text");
     await diagnostics(sibling.document, []);
     await diagnostics(editor.document, []);
-    assert.strictEqual(await replayFix(cached[0]), false);
+    assert.strictEqual(await replayFix(cachedFixAction), false);
     assert.strictEqual(
       editor.document.getText(),
       source,
@@ -706,7 +717,7 @@ ${body}`;
       "Redo changes the sibling again",
     );
     await diagnostics(editor.document, []);
-    assert.strictEqual(await replayFix(refreshed[0]), false);
+    assert.strictEqual(await replayFix(present(refreshed[0], "the refreshed fix")), false);
     assert.strictEqual(editor.document.getText(), source);
     await save(sibling.document);
     await save(editor.document);
@@ -726,6 +737,7 @@ ${body}`;
       ],
     ];
     for (const [name, source, header] of sources) {
+      assert.ok(name && source && header, "a source file and its documented header");
       const editor = await openSource(name, source);
       await diagnostics(editor.document, []);
       await assertNoActions(editor.document, rangeOf(editor.document, header));
@@ -753,10 +765,11 @@ ${body}`;
       "closed_project::greet",
       greetHeader,
     );
-    assert.ok(cached[0].command);
+    const cachedFixAction = present(cached[0], "the cached fix");
+    assert.ok(cachedFixAction.command);
     const version = versionWithClosedFile(editor.document, helperPath);
     fs.writeFileSync(helperPath, "decorate text = text\n");
-    assert.strictEqual(await replayFix(cached[0]), false);
+    assert.strictEqual(await replayFix(cachedFixAction), false);
     assert.strictEqual(
       editor.document.version,
       version,
@@ -773,7 +786,7 @@ ${body}`;
       1,
       "Restoring the dependency restores the compiler proof",
     );
-    assert.strictEqual(await replayFix(refreshed[0]), true);
+    assert.strictEqual(await replayFix(present(refreshed[0], "the refreshed fix")), true);
     assert.strictEqual(
       editor.document.getText(),
       source.replace(`${greetHeader}\n`, ""),
@@ -809,10 +822,11 @@ ${body}`;
       message:
         "namespace `manifest_project` spans 2 folders; source paths do not change its identity",
     };
-    const [, warning] = await diagnostics(editor.document, [
+    const raised = await diagnostics(editor.document, [
       layout,
       signature("manifest_project::greet", "(string) -> string", greetHeader),
     ]);
+    const warning = present(raised[1], "the signature warning");
     const quick = await requiredActions(editor.document, warning.range);
     const all = await requiredActions(
       editor.document,
@@ -823,7 +837,7 @@ ${body}`;
     assert.strictEqual(all.length, 1);
     const version = versionWithClosedFile(editor.document, manifestPath);
     fs.writeFileSync(manifestPath, manifest.replace('"concrete"', '"generic"'));
-    for (const action of [quick[0], all[0]]) {
+    for (const action of [present(quick[0], "the quick fix"), present(all[0], "the fix-all")]) {
       assert.strictEqual(await replayFix(action), false);
       assert.strictEqual(editor.document.version, version);
       assert.strictEqual(editor.document.getText(), source);
@@ -840,7 +854,7 @@ ${body}`;
     );
     assert.strictEqual(restored.length, 1);
     assertEdit(
-      restored[0],
+      present(restored[0], "the restored fix-all"),
       editor.document,
       source.replace(`${greetHeader}\n`, ""),
     );

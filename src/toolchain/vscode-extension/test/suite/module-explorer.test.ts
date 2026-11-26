@@ -8,16 +8,10 @@ import {
   parseSourceGraph, projectChildren, type ModuleExplorerDeps, type ModuleNode, type PackageGraph,
 } from "../../client/src/module-explorer";
 import { runFrontendCommand } from "../../client/src/package-frontend";
-import { extensionRoot, resolveBuiltOsprey, uriPath, writeStubExecutable } from "./osprey-test-env";
+import { extensionRoot, present, resolveBuiltOsprey, uriPath, writeStubExecutable } from "./osprey-test-env";
 import { activateWithServer, connectEditorBrowser } from "./profiler-kit";
 
 const labels = (nodes: readonly ModuleNode[]) => nodes.map((node) => node.label);
-
-/** `value`, asserted present: the tree or report answered it. */
-const present = <T>(value: T | undefined, what: string): T => {
-  assert.ok(value !== undefined, `${what} is present`);
-  return value;
-};
 
 function project(files: Record<string, string>): string {
   const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "osprey-modules-")));
@@ -198,6 +192,7 @@ suite("Module Explorer [EDITOR-MODULE-EXPLORER]", () => {
       ["osprey.modules.filter", "view == osprey.moduleExplorer"],
       ["osprey.modules.clearFilter", "osprey.modules.filtered"],
     ]) {
+      assert.ok(command && when, "a title-bar command and its when clause");
       assert.ok(registered.includes(command), `${command} is registered`);
       assert.ok(titleBar.some((entry: { command: string; when: string }) => entry.command === command && entry.when.includes(when)),
         `${command} is a title-bar button shown when ${when}`);
@@ -230,8 +225,9 @@ suite("Module Explorer [EDITOR-MODULE-EXPLORER]", () => {
     fs.writeFileSync(path.join(root, "src", "more.osp"), "namespace app;\n\nmodule Renamed {\n    export fn two() = 2\n}\n");
     tree.refresh();
     const again = await tree.getChildren(node);
-    assert.strictEqual(again[0].id, modules.id);
-    const againApp = await child(again[0], "app");
+    const againRoot = present(again[0], "the refreshed project node");
+    assert.strictEqual(againRoot.id, modules.id);
+    const againApp = await child(againRoot, "app");
     assert.strictEqual(againApp.id, mainApp.id);
     assert.deepStrictEqual(labels(await tree.getChildren(againApp)), ["Counter", "Deep", "limit", "Outer", "Renamed"]);
     await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
@@ -245,8 +241,10 @@ suite("Module Explorer [EDITOR-MODULE-EXPLORER]", () => {
     const [node] = await tree.getChildren();
     const groups = await tree.getChildren(node);
     assert.deepStrictEqual(labels(groups), ["Analysis failed", "Dependencies"]);
-    assert.ok(groups[0].description?.includes("main.ospml"), groups[0].description);
-    const [state] = await tree.getChildren(groups[1]);
+    const failedGroup = present(groups[0], "the failed group");
+    assert.ok(failedGroup.description?.includes("main.ospml"), failedGroup.description);
+    const [state] = await tree.getChildren(present(groups[1], "the Dependencies group"));
+    assert.ok(state, "the dependency state row");
     assert.strictEqual(state.label, "Dependencies unavailable");
     assert.strictEqual(state.description, "The package client is not installed.");
 
@@ -388,7 +386,7 @@ suite("Module Explorer [EDITOR-MODULE-EXPLORER]", () => {
     assert.strictEqual(localA.description, "e1.r2 · direct · local: ../a");
     assert.strictEqual(localA.icon, "package");
 
-    const [lockState, bare] = projectChildren(owner, source, { ok: NO_LOCK(["@org/a"]) })[2].children ?? [];
+    const [lockState, bare] = present(projectChildren(owner, source, { ok: NO_LOCK(["@org/a"]) })[2], "the Dependencies group").children ?? [];
     assert.ok(lockState && bare, "the lock-state row and the bare dependency");
     assert.strictEqual(lockState.label, "No lock file");
     assert.strictEqual(bare.description, "not locked · direct");

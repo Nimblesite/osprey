@@ -22,6 +22,7 @@ import {
   assertSkipWarningLayout,
   extensionRoot,
   pinOspreySettings,
+  present,
   resolveBuiltOsprey,
   resolveRequiredLldbDap,
   skipWarningsOf,
@@ -67,12 +68,6 @@ async function startDebugRaced(
 /** Wait `ms` milliseconds without ever rejecting. */
 const settle = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
-
-/** `value`, asserted present: the caller's poll or length check proved it. */
-function present<T>(value: T | undefined, what: string): T {
-  assert.ok(value !== undefined, `${what} is present`);
-  return value;
-}
 
 /** The first of `items`, asserted present. */
 function head<T>(items: readonly T[], what: string): T {

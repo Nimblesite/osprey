@@ -14,6 +14,7 @@ import {
   programInfoFromConfig,
   readDebugSnapshot,
 } from "../../client/src/debug-panel";
+import { present } from "./osprey-test-env";
 
 const stoppedSnapshot: DebugSnapshot = {
   state: "stopped",
@@ -35,40 +36,40 @@ suite("debug-panel builders", () => {
   test("program nodes show state, and source/binary when present", () => {
     const inactive = buildProgramNodes(EMPTY_SNAPSHOT);
     assert.strictEqual(inactive.length, 1);
-    assert.strictEqual(inactive[0].description, "No active session");
+    assert.strictEqual(present(inactive[0], "the program node").description, "No active session");
 
     const full = buildProgramNodes(stoppedSnapshot);
     assert.deepStrictEqual(
       full.map((n) => n.label),
       ["State", "Source", "Debug binary"],
     );
-    assert.strictEqual(full[0].description, "Paused");
-    assert.strictEqual(full[1].description, "app.osp");
-    assert.strictEqual(full[2].description, "app");
+    assert.strictEqual(present(full[0], "the State node").description, "Paused");
+    assert.strictEqual(present(full[1], "the Source node").description, "app.osp");
+    assert.strictEqual(present(full[2], "the Debug binary node").description, "app");
   });
 
   test("stack nodes render a placeholder when empty and frames otherwise", () => {
     const empty = buildStackNodes([]);
-    assert.strictEqual(empty[0].kind, "placeholder");
+    assert.strictEqual(present(empty[0], "the placeholder node").kind, "placeholder");
 
     const nodes = buildStackNodes(stoppedSnapshot.frames);
     assert.deepStrictEqual(
       nodes.map((n) => n.label),
       ["square", "main"],
     );
-    assert.strictEqual(nodes[0].description, "app.osp:1");
+    assert.strictEqual(present(nodes[0], "the square frame").description, "app.osp:1");
   });
 
   test("stack node falls back to a line label without a source path", () => {
     const nodes = buildStackNodes([{ id: 9, name: "f", line: 5, column: 1 }]);
-    assert.strictEqual(nodes[0].description, "line 5");
+    assert.strictEqual(present(nodes[0], "the frame node").description, "line 5");
   });
 
   test("variable nodes render typed and untyped locals, and an empty placeholder", () => {
-    assert.strictEqual(buildVariableNodes([])[0].kind, "placeholder");
+    assert.strictEqual(present(buildVariableNodes([])[0], "the placeholder node").kind, "placeholder");
     const nodes = buildVariableNodes(stoppedSnapshot.topVariables);
-    assert.strictEqual(nodes[0].description, "7 : int");
-    assert.strictEqual(nodes[1].description, "0");
+    assert.strictEqual(present(nodes[0], "the typed local").description, "7 : int");
+    assert.strictEqual(present(nodes[1], "the untyped local").description, "0");
   });
 
   test("profiling nodes link to the shipped CPU profiler", () => {
@@ -125,7 +126,7 @@ suite("OspreyDebugTreeProvider", () => {
 
   test("getTreeItem maps label, description, icon, contextValue and collapsibility", () => {
     const provider = new OspreyDebugTreeProvider();
-    const section = buildTree(stoppedSnapshot)[0];
+    const section = present(buildTree(stoppedSnapshot)[0], "the Program section");
     const sectionItem = provider.getTreeItem(section);
     assert.strictEqual(sectionItem.label, "Program");
     assert.strictEqual(
@@ -183,7 +184,7 @@ suite("readDebugSnapshot", () => {
     });
     const snapshot = await readDebugSnapshot(session, program);
     assert.strictEqual(snapshot.state, "stopped");
-    assert.strictEqual(snapshot.frames[0].name, "square");
+    assert.strictEqual(present(snapshot.frames[0], "the top frame").name, "square");
     assert.deepStrictEqual(
       snapshot.topVariables.map((v) => v.name),
       ["n"],
@@ -278,7 +279,7 @@ suite("makePanelMessageHandler", () => {
     handler({ type: "event", event: "stopped" });
     await new Promise((resolve) => setTimeout(resolve, 30));
     assert.strictEqual(provider.current().state, "stopped");
-    assert.strictEqual(provider.current().frames[0].name, "main");
+    assert.strictEqual(present(provider.current().frames[0], "the top frame").name, "main");
   });
 
   test("a continued event marks the panel running", () => {

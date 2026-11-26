@@ -17,6 +17,10 @@ export const extensionRoot = path.resolve(__dirname, "..", "..", "..");
 /** `file` as VS Code spells a file URI's fsPath: on Windows the drive letter is lower case. */
 export const uriPath = (file: string): string => vscode.Uri.file(file).fsPath;
 
+import { present } from "../present";
+
+export { present };
+
 // Windows spawns only PE executables, so a stub there is `<stub>.js` beside a
 // copy of this trampoline, which hands its own command line, quoting intact,
 // to `node <stub>.js` and returns the script's exit code.
@@ -157,7 +161,7 @@ export function skipWarningsOf(uri: vscode.Uri): vscode.Diagnostic[] {
 export function oneSkipWarning(uri: vscode.Uri): vscode.Diagnostic {
   const warnings = skipWarningsOf(uri);
   assert.strictEqual(warnings.length, 1, JSON.stringify(warnings));
-  return warnings[0];
+  return present(warnings[0], "the one skip warning");
 }
 
 /**

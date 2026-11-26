@@ -9,71 +9,70 @@ module GrainGraph
         true => Success(value = count)
         false => Error(message = InvalidConfiguration(detail = "Grain timing requires whole output-sample counts."))
 
-    parameter (n, outcome, key) = match outcome
-        Error why => Error(message = why)
-        Success values => match Graphs::parameterNamed (n, key)
+    parameter (n, outcome, key) =
+        use values <- Outcomes::carried (outcome)
+        match Graphs::parameterNamed (n, key)
             Error _ => Error(message = Outcomes::indexOutOfBounds)
             Success p => Success(value = listAppend values p.initial)
 
-    timed (playback, period, jitter, mode, maximum) = match integer period
-        Error why => Error(message = why)
-        Success interval => match integer jitter
-            Error why => Error(message = why)
-            Success spread => match integer maximum
-                Error why => Error(message = why)
-                Success limit => Outcomes::carried (GrainTimings::decode (mode, interval, spread, limit), \timing => Success(value = GrainNodeControls(playback = playback, timing = timing)))
+    timed (playback, period, jitter, mode, maximum) =
+        use interval <- Outcomes::carried (integer period)
+        use spread <- Outcomes::carried (integer jitter)
+        use limit <- Outcomes::carried (integer maximum)
+        use timing <- Outcomes::carried (GrainTimings::decode (mode, interval, spread, limit))
+        Success(value = GrainNodeControls(playback = playback, timing = timing))
 
-    configuration n = match foldList (["start", "rate", "duration", "gain", "pan", "period", "jitter", "window", "attack", "release", "timing", "maximumGap"], Success(value = []), \(outcome, key) => parameter (n, outcome, key))
-        Error why => Error(message = why)
-        Success values => match values
-            [start, rate, duration, gain, pan, period, jitter, mode, attack, release, timing, maximum] => match integer duration
-                Error why => Error(message = why)
-                Success lifetime => Outcomes::carried (GrainWindows::decode (mode, attack, release), \shape => timed (GrainControls(window = shape, start = start, rate = rate, duration = lifetime, amplitude = gain, pan = pan), period, jitter, timing, maximum))
+    configuration n =
+        use values <- Outcomes::carried (foldList (["start", "rate", "duration", "gain", "pan", "period", "jitter", "window", "attack", "release", "timing", "maximumGap"], Success(value = []), \(outcome, key) => parameter (n, outcome, key)))
+        match values
+            [start, rate, duration, gain, pan, period, jitter, mode, attack, release, timing, maximum] =>
+                use lifetime <- Outcomes::carried (integer duration)
+                use shape <- Outcomes::carried (GrainWindows::decode (mode, attack, release))
+                timed (GrainControls(window = shape, start = start, rate = rate, duration = lifetime, amplitude = gain, pan = pan), period, jitter, timing, maximum)
             _ => Error(message = InvalidConfiguration(detail = "Incomplete grain module controls."))
 
-    variationSeed n = match parameter (n, Success(value = []), "variationSeed")
-        Error why => Error(message = why)
-        Success values => match values
+    variationSeed n =
+        use values <- Outcomes::carried (parameter (n, Success(value = []), "variationSeed"))
+        match values
             [seed] => integer seed
             _ => Error(message = MissingResource(detail = "Missing grain variation seed."))
 
-    distribution (n, controls, size) = match foldList (["positionSpread", "rateSpread", "durationSpread", "gainSpread", "panSpread"], Success(value = []), \(held, key) => parameter (n, held, key))
-        Error why => Error(message = why)
-        Success values => match values
+    distribution (n, controls, size) =
+        use values <- Outcomes::carried (foldList (["positionSpread", "rateSpread", "durationSpread", "gainSpread", "panSpread"], Success(value = []), \(held, key) => parameter (n, held, key)))
+        match values
             [position, rate, duration, amplitude, pan] => Outcomes::carried (integer duration, \frames => GrainSpreads::around (controls, size, GrainSpread(position = position, rate = rate, duration = frames, amplitude = amplitude, pan = pan)))
             _ => Error(message = InvalidConfiguration(detail = "Incomplete grain spread controls."))
 
-    bounds (first, limit, boundary) = match integer first
-        Error why => Error(message = why)
-        Success lo => match integer limit
-            Error why => Error(message = why)
-            Success hi => Outcomes::chosen (boundary, [GrainRegion(first = lo, limit = hi, boundary = LoopSource), GrainRegion(first = lo, limit = hi, boundary = OneShotSource)], "Grain boundary must be 0 (loop) or 1 (one-shot).")
+    bounds (first, limit, boundary) =
+        use lo <- Outcomes::carried (integer first)
+        use hi <- Outcomes::carried (integer limit)
+        Outcomes::chosen (boundary, [GrainRegion(first = lo, limit = hi, boundary = LoopSource), GrainRegion(first = lo, limit = hi, boundary = OneShotSource)], "Grain boundary must be 0 (loop) or 1 (one-shot).")
 
     region (n, size) = match length (filterList (n.parameters, \p => p.key == "regionStart" || p.key == "regionEnd" || p.key == "boundary"))
         0 => Success(value = GrainRegion(first = 0, limit = size, boundary = LoopSource))
-        3 => match foldList (["regionStart", "regionEnd", "boundary"], Success(value = []), \(held, key) => parameter (n, held, key))
-            Error why => Error(message = why)
-            Success values => match values
+        3 => Outcomes::carried (foldList (["regionStart", "regionEnd", "boundary"], Success(value = []), \(held, key) => parameter (n, held, key)), \values =>
+            match values
                 [first, limit, boundary] => bounds (first, limit, boundary)
-                _ => Error(message = InvalidConfiguration(detail = "Incomplete grain source region."))
+                _ => Error(message = InvalidConfiguration(detail = "Incomplete grain source region.")))
         _ => Error(message = InvalidConfiguration(detail = "Incomplete grain source region."))
 
-    withRegion (n, cloud) = match region (n, length cloud.pool.source)
-        Error why => Error(message = why)
-        Success selected => match structuralEquals (selected, cloud.pool.region)
+    withRegion (n, cloud) =
+        use selected <- Outcomes::carried (region (n, length cloud.pool.source))
+        match structuralEquals (selected, cloud.pool.region)
             true => Success(value = cloud)
             false => Outcomes::carried (Grains::withRegion (cloud.pool, selected), \pool => Success(value = cloud(pool = pool)))
 
     (** Prepare an instance only at the graph origin; later blocks must supply its retained memory. *)
     export prepare n = match n.processor
-        Granular resource capacity seed => match configuration n
-            Error why => Error(message = why)
-            Success controls => match SampleResources::metadata resource
+        Granular resource capacity seed =>
+            use controls <- Outcomes::carried (configuration n)
+            match SampleResources::metadata resource
                 false => Error(message = InvalidConfiguration(detail = "Invalid grain sample metadata."))
-                true => match variationSeed n
-                    Error why => Error(message = why)
-                    Success randomSeed => Outcomes::carried (SampleResources::mono resource, \samples =>
-                        Outcomes::carried (GrainClouds::prepare (samples, capacity, controls.timing, seed, randomSeed), \cloud => withRegion (n, cloud(sourceSamples = resource.samples))))
+                true =>
+                    use randomSeed <- Outcomes::carried (variationSeed n)
+                    use samples <- Outcomes::carried (SampleResources::mono resource)
+                    use cloud <- Outcomes::carried (GrainClouds::prepare (samples, capacity, controls.timing, seed, randomSeed))
+                    withRegion (n, cloud(sourceSamples = resource.samples))
         _ => Error(message = MissingResource(detail = "The component is not a grain cloud."))
 
     (** Reject memory from a different resource, pool capacity or graph sample position. *)
@@ -84,19 +83,18 @@ module GrainGraph
     (** Apply graph controls to newly emitted grains; surviving grains retain their own envelopes and cursors. *)
     export block (n, cloud, frames) = Outcomes::carried (withRegion (n, cloud), \selected => audio (n, selected, frames))
 
-    audio (n, cloud, frames) = match configuration n
-        Error why => Error(message = why)
-        Success controls => match distribution (n, controls.playback, length cloud.pool.source)
-            Error why => Error(message = why)
-            Success ranges => match ranges.minimum.start >= toFloat cloud.pool.region.first && ranges.maximum.start < toFloat cloud.pool.region.limit
-                false => Error(message = InvalidConfiguration(detail = "Grain start positions and spread must stay inside the selected region."))
-                true =>
-                    clock = cloud.clock
-                    GrainClouds::variedBlock (cloud(clock = clock(timing = controls.timing)), ranges, frames)
+    audio (n, cloud, frames) =
+        use controls <- Outcomes::carried (configuration n)
+        use ranges <- Outcomes::carried (distribution (n, controls.playback, length cloud.pool.source))
+        match ranges.minimum.start >= toFloat cloud.pool.region.first && ranges.maximum.start < toFloat cloud.pool.region.limit
+            false => Error(message = InvalidConfiguration(detail = "Grain start positions and spread must stay inside the selected region."))
+            true =>
+                clock = cloud.clock
+                GrainClouds::variedBlock (cloud(clock = clock(timing = controls.timing)), ranges, frames)
 
-    interleave (block, outcome, index) = match outcome
-        Error why => Error(message = why)
-        Success samples => match listGet block.left index
+    interleave (block, outcome, index) =
+        use samples <- Outcomes::carried (outcome)
+        match listGet block.left index
             Error _ => Error(message = Outcomes::indexOutOfBounds)
             Success left => match listGet block.right index
                 Error _ => Error(message = Outcomes::indexOutOfBounds)

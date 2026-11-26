@@ -7,7 +7,7 @@ import * as path from "path";
 import * as fs from "fs";
 import * as os from "os";
 import * as vscode from "vscode";
-import { uriPath } from "./osprey-test-env";
+import { present, uriPath } from "./osprey-test-env";
 import { activateWithServer, waitFor } from "./profiler-kit";
 import { DiagnosticSeverity } from "vscode";
 import {
@@ -129,13 +129,14 @@ suite("hunt report", () => {
 
   test("a reproduced finding is an error, klee-only a warning, unmodelled information", () => {
     const [memory, unmodelled] = report().findings;
+    assert.ok(memory && unmodelled, "the memory and unmodelled findings");
     assert.strictEqual(findingSeverity(memory), DiagnosticSeverity.Error);
     assert.strictEqual(findingSeverity({ ...memory, replay: "klee-only" }), DiagnosticSeverity.Warning);
     assert.strictEqual(findingSeverity(unmodelled), DiagnosticSeverity.Information);
   });
 
   test("a relative file resolves beside the program, an absolute one stands", () => {
-    const [memory] = report().findings;
+    const memory = present(report().findings[0], "the memory finding");
     assert.strictEqual(findingPath(memory, program), path.resolve("/work/app/main.osp"));
     assert.strictEqual(findingPath({ ...memory, file: "/abs/other.osp" }, program), "/abs/other.osp");
     assert.strictEqual(findingPath({ ...memory, file: null }, program), program);
@@ -145,12 +146,14 @@ suite("hunt report", () => {
     const byFile = huntDiagnostics(report(), program);
     const diagnostics = byFile.get(program) ?? [];
     assert.strictEqual(diagnostics.length, 2);
-    assert.strictEqual(diagnostics[0].range.start.line, 6);
-    assert.strictEqual(diagnostics[0].source, HUNT_SOURCE);
-    assert.strictEqual(diagnostics[0].code, "memory");
-    assert.strictEqual(diagnostics[1].range.start.line, 0, "a finding without a line lands on line 1");
-    assert.ok(findingMessage(report().findings[0]).includes("replay reproduced (SIGSEGV)"));
-    assert.ok(findingMessage(report().findings[0]).includes('stdin "9\\n"'));
+    const first = present(diagnostics[0], "the memory diagnostic");
+    assert.strictEqual(first.range.start.line, 6);
+    assert.strictEqual(first.source, HUNT_SOURCE);
+    assert.strictEqual(first.code, "memory");
+    assert.strictEqual(present(diagnostics[1], "the unmodelled diagnostic").range.start.line, 0, "a finding without a line lands on line 1");
+    const memory = present(report().findings[0], "the memory finding");
+    assert.ok(findingMessage(memory).includes("replay reproduced (SIGSEGV)"));
+    assert.ok(findingMessage(memory).includes('stdin "9\\n"'));
   });
 });
 
@@ -158,7 +161,7 @@ suite("hunt report", () => {
 // section: "a `reproduced` finding is an error, a `klee-only` or unreplayed
 // one a warning, an `unmodelled` one information" [SYMEX-FINDINGS].
 suite("hunt report permutations", () => {
-  const base = report().findings[0];
+  const base = present(report().findings[0], "the memory finding");
 
   test("every defect class at every replay verdict gets the spec severity", () => {
     const verdicts: [string, DiagnosticSeverity][] = [
@@ -220,11 +223,12 @@ suite("hunt report permutations", () => {
     assert.ok(parsed);
     const diagnostics = huntDiagnostics(parsed, program).get(program) ?? [];
     assert.strictEqual(diagnostics.length, 1);
-    assert.strictEqual(diagnostics[0].severity, DiagnosticSeverity.Warning);
-    assert.strictEqual(diagnostics[0].range.start.line, 2);
-    assert.strictEqual(diagnostics[0].code, "arith");
+    const divide = present(diagnostics[0], "the divide-by-zero diagnostic");
+    assert.strictEqual(divide.severity, DiagnosticSeverity.Warning);
+    assert.strictEqual(divide.range.start.line, 2);
+    assert.strictEqual(divide.code, "arith");
     assert.strictEqual(
-      diagnostics[0].message,
+      divide.message,
       'arith: divide by zero\nstdin "\x00\xff"\nreplay klee-only',
     );
   });
@@ -293,10 +297,11 @@ suite("hunt report permutations", () => {
     const b = byFile.get(path.join(dir, "b.osp")) ?? [];
     assert.strictEqual(byFile.size, 2);
     assert.deepStrictEqual(a.map((d) => d.range.start.line), [0, 0, 0]);
-    assert.deepStrictEqual(a.map((d) => d.message.split(": ")[1].split("\n")[0]), ["first", "third", "fourth"]);
-    assert.strictEqual(b[0].range.start.line, 999);
+    assert.deepStrictEqual(a.map((d) => present(d.message.split(": ")[1], "the finding after its class").split("\n")[0]), ["first", "third", "fourth"]);
+    const second = present(b[0], "the b.osp diagnostic");
+    assert.strictEqual(second.range.start.line, 999);
     assert.ok(a.every((d) => d.source === HUNT_SOURCE && d.range.start.character === 0));
-    assert.ok(b[0].range.end.character > 1000, "the squiggle spans the whole line");
+    assert.ok(second.range.end.character > 1000, "the squiggle spans the whole line");
     assert.strictEqual(huntDiagnostics(report({ findings: [] }), program).size, 0);
   });
 });
