@@ -1,5 +1,5 @@
 // The Module Explorer [EDITOR-MODULE-EXPLORER]: each workspace project's code tree
-// (folder, file, namespace, module, member) and sources from the compiler's checked source graph, and its dependencies
+// (folder, namespace, module, member) and sources from the compiler's checked source graph, and its dependencies
 // and verification findings from the Osprey package client. Nothing here resolves names or reads a manifest, and
 // a failed source shows its failure, never an empty tree.
 import { execFile } from "child_process";
@@ -104,13 +104,14 @@ const isScope = (item: Declaration) => item.kind === "namespace" || item.kind ==
 function declarationNode(parent: ModuleNode, item: Declaration, scope: string): ModuleNode {
   const label = scope ? item.name.slice(scope.length + 2) : item.name;
   const [icon, color] = KIND_ICONS[item.kind] ?? ["symbol-misc", undefined];
+  const home = isScope(item) ? "" : `@${item.source}`;
   return {
-    id: `${parent.id}/${item.kind}:${label}`, parent, label, icon, color, tooltip: `${item.kind} ${item.name}`,
+    id: `${parent.id}/${item.kind}:${label}${home}`, parent, label, icon, color, tooltip: `${item.kind} ${item.name}`,
     location: { file: item.source, line: item.line, column: item.column },
   };
 }
 
-/** One file's declarations nested by qualified name; a scope repeated in the file is one node. */
+/** Declarations nested by qualified name; a scope declared in several files is one node. */
 function declarationNodes(parent: ModuleNode, items: readonly Declaration[]): ModuleNode[] {
   const scopes = new Map(items.filter(isScope).reverse().map((item) => [item.name, item] as const));
   const entries = [...scopes.values(), ...items.filter((item) => !isScope(item))];
@@ -123,7 +124,7 @@ function declarationNodes(parent: ModuleNode, items: readonly Declaration[]): Mo
   return build(parent, "");
 }
 
-/** Folders first, then files with their declarations, below `depth` path segments of `root`. */
+/** Subfolders, then the declarations of the files directly in this folder, below `depth` segments of `root`. */
 function folderNodes(parent: ModuleNode, root: string, files: readonly string[], graph: SourceGraph, depth = 0): ModuleNode[] {
   const segments = (file: string) => path.relative(root, file).split(path.sep);
   const nested = files.filter((file) => segments(file).length > depth + 1);
@@ -131,9 +132,7 @@ function folderNodes(parent: ModuleNode, root: string, files: readonly string[],
   return [
     ...folders.map((name) => attach({ id: `${parent.id}/${name}`, parent, label: name, icon: "folder" }, (self) =>
       folderNodes(self, root, nested.filter((file) => segments(file)[depth] === name), graph, depth + 1))),
-    ...files.filter((file) => !nested.includes(file)).map((file) =>
-      attach(fileNode(parent, path.dirname(file), file), (self) =>
-        declarationNodes(self, graph.declarations.filter((item) => item.source === file)))).sort(byLabel),
+    ...declarationNodes(parent, graph.declarations.filter((item) => files.includes(item.source) && !nested.includes(item.source))),
   ];
 }
 
@@ -222,9 +221,11 @@ export function projectChildren(
   }
   return [
     attach(group("modules", "Modules", "symbol-module"), (self) =>
-      graph.ok.sources.length
-        ? folderNodes(self, root, graph.ok.sources, graph.ok)
-        : [stateNode(self, "none", "No sources", "The compiler found none in this project.", "info")]),
+      !graph.ok.sources.length
+        ? [stateNode(self, "none", "No sources", "The compiler found none in this project.", "info")]
+        : graph.ok.declarations.length
+          ? folderNodes(self, root, graph.ok.sources, graph.ok)
+          : [stateNode(self, "empty", "No declarations", "The compiler found none in this project.", "info")]),
     attach(group("sources", "Sources", "files"), (self) =>
       [...graph.ok.sources].sort().map((file) => fileNode(self, root, file))),
     dependencies,
