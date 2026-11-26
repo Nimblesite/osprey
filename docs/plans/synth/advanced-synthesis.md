@@ -38,7 +38,6 @@ Deliver the first milestone before expanding to another synthesis family. Shared
 ### Next implementation sequence [SYNTH-ADVANCED-MILESTONES-NEXT]
 
 - [ ] Finish the sample-import checklist [SYNTH-ADVANCED-GRAINS-IMPORT] and retain the built-in source as an explicit selectable resource.
-- [ ] Correct keyboard pitch mapping for sample-rate metadata and root note; keep source scanning independent from pitch.
 - [ ] Make the selected Grain Cloud inspector expose meaningful units and bounded controls; retain Prism's original artwork and layout.
 - [ ] Complete the manual journey: add Grain Cloud, load a sample, add/connect stereo output, play several notes, edit controls, stop and remove the cable/node.
 - [ ] Trace the observed audio-queue starvation through producer, transport and device receipts; record workload and timings before selecting a fix.
@@ -63,7 +62,6 @@ Deliver the first milestone before expanding to another synthesis family. Shared
 ### Resources and bounded rendering [SYNTH-ADVANCED-CORE-RESOURCES]
 
 - [ ] Decode files, prepare tables, allocate pools and construct transforms outside the audio callback.
-- [ ] Reflect source-boundary mode for grains ([SYNTH-ADVANCED-GRAINS-BOUNDARY]); loop, one-shot and reverse are done.
 - [ ] Align parallel routes automatically in preparation from the latency each component declares in `Timings.latency`.
 - [ ] A grain cloud added to a running graph starts without a restart; `GraphRebase.rebased` already carries every other component across an edit.
 - [ ] Avoid allocation, blocking locks, filesystem/network access, logging formatting and observer callbacks in production render paths.
@@ -208,7 +206,6 @@ The first import path is bounded local WAV loading, not a general codec framewor
 
 - [ ] Declare generated models for decoded sample metadata, prepared sample identity, channel policy and typed import errors. Partial: decoded metadata is `WaveSamples`/`WaveFormat` (`wave.td`), prepared identity is `ResourceIdentity` (`graph.td`, fb56cac8d) and import errors are typed `Fault`s (a malformed WAV is `MissingResource`). Import keeps the original interleaved lanes. A mono consumer requests an equal-weight mix. A generated channel-policy model remains open.
 - [ ] Show the loaded resource name, duration/rate/channel metadata, waveform and current source position using bounded observations.
-- [ ] Include sample replacement in Undo/Redo without invalidating resources still owned by playing grains or history snapshots.
 - [ ] Define an initial import-during-playback policy and show it clearly; do not block rendering while preparing a replacement.
 - [ ] Persist resource identity/content hash and a portable resolution strategy; missing or changed files require an explicit recoverable result.
 
@@ -269,7 +266,6 @@ Complete. The modules and journeys that cite this ID hold the evidence.
 - [ ] Real-time autotune ([SYNTH-SPECTRAL-AUTOTUNE]): YIN-style fundamental detection with confidence, snapping to key/scale or the timeline's notes, retune speed, amount and humanise, formant-preserving FFT correction, unvoiced frames passed dry, bounded per-hop work without allocation, declared latency; native Osprey formulas; tests for a 30-cent-flat vibrato line, glide timing, unvoiced noise and block-split invariance.
 - [ ] Showcase songs [SYNTH-SHOWCASE]: the shipped songs play every family (granular and spectral morph are missing today). The renderer must play granular and spectral nodes per note at usable speed. A test opens each song and checks every family is present.
 - [ ] Synthesis coverage to 100%: `@osprey/synth` measured 63.4% (2,650 of 4,180 lines) on 21 November 2026; loaded journey tests per family raise it, and the threshold only goes up.
-- [ ] Prism and the daw expose Pitch and Formant controls on the spectral node; the project file stores both.
 - [ ] Add spectral displays driven by bounded observer snapshots, not analysis on the UI thread.
 
 ## Nonlinear, spatial and feedback processing [SYNTH-ADVANCED-NONLINEAR]
