@@ -9,6 +9,7 @@
 #include <string.h>
 
 void *osp_alloc(int64_t size);
+void osp_collect(void);
 
 static long g_checks = 0;
 #define CHECK(c)                                                               \
