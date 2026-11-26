@@ -2,7 +2,7 @@
 
 Contract: [spec 0056](../specs/language/0056-Metaprogramming.md) (language) · [expansion engine](../specs/compiler/ExpansionEngine.md) · [macro tooling](../specs/tooling/MacroTooling.md). Sources: [research basis](../research/metaprogramming/README.md).
 
-**Status: not started.** The repository is in stabilization mode, which bans new features. Only the research and the specifications are done. No step below begins until the user lifts stabilization for this plan.
+**Status: not started.** The repository is in stabilization mode, which bans new features. No implementation step below begins until the user lifts stabilization for this plan.
 
 ## Goal
 
@@ -13,12 +13,6 @@ Effect substitution chosen at compile time and implicit effects ([META-EFFECTS-P
 ## Design rules
 
 The normative rules and their sources are [META-PRINCIPLES](../specs/language/0056-Metaprogramming.md#design-principles-from-the-literature-meta-principles). Every step meets one of them or names the one it leaves open. Each step is test-first, lands with its tests and expands existing corpus programs where it can.
-
-## Done
-
-- [x] Research: 36 papers downloaded to `docs/research/metaprogramming/papers/` (git-ignored), 12 more cited from their published versions, and the production systems surveyed, in the [research basis](../research/metaprogramming/README.md).
-- [x] Specifications: the language contract, the engine and the tooling contract, each in its own document.
-- [x] Existing contracts reviewed: no specification or plan held macro or template rules to move. The contracts that touch compile time (static handlers, flavors, type disciplines, math to code, documentation examples) keep their documents and are related in [META-RELATION](../specs/language/0056-Metaprogramming.md#relation-to-existing-contracts-meta-relation).
 
 ## Decisions
 
