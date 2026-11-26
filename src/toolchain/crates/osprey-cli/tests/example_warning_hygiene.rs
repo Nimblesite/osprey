@@ -12,6 +12,13 @@ fn shipped_sources_have_no_unused_bindings() {
     for path in shipped_sources(&root) {
         let name = display_name(&root, &path);
         let source = fs::read_to_string(&path).expect("read example");
+        // A disciplined module is its checker's language until erased
+        // [TYPES-DISCIPLINE-SEAM]; this lint is for Osprey's own bindings.
+        if osprey_project::discipline::marker(&source)
+            .is_some_and(|name| name != osprey_project::discipline::HM)
+        {
+            continue;
+        }
         let parsed = osprey_syntax::parse_program_for_path(&name, &source);
         assert!(parsed.errors.is_empty(), "{name}: {:?}", parsed.errors);
         warnings.extend(
