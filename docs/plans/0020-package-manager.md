@@ -89,7 +89,7 @@ Visitors browse and search packages at `/`, open a result to view or download a 
 - [ ] Enforce the signed 512-byte summary and 12-keyword grammar with exact bounded lexical and semantic serialization (never indexing package documentation as ranking text); implement publisher-normalized entitlement, exact apportionment and ties, and auditable client-nonce VRF exploration with deterministic and degraded modes [PACKAGE-DISCOVERY-INTENT] [PACKAGE-DISCOVERY-EXPOSURE].
 - [ ] Build the Osprey-to-WASM web UI for search, source, dependencies, effects and capabilities, evidence, proofs, advisories, release history, publishing, transfers, quarantine and appeals, meeting the keyboard, screen-reader, responsive, no-JavaScript evidence-download and `No blocking finding` language requirements [PACKAGE-IMPLEMENTATION-LANGUAGE] [PACKAGE-DISCOVERY].
 - [x] Show the release’s compiler-generated API reference beside its download link in the local catalog, with a browser check from FlashAttention to its function documentation [PACKAGE-HOSTED-ROUTES-CATALOG].
-- [ ] (verify) The standalone catalog shell holds at 390 px and 1440 px in the folder-registry preview (browse, search, no matches, package details, source download and the upload availability state): rebuild with `make -C src/osprey/packages registry-website-preview` while `registry-serve` runs [PACKAGE-IMPLEMENTATION-LANGUAGE].
+- [x] The standalone catalog shell holds at 390 px and 1440 px in the folder-registry preview (browse, search, no matches, package details, source download and the upload availability state): rebuild with `make -C src/osprey/packages registry-website-preview` while `registry-serve` runs [PACKAGE-IMPLEMENTATION-LANGUAGE].
 
 ## Milestone D — Operational launch
 
