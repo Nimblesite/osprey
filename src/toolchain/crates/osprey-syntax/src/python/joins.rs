@@ -3,12 +3,13 @@
 //! lowers to one `let result = <if value>`.
 use super::context::{children, position, Lowerer, Result};
 use osprey_ast::{Expr, FieldAssignment, Stmt};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use tree_sitter::Node;
 
 impl Lowerer<'_> {
     /// The fresh names every branch of `node` binds, in first-branch order,
-    /// each as the node that names it in the first branch.
+    /// each as the first node that names it in the first branch: a branch may
+    /// write a joined name more than once, and that is still one binding.
     pub(super) fn joined_names<'t>(&self, node: Node<'t>) -> Vec<Node<'t>> {
         let suites = branch_suites(node);
         let mut binds = suites.iter().map(|suite| self.suite_binds(*suite));
@@ -17,8 +18,10 @@ impl Lowerer<'_> {
         if rest.is_empty() {
             return Vec::new();
         }
+        let mut seen = BTreeSet::new();
         first
             .into_iter()
+            .filter(|name| seen.insert(self.text(*name)))
             .filter(|name| rest.iter().all(|other| self.names_in(other, *name)))
             .collect()
     }

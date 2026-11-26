@@ -212,6 +212,12 @@ fn python_rejects_reading_a_local_before_its_assignment() {
         "def bump():\n    balance = 1\n    balance = balance + 1\n    return balance\n",
         "balance = 3\ndef plus(amount):\n    return balance + amount\n",
         "balance = 3\ndef plus(amount):\n    total = balance + amount\n    return total\n",
+        // A joined name written twice in one branch is still one binding,
+        // whichever branch holds the second write.
+        "def pick(a, b):\n    if a > b:\n        total = a\n        total = total + 1\n    else:\n        total = b\n    return total\n",
+        "def pick(a, b):\n    if a > b:\n        total = a\n    else:\n        total = b\n        total = total + 1\n    return total\n",
+        "def pick(n):\n    if n > 0:\n        total = n\n        total = total + 1\n        total = total + 2\n    elif n < 0:\n        total = 0\n    else:\n        total = 1\n        total = total + 1\n    return total\n",
+        "def pick(a, b):\n    if a > b:\n        if a > 5:\n            total = a\n            total = total + 1\n        else:\n            total = 5\n    else:\n        total = b\n    return total\n",
     ] {
         let _ = parsed(accepted);
     }
