@@ -117,6 +117,13 @@ void fiber_release(Fiber *fiber) { held_release((Held *)fiber); }
 static atomic_int channel_waits;
 static _Atomic size_t stuck_reported;
 
+// How many fibers are parked on a channel right now, each counted only once
+// its wait is registered: what a test waits on before collecting a verdict,
+// instead of a timer a loaded runner can outrun.
+int fiber_channel_waits(void) {
+  return atomic_load_explicit(&channel_waits, memory_order_relaxed);
+}
+
 // Names the fibers a collection found blocked for ever since the last report
 // [CONCURRENCY-DEADLOCK]. The collector only counts them: it may hold the heap
 // lock or have stopped the world, so the report is written here.
