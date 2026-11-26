@@ -125,8 +125,7 @@ The sample-backed Grain Cloud slice is delivered before another family expands [
 
 ## Arrangements [SYNTH-ARRANGEMENT]
 
-- [ ] Automated tests for `NoteRenders`, `Arrangements`, `Sustains`, `SongFiles` and the command-line player [SYNTH-ARRANGEMENT].
-- [ ] Bandlimited sustain transposition and stereo instruments; `synth::Limiters` stays a module the user places and never lands on Master by itself [SYNTH-ARRANGEMENT] [DAW-TRANSPARENCY].
+- [ ] Stereo instruments; `synth::Limiters` stays a module the user places and never lands on Master by itself [SYNTH-ARRANGEMENT] [DAW-TRANSPARENCY].
 - [ ] Playback on Windows and Linux (`afplay` is macOS only) [SYNTH-ARRANGEMENT].
 - [ ] An intro's tempo and key detected instead of measured by hand [SYNTH-ARRANGEMENT].
 - [ ] Pluggable processing (after #427 is merged and the user approves): every processing call site in `@osprey/synth` and the daw listed, one effect declared per kind of processing, and each call site routed through its effect with a default handler byte-identical to today's output on the existing goldens [SYNTH-ARRANGEMENT-EFFECTS].
