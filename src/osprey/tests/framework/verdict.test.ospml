@@ -155,7 +155,7 @@ verdictAlgebraCase () =
     fail2 = Fail "two"
     skip1 = Skip "first"
     skip2 = Skip "second"
-    // How `skip2` and a refused precondition each render.
+    (** How `skip2` and a refused precondition each render. *)
     skip2Label = "skip(second)"
     preconditionSkipped = "skip(precondition not met)"
     sumCheck = checkVerdict "sum"
@@ -220,7 +220,7 @@ curriedArityLadderCase () =
     openTag = tag3 "<"
     bothTrue = all3 true
     scaled = blend3 2.0
-    // The two boolean inputs the boolean ladder runs over.
+    (** The two boolean inputs the boolean ladder runs over. *)
     boolInputs = [true, false]
 
     // 1+2 = 3, 1+2+3+4 = 10, 1+..+5 = 15, 1+..+6 = 21.

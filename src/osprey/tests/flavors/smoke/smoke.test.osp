@@ -26,7 +26,7 @@ fn helloSmokeCase() = {
     let numbers = [2, 3, 5, 8]
     let numberBuckets = { "small": numbers, "large": [13, 21, 34] }
 
-    // The greeting the legacy line carried, kept as its own text to compare against.
+    /// The greeting the legacy line carried, kept as its own text to compare against.
     let expectedGreeting = "Hello from the ML flavor"
     // Reconstruct both complete legacy lines byte-for-byte as string values.
     checkAll("hello legacy rendered lines", [

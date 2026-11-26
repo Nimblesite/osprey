@@ -109,7 +109,7 @@ checkFloatPair (label, left, right, expected) = checkAll label [
 nanComparisonsCase () =
     huge = growFloat (2.0, 10)
     nan = huge - huge
-    // An unordered pair: only != holds.
+    (** An unordered pair: only != holds. *)
     unordered = "false,true,false,false,false,false"
     checkFloatPair ("NaN/NaN", nan, nan, unordered)
     checkFloatPair ("NaN/float", nan, 1.0, unordered)
@@ -118,11 +118,11 @@ nanComparisonsCase () =
     checkFloatPair ("zero/NaN", 0.0, nan, unordered)
 orderedFloatComparisonsCase () =
     huge = growFloat (2.0, 10)
-    // An ordered pair: left < right, left <= right.
+    (** An ordered pair: left < right, left <= right. *)
     lessRow = "false,true,true,true,false,false"
-    // An ordered pair: left > right, left >= right.
+    (** An ordered pair: left > right, left >= right. *)
     greaterRow = "false,true,false,false,true,true"
-    // An ordered pair whose sides are equal.
+    (** An ordered pair whose sides are equal. *)
     equalRow = "true,false,false,true,false,true"
     checkFloatPair ("less", 1.0, 2.0, lessRow)
     checkFloatPair ("greater", 2.0, 1.0, greaterRow)

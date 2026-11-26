@@ -29,7 +29,7 @@ helloSmokeCase () =
     numbers = [2, 3, 5, 8]
     numberBuckets = ["small" => numbers, "large" => [13, 21, 34]]
 
-    // The greeting the legacy line carried, kept as its own text to compare against.
+    (** The greeting the legacy line carried, kept as its own text to compare against. *)
     expectedGreeting = "Hello from the ML flavor"
     // Preserve both complete rendered lines.
     checkAll "hello legacy rendered lines" [
