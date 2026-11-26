@@ -41,6 +41,11 @@ async function chooseIn(page, picker, words) {
   await select.selectOption(value);
 }
 
+// Every control pauses while the application answers an event ([UI-HOST-MORPH]); a step that
+// acts before the answer lands can press a button the pause then swallows, so acting waits for idle.
+const idle = (page) => expect(page.locator('#osprey-root')).toHaveAttribute('aria-busy', 'false');
+const ACTS = new Set(['invoke', 'type', 'choose']);
+
 const VERBS = {
   wait: async (page, [words]) => expect(shown(page, words).first()).toBeVisible(),
   gone: async (page, [words]) => expect(shown(page, words)).toHaveCount(0),
@@ -57,7 +62,10 @@ async function play(page, file) {
   for (const [index, { verb, words }] of steps(file).entries()) {
     const act = VERBS[verb];
     if (!act) throw new Error(`Unknown step ${verb}`);
-    await test.step(`${index + 1} ${verb} ${words.join(' · ')}`, () => act(page, words));
+    await test.step(`${index + 1} ${verb} ${words.join(' · ')}`, async () => {
+      if (ACTS.has(verb)) await idle(page);
+      await act(page, words);
+    });
   }
 }
 
