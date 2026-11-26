@@ -6,10 +6,10 @@ import { execFile } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 import {
-  commands, EventEmitter, RelativePattern, Selection, ThemeColor, ThemeIcon, TreeItem, TreeItemCollapsibleState,
-  Uri, window, workspace,
+  commands, EventEmitter, MarkdownString, Position, RelativePattern, Selection, ThemeColor, ThemeIcon, TreeItem,
+  TreeItemCollapsibleState, Uri, window, workspace,
 } from "vscode";
-import type { Event, ExtensionContext, TreeDataProvider } from "vscode";
+import type { Event, ExtensionContext, Hover, TreeDataProvider } from "vscode";
 import type { FrontendRunner } from "./package-commands";
 import { MANIFEST_FILE } from "./package-commands";
 
@@ -243,6 +243,35 @@ export interface ModuleExplorerDeps {
   trusted(): boolean;
 }
 
+const HOVER_SEPARATOR = "\n\n---\n\n";
+const SYMBOL_ICON = "symbol-";
+
+/** Every hover's text: a string part as itself, a Markdown part by its value, separated by rules. */
+function hoverText(hovers: readonly Hover[]): string {
+  return hovers.flatMap((hover) => hover.contents)
+    .map((part) => (typeof part === "string" ? part : part.value))
+    .join(HOVER_SEPARATOR);
+}
+
+/** The column of `label` on `line` at or after `from`; undefined when it is not there. */
+function labelColumn(line: string, label: string, from: number): number | undefined {
+  const column = line.indexOf(label, from);
+  return column < 0 ? undefined : column;
+}
+
+/** The editor's own hover at a node's name in its file; undefined when the name or any hover is missing. */
+async function editorHover(node: ModuleNode): Promise<string | undefined> {
+  const location = node.location;
+  if (!location) return undefined;
+  const document = await workspace.openTextDocument(Uri.file(location.file));
+  const line = location.line - 1;
+  if (line < 0 || line >= document.lineCount) return undefined;
+  const column = labelColumn(document.lineAt(line).text, node.label, location.column);
+  if (column === undefined) return undefined;
+  const hovers = await commands.executeCommand<Hover[]>("vscode.executeHoverProvider", document.uri, new Position(line, column));
+  return hovers.length ? hoverText(hovers) : undefined;
+}
+
 /** The tree; a project's children load on expansion and reload on refresh. */
 export class ModuleExplorerProvider implements TreeDataProvider<ModuleNode> {
   private readonly changed = new EventEmitter<ModuleNode | undefined>();
@@ -271,6 +300,15 @@ export class ModuleExplorerProvider implements TreeDataProvider<ModuleNode> {
     item.command = node.location
       ? { command: OPEN_SOURCE_COMMAND, title: "Open", arguments: [node.location] }
       : undefined;
+    return item;
+  }
+
+  /** A symbol's hover is the editor's hover at its name; anything else keeps the tooltip it was given. */
+  async resolveTreeItem(item: TreeItem, node: ModuleNode): Promise<TreeItem> {
+    if (node.icon?.startsWith(SYMBOL_ICON) && node.location) {
+      const hover = await editorHover(node);
+      if (hover !== undefined) item.tooltip = new MarkdownString(hover);
+    }
     return item;
   }
 

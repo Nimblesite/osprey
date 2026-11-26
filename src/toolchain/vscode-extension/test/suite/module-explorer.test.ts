@@ -77,7 +77,7 @@ suite("Module Explorer [EDITOR-MODULE-EXPLORER]", () => {
     } finally { await browser.close(); }
   });
 
-  test("the real compiler's code tree: folder, file, namespace, module and members with coloured icons, across flavors", async () => {
+  test("the real compiler's code tree: folder, namespace, module and members with coloured icons and the editor's hover, across flavors", async () => {
     const root = project({
       "osprey.toml": MANIFEST,
       "src/main.ospml": 'namespace app\n\nmodule Outer\n    export module Inner\n        export one = 1\n    export keep x = x\n\neffect Counter\n    increment : int => Unit\n\nlimit = 3\n\nprint "${Outer::Inner::one} ${Outer::keep limit}"\n',
@@ -138,6 +138,20 @@ suite("Module Explorer [EDITOR-MODULE-EXPLORER]", () => {
     assert.strictEqual((await child(moreApp, "strlen")).location?.file, path.join(root, "src", "more.osp"));
     assert.strictEqual((await child(mainApp, "limit")).location?.file, path.join(root, "src", "main.ospml"));
     assert.strictEqual(tree.getParent(folder), modules);
+
+    // A member's tree hover is the editor's own hover at its name, word for word.
+    await activateWithServer();
+    for (const [scope, name, line] of [[outer, "keep", 5], [extra, "two", 4], [mainApp, "limit", 10]] as const) {
+      const member = await child(scope, name);
+      const document = await vscode.workspace.openTextDocument(member.location?.file ?? "");
+      const at = new vscode.Position(line, document.lineAt(line).text.indexOf(name));
+      const editor = await vscode.commands.executeCommand<vscode.Hover[]>("vscode.executeHoverProvider", document.uri, at);
+      const expected = editor.flatMap((hover) => hover.contents)
+        .map((part) => (typeof part === "string" ? part : part.value)).join("\n\n---\n\n");
+      assert.ok(expected.includes(name), `the editor hovers ${name}: ${expected}`);
+      const resolved = await tree.resolveTreeItem(tree.getTreeItem(member), member);
+      assert.strictEqual((resolved.tooltip as vscode.MarkdownString | undefined)?.value, expected, name);
+    }
 
     assert.deepStrictEqual(labels(await tree.getChildren(sources)), [path.join("src", "main.ospml"), path.join("src", "more.osp")]);
     assert.deepStrictEqual(labels(await tree.getChildren(dependencies)), ["No lock file", "@org/left", "@org/right"]);
