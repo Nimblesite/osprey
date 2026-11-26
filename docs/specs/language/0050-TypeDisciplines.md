@@ -2,7 +2,7 @@
 
 **Status:** **implemented and gated except where marked**: the marker, the registry, the checker process with one deadline over build, spawn, request and response, protocol version 2 with imported signatures, `omitted[]` and checker-declared `dependencies`, keyed binary and result caches, outline-only parsing of disciplined sources, erasure ascribed to the written signature, and four reference disciplines (`passthrough`, `bounded`, `dependent`, `leanexport`) under GC, ARC and wasm32 in `make _test_disciplines`. Open: exported types and values rendered in an inferred `hm` signature (named in `omitted[]` today), the markerless byte-identity gate, and theory evolution below. Delivery: [plan 0061](../../plans/0061-pluggable-type-disciplines.md). Dependent disciplines: [spec 0049](0049-DependentTypesAndProofs.md). This contract stands on its own: it is the mechanism by which any type system other than Hindley-Milner checks an Osprey module, and it is complete before any such system exists.
 
-## Aim [TYPES-DISCIPLINE-AIM]
+## Aim `[TYPES-DISCIPLINE-AIM]`
 
 Osprey has one type system today, the Hindley-Milner discipline of [spec 0004](0004-TypeSystem.md), and it stays the type system of every Osprey program. This contract lets a **module** opt into a different checker, called a **discipline**, without the compiler learning what that checker does. The flavors of [spec 0023](0023-LanguageFlavors.md) made syntax pluggable above one canonical AST; disciplines make typing pluggable above the same AST and the module signatures of [spec 0025](0025-ModulesAndNamespaces.md). Three consequences:
 
@@ -10,7 +10,7 @@ Osprey has one type system today, the Hindley-Milner discipline of [spec 0004](0
 2. Modules under different disciplines link into one program. They meet at the signature boundary; nothing below the canonical AST knows which discipline checked a module.
 3. The compiler never grows a second type system. `src/toolchain/crates/osprey-types` gains one dispatch point and no theory.
 
-## Design principles from the literature [TYPES-DISCIPLINE-PRINCIPLES]
+## Design principles from the literature `[TYPES-DISCIPLINE-PRINCIPLES]`
 
 These rules are normative. Each states the research it comes from, how Osprey meets it, and where it is tested or still open.
 
@@ -23,7 +23,7 @@ These rules are normative. Each states the research it comes from, how Osprey me
 7. `[TYPES-DISCIPLINE-PRINCIPLES-SPECTRUM]` **Refinement and dependent types are different points on one line, and both must plug in.** Refinement types over a decidable logic keep inference automatic [Freeman and Pfenning 1991; Rondon, Kawaguchi and Jhala 2008; Vazou et al. 2014]; full dependent types need proofs. Osprey: `bounded` (refinement) and `dependent` and `leanexport` (dependent) use the same seam ([TYPES-DISCIPLINE-REFERENCE]).
 8. `[TYPES-DISCIPLINE-PRINCIPLES-IDENTITY]` **A theory has an identity, and changing it re-checks.** A fork that changes axioms or rules is a different theory and inherits no verdicts ([TYPES-DISCIPLINE-EVOLUTION]). Osprey: results are cached by request, checker binary and every file the checker read; keying by theory identity is open ([plan 0061](../../plans/0061-pluggable-type-disciplines.md#open)).
 
-## Definitions [TYPES-DISCIPLINE-DEF]
+## Definitions `[TYPES-DISCIPLINE-DEF]`
 
 A **discipline** is a checker that, given a module and the signatures of everything it imports, either rejects the module with diagnostics or accepts it and produces two artifacts:
 
@@ -39,7 +39,7 @@ The compiler ships one discipline and knows the shape of all of them:
 
 `hm` is not special-cased anywhere except that it has no process boundary and no erasure step; it is the identity discipline.
 
-## Theory identity and correction [TYPES-DISCIPLINE-EVOLUTION]
+## Theory identity and correction `[TYPES-DISCIPLINE-EVOLUTION]`
 
 This is a delivery target, expanded in [plan 0041 milestone 2](../../plans/0041-dependent-types-and-mathlib.md#milestone-2-replace-and-fork-disciplines-safely-proof-completion-disciplines). The generic seam is implemented; the complete identity, fork and invalidation acceptance described here remains required evidence.
 
@@ -49,7 +49,7 @@ A checker implementation fix, an axiom-policy change and a change of logical rul
 
 Lean is the reference oracle for the first compatible theory, not a mandatory dependency of every discipline or an authority that overrides Osprey's soundness rules. Known unsound oracle behaviour must have a rejection regression. Every fork documents its intended rules and assumptions; switching disciplines is a correction mechanism, not evidence by itself that a theory is consistent. See the [proof messaging contract](../../messaging.md#proof-development-and-the-lean-oracle).
 
-## Registry [TYPES-DISCIPLINE-REGISTRY]
+## Registry `[TYPES-DISCIPLINE-REGISTRY]`
 
 A discipline is a package ([spec 0029](../ecosystem/0029-PackageManagement.md)) whose manifest declares one table:
 
@@ -67,7 +67,7 @@ checker = "src"                  # an Osprey program: one source file, or a proj
 - A project uses a discipline by listing its package under `[dependencies]`; nothing else is configured. Two dependencies registering the same `name` is a `discipline-error` at project load, naming both packages.
 - The checker program is built once by the ordinary build pipeline, under the project's memory backend, and cached beside the package by content hash. A discipline is therefore itself an Osprey program under every rule of the language: no panics, typed `Result`, both backends, wasm32 where the package claims it.
 
-## Selection [TYPES-DISCIPLINE-SELECT]
+## Selection `[TYPES-DISCIPLINE-SELECT]`
 
 The marker `// osprey: types=<name>` (or `# osprey: types=<name>` in Python flavor) sits in the file header beside the flavor marker and is read by the same scan as [FLAVOR-SELECT](0023-LanguageFlavors.md#flavor-selection). Precedence, highest first:
 
@@ -77,7 +77,7 @@ The marker `// osprey: types=<name>` (or `# osprey: types=<name>` in Python flav
 
 A name no listed package provides is one `discipline-error` diagnostic on the marker, and the module is not checked by anything else. A marker in a file with no namespace or in a file selected as a Python source is read the same way; discipline and flavor are orthogonal, and every pair is legal.
 
-## Seam [TYPES-DISCIPLINE-SEAM]
+## Seam `[TYPES-DISCIPLINE-SEAM]`
 
 Project assembly ([MODULES-PROJECT](0025-ModulesAndNamespaces.md#project-assembly-modules-project)) already orders modules by their import graph and checks them with signatures of their imports in hand. The seam is one function on that path, called once per module, in front of `check_program`:
 
@@ -94,7 +94,7 @@ check_module(module, imported_signatures) ->
 
 Because every erased module passes `check_program`, a discipline cannot introduce an ill-typed program to the backend: the worst a wrong checker can do is reject a correct module or accept a module whose erased form is HM-correct but means something else, and the second is the discipline's trust problem, documented by that discipline ([PROOF-TRUST](0055-ProofKernelAndLeanBridge.md#trust-proof-trust) for `lean4`).
 
-## Checker protocol [TYPES-DISCIPLINE-PROTOCOL]
+## Checker protocol `[TYPES-DISCIPLINE-PROTOCOL]`
 
 The checker is a separate process so that the compiler links no discipline, a checker fault cannot take the compiler down, and a discipline can be any size. One request on standard input, one response on standard output, JSON, in the style of the language server of [spec 0020](../tooling/0020-LanguageServerAndEditors.md):
 
@@ -123,7 +123,7 @@ The checker is a separate process so that the compiler links no discipline, a ch
 
 Results are cached by the hash of the request and the checker binary, beside a digest of every listed dependency; an unchanged module with unchanged imports and unchanged dependencies is not re-checked, and a dependency that changes, appears or vanishes is a miss.
 
-## Boundary [TYPES-DISCIPLINE-BOUNDARY]
+## Boundary `[TYPES-DISCIPLINE-BOUNDARY]`
 
 Modules of different disciplines meet only through export signatures.
 
@@ -133,7 +133,7 @@ Modules of different disciplines meet only through export signatures.
 - **Entry point:** a discipline module may be the entry source if its erased module contains the `main` that [MODULES-ENTRYPOINT](0025-ModulesAndNamespaces.md#entry-point-modules-entrypoint) requires.
 - **Cycles** between modules are forbidden as today, whatever their disciplines.
 
-## The existing language is untouched [TYPES-DISCIPLINE-NO-HARM]
+## The existing language is untouched `[TYPES-DISCIPLINE-NO-HARM]`
 
 The rules of [PROOF-NO-HARM](0049-DependentTypesAndProofs.md#rules) are the rules of this contract, restated for the seam alone:
 
@@ -143,7 +143,7 @@ The rules of [PROOF-NO-HARM](0049-DependentTypesAndProofs.md#rules) are the rule
 4. A program that uses no discipline runs no checker process, builds no checker and links nothing new.
 5. Deleting the seam and the `[discipline]` table restores the compiler as it was.
 
-## Reference disciplines [TYPES-DISCIPLINE-REFERENCE]
+## Reference disciplines `[TYPES-DISCIPLINE-REFERENCE]`
 
 Four packages prove the seam, two of them dependent:
 
@@ -154,7 +154,7 @@ Four packages prove the seam, two of them dependent:
 
 Further disciplines, including the Lean-source `lean4` target of [spec 0055](0055-ProofKernelAndLeanBridge.md), are built on this seam and add nothing to it.
 
-## Verification [TYPES-DISCIPLINE-VERIFICATION]
+## Verification `[TYPES-DISCIPLINE-VERIFICATION]`
 
 [Plan 0061](../../plans/0061-pluggable-type-disciplines.md) is complete when, in CI:
 

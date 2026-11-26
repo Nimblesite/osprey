@@ -355,7 +355,7 @@ fn lists_and_profiles(flavor: Flavor, name: &str) {
 fn diagnostics_after(
     server: &mut Server,
     method: &str,
-    params: Value,
+    params: &Value,
     uri: &str,
     version: Option<i64>,
 ) -> Vec<Value> {
@@ -384,7 +384,7 @@ fn published_diagnostics(server: &mut Server, uri: &str, text: &str) -> Vec<Valu
     let params = json!({
         "textDocument": { "uri": uri, "languageId": "osprey", "version": 1, "text": text }
     });
-    diagnostics_after(server, "textDocument/didOpen", params, uri, None)
+    diagnostics_after(server, "textDocument/didOpen", &params, uri, None)
 }
 
 /// Exactly one diagnostic, the nesting limit, on the source's first line.
@@ -429,7 +429,7 @@ fn edited_diagnostics(server: &mut Server, uri: &str, version: i64, text: &str) 
         "textDocument": { "uri": uri, "version": version },
         "contentChanges": [{ "text": text }]
     });
-    diagnostics_after(server, "textDocument/didChange", params, uri, Some(version))
+    diagnostics_after(server, "textDocument/didChange", &params, uri, Some(version))
 }
 
 /// The codes and messages of every error (severity 1) in `diagnostics`.
