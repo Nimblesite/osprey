@@ -152,7 +152,7 @@ registry-website: $(BIN) | _runtime_wasm
 	  digest=$$(shasum -a 256 $(REGISTRY_WEB)/assets/registry.css | cut -c1-12); \
 	  asset="registry.$$digest.css"; grep -Fq "href=\"/$$asset\"" "$$out/index.html"; \
 	  cp $(REGISTRY_WEB)/assets/registry.css "$$out/$$asset"; \
-	  cp $(REGISTRY_WEB)/assets/_headers "$$out/"; \
+	  cp $(REGISTRY_WEB)/assets/_headers $(REGISTRY_WEB)/assets/registry-mark.svg "$$out/"; \
 	  rsync -a --delete "$$out/" target/registry-site/
 
 .PHONY: registry-website-preview

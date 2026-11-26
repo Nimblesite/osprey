@@ -5,6 +5,6 @@ module Shell {
     /// Shell for an already escaped title or a trusted text literal.
     export fn withEscapedTitle(title, body) = join([
         "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>",
-        title, "</title><link rel=\"stylesheet\" href=\"/registry.ae99da645ade.css\"></head><body>",
-        "<header class=\"prose-bar\"><a class=\"prose-brand\" href=\"/\">Osprey Packages</a><nav aria-label=\"Primary\"><a href=\"/upload/\">Upload a package</a></nav></header>", body, "</body></html>"], "")
+        title, "</title><link rel=\"icon\" type=\"image/svg+xml\" href=\"/registry-mark.svg\"><link rel=\"stylesheet\" href=\"/registry.bf2e2930b908.css\"></head><body>",
+        "<header class=\"prose-bar\"><a class=\"prose-brand\" href=\"/\"><img src=\"/registry-mark.svg\" width=\"36\" height=\"36\" alt=\"\">Osprey Packages</a><nav aria-label=\"Primary\"><a href=\"/upload/\">Upload a package</a></nav></header>", body, "</body></html>"], "")
 }

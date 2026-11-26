@@ -21,7 +21,6 @@ a { color: inherit; text-underline-offset: .2em }
 .prose-bar, main { width: min(76rem, calc(100% - 3rem)); margin-inline: auto }
 .prose-bar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding-block: 1.4rem; border-bottom: 1px solid var(--line) }
 .prose-brand { display: inline-flex; align-items: center; gap: .65rem; font-weight: 750; text-decoration: none }
-.prose-brand::before { content: ''; width: 1.25rem; height: 1.35rem; background: var(--pine); clip-path: polygon(0 0,100% 0,60% 40%,84% 40%,12% 100%,32% 48%,0 48%) }
 .prose-bar nav { font-size: .875rem }
 main { padding-block: clamp(2rem, 5vw, 5rem) }
 h1,h2,h3,p { margin-block-start: 0 }
@@ -46,3 +45,38 @@ pre { overflow-x: auto; padding: 1rem; background: #e6eae1; border-radius: .35re
 .prose-search button:disabled { opacity: .6 }
 .prose-package { padding: 1rem 0; border-top: 1px solid var(--line) }
 .prose-package h3, .prose-package p { margin: .2rem 0 }
+.prose-intro h1 { margin-bottom: .7rem; font-size: clamp(2.8rem, 6.2vw, 5rem) }
+.prose-intro p { max-width: 60ch; margin-bottom: 1.7rem; color: var(--muted); font-size: 1.12rem }
+.prose-detail { padding-top: 2rem }
+.prose-cover, .prose-intro { position: relative; isolation: isolate; overflow: hidden; padding: clamp(1.5rem, 4vw, 3.8rem); border-radius: 1rem; background: #153d39; color: #fcf8ef }
+.prose-cover::after, .prose-intro::after { content: ''; position: absolute; z-index: -1; inset: 0 0 0 60%; background: conic-gradient(from 30deg at 50% 67%, #dfacff 0 60deg, #9560cd 60deg 120deg, #624b86 120deg 180deg, #f1c770 180deg 240deg, #ff967d 240deg 300deg, #bde982 300deg); background-size: 5.3rem 7.9rem; clip-path: polygon(48% 0,100% 0,100% 100%,0 100%); }
+.prose-cover h1, .prose-intro h1 { max-width: 70%; margin: 1.5rem 0 .6rem; font-size: clamp(2.7rem, 5.6vw, 5.5rem) }
+.prose-cover > p, .prose-intro > p { max-width: min(65%, 54ch); margin: 0; color: #deebdc; font-size: 1.1rem }
+.prose-cover > a { color: var(--mint); font-weight: 650 }
+.prose-intro { margin-bottom: 1.7rem }
+.prose-intro h1 { margin-top: 0 }
+.prose-columns { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 1.3rem; margin-top: 1.3rem; align-items: start }
+.prose-releases, .prose-facts { border-radius: 1rem; padding: clamp(1.25rem, 2.5vw, 2rem) }
+.prose-releases { border: 1px solid var(--line); background: #fffdf7 }
+.prose-facts { background: #e9def2; color: #34243d }
+.prose-columns h2 { margin-bottom: .75rem }
+.prose-facts dl { margin: 0 }
+.prose-facts dl > div { padding: .85rem 0; border-top: 1px solid #cbbed2 }
+.prose-facts dt { font: 600 .8rem/1.4 var(--mono); color: #604c68 }
+.prose-facts dd { margin: .25rem 0 0; font-weight: 600; overflow-wrap: anywhere }
+.prose-chip { display: inline-block; margin: .15rem .3rem .15rem 0; padding: .1rem .55rem; border: 1px solid #bda7c8; border-radius: 1rem; background: #f7f0fb; font: .8rem/1.6 var(--mono) }
+.prose-release { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .7rem; border-top: 1px solid var(--line); padding-top: 1rem; margin-top: 1rem }
+.prose-release h3 { margin: auto 0; font-size: 1.5rem }
+.prose-release p, .prose-release code { grid-column: 1 / -1; margin: 0 }
+.prose-release code { color: var(--muted); font-size: .85rem }
+.prose-download { padding: .5rem .85rem; border-radius: .4rem; background: #cbf67c; color: #213b22; font-weight: 700; text-decoration: none }
+.prose-download:hover { background: #b4e15f }
+#results { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(18rem, 100%), 1fr)); gap: .8rem }
+.prose-package { padding: 1.1rem; background: #fffdf7; border: 1px solid var(--line); border-top: .25rem solid #91b878; border-radius: .6rem }
+.prose-package:nth-child(3n + 2) { border-top-color: #a88cc4 }
+.prose-package:nth-child(3n) { border-top-color: #da947c }
+@media (max-width: 45rem) {
+  .prose-columns { grid-template-columns: 1fr }
+  .prose-cover::after, .prose-intro::after { inset: 0 0 auto; height: .6rem; clip-path: none; background-size: 2.5rem 3rem }
+  .prose-cover h1, .prose-intro h1, .prose-cover > p, .prose-intro > p { max-width: 100% }
+}

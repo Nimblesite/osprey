@@ -9,6 +9,7 @@ api=http://127.0.0.1:8787/v1
 render() { printf '%s\n' "$@" | wasmtime target/registry-site-build/site.wasm; }
 fetch() { curl --noproxy '*' --fail --silent --show-error --max-time 120 "$api/$1"; }
 mkdir -p "$out/sources"
+cp "$site/registry-mark.svg" "$out/"
 cp -R "$site/guide" "$site/publishing" "$site/upload" "$out/"
 cp "$site/registry.$(shasum -a 256 src/osprey/packages/manager/web/assets/registry.css | cut -c1-12).css" "$out/"
 sed "s/form-action 'none'/script-src 'self'; form-action 'self'/" "$site/_headers" > "$out/_headers"

@@ -6,7 +6,7 @@ fn catalog(local, entries) = {
     let disabled = if local { "" } else { " disabled" }
     let form = "<form role=\"search\" method=\"get\" action=\"/\"><label for=\"q\">Search packages</label><div class=\"prose-search\"><input id=\"q\" name=\"q\" type=\"search\" placeholder=\"Package name or description\"${disabled}><button${disabled}>Search</button></div></form>"
     let behavior = if local { "<script src=\"/filter.1ae1cf977c5e.js\" defer></script>" } else { "" }
-    Shell::withEscapedTitle("Osprey Packages", "<main><h1>Packages</h1>${form}<section><h2>Browse packages</h2>${notice}<div id=\"results\">${entries}</div></section></main>${behavior}")
+    Shell::withEscapedTitle("Osprey Packages", "<main><header class=\"prose-intro\"><h1>Osprey Packages</h1><p>The package registry for the Osprey language. Find libraries for your next project, see who published them, and download the source for a specific release.</p></header>${form}<section><h2>Browse packages</h2>${notice}<div id=\"results\">${entries}</div></section></main>${behavior}")
 }
 
 fn upload() = Shell::withEscapedTitle("Upload a package · Osprey Packages", "<main><h1>Upload a package</h1><p role=\"status\">Public uploads are unavailable.</p><a href=\"/\">Browse packages</a></main>")
@@ -23,18 +23,23 @@ fn publisherLink(receipt) = if receipt == "recorded" {
     "<a href=\"/publishers/osprey-repository/\">${publisherName}</a>"
 } else { "Unrecorded" }
 
-fn field(label, value) = "<dt>${label}</dt><dd>${value}</dd>"
+fn field(label, value) = "<div><dt>${label}</dt><dd>${value}</dd></div>"
+
+fn keywordChips(text) = join(mapList(split(text, ", ") ?: [text], fn(word) => "<span class=\"prose-chip\">${escaped(word)}</span>"), "")
 
 fn localPackage() = {
     let key = trim(input())
     let summary = escaped(trim(input()))
     let publisher = publisherLink(trim(input()))
     let license = escaped(trim(input()))
-    let keywords = escaped(trim(input()))
+    let keywords = keywordChips(trim(input()))
     let dependencies = escaped(trim(input()))
     let releases = trim(input())
     let metadata = join([field("Publisher", publisher), field("License", license), field("Keywords", keywords), field("Dependencies", dependencies)], "")
-    Shell::withEscapedTitle("${key} · Osprey Packages", "<main><h1>${key}</h1><p>${summary}</p><dl>${metadata}</dl><section><h2>Releases</h2><p>Local folder registry · Audit unverified</p>${releases}</section></main>")
+    let cover = "<header class=\"prose-cover\"><a href=\"/\">← Packages</a><h1>${key}</h1><p>${summary}</p></header>"
+    let versions = "<section class=\"prose-releases\"><h2>Releases</h2><p>Local folder registry · Audit unverified</p>${releases}</section>"
+    let facts = "<aside class=\"prose-facts\"><h2>Package details</h2><dl>${metadata}</dl></aside>"
+    Shell::withEscapedTitle("${key} · Osprey Packages", "<main class=\"prose-detail\">${cover}<div class=\"prose-columns\">${versions}${facts}</div></main>")
 }
 
 fn row() = {
@@ -66,7 +71,7 @@ fn main() = print(match trim(input()) {
         let version = trim(input())
         let digest = trim(input())
         let publisher = publisherLink(trim(input()))
-        "<p><a download href=\"/sources/${digest}.json\">Download ${version}</a> · <code>${digest}</code><br>Publisher · ${publisher}</p>"
+        "<article class=\"prose-release\"><h3>${version}</h3><a class=\"prose-download\" download href=\"/sources/${digest}.json\">Download ${version}</a><p>Published by ${publisher}</p><code>${digest}</code></article>"
     }
     _ => catalog(false, "")
 })
