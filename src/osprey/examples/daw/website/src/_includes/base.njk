@@ -39,9 +39,36 @@
 
       <nav class="studio-nav" aria-label="Primary">
         {% for item in site.nav %}
+        {% if item.children %}
+        <div class="nav-group" data-dropdown>
+          <button
+            type="button"
+            class="studio-tab nav-trigger{% if page.url.startsWith(item.href) %} is-active{% endif %}"
+            aria-expanded="false"
+            aria-haspopup="true"
+            data-dropdown-trigger
+          >
+            {{ item.label }} <span class="caret" aria-hidden="true">▾</span>
+          </button>
+          <div class="nav-submenu" role="menu" data-dropdown-menu hidden>
+            {% for child in item.children %}
+            <a
+              class="submenu-item{% if page.url == child.href %} is-active{% endif %}"
+              href="{{ child.href }}"
+              role="menuitem"
+              {% if page.url == child.href %}aria-current="page"{% endif %}
+            >
+              <span class="submenu-label">{{ child.label }}</span>
+              <span class="submenu-desc">{{ child.desc }}</span>
+            </a>
+            {% endfor %}
+          </div>
+        </div>
+        {% else %}
         <a class="studio-tab{% if page.url == item.href or (item.href != '/' and page.url.startsWith(item.href)) %} is-active{% endif %}" href="{{ item.href }}"{% if page.url == item.href %} aria-current="page"{% endif %}>
           {{ item.label }}
         </a>
+        {% endif %}
         {% endfor %}
       </nav>
     </div>
@@ -57,12 +84,6 @@
         <span class="status-led" aria-hidden="true"></span>
         <strong>{{ site.name }}</strong>
         <span class="dim">Modular synth studio, VST3 plug-in, and hardware synth factory.</span>
-      </div>
-      <div class="footer-meta">
-        <a href="/modules/">Modules</a>
-        <a href="/architecture/">Proofs &amp; Hardware</a>
-        <a href="/blog/">Blog</a>
-        <a href="/tracks/">Tracks</a>
       </div>
     </div>
   </footer>

@@ -121,10 +121,31 @@ a { color: inherit; }
 .studio-tab {
   text-decoration: none; font-size: 0.9rem; font-weight: 500;
   color: var(--dim); padding: 7px 14px; border-radius: var(--radius-sm);
+  border: 0; background: transparent; font-family: inherit; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 5px;
   transition: color 140ms ease, background 140ms ease;
 }
 .studio-tab:hover { color: var(--ink); }
 .studio-tab.is-active { color: var(--ink); background: var(--surface); }
+
+.nav-group { position: relative; }
+.caret { font-size: 0.72em; opacity: 0.75; transition: transform 140ms ease; }
+.nav-trigger[aria-expanded="true"] .caret { transform: rotate(180deg); }
+.nav-submenu {
+  position: absolute; top: calc(100% + 8px); right: 0; min-width: 260px; z-index: 60;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-md); padding: 6px;
+  box-shadow: 0 20px 50px rgba(4, 2, 14, 0.55);
+  display: flex; flex-direction: column; gap: 2px;
+}
+.submenu-item {
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 9px 12px; border-radius: var(--radius-sm); text-decoration: none;
+  transition: background 120ms ease;
+}
+.submenu-item:hover, .submenu-item.is-active { background: var(--inset); }
+.submenu-label { font-size: 0.88rem; font-weight: 600; color: var(--ink); }
+.submenu-desc { font-size: 0.76rem; color: var(--dim); }
 
 .dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
 .dot-signal { background: var(--signal); }

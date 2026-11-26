@@ -1,4 +1,27 @@
 (() => {
+  // 0. Single-Nav Dropdown Submenu (Learn)
+  document.querySelectorAll("[data-dropdown]").forEach((group) => {
+    const trigger = group.querySelector("[data-dropdown-trigger]");
+    const menu = group.querySelector("[data-dropdown-menu]");
+    if (!trigger || !menu) return;
+    const setOpen = (open) => {
+      trigger.setAttribute("aria-expanded", String(open));
+      menu.hidden = !open;
+    };
+    trigger.addEventListener("click", (event) => {
+      event.stopPropagation();
+      setOpen(menu.hidden);
+    });
+    group.addEventListener("mouseenter", () => setOpen(true));
+    group.addEventListener("mouseleave", () => setOpen(false));
+    document.addEventListener("click", (event) => {
+      if (!group.contains(event.target)) setOpen(false);
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") setOpen(false);
+    });
+  });
+
   // 1. Studio 3-View Screenshot Tabs (Track patch / Timeline / Bus routing)
   const tabButtons = document.querySelectorAll("[data-view-tab]");
   const tabPanels = document.querySelectorAll("[data-view-panel]");

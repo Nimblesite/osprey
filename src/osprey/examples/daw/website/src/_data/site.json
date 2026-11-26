@@ -7,10 +7,37 @@
   "channels": "DAW + VST3",
   "nav": [
     { "label": "Studio", "href": "/" },
-    { "label": "Modules", "href": "/modules/" },
-    { "label": "Proofs & Hardware", "href": "/architecture/" },
-    { "label": "Blog", "href": "/blog/" },
-    { "label": "Tracks", "href": "/tracks/" }
+    {
+      "label": "Learn",
+      "href": "/learn/",
+      "children": [
+        { "label": "Tutorials & Videos", "href": "/learn/", "desc": "Guides and walkthroughs" },
+        { "label": "Modules", "href": "/learn/modules/", "desc": "37 DSP modules & voices" },
+        { "label": "Proofs & Hardware", "href": "/learn/proofs/", "desc": "Lean DSP proofs & hardware factory" },
+        { "label": "Example Tracks", "href": "/learn/tracks/", "desc": "Hand-composed projects & routing" }
+      ]
+    },
+    { "label": "Blog", "href": "/blog/" }
+  ],
+  "tutorials": [
+    {
+      "tag": "Tutorial · 6 min",
+      "title": "Build your first waveguide pluck & sidechain bus",
+      "summary": "Wire an exciter, strike comb, waveguide string, and modulated lowpass, then tap an internal outlet into a kick-keyed stereo bus.",
+      "href": "/learn/modules/"
+    },
+    {
+      "tag": "Video · 8 min",
+      "title": "16-voice granular clouds & formant-preserving FFT pitch",
+      "summary": "Load a 48 kHz WAV into grainCloud, sweep reverse playback rate and jitter, and blend a fifth with the spectral pitch shifter.",
+      "href": "/learn/tracks/"
+    },
+    {
+      "tag": "Video · 5 min",
+      "title": "Drop Perception Studio into Ableton & Reaper as a VST3",
+      "summary": "Load Perception as an instrument or effect plug-in, map macro controls, and flash the exact same patch to a hardware pedal profile.",
+      "href": "/learn/proofs/"
+    }
   ],
   "views": [
     {
