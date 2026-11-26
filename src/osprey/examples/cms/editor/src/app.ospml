@@ -21,7 +21,9 @@ module App
     export initial context = Update::hydrate (Update::launched (listGet context.arguments 0 ?: "http://127.0.0.1:4321"))
 
     (** Applies one message: a tap, an edit or choice, a caret move or a completed request. *)
-    export update (_, store, message) = Messages::route (message, \action => Update::tapped (store, action), \(action, words) => Update::typed (store, action, words), \(_, _) => Runtime::step store, \(action, offset) => Update::placed (store, action, offset), \(ticket, outcome) => Replies::completed (store, ticket, outcome), \_ => Runtime::step store, \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \_ => Runtime::step store, \(_, _) => Runtime::step store)
+    export update (_, store, message) = match message
+        ui::Placed action start reach => Update::placed (store, action, start, reach)
+        _ => Messages::route (message, \action => Update::tapped (store, action), \(action, words) => Update::typed (store, action, words), \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \(ticket, outcome) => Replies::completed (store, ticket, outcome), \_ => Runtime::step store, \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \_ => Runtime::step store, \(_, _) => Runtime::step store)
 
     work store = match store.opened
         "" => Screens::welcome ()

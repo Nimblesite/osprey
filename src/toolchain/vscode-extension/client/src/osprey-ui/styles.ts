@@ -52,6 +52,8 @@ button, input, textarea, select { font: inherit; color: inherit; }
 /* A compact editor is as tall as its text, not a document page. */
 .osp-editor-inline .osp-editor-surface, .osp-editor-inline textarea { min-height: 0; }
 .osp-editor-inline textarea { field-sizing: content; }
+/* Writing in place shows the caret, not a box: a compact editor draws no focus outline. */
+.osp-editor-inline textarea:focus, .osp-editor-inline textarea:focus-visible { outline: none; box-shadow: none; }
 /* A document editor in a frame sized to the window fills it; the frame owns the height, so no grip. */
 .osp-framed[style*="100dvh"] > .osp-editor:not(.osp-editor-inline), .osp-framed[style*="100dvh"] > .osp-editor:not(.osp-editor-inline) > label { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .osp-framed[style*="100dvh"] > .osp-editor:not(.osp-editor-inline) .osp-editor-surface { flex: 1; min-height: 0; }

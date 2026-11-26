@@ -72,6 +72,15 @@ module AdditionCases
     focusedEditorEncoding () =
         editorDrawn (Editors::focused ("Formula", "p\u2192q", length "p\u2192", 3, Typed, Load), "Formula|p\u2192q|true|${length "p\u2192"}|3|0|false|primary||", "{kind=\"editor\",label=\"Formula\",value=\"p\u2192q\",inline=?true,cursor=#${length "p\u2192"},focusEpoch=#3,marks=[],event=#0,placeEvent=#1}")
 
+    // The selection a caret report `words` carries, as start..reach.
+    reached words = match Surfaces::told (ui::PlaceInput(action = Typed), words)
+        Success message => spannedOf message
+        Error reason => reason
+
+    spannedOf message = match message
+        ui::Placed _ start reach => "${start}..${reach}"
+        _ => "not placed"
+
     placed words = delivered (Surfaces::told (ui::PlaceInput(action = Typed), words))
 
     (** [UI-COMPONENTS-EDITOR]: cursor offsets arrive as placed integers, clamp at zero and read non-numbers as zero. *)
@@ -80,6 +89,13 @@ module AdditionCases
         expect (placed "${0 - 3}", "integer typed:0")
         expect (placed "junk", "integer typed:0")
         expect (placed "", "integer typed:0")
+        expect (placed "3 9", "integer typed:3")
+        expect (reached "7", "7..7")
+        expect (reached "3 9", "3..9")
+        expect (reached "9 3", "9..9")
+        expect (reached "${0 - 2} 5", "0..5")
+        expect (reached "4 junk", "4..4")
+        expect (reached "junk", "0..0")
 
     // `node`'s board fields, spelt as one string a table can hold.
     boardSpelled node = match node
@@ -138,7 +154,7 @@ module AdditionCases
         expect (delivered (Strokes::bind (Typed, samplePoints (), 2, 9)), "stroke typed:2/2/9")
         expect (refusal (Strokes::bind (Typed, [], 2, 9)), "A board control sent a malformed stroke")
         expect (delivered (Strokes::lasso (Load, [0, 2])), "lasso load:0,2")
-        expect (routed (ui::Placed(placer = Typed, placed = 7)), "integer typed:7")
+        expect (routed (ui::Placed(placer = Typed, placed = 7, reach = 7)), "integer typed:7")
         expect (routed (ui::Stroked(stroker = Typed, stroked = sampleStroke ())), "stroke typed:2/2/9")
         expect (routed (ui::Lassoed(lassoer = Load, lassoed = [0, 2])), "lasso load:0,2")
         expect (routed (ui::Entered(entry = Typed, entered = "Zoë")), "text typed:Zoë")

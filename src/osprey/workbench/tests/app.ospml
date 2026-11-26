@@ -278,7 +278,7 @@ module Drive
         _ => []
 
     (** The caret of the first editor in `region`'s tree placed at `offset`. *)
-    export placed (case, region, offset) = exported (case, ui::Placed(placer = editorPlace (case, region), placed = offset))
+    export placed (case, region, offset) = exported (case, ui::Placed(placer = editorPlace (case, region), placed = offset, reach = offset))
 
     (** A completion of `ticket`: `ok` with its result `text`, or its reason. *)
     export completed (case, ticket, text) = step (case, \d => uitest::Drive::completed (d, ticket, true, text))

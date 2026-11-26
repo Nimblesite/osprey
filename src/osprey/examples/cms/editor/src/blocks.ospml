@@ -111,6 +111,35 @@ module Blocks
     (** `blocks` with the one at `at` replaced by `item`. *)
     export replaced (blocks, at, item) = range (0, length blocks) |> fold [] (\(out, index) => listAppend out (pick (blocks, index, at, item)))
 
+    // The blocks before and at `at`, then `item`, then the rest.
+    placed (out, index, blocks, at, item) = match index == at
+        true => listAppend (listAppend out (blockAt (blocks, index))) item
+        false => listAppend out (blockAt (blocks, index))
+
+    (** `blocks` with `item` inserted after the one at `at`. *)
+    export insertedAfter (blocks, at, item) = range (0, length blocks) |> fold [] (\(out, index) => placed (out, index, blocks, at, item))
+
+    // Only code, lists and quotes hold line breaks; anywhere else Enter ends the block.
+    holdsLines style = style == "code" || style == "bullets" || style == "quote"
+
+    (** Whether `words` typed into block `style` end it at a line break, as Enter does in a word processor. *)
+    export splits (style, words) = holdsLines style == false && contains words "\n"
+
+    (** Page `text` with block `index` cut at the first line break of `words`: the text before stays in
+        the block, and the text after (without the break) starts a new paragraph after it. *)
+    export split (text, index, words) =
+        whole = page text
+        held = blockAt (whole.pageBlocks, index)
+        at = indexOf words "\n" ?: length words
+        rest = trim (drop words (satAdd at 1))
+        kept = replaced (whole.pageBlocks, index, held(blockText = take words at))
+        joined (whole(pageBlocks = insertedAfter (kept, index, Block(blockStyle = "paragraph", blockText = rest))))
+
+    (** Page `text` with a paragraph of `words` after block `index`. *)
+    export added (text, index, words) =
+        whole = page text
+        joined (whole(pageBlocks = insertedAfter (whole.pageBlocks, index, Block(blockStyle = "paragraph", blockText = words))))
+
     (** The block at `at` of `blocks`, or an empty paragraph. *)
     export blockAt (blocks, index) = listGet blocks index ?: Block(blockStyle = "paragraph", blockText = "")
 
@@ -131,21 +160,22 @@ module Blocks
         held = blockAt (whole.pageBlocks, index)
         joined (whole(pageBlocks = replaced (whole.pageBlocks, index, held(blockStyle = toggled (held.blockStyle, style)))))
 
-    (** `text` with `marker` on both sides of the cursor at byte `cursor`, such as `**` for bold. *)
-    export wrapped (text, cursor, marker) =
-        spot = max 0 (min cursor (length text))
-        take text spot + marker + marker + drop text spot
+    (** `text` with `marker` on both sides of the bytes from `start` to `reach`, such as `**` for bold; a caret gets an empty pair. *)
+    export wrapped (text, start, reach, marker) =
+        from = max 0 (min start (length text))
+        to = max from (min reach (length text))
+        take text from + marker + drop (take text to) from + marker + drop text to
 
     (** `text` with `snippet` inserted at byte `cursor`. *)
     export inserted (text, cursor, snippet) =
         spot = max 0 (min cursor (length text))
         take text spot + snippet + drop text spot
 
-    (** Page `text` with `marker` either side of byte `cursor` of block `index`. *)
-    export marked (text, index, cursor, marker) =
+    (** Page `text` with `marker` either side of bytes `start` to `reach` of block `index`. *)
+    export marked (text, index, start, reach, marker) =
         whole = page text
         held = blockAt (whole.pageBlocks, index)
-        joined (whole(pageBlocks = replaced (whole.pageBlocks, index, held(blockText = wrapped (held.blockText, cursor, marker)))))
+        joined (whole(pageBlocks = replaced (whole.pageBlocks, index, held(blockText = wrapped (held.blockText, start, reach, marker)))))
 
     lineStart (text, cursor) =
         before = reverse (take text (max 0 cursor))

@@ -144,11 +144,32 @@ async function restyled(page) {
   await expect(page.getByRole("textbox", { name: "h1" })).toHaveValue("Welcome 👋 home");
 }
 
+/** Enter ends a heading or paragraph and starts a new paragraph, as a word processor does; typing
+ * there never copies text into other blocks. */
+async function splitting(page) {
+  const heading = page.getByRole("textbox", { name: "h1" });
+  await heading.click();
+  await page.keyboard.press("End");
+  await page.keyboard.press("Enter");
+  const fresh = page.getByRole("textbox", { name: "paragraph" });
+  await expect(fresh).toBeFocused();
+  expect(await fresh.evaluate((area) => getComputedStyle(area).outlineStyle)).toBe("none");
+  await expect(fresh).toHaveValue("");
+  await page.keyboard.type("Fresh words");
+  await expect(fresh).toHaveValue("Fresh words");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("More");
+  await expect(page.getByRole("textbox", { name: "paragraph" })).toHaveValue("More");
+  await expect(page.locator(".osp-row-cell").getByText("Fresh words", { exact: true })).toHaveCount(1);
+  for (const partial of ["F", "Fr", "Fresh", "Fresh w", "M", "Mo"]) await expect(page.locator(".osp-row-cell").getByText(partial, { exact: true })).toHaveCount(0);
+  await expect(page.locator(".osp-row-cell").filter({ hasText: "Welcome" })).toHaveCount(1);
+}
+
 async function saveAndPublish(page) {
   const live = published(BROWSER_SITE);
   await page.getByRole("button", { name: "Save" }).click();
   await expect(status(page, "Saved")).toBeVisible();
-  expect(disk(HOME)).toContain("# Welcome 👋 home\n");
+  expect(disk(HOME)).toContain("# Welcome 👋 home\n\nFresh words\n\nMore\n\nWe build");
   expect(git(BROWSER_SITE, "log", "-1", "--format=%s")).toBe(`Edit ${HOME}`);
   expect(published(BROWSER_SITE)).toBe(live);
   const publish = page.getByRole("button", { name: "Publish 1" });
@@ -199,6 +220,48 @@ async function upload(page) {
   await deleted(page, "media/team-photo.png");
 }
 
+/** Select `word` (the `nth` occurrence) in `area` as a person dragging over it would. */
+async function selectWord(area, word, nth = 0) {
+  await area.focus();
+  await area.evaluate((field, [target, which]) => {
+    let at = -1;
+    for (let seen = 0; seen <= which; seen += 1) at = field.value.indexOf(target, at + 1);
+    field.setSelectionRange(at, at + target.length);
+  }, [word, nth]);
+}
+
+/** The ribbon wraps exactly the selected words, in raw Markdown and in a Formatted block, after
+ * typing and past multi-byte text; the saved file holds every marker where it was put. */
+async function formatting(page) {
+  await page.getByRole("button", { name: "Markdown" }).click();
+  const source = page.getByRole("textbox", { name: "Markdown" });
+  await source.focus();
+  await source.evaluate((field) => field.setSelectionRange(field.value.length, field.value.length));
+  await page.keyboard.type("\n\nTail line");
+  await expect(source).toHaveValue(/Tail line$/);
+  const cases = [["Fresh", "B", "**Fresh** words"], ["More", "I", "\n*More*\n"], ["home", "B", "# Welcome 👋 **home**"], ["Tail", "Code", "`Tail` line"]];
+  for (const [word, tool, expected] of cases) {
+    await selectWord(source, word);
+    await page.getByRole("button", { name: tool, exact: true }).click();
+    await expect(source).toHaveValue(new RegExp(expected.replace(/[*`]/g, (mark) => `\\${mark}`)));
+  }
+  await expect(source).not.toHaveValue(/\*\*\*\*|``|\*\*\s\*\*/);
+  await page.getByRole("button", { name: "Formatted" }).click();
+  await page.locator(".osp-row-cell").getByText("Fresh words", { exact: false }).first().click();
+  const block = page.getByRole("textbox", { name: "paragraph" });
+  await expect(block).toHaveValue("**Fresh** words");
+  await selectWord(block, "words");
+  await page.getByRole("button", { name: "I", exact: true }).click();
+  await expect(block).toHaveValue("**Fresh** *words*");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(status(page, "Saved")).toBeVisible();
+  expect(disk(HOME)).toContain("# Welcome 👋 **home**\n\n**Fresh** *words*\n\n*More*\n\n");
+  expect(disk(HOME)).toMatch(/`Tail` line\n?$/);
+  await page.getByRole("button", { name: "Publish 1" }).click();
+  await expect(page.getByText("Published", { exact: true })).toBeVisible();
+  expect(published(BROWSER_SITE)).toBe(head(BROWSER_SITE));
+}
+
 async function rawMarkdown(page) {
   await page.getByRole("button", { name: "Markdown" }).click();
   const source = page.getByRole("textbox", { name: "Markdown" });
@@ -215,7 +278,7 @@ test("an editor's session: browse, select, read highlighted code, edit, save, pu
   page.on("pageerror", (error) => errors.push(error.message));
   page.on("console", (message) => message.type() === "error" && errors.push(message.text()));
   await page.goto("/");
-  for (const step of [treeAndChrome, search, highlighted, codeEditing, selection, typing, restyled, saveAndPublish, rawMarkdown, upload]) {
+  for (const step of [treeAndChrome, search, highlighted, codeEditing, selection, typing, restyled, splitting, saveAndPublish, rawMarkdown, formatting, upload]) {
     await test.step(step.name, () => step(page));
   }
   expect(errors).toEqual([]);

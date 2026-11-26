@@ -19,7 +19,24 @@ export interface FramePosted {
 interface FieldEdit {
   readonly ordinal: number;
   readonly words: string;
+  /** The focus epoch the field carried when typed; a frame that raises it has re-authored the field. */
+  readonly epoch: number;
   sent: boolean;
+}
+
+function epochOf(field: Element): number {
+  return Number(field.getAttribute("data-focus-epoch") || 0);
+}
+
+/** A focused field keeps its draft until a frame shows the sent draft's own value, which settles it, or
+ * re-authors the field with a higher focus epoch. A settled field reports its caret again. */
+function drafting(client: Client, field: Element, framed: string): boolean {
+  const signature = fieldSignature(field);
+  const edit = client.edits.get(signature);
+  if (edit === undefined) return false;
+  if (!edit.sent || (framed !== edit.words && epochOf(field) <= edit.epoch)) return true;
+  client.edits.delete(signature);
+  return false;
 }
 
 /** Everything the client keeps between frames. */
@@ -160,8 +177,10 @@ function onInput(client: Client, event: Event): void {
   const signature = fieldSignature(element);
   const ordinal = ordinalOf(element);
   if (ordinal === null) return;
-  client.edits.set(signature, { ordinal, words: element.value, sent: false });
-  armFieldTimer(client, signature);
+  client.edits.set(signature, { ordinal, words: element.value, epoch: epochOf(element), sent: false });
+  // A line break is a structural edit (a Formatted block splits on it): send it now, not after the debounce.
+  if (event instanceof InputEvent && event.inputType === "insertLineBreak") flushFields(client);
+  else armFieldTimer(client, signature);
 }
 
 function onChange(client: Client, event: Event): void {
@@ -288,6 +307,10 @@ function restoreScroll(saved: readonly { path: string; top: number; left: number
 function rebaseEdits(client: Client): void {
   for (const [signature, edit] of [...client.edits.entries()]) {
     const matches = fieldsBySignature(signature);
+    if (edit.sent && matches.some((field) => epochOf(field) > edit.epoch)) {
+      client.edits.delete(signature);
+      continue;
+    }
     if (matches.length === 1 && matches[0] instanceof HTMLInputElement) {
       if (matches[0].value === edit.words) {
         client.edits.delete(signature);
@@ -310,7 +333,7 @@ export function applyRender(client: Client, html: string): void {
   const root = document.getElementById("osprey-root");
   if (root !== null) {
     const held = client.action.pressed !== null && patchHeldAction(root, html, client.action);
-    if (!held) morphFrame(root, html, (field) => client.edits.has(fieldSignature(field)));
+    if (!held) morphFrame(root, html, (field, framed) => drafting(client, field, framed));
   }
   rebaseEdits(client);
   restoreFocus(client);

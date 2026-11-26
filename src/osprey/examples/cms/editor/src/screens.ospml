@@ -133,7 +133,7 @@ module Screens
         place = PlaceBlock(placedIndex = index)
         field = match item.blockStyle
             "code" => Editors::editor ("code", item.blockText, store.blockCursor, [], edit, place)
-            style => Editors::inline (style, item.blockText, store.blockCursor, edit, place)
+            style => Editors::focused (style, item.blockText, store.blockCursor, store.focusEpoch, edit, place)
         Ui::framed (style(frameHug = false, frameQuietControls = true, frameLineHeight = toFloat (Design::size (typeOf item.blockStyle)) * 1.5), field)
 
     flat () =
@@ -141,13 +141,20 @@ module Screens
         style(frameFlatRows = true)
 
     // Every other block reads as it will publish; choosing it moves the editor there.
+    // The empty paragraph Enter opened, right after the block it came from.
+    freshAfter (store, index) = match store.fresh == satAdd index 1
+        true =>
+            style = Frames::text (Design::sans (), Design::size "body", false)
+            [Ui::framed (style(frameHug = false, frameQuietControls = true, frameLineHeight = 22.5), Editors::focused ("paragraph", "", 0, store.focusEpoch, EditFresh, PlaceBlock(placedIndex = store.fresh)))]
+        false => []
+
     blockView (store, index, item) = match index == store.focus
         true => blockEditor (store, index, item)
         false => Ui::framed (flat (), Ui::rows ([Ui::item (toString index, Preview::block item)], "", FocusBlock))
 
     formatted store =
         blocks = (Blocks::page store.text).pageBlocks
-        page = Ui::framed (paperStyle (), Ui::column (range (0, length blocks) |> fold [] (\(out, index) => listAppend out (blockView (store, index, Blocks::blockAt (blocks, index))))))
+        page = Ui::framed (paperStyle (), Ui::column (range (0, length blocks) |> fold [] (\(out, index) => listConcat (listAppend out (blockView (store, index, Blocks::blockAt (blocks, index)))) (freshAfter (store, index)))))
         Kit::stack (0, [page])
 
     raw store =

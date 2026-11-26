@@ -15,7 +15,7 @@ module Update
     idle () = Upload(uploadPath = "", uploadParts = [], uploadNext = 0)
 
     (** The store a launch starts from, talking to the CMS at `server`, before anything has loaded. *)
-    export launched server = Studio(server = server, roots = [], files = [], filter = "", opened = "", text = "", saved = "", cursor = 0, mode = "formatted", focus = 0, blockCursor = 0, preview = "", commit = "", loads = 0, busy = false, history = [], unpublished = 0, remote = false, showingHistory = false, creating = false, draftPath = "", folder = "media", upload = idle (), notice = quiet ())
+    export launched server = Studio(server = server, roots = [], files = [], filter = "", opened = "", text = "", saved = "", cursor = 0, reach = 0, mode = "formatted", focus = 0, focusEpoch = 0, fresh = -1, blockCursor = 0, blockReach = 0, preview = "", commit = "", loads = 0, busy = false, history = [], unpublished = 0, remote = false, showingHistory = false, creating = false, draftPath = "", folder = "media", upload = idle (), notice = quiet ())
 
     (** The tree, the history and what is still unpublished, fetched together. *)
     export hydrate store = Runtime::asking (store(loads = 3), refreshes store)
@@ -42,7 +42,7 @@ module Update
 
     // Opening a page asks for its text; opening media asks for its bytes; anything else just shows.
     opening (store, path) =
-        chosen = store(opened = path, text = "", saved = "", cursor = 0, focus = 0, blockCursor = 0, preview = "", creating = false)
+        chosen = store(opened = path, text = "", saved = "", cursor = 0, reach = 0, focus = 0, fresh = -1, blockCursor = 0, blockReach = 0, preview = "", creating = false)
         match Names::kind path
             "markdown" => Runtime::asking (chosen(loads = satAdd store.loads 1), [Api::call (store.server, "file", "GET", Api::at ("/api/file", path), "")])
             "other" => Runtime::step chosen
@@ -94,10 +94,44 @@ module Update
         "formatted" => Runtime::step (store(text = Blocks::restyled (store.text, store.focus, style)))
         _ => Runtime::step (store(text = Blocks::lineStyled (store.text, store.cursor, style)))
 
-    // Bold, italic and code: markers either side of the caret, in the focused block or the raw text.
+    // Bold, italic and code: markers either side of the selection (or the caret), in the focused block or the raw text.
     emphasise (store, marker) = match store.mode
-        "formatted" => Runtime::step (store(text = Blocks::marked (store.text, store.focus, store.blockCursor, marker)))
-        _ => Runtime::step (store(text = Blocks::wrapped (store.text, store.cursor, marker)))
+        "formatted" => Runtime::step (store(text = Blocks::marked (store.text, store.focus, store.blockCursor, store.blockReach, marker)))
+        _ => Runtime::step (store(text = Blocks::wrapped (store.text, store.cursor, store.reach, marker)))
+
+    // Move the editor to block `index` and ask the host to focus it there.
+    focused (store, index) = store(focus = index, fresh = -1, blockCursor = 0, blockReach = 0, focusEpoch = satAdd store.focusEpoch 1)
+
+    // Enter at the end of a block opens an empty paragraph after it; Markdown cannot hold an empty
+    // paragraph, so it lives in the store until the first character is typed into it.
+    opened (store, index, words) =
+        kept = store(text = Blocks::edited (store.text, index, firstLine words))
+        match trim (drop words (satAdd (length (firstLine words)) 1))
+            "" => Runtime::step (blank (kept, satAdd index 1))
+            _ => Runtime::step (focused (store(text = Blocks::split (store.text, index, words)), satAdd index 1))
+
+    blank (store, at) =
+        moved = focused (store, -1)
+        moved(fresh = at)
+
+    // The first words in the empty paragraph make it a block of the page, editing in place; a line
+    // break in them splits as in any block. Words still bound to it once it became a block go there.
+    freshTyped (store, words) = match store.fresh < 0
+        true => blockTyped (store, store.focus, words)
+        false => firstWords (store, words)
+
+    firstWords (store, words) = match trim words
+        "" => Runtime::step store
+        _ => blockTyped (store(text = Blocks::added (store.text, satSub store.fresh 1, firstLine words), focus = store.fresh, fresh = -1), store.fresh, words)
+
+    firstLine words = take words (indexOf words "\n" ?: length words)
+
+    // Typing in a block; a line break where blocks hold none starts the next paragraph instead.
+    blockTyped (store, index, words) =
+        style = (Blocks::blockAt ((Blocks::page store.text).pageBlocks, index)).blockStyle
+        match Blocks::splits (style, words)
+            true => opened (store, index, words)
+            false => Runtime::step (store(text = Blocks::edited (store.text, index, words), focus = index))
 
     (** An edit or a choice, with the person's words. *)
     export typed (store, action, words) = match action
@@ -105,13 +139,14 @@ module Update
         EditDraft => Runtime::step (store(draftPath = trim words))
         Search => Runtime::step (store(filter = words))
         Open => opening (store, words)
-        FocusBlock => Runtime::step (store(focus = parseInt words ?: 0, blockCursor = 0))
+        EditFresh => freshTyped (store, words)
+        FocusBlock => Runtime::step (focused (store, parseInt words ?: 0))
         PickFolder => Runtime::step (store(folder = words))
-        EditBlock index => Runtime::step (store(text = Blocks::edited (store.text, index, words), focus = index))
+        EditBlock index => blockTyped (store, index, words)
         _ => Runtime::step store
 
-    (** A caret move, as a UTF-8 byte offset. *)
-    export placed (store, action, offset) = match action
-        Place => Runtime::step (store(cursor = offset))
-        PlaceBlock index => Runtime::step (store(focus = index, blockCursor = offset))
+    (** A caret move or selection, from UTF-8 byte `start` to `reach`. *)
+    export placed (store, action, start, reach) = match action
+        Place => Runtime::step (store(cursor = start, reach = reach))
+        PlaceBlock index => Runtime::step (store(focus = index, blockCursor = start, blockReach = reach))
         _ => Runtime::step store

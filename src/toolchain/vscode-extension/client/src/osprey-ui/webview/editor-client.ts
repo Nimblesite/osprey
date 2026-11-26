@@ -19,6 +19,8 @@ export interface Caret {
 }
 
 let positions = new Map<string, Position>();
+// The last caret or selection each editor reported; a morphed frame keeps the node, so it survives frames.
+const reported = new WeakMap<HTMLTextAreaElement, string>();
 const epochs = new Map<string, number>();
 
 function mirrorOf(element: HTMLTextAreaElement): HTMLElement {
@@ -34,20 +36,26 @@ function mirrorEdit(element: HTMLTextAreaElement): void {
   mirror.scrollLeft = element.scrollLeft;
 }
 
-function caretBytes(element: HTMLTextAreaElement): number {
-  return new TextEncoder().encode(element.value.slice(0, element.selectionStart)).length;
+function bytesTo(element: HTMLTextAreaElement, at: number): number {
+  return new TextEncoder().encode(element.value.slice(0, at)).length;
+}
+
+/** The caret as "start", or a selection as "start end", in UTF-8 bytes. */
+function caretWords(element: HTMLTextAreaElement): string {
+  const start = bytesTo(element, element.selectionStart), end = bytesTo(element, element.selectionEnd);
+  return start === end ? String(start) : `${start} ${end}`;
 }
 
 function reportCaret(caret: Caret): void {
   const element = document.activeElement;
-  if (!(element instanceof HTMLTextAreaElement) || !element.matches("textarea[data-native-editor]")) return;
+  if (!isEditor(element)) return;
   if (caret.edits.has(fieldSignature(element))) return;
   const ordinal = Number(element.dataset.placeOrdinal ?? "-1");
   if (!Number.isSafeInteger(ordinal) || ordinal < 0) throw new Error("The marked editor has no issued provenance");
-  const offset = caretBytes(element);
-  if (offset === Number(element.dataset.cursorByte)) return;
-  element.dataset.cursorByte = String(offset);
-  caret.post.control(ordinal, String(offset));
+  const words = caretWords(element);
+  if (words === (reported.get(element) ?? element.dataset.cursorByte)) return;
+  reported.set(element, words);
+  caret.post.control(ordinal, words);
 }
 
 function caretBounds(element: HTMLTextAreaElement, prefix: string): DOMRect {
@@ -87,7 +95,9 @@ function authoredCaret(caret: Caret, element: HTMLTextAreaElement, previous: Pos
     focusEpoch: Number(element.dataset.focusEpoch || 0) };
   positions.set(signature, current);
   const highest = epochs.get(signature);
-  const requested = highest !== undefined && current.focusEpoch > highest;
+  // A first appearance only takes focus when the editor it replaces held it: focus fell to the page.
+  const orphaned = document.activeElement === null || document.activeElement === document.body;
+  const requested = highest === undefined ? current.focusEpoch > 0 && orphaned : current.focusEpoch > highest;
   epochs.set(signature, highest === undefined ? current.focusEpoch : Math.max(highest, current.focusEpoch));
   if (caret.edits.has(signature) || (document.activeElement === element && !requested)) return;
   const bytes = new TextEncoder().encode(current.value);
@@ -97,6 +107,44 @@ function authoredCaret(caret: Caret, element: HTMLTextAreaElement, previous: Pos
   if (requested && document.hasFocus() && (dialog === null || dialog.contains(element))) element.focus();
   element.setSelectionRange(prefix.length, prefix.length);
   if (previous === undefined || previous.value !== current.value || previous.cursor !== current.cursor) revealCaret(element, prefix);
+}
+
+// Keys typed while a line break's frame is in flight: the frame may move the caret to another editor
+// (a Formatted block splits), so they wait for it and land where the caret went ([CMS-EDITOR]).
+let held: string[] | null = null;
+let holdTimer: number | undefined;
+const HOLD_MS = 600;
+
+function isEditor(element: EventTarget | null): element is HTMLTextAreaElement {
+  return element instanceof HTMLTextAreaElement && element.matches("textarea[data-native-editor]");
+}
+
+/** Type `words` into the focused editor as the person would have, one line break at a time. */
+function replay(words: string): void {
+  const element = document.activeElement;
+  if (words === "" || !isEditor(element)) return;
+  const cut = words.indexOf("\n");
+  const chunk = cut < 0 ? words : words.slice(0, cut + 1);
+  element.setRangeText(chunk, element.selectionStart, element.selectionEnd, "end");
+  element.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: cut < 0 ? "insertText" : "insertLineBreak", data: chunk }));
+  const rest = words.slice(chunk.length);
+  if (held === null) replay(rest);
+  else held.push(rest);
+}
+
+function releaseTyping(): void {
+  if (held === null) return;
+  const words = held.join("");
+  held = null;
+  window.clearTimeout(holdTimer);
+  replay(words);
+}
+
+function holdTyping(event: Event): void {
+  if (held === null || !(event instanceof InputEvent)) return;
+  if (event.inputType !== "insertText" && event.inputType !== "insertLineBreak") return;
+  event.preventDefault();
+  held.push(event.inputType === "insertText" ? event.data ?? "" : "\n");
 }
 
 // Editors whose mirror already follows their scroll: a morphed frame keeps the node, so bind once.
@@ -120,14 +168,21 @@ export function refreshEditors(caret: Caret): void {
     });
   }
   for (const signature of [...epochs.keys()]) if (!positions.has(signature)) epochs.delete(signature);
+  releaseTyping();
   queueMicrotask(() => reportCaret(caret));
 }
 
 /** Install the mirror-following input and selection listeners. */
 export function installEditors(caret: Caret): void {
+  document.addEventListener("beforeinput", holdTyping, true);
   document.addEventListener("input", (event) => {
     const element = event.target;
-    if (element instanceof HTMLTextAreaElement && element.matches("textarea[data-native-editor]")) mirrorEdit(element);
+    if (!isEditor(element)) return;
+    mirrorEdit(element);
+    if (!(event instanceof InputEvent) || event.inputType !== "insertLineBreak") return;
+    held = [];
+    window.clearTimeout(holdTimer);
+    holdTimer = window.setTimeout(releaseTyping, HOLD_MS);
   });
   document.addEventListener("selectionchange", () => reportCaret(caret));
 }

@@ -4,6 +4,9 @@
 
 type Field = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
 
+/** Whether a focused `field` keeps its draft over the value `framed` that the frame carries. */
+export type Drafting = (field: Element, framed: string) => boolean;
+
 function syncAttributes(current: Element, next: Element): void {
   for (const attribute of Array.from(current.attributes)) {
     if (!next.hasAttribute(attribute.name)) current.removeAttribute(attribute.name);
@@ -18,9 +21,10 @@ function isField(node: Node): node is Field {
 }
 
 /** A field takes the frame's value unless it is focused with a draft the frame has not seen yet. */
-function syncField(current: Field, next: Field, drafting: (field: Element) => boolean): void {
+function syncField(current: Field, next: Field, drafting: Drafting): void {
   if (current instanceof HTMLInputElement && next instanceof HTMLInputElement) current.checked = next.checked;
-  if (current.value === next.value || (current === document.activeElement && drafting(current))) return;
+  const kept = current === document.activeElement && drafting(current, next.value);
+  if (current.value === next.value || kept) return;
   const live = current === document.activeElement && !(current instanceof HTMLSelectElement) ? current : null;
   const start = live?.selectionStart ?? null, end = live?.selectionEnd ?? null;
   current.value = next.value;
@@ -31,7 +35,7 @@ function sameKind(current: Node, next: Node): boolean {
   return current.nodeType === next.nodeType && current.nodeName === next.nodeName;
 }
 
-function morphChildren(current: Node, next: Node, drafting: (field: Element) => boolean): void {
+function morphChildren(current: Node, next: Node, drafting: Drafting): void {
   const incoming = Array.from(next.childNodes);
   incoming.forEach((node, index) => {
     const live = current.childNodes[index];
@@ -42,7 +46,7 @@ function morphChildren(current: Node, next: Node, drafting: (field: Element) => 
   while (current.childNodes.length > incoming.length) current.lastChild?.remove();
 }
 
-function morphNode(current: Node, next: Node, drafting: (field: Element) => boolean): void {
+function morphNode(current: Node, next: Node, drafting: Drafting): void {
   if (!(current instanceof Element) || !(next instanceof Element)) {
     if (current.nodeValue !== next.nodeValue) current.nodeValue = next.nodeValue;
     return;
@@ -53,7 +57,7 @@ function morphNode(current: Node, next: Node, drafting: (field: Element) => bool
 }
 
 /** Bring `root`'s children in line with `html`, keeping every node whose place and kind still match. */
-export function morphFrame(root: HTMLElement, html: string, drafting: (field: Element) => boolean): void {
+export function morphFrame(root: HTMLElement, html: string, drafting: Drafting): void {
   const template = document.createElement("template");
   template.innerHTML = html;
   morphChildren(root, template.content, drafting);
