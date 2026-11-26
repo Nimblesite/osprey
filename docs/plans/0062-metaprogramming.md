@@ -96,3 +96,13 @@ Stated and checked with Osprey's proof kernel, with the executable definitions d
 
 - [ ] Phase 1 builds every program that uses a mechanism with no red; phase 2 runs the suites above once, with coverage; phase 3 gates coverage. Nothing here adds a phase or a required check beyond the root `CI` job.
 - [ ] The determinism double-run and the no-harm gate are part of phase 2.
+
+## References
+
+Every address below was tested on 2026-11-27: a PDF address returns the same bytes as the downloaded copy, and a DOI resolves to the work's record, whose title Crossref confirms. The [research basis](../../research/metaprogramming/README.md) says what each work establishes and what Osprey takes from it.
+
+- [Adams 2015, *Towards the essence of hygiene*, POPL](https://michaeldadams.org/papers/hygiene/hygiene-2015-popl-authors-copy.pdf)
+- [Flatt 2016, *Binding as sets of scopes*, POPL](https://www.cs.utah.edu/plt/publications/popl16-f.pdf)
+- [Herman and Wand 2008, *A theory of hygienic macros*, ESOP](https://doi.org/10.1007/978-3-540-78739-6_4)
+- [Kiselyov 2014, *The design and implementation of BER MetaOCaml*, FLOPS](https://okmij.org/ftp/meta-programming/ber-design.pdf)
+- [Xie, White, Nicole and Yallop 2023, *MacoCaml: staging composable and compilable macros*, ICFP](https://www.cl.cam.ac.uk/~jdy22/papers/macocaml-staging-composable-and-compilable-macros.pdf)

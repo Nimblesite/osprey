@@ -184,4 +184,26 @@ A program with no invocation and no level-1 import produces the same output and 
 
 ## References
 
-Full entries, files and addresses are in the [research basis](../../research/metaprogramming/README.md). Cited here: Adams 2015; Christiansen and Brady 2016; Culpepper and Felleisen 2010; Davies and Pfenning 2001; Erdweg et al. 2011; Flatt 2002; Flatt 2016; Flatt et al. 2023; Ganz, Sabry and Taha 2001; Jang et al. 2022; Kameyama, Kiselyov and Shan 2011; Kiselyov 2014; Kovács 2022; Magalhães et al. 2010; Mokhov, Mitchell and Peyton Jones 2018; Omar and Aldrich 2018; Pombrio and Krishnamurthi 2014; Stucki, Biboudis and Odersky 2018; Taha and Sheard 2000; Xie et al. 2022; Xie et al. 2023.
+Every address below was tested on 2026-11-27: a PDF address returns the same bytes as the downloaded copy, and a DOI resolves to the work's record, whose title Crossref confirms. The [research basis](../../research/metaprogramming/README.md) says what each work establishes and what Osprey takes from it.
+
+- [Adams 2015, *Towards the essence of hygiene*, POPL](https://michaeldadams.org/papers/hygiene/hygiene-2015-popl-authors-copy.pdf)
+- [Christiansen and Brady 2016, *Elaborator reflection: extending Idris in Idris*, ICFP](https://doi.org/10.1145/2951913.2951932)
+- [Culpepper and Felleisen 2010, *Fortifying macros*, ICFP](https://www2.ccs.neu.edu/racket/pubs/icfp10-cf.pdf)
+- [Davies and Pfenning 2001, *A modal analysis of staged computation*, JACM](https://www.cs.cmu.edu/~fp/papers/jacm00.pdf)
+- [Erdweg, Rendel, Kästner and Ostermann 2011, *SugarJ: library-based syntactic language extensibility*, OOPSLA](https://www.pl.informatik.uni-mainz.de/files/2019/04/sugarj.pdf)
+- [Flatt 2002, *Composable and compilable macros: you want it when?*, ICFP](https://www.cs.utah.edu/plt/publications/macromod.pdf)
+- [Flatt 2016, *Binding as sets of scopes*, POPL](https://www.cs.utah.edu/plt/publications/popl16-f.pdf)
+- [Flatt et al. 2023, *Rhombus: a new spin on macros without all the parentheses*, OOPSLA](https://kirancodes.me/pdfs/rhombus-oopsla23.pdf)
+- [Ganz, Sabry and Taha 2001, *Macros as multi-stage computations*, ICFP](https://doi.org/10.1145/507635.507646)
+- [Jang, Gélineau, Monnier and Pientka 2022, *Mœbius: metaprogramming using contextual types*, POPL](https://arxiv.org/pdf/2111.08099)
+- [Kameyama, Kiselyov and Shan 2011, *Shifting the stage*, JFP](https://doi.org/10.1017/S0956796811000256)
+- [Kiselyov 2014, *The design and implementation of BER MetaOCaml*, FLOPS](https://okmij.org/ftp/meta-programming/ber-design.pdf)
+- [Kovács 2022, *Staged compilation with two-level type theory*, ICFP](https://arxiv.org/pdf/2209.09729)
+- [Magalhães, Dijkstra, Jeuring and Löh 2010, *A generic deriving mechanism for Haskell*, Haskell Symposium](https://dreixel.net/research/pdf/gdmh.pdf)
+- [Mokhov, Mitchell and Peyton Jones 2018, *Build systems à la carte*, ICFP](https://www.microsoft.com/en-us/research/uploads/prod/2018/03/build-systems.pdf)
+- [Omar and Aldrich 2018, *Reasonably programmable literal notation*, ICFP](https://doi.org/10.1145/3236801)
+- [Pombrio and Krishnamurthi 2014, *Resugaring: lifting evaluation sequences through syntactic sugar*, PLDI](https://cs.brown.edu/~sk/Publications/Papers/Published/pk-resuarging/paper.pdf)
+- [Stucki, Biboudis and Odersky 2018, *A practical unification of multi-stage programming and macros*, GPCE](https://biboudis.github.io/papers/pcp-gpce18.pdf)
+- [Taha and Sheard 2000, *MetaML and multi-stage programming with explicit annotations*, TCS](https://doi.org/10.1016/S0304-3975(00)00053-0)
+- [Xie, Pickering, Löh, Wu, Yallop and Wang 2022, *Staging with class*, POPL](https://www.cl.cam.ac.uk/~jdy22/papers/staging-with-class.pdf)
+- [Xie, White, Nicole and Yallop 2023, *MacoCaml: staging composable and compilable macros*, ICFP](https://www.cl.cam.ac.uk/~jdy22/papers/macocaml-staging-composable-and-compilable-macros.pdf)

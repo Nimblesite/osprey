@@ -151,4 +151,7 @@ Budgets are measured on a named reference machine and corpus, published with the
 
 ## References
 
-Mokhov, Mitchell and Peyton Jones 2018; the [dmx specification](https://github.com/Nimblesite/dmx/blob/main/docs/specs/SPEC.md) (architecture, extensions, hygiene, validation, conformance). Full entries are in the [research basis](../../research/metaprogramming/README.md).
+Every address below was tested on 2026-11-27: a PDF address returns the same bytes as the downloaded copy, and a DOI resolves to the work's record, whose title Crossref confirms. The [research basis](../../research/metaprogramming/README.md) says what each work establishes and what Osprey takes from it.
+
+- [Mokhov, Mitchell and Peyton Jones 2018, *Build systems à la carte*, ICFP](https://www.microsoft.com/en-us/research/uploads/prod/2018/03/build-systems.pdf)
+- The [dmx specification](https://github.com/Nimblesite/dmx/blob/main/docs/specs/SPEC.md) (architecture, extensions, hygiene, validation, conformance).

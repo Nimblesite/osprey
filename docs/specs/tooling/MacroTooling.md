@@ -95,4 +95,10 @@ Every rule here has a language-server test in `src/toolchain/crates/osprey-lsp` 
 
 ## References
 
-Culpepper and Felleisen 2007; Culpepper and Felleisen 2010; Pombrio and Krishnamurthi 2014; Pombrio, Krishnamurthi and Wand 2017; Ballantyne, King and Felleisen 2020. Full entries are in the [research basis](../../research/metaprogramming/README.md).
+Every address below was tested on 2026-11-27: a PDF address returns the same bytes as the downloaded copy, and a DOI resolves to the work's record, whose title Crossref confirms. The [research basis](../../research/metaprogramming/README.md) says what each work establishes and what Osprey takes from it.
+
+- [Ballantyne, *Building domain-specific languages with multi-language macros*, dissertation, Northeastern University (extends Ballantyne, King and Felleisen 2020, *Macros for domain-specific languages*, OOPSLA)](https://www2.ccs.neu.edu/racket/pubs/dissertation-ballantyne.pdf)
+- [Culpepper and Felleisen 2007, *Debugging macros*, GPCE](https://www2.ccs.neu.edu/racket/pubs/gpce07-cf.pdf)
+- [Culpepper and Felleisen 2010, *Fortifying macros*, ICFP](https://www2.ccs.neu.edu/racket/pubs/icfp10-cf.pdf)
+- [Pombrio and Krishnamurthi 2014, *Resugaring: lifting evaluation sequences through syntactic sugar*, PLDI](https://cs.brown.edu/~sk/Publications/Papers/Published/pk-resuarging/paper.pdf)
+- [Pombrio, Krishnamurthi and Wand 2017, *Inferring scope through syntactic sugar*, ICFP](https://cs.brown.edu/~sk/Publications/Papers/Published/pkw-inf-scope-syn-sugar/paper.pdf)
