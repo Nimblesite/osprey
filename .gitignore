@@ -78,3 +78,6 @@ src/osprey/examples/llms/gpt2/weights/
 /core.*
 
 /src/toolchain/hosts/ferroui/docs
+
+# Playwright MCP page snapshots (tool output, never source)
+.playwright-mcp/
