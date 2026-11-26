@@ -66,8 +66,9 @@ fn the_undeclared_control_pays_for_a_continuation_at_every_perform_site() {
     // way [STAGE-RESIDUE] is: an `abort` perform site must not allocate a
     // continuation, because the declaration says the arm never resumes.
     //
-    // That saving is step 5 of docs/plans/0016-algebraic-effects-and-handlers.md
-    // and is blocked on plan 0026 — see the test below for why. What is measurable
+    // That saving is the `control abort` item of
+    // docs/plans/0016-algebraic-effects-and-handlers.md and is blocked on that plan's
+    // structured-concurrency work — see the test below for why. What is measurable
     // NOW is the baseline it must beat: without the keyword, BOTH perform sites
     // pay, including the one whose arm never resumes. Pinning it here means the
     // phase-4 measurement is a comparison against a recorded number rather than
@@ -166,7 +167,8 @@ fn main() = {
     // region"). Compiling the arm under today's substituting rule would make
     // the `perform` RETURN, which is the opposite of what the declaration says.
     //
-    // So the declaration is rejected until plan 0026 supplies the unwinding.
+    // So the declaration is rejected until plan 0016's structured-concurrency work
+    // supplies the unwinding.
     // Rejecting is not a placeholder: it is the truthful answer, and the one
     // the broken-code process requires over a silently wrong one.
     (

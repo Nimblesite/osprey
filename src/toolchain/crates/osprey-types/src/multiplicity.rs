@@ -220,7 +220,8 @@ resumption of a continuation spanning a spawned fiber has no serialization order
 /// must abandon the region rather than substitute its value ([MULTI-HANDLE-ABORT-MODE]).
 /// Abandoning needs the unwinding [MULTI-COST-ABORT] requires — `finally` arms
 /// run and the discarded frames' owned operands released — which
-/// docs/plans/0026-structured-concurrency.md has yet to build. Compiling the arm
+/// the structured-concurrency work in docs/plans/0016-algebraic-effects-and-handlers.md
+/// has yet to build. Compiling the arm
 /// under the substituting rule would make the `perform` RETURN, which is the
 /// opposite of what the declaration says. Implements [MULTI-COST].
 fn unimplemented_abort(effect: &str, operation: &str) -> String {
