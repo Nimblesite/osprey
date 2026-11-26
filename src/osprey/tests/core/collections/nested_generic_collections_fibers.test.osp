@@ -231,7 +231,7 @@ fn channelThroughClosureCase() = {
 }
 
 testCases([
-    { name: "fibers channels Results and persistence retain generic collection types", work: settled(fiberChannelCollectionCase) },
+    { name: "fibers channels Results and persistence retain generic collection types", work: fn() => settled(fiberChannelCollectionCase) },
     { name: "generic effects inside fibers retain nested collection types", work: fiberEffectCollectionCase },
-    { name: "a channel reached through a closure keeps its element descriptor", work: settled(channelThroughClosureCase) }
+    { name: "a channel reached through a closure keeps its element descriptor", work: fn() => settled(channelThroughClosureCase) }
 ])

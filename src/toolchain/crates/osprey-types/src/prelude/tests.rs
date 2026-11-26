@@ -401,7 +401,7 @@ fn chaining_results_never_attaches_the_test_setup_unit() {
         assert!(!names.contains(&"settled".to_string()), "{names:?}");
     }
     let named = attached_names(
-        "fn main() = test(\"t\", settled(fn() => Success { value: expect(1, 1) }))\n",
+        "fn main() = test(\"t\", fn() => settled(fn() => Success { value: expect(1, 1) }))\n",
     );
     assert!(named.contains(&"settled".to_string()), "{named:?}");
     assert!(!named.contains(&"divideResult".to_string()), "{named:?}");

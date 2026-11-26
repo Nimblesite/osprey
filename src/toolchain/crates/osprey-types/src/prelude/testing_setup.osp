@@ -3,10 +3,12 @@
 //! program that merely chains `andThen` is never compiled as a test.
 //! Implements [FAILURE-EXPLICIT] and [TESTING-TAP].
 
-/// The test body for `work` whose setup answers a `Result`, as a fallible
+/// The outcome of `work`, whose setup answers a `Result` as a fallible
 /// constructor such as `Channel(capacity)` does: a `Success` is the work's own
-/// outcome and an `Error` is a failed assertion that names its message.
-fn settled(work) = fn() => match work() {
+/// outcome and an `Error` is a failed assertion that names its message. It
+/// runs `work` rather than returning a closure over it, so it holds no second
+/// owner of `work` under ownership [MEM-OWNERSHIP-STATIC].
+fn settled(work) = match work() {
     Success { value } => value
     Error { message } => check("setup refused", "none", message)
 }
