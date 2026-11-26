@@ -117,6 +117,15 @@ Depends on: hosted Stages B–G on parent Milestone B (Phases 5–9) and Milesto
 
 ### Phase 11 — Fair search and Osprey WebAssembly UI
 
+The public website opens on the registry catalog. The existing documentation landing page demonstrates the visual shell only. Track the visitor experience against [the public catalog contract](../specs/ecosystem/0044-PackageRegistryDeploymentAndOwnership.md#public-package-catalog-package-hosted-routes-catalog).
+
+- [ ] Make `/` browse published packages from the API without signing in. Show linked scoped names, descriptions and warnings, and let visitors page through results. `[PACKAGE-HOSTED-ROUTES-CATALOG]`
+- [ ] Connect homepage search to the catalog. Test name, organization and descriptive queries, shareable results, back navigation, no matches and service failure. `[PACKAGE-HOSTED-ROUTES-CATALOG]`
+- [ ] Build permanent package pages with descriptions, release history, dependencies, advisories and linked publisher attribution for each release. `[PACKAGE-HOSTED-ROUTES-CATALOG]`
+- [ ] Download a selected release from its package page in a browser. Verify the downloaded bytes against its displayed digest and test refusal for ineligible or private content. `[PACKAGE-HOSTED-ROUTES-CATALOG]`
+- [ ] Build anonymous publisher profiles and their API projection. Link each profile to its published packages and releases, retain historical credit after grant revocation and test exclusion of private data. `[PACKAGE-HOSTED-ROUTES-CATALOG]`
+- [ ] Run a signed-out desktop and mobile browser journey against the registry API: browse, search, read the description, select and download a release, then follow its publisher profile to another published package. `[PACKAGE-HOSTED-ROUTES-CATALOG]`
+
 - [ ] Implement eligibility, the fixed merit formula, query-intent cohorts, 28-day exposure debt, eight-merit/two-exploration allocation, 80% intent floor, and two-results-per-publisher cap in shared Osprey core. `[PACKAGE-DISCOVERY]`
 - [ ] Enforce the signed 512-byte summary/12-keyword grammar and exact bounded key/summary/keyword/compiler-API lexical and semantic serialization; never index arbitrary package documentation as ranking text. `[PACKAGE-DISCOVERY-INTENT]`
 - [ ] Implement publisher-normalized entitlement, exact apportionment/ties, and auditable client-nonce VRF exploration with deterministic/degraded modes. `[PACKAGE-DISCOVERY-EXPOSURE]`

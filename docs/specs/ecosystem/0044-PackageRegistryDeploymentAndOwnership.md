@@ -69,11 +69,24 @@ The canonical typeDiagram and DataProvider migration define organization/members
 
 ## Website and API surface `[PACKAGE-HOSTED-ROUTES]`
 
+### Public package catalog `[PACKAGE-HOSTED-ROUTES-CATALOG]`
+
+Osprey Packages is the public website for finding, evaluating and downloading Osprey packages. A visitor can complete this journey without an account, editor or CLI.
+
+| Page or action | Required visitor experience |
+| --- | --- |
+| Browse at `/` | Open directly on a browsable catalog of published packages with a prominent search field. Each result links to the package and shows its scoped name, short description and known security warnings. Visitors can browse further results without entering a query. Documentation is secondary navigation. |
+| Search | Search by package name, organization or descriptive terms under the discovery rules. Give results a shareable URL, retain the query when returning from a package, and distinguish no matches from an unavailable catalog. |
+| Read a package | Give every package a permanent page with its description, owning organization, available releases, dependencies, warnings and a link to the public profile of the publisher credited on each release. Render publisher-supplied prose safely. |
+| Download | Provide a browser download action on the package page for the selected eligible release. Show the release identifier and digest, and serve the matching source as an attachment through the existing digest-addressed source route. Enforce the release status and evidence rules on direct download requests too. |
+| View a publisher | Give each publisher with public releases a permanent, shareable profile keyed by stable public identity. Show the publisher's public display name and link back to the packages and releases they published. Derive attribution from verified release records, so removing a publishing grant preserves historical credit. Exclude private memberships, grants, contact details and unpublished work. |
+
 These are planned route contracts, not implemented endpoints. Preserve the existing folder-registry GET routes and their canonical `@organization/package` semantics. Control routes use immutable organization/package IDs; the API resolves and checks every ID relationship itself. In this table, `P` means `/v1/organizations/{organizationId}/packages/{packageId}`. It is notation for that exact scoped prefix, not an alternative unscoped route.
 
 | Website/CLI flow | API surface to implement | Required actor and boundary |
 | --- | --- | --- |
 | Browse/search, package page, verified download | Existing `GET /v1/packages`, `GET /v1/packages/{scope}/{name}`, `GET /v1/releases/{digest}` and `/source`; search extends the catalog surface | Anonymous public projection only; every result displays its organization and known security warnings; no quarantined/private source |
+| Publisher profile and published releases | `GET /v1/publishers/{publisherId}` and paginated `GET /v1/publishers/{publisherId}/releases` | Anonymous public attribution from verified releases. Package ownership and permission to publish remain governed by spec 0045. |
 | Check a package name | `GET /v1/organizations/{organizationId}/package-name-availability?name=...` | Active member; resolve only this org/name pair, including its tombstones; never report global leaf-name availability |
 | GitHub login and browser session | `GET /v1/auth/github/start`, `GET /v1/auth/github/callback`, `GET /v1/auth/session`, `POST /v1/auth/logout` | One-use PKCE/state for login; live identity for session reads; logout invalidates the registry session; API callback and return website are configuration-pinned |
 | Enroll/use publication or governance credentials | `POST /v1/auth/webauthn/enrollment-challenges`, `/enrollments`, `/assertion-challenges` and `/assertions` | Verified principal, exact action/payload/origin, single-use challenge and existing credential/recovery proof where required; generic step-up never substitutes for a signed release payload |
