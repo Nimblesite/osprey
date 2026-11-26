@@ -97,7 +97,10 @@ function notice(client: Client): void {
   if (root !== null) root.setAttribute("aria-busy", String(client.runtimeBusy));
 }
 
-/** Pause every control while the runtime is busy, keeping the one held by its pointer. */
+/** Pause every control while the runtime is busy, keeping the one held by its pointer. A frame
+ * morphed in while busy strips `data-paused` and carries the application's own `disabled`, which
+ * replaces the remembered one: restoring the pre-pause state instead left a control the frame had
+ * enabled disabled once the runtime settled (PR #435 workbench "pending runtime update"). */
 const pausedControls = new Map<HTMLButtonElement | HTMLSelectElement, boolean>();
 
 function updateBusy(client: Client): void {
@@ -108,7 +111,7 @@ function updateBusy(client: Client): void {
     if (!(control instanceof HTMLButtonElement) && !(control instanceof HTMLSelectElement)) continue;
     if (control === client.action.pressed) continue;
     if (client.runtimeBusy) {
-      if (!pausedControls.has(control)) pausedControls.set(control, control.disabled);
+      if (!control.hasAttribute("data-paused")) pausedControls.set(control, control.disabled);
       control.disabled = true;
       control.toggleAttribute("data-paused", true);
     } else if (pausedControls.has(control)) {
