@@ -87,27 +87,21 @@ async function block(page, words) {
   await page.locator(".osp-row-cell").getByText(words).first().click();
 }
 
+/** Each `[word, tool, value?, nth?]`: select the word in `field`, press the tool, and expect the field's value when one is given. */
+async function styled(page, field, steps) {
+  for (const [word, tool, value, nth] of steps) {
+    await selectWord(field, word, nth);
+    await button(page, tool).click();
+    if (value) await expect(field).toHaveValue(value);
+  }
+}
+
 /** Every ribbon tool in Formatted mode: styles toggle, emphasis wraps and unwraps, inserts land at the caret. */
 async function ribbonFormatted(page) {
   await block(page, "Notes from the coast");
   const paragraph = page.getByRole("textbox", { name: "paragraph" });
-  await selectWord(paragraph, "coast");
-  await button(page, "B").click();
-  await expect(paragraph).toHaveValue("Notes from the **coast**");
-  await selectWord(paragraph, "coast");
-  await button(page, "B").click();
-  await expect(paragraph).toHaveValue("Notes from the coast");
-  await selectWord(paragraph, "coast");
-  await button(page, "B").click();
-  await selectWord(paragraph, "Notes");
-  await button(page, "I").click();
-  await expect(paragraph).toHaveValue("*Notes* from the **coast**");
-  await selectWord(paragraph, "coast");
-  await button(page, "I").click();
-  await expect(paragraph).toHaveValue("*Notes* from the ***coast***");
-  await selectWord(paragraph, "coast");
-  await button(page, "I").click();
-  await expect(paragraph).toHaveValue("*Notes* from the **coast**");
+  await styled(page, paragraph, [["coast", "B", "Notes from the **coast**"], ["coast", "B", "Notes from the coast"], ["coast", "B"],
+    ["Notes", "I", "*Notes* from the **coast**"], ["coast", "I", "*Notes* from the ***coast***"], ["coast", "I", "*Notes* from the **coast**"]]);
   await block(page, "Tide tables matter");
   await button(page, "• List").click();
   await expect(page.getByRole("textbox", { name: "bullets" })).toHaveValue("Tide tables matter");
@@ -143,15 +137,8 @@ async function ribbonMarkdown(page) {
   await page.keyboard.type("https://example.com/tides");
   await selectWord(source, "link text");
   await page.keyboard.type("tide tables");
-  await selectWord(source, "**coast**");
-  await button(page, "B").click();
-  await expect(source).toHaveValue(/the coast\n/);
-  await selectWord(source, "coast", 1);
-  await button(page, "B").click();
-  await expect(source).toHaveValue(/the \*\*coast\*\*\n/);
-  await selectWord(source, "Travel");
-  await button(page, "Image").click();
-  await expect(source).toHaveValue(/!\[Describe the image\]\(\/media\/\)/);
+  await styled(page, source, [["**coast**", "B", /the coast\n/], ["coast", "B", /the \*\*coast\*\*\n/, 1],
+    ["Travel", "Image", /!\[Describe the image\]\(\/media\/\)/]]);
   await selectWord(source, "![Describe the image](/media/)");
   await page.keyboard.press("Backspace");
   await expect(source).toHaveValue(/topic: \n/);
