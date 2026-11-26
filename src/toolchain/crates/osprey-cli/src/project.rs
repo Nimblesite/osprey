@@ -18,6 +18,8 @@ pub(crate) struct CompilationInput {
     debug_path: String,
     output: OutputDefault,
     example_warnings: Option<Vec<osprey_types::TypeWarning>>,
+    /// The flavor a script was parsed in, when the caller chose it over its extension.
+    flavor: Option<Flavor>,
 }
 
 #[derive(Debug)]
@@ -73,6 +75,15 @@ impl CompilationInput {
             debug_path: path.to_string(),
             output: OutputDefault::Source(path.to_string()),
             example_warnings: None,
+            flavor: None,
+        }
+    }
+
+    /// The same script, parsed in `flavor`: its source warnings follow that flavor's rules.
+    pub(crate) fn in_flavor(self, flavor: Flavor) -> Self {
+        Self {
+            flavor: Some(flavor),
+            ..self
         }
     }
 
@@ -155,6 +166,7 @@ impl CompilationInput {
             debug_path,
             output,
             example_warnings: None,
+            flavor: None,
         }
     }
 
@@ -191,7 +203,7 @@ impl CompilationInput {
             return warnings.clone();
         }
         let CompilationUnit::Project(project) = &self.unit else {
-            return osprey_syntax::resolve_flavor(None, &self.display_path, &self.source)
+            return osprey_syntax::resolve_flavor(self.flavor, &self.display_path, &self.source)
                 .map_or_else(
                     |_| Vec::new(),
                     |flavor| {
