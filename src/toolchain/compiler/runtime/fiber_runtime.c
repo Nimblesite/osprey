@@ -77,6 +77,12 @@ typedef struct Channel {
 // a table. [CONCURRENCY-HANDLES]
 static int64_t next_fiber_id = 1; // spawn order, which the deterministic queue keeps
 static pthread_mutex_t runtime_mutex = PTHREAD_MUTEX_INITIALIZER;
+// Runners that have published `completed` and not yet dropped their hold, under
+// runtime_mutex. Exit cleanup waits for zero: a completed fiber's result is
+// released by whichever holder is last, and the leak census after main must not
+// run before the runner's drop [CONCURRENCY-FIBER-LIFETIME] [GC-ARC-PERCEUS].
+static size_t releasing_runners;
+static pthread_cond_t runners_idle = PTHREAD_COND_INITIALIZER;
 
 // Sequential execution mode [CONCURRENCY-DETERMINISTIC]. Queued fibers run in
 // spawn order: the queue is a FIFO list, and each holds its runner's hold.
@@ -162,6 +168,24 @@ static void execute_fiber_directly(Fiber *fiber) {
   fiber_release(fiber);
 }
 
+// A runner about to publish its completion: counted until it has dropped its
+// hold. Taken before `completed` is visible, so whoever observed the completion
+// finds the count until the drop has happened.
+static void runner_releasing_enter(void) {
+  pthread_mutex_lock(&runtime_mutex);
+  releasing_runners++;
+  pthread_mutex_unlock(&runtime_mutex);
+}
+
+// Past `fiber_release`, which may have freed the fiber: touches nothing of it.
+static void runner_releasing_leave(void) {
+  pthread_mutex_lock(&runtime_mutex);
+  if (--releasing_runners == 0) {
+    pthread_cond_broadcast(&runners_idle);
+  }
+  pthread_mutex_unlock(&runtime_mutex);
+}
+
 // Thread function for executing fibers
 static void *fiber_thread_func(void *arg) {
   Fiber *fiber = (Fiber *)arg;
@@ -178,6 +202,7 @@ static void *fiber_thread_func(void *arg) {
   // The handler stack is this thread's own; left behind, every fiber kept about
   // 64 KiB for the life of the process. [CONCURRENCY-HANDLES]
   __osprey_handler_stack_cleanup();
+  runner_releasing_enter();
 
   pthread_mutex_lock(&fiber->mutex);
   fiber->result_owned = true;
@@ -186,6 +211,7 @@ static void *fiber_thread_func(void *arg) {
   pthread_mutex_unlock(&fiber->mutex);
   // The runner's hold. Still a heap thread: the last hold frees through the heap.
   fiber_release(fiber);
+  runner_releasing_leave();
   osp_prof_thread_unregister();
   osp_mem_baton_thread_exit();
   return NULL;
@@ -377,13 +403,29 @@ int64_t fiber_await(void *handle) {
   return result;
 }
 
+// Wait until no completed runner is still dropping its hold. Only a fiber whose
+// body has finished is counted: one still running is ended by process exit, so
+// this never waits on it. The wait parks like `fiber_join`, so a tracing
+// collector can scan this stack while it waits [MEM-GC-SAFEPOINT].
+static void wait_for_releasing_runners(void) {
+  pthread_mutex_lock(&runtime_mutex);
+  while (releasing_runners > 0) {
+    (void)osp_parked_wait(&runners_idle, &runtime_mutex, NULL);
+  }
+  pthread_mutex_unlock(&runtime_mutex);
+}
+
 // Drops the holds of every handle the program let go of. Codegen calls this
 // once at the end of main, after its language-level owners have dropped, so
 // each finished fiber and unshared channel they held is freed. A fiber still
 // running keeps its runner's hold and is ended by process exit; one still
 // waiting on a channel gets a last collection's verdict [CONCURRENCY-DEADLOCK].
+// A fiber that finished but whose runner has not yet let go is waited for: its
+// awaited result is released by that drop, and nothing else runs before the
+// exit census [CONCURRENCY-FIBER-LIFETIME].
 void fiber_cleanup_results(void) {
   held_reclaim();
+  wait_for_releasing_runners();
   if (atomic_load_explicit(&channel_waits, memory_order_relaxed) > 0) {
     osp_collect();
   }
