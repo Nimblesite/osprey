@@ -11,7 +11,7 @@ alt: "Precision dark indigo oscilloscope grid with cyan harmonic spectra and glo
 
 Subtle DSP bugs hide for years: a 1-sample window offset in an overlap-add loop, an allpass coefficient that drifts off unit magnitude, or a waveshaper that folds aliases back into the audible band.
 
-In Perception, core synthesis mathematics is **formally proved in Lean** with zero axioms and replayed against the shipped formulas in CI.
+In Perception Studio, core synthesis mathematics is **formally proved in Lean** with zero axioms and replayed against the shipped formulas in CI. Because Perception is built in [Osprey](https://www.ospreylang.dev/), the exact same proved formulas compile ahead of time to native LLVM code with **no garbage collector pauses** — deterministic memory management for real-time audio.
 
 ## What is proved today
 

@@ -22,6 +22,15 @@ description: "Mathematically proven DSP in Lean, unlimited signal routing, VST3 
         </p>
       </div>
 
+      <h2>Built with Osprey: deterministic audio &amp; formal proofs</h2>
+      <p>
+        Perception Studio is written in <a href="https://www.ospreylang.dev/" rel="noopener noreferrer"><strong>Osprey</strong></a>,
+        compiled ahead of time to native LLVM machine code. For real-time audio, Osprey gives two
+        decisive advantages: <strong>no garbage collector pauses</strong> (deterministic memory
+        management with ARC and compile-time ownership) and <strong>first-class mathematical proofs</strong>
+        checked directly against the shipped DSP formulas.
+      </p>
+
       <h2>Machine-checked synthesis proofs</h2>
       <p>
         Core DSP formulas are formally verified in Lean with zero axioms and replayed in CI.
