@@ -530,6 +530,11 @@ static void test_upgrade_reader_edges(void) {
   assert(http_value_lists(field.value, field.value_len, "upgrade") && "a later list item matches");
   assert(!http_value_lists(field.value, field.value_len, "down") && "no list item matches");
   assert(!http_next_field(head, sizeof(head) - 1, &cursor, &field) && "the blank line ends the section");
+
+  // The blank skippers as other units call them: leading and trailing spaces and tabs.
+  static const char padded[] = " \t42 \t";
+  const char *start = http_skip_ows(padded, padded + sizeof(padded) - 1);
+  assert(start == padded + 2 && http_trim_ows(start, padded + sizeof(padded) - 1) == padded + 4);
 }
 
 // A request line may carry a colon, an absolute-form target: it matches no
