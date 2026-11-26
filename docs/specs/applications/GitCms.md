@@ -77,6 +77,16 @@ Saving commits to the working tree only; the live site never changes on save. Pu
 
 The upstream can be any git remote. To keep the repository on a storage bucket, point it at a bucket-backed remote (for example a bare repository on a mounted bucket, or a `git-remote-s3`/`gcs` helper).
 
+## Editor — [CMS-EDITOR]
+
+The back-office editor is an Osprey Native app (`src/osprey/examples/cms/editor/`) built for the browser host. The sidebar lists every file as a selectable list grouped by root. A Markdown page opens in Formatted mode: the page is read line by line into blocks (a heading, a run of paragraph lines, a list, a quote, a fenced code block), every block is drawn as it will publish, and choosing a block turns it into an editor in its own type. The ribbon restyles the focused block. Markdown mode edits the raw text beside a live preview. Save commits; Publish names how many saved commits are not yet live.
+
+### Syntax — [CMS-EDITOR-SYNTAX]
+
+A fenced code block shows its language and its source with syntax colours: keywords, strings, numbers, comments and capitalised type names each have a theme token (`synKeyword`, `synString`, `synNumber`, `synComment`, `synType`, `synPunct`) with a light and a dark value. Anything the lexer does not recognise stays plain, so drawing never fails.
+
 ## Tests — [CMS-E2E]
 
-`make -C src/osprey/examples/cms e2e` builds the server under GC and ARC, creates a throwaway site repository, and drives the API as an editor would: list, open, edit, create, delete, upload an image in several parts, preview it, read the history, check that saves never reach the remote, publish and publish again, and send every unsafe path in [CMS-PATH-SAFE]. Each step asserts the reply and the resulting git log and file bytes.
+- `make -C src/toolchain/targets/tests cms` builds the server under GC and ARC, creates a throwaway site repository with a bare remote, and drives the API as an editor would: list, open, edit, create, delete, upload an image in several parts, preview it, read the history, check that saves never reach the remote, publish and publish again, and send every unsafe path in [CMS-PATH-SAFE]. Each step asserts the reply and the resulting git log and file bytes.
+- `make -C src/toolchain/targets/web/tests cms` runs one long editor session in Chromium against the real editor: the tree and layout, search, syntax colours, editing a code block, selecting by drag and double-click without the editor being replaced, typing without the toolbar flashing, restyling, saving (a commit, not a publish), publishing, and the raw Markdown.
+- `make -C src/toolchain/targets/web cms` serves the editor on a fresh site at `http://127.0.0.1:4397` for manual testing.

@@ -7,7 +7,7 @@ else
 override ROOT := .
 include Makefile
 
-.PHONY: agent bank bank-app casting cleanarch flock inbox painting python-app-ports qwen qwen-pull-headless signal-flow storage synth tally web-host workbench workbench-proof-assets
+.PHONY: agent bank bank-app casting cleanarch cms flock inbox painting python-app-ports qwen qwen-pull-headless signal-flow storage synth tally web-host workbench workbench-proof-assets
 
 ## agent: Osprey Agent's turn logic and its real update path, with scripted completions.
 agent: _runtime
@@ -22,6 +22,12 @@ bank: build
 ##           tabs, filters, validation and every ledger request.
 bank-app:
 	$(MAKE) -C $(ROOT) _app-suite SUITES=src/osprey/examples/talon/app/test
+
+## cms: The Git CMS server's HTTP API under GC and ARC over a throwaway site: edit, save, publish,
+##      upload in parts and every unsafe path. [CMS-E2E]
+cms: export PATH := $(WASM_PATH_PREFIX)$(PATH)
+cms: build _runtime_wasm
+	OSPREY="$(CURDIR)/$(BIN)" node src/osprey/examples/cms/tests/e2e.mjs
 
 ## cleanarch: The Clean Architecture todo port's use cases under GC and ARC. [EXAMPLE-CLEANARCH-INV-TESTS]
 cleanarch: _runtime

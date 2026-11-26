@@ -107,6 +107,7 @@ WEBSITE_NODE_DEPS     = src/toolchain/website/node_modules/.package-lock.json
 WEBCOMPILER_NODE_DEPS = src/toolchain/webcompiler/node_modules/.package-lock.json
 BANK_WEB_NODE_DEPS    = src/toolchain/hosts/web/node_modules/.package-lock.json
 BANK_E2E_NODE_DEPS    = src/osprey/examples/talon/playwright-e2e-tests/node_modules/.package-lock.json
+CMS_E2E_NODE_DEPS     = src/osprey/examples/cms/tests/node_modules/.package-lock.json
 # Talon Bank's one Osprey Native app, as the generic Android and SwiftUI hosts take it.
 BANK_APP     = src/osprey/examples/talon/app
 BANK_ANDROID = OSPREY_ANDROID_APP=$(BANK_APP) OSPREY_ANDROID_ID=org.ospreylang.talon OSPREY_ANDROID_NAME="Talon Bank" OSPREY_ANDROID_REVERSE=18790

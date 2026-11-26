@@ -7,7 +7,7 @@ else
 override ROOT := .
 include Makefile
 
-.PHONY: bank
+.PHONY: bank cms
 
 ## bank: Browser end-to-end tests for the Talon Bank modules showcase
 ##       (src/osprey/examples/talon): real Chromium via Playwright drives
@@ -22,4 +22,10 @@ bank: _bank-web $(BANK_E2E_NODE_DEPS)
 	  && npx playwright test && npx playwright test -c journey.config.js; status=$$?; \
 	  test ! -e "$$run/hold" || { echo "FAIL: bank e2e left its hold marker behind"; status=1; }; \
 	  rm -f "$$run/ledger.db" "$$run/ledger.db-journal" "$$run/ledger.db-wal" "$$run/ledger.db-shm"; rmdir "$$run" || status=1; exit $$status
+
+## cms: Browser end-to-end journey for the Git CMS editor (src/osprey/examples/cms): real Chromium
+##      drives the Osprey Native editor: tree, selection, syntax colours, blocks, save, publish.
+cms: export PATH := $(WASM_PATH_PREFIX)$(PATH)
+cms: build _runtime_wasm $(CMS_E2E_NODE_DEPS)
+	cd src/osprey/examples/cms/tests && npx playwright install chromium && OSPREY="$(CURDIR)/$(BIN)" npx playwright test
 endif
