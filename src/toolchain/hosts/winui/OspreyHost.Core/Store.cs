@@ -14,10 +14,13 @@ namespace Osprey.Host;
 public sealed partial class Store(string root)
 {
     static readonly UTF8Encoding Strict = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
+    const uint GenericRead = 0x80000000;
     const uint ListDirectory = 0x0001;
     const uint OpenExisting = 3;
     const uint BackupSemantics = 0x02000000;
     const uint OpenReparsePoint = 0x00200000;
+    const int ErrorFileNotFound = 2;
+    const int ErrorPathNotFound = 3;
 
     /// <summary>The store folder for the application compiled into <paramref name="library"/>.</summary>
     public static string RootFor(string library) =>
@@ -50,38 +53,75 @@ public sealed partial class Store(string root)
         }
     }
 
-    Completion Read(Ask ask) => Existing(ask, (name, path) =>
+    Completion Read(Ask ask) => Named(ask, (name, _) =>
     {
-        var limit = ask.Number(2);
-        return new FileInfo(path).Length > limit
-            ? Completion.Failed(ask.Ticket, $"store entry {name} exceeds limit {limit}")
-            : Completion.Done(ask.Ticket, "null", new SliceWrite(ask.Text(3), Strict.GetString(File.ReadAllBytes(path))));
+        var parts = name.Split(['/', '\\']);
+        return WithPinned(parts.AsSpan(0, parts.Length - 1), FileShare.Read, create: false,
+            folder => ReadLeaf(ask, name, Path.Combine(folder, parts[^1])))
+            ?? Completion.Failed(ask.Ticket, $"no such store entry {name}");
     });
+
+    Completion ReadLeaf(Ask ask, string name, string path)
+    {
+        var handle = CreateFileFromAppW(path, GenericRead, FileShare.Read, 0, OpenExisting, OpenReparsePoint, 0);
+        if (handle.IsInvalid)
+        {
+            var error = Marshal.GetLastPInvokeError();
+            handle.Dispose();
+            return error is ErrorFileNotFound or ErrorPathNotFound
+                ? Completion.Failed(ask.Ticket, $"no such store entry {name}")
+                : throw new IOException(new Win32Exception(error).Message);
+        }
+        try
+        {
+            var attributes = File.GetAttributes(handle);
+            if ((attributes & (FileAttributes.Directory | FileAttributes.ReparsePoint)) != 0)
+                throw new IOException($"invalid store entry {name}");
+            using var stream = new FileStream(handle, FileAccess.Read);
+            var limit = ask.Number(2);
+            if (stream.Length > limit)
+                return Completion.Failed(ask.Ticket, $"store entry {name} exceeds limit {limit}");
+            var bytes = new byte[stream.Length];
+            stream.ReadExactly(bytes);
+            return Completion.Done(ask.Ticket, "null", new SliceWrite(ask.Text(3), Strict.GetString(bytes)));
+        }
+        catch
+        {
+            handle.Dispose();
+            throw;
+        }
+    }
 
     Completion Write(Ask ask) => Named(ask, (name, _) =>
     {
         if (Slices.Get(ask.Text(2)) is not { } text)
-        {
             return Completion.Failed(ask.Ticket, "store-write slice is missing");
-        }
-        WriteEntry(name, text);
+        var parts = name.Split(['/', '\\']);
+        WithPinned(parts.AsSpan(0, parts.Length - 1), FileShare.ReadWrite, create: true, folder =>
+        {
+            Replace(folder, parts[^1], Strict.GetBytes(text));
+            return Completion.Done(ask.Ticket, "null");
+        });
         return Completion.Done(ask.Ticket, "null");
     });
 
-    void WriteEntry(string name, string text)
+    // [WINUI-HOST-CAPABILITIES] Pin every directory from the store root to the target folder
+    // without delete sharing, so no intermediate component can be a junction or swapped for one.
+    Completion? WithPinned(ReadOnlySpan<string> parts, FileShare leafShare, bool create, Func<string, Completion> act)
     {
-        var parts = name.Split(['/', '\\']);
         var folder = Path.GetFullPath(root);
         var directories = new Stack<SafeFileHandle>();
         try
         {
-            foreach (var part in parts.AsSpan(0, parts.Length - 1))
+            for (var i = 0; i < parts.Length; i++)
             {
-                directories.Push(PinDirectory(folder, FileShare.Read));
-                folder = Path.Combine(folder, part);
+                if (PinDirectory(folder, FileShare.Read, create) is not { } handle) return null;
+                directories.Push(handle);
+                folder = Path.Combine(folder, parts[i]);
             }
-            directories.Push(PinDirectory(folder, FileShare.ReadWrite));
-            Replace(folder, parts[^1], Strict.GetBytes(text));
+            if (PinDirectory(folder, leafShare, create) is not { } leaf) return null;
+            directories.Push(leaf);
+            return act(folder);
         }
         finally
         {
@@ -90,17 +130,24 @@ public sealed partial class Store(string root)
     }
 
     // [WINUI-HOST-CAPABILITIES] Hold each directory without delete sharing, so it cannot be
-    // renamed, removed or replaced by a junction during a write. The folders above the entry
-    // also refuse write sharing, so an empty one cannot be turned into a junction in place.
-    // The entry's own folder must share writing: moving the finished file into it opens the
-    // folder for writing, and a refusal there is a sharing violation on every write.
-    static SafeFileHandle PinDirectory(string path, FileShare share)
+    // renamed, removed or replaced by a junction during a store operation. Ancestors also refuse
+    // write sharing; the entry's own folder shares writing when replacing or deleting a leaf.
+    static SafeFileHandle? PinDirectory(string path, FileShare share, bool create)
     {
-        Directory.CreateDirectory(path);
+        if (create) Directory.CreateDirectory(path);
         var handle = CreateFileFromAppW(path, ListDirectory, share, 0, OpenExisting, BackupSemantics | OpenReparsePoint, 0);
         try
         {
-            if (handle.IsInvalid) throw new IOException(new Win32Exception(Marshal.GetLastPInvokeError()).Message);
+            if (handle.IsInvalid)
+            {
+                var error = Marshal.GetLastPInvokeError();
+                if (!create && error is ErrorFileNotFound or ErrorPathNotFound)
+                {
+                    handle.Dispose();
+                    return null;
+                }
+                throw new IOException(new Win32Exception(error).Message);
+            }
             var attributes = File.GetAttributes(handle);
             if ((attributes & (FileAttributes.Directory | FileAttributes.ReparsePoint)) != FileAttributes.Directory)
                 throw new IOException($"invalid store directory {path}");
@@ -134,14 +181,24 @@ public sealed partial class Store(string root)
     private static partial SafeFileHandle CreateFileFromAppW(
         string path, uint access, FileShare share, nint security, uint creation, uint flags, nint template);
 
-    Completion List(Ask ask) => Named(ask, (_, folder) => Directory.Exists(folder)
-        ? Completion.Done(ask.Ticket, Docs.Array(Directory.EnumerateFileSystemEntries(folder).Select(path => Path.GetFileName(path) ?? "").Order(StringComparer.Ordinal)))
-        : Completion.Done(ask.Ticket, "[]"), folder: true);
-
-    Completion Delete(Ask ask) => Existing(ask, (_, path) =>
+    Completion List(Ask ask) => Named(ask, (name, _) =>
     {
-        File.Delete(path);
-        return Completion.Done(ask.Ticket, "null");
+        var parts = name.Length == 0 ? [] : name.Split(['/', '\\']);
+        return WithPinned(parts, FileShare.Read, create: false, folder =>
+            Completion.Done(ask.Ticket, Docs.Array(Directory.EnumerateFileSystemEntries(folder).Select(path => Path.GetFileName(path) ?? "").Order(StringComparer.Ordinal))))
+            ?? Completion.Done(ask.Ticket, "[]");
+    }, folder: true);
+
+    Completion Delete(Ask ask) => Named(ask, (name, _) =>
+    {
+        var parts = name.Split(['/', '\\']);
+        return WithPinned(parts.AsSpan(0, parts.Length - 1), FileShare.ReadWrite, create: false, folder =>
+        {
+            var path = Path.Combine(folder, parts[^1]);
+            if (!File.Exists(path)) return Completion.Failed(ask.Ticket, $"no such store entry {name}");
+            File.Delete(path);
+            return Completion.Done(ask.Ticket, "null");
+        }) ?? Completion.Failed(ask.Ticket, $"no such store entry {name}");
     });
 
     // Answers with `act` on the requested name and its path when the name stays inside the store.
@@ -150,10 +207,6 @@ public sealed partial class Store(string root)
         var name = ask.Text(1);
         return Entry(name, folder) is { } path ? act(name, path) : Completion.Failed(ask.Ticket, $"invalid store entry {name}");
     }
-
-    // As Named, for an entry that must already be in the store.
-    Completion Existing(Ask ask, Func<string, string, Completion> act) => Named(ask, (name, path) =>
-        File.Exists(path) ? act(name, path) : Completion.Failed(ask.Ticket, $"no such store entry {name}"));
 
     // A name inside the store: relative, with no drive, root or parent folder in it. Only a
     // listing may name the store itself, with the empty name.

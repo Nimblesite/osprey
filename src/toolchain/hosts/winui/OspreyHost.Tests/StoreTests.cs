@@ -89,6 +89,23 @@ public sealed class StoreTests : IDisposable
             Assert.False(write.Ok);
             Assert.Equal($"invalid store directory {link}", write.Error);
             Assert.Empty(outside.EnumerateFileSystemInfos());
+
+            var outsideFile = Path.Combine(outside.FullName, "secret");
+            File.WriteAllText(outsideFile, "outside secret");
+
+            var read = Read("link/secret");
+            Assert.False(read.Ok);
+            Assert.Equal($"invalid store directory {link}", read.Error);
+            Assert.Empty(read.Writes);
+
+            var list = Ask(8, new AskField(1, 0, "link"));
+            Assert.False(list.Ok);
+            Assert.Equal($"invalid store directory {link}", list.Error);
+
+            var delete = Ask(9, new AskField(1, 0, "link/secret"));
+            Assert.False(delete.Ok);
+            Assert.Equal($"invalid store directory {link}", delete.Error);
+            Assert.True(File.Exists(outsideFile));
         }
         finally
         {
