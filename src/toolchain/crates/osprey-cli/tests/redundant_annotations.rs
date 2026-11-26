@@ -67,7 +67,9 @@ fn return_annotation(line: &str) -> Option<(usize, usize, String)> {
 
 /// Every removable return annotation in `source`.
 fn redundant_returns(path: &Path, source: &str) -> Vec<(usize, String)> {
-    redundant_in(path, source, |line| return_annotation(line).into_iter().collect())
+    redundant_in(path, source, |line| {
+        return_annotation(line).into_iter().collect()
+    })
 }
 
 /// `onlySuccess` builds no `Error`, so nothing in this program determines E

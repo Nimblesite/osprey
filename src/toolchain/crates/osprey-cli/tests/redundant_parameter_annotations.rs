@@ -8,9 +8,9 @@
 //! judging each parameter alone, because deleting one can change what a
 //! sibling infers.
 
-mod common;
 #[path = "common/annotation_oracle.rs"]
 mod annotation_oracle;
+mod common;
 
 use annotation_oracle::{compiles, corpus_offenders, redundant_in};
 use std::path::Path;
@@ -114,12 +114,25 @@ fn the_parameter_reader_reads_every_shape_a_header_can_take() {
         ["Map<string, List<int>>"],
         "a comma inside type arguments does not split the parameter"
     );
-    assert!(spellings("fn bare(a, b) = a").is_empty(), "no annotation, nothing read");
-    assert!(spellings("fn erased(x: any) = x").is_empty(), "`any` is the erasure");
-    assert!(spellings("let f = fn(x: int) => x").is_empty(), "only `fn` headers are read");
+    assert!(
+        spellings("fn bare(a, b) = a").is_empty(),
+        "no annotation, nothing read"
+    );
+    assert!(
+        spellings("fn erased(x: any) = x").is_empty(),
+        "`any` is the erasure"
+    );
+    assert!(
+        spellings("let f = fn(x: int) => x").is_empty(),
+        "only `fn` headers are read"
+    );
     let (start, end, _) = parameter_annotations("fn add(a: int, b) = a").remove(0);
     assert_eq!(
-        format!("{}{}", &"fn add(a: int, b) = a"[..start], &"fn add(a: int, b) = a"[end..]),
+        format!(
+            "{}{}",
+            &"fn add(a: int, b) = a"[..start],
+            &"fn add(a: int, b) = a"[end..]
+        ),
         "fn add(a, b) = a",
         "deleting the span leaves the bare parameter"
     );
@@ -129,7 +142,10 @@ fn the_parameter_reader_reads_every_shape_a_header_can_take() {
 fn a_parameter_annotation_is_reported_exactly_when_the_checker_proves_it() {
     let probe = Path::new("parameters.osp");
     for program in [INFERABLE, NARROWING, HOF] {
-        assert!(compiles(probe, program), "every probe must compile:\n{program}");
+        assert!(
+            compiles(probe, program),
+            "every probe must compile:\n{program}"
+        );
     }
     assert_eq!(
         redundant_parameters(probe, INFERABLE),

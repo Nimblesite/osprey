@@ -102,7 +102,11 @@ pub(crate) fn corpus_offenders(read: Reader) -> Vec<String> {
             if !compiles(&path, &source) {
                 continue;
             }
-            let display = path.strip_prefix(&root).unwrap_or(&path).display().to_string();
+            let display = path
+                .strip_prefix(&root)
+                .unwrap_or(&path)
+                .display()
+                .to_string();
             for (line, spelling) in redundant_in(&path, &source, read) {
                 offenders.push(format!("{display}:{line}  {spelling}"));
             }
