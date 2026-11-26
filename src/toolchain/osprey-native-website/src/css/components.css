@@ -397,97 +397,16 @@
   overflow-wrap: anywhere;
 }
 
-/* Responsive Comparison Table (@container stacked cards + sticky headers) */
-.table-wrapper {
-  margin-block-start: var(--space-4);
-  overflow: auto;
-  max-inline-size: 100%;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background-color: var(--surface-raised);
-  box-shadow: var(--shadow-card);
-  container-type: inline-size;
+.live-heading {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
 }
 
-.compare-table {
-  inline-size: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
-  font-size: 0.92rem;
-  text-align: start;
-  --col-2: "Osprey Native";
-  --col-3: "Compose Multiplatform (CMP)";
-  --col-4: "Flutter";
-  --col-5: "React Native";
-}
-
-.compare-table caption {
-  padding: 1rem 1.25rem;
-  text-align: start;
-  font-weight: 700;
-  color: var(--ink);
-  border-block-end: 1px solid var(--border);
-  background-color: var(--surface-alt);
-}
-
-.compare-table th,
-.compare-table td {
-  padding: 0.95rem 1.1rem;
-  border-block-end: 1px solid var(--border);
-  vertical-align: top;
-}
-
-.compare-table thead {
-  position: sticky;
-  inset-block-start: 0;
-  z-index: 2;
-  background-color: var(--surface-alt);
-}
-
-.compare-table thead th.col-osprey,
-.compare-table tbody td.col-osprey {
-  background-color: var(--tint-native);
-}
-
-.compare-table tbody th {
-  position: sticky;
-  inset-inline-start: 0;
-  z-index: 1;
-  background-color: var(--surface-raised);
-  font-weight: 700;
-  min-inline-size: 9.5rem;
-}
-
-@container (width < 640px) {
-  .compare-table,
-  .compare-table thead,
-  .compare-table tbody,
-  .compare-table tr,
-  .compare-table th,
-  .compare-table td {
-    display: block;
-  }
-  .compare-table thead {
-    display: none;
-  }
-  .compare-table tbody tr {
-    margin: 0.85rem;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    overflow: hidden;
-  }
-  .compare-table tbody th {
-    position: sticky;
-    inset-block-start: 0;
-    z-index: 2;
-    background-color: var(--surface-alt);
-  }
-  .compare-table td:nth-child(2)::before { content: var(--col-2) ": "; font-weight: 700; color: var(--brand-native); }
-  .compare-table td:nth-child(3)::before { content: var(--col-3) ": "; font-weight: 700; color: var(--ink); }
-  .compare-table td:nth-child(4)::before { content: var(--col-4) ": "; font-weight: 700; color: var(--ink); }
-  .compare-table td:nth-child(5)::before { content: var(--col-5) ": "; font-weight: 700; color: var(--ink); }
-}
-
-.cmp-highlights {
-  margin-block-start: var(--space-5);
+.live-dot {
+  inline-size: 0.6rem;
+  block-size: 0.6rem;
+  border-radius: 50%;
+  background-color: var(--brand-signal);
+  display: inline-block;
 }

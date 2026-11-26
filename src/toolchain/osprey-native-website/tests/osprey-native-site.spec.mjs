@@ -43,10 +43,12 @@ test("Osprey Native website renders cleanly with flagship media, logo/favicon, a
   expect(favRes.status()).toBe(200);
 
   const cssHrefs = await page.locator('link[rel="stylesheet"]').evaluateAll((els) => els.map((e) => e.getAttribute("href")));
-  expect(cssHrefs.length).toBe(5);
+  expect(cssHrefs.length).toBe(7);
   for (const href of cssHrefs) {
     expect(href).toMatch(/^\/css\/[a-z]+\.css\?v=[0-9a-f]{12}$/);
   }
+  const navLabels = await page.locator('nav[aria-label="Primary"] a').allTextContents();
+  expect(navLabels).toEqual(["Features", "Showcase", "Compare", "Blog", "Docs", "GitHub"]);
   const jsSrc = await page.locator("script[src]").getAttribute("src");
   expect(jsSrc).toMatch(/^\/js\/site\.js\?v=[0-9a-f]{12}$/);
 

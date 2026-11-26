@@ -11,7 +11,9 @@
   <link rel="stylesheet" href="{{ 'css/base.css' | assetUrl }}">
   <link rel="stylesheet" href="{{ 'css/prose.css' | assetUrl }}">
   <link rel="stylesheet" href="{{ 'css/components.css' | assetUrl }}">
+  <link rel="stylesheet" href="{{ 'css/compare.css' | assetUrl }}">
   <link rel="stylesheet" href="{{ 'css/blog.css' | assetUrl }}">
+  <link rel="stylesheet" href="{{ 'css/motion.css' | assetUrl }}">
 </head>
 <body>
   <a href="#main-content" class="skip-link visually-hidden">Skip to main content</a>
@@ -25,12 +27,12 @@
 
       <nav class="site-nav" aria-label="Primary">
         <ul>
-          <li><a href="/#rendering">Canvas or Native</a></li>
+          <li><a href="/#rendering">Features</a></li>
           <li><a href="/#videos">Showcase</a></li>
-          <li><a href="/#flavors">Flavors &amp; Signals</a></li>
-          <li><a href="/#accessibility">Accessibility</a></li>
           <li><a href="/#compare">Compare</a></li>
           <li><a href="/blog/"{% if page.url and page.url.startsWith('/blog/') %} aria-current="page"{% endif %}>Blog</a></li>
+          <li><a href="https://www.ospreylang.dev/docs/osprey-native/">Docs</a></li>
+          <li><a href="https://github.com/Nimblesite/osprey">GitHub</a></li>
         </ul>
       </nav>
 
@@ -41,6 +43,7 @@
         </button>
       </div>
     </div>
+    <div class="scroll-progress" aria-hidden="true"></div>
   </header>
 
   <main id="top">
