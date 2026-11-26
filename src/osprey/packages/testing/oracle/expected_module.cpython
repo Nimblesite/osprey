@@ -25,19 +25,60 @@ def non_finite(value):
     return False
 
 
-def literal(value, floats_as_text=False):
-    """`value` as Python-flavor source text."""
+def literal(value, floats_as_text=False, shared=None, written=None):
+    """`value` as Python-flavor source text. A string or flat list `shared` names is written
+    as that name; every literal the repeated-literal warning counts
+    ([TYPE-WARNINGS-REPEATED-LITERAL]) is tallied in `written`."""
     if isinstance(value, bool):
         return "True" if value else "False"
     if isinstance(value, float):
-        return literal(repr(value)) if floats_as_text else repr(value)
+        return literal(repr(value), False, shared, written) if floats_as_text else repr(value)
     if isinstance(value, int):
         return str(value)
     if isinstance(value, str):
-        return json.dumps(value, ensure_ascii=False)
+        return counted(json.dumps(value, ensure_ascii=False), len(value), (value, False), shared, written)
     if isinstance(value, (list, tuple)):
-        return "[" + ", ".join(literal(v, floats_as_text) for v in value) + "]"
+        text = "[" + ", ".join(literal(v, floats_as_text, shared, written) for v in value) + "]"
+        flat = bool(value) and not any(isinstance(v, (list, tuple)) for v in value)
+        return counted(text, len(text), (value, floats_as_text), shared, written) if flat else text
     raise TypeError(f"no Python-flavor literal for {type(value).__name__}")
+
+
+REPEAT_CHARS = 12
+REPEAT_COUNT = 3
+
+
+def counted(text, chars, source, shared, written):
+    """`text`, or the name `shared` gives it; a literal of `REPEAT_CHARS` or more is tallied
+    with the value it was written from."""
+    if shared and text in shared:
+        return shared[text][0]
+    if written is not None and chars >= REPEAT_CHARS:
+        written[text] = (written.get(text, (0, source))[0] + 1, source)
+    return text
+
+
+def shared_literals(render):
+    """Name every literal `render(shared, written)` writes `REPEAT_COUNT` or more times, and
+    render again until nothing new repeats: a named list no longer repeats the strings in
+    it. Names are private (`_SHARED_<n>`), so they are never exports."""
+    shared = {}
+    while True:
+        written = {}
+        render(shared, written)
+        repeated = [(text, source) for text, (count, source) in written.items() if count >= REPEAT_COUNT]
+        if not repeated:
+            return shared
+        for text, source in repeated:
+            shared[text] = (f"_SHARED_{len(shared)}", source)
+
+
+def definitions(shared, written=None):
+    """One line per shared literal, strings first since a shared list may name one."""
+    strings = {text: row for text, row in shared.items() if text.startswith('"')}
+    rows = sorted(shared.items(), key=lambda row: not row[0].startswith('"'))
+    return [f"{name} = {literal(value, as_text, None if text in strings else strings, written)}"
+            for text, (name, (value, as_text)) in rows]
 
 
 def aliased(text, name, first_named):
@@ -49,7 +90,8 @@ def aliased(text, name, first_named):
     return text if first == name else first
 
 
-def write(package, summary, versions, constants, docs=None, module="Expected", namespace=None, file="expected.py", home=None):
+def write(package, summary, versions, constants, docs=None, module="Expected", namespace=None, file="expected.py", home=None,
+          annotations=None):
     """Write `<home>/tests/expected.py` holding `constants` (name -> value); `home` defaults
     to src/osprey/packages/<package>, and an example model passes its own directory.
 
@@ -57,9 +99,11 @@ def write(package, summary, versions, constants, docs=None, module="Expected", n
     CPython version in the module docstring so a regenerated module states its source.
     `docs` maps a constant's name to its one-line documentation; every constant is an
     exported value and gets a PEP 257 attribute docstring, the given one or a default
-    naming the oracle, so the flavor's undocumented-export warning never fires. A package
+    naming the oracle, so the flavor's undocumented-export warning never fires; a literal
+    written three or more times is named once ([TYPE-WARNINGS-REPEATED-LITERAL]). A package
     with more than one oracle writes the others as `expected_<topic>.py` by passing
-    `module`, `namespace` and `file`.
+    `module`, `namespace` and `file`. `annotations` maps a constant that can be an empty list,
+    whose element type nothing else states, to its type (`list[int]`).
     """
     home = home or f"src/osprey/packages/{package}"
     provenance = ", ".join(f"{name} {version}" for name, version in sorted(versions.items()))
@@ -75,11 +119,20 @@ def write(package, summary, versions, constants, docs=None, module="Expected", n
         "__all__ = [" + ", ".join(f'"{name}"' for name in constants) + "]",
         "",
     ]
+    texts = {name: (value, non_finite(value)) for name, value in constants.items()}
+
+    def render(shared, written):
+        for value, as_text in texts.values():
+            literal(value, as_text, shared, written)
+        definitions(shared, written)
+
+    shared = shared_literals(render)
+    lines += definitions(shared) + ([""] if shared else [])
     first_named = {}
-    for name, value in constants.items():
+    for name, (value, as_text) in texts.items():
         doc = (docs or {}).get(name, f"Oracle value `{name}`, computed by {home}/oracle/{package}.cpython.")
-        text = literal(value, non_finite(value))
-        lines += [f"{name} = {aliased(text, name, first_named)}", f'"""{doc}"""']
+        typed = f"{name}: {annotations[name]}" if name in (annotations or {}) else name
+        lines += [f"{typed} = {aliased(literal(value, as_text, shared), name, first_named)}", f'"""{doc}"""']
     target = ROOT / home / "tests" / file
     target.write_text("\n".join(lines) + "\n")
     return target

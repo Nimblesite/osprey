@@ -8,203 +8,420 @@ Do not edit: rerun the oracle."""
 
 __all__ = ["ARANGE", "ARANGE_OUT", "LINSPACE_F", "LINSPACE_NUM", "LINSPACE_OUT", "EYE", "EYE_OUT", "TRI", "TRI_OUT", "DIAG_VALS", "DIAG_SHAPES", "DIAG_OUT", "ZEROS", "ZEROS_OUT", "ONES_OUT", "FULL_VALUES", "FULL_OUT", "RESHAPE_VALS", "RESHAPE_SHAPES", "RESHAPE_NEW", "RESHAPE_OUT", "RESHAPE_OUT_SHAPES", "TRANSPOSE_VALS", "TRANSPOSE_SHAPES", "TRANSPOSE_AXES", "TRANSPOSE_OUT", "TRANSPOSE_OUT_SHAPES", "SWAPAXES_VALS", "SWAPAXES_SHAPES", "SWAPAXES_A1", "SWAPAXES_A2", "SWAPAXES_OUT", "MOVEAXIS_VALS", "MOVEAXIS_SHAPES", "MOVEAXIS_SRC", "MOVEAXIS_DST", "MOVEAXIS_OUT", "MOVEAXIS_OUT_SHAPES", "ED_VALS", "ED_SHAPES", "ED_AXIS", "ED_OUT", "ED_OUT_SHAPES", "SQ_VALS", "SQ_SHAPES", "SQ_OUT", "SQ_OUT_SHAPES", "BS_SHAPES", "BS_OUT", "BT_VALS", "BT_SHAPES", "BT_NEW", "BT_OUT", "BT_OUT_SHAPES", "CONCAT_VALS", "CONCAT_SHAPES", "CONCAT_AXIS", "CONCAT_OUT", "CONCAT_OUT_SHAPES", "STACK_VALS", "STACK_SHAPES", "STACK_AXIS", "STACK_OUT", "STACK_OUT_SHAPES", "TAKE_VALS", "TAKE_SHAPES", "TAKE_IDX", "TAKE_AXIS", "TAKE_OUT", "TAKE_OUT_SHAPES", "FLIP_VALS", "FLIP_SHAPES", "FLIP_AXIS", "FLIP_OUT", "ROLL_VALS", "ROLL_SHAPES", "ROLL_SHIFT", "ROLL_AXIS", "ROLL_OUT", "RP_VALS", "RP_SHAPES", "RP_REPS", "RP_AXIS", "RP_OUT", "RP_OUT_SHAPES", "TILE_VALS", "TILE_SHAPES", "TILE_REPS", "TILE_OUT", "TILE_OUT_SHAPES", "BIN_A_VALS", "BIN_A_SHAPES", "BIN_B_VALS", "BIN_B_SHAPES", "BIN_ADD", "BIN_SUB", "BIN_MUL", "BIN_DIV", "BIN_MAX", "BIN_MIN", "BIN_EQ", "BIN_NE", "BIN_LT", "BIN_LE", "BIN_GT", "BIN_GE", "WHERE_C_VALS", "WHERE_C_SHAPES", "WHERE_A_VALS", "WHERE_A_SHAPES", "WHERE_B_VALS", "WHERE_B_SHAPES", "WHERE_OUT", "UNARY_VALS", "UNARY_SHAPES", "UN_NEG", "UN_ABS", "UN_EXP", "UN_LOG", "UN_SQRT", "UN_TANH", "UN_SQR", "UN_RECIP", "UN_SIGN", "CLIP", "CLIP_OUT", "NONFIN_VALS", "NONFIN_SHAPES", "LOG_ZERO", "SQRT_NEG", "RECIP_ZERO", "NAN_A_VALS", "NAN_A_SHAPES", "NAN_B_VALS", "NAN_B_SHAPES", "NAN_MAX", "NAN_MIN", "NAN_EQ", "RED_VALS", "RED_SHAPES", "SUM_ALL", "SUM_AX0", "SUM_AXM1", "SUM_AXM1K", "MEAN_ALL", "MEAN_AX0", "MEAN_AXM1K", "MAX_ALL", "MAX_AX0", "MIN_ALL", "MIN_AXM1", "PROD_ALL", "PROD_AX0", "VAR_ALL0", "VAR_ALL1", "VAR_AX0", "STD_ALL0", "STD_AXM1", "ARGMAX_ALL", "ARGMIN_ALL", "ARGMAX_AX0", "ARGMIN_AXM1", "ALL_ALL", "ANY_ALL", "ALL_AX0", "ANY_AXM1", "CUMSUM_AXM1", "CUMPROD_AX0", "MM_A_VALS", "MM_A_SHAPES", "MM_B_VALS", "MM_B_SHAPES", "MATMUL_OUT", "MATMUL_SHAPES", "DOT_A_VALS", "DOT_A_SHAPES", "DOT_B_VALS", "DOT_B_SHAPES", "DOT_OUT", "DOT_SHAPES", "OUTER_A_VALS", "OUTER_A_SHAPES", "OUTER_B_VALS", "OUTER_B_SHAPES", "OUTER_OUT", "INNER_A_VALS", "INNER_A_SHAPES", "INNER_B_VALS", "INNER_B_SHAPES", "INNER_OUT", "VDOT_A_VALS", "VDOT_A_SHAPES", "VDOT_B_VALS", "VDOT_B_SHAPES", "VDOT_OUT", "TRACE_VALS", "TRACE_IN_SHAPES", "TRACE_OUT", "TRACE_OUT_SHAPES", "ERRORS"]
 
+_SHARED_14 = "1.2909944487358056"
+_SHARED_0 = [1.0, 2.0, 3.0]
+_SHARED_1 = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+_SHARED_2 = [1.0, 2.0, 3.0, 4.0]
+_SHARED_3 = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+_SHARED_4 = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+_SHARED_5 = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0]
+_SHARED_6 = [1.0, 4.0, 2.0, 5.0, 3.0, 6.0]
+_SHARED_7 = [0.0, 12.0, 4.0, 16.0, 8.0, 20.0, 1.0, 13.0, 5.0, 17.0, 9.0, 21.0, 2.0, 14.0, 6.0, 18.0, 10.0, 22.0, 3.0, 15.0, 7.0, 19.0, 11.0, 23.0]
+_SHARED_8 = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0]
+_SHARED_9 = [4.0, 5.0, 6.0]
+_SHARED_10 = [5.0, 6.0, 7.0, 8.0]
+_SHARED_11 = [0.0, 0.0, 0.0]
+_SHARED_12 = [1.0, 1.0, 1.0]
+_SHARED_13 = [1.0, 1.0, 1.0, 1.0]
+_SHARED_15 = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0]
+
 ARANGE = [[0.0, 10.0, 2.0], [0.0, 1.0, 0.3], [5.0, 1.0, -1.0], [0.0, 1.0, 0.1], [1.0, 3.0, 0.5], [-2.0, 2.0, 1.0], [3.0, 3.0, 1.0], [0.0, 0.5, 0.25]]
+"""Oracle value `ARANGE`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 ARANGE_OUT = [[0.0, 2.0, 4.0, 6.0, 8.0], [0.0, 0.3, 0.6, 0.8999999999999999], [5.0, 4.0, 3.0, 2.0], [0.0, 0.1, 0.2, 0.30000000000000004, 0.4, 0.5, 0.6000000000000001, 0.7000000000000001, 0.8, 0.9], [1.0, 1.5, 2.0, 2.5], [-2.0, -1.0, 0.0, 1.0], [], [0.0, 0.25]]
+"""Oracle value `ARANGE_OUT`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 LINSPACE_F = [[0.0, 1.0], [1.0, 0.0], [0.0, 1.0], [0.0, 1.0], [0.0, 0.1], [-1.0, 1.0]]
+"""Oracle value `LINSPACE_F`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 LINSPACE_NUM = [5, 4, 1, 0, 11, 3]
+"""Oracle value `LINSPACE_NUM`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 LINSPACE_OUT = [[0.0, 0.25, 0.5, 0.75, 1.0], [1.0, 0.6666666666666667, 0.33333333333333337, 0.0], [0.0], [], [0.0, 0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.09, 0.1], [-1.0, 0.0, 1.0]]
+"""Oracle value `LINSPACE_OUT`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 EYE = [2, 1, 0, 3]
+"""Oracle value `EYE`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 EYE_OUT = [[1.0, 0.0, 0.0, 1.0], [1.0], [], [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]]
+"""Oracle value `EYE_OUT`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 TRI = [[3, 3, 0], [3, 4, 0], [3, 4, 1], [3, 4, -1], [0, 0, 0]]
+"""Oracle value `TRI`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 TRI_OUT = [[1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0], [1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.0], [1.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0], [0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0], []]
-DIAG_VALS = [[1.0, 2.0, 3.0], [1.0, 2.0, 3.0, 4.0, 5.0, 6.0], [1.0, 2.0, 3.0, 4.0]]
+"""Oracle value `TRI_OUT`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
+DIAG_VALS = [_SHARED_0, _SHARED_1, _SHARED_2]
+"""Oracle value `DIAG_VALS`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 DIAG_SHAPES = [[3], [2, 3], [2, 2]]
+"""Oracle value `DIAG_SHAPES`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 DIAG_OUT = [[1.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 3.0], [1.0, 5.0], [1.0, 4.0]]
+"""Oracle value `DIAG_OUT`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 ZEROS = [[2, 3], [], [1], [2, 2, 2]]
-ZEROS_OUT = [[0.0, 0.0, 0.0, 0.0, 0.0, 0.0], [0.0], [0.0], [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]]
-ONES_OUT = [[1.0, 1.0, 1.0, 1.0, 1.0, 1.0], [1.0], [1.0], [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]]
+"""Oracle value `ZEROS`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
+ZEROS_OUT = [_SHARED_3, [0.0], [0.0], [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]]
+"""Oracle value `ZEROS_OUT`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
+ONES_OUT = [_SHARED_4, [1.0], [1.0], [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]]
+"""Oracle value `ONES_OUT`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 FULL_VALUES = [2.5, -1.0, 0.0]
-FULL_OUT = [[2.5, 2.5, 2.5, 2.5, 2.5, 2.5], [-1.0, -1.0, -1.0, -1.0, -1.0, -1.0], [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]]
-RESHAPE_VALS = [[1.0, 2.0, 3.0, 4.0, 5.0, 6.0], [1.0, 2.0, 3.0, 4.0, 5.0, 6.0], [1.0, 2.0, 3.0, 4.0, 5.0, 6.0], [1.0, 2.0, 3.0, 4.0, 5.0, 6.0], [1.0, 2.0, 3.0, 4.0], [1.0, 2.0, 3.0, 4.0]]
+"""Oracle value `FULL_VALUES`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
+FULL_OUT = [[2.5, 2.5, 2.5, 2.5, 2.5, 2.5], [-1.0, -1.0, -1.0, -1.0, -1.0, -1.0], _SHARED_3]
+"""Oracle value `FULL_OUT`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
+RESHAPE_VALS = [_SHARED_1, _SHARED_1, _SHARED_1, _SHARED_1, _SHARED_2, _SHARED_2]
+"""Oracle value `RESHAPE_VALS`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 RESHAPE_SHAPES = [[2, 3], [2, 3], [2, 3], [6], [2, 2], [2, 2]]
+"""Oracle value `RESHAPE_SHAPES`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 RESHAPE_NEW = [[3, 2], [6], [2, -1], [-1, 2], [4], [1, 4]]
+"""Oracle value `RESHAPE_NEW`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 RESHAPE_OUT = RESHAPE_VALS
+"""Oracle value `RESHAPE_OUT`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 RESHAPE_OUT_SHAPES = [[3, 2], [6], [2, 3], [3, 2], [4], [1, 4]]
-TRANSPOSE_VALS = [[1.0, 2.0, 3.0, 4.0, 5.0, 6.0], [1.0, 2.0, 3.0, 4.0, 5.0, 6.0], [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0], [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0]]
+"""Oracle value `RESHAPE_OUT_SHAPES`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
+TRANSPOSE_VALS = [_SHARED_1, _SHARED_1, _SHARED_5, _SHARED_5]
+"""Oracle value `TRANSPOSE_VALS`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 TRANSPOSE_SHAPES = [[2, 3], [2, 3], [2, 3, 4], [2, 3, 4]]
+"""Oracle value `TRANSPOSE_SHAPES`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 TRANSPOSE_AXES = [[1, 0], [], [2, 0, 1], []]
-TRANSPOSE_OUT = [[1.0, 4.0, 2.0, 5.0, 3.0, 6.0], [1.0, 4.0, 2.0, 5.0, 3.0, 6.0], [0.0, 4.0, 8.0, 12.0, 16.0, 20.0, 1.0, 5.0, 9.0, 13.0, 17.0, 21.0, 2.0, 6.0, 10.0, 14.0, 18.0, 22.0, 3.0, 7.0, 11.0, 15.0, 19.0, 23.0], [0.0, 12.0, 4.0, 16.0, 8.0, 20.0, 1.0, 13.0, 5.0, 17.0, 9.0, 21.0, 2.0, 14.0, 6.0, 18.0, 10.0, 22.0, 3.0, 15.0, 7.0, 19.0, 11.0, 23.0]]
+"""Oracle value `TRANSPOSE_AXES`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
+TRANSPOSE_OUT = [_SHARED_6, _SHARED_6, [0.0, 4.0, 8.0, 12.0, 16.0, 20.0, 1.0, 5.0, 9.0, 13.0, 17.0, 21.0, 2.0, 6.0, 10.0, 14.0, 18.0, 22.0, 3.0, 7.0, 11.0, 15.0, 19.0, 23.0], _SHARED_7]
+"""Oracle value `TRANSPOSE_OUT`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 TRANSPOSE_OUT_SHAPES = [[3, 2], [3, 2], [4, 2, 3], [4, 3, 2]]
-SWAPAXES_VALS = [[1.0, 2.0, 3.0, 4.0, 5.0, 6.0], [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0], [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0]]
+"""Oracle value `TRANSPOSE_OUT_SHAPES`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
+SWAPAXES_VALS = [_SHARED_1, _SHARED_5, _SHARED_5]
+"""Oracle value `SWAPAXES_VALS`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 SWAPAXES_SHAPES = [[2, 3], [2, 3, 4], [2, 3, 4]]
+"""Oracle value `SWAPAXES_SHAPES`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 SWAPAXES_A1 = [0, 0, -1]
+"""Oracle value `SWAPAXES_A1`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 SWAPAXES_A2 = [1, 2, 0]
-SWAPAXES_OUT = [[1.0, 4.0, 2.0, 5.0, 3.0, 6.0], [0.0, 12.0, 4.0, 16.0, 8.0, 20.0, 1.0, 13.0, 5.0, 17.0, 9.0, 21.0, 2.0, 14.0, 6.0, 18.0, 10.0, 22.0, 3.0, 15.0, 7.0, 19.0, 11.0, 23.0], [0.0, 12.0, 4.0, 16.0, 8.0, 20.0, 1.0, 13.0, 5.0, 17.0, 9.0, 21.0, 2.0, 14.0, 6.0, 18.0, 10.0, 22.0, 3.0, 15.0, 7.0, 19.0, 11.0, 23.0]]
-MOVEAXIS_VALS = [[0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0], [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0], [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0]]
+"""Oracle value `SWAPAXES_A2`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
+SWAPAXES_OUT = [_SHARED_6, _SHARED_7, _SHARED_7]
+"""Oracle value `SWAPAXES_OUT`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
+MOVEAXIS_VALS = [_SHARED_5, _SHARED_5, _SHARED_5]
+"""Oracle value `MOVEAXIS_VALS`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 MOVEAXIS_SHAPES = [[2, 3, 4], [2, 3, 4], [2, 3, 4]]
+"""Oracle value `MOVEAXIS_SHAPES`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 MOVEAXIS_SRC = [[0], [0, 1], [2]]
+"""Oracle value `MOVEAXIS_SRC`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 MOVEAXIS_DST = [[2], [2, 1], [0]]
-MOVEAXIS_OUT = [[0.0, 12.0, 1.0, 13.0, 2.0, 14.0, 3.0, 15.0, 4.0, 16.0, 5.0, 17.0, 6.0, 18.0, 7.0, 19.0, 8.0, 20.0, 9.0, 21.0, 10.0, 22.0, 11.0, 23.0], [0.0, 12.0, 4.0, 16.0, 8.0, 20.0, 1.0, 13.0, 5.0, 17.0, 9.0, 21.0, 2.0, 14.0, 6.0, 18.0, 10.0, 22.0, 3.0, 15.0, 7.0, 19.0, 11.0, 23.0], [0.0, 4.0, 8.0, 12.0, 16.0, 20.0, 1.0, 5.0, 9.0, 13.0, 17.0, 21.0, 2.0, 6.0, 10.0, 14.0, 18.0, 22.0, 3.0, 7.0, 11.0, 15.0, 19.0, 23.0]]
+"""Oracle value `MOVEAXIS_DST`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
+MOVEAXIS_OUT = [[0.0, 12.0, 1.0, 13.0, 2.0, 14.0, 3.0, 15.0, 4.0, 16.0, 5.0, 17.0, 6.0, 18.0, 7.0, 19.0, 8.0, 20.0, 9.0, 21.0, 10.0, 22.0, 11.0, 23.0], _SHARED_7, [0.0, 4.0, 8.0, 12.0, 16.0, 20.0, 1.0, 5.0, 9.0, 13.0, 17.0, 21.0, 2.0, 6.0, 10.0, 14.0, 18.0, 22.0, 3.0, 7.0, 11.0, 15.0, 19.0, 23.0]]
+"""Oracle value `MOVEAXIS_OUT`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 MOVEAXIS_OUT_SHAPES = [[3, 4, 2], [4, 3, 2], [4, 2, 3]]
-ED_VALS = [[1.0, 2.0, 3.0], [1.0, 2.0, 3.0], [1.0, 2.0, 3.0, 4.0], [1.0, 2.0, 3.0, 4.0]]
+"""Oracle value `MOVEAXIS_OUT_SHAPES`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
+ED_VALS = [_SHARED_0, _SHARED_0, _SHARED_2, _SHARED_2]
+"""Oracle value `ED_VALS`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 ED_SHAPES = [[3], [3], [2, 2], [2, 2]]
+"""Oracle value `ED_SHAPES`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 ED_AXIS = [0, -1, 1, 2]
+"""Oracle value `ED_AXIS`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 ED_OUT = ED_VALS
+"""Oracle value `ED_OUT`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 ED_OUT_SHAPES = [[1, 3], [3, 1], [2, 1, 2], [2, 2, 1]]
-SQ_VALS = [[1.0, 2.0, 3.0], [1.0, 2.0, 3.0], [0.0, 1.0, 2.0, 3.0, 4.0, 5.0], [1.0, 2.0]]
+"""Oracle value `ED_OUT_SHAPES`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
+SQ_VALS = [_SHARED_0, _SHARED_0, _SHARED_8, [1.0, 2.0]]
+"""Oracle value `SQ_VALS`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 SQ_SHAPES = [[1, 3], [3, 1], [2, 1, 3], [1, 1, 2, 1]]
+"""Oracle value `SQ_SHAPES`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 SQ_OUT = SQ_VALS
+"""Oracle value `SQ_OUT`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 SQ_OUT_SHAPES = [[3], [3], [2, 3], [2]]
+"""Oracle value `SQ_OUT_SHAPES`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 BS_SHAPES = [[[2, 3], [2, 3]], [[2, 1], [1, 3]], [[5, 1, 3], [1, 2, 1], [2, 1]], [[], [2, 3]], [[1], [3]]]
+"""Oracle value `BS_SHAPES`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 BS_OUT = [[2, 3], [2, 3], [5, 2, 3], [2, 3], [3]]
-BT_VALS = [[1.0, 2.0, 3.0], [1.0, 2.0], [1.0, 2.0], [5.0]]
+"""Oracle value `BS_OUT`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
+BT_VALS = [_SHARED_0, [1.0, 2.0], [1.0, 2.0], [5.0]]
+"""Oracle value `BT_VALS`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 BT_SHAPES = [[3], [2, 1], [1, 2], [1]]
+"""Oracle value `BT_SHAPES`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 BT_NEW = [[2, 3], [2, 3], [3, 2], [3]]
+"""Oracle value `BT_NEW`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 BT_OUT = [[1.0, 2.0, 3.0, 1.0, 2.0, 3.0], [1.0, 1.0, 1.0, 2.0, 2.0, 2.0], [1.0, 2.0, 1.0, 2.0, 1.0, 2.0], [5.0, 5.0, 5.0]]
+"""Oracle value `BT_OUT`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 BT_OUT_SHAPES = BT_NEW
-CONCAT_VALS = [[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], [[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], [[1.0, 2.0, 3.0, 4.0], [5.0, 6.0, 7.0, 8.0]], [[1.0, 2.0, 3.0, 4.0], [5.0, 6.0]]]
+"""Oracle value `BT_OUT_SHAPES`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
+CONCAT_VALS = [[_SHARED_0, _SHARED_9], [[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], [_SHARED_2, _SHARED_10], [_SHARED_2, [5.0, 6.0]]]
+"""Oracle value `CONCAT_VALS`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 CONCAT_SHAPES = [[[3], [3]], [[2], [2], [2]], [[2, 2], [2, 2]], [[2, 2], [1, 2]]]
+"""Oracle value `CONCAT_SHAPES`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 CONCAT_AXIS = [0, 0, 1, 0]
-CONCAT_OUT = [[1.0, 2.0, 3.0, 4.0, 5.0, 6.0], [1.0, 2.0, 3.0, 4.0, 5.0, 6.0], [1.0, 2.0, 5.0, 6.0, 3.0, 4.0, 7.0, 8.0], [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]]
+"""Oracle value `CONCAT_AXIS`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
+CONCAT_OUT = [_SHARED_1, _SHARED_1, [1.0, 2.0, 5.0, 6.0, 3.0, 4.0, 7.0, 8.0], _SHARED_1]
+"""Oracle value `CONCAT_OUT`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 CONCAT_OUT_SHAPES = [[6], [6], [2, 4], [3, 2]]
-STACK_VALS = [[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], [[1.0, 2.0, 3.0, 4.0], [5.0, 6.0, 7.0, 8.0]]]
+"""Oracle value `CONCAT_OUT_SHAPES`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
+STACK_VALS = [[_SHARED_0, _SHARED_9], [_SHARED_0, _SHARED_9], [_SHARED_2, _SHARED_10]]
+"""Oracle value `STACK_VALS`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 STACK_SHAPES = [[[3], [3]], [[3], [3]], [[2, 2], [2, 2]]]
+"""Oracle value `STACK_SHAPES`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 STACK_AXIS = [0, 1, 2]
-STACK_OUT = [[1.0, 2.0, 3.0, 4.0, 5.0, 6.0], [1.0, 4.0, 2.0, 5.0, 3.0, 6.0], [1.0, 5.0, 2.0, 6.0, 3.0, 7.0, 4.0, 8.0]]
+"""Oracle value `STACK_AXIS`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
+STACK_OUT = [_SHARED_1, _SHARED_6, [1.0, 5.0, 2.0, 6.0, 3.0, 7.0, 4.0, 8.0]]
+"""Oracle value `STACK_OUT`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 STACK_OUT_SHAPES = [[2, 3], [3, 2], [2, 2, 2]]
-TAKE_VALS = [[1.0, 2.0, 3.0, 4.0], [0.0, 1.0, 2.0, 3.0, 4.0, 5.0], [0.0, 1.0, 2.0, 3.0, 4.0, 5.0], [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0]]
+"""Oracle value `STACK_OUT_SHAPES`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
+TAKE_VALS = [_SHARED_2, _SHARED_8, _SHARED_8, _SHARED_5]
+"""Oracle value `TAKE_VALS`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 TAKE_SHAPES = [[4], [2, 3], [2, 3], [2, 3, 4]]
+"""Oracle value `TAKE_SHAPES`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 TAKE_IDX = [[0, 2, -1], [1, 0, 1], [2, 0], [0, 1]]
+"""Oracle value `TAKE_IDX`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 TAKE_AXIS = [0, 0, 1, 1]
+"""Oracle value `TAKE_AXIS`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 TAKE_OUT = [[1.0, 3.0, 4.0], [3.0, 4.0, 5.0, 0.0, 1.0, 2.0, 3.0, 4.0, 5.0], [2.0, 0.0, 5.0, 3.0], [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0]]
+"""Oracle value `TAKE_OUT`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 TAKE_OUT_SHAPES = [[3], [3, 3], [2, 2], [2, 2, 4]]
-FLIP_VALS = [[1.0, 2.0, 3.0], [0.0, 1.0, 2.0, 3.0, 4.0, 5.0], [0.0, 1.0, 2.0, 3.0, 4.0, 5.0], [0.0, 1.0, 2.0, 3.0, 4.0, 5.0]]
+"""Oracle value `TAKE_OUT_SHAPES`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
+FLIP_VALS = [_SHARED_0, _SHARED_8, _SHARED_8, _SHARED_8]
+"""Oracle value `FLIP_VALS`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 FLIP_SHAPES = [[3], [2, 3], [2, 3], [2, 3]]
+"""Oracle value `FLIP_SHAPES`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 FLIP_AXIS = [[0], [0], [1], []]
+"""Oracle value `FLIP_AXIS`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 FLIP_OUT = [[3.0, 2.0, 1.0], [3.0, 4.0, 5.0, 0.0, 1.0, 2.0], [2.0, 1.0, 0.0, 5.0, 4.0, 3.0], [5.0, 4.0, 3.0, 2.0, 1.0, 0.0]]
-ROLL_VALS = [[1.0, 2.0, 3.0, 4.0], [0.0, 1.0, 2.0, 3.0, 4.0, 5.0], [0.0, 1.0, 2.0, 3.0, 4.0, 5.0]]
+"""Oracle value `FLIP_OUT`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
+ROLL_VALS = [_SHARED_2, _SHARED_8, _SHARED_8]
+"""Oracle value `ROLL_VALS`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 ROLL_SHAPES = [[4], [2, 3], [2, 3]]
+"""Oracle value `ROLL_SHAPES`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 ROLL_SHIFT = [1, 2, -1]
+"""Oracle value `ROLL_SHIFT`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 ROLL_AXIS = [0, 1, 0]
+"""Oracle value `ROLL_AXIS`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 ROLL_OUT = [[4.0, 1.0, 2.0, 3.0], [1.0, 2.0, 0.0, 4.0, 5.0, 3.0], [3.0, 4.0, 5.0, 0.0, 1.0, 2.0]]
-RP_VALS = [[1.0, 2.0, 3.0], [0.0, 1.0, 2.0, 3.0, 4.0, 5.0], [0.0, 1.0, 2.0, 3.0, 4.0, 5.0]]
+"""Oracle value `ROLL_OUT`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
+RP_VALS = [_SHARED_0, _SHARED_8, _SHARED_8]
+"""Oracle value `RP_VALS`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 RP_SHAPES = [[3], [2, 3], [2, 3]]
+"""Oracle value `RP_SHAPES`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 RP_REPS = [2, 3, 2]
+"""Oracle value `RP_REPS`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 RP_AXIS = ROLL_AXIS
+"""Oracle value `RP_AXIS`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 RP_OUT = [[1.0, 1.0, 2.0, 2.0, 3.0, 3.0], [0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 2.0, 2.0, 2.0, 3.0, 3.0, 3.0, 4.0, 4.0, 4.0, 5.0, 5.0, 5.0], [0.0, 1.0, 2.0, 0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 3.0, 4.0, 5.0]]
+"""Oracle value `RP_OUT`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 RP_OUT_SHAPES = [[6], [2, 9], [4, 3]]
-TILE_VALS = [[1.0, 2.0, 3.0], [0.0, 1.0, 2.0, 3.0, 4.0, 5.0], [1.0, 2.0], [0.0, 1.0, 2.0, 3.0, 4.0, 5.0]]
+"""Oracle value `RP_OUT_SHAPES`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
+TILE_VALS = [_SHARED_0, _SHARED_8, [1.0, 2.0], _SHARED_8]
+"""Oracle value `TILE_VALS`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 TILE_SHAPES = [[3], [2, 3], [2], [2, 3]]
+"""Oracle value `TILE_SHAPES`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 TILE_REPS = [[2], [2, 2], [2, 3], [1, 1, 2]]
+"""Oracle value `TILE_REPS`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 TILE_OUT = [[1.0, 2.0, 3.0, 1.0, 2.0, 3.0], [0.0, 1.0, 2.0, 0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 3.0, 4.0, 5.0, 0.0, 1.0, 2.0, 0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 3.0, 4.0, 5.0], [1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0], [0.0, 1.0, 2.0, 0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 3.0, 4.0, 5.0]]
+"""Oracle value `TILE_OUT`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 TILE_OUT_SHAPES = [[6], [4, 6], [2, 6], [1, 2, 6]]
-BIN_A_VALS = [[1.0, 2.0, 3.0], [1.0, 2.0, 3.0], [1.0, 2.0, 3.0, 4.0], [1.0, 2.0], [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]]
+"""Oracle value `TILE_OUT_SHAPES`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
+BIN_A_VALS = [_SHARED_0, _SHARED_0, _SHARED_2, [1.0, 2.0], _SHARED_1]
+"""Oracle value `BIN_A_VALS`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 BIN_A_SHAPES = [[3], [3], [2, 2], [2, 1], [2, 3]]
-BIN_B_VALS = [[4.0, 5.0, 6.0], [10.0], [1.0, 2.0], [3.0, 4.0, 5.0], [2.0]]
+"""Oracle value `BIN_A_SHAPES`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
+BIN_B_VALS = [_SHARED_9, [10.0], [1.0, 2.0], [3.0, 4.0, 5.0], [2.0]]
+"""Oracle value `BIN_B_VALS`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 BIN_B_SHAPES = [[3], [1], [2], [3], [1, 1]]
+"""Oracle value `BIN_B_SHAPES`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 BIN_ADD = [[5.0, 7.0, 9.0], [11.0, 12.0, 13.0], [2.0, 4.0, 4.0, 6.0], [4.0, 5.0, 6.0, 5.0, 6.0, 7.0], [3.0, 4.0, 5.0, 6.0, 7.0, 8.0]]
+"""Oracle value `BIN_ADD`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 BIN_SUB = [[-3.0, -3.0, -3.0], [-9.0, -8.0, -7.0], [0.0, 0.0, 2.0, 2.0], [-2.0, -3.0, -4.0, -1.0, -2.0, -3.0], [-1.0, 0.0, 1.0, 2.0, 3.0, 4.0]]
+"""Oracle value `BIN_SUB`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 BIN_MUL = [[4.0, 10.0, 18.0], [10.0, 20.0, 30.0], [1.0, 4.0, 3.0, 8.0], [3.0, 4.0, 5.0, 6.0, 8.0, 10.0], [2.0, 4.0, 6.0, 8.0, 10.0, 12.0]]
+"""Oracle value `BIN_MUL`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 BIN_DIV = [[0.25, 0.4, 0.5], [0.1, 0.2, 0.3], [1.0, 1.0, 3.0, 2.0], [0.3333333333333333, 0.25, 0.2, 0.6666666666666666, 0.5, 0.4], [0.5, 1.0, 1.5, 2.0, 2.5, 3.0]]
-BIN_MAX = [[4.0, 5.0, 6.0], [10.0, 10.0, 10.0], [1.0, 2.0, 3.0, 4.0], [3.0, 4.0, 5.0, 3.0, 4.0, 5.0], [2.0, 2.0, 3.0, 4.0, 5.0, 6.0]]
-BIN_MIN = [[1.0, 2.0, 3.0], [1.0, 2.0, 3.0], [1.0, 2.0, 1.0, 2.0], [1.0, 1.0, 1.0, 2.0, 2.0, 2.0], [1.0, 2.0, 2.0, 2.0, 2.0, 2.0]]
-BIN_EQ = [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [1.0, 1.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0, 0.0, 0.0]]
-BIN_NE = [[1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [0.0, 0.0, 1.0, 1.0], [1.0, 1.0, 1.0, 1.0, 1.0, 1.0], [1.0, 0.0, 1.0, 1.0, 1.0, 1.0]]
-BIN_LT = [[1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [0.0, 0.0, 0.0, 0.0], [1.0, 1.0, 1.0, 1.0, 1.0, 1.0], [1.0, 0.0, 0.0, 0.0, 0.0, 0.0]]
-BIN_LE = [[1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, 0.0, 0.0], [1.0, 1.0, 1.0, 1.0, 1.0, 1.0], [1.0, 1.0, 0.0, 0.0, 0.0, 0.0]]
-BIN_GT = [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 1.0, 1.0], [0.0, 0.0, 0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 1.0, 1.0, 1.0, 1.0]]
-BIN_GE = [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [1.0, 1.0, 1.0, 1.0], [0.0, 0.0, 0.0, 0.0, 0.0, 0.0], [0.0, 1.0, 1.0, 1.0, 1.0, 1.0]]
+"""Oracle value `BIN_DIV`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
+BIN_MAX = [_SHARED_9, [10.0, 10.0, 10.0], _SHARED_2, [3.0, 4.0, 5.0, 3.0, 4.0, 5.0], [2.0, 2.0, 3.0, 4.0, 5.0, 6.0]]
+"""Oracle value `BIN_MAX`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
+BIN_MIN = [_SHARED_0, _SHARED_0, [1.0, 2.0, 1.0, 2.0], [1.0, 1.0, 1.0, 2.0, 2.0, 2.0], [1.0, 2.0, 2.0, 2.0, 2.0, 2.0]]
+"""Oracle value `BIN_MIN`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
+BIN_EQ = [_SHARED_11, _SHARED_11, [1.0, 1.0, 0.0, 0.0], _SHARED_3, [0.0, 1.0, 0.0, 0.0, 0.0, 0.0]]
+"""Oracle value `BIN_EQ`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
+BIN_NE = [_SHARED_12, _SHARED_12, [0.0, 0.0, 1.0, 1.0], _SHARED_4, [1.0, 0.0, 1.0, 1.0, 1.0, 1.0]]
+"""Oracle value `BIN_NE`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
+BIN_LT = [_SHARED_12, _SHARED_12, [0.0, 0.0, 0.0, 0.0], _SHARED_4, [1.0, 0.0, 0.0, 0.0, 0.0, 0.0]]
+"""Oracle value `BIN_LT`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
+BIN_LE = [_SHARED_12, _SHARED_12, [1.0, 1.0, 0.0, 0.0], _SHARED_4, [1.0, 1.0, 0.0, 0.0, 0.0, 0.0]]
+"""Oracle value `BIN_LE`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
+BIN_GT = [_SHARED_11, _SHARED_11, [0.0, 0.0, 1.0, 1.0], _SHARED_3, [0.0, 0.0, 1.0, 1.0, 1.0, 1.0]]
+"""Oracle value `BIN_GT`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
+BIN_GE = [_SHARED_11, _SHARED_11, _SHARED_13, _SHARED_3, [0.0, 1.0, 1.0, 1.0, 1.0, 1.0]]
+"""Oracle value `BIN_GE`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 WHERE_C_VALS = [[1.0, 0.0, 1.0], [1.0, 0.0]]
+"""Oracle value `WHERE_C_VALS`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 WHERE_C_SHAPES = [[3], [2]]
-WHERE_A_VALS = [[1.0, 2.0, 3.0], [1.0, 2.0, 3.0, 4.0]]
+"""Oracle value `WHERE_C_SHAPES`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
+WHERE_A_VALS = [_SHARED_0, _SHARED_2]
+"""Oracle value `WHERE_A_VALS`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 WHERE_A_SHAPES = [[3], [2, 2]]
+"""Oracle value `WHERE_A_SHAPES`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 WHERE_B_VALS = [[10.0, 20.0, 30.0], [100.0]]
+"""Oracle value `WHERE_B_VALS`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 WHERE_B_SHAPES = [[3], [1]]
+"""Oracle value `WHERE_B_SHAPES`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 WHERE_OUT = [[1.0, 20.0, 3.0], [1.0, 100.0, 3.0, 100.0]]
+"""Oracle value `WHERE_OUT`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 UNARY_VALS = [[1.0, 2.0, 4.0, 8.0], [0.5, 2.0, 10.0, 100.0], [1.0, 3.0, 9.0], [0.25, 4.0]]
+"""Oracle value `UNARY_VALS`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 UNARY_SHAPES = [[4], [2, 2], [3], [2, 1]]
+"""Oracle value `UNARY_SHAPES`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 UN_NEG = [[-1.0, -2.0, -4.0, -8.0], [-0.5, -2.0, -10.0, -100.0], [-1.0, -3.0, -9.0], [-0.25, -4.0]]
+"""Oracle value `UN_NEG`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 UN_ABS = UNARY_VALS
+"""Oracle value `UN_ABS`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 UN_EXP = [[2.718281828459045, 7.38905609893065, 54.598150033144236, 2980.9579870417283], [1.6487212707001282, 7.38905609893065, 22026.465794806718, 2.6881171418161356e+43], [2.718281828459045, 20.085536923187668, 8103.083927575384], [1.2840254166877414, 54.598150033144236]]
+"""Oracle value `UN_EXP`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 UN_LOG = [[0.0, 0.6931471805599453, 1.3862943611198906, 2.0794415416798357], [-0.6931471805599453, 0.6931471805599453, 2.302585092994046, 4.605170185988092], [0.0, 1.0986122886681098, 2.1972245773362196], [-1.3862943611198906, 1.3862943611198906]]
+"""Oracle value `UN_LOG`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 UN_SQRT = [[1.0, 1.4142135623730951, 2.0, 2.8284271247461903], [0.7071067811865476, 1.4142135623730951, 3.1622776601683795, 10.0], [1.0, 1.7320508075688772, 3.0], [0.5, 2.0]]
+"""Oracle value `UN_SQRT`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 UN_TANH = [[0.7615941559557649, 0.9640275800758169, 0.999329299739067, 0.9999997749296758], [0.46211715726000974, 0.9640275800758169, 0.9999999958776927, 1.0], [0.7615941559557649, 0.9950547536867305, 0.9999999695400409], [0.24491866240370913, 0.999329299739067]]
+"""Oracle value `UN_TANH`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 UN_SQR = [[1.0, 4.0, 16.0, 64.0], [0.25, 4.0, 100.0, 10000.0], [1.0, 9.0, 81.0], [0.0625, 16.0]]
+"""Oracle value `UN_SQR`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 UN_RECIP = [[1.0, 0.5, 0.25, 0.125], [2.0, 0.5, 0.1, 0.01], [1.0, 0.3333333333333333, 0.1111111111111111], [4.0, 0.25]]
-UN_SIGN = [[1.0, 1.0, 1.0, 1.0], [1.0, 1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0]]
+"""Oracle value `UN_RECIP`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
+UN_SIGN = [_SHARED_13, _SHARED_13, _SHARED_12, [1.0, 1.0]]
+"""Oracle value `UN_SIGN`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 CLIP = [[0.0, 5.0], [-5.0, 0.0], [2.0, 3.0]]
+"""Oracle value `CLIP`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 CLIP_OUT = [[1.0, 2.0, 4.0, 5.0], [0.0, 0.0, 0.0, 0.0], [2.0, 3.0, 3.0]]
+"""Oracle value `CLIP_OUT`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 NONFIN_VALS = [[0.0, 1.0, 2.0], [-1.0, 4.0, 9.0], [0.0, 2.0, 4.0]]
+"""Oracle value `NONFIN_VALS`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 NONFIN_SHAPES = [[3], [3], [3]]
+"""Oracle value `NONFIN_SHAPES`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 LOG_ZERO = [["-inf", "0.0", "0.6931471805599453"]]
+"""Oracle value `LOG_ZERO`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 SQRT_NEG = [["nan", "2.0", "3.0"]]
+"""Oracle value `SQRT_NEG`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 RECIP_ZERO = [["inf", "0.5", "0.25"]]
+"""Oracle value `RECIP_ZERO`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 NAN_A_VALS = [["nan", "1.0", "3.0"]]
+"""Oracle value `NAN_A_VALS`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 NAN_A_SHAPES = [[3]]
+"""Oracle value `NAN_A_SHAPES`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 NAN_B_VALS = [["2.0", "nan", "0.0"]]
+"""Oracle value `NAN_B_VALS`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 NAN_B_SHAPES = NAN_A_SHAPES
+"""Oracle value `NAN_B_SHAPES`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 NAN_MAX = [["nan", "nan", "3.0"]]
+"""Oracle value `NAN_MAX`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 NAN_MIN = [["nan", "nan", "0.0"]]
-NAN_EQ = [[0.0, 0.0, 0.0]]
-RED_VALS = [[1.0, 2.0, 3.0, 4.0], [1.0, 2.0, 3.0, 4.0, 5.0, 6.0], [1.0, -2.0, 3.5, -0.5], [5.0], [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0]]
+"""Oracle value `NAN_MIN`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
+NAN_EQ = [_SHARED_11]
+"""Oracle value `NAN_EQ`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
+RED_VALS = [_SHARED_2, _SHARED_1, [1.0, -2.0, 3.5, -0.5], [5.0], _SHARED_5]
+"""Oracle value `RED_VALS`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 RED_SHAPES = [[4], [2, 3], [2, 2], [1, 1], [2, 3, 4]]
+"""Oracle value `RED_SHAPES`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 SUM_ALL = [10.0, 21.0, 2.0, 5.0, 276.0]
+"""Oracle value `SUM_ALL`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 SUM_AX0 = [[10.0], [5.0, 7.0, 9.0], [4.5, -2.5], [5.0], [12.0, 14.0, 16.0, 18.0, 20.0, 22.0, 24.0, 26.0, 28.0, 30.0, 32.0, 34.0]]
+"""Oracle value `SUM_AX0`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 SUM_AXM1 = [[10.0], [6.0, 15.0], [-1.0, 3.0], [5.0], [6.0, 22.0, 38.0, 54.0, 70.0, 86.0]]
+"""Oracle value `SUM_AXM1`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 SUM_AXM1K = SUM_AXM1
+"""Oracle value `SUM_AXM1K`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 MEAN_ALL = [2.5, 3.5, 0.5, 5.0, 11.5]
+"""Oracle value `MEAN_ALL`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 MEAN_AX0 = [[2.5], [2.5, 3.5, 4.5], [2.25, -1.25], [5.0], [6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0]]
+"""Oracle value `MEAN_AX0`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 MEAN_AXM1K = [[2.5], [2.0, 5.0], [-0.5, 1.5], [5.0], [1.5, 5.5, 9.5, 13.5, 17.5, 21.5]]
+"""Oracle value `MEAN_AXM1K`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 MAX_ALL = [4.0, 6.0, 3.5, 5.0, 23.0]
-MAX_AX0 = [[4.0], [4.0, 5.0, 6.0], [3.5, -0.5], [5.0], [12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0]]
+"""Oracle value `MAX_ALL`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
+MAX_AX0 = [[4.0], _SHARED_9, [3.5, -0.5], [5.0], [12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0]]
+"""Oracle value `MAX_AX0`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 MIN_ALL = [1.0, 1.0, -2.0, 5.0, 0.0]
+"""Oracle value `MIN_ALL`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 MIN_AXM1 = [[1.0], [1.0, 4.0], [-2.0, -0.5], [5.0], [0.0, 4.0, 8.0, 12.0, 16.0, 20.0]]
+"""Oracle value `MIN_AXM1`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 PROD_ALL = [24.0, 720.0, 3.5, 5.0, 0.0]
+"""Oracle value `PROD_ALL`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 PROD_AX0 = [[24.0], [4.0, 10.0, 18.0], [3.5, 1.0], [5.0], [0.0, 13.0, 28.0, 45.0, 64.0, 85.0, 108.0, 133.0, 160.0, 189.0, 220.0, 253.0]]
+"""Oracle value `PROD_AX0`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 VAR_ALL0 = [1.25, 2.9166666666666665, 4.125, 0.0, 47.916666666666664]
+"""Oracle value `VAR_ALL0`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 VAR_ALL1 = ["1.6666666666666667", "3.5", "5.5", "nan", "50.0"]
+"""Oracle value `VAR_ALL1`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 VAR_AX0 = [[1.25], [2.25, 2.25, 2.25], [1.5625, 0.5625], [0.0], [36.0, 36.0, 36.0, 36.0, 36.0, 36.0, 36.0, 36.0, 36.0, 36.0, 36.0, 36.0]]
+"""Oracle value `VAR_AX0`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 STD_ALL0 = [1.118033988749895, 1.707825127659933, 2.03100960115899, 0.0, 6.922186552431729]
-STD_AXM1 = [["1.2909944487358056"], ["1.0", "1.0"], ["2.1213203435596424", "2.8284271247461903"], ["nan"], ["1.2909944487358056", "1.2909944487358056", "1.2909944487358056", "1.2909944487358056", "1.2909944487358056", "1.2909944487358056"]]
+"""Oracle value `STD_ALL0`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
+STD_AXM1 = [[_SHARED_14], ["1.0", "1.0"], ["2.1213203435596424", "2.8284271247461903"], ["nan"], [_SHARED_14, _SHARED_14, _SHARED_14, _SHARED_14, _SHARED_14, _SHARED_14]]
+"""Oracle value `STD_AXM1`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 ARGMAX_ALL = [3, 5, 2, 0, 23]
+"""Oracle value `ARGMAX_ALL`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 ARGMIN_ALL = [0, 0, 1, 0, 0]
+"""Oracle value `ARGMIN_ALL`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 ARGMAX_AX0 = [[3], [1, 1, 1], [1, 1], [0], [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]]
+"""Oracle value `ARGMAX_AX0`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 ARGMIN_AXM1 = [[0], [0, 0], [1, 1], [0], [0, 0, 0, 0, 0, 0]]
+"""Oracle value `ARGMIN_AXM1`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 ALL_ALL = [True, True, True, True, False]
+"""Oracle value `ALL_ALL`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 ANY_ALL = [True, True, True, True, True]
-ALL_AX0 = [[1.0], [1.0, 1.0, 1.0], [1.0, 1.0], [1.0], [0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]]
-ANY_AXM1 = [[1.0], [1.0, 1.0], [1.0, 1.0], [1.0], [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]]
+"""Oracle value `ANY_ALL`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
+ALL_AX0 = [[1.0], _SHARED_12, [1.0, 1.0], [1.0], [0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]]
+"""Oracle value `ALL_AX0`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
+ANY_AXM1 = [[1.0], [1.0, 1.0], [1.0, 1.0], [1.0], _SHARED_4]
+"""Oracle value `ANY_AXM1`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 CUMSUM_AXM1 = [[1.0, 3.0, 6.0, 10.0], [1.0, 3.0, 6.0, 4.0, 9.0, 15.0], [1.0, -1.0, 3.5, 3.0], [5.0], [0.0, 1.0, 3.0, 6.0, 4.0, 9.0, 15.0, 22.0, 8.0, 17.0, 27.0, 38.0, 12.0, 25.0, 39.0, 54.0, 16.0, 33.0, 51.0, 70.0, 20.0, 41.0, 63.0, 86.0]]
+"""Oracle value `CUMSUM_AXM1`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 CUMPROD_AX0 = [[1.0, 2.0, 6.0, 24.0], [1.0, 2.0, 3.0, 4.0, 10.0, 18.0], [1.0, -2.0, 3.5, 1.0], [5.0], [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 0.0, 13.0, 28.0, 45.0, 64.0, 85.0, 108.0, 133.0, 160.0, 189.0, 220.0, 253.0]]
-MM_A_VALS = [[1.0, 2.0, 3.0, 4.0], [1.0, 2.0, 3.0, 4.0, 5.0, 6.0], [1.0, 2.0, 3.0], [1.0, 2.0, 3.0], [1.0, 2.0, 3.0, 4.0, 5.0, 6.0], [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0], [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0]]
+"""Oracle value `CUMPROD_AX0`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
+MM_A_VALS = [_SHARED_2, _SHARED_1, _SHARED_0, _SHARED_0, _SHARED_1, _SHARED_5, _SHARED_15]
+"""Oracle value `MM_A_VALS`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 MM_A_SHAPES = [[2, 2], [2, 3], [3], [3], [2, 3], [2, 3, 4], [1, 3, 4]]
-MM_B_VALS = [[5.0, 6.0, 7.0, 8.0], [1.0, 2.0, 3.0, 4.0, 5.0, 6.0], [1.0, 2.0, 3.0], [1.0, 2.0, 3.0, 4.0, 5.0, 6.0], [1.0, 2.0, 3.0], [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0, 25.0, 26.0, 27.0, 28.0, 29.0, 30.0, 31.0, 32.0, 33.0, 34.0, 35.0, 36.0, 37.0, 38.0, 39.0], [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0, 25.0, 26.0, 27.0, 28.0, 29.0, 30.0, 31.0, 32.0, 33.0, 34.0, 35.0, 36.0, 37.0, 38.0, 39.0]]
+"""Oracle value `MM_A_SHAPES`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
+MM_B_VALS = [_SHARED_10, _SHARED_1, _SHARED_0, _SHARED_1, _SHARED_0, [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0, 25.0, 26.0, 27.0, 28.0, 29.0, 30.0, 31.0, 32.0, 33.0, 34.0, 35.0, 36.0, 37.0, 38.0, 39.0], [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0, 25.0, 26.0, 27.0, 28.0, 29.0, 30.0, 31.0, 32.0, 33.0, 34.0, 35.0, 36.0, 37.0, 38.0, 39.0]]
+"""Oracle value `MM_B_VALS`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 MM_B_SHAPES = [[2, 2], [3, 2], [3], [3, 2], [3], [2, 4, 5], [2, 4, 5]]
+"""Oracle value `MM_B_SHAPES`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 MATMUL_OUT = [[19.0, 22.0, 43.0, 50.0], [22.0, 28.0, 49.0, 64.0], [14.0], [22.0, 28.0], [14.0, 32.0], [70.0, 76.0, 82.0, 88.0, 94.0, 190.0, 212.0, 234.0, 256.0, 278.0, 310.0, 348.0, 386.0, 424.0, 462.0, 1510.0, 1564.0, 1618.0, 1672.0, 1726.0, 1950.0, 2020.0, 2090.0, 2160.0, 2230.0, 2390.0, 2476.0, 2562.0, 2648.0, 2734.0], [70.0, 76.0, 82.0, 88.0, 94.0, 190.0, 212.0, 234.0, 256.0, 278.0, 310.0, 348.0, 386.0, 424.0, 462.0, 190.0, 196.0, 202.0, 208.0, 214.0, 630.0, 652.0, 674.0, 696.0, 718.0, 1070.0, 1108.0, 1146.0, 1184.0, 1222.0]]
+"""Oracle value `MATMUL_OUT`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 MATMUL_SHAPES = [[2, 2], [2, 2], [], [2], [2], [2, 3, 5], [2, 3, 5]]
-DOT_A_VALS = [[1.0, 2.0, 3.0], [1.0, 2.0, 3.0, 4.0], [1.0, 2.0, 3.0], [1.0, 2.0, 3.0, 4.0, 5.0, 6.0], [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0]]
+"""Oracle value `MATMUL_SHAPES`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
+DOT_A_VALS = [_SHARED_0, _SHARED_2, _SHARED_0, _SHARED_1, _SHARED_15]
+"""Oracle value `DOT_A_VALS`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 DOT_A_SHAPES = [[3], [2, 2], [3], [2, 3], [2, 3, 2]]
-DOT_B_VALS = [[4.0, 5.0, 6.0], [5.0, 6.0, 7.0, 8.0], [1.0, 2.0, 3.0, 4.0, 5.0, 6.0], [1.0, 2.0, 3.0], [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0]]
+"""Oracle value `DOT_A_SHAPES`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
+DOT_B_VALS = [_SHARED_9, _SHARED_10, _SHARED_1, _SHARED_0, _SHARED_15]
+"""Oracle value `DOT_B_VALS`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 DOT_B_SHAPES = [[3], [2, 2], [3, 2], [3], [2, 2, 3]]
+"""Oracle value `DOT_B_SHAPES`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 DOT_OUT = [[32.0], [19.0, 22.0, 43.0, 50.0], [22.0, 28.0], [14.0, 32.0], [3.0, 4.0, 5.0, 9.0, 10.0, 11.0, 9.0, 14.0, 19.0, 39.0, 44.0, 49.0, 15.0, 24.0, 33.0, 69.0, 78.0, 87.0, 21.0, 34.0, 47.0, 99.0, 112.0, 125.0, 27.0, 44.0, 61.0, 129.0, 146.0, 163.0, 33.0, 54.0, 75.0, 159.0, 180.0, 201.0]]
+"""Oracle value `DOT_OUT`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 DOT_SHAPES = [[], [2, 2], [2], [2], [2, 3, 2, 3]]
-OUTER_A_VALS = [[1.0, 2.0, 3.0], [1.0, 2.0]]
+"""Oracle value `DOT_SHAPES`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
+OUTER_A_VALS = [_SHARED_0, [1.0, 2.0]]
+"""Oracle value `OUTER_A_VALS`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 OUTER_A_SHAPES = WHERE_C_SHAPES
+"""Oracle value `OUTER_A_SHAPES`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 OUTER_B_VALS = [[4.0, 5.0], [3.0, 4.0, 5.0]]
+"""Oracle value `OUTER_B_VALS`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 OUTER_B_SHAPES = [[2], [3]]
+"""Oracle value `OUTER_B_SHAPES`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 OUTER_OUT = [[4.0, 5.0, 8.0, 10.0, 12.0, 15.0], [3.0, 4.0, 5.0, 6.0, 8.0, 10.0]]
-INNER_A_VALS = [[1.0, 2.0, 3.0], [1.0, 2.0, 3.0, 4.0, 5.0, 6.0], [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]]
+"""Oracle value `OUTER_OUT`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
+INNER_A_VALS = [_SHARED_0, _SHARED_1, _SHARED_1]
+"""Oracle value `INNER_A_VALS`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 INNER_A_SHAPES = RP_SHAPES
-INNER_B_VALS = [[4.0, 5.0, 6.0], [1.0, 2.0, 3.0, 4.0, 5.0, 6.0], [7.0, 8.0, 9.0, 10.0, 11.0, 12.0]]
+"""Oracle value `INNER_A_SHAPES`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
+INNER_B_VALS = [_SHARED_9, _SHARED_1, [7.0, 8.0, 9.0, 10.0, 11.0, 12.0]]
+"""Oracle value `INNER_B_VALS`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 INNER_B_SHAPES = RP_SHAPES
+"""Oracle value `INNER_B_SHAPES`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 INNER_OUT = [[32.0], [14.0, 32.0, 32.0, 77.0], [50.0, 68.0, 122.0, 167.0]]
+"""Oracle value `INNER_OUT`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 VDOT_A_VALS = WHERE_A_VALS
+"""Oracle value `VDOT_A_VALS`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 VDOT_A_SHAPES = WHERE_A_SHAPES
-VDOT_B_VALS = [[4.0, 5.0, 6.0], [5.0, 6.0, 7.0, 8.0]]
+"""Oracle value `VDOT_A_SHAPES`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
+VDOT_B_VALS = [_SHARED_9, _SHARED_10]
+"""Oracle value `VDOT_B_VALS`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 VDOT_B_SHAPES = WHERE_A_SHAPES
+"""Oracle value `VDOT_B_SHAPES`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 VDOT_OUT = [[32.0], [70.0]]
-TRACE_VALS = [[1.0, 2.0, 3.0, 4.0], [1.0, 2.0, 3.0, 4.0, 5.0, 6.0], [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0]]
+"""Oracle value `VDOT_OUT`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
+TRACE_VALS = [_SHARED_2, _SHARED_1, _SHARED_5]
+"""Oracle value `TRACE_VALS`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 TRACE_IN_SHAPES = [[2, 2], [2, 3], [2, 3, 4]]
+"""Oracle value `TRACE_IN_SHAPES`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 TRACE_OUT = [[5.0], [6.0], [16.0, 18.0, 20.0, 22.0]]
+"""Oracle value `TRACE_OUT`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 TRACE_OUT_SHAPES = [[], [], [4]]
+"""Oracle value `TRACE_OUT_SHAPES`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""
 ERRORS = [["AXIS", "axis 5 is out of bounds for array of dimension 2"], ["AXIS_NEG", "axis -3 is out of bounds for array of dimension 2"], ["BCAST_SHAPES", "shape mismatch: objects cannot be broadcast to a single shape.  Mismatch is between arg 0 with shape (2, 3) and arg 1 with shape (4,)."], ["BCAST_SHAPES_3", "shape mismatch: objects cannot be broadcast to a single shape.  Mismatch is between arg 1 with shape (2, 1) and arg 2 with shape (4, 1)."], ["BCAST_TO", "operands could not be broadcast together with remapped shapes [original->remapped]: (2,1)  and requested shape (3,5)"], ["BCAST_TO_DIMS", "input operand has more dimensions than allowed by the axis remapping"], ["BROADCAST", "operands could not be broadcast together with shapes (2,3) (4,) "], ["CONCAT_DIM", "all the input arrays must have same number of dimensions, but the array at index 0 has 2 dimension(s) and the array at index 1 has 3 dimension(s)"], ["CONCAT_EMPTY", "need at least one array to concatenate"], ["CONCAT_SIZE", "all the input array dimensions except for the concatenation axis must match exactly, but along dimension 1, the array at index 0 has size 3 and the array at index 1 has size 4"], ["DOT", "shapes (2,3) and (4,5) not aligned: 3 (dim 1) != 4 (dim 0)"], ["EYE", "negative dimensions are not allowed"], ["INNER", "shapes (3,) and (4,) not aligned: 3 (dim 0) != 4 (dim 0)"], ["LINSPACE", "Number of samples, -1, must be non-negative."], ["MATMUL", "matmul: Input operand 1 has a mismatch in its core dimension 0, with gufunc signature (n?,k),(k,m?)->(n?,m?) (size 4 is different from 3)"], ["MATMUL_1D", "matmul: Input operand 1 has a mismatch in its core dimension 0, with gufunc signature (n?,k),(k,m?)->(n?,m?) (size 4 is different from 3)"], ["MOVEAXIS_LEN", "`source` and `destination` arguments must have the same number of elements"], ["MOVEAXIS_REPEAT", "repeated axis in `destination` argument"], ["RAGGED2", "setting an array element with a sequence. The requested array has an inhomogeneous shape after 1 dimensions. The detected shape was (2,) + inhomogeneous part."], ["RAGGED3", "setting an array element with a sequence. The requested array has an inhomogeneous shape after 2 dimensions. The detected shape was (2, 2) + inhomogeneous part."], ["RESHAPE", "cannot reshape array of size 6 into shape (2,4)"], ["RESHAPE_NEG", "can only specify one unknown dimension"], ["RESHAPE_NEG0", "cannot reshape array of size 6 into shape (4)"], ["RESHAPE_NEGX", "cannot reshape array of size 6 into shape (2,newaxis,5)"], ["SQUEEZE", "cannot select an axis to squeeze out which has size not equal to one"], ["STACK_EMPTY", "need at least one array to stack"], ["STACK_SHAPE", "all input arrays must have the same shape"], ["TAKE", "index 5 is out of bounds for axis 0 with size 3"], ["TRANSPOSE", "axes don't match array"], ["TRANSPOSE_BAD", "axis 5 is out of bounds for array of dimension 2"], ["TRANSPOSE_REPEAT", "repeated axis in transpose"], ["VDOT", "cannot reshape array of size 4 into shape (3,)"]]
+"""Oracle value `ERRORS`, computed by src/osprey/packages/numpy/oracle/numpy.cpython."""

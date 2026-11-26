@@ -8,6 +8,31 @@ Do not edit: rerun the oracle."""
 
 __all__ = ["MAGIC", "VERSION", "SUPPORTED_VERSIONS", "DEFAULT_ALIGNMENT", "VALUE_TYPE_IDS", "VALUE_TYPE_NAMES", "QUANT_TYPE_IDS", "QUANT_TYPE_NAMES", "QUANT_TYPE_BLOCKS", "QUANT_TYPE_SIZES", "TOKENIZER_KEYS", "UNKNOWN_VALUE_TYPE", "UNKNOWN_QUANT_TYPE", "INT64_MIN_BYTES", "INT64_MIN", "UINT64_MAX_BYTES", "BASE_BYTES", "BASE_HEADER", "BASE_BYTE_ORDER", "BASE_FIELDS", "BASE_FIELD_OFFSETS", "BASE_FIELD_KINDS", "BASE_FIELD_ITEM_KINDS", "BASE_FIELD_TYPE_OFFSETS", "BASE_FIELD_VALUE_OFFSETS", "BASE_TENSOR_INFO_OFFSET", "BASE_TOKENIZER_KEYS", "BASE_TENSORS", "BASE_TENSOR_TYPES", "BASE_TENSOR_TYPE_IDS", "BASE_TENSOR_DIMS", "BASE_TENSOR_ELEMENTS", "BASE_TENSOR_SIZES", "BASE_TENSOR_OFFSETS", "BASE_TENSOR_DATA", "BASE_DISTINCT_TYPES", "BASE_FIELD_INTS", "BASE_FIELD_FLOATS", "BASE_FIELD_BOOLS", "BASE_FIELD_STRINGS", "ALIGN_BYTES", "ALIGN_HEADER", "ALIGN_BYTE_ORDER", "ALIGN_FIELDS", "ALIGN_FIELD_OFFSETS", "ALIGN_FIELD_KINDS", "ALIGN_FIELD_ITEM_KINDS", "ALIGN_FIELD_TYPE_OFFSETS", "ALIGN_FIELD_VALUE_OFFSETS", "ALIGN_TENSOR_INFO_OFFSET", "ALIGN_TOKENIZER_KEYS", "ALIGN_TENSORS", "ALIGN_TENSOR_TYPES", "ALIGN_TENSOR_TYPE_IDS", "ALIGN_TENSOR_DIMS", "ALIGN_TENSOR_ELEMENTS", "ALIGN_TENSOR_SIZES", "ALIGN_TENSOR_OFFSETS", "ALIGN_TENSOR_DATA", "ALIGN_DISTINCT_TYPES", "ALIGN_FIELD_INTS", "ALIGN_FIELD_FLOATS", "ALIGN_FIELD_BOOLS", "ALIGN_FIELD_STRINGS", "BE_BYTES", "BE_HEADER", "BE_BYTE_ORDER", "BE_FIELDS", "BE_FIELD_OFFSETS", "BE_FIELD_KINDS", "BE_FIELD_ITEM_KINDS", "BE_FIELD_TYPE_OFFSETS", "BE_FIELD_VALUE_OFFSETS", "BE_TENSOR_INFO_OFFSET", "BE_TOKENIZER_KEYS", "BE_TENSORS", "BE_TENSOR_TYPES", "BE_TENSOR_TYPE_IDS", "BE_TENSOR_DIMS", "BE_TENSOR_ELEMENTS", "BE_TENSOR_SIZES", "BE_TENSOR_OFFSETS", "BE_TENSOR_DATA", "BE_DISTINCT_TYPES", "BE_FIELD_INTS", "BE_FIELD_FLOATS", "BE_FIELD_BOOLS", "BE_FIELD_STRINGS", "QUANT_BYTES", "QUANT_HEADER", "QUANT_BYTE_ORDER", "QUANT_FIELDS", "QUANT_FIELD_OFFSETS", "QUANT_FIELD_KINDS", "QUANT_FIELD_ITEM_KINDS", "QUANT_FIELD_TYPE_OFFSETS", "QUANT_FIELD_VALUE_OFFSETS", "QUANT_TENSOR_INFO_OFFSET", "QUANT_TOKENIZER_KEYS", "QUANT_TENSORS", "QUANT_TENSOR_TYPES", "QUANT_TENSOR_TYPE_IDS", "QUANT_TENSOR_DIMS", "QUANT_TENSOR_ELEMENTS", "QUANT_TENSOR_SIZES", "QUANT_TENSOR_OFFSETS", "QUANT_TENSOR_DATA", "QUANT_DISTINCT_TYPES", "QUANT_FIELD_INTS", "QUANT_FIELD_FLOATS", "QUANT_FIELD_BOOLS", "QUANT_FIELD_STRINGS", "TOK_BYTES", "TOK_HEADER", "TOK_BYTE_ORDER", "TOK_FIELDS", "TOK_FIELD_OFFSETS", "TOK_FIELD_KINDS", "TOK_FIELD_ITEM_KINDS", "TOK_FIELD_TYPE_OFFSETS", "TOK_FIELD_VALUE_OFFSETS", "TOK_TENSOR_INFO_OFFSET", "TOK_TOKENIZER_KEYS", "TOK_TENSORS", "TOK_TENSOR_TYPES", "TOK_TENSOR_TYPE_IDS", "TOK_TENSOR_DIMS", "TOK_TENSOR_ELEMENTS", "TOK_TENSOR_SIZES", "TOK_TENSOR_OFFSETS", "TOK_TENSOR_DATA", "TOK_DISTINCT_TYPES", "TOK_FIELD_INTS", "TOK_FIELD_FLOATS", "TOK_FIELD_BOOLS", "TOK_FIELD_STRINGS", "EMPTY_BYTES", "EMPTY_HEADER", "EMPTY_BYTE_ORDER", "EMPTY_FIELDS", "EMPTY_FIELD_OFFSETS", "EMPTY_FIELD_KINDS", "EMPTY_FIELD_ITEM_KINDS", "EMPTY_FIELD_TYPE_OFFSETS", "EMPTY_FIELD_VALUE_OFFSETS", "EMPTY_TENSOR_INFO_OFFSET", "EMPTY_TOKENIZER_KEYS", "EMPTY_TENSORS", "EMPTY_TENSOR_TYPES", "EMPTY_TENSOR_TYPE_IDS", "EMPTY_TENSOR_DIMS", "EMPTY_TENSOR_ELEMENTS", "EMPTY_TENSOR_SIZES", "EMPTY_TENSOR_OFFSETS", "EMPTY_TENSOR_DATA", "EMPTY_DISTINCT_TYPES", "EMPTY_FIELD_INTS", "EMPTY_FIELD_FLOATS", "EMPTY_FIELD_BOOLS", "EMPTY_FIELD_STRINGS", "SCALAR_BYTES", "SCALAR_HEADER", "SCALAR_BYTE_ORDER", "SCALAR_FIELDS", "SCALAR_FIELD_OFFSETS", "SCALAR_FIELD_KINDS", "SCALAR_FIELD_ITEM_KINDS", "SCALAR_FIELD_TYPE_OFFSETS", "SCALAR_FIELD_VALUE_OFFSETS", "SCALAR_TENSOR_INFO_OFFSET", "SCALAR_TOKENIZER_KEYS", "SCALAR_TENSORS", "SCALAR_TENSOR_TYPES", "SCALAR_TENSOR_TYPE_IDS", "SCALAR_TENSOR_DIMS", "SCALAR_TENSOR_ELEMENTS", "SCALAR_TENSOR_SIZES", "SCALAR_TENSOR_OFFSETS", "SCALAR_TENSOR_DATA", "SCALAR_DISTINCT_TYPES", "SCALAR_FIELD_INTS", "SCALAR_FIELD_FLOATS", "SCALAR_FIELD_BOOLS", "SCALAR_FIELD_STRINGS", "V2_BYTES", "V2_HEADER", "V2_BYTE_ORDER", "V2_FIELDS", "V2_FIELD_OFFSETS", "V2_FIELD_KINDS", "V2_FIELD_ITEM_KINDS", "V2_FIELD_TYPE_OFFSETS", "V2_FIELD_VALUE_OFFSETS", "V2_TENSOR_INFO_OFFSET", "V2_TOKENIZER_KEYS", "V2_TENSORS", "V2_TENSOR_TYPES", "V2_TENSOR_TYPE_IDS", "V2_TENSOR_DIMS", "V2_TENSOR_ELEMENTS", "V2_TENSOR_SIZES", "V2_TENSOR_OFFSETS", "V2_TENSOR_DATA", "V2_DISTINCT_TYPES", "V2_FIELD_INTS", "V2_FIELD_FLOATS", "V2_FIELD_BOOLS", "V2_FIELD_STRINGS", "EDGE_BYTES", "EDGE_HEADER", "EDGE_BYTE_ORDER", "EDGE_FIELDS", "EDGE_FIELD_OFFSETS", "EDGE_FIELD_KINDS", "EDGE_FIELD_ITEM_KINDS", "EDGE_FIELD_TYPE_OFFSETS", "EDGE_FIELD_VALUE_OFFSETS", "EDGE_TENSOR_INFO_OFFSET", "EDGE_TOKENIZER_KEYS", "EDGE_TENSORS", "EDGE_TENSOR_TYPES", "EDGE_TENSOR_TYPE_IDS", "EDGE_TENSOR_DIMS", "EDGE_TENSOR_ELEMENTS", "EDGE_TENSOR_SIZES", "EDGE_TENSOR_OFFSETS", "EDGE_TENSOR_DATA", "EDGE_DISTINCT_TYPES", "EDGE_FIELD_INTS", "EDGE_FIELD_FLOATS", "EDGE_FIELD_BOOLS", "EDGE_FIELD_STRINGS", "R_MAGIC_BYTES", "R_MAGIC_MESSAGE", "R_VERSION1_BYTES", "R_VERSION1_MESSAGE", "R_VERSION4_BYTES", "R_VERSION4_MESSAGE", "R_DUPE_KEY_BYTES", "R_DUPE_KEY_MESSAGE", "R_DUPE_TENSOR_BYTES", "R_DUPE_TENSOR_MESSAGE", "R_ALIGN_TYPE_BYTES", "R_ALIGN_TYPE_MESSAGE", "R_ALIGN_ZERO_BYTES", "R_ALIGN_ZERO_MESSAGE", "R_ALIGN_24_BYTES", "R_ALIGN_24_MESSAGE", "R_FIELD_TYPE_BYTES", "R_FIELD_TYPE_MESSAGE", "R_QUANT_TYPE_BYTES", "R_QUANT_TYPE_MESSAGE", "R_QUANT_SHAPE_BYTES", "R_QUANT_SHAPE_MESSAGE", "R_TRUNC_KV_BYTES", "R_TRUNC_KV_MESSAGE", "R_TRUNC_TI_BYTES", "R_TRUNC_TI_MESSAGE", "R_TRUNC_DATA_BYTES", "R_TRUNC_DATA_MESSAGE", "R_SHORT_BYTES", "R_SHORT_MESSAGE", "R_EMPTY_BYTES", "R_EMPTY_MESSAGE", "DEQUANT_TYPES", "DEQUANT_F32_BLOCK", "DEQUANT_F32_SIZE", "DEQUANT_F32_BYTES", "DEQUANT_F32_VALUES", "DEQUANT_Q8_0_BLOCK", "DEQUANT_Q8_0_SIZE", "DEQUANT_Q8_0_BYTES", "DEQUANT_Q8_0_VALUES", "DEQUANT_Q3_K_BLOCK", "DEQUANT_Q3_K_SIZE", "DEQUANT_Q3_K_BYTES", "DEQUANT_Q3_K_VALUES", "DEQUANT_Q4_K_BLOCK", "DEQUANT_Q4_K_SIZE", "DEQUANT_Q4_K_BYTES", "DEQUANT_Q4_K_VALUES", "DEQUANT_Q5_K_BLOCK", "DEQUANT_Q5_K_SIZE", "DEQUANT_Q5_K_BYTES", "DEQUANT_Q5_K_VALUES", "DEQUANT_Q6_K_BLOCK", "DEQUANT_Q6_K_SIZE", "DEQUANT_Q6_K_BYTES", "DEQUANT_Q6_K_VALUES", "DEQUANT_IQ4_NL_BLOCK", "DEQUANT_IQ4_NL_SIZE", "DEQUANT_IQ4_NL_BYTES", "DEQUANT_IQ4_NL_VALUES", "DEQUANT_IQ4_XS_BLOCK", "DEQUANT_IQ4_XS_SIZE", "DEQUANT_IQ4_XS_BYTES", "DEQUANT_IQ4_XS_VALUES", "DEQUANT_IQ3_S_BLOCK", "DEQUANT_IQ3_S_SIZE", "DEQUANT_IQ3_S_BYTES", "DEQUANT_IQ3_S_VALUES", "QUANT_PRODUCT_TYPES", "QUANT_PRODUCT_Q8_0_INNER", "QUANT_PRODUCT_Q8_0_BYTES", "QUANT_PRODUCT_Q8_0_VALUES", "QUANT_PRODUCT_Q6_K_INNER", "QUANT_PRODUCT_Q6_K_BYTES", "QUANT_PRODUCT_Q6_K_VALUES", "QUANT_PRODUCT_Q5_K_INNER", "QUANT_PRODUCT_Q5_K_BYTES", "QUANT_PRODUCT_Q5_K_VALUES", "QUANT_PRODUCT_Q3_K_INNER", "QUANT_PRODUCT_Q3_K_BYTES", "QUANT_PRODUCT_Q3_K_VALUES", "QUANT_PRODUCT_IQ4_NL_INNER", "QUANT_PRODUCT_IQ4_NL_BYTES", "QUANT_PRODUCT_IQ4_NL_VALUES", "QUANT_PRODUCT_IQ4_XS_INNER", "QUANT_PRODUCT_IQ4_XS_BYTES", "QUANT_PRODUCT_IQ4_XS_VALUES", "QUANT_PRODUCT_IQ3_S_INNER", "QUANT_PRODUCT_IQ3_S_BYTES", "QUANT_PRODUCT_IQ3_S_VALUES"]
 
+_SHARED_0 = "tokenizer.ggml.model"
+_SHARED_1 = "tokenizer.ggml.pre"
+_SHARED_2 = "tokenizer.ggml.tokens"
+_SHARED_3 = "tokenizer.ggml.token_type"
+_SHARED_4 = "tokenizer.ggml.scores"
+_SHARED_5 = "tokenizer.ggml.merges"
+_SHARED_6 = "tokenizer.ggml.bos_token_id"
+_SHARED_7 = "tokenizer.ggml.eos_token_id"
+_SHARED_8 = "tokenizer.ggml.unknown_token_id"
+_SHARED_9 = "tokenizer.ggml.add_bos_token"
+_SHARED_10 = "tokenizer.chat_template"
+_SHARED_11 = "GGUF.version"
+_SHARED_12 = "GGUF.tensor_count"
+_SHARED_13 = "GGUF.kv_count"
+_SHARED_14 = "general.architecture"
+_SHARED_15 = "general.alignment"
+_SHARED_16 = [-1099511627776]
+_SHARED_17 = [_SHARED_11, _SHARED_12, _SHARED_13, _SHARED_14]
+_SHARED_18 = [4, 8, 16, 24]
+_SHARED_19 = ["uint32", "uint64", "uint64", "string"]
+_SHARED_20 = ["", "", "", ""]
+_SHARED_21 = [-1, -1, -1, 52]
+_SHARED_22 = [-1, -1, -1, 56]
+_SHARED_23 = [_SHARED_11, _SHARED_12, _SHARED_13, _SHARED_14]
+
 MAGIC = 1179993927
 """Oracle value `MAGIC`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
 VERSION = 3
@@ -28,7 +53,7 @@ QUANT_TYPE_BLOCKS = [1, 1, 32, 32, 32, 32, 32, 32, 256, 256, 256, 256, 256, 256,
 """Oracle value `QUANT_TYPE_BLOCKS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
 QUANT_TYPE_SIZES = [4, 2, 18, 20, 22, 24, 34, 40, 84, 110, 144, 176, 210, 292, 66, 74, 98, 50, 18, 110, 82, 136, 1, 2, 4, 8, 8, 56, 2, 54, 66, 17, 36, 18]
 """Oracle value `QUANT_TYPE_SIZES`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-TOKENIZER_KEYS = ["tokenizer.ggml.model", "tokenizer.ggml.pre", "tokenizer.ggml.tokens", "tokenizer.ggml.token_type", "tokenizer.ggml.token_type_count", "tokenizer.ggml.scores", "tokenizer.ggml.merges", "tokenizer.ggml.bos_token_id", "tokenizer.ggml.eos_token_id", "tokenizer.ggml.eot_token_id", "tokenizer.ggml.eom_token_id", "tokenizer.ggml.unknown_token_id", "tokenizer.ggml.seperator_token_id", "tokenizer.ggml.padding_token_id", "tokenizer.ggml.mask_token_id", "tokenizer.ggml.add_bos_token", "tokenizer.ggml.add_eos_token", "tokenizer.ggml.add_sep_token", "tokenizer.ggml.add_space_prefix", "tokenizer.ggml.remove_extra_whitespaces", "tokenizer.ggml.precompiled_charsmap", "tokenizer.huggingface.json", "tokenizer.rwkv.world", "tokenizer.chat_template", "tokenizer.chat_template.{name}", "tokenizer.chat_templates", "tokenizer.ggml.fim_pre_token_id", "tokenizer.ggml.fim_suf_token_id", "tokenizer.ggml.fim_mid_token_id", "tokenizer.ggml.fim_pad_token_id", "tokenizer.ggml.fim_rep_token_id", "tokenizer.ggml.fim_sep_token_id", "tokenizer.ggml.prefix_token_id", "tokenizer.ggml.suffix_token_id", "tokenizer.ggml.middle_token_id"]
+TOKENIZER_KEYS = [_SHARED_0, _SHARED_1, _SHARED_2, _SHARED_3, "tokenizer.ggml.token_type_count", _SHARED_4, _SHARED_5, _SHARED_6, _SHARED_7, "tokenizer.ggml.eot_token_id", "tokenizer.ggml.eom_token_id", _SHARED_8, "tokenizer.ggml.seperator_token_id", "tokenizer.ggml.padding_token_id", "tokenizer.ggml.mask_token_id", _SHARED_9, "tokenizer.ggml.add_eos_token", "tokenizer.ggml.add_sep_token", "tokenizer.ggml.add_space_prefix", "tokenizer.ggml.remove_extra_whitespaces", "tokenizer.ggml.precompiled_charsmap", "tokenizer.huggingface.json", "tokenizer.rwkv.world", _SHARED_10, "tokenizer.chat_template.{name}", "tokenizer.chat_templates", "tokenizer.ggml.fim_pre_token_id", "tokenizer.ggml.fim_suf_token_id", "tokenizer.ggml.fim_mid_token_id", "tokenizer.ggml.fim_pad_token_id", "tokenizer.ggml.fim_rep_token_id", "tokenizer.ggml.fim_sep_token_id", "tokenizer.ggml.prefix_token_id", "tokenizer.ggml.suffix_token_id", "tokenizer.ggml.middle_token_id"]
 """Every tokenizer metadata key gguf 0.19.0 declares, in declaration order."""
 UNKNOWN_VALUE_TYPE = 13
 """A value-type id GGUFValueType has no member for."""
@@ -46,7 +71,7 @@ BASE_HEADER = [3, 2, 19, 32, 640]
 """Oracle value `BASE_HEADER`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
 BASE_BYTE_ORDER = "I"
 """Oracle value `BASE_BYTE_ORDER`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-BASE_FIELDS = ["GGUF.version", "GGUF.tensor_count", "GGUF.kv_count", "general.architecture", "general.name", "general.alignment", "u8", "i8", "u16", "i16", "u32", "i32", "f32", "u64", "i64", "f64", "b", "s", "ints", "strs", "floats", "bools"]
+BASE_FIELDS = [_SHARED_11, _SHARED_12, _SHARED_13, _SHARED_14, "general.name", _SHARED_15, "u8", "i8", "u16", "i16", "u32", "i32", "f32", "u64", "i64", "f64", "b", "s", "ints", "strs", "floats", "bools"]
 """Oracle value `BASE_FIELDS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
 BASE_FIELD_OFFSETS = [4, 8, 16, 24, 69, 112, 145, 160, 175, 192, 209, 228, 247, 266, 289, 312, 335, 349, 381, 421, 479, 517]
 """Oracle value `BASE_FIELD_OFFSETS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
@@ -80,7 +105,7 @@ BASE_TENSOR_DATA = [[0, 0, 0, 0, 0, 0, 128, 63, 0, 0, 0, 64, 0, 0, 64, 64, 0, 0,
 """Oracle value `BASE_TENSOR_DATA`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
 BASE_DISTINCT_TYPES = ["F16", "F32"]
 """Oracle value `BASE_DISTINCT_TYPES`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-BASE_FIELD_INTS = [[3], [2], [19], [], [], [32], [250], [-5], [65535], [-30000], [4000000000], [-2000000000], [], [1099511627776], [-1099511627776], [], [], [], [1, 2, 3], [], [], []]
+BASE_FIELD_INTS = [[3], [2], [19], [], [], [32], [250], [-5], [65535], [-30000], [4000000000], [-2000000000], [], [1099511627776], _SHARED_16, [], [], [], [1, 2, 3], [], [], []]
 """Oracle value `BASE_FIELD_INTS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
 BASE_FIELD_FLOATS = [[], [], [], [], [], [], [], [], [], [], [], [], [1.5], [], [], [-2.5], [], [], [], [], [0.5, 1.25], []]
 """Oracle value `BASE_FIELD_FLOATS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
@@ -94,7 +119,7 @@ ALIGN_HEADER = [3, 1, 2, 64, 192]
 """Oracle value `ALIGN_HEADER`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
 ALIGN_BYTE_ORDER = "I"
 """Oracle value `ALIGN_BYTE_ORDER`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-ALIGN_FIELDS = ["GGUF.version", "GGUF.tensor_count", "GGUF.kv_count", "general.architecture", "general.alignment"]
+ALIGN_FIELDS = [_SHARED_11, _SHARED_12, _SHARED_13, _SHARED_14, _SHARED_15]
 """Oracle value `ALIGN_FIELDS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
 ALIGN_FIELD_OFFSETS = [4, 8, 16, 24, 69]
 """Oracle value `ALIGN_FIELD_OFFSETS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
@@ -142,7 +167,7 @@ BE_HEADER = [3, 1, 6, 32, 256]
 """Oracle value `BE_HEADER`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
 BE_BYTE_ORDER = "S"
 """Oracle value `BE_BYTE_ORDER`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-BE_FIELDS = ["GGUF.version", "GGUF.tensor_count", "GGUF.kv_count", "general.architecture", "s", "u", "f", "i", "a"]
+BE_FIELDS = [_SHARED_11, _SHARED_12, _SHARED_13, _SHARED_14, "s", "u", "f", "i", "a"]
 """Oracle value `BE_FIELDS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
 BE_FIELD_OFFSETS = [4, 8, 16, 24, 73, 100, 117, 134, 155]
 """Oracle value `BE_FIELD_OFFSETS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
@@ -176,7 +201,7 @@ BE_TENSOR_DATA = [[0, 0, 0, 0, 63, 128, 0, 0, 64, 0, 0, 0, 64, 64, 0, 0]]
 """Oracle value `BE_TENSOR_DATA`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
 BE_DISTINCT_TYPES = ALIGN_TENSOR_TYPES
 """Oracle value `BE_DISTINCT_TYPES`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-BE_FIELD_INTS = [[3], [1], [6], [], [], [70000], [], [-1099511627776], [1, 2, 3]]
+BE_FIELD_INTS = [[3], [1], [6], [], [], [70000], [], _SHARED_16, [1, 2, 3]]
 """Oracle value `BE_FIELD_INTS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
 BE_FIELD_FLOATS = [[], [], [], [], [], [], [-1.5], [], []]
 """Oracle value `BE_FIELD_FLOATS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
@@ -190,17 +215,17 @@ QUANT_HEADER = [3, 5, 1, 32, 256]
 """Oracle value `QUANT_HEADER`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
 QUANT_BYTE_ORDER = "I"
 """Oracle value `QUANT_BYTE_ORDER`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-QUANT_FIELDS = ["GGUF.version", "GGUF.tensor_count", "GGUF.kv_count", "general.architecture"]
+QUANT_FIELDS = _SHARED_23
 """Oracle value `QUANT_FIELDS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-QUANT_FIELD_OFFSETS = [4, 8, 16, 24]
+QUANT_FIELD_OFFSETS = _SHARED_18
 """Oracle value `QUANT_FIELD_OFFSETS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-QUANT_FIELD_KINDS = ["uint32", "uint64", "uint64", "string"]
+QUANT_FIELD_KINDS = _SHARED_19
 """Oracle value `QUANT_FIELD_KINDS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-QUANT_FIELD_ITEM_KINDS = ["", "", "", ""]
+QUANT_FIELD_ITEM_KINDS = _SHARED_20
 """Oracle value `QUANT_FIELD_ITEM_KINDS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-QUANT_FIELD_TYPE_OFFSETS = [-1, -1, -1, 52]
+QUANT_FIELD_TYPE_OFFSETS = _SHARED_21
 """Oracle value `QUANT_FIELD_TYPE_OFFSETS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-QUANT_FIELD_VALUE_OFFSETS = [-1, -1, -1, 56]
+QUANT_FIELD_VALUE_OFFSETS = _SHARED_22
 """Oracle value `QUANT_FIELD_VALUE_OFFSETS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
 QUANT_TENSOR_INFO_OFFSET = 69
 """Oracle value `QUANT_TENSOR_INFO_OFFSET`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
@@ -238,7 +263,7 @@ TOK_HEADER = [3, 1, 12, 32, 960]
 """Oracle value `TOK_HEADER`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
 TOK_BYTE_ORDER = "I"
 """Oracle value `TOK_BYTE_ORDER`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-TOK_FIELDS = ["GGUF.version", "GGUF.tensor_count", "GGUF.kv_count", "general.architecture", "tokenizer.ggml.model", "tokenizer.ggml.pre", "tokenizer.ggml.tokens", "tokenizer.ggml.token_type", "tokenizer.ggml.scores", "tokenizer.ggml.merges", "tokenizer.ggml.bos_token_id", "tokenizer.ggml.eos_token_id", "tokenizer.ggml.unknown_token_id", "tokenizer.ggml.add_bos_token", "tokenizer.chat_template"]
+TOK_FIELDS = [_SHARED_11, _SHARED_12, _SHARED_13, _SHARED_14, _SHARED_0, _SHARED_1, _SHARED_2, _SHARED_3, _SHARED_4, _SHARED_5, _SHARED_6, _SHARED_7, _SHARED_8, _SHARED_9, _SHARED_10]
 """Oracle value `TOK_FIELDS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
 TOK_FIELD_OFFSETS = [4, 8, 16, 24, 69, 113, 156, 337, 430, 519, 599, 642, 685, 732, 773]
 """Oracle value `TOK_FIELD_OFFSETS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
@@ -252,7 +277,7 @@ TOK_FIELD_VALUE_OFFSETS = [-1, -1, -1, 56, 101, 143, 189, 374, 463, 552, 638, 68
 """Oracle value `TOK_FIELD_VALUE_OFFSETS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
 TOK_TENSOR_INFO_OFFSET = 904
 """Oracle value `TOK_TENSOR_INFO_OFFSET`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-TOK_TOKENIZER_KEYS = ["tokenizer.ggml.model", "tokenizer.ggml.pre", "tokenizer.ggml.tokens", "tokenizer.ggml.token_type", "tokenizer.ggml.scores", "tokenizer.ggml.merges", "tokenizer.ggml.bos_token_id", "tokenizer.ggml.eos_token_id", "tokenizer.ggml.unknown_token_id", "tokenizer.ggml.add_bos_token", "tokenizer.chat_template"]
+TOK_TOKENIZER_KEYS = [_SHARED_0, _SHARED_1, _SHARED_2, _SHARED_3, _SHARED_4, _SHARED_5, _SHARED_6, _SHARED_7, _SHARED_8, _SHARED_9, _SHARED_10]
 """Oracle value `TOK_TOKENIZER_KEYS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
 TOK_TENSORS = ["tokens_embedding"]
 """Oracle value `TOK_TENSORS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
@@ -286,17 +311,17 @@ EMPTY_HEADER = [3, 0, 1, 32, 96]
 """Oracle value `EMPTY_HEADER`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
 EMPTY_BYTE_ORDER = "I"
 """Oracle value `EMPTY_BYTE_ORDER`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-EMPTY_FIELDS = QUANT_FIELDS
+EMPTY_FIELDS = _SHARED_23
 """Oracle value `EMPTY_FIELDS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-EMPTY_FIELD_OFFSETS = QUANT_FIELD_OFFSETS
+EMPTY_FIELD_OFFSETS = _SHARED_18
 """Oracle value `EMPTY_FIELD_OFFSETS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-EMPTY_FIELD_KINDS = QUANT_FIELD_KINDS
+EMPTY_FIELD_KINDS = _SHARED_19
 """Oracle value `EMPTY_FIELD_KINDS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-EMPTY_FIELD_ITEM_KINDS = QUANT_FIELD_ITEM_KINDS
+EMPTY_FIELD_ITEM_KINDS = _SHARED_20
 """Oracle value `EMPTY_FIELD_ITEM_KINDS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-EMPTY_FIELD_TYPE_OFFSETS = QUANT_FIELD_TYPE_OFFSETS
+EMPTY_FIELD_TYPE_OFFSETS = _SHARED_21
 """Oracle value `EMPTY_FIELD_TYPE_OFFSETS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-EMPTY_FIELD_VALUE_OFFSETS = QUANT_FIELD_VALUE_OFFSETS
+EMPTY_FIELD_VALUE_OFFSETS = _SHARED_22
 """Oracle value `EMPTY_FIELD_VALUE_OFFSETS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
 EMPTY_TENSOR_INFO_OFFSET = -1
 """Oracle value `EMPTY_TENSOR_INFO_OFFSET`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
@@ -334,17 +359,17 @@ SCALAR_HEADER = [3, 1, 1, 32, 128]
 """Oracle value `SCALAR_HEADER`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
 SCALAR_BYTE_ORDER = "I"
 """Oracle value `SCALAR_BYTE_ORDER`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-SCALAR_FIELDS = QUANT_FIELDS
+SCALAR_FIELDS = _SHARED_23
 """Oracle value `SCALAR_FIELDS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-SCALAR_FIELD_OFFSETS = QUANT_FIELD_OFFSETS
+SCALAR_FIELD_OFFSETS = _SHARED_18
 """Oracle value `SCALAR_FIELD_OFFSETS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-SCALAR_FIELD_KINDS = QUANT_FIELD_KINDS
+SCALAR_FIELD_KINDS = _SHARED_19
 """Oracle value `SCALAR_FIELD_KINDS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-SCALAR_FIELD_ITEM_KINDS = QUANT_FIELD_ITEM_KINDS
+SCALAR_FIELD_ITEM_KINDS = _SHARED_20
 """Oracle value `SCALAR_FIELD_ITEM_KINDS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-SCALAR_FIELD_TYPE_OFFSETS = QUANT_FIELD_TYPE_OFFSETS
+SCALAR_FIELD_TYPE_OFFSETS = _SHARED_21
 """Oracle value `SCALAR_FIELD_TYPE_OFFSETS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-SCALAR_FIELD_VALUE_OFFSETS = QUANT_FIELD_VALUE_OFFSETS
+SCALAR_FIELD_VALUE_OFFSETS = _SHARED_22
 """Oracle value `SCALAR_FIELD_VALUE_OFFSETS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
 SCALAR_TENSOR_INFO_OFFSET = 69
 """Oracle value `SCALAR_TENSOR_INFO_OFFSET`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
@@ -416,7 +441,7 @@ V2_TENSOR_DATA = BASE_TENSOR_DATA
 """Oracle value `V2_TENSOR_DATA`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
 V2_DISTINCT_TYPES = BASE_DISTINCT_TYPES
 """Oracle value `V2_DISTINCT_TYPES`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-V2_FIELD_INTS = [[2], [2], [19], [], [], [32], [250], [-5], [65535], [-30000], [4000000000], [-2000000000], [], [1099511627776], [-1099511627776], [], [], [], [1, 2, 3], [], [], []]
+V2_FIELD_INTS = [[2], [2], [19], [], [], [32], [250], [-5], [65535], [-30000], [4000000000], [-2000000000], [], [1099511627776], _SHARED_16, [], [], [], [1, 2, 3], [], [], []]
 """Oracle value `V2_FIELD_INTS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
 V2_FIELD_FLOATS = BASE_FIELD_FLOATS
 """Oracle value `V2_FIELD_FLOATS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
@@ -430,7 +455,7 @@ EDGE_HEADER = [3, 0, 5, 32, 192]
 """Oracle value `EDGE_HEADER`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
 EDGE_BYTE_ORDER = "I"
 """Oracle value `EDGE_BYTE_ORDER`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-EDGE_FIELDS = ["GGUF.version", "GGUF.tensor_count", "GGUF.kv_count", "e_ints", "e_strs", "s0", "nested", "ints"]
+EDGE_FIELDS = [_SHARED_11, _SHARED_12, _SHARED_13, "e_ints", "e_strs", "s0", "nested", "ints"]
 """Oracle value `EDGE_FIELDS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
 EDGE_FIELD_OFFSETS = [4, 8, 16, 24, 54, 84, 106, 156]
 """Oracle value `EDGE_FIELD_OFFSETS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
