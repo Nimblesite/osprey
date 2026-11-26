@@ -65,9 +65,9 @@ module Preview
         true => drop (trim line) 2
         false => trim line
 
-    bullet line = Kit::row (10, [Kit::strong ("•", "body", "accent"), Kit::grow (para (unbulleted line, "body", "inkSoft", ui::Body))])
+    bullet line = Ui::spacedRow (10, [Kit::strong ("•", "body", "accent"), Ui::share (para (unbulleted line, "body", "inkSoft", ui::Body))])
 
-    bullets text = Kit::stack (6, mapList (lines text, bullet))
+    bullets text = Ui::spaced (6, mapList (lines text, bullet))
 
     quote text =
         style = Kit::surface ("accentSoft", "", Design::radius "sm", 14)
@@ -106,4 +106,4 @@ module Preview
         _ => para (item.blockText, "body", "inkSoft", ui::Body)
 
     (** The whole page, front matter left out. *)
-    export page text = Kit::stack (16, mapList ((Blocks::page text).pageBlocks, block))
+    export page text = Ui::spaced (16, mapList ((Blocks::page text).pageBlocks, block))

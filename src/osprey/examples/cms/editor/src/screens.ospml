@@ -36,7 +36,7 @@ module Screens
     brand () =
         mark = Kit::surface ("accent", "", Design::radius "sm", 0)
         logo = Ui::framed (mark(frameWidth = 34, frameHeight = 34, frameInk = "accentInk", frameAlign = "center", frameCross = "center", frameSymbolSize = 18), Ui::icon "sparkle")
-        Kit::row (10, [logo, Kit::stack (0, [Kit::strong ("Osprey Studio", "body", "sidebarInk"), Kit::say ("Content, versioned in git", "micro", "sidebarMuted")])])
+        Ui::spacedRow (10, [logo, Ui::spaced (0, [Kit::strong ("Osprey Studio", "body", "sidebarInk"), Kit::say ("Content, versioned in git", "micro", "sidebarMuted")])])
 
     folders store = Kit::segmented (mapList (store.roots, \root => Kit::choice (root, root == store.folder, PickFolder)))
 
@@ -55,7 +55,7 @@ module Screens
     crumbs path =
         parts = split path "/" ?: []
         folders = range (0, satSub (length parts) 1) |> fold [] (\(out, index) => listConcat out (crumb (listGet parts index ?: "")))
-        Kit::cluster (6, listAppend folders (Kit::strong (Names::base path, "small", "ink")))
+        Ui::cluster (6, listAppend folders (Kit::strong (Names::base path, "small", "ink")))
 
     edited store = match store.text == store.saved
         true => [Kit::status ("good", "Saved")]
@@ -85,7 +85,7 @@ module Screens
     export topbar store =
         style = Kit::surface ("panel", "edge", 0, 14)
         actions = [Kit::iconButton ("History", "clock", store.showingHistory, ToggleHistory), Kit::iconButton ("Refresh", "refresh", false, Refresh), Kit::button ("secondary", "New page", "add", true, NewPage), Kit::button ("secondary", "Save", "check", store.text != store.saved, Save)]
-        place = listConcat [Kit::grow (Kit::row (12, listConcat [crumbs store.opened] (deleting store)))] (stateOf store)
+        place = listConcat [Ui::share (Ui::spacedRow (12, listConcat [crumbs store.opened] (deleting store)))] (stateOf store)
         Ui::framed (style(frameLineEdge = "bottom", frameRadius = 0), Ui::row (listConcat (listConcat (listConcat place (commitChip store)) actions) (publishArea store)))
 
     // Delete sits by the file it deletes, quiet until wanted, and only when a file is open.
@@ -109,7 +109,7 @@ module Screens
     insertTools () = [Kit::tool ("Link", false, Insert(snippet = "[link text](https://)")), Kit::tool ("Image", false, Insert(snippet = "![Describe the image](/media/)"))]
 
     (** The ribbon: modes, then styles, emphasis, blocks and inserts. *)
-    export ribbon store = Kit::row (12, [modes store, Kit::ribbon [styleTools store, inlineTools (), blockTools store, insertTools ()]])
+    export ribbon store = Ui::spacedRow (12, [modes store, Kit::ribbon [styleTools store, inlineTools (), blockTools store, insertTools ()]])
 
     paperStyle () =
         style = Kit::surface ("panel", "edge", Design::radius "lg", 48)
@@ -155,7 +155,7 @@ module Screens
     formatted store =
         blocks = (Blocks::page store.text).pageBlocks
         page = Ui::framed (paperStyle (), Ui::column (range (0, length blocks) |> fold [] (\(out, index) => listConcat (listAppend out (blockView (store, index, Blocks::blockAt (blocks, index)))) (freshAfter (store, index)))))
-        Kit::stack (0, [page])
+        Ui::spaced (0, [page])
 
     raw store =
         source = Kit::surface ("panel", "edge", Design::radius "lg", 20)
@@ -195,7 +195,7 @@ module Screens
 
     (** An open image, video or audio file. *)
     export media store =
-        title = Kit::row (12, [Kit::grow (Kit::heading (Names::base store.opened, "h3", "ink")), Kit::button ("danger", "Delete file", "delete", true, Delete)])
+        title = Ui::spacedRow (12, [Ui::share (Kit::heading (Names::base store.opened, "h3", "ink")), Kit::button ("danger", "Delete file", "delete", true, Delete)])
         Ui::framed (workStyle (), Ui::column [Kit::card (24, [title, Kit::chip store.opened, mediaOf store])])
 
     (** Nothing open yet. *)

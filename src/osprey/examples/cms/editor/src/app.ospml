@@ -37,16 +37,16 @@ module App
 
     shell store =
         window = Kit::surface ("bg", "", 0, 0)
-        Ui::framed (window(frameViewportHeightInset = 0, frameGrow = true, frameGap = 0), Ui::row [Screens::sidebar store, Kit::grow (main store)])
+        Ui::framed (window(frameViewportHeightInset = 0, frameGrow = true, frameGap = 0), Ui::row [Screens::sidebar store, Ui::share (main store)])
 
-    dialog store = Kit::card (24, [Kit::heading ("New page", "h3", "ink"), Kit::say ("Where should it live? Pages are Markdown files under your content folders.", "small", "inkMuted"), Kit::input ("Path, such as content/blog/hello.md", store.draftPath, EditDraft), Kit::row (8, [Kit::grow (Ui::column []), Kit::button ("ghost", "Cancel", "", true, CancelDraft), Kit::button ("primary", "Create page", "add", true, CreatePage)])])
+    dialog store = Kit::card (24, [Kit::heading ("New page", "h3", "ink"), Kit::say ("Where should it live? Pages are Markdown files under your content folders.", "small", "inkMuted"), Kit::input ("Path, such as content/blog/hello.md", store.draftPath, EditDraft), Ui::spacedRow (8, [Ui::share (Ui::column []), Kit::button ("ghost", "Cancel", "", true, CancelDraft), Kit::button ("primary", "Create page", "add", true, CreatePage)])])
 
-    commitRow item = Kit::stack (4, [Kit::strong (item.commitSubject, "body", "ink"), Kit::row (8, [Kit::chip (take item.commitSha 7), Kit::say (item.commitDate, "micro", "inkMuted")])])
+    commitRow item = Ui::spaced (4, [Kit::strong (item.commitSubject, "body", "ink"), Ui::spacedRow (8, [Kit::chip (take item.commitSha 7), Kit::say (item.commitDate, "micro", "inkMuted")])])
 
     history store = Kit::drawer ("History", mapList (store.history, commitRow), ToggleHistory)
 
     // A question over the work: its heading, what it means, and the safe choice before the other.
-    asking (heading, detail, buttons) = Ui::framed (Kit::surface ("", "", 0, 80), Kit::card (24, [Kit::heading (heading, "h3", "ink"), Kit::say (detail, "small", "inkMuted"), Kit::row (8, listPrepend buttons (Kit::grow (Ui::column [])))]))
+    asking (heading, detail, buttons) = Ui::framed (Kit::surface ("", "", 0, 80), Kit::card (24, [Kit::heading (heading, "h3", "ink"), Kit::say (detail, "small", "inkMuted"), Ui::spacedRow (8, listPrepend buttons (Ui::share (Ui::column [])))]))
 
     leavingDialog store = asking ("Unsaved changes", "${Names::base store.opened} has changes that are not saved. Keep editing to save them, or discard them and open ${Names::base store.leaving}.", [Kit::button ("ghost", "Discard changes", "", true, Discard), Kit::button ("primary", "Keep editing", "", true, KeepEditing)])
 

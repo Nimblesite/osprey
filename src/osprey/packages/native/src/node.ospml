@@ -295,6 +295,30 @@ module Ui
     export row<A> : List<Node<A>> -> Node<A>
     row children = Stack(axis = Horizontal, children = children)
 
+    (** Children `gap` points apart, top to bottom. *)
+    export spaced<A> : (int, List<Node<A>>) -> Node<A>
+    spaced (gap, children) =
+        style = Frames::plain
+        framed (style(frameGap = gap), column children)
+
+    (** Children `gap` points apart, side by side, centred on one line. *)
+    export spacedRow<A> : (int, List<Node<A>>) -> Node<A>
+    spacedRow (gap, children) =
+        style = Frames::plain
+        framed (style(frameGap = gap, frameAlign = "center"), row children)
+
+    (** Children `gap` points apart, side by side at their own width. *)
+    export cluster<A> : (int, List<Node<A>>) -> Node<A>
+    cluster (gap, children) =
+        style = Frames::plain
+        framed (style(frameGap = gap, frameAlign = "center", frameHug = true), row children)
+
+    (** A child that takes the room its row leaves. *)
+    export share<A> : Node<A> -> Node<A>
+    share content =
+        style = Frames::plain
+        framed (style(frameGrow = true), content)
+
     (** A bordered surface headed by `title`, with `footer` as explanatory text beneath its children; an empty title or footer draws none. *)
     export section<A> : (string, string, List<Node<A>>) -> Node<A>
     section (title, footer, children) = Section(title = title, footer = footer, children = children)

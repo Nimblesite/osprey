@@ -22,7 +22,7 @@ module Parts
 
     (** A section's head: a coral eyebrow over its heading, with an optional action at the end. *)
     export titled<A> : (string, string, List<ui::Node<A>>) -> ui::Node<A>
-    titled (eyebrow, heading, actions) = Look::line (12, listConcat [Look::share (Look::stack (4, [Look::eyebrow (eyebrow, "coral"), Look::heading (heading, 24)]))] actions)
+    titled (eyebrow, heading, actions) = Ui::spacedRow (12, listConcat [Ui::share (Ui::spaced (4, [Look::eyebrow (eyebrow, "coral"), Look::heading (heading, 24)]))] actions)
 
     // An account's card: mint-edged when it is the chosen one.
     card (account, chosen) =
@@ -65,17 +65,17 @@ module Parts
     (** One journal line: its kind as a chip and words, its note, whose account and the amount. *)
     export movement line =
         kind = line.movementKind
-        Look::line (12, [Look::chip (mark kind, soft kind, ink kind, 38), Look::share (Look::stack (2, [Look::strong (line.movementNote, 14, "ink900"), Look::words ("${said kind} · ${line.movementOwner} · Account #${line.movementAccount}", 12, "ink500")])), Look::strong (signed line, 15, ink kind)])
+        Ui::spacedRow (12, [Look::chip (mark kind, soft kind, ink kind, 38), Ui::share (Ui::spaced (2, [Look::strong (line.movementNote, 14, "ink900"), Look::words ("${said kind} · ${line.movementOwner} · Account #${line.movementAccount}", 12, "ink500")])), Look::strong (signed line, 15, ink kind)])
 
     (** A quiet state: its symbol, why there is nothing and what to do. *)
-    export empty (symbol, heading, detail) = Look::line (12, [Look::chip (symbol, "ink100", "ink500", 38), Look::share (Look::stack (2, [Look::strong (heading, 14, "ink900"), Look::words (detail, 12, "ink500")]))])
+    export empty (symbol, heading, detail) = Ui::spacedRow (12, [Look::chip (symbol, "ink100", "ink500", 38), Ui::share (Ui::spaced (2, [Look::strong (heading, 14, "ink900"), Look::words (detail, 12, "ink500")]))])
 
     listed (lines, limit, symbol, heading, detail) = match lines
         [] => [empty (symbol, heading, detail)]
         _ => mapList (ui::Lists::slice (lines, 0, limit), movement)
 
     (** The first `limit` journal lines on a card, or an empty state saying why there are none. *)
-    export journal (lines, limit, symbol, heading, detail) = Look::card (Look::stack (14, listed (lines, limit, symbol, heading, detail)))
+    export journal (lines, limit, symbol, heading, detail) = Look::card (Ui::spaced (14, listed (lines, limit, symbol, heading, detail)))
 
     (** An account picker for a form, labelled `heading`. *)
     export picker (heading, accounts, chosen, bind) = Look::choices (heading, Ui::picker (heading, mapList (accounts, \account => Ui::choice (toString account.accountId, "#${account.accountId} · ${account.accountOwner}")), chosen, bind))

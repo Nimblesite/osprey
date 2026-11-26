@@ -51,30 +51,6 @@ module Kit
         style = surface ("raised", "edge", Design::radius "lg", pad)
         Ui::framed (style(frameShadow = "floating"), Ui::column children)
 
-    (** Children `gap` points apart, top to bottom. *)
-    export stack<A> : (int, List<ui::Node<A>>) -> ui::Node<A>
-    stack (gap, children) =
-        style = Frames::plain
-        Ui::framed (style(frameGap = gap), Ui::column children)
-
-    (** Children `gap` points apart, side by side, centred on one line. *)
-    export row<A> : (int, List<ui::Node<A>>) -> ui::Node<A>
-    row (gap, children) =
-        style = Frames::plain
-        Ui::framed (style(frameGap = gap, frameAlign = "center"), Ui::row children)
-
-    (** Children at their own width, side by side. *)
-    export cluster<A> : (int, List<ui::Node<A>>) -> ui::Node<A>
-    cluster (gap, children) =
-        style = Frames::plain
-        Ui::framed (style(frameGap = gap, frameAlign = "center", frameHug = true), Ui::row children)
-
-    (** A child that takes the room its row leaves. *)
-    export grow<A> : ui::Node<A> -> ui::Node<A>
-    grow content =
-        style = Frames::plain
-        Ui::framed (style(frameGrow = true), content)
-
     // ---- buttons ----
 
     pill (fill, ink, line, height) =
@@ -115,8 +91,8 @@ module Kit
         Ui::framed (style(frameWidth = 1, frameHeight = 22, frameFill = "edge"), Ui::column [])
 
     joinGroup (out, group) = match length out
-        0 => [cluster (2, group)]
-        _ => listAppend (listAppend out (divider ())) (cluster (2, group))
+        0 => [Ui::cluster (2, group)]
+        _ => listAppend (listAppend out (divider ())) (Ui::cluster (2, group))
 
     joinGroups groups = foldList (groups, [], joinGroup)
 
@@ -172,14 +148,14 @@ module Kit
         seat = Frames::inset (20, 20, 20, 20)
         style = surface ("raised", "edge", Design::radius "md", 14)
         body = Ui::column [strong (headline, "body", tone), say (detail, "small", "inkSoft")]
-        Ui::framed (seat(frameAlign = "end", frameCross = "end"), Ui::framed (style(frameShadow = "floating", frameHug = true, frameWidth = 380), Ui::row [grow body, iconButton ("Dismiss", "dismiss", false, act)]))
+        Ui::framed (seat(frameAlign = "end", frameCross = "end"), Ui::framed (style(frameShadow = "floating", frameHug = true, frameWidth = 380), Ui::row [Ui::share body, iconButton ("Dismiss", "dismiss", false, act)]))
 
     (** A drawer from the right edge: a title, its body and the action that closes it. *)
     export drawer<A> : (string, List<ui::Node<A>>, A) -> ui::Node<A>
     drawer (headline, children, act) =
         seat = Frames::plain
         style = surface ("raised", "edge", 0, 24)
-        top = row (8, [grow (title (headline, "ink")), iconButton ("Close", "dismiss", false, act)])
+        top = Ui::spacedRow (8, [Ui::share (title (headline, "ink")), iconButton ("Close", "dismiss", false, act)])
         Ui::framed (seat(frameAlign = "end", frameGrow = true), Ui::framed (style(frameName = "drawer", frameWidth = 420, frameShadow = "floating", frameScrollY = true, frameGap = 16), Ui::column (listPrepend children top)))
 
     (** An empty state: a symbol, a title and why there is nothing here yet. *)

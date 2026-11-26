@@ -327,6 +327,14 @@ module AdditionCases
         expectTold (Ui::split [Ui::text "List", Ui::text "Detail"], "{kind=\"split\",children=[{kind=\"text\",text=\"List\",role=\"body\",tone=\"primary\"},{kind=\"text\",text=\"Detail\",role=\"body\",tone=\"primary\"}]}")
         expectTold (Ui::layer [Ui::text "Back", Ui::text "Front"], "{kind=\"layer\",children=[{kind=\"text\",text=\"Back\",role=\"body\",tone=\"primary\"},{kind=\"text\",text=\"Front\",role=\"body\",tone=\"primary\"}]}")
         expect (toldSpacing (), "spacing=[#4,#10,#16]")
+        // Spaced layouts are framed stacks: the gap, line alignment, own-width hug and growth each set once.
+        parts = [Ui::text "A", Ui::text "B"]
+        plain = ui::Frames::plain
+        expect (spelled (toldOf (Ui::spaced (6, parts))) == spelled (toldOf (Ui::framed (plain(frameGap = 6), Ui::column parts))), true)
+        expect (spelled (toldOf (Ui::spacedRow (8, parts))) == spelled (toldOf (Ui::framed (plain(frameGap = 8, frameAlign = "center"), Ui::row parts))), true)
+        expect (spelled (toldOf (Ui::cluster (2, parts))) == spelled (toldOf (Ui::framed (plain(frameGap = 2, frameAlign = "center", frameHug = true), Ui::row parts))), true)
+        expect (spelled (toldOf (Ui::share (Ui::text "A"))) == spelled (toldOf (Ui::framed (plain(frameGrow = true), Ui::text "A"))), true)
+        expect (spelled (toldOf (Ui::spaced (6, parts))) == spelled (toldOf (Ui::spacedRow (6, parts))), false)
 
     (** [NATIVE-SHM-NODES] Sections keep their title and footer; screens keep their toolbar, whose controls bind before the children's. *)
     export toldSurfacesCase () =

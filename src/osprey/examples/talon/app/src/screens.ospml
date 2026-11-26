@@ -12,23 +12,23 @@ import talon::Parts
 (** Overview, Accounts and Security. *)
 module Screens
     // The movement actions an account offers, each opening the form in its mode.
-    moves () = Look::line (8, [Look::primary ("Deposit", "", true, QuickMove(quickMode = "deposit")), Look::ghost ("Withdraw", "", QuickMove(quickMode = "withdraw")), Look::ghost ("Transfer", "", QuickMove(quickMode = "transfer"))])
+    moves () = Ui::spacedRow (8, [Look::primary ("Deposit", "", true, QuickMove(quickMode = "deposit")), Look::ghost ("Withdraw", "", QuickMove(quickMode = "withdraw")), Look::ghost ("Transfer", "", QuickMove(quickMode = "transfer"))])
 
     see (words, page) = Look::link (words, Symbols::name ui::Chevron, SeePage(seenPage = page))
 
     portfolio store = Look::hero (Ui::column [Look::eyebrow ("Managed portfolio", "coral"), Look::strong (Parts::money (Parts::total store.bankAccounts), 44, "white"), Look::words ("Across ${length store.bankAccounts} protected client accounts", 15, "ink300"), moves ()])
 
     // One figure on a white card: its symbol chip, what it counts, the number and a word on it.
-    stat (symbol, heading, figure, hint) = Look::share (Look::card (Look::stack (8, [Look::chip (symbol, "mintSoft", "mintDark", 40), Look::words (heading, 12, "ink500"), Look::heading (figure, 24), Look::words (hint, 12, "ink500")])))
+    stat (symbol, heading, figure, hint) = Ui::share (Look::card (Ui::spaced (8, [Look::chip (symbol, "mintSoft", "mintDark", 40), Look::words (heading, 12, "ink500"), Look::heading (figure, 24), Look::words (hint, 12, "ink500")])))
 
-    glance store = Look::line (12, [stat (Symbols::name ui::Add, "Money in", toString (Parts::counted (store.bankJournal, "credit")), "healthy inflow"), stat (Symbols::name ui::Send, "Money out", toString (Parts::counted (store.bankJournal, "debit")), "this cycle"), stat (Symbols::name ui::Check, "Entries", toString (length store.bankJournal), "fully audited")])
+    glance store = Ui::spacedRow (12, [stat (Symbols::name ui::Add, "Money in", toString (Parts::counted (store.bankJournal, "credit")), "healthy inflow"), stat (Symbols::name ui::Send, "Money out", toString (Parts::counted (store.bankJournal, "debit")), "this cycle"), stat (Symbols::name ui::Check, "Entries", toString (length store.bankJournal), "fully audited")])
 
-    clients store = Look::stack (14, [Parts::titled ("Managed clients", "Client accounts", [see ("View all", "accounts")]), Parts::accountRows (store.bankAccounts, store.bankChosen)])
+    clients store = Ui::spaced (14, [Parts::titled ("Managed clients", "Client accounts", [see ("View all", "accounts")]), Parts::accountRows (store.bankAccounts, store.bankChosen)])
 
-    recent store = Look::stack (14, [Parts::titled ("Live ledger", "Recent activity", [see ("Full history", "activity")]), Parts::journal (store.bankJournal, 5, Symbols::name ui::Inbox, "Nothing to report", "New movements will appear here.")])
+    recent store = Ui::spaced (14, [Parts::titled ("Live ledger", "Recent activity", [see ("Full history", "activity")]), Parts::journal (store.bankJournal, 5, Symbols::name ui::Inbox, "Nothing to report", "New movements will appear here.")])
 
     (** The portfolio at a glance: the total, the figures, the accounts and the latest movements. *)
-    export overview store = Look::stack (28, [portfolio store, glance store, clients store, recent store])
+    export overview store = Ui::spaced (28, [portfolio store, glance store, clients store, recent store])
 
     chosen store = match Lists::find (store.bankAccounts, \account => toString account.accountId == store.bankChosen)
         Success account => account
@@ -38,27 +38,27 @@ module Screens
         true => "Ready to move"
         false => "Waiting for first deposit"
 
-    fact (heading, value) = Look::line (12, [Look::share (Look::words (heading, 13, "ink500")), Look::strong (value, 13, "ink900")])
+    fact (heading, value) = Ui::spacedRow (12, [Ui::share (Look::words (heading, 13, "ink500")), Look::strong (value, 13, "ink900")])
 
     detail account = Look::hero (Ui::column [Look::eyebrow ("Talon account #${account.accountId}", "coral"), Look::strong (account.accountOwner, 20, "white"), Look::strong (Parts::money account.accountCents, 40, "white"), Look::words (ready account, 14, "ink300"), moves ()])
 
-    facts account = Look::card (Look::stack (12, [fact ("Account ID", "#${account.accountId}"), fact ("Ledger", "Journaled"), fact ("Overdrafts", "Refused")]))
+    facts account = Look::card (Ui::spaced (12, [fact ("Account ID", "#${account.accountId}"), fact ("Ledger", "Journaled"), fact ("Overdrafts", "Refused")]))
 
     own store = filterList (store.bankJournal, \line => toString line.movementAccount == store.bankChosen)
 
-    latest store = Look::stack (14, [Parts::titled ("This account", "Latest movements", [see ("See all", "activity")]), Parts::journal (own store, 4, Symbols::name ui::Inbox, "No movements", "Activity for this account will show here.")])
+    latest store = Ui::spaced (14, [Parts::titled ("This account", "Latest movements", [see ("See all", "activity")]), Parts::journal (own store, 4, Symbols::name ui::Inbox, "No movements", "Activity for this account will show here.")])
 
     (** Every client account, and the chosen one in detail. *)
     export accounts store = match store.bankAccounts
         [] => Look::card (Parts::empty (Symbols::name ui::Person, "No accounts yet", "Open an account in seconds."))
-        _ => Look::stack (28, [detail (chosen store), facts (chosen store), Look::stack (14, [Parts::titled ("Managed clients", "Client accounts", []), Parts::accountRows (store.bankAccounts, store.bankChosen)]), latest store])
+        _ => Ui::spaced (28, [detail (chosen store), facts (chosen store), Ui::spaced (14, [Parts::titled ("Managed clients", "Client accounts", []), Parts::accountRows (store.bankAccounts, store.bankChosen)]), latest store])
 
-    control (heading, detail, status) = Look::line (12, [Look::chip (Symbols::name ui::Shield, "mintSoft", "mintDark", 38), Look::share (Look::stack (2, [Look::strong (heading, 14, "ink900"), Look::words (detail, 12, "ink500")])), Look::strong (status, 12, "mintDark")])
+    control (heading, detail, status) = Ui::spacedRow (12, [Look::chip (Symbols::name ui::Shield, "mintSoft", "mintDark", 38), Ui::share (Ui::spaced (2, [Look::strong (heading, 14, "ink900"), Look::words (detail, 12, "ink500")])), Look::strong (status, 12, "mintDark")])
 
-    layer (heading, detail) = Look::stack (2, [Look::strong (heading, 14, "white"), Look::words (detail, 13, "ink300")])
+    layer (heading, detail) = Ui::spaced (2, [Look::strong (heading, 14, "white"), Look::words (detail, 13, "ink300")])
 
     (** What protects the ledger, and how this one app runs on every platform. *)
-    export security () = Look::stack (28, [
-        Look::stack (14, [Parts::titled ("Protection status", "Trust you can inspect", []), Look::card (Look::stack (16, [control ("Storage isolation", "The app has no Ledger or SQLite capability.", "Enforced"), control ("Atomic transfers", "Debit and credit commit as one transaction.", "Enforced"), control ("Audit trail", "Refused overdrafts are journalled too.", "Live"), control ("Whole-cent arithmetic", "Money stays in whole cents from form to ledger.", "Verified")]))]),
-        Look::dark (Look::stack (16, [Look::eyebrow ("How this app runs", "coral"), Look::strong ("One Osprey Native app, drawn by the browser, SwiftUI and Android hosts.", 17, "white"), layer ("Platform host", "Draws the nodes and performs HTTP requests. It holds no bank logic."), layer ("Osprey app", "Owns the store, every update, validation and these screens."), layer ("HTTP capability", "Typed requests to the public bank endpoints, answered by the host."), layer ("Ledger service", "Domain rules and SQLite stay on the server, behind effect handlers.")])),
+    export security () = Ui::spaced (28, [
+        Ui::spaced (14, [Parts::titled ("Protection status", "Trust you can inspect", []), Look::card (Ui::spaced (16, [control ("Storage isolation", "The app has no Ledger or SQLite capability.", "Enforced"), control ("Atomic transfers", "Debit and credit commit as one transaction.", "Enforced"), control ("Audit trail", "Refused overdrafts are journalled too.", "Live"), control ("Whole-cent arithmetic", "Money stays in whole cents from form to ledger.", "Verified")]))]),
+        Look::dark (Ui::spaced (16, [Look::eyebrow ("How this app runs", "coral"), Look::strong ("One Osprey Native app, drawn by the browser, SwiftUI and Android hosts.", 17, "white"), layer ("Platform host", "Draws the nodes and performs HTTP requests. It holds no bank logic."), layer ("Osprey app", "Owns the store, every update, validation and these screens."), layer ("HTTP capability", "Typed requests to the public bank endpoints, answered by the host."), layer ("Ledger service", "Domain rules and SQLite stay on the server, behind effect handlers.")])),
     ])
