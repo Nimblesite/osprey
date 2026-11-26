@@ -102,6 +102,8 @@ async function ribbonFormatted(page) {
   const paragraph = page.getByRole("textbox", { name: "paragraph" });
   await styled(page, paragraph, [["coast", "B", "Notes from the **coast**"], ["coast", "B", "Notes from the coast"], ["coast", "B"],
     ["Notes", "I", "*Notes* from the **coast**"], ["coast", "I", "*Notes* from the ***coast***"], ["coast", "I", "*Notes* from the **coast**"]]);
+  // Code wraps a word in backticks and, pressed again on the same word, takes them off.
+  await styled(page, paragraph, [["from", "Code", "*Notes* `from` the **coast**"], ["from", "Code", "*Notes* from the **coast**"]]);
   await block(page, "Tide tables matter");
   await button(page, "• List").click();
   await expect(page.getByRole("textbox", { name: "bullets" })).toHaveValue("Tide tables matter");
@@ -133,12 +135,20 @@ async function ribbonMarkdown(page) {
     await expect(source).toHaveValue(new RegExp(line.replace(/[#]/g, "\\#")));
   }
   await expect(source).not.toHaveValue(/# #|## #/);
+  // List, quote and heading tools take a line's own prefix off and put it back, never doubling one.
+  await styled(page, source, [["Tide tables matter", "• List", /\nTide tables matter\n/], ["Tide tables matter", "• List", /\n- Tide tables matter\n/],
+    ["Pack light", "❝ Quote", /\nPack light, then lighter \[link text\]\(https:\/\/\)\n/], ["Pack light", "❝ Quote", /\n> Pack light, then lighter \[link text\]\(https:\/\/\)\n/],
+    ["Field Notes", "H3", /\n### Field Notes\n/, 1], ["Field Notes", "H1", /\n# Field Notes\n/, 1]]);
+  await expect(source).toHaveValue(`${FRONT}\n# Field Notes\n\n*Notes* from the **coast**\n\n- Tide tables matter\n\n> Pack light, then lighter [link text](https://)\n`);
   await selectWord(source, "https://");
   await page.keyboard.type("https://example.com/tides");
   await selectWord(source, "link text");
   await page.keyboard.type("tide tables");
   await styled(page, source, [["**coast**", "B", /the coast\n/], ["coast", "B", /the \*\*coast\*\*\n/, 1],
     ["Travel", "Image", /!\[Describe the image\]\(\/media\/\)/]]);
+  // Italic wraps a word of the front matter and, pressed again on it, unwraps it.
+  await styled(page, source, [["planning", "I", /\nsummary: What a week on the coast taught us about \*planning\*\.\n/],
+    ["planning", "I", /\nsummary: What a week on the coast taught us about planning\.\n/]]);
   await selectWord(source, "![Describe the image](/media/)");
   await page.keyboard.press("Backspace");
   await expect(source).toHaveValue(/topic: \n/);
