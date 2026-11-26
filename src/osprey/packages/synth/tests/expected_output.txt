@@ -14,7 +14,7 @@ ok 13 - WAV import refuses corrupt sizes, headers, chunks, formats and out-of-ra
 ok 14 - sample resources validate metadata, prepare grains and transpose by root pitch
 ok 15 - generated wave math: PCM words, downmix, tuning and polyBLEP shapes hit exact IEEE754 values
 ok 16 - formant pitch shifting moves pitch and formants independently and refuses out-of-range ratios
-ok 17 - the FFT pitch shifter moves a sine by 1, 5, 7 and 12 semitones and 1, 10 and 50 cents either way within 1 cent, 1 dB of level and 1 dB of ripple
+ok 17 - the FFT pitch shifter moves a sine at 16 and 48 kHz by 1, 5, 7 and 12 semitones and 1, 10 and 50 cents either way within 1 cent, 1 dB of level and 1 dB of ripple
 ok 18 - spectral morphing blends log magnitudes and cross-synthesises one sound's envelope onto another [SYNTH-SPECTRAL-MORPH]
 ok 19 - partial morphing glides every matched harmonic to the geometric pitch between two tones [SYNTH-SPECTRAL-MORPH]
 ok 20 - at 48 kHz, size 4,096 and hop 1,024 a held morph keeps its level within 0.5 dB, a 0.5 s amount ramp moves without a jump over 2 dB beyond its trend, and unmatched partials fade in place [SYNTH-SPECTRAL-MORPH]

@@ -86,16 +86,19 @@ spectralConfig transform = synth::SpectralConfig(sampleRate = formantRate, size 
 
 formantConfig (ratio, formant) = spectralConfig (synth::SpectralPitch(ratio = ratio, formant = formant))
 
-formantStep (config, voices, carry, n) = match carry
+// One sample through the transform; `configAt` gives each frame's settings, so automation rides the same runner.
+formantStep (configAt, voices, carry, n) = match carry
     Error why => Error(message = why)
-    Success run => match SpectralStreams::next (config, run.held, voices.main n, voices.side n)
+    Success run => match SpectralStreams::next (configAt n, run.held, voices.main n, voices.side n)
         Error why => Error(message = why)
         Success step => Success(value = { held = step.next, samples = listAppend run.samples step.sample })
 
 // 4,096 samples; the last 1,024 lie past the transform's 1,023-sample latency.
 spectralRendered (config, voices) = spectralFor (config, voices, 4096)
 
-spectralFor (config, voices, count) = foldList (toList (range (0, count)), Success(value = { held = SpectralStreams::initial config, samples = [] }), \(carry, n) => formantStep (config, voices, carry, n))
+spectralFor (config, voices, count) = spectralOver (\_ => config, voices, count)
+
+spectralOver (configAt, voices, count) = foldList (toList (range (0, count)), Success(value = { held = SpectralStreams::initial (configAt 0), samples = [] }), \(carry, n) => formantStep (configAt, voices, carry, n))
 
 formantRendered config = spectralRendered (config, { main = formantVoice, side = \_ => 0.0 })
 
@@ -117,11 +120,12 @@ formantLevels config = match formantRendered config
     Error why => { fault = synth::Faults::detail why, kept = 0.0, raised = 0.0, between = 0.0, old = 0.0, root = 0.0 }
     Success run => { fault = "", kept = formantLevel (run.samples, 937.5), raised = formantLevel (run.samples, 1406.25), between = formantLevel (run.samples, 1093.75), old = formantLevel (run.samples, 156.25), root = formantLevel (run.samples, 234.375) }
 
-// [SYNTH-SPECTRAL-PITCH-EFFECT] A full-scale 500 Hz sine moved `semitones` and `cents` by the FFT shifter, 8,192 samples.
-shiftedSine (semitones, cents) =
-    ratio = SpectralMath::semitoneRatio (semitones, cents)
+// [SYNTH-SPECTRAL-PITCH-EFFECT] A full-scale 500 Hz sine at `c.rate` moved `semitones` and `cents` by the FFT shifter,
+// 8,192 samples.
+shiftedSine (c) =
+    ratio = SpectralMath::semitoneRatio (c.semitones, c.cents)
     config = spectralConfig (synth::SpectralPitch(ratio = ratio, formant = ratio))
-    spectralFor (config, { main = \n => formantTone (1.0, n), side = \_ => 0.0 }, 8192)
+    spectralFor (config(sampleRate = c.rate), { main = \n => sin (tau * 500.0 * toFloat n / c.rate), side = \_ => 0.0 }, 8192)
 
 // Upward zero crossings from frame 2,048 (past the 1,023-frame latency), each placed between frames by interpolation.
 crossings samples = foldList (toList (range (2048, satSub (length samples) 1)), [], \(found, n) => crossed (found, listGet samples n ?: 0.0, listGet samples (satAdd n 1) ?: 0.0, n))
@@ -131,11 +135,11 @@ crossed (found, a, b, n) = match a < 0.0 && b >= 0.0
     false => found
 
 // Measured frequency over every whole cycle between the first and last crossing.
-measured times = match listGet times 0
+measured (times, rate) = match listGet times 0
     Error _ => 0.0
     Success first => match listGet times (satSub (length times) 1)
         Error _ => 0.0
-        Success last => toFloat (satSub (length times) 1) * formantRate / (last - first)
+        Success last => toFloat (satSub (length times) 1) * rate / (last - first)
 
 // The loudest sample of each 256-frame block from frame 2,048.
 blockPeaks samples = mapList (toList (range (8, intDiv (length samples) 256)), \block => loudestIn (samples, satMul block 256, satMul (satAdd block 1) 256))
@@ -151,13 +155,13 @@ smaller (a, b) = match a < b
 decibels ratio = 20.0 * ln ratio / ln 10.0
 
 // Within 1 cent of 500 Hz times the ratio, the level within 1 dB of full scale and at most 1 dB of ripple.
-shiftHeld (c) = renderedHeld (shiftedSine (c.semitones, c.cents), \samples =>
+shiftHeld (c) = renderedHeld (shiftedSine c, \samples =>
     want = 500.0 * SpectralMath::semitoneRatio (c.semitones, c.cents)
-    cents = 1200.0 * ln (measured (crossings samples) / want) / ln 2.0
+    cents = 1200.0 * ln (measured (crossings samples, c.rate) / want) / ln 2.0
     peaks = blockPeaks samples
     loudest = foldList (peaks, 0.0, larger)
     quietest = foldList (peaks, 1000.0, smaller)
-    expect ("${c.semitones} st ${c.cents} c: ${abs cents < 1.0} ${abs (decibels loudest) <= 1.0} ${decibels (loudest / quietest) <= 1.0}", "${c.semitones} st ${c.cents} c: true true true"))
+    expect ("${c.rate} Hz ${c.semitones} st ${c.cents} c: ${abs cents < 1.0} ${abs (decibels loudest) <= 1.0} ${decibels (loudest / quietest) <= 1.0}", "${c.rate} Hz ${c.semitones} st ${c.cents} c: true true true"))
 
 // [SYNTH-ADVANCED-CORE-RESOURCES] A 512-sample burst shifted an octave keeps sounding past size − 1 + hop after its last
 // input and is exactly silent after 2 · (size − 1): the declared tail.
@@ -237,13 +241,7 @@ rampAmount n = match n < 8192
         true => 1.0
         false => toFloat (n - 8192) / 24000.0
 
-wideStep (amountAt, mode, voices, carry, n) = match carry
-    Error why => Error(message = why)
-    Success run => match SpectralStreams::next (wideMorph (amountAt n, mode), run.held, voices.main n, voices.side n)
-        Error why => Error(message = why)
-        Success step => Success(value = { held = step.next, samples = listAppend run.samples step.sample })
-
-wideRendered (amountAt, mode, voices, count) = foldList (toList (range (0, count)), Success(value = { held = SpectralStreams::initial (wideMorph (0.5, mode)), samples = [] }), \(carry, n) => wideStep (amountAt, mode, voices, carry, n))
+wideRendered (amountAt, mode, voices, count) = spectralOver (\n => wideMorph (amountAt n, mode), voices, count)
 
 // Each 1,024-frame hop's rms in dB, from hop `first` to the end.
 hopLevels (samples, first) = mapList (toList (range (first, intDiv (length samples) 1024)), \hop =>
@@ -439,10 +437,11 @@ registerWaveJourneys () =
             \c => expect (configured (formantConfig (c.r, c.f)), c.ok))
         spectral = Components::spectral (7, 1024, 256, 6.0)
         forEachList ([{ key = "semitones", low = -12.0, high = 12.0 }, { key = "cents", low = -100.0, high = 100.0 }, { key = "keepFormants", low = 0.0, high = 1.0 }], \b => expect (length (filterList (spectral.parameters, \p => p.key == b.key && p.initial == 0.0 && p.minimum == b.low && p.maximum == b.high)), 1))))
-    test ("the FFT pitch shifter moves a sine by 1, 5, 7 and 12 semitones and 1, 10 and 50 cents either way within 1 cent, 1 dB of level and 1 dB of ripple", \() => arithmetic (\() =>
-        forEachList ([1.0, 5.0, 7.0, 12.0, -1.0, -5.0, -7.0, -12.0], \s => shiftHeld ({ semitones = s, cents = 0.0 }))
-        forEachList ([1.0, 10.0, 50.0, -1.0, -10.0, -50.0], \c => shiftHeld ({ semitones = 0.0, cents = c }))
-        shiftHeld ({ semitones = 7.0, cents = 1.955 })
+    test ("the FFT pitch shifter moves a sine at 16 and 48 kHz by 1, 5, 7 and 12 semitones and 1, 10 and 50 cents either way within 1 cent, 1 dB of level and 1 dB of ripple", \() => arithmetic (\() =>
+        forEachList ([formantRate, morphRate], \rate =>
+            forEachList ([1.0, 5.0, 7.0, 12.0, -1.0, -5.0, -7.0, -12.0], \s => shiftHeld ({ rate = rate, semitones = s, cents = 0.0 }))
+            forEachList ([1.0, 10.0, 50.0, -1.0, -10.0, -50.0], \c => shiftHeld ({ rate = rate, semitones = 0.0, cents = c }))
+            shiftHeld ({ rate = rate, semitones = 7.0, cents = 1.955 }))
         tailHeld ()))
     test ("spectral morphing blends log magnitudes and cross-synthesises one sound's envelope onto another [SYNTH-SPECTRAL-MORPH]", \() => arithmetic (\() =>
         tones = { main = \n => formantTone (0.5, n), side = \n => formantTone (0.05, n) }
