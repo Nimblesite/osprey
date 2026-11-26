@@ -103,6 +103,7 @@ module Replies
     (** `accepted` with the inferred signature and the erased module. *)
     export accepted (text, erased) = encoded (acceptedJson (text, erased))
 
+    (** `rejected` carrying every positioned diagnostic the check found. *)
     export rejected diagnostics = encoded (rejectedJson diagnostics)
     (** A rejection of the checker's own doing. *)
     export internal message = refusing (codeInternal, message)
@@ -322,6 +323,7 @@ module Tool
         Success text => text
         Error _ => ""
 
+    (** `text` quoted for a POSIX shell, with each embedded `'` escaped. *)
     export quoted text = "'" + (replace (text, "'", "'\\''") ?: text) + "'"
 
     quiet (_id, _kind, _data) = cleanupProcess 0
@@ -437,6 +439,7 @@ module Checker
 (** Every case this package asserts about itself: the marker rewrite, the
     stderr parser and the exact response encoding the seam parses. *)
 module Tests
+    (** Run every self-test of the checker. *)
     export run () =
         test ("every marker spelling is rewritten and nothing else is touched", \() => markers ())
         test ("stderr becomes positioned diagnostics and nothing else", \() => diagnostics ())
