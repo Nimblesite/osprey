@@ -18,9 +18,6 @@
 // [BUILTIN-STRING-CONCAT], and [BUILTIN-COLLECTION-LENGTH] to count the
 // resulting List<string>.
 
-// The 404 status line the router returns for every unknown route.
-let notFound = "404 not-found"
-
 fn handleGet(path) =
     match path {
         "/health" => "200 ok"
@@ -28,14 +25,14 @@ fn handleGet(path) =
             true  => "200 user-detail " + drop(path, 11)
             false => match startsWith(path, "/api/") {
                 true  => "200 api-fallback"
-                false => notFound
+                false => "404 not-found"
             }
         }
     }
 fn handlePost(path) =
     match path {
         "/api/users" => "201 created"
-        _            => notFound
+        _            => "404 not-found"
     }
 fn route(method, path) =
     match method {
@@ -150,8 +147,8 @@ fn stringPipelineCase() = {
         route(method: "GET", path: "/api/users/42") == "200 user-detail 42",
         route(method: "GET", path: "/api/orders") == "200 api-fallback",
         route(method: "POST", path: "/api/users") == "201 created",
-        route(method: "POST", path: "/other") == notFound,
-        route(method: "GET", path: "/random") == notFound,
+        route(method: "POST", path: "/other") == "404 not-found",
+        route(method: "GET", path: "/random") == "404 not-found",
         route(method: "DELETE", path: "/anything") == "405 method-not-allowed"
     ])
 }
