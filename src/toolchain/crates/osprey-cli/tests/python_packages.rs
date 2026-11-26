@@ -233,7 +233,7 @@ fn every_ported_package_matches_its_cpython_oracle_under_every_memory_backend(
     Ok(())
 }
 
-/// Plan 0048: a killed or over-cap suite logs its command, memory backend,
+/// Plan 0045: a killed or over-cap suite logs its command, memory backend,
 /// peak RSS and elapsed time, so the runner's own log diagnoses the crash.
 #[test]
 fn a_suite_killed_at_its_budget_logs_command_backend_peak_and_time() -> std::io::Result<()> {

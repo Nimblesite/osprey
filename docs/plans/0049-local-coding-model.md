@@ -3,7 +3,7 @@
 > **STATUS, 2026-11-07: the package runs the real weights and the server serves them.** `Qwen3_5Gguf` loads the pinned GGUF, `src/osprey/examples/llms/qwen/run` continues "The capital of France is" with " Paris.\nThe capital of Germany is" (receipt `target/local-coding-model/runs/2026-11-07_080211-package-real-weights-france.txt`), and the server started with that path answers `/api/generate`, `/api/chat` and `/v1/chat/completions` from it (`2026-11-07_080714-server-real-weights.txt`). The one-file program is deleted. Ollama's `thinking` field is served and the prompt cache survives across requests with checkpoints an agent's rewritten turn can reuse (2026-11-07). Open: the speed gate on a quiet machine, [LLM-STATE-OWNED], the full chat template in the server, [LLM-BASELINE] and everything after it.
 
 Contract: ../specs/runtime/0034-GPUComputation.md, ../specs/ecosystem/0043-PythonFlavorPorts.md, ../specs/runtime/0014-HTTP.md, [LocalCodingModel](../specs/applications/LocalCodingModel.md)
-Depends on: 0050-sized-numeric-types.md (Phase 5 gate), 0023-gpu.md (the kernel-to-kernel fusion item in Stage 4, before the Phase 2 gate), 0048-runtime-memory-safety.md (its items land before Phase 7)
+Depends on: 0050-sized-numeric-types.md (Phase 5 gate), 0023-gpu.md (the kernel-to-kernel fusion item in Stage 4, before the Phase 2 gate), [0045-compile-time-ownership.md](0045-compile-time-ownership.md#runtime-hardening) (its runtime-hardening items land before Phase 7)
 
 ## Ownership — 2026-11-08
 

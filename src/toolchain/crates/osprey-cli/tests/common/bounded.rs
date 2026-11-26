@@ -1,7 +1,7 @@
 //! A test program's runaway costs the whole machine, so each run sits in its own
 //! process group and the group dies at its memory or time budget. Every run
 //! records its peak group RSS and elapsed time, so a killed or over-cap run says
-//! what it was doing (plan 0048).
+//! what it was doing (plan 0045).
 use std::io;
 use std::os::unix::process::CommandExt;
 use std::process::{Command, Stdio};

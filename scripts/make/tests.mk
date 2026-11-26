@@ -262,7 +262,7 @@ $(C_BUILD_TARGETS): _build_c_suite_%: $(GPU_DEVICE_NATIVE)
 _test_c_runtime: $(C_TEST_TARGETS) $(C_ASAN_TEST_TARGETS)
 
 # The suites that drive sockets, threads and fibers also run under
-# AddressSanitizer, beside their coverage build (plan 0048). Linux reports leaks
+# AddressSanitizer, beside their coverage build (plan 0045). Linux reports leaks
 # too; macOS has no leak detector. _FORTIFY_SOURCE is dropped because ASan
 # defines it. Its strstr interceptor is off because it rescans the whole
 # haystack per call, which makes the linear-scan tests quadratic. Its fake stack
