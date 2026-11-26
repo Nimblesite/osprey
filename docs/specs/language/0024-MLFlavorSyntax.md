@@ -10,7 +10,7 @@ Select ML with `--flavor ml`, a `.ospml` extension, or a leading
 
 ## Mathematical notation [FLAVOR-ML-MATH-NOTATION]
 
-Native DSP source should preserve the grouping and precision of the published formula. The synth migration exposed the following gaps. These are proposed language and tooling requirements. The [implementation checklist](../../plans/math-to-code.md#native-osprey-formulas-math-code-native-notation) records examples and acceptance checks.
+Native DSP source should preserve the grouping and precision of the published formula. The synth migration exposed the following gaps. These are proposed language and tooling requirements. The [implementation checklist](../../plans/0041-dependent-types-and-mathlib.md#native-osprey-formulas-math-code-native-notation) records examples and acceptance checks.
 
 | Construct | Required behavior |
 | --- | --- |

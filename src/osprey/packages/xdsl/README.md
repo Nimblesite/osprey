@@ -14,7 +14,7 @@ match Parser.parse_module(unwrap_or(readFile("module.mlir"), "")):
         print(message)
 ```
 
-Status: in progress. Only the generic form is read, not dialects' custom assembly; see [the plan](../../../../docs/plans/ir-to-lean.md).
+Status: in progress. Only the generic form is read, not dialects' custom assembly; see [the plan](../../../../docs/plans/0041-dependent-types-and-mathlib.md#proofs-about-the-compilers-output-ir-lean).
 
 ## Tests and oracle
 

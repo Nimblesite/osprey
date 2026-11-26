@@ -43,7 +43,7 @@ Runtime contracts: [MEM-HEAP-CEILING], [MEM-GC-SAFEPOINT], [RUN-PARENT-DEATH], [
 ## Proof of emitted code
 
 - [ ] V8, general lowering proof ([MEM-OWNERSHIP-STATIC-BEYOND-RUST]): extend the Lean ledger model and compiled-code certificates to every supported lowering. Prove one owner per allocation and a live lender for every borrow on every control-flow edge, including borrow liveness, allocator correctness, child ownership and collection semantics.
-  - [ ] Complete the [IR to Lean](../specs/tooling/IrToLean.md) route in [its plan](ir-to-lean.md): prove every emitted function answers, differentially check the model against the real binary, wire the check into CI and make Osprey-kernel replay practical. `run_follows_ledger` remains the baseline, not the completion claim.
+  - [ ] Complete the [IR to Lean](../specs/tooling/IrToLean.md) route in [its plan](0041-dependent-types-and-mathlib.md#proofs-about-the-compilers-output-ir-lean): prove every emitted function answers, differentially check the model against the real binary, wire the check into CI and make Osprey-kernel replay practical. `run_follows_ledger` remains the baseline, not the completion claim.
   - [ ] Independently replay both full heap equalities for `foeName` and `relabel`; relate emitted control-flow edges and lifetimes to ledger transitions instead of assuming transitive lenders and last-read borrow ends.
 - [ ] Audit the [compiler proof inventory](../specs/compiler/0018-MemoryManagement.md#proofs-of-compiled-ownership-code-mem-ownership-static-verification-compiler) against current source, including each mutation control and all three proof-kernel backends. Close the remaining MLIR managed-list WASI replay and run the full ownership proof matrix.
 

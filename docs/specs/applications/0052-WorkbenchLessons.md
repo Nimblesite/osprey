@@ -1,7 +1,7 @@
 # Workbench Lessons
 
 
-**Status:** rewritten for `.lean`; delivery under [plan 0041](../../plans/0041-dependent-types-and-mathlib.md) phase 3, then [plan 0042](../../plans/0042-proof-workbench.md). Lessons are a mode of the [proof workbench](0051-ProofWorkbench.md): the same application, the same store, the same checking services. They add one extension format, two framework components (`Image` and `Video`) and three regions.
+**Status:** rewritten for `.lean`; delivery under [plan 0041](../../plans/0041-dependent-types-and-mathlib.md#proof-workbench-and-lessons-workbench-aim). Lessons are a mode of the [proof workbench](0051-ProofWorkbench.md): the same application, the same store, the same checking services. They add one extension format, two framework components (`Image` and `Video`) and three regions.
 
 ## Aim [LESSONS-AIM]
 

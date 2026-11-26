@@ -1,12 +1,12 @@
 # Math to code [MATH-CODE]
 
-**Status:** fragment 1 (`Float` and `Bool` definitions) is implemented in `src/toolchain/crates/osprey-math`. Every other fragment below is a delivery target of [plan math-to-code](../../plans/math-to-code.md), and a claim about it is not evidence.
+**Status:** fragment 1 (`Float` and `Bool` definitions) is implemented in `src/toolchain/crates/osprey-math`. Every other fragment below is a delivery target of [plan 0041](../../plans/0041-dependent-types-and-mathlib.md#mathematics-in-osprey-out-math-code), and a claim about it is not evidence.
 
 ## Aim [MATH-CODE-AIM]
 
 Implement production formulas in versioned native Osprey modules. The proof tooling now makes it straightforward to prove properties of supported Osprey code with Lean. It reads the production function and presents that definition to the theorem. Keeping the algorithm in Osprey gives developers one implementation to maintain and makes changes to that implementation visible to the proof. For a theorem about a production function, the proof build must derive its executable definition from that function’s parsed Osprey body, including the callees on which the claim depends. State the domain, primitive semantics and arithmetic assumptions. Check the certificate with the Osprey kernel and exercise the proof with a source edit that violates its conclusion. The [synthesis specification](../synth/Synth.md) identifies the verified functions and the outstanding obligations.
 
-Record a less readable Osprey expression in the [ML notation specification](../language/0024-MLFlavorSyntax.md#mathematical-notation-flavor-ml-math-notation) and [implementation plan](../../plans/math-to-code.md#native-osprey-formulas-math-code-native-notation) with the two source forms, the semantic difference if any, and a check for the proposed improvement.
+Record a less readable Osprey expression in the [ML notation specification](../language/0024-MLFlavorSyntax.md#mathematical-notation-flavor-ml-math-notation) and [implementation plan](../../plans/0041-dependent-types-and-mathlib.md#native-osprey-formulas-math-code-native-notation) with the two source forms, the semantic difference if any, and a check for the proposed improvement.
 
 ## Lean proof sources and import tooling [MATH-CODE-LEAN]
 

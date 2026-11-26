@@ -131,7 +131,7 @@ The following four host-free journeys failed independently. Keep each open until
 
 ## Native Osprey formulas and Lean proofs [DAW-MATH]
 
-Keep the production formulas in native Osprey and derive the definitions checked by Lean from those files. Track notation that obscures the original mathematical expression in the [native formula checklist](../math-to-code.md#native-osprey-formulas-math-code-native-notation).
+Keep the production formulas in native Osprey and derive the definitions checked by Lean from those files. Track notation that obscures the original mathematical expression in the [native formula checklist](../0041-dependent-types-and-mathlib.md#native-osprey-formulas-math-code-native-notation).
 
 - [ ] Migrate the dial, canvas and timeline geometry from Lean. Verify the native source through its callers and connect each newly proved property to its production function.
 
