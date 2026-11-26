@@ -196,7 +196,7 @@ C_LIBS_net_runtime_tests = -pthread $(OSSL_LIBS)
 # Owns file_server_runtime.c: a plain TCP client against the one-file and folder
 # server on port 0. Windows CI runs it too (_test_file_server), where the server's
 # Winsock start-up lives in http_shared.c.
-FILE_SERVER_WINSOCK = $(if $(MSYSTEM),runtime/http_shared.c runtime/random_runtime.c)
+FILE_SERVER_WINSOCK = $(if $(MSYSTEM),runtime/http_shared.c runtime/http_fields.c runtime/random_runtime.c)
 C_FLAGS_file_server_tests = $(if $(MSYSTEM),$(OSSL_CFLAGS))
 C_SRC_file_server_tests = runtime/file_server_tests.c runtime/file_server_link_tests.c runtime/file_server_test_files.c runtime/file_server_runtime.c $(FILE_SERVER_WINSOCK)
 C_LIBS_file_server_tests = -pthread $(if $(MSYSTEM),$(OSSL_LIBS) -lbcrypt -lws2_32)
