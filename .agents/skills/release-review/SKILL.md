@@ -35,7 +35,7 @@ Hunt them with `git diff <tag>...HEAD --diff-filter=D --stat` and a grep of remo
 
 ## Legwork
 
-- Up to two `pi` sessions (`zai/glm-5.3`, per [AGENTS.md](../../../AGENTS.md)), each one bounded slice: a file set, the diff range, concrete questions; register each on TMC
+- Up to two `pi` sessions (`zai/glm-5.4` or `kimi-coding/k3.1-pro`, per [AGENTS.md](../../../AGENTS.md)), each one bounded slice: a file set, the diff range, concrete questions; register each on TMC
 - Kill a stalled pi; never wait on it. Its output is leads: confirm every claim in code yourself
 - ❌ subagents, ❌ linked worktrees
 
