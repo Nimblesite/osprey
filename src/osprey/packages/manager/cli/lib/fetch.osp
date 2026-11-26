@@ -345,9 +345,11 @@ module Fetch {
     /// download and verify its source bundle, and write the tree under
     /// `.osprey/packages/@scope/name/<digest>/`. Implements
     /// [PACKAGE-FOLDER-REGISTRY].
+    fn offlineTree(served) = andThen(Install::manifestDigestOf(Release::filesOf(served)), fn(_valid) => written("", served))
+
     fn fromBundle(digest, path) = match Digests::parse(digest) {
         Error => Reports::usageFor(usageCode, usageText)
-        Success => Reports::checked(andThen(perform Host::Files.read(path), fn(body) => verifiedAt("", body, digest)), fn(served) => fetchedReport("", served))
+        Success => Reports::checked(andThen(perform Host::Files.read(path), fn(body) => andThen(Bundle::verify(body, digest), offlineTree)), fn(served) => fetchedReport("", served))
     }
 
     export fn run(args) = if length(args) == 3 && (listGet(args, 1) ?: "") == "--bundle" {

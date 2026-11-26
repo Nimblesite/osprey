@@ -329,6 +329,26 @@ module FetchTests {
         ])
     }
 
+    fn offline(release, body) = dispatched([route(localBase, "/fixture", 200, body)], [digestOf(release), "--bundle", "release.json"])
+
+    fn offlineRelease(root) = Fixture::served("@finch/ledger/2.1", [
+        Release::File { relPath: "osprey.toml", content: "[project]\nname = \"ledger\"\nsource_roots = [\"${root}\"]\n" },
+        Release::File { relPath: "src/main.osp", content: "fn two() = 3\n" }
+    ])
+
+    fn offlineBundle() = {
+        let release = offlineRelease("src")
+        let outside = offlineRelease("../outside")
+        let good = offline(release, Bundle::encode(release) ?: "")
+        let bad = offline(release, tamperedBundle(release))
+        let unsafeRoot = offline(outside, Bundle::encode(outside) ?: "")
+        checkAll("offline bundle verifies source and manifest before writing", [
+            good.report.status == 0 && contains(good.writes, "src/main.osp="),
+            failedOne(bad, "bundle.digest-mismatch") && bad.ensures == "" && bad.writes == "",
+            unsafeRoot.report.status == 1 && unsafeRoot.writes == "" && unsafeRoot.ensures == ""
+        ])
+    }
+
     /// Every `fetch` case over fixture hosts: target selection, usage, registry
     /// and bundle failures, write failures, `--registry`, dispatch routing,
     /// legal files kept, and success tied to the installed bytes.
@@ -339,13 +359,7 @@ module FetchTests {
         test("fetch: registry failures", registryFailures)
         test("fetch: no release in the requested epoch", noRelease)
         test("fetch: unparseable package listing", packageShape)
-        test("fetch: offline bundle shares verified install", fn() => {
-            let release = Fixture::at(releases(), 2)
-            let args = [digestOf(release), "--bundle", "release.json"]
-            let good = dispatched([route(localBase, "/fixture", 200, Bundle::encode(release) ?: "")], args)
-            let bad = dispatched([route(localBase, "/fixture", 200, tamperedBundle(release))], args)
-            checkAll("offline bundle verifies source before writing", [good.report.status == 0, contains(good.writes, "src/main.osp="), failedOne(bad, "bundle.digest-mismatch"), bad.ensures == "", bad.writes == ""])
-        })
+        test("fetch: offline bundle shares verified install", offlineBundle)
         test("fetch: tampered bundle writes nothing", tampered)
         test("fetch: wrong or malformed source bundle", wrongBundle)
         test("fetch: write failures", writeFailures)
