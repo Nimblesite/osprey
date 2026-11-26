@@ -65,14 +65,10 @@ typedef struct {
 
 // Clean up process resources
 void cleanup_process(int64_t process_id) {
-  if (process_id < 1 || process_id >= MAX_PROCESSES) {
-    return;
-  }
-
   pthread_mutex_lock(&process_mutex);
-  ProcessResult *proc = processes[process_id];
+  ProcessResult *proc = process_at(process_id);
   if (proc) {
-    processes[process_id] = NULL;
+    processes[process_slot(process_id)] = NULL;
     forget_process_callback(process_id);
 
     if (proc->command)
@@ -178,10 +174,10 @@ static int64_t spawn_process(const char *command, ProcessCallback callback) {
   }
 
   pthread_mutex_lock(&process_mutex);
-  int64_t process_id = next_process_id++;
-  if (process_id >= MAX_PROCESSES) {
+  int64_t process_id = claim_process_id();
+  if (process_id < 0) {
     pthread_mutex_unlock(&process_mutex);
-    return -2;
+    return process_id;
   }
 
   ProcessResult *proc = malloc(sizeof(ProcessResult));
@@ -250,7 +246,7 @@ static int64_t spawn_process(const char *command, ProcessCallback callback) {
   proc->process = pi.hProcess;
   proc->stdout_rd = out_rd;
   proc->stderr_rd = err_rd;
-  processes[process_id] = proc;
+  processes[process_slot(process_id)] = proc;
 
   // Monitor thread fires user callbacks concurrently with the caller.
   osp_mem_notify_multithreaded();
@@ -267,7 +263,7 @@ static int64_t spawn_process(const char *command, ProcessCallback callback) {
     WaitForSingleObject(proc->process, INFINITE);
     CloseHandle(proc->process);
     close_handle_pair(out_rd, err_rd);
-    processes[process_id] = NULL;
+    processes[process_slot(process_id)] = NULL;
     return abandon_process(proc, -5);
   }
 
@@ -276,14 +272,10 @@ static int64_t spawn_process(const char *command, ProcessCallback callback) {
 }
 
 void cleanup_process(int64_t process_id) {
-  if (process_id < 1 || process_id >= MAX_PROCESSES) {
-    return;
-  }
-
   pthread_mutex_lock(&process_mutex);
-  ProcessResult *proc = processes[process_id];
+  ProcessResult *proc = process_at(process_id);
   if (proc) {
-    processes[process_id] = NULL;
+    processes[process_slot(process_id)] = NULL;
     forget_process_callback(process_id);
     if (proc->process) {
       CloseHandle(proc->process);
@@ -311,11 +303,8 @@ int64_t spawn_process_with_closure(const char *command, void *closure) {
 
 // Both platform records share this lifecycle [BUILTIN-PROCESS-FAILURE].
 int64_t await_process(int64_t process_id) {
-  if (process_id < 1 || process_id >= MAX_PROCESSES) {
-    return -1;
-  }
   pthread_mutex_lock(&process_mutex);
-  ProcessResult *proc = processes[process_id];
+  ProcessResult *proc = process_at(process_id);
   pthread_mutex_unlock(&process_mutex);
   if (!proc) {
     return -1;

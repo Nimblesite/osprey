@@ -23,9 +23,8 @@ extern int64_t spawn_process_with_handler(const char *command,
 extern int64_t await_process(int64_t process_id);
 extern void cleanup_process(int64_t process_id);
 
-// system_runtime.c caps concurrently tracked processes at MAX_PROCESSES and
-// never recycles an id. The probe below must be free to burn every one of
-// them, so it bounds itself well past that cap rather than guessing it.
+// system_runtime.c caps concurrently tracked processes at MAX_PROCESSES. The
+// probes below bound themselves well past that cap rather than guessing it.
 #define MAX_PROCESSES_PROBE_LIMIT 4000
 
 // The lowest descriptor the process could allocate right now. `dup` hands back
@@ -81,34 +80,59 @@ static void with_descriptor_budget(int spare, void (*probe)(void)) {
   assert(setrlimit(RLIMIT_NOFILE, &saved) == 0);
 }
 
-// Every id burned here is burned for the rest of the process, so this runs
-// LAST. `next_process_id` only ever increments — cleanup_process frees the
-// slot but never returns the id — so a program that has spawned MAX_PROCESSES
-// times can never spawn again even with every slot free. The -2 below is that
-// ceiling, reached without a single fork because the descriptor cap fails each
-// attempt at the pipe, one id later.
-static void probe_spawn_exhausts_descriptors_then_ids(void) {
-  int saw_pipe_failure = 0;
-  int saw_id_exhaustion = 0;
+// A failed spawn spends a handle number but never a slot, so failing far more
+// often than the table has slots never exhausts it [BUILTIN-PROCESS-RECYCLE].
+// Before slots were recycled, `next_process_id` reaching MAX_PROCESSES ended
+// spawning for the rest of the process even with every slot free.
+static void probe_spawn_failures_never_exhaust_the_table(void) {
   for (int attempt = 0; attempt < MAX_PROCESSES_PROBE_LIMIT; attempt++) {
-    int64_t result = spawn_process_with_handler("true", capture_handler);
-    assert(result == -4 || result == -2); // never a live process id
-    if (result == -4) {
-      saw_pipe_failure = 1;
-    } else {
-      saw_id_exhaustion = 1;
-      break;
-    }
+    assert(spawn_process_with_handler("true", capture_handler) == -4 &&
+           "pipe() denied is -4 on every attempt, never a spent handle space");
   }
-  assert(saw_pipe_failure); // pipe() denied, reported as -4
-  assert(saw_id_exhaustion); // ids ran out, reported as -2
-  // Failure ordering, now that two preconditions are broken at once: the
-  // argument check runs first, so a caller who passed nothing is told that
-  // rather than being blamed for the exhausted handle space.
+  // Failure ordering: the argument check runs before the descriptor work.
   assert(spawn_process_with_handler(NULL, capture_handler) == -1 &&
          "a missing command is rejected before the capacity check");
   assert(spawn_process_with_handler("true", NULL) == -1 &&
          "and so is a missing callback");
+}
+
+// Spawn without releasing until the table is full, bounded by the probe limit.
+static int fill_process_table(int64_t *held) {
+  int count = 0;
+  while (count < MAX_PROCESSES_PROBE_LIMIT) {
+    int64_t id = spawn_process_with_handler("true", capture_handler);
+    if (id == -2)
+      return count;
+    assert(id > 0 && "a free slot always spawns");
+    assert(await_process(id) == 0);
+    held[count++] = id;
+  }
+  assert(0 && "the table never filled: MAX_PROCESSES is not enforced");
+  return count;
+}
+
+// -2 means every slot holds a record that was never released; releasing one
+// frees exactly one slot for a later, larger handle, and the released handle
+// stays dead [BUILTIN-PROCESS-RECYCLE] [BUILTIN-PROCESS-FAILURE].
+static void test_full_table_reports_capacity_then_recovers(void) {
+  static int64_t held[MAX_PROCESSES_PROBE_LIMIT];
+  int count = fill_process_table(held);
+  assert(count > 1 && "a whole table of live records fits");
+  assert(spawn_process_with_handler("true", capture_handler) == -2 &&
+         "a full table stays full");
+  int64_t released = held[0];
+  cleanup_process(released);
+  int64_t reused = spawn_process_with_handler("true", capture_handler);
+  assert(reused > held[count - 1] && "handle numbers only increase");
+  assert(await_process(reused) == 0 && await_process(released) == -1);
+  assert(spawn_process_with_handler("true", capture_handler) == -2 &&
+         "one release frees exactly one slot");
+  cleanup_process(reused);
+  for (int index = 1; index < count; index++)
+    cleanup_process(held[index]);
+  int64_t after = spawn_process_with_handler("true", capture_handler);
+  assert(after > reused && await_process(after) == 0);
+  cleanup_process(after);
 }
 
 // Two descriptors is exactly enough for stdout's pipe and one short for
@@ -302,5 +326,6 @@ void run_spawn_failure_tests(void) {
 }
 
 void run_descriptor_exhaustion_tests(void) {
-  with_descriptor_budget(0, probe_spawn_exhausts_descriptors_then_ids);
+  with_descriptor_budget(0, probe_spawn_failures_never_exhaust_the_table);
+  test_full_table_reports_capacity_then_recovers();
 }

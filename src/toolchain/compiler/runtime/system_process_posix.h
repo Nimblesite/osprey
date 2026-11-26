@@ -142,7 +142,7 @@ static int64_t abandon_unmonitored_process(ProcessResult *proc) {
   kill(proc->pid, SIGKILL);
   while (waitpid(proc->pid, NULL, 0) < 0 && errno == EINTR) {
   }
-  processes[proc->process_id] = NULL;
+  processes[process_slot(proc->process_id)] = NULL;
   return abandon_process(proc, -5);
 }
 
@@ -155,7 +155,7 @@ static int64_t launch_process(ProcessResult *proc) {
     close_pipe_pair(proc->stderr_pipe);
     return abandon_process(proc, -6);
   }
-  processes[proc->process_id] = proc;
+  processes[process_slot(proc->process_id)] = proc;
   // Callbacks allocate concurrently with the caller: lock the shared heap first.
   osp_mem_notify_multithreaded();
   if (osp_thread_start(&proc->monitor_thread, process_monitor_thread, proc, false) != 0)
@@ -181,10 +181,10 @@ static int64_t spawn_process(const char *command, ProcessCallback callback) {
   if (!command || !process_callback_present(callback))
     return -1;
   pthread_mutex_lock(&process_mutex);
-  int64_t id = next_process_id++;
-  if (id >= MAX_PROCESSES) {
+  int64_t id = claim_process_id();
+  if (id < 0) {
     pthread_mutex_unlock(&process_mutex);
-    return -2;
+    return id;
   }
   return spawn_allocated_process(id, command, callback);
 }

@@ -301,7 +301,7 @@ int main(int argc, char **argv) {
   test_process_argument_rejection();
   test_signalled_child_reports_minus_one();
   test_exit_drains_buffered_output();
-  // LAST: exhausts the process-id space for the rest of this process.
+  // LAST: fills the process table, then releases it.
   run_descriptor_exhaustion_tests();
 
   printf("=== ALL SYSTEM RUNTIME TESTS PASSED ===\n");

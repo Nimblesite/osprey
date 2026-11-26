@@ -996,6 +996,10 @@ failed spawn does consume a handle number — handle numbers only ever increase 
 but never a table slot. `awaitProcess` on a handle whose slot was released
 returns `-1`.
 
+### Slot reuse — [BUILTIN-PROCESS-RECYCLE]
+
+The runtime holds at most 1000 unreleased processes at once, not 1000 over the program's life. Handle numbers keep increasing, and a handle lives in slot `handle mod 1000`, so `cleanupProcess` frees a slot that a later, larger handle reuses. A released handle stays dead: `awaitProcess` on it returns `-1` even after its slot holds another process. `-2` means every slot holds a process that was never released. A long-running program, such as a server that runs `git` for each request, can spawn for as long as it releases what it spawns. Before this, the 1000th spawn of the program's life failed with `-2` even when every slot was free.
+
 ## JSON Document Functions — [BUILTIN-JSON]
 
 ```osprey

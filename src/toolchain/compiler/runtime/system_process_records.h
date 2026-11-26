@@ -9,6 +9,32 @@ static ProcessResult *processes[MAX_PROCESSES];
 static int64_t next_process_id = 1;
 static pthread_mutex_t process_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+// Handle numbers only ever increase, and handle `h` lives in slot
+// `h % MAX_PROCESSES`, so a released slot is reused by a later handle while the
+// released handle itself stays dead [BUILTIN-PROCESS-RECYCLE].
+static size_t process_slot(int64_t process_id) {
+  return (size_t)(process_id % MAX_PROCESSES);
+}
+
+// The live record of `process_id`, or NULL for a handle never issued or
+// already released. Caller holds process_mutex.
+static ProcessResult *process_at(int64_t process_id) {
+  ProcessResult *proc = process_id < 1 ? NULL : processes[process_slot(process_id)];
+  return proc && proc->process_id == process_id ? proc : NULL;
+}
+
+// The next handle whose slot is free, or -2 when every slot holds a record.
+// A failed spawn still spends its number, never its slot. Caller holds
+// process_mutex.
+static int64_t claim_process_id(void) {
+  for (int64_t tried = 0; tried < MAX_PROCESSES; tried++) {
+    int64_t id = next_process_id++;
+    if (!processes[process_slot(id)])
+      return id;
+  }
+  return -2;
+}
+
 // An Osprey function value passed as the callback [BUILTIN-PROCESS-CLOSURE].
 // Its cell starts with the code pointer, which takes the cell itself first, as
 // http_listen_closure's handlers do. Calling the cell as a plain C function
@@ -35,13 +61,13 @@ static void adopt_process_callback(ProcessResult *proc, ProcessCallback callback
   if (callback.closure) {
     osp_retain(callback.closure);
   }
-  process_closures[proc->process_id] = callback.closure;
+  process_closures[process_slot(proc->process_id)] = callback.closure;
 }
 
 // Caller holds process_mutex and the monitor thread has finished or never ran.
 static void forget_process_callback(int64_t process_id) {
-  void *closure = process_closures[process_id];
-  process_closures[process_id] = NULL;
+  void *closure = process_closures[process_slot(process_id)];
+  process_closures[process_slot(process_id)] = NULL;
   if (closure) {
     osp_release(closure);
   }
@@ -49,7 +75,7 @@ static void forget_process_callback(int64_t process_id) {
 
 // Every event, on either platform, reaches Osprey through this one call.
 static void process_event(const ProcessResult *proc, int64_t event, char *data) {
-  void *closure = process_closures[proc->process_id];
+  void *closure = process_closures[process_slot(proc->process_id)];
   if (closure) {
     ProcessClosureHandler code;
     memcpy(&code, closure, sizeof(code));
