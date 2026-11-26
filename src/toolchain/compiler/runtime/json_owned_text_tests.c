@@ -11,7 +11,6 @@
 #include "memory_hooks.h"
 #include "string_runtime.h"
 
-void osp_collect(void);
 
 static void *g_finalizer_text;
 static size_t g_text_finalized;

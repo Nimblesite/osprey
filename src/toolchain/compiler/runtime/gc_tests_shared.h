@@ -16,7 +16,6 @@
 
 // --- backend ABI under test (memory_gc.c) beyond memory_hooks.h -------------
 void *osp_alloc(int64_t size);
-void osp_collect(void);
 void *osp_gc_malloc(size_t size);
 void *osp_gc_calloc(size_t n, size_t size);
 void *osp_gc_realloc(void *old, size_t size);

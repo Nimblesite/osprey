@@ -35,7 +35,6 @@ enum { MANY = 5000, THREADS = 8, PER_THREAD = 600, THREAD_CAP_PROBE = 12000, HAN
 // behind on average: a few conservative stack words can keep a handle alive.
 enum { RECLAIM_ROUNDS = 10, RECLAIMED_BYTES_MAX = 8, CHANNEL_SLOTS = 64 };
 
-void osp_collect(void); // the tracing collector this suite links
 
 static int64_t doubled(void *word) { return (intptr_t)word * 2; }
 

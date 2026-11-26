@@ -23,7 +23,6 @@
 #endif
 
 void *osp_alloc(int64_t size);
-void osp_collect(void);
 size_t osp_arc_live_objects(void);
 
 static long g_checks = 0;

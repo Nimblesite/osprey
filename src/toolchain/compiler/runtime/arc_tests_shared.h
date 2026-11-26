@@ -21,7 +21,6 @@ extern void *g_finalized;
 
 // memory_arc.c's own entry points (it is compiled into memory_arc_tests.c).
 void *osp_alloc(int64_t size);
-void osp_collect(void);
 size_t osp_arc_live_objects(void);
 size_t osp_arc_live_bytes(void);
 size_t osp_arc_peak_bytes(void);
