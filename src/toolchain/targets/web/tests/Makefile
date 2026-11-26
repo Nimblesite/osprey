@@ -12,11 +12,9 @@ include Makefile
 ## bank: Browser end-to-end tests for the Talon Bank modules showcase
 ##       (src/osprey/examples/talon): real Chromium via Playwright drives
 ##       the compiled osprey binary serving its HTTP API and web UI.
-##       The server's hold marker must not outlive the run: a leaked one
-##       makes every later bank test refuse to start. Then the journey every host plays
+##       Each run picks free ports and its own hold marker and database. Then the journey every host plays
 ##       (app/self-test.json) runs at desktop and phone width against its goldens.
 bank: _bank-web $(BANK_E2E_NODE_DEPS)
 	@echo "==> Bank e2e (Playwright)..."
 	cd src/osprey/examples/talon/playwright-e2e-tests && npx playwright install chromium && npx playwright test && npx playwright test -c journey.config.js
-	@test ! -e /tmp/talon_bank.hold || { echo "FAIL: bank e2e left /tmp/talon_bank.hold behind; its webServer was stopped without running its trap"; exit 1; }
 endif

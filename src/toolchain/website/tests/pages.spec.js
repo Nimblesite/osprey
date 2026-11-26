@@ -85,9 +85,13 @@ for (const pg of PAGES) {
   test.describe(`page: ${pg.name}`, () => {
     test(`loads cleanly with no errors (${pg.path})`, async ({ page }) => {
       const problems = collectProblems(page, pg.name);
-      const resp = await page.goto(pg.path, { waitUntil: "networkidle" });
+      const resp = await page.goto(pg.path, { waitUntil: "domcontentloaded" });
       expect(resp.status(), "HTTP status").toBeLessThan(400);
-      await page.waitForTimeout(300);
+      await page.waitForLoadState("load");
+      await page.evaluate(() => document.fonts.ready);
+      await expect(page.locator("main")).toBeVisible();
+      await expect.poll(() => problems.pendingRequests.size, "site requests must settle").toBe(0);
+      await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 
       expect(problems.pageErrors, "uncaught page errors").toEqual([]);
       expect(problems.consoleErrors, "console errors").toEqual([]);
@@ -133,12 +137,12 @@ for (const pg of PAGES) {
       for (const vp of VIEWPORTS) {
         test(`no horizontal overflow @ ${vp.name} (${pg.path})`, async ({ page }) => {
           await page.setViewportSize({ width: vp.width, height: vp.height });
-          await page.goto(pg.path, { waitUntil: "networkidle" });
-          await page.waitForTimeout(200);
-          const overflow = await page.evaluate(
+          await page.goto(pg.path, { waitUntil: "domcontentloaded" });
+          await page.waitForLoadState("load");
+          await page.evaluate(() => document.fonts.ready);
+          await expect.poll(() => page.evaluate(
             () => document.documentElement.scrollWidth - window.innerWidth
-          );
-          expect(overflow, `document overflows by ${overflow}px`).toBeLessThanOrEqual(2);
+          ), "document must fit after fonts and layout settle").toBeLessThanOrEqual(2);
         });
       }
     }
@@ -368,7 +372,11 @@ test("long authored guides retain a useful image or inline video per 500 prose w
   const { execFileSync } = require("node:child_process");
   const markdown = require("markdown-it")();
   const repo = path.resolve(__dirname, "../../../..");
-  const files = execFileSync("git", ["ls-files", "src/toolchain/website/src/docs"], { cwd: repo, encoding: "utf8" }).trim().split("\n").filter(file => file.endsWith(".md"));
+  const ignored = new Set(fs.readFileSync(path.join(repo, "src/toolchain/website/.eleventyignore"), "utf8").split("\n")
+    .map(line => line.trim()).filter(line => line && !line.startsWith("#"))
+    .map(line => `src/toolchain/website/${line}`));
+  const files = execFileSync("git", ["ls-files", "src/toolchain/website/src/docs"], { cwd: repo, encoding: "utf8" }).trim().split("\n")
+    .filter(file => file.endsWith(".md") && !ignored.has(file));
   for (const file of files) {
     const source = fs.readFileSync(path.join(repo, file), "utf8");
     const prose = source.replace(/^---\n[\s\S]*?\n---\n/, "").replace(/{[%{][\s\S]*?[%}]}/g, "");

@@ -32,11 +32,14 @@ drive client =
     print "--- GET /api/activity ---\n${fetch client "/api/activity"}"
     print "--- GET / (API only) ---\n${fetch client "/"}"
 
-// Playwright hold: while /tmp/talon_bank.hold exists the server keeps serving
-// and the demo pauses right here — remove the file (or never create it) and
-// the run finishes deterministically with identical stdout either way.
+// Playwright hold: while the configured marker exists the server keeps serving.
+// The defaults preserve the standalone demo; each browser run gets isolated paths.
+holdPath () = env "TALON_HOLD" ?: "/tmp/talon_bank.hold"
+apiPort () = parseInt (env "TALON_API_PORT" ?: "18790")
+databasePath () = env "TALON_DB" ?: "/tmp/talon_bank.db"
+
 hold () =
-    marker = readFile "/tmp/talon_bank.hold"
+    marker = readFile (holdPath ())
     match marker
         Error message => 0
         Success value =>
@@ -57,12 +60,9 @@ table id count = match id > count
 // `Api::Audit` is in the row because `handleRequest` is registered here: every
 // request the in-process client drives is audited while `serve` is still on
 // the stack, so the audit capability is part of serving, not of booting.
-serve : Ptr -> int ! [Ledger::Store, Metrics::MetricsFx, Api::Audit]
-serve db =
-    server = httpCreateServer 18790 "127.0.0.1" ?: -1
-    listening = httpListen server handleRequest ?: -1
-    client = httpCreateClient "http://127.0.0.1:18790" 5000 ?: -1
-    print "[boot] api + web listening on http://127.0.0.1:18790"
+serveListening db port server =
+    client = httpCreateClient "http://127.0.0.1:${port}" 5000 ?: -1
+    print "[boot] api + web listening on http://127.0.0.1:${port}"
     drive client
     print "┌────┬──────────────┬───────────┐"
     table 1 (perform Ledger::Store.count ())
@@ -71,16 +71,33 @@ serve db =
     closed = Sqlite::shutdown db
     perform Metrics::MetricsFx.total ()
 
+listenFailed db server message =
+    stopped = httpStopServer server ?: -1
+    closed = Sqlite::shutdown db
+    report = print "Talon server could not listen: ${message}"
+    1
+
+serve : Ptr -> int -> int ! [Ledger::Store, Metrics::MetricsFx, Api::Audit]
+serve db port = match httpCreateServer port "127.0.0.1"
+    Error message =>
+        closed = Sqlite::shutdown db
+        report = print "Talon server could not bind: ${message}"
+        1
+    Success server => match httpListen server handleRequest
+        Error message => listenFailed db server message
+        Success listening => serveListening db port server
+
 // SQLite and audit handlers compose around the same serving callback.
-boot : Unit -> int ! Metrics::MetricsFx
-boot () =
-    db = Sqlite::openAt "/tmp/talon_bank.db"
+boot : int -> int ! Metrics::MetricsFx
+boot port =
+    database = databasePath ()
+    db = Sqlite::openAt database
     made = Ledger::schema db
-    print "[boot] fresh ledger at /tmp/talon_bank.db"
+    print "[boot] fresh ledger at ${database}"
     storage = Ledger::sqlite db
     consoleAudit = handler Api::Audit
         log line => print "[audit] ${line}"
-    consoleAudit (\() => storage (\() => serve db))
+    consoleAudit (\() => storage (\() => serve db port))
 
 // The router: every request is counted by the state module, then answered by the JSON API.
 handleRequest (method, path, headers, body) =
@@ -89,6 +106,11 @@ handleRequest (method, path, headers, body) =
 
 main () =
     print "=== Talon Bank — one Osprey app, every module feature ==="
-    served = Metrics::track boot
-    print "[metrics] ${served} requests served — goodbye"
-    0
+    match apiPort ()
+        Error message =>
+            reported = print "Invalid TALON_API_PORT: ${message}"
+            1
+        Success port =>
+            served = Metrics::track (\() => boot port)
+            print "[metrics] ${served} requests served — goodbye"
+            0

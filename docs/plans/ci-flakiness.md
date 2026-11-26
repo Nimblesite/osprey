@@ -26,6 +26,16 @@ Root-cause fixes only: no retries, no wider timeouts used to hide a race, no ski
   - the WinUI 300 s kill against 90 s per step
   - the `build.py` deadlines
   - Playwright `waitForTimeout`, with `retries: 1` masking flakes
+- [x] Runtime finding 4: `effects_runtime_tests.c` already waits on `g_queued_entered_cv` instead of sleeping. Coverage and ASan runs passed 3 of 3 each.
+- [x] UI findings 8, 11, 12, 14 and 24 (website Playwright):
+  - `waitForTimeout` and `networkidle` are replaced by load, fonts, settled first-party requests and polled layout.
+  - `serve.cjs` binds a free port.
+  - `retries: 0`.
+  - `make -C src/toolchain/website playwright` passed 400 of 400, three runs in a row.
+- [x] UI finding 9 (bank e2e):
+  - `TALON_API_PORT`, `TALON_HOLD` and `TALON_DB` give each run free ports, its own hold marker and its own database.
+  - Only the process that created the run directory removes it.
+  - `make -C src/toolchain/targets/web/tests bank` passed 15 of 15, and the journey passed 2 of 2.
 
 ## Open issues blocking PR #428 (2026-11-23 hand-off)
 

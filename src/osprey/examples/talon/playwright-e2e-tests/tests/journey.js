@@ -49,7 +49,6 @@ const VERBS = {
   choose: async (page, words) => (words.length === 2
     ? chooseIn(page, words[0], words[1])
     : page.getByRole('tab', { name: words[0], exact: true }).click()),
-  sleep: async (page, [seconds]) => page.waitForTimeout(Number(seconds) * 1000),
   shot: async (page, [name]) => expect(page).toHaveScreenshot(`${name}.png`, { fullPage: true, animations: 'disabled' }),
 };
 

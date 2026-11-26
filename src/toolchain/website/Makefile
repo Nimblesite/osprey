@@ -8,8 +8,12 @@ else
 override ROOT := .
 include Makefile
 
+## playwright: Build the website assets and run the complete Playwright end-to-end suite.
+.PHONY: playwright video-metadata
+playwright:
+	cd src/toolchain/website && npm test
+
 ## video-metadata: Measure delivered MP4 durations for VideoObject and video sitemap metadata (requires ffprobe).
-.PHONY: video-metadata
 video-metadata:
 	cd src/toolchain/website && node scripts/measure-video-metadata.mjs
 

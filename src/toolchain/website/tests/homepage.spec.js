@@ -6,7 +6,7 @@ const path = require("node:path");
 const { readFile } = require("node:fs/promises");
 const { execFileSync } = require("node:child_process");
 const { test, expect } = require("@playwright/test");
-const { VIEWPORTS, executeExample, exampleResult, openInstallation } = require("./helpers");
+const { VIEWPORTS, collectProblems, executeExample, exampleResult, openInstallation } = require("./helpers");
 
 const hero = require("../src/_data/heroExample.json");
 const productionDisk = { default: ["    handle Files { write path text => writeFile(path, text) }\n", ""], ml: ["    handle Files\n        write path text => writeFile path text\n", ""],
@@ -155,12 +155,17 @@ test.describe("homepage flight and source examples", () => {
   test("reduced motion loads the poster without fetching the film", async ({ page }) => {
     await page.emulateMedia({ reducedMotion: "reduce" });
     const requests = [];
+    const { pendingRequests } = collectProblems(page, "home");
     page.on("request", (request) => { if (/osprey-flight\.(webm|mp4)$/.test(request.url())) requests.push(request.url()); });
-    await page.goto("/", { waitUntil: "networkidle" });
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    const video = page.locator("#flight-video");
+    await page.waitForLoadState("load");
     await expect(page.locator("#motion-toggle")).toHaveCount(0);
+    await expect(video).toHaveJSProperty("paused", true);
+    await expect(video).toHaveAttribute("poster", /osprey-flight\.png$/);
+    await expect.poll(() => pendingRequests.size, "site requests must settle").toBe(0);
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     expect(requests).toEqual([]);
-    expect(await page.locator("#flight-video").evaluate((el) => el.paused)).toBe(true);
-    await expect(page.locator("#flight-video")).toHaveAttribute("poster", /osprey-flight\.png$/);
   });
 
   test("the page works without JavaScript", async ({ browser }) => {
