@@ -21,9 +21,13 @@ __all__ = [
 ]
 
 I_BIT = 2
+"""The IGNORECASE bit (2): literals and classes fold case."""
 M_BIT = 8
+"""The MULTILINE bit (8): `^` and `$` also match at line boundaries."""
 S_BIT = 16
+"""The DOTALL bit (16): `.` also matches a newline."""
 X_BIT = 64
+"""The VERBOSE bit (64): pattern whitespace and `#` comments are skipped."""
 
 
 class Ins:

@@ -29,11 +29,11 @@ __all__ = [
     "bpe_encode", "merge_all", "earliest_special",
 ]
 
-# The pair separator: code point 257, above every key character (1..256).
 SEP = "Ā"
+"""The separator in a pair's training-count key `first + SEP + second`: code point 257, which no key character (1..256) contains."""
 
-# A rank no pair has: smaller than every real rank's comparison sentinel.
 NO_RANK = 2147483647
+"""The rank of a pair the vocabulary lacks: larger than every real rank, so it loses the lowest-rank-wins search."""
 
 
 def key_char(b):

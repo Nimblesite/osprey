@@ -34,8 +34,6 @@ pub struct ProjectConfig {
     pub flavor: Option<Flavor>,
     /// Whether `::*` imports are permitted outside scripts and tests.
     pub allow_wildcard_imports: bool,
-    /// Suppress application-only hierarchy and reverse-domain style advice.
-    pub published_library: bool,
     /// `[project].types`: the type discipline of every source without a
     /// `// osprey: types=` marker ([TYPES-DISCIPLINE-SELECT], spec 0050).
     pub types: Option<String>,
@@ -120,7 +118,6 @@ impl ProjectConfig {
             entry: None,
             flavor: None,
             allow_wildcard_imports: false,
-            published_library: false,
             types: None,
             dependencies: Vec::new(),
             discipline: None,
@@ -200,7 +197,6 @@ fn apply_key(
         ("modules", "allow_wildcard_imports") => {
             parse_bool(value).map(|v| config.allow_wildcard_imports = v)
         }
-        ("modules", "published_library") => parse_bool(value).map(|v| config.published_library = v),
         ("project", "types") => codec::parse_string(value).map(|v| config.types = Some(v)),
         ("dependencies", name) => {
             parse_dependency(name, value).map(|d| config.dependencies.push(d))
@@ -208,7 +204,7 @@ fn apply_key(
         ("discipline", key) => apply_discipline_key(key, value, config),
         ("lints", rule) => codec::parse_string(value)
             .and_then(|level| osprey_types::LintLevel::parse(&level))
-            .map(|level| config.lints.overrides.push((rule.to_owned(), level))),
+            .and_then(|level| config.lints.set(rule, level)),
         _ => return,
     };
     if let Err(message) = result {

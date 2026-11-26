@@ -14,7 +14,7 @@ module Manifest {
 
     let encodedSeparator = " at "
     let positionSeparator = ":"
-    let topLevelKeys = ["project", "modules", "package", "dependencies", "build-dependencies", "test-dependencies", "system", "assets", "discipline"]
+    let topLevelKeys = ["project", "modules", "package", "dependencies", "build-dependencies", "test-dependencies", "system", "assets", "discipline", "lints"]
 
     fn numberAfter(text, separator, fallback) = match indexOf(text, separator) {
         Success { value } => parseInt(drop(text, value + 1)) ?: fallback
@@ -113,9 +113,12 @@ module Manifest {
         Error { message } => rejected(message)
         Success => match ManifestSections::discipline(root) {
             Error { message } => rejected(message)
-            Success => match ManifestSections::project(root) {
+            Success => match ManifestSections::lints(root) {
                 Error { message } => rejected(message)
-                Success { value } => withPublication(value, root)
+                Success => match ManifestSections::project(root) {
+                    Error { message } => rejected(message)
+                    Success { value } => withPublication(value, root)
+                }
             }
         }
     }

@@ -11,7 +11,7 @@ use crate::warning_actions::Fix;
 pub(crate) const FIX_ALL: &str = "source.fixAll.osprey";
 
 /// The project warning whose import [`import_removal`] deletes.
-const UNUSED_IMPORT: &str = "unused-import";
+use osprey_types::UNUSED_IMPORT;
 
 pub(crate) fn actions(
     vfs: &Vfs,

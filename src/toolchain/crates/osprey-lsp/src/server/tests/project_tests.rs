@@ -87,11 +87,15 @@ async fn library_manifest_changes_invalidate_style_advice() -> Result<(), Box<dy
     assert_at(&initial, "/diagnostics/1/code", "state-boundary");
     let manifest = fixture.root.join("osprey.toml");
     let config = std::fs::read_to_string(&manifest)?;
+    // [LINT-LEVELS]: a package allows application-only style advice.
+    let package = format!("{config}\n[package]\nname = \"@o/store\"\n");
+    std::fs::write(&manifest, &package)?;
+    assert_changed_advice(&mut h, &uri, 2, source, Some("state-boundary")).await?;
     std::fs::write(
         &manifest,
-        format!("{config}\n[modules]\npublished_library = true\n"),
+        format!("{package}[lints]\nstate-boundary = \"allow\"\n"),
     )?;
-    assert_changed_advice(&mut h, &uri, 2, source, Some("state-boundary")).await?;
+    assert_changed_advice(&mut h, &uri, 3, source, None).await?;
     h.shutdown_and_exit().await;
     Ok(())
 }

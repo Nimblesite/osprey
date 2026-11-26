@@ -136,17 +136,34 @@ fn folder_advice_is_deterministic_and_does_not_impose_a_name_convention() -> Res
 }
 
 #[test]
-fn application_advice_obeys_the_published_library_policy_in_both_flavors() -> Result<(), String> {
+fn application_style_advice_is_silent_at_a_packages_lint_levels_in_both_flavors(
+) -> Result<(), String> {
+    use osprey_types::LintLevel::{Allow, Deny, Warn};
     // [MODULES-STYLE]: hierarchy depth counts modules, never label punctuation.
+    // [LINT-LEVELS]: a package nests and names its modules as a library does.
+    let parse = |text: &str| ProjectConfig::parse(text, std::path::Path::new("p/osprey.toml"));
     for (flavor, source) in [
         (Flavor::Default, "namespace \"com.example.app\";\nmodule A { module B { module C { module D {} } } }\n"),
         (Flavor::Ml, "namespace \"com.example.app\"\nmodule A\n    module B\n        module C\n            module D\n                value = 0\n"),
     ] {
         let source = parsed("main.osp", flavor, source);
-        let app = checked(&config("main.osp"), std::slice::from_ref(&source))?;
-        assert_eq!(app.warnings.iter().map(|warning| warning.rule).collect::<Vec<_>>(), ["namespace-reverse-domain", "module-deep-hierarchy"]);
-        let library = ProjectConfig { published_library: true, ..config("main.osp") };
-        assert_eq!(checked(&library, &[source])?.warnings, Vec::new());
+        let raised = checked(&config("main.osp"), std::slice::from_ref(&source))?.warnings;
+        let rules: Vec<_> = raised.iter().map(|warning| warning.rule).collect();
+        assert_eq!(rules, ["namespace-reverse-domain", "module-deep-hierarchy"]);
+        let reported = |manifest: &str| -> Result<Vec<_>, String> {
+            let levels = parse(manifest).map_err(|errors| format!("{errors:?}"))?.lints;
+            Ok(rules.iter().map(|rule| levels.level(rule)).collect())
+        };
+        assert_eq!(reported("[project]\nname = \"app\"\n")?, [Warn, Warn]);
+        assert_eq!(reported("[package]\nname = \"@o/p\"\n")?, [Allow, Allow]);
+        assert_eq!(
+            reported("[lints]\nmodule-deep-hierarchy = \"allow\"\nnamespace-reverse-domain = \"deny\"\n")?,
+            [Deny, Allow]
+        );
+        assert_eq!(
+            reported("[package]\nname = \"@o/p\"\n[lints]\nmodule-deep-hierarchy = \"warn\"\n")?,
+            [Allow, Warn]
+        );
     }
     Ok(())
 }
@@ -220,21 +237,36 @@ fn private_and_empty_owners_are_listed_without_plain_modules() -> Result<(), Str
 }
 
 #[test]
-fn published_library_is_a_validated_boolean_not_a_warning_escape_hatch() -> Result<(), String> {
+fn a_lints_table_names_only_registered_rules_at_known_levels() -> Result<(), String> {
+    // [LINT-LEVELS]: a typo must not silently leave a rule at its default.
     let path = std::path::Path::new("app/osprey.toml");
-    for (value, expected) in [("true", true), ("false", false)] {
-        let text = format!("[modules]\npublished_library = {value}\n");
-        let config = ProjectConfig::parse(&text, path).map_err(|errors| format!("{errors:?}"))?;
-        assert_eq!(config.published_library, expected);
+    for rule in osprey_types::LINT_RULES {
+        for level in ["allow", "info", "warn", "deny"] {
+            let text = format!("[lints]\n{rule} = \"{level}\"\n");
+            let config =
+                ProjectConfig::parse(&text, path).map_err(|errors| format!("{errors:?}"))?;
+            let expected = osprey_types::LintLevel::parse(level)?;
+            assert_eq!(config.lints.level(rule), expected, "{rule} = {level}");
+        }
     }
-    let errors = ProjectConfig::parse("[modules]\npublished_library = \"true\"", path)
+    let text = "[lints]\nundocumented-exports = \"deny\"\ntype-error = \"allow\"\ntest-skipped = \"allow\"\nclosing-run = \"silent\"\nunused-import = deny\n";
+    let errors = ProjectConfig::parse(text, path)
         .err()
-        .ok_or("invalid boolean accepted")?;
-    assert_eq!(errors.len(), 1);
-    assert_eq!(errors.first().and_then(|error| error.line), Some(2));
-    assert!(errors
-        .iter()
-        .all(|error| error.message == "expected `true` or `false`"));
+        .ok_or("bad lints accepted")?;
+    let lines: Vec<_> = errors.iter().map(|error| error.line).collect();
+    assert_eq!(lines, [Some(2), Some(3), Some(4), Some(5), Some(6)]);
+    let messages: Vec<_> = errors.iter().map(|error| error.message.as_str()).collect();
+    for (index, start) in [
+        (0, "unknown lint `undocumented-exports`"),
+        (1, "unknown lint `type-error`"),
+        (2, "unknown lint `test-skipped`"),
+        (3, "unknown lint level `silent`"),
+    ] {
+        assert!(
+            messages.get(index).is_some_and(|m| m.starts_with(start)),
+            "{messages:?}"
+        );
+    }
     Ok(())
 }
 

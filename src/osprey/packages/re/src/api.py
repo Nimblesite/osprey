@@ -26,13 +26,21 @@ __all__ = [
 ]
 
 IGNORECASE = 2
+"""Flag for case-insensitive matching: literals and classes fold case. CPython's `re.IGNORECASE`."""
 MULTILINE = 8
+"""Flag making `^` and `$` match at line boundaries, not only at the text's ends. CPython's `re.MULTILINE`."""
 DOTALL = 16
+"""Flag making `.` also match a newline. CPython's `re.DOTALL`."""
 VERBOSE = 64
+"""Flag ignoring whitespace and `#`-to-end-of-line comments in the pattern. CPython's `re.VERBOSE`."""
 I = 2
+"""Short alias of IGNORECASE."""
 M = 8
+"""Short alias of MULTILINE."""
 S = 16
+"""Short alias of DOTALL."""
 X = 64
+"""Short alias of VERBOSE."""
 
 
 class Pattern:

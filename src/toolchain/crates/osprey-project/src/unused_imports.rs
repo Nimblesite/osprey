@@ -19,8 +19,7 @@ use crate::contribution::Contribution;
 use crate::model::SymbolKey;
 use crate::{ProjectWarning, SourceMetadata};
 
-/// The shared rule identifier.
-const UNUSED_IMPORT: &str = "unused-import";
+use osprey_types::UNUSED_IMPORT;
 
 /// One warning per import of `contributions` whose bindings `used` never names.
 pub(crate) fn warnings(

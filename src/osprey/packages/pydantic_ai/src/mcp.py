@@ -644,6 +644,7 @@ def merge_configs(global_servers, project_servers) -> list[MCPServerConfig]:
 
 
 def name_of(config) -> str:
+    """The `name` of an MCP server config, whether stdio or HTTP."""
     match config:
         case StdioServer(name=name):
             return name

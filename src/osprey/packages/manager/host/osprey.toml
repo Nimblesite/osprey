@@ -5,4 +5,7 @@ default_namespace = "registry_host"
 
 [modules]
 allow_wildcard_imports = false
-published_library = true
+
+[lints]
+module-deep-hierarchy = "allow"
+namespace-reverse-domain = "allow"

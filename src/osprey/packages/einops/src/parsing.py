@@ -33,6 +33,30 @@ def map_indexed(xs, read):
     return toList(map(range(len(xs)), read))
 
 ELLIPSIS = "…"
+"""The one-code-point spelling of `...` inside a pattern: `parse` rewrites `...` to it, and it names the ellipsis axis.
+
+# Examples
+```osprey
+from einops import Parsing
+
+def described(result):
+    match result:
+        case Success(value=parsed):
+            return f"[{parsed.expression}] ellipsis={parsed.has_ellipsis}"
+        case Error(message=message):
+            return f"error: {message}"
+
+def show():
+    dotted = Parsing.parse("b ...", False, False)
+    spelled = Parsing.parse(f"b {Parsing.ELLIPSIS}", False, False)
+    print(f"[{Parsing.ELLIPSIS}] {described(dotted)} {described(spelled)}")
+
+wrappingArithmetic(show)
+```
+```output
+[…] [b ...] ellipsis=true [b …] ellipsis=true
+```
+"""
 
 
 class Axis:

@@ -26,19 +26,31 @@ __all__ = [
 
 # IEEE binary64 constants used by the Cephes kernels.
 MACHEP = 1.1102230246251565e-16
+"""The binary64 machine epsilon (2^-53): the relative size at which a series term no longer changes the sum."""
 PI = 3.141592653589793238462643
+"""pi as Cephes spells it, with more digits than binary64 holds."""
 LOGPI_CEPHES = 1.144729885849400174143427351353058711647
+"""Cephes' ln(pi), the constant of lgamma's reflection formula for x < -34."""
 SQRT2PI = 2.506628274631000502415765284811045253007
+"""sqrt(2 pi), the normalization of the Stirling series for gamma."""
 LS2PI = 0.91893853320467274178
+"""ln(sqrt(2 pi)), the constant term of the Stirling series for lgamma."""
 MAXGAM = 171.624376956302725
+"""The argument at and beyond which gamma(x) overflows to infinity."""
 MAXLOG = 709.7827128933839730962063185871
+"""ln(DBL_MAX): a logarithm above it is returned as positive infinity instead of being exponentiated."""
 MAXLGM = 2.556348e305
+"""The argument above which lgamma(x) overflows to positive infinity."""
 SCIPY_EULER = 0.577215664901532860606512090082402431
+"""The Euler-Mascheroni constant with Cephes' digits, as psi subtracts it at positive integers."""
 EULER16 = 0.5772156649015329
+"""The Euler-Mascheroni constant rounded to binary64, as gamma's near-zero term multiplies it."""
 HALF_PI = 1.5707963267948966
 PI_HALF_TAIL = 6.12323399573676603587e-17
 MAXSTIR = 143.01608
+"""The argument above which the Stirling power term x^(x - 0.5) is split into two halved powers so it cannot overflow."""
 BETA_ASYMP_FACTOR = 1e6
+"""The ratio |a| / |b| (with a above it) at which beta switches to its asymptotic expansion."""
 # 1/(2k(2k+1)) for k = 12..1: the sin(t)/t Taylor coefficients, Horner order.
 SIN_CO = [0.0016666666666666668, 0.001976284584980237, 0.002380952380952381,
           0.0029239766081871343, 0.003676470588235294, 0.004761904761904762,

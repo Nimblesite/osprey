@@ -73,14 +73,15 @@ pub(crate) fn analyze_cached(
 
 /// Every finding at the severity of the project's lint levels, the compiler's
 /// own ([LINT-LEVELS]): an allowed rule is dropped and a denied one is an
-/// error. Errors stay errors; only advice is re-levelled.
+/// error. Errors stay errors; only a registered lint is re-levelled, so a
+/// skipped test stays loud.
 fn leveled(diagnostics: &mut Vec<Diagnostic>, levels: &osprey_types::LintLevels) {
     use osprey_types::LintLevel;
     diagnostics.retain_mut(|diagnostic| {
         let Some(code) = diagnostic.code.as_deref() else {
             return true;
         };
-        if diagnostic.severity == Severity::Error {
+        if diagnostic.severity == Severity::Error || !osprey_types::LINT_RULES.contains(&code) {
             return true;
         }
         diagnostic.severity = match levels.level(code) {

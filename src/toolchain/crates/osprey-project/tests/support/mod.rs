@@ -22,7 +22,6 @@ pub(crate) fn config(entry: &str) -> ProjectConfig {
         entry: Some(PathBuf::from(entry)),
         flavor: None,
         allow_wildcard_imports: false,
-        published_library: false,
         types: None,
         dependencies: Vec::new(),
         discipline: None,

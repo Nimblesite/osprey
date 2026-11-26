@@ -149,7 +149,10 @@ pub use info::{
     CtorLayout, EffectRequirements, HandlerSite, Named, OpType, PerformSite, ProgramTypes,
     SiteTable, Typed,
 };
-pub use lint_level::{LintLevel, LintLevels};
+pub use lint_level::{
+    LintLevel, LintLevels, LINT_RULES, MODULE_DEEP_HIERARCHY, NAMESPACE_FOLDER_DRIFT,
+    NAMESPACE_REVERSE_DOMAIN, STATE_BOUNDARY, UNUSED_IMPORT,
+};
 pub use redundant::{
     redundant_annotation_sites, redundant_annotation_sites_for, redundant_annotation_sites_where,
     redundant_annotations, redundant_annotations_where, RedundantAnnotation, RedundantTarget,

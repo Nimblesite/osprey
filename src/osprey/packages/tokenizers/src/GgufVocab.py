@@ -28,8 +28,11 @@ from tokenizers.Tokenizer import AddedToken, QwenTokenizer
 __all__ = ["qwen_from_vocabulary", "CONTROL", "USER_DEFINED", "UNUSED"]
 
 CONTROL = 3
+"""llama.cpp's token type for control tokens such as `<|fim_prefix|>`: added as special, so a `skip_special` decode drops them."""
 USER_DEFINED = 4
+"""llama.cpp's token type for user-defined added tokens such as `<tool_call>`: matched whole but added as not special, so every decode keeps them."""
 UNUSED = 5
+"""llama.cpp's token type for unused `[PAD…]` placeholders: added as special tokens."""
 
 
 class Merges:

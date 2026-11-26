@@ -201,12 +201,25 @@ closing-run = "allow"
 
 A rule the table leaves out takes its default. `undocumented-export` is `deny`
 in a package and `allow` in an application; `unexampled-export` is `info` in
-a package and `allow` in an application; every other rule is `warn`. A
+a package and `allow` in an application; `module-deep-hierarchy` and
+`namespace-reverse-domain` are `allow` in a package ([MODULES-STYLE]); every
+other rule is `warn`. A
 project is a package when its manifest has a `[package]` table, and a file
 under no manifest is an application. A project's levels apply to all of its
 sources, including sources it borrows from a package through
-`source_roots`. An unknown level is a manifest error. The CLI and the editor
-read the same levels (`osprey-types/src/lint_level.rs`).
+`source_roots`. The CLI and the editor read the same levels
+(`osprey-types/src/lint_level.rs`).
+
+The table names only analyzer rules, the ones `LINT_RULES` lists:
+`undocumented-export`, `unexampled-export`, `redundant-annotation`,
+`redundant-callback`, `repeated-literal`, `consecutive-print`, `closing-run`,
+`unused-private`, `unused-variable`, `unused-parameter`,
+`unused-pattern-binding`, `unused-handler-parameter`, `module-deep-hierarchy`,
+`state-boundary`, `namespace-folder-drift`, `namespace-reverse-domain` and
+`unused-import`. An unknown rule or level is a manifest error at its line, in
+the compiler and in the package manager, so a misspelt rule never silently
+keeps its default. Type errors, syntax errors and skipped tests are not lints:
+no table can lower them.
 
 ### Test support `[DOC-EXPORT-EXAMPLE-TEST-SUPPORT]`
 

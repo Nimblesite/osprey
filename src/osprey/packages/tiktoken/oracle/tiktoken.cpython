@@ -233,14 +233,14 @@ documents; the suite's corpus stays inside. Regenerate with the oracle.
 
 __all__ = ["LETTER_RANGES", "NUMBER_RANGES", "SPACE_RANGES"]
 
-# {count_l} inclusive ranges of general category L* code points.
 LETTER_RANGES = {letters}
+"""The {count_l} inclusive `[lo, hi]` ranges of general category L* code points: what `\\\\p{{L}}` matches (`Unicode.is_letter`)."""
 
-# {count_n} inclusive ranges of general category N* code points.
 NUMBER_RANGES = {numbers}
+"""The {count_n} inclusive `[lo, hi]` ranges of general category N* code points: what `\\\\p{{N}}` matches (`Unicode.is_number`)."""
 
-# {count_s} inclusive ranges of White_Space code points (what \\s matches).
 SPACE_RANGES = {spaces}
+"""The {count_s} inclusive `[lo, hi]` ranges of White_Space code points: what `\\\\s` matches (`Unicode.is_space`)."""
 '''
 
 

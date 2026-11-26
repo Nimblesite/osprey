@@ -79,7 +79,7 @@ identity written in that source.
 
 Style findings are warnings, never rejection criteria. `namespace-folder-drift` reports each contributing source when one namespace spans more than one physical parent folder inside the project's own directory, so a namespace shared with a dependency beside it is not drift; no folder-to-namespace naming convention is imposed. `module-deep-hierarchy` reports module declarations nested more than three levels. `namespace-reverse-domain` reports application namespace labels starting with `com.`, `org.`, `net.`, `io.`, `dev.` or `edu.` and containing at least three nonempty dot-separated components. Dots and slashes remain ordinary label characters, never namespace ancestry.
 
-`[modules].published_library = true` suppresses the application-only hierarchy and reverse-domain advice. It does not suppress folder drift or state ownership warnings. Omitted, it defaults to `false`; a non-boolean value is a manifest error. CLI and LSP consume the same sorted, source-located findings from project assembly.
+Each finding is a lint whose level the project sets in `[lints]` ([LINT-LEVELS](0026-DocumentationComments.md)). The hierarchy and reverse-domain advice is for applications, so a package (its manifest has `[package]`) defaults both to `allow`; folder drift and state ownership stay `warn` everywhere unless `[lints]` says otherwise. CLI and LSP consume the same sorted, source-located findings from project assembly and report them at the same levels.
 
 ## Modules `[MODULES-MODULE]`
 
@@ -390,7 +390,9 @@ entry = "src/main.ospml"
 
 [modules]
 allow_wildcard_imports = false
-published_library = false
+
+[lints]                    # optional; any analyzer rule's level ([LINT-LEVELS])
+module-deep-hierarchy = "allow"
 ```
 
 Files without a namespace contribute to `default_namespace`, or to the project

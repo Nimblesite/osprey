@@ -11,7 +11,8 @@ module ManifestSections {
     export type Project = { name: string, sourceRoots: List<string>, defaultNamespace: Maybe::Maybe<string>, entry: Maybe::Maybe<string>, flavor: Maybe::Maybe<ManifestModel::Flavor>, testRoots: List<string>, pythonSources: List<string>, typescriptSources: List<string> }
 
     let projectKeys = ["name", "source_roots", "default_namespace", "entry", "flavor", "test_roots", "python_sources", "typescript_sources"]
-    let modulesKeys = ["allow_wildcard_imports", "published_library"]
+    let modulesKeys = ["allow_wildcard_imports"]
+    let lintLevels = ["allow", "info", "warn", "deny"]
     let packageKeys = ["name", "license", "summary", "keywords"]
     let disciplineKeys = ["name", "checker", "timeout_seconds"]
     let defaultRoots = ["src"]
@@ -189,7 +190,7 @@ module ManifestSections {
         }
     }
 
-    /// `[modules]`: the wildcard-import policy; `published_library` is advice only.
+    /// `[modules]`: the wildcard-import policy.
     export fn modules(root) = match find(pairsOf(root), "modules") {
         Error => Success { value: false }
         Success { value } => match unknownKeys(pairsOf(Toml::valueOf(value)), modulesKeys, "manifest.modules.unknown-key") {
@@ -198,9 +199,21 @@ module ManifestSections {
         }
     }
 
-    fn modulesBody(pairs) = match boolOf(pairs, "published_library", false, "manifest.modules.published-library") {
+    fn modulesBody(pairs) = boolOf(pairs, "allow_wildcard_imports", false, "manifest.modules.allow-wildcard-imports")
+
+    /// `[lints]`: every rule's level is one the compiler reads; the compiler
+    /// checks the rule names ([LINT-LEVELS]).
+    export fn lints(root) = match find(pairsOf(root), "lints") {
+        Error => Success { value: 0 }
+        Success { value } => foldList(pairsOf(Toml::valueOf(value)), Success { value: 0 }, lintLevel)
+    }
+
+    fn lintLevel(acc, pair: Toml::Pair) = match acc {
         Error { message } => Error { message: message }
-        Success => boolOf(pairs, "allow_wildcard_imports", false, "manifest.modules.allow-wildcard-imports")
+        Success => match stringOf(pair, "manifest.lints.level") {
+            Error { message } => Error { message: message }
+            Success { value } => if listContains(lintLevels, value) { Success { value: 0 } } else { fail("manifest.lints.level", pair.span) }
+        }
     }
 
     fn keywordByte(b) = Bytes::isLowerDigit(b) || b == 45

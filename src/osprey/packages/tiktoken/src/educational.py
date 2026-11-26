@@ -20,9 +20,8 @@ __all__ = [
     "encode", "decode", "decode_bytes", "decode_tokens_bytes",
 ]
 
-# SimpleBytePairEncoding(pat_str=..., mergeable_ranks=...) is an Encoding
-# without special tokens.
 type SimpleBytePairEncoding = Core.Encoding
+"""`SimpleBytePairEncoding(pat_str=..., mergeable_ranks=...)`: an `Encoding` with no special tokens, built by `simple`."""
 
 
 def simple(pattern, mergeable_ranks):

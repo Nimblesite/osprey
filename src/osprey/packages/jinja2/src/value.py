@@ -34,16 +34,27 @@ def map_indexed(xs, read):
 
 
 K_NONE = "none"
+"""The `kind` of the value `none()` builds."""
 K_BOOL = "bool"
+"""The `kind` of the value `bool_(b)` builds."""
 K_INT = "int"
+"""The `kind` of the value `int_(n)` builds."""
 K_FLOAT = "float"
+"""The `kind` of the value `float_(x)` builds."""
 K_STRING = "string"
+"""The `kind` of the value `text(s)` builds."""
 K_LIST = "list"
+"""The `kind` of the value `list_(elems)` builds."""
 K_DICT = "dict"
+"""The `kind` of the values `dict_` and `typed_dict` build: insertion-ordered keys."""
 K_UNDEFINED = "undefined"
+"""The `kind` of the value `undefined(name)` builds: Jinja's `Undefined`, which renders empty."""
 K_PAIR = "pair"
+"""The `kind` of one `dict.items()` element, as `pair` and `typed_pair` build."""
 K_FUNC = "func"
+"""The `kind` of the value `func(name)` builds: a global or macro reference the evaluator calls."""
 K_MACRO = "macro"
+"""The `kind` of the value `macro_ref(name)` builds: a macro name the renderer expands."""
 K_ERROR = "error"
 
 
