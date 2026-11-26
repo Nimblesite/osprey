@@ -16,10 +16,15 @@ import registry::Names
 /// rewrites the manifest and relocks reads its own write back. The lock,
 /// add, remove and update suites share it ([PACKAGE-FOLDER-REGISTRY] tests).
 module RegistryFixture {
+    /// The registry base URL the fixture serves its routes under.
     export let base = "http://127.0.0.1:8787"
+    /// The absolute project directory every fixture command runs in.
     export let project = "/abs"
+    /// The release lock beside the fixture project's manifest: where `lock` writes.
     export let lockPath = "/abs/osprey.lock"
+    /// The root manifest of the fixture project, read and rewritten by its commands.
     export let manifestPath = "/abs/osprey.toml"
+    /// A digest no served release has: the root manifest digest of every earlier lock.
     export let otherDigest = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 
     type WebRoute = { base: string, path: string, status: int, body: string }
@@ -97,6 +102,9 @@ module RegistryFixture {
         Attempt { report: report, written: written, removed: removed, ran: ran }
     }
 
+    /// Run `args` through `Dispatch::run` over `reads`, `walks` and `webs`,
+    /// recording every write, removal and command run; a read of a path written
+    /// earlier in the run answers the written text.
     export fn runWith(reads, walks, webs, args) = runFault(reads, walks, webs, args, "")
 
     /// Run the full command with one write that changes bytes before failing.
@@ -128,6 +136,7 @@ module RegistryFixture {
         process(fn() => files(fn() => tree(fn() => web(fn() => Dispatch::run(args)))))
     }
 
+    /// Whether the run removed `path`.
     export fn removedPath(a: Attempt, path) = listContains(a.removed, path)
 
     /// The commands the run executed, in order.
@@ -142,6 +151,7 @@ module RegistryFixture {
     /// How many writes hit `path`.
     export fn writesTo(a: Attempt, path) = length(filterList(a.written, fn(w) => writtenAt(w) == path))
 
+    /// The process status the run's report answers.
     export fn statusOf(a: Attempt) = a.report.status
 
     /// Whether the run was accepted (status 0).
@@ -149,7 +159,9 @@ module RegistryFixture {
 
     /// The run's status and its first report line, the pair every refusal asserts.
     export fn reported(a: Attempt, status, code) = statusOf(a) == status && lineOf(a, 0) == code
+    /// Every line of the run's report.
     export fn linesOf(a: Attempt) = a.report.lines
+    /// Line `i` of the run's report, or "".
     export fn lineOf(a: Attempt, i) = Fixture::line(a.report, i)
 
     // ---- the registry ----
@@ -169,18 +181,26 @@ module RegistryFixture {
 
     fn filesOf(manifest) = [Fixture::file("osprey.toml", manifest), Fixture::file("src/main.osp", "fn main() = 0\n")]
 
+    /// `@demo/one` e1.r1: the release the root depends on, itself depending on
+    /// `@demo/two` e1.r1.
     export fn one() = Fixture::served("@demo/one/1.1", filesOf(oneManifest()))
+    /// `@demo/one` at ordinal 2 of epoch 1: the release an in-epoch `update`
+    /// moves to.
     export fn one2() = Fixture::served("@demo/one/1.2", filesOf(oneManifest()))
     /// `@demo/one` in a second epoch: what `update --breaking` moves to.
     export fn oneNextEpoch() = Fixture::served("@demo/one/2.1", filesOf(oneManifest()))
+    /// `@demo/two` e1.r1: the transitive dependency of `@demo/one`.
     export fn two() = Fixture::served("@demo/two/1.1", filesOf(manifestText("two")))
     /// A release nothing depends on: the one a registry can drop without
     /// breaking the graph, which is what `--accept-removals` is for.
     export fn three() = Fixture::served("@demo/three/1.1", filesOf(manifestText("three")))
+    /// `@demo/one` e1.r1 with an empty project name: a release whose manifest
+    /// is rejected.
     export fn badOne() = Fixture::served("@demo/one/1.1", filesOf(manifestText("")))
     /// A release whose source names `readFile`: its surface is `io/files`.
     export fn ioSource(source) = Fixture::served("@demo/io/1.1", [Fixture::file("osprey.toml", manifestText("io")), Fixture::file("src/io.osp", source)])
 
+    /// A release whose source calls `readFile`, so its surface is `io/files`.
     export fn io() = ioSource("fn load(p) = readFile(p)\n")
 
     /// An ambient call inside executable string interpolation.
@@ -221,6 +241,7 @@ module RegistryFixture {
 
     fn runtime(key, epoch, floor) = ManifestModel::Runtime { requirement: ManifestModel::Requirement { package: key, epoch: epoch, minimumOrdinal: floor } }
 
+    /// The lock package of `s` with `deps` as its edges and no pinned surface.
     export fn pkg(s, deps) = Lockfile::Package { release: Fixture::idOf(s), dependencies: deps, surface: [] }
 
     /// A lock package with a pinned capability surface.
@@ -229,6 +250,8 @@ module RegistryFixture {
     /// `@demo/one`'s lock package: its Runtime edge on `@demo/two`.
     export fn onePkg(s) = pkg(s, [runtime(Names::Key { scope: "demo", name: "two" }, 1, 1)])
 
+    /// The release-lock text for root manifest digest `digest`, root edges
+    /// `deps` and `packages`, or "" when it does not encode.
     export fn lockText(digest, deps, packages) = Lockfile::encode(Lockfile::release(Lockfile::Root { manifestDigest: digest, dependencies: deps }, packages)) ?: ""
 
     fn edgesOf(m: ManifestModel::Manifest) = m.dependencies
@@ -260,5 +283,6 @@ module RegistryFixture {
     /// An earlier lock that also pinned `three`, which the registry since dropped.
     export fn previousLockWithThree() = lockText(otherDigest, [], [onePkg(one()), pkg(three(), []), pkg(two(), [])])
 
+    /// The `@scope/name eE.rR sha256:…` spelling of a served release's identity.
     export fn compact(s) = Lockfile::compact(Fixture::idOf(s))
 }

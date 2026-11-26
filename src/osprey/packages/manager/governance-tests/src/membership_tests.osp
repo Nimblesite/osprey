@@ -197,6 +197,8 @@ module MembershipTests {
         ])
     }
 
+    /// The membership suite: enrollment, the first custodian, the custodian
+    /// quorum, revocation guards, protected members, rejoin and suspension.
     export fn run() = {
         test("governance membership: enrollment", organizationEnrollment)
         test("governance membership: first custodian recorded", firstCustodianRecorded)

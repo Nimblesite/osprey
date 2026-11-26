@@ -86,10 +86,14 @@ module Pickers : PickerApi {
 /// `src/toolchain/crates/osprey-project/tests/module_diagnostics.rs` instead.
 module Extended {
     type Counter = { count: int }
+    /// A counter that starts at five, not zero.
     export fn empty() = Counter { count: 5 }
+    /// A counter two past `c`.
     export fn bump(c) = Counter { count: ((c.count + 2)) }
+    /// The count `c` holds.
     export fn size(c) = c.count
 
+    /// The size of the starting counter, which is five.
     export fn seeded() = size(empty())
 }
 

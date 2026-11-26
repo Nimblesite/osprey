@@ -5,12 +5,15 @@
 
 namespace metrics;
 
+/// Durable total and call cells, reachable only through the `Counter` effect
+/// inside `withTally`.
 state module Tally {
     /// The assembler removes these cells from module scope and injects a fresh
     /// pair into every call of the installer below.
     mut total = 0
     mut calls = 0
 
+    /// Adds to the total, reads the call count, or resets the total, each answering an `int`.
     export effect Counter {
         add : fn(int) -> int
         reads : fn() -> int

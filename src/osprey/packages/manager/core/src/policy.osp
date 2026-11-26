@@ -5,6 +5,9 @@ namespace registry;
 /// `Fatal` control effect instead of supplying a value, so a fault can never
 /// pass as a wrong digest, ordinal or byte length.
 module Policy {
+    /// The effect an integrity fault aborts through: `abort` carries the
+    /// reason and never returns to the caller; `guarded` answers the fault
+    /// status instead.
     export effect Fatal {
         control abort: fn(string) -> int
     }

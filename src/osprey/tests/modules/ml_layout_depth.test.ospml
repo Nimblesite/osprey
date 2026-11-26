@@ -14,11 +14,15 @@ namespace depth
         value : Unit -> int
         scaled : int -> int
 
+    (** The outermost of four nesting levels, holding a private factor that only
+        its own exports read. *)
     module Trunk
         (** Private at the trunk, so only the trunk's own exports may use it. *)
         factor = 3
 
+        (** The middle level, holding a leaf module and one that performs an effect. *)
         export module Branch
+            (** A leaf module three segments deep, ascribed to `LeafApi`. *)
             export module Twig : LeafApi
                 value () = 7
                 scaled n = (n * 7) 
@@ -26,13 +30,16 @@ namespace depth
             (** A branch reaches its own twig without qualification. *)
             export pick () = Twig::value ()
 
+            (** The deepest module, declaring an effect four segments below the namespace. *)
             export module Bud
+                (** A single `draw` row that no module in this chain handles. *)
                 export effect Sap
                     control draw : int => int
 
                 (** Four segments deep, and the row still reaches the caller. *)
                 export drink n = perform Sap.draw n
 
+        (** Multiplies `n` by the trunk's private factor. *)
         export amplify n = (n * factor) 
 
 import depth::Trunk::Branch::Twig

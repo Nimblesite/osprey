@@ -7,6 +7,7 @@ import proof::Naturals
     Exact overloaded spines select notation; every other term retains its
     explicit formal form. Implements [WORKBENCH-MATH] [WORKBENCH-VERDICT]. *)
 module ProofTerms
+    (** The mathematics tree presenting `term`: the heads in `notation` select their symbols, every other term keeps its explicit formal form. *)
     export typeset (term, notation) = layout (term, { proofNotation = notation, proofBoundNames = [], proofConstantNames = listConcat (["Prop", "Type", "Sort"], Terms::constants term) }, 0)
 
     layout (term, names, context) = match term

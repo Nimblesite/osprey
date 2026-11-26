@@ -20,5 +20,4 @@ storeHeld box =
     box(items = [item])
 
 empty = Box(items = [], note = "")
-print "${shown empty}\n${(shown (store empty))}\n${(shown (storeHeld empty))}"
-print (shown (Box(items = [Item(name = "ctor", size = 5)], note = "")))
+print "${shown empty}\n${(shown (store empty))}\n${(shown (storeHeld empty))}\n${shown (Box(items = [Item(name = "ctor", size = 5)], note = ""))}"

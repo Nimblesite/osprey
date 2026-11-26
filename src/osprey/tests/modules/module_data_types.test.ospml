@@ -9,29 +9,38 @@
 
 namespace shapes
 
+(** Shapes, their extents and their faults, every value built and read through
+    the exports below. *)
 module Geo
+    (** A circle or a square, each carrying its one dimension. *)
     export type Shape = Circle(radius : int) | Square(side : int)
 
+    (** The width and height of a shape's bounding box. *)
     export type Extent =
         width : int
         height : int
 
+    (** Builds a circle of `radius`. *)
     export circle radius =
         Circle
             radius = radius
 
+    (** Builds a square of `side`. *)
     export square side =
         Square
             side = side
 
+    (** The area of `shape`: its radius or side squared. *)
     export area shape = match shape
         Circle radius => (radius * radius)
         Square side => (side * side)
 
+    (** The lower-case kind of `shape`, as text. *)
     export name shape = match shape
         Circle radius => "circle"
         Square side => "square"
 
+    (** The bounding box of `shape`: a circle spans twice its radius, a square its side. *)
     export extent shape = match shape
         Circle radius =>
             Extent
@@ -42,15 +51,22 @@ module Geo
                 width = side
                 height = side
 
+    (** Twice the width plus height of `extent`. *)
     export perimeterOf extent = ((((extent.width + extent.height) ) * 2) )
 
+    (** The two reasons a shape request fails. *)
     export type Fault = Missing | InvalidParameter
 
+    (** The fault for an absent shape. *)
     export missing () = Missing
 
+    (** The fault for a rejected parameter. *)
     export invalid () = InvalidParameter
 
+(** A generic one-field record, so one module function can be shown specialising
+    at several call sites. *)
 module Boxes
+    (** A record holding one value of any type. *)
     export type Box T =
         held : T
 
@@ -59,20 +75,25 @@ module Boxes
         Box
             held = value
 
+    (** Reads the value a box holds. *)
     export held box = box.held
 
+    (** Rebuilds `box` around the value it already holds. *)
     export rewrap box = wrap (held box)
 
+(** An opaque record ID: built by `make`, read by `value`, never forged outside. *)
 module Ids
     (** The representation stays inside: a client builds an `Id` only through
         `make` and reads it only through `value` ([MODULES-OPAQUE-TYPES]). *)
     export opaque type Id =
         value : int
 
+    (** Builds an ID carrying `n`. *)
     export make n =
         Id
             value = n
 
+    (** Reads the number an ID carries. *)
     export value id = id.value
 
     (** Read the ID carried by either result variant.
@@ -87,36 +108,48 @@ module Ids
     export resultValue r = match r
         Success (Id n) | Error (Id n) => n
 
+    (** An ID carrying one more than `id` does. *)
     export next id = match id
         Id value =>
             Id
                 value = value + 1
 
+(** Opaque aliases over `int` and `string`, so a client can hold a token but
+    never inspect it. *)
 module Tokens
     (** Manifest aliases kept abstract: inside `Tokens` a `Token` IS an `int`
         and a `Label` IS a `string`, so the module computes with them freely.
         A client can only hold one and hand it back ([MODULES-OPAQUE-TYPES]). *)
     export opaque type Token = int
+    (** The opaque text form of a token, which a client can only pass back. *)
     export opaque type Label = string
 
+    (** A token for `n`, carrying twice its value inside the module. *)
     export issue : int -> Token
     issue n = n * 2
 
+    (** The token one past `token`. *)
     export next : Token -> Token
     next token = token + 1
 
+    (** The integer a token hides. *)
     export raw : Token -> int
     raw token = token
 
+    (** Whether two tokens carry the same integer. *)
     export same : (Token, Token) -> bool
     same (left, right) = left == right
 
+    (** An opaque `t<n>` label for `token`. *)
     export label : Token -> Label
     label token = "t${token}"
 
+    (** The string behind an opaque label. *)
     export text : Label -> string
     text label = label
 
+(** Opaque aliases of four shapes — a generic application, a record, a `Result`
+    and a function type — each reached only through the exports below. *)
 module Sealed
     type Conn =
         host : string
@@ -126,40 +159,53 @@ module Sealed
         record, a `Result` and a function type. Inside the module each one is
         the type it names, so list, field, `?:` and call rules all apply. *)
     export opaque type Bag T = (List T)
+    (** An opaque connection record of host and port. *)
     export opaque type Link = (Conn)
+    (** An opaque `Result<int, string>`. *)
     export opaque type Attempt = (Result int string)
+    (** An opaque int-to-int function. *)
     export opaque type Step = (int -> int)
 
+    (** A bag holding `first` then `second`. *)
     export bag : (int, int) -> Bag int
     bag (first, second) = [first, second]
 
+    (** How many items a bag holds. *)
     export size : Bag int -> int
     size bag = listLength bag
 
+    (** A link to `host` on `port`. *)
     export open : (string, int) -> Link
     open (host, port) =
         Conn
             host = host
             port = port
 
+    (** `link` with its port replaced by `port`. *)
     export moved : (Link, int) -> Link
     moved (link, port) = link(port = port)
 
+    (** Renders a link as `host:port`. *)
     export describe : Link -> string
     describe link = "${link.host}:${link.port}"
 
+    (** A successful attempt carrying `n`. *)
     export tried : int -> Attempt
     tried n = n
 
+    (** A failed attempt carrying `why` as its message. *)
     export failed : string -> Attempt
     failed why = Error(message = why)
 
+    (** The attempt's value, or `fallback` when it failed. *)
     export orElse : (Attempt, int) -> int
     orElse (attempt, fallback) = attempt ?: fallback
 
+    (** A step that adds `n` to its input. *)
     export stepBy : int -> Step
     stepBy n = \x => x + n
 
+    (** Applies `step` to `start`. *)
     export run : (Step, int) -> int
     run (step, start) = step start
 

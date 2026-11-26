@@ -97,10 +97,15 @@ module Bytes {
     /// The punctuation bytes the identifier rules of the manifests, paths,
     /// paths inside a registry release and database references admit.
     export let plus = 43
+    /// ASCII hyphen-minus, 45.
     export let hyphen = 45
+    /// ASCII full stop, 46.
     export let dot = 46
+    /// ASCII slash, 47.
     export let slash = 47
+    /// ASCII low line, 95.
     export let underscore = 95
+    /// ASCII tilde, 126.
     export let tilde = 126
 
     /// ASCII letter or digit, or one of the punctuation bytes `extra`.

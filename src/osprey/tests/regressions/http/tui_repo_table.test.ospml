@@ -45,8 +45,7 @@ renderRow (doc, i, n) =
 
 renderTable doc =
     count = jsonLength doc ""
-    print (green "  Repositories (${count})")
-    print "  ----------------------------"
+    print "${(green "  Repositories (${count})")}\n  ----------------------------"
     renderRow (doc, 0, count)
 
 renderDoc d =

@@ -3,6 +3,7 @@ namespace inboxtests
 import bank::Json
 import mobile::App
 
+(** What the inbox's cases share: assertions, host events and answers, a fixed issue page, and the app driven to a named state. *)
 module Support
     (** One assertion's label, expected and actual value, checked in a case list. *)
     type Case =
@@ -16,28 +17,41 @@ module Support
     (** Checks every case in `cases`, each with its own label. *)
     export each cases = forEachList cases (\entry => check entry.label entry.expected entry.actual)
 
+    (** A host event of type `kind` alone, such as `refresh` or `back`. *)
     export event kind = Json::obj (Json::strField "type" kind)
+    (** A host event of type `kind` carrying `content` as its value, such as a search or a repository name. *)
     export value kind content = Json::obj (Json::strField "type" kind + "," + Json::strField "value" content)
+    (** A bookmark event for the issue `id`. *)
     export bookmark id = Json::obj (Json::strField "type" "bookmark" + "," + Json::strField "id" id)
 
+    (** The host's answer to the SQL request `id`: whether it succeeded, its `rows` and its `error`. *)
     export sql id ok rows error = Json::obj (Json::strField "type" "sql" + "," + Json::strField "id" id + "," + Json::rawField "ok" (toString ok) + "," + Json::rawField "rows" rows + "," + Json::strField "error" error)
 
+    (** The host's answer to the HTTP request `id`: its `status`, `body` and `error`. *)
     export http id status body error = Json::obj (Json::strField "type" "http" + "," + Json::strField "id" id + "," + Json::numField "status" status + "," + Json::strField "body" body + "," + Json::strField "error" error)
 
+    (** A GitHub issue page of two issues, by alice and by bob, and one pull request, which the inbox skips. *)
     export fixture () = "[{\"id\":101,\"number\":42,\"title\":\"Fix parser\",\"user\":{\"login\":\"alice\"},\"comments\":3},{\"id\":102,\"number\":43,\"title\":\"Windows paths \\\"C:\\\\tmp\\\"\",\"user\":{\"login\":\"bob\"},\"comments\":0},{\"id\":103,\"number\":44,\"pull_request\":{\"url\":\"ignored\"}}]"
 
+    (** The update waiting for a refresh's HTTP answer: the schema and load statements succeeded and no row was cached. *)
     export awaiting () = loadOf (schemaOf (App::initial ()))
 
+    (** The update after the fixture page was fetched: the inbox holds its two issues. *)
     export loaded () =
         loading = awaiting ()
         App::dispatch loading.model (http loading.model.pending 200 (fixture ()) "")
 
+    (** The value at `path` in the JSON `source`, or `MISSING` when there is none. *)
     export projected source path = Json::getOr source path "MISSING"
 
+    (** The update after a refresh event on `envelope`'s model. *)
     export refresh envelope = App::dispatch envelope.model (event "refresh")
 
+    (** The update after the schema statement is answered successful, with no rows. *)
     export schemaOf envelope = App::dispatch envelope.model (sql "schema" true "[]" "")
 
+    (** The update after the load statement is answered successful, with no rows. *)
     export loadOf envelope = App::dispatch envelope.model (sql "load" true "[]" "")
 
+    (** The update after bookmarking issue `id` in a freshly loaded inbox. *)
     export bookmarked id = App::dispatch (loaded ()).model (bookmark id)

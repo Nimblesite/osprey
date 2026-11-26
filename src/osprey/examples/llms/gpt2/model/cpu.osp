@@ -8,6 +8,8 @@ namespace gpt2;
 
 import gpt2::Backends::{Tensor, hit, minI, productLengths}
 
+/// The CPU interpretation of the `Tensor` effect: `onLists` answers every
+/// operation a model performs with host list code, so nothing names the GPU.
 module Cpu {
     /// The rows x cols product of well-shaped lists, accumulated in k order from 0.0.
     fn productOf(a, b, rows, inner, cols) = Success { value: range(0, rows * cols) |> map(fn(i) => range(0, inner) |> fold(0.0, fn(acc, k) => acc + (listGet(a, intDiv(i, cols) * inner + k) ?: toFloat32(0.0)) * (listGet(b, k * cols + i % cols) ?: toFloat32(0.0)))) |> toList() }

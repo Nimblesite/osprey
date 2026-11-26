@@ -20,7 +20,11 @@ __all__ = ["Kernel", "Combine", "Tensor", "hit", "min_i", "stop", "product_lengt
 # The kernels a model hands its handler: an index to its element, and two
 # elements to one.
 type Kernel = Callable[[int], float32]
+"""A kernel a model hands its handler: from an element's index to the
+element it builds."""
 type Combine = Callable[[float32, float32], float32]
+"""Two elements to one: the step of a `zip_with`, a `reduce` or a product's
+accumulation."""
 
 
 @static_effect

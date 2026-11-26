@@ -12,6 +12,7 @@ import ui::Frames
 
 (** The Work regions of [WORKBENCH-REGIONS] and the root that holds every region. *)
 module WorkViews
+    (** The current layout, read from the signal the store retains. *)
     export layout () = perform Signal<Layout>.read ()
 
     shelf () = perform Signal<Shelf>.read ()
@@ -33,6 +34,7 @@ module WorkViews
         true => Palettes::chalk ()
         false => Palettes::initial ()
 
+    (** The app header: the wordmark, a walkthrough button and the appearance toggle. *)
     export header () = Ui::framed (plain(frameName = "app-header", frameControlPadding = 12, frameAlign = "center", frameControlHeight = 40, frameQuietControls = true, frameFont = "sans", frameTextSize = 12, frameHeight = 75, frameLeft = 36, frameRight = 36), Ui::row [wordmark (), ui::Spacer, headerActions (layout ())])
 
     headerActions current = Ui::framed (plain(frameName = "header-actions", frameGap = 9, frameHug = true, frameAlign = "center"), Ui::row [Ui::button ("Play walkthrough", "play.fill", ToLearn), sizedIconButton ("Switch appearance", appearanceSymbol current, ToggleTheme, 40, 40)])
@@ -41,6 +43,7 @@ module WorkViews
         true => "sun.max"
         false => "moon"
 
+    (** One text run styled in the font `family`, `size` and slant, carrying `content` in its `role` and `tone`. *)
     export letter (family, size, italic, content, role, tone) = Ui::framed (text (family, size, italic), Ui::styled (content, role, tone))
 
     iconButton (label, symbol, action) = sizedIconButton (label, symbol, action, 38, 38)
@@ -71,6 +74,7 @@ module WorkViews
         true => Ui::slot "catalogue"
         false => Ui::slot "lesson"
 
+    (** The mathematics tree typesetting the read `formula`, with `show`'s Unicode form as its accessible text. *)
     export shown formula = Maths::typeset (Formulas::typeset formula, Formulas::show formula)
 
     rules () = [{ ruleName = "and_intro", ruleSays = "p → q → p ∧ q" }, { ruleName = "and_cases", ruleSays = "p ∧ q → (p → q → r) → r" }, { ruleName = "or_inl", ruleSays = "p → p ∨ q" }, { ruleName = "or_inr", ruleSays = "q → p ∨ q" }, { ruleName = "or_cases", ruleSays = "p ∨ q → (p → r) → (q → r) → r" }, { ruleName = "iff_intro", ruleSays = "(p → q) → (q → p) → (p ↔ q)" }, { ruleName = "absurd", ruleSays = "p → ¬p → r" }]

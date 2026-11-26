@@ -10,11 +10,15 @@ type ImportedProof =
     importedAxioms : List<string>
     importedNotation : List<string>
 
+(** Checks a proof export and lists its theorems, each with the axioms it
+    actually depends on. *)
 module ImportedProofs
+    (** The theorem `name` declared in the proof export `source`, with its statement, axioms and notation; an `Error` when the export fails to check, declares no such name, or the name is not a theorem. *)
     export check (source, name) = match checked source
         Success env => named (env, name)
         Error message => Error(message = message)
 
+    (** Every theorem in the proof export `source`, each with its own assumptions; an `Error` when the export fails to check or declares no theorem. *)
     export catalogue source = match checked source
         Success env => batched (env, Trust::allAxioms env)
         Error message => Error(message = message)
@@ -63,6 +67,7 @@ module ImportedProofs
     including definition bodies. Names alone do not establish semantics.
     Implements [WORKBENCH-VERDICT] [WORKBENCH-MATH]. *)
 module ProofNotation
+    (** The notation heads `env` may render with: each of `Eq`, `HAdd.hAdd`, `HMul.hMul`, `OfNat.ofNat` and `Prod.snd` whose every pinned declaration `env` declares with matching parameters and types. *)
     export permitted env = listConcat (listConcat (allowed (env, "Eq", ["Eq", "Eq.refl"], equality ()), permission (env, "HAdd.hAdd", additionNames ())), listConcat (permission (env, "HMul.hMul", multiplicationNames ()), listConcat (permission (env, "OfNat.ofNat", numeralNames ()), permission (env, "Prod.snd", ["Prod", "Prod.mk", "Prod.snd"]))))
 
     permission (env, head, names) = allowed (env, head, names, selected names)
@@ -155,9 +160,12 @@ type CatalogueMemo =
     memoSource : string
     memoOutcome : Result<List<ImportedProof>, string>
 
+(** Proof-import queries answered through the frame's `CatalogueQuery`, each source computed once per callback. *)
 module CachedImports
+    (** Every theorem in the proof export `source`, as the frame's `CatalogueQuery` handler answers. *)
     export catalogue source = perform CatalogueQuery.catalogue source
 
+    (** The imported theorem `name` from `source`: the catalogue's entry when it lists `name`, otherwise the pure checker's verdict, or the catalogue's `Error`. *)
     export check (source, name) = match catalogue source
         Error message => Error(message = message)
         Success entries => selected (source, name, entries)
@@ -168,8 +176,10 @@ module CachedImports
             true => Success(value = entry)
             false => selected (source, name, rest)
 
+    (** `work ()` under a handler that answers every `CatalogueQuery` with the pure checker, each source computed once. *)
     export run work = memoized (ImportedProofs::catalogue, work)
 
+    (** `work ()` under a handler that answers each `CatalogueQuery` source with `compute`, keeping the outcome for later asks in the same run. *)
     export memoized (compute, work) =
         mut memos = []
         handle CatalogueQuery

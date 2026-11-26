@@ -13,6 +13,4 @@ halting = handler Fault
 
 checked work = halting (\() => Success(value = work ()))
 
-print (toString (checked (\() => "ok")))
-print "${(toString (checked (\() => 7)))}\n${(toString (checked (\() => 1.5)))}"
-print (toString (checked (\() => perform Fault.halt ("boom"))))
+print "${toString (checked (\() => "ok"))}\n${toString (checked (\() => 7))}\n${toString (checked (\() => 1.5))}\n${toString (checked (\() => perform Fault.halt ("boom")))}"

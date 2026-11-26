@@ -32,9 +32,11 @@ type PackageState =
 
 type Action = Refresh | Search | Selected | TabSwitch | Add | Remove | Confirm | DismissAlert | Resize
 
+(** The editor's application state and its pure transitions, plus the host requests a refresh or a change asks for. *)
 module Store
     emptyWorkspace reason = Workspace(workspaceProject = "", workspacePackages = [], workspaceDirect = [], workspaceFindings = [], workspaceMissing = true, workspaceReason = reason)
 
+    (** The state a fresh editor starts from: `workspace` and `registry` recorded, nothing loaded yet, the loading notice shown and work marked pending. *)
     export create (workspace, registry) = PackageState(packageSearch = "", packageSelection = "", packageTab = "installed", packageRegistry = registry, packageWorkspace = workspace, packageCatalog = [], packageGraph = emptyWorkspace "No workspace graph has been read yet.", packageNotice = "Loading your package workspace…", packagePending = true, packageFault = false, packageConfirming = "", packageConfirmKey = "", packageGeneration = 0, packageWaiting = 0)
 
     /// The confirm prompt closed again.
@@ -43,18 +45,25 @@ module Store
     /// A refresh with `waiting` work outstanding: nothing has faulted yet.
     awaiting (current, notice, waiting) = cleared (current(packageNotice = notice, packagePending = waiting > 0, packageFault = false, packageWaiting = waiting))
 
+    (** The state after the search text, selection or tab changes, with any confirm prompt closed. *)
     export edit (current, query, selection, tab) = cleared (current(packageSearch = query, packageSelection = selection, packageTab = tab))
 
+    (** The state showing `notice` with `pending` and `fault` set as given, and any confirm prompt closed. *)
     export status (current, notice, pending, fault) = cleared (current(packageNotice = notice, packagePending = pending, packageFault = fault))
 
+    (** The faulted state showing `notice`: nothing pending, a new generation so replies to the old one are dropped, and any confirm prompt closed. *)
     export fault (current, notice) = cleared (current(packageNotice = notice, packagePending = false, packageFault = true, packageGeneration = satAdd current.packageGeneration 1, packageWaiting = 0))
 
+    (** The state asking the user to confirm `confirming` on `confirmKey`, with notice `notice` and nothing pending or faulted. *)
     export begin (current, notice, confirming, confirmKey) = current(packageNotice = notice, packagePending = false, packageFault = false, packageConfirming = confirming, packageConfirmKey = confirmKey)
 
+    (** The state with its confirm prompt set to `confirming` on `key`, everything else unchanged. *)
     export confirm (current, confirming, key) = current(packageConfirming = confirming, packageConfirmKey = key)
 
+    (** The state with its confirm prompt closed, everything else unchanged. *)
     export clearConfirm current = confirm (current, "", "")
 
+    (** The workspace view of a graph report: missing, with the no-lock reason, when its findings carry `tree.no-lock`, which is then set aside from the findings shown. *)
     export workspaceOf graph =
         missing = listContains graph.graphFindings "tree.no-lock"
         reason = match missing
@@ -63,12 +72,14 @@ module Store
         Workspace(workspaceProject = graph.graphProject, workspacePackages = graph.graphPackages, workspaceDirect = graph.graphDirect, workspaceFindings = filterList (graph.graphFindings, \code => code != "tree.no-lock"), workspaceMissing = missing, workspaceReason = reason)
 
 
+    (** A missing workspace view for a project whose graph is unknown, showing `reason`. *)
     export absent reason = emptyWorkspace reason
 
     waitingNotice waiting = match waiting > 0
         true => "Refreshing packages…"
         false => "Workspace refreshed"
 
+    (** The state after the catalog arrives: the entries stored, the refreshing or refreshed notice by `waiting`, nothing faulted. *)
     export withCatalog (current, entries, waiting) = awaiting (current(packageCatalog = entries), waitingNotice waiting, waiting)
 
     graphNotice (workspace, waiting) = match waiting > 0
@@ -77,16 +88,22 @@ module Store
             true => workspace.workspaceReason
             false => "Workspace refreshed"
 
+    (** The state after the workspace graph arrives: `workspace` stored with its own notice by `waiting`, nothing faulted. *)
     export withGraph (current, workspace, waiting) = awaiting (current(packageGraph = workspace), graphNotice (workspace, waiting), waiting)
 
+    (** The state as a change starts: notice `notice`, pending with `waiting` requests outstanding, generation `generation`, not faulted, any confirm prompt closed. *)
     export change (current, notice, generation, waiting) = cleared (current(packageNotice = notice, packagePending = true, packageFault = false, packageGeneration = generation, packageWaiting = waiting))
 
+    (** The request running `osprey-pkg --json tree --graph` in the workspace, tagged `ticket`, or the error the editor reports for it. *)
     export graphRequest (current, ticket) = Editor::processInput (ticket, "osprey-pkg", [], "--json tree --graph --project .\n", current.packageWorkspace, 120000, 4194304, "package/graph")
 
+    (** The request running `osprey-pkg --json fetch` against `packageRegistry` in the workspace, tagged `ticket`. *)
     export fetchRequest (current, ticket) = Editor::processInput (ticket, "osprey-pkg", [], "--json fetch --registry ${current.packageRegistry} --project .\n", current.packageWorkspace, 120000, 4194304, "package/fetch")
 
+    (** The request running `osprey-pkg --json <verb> <key>` against `packageRegistry` in the workspace, tagged `ticket`. *)
     export changeRequest (current, verb, key, ticket) = Editor::processInput (ticket, "osprey-pkg", [], "--json ${verb} ${key} --registry ${current.packageRegistry} --project .\n", current.packageWorkspace, 120000, 4194304, "package/change")
 
+    (** A refresh as a runtime step: a new generation with two requests outstanding, then the catalog and graph requests asked together; a graph request the editor cannot build steps to the fault screen instead. *)
     export refresh current =
         generation = satAdd current.packageGeneration 1
         ready = cleared (current(packageNotice = "Refreshing packages…", packagePending = true, packageFault = false, packageGeneration = generation, packageWaiting = 2))
@@ -95,9 +112,10 @@ module Store
             Error problem => Runtime::step (fault (ready, problem))
             Success graph => Runtime::asking (ready, [catalog, graph])
 
+    (** A runtime step asking for the request in `result`, or stepping to the fault screen with its problem. *)
     export request (current, result) = match result
         Success wanted => Runtime::asking (current, [wanted])
         Error problem => Runtime::step (fault (current, problem))
 
-    // The workspace as the region comparison reads it.
+    (** The workspace as the JSON the region comparison reads: project, packages, direct keys, findings, and whether the lock is missing and why. *)
     export encodeWorkspace workspace = JsonObject [Doc::str ("project", workspace.workspaceProject), JsonMember "packages" (Packages::encodePackages workspace.workspacePackages), JsonMember "direct" (Doc::strings workspace.workspaceDirect), JsonMember "findings" (Doc::strings workspace.workspaceFindings), Doc::bit ("missing", workspace.workspaceMissing), Doc::str ("reason", workspace.workspaceReason)]

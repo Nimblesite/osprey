@@ -5,19 +5,29 @@ namespace registry;
 /// `src/toolchain/schemas/package-registry.td` exactly so the JSON projection is mechanical.
 /// Implements the canonical-manifest rule of [PACKAGE-TYPE-INVARIANTS].
 module ManifestModel {
+    /// A pinned dependency: the package, the compatibility epoch it must be in and the lowest ordinal accepted.
     export type Requirement = { package: Names::Key, epoch: int, minimumOrdinal: int }
+    /// One dependency edge, named by the manifest table it comes from.
     export type Edge = Runtime { requirement: Requirement } | Build { requirement: Requirement } | Test { requirement: Requirement }
     /// The ambient capabilities the root grants one dependency key
     /// (`capabilities = [...]` on its dependency entry); never transitive
     /// ([PACKAGE-CAPABILITY-CONFINEMENT]).
     export type Grant = { package: Names::Key, capabilities: List<string> }
+    /// One `[system.*]` entry: a host capability and the lowest revision it must have.
     export type SystemRequirement = { capability: string, minimumRevision: int }
+    /// The three file formats an asset may be.
     export type AssetKind = Utf8Text | Json | Png
+    /// What an asset is for: documentation, or runtime data read only under the named capability.
     export type AssetRole = Documentation { kind: AssetKind } | RuntimeData { kind: AssetKind, requiredCapability: string }
+    /// One declared non-source file: its path, size in bytes, digest and role.
     export type Asset = { path: string, byteLength: int, digest: string, role: AssetRole }
+    /// The search-facing text of a package: a summary and its keywords.
     export type Discovery = { summary: string, keywords: List<string> }
+    /// The `[package]` table of a publishable manifest: key, SPDX license expression and discovery text.
     export type Publication = { package: Names::Key, licenseExpression: string, discovery: Discovery }
+    /// The source flavor a project is written in.
     export type Flavor = Default | Ml
+    /// The whole canonical manifest, field for field as the typeDiagram `PackageManifest` names them.
     export type Manifest = {
         projectName: string,
         sourceRoots: List<string>,

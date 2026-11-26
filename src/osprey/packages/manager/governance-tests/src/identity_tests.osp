@@ -72,6 +72,8 @@ module IdentityTests {
         ])
     }
 
+    /// The identity suite: one leaf name under two organizations,
+    /// organization-bound keys, and tombstones keeping their key.
     export fn run() = {
         test("governance identity: one leaf serves two organizations", sameLeafTwoOrganizations)
         test("governance identity: keys are organization-bound", orgBoundKeys)

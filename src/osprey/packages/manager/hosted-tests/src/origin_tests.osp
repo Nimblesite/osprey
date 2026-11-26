@@ -26,6 +26,7 @@ module OriginTests {
         outcome(HostedOrigin::csrf("tok", "")) == "req.csrf-unconfigured"
     ])
 
+    /// Site-origin validation for credentialed mutations, and CSRF token checks.
     export fn run() = {
         test("hosted origin: site origin", origins)
         test("hosted origin: csrf tokens", tokens)

@@ -23,6 +23,7 @@ namespace text
 namespace "geometry/metric"
     (** A quoted label is opaque: `/` builds no parent namespace. *)
     module Metric
+        (** Converts `metres` to centimetres. *)
         export centimetres metres = (metres * 100) 
 
 import "geometry/metric"::Metric as Metric

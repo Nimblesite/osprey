@@ -43,6 +43,7 @@ module NamesTests {
         ])
     }
 
+    /// The names suite: canonical keys, reason codes and canonical order.
     export fn run() = {
         test("package names: canonical keys", acceptsCanonicalKeys)
         test("package names: reason codes", rejectsWithReasonCodes)

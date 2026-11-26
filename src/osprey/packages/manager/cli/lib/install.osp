@@ -25,8 +25,12 @@ module Install {
 
     fn commandLine(parsed) = CommandLine { base: Flags::given(parsed, Fetch::registryFlag, Fetch::defaultRegistry), project: Flags::project(parsed) }
 
+    /// The files a walk of `dir` found, read in walk order; a non-regular
+    /// entry or an unreadable file is its stable code.
     export fn filesOfWalked(walk, dir) = Fetch::filesOfWalked(walk, dir)
 
+    /// `SourceDigest` of a file list, recomputed exactly as the server
+    /// computed the release digest ([PACKAGE-SOURCE-CANONICAL]).
     export fn digestOfFiles(fileList) = Fetch::digestOfFiles(fileList)
 
     /// The manifest text among a tree's files, "" when the tree has none.

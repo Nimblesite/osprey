@@ -107,11 +107,7 @@ def run_task(model, name, setup, task, verify, extra):
             custom = shell(folder, extra)
             diff = shell(folder, "git status --short && git diff --stat")
             names = Support.tool_names(result.messages)
-            print(f"agent said: {result.output}")
-            print(f"tools ({len(names)}): {join(names, ", ")}")
-            print(f"requests {result.usage.requests}, tokens {result.usage.input_tokens} in / {result.usage.output_tokens} out")
-            print(diff)
-            print(after)
+            print(f"agent said: {result.output}\ntools ({len(names)}): {join(names, ", ")}\nrequests {result.usage.requests}, tokens {result.usage.input_tokens} in / {result.usage.output_tokens} out\n{diff}\n{after}")
             verdict = judge(model, task, result.output, after)
             print(f"judge: {verdict}")
             return [

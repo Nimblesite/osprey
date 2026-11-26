@@ -7,7 +7,6 @@ let listenStatus = websocketServerListen(serverId)
 print("listen=${listenStatus}")
 
 let broadcastCount = websocketServerBroadcast(serverId, "server ready")
-print("initial broadcast recipients=${broadcastCount}")
-print("listening on ws://127.0.0.1:54321/chat; Ctrl-C stops the server")
+print("initial broadcast recipients=${broadcastCount}\nlistening on ws://127.0.0.1:54321/chat; Ctrl-C stops the server")
 
 websocketKeepAlive()

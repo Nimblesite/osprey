@@ -5,6 +5,7 @@ namespace registry_editor
 import ui::Doc
 import ui::Keyed
 
+(** The editor program: the store's initial state, its keyed regions and the palette they are drawn with. *)
 module App
     slice () = perform Signal<PackageState>.read ()
 

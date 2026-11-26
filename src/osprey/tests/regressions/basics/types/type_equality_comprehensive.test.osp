@@ -46,11 +46,7 @@ exactArithmetic(fn() => print(toString(applyInt(f: addOne,   x: 10))))
 exactArithmetic(fn() => print(toString(applyInt(f: timesTwo, x: 10))))
 exactArithmetic(fn() => print(toString(applyInt(f: minusOne, x: 10))))
 
-print("=== Same (string)->string passed via HOF ===")
-print(applyStr(f: excl, s: "hi"))
-print(applyStr(f: ques, s: "hi"))
-
-print("=== Different shapes ===\n${applyToStr(f: intToString, x: 42)}")
+print("=== Same (string)->string passed via HOF ===\n${applyStr(f: excl, s: "hi")}\n${applyStr(f: ques, s: "hi")}\n=== Different shapes ===\n${applyToStr(f: intToString, x: 42)}")
 exactArithmetic(fn() => print(toString(applyTwo(f: twoArgAdd, a: 5, b: 7))))
 exactArithmetic(fn() => print(toString(applyThree(f: threeArgAdd, a: 1, b: 2, c: 3))))
 print("")
@@ -58,9 +54,7 @@ print("")
 /// --- Generic monomorphization via identity-like functions ---
 fn identity(x) = x
 fn duplicate(x) = x
-print("${toString(identity(42))}\n${toString(duplicate(99))}")
-print(identity("a"))
-print(duplicate("b"))
+print("${toString(identity(42))}\n${toString(duplicate(99))}\n${identity("a")}\n${duplicate("b")}")
 
 /// --- Union type equality (same tag = same, different tag = different) ---
 type Color = Red | Green | Blue
@@ -246,9 +240,7 @@ let appliedText = identityOf<string>("os")
 let appliedNested = length(identityOf<List<int>>([1, 2]))
 let appliedEmpty = length(emptyOf<int>())
 let appliedPair = pickOf<int, string>(7, "seven")
-print("applied int=${appliedInt} text=${appliedText} nested=${appliedNested} empty=${appliedEmpty} pair=${appliedPair}")
-
-print("=== TYPE EQUALITY COMPLETE ===")
+print("applied int=${appliedInt} text=${appliedText} nested=${appliedNested} empty=${appliedEmpty} pair=${appliedPair}\n=== TYPE EQUALITY COMPLETE ===")
 
 /// Verifies generic records, function shapes, union tags, and variant payload types.
 fn typeEqualityCase() = {

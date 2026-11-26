@@ -73,9 +73,7 @@ advance (seg, rest, sep) =
     _done = report seg
     processAll (drop rest ((sep + 1) ))
 
-print "=== key=value config parser ==="
-
-print "Parsing well-formed 'host=localhost;port=8080;tls=true':"
+print "=== key=value config parser ===\nParsing well-formed 'host=localhost;port=8080;tls=true':"
 good = exactArithmetic (\() =>
     processAll "host=localhost;port=8080;tls=true")
 
@@ -101,9 +99,7 @@ portEq = exactArithmetic (\() =>
 print "findEq('port=8080') = ${portEq}"
 badEq = exactArithmetic (\() =>
     findEq ("bad_entry_no_equals", 0))
-print "findEq('bad_entry_no_equals') = ${badEq}"
-
-print "=== parser complete ==="
+print "findEq('bad_entry_no_equals') = ${badEq}\n=== parser complete ==="
 
 (** Confirm a successful pair carries the complete key/value rendering. *)
 pairMatches (seg, expected) =

@@ -4,24 +4,32 @@ namespace sample;
 type InboxModel = { value: string }
 type Reply = { model: InboxModel, commands: string }
 
+/// Replaces one field of the inbox model when the key names it.
 module Model {
     fn choose(changed, target, value, old) = match changed == target {
         true => value
         false => old
     }
+    /// `model` with its `value` replaced by `value` when `key` is `"value"`, otherwise unchanged.
     export fn set(model, key, value) = InboxModel { value: choose(key, "value", value, model.value) }
 }
 
+/// Restores the model from a source, spelled three ways so the `Result` payload
+/// crosses the module boundary inferred, ascribed and curried.
 module Storage {
+    /// The model reset to `"cached"` when `source` is `"valid"`, else an `Error` carrying `"invalid"`.
     export fn restoreInferred(model, source) = match source == "valid" {
         false => Error { message: "invalid" }
         true => Success { value: Model::set(model, "value", "cached") }
     }
+    /// The same restore with its `Result` types written out.
     export fn restore(model: InboxModel, source: string) -> Result<InboxModel, string> = restoreInferred(model, source)
+    /// A closure over `model` that restores it from a `source` given later.
     export fn restoreCurried(model: InboxModel) -> (string) -> Result<InboxModel, string> =
     fn(source: string) -> Result<InboxModel, string> => restore(model, source)
 }
 
+/// Readies the model, has `Storage` restore it and settles the reply either way.
 module Update {
     fn ready(model) = Model::set(model, "value", "ready")
     fn unchanged(model) = Reply { model: model, commands: "[]" }
@@ -30,11 +38,16 @@ module Update {
         Error { message } => failure(Model::set(ready(model), "value", "bad"), message)
         Success { value } => unchanged(Model::set(value, "value", "good"))
     }
+    /// Readies `model`, asks `Storage::restore` and answers a reply carrying `"good"` or the error message.
     export fn restore(model, source) = settled(model, Storage::restore(ready(model), source))
+    /// The same reply through `Storage::restoreCurried`, with the closure applied here.
     export fn restoreCurried(model) = fn(source) => settled(model, Storage::restoreCurried(ready(model))(source))
+    /// The same reply through `Storage::restoreInferred`.
     export fn restoreInferred(model, source) = settled(model, Storage::restoreInferred(ready(model), source))
 }
 
+/// Renders a `Result` payload of `float32`, so the owner of a non-record
+/// payload is checked across module calls too.
 module Payload {
     fn answer(ok) = match ok {
         true => Success { value: toFloat32(1.25) }
@@ -44,6 +57,7 @@ module Payload {
         Success { value } => "value: ${value}"
         Error { message } => "error: ${message}"
     }
+    /// `"value: 1.25"` when `ok` is true, `"error: missing value"` when false.
     export fn render(ok) = label(answer(ok))
 }
 

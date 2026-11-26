@@ -16,6 +16,9 @@ import agent::McpClient
 import agent::Transcript
 import agent::Images
 
+// The slice the project's `.mcp.json` is read into, asked for once a folder is chosen and answered in `Answers::completed`.
+mcpProjectFile = "mcp-project-file"
+
 (** Every step of a turn: starting one, each model answer and each tool's answer ([UI-EFFECTS]). *)
 module Turn
     deadline () = 600000
@@ -131,7 +134,7 @@ module Turn
                         _ => Requests::ask ("mcpwrite:${server.serverName}", ui::ProcessWrite(writeHandle = "mcp:${server.serverName}", writeBytes = wire.text))
                     Runtime::asking (moved, [request])
 
-    // A server that finished a call hands its text to the conversation waiting on it, if it still is, keeping any requests the server still needs.
+    (** The step after an MCP server finished a call: the call is cleared from the server and its text answers the conversation still busy on it, which moves on keeping `stepped`'s requests; without a finished server `stepped` is returned unchanged, and with no conversation waiting, a step that changes only the server. *)
     export handOver stepped = match Lists::find (stepped.stepStore.mcp.stateServers, \server => server.serverCallDone)
         Error _ => stepped
         Success marked =>
@@ -344,7 +347,7 @@ module Answers
                 mcp = store.mcp
                 moved = Model::putChat (store(mcp = mcp(stateFolder = folder, stateProjectLoaded = false)), chat(chatFolder = folder))
                 saving = Model::persisting (moved, "chats.json")
-                saving(requests = listAppend saving.requests (Requests::ask ("mcp-project", Model::readTextAt (moved.settings.platform, "${folder}/.mcp.json", "mcp-project-file"))))
+                saving(requests = listAppend saving.requests (Requests::ask ("mcp-project", Model::readTextAt (moved.settings.platform, "${folder}/.mcp.json", mcpProjectFile))))
 
     // The MCP state from the document read for `slice`: `load` of its words when the read was `found` with words, else `missing`.
     mcpDocument (store, slice, found, load, missing) =
@@ -365,7 +368,7 @@ module Answers
             loaded = McpModel::projectMissing (store.mcp)
             afterMcp (loaded, store, McpRun::stopsFor (store.mcp, loaded))
         Success result =>
-            loaded = mcpDocument (store, "mcp-project-file", Doc::number (Doc::parse result, "status") == 0, \text => McpModel::projectLoaded (store.mcp, text), McpModel::projectMissing (store.mcp))
+            loaded = mcpDocument (store, mcpProjectFile, Doc::number (Doc::parse result, "status") == 0, \text => McpModel::projectLoaded (store.mcp, text), McpModel::projectMissing (store.mcp))
             afterMcp (loaded, store, McpRun::stopsFor (store.mcp, loaded))
 
     // Once every document has answered, connect what is enabled and off.
@@ -441,7 +444,7 @@ module App
         store = Model::launched (context.platform, home, folder, context.now)
         envFile = listGet context.arguments 1 ?: ""
         env = Requests::ask ("env", Pick::either (envFile == "", ui::StoreRead(readName = "key.env", readLimit = 1000000, readSlice = "env"), Model::readText (context.platform, envFile)))
-        Runtime::asking (store, [env, storeRead ("providers", "providers.json", 1000000, "providers-file"), storeRead ("chats", "chats.json", 64000000, "chats-file"), storeRead ("mcp-global", "mcp.json", 1000000, "mcp-file"), storeRead ("mcp-state", "mcp-state.json", 1000000, "mcp-state-file"), Requests::ask ("mcp-project", Model::readTextAt (context.platform, "${folder}/.mcp.json", "mcp-project-file"))])
+        Runtime::asking (store, [env, storeRead ("providers", "providers.json", 1000000, "providers-file"), storeRead ("chats", "chats.json", 64000000, "chats-file"), storeRead ("mcp-global", "mcp.json", 1000000, "mcp-file"), storeRead ("mcp-state", "mcp-state.json", 1000000, "mcp-state-file"), Requests::ask ("mcp-project", Model::readTextAt (context.platform, "${folder}/.mcp.json", mcpProjectFile))])
 
     (** Applies one message: a tap, text or a choice, a flag, a splitter's width or a completion. *)
     export update (context, before, message) =

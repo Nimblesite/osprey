@@ -109,6 +109,7 @@ module Lessons
         afterProblem doc,
     ]
 
+    (** Empty when `doc` carries format 1, else the refusal saying a newer workbench is needed, naming the `kind` of document. *)
     export formatProblem kind doc = match Doc::number (doc, "format") == 1
         true => ""
         false => "this ${kind} needs a newer workbench (format must be 1)"

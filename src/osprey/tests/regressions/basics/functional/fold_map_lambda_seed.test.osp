@@ -9,6 +9,4 @@ fn grouped(paths) = foldList(paths, Map(), fn(m, p) => mapSet(m, p, listAppend(m
 let inline = foldList(["x", "y", "x"], Map(), fn(m, p) => mapSet(m, p, listAppend(mapGet(m, p) ?: ["seen"], p)))
 let joined = foldList(["a", "b", "a"], Map(), fn(m, p) => mapSet(m, p, "${mapGet(m, p) ?: ""}${p}"))
 
-print(join(mapGet(grouped(["a", "b", "a"]), "a") ?: [], ","))
-print(join(mapGet(inline, "x") ?: [], ","))
-print(mapGet(joined, "a") ?: "")
+print("${join(mapGet(grouped(["a", "b", "a"]), "a") ?: [], ",")}\n${join(mapGet(inline, "x") ?: [], ",")}\n${mapGet(joined, "a") ?: ""}")

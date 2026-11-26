@@ -110,8 +110,7 @@ fn showUser(stmt) !Database = {
 }
 
 fn runApp(db) !Database = {
-    print(statusLine("create", createUsersTable(db)))
-    print(seedDemoUsers(db))
+    print("${statusLine("create", createUsersTable(db))}\n${seedDemoUsers(db)}")
     let q = perform Database.prepare(db, "SELECT id, name FROM users ORDER BY id")
     let _r1 = showUser(q)
     let _r2 = showUser(q)

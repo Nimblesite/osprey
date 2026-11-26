@@ -13,16 +13,10 @@ fn reportTrue() = {
 fn isEqual(x, y) = x == y
 fn xor(a, b) = (a || b) && !(a && b)
 
-print("=== Boolean Test ===")
-
 // Function-returned bools
-print("${getTrue()}\n${getFalse()}")
-
 // Literals
-print("${false}\n${true}")
-
 // Integer comparisons
-print("${5 > 3}\n${10 == 10}\n${5 != 3}\n${10 <= 15}\n${8  >= 8}")
+print("=== Boolean Test ===\n${getTrue()}\n${getFalse()}\n${false}\n${true}\n${5 > 3}\n${10 == 10}\n${5 != 3}\n${10 <= 15}\n${8  >= 8}")
 
 // Equality via function (named args)
 match isEqual(x: 5, y: 5) {
@@ -35,11 +29,9 @@ let a = true && false
 let b = true || false
 let c = (5 > 3) && (10 == 10)
 let d = (5 < 3) || (10 != 5)
-print("&& ${toString(a)}  || ${toString(b)}  comp&& ${toString(c)}  comp|| ${toString(d)}")
-
 // [BOOL-SHORT-CIRCUIT] The right side must not run in either expression. A broken eager lowering
 // would print the sentinel labels and fail the golden output.
-print("${false && reportTrue()}\n${true  || reportTrue()}")
+print("&& ${toString(a)}  || ${toString(b)}  comp&& ${toString(c)}  comp|| ${toString(d)}\n${false && reportTrue()}\n${true  || reportTrue()}")
 
 /// Negation + de Morgan: !(p && q) == (!p || !q)
 let p = true
@@ -49,10 +41,8 @@ let rhs = (!p) || (!q)
 print("deMorgan && ${toString(lhs == rhs)}")
 let lhs2 = !(p || q)
 let rhs2 = (!p) && (!q)
-print("deMorgan || ${toString(lhs2 == rhs2)}")
-
 // XOR via composition
-print("xor T T ${toString(xor(a: true,  b: true))}\nxor T F ${toString(xor(a: true,  b: false))}\nxor F F ${toString(xor(a: false, b: false))}")
+print("deMorgan || ${toString(lhs2 == rhs2)}\nxor T T ${toString(xor(a: true,  b: true))}\nxor T F ${toString(xor(a: true,  b: false))}\nxor F F ${toString(xor(a: false, b: false))}")
 
 /// Bool from match expression
 let parity = match 4 {
@@ -66,18 +56,12 @@ print("parity ${toString(parity)}")
 /// Float comparison
 let f1 = 1.5
 let f2 = 2.5
-print("${f1 < f2}\n${f2 == f2}")
-
 // String comparison (strcmp semantics, lexicographic)
-print("apple" < "banana")
-print("hi"    == "hi")
-print("hi"    != "bye")
+print("${f1 < f2}\n${f2 == f2}\n${"apple" < "banana"}\n${"hi"    == "hi"}\n${"hi"    != "bye"}")
 
 /// Ternary on bool
 let label = (3 < 5) ? "yes" : "no"
-print(label)
-
-print("=== Boolean Test Complete ===")
+print("${label}\n=== Boolean Test Complete ===")
 
 /// Exercises literals, comparison families, composition, and both short-circuit paths.
 fn booleanBehaviorCase() = {

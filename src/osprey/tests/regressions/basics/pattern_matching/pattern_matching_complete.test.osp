@@ -160,22 +160,14 @@ fn sampleCircle() = Circle { radius: 5 }
 fn sampleSquare() = Square { x: 3, y: 7 }
 
 // --- Literal matching ---
-print("Number analysis:\n0 is ${analyze(0)}\n42 is ${analyze(42)}\n7 is ${analyze(7)}\n")
-
-print("Even check (1=yes, 0=no):\n42 is even: ${isEven(42)}\n7  is even: ${isEven(7)}\n2  is even: ${isEven(2)}\n\nScore categories:\nScore 100: ${category(100)}\nScore 85: ${category(85)}\nScore 50: ${category(50)}")
-
 // --- Nested match ---
-print("Nested 0,0: ${nested(x: 0, y: 0)}\nNested 0,3: ${nested(x: 0, y: 3)}\nNested 4,0: ${nested(x: 4, y: 0)}\nNested 4,5: ${nested(x: 4, y: 5)}")
+print("Number analysis:\n0 is ${analyze(0)}\n42 is ${analyze(42)}\n7 is ${analyze(7)}\n\nEven check (1=yes, 0=no):\n42 is even: ${isEven(42)}\n7  is even: ${isEven(7)}\n2  is even: ${isEven(2)}\n\nScore categories:\nScore 100: ${category(100)}\nScore 85: ${category(85)}\nScore 50: ${category(50)}\nNested 0,0: ${nested(x: 0, y: 0)}\nNested 0,3: ${nested(x: 0, y: 3)}\nNested 4,0: ${nested(x: 4, y: 0)}\nNested 4,5: ${nested(x: 4, y: 5)}")
 
 /// --- ADT field destructuring (both orders + type annotation pattern) ---
 let alice = PersonData { name: "Alice", age: 30 }
 let bob   = PersonData { name: "Bob",   age: 25 }
-print(match alice { PersonData { name, age } => "Person: ${name} is ${toString(age)}" })
-print(match bob   { PersonData { age, name } => "Reordered: ${name}/${toString(age)}" })
-print(match alice { _p: PersonData => "Got PersonData type" _ => "Other" })
-
 /// --- Multi-variant + dynamic via function return ---
-print("${describe(sampleCircle())}\n${describe(sampleSquare())}\n${shapeKind(sampleCircle())}\n${shapeKind(sampleSquare())}")
+print("${match alice { PersonData { name, age } => "Person: ${name} is ${toString(age)}" }}\n${match bob { PersonData { age, name } => "Reordered: ${name}/${toString(age)}" }}\n${match alice { _p: PersonData => "Got PersonData type" _ => "Other" }}\n${describe(sampleCircle())}\n${describe(sampleSquare())}\n${shapeKind(sampleCircle())}\n${shapeKind(sampleSquare())}")
 
 /// --- Bool ternary + structural ternary on anonymous record ---
 let flag = { a: true }

@@ -6,6 +6,8 @@ namespace registry_web;
 /// ([PACKAGE-NAMES-NO-SITTING]). Availability is a name answer, not a
 /// security statement.
 module Availability {
+    /// The name-check page for `leaf` under `@orgHandle`: taken within that
+    /// organization or available there, never a global claim.
     export fn render(orgHandle, leaf, takenInOrg) = Model::shown(Html::document(
         "Check a package name - Osprey Package Registry", body(orgHandle, leaf, takenInOrg)))
 

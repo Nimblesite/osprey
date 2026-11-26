@@ -6,6 +6,7 @@ import registry::Json
 /// What a command answers: a process status and the lines to show. Rendering
 /// stays outside the command so tests inspect the same value a terminal gets.
 module Reports {
+    /// One command's outcome: the process status it exits with and the lines it shows.
     export type Report = { status: int, lines: List<string> }
 
     let ok = 0

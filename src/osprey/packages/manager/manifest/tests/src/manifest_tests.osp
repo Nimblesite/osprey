@@ -257,6 +257,9 @@ module ManifestTests {
         portChecks("rouge", rougeScore, "@osprey/rouge-score")
     }
 
+    /// The manifest suite: dependency grants, port identities, the spec
+    /// example and application roots accepted, and every structure, `[package]`,
+    /// dependency, system and asset rejection.
     export fn run() = {
         test("manifest: dependency grants", grantsParse)
         test("manifest: port identities", acceptsPortIdentities)

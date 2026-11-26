@@ -5,6 +5,9 @@
 
 namespace gpt2;
 
+/// The GPT-2 byte-level BPE tokenizer built from `merges.txt` alone: a prompt
+/// to token ids through GPT-2's pre-tokenization and merge ranks, and ids back
+/// to text, with no vocabulary file.
 module Tokenizer {
     // --- the byte-level BPE tokenizer ------------------------------------------
     //
@@ -54,6 +57,8 @@ module Tokenizer {
         }
     }
 
+    /// The merge table `loadBpe` builds: `merges` by token id, `ranks` by
+    /// the pair "a b", and `ids` by token.
     export type Bpe = { merges: List<string>, ranks: Map<string, int>, ids: Map<string, int> }
 
     /// The merge table from merges.txt: line i (after the version line) is the
@@ -217,6 +222,8 @@ module Tokenizer {
     /// The ids as the space-led list both programs print after `tokens:`.
     export fn idsText(ids) = range(0, listLength(ids)) |> fold("", fn(acc, i) => acc + " " + toString(listGet(ids, i) ?: 0))
 
+    /// The text `ids` stand for: each token's bytes, read as UTF-8, with a
+    /// malformed sequence as '?'.
     export fn decode(bpe, ids) = {
         let bytes = range(0, listLength(ids)) |> fold([], fn(acc, i) => bytesOfToken(bpe, listGet(ids, i) ?: 0, acc))
         textOf(bytes, 0, "")

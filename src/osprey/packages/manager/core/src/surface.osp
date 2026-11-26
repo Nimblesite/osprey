@@ -9,9 +9,13 @@ namespace registry;
 /// hide a call. `tests/fixtures/capabilities/builtins.json` carries the same
 /// builtin-to-capability table as data.
 module Surface {
+    /// The capability of the file, directory and tensor-loading builtins.
     export let files = "io/files"
+    /// The capability of the process-spawning builtins.
     export let process = "io/process"
+    /// The capability of every `http*` and `websocket*` builtin.
     export let network = "io/network"
+    /// The capability of the keyboard and terminal-control builtins.
     export let terminal = "io/terminal"
 
     /// One ambient builtin and the capability it belongs to.

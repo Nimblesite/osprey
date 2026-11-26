@@ -14,6 +14,7 @@ type GraphCompletion =
     MissingLock
         lockReason : string
 
+(** A CLI completion as a semantic verdict: success is the report's status 0, never the process exit code. *)
 module Reports
     failure message = Error(message = message)
 
@@ -51,6 +52,7 @@ module Reports
         true => "Package command failed with semantic status ${report.reportStatus}"
         false => join report.reportLines "\n"
 
+    (** The report's lines when its status is 0, else the failure carrying its lines joined, or a sentence naming the status when there are none. *)
     export succeeded report = match report.reportStatus == 0
         true => Success(value = report.reportLines)
         false => failure (detail report)
@@ -67,4 +69,5 @@ module Reports
                 Error _ => failure "Graph report line is not JSON"
                 Success doc => andThen (Packages::validGraph doc, \graph => Success(value = ResolvedGraph(graphValue = graph)))
 
+    (** The completion of a `tree --graph` outcome: the resolved graph, `MissingLock` with its reason when the report says `tree.no-lock`, or the failure. *)
     export graph result = andThen (process result, graphLine)

@@ -322,6 +322,9 @@ module FetchTests {
         ])
     }
 
+    /// Every `fetch` case over fixture hosts: target selection, usage, registry
+    /// and bundle failures, write failures, `--registry`, dispatch routing,
+    /// legal files kept, and success tied to the installed bytes.
     export fn run() = {
         test("fetch: newest release by epoch then ordinal", newest)
         test("fetch: epoch and digest targets", selection)

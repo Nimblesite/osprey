@@ -7,6 +7,7 @@ namespace registry;
 /// fault and aborts through `Policy::Fatal` instead of yielding a number.
 /// Implements [PACKAGE-EVIDENCE-ARITHMETIC].
 module Arithmetic {
+    /// One term of a weighted mean: a non-negative weight and the value it scales.
     export type Weighted = { weight: int, value: int }
 
     let full = 10000

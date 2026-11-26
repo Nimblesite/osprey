@@ -5,6 +5,8 @@ namespace registry;
 /// inputs the specification names (manifests, JSON fixtures, the typeDiagram
 /// schema, Markdown). Implements [PACKAGE-IMPLEMENTATION-LANGUAGE].
 module Conformance {
+    /// What a path under the package system is: executable Osprey source, a
+    /// declarative input, or a file the gate forbids.
     export type Kind = OspreySource | Declarative | Forbidden
 
     let ospreyExtensions = [".osp", ".ospml"]

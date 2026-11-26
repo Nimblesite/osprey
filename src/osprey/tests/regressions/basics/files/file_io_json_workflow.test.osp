@@ -20,17 +20,15 @@ match readResult {
     Error => print("Read failed!")
 }
 
-print("-- Step 3: Testing Result<string> toString --")
-print("Write Result toString: ${toString(writeResult)}")  // Result<int> byte count
-print("Read Result toString: ${toString(readResult)}")    // Tests Result<string> toString
+// Result<int> byte count
+// Tests Result<string> toString
+print("-- Step 3: Testing Result<string> toString --\nWrite Result toString: ${toString(writeResult)}\nRead Result toString: ${toString(readResult)}")
 
 /// A failure must say WHY [BUILTIN-FILE-ERRMSG]: the operation, the path and
 /// the operating system's own reason, never a placeholder that reads the same
 /// for a missing file, a permissions denial and a full disk.
 let errorResult = readFile("nonexistent_file_xyz123.txt")
-print("Error Result toString: ${toString(errorResult)}")
-
-print("=== Test Complete ===")
+print("Error Result toString: ${toString(errorResult)}\n=== Test Complete ===")
 
 /// Repeats the real write/read workflow and verifies both Result payloads.
 fn fileWorkflowCase() = {

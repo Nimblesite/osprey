@@ -30,9 +30,13 @@ module Overlay {
     export fn pathAt(dir) = Project::pathAt(dir, fileName)
 
     // `Mapping` shares `package`, `path` and `epoch`; issue #273 needs typed receivers.
+    /// The overridden package key of a mapping.
     export fn keyOf(m: Mapping) = m.package
+    /// The local checkout path of a mapping, relative to the project root.
     export fn pathOf(m: Mapping) = m.path
+    /// The compatibility epoch a mapping pins its checkout to.
     export fn epochOf(m: Mapping) = m.epoch
+    /// The published release a mapping replaces, when one exists.
     export fn baselineOf(m: Mapping) = m.baseline
 
     fn blank() = Mapping { package: Names::blank(), path: "", epoch: 1, baseline: Maybe::none() }

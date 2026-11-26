@@ -93,10 +93,8 @@ fn request(client, method, path, payload) = {
 // Create HTTP client to connect to OUR Osprey server
 print("Creating HTTP client...")
 let clientId = (httpCreateClient("http://127.0.0.1:18080", 5000) ?: -1)
-print("Client created with ID: ${clientId}")
-
 // Test HTTP methods against our REAL Osprey server
-print("=== Testing HTTP Methods ===")
+print("Client created with ID: ${clientId}\n=== Testing HTTP Methods ===")
 
 /// Test GET, POST, PUT and DELETE against the routes the handler serves.
 let getUsersResult = request(clientId, "GET", "/api/users", "")
@@ -132,9 +130,7 @@ print("=== Server Shutdown Test ===\n✅ All HTTP operations completed successfu
 
 /// Clean up server resources
 let stopResult = (httpStopServer(serverId) ?: -1)
-print("Server stopped with result: ${stopResult}")
-
-print("=== HTTP API Test Complete ===")
+print("Server stopped with result: ${stopResult}\n=== HTTP API Test Complete ===")
 
 // Verifies every routed method, the error route, and graceful shutdown.
 test("local HTTP API routes every method and status", fn() => checkAll("HTTP API statuses", [

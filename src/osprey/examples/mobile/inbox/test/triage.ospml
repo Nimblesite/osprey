@@ -7,8 +7,11 @@ import mobile::Storage
 import mobile::View
 import mobile::Annotations
 
+(** What the triage cases share: the detail events they send, and the inbox with an issue open. *)
 module TriageSupport
+    (** A detail event of type `kind` for issue `id` carrying `value`, such as a note or a priority. *)
     export edit kind id value = Json::obj (Json::strField "type" kind + "," + Json::strField "id" id + "," + Json::strField "value" value)
+    (** The update after issue 101 is opened in a freshly loaded inbox. *)
     export selected () =
         loaded = Support::loaded ()
         App::dispatch loaded.model (edit "open" "101" "")

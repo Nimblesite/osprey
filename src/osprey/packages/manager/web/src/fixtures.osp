@@ -96,12 +96,16 @@ module WebFixtures {
     fn publication(scope, name, actor, status) = Model::Publication {
         key: key(scope, name), actor: actor, status: status, evidence: verified([]) }
 
+    /// `@atlas/util` pending: awaiting a WebAuthn assertion for the frozen
+    /// source digest.
     export fn pendingPublication() = publication("atlas", "util", "prin-pub-1",
         Model::Pending { reason: "awaiting WebAuthn assertion for the frozen source digest" })
 
+    /// `@atlas/util` rejected: a statement mismatch and a stale authority epoch.
     export fn rejectedPublication() = publication("atlas", "util", "prin-pub-1",
         Model::Rejected { reasons: ["proof.statement-mismatch: expected 'publish|@atlas/util|epoch:1'", "authority epoch stale: 0 != 1"] })
 
+    /// `@border/util` quarantined: a forbidden payload found in its source.
     export fn quarantinedPublication() = publication("border", "util", "prin-pub-1",
         Model::Quarantined { reason: "source verification quarantined: forbidden payload in docs/index.html" })
 

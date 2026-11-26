@@ -42,17 +42,13 @@ print "=== String Pipeline ===\n"
 
 (** ----- Inspection / search (total, no Result wrap) ----- *)
 raw = "  GET /api/users?name=alice&age=30  "
-print "raw=\"${raw}\" len=${raw |> length}\n\nisEmpty=${raw |> isEmpty}\n\ncontains 'GET'=${raw |> contains "GET"}\n\nstartsWith '  '=${raw |> startsWith "  "}\n\nendsWith '  '=${raw |> endsWith "  "}\n"
-
 // pipe == UFCS == direct
-print "len pipe=${raw |> length}  ufcs=${length raw}  direct=${length raw}\n\nctns pipe=${raw |> contains "GET"}  ufcs=${contains raw "GET"}  direct=${contains raw "GET"}\n"
+print "raw=\"${raw}\" len=${raw |> length}\n\nisEmpty=${raw |> isEmpty}\n\ncontains 'GET'=${raw |> contains "GET"}\n\nstartsWith '  '=${raw |> startsWith "  "}\n\nendsWith '  '=${raw |> endsWith "  "}\n\nlen pipe=${raw |> length}  ufcs=${length raw}  direct=${length raw}\n\nctns pipe=${raw |> contains "GET"}  ufcs=${contains raw "GET"}  direct=${contains raw "GET"}\n"
 
 (** ----- Transformation chain via pipe ----- *)
 normalized = raw |> trim |> toLowerCase
-print "normalized=\"${normalized}\"\n\nisGetRequest=${normalized |> startsWith "get "}\n\nupper=\"${toUpperCase "hello"}\"\n\ntrimStart=\"${trimStart "  hi  "}\"\n\ntrimEnd=\"${trimEnd "  hi  "}\"\n\njoin=\"${join ["a", "b", "c"] "-"}\"\n"
-
 // UFCS chain
-print "chain=\"${take (toLowerCase (trim raw)) 5}\"\n"
+print "normalized=\"${normalized}\"\n\nisGetRequest=${normalized |> startsWith "get "}\n\nupper=\"${toUpperCase "hello"}\"\n\ntrimStart=\"${trimStart "  hi  "}\"\n\ntrimEnd=\"${trimEnd "  hi  "}\"\n\njoin=\"${join ["a", "b", "c"] "-"}\"\n\nchain=\"${take (toLowerCase (trim raw)) 5}\"\n"
 
 // ----- Substring & search (fallible — Result<T,E>) -----
 match indexOf raw "?"
@@ -103,9 +99,7 @@ match split "anything" ""
     Error _message => print "split empty rejected\n"
 
 // ----- HTTP-routing via startsWith + pattern matching -----
-print "${route ("GET", "/health")}\n\n${route ("GET", "/api/users/42")}\n\n${route ("GET", "/api/orders")}\n\n${route ("POST", "/api/users")}\n\n${route ("GET", "/random")}\n\n${route ("DELETE", "/anything")}\n"
-
-print "=== Pipeline Complete ===\n"
+print "${route ("GET", "/health")}\n\n${route ("GET", "/api/users/42")}\n\n${route ("GET", "/api/orders")}\n\n${route ("POST", "/api/users")}\n\n${route ("GET", "/random")}\n\n${route ("DELETE", "/anything")}\n\n=== Pipeline Complete ===\n"
 
 (** Replay the transformation pipeline, fallible operations, and routing branches. *)
 stringPipelineCase () =

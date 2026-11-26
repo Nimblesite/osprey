@@ -99,6 +99,9 @@ module FixtureTests {
 
     fn pngBombs() = Fixtures::report("png structure and bombs", Fixtures::loadItems("malicious/png-bombs.json", "cases"), pngCaseHolds)
 
+    /// Every declarative fixture under `tests/fixtures`, one test per table:
+    /// names, release ids, paths, tree rules, domain hashes, confusables and
+    /// PNG bombs.
     export fn run() = {
         test("fixtures: names", names)
         test("fixtures: release ids", releaseIds)

@@ -167,6 +167,8 @@ module TomlTests {
         ])
     }
 
+    /// The TOML suite: the spec document, arrays of tables, dotted keys,
+    /// accessors, escapes, integers, arrays, located rejections and long inputs.
     export fn run() = {
         test("toml: manifest example", manifestDoc)
         test("toml: array-of-tables", arrayTables)

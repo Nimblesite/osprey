@@ -62,9 +62,7 @@ fn advance(seg, rest, sep) = {
     processAll(drop(rest, (sep + 1) ))
 }
 
-print("=== key=value config parser ===")
-
-print("Parsing well-formed 'host=localhost;port=8080;tls=true':")
+print("=== key=value config parser ===\nParsing well-formed 'host=localhost;port=8080;tls=true':")
 let good = exactArithmetic(fn() => processAll("host=localhost;port=8080;tls=true"))
 
 print("Parsing with a malformed entry 'a=1;bad_entry_no_equals;c=3':")
@@ -82,9 +80,7 @@ exactArithmetic(fn() => match parsePair("bad_entry_no_equals") {
 let portEq = exactArithmetic(fn() => findEq("port=8080", 0))
 print("findEq('port=8080') = ${portEq}")
 let badEq = exactArithmetic(fn() => findEq("bad_entry_no_equals", 0))
-print("findEq('bad_entry_no_equals') = ${badEq}")
-
-print("=== parser complete ===")
+print("findEq('bad_entry_no_equals') = ${badEq}\n=== parser complete ===")
 
 /// Confirms a successful pair carries the complete key/value rendering.
 fn pairMatches(seg, expected) = match parsePair(seg) {

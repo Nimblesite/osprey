@@ -191,6 +191,9 @@ module JsonTests {
         canonicalLength(longText() + "\n" + longText()) == 2 * longRun + 4
     ])
 
+    /// The JSON suite: values, integer edges, problem offsets, nesting depth,
+    /// string escapes, UTF-8, member lookup, RFC 8785 escaping and ordering, and
+    /// long inputs.
     export fn run() = {
         test("json: values and whitespace", values)
         test("json: integer edges", integers)

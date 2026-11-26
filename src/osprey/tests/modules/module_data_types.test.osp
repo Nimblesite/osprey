@@ -9,57 +9,78 @@
 
 namespace shapes;
 
+/// Shapes, their extents and their faults, every value built and read through
+/// the exports below.
 module Geo {
+    /// A circle or a square, each carrying its one dimension.
     export type Shape = Circle { radius: int } | Square { side: int }
 
+    /// The width and height of a shape's bounding box.
     export type Extent = { width: int, height: int }
 
+    /// Builds a circle of `radius`.
     export fn circle(radius) = Circle { radius: radius }
 
+    /// Builds a square of `side`.
     export fn square(side) = Square { side: side }
 
+    /// The area of `shape`: its radius or side squared.
     export fn area(shape) = match shape {
         Circle { radius } => (radius * radius)
         Square { side } => (side * side)
     }
 
+    /// The lower-case kind of `shape`, as text.
     export fn name(shape) = match shape {
         Circle { radius } => "circle"
         Square { side } => "square"
     }
 
+    /// The bounding box of `shape`: a circle spans twice its radius, a square its side.
     export fn extent(shape) = match shape {
         Circle { radius } => Extent { width: ((radius * 2) ), height: ((radius * 2) ) }
         Square { side } => Extent { width: side, height: side }
     }
 
+    /// Twice the width plus height of `extent`.
     export fn perimeterOf(extent) = ((((extent.width + extent.height) ) * 2) )
 
+    /// The two reasons a shape request fails.
     export type Fault = Missing | InvalidParameter
 
+    /// The fault for an absent shape.
     export fn missing() = Missing
 
+    /// The fault for a rejected parameter.
     export fn invalid() = InvalidParameter
 }
 
+/// A generic one-field record, so one module function can be shown specialising
+/// at several call sites.
 module Boxes {
+    /// A record holding one value of any type.
     export type Box<T> = { held: T }
 
     /// A generic module function specialises independently at every call site.
     export fn wrap(value) = Box { held: value }
 
+    /// Reads the value a box holds.
     export fn held(box) = box.held
 
+    /// Rebuilds `box` around the value it already holds.
     export fn rewrap(box) = wrap(held(box))
 }
 
+/// An opaque record ID: built by `make`, read by `value`, never forged outside.
 module Ids {
     /// The representation stays inside: a client builds an `Id` only through
     /// `make` and reads it only through `value` ([MODULES-OPAQUE-TYPES]).
     export opaque type Id = Id { value: int }
 
+    /// Builds an ID carrying `n`.
     export fn make(n) = Id { value: n }
 
+    /// Reads the number an ID carries.
     export fn value(id) = id.value
 
     /// Read the ID carried by either result variant.
@@ -74,31 +95,43 @@ module Ids {
         Success { value: Id { value: n } } | Error { message: Id { value: n } } => n
     }
 
+    /// An ID carrying one more than `id` does.
     export fn next(id) = match id {
         Id { value } => Id { value: value + 1 }
     }
 }
 
+/// Opaque aliases over `int` and `string`, so a client can hold a token but
+/// never inspect it.
 module Tokens {
     /// Manifest aliases kept abstract: inside `Tokens` a `Token` IS an `int`
     /// and a `Label` IS a `string`, so the module computes with them freely.
     /// A client can only hold one and hand it back ([MODULES-OPAQUE-TYPES]).
     export opaque type Token = int
+    /// The opaque text form of a token, which a client can only pass back.
     export opaque type Label = string
 
+    /// A token for `n`, carrying twice its value inside the module.
     export fn issue(n) -> Token = n * 2
 
+    /// The token one past `token`.
     export fn next(token: Token) -> Token = token + 1
 
+    /// The integer a token hides.
     export fn raw(token: Token) -> int = token
 
+    /// Whether two tokens carry the same integer.
     export fn same(left: Token, right: Token) = left == right
 
+    /// An opaque `t<n>` label for `token`.
     export fn label(token: Token) -> Label = "t${token}"
 
+    /// The string behind an opaque label.
     export fn text(label: Label) -> string = label
 }
 
+/// Opaque aliases of four shapes — a generic application, a record, a `Result`
+/// and a function type — each reached only through the exports below.
 module Sealed {
     type Conn = { host: string, port: int }
 
@@ -106,28 +139,41 @@ module Sealed {
     /// record, a `Result` and a function type. Inside the module each one is
     /// the type it names, so list, field, `?:` and call rules all apply.
     export opaque type Bag<T> = List<T>
+    /// An opaque connection record of host and port.
     export opaque type Link = Conn
+    /// An opaque `Result<int, string>`.
     export opaque type Attempt = Result<int, string>
+    /// An opaque int-to-int function.
     export opaque type Step = fn(int) -> int
 
+    /// A bag holding `first` then `second`.
     export fn bag(first, second) -> Bag<int> = [first, second]
 
+    /// How many items a bag holds.
     export fn size(bag: Bag<int>) = listLength(bag)
 
+    /// A link to `host` on `port`.
     export fn open(host, port) -> Link = Conn { host: host, port: port }
 
+    /// `link` with its port replaced by `port`.
     export fn moved(link, port) -> Link = link { port: port }
 
+    /// Renders a link as `host:port`.
     export fn describe(link: Link) = "${link.host}:${link.port}"
 
+    /// A successful attempt carrying `n`.
     export fn tried(n: int) -> Attempt = n
 
+    /// A failed attempt carrying `why` as its message.
     export fn failed(why) -> Attempt = Error { message: why }
 
+    /// The attempt's value, or `fallback` when it failed.
     export fn orElse(attempt: Attempt, fallback) = attempt ?: fallback
 
+    /// A step that adds `n` to its input.
     export fn stepBy(n) -> Step = fn(x) => x + n
 
+    /// Applies `step` to `start`.
     export fn run(step: Step, start) = step(start)
 }
 

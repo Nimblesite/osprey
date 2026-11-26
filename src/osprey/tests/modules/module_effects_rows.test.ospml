@@ -5,7 +5,9 @@
 
 namespace pipeline
 
+(** Pulls readings through a `control` effect that the caller must handle. *)
 module Source
+    (** Yields the next reading on demand. *)
     export effect Feed
         control next : Unit => int
 
@@ -15,15 +17,19 @@ module Source
     (** The row survives a private helper in between. *)
     twice () = (pull () + pull ()) 
 
+    (** Two pulled readings, added together through the private helper. *)
     export pair () = twice ()
 
+(** Emits one line through an effect a caller collects. *)
 module Sink
+    (** Carries one line out of the module. *)
     export effect Report
         line : string => Unit
 
     (** A second module's effect composes with the first under nested handlers. *)
     export emit value = perform Report.line "v=${value}"
 
+(** Combines `Source` and `Sink` from a third module that installs no handler. *)
 module Stage
     (** Importing a module installs nothing; the caller must still handle. *)
     export run transform = transform (Source::pull ())

@@ -102,6 +102,8 @@ module DispatchTests {
         ])
     }
 
+    /// The frontend over fixture hosts: help and unknown commands, `--json`
+    /// rendering, and `doctor` on a healthy and on a broken host.
     export fn run() = {
         test("dispatch: help and unknown commands", helpAndUnknown)
         test("dispatch: --json rendering", jsonRendering)

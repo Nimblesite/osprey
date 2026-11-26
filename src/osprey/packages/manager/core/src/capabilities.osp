@@ -5,6 +5,7 @@ namespace registry;
 /// probe that must pass once it lands lives in `src/osprey/packages/manager/blockers`. Nothing
 /// here is implemented in another language instead.
 module Capabilities {
+    /// One delivery blocker: its stable id and the sentence saying what Osprey lacks.
     export type Blocked = { id: string, summary: string }
 
     fn entry(id, summary) = Blocked { id: id, summary: summary }

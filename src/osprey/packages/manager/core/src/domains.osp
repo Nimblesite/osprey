@@ -33,30 +33,55 @@ module Domains {
 
     /// The domain of the source-tree envelope, used without `H`'s length prefix.
     export fn sourceTreeDomain() = sourceTree
+    /// The domain of one source file's bytes, as the build plan hashes them.
     export fn sourceFileDomain() = sourceFile
+    /// The domain of the canonical manifest digest, `manifestDigest`.
     export fn manifestDomain() = manifest
+    /// The domain of a build plan's digest.
     export fn buildPlanDomain() = buildPlan
+    /// The domain of the release identity envelope; `ReleaseId.digest` is its hash.
     export fn releaseDomain() = release
+    /// The domain of a verification bundle, hashed into `verificationBundleDigest`.
     export fn verificationBundleDomain() = verificationBundle
+    /// The domain of a bundle's log-checkpoint record, hashed into `logCheckpointDigest`.
     export fn logCheckpointRecordDomain() = logCheckpointRecord
+    /// The domain an operator's signature covers over a log checkpoint, signature omitted.
     export fn logCheckpointDomain() = logCheckpoint
+    /// The domain a witness's signature covers over a witness receipt, signature omitted.
     export fn witnessReceiptDomain() = witnessReceipt
+    /// The domain of a resolution context.
     export fn resolutionContextDomain() = resolutionContext
+    /// The domain of the dependency selection a release build plan binds.
     export fn dependencySelectionDomain() = dependencySelection
+    /// The domain of a completed witness's release lock, the challenge's `dependencyLockDigest`.
     export fn releaseLockDomain() = releaseLock
+    /// The domain of the development lock a development plan binds.
     export fn developmentLockDomain() = developmentLock
+    /// The domain of a build plan's module-graph component.
     export fn moduleGraphDomain() = moduleGraph
+    /// The domain of a build plan's compiler-invocation component.
     export fn compilerInvocationDomain() = compilerInvocation
+    /// The domain of a build plan's test-plan component.
     export fn testPlanDomain() = testPlan
+    /// The domain of a build plan's output-layout component.
     export fn outputLayoutDomain() = outputLayout
+    /// The domain of a package's public interface.
     export fn publicInterfaceDomain() = publicInterface
+    /// The domain of the proof-free payload a signed development build receipt attests.
     export fn developmentBuildReceiptDomain() = developmentBuildReceipt
+    /// The domain of the active development overlay, hashed into `overlayDigest`.
     export fn developmentOverlayDomain() = developmentOverlay
+    /// The domain of a resolution proof, hashed into `proofDigest`.
     export fn resolutionProofDomain() = resolutionProof
+    /// The domain of a development generation, hashed into `generationDigest`.
     export fn developmentGenerationDomain() = developmentGeneration
+    /// The domain of a workspace transaction's journal, hashed into `journalDigest`.
     export fn workspaceTransactionDomain() = workspaceTransaction
+    /// The domain of a release-status record; each later record hashes its predecessor under it.
     export fn releaseStatusDomain() = releaseStatus
+    /// The domain prefixed to canonical envelope bytes before an envelope digest is taken.
     export fn envelopeDomain() = envelope
+    /// The domain prefixed to a WebAuthn PAE before the challenge hash is taken.
     export fn webAuthnDomain() = webAuthn
 
     /// Every domain, for uniqueness and spelling checks.

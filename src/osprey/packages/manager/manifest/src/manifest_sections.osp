@@ -5,6 +5,9 @@ namespace registry;
 /// failure is a stable reason code at the offending pair's span, encoded as
 /// `code at line:column` inside `Error` until `Manifest` decodes it.
 module ManifestSections {
+    /// The validated `[project]` table: name, source roots, the optional
+    /// namespace, entry and flavor, test roots, and the Python and TypeScript
+    /// source lists.
     export type Project = { name: string, sourceRoots: List<string>, defaultNamespace: Maybe::Maybe<string>, entry: Maybe::Maybe<string>, flavor: Maybe::Maybe<ManifestModel::Flavor>, testRoots: List<string>, pythonSources: List<string>, typescriptSources: List<string> }
 
     let projectKeys = ["name", "source_roots", "default_namespace", "entry", "flavor", "test_roots", "python_sources", "typescript_sources"]

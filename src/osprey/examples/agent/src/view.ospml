@@ -49,7 +49,6 @@ module Look
         style = Frames::plain
         style(frameFont = "mono", frameTextSize = size, frameLineHeight = Pick::either (size > 12, 20.0, 18.0), frameInk = ink)
 
-    (** A row of children at `gap` apart, filling its width. *)
     (** What went wrong, in words, in the colour of danger. *)
     export trouble words =
         style = sized (12, "danger")
@@ -66,6 +65,7 @@ module Look
     (** Where a card's subject lives, in words. *)
     export endpoint words = Ui::framed (mono (11, "secondary"), Ui::text words)
 
+    (** A frame with its children `gap` apart, filling its width. *)
     export gapped gap =
         style = Frames::plain
         style(frameGap = gap)
@@ -235,6 +235,7 @@ module View
 
     settingsNow () = perform Signal<Settings>.read ()
 
+    (** The MCP state as the MCP signal slice last wrote it. *)
     export mcpNow () = (perform Signal<McpSignal>.read ()).signalState
 
     draftNow () = (perform Signal<Draft>.read ()).draftText
@@ -583,6 +584,7 @@ module View
             true => "${intDiv n 1000}.${intDiv (n % 1000) 100}k"
             false => whole
 
+    (** The inspector: the open conversation's usage, the files it changed, and a line per enabled MCP server. *)
     export inspector () =
         chat = activeChat ()
         usage = Engine::usage_of chat.chatHistory

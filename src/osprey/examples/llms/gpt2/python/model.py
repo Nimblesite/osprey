@@ -25,24 +25,40 @@ __all__ = [
 ]
 
 WEIGHTS_DIR = "src/osprey/examples/llms/gpt2/weights"
+"""The directory holding the checkpoint: `model.safetensors` for the weights
+and `merges.txt` for the tokenizer."""
 
 # The GPT-2 small configuration (config.json in the same repository).
 VOCAB_SIZE = 50257
+"""The size of the vocabulary: token ids run from 0 to 50256."""
 WIDTH = 768
+"""The residual width: every block's input and output row has 768 elements."""
 HEADS = 12
+"""The attention heads each block splits its width into."""
 HEAD_WIDTH = 64
+"""One head's width, `WIDTH / HEADS`."""
 QKV_WIDTH = 2304
+"""The width of a block's fused query-key-value projection, `3 * WIDTH`."""
 MLP_WIDTH = 3072
+"""The hidden width of a block's MLP, `4 * WIDTH`."""
 LAYER_COUNT = 12
+"""How many transformer blocks the model stacks."""
 POSITIONS = 1024
+"""The longest sequence the position embeddings cover."""
 END_OF_TEXT = 50256
+"""The token id that ends generated text."""
 EPSILON: float32 = 0.00001
+"""The constant added to a LayerNorm row's variance before its square root."""
 WIDTH_F: float32 = 768.0
+"""`WIDTH` as a float32, so row sums divide into means."""
 # 1 / sqrt(HEAD_WIDTH)
 SCORE_SCALE: float32 = 0.125
+"""The attention scores' scale, 1 / sqrt(HEAD_WIDTH)."""
 # sqrt(2 / pi) and the cubic coefficient of the tanh GELU approximation.
 GELU_SCALE: float32 = 0.7978845608028654
+"""sqrt(2 / pi), the slope of the tanh GELU approximation."""
 GELU_CUBIC: float32 = 0.044715
+"""The cubic coefficient inside the tanh GELU approximation."""
 
 
 class Layer[B]:
@@ -115,34 +131,44 @@ class Stepped[B]:
 
 
 def at(m, i):
+    """Element `i` of tensor `m`, read through the installed handler."""
     return perform(Tensor.get(m, i))
 
 
 def size(m):
+    """The element count of tensor `m`."""
     return perform(Tensor.length(m))
 
 
 def empty():
+    """The empty tensor: where a fold over rows starts, and what the unused
+    arm of a stopped operation answers."""
     return or_stop(perform(Tensor.from_list([])), empty)
 
 
 def device():
+    """The installed handler's own name for where the arithmetic runs."""
     return perform(Tensor.device())
 
 
 def total(b):
+    """The sum of every element of `b`, or a fault from the backend."""
     return or_stop(perform(Tensor.reduce(b, 0.0, add_f)), lambda: at(b, 0))
 
 
 def plus(a, b):
+    """`a` and `b` added element by element, or a fault from the backend."""
     return or_stop(perform(Tensor.zip_with(a, b, add_f)), lambda: a)
 
 
 def add_f(a, x):
+    """Two elements to one by addition: the `Combine` of `total` and `plus`."""
     return a + x
 
 
 def max_f(a, x):
+    """The larger of two elements: the `Combine` of `peak` and of every
+    softmax's row peak."""
     return x if x > a else a
 
 
@@ -152,10 +178,12 @@ def peak(b):
 
 
 def gelu(x):
+    """The GELU of one element by the tanh approximation."""
     return toFloat32(0.5) * x * (toFloat32(1.0) + tanh(GELU_SCALE * (x + GELU_CUBIC * x * x * x)))
 
 
 def gelus(f):
+    """The GELU of every element of `f`, or a fault from the backend."""
     return or_stop(perform(Tensor.build(size(f), lambda i: gelu(at(f, i)))), empty)
 
 
@@ -200,6 +228,9 @@ def layer_at(i):
 
 
 def load_weights():
+    """The whole checkpoint from `WEIGHTS_DIR`: the embeddings, the final
+    LayerNorm and every block, the token embedding transposed for the output
+    projection; a missing tensor stops the run."""
     wte = tensor("wte.weight")
     return Weights(
         wte=wte, wte_t=transpose(wte, VOCAB_SIZE, WIDTH), wpe=tensor("wpe.weight"),
@@ -209,11 +240,14 @@ def load_weights():
 
 
 def empty_layer():
+    """A block whose twelve parameters are all the empty tensor: what a
+    missing block or gradient stands in as."""
     e = empty()
     return Layer(ln1_g=e, ln1_b=e, qkv_w=e, qkv_b=e, proj_w=e, proj_b=e, ln2_g=e, ln2_b=e, fc_w=e, fc_b=e, out_w=e, out_b=e)
 
 
 def layer(w, i):
+    """Block `i` of `w`, or an empty block when `w` has none there."""
     return unwrap_or(listGet(w.blocks, i), empty_layer())
 
 
@@ -235,6 +269,8 @@ def sum_range(x, start, n):
 
 
 def squared_deviation(x, start, n, mean):
+    """The sum of the squared distances from `mean` of the `n` elements of
+    `x` from `start`: a row's variance before it is divided by the width."""
     return fold(range(start, start + n), 0.0, lambda a, i: a + (at(x, i) - mean) * (at(x, i) - mean))
 
 
@@ -244,6 +280,8 @@ def row_means(x, t):
 
 
 def row_variances(x, t, means):
+    """The variance of each of the t rows of x [t, width] about its mean in
+    `means`, or a fault from the backend."""
     return or_stop(perform(Tensor.build(t, lambda r: squared_deviation(x, r * WIDTH, WIDTH, at(means, r)) / WIDTH_F)), empty)
 
 
@@ -272,10 +310,12 @@ def q_at(qkv, r, h, d):
 
 
 def k_at(qkv, r, h, d):
+    """Element `d` of head `h`'s key for row `r` of qkv [t, 2304]."""
     return at(qkv, r * QKV_WIDTH + WIDTH + h * HEAD_WIDTH + d)
 
 
 def v_at(qkv, r, h, d):
+    """Element `d` of head `h`'s value for row `r` of qkv [t, 2304]."""
     return at(qkv, r * QKV_WIDTH + 2 * WIDTH + h * HEAD_WIDTH + d)
 
 

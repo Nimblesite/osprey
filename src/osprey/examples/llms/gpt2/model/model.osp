@@ -14,25 +14,42 @@
 
 namespace gpt2;
 
+/// The GPT-2 124M transformer written once against the `Tensor` effect: its
+/// configuration and checkpoint, the forward pass with the trace the backward
+/// pass reads, and the KV-cached step, none of which names a buffer type.
 module Model {
+    /// The directory holding the checkpoint: `model.safetensors` for the
+    /// weights and `merges.txt` for the tokenizer.
     export let weightsDir = "src/osprey/examples/llms/gpt2/weights"
 
     // The GPT-2 small configuration (config.json in the same repository).
+    /// The size of the vocabulary: token ids run from 0 to 50256.
     export let vocabSize = 50257
+    /// The residual width: every block's input and output row has 768 elements.
     export let width = 768
+    /// The attention heads each block splits its width into.
     export let heads = 12
+    /// One head's width, `width / heads`.
     export let headWidth = 64
+    /// The width of a block's fused query-key-value projection, `3 * width`.
     export let qkvWidth = 2304
+    /// The hidden width of a block's MLP, `4 * width`.
     export let mlpWidth = 3072
+    /// How many transformer blocks the model stacks.
     export let layerCount = 12
+    /// The longest sequence the position embeddings cover.
     export let positions = 1024
+    /// The token id that ends generated text.
     export let endOfText = 50256
+    /// The constant added to a LayerNorm row's variance before its square root.
     export let epsilon: float32 = 0.00001
+    /// `width` as a float32, so row sums divide into means.
     export let widthF: float32 = 768.0
     /// 1 / sqrt(headWidth)
     export let scoreScale: float32 = 0.125
     /// sqrt(2 / pi) and the cubic coefficient of the tanh GELU approximation.
     export let geluScale: float32 = 0.7978845608028654
+    /// The cubic coefficient inside the tanh GELU approximation.
     export let geluCubic: float32 = 0.044715
 
     /// One block's parameters. `B` is whatever the installed `Tensor` handler
@@ -64,17 +81,29 @@ module Model {
     /// each block's grown cache.
     export type Stepped<B> = { x: B, caches: List<B> }
 
+    /// Element `i` of tensor `m`, read through the installed handler.
     export fn at(m, i) = perform Backends::Tensor.get(m, i)
+    /// The element count of tensor `m`.
     export fn size(m) = perform Backends::Tensor.length(m)
+    /// The empty tensor: where a fold over rows starts, and what the unused
+    /// arm of a stopped operation answers.
     export fn empty() = orStop(perform Backends::Tensor.fromList([]), empty)
+    /// The installed handler's own name for where the arithmetic runs.
     export fn device() = perform Backends::Tensor.device()
+    /// The sum of every element of `b`, or a fault from the backend.
     export fn total(b) = orStop(perform Backends::Tensor.reduce(b, 0.0, addF), fn() => at(b, 0))
+    /// `a` and `b` added element by element, or a fault from the backend.
     export fn plus(a, b) = orStop(perform Backends::Tensor.zipWith(a, b, addF), fn() => a)
+    /// Two elements to one by addition: the `Combine` of `total` and `plus`.
     export fn addF(a, x) = a + x
+    /// The larger of two elements: the `Combine` of `peak` and of every
+    /// softmax's row peak.
     export fn maxF(a, x) = match x > a { true => x  false => a }
     /// The largest element of a nonempty tensor, or a fault from the backend.
     export fn peak(b) = orStop(perform Backends::Tensor.reduce(b, at(b, 0), maxF), fn() => at(b, 0))
+    /// The GELU of one element by the tanh approximation.
     export fn gelu(x) = toFloat32(0.5) * x * (toFloat32(1.0) + tanh(geluScale * (x + geluCubic * x * x * x)))
+    /// The GELU of every element of `f`, or a fault from the backend.
     export fn gelus(f) = orStop(perform Backends::Tensor.build(size(f), fn(i) => gelu(at(f, i))), empty)
 
     /// A tensor operation's value, or a fault that stops the run with the
@@ -110,6 +139,9 @@ module Model {
         }
     }
 
+    /// The whole checkpoint from `weightsDir`: the embeddings, the final
+    /// LayerNorm and every block, the token embedding transposed for the
+    /// output projection; a missing tensor stops the run.
     export fn loadWeights() = {
         let wte = tensor("wte.weight")
         Weights {
@@ -119,11 +151,14 @@ module Model {
         }
     }
 
+    /// A block whose twelve parameters are all the empty tensor: what a
+    /// missing block or gradient stands in as.
     export fn emptyLayer() = {
         let e = empty()
         Layer { ln1g: e, ln1b: e, qkvW: e, qkvB: e, projW: e, projB: e, ln2g: e, ln2b: e, fcW: e, fcB: e, outW: e, outB: e }
     }
 
+    /// Block `i` of `w`, or an empty block when `w` has none there.
     export fn layer(w, i) = listGet(w.blocks, i) ?: emptyLayer()
 
     /// m [rows, cols] as [cols, rows]: tensors are rank-1, so a product against a
@@ -138,9 +173,13 @@ module Model {
     fn foldRun(x, start, n, init, step) = range(start, start + n) |> fold(init, fn(a, i) => step(a, at(x, i)))
     /// Sum of a contiguous run of a flat tensor.
     export fn sumRange(x, start, n) = foldRun(x, start, n, 0.0, addF)
+    /// The sum of the squared distances from `mean` of the `n` elements of
+    /// `x` from `start`: a row's variance before it is divided by the width.
     export fn squaredDeviation(x, start, n, mean) = foldRun(x, start, n, 0.0, fn(a, v) => a + (v - mean) * (v - mean))
     /// Per-row mean and variance of x [t, width], the LayerNorm statistics.
     export fn rowMeans(x, t) = orStop(perform Backends::Tensor.build(t, fn(r) => sumRange(x, r * width, width) / widthF), empty)
+    /// The variance of each of the t rows of x [t, width] about its mean in
+    /// `means`, or a fault from the backend.
     export fn rowVariances(x, t, means) = orStop(perform Backends::Tensor.build(t, fn(r) => squaredDeviation(x, r * width, width, at(means, r)) / widthF), empty)
 
     fn normalised(x, means, variances, g, b, i) = {
@@ -164,8 +203,11 @@ module Model {
 
     /// qkv is [t, 2304]: query, key and value start at columns 0, `width` and 2 * `width`.
     fn qkvPart(qkv, column, r, h, d) = at(qkv, r * qkvWidth + column + h * headWidth + d)
+    /// Element `d` of head `h`'s query for row `r` of qkv [t, 2304].
     export fn qAt(qkv, r, h, d) = qkvPart(qkv, 0, r, h, d)
+    /// Element `d` of head `h`'s key for row `r` of qkv [t, 2304].
     export fn kAt(qkv, r, h, d) = qkvPart(qkv, width, r, h, d)
+    /// Element `d` of head `h`'s value for row `r` of qkv [t, 2304].
     export fn vAt(qkv, r, h, d) = qkvPart(qkv, 2 * width, r, h, d)
     fn score(qkv, h, r, c) = (range(0, headWidth) |> fold(0.0, fn(a, d) => a + qkvPart(qkv, 0, r, h, d) * qkvPart(qkv, width, c, h, d))) * scoreScale
     /// Row r of n attended rows is position first + r; probs are [heads, n, t].

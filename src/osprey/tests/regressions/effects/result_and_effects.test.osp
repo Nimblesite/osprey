@@ -93,10 +93,8 @@ print("rescued ${toString(rescues)} failing step(s); healthy + rescued total = $
 /// A local Arith policy supplies a replacement without invoking Rescue.
 let localOk = integerDefault(-1, fn() => 10 % 3)
 let localBad = integerDefault(-1, fn() => 10 % 0)
-print("local remainder policy  10 % 3 -> ${toString(localOk)}   10 % 0 -> ${toString(localBad)}")
-
 // Floating division is recovered by an explicit value policy.
-print("float policy for 10 / 0 = ${toString(floatDefault(fn() => 10 / 0))}\n=== pipeline complete ===")
+print("local remainder policy  10 % 3 -> ${toString(localOk)}   10 % 0 -> ${toString(localBad)}\nfloat policy for 10 / 0 = ${toString(floatDefault(fn() => 10 / 0))}\n=== pipeline complete ===")
 
 /// Verifies rescued failures beside healthy Result, nested collections, and local fallbacks.
 fn resultAndEffectsCase() = {

@@ -56,11 +56,7 @@ exactArithmetic (\() =>
 exactArithmetic (\() =>
     print (toString (applyInt (minusOne, 10))))
 
-print "=== Same (string)->string passed via HOF ==="
-print (applyStr (excl, "hi"))
-print (applyStr (ques, "hi"))
-
-print "=== Different shapes ===\n${(applyToStr (intToString, 42))}"
+print "=== Same (string)->string passed via HOF ===\n${(applyStr (excl, "hi"))}\n${(applyStr (ques, "hi"))}\n=== Different shapes ===\n${(applyToStr (intToString, 42))}"
 exactArithmetic (\() =>
     print (toString (applyTwo (twoArgAdd, 5, 7))))
 exactArithmetic (\() =>
@@ -70,9 +66,7 @@ print ""
 (** --- Generic monomorphization via identity-like functions --- *)
 identity x = x
 duplicate x = x
-print "${(toString (identity 42))}\n${(toString (duplicate 99))}"
-print (identity "a")
-print (duplicate "b")
+print "${(toString (identity 42))}\n${(toString (duplicate 99))}\n${(identity "a")}\n${(duplicate "b")}"
 
 (** --- Union type equality (same tag = same, different tag = different) --- *)
 type Color =
@@ -286,9 +280,7 @@ appliedText = identityOf<string> "os"
 appliedNested = length (identityOf<List<int>> [1, 2])
 appliedEmpty = length (emptyOf<int> ())
 appliedPair = pickOf<int, string> (7, "seven")
-print "applied int=${appliedInt} text=${appliedText} nested=${appliedNested} empty=${appliedEmpty} pair=${appliedPair}"
-
-print "=== TYPE EQUALITY COMPLETE ==="
+print "applied int=${appliedInt} text=${appliedText} nested=${appliedNested} empty=${appliedEmpty} pair=${appliedPair}\n=== TYPE EQUALITY COMPLETE ==="
 
 (** Verify generic records, function shapes, union tags, and variant payload types. *)
 typeEqualityCase () =

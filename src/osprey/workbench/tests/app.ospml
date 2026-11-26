@@ -21,32 +21,39 @@ effect FixtureReport
 
 (** Fallible fixtures keep their errors until the test boundary or an explicit host-error payload. *)
 module FixtureFiles
+    (** The lessons directory, found from the repository root or one level up, or an `Error` naming both paths it failed to read. *)
     export root () = match readFile "src/osprey/workbench/lessons/catalogue.json"
         Success _ => Success(value = "src/osprey/workbench/lessons/")
         Error repositoryProblem => match readFile "../lessons/catalogue.json"
             Success _ => Success(value = "../lessons/")
             Error suiteProblem => Error(message = "No workbench fixtures: src/osprey/workbench/lessons/catalogue.json: ${repositoryProblem}; ../lessons/catalogue.json: ${suiteProblem}")
 
+    (** The text of fixture `path` under the lessons directory, or an `Error` naming the fixture. *)
     export read path = bind (root (), \directory => readAt (directory, path))
 
+    (** The byte size of fixture `path`, or an `Error` naming the fixture. *)
     export size path = bind (root (), \directory => fileSize (directory + path))
 
     readAt (directory, path) = match readFile (directory + path)
         Success text => Success(value = text)
         Error problem => Error(message = "Workbench fixture ${directory}${path}: ${problem}")
 
+    (** A `Success` carrying `value`. *)
     export ok value = Success(value = value)
 
+    (** `next` applied to a successful `result`'s value, or that `Error` passed through. *)
     export bind (result, next) = match result
         Error problem => Error(message = problem)
         Success value => next value
 
+    (** Records `problem` through the `FixtureReport` effect, for the enclosing `checked` case to fail on. *)
     export report problem = perform FixtureReport.record problem
 
     (** Unit-only: a Result-returning case must not be buried inside Success(Error(...)). *)
     export unit : (Unit -> Unit) -> (Unit -> Result<Unit, string>)
     unit work = \() => ok (work ())
 
+    (** A case that runs `work`, failing on every problem it reports and on an `Error`, passing on a `Success`. *)
     export checked : (Unit -> Result<Unit, string>) -> (Unit -> Unit)
     checked work = \() =>
         handle FixtureReport
@@ -60,6 +67,7 @@ module FixtureFiles
         workbench::Read found => Success(value = found)
         workbench::Faulted fault => Error(message = "${context} formula ${text}: fault ${toString fault.column}: ${fault.expected}")
 
+    (** Expects a missing fixture and a malformed formula to each end in an `Error` naming them. *)
     export failures () =
         mentions (read "missing-fixture-regression.json", "missing-fixture-regression.json")
         mentions (formula ("regression", ")"), "regression formula ): fault")
@@ -110,7 +118,7 @@ module Drive
 
     slugs () = ["what-is-a-proof", "what-is-a-solution", "what-is-a-solver", "and-swap", "either-way", "not-and-contradiction", "navier-stokes"]
 
-    // The host's slices: the catalogue and lesson reads, saved progress and workspace imports.
+    (** The host's slices for a fresh session: the lesson catalogue and texts, saved progress and the workspace imports. *)
     export held () = JsonObject [JsonMember "lessons:catalogue" (files [file ("lessons/catalogue.json", read "catalogue.json")]), JsonMember "lessons:texts" (files (mapList (slugs (), \slug => file ("lessons/" + slug + ".json", read (slug + ".json"))))), JsonMember "lessons:progress" (JsonString "{\"completed\":[\"and-swap/judge-wrong-order\"]}")]
 
     program () = App::program ()
@@ -127,7 +135,7 @@ module Drive
         regions = heldIn (after, \() => next.drivenProgram.programRender (prior, store, before.caseFrames, next.drivenSurface.surfaceWritten))
         before(caseDriven = next, caseHeld = after, caseFrames = mapList (regions, signalFrame), caseDrawn = mapList (filterList (regions, \region => redrew region.snapshotValue), \region => region.snapshotKey))
 
-    // The store the session carries ([WORKBENCH-STORE]), typed.
+    (** The store the session carries ([WORKBENCH-STORE]), typed. *)
     export bench case = Drive::holding case.caseDriven
 
     // Every region the app draws for the current store, lowered nowhere: the semantic tree a host lays out.
@@ -140,8 +148,10 @@ module Drive
         Success found => pick found
         Error _ => fallback
 
+    (** The semantic tree of region `key` as a document, or `{}` when the app did not draw it. *)
     export node (case, key) = at (case, key, \found => tree found.snapshotValue, JsonObject [])
 
+    (** The region keys region `key` depends on, or `[]` when the app did not draw it. *)
     export dependencies (case, key) = at (case, key, \found => found.snapshotDependencies, [])
 
     (** The regions the last step redrew, in order. *)
@@ -167,7 +177,7 @@ module Drive
         Success last => last.caseHeld
         Error _ => held ()
 
-    // The step `next` already took from this session.
+    (** The step `next` already took from this session, for a case reader that expects one. *)
     export post (_case, next) = next
 
     exported (case, message) = step (case, \d => seenIn (d, heldIn (case.caseHeld, \() => Surfaces::deliver (d.drivenSurface, d.drivenProgram, d.drivenNow, message))))
@@ -336,12 +346,16 @@ module Drive
         ui::Destructive => "destructive"
         ui::Filled => "filled"
 
+    (** The node whose control is labelled `label`, or `JsonNull` when none is drawn. *)
     export findLabel (label, node) = matching (labelOf, label, node)
 
+    (** The node named `name` in the tree region `key` of `case` drew, or `JsonNull` when none did. *)
     export namedIn (name, case, key) = findNamed (name, node (case, key))
 
+    (** The node labelled `label` in the tree region `key` of `case` drew, or `JsonNull` when none did. *)
     export labelledIn (label, case, key) = findLabel (label, node (case, key))
 
+    (** The first component of kind `kindName` in region `key` of `case`, or `JsonNull` when none is drawn. *)
     export kindedIn (kindName, case, key) = findNode (kindName, node (case, key))
 
     (** The control metrics a host reads on `label`'s own frame. *)

@@ -2,6 +2,7 @@
 // Keep every envelope and persisted snapshot valid UTF-8. [MOBILE-REACTIVE-UI]
 namespace mobile
 
+(** Text limits counted in Unicode scalars, so what the UI shows and what is saved stay valid UTF-8. *)
 module Text
     boundary : string -> int -> int -> int
     boundary source remaining offset = match remaining <= 0 || offset >= byteLength source
@@ -12,6 +13,8 @@ module Text
                 width = codePointWidth scalar ?: 1
                 boundary source ((satSub remaining 1) ) (satAdd offset width)
 
+    (** The first `limit` Unicode scalars of `source`, or all of it when it is shorter. *)
     export prefix source limit = take source (boundary source limit 0)
 
+    (** Whether `source` holds at most `limit` Unicode scalars. *)
     export within source limit = boundary source limit 0 == byteLength source

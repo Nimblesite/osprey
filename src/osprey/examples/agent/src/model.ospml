@@ -159,6 +159,7 @@ module Model
     export hasKey (settings, provider) = keyOf (settings, provider) != ""
 
     // The local loopback model uses no credentials; remote providers still require their own key.
+    (** Whether a turn may start on `provider`: always for the loopback model, otherwise once its key is saved. *)
     export ready (settings, provider) = provider == "osprey" || hasKey (settings, provider)
 
     (** The key under `names` in dotenv text, empty when none. `names` come from the catalogue, so the store names no provider. *)
@@ -262,6 +263,7 @@ module Model
         true => ui::Run(executable = "C:\\Windows\\System32\\cmd.exe", arguments = ["/d", "/c", "type", path], timeout = 5000, outputLimit = 1000000, plist = false, runSlice = slice)
         false => ui::Run(executable = "/bin/cat", arguments = [path], timeout = 5000, outputLimit = 1000000, plist = false, runSlice = slice)
 
+    (** The capability reading the text file `path` into the `env` slice, as the launch's dotenv file is read. *)
     export readText (system, path) = readTextAt (system, path, "env")
 
     resultJson result = JsonObject [Doc::str ("id", result.resultId), Doc::str ("name", result.resultName), Doc::str ("content", result.resultContent)]

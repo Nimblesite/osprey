@@ -12,6 +12,7 @@ import proof::Trust
 (** Current imported source is checked by the shared kernel, including
     refusals and assumptions. Implements [WORKBENCH-VERDICT]. *)
 module ImportedCases
+    (** Registers the eight imported-proof cases as named tests. *)
     export run () =
         test ("imported id_imp exposes its actual statement and no assumptions", valid)
         test ("corrupting the current imported proof is refused", corrupted)
@@ -22,21 +23,27 @@ module ImportedCases
         test ("an empty export is not an empty successful proof catalogue", empty)
         test ("oversized proof exports are refused before parsing", oversized)
 
+    (** Expects `id_imp` to present its exact statement with no assumptions, then runs the typesetting cases. *)
     export valid () =
         expect (describes (Fixtures::idImp (), "id_imp"), "id_imp | (∀ (p : Prop), (p → p)) | none")
         ProofTermCases::run ()
 
+    (** Expects a corrupted export to be refused with a type mismatch. *)
     export corrupted () = expect (startsWith (describes (Fixtures::idImpBad (), "id_imp"), "error: type mismatch:"), true)
 
+    (** Expects a theorem the export does not declare to be refused by name. *)
     export missing () = expect (describes (Fixtures::idImp (), "missing"), "error: the export declares no `missing`")
 
+    (** Expects an axiom and a definition, each selected by name, to be refused as not a theorem. *)
     export assumption () =
         expect (describes (withUnused (), "unusedAssumption"), "error: `unusedAssumption` is not a theorem")
         definition = replace (Fixtures::idImp (), "\"thm\":", "\"def\":") ?: ""
         expect (describes (definition, "id_imp"), "error: `id_imp` is not a theorem")
 
+    (** Expects an axiom no theorem uses to leave the selected theorem's assumptions empty. *)
     export unused () = expect (describes (withUnused (), "id_imp"), "id_imp | (∀ (p : Prop), (p → p)) | none")
 
+    (** Expects the catalogue to list only the export's one theorem, after the `same_syntax` export reports each theorem's own axioms and refuses a swapped proof. *)
     export catalogue () =
         sameSyntax ()
         match ImportedProofs::catalogue (withUnused ())
@@ -60,8 +67,10 @@ module ImportedCases
     // Expression 608 is the proof of lump_eq_of_tree_eq; 1221 is the proof of same_syntax.
     swappedProof source = replace (source, "\"type\":814,\"value\":1221", "\"type\":814,\"value\":608") ?: ""
 
+    (** Expects an empty export to be refused as declaring no theorems. *)
     export empty () = expect (catalogueError (ImportedProofs::catalogue ""), "the export declares no theorems")
 
+    (** Expects an export over 8 MiB to be refused by size, for a single check and a catalogue alike. *)
     export oversized () = match repeat ("x", 8388609)
         Error message => expect (message, "an allocated oversized input")
         Success text =>
@@ -84,6 +93,7 @@ module ImportedCases
         Success text => text
         Error message => "refused: ${message}"
 
+    (** The `id_imp` export with one extra axiom, `unusedAssumption`, that no theorem uses. *)
     export withUnused () = "${Fixtures::idImp ()}{\"in\":16,\"str\":{\"pre\":0,\"str\":\"unusedAssumption\"}}\n{\"axiom\":{\"isUnsafe\":false,\"levelParams\":[],\"name\":16,\"type\":0}}\n"
 
 (** The real shared host flow checks current source, selection, and refusal states. *)
@@ -131,6 +141,7 @@ module ImportedFlowCases
 
     edited (before, source) = Drive::post (before, Drive::labelled (before, before, "library", "Paste an exported proof library", Drive::quoted source))
 
+    (** Expects a theorem that uses an axiom literally named `none` to show that name quoted, which the bare `none` of no assumptions cannot be mistaken for. *)
     export ledgerBoundaries () =
         selected = picked (askLoaded (receiptSource ()), "root")
         readsSelection (selected, "root")
@@ -138,6 +149,7 @@ module ImportedFlowCases
 
     receiptSource () = (replace (ImportedCases::withUnused (), "unusedAssumption", "none") ?: "") + "{\"ie\":1000,\"const\":{\"name\":16,\"us\":[]}}\n{\"ie\":1001,\"forallE\":{\"name\":0,\"type\":1000,\"body\":1000,\"binderInfo\":\"default\"}}\n{\"ie\":1002,\"lam\":{\"name\":0,\"type\":1000,\"body\":1,\"binderInfo\":\"default\"}}\n{\"in\":17,\"str\":{\"pre\":0,\"str\":\"root\"}}\n{\"thm\":{\"name\":17,\"levelParams\":[],\"type\":1001,\"value\":1002,\"all\":[]}}\n"
 
+    (** Expects an imported file to show its checked statement with no axioms, then checks its arithmetic, its counterfeit-notation refusals and the bundled libraries. *)
     export fileImport () =
         source = Fixtures::idImp ()
         after = askLoaded source
@@ -191,6 +203,7 @@ module ImportedFlowCases
 
     arithmeticTree () = ui::Binder "∀" [ui::Paren (ui::Op ":" (ui::Sym "n") (ui::Sym "Nat"))] (ui::Binder "∀" [ui::Paren (ui::Op ":" (ui::Sym "m") (ui::Sym "Nat"))] (ui::Op "=" (ui::Op "+" (ui::Sym "n") (ui::Sym "m")) (ui::Op "+" (ui::Sym "m") (ui::Sym "n"))))
 
+    (** Expects selecting a theorem to show its axioms, and a missing or non-theorem name to be refused. *)
     export selection () =
         after = askLoaded (ImportedCases::withUnused ())
         chosen = picked (after, "id_imp")
@@ -200,6 +213,7 @@ module ImportedFlowCases
         axiom = picked (after, "unusedAssumption")
         refusedWith (axiom, "not a theorem")
 
+    (** Expects editing the source to a broken export to revoke checking until it is repaired, and an empty edit to be refused. *)
     export currentSource () =
         after = expanded (askLoaded (Fixtures::idImp ()))
         broken = edited (after, Fixtures::idImpBad ())
@@ -211,6 +225,7 @@ module ImportedFlowCases
         empty = edited (repaired, "")
         refusedWith (empty, "Import refused")
 
+    (** Expects a cancelled, malformed, unanswered or failed file chooser to each leave an explicit refusal or bad notice. *)
     export refusals () =
         pendingFile ()
         requested = ask ()
@@ -237,6 +252,7 @@ module ImportedFlowCases
 
     withUsed () = "${Fixtures::idImp ()}{\"in\":16,\"str\":{\"pre\":0,\"str\":\"trusted_assumption\"}}\n{\"axiom\":{\"levelParams\":[],\"name\":16,\"type\":4}}\n{\"ie\":7,\"const\":{\"name\":16,\"us\":[]}}\n{\"in\":17,\"str\":{\"pre\":0,\"str\":\"uses_assumption\"}}\n{\"thm\":{\"levelParams\":[],\"name\":17,\"type\":4,\"value\":7}}\n"
 
+    (** Expects each selected theorem to list only the axioms it uses: none for `id_imp`, `trusted_assumption` for `uses_assumption`. *)
     export axioms () =
         after = askLoaded (withUsed ())
         clean = picked (after, "id_imp")
@@ -245,6 +261,7 @@ module ImportedFlowCases
         shows (assumed, ["Checked theorem", "Axioms: trusted_assumption"])
         readsSelection (assumed, "uses_assumption")
 
+    (** Expects an import over the 1 MiB inline limit to be kept as a host slice, to check while the slice is held, and to be refused once the host drops it. *)
     export largeSource () = match repeat ("\n", 1048577)
         Error problem => expect (problem, "allocated fixture padding")
         Success padding =>
@@ -350,7 +367,9 @@ module ImportedFlowCases
 effect MemoCount
     counted : Unit => Unit
 
+(** The import memo's lifetime: each source computed once per callback and nothing kept across callbacks. *)
 module ImportMemoCases
+    (** Expects one callback to compute each distinct source once and a second callback to compute afresh, since the memo does not survive between them. *)
     export run () =
         mut checks = 0
         handle MemoCount

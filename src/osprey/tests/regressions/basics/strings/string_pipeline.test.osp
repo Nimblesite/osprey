@@ -45,17 +45,13 @@ print("=== String Pipeline ===\n")
 
 /// ----- Inspection / search (total, no Result wrap) -----
 let raw = "  GET /api/users?name=alice&age=30  "
-print("raw=\"${raw}\" len=${raw |> length}\n\nisEmpty=${raw |> isEmpty}\n\ncontains 'GET'=${raw |> contains("GET")}\n\nstartsWith '  '=${raw |> startsWith("  ")}\n\nendsWith '  '=${raw |> endsWith("  ")}\n")
-
 // pipe == UFCS == direct
-print("len pipe=${raw |> length}  ufcs=${raw.length()}  direct=${length(raw)}\n\nctns pipe=${raw |> contains("GET")}  ufcs=${raw.contains("GET")}  direct=${contains(raw, "GET")}\n")
+print("raw=\"${raw}\" len=${raw |> length}\n\nisEmpty=${raw |> isEmpty}\n\ncontains 'GET'=${raw |> contains("GET")}\n\nstartsWith '  '=${raw |> startsWith("  ")}\n\nendsWith '  '=${raw |> endsWith("  ")}\n\nlen pipe=${raw |> length}  ufcs=${raw.length()}  direct=${length(raw)}\n\nctns pipe=${raw |> contains("GET")}  ufcs=${raw.contains("GET")}  direct=${contains(raw, "GET")}\n")
 
 /// ----- Transformation chain via pipe -----
 let normalized = raw |> trim |> toLowerCase
-print("normalized=\"${normalized}\"\n\nisGetRequest=${normalized |> startsWith("get ")}\n\nupper=\"${toUpperCase("hello")}\"\n\ntrimStart=\"${trimStart("  hi  ")}\"\n\ntrimEnd=\"${trimEnd("  hi  ")}\"\n\njoin=\"${join(["a", "b", "c"], "-")}\"\n")
-
 // UFCS chain
-print("chain=\"${raw.trim().toLowerCase().take(5)}\"\n")
+print("normalized=\"${normalized}\"\n\nisGetRequest=${normalized |> startsWith("get ")}\n\nupper=\"${toUpperCase("hello")}\"\n\ntrimStart=\"${trimStart("  hi  ")}\"\n\ntrimEnd=\"${trimEnd("  hi  ")}\"\n\njoin=\"${join(["a", "b", "c"], "-")}\"\n\nchain=\"${raw.trim().toLowerCase().take(5)}\"\n")
 
 // ----- Substring & search (fallible — Result<T,E>) -----
 match indexOf(raw, "?") {
@@ -90,9 +86,7 @@ match split("a,b,c", ",") { Success { value } => print("split count=${listLength
 match split("anything", "") { Success => print("split empty unexpected\n") Error => print("split empty rejected\n") }
 
 // ----- HTTP-routing via startsWith + pattern matching -----
-print("${route(method: "GET",    path: "/health")}\n\n${route(method: "GET",    path: "/api/users/42")}\n\n${route(method: "GET",    path: "/api/orders")}\n\n${route(method: "POST",   path: "/api/users")}\n\n${route(method: "GET",    path: "/random")}\n\n${route(method: "DELETE", path: "/anything")}\n")
-
-print("=== Pipeline Complete ===\n")
+print("${route(method: "GET",    path: "/health")}\n\n${route(method: "GET",    path: "/api/users/42")}\n\n${route(method: "GET",    path: "/api/orders")}\n\n${route(method: "POST",   path: "/api/users")}\n\n${route(method: "GET",    path: "/random")}\n\n${route(method: "DELETE", path: "/anything")}\n\n=== Pipeline Complete ===\n")
 
 /// Replays the transformation pipeline, fallible operations, and routing branches.
 fn stringPipelineCase() = {

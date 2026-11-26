@@ -5,7 +5,11 @@ namespace registry;
 /// is parsed by the compiler's Rust project loader on this path.
 /// Implements [PACKAGE-MANIFEST].
 module Manifest {
+    /// One located rejection: its stable reason code and the 1-based line and
+    /// column where the problem starts.
     export type Problem = { code: string, line: int, column: int }
+    /// The outcome of parsing one manifest text: the canonical manifest, or
+    /// the first problem found.
     export type Verdict = Accepted { manifest: ManifestModel::Manifest } | Rejected { problem: Problem }
 
     let encodedSeparator = " at "

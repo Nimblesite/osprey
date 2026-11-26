@@ -77,14 +77,18 @@ module Pickers : PickerApi
 module Extended
     type Counter =
         count : int
+    (** A counter that starts at five, not zero. *)
     export empty () =
         Counter
             count = 5
+    (** A counter two past `c`. *)
     export bump c =
         Counter
             count = (c.count + 2)
+    (** The count `c` holds. *)
     export size c = c.count
 
+    (** The size of the starting counter, which is five. *)
     export seeded () = size (empty ())
 
 (** The abstract `Counter` flows through the ascribed surface without leaking. *)

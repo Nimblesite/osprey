@@ -226,6 +226,8 @@ module Fetch {
     /// the release digest ([PACKAGE-SOURCE-CANONICAL]).
     export fn digestOfFiles(fileList) = Source::digest(entriesOf(fileList))
 
+    /// Every regular file under the installed tree `dir`, read in walk order;
+    /// a non-regular entry or an unreadable file is its stable code.
     export fn installedFiles(dir) = andThen(perform Host::Tree.walk(dir), fn(value) => filesOfWalked(value, dir))
 
     fn lastSlash(path) = fold(range(0, byteLength(path)), -1, fn(best, i) => if (byteAt(path, i) ?: 0) == slashByte { i } else { best })

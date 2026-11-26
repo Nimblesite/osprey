@@ -32,6 +32,8 @@ module CookieTests {
         found("session=s ; a=1", "session") == "reject:req.cookie-malformed"
     ])
 
+    /// Strict cookie selection: exact-name lookup, malformed pairs and
+    /// separator spacing.
     export fn run() = {
         test("hosted cookies: selection", selection)
         test("hosted cookies: malformed pairs", malformed)

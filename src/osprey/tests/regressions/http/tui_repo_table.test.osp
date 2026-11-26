@@ -52,8 +52,7 @@ fn renderRow(doc, i, n) = {
 
 fn renderTable(doc) = {
     let count = jsonLength(doc, "")
-    print(green("  Repositories (${count})"))
-    print("  ----------------------------")
+    print("${green("  Repositories (${count})")}\n  ----------------------------")
     renderRow(doc: doc, i: 0, n: count)
 }
 

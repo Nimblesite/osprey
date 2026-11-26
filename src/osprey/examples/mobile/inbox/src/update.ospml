@@ -7,6 +7,7 @@ type InboxUpdate =
     model : InboxModel
     commands : string
 
+(** The inbox's update: each host event answered with the next model and the commands to run. *)
 module Update
     result model commands = InboxUpdate(model = model, commands = commands)
 
@@ -19,6 +20,7 @@ module Update
     // A host event's string field, empty when the host left it out.
     eventValue event key = Json::getOr event key ""
 
+    (** The update that opens the app: the initial model and the schema statement to run. *)
     export initial () = result (Model::initial ()) (perform Storage::Requests.sql (Storage::schema ()))
 
     fetch model = match checkedAdd (nextSequence model) 1
@@ -153,6 +155,7 @@ module Update
         "bookmark" => bookmark model (eventValue event "id")
         _ => detailEvent model event
 
+    (** The update for the host event `event` against `model`: an SQL answer, an HTTP answer, or a user interaction once the app is ready; any other event leaves the model unchanged. *)
     export dispatch model event = match eventValue event "type"
         "sql" => sql model event
         "http" => http model event

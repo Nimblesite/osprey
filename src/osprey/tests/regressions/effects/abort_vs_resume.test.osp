@@ -34,10 +34,8 @@ let recovered = exactArithmetic(fn() => {
     }
     pipeline()
 })
-print("recovered result=" + toString(recovered))
-
 // Returning at step 2 aborts the suspended computation.
-print("=== stopping handler: step 2 stops the pipeline, then step 1 handler finishes ===")
+print("recovered result=" + toString(recovered) + "\n=== stopping handler: step 2 stops the pipeline, then step 1 handler finishes ===")
 mut counter2 = 0
 let aborted = exactArithmetic(fn() => {
     handle Step {

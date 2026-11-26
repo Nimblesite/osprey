@@ -62,6 +62,8 @@ module RequestTests {
         verdict("POST", "/v1/publish", "Authorization: Bearer cli", "x") == "admitted"
     ])
 
+    /// The request gate in order: admission, edge secret and host, method,
+    /// URI and body bounds, the credentialed origin/CSRF chain and CLI bearer requests.
     export fn run() = {
         test("hosted request: admitted", admitted)
         test("hosted request: edge and host", edgeAndHost)

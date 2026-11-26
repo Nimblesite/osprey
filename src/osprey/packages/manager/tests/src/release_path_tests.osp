@@ -62,6 +62,8 @@ module ReleasePathTests {
         ])
     }
 
+    /// The release-path suite: parsed fields, canonical round-trips, path,
+    /// name and version rejections, and `format`.
     export fn run() = {
         test("release paths: parse fields", fields)
         test("release paths: canonical round-trip", accepts)
