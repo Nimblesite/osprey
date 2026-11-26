@@ -17,17 +17,35 @@ fn escaped(s) = {
     replace(lt, ">", "&gt;") ?: lt
 }
 
-// Build inputs come from the local registry. The builder validates URL components.
-fn localPackage(mode) = {
+let publisherName = "Osprey repository publisher"
+
+fn publisherLink(receipt) = if receipt == "recorded" {
+    "<a href=\"/publishers/osprey-repository/\">${publisherName}</a>"
+} else { "Unrecorded" }
+
+fn field(label, value) = "<dt>${label}</dt><dd>${value}</dd>"
+
+fn localPackage() = {
     let key = trim(input())
     let summary = escaped(trim(input()))
-    let url = "/packages/${key}/"
-    let releases = if mode == "row" { "" } else { trim(input()) }
-    if mode == "row" {
-        "<article class=\"prose-package\"><h3><a href=\"${url}\">${key}</a></h3><p>${summary}</p></article>"
-    } else {
-        Shell::withEscapedTitle("${key} · Osprey Packages", "<main><h1>${key}</h1><p>${summary}</p><section><h2>Releases</h2><p>Local folder registry · Audit unverified</p>${releases}</section></main>")
-    }
+    let publisher = publisherLink(trim(input()))
+    let license = escaped(trim(input()))
+    let keywords = escaped(trim(input()))
+    let dependencies = escaped(trim(input()))
+    let releases = trim(input())
+    let metadata = join([field("Publisher", publisher), field("License", license), field("Keywords", keywords), field("Dependencies", dependencies)], "")
+    Shell::withEscapedTitle("${key} · Osprey Packages", "<main><h1>${key}</h1><p>${summary}</p><dl>${metadata}</dl><section><h2>Releases</h2><p>Local folder registry · Audit unverified</p>${releases}</section></main>")
+}
+
+fn row() = {
+    let key = trim(input())
+    let summary = escaped(trim(input()))
+    "<article class=\"prose-package\"><h3><a href=\"/packages/${key}/\">${key}</a></h3><p>${summary}</p></article>"
+}
+
+fn publisherPage() = {
+    let releases = trim(input())
+    Shell::withEscapedTitle(publisherName, "<main><h1>${publisherName}</h1><p>Automated publisher for the Osprey repository’s local folder registry.</p><section><h2>Published releases</h2><ul>${releases}</ul></section></main>")
 }
 
 fn main() = print(match trim(input()) {
@@ -35,12 +53,19 @@ fn main() = print(match trim(input()) {
     "publishing" => Guides::publishers()
     "upload" => upload()
     "local" => catalog(true, input())
-    "row" => localPackage("row")
-    "package" => localPackage("package")
+    "row" => row()
+    "package" => localPackage()
+    "publisher" => publisherPage()
+    "credit" => {
+        let key = trim(input())
+        let version = trim(input())
+        "<li><a href=\"/packages/${key}/\">${key}</a> · ${version}</li>"
+    }
     "release" => {
         let version = trim(input())
         let digest = trim(input())
-        "<p><a download href=\"/sources/${digest}.json\">Download ${version}</a> · <code>${digest}</code></p>"
+        let publisher = publisherLink(trim(input()))
+        "<p><a download href=\"/sources/${digest}.json\">Download ${version}</a> · <code>${digest}</code><br>Publisher · ${publisher}</p>"
     }
     _ => catalog(false, "")
 })

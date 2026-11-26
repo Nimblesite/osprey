@@ -21,6 +21,8 @@ case "$out" in /*) ;; *) out="$PWD/$out" ;; esac
 rm -rf "$out"
 mkdir -p "$out"
 
+receipts=$(mktemp "${out}.receipts.XXXXXX")
+trap 'rm -f "$receipts"' EXIT
 published=0
 refused=0
 mistakes=0
@@ -30,6 +32,7 @@ for manifest in "$repo"/src/osprey/packages/*/osprey.toml; do
   key="$(sed -n 's/^name = "\(@[^"]*\)"/\1/p' "$manifest" | head -1)"
   report="$(echo "publish --folder $out --project $project" | "$client" 2>&1 || true)"
   if printf '%s\n' "$report" | grep -qx 'status: 0'; then
+    printf '%s\n' "$report" | grep -E '^published @[a-z0-9-]+/[a-z0-9-]+ e[0-9]+\.r[0-9]+ sha256:[a-f0-9]{64}$' >> "$receipts"
     published=$((published + 1))
     echo "  published $key"
   else
@@ -43,3 +46,4 @@ done
 echo "staged $published packages into $out ($refused refused)"
 [ "$mistakes" -eq 0 ] || { echo "stage-local-registry: $mistakes package(s) refused for a manifest mistake" >&2; exit 1; }
 [ "$published" -gt 0 ]
+mv "$receipts" "${out}.receipts"

@@ -16,6 +16,7 @@ fetch packages > "$work/catalog"
 jq -er '.packages | type == "array"' "$work/catalog" >/dev/null
 jq -r '.packages[].key' "$work/catalog" > "$work/keys"
 : > "$work/rows"
+: > "$work/credits"
 while IFS= read -r key; do
   [[ "$key" =~ ^@[a-z0-9][a-z0-9-]*/[a-z0-9][a-z0-9-]*$ ]]
   mkdir -p "$out/packages/$key"
@@ -28,11 +29,26 @@ while IFS= read -r key; do
     jq -er --arg key "$key" --arg digest "$digest" 'select(.key == $key and .digest == $digest) | .files[] | select(.path == "osprey.toml") | .text' "$source_file" > "$work/manifest.toml"
     summary=$(yq -p toml -o yaml -r '.package.summary // ""' "$work/manifest.toml")
     [[ "$summary" != *$'\n'* && "$summary" != *$'\r'* ]]
-    render release "e$epoch.r$ordinal" "$digest" >> "$work/links"
+    version="e$epoch.r$ordinal"
+    receipt=unrecorded
+    if [[ -f target/local-registry.receipts ]] && grep -Fxq "published $key $version $digest" target/local-registry.receipts; then
+      receipt=recorded
+      render credit "$key" "$version" >> "$work/credits"
+    fi
+    render release "$version" "$digest" "$receipt" >> "$work/links"
   done < "$work/versions"
   render row "$key" "$summary" >> "$work/rows"
-  render package "$key" "$summary" "$(tr -d '\n' < "$work/links")" > "$out/packages/$key/index.html"
+  metadata=$(yq -p toml -o json '.' "$work/manifest.toml")
+  license=$(jq -r '.package.license // "Unspecified"' <<< "$metadata")
+  keywords=$(jq -r '.package.keywords // [] | join(", ")' <<< "$metadata")
+  deps=$(jq -r '.dependencies // {} | keys | join(", ")' <<< "$metadata")
+  for field in "$license" "$keywords" "$deps"; do [[ "$field" != *$'\n'* && "$field" != *$'\r'* ]]; done
+  render package "$key" "$summary" "$receipt" "$license" "${keywords:-None}" "${deps:-None}" "$(tr -d '\n' < "$work/links")" > "$out/packages/$key/index.html"
 done < "$work/keys"
+if [[ -s "$work/credits" ]]; then
+  mkdir -p "$out/publishers/osprey-repository"
+  render publisher "$(tr -d '\n' < "$work/credits")" > "$out/publishers/osprey-repository/index.html"
+fi
 render local "$(tr -d '\n' < "$work/rows")" > "$out/index.html"
 filter=src/osprey/packages/manager/web/assets/filter.js
 asset="filter.$(shasum -a 256 "$filter" | cut -c1-12).js"
