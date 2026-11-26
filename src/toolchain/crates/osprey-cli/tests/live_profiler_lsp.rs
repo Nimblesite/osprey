@@ -429,7 +429,13 @@ fn edited_diagnostics(server: &mut Server, uri: &str, version: i64, text: &str) 
         "textDocument": { "uri": uri, "version": version },
         "contentChanges": [{ "text": text }]
     });
-    diagnostics_after(server, "textDocument/didChange", &params, uri, Some(version))
+    diagnostics_after(
+        server,
+        "textDocument/didChange",
+        &params,
+        uri,
+        Some(version),
+    )
 }
 
 /// The codes and messages of every error (severity 1) in `diagnostics`.
