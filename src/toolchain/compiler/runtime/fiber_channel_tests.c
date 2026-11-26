@@ -59,13 +59,18 @@ int fiber_channel_waits(void);
 // Waits until the runtime's channel-wait count reads `expected`: a fiber has
 // then parked on, or left, its channel — a signal, never a timer a loaded
 // runner can outrun. The deadline is a generous bound against a hang only.
+// The verdict is the count the loop saw: a parked fiber that wakes and parks
+// again (a spurious wakeup, a collection) dips it for an instant, so reading
+// it a second time could catch that dip after the waiters had settled.
 enum { WAIT_HANDSHAKE_TRIES = 30000, WAIT_HANDSHAKE_POLL_US = 1000 };
 
 static void wait_for_channel_waits(int expected) {
-  for (int i = 0; i < WAIT_HANDSHAKE_TRIES && fiber_channel_waits() != expected; i++) {
+  int seen = fiber_channel_waits();
+  for (int i = 0; i < WAIT_HANDSHAKE_TRIES && seen != expected; i++) {
     usleep(WAIT_HANDSHAKE_POLL_US);
+    seen = fiber_channel_waits();
   }
-  assert(fiber_channel_waits() == expected && "the channel waiters never settled");
+  assert(seen == expected && "the channel waiters never settled");
 }
 
 // Sends exactly once the receiving end has parked on `not_empty`, so a recv
