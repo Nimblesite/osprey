@@ -130,6 +130,36 @@
         "icon": "$(package)"
       },
       {
+        "command": "osprey.modules.sortAlphabetical",
+        "title": "Sorted Alphabetically (click: source order)",
+        "category": "Osprey",
+        "icon": "$(case-sensitive)"
+      },
+      {
+        "command": "osprey.modules.sortSource",
+        "title": "Sorted in Source Order (click: by kind)",
+        "category": "Osprey",
+        "icon": "$(list-ordered)"
+      },
+      {
+        "command": "osprey.modules.sortKind",
+        "title": "Sorted by Kind (click: alphabetical)",
+        "category": "Osprey",
+        "icon": "$(symbol-class)"
+      },
+      {
+        "command": "osprey.modules.filter",
+        "title": "Filter Modules",
+        "category": "Osprey",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "osprey.modules.clearFilter",
+        "title": "Clear Modules Filter",
+        "category": "Osprey",
+        "icon": "$(clear-all)"
+      },
+      {
         "command": "osprey.modules.refresh",
         "title": "Refresh Modules",
         "category": "Osprey",
@@ -409,6 +439,31 @@
           "command": "osprey.packages.open",
           "when": "view == ospreyDebugView || view == osprey.profiler.processes || view == osprey.moduleExplorer",
           "group": "navigation@0"
+        },
+        {
+          "command": "osprey.modules.sortAlphabetical",
+          "when": "view == osprey.moduleExplorer && osprey.modules.sortOrder == alphabetical",
+          "group": "navigation@2"
+        },
+        {
+          "command": "osprey.modules.sortSource",
+          "when": "view == osprey.moduleExplorer && osprey.modules.sortOrder == source",
+          "group": "navigation@2"
+        },
+        {
+          "command": "osprey.modules.sortKind",
+          "when": "view == osprey.moduleExplorer && osprey.modules.sortOrder == kind",
+          "group": "navigation@2"
+        },
+        {
+          "command": "osprey.modules.filter",
+          "when": "view == osprey.moduleExplorer",
+          "group": "navigation@3"
+        },
+        {
+          "command": "osprey.modules.clearFilter",
+          "when": "view == osprey.moduleExplorer && osprey.modules.filtered",
+          "group": "navigation@4"
         },
         {
           "command": "osprey.modules.refresh",

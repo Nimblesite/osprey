@@ -12,11 +12,19 @@ import {
 import type { Event, ExtensionContext, Hover, TreeDataProvider } from "vscode";
 import type { FrontendRunner } from "./package-commands";
 import { MANIFEST_FILE } from "./package-commands";
+import { arrange, nextOrder, SORT_ORDERS } from "./module-arrange";
+import type { SortOrder } from "./module-arrange";
 
 export const MODULE_EXPLORER_VIEW = "osprey.moduleExplorer";
 export const OPEN_SOURCE_COMMAND = "osprey.modules.open";
 export const REFRESH_COMMAND = "osprey.modules.refresh";
 export const MANAGE_PACKAGES_COMMAND = "osprey.modules.managePackages";
+const SORT_COMMANDS: Readonly<Record<SortOrder, string>> = {
+  alphabetical: "osprey.modules.sortAlphabetical", source: "osprey.modules.sortSource", kind: "osprey.modules.sortKind",
+};
+const FILTER_COMMAND = "osprey.modules.filter";
+const CLEAR_FILTER_COMMAND = "osprey.modules.clearFilter";
+const SORT_KEY = "osprey.modules.sortOrder";
 const GRAPH_TIMEOUT_MS = 120_000;
 const NO_LOCK_CODE = "tree.no-lock";
 
@@ -50,6 +58,8 @@ export interface ModuleNode {
   readonly children?: readonly ModuleNode[];
   /** The project this node loads on expansion. */
   readonly projectRoot?: string;
+  /** The declaration kind of a code element. */
+  readonly kind?: string;
 }
 
 function isDeclaration(item: any): item is Declaration {
@@ -107,7 +117,7 @@ function declarationNode(parent: ModuleNode, item: Declaration, scope: string): 
   const home = isScope(item) ? "" : `@${item.source}`;
   return {
     id: `${parent.id}/${item.kind}:${label}${home}`, parent, label, icon, color, tooltip: `${item.kind} ${item.name}`,
-    location: { file: item.source, line: item.line, column: item.column },
+    kind: item.kind, location: { file: item.source, line: item.line, column: item.column },
   };
 }
 
@@ -266,7 +276,23 @@ export class ModuleExplorerProvider implements TreeDataProvider<ModuleNode> {
   private readonly loaded = new Map<string, Promise<ModuleNode[]>>();
   readonly onDidChangeTreeData: Event<ModuleNode | undefined> = this.changed.event;
 
+  sortOrder: SortOrder = "alphabetical";
+  filterText = "";
+
   constructor(private readonly deps: ModuleExplorerDeps) {}
+
+  /** Advance to the next sort order and answer it. */
+  nextSort(): SortOrder {
+    this.sortOrder = nextOrder(this.sortOrder);
+    this.changed.fire(undefined);
+    return this.sortOrder;
+  }
+
+  /** Keep only code elements naming `text`; blank text clears the filter. */
+  filterBy(text: string): void {
+    this.filterText = text.trim().toLowerCase();
+    this.changed.fire(undefined);
+  }
 
   refresh(): void {
     this.loaded.clear();
@@ -306,7 +332,8 @@ export class ModuleExplorerProvider implements TreeDataProvider<ModuleNode> {
         ({ id: root, label: path.basename(root), projectRoot: root, icon: "project", description: root }));
     }
     if (node.projectRoot === undefined) {
-      return [...(node.children ?? [])];
+      const shown = arrange(node.children ?? [], this.sortOrder, this.filterText);
+      return shown.length || !node.children?.length ? shown : [stateNode(node, "no-match", "No matches", this.filterText, "info")];
     }
     const pending = this.loaded.get(node.projectRoot) ?? this.withLoading(this.load(node));
     this.loaded.set(node.projectRoot, pending);
@@ -424,11 +451,29 @@ export function registerModuleExplorer(
     trusted: () => workspace.isTrusted,
   });
   const view = window.createTreeView(MODULE_EXPLORER_VIEW, { treeDataProvider: provider, showCollapseAll: true });
+  const showSort = (order: SortOrder) => {
+    void context.workspaceState.update(SORT_KEY, order);
+    void commands.executeCommand("setContext", SORT_KEY, order);
+  };
+  const showFilter = (text: string) => {
+    provider.filterBy(text);
+    view.description = provider.filterText ? `Filter: ${provider.filterText}` : undefined;
+    void commands.executeCommand("setContext", "osprey.modules.filtered", provider.filterText !== "");
+  };
+  const saved = context.workspaceState.get<SortOrder>(SORT_KEY);
+  provider.sortOrder = saved && SORT_ORDERS.includes(saved) ? saved : provider.sortOrder;
+  showSort(provider.sortOrder);
   const watcher = workspace.createFileSystemWatcher("**/{*.osp,*.ospml,*.py,osprey.toml,osprey.lock}");
   context.subscriptions.push(
     view,
     watcher,
     commands.registerCommand(REFRESH_COMMAND, () => provider.refresh()),
+    ...SORT_ORDERS.map((order) => commands.registerCommand(SORT_COMMANDS[order], () => showSort(provider.nextSort()))),
+    commands.registerCommand(FILTER_COMMAND, async () => {
+      const text = await window.showInputBox({ prompt: "Show code elements whose name contains", value: provider.filterText });
+      if (text !== undefined) showFilter(text);
+    }),
+    commands.registerCommand(CLEAR_FILTER_COMMAND, () => showFilter("")),
     commands.registerCommand(OPEN_SOURCE_COMMAND, (location: NonNullable<ModuleNode["location"]>) =>
       openSource(location, (workspace.workspaceFolders ?? []).map((folder) => folder.uri.fsPath))),
     commands.registerCommand(MANAGE_PACKAGES_COMMAND, (node?: ModuleNode) =>

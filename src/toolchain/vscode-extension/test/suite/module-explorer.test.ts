@@ -137,11 +137,58 @@ suite("Module Explorer [EDITOR-MODULE-EXPLORER]", () => {
     assert.strictEqual(extra.location?.line, 4);
     assert.strictEqual(tree.getParent(extra), moreApp);
     assert.strictEqual(tree.getParent(moreApp), modules);
+
+    // The sort button cycles alphabetical -> source order -> kind, as SharpLsp's does.
+    assert.strictEqual(tree.sortOrder, "alphabetical");
+    assert.strictEqual(tree.nextSort(), "source");
+    assert.deepStrictEqual(labels(await tree.getChildren(mainApp)), ["Outer", "Counter", "limit", "Extra", "strlen", "total", "Deep"]);
+    assert.deepStrictEqual(labels(await tree.getChildren(outer)), ["Inner", "keep"]);
+    assert.strictEqual(tree.nextSort(), "kind");
+    assert.deepStrictEqual(labels(await tree.getChildren(mainApp)), ["Deep", "Extra", "Outer", "Counter", "strlen", "limit", "total"]);
+    assert.deepStrictEqual(labels(await tree.getChildren(extra)), ["Shape", "two"]);
+    assert.strictEqual(tree.nextSort(), "alphabetical");
+    assert.deepStrictEqual(labels(await tree.getChildren(mainApp)), ["Counter", "Deep", "Extra", "limit", "Outer", "strlen", "total"]);
+
+    // The filter keeps what matches, case-insensitively, and the scopes that lead to it.
+    tree.filterBy("THR");
+    assert.strictEqual(tree.filterText, "thr");
+    assert.deepStrictEqual(labels(await tree.getChildren(modules)), ["app"]);
+    assert.deepStrictEqual(labels(await tree.getChildren(mainApp)), ["Deep"]);
+    assert.deepStrictEqual(labels(await tree.getChildren(deep)), ["three"]);
+    tree.filterBy("o");
+    assert.deepStrictEqual(labels(await tree.getChildren(mainApp)), ["Counter", "Extra", "Outer", "total"], "Extra stays for its member two");
+    assert.deepStrictEqual(labels(await tree.getChildren(outer)), ["Inner"]);
+    tree.nextSort();
+    assert.deepStrictEqual(labels(await tree.getChildren(mainApp)), ["Outer", "Counter", "Extra", "total"], "sort applies to filtered rows");
+    tree.nextSort();
+    tree.nextSort();
+    tree.filterBy("zzz");
+    const [none] = await tree.getChildren(modules);
+    assert.deepStrictEqual([none.label, none.description, none.icon], ["No matches", "zzz", "info"], "a filter that hides all says so");
+    tree.filterBy("  ");
+    assert.strictEqual(tree.filterText, "");
+    assert.deepStrictEqual(labels(await tree.getChildren(mainApp)), ["Counter", "Deep", "Extra", "limit", "Outer", "strlen", "total"]);
+    assert.deepStrictEqual(labels(await tree.getChildren(node)), ["Modules", "Sources", "Dependencies"], "the filter leaves groups alone");
     assert.strictEqual((await child(moreApp, "strlen")).location?.file, path.join(root, "src", "more.osp"));
     assert.strictEqual((await child(mainApp, "limit")).location?.file, path.join(root, "src", "main.ospml"));
 
     // A member's tree hover is the editor's own hover at its name, word for word.
     await activateWithServer();
+    const registered = await vscode.commands.getCommands(true);
+    const manifest = JSON.parse(fs.readFileSync(path.join(extensionRoot, "package.json"), "utf8"));
+    const titleBar = manifest.contributes.menus["view/title"].filter((entry: { when: string }) =>
+      entry.when.includes("view == osprey.moduleExplorer"));
+    for (const [command, when] of [
+      ["osprey.modules.sortAlphabetical", "osprey.modules.sortOrder == alphabetical"],
+      ["osprey.modules.sortSource", "osprey.modules.sortOrder == source"],
+      ["osprey.modules.sortKind", "osprey.modules.sortOrder == kind"],
+      ["osprey.modules.filter", "view == osprey.moduleExplorer"],
+      ["osprey.modules.clearFilter", "osprey.modules.filtered"],
+    ]) {
+      assert.ok(registered.includes(command), `${command} is registered`);
+      assert.ok(titleBar.some((entry: { command: string; when: string }) => entry.command === command && entry.when.includes(when)),
+        `${command} is a title-bar button shown when ${when}`);
+    }
     for (const [scope, name, line] of [[outer, "keep", 5], [extra, "two", 4], [mainApp, "limit", 10]] as const) {
       const member = await child(scope, name);
       const document = await vscode.workspace.openTextDocument(member.location?.file ?? "");
