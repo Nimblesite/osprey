@@ -70,6 +70,9 @@ static void wait_for_channel_waits(int expected) {
     usleep(WAIT_HANDSHAKE_POLL_US);
     seen = fiber_channel_waits();
   }
+  if (seen != expected) {
+    fprintf(stderr, "channel waiters settled at %d, expected %d\n", seen, expected);
+  }
   assert(seen == expected && "the channel waiters never settled");
 }
 
