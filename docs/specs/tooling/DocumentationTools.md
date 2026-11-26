@@ -219,7 +219,7 @@ values fail with a usage error instead of silently generating a different result
 
 ## Tutorial videos
 
-The videos in the [tutorials section](../../../src/toolchain/website/src/docs/tutorials/index.md) teach Osprey. The website enforces these rules in [`lib/videos.mjs`](../../../src/toolchain/website/lib/videos.mjs) and [`tests/videos.spec.js`](../../../src/toolchain/website/tests/videos.spec.js); [plan 0059](../../plans/0059-video-tutorials.md) tracks the work left.
+The videos in the [tutorials section](../../../src/toolchain/website/src/docs/tutorials/index.md) teach Osprey. The website enforces these rules in [`lib/videos.mjs`](../../../src/toolchain/website/lib/videos.mjs) and [`tests/videos.spec.js`](../../../src/toolchain/website/tests/videos.spec.js); [plan 0058](../../plans/0058-documentation-examples.md) tracks the work left.
 
 ### `[DOC-TUTORIAL-VIDEO-KIND]` Tutorials and introductions are different kinds
 

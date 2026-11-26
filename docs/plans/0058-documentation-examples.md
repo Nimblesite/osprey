@@ -1,101 +1,34 @@
-# Plan 0058: Every Documented Export Has a Checked Example
+# Plan 0058: Checked examples and video tutorials
 
-Every exported declaration's documentation shows at least one example, and every
-example is compiled and run by `--doctests`. An example may be written in the
-Default, ML or Python flavor, or in several, whichever flavor the documented
-file uses. The published package reference on the website (starting with
-`/docs/packages/json/`) shows these examples on every page.
+Goal: every exported declaration shows an example that `--doctests` compiles and runs, in one or more flavors, and every tutorial video teaches repository code that still exists. The website shows both. Spec homes: [Documentation Comments](../specs/language/0026-DocumentationComments.md) and [Documentation Tools](../specs/tooling/DocumentationTools.md), including its [Tutorial videos](../specs/tooling/DocumentationTools.md#tutorial-videos) rules.
 
-Spec homes: [Documentation Comments](../specs/language/0026-DocumentationComments.md)
-and [Documentation Tools](../specs/tooling/DocumentationTools.md). The rules
-below are added to those specs when this plan is implemented.
+Each item closes with the test, make target or website check it names. The doctest tests live in `src/toolchain/crates/osprey-cli/tests/cases/doctests.rs`; `src/toolchain/crates/corpus_doctests.sh` runs every package's examples in CI.
 
-## Where things stand
+## Examples on every export `[DOC-EXPORT-EXAMPLE-REQUIRED]`
 
-- `# Examples` sections already exist (`[DOC-SECTIONS]`) and `--doctests` runs
-  them (`[DOC-DOCTEST-HARNESS]`).
-- **No package has examples.** For instance, all 22 `@osprey/json` exports have
-  a summary but no example, so their website pages show none.
-- **Nothing requires examples.** `[DOC-EXPORT-REQUIRED]` warns only when the
-  doc comment itself is missing.
-- **Doctests fail in every package.** A package's `default_namespace` names its
-  own namespace. The harness wraps each example in a function named
-  `$documentation_example0` at every nesting level. Assembly then moves the
-  outermost wrapper into that same namespace, which already has one. The
-  result is `duplicate declaration ui::$documentation_example0`, even for a
-  single example.
-- **Python docstring examples cannot parse.** The docstring is only trimmed, so
-  a fenced example keeps the docstring's indentation. It then fails with "this
-  line's indentation does not match its enclosing block".
-- **An example's flavor is fixed.** It always compiles in the flavor of the file
-  documenting it, and the fence label is ignored. An ML package cannot show a
-  Default or Python example of the same call.
+- [ ] An example with an `output` fence on every package export until `make -C src/osprey/packages` reports no `unexampled-export` (information only, never a warning or an error). Thousands remain, worst first: synth, uitest, signal_flow, vscode, torch, native, numpy, tokenizers, pydantic_ai, scipy, then re, gguf, jinja2, chromecast, fastapi, tiktoken, faiss, sklearn, micrograd, safetensors. micrograd's two Lean-sourced `Libm` exports cannot hold one until `osprey-math` preserves docstring whitespace, so fences reach the doctest parser.
 
-## Rules
+## Examples in several flavors `[DOC-EXAMPLE-FLAVORS]`
 
-The built rules now live in the specs:
-[`[DOC-DOCTEST-WRAPPER-DEPTH]`](../specs/tooling/DocumentationTools.md#wrapper-names-doc-doctest-wrapper-depth)
-, [`[DOC-PYTHON-DOCSTRING-CLEAN]`](../specs/language/0026-DocumentationComments.md#python-docstrings-doc-python-docstring-clean)
-and [`[DOC-EXPORT-EXAMPLE-REQUIRED]`](../specs/language/0026-DocumentationComments.md#exported-examples-doc-export-example-required).
-The rule below moves there when it is built.
+Not built: today an example compiles in the documenting file's flavor and its fence label is ignored, so an ML package cannot show a Default or Python example of the same call. The rule moves into both specs when it is.
 
-### `[DOC-EXAMPLE-FLAVORS]` A fence label picks the example's flavor
+- [ ] The fence label picks the flavor (`osprey` Default, `osprey-ml` or `ospml` ML, `osprey-python` Python; unlabelled keeps the file's): `docparse.rs` and `DocExample` carry a flavor per fence and the harness runs each example in its own flavor, its `output` fence applying to it alone. Check: `doctests.rs` runs one export's Default, ML and Python examples side by side in an ML package.
+- [ ] Labelled examples that follow one another without an `output` fence between them are twins of one example and must print the same output. Check: a twin pair with differing output fails `doctests.rs`, naming both fences.
+- [ ] The exporter writes each twin in a fence labelled with its flavor and the website shows twins as flavor tabs. Check: the Playwright test for `/docs/packages/json/` asserts every function page renders at least one example with its output.
+- [ ] Relabel every ML-file example fence labelled `osprey` to `osprey-ml` in the same change, because `osprey` now means Default (a breaking change). Check: `make _check_programs` and the corpus doctest pass stay green.
+- [ ] Move `[DOC-EXAMPLE-FLAVORS]` into 0026 and DocumentationTools with its ID cited in code and tests; WRAPPER-DEPTH, DOCSTRING-CLEAN and EXPORT-EXAMPLE-REQUIRED are there already.
 
-| Fence label | Flavor |
-| --- | --- |
-| `osprey` | Default |
-| `osprey-ml` or `ospml` | ML |
-| `osprey-python` | Python |
+## Video tutorials `[DOC-TUTORIAL-VIDEO-*]`
 
-An unlabelled example compiles in the documenting file's flavor, as it does
-today. Each example is checked in its own flavor, and its `output` fence applies
-to it alone.
+Enforced by `src/toolchain/website/lib/videos.mjs` and `src/toolchain/website/tests/videos.spec.js`; films are made in the Videos repository and copied in with `make media` (`[MEDIA-VIDEOS-REPO]`).
 
-Labelled examples that follow one another without an `output` fence between them
-are flavor twins of a single example. They must print the same output, and the
-harness fails if they differ. The website shows twins as flavor tabs. The
-exporter writes each twin in a fence labelled with its flavor.
+- [ ] Re-make `package-manager` as a tutorial: add `@osprey/json` through the VS Code panel, use `Doc` in code that compiles and runs, then remove the package and show the compile error. Check: `src/toolchain/website/src/_data/videos.json` moves it from `intro` to `tutorial`, it runs 240 to 600 seconds, and `videos.spec.js` lists it.
+- [ ] Website tests for `[DOC-TUTORIAL-VIDEO-CODE]` (code-scene share and path labels) and `[DOC-TUTORIAL-VIDEO-FRESH]` (a film whose quoted code drifted fails): `videos.spec.js` cites both IDs. The Videos repository's factory must first publish each film's code scenes (file, line range, start and end time) beside its chapters.
+- [ ] (verify) Film scripts in the Videos repository cite `[DOC-TUTORIAL-VIDEO-EXPLAIN]`; nothing in this repository can show it.
 
-Breaking change: an ML file whose example fence is labelled `osprey` now compiles
-that example as Default. Every such fence in the repository is relabelled
-`osprey-ml` in the same change.
+## FerroUI `[NATIVE-FERROUI-RETARGET]`
 
-## Implementation
+The `rust-ui-framework-without-rust` tutorial teaches the GPUI host (`src/osprey/examples/gpui/painting` and `flock`). Every GPUI-based Osprey Native app moves to the FerroUI host (`src/toolchain/hosts/ferroui/`), `src/toolchain/hosts/gpui` is deleted once nothing uses it, and no new GPUI work is planned.
 
-1. Write the failing E2E test first, in
-   `src/toolchain/crates/osprey-cli/tests/cases/doctests.rs`. It builds a
-   package whose `default_namespace` equals its namespace, with examples in a
-   `.osp`, an `.ospml` and an opted-in `.py` file, at both namespace depth and
-   module depth. Then implement `[DOC-DOCTEST-WRAPPER-DEPTH]` in
-   `osprey-cli/src/doctests/synthesize.rs`: `runner(depth)` replaces
-   `runner()`.
-2. Implement `[DOC-PYTHON-DOCSTRING-CLEAN]` in
-   `osprey-syntax/src/python/documents.rs`, so that both docstring paths call
-   one `clean_docstring`.
-3. Add examples to every `@osprey/json` export, each with an `output` fence.
-   Run them through `osprey src/osprey/packages/json --doctests` under GC, ARC
-   and wasm32.
-4. Add the packages folder to the corpus doctest pass (`corpus_doctests.sh`),
-   so that every package's examples run in CI.
-5. Implement `[DOC-EXAMPLE-FLAVORS]`: per-fence flavor in `docparse.rs` and
-   `DocExample`, per-example flavor in the harness, twin comparison, labelled
-   fences in the exporter, and website flavor tabs. Relabel existing ML-file
-   fences in the same change.
-6. Implement `[DOC-EXPORT-EXAMPLE-REQUIRED]` beside `undocumented-export` in
-   `osprey-types`. Add examples to every package until
-   `make -C src/osprey/packages` reports no `unexampled-export` warnings. Then
-   promote the warning to an error in the package build.
-7. Website: the Playwright test for `/docs/packages/json/` asserts that every
-   function page renders at least one example, with its output.
-
-## Checklist
-
-- [x] `[DOC-DOCTEST-WRAPPER-DEPTH]` test and fix: `doctests/synthesize.rs` names each runner by role and depth, and `tests/cases/doctests.rs` (`doctests_run_in_packages_whose_default_namespace_is_their_own_in_every_flavor`) runs examples at namespace and module depth in all three flavors.
-- [x] `[DOC-PYTHON-DOCSTRING-CLEAN]` test and fix: `python/documents.rs` cleans every docstring as PEP 257 `inspect.cleandoc` does, and the same `doctests.rs` package runs an example fenced inside an indented docstring.
-- [x] Examples for all 22 `@osprey/json` exports, run under GC, ARC and wasm32 (22 passed each, 2026-11-23)
-- [x] The corpus doctest pass covers `src/osprey/packages/` (`corpus_doctests.sh` runs each package with an example as a project; floor 28)
-- [ ] `[DOC-EXAMPLE-FLAVORS]` parser, harness, exporter, website tabs, relabelling
-- [x] `[DOC-EXPORT-EXAMPLE-REQUIRED]` warning: `unexampled-export` in `osprey-types/src/undocumented.rs`, shown by `--check` and the language server while packages add examples. `program_contracts.rs` verifies strict source checks and strict builds during rollout.
-- [ ] Examples in every package until `make -C src/osprey/packages` reports no `unexampled-export`. Done: json, fs, graphics, testing, einops, flash_attn, express (18 of 18: `Express::delete` got its example once the harness stopped pruning a function an example reaches only as a method, `1dac56536`), sacrebleu, rouge_score, safetensors, transformers, sklearn, micrograd (its two Lean-sourced `Libm` exports cannot hold examples: `osprey-math` flattens Lean docstring whitespace, so fences never reach the doctest parser), faiss (47 doctests under GC, ARC and wasm32), fastapi (56). Open: a 2026-11-24 `--check` of every package found at least 3,091 exports still undocumented or unexampled in the 20 worst packages alone (synth 613, uitest 291, signal_flow 255, vscode 246, torch 245, native 241, numpy 182, tokenizers 167, pydantic_ai 153, scipy 109, then re, gguf, jinja2, chromecast, fastapi, tiktoken, faiss, sklearn, micrograd, safetensors)
-- [x] ~~Promote `unexampled-export` to an error in the package build~~ Dropped by user decision (2026-11-26): `unexampled-export` is information, never a warning or an error, and `--warnings-as-errors` passes it ([DOC-EXPORT-EXAMPLE-REQUIRED], `4005ca08f`)
-- [ ] Spec sections added to 0026 and DocumentationTools, with IDs cited in the code and tests (done for WRAPPER-DEPTH, DOCSTRING-CLEAN and EXAMPLE-REQUIRED; FLAVORS moves when built)
+- [ ] Retarget Painting and Flock to the FerroUI host: `make -C src/toolchain/targets/macos painting` and `flock` open them on FerroUI and their headless self-tests run there. [Plan 0037](0037-osprey-native.md) owns the engineering.
+- [ ] Re-make `rust-ui-framework-without-rust` on the FerroUI host once that lands: the watch page names FerroUI and the run command it shows still exists (`[DOC-TUTORIAL-VIDEO-SOURCE]`). Check: `videos.spec.js` keeps the tutorial listed.
