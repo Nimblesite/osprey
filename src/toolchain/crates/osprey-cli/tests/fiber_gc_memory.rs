@@ -78,12 +78,12 @@ fn values_only_the_runtime_holds_survive_collections_during_fibers() -> io::Resu
         ),
         (
             "values_buffered_in_a_channel",
-            "let c = Channel(4)\nsend(c, made(10))\nsend(c, made(20))\nlet f = spawn churn(500000)\nprint(await(f))\nprint(total(recv(c)))\nprint(total(recv(c)))\n",
+            "fn buffer(c) = {\n  send(c, made(10))\n  send(c, made(20))\n  let f = spawn churn(500000)\n  print(\"${await(f)}\\n${total(recv(c))}\\n${total(recv(c))}\")\n}\nmatch Channel(4) {\n  Success { value } => buffer(value)\n  Error { message } => print(message)\n}\n",
             "4500000\n55\n210\n",
         ),
         (
             "a_blocked_fiber_keeps_its_stack",
-            "let c = Channel(1)\nlet f = spawn { let mine = made(50)\n  let n = recv(c)\n  wrapAdd(total(mine), n) }\nprint(churn(500000))\nsend(c, 7)\nprint(await(f))\n",
+            "fn block(c) = {\n  let f = spawn { let mine = made(50)\n    let n = recv(c)\n    wrapAdd(total(mine), n) }\n  print(churn(500000))\n  send(c, 7)\n  print(await(f))\n}\nmatch Channel(1) {\n  Success { value } => block(value)\n  Error { message } => print(message)\n}\n",
             "4500000\n1282\n",
         ),
         (
@@ -93,7 +93,7 @@ fn values_only_the_runtime_holds_survive_collections_during_fibers() -> io::Resu
         ),
         (
             "fibers_trading_lists_through_channels",
-            "let a = Channel(1)\nlet b = Channel(1)\nlet f = spawn { let x = recv(a)\n  let c = churn(300000)\n  send(b, listAppend(x, c))\n  total(x) }\nsend(a, made(30))\nlet d = churn(300000)\nprint(d)\nprint(total(recv(b)))\nprint(await(f))\n",
+            "fn trade(a, b) = {\n  let f = spawn { let x = recv(a)\n    let c = churn(300000)\n    send(b, listAppend(x, c))\n    total(x) }\n  send(a, made(30))\n  let d = churn(300000)\n  print(\"${d}\\n${total(recv(b))}\\n${await(f)}\")\n}\nmatch Channel(1) {\n  Success { value } => match Channel(1) {\n    Success { value: b } => trade(value, b)\n    Error { message } => print(message)\n  }\n  Error { message } => print(message)\n}\n",
             "2700000\n2700465\n465\n",
         ),
         (

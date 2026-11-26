@@ -26,7 +26,7 @@ const WEBSOCKET_EXAMPLE: &str = "fn communicate(server, connection) = {\n    let
 
 const FIBER_EXAMPLE: &str = "fn work() = \"done\"\nlet worker = spawn work()\nlet result = await(worker)\nprint(\"${result}; finished=${fiberDone(worker)}\")";
 
-const CHANNEL_EXAMPLE: &str = "fn receive(channel) = recv(channel)\nlet channel = Channel(1)\nlet worker = spawn receive(channel)\nsend(channel, 42)\nprint(await(worker))";
+const CHANNEL_EXAMPLE: &str = "fn receive(channel) = recv(channel)\nfn deliver(channel) = {\n    let worker = spawn receive(channel)\n    send(channel, 42)\n    print(await(worker))\n}\nmatch Channel(1) {\n    Success { value } => deliver(value)\n    Error { message } => print(\"no channel: ${message}\")\n}";
 
 macro_rules! http_example {
     ($action:literal) => { http_example!("", $action) };
@@ -352,7 +352,7 @@ pub(crate) static CONCURRENCY: &[BuiltinDoc] = &[
     ),
     builtin_doc!(
         "Channel",
-        "Creates a buffered channel with a positive capacity.",
+        "Creates a buffered channel with a positive capacity, or an Error for a capacity it cannot honour.",
         ["capacity" => "Positive number of buffered values"],
         CHANNEL_EXAMPLE,
     ),

@@ -120,7 +120,7 @@ The last holder to let go frees the channel, its buffer and its synchronisation,
 
 A channel was a number indexing a table that kept every channel for the life of the process: 600 thousand sequential `Channel(256)` reached 1.4 GiB under ARC and 1.8 GiB under the tracing collector. `finished_channels_are_reclaimed_in_every_backend` now holds that compiled program under 64 MiB natively under gc, arc and ownership and on wasm32 under arc and ownership, and `shared_channels_end_with_their_last_sharer` runs fibers that share channels on the same five and requires nothing live at exit. The C suite makes, uses and drops 55,000 channels, half with a value still buffered, and requires under 8 bytes left per channel, also under AddressSanitizer. The holder count is the fiber's, proved in the same file (`channel_then_handle_release`).
 
-`Channel(capacity)` answers a handle or stops the run: the C entry point `channel_create` answers no handle for a capacity it cannot honour, and every operation on no handle, or on a handle that holds no channel, fails without touching memory.
+`Channel(capacity)` answers `Success` with a handle, or `Error` when the C entry point `channel_create` answers no handle for a capacity it cannot honour. Nothing aborts ([FAILURE-EXPLICIT]), and every runtime operation on no handle, or on a handle that holds no channel, fails without touching memory.
 
 ## Fibers blocked for ever [CONCURRENCY-DEADLOCK]
 
@@ -172,12 +172,13 @@ A wait that no queued fiber can satisfy could only be woken by another thread, a
 ## Buffered channels [CONCURRENCY-CHANNEL]
 
 `Channel(capacity)` creates a FIFO channel whose positive integer `capacity` is
-the number of buffered values. Zero and negative capacities are rejected; the
-runtime does not implement rendezvous channels.
+the number of buffered values. A zero, negative or unallocatable capacity is an
+`Error` with the message `Channel capacity must be positive and fit in memory`;
+the runtime does not implement rendezvous channels, and it never aborts.
 
 | Operation | Type | Behavior |
 | --- | --- | --- |
-| `Channel(capacity)` | `int -> Channel<T>` | Create a positive-capacity buffer; `T` is inferred from use. |
+| `Channel(capacity)` | `int -> Result<Channel<T>, string>` | Create a positive-capacity buffer, or an `Error` for a capacity it cannot honour; `T` is inferred from use. |
 | `send(channel, value)` | `(Channel<T>, T) -> Unit` | Block while the buffer is full, then append `value`. |
 | `recv(channel)` | `Channel<T> -> T` | Block while the buffer is empty, then remove its oldest value. |
 
@@ -218,39 +219,36 @@ without a shape-aware channel ABI MUST reject `Channel<Result<U, E>>` at
 compilation. It must never unwrap or reinterpret the channel element.
 
 ```osprey
-let channel = Channel(3)
-
-let producer = spawn {
-    send(channel, 1)
-    send(channel, 2)
-    send(channel, 3)
+fn exchange(channel) = {
+    let producer = spawn {
+        send(channel, 1)
+        send(channel, 2)
+        send(channel, 3)
+    }
+    let consumer = spawn "got ${recv(channel)} ${recv(channel)} ${recv(channel)}"
+    await(producer)
+    print(await(consumer))
 }
 
-let consumer = spawn {
-    print("got ${recv(channel)}")
-    print("got ${recv(channel)}")
-    print("got ${recv(channel)}")
+match Channel(3) {
+    Success { value } => exchange(value)
+    Error { message } => print("no channel: ${message}")
 }
-
-await(producer)
-await(consumer)
 ```
 
 ```osprey-ml
-channel = Channel 3
+exchange channel =
+    producer = spawn
+        send channel 1
+        send channel 2
+        send channel 3
+    consumer = spawn "got ${recv channel} ${recv channel} ${recv channel}"
+    await producer
+    print (await consumer)
 
-producer = spawn
-    send channel 1
-    send channel 2
-    send channel 3
-
-consumer = spawn
-    print "got ${recv channel}"
-    print "got ${recv channel}"
-    print "got ${recv channel}"
-
-await producer
-await consumer
+match Channel 3
+    Success value => exchange value
+    Error message => print "no channel: ${message}"
 ```
 
 ## Yield and completion [CONCURRENCY-YIELD]

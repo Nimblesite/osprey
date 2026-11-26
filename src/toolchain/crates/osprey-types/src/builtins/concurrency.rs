@@ -22,13 +22,14 @@ pub(super) fn declare(e: &mut TypeEnv) {
     );
     mono(e, "yield", vec![], u());
     mono(e, "fiber_yield", vec![i()], i());
-    // Channel<t>: create with a buffer size, send/recv values.
+    // Channel<t>: create with a buffer size, send/recv values. A capacity the
+    // runtime refuses is an `Error`, never an abort [CONCURRENCY-CHANNEL].
     poly(
         e,
         "Channel",
         vec![0],
         vec![i()],
-        Type::con("Channel", vec![t()]),
+        super::res(Type::con("Channel", vec![t()])),
     );
     poly(
         e,

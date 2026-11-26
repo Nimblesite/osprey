@@ -11,7 +11,7 @@
 //! the memory backend reclaims like any value, and the fiber dies with the
 //! last of its handle, its runner and its awaits
 //! ([CONCURRENCY-FIBER-LIFETIME]). Channels are
-//! `channel_create_checked`/`channel_send`/`channel_recv` on a managed handle
+//! `channel_create`/`channel_send`/`channel_recv` on a managed handle
 //! of the same kind, whose channel dies with it and releases whatever a
 //! program never received ([CONCURRENCY-CHANNEL-LIFETIME]).
 //! `yield e` performs the runtime's
@@ -29,6 +29,8 @@ use osprey_ast::{Expr, MatchArm, Pattern, SelectOperation};
 /// The thunk's value-ABI signature: no parameters, returns the boxed `i64`
 /// fiber result.
 const THUNK_SIG: (LType, Option<LType>) = (LType::I64, None);
+/// The `Error` message of a `Channel(capacity)` the runtime refused.
+const CHANNEL_REFUSED: &str = "Channel capacity must be positive and fit in memory";
 
 /// `spawn e` — lower `e` as a zero-parameter closure and start it on a real
 /// fiber via `fiber_spawn_env_owned(thunk, cell, result_managed)`.
@@ -390,15 +392,13 @@ pub(crate) fn gen_builtin(cg: &mut Codegen, name: &str, args: &[Expr]) -> Result
                 }
                 None => String::from("0"),
             };
-            // `_checked`, not the bare constructor: `Channel` has no failure
-            // channel in the language, so a runtime that cannot honour the
-            // capacity must stop the program rather than answer a refusal the
-            // rest of the lowering would treat as a handle
-            // [CONCURRENCY-CHANNEL].
-            let r = cg.call("i8*", "channel_create_checked", "i64", &[&cap]);
-            let handle = Value::new(r, LType::Ptr);
-            crate::arc::own(cg, &handle);
-            handle
+            // A capacity the runtime refuses answers NULL, which is the
+            // `Error` arm: the program decides, nothing aborts
+            // [CONCURRENCY-CHANNEL] [FAILURE-EXPLICIT].
+            let r = cg.call("i8*", "channel_create", "i64", &[&cap]);
+            crate::arc::own(cg, &Value::new(r.clone(), LType::Ptr));
+            let failed = format!("icmp eq i8* {r}, null");
+            crate::result::result_unless(cg, &r, LType::Ptr, &failed, Some(CHANNEL_REFUSED), None)?
         }
         // `fiber_yield(v)` called as an ordinary function shares `yield`'s
         // lowering — the same runtime hand-off, forwarding `v`.

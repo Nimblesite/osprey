@@ -15,6 +15,11 @@
 
 #include "fiber_tests_shared.h"
 
+// The gated fiber fiber_channel_tests.c owns: a body parked on a channel the
+// test releases, so "still running" is a fact about blocking.
+extern void *gating_channel;
+int64_t channel_gated_function(void *env);
+
 static int64_t test_function_1(void *env) {
   (void)env;
   return 42;
@@ -119,10 +124,16 @@ void test_concurrent_execution(void) {
 void test_fiber_done(void) {
   assert(fiber_done(NULL) == -1 && "fiber_done should return -1 for no handle");
 
-  void *slow_fiber = spawn_fiber(slow_function, NULL);
+  // The fiber parks on the gating channel until this test releases it, so
+  // "still running" holds for as long as the test wants, not for 100 ms.
+  assert(fiber_set_deterministic_mode(false) == 0);
+  gating_channel = channel_create(1);
+  assert(gating_channel != NULL);
+  void *slow_fiber = spawn_fiber(channel_gated_function, NULL);
   assert(fiber_done(slow_fiber) == 0 &&
          "fiber_done should report 0 while the fiber is running");
 
+  assert(channel_send(gating_channel, 999, 0) == 1 && "the fiber is released");
   int64_t slow_result = fiber_await(slow_fiber);
   assert(slow_result == 999 && "slow fiber should return 999");
   assert(fiber_done(slow_fiber) == 1 &&
@@ -273,7 +284,6 @@ void run_all_fiber_tests(void) {
   test_fiber_process_bridge();
   test_channel_fifo_and_wraparound();
   test_channel_capacity_rejections();
-  test_unusable_capacities_are_refused_not_returned();
   test_channel_handle_guards();
   test_channel_blocks_both_directions();
   test_cleanup_defers_while_a_fiber_runs();

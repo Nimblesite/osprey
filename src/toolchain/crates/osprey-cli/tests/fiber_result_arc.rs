@@ -249,11 +249,16 @@ fn a_value_never_received_is_released_when_its_channel_is_torn_down() -> io::Res
     // what was received are both visible, and neither can be confused with a
     // send that never retained.
     let source = r"
-let queue = Channel(4)
-send(queue, [1, 2, 3])
-send(queue, [4, 5])
-let taken = recv(queue)
-print(toString(listLength(taken)))
+fn drain(queue) = {
+    send(queue, [1, 2, 3])
+    send(queue, [4, 5])
+    let taken = recv(queue)
+    print(toString(listLength(taken)))
+}
+match Channel(4) {
+    Success { value } => drain(value)
+    Error { message } => print(message)
+}
 ";
 
     assert_arc_clean(
@@ -264,61 +269,51 @@ print(toString(listLength(taken)))
     )
 }
 
-// [CONCURRENCY-CHANNEL] A non-positive capacity is REJECTED: "`Channel(capacity)`
-// creates a FIFO channel whose positive integer `capacity` is the number of
-// buffered values. Zero and negative capacities are rejected; the runtime does
-// not implement rendezvous channels."
+// [CONCURRENCY-CHANNEL] [FAILURE-EXPLICIT] A capacity the runtime cannot
+// honour is an `Error`, never a handle and never an abort: "A zero, negative or
+// unallocatable capacity is an `Error`". It once was neither: `channel_create`
+// answered `-1`, `recv` returned it AS THE VALUE and codegen read it as a
+// pointer (SIGSEGV); then it aborted the process (exit 134, issue #358).
 //
-// Rejected has to mean the program cannot go on as though it had a channel.
-// It once did not: `channel_create` answered `-1`, the language kept treating
-// that as a `Channel<T>`, `send` returned without enqueueing anything, and
-// `recv` returned `-1` AS THE VALUE — which codegen converted to a pointer.
-// Measured: adding one `recv` to any case below exits 139 (SIGSEGV) with no
-// diagnostic, on the default backend and under ARC alike.
-//
-// The capacity is reached four ways ON PURPOSE. A check that only rejects a
-// literal `Channel(0)` satisfies the first case and leaves the other three
-// poisoning exactly the same handle, so a fix that inspects the call site
-// rather than the value cannot pass this.
-const REFUSED_CAPACITIES: [(&str, &str, &str); 4] = [
-    ("a literal zero", "let ch = Channel(0)", "Channel(0)"),
-    ("a literal negative", "let ch = Channel(-1)", "Channel(-1)"),
-    ("a computed zero", "let ch = channelOf(0)", "Channel(0)"),
+// The capacity is reached several ways ON PURPOSE. A check that only inspects
+// a literal `Channel(0)` would leave the computed ones poisoning the same
+// handle, so a fix at the call site rather than the value cannot pass this.
+const REFUSED_CAPACITIES: [(&str, &str); 6] = [
+    ("a literal zero", "Channel(0)"),
+    ("a literal negative", "Channel(-1)"),
+    ("a computed zero", "channelOf(0)"),
+    ("a computed negative", "channelOf(-1)"),
+    ("a capacity above INT32_MAX", "channelOf(2147483648)"),
     (
-        "a computed negative",
-        "let ch = channelOf(-1)",
-        "Channel(-1)",
+        "an unallocatable capacity",
+        "channelOf(9223372036854775807)",
     ),
 ];
+const REFUSAL: &str = "refused: Channel capacity must be positive and fit in memory\n";
 
 #[test]
-fn a_non_positive_capacity_channel_is_refused_rather_than_handed_over() -> io::Result<()> {
-    for (label, binding, named) in REFUSED_CAPACITIES {
-        // The print comes BEFORE any use of the handle, on purpose. A guard
-        // that only fired inside `send` would still let this line out, and the
-        // `recv` poison — the one that segfaults — would survive untouched.
-        // Only a refusal at CREATION keeps `created` off stdout.
+fn an_unusable_capacity_is_an_error_the_program_handles() -> io::Result<()> {
+    for (label, call) in REFUSED_CAPACITIES {
+        // The Success arm sends before it prints, so a handle that was made
+        // anyway, or a send on a refused one, is visible in stdout.
         let source = format!(
-            "fn channelOf(n) = Channel(n)\n{binding}\nprint(\"created\")\nsend(ch, [1, 2, 3])\n"
+            "fn channelOf(n) = Channel(n)\nprint(match {call} {{\n    Success {{ value }} => {{\n        send(value, [1, 2, 3])\n        \"created\"\n    }}\n    Error {{ message }} => \"refused: ${{message}}\"\n}})\nprint(\"still running\")\n"
         );
         let output = run_arc(&source)?;
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
         assert!(
-            !output.status.success(),
-            "{label}: a non-positive capacity must be refused. stdout={stdout:?} stderr={stderr}"
+            output.status.success(),
+            "{label}: a refused capacity must not stop the run. stdout={stdout:?} stderr={stderr}"
         );
         assert_eq!(
-            stdout, "",
-            "{label}: the program reached its first print, so the handle was \
-             created and only its USE was refused"
+            stdout,
+            format!("{REFUSAL}still running\n"),
+            "{label}: the refusal is the Error arm and the program carries on"
         );
-        // A truthful error, not a bare abort: the capacity that was asked for
-        // and the code the runtime answered, so the reader knows which of the
-        // two refusals happened.
         assert!(
-            stderr.contains("FATAL") && stderr.contains(named) && stderr.contains("code -1"),
-            "{label}: the refusal must name what was asked for and why. stderr={stderr}"
+            !stderr.contains("FATAL"),
+            "{label}: nothing aborts. stderr={stderr}"
         );
     }
     Ok(())
@@ -330,10 +325,15 @@ fn a_non_positive_capacity_channel_is_refused_rather_than_handed_over() -> io::R
 #[test]
 fn the_smallest_positive_capacity_still_carries_a_value() -> io::Result<()> {
     let source = r"
-let ch = Channel(1)
-send(ch, [1, 2, 3])
-let back = recv(ch)
-print(toString(listLength(back)))
+fn carry(ch) = {
+    send(ch, [1, 2, 3])
+    let back = recv(ch)
+    print(toString(listLength(back)))
+}
+match Channel(1) {
+    Success { value } => carry(value)
+    Error { message } => print(message)
+}
 ";
 
     assert_arc_clean(

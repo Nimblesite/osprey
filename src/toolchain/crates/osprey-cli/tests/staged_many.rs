@@ -170,8 +170,11 @@ fn main() = {
         // the region stays legal — only the replayed remainder is rejected.
         r#"
 effect Choice { control many pick: fn(int) -> string }
-fn main() = {
-    let box = Channel(4)
+fn main() = match Channel(4) {
+    Success { value } => run(value)
+    Error { message } => print(message)
+}
+fn run(box) = {
     let out = {
         handle Choice {
             pick _b => "${resume("1")}|${resume("2")}"
@@ -217,8 +220,11 @@ fn main() = {
         // take one message per branch.
         r#"
 effect Choice { control many pick: fn(int) -> int }
-fn main() = {
-    let box = Channel(4)
+fn main() = match Channel(4) {
+    Success { value } => run(value)
+    Error { message } => print(message)
+}
+fn run(box) = {
     let all = {
         handle Choice {
             pick _b => satAdd(resume(1), resume(2))

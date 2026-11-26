@@ -161,7 +161,7 @@ fn a_channel_payload_keeps_the_provenance_of_what_was_sent() {
     // What comes back out of `recv` is what went in through `send`: a callable
     // sent down a channel and invoked on the far side is still a KNOWN callee.
     assert_rejected_with(
-        &format!("{ARMED}let channel = Channel()\nlet sent = send(channel, ring)\nlet received = recv(channel)\nlet answer = received()\n"),
+        &format!("{ARMED}match Channel(1) {{\nSuccess {{ value: channel }} => {{\nsend(channel, ring)\nlet received = recv(channel)\nprint(toString(received()))\n}}\nError {{ message }} => print(message)\n}}\n"),
         &["Alarm.ring"],
     );
 }

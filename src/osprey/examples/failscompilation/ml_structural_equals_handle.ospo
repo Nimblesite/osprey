@@ -6,11 +6,10 @@ work n = n
 
 fiberA = spawn (work 1)
 fiberB = spawn (work 1)
-channelA = Channel(1)
-channelB = Channel(1)
-
 viaFiber () = structuralEquals(fiberA, fiberB)
-viaChannel () = structuralEquals(channelA, channelB)
+viaChannel () = match Channel 1
+    Success value => structuralEquals(value, value)
+    Error message => false
 viaField () = structuralEquals({ task = fiberA }, { task = fiberB })
 
 print "${toString (viaFiber ())} ${toString (viaChannel ())} ${toString (viaField ())}"

@@ -31,12 +31,13 @@ enum {
 };
 
 static void *blocking_channel;
-static void *gating_channel;
 
-// Parks on an empty channel until this test releases it: "still running" is
-// then a fact about blocking, not about a timer racing a 100 ms usleep body,
-// which a loaded runner can outrun.
-static int64_t channel_gated_function(void *env) {
+// Parks on an empty channel until a test releases it: "still running" is
+// then a fact about blocking, not about a timer racing a sleep body, which a
+// loaded runner can outrun. fiber_runtime_tests.c's fiber_done case shares it.
+void *gating_channel;
+
+int64_t channel_gated_function(void *env) {
   (void)env;
   return channel_recv(gating_channel);
 }
@@ -92,55 +93,6 @@ void test_channel_capacity_rejections(void) {
   assert(channel_create((int64_t)INT32_MAX + 1) == NULL &&
          "capacity above INT32_MAX is rejected, not truncated");
   assert(channel_create(INT64_MAX) == NULL && "the element count cannot overflow");
-}
-
-// `Channel(capacity)` answers `Channel<T>`, not a Result, so the LANGUAGE has
-// nowhere to put a refusal. `channel_create_checked` is that boundary: it turns
-// every refusal into a death rather than a handle. Codegen calls it and
-// only it, so a value the rest of the lowering treats as a channel is one this
-// function let through. [CONCURRENCY-CHANNEL]
-static void death_channel_of_zero_capacity(void) {
-  (void)channel_create_checked(0);
-}
-
-static void death_channel_of_negative_capacity(void) {
-  (void)channel_create_checked(-1);
-}
-
-static void death_channel_of_oversized_capacity(void) {
-  (void)channel_create_checked(INT64_MAX);
-}
-
-// A capacity the compiler cannot see: codegen passes whatever the program computed.
-static volatile int64_t runtime_capacity;
-
-static void death_channel_of_runtime_capacity(void) {
-  (void)channel_create_checked(runtime_capacity);
-}
-
-static void check_refusal(OspDeathBody body, const char *what) {
-  int signalled = osp_death_signal(body);
-  if (signalled != SIGABRT) {
-    fprintf(stderr, "expected %s to be refused, got %d\n", what, signalled);
-  }
-  assert(signalled == SIGABRT);
-}
-
-void test_unusable_capacities_are_refused_not_returned(void) {
-  check_refusal(death_channel_of_zero_capacity, "a zero capacity");
-  check_refusal(death_channel_of_negative_capacity, "a negative capacity");
-  check_refusal(death_channel_of_oversized_capacity, "an unallocatable capacity");
-  const int64_t unusable[] = {0, -1, INT64_MIN, (int64_t)INT32_MAX + 1, INT64_MAX};
-  for (size_t i = 0; i < sizeof(unusable) / sizeof(unusable[0]); i++) {
-    runtime_capacity = unusable[i];
-    check_refusal(death_channel_of_runtime_capacity, "an unusable runtime capacity");
-  }
-  // And the capacity that IS usable still is: a refusal that refused
-  // everything would satisfy every assertion above.
-  void *ok = channel_create_checked(1);
-  assert(ok != NULL && "the smallest positive capacity is a real handle");
-  assert(channel_send(ok, 7, 0) == 1 && channel_recv(ok) == 7 &&
-         "and it carries a value end to end");
 }
 
 // A handle that holds no channel, as one whose creation was refused does.
@@ -261,8 +213,11 @@ void test_rejected_managed_send_releases_its_value(void) {
 // for ever, and a collection counts it, once. One whose channel the program
 // can still name is never counted, and is woken as usual.
 
-enum { WAITING_FIBERS = 40, WAITING_SETTLE_US = 200000, SCRUBBED_WORDS = 4096 };
+enum { WAITING_FIBERS = 40, SCRUBBED_WORDS = 4096 };
 static void *named_channels[WAITING_FIBERS];
+
+// fiber_runtime.c: how many fibers are parked on a channel right now.
+int fiber_channel_waits(void);
 
 static int64_t receives_when_sent(void *channel) { return channel_recv(channel); }
 
@@ -286,10 +241,22 @@ __attribute__((noinline)) static uintptr_t scrub_stack(void) {
 
 size_t osp_gc_collections(void); // the tracing collector this suite links
 
+// Waits until the runtime's channel-wait count reads `expected`: every
+// spawned fiber has then parked on, or left, its channel. The deadline is a
+// generous safety bound against a hang, never the mechanism.
+enum { WAIT_HANDSHAKE_TRIES = 30000, WAIT_HANDSHAKE_POLL_US = 1000 };
+
+static void wait_for_channel_waits(int expected) {
+  for (int i = 0; i < WAIT_HANDSHAKE_TRIES && fiber_channel_waits() != expected; i++) {
+    usleep(WAIT_HANDSHAKE_POLL_US);
+  }
+  assert(fiber_channel_waits() == expected && "the channel waiters never settled");
+}
+
 // Collects once every fiber has had time to block; a verdict needs a collection.
-static size_t stuck_after_collecting(void) {
+static size_t stuck_after_collecting(int channel_waits) {
   size_t collections = osp_gc_collections();
-  usleep(WAITING_SETTLE_US);
+  wait_for_channel_waits(channel_waits);
   osp_collect();
   assert(osp_gc_collections() == collections + 1 && "the collection ran");
   return osp_mem_stuck_waits();
@@ -301,7 +268,7 @@ static size_t stuck_after_spawning(bool keep) {
     spawn_waiting(i, keep);
   }
   (void)scrub_stack();
-  return stuck_after_collecting();
+  return stuck_after_collecting(WAITING_FIBERS);
 }
 
 void test_fibers_blocked_for_ever_are_found(void) {
@@ -312,7 +279,7 @@ void test_fibers_blocked_for_ever_are_found(void) {
     assert(channel_send(named_channels[i], (int64_t)i, 0) == 1);
     named_channels[i] = NULL;
   }
-  assert(stuck_after_collecting() == before && "a woken fiber was never stuck");
+  assert(stuck_after_collecting(0) == before && "a woken fiber was never stuck");
   size_t found = stuck_after_spawning(false) - before;
   printf("  %zu of %d fibers found blocked for ever\n", found, WAITING_FIBERS);
   // A stale stack word can still name a channel, so a few may go unfound;

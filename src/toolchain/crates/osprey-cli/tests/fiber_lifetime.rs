@@ -39,11 +39,11 @@ fn finished_fibers_are_reclaimed_in_every_backend() -> io::Result<()> {
 
 /// Makes, fills and drains a fresh 256-slot channel one after another, half
 /// carrying ints and half strings, so only one is ever live.
-const FINISHED_CHANNELS: &str = "fn ints(n) = range(0, n) |> fold(0, fn(sum, i) => {\n  let box = Channel(256)\n  send(box, i)\n  wrapAdd(sum, recv(box))\n})\nfn texts(n) = range(0, n) |> fold(0, fn(sum, i) => {\n  let box = Channel(256)\n  send(box, toString(i))\n  wrapAdd(sum, length(recv(box)))\n})\nprint(\"${ints(300000)} ${texts(300000)}\")\n";
+const FINISHED_CHANNELS: &str = "fn ints(n) = range(0, n) |> fold(0, fn(sum, i) => match Channel(256) {\n  Success { value: box } => {\n    send(box, i)\n    wrapAdd(sum, recv(box))\n  }\n  Error { message } => sum\n})\nfn texts(n) = range(0, n) |> fold(0, fn(sum, i) => match Channel(256) {\n  Success { value: box } => {\n    send(box, toString(i))\n    wrapAdd(sum, length(recv(box)))\n  }\n  Error { message } => sum\n})\nprint(\"${ints(300000)} ${texts(300000)}\")\n";
 const FINISHED_CHANNELS_ANSWER: &str = "44999850000 1688890\n";
 /// The same count of channels for `--memory=ownership`, which refuses a string
 /// handed to a channel ([MEM-OWNERSHIP-STATIC]), so every one carries an int.
-const FINISHED_INT_CHANNELS: &str = "fn ints(n) = range(0, n) |> fold(0, fn(sum, i) => {\n  let box = Channel(256)\n  send(box, i)\n  wrapAdd(sum, recv(box))\n})\nprint(\"${ints(600000)}\")\n";
+const FINISHED_INT_CHANNELS: &str = "fn ints(n) = range(0, n) |> fold(0, fn(sum, i) => match Channel(256) {\n  Success { value: box } => {\n    send(box, i)\n    wrapAdd(sum, recv(box))\n  }\n  Error { message } => sum\n})\nprint(\"${ints(600000)}\")\n";
 const FINISHED_INT_CHANNELS_ANSWER: &str = "179999700000\n";
 
 /// [CONCURRENCY-FIBER-LIFETIME] [CONCURRENCY-CHANNEL] [CONCURRENCY-WASM] A
@@ -106,7 +106,7 @@ fn failure(label: &str, run: &bounded::Bounded) -> String {
 /// room for every value, as wasm32 runs a fiber to completion), one
 /// at file scope shared with a fiber that outlives the statement, and 2000
 /// more made, shared and dropped in a loop.
-const SHARED_CHANNELS: &str = "fn produce(box, n) = range(0, n) |> fold(0, fn(sum, i) => {\n  send(box, i)\n  wrapAdd(sum, 1)\n})\nfn consume(box, n) = range(0, n) |> fold(0, fn(sum, _) => wrapAdd(sum, recv(box)))\nfn relay(n) = {\n  let box = Channel(64)\n  let maker = spawn produce(box, n)\n  let taker = spawn consume(box, n)\n  wrapAdd(await(maker), await(taker))\n}\nlet shared = Channel(2)\nlet late = spawn recv(shared)\nsend(shared, 7)\nprint(\"${relay(50)} ${relay(3)} ${await(late)} ${range(0, 2000) |> fold(0, fn(sum, _) => wrapAdd(sum, relay(2)))}\")\n";
+const SHARED_CHANNELS: &str = "fn produce(box, n) = range(0, n) |> fold(0, fn(sum, i) => {\n  send(box, i)\n  wrapAdd(sum, 1)\n})\nfn consume(box, n) = range(0, n) |> fold(0, fn(sum, _) => wrapAdd(sum, recv(box)))\nfn relay(n) = match Channel(64) {\n  Success { value: box } => {\n    let maker = spawn produce(box, n)\n    let taker = spawn consume(box, n)\n    wrapAdd(await(maker), await(taker))\n  }\n  Error { message } => 0\n}\nfn share(shared) = {\n  let late = spawn recv(shared)\n  send(shared, 7)\n  print(\"${relay(50)} ${relay(3)} ${await(late)} ${range(0, 2000) |> fold(0, fn(sum, _) => wrapAdd(sum, relay(2)))}\")\n}\nmatch Channel(2) {\n  Success { value } => share(value)\n  Error { message } => print(message)\n}\n";
 const SHARED_CHANNELS_ANSWER: &str = "1275 6 7 6000\n";
 
 /// [CONCURRENCY-CHANNEL-LIFETIME] [MEM-OWNERSHIP-STATIC-HANDLES] A channel is
@@ -211,7 +211,7 @@ fn compiled_run(
 
 /// Twenty fibers each left waiting on a channel only it can name, then enough
 /// time for every one to block before `main` ends.
-const STRANDED_FIBERS: &str = "fn strand() = {\n  let box = Channel(1)\n  let waiting = spawn wrapAdd(recv(box), 1)\n  1\n}\nlet stranded = range(0, 20) |> fold(0, fn(sum, _) => wrapAdd(sum, strand()))\nsleep(300)\nprint(\"${stranded}\")\n";
+const STRANDED_FIBERS: &str = "fn strand() = match Channel(1) {\n  Success { value: box } => {\n    let waiting = spawn wrapAdd(recv(box), 1)\n    1\n  }\n  Error { message } => 0\n}\nlet stranded = range(0, 20) |> fold(0, fn(sum, _) => wrapAdd(sum, strand()))\nsleep(300)\nprint(\"${stranded}\")\n";
 const STRANDED_REPORT: &str = "fiber(s) blocked for ever: only blocked fibers can reach the channel each waits on [CONCURRENCY-DEADLOCK]";
 
 /// [CONCURRENCY-DEADLOCK] A fiber waiting on a channel that only waiting fibers
@@ -239,7 +239,7 @@ fn fibers_blocked_for_ever_are_named_by_the_collector() -> io::Result<()> {
 }
 
 /// A program whose one fiber waits for a value no fiber will ever send.
-const BLOCKED_FOREVER: &str = "let box = Channel(1)\nlet waiting = spawn recv(box)\nprint(\"started\")\nprint(await(waiting))\n";
+const BLOCKED_FOREVER: &str = "match Channel(1) {\n  Success { value: box } => {\n    let waiting = spawn wrapAdd(recv(box), 0)\n    print(\"started\")\n    print(await(waiting))\n  }\n  Error { message } => print(message)\n}\n";
 
 /// [CONCURRENCY-WASM] On wasm32's one thread a wait no queued fiber can satisfy
 /// could only be woken by another thread, and there is none, so the run stops by

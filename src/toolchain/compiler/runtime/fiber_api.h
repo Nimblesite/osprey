@@ -26,7 +26,6 @@ int64_t fiber_done(void *handle);
 int64_t fiber_id(void *handle);
 
 void *channel_create(int64_t capacity);
-void *channel_create_checked(int64_t capacity);
 int64_t channel_send(void *handle, int64_t value, int64_t managed);
 int64_t channel_recv(void *handle);
 int64_t channel_select(int64_t count, const int64_t *kinds, void *const *channels,

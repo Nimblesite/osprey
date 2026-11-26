@@ -32,10 +32,18 @@ fn a_let_bound_channel_or_fiber_is_monomorphic_in_its_element() {
     // every USE its own copy and nothing tied the two ends together: this
     // program COMPILED and printed a raw pointer as an integer.
     // Implements [CONCURRENCY-CHANNEL] and [CONCURRENCY-SPAWN-AWAIT].
+    // `Channel(n)` answers a Result, and the let-bound Result pins its
+    // element exactly as a bare handle does: each decode sees one channel.
     let sent_string_read_as_int = bad("fn main() -> Unit = {\n\
-          let ch = Channel(1)\n\
-          send(ch, \"text\")\n\
-          print(\"${recv(ch) + 1}\")\n\
+          let made = Channel(1)\n\
+          match made {\n\
+            Success { value } => send(value, \"text\")\n\
+            Error { message } => print(message)\n\
+          }\n\
+          match made {\n\
+            Success { value } => print(\"${recv(value) + 1}\")\n\
+            Error { message } => print(message)\n\
+          }\n\
         }\n");
     assert!(
         sent_string_read_as_int
@@ -45,13 +53,17 @@ fn a_let_bound_channel_or_fiber_is_monomorphic_in_its_element() {
     );
     // Two sends of different types into ONE channel are the same hole seen
     // from the other side.
-    let two_element_types = bad("fn main() -> Unit = {\n\
-          let ch = Channel(2)\n\
-          send(ch, 1)\n\
-          send(ch, \"two\")\n\
+    let two_element_types = bad("fn main() -> Unit = match Channel(2) {\n\
+          Success { value } => {\n\
+            send(value, 1)\n\
+            send(value, \"two\")\n\
+          }\n\
+          Error { message } => print(message)\n\
         }\n");
     assert!(
-        !two_element_types.is_empty(),
+        two_element_types
+            .iter()
+            .any(|e| e.message.contains("cannot unify int with string")),
         "one channel may carry exactly one element type"
     );
     // A fiber handle is fixed by the thunk that produced it, so awaiting it
@@ -67,11 +79,13 @@ fn a_let_bound_channel_or_fiber_is_monomorphic_in_its_element() {
     );
     // ...and the honest programs still type: one element type per handle,
     // used consistently at both ends, including a nested collection.
-    ok("fn main() -> Unit = {\n\
-          let ch = Channel(2)\n\
-          send(ch, [[1, 2], [3]])\n\
-          let back = recv(ch)\n\
-          print(\"${listLength(back)}\")\n\
+    ok("fn main() -> Unit = match Channel(2) {\n\
+          Success { value } => {\n\
+            send(value, [[1, 2], [3]])\n\
+            let back = recv(value)\n\
+            print(\"${listLength(back)}\")\n\
+          }\n\
+          Error { message } => print(message)\n\
         }\n");
     // Pinning is confined to handle VALUES. An immutable constructor still
     // generalizes, and so does a FUNCTION that merely mentions a handle:
@@ -81,21 +95,32 @@ fn a_let_bound_channel_or_fiber_is_monomorphic_in_its_element() {
           let identity = |x| => x\n\
           print(\"${identity(1)} ${identity(\"two\")}\")\n\
         }\n");
-    ok("fn main() -> Unit = {\n\
-          let make = |n| => Channel(n)\n\
-          let ints = make(1)\n\
-          let words = make(1)\n\
+    ok("fn trip(ints, words) = {\n\
           send(ints, 7)\n\
           send(words, \"seven\")\n\
           print(\"${recv(ints)} ${recv(words)}\")\n\
+        }\n\
+        fn main() -> Unit = {\n\
+          let make = |n| => Channel(n)\n\
+          match make(1) {\n\
+            Success { value } => match make(1) {\n\
+              Success { value: words } => trip(value, words)\n\
+              Error { message } => print(message)\n\
+            }\n\
+            Error { message } => print(message)\n\
+          }\n\
         }\n");
     ok("fn firstOf(ch) = recv(ch)\n\
-        fn main() -> Unit = {\n\
-          let ints = Channel(1)\n\
-          let words = Channel(1)\n\
-          send(ints, 7)\n\
-          send(words, \"seven\")\n\
-          print(\"${firstOf(ints)} ${firstOf(words)}\")\n\
+        fn main() -> Unit = match Channel(1) {\n\
+          Success { value: ints } => match Channel(1) {\n\
+            Success { value: words } => {\n\
+              send(ints, 7)\n\
+              send(words, \"seven\")\n\
+              print(\"${firstOf(ints)} ${firstOf(words)}\")\n\
+            }\n\
+            Error { message } => print(message)\n\
+          }\n\
+          Error { message } => print(message)\n\
         }\n");
 }
 

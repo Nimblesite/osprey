@@ -81,29 +81,6 @@ void *channel_create(int64_t capacity) {
   return NULL;
 }
 
-// `Channel(capacity)` answers `Channel<T>` in the language, not
-// `Result<Channel<T>, E>`, so a creation that cannot be honoured has NOWHERE to
-// report. Handing a refusal back as if it were a handle is what turned
-// `Channel(0)` into a poison value: `send` on it enqueued nothing and returned
-// as though it had, and `recv` on it answered `-1` AS THE VALUE, which the
-// caller then read as a pointer -- a segfault with no diagnostic, arbitrarily
-// far from the `Channel(0)` that caused it.
-//
-// Every route reaches this, not just a literal: `fn channelOf(n) = Channel(n)`
-// called with `0` poisons exactly the same handle, so the check belongs where
-// the capacity is, not where it was written. [CONCURRENCY-CHANNEL]
-void *channel_create_checked(int64_t capacity) {
-  void *handle = channel_create(capacity);
-  if (handle) {
-    return handle;
-  }
-  fprintf(stderr,
-          "FATAL: Channel(%lld) has no channel to give: capacity must be "
-          "positive and memory must be free\n",
-          (long long)capacity);
-  abort();
-}
-
 // A send that does not enqueue must not keep the +1 the caller transferred:
 // ownership moved at the call, so a rejected value has no receiver and would
 // leak for the life of the process. [GC-ARC-PERCEUS]
@@ -128,8 +105,10 @@ static void channel_wait(Channel *channel, pthread_cond_t *changed, const void *
     }
   }
   OspChannelWait wait = {.handle = handle, .record = thread_fiber};
-  atomic_fetch_add_explicit(&channel_waits, 1, memory_order_relaxed);
   osp_mem_wait_enter(&wait);
+  // Counted only once the wait is registered: the count then reads as the
+  // fibers parked on a channel right now, which tests wait on.
+  atomic_fetch_add_explicit(&channel_waits, 1, memory_order_relaxed);
   (void)osp_parked_wait(changed, &channel->mutex, NULL);
   osp_mem_wait_exit(&wait);
   atomic_fetch_sub_explicit(&channel_waits, 1, memory_order_relaxed);

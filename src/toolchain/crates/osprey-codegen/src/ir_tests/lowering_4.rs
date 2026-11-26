@@ -382,19 +382,24 @@ fn fibers_channels_yield_and_done() {
     // without a value, fiber_yield and fiberDone.
     lowers(
         "fn work(n: int) -> int = satAdd(n, 1)\n\
-             fn main() -> Unit = {\n\
-               let ch = Channel(1)\n\
+             fn exchange(ch) = {\n\
                send(ch, 42)\n\
                let got = recv(ch)\n\
                let y = yield 5\n\
                let z = fiber_yield(9)\n\
                let f = spawn work(3)\n\
                print(\"${got} ${y} ${z} ${await(f)} ${fiberDone(f)}\")\n\
+             }\n\
+             fn main() -> Unit = match Channel(1) {\n\
+               Success { value } => exchange(value)\n\
+               Error { message } => print(message)\n\
              }\n",
         // A channel is a managed handle like a fiber, and both are let go of
         // through one cleanup ([CONCURRENCY-CHANNEL-LIFETIME]).
         &[
-            "call i8* @channel_create_checked(i64 1)",
+            "call i8* @channel_create(i64 1)",
+            // A refused capacity is the `Error` arm, never an abort.
+            "Channel capacity must be positive and fit in memory",
             "call i64 @channel_send(i8* ",
             "call i64 @channel_recv(i8* ",
             "fiber_done",
@@ -407,15 +412,20 @@ fn fibers_channels_yield_and_done() {
 fn select_calls_the_runtime_and_switches_on_the_arm_it_performed() {
     // [CONCURRENCY-SELECT]: the arm comes from the runtime, never from source order.
     lowers(
-        "fn main() -> Unit = {\n\
-               let c = Channel(1)\n\
-               let d = Channel(1)\n\
+        "fn pick(c, d) = {\n\
                let pick = select {\n\
                    m = recv(c) => m + 0\n\
                    send(d, 2) => 20\n\
                    timeout(5) => 30\n\
                }\n\
                print(\"${pick}\")\n\
+             }\n\
+             fn main() -> Unit = match Channel(1) {\n\
+               Success { value } => match Channel(1) {\n\
+                 Success { value: d } => pick(value, d)\n\
+                 Error { message } => print(message)\n\
+               }\n\
+               Error { message } => print(message)\n\
              }\n",
         &[
             "@channel_select(i64 2, i64* ",

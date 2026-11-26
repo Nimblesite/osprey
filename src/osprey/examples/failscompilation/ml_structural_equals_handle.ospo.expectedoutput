@@ -1,3 +1,3 @@
-12:0: cannot compare `Fiber<int>` with `structuralEquals`: the operand is a runtime handle, whose equality is not decided
-13:0: cannot compare `Channel<t14>` with `structuralEquals`: the operand is a runtime handle, whose equality is not decided
-14:0: cannot compare `{ task: Fiber<int> }` with `structuralEquals`: field `task` is a runtime handle, whose equality is not decided
+9:0: cannot compare `Fiber<int>` with `structuralEquals`: the operand is a runtime handle, whose equality is not decided
+11:4: cannot compare `Channel<t13>` with `structuralEquals`: the operand is a runtime handle, whose equality is not decided
+13:0: cannot compare `{ task: Fiber<int> }` with `structuralEquals`: field `task` is a runtime handle, whose equality is not decided

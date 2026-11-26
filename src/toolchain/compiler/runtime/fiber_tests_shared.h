@@ -36,7 +36,6 @@ void run_fiber_handle_tests(void);
 // fiber_channel_tests.c
 void test_channel_fifo_and_wraparound(void);
 void test_channel_capacity_rejections(void);
-void test_unusable_capacities_are_refused_not_returned(void);
 void test_channel_handle_guards(void);
 void test_channel_blocks_both_directions(void);
 void test_cleanup_defers_while_a_fiber_runs(void);

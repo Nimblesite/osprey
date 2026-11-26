@@ -26,8 +26,8 @@ const BUILTINS: &str = "fn listInt() -> List<int> = [1]\n\
     fn resInt() -> Result<int, string> = 20 * 5\n\
     fn one() = 1\n\
     fn fiberInt() -> Fiber<int> = spawn one()\n\
-    fn chanInt() -> Channel<int> = Channel(2)\n\
-    fn chanRes() -> Channel<Result<int, string>> = Channel(2)\n\
+    extern fn chanInt() -> Channel<int>\n\
+    extern fn chanRes() -> Channel<Result<int, string>>\n\
     fn takesInt(v: int) = true\n\
     fn takesRes(v: Result<int, string>) = true\n\
     fn givesInt(v: int) = 1\n\

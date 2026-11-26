@@ -399,7 +399,7 @@ mod tests {
     #[test]
     fn expansion_budget_preserves_stateful_handle_parameter_metadata() {
         let helpers = crate::genfn::tests::fanout_helpers();
-        let source = format!("fn leaf(x) = x\n{helpers}fn greet() = \"done\"\nfn waitIt(f) = await(f)\nfn takeIt(ch) = recv(ch)\nlet warm = l8(\"z\")\nlet ch = Channel(1)\nsend(ch, \"message\")\nprint(\"${{warm}}${{waitIt(spawn greet())}}${{takeIt(ch)}}\")\n");
+        let source = format!("fn leaf(x) = x\n{helpers}fn greet() = \"done\"\nfn waitIt(f) = await(f)\nfn takeIt(ch) = recv(ch)\nlet warm = l8(\"z\")\nmatch Channel(1) {{\n  Success {{ value: ch }} => {{\n    send(ch, \"message\")\n    print(\"${{warm}}${{waitIt(spawn greet())}}${{takeIt(ch)}}\")\n  }}\n  Error {{ message }} => print(message)\n}}\n");
         let parsed = osprey_syntax::parse_program_for_path("fiber-fanout.osp", &source);
         assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
         let ir = crate::compile_program(&parsed.program)

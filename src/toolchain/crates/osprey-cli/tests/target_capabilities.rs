@@ -179,8 +179,8 @@ fn wasm_accepts_fibers_and_channels() -> std::io::Result<()> {
             &["@fiber_id"][..],
         ),
         (
-            "let box = Channel(1)\nsend(box, 2)\nprint(recv(box))\n",
-            &["@channel_create_checked", "@channel_send", "@channel_recv"][..],
+            "match Channel(1) {\n  Success { value } => {\n    send(value, 2)\n    print(recv(value))\n  }\n  Error { message } => print(message)\n}\n",
+            &["@channel_create", "@channel_send", "@channel_recv"][..],
         ),
         ("sleep(1)\n", &["@fiber_sleep"][..]),
         ("let ms = 1\nms.sleep()\n", &["@fiber_sleep"][..]),

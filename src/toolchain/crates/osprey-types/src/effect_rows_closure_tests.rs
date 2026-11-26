@@ -338,11 +338,16 @@ fn lazy_iterator_callback_is_discharged_when_consumed_inside_handler() {
     ));
 }
 
+/// `Channel(1)` answers a Result: the channel programs below run in its
+/// `Success` arm, with the handle bound as `channel`.
+const OPEN: &str = "match Channel(1) {\nSuccess { value: channel } => {\n";
+const CLOSE: &str = "}\nError { message } => print(message)\n}\n";
+
 #[test]
 fn effectful_closure_cannot_escape_through_a_channel_alias() {
     reject_alarm(
         &format!(
-            "let channel = Channel(1)\nlet alias = channel\nlet _ = {}\nlet delayed = recv(channel)\nlet answer = delayed()\n",
+            "{OPEN}let alias = channel\nlet _ = {}\nlet delayed = recv(channel)\nlet answer = delayed()\n{CLOSE}",
             handled("_", "Alarm", "ring => 41", "send(alias, fn() => perform Alarm.ring())")
         ),
         &["Alarm.ring"],
@@ -352,7 +357,7 @@ fn effectful_closure_cannot_escape_through_a_channel_alias() {
 /// A pure closure round-tripped through a channel alias and invoked after
 /// `recv`; both tests below assert this exact program stays callable.
 fn pure_channel_round_trip() -> String {
-    format!("{ALARM}let channel = Channel(1)\nlet alias = channel\nsend(alias, fn() => 42)\nlet delayed = recv(channel)\nlet answer = delayed()\n")
+    format!("{ALARM}{OPEN}let alias = channel\nsend(alias, fn() => 42)\nlet delayed = recv(channel)\nlet answer = delayed()\n{CLOSE}")
 }
 
 #[test]
