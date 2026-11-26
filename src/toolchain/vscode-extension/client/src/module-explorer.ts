@@ -1,5 +1,5 @@
 // The Module Explorer [EDITOR-MODULE-EXPLORER]: each workspace project's code tree
-// (folder, namespace, module, member) and sources from the compiler's checked source graph, and its dependencies
+// (namespace, module, member) and sources from the compiler's checked source graph, and its dependencies
 // and verification findings from the Osprey package client. Nothing here resolves names or reads a manifest, and
 // a failed source shows its failure, never an empty tree.
 import { execFile } from "child_process";
@@ -124,18 +124,6 @@ function declarationNodes(parent: ModuleNode, items: readonly Declaration[]): Mo
   return build(parent, "");
 }
 
-/** Subfolders, then the declarations of the files directly in this folder, below `depth` segments of `root`. */
-function folderNodes(parent: ModuleNode, root: string, files: readonly string[], graph: SourceGraph, depth = 0): ModuleNode[] {
-  const segments = (file: string) => path.relative(root, file).split(path.sep);
-  const nested = files.filter((file) => segments(file).length > depth + 1);
-  const folders = [...new Set(nested.map((file) => segments(file)[depth]))].sort();
-  return [
-    ...folders.map((name) => attach({ id: `${parent.id}/${name}`, parent, label: name, icon: "folder" }, (self) =>
-      folderNodes(self, root, nested.filter((file) => segments(file)[depth] === name), graph, depth + 1))),
-    ...declarationNodes(parent, graph.declarations.filter((item) => files.includes(item.source) && !nested.includes(item.source))),
-  ];
-}
-
 /** One package of `osprey-pkg tree --graph`, the editor's projection of the lock. */
 export interface LockedPackage {
   readonly key: string;
@@ -224,7 +212,7 @@ export function projectChildren(
       !graph.ok.sources.length
         ? [stateNode(self, "none", "No sources", "The compiler found none in this project.", "info")]
         : graph.ok.declarations.length
-          ? folderNodes(self, root, graph.ok.sources, graph.ok)
+          ? declarationNodes(self, graph.ok.declarations)
           : [stateNode(self, "empty", "No declarations", "The compiler found none in this project.", "info")]),
     attach(group("sources", "Sources", "files"), (self) =>
       [...graph.ok.sources].sort().map((file) => fileNode(self, root, file))),

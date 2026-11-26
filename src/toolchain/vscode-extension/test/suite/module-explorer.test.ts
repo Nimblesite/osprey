@@ -77,10 +77,11 @@ suite("Module Explorer [EDITOR-MODULE-EXPLORER]", () => {
     } finally { await browser.close(); }
   });
 
-  test("the real compiler's code tree: folder, namespace, module and members with coloured icons and the editor's hover, across flavors", async () => {
+  test("the real compiler's code tree: namespace, module and members with coloured icons and the editor's hover, across flavors", async () => {
     const root = project({
       "osprey.toml": MANIFEST,
       "src/main.ospml": 'namespace app\n\nmodule Outer\n    export module Inner\n        export one = 1\n    export keep x = x\n\neffect Counter\n    increment : int => Unit\n\nlimit = 3\n\nprint "${Outer::Inner::one} ${Outer::keep limit}"\n',
+      "src/sub/deep.osp": "namespace app;\n\nmodule Deep {\n    export fn three() = 3\n}\n",
       "src/more.osp": "namespace app;\n\n\nmodule Extra {\n    export fn two() = 2\n    export type Shape = Circle | Square\n}\n\nextern fn strlen(s: string) -> int\n\nlet total = 0\n",
     });
     const tree = provider([root], ["@org/left", "@org/right"]);
@@ -101,21 +102,22 @@ suite("Module Explorer [EDITOR-MODULE-EXPLORER]", () => {
       return [shown.id, shown.color?.id];
     };
 
-    // Folder -> namespace -> module -> members; files are not code elements, so a
-    // namespace two files share is one node holding both files' members.
-    const [folder] = await tree.getChildren(modules);
-    assert.deepStrictEqual(labels(await tree.getChildren(modules)), ["src"]);
-    assert.deepStrictEqual(icon(folder), ["folder", undefined]);
-    assert.deepStrictEqual(labels(await tree.getChildren(folder)), ["app"]);
-    const mainApp = await child(folder, "app");
+    // Modules -> namespace -> module -> members; folders and files are not code
+    // elements, so a namespace three files in two folders share is one node.
+    assert.deepStrictEqual(labels(await tree.getChildren(modules)), ["app"]);
+    const mainApp = await child(modules, "app");
+    assert.strictEqual(tree.getParent(mainApp), modules);
     const moreApp = mainApp;
     assert.deepStrictEqual(icon(mainApp), ["symbol-namespace", "symbolIcon.namespaceForeground"]);
-    assert.deepStrictEqual(labels(await tree.getChildren(mainApp)), ["Counter", "Extra", "limit", "Outer", "strlen", "total"]);
+    assert.deepStrictEqual(labels(await tree.getChildren(mainApp)), ["Counter", "Deep", "Extra", "limit", "Outer", "strlen", "total"]);
     const shown = async (parent: ModuleNode): Promise<ModuleNode[]> => {
       const kids = await tree.getChildren(parent);
       return [...kids, ...(await Promise.all(kids.map(shown))).flat()];
     };
-    assert.ok((await shown(modules)).every((item) => item.icon !== "file-code"), "no file nodes in the code tree");
+    assert.ok((await shown(modules)).every((item) => item.icon?.startsWith("symbol-")), "only code elements in the code tree");
+    const deep = await child(mainApp, "Deep");
+    assert.deepStrictEqual(labels(await tree.getChildren(deep)), ["three"]);
+    assert.strictEqual(deep.location?.file, path.join(root, "src", "sub", "deep.osp"));
     const outer = await child(mainApp, "Outer");
     assert.deepStrictEqual(icon(outer), ["symbol-module", "symbolIcon.moduleForeground"]);
     assert.deepStrictEqual(labels(await tree.getChildren(outer)), ["Inner", "keep"]);
@@ -134,10 +136,9 @@ suite("Module Explorer [EDITOR-MODULE-EXPLORER]", () => {
     assert.strictEqual(extra.location?.file, path.join(root, "src", "more.osp"));
     assert.strictEqual(extra.location?.line, 4);
     assert.strictEqual(tree.getParent(extra), moreApp);
-    assert.strictEqual(tree.getParent(moreApp), folder);
+    assert.strictEqual(tree.getParent(moreApp), modules);
     assert.strictEqual((await child(moreApp, "strlen")).location?.file, path.join(root, "src", "more.osp"));
     assert.strictEqual((await child(mainApp, "limit")).location?.file, path.join(root, "src", "main.ospml"));
-    assert.strictEqual(tree.getParent(folder), modules);
 
     // A member's tree hover is the editor's own hover at its name, word for word.
     await activateWithServer();
@@ -153,7 +154,7 @@ suite("Module Explorer [EDITOR-MODULE-EXPLORER]", () => {
       assert.strictEqual((resolved.tooltip as vscode.MarkdownString | undefined)?.value, expected, name);
     }
 
-    assert.deepStrictEqual(labels(await tree.getChildren(sources)), [path.join("src", "main.ospml"), path.join("src", "more.osp")]);
+    assert.deepStrictEqual(labels(await tree.getChildren(sources)), [path.join("src", "main.ospml"), path.join("src", "more.osp"), path.join("src", "sub", "deep.osp")]);
     assert.deepStrictEqual(labels(await tree.getChildren(dependencies)), ["No lock file", "@org/left", "@org/right"]);
     assert.strictEqual((await tree.sourceNode(path.join(root, "src", "more.osp")))?.parent, sources);
 
@@ -170,10 +171,9 @@ suite("Module Explorer [EDITOR-MODULE-EXPLORER]", () => {
     tree.refresh();
     const again = await tree.getChildren(node);
     assert.strictEqual(again[0].id, modules.id);
-    const [againFolder] = await tree.getChildren(again[0]);
-    assert.strictEqual(againFolder.id, folder.id);
-    const againApp = await child(againFolder, "app");
-    assert.deepStrictEqual(labels(await tree.getChildren(againApp)), ["Counter", "limit", "Outer", "Renamed"]);
+    const againApp = await child(again[0], "app");
+    assert.strictEqual(againApp.id, mainApp.id);
+    assert.deepStrictEqual(labels(await tree.getChildren(againApp)), ["Counter", "Deep", "limit", "Outer", "Renamed"]);
     await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
     // Windows holds the just-closed editor's file for a moment.
     fs.rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
