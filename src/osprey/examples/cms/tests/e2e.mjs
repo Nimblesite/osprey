@@ -7,48 +7,22 @@
 //   node src/osprey/examples/cms/tests/e2e.mjs
 // [CMS-API], [CMS-API-TREE], [CMS-API-SAVE], [CMS-API-UPLOAD], [CMS-KINDS]
 import assert from "node:assert/strict";
-import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, openSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import http from "node:http";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { EDITOR, INIT, ROOTS, SITE, build, buildEditor, createSite, git, head, out, published, root, start, stop, unused } from "./fixture.mjs";
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-const root = path.resolve(here, "../../../../..");
-const osprey = process.env.OSPREY ?? path.join(root, "target/release/osprey");
-const project = path.join(root, "src/osprey/examples/cms");
-const out = path.join(root, "target/cms");
-/** The Osprey Native editor's web build, made once per run by the browser host's build script. [CMS-EDITOR] */
-const EDITOR = path.join(out, "editor-web");
 const PORT = 4399;
-const ROOTS = ["content", "media"];
 const MEMORIES = ["gc", "arc"];
-const INIT = "Init site";
 const INDEX = "content/index.md";
 const PART = 786432;
 const BURST = 22;
 const SHA = /^[0-9a-f]{40}$/;
 const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
-const BUILD_MS = 300_000;
 const REQUEST_MS = 30_000;
-const LISTEN_MS = 10_000;
 
 // The site, the kinds and the unsafe paths -------------------------------------------------
-
-/** The site the developer hands over: `src/` and dot-files are what the editor must never be shown. */
-const SITE = {
-  "content/index.md": "---\ntitle: Home\n---\n\n# Welcome 👋\n\nWe build *sites* with “curly quotes”, café crème and 🚀.\n\n- [First post](/blog/first/)\n",
-  "content/blog/first.md": "# First post\n\n```osp\nfn main() = print(\"hi\")\n```\n\nTyped in an editor that leaves no final newline",
-  "content/about.markdown": "# About\n",
-  "content/.draft.md": "# A hidden draft\n",
-  "media/logo.svg": '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><rect width="1" height="1" fill="#f80"/></svg>\n',
-  "media/photo.JPG": Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00]),
-  "media/notes.txt": "shot list\n",
-  "media/tone.mp3": Buffer.from([0x49, 0x44, 0x33, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xfb]),
-  "media/.Thumbs.db": Buffer.from([0xd0, 0xcf, 0x11, 0xe0]),
-  "src/layout.njk": "<h1>{{ title }}</h1>\n",
-};
 
 /** [CMS-KINDS] */
 const KINDS = {
@@ -107,12 +81,6 @@ function ok(value, label) {
   assert.ok(value, label);
 }
 
-/** Run git in the site and return its trimmed stdout. */
-function git(site, ...args) {
-  return execFileSync("git", args, { cwd: site, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
-}
-
-const head = (site) => git(site, "rev-parse", "HEAD");
 const lastSubject = (site) => git(site, "log", "-1", "--format=%s");
 const log = (site) => git(site, "log", "--format=%H").split("\n");
 const disk = (site, file) => readFileSync(path.join(site, file));
@@ -172,110 +140,6 @@ function failure(reply, status, label) {
   const parsed = json(reply, status === "4xx" ? reply.status : status, label);
   ok(typeof parsed.error === "string" && parsed.error.length > 0, `${label}: {"error": "<reason>"}`);
   return parsed;
-}
-
-// The site and the server ----------------------------------------------------------------------
-
-/** Create the throwaway site repository at `site`: the developer's files, one commit, a local identity. */
-function createSite(site) {
-  rmSync(site, { recursive: true, force: true });
-  for (const [file, bytes] of Object.entries(SITE)) {
-    mkdirSync(path.dirname(path.join(site, file)), { recursive: true });
-    writeFileSync(path.join(site, file), bytes);
-  }
-  git(site, "init", "-q");
-  for (const [name, value] of [["user.name", "CMS e2e"], ["user.email", "e2e@cms.invalid"], ["commit.gpgsign", "false"]]) {
-    git(site, "config", name, value);
-  }
-  git(site, "add", "-A");
-  git(site, "commit", "-q", "-m", INIT);
-  // The published site: a bare repository the working tree pushes to, as a bucket-backed remote would be. [CMS-PUBLISH]
-  const remote = `${site}.git`;
-  rmSync(remote, { recursive: true, force: true });
-  execFileSync("git", ["init", "-q", "--bare", remote]);
-  git(site, "remote", "add", "origin", remote);
-  git(site, "push", "-q", "-u", "origin", "HEAD");
-}
-
-/** The commit the published site (the bare remote) holds. */
-const published = (site) => execFileSync("git", ["--git-dir", `${site}.git`, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
-
-/** Compile the server under `memory` and return its binary. */
-function build(memory) {
-  const binary = path.join(out, `cms-${memory}`);
-  const args = [project, "--compile", "--quiet", "--no-warnings", `--memory=${memory}`, "-o", binary];
-  try {
-    execFileSync(osprey, args, { stdio: ["ignore", "pipe", "pipe"], timeout: BUILD_MS });
-  } catch (error) {
-    throw new Error(`[${memory}] the server did not compile:\n${error.stdout}${error.stderr}`, { cause: error });
-  }
-  return binary;
-}
-
-/** Fail unless the port is free: a server left behind would answer instead of the one under test. */
-async function unused(port) {
-  for (let attempt = 0; attempt < 60; attempt += 1) {
-    const open = await new Promise((resolve) => {
-      const probe = http.request({ host: "127.0.0.1", port, method: "GET", path: "/", agent: false }, (reply) => {
-        reply.resume();
-        resolve(true);
-      });
-      probe.on("error", () => resolve(false));
-      probe.end();
-    });
-    if (!open) return;
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-  throw new Error(`something already listens on port ${port}; stop it before the test`);
-}
-
-/** Resolve once the server answers on the port; reject as soon as it exits, or after LISTEN_MS. */
-function listening(server) {
-  const deadline = Date.now() + LISTEN_MS;
-  return new Promise((resolve, reject) => {
-    const exited = () => reject(new Error(`the server exited (${server.exitCode ?? server.signalCode}) before it listened`));
-    const giveUp = () => {
-      server.off("exit", exited);
-      reject(new Error(`nothing listened on port ${PORT} within ${LISTEN_MS} ms`));
-    };
-    server.once("exit", exited);
-    const probe = () => {
-      if (server.exitCode !== null || server.signalCode !== null) return;
-      const request = http.request({ host: "127.0.0.1", port: PORT, method: "GET", path: "/api/tree", agent: false }, (reply) => {
-        reply.resume();
-        server.off("exit", exited);
-        resolve();
-      });
-      request.on("error", () => (Date.now() < deadline ? setTimeout(probe, 50) : giveUp()));
-      request.end();
-    };
-    probe();
-  });
-}
-
-/** Spawn the server on the throwaway site and resolve once it listens; its log is kept beside the binary. */
-async function start(ctx, binary) {
-  const logPath = path.join(out, `cms-${ctx.memory}.log`);
-  const log = openSync(logPath, "w");
-  const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("CMS_")));
-  const server = spawn(binary, [], { cwd: root, stdio: ["ignore", log, log],
-    env: { ...env, CMS_REPO: ctx.site, CMS_PORT: String(PORT), CMS_ROOTS: ROOTS.join(","), CMS_EDITOR: EDITOR } });
-  try {
-    await listening(server);
-  } catch (error) {
-    server.kill();
-    throw new Error(`[${ctx.memory}] ${error.message}\n--- ${path.relative(root, logPath)} ---\n${readFileSync(logPath, "utf8").slice(-2000)}`, { cause: error });
-  }
-  return server;
-}
-
-/** Kill the server and wait for it to go, so the port is free for the next memory. */
-function stop(server) {
-  return new Promise((resolve) => {
-    if (server.exitCode !== null || server.signalCode !== null) return resolve();
-    server.once("exit", resolve);
-    server.kill();
-  });
 }
 
 // The editor's requests ------------------------------------------------------------------------
@@ -650,9 +514,7 @@ async function session(memory) {
   }
 }
 
-mkdirSync(out, { recursive: true });
-execFileSync("node", [path.join(root, "src/toolchain/hosts/web/scripts/build.mjs"), "--app", path.join(project, "editor"), "--title", "Osprey Studio", "--out", EDITOR],
-  { env: { ...process.env, OSPREY_BIN: osprey }, stdio: ["ignore", "inherit", "inherit"], timeout: BUILD_MS });
+buildEditor();
 for (const memory of MEMORIES) {
   const before = assertions;
   await session(memory);

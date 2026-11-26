@@ -3,7 +3,8 @@
 // lockup and accents so the page belongs in any VS Code colour theme.
 
 export const WORKSPACE_STYLES = `
-#osprey-runtime-status:not([hidden]) { position: fixed; bottom: 36px; left: 16px; z-index: 100; padding: 8px 12px; border: 1px solid var(--osp-border); border-radius: 4px; color: var(--osp-text); background: var(--osp-surface); }
+#osprey-runtime-status:not([hidden]) { position: fixed; bottom: 36px; left: 16px; z-index: 100; padding: 8px 12px; border: 1px solid var(--osp-border); border-radius: 4px; color: var(--osp-text); background: var(--osp-surface); opacity: 0; animation: osp-shown 0s 250ms forwards; }
+@keyframes osp-shown { to { opacity: 1; } }
 #osprey-root[aria-busy="true"] canvas { pointer-events: none; }
 :root {
   color-scheme: light dark;
@@ -103,6 +104,8 @@ button, input, textarea, select { font: inherit; color: inherit; }
 button { cursor: pointer; }
 .osp-button-filled { background: var(--osp-brand-accent); color: var(--osp-brand-canvas); border-radius: 5px; }
 button:disabled { cursor: default; opacity: .48; }
+button[data-paused]:disabled { opacity: 1; animation: osp-paused 0s 250ms forwards; }
+@keyframes osp-paused { to { opacity: .48; } }
 :focus-visible { outline: 2px solid var(--osp-accent); outline-offset: 2px; }
 .osp-shell { height: 100vh; display: flex; flex-direction: column; min-height: 0; }
 #osprey-root { flex: 1 1 auto; min-height: 0; overflow: hidden; }

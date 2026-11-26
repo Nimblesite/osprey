@@ -99,6 +99,9 @@ function authoredCaret(caret: Caret, element: HTMLTextAreaElement, previous: Pos
   if (previous === undefined || previous.value !== current.value || previous.cursor !== current.cursor) revealCaret(element, prefix);
 }
 
+// Editors whose mirror already follows their scroll: a morphed frame keeps the node, so bind once.
+const scrolling = new WeakSet<HTMLTextAreaElement>();
+
 /** Refresh every marked editor after a render: mirrors, authored carets and pending drafts. */
 export function refreshEditors(caret: Caret): void {
   const previous = positions;
@@ -108,6 +111,8 @@ export function refreshEditors(caret: Caret): void {
     const signature = fieldSignature(element);
     if (caret.edits.has(signature)) mirrorEdit(element);
     authoredCaret(caret, element, previous.get(signature));
+    if (scrolling.has(element)) continue;
+    scrolling.add(element);
     element.addEventListener("scroll", () => {
       const mirror = mirrorOf(element);
       mirror.scrollTop = element.scrollTop;

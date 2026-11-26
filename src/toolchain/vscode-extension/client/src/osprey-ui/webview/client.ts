@@ -5,6 +5,7 @@
 
 import { controlEvent, type HostEvent, wordsOf } from "./events.js";
 import { installActions, patchHeldAction, type ActionState } from "./action.js";
+import { morphFrame } from "./morph.js";
 
 export interface FramePosted {
   /** A control event: the ordinal and its value as words. */
@@ -105,8 +106,10 @@ function updateBusy(client: Client): void {
     if (client.runtimeBusy) {
       if (!pausedControls.has(control)) pausedControls.set(control, control.disabled);
       control.disabled = true;
+      control.toggleAttribute("data-paused", true);
     } else if (pausedControls.has(control)) {
       control.disabled = pausedControls.get(control) === true;
+      control.removeAttribute("data-paused");
       pausedControls.delete(control);
     }
   }
@@ -231,8 +234,10 @@ function restoreFocus(client: Client): void {
     .find((candidate) => candidate.getAttribute("data-focus") === saved.id);
   if (!(element instanceof HTMLElement)) return;
   if (saved.signature !== null && fieldSignature(element) !== saved.signature) return;
-  element.focus();
   const field = element as HTMLInputElement;
+  // A morphed frame keeps the focused node; re-selecting it would reset a backward drag's direction.
+  if (element === document.activeElement && field.selectionStart === saved.start && field.selectionEnd === saved.end) return;
+  element.focus();
   if (saved.start !== null && typeof field.setSelectionRange === "function") {
     try {
       field.setSelectionRange(saved.start, saved.end === null ? saved.start : saved.end);
@@ -297,13 +302,15 @@ function rebaseEdits(client: Client): void {
 /** Apply one told frame's markup, preserving focus, drafts and scroll exactly as the JSON-era
  * client did; the pressed control keeps its own node when it can. */
 export function applyRender(client: Client, html: string): void {
+  // The frame is the truth for every control's state; a morph keeps the nodes, so forget their pauses.
+  pausedControls.clear();
   flushFields(client);
   saveFocus(client);
   const scroll = captureScroll();
   const root = document.getElementById("osprey-root");
   if (root !== null) {
     const held = client.action.pressed !== null && patchHeldAction(root, html, client.action);
-    if (!held) root.innerHTML = html;
+    if (!held) morphFrame(root, html, (field) => client.edits.has(fieldSignature(field)));
   }
   rebaseEdits(client);
   restoreFocus(client);
