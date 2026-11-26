@@ -59,7 +59,7 @@
                   "name": "punctuation.definition.template-expression.end.osprey"
                 }
               },
-              "patterns": [{ "include": "$self" }]
+              "patterns": [{ "include": "#interpolated-braces" }, { "include": "$self" }]
             },
             {
               "name": "constant.character.escape.osprey",
@@ -68,6 +68,14 @@
           ]
         }
       ]
+    },
+    "interpolated-braces": {
+      "comment": "A block inside `${…}` (a match, a record pattern) keeps its own braces balanced, so its first `}` does not end the interpolation.",
+      "begin": "\\{",
+      "end": "\\}",
+      "beginCaptures": { "0": { "name": "punctuation.section.block.begin.osprey" } },
+      "endCaptures": { "0": { "name": "punctuation.section.block.end.osprey" } },
+      "patterns": [{ "include": "#interpolated-braces" }, { "include": "$self" }]
     },
     "declarations": {
       "comment": "Matched before #keywords: a declaration rule and the bare keyword start at the same column, and the first rule listed wins a tie, so a declaration listed after #keywords never names what it declares.",
