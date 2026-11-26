@@ -17,11 +17,16 @@ fn module_files_use_the_assembled_project_graph() {
     let uri = format!("file://{}", path.display());
     let diagnostics = compute(&source, &uri, U16);
     assert_warnings(&diagnostics, &bank_warnings());
+    // `bank` spans five folders by design, and talon's `osprey.toml` sets
+    // `namespace-folder-drift = "allow"` ([LINT-LEVELS]).
+    assert!(
+        !diagnostics.iter().any(|d| d.code.as_deref() == Some("namespace-folder-drift")),
+        "talon's lint levels allow namespace-folder-drift: {diagnostics:?}"
+    );
 }
 
 fn bank_warnings() -> Vec<(&'static str, &'static str, crate::model::Span)> {
     vec![
-        ("namespace-folder-drift", "namespace `bank` spans 5 folders; source paths do not change its identity", (3, 0, 3, 14)),
         ("unused-pattern-binding", "unused pattern binding `message`", (14, 22, 14, 29)),
         ("unused-variable", "unused variable `freed`", (15, 12, 15, 17)),
         ("unused-pattern-binding", "unused pattern binding `message`", (17, 14, 17, 21)),
