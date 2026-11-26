@@ -25,7 +25,6 @@ _SHARED_13 = "GGUF.kv_count"
 _SHARED_14 = "general.architecture"
 _SHARED_15 = "general.alignment"
 _SHARED_16 = [-1099511627776]
-_SHARED_17 = [_SHARED_11, _SHARED_12, _SHARED_13, _SHARED_14]
 _SHARED_18 = [4, 8, 16, 24]
 _SHARED_19 = ["uint32", "uint64", "uint64", "string"]
 _SHARED_20 = ["", "", "", ""]

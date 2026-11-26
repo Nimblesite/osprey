@@ -12,6 +12,7 @@ import math
 import json
 import pathlib
 import platform
+import re
 
 ROOT = pathlib.Path(__file__).resolve().parents[5]
 
@@ -81,6 +82,18 @@ def definitions(shared, written=None):
             for text, (name, (value, as_text)) in rows]
 
 
+def referenced(shared, body):
+    """`shared` without the names `body` (its definitions and constants) never uses: a list
+    named before its strings were renamed is rewritten under a second name, orphaning the
+    first, and dropping a list can orphan a string only it used, so prune to a fixpoint."""
+    while True:
+        text = "\n".join(body(shared))
+        unused = {key for key, (name, _) in shared.items() if len(re.findall(rf"\b{name}\b", text)) < 2}
+        if not unused:
+            return shared
+        shared = {key: row for key, row in shared.items() if key not in unused}
+
+
 def aliased(text, name, first_named):
     """`text`, or the name of the earlier constant with the same non-empty list literal, so
     two oracle cases that agree (a v2 file and its v3 twin) share one literal."""
@@ -126,13 +139,15 @@ def write(package, summary, versions, constants, docs=None, module="Expected", n
             literal(value, as_text, shared, written)
         definitions(shared, written)
 
-    shared = shared_literals(render)
-    lines += definitions(shared) + ([""] if shared else [])
-    first_named = {}
-    for name, (value, as_text) in texts.items():
-        doc = (docs or {}).get(name, f"Oracle value `{name}`, computed by {home}/oracle/{package}.cpython.")
-        typed = f"{name}: {annotations[name]}" if name in (annotations or {}) else name
-        lines += [f"{typed} = {aliased(literal(value, as_text, shared), name, first_named)}", f'"""{doc}"""']
+    def body(shared):
+        first_named, rows = {}, definitions(shared) + ([""] if shared else [])
+        for name, (value, as_text) in texts.items():
+            doc = (docs or {}).get(name, f"Oracle value `{name}`, computed by {home}/oracle/{package}.cpython.")
+            typed = f"{name}: {annotations[name]}" if name in (annotations or {}) else name
+            rows += [f"{typed} = {aliased(literal(value, as_text, shared), name, first_named)}", f'"""{doc}"""']
+        return rows
+
+    lines += body(referenced(shared_literals(render), body))
     target = ROOT / home / "tests" / file
     target.write_text("\n".join(lines) + "\n")
     return target
