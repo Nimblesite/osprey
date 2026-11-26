@@ -112,7 +112,11 @@ Named tests above cover the folder-registry subset. Python publisher-attestation
 
 ## Registry website
 
-Run `make -C src/osprey/packages registry-website` with Wasmtime installed. The build compiles the Osprey landing page to WebAssembly, renders it to HTML, and verifies that the stylesheet matches its content-hashed URL. Serve `target/registry-site/` as the document root to preview the standalone site. The included `_headers` file configures Cloudflare Pages. Public catalog and account routes still require the hosted API.
+The homepage is the catalog. Search by name or description, open a package and download a release. **Upload a package** opens `/upload/`. Hosted publishing requires the authenticated publication-intent API.
+
+To browse local packages, start `make -C src/osprey/packages registry-serve`, then run `make -C src/osprey/packages registry-website-preview` with Wasmtime, jq and yq installed. Serve `target/registry-site-preview/` on loopback. The preview identifies its source as a local, audit-unverified folder registry.
+
+`make -C src/osprey/packages registry-website` builds the separate Cloudflare Pages directory at `target/registry-site/`. Its catalog shows an unavailable state until the verified hosted projection is connected. Public publisher profiles and uploads require hosted API routes.
 
 ## Hosted ownership model
 

@@ -144,7 +144,7 @@ registry-website: $(BIN) | _runtime_wasm
 	@mkdir -p target/registry-site-build $(REGISTRY_SITE_OUT)
 	$(BIN) build $(REGISTRY_WEB)/site --target=wasm32 --quiet --no-warnings -o target/registry-site-build/site.wasm
 	printf 'home\n' | wasmtime target/registry-site-build/site.wasm > target/registry-site-build/index.html
-	@set -eu; for page in guide publishing; do \
+	@set -eu; for page in guide publishing upload; do \
 	  mkdir -p "$(REGISTRY_SITE_OUT)/$$page"; \
 	  printf '%s\n' "$$page" | wasmtime target/registry-site-build/site.wasm > "$(REGISTRY_SITE_OUT)/$$page/index.html"; \
 	done
@@ -153,6 +153,11 @@ registry-website: $(BIN) | _runtime_wasm
 	  cp $(REGISTRY_WEB)/assets/registry.css "$(REGISTRY_SITE_OUT)/$$asset"
 	cp $(REGISTRY_WEB)/assets/_headers $(REGISTRY_SITE_OUT)/_headers
 	cp target/registry-site-build/index.html $(REGISTRY_SITE_OUT)/index.html
+
+.PHONY: registry-website-preview
+## registry-website-preview: Render searchable local packages from registry-serve into target/registry-site-preview.
+registry-website-preview: registry-website
+	bash scripts/packages/registry-preview.sh
 
 ## registry-test: Run the Osprey package-system suites.
 registry-test: build

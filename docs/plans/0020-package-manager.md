@@ -2,7 +2,7 @@
 
 Contract: [0029 Package Management](../specs/ecosystem/0029-PackageManagement.md), [0030 Trust and Discovery](../specs/ecosystem/0030-PackageRegistryTrustAndDiscovery.md), [0031 Domain Model](../specs/ecosystem/0031-PackageDomainModel.md), [0031 Domain Invariants](../specs/ecosystem/0031-PackageDomainInvariants.md), [0032 Evidence and Fair Discovery](../specs/ecosystem/0032-PackageEvidenceAndDiscovery.md), [0043 Python-Flavor Ports](../specs/ecosystem/0043-PythonFlavorPorts.md), [0044 Deployment and Ownership](../specs/ecosystem/0044-PackageRegistryDeploymentAndOwnership.md), [0045 Organization Governance](../specs/ecosystem/0045-OrganizationPackageGovernance.md)
 
-Depends on: hosted Stages B–G on parent Milestone B (Phases 5–9) and Milestone C (Phases 7–10) completion; Stage D on Phases 5 and 7–10.
+Depends on: hosted Stages B–G on parent Milestone B (Phases 5–9) and Milestone C (Phases 10–11) completion; Stage D on Phases 5 and 7–10.
 
 ## Prerequisites in place
 
@@ -117,9 +117,10 @@ Depends on: hosted Stages B–G on parent Milestone B (Phases 5–9) and Milesto
 
 ### Phase 11 — Fair search and Osprey WebAssembly UI
 
-The public website opens on the registry catalog. The existing documentation landing page demonstrates the visual shell only. Track the visitor experience against [the public catalog contract](../specs/ecosystem/0044-PackageRegistryDeploymentAndOwnership.md#public-package-catalog-package-hosted-routes-catalog).
+Visitors browse and search packages at `/`, open a result to view or download a release, and select **Upload a package** to start publishing at `/upload/`. Track the visitor experience against [the public catalog contract](../specs/ecosystem/0044-PackageRegistryDeploymentAndOwnership.md#public-package-catalog-package-hosted-routes-catalog).
 
 - [x] Serve the package guide, editor and CLI instructions, and publishing guide from the standalone registry site. `[PACKAGE-HOSTED-ROUTES-CATALOG]`
+- [ ] Complete the authenticated upload journey from the catalog. Preserve the selected package through sign-in, check the publisher grant, authorize the bound commit and show the receipt and publication status. `[PACKAGE-HOSTED-PUBLISH]`
 - [ ] Run the complete catalog acceptance journey with the Osprey Language website blocked. All navigation, package and publisher pages must resolve on the registry site, with release downloads served through the approved content origin. `[PACKAGE-HOSTED-ROUTES-CATALOG]`
 
 - [ ] Make `/` browse published packages from the API without signing in. Show linked scoped names, descriptions and warnings, and let visitors page through results. `[PACKAGE-HOSTED-ROUTES-CATALOG]`
@@ -196,7 +197,7 @@ Governed by spec 0045 and `src/osprey/packages/manager/supabase/migrations/schem
 
 ## Hosted rollout — Stage E (Cloudflare and read-only staging)
 
-- [x] Build the dedicated landing page from Osprey WASM and verify the responsive layout in Chromium at 390 px and 1440 px. Run `make -C src/osprey/packages registry-website`. Catalog and authenticated routes are tracked below. `[PACKAGE-IMPLEMENTATION-LANGUAGE]`
+- [x] Build the standalone catalog shell from Osprey WASM. In the folder-registry preview, verify browse, search, no matches, package details, source download and the upload availability state at 390 px and 1440 px. Rebuild with `make -C src/osprey/packages registry-website-preview` while `registry-serve` runs. `[PACKAGE-IMPLEMENTATION-LANGUAGE]`
 - [x] Validate the locked Terraform providers and inspect a local staging plan. The 45 planned resources included the API listener on 8080, both probes on 8081, 15 reviewed Cloudflare IPv4 ranges and a default deny. Separate negative plans rejected a shared hostname, malformed hostname and foreign image repository. Staging ingress and probes still require runtime verification. `[PACKAGE-HOSTED-EDGE]`
 
 - [ ] Provision Cloudflare proxy/TLS/WAF, separate static website deployment, cookieless content origin, GCP load balancer/Cloud Armor/NEG, restricted Cloud Run and DNS-validated origin certificates. `[PACKAGE-HOSTED-TOPOLOGY]`

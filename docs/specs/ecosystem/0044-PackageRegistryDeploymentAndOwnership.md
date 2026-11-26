@@ -78,6 +78,7 @@ The registry owns its navigation, search results, package descriptions, release 
 | Page or action | Required visitor experience |
 | --- | --- |
 | Browse at `/` | Open directly on a browsable catalog of published packages with a prominent search field. Each result links to the package and shows its scoped name, short description and known security warnings. Visitors can browse further results without entering a query. Documentation is secondary navigation. |
+| Upload at `/upload/` | Expose **Upload a package** in the catalog header. Start the authenticated publication flow here, preserve the destination through sign-in, show the selected package and bound commit, and return the status of the signed publication intent. |
 | Search | Search by package name, organization or descriptive terms under the discovery rules. Give results a shareable URL, retain the query when returning from a package, and distinguish no matches from an unavailable catalog. |
 | Read a package | Give every package a permanent page with its description, owning organization, available releases, dependencies, warnings and a link to the public profile of the publisher credited on each release. Render publisher-supplied prose safely. |
 | Download | Provide a browser download action on the package page for the selected eligible release. Show the release identifier and digest, and serve the matching source as an attachment through the existing digest-addressed source route. Enforce the release status and evidence rules on direct download requests too. |

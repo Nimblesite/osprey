@@ -1,17 +1,46 @@
 namespace registry_web;
 
-/// Landing page available before the hosted catalog has verified public evidence.
-fn landing() = {
-    let guide = Shell::guideUrl()
-    let hero = "<div class=\"prose-hero\"><div><h1>Osprey<br>Packages</h1><p>Pin source packages by digest and build them offline. Start with a local registry while public publishing is in development.</p><a class=\"prose-action\" href=\"${guide}\">Use the package manager</a></div><div class=\"prose-art\" aria-hidden=\"true\"><div class=\"prose-stack\"><i></i><i></i><i></i></div></div></div>"
-    let editor = "<article><h2>In the editor</h2><p>Browse your local catalog, inspect a dependency and add it to your project in VS Code.</p><a href=\"${guide}#editor\">Open the editor guide</a></article>"
-    let cli = "<article><h2>At the terminal</h2><p>Lock exact releases, fetch their source and verify the installed tree before compiling.</p><a href=\"${guide}#commands\">Read the command reference</a></article>"
-    let publishers = "<section id=\"publishers\"><h2>Publishers</h2><p>In the hosted registry design, an organization owns each package. Its administrator chooses which users can publish releases and can revoke each grant separately.</p><a href=\"/publishing/\">How publishing permissions work</a></section>"
-    Shell::withEscapedTitle("Osprey Packages", "<main>${hero}<div class=\"prose-resources\">${editor}${cli}</div>${publishers}</main>")
+// Implements [PACKAGE-HOSTED-ROUTES-CATALOG]. Hosted pages require verified evidence.
+fn catalog(local, entries) = {
+    let notice = if local { "<p>Local folder registry · Audit unverified</p>" } else { "<p role=\"status\">The public catalog is unavailable.</p>" }
+    let disabled = if local { "" } else { " disabled" }
+    let form = "<form role=\"search\" method=\"get\" action=\"/\"><label for=\"q\">Search packages</label><div class=\"prose-search\"><input id=\"q\" name=\"q\" type=\"search\" placeholder=\"Package name or description\"${disabled}><button${disabled}>Search</button></div></form>"
+    let behavior = if local { "<script src=\"/filter.1ae1cf977c5e.js\" defer></script>" } else { "" }
+    Shell::withEscapedTitle("Osprey Packages", "<main><h1>Packages</h1>${form}<section><h2>Browse packages</h2>${notice}<div id=\"results\">${entries}</div></section></main>${behavior}")
+}
+
+fn upload() = Shell::withEscapedTitle("Upload a package · Osprey Packages", "<main><h1>Upload a package</h1><p role=\"status\">Public uploads are unavailable.</p><a href=\"/\">Browse packages</a></main>")
+
+fn escaped(s) = {
+    let amp = replace(s, "&", "&amp;") ?: s
+    let lt = replace(amp, "<", "&lt;") ?: amp
+    replace(lt, ">", "&gt;") ?: lt
+}
+
+// Build inputs come from the local registry. The builder validates URL components.
+fn localPackage(mode) = {
+    let key = trim(input())
+    let summary = escaped(trim(input()))
+    let url = "/packages/${key}/"
+    let releases = if mode == "row" { "" } else { trim(input()) }
+    if mode == "row" {
+        "<article class=\"prose-package\"><h3><a href=\"${url}\">${key}</a></h3><p>${summary}</p></article>"
+    } else {
+        Shell::withEscapedTitle("${key} · Osprey Packages", "<main><h1>${key}</h1><p>${summary}</p><section><h2>Releases</h2><p>Local folder registry · Audit unverified</p>${releases}</section></main>")
+    }
 }
 
 fn main() = print(match trim(input()) {
     "guide" => Guides::packages()
     "publishing" => Guides::publishers()
-    _ => landing()
+    "upload" => upload()
+    "local" => catalog(true, input())
+    "row" => localPackage("row")
+    "package" => localPackage("package")
+    "release" => {
+        let version = trim(input())
+        let digest = trim(input())
+        "<p><a download href=\"/sources/${digest}.json\">Download ${version}</a> · <code>${digest}</code></p>"
+    }
+    _ => catalog(false, "")
 })
