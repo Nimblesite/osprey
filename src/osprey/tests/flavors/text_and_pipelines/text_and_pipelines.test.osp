@@ -2,11 +2,11 @@
 // Assertion-driven replacement for the former pipeline and string goldens.
 
 /// Increment a pipeline value by one.
-fn pipeInc(x: int) = x + 1 
+fn pipeInc(x) = x + 1 
 /// Double a pipeline value.
-fn pipeDouble(x: int) = x + x 
+fn pipeDouble(x) = x + x 
 /// Square a pipeline value.
-fn pipeSquare(x: int) = x * x 
+fn pipeSquare(x) = x * x 
 
 /// This case documents left-to-right pipe threading and nested-call equivalence.
 fn pipeChainCase() = {

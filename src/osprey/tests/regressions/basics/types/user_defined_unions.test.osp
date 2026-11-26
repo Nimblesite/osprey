@@ -30,9 +30,9 @@ effect MapLookupAudit<T> {
 /// leaf type, the other reaches through a map of lists. One definition each, so
 /// the suite instantiates ONE generic body at int, string and List rather than
 /// pinning three monomorphic copies.
-fn valueOr<T>(items: Map<string, T>, key: string, fallback: T) -> T = mapGet(items, key) ?: fallback
+fn valueOr<T>(items, key, fallback) -> T = mapGet(items, key) ?: fallback
 
-fn listValueAt<T>(items: Map<string, List<T>>, key: string, index: int, fallback: T) -> T =
+fn listValueAt<T>(items, key, index, fallback) -> T =
 listGet(valueOr(items, key, [fallback]), index) ?: fallback
 
 /// Reads through a list of maps, falling back to a one-key map of `[fallback]`.
@@ -65,19 +65,19 @@ fn label(s) = match s {
     Inactive => "inactive"
 }
 
-fn chooseOutcome<T>(outcome: Outcome, accepted: T, rejected: T) -> T = match outcome {
+fn chooseOutcome<T>(outcome, accepted, rejected) -> T = match outcome {
     Ok(_value)   => accepted
     Err(_message) => rejected
 }
 
-fn outcomeShape(outcomes: List<Outcome>) = match outcomes {
+fn outcomeShape(outcomes) = match outcomes {
     [] => "empty"
     [only] => "one:${describe(only)}"
     [first, second] => "two:${describe(first)}/${describe(second)}"
     [head, ...tail] => "many:${describe(head)}+${listLength(tail)}"
 }
 
-fn auditOutcomes(outcomes: List<Outcome>) = {
+fn auditOutcomes(outcomes) = {
     mut trace = ""
     handle OutcomeAudit {
         observe rendered => { trace = trace + rendered + "|" }

@@ -84,7 +84,7 @@ fn unboxed(result, fallback, adjust) = match result {
 }
 
 fn journeys() = {
-    let small: List<uint8> = [1, 200, u8High]
+    let small = [1, 200, u8High]
     let first = unboxed(small[1], u8Zero, fn(value) => value + 100)
     let negatives = [i8Low, -1, i8High]
     let last = unboxed(negatives[0], i8High, fn(value) => value - 1)
@@ -99,7 +99,7 @@ fn journeys() = {
     let scores = Map() |> mapSet("low", u8Zero) |> mapSet("high", u8High)
     let high = unboxed(scores["high"], u8Zero, fn(value) => value + 1)
     print("${high}")
-    let chosen: uint8 = match length(small) > 1 {
+    let chosen = match length(small) > 1 {
         true => 7
         false => u8High
     }

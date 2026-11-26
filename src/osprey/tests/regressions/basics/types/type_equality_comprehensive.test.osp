@@ -33,7 +33,7 @@ fn excl(s)       = s + "!"
 fn ques(s)       = s + "?"
 fn intToString(x)   = toString(x)
 fn twoArgAdd(a, b) = a + b 
-fn threeArgAdd(a: int, b: int, c: int) = a + b + c 
+fn threeArgAdd(a, b, c) = a + b + c 
 
 fn applyInt(f, x)    = f(x)
 fn applyStr(f, s) = f(s)
@@ -120,7 +120,7 @@ fn erasedFeedListValue(feeds) = match feeds {
 }
 fn integerFeedResult() = Success { value: integerFeed() }
 fn failedFeedResult() -> Result<Feed<int>, string> = Error { message: "wrapped error" }
-fn erasedFeedResultValue(result: Result<Feed<any>, string>) = match result {
+fn erasedFeedResultValue(result) = match result {
     Success { value } => erasedFeedValue(value)
     Error { message } => message
 }
@@ -177,7 +177,7 @@ fn runGateResults(results) = match results {
     [first, ..._rest] => runGateResult(first)
     _ => false
 }
-fn runGateResult(result: Result<Gate<int>, string>) = match result {
+fn runGateResult(result) = match result {
     Success { value } => runGate(value)
     Error { message } => message != "gate error"
 }
@@ -217,9 +217,9 @@ type Source<out T> = Source { produce: T, make: (int) -> T, items: List<T> }
 type Sink<in T> = Sink { admit: (T) -> bool, hof: ((int) -> T) -> int }
 type Both<T> = Both { slot: T, consume: (T) -> int }
 
-fn srcInt() -> Source<int> = Source { produce: 4, make: |n| => n, items: [1, 2] }
+fn srcInt() = Source { produce: 4, make: |n| => n, items: [1, 2] }
 fn sinkInt() -> Sink<int> = Sink { admit: |_x| => true, hof: |_f| => 7 }
-fn bothInt() -> Both<int> = Both { slot: 5, consume: |_x| => 6 }
+fn bothInt() = Both { slot: 5, consume: |_x| => 6 }
 fn keepSource(s) = s.produce
 fn keepSink(g) = g.hof(|_n| => 3)
 
@@ -231,12 +231,12 @@ print("variance produce=${srcInt().produce} make=${srcInt().make(9)} items=${len
 /// binder appears in NO parameter position, so nothing but the written
 /// argument can pin it, and `identityOf<List<int>>` closes two argument lists
 /// with one `>>`. Implements [TYPE-GENERICS-APPLY]
-fn identityOf<T>(x: T) -> T = x
+fn identityOf<T>(x) -> T = x
 fn emptyOf<T>() -> List<T> = []
-fn pickOf<T, U>(first: T, _second: U) -> T = first
-fn alsoOf<T>(x: T, f: (T) -> T) -> T = f(x)
-fn headOr<T>(items: List<T>, fallback: T) -> T = items.listGet(0) ?: fallback
-fn repeatOf<T>(value: T, times: int) -> T = match times {
+fn pickOf<T, U>(first, _second: U) -> T = first
+fn alsoOf<T>(x, f: (T) -> T) = f(x)
+fn headOr<T>(items: List<T>, fallback) = items.listGet(0) ?: fallback
+fn repeatOf<T>(value, times) -> T = match times {
     0 => value
     _ => repeatOf<T>(value, times - 1 )
 }

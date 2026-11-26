@@ -40,7 +40,6 @@ excl s = s + "!"
 ques s = s + "?"
 intToString x = toString x
 twoArgAdd (a, b) = a + b 
-threeArgAdd : (int, int, int) -> int
 threeArgAdd (a, b, c) = a + b + c 
 
 applyInt (f, x) = f x
@@ -149,7 +148,7 @@ erasedFeedListValue feeds = match feeds
 integerFeedResult () = Success(value = integerFeed ())
 failedFeedResult : Unit -> Result<Feed<int>, string>
 failedFeedResult () = Error(message = "wrapped error")
-erasedFeedResultValue (result : Result<Feed<any>, string>) = match result
+erasedFeedResultValue (result) = match result
     Success value => erasedFeedValue value
     Error message => message
 covariantErasureCase () =
@@ -207,7 +206,7 @@ anyGateResults () = [anyGateResult ()]
 runGateResults results = match results
     [first, ..._rest] => runGateResult first
     _ => false
-runGateResult (result : Result<Gate<int>, string>) = match result
+runGateResult (result) = match result
     Success value => runGate value
     Error message => message != "gate error"
 contravariantErasureCase () =
@@ -252,11 +251,9 @@ type Both T =
     slot : T
     consume : (T) -> int
 
-srcInt : Unit -> Source<int>
 srcInt () = Source(produce = 4, make = \n => n, items = [1, 2])
 sinkInt : Unit -> Sink<int>
 sinkInt () = Sink(admit = \_x => true, hof = \_f => 7)
-bothInt : Unit -> Both<int>
 bothInt () = Both(slot = 5, consume = \_x => 6)
 keepSource s = s.produce
 keepSink g = g.hof (\_n => 3)

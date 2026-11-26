@@ -18,7 +18,7 @@ effect Range {
 }
 
 /// The row scopes these performs; rows are not yet propagated through calls.
-fn loadConfig() -> int ![Parse, Missing, Range, Arith] = {
+fn loadConfig() ![Parse, Missing, Range, Arith] = {
     let port = perform Parse.bad("=80=") // Parse channel: not a number
     let timeout = perform Missing.fill("timeout") // Missing channel: key absent
     let retries = perform Range.clamp(250, 10) // Range channel: over the max
@@ -27,7 +27,7 @@ fn loadConfig() -> int ![Parse, Missing, Range, Arith] = {
 }
 
 /// This helper declares and performs only Range.
-fn loadRetries(raw: int) -> (int) -> int !Range =
+fn loadRetries(raw) !Range =
 fn(hi) => perform Range.clamp(raw, hi)
 
 /// No arm uses resume, so each arm value replaces its operation result.

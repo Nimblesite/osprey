@@ -42,7 +42,7 @@ fn nestedErasedResult(items: Result<List<any>, string>) = match items {
     Error { message } => message
 }
 
-fn deeplyErased(items: List<List<any>>) = match items {
+fn deeplyErased(items) = match items {
     [first, ..._rest] => nestedErased(first)
     _ => "other"
 }
@@ -52,12 +52,12 @@ fn deeplyErasedResult(items: Result<List<List<any>>, string>) = match items {
     Error { message } => message
 }
 
-fn threeLevelsErased(items: List<List<List<any>>>) = match items {
+fn threeLevelsErased(items) = match items {
     [first, ..._rest] => deeplyErased(first)
     _ => "other"
 }
 
-fn erasedResultRows(items: List<Result<List<any>, string>>) = match items {
+fn erasedResultRows(items) = match items {
     [first, ..._rest] => nestedErasedResult(first)
     _ => "other"
 }

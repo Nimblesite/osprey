@@ -7,7 +7,7 @@ effect Step {
 }
 
 /// An aborted continuation omits observations after the poison step.
-fn pipeline() -> int ![Step, Arith] = {
+fn pipeline() ![Step, Arith] = {
     let a = perform Step.run(1)
     print("pipeline saw step1 -> " + toString(a))
     let b = perform Step.run(2)
@@ -83,7 +83,7 @@ effect Mixed {
     control stop: fn() -> int
 }
 
-fn mixedPipeline() -> string !Mixed = {
+fn mixedPipeline() !Mixed = {
     let scaled = perform Mixed.scale(4)
     let stopped = perform Mixed.stop()
     "unreached ${scaled} ${stopped}"

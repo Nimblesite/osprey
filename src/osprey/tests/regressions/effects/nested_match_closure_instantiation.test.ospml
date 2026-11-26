@@ -26,7 +26,6 @@ find (xs, p) = match xs
         true => Success(value = head)
         false => find (tail, p)
 
-detail : Unit -> Result<Evidence, string>
 detail () =
     focus = perform Signal<Focus>.read ()
     match perform Signal<Result<Section, string>>.read ()

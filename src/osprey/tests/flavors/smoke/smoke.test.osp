@@ -4,15 +4,15 @@
 // [BUILTIN-STRING-UFCS], [BUILTIN-STRING-LENGTH],
 // [BUILTIN-STRING-CONTAINS], and [BUILTIN-STRING-STARTSWITH].
 
-fn atOr<T>(items: List<T>, index: int, fallback: T) -> T = items.listGet(index) ?: fallback
+fn atOr<T>(items: List<T>, index, fallback) = items.listGet(index) ?: fallback
 
-fn bucketAt<T>(buckets: Map<string, List<T>>, key: string, index: int, fallback: T) -> T =
+fn bucketAt<T>(buckets: Map<string, List<T>>, key, index, fallback) =
 listGet(buckets.mapGet(key) ?: [fallback], index) ?: fallback
 
-fn nestedAt<T>(matrix: List<List<T>>, row: int, column: int, fallback: T) -> T =
+fn nestedAt<T>(matrix, row, column, fallback) -> T =
 listGet(listGet(matrix, row) ?: [fallback], column) ?: fallback
 
-fn chooseByList<T, U>(items: List<T>, present: U, empty: U) -> U = match isEmpty(items) {
+fn chooseByList<T, U>(items: List<T>, present, empty) -> U = match isEmpty(items) {
     true => empty
     false => present
 }

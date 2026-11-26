@@ -193,7 +193,7 @@ exactArithmetic(fn() => print("chain3: ${tri3(1)(2)(3)} computed: ${computedSum(
 /// let-bound generic name stays callable (call alias), and the Kotlin-style
 /// scope-function idiom works: a generic HOF applies its lambda argument at
 /// two different instantiations (int and string).
-fn identity<T>(x: T) -> T = x
+fn identity<T>(x) -> T = x
 fn alsoDo(x, f) = f(x)
 let idAlias = identity
 exactArithmetic(fn() => print("generic-values: ${applyFunction(value: 33, func: identity)} ${idAlias(7)} ${alsoDo(21, fn(n) => n * 2)} ${alsoDo("osp", fn(s) => s + "!")}"))

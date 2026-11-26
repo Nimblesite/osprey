@@ -92,7 +92,6 @@ unboxed (result, fallback, adjust) = match result
     _ => fallback
 
 journeys () =
-    small : List<uint8>
     small = [1, 200, u8High]
     first = unboxed (small[1], u8Zero, \value => value + 100)
     negatives = [i8Low, -1, i8High]
@@ -108,7 +107,6 @@ journeys () =
     scores = Map () |> mapSet "low" u8Zero |> mapSet "high" u8High
     high = unboxed (scores["high"], u8Zero, \value => value + 1)
     print "${high}"
-    chosen : uint8
     chosen = match length small > 1
         true => 7
         false => u8High
