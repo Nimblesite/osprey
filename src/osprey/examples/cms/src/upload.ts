@@ -18,8 +18,14 @@ const PARTS = ".git/cms-upload";
 const MAX_PARTS = 4096;
 const MAX_PART_BYTES = 786432;
 
-/** What one part produced: more parts are expected, or the file was committed. */
-export type Progress = { readonly kind: "received"; readonly part: int } | { readonly kind: "stored"; readonly saved: Saved };
+/** What one part produced: more parts are expected, the file was committed, or the part was refused as the client's mistake. */
+export type Progress =
+  | { readonly kind: "received"; readonly part: int }
+  | { readonly kind: "stored"; readonly saved: Saved }
+  | { readonly kind: "refused"; readonly reason: string };
+
+const REFUSED = 400;
+const ACCEPTED = 200;
 
 function stem(path) {
   return `${PARTS}/${join(unwrapOr(split(path, "/"), []), "__")}`;
@@ -31,13 +37,18 @@ export function partsOf(partText: string, partsText: string): Result<List<int>, 
     andThen(parseInt(partsText), (parts) => (part >= 0 && part < parts && parts <= MAX_PARTS ? Success([part, parts]) : Error("part must satisfy 0 <= part < parts <= 4096"))));
 }
 
-/** Part 0 starts over; any later part needs the one before it. */
-function ordered(config: Config, path, part) {
-  if (part === 0) {
-    return run(config.repo, `rm -f ${stem(path)}.* && mkdir -p ${PARTS}`);
-  }
-  const before = kindOf(`${config.repo}/${stem(path)}.${satSub(part, 1)}`);
-  return unwrapOr(before, "") === "file" ? Success("") : Error(`part ${satSub(part, 1)} of ${path} has not arrived`);
+/** Whether the part before `part` has arrived; part 0 needs none. */
+function inOrder(config: Config, path, part) {
+  return part === 0 || unwrapOr(kindOf(`${config.repo}/${stem(path)}.${satSub(part, 1)}`), "") === "file";
+}
+
+/** Part 0 starts over: earlier parts of the same path are discarded. */
+function started(config: Config, path, part) {
+  return part === 0 ? run(config.repo, `rm -f ${stem(path)}.* && mkdir -p ${PARTS}`) : Success("");
+}
+
+function refused(reason) {
+  return Success({ kind: "refused", reason: reason } satisfies Progress);
 }
 
 /** Join parts 0..parts-1, decode them into `path`, and remove them. */
@@ -46,7 +57,12 @@ function joined(config: Config, path, parts) {
   const gather = `i=0; while [ $i -lt ${parts} ]; do cat ${base}.$i || exit 1; i=$((i+1)); done > ${base}.all`;
   const decode = `base64 -d < ${base}.all > ${base}.bin && mkdir -p '${folderOf(path)}' && mv ${base}.bin '${path}'`;
   const decoded = run(config.repo, `(${gather}) && ${decode}; status=$?; rm -f ${base}.*; exit $status`);
-  return andThen(decoded, (_) => commitUpload(config, path));
+  switch (decoded.kind) {
+    case "success":
+      return andThen(commitUpload(config, path), (saved) => Success({ kind: "stored", saved: saved } satisfies Progress));
+    case "error":
+      return refused(`the parts of ${path} are not valid base64: ${decoded.message}`);
+  }
 }
 
 function stored(config: Config, path, part, parts, body) {
@@ -54,15 +70,18 @@ function stored(config: Config, path, part, parts, body) {
   if (satAdd(part, 1) < parts) {
     return andThen(written, (_) => Success({ kind: "received", part: part } satisfies Progress));
   }
-  return andThen(written, (_) => andThen(joined(config, path, parts), (saved) => Success({ kind: "stored", saved: saved } satisfies Progress)));
+  return andThen(written, (_) => joined(config, path, parts));
 }
 
 /** Store part `part` of `parts` of `path`. */
 export function receive(config: Config, path: string, part: int, parts: int, body: string): Result<Progress, string> {
   if (byteLength(body) > MAX_PART_BYTES || byteLength(body) === 0) {
-    return Error("a part must hold 1 to 786432 bytes of base64");
+    return refused("a part must hold 1 to 786432 bytes of base64");
   }
-  return andThen(ordered(config, path, part), (_) => stored(config, path, part, parts, body));
+  if (!inOrder(config, path, part)) {
+    return refused(`part ${satSub(part, 1)} of ${path} has not arrived`);
+  }
+  return andThen(started(config, path, part), (_) => stored(config, path, part, parts, body));
 }
 
 /** The bytes of the media file `path` as one line of base64. */
@@ -77,5 +96,19 @@ export function progressJson(path: string, progress: Progress) {
       return receivedJson(progress.part);
     case "stored":
       return savedJson(path, progress.saved);
+    case "refused":
+      return JsonObject([JsonMember("error", JsonString(progress.reason))]);
+  }
+}
+
+/** 400 for a refused part, 200 otherwise. */
+export function progressStatus(progress: Progress) {
+  switch (progress.kind) {
+    case "refused":
+      return REFUSED;
+    case "received":
+      return ACCEPTED;
+    case "stored":
+      return ACCEPTED;
   }
 }

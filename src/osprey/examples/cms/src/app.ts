@@ -9,14 +9,14 @@ import { isMedia } from "./paths.ts";
 import { failed, historyJson, problem, treeJson } from "./replies.ts";
 import { asset, opened, previewed, removed, withPath, written } from "./routes.ts";
 import { tree } from "./tree.ts";
-import { partsOf, progressJson, receive } from "./upload.ts";
+import { partsOf, progressJson, progressStatus, receive } from "./upload.ts";
 
 function progressed(res: Response, path, outcome) {
   switch (outcome.kind) {
     case "error":
       return failed(res, outcome.message);
     case "success":
-      return res.json(progressJson(path, outcome.value));
+      return res.status(progressStatus(outcome.value)).json(progressJson(path, outcome.value));
   }
 }
 
