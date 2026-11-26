@@ -432,10 +432,10 @@ _test_vscode_extension: _vsix_verify $(EXT_NODE_DEPS)
 # dishonest half of this gate: branches and functions were measured, printed by
 # the text-summary reporter, and then thrown away, so a module could add an
 # untested `else` arm or an unreachable handler without moving the number the
-# gate reads. Each metric is held to its own key in the project entry when one
-# is declared (branches), else to the project threshold.
+# gate reads. All four are held to the one threshold the project declares.
 _coverage_check_vscode_extension:
 	@if [ ! -f "$(COVERAGE_THRESHOLDS_FILE)" ]; then echo "FAIL: $(COVERAGE_THRESHOLDS_FILE) not found"; exit 1; fi; \
+	THRESHOLD=$$(jq -r '.projects.editor["vscode-extension"].threshold' "$(COVERAGE_THRESHOLDS_FILE)"); \
 	SUMMARY="$(EXT_DIR)/coverage/coverage-summary.json"; \
 	if [ ! -f "$$SUMMARY" ]; then \
 	  echo "[vscode-extension] FAIL: coverage-summary.json not produced"; exit 1; \
@@ -446,15 +446,14 @@ _coverage_check_vscode_extension:
 	  if [ "$$PCT" = "null" ]; then \
 	    echo "[vscode-extension] FAIL: the summary reports no $$METRIC total"; exit 1; \
 	  fi; \
-	  THRESHOLD=$$(jq -r --arg m "$$METRIC" '.projects.editor["vscode-extension"] | .[$$m] // .threshold' "$(COVERAGE_THRESHOLDS_FILE)"); \
 	  PCT_INT=$$(echo "$$PCT" | awk '{printf "%d", $$1}'); \
 	  echo "[vscode-extension] $$METRIC: $${PCT}% (threshold: $${THRESHOLD}%)"; \
-	  if [ "$$PCT_INT" -lt "$$THRESHOLD" ]; then SHORTFALL="$$SHORTFALL $$METRIC=$${PCT}%<$${THRESHOLD}%"; fi; \
+	  if [ "$$PCT_INT" -lt "$$THRESHOLD" ]; then SHORTFALL="$$SHORTFALL $$METRIC=$${PCT}%"; fi; \
 	done; \
 	if [ -n "$$SHORTFALL" ]; then \
-	  echo "[vscode-extension] FAIL: below threshold -$$SHORTFALL"; exit 1; \
+	  echo "[vscode-extension] FAIL: below $${THRESHOLD}% -$$SHORTFALL"; exit 1; \
 	fi; \
-	echo "[vscode-extension] OK: lines, statements, branches and functions all meet their thresholds"
+	echo "[vscode-extension] OK: lines, statements, branches and functions all >= $${THRESHOLD}%"
 
 # =============================================================================
 # Repo-Specific Targets

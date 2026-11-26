@@ -325,7 +325,6 @@
     "editor": {
       "vscode-extension": {
         "threshold": 95,
-        "branches": 94,
         "language": "typescript"
       }
     },
