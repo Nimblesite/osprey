@@ -65,11 +65,18 @@ fn return_annotation(line: &str) -> Option<(usize, usize, String)> {
     Some((arrow, body, spelling))
 }
 
+/// The return annotation on line `index`, in the shape the oracle reads.
+fn returns_at(lines: &[&str], index: usize) -> Vec<(usize, usize, String)> {
+    lines
+        .get(index)
+        .and_then(|line| return_annotation(line))
+        .into_iter()
+        .collect()
+}
+
 /// Every removable return annotation in `source`.
 fn redundant_returns(path: &Path, source: &str) -> Vec<(usize, String)> {
-    redundant_in(path, source, |line| {
-        return_annotation(line).into_iter().collect()
-    })
+    redundant_in(path, source, returns_at)
 }
 
 /// `onlySuccess` builds no `Error`, so nothing in this program determines E
@@ -125,8 +132,8 @@ fn a_return_type_is_reported_exactly_when_the_checker_proved_all_of_it() {
         "the annotated twin must compile, or it pins a type error rather than a report"
     );
     assert_ne!(
-        outline(FREE_ERROR_SIDE_ANNOTATED),
-        outline(FREE_ERROR_SIDE),
+        outline(probe, FREE_ERROR_SIDE_ANNOTATED),
+        outline(probe, FREE_ERROR_SIDE),
         "an annotation that supplies a side inference left open must change what \
          is reported; equal outlines would mean the annotation is being ignored"
     );
@@ -137,7 +144,7 @@ fn a_return_type_is_reported_exactly_when_the_checker_proved_all_of_it() {
     );
 
     // E pinned by context: proved, so reported in full without any annotation.
-    let pinned = outline(PINNED_ERROR_SIDE);
+    let pinned = outline(probe, PINNED_ERROR_SIDE);
     assert!(
         pinned.contains("fn fromBuiltin(f: bool) -> Result<int, string>"),
         "a fully proved return type must be reported without an annotation; got {pinned}"
@@ -155,7 +162,7 @@ fn a_return_type_is_reported_exactly_when_the_checker_proved_all_of_it() {
         1,
     );
     assert_eq!(
-        outline(&annotated),
+        outline(probe, &annotated),
         pinned,
         "an annotation the checker can prove carries no information, so writing \
          it down must leave the reported symbols byte-identical"
@@ -318,19 +325,13 @@ fn the_scanner_reads_every_shape_a_declaration_can_take() {
     );
 }
 
-/// Sweeps the Default flavor only.
-///
-/// This is a REAL hole and is named rather than papered over: an ML signature
-/// is a standalone `describe : JsonValue -> string` line, not an arrow inside a
-/// `fn` header, so neither [`return_annotation`] nor the deletion it performs
-/// applies to a `.ospml` file — 118 of them are ungated by this test. Gating
-/// them needs its own reader and its own removal rule, and the stakes are known
-/// to be real: `ec6a5cac` deleted ML signatures by hand and took `verdict`,
-/// `workflows` and `type_equality_comprehensive` from green to a codegen error.
-/// Tracked separately; do not read a green run here as ML coverage.
+/// Sweeps the Default flavor. An ML signature is a standalone
+/// `describe : JsonValue -> string` line, not an arrow inside a `fn` header;
+/// `redundant_signature_annotations.rs` gates those, and
+/// `redundant_parameter_annotations.rs` the parameter half (#215, #220).
 #[test]
 fn no_corpus_program_carries_a_removable_return_annotation() {
-    let offenders = corpus_offenders(|line| return_annotation(line).into_iter().collect());
+    let offenders = corpus_offenders("osp", returns_at);
     assert!(
         offenders.is_empty(),
         "Hindley-Milner infers these return types, so the annotations are defects \

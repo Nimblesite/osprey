@@ -12,7 +12,11 @@
 mod annotation_oracle;
 mod common;
 
+#[path = "common/outlined.rs"]
+mod outlined;
+
 use annotation_oracle::{compiles, corpus_offenders, redundant_in};
+use outlined::outlined;
 use std::path::Path;
 
 /// Parameter annotations that carry meaning beyond the type the body infers:
@@ -73,8 +77,18 @@ fn parameter_annotations(line: &str) -> Vec<(usize, usize, String)> {
         .collect()
 }
 
+/// The parameter annotations on line `index`, in the shape the oracle reads.
+/// Only an [`outlined`] declaration is judged: a local `fn` never reaches the
+/// outline, so the oracle cannot see what its annotations pin.
+fn parameters_at(lines: &[&str], index: usize) -> Vec<(usize, usize, String)> {
+    match (lines.get(index), outlined(lines, index)) {
+        (Some(line), true) => parameter_annotations(line),
+        _ => Vec::new(),
+    }
+}
+
 fn redundant_parameters(path: &Path, source: &str) -> Vec<(usize, String)> {
-    redundant_in(path, source, parameter_annotations)
+    redundant_in(path, source, parameters_at)
 }
 
 /// Both parameters are pinned by their uses: `==` against an `int` literal and
@@ -160,7 +174,7 @@ fn a_parameter_annotation_is_reported_exactly_when_the_checker_proves_it() {
 
 #[test]
 fn no_corpus_program_carries_a_removable_parameter_annotation() {
-    let offenders = corpus_offenders(parameter_annotations);
+    let offenders = corpus_offenders("osp", parameters_at);
     assert!(
         offenders.is_empty(),
         "Hindley-Milner infers these parameter types, so the annotations are defects \

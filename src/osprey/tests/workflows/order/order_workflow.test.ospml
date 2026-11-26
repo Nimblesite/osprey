@@ -5,7 +5,6 @@ itemAt : int -> string -> string
 itemAt index fallback = ["coffee", "bread", "fruit"][index] ?: fallback
 
 (** Return an item's price or zero when it is absent. *)
-unitPrice : string -> int
 unitPrice item = ["coffee" => 12, "bread" => 5, "fruit" => 7][item] ?: 0
 
 (** Apply the membership tier's percentage discount. *)

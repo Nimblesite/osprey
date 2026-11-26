@@ -6,9 +6,11 @@ use crate::common::{repo_root, sources, undefined_symbols};
 use std::fs;
 use std::path::Path;
 
-/// A reader: every annotation on one source line, as (byte range to delete,
-/// spelling). Each is judged on its own against the unstripped baseline.
-pub(crate) type Reader = fn(&str) -> Vec<(usize, usize, String)>;
+/// A reader: every annotation on the source line at `index`, as (byte range of
+/// that line to delete, spelling). It sees every line, because an ML signature
+/// is only a signature when the next line defines the name it declares. Each
+/// annotation is judged on its own against the unstripped baseline.
+pub(crate) type Reader = fn(&[&str], usize) -> Vec<(usize, usize, String)>;
 
 /// Parse, type-check AND lower to IR.
 ///
@@ -34,9 +36,10 @@ pub(crate) fn compiles(path: &Path, source: &str) -> bool {
         .is_ok_and(|ir| undefined_symbols(&ir).is_empty())
 }
 
-/// What `--symbols` reports for `source`, via the exact path the CLI uses.
-pub(crate) fn outline(source: &str) -> String {
-    let parsed = osprey_syntax::parse_program(source);
+/// What `--symbols` reports for `source`, via the exact path the CLI uses, in
+/// the flavor `path` names.
+pub(crate) fn outline(path: &Path, source: &str) -> String {
+    let parsed = osprey_syntax::parse_program_for_path(&path.to_string_lossy(), source);
     osprey_lsp::symbols_json(&parsed.program)
 }
 
@@ -66,17 +69,17 @@ fn rebuild(lines: &[&str], index: usize, replacement: &str) -> String {
 /// annotation can change what a sibling infers (#220).
 pub(crate) fn redundant_in(path: &Path, source: &str, read: Reader) -> Vec<(usize, String)> {
     let lines: Vec<&str> = source.lines().collect();
-    let before = outline(source);
+    let before = outline(path, source);
     lines
         .iter()
         .enumerate()
         .flat_map(|(index, line)| {
-            read(line)
+            read(&lines, index)
                 .into_iter()
                 .filter_map(|(start, end, spelling)| {
                     let stripped = format!("{}{}", line.get(..start)?, line.get(end..)?);
                     let rebuilt = rebuild(&lines, index, &stripped);
-                    (compiles(path, &rebuilt) && outline(&rebuilt) == before)
+                    (compiles(path, &rebuilt) && outline(path, &rebuilt) == before)
                         .then(|| (index + 1, spelling))
                 })
                 .collect::<Vec<_>>()
@@ -84,10 +87,10 @@ pub(crate) fn redundant_in(path: &Path, source: &str, read: Reader) -> Vec<(usiz
         .collect()
 }
 
-/// Every removable annotation `read` finds across the Default-flavor corpus,
-/// as `path:line  spelling`. Only programs valid to begin with are judged; the
+/// Every removable annotation `read` finds across the corpus sources with
+/// extension `ext`, as `path:line  spelling`. Only programs valid to begin with are judged; the
 /// must-reject corpus is graded by its own harness.
-pub(crate) fn corpus_offenders(read: Reader) -> Vec<String> {
+pub(crate) fn corpus_offenders(ext: &str, read: Reader) -> Vec<String> {
     let root = repo_root();
     let mut offenders = Vec::new();
     for dir in [
@@ -95,11 +98,14 @@ pub(crate) fn corpus_offenders(read: Reader) -> Vec<String> {
         "src/osprey/examples",
         "src/toolchain/benchmarks",
     ] {
-        for path in sources(&root.join(dir), "osp") {
+        for path in sources(&root.join(dir), ext) {
             let Ok(source) = fs::read_to_string(&path) else {
                 continue;
             };
-            if !compiles(&path, &source) {
+            // A source with nothing to judge needs no compile at all.
+            let lines: Vec<&str> = source.lines().collect();
+            let judged = (0..lines.len()).any(|index| !read(&lines, index).is_empty());
+            if !judged || !compiles(&path, &source) {
                 continue;
             }
             let display = path
