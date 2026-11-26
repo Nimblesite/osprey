@@ -1,0 +1,55 @@
+namespace registry_live_tests;
+import registry::Policy
+import registry_host::Host
+import registry_host::Native
+
+/// Two organizations own the same leaf name. Two people in the first organization
+/// hold independent publisher grants. Each case runs inside a rolled-back transaction.
+fn seed() = join([
+    "INSERT INTO principals (id,kind,state,credential_epoch,created_at) SELECT md5('person'||i)::uuid,'human','active',1,now() FROM generate_series(1,3) i;",
+    "INSERT INTO organizations (id,handle,display_name,state,governance_epoch,created_at) SELECT md5('org'||i)::uuid,'org-'||i,'Org '||i,'active',1,now() FROM generate_series(1,2) i;",
+    "INSERT INTO memberships (id,organization_id,principal_id,role,principal_kind,state,authority_epoch,accepted_at) SELECT md5('member'||i)::uuid,md5('org'||(CASE WHEN i=3 THEN 2 ELSE 1 END))::uuid,md5('person'||i)::uuid,'member','human','active',1,now() FROM generate_series(1,3) i;",
+    "INSERT INTO packages (id,organization_id,name,admin_membership_id,admin_membership_state,admin_principal_kind,authority_epoch,state,created_at) SELECT md5('package'||i)::uuid,md5('org'||i)::uuid,'audio',md5('member'||(CASE WHEN i=2 THEN 3 ELSE 1 END))::uuid,'active','human',1,'active',now() FROM generate_series(1,2) i;",
+    "INSERT INTO package_permissions (id,organization_id,package_id,membership_id,permission,state,granted_by_membership_id,authority_epoch,membership_authority_epoch,granted_at) SELECT md5('grant'||i)::uuid,md5('org1')::uuid,md5('package1')::uuid,md5('member'||i)::uuid,'publish-release','active',md5('member1')::uuid,1,1,now() FROM generate_series(1,2) i;"
+], "\n")
+
+fn execute(sql) = {
+    let tx = "BEGIN; SET LOCAL search_path TO registry, pg_catalog; " + seed() + sql + "; ROLLBACK;"
+    perform Host::Process.run("case \"$PGHOST\" in /tmp/osprey-registry.*) psql -XqAt --no-password -p 18873 -U registry_check -d postgres -v ON_ERROR_STOP=1 -v VERBOSITY=verbose -c " + Host::shellWord(tx) + ";; *) exit 1;; esac")
+}
+
+fn answer(sql, expected) = {
+    let run = execute(sql)
+    run.status == 0 && trim(run.stdout) == expected
+}
+
+fn refused(sql, sqlState) = {
+    let run = execute(sql)
+    run.status != 0 && contains(run.stderr, "ERROR:  " + sqlState + ":")
+}
+
+/// [PACKAGE-OWNERSHIP-DATABASE] [PACKAGE-NAMES-NO-SITTING]
+fn constraints() = checkAll("ownership constraints on real PostgreSQL", [
+    answer("SELECT count(*) FROM packages WHERE name='audio'", "2"),
+    refused("UPDATE packages SET organization_id=md5('org1')::uuid,admin_membership_id=md5('member1')::uuid WHERE id=md5('package2')::uuid", "23505"),
+    refused("UPDATE package_permissions SET membership_id=md5('member3')::uuid WHERE id=md5('grant2')::uuid", "23503"),
+    refused("UPDATE package_permissions SET membership_authority_epoch=0 WHERE id=md5('grant2')::uuid", "23514"),
+    refused("UPDATE package_permissions SET membership_authority_epoch=NULL WHERE id=md5('grant2')::uuid", "23502"),
+    answer("UPDATE package_permissions SET state='revoked' WHERE id=md5('grant2')::uuid; SELECT membership_id=md5('member1')::uuid FROM package_permissions WHERE state='active'", "t")
+])
+
+fn restricted(statement) = "CREATE ROLE registry_fixture_reader NOSUPERUSER NOBYPASSRLS; GRANT USAGE ON SCHEMA registry TO registry_fixture_reader; GRANT SELECT, INSERT ON organizations TO registry_fixture_reader; SET LOCAL ROLE registry_fixture_reader; " + statement
+
+/// [PACKAGE-OWNERSHIP-RLS] The table privileges are real and RLS independently denies access.
+fn bootstrap() = checkAll("bootstrap RLS hides rows and rejects writes", [
+    answer(restricted("SELECT count(*) FROM organizations"), "0"),
+    refused(restricted("INSERT INTO organizations(id,handle,display_name,state,governance_epoch,created_at) VALUES(gen_random_uuid(),'third-org','Third','active',1,now())"), "42501")
+])
+
+fn suites() = {
+    test("publisher delegation storage", constraints)
+    test("private schema bootstrap", bootstrap)
+    0
+}
+
+fn main() = Policy::guarded(fn() => Native::process()(suites))

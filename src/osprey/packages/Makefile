@@ -30,10 +30,7 @@ package-coverage: build
 ##   src/osprey/packages/license-audit.json, every selected test to pass, and
 ##   `Package workspace WASM startup: PASS`. Governance: spec 0045; canonical schema
 ##   src/osprey/packages/manager/supabase/migrations/schema.yaml. Its Postgres migration is
-##   BLOCKED (DataProvider 0.9.11-beta inspects only `public`); keep that failure:
-##     dotnet tool restore && dotnet tool run DataProviderMigrate migrate --schema \
-##       src/osprey/packages/manager/supabase/migrations/schema.yaml --provider postgres \
-##       --output "$$REGISTRY_MIGRATION_CONNECTION"   # passfile, never a password
+##   verified with the pinned registry-migration-tool against a private registry schema.
 ##   Final manifest/lock writes are separate: never report crash-safe transactions.
 package-checks: build
 	node scripts/packages/verify-package-licenses.mjs
@@ -98,6 +95,40 @@ express-oracle:
 REGISTRY_WEB = src/osprey/packages/manager/web
 REGISTRY_SITE_OUT = target/registry-site
 REGISTRY_TERRAFORM = src/osprey/packages/manager/ops/terraform
+REGISTRY_MIGRATOR_REV = 3b4e356522affc61b466d8e87ef5232319c9d7a0
+REGISTRY_MIGRATOR_SHA256 = 87192312ca3a313fa0c786705c2fa2cbafebe76a0afb522b39df82f08aaa740a
+REGISTRY_MIGRATOR_DIR = target/registry-tools/$(REGISTRY_MIGRATOR_REV)
+REGISTRY_MIGRATOR = $(REGISTRY_MIGRATOR_DIR)/bin/DataProviderMigrate.dll
+
+.PHONY: registry-migration-tool registry-migration-check
+## registry-migration-tool: Build the pinned private-schema DataProvider CLI under target/registry-tools.
+registry-migration-tool: $(REGISTRY_MIGRATOR)
+	@echo "$(abspath $(REGISTRY_MIGRATOR))"
+
+$(REGISTRY_MIGRATOR):
+	@mkdir -p $(REGISTRY_MIGRATOR_DIR)
+	@set -eu; scratch=$$(mktemp -d "$(REGISTRY_MIGRATOR_DIR)/build.XXXXXX"); \
+	  trap 'rm -rf "$$scratch"' EXIT; \
+	  curl -fsSL --retry 2 --max-time 120 "https://codeload.github.com/Nimblesite/DataProvider/tar.gz/$(REGISTRY_MIGRATOR_REV)" -o "$$scratch/source.tgz"; \
+	  echo "$(REGISTRY_MIGRATOR_SHA256)  $$scratch/source.tgz" | shasum -a 256 -c -; \
+	  tar -xzf "$$scratch/source.tgz" --strip-components=1 -C "$$scratch"; \
+	  dotnet publish "$$scratch/Migration/DataProviderMigrate" -c Release -f net10.0 -o "$(abspath $(REGISTRY_MIGRATOR_DIR))/bin"
+
+## registry-migration-check: Apply the ownership schema twice on disposable socket-only PostgreSQL.
+registry-migration-check: $(REGISTRY_MIGRATOR) $(BIN)
+	@set -eu; pg=$$(pg_config --bindir); \
+	  if [ ! -x "$$pg/postgres" ]; then pg=$$(dirname "$$(realpath "$$(command -v postgres)")"); fi; \
+	  db=$$(mktemp -d /tmp/osprey-registry.XXXXXX); \
+	  cleanup() { if [ -f "$$db/data/postmaster.pid" ]; then "$$pg/pg_ctl" -D "$$db/data" -m fast -w stop; fi; rm -rf "$$db"; }; \
+	  trap cleanup EXIT; export PGHOST="$$db" PGPORT=18873 PGUSER=registry_check PGDATABASE=postgres; \
+	  "$$pg/initdb" -D "$$db/data" -U "$$PGUSER" --auth-local=trust --auth-host=reject --no-locale >/dev/null; \
+	  "$$pg/pg_ctl" -D "$$db/data" -l "$$db/server.log" -o "-k $$db -p $$PGPORT -c listen_addresses=''" -w start; \
+	  "$$pg/psql" -X -v ON_ERROR_STOP=1 -c 'CREATE SCHEMA registry'; \
+	  migrate() { dotnet "$(REGISTRY_MIGRATOR)" migrate --provider postgres --schema src/osprey/packages/manager/supabase/migrations/schema.yaml --output "Host=$$PGHOST;Port=$$PGPORT;Username=$$PGUSER;Database=$$PGDATABASE"; }; \
+	  migrate; migrate >"$$db/replay.log" || { cat "$$db/replay.log"; exit 1; }; cat "$$db/replay.log"; \
+	  grep -Fq 'No operations to apply' "$$db/replay.log"; \
+	  test "$$("$$pg/psql" -XAtc "SELECT count(*) = 11 AND bool_and(relrowsecurity AND relforcerowsecurity) FROM pg_class WHERE relnamespace = 'registry'::regnamespace AND relkind = 'r'")" = t; \
+	  $(BIN) test src/osprey/packages/manager/database-tests/live
 
 .PHONY: registry-infra-check
 ## registry-infra-check: Validate pinned registry infrastructure without contacting a state backend.

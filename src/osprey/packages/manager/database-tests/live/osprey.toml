@@ -1,0 +1,8 @@
+[project]
+name = "registry-live-database-tests"
+source_roots = ["src", "../../core/src", "../../host/src"]
+default_namespace = "registry_live_tests"
+entry = "src/main.osp"
+
+[modules]
+allow_wildcard_imports = false

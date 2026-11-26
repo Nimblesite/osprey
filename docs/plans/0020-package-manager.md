@@ -9,8 +9,8 @@ Depends on: hosted Stages B–G on parent Milestone B (Phases 5–9) and Milesto
 - Folder registry, verified fetch/install, deterministic CDCL/MaxSAT resolver, folder lock, local overlays, `publish --folder` and the uv Python plane run today (`src/osprey/packages/manager/{api,cli,core,host,manifest,resolver}/`), exercised by `make -C src/osprey/packages registry-test` and CI (`make test`, `.github/workflows/ci.yml` `test-registry-gc`/`test-registry-arc`, both required by the coverage gate).
 - `src/toolchain/schemas/package-registry.td` is the canonical domain model; `src/osprey/packages/manager/supabase/migrations/schema.yaml` defines the eleven ownership tables (bootstrap FORCE-RLS, no allow policies/runtime grants).
 - Blocked host capabilities are recorded in `src/osprey/packages/manager/core/src/capabilities.osp` (argv, exit status, environment, binary-safe reads, directory/stat/rename/fsync, UTC clock); `make -C src/osprey/packages registry-blockers` probes them.
-- Blocker: DataProviderMigrate 0.9.11-beta applies the `registry` schema but its verifier hardcodes `public` (`.config/dotnet-tools.json`; `PostgresPolicyCatalogNormalizer.Inspect`); hosted migration convergence stays blocked until fixed.
-- Blocker: the `schema-check: long whitespace and identifiers` stress case SIGBUSes; the exact case is retained as a failing regression.
+- [x] Verify the private-schema migration and its zero-operation replay on disposable PostgreSQL. The published 0.11.0-beta.1 tool fails its integrity check. The source-pinned DataProvider revision `3b4e356` passes both runs and all eleven tables enforce row-level security. Reproduce with `make -C src/osprey/packages registry-migration-check`.
+- [x] Verify the retained `schema-check: long whitespace and identifiers` regression under GC and ARC. Both runs passed on 2026-11-27.
 - `login`, `audit`, `yank` are answered not-implemented by `cli/lib/dispatch.osp`; authenticated `publish` is the trust plane's.
 - `registry::Arithmetic` (`core/src/arithmetic.osp`) holds the canonical integer primitives; the scoring methodology itself is not started.
 
@@ -150,6 +150,8 @@ Depends on: hosted Stages B–G on parent Milestone B (Phases 5–9) and Milesto
 ## Hosted rollout — Stage B (Supabase ownership and RLS)
 
 - [x] Verify the package governance transitions for delegated human publishers. One administrator grants two organization members independent publishing access, revokes one while the other retains access, and rejects duplicate grant identifiers and attempts by a publisher to delegate. The scoped website permission checks and governance suites pass under GC and ARC. Database persistence and the authenticated permission routes remain tracked below. `[PACKAGE-OWNERSHIP-PERMISSIONS]`
+
+- [x] Verify publisher storage constraints on PostgreSQL 16. Two organizations stored the same package name, duplicate names within one organization failed, cross-organization publishing grants failed, missing and zero membership epochs failed, and revoking one publisher preserved the other. A restricted role with explicit table privileges could neither see a seeded organization nor insert another under the bootstrap RLS policies. Hosted authorization remains open. `[PACKAGE-OWNERSHIP-DATABASE]`
 
 Governed by spec 0045 and `src/osprey/packages/manager/supabase/migrations/schema.yaml`; provision the private `registry` schema as a platform resource before table migration; keep the bootstrap FORCE-RLS/default-deny with no runtime grants and reject `ownership.not-ready` until policies/handlers/tests ship together.
 

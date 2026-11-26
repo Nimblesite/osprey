@@ -61,6 +61,7 @@ type PackagePermissionGrant {
   state: PermissionState
   grantedByMembershipId: MembershipId
   authorityEpoch: AuthorityEpoch
+  membershipAuthorityEpoch: AuthorityEpoch
   grantedAt: DateTime
   expiresAt: Option<DateTime>
 }

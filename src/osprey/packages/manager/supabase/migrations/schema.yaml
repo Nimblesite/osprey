@@ -123,6 +123,7 @@ tables:
       - { name: state, type: Text, isNullable: false, checkConstraint: "state IN ('active', 'revoked')" }
       - { name: granted_by_membership_id, type: Uuid, isNullable: false }
       - { name: authority_epoch, type: BigInt, isNullable: false, checkConstraint: "authority_epoch > 0" }
+      - { name: membership_authority_epoch, type: BigInt, isNullable: false, checkConstraint: "membership_authority_epoch > 0" }
       - { name: granted_at, type: DateTimeOffset, isNullable: false }
       - { name: expires_at, type: DateTimeOffset, isNullable: true }
     primaryKey: { columns: [id] }
