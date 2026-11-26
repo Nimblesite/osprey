@@ -54,11 +54,15 @@ mod tests {
         let source =
             "(** Doubling. *)\nmodule Api\n    (** Twice `x`. *)\n    export double x = x * 2\n";
         assert_eq!(codes(source), [("unexampled-export".to_owned(), 3)]);
-        let found = crate::diagnostics::compute(source, "api.ospml", PositionEncoding::Utf16);
-        assert_eq!(found[0].severity, lspkit_server::Severity::Information);
         let undocumented = "(** Doubling. *)\nmodule Api\n    export double x = x * 2\n";
-        let found = crate::diagnostics::compute(undocumented, "api.ospml", PositionEncoding::Utf16);
-        assert_eq!(found[0].severity, lspkit_server::Severity::Warning);
+        let severities = |text| {
+            crate::diagnostics::compute(text, "api.ospml", PositionEncoding::Utf16)
+                .into_iter()
+                .map(|d| d.severity)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(severities(source), [lspkit_server::Severity::Information]);
+        assert_eq!(severities(undocumented), [lspkit_server::Severity::Warning]);
     }
 
     #[test]
