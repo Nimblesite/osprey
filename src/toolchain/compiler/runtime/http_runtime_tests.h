@@ -58,6 +58,7 @@ typedef struct {
   bool raw_request; // the peer speaks no HTTP (a TLS hello): take one segment, then reply
   size_t trickle_bytes; // when set: read this much at a time, trickle_us apart,
   unsigned trickle_us;  // until the client leaves, and never reply
+  bool peer_closed; // the client closed while the origin was still exchanging bytes
   char request[MAX_HTTP_BUFFER];
   pthread_t thread;
 } ScriptedOrigin;
@@ -75,6 +76,7 @@ int64_t origin_client(void);
 extern int64_t shared_origin_client;
 extern bool origin_holds_connections;
 extern unsigned origin_drip_us;
+extern bool origin_last_peer_closed;
 int64_t origin_exchange(const char *reply, size_t len);
 void expect_response_n(const char *reply, size_t len, int64_t status, const char *body);
 void expect_failure_n(const char *reply, size_t len, int64_t code, const char *message);

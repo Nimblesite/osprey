@@ -59,13 +59,14 @@ void origin_read_request(int fd, char *out, size_t capacity) {
 // the sender gives up: trickle_bytes per tick, trickle_us apart. A tick must free
 // more than two segments of the receive window, or TCP holds back the window
 // update and the sender stalls however fast this reads.
-static void origin_trickle(int fd, const ScriptedOrigin *origin) {
+static void origin_trickle(int fd, ScriptedOrigin *origin) {
   char scratch[MAX_HTTP_BUFFER];
   for (;;) {
     for (size_t taken = 0; taken < origin->trickle_bytes;) {
       size_t left = origin->trickle_bytes - taken;
       ssize_t n = recv(fd, scratch, left < sizeof scratch ? left : sizeof scratch, 0);
       if (n <= 0) {
+        origin->peer_closed = true;
         return;
       }
       taken += (size_t)n;
@@ -88,6 +89,14 @@ static void origin_take_request(int fd, ScriptedOrigin *origin) {
   }
 }
 
+// Pace against one monotonic schedule so per-sleep overruns do not accumulate.
+static void origin_wait_for_drip(uint64_t started, size_t sent, unsigned drip_us) {
+  if (!drip_us) return;
+  uint64_t due = started + (uint64_t)sent * drip_us / 1000;
+  uint64_t now = osp_monotonic_ms();
+  if (due > now) usleep((useconds_t)((due - now) * 1000));
+}
+
 static void *origin_thread(void *arg) {
   ScriptedOrigin *origin = (ScriptedOrigin *)arg;
   int fd = accept(origin->listen_fd, NULL, NULL);
@@ -99,19 +108,22 @@ static void *origin_thread(void *arg) {
   if (origin->reply) {
     size_t total = origin->reply_len;
     size_t sent = 0;
+    uint64_t drip_started = osp_monotonic_ms();
     while (sent < total) {
       ssize_t n = osp_socket_send(fd, origin->reply + sent,
                                   origin->drip_us ? 1 : total - sent);
       if (n <= 0) {
+        origin->peer_closed = true;
         break;
       }
       sent += (size_t)n;
-      usleep(origin->drip_us);
+      origin_wait_for_drip(drip_started, sent, origin->drip_us);
     }
   }
   char byte;
   while (origin->hold_open && recv(fd, &byte, 1, 0) > 0) {
   }
+  origin->peer_closed |= origin->hold_open;
   close(fd); // Connection: close is what makes the client stop draining
   return NULL;
 }
@@ -145,6 +157,7 @@ int64_t origin_client(void) {
 int64_t shared_origin_client;
 bool origin_holds_connections;
 unsigned origin_drip_us;
+bool origin_last_peer_closed;
 
 int64_t origin_exchange(const char *reply, size_t len) {
   ScriptedOrigin origin;
@@ -154,6 +167,7 @@ int64_t origin_exchange(const char *reply, size_t len) {
   int64_t handle = http_get_response(shared_origin_client, (char *)(uintptr_t) "/f",
                                      (char *)(uintptr_t) "");
   origin_stop(&origin);
+  origin_last_peer_closed = origin.peer_closed;
   return handle;
 }
 
