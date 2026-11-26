@@ -235,6 +235,7 @@ Packages have no install hooks or build scripts. A failed relock restores the ma
 | `remove @scope/name` | drop the dependency line and relock, printing the `-` lines |
 | `use <path> [--epoch N]`, `use @scope/name --published`, `use --list`, `use --clear` | develop against a local checkout: the mapping goes into `osprey.local.toml`, `osprey.local.lock` is relocked with the checkout in place of every published candidate of that key, and `[dependencies]` is never rewritten |
 | `lock --local` | relock the development lock after a local manifest change; plain `lock` never sees the overlay |
+| `docs --docs-dir <directory>` | generate a searchable HTML API reference for the project using its selected lock and verified installed dependencies |
 | `build --release` | refuse while any override is active, then build from `osprey.lock` |
 | `update [--breaking]` | relock without the current choices being sticky, so every key moves to its epoch's newest release; `--breaking` first moves each dependency with a newer epoch to it and prints one `epoch @scope/name eN -> eM` line per change |
 | `fetch @scope/name[@e<epoch>]`, `fetch <digest>` | download, verify and install one release |

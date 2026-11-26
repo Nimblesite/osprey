@@ -5,6 +5,30 @@ const { chromium } = require('../../src/toolchain/website/node_modules/playwrigh
 (async () => {
   const browser = await chromium.launch();
   try {
+    const catalog = await browser.newPage();
+    await catalog.goto('http://127.0.0.1:4187/');
+    const packages = await catalog.locator('.prose-package h3 a').evaluateAll(links => links.map(link => link.href));
+    assert.ok(packages.length > 0);
+    const missingReferences = [];
+    for (const url of packages) {
+      await catalog.goto(url);
+      const releases = catalog.locator('.prose-release');
+      assert.ok(await releases.count() > 0, url);
+      for (const release of await releases.all()) {
+        const version = await release.locator('h3').innerText();
+        const docs = release.getByRole('link', { name: 'API documentation' });
+        if (await docs.count() === 0) {
+          missingReferences.push(url + ' ' + version);
+          continue;
+        }
+        const link = await docs.getAttribute('href');
+        assert.equal(link, version + '/docs/api/index.html');
+        const reference = await catalog.request.get(new URL(link, url).href);
+        assert.equal(reference.status(), 200, url);
+        assert.match(await reference.text(), /<h1[^>]*>API Reference<\/h1>/);
+      }
+    }
+    await catalog.close();
     for (const width of [390, 1440]) {
       const page = await browser.newPage({ viewport: { width, height: 900 } });
       await page.goto('http://127.0.0.1:4187/packages/@osprey/fastapi/');
@@ -36,6 +60,7 @@ const { chromium } = require('../../src/toolchain/website/node_modules/playwrigh
       assert.equal(await page.locator('.prose-package:visible').count(), 0);
       await page.close();
     }
+    assert.deepEqual(missingReferences, [], 'Releases missing an API reference');
   } finally {
     await browser.close();
   }
