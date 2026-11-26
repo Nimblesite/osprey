@@ -8,7 +8,7 @@ This brief governs every word about **Perception Studio** (**Perception** for sh
 
 ## The answer
 
-> **Perception Studio is a transparent modular synth DAW, VST3 plug-in, and hardware synth factory — with unlimited routing, granular and spectral engines, and mathematically proven DSP.**
+> **Perception Studio is a modular synth DAW, VST3 plug-in & host, and hardware synth factory — patch third-party VST3s as modules alongside unlimited routing, granular/spectral engines, and mathematically proven DSP.**
 
 Second sentence, when there is room:
 
