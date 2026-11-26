@@ -73,12 +73,17 @@ print "yield ${y1} ${y2} ${y3}"
 advYield = fiber_yield 200
 print "fiber_yield = ${advYield}"
 
-ch1 = Channel 1
-ch2 = Channel 1
-send ch1 42
-print "recv ch1 = ${recv ch1}"
-send ch2 123
-print "recv ch2 = ${recv ch2}"
+channelRoundTrips () =
+    use ch1 <- andThen (Channel 1)
+    use ch2 <- andThen (Channel 1)
+    send ch1 42
+    print "recv ch1 = ${recv ch1}"
+    send ch2 123
+    Success(value = print "recv ch2 = ${recv ch2}")
+
+match channelRoundTrips ()
+    Success value => value
+    Error message => check "setup refused" "none" message
 
 dbl   = \x => x * 2 
 tri   = \x => x * 3 

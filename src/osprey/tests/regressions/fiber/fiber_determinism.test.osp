@@ -104,19 +104,25 @@ test("deterministic fibers complete in spawn order", fn() => exactArithmetic(fn(
 /// ready, and a timeout fires without waiting once none is left to run.
 /// Implements [CONCURRENCY-DETERMINISTIC] and [CONCURRENCY-SELECT].
 fn selectDrivesQueuedFibers() = {
-    let first = Channel(1)
-    let second = Channel(1)
+    use first <- andThen(Channel(1))
+    use second <- andThen(Channel(1))
     let earlier = spawn(send(second, 2))
     let later = spawn(send(first, 1))
     let woken = select { x = recv(first) => "first:${x}"  y = recv(second) => "second:${y}" }
     let next = select { x = recv(first) => "first:${x}"  y = recv(second) => "second:${y}" }
-    let quiet = Channel(1)
-    let expired = select { recv(quiet) => "value"  timeout(600000) => "expired" }
+    use quiet <- andThen(Channel(1))
+    let expired = expiredSelect(quiet)
     let _finished = "${await(earlier)}${await(later)}"
-    "${woken}|${next}|${expired}"
+    Success { value: "${woken}|${next}|${expired}" }
 }
 
-test("a deterministic select runs queued fibers in spawn order", fn() => check("trace", "second:2|first:1|expired", selectDrivesQueuedFibers()))
+/// A select on a channel nothing sends to, so only its timeout arm can answer.
+fn expiredSelect(quiet: Channel<int>) = select { recv(quiet) => "value"  timeout(600000) => "expired" }
+
+test("a deterministic select runs queued fibers in spawn order", fn() => match selectDrivesQueuedFibers() {
+    Success { value } => check("trace", "second:2|first:1|expired", value)
+    Error { message } => check("setup refused", "none", message)
+})
 
 fn calculateTime(complexity) = (intDiv(complexity, 10) ) + 7 
 
@@ -129,7 +135,7 @@ fn preprocessData(rawData) = rawData * 2 + 100
 fn validateData(data) = data > 50
 fn transformData(data) = data * 3 
 
-type TaskResult = Success | Warning | Failed
+type TaskResult = Succeeded | Warning | Failed
 
 fn classifyTask(taskId, dataSize, priority) ![Logger, Metrics, Arith] = {
     perform Logger.info("Starting task: " + taskId + " with data size: " + toString(dataSize))
@@ -149,7 +155,7 @@ fn classifyTask(taskId, dataSize, priority) ![Logger, Metrics, Arith] = {
             perform Logger.info("Task " + taskId + " completed successfully in " + toString(actualTime) + "ms")
             
             match efficiency > 80 {
-                true => Success
+                true => Succeeded
                 false => Warning
             }
         }
@@ -163,7 +169,7 @@ fn classifyTask(taskId, dataSize, priority) ![Logger, Metrics, Arith] = {
 fn processTaskForBatch(taskId, dataSize, priority) ![Logger, Metrics, Arith] = {
     let result = classifyTask(taskId: taskId, dataSize: dataSize, priority: priority)
     match result {
-        Success => 900
+        Succeeded => 900
         Warning => 600  
         Failed => 0
     }

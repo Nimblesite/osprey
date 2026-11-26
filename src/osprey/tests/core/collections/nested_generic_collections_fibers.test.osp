@@ -120,8 +120,8 @@ fn fiberChannelCollectionCase() = {
     let ints = await(intFiber)
     let bools = await(boolFiber)
     let floats = await(floatFiber)
-    let matrixChannel = Channel(2)
-    let groupChannel = Channel(2)
+    use matrixChannel <- andThen(Channel(2))
+    use groupChannel <- andThen(Channel(2))
     send(matrixChannel, ints)
     send(matrixChannel, listAppend(ints, [6, 7]))
     send(groupChannel, floats)
@@ -134,16 +134,17 @@ fn fiberChannelCollectionCase() = {
     send(groupChannel, secondGroups)
     let matrixViaParameter = drainMatrix(matrixChannel)
     let groupsViaParameter = drainGroups(groupChannel)
-    let hub = MatrixHub { channel: Channel(1) }
+    use hubChannel <- andThen(Channel(1))
+    let hub = MatrixHub { channel: hubChannel }
     send(hub.channel, matrixViaParameter)
     let matrixViaField = recv(hub.channel)
-    /// ABANDONED on purpose: a managed value that is sent and never received
-    /// still holds the reference `send` transferred to the channel, and nothing
-    /// can hand it back — the runtime's completed-result cleanup walks fibers,
-    /// not channels. Program teardown has to release it, and the ARC corpus
-    /// harness fails this file if a single object survives exit.
-    let abandonedMatrices = Channel(2)
-    let abandonedGroups = Channel(2)
+    // ABANDONED on purpose: a managed value that is sent and never received
+    // still holds the reference `send` transferred to the channel, and nothing
+    // can hand it back — the runtime's completed-result cleanup walks fibers,
+    // not channels. Program teardown has to release it, and the ARC corpus
+    // harness fails this file if a single object survives exit.
+    use abandonedMatrices <- andThen(Channel(2))
+    use abandonedGroups <- andThen(Channel(2))
     send(abandonedMatrices, listAppend(matrixViaField, [8, 9]))
     send(abandonedGroups, mapSet(floats, "orphan", [1.5]))
 
@@ -155,7 +156,7 @@ fn fiberChannelCollectionCase() = {
             allFibersDone(intFiber, stringFiber, floatFiber, boolFiber)
     ])
 
-    checkAll("Channel<collection> round trips full nested descriptors in FIFO order", [
+    Success { value: checkAll("Channel<collection> round trips full nested descriptors in FIFO order", [
             matrixIs(firstMatrix, 2, edgeCells),
             matrixIs(secondMatrix, 3, grownCells),
             groupIs(firstGroups, 2, smallLargeCells),
@@ -166,7 +167,7 @@ fn fiberChannelCollectionCase() = {
             matrixIs(matrixViaParameter, 3, tailCells),
             groupIs(groupsViaParameter, 3, smallExtraCells),
             matrixIs(matrixViaField, 3, fieldCells)
-    ])
+    ]) }
 }
 
 /// Performs a generic effect inside a fiber, inherits its handler, returns a
@@ -210,27 +211,27 @@ type Verdict = Pass | Fail(string) | Skip(string)
 fn drainVia(f, channel) = f(channel)
 
 fn channelThroughClosureCase() = {
-    let matrices = Channel(4)
+    use matrices <- andThen(Channel(4))
     send(matrices, intMatrix())
     send(matrices, listAppend(intMatrix(), [6, 7]))
     let viaLambdaParameter = drainVia(|c| => recv(c), matrices)
     let takeNext = || => recv(matrices)
     let viaCapture = takeNext()
-    let groups = Channel(2)
+    use groups <- andThen(Channel(2))
     send(groups, floatGroups())
     let groupsViaLambdaParameter = drainVia(|c| => recv(c), groups)
 
-    checkAll("a channel reached through a closure keeps its element descriptor", [
+    Success { value: checkAll("a channel reached through a closure keeps its element descriptor", [
             matrixIs(viaLambdaParameter, 2, keptCells),
             rowLengthIs(viaLambdaParameter, 1, 3),
             matrixIs(viaCapture, 3, grownCells),
             rowLengthIs(viaCapture, 2, 2),
             groupIs(groupsViaLambdaParameter, 2, smallLargeCells)
-    ])
+    ]) }
 }
 
 testCases([
-    { name: "fibers channels Results and persistence retain generic collection types", work: fiberChannelCollectionCase },
+    { name: "fibers channels Results and persistence retain generic collection types", work: settled(fiberChannelCollectionCase) },
     { name: "generic effects inside fibers retain nested collection types", work: fiberEffectCollectionCase },
-    { name: "a channel reached through a closure keeps its element descriptor", work: channelThroughClosureCase }
+    { name: "a channel reached through a closure keeps its element descriptor", work: settled(channelThroughClosureCase) }
 ])

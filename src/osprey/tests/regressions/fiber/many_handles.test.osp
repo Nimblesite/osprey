@@ -28,18 +28,18 @@ fn sumOfRecords(i, total, last) = match i {
 }
 
 fn sumOfChannels(i, total) = match i {
-    3000 => total
+    3000 => Success { value: total }
     _ => {
-        let channel = Channel(1)
+        use channel <- andThen(Channel(1))
         send(channel, i)
         sumOfChannels(wrapAdd(i, 1), wrapAdd(total, recv(channel)))
     }
 }
 
 fn wordsThroughChannels(i, last) = match i {
-    3000 => last
+    3000 => Success { value: last }
     _ => {
-        let channel = Channel(1)
+        use channel <- andThen(Channel(1))
         send(channel, await(spawn word(i)))
         wordsThroughChannels(wrapAdd(i, 1), recv(channel))
     }
@@ -55,8 +55,14 @@ fn reusableHandles() = {
 test("thousands of int fibers", fn() => check("sum", "8997000", "${sumOfFibers(0, 0)}"))
 test("thousands of string fibers", fn() => check("last", "w2999", lastWord(0, "")))
 test("thousands of record fibers", fn() => check("sum and last", "4498500 w2999", sumOfRecords(0, 0, "")))
-test("thousands of channels", fn() => check("sum", "4498500", "${sumOfChannels(0, 0)}"))
-test("strings through fibers and channels", fn() => check("last", "w2999", wordsThroughChannels(0, "")))
+test("thousands of channels", fn() => match sumOfChannels(0, 0) {
+    Success { value } => check("sum", "4498500", "${value}")
+    Error { message } => check("setup refused", "none", message)
+})
+test("strings through fibers and channels", fn() => match wordsThroughChannels(0, "") {
+    Success { value } => check("last", "w2999", value)
+    Error { message } => check("setup refused", "none", message)
+})
 test("an old handle survives thousands more", reusableHandles)
 
 /// #340: a recursive wait loop with no annotations awaits the fiber it was passed,

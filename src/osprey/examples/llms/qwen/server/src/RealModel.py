@@ -126,14 +126,18 @@ def open(path):
 
 
 def started(model, tok, eos):
-    return andThen(Qwen3_5Cache.empty(model.config, model.shapes), lambda cache: Success(value=Session(model=model, tok=tok, eos=eos, slot=filled(State(cache=cache, seen=[], logits=[], marks=[])))))
+    return andThen(Qwen3_5Cache.empty(model.config, model.shapes), lambda cache: andThen(filled(State(cache=cache, seen=[], logits=[], marks=[])), lambda slot: Success(value=Session(model=model, tok=tok, eos=eos, slot=slot))))
 
 
 def filled(state):
-    """A one-slot channel holding `state`."""
-    slot = Channel(1)
+    """A one-slot channel holding `state`, or the refusal to make one."""
+    return andThen(Channel(1), lambda slot: holding(slot, state))
+
+
+def holding(slot, state):
+    """`slot` once `state` is in it."""
     send(slot, state)
-    return slot
+    return Success(value=slot)
 
 
 # --- one step -------------------------------------------------------------

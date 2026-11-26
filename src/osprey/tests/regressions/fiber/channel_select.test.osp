@@ -6,8 +6,8 @@ type Order = { item: string, qty: int }
 
 /// Ready arms run in source order, and only the chosen arm's operation happens.
 fn tieBreaksInSourceOrder() = {
-    let first = Channel(2)
-    let second = Channel(2)
+    use first <- andThen(Channel(2))
+    use second <- andThen(Channel(2))
     send(first, 1)
     send(second, 2)
     let chosen = select {
@@ -24,12 +24,12 @@ fn tieBreaksInSourceOrder() = {
         b = recv(second) => b
         _ => 99
     }
-    checkAll("source order", [chosen == 11, next == 22, drained == 99])
+    Success { value: checkAll("source order", [chosen == 11, next == 22, drained == 99]) }
 }
 
 /// A send arm runs when its channel has room, and a full one falls through.
 fn sendArmsRespectCapacity() = {
-    let room = Channel(1)
+    use room <- andThen(Channel(1))
     let sent = select {
         send(room, 7) => "sent"
         _ => "full"
@@ -39,30 +39,30 @@ fn sendArmsRespectCapacity() = {
         _ => "full"
     }
     let received = recv(room)
-    checkAll("send capacity", [sent == "sent", refused == "full", received == 7])
+    Success { value: checkAll("send capacity", [sent == "sent", refused == "full", received == 7]) }
 }
 
 /// A receive binding has the channel's element type, for each kind of element.
 fn bindingsHaveTheElementType() = {
-    let words = Channel(1)
-    let orders = Channel(1)
-    let flags = Channel(1)
+    use words <- andThen(Channel(1))
+    use orders <- andThen(Channel(1))
+    use flags <- andThen(Channel(1))
     send(words, "he" + "llo")
     send(orders, Order { item: "tea", qty: 2 })
     send(flags, true)
     let word = select { w = recv(words) => length(w) _ => 0 }
     let order = select { o = recv(orders) => o.item + toString(o.qty) _ => "none" }
     let flag = select { f = recv(flags) => !f _ => true }
-    let ignored = Channel(1)
+    use ignored <- andThen(Channel(1))
     send(ignored, "dropped" + "!")
     let dropped = select { recv(ignored) => "took" _ => "none" }
-    checkAll("bindings", [word == 5, order == "tea2", flag == false, dropped == "took"])
+    Success { value: checkAll("bindings", [word == 5, order == "tea2", flag == false, dropped == "took"]) }
 }
 
 /// An unchosen managed send gives its reference back, and a chosen one delivers it.
 fn managedSendsKeepTheirOwnership() = {
-    let full = Channel(1)
-    let open = Channel(1)
+    use full <- andThen(Channel(1))
+    use open <- andThen(Channel(1))
     send(full, "occupied" + "!")
     let chosen = select {
         send(full, "never" + "!") => "full arm"
@@ -70,36 +70,36 @@ fn managedSendsKeepTheirOwnership() = {
     }
     let inFull = recv(full)
     let inOpen = recv(open)
-    checkAll("managed sends", [chosen == "open arm", inFull == "occupied!", inOpen == "delivered"])
+    Success { value: checkAll("managed sends", [chosen == "open arm", inFull == "occupied!", inOpen == "delivered"]) }
 }
 
 /// A timeout arm runs once nothing is ready, and a ready channel beats it.
 fn timeoutsDecideOnlyWhenNothingIsReady() = {
-    let quiet = Channel(1)
+    use quiet <- andThen(Channel(1))
     let expired = select { recv(quiet) => "value" timeout(5) => "expired" }
     let immediate = select { recv(quiet) => "value" timeout(0) => "expired" }
     send(quiet, 1)
     let ready = select { recv(quiet) => "value" timeout(5000) => "expired" }
-    checkAll("timeouts", [expired == "expired", immediate == "expired", ready == "value"])
+    Success { value: checkAll("timeouts", [expired == "expired", immediate == "expired", ready == "value"]) }
 }
 
 /// A blocked select wakes when another fiber's operation makes an arm ready.
 fn aFiberWakesABlockedSelect() = {
-    let replies = Channel(1)
-    let idle = Channel(1)
+    use replies <- andThen(Channel(1))
+    use idle <- andThen(Channel(1))
     let worker = spawn(send(replies, 42))
     let answer = select {
         r = recv(replies) => r
         i = recv(idle) => i + 1000
     }
     let _ignored = await(worker)
-    let drains = Channel(1)
+    use drains <- andThen(Channel(1))
     send(drains, 1)
     let blocked = spawn(send(drains, 2))
     let freed = recv(drains)
     let second = select { d = recv(drains) => d timeout(5000) => 0 }
     let _done = await(blocked)
-    checkAll("wakeups", [answer == 42, freed == 1, second == 2])
+    Success { value: checkAll("wakeups", [answer == 42, freed == 1, second == 2]) }
 }
 
 /// Record a step on the log, then answer the value.
@@ -110,21 +110,21 @@ fn note(log, step, value) = {
 
 /// Operands evaluate once on entry, in source order, whichever arm runs.
 fn operandsEvaluateOnceInOrder() = {
-    let log = Channel(4)
-    let channel = Channel(1)
+    use log <- andThen(Channel(4))
+    use channel <- andThen(Channel(1))
     let picked = select {
         send(channel, note(log, 1, 10)) => note(log, 3, 100)
         timeout(note(log, 2, 5)) => 0
     }
-    checkAll("operands", [picked == 100, recv(log) == 1, recv(log) == 2, recv(log) == 3, recv(channel) == 10])
+    Success { value: checkAll("operands", [picked == 100, recv(log) == 1, recv(log) == 2, recv(log) == 3, recv(channel) == 10]) }
 }
 
 exactTests([
-    { name: "ready arms run in source order", work: tieBreaksInSourceOrder },
-    { name: "send arms respect capacity", work: sendArmsRespectCapacity },
-    { name: "receive bindings have the element type", work: bindingsHaveTheElementType },
-    { name: "managed sends keep their ownership", work: managedSendsKeepTheirOwnership },
-    { name: "timeouts decide only when nothing is ready", work: timeoutsDecideOnlyWhenNothingIsReady },
-    { name: "a fiber wakes a blocked select", work: aFiberWakesABlockedSelect },
-    { name: "operands evaluate once in order", work: operandsEvaluateOnceInOrder }
+    { name: "ready arms run in source order", work: settled(tieBreaksInSourceOrder) },
+    { name: "send arms respect capacity", work: settled(sendArmsRespectCapacity) },
+    { name: "receive bindings have the element type", work: settled(bindingsHaveTheElementType) },
+    { name: "managed sends keep their ownership", work: settled(managedSendsKeepTheirOwnership) },
+    { name: "timeouts decide only when nothing is ready", work: settled(timeoutsDecideOnlyWhenNothingIsReady) },
+    { name: "a fiber wakes a blocked select", work: settled(aFiberWakesABlockedSelect) },
+    { name: "operands evaluate once in order", work: settled(operandsEvaluateOnceInOrder) }
 ])
