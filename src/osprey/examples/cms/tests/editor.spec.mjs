@@ -73,6 +73,9 @@ async function codeEditing(page) {
 /** Drag to select backwards and double-click a word: the same editor keeps the selection throughout. */
 async function selection(page) {
   await row(page, HOME).click();
+  await expect(page.locator(".osp-row-cell").getByText("First post", { exact: true })).toHaveCSS("color", /./);
+  await expect(page.getByText("[First post](/blog/first/)")).toHaveCount(0);
+  await expect(page.getByText("“curly quotes”, café crème and 🚀", { exact: false })).toBeVisible();
   const editor = page.getByRole("textbox", { name: "h1" });
   await expect(editor).toHaveValue("Welcome 👋");
   await editor.evaluate((element) => { window.held = element; });

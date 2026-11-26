@@ -31,16 +31,31 @@ module Preview
         "" => []
         _ => [Ui::emphasised (text, ink, "")]
 
-    // Inline runs: text up to the first marker, the marked span, then the rest, recursively.
-    export runs (text, ink) =
-        next = earliest (text, ["**", "`", "*"])
-        marker = listGet next 0 ?: ""
-        start = parseInt (listGet next 1 ?: "0") ?: 0
+    // A marked span: `marker` around words, drawn with that marker's emphasis.
+    marked (text, start, marker, ink) =
         rest = drop text (satAdd start (length marker))
         close = indexOf rest marker ?: -1
-        match marker == "" || close < 0
+        match close < 0
             true => plain (text, ink)
             false => listConcat (listConcat (plain (take text start, ink)) [Ui::emphasised (take rest close, ink, emphasisOf marker)]) (runs (drop rest (satAdd close (length marker)), ink))
+
+    // A link `[words](target)` reads as its words in the accent colour; its target stays in the source.
+    linked (text, start, ink) =
+        rest = drop text (satAdd start 1)
+        middle = indexOf rest "](" ?: -1
+        close = indexOf (drop rest (max 0 middle)) ")" ?: -1
+        match middle < 0 || close < 0
+            true => plain (text, ink)
+            false => listConcat (listConcat (plain (take text start, ink)) [Ui::emphasised (take rest middle, "accent", "strong")]) (runs (drop rest (satAdd (satAdd middle close) 1), ink))
+
+    // Inline runs: text up to the first marker, the marked span or link, then the rest, recursively.
+    export runs (text, ink) =
+        next = earliest (text, ["**", "`", "*", "["])
+        start = parseInt (listGet next 1 ?: "0") ?: 0
+        match listGet next 0 ?: ""
+            "" => plain (text, ink)
+            "[" => linked (text, start, ink)
+            marker => marked (text, start, marker, ink)
 
     para (text, step, ink, role) =
         style = Frames::text (Design::sans (), Design::size step, false)
