@@ -9,7 +9,7 @@
 - Per-processor costs are measured on the device's own CPU ([DEVICE-ENGINE-BUDGET]), recorded, and only go down.
 - The acceptance stereo patch must run at 70% or less of the deadline on one core ([DEVICE-HW-COMPUTE]). Until it does, that is the most important open item on the device.
 
-The [Prism device specification](../../specs/synth/PrismDevice.md) defines the engine, firmware, controls, link and factory. The board and enclosure are under [Hardware](#hardware-device-hw-plan) below, and the compiler work has the [embedded targets plan](../embedded-targets.md). Research and citations are in the [hardware specification](../../specs/synth/PrismDeviceHardware.md#research-findings-device-research).
+The [Prism device specification](../../specs/synth/Perception.md#perception-device-device) defines the engine, firmware, controls, link and factory. The board and enclosure are under [Hardware](#hardware-device-hw-plan) below, and the compiler work has the [embedded targets plan](../embedded-targets.md). Research and citations are in the [hardware specification](../../specs/synth/Perception.md#research-findings-device-research).
 
 Macros work in Prism first ([instrument plan](instrument.md)). Then the concept is tested on the Mac with the virtual device, before any hardware is bought ([DEVICE-VERIFY-CONCEPT]). After that the embedded target, the firmware, the prototype and the board proceed in parallel, with performance optimisation running beside all of them ([DEVICE-PERF]). Each phase ships something usable on its own.
 
@@ -55,13 +55,13 @@ Built on the work of Elk Audio OS, Zynthian and PiPedal ([DEVICE-RESEARCH-PRIOR]
 
 ## Hardware [DEVICE-HW-PLAN]
 
-The [hardware specification](../../specs/synth/PrismDeviceHardware.md) defines the board, latency budget, compute and the AUD 500 budget, and holds the research and prices behind them. The enclosure is drawn in the [device designs](../../designs/prism-device/README.md#enclosure-device-hw-enclosure), with its own release checks. Hardware work proceeds in parallel with performance optimisation ([DEVICE-PLAN-SPEED]).
+The [hardware specification](../../specs/synth/Perception.md#perception-device-hardware-device-hw) defines the board, latency budget, compute and the AUD 500 budget, and holds the research and prices behind them. The enclosure is drawn in the [device designs](../../designs/prism-device/README.md#enclosure-device-hw-enclosure), with its own release checks. Hardware work proceeds in parallel with performance optimisation ([DEVICE-PLAN-SPEED]).
 
 ### Prototype [DEVICE-HW-PROTOTYPE]
 
 No part is ordered until the concept test passes on the Mac with the virtual device ([DEVICE-VERIFY-CONCEPT]).
 
-- [ ] Order a Raspberry Pi 5 4 GB, HiFiBerry DAC2 ADC Pro, MCP3208, pots, toggles, footswitches, H11L1 and TRS jacks; record actual prices against the [budget](../../specs/synth/PrismDeviceHardware.md#budget-device-hw-budget).
+- [ ] Order a Raspberry Pi 5 4 GB, HiFiBerry DAC2 ADC Pro, MCP3208, pots, toggles, footswitches, H11L1 and TRS jacks; record actual prices against the [budget](../../specs/synth/Perception.md#budget-device-hw-budget).
 - [ ] Bring up the firmware on the prototype: audio at 64 frames, knobs, switches, TRS MIDI, and the USB-C port in both roles (computer link and USB MIDI keyboard).
 - [ ] Measure audio round trip and note to sound with loopback cables: mean, worst case and jitter over 24 hours at full budget. Pass: round trip under 5 ms, note to sound under 5.5 ms worst case, never over 10 ms, jitter under 1 ms ([DEVICE-HW-LATENCY]).
 - [ ] Measure the acceptance stereo patch's share of the deadline on one core and the temperature, and feed both to the performance track ([DEVICE-PERF]). Pass: 70% or less with no thermal throttling ([DEVICE-HW-COMPUTE]).

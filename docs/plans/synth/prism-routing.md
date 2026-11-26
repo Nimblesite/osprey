@@ -2,7 +2,7 @@
 
 The [advanced synthesis delivery plan](advanced-synthesis.md#advanced-synthesis-delivery-plan-prism-advanced-plan) covers neural, granular, physical and combined methods and their Prism interfaces.
 
-The synth package remains UI-free. Prism becomes an editable instrument graph: add oscillators, effects, MIDI generators, modulators and VST3 host nodes from a menu, connect compatible ports, adjust parameters and hear the resulting graph. Existing audio and control work must remain usable while a replacement graph is validated. See [SYNTH-GRAPH], [SYNTH-SIGNALS], [SYNTH-RENDER] and [SYNTH-HOST-VST] in the [synthesis specification](../../specs/synth/Synthesis.md).
+The synth package remains UI-free. Prism becomes an editable instrument graph: add oscillators, effects, MIDI generators, modulators and VST3 host nodes from a menu, connect compatible ports, adjust parameters and hear the resulting graph. Existing audio and control work must remain usable while a replacement graph is validated. See [SYNTH-GRAPH], [SYNTH-SIGNALS], [SYNTH-RENDER] and [SYNTH-HOST-VST] in the [synthesis specification](../../specs/synth/Synth.md).
 
 The original `codex/prism-synth-routing` work merged as PR #412. Completion continues on `codex/prism-plan-completion` in the dedicated `~/.codex/worktrees/prism-synth-routing/osprey` worktree, created from the latest local code after fetching `origin/main` on 19 November 2026. The original branch was based on `math-to-code` at `e3ebc1399`; its 03:00 Australia/Melbourne checkpoint on 16 November remains below. Historical measurements describe their recorded checkpoint, not current release readiness.
 

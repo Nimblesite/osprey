@@ -1,6 +1,6 @@
 # Instrument builder and macros: delivery plan [PRISM-INSTRUMENT-PLAN]
 
-The [instrument builder specification](../../specs/synth/PrismInstrument.md) defines the requirements. The [instrument designs](../../designs/prism-timeline/README.md#instrument-builder-prism-instrument) show Play, Edit and MIDI learn. This plan comes first: the [device plan](device.md) needs macros that already work in Prism.
+The [instrument builder specification](../../specs/synth/Perception.md#instrument-builder-prism-instrument) defines the requirements. The [instrument designs](../../designs/prism-timeline/README.md#instrument-builder-prism-instrument) show Play, Edit and MIDI learn. This plan comes first: the [device plan](device.md) needs macros that already work in Prism.
 
 Builds on the synth package's `Macros` ([advanced-synthesis.md](advanced-synthesis.md), "macro controls"), [DAW-CONTROLS-DIAL], [DAW-MIDI-LEARN] and [DAW-OSC]. Each item lands with a loaded headless and windowed journey with screenshot goldens.
 

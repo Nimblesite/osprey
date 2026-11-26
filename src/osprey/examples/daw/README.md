@@ -2,7 +2,7 @@
 
 A digital audio workstation on the FerroUI host: one song project, shown as a timeline, a mix and a
 patch per track. Every track's sound is a patch you edit in Prism, and everything (notes, mix and patches)
-is saved in the one project file. [Specification](../../../../docs/specs/synth/Daw.md) ·
+is saved in the one project file. [Specification](../../../../docs/specs/synth/Perception.md#perception-studio-the-daw-daw) ·
 [Designs](../../../../docs/designs/prism-timeline/README.md) · [Patch editor guide](PRISM.md)
 
 ```sh

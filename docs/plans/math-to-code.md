@@ -34,7 +34,7 @@ Write production formulas in native Osprey and use Lean to prove properties of t
 
 Production migrations preserve the recorded outputs and replace import-time generation with tracked Osprey functions.
 
-- [x] Move the eleven synth DSP modules and the DAW arrangement formulas to native Osprey. [Synthesis proof inventory](../specs/synth/Synthesis.md)
+- [x] Move the eleven synth DSP modules and the DAW arrangement formulas to native Osprey. [Synthesis proof inventory](../specs/synth/Synth.md)
 - [ ] Extend production proof coverage for the remaining properties recorded in the synthesis specification. Include tests of compiled behavior where the property crosses the proof boundary.
 
 The importer also has existing consumers in `@osprey/micrograd`, `@osprey/math` and `@osprey/scipy`. Their current Lean inputs remain part of the importer oracle.

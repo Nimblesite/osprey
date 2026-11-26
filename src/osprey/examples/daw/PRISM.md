@@ -12,7 +12,7 @@ The user can see absolutely everything that manipulates a signal, in the UI. Thi
 
 ## Playing and rendering take Master only [DAW-RENDER-MASTER]
 
-Playing and rendering are two different things. Both run the entire graph, and both take only the Master channel's output. **Playing** sends Master to the speakers and writes no file. **Rendering** writes Master to the export file and plays nothing. **Exporting anything other than Master is banned.** That covers a note, a track, a bus, a send, a patch, a module or the Space, whether whole, ahead of the playhead, into a cache, as a stem or to a file. Every node only produces the current block inside the running graph. Stems do not exist. The rule is in [the daw spec](../../../../docs/specs/synth/Daw.md#rendering-the-song-daw-render).
+Playing and rendering are two different things. Both run the entire graph, and both take only the Master channel's output. **Playing** sends Master to the speakers and writes no file. **Rendering** writes Master to the export file and plays nothing. **Exporting anything other than Master is banned.** That covers a note, a track, a bus, a send, a patch, a module or the Space, whether whole, ahead of the playhead, into a cache, as a stem or to a file. Every node only produces the current block inside the running graph. Stems do not exist. The rule is in [the daw spec](../../../../docs/specs/synth/Perception.md#rendering-the-song-daw-render).
 
 ## Grain cloud [SYNTH-ADVANCED-GRAINS-INTEGRATION]
 

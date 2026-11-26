@@ -2,7 +2,7 @@
 
 Build the advanced synthesis ecosystem on `@osprey/synth`: independent, composable DSP modules that can be routed, modulated, automated and combined in Prism, Light Orchestra and future hosts. Prism is the first complete integration, not the definition of the library. Every module must produce real audio; a name in the palette or an attractive waveform is not implementation.
 
-The authoritative contracts are [Synthesis.md](../../specs/synth/Synthesis.md), especially [SYNTH-GRAPH], [SYNTH-SIGNALS], [SYNTH-RENDER] and [SYNTH-DSP]. The [research catalogue](../../specs/synth/SynthDsp.md#sources-and-experiments-synth-research) supplies sources and comparison experiments. The existing [Prism routing plan](prism-routing.md) remains responsible for host lifecycle, live replacement, VST integration and release readiness; this plan adds the advanced DSP families and their complete user journeys.
+The authoritative contracts are [Synthesis.md](../../specs/synth/Synth.md), especially [SYNTH-GRAPH], [SYNTH-SIGNALS], [SYNTH-RENDER] and [SYNTH-DSP]. The [research catalogue](../../specs/synth/Synth.md#sources-and-experiments-synth-research) supplies sources and comparison experiments. The existing [Prism routing plan](prism-routing.md) remains responsible for host lifecycle, live replacement, VST integration and release readiness; this plan adds the advanced DSP families and their complete user journeys.
 
 **Current instruction (21 November 2026):** testing has resumed. Every change comes with loaded journey tests that run under GC and ARC; mark an item done only with recorded evidence, and never mark an unverified feature production-ready.
 
@@ -95,7 +95,7 @@ Added on request after the families: a piano-roll project file rendered offline 
 
 ### Every processing point is a pluggable effect [SYNTH-ARRANGEMENT-EFFECTS]
 
-Deferred until #427 is merged and the user approves; the repository is in stabilisation mode. Every place in the synth and the daw that processes a signal becomes an operation of an Osprey effect, so a handler supplies the processing. Examples are summing onto a bus, gain, pan, envelopes, filters, waveshaping, delays and the master stage. The default handler calls today's kernels (`ArrangeMath.bused`, `panLeft`, `panRight`, `enveloped`, `synth::Limiters` and others), so rendered output stays identical and the production proofs in [SYNTH-DSP-PROOFS](../../specs/synth/Synthesis.md) still describe the default.
+Deferred until #427 is merged and the user approves; the repository is in stabilisation mode. Every place in the synth and the daw that processes a signal becomes an operation of an Osprey effect, so a handler supplies the processing. Examples are summing onto a bus, gain, pan, envelopes, filters, waveshaping, delays and the master stage. The default handler calls today's kernels (`ArrangeMath.bused`, `panLeft`, `panRight`, `enveloped`, `synth::Limiters` and others), so rendered output stays identical and the production proofs in [SYNTH-DSP-PROOFS](../../specs/synth/Synth.md) still describe the default.
 
 An analog summing handler replaces the plain weighted sum at the mixing operation. A console's nonlinear stages sit in fixed places: a gentle curve on each channel before the sum, and a summing-amplifier and transformer curve on the bus after it. Placement matters because saturation does not commute with addition (sat(a) + sat(b) ≠ sat(a + b)): only bus saturation makes sources intermodulate. The handler models:
 
@@ -149,7 +149,7 @@ Testing resumed on 21 November 2026. Record results for the stated workload, bac
 - [ ] Document each module's ports, units, scaling, defaults, state/reset semantics, latency, capacity and supported rates/channels.
 - [ ] Link code, specifications, patches and eventual test evidence through the section IDs in this plan.
 - [ ] Mark experimental/production status from measured evidence; record remaining limitations without weakening the contracts.
-- [ ] Reconcile this checklist with [Synthesis.md](../../specs/synth/Synthesis.md) and the [Prism routing plan](prism-routing.md), preserving their unfinished requirements.
+- [ ] Reconcile this checklist with [Synthesis.md](../../specs/synth/Synth.md) and the [Prism routing plan](prism-routing.md), preserving their unfinished requirements.
 - [ ] Commit work in reviewable module-sized steps, preserve unrelated unfinished work and remove only task-owned temporary processes/artifacts.
 
 ### Granular producer checkpoint [SYNTH-ADVANCED-GRAINS-PRODUCER]
@@ -265,7 +265,7 @@ Complete. The modules and journeys that cite this ID hold the evidence.
 ### Modules and expressive controls [SYNTH-ADVANCED-SPECTRAL-MODULES]
 
 - [ ] Add pitch/time manipulation only with its own phase/transient handling and latency contract. Partial: `SpectralPitch` (transform 6) is now a peak-locked phase vocoder (Laroche and Dolson): each spectral peak's region moves by the whole bins nearest its true frequency's shift and keeps its lobe, the peak's phase advances at the shifted frequency and the bins around it keep their analysed offset (identity phase locking) ([spectral_peaks.ospml](../../../src/osprey/packages/synth/src/spectral_peaks.ospml), 4e212e09f, 1b45a3ba0). Latency is size − 1. The `pitchShifter` component is the FFT pitch-shift effect module (Prism palette "FFT pitch shifter", project component `pitchShifter`), preset to a plain shift (formant = ratio). Evidence, middle C through the song renderer at 1024 points: a sine keeps 60% of its energy a fifth up (ratio 1.5), 76% an octave up and 96% an octave down (the bin-by-bin mapping it replaced kept 12% an octave up); the shortfall is amplitude ripple, which [SYNTH-SPECTRAL-PITCH-EFFECT] requires removed. Shifts beyond an octave are out of scope; the daw test asserts G4 and C5 periods, half-period anti-correlation and more than half the level. Transient handling and time stretching remain open.
-- [ ] Spectral morphing ([SYNTH-SPECTRAL-MORPH]), tests still owed at 48 kHz, size 4,096, hop 1,024: unmatched Partial peaks fade to 0.75 and 0.25 of their level within 1 dB at amount 0.25 (220 Hz against 277 Hz); a held amount of 0.5 keeps per-hop rms within 0.5 dB; an amount ramp from 0 to 1 over 0.5 s has no frame-to-frame jump over 2 dB beyond the trend. Then cross-frame peak tracking for inharmonic sounds, and a crossfade of phase donors near 0.5 in Blend ([failure modes](../../specs/synth/SynthDsp.md#failure-modes)).
+- [ ] Spectral morphing ([SYNTH-SPECTRAL-MORPH]), tests still owed at 48 kHz, size 4,096, hop 1,024: unmatched Partial peaks fade to 0.75 and 0.25 of their level within 1 dB at amount 0.25 (220 Hz against 277 Hz); a held amount of 0.5 keeps per-hop rms within 0.5 dB; an amount ramp from 0 to 1 over 0.5 s has no frame-to-frame jump over 2 dB beyond the trend. Then cross-frame peak tracking for inharmonic sounds, and a crossfade of phase donors near 0.5 in Blend ([failure modes](../../specs/synth/Synth.md#failure-modes)).
 - [ ] Real-time autotune ([SYNTH-SPECTRAL-AUTOTUNE]): YIN-style fundamental detection with confidence, snapping to key/scale or the timeline's notes, retune speed, amount and humanise, formant-preserving FFT correction, unvoiced frames passed dry, bounded per-hop work without allocation, declared latency; native Osprey formulas; tests for a 30-cent-flat vibrato line, glide timing, unvoiced noise and block-split invariance.
 - [ ] Showcase songs [SYNTH-SHOWCASE]: the shipped songs play every family (granular and spectral morph are missing today). The renderer must play granular and spectral nodes per note at usable speed. A test opens each song and checks every family is present.
 - [ ] Synthesis coverage to 100%: `@osprey/synth` measured 63.4% (2,650 of 4,180 lines) on 21 November 2026; loaded journey tests per family raise it, and the threshold only goes up.
@@ -286,7 +286,7 @@ Complete. The modules and journeys that cite this ID hold the evidence.
 
 ## Advanced synthesis delivery plan [PRISM-ADVANCED-PLAN]
 
-The 2026-11-17 handoff supplies the proposed delivery sequence below. The [active implementation checklist](advanced-synthesis.md) owns processor milestones and their status. The [package and UI specification](../../specs/synth/SynthAdvanced.md#advanced-synthesis-proposal-synth-advanced) defines acceptance. The [research guide](../../specs/synth/SynthAdvanced.md#sources-neural-granular-and-physical-synthesis-synth-research-focused) compares the papers and instruments behind these choices.
+The 2026-11-17 handoff supplies the proposed delivery sequence below. The [active implementation checklist](advanced-synthesis.md) owns processor milestones and their status. The [package and UI specification](../../specs/synth/Synth.md#advanced-synthesis-proposal-synth-advanced) defines acceptance. The [research guide](../../specs/synth/Synth.md#sources-neural-granular-and-physical-synthesis-synth-research-focused) compares the papers and instruments behind these choices.
 
 ### Repository baseline and dependencies [PRISM-ADVANCED-BASELINE]
 
@@ -332,7 +332,7 @@ Collect genuine audio, held-out measurements and lifecycle evidence for each cap
 
 ### Combined synthesis experiments [PRISM-ADVANCED-HYBRID]
 
-Use one evolving body and learned grain contacts. Its energy affects the timing, location and texture of later contacts. The [combined-method contract](../../specs/synth/SynthAdvanced.md#combined-grain-and-body-method-synth-advanced-hybrid) defines the state transition and work budget.
+Use one evolving body and learned grain contacts. Its energy affects the timing, location and texture of later contacts. The [combined-method contract](../../specs/synth/Synth.md#combined-grain-and-body-method-synth-advanced-hybrid) defines the state transition and work budget.
 
 | Experiment | Deliverable | Decision evidence |
 | --- | --- | --- |
@@ -350,6 +350,6 @@ Shared preparation/assets/state precede granular and physical processing. Delive
 
 Use `make -C src/osprey/packages synth` for package verification and `make -C src/toolchain/targets/tests synth` for the host-free Prism suite when verification resumes. Windows has a synth launch target in its [platform Makefile](../../../src/toolchain/targets/windows/Makefile). Verify platform-specific launch, windowed and headless journeys through the appropriate scoped targets.
 
-Delivery requires the [acceptance matrix](../../specs/synth/SynthAdvanced.md#acceptance-contract-synth-advanced-verify) with real assets/models and public entry points. Verify Windows sandbox capabilities, keyboard accessibility, resize behavior and screenshots on every advertised host. Require a ten-minute maximum-workload run with zero starvation and callback allocation/lock instrumentation before claiming continuous playback. Record delivered capabilities and constraints in package and Prism documentation. Keep unverified milestones open.
+Delivery requires the [acceptance matrix](../../specs/synth/Synth.md#acceptance-contract-synth-advanced-verify) with real assets/models and public entry points. Verify Windows sandbox capabilities, keyboard accessibility, resize behavior and screenshots on every advertised host. Require a ten-minute maximum-workload run with zero starvation and callback allocation/lock instrumentation before claiming continuous playback. Record delivered capabilities and constraints in package and Prism documentation. Keep unverified milestones open.
 
 Resolve resampling quality thresholds, membrane/tube reference models, runtime and redistributable model selection, platform memory/performance limits and the hybrid training dataset with their named experiments before optimizing dependent paths. Numerical defaults remain testable starting points.
