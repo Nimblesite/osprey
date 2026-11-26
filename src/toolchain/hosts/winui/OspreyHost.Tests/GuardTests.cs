@@ -113,4 +113,36 @@ public sealed partial class GuardTests
     [InlineData("\"places\"")]
     public void TheHostNamesNoApplication(string word) =>
         Assert.DoesNotContain(HostFiles(), path => File.ReadAllText(path).Contains(word, StringComparison.OrdinalIgnoreCase));
+
+    // [WINUI-HOST-SELF-TEST] The harness kills a run only after its derived whole-journey budget: a
+    // stepless script's budget is 30 s, so a host that answers in about 3 s must pass under -Seconds 1.
+    [Fact]
+    public async Task TheSelfTestHarnessWaitsItsDerivedBudgetNotTheFloor()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "The self-test harness drives a Windows process");
+        var folder = Directory.CreateTempSubdirectory("osprey-self-test-").FullName;
+        try { await HarnessPassesInsideItsBudget(folder); }
+        finally { Directory.Delete(folder, recursive: true); }
+    }
+
+    static async Task HarnessPassesInsideItsBudget(string folder)
+    {
+        var host = Path.Combine(folder, "host.cmd");
+        File.WriteAllText(host, "@ping -n 4 127.0.0.1 >nul\r\n@exit /b 0\r\n");
+        var dll = Path.Combine(folder, "app.dll");
+        File.WriteAllText(dll, "");
+        var steps = Path.Combine(folder, "steps.json");
+        File.WriteAllText(steps, """{ "steps": [] }""");
+        var run = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(
+            Path.Combine(Environment.SystemDirectory, @"WindowsPowerShell\v1.0\powershell.exe"),
+            ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", Path.Combine(Framework.Host, "self-test.ps1"),
+             "-Exe", host, "-Dll", dll, "-Script", steps, "-Shots", Path.Combine(folder, "shots"), "-Seconds", "1", "-Headless"])
+        { RedirectStandardOutput = true, RedirectStandardError = true })!;
+        var cancel = TestContext.Current.CancellationToken;
+        var told = run.StandardOutput.ReadToEndAsync(cancel);
+        var failed = await run.StandardError.ReadToEndAsync(cancel);
+        Assert.True(run.WaitForExit(60_000), "The harness itself never finished");
+        Assert.DoesNotContain("did not finish", failed + await told, StringComparison.Ordinal);
+        Assert.True(run.ExitCode == 0, $"The harness failed a run inside its 30-second budget: {failed}");
+    }
 }
