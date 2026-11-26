@@ -88,3 +88,15 @@ callbackLifecycleCase () =
     errorCompleted = exitedCleanly (errorProbe, 1)
     checkAll "callback process lifecycle state" [outputCompleted, errorCompleted]
 test "callbacks accompany successful and failing process exits" callbackLifecycleCase
+
+(** A lambda callback that captures [tag] is a closure: the runtime must call it
+    with its environment, never jump into the closure cell as code. [BUILTIN-PROCESS-CLOSURE] *)
+closureCallbackCase () =
+    tag = "closure"
+    traced = \(_processID, eventType, data) => match eventType
+        3 => print "[${tag}] exit ${data}"
+        _ => print "[${tag}] ${trim data}"
+    completed = exitedCleanly (spawnProcess "echo from a capturing lambda" traced, 0)
+    failed = exitedCleanly (spawnProcess "exit 3" traced, 3)
+    checkAll "closure callbacks run with their captures" [completed, failed]
+test "lambda callbacks keep their captured environment" closureCallbackCase

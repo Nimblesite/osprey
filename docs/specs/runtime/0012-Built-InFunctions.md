@@ -968,6 +968,10 @@ fn processEventHandler(processID, eventType, data) = match eventType {
 let result = spawnProcess("echo 'Hello'", processEventHandler)
 ```
 
+### Function values as callbacks — [BUILTIN-PROCESS-CLOSURE]
+
+The callback may be any function value, including a lambda that captures its surroundings. A named function is passed as its code pointer; any other function value is passed as its closure, and the runtime calls the closure with its environment. The closure stays alive until `cleanupProcess` releases the handle, because the monitor thread may still call it. Before this, a lambda passed here was called as if it were plain code and the program crashed.
+
 ### `awaitProcess(processId: int) -> int`
 Waits for process completion and returns the exit code, or `-1` if the handle
 is outside the valid range or has no process.

@@ -233,14 +233,24 @@ fn callback_signature(
     named: &[NamedArgument],
 ) -> Option<Sig> {
     let mut sig = lookup(name)?;
-    if name == "httpListen"
-        && crate::expr::arg_exprs(args, named)
-            .get(1)
-            .is_some_and(|expr| closure_callback(cg, expr))
-    {
-        sig.cname = "http_listen_closure";
+    let closure = crate::expr::arg_exprs(args, named)
+        .get(1)
+        .is_some_and(|expr| closure_callback(cg, expr));
+    if let (Some(cname), true) = (closure_bridge(name), closure) {
+        sig.cname = cname;
     }
     Some(sig)
+}
+
+/// The runtime entry that calls an Osprey function VALUE (a closure cell) for a
+/// builtin whose second argument is a callback. A named function keeps the raw
+/// code-pointer entry. [BUILTIN-PROCESS-CLOSURE]
+fn closure_bridge(name: &str) -> Option<&'static str> {
+    match name {
+        "httpListen" => Some("http_listen_closure"),
+        "spawnProcess" => Some("spawn_process_with_closure"),
+        _ => None,
+    }
 }
 
 fn closure_callback(cg: &Codegen, expr: &Expr) -> bool {

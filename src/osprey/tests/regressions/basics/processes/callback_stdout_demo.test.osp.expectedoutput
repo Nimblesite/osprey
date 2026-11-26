@@ -37,5 +37,9 @@ Line 3
 
 [CALLBACK] Process 5 EXIT: 1
 ok 1 - callbacks accompany successful and failing process exits
-1..1
-# tests=1 passed=1 failed=0 skipped=0
+[closure] from a capturing lambda
+[closure] exit 0
+[closure] exit 3
+ok 2 - lambda callbacks keep their captured environment
+1..2
+# tests=2 passed=2 failed=0 skipped=0
