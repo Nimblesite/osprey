@@ -21,7 +21,7 @@ pub(super) fn check(
     let input = CompilationInput::script(
         input.display_path(),
         input.source().to_string(),
-        super::synthesize::reachable(backend),
+        super::synthesize::reachable(backend, &std::collections::BTreeSet::new()),
     );
     let native_probe = example.native_only && cli.target == "wasm32";
     validate(cli, &input, native_probe)?;
