@@ -1,10 +1,19 @@
 use super::*;
 
+/// A file of this repository, named relative to its root: its path, for a
+/// `file://` URI, and its text.
+fn repo_file(relative: &str) -> (PathBuf, String) {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../..")
+        .join(relative);
+    let source =
+        std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+    (path, source)
+}
+
 #[test]
 fn module_files_use_the_assembled_project_graph() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../..");
-    let path = root.join("src/osprey/examples/talon/backend/main.ospml");
-    let source = std::fs::read_to_string(&path).expect("read module example");
+    let (path, source) = repo_file("src/osprey/examples/talon/backend/main.ospml");
     let uri = format!("file://{}", path.display());
     let diagnostics = compute(&source, &uri, U16);
     assert_warnings(&diagnostics, &bank_warnings());
@@ -46,9 +55,7 @@ fn module_bearing_files_outside_project_roots_are_assembled_standalone() {
     // that graph, not check the raw AST and spray unknown identifiers. The
     // inferred implementations carry no redundant annotations, every export
     // is documented, and the `_` handler parameters leave nothing unused.
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../..");
-    let path = root.join("src/osprey/examples/talon/backend/test/accounts.test.ospml");
-    let source = std::fs::read_to_string(&path).expect("read module test suite");
+    let (path, source) = repo_file("src/osprey/examples/talon/backend/test/accounts.test.ospml");
     let diagnostics = compute(&source, &format!("file://{}", path.display()), U16);
     assert_warnings(&diagnostics, &[]);
     // The editor regression: a self-contained suite with no manifest above it
@@ -89,9 +96,7 @@ fn assert_code(source: &str, uri: &str, code: &str) {
 #[cfg(unix)]
 #[test]
 fn project_diagnostics_map_resolution_and_type_errors_to_the_open_file() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../..");
-    let main_path = root.join("src/osprey/examples/talon/backend/main.ospml");
-    let main = std::fs::read_to_string(&main_path).expect("read ML module example");
+    let (main_path, main) = repo_file("src/osprey/examples/talon/backend/main.ospml");
     let unresolved = main.replace(
         "namespace bank\n",
         "namespace bank\nimport \"missing/web\" as web\n",
