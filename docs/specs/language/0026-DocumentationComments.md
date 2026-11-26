@@ -159,9 +159,10 @@ own. Private declarations are not reported.
 
 ### Exported examples `[DOC-EXPORT-EXAMPLE-REQUIRED]`
 
-`--check` and the language server report `unexampled-export` while packages
-add examples. With `--check --warnings-as-errors`, it fails the check just
-like every other reported warning. The rule covers:
+`--check` and the language server report `unexampled-export` at information
+severity: the CLI labels it `info:` and the editor shows it as information, not
+a warning. It is not counted as a warning, so `--check --warnings-as-errors`
+still passes. The rule covers:
 
 - a documented exported function, value or extern whose comment has no
   `# Examples` section, or whose section holds no example fence, and
@@ -169,7 +170,7 @@ like every other reported warning. The rule covers:
 
 A type, module, namespace or signature is covered by the examples of the
 members that use it, so it is not reported. An undocumented export is reported
-once, as `undocumented-export`. The warning names the declaration with its
+once, as `undocumented-export`. The note names the declaration with its
 module path, for example `exported function `Api::triple` has no example`, and
 an operation as `Effect.operation` (`osprey-types/src/undocumented.rs`).
 

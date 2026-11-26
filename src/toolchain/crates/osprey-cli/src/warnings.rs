@@ -88,7 +88,10 @@ pub(crate) fn report(input: &CompilationInput, warnings: &[TypeWarning]) -> usiz
     if let Some(text) = render(input, &warnings) {
         eprintln!("{text}");
     }
-    warnings.len()
+    warnings
+        .iter()
+        .filter(|w| !osprey_types::is_info(w.rule))
+        .count()
 }
 
 /// The whole warning block, or `None` when there is nothing to say.
@@ -112,7 +115,7 @@ fn block(file: &str, listing: &Listing) -> String {
         .unwrap_or_default();
     let lines = listing
         .iter()
-        .map(|(gutter, message)| format!("  {gutter:>width$}  warning: {message}"))
+        .map(|(gutter, message)| format!("  {gutter:>width$}  {message}"))
         .collect::<Vec<_>>()
         .join("\n");
     format!("\n{file}\n{lines}\n")
@@ -123,10 +126,10 @@ fn group(input: &CompilationInput, warnings: &[TypeWarning]) -> BTreeMap<String,
     let mut grouped: BTreeMap<String, Listing> = BTreeMap::new();
     for warning in warnings {
         let (file, gutter) = locate(input, warning);
-        grouped
-            .entry(file)
-            .or_default()
-            .push((gutter, warning.message.clone()));
+        grouped.entry(file).or_default().push((
+            gutter,
+            format!("{}: {}", label(warning.rule), warning.message),
+        ));
     }
     grouped
 }
@@ -143,13 +146,31 @@ fn locate(input: &CompilationInput, warning: &TypeWarning) -> (String, String) {
     }
 }
 
-/// The closing line: how many warnings there are and which rules raised them.
+/// How a diagnostic of `rule` is labelled.
+fn label(rule: &str) -> &'static str {
+    if osprey_types::is_info(rule) {
+        "info"
+    } else {
+        "warning"
+    }
+}
+
+/// The closing line: how many warnings and notes there are and which rules raised them.
 fn summary(warnings: &[TypeWarning]) -> String {
     let rules: BTreeSet<&str> = warnings.iter().map(|w| w.rule).collect();
-    let plural = if warnings.len() == 1 { "" } else { "s" };
+    let infos = warnings
+        .iter()
+        .filter(|w| osprey_types::is_info(w.rule))
+        .count();
+    let count = warnings.len() - infos;
+    let plural = if count == 1 { "" } else { "s" };
+    let notes = if infos == 0 {
+        String::new()
+    } else {
+        format!(", {infos} info")
+    };
     format!(
-        "{} warning{plural} ({})",
-        warnings.len(),
+        "{count} warning{plural}{notes} ({})",
         rules.into_iter().collect::<Vec<_>>().join(", ")
     )
 }

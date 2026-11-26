@@ -20,6 +20,14 @@ pub const UNDOCUMENTED_EXPORT: &str = "undocumented-export";
 /// Shared rule identifier for an export whose documentation shows no example.
 pub const UNEXAMPLED_EXPORT: &str = "unexampled-export";
 
+/// Advice reported at information severity: shown, never counted as a
+/// warning, so `--warnings-as-errors` does not fail on it. Implements
+/// [DOC-EXPORT-EXAMPLE-REQUIRED].
+#[must_use]
+pub fn is_info(rule: &str) -> bool {
+    rule == UNEXAMPLED_EXPORT
+}
+
 /// Every undocumented or unexampled export in `program`, in source order.
 #[must_use]
 pub fn documentation_warnings(program: &Program) -> Vec<TypeWarning> {
