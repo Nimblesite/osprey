@@ -57,7 +57,7 @@ module HostedRequest {
         Error => stop(misdirected, "req.host")
     }
 
-    fn methodStage(method) = if listContains(allowedMethods, toUpperCase(method)) { Pass } else { stop(methodStatus, "req.method") }
+    fn methodStage(method) = if listContains(allowedMethods, method) { Pass } else { stop(methodStatus, "req.method") }
 
     fn uriByte(b) = b >= 33 && b < 127 && b != 92
     fn uriBytesOk(uri) = Bytes::everyByte(uri, uriByte)
@@ -68,13 +68,13 @@ module HostedRequest {
 
     fn digits(s) = byteLength(s) > 0 && Bytes::everyByte(s, Bytes::isDigit)
 
-    fn lengthHeaderOk(headers, body, maxBody) = match HostedHeaders::find(headers, "content-length") {
+    fn lengthHeaderOk(headers, body) = match HostedHeaders::find(headers, "content-length") {
         Error => true
-        Success { value } => digits(value) && byteLength(body) <= maxBody
+        Success { value } => digits(value) && (parseInt(value) ?: -1) == byteLength(body)
     }
 
     fn bodyStage(headers, incoming, policy) = if byteLength(incoming.body) > policy.maxBody { stop(bodyStatus, "req.body-size") }
-        else if !lengthHeaderOk(headers, incoming.body, policy.maxBody) { stop(badRequest, "req.content-length") }
+        else if !lengthHeaderOk(headers, incoming.body) { stop(badRequest, "req.content-length") }
         else { Pass }
 
     /// Credentialed requests: a present session cookie forces the exact

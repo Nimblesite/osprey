@@ -45,11 +45,16 @@ module RequestTests {
 
     fn shape() = checkAll("request: method, URI and body bounds", [
         verdict("TRACE", "/v1/health", "", "") == "405:req.method",
+        verdict("post", "/v1/packages", "", "") == "405:req.method",
         verdict("GET", "v1/health", "", "") == "400:req.uri",
         verdict("GET", "/v1/a b", "", "") == "400:req.uri",
         verdict("GET", "/${repeat("a", 2100) ?: ""}", "", "") == "414:req.uri",
         verdict("POST", "/v1/publish", "Origin: https://packages.example.test\r\nContent-Length: 12", repeat("a", 2000) ?: "") == "413:req.body-size",
-        verdict("POST", "/v1/publish", "Origin: https://packages.example.test\r\nContent-Length: 1a", "") == "400:req.content-length"
+        verdict("POST", "/v1/publish", "Origin: https://packages.example.test\r\nContent-Length: 1a", "") == "400:req.content-length",
+        verdict("POST", "/v1/packages", "Content-Length: 003", "猫") == "admitted",
+        verdict("POST", "/v1/packages", "Content-Length: 1", "猫") == "400:req.content-length",
+        verdict("POST", "/v1/packages", "Content-Length: 4", "abc") == "400:req.content-length",
+        verdict("POST", "/v1/packages", "Content-Length: 999999999999999999999999", "") == "400:req.content-length"
     ])
 
     fn credentialed() = checkAll("request: credentialed origin and CSRF chain", [

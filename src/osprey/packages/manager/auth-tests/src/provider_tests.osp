@@ -23,7 +23,7 @@ module ProviderTests {
     }
 
     fn stableIdentity(config) = match fixture(config, fixtureToken, 200,
-        "{\"id\":\"auth-subject\",\"email\":\"ignored@example.test\",\"identities\":[{\"provider\":\"github\",\"provider_id\":\"123456\"}],\"user_metadata\":{\"admin\":true,\"organization\":\"attacker\"}}") {
+        "{\"id\":\"auth-subject\",\"email\":\"ignored@example.test\",\"identities\":[{\"provider\":\"github\",\"identity_id\":\"identity-uuid\",\"id\":\"123456\"}],\"user_metadata\":{\"admin\":true,\"organization\":\"attacker\"}}") {
         Error { message } => check("verified provider identity", "ok", message)
         Success { value } => checkAll("authority uses immutable provider fields, never email or metadata", [
                 structuralEquals([value.authSubject, value.githubId], ["auth-subject", "123456"])
@@ -34,7 +34,7 @@ module ProviderTests {
             code(fixture(config, fixtureToken, 401, "{}")) == "auth.provider-rejected",
             code(fixture(config, fixtureToken, 200, "{\"id\":\"x\",\"identities\":[]}")) == githubIdentity,
             code(fixture(config, fixtureToken, 200, "{\"id\":\"x\",\"user_metadata\":{\"provider_id\":\"123\"}}")) == githubIdentity,
-            code(fixture(config, fixtureToken, 200, "{\"id\":\"x\",\"identities\":[{\"provider\":\"github\",\"provider_id\":\"1\"},{\"provider\":\"github\",\"provider_id\":\"2\"}]}")) == githubIdentity,
+            code(fixture(config, fixtureToken, 200, "{\"id\":\"x\",\"identities\":[{\"provider\":\"github\",\"id\":\"1\"},{\"provider\":\"github\",\"id\":\"2\"}]}")) == githubIdentity,
             code(fixture(config, fixtureToken, 200, "not-json")) == "auth.provider-json"
     ])
 
