@@ -68,7 +68,15 @@ fn configurationInjection() = check("libpq rejects whitespace overrides before h
             passfile: "/run/registry/pgpass", rootCertificate: "/run/registry/x\tsslmode=disable"
 }))
 
+fn mountedCredentials() = {
+    let cfg = Database::Connection { serviceFile: "/run/registry/config/db.conf", service: "registry", passfile: "/run/registry/secrets/.pgpass", rootCertificate: "/run/registry/ca.pem" }
+    let paths = ["/run/registry/", "/run/registry/../other/file", "/run/registry/ca/..", "/run/registry/./file", "/run/registry//file", "/run/registry/ca/"]
+    checkAll("canonical paths below the credential mount", [Database::configurationCode(cfg) == "", foldList(paths, true, fn(valid, path) => valid &&
+        Database::configurationCode(cfg { serviceFile: path }) == configurationRefused && Database::configurationCode(cfg { passfile: path }) == configurationRefused && deniedConfiguration(path) == configurationRefused)])
+}
+
 fn suite() = {
+    test("database: restrict credentials to mounted files", mountedCredentials)
     test("database: reject invalid context", rejectsContext)
     test("database: protocol binding rejects injection", binding)
     test("database: serializable transaction and context", transaction)

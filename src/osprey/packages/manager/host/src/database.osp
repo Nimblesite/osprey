@@ -58,7 +58,10 @@ module Database {
     fn serviceCode(text) = text != "" && Bytes::everyByte(text, serviceNameByte)
 
     fn mountedByte(b) = Bytes::isAlnumIn(b, [Bytes::slash, Bytes::dot, Bytes::underscore, Bytes::hyphen])
-    fn mountedPath(text) = startsWith(text, "/run/registry/") && Bytes::everyByte(text, mountedByte)
+    let mount = "/run/registry/"
+    fn mountedPath(text) = startsWith(text, mount) && byteLength(text) > byteLength(mount) && Bytes::everyByte(text, mountedByte)
+        && !endsWith(text, "/") && !contains(text, "//")
+        && foldList(split(text, "/") ?: [], true, fn(valid, part) => valid && part != "." && part != "..")
 
     /// Validate mounted connection references before installing the transport.
     export fn configurationCode(config: Connection) = if !serviceCode(config.service) || !mountedPath(config.serviceFile)
