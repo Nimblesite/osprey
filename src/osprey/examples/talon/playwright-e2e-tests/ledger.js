@@ -15,6 +15,9 @@ const BACKEND = path.join(__dirname, '..', 'backend');
 const OSPREY = path.join(BACKEND, '..', '..', '..', '..', '..', 'target', 'release', 'osprey');
 const READY = `${API}/api/accounts`;
 const PATIENCE_MS = 120_000;
+// The server answers as soon as it listens, then seeds its own ledger over HTTP and prints the
+// account table; this closing row is printed only after every seeded movement has landed.
+const SEEDED = '└────┴';
 
 async function answering() {
   try {
@@ -50,7 +53,7 @@ async function start() {
     if (running.child.exitCode === null && running.child.signalCode === null) running.child.kill('SIGTERM');
   };
   const deadline = Date.now() + PATIENCE_MS;
-  while (!(await answering())) {
+  while (!running.output().includes(SEEDED) || !(await answering())) {
     if (running.child.exitCode !== null || running.child.signalCode !== null || Date.now() > deadline) {
       await stop();
       throw new Error(`The Talon server never answered: ${running.output()}`);
