@@ -1,58 +1,54 @@
-# Osprey Native design system — "Drafting Studio"
+# Osprey Native design system — "Luminous Flight"
 
-Osprey Native looks like an architectural drafting studio: crisp daylight paper and deep carbon graphite, engineered hairlines, tactile surfaces, and two distinct accent channels that mirror the framework's core promise — **Native Controls** and **FerroUI GPU Canvas** — without forcing a choice between them.
+Osprey Native looks like a modern flagship cross-platform UI framework — inspired by the clarity, product-first elegance, and airy visual polish of **flutter.dev** and **reactnative.dev**. Pure white daylight surfaces, soft atmospheric gradients, crisp elevated app screenshots and playable videos above the fold, and a clean dark mode that adapts automatically to `prefers-color-scheme`.
 
-Start every page and demo with [the Osprey Native messaging guide](../../../docs/messaging/osprey-native.md). This design system is intentionally independent of the core Osprey language site (`#0c1325` navy / `#77d7f4` cyan) so Osprey Native can break out into its own repository with a distinct visual identity.
+Start every page and demo with [the Osprey Native messaging guide](../../../docs/messaging/osprey-native.md). This design system is completely independent of the core Osprey language site (`#0c1325` navy / `#77d7f4` cyan) so Osprey Native can break out into its own repository cleanly.
 
-## Color and surface architecture
+## Brand mark & favicon
 
-Osprey Native ships both **light** and **dark** modes from the first byte (`<meta name="color-scheme" content="light dark">` and `:root { color-scheme: light dark; }`), using CSS `light-dark()` with a `@media (prefers-color-scheme: dark)` fallback and explicit `@media (forced-colors: active)` system-color rules.
+The Osprey Native mark (`src/assets/brand/logo.svg` and `src/assets/brand/favicon.svg`) is a clean geometric banking wing formed from two overlapping translucent planes — **Electric Native Blue** (`#0265dc`) and **FerroUI Violet** (`#6d28d9`) — symbolizing real native controls and GPU canvas rendering flying as one.
+
+- Deployed as SVG favicon (`/assets/brand/favicon.svg`), 32×32 PNG (`/assets/brand/favicon-32.png`), 180×180 Apple Touch Icon (`/assets/brand/apple-touch-icon.png`), and `/favicon.ico` (generated at build time from `favicon.svg`).
+- Navbar and footer render the mark beside plain-text **Osprey Native** — never a boxed text monogram.
+
+## Color system (Light-first with automatic Dark Mode)
+
+Declares `<meta name="color-scheme" content="light dark">` and `:root { color-scheme: light dark; }`, using `light-dark()` with `@media (prefers-color-scheme: dark)` fallbacks and `@media (forced-colors: active)` overrides.
 
 | Role | Token | Light value | Dark value | Use |
 | --- | --- | --- | --- | --- |
-| Page canvas | `--surface` | `#f7f5f0` | `#111317` | Full viewport background |
-| Elevated surface | `--surface-raised` | `#ffffff` | `#181c22` | Cards, panels, showcase frames |
-| Inset surface | `--surface-inset` | `#edeae2` | `#0b0d10` | Code blocks, accessibility trees, subtle wells |
-| Primary ink | `--ink` | `#14171d` | `#f2f4f7` | Headings, body copy, primary controls (≥12:1) |
-| Secondary ink | `--ink-muted` | `#4a5260` | `#a8b0be` | Captions, metadata, secondary descriptions (≥5.8:1) |
-| Hairline border | `--border` | `#c8c4b8` | `#343b46` | Structural dividers and card boundaries |
-| Interactive border | `--border-strong` | `#747b86` | `#808998` | Inputs, buttons, focusable wrappers (≥3:1 non-text) |
-| Primary accent (GPU Canvas) | `--accent-canvas` | `#b83915` | `#ff7a4d` | Primary CTA, FerroUI / GPU Canvas badges, active tab underlines (≥4.5:1) |
-| Secondary accent (Native) | `--accent-native` | `#184fb8` | `#6ea8fe` | SwiftUI / WinUI / Android badges, native-mode highlights (≥4.5:1) |
-| Verified accent (A11y / Tests) | `--accent-verified` | `#0d6e4b` | `#3dd69d` | Accessibility tree nodes, passing `@osprey/uitest` assertions, signals (≥4.5:1) |
-| On-accent ink | `--on-accent` | `#ffffff` | `#111317` | Text on filled primary CTA buttons |
+| Primary canvas | `--surface` | `#ffffff` | `#0d1117` | Main viewport & alternating white bands |
+| Tinted band | `--surface-alt` | `#f4f7fb` | `#121821` | Soft alternating showcase bands |
+| Elevated surface | `--surface-raised` | `#ffffff` | `#161d27` | Floating cards, code frames, blog cards |
+| Code canvas | `--surface-code` | `#0f172a` | `#0a0e14` | Always-crisp dark code editor window |
+| Primary ink | `--ink` | `#0f172a` | `#f0f6fc` | Display headings & primary text (≥14:1) |
+| Secondary ink | `--ink-muted` | `#475569` | `#9fb0c7` | Subtitles, body copy, captions (≥5.7:1) |
+| Subtle hairline | `--border` | `#e2e8f0` | `#263142` | Clean 1px section/card borders |
+| Native Blue (Primary) | `--brand-native` | `#0265dc` | `#4da3ff` | Primary pill CTA, native-control highlights, links |
+| FerroUI Violet | `--brand-canvas` | `#6d28d9` | `#a78bfa` | GPU canvas highlights, gradient accent pair |
+| Signal Emerald | `--brand-signal` | `#059669` | `#34d399` | Signals, enforced accessibility, passing tests |
 
-### Accessibility color rules
+### Visual discipline
 
-- **Never use color alone** (WCAG 1.4.1): every status, rendering mode, and comparison cell pairs color with a text label, symbol, or geometric indicator.
-- **Forced Colors Mode**: active tab underlines use `border-block-end` on a `::after` pseudo-element (never `box-shadow` or background fills alone), and focus rings use `outline` with `outline-offset: 3px`.
-- **No dynamic lightness-only OKLCH shifts**: use predefined tokens or `color-mix(in oklab, ...)` so colors stay in gamut without hue drift.
+- **Product first, never boxes first:** real flagship app screenshots (Prism Synth/DAW, Osprey Agent, Windows Storage, Issue Inbox iOS/Android, Talon Bank, Sherbet Signal) and playable MP4 videos with posters and WebVTT captions carry the visual weight. Never showcase toy counter or boids demos on the homepage.
+- **No pill spam or dashed borders:** use generous whitespace (`5.5rem`–`6.5rem` section padding), soft realistic elevation shadows (`0 24px 60px rgba(15, 23, 42, 0.10)`), rounded `16px–24px` media frames, and subtle blue-to-violet ambient glow behind device stages.
+- **Accessible by default:** ≥4.5:1 text contrast, ≥3:1 non-text contrast, never color alone (WCAG 1.4.1), `:focus-visible` outlines with `3px` offset, `prefers-reduced-motion` respected, and zero horizontal overflow at `375px` and `1440px`.
 
-## Typography
+## Typography & layout
 
-- **Display and UI prose**: `"Instrument Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif`
-- **Code, signals, and accessibility trees**: `"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`
-- **Scale**: fluid `clamp()` display headline (`clamp(2.25rem, 4.5vw, 3.75rem)`, weight `700`, tracking `-0.03em`, line-height `1.08`); section headings `clamp(1.65rem, 2.8vw, 2.35rem)` (weight `650`, tracking `-0.02em`); body `1.0625rem` (line-height `1.62`, max measure `68ch` in `.prose` blocks).
-- **Hierarchy**: single `<h1>` per page (skip-link target with `tabindex="-1"`), strictly sequential `<h2>` → `<h3>` headings, never `<div>` styled as headings.
+- **Sans**: `"Plus Jakarta Sans", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif`
+- **Mono**: `"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`
+- **Display H1**: `clamp(2.6rem, 5.2vw, 4.35rem)`, weight `800`, tracking `-0.035em`, line-height `1.06`.
+- **Section H2**: `clamp(1.85rem, 3.2vw, 2.75rem)`, weight `750`, tracking `-0.025em`, line-height `1.12`.
+- **Container**: `1200px` max width (`75rem`), 8px spacing rhythm, `.prose`-prefixed editorial classes, CSS budget ≤ 1,800 LOC (target ~1,000 LOC), no Tailwind, content-hashed CSS/JS assets (`[WEBSITE-ASSET-VERSIONS]`).
 
-## Layout, grid, and CSS budget
+## Page architecture
 
-- **Rhythm**: 8px spacing unit (`--space-1: 0.5rem` through `--space-10: 5rem`), 1240px max container width, 24px gutters.
-- **Prose convention**: editorial and documentation copy uses `.prose`-prefixed classes (`prose-section`, `prose-lead`, `prose-card`, `prose-grid`, `prose-callout`).
-- **Budget**: total authored CSS must stay well below 1,800 LOC (target ≤ 900 LOC across `tokens.css`, `base.css`, `components.css`, and `prose.css`). No Tailwind or utility frameworks.
-- **Asset versioning (`[WEBSITE-ASSET-VERSIONS]`)**: every site-local CSS and JS URL carries a build-generated `?v=<12-char-sha256>` content hash.
-- **Touch targets**: all interactive controls enforce `min-block-size: 2.5rem` (`40px`, expanding to `44px` on `@media (pointer: coarse)`).
-
-## Signature components
-
-1. **Dual-Engine Hero & Mode Toggle**: shows the same Osprey Native app rendered via **Native Platform Controls** (SwiftUI / WinUI / Android) and **FerroUI GPU Canvas** (GPUI) side by side, making "not either/or" immediately tangible.
-2. **Accessible Tabbed Switchers (`focusgroup="tablist nomemory"`)**: used for the **Syntax Flavor Switcher** (Default `.osp`, ML `.ospml`, Python flavor, TypeScript flavor, plus Dart & Kotlin roadmap) and the **Rendering Mode Inspector**. Uses `aria-selected`, `focusgroupstart`, `role="tabpanel"`, `hidden="until-found"` with `beforematch` sync, border-drawn `::after` underline, and an inner wrapper inside each panel so hidden panels never render empty padding strips.
-3. **Interactive Accessibility Tree & `@osprey/uitest` Explorer**: lets visitors inspect a live UI machine's `Accessible` nodes (`Pressable`, `Slidable`, `Popup`, `MenuItem`), click a control label, and see the exact headless `@osprey/uitest` assertion and pointer event it triggers.
-4. **Responsive Comparison Matrix**: semantic `<table>` with `<caption>`, `<th scope="col">`, `<th scope="row">`, sticky headers, keyboard-scrollable `tabindex="0" role="region" aria-labelledby`, and a `@container (width < 640px)` stacked card layout with CSS variable label injection.
-5. **Verified Platform Gallery**: real captures from Windows (WinUI), macOS (SwiftUI & FerroUI GPUI), iOS (SwiftUI), Android (native views), and Web (WebAssembly), each in `<figure>`/`<figcaption>` with explicit `width`/`height` to prevent CLS.
-
-## Motion and resilience
-
-- All transitions respect `@media (prefers-reduced-motion: reduce)` by disabling transforms and transitions immediately.
-- Content, navigation, code samples, and comparison tables remain readable and usable with JavaScript disabled.
-- Every interactive control has a visible `:focus-visible` ring (`3px solid` with `3px` offset) and zero horizontal overflow at 375px mobile and 1440px desktop.
+1. **Floating translucent navbar** with geometric Osprey Native SVG mark, concise links, and clean Light/Dark/Auto switcher.
+2. **Product-first Hero (above the fold)**: centered headline with blue-to-violet gradient emphasis, 2-line pitch, rounded pill CTAs, and an overlapping **multi-device stage** showcasing **Prism Synth (macOS FerroUI)** flanked by **Issue Inbox on iOS (SwiftUI)** and **Issue Inbox on Android (Native Views)** over a soft luminous aura.
+3. **Interactive Dual-Engine Showcase**: switch seamlessly between **Native Platform Controls** (Windows Storage WinUI, Osprey Agent SwiftUI, Talon Bank Web) and **FerroUI GPU Canvas** (Prism DAW playable video, Prism Spectral patch, Sherbet Signal GPUI).
+4. **Playable App Films**: crisp 16:9 native `<video controls>` showcases for **Prism DAW** and **Osprey Agent** with posters and English WebVTT captions.
+5. **Code-Beside-App + Syntax Flavor Tabs**: ReactNative.dev-style dark code window (`focusgroup="tablist nomemory"`, `hidden="until-found"`) paired with **Signals from the ground up** and **Talon Bank**.
+6. **Accessibilitymaxxing & `@osprey/uitest`**: playable `@osprey/uitest` video beside a clean interactive Accessibility Tree Inspector.
+7. **Framework Comparison Matrix**: responsive `@container` table comparing Osprey Native, Compose Multiplatform (CMP), Flutter, and React Native, plus 3 clean highlight columns explaining where Osprey Native pulls ahead of CMP.
+8. **Editorial Blog Grid**: 3-column card grid on the homepage and dedicated `/blog/` archive.

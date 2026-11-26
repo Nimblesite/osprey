@@ -15,6 +15,8 @@ const MIME = {
   ".webp": "image/webp",
   ".jpg": "image/jpeg",
   ".svg": "image/svg+xml",
+  ".mp4": "video/mp4",
+  ".vtt": "text/vtt; charset=utf-8",
 };
 
 export function startServer(listenPort = port) {
@@ -31,7 +33,23 @@ export function startServer(listenPort = port) {
       return;
     }
     const ext = path.extname(target).toLowerCase();
-    res.writeHead(200, { "Content-Type": MIME[ext] || "application/octet-stream" });
+    const contentType = MIME[ext] || "application/octet-stream";
+    const stat = fs.statSync(target);
+    const range = req.headers.range;
+    if (range && ext === ".mp4") {
+      const [startStr, endStr] = range.replace(/bytes=/, "").split("-");
+      const start = parseInt(startStr, 10);
+      const end = endStr ? parseInt(endStr, 10) : stat.size - 1;
+      res.writeHead(206, {
+        "Content-Range": `bytes ${start}-${end}/${stat.size}`,
+        "Accept-Ranges": "bytes",
+        "Content-Length": end - start + 1,
+        "Content-Type": contentType,
+      });
+      fs.createReadStream(target, { start, end }).pipe(res);
+      return;
+    }
+    res.writeHead(200, { "Content-Type": contentType, "Content-Length": stat.size });
     fs.createReadStream(target).pipe(res);
   });
 

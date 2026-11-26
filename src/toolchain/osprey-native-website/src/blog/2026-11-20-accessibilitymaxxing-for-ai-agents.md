@@ -9,11 +9,11 @@ author: "Christian Findlay"
 category: "Accessibility & Testing"
 badgeClass: "badge-verified"
 readingTime: 6
-image: /assets/images/macos-painting.png
-imageAlt: "Osprey Painting running on macOS GPU canvas"
-imageWidth: 3128
-imageHeight: 2122
-imageCaption: "GPU-rendered scenes still expose every interactive control with a typed role, bounds, and label."
+image: /assets/images/chromecast-player.webp
+imageAlt: "Sherbet Signal casting player rendered on GPUI with accessible play, volume, and receiver controls"
+imageWidth: 868
+imageHeight: 1114
+imageCaption: "Sherbet Signal on GPUI: every control on the GPU canvas exposes a typed role, bounds, and live label to AccessKit and @osprey/uitest."
 ---
 
 Accessibility is usually treated as a late audit: sprinkle ARIA attributes or semantics modifiers onto finished screens and hope nothing breaks on the next refactor. That fails screen reader users — and it also forces AI agents into brittle screenshot-clicking loops.

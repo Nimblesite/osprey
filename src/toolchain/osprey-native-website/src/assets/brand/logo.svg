@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <linearGradient id="on-wing-blue" x1="6" y1="8" x2="54" y2="56" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0ea5e9"/>
+      <stop offset="100%" stop-color="#0265dc"/>
+    </linearGradient>
+    <linearGradient id="on-wing-violet" x1="18" y1="18" x2="58" y2="58" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#6d28d9"/>
+      <stop offset="100%" stop-color="#0265dc"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="16" fill="#0f172a"/>
+  <!-- Upper wing plane: Native Platform Controls -->
+  <path d="M12 31.5L36.5 11H51L23.5 34.5L12 31.5Z" fill="url(#on-wing-blue)"/>
+  <!-- Lower overlapping wing plane: FerroUI GPU Canvas -->
+  <path d="M22 36L42.5 19H53L32.5 38.5L47 52H34.5L22 36Z" fill="url(#on-wing-violet)"/>
+  <!-- Crisp intersection highlight -->
+  <path d="M22 36L32.5 38.5L38 33.2L27.5 31L22 36Z" fill="#7dd3fc" fill-opacity="0.85"/>
+</svg>

@@ -83,7 +83,7 @@ suite("Module Explorer [EDITOR-MODULE-EXPLORER]", () => {
   test("the real compiler's code tree: namespace, module and members with coloured icons and the editor's hover, across flavors", async () => {
     const root = project({
       "osprey.toml": MANIFEST,
-      "src/main.ospml": 'namespace app\n\nmodule Outer\n    export module Inner\n        export one = 1\n    export keep x = x\n\neffect Counter\n    increment : int => Unit\n\nlimit = 3\n\nprint "${Outer::Inner::one} ${Outer::keep limit}"\n',
+      "src/main.ospml": '/// The whole app lives here.\nnamespace app\n\n/// Outer groups the inner values.\nmodule Outer\n    export module Inner\n        export one = 1\n    export keep x = x\n\neffect Counter\n    increment : int => Unit\n\nlimit = 3\n\nprint "${Outer::Inner::one} ${Outer::keep limit}"\n',
       "src/sub/deep.osp": "namespace app;\n\nmodule Deep {\n    export fn three() = 3\n}\n",
       "src/more.osp": "namespace app;\n\n\nmodule Extra {\n    export fn two() = 2\n    export type Shape = Circle | Square\n}\n\nextern fn strlen(s: string) -> int\n\nlet total = 0\n",
     });
@@ -133,7 +133,7 @@ suite("Module Explorer [EDITOR-MODULE-EXPLORER]", () => {
     assert.deepStrictEqual(icon(await child(inner, "one")), ["symbol-variable", "symbolIcon.variableForeground"]);
     assert.deepStrictEqual(icon(await child(outer, "keep")), ["symbol-function", "symbolIcon.functionForeground"]);
     assert.deepStrictEqual(icon(await child(mainApp, "Counter")), ["symbol-event", "symbolIcon.eventForeground"]);
-    assert.strictEqual((await child(mainApp, "Counter")).location?.line, 8);
+    assert.strictEqual((await child(mainApp, "Counter")).location?.line, 10);
     assert.strictEqual(tree.getTreeItem(await child(inner, "one")).collapsibleState, vscode.TreeItemCollapsibleState.None);
 
     const extra = await child(moreApp, "Extra");
@@ -197,7 +197,7 @@ suite("Module Explorer [EDITOR-MODULE-EXPLORER]", () => {
       assert.ok(titleBar.some((entry: { command: string; when: string }) => entry.command === command && entry.when.includes(when)),
         `${command} is a title-bar button shown when ${when}`);
     }
-    for (const [scope, name, line] of [[outer, "keep", 5], [extra, "two", 4], [mainApp, "limit", 10]] as const) {
+    for (const [scope, name, line] of [[outer, "keep", 7], [extra, "two", 4], [mainApp, "limit", 12]] as const) {
       const member = await child(scope, name);
       const document = await vscode.workspace.openTextDocument(member.location?.file ?? "");
       const at = new vscode.Position(line, document.lineAt(line).text.indexOf(name));
@@ -205,8 +205,24 @@ suite("Module Explorer [EDITOR-MODULE-EXPLORER]", () => {
       const expected = editor.flatMap((hover) => hover.contents)
         .map((part) => (typeof part === "string" ? part : part.value)).join("\n\n---\n\n");
       assert.ok(expected.includes(name), `the editor hovers ${name}: ${expected}`);
-      const resolved = await tree.resolveTreeItem(tree.getTreeItem(member), member);
+      const item = tree.getTreeItem(member);
+      // VS Code resolves only what getTreeItem left undefined, so a preset tooltip would hide the editor's hover.
+      assert.strictEqual(item.tooltip, undefined, `${name} leaves its tooltip for the editor's hover`);
+      const resolved = await tree.resolveTreeItem(item, member);
       assert.strictEqual((resolved.tooltip as vscode.MarkdownString | undefined)?.value, expected, name);
+    }
+    // Namespaces and modules hover as the editor does at their names, with their `///` docs.
+    for (const [scope, line, words] of [[mainApp, 1, "The whole app lives here."], [outer, 4, "Outer groups the inner values."]] as const) {
+      const document = await vscode.workspace.openTextDocument(scope.location?.file ?? "");
+      const at = new vscode.Position(line, document.lineAt(line).text.indexOf(scope.label));
+      const editor = await vscode.commands.executeCommand<vscode.Hover[]>("vscode.executeHoverProvider", document.uri, at);
+      const expected = editor.flatMap((hover) => hover.contents)
+        .map((part) => (typeof part === "string" ? part : part.value)).join("\n\n---\n\n");
+      assert.ok(expected.includes(words), `the editor hovers ${scope.label} with its docs: ${expected}`);
+      const item = tree.getTreeItem(scope);
+      assert.strictEqual(item.tooltip, undefined, `${scope.label} leaves its tooltip for the editor's hover`);
+      const resolved = await tree.resolveTreeItem(item, scope);
+      assert.strictEqual((resolved.tooltip as vscode.MarkdownString | undefined)?.value, expected, scope.label);
     }
 
     assert.deepStrictEqual(labels(await tree.getChildren(sources)), [path.join("src", "main.ospml"), path.join("src", "more.osp"), path.join("src", "sub", "deep.osp")]);
