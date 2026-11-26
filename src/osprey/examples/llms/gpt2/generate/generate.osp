@@ -53,8 +53,7 @@ fn run(prompt, count) = {
     let w = Model::loadWeights()
     let ids = Tokenizer::encode(bpe, prompt)
     let t = listLength(ids)
-    print("gpt2 (124M) on ${Model::device()} — ${listLength(bpe.merges)} merges, ${intDiv(Model::size(w.wte), width)} vocabulary rows, ${layerCount} layers")
-    print("prompt: ${prompt}\ntokens:${Tokenizer::idsText(ids)}")
+    print("gpt2 (124M) on ${Model::device()} — ${listLength(bpe.merges)} merges, ${intDiv(Model::size(w.wte), width)} vocabulary rows, ${layerCount} layers\nprompt: ${prompt}\ntokens:${Tokenizer::idsText(ids)}")
     let out = match count < 1 { true => ids  false => continuation(w, ids, Model::forward(w, ids, t), t, count) }
     print("generated ${listLength(out) - listLength(ids)} tokens\n${Tokenizer::decode(bpe, out)}")
 }

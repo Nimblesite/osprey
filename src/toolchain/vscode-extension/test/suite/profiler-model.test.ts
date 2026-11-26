@@ -15,6 +15,7 @@ import {
   type SpeedscopeFile,
   type SpeedscopeProfile,
 } from "../../client/src/profiler/flame-model";
+import { present } from "./osprey-test-env";
 
 const FRAMES = [
   { name: "main", file: "/w/fib.osp", line: 10 },
@@ -56,7 +57,7 @@ suite("flame-model parseSpeedscope", () => {
   test("accepts a valid sampled document", () => {
     const parsed = parseSpeedscope(JSON.stringify(DOC));
     assert.ok(parsed.ok);
-    assert.strictEqual(parsed.value.profiles[0].samples.length, 6);
+    assert.strictEqual(present(parsed.value.profiles[0], "the sampled profile").samples.length, 6);
   });
 
   test("rejects invalid JSON, missing frames, and missing profiles", () => {
@@ -211,10 +212,10 @@ suite("flame-model colors", () => {
     assert.ok(isOspreySource("/w/a.osp") && isOspreySource("/w/a.ospml"));
     assert.ok(!isOspreySource("/usr/lib/libc.dylib") && !isOspreySource(""));
     assert.strictEqual(
-      colorsFor([{ name: "runtime", file: "/usr/lib/libc.dylib" }])[0],
+      present(colorsFor([{ name: "runtime", file: "/usr/lib/libc.dylib" }])[0], "the runtime colour"),
       "hsl(215, 12%, 58.0%)",
     );
-    assert.ok(colorsFor(FRAMES)[1].startsWith("hsl(80.0,"));
+    assert.ok(present(colorsFor(FRAMES)[1], "the fib colour").startsWith("hsl(80.0,"));
   });
 
   test("frame colors are deterministic and identity-stable under reordering", () => {
@@ -231,13 +232,13 @@ suite("flame-model colors", () => {
       "all four frames distinct",
     );
     assert.ok(
-      colors[2].startsWith("hsl(215, 12%"),
+      present(colors[2], "the memcpy colour").startsWith("hsl(215, 12%"),
       "runtime frame is gray-blue",
     );
   });
 
   test("frames without a file rank as runtime", () => {
-    assert.ok(colorsFor([{ name: "anon" }])[0].startsWith("hsl(215"));
+    assert.ok(present(colorsFor([{ name: "anon" }])[0], "the anonymous frame colour").startsWith("hsl(215"));
   });
 
   // Two frames can share a file AND a name -- the same function inlined at two
@@ -316,18 +317,20 @@ suite("flame-model buildFlameModel", () => {
 
   test("assembles frames with colors and defaults for missing file/line", () => {
     assert.strictEqual(model.frames.length, 4);
-    assert.strictEqual(model.frames[1].name, "fib");
-    assert.strictEqual(model.frames[1].line, 3);
+    const fib = present(model.frames[1], "the fib frame");
+    assert.strictEqual(fib.name, "fib");
+    assert.strictEqual(fib.line, 3);
     const anon = buildFlameModel({
       shared: { frames: [{ name: "anon" }] },
       profiles: [{ ...PROFILE, samples: [[0]], weights: [1] }],
     });
-    assert.strictEqual(anon.frames[0].file, "");
-    assert.strictEqual(anon.frames[0].line, 0);
+    const anonymous = present(anon.frames[0], "the anonymous frame");
+    assert.strictEqual(anonymous.file, "");
+    assert.strictEqual(anonymous.line, 0);
   });
 
   test("fibers carry both layouts, depths, totals, and stats", () => {
-    const fiber = model.fibers[0];
+    const fiber = present(model.fibers[0], "the main fiber");
     assert.strictEqual(fiber.name, "main");
     assert.strictEqual(fiber.totalWeight, 16);
     assert.strictEqual(fiber.sampleCount, 6);

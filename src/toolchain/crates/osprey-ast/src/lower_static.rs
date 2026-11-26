@@ -404,11 +404,7 @@ fn parameter(name: &str) -> Parameter {
 }
 
 pub(crate) fn call(name: &str, arguments: Vec<Expr>) -> Expr {
-    Expr::Call {
-        function: Box::new(Expr::Identifier(name.to_owned())),
-        arguments,
-        named_arguments: Vec::new(),
-    }
+    Expr::call(Expr::Identifier(name.to_owned()), arguments)
 }
 
 /// The arm body with the operation's arguments bound to the arm's parameters,

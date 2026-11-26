@@ -22,7 +22,11 @@
   "deslop.embedding.mode": "auto",
   "deslop.configPath": ".deslop.toml",
   "osprey.diagnostics.exclude": [
-    "**/failscompilation/**"
+    "**/failscompilation/**",
+    "**/sample-registry/**",
+    "**/packages/manager/e2e/consumer/**",
+    "**/fixtures/manifests/**",
+    "**/osprey-types/src/prelude/errors.osp"
   ],
   "claudeCode.initialPermissionMode": "bypassPermissions",
   "claudeCode.allowDangerouslySkipPermissions": true

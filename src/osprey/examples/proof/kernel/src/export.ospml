@@ -78,7 +78,7 @@ module Export
 
     shaped (json) = match json
         JsonObject members => membersFit (json, listLength members, wantedMembers (indexed json))
-        other => Error(message = "not an object")
+        _ => Error(message = "not an object")
 
     indexed (json) = ExportJson::hasField (json, "in") || ExportJson::hasField (json, "il") || ExportJson::hasField (json, "ie")
 
@@ -104,15 +104,15 @@ module Export
     (** The line's kind: the one member besides its index member. *)
     kindOf (json, skip) = match json
         JsonObject members => kindScan (members, skip)
-        other => Error(message = "not an object")
+        _ => Error(message = "not an object")
 
     kindScan (members, skip) = match members
         [] => Error(message = "no kind")
         [first, ...rest] => kindPick (first, rest, skip)
 
     kindPick (first, rest, skip) = match first
-        JsonMember name value => kindNamed (name, rest, skip)
-        other => Error(message = "no kind")
+        JsonMember name _ => kindNamed (name, rest, skip)
+        _ => Error(message = "no kind")
 
     kindNamed (name, rest, skip) = match name == skip
         true => kindScan (rest, skip)
@@ -349,8 +349,8 @@ module Export
         quotientDeclaration (reading, data, tag)
 
     quotientShape raw = match raw
-        JsonObject members => Terms::upon (quotientMembers members, \ok => quotientCount (raw, listLength members))
-        other => Error(message = "quotient declaration is not an object")
+        JsonObject members => Terms::upon (quotientMembers members, \_ok => quotientCount (raw, listLength members))
+        _ => Error(message = "quotient declaration is not an object")
 
     quotientCount (raw, count) = match count == 4
         true => Success(value = raw)
@@ -359,10 +359,10 @@ module Export
     quotientMembers members = match members
         [] => Success(value = true)
         [entry, ...rest] => match entry
-            JsonMember name value => match listContains (["kind", "levelParams", "name", "type"], name)
+            JsonMember name _ => match listContains (["kind", "levelParams", "name", "type"], name)
                 true => quotientMembers rest
                 false => Error(message = "unsupported quotient member: ${name}")
-            other => Error(message = "invalid quotient member")
+            _ => Error(message = "invalid quotient member")
 
     quotientKind kind = match kind
         "type" => Success(value = QuotType)

@@ -1,0 +1,88 @@
+/* Northwind Studio: the developer's styles. Tokens first; light and dark from one table. */
+:root {
+  --bg: #fbfbfd; --surface: #ffffff; --ink: #10131c; --ink-soft: #3d4354; --muted: #6b7286;
+  --line: #e6e8ef; --accent: #5b4cf5; --accent-soft: #eeecff; --shadow: 0 1px 2px rgb(16 19 28 / 6%), 0 8px 24px rgb(16 19 28 / 6%);
+  --radius: 16px; --measure: 68ch; --wide: 1160px;
+  --sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --serif: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #0b0d12; --surface: #12151d; --ink: #eef0f6; --ink-soft: #c2c7d6; --muted: #8a91a6;
+    --line: #232836; --accent: #8d80ff; --accent-soft: #1f1b3d; --shadow: 0 1px 2px rgb(0 0 0 / 40%), 0 12px 32px rgb(0 0 0 / 35%); }
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 17px/1.65 var(--sans); -webkit-font-smoothing: antialiased; }
+a { color: inherit; }
+img { display: block; max-width: 100%; }
+
+/* Navigation */
+.masthead { position: sticky; top: 0; z-index: 10; background: color-mix(in srgb, var(--bg) 82%, transparent); backdrop-filter: saturate(160%) blur(14px); border-bottom: 1px solid var(--line); }
+.nav { max-width: var(--wide); margin: 0 auto; padding: 14px 24px; display: flex; align-items: center; gap: 24px; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; letter-spacing: -.01em; text-decoration: none; }
+.brand img { border-radius: 8px; }
+.links { display: flex; gap: 4px; margin: 0 0 0 auto; padding: 0; list-style: none; }
+.links a { display: block; padding: 6px 14px; border-radius: 999px; color: var(--ink-soft); text-decoration: none; font-size: 15px; font-weight: 500; transition: background .15s, color .15s; }
+.links a:hover { background: var(--accent-soft); color: var(--ink); }
+.links a[aria-current="page"] { background: var(--ink); color: var(--bg); }
+
+/* Layout */
+main { max-width: var(--wide); margin: 0 auto; padding: 0 24px 96px; }
+.section { margin-top: 72px; }
+.section-title { font-size: 14px; text-transform: uppercase; letter-spacing: .12em; color: var(--muted); margin: 0 0 20px; }
+.eyebrow { margin: 0 0 12px; font-size: 13px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--accent); }
+.eyebrow a { text-decoration: none; }
+.meta { margin: 0; font-size: 14px; color: var(--muted); }
+
+/* Hero and featured post */
+.hero { padding: 96px 0 24px; max-width: 820px; }
+.hero h1 { margin: 0; font-size: clamp(40px, 6vw, 68px); line-height: 1.04; letter-spacing: -.035em; }
+.lead { margin-top: 20px; font-size: 20px; color: var(--ink-soft); max-width: 60ch; }
+.lead p { margin: 0; }
+.button { display: inline-block; margin-top: 12px; padding: 12px 22px; border-radius: 999px; background: var(--accent); color: #fff; font-weight: 600; text-decoration: none; box-shadow: var(--shadow); transition: transform .15s; }
+.button:hover { transform: translateY(-1px); }
+.featured { margin-top: 56px; }
+.featured a { display: grid; grid-template-columns: 1.3fr 1fr; gap: 40px; align-items: center; text-decoration: none; padding: 16px; border: 1px solid var(--line); border-radius: calc(var(--radius) + 8px); background: var(--surface); box-shadow: var(--shadow); }
+.featured img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: var(--radius); }
+.featured h2 { margin: 0 0 12px; font-size: clamp(26px, 3vw, 36px); line-height: 1.15; letter-spacing: -.02em; }
+
+/* Blog grid */
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 28px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); transition: transform .2s, box-shadow .2s; }
+.card:hover { transform: translateY(-3px); box-shadow: 0 2px 4px rgb(16 19 28 / 8%), 0 18px 40px rgb(16 19 28 / 12%); }
+.card-link { display: flex; flex-direction: column; height: 100%; text-decoration: none; }
+.card-cover { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; }
+.card-body { padding: 20px 22px 24px; }
+.card h3 { margin: 8px 0; font-size: 21px; line-height: 1.25; letter-spacing: -.015em; }
+.summary { margin: 0; color: var(--ink-soft); font-size: 16px; }
+
+/* Articles */
+.page-head { padding-top: 72px; margin-bottom: 36px; }
+.post { max-width: 760px; margin: 0 auto; }
+.post-head { padding: 72px 0 28px; }
+.post-head h1 { margin: 0 0 14px; font-size: clamp(34px, 5vw, 52px); line-height: 1.08; letter-spacing: -.03em; }
+.post-cover { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: var(--radius); margin-bottom: 40px; box-shadow: var(--shadow); }
+.page { max-width: 760px; margin: 0 auto; padding-top: 72px; }
+.prose { max-width: var(--measure); font-family: var(--serif); font-size: 20px; color: var(--ink-soft); }
+.prose h1, .prose h2, .prose h3 { font-family: var(--sans); color: var(--ink); letter-spacing: -.02em; line-height: 1.2; }
+.prose h1 { font-size: 44px; margin: 0 0 20px; }
+.prose h2 { font-size: 28px; margin: 48px 0 12px; }
+.prose a { color: var(--accent); text-underline-offset: 3px; }
+.prose code { font-family: var(--mono); font-size: .85em; background: var(--accent-soft); padding: 2px 6px; border-radius: 6px; }
+.prose pre { font-family: var(--mono); font-size: 15px; line-height: 1.6; background: #0f1222; color: #e6e8f2; padding: 20px 24px; border-radius: 12px; overflow-x: auto; }
+.prose pre code { background: none; padding: 0; }
+.prose blockquote { margin: 32px 0; padding: 4px 0 4px 24px; border-left: 3px solid var(--accent); font-style: italic; color: var(--ink); }
+.back { margin-top: 56px; font-weight: 600; }
+.back a { color: var(--accent); text-decoration: none; }
+
+.footer { border-top: 1px solid var(--line); padding: 32px 24px; text-align: center; color: var(--muted); font-size: 14px; }
+
+@media (max-width: 760px) {
+  .nav { padding: 12px 16px; gap: 12px; }
+  .links a { padding: 6px 10px; }
+  .featured a { grid-template-columns: 1fr; gap: 16px; }
+  .hero { padding-top: 56px; }
+  .prose { font-size: 18px; }
+}

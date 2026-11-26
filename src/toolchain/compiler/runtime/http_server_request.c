@@ -52,24 +52,10 @@ void sanitize_log_token(const char *input, char *output, size_t capacity) {
   output[index] = '\0';
 }
 
-static const char *skip_optional_space(const char *start, const char *end) {
-  while (start < end && (*start == ' ' || *start == '\t')) {
-    start++;
-  }
-  return start;
-}
-
-static const char *trim_optional_space(const char *start, const char *end) {
-  while (end > start && (end[-1] == ' ' || end[-1] == '\t')) {
-    end--;
-  }
-  return end;
-}
-
 static RequestReadStatus parse_decimal(const char *start, const char *end,
                                        size_t *result) {
-  start = skip_optional_space(start, end);
-  end = trim_optional_space(start, end);
+  start = http_skip_ows(start, end);
+  end = http_trim_ows(start, end);
   if (start == end || !isdigit((unsigned char)*start)) {
     return REQUEST_MALFORMED;
   }
@@ -83,20 +69,6 @@ static RequestReadStatus parse_decimal(const char *start, const char *end,
   }
   *result = value;
   return start == end ? REQUEST_COMPLETE : REQUEST_MALFORMED;
-}
-
-static bool header_name_is(const char *text, size_t length,
-                           const char *expected) {
-  if (length != strlen(expected)) {
-    return false;
-  }
-  for (size_t index = 0; index < length; index++) {
-    if (tolower((unsigned char)text[index]) !=
-        tolower((unsigned char)expected[index])) {
-      return false;
-    }
-  }
-  return true;
 }
 
 static RequestReadStatus record_content_length(const char *value,
@@ -117,8 +89,8 @@ static RequestReadStatus record_content_length(const char *value,
 
 static void record_client_request_id(const char *value, const char *end,
                                      HttpRequestBuffer *request) {
-  value = skip_optional_space(value, end);
-  end = trim_optional_space(value, end);
+  value = http_skip_ows(value, end);
+  end = http_trim_ows(value, end);
   size_t length = (size_t)(end - value);
   if (length >= sizeof(request->client_request_id)) {
     length = sizeof(request->client_request_id) - 1U;
@@ -129,33 +101,24 @@ static void record_client_request_id(const char *value, const char *end,
                      sizeof(request->client_request_id));
 }
 
-// The `close` and `keep-alive` tokens of a Connection header, in any case and
-// among any others [HTTP-SERVER-CONNECTIONS].
 static void record_connection(const char *value, const char *end,
                               FramingHeaders *framing) {
-  while (value < end) {
-    const char *comma = memchr(value, ',', (size_t)(end - value));
-    const char *stop = comma ? comma : end;
-    const char *start = skip_optional_space(value, stop);
-    size_t length = (size_t)(trim_optional_space(start, stop) - start);
-    framing->connection_close |= header_name_is(start, length, "close");
-    framing->connection_keep_alive |=
-        header_name_is(start, length, "keep-alive");
-    value = comma ? comma + 1 : end;
-  }
+  size_t length = (size_t)(end - value);
+  framing->connection_close |= http_value_lists(value, length, "close");
+  framing->connection_keep_alive |= http_value_lists(value, length, "keep-alive");
 }
 
 static RequestReadStatus
 inspect_header_value(const char *line, const char *colon, const char *line_end,
                      HttpRequestBuffer *request, FramingHeaders *framing) {
   size_t name_length = (size_t)(colon - line);
-  if (header_name_is(line, name_length, "Transfer-Encoding")) {
+  if (http_text_is(line, name_length, "Transfer-Encoding")) {
     framing->transfer_encoding_found = true;
-  } else if (header_name_is(line, name_length, "Content-Length")) {
+  } else if (http_text_is(line, name_length, "Content-Length")) {
     return record_content_length(colon + 1, line_end, framing);
-  } else if (header_name_is(line, name_length, "Connection")) {
+  } else if (http_text_is(line, name_length, "Connection")) {
     record_connection(colon + 1, line_end, framing);
-  } else if (header_name_is(line, name_length, "X-Osprey-Request-Id")) {
+  } else if (http_text_is(line, name_length, "X-Osprey-Request-Id")) {
     record_client_request_id(colon + 1, line_end, request);
   }
   return REQUEST_COMPLETE;

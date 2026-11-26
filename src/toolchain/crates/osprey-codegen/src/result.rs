@@ -325,7 +325,7 @@ pub(crate) fn result_from_i64(
 
 /// A `Result` over the C word `operand` of type `ty`: Error when the IR
 /// predicate `failed` holds, carrying `msg` unless the runtime's `reason` wins.
-fn result_unless(
+pub(crate) fn result_unless(
     cg: &mut Codegen,
     operand: &str,
     ty: LType,
@@ -393,7 +393,17 @@ pub(crate) fn load_value(cg: &mut Codegen, v: &Value) -> Value {
     value.inferred_type = v
         .element_type(osprey_types::names::RESULT)
         .or_else(|| v.result_payload_type.clone());
-    value
+    // A handle payload (`Success { value }` of `Channel(capacity)`) carries
+    // its element ABI as a `let`-bound handle does, so `recv` and `await` on
+    // the binder can unbox what travels [CONCURRENCY-CHANNEL].
+    match value
+        .inferred_type
+        .as_ref()
+        .and_then(|ty| crate::builder::FiberSig::of(&cg.prog, ty))
+    {
+        Some(sig) if value.fiber_elem.is_none() => sig.restore(value),
+        _ => value,
+    }
 }
 
 /// Load a Result block's raw error-message pointer (slot 2) as an `i8*` — `null`

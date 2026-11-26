@@ -7,6 +7,7 @@ type InboxUpdate =
     model : InboxModel
     commands : string
 
+(** The inbox's update: each host event answered with the next model and the commands to run. *)
 module Update
     result model commands = InboxUpdate(model = model, commands = commands)
 
@@ -19,10 +20,11 @@ module Update
     // A host event's string field, empty when the host left it out.
     eventValue event key = Json::getOr event key ""
 
+    (** The update that opens the app: the initial model and the schema statement to run. *)
     export initial () = result (Model::initial ()) (perform Storage::Requests.sql (Storage::schema ()))
 
     fetch model = match checkedAdd (nextSequence model) 1
-        Error why => failure model "Request counter exhausted. Close and reopen the app."
+        Error _ => failure model "Request counter exhausted. Close and reopen the app."
         Success sequence =>
             prepared = Model::set (Model::set (Model::set model "seq" (toString sequence)) "loading" "true") "error" ""
             pending = Model::set (Model::set prepared "pending" "fetch:${sequence}:${model.repo}") "status" "Refreshing ${model.repo}…"
@@ -31,7 +33,7 @@ module Update
     persist model = match model.dbReady == "true"
         false => unchanged (Model::set model "storageError" "SQLite is unavailable; these changes are only in memory.")
         true => match checkedAdd (nextSequence model) 1
-            Error why => unchanged (Model::set model "storageError" "Request counter exhausted; changes were not saved. Close and reopen the app.")
+            Error _ => unchanged (Model::set model "storageError" "Request counter exhausted; changes were not saved. Close and reopen the app.")
             Success sequence =>
                 pending = Model::set (Model::set model "seq" (toString sequence)) "write" "save:${sequence}"
                 result pending (perform Storage::Requests.sql (Storage::save pending))
@@ -57,7 +59,7 @@ module Update
         true =>
             doc = jsonParse event ?: 0
             count = jsonLength doc "rows"
-            freed = jsonFree doc ?: 0
+            _freed = jsonFree doc ?: 0
             match count
                 0 => fetch (ready model)
                 1 => restore model (eventValue event "rows[0].value")
@@ -153,6 +155,7 @@ module Update
         "bookmark" => bookmark model (eventValue event "id")
         _ => detailEvent model event
 
+    (** The update for the host event `event` against `model`: an SQL answer, an HTTP answer, or a user interaction once the app is ready; any other event leaves the model unchanged. *)
     export dispatch model event = match eventValue event "type"
         "sql" => sql model event
         "http" => http model event

@@ -130,6 +130,8 @@ module PathsTests {
         !Paths::publicationMetadata("notes.md")
     ])
 
+    /// The paths suite: the grammar, tree digests, collection rules, sets and
+    /// exclusions, envelope bytes and rejections, and publication licenses.
     export fn run() = {
         test("paths: grammar", grammar)
         test("source: tree digests", treeDigests)

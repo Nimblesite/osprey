@@ -19,7 +19,7 @@ import {
 // This host's `node:wasi` may be one of the broken ones; relaunch under a sound
 // interpreter before running anything, so no caller needs its own version
 // check. [WASM-TARGET]
-ensureWasiCapableNode(import.meta.url);
+await ensureWasiCapableNode(import.meta.url);
 
 const { wasmPath, expectedPath, programArgs, bytes } = await loadModuleFromArgv(
   "usage: node wasm-smoke.mjs <module.wasm> [expected-stdout-file] [-- <program args>]",

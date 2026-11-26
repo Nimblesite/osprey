@@ -12,8 +12,24 @@ import ui::Keyed
 (** The application exported through the two-function C boundary. *)
 module App
 
-    (** The document the interface is read from: `--machine <path>` among the launch arguments, else the repository copy. *)
-    export documentPath arguments = ui::Lists::after (arguments, "--machine", "src/osprey/packages/signal_flow/signal_flow.machine.json")
+    (** The repository copy of the document, relative to the repository root. *)
+    document = "src/osprey/packages/signal_flow/signal_flow.machine.json"
+
+    (** The ancestors of the current directory searched for the repository: more than the repository is deep. *)
+    searched = 16
+
+    (** The document the interface is read from: `--machine <path>` among the launch arguments, else the repository copy, wherever the program was launched from. *)
+    export documentPath arguments = ui::Lists::after (arguments, "--machine", fromRepository document)
+
+    (** `relative`, a path from the repository root, made reachable from the current directory: the nearest ancestor holding the repository copy of the document is climbed to; when none within `searched` levels holds it, the path is left as it is. *)
+    export fromRepository relative = "${climbed (document, "", searched)}${relative}"
+
+    (** The `../` prefix, at most `left` levels above `prefix`, under which the file `marker` exists: "" when it is here or nowhere within reach. *)
+    export climbed (marker, prefix, left) = match (kindOf "${prefix}${marker}" ?: "other") == "file"
+        true => prefix
+        false => match left > 0
+            true => climbed (marker, "${prefix}../", satSub left 1)
+            false => ""
 
     (** The store from a machine document's text: a refused document shows its problems in place of the editor. *)
     export loaded source = match MachineDocs::load source

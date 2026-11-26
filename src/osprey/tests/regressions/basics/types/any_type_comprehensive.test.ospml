@@ -2,6 +2,10 @@
 
 // Erased compatibility values [TYPE-ANY].
 
+(** The strings the erased-value cases assert on. *)
+processedAny = "Processed any"
+differentColors = "Different colors"
+
 getDynamicValue : Unit -> any
 getDynamicValue () = 42
 
@@ -49,7 +53,7 @@ argResult = testArgs (5, "value", true)
 print "testArgs result: ${argResult}"
 
 (** Test type inference edge cases with any *)
-processAny (_x : any) = "Processed any"
+processAny (_x : any) = processedAny
 
 anyProcessed1 = processAny 42
 anyProcessed2 = processAny "hello"
@@ -135,15 +139,15 @@ compareColors (c1, c2) =
         Red =>
             match c2
                 Red => "Both red"
-                _ => "Different colors"
+                _ => differentColors
         Green =>
             match c2
                 Green => "Both green"
-                _ => "Different colors"
+                _ => differentColors
         Blue =>
             match c2
                 Blue => "Both blue"
-                _ => "Different colors"
+                _ => differentColors
 
 print "Union equality tests:\n${(compareColors (color1, color2))}\n${(compareColors (color1, color3))}"
 
@@ -280,10 +284,10 @@ anyTypeBehaviorCase () =
         toString (erasedPoint ()) == "{ x: 1, y: 2 }",
         toString (getDynamicValue ()) == "42",
         toString (processAnyValue 5) == "15",
-        forwardedHeap () == "Processed any",
-        processAny 42 == "Processed any",
-        processAny "hello" == "Processed any",
-        processAny true == "Processed any",
+        forwardedHeap () == processedAny,
+        processAny 42 == processedAny,
+        processAny "hello" == processedAny,
+        processAny true == processedAny,
         getAnyField object == "payload",
         testArgs (3, "value", false) == "value positive",
         testArgs (0, "value", true) == "value zero or negative true",
@@ -293,7 +297,7 @@ anyTypeBehaviorCase () =
         processSimple B == "Got B",
         processSimple C == "Got C",
         compareColors (Red, Red) == "Both red",
-        compareColors (Red, Blue) == "Different colors"
+        compareColors (Red, Blue) == differentColors
     ]
 
 test "any values retain usable behavior across typed boundaries" (exactly anyTypeBehaviorCase)

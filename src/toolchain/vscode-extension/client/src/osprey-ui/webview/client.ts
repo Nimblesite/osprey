@@ -5,6 +5,8 @@
 
 import { controlEvent, type HostEvent, wordsOf } from "./events.js";
 import { installActions, patchHeldAction, type ActionState } from "./action.js";
+import { morphFrame } from "./morph.js";
+import { caretWords, epochOf, fieldSignature, fieldsBySignature, isEditor } from "./fields.js";
 
 export interface FramePosted {
   /** A control event: the ordinal and its value as words. */
@@ -18,7 +20,25 @@ export interface FramePosted {
 interface FieldEdit {
   readonly ordinal: number;
   readonly words: string;
+  /** The focus epoch the field carried when typed; a frame that raises it has re-authored the field. */
+  readonly epoch: number;
   sent: boolean;
+  /** How many frames answer every event posted up to and including this draft. */
+  answeredBy: number;
+}
+
+
+/** A focused field keeps its draft until a frame shows the sent draft's own value, which settles it, or
+ * re-authors the field with a higher focus epoch. A settled field reports its caret again. */
+function drafting(client: Client, field: Element, framed: string): boolean {
+  const signature = fieldSignature(field);
+  const edit = client.edits.get(signature);
+  if (edit === undefined) return false;
+  // A frame answering the draft's own event has settled it, even when a later action changed its words.
+  const answered = client.answered >= edit.answeredBy;
+  if (!edit.sent || (framed !== edit.words && epochOf(field) <= edit.epoch && !answered)) return true;
+  client.edits.delete(signature);
+  return false;
 }
 
 /** Everything the client keeps between frames. */
@@ -31,6 +51,9 @@ export interface ClientState {
   pendingLoss: string | undefined;
   runtimeBusy: boolean;
   runtimeTracked: boolean;
+  /** Events posted, and frames applied: the runtime answers each event with one frame, in order. */
+  posted: number;
+  answered: number;
 }
 
 export interface Client extends ClientState {
@@ -58,26 +81,8 @@ function wordsOfElement(element: Element, override?: unknown): string {
   return wordsOf(kind === "number" ? Number(raw) : kind === "bool" ? raw === "true" : kind === "string" ? raw : null);
 }
 
-export function fieldSignature(element: Element): string {
-  const label = element.closest("label");
-  const labelSpan = label?.querySelector("span") ?? null;
-  return JSON.stringify([
-    element.getAttribute("data-focus"),
-    element.tagName,
-    element.getAttribute("type"),
-    element.getAttribute("data-value-kind"),
-    element.getAttribute("data-commit"),
-    element.getAttribute("placeholder") || "",
-    labelSpan !== null ? labelSpan.textContent : "",
-  ]);
-}
 
-type Field = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
 
-function fieldsBySignature(signature: string): Field[] {
-  return Array.from(document.querySelectorAll<Field>("input, textarea, select"))
-    .filter((element) => fieldSignature(element) === signature);
-}
 
 function notice(client: Client): void {
   const combined = [...new Set([...client.hostDiagnostics, ...(client.pendingLoss === undefined ? [] : [client.pendingLoss])])];
@@ -92,7 +97,10 @@ function notice(client: Client): void {
   if (root !== null) root.setAttribute("aria-busy", String(client.runtimeBusy));
 }
 
-/** Pause every control while the runtime is busy, keeping the one held by its pointer. */
+/** Pause every control while the runtime is busy, keeping the one held by its pointer. A frame
+ * morphed in while busy strips `data-paused` and carries the application's own `disabled`, which
+ * replaces the remembered one: restoring the pre-pause state instead left a control the frame had
+ * enabled disabled once the runtime settled (PR #435 workbench "pending runtime update"). */
 const pausedControls = new Map<HTMLButtonElement | HTMLSelectElement, boolean>();
 
 function updateBusy(client: Client): void {
@@ -103,10 +111,12 @@ function updateBusy(client: Client): void {
     if (!(control instanceof HTMLButtonElement) && !(control instanceof HTMLSelectElement)) continue;
     if (control === client.action.pressed) continue;
     if (client.runtimeBusy) {
-      if (!pausedControls.has(control)) pausedControls.set(control, control.disabled);
+      if (!control.hasAttribute("data-paused")) pausedControls.set(control, control.disabled);
       control.disabled = true;
+      control.toggleAttribute("data-paused", true);
     } else if (pausedControls.has(control)) {
       control.disabled = pausedControls.get(control) === true;
+      control.removeAttribute("data-paused");
       pausedControls.delete(control);
     }
   }
@@ -117,7 +127,7 @@ function postControl(client: Client, element: Element, override?: unknown): void
   const ordinal = ordinalOf(element);
   if (ordinal === null) return;
   const words = wordsOfElement(element, override);
-  flushFields(client);
+  flushForAction(client);
   if (client.runtimeTracked) {
     client.runtimeBusy = true;
     updateBusy(client);
@@ -130,6 +140,19 @@ function sendField(client: Client, signature: string): void {
   if (edit === undefined || edit.sent) return;
   edit.sent = true;
   client.post.event(controlEvent(edit.ordinal, edit.words));
+  edit.answeredBy = client.posted;
+}
+
+/** Commit every draft before a person's action. Each drafting editor's caret goes first, against the
+ * frame the person sees (the words may restructure the view), so a ribbon tool acts where they were
+ * writing; a textarea keeps its selection after the press takes focus. */
+function flushForAction(client: Client): void {
+  for (const [signature, edit] of client.edits) {
+    const editor = fieldsBySignature(signature).find(isEditor);
+    const place = Number(editor?.dataset.placeOrdinal ?? "-1");
+    if (editor !== undefined && !edit.sent && Number.isSafeInteger(place) && place >= 0) client.post.control(place, caretWords(editor));
+  }
+  flushFields(client);
 }
 
 /** Commit every draft before another control's action. */
@@ -157,8 +180,10 @@ function onInput(client: Client, event: Event): void {
   const signature = fieldSignature(element);
   const ordinal = ordinalOf(element);
   if (ordinal === null) return;
-  client.edits.set(signature, { ordinal, words: element.value, sent: false });
-  armFieldTimer(client, signature);
+  client.edits.set(signature, { ordinal, words: element.value, epoch: epochOf(element), sent: false, answeredBy: Number.MAX_SAFE_INTEGER });
+  // A line break is a structural edit (a Formatted block splits on it): send it now, not after the debounce.
+  if (event instanceof InputEvent && event.inputType === "insertLineBreak") flushFields(client);
+  else armFieldTimer(client, signature);
 }
 
 function onChange(client: Client, event: Event): void {
@@ -231,8 +256,10 @@ function restoreFocus(client: Client): void {
     .find((candidate) => candidate.getAttribute("data-focus") === saved.id);
   if (!(element instanceof HTMLElement)) return;
   if (saved.signature !== null && fieldSignature(element) !== saved.signature) return;
-  element.focus();
   const field = element as HTMLInputElement;
+  // A morphed frame keeps the focused node; re-selecting it would reset a backward drag's direction.
+  if (element === document.activeElement && field.selectionStart === saved.start && field.selectionEnd === saved.end) return;
+  element.focus();
   if (saved.start !== null && typeof field.setSelectionRange === "function") {
     try {
       field.setSelectionRange(saved.start, saved.end === null ? saved.start : saved.end);
@@ -283,6 +310,11 @@ function restoreScroll(saved: readonly { path: string; top: number; left: number
 function rebaseEdits(client: Client): void {
   for (const [signature, edit] of [...client.edits.entries()]) {
     const matches = fieldsBySignature(signature);
+    // Answered, or re-authored: the frame is the truth now, focused or not, so caret reports resume.
+    if (edit.sent && (client.answered >= edit.answeredBy || matches.some((field) => epochOf(field) > edit.epoch))) {
+      client.edits.delete(signature);
+      continue;
+    }
     if (matches.length === 1 && matches[0] instanceof HTMLInputElement) {
       if (matches[0].value === edit.words) {
         client.edits.delete(signature);
@@ -297,13 +329,17 @@ function rebaseEdits(client: Client): void {
 /** Apply one told frame's markup, preserving focus, drafts and scroll exactly as the JSON-era
  * client did; the pressed control keeps its own node when it can. */
 export function applyRender(client: Client, html: string): void {
+  // A frame no event asked for (a completed request) never counts beyond what was posted.
+  client.answered = Math.min(client.answered + 1, client.posted);
+  // The frame is the truth for every control's state; a morph keeps the nodes, so forget their pauses.
+  pausedControls.clear();
   flushFields(client);
   saveFocus(client);
   const scroll = captureScroll();
   const root = document.getElementById("osprey-root");
   if (root !== null) {
     const held = client.action.pressed !== null && patchHeldAction(root, html, client.action);
-    if (!held) root.innerHTML = html;
+    if (!held) morphFrame(root, html, (field, framed) => drafting(client, field, framed));
   }
   rebaseEdits(client);
   restoreFocus(client);
@@ -386,7 +422,7 @@ export function installClient(client: Client): void {
       const button = closest(target, "button[data-event-ordinal], button[data-ordinal]");
       return button instanceof HTMLButtonElement ? button : null;
     },
-    flushFields: () => flushFields(client),
+    flushFields: () => flushForAction(client),
     updateBusy: () => updateBusy(client),
   });
   document.addEventListener("click", (event) => onClick(client, event));

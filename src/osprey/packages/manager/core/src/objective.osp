@@ -7,8 +7,14 @@ namespace registry;
 /// time-dependent term is evaluated at the signed catalog `asOf`.
 /// Implements the cost facts of [PACKAGE-RESOLUTION].
 module Objective {
+    /// The seven summed cost terms of a graph: V, D, U, E, changed identities,
+    /// package and system input count, and L.
     export type Cost = { vulnerability: int, overdue: int, unknown: int, evidence: int, changed: int, size: int, lag: int }
+    /// One advisory's inputs to the cost facts: its severity weight, its
+    /// reachability factor and how long it has been overdue.
     export type Advisory = { severityWeight: int, reachabilityFactor: int, overdueMilliseconds: int }
+    /// One system input a resolution selects: capability, provider, revision
+    /// and digest, ordered by `compareSystemTie`.
     export type SystemTuple = { capability: string, provider: string, revision: int, digest: string }
 
     let scale = 10000

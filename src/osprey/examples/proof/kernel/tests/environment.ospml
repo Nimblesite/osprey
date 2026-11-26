@@ -8,6 +8,7 @@ import proof
 module EnvironmentTests
     closed () = Sort (Succ Zero)
 
+    (** Runs the environment cases: declaration order, duplicate rejection and opaque bodies; the testing built-ins report the TAP lines. *)
     export run () =
         test ("a name cannot be declared twice", \() =>
             expect (Support::messageOf (Support::twice "c"), "constant `c` is already declared"))

@@ -18,6 +18,8 @@ pub(crate) struct CompilationInput {
     debug_path: String,
     output: OutputDefault,
     example_warnings: Option<Vec<osprey_types::TypeWarning>>,
+    /// The flavor a script was parsed in, when the caller chose it over its extension.
+    flavor: Option<Flavor>,
 }
 
 #[derive(Debug)]
@@ -73,6 +75,15 @@ impl CompilationInput {
             debug_path: path.to_string(),
             output: OutputDefault::Source(path.to_string()),
             example_warnings: None,
+            flavor: None,
+        }
+    }
+
+    /// The same script, parsed in `flavor`: its source warnings follow that flavor's rules.
+    pub(crate) fn in_flavor(self, flavor: Flavor) -> Self {
+        Self {
+            flavor: Some(flavor),
+            ..self
         }
     }
 
@@ -155,6 +166,7 @@ impl CompilationInput {
             debug_path,
             output,
             example_warnings: None,
+            flavor: None,
         }
     }
 
@@ -191,10 +203,17 @@ impl CompilationInput {
             return warnings.clone();
         }
         let CompilationUnit::Project(project) = &self.unit else {
-            return osprey_syntax::resolve_flavor(None, &self.display_path, &self.source)
+            return osprey_syntax::resolve_flavor(self.flavor, &self.display_path, &self.source)
                 .map_or_else(
                     |_| Vec::new(),
-                    |flavor| osprey_types::source_warnings(self.program(), &self.source, flavor),
+                    |flavor| {
+                        osprey_types::source_warnings(
+                            self.program(),
+                            &self.source,
+                            flavor,
+                            Path::new(&self.display_path),
+                        )
+                    },
                 );
         };
         project.sources.iter().flat_map(file_warnings).collect()
@@ -402,7 +421,7 @@ fn spelled_path(path: &Path) -> PathBuf {
 /// One file's advice, read from the file as written, at flattened lines.
 fn file_warnings(source: &osprey_project::SourceMetadata) -> Vec<osprey_types::TypeWarning> {
     let parsed = osprey_syntax::parse_program_with_flavor(&source.source, source.flavor);
-    osprey_types::source_warnings(&parsed.program, &source.source, source.flavor)
+    osprey_types::source_warnings(&parsed.program, &source.source, source.flavor, &source.path)
         .into_iter()
         .map(|mut warning| {
             if let Some(position) = &mut warning.position {

@@ -118,6 +118,8 @@ module RouterTests {
         respond("PUT", "/v1/releases/${CatalogTests::digestA()}/source").status == 405
     ])
 
+    /// The router suite: every route and status, ETags, method rejection,
+    /// query strings, hardening headers and hostile probes.
     export fn run() = {
         test("router: hardening headers", hardeningHeaders)
         test("router: hostile probes", hostileProbes)

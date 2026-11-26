@@ -2,11 +2,15 @@ namespace mobile
 
 import bank::Json
 
+(** Osprey Inbox as the host drives it: the first update, each event's update, and the JSON envelope answering each. *)
 module App
+    (** The first update: the initial model and the command creating the SQLite schema. *)
     export initial () = Storage::commands Update::initial
 
+    (** The update after the host event `event` against `model`: the next model and the commands the host runs next. *)
     export dispatch model event = Storage::commands (\() => Update::dispatch model event)
 
+    (** The JSON the host receives for `update`: the model, its view, the commands and the view drawn as UI nodes. *)
     export envelope update =
         view = View::render update.model
         Json::obj (Json::strField "model" (Model::encode update.model) + "," + Json::rawField "view" view + "," + Json::rawField "commands" update.commands + "," + Json::rawField "ui" (Ui::render view))

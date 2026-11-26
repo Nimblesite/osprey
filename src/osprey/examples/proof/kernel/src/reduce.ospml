@@ -54,7 +54,7 @@ module Reduce
         Pending term frames => enter (env, focus (env, term), frames)
         Resuming term frames => resumeFrames (env, term, frames)
 
-    enter (env, step, frames) = match step
+    enter (_env, step, frames) = match step
         Again term => pendingHead (term, frames)
         Whnf term => Resuming term frames
         Suspend term frame => Pending term (listPrepend (frames, frame))
@@ -64,7 +64,7 @@ module Reduce
         fully applied, before delta reduction unfolds its recursive body. *)
     pendingHead (term, frames) = match frames
         [AwaitApply _ spine, ...rest] => Pending (Terms::apps (term, spine.spineArgs)) rest
-        other => Pending term frames
+        _ => Pending term frames
 
     (** A weak head normal form resumes the innermost pending frame. *)
     resumeFrames (env, term, frames) = match frames
@@ -80,7 +80,7 @@ module Reduce
     (** The one step `term`'s own shape allows. *)
     focus (env, term) = match term
         App _ _ => numericApp (env, term, Numeric::step (env, term))
-        Let name ty value body => Again (Terms::instantiate (body, value))
+        Let _ _ value body => Again (Terms::instantiate (body, value))
         Const name levels => whnfConst (env, term, name, levels)
         Proj family index target => Suspend target (AwaitProject family index term)
         NatLit value => Whnf (naturalHead value)
@@ -105,8 +105,8 @@ module Reduce
     (** A checked projection reduces only at its own constructor's field.
         Implements [PROOF-KERNEL-THEORY]. *)
     projection (env, term, family, index, spine) = match spine.spineHead
-        Const name levels => projectionFound (env, term, family, index, spine.spineArgs, Environment::find (env, name))
-        other => Whnf term
+        Const name _ => projectionFound (env, term, family, index, spine.spineArgs, Environment::find (env, name))
+        _ => Whnf term
 
     projectionFound (env, term, family, index, args, found) = match found
         Success decl => projectionBody (env, term, family, index, args, decl.body)
@@ -114,15 +114,15 @@ module Reduce
 
     projectionBody (env, term, family, index, args, body) = match body
         Constructor ctor => projectionField (env, term, args, satAdd ctor.ctorParams index, ctor.ctorFamily == family && index >= 0 && index < ctor.ctorFields && listLength args == satAdd ctor.ctorParams ctor.ctorFields)
-        other => Whnf term
+        _ => Whnf term
 
-    projectionField (env, term, args, at, valid) = match valid
+    projectionField (_env, term, args, at, valid) = match valid
         true => match listGet (args, at)
             Success field => Again field
             Error _ => Whnf term
         false => Whnf term
 
-    appliedSpine (env, original, spine) = Suspend spine.spineHead (AwaitApply original spine)
+    appliedSpine (_env, original, spine) = Suspend spine.spineHead (AwaitApply original spine)
 
     resumedApplication (env, original, spine, value) = match unchangedHead (spine.spineHead, value)
         true => iotaSpine (env, original, spine)
@@ -135,20 +135,20 @@ module Reduce
 
     appliedHead (env, head, args) = match args
         [] => Whnf head
-        many => match head
+        _ => match head
             Lam _ _ _ => betaApplied (env, consumed (head, args, []))
             App _ _ => iota (env, Terms::apps (head, args))
-            other => iotaSpine (env, Terms::apps (head, args), Spine(spineHead = head, spineArgs = args))
+            _ => iotaSpine (env, Terms::apps (head, args), Spine(spineHead = head, spineArgs = args))
 
     consumed (term, args, values) = match term
-        Lam name domain body => match args
+        Lam _ _ body => match args
             [] => stopped (term, args, values)
             [arg, ...rest] => consumed (body, rest, listPrepend (values, arg))
-        other => stopped (term, args, values)
+        _ => stopped (term, args, values)
 
     stopped (term, args, values) = BetaInput(betaBody = term, betaValues = values, betaRest = args)
 
-    betaApplied (env, beta) = Again (Terms::apps (Terms::instantiateMany (beta.betaBody, beta.betaValues), beta.betaRest))
+    betaApplied (_env, beta) = Again (Terms::apps (Terms::instantiateMany (beta.betaBody, beta.betaValues), beta.betaRest))
 
     (** ι: a recursor applied through its major premise, when the major
         premise reduces to a constructor applied to the family's
@@ -159,7 +159,7 @@ module Reduce
 
     iotaSpine (env, term, spine) = match spine.spineHead
         Const name levels => iotaConst (env, term, spine, Environment::find (env, name), levels)
-        other => Whnf term
+        _ => Whnf term
 
     iotaConst (env, term, spine, found, levels) = match found
         Success decl => iotaDecl (env, term, spine, decl, levels)
@@ -172,7 +172,7 @@ module Reduce
     iotaDecl (env, term, spine, decl, levels) = match decl.body
         Recursor elim => iotaMajor (env, term, spine, decl, elim, levels, majorIndex elim)
         Quotient kind => quotient (env, term, spine.spineArgs, kind)
-        other => Whnf term
+        _ => Whnf term
 
     (** Quotient computation uses checked primitive tags, never names alone.
         Lift respects its relation by type; induction's motive is Prop-only.
@@ -180,23 +180,23 @@ module Reduce
     quotient (env, term, args, kind) = match kind
         QuotLift => quotientMajor (env, term, args, 5)
         QuotInd => quotientMajor (env, term, args, 4)
-        other => Whnf term
+        _ => Whnf term
 
-    quotientMajor (env, term, args, at) = match listGet (args, at)
+    quotientMajor (_env, term, args, at) = match listGet (args, at)
         Success major => Suspend major (AwaitQuotientMajor term args at)
         Error _ => Whnf term
 
     quotientHead (env, term, args, at, major) = match major.spineHead
-        Const name levels => match Environment::find (env, name)
+        Const name _ => match Environment::find (env, name)
             Success decl => quotientBody (env, term, args, at, major.spineArgs, decl.body)
             Error _ => Whnf term
-        other => Whnf term
+        _ => Whnf term
 
     quotientBody (env, term, args, at, parts, body) = match body
         Quotient kind => match kind
             QuotCtor => quotientReady (env, term, args, at, parts)
-            other => Whnf term
-        other => Whnf term
+            _ => Whnf term
+        _ => Whnf term
 
     quotientReady (env, term, args, at, parts) = match listLength parts == 3 && sameIndices (env, Terms::prefix (args, 2), Terms::prefix (parts, 2))
         false => Whnf term
@@ -206,17 +206,17 @@ module Reduce
                 Error _ => Whnf term
             Error _ => Whnf term
 
-    iotaMajor (env, term, spine, decl, elim, levels, at) = match listGet (spine.spineArgs, at)
+    iotaMajor (_env, term, spine, decl, elim, levels, at) = match listGet (spine.spineArgs, at)
         Success major => Suspend major (AwaitIotaMajor term spine decl elim levels at)
         Error _ => Whnf term
 
     iotaCtor (env, term, spine, decl, elim, levels, at, major) = match major.spineHead
-        Const name ctorLevels => iotaRule (env, term, spine, decl, elim, levels, at, major, filterList (elim.elimRules, \rule => rule.ruleCtor == name))
-        other => iotaK (env, term, spine, decl, elim, levels, at)
+        Const name _ => iotaRule (env, term, spine, decl, elim, levels, at, major, filterList (elim.elimRules, \rule => rule.ruleCtor == name))
+        _ => iotaK (env, term, spine, decl, elim, levels, at)
 
     iotaRule (env, term, spine, decl, elim, levels, at, major, found) = match found
         [rule] => iotaFire (env, term, spine, decl, elim, levels, at, major, rule)
-        other => iotaK (env, term, spine, decl, elim, levels, at)
+        _ => iotaK (env, term, spine, decl, elim, levels, at)
 
     iotaFire (env, term, spine, decl, elim, levels, at, major, rule) = match majorArity (env, rule)
         Success arity => match listLength major.spineArgs == arity
@@ -231,10 +231,10 @@ module Reduce
     majorArity (env, rule) = match Environment::find (env, rule.ruleCtor)
         Success ctor => match ctor.body
             Constructor info => Success(value = satAdd info.ctorParams rule.ruleFields)
-            other => Error(message = "not a constructor")
+            _ => Error(message = "not a constructor")
         Error message => Error(message = message)
 
-    iotaStep (env, term, spine, elim, at, major, rule, arity, rhs) = match rhs
+    iotaStep (_env, term, spine, elim, at, major, rule, arity, rhs) = match rhs
         Success body => Again (Terms::apps (Terms::apps (Terms::apps (body, Terms::prefix (spine.spineArgs, satAdd (satAdd elim.elimParams elim.elimMotives) elim.elimMinors)), Terms::suffix (major.spineArgs, satSub arity rule.ruleFields)), Terms::suffix (spine.spineArgs, satAdd at 1)))
         Error _ => Whnf term
 
@@ -245,7 +245,7 @@ module Reduce
         false => Whnf term
         true => match elim.elimRules
             [rule] => kRule (env, term, spine, decl, elim, levels, at, rule)
-            other => Whnf term
+            _ => Whnf term
 
     kRule (env, term, spine, decl, elim, levels, at, rule) = match rule.ruleFields == 0
         false => Whnf term
@@ -257,7 +257,7 @@ module Reduce
         Constructor info => match info.ctorFields == 0 && info.ctorParams == elim.elimParams && info.ctorFamily == elim.elimFamily
             true => kCandidate (env, term, spine, decl, elim, levels, at, rule, ctor)
             false => Whnf term
-        other => Whnf term
+        _ => Whnf term
 
     kCandidate (env, term, spine, decl, elim, levels, at, rule, ctor) =
         ctorLevels = mapList (ctor.params, \name => Levels::instantiate (Param name, decl.params, levels))
@@ -270,8 +270,8 @@ module Reduce
     appliedType (ty, args) = match args
         [] => Success(value = ty)
         [arg, ...rest] => match ty
-            Pi name domain body => appliedType (Terms::instantiate (body, arg), rest)
-            other => Error(message = "constructor parameters do not match its type")
+            Pi _ _ body => appliedType (Terms::instantiate (body, arg), rest)
+            _ => Error(message = "constructor parameters do not match its type")
 
     kTyped (env, term, spine, decl, elim, levels, at, rule, candidate, result) = match result
         Success ty => match kIndices (env, spine.spineArgs, elim, Terms::spine ty)
@@ -280,18 +280,18 @@ module Reduce
         Error _ => Whnf term
 
     kIndices (env, args, elim, result) = match result.spineHead
-        Const name levels => name == elim.elimFamily && listLength result.spineArgs == satAdd elim.elimParams elim.elimIndices && sameIndices (env, Terms::suffix (result.spineArgs, elim.elimParams), Terms::prefix (Terms::suffix (args, satAdd (satAdd elim.elimParams 1) elim.elimMinors), elim.elimIndices))
-        other => false
+        Const name _ => name == elim.elimFamily && listLength result.spineArgs == satAdd elim.elimParams elim.elimIndices && sameIndices (env, Terms::suffix (result.spineArgs, elim.elimParams), Terms::prefix (Terms::suffix (args, satAdd (satAdd elim.elimParams 1) elim.elimMinors), elim.elimIndices))
+        _ => false
 
     sameIndices (env, left, right) = match left
         [] => isEmpty right
         [first, ...rest] => match right
             [other, ...more] => defeq (env, first, other) && sameIndices (env, rest, more)
-            other => false
+            _ => false
 
     whnfConst (env, term, name, levels) = match Environment::unfold (env, name, levels)
         Success value => Again value
-        Error message => Whnf term
+        Error _ => Whnf term
 
     (** Lean's recursor-major structure eta needs the binder context: a
         checked structure-valued major becomes its constructor applied to
@@ -301,19 +301,19 @@ module Reduce
     contextualHead (env, context, term) = match term
         App _ _ => contextualSpine (env, context, term, Terms::spine term)
         Proj family index target => contextualStep (env, context, term, settled (env, projection (env, term, family, index, Terms::spine (contextual (env, context, target)))))
-        other => term
+        _ => term
 
     contextualSpine (env, context, term, spine) = match spine.spineHead
         Const name levels => match Environment::find (env, name)
             Success decl => contextualBody (env, context, term, spine, decl, levels, decl.body)
             Error _ => term
-        other => term
+        _ => term
 
     contextualBody (env, context, term, spine, decl, levels, body) = match body
         Recursor elim => match listGet (spine.spineArgs, majorIndex elim)
             Success major => contextualMajor (env, context, term, spine, decl, levels, elim, major, Infer::infer (env, context, major))
             Error _ => term
-        other => term
+        _ => term
 
     contextualMajor (env, context, term, spine, decl, levels, elim, major, inferred) = match inferred
         Success ty => contextualSort (env, context, term, spine, decl, levels, elim, major, ty, Infer::sort (env, context, ty))
@@ -331,7 +331,7 @@ module Reduce
             true => match Environment::find (env, name)
                 Success family => contextualFamily (env, context, term, spine, decl, levels, elim, major, ty, target, universes, family.body)
                 Error _ => term
-        other => term
+        _ => term
 
     contextualFamily (env, context, term, spine, decl, levels, elim, major, ty, target, universes, body) = match body
         TypeFormer family => match family.familyParams == elim.elimParams && family.familyIndices == 0 && !family.familyRecursive && !family.familyReflexive
@@ -340,14 +340,14 @@ module Reduce
                 [name] => match Environment::find (env, name)
                     Success ctor => contextualConstructor (env, context, term, spine, decl, levels, elim, major, ty, target, universes, ctor, ctor.body)
                     Error _ => term
-                other => term
-        other => term
+                _ => term
+        _ => term
 
     contextualConstructor (env, context, term, spine, decl, levels, elim, major, ty, target, universes, ctor, body) = match body
         Constructor info => match info.ctorFamily == elim.elimFamily && info.ctorParams == elim.elimParams && info.ctorFields >= 0
             true => contextualCandidate (env, context, term, spine, decl, levels, elim, ty, Terms::apps (Const ctor.name universes, listConcat (target.spineArgs, etaFields (elim.elimFamily, major, info.ctorFields, 0))))
             false => term
-        other => term
+        _ => term
 
     etaFields (family, major, count, index) = match index >= count
         true => []
@@ -380,10 +380,10 @@ module Reduce
     structureEta (env, context, other, constructed, proofs) = structureHead (env, context, other, constructed, proofs, Terms::spine (contextual (env, context, constructed)))
 
     structureHead (env, context, other, constructed, proofs, spine) = match spine.spineHead
-        Const name levels => match Environment::find (env, name)
+        Const name _ => match Environment::find (env, name)
             Success decl => structureConstructor (env, context, other, constructed, proofs, spine.spineArgs, decl.name, decl.body)
             Error _ => false
-        otherHead => false
+        _ => false
 
     structureConstructor (env, context, other, constructed, proofs, args, name, body) = match body
         Constructor ctor => match ctor.ctorParams >= 0 && ctor.ctorFields >= 0 && listLength args == satAdd ctor.ctorParams ctor.ctorFields
@@ -391,13 +391,13 @@ module Reduce
             true => match Environment::find (env, ctor.ctorFamily)
                 Success family => structureFamily (env, context, other, constructed, proofs, args, name, ctor, family.body)
                 Error _ => false
-        otherBody => false
+        _ => false
 
     structureFamily (env, context, other, constructed, proofs, args, name, ctor, body) = match body
         TypeFormer family => match family.familyCtors
             [only] => only == name && family.familyParams == ctor.ctorParams && family.familyIndices == 0 && !family.familyRecursive && !family.familyReflexive && structureTypes (env, context, other, constructed, proofs, ctor.ctorFamily, Terms::suffix (args, ctor.ctorParams))
-            otherCtors => false
-        otherBody => false
+            _ => false
+        _ => false
 
     structureTypes (env, context, other, constructed, proofs, family, fields) = match Infer::infer (env, context, other)
         Error _ => false
@@ -410,16 +410,16 @@ module Reduce
         [field, ...rest] => structureProjection (env, context, field, Proj family index other, proofs) && structureFields (env, context, other, proofs, family, rest, satAdd index 1)
 
     structureProjection (env, context, field, projected, proofs) = match Infer::infer (env, context, projected)
-        Success ty => conversion (env, context, field, projected, proofs)
+        Success _ => conversion (env, context, field, projected, proofs)
         Error _ => false
 
     structural (env, context, left, right, proofs) = match left
         NatLit value => naturalEqual (env, context, value, right, proofs)
-        other => ordinaryEqual (env, context, left, right, proofs)
+        _ => ordinaryEqual (env, context, left, right, proofs)
 
     naturalEqual (env, context, value, right, proofs) = match right
         NatLit other => Naturals::equal (value, other)
-        other => ordinaryEqual (env, context, NatLit value, right, proofs)
+        _ => ordinaryEqual (env, context, NatLit value, right, proofs)
 
     ordinaryEqual (env, context, left, right, proofs) = match Terms::equal (left, right)
         true => true
@@ -431,8 +431,8 @@ module Reduce
     sameHeadArgs (env, context, left, right, proofs) = match left.spineHead
         Const a la => match right.spineHead
             Const b lb => a == b && Terms::equalLevels (la, lb) && !isEmpty left.spineArgs && listLength left.spineArgs == listLength right.spineArgs && allConvert (env, context, left.spineArgs, right.spineArgs, proofs)
-            other => false
-        other => false
+            _ => false
+        _ => false
 
     allConvert (env, context, lefts, rights, proofs) = match lefts
         [] => true
@@ -444,7 +444,7 @@ module Reduce
         App f a => appEq (env, context, f, a, right, proofs)
         Lam x a f => lamEq (env, context, x, a, f, right, proofs)
         Pi x a f => piEq (env, context, x, a, f, right, proofs)
-        Let x t v b => false
+        Let _ _ _ _ => false
         Proj family index target => projectionEq (env, context, family, index, target, right, proofs)
         NatLit value => naturalEqual (env, context, value, right, proofs)
         other => Terms::equal (other, right)
@@ -452,20 +452,20 @@ module Reduce
     projectionEq (env, context, family, index, target, right, proofs) = match right
         Proj other field value => family == other && index == field && conversion (env, context, target, value, proofs)
         Lam name domain body => eta (env, context, name, domain, body, Proj family index target, proofs)
-        other => false
+        _ => false
 
     appEq (env, context, f, a, right, proofs) = match right
         App g b => conversion (env, context, f, g, proofs) && conversion (env, context, a, b, proofs)
         Lam y domain body => eta (env, context, y, domain, body, App f a, proofs)
-        other => false
+        _ => false
 
     lamEq (env, context, name, domain, body, right, proofs) = match right
-        Lam other otherDomain otherBody => conversion (env, context, domain, otherDomain, proofs) && underBinder (env, context, name, domain, body, otherBody, proofs)
+        Lam _ otherDomain otherBody => conversion (env, context, domain, otherDomain, proofs) && underBinder (env, context, name, domain, body, otherBody, proofs)
         other => eta (env, context, name, domain, body, other, proofs)
 
     piEq (env, context, name, domain, body, right, proofs) = match right
-        Pi other otherDomain otherBody => conversion (env, context, domain, otherDomain, proofs) && underBinder (env, context, name, domain, body, otherBody, proofs)
-        other => false
+        Pi _ otherDomain otherBody => conversion (env, context, domain, otherDomain, proofs) && underBinder (env, context, name, domain, body, otherBody, proofs)
+        _ => false
 
     (** Compare two bodies under one more binder of the given type. *)
     underBinder (env, context, name, domain, left, right, proofs) = conversion (env, listPrepend (context, Binder(name = name, ty = domain)), left, right, proofs)

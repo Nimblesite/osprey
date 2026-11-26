@@ -26,17 +26,15 @@ module SpectralStreams
         output is exactly silent. Freeze keeps sounding until released. *)
     export tail size = satMul 2 (satSub size 1)
 
-    zeros count = mapList (toList (range (0, count)), \_ => 0.0)
-
     silent config = mapList (toList (range (0, satAdd (intDiv config.size 2) 1)), \_ => Complex(re = 0.0, im = 0.0))
 
     (** Transport discontinuity policy: analysis buffers restart silent and the hop clock restarts, while the
         overlap-add output (the already-synthesised tail), a held freeze capture and synthesis phases continue,
         so a jump never clicks from discarded output; pitch-shift frequency estimates settle after one frame. *)
-    export relocated (config, held) = held(input = zeros config.size, side = zeros config.size, countdown = config.hop)
+    export relocated (config, held) = held(input = Sequences::zeros config.size, side = Sequences::zeros config.size, countdown = config.hop)
 
     (** Silent buffers; the first frame completes after one hop. *)
-    export initial config = SpectralState(input = zeros config.size, side = zeros config.size, output = zeros config.size, memory = silent config, motion = silent config, countdown = config.hop, frames = 0, captured = false)
+    export initial config = SpectralState(input = Sequences::zeros config.size, side = Sequences::zeros config.size, output = Sequences::zeros config.size, memory = silent config, motion = silent config, countdown = config.hop, frames = 0, captured = false)
 
     windowed (samples, size) = Sequences::mapIndexed (samples, \(index, value) => value * SpectralMath::hann (toFloat index, toFloat size))
 

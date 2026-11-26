@@ -31,7 +31,8 @@ Each film runs about two to three minutes, with English captions, seekable chapt
 - [Proof Workbench guide](/docs/proof-workbench/): open the app, follow the first proof, inspect goals and use guided lessons.
 - [What is a proof, and how does it check Osprey code?](/docs/proofs/how-proofs-check-code/): a plain-English walk through one proof, from the compiler's real output to Lean's check, and the broken versions CI must reject.
 - [Mathlib port: current evidence](/docs/mathlib-port/): reproduce the checked imports and understand which claims remain open.
-- [Dependent types and proofs specification](/spec/0049-dependenttypesandproofs/): the full intended contract, distinguished from delivered results.
+- [Dependent types specification](/spec/0049-dependenttypesandproofs/): what dependent types are, why Osprey keeps them out of Hindley-Milner, and what its two dependent disciplines check today.
+- [Proof kernel and Lean bridge specification](/spec/0055-proofkernelandleanbridge/): the trusted kernel, Lean certificates and the Mathlib target.
 
 {% for id, topic in proofTopics %}
 <h2 id="{{ id }}">{{ topic.title }}</h2>

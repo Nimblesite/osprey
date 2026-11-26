@@ -115,13 +115,13 @@ module HostedHeaders {
 
     /// The rejection status, or 0 when the parse succeeded.
     export fn statusOf(parsed) = match parsed {
-        Reject { status, code } => status
+        Reject { status, _ } => status
         _ => 0
     }
 
     /// The rejection code, or "" when the parse succeeded.
     export fn codeOf(parsed) = match parsed {
-        Reject { status, code } => code
+        Reject { _, code } => code
         _ => ""
     }
 

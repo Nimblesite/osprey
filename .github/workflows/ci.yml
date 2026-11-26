@@ -63,7 +63,7 @@ env:
   # no wasm trap), or silently dropped output where the stale page is still
   # mapped. Node 24 is the first release that runs the assertion corpus clean.
   NODE_VERSION: "24"
-  WASI_SDK_VERSION: "24"
+  WASI_SDK_VERSION: "25"
 
 jobs:
   # ─── Change detection ───────────────────────────────────────────────────────
@@ -373,8 +373,13 @@ jobs:
       # sysroot and libosprey_runtime_wasm_arc.a are all present; skipping it drops
       # osprey-cli under its coverage floor and fails the threshold gate. The
       # dependency is therefore explicit rather than left to whatever the
-      # runner happens to carry.
+      # runner happens to carry. fiber_lifetime runs its wasm32 cases under
+      # wasmtime, measuring the host's peak [CONCURRENCY-WASM], so the pinned
+      # host is installed and checksummed too.
       - name: Install the wasm toolchain
+        env:
+          WASMTIME_VERSION: "27.0.0"
+          WASMTIME_SHA256: "74678f6ec49d8b858ca5181d5492b967245f6c072b5763ea14a75eee1ad3c2d7"
         run: |
           set -euo pipefail
           sudo apt-get install -y lld wabt
@@ -383,6 +388,12 @@ jobs:
           sudo mkdir -p /opt/wasi-sdk/share/wasi-sysroot
           sudo tar -xzf /tmp/wasi-sysroot.tar.gz -C /opt/wasi-sdk/share/wasi-sysroot --strip-components=1
           echo "OSPREY_WASI_SYSROOT=/opt/wasi-sdk/share/wasi-sysroot" >> "$GITHUB_ENV"
+          curl -fsSL --retry 3 --retry-max-time 60 -o /tmp/wasmtime.tar.xz \
+            "https://github.com/bytecodealliance/wasmtime/releases/download/v${WASMTIME_VERSION}/wasmtime-v${WASMTIME_VERSION}-x86_64-linux.tar.xz"
+          echo "${WASMTIME_SHA256}  /tmp/wasmtime.tar.xz" | sha256sum --check
+          sudo mkdir -p /opt/wasmtime
+          sudo tar -xJf /tmp/wasmtime.tar.xz -C /opt/wasmtime --strip-components=1
+          echo "/opt/wasmtime" >> "$GITHUB_PATH"
 
       - uses: actions/download-artifact@v8
         with:
@@ -1326,9 +1337,58 @@ jobs:
   # iOS/macOS device and simulator builds, simulator tests and the native
   # Workbench host. The iOS parts run on macos-26. Both images are ARM64,
   # matching the simulator archive.
+  # The one macOS compiler every macOS job below runs. Each used to compile it for itself, about
+  # three minutes of macOS time apiece while the runner queue held the next part back; this builds
+  # beside the Linux Build job and keeps the macOS cargo cache fresh, since only it compiles there.
+  build-macos:
+    name: Build (macOS)
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust
+        id: rust
+        uses: dtolnay/rust-toolchain@1.100.0
+
+      - name: Restore the compiler's cargo cache
+        id: cargo
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-osprey-${{ steps.rust.outputs.cachekey }}-${{ hashFiles('src/toolchain/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-osprey-
+
+      - name: Build the compiler
+        run: cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+
+      - name: Save the compiler's cargo cache
+        if: steps.cargo.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ steps.cargo.outputs.cache-primary-key }}
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: osprey-macos
+          path: target/release/osprey
+          retention-days: 1
+          if-no-files-found: error
+
   test-apple:
     name: "Tests: Apple (${{ matrix.part }})"
-    needs: [changes, build]
+    needs: [changes, build, build-macos]
     if: ${{ needs.changes.outputs.code == 'true' }}
     runs-on: ${{ matrix.runner || 'macos-15' }}
     timeout-minutes: ${{ matrix.minutes }}
@@ -1388,37 +1448,14 @@ jobs:
       - name: Install jq
         run: command -v jq >/dev/null || brew install jq
 
-      - name: Install Rust
-        id: rust
-        uses: dtolnay/rust-toolchain@1.100.0
-
-      - name: Restore the compiler's cargo cache
-        id: cargo
-        uses: actions/cache/restore@v6
+      - uses: actions/download-artifact@v8
         with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-osprey-${{ steps.rust.outputs.cachekey }}-${{ hashFiles('src/toolchain/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-osprey-
+          name: osprey-macos
+          path: target/release
 
-      # Only these macOS jobs build the compiler on macOS, so they save what they build: a cache
-      # that is only restored goes stale for good when the runner's rustc moves.
-      - name: Build the compiler
-        run: cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
-
-      - name: Save the compiler's cargo cache
-        if: steps.cargo.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6
-        with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ steps.cargo.outputs.cache-primary-key }}
+      # OSPREY_PREBUILT tells every make recipe to use this binary rather than compile its own.
+      - name: Restore artifact permissions
+        run: chmod +x target/release/osprey && echo OSPREY_PREBUILT=1 >> "$GITHUB_ENV"
 
       - uses: actions/setup-node@v7
         if: matrix.part == 'Light Orchestra'
@@ -1523,7 +1560,7 @@ jobs:
   # Osprey Agent's whole UI against its goldens, which exist per macOS release: only macos-26 for now.
   test-agent:
     name: "Tests: Osprey Agent UI (macos-26)"
-    needs: [changes, build]
+    needs: [changes, build, build-macos]
     if: ${{ needs.changes.outputs.code == 'true' }}
     runs-on: macos-26
     timeout-minutes: 20
@@ -1532,37 +1569,14 @@ jobs:
         with:
           lfs: true
 
-      - name: Install Rust
-        id: rust
-        uses: dtolnay/rust-toolchain@1.100.0
-
-      - name: Restore the compiler's cargo cache
-        id: cargo
-        uses: actions/cache/restore@v6
+      - uses: actions/download-artifact@v8
         with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-osprey-${{ steps.rust.outputs.cachekey }}-${{ hashFiles('src/toolchain/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-osprey-
+          name: osprey-macos
+          path: target/release
 
-      # Only these macOS jobs build the compiler on macOS, so they save what they build: a cache
-      # that is only restored goes stale for good when the runner's rustc moves.
-      - name: Build the compiler
-        run: cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
-
-      - name: Save the compiler's cargo cache
-        if: steps.cargo.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6
-        with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ steps.cargo.outputs.cache-primary-key }}
+      # OSPREY_PREBUILT tells every make recipe to use this binary rather than compile its own.
+      - name: Restore artifact permissions
+        run: chmod +x target/release/osprey && echo OSPREY_PREBUILT=1 >> "$GITHUB_ENV"
 
       - name: Host tests and the self-test against goldens
         id: agent-check
@@ -1619,6 +1633,7 @@ jobs:
     needs:
       - changes
       - build
+      - build-macos
       - analyse
       - check-programs
       - test-rust

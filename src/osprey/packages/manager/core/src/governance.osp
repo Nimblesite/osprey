@@ -13,37 +13,57 @@ namespace registry;
 /// membership, ceremony and exact canonical statement; supplied scope,
 /// role or user text is never authority.
 module Governance {
+    /// Opaque stable id of a principal, a human or a workflow: never a handle or an email.
     export type PrincipalId = string
+    /// Opaque stable id of an organization; its handle is a separate field.
     export type OrgId = string
+    /// Opaque stable id of one principal's enrollment in one organization.
     export type MembershipId = string
 
+    /// Whether an actor is a person or an automation such as CI.
     export type PrincipalKind = Human | Workflow
+    /// Whether an actor may act now or is suspended; suspension freezes its administered packages at once.
     export type PrincipalState = PrincipalActive | Suspended
+    /// One actor: its stable id, its kind and its lifecycle status.
     export type Principal = { id: PrincipalId, kind: PrincipalKind, status: PrincipalState }
 
+    /// One organization: its id, its unique handle and the authority epoch its decisions are checked against.
     export type Organization = { id: OrgId, orgHandle: string, governanceEpoch: int }
 
+    /// Whether a member governs the organization (custodian) or only belongs to it.
     export type MembershipRole = Custodian | Member
+    /// Whether an enrollment is live or was revoked; a revoked row stays as evidence and is never reactivated.
     export type MembershipState = MemberActive | Revoked
+    /// One principal's enrollment in one organization: its role, its state and the authority epoch its grants are captured at.
     export type Membership = { id: MembershipId, org: OrgId, principal: PrincipalId, role: MembershipRole, status: MembershipState, authorityEpoch: int }
 
     /// The grantable capabilities [PACKAGE-OWNERSHIP-PERMISSIONS]. There is
     /// no `admin`, no wildcard and no bundle: the administrator seat is the
     /// package row, not a permission.
     export type Permission = PublishRelease | YankRelease | EditMetadata | ManageMaintenance | ManageSecurity
+    /// Whether a grant is live or was revoked; a revoked row stays as audit evidence.
     export type GrantState = GrantActive | GrantRevoked
+    /// One explicit permission: the grantor gives one membership one permission on one package, bound to both authority epochs and an optional expiry.
     export type Grant = { id: string, package: string, membership: MembershipId, permission: Permission, grantor: MembershipId, packageEpoch: int, memberEpoch: int, expiresAt: Maybe::Maybe<int>, status: GrantState }
 
+    /// The lifecycle of a package, from a draft with no accepted release to a tombstone whose key stays taken.
     export type PackageState = Draft | Active | WriteFrozen | Deprecated | Tombstoned
+    /// One package: its id, canonical key, owning organization, single administrator membership, lifecycle status and authority epoch.
     export type Package = { id: string, key: Names::Key, org: OrgId, admin: MembershipId, status: PackageState, authorityEpoch: int }
 
+    /// How a proof was signed: a person's WebAuthn ceremony or a workflow's ephemeral DSSE key.
     export type Ceremony = WebAuthn | EphemeralDsse
+    /// The host's verdict on a proof: verified, or rejected with the reason.
     export type Verification = HostVerified | Rejected { reason: string }
+    /// The already-verified proof of one decision: who signed which canonical statement, through which ceremony.
     export type Proof = { ceremony: Ceremony, actor: PrincipalId, membership: MembershipId, statement: string, verification: Verification }
 
+    /// Where an administrator handover proposal stands; only pending and accepted proposals are live.
     export type TransferState = Pending | Accepted | Completed | Cancelled | Declined | Expired
+    /// One administrator handover proposal: the package, the outgoing and proposed administrators, the epoch it expects, its hold window, the acceptance proof and its status.
     export type Transfer = { id: string, package: string, current: MembershipId, proposed: MembershipId, expectedEpoch: int, notBefore: int, expiresAt: int, acceptance: Maybe::Maybe<Proof>, status: TransferState }
 
+    /// The whole governance world as row lists; every transition takes one and answers another.
     export type Registry = { principals: List<Principal>, organizations: List<Organization>, memberships: List<Membership>, packages: List<Package>, grants: List<Grant>, transfers: List<Transfer> }
 
 
@@ -69,24 +89,35 @@ module Governance {
     /// row carries the same `id` field (issue #273), so one lookup serves all.
     fn byId(entries, id, code) = lookup(entries, fn(row) => row.id == id, code)
 
+    /// The principal with id `id`, or `governance.principal.missing`.
     export fn principalOf(registry, id) = byId(registry.principals, id, "governance.principal.missing")
+    /// The organization with id `id`, or `governance.organization.missing`.
     export fn organizationOf(registry, id) = byId(registry.organizations, id, "governance.organization.missing")
+    /// The membership with id `id`, or `governance.membership.missing`.
     export fn membershipOf(registry, id) = byId(registry.memberships, id, "governance.membership.missing")
+    /// The package with id `id`, or `governance.package.missing`.
     export fn packageOf(registry, id) = byId(registry.packages, id, "governance.package.missing")
+    /// The handover proposal with id `id`, or `governance.transfer.missing`.
     export fn transferOf(registry, id) = byId(registry.transfers, id, "governance.transfer.missing")
+    /// The grant with id `id`, or `governance.grant.missing`.
     export fn grantOf(registry, id) = byId(registry.grants, id, "governance.grant.missing")
 
     /// The organization's package row for one leaf name, in any lifecycle
     /// status: tombstones keep occupying their key [PACKAGE-NAMES-NO-SITTING].
     export fn packageByName(registry, org, name) = firstWhere(registry.packages, fn(p: Package) => p.org == org && p.key.name == name)
+    /// The organization whose handle is `orgHandle`, if any.
     export fn organizationByHandle(registry, orgHandle) = firstWhere(registry.organizations, fn(o: Organization) => o.orgHandle == orgHandle)
 
+    /// Whether the membership is active rather than revoked.
     export fn isActive(membership: Membership) = membership.status == MemberActive
 
+    /// Whether the member holds the custodian role.
     export fn isCustodian(membership: Membership) = membership.role == Custodian
 
+    /// Whether the actor is a person rather than a workflow.
     export fn isHuman(principal: Principal) = principal.kind == Human
 
+    /// Whether the actor is active rather than suspended.
     export fn isLive(principal: Principal) = principal.status == PrincipalActive
 
     /// A proposal that has not concluded: it still occupies the package's
@@ -99,8 +130,10 @@ module Governance {
     /// A package that has not seen its first accepted release.
     export fn isDraft(pkg: Package) = pkg.status == Draft
 
+    /// Whether the grant is active rather than revoked; expiry is checked separately against the clock.
     export fn isActiveGrant(grant: Grant) = grant.status == GrantActive
 
+    /// The canonical hyphenated spelling of a permission, as statements and the API write it.
     export fn permissionName(permission) = match permission {
         PublishRelease => "publish-release"
         YankRelease => "yank-release"
@@ -121,16 +154,22 @@ module Governance {
     /// ```
     export fn required(flag, value, code) = if flag { Success { value: value } } else { Error { message: code } }
 
+    /// The membership when it is active, else `governance.membership.inactive`.
     export fn activeMemberOf(membership: Membership) = required(isActive(membership), membership, "governance.membership.inactive")
 
+    /// The membership when it belongs to `org`, else `governance.membership.other-org`.
     export fn sameOrgMember(membership: Membership, org) = required(membership.org == org, membership, "governance.membership.other-org")
 
+    /// The principal when it is a person, else `governance.principal.workflow`.
     export fn humanPrincipal(principal: Principal) = required(isHuman(principal), principal, "governance.principal.workflow")
 
+    /// The principal when it is active, else `governance.principal.suspended`.
     export fn livePrincipal(principal: Principal) = required(isLive(principal), principal, "governance.principal.suspended")
 
+    /// The principal when it is both active and a person; the suspension refusal is reported first.
     export fn liveHuman(principal: Principal) = andThen(livePrincipal(principal), fn(p: Principal) => humanPrincipal(p))
 
+    /// The active membership with id `id`, or its missing or inactive refusal.
     export fn activeMembershipOf(registry, id) = andThen(membershipOf(registry, id), fn(m: Membership) => activeMemberOf(m))
 
     /// The live human principal behind a membership: the actor every
@@ -144,6 +183,7 @@ module Governance {
         _ => Error { message: refusalCode(pkg.status) }
     }
 
+    /// The package with id `id` when its status allows writes, or its missing or status refusal.
     export fn writablePackage(registry, id) = andThen(packageOf(registry, id), fn(pkg: Package) => writable(pkg))
 
     /// Operational authorization needs an active package: a draft has no
@@ -209,26 +249,44 @@ module Governance {
     /// whole decision — identities, epochs, permission and expiry — so a
     /// proof for one decision can never authorize another.
     export fn organizationStatement(id, orgHandle, founder) = "create-organization|${id}|@${orgHandle}|first-custodian:${founder}"
+    /// The statement a custodian grant signs: the organization and the membership promoted.
     export fn custodianStatement(org, target) = "grant-custodianship|org:${org}|to:${target}"
+    /// The statement a revocation signs: the organization and the membership revoked.
     export fn revocationStatement(org, target) = "revoke-membership|org:${org}|membership:${target}"
+    /// The statement an invitation signs: the organization, the invited principal and the new membership.
     export fn invitationStatement(org, principal, membership) = "invite-member|org:${org}|principal:${principal}|membership:${membership}"
+    /// The statement a membership acceptance signs: the organization, the principal and the membership.
     export fn membershipAcceptanceStatement(org, principal, membership) = "accept-membership|org:${org}|principal:${principal}|membership:${membership}"
+    /// The statement a package creation signs: the package id, its canonical key and the nominated administrator.
     export fn creationStatement(id, key: Names::Key, admin) = "create-package|${id}|${Names::display(key)}|admin:${admin}"
+    /// The statement a grant signs: key, package epoch, recipient membership, permission and expiry (0 when none).
     export fn grantStatement(key: Names::Key, epoch, to, permission, expiresAt) = "grant|${Names::display(key)}|epoch:${epoch}|to:${to}|${permissionName(permission)}|expires:${Maybe::orElse(expiresAt, 0)}"
+    /// The statement a grant revocation signs: key, package epoch and the grant revoked.
     export fn revokeGrantStatement(key: Names::Key, epoch, grant) = "revoke-grant|${Names::display(key)}|epoch:${epoch}|grant:${grant}"
+    /// The statement revoking every grant of a package signs: key and package epoch.
     export fn revokeAllStatement(key: Names::Key, epoch) = "revoke-grants|${Names::display(key)}|epoch:${epoch}"
+    /// The statement a grant renewal signs: key, package epoch, recipient membership, permission and the new expiry (0 when none).
     export fn renewalStatement(key: Names::Key, epoch, to, permission, expiresAt) = "renew-grant|${Names::display(key)}|epoch:${epoch}|to:${to}|${permissionName(permission)}|expires:${Maybe::orElse(expiresAt, 0)}"
+    /// The statement deprecating a package signs: key and package epoch.
     export fn deprecateStatement(key: Names::Key, epoch) = "deprecate|${Names::display(key)}|epoch:${epoch}"
+    /// The statement tombstoning a package signs: key and package epoch.
     export fn tombstoneStatement(key: Names::Key, epoch) = "tombstone|${Names::display(key)}|epoch:${epoch}"
+    /// The statement a handover proposal signs: key, package epoch, outgoing and proposed administrators.
     export fn proposalStatement(key: Names::Key, epoch, current, proposed) = "handover-propose|${Names::display(key)}|epoch:${epoch}|from:${current}|to:${proposed}"
+    /// The statement a handover acceptance signs: proposal id, key, package epoch, outgoing and proposed administrators.
     export fn handoverAcceptanceStatement(id, key: Names::Key, epoch, current, proposed) = "handover-accept|${id}|${Names::display(key)}|epoch:${epoch}|from:${current}|to:${proposed}"
+    /// The statement cancelling handover proposal `id` signs.
     export fn cancelStatement(id) = "handover-cancel|${id}"
+    /// The statement declining handover proposal `id` signs.
     export fn declineStatement(id) = "handover-decline|${id}"
 
     /// Replace one row in place; historical evidence rows are never deleted.
     export fn replaceMembership(registry, updated: Membership) = registry { memberships: mapList(registry.memberships, fn(m: Membership) => if m.id == updated.id { updated } else { m }) }
+    /// The registry with `updated` in place of the package of the same id; a missing id changes nothing.
     export fn replacePackage(registry, updated: Package) = registry { packages: mapList(registry.packages, fn(p: Package) => if p.id == updated.id { updated } else { p }) }
+    /// The registry with `updated` in place of the grant of the same id; a missing id changes nothing.
     export fn replaceGrant(registry, updated: Grant) = registry { grants: mapList(registry.grants, fn(g: Grant) => if g.id == updated.id { updated } else { g }) }
+    /// The registry with `updated` in place of the handover proposal of the same id; a missing id changes nothing.
     export fn replaceTransfer(registry, updated: Transfer) = registry { transfers: mapList(registry.transfers, fn(t: Transfer) => if t.id == updated.id { updated } else { t }) }
 
     /// Revoke every grant row of one package, the outgoing administrator's

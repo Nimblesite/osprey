@@ -11,6 +11,7 @@ import proof
     goes through `Infer::check`, so the term is inferred before the types
     are compared. Implements [PROOF-KERNEL-THEORY]. *)
 module ConversionTests
+    (** Runs the definitional-equality cases; the testing built-ins report the TAP lines. *)
     export run () =
         sameProposition ()
         distinctPropositions ()

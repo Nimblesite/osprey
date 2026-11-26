@@ -65,7 +65,7 @@ def parse_flag_group(cps, i, n):
         return add_group(cps, i, i + 2, n)
 
 
-def add_group(cps, i, j, n):
+def add_group(cps, _i, j, n):
     """Parse `(?flags...)` starting its flag run at `j`."""
     run = read_flag_run(cps, j, n)
     add = Program.pair_value(run)

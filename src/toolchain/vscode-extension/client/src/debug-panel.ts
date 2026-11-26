@@ -225,8 +225,9 @@ export async function readDebugSnapshot(
       levels: 20,
     })) as StackResponse;
     const frames = stack.stackFrames ?? [];
-    if (frames.length > 0) {
-      const topVariables = await readTopVariables(session, frames[0].id);
+    const top = frames[0];
+    if (top) {
+      const topVariables = await readTopVariables(session, top.id);
       return { state: "stopped", program, frames, topVariables };
     }
   }

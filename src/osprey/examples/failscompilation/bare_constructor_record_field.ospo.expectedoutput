@@ -1,0 +1,3 @@
+5:0: field `fib` of `Holder` is a bare `Fiber`, which names no element type: write it, as in `Fiber<int>`, or make `Holder` generic
+6:0: field `ch` of `Pipes` is a bare `Channel`, which names no element type: write it, as in `Channel<int>`, or make `Pipes` generic
+6:0: field `later` of `Pipes` is a bare `Fiber`, which names no element type: write it, as in `Fiber<int>`, or make `Pipes` generic

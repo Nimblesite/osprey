@@ -1,6 +1,9 @@
 // Shared failure propagation for the package boundaries and governance guards.
 namespace registry;
 
+/// Result helpers shared by every package boundary and governance guard:
+/// presence tests, error rewriting, all-or-first collection and first-match
+/// lookup, each naming its failures by a stable code.
 module Checked {
     /// True when `result` is a success; the presence test of every lookup.
     export fn succeeded(result) = match result {

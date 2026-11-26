@@ -22,17 +22,15 @@ match readResult
     Success _value => print "Read successful!"
     Error _message => print "Read failed!"
 
-print "-- Step 3: Testing Result<string> toString --"
-print "Write Result toString: ${toString writeResult}"  // Tests Result<Unit> toString
-print "Read Result toString: ${toString readResult}"    // Tests Result<string> toString
+// Tests Result<Unit> toString
+// Tests Result<string> toString
+print "-- Step 3: Testing Result<string> toString --\nWrite Result toString: ${toString writeResult}\nRead Result toString: ${toString readResult}"
 
 (** A failure must say WHY [BUILTIN-FILE-ERRMSG]: the operation, the path and
     the operating system's own reason, never a placeholder that reads the same
     for a missing file, a permissions denial and a full disk. *)
 errorResult = readFile "nonexistent_file_xyz123.txt"
-print "Error Result toString: ${toString errorResult}"
-
-print "=== Test Complete ==="
+print "Error Result toString: ${toString errorResult}\n=== Test Complete ==="
 
 (** Repeat the real write/read workflow and verify both Result payloads. *)
 fileWorkflowCase () =

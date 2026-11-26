@@ -1,0 +1,9 @@
+[project]
+name = "osprey-cms"
+source_roots = ["src", "../../packages/express/src"]
+typescript_sources = ["../../packages/express/src/encode.ts", "../../packages/express/src/headers.ts", "../../packages/express/src/query.ts", "../../packages/express/src/express.ts", "src/paths.ts", "src/shell.ts", "src/settings.ts", "src/git.ts", "src/tree.ts", "src/upload.ts", "src/replies.ts", "src/routes.ts", "src/app.ts", "src/main.ts"]
+default_namespace = "cms"
+entry = "src/main.ts"
+
+[modules]
+allow_wildcard_imports = true

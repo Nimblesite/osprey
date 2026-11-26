@@ -27,6 +27,11 @@ signature TreeApi {
     fn doubled() -> int
 }
 
+signature PickerApi {
+    fn pick<A, B>(a: A, b: B) -> B
+    fn keep<T>(x: T) -> T
+}
+
 /// An ascribed module's signature is its whole public surface.
 module Counters : CounterApi {
     type Counter = { count: int }
@@ -68,16 +73,27 @@ module Trees : TreeApi {
     fn doubled() = (Leaf::value() * 2) 
 }
 
+/// Unannotated implementations take the signature's binders, which stay
+/// rigid and are instantiated afresh at every use ([TYPE-GENERICS-FN]).
+module Pickers : PickerApi {
+    fn pick(_a, b) = b
+    fn keep(x) = x
+}
+
 /// An unascribed module reaches the same surface through plain `export`.
 /// The Default-only `: Signature + extra` ascription cannot appear in a twin
 /// pair — ML ascription is exact — so it is asserted in
 /// `src/toolchain/crates/osprey-project/tests/module_diagnostics.rs` instead.
 module Extended {
     type Counter = { count: int }
+    /// A counter that starts at five, not zero.
     export fn empty() = Counter { count: 5 }
+    /// A counter two past `c`.
     export fn bump(c) = Counter { count: ((c.count + 2)) }
+    /// The count `c` holds.
     export fn size(c) = c.count
 
+    /// The size of the starting counter, which is five.
     export fn seeded() = size(empty())
 }
 
@@ -109,10 +125,19 @@ fn nestedAndExtraCase() = checkAll("nested ascription and extra exports", [
     structuralEquals([Extended::size(Extended::bump(Extended::empty())), Extended::seeded()], [7, 5])
 ])
 
+/// One generic signature item used at several types in one program.
+fn genericCase() = checkAll("generic signature binders instantiate per use", [
+    Pickers::pick(1, "two") == "two",
+    Pickers::pick("one", 2) == 2,
+    Pickers::keep(Pickers::keep(9)) == 9,
+    Pickers::keep("x") == "x"
+])
+
 exactArithmetic(fn() => print("${Counters::size(Counters::bump(Counters::empty()))} ${Trees::doubled()} ${Extended::seeded()}"))
 
 exactTests([
     { name: "abstract signature types stay abstract", work: abstractTypeCase },
     { name: "signature effects remain performable", work: signatureEffectCase },
-    { name: "nested ascription and extra exports conform", work: nestedAndExtraCase }
+    { name: "nested ascription and extra exports conform", work: nestedAndExtraCase },
+    { name: "generic signatures instantiate per use", work: genericCase }
 ])

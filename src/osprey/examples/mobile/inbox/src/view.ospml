@@ -7,13 +7,16 @@ type IssueRows =
     total : int
     bookmarked : int
 
+(** The inbox's view: the visible issues, the open one's detail, counts and errors, as one JSON document. *)
 module View
+    (** Whether issue `id` is bookmarked in `model`. *)
     export saved model id = contains model.saved ("|" + id + "|")
 
+    (** Whether an issue with the id `wanted` is in `model`'s items. *)
     export exists model wanted =
         doc = jsonParse model.items ?: 0
         found = containsId doc 0 (jsonLength doc "") wanted
-        freed = jsonFree doc ?: 0
+        _freed = jsonFree doc ?: 0
         found
 
     containsId doc index count wanted = match index >= count
@@ -60,9 +63,10 @@ module View
 
     document model result selected = Json::obj (Json::members [Json::strField "repo" model.repo, Json::strField "search" model.search, Json::strField "filter" model.filter, Json::strField "status" model.status, Json::strField "error" (errors model), Json::rawField "loading" model.loading, Json::rawField "items" (Json::arr result.elements), Json::numField "total" result.total, Json::numField "bookmarked" result.bookmarked, Json::strField "selected" model.selected, Json::rawField "detail" selected])
 
+    (** `model` as the JSON document the UI draws: the issues matching its search and filter, the selected issue's detail, and its status and errors. *)
     export render model =
         doc = jsonParse model.items ?: 0
         result = rows model doc 0 (jsonLength doc "") "" 0
         output = document model result (detail model doc 0 (jsonLength doc ""))
-        freed = jsonFree doc ?: 0
+        _freed = jsonFree doc ?: 0
         output

@@ -154,6 +154,7 @@ fn later_prelude_units_rebase_cleanly_into_ranges_past_every_earlier_unit() {
         (2, TESTING, (&units().testing), &[(&units().signals)][..]),
         (3, TESTING_GPU, (&units().testing_gpu), &[]),
         (4, TESTING_RESULT, (&units().testing_result), &[]),
+        (6, TESTING_SETUP, (&units().testing_setup), &[]),
     ] {
         let base = PRELUDE_LINE_BASE + index * PRELUDE_UNIT_STRIDE;
         assert_in_range(source, unit, base, |line| line >= base, earlier);
@@ -385,4 +386,25 @@ fn naming_and_then_attaches_the_result_unit_once() {
         "fn half(n) = if n % 2 == 0 { Success { value: n / 2 } } else { Error { message: \"odd\" } }\nprint(\"${andThen(half(8), half)}\")\n",
     );
     assert_eq!(count_named(&names, "andThen"), 1);
+}
+
+/// Chaining `andThen`, or binding a local that happens to be named `settled`,
+/// attaches no test setup: `settledWork` calls `check`, so attaching it would
+/// compile the program as a test and append a TAP plan to its output. Naming
+/// `settledWork` attaches it. [TESTING-TAP]
+#[test]
+fn only_naming_settled_work_attaches_the_test_setup_unit() {
+    for source in [
+        "fn main() = print(toString(andThen(Success { value: 1 }, fn(v) => Success { value: v + 1 })))\n",
+        "fn main() = print(toString(divideResult(1.0, 2.0)))\n",
+        "fn main() = {\n    let settled = 3\n    print(toString(settled))\n}\n",
+    ] {
+        let names = attached_names(source);
+        assert!(!names.contains(&"settledWork".to_string()), "{names:?}");
+    }
+    let named = attached_names(
+        "fn main() = test(\"t\", fn() => settledWork(fn() => Success { value: expect(1, 1) }))\n",
+    );
+    assert!(named.contains(&"settledWork".to_string()), "{named:?}");
+    assert!(!named.contains(&"divideResult".to_string()), "{named:?}");
 }

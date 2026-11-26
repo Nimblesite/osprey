@@ -112,6 +112,37 @@ print("${pick(10, "twenty")}")"#,
     );
 }
 
+// A binder is rigid: the body must work for EVERY `T`, so a body that
+// returns the other binder, fixes a binder to a concrete type, or merges two
+// binders is less general than its declaration and is rejected. HM alone
+// would quietly unify them and accept a function that breaks its own type
+// (Peyton Jones, Vytiniotis, Weirich & Shields, "Practical type inference for
+// arbitrary-rank types", JFP 2007, section 4.6: annotated variables are skolems).
+spec_cases! {
+    a_body_returning_the_other_binder_is_rejected: rejects_with(Default, r#"fn pick<A, B>(a: A, b: B) -> B = a
+print("${pick(1, 2)}")"#, "less general than its declared type");
+
+    a_body_fixing_a_binder_to_int_is_rejected: rejects_with(Default, r#"fn bump<T>(x: T) -> T = x + 1
+print("${bump(1)}")"#, "less general than its declared type");
+
+    two_binders_merged_by_the_body_are_rejected: rejects_with(Default, r#"fn both<A, B>(a: A, b: B) -> List<A> = [a, b]
+print("${length(both(1, 2))}")"#, "less general than its declared type");
+
+    ml_a_body_returning_the_other_binder_is_rejected: rejects_with(Ml, "pick<A, B> : (A, B) -> B
+pick (a, _b) = a
+print \"${pick (1, 2)}\"
+", "less general than its declared type");
+
+    a_body_that_keeps_every_binder_general_is_accepted: accepts(Default, r#"fn pick<A, B>(a: A, b: B) -> B = b
+fn twice<T>(f: (T) -> T, x: T) -> T = f(f(x))
+print("${pick(1, "two")} ${twice(fn(s) => s, "three")}")"#);
+
+    ml_a_body_that_keeps_every_binder_general_is_accepted: accepts(Ml, "pick<A, B> : (A, B) -> B
+pick (_a, b) = b
+print \"${pick (1, \"two\")}\"
+");
+}
+
 spec_cases! {
     /// "without it, `T` in an annotation names a nominal type" — an undeclared
     /// nominal name is not a type.

@@ -1,0 +1,109 @@
+// Implements [CMS-EDITOR-FORMATTED]: a page's blocks drawn with their real typography, for the live
+// preview beside raw Markdown. Inline `**strong**`, `*emphasis*` and `` `code` `` become styled runs;
+// an unmatched marker stays literal text, so drawing never fails.
+namespace studio
+
+import ui::Frames
+import ui::Ui
+import studio::Blocks
+import studio::Design
+import studio::Kit
+import studio::Syntax
+
+(** The page as a reader sees it. *)
+module Preview
+    // Whichever of `best` and `marker` starts first in `text`.
+    sooner (text, best, marker) =
+        found = indexOf text marker ?: length text
+        match found < (parseInt (listGet best 1 ?: "0") ?: 0)
+            true => [marker, toString found]
+            false => best
+
+    // The next marker in `text` and where it starts, preferring the earliest.
+    earliest (text, markers) = foldList (markers, ["", toString (length text)], \(best, marker) => sooner (text, best, marker))
+
+    emphasisOf marker = match marker
+        "**" => "strong"
+        "`" => "code"
+        _ => "italic"
+
+    plain (text, ink) = match text
+        "" => []
+        _ => [Ui::emphasised (text, ink, "")]
+
+    // A marked span: `marker` around words, drawn with that marker's emphasis.
+    marked (text, start, marker, ink) =
+        rest = drop text (satAdd start (length marker))
+        close = indexOf rest marker ?: -1
+        match close < 0
+            true => plain (text, ink)
+            false => listConcat (listConcat (plain (take text start, ink)) [Ui::emphasised (take rest close, ink, emphasisOf marker)]) (runs (drop rest (satAdd close (length marker)), ink))
+
+    // A link `[words](target)` reads as its words in the accent colour; its target stays in the source.
+    linked (text, start, ink) =
+        rest = drop text (satAdd start 1)
+        middle = indexOf rest "](" ?: -1
+        close = indexOf (drop rest (max 0 middle)) ")" ?: -1
+        match middle < 0 || close < 0
+            true => plain (text, ink)
+            false => listConcat (listConcat (plain (take text start, ink)) [Ui::emphasised (take rest middle, "accent", "strong")]) (runs (drop rest (satAdd (satAdd middle close) 1), ink))
+
+    // Inline runs: text up to the first marker, the marked span or link, then the rest, recursively.
+    export runs (text, ink) =
+        next = earliest (text, ["**", "`", "*", "["])
+        start = parseInt (listGet next 1 ?: "0") ?: 0
+        match listGet next 0 ?: ""
+            "" => plain (text, ink)
+            "[" => linked (text, start, ink)
+            marker => marked (text, start, marker, ink)
+
+    para (text, step, ink, role) =
+        style = Frames::text (Design::sans (), Design::size step, false)
+        Ui::framed (style(frameHug = false, frameLineHeight = toFloat (Design::size step) * 1.6), Ui::rich (runs (text, ink), role))
+
+    unbulleted line = match startsWith (trim line) "- "
+        true => drop (trim line) 2
+        false => trim line
+
+    bullet line = Ui::spacedRow (10, [Kit::strong ("•", "body", "accent"), Ui::share (para (unbulleted line, "body", "inkSoft", ui::Body))])
+
+    bullets text = Ui::spaced (6, mapList (lines text, bullet))
+
+    quote text =
+        style = Kit::surface ("accentSoft", "", Design::radius "sm", 14)
+        Ui::framed (style(frameLine = "accent", frameLineEdge = "left"), para (text, "h3", "inkSoft", ui::Body))
+
+    fence text = listGet (lines text) 0 ?: ""
+
+    languageOf text = match trim (drop (fence text) 3)
+        "" => "code"
+        named => named
+
+    // The lines between a code block's fences: the opening fence always, the closing one when present.
+    source text =
+        all = lines text
+        closing = match length all > 1 && startsWith (listGet all (satSub (length all) 1) ?: "") "```"
+            true => 1
+            false => 0
+        join (range (1, satSub (length all) closing) |> fold [] (\(out, index) => listAppend out (listGet all index ?: ""))) "\n"
+
+    // A code block: its language over its source, each token in its syntax colour ([CMS-EDITOR-SYNTAX]).
+    code text =
+        style = Kit::surface ("sunken", "edge", Design::radius "md", 16)
+        face = Frames::text (Design::mono (), Design::size "small", false)
+        language = Kit::eyebrow (languageOf text, "inkMuted")
+        body = Ui::framed (face(frameName = "source", frameLineHeight = 21.0), Ui::rich (Syntax::runs (source text), ui::Body))
+        Ui::framed (style(frameName = "code", frameGap = 10), Ui::column [language, body])
+
+    (** One block with its typography. *)
+    export block item = match item.blockStyle
+        "h1" => para (item.blockText, "h1", "ink", ui::Heading)
+        "h2" => para (item.blockText, "h2", "ink", ui::Heading)
+        "h3" => para (item.blockText, "h3", "ink", ui::Heading)
+        "bullets" => bullets item.blockText
+        "quote" => quote item.blockText
+        "code" => code item.blockText
+        _ => para (item.blockText, "body", "inkSoft", ui::Body)
+
+    (** The whole page, front matter left out. *)
+    export page text = Ui::spaced (16, mapList ((Blocks::page text).pageBlocks, block))

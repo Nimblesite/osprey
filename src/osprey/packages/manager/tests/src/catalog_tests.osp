@@ -8,8 +8,11 @@ import registry::Release
 /// JSON views the API serves. Implements [PACKAGE-FOLDER-REGISTRY] and
 /// [PACKAGE-API]. The fixture is shared with the router suite.
 module CatalogTests {
+    /// A digest no real release has: `sha256:` followed by 64 `a`s; here the
+    /// digest of `@finch/ledger` e1.r1.
     export fn digestA() = "sha256:" + (repeat("a", 64) ?: "")
     fn digestB() = "sha256:" + (repeat("b", 64) ?: "")
+    /// `sha256:` followed by 64 `c`s: the digest of `@finch/util` e1.r1.
     export fn digestC() = "sha256:" + (repeat("c", 64) ?: "")
 
     fn id(scope, name, epoch, ordinal, digest) = Identity::ReleaseId {
@@ -21,6 +24,8 @@ module CatalogTests {
 
     fn file(path) = Release::File { relPath: path, content: "" }
 
+    /// `@finch/ledger` e1.r1 as the registry serves it: `osprey.toml` and
+    /// `src/lib.osp`, both empty.
     export fn ledgerEarly() = Release::Served { id: id("finch", "ledger", 1, 1, digestA()), files: [file("osprey.toml"), file("src/lib.osp")] }
     fn ledgerLate() = Release::Served { id: id("finch", "ledger", 2, 5, digestB()), files: [file("osprey.toml")] }
     fn utilOnly() = Release::Served { id: id("finch", "util", 1, 1, digestC()), files: [file("osprey.toml")] }
@@ -78,6 +83,8 @@ module CatalogTests {
         "{\"digest\":\"${digestA()}\",\"epoch\":1,\"files\":[\"osprey.toml\",\"src/lib.osp\"],\"key\":\"@finch/ledger\",\"ordinal\":1}",
         Catalog::releaseJson(ledgerEarly()) ?: "?")
 
+    /// The catalog suite: ordering, digest lookup, `releasesOf`, and the
+    /// byte-exact health, packages, package and release JSON.
     export fn run() = {
         test("catalog: ordering", ordering)
         test("catalog: byDigest", lookupByDigest)

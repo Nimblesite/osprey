@@ -16,7 +16,6 @@
 
 // --- backend ABI under test (memory_gc.c) beyond memory_hooks.h -------------
 void *osp_alloc(int64_t size);
-void osp_collect(void);
 void *osp_gc_malloc(size_t size);
 void *osp_gc_calloc(size_t n, size_t size);
 void *osp_gc_realloc(void *old, size_t size);
@@ -77,6 +76,7 @@ void t_debug_reports(const char *self);
 void ceiling_child(const char *mode);
 void t_heap_ceiling(const char *self);
 void foreign_fault_child(void);
+void stdout_overflow_child(void);
 void t_stack_guard_outlives_foreign_faults(const char *self);
 void t_runner_poll_ends_an_orphan(void);
 

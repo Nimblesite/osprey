@@ -60,14 +60,14 @@ keymapJourney () =
         expect (synth::Keymaps::keys (mine, "open"), "Cmd+O")
         expect (synth::Keymaps::keys (mine, "stopSong"), "F5"))
     forEachList (["{\"name\": \"Typo\", \"shortcuts\": {\"sav\": \"Cmd+S\"}}", "{\"name\": \"Clash\", \"shortcuts\": {\"save\": \"Cmd+O\"}}", "{\"shortcuts\": {\"save\": \"Cmd+S\"}}", "not json"], \text => errs (synth::Keymaps::decode text))
-    succeeds (makeDir "target/daw-tests", \_ => expect (true, true))
+    succeeds (makeDir (outputFolder ()), \_ => expect (true, true))
     blank = synth::EditorState::initial ()
-    chosen = synth::Keymaps::chosen (blank(keysPath = "target/daw-tests/shortcuts.json"), synth::Keymaps::preset "Logic Style")
+    chosen = synth::Keymaps::chosen (blank(keysPath = "${outputFolder ()}/shortcuts.json"), synth::Keymaps::preset "Logic Style")
     expect (chosen.keymap.name, "Logic Style")
-    expect ((synth::Keymaps::stored "target/daw-tests/shortcuts.json").name, "Logic Style")
-    expect ((synth::Keymaps::stored "target/daw-tests/no-such-file.json").name, "Prism")
-    succeeds (writeFile "target/daw-tests/bad-shortcuts.json" "{\"name\": \"Bad\", \"shortcuts\": {\"save\": \"Cmd+O\"}}", \_ => expect (true, true))
-    kept = synth::Keymaps::loaded (chosen, Success(value = "target/daw-tests/bad-shortcuts.json"))
+    expect ((synth::Keymaps::stored "${outputFolder ()}/shortcuts.json").name, "Logic Style")
+    expect ((synth::Keymaps::stored "${outputFolder ()}/no-such-file.json").name, "Prism")
+    succeeds (writeFile "${outputFolder ()}/bad-shortcuts.json" "{\"name\": \"Bad\", \"shortcuts\": {\"save\": \"Cmd+O\"}}", \_ => expect (true, true))
+    kept = synth::Keymaps::loaded (chosen, Success(value = "${outputFolder ()}/bad-shortcuts.json"))
     expect (kept.keymap.name, "Logic Style")
     expect (startsWith kept.message "Shortcuts not changed.", true)
     cancelled = synth::Keymaps::loaded (chosen, Success(value = ""))
@@ -229,13 +229,13 @@ refusedFile (driven, path, check) =
 
 // [SYNTH-ADVANCED-GRAINS-IMPORT] A refused file leaves the current sample and history intact.
 sampleRefusals driven =
-    _folder = makeDir "target/daw-tests"
-    _tiny = writeFile "target/daw-tests/tiny.wav" "RIFF"
-    _text = writeFile "target/daw-tests/text.wav" (join (mapList (toList (range (0, 16)), \_ => "not a wave file ")) "")
+    _folder = makeDir (outputFolder ())
+    _tiny = writeFile "${outputFolder ()}/tiny.wav" "RIFF"
+    _text = writeFile "${outputFolder ()}/text.wav" (join (mapList (toList (range (0, 16)), \_ => "not a wave file ")) "")
     cases = [
-        { path = "target/daw-tests/absent-sample.wav", check = \message => expect (message != "", true) },
-        { path = "target/daw-tests/tiny.wav", check = \message => expect (endsWith message "Choose a WAV file between 12 bytes and 8 MiB.", true) },
-        { path = "target/daw-tests/text.wav", check = \message => expect (contains message "WAV", true) }]
+        { path = "${outputFolder ()}/absent-sample.wav", check = \message => expect (message != "", true) },
+        { path = "${outputFolder ()}/tiny.wav", check = \message => expect (endsWith message "Choose a WAV file between 12 bytes and 8 MiB.", true) },
+        { path = "${outputFolder ()}/text.wav", check = \message => expect (contains message "WAV", true) }]
     foldList (cases, driven, \(held, row) => refusedFile (held, row.path, row.check))
 
 // A chooser failure is reported on the node. The built-in sample is an explicit edit.
@@ -252,29 +252,28 @@ sampleFileJourney driven =
 
 // A real WAV replaces the source and Undo and Redo restore each sample with its metadata.
 installedSampleJourney builtin =
+    motif = signalflow::App::fromRepository "src/osprey/examples/daw/tracks/samples/elise-motif.wav"
     asking = Drive::press (builtin, "Load WAV sample")
-    loaded = Drive::chosen (asking, (Drive::holding asking).sampleTicket, motifWav)
+    loaded = Drive::chosen (asking, (Drive::holding asking).sampleTicket, motif)
     expect ((Drive::holding loaded).message, "Loaded elise-motif.wav.")
     expect (Drive::shows (loaded, "elise-motif.wav · 48000 Hz · 1 source channels · 172800 frames · 3.6 s"), true)
     expect (length (Drive::holding loaded).past, length (Drive::holding builtin).past + 1)
-    grainSource (loaded, motifWav, 172800)
+    grainSource (loaded, motif, 172800)
     // Keys set the rate from the source rate and its C4 root, never its length, and leave the scan position alone.
     forEachList ([{ note = 72, rate = 2.0 }, { note = 60, rate = 1.0 }, { note = 48, rate = 0.5 }, { note = 67, rate = 1.4983070768766815 }], \key => keyedRate (loaded, key.note, key.rate))
     back = prismTap (loaded, "Undo")
     grainSource (back, daw::PatchVoices::builtinName, 1024)
     keyedRate (back, 57, 4.693333333333333)
     again = prismTap (back, "Redo")
-    grainSource (again, motifWav, 172800)
+    grainSource (again, motif, 172800)
     // A choice still open when its node is removed completes into nothing: the node is not resurrected.
     asked = Drive::press (again, "Load WAV sample")
     pending = (Drive::holding asked).sampleTicket
     gone = deleteNode (asked, (Drive::holding asked).selected)
     nodesOf (gone, satSub (length (Drive::holding again).graph.nodes) 1)
-    late = Drive::completed (gone, pending, true, "target/daw-tests/text.wav")
+    late = Drive::completed (gone, pending, true, "${outputFolder ()}/text.wav")
     sameGraph (late, gone)
     expect ((Drive::holding late).sampleTicket, "")
-
-motifWav = "src/osprey/examples/daw/tracks/samples/elise-motif.wav"
 
 // [SYNTH-ADVANCED-GRAINS-IMPORT] Striking `note` sets the selected cloud's playback rate to `want`; where it scans stays put.
 keyedRate (driven, note, want) =

@@ -41,8 +41,10 @@ module Tutors
             true => limit
             false => offset
 
+    (** `value` as a focus epoch, which an increase asks the host to focus the editor by, kept within the integers a JSON host carries exactly. *)
     export focusEpoch value = clamped (value, 9007199254740991)
 
+    (** The focus epoch recorded on attempt `item`, read within the exact-integer range. *)
     export focusOf item = focusEpoch item.attemptFocusEpoch
 
     (** The attempt's caret, read within its current answer. *)

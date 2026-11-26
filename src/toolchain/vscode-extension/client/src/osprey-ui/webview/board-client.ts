@@ -242,6 +242,47 @@ function finishBoard(client: Client, event: PointerEvent, scene: BoardScene, can
   blit(scene);
 }
 
+/** The latest scene per board canvas. A morphed frame keeps the canvas, so its observer and
+ * pointer listeners are wired once and always read this, never a scene from an older frame. */
+const scenes = new WeakMap<HTMLCanvasElement, BoardScene>();
+const observed = new WeakSet<HTMLCanvasElement>();
+const listening = new WeakSet<HTMLCanvasElement>();
+
+/** One observer while the canvas is in the document; a detached canvas lets its observer go. */
+function observeBoard(canvas: HTMLCanvasElement): void {
+  if (observed.has(canvas)) return;
+  observed.add(canvas);
+  const observer = new ResizeObserver(() => {
+    const scene = scenes.get(canvas);
+    if (!canvas.isConnected) {
+      observer.disconnect();
+      observed.delete(canvas);
+      return;
+    }
+    if (scene === undefined) return;
+    resizeBoard(scene);
+    const active = drawing;
+    if (active !== null && active.scene === scene) paintPending(active);
+    else blit(scene);
+  });
+  observer.observe(canvas);
+}
+
+/** One set of pointer listeners for the canvas's lifetime, each reading its latest scene. */
+function listenToBoard(client: Client, canvas: HTMLCanvasElement): void {
+  if (listening.has(canvas)) return;
+  listening.add(canvas);
+  const on = (type: string, handle: (event: PointerEvent, scene: BoardScene) => void) =>
+    canvas.addEventListener(type, (event) => {
+      const scene = scenes.get(canvas);
+      if (scene !== undefined && event instanceof PointerEvent) handle(event, scene);
+    });
+  on("pointerdown", (event, scene) => startBoard(client, event, scene));
+  on("pointermove", (event, scene) => moveBoard(client, event, scene));
+  on("pointerup", (event, scene) => finishBoard(client, event, scene, false));
+  on("pointercancel", (event, scene) => finishBoard(client, event, scene, true));
+}
+
 /** Refresh every board after a render: rebuild its scene from the frame's slice, keeping a
  * stroke still being drawn on the canvas that now carries its slice. */
 export function refreshBoards(client: Client): void {
@@ -252,6 +293,7 @@ export function refreshBoards(client: Client): void {
     const scene: BoardScene = { canvas, base: document.createElement("canvas"), state,
       texture: chalkTexture(colour), colour, ratio: 1, frame: frameOf(canvas, state) };
     const held = drawing;
+    scenes.set(canvas, scene);
     resizeBoard(scene);
     if (held !== null && held.scene.canvas.dataset.boardSlice === canvas.dataset.boardSlice) {
       drawing = { ...held, scene };
@@ -259,17 +301,7 @@ export function refreshBoards(client: Client): void {
     } else {
       blit(scene);
     }
-    const observer = new ResizeObserver(() => {
-      if (canvas.isConnected) resizeBoard(scene);
-      else observer.disconnect();
-      const active = drawing;
-      if (active !== null && active.scene === scene) paintPending(active);
-      else blit(scene);
-    });
-    observer.observe(canvas);
-    canvas.addEventListener("pointerdown", (event) => startBoard(client, event, scene));
-    canvas.addEventListener("pointermove", (event) => moveBoard(client, event, scene));
-    canvas.addEventListener("pointerup", (event) => finishBoard(client, event, scene, false));
-    canvas.addEventListener("pointercancel", (event) => finishBoard(client, event, scene, true));
+    observeBoard(canvas);
+    listenToBoard(client, canvas);
   }
 }

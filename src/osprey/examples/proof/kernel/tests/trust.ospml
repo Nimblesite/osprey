@@ -18,6 +18,7 @@ import proof
     and `Inductive::declare` — and a refused declaration fails the case before
     it can read as a pass. *)
 module TrustTests
+    (** Runs the trust cases: forged ledgers, reporting, closure, metadata, traversal, batch and stack depth; the testing built-ins report the TAP lines. *)
     export run () =
         adversarial ()
         reporting ()
@@ -27,6 +28,7 @@ module TrustTests
         batch ()
         test ("a deep checked dependency chain keeps graph depth off the WASM stack", \() => expect (shown (deepEnv (), "root"), "ok: Ax"))
 
+    (** The forged-ledger cases: an assumption named `none`, one holding a comma and one holding quotes, each reported as the single name it is. *)
     export adversarial () =
         test ("an assumption named none cannot forge the empty ledger", \() => expect (shown (namedAssumption "none", "root"), "ok: \"none\""))
         test ("one comma-bearing assumption cannot forge two ledger entries", \() => expect (shown (namedAssumption "Ax, Other", "root"), "ok: \"Ax, Other\""))

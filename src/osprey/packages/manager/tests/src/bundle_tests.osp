@@ -108,6 +108,9 @@ module BundleTests {
         structuralEquals([Bundle::sizeCode(134217728), Bundle::sizeCode(134217729)], ["", "bundle.too-large"])
     ])
 
+    /// Release assembly and the source bundle against an independent golden
+    /// digest: assembly and its rejections, canonical encoding, the round-trip
+    /// and `verify`'s acceptance and rejection codes.
     export fn run() = {
         test("source: golden digest agreement", sourceAgrees)
         test("release files: assemble sorts and hashes", assemblesGolden)

@@ -1,6 +1,7 @@
 #include "http_runtime_tests.h"
 #include "http_server_internal.h"
 #include <assert.h>
+#include <errno.h>
 #include <pthread.h>
 #include <stdatomic.h>
 #include <stdio.h>
@@ -8,7 +9,6 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <unistd.h>
-#include <time.h>
 
 // Connections of the native listener [HTTP-SERVER-CONNECTIONS]: one client
 // never holds up another, an HTTP/1.1 connection stays open for its next
@@ -16,9 +16,15 @@
 // the `Connection` header Node.js sends for it.
 
 #define CONNECTION_TEST_PORT test_port(12)
+// A client gives up on a read after CLIENT_WAIT_S. That is sooner than the
+// server ends a stalled request or an idle connection by its own timers, so a
+// reply or close that arrives at all came from the behaviour under test, never
+// from a timer expiring, however slowly a loaded runner schedules the server.
+#define CLIENT_WAIT_S 3
+_Static_assert(CLIENT_WAIT_S * 1000U < HTTP_REQUEST_TIMEOUT_MS && CLIENT_WAIT_S * 1000U < POOL_KEEP_ALIVE_MS,
+               "the client must give up before either server timer could answer for it");
 #define LOAD_CLIENTS 16
 #define LOAD_REQUESTS 50
-#define PROMPT_MS 1000
 #define HANDLER_WORK_US 100
 
 static const char KEPT[] = "\r\nConnection: keep-alive\r\nKeep-Alive: timeout=5\r\n\r\n";
@@ -59,7 +65,7 @@ static int64_t start_connection_server(void) {
 
 static int open_client(void) {
   int fd = server_test_connect(CONNECTION_TEST_PORT);
-  struct timeval timeout = {3, 0};
+  struct timeval timeout = {CLIENT_WAIT_S, 0};
   assert(setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) == 0);
   return fd;
 }
@@ -97,16 +103,17 @@ static void read_reply(int fd, char *reply, size_t capacity) {
   reply[length + body] = '\0';
 }
 
+// Nothing has come back on `fd` yet, not even a close: its request is still pending.
+static bool unanswered(int fd) {
+  char byte;
+  return recv(fd, &byte, 1, MSG_PEEK | MSG_DONTWAIT) == -1 && (errno == EAGAIN || errno == EWOULDBLOCK);
+}
+
 static bool closed_by_server(int fd) {
   char byte;
   return recv(fd, &byte, 1, 0) == 0;
 }
 
-static uint64_t now_ms(void) {
-  struct timespec now;
-  clock_gettime(CLOCK_MONOTONIC, &now);
-  return (uint64_t)now.tv_sec * 1000U + (uint64_t)now.tv_nsec / 1000000U;
-}
 
 static void assert_served(const char *reply, const char *connection) {
   assert(strstr(reply, "HTTP/1.1 200 OK\r\n") == reply);
@@ -133,13 +140,12 @@ void test_server_serves_a_client_while_another_is_silent(void) {
   int silent = open_client();
   send_text(silent, "GET /slow HTTP/1.1\r\nHost: x\r\n");
   usleep(50000); // the silent connection is accepted first
-  uint64_t started = now_ms();
   int prompt = open_client();
   send_text(prompt, "GET / HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n");
   char reply[1024];
   read_reply(prompt, reply, sizeof(reply));
-  assert(now_ms() - started < PROMPT_MS && "a silent client must not stall the next one");
   assert_served(reply, CLOSED);
+  assert(unanswered(silent) && "a silent client must not stall the next one");
   assert(closed_by_server(prompt));
   close(prompt);
   close(silent);
@@ -179,10 +185,9 @@ void test_server_ends_half_closed_and_pipelined_connections(void) {
   int fd = open_client();
   send_text(fd, "GET / HTTP/1.1\r\nHost: x\r\n\r\n");
   assert(shutdown(fd, SHUT_WR) == 0);
-  uint64_t started = now_ms();
   read_reply(fd, reply, sizeof(reply));
   assert(strstr(reply, "\r\n\r\nserved") != NULL);
-  assert(closed_by_server(fd) && now_ms() - started < PROMPT_MS);
+  assert(closed_by_server(fd));
   close(fd);
 
   fd = open_client();
@@ -200,9 +205,8 @@ void test_server_stop_ends_idle_connections(void) {
   send_text(fd, "GET / HTTP/1.1\r\nHost: x\r\n\r\n");
   read_reply(fd, reply, sizeof(reply));
   assert_served(reply, KEPT);
-  uint64_t started = now_ms();
   assert(http_stop_server(server) == 0);
-  assert(closed_by_server(fd) && now_ms() - started < PROMPT_MS);
+  assert(closed_by_server(fd));
   close(fd);
 }
 

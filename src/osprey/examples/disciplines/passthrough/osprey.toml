@@ -1,5 +1,8 @@
 [package]
 name = "@osprey/passthrough"
+license = "MIT"
+summary = "Reference type discipline that checks a module with the HM rules and returns it unchanged"
+keywords = ["discipline", "reference"]
 
 # The package is also its own assertion suite ([TYPES-DISCIPLINE-VERIFICATION]):
 # `osprey test src/osprey/examples/disciplines/passthrough` compiles `src/checker.ospml`

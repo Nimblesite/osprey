@@ -5,6 +5,7 @@ import ui::Ui
 // not a picker. Every value shown comes from the canonical graph or catalog,
 // and an empty findings list is never presented as an audit.
 
+(** The package workspace screens: the root screen, the installed and registry list, and the package detail. *)
 module View
     current () = perform Signal<PackageState>.read ()
 
@@ -79,6 +80,7 @@ module View
         true => "Installed counts unavailable"
         false => "${installedCount snapshot} installed · ${directCount snapshot} direct · ${length (missingItems snapshot)} missing · ${findingsCount snapshot} findings"
 
+    (** The Packages section for the current state: the search field and the Installed and Browse registry tabs. *)
     export listView () =
         snapshot = current ()
         Ui::section ("Packages", footer snapshot, [
@@ -187,6 +189,7 @@ module View
 
     detailColumn (snapshot, nodes) = Ui::column (withConfirmation (snapshot, nodes))
 
+    (** The detail of the selected package, installed or in the catalog, with its actions, the state note and any confirm prompt; an empty state when the selection names neither. *)
     export detailView () =
         snapshot = current ()
         match Packages::packageAt (snapshot.packageGraph.workspacePackages, snapshot.packageSelection)
@@ -245,6 +248,7 @@ module View
             true => [noticeNode snapshot]
             false => availableBody snapshot
 
+    (** The root Packages screen for the current state: the fault screen, the pending notice, or the audit banner, counts, notices, missing and workspace findings and the list and detail slots. *)
     export rootView () =
         snapshot = current ()
         Ui::screen ("Packages", projectOf snapshot, [Ui::button ("Refresh", "arrow.clockwise", Refresh)], screenBody snapshot)

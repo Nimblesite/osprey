@@ -1,0 +1,3 @@
+5:3: function `pick` is less general than its declared type: its body fixes or merges a declared type parameter
+7:3: function `bump` is less general than its declared type: its body fixes or merges a declared type parameter
+9:3: function `both` is less general than its declared type: its body fixes or merges a declared type parameter

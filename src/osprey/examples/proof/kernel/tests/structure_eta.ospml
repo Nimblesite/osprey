@@ -116,7 +116,7 @@ module StructureEtaTests
         test ("the real Lean prod_eta proof checks through the kernel", \() => expect (verdict (fixture (), "prod_eta"), "declared"))
         test ("the real Lean prod_map_id proof checks through the kernel", \() => expect (verdict (withoutEta (), "prod_map_id"), "declared"))
     verdict (text, name) = match Checked::exportedDeclaring (Environment::empty (), text, name)
-        Success env => "declared"
+        Success _ => "declared"
         Error message => "error: ${message}"
     eta () =
         defeq ("a constructor of the projections equals the original pair", defsEnv (), prodContext (), mkOfProjections (), BVar 0)
@@ -161,7 +161,7 @@ module StructureEtaTests
     aliasValue () = expand (defsEnv (), ctorType (defsEnv ()))
     expand (env, ty) = match Reduce::whnf (env, ty)
         Pi name domain rest => Lam name domain (expand (env, rest))
-        other => mkAt ([BVar 3, BVar 2, BVar 1, BVar 0])
+        _ => mkAt ([BVar 3, BVar 2, BVar 1, BVar 0])
     aliased (name) = Terms::apps (Const name [Param "u", Param "v"], [BVar 2, BVar 1, projectionAt 0, projectionAt 1])
     mapId () =
         rflCheck ("Prod.map id id is the identity function", defsEnv (), prodContext (), eqLevel (), functionType (), mapIdTerm (), idTerm ())
@@ -242,7 +242,7 @@ module StructureEtaTests
     projectionAt (index) = Terms::apps (projectionHead index, [BVar 2, BVar 1, BVar 0])
     projectionHead (index) = match index
         0 => Const "Prod.fst" [Param "u", Param "v"]
-        other => Const "Prod.snd" [Param "u", Param "v"]
+        _ => Const "Prod.snd" [Param "u", Param "v"]
     (** `Prod.map α β α β (id α) (id β)`, unapplied to its pair. *)
     mapIdTerm () = Terms::apps (Const "Prod.map" [Param "u", Param "v"], [BVar 2, BVar 1, BVar 2, BVar 1, Terms::apps (Const "id" [Param "u"], [BVar 2]), Terms::apps (Const "id" [Param "v"], [BVar 1])])
     (** `id (Prod α β)`. *)

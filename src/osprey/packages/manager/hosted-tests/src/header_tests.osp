@@ -55,6 +55,8 @@ module HeaderTests {
         HostedHeaders::isOk(HostedHeaders::parse(""))
     ])
 
+    /// Strict header parsing: wire order, case-insensitive lookup, malformed
+    /// lines, duplicate sensitive headers and size limits.
     export fn run() = {
         test("hosted headers: flat records", flatHeaders)
         test("hosted headers: happy path", happy)

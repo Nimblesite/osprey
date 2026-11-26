@@ -419,7 +419,7 @@ fn runWith(run: (int) -> string, n) = run(n)
 fn closures(n) = {
     let box = Box { text: "c${toString(n)}" }
     let show = fn(i: int) => "${box.text}${toString(i)}"
-    let again = fn(i: int) => "${show(i)}!"
+    let again = fn(i) => "${show(i)}!"
     let runner = Runner { run: fn(i) => "${box.text}/${toString(i)}" }
     let nest = Nest { held: Held { inner: box, n: n }, tag: "n${toString(n)}" }
     let looped = range(0, n) |> fold("", |acc, i| => {
@@ -504,8 +504,8 @@ fn parts(n) = {
 /// calls is freed with its captures.
 fn joiner(left: Box, right: Box) = fn(i: int) => "${left.text}${toString(i)}${right.text}"
 
-fn pickOne(left: Box, right: Box, first: bool) = match first {
-    true => fn(i: int) => "${left.text}${toString(i)}"
+fn pickOne(left: Box, right: Box, first) = match first {
+    true => fn(i) => "${left.text}${toString(i)}"
     false => fn(i: int) => "${right.text}${toString(i)}"
 }
 
@@ -579,7 +579,7 @@ fn keeps(n) = {
 /// A Result holds its payload and its message like a record holds a field
 /// [MEM-OWNERSHIP-STATIC-BORROWS]: a binding at its last use moves in, one that
 /// is read again is lent, and a fresh value is owned.
-fn vetted(box: Box, long: bool) = match long {
+fn vetted(box: Box, long) = match long {
     true => Success { value: box }
     false => Error { message: "short ${box.text}" }
 }

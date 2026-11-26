@@ -67,6 +67,14 @@ name = "SameSyntax"
 [[lean_lib]]
 name = "Synthesis"
 
+# [CONCURRENCY-FIBER-LIFETIME] The holder count that frees a fiber.
+[[lean_lib]]
+name = "FiberLifetime"
+
+# [CONCURRENCY-DEADLOCK] A fiber the collector reports can never be woken.
+[[lean_lib]]
+name = "FiberDeadlock"
+
 # [IR-LEAN] The ownership ledger and the LLVM subset semantics built on it.
 [[lean_lib]]
 name = "OwnershipLedger"

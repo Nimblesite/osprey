@@ -6,9 +6,13 @@ import mobile::Markdown
 import mobile::View
 import mobile::Ui
 
+(** Reading what Markdown renders in the markdown cases: a whole body's nodes, or its inline spans. *)
 module MarkdownSupport
+    (** The UI nodes `source` renders to, wrapped as a JSON array. *)
     export nodes source = Json::arr (Markdown::render source)
+    (** The value at `path` in the nodes of `source`, or `MISSING` when there is none. *)
     export at source path = Support::projected (nodes source) path
+    (** The value at `path` in the inline spans of `source`, or `MISSING` when there is none. *)
     export spanAt source path = Support::projected (Json::arr (Markdown::spans source)) path
 
 markdownBlocksCase () =

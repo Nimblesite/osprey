@@ -78,11 +78,7 @@ pub(super) fn unit() -> Expr {
 }
 
 pub(super) fn apply(function: Expr, arguments: Vec<Expr>) -> Expr {
-    Expr::Call {
-        function: Box::new(function),
-        arguments,
-        named_arguments: Vec::new(),
-    }
+    Expr::call(function, arguments)
 }
 
 impl<'s> Lowerer<'s> {
@@ -275,6 +271,17 @@ impl<'s> Lowerer<'s> {
             node.kind(),
             "function_definition" | "class_definition" | "lambda"
         ) {
+            return;
+        }
+        if node.kind() == "if_statement" {
+            let mut inner = BTreeMap::new();
+            for child in children(node) {
+                self.count_writes(child, &mut inner);
+            }
+            self.count_joined_writes(node, &mut inner);
+            for (name, count) in inner {
+                *counts.entry(name).or_default() += count;
+            }
             return;
         }
         if node.kind() == "assignment" {

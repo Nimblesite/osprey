@@ -103,43 +103,65 @@ _conformance-arc:
 	@echo "==> [conformance] assertion corpus under --memory=arc..."
 	@OSPREY_ARC_DEBUG=1 OSPREY_TEST_JOBS=1 zsh src/toolchain/crates/run_test_corpus.sh arc
 
-# _conformance-ownership: compare every accepted program against the shared native golden and require zero leaks.
+# _conformance-ownership: run every assertion suite under compile-time
+# ownership. A program listed in OWNERSHIP_ACCEPTED.txt must match the shared
+# native golden under AddressSanitizer with zero leaks; every other program
+# must be refused by the checker by name.
 _conformance-ownership:
-	@OSPREY_CC="$(CURDIR)/scripts/ci/ownership-asan-clang.sh" OSPREY_SCRIBBLE_FREES=1 OSPREY_TEST_JOBS=1 zsh src/toolchain/crates/run_test_corpus.sh ownership --accepted
+	@echo "==> [conformance] assertion corpus under --memory=ownership..."
+	@OSPREY_CC="$(CURDIR)/scripts/ci/ownership-asan-clang.sh" OSPREY_SCRIBBLE_FREES=1 OSPREY_TEST_JOBS=1 zsh src/toolchain/crates/run_test_corpus.sh ownership
+
+# The certificate the rejected `leanexport` module cites: Lean's real `Nat.add_comm`
+# export with its proof replaced by its own statement, the same corruption the
+# kernel's `natAddCommBad` fixture makes. Forged at test time, never committed.
+LEAN_TAMPER = sed 's/"name":235,"type":730,"value":817/"name":235,"type":730,"value":730/' src/osprey/examples/proof/kernel/exports/nat_add_comm.ndjson > target/disciplines/lean_roundtrip/tampered.ndjson
+
+# discipline_roundtrip: one reference discipline proved through the whole seam
+# (checker build, protocol, erasure, signature ascription), not just its
+# checker. $(1) is the package, $(2) its round-trip program, $(3) the module the
+# program's `src/bad.ospml.rejected` replaces, and $(4) an optional command run
+# in the scratch copy first (to forge an input the rejected module cites). Every leg is byte-exact: the
+# program's stdout against its golden under GC and ARC, the compiled wasm
+# module against the same golden under WASI, and the rejected variant against
+# the compiler's own stderr. The scratch copy points its dependency back at the
+# package in the checkout, and `sed` drops the absolute prefix so the golden
+# holds no checkout path.
+define discipline_roundtrip
+	@echo "==> [disciplines] $(1): GC, ARC, wasm32 against expectedoutput..."
+	set -o pipefail && ./$(BIN) src/osprey/examples/disciplines/$(2) --run --memory=gc 2>/dev/null | diff - src/osprey/examples/disciplines/$(2)/expectedoutput
+	set -o pipefail && ./$(BIN) src/osprey/examples/disciplines/$(2) --run --memory=arc 2>/dev/null | diff - src/osprey/examples/disciplines/$(2)/expectedoutput
+	@$(MKDIR) target/disciplines
+	./$(BIN) src/osprey/examples/disciplines/$(2) --target=wasm32 --compile -o target/disciplines/$(1).wasm >/dev/null 2>&1
+	node scripts/wasm/wasm-smoke.mjs target/disciplines/$(1).wasm src/osprey/examples/disciplines/$(2)/expectedoutput
+	@echo "==> [disciplines] $(1): the rejected variant is refused..."
+	@$(RM) target/disciplines/$(2)
+	cp -R src/osprey/examples/disciplines/$(2) target/disciplines/$(2)
+	cp target/disciplines/$(2)/src/bad.ospml.rejected target/disciplines/$(2)/src/$(3)
+	$(RM) target/disciplines/$(2)/src/bad.ospml.rejected target/disciplines/$(2)/expectedoutput target/disciplines/$(2)/.osprey
+	sed 's|"../$(1)"|"../../../src/osprey/examples/disciplines/$(1)"|' src/osprey/examples/disciplines/$(2)/osprey.toml > target/disciplines/$(2)/osprey.toml
+	$(if $(4),$(4),@true)
+	@./$(BIN) target/disciplines/$(2) --check > target/disciplines/$(1)-rejected.txt 2>&1; test $$? -ne 0
+	sed -e "s|$(CURDIR)/||g" target/disciplines/$(1)-rejected.txt | diff - src/osprey/examples/disciplines/$(2)/rejected.expectedoutput
+	@$(RM) src/osprey/examples/disciplines/$(1)/.osprey src/osprey/examples/disciplines/$(2)/.osprey
+endef
 
 # _test_disciplines: the reference type disciplines of [TYPES-DISCIPLINE-REFERENCE]
-# (spec 0050). The `bounded` package reads `// @bound p in 0..100`, holds every
-# call site inside the module to it by interval arithmetic, and erases to plain
-# `int`; `bounded_roundtrip` links that erased module into an `hm` program, so a
-# green run proves the whole seam — checker build, protocol, erasure, signature
-# ascription — and not just the checker. Every leg is byte-exact: the program's
-# stdout against its golden under GC and ARC, the compiled wasm module against
-# the same golden under WASI, and the out-of-range call site against the
-# compiler's own stderr. The scratch copy keeps `path = "../bounded"` resolvable
-# (`target/disciplines/bounded` beside `target/disciplines/bounded_roundtrip`),
-# and `sed` drops the absolute prefix so the golden holds no checkout path.
-# The checker's assertion suite drives the built binary through the protocol.
+# (spec 0050). `bounded` reads `// @bound p in 0..100`, holds every call site
+# inside the module to it by interval arithmetic, and erases to plain `int`.
+# `dependent` checks the `theorem` lines of a module with the proof kernel and
+# erases them; `leanexport` re-checks the pinned Lean certificates a module cites with
+# the same kernel ([PROOF-DISCIPLINE]). Each round trip links the erased module into
+# an `hm` program. The bounded checker's assertion suite then drives its built
+# binary through the protocol, and `passthrough` proves the identity discipline.
 _test_disciplines:
-	@echo "==> [disciplines] bounded: GC, ARC, wasm32 against expectedoutput..."
-	set -o pipefail && ./$(BIN) src/osprey/examples/disciplines/bounded_roundtrip --run --memory=gc 2>/dev/null | diff - src/osprey/examples/disciplines/bounded_roundtrip/expectedoutput
-	set -o pipefail && ./$(BIN) src/osprey/examples/disciplines/bounded_roundtrip --run --memory=arc 2>/dev/null | diff - src/osprey/examples/disciplines/bounded_roundtrip/expectedoutput
-	@$(MKDIR) target/disciplines
-	./$(BIN) src/osprey/examples/disciplines/bounded_roundtrip --target=wasm32 --compile -o target/disciplines/bounded.wasm >/dev/null 2>&1
-	node scripts/wasm/wasm-smoke.mjs target/disciplines/bounded.wasm src/osprey/examples/disciplines/bounded_roundtrip/expectedoutput
-	@echo "==> [disciplines] bounded: an out-of-range call site is rejected..."
-	@$(RM) target/disciplines/bounded target/disciplines/bounded_roundtrip
-	cp -R src/osprey/examples/disciplines/bounded target/disciplines/bounded
-	cp -R src/osprey/examples/disciplines/bounded_roundtrip target/disciplines/bounded_roundtrip
-	cp target/disciplines/bounded_roundtrip/src/bad.ospml.rejected target/disciplines/bounded_roundtrip/src/percent.ospml
-	$(RM) target/disciplines/bounded_roundtrip/src/bad.ospml.rejected target/disciplines/bounded_roundtrip/expectedoutput
-	$(RM) target/disciplines/bounded/.osprey target/disciplines/bounded_roundtrip/.osprey
-	@./$(BIN) target/disciplines/bounded_roundtrip --check > target/disciplines/rejected.txt 2>&1; test $$? -ne 0
-	sed -e "s|$(CURDIR)/||g" target/disciplines/rejected.txt | diff - src/osprey/examples/disciplines/bounded_roundtrip/rejected.expectedoutput
+	$(call discipline_roundtrip,bounded,bounded_roundtrip,percent.ospml)
+	$(call discipline_roundtrip,dependent,dependent_roundtrip,access.ospml)
+	$(call discipline_roundtrip,lean,lean_roundtrip,tally.ospml,$(LEAN_TAMPER))
 	@echo "==> [disciplines] bounded: the checker's protocol assertion suite..."
 	@$(RM) src/osprey/examples/disciplines/bounded/.osprey
 	@OSPREY_BIN="$(abspath $(BIN))" ./$(BIN) test src/osprey/examples/disciplines/bounded --memory=gc 2>/dev/null > target/disciplines/bounded-suite.txt; status=$$?; tail -2 target/disciplines/bounded-suite.txt; exit $$status
 	grep -q "failed=0" target/disciplines/bounded-suite.txt
-	@$(RM) src/osprey/examples/disciplines/bounded/.osprey src/osprey/examples/disciplines/bounded_roundtrip/.osprey
+	@$(RM) src/osprey/examples/disciplines/bounded/.osprey
 	$(MAKE) _test_disciplines_passthrough
 
 .PHONY: _test_proof_kernel _test_proof_kernel_gc _test_proof_kernel_arc _test_proof_kernel_wasm
@@ -180,22 +202,65 @@ _test_proof_unicode:
 
 .PHONY: _test_proof_ci $(PROOF_BATCH_TARGETS) $(PROOF_CORPUS_TARGETS)
 
-# [SYNTH-DSP-PROOFS] Check the current source export with the Osprey kernel.
+# [SYNTH-DSP-PROOFS] [CONCURRENCY-FIBER-LIFETIME] [CONCURRENCY-DEADLOCK] Check the current source
+# exports with the Osprey kernel: every theorem must PASS with no axioms.
 .PHONY: _test_synthesis_proofs
 SYNTHESIS_THEOREMS := weightedOverlapAdd travelingWavePropagation additivePeriod overlapNormalizationNecessary interpolatorFactor interpolatorEndpoints interpolatorConstant zeroPulseIndices hannEndpoints
 SYNTHESIS_THEOREMS += allpassMagnitude allpassRecurrence antiderivativeAverage antiderivativeOffset antiderivativeConstantCurve hannQuarterEnergy hannEighthEnergy
 SYNTHESIS_THEOREMS += radixTwoSplit radixTwoUpper realBinConjugate binAdditive binHomogeneous
+FIBER_LIFETIME_THEOREMS := run_valid freed_iff freed_is_final spawn_then_both_release dead_list_conserves drained_releases_each_once
+FIBER_LIFETIME_THEOREMS += channel_then_handle_release share_is_acquire free_is_release free_last_iff
+# The FiberLifetime mutants: each edit breaks a claim, and its mark proves it applied.
+FIBER_LEAK_EDIT := s/| .live 0, .release => some .freed/| .live 0, .release => some (.live 0)/
+FIBER_LEAK_MARK := some (.live 0)
+FIBER_LOST_EDIT := s/.drain => ⟨\[\], pending ++ released⟩/.drain => ⟨[], released⟩/
+FIBER_LOST_MARK := .drain => ⟨[], released⟩
+FIBER_EARLY_EDIT := s/| .held 0 => some .owned/| .held 0 => none/
+FIBER_EARLY_MARK := | .held 0 => none
+# [CONCURRENCY-DEADLOCK] A fiber the collector reports can never be woken.
+FIBER_DEADLOCK_THEOREMS := step_keeps_known step_keeps_live step_keeps_stuck stuck_for_ever stuck_never_runs reachable_wait_is_live
+# The mutant lets a fiber wake a waiter on a channel it cannot name.
+FIBER_WAKE_EDIT := s/: Runs w g → Reach w g c → w.waits f c →/: Runs w g → w.waits f c →/
+FIBER_WAKE_MARK := : Runs w g → w.waits f c →
 
 _test_synthesis_proofs: $(PROOF_BATCH_TARGETS)
 	$(MAKE) _check_synthesis_proofs
 
+# $(call kernel_check_theorems,<Lean module>,<theorem names>): every theorem
+# replays in the Osprey kernel built for gc, arc and wasm32, with no axioms.
+define kernel_check_theorems
+	cd src/toolchain/benchmarks/proof/tools && lake build lean4export $(1)
+	@set -e; for name in $(2); do \
+		theorem="$(1).$$name"; export_file="$(abspath target/proof)/$$theorem.ndjson"; \
+		(cd src/toolchain/benchmarks/proof/tools && lake exe lean4export $(1) -- "$$theorem") > "$$export_file"; \
+		for backend in gc arc wasm; do \
+			if [ "$$backend" = wasm ]; then \
+				result=$$(printf '%s\t%s\n' "$$theorem.ndjson" "$$theorem" | node --stack-size=4096 scripts/proof/proof-batch-wasm.mjs target/proof/openai/check-batch.wasm "$(abspath target/proof)"); \
+			else \
+				result=$$(printf '%s\t%s\n' "$$export_file" "$$theorem" | target/proof/openai/check-batch.$$backend); \
+			fi; \
+			echo "$$backend $$result"; test "$$result" = "PASS $$theorem | axioms: none"; \
+		done; \
+	done
+endef
+
+# $(call kernel_rejects_mutant,<Lean module>,<name>,<sed edit>,<grep needle>,<why it is wrong>):
+# the module with one edit that breaks its claim must fail to check.
+define kernel_rejects_mutant
+	@sed '$(3)' src/toolchain/benchmarks/proof/tools/$(1).lean > "$(abspath target/proof)/$(1)_$(2).lean"
+	@grep -qF '$(4)' "$(abspath target/proof)/$(1)_$(2).lean"
+	@if (cd src/toolchain/benchmarks/proof/tools && lake env lean "$(abspath target/proof)/$(1)_$(2).lean") > /dev/null 2>&1; then \
+		echo "$(1): the $(2) mutant was accepted ($(5))"; exit 1; fi
+	@echo "REJECTED $(1) $(2) mutant ($(5))"
+endef
+
 .PHONY: _check_synthesis_proofs
 _check_synthesis_proofs:
-	cd src/toolchain/benchmarks/proof/tools && lake build lean4export Synthesis
-	@set -e; for name in $(SYNTHESIS_THEOREMS); do \
-		theorem="Synthesis.$$name"; export_file="$(abspath target/proof)/$$theorem.ndjson"; \
-		(cd src/toolchain/benchmarks/proof/tools && lake exe lean4export Synthesis -- "$$theorem") > "$$export_file"; \
-		printf '%s\t%s\n' "$$export_file" "$$theorem" | target/proof/openai/check-batch.arc > "$$export_file.result"; \
-		cat "$$export_file.result"; test "$$(cat "$$export_file.result")" = "PASS $$theorem | axioms: none"; \
-	done
+	$(call kernel_check_theorems,Synthesis,$(SYNTHESIS_THEOREMS))
+	$(call kernel_check_theorems,FiberLifetime,$(FIBER_LIFETIME_THEOREMS))
+	$(call kernel_rejects_mutant,FiberLifetime,leak,$(FIBER_LEAK_EDIT),$(FIBER_LEAK_MARK),the last release keeps the fiber - #359)
+	$(call kernel_rejects_mutant,FiberLifetime,lost,$(FIBER_LOST_EDIT),$(FIBER_LOST_MARK),a drain loses the handles it took)
+	$(call kernel_rejects_mutant,FiberLifetime,early,$(FIBER_EARLY_EDIT),$(FIBER_EARLY_MARK),a shared handle is freed under its last sharer)
+	$(call kernel_check_theorems,FiberDeadlock,$(FIBER_DEADLOCK_THEOREMS))
+	$(call kernel_rejects_mutant,FiberDeadlock,wake,$(FIBER_WAKE_EDIT),$(FIBER_WAKE_MARK),a fiber wakes a waiter on a channel it cannot name)
 	@bash scripts/proof/production-fft.sh

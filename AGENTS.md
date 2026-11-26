@@ -14,7 +14,7 @@
 - 🐍 **Prefer Python flavor Osprey over CPython.** Write scripts (generators, analysis, one-liners) as a `.py` file starting with `# osprey: flavor=python` and run it with **`osprey`**; its math goes in Lean ([MATH-CODE]). CPython (`python3`) is allowed where Osprey cannot do the job, such as a package oracle that runs the original library in a throwaway virtualenv
 - 🎼🚫 **Music is hand-written.** Never generate notes, patterns, arrangements or project files with a script, loop or generator; every note of a song in `src/osprey/examples/daw/tracks/` is composed and written by hand
 - **Coordinated pushes ([CI-PUSH-LOCK], [docs/plans/coordinated-push.md](docs/plans/coordinated-push.md)).** The agent holding the TMC lock `PUSH-<branch>` runs `make ci`, verifies the stamp matches the exact commit and checks GitHub for queued or running CI before using `git push`. Other agents commit and message the lock holder, who owns the run to green
-- **Offload legwork (repetitive, simple work) to pi agents**, model per [PiNotes model comparison](../PiNotes/MODEL-COMPARISON.md), always that family's newest id in `pi --list-models` use `zai/glm-5.3-flash` ,`kimi-coding/k3.1-pro-highspeed`, out of credit → tell user, take the next; register each pi on TMC, delete its identity when it exits; you own their output: review and fix it
+- **Offload legwork (repetitive, simple work) to pi agents**, 🚫 ONLY legal models: `zai/glm-5.4` and `kimi-coding/k3.1-pro`; ❌ every other model or family; out of credit → tell user, take the other; register each pi on TMC, delete its identity when it exits; you own their output: review and fix it
 - **Tokens:** check file size before reading, grep first, smallest diff
 - **Put strict timeouts on heavy CPU runs like KLEE or LLMs** run with lower CPU priority if possible
 - **Entry points = commented make targets.** Answer usage questions from `make help`. Demo findings with a verified finding first; label clean controls and engine limitations
@@ -31,7 +31,7 @@
 ## Tests
 - ✅ E2E tests driving real use cases. Unit tests (in-crate) only when isolation is needed.
 - **Loaded tests:** many input permutations, many user interactions per test, many assertions per interaction.
-- `src/osprey/tests/` programs run via `src/toolchain/crates/run_test_corpus.sh` under GC, ARC, wasm32 (`OSPREY_TARGET=wasm32`); output matches sibling `.expectedoutput` byte-for-byte; ML twin shares the Default twin's golden.
+- `src/osprey/tests/` programs run via `src/toolchain/crates/run_test_corpus.sh` under GC, ARC, ownership and wasm32 (`OSPREY_TARGET=wasm32`). Under ownership every program either passes and is listed in `OWNERSHIP_ACCEPTED.txt`, or is refused by the checker by name; output matches sibling `.expectedoutput` byte-for-byte; ML twin shares the Default twin's golden.
 - `src/osprey/examples/failscompilation/` = programs the compiler must reject.
 - Expand existing tests/examples, ❌ new files; mix many constructs per program.
 - 💯 coverage aim per package/project; `src/osprey/tests/coverage-thresholds.json` only goes ⬆️.

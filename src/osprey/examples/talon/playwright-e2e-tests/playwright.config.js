@@ -1,9 +1,7 @@
 // Playwright config for the Talon Bank showcase. The webServer block owns the
-// app lifecycle: it creates the hold marker so the Osprey demo pauses while
-// serving, then removes it on teardown. Teardown must be a signal the shell
-// can trap: without `gracefulShutdown` Playwright SIGKILLs the process group,
-// and dash (Linux /bin/sh) runs no EXIT trap on an untrapped SIGTERM, so
-// either way the marker leaks and every later bank-*-test refuses to start.
+// app lifecycle: ledger.js creates a per-run hold marker so the Osprey demo
+// pauses while serving, then removes it on teardown. Dynamic API/web ports and
+// marker/database paths let independent Playwright runs share one host.
 const { defineConfig } = require('@playwright/test');
 const { WEB, API, webClient } = require('./web-client');
 
@@ -20,8 +18,7 @@ module.exports = defineConfig({
     screenshot: 'only-on-failure',
   },
   webServer: [{
-    command:
-      'touch /tmp/talon_bank.hold && trap "rm -f /tmp/talon_bank.hold" EXIT INT TERM && ../../../../../target/release/osprey ../backend --run',
+    command: 'node ledger.js --serve',
     cwd: __dirname,
     url: `${API}/api/accounts`,
     reuseExistingServer: false,

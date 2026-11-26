@@ -84,6 +84,12 @@ module Surfaces
         true => 0
         false => offset
 
+    // A caret reads "start" or a selection "start end" (UTF-8 bytes); the reach never falls before the start.
+    spanned (action, words) =
+        cut = indexOf words " " ?: length words
+        start = lifted (whole (take words cut, 0))
+        Placed(placer = action, placed = start, reach = max start (whole (drop words (satAdd cut 1), start)))
+
     mismatch kind = Error(message = "A ${kind} control was sent a value of the wrong kind")
 
     (** The typed message `words` means to `binding`: a tap ignores them, a switch reads `true`, a splitter and a caret read a whole number. Strokes, lassos and scene input are refused here: they arrive through their own typed exports, never as text. *)
@@ -94,7 +100,7 @@ module Surfaces
         FlagInput action => Success(value = Switched(toggle = action, switched = words == "true"))
         ChoiceInput action => Success(value = Chose(chooser = action, chosen = words))
         SizeInput action => Success(value = Resized(resizer = action, resized = Splitters::clamp (whole (words, Splitters::least))))
-        PlaceInput action => Success(value = Placed(placer = action, placed = lifted (whole (words, 0))))
+        PlaceInput action => Success(value = spanned (action, words))
         StrokeInput _ => mismatch "board"
         LassoInput _ => mismatch "lasso"
         SceneInput _ => mismatch "scene"

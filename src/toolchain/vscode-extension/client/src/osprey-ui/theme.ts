@@ -33,7 +33,8 @@ const ALIASES: Readonly<Record<string, readonly string[]>> = {
 
 function tokenDeclarations(token: ThemeToken): string[] {
   const name = token.name.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
-  const aliases = Object.prototype.hasOwnProperty.call(ALIASES, name) ? ALIASES[name] : [name];
+  const alias = Object.prototype.hasOwnProperty.call(ALIASES, name) ? ALIASES[name] : undefined;
+  const aliases = alias ?? [name];
   const colour = `light-dark(${token.light}, ${token.dark})`;
   return [`--osp-brand-${token.name}: ${colour};`, ...aliases.map((alias) => `--osp-${alias}: ${colour};`)];
 }

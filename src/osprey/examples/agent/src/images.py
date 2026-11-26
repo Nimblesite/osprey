@@ -17,7 +17,18 @@ READ_SCRIPT = 'cd "$1" && shift; for f; do /usr/bin/base64 < "$f" 2>/dev/null | 
 
 
 def folder_of(home):
-    """Where the host keeps pasted images."""
+    """Where the host keeps pasted images.
+
+    # Examples
+    ```osprey
+    from agent import Images
+
+    print(Images.folder_of("/Users/ada"))
+    ```
+    ```output
+    /Users/ada/Library/Application Support/Osprey/pasted
+    ```
+    """
     return f"{home}/Library/Application Support/Osprey/pasted"
 
 
@@ -65,7 +76,19 @@ def user_texts(body):
 
 
 def names_in(body_text):
-    """Every pasted image the people's words in this request name, in order."""
+    """Every pasted image the people's words in this request name, in order.
+
+    # Examples
+    ```osprey
+    from agent import Images
+
+    body = '{"messages":[{"role":"user","content":"see [image: shot.png] then [image: ../shot.png]"},{"role":"assistant","content":"[image: reply.png]"}]}'
+    print(f"{Images.names_in(body)} {Images.names_in('not json')}")
+    ```
+    ```output
+    ["shot.png"] []
+    ```
+    """
     match J.decode(body_text):
         case Success(value=body):
             return foldList(user_texts(body), [], lambda acc, text: listConcat(acc, text_names(text)))
@@ -74,7 +97,19 @@ def names_in(body_text):
 
 
 def read_arguments(home, names):
-    """`/bin/sh` arguments printing each image as one base64 line, empty when it is gone."""
+    """`/bin/sh` arguments printing each image as one base64 line, empty when it is gone.
+
+    # Examples
+    ```osprey
+    from agent import Images
+
+    args = Images.read_arguments("/Users/ada", ["shot.png"])
+    print(f"{len(Images.read_arguments('/Users/ada', []))} {args[2]} {args[3]} {args[4]}")
+    ```
+    ```output
+    5 sh /Users/ada/Library/Application Support/Osprey/pasted shot.png
+    ```
+    """
     return listConcat(["-c", READ_SCRIPT, "sh", folder_of(home)], names)
 
 
@@ -107,7 +142,20 @@ def with_content(message, names, lines):
 
 
 def with_images(body_text, names, output):
-    """The request `body_text` with each named image's base64 line from `output` in place of its marker."""
+    """The request `body_text` with each named image's base64 line from `output` in place of its marker.
+
+    # Examples
+    ```osprey
+    from agent import Images
+
+    body = '{"messages":[{"role":"user","content":"look [image: shot.png]"}]}'
+    kept = Images.with_images("not json", ["shot.png"], "QUJD")
+    print(f"{Images.with_images(body, ['shot.png'], 'QUJD')} | {kept}")
+    ```
+    ```output
+    {"messages":[{"role":"user","content":[{"type":"image_url","image_url":{"url":"data:image/png;base64,QUJD"}},{"type":"text","text":"look"}]}]} | not json
+    ```
+    """
     lines = unwrap_or(split(output, "\n"), [])
     match J.decode(body_text):
         case Success(value=body):

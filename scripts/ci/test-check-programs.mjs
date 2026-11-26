@@ -30,6 +30,9 @@ const fixtures = {
   'pyflavor/slash.py': '// osprey: flavor=ml\nfn bad() { missing }\n',
   'pyflavor/plain.py': '# a plain python file\ndef add(a, b):\n    return a + b\n',
   'x/failscompilation/red.osp': red, 'x/sample-registry/red.osp': red,
+  // A type-discipline package names its checker project and has no [project] of its own ([TYPES-DISCIPLINE-REGISTRY]).
+  'discipline/osprey.toml': '[package]\nname = "@fixture/discipline"\n\n[discipline]\nname = "fixture"\nchecker = "checker"\n',
+  'discipline/checker/osprey.toml': project, 'discipline/checker/src/main.osp': good,
 };
 const failures = ['app/scratch/stray.osp', 'loose/bad.osp', 'loose/dead-cycle.osp', 'pyflavor/script.py', 'pyflavor/slash.py'];
 
@@ -49,7 +52,8 @@ function check(failGraph, expected, total) {
   assert.deepEqual([...stdout.matchAll(/^FAIL (\S+)$/gm)].map(match => match[1]).sort(), expected.toSorted(), stdout);
   assert.equal(stdout.trimEnd().split('\n').at(-1), `${total} programs, ${expected.length} failed`);
   const calls = fs.readFileSync(log, 'utf8');
-  for (const call of ['app --source-graph', 'loose/good.osp --llvm', 'loose/bad.osp --llvm']) assert(calls.includes(call), call);
+  for (const call of ['app --source-graph', 'discipline/checker --source-graph', 'loose/good.osp --llvm', 'loose/bad.osp --llvm']) assert(calls.includes(call), call);
+  assert(!calls.includes("discipline --source-graph") && !calls.includes("discipline --llvm"), 'a manifest with no [project] is a package, never a program');
   assert.equal(calls.includes('app --llvm'), !failGraph, 'lower only after source discovery succeeds');
   for (const excluded of ['pyflavor/plain.py', 'x/failscompilation/red.osp', 'x/sample-registry/red.osp']) {
     assert(!calls.includes(excluded) && !stdout.includes(excluded), excluded);
@@ -73,8 +77,8 @@ try {
   put('scripts/ci/check-programs.py', fs.readFileSync(path.resolve(repo, values.script)));
   put('compiler-wrapper.sh', '#!/bin/sh\nprintf "%s\\n" "$*" >> "$WRAPPER_LOG"\nif [ "$FAIL_GRAPH" = 1 ] && [ "$2" = --source-graph ]; then exit 1; fi\nexec "$REAL_COMPILER" "$@"\n');
   fs.chmodSync(path.join(root, 'compiler-wrapper.sh'), 0o755);
-  check('', failures, 8);
-  check('1', ['app', ...failures.slice(1)], 7);
+  check('', failures, 9);
+  check('1', ['app', 'discipline/checker', ...failures.slice(1)], 8);
   console.log('check-programs gate regression: OK');
 } finally {
   fs.rmSync(root, { recursive: true, force: true });

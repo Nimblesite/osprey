@@ -124,46 +124,24 @@ char *http_response_body(int64_t handle) {
   return copy;
 }
 
-// Case-insensitive prefix match of "name:" at the start of a header line.
+// The value of the first field named `name` in a head, a fresh copy: the names
+// read in any case and the value trimmed, as RFC 9110 5.1 and 5.5 read them
+// [HTTP-FIELDS]. NULL when there is none or the copy cannot be had.
 static char *find_header_value(const char *headers, const char *name) {
   if (!headers || !name) {
     return NULL;
   }
-  size_t name_len = strlen(name);
-  const char *line = headers;
-  while (line && *line) {
-    bool match = true;
-    for (size_t i = 0; i < name_len; i++) {
-      char a = line[i];
-      char b = name[i];
-      if (a >= 'A' && a <= 'Z') {
-        a = (char)(a - 'A' + 'a');
+  size_t cursor = 0;
+  HttpField field;
+  while (http_next_field(headers, strlen(headers), &cursor, &field)) {
+    if (http_text_is(field.name, field.name_len, name)) {
+      char *out = malloc(field.value_len + 1);
+      if (out) {
+        memcpy(out, field.value, field.value_len);
+        out[field.value_len] = '\0';
       }
-      if (b >= 'A' && b <= 'Z') {
-        b = (char)(b - 'A' + 'a');
-      }
-      if (a != b || a == '\0') {
-        match = false;
-        break;
-      }
-    }
-    if (match && line[name_len] == ':') {
-      const char *value = line + name_len + 1;
-      while (*value == ' ' || *value == '\t') {
-        value++;
-      }
-      const char *end = strstr(value, "\r\n");
-      size_t vlen = end ? (size_t)(end - value) : strlen(value);
-      char *out = malloc(vlen + 1);
-      if (!out) {
-        return NULL;
-      }
-      memcpy(out, value, vlen);
-      out[vlen] = '\0';
       return out;
     }
-    const char *next = strstr(line, "\r\n");
-    line = next ? next + 2 : NULL;
   }
   return NULL;
 }

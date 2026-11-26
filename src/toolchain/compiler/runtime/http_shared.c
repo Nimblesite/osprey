@@ -317,3 +317,36 @@ char *create_websocket_handshake_response(const char *key) {
   }
   return response;
 }
+
+// One field of an upgrade request: what it asks for, in any case [BUILTIN-WEBSOCKET-HANDSHAKE].
+static void read_upgrade_field(const HttpField *field, HttpUpgrade *upgrade) {
+  if (http_text_is(field->name, field->name_len, "Upgrade")) {
+    upgrade->upgrade = upgrade->upgrade || http_value_lists(field->value, field->value_len, "websocket");
+  } else if (http_text_is(field->name, field->name_len, "Connection")) {
+    upgrade->connection = upgrade->connection || http_value_lists(field->value, field->value_len, "upgrade");
+  } else if (upgrade->key_len == 0 && http_text_is(field->name, field->name_len, "Sec-WebSocket-Key")) {
+    upgrade->key = field->value;
+    upgrade->key_len = field->value_len;
+  }
+}
+
+HttpUpgrade http_read_upgrade(const char *head, size_t length) {
+  HttpUpgrade upgrade = {.key = ""};
+  HttpField field;
+  for (size_t cursor = 0; http_next_field(head, length, &cursor, &field);) {
+    read_upgrade_field(&field, &upgrade);
+  }
+  return upgrade;
+}
+
+// A key is 24 base64 characters (RFC 6455 4.2.1): a longer value is not one.
+enum { WS_KEY_INPUT_MAX = 64 };
+
+char *create_websocket_accept_response(const HttpUpgrade *upgrade) {
+  char key[WS_KEY_INPUT_MAX + 1] = {0};
+  if (!upgrade->connection || upgrade->key_len > WS_KEY_INPUT_MAX) {
+    return NULL;
+  }
+  memcpy(key, upgrade->key, upgrade->key_len);
+  return create_websocket_handshake_response(key);
+}

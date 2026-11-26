@@ -55,6 +55,15 @@ fn describe(polarity: Polarity) -> &'static str {
     }
 }
 
+/// How many type arguments the constructor `name` takes: one per declared
+/// variance, one for `Channel`, none for anything else.
+pub(crate) fn constructor_arity(ctx: &InferCtx, name: &str) -> usize {
+    ctx.variance_of(name)
+        .map(<[_]>::len)
+        .or_else(|| (name == crate::ty::names::CHANNEL).then_some(1))
+        .unwrap_or(0)
+}
+
 /// Validate every variance-annotated parameter's positions in a `type`
 /// declaration's variant fields. Field types are output positions; function
 /// types flip their parameter side.

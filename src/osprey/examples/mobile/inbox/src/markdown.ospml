@@ -15,6 +15,7 @@ type Doc =
     code : string
     mode : string
 
+(** A GitHub issue body as UI nodes: block structure from its lines and inline spans from its markers, an unmatched marker left as text. *)
 module Markdown
     field key content = Json::strField key content
     node kind style extra = Json::obj (field "kind" kind + "," + field "style" style + extra)
@@ -37,6 +38,7 @@ module Markdown
     // Inline spans: `**bold**`, `*italic*`, `_italic_`, `` `code` `` and
     // `[text](https://…)`. An unmatched marker stays literal text, so the
     // parser is total.
+    (** The inline spans of `text`, comma-joined as a JSON array of styled spans, an unmatched marker left as plain text. *)
     export spans text = match length text == 0
         true => ""
         false =>
@@ -93,7 +95,7 @@ module Markdown
 
     line s = match indexOf s "\n"
         Success i => Cut(head = take s i, tail = drop s (satAdd i 1))
-        Error message => Cut(head = s, tail = "")
+        Error _ => Cut(head = s, tail = "")
 
     flushParagraph doc = match length doc.paragraph == 0
         true => doc
@@ -203,7 +205,7 @@ module Markdown
         true => flushCode doc
         false => flushParagraph doc
 
-    // Comma-joined UI nodes for `source`; empty when nothing renders.
+    (** Comma-joined UI nodes for `source`; empty when nothing renders. *)
     export render source =
         finished = finish (walk (Doc(nodes = "", paragraph = "", code = "", mode = "text")) source)
         finished.nodes

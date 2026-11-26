@@ -14,7 +14,7 @@ namespace proof
 // line the gate's preflight demands.
 
 report (outcome) = match outcome
-    Success env => print "checked: id_imp (export)"
+    Success _ => print "checked: id_imp (export)"
     Error message => print "rejected: id_imp (export): ${message}"
 
 main () = match readFile "id_imp.ndjson"

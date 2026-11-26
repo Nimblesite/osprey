@@ -4,10 +4,6 @@
 
 namespace hunt
 
-import hunt::Inventory
-import hunt::Report
-import hunt::Sweep
-
 main () = match Inventory::discover ()
     Error message => print "hunt: cannot walk the corpus: ${message}"
     Success programs => listedThen programs

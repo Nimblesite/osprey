@@ -78,3 +78,9 @@ src/osprey/examples/llms/gpt2/weights/
 /core.*
 
 /src/toolchain/hosts/ferroui/docs
+
+# Playwright MCP page snapshots (tool output, never source)
+.playwright-mcp/
+
+# Downloaded research papers: fetched from the addresses in each research README, never committed
+/docs/research/**/papers/

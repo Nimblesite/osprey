@@ -40,7 +40,6 @@ excl s = s + "!"
 ques s = s + "?"
 intToString x = toString x
 twoArgAdd (a, b) = a + b 
-threeArgAdd : (int, int, int) -> int
 threeArgAdd (a, b, c) = a + b + c 
 
 applyInt (f, x) = f x
@@ -57,11 +56,7 @@ exactArithmetic (\() =>
 exactArithmetic (\() =>
     print (toString (applyInt (minusOne, 10))))
 
-print "=== Same (string)->string passed via HOF ==="
-print (applyStr (excl, "hi"))
-print (applyStr (ques, "hi"))
-
-print "=== Different shapes ===\n${(applyToStr (intToString, 42))}"
+print "=== Same (string)->string passed via HOF ===\n${(applyStr (excl, "hi"))}\n${(applyStr (ques, "hi"))}\n=== Different shapes ===\n${(applyToStr (intToString, 42))}"
 exactArithmetic (\() =>
     print (toString (applyTwo (twoArgAdd, 5, 7))))
 exactArithmetic (\() =>
@@ -71,9 +66,7 @@ print ""
 (** --- Generic monomorphization via identity-like functions --- *)
 identity x = x
 duplicate x = x
-print "${(toString (identity 42))}\n${(toString (duplicate 99))}"
-print (identity "a")
-print (duplicate "b")
+print "${(toString (identity 42))}\n${(toString (duplicate 99))}\n${(identity "a")}\n${(duplicate "b")}"
 
 (** --- Union type equality (same tag = same, different tag = different) --- *)
 type Color =
@@ -149,7 +142,7 @@ erasedFeedListValue feeds = match feeds
 integerFeedResult () = Success(value = integerFeed ())
 failedFeedResult : Unit -> Result<Feed<int>, string>
 failedFeedResult () = Error(message = "wrapped error")
-erasedFeedResultValue (result : Result<Feed<any>, string>) = match result
+erasedFeedResultValue (result) = match result
     Success value => erasedFeedValue value
     Error message => message
 covariantErasureCase () =
@@ -207,7 +200,7 @@ anyGateResults () = [anyGateResult ()]
 runGateResults results = match results
     [first, ..._rest] => runGateResult first
     _ => false
-runGateResult (result : Result<Gate<int>, string>) = match result
+runGateResult (result) = match result
     Success value => runGate value
     Error message => message != "gate error"
 contravariantErasureCase () =
@@ -252,11 +245,9 @@ type Both T =
     slot : T
     consume : (T) -> int
 
-srcInt : Unit -> Source<int>
 srcInt () = Source(produce = 4, make = \n => n, items = [1, 2])
 sinkInt : Unit -> Sink<int>
 sinkInt () = Sink(admit = \_x => true, hof = \_f => 7)
-bothInt : Unit -> Both<int>
 bothInt () = Both(slot = 5, consume = \_x => 6)
 keepSource s = s.produce
 keepSink g = g.hof (\_n => 3)
@@ -289,9 +280,7 @@ appliedText = identityOf<string> "os"
 appliedNested = length (identityOf<List<int>> [1, 2])
 appliedEmpty = length (emptyOf<int> ())
 appliedPair = pickOf<int, string> (7, "seven")
-print "applied int=${appliedInt} text=${appliedText} nested=${appliedNested} empty=${appliedEmpty} pair=${appliedPair}"
-
-print "=== TYPE EQUALITY COMPLETE ==="
+print "applied int=${appliedInt} text=${appliedText} nested=${appliedNested} empty=${appliedEmpty} pair=${appliedPair}\n=== TYPE EQUALITY COMPLETE ==="
 
 (** Verify generic records, function shapes, union tags, and variant payload types. *)
 typeEqualityCase () =

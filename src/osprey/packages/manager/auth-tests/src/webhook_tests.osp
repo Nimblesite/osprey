@@ -2,6 +2,8 @@ namespace registry_auth_tests;
 import registry::Bytes
 import registry::Hmac
 
+/// HMAC-SHA256 against the RFC 4231 vector, and GitHub webhook signatures
+/// over the exact raw body and algorithm.
 module WebhookTests {
     fn vector() = check("RFC 4231 HMAC-SHA256 case one", "b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7", Bytes::hex(Hmac::sha256(mapList(range(0, 20) |> toList, fn(_i) => 11), Bytes::ofString("Hi There"))))
 

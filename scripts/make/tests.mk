@@ -165,15 +165,15 @@ C_SRC_tensor_list_tests = runtime/tensor_list_tests.c runtime/tensor_list.c $(TE
 C_FLAGS_test_http_length_validation = $(OSSL_CFLAGS)
 C_SRC_test_http_length_validation = runtime/test_http_length_validation.c
 C_FLAGS_http_server_send_tests = $(OSSL_CFLAGS)
-C_SRC_http_server_send_tests = runtime/http_server_send_tests.c $(C_TEST_MEMORY_SRC) runtime/string_runtime.c runtime/float_spelling.c
+C_SRC_http_server_send_tests = runtime/http_server_send_tests.c runtime/http_fields.c $(C_TEST_MEMORY_SRC) runtime/string_runtime.c runtime/float_spelling.c
 C_LIBS_http_server_send_tests = -pthread
 C_FLAGS_http_server_request_tests = $(OSSL_CFLAGS)
-C_SRC_http_server_request_tests = runtime/http_server_request_tests.c $(C_TEST_MEMORY_SRC) runtime/string_runtime.c runtime/float_spelling.c
+C_SRC_http_server_request_tests = runtime/http_server_request_tests.c runtime/http_fields.c $(C_TEST_MEMORY_SRC) runtime/string_runtime.c runtime/float_spelling.c
 C_LIBS_http_server_request_tests = -pthread
 C_SRC_fiber_runtime_tests = runtime/fiber_runtime_tests.c runtime/fiber_channel_tests.c runtime/fiber_handle_tests.c $(C_TEST_MEMORY_SRC) $(RT_THREADS)
 C_LIBS_fiber_runtime_tests = -pthread
 C_FLAGS_http_runtime_tests = $(OSSL_CFLAGS)
-C_SRC_http_runtime_tests = runtime/http_runtime_tests.c runtime/http_origin.c runtime/http_origin_tests.c runtime/http_read_tests.c runtime/http_chunked_tests.c runtime/http_framing_tests.c runtime/http_tls_tests.c runtime/http_server_live_tests.c runtime/http_server_closure_tests.c runtime/http_server_connection_tests.c runtime/http_client_runtime.c runtime/http_client_transport.c runtime/http_client_response.c runtime/http_client_framing.c runtime/http_client_chunks.c runtime/http_server_runtime.c runtime/http_server_pool.c runtime/http_server_request.c runtime/http_server_response.c runtime/http_shared.c runtime/string_runtime.c runtime/float_spelling.c $(C_TEST_MEMORY_SRC) runtime/random_runtime.c $(RT_THREADS)
+C_SRC_http_runtime_tests = runtime/http_runtime_tests.c runtime/http_origin.c runtime/http_origin_tests.c runtime/http_read_tests.c runtime/http_chunked_tests.c runtime/http_framing_tests.c runtime/http_tls_tests.c runtime/http_server_live_tests.c runtime/http_server_closure_tests.c runtime/http_server_connection_tests.c runtime/http_client_runtime.c runtime/http_client_transport.c runtime/http_client_response.c runtime/http_client_framing.c runtime/http_client_chunks.c runtime/http_server_runtime.c runtime/http_server_pool.c runtime/http_server_request.c runtime/http_server_response.c runtime/http_shared.c runtime/http_fields.c runtime/string_runtime.c runtime/float_spelling.c $(C_TEST_MEMORY_SRC) runtime/random_runtime.c $(RT_THREADS)
 C_LIBS_http_runtime_tests = -pthread $(OSSL_LIBS)
 # http_shared.c's coverage number is OWNED by this suite: it is the only one
 # that drives every helper in the unit rather than the subset one transport
@@ -181,13 +181,13 @@ C_LIBS_http_runtime_tests = -pthread $(OSSL_LIBS)
 # union, so splitting these tests across transports would lower the number
 # while testing exactly as much.
 C_FLAGS_http_shared_tests = $(OSSL_CFLAGS)
-C_SRC_http_shared_tests = runtime/http_shared_tests.c runtime/http_shared.c runtime/random_runtime.c
+C_SRC_http_shared_tests = runtime/http_shared_tests.c runtime/http_shared.c runtime/http_fields.c runtime/random_runtime.c
 C_LIBS_http_shared_tests = -pthread $(OSSL_LIBS)
 # Owns websocket_client_runtime.c and websocket_server_runtime.c. Binds real
 # loopback ports (18086/18087) and runs a real accept loop, so it is single
 # threaded across suites by construction -- the Makefile runs suites serially.
 C_FLAGS_websocket_runtime_tests = $(OSSL_CFLAGS)
-C_SRC_websocket_runtime_tests = runtime/websocket_runtime_tests.c runtime/websocket_lifecycle_tests.c runtime/websocket_frames_tests.c runtime/websocket_frames.c runtime/websocket_client_runtime.c runtime/websocket_server_runtime.c runtime/http_shared.c runtime/random_runtime.c $(C_TEST_MEMORY_SRC)
+C_SRC_websocket_runtime_tests = runtime/websocket_runtime_tests.c runtime/websocket_lifecycle_tests.c runtime/websocket_frames_tests.c runtime/websocket_frames.c runtime/websocket_client_runtime.c runtime/websocket_server_runtime.c runtime/http_shared.c runtime/http_fields.c runtime/random_runtime.c $(C_TEST_MEMORY_SRC)
 C_LIBS_websocket_runtime_tests = -pthread $(OSSL_LIBS)
 # Owns tls_client_runtime.c: a loopback OpenSSL echo server (18092/18093).
 C_FLAGS_net_runtime_tests = $(OSSL_CFLAGS)
@@ -196,7 +196,7 @@ C_LIBS_net_runtime_tests = -pthread $(OSSL_LIBS)
 # Owns file_server_runtime.c: a plain TCP client against the one-file and folder
 # server on port 0. Windows CI runs it too (_test_file_server), where the server's
 # Winsock start-up lives in http_shared.c.
-FILE_SERVER_WINSOCK = $(if $(MSYSTEM),runtime/http_shared.c runtime/random_runtime.c)
+FILE_SERVER_WINSOCK = $(if $(MSYSTEM),runtime/http_shared.c runtime/http_fields.c runtime/random_runtime.c)
 C_FLAGS_file_server_tests = $(if $(MSYSTEM),$(OSSL_CFLAGS))
 C_SRC_file_server_tests = runtime/file_server_tests.c runtime/file_server_link_tests.c runtime/file_server_test_files.c runtime/file_server_runtime.c $(FILE_SERVER_WINSOCK)
 C_LIBS_file_server_tests = -pthread $(if $(MSYSTEM),$(OSSL_LIBS) -lbcrypt -lws2_32)

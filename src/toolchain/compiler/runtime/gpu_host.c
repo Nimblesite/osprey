@@ -42,6 +42,17 @@ static void *abandoned(void *buffer) {
   return NULL;
 }
 
+// A result buffer of `count` elements of `elem` bytes, or NULL with ENOMEM
+// recorded on `op`'s "result" operand and the partial buffer released.
+static void *result_buffer(const char *op, int64_t count, int64_t elem) {
+  void *out = osprey_gpu_alloc(count, elem);
+  if (!out || osprey_gpu_len(out) != count) {
+    osp_io_error_set(op, "result", ENOMEM);
+    return abandoned(out);
+  }
+  return out;
+}
+
 static const char OP_MATMUL[] = "gpuMatMul";
 static const char OP_MATMUL_QUANT[] = "gpuMatMulQuant";
 static const char OP_LOAD[] = "gpuLoad";
@@ -90,12 +101,7 @@ static void *matrix_result(void *left, void *right, int64_t rows, int64_t inner,
     osp_io_error_text(OP_MATMUL, "operands", "must hold the same float or float32 element type");
     return NULL;
   }
-  void *out = osprey_gpu_alloc(n, elem);
-  if (!out || osprey_gpu_len(out) != n) {
-    osp_io_error_set(OP_MATMUL, "result", ENOMEM);
-    return abandoned(out);
-  }
-  return out;
+  return result_buffer(OP_MATMUL, n, elem);
 }
 
 // [GPU-MATMUL]: one source template, instantiated at each arithmetic width.
@@ -265,11 +271,8 @@ void *osprey_gpu_matmul_quant(void *x, void *w, const char *type, int64_t rows, 
     osp_io_error_text(OP_MATMUL_QUANT, "weights", "must start on a 4-byte boundary");
     return NULL;
   }
-  void *out = osprey_gpu_alloc(n, 4);
-  if (!out || osprey_gpu_len(out) != n) {
-    osp_io_error_set(OP_MATMUL_QUANT, "result", ENOMEM);
-    return abandoned(out);
-  }
+  void *out = result_buffer(OP_MATMUL_QUANT, n, 4);
+  if (!out) return NULL;
   uint64_t threads[2];
   quant_grid(rows, cols, threads);
   int device = osprey_gpu_device_matmul_quant(format->kernel, x, w, out, rows, inner, cols, threads);
@@ -437,11 +440,8 @@ void *osprey_gpu_delta_rule(void *state, void *queries, void *keys, void *values
       return NULL;
     }
   }
-  void *out = osprey_gpu_alloc(total, 4);
-  if (!out || osprey_gpu_len(out) != total) {
-    osp_io_error_set(OP, "result", ENOMEM);
-    return abandoned(out);
-  }
+  void *out = result_buffer(OP, total, 4);
+  if (!out) return NULL;
   int device = osprey_gpu_device_delta_rule(operands, out, heads, dim, steps);
   if (device != 0) return device > 0 ? out : abandoned(out);
   const float *in[6];
@@ -462,11 +462,8 @@ void *osprey_gpu_sigmoid(void *x) {
     return NULL;
   }
   int64_t n = osprey_gpu_len(x);
-  void *out = osprey_gpu_alloc(n, 4);
-  if (!out || osprey_gpu_len(out) != n) {
-    osp_io_error_set(OP, "result", ENOMEM);
-    return abandoned(out);
-  }
+  void *out = result_buffer(OP, n, 4);
+  if (!out) return NULL;
   int device = osprey_gpu_device_sigmoid(x, out, n);
   if (device != 0) return device > 0 ? out : abandoned(out);
   if (n && osprey_gpu_readable(x, 0) != 1) return abandoned(out);

@@ -62,7 +62,7 @@ fn every_agent_project_finishes_type_checking_within_the_budget() -> std::io::Re
 /// linear in the program gives 4; a table copied at every call gives 16 or more.
 const GROWTH_LIMIT: u32 = 10;
 const SMALL_PROGRAM: usize = 1000;
-const LOWERING_RUNS: usize = 2;
+const LOWERING_RUNS: usize = 3;
 
 /// `functions` functions that each call one generic helper.
 fn generic_callers(functions: usize) -> std::io::Result<Vec<u8>> {
@@ -75,22 +75,23 @@ fn generic_callers(functions: usize) -> std::io::Result<Vec<u8>> {
     Ok(source)
 }
 
-/// The fastest of several runs that lower a program of `functions` generic callers to LLVM IR.
-fn lowering_time(functions: usize) -> std::io::Result<Duration> {
+/// Writes a program of `functions` generic callers and returns its path.
+fn callers_program(functions: usize) -> std::io::Result<PathBuf> {
     let source = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("callers{functions}.osp"));
     std::fs::write(&source, generic_callers(functions)?)?;
-    let mut fastest = Duration::MAX;
-    for _ in 0..LOWERING_RUNS {
-        let started = Instant::now();
-        let status = Command::new(env!("CARGO_BIN_EXE_osprey"))
-            .arg(&source)
-            .args(["--llvm", "--no-warnings"])
-            .stdout(Stdio::null())
-            .status()?;
-        assert!(status.success(), "{functions} generic callers: {status}");
-        fastest = fastest.min(started.elapsed());
-    }
-    Ok(fastest)
+    Ok(source)
+}
+
+/// One lowering of `source` to LLVM IR, timed.
+fn lowering_time(source: &Path) -> std::io::Result<Duration> {
+    let started = Instant::now();
+    let status = Command::new(env!("CARGO_BIN_EXE_osprey"))
+        .arg(source)
+        .args(["--llvm", "--no-warnings"])
+        .stdout(Stdio::null())
+        .status()?;
+    assert!(status.success(), "{}: {status}", source.display());
+    Ok(started.elapsed())
 }
 
 /// A generic call specializes the callee's types, never a copy of every table
@@ -98,8 +99,17 @@ fn lowering_time(functions: usize) -> std::io::Result<Duration> {
 /// square of its size ([DAW-PERF-BUILD], [TYPE-GENERICS-APPLY]).
 #[test]
 fn lowering_time_grows_with_the_program_and_not_with_its_square() -> std::io::Result<()> {
-    let small = lowering_time(SMALL_PROGRAM)?;
-    let large = lowering_time(SMALL_PROGRAM * 4)?;
+    let (small_program, large_program) = (
+        callers_program(SMALL_PROGRAM)?,
+        callers_program(SMALL_PROGRAM * 4)?,
+    );
+    // Interleaved, so a load spike from a sibling test lands on both sizes,
+    // and the fastest of each: the ratio measures the compiler, not the runner.
+    let (mut small, mut large) = (Duration::MAX, Duration::MAX);
+    for _ in 0..LOWERING_RUNS {
+        small = small.min(lowering_time(&small_program)?);
+        large = large.min(lowering_time(&large_program)?);
+    }
     assert!(
         large < small * GROWTH_LIMIT,
         "{SMALL_PROGRAM} generic callers lowered in {small:?}, four times as many in {large:?}"

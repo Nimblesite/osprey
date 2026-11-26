@@ -7,6 +7,9 @@
 #define MAX_HTTP_REQUEST_BYTES (1024U * 1024U)
 #define MAX_HTTP_HEADER_BYTES (32U * 1024U)
 #define HTTP_REQUEST_TIMEOUT_MS 5000U
+// Node.js closes a keep-alive connection that sends nothing for 5 seconds,
+// and says so in every kept reply (`Keep-Alive: timeout=5`).
+#define POOL_KEEP_ALIVE_MS 5000U
 #define HTTP_CLIENT_REQUEST_ID_BYTES 64U
 
 /* What a request-log field says when its value could not be read: a method and

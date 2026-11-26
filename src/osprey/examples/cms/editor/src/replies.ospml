@@ -1,0 +1,88 @@
+// Implements [UI-EFFECTS] for the CMS editor: each completed request's reply, read from the slice its
+// ticket names. Listings replace what the store holds; a commit reports its outcome and refreshes the
+// tree and history; an upload sends its next part until the last one commits ([CMS-API-UPLOAD]).
+namespace studio
+
+import ui::Doc
+import ui::Runtime
+import studio::Api
+import studio::Names
+import studio::Update
+
+(** How the editor answers each completed request. *)
+module Replies
+    partBytes () = 786432
+
+    settled store = store(loads = max 0 (satSub store.loads 1))
+
+    failed (store, ticket, outcome) = Runtime::step (Update::noticed (settled (store(busy = false)), "bad", "That didn't work", Api::refusal (ticket, outcome)))
+
+    // A commit landed: say so, keep what the editor holds as saved, and refresh the tree and history.
+    landed (store, heading, text) = Update::noticed (store(busy = false, saved = store.text, commit = Api::committed text, creating = false), "good", heading, "Committed ${take (Api::committed text) 7}. Publish to put it live.")
+
+    committed (store, heading, text) = Update::hydrate (landed (store, heading, text))
+
+    // A publish landed: the remote holds every saved commit and the site's pipeline deploys them.
+    publishedNote text = match Api::published text
+        0 => "Nothing new to publish: the live site already has every saved change."
+        count => "Published ${count} commit(s). The site's pipeline is deploying them."
+
+    published (store, text) = Update::hydrate (Update::noticed (store(busy = false), "good", "Published", publishedNote text))
+
+    deleted store = Update::hydrate (Update::noticed (store(busy = false, opened = "", text = "", saved = "", preview = ""), "good", "Deleted", "The file is gone from the site."))
+
+    // Cuts base64 `text` into parts no longer than a request may carry.
+    cut (text, parts) = match length text > partBytes ()
+        true => cut (drop text (partBytes ()), listAppend parts (take text (partBytes ())))
+        false => listAppend parts text
+
+    dispatch (store, next) =
+        upload = store.upload
+        parts = length upload.uploadParts
+        path = "/api/upload?path=${upload.uploadPath}&part=${next}&parts=${parts}"
+        Runtime::asking (store(busy = true, upload = upload(uploadNext = next)), [Api::call (store.server, "part", "POST", path, listGet upload.uploadParts next ?: "")])
+
+    // A chosen file: name it under the chosen folder, cut it into parts and send the first.
+    // The receipt is the chosen file's name, or empty when the chooser was cancelled.
+    chosen (store, name) =
+        data = Api::body "chosen"
+        match name == "" || data == ""
+            true => Runtime::step store
+            false => dispatch (store(upload = Upload(uploadPath = "${store.folder}/${Names::safeName name}", uploadParts = cut (data, []), uploadNext = 0)), 0)
+
+    picked (store, outcome) = match outcome
+        Success receipt => chosen (store, receipt)
+        Error reason => Runtime::step (Update::noticed (store, "bad", "No file was chosen", reason))
+
+    // One part landed: send the next, or report the commit the last one made and open the file.
+    parted (store, text) =
+        upload = store.upload
+        next = satAdd upload.uploadNext 1
+        match next < length upload.uploadParts
+            true => dispatch (store, next)
+            false => Update::previewed (landed (store(opened = upload.uploadPath, preview = ""), "Uploaded", text))
+
+    loaded (store, ticket) =
+        text = Api::body ticket
+        held = settled store
+        match ticket
+            "tree" => Runtime::step (held(files = Api::files text, roots = Api::roots text))
+            "history" => Runtime::step (held(history = Api::history text))
+            "status" => Runtime::step (held(unpublished = Api::unpublished text, remote = Api::remote text))
+            "file" => Runtime::step (held(text = text, saved = text))
+            "media" => Runtime::step (held(preview = "data:${Names::mime store.opened};base64,${text}"))
+            _ => Runtime::step held
+
+    succeeded (store, ticket, outcome) = match ticket
+        "save" => committed (store, "Saved", Api::body ticket)
+        "create" => committed (store, "Page created", Api::body ticket)
+        "delete" => deleted store
+        "publish" => published (store, Api::body ticket)
+        "part" => parted (store, Api::body ticket)
+        "chosen" => picked (store, outcome)
+        _ => loaded (store, ticket)
+
+    (** Applies the reply to the request under `ticket`. *)
+    export completed (store, ticket, outcome) = match ticket == "chosen" || Api::ok outcome
+        true => succeeded (store, ticket, outcome)
+        false => failed (store, ticket, outcome)

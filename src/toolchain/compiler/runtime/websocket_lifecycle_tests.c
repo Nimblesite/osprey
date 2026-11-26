@@ -11,9 +11,13 @@
 
 #define WS_LIFE_PORT test_port(11)
 
+// The server has no timer of its own: it drops a connection only when its
+// reader sees the client's close. Polling for that is the mechanism; WS_POLLS
+// (30 s) only names a server that never notices, however slowly a loaded
+// runner schedules the reader.
 enum {
   WS_PAST_THE_OLD_LIMIT = 1100,
-  WS_POLLS = 300,
+  WS_POLLS = 3000,
   WS_POLL_US = 10000,
   WS_CHURN = 150,
   WS_BIG_FRAME = 4000

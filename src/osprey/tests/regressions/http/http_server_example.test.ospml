@@ -18,7 +18,7 @@ jsonResponse (status, body) = HttpResponse(
 print "=== Comprehensive HTTP API Test ==="
 
 (** What the slow handler saw: how many 10 ms waits passed before its client left,
-    or -1 if the client never did. *)
+    or -1 if the client never did. A refused slot stays an `Error` each reader reports. *)
 goneAfter = Channel 1
 
 (** Waits in 10 ms steps until the client of this request hangs up, for 5 s at most. *)
@@ -32,7 +32,9 @@ waitGone waits = match httpClientGone ()
 
 (** The slow route: reports through `goneAfter` when its client left. *)
 slowRoute () =
-    send goneAfter (waitGone 0)
+    match goneAfter
+        Success value => send value (waitGone 0)
+        Error message => check "setup refused" "none" message
     jsonResponse (200, "{\"late\": true}")
 
 print "Creating HTTP server on port 18080..."
@@ -84,9 +86,7 @@ request (client, method, path, payload) =
 
 print "Creating HTTP client..."
 clientId = httpCreateClient "http://127.0.0.1:18080" 5000 ?: -1
-print "Client created with ID: ${clientId}"
-
-print "=== Testing HTTP Methods ==="
+print "Client created with ID: ${clientId}\n=== Testing HTTP Methods ==="
 
 (** Verify GET, POST, PUT and DELETE against the routes the handler serves. *)
 getUsersResult = request (clientId, "GET", "/api/users", "")
@@ -103,7 +103,11 @@ impatient = httpCreateClient "http://127.0.0.1:18080" 300 ?: -1
 slowResult = match httpGet impatient "/slow" ""
     Success value => value
     Error _ => -2
-waited = recv goneAfter
+waited = match goneAfter
+    Success value => recv value
+    Error message =>
+        check "setup refused" "none" message
+        -1
 print "GET /slow result: ${slowResult}, handler saw the client leave: ${waited > 0}"
 aliveResult = request (clientId, "GET", "/alive", "")
 
@@ -113,9 +117,7 @@ notFoundResult = request (clientId, "GET", "/nonexistent", "")
 print "=== Server Shutdown Test ===\n✅ All HTTP operations completed successfully\n🛑 Initiating immediate graceful server shutdown..."
 
 stopResult = httpStopServer serverId ?: -1
-print "Server stopped with result: ${stopResult}"
-
-print "=== HTTP API Test Complete ==="
+print "Server stopped with result: ${stopResult}\n=== HTTP API Test Complete ==="
 
 // Verify every routed method, the error route, and graceful shutdown.
 test "local HTTP API routes every method and status" (\() => checkAll "HTTP API statuses" [

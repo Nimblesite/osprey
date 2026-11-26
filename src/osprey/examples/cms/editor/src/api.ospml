@@ -1,0 +1,69 @@
+// Implements [UI-EFFECTS] for the CMS editor: the HTTP edge of [CMS-API]. Requests are typed `Http`
+// capabilities the host performs; bodies arrive in host-held slices and are decoded here, once.
+namespace studio
+
+import ui::Doc
+import ui::Requests
+
+(** The CMS API's requests and replies. *)
+module Api
+    // Big enough for a 48 MiB file as base64; the host refuses a longer reply.
+    replyLimit () = 67108864
+
+    // Thirty seconds, in milliseconds: a commit or a publish can take a while.
+    replyDeadline () = 30000
+
+    textHeader () = ui::Header(headerName = "Content-Type", headerValue = "text/plain; charset=utf-8")
+
+    (** A request to `server` whose reply is held under the slice named `ticket`. *)
+    export call (server, ticket, method, path, body) = Requests::ask (ticket, ui::Http(method = method, url = server + path, headers = [textHeader ()], body = body, responseLimit = replyLimit (), deadline = replyDeadline (), httpSlice = ticket))
+
+    (** The query string naming `path`; a safe path needs no escaping ([CMS-PATH-SAFE]). *)
+    export at (route, path) = "${route}?path=${path}"
+
+    (** The reply held under `ticket`. *)
+    export body ticket = perform ui::Slices.fetch ticket
+
+    (** The HTTP status a completed request names; zero when the host refused it. *)
+    export status outcome = match outcome
+        Success receipt => Doc::number (Doc::parse receipt, "status")
+        Error _ => 0
+
+    (** Whether a completed request is a 2xx success. *)
+    export ok outcome =
+        code = status outcome
+        code >= 200 && code < 300
+
+    (** What a failed request means, from its `{"error"}` or its bare status. *)
+    export refusal (ticket, outcome) = match Doc::text (Doc::parse (body ticket), "error")
+        "" => bare (status outcome)
+        reason => reason
+
+    bare code = match code
+        0 => "The CMS server could not be reached. Check it is running, then refresh."
+        _ => "The CMS server answered HTTP ${code}."
+
+    entry item = Entry(entryPath = Doc::text (item, "path"), entryKind = Doc::text (item, "kind"))
+
+    (** The files a `/api/tree` reply lists. *)
+    export files text = mapList (Doc::fieldItems (Doc::parse text, "files"), entry)
+
+    (** The roots a `/api/tree` reply names. *)
+    export roots text = Doc::texts (Doc::parse text, "roots")
+
+    commit item = Commit(commitSha = Doc::text (item, "sha"), commitSubject = Doc::text (item, "subject"), commitDate = Doc::text (item, "date"))
+
+    (** The commits a `/api/history` reply lists, newest first. *)
+    export history text = mapList (Doc::fieldItems (Doc::parse text, "commits"), commit)
+
+    (** The commit a save, delete or upload reply names. *)
+    export committed text = Doc::text (Doc::parse text, "commit")
+
+    (** How many saved commits a `/api/status` reply says the site's remote lacks. *)
+    export unpublished text = Doc::number (Doc::parse text, "unpublished")
+
+    (** Whether a `/api/status` reply says the site has a remote to publish to. *)
+    export remote text = Doc::flag (Doc::parse text, "remote")
+
+    (** How many commits a `/api/publish` reply says went live. *)
+    export published text = Doc::number (Doc::parse text, "published")

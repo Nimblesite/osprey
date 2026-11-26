@@ -1,0 +1,227 @@
+// Implements [CMS-EDITOR-FORMATTED]: a Markdown page as front matter and a list of blocks, so the
+// formatted view edits each block in place and the ribbon restyles it. Splitting and joining are
+// inverse for every page the editor writes: blocks are separated by one blank line.
+namespace studio
+
+(** One block of a page: its style and its text without the Markdown that marks the style. *)
+type Block =
+    blockStyle : string
+    blockText : string
+
+(** A page taken apart: the front matter (with its fences, or empty) and the body's blocks. *)
+type Page =
+    pageFront : string
+    pageBlocks : List<Block>
+
+(** A page read line by line: the blocks so far, and the lines and style of the block still open. *)
+type Scan =
+    scanned : List<Block>
+    pending : List<string>
+    pendingStyle : string
+
+(** Markdown pages as blocks, and the ribbon's edits on them. *)
+module Blocks
+    prefixes () = [["h1", "# "], ["h2", "## "], ["h3", "### "], ["bullets", "- "], ["quote", "> "]]
+
+    prefixOf style = listGet (listGet (filterList (prefixes (), \pair => (listGet pair 0 ?: "") == style)) 0 ?: []) 1 ?: ""
+
+    // The style whose prefix `text` starts with, or `found` when another already matched.
+    prefixed (text, found, pair) = match found.blockStyle == "paragraph" && startsWith text (listGet pair 1 ?: "#")
+        true => Block(blockStyle = listGet pair 0 ?: "paragraph", blockText = drop text (length (listGet pair 1 ?: "")))
+        false => found
+
+    styled text = foldList (prefixes (), Block(blockStyle = "paragraph", blockText = text), \(found, pair) => prefixed (text, found, pair))
+
+    (** The block a stretch of Markdown is. A fenced block is `code`. *)
+    export block text = match startsWith text "```"
+        true => Block(blockStyle = "code", blockText = text)
+        false => styled text
+
+    (** The Markdown for `item`. *)
+    export markdown item = prefixOf item.blockStyle + item.blockText
+
+    fenceEnd body = indexOf (drop body 4) "\n---" ?: -1
+
+    // Front matter is `---` on the first line through the next `---` line, kept byte for byte.
+    parted text = match startsWith text "---\n" && fenceEnd text >= 0
+        true =>
+            cut = satAdd (fenceEnd text) 8
+            Page(pageFront = take text cut, pageBlocks = body (drop text cut))
+        false => Page(pageFront = "", pageBlocks = body text)
+
+    // What a line starts: a fence, a heading, a list item, a quote, a paragraph line, or nothing.
+    lineStyle line = match startsWith line "```"
+        true => "code"
+        false => match startsWith line "#"
+            true => "heading"
+            false => listedStyle line
+
+    listedStyle line = match startsWith line "- "
+        true => "bullets"
+        false => match startsWith line "> "
+            true => "quote"
+            false => match trim line == ""
+                true => "blank"
+                false => "paragraph"
+
+    closed scan = match length scan.pending
+        0 => scan
+        _ => Scan(scanned = listAppend scan.scanned (block (join scan.pending "\n")), pending = [], pendingStyle = "")
+
+    opened (scan, style, line) = Scan(scanned = (closed scan).scanned, pending = [line], pendingStyle = style)
+
+    grown (scan, line) = scan(pending = listAppend scan.pending line)
+
+    // Inside a fence every line belongs to the code, until the closing fence ends the block.
+    fenced (scan, line) = match startsWith line "```"
+        true => closed (grown (scan, line))
+        false => grown (scan, line)
+
+    // A line outside a fence: a heading stands alone, like lines run on, a blank line ends a block.
+    unfenced (scan, line, style) = match style
+        "blank" => closed scan
+        "heading" => closed (opened (scan, style, line))
+        _ => match style == scan.pendingStyle
+            true => grown (scan, line)
+            false => opened (scan, style, line)
+
+    readLine (scan, line) = match scan.pendingStyle
+        "code" => fenced (scan, line)
+        _ => unfenced (scan, line, lineStyle line)
+
+    // Blocks are read line by line, so a heading, a fence or a list needs no blank line around it.
+    body text = (closed (foldList (lines text, Scan(scanned = [], pending = [], pendingStyle = ""), readLine))).scanned
+
+    (** `text` taken apart into front matter and blocks. *)
+    export page text = parted text
+
+    // The front matter keeps its closing fence's line, then one blank line before the first block.
+    gapAfter front = match front
+        "" => ""
+        _ => "\n\n"
+
+    (** The page put back together: front matter, then blocks one blank line apart, ending in a newline. *)
+    export joined page = match length page.pageBlocks
+        0 => page.pageFront
+        _ => page.pageFront + gapAfter page.pageFront + join (mapList (page.pageBlocks, markdown)) "\n\n" + "\n"
+
+    pick (blocks, index, at, item) = match index == at
+        true => item
+        false => listGet blocks index ?: item
+
+    (** `blocks` with the one at `at` replaced by `item`. *)
+    export replaced (blocks, at, item) = range (0, length blocks) |> fold [] (\(out, index) => listAppend out (pick (blocks, index, at, item)))
+
+    // The blocks before and at `at`, then `item`, then the rest.
+    placed (out, index, blocks, at, item) = match index == at
+        true => listAppend (listAppend out (blockAt (blocks, index))) item
+        false => listAppend out (blockAt (blocks, index))
+
+    (** `blocks` with `item` inserted after the one at `at`. *)
+    export insertedAfter (blocks, at, item) = range (0, length blocks) |> fold [] (\(out, index) => placed (out, index, blocks, at, item))
+
+    // Only code, lists and quotes hold line breaks; anywhere else Enter ends the block.
+    holdsLines style = style == "code" || style == "bullets" || style == "quote"
+
+    (** Whether `words` typed into block `style` end it at a line break, as Enter does in a word processor. *)
+    export splits (style, words) = holdsLines style == false && contains words "\n"
+
+    (** Page `text` with block `index` cut at the first line break of `words`: the text before stays in
+        the block, and the text after (without the break) starts a new paragraph after it. *)
+    export split (text, index, words) =
+        whole = page text
+        held = blockAt (whole.pageBlocks, index)
+        at = indexOf words "\n" ?: length words
+        rest = trim (drop words (satAdd at 1))
+        kept = replaced (whole.pageBlocks, index, held(blockText = take words at))
+        joined (whole(pageBlocks = insertedAfter (kept, index, Block(blockStyle = "paragraph", blockText = rest))))
+
+    (** Page `text` with a paragraph of `words` after block `index`. *)
+    export added (text, index, words) =
+        whole = page text
+        joined (whole(pageBlocks = insertedAfter (whole.pageBlocks, index, Block(blockStyle = "paragraph", blockText = words))))
+
+    (** The block at `at` of `blocks`, or an empty paragraph. *)
+    export blockAt (blocks, index) = listGet blocks index ?: Block(blockStyle = "paragraph", blockText = "")
+
+    (** Page `text` with block `index` holding `words`, its style kept. *)
+    export edited (text, index, words) = within (text, index, \_ => words)
+
+    // Turning a block's style on twice turns it back into a paragraph, as a ribbon toggle does.
+    toggled (current, wanted) = match current == wanted
+        true => "paragraph"
+        false => wanted
+
+    (** Page `text` with block `index` in `style`. *)
+    export restyled (text, index, style) =
+        whole = page text
+        held = blockAt (whole.pageBlocks, index)
+        joined (whole(pageBlocks = replaced (whole.pageBlocks, index, held(blockStyle = toggled (held.blockStyle, style)))))
+
+    // The last and first `count` bytes of `words`.
+    tail (words, count) = drop words (satSub (length words) count)
+
+    // How many `*` end `before` (up to three), and how many start `after`.
+    trailing before = match tail (before, 3) == "***"
+        true => 3
+        false => match tail (before, 2) == "**"
+            true => 2
+            false => match tail (before, 1) == "*"
+                true => 1
+                false => 0
+
+    leading after = trailing (reverse (take after 3))
+
+    odd count = count == 1 || count == 3
+
+    // Whether `marker` closes `before` and opens `after`: `*` and `**` share stars, so `***` holds both.
+    around (before, after, marker) = match marker
+        "*" => odd (trailing before) && odd (leading after)
+        "**" => trailing before >= 2 && leading after >= 2
+        _ => tail (before, length marker) == marker && take after (length marker) == marker
+
+    // The selection itself carries the markers, such as `**coast**` selected whole.
+    carries (chosen, marker) = length chosen > 2 * length marker && around (chosen, chosen, marker)
+
+    unmarked (chosen, marker) = drop (take chosen (satSub (length chosen) (length marker))) (length marker)
+
+    // The bytes `start` to `reach` of `text`, clamped and in order: before, chosen, after.
+    spans (text, start, reach) =
+        from = max 0 (min start (length text))
+        to = max from (min reach (length text))
+        [take text from, drop (take text to) from, drop text to]
+
+    toggledMarks (before, chosen, after, marker) = match carries (chosen, marker)
+        true => before + unmarked (chosen, marker) + after
+        false => match around (before, after, marker)
+            true => take before (satSub (length before) (length marker)) + chosen + drop after (length marker)
+            false => before + marker + chosen + marker + after
+
+    (** `text` with `marker` (such as `**` for bold) toggled on the bytes `start` to `reach`: added around
+        them, or removed when they already sit inside it or carry it; a caret gets an empty pair. *)
+    export wrapped (text, start, reach, marker) =
+        parts = spans (text, start, reach)
+        toggledMarks (listGet parts 0 ?: "", listGet parts 1 ?: "", listGet parts 2 ?: "", marker)
+
+    (** `text` with the bytes `start` to `reach` replaced by `snippet`, as typing over a selection does. *)
+    export inserted (text, start, reach, snippet) =
+        parts = spans (text, start, reach)
+        (listGet parts 0 ?: "") + snippet + (listGet parts 2 ?: "")
+
+    (** Page `text` with block `index`'s text changed by `change`. *)
+    export within (text, index, change) =
+        whole = page text
+        held = blockAt (whole.pageBlocks, index)
+        joined (whole(pageBlocks = replaced (whole.pageBlocks, index, held(blockText = change held.blockText))))
+
+    lineStart (text, cursor) =
+        before = reverse (take text (max 0 cursor))
+        satSub (length before) (indexOf before "\n" ?: length before)
+
+    (** Raw `text` with the line holding byte `cursor` in `style`: its old prefix replaced, or dropped when it already was. *)
+    export lineStyled (text, cursor, style) =
+        from = lineStart (text, cursor)
+        rest = drop text from
+        cut = indexOf rest "\n" ?: length rest
+        held = styled (take rest cut)
+        take text from + markdown (held(blockStyle = toggled (held.blockStyle, style))) + drop rest cut

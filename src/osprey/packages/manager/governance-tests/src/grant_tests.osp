@@ -156,6 +156,8 @@ module GrantTests {
         ])
     }
 
+    /// The grant suite: recorded decisions, concurrent holders, duplicate
+    /// rows, revocation and renewal, expiry, epoch capture and workflow principals.
     export fn run() = {
         test("governance grants: recorded decision", recordedDecision)
         test("governance grants: concurrent holders", concurrentHolders)

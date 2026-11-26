@@ -1,0 +1,11 @@
+[project]
+name = "dependent-roundtrip"
+source_roots = ["src"]
+default_namespace = "roundtrip"
+entry = "main.ospml"
+
+[dependencies]
+"@osprey/dependent" = { path = "../dependent" }
+
+[modules]
+allow_wildcard_imports = false

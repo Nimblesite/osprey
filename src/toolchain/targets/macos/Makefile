@@ -14,7 +14,7 @@ include Makefile
 .PHONY: pocket-orchestra _pocket-orchestra-models
 ## pocket-orchestra: Open Light Orchestra: this Mac plays audio, phones join by QR and WebSocket.
 pocket-orchestra: _runtime_macos
-	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	$(COMPILER_BUILD)
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/toolchain/hosts/swift/orchestra/build.sh
 	open "$(CURDIR)/target/orchestra/Light Orchestra.app"
 
@@ -48,7 +48,7 @@ tally:
 ## casting: Open the casting player: pick a file or stream and cast it to a TV
 ##          found on the network, with the HLS visualiser. [CAST-DESIGN-NATIVE]
 casting: _runtime_macos _runtime
-	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	$(COMPILER_BUILD)
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/casting/run.sh
 
 ## examples: Build the Mac runtime, the compiler and every macOS example: the storage app and the
@@ -65,12 +65,12 @@ graphics:
 
 ## flock: Open Flock, the boids herding game. [GPUI-HOST-SCENE]
 flock: _runtime_macos
-	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	$(COMPILER_BUILD)
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/gpui/flock/run.sh
 
 ## painting: Open the Osprey port of GPUI's painting example.
 painting: _runtime_macos
-	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	$(COMPILER_BUILD)
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/gpui/painting/run.sh
 
 ## qwen-server: Rebuild the compiler and the runtime, then serve Qwen3.8-27B from the real weights on Metal at
@@ -78,7 +78,7 @@ painting: _runtime_macos
 ##       GGUF is pulled first if it is missing (QWEN_QUANT, UD-Q4_K_XL by default). Unload Ollama's
 ##       resident model first (ollama stop <model>): on 36 GB the two do not fit together. [LLM-SERVING]
 qwen-server: _runtime
-	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	$(COMPILER_BUILD)
 	$(MAKE) -C $(ROOT) _qwen-serve
 
 ## qwen-server-quick: The same server without rebuilding anything but the server: assumes
@@ -94,13 +94,13 @@ qwen-client:
 ## signal-flow: Open the signal-flow editor, a UI machine with the four canvas
 ##              skins of src/osprey/packages/signal_flow. [UI-MACHINE-FLOW]
 signal-flow: _runtime_macos
-	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	$(COMPILER_BUILD)
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/packages/signal_flow/app/run.sh
 
 ## daw-gpui: Open the daw's Prism patch studio on the GPUI host instead of FerroUI.
 ##        [PRISM-ROUTING-EDITOR] [PRISM-ROUTING-AUDIO]
 daw-gpui: _runtime_macos
-	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	$(COMPILER_BUILD)
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/daw/run.sh
 
 ## prism: Install Prism.app in /Applications so it opens from Spotlight. Set SONG to open a project after installing.
@@ -112,7 +112,7 @@ prism: _runtime_macos _daw-renderer
 ## storage: Rebuild the compiler, the Mac runtime and the Osprey Storage app,
 ##          then open it: where your disk space goes, folder by folder.
 storage: _runtime_macos
-	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	$(COMPILER_BUILD)
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/macos/run.sh
 
 ## daw-render: Render a song project with the daw (a JSON piano roll, its intro recording named inside) with
@@ -127,7 +127,7 @@ daw-render: _daw-renderer
 # Shared song renderer for the interactive DAW and the offline bounce; ARC, as GC scans of the held mix tripled render time.
 .PHONY: _daw-renderer
 _daw-renderer:
-	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	$(COMPILER_BUILD)
 	mkdir -p target/daw
 	$(BIN) build src/osprey/examples/daw/render --memory=arc -o target/daw/daw
 
@@ -138,7 +138,7 @@ daw-play:
 
 ## probe: Open the GPUI host's probe application (counter, note, load).
 probe: _runtime_macos
-	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	$(COMPILER_BUILD)
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/toolchain/hosts/gpui/run.sh
 
 endif

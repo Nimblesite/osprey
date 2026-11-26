@@ -51,6 +51,7 @@ mod fragment_ranges;
 mod kernel;
 mod ml;
 mod positional;
+mod prose;
 mod python;
 mod strings;
 pub use strings::column_byte;
@@ -64,6 +65,7 @@ pub use closing_runs::{closing_runs, ClosingRun, MIN_CLOSING_RUN};
 pub use default::parse_tree;
 pub use docparse::doc_links;
 pub use ml::ml_line_layout;
+pub use prose::prose_ranges;
 pub use python::parse_python_tree;
 
 /// A syntax error located in the source (an ERROR/MISSING node from tree-sitter).
@@ -222,6 +224,24 @@ pub fn flavor_marker(source: &str) -> Option<&str> {
                 .filter(|name| *name == "python");
             slash.or(hash)
         })
+}
+
+/// The identity discipline: `check_program`, in process, no erasure.
+pub const HM_DISCIPLINE: &str = "hm";
+
+/// The value of a leading `// osprey: types=<name>` marker (`# osprey:` in
+/// Python flavor), read by the same header scan as the flavor marker.
+/// Implements [TYPES-DISCIPLINE-SELECT].
+#[must_use]
+pub fn discipline_marker(source: &str) -> Option<&str> {
+    source.lines().find_map(|line| {
+        let t = line.trim();
+        t.strip_prefix("// osprey: types=")
+            .or_else(|| t.strip_prefix("//osprey: types="))
+            .or_else(|| t.strip_prefix("# osprey: types="))
+            .or_else(|| t.strip_prefix("#osprey: types="))
+            .map(str::trim)
+    })
 }
 
 /// The flavor implied by an extension: `.ospml` ⇒ ML, `.osp` ⇒ Default, `.py` ⇒ Python.

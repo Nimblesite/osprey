@@ -69,7 +69,7 @@ module Inductive
     (** The first item, or the refusal `missing` when there is none. *)
     headOf (items, missing) = match items
         [] => Error(message = missing)
-        [first, ...rest] => Success(value = first)
+        [first, ..._] => Success(value = first)
 
     (** Check the families `formers` with `params` shared parameters and
         their constructors `ctors`, and derive every family's recursor;
@@ -95,7 +95,7 @@ module Inductive
 
     firstSorted (env, first, rest, params, peeled, result) = match result
         Sort level => groupRead (env, first, rest, GroupRead(groupFormer = Former(formerParams = Telescope::outer (peeled.peeledBinders, params), formerSort = level), groupLevels = first.params, groupFamilies = [FamilyRead(readName = first.name, readIndices = Telescope::inner (peeled.peeledBinders, params))]))
-        other => Error(message = "not a type former: `${first.name}` does not end in a sort")
+        _ => Error(message = "not a type former: `${first.name}` does not end in a sort")
 
     (** The group's parameter count, shared by every family. *)
     paramCount (group) = listLength group.groupFormer.formerParams
@@ -118,7 +118,7 @@ module Inductive
 
     familyLeveled (env, group, former, found, indices, result) = match result
         Sort level => whenHolds (Telescope::sameDomains (env, found, group.groupFormer.formerParams) && Levels::equal level group.groupFormer.formerSort, FamilyRead(readName = former.name, readIndices = indices), "`${former.name}` does not share `${headName (group)}'s parameters and result universe")
-        other => Error(message = "not a type former: `${former.name}` does not end in a sort")
+        _ => Error(message = "not a type former: `${former.name}` does not end in a sort")
 
     headName (group) = picked (group.groupFamilies, 0, \family => family.readName, "the group")
 
@@ -149,7 +149,7 @@ module Inductive
 
     headSpine (group, ctor, spine) = match spine.spineHead
         Const name levels => headNamed (group, ctor, name, levels)
-        other => Error(message = "constructor `${ctor.name}` must end in a family of the group applied to its parameters")
+        _ => Error(message = "constructor `${ctor.name}` must end in a family of the group applied to its parameters")
 
     headNamed (group, ctor, name, levels) = Terms::upon (familyNamed (group, name), \family => namedHead (group, ctor, family, levels))
 
@@ -163,7 +163,7 @@ module Inductive
     (** A constructor of `family`: same universe parameters as the group,
         a type, the group's parameters first, then its fields, then the
         family. *)
-    shapeOf (env, group, family, ctor) = Terms::upon (whenHolds (sameNames (ctor.params, group.groupLevels), true, "constructor `${ctor.name}` must take the universe parameters of `${family.readName}`"), \_ => Terms::upon (Infer::sort (env, [], ctor.ty), \level => shapePeeled (env, group, family, ctor, Telescope::peel (env, ctor.ty))))
+    shapeOf (env, group, family, ctor) = Terms::upon (whenHolds (sameNames (ctor.params, group.groupLevels), true, "constructor `${ctor.name}` must take the universe parameters of `${family.readName}`"), \_ => Terms::upon (Infer::sort (env, [], ctor.ty), \_level => shapePeeled (env, group, family, ctor, Telescope::peel (env, ctor.ty))))
 
     shapePeeled (env, group, family, ctor, peeled) = Terms::upon (whenHolds (listLength peeled.peeledBinders >= paramCount group && Telescope::sameDomains (env, groupParams (group, peeled), group.groupFormer.formerParams), true, "constructor `${ctor.name}` must open with the parameters of `${family.readName}`"), \_ => shapeFields (env, group, family, ctor, peeled))
 
@@ -182,7 +182,7 @@ module Inductive
         [] => Success(value = reads)
         [first, ...rest] => Terms::upon (fieldChecked (env, group, family, ctor, before, first), \field => fieldsFrom (env, group, family, ctor, listAppend (before, first), rest, listAppend (reads, field)))
 
-    fieldChecked (env, group, family, ctor, before, field) = Terms::upon (Infer::sort (env, Telescope::context before, field.ty), \level => Terms::upon (fitting (group, family, ctor, field, level), \fits => Terms::upon (positive (env, group, family, ctor, listLength before, Reduce::whnf (env, field.ty)), \occurs => Success(value = FieldRead(fieldProof = Levels::isZero level, fieldOccurs = occurs)))))
+    fieldChecked (env, group, family, ctor, before, field) = Terms::upon (Infer::sort (env, Telescope::context before, field.ty), \level => Terms::upon (fitting (group, family, ctor, field, level), \_fits => Terms::upon (positive (env, group, family, ctor, listLength before, Reduce::whnf (env, field.ty)), \occurs => Success(value = FieldRead(fieldProof = Levels::isZero level, fieldOccurs = occurs)))))
 
     fitting (group, family, ctor, field, level) = whenHolds (Levels::isZero group.groupFormer.formerSort || Levels::geq group.groupFormer.formerSort level, true, "field `${field.name}` of `${ctor.name}` lives in a universe above `${family.readName}`'s")
 
@@ -204,15 +204,15 @@ module Inductive
         true => positiveAt (env, group, family, ctor, depth, ty)
 
     positiveAt (env, group, family, ctor, depth, ty) = match ty
-        Pi name domain body => positivePi (env, group, family, ctor, depth, domain, body)
+        Pi _ domain body => positivePi (env, group, family, ctor, depth, domain, body)
         other => positiveEnd (family, ctor, occurrence (group, depth, other))
 
     positivePi (env, group, family, ctor, depth, domain, body) = match mentionsGroup (group, domain)
         true => Error(message = "non-positive occurrence of `${culprit (group.groupFamilies, domain)}` in constructor `${ctor.name}`")
-        false => Terms::upon (positive (env, group, family, ctor, satAdd depth 1, Reduce::whnf (env, body)), \inner => Success(value = 2))
+        false => Terms::upon (positive (env, group, family, ctor, satAdd depth 1, Reduce::whnf (env, body)), \_inner => Success(value = 2))
 
     positiveEnd (family, ctor, found) = match found
-        Success value => Success(value = 1)
+        Success _ => Success(value = 1)
         Error message => Error(message = "invalid occurrence of `${family.readName}` in constructor `${ctor.name}`: ${message}")
 
     (** `term`, under `depth` binders whose outermost are the group's
@@ -223,7 +223,7 @@ module Inductive
 
     occurrenceIn (group, depth, spine) = match spine.spineHead
         Const name levels => occurrenceNamed (group, depth, spine, familyNamed (group, name), levels)
-        other => Error(message = "the head is not the family")
+        _ => Error(message = "the head is not the family")
 
     occurrenceNamed (group, depth, spine, found, levels) = Terms::upon (found, \family => occurrenceHead (group, depth, spine, family, Terms::equalLevels (levels, levelsOf group)))
 
@@ -264,19 +264,19 @@ module Inductive
     groupLarge (group, shapeGroups) = match Levels::isNotZero group.groupFormer.formerSort
         true => true
         false => match group.groupFamilies
-            [only] => singletonLarge (shapeGroups)
-            other => false
+            [_] => singletonLarge (shapeGroups)
+            _ => false
 
     singletonLarge (shapeGroups) = match shapeGroups
         [] => true
         [only] => isEmpty only || subsingles only
-        other => false
+        _ => false
 
     (** One constructor whose every field is a proof or an index of the
         value it builds. *)
     subsingles (shapes) = match shapes
         [only] => fieldsDetermined (only, 0)
-        other => false
+        _ => false
 
     fieldsDetermined (shape, j) = picked (shape.shapeProofs, j, \proof => (proof || indexed (shape.shapeIndices, BVar (satSub (satSub (listLength shape.shapeFields) 1) j))) && fieldsDetermined (shape, satAdd j 1), true)
 
@@ -289,11 +289,11 @@ module Inductive
         fields, the pinned kernel's `init_K_target`. *)
     export k (spec) = match spec.specFormers
         [only] => Levels::isZero spec.specSort && fieldless only.formerShapes
-        other => false
+        _ => false
 
     fieldless (shapes) = match shapes
         [only] => isEmpty only.shapeFields
-        other => false
+        _ => false
 
     (** Check one family and its constructors, derive its recursor, and
         add all of them: what a declaration written in Osprey goes
@@ -381,24 +381,24 @@ module Inductive
 
     firstFamily (formers) = match formers
         [] => Error(message = "an inductive block with no family")
-        [first, ...rest] => match first.body
+        [first, ..._] => match first.body
             TypeFormer family => Success(value = family)
-            other => Error(message = "`${first.name}` is not a type former")
+            _ => Error(message = "`${first.name}` is not a type former")
 
     firstRecursor (block) = headOf (block.recursors, "an inductive block with no recursor")
 
     claimedElim (formers, claimed) = match formers
-        [first, ...rest] => match listLength claimed.params == satAdd (listLength first.params) 1
+        [first, ..._] => match listLength claimed.params == satAdd (listLength first.params) 1
             true => listGet (claimed.params, 0) ?: ""
             false => ""
         [] => ""
 
-    agreed (installed, block, spec) = Terms::upon (inventoried (block, spec), \ok => Terms::upon (familiesAgree (installed, block.formers), \a => Terms::upon (ctorsAgree (installed, block.ctors), \b => Terms::upon (recsAgree (installed, block.recursors), \c => Success(value = installed)))))
+    agreed (installed, block, spec) = Terms::upon (inventoried (block, spec), \_ok => Terms::upon (familiesAgree (installed, block.formers), \_a => Terms::upon (ctorsAgree (installed, block.ctors), \_b => Terms::upon (recsAgree (installed, block.recursors), \_c => Success(value = installed)))))
 
     (** The block claims exactly what the group derives: as many
         constructors and recursors, each under a distinct name, so every
         claim is one derivation's and every derivation is claimed. *)
-    inventoried (block, spec) = Terms::upon (sameCount ("constructors", listLength block.ctors, originalShapes (spec, listLength block.formers)), \a => Terms::upon (sameCount ("recursors", listLength block.recursors, listLength spec.specFormers), \b => claimedDistinct (block)))
+    inventoried (block, spec) = Terms::upon (sameCount ("constructors", listLength block.ctors, originalShapes (spec, listLength block.formers)), \_a => Terms::upon (sameCount ("recursors", listLength block.recursors, listLength spec.specFormers), \_b => claimedDistinct (block)))
 
     originalShapes (spec, nOrig) = foldList (Terms::prefix (spec.specFormers, nOrig), 0, \(total, former) => satAdd total (listLength former.formerShapes))
 
@@ -418,7 +418,7 @@ module Inductive
 
     familyAgrees (env, former) = match former.body
         TypeFormer family => bodyAgrees (env, former.name, TypeFormer family)
-        other => Error(message = "`${former.name}` is not a type former")
+        _ => Error(message = "`${former.name}` is not a type former")
 
     ctorsAgree (env, ctors) = each (ctors, true, \(_, ctor) => ctorAgrees (env, ctor))
 
@@ -427,7 +427,7 @@ module Inductive
     recsAgree (env, recs) = each (recs, true, \(_, rec) => recursorAgrees (env, rec))
 
     recursorAgrees (env, claimed) = match Environment::find (env, claimed.name)
-        Success decl => Terms::upon (same (claimed.name, sameNames (claimed.params, decl.params), "universe parameters [${DeclarationBodies::joined claimed.params}]", "universe parameters [${DeclarationBodies::joined decl.params}]"), \a => Terms::upon (typeAgrees (claimed, decl), \b => Terms::upon (same (claimed.name, DeclarationBodies::metadata (claimed.body, decl.body), DeclarationBodies::showBody claimed.body, DeclarationBodies::showBody decl.body), \c => rulesAgree (claimed, claimed.body, decl.body))))
+        Success decl => Terms::upon (same (claimed.name, sameNames (claimed.params, decl.params), "universe parameters [${DeclarationBodies::joined claimed.params}]", "universe parameters [${DeclarationBodies::joined decl.params}]"), \_a => Terms::upon (typeAgrees (claimed, decl), \_b => Terms::upon (same (claimed.name, DeclarationBodies::metadata (claimed.body, decl.body), DeclarationBodies::showBody claimed.body, DeclarationBodies::showBody decl.body), \_c => rulesAgree (claimed, claimed.body, decl.body))))
         Error message => Error(message = "`${claimed.name}` is not the recursor the kernel derives, `${message}`")
 
     (** Compare structured facts; text is only the refusal diagnostic. *)
@@ -445,8 +445,8 @@ module Inductive
     rulesAgree (claimed, claimedBody, derivedBody) = match claimedBody
         Recursor mine => match derivedBody
             Recursor theirs => rulesPaired (claimed, mine.elimRules, theirs.elimRules)
-            other => Error(message = "`${claimed.name}` is not a recursor")
-        other => Error(message = "`${claimed.name}` is not a recursor")
+            _ => Error(message = "`${claimed.name}` is not a recursor")
+        _ => Error(message = "`${claimed.name}` is not a recursor")
 
     rulesPaired (claimed, rules, derived) = match rules
         [] => whenHolds (isEmpty derived, true, "`${claimed.name}` has fewer rules than constructors")
@@ -454,6 +454,6 @@ module Inductive
 
     rulePaired (claimed, first, rest, derived) = match derived
         [] => Error(message = "`${claimed.name}` has more rules than constructors")
-        [mine, ...more] => Terms::upon (ruleAgrees (claimed, first, mine), \ok => rulesPaired (claimed, rest, more))
+        [mine, ...more] => Terms::upon (ruleAgrees (claimed, first, mine), \_ok => rulesPaired (claimed, rest, more))
 
     ruleAgrees (claimed, rule, derived) = termAgrees ("`${claimed.name}`'s rule for `${rule.ruleCtor}` as exported is", rule.ruleRhs, derived.ruleRhs)

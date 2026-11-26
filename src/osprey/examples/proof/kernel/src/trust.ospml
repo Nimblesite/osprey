@@ -13,6 +13,9 @@ type TrustWalk =
     trustPending : List<string>
     trustAxioms : Map<string, bool>
 
+(** Which axioms each declaration of a checked environment rests on, walked
+    through what it depends on, so a root is reported for an assumption only
+    when it reaches it. *)
 module Trust
     (** Compute every root's assumptions in one validated reverse-dependency
         inventory. Each axiom is propagated once, while `env.order` supplies
@@ -35,7 +38,7 @@ module Trust
 
     propagateBody (env, graph, name, roots, body) = match body
         Axiom => propagateAxiom (env, graph, name, roots)
-        other => Success(value = roots)
+        _ => Success(value = roots)
 
     propagateAxiom (env, graph, name, roots) = Terms::upon (reverseWalk (env, graph, name), \walk => foldList (env.order, Success(value = roots), \(progress, root) => addReached (progress, root, name, walk.trustSeen)))
 
@@ -66,13 +69,13 @@ module Trust
             [] => Success(value = walk)
             [next, ...rest] => expand (walk(trustPending = rest), next)
 
-    expanded (env, walk, found, name) = match found
+    expanded (_env, walk, found, name) = match found
         Error _ => Error(message = "unknown dependency `${name}`")
         Success decl => Success(value = foldList (declarationRefs decl, marked (walk, decl), \(queued, ref) => enqueue (queued, ref)))
 
     marked (walk, decl) = match decl.body
         Axiom => walk(trustAxioms = mapSet (walk.trustAxioms, decl.name, true))
-        other => walk
+        _ => walk
 
     enqueue (walk, name) = match mapContains (walk.trustSeen, name)
         true => walk

@@ -17,7 +17,9 @@ type HttpRequest =
     id : string
     url : string
 
+(** What Osprey asks the host for: SQL statements with bound parameters and HTTP requests, each answered by the native host after the Osprey call returns. *)
 module Storage
+    (** The host services the inbox needs: one SQL statement answering its result rows, and one HTTP request answering its response. *)
     export effect Requests
         sql : SqlRequest => string
         http : HttpRequest => string
@@ -30,19 +32,23 @@ module Storage
         Json::strField "kind" "http" + "," + Json::strField "id" request.id + "," +
         Json::strField "url" request.url))
 
-    // The native host executes these commands after the Osprey call returns.
+    (** `work` run under the handler that answers each request with its command's JSON, which the native host executes after the Osprey call returns. *)
     export commands work =
         native = handler Requests
             sql request => sqlCommand request
             http request => httpCommand request
         native work
 
+    (** The statement creating the one `app_state` table, asked under the id `schema`. *)
     export schema () = SqlRequest(id = "schema", statement = "CREATE TABLE IF NOT EXISTS app_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)", params = "[]")
 
+    (** The statement reading the `inbox` row of `app_state`, asked under the id `load`. *)
     export load () = SqlRequest(id = "load", statement = "SELECT value FROM app_state WHERE key = ?", params = Json::arr (Json::quote "inbox"))
 
+    (** The statement writing `model`'s snapshot into the `inbox` row, asked under the id of its pending write. *)
     export save model = SqlRequest(id = model.write, statement = "INSERT OR REPLACE INTO app_state (key, value) VALUES (?, ?)", params = Json::arr (Json::quote "inbox" + "," + Json::quote (Model::snapshot model)))
 
+    (** The request for `model`'s repository's open issues, asked under the id of its pending refresh. *)
     export fetch model = HttpRequest(id = model.pending, url = Github::url model.repo)
 
     validItem doc index =
@@ -58,6 +64,7 @@ module Storage
 
     validArray source = Json::validArray source 100 validItems
 
+    (** The cache checked: `model` with the snapshot's repository, items, bookmarks and annotations when it is a valid version 1 document, else `model` unchanged, `valid` false and the error saying so. *)
     export restore model snapshot =
         repo = Json::getOr snapshot "repo" ""
         items = Json::getOr snapshot "items" "INVALID"

@@ -122,7 +122,7 @@ module ExportInductiveTests
     atBlock (items, at, act, noneOf) = match items
         [] => noneOf ()
         [first, ...rest] => match first
-            Single decl => atBlock (rest, at, act, noneOf)
+            Single _ => atBlock (rest, at, act, noneOf)
             Group block => match at == 0
                 true => act (block)
                 false => atBlock (rest, satSub at 1, act, noneOf)
@@ -146,7 +146,7 @@ module ExportInductiveTests
         Group block => "group ${blockName block.formers}"
 
     blockName (formers) = match formers
-        [first, ...rest] => first.name
+        [first, ..._] => first.name
         [] => "?"
 
     (** How many families and recursors the first block of a readable
@@ -161,7 +161,7 @@ module ExportInductiveTests
     (** The first declaration of the first block's `its` list in a readable
         export, or the blank when the read refuses or names no such item. *)
     claimedItem (text, its, blank) = match Export::read text
-        Error message => blank
+        Error _ => blank
         Success readItems => atBlock (readItems, 0, \block => headDecl (its block, blank), \() => blank)
 
     (** The first declaration in `decls`, or the blank. *)
@@ -173,7 +173,7 @@ module ExportInductiveTests
     (** The declaration's type former, or the blank one. *)
     familyOf (decl, blank) = match decl.body
         TypeFormer family => family
-        other => blank
+        _ => blank
 
     (** The first block's claimed recursor, or the blank one. *)
     claimedEliminator (text) = eliminatorOf (claimedItem (text, \block => block.recursors, blank ()), blankElim ())
@@ -181,7 +181,7 @@ module ExportInductiveTests
     (** The declaration's recursor, or the blank one. *)
     eliminatorOf (decl, blank) = match decl.body
         Recursor elim => elim
-        other => blank
+        _ => blank
 
     nestedClaim (text) = fact ("nested", toString (claimedFamily text).familyNested)
 
@@ -200,14 +200,14 @@ module ExportInductiveTests
 
     formerText (decl) = match decl.body
         TypeFormer family => "${declaredText decl} {${commaSeparated (familyFacts family)}}"
-        other => "${declaredText decl} is not a type former"
+        _ => "${declaredText decl} is not a type former"
 
     (** A constructor's family, index, parameter and field counts. *)
     ctorFactsOf (ctor) = [fact ("family", ctor.ctorFamily), fact ("index", toString ctor.ctorIndex), fact ("params", toString ctor.ctorParams), fact ("fields", toString ctor.ctorFields)]
 
     ctorText (decl) = match decl.body
         Constructor ctor => "${declaredText decl} {${commaSeparated (ctorFactsOf ctor)}}"
-        other => "${declaredText decl} is not a constructor"
+        _ => "${declaredText decl} is not a constructor"
 
     (** A recursor's index, minor, K, rule, motive and inventory facts. *)
     recFacts (elim, rules) = [fact ("indices", toString elim.elimIndices), fact ("minors", toString elim.elimMinors), fact ("k", toString elim.elimK), fact ("rules", rules), fact ("motives", toString elim.elimMotives), fact ("all", listed elim.elimAll)]
@@ -217,7 +217,7 @@ module ExportInductiveTests
 
     recText (decl) = match decl.body
         Recursor elim => "${declaredText decl} {${commaSeparated (recParts (elim, ruleTexts elim.elimRules))}}"
-        other => "${declaredText decl} is not a recursor"
+        _ => "${declaredText decl} is not a recursor"
 
     (** A constant as the line gives it: its name, its universe parameters
         and its statement. *)
@@ -228,7 +228,7 @@ module ExportInductiveTests
 
     ctorFact (decl) = match decl.body
         Constructor ctor => "${decl.name} ${spaced (ctorFactsOf ctor)}"
-        other => "${decl.name} is not a constructor"
+        _ => "${decl.name} is not a constructor"
 
     (** The one recursor's family, universe parameters and the facts it claims. *)
     elimFacts (block) = folded (block.recursors, elimFact)
@@ -238,7 +238,7 @@ module ExportInductiveTests
 
     elimFact (decl) = match decl.body
         Recursor elim => spaced (elimParts (elim, decl, ruleNames elim.elimRules))
-        other => "${decl.name} is not a recursor"
+        _ => "${decl.name} is not a recursor"
 
     (** The name and universe parameters of every former and member. *)
     memberNames (block) = folded (listConcat (listConcat (block.formers, block.ctors), block.recursors), named)
@@ -318,10 +318,13 @@ module ExportInductiveTests
     (** Line 60, the `Eq` group's three objects and its one rule. *)
     export eqType () = "{\"all\":[1],\"ctors\":[9],\"isRec\":false,\"isReflexive\":false,\"isUnsafe\":false,\"levelParams\":[2],\"name\":1,\"numIndices\":1,\"numNested\":0,\"numParams\":2,\"type\":6}"
 
+    (** Line 60, the `Eq` group's `Eq.refl` constructor object. *)
     export eqCtor () = "{\"cidx\":0,\"induct\":1,\"isUnsafe\":false,\"levelParams\":[2],\"name\":9,\"numFields\":0,\"numParams\":2,\"type\":12}"
 
+    (** Line 60, the `Eq` group's recursor object, holding its one rule. *)
     export eqRec () = "{\"all\":[1],\"isUnsafe\":false,\"k\":true,\"levelParams\":[11,2],\"name\":10,\"numIndices\":1,\"numMinors\":1,\"numMotives\":1,\"numParams\":2,\"rules\":[" + eqRule () + "],\"type\":37}"
 
+    (** Line 60, the `Eq` group's one ι rule: `Eq.refl`, with no fields, reduces to expression 41. *)
     export eqRule () = "{\"ctor\":9,\"nfields\":0,\"rhs\":41}"
 
     (** Line 173, the `Iff` group's type former. *)

@@ -106,7 +106,7 @@ module GraphTests {
     /// first cause in spec order over every reachable key.
     fn comparable(outcome) = match outcome {
         Resolution::Lock { releases } => outcomeText(Resolution::Lock { releases: releases })
-        Resolution::Explain { code, packages } => "refuted"
+        _ => "refuted"
     }
 
     /// The resolver agrees with the exhaustive oracle on a generated graph.

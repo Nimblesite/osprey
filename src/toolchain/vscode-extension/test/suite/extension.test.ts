@@ -22,6 +22,7 @@ import {
   assertSkipWarningLayout,
   extensionRoot,
   pinOspreySettings,
+  present,
   resolveBuiltOsprey,
   resolveRequiredLldbDap,
   skipWarningsOf,
@@ -67,6 +68,11 @@ async function startDebugRaced(
 /** Wait `ms` milliseconds without ever rejecting. */
 const settle = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
+
+/** The first of `items`, asserted present. */
+function head<T>(items: readonly T[], what: string): T {
+  return present(items[0], what);
+}
 
 // makeActive shows the document and polls until it is genuinely the active
 // text editor. The extension shows an "Osprey Debug" output channel during
@@ -712,7 +718,7 @@ suite("Osprey Language Features Tests", () => {
       uri,
     );
   const nonEmptyHover = (h: vscode.Hover[]): boolean =>
-    Array.isArray(h) && h.length > 0 && hoverText(h[0]).length > 0;
+    Array.isArray(h) && h.length > 0 && hoverText(head(h, "hover")).length > 0;
   const labelsOf = (list: vscode.CompletionList): string[] =>
     list.items.map((i) =>
       typeof i.label === "string" ? i.label : i.label.label,
@@ -734,7 +740,7 @@ suite("Osprey Language Features Tests", () => {
   ) =>
     pollFor(
       () => hoverAt(uri, line, character),
-      (h) => nonEmptyHover(h) && hoverText(h[0]).includes(needle),
+      (h) => nonEmptyHover(h) && hoverText(head(h, "hover")).includes(needle),
       tries,
       delayMs,
     );
@@ -749,7 +755,7 @@ suite("Osprey Language Features Tests", () => {
     note: string,
   ): Promise<void> {
     const call = await hoverPoll(uri, line, character, needle);
-    assert.strictEqual(hoverText(call[0]), declMd, note);
+    assert.strictEqual(hoverText(head(call, "call-site hover")), declMd, note);
   }
 
   /**
@@ -765,7 +771,7 @@ suite("Osprey Language Features Tests", () => {
     describe: (text: string) => string,
   ): Promise<vscode.Hover[]> {
     const hovers = await hoverPoll(uri, line, character, symbol);
-    const text = hoverText(hovers[0]);
+    const text = hoverText(head(hovers, "hover"));
     assert.ok(text.includes(needle), describe(text));
     return hovers;
   }
@@ -861,7 +867,7 @@ suite("Osprey Language Features Tests", () => {
     await pollFor<vscode.Hover[]>(
       () => hoverAt(warm.uri, 3, 9),
       (h) =>
-        Array.isArray(h) && h.length > 0 && hoverText(h[0]).includes("warm"),
+        Array.isArray(h) && h.length > 0 && hoverText(head(h, "warm-up hover")).includes("warm"),
       80,
       250,
     );
@@ -900,7 +906,7 @@ suite("Osprey Language Features Tests", () => {
 
     // --- HOVER: user functions at declaration and call site ---
     const areaDecl = await hoverPoll(doc.uri, 1, 3, "area");
-    const areaDeclMd = hoverText(areaDecl[0]);
+    const areaDeclMd = hoverText(head(areaDecl, "area declaration hover"));
     // `fn area(r) = wrapMul(r, r)` writes neither the parameter type nor the return
     // type, so both slots come from the checker ([LSP-HOVER-INFERRED-SIGNATURE]).
     // This used to assert a bare `fn area(r)` returning `Unit`; `Unit` was the
@@ -937,7 +943,7 @@ suite("Osprey Language Features Tests", () => {
 
     // --- HOVER: built-ins carry their own typed signatures ---
     const lenHover = await hoverPoll(doc.uri, 8, 13, "listLength");
-    const lenMd = hoverText(lenHover[0]);
+    const lenMd = hoverText(head(lenHover, "listLength hover"));
     assert.ok(
       lenMd.includes("->") && lenMd.includes("int"),
       "listLength hover shows its typed signature",
@@ -946,7 +952,7 @@ suite("Osprey Language Features Tests", () => {
 
     const printHover = await hoverPoll(doc.uri, 9, 9, "print");
     assertIncludes(
-      hoverText(printHover[0]),
+      hoverText(head(printHover, "print hover")),
       ["Unit"],
       "print hover shows it returns Unit",
     );
@@ -976,25 +982,26 @@ suite("Osprey Language Features Tests", () => {
     // --- GO TO DEFINITION: both calls jump to their declarations ---
     const areaDef = await defsPoll(doc.uri, 4, 9);
     assert.strictEqual(areaDef.length, 1, "area has exactly one definition");
+    const areaLocation = head(areaDef, "area definition");
     assert.strictEqual(
-      areaDef[0].range.start.line,
+      areaLocation.range.start.line,
       1,
       "area defined on line 1",
     );
     assert.strictEqual(
-      areaDef[0].range.start.character,
+      areaLocation.range.start.character,
       3,
       "area name starts at character 3",
     );
     assert.strictEqual(
-      areaDef[0].uri.toString(),
+      areaLocation.uri.toString(),
       doc.uri.toString(),
       "definition is in this document",
     );
 
     const periDef = await defsPoll(doc.uri, 6, 9);
     assert.strictEqual(
-      periDef[0].range.start.line,
+      head(periDef, "perimeter definition").range.start.line,
       2,
       "perimeter defined on line 2",
     );
@@ -1037,12 +1044,9 @@ suite("Osprey Language Features Tests", () => {
       () => sigHelpAt(doc.uri, 4, 13),
       (h) => !!h && Array.isArray(h.signatures) && h.signatures.length > 0,
     );
-    assertIncludes(help.signatures[0].label, ["area"], "signature names area");
-    assert.strictEqual(
-      help.signatures[0].parameters.length,
-      1,
-      "area has one parameter",
-    );
+    const signature = head(help.signatures, "signature");
+    assertIncludes(signature.label, ["area"], "signature names area");
+    assert.strictEqual(signature.parameters.length, 1, "area has one parameter");
     assert.strictEqual(
       help.activeParameter,
       0,
@@ -1114,7 +1118,9 @@ suite("Osprey Language Features Tests", () => {
     const doc = await openDoc("documented.osp", content);
 
     // Top-level documented let: type + doc prose.
-    const topMd = hoverText((await hoverPoll(doc.uri, 1, 4, "maxRetries"))[0]);
+    const topMd = hoverText(
+      head(await hoverPoll(doc.uri, 1, 4, "maxRetries"), "maxRetries hover"),
+    );
     assertIncludes(
       topMd,
       ["maxRetries: int", "The maximum retry budget for a request."],
@@ -1123,7 +1129,9 @@ suite("Osprey Language Features Tests", () => {
 
     // Nested documented let inside a function block: type + doc prose. This is
     // the exact shape from the reported screenshot (a `let` inside `in { … }`).
-    const nestedMd = hoverText((await hoverPoll(doc.uri, 4, 6, "banner"))[0]);
+    const nestedMd = hoverText(
+      head(await hoverPoll(doc.uri, 4, 6, "banner"), "banner hover"),
+    );
     assertIncludes(
       nestedMd,
       ["banner: string", "Greeting echoed back to the caller."],
@@ -1137,22 +1145,23 @@ suite("Osprey Language Features Tests", () => {
 
     // 1) The broken program must surface a real Error diagnostic from osprey.
     const first = await diagnosticsPoll(doc.uri, (d) => d.length > 0);
+    const firstError = head(first, "first diagnostic");
     assert.strictEqual(
-      first[0].severity,
+      firstError.severity,
       vscode.DiagnosticSeverity.Error,
       "first diagnostic is an Error",
     );
-    assert.ok(first[0].message.length > 0, "diagnostic carries a message");
+    assert.ok(firstError.message.length > 0, "diagnostic carries a message");
     assert.ok(
-      /syntax/i.test(first[0].message),
+      /syntax/i.test(firstError.message),
       "message identifies a syntax error",
     );
     assert.strictEqual(
-      first[0].source,
+      firstError.source,
       "osprey",
       "diagnostic attributed to the osprey server",
     );
-    assert.ok(first[0].range.start.line >= 0, "diagnostic has a real range");
+    assert.ok(firstError.range.start.line >= 0, "diagnostic has a real range");
 
     // 2) Editing the buffer into a valid program retracts the diagnostic...
     await rewrite(
@@ -1173,12 +1182,13 @@ suite("Osprey Language Features Tests", () => {
     // 3) Re-breaking the buffer brings the Error diagnostic back.
     await rewrite(doc, "\nfn broken( = 42\n");
     const second = await diagnosticsPoll(doc.uri, (d) => d.length > 0);
+    const secondError = head(second, "second diagnostic");
     assert.strictEqual(
-      second[0].severity,
+      secondError.severity,
       vscode.DiagnosticSeverity.Error,
       "re-broken code errors again",
     );
-    assert.ok(second[0].message.length > 0, "re-error has a message");
+    assert.ok(secondError.message.length > 0, "re-error has a message");
   });
 
   // ---------- [TESTING-SKIP-WARNING] ----------
@@ -1327,9 +1337,10 @@ suite("Osprey Language Features Tests", () => {
     );
 
     // --- Case 1: a reason is quoted into the message verbatim.
-    assertSkipWarningShape(warnings[0], 8, "static skip with reason");
+    const reasoned = head(warnings, "reasoned skip warning");
+    assertSkipWarningShape(reasoned, 8, "static skip with reason");
     assert.strictEqual(
-      warnings[0].message,
+      reasoned.message,
       "test 'static skip with reason' is skipped: blocked on #123",
       "the reason is carried verbatim into the message",
     );
@@ -1337,27 +1348,29 @@ suite("Osprey Language Features Tests", () => {
     // --- Case 2: an EMPTY reason is an ERROR, not a warning, and it names the
     // demand instead of dangling a separator with nothing after it
     // ([TESTING-SKIP-REASON]).
+    const unexplained = present(warnings[1], "unexplained skip warning");
     assertSkipWarningShape(
-      warnings[1],
+      unexplained,
       9,
       "static skip empty reason",
       vscode.DiagnosticSeverity.Error,
     );
     assert.strictEqual(
-      warnings[1].message,
+      unexplained.message,
       "test 'static skip empty reason' is skipped with no reason; every skip must name one",
       "an unexplained skip states what is missing",
     );
     assert.ok(
-      !warnings[1].message.includes("skipped:"),
-      `no dangling separator: ${warnings[1].message}`,
+      !unexplained.message.includes("skipped:"),
+      `no dangling separator: ${unexplained.message}`,
     );
 
     // --- Case 3: a block body's RESULT expression is what counts, and the
     // warning lands on the `test(` line, not on the inner `Skip` line.
-    assertSkipWarningShape(warnings[2], 10, "skip from a block body");
+    const blockSkip = present(warnings[2], "block-body skip warning");
+    assertSkipWarningShape(blockSkip, 10, "skip from a block body");
     assert.strictEqual(
-      warnings[2].message,
+      blockSkip.message,
       "test 'skip from a block body' is skipped: skipped from a block",
     );
 
@@ -1393,10 +1406,11 @@ suite("Osprey Language Features Tests", () => {
       () => hoverAt(doc.uri, 8, 2),
       (h) => nonEmptyHover(h),
     );
+    const hovText = hoverText(head(hov, "hover"));
     assertIncludes(
-      hoverText(hov[0]),
+      hovText,
       ["static skip with reason"],
-      `hover still names the skipped case: ${hoverText(hov[0])}`,
+      `hover still names the skipped case: ${hovText}`,
     );
     const symbols = await symbolsPoll(doc.uri, 1);
     const symbolNames = symbols.map((s) => s.name);
@@ -1434,9 +1448,10 @@ suite("Osprey Language Features Tests", () => {
       'test("beta", fn() => Skip("waiting on the API"))',
     );
     const afterPark = await pollSkips(doc.uri, 1);
-    assertSkipWarningShape(afterPark[0], 3, "parked beta");
+    const parked = head(afterPark, "parked beta warning");
+    assertSkipWarningShape(parked, 3, "parked beta");
     assert.strictEqual(
-      afterPark[0].message,
+      parked.message,
       "test 'beta' is skipped: waiting on the API",
     );
 
@@ -1464,15 +1479,15 @@ suite("Osprey Language Features Tests", () => {
     await rewrite(doc, editedReason.join("\n") + "\n");
     const afterReason = await pollFor(
       () => Promise.resolve(skipWarningsOf(doc.uri)),
-      (found) => found.length === 2 && found[0].message.includes("see #99"),
+      (found) => found.length === 2 && head(found, "skip warning").message.includes("see #99"),
     );
     assert.strictEqual(
-      afterReason[0].message,
+      head(afterReason, "first reason warning").message,
       "test 'alpha' is skipped: still flaky, see #99",
       "a reason edit is reflected without a restart",
     );
     assert.strictEqual(
-      afterReason[1].message,
+      present(afterReason[1], "second reason warning").message,
       "test 'beta' is skipped: waiting on the API",
       "the untouched case keeps its own message",
     );
@@ -1545,42 +1560,46 @@ suite("Osprey Language Features Tests", () => {
     );
 
     // --- Quotes survive into the message unescaped.
-    assertSkipWarningShape(warnings[0], 3, "quoted case");
+    const quoted = head(warnings, "quoted-case warning");
+    assertSkipWarningShape(quoted, 3, "quoted case");
     assert.strictEqual(
-      warnings[0].message,
+      quoted.message,
       `test 'quoted "why" case' is skipped: reason with "quotes"`,
       "embedded quotes survive the round trip",
     );
 
     // --- Unicode: the message keeps it, and the RANGE is measured in UTF-16
     // units so the squiggle lands on real characters [LSP-ENCODING].
-    assertSkipWarningShape(warnings[1], 4, "unicode case");
+    const unicode = present(warnings[1], "unicode-case warning");
+    assertSkipWarningShape(unicode, 4, "unicode case");
     assertIncludes(
-      warnings[1].message,
+      unicode.message,
       ["héllo 🦅 wörld"],
-      `unicode reason survives: ${warnings[1].message}`,
+      `unicode reason survives: ${unicode.message}`,
     );
     assertIncludes(
-      warnings[1].message,
+      unicode.message,
       ["café 🦅 unicode"],
       "unicode test name survives",
     );
     const unicodeLine = doc.lineAt(4).text;
     assert.ok(
-      warnings[1].range.end.character <= unicodeLine.length,
-      `range stays inside the line: ${warnings[1].range.end.character} > ${unicodeLine.length}`,
+      unicode.range.end.character <= unicodeLine.length,
+      `range stays inside the line: ${unicode.range.end.character} > ${unicodeLine.length}`,
     );
 
     // --- Duplicate names: BOTH warn, each on its own line with its own
     // reason. A dedupe-by-name implementation would drop one and hide a skip.
-    assertSkipWarningShape(warnings[2], 5, "duplicate one");
-    assertSkipWarningShape(warnings[3], 6, "duplicate two");
+    const duplicateOne = present(warnings[2], "first duplicate warning");
+    const duplicateTwo = present(warnings[3], "second duplicate warning");
+    assertSkipWarningShape(duplicateOne, 5, "duplicate one");
+    assertSkipWarningShape(duplicateTwo, 6, "duplicate two");
     assert.strictEqual(
-      warnings[2].message,
+      duplicateOne.message,
       "test 'duplicate' is skipped: first",
     );
     assert.strictEqual(
-      warnings[3].message,
+      duplicateTwo.message,
       "test 'duplicate' is skipped: second",
     );
 
@@ -1623,7 +1642,8 @@ suite("Osprey Language Features Tests", () => {
     ].join("\n");
     const doc = await openDoc("mixed.test.osp", mixed);
     const warnings = await pollSkips(doc.uri, 1);
-    assertSkipWarningShape(warnings[0], 2, "parked while broken");
+    const whileBroken = head(warnings, "parked-while-broken warning");
+    assertSkipWarningShape(whileBroken, 2, "parked while broken");
     const errors = await pollFor(
       () => Promise.resolve(errorsOf(doc.uri)),
       (e) => e.length > 0,
@@ -1637,7 +1657,7 @@ suite("Osprey Language Features Tests", () => {
       "a skip that NAMES a reason is never escalated to an error",
     );
     assert.strictEqual(
-      warnings[0].message,
+      whileBroken.message,
       "test 'parked while broken' is skipped: blocked",
     );
 
@@ -1660,9 +1680,10 @@ suite("Osprey Language Features Tests", () => {
       mlLines,
       1,
     );
-    assertSkipWarningShape(mlWarnings[0], 6, "ml parked");
+    const mlParkedWarning = head(mlWarnings, "ml parked warning");
+    assertSkipWarningShape(mlParkedWarning, 6, "ml parked");
     assert.strictEqual(
-      mlWarnings[0].message,
+      mlParkedWarning.message,
       "test 'ml parked' is skipped: ml blocked",
       "the ML frontend produces the SAME message as the Default flavor",
     );
@@ -1684,7 +1705,7 @@ suite("Osprey Language Features Tests", () => {
     const mlBoth = await pollSkips(mlDoc.uri, 2);
     assert.deepStrictEqual(mlBoth.map((w) => w.range.start.line), [6, 7]);
     assert.strictEqual(
-      mlBoth[1].message,
+      present(mlBoth[1], "second ML warning").message,
       "test 'ml live' is skipped: now parked too",
     );
     const mlRevived = [...mlLines];
@@ -1728,28 +1749,30 @@ suite("Osprey Language Features Tests", () => {
       "fn classify(xs: List<_>)",
       (text) => `declaration hover shows classify signature, got: ${text}`,
     );
+    const declText = hoverText(head(decl, "classify declaration hover"));
     assert.ok(
-      !/\bt\d/.test(hoverText(decl[0])),
-      `an inference artefact must never reach a reader, got: ${hoverText(decl[0])}`,
+      !/\bt\d/.test(declText),
+      `an inference artefact must never reach a reader, got: ${declText}`,
     );
     await assertCallHoverMatches(
       doc.uri,
       4,
       9,
       "classify",
-      hoverText(decl[0]),
+      declText,
       "call hover matches declaration hover",
     );
 
     // Definition from the first call lands on the declaration.
     const def = await defsPoll(doc.uri, 4, 9);
+    const classifyDef = head(def, "classify definition");
     assert.strictEqual(
-      def[0].range.start.line,
+      classifyDef.range.start.line,
       0,
       "classify defined on line 0",
     );
     assert.strictEqual(
-      def[0].range.start.character,
+      classifyDef.range.start.character,
       3,
       "classify name at character 3",
     );
@@ -1822,13 +1845,14 @@ suite("Osprey Language Features Tests", () => {
       80,
       250,
     );
+    const lenText = hoverText(head(lenHover, "listLength hover"));
     assertIncludes(
-      hoverText(lenHover[0]),
+      lenText,
       ["->"],
       "listLength hover shows a signature on the real file",
     );
     assertIncludes(
-      hoverText(lenHover[0]),
+      lenText,
       ["int"],
       "listLength hover shows it returns int",
     );
@@ -1846,7 +1870,7 @@ suite("Osprey Language Features Tests", () => {
       "classify",
     );
     assertIncludes(
-      hoverText(classifyHover[0]),
+      hoverText(head(classifyHover, "classify hover")),
       ["fn classify"],
       "classify hover shows its signature",
     );
@@ -1890,7 +1914,7 @@ suite("Osprey Language Features Tests", () => {
 
     // --- HOVER: the curried function at its declaration and a call site ---
     const declHover = await hoverPoll(doc.uri, 0, 0, "double", 80, 250);
-    const declMd = hoverText(declHover[0]);
+    const declMd = hoverText(head(declHover, "double declaration hover"));
     assert.ok(declMd.includes("double"), "ML fn hover names the function");
     assertIncludes(declMd, ["->"], "ML fn hover renders a function-type arrow");
     await assertCallHoverMatches(
@@ -1903,16 +1927,18 @@ suite("Osprey Language Features Tests", () => {
     );
     // A binding hovers with its inferred type — no annotation in the source.
     const baseHover = await hoverPoll(doc.uri, 2, 0, "base");
+    const baseText = hoverText(head(baseHover, "base hover"));
     assert.ok(
-      /base\s*:\s*int/i.test(hoverText(baseHover[0])),
-      `ML binding hover shows inferred type: ${hoverText(baseHover[0])}`,
+      /base\s*:\s*int/i.test(baseText),
+      `ML binding hover shows inferred type: ${baseText}`,
     );
 
     // --- GO TO DEFINITION: a call jumps back to the ML declaration ---
     const def = await defsPoll(doc.uri, 3, 4);
-    assert.strictEqual(def[0].range.start.line, 0, "double defined on line 0");
+    const doubleDef = head(def, "double definition");
+    assert.strictEqual(doubleDef.range.start.line, 0, "double defined on line 0");
     assert.strictEqual(
-      def[0].uri.toString(),
+      doubleDef.uri.toString(),
       doc.uri.toString(),
       "definition resolves within the .ospml document",
     );
@@ -1938,13 +1964,14 @@ suite("Osprey Language Features Tests", () => {
     // --- DIAGNOSTICS lifecycle on ML source: break it, then fix it ---
     await rewrite(doc, 'd = missingFn 5\nprint "${d}"\n');
     const broken = await diagnosticsPoll(doc.uri, (d) => d.length > 0);
+    const undefinedIdentifier = head(broken, "ML diagnostic");
     assert.strictEqual(
-      broken[0].severity,
+      undefinedIdentifier.severity,
       vscode.DiagnosticSeverity.Error,
       "an undefined ML identifier is a real Error diagnostic",
     );
     assert.strictEqual(
-      broken[0].source,
+      undefinedIdentifier.source,
       "osprey",
       "ML diagnostic is attributed to the osprey server",
     );
@@ -2092,7 +2119,7 @@ suite("Osprey Language Features Tests", () => {
       note: string,
     ): Promise<string> {
       const text = hoverText(
-        (await hoverPoll(doc.uri, line, character, needle))[0],
+        head(await hoverPoll(doc.uri, line, character, needle), `${needle} hover`),
       );
       assert.strictEqual(text, expected, `${label}: ${needle} hover ${note}`);
       assertNoLeak(`${label}: ${needle} hover`, text);
@@ -2139,7 +2166,8 @@ signatures, in source order`,
         () => sigHelpAt(doc.uri, 5, 15),
         (h) => Boolean(h?.signatures?.length),
       );
-      const signature = help.signatures[0].label;
+      const signatureInfo = head(help.signatures, "signature");
+      const signature = signatureInfo.label;
       // The WHOLE signature, return type included. This was an `||` that also
       // accepted `area(w: int, h: int)` without `-> int`, so a regression that
       // dropped the return type — the exact failure this branch is about —
@@ -2161,7 +2189,7 @@ signatures, in source order`,
         `${label}: the cursor is in the second argument`,
       );
       assert.deepStrictEqual(
-        help.signatures[0].parameters.map((p) =>
+        signatureInfo.parameters.map((p) =>
           typeof p.label === "string"
             ? p.label
             : signature.slice(p.label[0], p.label[1]),
@@ -3351,6 +3379,8 @@ suite("Osprey Binary Resolution Unit Tests", () => {
     const [osName, arch] = id.split("-");
 
     assert.strictEqual(id.split("-").length, 2, "id is exactly os-arch");
+    assert.ok(osName !== undefined, "id has an os segment");
+    assert.ok(arch !== undefined, "id has an arch segment");
     assert.ok(
       ["win32", "darwin", "linux"].includes(osName),
       `os segment "${osName}" is a known platform`,
@@ -3481,12 +3511,13 @@ suite("Osprey Binary Resolution Unit Tests", () => {
         "never returns the missing path",
       );
       assert.strictEqual(warnings.length, 1, "exactly one warning is emitted");
+      const warning = head(warnings, "path warning");
       assert.ok(
-        warnings[0].includes(missing),
+        warning.includes(missing),
         "warning names the offending path",
       );
       assertIncludes(
-        warnings[0],
+        warning,
         ["does not exist"],
         "warning explains the problem",
       );
@@ -3690,11 +3721,12 @@ suite("Osprey Client Failure Handling Unit Tests", () => {
       "returns false so the client does not retry",
     );
     assert.strictEqual(logs.length, 1, "logs exactly once");
-    assertIncludes(logs[0], ["Initialization failed"], "log names the failure");
-    assertIncludes(logs[0], ["init boom"], "log carries the underlying error");
+    const log = head(logs, "log line");
+    assertIncludes(log, ["Initialization failed"], "log names the failure");
+    assertIncludes(log, ["init boom"], "log carries the underlying error");
     assert.strictEqual(errors.length, 1, "one user-facing error is shown");
     assertIncludes(
-      errors[0],
+      head(errors, "user-facing error"),
       ["initialization failed"],
       "error message is descriptive",
     );
@@ -3715,13 +3747,14 @@ suite("Osprey Client Failure Handling Unit Tests", () => {
       "keeps the server alive",
     );
     assert.strictEqual(logs.length, 1, "logs the error once");
+    const log = head(logs, "log line");
     assertIncludes(
-      logs[0],
+      log,
       ["Language server error"],
       "log identifies a server error",
     );
-    assertIncludes(logs[0], ["transport"], "log includes the underlying error");
-    assert.ok(logs[0].includes("2"), "log includes the occurrence count");
+    assertIncludes(log, ["transport"], "log includes the underlying error");
+    assert.ok(log.includes("2"), "log includes the occurrence count");
   });
 
   test("errorHandler.closed logs and restarts the connection", async () => {
@@ -3735,8 +3768,9 @@ suite("Osprey Client Failure Handling Unit Tests", () => {
       "restarts on a dropped connection",
     );
     assert.strictEqual(logs.length, 1, "logs the closure once");
-    assert.ok(logs[0].includes("closed"), "log names the closure");
-    assert.ok(logs[0].includes("restarting"), "log states the restart");
+    const log = head(logs, "log line");
+    assert.ok(log.includes("closed"), "log names the closure");
+    assert.ok(log.includes("restarting"), "log states the restart");
   });
 
   // Runs LAST (file order): deactivate stops the live language client started by

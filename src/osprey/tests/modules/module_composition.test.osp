@@ -5,19 +5,25 @@
 /// modules and namespaces keep distinct linkage identities.
 
 namespace compute {
+    /// Exposes one `apply` that increments its argument.
     module Adder {
         /// Four declarations across this file share the simple name `apply`.
         export fn apply(n) = (n + 1) 
     }
 
+    /// Trebles through its own `apply`, and by ten through a nested one.
     module Scaler {
+        /// Multiplies `n` by three.
         export fn apply(n) = (n * 3) 
 
+        /// The nested level, so the same simple name sits two paths deep.
         export module Inner {
+            /// Multiplies `n` by ten.
             export fn apply(n) = (n * 10) 
         }
     }
 
+    /// Composes the other modules with fibers, iterators and checked arithmetic.
     module Runner {
         /// A module function spawns a fiber running another module's export.
         export fn spawned(n) = {
@@ -30,11 +36,13 @@ namespace compute {
 
         /// Ordinary division stays an integer across the module boundary.
         export fn halve(n) = intDiv(n, 2)
+        /// Sums `a` and `b`, an `Error` when the sum overflows.
         export fn checkedSum(a, b) = checkedAdd(a, b)
     }
 }
 
 namespace report {
+    /// A same-named module in another namespace, wrapping text instead of counting.
     module Adder {
         /// A same-named module in another namespace is a different declaration.
         export fn apply(text) = "<${text}>"

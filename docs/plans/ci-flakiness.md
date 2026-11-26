@@ -26,6 +26,32 @@ Root-cause fixes only: no retries, no wider timeouts used to hide a race, no ski
   - the WinUI 300 s kill against 90 s per step
   - the `build.py` deadlines
   - Playwright `waitForTimeout`, with `retries: 1` masking flakes
+- [x] Runtime finding 4: `effects_runtime_tests.c` already waits on `g_queued_entered_cv` instead of sleeping. Coverage and ASan runs passed 3 of 3 each.
+- [x] UI findings 8, 11, 12, 14 and 24 (website Playwright):
+  - `waitForTimeout` and `networkidle` are replaced by load, fonts, settled first-party requests and polled layout.
+  - `serve.cjs` binds a free port.
+  - `retries: 0`.
+  - `make -C src/toolchain/website playwright` passed 400 of 400, three runs in a row.
+- [x] UI finding 9 (bank e2e):
+  - `TALON_API_PORT`, `TALON_HOLD` and `TALON_DB` give each run free ports, its own hold marker and its own database.
+  - Only the process that created the run directory removes it.
+  - `make -C src/toolchain/targets/web/tests bank` passed 15 of 15, and the journey passed 2 of 2.
+- [ ] **Talon Bank iOS journey: the ledger server dies mid-run.** Found by the 2026-11-26 hunt in CI run 45541374510, which went green on attempt 3.
+  - On attempt 1, the step "Operation refused" gave up after 30 s and the UI showed "Bank data unavailable".
+  - On attempt 2, job 138973933972 passed goldens 1–4, then went silent for 13 minutes until the 22-minute timeout.
+  - Suspect: `hold ()` in `talon/backend/main.ospml` stops serving on any `readFile` error, not only on a missing marker.
+  - `ledger.js` now prints the server's output when it exits while serving, so the next failure names its cause.
+- [x] **The iOS golden comparison stalled until the 22-minute job timeout** (run 45541374510, attempt 2: goldens 1–4 passed, then 13 minutes of silence). `ios.sh` now names each shot before comparing it and runs the comparison under `bounded 60`, so a stall fails with the shot named. Proven: `bounded` kills a stall (exit 143) and passes success and failure through.
+- [x] **`serve.cjs` retried a held port forever.** It now gives up after 50 tries, 5 s in total. Proven by holding the port.
+- [ ] **Hunt 2026-11-26, open code-sweep findings** (full report in `PiNotes/2026-11-26-osprey-ci-flake-hunt.md`):
+  - `file_server_tests.c:288` sleeps 300 ms and then stops the server, assuming the fetch thread has connected by then.
+  - `fiber_channel_tests.c:181` waits 50 ms to settle, and `:243` waits 200 ms, assuming 40 fibers have parked by then.
+  - VS Code `profiler-cpu-sessions.test.ts:81-106` and `profiler-cpu-e2e.test.ts:78` sleep, then assert that samples arrived. `debug-panel.test.ts:277-283` sleeps 30 ms before asserting an async update.
+  - `agent_check_budget.rs:78-106` gates lowering growth on a wall-clock ratio; counting the IR would be deterministic.
+  - Job `timeout-minutes` overruns in seven jobs on reruns that later went green. Measure each job's p95 and size its timeout from that.
+- [ ] **VS Code workbench-browser profiler tests** (run 44700948779, green on attempt 3):
+  - Attempt 1 hit a 3000 ms locator timeout at `vscode-extension/test/suite/profiler-kit.ts:53`.
+  - Attempt 2 found the Library button still disabled after a 5 s idle wait at `profiler-kit.ts:21`.
 
 ## Open issues blocking PR #428 (2026-11-23 hand-off)
 
@@ -50,7 +76,7 @@ Root-cause fixes only: no retries, no wider timeouts used to hide a race, no ski
   - **Derived JSON codecs from typeDiagram models.** The workbench `save`/`restore` pairs (`store.ospml`, `tutor.ospml`) and every app's `*Json`/`*Of` pair are field-by-field mirrors. Generating them from the model, as AGENTS.md asks, would delete both sides.
   - **One generic UI test bench** (`uitest::Bench S A`). daw, signal_flow, casting, painting, flock and uitest each declare their own `Bench` effect and the same `post`/`pointer`/`tap`/`element`/`offers` wrappers. A generic effect in `uitest` needs effect type parameters to work across packages in ML. This was not tried yet.
 - [x] **CleanArch retry and page tests.** The rival queue consumes one writer at a time, including duplicate titles, and the authorization, pagination and validation expectations match their fixtures and branch rules. All 100 cases pass under GC and ARC on the PR head.
-- [ ] **Windows Prism docked panel:** a white toolbar strip where Undo and Redo belong, and a light-theme panel beside the dark canvas. Logged as [daw.md](daw.md) item 40. The 100% goldens record the current look; the 150% goldens still show the deleted keyboard dock.
+- [ ] **Windows Prism docked panel:** a white toolbar strip where Undo and Redo belong, and a light-theme panel beside the dark canvas. Logged as [daw.md](synth/daw.md) item 40. The 100% goldens record the current look; the 150% goldens still show the deleted keyboard dock.
 - [ ] **Canvas scale with the panel docked.** The user said "scale a bit off". With [DAW-LAYOUT-FIXED-SCALE] at one unit per point, a 1152-point window with the 320-point panel hides the right of the patch. Decide whether a docked panel narrows the page or the canvas fits its pane.
 - [ ] **CPython in CI.** `_prism_ui_test` and `_prism_vst_ui_test` run `python3 src/toolchain/hosts/synth_vst/build.py`, which AGENTS.md bans. Port it to Python-flavour Osprey.
 - [x] **Rust lowering growth.** Only programs that declare a multi-shot operation need captured-state analysis. The gate is in the pushed commit `b87b7e245`. The 4,000-caller fixture fell from 4.02 s to 0.69 s locally, and the budget, staged-many and multiplicity tests passed.

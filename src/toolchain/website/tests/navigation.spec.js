@@ -2,7 +2,7 @@
 // page's own headings, independent desktop scrolling and the mobile menu.
 const { test, expect } = require("@playwright/test");
 
-const DOC_SECTIONS = ["Start here", "Python", "TypeScript", "Tutorials", "Proofs", "Build applications", "Packages", "Language", "Reference"];
+const DOC_SECTIONS = ["Start here", "Python", "TypeScript", "Tutorials", "Proofs", "Build applications", "Synth", "Packages", "Language", "Reference"];
 
 test.describe("documentation sub-page navigation", () => {
   test("groups subpages and identifies the current desktop page", async ({ page }) => {
@@ -33,6 +33,17 @@ test.describe("documentation sub-page navigation", () => {
     await expect(page.locator("h1")).toHaveText("Releases");
     await expect(page.locator(".prose a[href='https://github.com/Nimblesite/osprey/releases']")).toHaveCount(1);
     await expect(page.locator("#site-navigation a.active")).toHaveText("Docs");
+  });
+
+  test("the planned Prism hardware page is unpublished: no page, no nav entry, no link", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/docs/audio-synthesis/");
+    const synth = page.locator(".docs-nav-desktop .docs-nav-section", { hasText: "Synth" });
+    await expect(synth.getByRole("link", { name: "Audio synthesis", exact: true })).toBeVisible();
+    await expect(synth.getByRole("link", { name: "Prism hardware", exact: true })).toHaveCount(0);
+    await expect(page.locator('a[href="/docs/audio-synthesis/hardware/"]')).toHaveCount(0);
+    const response = await page.request.get("/docs/audio-synthesis/hardware/");
+    expect(response.status()).toBe(404);
   });
 
   for (const height of [600, 900]) {

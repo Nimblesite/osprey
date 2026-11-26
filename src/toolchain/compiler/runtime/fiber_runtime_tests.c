@@ -15,6 +15,11 @@
 
 #include "fiber_tests_shared.h"
 
+// The gated fiber fiber_channel_tests.c owns: a body parked on a channel the
+// test releases, so "still running" is a fact about blocking.
+extern void *gating_channel;
+int64_t channel_gated_function(void *env);
+
 static int64_t test_function_1(void *env) {
   (void)env;
   return 42;
@@ -31,41 +36,42 @@ static int64_t slow_function(void *env) {
   return 999;
 }
 
+// No fiber at all answers -1 from every probe, never a read of NULL.
 void test_invalid_fiber_await(void) {
-  int64_t result = fiber_await(99999);
-  assert(result == -1 &&
-         "fiber_await should return -1 for an out-of-range fiber ID");
-
-  result = fiber_await(-1);
-  assert(result == -1 &&
-         "fiber_await should return -1 for a negative fiber ID");
+  assert(fiber_await(NULL) == -1 && "awaiting no handle is an error");
+  assert(fiber_join(NULL) == -1 && "joining no fiber is an error");
+  assert(fiber_id(NULL) == -1 && "no fiber has no spawn number");
+  fiber_release(NULL); // ending no hold is a no-op
 }
 
 void test_valid_fiber_spawn(void) {
-  int64_t fiber_id = fiber_spawn_env(test_function_1, NULL);
-  assert(fiber_id > 0 &&
-         "fiber_spawn_env should return a positive ID for a valid function");
-
-  int64_t result = fiber_await(fiber_id);
-  assert(result == 42 && "fiber should return its function's value");
+  void *fiber = spawn_fiber(test_function_1, NULL);
+  assert(fiber != NULL && "spawn should answer a handle for a valid function");
+  assert(fiber_await(fiber) == 42 && "fiber should return its function's value");
+  Fiber *held = fiber_spawn_env(test_function_1, NULL);
+  assert(held != NULL && fiber_join(held) == 42 && fiber_join(held) == 42 &&
+         "the runtime's own hold joins the same value every time");
+  fiber_release(held);
 }
 
 void test_repeated_fiber_await(void) {
-  int64_t fiber_id = fiber_spawn_env(test_function_1, NULL);
-  assert(fiber_id > 0 && "fiber should spawn for repeated await");
+  void *fiber = spawn_fiber(test_function_1, NULL);
+  assert(fiber != NULL && "fiber should spawn for repeated await");
 
-  int64_t first = fiber_await(fiber_id);
-  int64_t second = fiber_await(fiber_id);
+  int64_t first = fiber_await(fiber);
+  int64_t second = fiber_await(fiber);
   assert(first == 42 && second == 42 &&
          "a reusable fiber should return the same result on every await");
 }
 
 void test_multiple_fibers(void) {
-  int64_t fiber1 = fiber_spawn_env(test_function_1, NULL);
-  int64_t fiber2 = fiber_spawn_env(test_function_2, NULL);
+  void *fiber1 = spawn_fiber(test_function_1, NULL);
+  void *fiber2 = spawn_fiber(test_function_2, NULL);
 
-  assert(fiber1 > 0 && fiber2 > 0 && "both fibers should have valid IDs");
-  assert(fiber1 != fiber2 && "fibers should have different IDs");
+  assert(fiber1 != NULL && fiber2 != NULL && "both fibers should have handles");
+  assert(fiber1 != fiber2 && "fibers should have different handles");
+  assert(fiber_id(fiber1) > 0 && fiber_id(fiber2) == fiber_id(fiber1) + 1 &&
+         "spawn numbers count spawns in order");
 
   int64_t result1 = fiber_await(fiber1);
   int64_t result2 = fiber_await(fiber2);
@@ -91,11 +97,11 @@ void test_fiber_sleep(void) {
 
 void test_fiber_stress(void) {
 #define NUM_FIBERS 50
-  int64_t fiber_ids[NUM_FIBERS];
+  void *fiber_ids[NUM_FIBERS];
 
   for (int i = 0; i < NUM_FIBERS; i++) {
-    fiber_ids[i] = fiber_spawn_env(test_function_1, NULL);
-    assert(fiber_ids[i] > 0 && "each fiber should have a valid ID");
+    fiber_ids[i] = spawn_fiber(test_function_1, NULL);
+    assert(fiber_ids[i] != NULL && "each fiber should have a handle");
   }
 
   for (int i = 0; i < NUM_FIBERS; i++) {
@@ -105,8 +111,8 @@ void test_fiber_stress(void) {
 }
 
 void test_concurrent_execution(void) {
-  int64_t slow_fiber = fiber_spawn_env(slow_function, NULL);
-  int64_t fast_fiber = fiber_spawn_env(test_function_1, NULL);
+  void *slow_fiber = spawn_fiber(slow_function, NULL);
+  void *fast_fiber = spawn_fiber(test_function_1, NULL);
 
   int64_t fast_result = fiber_await(fast_fiber);
   assert(fast_result == 42 && "fast fiber should return 42");
@@ -116,15 +122,18 @@ void test_concurrent_execution(void) {
 }
 
 void test_fiber_done(void) {
-  assert(fiber_done(99999) == -1 &&
-         "fiber_done should return -1 for an out-of-range fiber ID");
-  assert(fiber_done(-1) == -1 &&
-         "fiber_done should return -1 for a negative fiber ID");
+  assert(fiber_done(NULL) == -1 && "fiber_done should return -1 for no handle");
 
-  int64_t slow_fiber = fiber_spawn_env(slow_function, NULL);
+  // The fiber parks on the gating channel until this test releases it, so
+  // "still running" holds for as long as the test wants, not for 100 ms.
+  assert(fiber_set_deterministic_mode(false) == 0);
+  gating_channel = channel_create(1);
+  assert(gating_channel != NULL);
+  void *slow_fiber = spawn_fiber(channel_gated_function, NULL);
   assert(fiber_done(slow_fiber) == 0 &&
          "fiber_done should report 0 while the fiber is running");
 
+  assert(channel_send(gating_channel, 999, 0) == 1 && "the fiber is released");
   int64_t slow_result = fiber_await(slow_fiber);
   assert(slow_result == 999 && "slow fiber should return 999");
   assert(fiber_done(slow_fiber) == 1 &&
@@ -142,8 +151,8 @@ void test_fiber_yield_passthrough(void) {
 static int64_t env_doubler(void *env) { return *(int64_t *)env * 2; }
 
 // env_doubler turns the 21 an env spawn hands it into 42 on every form.
-static void await_env_doubled(int64_t fiber) {
-  assert(fiber > 0 && fiber_await(fiber) == 42 &&
+static void await_env_doubled(void *fiber) {
+  assert(fiber != NULL && fiber_await(fiber) == 42 &&
          "an env fiber should double the environment value");
 }
 
@@ -151,18 +160,20 @@ static void await_env_doubled(int64_t fiber) {
 // and reject a NULL function before scheduling.
 void test_fiber_spawn_env_forms(void) {
   int64_t twenty_one = 21;
-  await_env_doubled(fiber_spawn_env(env_doubler, &twenty_one));
-  int64_t scalar = fiber_spawn_env_owned(env_doubler, &twenty_one, 0);
-  int64_t managed = fiber_spawn_env_owned(env_doubler, &twenty_one, 1);
-  assert(scalar > 0 && managed > 0);
+  Fiber *held = fiber_spawn_env(env_doubler, &twenty_one);
+  assert(held != NULL && fiber_join(held) == 42);
+  fiber_release(held);
+  void *scalar = fiber_spawn_env_owned(env_doubler, &twenty_one, 0);
+  void *managed = fiber_spawn_env_owned(env_doubler, &twenty_one, 1);
+  assert(scalar != NULL && managed != NULL);
   await_env_doubled(scalar);
   await_env_doubled(managed);
-  assert(fiber_spawn_env(NULL, &twenty_one) == -1);
-  assert(fiber_spawn_env_owned(NULL, &twenty_one, 0) == -1);
+  assert(fiber_spawn_env(NULL, &twenty_one) == NULL);
+  assert(fiber_spawn_env_owned(NULL, &twenty_one, 0) == NULL);
 }
 
 // [CONCURRENCY-SPAWN-AWAIT]: a reusable fiber answers every await.
-static void await_repeatedly(int64_t fiber, int64_t expected, int times) {
+static void await_repeatedly(void *fiber, int64_t expected, int times) {
   for (int i = 0; i < times; i++) {
     assert(fiber_await(fiber) == expected &&
            "[CONCURRENCY-SPAWN-AWAIT] every await should return the value");
@@ -173,9 +184,9 @@ static void await_repeatedly(int64_t fiber, int64_t expected, int times) {
 // results — same values, same repeated-await semantics — and toggles cleanly.
 void test_deterministic_mode(void) {
   assert(fiber_set_deterministic_mode(true) == 0);
-  int64_t a = fiber_spawn_env(test_function_1, NULL);
-  int64_t b = fiber_spawn_env(test_function_2, NULL);
-  assert(a > 0 && b > 0 && a != b);
+  void *a = spawn_fiber(test_function_1, NULL);
+  void *b = spawn_fiber(test_function_2, NULL);
+  assert(a != NULL && b != NULL && a != b);
   // A queued deterministic fiber reports READY before it has run: execution
   // happens at the await, and a `while (!fiber_done(f))` poll would otherwise
   // spin forever with nothing to drive it (fiber_runtime.c's `is_deterministic`
@@ -186,29 +197,31 @@ void test_deterministic_mode(void) {
   await_repeatedly(a, 42, 2);    // repeated await still answers
   assert(fiber_yield(9) == 9);   // yield stays a passthrough here too
   int64_t env_val = 21;
-  int64_t c = fiber_spawn_env(env_doubler, &env_val);
+  void *c = spawn_fiber(env_doubler, &env_val);
   await_env_doubled(c);
   // [CONCURRENCY-SPAWN-AWAIT]: "for a managed T, every await produces an
   // independently owned reference". Queued fibers take that +1 on the
   // deterministic path too, so a second await is never a use-after-release.
-  int64_t owned = fiber_spawn_env_owned(env_doubler, &env_val, 1);
-  assert(owned > 0 && owned != c);
+  void *owned = fiber_spawn_env_owned(env_doubler, &env_val, 1);
+  assert(owned != NULL && owned != c);
   await_repeatedly(owned, 42, 3);
   assert(fiber_done(owned) == 1);
   assert(fiber_set_deterministic_mode(false) == 0);
-  int64_t d = fiber_spawn_env(test_function_1, NULL); // threaded mode works again
-  assert(d > 0 && fiber_await(d) == 42);
+  void *d = spawn_fiber(test_function_1, NULL); // threaded mode works again
+  assert(d != NULL && fiber_await(d) == 42);
 }
 
-// fiber_cleanup_results releases retained results without breaking later
-// spawns: the runtime stays fully usable afterwards.
+// fiber_cleanup_results reclaims the fibers whose handles died without
+// touching a fiber a handle still holds: the runtime stays fully usable.
 void test_cleanup_results(void) {
-  int64_t f = fiber_spawn_env(test_function_1, NULL);
+  void *f = spawn_fiber(test_function_1, NULL);
   assert(fiber_await(f) == 42);
   fiber_cleanup_results();
-  int64_t g = fiber_spawn_env(test_function_2, NULL);
-  assert(g > 0 && fiber_await(g) == 100);
+  assert(fiber_await(f) == 42 && "a held fiber survives cleanup");
+  void *g = spawn_fiber(test_function_2, NULL);
+  assert(g != NULL && fiber_await(g) == 100);
   fiber_cleanup_results();
+  assert(fiber_await(g) == 100 && fiber_done(g) == 1);
 }
 
 static void fiber_proc_event_sink(int64_t process_id, int64_t event_type,
@@ -271,12 +284,10 @@ void run_all_fiber_tests(void) {
   test_fiber_process_bridge();
   test_channel_fifo_and_wraparound();
   test_channel_capacity_rejections();
-  test_unusable_capacities_are_refused_not_returned();
   test_channel_handle_guards();
   test_channel_blocks_both_directions();
-  test_unassigned_fiber_handles();
   test_cleanup_defers_while_a_fiber_runs();
-  test_cleanup_drains_unreceived_values();
+  test_cleanup_keeps_what_a_held_channel_buffers();
   test_rejected_managed_send_releases_its_value();
   run_fiber_handle_tests();
 
@@ -284,6 +295,9 @@ void run_all_fiber_tests(void) {
 }
 
 int main(void) {
+  // First: later cases allocate from threads the collector does not know,
+  // which turns collection off for the rest of the process.
+  test_fibers_blocked_for_ever_are_found();
   test_channel_select();
   run_all_fiber_tests();
   return 0;

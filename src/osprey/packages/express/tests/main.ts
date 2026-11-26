@@ -270,6 +270,8 @@ function faulty() {
     .use("/down", (req, res) => req.fail(problem(503, "down")))
     .use("/teapot", (req, res) => req.fail(problem(418, "short and stout")))
     .get("/fine", (req, res) => res.send("fine"))
+    .get("/typed", (req, res) => res.type("text/markdown; charset=utf-8").status(201).send("# plain"))
+    .get("/retyped", (req, res) => res.type("text/plain").type("image/svg+xml").send("<svg/>"))
     .get("/query/:name", named)
     .onError((failure, req, res) => (failure.status === 503 ? req.next() : res.status(failure.status).send(failure.message)))
     .onError((failure, req, res) => req.fail(problem(502, `${failure.message} again`)));
@@ -277,6 +279,9 @@ function faulty() {
 
 function rescued(client) {
   checked(httpGetResponse(client, "/fine", ""), 200, "fine");
+  typed(httpGetResponse(client, "/fine", ""), 200, "fine", HTML);
+  typed(httpGetResponse(client, "/typed", ""), 201, "# plain", "text/markdown; charset=utf-8");
+  typed(httpGetResponse(client, "/retyped", ""), 200, "<svg/>", "image/svg+xml");
   checked(httpGetResponse(client, "/teapot", ""), 418, "short and stout");
   checked(httpGetResponse(client, "/teapot/and/more", ""), 418, "short and stout");
   missing(httpGetResponse(client, "/other", ""), "Cannot GET /other");

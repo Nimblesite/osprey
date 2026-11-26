@@ -73,6 +73,9 @@ def id_to_byte(token):
 
 
 class Bpe:
+    """The merge table `load_bpe` builds: `merges` by token id, `ranks` by
+    the pair "a b", and `ids` by token."""
+
     merges: list[str]
     ranks: dict[str, int]
     ids: dict[str, int]
@@ -282,5 +285,7 @@ def ids_text(ids):
 
 
 def decode(bpe, ids):
+    """The text `ids` stand for: each token's bytes, read as UTF-8, with a
+    malformed sequence as '?'."""
     octets = fold(range(len(ids)), [], lambda acc, i: bytes_of_token(bpe, unwrap_or(listGet(ids, i), 0), acc))
     return text_of(octets, 0, "")

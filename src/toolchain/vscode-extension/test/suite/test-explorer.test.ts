@@ -5,13 +5,19 @@
 
 import * as assert from "assert";
 import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
 import * as sinon from "sinon";
 import * as vscode from "vscode";
 import { fileTestId, leafTestId } from "../../client/src/test-explorer-parse";
 import { COVERAGE_RUN, PLAIN_RUN } from "../../client/src/test-explorer-runs";
 import { executeRunRequest, makeRunHandler } from "../../client/src/test-explorer";
-import { coverageSink, detailedCoverageFor } from "../../client/src/test-explorer-report";
+import {
+  coverageSink,
+  detailedCoverageFor,
+  reportCoverage,
+  type TestRunSink,
+} from "../../client/src/test-explorer-report";
 import {
   makeDiscovery,
   makeDiscoveryQueue,
@@ -28,6 +34,7 @@ import { runCompiler } from "../../client/src/test-explorer-process";
 import {
   assertSkipWarningLayout,
   oneSkipWarning,
+  present,
   resolveBuiltOsprey,
   skipWarningsOf,
   uriPath,
@@ -166,7 +173,7 @@ suite("Osprey Test Explorer", () => {
     function onlyItem(items: vscode.TestItemCollection): vscode.TestItem {
       const all = [...items].map(([, item]) => item);
       assert.strictEqual(all.length, 1, "exactly one item hangs at this level");
-      return all[0];
+      return present(all[0], "the only item");
     }
 
     /** Remove `uri` from `controller` and assert the tree emptied. */
@@ -618,9 +625,10 @@ suite("Osprey Test Explorer", () => {
         "- Location: line 3, column 1",
         "- Failure: expect failed: expected 3, got 2",
       ].join("\n");
+      const failure = present(failures[0], "the failed test");
       assert.ok(
-        String(failures[0].message).includes(expectedContext),
-        `missing complete AI context in:\n${String(failures[0].message)}`,
+        String(failure.message).includes(expectedContext),
+        `missing complete AI context in:\n${String(failure.message)}`,
       );
       assert.strictEqual(sink.ofKind("enqueued").length, 2);
       assert.ok(sink.output.includes("\r\n"));
@@ -907,7 +915,7 @@ suite("Osprey Test Explorer", () => {
 
       // --- The failure keeps its own diagnostic, unpolluted by skip handling.
       assert.match(
-        String(sink.ofKind("failed")[0].message),
+        String(present(sink.ofKind("failed")[0], "the failed test").message),
         /expect failed: expected 3, got 1/,
       );
 
@@ -1118,13 +1126,14 @@ suite("Osprey Test Explorer", () => {
       ]);
       const afterPlain = skipWarningsOf(mlUri);
       assert.strictEqual(afterPlain.length, 1, JSON.stringify(afterPlain));
+      const plainWarning = present(afterPlain[0], "the plain-run skip warning");
       assert.strictEqual(
-        afterPlain[0].message,
+        plainWarning.message,
         "Test 'ml parked case' was skipped: ml blocked",
         "the ML flavor produces the same message shape as Default",
       );
-      assert.strictEqual(afterPlain[0].range.start.line, 2);
-      assert.strictEqual(afterPlain[0].source, "osprey tests");
+      assert.strictEqual(plainWarning.range.start.line, 2);
+      assert.strictEqual(plainWarning.source, "osprey tests");
 
       // The same suite under the COVERAGE profile: same verdicts, same
       // warning, plus the coverage report.
@@ -1140,7 +1149,10 @@ suite("Osprey Test Explorer", () => {
         1,
         `coverage neither duplicates nor drops the warning: ${JSON.stringify(afterCoverage)}`,
       );
-      assert.strictEqual(afterCoverage[0].message, afterPlain[0].message);
+      assert.strictEqual(
+        present(afterCoverage[0], "the coverage-run skip warning").message,
+        present(afterPlain[0], "the plain-run skip warning").message,
+      );
       assert.ok(
         coverage.coverage.get(mlUri.fsPath),
         "the coverage report still reached the sink",
@@ -1173,7 +1185,7 @@ suite("Osprey Test Explorer", () => {
         "a compile failure is NOT a skip",
       );
       assert.match(
-        String(sink.ofKind("errored")[0].message),
+        String(present(sink.ofKind("errored")[0], "the errored test").message),
         /error|syntax/i,
         "the compiler's own message is surfaced",
       );
@@ -1239,7 +1251,7 @@ suite("Osprey Test Explorer", () => {
         ]),
       );
       assert.strictEqual(received.length, 1);
-      const fc = assertCoverageCounts(uri, received[0], 2, 3, "covered lines");
+      const fc = assertCoverageCounts(uri, present(received[0], "the FileCoverage"), 2, 3, "covered lines");
       assert.deepStrictEqual(
         lineHits(fc),
         [
@@ -1256,6 +1268,44 @@ suite("Osprey Test Explorer", () => {
         [],
         "unknown FileCoverage yields no detail",
       );
+    });
+
+    // [TESTING-COVERAGE-VSCODE] reportCoverage reads, forwards and drops one
+    // run's report: a plain sink leaves the file alone, a missing or corrupt
+    // report forwards nothing, and a project report keys each source by path.
+    test("reportCoverage forwards a project report per source and nothing else", async () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "osprey-report-"));
+      const ran = path.join(dir, "ran.test.osp");
+      const uri = vscode.Uri.file(ran);
+      const report = path.join(dir, "report.json");
+      const project = JSON.stringify({ files: { [ran]: { lines: { "1": 1, "3": 0 } }, "helper.osp": { lines: { "2": 4 } } } });
+      const noop = (): void => undefined;
+      const plain: TestRunSink = {
+        enqueued: noop, started: noop, passed: noop, failed: noop, errored: noop, skipped: noop, appendOutput: noop, end: noop,
+      };
+      fs.writeFileSync(report, project);
+      await reportCoverage(uri, report, plain);
+      assert.ok(fs.existsSync(report), "a sink without line coverage never reads or drops the report");
+
+      const missing = new RecordingSink();
+      await reportCoverage(uri, path.join(dir, "absent.json"), missing);
+      assert.strictEqual(missing.coverage.size, 0, "a compile failure writes no report and forwards nothing");
+
+      const corrupt = new RecordingSink();
+      fs.writeFileSync(report, "{ not json");
+      await reportCoverage(uri, report, corrupt);
+      assert.strictEqual(corrupt.coverage.size, 0, "a corrupt report forwards nothing");
+      assert.ok(!fs.existsSync(report), "a corrupt report is still dropped");
+
+      const sink = new RecordingSink();
+      fs.writeFileSync(report, project);
+      await reportCoverage(uri, report, sink);
+      assert.deepStrictEqual([...sink.coverage.keys()].sort(), [path.join(dir, "helper.osp"), ran].sort());
+      assert.deepStrictEqual([...(sink.coverage.get(ran) ?? [])], [[1, 1], [3, 0]], "the ran file keeps its hits");
+      assert.deepStrictEqual([...(sink.coverage.get(path.join(dir, "helper.osp")) ?? [])], [[2, 4]],
+        "a relative source resolves beside the ran file");
+      assert.ok(!fs.existsSync(report), "a read report is dropped");
+      fs.rmSync(dir, { recursive: true, force: true });
     });
 
     // [TESTING-COVERAGE-VSCODE] calc proof, end to end: the Coverage button's
@@ -1282,7 +1332,7 @@ suite("Osprey Test Explorer", () => {
       assert.strictEqual(received.length, 1, "one FileCoverage per suite file");
       const fc = assertCoverageCounts(
         coverageUri,
-        received[0],
+        present(received[0], "the FileCoverage"),
         3,
         4,
         "executed lines",

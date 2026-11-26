@@ -62,17 +62,17 @@ _test_ios_goldens:
 ##                  graphics scenes, each a Swift host linked to the Mac slice. [IOS-TARGET-MACOS]
 .PHONY: _ios-examples _ios-inbox _macos-examples
 _ios-examples: _runtime_ios _runtime_ios_sim
-	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	$(COMPILER_BUILD)
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/ios/build.sh ios
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/ios/build.sh ios-sim
 
 _ios-inbox: _runtime_ios _runtime_ios_sim
-	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	$(COMPILER_BUILD)
 	bash src/osprey/examples/mobile/ios/run.sh --build ios
 	bash src/osprey/examples/mobile/ios/run.sh --build ios-sim
 
 _macos-examples: _runtime_macos
-	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	$(COMPILER_BUILD)
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/macos/run.sh --build
 	for scene in kali opal character; do \
 		OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/graphics/macos/run.sh --build $$scene || exit 1; \

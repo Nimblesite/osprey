@@ -4,6 +4,7 @@ import ui::Runtime
 import ui::Messages
 import ui::Lists
 
+(** The editor's update function: every host message becomes one store step or one host request. *)
 module Update
     remaining current = match current.packageWaiting > 0
         true => satSub current.packageWaiting 1
@@ -112,4 +113,5 @@ module Update
             false => Runtime::step current
         _ => Runtime::step current
 
+    (** One update of the store by a host message: actions and typed values change the state at once, completions land on the request they answer, and any other message leaves the state as it is. *)
     export apply (_, current, message) = Messages::route (message, \action => tapped (current, action), \(action, value) => typed (current, action, value), \(_, _) => Runtime::step current, \(_, _) => Runtime::step current, \(ticket, outcome) => completed (current, ticket, outcome), \_ => Runtime::step current, \(_, _) => Runtime::step current, \(_, _) => Runtime::step current, \_ => Runtime::step current, \(_, _) => Runtime::step current)

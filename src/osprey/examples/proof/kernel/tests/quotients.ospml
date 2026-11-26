@@ -18,6 +18,7 @@ import proof
     Refusal cases never accept a reader or inference failure in place of a
     theory refusal: each asserts a message only `Quotients` produces. *)
 module QuotientTests
+    (** Runs the quotient cases against the recorded export; the testing built-ins report the TAP lines. *)
     export run () =
         recorded ()
         signatures ()

@@ -11,8 +11,5 @@
   "dependencies": {
     "express": "^5.3.0",
     "ws": "^8.18.0"
-  },
-  "devDependencies": {
-    "@types/node": "26.6.5"
   }
 }

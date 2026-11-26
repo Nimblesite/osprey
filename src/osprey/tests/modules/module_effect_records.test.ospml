@@ -19,7 +19,10 @@ type Tally =
     label : string
     items : List<Item>
 
+(** Lists a root through an effect and reads the listing's fields inside the
+    module, where the regression lived. *)
 module Store
+    (** Yields the listing found under a root path. *)
     export effect Catalog
         list : string => Listing
 
@@ -32,6 +35,7 @@ module Store
         listing = perform Catalog.list root
         Tally(skipped = listing.skipped, label = root, items = listing.items)
 
+    (** Sums the sizes of the items listed under `root`, with a saturating total. *)
     export total root = sum (perform Catalog.list root).items
 
 fixed = handler Store::Catalog

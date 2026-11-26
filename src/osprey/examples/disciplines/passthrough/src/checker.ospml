@@ -324,7 +324,7 @@ module Tool
 
     export quoted text = "'" + (replace (text, "'", "'\\''") ?: text) + "'"
 
-    quiet (id, kind, data) = cleanupProcess 0
+    quiet (_id, _kind, _data) = cleanupProcess 0
 
 (** The checker program of [TYPES-DISCIPLINE-PROTOCOL]. *)
 module Checker
@@ -517,9 +517,9 @@ extern _Exit (code : int) -> Unit
     not the caller. *)
 main () =
     handle Arith
-        overflow op lhs rhs wrapped => wrapped
-        divideByZero op lhs => 0.0
-        remainderByZero lhs => 0
+        overflow _op _lhs _rhs wrapped => wrapped
+        divideByZero _op _lhs => 0.0
+        remainderByZero _lhs => 0
     line = input ()
     match isEmpty line
         true => Tests::run ()

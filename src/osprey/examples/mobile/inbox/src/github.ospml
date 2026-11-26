@@ -2,6 +2,7 @@ namespace mobile
 
 import bank::Json
 
+(** Reading GitHub's open issues for one repository: the rules of a repository name, the API URL, and the issue page checked into inbox items. *)
 module Github
     allowed code = (code >= 48 && code <= 57) || (code >= 65 && code <= 90) || (code >= 97 && code <= 122) || code == 45 || code == 46 || code == 95
 
@@ -11,10 +12,12 @@ module Github
 
     component source = length source > 0 && length source <= 100 && source != "." && source != ".." && componentFrom source 0
 
+    (** Whether `source` is an owner/repository name: two components of letters, digits, hyphens, underscores or dots, at most 100 characters each, neither `.` nor `..`. *)
     export validRepository source = match indexOf source "/"
-        Error why => false
+        Error _ => false
         Success slash => component (take source slash) && component (drop source ((satAdd slash 1) ))
 
+    (** The GitHub API URL of `repo`'s first 30 open issues. *)
     export url repo = "https://api.github.com/repos/${repo}/issues?state=open&per_page=30"
 
     positive doc path = (parseInt (Json::scalar doc path) ?: 0) > 0
@@ -53,15 +56,17 @@ module Github
         true => collect doc 0 (jsonLength doc "") ""
         false => Error(message = "GitHub returned more than 100 entries; this inbox accepts one bounded page.")
 
+    (** The inbox items of GitHub's issue array `source`, skipping pull requests; an error names a document that is not an array, is not JSON, holds more than 100 entries, or holds an issue without a valid id, number, title, author or comment count. *)
     export parse source = match startsWith (trimStart source) "["
         false => Error(message = "GitHub returned an unexpected document; an issue array was required.")
         true => match jsonParse source
             Error why => Error(message = "GitHub returned invalid JSON: ${why}")
             Success doc =>
                 result = parseDocument doc
-                freed = jsonFree doc ?: 0
+                _freed = jsonFree doc ?: 0
                 result
 
+    (** Why the HTTP answer `event` failed, in words: the network error, or GitHub's status and message. *)
     export responseError event =
         status = Json::getOr event "status" "0"
         transport = Json::getOr event "error" ""

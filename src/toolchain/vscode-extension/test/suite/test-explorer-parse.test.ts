@@ -22,6 +22,7 @@ import {
   type TestItemLike,
 } from "../../client/src/test-explorer-parse";
 import { coverageCounts, coverageRunArgs, parseCoverageJson } from "../../client/src/test-explorer-runs";
+import { present } from "./osprey-test-env";
 
 suite("Test Explorer parsing", () => {
   suite("TAP results", () => {
@@ -119,16 +120,18 @@ suite("Test Explorer parsing", () => {
       // The parser is name-agnostic: it cannot know whether `# SKIP inside it`
       // is a directive or part of the name, so it records BOTH readings and
       // leaves the tie-break to outcomeForLeaf, which knows the real names.
-      assert.strictEqual(results[0].description, "name with # SKIP inside it");
-      assert.strictEqual(results[0].name, "name with");
-      assert.strictEqual(results[0].skipReason, "inside it");
-      assert.strictEqual(results[0].ok, true);
+      const first = present(results[0], "the first result");
+      const second = present(results[1], "the second result");
+      assert.strictEqual(first.description, "name with # SKIP inside it");
+      assert.strictEqual(first.name, "name with");
+      assert.strictEqual(first.skipReason, "inside it");
+      assert.strictEqual(first.ok, true);
       // The genuinely skipped case: only the LAST directive is split off, so
       // the name keeps its embedded `# SKIP` verbatim.
-      assert.strictEqual(results[1].name, "name with # SKIP inside it");
-      assert.strictEqual(results[1].skipReason, "really parked");
+      assert.strictEqual(second.name, "name with # SKIP inside it");
+      assert.strictEqual(second.skipReason, "really parked");
       assert.strictEqual(
-        results[1].description,
+        second.description,
         "name with # SKIP inside it # SKIP really parked",
       );
     });
@@ -454,21 +457,23 @@ suite("Test Explorer parsing", () => {
     test("a requested file becomes a whole-file plan", () => {
       const plans = planRun([fileA]);
       assert.strictEqual(plans.length, 1);
-      assert.strictEqual(plans[0].file.id, "A");
-      assert.strictEqual(plans[0].wholeFile, true);
+      const whole = present(plans[0], "the whole-file plan");
+      assert.strictEqual(whole.file.id, "A");
+      assert.strictEqual(whole.wholeFile, true);
     });
 
     test("leaves group by file; a file request subsumes its leaves", () => {
       const leafPlans = planRun([leafA1, leafA2, leafB1]);
       assert.strictEqual(leafPlans.length, 2);
+      const leafPlan = present(leafPlans[0], "the A leaf plan");
       assert.deepStrictEqual(
-        leafPlans[0].leaves.map((l) => l.id),
+        leafPlan.leaves.map((l) => l.id),
         ["A#1", "A#2"],
       );
-      assert.strictEqual(leafPlans[0].wholeFile, false);
+      assert.strictEqual(leafPlan.wholeFile, false);
       const merged = planRun([leafA1, fileA]);
       assert.strictEqual(merged.length, 1);
-      assert.strictEqual(merged[0].wholeFile, true);
+      assert.strictEqual(present(merged[0], "the merged plan").wholeFile, true);
     });
 
     test("excluded files and leaves drop out", () => {
@@ -476,7 +481,7 @@ suite("Test Explorer parsing", () => {
       assert.deepStrictEqual(planRun([leafA1], excludedIdSet([fileA])), []);
       const plans = planRun([leafA1, leafA2], excludedIdSet([leafA2]));
       assert.deepStrictEqual(
-        plans[0].leaves.map((l) => l.id),
+        present(plans[0], "the remaining plan").leaves.map((l) => l.id),
         ["A#1"],
       );
       assert.strictEqual(excludedIdSet(undefined).size, 0);

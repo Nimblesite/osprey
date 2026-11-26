@@ -248,7 +248,7 @@ mod tests {
         let first = profile.samples.first().unwrap();
         assert!(first.on_cpu);
         assert_eq!((first.t_ns, first.thread, first.stack), (12345, 0, 0));
-        let second = profile.samples.get(1).unwrap();
+        let second = profile.samples.get(1).expect("entry 1");
         assert!(!second.on_cpu);
     }
 
@@ -257,7 +257,7 @@ mod tests {
         let profile = parse(EXAMPLE).unwrap();
         let first = profile.images.first().unwrap();
         assert_eq!((first.base, first.slide), (4_295_000_000, 12345));
-        assert_eq!(profile.images.get(1).unwrap().slide, 0);
+        assert_eq!(profile.images.get(1).expect("entry 1").slide, 0);
     }
 
     #[test]
@@ -268,7 +268,7 @@ mod tests {
             1,
         );
         let profile = parse(&text).unwrap();
-        let effect = profile.threads.get(1).unwrap();
+        let effect = profile.threads.get(1).expect("entry 1");
         assert_eq!((effect.fiber, effect.label.as_str()), (-1, "effect"));
     }
 

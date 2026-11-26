@@ -380,18 +380,59 @@ void foreign_fault_child(void) {
   (void)overflow_depth(0);
 }
 
-// [FAILURE-EXPLICIT] (#363) A fault that is not the stack's leaves the stack
-// guard installed: the overflow after it still ends by name with status 71.
-void t_stack_guard_outlives_foreign_faults(const char *self) {
-  char command[4096], seen[512] = "";
-  int length = snprintf(command, sizeof command, "'%s' --foreign-fault 2>&1; echo status=$?", self);
+// A stdout whose every write recurses until the stack is gone, so the overflow
+// happens inside stdio with stdout's lock held by the faulting thread.
+#if defined(__APPLE__)
+static int overflowing_write(void *cookie, const char *bytes, int count) {
+  (void)cookie;
+  (void)bytes;
+  return (int)overflow_depth(count);
+}
+static FILE *overflowing_stream(void) { return funopen(NULL, NULL, overflowing_write, NULL, NULL); }
+#else
+static ssize_t overflowing_write(void *cookie, const char *bytes, size_t count) {
+  (void)cookie;
+  (void)bytes;
+  return (ssize_t)overflow_depth((int64_t)count);
+}
+static FILE *overflowing_stream(void) {
+  cookie_io_functions_t io = {.read = NULL, .write = overflowing_write, .seek = NULL, .close = NULL};
+  return fopencookie(NULL, "w", io);
+}
+#endif
+
+void stdout_overflow_child(void) {
+  osp_mem_boot();
+  FILE *stream = overflowing_stream();
+  CHECK(stream != NULL);
+  stdout = stream;
+  (void)fputs("a line the stack runs out writing\n", stdout);
+  (void)fflush(stdout);
+}
+
+// The run's output: stderr and stdout merged, then the exit status.
+static void stack_guard_child_says(const char *self, const char *mode, char *seen, size_t size) {
+  char command[4096];
+  int length = snprintf(command, sizeof command, "'%s' %s 2>&1; echo status=$?", self, mode);
   CHECK(length > 0 && (size_t)length < sizeof command);
   FILE *child = popen(command, "r");
   CHECK(child != NULL);
-  size_t n = fread(seen, 1, sizeof seen - 1, child);
+  size_t n = fread(seen, 1, size - 1, child);
   seen[n] = '\0';
   CHECK(pclose(child) == 0);
-  CHECK(strstr(seen, "osprey: stack exhausted: a call went deeper than the thread's stack allows\n") != NULL);
-  CHECK(strstr(seen, "status=71\n") != NULL);
+}
+
+// [FAILURE-EXPLICIT] (#363) A fault that is not the stack's leaves the stack
+// guard installed: the overflow after it still ends by name with status 71. An
+// overflow inside a stdout write ends the same way: the guard only writes and
+// exits, never touches the stdio state the fault interrupted.
+void t_stack_guard_outlives_foreign_faults(const char *self) {
+  const char *modes[] = {"--foreign-fault", "--stdout-overflow"};
+  for (size_t i = 0; i < sizeof modes / sizeof modes[0]; i++) {
+    char seen[512] = "";
+    stack_guard_child_says(self, modes[i], seen, sizeof seen);
+    CHECK(strstr(seen, "osprey: stack exhausted: a call went deeper than the thread's stack allows\n") != NULL);
+    CHECK(strstr(seen, "status=71\n") != NULL);
+  }
 }
 #endif

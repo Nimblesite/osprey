@@ -109,6 +109,15 @@ impl Value {
         }
     }
 
+    /// What `Channel(capacity)` answers: a `Result` whose `Success` payload is
+    /// the channel made at `site` [CONCURRENCY-CHANNEL].
+    pub(super) fn created_channel(site: usize) -> Self {
+        Self {
+            result_payload: Some(Box::new(Self::channel(site))),
+            ..Self::default()
+        }
+    }
+
     pub(super) fn union(&mut self, other: Self) {
         self.union_identity(&other);
         if let Some(callable) = other.callable {

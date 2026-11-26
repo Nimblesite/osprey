@@ -14,46 +14,39 @@ type Rectangle =
 type Counter =
     count : int
 
-print "=== COMPREHENSIVE FIELD ACCESS TEST ==="
-
 // Test 1 - Basic integer fields
-print "Test 1 - Basic integer fields:"
+print "=== COMPREHENSIVE FIELD ACCESS TEST ===\nTest 1 - Basic integer fields:"
 point = Point(x = 15, y = 25)
-print "Point x: ${point.x}\nPoint y: ${point.y}\n"
 
 // Test 2 - Boolean and integer fields
-print "Test 2 - Boolean and integer fields:"
+print "Point x: ${point.x}\nPoint y: ${point.y}\n\nTest 2 - Boolean and integer fields:"
 user = User(id = 42, active = true)
-print "User ID: ${user.id}\nUser active: ${match user.active
-    true => 1
-    false => 0}\n"
 
 // Test 3 - Field access in arithmetic
-print "Test 3 - Field access in arithmetic:"
+print "User ID: ${user.id}\nUser active: ${match user.active
+    true => 1
+    false => 0}\n\nTest 3 - Field access in arithmetic:"
 rect = Rectangle(width = 10, height = 5)
 print "Rectangle width: ${rect.width}\nRectangle height: ${rect.height}"
 area = exactArithmetic (\() =>
     rect.width * rect.height)
-print "Area: ${area}\n"
 
 // Test 4 - Field access in conditionals
-print "Test 4 - Field access in conditionals:"
+print "Area: ${area}\n\nTest 4 - Field access in conditionals:"
 status = match user.active
     true => "Active User"
     false => "Inactive User"
-print "User status: ${status}\n"
 
 // Test 5 - Non-destructive updates
-print "Test 5 - Non-destructive updates:"
+print "User status: ${status}\n\nTest 5 - Non-destructive updates:"
 counter = Counter(count = 0)
 print "Original count: ${counter.count}"
 incremented = counter(count = counter.count)
 print "After update: ${incremented.count}"
 movedPoint = point(x = 100, y = 200)
-print "Updated point: (${movedPoint.x}, ${movedPoint.y})\nOriginal point unchanged: (${point.x}, ${point.y})\n"
 
 // Test 6 - Complex expressions with field access
-print "Test 6 - Complex expressions with field access:"
+print "Updated point: (${movedPoint.x}, ${movedPoint.y})\nOriginal point unchanged: (${point.x}, ${point.y})\n\nTest 6 - Complex expressions with field access:"
 calculateArea r = r.width * r.height
 perimeter = exactArithmetic (\() =>
     2 * (rect.width + rect.height))
@@ -62,9 +55,7 @@ manhattanDistance = exactArithmetic (\() =>
 calculatedArea = exactArithmetic (\() =>
     calculateArea rect)
 
-print "Rectangle perimeter: ${perimeter}\nManhattan distance from origin: ${manhattanDistance}\nCalculated area using function: ${calculatedArea}\n"
-
-print "=== COMPREHENSIVE FIELD ACCESS TEST COMPLETE ==="
+print "Rectangle perimeter: ${perimeter}\nManhattan distance from origin: ${manhattanDistance}\nCalculated area using function: ${calculatedArea}\n\n=== COMPREHENSIVE FIELD ACCESS TEST COMPLETE ==="
 
 (** Derive the same conditional label from a record field. *)
 userStatus : User -> string

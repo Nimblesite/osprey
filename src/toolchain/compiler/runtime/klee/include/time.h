@@ -11,4 +11,5 @@ struct timespec {
 };
 int clock_gettime(clockid_t clock, struct timespec *out);
 time_t time(time_t *out);
+int nanosleep(const struct timespec *span, struct timespec *left);
 #endif

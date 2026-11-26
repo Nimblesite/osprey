@@ -39,10 +39,10 @@ export function listedSources(
       new RegExp(`^\\s*${key}\\s*=\\s*\\[([^\\]]*)\\]`, "m").exec(
         project,
       )?.[1] ?? "";
-    return [...list.matchAll(/"([^"]+)"/g)].map((match) => ({
-      language,
-      path: path.resolve(directory, match[1]),
-    }));
+    return [...list.matchAll(/"([^"]+)"/g)].flatMap((match) => {
+      const quoted = match[1];
+      return quoted === undefined ? [] : [{ language, path: path.resolve(directory, quoted) }];
+    });
   });
   const entry = /^\s*entry\s*=\s*"([^"]+)"/m.exec(project)?.[1];
   if (entry) {

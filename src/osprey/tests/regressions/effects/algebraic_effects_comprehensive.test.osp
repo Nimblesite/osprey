@@ -270,13 +270,13 @@ effect Stash<T> {
     take: fn() -> T
 }
 
-fn relabel() -> string !Stash<string> = {
+fn relabel() !Stash<string> = {
     let cur = perform Stash.take()
     perform Stash.put("kept")
     cur
 }
 
-fn bumped() -> int ![Stash<int>, Arith] = {
+fn bumped() ![Stash<int>, Arith] = {
     let n = perform Stash.take()
     n + 1 
 }

@@ -115,7 +115,7 @@ fn receiver_arguments_preserve_original_channel_site_identity() {
         let arguments = [source_channel()];
         let env = CallableEnv::default();
         let [argument] = &arguments;
-        let expected = Some(Value::channel(super::expression_site(argument)));
+        let expected = Some(Value::created_channel(super::expression_site(argument)));
         assert_eq!(analyzer.value(argument, &[], &env), expected);
         let first = Analyzer::receiver_first(&receiver, &arguments);
         let second = Analyzer::receiver_first(&receiver, &arguments);

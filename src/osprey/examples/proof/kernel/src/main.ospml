@@ -7,7 +7,7 @@ namespace proof
 // the kernel's reason.
 
 report (name, outcome) = match outcome
-    Success env => print "checked: ${name}"
+    Success _ => print "checked: ${name}"
     Error message => print "rejected: ${name}: ${message}"
 
 (** M1 and M2: an export and a surface theorem go through `Checked`. *)

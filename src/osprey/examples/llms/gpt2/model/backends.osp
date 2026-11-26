@@ -8,10 +8,15 @@
 
 namespace gpt2;
 
+/// The tensor dialect GPT-2 is written in: the `Tensor` effect a model
+/// performs and its handler answers, the kernels handed over with it, and the
+/// fault policy under which the first arithmetic or backend fault stops a run.
 module Backends {
     /// The kernels a model hands its handler: an index to its element, and two
     /// elements to one.
     export type Kernel = fn(int) -> float32
+    /// Two elements to one: the step of a `zipWith`, a `reduce` or a product's
+    /// accumulation, such as Model's `addF` and `maxF`.
     export type Combine = fn(float32, float32) -> float32
 
     /// The operations a model needs: build a buffer from an index function,
@@ -37,6 +42,8 @@ module Backends {
     /// it holds x and the length n otherwise, and the smallest name wins, so
     /// the answer is the first index holding x or n when none does.
     export fn hit(v, x, i, n) = match v == x { true => i  false => n }
+    /// `indexOf`'s second step: the smaller of the least name so far and the
+    /// next, so folding `hit`'s names ends at the first index holding x.
     export fn minI(a, i) = match i < a { true => i  false => a }
 
     /// A fault ends the run: its arm answers the whole region. Arithmetic

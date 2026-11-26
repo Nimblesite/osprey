@@ -1,0 +1,14 @@
+/// A fiber waits for a value nothing sends, and the program waits for the
+/// fiber: every fiber is blocked, which the engine reports where the wait is
+/// [SYMEX-MOCK-THREADS] [CONCURRENCY-DEADLOCK].
+fn allBlocked() = {
+    use box <- andThen(Channel(1))
+    Success { value: print("started ${await(spawn recvInt(box))}") }
+}
+match allBlocked() {
+    Success { value } => value
+    Error { message } => print(message)
+}
+
+/// Reads the int that nothing sends; the annotation pins the channel's element type.
+fn recvInt(box: Channel<int>) = recv(box)

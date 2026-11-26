@@ -20,6 +20,11 @@ pub(crate) fn to_string_value(cg: &mut Codegen, v: Value) -> Result<Value> {
     }
     match v.ty {
         LType::Str => Ok(v),
+        // A fiber interpolates as its spawn number ([CONCURRENCY-SPAWN-AWAIT]).
+        LType::Ptr if v.fiber_elem.is_some() => {
+            let id = crate::fiber::fiber_id(cg, &v);
+            int_to_string(cg, id)
+        }
         LType::Ptr => crate::show::handle(cg, v),
         LType::I1 => Ok(bool_to_string(cg, &v)),
         // Every float width prints through the runtime function that finds the

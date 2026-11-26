@@ -12,6 +12,7 @@ import proof::Naturals
 (** String export literals retain every Unicode scalar by expanding into
     ordinary checked constructor applications. Implements [PROOF-EXPORT]. *)
 module StringTests
+    (** Runs the string-literal cases; the testing built-ins report the TAP lines. *)
     export run () =
         test ("the empty string literal reads as the checked UTF8 construction", \() => expect (readValue "", "((String.ofByteArray (List.utf8Encode (List.nil.{0} Char))) (((ByteArray.IsValidUTF8.intro (List.utf8Encode (List.nil.{0} Char))) (List.nil.{0} Char)) ((Eq.refl.{1} ByteArray) (List.utf8Encode (List.nil.{0} Char)))))"))
         test ("string literals preserve ASCII and supplementary Unicode code points", \() => expect (characters "A😀", "65,128512"))
@@ -24,14 +25,14 @@ module StringTests
     value text = match Export::read (literal text)
         Success items => match items
             [item] => termOf item
-            other => Error(message = "expected one theorem")
+            _ => Error(message = "expected one theorem")
         Error message => Error(message = message)
 
     termOf item = match item
         Single decl => match decl.body
             Theorem term => Success(value = term)
-            other => Error(message = "expected theorem body")
-        other => Error(message = "expected single declaration")
+            _ => Error(message = "expected theorem body")
+        _ => Error(message = "expected single declaration")
 
     readValue text = match value text
         Success term => Terms::show (term, [])
@@ -42,21 +43,21 @@ module StringTests
         Error message => message
 
     scalarList spine = match spine.spineArgs
-        [bytes, valid] => match (Terms::spine bytes).spineArgs
+        [bytes, _] => match (Terms::spine bytes).spineArgs
             [chars] => scalarValues chars
-            other => "expected encoded characters"
-        other => "expected string constructor"
+            _ => "expected encoded characters"
+        _ => "expected string constructor"
 
     scalarValues term = match (Terms::spine term).spineArgs
-        [ty] => ""
-        [ty, character, rest] => scalarHead ((Terms::spine character).spineArgs, scalarValues rest)
-        other => "expected character list"
+        [_] => ""
+        [_, character, rest] => scalarHead ((Terms::spine character).spineArgs, scalarValues rest)
+        _ => "expected character list"
 
     scalarHead (args, rest) = match args
         [term] => match term
             NatLit scalar => "${Naturals::show scalar}${separator rest}"
-            other => "expected scalar literal"
-        other => "expected character constructor"
+            _ => "expected scalar literal"
+        _ => "expected character constructor"
 
     separator rest = match rest == ""
         true => ""

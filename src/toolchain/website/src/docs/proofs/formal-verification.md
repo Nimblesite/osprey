@@ -145,7 +145,7 @@ These proofs follow two standard textbooks: Julius O. Smith's [Spectral Audio Si
 
 {{ capture("/assets/images/native/prism-spectral.webp", "Prism track patch: a phase operator and additive partials feed Spectral processor 2, set to morph, then an FDN reverb", "Prism's spectral processor, built on the FFT whose recombination is proved.", 3072, 1780) }}
 
-One limit matters. The proofs treat numbers as exact, but computers round numbers very slightly. Measuring how much that rounding can matter is separate work that is still open. [The full list of audio proofs](/spec/synthesis/) gives the textbook source for each proof, what it assumes and what it leaves out.
+One limit matters. The proofs treat numbers as exact, but computers round numbers very slightly. Measuring how much that rounding can matter is separate work that is still open. [The full list of audio proofs](/spec/synthdsp/) gives the textbook source for each proof, what it assumes and what it leaves out.
 
 ## Where it is going: the whole compiler and runtime
 

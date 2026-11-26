@@ -329,6 +329,16 @@ pub enum Expr {
 }
 
 impl Expr {
+    /// Build `function(arguments)`: a call with no named arguments.
+    #[must_use]
+    pub fn call(function: Self, arguments: Vec<Self>) -> Self {
+        Self::Call {
+            function: Box::new(function),
+            arguments,
+            named_arguments: Vec::new(),
+        }
+    }
+
     /// Build `-operand`, folding a negated numeric **literal** into the literal
     /// itself so it keeps the plain `int`/`float` type.
     ///

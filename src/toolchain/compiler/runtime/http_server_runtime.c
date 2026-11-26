@@ -5,8 +5,6 @@
 
 // Native listener and callback bridge [HTTP-SERVER].
 
-extern int64_t fiber_await(int64_t fiber_id);
-extern int64_t fiber_spawn_env(int64_t (*fn)(void *), void *environment);
 
 // Managed closures must be direct data roots: malloc'd server records are
 // outside the tracing heap. ARC owns one reference until listener teardown.
@@ -135,6 +133,7 @@ static void destroy_server(HttpServer *server) {
   void *closure = handler_closures[server->id];
   handler_closures[server->id] = NULL;
   osp_release(closure);
+  fiber_release(server->server_fiber);
   free(server->address);
   pthread_mutex_destroy(&server->mutex);
   free(server);
@@ -193,7 +192,7 @@ static HttpServer *allocate_server(int64_t id, int port, const char *address) {
   server->id = id;
   server->port = port;
   server->socket_fd = -1;
-  server->server_fiber_id = -1;
+  server->server_fiber = NULL;
   return server;
 }
 
@@ -266,12 +265,12 @@ static void mark_spawn_failed(HttpServer *server) {
 }
 
 static int spawn_server_loop(HttpServer *server) {
-  int64_t fiber_id = fiber_spawn_env(server_loop_fiber, server);
-  if (fiber_id < 0) {
+  Fiber *fiber = fiber_spawn_env(server_loop_fiber, server);
+  if (!fiber) {
     return -6;
   }
   pthread_mutex_lock(&server->mutex);
-  server->server_fiber_id = fiber_id;
+  server->server_fiber = fiber;
   pthread_mutex_unlock(&server->mutex);
   return 0;
 }
@@ -379,15 +378,15 @@ static void close_server_listener(HttpServer *server) {
   }
 }
 
-static int64_t request_server_stop(HttpServer *server, bool *self_stop) {
+static Fiber *request_server_stop(HttpServer *server, bool *self_stop) {
   pthread_mutex_lock(&server->mutex);
   server->is_listening = false;
   *self_stop = stop_is_from_server(server);
   server->destroy_on_exit = *self_stop;
-  int64_t fiber_id = server->server_fiber_id;
+  Fiber *fiber = server->server_fiber;
   shutdown_server_sockets(server);
   pthread_mutex_unlock(&server->mutex);
-  return fiber_id;
+  return fiber;
 }
 
 int64_t http_stop_server(int64_t server_id) {
@@ -396,11 +395,11 @@ int64_t http_stop_server(int64_t server_id) {
     return http_valid_server_id(server_id) ? 0 : -1;
   }
   bool self_stop = false;
-  int64_t fiber_id = request_server_stop(server, &self_stop);
+  Fiber *fiber = request_server_stop(server, &self_stop);
   if (self_stop) {
     return 0;
   }
-  if (fiber_id > 0 && fiber_await(fiber_id) < 0) {
+  if (fiber && fiber_join(fiber) < 0) {
     return -2;
   }
   close_server_listener(server);

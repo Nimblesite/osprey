@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% if title and page.url != "/" %}{{ title }} · {% endif %}{{ site.title }}</title>
+  <meta name="description" content="{{ summary or site.tagline }}">
+  <link rel="stylesheet" href="/assets/site.css">
+</head>
+<body>
+  <header class="masthead">
+    <nav class="nav" aria-label="Main">
+      <a class="brand" href="/"><img src="/media/logo.svg" alt="" width="28" height="28">{{ site.title }}</a>
+      <ul class="links">
+        {%- for item in site.nav %}
+        <li><a href="{{ item.url }}"{% if page.url == item.url or (item.url != "/" and page.url.startsWith(item.url)) %} aria-current="page"{% endif %}>{{ item.label }}</a></li>
+        {%- endfor %}
+      </ul>
+    </nav>
+  </header>
+  <main id="main">
+    {% block main %}{{ content | safe }}{% endblock %}
+  </main>
+  <footer class="footer">
+    <p>© {{ site.title }} · Content edited in Osprey Studio, versioned in git.</p>
+  </footer>
+</body>
+</html>

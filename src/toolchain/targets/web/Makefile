@@ -7,7 +7,7 @@ else
 override ROOT := .
 include Makefile
 
-.PHONY: bank bank-build
+.PHONY: bank bank-build cms
 
 ## bank: Rebuild and run the Talon Bank showcase for manual testing: two processes, the web client
 ##       (static files on http://127.0.0.1:18791) and the server it calls (JSON API on :18790).
@@ -25,6 +25,13 @@ bank: _bank-web
 	    open http://127.0.0.1:18791; \
 	  fi) & \
 	  ./$(BIN) src/osprey/examples/talon/backend --run
+
+## cms: Build and run the Git CMS (src/osprey/examples/cms) on a fresh throwaway site with a bare
+##      "published" remote: the Osprey Native editor at http://127.0.0.1:4397 (Ctrl-C to stop).
+cms: export PATH := $(WASM_PATH_PREFIX)$(PATH)
+cms: build _runtime_wasm $(CMS_E2E_NODE_DEPS)
+	@(sleep 20; command -v open >/dev/null && open http://127.0.0.1:4397) &
+	OSPREY="$(CURDIR)/$(BIN)" node src/osprey/examples/cms/tests/serve.mjs
 
 ## bank-build: Rebuild Talon Bank's web client (static files in src/toolchain/hosts/web/build/talon).
 ##             Requires Node and a WASI sysroot.

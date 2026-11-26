@@ -6,40 +6,136 @@ namespace synth
 
 (** Physical and modal synthesis mathematics [SYNTH-ADVANCED-PHYSICAL]. *)
 module PhysicalMath
-    (** Per-step gain giving a 60 dB decay after `decay` seconds, applied every `step` samples. *)
+    (** Per-step gain giving a 60 dB decay after `decay` seconds, applied every `step` samples.
+    # Examples
+    ```osprey
+    print "${PhysicalMath::decayGain (1.0, 48000, 48000.0)}"
+    ```
+    ```output
+    0.001
+    ```
+    *)
     export decayGain (decay, step, sampleRate) = pow (10.0, floatDiv ((-3.0) * step, decay * sampleRate))
 
-    (** Radian frequency per sample. *)
+    (** Radian frequency per sample.
+    # Examples
+    ```osprey
+    print "${PhysicalMath::omega (1000.0, 48000.0)}"
+    ```
+    ```output
+    0.1308996938995747
+    ```
+    *)
     export omega (frequency, sampleRate) = floatDiv (6.283185307179586 * frequency, sampleRate)
 
-    (** Coupled-form (Gold–Rader) resonator: the state rotates by `angle` and shrinks by `radius` each sample, so retuning or re-damping can never increase stored energy. Output is the imaginary part. *)
+    (** Coupled-form (Gold–Rader) resonator: the state rotates by `angle` and shrinks by `radius` each sample, so retuning or re-damping can never increase stored energy. Output is the imaginary part.
+    # Examples
+    ```osprey
+    print "${PhysicalMath::coupledCosine (0.5, 0.0)}"
+    ```
+    ```output
+    0.5
+    ```
+    *)
     export coupledCosine (radius, angle) = radius * cos angle
 
-    (** Sine component of the modal rotation. *)
+    (** Sine component of the modal rotation.
+    # Examples
+    ```osprey
+    print "${PhysicalMath::coupledSine (0.5, 0.0)}"
+    ```
+    ```output
+    0.0
+    ```
+    *)
     export coupledSine (radius, angle) = radius * sin angle
 
-    (** Real component after one coupled-mode update. *)
+    (** Real component after one coupled-mode update.
+    # Examples
+    ```osprey
+    print "${PhysicalMath::coupledReal (1.0, 0.0, 0.5, 0.5, 0.25)}"
+    ```
+    ```output
+    0.75
+    ```
+    *)
     export coupledReal (real: float, imag, cosine, sine, drive) = cosine * real - sine * imag + drive
 
-    (** Imaginary component after one coupled-mode update. *)
+    (** Imaginary component after one coupled-mode update.
+    # Examples
+    ```osprey
+    print "${PhysicalMath::coupledImag (1.0, 0.0, 0.5, 0.5)}"
+    ```
+    ```output
+    0.5
+    ```
+    *)
     export coupledImag (real: float, imag, cosine, sine) = sine * real + cosine * imag
 
-    (** Input scale for about `gain` at the resonant peak of the coupled form (a band-pass). *)
+    (** Input scale for about `gain` at the resonant peak of the coupled form (a band-pass).
+    # Examples
+    ```osprey
+    print "${PhysicalMath::peakInput (0.9, 0.1, 1.0)}"
+    ```
+    ```output
+    0.23839328462755927
+    ```
+    *)
     export peakInput (radius, angle, gain) = floatDiv (gain * (1.0 - radius) * pow (1.0 - 2.0 * radius * cos (2.0 * angle) + radius * radius, 0.5), radius * sin angle)
 
-    (** Brightness 1 is a transparent loss filter; brightness 0 is the two-point average. *)
+    (** Brightness 1 is a transparent loss filter; brightness 0 is the two-point average.
+    # Examples
+    ```osprey
+    print "${PhysicalMath::smoothing 1.0} ${PhysicalMath::smoothing 0.0}"
+    ```
+    ```output
+    0.0 0.5
+    ```
+    *)
     export smoothing brightness = 0.5 * (1.0 - brightness)
 
-    (** Frequency-dependent loop loss: `gain * ((1 - s) x[n] + s x[n-1])`, unity-or-lower gain. *)
+    (** Frequency-dependent loop loss: `gain * ((1 - s) x[n] + s x[n-1])`, unity-or-lower gain.
+    # Examples
+    ```osprey
+    print "${PhysicalMath::loss (0.5, 0.25, 1.0, 0.5)}"
+    ```
+    ```output
+    0.375
+    ```
+    *)
     export loss (current, previous, gain, s) = gain * ((1.0 - s) * current + s * previous)
 
-    (** Low-frequency phase delay of the first-order allpass `(a + z⁻¹) / (1 + a z⁻¹)`. *)
+    (** Low-frequency phase delay of the first-order allpass `(a + z⁻¹) / (1 + a z⁻¹)`.
+    # Examples
+    ```osprey
+    print "${PhysicalMath::allpassDelay 0.0} ${PhysicalMath::allpassDelay 0.5}"
+    ```
+    ```output
+    1.0 0.3333333333333333
+    ```
+    *)
     export allpassDelay a = floatDiv (1.0 - a, 1.0 + a)
 
-    (** Delay-line read length that tunes the loop, after subtracting the loss and allpass delay. *)
+    (** Delay-line read length that tunes the loop, after subtracting the loss and allpass delay.
+    # Examples
+    ```osprey
+    print "${PhysicalMath::loopDelay (100.0, 48000.0, 0.5, 0.5)}"
+    ```
+    ```output
+    479.1666666666667
+    ```
+    *)
     export loopDelay (frequency, sampleRate, s, a) = floatDiv (sampleRate, frequency) - s - allpassDelay a
 
-    (** Modal frequency ratios for the first eight modes of idealised bodies. *)
+    (** Modal frequency ratios for the first eight modes of idealised bodies.
+    # Examples
+    ```osprey
+    print "${PhysicalMath::harmonicRatio 0} ${PhysicalMath::harmonicRatio 3}"
+    ```
+    ```output
+    1.0 4.0
+    ```
+    *)
     export harmonicRatio index = index + 1.0
 
     (** Select the ratio for one of the eight modal bands. *)
@@ -59,36 +155,116 @@ module PhysicalMath
                                 true => seventh
                                 false => eighth
 
-    (** Relative frequency of a bar mode by index. *)
+    (** Relative frequency of a bar mode by index.
+    # Examples
+    ```osprey
+    print "${PhysicalMath::barRatio 0.0} ${PhysicalMath::barRatio 1.0}"
+    ```
+    ```output
+    1.0 2.756
+    ```
+    *)
     export barRatio index = modalRatio (index, 1.0, 2.756, 5.404, 8.933, 13.345, 18.638, 24.814, 31.871)
 
-    (** Relative frequency of a membrane mode by index. *)
+    (** Relative frequency of a membrane mode by index.
+    # Examples
+    ```osprey
+    print "${PhysicalMath::membraneRatio 2.0}"
+    ```
+    ```output
+    2.136
+    ```
+    *)
     export membraneRatio index = modalRatio (index, 1.0, 1.594, 2.136, 2.296, 2.653, 2.918, 3.156, 3.501)
 
-    (** Relative frequency of a bell mode by index. *)
+    (** Relative frequency of a bell mode by index.
+    # Examples
+    ```osprey
+    print "${PhysicalMath::bellRatio 0.0} ${PhysicalMath::bellRatio 4.0}"
+    ```
+    ```output
+    0.5 2.0
+    ```
+    *)
     export bellRatio index = modalRatio (index, 0.5, 1.0, 1.183, 1.506, 2.0, 2.514, 2.662, 3.011)
 
-    (** Ideal-string strike/pickup weighting of mode `index`; an approximation for other bodies. *)
+    (** Ideal-string strike/pickup weighting of mode `index`; an approximation for other bodies.
+    # Examples
+    ```osprey
+    print "${PhysicalMath::positionWeight (0, 0.5)} ${PhysicalMath::positionWeight (2, 0.5)}"
+    ```
+    ```output
+    1.0 -1.0
+    ```
+    *)
     export positionWeight (index, position) = sin (3.141592653589793 * (index + 1.0) * position)
 
-    (** Higher modes decay faster as brightness falls: `decay / ratio ^ (1 - brightness)`. *)
+    (** Higher modes decay faster as brightness falls: `decay / ratio ^ (1 - brightness)`.
+    # Examples
+    ```osprey
+    print "${PhysicalMath::modeDecay (2.0, 2.0, 1.0)} ${PhysicalMath::modeDecay (2.0, 2.0, 0.0)}"
+    ```
+    ```output
+    2.0 1.0
+    ```
+    *)
     export modeDecay (decay, ratio, brightness) = floatDiv (decay, pow (ratio, 1.0 - brightness))
 
-    (** Bipolar white noise from a Park–Miller state. *)
+    (** Bipolar white noise from a Park–Miller state.
+    # Examples
+    ```osprey
+    print "${PhysicalMath::bipolar 0} ${PhysicalMath::bipolar 2147483647}"
+    ```
+    ```output
+    -1.0 1.0
+    ```
+    *)
     export bipolar seed = 2.0 * seed / 2147483647.0 - 1.0
 
-    (** One-pole colouring: colour 0 is white, colour 1 is the darkest supported setting. *)
+    (** One-pole colouring: colour 0 is white, colour 1 is the darkest supported setting.
+    # Examples
+    ```osprey
+    print "${PhysicalMath::coloured (0.5, 1.0, 0.0)} ${PhysicalMath::coloured (0.5, 1.0, 1.0)}"
+    ```
+    ```output
+    1.0 0.505
+    ```
+    *)
     export coloured (smoothed, white, colour) = smoothed + (1.0 - 0.99 * colour) * (white - smoothed)
 
-    (** Linear burst envelope over `duration` samples. *)
+    (** Linear burst envelope over `duration` samples.
+    # Examples
+    ```osprey
+    print "${PhysicalMath::burst (1.0, 0.0, 4.0)} ${PhysicalMath::burst (1.0, 4.0, 4.0)}"
+    ```
+    ```output
+    1.0 0.0
+    ```
+    *)
     export burst (strength, age, duration) = match age >= duration
         true => 0.0
         false => strength * (1.0 - floatDiv (age, duration))
 
-    (** One-pole smoothing coefficient: 63% of a step after `time` seconds. *)
+    (** One-pole smoothing coefficient: 63% of a step after `time` seconds.
+    # Examples
+    ```osprey
+    print "${PhysicalMath::smoothingCoefficient (1.0, 1.0)}"
+    ```
+    ```output
+    0.6321205588285577
+    ```
+    *)
     export smoothingCoefficient (time, sampleRate) = 1.0 - exp (floatDiv (-1.0, time * sampleRate))
 
-    (** Linear slew: move toward `target` by at most `1 / (time · rate)` per sample (full scale in `time`). *)
+    (** Linear slew: move toward `target` by at most `1 / (time · rate)` per sample (full scale in `time`).
+    # Examples
+    ```osprey
+    print "${PhysicalMath::slewed (0.0, 1.0, 1.0, 10.0)} ${PhysicalMath::slewed (0.95, 1.0, 1.0, 10.0)}"
+    ```
+    ```output
+    0.1 1.0
+    ```
+    *)
     export slewed (value, target, time, sampleRate) =
         limit = floatDiv (1.0, time * sampleRate)
         step = target - value
@@ -98,7 +274,15 @@ module PhysicalMath
                 true => value - limit
                 false => target
 
-    (** STK bow friction table `(|Δv · slope| + 0.75)^-4`, clipped to `[0.01, 0.98]`, so the bow injection never exceeds the velocity difference. *)
+    (** STK bow friction table `(|Δv · slope| + 0.75)^-4`, clipped to `[0.01, 0.98]`, so the bow injection never exceeds the velocity difference.
+    # Examples
+    ```osprey
+    print "${PhysicalMath::bowTable (0.0, 5.0)} ${PhysicalMath::bowTable (1.0, 5.0)}"
+    ```
+    ```output
+    0.98 0.01
+    ```
+    *)
     export bowTable (difference, slope) =
         raw = pow (abs (difference * slope) + 0.75, -4.0)
         match raw > 0.98
@@ -107,19 +291,59 @@ module PhysicalMath
                 true => 0.01
                 false => raw
 
-    (** STK's pressure-to-slope mapping: pressure 0 (light, slope 5) to 1 (heavy, slope 1). *)
+    (** STK's pressure-to-slope mapping: pressure 0 (light, slope 5) to 1 (heavy, slope 1).
+    # Examples
+    ```osprey
+    print "${PhysicalMath::bowSlope 0.0} ${PhysicalMath::bowSlope 1.0}"
+    ```
+    ```output
+    5.0 1.0
+    ```
+    *)
     export bowSlope pressure = 5.0 - 4.0 * pressure
 
-    (** Frequency-independent loss σ for a 60 dB decay in `decay` seconds (per-sample units). *)
+    (** Frequency-independent loss σ for a 60 dB decay in `decay` seconds (per-sample units).
+    # Examples
+    ```osprey
+    print "${PhysicalMath::meshLoss (1.0, 1.0)}"
+    ```
+    ```output
+    6.907755278982137
+    ```
+    *)
     export meshLoss (decay, sampleRate) = floatDiv (6.907755278982137, decay * sampleRate)
 
-    (** Damped 2-D wave-equation update `(1+σ) u⁺ = 2u − (1−σ) u⁻ + λ² ∇²u`; stable for λ ≤ 1/√2, σ ≥ 0. *)
+    (** Damped 2-D wave-equation update `(1+σ) u⁺ = 2u − (1−σ) u⁻ + λ² ∇²u`; stable for λ ≤ 1/√2, σ ≥ 0.
+    # Examples
+    ```osprey
+    print "${PhysicalMath::meshStep (0.5, 0.25, 0.5, 0.5, 0.0)}"
+    ```
+    ```output
+    0.875
+    ```
+    *)
     export meshStep (current, previous, laplacian, courant, damping) = floatDiv (2.0 * current - (1.0 - damping) * previous + courant * courant * laplacian, 1.0 + damping)
 
-    (** Lowest mode of a fixed-edge rectangular mesh of `width × height` interior points. *)
+    (** Lowest mode of a fixed-edge rectangular mesh of `width × height` interior points.
+    # Examples
+    ```osprey
+    print "${PhysicalMath::meshFundamental (3, 3, 0.5, 48000.0)}"
+    ```
+    ```output
+    4242.640687119286
+    ```
+    *)
     export meshFundamental (width, height, courant, sampleRate) = courant * sampleRate / 2.0 * pow (floatDiv (1.0, (width + 1.0) * (width + 1.0)) + floatDiv (1.0, (height + 1.0) * (height + 1.0)), 0.5)
 
-    (** Denormal policy: feedback state below 1e-30 (about −600 dBFS) is flushed to exactly zero, so decaying loops reach true silence instead of lingering in slow subnormal arithmetic. *)
+    (** Denormal policy: feedback state below 1e-30 (about −600 dBFS) is flushed to exactly zero, so decaying loops reach true silence instead of lingering in slow subnormal arithmetic.
+    # Examples
+    ```osprey
+    print "${PhysicalMath::flushed 0.0000000000000000000000000000005} ${PhysicalMath::flushed 0.5}"
+    ```
+    ```output
+    0.0 0.5
+    ```
+    *)
     export flushed value = match abs value < 0.000000000000000000000000000001
         true => 0.0
         false => value

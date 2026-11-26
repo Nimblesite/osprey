@@ -56,7 +56,7 @@ module MembershipTests {
     fn elevateCode(world, org, target, proofA, proofB) =
         Fixture::code(elevate(world, org, target, proofA, proofB))
 
-    fn aliceAndErin(world, org, target) = {
+    fn aliceAndErin(_world, org, target) = {
         let statement = Governance::custodianStatement(org, target)
         [Fixture::verified("p-alice", "m-alice", statement), Fixture::verified("p-erin", "m-erin", statement)]
     }
@@ -197,6 +197,8 @@ module MembershipTests {
         ])
     }
 
+    /// The membership suite: enrollment, the first custodian, the custodian
+    /// quorum, revocation guards, protected members, rejoin and suspension.
     export fn run() = {
         test("governance membership: enrollment", organizationEnrollment)
         test("governance membership: first custodian recorded", firstCustodianRecorded)

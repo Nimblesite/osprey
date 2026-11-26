@@ -30,6 +30,19 @@ static inline void *osp_thread_guarded(void *start) {
   return begin.body(begin.arg);
 }
 
+#if defined(__wasi__) && !defined(_REENTRANT)
+// Single-threaded WASI has no threads (wasi-sdk makes pthread_create a compile
+// error there), so every start is refused, as its libc stub refuses one at run
+// time: callers report ENOTSUP as a failed spawn [CONCURRENCY-WASM].
+static inline int osp_thread_start(pthread_t *thread, void *(*body)(void *),
+                                   void *arg, bool detached) {
+  (void)thread;
+  (void)body;
+  (void)arg;
+  (void)detached;
+  return ENOTSUP;
+}
+#else
 // Starts `body(arg)` on a thread with that stack, detached when asked.
 // Answers 0 or the pthread error.
 static inline int osp_thread_start(pthread_t *thread, void *(*body)(void *),
@@ -58,5 +71,6 @@ static inline int osp_thread_start(pthread_t *thread, void *(*body)(void *),
   }
   return rc;
 }
+#endif
 
 #endif

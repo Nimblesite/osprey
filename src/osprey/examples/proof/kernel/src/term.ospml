@@ -14,12 +14,12 @@ type Spine =
 (** Shifting, substitution, universe instantiation, structural equality and
     printing of terms. *)
 module Terms
-    (** `head` applied to `args`, first argument first. *)
     (** `next` applied to the value, or the error passed through. *)
     export upon (outcome, next) = match outcome
         Success value => next value
         Error message => Error(message = message)
 
+    (** `head` applied to `args`, first argument first. *)
     export apps (head, args) = foldList (args, head, \(applied, arg) => App applied arg)
 
     (** The variables of `count` binders, outermost first, seen from under
@@ -38,13 +38,13 @@ module Terms
 
     (** Whether the constant `name` occurs anywhere in `term`. *)
     export occurs (term, name) = match term
-        Const found levels => found == name
+        Const found _ => found == name
         App head arg => occurs (head, name) || occurs (arg, name)
-        Lam x domain body => occurs (domain, name) || occurs (body, name)
-        Pi x domain body => occurs (domain, name) || occurs (body, name)
-        Proj family index target => family == name || occurs (target, name)
-        Let x ty value body => occurs (ty, name) || occurs (value, name) || occurs (body, name)
-        other => false
+        Lam _ domain body => occurs (domain, name) || occurs (body, name)
+        Pi _ domain body => occurs (domain, name) || occurs (body, name)
+        Proj family _ target => family == name || occurs (target, name)
+        Let _ ty value body => occurs (ty, name) || occurs (value, name) || occurs (body, name)
+        _ => false
 
     (** Every constant name `term` mentions, in traversal order and with
         repetitions: a projection names its family, and a natural literal
@@ -52,14 +52,14 @@ module Terms
     export constants (term) = symbols (term, [])
 
     symbols (term, found) = match term
-        Const name levels => listAppend (found, name)
+        Const name _ => listAppend (found, name)
         App head arg => symbols (arg, symbols (head, found))
-        Lam x domain body => symbols (body, symbols (domain, found))
-        Pi x domain body => symbols (body, symbols (domain, found))
-        Proj family index target => symbols (target, listAppend (found, family))
-        Let x ty value body => symbols (body, symbols (value, symbols (ty, found)))
-        NatLit value => listAppend (listAppend (listAppend (found, "Nat"), "Nat.zero"), "Nat.succ")
-        other => found
+        Lam _ domain body => symbols (body, symbols (domain, found))
+        Pi _ domain body => symbols (body, symbols (domain, found))
+        Proj family _ target => symbols (target, listAppend (found, family))
+        Let _ ty value body => symbols (body, symbols (value, symbols (ty, found)))
+        NatLit _ => listAppend (listAppend (listAppend (found, "Nat"), "Nat.zero"), "Nat.succ")
+        _ => found
 
     (** The first `count` of `items`, polymorphic across term and family lists. *)
     export prefix (items, count) = match count <= 0
@@ -75,7 +75,7 @@ module Terms
 
     suffixed (items, count) = match items
         [] => []
-        [first, ...rest] => suffix (rest, satSub count 1)
+        [_, ...rest] => suffix (rest, satSub count 1)
 
     (** Whether two lists agree position by position under `same`. *)
     equalBy (same, left, right) = match left
@@ -140,7 +140,7 @@ module Terms
     export instantiateMany (body, values) = match values
         [] => body
         [single] => instantiate (body, single)
-        many => match mentioned (body, 0, true)
+        _ => match mentioned (body, 0, true)
             true => substitutedMany (body, 0, values)
             false => body
 
@@ -185,13 +185,13 @@ module Terms
     (** Whether every universe parameter in `term` is one of `params`. *)
     export declared (term, params) = match term
         Sort level => Levels::declared (level, params)
-        Const name levels => foldList (levels, true, \(ok, level) => ok && Levels::declared (level, params))
+        Const _ levels => foldList (levels, true, \(ok, level) => ok && Levels::declared (level, params))
         App head arg => declared (head, params) && declared (arg, params)
-        Lam name domain body => declared (domain, params) && declared (body, params)
-        Pi name domain body => declared (domain, params) && declared (body, params)
-        Proj family index target => declared (target, params)
-        Let name ty value body => declared (ty, params) && declared (value, params) && declared (body, params)
-        other => true
+        Lam _ domain body => declared (domain, params) && declared (body, params)
+        Pi _ domain body => declared (domain, params) && declared (body, params)
+        Proj _ _ target => declared (target, params)
+        Let _ ty value body => declared (ty, params) && declared (value, params) && declared (body, params)
+        _ => true
 
     (** Whether `BVar index` occurs free in `term`. *)
     export mentions (term, index) = mentioned (term, index, false)
@@ -199,11 +199,11 @@ module Terms
     mentioned (term, index, above) = match term
         BVar found => found == index || (above && found > index)
         App head arg => mentioned (head, index, above) || mentioned (arg, index, above)
-        Lam name domain body => mentioned (domain, index, above) || mentioned (body, satAdd index 1, above)
-        Pi name domain body => mentioned (domain, index, above) || mentioned (body, satAdd index 1, above)
-        Proj family field target => mentioned (target, index, above)
-        Let name ty value body => mentioned (ty, index, above) || mentioned (value, index, above) || mentioned (body, satAdd index 1, above)
-        other => false
+        Lam _ domain body => mentioned (domain, index, above) || mentioned (body, satAdd index 1, above)
+        Pi _ domain body => mentioned (domain, index, above) || mentioned (body, satAdd index 1, above)
+        Proj _ _ target => mentioned (target, index, above)
+        Let _ ty value body => mentioned (ty, index, above) || mentioned (value, index, above) || mentioned (body, satAdd index 1, above)
+        _ => false
 
     (** Print with the binder names in scope, innermost first. A constant
         shows its universe arguments as `name.{u, v}`. *)
@@ -245,47 +245,47 @@ module Terms
         BVar i => equalVar (i, right)
         Const a la => equalConst (a, la, right)
         App f a => equalApp (f, a, right)
-        Lam x a f => equalLam (a, f, right)
-        Pi x a f => equalPi (a, f, right)
+        Lam _ a f => equalLam (a, f, right)
+        Pi _ a f => equalPi (a, f, right)
         Proj family index target => equalProj (family, index, target, right)
         NatLit value => equalNatural (value, right)
-        Let x t v b => equalLet (t, v, b, right)
+        Let _ t v b => equalLet (t, v, b, right)
 
     equalSort (u, right) = match right
         Sort v => Levels::equal u v
-        other => false
+        _ => false
 
     equalVar (i, right) = match right
         BVar j => i == j
-        other => false
+        _ => false
 
     equalConst (a, la, right) = match right
         Const b lb => a == b && equalLevels (la, lb)
-        other => false
+        _ => false
 
     equalApp (f, a, right) = match right
         App g b => equal (f, g) && equal (a, b)
-        other => false
+        _ => false
 
     equalLam (a, f, right) = match right
-        Lam y b g => equal (a, b) && equal (f, g)
-        other => false
+        Lam _ b g => equal (a, b) && equal (f, g)
+        _ => false
 
     equalPi (a, f, right) = match right
-        Pi y b g => equal (a, b) && equal (f, g)
-        other => false
+        Pi _ b g => equal (a, b) && equal (f, g)
+        _ => false
 
     equalLet (t, v, b, right) = match right
-        Let y t2 v2 b2 => equal (t, t2) && equal (v, v2) && equal (b, b2)
-        other => false
+        Let _ t2 v2 b2 => equal (t, t2) && equal (v, v2) && equal (b, b2)
+        _ => false
 
     (** Whether two universe argument lists agree position by position. *)
     export equalLevels (left, right) = equalBy (\(a, b) => Levels::equal a b, left, right)
 
     equalProj (family, index, target, right) = match right
         Proj other field value => family == other && index == field && equal (target, value)
-        other => false
+        _ => false
 
     equalNatural (value, right) = match right
         NatLit other => Naturals::equal (value, other)
-        other => false
+        _ => false

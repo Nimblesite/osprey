@@ -3,7 +3,8 @@
 // lockup and accents so the page belongs in any VS Code colour theme.
 
 export const WORKSPACE_STYLES = `
-#osprey-runtime-status:not([hidden]) { position: fixed; bottom: 36px; left: 16px; z-index: 100; padding: 8px 12px; border: 1px solid var(--osp-border); border-radius: 4px; color: var(--osp-text); background: var(--osp-surface); }
+#osprey-runtime-status:not([hidden]) { position: fixed; bottom: 36px; left: 16px; z-index: 100; padding: 8px 12px; border: 1px solid var(--osp-border); border-radius: 4px; color: var(--osp-text); background: var(--osp-surface); opacity: 0; animation: osp-shown 0s 250ms forwards; }
+@keyframes osp-shown { to { opacity: 1; } }
 #osprey-root[aria-busy="true"] canvas { pointer-events: none; }
 :root {
   color-scheme: light dark;
@@ -48,6 +49,15 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .osp-editor-feedback:empty { display: none; }
 .osp-editor-inline .osp-editor-label, .osp-editor-inline .osp-editor-mirror { display: none; }
 .osp-editor-inline textarea { color: var(--osp-text); resize: none; padding: 12px 0; border: 0; box-shadow: none; width: 100%; background: transparent; }
+/* A compact editor is as tall as its text, not a document page. */
+.osp-editor-inline .osp-editor-surface, .osp-editor-inline textarea { min-height: 0; }
+.osp-editor-inline textarea { field-sizing: content; }
+/* Writing in place shows the caret, not a box: a compact editor draws no focus outline. */
+.osp-editor-inline textarea:focus, .osp-editor-inline textarea:focus-visible { outline: none; box-shadow: none; }
+/* A document editor in a frame sized to the window fills it; the frame owns the height, so no grip. */
+.osp-framed[style*="100dvh"] > .osp-editor:not(.osp-editor-inline), .osp-framed[style*="100dvh"] > .osp-editor:not(.osp-editor-inline) > label { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.osp-framed[style*="100dvh"] > .osp-editor:not(.osp-editor-inline) .osp-editor-surface { flex: 1; min-height: 0; }
+.osp-framed[style*="100dvh"] > .osp-editor:not(.osp-editor-inline) textarea { height: 100%; resize: none; }
 .osp-editor-inline textarea::placeholder { font-style: italic; color: var(--osp-muted); }
 .osp-editor-feedback li { margin-top: 8px; }
 .osp-board { position: relative; width: 100%; height: min(70vh, 900px); min-height: 320px; overflow: hidden; background: var(--osp-board, #202723); }
@@ -71,7 +81,10 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .osp-framed[style*="--osp-frame-symbol-size:"] :is(.osp-symbol, .codicon):not(.osp-icon *) { font-size: var(--osp-frame-symbol-size) !important; }
 .osp-framed[style*="--osp-frame-button-padding:"] .osp-button { padding: var(--osp-frame-button-padding); width: 100%; }
 .osp-axis-horizontal > .osp-framed[data-frame-width="fill"] { flex: 1; min-width: 0; }
+/* A growing frame sized to the window still shares a row's width; its height stays the window's. */
+.osp-axis-horizontal > .osp-framed[data-frame-grow="true"][style*="100dvh"] { flex: 1 1 0 !important; }
 .osp-framed[style*="--osp-frame-row-padding:"] .osp-row { padding: var(--osp-frame-row-padding); border: var(--osp-frame-row-border); border-radius: var(--osp-frame-row-radius); background: transparent; box-shadow: none; }
+.osp-framed[style*="--osp-frame-row-padding:"] .osp-row:hover { background: color-mix(in srgb, var(--osp-accent) 7%, transparent); }
 .osp-framed[style*="--osp-frame-row-padding:"] .osp-row.osp-selected { background: var(--osp-brand-selection); }
 .osp-framed[style*="--osp-frame-row-padding:"] .osp-rows { gap: var(--osp-stack-gap, 6px); }
 .osp-framed[style*="--osp-frame-line-height:"] .osp-text { line-height: var(--osp-frame-line-height) !important; }
@@ -103,6 +116,8 @@ button, input, textarea, select { font: inherit; color: inherit; }
 button { cursor: pointer; }
 .osp-button-filled { background: var(--osp-brand-accent); color: var(--osp-brand-canvas); border-radius: 5px; }
 button:disabled { cursor: default; opacity: .48; }
+button[data-paused]:disabled { opacity: 1; animation: osp-paused 0s 250ms forwards; }
+@keyframes osp-paused { to { opacity: .48; } }
 :focus-visible { outline: 2px solid var(--osp-accent); outline-offset: 2px; }
 .osp-shell { height: 100vh; display: flex; flex-direction: column; min-height: 0; }
 #osprey-root { flex: 1 1 auto; min-height: 0; overflow: hidden; }
@@ -213,6 +228,12 @@ button:disabled { cursor: default; opacity: .48; }
 .osp-framed[style*="--osp-frame-control-height:"] .osp-field input { min-height: var(--osp-frame-control-height); }
 .osp-field input:focus, .osp-field textarea:focus, .osp-field select:focus { border-color: var(--osp-accent); box-shadow: 0 0 0 1px var(--osp-accent); }
 .osp-field textarea { resize: vertical; min-height: 72px; }
+.osp-field input::placeholder, .osp-field textarea::placeholder { color: var(--osp-muted); }
+.osp-root ::selection { background: color-mix(in srgb, var(--osp-accent) 30%, transparent); }
+/* Quiet controls draw no chrome of their own: the frame is the field, the placeholder its caption. */
+.osp-framed[style*="--osp-frame-control-fill:"] .osp-field > span { display: none; }
+.osp-framed[style*="--osp-frame-control-fill:"] .osp-field input { border: 0; background: transparent; box-shadow: none; outline: none; }
+.osp-framed[style*="--osp-frame-control-fill:"]:has(> .osp-field input:focus) { box-shadow: 0 0 0 3px color-mix(in srgb, var(--osp-accent) 28%, transparent); border-color: var(--osp-accent); }
 .osp-toggle { display: inline-flex; align-items: center; gap: 10px; border: 0; background: transparent; padding: 5px 0; }
 .osp-switch { width: 32px; height: 18px; border-radius: 999px; border: 1px solid var(--osp-border); background: var(--osp-canvas); display: inline-flex; align-items: center; padding: 2px; transition: background var(--osp-motion); }
 .osp-switch span { width: 12px; height: 12px; border-radius: 50%; background: var(--osp-muted); transition: transform var(--osp-motion), background var(--osp-motion); }

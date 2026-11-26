@@ -149,12 +149,7 @@ impl Checker {
     fn applied_constructors(&mut self, written: &Type) -> Type {
         match written {
             Type::Con { name, args } if args.is_empty() => {
-                let arity = self
-                    .ctx
-                    .variance_of(name)
-                    .map(<[_]>::len)
-                    .or_else(|| (name == names::CHANNEL).then_some(1))
-                    .unwrap_or(0);
+                let arity = crate::variance::constructor_arity(&self.ctx, name);
                 let args = (0..arity).map(|_| self.ctx.fresh()).collect();
                 Type::con(name.clone(), args)
             }

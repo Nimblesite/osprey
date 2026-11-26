@@ -284,6 +284,13 @@ fn link_argv(
 /// nested many requests ([MULTI-WASM-MANY]); this matches a native main thread.
 const WASM_STACK_BYTES: u32 = 8 * 1024 * 1024;
 
+/// The host's own stack for compiled wasm frames. wasmtime's 512 KiB default
+/// trapped at a few thousand frames, on the main thread and in every fiber,
+/// which on wasm32 run on it ([CONCURRENCY-WASM]); this lets a program recurse
+/// as deep as natively, inside the 8 MiB a host's main thread has.
+/// [WASM-TARGET-NODE]
+const WASM_HOST_STACK_BYTES: u32 = 4 * 1024 * 1024;
+
 fn base_link_argv(obj: &Path, archive: &str, libdir: &Path, out: &Path) -> Vec<String> {
     vec![
         libdir.join("crt1-command.o").display().to_string(),
@@ -396,12 +403,33 @@ fn lib_dir(sysroot: &Path) -> Result<PathBuf, String> {
     }
 }
 
+/// The arguments `runner` needs before the module: wasmtime's own stack for
+/// compiled frames ([`WASM_HOST_STACK_BYTES`]); nothing for another host.
+fn host_args(runner: &str) -> Vec<String> {
+    if Path::new(runner)
+        .file_name()
+        .is_some_and(|name| name == "wasmtime")
+    {
+        vec![
+            "-W".into(),
+            format!("max-wasm-stack={WASM_HOST_STACK_BYTES}"),
+        ]
+    } else {
+        Vec::new()
+    }
+}
+
 /// Run a compiled `.wasm` under the first available WASI host (`wasmtime`, or
 /// `OSPREY_WASM_RUN`), propagating its exit code. Without one, point the user at
 /// a runtime or the browser loader.
 fn run_host(wasm: &Path, args: &[String]) -> ExitCode {
     let runner = tool("OSPREY_WASM_RUN", "wasmtime");
-    match Command::new(&runner).arg(wasm).args(args).status() {
+    match Command::new(&runner)
+        .args(host_args(&runner))
+        .arg(wasm)
+        .args(args)
+        .status()
+    {
         Ok(s) => ExitCode::from(crate::child_exit_code(s)),
         Err(e) => {
             eprintln!("error: could not run {} with {runner}: {e}", wasm.display());

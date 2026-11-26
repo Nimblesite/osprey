@@ -21,6 +21,8 @@ module Host {
         remove: fn(string) -> Result<int, string>
     }
 
+    /// A file as it was before a command touched it: whether it existed and,
+    /// if so, its exact text.
     export type Snapshot = { present: bool, text: string }
 
     /// Preserve absence separately from a readable empty file; unreadable
@@ -35,6 +37,8 @@ module Host {
         }
     }
 
+    /// Put `path` back the way `previous` found it: rewrite the earlier text,
+    /// or remove the file when it was absent; the OS reason is the failure.
     export fn restore(path, previous: Snapshot) = if previous.present { perform Files.write(path, previous.text) } else { perform Files.remove(path) }
 
     /// Every non-directory entry under a root, by path relative to it:

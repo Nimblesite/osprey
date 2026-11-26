@@ -95,7 +95,10 @@ suite("workbench VSIX browser", () => {
       } finally { release(); }
       await waitForIdleWorkbench(frame, 5000);
       assert.strictEqual(await formula(frame).inputValue(), "p → p");
-      assert.strictEqual(await frame.getByRole("button", { name: "Library", exact: true }).isEnabled(), true);
+      // The typed formula reaches the application after the held call returns, so a brief idle
+      // between the two can come first; the controls must come back once both are answered.
+      const library = frame.getByRole("button", { name: "Library", exact: true });
+      assert.strictEqual(await pollUntilResult({ fn: () => library.isEnabled(), until: (enabled) => enabled, timeoutMs: 5000, description: "Library returns once the updates are answered" }), true);
     }, "failure-pending-runtime");
   });
 

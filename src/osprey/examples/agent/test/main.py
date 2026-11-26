@@ -13,6 +13,7 @@ from agent import McpClient
 from testing import Check
 
 MODEL = "deepseek-chat"
+OLD_MODEL = "deepseek-chat"
 FOLDER = "/work/project"
 FIRST = "{\"id\":\"r1\",\"model\":\"deepseek-flash\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"Looking.\",\"tool_calls\":[{\"id\":\"c1\",\"type\":\"function\",\"function\":{\"name\":\"read_file\",\"arguments\":\"{\\\"path\\\":\\\"a.py\\\"}\"}},{\"id\":\"c2\",\"type\":\"function\",\"function\":{\"name\":\"run_command\",\"arguments\":\"{\\\"command\\\":\\\"make test\\\"}\"}}]},\"finish_reason\":\"tool_calls\"}],\"usage\":{\"prompt_tokens\":100,\"completion_tokens\":10,\"total_tokens\":110}}"
 SECOND = "{\"id\":\"r2\",\"model\":\"deepseek-flash\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"\",\"tool_calls\":[{\"id\":\"c3\",\"type\":\"function\",\"function\":{\"name\":\"write_file\",\"arguments\":\"{\\\"path\\\":\\\"src/a.py\\\",\\\"content\\\":\\\"x = 1\\\\n\\\"}\"}}]},\"finish_reason\":\"tool_calls\"}],\"usage\":{\"prompt_tokens\":200,\"completion_tokens\":20,\"total_tokens\":220}}"
@@ -222,9 +223,9 @@ def prov_roundtrip_cases():
     return [
         Check.equal("prov.roundtrip_ok", accepted.replyOk, True),
         Check.equal("prov.roundtrip_reasoning_back", J.text_at(assistant, "reasoning_content", ""), "I reasoned."),
-        Check.equal("prov.old_deepseek_resolves", Engine.provider_id_of("deepseek-chat"), "deepseek"),
-        Check.equal("prov.old_deepseek_url", Engine.url("deepseek-chat"), "https://api.deepseek.com/chat/completions"),
-        Check.equal("prov.old_deepseek_label", Engine.model_label("deepseek-chat"), "DeepSeek Chat"),
+        Check.equal("prov.old_deepseek_resolves", Engine.provider_id_of(OLD_MODEL), "deepseek"),
+        Check.equal("prov.old_deepseek_url", Engine.url(OLD_MODEL), "https://api.deepseek.com/chat/completions"),
+        Check.equal("prov.old_deepseek_label", Engine.model_label(OLD_MODEL), "DeepSeek Chat"),
         Check.truth("prov.unknown_provider_words", contains(Engine.provider_problem("nosuch/glm-5.3"), "Unknown provider"), Engine.provider_problem("nosuch/glm-5.3")),
         Check.truth("prov.unknown_model_words", contains(Engine.provider_problem("deepseek/nosuch"), "no model"), Engine.provider_problem("deepseek/nosuch")),
     ]
@@ -450,10 +451,12 @@ def highlight_cases():
         hl_snip("osprey", "keyword", "type"), hl_snip("osprey", "function", "add"), hl_snip("osprey", "comment", "// sum"),
         hl_snip("osprey", "number", "2"), hl_snip("osprey", "keyword", "export"),
     ]
+    # Keywords are whole words only: `class` inside `classy` is no keyword.
+    classy = "formatted classy"
     rules = [
-        hl_has("python", "formatted classy", "", "formatted"),
+        hl_has("python", classy, "", "formatted"),
         hl_flow("python", "return", "if x:\n    return y\nelse:\n    for i in z:\n        while i:\n            break\n    continue\n", ["if", "return", "else", "for", "while", "break", "continue"]),
-        Check.truth("hl.python.whole_words", not contains(hl_marked("python", "formatted classy"), "keyword:"), hl_marked("python", "formatted classy")),
+        Check.truth("hl.python.whole_words", not contains(hl_marked("python", classy), "keyword:"), hl_marked("python", classy)),
         hl_has("python", "x = \"def class 42 # no\"", "string", "\"def class 42 # no\""),
         Check.truth("hl.python.hash_in_string", not contains(hl_marked("python", "y = \"a # b\""), "comment:"), hl_marked("python", "y = \"a # b\"")),
         hl_has("python", "# say \"hi\"", "comment", "# say \"hi\""),

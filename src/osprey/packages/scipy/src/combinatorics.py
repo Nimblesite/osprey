@@ -101,7 +101,7 @@ def binom_hugek_pos(n: float, k: float, num: float, d: float) -> float:
         return (num / d) * sinpi(dk - n) * sgn
 
 
-def binom_hugek_neg(n: float, k: float, num: float, d: float) -> float:
+def binom_hugek_neg(_n: float, k: float, num: float, d: float) -> float:
     """binom's huge-k path for k < 0."""
     kx = floor(k)
     if kx == k:

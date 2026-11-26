@@ -41,16 +41,15 @@ module HostPackets
         count = match satSub block.frames first < 256
             true => satSub block.frames first
             false => 256
-        match slice (block.samples, satMul first channels, satMul count channels)
-            Error why => Error(message = why)
-            Success samples =>
-                notes = mapList (filterList (block.notes, \n => n.offset >= first && n.offset < satAdd first count), \n => n(offset = satSub n.offset first))
-                parameters = mapList (filterList (block.parameters, \p => p.offset >= first && p.offset < satAdd first count), \p => p(offset = satSub p.offset first))
-                packet (channels, HostBlock(frames = count, notes = notes, parameters = parameters, samples = samples))
+        use samples <- Outcomes::carried (slice (block.samples, satMul first channels, satMul count channels))
+        notes = mapList (filterList (block.notes, \n => n.offset >= first && n.offset < satAdd first count), \n => n(offset = satSub n.offset first))
+        parameters = mapList (filterList (block.parameters, \p => p.offset >= first && p.offset < satAdd first count), \p => p(offset = satSub p.offset first))
+        packet (channels, HostBlock(frames = count, notes = notes, parameters = parameters, samples = samples))
 
-    next (channels, block, outcome, index) = match outcome
-        Error why => Error(message = why)
-        Success chunks => Outcomes::carried (chunk (channels, block, satMul index 256), \text => Success(value = listAppend chunks text))
+    next (channels, block, outcome, index) =
+        use chunks <- Outcomes::carried (outcome)
+        use text <- Outcomes::carried (chunk (channels, block, satMul index 256))
+        Success(value = listAppend chunks text)
 
     packetCount frames = intDiv (satAdd frames 255) 256
 

@@ -17,7 +17,6 @@ size_t osp_arc_live_bytes(void);
 static size_t baseline_objects;
 static size_t baseline_bytes;
 #else
-void osp_collect(void);
 size_t osp_gc_live_objects(void);
 size_t osp_gc_collections(void);
 #endif

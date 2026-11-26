@@ -104,11 +104,7 @@ pub(super) fn ident(name: &str) -> Expr {
 }
 
 pub(super) fn apply(function: Expr, arguments: Vec<Expr>) -> Expr {
-    Expr::Call {
-        function: Box::new(function),
-        arguments,
-        named_arguments: Vec::new(),
-    }
+    Expr::call(function, arguments)
 }
 
 pub(super) fn call(name: &str, arguments: Vec<Expr>) -> Expr {

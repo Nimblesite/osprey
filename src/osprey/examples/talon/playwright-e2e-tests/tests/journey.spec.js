@@ -4,6 +4,7 @@
 const path = require('node:path');
 const { test } = require('@playwright/test');
 const { start } = require('../ledger');
+const { useApi } = require('../web-client');
 const { play } = require('./journey');
 
 const SCRIPT = path.join(__dirname, '..', '..', 'app', 'self-test.json');
@@ -15,6 +16,7 @@ for (const [name, viewport] of [['desktop', { width: 1280, height: 860 }], ['pho
     const stop = await start();
     try {
       await page.setViewportSize(viewport);
+      await useApi(page);
       await page.goto('/');
       await play(page, SCRIPT);
     } finally {

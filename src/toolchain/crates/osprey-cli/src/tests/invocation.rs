@@ -388,3 +388,28 @@ fn parse_args_source_graph_mode() {
     .expect("source graph mode parses");
     assert_eq!(cli.mode, "--source-graph");
 }
+
+/// [FLAVOR-LAYER] `--flavor` overrides the file's own flavor for its warnings too: a Python
+/// program in a `.osp` file, compiled with `--flavor python`, is exempt from the closing-run
+/// lint, so its eight closing brackets in a row raise no warning the Default lexer would.
+#[test]
+fn a_flavor_override_lints_the_source_under_the_flavor_it_was_compiled_with() {
+    let dir = std::env::temp_dir().join(format!("osprey-flavor-override-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    let path = dir.join("deep.osp");
+    std::fs::write(&path, "x = ((((((((1))))))))\nprint(x)\n").expect("source");
+    let overridden = Cli {
+        flavor: Some(Flavor::Python),
+        ..cli(path.display().to_string(), "--check", Policy::allow_all())
+    };
+    let input = load_input(&overridden).unwrap_or_else(|_| panic!("deep.osp loads as Python"));
+    let runs: Vec<_> = warnings::collect(&input, false, None)
+        .into_iter()
+        .filter(|warning| warning.rule == "closing-run")
+        .collect();
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(
+        runs.is_empty(),
+        "Python is exempt from the closing-run lint: {runs:?}"
+    );
+}

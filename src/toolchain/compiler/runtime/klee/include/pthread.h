@@ -1,18 +1,30 @@
 // Mock <pthread.h> for symbolic execution [SYMEX-MOCK-HEADERS]. KLEE explores
-// one thread: mutexes are counters, thread creation is unmodelled
+// one thread: mutexes are counters, a condition can be signalled but a wait on
+// it can only time out, and thread creation is unmodelled
 // [SYMEX-MOCK-UNSUPPORTED].
 #ifndef OSP_HUNT_PTHREAD_H
 #define OSP_HUNT_PTHREAD_H
+#include <time.h>
 typedef unsigned long pthread_t;
 typedef struct { int locked; } pthread_mutex_t;
 typedef struct { int unused; } pthread_mutexattr_t;
 typedef struct { int unused; } pthread_attr_t;
+typedef struct { int unused; } pthread_cond_t;
+typedef struct { int unused; } pthread_condattr_t;
 #define PTHREAD_MUTEX_INITIALIZER { 0 }
+#define PTHREAD_COND_INITIALIZER { 0 }
 #define PTHREAD_CREATE_DETACHED 1
 int pthread_mutex_init(pthread_mutex_t *mutex, const pthread_mutexattr_t *attributes);
 int pthread_mutex_destroy(pthread_mutex_t *mutex);
 int pthread_mutex_lock(pthread_mutex_t *mutex);
 int pthread_mutex_unlock(pthread_mutex_t *mutex);
+int pthread_cond_init(pthread_cond_t *condition, const pthread_condattr_t *attributes);
+int pthread_cond_destroy(pthread_cond_t *condition);
+int pthread_cond_signal(pthread_cond_t *condition);
+int pthread_cond_broadcast(pthread_cond_t *condition);
+int pthread_cond_wait(pthread_cond_t *condition, pthread_mutex_t *mutex);
+int pthread_cond_timedwait(pthread_cond_t *condition, pthread_mutex_t *mutex,
+                           const struct timespec *deadline);
 int pthread_create(pthread_t *thread, const pthread_attr_t *attributes,
                    void *(*start)(void *), void *argument);
 int pthread_attr_init(pthread_attr_t *attributes);

@@ -30,6 +30,11 @@ inductive BinOp where
   | add | sub | mul | and | or | xor | shl
   deriving Repr
 
+/-- What an `atomicrmw` does to the word: the dialect's `bin_op` 0, 1 and 2. -/
+inductive RmwOp where
+  | xchg | add | sub
+  deriving Repr
+
 inductive Pred where
   | eq | ne | slt | sle | sgt | sge | ult | ule | ugt | uge
   deriving Repr
@@ -48,6 +53,9 @@ inductive Ext where
 inductive Callee where
   | fn (index : Nat)
   | ext (name : Ext)
+  /-- A call through a function pointer. A function's address is its number
+      in the module, so the register holds that number. -/
+  | reg (id : Nat)
   deriving Repr
 
 /-- One index of a `getelementptr`: a constant, or a value. -/
@@ -67,6 +75,9 @@ inductive Instr where
   | bin (dst : Nat) (op : BinOp) (ty : Ty) (left right : Nat)
   | icmp (dst : Nat) (pred : Pred) (ty : Ty) (left right : Nat)
   | select (dst : Nat) (condition whenTrue whenFalse : Nat)
+  /-- `atomicrmw`: one indivisible read-modify-write of the word at `pointer`
+      ([IR-LEAN-ATOMIC]). `dst` is the word as it was. -/
+  | atomicrmw (dst : Nat) (op : RmwOp) (ty : Ty) (pointer operand : Nat)
   | call (dst : Option Nat) (callee : Callee) (args : List Nat)
   deriving Repr
 

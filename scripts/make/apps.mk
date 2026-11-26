@@ -175,7 +175,7 @@ _gpui-self-test: _gpui-apps
 ## _gpui-app-self-test: One app's self-test.json on the GPUI host. [UI-MACHINE-SELF-TEST]
 .PHONY: _gpui-app-self-test
 _gpui-app-self-test: _runtime_macos
-	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	$(COMPILER_BUILD)
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash $(APP_DIR)/run.sh --self-test "$(CURDIR)/$(SCRIPT_DIR)/self-test.json" "$(CURDIR)/target/gpui-self-test/$(notdir $(SCRIPT_DIR))" $(GPUI_WINDOW)
 
 ## _app-suite: One app's host-free suites, named by SUITES.
@@ -183,7 +183,7 @@ _gpui-app-self-test: _runtime_macos
 .PHONY: _app-suite
 _app-suite: $(if $(filter 1,$(APP_SUITE_PREBUILT)),,_runtime)
 ifneq ($(APP_SUITE_PREBUILT),1)
-	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	$(COMPILER_BUILD)
 endif
 	for suite in $(SUITES); do $(BIN) test $$suite || exit 1; done
 
@@ -191,7 +191,7 @@ endif
 ##                   run that host: it drives every control and reads each view from the shared frame.
 .PHONY: _tally-reference
 _tally-reference: _runtime _runtime_macos
-	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	$(COMPILER_BUILD)
 	mkdir -p target/tally
 	$(BIN) src/osprey/examples/tally --compile --target=macos --memory=arc --quiet --no-warnings -o target/tally/libTally.a
 	$(CC) -Wall -Wextra -Werror -Isrc/toolchain/compiler/runtime -Itarget/tally src/osprey/examples/tally/host/reference.c target/tally/libTally.a -o target/tally/reference
@@ -201,7 +201,7 @@ _tally-reference: _runtime _runtime_macos
 ##               with no window.
 .PHONY: _tally-swift
 _tally-swift: _runtime _runtime_macos
-	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	$(COMPILER_BUILD)
 	OSPREY_SWIFT_APP=src/osprey/examples/tally bash src/toolchain/hosts/swift/view.sh $(VIEW_ARGS)
 
 ## _qwen-serve: Compile the Qwen server and serve the GGUF pull.sh names (pulled first if missing,
@@ -242,7 +242,7 @@ _qwen-lanes:
 .PHONY: _ui-test
 UI_SUITES := src/osprey/packages/uitest/tests src/osprey/examples/casting/test src/osprey/packages/signal_flow/tests src/osprey/examples/daw/test
 _ui-test: _runtime
-	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	$(COMPILER_BUILD)
 	for suite in $(UI_SUITES); do $(BIN) test $$suite || exit 1; done
 
 .PHONY: _gpui-test _gpui-smoke 
@@ -250,7 +250,7 @@ _ui-test: _runtime
 _gpui-test: _runtime_macos _runtime
 	python3 src/toolchain/hosts/gpui/dependencies.py
 	python3 src/toolchain/hosts/gpui/dependencies_test.py
-	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	$(COMPILER_BUILD)
 	for suite in src/osprey/packages/native/tests src/osprey/packages/signal_flow/tests src/osprey/examples/daw/test src/osprey/examples/gpui/flock/test src/osprey/examples/gpui/painting/test; do \
 		$(BIN) test $$suite || exit 1; \
 	done
@@ -299,7 +299,7 @@ _prism_ui_test: _runtime_macos_arc
 ## _prism_vst_ui_test: Drive Prism's native VST menu against real SDK modules and worker processes.
 .PHONY: _prism_vst_ui_test
 _prism_vst_ui_test: _runtime_macos_arc
-	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	$(COMPILER_BUILD)
 	python3 src/toolchain/hosts/synth_vst/build.py --test
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/daw/run.sh --bundle
 	python3 src/toolchain/hosts/synth_vst/build.py --prism-test "$(CURDIR)/$(GPUI_HOST_BIN)" $(PRISM_TEST_MODE)

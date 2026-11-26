@@ -4,6 +4,7 @@ namespace registry_editor
 // readers, so a missing or mistyped member names the document and the member
 // in one message and no call site restates the shape check.
 
+(** Typed readers for the members of every command and registry JSON document the editor decodes. *)
 module Fields
     missing (label, key) = Error(message = "${label} is missing ${key}")
 
@@ -14,11 +15,11 @@ module Fields
             Error _ => Error(message = "${label} has a non-${kind} ${key}")
             Success found => Success(value = found)
 
-    /// The text of member `key`, or `<label> is missing/has a non-string <key>`.
+    (** The text of member `key`, or `<label> is missing/has a non-string <key>`. *)
     export stringField (doc, key, label) = reader (doc, key, label, \value => jsonText value, "string")
 
-    /// The integer of member `key`, or `<label> is missing/has a non-integer <key>`.
+    (** The integer of member `key`, or `<label> is missing/has a non-integer <key>`. *)
     export intField (doc, key, label) = reader (doc, key, label, \value => jsonInt value, "integer")
 
-    /// The flag of member `key`, or `<label> is missing/has a non-boolean <key>`.
+    (** The flag of member `key`, or `<label> is missing/has a non-boolean <key>`. *)
     export boolField (doc, key, label) = reader (doc, key, label, \value => jsonBool value, "boolean")

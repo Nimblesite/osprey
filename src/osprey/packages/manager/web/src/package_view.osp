@@ -9,6 +9,10 @@ import registry::Names
 /// visitors get the public projection only — no membership or grant
 /// information ([PACKAGE-HOSTED-ROUTES], [PACKAGE-OWNERSHIP-MAINTENANCE]).
 module PackageView {
+    /// The package page for `l`: public identity, status, evidence and
+    /// warnings, plus the organization and permission context for members of its
+    /// organization; hidden with `web.evidence-unavailable` when the evidence
+    /// is unavailable.
     export fn render(l, access: Model::Access, now) = match Model::gate(l.evidence, Names::display(l.pkg.key)) {
         Error { message } => Model::hidden("web.evidence-unavailable: ${message}")
         Success => Model::shown(Html::document("${Names::display(l.pkg.key)} - Osprey Package Registry", body(l, access, now)))

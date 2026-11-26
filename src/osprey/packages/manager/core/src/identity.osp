@@ -5,6 +5,8 @@ namespace registry;
 /// authoritative digest. Tags, branches and SemVer never appear.
 /// Implements [PACKAGE-IDENTITY].
 module Identity {
+    /// One release: its package key, compatibility epoch, package-wide
+    /// ordinal and the authoritative digest.
     export type ReleaseId = { key: Names::Key, epoch: int, ordinal: int, digest: string }
 
     let firstEpoch = 1
@@ -18,9 +20,13 @@ module Identity {
     // `ReleaseId` shares its field names with `Source::Entry` and `Mapping`;
     // issue #273 needs the receiver's record spelled out, so callers project
     // through these instead of declaring their own copy.
+    /// The package key of a release identity.
     export fn keyOf(id: ReleaseId) = id.key
+    /// The compatibility epoch of a release identity.
     export fn epochOf(id: ReleaseId) = id.epoch
+    /// The package-wide ordinal of a release identity.
     export fn ordinalOf(id: ReleaseId) = id.ordinal
+    /// The authoritative `sha256:` digest of a release identity.
     export fn digestOf(id: ReleaseId) = id.digest
 
     /// Identity equality: same key, epoch, ordinal and digest.

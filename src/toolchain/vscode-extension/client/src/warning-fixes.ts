@@ -52,11 +52,12 @@ function guardedAction(
     action as CodeAction & { data?: { uri?: string; version?: number } }
   ).data;
   const entries = action.edit?.entries();
+  const entry = entries?.length === 1 ? entries[0] : undefined;
   if (
     data?.uri !== document.uri.toString() ||
     data.version !== version ||
-    entries?.length !== 1 ||
-    entries[0][0].toString() !== data.uri
+    entry === undefined ||
+    entry[0].toString() !== data.uri
   ) {
     action.edit = undefined;
     action.disabled = {
@@ -64,7 +65,7 @@ function guardedAction(
     };
     return action;
   }
-  const edits = entries[0][1].map(({ range, newText }) => ({
+  const edits = entry[1].map(({ range, newText }) => ({
     newText,
     range: [
       range.start.line,
@@ -93,6 +94,15 @@ function guardedAction(
   return action;
 }
 
+// Warnings whose fixes delete source: each is applied only against the exact
+// document and project it was proved on ([LSP-CODE-ACTIONS-ANNOTATIONS],
+// [LSP-CODE-ACTIONS-IMPORTS]).
+const guardedCodes = new Set(["redundant-annotation", "unused-import"]);
+
+function guardedCode(code: unknown): boolean {
+  return typeof code === "string" && guardedCodes.has(code);
+}
+
 // vscode-languageclient converts versioned TextDocumentEdits to WorkspaceEdit
 // and drops their versions. Keep the source version until the user invokes the
 // action, so a cached lightbulb cannot delete text from a newer document.
@@ -113,9 +123,7 @@ export const warningFixMiddleware: Pick<Middleware, "provideCodeActions"> = {
     const actions = await next(document, range, context, token);
     return actions?.map((action) =>
       action instanceof CodeAction &&
-      action.diagnostics?.some(
-        (diagnostic) => diagnostic.code === "redundant-annotation",
-      )
+      action.diagnostics?.some((diagnostic) => guardedCode(diagnostic.code))
         ? guardedAction(action, document, snapshot)
         : action,
     );
@@ -142,19 +150,15 @@ function matchesFreshAction(
     action.disabled ||
     action.title !== fix.title ||
     action.kind !== fix.kind ||
-    !action.diagnostics?.some((item) => item.code === "redundant-annotation")
+    !action.diagnostics?.some((item) => guardedCode(item.code))
   )
     return false;
   const changes = action.edit?.documentChanges;
-  if (
-    changes?.length !== 1 ||
-    !("textDocument" in changes[0]) ||
-    changes[0].textDocument.uri !== fix.uri ||
-    changes[0].textDocument.version !== fix.version
-  )
+  const change = changes?.length === 1 ? changes[0] : undefined;
+  if (change === undefined || !("textDocument" in change) || change.textDocument.uri !== fix.uri || change.textDocument.version !== fix.version)
     return false;
   // A snippet edit carries no `newText`, so it never matches the offered fix.
-  const edits = changes[0].edits.map((edit) => ({
+  const edits = change.edits.map((edit) => ({
     newText: "newText" in edit ? edit.newText : undefined,
     range: [
       edit.range.start.line,

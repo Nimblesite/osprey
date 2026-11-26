@@ -6,6 +6,8 @@ namespace registry;
 /// `"osprey.source.v1\0" || u32be(entryCount)`. The sole v1 file-mode class
 /// is `0x00`, regular and non-executable. Implements [PACKAGE-SOURCE-CANONICAL].
 module Source {
+    /// One file of a source tree: its canonical path, its size in bytes and
+    /// its raw 32-byte SHA-256 digest.
     export type Entry = { path: string, byteLength: int, digest: List<int> }
 
     let regularFile = 0

@@ -2,11 +2,13 @@
 """[CI-PROGRAMS-COMPILE] Every tracked Osprey program compiles with no dead private
 module member ([TYPE-WARNINGS-UNUSED-PRIVATE]), or CI fails.
 
-Each tracked osprey.toml is a project, lowered to LLVM IR as a consumer and the
+Each tracked osprey.toml with a [project] table is a project, lowered to LLVM IR as a consumer and the
 editor see it ([PACKAGE-WORKSPACE]); its --source-graph names its member files.
 Every other tracked .osp, .ospml or Python-flavour .py file is a program lowered
 on its own, and so is a TypeScript-flavour .ts file: any .ts under src/osprey/
-([REPO-ROOT-LAYOUT]) or a marked one elsewhere. A .d.ts declaration file is never
+([REPO-ROOT-LAYOUT]) or a marked one elsewhere. A manifest with no [project] table is a
+package, not a program: a type discipline's manifest names its checker, which is a project of its own
+([TYPES-DISCIPLINE-REGISTRY]). A .d.ts declaration file is never
 a program: it serves only the optional tsc lint ([FLAVOR-TS-SELECT]). Files under a project that fails are covered by its FAIL line.
 Left out, each checked elsewhere: failscompilation/ (must be rejected: the
 book's .expectederror goldens and osprey-cli's examples_compile), and the
@@ -14,7 +16,8 @@ registry data (sample-registry/, e2e/consumer/, fixtures/manifests/), which
 resolves only through a registry and is built by make _test_registry, and the
 errors prelude unit, which declares the built-in IndexOutOfBounds no program may
 redeclare and is checked attached to every program that reads a list
-([BUILTIN-LIST-GET]).
+([BUILTIN-LIST-GET]). The editor hides the same set: keep `osprey.diagnostics.exclude`
+in .vscode/settings.json in step with EXCLUDED.
 Run: OSPREY_BIN=<compiler> osprey scripts/ci/check-programs.py --run
 """
 
@@ -229,9 +232,13 @@ def main_report():
     return check_all() if setup == 0 else f"setup failed with exit {setup}, 1 failed"
 
 
+def is_project(manifest):
+    return listContains(mapList(lines(text(manifest)), trim), "[project]")
+
+
 def check_all():
     root = normalize(trim(text(f"{WORK}/root.txt"))) + "/"
-    manifests = filterList(lines(text(f"{WORK}/manifests.txt")), lambda m: not excluded(m))
+    manifests = filterList(lines(text(f"{WORK}/manifests.txt")), lambda m: not excluded(m) and is_project(m))
     projects = mapList(manifests, lambda m: take(m, len(m) - len("/osprey.toml")))
     project_jobs = toList(map(range(0, len(projects)), lambda i: project_job(i, unwrap_or(listGet(projects, i), ""))))
     project_codes = run_all("project", project_jobs)

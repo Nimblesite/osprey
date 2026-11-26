@@ -212,7 +212,7 @@ def mark_axes_go(axes_names, axes, lengths, i) -> list[int]:
         return mark_axes_go(axes_names, axes, set_at(lengths, pos, EXPECTED_AXIS_LENGTH), i + 1)
 
 
-def apply_axes_lengths(axes_names, axes, lengths) -> Result[str, str]:
+def apply_axes_lengths(axes_names, axes, _lengths) -> Result[str, str]:
     """Validate caller-supplied axis lengths."""
     return validate_axes_go(axes_names, axes, 0)
 
@@ -263,7 +263,7 @@ def added_axis_entries(right_flat, left_idents, axes) -> list[PosElem]:
     return added_axis_go(right_flat, left_idents, axes, 0, [])
 
 
-def recipe_from(left, right, pattern, operation, axes_names, ndim):
+def recipe_from(left, right, _pattern, _operation, axes_names, ndim):
     """Assemble the recipe from two parsed sides, after the agreement checks."""
     if left.has_ellipsis:
         n_other = len(left.composition) - 1
@@ -295,7 +295,7 @@ def build_recipe_bound(left_assigned, right_assigned, left_idents, right_idents,
     match apply_axes_lengths(axes_names, axes, right_assigned.lengths):
         case Error(message=message):
             return Error(message=message)
-        case Success(value=value):
+        case Success(value=_):
             return build_recipe_known(left_assigned, right_assigned, left_idents, right_idents, axes, mark_axes_go(axes_names, axes, right_assigned.lengths, 0), name2pos_of(axes_names, axes))
 
 

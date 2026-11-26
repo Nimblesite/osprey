@@ -18,7 +18,7 @@
 // pointer.
 typedef struct HandlerSnapshot HandlerSnapshot;
 
-int __osprey_handler_try_snapshot(HandlerSnapshot **out);
+size_t __osprey_handler_try_snapshot(HandlerSnapshot **out);
 HandlerSnapshot *__osprey_handler_snapshot(void);
 void __osprey_handler_restore(HandlerSnapshot *snap);
 

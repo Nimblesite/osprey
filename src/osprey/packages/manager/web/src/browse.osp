@@ -8,6 +8,8 @@ import registry::Names
 /// ([PACKAGE-OWNERSHIP-MAINTENANCE]). Implements the browse row of
 /// [PACKAGE-HOSTED-ROUTES] as pure, wasm-portable string rendering.
 module Browse {
+    /// The browse page for `listings` filtered by `query`; hidden with
+    /// `web.evidence-unavailable` when any listing lacks verified evidence.
     export fn render(listings, query) = match Model::gateAll(listings, fn(l) => Names::display(l.pkg.key), fn(l) => l.evidence) {
         Error { message } => Model::hidden("web.evidence-unavailable: ${message}")
         Success => Model::shown(Html::document("Browse packages - Osprey Package Registry", body(listings, query)))

@@ -93,6 +93,8 @@ module ArithmeticTests {
 
     fn sys(capability, provider, revision, digest) = Objective::SystemTuple { capability: capability, provider: provider, revision: revision, digest: digest }
 
+    /// The arithmetic suite and the objective cost facts: rounding, ramps,
+    /// aggregates, per-candidate costs and the lexicographic order.
     export fn run() = {
         test("arithmetic: rounding", rounding)
         test("arithmetic: ramps", ramps)

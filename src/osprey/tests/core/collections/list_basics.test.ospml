@@ -34,8 +34,19 @@ aListFixture () = grownBy ((List ()), [1, 2, 3])
 (** bListFixture is the [10, 20] int list every concatenation case starts from. *)
 bListFixture () = grownBy ((List ()), [10, 20])
 
+(** wordTripleList is the spelled-out copy of wordTriple's fixture the inline cases compare against. *)
+wordTripleList = ["alpha", "beta", "gamma"]
+(** flagTriplet is the three-flag fixture the typed cases index and rebuild. *)
+flagTriplet = [true, false, true]
+(** boolPair and reversedBoolPair are the two-element flag fixtures the counting cases share. *)
+boolPair = [true, false]
+reversedBoolPair = [false, true]
+(** alphaGammaJoined and gammaAlphaJoined are the joined-words texts the join and log cases assert on. *)
+alphaGammaJoined = "alpha|beta|gamma|"
+gammaAlphaJoined = "gamma|beta|alpha|"
+
 (** wordTriple is the three-word string fixture the typed cases index and rebuild. *)
-wordTriple () = ["alpha", "beta", "gamma"]
+wordTriple () = wordTripleList
 
 (** ratioTriple is the exact-binary three-float fixture the typed cases sum. *)
 ratioTriple () = [0.5, 1.25, 2.75]
@@ -325,7 +336,7 @@ typedElementRetrievalCase () =
     ratios = ratioTriple ()
     wordAt = \i => elementOr (words, i, "none")
     ratioAt = \i => elementOr (ratios, i, 0.0)
-    flags = [true, false, true]
+    flags = flagTriplet
     slots = leftRightSlots ()
     missingSlot = sentinelSlot ()
     firstSlot = elementOr (slots, 0, missingSlot)
@@ -337,8 +348,8 @@ typedElementRetrievalCase () =
     // A string element comes back as its own string, at every index, through
     // both spellings the spec calls equivalent [BUILTIN-LIST-GET].
     checkAll "string elements survive listGet" [
-        elementsAre (words, ["alpha", "beta", "gamma"], "none"),
-        answersHold (\i => words[i] ?: "none", [0, 1, 2], ["alpha", "beta", "gamma"]),
+        elementsAre (words, wordTripleList, "none"),
+        answersHold (\i => words[i] ?: "none", [0, 1, 2], wordTripleList),
         answersHold (\i => listGet words i ?: "none", [0, 1, 2], [words[0] ?: "other", words[1] ?: "other", words[2] ?: "other"]),
         answersHold (\i => length (elementOr (words, i, "")), [0, 1, 2], [5, 4, 5]),
         "${wordAt (0)}-${wordAt (2)}" == "alpha-gamma",
@@ -372,7 +383,7 @@ typedElementRetrievalCase () =
         rowsHold (ratios, [9], [9.5], 9.5),
         elementOr ((listReverse ratios), 0, 0.0) == 2.75,
         listLength ratios == 3,
-        structuralEquals [elementOr (flags, 0, false), elementOr (flags, 1, true), elementOr (flags, 2, false)] [true, false, true],
+        structuralEquals [elementOr (flags, 0, false), elementOr (flags, 1, true), elementOr (flags, 2, false)] flagTriplet,
         (flags[0] ?: false),
         !(flags[1] ?: true),
         elementOr (flags, 0, false) == elementOr (flags, 2, true),
@@ -575,7 +586,7 @@ stringListPatternCase () =
     // "alpha|beta|gamma|" is 5+1+4+1+5+1 = 17 bytes; the six `odd` elements are
     // 0+1+1+2+3+5 = 12 bytes plus six separators = 18.
     checkAll "recursive rest-binder traversal keeps string order" [
-        answersHold (joinWords, [noWords, solo, duo, words, quad, odd, dup, revWords, listReverse dup, deltaLast, zeroFirst, duo + words, words + duo], ["", "solo|", "left|right|", "alpha|beta|gamma|", "a|bb|ccc|dddd|", "| |a|12|a,b|ab ab|", "same|same|other|same|", "gamma|beta|alpha|", "same|other|same|same|", "alpha|beta|gamma|delta|", "zero|alpha|beta|gamma|", "left|right|alpha|beta|gamma|", "alpha|beta|gamma|left|right|"]),
+        answersHold (joinWords, [noWords, solo, duo, words, quad, odd, dup, revWords, listReverse dup, deltaLast, zeroFirst, duo + words, words + duo], ["", "solo|", "left|right|", alphaGammaJoined, "a|bb|ccc|dddd|", "| |a|12|a,b|ab ab|", "same|same|other|same|", gammaAlphaJoined, "same|other|same|same|", "alpha|beta|gamma|delta|", "zero|alpha|beta|gamma|", "left|right|alpha|beta|gamma|", "alpha|beta|gamma|left|right|"]),
         joinWords (listReverse revWords) == joinWords words,
         joinWords (noWords + words) == joinWords words,
         joinWords (words + noWords) == joinWords words,
@@ -622,8 +633,8 @@ floatAndBoolListPatternCase () =
     noFlags = []
     allOn = [true, true, true]
     allOff = [false, false, false]
-    mixed = [true, false, true]
-    pairOn = [true, false]
+    mixed = flagTriplet
+    pairOn = boolPair
 
     // Arm selection and binder identity for float elements.
     checkAll "float list patterns select arms and bind elements" [
@@ -647,8 +658,8 @@ floatAndBoolListPatternCase () =
     // pattern that drops or double-counts the head cannot hide in a total.
     checkAll "bool list patterns count every permutation" [
         answersHold (shapeOf, [noFlags, [true], pairOn, mixed], ["none", "single", "pair", "long+2"]),
-        answersHold (countTrue, [noFlags, [true], [false], [true, true], [true, false], [false, true], [false, false], allOn, allOff, mixed, listReverse mixed, mixed + allOn, allOff + mixed, listAppend mixed false, listPrepend mixed false, listAppend allOff true], [0, 1, 0, 2, 1, 1, 0, 3, 0, 2, 2, 5, 2, 2, 2, 1]),
-        answersHold (boolWeight, [true, false], [1, 0])
+        answersHold (countTrue, [noFlags, [true], [false], [true, true], boolPair, reversedBoolPair, [false, false], allOn, allOff, mixed, listReverse mixed, mixed + allOn, allOff + mixed, listAppend mixed false, listPrepend mixed false, listAppend allOff true], [0, 1, 0, 2, 1, 1, 0, 3, 0, 2, 2, 5, 2, 2, 2, 1]),
+        answersHold (boolWeight, boolPair, [1, 0])
     ]
 
     // A bool element keeps its own value through every binder and producer.
@@ -656,8 +667,8 @@ floatAndBoolListPatternCase () =
         answersHold ((headOrWith false), [noFlags, allOn, mixed], [false, true, true]),
         answersHold ((headOrWith true), [allOff, listReverse pairOn], [false, false]),
         answersHold ((secondOrWith true), [mixed, pairOn, noFlags], [false, false, true]),
-        secondOr ([false, true], false) == true,
-        allListed (mixed, [false, true]),
+        secondOr (reversedBoolPair, false) == true,
+        allListed (mixed, reversedBoolPair),
         noneListed (allOn, [false]),
         noneListed (allOff, [true]),
         lengthsHold ([mixed + allOff, listReverse allOn], [6, 3]),
@@ -813,7 +824,7 @@ typedIterationOrderCase () =
     noWords : List<string>
     noWords = []
     words = wordTriple ()
-    flags = [true, false]
+    flags = boolPair
     counts = [7, 8, 9]
     ratios = ratioTriple ()
     slots = leftRightSlots ()
@@ -847,7 +858,7 @@ typedIterationOrderCase () =
 
     // 5+1+4+1+5+1 = 17 bytes, and the reversed spelling must NOT appear.
     checkAll "forEachList visits string elements in index order" [
-        logHolds ("alpha|beta|gamma|", 17, "alpha|", "gamma|", "|beta|"),
+        logHolds (alphaGammaJoined, 17, "alpha|", "gamma|", "|beta|"),
         containsNone (log, ["gamma|beta|"]),
         log == joinWords words
     ]
@@ -865,16 +876,16 @@ typedIterationOrderCase () =
 
     // 45 + 17 = 62; the derived list is traversed, the source is not.
     checkAll "forEachList follows the derived list, not its source" [
-        logHolds ("alpha|beta|gamma|true|false|7|8|9|left|right|gamma|beta|alpha|", 62, "alpha|beta|gamma|", "gamma|beta|alpha|", "right|gamma|"),
-        joinWords words == "alpha|beta|gamma|",
-        joinWords (listReverse words) == "gamma|beta|alpha|"
+        logHolds ("alpha|beta|gamma|true|false|7|8|9|left|right|gamma|beta|alpha|", 62, alphaGammaJoined, gammaAlphaJoined, "right|gamma|"),
+        joinWords words == alphaGammaJoined,
+        joinWords (listReverse words) == gammaAlphaJoined
     ]
 
     // A fold over `range(0, n)` reproduces index order independently of
     // forEachList, so the two mechanisms cross-check each other.
     // weave(0,7)=7, weave(7,8)=78, weave(78,9)=789.
     checkAll "range folds reproduce list order for every element type" [
-        foldRow (0, 3, "", (\(acc, i) => "${acc}${elementOr (words, i, "?")}|"), "alpha|beta|gamma|"),
+        foldRow (0, 3, "", (\(acc, i) => "${acc}${elementOr (words, i, "?")}|"), alphaGammaJoined),
         weaveEach (counts, 0, 0, 3, 789),
         weaveEach ((listReverse counts), 0, 0, 3, 987),
         weaveEach (counts, 0, 1, 3, 89),
@@ -927,7 +938,7 @@ boundaryIndexCase () =
     noWords : List<string>
     noWords = []
     words = wordTriple ()
-    marks = [true, false]
+    marks = boolPair
     missingSlot = sentinelSlot ()
     slots = leftRightSlots ()
     negIndex = (0 - 1)

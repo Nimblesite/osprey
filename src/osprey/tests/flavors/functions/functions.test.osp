@@ -3,7 +3,7 @@
 // nested-call, and recursion Default-flavor examples.
 
 /// Build a concrete closure that captures one integer offset.
-fn closureAdder(n: int) -> (int) -> int = fn(x) => x + n 
+fn closureAdder(n) = fn(x) => x + n 
 
 /// This case proves closure capture, independence, and direct invocation.
 fn closuresCase() = {
@@ -30,7 +30,7 @@ fn closuresCase() = {
 }
 
 /// Return an explicitly curried addition closure for partial application.
-fn partialAdd(a: int) -> (int) -> int = fn(b) => a + b 
+fn partialAdd(a) = fn(b) => a + b 
 
 /// This case documents partial and fully applied addition paths.
 fn curryPartialCase() = {
@@ -59,13 +59,13 @@ fn curryPartialCase() = {
 }
 
 /// Apply a supplied unary integer function exactly once.
-fn hofApply(f: (int) -> int) -> (int) -> int = fn(x) => f(x)
+fn hofApply(f) -> (int) -> int = fn(x) => f(x)
 /// Apply a supplied unary integer function twice in sequence.
-fn hofTwice(f: (int) -> int) -> (int) -> int = fn(x) => f(f(x))
+fn hofTwice(f) -> (int) -> int = fn(x) => f(f(x))
 /// Double an integer for use as a first-class function value.
-fn hofDouble(n: int) = n + n 
+fn hofDouble(n) = n + n 
 /// Increment an integer for use as a first-class function value.
-fn hofInc(n: int) = n + 1 
+fn hofInc(n) = n + 1 
 
 /// This case documents function arguments, nested application, and composition.
 fn higherOrderCase() = {
@@ -91,11 +91,11 @@ fn higherOrderCase() = {
 }
 
 /// Increment a value used in deeply nested call expressions.
-fn nestedInc(x: int) = x + 1 
+fn nestedInc(x) = x + 1 
 /// Double a value used in deeply nested call expressions.
-fn nestedDouble(x: int) = x + x 
+fn nestedDouble(x) = x + x 
 /// Negate a value without relying on a standalone unary helper.
-fn nestedNeg(x: int) = 0 - x 
+fn nestedNeg(x) = 0 - x 
 
 /// This case documents evaluation through multiple nested unary calls.
 fn nestedCallsCase() = {
@@ -123,7 +123,7 @@ fn nestedCallsCase() = {
 }
 
 /// Sum positive integers recursively with an explicit zero base case.
-fn recursiveSumTo(n: int) = match n {
+fn recursiveSumTo(n) = match n {
     0 => 0
     _ => n + recursiveSumTo((n - 1) ) 
 }

@@ -133,6 +133,42 @@ fn references_can_exclude_the_declaration() {
     assert_eq!(without.len(), 1);
 }
 
+// [LSP-REFERENCES-CODE-ONLY]: a name written in a comment, a doc comment or
+// a string's text names nothing, so find-references skips it; a name inside
+// an interpolation is code and is found.
+#[test]
+fn references_skip_comments_and_string_text() {
+    for (uri, src, declaration, uses) in [
+        (
+            "file:///prose.osp",
+            "/// `scale` doubles.\nfn scale(x) = x * 2\n// scale here\nlet a = scale(1)\nlet b = \"scale ${scale(2)}\"\n",
+            (1, "scale("),
+            vec![(3, "scale(1)"), (4, "scale(2)")],
+        ),
+        (
+            "file:///prose.ospml",
+            "(** `scale` doubles. *)\nscale x = x * 2\n// scale here\na = scale 1\nb = \"scale ${scale 2}\"\n(* scale *)\n",
+            (1, "scale x"),
+            vec![(3, "scale 1"), (4, "scale 2")],
+        ),
+        (
+            "file:///prose.py",
+            "# osprey: flavor=python\ndef scale(x):\n    \"\"\"`scale` doubles.\"\"\"\n    return x * 2\n# scale here\na = scale(1)\nb = f\"scale {scale(2)}\"\n",
+            (1, "scale("),
+            vec![(5, "scale(1)"), (6, "scale(2)")],
+        ),
+    ] {
+        let mut expected: Vec<_> = uses.iter().map(|word| word_span(src, *word)).collect();
+        assert_eq!(reference_spans(src, uri, declaration.0, declaration.1, false), expected, "{uri}");
+        expected.push(word_span(src, declaration));
+        expected.sort_unstable();
+        let (line, needle) = uses.first().copied().unwrap_or((0, ""));
+        let mut with = reference_spans(src, uri, line, needle, true);
+        with.sort_unstable();
+        assert_eq!(with, expected, "{uri}");
+    }
+}
+
 #[test]
 fn signature_help_tracks_the_active_parameter_through_strings_and_comments() {
     // Line 1 of `SRC` is `let total = add(1, 2)`; char 19 is over the second

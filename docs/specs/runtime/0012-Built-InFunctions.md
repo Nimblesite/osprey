@@ -968,6 +968,10 @@ fn processEventHandler(processID, eventType, data) = match eventType {
 let result = spawnProcess("echo 'Hello'", processEventHandler)
 ```
 
+### Function values as callbacks — [BUILTIN-PROCESS-CLOSURE]
+
+The callback may be any function value, including a lambda that captures its surroundings. A named function is passed as its code pointer; any other function value is passed as its closure, and the runtime calls the closure with its environment. The closure stays alive until `cleanupProcess` releases the handle, because the monitor thread may still call it. Before this, a lambda passed here was called as if it were plain code and the program crashed.
+
 ### `awaitProcess(processId: int) -> int`
 Waits for process completion and returns the exit code, or `-1` if the handle
 is outside the valid range or has no process.
@@ -991,6 +995,10 @@ occupied, and a later `spawnProcess` succeeds once the condition clears. A
 failed spawn does consume a handle number — handle numbers only ever increase —
 but never a table slot. `awaitProcess` on a handle whose slot was released
 returns `-1`.
+
+### Slot reuse — [BUILTIN-PROCESS-RECYCLE]
+
+The runtime holds at most 1000 unreleased processes at once, not 1000 over the program's life. Handle numbers keep increasing, and a handle lives in slot `handle mod 1000`, so `cleanupProcess` frees a slot that a later, larger handle reuses. A released handle stays dead: `awaitProcess` on it returns `-1` even after its slot holds another process. `-2` means every slot holds a process that was never released. A long-running program, such as a server that runs `git` for each request, can spawn for as long as it releases what it spawns. Before this, the 1000th spawn of the program's life failed with `-2` even when every slot was free.
 
 ## JSON Document Functions — [BUILTIN-JSON]
 

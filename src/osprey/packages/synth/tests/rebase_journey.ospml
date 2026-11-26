@@ -8,7 +8,7 @@ banksAt (held, identity) = filterList (held.graphKernels, \bank => bank.kernelNo
 delayAfterEdit (held, identity, size) = match banksAt (held, identity)
     [bank] => match bank.kernelMemory
         synth::ChannelMemory channels => match channels
-            [mono] => sameSamples (mono.delay, mapList (toList (range (0, size)), \_ => 0.0))
+            [mono] => sameSamples (mono.delay, synth::Sequences::zeros size)
             _ => unexpected ()
         _ => unexpected ()
     _ => unexpected ()

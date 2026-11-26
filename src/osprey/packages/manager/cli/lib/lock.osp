@@ -284,7 +284,7 @@ module Lock {
     /// The plane's pins when any member declares it, none otherwise.
     fn pythonPins(cmd: CommandLine, memberList) = if isEmpty(memberList) { Success { value: Maybe::none() } } else { andThen(PythonPlane::locked(cmd.project, memberList), fn(value) => Success { value: Maybe::some(value) }) }
 
-    fn pythonLines(cmd: CommandLine, python) = Maybe::fold(python, [], fn(p) => [PythonPlane::lockedLine(cmd.project)])
+    fn pythonLines(cmd: CommandLine, python) = Maybe::fold(python, [], fn(_p) => [PythonPlane::lockedLine(cmd.project)])
 
     fn writtenWith(cmd, manifest, digest, prev: Previous, catalog: Catalog, locals, packages, python) =
         Reports::checked(writeLock(cmd, lockOf(manifest, digest, packages, locals, python)),

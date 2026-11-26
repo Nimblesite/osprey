@@ -1,0 +1,16 @@
+//! The `leanexport` reference type discipline of [TYPES-DISCIPLINE-REFERENCE] and
+//! [PROOF-SOURCE-LEAN] (specs 0050 and 0049): a module marked
+//! `// osprey: types=leanexport` cites Lean theorems it relies on, each with the
+//! pinned `lean4export` certificate that proves it. The checker re-checks every
+//! certificate's whole dependency closure with Osprey's kernel from an empty
+//! environment, trusting nothing Lean said, and erases the citation lines.
+//!
+//! A second dependent discipline beside `dependent`: the same seam and the
+//! same kernel, a different source of proofs.
+
+namespace lean
+
+import bounded::Checker
+
+
+main () = Checker::serve Citations::judge

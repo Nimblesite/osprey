@@ -7,7 +7,7 @@ module PartialBanks
     export capacity = 64
 
     (** Zero phases at age zero. *)
-    export initial () = PartialState(phases = mapList (toList (range (0, capacity)), \_ => 0.0), age = 0.0)
+    export initial () = PartialState(phases = Sequences::zeros capacity, age = 0.0)
 
     (** Restart every partial envelope; phases continue so a retrigger does not click from a phase jump. *)
     export retrigger held = held(age = 0.0)

@@ -25,27 +25,11 @@ pub use runner::{CheckerRunner, ProcessRunner};
 use crate::{ProjectConfig, ProjectError, SourceFile};
 use std::path::Path;
 
-/// The identity discipline: `check_program`, in process, no erasure.
-pub const HM: &str = "hm";
+pub use osprey_syntax::{discipline_marker as marker, HM_DISCIPLINE as HM};
 
 /// Every failure of the seam itself is one diagnostic kind, so a wrong checker
 /// is never reported as a type error in the user's module.
 pub const ERROR_PREFIX: &str = "discipline-error";
-
-/// The value of a leading `// osprey: types=<name>` marker (`# osprey:` in
-/// Python flavor), read by the same header scan as the flavor marker.
-/// Implements [TYPES-DISCIPLINE-SELECT].
-#[must_use]
-pub fn marker(source: &str) -> Option<&str> {
-    source.lines().find_map(|line| {
-        let t = line.trim();
-        t.strip_prefix("// osprey: types=")
-            .or_else(|| t.strip_prefix("//osprey: types="))
-            .or_else(|| t.strip_prefix("# osprey: types="))
-            .or_else(|| t.strip_prefix("#osprey: types="))
-            .map(str::trim)
-    })
-}
 
 /// The discipline a source is checked by: file marker, then
 /// `[project].types`, then `hm`. Implements [TYPES-DISCIPLINE-SELECT].

@@ -39,15 +39,31 @@ pub(super) fn program(
     assemble(&sources, config, source_index)
 }
 
+/// The names of the functions `snippet` declares itself.
+pub(super) fn declared(snippet: &Program) -> std::collections::BTreeSet<String> {
+    snippet
+        .statements
+        .iter()
+        .filter_map(|stmt| match stmt {
+            Stmt::Function { name, .. } => Some(name.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
 /// The example's program without the functions nothing in it reaches, by name
-/// or as a method: `x.f()` calls `f`, so `f` stays.
-pub(super) fn reachable(mut program: Program) -> Program {
+/// or as a method (`x.f()` calls `f`, so `f` stays); every name in `keep` is
+/// reached.
+pub(super) fn reachable(
+    mut program: Program,
+    keep: &std::collections::BTreeSet<String>,
+) -> Program {
     let roots: Vec<_> = program
         .statements
         .iter()
         .filter(|stmt| !matches!(stmt, Stmt::Function { .. }))
         .collect();
-    let mut names = std::collections::BTreeSet::new();
+    let mut names = keep.clone();
     osprey_ast::freevars::free_idents_of_stmts(&roots, None, &mut names);
     for root in &roots {
         methods(root, &mut names);

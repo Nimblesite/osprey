@@ -68,7 +68,7 @@ fn onGet(path) = match path {
     _        => textResp(200, perform Db.list())
 }
 
-fn handleReq(method: string, path: string, _headers: string, body: string) = {
+fn handleReq(method, path, _headers: string, body) = {
     perform Metrics.hit(path)
     match method {
         "POST" => onPost(body)

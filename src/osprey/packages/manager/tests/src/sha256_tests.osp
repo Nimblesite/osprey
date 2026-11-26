@@ -28,6 +28,8 @@ module Sha256Tests {
         Sha256::ofString(repeated(65536)) == "bf718b6f653bebc184e1479f1935b8da974d701b893afcf49e701f3e2f9f9c5a"
     ])
 
+    /// SHA-256 against the FIPS 180-4 vectors, the padding boundaries and a
+    /// raw byte-list digest.
     export fn run() = {
         test("sha256: FIPS 180-4 vectors", vectors)
         test("sha256: padding boundaries", paddingBoundaries)

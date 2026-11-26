@@ -16,6 +16,7 @@ import agent::McpClient
 module McpRun
     readLimit () = 262144
 
+    (** The most bytes one MCP HTTP response may hold; an oversized answer fails its call, never the turn. *)
     export httpLimit () = 4194304
 
     (** How long one MCP tool call may take; a slow server fails its call, never the turn. *)

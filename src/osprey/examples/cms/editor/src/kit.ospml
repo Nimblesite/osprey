@@ -1,0 +1,167 @@
+// Implements [UI-COMPONENTS-FRAMED] for the CMS editor [CMS-EDITOR-DESIGN]: the studio's component
+// kit. Each component is a frame over a framework node that names only studio::Design tokens, so
+// every screen is assembled from these and no screen picks a colour, size or radius of its own.
+namespace studio
+
+import ui::Frames
+import ui::Pick
+import ui::Ui
+import studio::Design
+
+(** The studio's components: type, layout, buttons, the ribbon, fields, status and overlays. *)
+module Kit
+    // ---- type ----
+
+    face (step, tracking) =
+        style = Frames::text (Design::sans (), Design::size step, false)
+        style(frameHug = true, frameLineHeight = toFloat (Design::size step) * 1.5, frameTracking = tracking)
+
+    said (words, step, tracking, ink, emphasis, role) = Ui::framed (face (step, tracking), Ui::rich ([Ui::emphasised (words, ink, emphasis)], role))
+
+    (** Copy at type step `step` in token `ink`. *)
+    export say (words, step, ink) = said (words, step, 0.0, ink, "", ui::Body)
+
+    (** Bold copy. *)
+    export strong (words, step, ink) = said (words, step, 0.0, ink, "strong", ui::Body)
+
+    (** A heading for the page outline. *)
+    export heading (words, step, ink) = said (words, step, -0.3, ink, "strong", ui::Heading)
+
+    (** The window's title. *)
+    export title (words, ink) = said (words, "h2", -0.4, ink, "strong", ui::Title)
+
+    (** A small spaced capital label. *)
+    export eyebrow (words, ink) = said (toUpperCase words, "micro", 1.2, ink, "strong", ui::Body)
+
+    (** Monospaced copy, such as a commit or a path. *)
+    export mono (words, ink) =
+        style = Frames::text (Design::mono (), Design::size "small", false)
+        Ui::framed (style(frameHug = true), Ui::rich ([Ui::emphasised (words, ink, "code")], ui::Body))
+
+    // ---- layout ----
+
+    (** A frame with `fill`, a `line` border, corner `radius` and `pad` points inside. *)
+    export surface (fill, line, radius, pad) =
+        style = Frames::inset (pad, pad, pad, pad)
+        style(frameFill = fill, frameLine = line, frameRadius = radius, frameGap = 12)
+
+    (** A raised card with a hairline edge. *)
+    export card<A> : (int, List<ui::Node<A>>) -> ui::Node<A>
+    card (pad, children) =
+        style = surface ("raised", "edge", Design::radius "lg", pad)
+        Ui::framed (style(frameShadow = "floating"), Ui::column children)
+
+    // ---- buttons ----
+
+    pill (fill, ink, line, height) =
+        style = Frames::plain
+        style(frameFill = fill, frameInk = ink, frameLine = line, frameRadius = Design::radius "sm", frameHug = true, frameQuietControls = true, frameControlHeight = height, frameControlPadding = 14, frameFont = Design::sans (), frameTextSize = Design::size "small")
+
+    live variant = match variant
+        "primary" => pill ("accent", "accentInk", "", 36)
+        "danger" => pill ("badSoft", "bad", "", 36)
+        "ghost" => pill ("", "inkSoft", "", 36)
+        _ => pill ("panel", "ink", "edgeStrong", 36)
+
+    // An unavailable button is quiet whatever its variant, so only what can run is saturated.
+    look (variant, enabled) = match enabled
+        true => live variant
+        false => pill ("sunken", "inkMuted", "edge", 36)
+
+    (** A button: `primary`, `secondary`, `ghost` or `danger`, with a label and symbol. *)
+    export button<A> : (string, string, string, bool, A) -> ui::Node<A>
+    button (variant, label, symbol, enabled, act) = Ui::framed (look (variant, enabled), Ui::action (label, symbol, ui::Plain, enabled, act))
+
+    (** A square button drawn as its symbol; its label stays its accessible name. *)
+    export iconButton<A> : (string, string, bool, A) -> ui::Node<A>
+    iconButton (label, symbol, active, act) =
+        style = pill (Pick::either (active, "accentSoft", ""), Pick::either (active, "accent", "inkSoft"), "", 34)
+        Ui::framed (style(frameIconOnly = true, frameControlPadding = 0, frameWidth = 34), Ui::button (label, symbol, act))
+
+    // ---- the ribbon ----
+
+    (** One ribbon tool: its short face, lit while `active`. *)
+    export tool<A> : (string, bool, A) -> ui::Node<A>
+    tool (label, active, act) =
+        style = pill (Pick::either (active, "accentSoft", ""), Pick::either (active, "accent", "inkSoft"), "", 32)
+        Ui::framed (style(frameControlPadding = 10, frameTextSize = Design::size "small"), Ui::button (label, "", act))
+
+    divider () =
+        style = Frames::plain
+        Ui::framed (style(frameWidth = 1, frameHeight = 22, frameFill = "edge"), Ui::column [])
+
+    joinGroup (out, group) = match length out
+        0 => [Ui::cluster (2, group)]
+        _ => listAppend (listAppend out (divider ())) (Ui::cluster (2, group))
+
+    joinGroups groups = foldList (groups, [], joinGroup)
+
+    (** The ribbon: groups of tools, a hairline between groups, on a sunken strip. *)
+    export ribbon<A> : List<List<ui::Node<A>>> -> ui::Node<A>
+    ribbon groups =
+        style = surface ("sunken", "edge", Design::radius "md", 6)
+        Ui::framed (style(frameGap = 6, frameAlign = "center", frameHug = true), Ui::row (joinGroups groups))
+
+    // ---- choices ----
+
+    segment (label, chosen, act) =
+        style = pill (Pick::either (chosen, "panel", ""), Pick::either (chosen, "ink", "inkMuted"), Pick::either (chosen, "edge", "sunken"), 32)
+        Ui::framed (style(frameControlPadding = 12), Ui::button (label, "", act))
+
+    (** A segmented control of `(label, chosen, act)` choices on a sunken track. *)
+    export segmented<A> : List<ui::Node<A>> -> ui::Node<A>
+    segmented items =
+        style = surface ("sunken", "edge", Design::radius "md", 6)
+        Ui::framed (style(frameGap = 2, frameHug = true, frameAlign = "center"), Ui::row items)
+
+    (** One choice of a segmented control. *)
+    export choice<A> : (string, bool, A) -> ui::Node<A>
+    choice (label, chosen, act) = segment (label, chosen, act)
+
+    (** A text field on the panel, with its label as the placeholder. *)
+    export input<A> : (string, string, A) -> ui::Node<A>
+    input (label, value, act) =
+        style = surface ("panel", "edgeStrong", Design::radius "sm", 0)
+        Ui::framed (style(frameFont = Design::sans (), frameTextSize = Design::size "body", frameControlHeight = 38, frameQuietControls = true), Ui::field (label, value, label, act))
+
+    // ---- status ----
+
+    (** A status pill: `good`, `warn`, `bad` or `accent`, with a dot of colour and words. *)
+    export status<A> : (string, string) -> ui::Node<A>
+    status (tone, label) =
+        style = surface ("${tone}Soft", "", Design::radius "pill", 0)
+        Ui::framed (style(frameName = "status", frameTop = 4, frameBottom = 4, frameLeft = 10, frameRight = 12, frameGap = 6, frameHug = true, frameAlign = "center"), Ui::row [strong ("●", "micro", tone), strong (label, "small", tone)])
+
+    (** A quiet chip holding monospaced words. *)
+    export chip<A> : string -> ui::Node<A>
+    chip words =
+        style = surface ("sunken", "edge", Design::radius "sm", 0)
+        Ui::framed (style(frameTop = 3, frameBottom = 3, frameLeft = 8, frameRight = 8, frameHug = true), mono (words, "inkSoft"))
+
+    // ---- navigation ----
+
+    // ---- overlays ----
+
+    (** A toast in `tone` (`good` or `bad`): its title, detail and the action that dismisses it. *)
+    export toast<A> : (string, string, string, A) -> ui::Node<A>
+    toast (tone, headline, detail, act) =
+        seat = Frames::inset (20, 20, 20, 20)
+        style = surface ("raised", "edge", Design::radius "md", 14)
+        body = Ui::column [strong (headline, "body", tone), say (detail, "small", "inkSoft")]
+        Ui::framed (seat(frameAlign = "end", frameCross = "end"), Ui::framed (style(frameShadow = "floating", frameHug = true, frameWidth = 380), Ui::row [Ui::share body, iconButton ("Dismiss", "dismiss", false, act)]))
+
+    (** A drawer from the right edge: a title, its body and the action that closes it. *)
+    export drawer<A> : (string, List<ui::Node<A>>, A) -> ui::Node<A>
+    drawer (headline, children, act) =
+        seat = Frames::plain
+        style = surface ("raised", "edge", 0, 24)
+        top = Ui::spacedRow (8, [Ui::share (title (headline, "ink")), iconButton ("Close", "dismiss", false, act)])
+        Ui::framed (seat(frameAlign = "end", frameGrow = true), Ui::framed (style(frameName = "drawer", frameWidth = 420, frameShadow = "floating", frameScrollY = true, frameGap = 16), Ui::column (listPrepend children top)))
+
+    (** An empty state: a symbol, a title and why there is nothing here yet. *)
+    export empty<A> : (string, string, string) -> ui::Node<A>
+    empty (symbol, headline, detail) =
+        style = Frames::plain
+        mark = surface ("accentSoft", "", Design::radius "lg", 0)
+        badge = Ui::framed (mark(frameWidth = 64, frameHeight = 64, frameInk = "accent", frameAlign = "center", frameCross = "center", frameSymbolSize = 28), Ui::icon symbol)
+        Ui::framed (style(frameAlign = "center", frameCross = "center", frameGrow = true, frameGap = 10), Ui::column [badge, heading (headline, "h3", "ink"), say (detail, "body", "inkMuted")])

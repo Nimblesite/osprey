@@ -2,7 +2,7 @@
 // Osprey's web host from the WebAssembly build of the same app Android and iOS run. Every control
 // is found by its accessible role and name, as a person with a screen reader would find it.
 const { test, expect } = require('@playwright/test');
-const { API } = require('../web-client');
+const { API, WEB, useApi } = require('../web-client');
 
 test.describe.configure({ mode: 'serial' });
 
@@ -48,6 +48,7 @@ function collectPageErrors(page) {
 }
 
 async function openApp(page) {
+  await useApi(page);
   await page.goto('/');
   await expect(page).toHaveTitle('Talon Bank');
   await expectCurrentPage(page, 'Overview');
@@ -141,7 +142,7 @@ async function servesHostAnd404s({ request }) {
   for (const path of ['/', '/host.js', '/nowhere', '/api/nowhere']) expect((await request.get(API + path)).status()).toBe(404);
   const listing = await request.get(API + '/api/accounts');
   expect(listing.headers()['access-control-allow-origin']).toBe('*');
-  const preflight = await request.fetch(API + '/api/deposit', { method: 'OPTIONS', headers: { Origin: 'http://127.0.0.1:18791', 'Access-Control-Request-Method': 'POST' } });
+  const preflight = await request.fetch(API + '/api/deposit', { method: 'OPTIONS', headers: { Origin: WEB, 'Access-Control-Request-Method': 'POST' } });
   expect(preflight.status()).toBe(204);
   expect(preflight.headers()['access-control-allow-methods']).toContain('POST');
   expect(preflight.headers()['access-control-allow-headers']).toContain('Content-Type');
@@ -150,6 +151,7 @@ async function servesHostAnd404s({ request }) {
 async function drawsTheOverview({ page }) {
   const errors = collectPageErrors(page);
   await openApp(page);
+  expect(errors).toEqual([]);
   await expect(page.getByText('$7,980.25')).toBeVisible();
   await expect(page.getByText('Across 3 protected client accounts')).toBeVisible();
   for (const owner of ['Amelia Chen', 'Marcus Webb', 'Priya Sharma']) await expect(page.getByText(owner).first()).toBeVisible();

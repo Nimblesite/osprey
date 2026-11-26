@@ -30,8 +30,9 @@ enum {
   WS_IO_TIMEOUT_S = 5
 };
 
-static const char *const WS_SAMPLE_KEY = "dGhlIHNhbXBsZSBub25jZQ==";
-static const char *const WS_SAMPLE_ACCEPT = "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=";
+#define WS_SAMPLE_KEY "dGhlIHNhbXBsZSBub25jZQ=="
+#define WS_SAMPLE_ACCEPT "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
+#define WS_SAMPLE_KEY_LINE "Sec-WebSocket-Key: " WS_SAMPLE_KEY "\r\n"
 
 // ---------------------------------------------------------------- raw client
 
@@ -75,20 +76,28 @@ bool ws_read_exact(int fd, void *buf, size_t len) {
   return true;
 }
 
-// Reads the upgrade response one byte at a time so the welcome frame that
-// follows it stays in the socket buffer intact.
-void ws_read_headers(int fd, char *out, size_t capacity) {
+// Reads the reply head into `out` up to its blank line, a byte at a time so
+// what follows it stays in the socket buffer: false when the server closed
+// first. A timeout is neither, and fails here.
+static bool ws_read_reply(int fd, char *out, size_t capacity) {
   size_t len = 0;
-  while (len + 1 < capacity) {
+  bool whole = false;
+  while (!whole && len + 1 < capacity) {
     char c = 0;
     ssize_t n = recv(fd, &c, 1, 0);
-    assert(n == 1);
-    out[len++] = c;
-    if (len >= 4 && memcmp(out + len - 4, "\r\n\r\n", 4) == 0) {
+    assert(n == 1 || n == 0 || (n < 0 && errno == ECONNRESET));
+    if (n <= 0) {
       break;
     }
+    out[len++] = c;
+    whole = len >= 4 && memcmp(out + len - 4, "\r\n\r\n", 4) == 0;
   }
   out[len] = '\0';
+  return whole;
+}
+
+void ws_read_headers(int fd, char *out, size_t capacity) {
+  assert(ws_read_reply(fd, out, capacity) && "the server closed without replying");
 }
 
 // The payload length a frame header announces, in whichever of RFC 6455's three
@@ -154,19 +163,26 @@ static void ws_send_masked_text(int fd, const char *text) {
   ws_send_all(fd, frame, at + len);
 }
 
-void ws_send_upgrade(int fd, const char *key_header) {
+// An upgrade request whose fields are `fields`, each line CRLF-ended, after the
+// request line and Host that every test sends the same.
+static void ws_send_upgrade_fields(int fd, const char *fields) {
   char request[512];
-  int n = snprintf(request, sizeof(request),
-                   "GET /chat HTTP/1.1\r\n"
-                   "Host: 127.0.0.1\r\n"
-                   "Upgrade: websocket\r\n"
-                   "Connection: Upgrade\r\n"
-                   "%s"
-                   "Sec-WebSocket-Version: 13\r\n"
-                   "\r\n",
-                   key_header);
+  int n = snprintf(request, sizeof(request), "GET /chat HTTP/1.1\r\nHost: 127.0.0.1\r\n%s\r\n",
+                   fields);
   assert(n > 0 && (size_t)n < sizeof(request));
   ws_send_all(fd, request, (size_t)n);
+}
+
+// The canonical handshake with `key_header`'s lines: the RFC 6455 4.2.1 names
+// and values as the spec capitalises them, one of the spellings it allows.
+void ws_send_upgrade(int fd, const char *key_header) {
+  char fields[512];
+  int n = snprintf(fields, sizeof(fields),
+                   "Upgrade: websocket\r\nConnection: Upgrade\r\n%s"
+                   "Sec-WebSocket-Version: 13\r\n",
+                   key_header);
+  assert(n > 0 && (size_t)n < sizeof(fields));
+  ws_send_upgrade_fields(fd, fields);
 }
 
 // The peer closed: drained EOF or a TCP reset; a timeout is still a failure.
@@ -405,6 +421,138 @@ static void test_live_loopback_exchange(void) {
   close(fd);
 }
 
+// The handshake fields as the RFCs allow them to be spelled (#434): RFC 9110
+// 5.1 reads a field name in any case and 5.5 trims a value's blanks; RFC 6455
+// 4.2.1 wants `Upgrade` to list `websocket` and `Connection` to list the token
+// `Upgrade`, in any case and among any others.
+static const char *const WS_UPGRADE_SPELLINGS[] = {"Upgrade: websocket", "upgrade: websocket",
+                                                   "UPGRADE: WEBSOCKET", "uPgRaDe: wEbSoCkEt"};
+static const char *const WS_CONNECTION_SPELLINGS[] = {
+    "Connection: Upgrade",             "Connection: upgrade",
+    "connection: keep-alive, Upgrade", "CONNECTION: KEEP-ALIVE, UPGRADE",
+    "Connection:\tupgrade  ",          "Connection: keep-alive,upgrade"};
+static const char *const WS_KEY_SPELLINGS[] = {
+    WS_SAMPLE_KEY_LINE, "sec-websocket-key: " WS_SAMPLE_KEY "\r\n",
+    "SEC-WEBSOCKET-KEY: " WS_SAMPLE_KEY "\r\n", "Sec-WebSocket-Key:   " WS_SAMPLE_KEY "\r\n"};
+#define WS_SPELLINGS(list) (sizeof(list) / sizeof((list)[0]))
+
+// Every combination of those spellings is a handshake, answered with the same
+// accept token for the same key and then served.
+static void test_handshake_spellings(void) {
+  char fields[512], headers[1024];
+  for (size_t u = 0; u < WS_SPELLINGS(WS_UPGRADE_SPELLINGS); u++) {
+    for (size_t c = 0; c < WS_SPELLINGS(WS_CONNECTION_SPELLINGS); c++) {
+      for (size_t k = 0; k < WS_SPELLINGS(WS_KEY_SPELLINGS); k++) {
+        snprintf(fields, sizeof(fields), "%s\r\n%s\r\n%s", WS_UPGRADE_SPELLINGS[u],
+                 WS_CONNECTION_SPELLINGS[c], WS_KEY_SPELLINGS[k]);
+        int fd = ws_raw_connect(WS_LIVE_PORT);
+        ws_send_upgrade_fields(fd, fields);
+        assert(ws_read_reply(fd, headers, sizeof(headers)) && "a valid upgrade got no reply");
+        assert(strstr(headers, "HTTP/1.1 101 Switching Protocols\r\n") == headers &&
+               "a valid upgrade was refused");
+        assert(strstr(headers, WS_SAMPLE_ACCEPT) != NULL);
+        ws_expect_text(fd, "\"type\":\"welcome\"", NULL, NULL);
+        close(fd);
+      }
+    }
+  }
+}
+
+// A field value that says "Connection: Upgrade" is not a Connection field, a
+// longer word is not the token, and a missing or malformed key is no handshake.
+static const char *const WS_NOT_A_HANDSHAKE[] = {
+    "X-Note: Connection: Upgrade\r\n" WS_SAMPLE_KEY_LINE,
+    "x-note: connection: upgrade\r\n" WS_SAMPLE_KEY_LINE,
+    "Referer: a; Connection: Upgrade; b\r\n" WS_SAMPLE_KEY_LINE,
+    "Connection: keep-alive\r\n" WS_SAMPLE_KEY_LINE,
+    "Connection: Upgradex\r\n" WS_SAMPLE_KEY_LINE,
+    "Connection: \"Upgrade\"\r\n" WS_SAMPLE_KEY_LINE,
+    "Connection: Upgrade\r\n",
+    "Connection: Upgrade\r\nSec-WebSocket-Key: not a key\r\n"};
+
+// An upgrade request that is not a handshake is answered 400, never a 101 and
+// never silence, whatever the case of its Upgrade name.
+static void test_malformed_upgrades_get_400(void) {
+  char fields[512], headers[1024];
+  for (size_t i = 0; i < WS_SPELLINGS(WS_NOT_A_HANDSHAKE); i++) {
+    snprintf(fields, sizeof(fields), "%s\r\n%s", WS_UPGRADE_SPELLINGS[i % WS_SPELLINGS(WS_UPGRADE_SPELLINGS)],
+             WS_NOT_A_HANDSHAKE[i]);
+    int fd = ws_raw_connect(WS_LIVE_PORT);
+    ws_send_upgrade_fields(fd, fields);
+    assert(ws_read_reply(fd, headers, sizeof(headers)) && "a malformed upgrade got no reply");
+    assert(strstr(headers, "HTTP/1.1 400 Bad Request\r\n") == headers &&
+           "a malformed upgrade must get 400");
+    assert(strstr(headers, WS_SAMPLE_ACCEPT) == NULL);
+    ws_expect_peer_close(fd);
+    close(fd);
+  }
+}
+
+// A value that only says "Upgrade: websocket" asks for nothing, and neither
+// does a list of other protocols: no 101, and the connection is not served.
+static void test_field_values_are_not_upgrade(void) {
+  static const char *const not_an_upgrade[] = {
+      "X-Note: Upgrade: websocket\r\nConnection: Upgrade\r\n" WS_SAMPLE_KEY_LINE,
+      "Upgrade: h2c\r\nConnection: Upgrade\r\n" WS_SAMPLE_KEY_LINE};
+  char headers[1024];
+  for (size_t i = 0; i < WS_SPELLINGS(not_an_upgrade); i++) {
+    int fd = ws_raw_connect(WS_LIVE_PORT);
+    ws_send_upgrade_fields(fd, not_an_upgrade[i]);
+    bool replied = ws_read_reply(fd, headers, sizeof(headers));
+    assert(!(replied && strstr(headers, "HTTP/1.1 101") == headers) &&
+           "a field value is not an Upgrade field");
+    ws_expect_peer_close(fd);
+    close(fd);
+  }
+}
+
+// The field reader at its edge (#434): a last field line the section ends
+// without its CRLF is still read (the HTTP client stores its header block so).
+static void test_upgrade_reader_edges(void) {
+  static const char unterminated[] = "A: 1\r\nB: two";
+  HttpField field;
+  size_t cursor = 0;
+  bool first = http_next_field(unterminated, sizeof(unterminated) - 1, &cursor, &field);
+  assert(first && http_text_is(field.name, field.name_len, "A"));
+  bool last = http_next_field(unterminated, sizeof(unterminated) - 1, &cursor, &field);
+  assert(last && http_text_is(field.name, field.name_len, "B") && field.value_len == 3 &&
+         memcmp(field.value, "two", 3) == 0);
+  assert(!http_next_field(unterminated, sizeof(unterminated) - 1, &cursor, &field));
+
+  // A colon-free request line is skipped, a value loses its trailing blanks,
+  // and the blank line ends the section before any field after it.
+  static const char head[] = "GET / HTTP/1.1\r\nC: up, Upgrade \t\r\n\r\nD: late\r\n";
+  cursor = 0;
+  bool listed = http_next_field(head, sizeof(head) - 1, &cursor, &field);
+  assert(listed && http_text_is(field.name, field.name_len, "C") && field.value_len == 11 &&
+         memcmp(field.value, "up, Upgrade", 11) == 0);
+  assert(!http_text_is(field.name, field.name_len, "D") && "same length, other name");
+  assert(http_value_lists(field.value, field.value_len, "upgrade") && "a later list item matches");
+  assert(!http_value_lists(field.value, field.value_len, "down") && "no list item matches");
+  assert(!http_next_field(head, sizeof(head) - 1, &cursor, &field) && "the blank line ends the section");
+
+  // The blank skippers as other units call them: leading and trailing spaces and tabs.
+  static const char padded[] = " \t42 \t";
+  const char *start = http_skip_ows(padded, padded + sizeof(padded) - 1);
+  assert(start == padded + 2 && http_trim_ows(start, padded + sizeof(padded) - 1) == padded + 4);
+}
+
+// A request line may carry a colon, an absolute-form target: it matches no
+// field name, and the handshake after it is served like any other.
+static void test_request_line_colon(void) {
+  char request[512], headers[1024];
+  int n = snprintf(request, sizeof(request),
+                   "GET http://h:1/ HTTP/1.1\r\nHost: 127.0.0.1\r\nUpgrade: websocket\r\n"
+                   "Connection: Upgrade\r\n" WS_SAMPLE_KEY_LINE "\r\n");
+  assert(n > 0 && (size_t)n < sizeof(request));
+  int fd = ws_raw_connect(WS_LIVE_PORT);
+  ws_send_all(fd, request, (size_t)n);
+  assert(ws_read_reply(fd, headers, sizeof(headers)));
+  assert(strstr(headers, "HTTP/1.1 101 Switching Protocols\r\n") == headers);
+  ws_expect_text(fd, "\"type\":\"welcome\"", NULL, NULL);
+  close(fd);
+}
+
 // Connections the server must refuse: one that says nothing, one that is not
 // an upgrade, and one that upgrades without a key. Each is closed, not served.
 static void test_non_websocket_connections(void) {
@@ -427,6 +575,12 @@ static void test_non_websocket_connections(void) {
   int good = ws_upgrade_handshake();
   ws_expect_text(good, "welcome", NULL, NULL);
   close(good);
+  // ...in every spelling, and refuses every look-alike on the same socket.
+  test_handshake_spellings();
+  test_malformed_upgrades_get_400();
+  test_field_values_are_not_upgrade();
+  test_upgrade_reader_edges();
+  test_request_line_colon();
   assert(websocket_stop_server(server_id) == 0);
 }
 
@@ -444,8 +598,11 @@ static void *ws_rude_listener(void *arg) {
 }
 
 static void test_client_connect_failures(void) {
-  // Nothing is listening: connect() is refused on loopback.
-  assert(websocket_connect("ws://127.0.0.1:1/chat") == -6);
+  // The dial is refused on a port this test itself just proved closed.
+  char closed_url[64];
+  snprintf(closed_url, sizeof(closed_url), "ws://127.0.0.1:%d/chat",
+           test_loopback_closed_port());
+  assert(websocket_connect(closed_url) == -6);
 
   // A name no resolver can answer: the label is past the DNS length limit.
   char long_host[400];
@@ -490,10 +647,25 @@ static void test_closed_peer_preserves_process(void) {
 
 // ------------------------------------------------------------- keep-alive
 
+// The signaller waits until websocket_keep_alive has installed the process's
+// SIGTERM handler, and only then sends the signal: one arriving before that
+// meets the default disposition and kills the whole binary. The bound only
+// names a keep_alive that stopped installing its handler; waiting for the
+// installation is the mechanism, never the bound.
+enum { WS_HANDLER_TRIES = 30000, WS_HANDLER_POLL_US = 1000 };
+
 static void *ws_shutdown_signaller(void *arg) {
   (void)arg;
-  usleep(300000);
-  assert(kill(getpid(), SIGTERM) == 0);
+  for (int i = 0; i < WS_HANDLER_TRIES; i++) {
+    struct sigaction installed;
+    assert(sigaction(SIGTERM, NULL, &installed) == 0);
+    if (installed.sa_handler != SIG_DFL && installed.sa_handler != SIG_IGN) {
+      assert(kill(getpid(), SIGTERM) == 0);
+      return NULL;
+    }
+    usleep(WS_HANDLER_POLL_US);
+  }
+  assert(0 && "keep_alive never installed its SIGTERM handler");
   return NULL;
 }
 

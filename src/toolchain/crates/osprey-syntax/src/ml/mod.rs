@@ -123,3 +123,34 @@ pub(crate) fn bracket_tokens(source: &str) -> Vec<crate::closing_runs::BracketTo
         })
         .collect()
 }
+
+/// Byte ranges of the prose of `source`: the gaps between tokens (whitespace
+/// and comments), documentation comments, and string text outside its
+/// interpolations. Source that does not lex has none. Implements
+/// [LSP-REFERENCES-CODE-ONLY].
+pub(crate) fn prose_ranges(source: &str) -> Vec<std::ops::Range<usize>> {
+    use token::TokKind;
+    let (tokens, errors) = lexer::lex(source);
+    if !errors.is_empty() {
+        return Vec::new();
+    }
+    let mut ranges = Vec::new();
+    let mut code_end = 0;
+    for token in tokens.iter().filter(|token| !token.range.is_empty()) {
+        if token.range.start > code_end {
+            ranges.push(code_end..token.range.start);
+        }
+        match token.kind {
+            TokKind::Doc(_) | TokKind::InnerDoc(_) => ranges.push(token.range.clone()),
+            TokKind::Str(_) => {
+                ranges.extend(crate::prose::string_text(source, token.range.clone()));
+            }
+            _ => {}
+        }
+        code_end = code_end.max(token.range.end);
+    }
+    if code_end < source.len() {
+        ranges.push(code_end..source.len());
+    }
+    ranges
+}

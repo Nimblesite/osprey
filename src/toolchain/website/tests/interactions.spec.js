@@ -253,7 +253,7 @@ test.describe("blog search and social metadata", () => {
   const image = "https://www.ospreylang.dev/assets/images/blog/semver-is-all-lies-please-stop.png";
 
   test("SemVer article exposes its editorial image and complete BlogPosting data", async ({ page }) => {
-    await page.goto(path, { waitUntil: "networkidle" });
+    await page.goto(path, { waitUntil: "domcontentloaded" });
     await expect(page).toHaveTitle("SemVer Is All Lies. Please Stop");
     await expect(page.locator('meta[property="og:image"]')).toHaveAttribute("content", image);
     await expect(page.locator('meta[name="twitter:image"]')).toHaveAttribute("content", image);
@@ -261,10 +261,9 @@ test.describe("blog search and social metadata", () => {
       "content",
       "https://www.christianfindlay.com/"
     );
-    const renderedImage = await page
-      .locator(".prose-hero")
-      .evaluate((element) => new URL(element.currentSrc).pathname);
-    expect(renderedImage).toBe("/assets/images/blog/semver-is-all-lies-please-stop.webp");
+    await expect.poll(() => page.locator(".prose-hero")
+      .evaluate((element) => new URL(element.currentSrc).pathname))
+      .toBe("/assets/images/blog/semver-is-all-lies-please-stop.webp");
 
     const data = JSON.parse(await page.locator('script[type="application/ld+json"]').textContent());
     const post = data["@graph"].find((item) => item["@type"] === "BlogPosting");
@@ -293,7 +292,7 @@ test.describe("blog search and social metadata", () => {
 // these assert the SVG actually exists.
 test.describe("diagrams", () => {
   test("mermaid blocks render to SVG in dark theme", async ({ page }) => {
-    await page.goto("/spec/0029-packagemanagement/", { waitUntil: "networkidle" });
+    await page.goto("/spec/0029-packagemanagement/", { waitUntil: "domcontentloaded" });
     const blocks = page.locator("figure.diagram pre.mermaid");
     await expect(blocks.first().locator("svg")).toBeVisible();
     // Mermaid renders the blocks one at a time, so wait until every block has its SVG.
@@ -316,7 +315,9 @@ test.describe("diagrams", () => {
 
   test("no diagram ships as an unrendered code block", async ({ page }) => {
     for (const path of ["/spec/0029-packagemanagement/", "/docs/web-apps/"]) {
-      await page.goto(path, { waitUntil: "networkidle" });
+      await page.goto(path, { waitUntil: "domcontentloaded" });
+      await expect(page.locator("figure.diagram, figure.diagram-type").first()).toBeVisible();
+      await expect(page.locator("pre.mermaid:not(:has(svg))")).toHaveCount(0);
       await expect(page.locator("pre.language-mermaid, pre.language-typediagram")).toHaveCount(0);
     }
   });

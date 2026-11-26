@@ -12,6 +12,7 @@ import proof
 (** Real structure projections and rejection of data extraction from Prop.
     Implements [PROOF-KERNEL-THEORY] [PROOF-RUNNABLE-LIBRARY]. *)
 module ProjectionTests
+    (** Runs the projection cases: fields, rejections of data taken from Prop, and dependent projections; the testing built-ins report the TAP lines. *)
     export run () =
         fields ()
         rejections ()

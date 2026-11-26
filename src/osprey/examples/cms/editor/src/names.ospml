@@ -1,0 +1,67 @@
+// Implements [CMS-KINDS] for the CMS editor: a file's kind and media type from its extension, the
+// safe name an uploaded file gets, and the text a new page starts with.
+namespace studio
+
+(** Paths, kinds and names as the editor reads them. *)
+module Names
+    extension path = toLowerCase (listGet (listReverse (split path "." ?: [])) 0 ?: "")
+
+    kindOf ext = match ext
+        "md" => "markdown"
+        "markdown" => "markdown"
+        "png" => "image"
+        "jpg" => "image"
+        "jpeg" => "image"
+        "gif" => "image"
+        "webp" => "image"
+        "svg" => "image"
+        "avif" => "image"
+        "mp4" => "video"
+        "webm" => "video"
+        "mov" => "video"
+        "mp3" => "audio"
+        "wav" => "audio"
+        "ogg" => "audio"
+        "m4a" => "audio"
+        "flac" => "audio"
+        _ => "other"
+
+    (** `markdown`, `image`, `video`, `audio` or `other`. *)
+    export kind path = kindOf (extension path)
+
+    (** The media type a preview's data URL names. *)
+    export mime path = match extension path
+        "jpg" => "image/jpeg"
+        "svg" => "image/svg+xml"
+        "mov" => "video/quicktime"
+        "mp3" => "audio/mpeg"
+        ext => "${kind path}/${ext}"
+
+    (** The extensions the media chooser offers. *)
+    export mediaTypes () = ["png", "jpg", "jpeg", "gif", "webp", "svg", "avif", "mp4", "webm", "mov", "mp3", "wav", "ogg", "m4a", "flac"]
+
+    safeByte byte = match contains "abcdefghijklmnopqrstuvwxyz0123456789._-" byte
+        true => byte
+        false => "-"
+
+    cleaned (name, index) = match index >= length name
+        true => ""
+        false => safeByte (substring name index (satAdd index 1) ?: "-") + cleaned (name, satAdd index 1)
+
+    (** A chosen file's name made safe for [CMS-PATH-SAFE]: lowercase, with anything else as `-`. *)
+    export safeName name =
+        made = cleaned (toLowerCase (trim name), 0)
+        match startsWith made "." || made == ""
+            true => "upload${made}"
+            false => made
+
+    (** The last segment of `path`. *)
+    export base path = listGet (listReverse (split path "/" ?: [])) 0 ?: path
+
+    capital word = toUpperCase (take word 1) + drop word 1
+
+    // `field-notes.md` reads as "Field Notes".
+    titleOf path = join (mapList (split (replace (base path) ".md" "" ?: "Untitled") "-" ?: ["Untitled"], capital)) " "
+
+    (** What a new page starts with: front matter and a heading named after its file. *)
+    export starter path = "---\ntitle: ${titleOf path}\n---\n\n# ${titleOf path}\n\nStart writing here.\n"

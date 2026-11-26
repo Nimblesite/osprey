@@ -130,9 +130,15 @@ test('the required macOS gate runs every Apple part, the native Workbench host a
     'make -C src/toolchain/targets/macos/tests _workbench_interactions', 'make -C src/toolchain/targets/macos/tests _workbench_memory']) {
     assert.ok(apple.includes(command), command)
   }
-  // The Workbench part builds the compiler and both runtimes before it opens, exactly as its own host build did.
+  // The Workbench part builds both runtimes before it opens, exactly as its own host build did.
   assert.ok(apple.includes('make _runtime _runtime_macos'), 'make _runtime _runtime_macos')
-  assert.ok(apple.includes('cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli'), 'cargo build osprey-cli')
+  // build-macos compiles the compiler once; every Apple part runs that binary and no recipe compiles its own.
+  assert.ok(ciJob('build-macos').includes('cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli'), 'build-macos builds osprey-cli')
+  assert.match(ciJob('build-macos'), /^ {10}name: osprey-macos$/m)
+  assert.match(apple, /^ {10}name: osprey-macos$/m)
+  assert.ok(apple.includes('echo OSPREY_PREBUILT=1 >> "$GITHUB_ENV"'), 'Apple parts mark the compiler prebuilt')
+  assert.doesNotMatch(apple, /cargo build/)
+  assert.match(ciJob('ci'), /^ {6}- build-macos$/m)
   assert.match(apple, /^ {8}run: \$\{\{ matrix\.run \}\}$/m)
   assert.match(apple, /^ {10}OSPREY_BIN: \$\{\{ github\.workspace \}\}\/target\/release\/osprey$/m)
   assert.doesNotMatch(apple, /continue-on-error/)
@@ -159,7 +165,9 @@ test('the required macOS gate runs every Apple part, the native Workbench host a
   const full = recipe.match(/^workbench:.*(?:\n\t.*)*/m)?.[0]
   assert.match(full, /--filter WorkbenchLayout$/m)
   assert.doesNotMatch(full, /--skip/)
-  assert.match(recipe, /^\tcargo build --manifest-path src\/toolchain\/Cargo\.toml --release -p osprey-cli$/m)
+  assert.match(recipe, /^_workbench_linked: _runtime _runtime_macos\n\t\$\(COMPILER_BUILD\)$/m)
+  // COMPILER_BUILD compiles only osprey-cli, or with OSPREY_PREBUILT (CI) checks the downloaded binary.
+  assert.match(readFileSync('scripts/make/config.mk', 'utf8'), /^COMPILER_BUILD = \$\(if \$\(OSPREY_PREBUILT\),test -x \$\(BIN\),cargo build --manifest-path src\/toolchain\/Cargo\.toml --release -p osprey-cli\)$/m)
   assert.match(recipe, /^\tOSPREY_BIN="\$\(CURDIR\)\/\$\(BIN\)" OSPREY_SWIFT_APP=src\/osprey\/workbench bash src\/toolchain\/hosts\/swift\/view\.sh --open-check$/m)
   // Every Swift test runs once: the Workbench suites but the memory soak, the soak in its own part,
   // and the rest under agent-headless.

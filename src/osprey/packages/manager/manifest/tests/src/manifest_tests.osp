@@ -162,6 +162,16 @@ module ManifestTests {
         rejected("test_roots = [\"test\", \"TEST\"]\n", "manifest.project.test-roots at 3:1"),
         rejected("[modules]\nallow_wildcard_imports = \"yes\"\n", "manifest.modules.allow-wildcard-imports at 4:1"),
         rejected("[modules]\nstrict = true\n", "manifest.modules.unknown-key at 4:1"),
+        rejected("[discipline]\nname = \"bounded\"\nchecker = \"src\"\n", "accepted"),
+        rejected("[discipline]\nname = \"lean4\"\nchecker = \"checker.ospml\"\ntimeout_seconds = 30\n", "accepted"),
+        refused(packageBase + packageTail + "[discipline]\nname = \"bounded\"\nchecker = \"src/main.ospml\"\n", "accepted"),
+        rejected("[discipline]\nchecker = \"src\"\n", "manifest.discipline.name at 3:1"),
+        rejected("[discipline]\nname = 7\nchecker = \"src\"\n", "manifest.discipline.name at 4:1"),
+        rejected("[discipline]\nname = \"\"\nchecker = \"src\"\n", "manifest.discipline.name at 4:1"),
+        rejected("[discipline]\nname = \"bounded\"\n", "manifest.discipline.checker at 3:1"),
+        rejected("[discipline]\nname = \"bounded\"\nchecker = \"\"\n", "manifest.discipline.checker at 5:1"),
+        rejected("[discipline]\nname = \"bounded\"\nchecker = \"src\"\ntimeout_seconds = \"30\"\n", "manifest.discipline.timeout-seconds at 6:1"),
+        rejected("[discipline]\nname = \"bounded\"\nchecker = \"src\"\nstrict = true\n", "manifest.discipline.unknown-key at 6:1"),
         pythonProjectRefused("lib/model.py", "manifest.python-source-unrooted at 1:1"),
         rejected("python_sources = [\"py\"]\n", "manifest.project.python-sources at 3:1"),
         rejected("python_sources = \"src/model.py\"\n", "manifest.project.python-sources at 3:1"),
@@ -257,6 +267,9 @@ module ManifestTests {
         portChecks("rouge", rougeScore, "@osprey/rouge-score")
     }
 
+    /// The manifest suite: dependency grants, port identities, the spec
+    /// example and application roots accepted, and every structure, `[package]`,
+    /// dependency, system and asset rejection.
     export fn run() = {
         test("manifest: dependency grants", grantsParse)
         test("manifest: port identities", acceptsPortIdentities)

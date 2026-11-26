@@ -6,6 +6,9 @@ namespace proof
     them adds no typing or equality rule: Infer checks every application.
     Implements [PROOF-EXPORT] [PROOF-KERNEL-THEORY]. *)
 module Literals
+    (** The term of the Lean string literal `text`: `String.ofByteArray` applied to
+        its UTF-8 bytes and the witness that they are valid, or an error when `text`
+        is not valid UTF-8. *)
     export string text = match characters (text, 0)
         Success chars => Success(value = constructed chars)
         Error message => Error(message = message)
@@ -22,7 +25,7 @@ module Literals
             Error message => Error(message = message)
         Error message => Error(message = "invalid string scalar: ${message}")
 
-    characterList (scalar, rest, parsed) = match parsed
+    characterList (_scalar, rest, parsed) = match parsed
         Success number => Success(value = Terms::apps (Const "List.cons" [Zero], [Const "Char" [], App (Const "Char.ofNat" []) (NatLit number), rest]))
         Error message => Error(message = "invalid string scalar: ${message}")
 

@@ -53,7 +53,7 @@ module PhaseOperators
         OperatorSample(sample = config.amplitude * raw, next = OperatorState(phase = Waves::wrap (phase + PhaseMath::instantaneous (config.frequency, modulation, config.spread) / config.sampleRate), previous = raw, older = held.previous, sync = sync))
 
     (** Oversampled operator state: the operator runs at twice the rate into a half-band decimator. *)
-    export oversampledInitial () = OversampledOperator(operator = initial, down = mapList (toList (range (0, Oversamplers::taps)), \_ => 0.0))
+    export oversampledInitial () = OversampledOperator(operator = initial, down = Sequences::zeros Oversamplers::taps)
 
     (** One base-rate sample from two operator samples at twice the rate, decimated by the 31-tap half-band
         filter (7.5 base-rate samples of latency). Modulation and sync are held across both sub-samples. *)

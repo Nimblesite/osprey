@@ -336,7 +336,7 @@ impl Analyzer<'_> {
             } if expression_name(function) == Some("Channel")
                 && !env.shadowed.contains("Channel") =>
             {
-                Some(Value::channel(expression_site(expression)))
+                Some(Value::created_channel(expression_site(expression)))
             }
             Expr::Call {
                 function,

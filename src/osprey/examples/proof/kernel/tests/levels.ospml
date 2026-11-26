@@ -20,6 +20,7 @@ module LevelsTests
     ctorElimLeft () = Max (imaxOf "u") (Max (Max (imaxOf "u") (imaxOf "v")) (one ()))
     ctorElimRight () = Max (one ()) (Max (imaxOf "u") (imaxOf "v"))
 
+    (** Runs the universe-level cases; the testing built-ins report the TAP lines. *)
     export run () =
         test ("the ledger's universe pairs decide equal: settled imaxes and repeated arms", \() => expectAll [Levels::equal (IMax (u1 ()) (IMax (u1 ()) Zero)) Zero == true, Levels::equal (mapTRLeft ()) (Max (plus ("u_1", 2)) (plus ("u_2", 2))) == true, Levels::equal (recCompiledLeft ()) (IMax (Succ (u1 ())) (u1 ())) == true, Levels::equal (Max (Param "u") (Succ (Param "v"))) (Max (Succ (Param "v")) (Param "u")) == true, Levels::equal (Max (one ()) (Succ (Param "u"))) (Succ (Param "u")) == true])
         test ("levels that differ at some assignment stay unequal", \() => expectAll [Levels::equal (IMax (Param "u") (Param "v")) (Max (Param "u") (Param "v")) == false, Levels::equal (Max (Param "u") (Param "v")) (Param "u") == false, Levels::equal (Succ (Param "u")) (Param "u") == false, Levels::equal (Max (one ()) (Param "u")) (Param "u") == false, Levels::equal (IMax (Param "u") (Param "v")) (Param "v") == false, Levels::equal (Max (plus ("u", 2)) (Param "v")) (Max (plus ("u", 1)) (Param "v")) == false])

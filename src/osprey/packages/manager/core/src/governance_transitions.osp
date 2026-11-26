@@ -80,7 +80,7 @@ module GovernanceTransitions {
     /// that principal is denied. Performed only by the separately
     /// credentialed incident operator path [PACKAGE-HOSTED-CONTROL].
     export fn suspendPrincipal(registry, principal) =
-        andThen(Governance::principalOf(registry, principal), fn(p: Governance::Principal) =>
+        andThen(Governance::principalOf(registry, principal), fn(_p: Governance::Principal) =>
             Success { value: registry {
                 principals: mapList(registry.principals, fn(q: Governance::Principal) =>
                     if q.id == principal { q { status: Governance::Suspended } } else { q }),

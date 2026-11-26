@@ -16,6 +16,4 @@ fn held(writes, key) = match find(writes, fn(write) => write.sliceKey == key) {
     Error(_) => "host:${key}"
 }
 
-print(held([], "b"))
-print(held([SliceWrite { sliceKey: "b", sliceText: "pending" }], "b"))
-print(Other { label: "unrelated" }.label)
+print("${held([], "b")}\n${held([SliceWrite { sliceKey: "b", sliceText: "pending" }], "b")}\n${Other { label: "unrelated" }.label}")

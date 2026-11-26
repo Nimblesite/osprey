@@ -73,15 +73,29 @@ const KNOWN_ERRORS = [];
 // editor and the Google Analytics beacon (gtag.js + /g/collect), whose async
 // analytics requests are aborted by headless Chromium and are not site defects.
 const IGNORED_REQUEST_HOSTS = /monaco|cdnjs|jsdelivr|unpkg|googleapis|gstatic|googletagmanager|google-analytics/;
+const ignoredRequest = (value) => {
+  try {
+    return IGNORED_REQUEST_HOSTS.test(new URL(value).hostname);
+  } catch {
+    return false;
+  }
+};
 
 // Attaches console-error / pageerror / failed-request collectors to a page.
 function collectProblems(page, pageName) {
   const consoleErrors = [];
   const pageErrors = [];
   const failedRequests = [];
+  const pendingRequests = new Set();
+  page.on("request", (request) => {
+    if (!ignoredRequest(request.url())) pendingRequests.add(request);
+  });
+  const settled = (request) => pendingRequests.delete(request);
+  page.on("requestfinished", settled);
+  page.on("requestfailed", settled);
   page.on("console", (m) => {
     // A third-party script's own failure is logged as a console error with its URL.
-    const ours = !IGNORED_REQUEST_HOSTS.test(m.location().url ?? "");
+    const ours = !ignoredRequest(m.location().url ?? "");
     if (m.type() === "error" && ours && !isKnown(pageName, m.text())) consoleErrors.push(m.text());
   });
   page.on("pageerror", (e) => {
@@ -91,12 +105,12 @@ function collectProblems(page, pageName) {
     // A video with preload="metadata" reads its header and the browser cancels
     // the rest of the download: that abort is the browser working, not a defect.
     const mediaAbort = r.resourceType() === "media" && r.failure()?.errorText === "net::ERR_ABORTED";
-    if (!mediaAbort && !IGNORED_REQUEST_HOSTS.test(r.url())) failedRequests.push(`${r.url()} (${r.failure()?.errorText})`);
+    if (!mediaAbort && !ignoredRequest(r.url())) failedRequests.push(`${r.url()} (${r.failure()?.errorText})`);
   });
   page.on("response", (r) => {
-    if (r.status() >= 400 && !IGNORED_REQUEST_HOSTS.test(r.url())) failedRequests.push(`${r.status()} ${r.url()}`);
+    if (r.status() >= 400 && !ignoredRequest(r.url())) failedRequests.push(`${r.status()} ${r.url()}`);
   });
-  return { consoleErrors, pageErrors, failedRequests };
+  return { consoleErrors, pageErrors, failedRequests, pendingRequests };
 }
 
 // Plain text paints one colour, so highlighted code is any code surface whose

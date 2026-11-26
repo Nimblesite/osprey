@@ -111,7 +111,7 @@ fn a_fiber_is_rejected() {
 #[test]
 fn a_channel_is_rejected() {
     bad_with(
-        "let a = Channel(1)\nlet b = Channel(1)\nlet x = structuralEquals(a, b)\n",
+        "fn same(a, b) = match a {\n    Success { value: x } => match b {\n        Success { value: y } => structuralEquals(x, y)\n        Error { message } => false\n    }\n    Error { message } => false\n}\nprint(toString(same(Channel(1), Channel(1))))\n",
         HANDLE,
     );
 }

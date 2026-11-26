@@ -16,11 +16,11 @@ module Numeric
     (** The candidate step for one weak-head application spine. *)
     export step (env, term) = match term
         App head right => binaryHead (env, head, right)
-        other => NoNumericRule
+        _ => NoNumericRule
 
     binaryHead (env, head, right) = match head
         App function left => matched (env, function, left, right)
-        other => NoNumericRule
+        _ => NoNumericRule
 
     (** Whether the environment carries the exact pinned closure the
         numeric rules assume; exposed so an integrator and the tests can
@@ -29,7 +29,7 @@ module Numeric
 
     matched (env, head, left, right) = match head
         Const name levels => binaryConstant (env, name, levels, left, right)
-        other => NoNumericRule
+        _ => NoNumericRule
 
     (** Only the saturated primitive heads at no universe arguments. *)
     binaryConstant (env, name, levels, left, right) = match (name == "Nat.ble" || name == "Nat.beq" || name == "Nat.mul" || name == "Nat.pow") && isEmpty levels
@@ -41,11 +41,11 @@ module Numeric
     validLiterals (term) = match term
         NatLit value => Naturals::canonical value
         App head arg => validLiterals head && validLiterals arg
-        Lam name domain body => validLiterals domain && validLiterals body
-        Pi name domain body => validLiterals domain && validLiterals body
-        Let name ty value body => validLiterals ty && validLiterals value && validLiterals body
-        Proj family index target => validLiterals target
-        other => true
+        Lam _ domain body => validLiterals domain && validLiterals body
+        Pi _ domain body => validLiterals domain && validLiterals body
+        Let _ ty value body => validLiterals ty && validLiterals value && validLiterals body
+        Proj _ _ target => validLiterals target
+        _ => true
 
     (** Both operands decode before anything expensive happens: a variable,
         a partial application or a non-numeral never allocates the pinned
@@ -62,11 +62,11 @@ module Numeric
 
     decoded (env, term, count) = match term
         NatLit value => canonicalLimbs (value, count)
-        other => view (env, Terms::spine (Reduce::whnf (env, term)), count)
+        _ => view (env, Terms::spine (Reduce::whnf (env, term)), count)
 
     view (env, spine, count) = match spine.spineHead
         Const name levels => headView (env, name, levels, spine.spineArgs, count)
-        other => Error(message = "not a numeral")
+        _ => Error(message = "not a numeral")
 
     headView (env, name, levels, args, count) = match name == "Nat.zero" && isEmpty levels && isEmpty args
         true => Success(value = count)
@@ -97,7 +97,7 @@ module Numeric
             "Nat.beq" => equality (env, left, right)
             "Nat.mul" => multiplication (env, left, right)
             "Nat.pow" => power (env, left, right)
-            other => NoNumericRule
+            _ => NoNumericRule
 
     multiplication (env, left, right) = computed (pinnedAll (env, NumericCanonical::multiplication ()), \() => Naturals::multiply (left, right))
 
@@ -130,6 +130,8 @@ module Numeric
         read from the environment being validated. *)
     canonical (env) = foldList (NumericCanonical::definitions (), true, \(ok, expected) => ok && declared (env, expected)) && foldList (NumericCanonical::inductives (), true, \(ok, expected) => ok && declared (env, expected))
 
+    (** Whether `env` holds `expected` exactly: the same name, universe parameters,
+        type and body, binder names aside; false when it is absent. *)
     export declared (env, expected) = match Environment::find (env, expected.name)
         Error _ => false
         Success actual => actual.name == expected.name && DeclarationBodies::sameNames (actual.params, expected.params) && Terms::equal (actual.ty, expected.ty) && DeclarationBodies::equal (actual.body, expected.body)

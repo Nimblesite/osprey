@@ -117,8 +117,7 @@ let shadowed = exactArithmetic(fn() => {
     }
     askOnce(1)
 })
-print("nested resuming " + toString(nested) + " shadowed resume " + toString(shadowed))
-print("=== resume scoping done ===")
+print("nested resuming " + toString(nested) + " shadowed resume " + toString(shadowed) + "\n=== resume scoping done ===")
 
 /// (4) RESUME carrying an ERASED operand — the box must survive the captured
 ///     continuation. A value-carrying `resume` suspends the performer and

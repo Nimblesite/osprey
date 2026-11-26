@@ -131,6 +131,9 @@ fn authzStartInert(seedLists, seedItems, request, why, extra) = {
     checkAll(why, [length(starts) == 3, authzSameAnswers(starts), authzReadsEveryBranch(starts), authzEvery(starts, extra)])
 }
 
+/// The check label every start-inert probe carries.
+let startInertWhy = "the start principal changes nothing"
+
 /// The eight requests with no access rule, each valid against two lists and three items.
 fn authzUnguardedRequests() = [
     newList("Travel", "#5C6BC0"), editList(2, "Budget", "#4CAF50"), dropList(2),
@@ -293,7 +296,7 @@ module MultishotAuthzCases {
             structuralEquals(authzTitlesOf(authzViewLists(view)), ["Banking", "Shopping"]),
             match authzViewLists(view) { [banking, shopping] => length(banking.items) == 1 && length(shopping.items) == 2 _ => false }
         ])
-        authzStartInert(authzTwoLists(), authzThreeItems(), GetTodos, "the start principal changes nothing",
+        authzStartInert(authzTwoLists(), authzThreeItems(), GetTodos, startInertWhy,
             fn(report) => authzItemsKept(report) && structuralEquals(authzBranchTexts(report), ["unauthorized", "todos view", "todos view"]))
     }
 
@@ -320,7 +323,7 @@ module MultishotAuthzCases {
             authzItemsKept(empty), structuralEquals(bare.items, []),
             noEvents(fresh), noEvents(orphan), noEvents(empty), noEvents(bare)
         ])
-        authzStartInert(authzTwoLists(), authzThreeItems(), newItem(1, "Dentist"), "the start principal changes nothing",
+        authzStartInert(authzTwoLists(), authzThreeItems(), newItem(1, "Dentist"), startInertWhy,
             fn(report) => structuralEquals(authzBranchTexts(report), ["created 4", "created 4", "created 4"]))
     }
 
@@ -402,7 +405,7 @@ module MultishotAuthzCases {
             length(bare.items) == 0, length(bare.lists) == 0,
             noEvents(drop), noEvents(missing), noEvents(bare)
         ])
-        authzStartInert(authzTwoLists(), authzThreeItems(), dropItem(3), "the start principal changes nothing",
+        authzStartInert(authzTwoLists(), authzThreeItems(), dropItem(3), startInertWhy,
             fn(report) => noEvents(report) && authzItemsKept(report))
     }
 }

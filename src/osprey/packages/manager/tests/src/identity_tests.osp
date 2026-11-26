@@ -92,6 +92,8 @@ module IdentityTests {
         ])
     }
 
+    /// The identity suite: digest envelopes, the spec 0031 domain spellings,
+    /// domain-separated hashes, the display grammar and canonical order.
     export fn run() = {
         test("digests: envelopes and preimages", digests)
         test("domains: spec 0031 spellings", spec0031Domains)

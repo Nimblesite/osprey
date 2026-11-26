@@ -218,13 +218,13 @@ static void gc_pages_rescan_marked(void) {
 
 // Run the finalizer of every dying cell that carries one, before any cell is
 // reused: a finalizer may ask the collector about a block that outlives it.
-static void gc_pages_finalize_dead(void (*finalize)(void *body)) {
+static void gc_pages_finalize_dead(void) {
   for (size_t i = 0; i < g_pages_cap; i++) {
     OspGcPage *page = g_pages[i];
     for (uint32_t c = 0; page && page->finals && c < page->bump; c++) {
       if ((page->meta[c].mark & (GC_USED | GC_FINAL | GC_MARKED)) == (GC_USED | GC_FINAL)) {
         uintptr_t cell = gc_cell_at(page, c);
-        finalize((void *)cell);
+        gc_finalize_block(page->meta[c].mark, (void *)cell);
       }
     }
   }

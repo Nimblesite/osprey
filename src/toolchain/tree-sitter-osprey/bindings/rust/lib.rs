@@ -11,6 +11,8 @@ extern "C" {
     unsafe_code,
     reason = "sealed FFI boundary: the C parser's language function is the grammar"
 )]
+// SAFETY: `tree_sitter_osprey` is the generated C parser's language
+// function; it takes no arguments and returns a static language table.
 pub const LANGUAGE: LanguageFn = unsafe { LanguageFn::from_raw(tree_sitter_osprey) };
 
 #[cfg(test)]

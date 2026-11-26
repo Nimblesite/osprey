@@ -338,7 +338,7 @@
         },
         {
           "name": "keyword.operator.arrow.osprey-ml",
-          "match": "(=>|->)"
+          "match": "(=>|->|→)"
         },
         {
           "name": "keyword.operator.pipe.osprey-ml",

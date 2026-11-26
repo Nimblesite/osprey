@@ -32,14 +32,6 @@
 #endif
 #endif // !__wasm__
 
-// Make stdout line-buffered at startup so a long-running program (e.g. an HTTP
-// server that never returns to flush at exit) shows each printed line live,
-// whether stdout is a TTY, a pipe, or a file. Line buffering changes only flush
-// timing, never the bytes, so captured/differential output is unaffected.
-__attribute__((constructor)) static void osprey_stdio_lbf(void) {
-  setvbuf(stdout, NULL, _IOLBF, 0);
-}
-
 #ifndef __wasm__
 // Process event handler function type - Osprey provides this callback
 typedef void (*ProcessEventHandler)(int64_t process_id, int64_t event_type,
@@ -73,14 +65,11 @@ typedef struct {
 
 // Clean up process resources
 void cleanup_process(int64_t process_id) {
-  if (process_id < 1 || process_id >= MAX_PROCESSES) {
-    return;
-  }
-
   pthread_mutex_lock(&process_mutex);
-  ProcessResult *proc = processes[process_id];
+  ProcessResult *proc = process_at(process_id);
   if (proc) {
-    processes[process_id] = NULL;
+    processes[process_slot(process_id)] = NULL;
+    forget_process_callback(process_id);
 
     if (proc->command)
       free(proc->command);
@@ -128,9 +117,7 @@ static void drain_pipe(ProcessResult *proc, HANDLE pipe, int64_t event_type) {
   DWORD got = 0;
   if (ReadFile(pipe, buffer, to_read, &got, NULL) && got > 0) {
     buffer[got] = '\0';
-    if (proc->handler) {
-      proc->handler(proc->process_id, event_type, buffer);
-    }
+    process_event(proc, event_type, buffer);
   }
 }
 
@@ -154,12 +141,10 @@ static void *process_monitor_thread(void *arg) {
       proc->exit_code = (int64_t)code;
       pthread_mutex_unlock(&proc->mutex);
 
-      if (proc->handler) {
-        char exit_code_str[32];
-        snprintf(exit_code_str, sizeof(exit_code_str), "%lld",
-                 (long long)proc->exit_code);
-        proc->handler(proc->process_id, PROCESS_EXIT, exit_code_str);
-      }
+      char exit_code_str[32];
+      snprintf(exit_code_str, sizeof(exit_code_str), "%lld",
+               (long long)proc->exit_code);
+      process_event(proc, PROCESS_EXIT, exit_code_str);
       break;
     }
   }
@@ -179,21 +164,20 @@ static void *process_monitor_thread(void *arg) {
 // second one does not strand the first, the record's mutex destroyed on every
 // teardown, and the unmonitorable child both ended and WAITED FOR before its
 // handle is released.
-int64_t spawn_process_with_handler(const char *command,
-                                   ProcessEventHandler handler) {
+static int64_t spawn_process(const char *command, ProcessCallback callback) {
   // A command longer than the command line is refused before anything is
   // created: truncating it would run a different, cut-off command.
   char cmdline[WIN_COMMAND_LINE_MAX];
-  int written = command && handler ? snprintf(cmdline, sizeof(cmdline), "cmd.exe /c %s", command) : -1;
+  int written = command && process_callback_present(callback) ? snprintf(cmdline, sizeof(cmdline), "cmd.exe /c %s", command) : -1;
   if (written < 0 || (size_t)written >= sizeof(cmdline)) {
     return -1;
   }
 
   pthread_mutex_lock(&process_mutex);
-  int64_t process_id = next_process_id++;
-  if (process_id >= MAX_PROCESSES) {
+  int64_t process_id = claim_process_id();
+  if (process_id < 0) {
     pthread_mutex_unlock(&process_mutex);
-    return -2;
+    return process_id;
   }
 
   ProcessResult *proc = malloc(sizeof(ProcessResult));
@@ -205,12 +189,12 @@ int64_t spawn_process_with_handler(const char *command,
   proc->process_id = process_id;
   proc->exit_code = -999;
   proc->is_running = true;
-  proc->handler = handler;
   if (pthread_mutex_init(&proc->mutex, NULL) != 0) {
     free(proc);
     pthread_mutex_unlock(&process_mutex);
     return -3;
   }
+  adopt_process_callback(proc, callback);
   proc->command = strdup(command);
   if (proc->command == NULL) {
     return abandon_process(proc, -3);
@@ -262,7 +246,7 @@ int64_t spawn_process_with_handler(const char *command,
   proc->process = pi.hProcess;
   proc->stdout_rd = out_rd;
   proc->stderr_rd = err_rd;
-  processes[process_id] = proc;
+  processes[process_slot(process_id)] = proc;
 
   // Monitor thread fires user callbacks concurrently with the caller.
   osp_mem_notify_multithreaded();
@@ -279,7 +263,7 @@ int64_t spawn_process_with_handler(const char *command,
     WaitForSingleObject(proc->process, INFINITE);
     CloseHandle(proc->process);
     close_handle_pair(out_rd, err_rd);
-    processes[process_id] = NULL;
+    processes[process_slot(process_id)] = NULL;
     return abandon_process(proc, -5);
   }
 
@@ -288,14 +272,11 @@ int64_t spawn_process_with_handler(const char *command,
 }
 
 void cleanup_process(int64_t process_id) {
-  if (process_id < 1 || process_id >= MAX_PROCESSES) {
-    return;
-  }
-
   pthread_mutex_lock(&process_mutex);
-  ProcessResult *proc = processes[process_id];
+  ProcessResult *proc = process_at(process_id);
   if (proc) {
-    processes[process_id] = NULL;
+    processes[process_slot(process_id)] = NULL;
+    forget_process_callback(process_id);
     if (proc->process) {
       CloseHandle(proc->process);
     }
@@ -310,13 +291,20 @@ void cleanup_process(int64_t process_id) {
 
 #endif // _WIN32
 
+// A raw C function: a named Osprey function lowered to its code pointer.
+int64_t spawn_process_with_handler(const char *command, ProcessEventHandler handler) {
+  return spawn_process(command, (ProcessCallback){handler, NULL});
+}
+
+// An Osprey function value, such as a capturing lambda [BUILTIN-PROCESS-CLOSURE].
+int64_t spawn_process_with_closure(const char *command, void *closure) {
+  return spawn_process(command, (ProcessCallback){NULL, closure});
+}
+
 // Both platform records share this lifecycle [BUILTIN-PROCESS-FAILURE].
 int64_t await_process(int64_t process_id) {
-  if (process_id < 1 || process_id >= MAX_PROCESSES) {
-    return -1;
-  }
   pthread_mutex_lock(&process_mutex);
-  ProcessResult *proc = processes[process_id];
+  ProcessResult *proc = process_at(process_id);
   pthread_mutex_unlock(&process_mutex);
   if (!proc) {
     return -1;

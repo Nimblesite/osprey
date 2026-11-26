@@ -18,7 +18,17 @@ module Lists
         Success item => listAppend out item
         Error _ => out
 
-    (** The first item that `matches`, or an error when none does. *)
+    (** The first item that `matches`, or an error when none does.
+    # Examples
+    ```osprey
+    first = Lists::find ([2, 4, 7], \n => n > 5)
+    none = Lists::find ([2, 4], \n => n > 5)
+    print "${first} ${none}"
+    ```
+    ```output
+    Success(7) Error(index out of bounds)
+    ```
+    *)
     export find<T> : (List<T>, (T) -> bool) -> Result<T, string>
     find (items, matches) = match listGet items (position (items, matches))
         Error _ => Error(message = "index out of bounds")
@@ -32,26 +42,72 @@ module Lists
             true => index
             false => sought (items, matches, satAdd index 1)
 
-    (** The index of the first item that matches, or -1. *)
+    (** The index of the first item that matches, or -1.
+    # Examples
+    ```osprey
+    found = Lists::position (["a", "b", "c"], \s => s == "c")
+    missing = Lists::position (["a", "b"], \s => s == "c")
+    print "${found} ${missing}"
+    ```
+    ```output
+    2 -1
+    ```
+    *)
     export position<T> : (List<T>, (T) -> bool) -> int
     position (items, matches) = sought (items, matches, 0)
 
-    (** The launch argument after `flag`, or `otherwise` when `flag` is absent or last. *)
+    (** The launch argument after `flag`, or `otherwise` when `flag` is absent or last.
+    # Examples
+    ```osprey
+    print "[${Lists::after (["app", "--out", "a.png"], "--out", "none")}] [${Lists::after (["app", "--out"], "--out", "none")}]"
+    ```
+    ```output
+    [a.png] [none]
+    ```
+    *)
     export after (arguments, flag, otherwise) =
         at = position (arguments, \a => a == flag)
         match at >= 0
             true => listGet arguments (satAdd at 1) ?: otherwise
             false => otherwise
 
-    (** True when at least one item matches. *)
+    (** True when at least one item matches.
+    # Examples
+    ```osprey
+    none = Lists::any ([], \n => n > 0)
+    some = Lists::any ([2, 4, 7], \n => n > 5)
+    print "${none} ${some}"
+    ```
+    ```output
+    false true
+    ```
+    *)
     export any<T> : (List<T>, (T) -> bool) -> bool
     any (items, matches) = length (filterList (items, matches)) > 0
 
-    (** True when every item matches; an empty list holds vacuously. *)
+    (** True when every item matches; an empty list holds vacuously.
+    # Examples
+    ```osprey
+    none = Lists::all ([], \n => n > 0)
+    mixed = Lists::all ([2, 4, 7], \n => n > 5)
+    print "${none} ${mixed}"
+    ```
+    ```output
+    true false
+    ```
+    *)
     export all<T> : (List<T>, (T) -> bool) -> bool
     all (items, matches) = length (filterList (items, matches)) == length items
 
-    (** The groups' items in order, as one list. *)
+    (** The groups' items in order, as one list.
+    # Examples
+    ```osprey
+    print "${toString (Lists::flatten ([[1, 2], [], [3]]))}"
+    ```
+    ```output
+    [1, 2, 3]
+    ```
+    *)
     export flatten<T> : List<List<T>> -> List<T>
     flatten groups = spanned (groups, 0, length groups)
 
@@ -63,11 +119,27 @@ module Lists
             middle = satAdd start (intDiv (satSub stop start) 2)
             listConcat (spanned (groups, start, middle)) (spanned (groups, middle, stop))
 
-    (** The items from index `start` up to but excluding `stop`; indexes past the end contribute nothing. *)
+    (** The items from index `start` up to but excluding `stop`; indexes past the end contribute nothing.
+    # Examples
+    ```osprey
+    print "${toString (Lists::slice ([1, 2, 3, 4, 5], 2, 4))} ${toString (Lists::slice ([7, 8], 1, 9))}"
+    ```
+    ```output
+    [3, 4] [8]
+    ```
+    *)
     export slice<T> : (List<T>, int, int) -> List<T>
     slice (items, start, stop) = range (start, stop) |> fold [] (\(out, index) => kept (out, items, index))
 
-    (** True when no two keys repeat. *)
+    (** True when no two keys repeat.
+    # Examples
+    ```osprey
+    print "${Lists::distinct ["a", "b", "a"]} ${Lists::distinct ["c", "d"]} ${Lists::distinct []}"
+    ```
+    ```output
+    false true true
+    ```
+    *)
     export distinct keys = length (mapKeys (range (0, length keys) |> fold (Map ()) (\(seen, index) => mapSet seen (listGet keys index ?: "") true))) == length keys
 
     takeLeft<T> : (Merge<T>, List<T>) -> Merge<T>
@@ -92,7 +164,16 @@ module Lists
     merge<T> : (List<T>, List<T>, (T, T) -> bool) -> List<T>
     merge (left, right, before) = (range (0, satAdd (length left) (length right)) |> fold (Merge(mergeLeft = 0, mergeRight = 0, merged = [])) (\(merging, _) => step (merging, left, right, before))).merged
 
-    (** Stable merge sort; `before (a, b)` holds when `a` sorts ahead of `b`. *)
+    (** Stable merge sort; `before (a, b)` holds when `a` sorts ahead of `b`.
+    # Examples
+    ```osprey
+    shorter = \(a, b) => length a < length b
+    print "${toString (Lists::sortBy (["pear", "fig", "date", "apple"], shorter))}"
+    ```
+    ```output
+    ["fig", "pear", "date", "apple"]
+    ```
+    *)
     export sortBy<T> : (List<T>, (T, T) -> bool) -> List<T>
     sortBy (items, before) = match length items <= 1
         true => items
@@ -102,7 +183,15 @@ module Lists
 
 (** Choosing between two already-evaluated values without a `match`. *)
 module Pick
-    (** `yes` when `flag` holds, otherwise `no`; both are already evaluated. *)
+    (** `yes` when `flag` holds, otherwise `no`; both are already evaluated.
+    # Examples
+    ```osprey
+    print "${Pick::either (2 > 1, "yes", "no")} ${Pick::either ("" == "x", "yes", "no")}"
+    ```
+    ```output
+    yes no
+    ```
+    *)
     export either<T> : (bool, T, T) -> T
     either (flag, yes, no) = match flag
         true => yes

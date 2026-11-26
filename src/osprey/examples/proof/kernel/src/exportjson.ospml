@@ -26,6 +26,7 @@ module ExportJson
         Success _ => true
         Error _ => false
 
+    (** The string member `name`, which must be present. *)
     export textIn (json, name) = asIn (json, name, textAs)
 
     // The member `name`, read by `read`.
@@ -38,17 +39,20 @@ module ExportJson
 
     textAs (value, name) = readAs (value, name, jsonText, "a string")
 
+    (** The integer member `name`, which must be present. *)
     export intIn (json, name) = asIn (json, name, intAs)
 
     (** The integer `value`, which `name` names. *)
     export intAs (value, name) = readAs (value, name, jsonInt, "an integer")
 
+    (** The array member `name`, which must be present. *)
     export arrayIn (json, name) = asIn (json, name, arrayAs)
 
     arrayAs (value, name) = match value
         JsonArray items => Success(value = items)
-        other => Error(message = "${name} is not an array")
+        _ => Error(message = "${name} is not an array")
 
+    (** The boolean member `name`, which must be present. *)
     export boolIn (json, name) = asIn (json, name, boolAs)
 
     boolAs (value, name) = readAs (value, name, jsonBool, "a boolean")
@@ -69,6 +73,8 @@ module ExportJson
         true => Success(value = Zero)
         false => entryOf (tables.levels, "level", index)
 
+    (** The expression `index` of the expression table; an index the file never
+        defined is an error, as for names and levels. *)
     export exprOf (tables, index) = entryOf (tables.exprs, "expr", index)
 
     (** A declaration's name, through the name table. *)

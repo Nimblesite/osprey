@@ -5,11 +5,11 @@ fn work(n) = n
 
 let fiberA = spawn work(1)
 let fiberB = spawn work(1)
-let channelA = Channel(1)
-let channelB = Channel(1)
-
 fn viaFiber() = structuralEquals(fiberA, fiberB)
-fn viaChannel() = structuralEquals(channelA, channelB)
+fn viaChannel() = match Channel(1) {
+    Success { value } => structuralEquals(value, value)
+    Error { message } => false
+}
 fn viaField() = structuralEquals({ task: fiberA }, { task: fiberB })
 
 print("${viaFiber()} ${viaChannel()} ${viaField()}")

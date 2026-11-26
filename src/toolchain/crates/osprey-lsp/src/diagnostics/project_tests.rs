@@ -1,10 +1,19 @@
 use super::*;
 
+/// A file of this repository, named relative to its root: its path, for a
+/// `file://` URI, and its text.
+fn repo_file(relative: &str) -> (PathBuf, String) {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../..")
+        .join(relative);
+    let source =
+        std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+    (path, source)
+}
+
 #[test]
 fn module_files_use_the_assembled_project_graph() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../..");
-    let path = root.join("src/osprey/examples/talon/backend/main.ospml");
-    let source = std::fs::read_to_string(&path).expect("read module example");
+    let (path, source) = repo_file("src/osprey/examples/talon/backend/main.ospml");
     let uri = format!("file://{}", path.display());
     let diagnostics = compute(&source, &uri, U16);
     assert_warnings(&diagnostics, &bank_warnings());
@@ -12,64 +21,26 @@ fn module_files_use_the_assembled_project_graph() {
 
 fn bank_warnings() -> Vec<(&'static str, &'static str, crate::model::Span)> {
     vec![
-        (
-            "namespace-folder-drift",
-            "namespace `bank` spans 5 folders; source paths do not change its identity",
-            (3, 0, 3, 14),
-        ),
-        (
-            "unused-pattern-binding",
-            "unused pattern binding `message`",
-            (14, 22, 14, 29),
-        ),
-        (
-            "unused-variable",
-            "unused variable `freed`",
-            (15, 12, 15, 17),
-        ),
-        (
-            "unused-pattern-binding",
-            "unused pattern binding `message`",
-            (17, 14, 17, 21),
-        ),
-        (
-            "unused-pattern-binding",
-            "unused pattern binding `message`",
-            (40, 14, 40, 21),
-        ),
-        (
-            "unused-pattern-binding",
-            "unused pattern binding `value`",
-            (41, 16, 41, 21),
-        ),
-        (
-            "unused-variable",
-            "unused variable `slept`",
-            (42, 12, 42, 17),
-        ),
-        (
-            "unused-variable",
-            "unused variable `listening`",
-            (62, 4, 62, 13),
-        ),
+        ("namespace-folder-drift", "namespace `bank` spans 5 folders; source paths do not change its identity", (3, 0, 3, 14)),
+        ("unused-pattern-binding", "unused pattern binding `message`", (14, 22, 14, 29)),
+        ("unused-variable", "unused variable `freed`", (15, 12, 15, 17)),
+        ("unused-pattern-binding", "unused pattern binding `message`", (17, 14, 17, 21)),
+        ("unused-pattern-binding", "unused pattern binding `message`", (43, 14, 43, 21)),
+        ("unused-pattern-binding", "unused pattern binding `value`", (44, 16, 44, 21)),
+        ("unused-variable", "unused variable `slept`", (45, 12, 45, 17)),
         ("unused-variable", "unused variable `held`", (68, 4, 68, 8)),
-        (
-            "unused-variable",
-            "unused variable `stopped`",
-            (69, 4, 69, 11),
-        ),
-        (
-            "unused-variable",
-            "unused variable `closed`",
-            (70, 4, 70, 10),
-        ),
-        ("unused-variable", "unused variable `made`", (77, 4, 77, 8)),
-        (
-            "unused-parameter",
-            "unused parameter `headers`",
-            (85, 29, 85, 36),
-        ),
-        ("unused-variable", "unused variable `seen`", (86, 4, 86, 8)),
+        ("unused-variable", "unused variable `stopped`", (69, 4, 69, 11)),
+        ("unused-variable", "unused variable `closed`", (70, 4, 70, 10)),
+        ("unused-variable", "unused variable `stopped`", (74, 4, 74, 11)),
+        ("unused-variable", "unused variable `closed`", (75, 4, 75, 10)),
+        ("unused-variable", "unused variable `report`", (76, 4, 76, 10)),
+        ("unused-variable", "unused variable `closed`", (82, 8, 82, 14)),
+        ("unused-variable", "unused variable `report`", (83, 8, 83, 14)),
+        ("unused-pattern-binding", "unused pattern binding `listening`", (87, 16, 87, 25)),
+        ("unused-variable", "unused variable `made`", (94, 4, 94, 8)),
+        ("unused-parameter", "unused parameter `headers`", (102, 29, 102, 36)),
+        ("unused-variable", "unused variable `seen`", (103, 4, 103, 8)),
+        ("unused-variable", "unused variable `reported`", (110, 12, 110, 20)),
         ("repeated-literal", "the literal `\"/api/accounts\"` is written 4 times in this file; name it once as a constant", (20, 4, 20, 82)),
         ("repeated-literal", "the literal `\"/api/deposit\"` is written 3 times in this file; name it once as a constant", (23, 4, 23, 131)),
         ("consecutive-print", "4 `print` calls in a row: join them into one interpolated `print`", (29, 4, 29, 141)),
@@ -84,9 +55,7 @@ fn module_bearing_files_outside_project_roots_are_assembled_standalone() {
     // that graph, not check the raw AST and spray unknown identifiers. The
     // inferred implementations carry no redundant annotations, every export
     // is documented, and the `_` handler parameters leave nothing unused.
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../..");
-    let path = root.join("src/osprey/examples/talon/backend/test/accounts.test.ospml");
-    let source = std::fs::read_to_string(&path).expect("read module test suite");
+    let (path, source) = repo_file("src/osprey/examples/talon/backend/test/accounts.test.ospml");
     let diagnostics = compute(&source, &format!("file://{}", path.display()), U16);
     assert_warnings(&diagnostics, &[]);
     // The editor regression: a self-contained suite with no manifest above it
@@ -127,9 +96,7 @@ fn assert_code(source: &str, uri: &str, code: &str) {
 #[cfg(unix)]
 #[test]
 fn project_diagnostics_map_resolution_and_type_errors_to_the_open_file() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../..");
-    let main_path = root.join("src/osprey/examples/talon/backend/main.ospml");
-    let main = std::fs::read_to_string(&main_path).expect("read ML module example");
+    let (main_path, main) = repo_file("src/osprey/examples/talon/backend/main.ospml");
     let unresolved = main.replace(
         "namespace bank\n",
         "namespace bank\nimport \"missing/web\" as web\n",
@@ -140,7 +107,10 @@ fn project_diagnostics_map_resolution_and_type_errors_to_the_open_file() {
         "project-error",
     );
 
-    let ill_typed = main.replace("served = Metrics::track boot", "served = Metrics::track 42");
+    let ill_typed = main.replace(
+        "served = Metrics::track (\\() => boot port)",
+        "served = Metrics::track 42",
+    );
     assert_code(
         &ill_typed,
         &format!("file://{}", main_path.display()),

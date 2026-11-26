@@ -9,7 +9,7 @@ static _Atomic(OspGpuDrop) gpu_drop;
 // Publishes the destructor after the backend's finalizer can run it.
 static void bind_first(OspGpuDrop drop) {
   if (!atomic_load_explicit(&gpu_drop, memory_order_relaxed)) {
-    osp_mem_set_finalizer(drop); // GC and ARC run the external-header callback.
+    osp_mem_set_finalizer(OSP_MEM_GPU_BUFFER, drop); // GC and ARC run the external-header callback.
     atomic_store_explicit(&gpu_drop, drop, memory_order_release);
   }
 }

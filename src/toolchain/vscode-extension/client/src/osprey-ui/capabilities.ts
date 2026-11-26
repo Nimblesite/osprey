@@ -180,7 +180,7 @@ function runProcess(plan: ProcessPlan): Promise<{ readonly code: number; readonl
         return;
       }
       const code = error && typeof error.code === "number" ? error.code : 0;
-      resolve({ code, stdout: String(stdout ?? ""), stderr: String(stderr ?? "") });
+      resolve({ code, stdout, stderr });
     });
     child.stdin?.once("error", reject);
     child.stdin?.end(plan.stdin, () => undefined);

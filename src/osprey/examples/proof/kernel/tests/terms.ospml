@@ -9,6 +9,7 @@ import proof
 module TermsTests
     closed () = Sort (Succ Zero)
 
+    (** Runs the term cases: shifting, substitution, sharing, boundaries, inspection, equality, universes, identities and prefixes; the testing built-ins report the TAP lines. *)
     export run () =
         shifting ()
         substitution ()
@@ -88,6 +89,7 @@ module TermsTests
 
     deepUniverseTerm level = fold (range (0, 128), Const "F" [level], \(body, _) => Pi "x" (Sort level) body)
 
+    (** The cases for `Terms::prefix`: exact counts over element types of their own, and a count at or below zero giving nothing. *)
     export prefixes () = test ("prefix supports independent element types and exact counts", \() =>
         expect (join (Terms::prefix (["first", "second"], 1), ","), "first")
         expect (structuralEquals (Terms::prefix ([1, 2, 3], 2), [1, 2]), true)

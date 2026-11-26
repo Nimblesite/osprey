@@ -1,0 +1,10 @@
+namespace app
+
+import studio::App
+
+(** Retains the editor's surface between host calls. *)
+effect Keep
+    keep : ui::Surface<studio::Studio, studio::Act> => Unit
+
+initial () = studio::Update::launched ""
+program () = App::program ()

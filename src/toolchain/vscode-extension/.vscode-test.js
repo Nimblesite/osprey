@@ -11,6 +11,10 @@ const fixtureProjects = ["first", "second"].map((name) => {
   fs.writeFileSync(path.join(project, "osprey.toml"), `[project]\nname = "${name}"\nsource_roots = ["src"]\n`);
   return { path: project };
 });
+// A type-discipline package with no [project] table: a package, never a Module Explorer project.
+const disciplineOnly = path.join(fixtureProjects[1].path, "discipline");
+fs.mkdirSync(disciplineOnly);
+fs.writeFileSync(path.join(disciplineOnly, "osprey.toml"), '[package]\nname = "@fixture/discipline"\n\n[discipline]\nname = "fixture"\nchecker = "src"\n');
 const fixtureWorkspace = path.join(fixtureDir, "packages.code-workspace");
 fs.writeFileSync(fixtureWorkspace, JSON.stringify({ folders: fixtureProjects }));
 process.once("exit", () => fs.rmSync(fixtureDir, { recursive: true, force: true }));

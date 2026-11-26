@@ -6,15 +6,23 @@
 
 namespace catalog
 
+    (** Packs and crates of units, with a metric submodule nested one level deeper. *)
     module Units
+        (** The count of a single unit. *)
         export each = 1
+        (** Twelve units for every `count`. *)
         export pack count = (count * 12) 
+        (** Four packs of `count` dozen units, so forty-eight per `count`. *)
         export crate count = (pack count * 4) 
 
+        (** Metric conversions reached through `Units`. *)
         export module Metric
+            (** Converts `kilos` to grams. *)
             export grams kilos = (kilos * 1000) 
 
+    (** Whole dollars converted to cents. *)
     module Pricing
+        (** Converts `dollars` to cents. *)
         export cents dollars = (dollars * 100) 
 
 import catalog::Units

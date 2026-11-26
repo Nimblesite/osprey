@@ -7,7 +7,7 @@ effect Step {
 }
 
 /// An aborted continuation omits observations after the poison step.
-fn pipeline() -> int ![Step, Arith] = {
+fn pipeline() ![Step, Arith] = {
     let a = perform Step.run(1)
     print("pipeline saw step1 -> " + toString(a))
     let b = perform Step.run(2)
@@ -34,10 +34,8 @@ let recovered = exactArithmetic(fn() => {
     }
     pipeline()
 })
-print("recovered result=" + toString(recovered))
-
 // Returning at step 2 aborts the suspended computation.
-print("=== stopping handler: step 2 stops the pipeline, then step 1 handler finishes ===")
+print("recovered result=" + toString(recovered) + "\n=== stopping handler: step 2 stops the pipeline, then step 1 handler finishes ===")
 mut counter2 = 0
 let aborted = exactArithmetic(fn() => {
     handle Step {
@@ -83,7 +81,7 @@ effect Mixed {
     control stop: fn() -> int
 }
 
-fn mixedPipeline() -> string !Mixed = {
+fn mixedPipeline() !Mixed = {
     let scaled = perform Mixed.scale(4)
     let stopped = perform Mixed.stop()
     "unreached ${scaled} ${stopped}"

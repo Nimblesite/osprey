@@ -32,5 +32,6 @@ module SchemaTests {
         ])
     }
 
+    /// One test: the spec's typeDiagram block equals the canonical schema file.
     export fn run() = test("schema: spec block equals canonical file", blockMatchesSchema)
 }

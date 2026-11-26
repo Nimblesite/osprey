@@ -13,16 +13,10 @@ reportTrue () =
 isEqual (x, y) = x == y
 xor (a, b) = (a || b) && !(a && b)
 
-print "=== Boolean Test ==="
-
 // Function-returned bools
-print "${(getTrue ())}\n${(getFalse ())}"
-
 // Literals
-print "${false}\n${true}"
-
 // Integer comparisons
-print "${5 > 3}\n${10 == 10}\n${5 != 3}\n${10 <= 15}\n${8 >= 8}"
+print "=== Boolean Test ===\n${(getTrue ())}\n${(getFalse ())}\n${false}\n${true}\n${5 > 3}\n${10 == 10}\n${5 != 3}\n${10 <= 15}\n${8 >= 8}"
 
 // Equality via function (named args normalize to positional)
 match isEqual (5, 5)
@@ -34,11 +28,9 @@ a = true && false
 b = true || false
 c = (5 > 3) && (10 == 10)
 d = (5 < 3) || (10 != 5)
-print "&& ${toString a}  || ${toString b}  comp&& ${toString c}  comp|| ${toString d}"
-
 // The right side must not run in either expression. A broken eager lowering
 // would print the sentinel labels and fail the golden output.
-print "${(false && reportTrue ())}\n${(true || reportTrue ())}"
+print "&& ${toString a}  || ${toString b}  comp&& ${toString c}  comp|| ${toString d}\n${(false && reportTrue ())}\n${(true || reportTrue ())}"
 
 (** Negation + de Morgan: !(p && q) == (!p || !q) *)
 p = true
@@ -48,10 +40,8 @@ rhs = (!p) || (!q)
 print "deMorgan && ${toString (lhs == rhs)}"
 lhs2 = !(p || q)
 rhs2 = (!p) && (!q)
-print "deMorgan || ${toString (lhs2 == rhs2)}"
-
 // XOR via composition
-print "xor T T ${toString (xor (true, true))}\nxor T F ${toString (xor (true, false))}\nxor F F ${toString (xor (false, false))}"
+print "deMorgan || ${toString (lhs2 == rhs2)}\nxor T T ${toString (xor (true, true))}\nxor T F ${toString (xor (true, false))}\nxor F F ${toString (xor (false, false))}"
 
 (** Bool from match expression *)
 parity = match 4
@@ -64,20 +54,14 @@ print "parity ${toString parity}"
 (** Float comparison *)
 f1 = 1.5
 f2 = 2.5
-print "${f1 < f2}\n${f2 == f2}"
-
 // String comparison (strcmp semantics, lexicographic)
-print ("apple" < "banana")
-print ("hi" == "hi")
-print ("hi" != "bye")
+print "${f1 < f2}\n${f2 == f2}\n${("apple" < "banana")}\n${("hi" == "hi")}\n${("hi" != "bye")}"
 
 (** Ternary on bool *)
 label = match 3 < 5
     true => "yes"
     false => "no"
-print label
-
-print "=== Boolean Test Complete ==="
+print "${label}\n=== Boolean Test Complete ==="
 
 (** Exercise literals, comparison families, composition, and both short-circuit paths. *)
 booleanBehaviorCase () =

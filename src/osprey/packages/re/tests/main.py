@@ -420,7 +420,7 @@ def invalid_sub_pattern():
     match Api.sub("[", "", "abc", 0, 0):
         case Error(message=message):
             return [Check.equal("api.sub_invalid_pattern", message, "unterminated character set at position 0")]
-        case Success(value=value):
+        case Success(value=_):
             return [Check.failed("api.sub_invalid_pattern", "accepted invalid pattern")]
 
 

@@ -74,30 +74,6 @@ module Look
         style = Frames::plain
         Ui::framed (style(frameWidth = size, frameHeight = size, frameFill = fill, frameInk = ink, frameRadius = 12, frameAlign = "center", frameCross = "center", frameSymbolSize = 16), Ui::icon symbol)
 
-    (** Children `gap` points apart down the page. *)
-    export stack<A> : (int, List<ui::Node<A>>) -> ui::Node<A>
-    stack (gap, children) =
-        style = Frames::plain
-        Ui::framed (style(frameGap = gap), Ui::column children)
-
-    (** Children `gap` points apart across the page, centred on one line. *)
-    export line<A> : (int, List<ui::Node<A>>) -> ui::Node<A>
-    line (gap, children) =
-        style = Frames::plain
-        Ui::framed (style(frameGap = gap, frameAlign = "center"), Ui::row children)
-
-    (** Children `gap` points apart across the page at their own width. *)
-    export cluster<A> : (int, List<ui::Node<A>>) -> ui::Node<A>
-    cluster (gap, children) =
-        style = Frames::plain
-        Ui::framed (style(frameGap = gap, frameAlign = "center", frameHug = true), Ui::row children)
-
-    (** A child that takes an equal share of its row. *)
-    export share<A> : ui::Node<A> -> ui::Node<A>
-    share content =
-        style = Frames::plain
-        Ui::framed (style(frameGrow = true), content)
-
     // ---- controls ----
 
     // A button on a rounded frame: the frame draws the surface, the button only its label.

@@ -69,8 +69,8 @@ const UNPRINTABLE: [&str; 7] = [
 ];
 
 /// What interpolation can render. That is everything `print` renders, plus a
-/// fiber handle, which interpolates as its id — `src/osprey/tests/regressions/fiber`
-/// prints `ids 1 2 3 4` from four of them. `print` has never taken a fiber on
+/// fiber handle, which interpolates as its spawn number —
+/// `src/osprey/tests/regressions/fiber` prints `ids 1 2 3 4` from four of them. `print` has never taken a fiber on
 /// its own and still does not.
 pub(super) fn is_interpolatable(ty: &Type, named: Lookup<'_>) -> bool {
     is_printable(ty, named, &mut Vec::new()) || ty.is_named(names::FIBER)

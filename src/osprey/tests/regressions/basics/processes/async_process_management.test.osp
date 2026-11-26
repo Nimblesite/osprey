@@ -108,3 +108,62 @@ fn processHandleCase() = {
     ])
 }
 test("process handles only increase and released handles await to -1", processHandleCase)
+
+/// Counts exit events: the recycling case spawns more processes than the
+/// runtime's table has slots, and prints nothing per process.
+mut quietExits = 0
+
+effect ExitTally {
+    saw: fn(int) -> Unit
+}
+
+/// One for an exit event, zero for output.
+fn exitWeight(kind) = match kind {
+    3 => 1
+    _ => 0
+}
+
+fn quietEvent(_processID, eventType, _data) = {
+    handle ExitTally {
+        saw kind => { quietExits = satAdd(quietExits, exitWeight(kind)) }
+    }
+    perform ExitTally.saw(eventType)
+}
+
+/// Whether one `exit 0` spawns, exits cleanly and is released.
+fn spawnedAndReleased() = match spawnProcess("exit 0", quietEvent) {
+    Success { value } => {
+        let exitCode = awaitProcess(value)
+        cleanupProcess(value)
+        exitCode == 0
+    }
+    Error => false
+}
+
+/// `clean` plus one when the next spawn exits cleanly and is released.
+fn counted(clean) = match spawnedAndReleased() {
+    true => satAdd(clean, 1)
+    false => clean
+}
+
+/// Spawns, awaits and releases `remaining` processes in turn, counting clean exits.
+fn recycled(remaining, clean) = match remaining {
+    0 => clean
+    _ => recycled(satSub(remaining, 1), counted(clean))
+}
+
+/// A released handle's slot is reused, so a long-running program (a server
+/// that runs git for every request) may spawn more processes over its life
+/// than the table holds at once. [BUILTIN-PROCESS-RECYCLE]
+fn processRecycleCase() = {
+    let before = freshHandle()
+    cleanupProcess(before.processID)
+    let clean = recycled(1500, 0)
+    let after = freshHandle()
+    cleanupProcess(after.processID)
+    checkAll("released process slots are reused", [
+        clean == 1500, quietExits == 1500, after.exitCode == 0, after.processID > before.processID,
+        awaitProcess(before.processID) == -1, awaitProcess(after.processID) == -1
+    ])
+}
+test("released process slots are reused for later spawns", processRecycleCase)

@@ -82,13 +82,13 @@ module HostedCookies {
 
     /// The rejection status, or 0 when nothing was rejected.
     export fn statusOf(selection) = match selection {
-        Reject { status, code } => status
+        Reject { status, _ } => status
         _ => 0
     }
 
     /// The rejection code, or "" when nothing was rejected.
     export fn codeOf(selection) = match selection {
-        Reject { status, code } => code
+        Reject { _, code } => code
         _ => ""
     }
 }

@@ -112,6 +112,7 @@ pub(crate) fn analyze_cached(
                 source,
                 &parsed.program,
                 flavor,
+                Path::new(path),
                 encoding,
             ));
     }
@@ -257,7 +258,8 @@ fn diagnostic(
     ranged(source, pos, Severity::Error, message, code, encoding)
 }
 
-/// Build one warning diagnostic spanning the offending line from `pos` onward.
+/// Build one warning diagnostic spanning the offending line from `pos` onward;
+/// an information-level rule is reported as information.
 pub(crate) fn warning(
     source: &str,
     pos: Position,
@@ -265,7 +267,12 @@ pub(crate) fn warning(
     code: &str,
     encoding: PositionEncoding,
 ) -> Diagnostic {
-    ranged(source, pos, Severity::Warning, message, code, encoding)
+    let severity = if osprey_types::is_info(code) {
+        Severity::Information
+    } else {
+        Severity::Warning
+    };
+    ranged(source, pos, severity, message, code, encoding)
 }
 
 fn ranged(

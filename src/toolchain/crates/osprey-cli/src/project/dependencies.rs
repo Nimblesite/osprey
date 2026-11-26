@@ -90,7 +90,7 @@ fn graph_json(project: &AssembledProject, edges: &BTreeSet<SourceDependency>) ->
     })
 }
 
-/// The namespaces and modules one source declares, from its own parse: the
+/// The namespaces, modules and members one source declares, from its own parse: the
 /// assembled program has flattened them away. [EDITOR-MODULE-EXPLORER]
 fn source_declarations(source: &osprey_project::SourceMetadata) -> Vec<serde_json::Value> {
     let path = source.path.display().to_string();
@@ -132,8 +132,24 @@ fn declarations_in(
                     .collect::<Vec<_>>();
                 declarations_in(&declarations, &qualified, source, out);
             }
-            _ => {}
+            _ => {
+                if let Some((kind, name, position)) = member(statement) {
+                    out.push(declaration(kind, &qualified(outer, name), source, position));
+                }
+            }
         }
+    }
+}
+
+/// The kind, name and position of a declaration that is a member of its scope.
+fn member(statement: &Stmt) -> Option<(&'static str, &str, Option<Position>)> {
+    match statement {
+        Stmt::Function { name, position, .. } => Some(("function", name, *position)),
+        Stmt::Extern { name, position, .. } => Some(("extern", name, *position)),
+        Stmt::Type { name, position, .. } => Some(("type", name, *position)),
+        Stmt::Effect { name, position, .. } => Some(("effect", name, *position)),
+        Stmt::Let { name, position, .. } => Some(("variable", name, *position)),
+        _ => None,
     }
 }
 

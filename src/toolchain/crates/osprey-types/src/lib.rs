@@ -157,7 +157,7 @@ pub use repeated_literal::{repeated_literals, REPEATED_LITERAL};
 pub use source_warnings::source_warnings;
 pub use staging::{lower_static_checked, signal_dependencies};
 pub use ty::{has_type_var, names, render_with_holes, with_constraints, Scheme, Type, VarId, HOLE};
-pub use undocumented::{documentation_warnings, UNDOCUMENTED_EXPORT, UNEXAMPLED_EXPORT};
+pub use undocumented::{documentation_warnings, is_info, UNDOCUMENTED_EXPORT, UNEXAMPLED_EXPORT};
 pub use unused::{checked_method_reads, unused_symbols, UnusedKind, UnusedSymbol};
 pub use unused_private::{unused_privates, UNUSED_PRIVATE};
 #[cfg(test)]

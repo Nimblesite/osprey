@@ -101,7 +101,7 @@ module RenderInputs
             Shifter => empty
             Reverb => empty
             Exciter seed => empty(integratorOne = toFloat seed)
-            _ => empty(delay = mapList (toList (range (0, storage n.processor)), \_ => 0.0))
+            _ => empty(delay = Sequences::zeros (storage n.processor))
 
     (** Allocate initial reference state after graph validation. *)
     export initial plan = Rendered(states = mapList (plan.graph.nodes, initialState), samples = [], position = 0, meters = [])

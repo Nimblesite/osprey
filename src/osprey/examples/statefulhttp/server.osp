@@ -46,24 +46,24 @@ effect Log {
 // One wrapper, two spellings: plain SGR codes and 256-color foregrounds, so
 // every call site is `esc("<code>", text)` with no per-color boilerplate.
 fn esc(code: string, s: string) = "\e[${code}m${s}\e[0m"
-fn c256(n: string, s: string) = esc("38;5;${n}", s)
+fn c256(n: string, s) = esc("38;5;${n}", s)
 // Counters explicitly keep their previous value on arithmetic overflow.
 fn inc(x) = satAdd(x, 1)
 fn mn(a, b) = match a < b { true => a  false => b }
 
 // A colored, fixed-width method badge (black text on a colored block).
-fn badge(method: string) = match method {
+fn badge(method) = match method {
     "POST" => "\e[1;30;48;5;213m POST \e[0m"
     "GET"  => "\e[1;30;48;5;117m GET  \e[0m"
     _      => "\e[1;30;48;5;250m ${method} \e[0m"
 }
 
 // A bar of N filled blocks (capped) — a live gauge of how many tasks exist.
-fn blocks(i: int, n: int) = match i < n {
+fn blocks(i, n) = match i < n {
     true  => "▰" + blocks(inc(i), n)
     false => ""
 }
-fn gauge(n: int) = c256("213", blocks(0, mn(n, 28)))
+fn gauge(n) = c256("213", blocks(0, mn(n, 28)))
 
 fn divider() = c256("239", "  ──────────────────────────────────────────────────────")
 
@@ -89,12 +89,12 @@ fn banner() =
 
 // The one place that touches the disk: every layer that snapshots text (the
 // Persist effect and the access log) writes through it and reads the outcome.
-fn saveFile(path: string, contents: string) = match writeFile(path, contents) {
+fn saveFile(path, contents) = match writeFile(path, contents) {
     Success => length(contents)
     Error => -1
 }
 
-fn textResp(status: int, bodyText: string) = HttpResponse {
+fn textResp(status, bodyText) = HttpResponse {
     status: status,
     headers: "Content-Type: text/plain",
     contentType: "text/plain",
@@ -106,7 +106,7 @@ fn textResp(status: int, bodyText: string) = HttpResponse {
 // Adding a task touches every layer — Db records it, Persist writes the new
 // snapshot to disk — yet not one socket, file descriptor or mutable field
 // appears in this pure orchestration.
-fn onPost(body: string) = {
+fn onPost(body) = {
     let id = perform Db.add(body)
     let snap = perform Db.list()
     let written = perform Persist.flush(snap)
@@ -114,7 +114,7 @@ fn onPost(body: string) = {
     textResp(201, "created task #${toString(id)}\n")
 }
 
-fn onGet(path: string) = {
+fn onGet(path) = {
     perform Log.info(badge("GET") + " " + esc("2", path) + esc("2", "  ·  ${toString(perform Metrics.served())} served"))
     match path {
         "/stats" => textResp(200, "requests=${toString(perform Metrics.served())} tasks=${toString(perform Db.count())}\n")
@@ -122,7 +122,7 @@ fn onGet(path: string) = {
     }
 }
 
-fn handleReq(method: string, path: string, _headers: string, body: string) = {
+fn handleReq(method, path, _headers: string, body) = {
     perform Metrics.hit(path)
     match method {
         "POST" => onPost(body)
@@ -137,7 +137,7 @@ fn serveForever() -> Unit = {
     serveForever()
 }
 
-fn main() -> int {
+fn main() {
     mut logBuf = ""       // Log layer      (access log, mirrored to a file)
     mut diskBytes = 0     // Persist layer  (infrastructure)
     mut requests = 0      // Metrics layer  (server runtime)

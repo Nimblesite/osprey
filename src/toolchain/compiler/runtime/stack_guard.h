@@ -7,13 +7,28 @@
 
 #include "memory_hooks.h"
 #include "memory_refused.h"
+#include <stdio.h>
+
+// Make stdout line-buffered at startup so a long-running program (e.g. an HTTP
+// server that never returns to flush at exit) shows each printed line live,
+// whether stdout is a TTY, a pipe, or a file. Line buffering changes only flush
+// timing, never the bytes, so captured/differential output is unaffected. It is
+// also why the guard below needs no flush: every whole line is already out.
+// Here, in the memory backend every program links, rather than in a runtime
+// unit a program may not pull in. Not on Windows: its C runtime has no line
+// buffering (_IOLBF is _IOFBF there) and takes a size of 0 as an invalid
+// parameter, which fail-fasts every program and app DLL at load (0xC0000409).
+#if !defined(_WIN32)
+__attribute__((constructor)) static void osprey_stdio_lbf(void) {
+  setvbuf(stdout, NULL, _IOLBF, 0);
+}
+#endif
 
 #if (defined(__APPLE__) || defined(__linux__)) && !defined(OSP_SYMBOLIC)
 #include <pthread.h>
 #include <signal.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -72,8 +87,11 @@ static void stack_guard_forward(int signal_number, siginfo_t *info, void *contex
 
 // Broken-code quarantine [FAILURE-EXPLICIT]: recursion has no Result to fail
 // into, and the fault already happened. A fault on this thread's stack ends the
-// run with the memory status, stdout flushed when no other thread holds it. Any
-// other fault is forwarded above.
+// run with the memory status, using only write and _exit, which are safe in a
+// signal handler. It never flushes stdout: the fault may have interrupted a
+// stdio call on this very thread, whose lock is recursive, and glibc then wrote
+// the same buffer again and faulted. stdout is line-buffered (above), so only a
+// partial line can be left unwritten. Any other fault is forwarded above.
 static void stack_guard_fault(int signal_number, siginfo_t *info, void *context) {
   uintptr_t at = (uintptr_t)info->si_addr;
   uintptr_t low = g_stack_low;
@@ -84,10 +102,6 @@ static void stack_guard_fault(int signal_number, siginfo_t *info, void *context)
   }
   if (write(STDERR_FILENO, STACK_EXHAUSTED, sizeof STACK_EXHAUSTED - 1) < 0) {
     // Nowhere else to say it: the status below still names the stop.
-  }
-  if (ftrylockfile(stdout) == 0) {
-    (void)fflush(stdout);
-    funlockfile(stdout);
   }
   _exit(OSP_HEAP_EXHAUSTED_STATUS);
 }

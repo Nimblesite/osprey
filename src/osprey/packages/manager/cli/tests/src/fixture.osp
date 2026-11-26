@@ -21,7 +21,9 @@ module Fixture {
     /// Line `i` of a report, or "".
     export fn line(report: Reports::Report, i) = listGet(report.lines, i) ?: ""
 
+    /// One answered `Host::Files.read`: the exact path and the content it returns.
     export fn readRoute(path, content) = ReadRoute { path: path, content: content }
+    /// One answered `Host::Tree.walk`: the exact directory and its regular files.
     export fn walkRoute(dir, files) = WalkRoute { dir: dir, files: files }
 
     // `path` is shared with `Source::Entry` and `ManifestModel::Asset`; issue
@@ -47,6 +49,8 @@ module Fixture {
         Error => if w.dir == dir { Success { value: Host::Walk { regular: w.files, executable: [], special: [] } } } else { answer }
     })
 
+    /// The content of `path` as a command that wrote `written` earlier in its
+    /// run reads it back, falling back to the fixture's own `reads`.
     export fn readAfter(written, reads, path) = readFor(listConcat(written, reads), path)
 
     fn pathsUnder(written, dir) = mapList(filterList(written, fn(r: ReadRoute) => startsWith(r.path, "${dir}/")),

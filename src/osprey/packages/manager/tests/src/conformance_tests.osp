@@ -39,6 +39,8 @@ module ConformanceTests {
         ])
     }
 
+    /// The language gate: classification by extension, the doctor inventory
+    /// of word builtins, and a live walk of the checked-in package system.
     export fn run() = {
         test("conformance: available word builtins are not blocked", bitwiseInventory)
         test("conformance: classification", classification)

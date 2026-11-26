@@ -22,7 +22,7 @@ fn label<A>(text) = Text { content: text }
 
 fn entry<A>(key, cell) = Row { rowKey: key, cell: cell }
 
-fn rows<A>(entries: List<Row<A>>, picked: A, extra: int) -> Node<A> = match picked {
+fn rows(entries: List<Row<Action>>, picked, extra) = match picked {
     Navigate => Text { content: "${length(entries)}:${extra}" }
 }
 

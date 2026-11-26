@@ -21,6 +21,7 @@ module ReportsTests {
         ])
     }
 
+    /// Control-byte sanitizing, and the rule that success output is not a finding.
     export fn run() = {
         test("reports: control bytes become ?", escapes)
         test("reports: success output is not a finding", successIsNotFinding)

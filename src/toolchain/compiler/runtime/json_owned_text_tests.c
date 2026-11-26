@@ -11,7 +11,6 @@
 #include "memory_hooks.h"
 #include "string_runtime.h"
 
-void osp_collect(void);
 
 static void *g_finalizer_text;
 static size_t g_text_finalized;
@@ -65,7 +64,7 @@ void t_owned_text_finalizer_reads_do_not_deadlock(void) {
   g_finalizer_text = osp_alloc_tagged(10, 7);
   CHECK(g_finalizer_text != NULL);
   memcpy(g_finalizer_text, "head\0tail", 10);
-  osp_mem_set_finalizer(inspect_finalizer_text);
+  osp_mem_set_finalizer(OSP_MEM_LIST_HDR_EXTERN, inspect_finalizer_text);
   for (size_t i = 0; i < 4096; i++) {
     void *owner = osp_alloc_tagged(16, OSP_MEM_LIST_HDR_EXTERN);
     CHECK(owner != NULL);
@@ -74,7 +73,7 @@ void t_owned_text_finalizer_reads_do_not_deadlock(void) {
   }
   osp_collect();
   CHECK(g_text_finalized > 4000);
-  osp_mem_set_finalizer(NULL);
+  osp_mem_set_finalizer(OSP_MEM_LIST_HDR_EXTERN, NULL);
   osp_release(g_finalizer_text);
   g_finalizer_text = NULL;
 }

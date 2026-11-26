@@ -178,14 +178,14 @@ export function parseTapStream(stdout: string): TapStream {
   for (const line of stdout.split(/\r?\n/)) {
     const result = TAP_RESULT.exec(line);
     if (result) {
-      const description = result[2];
+      const description = result[2] ?? "";
       const directive = SKIP_DIRECTIVE.exec(description);
       results.push({
-        name: directive ? directive[1] : description,
+        name: directive?.[1] ?? description,
         description,
         ok: result[1] === undefined,
         comments,
-        ...(directive ? { skipReason: directive[2] } : {}),
+        ...(directive ? { skipReason: directive[2] ?? "" } : {}),
       });
       comments = [];
     } else if (TAP_PLAN.test(line)) {
@@ -193,7 +193,7 @@ export function parseTapStream(stdout: string): TapStream {
     } else {
       const comment = TAP_COMMENT.exec(line);
       if (comment) {
-        comments.push(comment[1]);
+        comments.push(comment[1] ?? "");
       }
     }
   }

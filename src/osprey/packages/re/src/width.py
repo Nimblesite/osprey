@@ -112,7 +112,7 @@ def escape_width(cps, i, n):
     else:
         return quantified(cps, i, n, [1, i + 2])
 
-def quantified(cps, i, n, base):
+def quantified(cps, _i, n, base):
     """Apply a quantifier after the atom at `i` to the atom's width."""
     j = Program.pair_next(base, n)
     w = Program.pair_value(base)
@@ -149,7 +149,7 @@ def read_digits(cps, i, n):
     """[value, next] of a digit run, with -1 for an empty run."""
     return read_digits_from(cps, i, n, -1, 0)
 
-def read_digits_from(cps, i, n, has, acc):
+def read_digits_from(cps, i, n, _has, acc):
     """Accumulate digits from `i`."""
     if i >= n or not is_digit(at(cps, i)):
         return [acc, i]

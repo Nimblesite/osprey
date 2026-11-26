@@ -69,6 +69,7 @@ type McpState =
     stateProjectLoaded : bool
     stateStateLoaded : bool
 
+(** The MCP state held by the store: its two configuration documents, the merged server list, the remembered switches and the Add server draft, with its session encoding. *)
 module McpModel
     (** The JSON array of `items`, each written by `of`. *)
     export arrayOf (items, of) = JsonArray (mapList (items, of))
@@ -76,14 +77,16 @@ module McpModel
     (** The entries of the list under `key` in `doc`, each read by `of`. *)
     export listField (doc, key, of) = mapList (Doc::items (Doc::field (doc, key)), of)
 
+    (** An empty Add server form, on the command kind. *)
     export blankForm () = McpForm(formName = "", formType = "command", formCommand = "", formArguments = "", formUrl = "", formEnvironment = "", formHeaders = "", formPaste = "", formProblem = "")
 
-    (** Empty state for one project folder. *)
     // A document that does not exist configures no servers, and is no problem.
     noDocument = "{\"mcpServers\":{}}"
 
+    (** Empty state for the project folder `folder`: no servers, switches or problems, nothing loaded, and a blank form. *)
     export fresh folder = McpState(stateGlobal = noDocument, stateProject = noDocument, stateServers = [], stateMemories = [], stateForm = blankForm (), stateExpanded = [], stateProblems = [], stateFolder = folder, stateGlobalLoaded = false, stateProjectLoaded = false, stateStateLoaded = false)
 
+    (** The memory of server `name` for `folder`, switched off; `enabled` is not read. *)
     export memory (name, folder, enabled) = McpMemory(memoryName = name, memoryFolder = folder, memoryEnabled = false)
 
     (** `of` applied to the first item `matches`, or `absent` when none does. *)
@@ -102,6 +105,7 @@ module McpModel
     (** The view of no server: a name no server has. *)
     export noView = McpClient::ServerView(viewName = "", viewOrigin = "", viewKind = "", viewEndpoint = "", viewConfig = "", viewEnabled = false)
 
+    (** A server for the configured `view`, off and never connected, switched to `enabled`. *)
     export offline (view, enabled) =
         base = blankServer view.viewName
         base(serverOrigin = view.viewOrigin, serverKind = view.viewKind, serverEndpoint = view.viewEndpoint, serverConfig = view.viewConfig, serverEnabled = enabled, serverPhase = "off")
@@ -119,7 +123,6 @@ module McpModel
         found = listGet (filterList (mcp.stateServers, \item => sameEntry (item, view))) 0 ?: offline (view, enabledFor (mcp, view.viewName, view.viewOrigin))
         found(serverEnabled = enabledFor (mcp, view.viewName, view.viewOrigin))
 
-    (** Merges `mcp.json` and `.mcp.json`; a project entry wins a name clash, and each server keeps its connection when its entry did not change. *)
     projectViews : List<McpClient::ServerView> -> List<McpClient::ServerView>
     projectViews (views) = filterList (views, \view => view.viewOrigin == "project")
 
@@ -132,29 +135,37 @@ module McpModel
 
     globalsKept (projects, globals) = filterList (globals, \item => notShadowed (projects, item))
 
+    (** `mcp` with its servers rebuilt from `mcp.json` and `.mcp.json` merged: a project entry wins a name clash, a server whose entry did not change keeps its connection, every server follows its remembered switch, and the merge's problems are kept. *)
     export reconcile mcp =
         merged = McpClient::merge_view (mcp.stateGlobal, mcp.stateProject)
         projects = projectViews (merged.mergedServers)
         mcp(stateServers = listConcat (globalsKept (projects, carriedAll (mcp, merged.mergedServers))) (carriedAll (mcp, projects)), stateProblems = merged.mergedProblems)
 
+    (** `mcp` reconciled once the global `mcp.json` read as `text`. *)
     export globalLoaded (mcp, text) = reconcile (mcp(stateGlobal = text, stateGlobalLoaded = true))
 
+    (** `mcp` reconciled with no global document, which configures no servers and is no problem. *)
     export globalMissing mcp = reconcile (mcp(stateGlobal = noDocument, stateGlobalLoaded = true))
 
+    (** `mcp` reconciled once the project's `.mcp.json` read as `text`. *)
     export projectLoaded (mcp, text) = reconcile (mcp(stateProject = text, stateProjectLoaded = true))
 
+    (** `mcp` reconciled with no project document, which configures no project servers. *)
     export projectMissing mcp = reconcile (mcp(stateProject = noDocument, stateProjectLoaded = true))
 
+    (** Whether every MCP document has answered, so the servers may be connected. *)
     export ready mcp = mcp.stateGlobalLoaded && mcp.stateProjectLoaded && mcp.stateStateLoaded
 
     byName : (List<McpServer>, string) -> List<McpServer>
     byName (servers, name) = filterList (servers, \server => server.serverName == name)
 
+    (** `name`'s server, or an error when the state holds none. *)
     export named (mcp, name) = listGet (byName (mcp.stateServers, name)) 0
 
     placeOf : (List<McpServer>, string) -> int
     placeOf (servers, name) = Lists::position (servers, \server => server.serverName == name)
 
+    (** `mcp` with `changed` in place of the server of its name, or unchanged when it holds no such server. *)
     export putServer (mcp, changed) =
         at = placeOf (mcp.stateServers, changed.serverName)
         match at < 0
@@ -171,16 +182,16 @@ module McpModel
 
     hasTool (server, name) = Lists::any (Doc::items (Doc::parse server.serverTools), \tool => "${server.serverName}_${Doc::text (tool, "name")}" == name)
 
-    (** The enabled, connected server owning a fully prefixed tool name, and the tool's own name. *)
     connectedWith : (List<McpServer>, string) -> List<McpServer>
     connectedWith (servers, name) = filterList (servers, \server => server.serverEnabled && server.serverPhase == "connected" && hasTool (server, name))
 
+    (** The first enabled, connected server listing the prefixed tool `name`, or an error when none does. *)
     export forTool (mcp, name) = listGet (connectedWith (mcp.stateServers, name)) 0
 
-    (** The server name a prefixed tool name begins with, for labelling a tool step. *)
     labelled : (List<McpServer>, string) -> List<McpServer>
     labelled (servers, name) = filterList (servers, \server => server.serverEnabled && hasTool (server, name))
 
+    (** The name of the enabled server the prefixed tool `name` belongs to, for labelling a tool step; the empty name when none lists it. *)
     export serverLabel (mcp, name) = (listGet (labelled (mcp.stateServers, name)) 0 ?: offline (noView, false)).serverName
 
     remember : (List<McpMemory>, string, string, bool) -> List<McpMemory>
@@ -189,6 +200,7 @@ module McpModel
     switched : (McpServer, bool) -> McpServer
     switched (found, enabled) = found(serverEnabled = enabled, serverProblem = "", serverPhase = Pick::either (enabled, found.serverPhase, "off"), serverTools = Pick::either (enabled, found.serverTools, "[]"))
 
+    (** `mcp` with `name` remembered as `enabled` for its folder and its server switched to match: switched off it loses its phase and tools, switched on they return and its problem clears. *)
     export withMemory (mcp, name, enabled) =
         found = named (mcp, name) ?: offline (noView, false)
         folder = Pick::either (found.serverOrigin == "project", mcp.stateFolder, "")
@@ -201,6 +213,7 @@ module McpModel
     (** The non-secret switch document beside providers.json. *)
     export switchesJson mcp = JsonObject [JsonMember "servers" (arrayOf (mcp.stateMemories, memoryJson))]
 
+    (** `mcp` with the remembered switches read from the `servers` of `doc`, marked loaded and reconciled. *)
     export memoriesOf (mcp, doc) = reconcile (mcp(stateMemories = listField (doc, "servers", memoryOfJson), stateStateLoaded = true))
 
     serverJson server = JsonObject [Doc::str ("name", server.serverName), Doc::str ("origin", server.serverOrigin), Doc::str ("kind", server.serverKind), Doc::str ("endpoint", server.serverEndpoint), Doc::str ("config", server.serverConfig), Doc::bit ("enabled", server.serverEnabled), Doc::str ("phase", server.serverPhase), Doc::str ("tools", server.serverTools), Doc::str ("problem", server.serverProblem), Doc::str ("buffer", server.serverBuffer), Doc::str ("session", server.serverSession), Doc::str ("rpc", server.serverRpc), Doc::str ("await", server.serverAwait), Doc::num ("nextId", server.serverNextId), Doc::str ("readTicket", server.serverReadTicket), Doc::str ("callChat", server.serverCallChat), Doc::str ("callId", server.serverCallId), Doc::num ("callUntil", server.serverCallUntil), Doc::str ("callText", server.serverCallText), Doc::bit ("callDone", server.serverCallDone)]
@@ -218,6 +231,7 @@ module McpModel
         Doc::bit ("globalLoaded", mcp.stateGlobalLoaded), Doc::bit ("projectLoaded", mcp.stateProjectLoaded), Doc::bit ("stateLoaded", mcp.stateStateLoaded),
     ]
 
+    (** The state from a saved session document; one without `servers` is fresh state for no folder. *)
     export storeOf doc = match Doc::has (doc, "servers")
         false => fresh ""
         true => McpState(stateGlobal = Doc::text (doc, "global"), stateProject = Doc::text (doc, "project"), stateServers = listField (doc, "servers", serverOf), stateMemories = listField (doc, "memories", memoryOfJson), stateForm = formOf (Doc::field (doc, "form")), stateExpanded = Doc::texts (doc, "expanded"), stateProblems = Doc::texts (doc, "problems"), stateFolder = Doc::text (doc, "folder"), stateGlobalLoaded = Doc::flag (doc, "globalLoaded"), stateProjectLoaded = Doc::flag (doc, "projectLoaded"), stateStateLoaded = Doc::flag (doc, "stateLoaded"))

@@ -31,6 +31,7 @@ type Message A =
     Placed
         placer : A
         placed : int
+        reach : int
     Stroked
         stroker : A
         stroked : Stroke
@@ -75,7 +76,7 @@ module Messages
         Chose action key => typed (action, key)
         Switched action flag => toggled (action, flag)
         Resized action points => sized (action, points)
-        Placed action offset => sized (action, offset)
+        Placed action offset _ => sized (action, offset)
         Stroked action stroke => stroked (action, stroke)
         Lassoed action indices => lassoed (action, indices)
         Completed ticket outcome => completed (ticket, outcome)

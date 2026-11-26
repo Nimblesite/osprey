@@ -9,6 +9,4 @@ main () =
         overflow _ _ _ wrapped => wrapped
         divideByZero _ _ => 0.0
         remainderByZero _ => 0
-    print "scale 50 200 = ${toString (Percent::scale (50, 200))}"
-    print "half 200 = ${toString (Percent::half 200)}"
-    print "quarter 200 = ${toString (Percent::quarter 200)}"
+    print "scale 50 200 = ${toString (Percent::scale (50, 200))}\nhalf 200 = ${toString (Percent::half 200)}\nquarter 200 = ${toString (Percent::quarter 200)}"

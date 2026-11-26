@@ -12,7 +12,10 @@ import registry::Names
 /// screen, never display items as warning-free
 /// ([PACKAGE-OWNERSHIP-MAINTENANCE]).
 module Model {
+    /// Warning seriousness, worst first: high, moderate, low.
     export type Severity = High | Moderate | Low
+    /// One known security warning: its stable code, a one-line summary and its
+    /// severity.
     export type Warning = { code: string, summary: string, severity: Severity }
 
     /// Verified security evidence carries the known warnings and the digest
@@ -44,6 +47,8 @@ module Model {
     /// proposal, a rejection names its reasons, and quarantined source is
     /// withheld pending verification [PACKAGE-HOSTED-ROUTES].
     export type PublicationStatus = Pending { reason: string } | Rejected { reasons: List<string> } | Quarantined { reason: string }
+    /// One publication intent: the package, the actor who proposed it, why it
+    /// is not an accepted release, and its security evidence.
     export type Publication = { key: Names::Key, actor: Governance::PrincipalId, status: PublicationStatus, evidence: Evidence }
 
     /// A screen either shows its evidence-checked document or hides itself
@@ -133,6 +138,7 @@ module Model {
     /// [PACKAGE-OWNERSHIP-ADMIN], [PACKAGE-HOSTED-ROUTES].
     export fn publishGrantNotice() = "You administer this package, but administration alone does not authorize publication. Submitting a release requires an explicit publish-release grant."
 
+    /// The lowercase spelling of a severity.
     export fn severityName(severity: Severity) = match severity {
         High => "high"
         Moderate => "moderate"
@@ -165,6 +171,7 @@ module Model {
 
     fn frozenLabel(tail) = if tail == "frozen" { "write-frozen" } else { tail }
 
+    /// The lowercase spelling of a maintenance state.
     export fn careName(care: Care) = match care {
         Maintained => "maintained"
         Unmaintained => "unmaintained"

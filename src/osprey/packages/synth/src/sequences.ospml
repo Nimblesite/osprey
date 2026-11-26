@@ -39,6 +39,9 @@ module Sequences
     (** Discard the oldest value and append the newest, keeping the length. *)
     export shifted (items, value) = listAppend (drop (items, 1)) value
 
+    (** `count` silent samples: zero storage for a buffer of exactly `count` floats. *)
+    export zeros count = mapList (toList (range (0, count)), \_ => 0.0)
+
     (** Cut a flat list into consecutive chunks of the given sizes; a short list gives short chunks. *)
     export chunks<T> : (List<T>, List<int>) -> List<List<T>>
     chunks (items, sizes) = match sizes

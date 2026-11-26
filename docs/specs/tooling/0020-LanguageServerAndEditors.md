@@ -87,7 +87,7 @@ The server exposes:
 | Hover            | `textDocument/hover`              | Markdown. Functions/builtins → signature; **effect operations → qualified operation type plus owning-effect docs**; **`let`/`mut` bindings (local _and_ top-level) → their declared or inferred type**; **reserved keywords (`match`, `handle`, `in`, …) → a one-line meaning**; declaration docs rendered as prose. `[LSP-HOVER]` |
 | Go to definition | `textDocument/definition`         | AST-driven, anchored on the identifier; effect operations resolve to their declaration, parameters and local bindings to the binding in scope, built-ins to their own use. `[LSP-DEFINITION-EFFECT-OPERATIONS]` `[LSP-DEFINITION-LOCAL]` `[LSP-DEFINITION-BUILTIN]` |
 | Find implementations | `textDocument/implementation` | An effect operation resolves to every matching handler arm, keyed by owning effect plus operation; an effect name resolves to every handler that discharges it. `[LSP-IMPLEMENTATIONS-EFFECT-HANDLERS]` |
-| Find references  | `textDocument/references`         | Whole-word scan; a parameter or local binding is scanned only inside its scope; `includeDeclaration` honored. `[LSP-REFERENCES-LOCAL]` `[LSP-REFERENCES-EFFECT-OPERATIONS]` |
+| Find references  | `textDocument/references`         | Whole-word scan; a parameter or local binding is scanned only inside its scope; `includeDeclaration` honored; comments and string text are skipped. `[LSP-REFERENCES-LOCAL]` `[LSP-REFERENCES-EFFECT-OPERATIONS]` `[LSP-REFERENCES-CODE-ONLY]` |
 | Document symbols | `textDocument/documentSymbol`     | Flat `DocumentSymbol`s; range on the **name**, not the `fn`/`let`/`type` keyword.                                                                                                           |
 | Signature help   | `textDocument/signatureHelp`      | Active-parameter tracking; ignores `,`/`(`/`)` inside strings and `//` comments. Triggers on the **callee name** as well as inside its parentheses. `[LSP-WORKSPACE]`                       |
 | Completion       | `textDocument/completion`         | Position-filtered keywords/snippets + project declarations. `[LSP-COMPLETION-CONTEXT]`, `[LSP-WORKSPACE]`                                                                                    |
@@ -183,6 +183,10 @@ Each action carries its exact diagnostic, a preferred-action marker and a versio
 The VS Code language client converts protocol edits to a `WorkspaceEdit` without retaining its version. The Osprey extension therefore guards the final apply command with the captured document version and source, together with the set, versions and sources of all open Osprey documents. If the target or an open sibling has changed, or that set has changed, the command returns without editing and asks the reader to request the action again. Before applying, the extension also requests a fresh compiler proof and requires the exact original edits and document version to remain available. This catches changes to closed project sources and the manifest. It checks the open-document snapshots again after that request; a failed request or any mismatch leaves the source untouched. Applying a valid action is one editor edit: it supports save, undo and redo, and normal document synchronization republishes diagnostics for the resulting source.
 
 Unused-symbol diagnostics use the four rules in [TYPE-WARNINGS-UNUSED](../language/0004-TypeSystem.md#unused-symbols-type-warnings-unused). They have Warning severity, source `osprey`, an identifier range and the LSP `Unnecessary` tag. They have no removal action.
+
+## Unused import quick fix `[LSP-CODE-ACTIONS-IMPORTS]`
+
+An `unused-import` warning ([MODULES-IMPORT-UNUSED]), whether the import is never used or is redundant because its module is in the file's own namespace, offers the `quickfix` "Remove unused import". It deletes the whole lines the import is written on, and is offered only when nothing else is written on them. The server recomputes the warning from current source, as for annotation fixes, and the extension applies the edit only against the exact document and open project it was proved on. The fix is not part of `source.fixAll.osprey`.
 
 ## Hover `[LSP-HOVER]`
 
@@ -429,7 +433,7 @@ An effect operation resolves to its declaration from every site that names it: a
 
 A function parameter, a local binding in a function body and a handler-arm parameter resolve to the nearest binding written at or before the cursor inside the enclosing function, before any top-level declaration is considered. `work` in `fn onGpu(work)` and `work` in `fn onLists(work)` are therefore two names. The same rule holds in every flavor.
 
-`[LSP-REFERENCES-LOCAL]` Find-references on such a binding scans only its scope, from the binding to the next top-level declaration, and never crosses into sibling files. `[LSP-REFERENCES-EFFECT-OPERATIONS]` Find-references on an effect operation lists its declaration, every handler arm and every `perform` across the project, each once.
+`[LSP-REFERENCES-LOCAL]` Find-references on such a binding scans only its scope, from the binding to the next top-level declaration, and never crosses into sibling files. `[LSP-REFERENCES-EFFECT-OPERATIONS]` Find-references on an effect operation lists its declaration, every handler arm and every `perform` across the project, each once. `[LSP-REFERENCES-CODE-ONLY]` A name written in a comment, a documentation comment or a string's text names nothing, so the scan skips it in the Default, ML and Python flavors; a name inside a `${...}` interpolation (an f-string's `{...}` in Python) is code and is found (`osprey-syntax/src/prose.rs`).
 
 ## Find implementations `[LSP-IMPLEMENTATIONS-EFFECT-HANDLERS]`
 

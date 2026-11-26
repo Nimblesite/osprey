@@ -1,0 +1,13 @@
+namespace roundtrip
+
+import roundtrip::Tally
+
+// An `hm` entry using a `leanexport` module: it sees the erased `merge`, never the
+// certificate ([PROOF-BOUNDARY]). Regions report in either order and the
+// totals agree, which is the fact `Nat.add_comm` states.
+main () =
+    handle Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "north then south = ${toString (Tally::merge (1200, 845))}, south then north = ${toString (Tally::merge (845, 1200))}"

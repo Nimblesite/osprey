@@ -41,6 +41,23 @@ async function chooseIn(page, picker, words) {
   await select.selectOption(value);
 }
 
+// Every control pauses while the application answers an event ([UI-HOST-MORPH]); a step that
+// acts before the answer lands can press a button the pause then swallows. A ledger reply still in
+// flight (a transfer refetches accounts and activity) becomes such an event when it lands, so
+// acting waits for both: no request outstanding and no event being answered.
+function tracked(page) {
+  let inFlight = 0;
+  const settle = () => { inFlight -= 1; };
+  page.on('request', () => { inFlight += 1; });
+  page.on('requestfinished', settle);
+  page.on('requestfailed', settle);
+  return async () => {
+    await expect.poll(() => inFlight, { message: 'requests still in flight' }).toBe(0);
+    await expect(page.locator('#osprey-root')).toHaveAttribute('aria-busy', 'false');
+  };
+}
+const ACTS = new Set(['invoke', 'type', 'choose']);
+
 const VERBS = {
   wait: async (page, [words]) => expect(shown(page, words).first()).toBeVisible(),
   gone: async (page, [words]) => expect(shown(page, words)).toHaveCount(0),
@@ -49,16 +66,19 @@ const VERBS = {
   choose: async (page, words) => (words.length === 2
     ? chooseIn(page, words[0], words[1])
     : page.getByRole('tab', { name: words[0], exact: true }).click()),
-  sleep: async (page, [seconds]) => page.waitForTimeout(Number(seconds) * 1000),
   shot: async (page, [name]) => expect(page).toHaveScreenshot(`${name}.png`, { fullPage: true, animations: 'disabled' }),
 };
 
 /** Plays every step of `file` on `page`, naming the failing step. */
 async function play(page, file) {
+  const idle = tracked(page);
   for (const [index, { verb, words }] of steps(file).entries()) {
     const act = VERBS[verb];
     if (!act) throw new Error(`Unknown step ${verb}`);
-    await test.step(`${index + 1} ${verb} ${words.join(' · ')}`, () => act(page, words));
+    await test.step(`${index + 1} ${verb} ${words.join(' · ')}`, async () => {
+      if (ACTS.has(verb)) await idle();
+      await act(page, words);
+    });
   }
 }
 

@@ -1,0 +1,31 @@
+namespace dependent
+
+import bounded::Lines
+import bounded::Words
+import proof::Checked
+import proof::Environment
+import proof::Surface
+import proof::Terms
+
+
+(** The theorems of one `types=dependent` module, checked in file order. *)
+module Theorems
+    (** The keyword that opens a theorem line. *)
+    keyword = "theorem "
+
+    (** The diagnostic code of a statement or proof the kernel refused. *)
+    codeKernel = "kernel"
+
+    (** Every theorem line through the kernel, each seeing the ones before
+        it: the refusals reject the module, or the theorem lines erase. *)
+    export judge (request) =
+        found = Lines::opening (request.source, keyword)
+        Words::Judgement(problems = refusals (found, Environment::empty (), []), erased = mapList (found, \line => line.number), reads = [])
+
+    refusals (found, env, acc) = match found
+        [] => acc
+        [line, ...rest] => match proved (env, line.text)
+            Success next => refusals (rest, next, acc)
+            Error message => refusals (rest, env, listAppend (acc, Lines::problem (line, codeKernel, message)))
+
+    proved (env, text) = Terms::upon (Surface::theorem text, \parsed => Checked::theorem (env, parsed.theoremName, parsed.statement, parsed.proof))

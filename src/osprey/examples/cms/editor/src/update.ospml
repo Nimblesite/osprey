@@ -1,0 +1,179 @@
+// Implements [UI-STORE] and [UI-EVENTS] for the CMS editor: every change to the store is one pure
+// step from a typed message, and every request it makes is a typed capability ([CMS-API]).
+namespace studio
+
+import ui::Requests
+import ui::Runtime
+import studio::Api
+import studio::Blocks
+import studio::Names
+
+(** How the editor answers each tap, edit and choice. *)
+module Update
+    quiet () = Notice(noticeTone = "", noticeHeading = "", noticeDetail = "")
+
+    idle () = Upload(uploadPath = "", uploadParts = [], uploadNext = 0)
+
+    (** The store a launch starts from, talking to the CMS at `server`, before anything has loaded. *)
+    export launched server = Studio(server = server, roots = [], files = [], filter = "", opened = "", text = "", saved = "", cursor = 0, reach = 0, mode = "formatted", focus = 0, focusEpoch = 0, fresh = -1, blockCursor = 0, blockReach = 0, preview = "", commit = "", loads = 0, busy = false, history = [], unpublished = 0, remote = false, showingHistory = false, creating = false, leaving = "", confirming = false, draftPath = "", folder = "media", upload = idle (), notice = quiet ())
+
+    (** The tree, the history and what is still unpublished, fetched together. *)
+    export hydrate store = Runtime::asking (store(loads = 3), refreshes store)
+
+    refreshes store = [Api::call (store.server, "tree", "GET", "/api/tree", ""), Api::call (store.server, "history", "GET", "/api/history", ""), Api::call (store.server, "status", "GET", "/api/status", "")]
+
+    mediaCall store = Api::call (store.server, "media", "GET", Api::at ("/api/media", store.opened), "")
+
+    (** Everything `hydrate` fetches, and the open media file's bytes for its preview. *)
+    export previewed store = Runtime::asking (store(loads = 4), listAppend (refreshes store) (mediaCall store))
+
+    // Publishing pushes every saved commit to the site's remote, whose pipeline deploys it ([CMS-PUBLISH]).
+    publish store = Runtime::asking (store(busy = true, notice = quiet ()), [Api::call (store.server, "publish", "POST", "/api/publish", "")])
+
+    (** `store` showing a notice in `tone`. *)
+    export noticed (store, tone, heading, detail) = store(notice = Notice(noticeTone = tone, noticeHeading = heading, noticeDetail = detail))
+
+    refused (store, heading, detail) = Runtime::step (noticed (store, "danger", heading, detail))
+
+    // One mutation at a time: while one is in flight, another changes nothing.
+    sending (store, ticket, method, path, body) = match store.busy
+        true => Runtime::step store
+        false => Runtime::asking (store(busy = true, notice = quiet ()), [Api::call (store.server, ticket, method, path, body)])
+
+    // Unsaved words in the open page: anything that would replace them asks first.
+    unsaved store = Names::kind store.opened == "markdown" && store.text != store.saved
+
+    // Choosing another file with unsaved words asks first; the open file itself just stays.
+    guarded (store, path) = match unsaved store && path != store.opened
+        true => Runtime::step (store(leaving = path))
+        false => opening (store, path)
+
+    // Opening a page asks for its text; opening media asks for its bytes; anything else just shows.
+    opening (store, path) =
+        chosen = store(opened = path, text = "", saved = "", cursor = 0, reach = 0, focus = 0, fresh = -1, blockCursor = 0, blockReach = 0, preview = "", creating = false)
+        match Names::kind path
+            "markdown" => Runtime::asking (chosen(loads = satAdd store.loads 1), [Api::call (store.server, "file", "GET", Api::at ("/api/file", path), "")])
+            "other" => Runtime::step chosen
+            _ => Runtime::asking (chosen(loads = satAdd store.loads 1), [mediaCall chosen])
+
+    (** Saves the open page when it has changes. *)
+    export save store = match Names::kind store.opened == "markdown" && store.text != store.saved
+        true => sending (store, "save", "PUT", Api::at ("/api/file", store.opened), store.text)
+        false => Runtime::step store
+
+    delete store = match store.opened
+        "" => Runtime::step store
+        path => sending (store, "delete", "DELETE", Api::at ("/api/file", path), "")
+
+    // A new page starts in the first root, named so a person sees where it will live.
+    drafting store = Runtime::step (store(creating = true, draftPath = "${listGet store.roots 0 ?: "content"}/new-page.md"))
+
+    exists (store, path) = length (filterList (store.files, \item => item.entryPath == path)) > 0
+
+    // A new page never replaces a page that exists, nor unsaved words in the open one.
+    create store = match exists (store, store.draftPath)
+        true => refused (store, "That page already exists", "${store.draftPath} is already a page. Open it from the tree, or choose another path.")
+        false => match unsaved store
+            true => refused (store, "Unsaved changes", "Save ${Names::base store.opened} or discard its changes before starting a new page.")
+            false => made store
+
+    made store = match Names::kind store.draftPath == "markdown"
+        true => sending (store(opened = store.draftPath, text = Names::starter store.draftPath, saved = "", preview = ""), "create", "PUT", Api::at ("/api/file", store.draftPath), Names::starter store.draftPath)
+        false => refused (store, "Pages are Markdown", "A new page's path must end in .md, such as content/blog/hello.md.")
+
+    choose store = Runtime::asking (store(notice = quiet ()), [Requests::ask ("chosen", ui::ChooseFile(types = Names::mediaTypes (), chosenLimit = 50331648, chosenSlice = "chosen"))])
+
+    history store = match store.showingHistory
+        true => Runtime::step (store(showingHistory = false))
+        false => Runtime::asking (store(showingHistory = true), [Api::call (store.server, "history", "GET", "/api/history", "")])
+
+    (** A tap. *)
+    export tapped (store, action) = match action
+        Refresh => hydrate store
+        Save => save store
+        Delete => Runtime::step (store(confirming = store.opened != ""))
+        NewPage => drafting store
+        CreatePage => create store
+        CancelDraft => Runtime::step (store(creating = false))
+        ToggleHistory => history store
+        Publish => publish store
+        Dismiss => Runtime::step (store(notice = quiet ()))
+        ChooseMedia => choose store
+        Formatted => Runtime::step (store(mode = "formatted"))
+        Raw => Runtime::step (store(mode = "markdown"))
+        Restyle style => restyle (store, style)
+        Emphasis marker => emphasise (store, marker)
+        Insert snippet => insert (store, snippet)
+        KeepEditing => Runtime::step (store(leaving = ""))
+        Discard => opening (store(leaving = ""), store.leaving)
+        CancelDelete => Runtime::step (store(confirming = false))
+        ConfirmDelete => delete (store(confirming = false))
+        _ => Runtime::step store
+
+    // The ribbon's styles: on the focused block when formatted, on the caret's line in Markdown.
+    restyle (store, style) = match store.mode
+        "formatted" => Runtime::step (store(text = Blocks::restyled (store.text, store.focus, style)))
+        _ => Runtime::step (store(text = Blocks::lineStyled (store.text, store.cursor, style)))
+
+    // Bold, italic and code: markers either side of the selection (or the caret), in the focused block or the raw text.
+    emphasise (store, marker) = match store.mode
+        "formatted" => Runtime::step (store(text = Blocks::within (store.text, store.focus, \words => Blocks::wrapped (words, store.blockCursor, store.blockReach, marker))))
+        _ => Runtime::step (store(text = Blocks::wrapped (store.text, store.cursor, store.reach, marker)))
+
+    // Link and image snippets replace the selection (or land at the caret) where the author is writing.
+    insert (store, snippet) = match store.mode
+        "formatted" => Runtime::step (store(text = Blocks::within (store.text, store.focus, \words => Blocks::inserted (words, store.blockCursor, store.blockReach, snippet))))
+        _ => Runtime::step (store(text = Blocks::inserted (store.text, store.cursor, store.reach, snippet)))
+
+    // Move the editor to block `index` and ask the host to focus it there.
+    focused (store, index) = store(focus = index, fresh = -1, blockCursor = 0, blockReach = 0, focusEpoch = satAdd store.focusEpoch 1)
+
+    // Enter at the end of a block opens an empty paragraph after it; Markdown cannot hold an empty
+    // paragraph, so it lives in the store until the first character is typed into it.
+    opened (store, index, words) =
+        kept = store(text = Blocks::edited (store.text, index, firstLine words))
+        match trim (drop words (satAdd (length (firstLine words)) 1))
+            "" => Runtime::step (blank (kept, satAdd index 1))
+            _ => Runtime::step (focused (store(text = Blocks::split (store.text, index, words)), satAdd index 1))
+
+    blank (store, at) =
+        moved = focused (store, -1)
+        moved(fresh = at)
+
+    // The first words in the empty paragraph make it a block of the page, editing in place; a line
+    // break in them splits as in any block. Words still bound to it once it became a block go there.
+    freshTyped (store, words) = match store.fresh < 0
+        true => blockTyped (store, store.focus, words)
+        false => firstWords (store, words)
+
+    firstWords (store, words) = match trim words
+        "" => Runtime::step store
+        _ => blockTyped (store(text = Blocks::added (store.text, satSub store.fresh 1, firstLine words), focus = store.fresh, fresh = -1), store.fresh, words)
+
+    firstLine words = take words (indexOf words "\n" ?: length words)
+
+    // Typing in a block; a line break where blocks hold none starts the next paragraph instead.
+    blockTyped (store, index, words) =
+        style = (Blocks::blockAt ((Blocks::page store.text).pageBlocks, index)).blockStyle
+        match Blocks::splits (style, words)
+            true => opened (store, index, words)
+            false => Runtime::step (store(text = Blocks::edited (store.text, index, words), focus = index))
+
+    (** An edit or a choice, with the person's words. *)
+    export typed (store, action, words) = match action
+        Edit => Runtime::step (store(text = words))
+        EditDraft => Runtime::step (store(draftPath = trim words))
+        Search => Runtime::step (store(filter = words))
+        Open => guarded (store, words)
+        EditFresh => freshTyped (store, words)
+        FocusBlock => Runtime::step (focused (store, parseInt words ?: 0))
+        PickFolder => Runtime::step (store(folder = words))
+        EditBlock index => blockTyped (store, index, words)
+        _ => Runtime::step store
+
+    (** A caret move or selection, from UTF-8 byte `start` to `reach`. It never moves focus, so the view
+        (and every control's ordinal) stays as the host drew it. *)
+    export placed (store, action, start, reach) = match action
+        Place => Runtime::step (store(cursor = start, reach = reach))
+        PlaceBlock _ => Runtime::step (store(blockCursor = start, blockReach = reach))
+        _ => Runtime::step store

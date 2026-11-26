@@ -2,6 +2,7 @@ import * as assert from "assert";
 import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
+import { present } from "../present";
 
 export interface ExpectedDiagnostic {
   code: string;
@@ -30,6 +31,8 @@ export async function waitFor<T>(
   assert.ok(accepts(value), `${description}: ${JSON.stringify(value)}`);
   return value;
 }
+
+export { present };
 
 /** Assert `document` is warning-free and save it. */
 export async function saveClean(document: vscode.TextDocument): Promise<void> {
@@ -347,7 +350,7 @@ async function focusedAction(
     1,
     "The requested fix must remain available at invocation",
   );
-  return offered[0];
+  return present(offered[0], "the requested fix");
 }
 
 export async function invokeFix(

@@ -10,7 +10,9 @@ namespace registry;
 /// Value tree only — because a recursive generic function is instantiated
 /// once per program (issue #277). Implements [PACKAGE-PUBLISH].
 module Json {
+    /// One parsed JSON value: null, a boolean, an integer, a string, an array or an object.
     export type Value = Null | Bool { flag: bool } | Num { value: int } | Str { text: string } | Arr { items: List<Value> } | Obj { members: List<Member> }
+    /// One `key`/`value` member of an object value.
     export type Member = { key: string, value: Value }
 
     /// A `key`/`value` member of an object value.

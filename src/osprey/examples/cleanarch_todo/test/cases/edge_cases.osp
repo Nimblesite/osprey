@@ -6,9 +6,13 @@ namespace todo;
 
 
 module EdgeCases {
+    // The list collection's route, and list 2's own.
+    let listsRoute = "/api/TodoLists"
+    let listTwoRoute = "/api/TodoLists/2"
+
     /// POST /api/TodoLists: 201, a Location header, the bare new id.
     export fn createListRouteCase() = {
-        let made = TodoHarness::route(TodoHarness::admin(), "POST", "/api/TodoLists",
+        let made = TodoHarness::route(TodoHarness::admin(), "POST", listsRoute,
             "{\"title\":\"Shopping\"}")
         checkAll("201 with location and bare id body", [
             made.status == 201,
@@ -21,20 +25,20 @@ module EdgeCases {
     /// GET /api/TodoLists: 200 with the whole view; 401 when anonymous,
     /// because the endpoint group calls RequireAuthorization().
     export fn getListsRouteCase() = {
-        let view = TodoHarness::route(TodoHarness::admin(), "GET", "/api/TodoLists", "")
+        let view = TodoHarness::route(TodoHarness::admin(), "GET", listsRoute, "")
         checkAll("200 json view", [
             view.status == 200,
             contains(view.partialBody, "\"priorities\":[{\"id\":0,\"name\":\"None\"}"),
             contains(view.partialBody, "\"colours\":[{\"code\":\"#E05C4D\",\"name\":\"Red\"}"),
             contains(view.partialBody, "\"lists\":[]")
         ])
-        let denied = TodoHarness::route(TodoHarness::anonymous(), "GET", "/api/TodoLists", "")
+        let denied = TodoHarness::route(TodoHarness::anonymous(), "GET", listsRoute, "")
         checkAll("anonymous 401", [denied.status == 401])
     }
 
     /// POST an invalid list: 400 with the validation problem details.
     export fn invalidListRouteCase() = {
-        let broken = TodoHarness::route(TodoHarness::admin(), "POST", "/api/TodoLists",
+        let broken = TodoHarness::route(TodoHarness::admin(), "POST", listsRoute,
             "{\"title\":\"\",\"colour\":\"#HotPink\"}")
         checkAll("400 problem details collect every failure", [
             broken.status == 400,
@@ -50,16 +54,16 @@ module EdgeCases {
         let lists = [TodoHarness::seedList(2, "Savings", "#AB47BC")]
         let put = fn(path, body) => TodoHarness::routeOver(lists, [], TodoHarness::admin(), "PUT", path, body)
         let delete = fn(path) => TodoHarness::routeOver(lists, [], TodoHarness::admin(), "DELETE", path, "")
-        let mismatch = put("/api/TodoLists/2", "{\"id\":3,\"title\":\"Ghost\"}")
+        let mismatch = put(listTwoRoute, "{\"id\":3,\"title\":\"Ghost\"}")
         checkAll("id mismatch is a 400", [mismatch.status == 400])
-        let ok = put("/api/TodoLists/2", "{\"id\":2,\"title\":\"Banking\"}")
+        let ok = put(listTwoRoute, "{\"id\":2,\"title\":\"Banking\"}")
         checkAll("matching ids update with 204 and no body", [
             ok.status == 204,
             isEmpty(ok.partialBody)
         ])
         let ghost = put("/api/TodoLists/9", "{\"id\":9,\"title\":\"Ghost\"}")
         checkAll("updating a missing list is a 404", [ghost.status == 404])
-        let removed = delete("/api/TodoLists/2")
+        let removed = delete(listTwoRoute)
         checkAll("delete answers 204", [removed.status == 204])
         let absent = delete("/api/TodoLists/9")
         checkAll("deleting a missing list is a 404", [absent.status == 404])

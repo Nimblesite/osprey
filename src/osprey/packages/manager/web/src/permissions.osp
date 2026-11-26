@@ -10,6 +10,10 @@ import registry::Names
 /// ([PACKAGE-OWNERSHIP-ADMIN], [PACKAGE-HOSTED-ROUTES]). UI hiding is not
 /// authorization: the API re-checks every operation.
 module Permissions {
+    /// The administrator's permissions screen for `l` with its grant `ledger`:
+    /// hidden as `web.permissions.admin-only` for anyone but this package's
+    /// current administrator, and as `web.evidence-unavailable` without
+    /// verified evidence.
     export fn render(l, access: Model::Access, ledger, now) = match Model::gate(l.evidence, Names::display(l.pkg.key)) {
         Error { message } => Model::hidden("web.evidence-unavailable: ${message}")
         Success => match Model::isAdministeredBy(access) && Model::viewerOrgHandle(access.viewer) == l.orgHandle {

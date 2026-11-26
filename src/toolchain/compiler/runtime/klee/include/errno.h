@@ -20,5 +20,6 @@ extern int osp_hunt_errno;
 #define EPIPE 32
 #define ERANGE 34
 #define ENOSYS 38
+#define ETIMEDOUT 110
 #define ENOENT 2
 #endif

@@ -180,6 +180,18 @@ declaration's arity.** `Box<int> { v: 1 }` against `type Box<T>` is well-formed;
 the declaration, so a count mismatch is an error rather than a silently ignored
 annotation.
 
+`[TYPE-GENERICS-FIELD-BARE]` **A declared `Fiber` or `Channel` field names its
+element type.** A field written with a bare `Fiber` or `Channel`, at any depth of
+its type (`type Holder = { fib: Fiber }`), is rejected at the declaration. The
+message tells the author to write the element type (`Fiber<int>`) or make the
+record generic (`type Holder<T> = { fib: Fiber<T> }`). Codegen needs that type
+at `await` and `recv`, and no use can supply it once the field has lost it. The
+check used to pass such a field, and codegen then refused the program (#340,
+[COMPILER-RED-FAILS]). A bare `Map` field still checks and runs. A function
+parameter written bare is different: it reads as fresh arguments, as if left to
+inference. Rejected by
+`src/osprey/examples/failscompilation/bare_constructor_record_field.ospo`.
+
 `[TYPE-GENERICS-FN]` **Functions bind type parameters with `fn name<T, …>`.**
 A binder makes every use of `T` in the signature the SAME inference variable;
 without it, `T` in an annotation names a nominal type. The binder is
@@ -194,6 +206,13 @@ checked in and across a mutually recursive group: every call site, including
 one in an earlier file or a sibling of a recursive cycle, instantiates fresh
 variables. The Default/ML `generic_mutual_recursion` pair pins a two-function
 cycle used at two types in one program.
+A declared binder is rigid: the body must work for every type it stands for.
+A body that fixes a binder to a concrete type (`fn bump<T>(x: T) -> T = x + 1`)
+or merges two binders (`fn pick<A, B>(a: A, b: B) -> B = a`) is less general than its declaration and is rejected with "less general than
+its declared type". The same holds for a binder a module signature supplies
+to an unannotated implementation ([MODULES-SIGNATURE]). Annotated type
+variables are skolems (Peyton Jones, Vytiniotis, Weirich and Shields,
+"Practical type inference for arbitrary-rank types", JFP 2007).
 Variance markers are **not** permitted on function binders (variance is
 declaration-site on types and effects only — [TYPE-VARIANCE-DECL]).
 

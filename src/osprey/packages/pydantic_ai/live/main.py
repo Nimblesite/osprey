@@ -94,9 +94,7 @@ def run_checks(key):
     match Agent.run_sync(agent, QUESTION, []):
         case E.Ok(value=result):
             names = Support.tool_names(result.messages)
-            print(f"agent output: {result.output}")
-            print(f"tools called: {join(names, ", ")}")
-            print(f"requests: {result.usage.requests}, tool calls: {result.usage.tool_calls}, tokens: {result.usage.input_tokens} in / {result.usage.output_tokens} out")
+            print(f"agent output: {result.output}\ntools called: {join(names, ", ")}\nrequests: {result.usage.requests}, tool calls: {result.usage.tool_calls}, tokens: {result.usage.input_tokens} in / {result.usage.output_tokens} out")
             verdict = judge(model, QUESTION, result.output)
             print(f"judge: {verdict}")
             return [

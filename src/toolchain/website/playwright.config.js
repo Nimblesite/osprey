@@ -3,14 +3,21 @@
 // the compiler that CI builds first) and serves _site over a tiny static
 // server, then the tests run against it.
 const { defineConfig, devices } = require("@playwright/test");
+const { execFileSync } = require("node:child_process");
 
-const PORT = Number(process.env.PW_PORT) || 8099;
+function freePort() {
+  const source = 'const s = require("node:net").createServer(); s.listen(0, "127.0.0.1", () => { console.log(s.address().port); s.close(); });';
+  return Number(execFileSync(process.execPath, ["-e", source], { encoding: "utf8" }).trim());
+}
+
+const PORT = Number(process.env.PW_PORT) || freePort();
+process.env.PW_PORT = String(PORT);
 
 module.exports = defineConfig({
   testDir: "./tests",
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 1 : 0,
+  retries: 0,
   // Hosted Linux runners for this public repository have four cores; two workers
   // left the suite at half the job's eight-minute budget.
   workers: process.env.CI ? 4 : undefined,
@@ -27,7 +34,7 @@ module.exports = defineConfig({
     { name: "iphone-safari", grep: /@safari/, use: { ...devices["iPhone 13"] } },
   ],
   webServer: {
-    command: `npm run build && node tests/serve.cjs ${PORT}`,
+    command: "npm run build && node tests/serve.cjs",
     url: `http://localhost:${PORT}`,
     timeout: 120_000,
     reuseExistingServer: !process.env.CI,

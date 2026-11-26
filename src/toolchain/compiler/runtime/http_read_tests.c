@@ -22,13 +22,18 @@ static int64_t elapsed_ms_since(uint64_t started) {
   return (int64_t)(osp_monotonic_ms() - started);
 }
 
-// The call ended at the whole read's bound, with -16 and `text`, not before it or later.
+// The deadline, not an early read error or a late retry, ended the exchange.
 static void expect_bounded_failure(int64_t code, uint64_t started, int64_t timeout_ms,
-                                   const char *text) {
+                                   const char *text, bool peer_closed) {
   assert(code == -16);
   int64_t took = elapsed_ms_since(started);
   assert(took >= timeout_ms * HTTP_READ_BOUND_FACTOR - 100);
   assert(took < timeout_ms * (HTTP_READ_BOUND_FACTOR + 5));
+  if (!peer_closed) {
+    fprintf(stderr, "origin never saw the client close: %s, timeout %lld ms, took %lld ms\n", text,
+            (long long)timeout_ms, (long long)took);
+  }
+  assert(peer_closed &&"the client must close the origin at the operation deadline");
   assert(strcmp(osp_io_error(), text) == 0);
   osp_io_error_clear();
 }
@@ -192,7 +197,9 @@ static void expect_cut_off(const char *reply, int64_t timeout_ms) {
   long live = test_alloc_live();
   uint64_t started = osp_monotonic_ms();
   osp_io_error_clear();
-  expect_bounded_failure(origin_exchange(reply, strlen(reply)), started, timeout_ms, OVER_TIME);
+  // Sequenced: argument evaluation order is unspecified, so the flag is read after the exchange.
+  int64_t code = origin_exchange(reply, strlen(reply));
+  expect_bounded_failure(code, started, timeout_ms, OVER_TIME, origin_last_peer_closed);
   assert(test_alloc_live() == live);
 }
 
@@ -219,10 +226,12 @@ static void check_whole_read_bound(void) {
     snprintf(reply, sizeof(reply), "HTTP/1.1 200 OK\r\n%s%s", heads[i], filler);
     expect_cut_off(reply, TIMEOUT_MS);
   }
-  static const char slow[] = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok"; // 1.6 s of 1 s
+  static const char slow[] = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok";
   http_close_client(shared_origin_client);
   use_client_with_timeout(200);
-  EXPECT_RESPONSE(slow, 200, "ok");
+  origin_drip_us = (unsigned)(200 * HTTP_READ_BOUND_FACTOR * 700 / (int64_t)strlen(slow));
+  EXPECT_RESPONSE(slow, 200, "ok"); // the monotonic drip schedule uses 70% of the bound
+  assert(!origin_last_peer_closed);
   // Falling silent near the end is still over the limit, at the limit: the last wait
   // is the time left, not a whole timeout, which would call it a timed-out read.
   origin_drip_us = 150000;
@@ -429,8 +438,8 @@ static void check_handshake_bound(void) {
   assert(client > 0);
   uint64_t started = osp_monotonic_ms();
   int64_t code = http_get_response(client, (char *)(uintptr_t) "/x", (char *)(uintptr_t) "");
-  expect_bounded_failure(code, started, BOUND_TIMEOUT_MS, HANDSHAKE_OVER_TIME);
   origin_stop(&origin);
+  expect_bounded_failure(code, started, BOUND_TIMEOUT_MS, HANDSHAKE_OVER_TIME, origin.peer_closed);
   assert(origin.request[0] == 0x16); // what it dripped at was a TLS ClientHello
   http_close_client(client);
 }
@@ -453,10 +462,10 @@ static void check_send_bound(void) {
   assert(client > 0);
   long live = test_alloc_live();
   uint64_t started = osp_monotonic_ms();
-  expect_bounded_failure(http_post(client, (char *)(uintptr_t) "/up", body, (char *)(uintptr_t) ""), started,
-                         BOUND_TIMEOUT_MS, SEND_OVER_TIME);
-  assert(test_alloc_live() == live);
+  int64_t code = http_post(client, (char *)(uintptr_t) "/up", body, (char *)(uintptr_t) "");
   origin_stop(&origin);
+  expect_bounded_failure(code, started, BOUND_TIMEOUT_MS, SEND_OVER_TIME, origin.peer_closed);
+  assert(test_alloc_live() == live);
   http_close_client(client);
   free(body);
 }

@@ -16,6 +16,9 @@ fn minPlus(delta) = minValue() + delta
 /// The one fault the intermediate overflow raises for every delta.
 let maxOverflowFault = "overflow(+,9223372036854775807,1,-9223372036854775808);"
 
+/// The text a faulted checked op renders as, which the overflow cases assert on.
+let integerOverflowText = "Error(integer overflow)"
+
 /// A test body that checks `work` through `faultsAre` and the faults it must raise.
 fn checking(work, expected, wantedFaults) = fn() => faultsAre(work, expected, wantedFaults)
 
@@ -101,9 +104,9 @@ test("integer division minimum by one succeeds", checking(fn() => intDiv(minValu
 assertRendered("checkedAdd success", fn() => checkedAdd(2, 3), "Success(5)")
 assertRendered("checkedSub negative success", fn() => checkedSub(2, 3), "Success(-1)")
 assertRendered("checkedMul success", fn() => checkedMul(6, 7), "Success(42)")
-assertRendered("checkedAdd maximum overflow", fn() => checkedAdd(maxValue(), 1), "Error(integer overflow)")
-assertRendered("checkedSub minimum overflow", fn() => checkedSub(minValue(), 1), "Error(integer overflow)")
-assertRendered("checkedMul wide overflow", fn() => checkedMul(runtimeValue(4294967296), runtimeValue(4294967296)), "Error(integer overflow)")
+assertRendered("checkedAdd maximum overflow", fn() => checkedAdd(maxValue(), 1), integerOverflowText)
+assertRendered("checkedSub minimum overflow", fn() => checkedSub(minValue(), 1), integerOverflowText)
+assertRendered("checkedMul wide overflow", fn() => checkedMul(runtimeValue(4294967296), runtimeValue(4294967296)), integerOverflowText)
 assertRendered("checkedAdd reaches maximum", fn() => checkedAdd(runtimeValue(9223372036854775806), 1), "Success(9223372036854775807)")
 assertRendered("checkedSub reaches minimum", fn() => checkedSub(minValue() + 1, 1), "Success(-9223372036854775808)")
 assertRendered("checkedMul maximum identity", fn() => checkedMul(maxValue(), 1), "Success(9223372036854775807)")

@@ -1,0 +1,15 @@
+// osprey: types=leanexport
+
+namespace roundtrip
+
+(** Vote counts merged from regions that report in any order. The module
+    cites Lean's proof that addition of natural numbers is commutative; the
+    `leanexport` checker re-checks the certificate's whole dependency closure with
+    Osprey's kernel before the module compiles. The theorem is about `Nat`;
+    that `merge` on `int` behaves the same is the reader's step, not a
+    checked one. *)
+module Tally
+    uses lean Nat.add_comm from ../../proof/kernel/exports/nat_add_comm.ndjson
+
+    (** The total of two regional counts. *)
+    export merge (north, south) = north + south

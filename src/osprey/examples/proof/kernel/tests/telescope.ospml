@@ -11,6 +11,7 @@ import proof
 (** Annotation stripping matches Lean without trusting an annotation's name.
     Implements [PROOF-KERNEL-THEORY] [PROOF-RUNNABLE-LIBRARY]. *)
 module TelescopeTests
+    (** Runs the annotation-stripping cases: identities, refusals, former types and lowering; the testing built-ins report the TAP lines. *)
     export run () =
         identities ()
         refusals ()
@@ -50,7 +51,7 @@ module TelescopeTests
     domain (env, ty) = firstDomain (Telescope::peel (env, Pi "x" ty (Sort Zero)))
 
     firstDomain (peeled) = match peeled.peeledBinders
-        [first, ...rest] => first.ty
+        [first, ..._] => first.ty
         [] =>
             check "the telescope retains its binder" "one binder" "none"
             Sort Zero
@@ -94,7 +95,7 @@ module TelescopeTests
 
     matchingNest (nests, expected) = match nests
         [only] => structuralEquals (only.nestArgs, [expected])
-        other => false
+        _ => false
 
     nestVerdict (child) = match Nesting::lower (boxEnv (), [nestFormer ()], [nestCtor (child)], 2)
         Success _ => "accepted"

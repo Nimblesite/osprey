@@ -1,0 +1,7 @@
+namespace roundtrip
+
+import roundtrip::Access
+
+// An `hm` entry calling a `dependent` module: it sees only the erased
+// exports, never a theorem ([PROOF-BOUNDARY]).
+main () = print "admin ${toString (Access::canRead "admin")}, guest ${toString (Access::canRead "guest")}, via editor ${Access::grantVia (\who => "${who} as editor", \role => "${role} reads", "ada")}"

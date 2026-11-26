@@ -18,8 +18,10 @@ module Tax {
     /// A private helper is callable from its own module only.
     fn hundredths(cents) = intDiv((cents * rate) , 100) 
 
+    /// Adds the tax on `cents`, truncated to whole cents, to `cents`.
     export fn add(cents) = (cents + hundredths(cents)) 
 
+    /// The private rate the tax was computed with.
     export fn rateUsed() = rate
 
     /// A nested plain module is itself a closed boundary.
@@ -29,6 +31,7 @@ module Tax {
         /// A private nested item stays private to the nested module.
         fn remainder(cents) = (cents % step) 
 
+        /// Rounds `cents` down to a multiple of the private step.
         export fn down(cents) = (cents - remainder(cents)) 
     }
 
@@ -36,10 +39,12 @@ module Tax {
     export fn addRounded(cents) = Rounding::down(add(cents))
 }
 
+/// A second module that reaches `Tax` only through its exports.
 module Ledger {
     /// A module reads another module's exported surface, not its privates.
     export fn withTax(cents) = Tax::add(cents)
 
+    /// Renders the taxed price as `cents=<n>`.
     export fn label(cents) = "cents=${withTax(cents)}"
 }
 

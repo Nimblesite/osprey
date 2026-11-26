@@ -1,0 +1,96 @@
+// Implements [UI-STORE] for the CMS editor [CMS-EDITOR]: the whole back office is one typed store.
+// The server's tree, file text and history are decoded once, at the HTTP edge, into these records.
+namespace studio
+
+(** One editable file: its path in the site and its kind. *)
+type Entry =
+    entryPath : string
+    entryKind : string
+
+(** One commit of the site's history. *)
+type Commit =
+    commitSha : string
+    commitSubject : string
+    commitDate : string
+
+(** The last outcome: tone `good` or `danger`; an empty heading shows nothing. *)
+type Notice =
+    noticeTone : string
+    noticeHeading : string
+    noticeDetail : string
+
+(** A media upload in flight: the file's base64 cut into parts, and the next part to send. *)
+type Upload =
+    uploadPath : string
+    uploadParts : List<string>
+    uploadNext : int
+
+(** Everything the editor knows. `opened` is the open file; `text` is what the editor holds and `saved` what the site holds. *)
+type Studio =
+    server : string
+    roots : List<string>
+    files : List<Entry>
+    filter : string
+    opened : string
+    text : string
+    saved : string
+    cursor : int
+    reach : int
+    mode : string
+    focus : int
+    focusEpoch : int
+    fresh : int
+    blockCursor : int
+    blockReach : int
+    preview : string
+    commit : string
+    loads : int
+    busy : bool
+    history : List<Commit>
+    unpublished : int
+    remote : bool
+    showingHistory : bool
+    creating : bool
+    leaving : string
+    confirming : bool
+    draftPath : string
+    folder : string
+    upload : Upload
+    notice : Notice
+
+(** What a control delivers ([UI-EVENTS]): taps carry their meaning, edits and choices arrive with the person's words. *)
+type Act =
+    Refresh
+    Open
+    Edit
+    Place
+    Save
+    Delete
+    NewPage
+    EditDraft
+    CreatePage
+    CancelDraft
+    ToggleHistory
+    Publish
+    Dismiss
+    Search
+    PickFolder
+    ChooseMedia
+    Formatted
+    Raw
+    Restyle
+        styleName : string
+    Emphasis
+        marker : string
+    Insert
+        snippet : string
+    EditBlock
+        blockIndex : int
+    PlaceBlock
+        placedIndex : int
+    FocusBlock
+    EditFresh
+    KeepEditing
+    Discard
+    ConfirmDelete
+    CancelDelete

@@ -46,6 +46,7 @@ module OAuth {
     /// S256 produces exactly 43 characters of the unpadded base64url alphabet.
     fn challengeByte(b) = Bytes::isAlnumIn(b, [Bytes::hyphen, Bytes::underscore])
 
+    /// "" when `text` is a well-formed S256 challenge, else `auth.pkce`.
     export fn challengeCode(text) = if byteLength(text) != 43 || !Bytes::everyByte(text, challengeByte) { "auth.pkce" } else { "" }
 
     fn authorization(config: Config, s256) = "${config.supabaseOrigin}/auth/v1/authorize?provider=github&redirect_to=${component(config.callback)}&code_challenge=${s256}&code_challenge_method=s256"

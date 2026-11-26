@@ -69,32 +69,32 @@ fn dec(x) = satSub(x, 1)
 fn shift(a, b) = satAdd(a, b)
 
 // ---- list helpers (the cached text is split into rows for rendering) --------
-fn rows(text: string) = match split(text, "\n") {
+fn rows(text) = match split(text, "\n") {
     Success { value } => value
     Error => List()
 }
 
 // The server's list ends with a trailing newline, so the final split piece is
 // empty; the visible row count drops it.
-fn rowCount(text: string) = match length(text) {
+fn rowCount(text) = match length(text) {
     0 => 0
     _ => dec(listLength(rows(text)))
 }
 
 // Highlight the selected row by inverting its "#N " prefix (the server numbers
 // tasks from 1). Pure string rewriting — no list indexing.
-fn highlight(text: string, sel: int) = match replace(text, "#${toString(inc(sel))} ", invert(" #${toString(inc(sel))} ")) {
+fn highlight(text, sel) = match replace(text, "#${toString(inc(sel))} ", invert(" #${toString(inc(sel))} ")) {
     Success { value } => value
     Error => text
 }
 
-fn cursorLine(text: string, sel: int) = match rowCount(text) {
+fn cursorLine(text, sel) = match rowCount(text) {
     0 => dim("  (no tasks yet — press 'a' to add one)")
     _ => dim("  cursor on task ") + cyan("#${toString(inc(sel))}") + dim(" of ${toString(rowCount(text))}")
 }
 
 // ---- the screen: a pure string built from the current model -----------------
-fn screen(text: string, sel: int, msg: string) =
+fn screen(text, sel, msg) =
     "\e[?25l\e[2J\e[H\n" +
     bold(cyan("  OSPREY task board")) + dim("   live @ http://127.0.0.1:8080") + "\n" +
     rule() + "\n\n" +
@@ -105,33 +105,33 @@ fn screen(text: string, sel: int, msg: string) =
     yellow(msg)
 
 // ---- selection movement (pure) ----------------------------------------------
-fn clamp(x: int, hi: int) = match x < 0 {
+fn clamp(x, hi) = match x < 0 {
     true  => 0
     false => match x < hi { true => x  false => match hi > 0 { true => dec(hi)  false => 0 } }
 }
 
 // ---- the render / input loop (recursion stands in for a while-loop) ---------
-fn draw() -> Unit ![Out, Model] =
+fn draw() ![Out, Model] =
     perform Out.line(screen(perform Model.items(), perform Model.sel(), perform Model.flash()))
 
-fn refresh() -> Unit ![Net, Model] = {
+fn refresh() ![Net, Model] = {
     perform Model.setItems(perform Net.fetch())
     perform Model.setFlash("refreshed from server")
 }
 
-fn addTask() -> Unit ![Net, Model] = {
+fn addTask() ![Net, Model] = {
     let n = perform Model.nextSeq()
     perform Net.push("task from TUI #${toString(n)}")
     perform Model.setItems(perform Net.fetch())
     perform Model.setFlash("added task from TUI #${toString(n)}")
 }
 
-fn endApp() -> Unit ![Out, Term] = {
+fn endApp() ![Out, Term] = {
     perform Term.raw(0)
     perform Out.line("\e[?25h" + green("  goodbye!"))
 }
 
-fn loop() -> Unit ![Out, Term, Net, Model] = {
+fn loop() ![Out, Term, Net, Model] = {
     draw()
     match perform Term.readKey() {
         Success { value } => dispatch(value)
@@ -139,7 +139,7 @@ fn loop() -> Unit ![Out, Term, Net, Model] = {
     }
 }
 
-fn dispatch(key: string) -> Unit ![Out, Term, Net, Model] = match key {
+fn dispatch(key) ![Out, Term, Net, Model] = match key {
     "q" | "Esc"   => endApp()
     "j" | "Down"  => step(1)
     "k" | "Up"    => step(dec(0))
@@ -148,25 +148,25 @@ fn dispatch(key: string) -> Unit ![Out, Term, Net, Model] = match key {
     _       => loop()
 }
 
-fn step(delta: int) -> Unit ![Out, Term, Net, Model] = {
+fn step(delta) ![Out, Term, Net, Model] = {
     perform Model.moveSel(delta)
     loop()
 }
 
 // Run an effectful action, then re-enter the loop (sequences a Unit action
 // before the recursive call without a statement-level side effect in `match`).
-fn continueAfter(_done: Unit) -> Unit ![Out, Term, Net, Model] = loop()
+fn continueAfter(_done) ![Out, Term, Net, Model] = loop()
 
 // ---- INTERPRETATION: the only place real I/O and client state live ---------
 fn diagFile() = "/tmp/osprey_tui.log"
 fn baseUrl() = "http://127.0.0.1:8080"
 
-fn bodyOf(h: int) = match httpResponseBody(h) {
+fn bodyOf(h) = match httpResponseBody(h) {
     Success { value } => value
     Error => "(no body)\n"
 }
 
-fn readFree(h: int) = {
+fn readFree(h) = {
     let b = bodyOf(h)
     let _freed = httpResponseFree(h)
     b
@@ -192,7 +192,7 @@ fn httpFetch() = {
     out
 }
 
-fn httpPush(text: string) = {
+fn httpPush(text) = {
     let c = (httpCreateClient(baseUrl(), 5000) ?: -1)
     let code = toString((httpPost(c, "/tasks", text, "") ?: -1))
     let _closed = (httpCloseClient(c) ?: -1)

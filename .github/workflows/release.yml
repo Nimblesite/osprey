@@ -33,7 +33,7 @@ env:
   PRODUCT_REPO: Nimblesite/osprey
   HOMEPAGE: https://ospreylang.dev
   DESCRIPTION: "Osprey — a functional language with algebraic effects, fibers, and compile-time safety"
-  WASI_SDK_VERSION: "24"
+  WASI_SDK_VERSION: "25"
 
 jobs:
   audit:

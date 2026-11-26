@@ -1,0 +1,28 @@
+{% extends "base.njk" %}
+{% block main %}
+<section class="hero">
+  <p class="eyebrow">{{ eyebrow }}</p>
+  <h1>{{ headline }}</h1>
+  <div class="lead">{{ content | safe }}</div>
+  <p><a class="button" href="/blog/">Read the journal</a></p>
+</section>
+{% set featured = collections.posts[0] %}
+{% if featured %}
+<section class="featured" aria-label="Latest">
+  <a href="{{ featured.url }}">
+    <img src="{{ featured.data.cover or '/media/logo.svg' }}" alt="">
+    <div>
+      <p class="eyebrow">Latest · {{ featured.date | readable }}</p>
+      <h2>{{ featured.data.title }}</h2>
+      <p class="summary">{{ featured.data.summary }}</p>
+    </div>
+  </a>
+</section>
+{% endif %}
+<section class="section">
+  <h2 class="section-title">From the journal</h2>
+  <div class="grid">
+    {%- for post in collections.posts.slice(1, 7) %}{% include "card.njk" %}{% endfor %}
+  </div>
+</section>
+{% endblock %}

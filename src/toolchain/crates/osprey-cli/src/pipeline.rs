@@ -47,7 +47,7 @@ pub(crate) fn load_input(cli: &Cli) -> Result<CompilationInput, ExitCode> {
         .map_err(|error| crate::usage_error(&error))?;
     if cli.mode == "--list-tests" {
         return parse_alone(&cli.path, &source, flavor)
-            .map(|program| CompilationInput::script(&cli.path, source, program));
+            .map(|program| CompilationInput::script(&cli.path, source, program).in_flavor(flavor));
     }
     if let Some(suite) = CompilationInput::owned_test_suite(&cli.path) {
         return suite.map_err(|errors| {
@@ -96,7 +96,7 @@ fn load_script(
             ExitCode::FAILURE
         });
     }
-    Ok(CompilationInput::script(path, source, program))
+    Ok(CompilationInput::script(path, source, program).in_flavor(flavor))
 }
 
 pub(super) fn print_project_errors(errors: &[osprey_project::ProjectError], fallback: &str) {

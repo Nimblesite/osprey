@@ -34,6 +34,7 @@ export interface Response {
   readonly headers: string;
   status(code: int): Response;
   set(name: string, value: string): Response;
+  type(mediaType: string): Response;
   send(body: string): Response;
   json(value: Json): Response;
 }

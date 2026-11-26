@@ -29,15 +29,25 @@ module PythonPlane {
     let uvLockName = "uv.lock"
     let venvName = ".venv"
     let projectName = "osprey-python"
+    /// A member's `pyproject.toml` is missing or is not a PEP 621 project.
     export let pyprojectMissing = "python.pyproject-missing"
+    /// `uv.lock` cannot be read after `uv lock`, or is absent when inputs are checked.
     export let uvLockMissing = "python.uv-lock-missing"
+    /// The `pyproject.toml` on disk, or the recomposed one, differs from the digest pinned in the lock.
     export let workspaceDigest = "python.workspace-digest"
+    /// `uv.lock` differs from its pin, or `uv lock --check --offline` fails.
     export let uvLockStale = "python.uv-lock-stale"
+    /// The `.venv` environment `uv sync` should have created is absent.
     export let environmentMissing = "python.environment-missing"
+    /// `uv lock` exited non-zero; the message ends `status <N>` and no lock is written.
     export let uvLockFailed = "python.uv-lock-failed"
+    /// `uv sync --frozen` exited non-zero; the message ends `status <N>`.
     export let uvSyncFailed = "python.uv-sync-failed"
+    /// A member's own `pyproject.toml` declares a `[[tool.uv.index]]`.
     export let indexForbidden = "python.index-forbidden"
+    /// A member's source names `git`, `url` or a `path` outside its tree, or a composed source has no path.
     export let sourceForbidden = "python.source-forbidden"
+    /// `uv.lock` is unreadable, or any sdist or wheel in it lacks a hash.
     export let uvLockHashes = "python.uv-lock-hashes"
 
     /// One member of the composed uv project: its PEP 621 name, its path
@@ -197,7 +207,9 @@ module PythonPlane {
 
     fn inDir(project) = if project == "." || project == "" { dir } else { "${project}/${dir}" }
 
+    /// The composed `pyproject.toml` under `project`'s `.osprey/python`.
     export fn pyprojectPath(project) = "${inDir(project)}/${pyprojectName}"
+    /// The `uv.lock` under `project`'s `.osprey/python`.
     export fn uvLockPath(project) = "${inDir(project)}/${uvLockName}"
     fn venvPath(project) = "${inDir(project)}/${venvName}"
 

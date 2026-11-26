@@ -51,9 +51,13 @@ fn covers_every_simple_expression_form() {
           let g = fn(n) => n + 1\n\
           let fib = spawn other()\n\
           let r = await(fib)\n\
-          let ch = Channel(1)\n\
-          send(ch, 42)\n\
-          let got = recv(ch)\n\
+          match Channel(1) {\n\
+            Success { value } => {\n\
+              send(value, 42)\n\
+              print(toString(recv(value)))\n\
+            }\n\
+            Error { message } => print(message)\n\
+          }\n\
           yield\n\
           perform Logger.log(\"hello\")\n\
         }\n");

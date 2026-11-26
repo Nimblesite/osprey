@@ -44,6 +44,9 @@ module ProviderTests {
         ])
     }
 
+    /// The provider identity checks over fixture `Supabase::Provider` handlers:
+    /// the immutable identity a success yields, every rejection code, and
+    /// outages and header injection that never authenticate.
     export fn run(config) = {
         test("auth: provider immutable identity", fn() => stableIdentity(config))
         test("auth: provider denial cases", fn() => rejectedIdentity(config))

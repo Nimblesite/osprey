@@ -1,0 +1,71 @@
+// Implements [CMS-EDITOR-SYNTAX]: code blocks drawn with syntax colours. A small lexer that knows the
+// shapes most languages share (comments, strings, numbers, keywords, type names) cuts the code into
+// coloured runs; anything it does not recognise stays plain, so drawing never fails.
+namespace studio
+
+import ui::Ui
+
+(** One token: how many bytes it spans and the colour token it is drawn in. *)
+type Token =
+    tokenSize : int
+    tokenInk : string
+
+(** Code as coloured runs. *)
+module Syntax
+    keywords () = ["fn", "let", "mut", "match", "type", "module", "effect", "handle", "perform", "import", "export", "namespace", "if", "then", "else", "return", "const", "var", "function", "class", "def", "for", "while", "in", "of", "true", "false", "null", "None", "True", "False", "async", "await", "yield", "from", "as", "with", "struct", "enum", "impl", "pub", "use", "interface", "extends", "new", "this", "self", "try", "catch", "throw", "switch", "case", "break", "continue", "do", "lambda", "where", "and", "or", "not", "extern", "trait", "package", "static", "void", "int", "string", "bool", "float"]
+
+    byte (text, at) = byteAt (text, at) ?: 0
+
+    digit b = b >= 48 && b <= 57
+
+    letter b = (b >= 65 && b <= 90) || (b >= 97 && b <= 122) || b == 95
+
+    word b = digit b || letter b
+
+    // A byte that starts no token of its own: punctuation, operators and space run together.
+    plain b = word b == false && b != 34 && b != 39 && b != 96 && b != 35 && b != 47
+
+    // The offset of the first byte from `at` that fails `test`.
+    span (text, at, test) = match at < length text && test (byte (text, at))
+        true => span (text, satAdd at 1, test)
+        false => at
+
+    // A quoted string runs to the next matching quote, or to the end when it never closes.
+    closing (text, quote) = match indexOf (drop text 1) quote ?: -1
+        -1 => length text
+        found => satAdd found 2
+
+    // Capitalised names are types; other names keep the body ink.
+    nameInk name = match byte (name, 0) >= 65 && byte (name, 0) <= 90
+        true => "synType"
+        false => "ink"
+
+    keywordInk name = match length (filterList (keywords (), \key => key == name)) > 0
+        true => "synKeyword"
+        false => nameInk name
+
+    named name = Token(tokenSize = length name, tokenInk = keywordInk name)
+
+    worded text = match word (byte (text, 0))
+        true => named (take text (span (text, 0, word)))
+        false => Token(tokenSize = max 1 (span (text, 0, plain)), tokenInk = "synPunct")
+
+    numeric text = match digit (byte (text, 0))
+        true => Token(tokenSize = span (text, 0, \b => word b || b == 46), tokenInk = "synNumber")
+        false => worded text
+
+    quoted text = match startsWith text "\"" || startsWith text "'" || startsWith text "`"
+        true => Token(tokenSize = closing (text, take text 1), tokenInk = "synString")
+        false => numeric text
+
+    // The token `text` starts with.
+    token text = match startsWith text "//" || startsWith text "#"
+        true => Token(tokenSize = max 1 (indexOf text "\n" ?: length text), tokenInk = "synComment")
+        false => quoted text
+
+    (** `code` as monospaced runs, each in its syntax colour. *)
+    export runs code = match code
+        "" => []
+        _ =>
+            next = token code
+            listPrepend (runs (drop code next.tokenSize)) (Ui::emphasised (take code next.tokenSize, next.tokenInk, "code"))

@@ -8,6 +8,16 @@ Do not edit: rerun the oracle."""
 
 __all__ = ["ACC_a", "ACC_perfect", "ACC_const", "ACC_imb", "PRF_a_micro_0", "PRF_a_micro_1", "PRF_a_macro_0", "PRF_a_macro_1", "PRF_a_weighted_0", "PRF_a_weighted_1", "PRF_b_binary_0", "PRF_b_binary_1", "PRF_b_micro_0", "PRF_b_micro_1", "PRF_b_macro_0", "PRF_b_macro_1", "PRF_b_weighted_0", "PRF_b_weighted_1", "PRF_zero_binary_0", "PRF_zero_binary_1", "PRF_zero_micro_0", "PRF_zero_micro_1", "PRF_zero_macro_0", "PRF_zero_macro_1", "PRF_zero_weighted_0", "PRF_zero_weighted_1", "PRF_imb_binary_0", "PRF_imb_binary_1", "PRF_imb_micro_0", "PRF_imb_micro_1", "PRF_imb_macro_0", "PRF_imb_macro_1", "PRF_imb_weighted_0", "PRF_imb_weighted_1", "PRF_const_binary_0", "PRF_const_binary_1", "PRF_const_micro_0", "PRF_const_micro_1", "PRF_const_macro_0", "PRF_const_macro_1", "PRF_const_weighted_0", "PRF_const_weighted_1", "CM_a", "CM_explicit", "CM_wide", "ROCAUC_roc", "ROC_FPR_roc", "ROC_TPR_roc", "ROC_THR_roc", "PRC_P_roc", "PRC_R_roc", "PRC_THR_roc", "AP_roc", "ROCAUC_tie", "ROC_FPR_tie", "ROC_TPR_tie", "ROC_THR_tie", "PRC_P_tie", "PRC_R_tie", "PRC_THR_tie", "AP_tie", "ROCAUC_perf", "ROC_FPR_perf", "ROC_TPR_perf", "ROC_THR_perf", "PRC_P_perf", "PRC_R_perf", "PRC_THR_perf", "AP_perf", "ROCAUC_rev", "ROC_FPR_rev", "ROC_TPR_rev", "ROC_THR_rev", "PRC_P_rev", "PRC_R_rev", "PRC_THR_rev", "AP_rev", "ROCAUC_one", "ROC_FPR_one", "ROC_TPR_one", "ROC_THR_one", "PRC_P_one", "PRC_R_one", "PRC_THR_one", "AP_one", "LOGLOSS_ll", "LOGLOSS_llb", "LOGLOSS_clip", "LOGLOSS_cliphi", "MSE_a", "MAE_a", "R2_a", "EVS_a", "MSE_perf", "MAE_perf", "R2_perf", "EVS_perf", "MSE_neg", "MAE_neg", "R2_neg", "EVS_neg", "MSE_const", "MAE_const", "R2_const", "EVS_const", "MSE_one", "MAE_one", "R2_one", "EVS_one", "MCC_a", "MCC_perf", "MCC_inverse", "MCC_const", "MCC_imb", "TOPK_k1", "TOPK_TIE_k1", "TOPK_k2", "TOPK_TIE_k2", "TOPK_k3", "TOPK_TIE_k3", "SS_MEAN", "SS_VAR", "SS_SCALE", "SS_TRANSFORM", "SS_ZV_SCALE", "SS_ZV_TRANSFORM", "SS_NOMEAN", "SS_NOSTD", "SS_NONE", "MM_MIN", "MM_MAX", "MM_SCALE", "MM_OFFSET", "MM_TRANSFORM", "MM_RANGE", "RS_CENTER_EVEN", "RS_SCALE_EVEN", "RS_TRANSFORM_EVEN", "RS_CENTER_ODD", "RS_SCALE_ODD", "RS_TRANSFORM_ODD", "NORM_l1", "NORM_l2", "NORM_max", "OHE_CATS", "OHE_TRANSFORM", "LE_CLASSES", "LE_TRANSFORM", "LE_TRANSFORM_NEW", "PF_POWERS_d2_b1_i0", "PF_TRANSFORM_d2_b1_i0", "PF_POWERS_d2_b0_i0", "PF_TRANSFORM_d2_b0_i0", "PF_POWERS_d3_b1_i0", "PF_TRANSFORM_d3_b1_i0", "PF_POWERS_d2_b1_i1", "PF_TRANSFORM_d2_b1_i1", "PF_POWERS_d3_b0_i1", "PF_TRANSFORM_d3_b0_i1", "TTS_TR_n10_k3", "TTS_TE_n10_k3", "TTS_TR_n6_k1", "TTS_TE_n6_k1", "TTS_TR_n6_k5", "TTS_TE_n6_k5", "TTS_TR_n5_k0", "TTS_TE_n5_k0", "TTS_PERM_TR", "TTS_PERM_TE", "KF_n7_k3", "KF_n6_k3", "KF_n10_k4", "KF_n5_k5", "KF_n8_k2", "SKF_001101_k3", "SKF_010122012_k3", "SKF_000111_k2", "SKF_2100120_k3", "XPRF_asym3_micro_0", "XPRF_asym3_micro_1", "XPRF_asym3_macro_0", "XPRF_asym3_macro_1", "XPRF_asym3_weighted_0", "XPRF_asym3_weighted_1", "XPRF_rare_micro_0", "XPRF_rare_micro_1", "XPRF_rare_macro_0", "XPRF_rare_macro_1", "XPRF_rare_weighted_0", "XPRF_rare_weighted_1", "XPRF_swap3_micro_0", "XPRF_swap3_micro_1", "XPRF_swap3_macro_0", "XPRF_swap3_macro_1", "XPRF_swap3_weighted_0", "XPRF_swap3_weighted_1", "XPRF_wrong4_micro_0", "XPRF_wrong4_micro_1", "XPRF_wrong4_macro_0", "XPRF_wrong4_macro_1", "XPRF_wrong4_weighted_0", "XPRF_wrong4_weighted_1", "XPRF_absent_micro_0", "XPRF_absent_micro_1", "XPRF_absent_macro_0", "XPRF_absent_macro_1", "XPRF_absent_weighted_0", "XPRF_absent_weighted_1", "XPRF_single_micro_0", "XPRF_single_micro_1", "XPRF_single_macro_0", "XPRF_single_macro_1", "XPRF_single_weighted_0", "XPRF_single_weighted_1", "XPRF_bin_rare_binary_0", "XPRF_bin_rare_binary_1", "XPRF_bin_constpred_binary_0", "XPRF_bin_constpred_binary_1", "XPRF_bin_ties_binary_0", "XPRF_bin_ties_binary_1", "XREG_MSE_tie", "XREG_MAE_tie", "XREG_R2_tie", "XREG_EVS_tie", "XREG_MSE_shift", "XREG_MAE_shift", "XREG_R2_shift", "XREG_EVS_shift", "XREG_MSE_scale", "XREG_MAE_scale", "XREG_R2_scale", "XREG_EVS_scale", "XREG_MSE_cross0", "XREG_MAE_cross0", "XREG_R2_cross0", "XREG_EVS_cross0", "XREG_MSE_negsmall", "XREG_MAE_negsmall", "XREG_R2_negsmall", "XREG_EVS_negsmall", "XREG_MSE_zeropred", "XREG_MAE_zeropred", "XREG_R2_zeropred", "XREG_EVS_zeropred", "XREG_MSE_constpred", "XREG_MAE_constpred", "XREG_R2_constpred", "XREG_EVS_constpred", "XREG_MSE_flat", "XREG_MAE_flat", "XREG_R2_flat", "XREG_EVS_flat", "XREG_MSE_imbal", "XREG_MAE_imbal", "XREG_R2_imbal", "XREG_EVS_imbal", "XREG_MSE_ties3", "XREG_MAE_ties3", "XREG_R2_ties3", "XREG_EVS_ties3", "XREG_MSE_shiftneg", "XREG_MAE_shiftneg", "XREG_R2_shiftneg", "XREG_EVS_shiftneg", "XREG_MSE_scaleup", "XREG_MAE_scaleup", "XREG_R2_scaleup", "XREG_EVS_scaleup"]
 
+_SHARED_0 = [0.2222222222222222, 0.3333333333333333, 0.26666666666666666]
+_SHARED_1 = [0.6666666666666666, 0.6666666666666666, 0.6666666666666666]
+_SHARED_2 = [0.6, 0.6, 0.6]
+_SHARED_3 = [0.0, 0.0, 0.0]
+_SHARED_4 = [1.0, 1.0, 1.0]
+_SHARED_5 = [0, 1, 2, 3]
+_SHARED_6 = [0, 1, 2, 3, 4]
+_SHARED_7 = [0.5, 0.5, 0.5]
+_SHARED_8 = [0.611111111111111, 0.5, 0.5222222222222223]
+
 ACC_a = 0.3333333333333333
 """Oracle value `ACC_a`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
 ACC_perfect = 1.0
@@ -18,79 +28,79 @@ ACC_imb = 0.6666666666666666
 """Oracle value `ACC_imb`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
 PRF_a_micro_0 = [0.3333333333333333, 0.3333333333333333, 0.3333333333333333]
 """Oracle value `PRF_a_micro_0`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-PRF_a_micro_1 = [0.3333333333333333, 0.3333333333333333, 0.3333333333333333]
+PRF_a_micro_1 = PRF_a_micro_0
 """Oracle value `PRF_a_micro_1`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-PRF_a_macro_0 = [0.2222222222222222, 0.3333333333333333, 0.26666666666666666]
+PRF_a_macro_0 = _SHARED_0
 """Oracle value `PRF_a_macro_0`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-PRF_a_macro_1 = [0.2222222222222222, 0.3333333333333333, 0.26666666666666666]
+PRF_a_macro_1 = _SHARED_0
 """Oracle value `PRF_a_macro_1`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-PRF_a_weighted_0 = [0.2222222222222222, 0.3333333333333333, 0.26666666666666666]
+PRF_a_weighted_0 = _SHARED_0
 """Oracle value `PRF_a_weighted_0`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-PRF_a_weighted_1 = [0.2222222222222222, 0.3333333333333333, 0.26666666666666666]
+PRF_a_weighted_1 = _SHARED_0
 """Oracle value `PRF_a_weighted_1`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-PRF_b_binary_0 = [0.6666666666666666, 0.6666666666666666, 0.6666666666666666]
+PRF_b_binary_0 = _SHARED_1
 """Oracle value `PRF_b_binary_0`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-PRF_b_binary_1 = [0.6666666666666666, 0.6666666666666666, 0.6666666666666666]
+PRF_b_binary_1 = _SHARED_1
 """Oracle value `PRF_b_binary_1`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-PRF_b_micro_0 = [0.6, 0.6, 0.6]
+PRF_b_micro_0 = _SHARED_2
 """Oracle value `PRF_b_micro_0`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-PRF_b_micro_1 = [0.6, 0.6, 0.6]
+PRF_b_micro_1 = _SHARED_2
 """Oracle value `PRF_b_micro_1`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
 PRF_b_macro_0 = [0.5833333333333333, 0.5833333333333333, 0.5833333333333333]
 """Oracle value `PRF_b_macro_0`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-PRF_b_macro_1 = [0.5833333333333333, 0.5833333333333333, 0.5833333333333333]
+PRF_b_macro_1 = PRF_b_macro_0
 """Oracle value `PRF_b_macro_1`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-PRF_b_weighted_0 = [0.6, 0.6, 0.6]
+PRF_b_weighted_0 = _SHARED_2
 """Oracle value `PRF_b_weighted_0`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-PRF_b_weighted_1 = [0.6, 0.6, 0.6]
+PRF_b_weighted_1 = _SHARED_2
 """Oracle value `PRF_b_weighted_1`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-PRF_zero_binary_0 = [0.0, 0.0, 0.0]
+PRF_zero_binary_0 = _SHARED_3
 """Oracle value `PRF_zero_binary_0`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
 PRF_zero_binary_1 = [0.0, 1.0, 0.0]
 """Oracle value `PRF_zero_binary_1`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-PRF_zero_micro_0 = [0.0, 0.0, 0.0]
+PRF_zero_micro_0 = _SHARED_3
 """Oracle value `PRF_zero_micro_0`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-PRF_zero_micro_1 = [0.0, 0.0, 0.0]
+PRF_zero_micro_1 = _SHARED_3
 """Oracle value `PRF_zero_micro_1`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-PRF_zero_macro_0 = [0.0, 0.0, 0.0]
+PRF_zero_macro_0 = _SHARED_3
 """Oracle value `PRF_zero_macro_0`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
 PRF_zero_macro_1 = [0.5, 0.5, 0.0]
 """Oracle value `PRF_zero_macro_1`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-PRF_zero_weighted_0 = [0.0, 0.0, 0.0]
+PRF_zero_weighted_0 = _SHARED_3
 """Oracle value `PRF_zero_weighted_0`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
 PRF_zero_weighted_1 = [1.0, 0.0, 0.0]
 """Oracle value `PRF_zero_weighted_1`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
 PRF_imb_binary_0 = [0.3333333333333333, 1.0, 0.5]
 """Oracle value `PRF_imb_binary_0`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-PRF_imb_binary_1 = [0.3333333333333333, 1.0, 0.5]
+PRF_imb_binary_1 = PRF_imb_binary_0
 """Oracle value `PRF_imb_binary_1`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-PRF_imb_micro_0 = [0.6666666666666666, 0.6666666666666666, 0.6666666666666666]
+PRF_imb_micro_0 = _SHARED_1
 """Oracle value `PRF_imb_micro_0`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-PRF_imb_micro_1 = [0.6666666666666666, 0.6666666666666666, 0.6666666666666666]
+PRF_imb_micro_1 = _SHARED_1
 """Oracle value `PRF_imb_micro_1`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
 PRF_imb_macro_0 = [0.6666666666666666, 0.8, 0.625]
 """Oracle value `PRF_imb_macro_0`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-PRF_imb_macro_1 = [0.6666666666666666, 0.8, 0.625]
+PRF_imb_macro_1 = PRF_imb_macro_0
 """Oracle value `PRF_imb_macro_1`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
 PRF_imb_weighted_0 = [0.8888888888888888, 0.6666666666666666, 0.7083333333333334]
 """Oracle value `PRF_imb_weighted_0`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-PRF_imb_weighted_1 = [0.8888888888888888, 0.6666666666666666, 0.7083333333333334]
+PRF_imb_weighted_1 = PRF_imb_weighted_0
 """Oracle value `PRF_imb_weighted_1`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-PRF_const_binary_0 = [1.0, 1.0, 1.0]
+PRF_const_binary_0 = _SHARED_4
 """Oracle value `PRF_const_binary_0`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-PRF_const_binary_1 = [1.0, 1.0, 1.0]
+PRF_const_binary_1 = _SHARED_4
 """Oracle value `PRF_const_binary_1`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-PRF_const_micro_0 = [1.0, 1.0, 1.0]
+PRF_const_micro_0 = _SHARED_4
 """Oracle value `PRF_const_micro_0`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-PRF_const_micro_1 = [1.0, 1.0, 1.0]
+PRF_const_micro_1 = _SHARED_4
 """Oracle value `PRF_const_micro_1`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-PRF_const_macro_0 = [1.0, 1.0, 1.0]
+PRF_const_macro_0 = _SHARED_4
 """Oracle value `PRF_const_macro_0`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-PRF_const_macro_1 = [1.0, 1.0, 1.0]
+PRF_const_macro_1 = _SHARED_4
 """Oracle value `PRF_const_macro_1`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-PRF_const_weighted_0 = [1.0, 1.0, 1.0]
+PRF_const_weighted_0 = _SHARED_4
 """Oracle value `PRF_const_weighted_0`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-PRF_const_weighted_1 = [1.0, 1.0, 1.0]
+PRF_const_weighted_1 = _SHARED_4
 """Oracle value `PRF_const_weighted_1`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
 CM_a = [[2, 0, 0], [1, 0, 1], [0, 2, 0]]
 """Oracle value `CM_a`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
@@ -118,7 +128,7 @@ ROCAUC_tie = 0.5
 """Oracle value `ROCAUC_tie`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
 ROC_FPR_tie = [0.0, 0.6666666666666666, 1.0]
 """Oracle value `ROC_FPR_tie`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-ROC_TPR_tie = [0.0, 0.6666666666666666, 1.0]
+ROC_TPR_tie = ROC_FPR_tie
 """Oracle value `ROC_TPR_tie`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
 ROC_THR_tie = ["inf", "0.5", "0.2"]
 """Oracle value `ROC_THR_tie`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
@@ -148,17 +158,17 @@ AP_perf = 1.0
 """Oracle value `AP_perf`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
 ROCAUC_rev = 0.0
 """Oracle value `ROCAUC_rev`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-ROC_FPR_rev = [0.0, 0.5, 1.0, 1.0]
+ROC_FPR_rev = ROC_TPR_perf
 """Oracle value `ROC_FPR_rev`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-ROC_TPR_rev = [0.0, 0.0, 0.0, 1.0]
+ROC_TPR_rev = ROC_FPR_perf
 """Oracle value `ROC_TPR_rev`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-ROC_THR_rev = ["inf", "0.9", "0.8", "0.1"]
+ROC_THR_rev = ROC_THR_perf
 """Oracle value `ROC_THR_rev`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
 PRC_P_rev = [0.5, 0.3333333333333333, 0.0, 0.0, 1.0]
 """Oracle value `PRC_P_rev`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
 PRC_R_rev = [1.0, 0.5, 0.0, 0.0, 0.0]
 """Oracle value `PRC_R_rev`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-PRC_THR_rev = [0.1, 0.2, 0.8, 0.9]
+PRC_THR_rev = PRC_THR_perf
 """Oracle value `PRC_THR_rev`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
 AP_rev = 0.41666666666666663
 """Oracle value `AP_rev`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
@@ -254,7 +264,7 @@ SS_VAR = [6.0, 6.0, 6.0]
 """Oracle value `SS_VAR`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
 SS_SCALE = [2.449489742783178, 2.449489742783178, 2.449489742783178]
 """Oracle value `SS_SCALE`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-SS_TRANSFORM = [[-1.2247448713915892, -1.2247448713915892, -1.2247448713915892], [0.0, 0.0, 0.0], [1.2247448713915892, 1.2247448713915892, 1.2247448713915892]]
+SS_TRANSFORM = [[-1.2247448713915892, -1.2247448713915892, -1.2247448713915892], _SHARED_3, [1.2247448713915892, 1.2247448713915892, 1.2247448713915892]]
 """Oracle value `SS_TRANSFORM`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
 SS_ZV_SCALE = [1.118033988749895, 1.0]
 """Oracle value `SS_ZV_SCALE`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
@@ -262,7 +272,7 @@ SS_ZV_TRANSFORM = [[-1.3416407864998738, 0.0], [-0.4472135954999579, 0.0], [0.44
 """Oracle value `SS_ZV_TRANSFORM`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
 SS_NOMEAN = [[0.4082482904638631, 0.8164965809277261, 1.2247448713915892], [1.6329931618554523, 2.041241452319315, 2.4494897427831783], [2.8577380332470415, 3.2659863237109046, 3.6742346141747673]]
 """Oracle value `SS_NOMEAN`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-SS_NOSTD = [[-3.0, -3.0, -3.0], [0.0, 0.0, 0.0], [3.0, 3.0, 3.0]]
+SS_NOSTD = [[-3.0, -3.0, -3.0], _SHARED_3, [3.0, 3.0, 3.0]]
 """Oracle value `SS_NOSTD`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
 SS_NONE = [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]]
 """Oracle value `SS_NONE`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
@@ -290,17 +300,17 @@ RS_SCALE_ODD = [20.0, 2.0]
 """Oracle value `RS_SCALE_ODD`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
 RS_TRANSFORM_ODD = [[-1.0, -1.0], [-0.5, -0.5], [0.0, 0.0], [0.5, 0.5], [48.5, 1.0]]
 """Oracle value `RS_TRANSFORM_ODD`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-NORM_l1 = [[-0.4, 0.2, 0.4], [-0.5, 0.0, 0.5], [0.0, 0.0, 0.0]]
+NORM_l1 = [[-0.4, 0.2, 0.4], [-0.5, 0.0, 0.5], _SHARED_3]
 """Oracle value `NORM_l1`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-NORM_l2 = [[-0.6666666666666666, 0.3333333333333333, 0.6666666666666666], [-0.7071067811865475, 0.0, 0.7071067811865475], [0.0, 0.0, 0.0]]
+NORM_l2 = [[-0.6666666666666666, 0.3333333333333333, 0.6666666666666666], [-0.7071067811865475, 0.0, 0.7071067811865475], _SHARED_3]
 """Oracle value `NORM_l2`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-NORM_max = [[-1.0, 0.5, 1.0], [-1.0, 0.0, 1.0], [0.0, 0.0, 0.0]]
+NORM_max = [[-1.0, 0.5, 1.0], [-1.0, 0.0, 1.0], _SHARED_3]
 """Oracle value `NORM_max`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
 OHE_CATS = [[0, 2], [0, 1]]
 """Oracle value `OHE_CATS`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
 OHE_TRANSFORM = [[1.0, 0.0, 0.0, 1.0], [0.0, 1.0, 1.0, 0.0], [1.0, 0.0, 1.0, 0.0], [0.0, 1.0, 0.0, 1.0]]
 """Oracle value `OHE_TRANSFORM`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-LE_CLASSES = [0, 1, 2, 3]
+LE_CLASSES = _SHARED_5
 """Oracle value `LE_CLASSES`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
 LE_TRANSFORM = [3, 1, 1, 3, 2, 0]
 """Oracle value `LE_TRANSFORM`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
@@ -330,7 +340,7 @@ TTS_TR_n10_k3 = [0, 1, 2, 3, 4, 5, 6]
 """Oracle value `TTS_TR_n10_k3`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
 TTS_TE_n10_k3 = [7, 8, 9]
 """Oracle value `TTS_TE_n10_k3`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-TTS_TR_n6_k1 = [0, 1, 2, 3, 4]
+TTS_TR_n6_k1 = _SHARED_6
 """Oracle value `TTS_TR_n6_k1`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
 TTS_TE_n6_k1 = [5]
 """Oracle value `TTS_TE_n6_k1`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
@@ -338,7 +348,7 @@ TTS_TR_n6_k5 = [0]
 """Oracle value `TTS_TR_n6_k5`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
 TTS_TE_n6_k5 = [1, 2, 3, 4, 5]
 """Oracle value `TTS_TE_n6_k5`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-TTS_TR_n5_k0 = [0, 1, 2, 3, 4]
+TTS_TR_n5_k0 = _SHARED_6
 """Oracle value `TTS_TR_n5_k0`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
 TTS_TE_n5_k0 = []
 """Oracle value `TTS_TE_n5_k0`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
@@ -346,17 +356,17 @@ TTS_PERM_TR = [2, 0, 3, 1]
 """Oracle value `TTS_PERM_TR`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
 TTS_PERM_TE = [4, 5]
 """Oracle value `TTS_PERM_TE`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-KF_n7_k3 = [[[3, 4, 5, 6], [0, 1, 2]], [[0, 1, 2, 5, 6], [3, 4]], [[0, 1, 2, 3, 4], [5, 6]]]
+KF_n7_k3 = [[[3, 4, 5, 6], [0, 1, 2]], [[0, 1, 2, 5, 6], [3, 4]], [_SHARED_6, [5, 6]]]
 """Oracle value `KF_n7_k3`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-KF_n6_k3 = [[[2, 3, 4, 5], [0, 1]], [[0, 1, 4, 5], [2, 3]], [[0, 1, 2, 3], [4, 5]]]
+KF_n6_k3 = [[[2, 3, 4, 5], [0, 1]], [[0, 1, 4, 5], [2, 3]], [_SHARED_5, [4, 5]]]
 """Oracle value `KF_n6_k3`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
 KF_n10_k4 = [[[3, 4, 5, 6, 7, 8, 9], [0, 1, 2]], [[0, 1, 2, 6, 7, 8, 9], [3, 4, 5]], [[0, 1, 2, 3, 4, 5, 8, 9], [6, 7]], [[0, 1, 2, 3, 4, 5, 6, 7], [8, 9]]]
 """Oracle value `KF_n10_k4`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-KF_n5_k5 = [[[1, 2, 3, 4], [0]], [[0, 2, 3, 4], [1]], [[0, 1, 3, 4], [2]], [[0, 1, 2, 4], [3]], [[0, 1, 2, 3], [4]]]
+KF_n5_k5 = [[[1, 2, 3, 4], [0]], [[0, 2, 3, 4], [1]], [[0, 1, 3, 4], [2]], [[0, 1, 2, 4], [3]], [_SHARED_5, [4]]]
 """Oracle value `KF_n5_k5`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-KF_n8_k2 = [[[4, 5, 6, 7], [0, 1, 2, 3]], [[0, 1, 2, 3], [4, 5, 6, 7]]]
+KF_n8_k2 = [[[4, 5, 6, 7], _SHARED_5], [_SHARED_5, [4, 5, 6, 7]]]
 """Oracle value `KF_n8_k2`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-SKF_001101_k3 = [[[1, 3, 4, 5], [0, 2]], [[0, 2, 4, 5], [1, 3]], [[0, 1, 2, 3], [4, 5]]]
+SKF_001101_k3 = [[[1, 3, 4, 5], [0, 2]], [[0, 2, 4, 5], [1, 3]], [_SHARED_5, [4, 5]]]
 """Oracle value `SKF_001101_k3`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
 SKF_010122012_k3 = [[[2, 3, 5, 6, 7, 8], [0, 1, 4]], [[0, 1, 4, 6, 7, 8], [2, 3, 5]], [[0, 1, 2, 3, 4, 5], [6, 7, 8]]]
 """Oracle value `SKF_010122012_k3`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
@@ -366,67 +376,67 @@ SKF_2100120_k3 = [[[3, 4, 5, 6], [0, 1, 2]], [[0, 1, 2, 4, 6], [3, 5]], [[0, 1, 
 """Oracle value `SKF_2100120_k3`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
 XPRF_asym3_micro_0 = [0.7142857142857143, 0.7142857142857143, 0.7142857142857143]
 """Oracle value `XPRF_asym3_micro_0`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-XPRF_asym3_micro_1 = [0.7142857142857143, 0.7142857142857143, 0.7142857142857143]
+XPRF_asym3_micro_1 = XPRF_asym3_micro_0
 """Oracle value `XPRF_asym3_micro_1`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
 XPRF_asym3_macro_0 = [0.7222222222222222, 0.7222222222222222, 0.7000000000000001]
 """Oracle value `XPRF_asym3_macro_0`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-XPRF_asym3_macro_1 = [0.7222222222222222, 0.7222222222222222, 0.7000000000000001]
+XPRF_asym3_macro_1 = XPRF_asym3_macro_0
 """Oracle value `XPRF_asym3_macro_1`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
 XPRF_asym3_weighted_0 = [0.7619047619047619, 0.7142857142857143, 0.7142857142857143]
 """Oracle value `XPRF_asym3_weighted_0`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-XPRF_asym3_weighted_1 = [0.7619047619047619, 0.7142857142857143, 0.7142857142857143]
+XPRF_asym3_weighted_1 = XPRF_asym3_weighted_0
 """Oracle value `XPRF_asym3_weighted_1`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
 XPRF_rare_micro_0 = [0.42857142857142855, 0.42857142857142855, 0.42857142857142855]
 """Oracle value `XPRF_rare_micro_0`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-XPRF_rare_micro_1 = [0.42857142857142855, 0.42857142857142855, 0.42857142857142855]
+XPRF_rare_micro_1 = XPRF_rare_micro_0
 """Oracle value `XPRF_rare_micro_1`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
 XPRF_rare_macro_0 = [0.4444444444444444, 0.4666666666666666, 0.35714285714285715]
 """Oracle value `XPRF_rare_macro_0`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-XPRF_rare_macro_1 = [0.4444444444444444, 0.4666666666666666, 0.35714285714285715]
+XPRF_rare_macro_1 = XPRF_rare_macro_0
 """Oracle value `XPRF_rare_macro_1`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
 XPRF_rare_weighted_0 = [0.7619047619047619, 0.42857142857142855, 0.4795918367346938]
 """Oracle value `XPRF_rare_weighted_0`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-XPRF_rare_weighted_1 = [0.7619047619047619, 0.42857142857142855, 0.4795918367346938]
+XPRF_rare_weighted_1 = XPRF_rare_weighted_0
 """Oracle value `XPRF_rare_weighted_1`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-XPRF_swap3_micro_0 = [0.5, 0.5, 0.5]
+XPRF_swap3_micro_0 = _SHARED_7
 """Oracle value `XPRF_swap3_micro_0`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-XPRF_swap3_micro_1 = [0.5, 0.5, 0.5]
+XPRF_swap3_micro_1 = _SHARED_7
 """Oracle value `XPRF_swap3_micro_1`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-XPRF_swap3_macro_0 = [0.611111111111111, 0.5, 0.5222222222222223]
+XPRF_swap3_macro_0 = _SHARED_8
 """Oracle value `XPRF_swap3_macro_0`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-XPRF_swap3_macro_1 = [0.611111111111111, 0.5, 0.5222222222222223]
+XPRF_swap3_macro_1 = _SHARED_8
 """Oracle value `XPRF_swap3_macro_1`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-XPRF_swap3_weighted_0 = [0.611111111111111, 0.5, 0.5222222222222223]
+XPRF_swap3_weighted_0 = _SHARED_8
 """Oracle value `XPRF_swap3_weighted_0`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-XPRF_swap3_weighted_1 = [0.611111111111111, 0.5, 0.5222222222222223]
+XPRF_swap3_weighted_1 = _SHARED_8
 """Oracle value `XPRF_swap3_weighted_1`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-XPRF_wrong4_micro_0 = [0.0, 0.0, 0.0]
+XPRF_wrong4_micro_0 = _SHARED_3
 """Oracle value `XPRF_wrong4_micro_0`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-XPRF_wrong4_micro_1 = [0.0, 0.0, 0.0]
+XPRF_wrong4_micro_1 = _SHARED_3
 """Oracle value `XPRF_wrong4_micro_1`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-XPRF_wrong4_macro_0 = [0.0, 0.0, 0.0]
+XPRF_wrong4_macro_0 = _SHARED_3
 """Oracle value `XPRF_wrong4_macro_0`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-XPRF_wrong4_macro_1 = [0.0, 0.0, 0.0]
+XPRF_wrong4_macro_1 = _SHARED_3
 """Oracle value `XPRF_wrong4_macro_1`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-XPRF_wrong4_weighted_0 = [0.0, 0.0, 0.0]
+XPRF_wrong4_weighted_0 = _SHARED_3
 """Oracle value `XPRF_wrong4_weighted_0`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-XPRF_wrong4_weighted_1 = [0.0, 0.0, 0.0]
+XPRF_wrong4_weighted_1 = _SHARED_3
 """Oracle value `XPRF_wrong4_weighted_1`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
 XPRF_absent_micro_0 = [0.8, 0.8, 0.8]
 """Oracle value `XPRF_absent_micro_0`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-XPRF_absent_micro_1 = [0.8, 0.8, 0.8]
+XPRF_absent_micro_1 = XPRF_absent_micro_0
 """Oracle value `XPRF_absent_micro_1`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
 XPRF_absent_macro_0 = [0.8333333333333333, 0.8333333333333333, 0.8]
 """Oracle value `XPRF_absent_macro_0`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-XPRF_absent_macro_1 = [0.8333333333333333, 0.8333333333333333, 0.8]
+XPRF_absent_macro_1 = XPRF_absent_macro_0
 """Oracle value `XPRF_absent_macro_1`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
 XPRF_absent_weighted_0 = [0.8666666666666666, 0.8, 0.8]
 """Oracle value `XPRF_absent_weighted_0`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-XPRF_absent_weighted_1 = [0.8666666666666666, 0.8, 0.8]
+XPRF_absent_weighted_1 = XPRF_absent_weighted_0
 """Oracle value `XPRF_absent_weighted_1`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-XPRF_single_micro_0 = [0.5, 0.5, 0.5]
+XPRF_single_micro_0 = _SHARED_7
 """Oracle value `XPRF_single_micro_0`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-XPRF_single_micro_1 = [0.5, 0.5, 0.5]
+XPRF_single_micro_1 = _SHARED_7
 """Oracle value `XPRF_single_micro_1`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
 XPRF_single_macro_0 = [0.5, 0.25, 0.3333333333333333]
 """Oracle value `XPRF_single_macro_0`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
@@ -434,19 +444,19 @@ XPRF_single_macro_1 = [0.5, 0.75, 0.3333333333333333]
 """Oracle value `XPRF_single_macro_1`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
 XPRF_single_weighted_0 = [1.0, 0.5, 0.6666666666666666]
 """Oracle value `XPRF_single_weighted_0`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-XPRF_single_weighted_1 = [1.0, 0.5, 0.6666666666666666]
+XPRF_single_weighted_1 = XPRF_single_weighted_0
 """Oracle value `XPRF_single_weighted_1`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
 XPRF_bin_rare_binary_0 = [0.25, 0.5, 0.3333333333333333]
 """Oracle value `XPRF_bin_rare_binary_0`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-XPRF_bin_rare_binary_1 = [0.25, 0.5, 0.3333333333333333]
+XPRF_bin_rare_binary_1 = XPRF_bin_rare_binary_0
 """Oracle value `XPRF_bin_rare_binary_1`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-XPRF_bin_constpred_binary_0 = [0.0, 0.0, 0.0]
+XPRF_bin_constpred_binary_0 = _SHARED_3
 """Oracle value `XPRF_bin_constpred_binary_0`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-XPRF_bin_constpred_binary_1 = [1.0, 0.0, 0.0]
+XPRF_bin_constpred_binary_1 = PRF_zero_weighted_1
 """Oracle value `XPRF_bin_constpred_binary_1`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-XPRF_bin_ties_binary_0 = [0.0, 0.0, 0.0]
+XPRF_bin_ties_binary_0 = _SHARED_3
 """Oracle value `XPRF_bin_ties_binary_0`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
-XPRF_bin_ties_binary_1 = [0.0, 0.0, 0.0]
+XPRF_bin_ties_binary_1 = _SHARED_3
 """Oracle value `XPRF_bin_ties_binary_1`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""
 XREG_MSE_tie = 0.5
 """Oracle value `XREG_MSE_tie`, computed by src/osprey/packages/sklearn/oracle/sklearn.cpython."""

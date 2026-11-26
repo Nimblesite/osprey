@@ -4,7 +4,7 @@ const http = require("node:http");
 const fs = require("node:fs");
 const path = require("node:path");
 
-const PORT = Number(process.argv[2]) || 8099;
+const PORT = Number(process.argv[2] || process.env.PW_PORT || 0);
 const ROOT = path.join(__dirname, "..", "_site");
 
 const TYPES = {
@@ -67,4 +67,13 @@ const server = http.createServer((req, res) => {
   fs.createReadStream(file).pipe(res);
 });
 
-server.listen(PORT, () => console.log(`test server: http://localhost:${PORT} (root: ${ROOT})`));
+const listen = () => server.listen(PORT);
+server.once("listening", () => console.log(`test server: http://localhost:${server.address().port} (root: ${ROOT})`));
+// The free port was chosen before this process bound it, so another may take it first:
+// wait a little for it, then fail by name instead of hanging until Playwright gives up.
+let attempts = 50;
+server.on("error", (error) => {
+  if (error.code !== "EADDRINUSE" || --attempts === 0) throw error;
+  setTimeout(listen, 100);
+});
+listen();

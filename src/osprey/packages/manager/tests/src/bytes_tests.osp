@@ -46,6 +46,8 @@ module BytesTests {
         Order::strictlyAscending([])
     ])
 
+    /// Big-endian and hex encodings, plus the stable index sorts and the
+    /// canonical string sets of `Order`.
     export fn run() = {
         test("bytes: encodings", encodings)
         test("order: sorting", sorting)

@@ -7,7 +7,7 @@ module DelayLines
 
     (** Allocate silent storage outside rendering; capacity is 2–1,920,000 samples. *)
     export prepare capacity = match capacity >= 2 && capacity <= 1920000
-        true => Success(value = DelayLine(samples = mapList (toList (range (0, capacity)), \_ => 0.0)))
+        true => Success(value = DelayLine(samples = Sequences::zeros capacity))
         false => Error(message = InvalidConfiguration(detail = "Delay capacity must be 2 to 1920000 samples."))
 
     (** Linear-interpolated read `delay` samples ago, 1 to capacity. Not bandlimited: modulated reads can alias. *)

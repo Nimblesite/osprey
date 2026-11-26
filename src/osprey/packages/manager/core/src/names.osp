@@ -5,6 +5,7 @@ namespace registry;
 /// 1-63. Unicode display names never resolve and unscoped names are invalid.
 /// Failures are stable reason codes, never prose. Implements [PACKAGE-NAMES].
 module Names {
+    /// A canonical package key: its scope and leaf name, both already validated.
     export type Key = { scope: string, name: string }
 
     let scopeMax = 39

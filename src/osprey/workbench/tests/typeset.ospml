@@ -111,9 +111,7 @@ module ProofTermCases
         multiplicationDictionary = Terms::apps (proof::Const "instHMul" [proof::Zero], [nat (), proof::Const "instMulNat" []])
         Terms::apps (proof::Const "HMul.hMul" [proof::Zero, proof::Zero, proof::Zero], [nat (), nat (), nat (), multiplicationDictionary, left, right])
 
-    // Exact statement tree 3502 in the pinned word-seed.ndjson export.
-    // Permissions here exercise presentation only, not checked declaration
-    // identity or the actual import/axiom boundary.
+    (** Expects statement tree 3502 of the pinned word-seed.ndjson export, `∀ width, (run width).2 = 3 × width + 1`, to typeset under every notation head; the permissions exercise presentation only, not checked declaration identity or the import/axiom boundary. *)
     export runWork () =
         name = "OAI.LowSpaceSubsetSum.WordSeedPowerExecution.run"
         application = proof::App (proof::Const name []) (proof::BVar 0)
@@ -127,6 +125,7 @@ module ProofTermCases
 
     extendedRefused term = extendedCheck (term, ui::Sym (Terms::show (term, [])))
 
+    (** Expects products to group as the formula writer does, and a wrong dictionary, a wrong numeral instance or a mis-shaped spine to fall back to the formal form. *)
     export runWorkGuards () =
         a = proof::Const "a" []
         b = proof::Const "b" []
@@ -147,6 +146,7 @@ module ProofTermCases
         forEachList (terms, \term => extendedRefused term)
         forEachList ([multiply (a, b), numeral 3, Terms::apps (proof::Const "Prod.snd" [proof::Zero, proof::Zero], [nat (), nat (), a])], \term => expect (structuralEquals (ProofTerms::typeset (term, []), ui::Sym (Terms::show (term, []))), true))
 
+    (** Runs every typesetting case: operators, permissions, notation identities, binders, constant collisions, refusals and fallbacks. *)
     export run () =
         operators ()
         permissions ()
@@ -226,6 +226,7 @@ module ProofTermCases
         Error message => expect (message, "canonical equality with universe u")
         Success env => expect (join (ProofNotation::permitted env, ","), "Eq")
 
+    (** Expects the checked word-seed basis to permit all five notation heads, and each removed declaration or altered projection to revoke its head. *)
     export runWorkIdentities () = match Checked::exported (Environment::empty (), runWorkBasis ())
         Error message => expect (message, "checked pinned word-seed notation declarations")
         Success env =>

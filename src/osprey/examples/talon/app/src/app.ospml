@@ -44,9 +44,9 @@ module App
         _ => Screens::overview store
 
     // The brand: the coral mark, the name and what Talon is.
-    brand () = Look::cluster (10, [Look::chip (Symbols::name ui::Shield, "coral", "white", 40), Look::stack (0, [Look::strong ("Talon", 17, "white"), Look::eyebrow ("Private bank", "ink400")])])
+    brand () = Ui::cluster (10, [Look::chip (Symbols::name ui::Shield, "coral", "white", 40), Ui::spaced (0, [Look::strong ("Talon", 17, "white"), Look::eyebrow ("Private bank", "ink400")])])
 
-    tools () = Look::cluster (8, [Look::round ("Refresh", Symbols::name ui::Refresh, Refresh), Look::primary ("Open account", "", true, OpenDialog)])
+    tools () = Ui::cluster (8, [Look::round ("Refresh", Symbols::name ui::Refresh, Refresh), Look::primary ("Open account", "", true, OpenDialog)])
 
     tab (store, page, label) = Look::page (label, page == store.bankPage, SeePage(seenPage = page))
 
@@ -55,13 +55,13 @@ module App
     // The dark band every page shares: the brand, its two actions and the pages.
     header store =
         band = Look::surface ("ink900", "", 0, 18)
-        Ui::framed (band(frameGap = 16), Ui::column [Look::line (12, [brand (), ui::Spacer, tools ()]), nav store])
+        Ui::framed (band(frameGap = 16), Ui::column [Ui::spacedRow (12, [brand (), ui::Spacer, tools ()]), nav store])
 
     busy store = match waiting store
         true => [Look::words ("Contacting the ledger", 13, "ink500")]
         false => []
 
-    heading store = Look::stack (4, listConcat [Look::eyebrow ("Live operations · Osprey online", "ink500"), Look::title (titled store.bankPage, 30)] (busy store))
+    heading store = Ui::spaced (4, listConcat [Look::eyebrow ("Live operations · Osprey online", "ink500"), Look::title (titled store.bankPage, 30)] (busy store))
 
     body store =
         page = Look::surface ("", "", 0, 20)

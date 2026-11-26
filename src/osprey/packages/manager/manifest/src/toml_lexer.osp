@@ -7,8 +7,12 @@ namespace registry;
 /// Failures are `code at line:column` strings, never prose.
 /// Implements the lexical half of [PACKAGE-MANIFEST].
 module TomlLexer {
+    /// A scan position: the whole text, the 0-based byte offset, and the
+    /// 1-based line and column of that byte.
     export type Cursor = { text: string, at: int, line: int, column: int }
+    /// One scanned bare token and the cursor just past it.
     export type Scan = { token: string, at: Cursor }
+    /// One decoded string and the cursor just past its closing quote.
     export type Text = { text: string, at: Cursor }
     type Walk = { at: Cursor, text: string, finished: bool, reason: string }
 

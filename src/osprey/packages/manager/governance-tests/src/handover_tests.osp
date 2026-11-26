@@ -197,6 +197,9 @@ module HandoverTests {
         ])
     }
 
+    /// The handover suite as named cases: proposal guards, the one live slot,
+    /// acceptance guards, atomic completion, proposals granting nothing, the
+    /// new administrator's authority, and stale or frozen refusals.
     export fn run() = testCases([
         { name: "governance handover: proposal guards", work: proposalGuards },
         { name: "governance handover: one slot per package", work: oneSlotPerPackage },

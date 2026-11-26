@@ -4,7 +4,6 @@ import registry::Json
 import registry::JsonRead
 import registry::ManifestJson
 import registry::ManifestModel
-import registry::Maybe
 import registry::Names
 import registry_cli::Lockfile
 

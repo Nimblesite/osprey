@@ -31,5 +31,5 @@ _test_android_goldens:
 ## _android-inbox: The inbox app for Android.
 .PHONY: _android-inbox
 _android-inbox: _runtime_android
-	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	$(COMPILER_BUILD)
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/mobile/android/build.sh

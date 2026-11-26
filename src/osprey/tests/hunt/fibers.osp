@@ -1,0 +1,32 @@
+/// Fibers and channels run under the engine on its one thread, in spawn order
+/// [SYMEX-MOCK-THREADS]: spawn, await, send, recv and select all have a model,
+/// so the exploration is complete and clean.
+fn produce(box, n) = range(0, n) |> fold(0, fn(sum, i) => {
+  send(box, i)
+  wrapAdd(sum, 1)
+})
+fn relay(n) = {
+  use box <- andThen(Channel(8))
+  let made = await(spawn produce(box, n))
+  Success { value: wrapAdd(made, wrapAdd(recv(box), recv(box))) }
+}
+fn chosen() = {
+  use first <- andThen(Channel(1))
+  use second <- andThen(Channel(1))
+  send(second, 5)
+  let picked = select {
+    value = recv(first) => wrapAdd(value, 100)
+    value = recv(second) => wrapAdd(value, 200)
+    timeout(1) => 0
+  }
+  Success { value: picked }
+}
+fn summary() = {
+  use relayed <- andThen(relay(3))
+  use picked <- andThen(chosen())
+  Success { value: "${relayed} ${await(spawn wrapAdd(20, 22))} ${picked}" }
+}
+match summary() {
+  Success { value } => print(value)
+  Error { message } => print(message)
+}

@@ -56,6 +56,9 @@ MAKE_FOLDERS ?= src/toolchain src/toolchain/targets/macos src/toolchain/targets/
 CC  ?= cc
 AR  ?= ar
 BIN ?= target/release/osprey
+# The one recipe that builds BIN. A CI job that downloaded the Build job's binary sets
+# OSPREY_PREBUILT=1: it then checks the binary is there instead of compiling it again.
+COMPILER_BUILD = $(if $(OSPREY_PREBUILT),test -x $(BIN),cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli)
 RTB ?= src/toolchain/compiler/bin
 # The release version a build is stamped with (release.yml exports it); the
 # runtime reports it to a live-attach client [PROF-ATTACH-PROTOCOL].
@@ -107,6 +110,7 @@ WEBSITE_NODE_DEPS     = src/toolchain/website/node_modules/.package-lock.json
 WEBCOMPILER_NODE_DEPS = src/toolchain/webcompiler/node_modules/.package-lock.json
 BANK_WEB_NODE_DEPS    = src/toolchain/hosts/web/node_modules/.package-lock.json
 BANK_E2E_NODE_DEPS    = src/osprey/examples/talon/playwright-e2e-tests/node_modules/.package-lock.json
+CMS_E2E_NODE_DEPS     = src/osprey/examples/cms/tests/node_modules/.package-lock.json
 # Talon Bank's one Osprey Native app, as the generic Android and SwiftUI hosts take it.
 BANK_APP     = src/osprey/examples/talon/app
 BANK_ANDROID = OSPREY_ANDROID_APP=$(BANK_APP) OSPREY_ANDROID_ID=org.ospreylang.talon OSPREY_ANDROID_NAME="Talon Bank" OSPREY_ANDROID_REVERSE=18790
@@ -163,14 +167,14 @@ NATIVE_BRIDGE_OBJ := bin/native_bridge.o bin/native_bridge_lifecycle.o bin/nativ
 # GC container nodes use the tracing heap.
 # The other runtime units use their standard objects.
 FIB_OBJ_GC  ?= bin/memory_gc.o bin/gpu_runtime.o bin/gpu_lifetime.o bin/gpu_map_file.o bin/gpu_elements.o bin/gpu_host.o bin/tensor_file.o bin/tensor_list.o bin/fiber_runtime.o bin/system_runtime.o bin/file_runtime.o bin/effects_runtime.o bin/effects_coro.o bin/string_runtime.o bin/string_runtime_list.o bin/float_spelling.o bin/gc/list_runtime.o bin/gc/list_rebuild.o bin/gc/map_runtime.o bin/gc/map_runtime_hamt.o bin/json_runtime.o bin/json_text.o bin/json_codec.o bin/ffi_runtime.o bin/term_runtime.o bin/random_runtime.o bin/test_runtime.o bin/coverage_runtime.o $(NATIVE_BRIDGE_OBJ) $(PROF_OBJ)
-HTTP_OBJ_GC ?= bin/http_shared.o bin/http_client_runtime.o bin/http_client_transport.o bin/http_client_response.o bin/http_client_framing.o bin/http_client_chunks.o bin/http_server_request.o bin/http_server_response.o bin/http_server_runtime.o bin/http_server_pool.o bin/websocket_client_runtime.o bin/websocket_server_runtime.o bin/websocket_frames.o bin/tls_client_runtime.o bin/file_server_runtime.o bin/media_render_runtime.o $(FIB_OBJ_GC)
+HTTP_OBJ_GC ?= bin/http_shared.o bin/http_fields.o bin/http_client_runtime.o bin/http_client_transport.o bin/http_client_response.o bin/http_client_framing.o bin/http_client_chunks.o bin/http_server_request.o bin/http_server_response.o bin/http_server_runtime.o bin/http_server_pool.o bin/websocket_client_runtime.o bin/websocket_server_runtime.o bin/websocket_frames.o bin/tls_client_runtime.o bin/file_server_runtime.o bin/media_render_runtime.o $(FIB_OBJ_GC)
 # ARC backend archives (osprey --memory=arc): Perceus reference counting
 # tracks references. The value-producing units (containers +
 # strings + JSON) are rebuilt with the allocation redirect (osp_arc_shim.h) so
 # their nodes/buffers carry the 16-byte header and registry entry. Implements
 # [GC-ARC-PERCEUS], spec 0018.
 FIB_OBJ_ARC  ?= bin/memory_arc.o bin/gpu_runtime.o bin/gpu_lifetime.o bin/gpu_map_file.o bin/gpu_elements.o bin/gpu_host.o bin/tensor_file.o bin/tensor_list.o bin/fiber_runtime.o bin/system_runtime.o bin/arc/file_runtime.o bin/effects_runtime.o bin/effects_coro.o bin/arc/string_runtime.o bin/arc/string_runtime_list.o bin/float_spelling.o bin/arc/list_runtime.o bin/arc/list_rebuild.o bin/arc/map_runtime.o bin/arc/map_runtime_hamt.o bin/arc/json_runtime.o bin/arc/json_text.o bin/arc/json_codec.o bin/ffi_runtime.o bin/term_runtime.o bin/random_runtime.o bin/test_runtime.o bin/coverage_runtime.o $(NATIVE_BRIDGE_OBJ) $(PROF_OBJ)
-HTTP_OBJ_ARC ?= bin/http_shared.o bin/http_client_runtime.o bin/http_client_transport.o bin/http_client_response.o bin/http_client_framing.o bin/http_client_chunks.o bin/http_server_request.o bin/http_server_response.o bin/http_server_runtime.o bin/http_server_pool.o bin/websocket_client_runtime.o bin/websocket_server_runtime.o bin/websocket_frames.o bin/tls_client_runtime.o bin/file_server_runtime.o bin/media_render_runtime.o $(FIB_OBJ_ARC)
+HTTP_OBJ_ARC ?= bin/http_shared.o bin/http_fields.o bin/http_client_runtime.o bin/http_client_transport.o bin/http_client_response.o bin/http_client_framing.o bin/http_client_chunks.o bin/http_server_request.o bin/http_server_response.o bin/http_server_runtime.o bin/http_server_pool.o bin/websocket_client_runtime.o bin/websocket_server_runtime.o bin/websocket_frames.o bin/tls_client_runtime.o bin/file_server_runtime.o bin/media_render_runtime.o $(FIB_OBJ_ARC)
 ifeq ($(UNAME_S),Darwin)
 GPU_DEVICE_OBJ ?= bin/gpu_metal.o
 GPU_DEVICE_NATIVE ?= src/toolchain/compiler/bin/gpu_metal.o
@@ -240,9 +244,11 @@ define wasm_validate
 	fi
 endef
 # Portable subset that compiles for wasm32: allocator + strings + value
-# containers + JSON + effects + the browser host bridge. Excludes fiber
-# (pthreads), http/websocket (sockets/OpenSSL), system (fork/wait), term
-# (termios) and ffi (dlopen).
+# containers + JSON + effects + fibers + the browser host bridge. The fiber
+# runtime runs every fiber on WASI's one thread, in spawn order, over
+# wasi-libc's single-threaded pthread stubs [CONCURRENCY-WASM]. Excludes
+# http/websocket (sockets/OpenSSL), system (fork/wait), term (termios) and
+# ffi (dlopen).
 # profiler_runtime compiles to inert stubs on wasm32 (no pthreads/signals) but
 # must be present: codegen anchors `osp_prof_boot` into every main [PROF-ACTIVATE-ENV].
 # system_runtime and random_runtime are here for their PORTABLE halves: file
@@ -250,7 +256,7 @@ endef
 # the WASI random_get host call). Each compiles its non-portable half out under
 # `#ifndef __wasm__`, so adding them unskips file and random programs on wasm32
 # without pretending fork/exec or pthreads exist.
-WASM_RT_SRC  ?= native_scene native_bridge native_bridge_lifecycle gpu_runtime gpu_lifetime gpu_map_file gpu_elements gpu_host tensor_file tensor_list string_runtime string_runtime_list float_spelling list_runtime list_rebuild map_runtime map_runtime_hamt json_runtime json_text json_codec effects_runtime test_runtime coverage_runtime web_runtime profiler_runtime wasm_builtins_runtime system_runtime file_runtime random_runtime
+WASM_RT_SRC  ?= fiber_runtime native_scene native_bridge native_bridge_lifecycle gpu_runtime gpu_lifetime gpu_map_file gpu_elements gpu_host tensor_file tensor_list string_runtime string_runtime_list float_spelling list_runtime list_rebuild map_runtime map_runtime_hamt json_runtime json_text json_codec effects_runtime test_runtime coverage_runtime web_runtime profiler_runtime wasm_builtins_runtime system_runtime file_runtime random_runtime
 
 # The ARC twin of that archive, linked by `--memory=arc` — the wasm32 default
 # [WASM-TARGET-MEMORY]. Same unit set with memory_arc.c in place of the malloc

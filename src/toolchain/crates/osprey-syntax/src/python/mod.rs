@@ -11,6 +11,7 @@ mod documents;
 mod effects;
 mod expressions;
 mod intrinsics;
+mod joins;
 mod modules;
 mod patterns;
 mod statements;

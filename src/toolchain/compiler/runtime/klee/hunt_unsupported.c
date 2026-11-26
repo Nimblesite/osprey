@@ -88,6 +88,13 @@ int pthread_create(pthread_t *thread, const pthread_attr_t *attributes, void *(*
   UNSUPPORTED("pthread_create");
 }
 
+// One thread explores the program, so nothing could ever end this wait.
+int pthread_cond_wait(pthread_cond_t *condition, pthread_mutex_t *mutex) {
+  (void)condition;
+  (void)mutex;
+  UNSUPPORTED("pthread_cond_wait");
+}
+
 int pthread_attr_init(pthread_attr_t *attributes) {
   (void)attributes;
   UNSUPPORTED("pthread_attr_init");

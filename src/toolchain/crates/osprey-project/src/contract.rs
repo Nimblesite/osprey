@@ -173,7 +173,10 @@ fn function_errors<'a>(
 ) -> Vec<String> {
     let actual_parameters = actual.parameters.collect::<Vec<_>>();
     let mut errors = Vec::new();
-    if actual.binders.len() != expected.binders.len() {
+    // An implementation that writes no `<...>` binders is inferred, like an
+    // unannotated parameter below: inference holds its scheme to the
+    // signature, so only binders the implementation spells out are compared.
+    if !actual.binders.is_empty() && actual.binders.len() != expected.binders.len() {
         errors.push(format!(
             "function `{name}` generic arity does not match its signature"
         ));

@@ -6,6 +6,7 @@ namespace registry;
 /// a qualified payload-free constructor is not a pattern in Osprey, so they
 /// go through `fold`, `isPresent` and `orElse`.
 module Maybe {
+    /// An optional value: `Present` with its payload, or `Absent`.
     export type Maybe<T> = Present { value: T } | Absent
 
     /// `present(value)` when present, else `absent`.

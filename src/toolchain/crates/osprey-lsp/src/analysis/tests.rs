@@ -1,15 +1,9 @@
 use super::*;
 
-/// Parse `src` and assert a clean parse, returning the AST.
-fn parse_ok(src: &str) -> Program {
-    let parsed = osprey_syntax::parse_program(src);
-    assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
-    parsed.program
-}
-
-/// Parse `src`, requiring a clean parse AND a clean type-check (`why` says what that proves), and return its outline JSON.
+/// Parse `src`, requiring a clean type-check as well (`why` says what that
+/// proves), and return its outline JSON.
 fn probe_json(src: &str, why: &str) -> String {
-    let parsed = parse_ok(src);
+    let parsed = crate::test_support::parsed(src);
     assert!(
         osprey_types::check_program(&parsed).is_empty(),
         "the probe must type-check, or it pins nothing: {why}"
@@ -38,7 +32,7 @@ fn module_and_namespace_hovers_carry_both_doc_scopes() {
     // declaration form and [LSP-HOVER-DOCS] requires hovers to render.
     // The inner `//!` belongs there too: it is what a maintainer reading
     // the body wrote about that same scope ([DOC-SIGIL-INNER]).
-    let syms = collect_all_symbols(&parse_ok(
+    let syms = collect_all_symbols(&crate::test_support::parsed(
         "/// What callers need to know.\nnamespace billing {\n\
              //! What a maintainer needs to know.\n/// The module from outside.\n\
              module Tax {\n//! The module from inside.\nexport let rate = 10\n}\n}\n",
@@ -68,7 +62,7 @@ fn outline_covers_every_declaration_form() {
         "\"signature\":\"fn pick<T, out U>(a: T, b: U) -> T\"",
         "\"name\":\"main\",\"kind\":\"function\",\"type\":\"fn main() -> Unit\",\"line\":9",
     ];
-    let json = symbols_json(&parse_ok(
+    let json = symbols_json(&crate::test_support::parsed(
         "type Shade = Light | Dark\n\
              effect Log { info: fn(string) -> Unit }\n\
              extern fn puts(s: string) -> int\n\
@@ -119,7 +113,7 @@ print(describeAny(42) + "!")
 
     // The control reports the truth, so the type is derivable from a
     // program the checker already accepted.
-    let control_json = symbols_json(&parse_ok(&annotated));
+    let control_json = symbols_json(&crate::test_support::parsed(&annotated));
     crate::testkit::contents(&control_json, &[STRING_RETURN, STRING_SIG], &[]);
 
     // Hover renders the same declaration from the same AST and gets it
@@ -187,13 +181,13 @@ fn a_partially_resolved_return_type_reports_its_proven_part_never_unit() {
     // "cannot unify Unit with Result<t5, t6>". A tool must not assert what
     // the compiler rejects. `Result<int, _>` says exactly what is proven.
     let src = "fn onlySuccess(s) = Success { value: length(s) }\n";
-    let json = symbols_json(&parse_ok(src));
+    let json = symbols_json(&crate::test_support::parsed(src));
     crate::testkit::contents(&json, &["\"returnType\":\"Result<int, _>\""], &["Unit"]);
     // An `Error` arm decides `E` from its payload, so both sides are proven.
     let both = "fn bothArms(f) = if f { Success { value: 1 } } else { Error { message: \"e\" } }\n\
                 fn coded(f) = if f { Success { value: 1 } } else { Error { message: 7 } }\n";
     crate::testkit::contents(
-        &symbols_json(&parse_ok(both)),
+        &symbols_json(&crate::test_support::parsed(both)),
         &[
             "\"returnType\":\"Result<int, string>\"",
             "\"returnType\":\"Result<int, int>\"",
@@ -209,7 +203,7 @@ fn a_partially_resolved_return_type_reports_its_proven_part_never_unit() {
 /// The rendered hover markdown for `name` in `src`, via the real symbol
 /// path (`collect_all_symbols` → `doc`).
 fn doc_for(src: &str, name: &str) -> Option<String> {
-    collect_all_symbols(&parse_ok(src))
+    collect_all_symbols(&crate::test_support::parsed(src))
         .into_iter()
         .find(|s| s.name == name)
         .and_then(|s| s.doc)

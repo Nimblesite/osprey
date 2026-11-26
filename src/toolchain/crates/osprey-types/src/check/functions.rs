@@ -233,6 +233,7 @@ impl Checker {
         let fun_ty = Type::fun(params, ret);
         let declared = env.declared_params(name);
         env.remove(name);
+        self.reject_less_general(name, &declared, pos);
         let mut scheme = self.generalize_with_obligations(env, &fun_ty);
         self.quantify_declared(env, &declared, &mut scheme);
         let _ = self
@@ -240,6 +241,30 @@ impl Checker {
             .insert(format!("fn {name}"), scheme.obligations.clone());
         env.insert(name, scheme);
         env.declare_type_params(name, declared);
+    }
+
+    /// Declared binders are rigid ([TYPE-GENERICS-FN]): after the body is
+    /// checked, each must still be its own unsolved variable. A body that
+    /// fixed a binder to a type or merged two binders is less general than its
+    /// declaration, which plain HM unification would otherwise accept. A
+    /// binder another member of a recursive group still mentions is not a
+    /// fault: unannotated parameters stay monomorphic inside the group. Annotated variables
+    /// are skolems (Peyton Jones, Vytiniotis, Weirich and Shields, "Practical
+    /// type inference for arbitrary-rank types", JFP 2007, section 4.6).
+    fn reject_less_general(&mut self, name: &str, declared: &[Type], pos: Option<Position>) {
+        let mut seen = BTreeSet::new();
+        let rigid = declared.iter().all(|param| match self.ctx.apply(param) {
+            Type::Var(var) => seen.insert(var),
+            _ => false,
+        });
+        if !rigid {
+            self.record_err(
+                crate::error::TypeError::new(format!(
+                    "function `{name}` is less general than its declared type: its body fixes or merges a declared type parameter"
+                )),
+                pos,
+            );
+        }
     }
 
     fn quantify_declared(&mut self, env: &TypeEnv, declared: &[Type], scheme: &mut Scheme) {

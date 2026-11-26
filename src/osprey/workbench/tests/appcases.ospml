@@ -62,6 +62,7 @@ module AppCases
         identical (replied, envelope)
         lacks (Drive::stored replied, ["preview", "samplePreview", "text"])
 
+    (** Expects `stored` to carry none of the retired board's drawing fields. *)
     export withoutDrawing stored = lacks (stored, ["strokes", "lassoing", "clearing", "ink", "inks", "scale", "panX", "panY", "notes", "notesVisible", "panMode", "boardFocused", "preview", "samplePreview"])
 
     (** [LESSONS-FILES] [LESSONS-PROGRESS] The catalogue's lessons are read and listed; saved progress is restored. *)
@@ -72,7 +73,7 @@ module AppCases
         restored = Drive::completed (listed, "lessons:progress", "{}")
         expect (join (completedOf restored, ","), "and-swap/judge-wrong-order")
 
-    // Learn, then open the fourth lesson, `and-swap`.
+    (** Learn, then open the fourth lesson, `and-swap`. *)
     export opened () =
         listed = Drive::press (Drive::loaded (), "root", "Lessons")
         flagged (Drive::stored listed, ["learning"])
@@ -104,6 +105,7 @@ module AppCases
         expect (marking answer, mark)
         answer
 
+    (** A right answer is marked correct and saved, a wrong one marked incorrect with nothing saved, and a failed save is reported while the completion is kept. *)
     export submit () =
         right = marked ("q ∧ p", "correct")
         expect (Drive::tickets right, "lessons:saved")
@@ -129,35 +131,56 @@ module AppCases
         expect (Drive::keys answeredLesson, stage "state-swapped-goal")
         expect (has (regionJson (answeredLesson, stage "state-swapped-goal"), "\"value\":\"q ∧ p\""), true)
 
+    (** Region `key`'s tree as JSON text, or `{}` when the app did not draw it. *)
     export regionJson (envelope, key) = Doc::write (Drive::node (envelope, key))
 
+    (** Whether `part` occurs anywhere in `text`. *)
     export has (text, part) = match indexOf (text, part)
         Success _ => true
         Error _ => false
 
     // Assertion tables: a run of checks that differ only in their literals
     // reads as one list, and every entry still reports its own soft assertion.
+    (** Expects each of `parts` to occur in `text`. *)
     export present (text, parts) = forEachList (parts, \part => expect (has (text, part), true))
+    (** Expects none of `parts` to occur in `text`. *)
     export absent (text, parts) = forEachList (parts, \part => expect (has (text, part), false))
+    (** Expects each of `names` to be a field of `fields`. *)
     export holds (fields, names) = forEachList (names, \name => expect (Doc::has (fields, name), true))
+    (** Expects none of `names` to be a field of `fields`. *)
     export lacks (fields, names) = forEachList (names, \name => expect (Doc::has (fields, name), false))
+    (** Expects each flag in `names` to be `on` in `fields`. *)
     export flagIs (fields, names, on) = forEachList (names, \name => expect (Doc::flag (fields, name), on))
+    (** Expects each flag in `names` to be set in `fields`. *)
     export flagged (fields, names) = flagIs (fields, names, true)
+    (** Expects each flag in `names` to be clear in `fields`. *)
     export unflagged (fields, names) = flagIs (fields, names, false)
+    (** Expects each `key` of `pairs` to read as its `value` in `fields`. *)
     export spelled (fields, pairs) = forEachList (pairs, \pair => expect (Doc::text (fields, pair.key), pair.value))
+    (** Expects each `key` of `pairs` to count as its `value` in `fields`. *)
     export sized (fields, pairs) = forEachList (pairs, \pair => expect (Doc::number (fields, pair.key), pair.value))
+    (** Expects each text field in `names` to read the same in `after` and `before`. *)
     export agrees (after, before, names) = forEachList (names, \name => expect (Doc::text (after, name), Doc::text (before, name)))
+    (** Expects each number field in `names` to be equal in `after` and `before`. *)
     export counts (after, before, names) = forEachList (names, \name => expect (Doc::number (after, name), Doc::number (before, name)))
 
     // One-value checks and the host-flow accessors the cases read next.
+    (** The items of the `name` field of `envelope`'s stored document. *)
     export itemsOf (envelope, name) = Doc::items (Doc::field (Drive::stored envelope, name))
+    (** The component kind of the node named `name` in `root`, or `""` when none is. *)
     export namedKind (root, name) = Doc::text (Drive::findNamed (name, root), "kind")
+    (** The component kind of region `key`'s root in `envelope`, or `""` when the app did not draw it. *)
     export regionKind (envelope, key) = Doc::text (Drive::node (envelope, key), "kind")
+    (** Expects the stored documents of two sessions to be byte-identical. *)
     export identical (after, before) = expect (Doc::write (Drive::stored after), Doc::write (Drive::stored before))
+    (** Expects the last step to have redrawn no region. *)
     export undrawn envelope = expect (Drive::keys envelope, "")
+    (** Expects the last step to have written no slice. *)
     export unwritten envelope = expect (Drive::written envelope, "")
+    (** Expects the last step to have made no request. *)
     export unasked envelope = expect (Drive::tickets envelope, "")
 
+    (** Expects `node` to be a framed surface and answers its style. *)
     export framed node =
         expect (Doc::text (node, "kind"), "framed")
         Doc::field (node, "style")

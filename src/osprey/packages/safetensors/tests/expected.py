@@ -8,6 +8,8 @@ Do not edit: rerun the oracle."""
 
 __all__ = ["F32_BYTES", "F64_BYTES", "F16_BYTES", "BF16_BYTES", "BOOL_BYTES", "U8_BYTES", "I8_BYTES", "I16_BYTES", "U16_BYTES", "I32_BYTES", "U32_BYTES", "I64_BYTES", "U64_BYTES", "F32_VALUES", "F64_VALUES", "F16_VALUES", "BF16_VALUES", "BOOL_VALUES", "U8_VALUES", "I8_VALUES", "I16_VALUES", "U16_VALUES", "I32_VALUES", "U32_VALUES", "I64_VALUES", "U64_VALUES", "MULTI_BYTES", "MULTI_KEYS", "MULTI_OFFSET_KEYS", "MULTI_A", "MULTI_B", "MULTI_C", "META_BYTES", "META_KEYS", "META_VALUES", "SLICE_BYTES", "SLICE_ROWS", "SLICE_WHOLE", "SPECIAL_BYTES", "SPECIAL_VALUES", "ERR_EMPTY_BYTES", "ERR_EMPTY", "ERR_SHORT_BYTES", "ERR_SHORT", "ERR_LEN_BYTES", "ERR_LEN", "ERR_LARGE_BYTES", "ERR_LARGE", "ERR_UTF8_BYTES", "ERR_UTF8", "ERR_JSON_BYTES", "ERR_JSON", "ERR_INFO_BYTES", "ERR_INFO", "ERR_OFFSET_BYTES", "ERR_OFFSET", "ERR_OVERFLOW_BYTES", "ERR_OVERFLOW", "ERR_META_BYTES", "ERR_META", "ERR_NOTFOUND_BYTES", "ERR_NOTFOUND", "SAVE_BYTES", "ERR_JSON_PREFIX", "HDR_ARRAY_BYTES", "HDR_TENSOR_BYTES", "HDR_NO_DTYPE_BYTES", "HDR_DTYPE_TYPE_BYTES", "HDR_NO_SHAPE_BYTES", "HDR_SHAPE_TYPE_BYTES", "HDR_SHAPE_ELEM_BYTES", "HDR_OFFSETS_PAIR_BYTES", "HDR_OFFSETS_TYPE_BYTES", "HDR_META_TYPE_BYTES", "HDR_META_VALUE_BYTES", "HDR_LEN_HI_BYTES", "HDR_LEN_HI", "HDR_HUGE_BYTES", "HDR_HUGE", "HDR_OVERFLOW_BYTES", "HDR_OVERFLOW", "SLICE_ONE_ROW", "SLICE_EMPTY_ROWS", "VECTOR_BYTES", "VECTOR_SLICE", "SCALAR_BYTES", "SCALAR_VALUE", "ZERO_BYTES", "ZERO_KEYS", "SLICE_NOTFOUND", "F64_NAN_BYTES", "F64_INF_BYTES", "F64_NEG_INF_BYTES", "F16_ZERO_BYTES", "F16_NEG_ZERO_BYTES", "F16_NAN_BYTES", "F16_INF_BYTES", "F16_NEG_INF_BYTES", "F16_OVERFLOW_BYTES", "F16_TINY_BYTES", "F16_BOUNDARY_BYTES", "F16_ROUND_BYTES", "F16_MIN_SUBNORMAL_BYTES", "BF16_ZERO_BYTES", "BF16_NEG_ZERO_BYTES", "BF16_NAN_BYTES", "BF16_INF_BYTES", "BF16_NEG_INF_BYTES", "BF16_OVERFLOW_BYTES", "BF16_HALF_BYTES", "BF16_NEGATIVE_BYTES", "BF16_CARRY_BYTES", "BF16_TIE_UP_BYTES", "BF16_TIE_DOWN_BYTES", "BF16_MIN_SUBNORMAL_BYTES", "BF16_BELOW_NORMAL_BYTES", "BF16_MIN_NORMAL_BYTES", "BF16_DOUBLE_SUBNORMAL_BYTES", "BF16_NEG_DOUBLE_SUBNORMAL_BYTES", "F32_ZERO_BYTES", "F32_MAX_BYTES", "F32_OVERFLOW_BYTES", "INT_TRUNCATE_BYTES", "U64_HUGE_BYTES", "UTF8_INVALID", "JSON_HEX_TEXT", "JSON_HEX_VALUES", "JSON_EMPTY_TEXT", "JSON_EMPTY_KINDS", "JSON_EMPTY_SIZES", "JSON_NUMBER_TEXT", "JSON_NUMBER_KINDS", "JSON_NUMBER_INT", "JSON_NUMBER_FLOAT", "JSON_INVALID", "SCALAR_SLICE_ERROR"]
 
+_SHARED_0 = "header too large"
+
 F32_BYTES = [64, 0, 0, 0, 0, 0, 0, 0, 123, 34, 102, 51, 50, 34, 58, 123, 34, 100, 116, 121, 112, 101, 34, 58, 34, 70, 51, 50, 34, 44, 34, 115, 104, 97, 112, 101, 34, 58, 91, 52, 93, 44, 34, 100, 97, 116, 97, 95, 111, 102, 102, 115, 101, 116, 115, 34, 58, 91, 48, 44, 49, 54, 93, 125, 125, 32, 32, 32, 32, 32, 32, 32, 0, 0, 0, 0, 0, 0, 192, 191, 0, 0, 32, 64, 0, 0, 80, 64]
 """Oracle value `F32_BYTES`, computed by src/osprey/packages/safetensors/oracle/safetensors.cpython."""
 F64_BYTES = [64, 0, 0, 0, 0, 0, 0, 0, 123, 34, 102, 54, 52, 34, 58, 123, 34, 100, 116, 121, 112, 101, 34, 58, 34, 70, 54, 52, 34, 44, 34, 115, 104, 97, 112, 101, 34, 58, 91, 53, 93, 44, 34, 100, 97, 116, 97, 95, 111, 102, 102, 115, 101, 116, 115, 34, 58, 91, 48, 44, 52, 48, 93, 125, 125, 32, 32, 32, 32, 32, 32, 32, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 248, 191, 0, 0, 0, 0, 0, 0, 4, 64, 0, 0, 0, 0, 0, 0, 10, 64, 154, 153, 153, 153, 153, 153, 185, 63]
@@ -102,7 +104,7 @@ ERR_LEN = "invalid header length"
 """Oracle value `ERR_LEN`, computed by src/osprey/packages/safetensors/oracle/safetensors.cpython."""
 ERR_LARGE_BYTES = [255, 255, 255, 255, 255, 255, 255, 127]
 """Oracle value `ERR_LARGE_BYTES`, computed by src/osprey/packages/safetensors/oracle/safetensors.cpython."""
-ERR_LARGE = "header too large"
+ERR_LARGE = _SHARED_0
 """Oracle value `ERR_LARGE`, computed by src/osprey/packages/safetensors/oracle/safetensors.cpython."""
 ERR_UTF8_BYTES = [1, 0, 0, 0, 0, 0, 0, 0, 255]
 """Oracle value `ERR_UTF8_BYTES`, computed by src/osprey/packages/safetensors/oracle/safetensors.cpython."""
@@ -160,11 +162,11 @@ HDR_META_VALUE_BYTES = [24, 0, 0, 0, 0, 0, 0, 0, 123, 34, 95, 95, 109, 101, 116,
 """Oracle value `HDR_META_VALUE_BYTES`, computed by src/osprey/packages/safetensors/oracle/safetensors.cpython."""
 HDR_LEN_HI_BYTES = [0, 0, 0, 6, 0, 0, 0, 0]
 """Oracle value `HDR_LEN_HI_BYTES`, computed by src/osprey/packages/safetensors/oracle/safetensors.cpython."""
-HDR_LEN_HI = "header too large"
+HDR_LEN_HI = _SHARED_0
 """Oracle value `HDR_LEN_HI`, computed by src/osprey/packages/safetensors/oracle/safetensors.cpython."""
 HDR_HUGE_BYTES = [255, 255, 255, 5, 0, 0, 0, 0]
 """Oracle value `HDR_HUGE_BYTES`, computed by src/osprey/packages/safetensors/oracle/safetensors.cpython."""
-HDR_HUGE = "header too large"
+HDR_HUGE = _SHARED_0
 """Oracle value `HDR_HUGE`, computed by src/osprey/packages/safetensors/oracle/safetensors.cpython."""
 HDR_OVERFLOW_BYTES = [72, 0, 0, 0, 0, 0, 0, 0, 123, 34, 116, 34, 58, 123, 34, 100, 116, 121, 112, 101, 34, 58, 34, 73, 54, 52, 34, 44, 34, 115, 104, 97, 112, 101, 34, 58, 91, 50, 51, 48, 53, 56, 52, 51, 48, 48, 57, 50, 49, 51, 54, 57, 51, 57, 53, 50, 93, 44, 34, 100, 97, 116, 97, 95, 111, 102, 102, 115, 101, 116, 115, 34, 58, 91, 48, 44, 56, 93, 125, 125, 0, 0, 0, 0, 0, 0, 0, 0]
 """Oracle value `HDR_OVERFLOW_BYTES`, computed by src/osprey/packages/safetensors/oracle/safetensors.cpython."""

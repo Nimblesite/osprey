@@ -405,3 +405,65 @@ fn an_hm_module_nobody_disciplined_imports_is_never_inferred_on_its_own() {
 }
 
 mod checker_inputs;
+
+/// A theorem line, an import and a module in a dependent module, written in
+/// syntax only the checker reads ([PROOF-SOURCE-DISCIPLINE]).
+const DEPENDENT: &str = "// osprey: types=dependent\nnamespace proof\n\nimport proof::Base\n\nmodule Logic\n    theorem id_imp (p : Prop) (h : p) : p := h\n    export apply (x, f) = f x\n";
+
+#[test]
+fn a_disciplined_source_keeps_its_outline_through_syntax_hm_rejects() {
+    // Implements [PROOF-SOURCE-DISCIPLINE] and [TYPES-DISCIPLINE-SEAM].
+    let path = PathBuf::from("logic.ospml");
+    let loaded = crate::parse_text(path.clone(), DEPENDENT.into(), None).expect("outline");
+    let keys = imports::declared_keys(&loaded);
+    assert!(keys.contains(&"proof::Logic".to_string()), "{keys:?}");
+    assert_eq!(
+        imports::import_keys(&loaded),
+        vec!["proof::Base".to_string()]
+    );
+    assert_eq!(
+        loaded.source, DEPENDENT,
+        "the checker receives the text as written"
+    );
+    let unmarked = DEPENDENT.replace("// osprey: types=dependent\n", "");
+    let errors =
+        crate::parse_text(path.clone(), unmarked.clone(), None).expect_err("hm rejects it");
+    assert!(errors
+        .iter()
+        .all(|error| error.path.as_deref() == Some(path.as_path())));
+    let by_project = crate::parse_text_in(path.clone(), unmarked.clone(), None, Some("dependent"));
+    assert!(
+        by_project.is_ok(),
+        "`[project].types` selects the discipline too"
+    );
+    let hm = crate::parse_text_in(path, unmarked, None, Some(HM));
+    assert!(
+        hm.is_err(),
+        "`[project].types = \"hm\"` keeps the strict frontend"
+    );
+}
+
+#[test]
+fn a_cached_result_is_rechecked_when_a_file_it_depended_on_changes() {
+    // Implements [TYPES-DISCIPLINE-PROTOCOL]: an answer that names the files
+    // it read is reused only while each is unchanged.
+    let mut answer: serde_json::Value =
+        serde_json::from_str(&accepted(SIGNATURE, ERASED)).expect("json");
+    answer["dependencies"] = serde_json::json!(["proofs/fact.ndjson"]);
+    let config = temp_project("cache-dependency");
+    let runner = scripted(Ok(&answer.to_string()));
+    let registry = registry(&config.directory);
+    let files = vec![source(MARKED)];
+    let run = || apply_with(&config, files.clone(), &runner, &registry).expect("accepted");
+    write_file(&config.directory, "proofs/fact.ndjson", "{\"v\":1}\n");
+    let _first = run();
+    let _unchanged = run();
+    assert_eq!(runner.calls.get(), 1, "an unchanged dependency is a hit");
+    write_file(&config.directory, "proofs/fact.ndjson", "{\"v\":2}\n");
+    let _changed = run();
+    assert_eq!(runner.calls.get(), 2, "a changed dependency is a miss");
+    std::fs::remove_file(config.directory.join("proofs/fact.ndjson")).expect("remove");
+    let _vanished = run();
+    assert_eq!(runner.calls.get(), 3, "a vanished dependency is a miss");
+    let _ = std::fs::remove_dir_all(&config.directory);
+}

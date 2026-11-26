@@ -10,7 +10,7 @@ from testing import Check
 def run(name, work):
     """Run one handled region and print ok or the policy's error message."""
     match Check.strictly(work):
-        case Success(value=value):
+        case Success(value=_):
             return print(f"{name}: ok")
         case Error(message=message):
             return print(f"{name}: {message}")

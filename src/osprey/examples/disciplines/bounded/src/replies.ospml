@@ -11,22 +11,26 @@ module Replies
     fallback = "{\"version\":2,\"result\":\"rejected\",\"diagnostics\":[{\"code\":\"internal\",\"severity\":\"error\",\"message\":\"the checker could not encode its answer\"}]}"
 
     (** An accepted module with its export signature and its erased source. *)
-    export accepted (version, sig, erased) = encoded (JsonObject [
+    export accepted (version, sig, erased, reads) = encoded (JsonObject [
         versionJson version,
         member ("result", JsonString "accepted"),
         member ("signature", JsonString sig),
         member ("erased", erasedJson erased),
-        member ("diagnostics", JsonArray [])])
+        member ("diagnostics", JsonArray []),
+        dependencies reads])
 
-    (** One rejected call site or more. *)
-    export rejected (version, problems) = encoded (JsonObject [
+    (** One rejected call site or more, with the files read to find them. *)
+    export rejected (version, problems, reads) = encoded (JsonObject [
         versionJson version,
         member ("result", JsonString "rejected"),
-        member ("diagnostics", JsonArray (mapList (problems, described)))])
+        member ("diagnostics", JsonArray (mapList (problems, described))),
+        dependencies reads])
 
     (** A rejection with no source line: a failure of the checker itself. *)
     export failure (version, code, message) =
-        rejected (version, [Words::Problem(code = code, line = 0, column = 0, message = message)])
+        rejected (version, [Words::Problem(code = code, line = 0, column = 0, message = message)], [])
+
+    dependencies (reads) = member ("dependencies", JsonArray (mapList (reads, \path => JsonString path)))
 
     encoded (document) = jsonEncode document ?: fallback
 

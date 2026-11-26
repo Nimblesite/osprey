@@ -8,8 +8,8 @@ type Order =
 
 (** Ready arms run in source order, and only the chosen arm's operation happens. *)
 tieBreaksInSourceOrder () =
-    first = Channel 2
-    second = Channel 2
+    use first <- andThen (Channel 2)
+    use second <- andThen (Channel 2)
     send first 1
     send second 2
     chosen = select
@@ -23,11 +23,11 @@ tieBreaksInSourceOrder () =
         a = recv first => a
         b = recv second => b
         _ => 99
-    checkAll "source order" [chosen == 11, next == 22, drained == 99]
+    Success(value = checkAll "source order" [chosen == 11, next == 22, drained == 99])
 
 (** A send arm runs when its channel has room, and a full one falls through. *)
 sendArmsRespectCapacity () =
-    room = Channel 1
+    use room <- andThen (Channel 1)
     sent = select
         send room 7 => "sent"
         _ => "full"
@@ -35,13 +35,13 @@ sendArmsRespectCapacity () =
         send room 8 => "sent"
         _ => "full"
     received = recv room
-    checkAll "send capacity" [sent == "sent", refused == "full", received == 7]
+    Success(value = checkAll "send capacity" [sent == "sent", refused == "full", received == 7])
 
 (** A receive binding has the channel's element type, for each kind of element. *)
 bindingsHaveTheElementType () =
-    words = Channel 1
-    orders = Channel 1
-    flags = Channel 1
+    use words <- andThen (Channel 1)
+    use orders <- andThen (Channel 1)
+    use flags <- andThen (Channel 1)
     send words ("he" + "llo")
     send orders (Order(item = "tea", qty = 2))
     send flags true
@@ -54,28 +54,28 @@ bindingsHaveTheElementType () =
     flag = select
         f = recv flags => !f
         _ => true
-    ignored = Channel 1
+    use ignored <- andThen (Channel 1)
     send ignored ("dropped" + "!")
     dropped = select
         recv ignored => "took"
         _ => "none"
-    checkAll "bindings" [word == 5, order == "tea2", flag == false, dropped == "took"]
+    Success(value = checkAll "bindings" [word == 5, order == "tea2", flag == false, dropped == "took"])
 
 (** An unchosen managed send gives its reference back, and a chosen one delivers it. *)
 managedSendsKeepTheirOwnership () =
-    full = Channel 1
-    open = Channel 1
+    use full <- andThen (Channel 1)
+    use open <- andThen (Channel 1)
     send full ("occupied" + "!")
     chosen = select
         send full ("never" + "!") => "full arm"
         send open ("deliver" + "ed") => "open arm"
     inFull = recv full
     inOpen = recv open
-    checkAll "managed sends" [chosen == "open arm", inFull == "occupied!", inOpen == "delivered"]
+    Success(value = checkAll "managed sends" [chosen == "open arm", inFull == "occupied!", inOpen == "delivered"])
 
 (** A timeout arm runs once nothing is ready, and a ready channel beats it. *)
 timeoutsDecideOnlyWhenNothingIsReady () =
-    quiet = Channel 1
+    use quiet <- andThen (Channel 1)
     expired = select
         recv quiet => "value"
         timeout 5 => "expired"
@@ -86,18 +86,18 @@ timeoutsDecideOnlyWhenNothingIsReady () =
     ready = select
         recv quiet => "value"
         timeout 5000 => "expired"
-    checkAll "timeouts" [expired == "expired", immediate == "expired", ready == "value"]
+    Success(value = checkAll "timeouts" [expired == "expired", immediate == "expired", ready == "value"])
 
 (** A blocked select wakes when another fiber's operation makes an arm ready. *)
 aFiberWakesABlockedSelect () =
-    replies = Channel 1
-    idle = Channel 1
+    use replies <- andThen (Channel 1)
+    use idle <- andThen (Channel 1)
     worker = spawn (send replies 42)
     answer = select
         r = recv replies => r
         i = recv idle => i + 1000
     _ignored = await worker
-    drains = Channel 1
+    use drains <- andThen (Channel 1)
     send drains 1
     blocked = spawn (send drains 2)
     freed = recv drains
@@ -105,7 +105,7 @@ aFiberWakesABlockedSelect () =
         d = recv drains => d
         timeout 5000 => 0
     _done = await blocked
-    checkAll "wakeups" [answer == 42, freed == 1, second == 2]
+    Success(value = checkAll "wakeups" [answer == 42, freed == 1, second == 2])
 
 (** Record a step on the log, then answer the value. *)
 note log step value =
@@ -114,19 +114,19 @@ note log step value =
 
 (** Operands evaluate once on entry, in source order, whichever arm runs. *)
 operandsEvaluateOnceInOrder () =
-    log = Channel 4
-    channel = Channel 1
+    use log <- andThen (Channel 4)
+    use channel <- andThen (Channel 1)
     picked = select
         send channel (note log 1 10) => note log 3 100
         timeout (note log 2 5) => 0
-    checkAll "operands" [picked == 100, recv log == 1, recv log == 2, recv log == 3, recv channel == 10]
+    Success(value = checkAll "operands" [picked == 100, recv log == 1, recv log == 2, recv log == 3, recv channel == 10])
 
 exactTests [
-    { name = "ready arms run in source order", work = tieBreaksInSourceOrder },
-    { name = "send arms respect capacity", work = sendArmsRespectCapacity },
-    { name = "receive bindings have the element type", work = bindingsHaveTheElementType },
-    { name = "managed sends keep their ownership", work = managedSendsKeepTheirOwnership },
-    { name = "timeouts decide only when nothing is ready", work = timeoutsDecideOnlyWhenNothingIsReady },
-    { name = "a fiber wakes a blocked select", work = aFiberWakesABlockedSelect },
-    { name = "operands evaluate once in order", work = operandsEvaluateOnceInOrder }
+    { name = "ready arms run in source order", work = \() => settledWork tieBreaksInSourceOrder },
+    { name = "send arms respect capacity", work = \() => settledWork sendArmsRespectCapacity },
+    { name = "receive bindings have the element type", work = \() => settledWork bindingsHaveTheElementType },
+    { name = "managed sends keep their ownership", work = \() => settledWork managedSendsKeepTheirOwnership },
+    { name = "timeouts decide only when nothing is ready", work = \() => settledWork timeoutsDecideOnlyWhenNothingIsReady },
+    { name = "a fiber wakes a blocked select", work = \() => settledWork aFiberWakesABlockedSelect },
+    { name = "operands evaluate once in order", work = \() => settledWork operandsEvaluateOnceInOrder }
 ]

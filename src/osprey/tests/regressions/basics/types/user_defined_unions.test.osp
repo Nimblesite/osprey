@@ -6,6 +6,10 @@
 // [EFFECTS-HANDLER-STATE], [EFFECTS-GENERIC-DECL],
 // [EFFECTS-GENERIC-INSTANTIATION], and [EFFECTS-GENERIC-RUNTIME].
 
+/// The describe() outputs the cases assert on.
+let errMissing = "err: missing"
+let errOffline = "err: offline"
+
 type Outcome = Ok { value: string } | Err { message: string }
 
 type Status = Active | Inactive
@@ -30,9 +34,9 @@ effect MapLookupAudit<T> {
 /// leaf type, the other reaches through a map of lists. One definition each, so
 /// the suite instantiates ONE generic body at int, string and List rather than
 /// pinning three monomorphic copies.
-fn valueOr<T>(items: Map<string, T>, key: string, fallback: T) -> T = mapGet(items, key) ?: fallback
+fn valueOr<T>(items, key, fallback) -> T = mapGet(items, key) ?: fallback
 
-fn listValueAt<T>(items: Map<string, List<T>>, key: string, index: int, fallback: T) -> T =
+fn listValueAt<T>(items, key, index, fallback) -> T =
 listGet(valueOr(items, key, [fallback]), index) ?: fallback
 
 /// Reads through a list of maps, falling back to a one-key map of `[fallback]`.
@@ -65,19 +69,19 @@ fn label(s) = match s {
     Inactive => "inactive"
 }
 
-fn chooseOutcome<T>(outcome: Outcome, accepted: T, rejected: T) -> T = match outcome {
+fn chooseOutcome<T>(outcome, accepted, rejected) -> T = match outcome {
     Ok(_value)   => accepted
     Err(_message) => rejected
 }
 
-fn outcomeShape(outcomes: List<Outcome>) = match outcomes {
+fn outcomeShape(outcomes) = match outcomes {
     [] => "empty"
     [only] => "one:${describe(only)}"
     [first, second] => "two:${describe(first)}/${describe(second)}"
     [head, ...tail] => "many:${describe(head)}+${listLength(tail)}"
 }
 
-fn auditOutcomes(outcomes: List<Outcome>) = {
+fn auditOutcomes(outcomes) = {
     mut trace = ""
     handle OutcomeAudit {
         observe rendered => { trace = trace + rendered + "|" }
@@ -135,9 +139,9 @@ fn userDefinedUnionCase() = {
 
     checkAll("union tags and payloads survive direct construction", [
             describe(loaded) == "ok: loaded",
-            describe(missing) == "err: missing",
+            describe(missing) == errMissing,
             describe(cached) == "ok: cached",
-            describe(Err { message: "offline" }) == "err: offline",
+            describe(Err { message: "offline" }) == errOffline,
             label(Active) == "active",
             label(Inactive) == "inactive",
             label(Active) != label(Inactive)
@@ -145,10 +149,10 @@ fn userDefinedUnionCase() = {
 
     checkAll("union lists preserve order patterns Results and persistence", [
             answersHold(fn(x) => listLength(x), [outcomes, grown, prefixed, reversed], [2, 3, 4, 4]),
-            answersHold(fn(index) => describeAt(outcomes, index, fallback), [0, 1, 9], ["ok: loaded", "err: missing", "err: fallback"]),
-            answersHold(fn(index) => describeAt(reversed, index, fallback), [0, 3], ["ok: cached", "err: offline"]),
+            answersHold(fn(index) => describeAt(outcomes, index, fallback), [0, 1, 9], ["ok: loaded", errMissing, "err: fallback"]),
+            answersHold(fn(index) => describeAt(reversed, index, fallback), [0, 3], ["ok: cached", errOffline]),
             describeAt(grown, 2, fallback) == "ok: cached",
-            describeAt(prefixed, 0, fallback) == "err: offline",
+            describeAt(prefixed, 0, fallback) == errOffline,
             listLength(outcomes) == 2,
             outcomeShape([]) == "empty",
             outcomeShape([loaded]) == "one:ok: loaded",
@@ -161,11 +165,11 @@ fn userDefinedUnionCase() = {
     checkAll("union maps preserve replacement removal lookup and generic choices", [
             answersHold(fn(x) => mapLength(x), [byName, updated, withoutFailure, merged], [2, 3, 2, 3]),
             describeKey(byName, "primary", fallback) == "ok: loaded",
-            describeKey(byName, "failure", fallback) == "err: missing",
+            describeKey(byName, "failure", fallback) == errMissing,
             describeKey(updated, "cached", fallback) == "ok: cached",
             describeKey(withoutFailure, "failure", fallback) == "err: fallback",
             describeKey(merged, "primary", fallback) == "ok: cached",
-            describeKey(merged, "offline", fallback) == "err: offline",
+            describeKey(merged, "offline", fallback) == errOffline,
             mapContains(byName, "primary"),
             mapContains(updated, "cached"),
             !mapContains(withoutFailure, "failure"),

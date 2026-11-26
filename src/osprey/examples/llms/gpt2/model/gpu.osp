@@ -6,6 +6,9 @@ namespace gpt2;
 
 import gpt2::Backends::{Tensor, hit, minI}
 
+/// The GPU interpretation of the `Tensor` effect: `onGpu` answers every
+/// operation a model performs with a kernel, a product or a loader of the GPU
+/// surface, each fault reported as the runtime's own reason.
 module Gpu {
     /// A GPU result with the runtime's failure reason as text.
     fn answered(result) = match result {

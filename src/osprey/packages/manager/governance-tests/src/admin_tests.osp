@@ -120,6 +120,8 @@ module AdminTests {
         ])
     }
 
+    /// The administrator suite: creation acceptance, the draft lifecycle, the
+    /// seat as a non-permission, admin-only grant control and lifecycle decisions.
     export fn run() = {
         test("governance admin: creation acceptance", creationAcceptance)
         test("governance admin: draft lifecycle", draftLifecycle)

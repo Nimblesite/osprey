@@ -674,11 +674,13 @@ drainWeights (ch, weights) = sumBy (weights, \w => recv ch * w)
     inside its own fiber still reaches the region installed outside
     ([EFFECTS-HANDLER-STATE]). *)
 channelHandoffKeepsFibersIsolatedCase () =
+    use ch <- andThen (Channel 4)
+    use ch2 <- andThen (Channel 3)
+    use ping <- andThen (Channel 1)
 
     (** The producer performs for every value it sends, so the identity arm hands
         back exactly what goes into the buffer: 11, 22, 33, 44 in that order. *)
     drained = tallyLedger (\(amount, _total, _runs) => "${amount},", \(amount, _total) => amount, \() =>
-        ch = Channel 4
         producer = spawn
             forEachList ([11, 22, 33, 44], \v => send ch (tallyJob v))
         await producer
@@ -688,7 +690,6 @@ channelHandoffKeepsFibersIsolatedCase () =
 
     (** Two fibers, no shared memory: every digit the consumer answers arrived
         through the buffer. *)
-    ch2 = Channel 3
     prod2 = spawn
         forEachList ([5, 7, 9], \v => send ch2 v)
     cons2 = spawn
@@ -697,7 +698,6 @@ channelHandoffKeepsFibersIsolatedCase () =
     consumed = await cons2
 
     (** A ONE-slot buffer reused three times, including a negative payload. *)
-    ping = Channel 1
     p1 = pingRound (ping, 1)
     p2 = pingRound (ping, 2)
     p3 = pingRound (ping, (0 - 3 ))
@@ -737,7 +737,7 @@ channelHandoffKeepsFibersIsolatedCase () =
 
     // 110 = 11 * (1 + 2 + 3 + 4), so a dropped send changes both the sum and its
     // divisibility by 11.
-    checkAll "the effect fired inside the producer reached the region outside it" [
+    Success(value = checkAll "the effect fired inside the producer reached the region outside it" [
         sent == 110,
         sent != 0,
         sent != 11,
@@ -750,10 +750,10 @@ channelHandoffKeepsFibersIsolatedCase () =
         sent % 11 == 0,
         drained.answer != sent,
         sent > p1
-    ]
+    ])
 
 // Register channel handoff plus a perform escaping the producer fiber.
-test "a channel hands values between fibers while the effect reaches outside" (exactly channelHandoffKeepsFibersIsolatedCase)
+test "a channel hands values between fibers while the effect reaches outside" (exactly (\() => settledWork channelHandoffKeepsFibersIsolatedCase))
 
 (** Handler lookup "is per effect and operation. Nested handlers may override
     selected operations; the innermost matching arm wins and an outer arm remains

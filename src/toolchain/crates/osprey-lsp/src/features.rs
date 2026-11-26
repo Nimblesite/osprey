@@ -12,7 +12,7 @@ use osprey_ast::Program;
 use crate::analysis::{collect_symbols, SymbolInfo, SymbolKind};
 use crate::mlrender;
 use crate::model::{Location, SignatureInfo, Span};
-use crate::text::{occurrences, path_at, prefix_to, Occurrence};
+use crate::text::{code_occurrences, occurrences, path_at, prefix_to, Occurrence};
 use crate::workspace;
 
 /// The declaration of `word` in scope at `line` (0-based): the binding declared
@@ -164,7 +164,9 @@ fn sibling_locations(
 ) -> Vec<Location> {
     let mut found: Vec<Occurrence> = match scan {
         Scan::Declarations => Vec::new(),
-        Scan::Uses | Scan::UsesAndDeclarations => occurrences(&sibling.source, word, enc),
+        Scan::Uses | Scan::UsesAndDeclarations => {
+            code_occurrences(&sibling.source, word, enc, sibling.flavor)
+        }
     };
     if scan != Scan::Uses {
         for declaration in sibling_declarations(sibling, word, enc) {
@@ -225,7 +227,7 @@ pub(crate) fn references(
     }
     let declarations = declarations(text, &program, &word, enc);
     let decls: Vec<(u32, u32)> = declarations.iter().map(|o| (o.line, o.start)).collect();
-    let mut found: Vec<Location> = occurrences(text, &word, enc)
+    let mut found: Vec<Location> = code_occurrences(text, &word, enc, project.flavor(uri, text))
         .into_iter()
         .filter(|o| include_declaration || !decls.contains(&(o.line, o.start)))
         .map(|o| located(uri, (o.line, o.start, o.line, o.end)))

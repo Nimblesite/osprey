@@ -27,5 +27,7 @@ Syntax, types, expressions, effects and module semantics.
 - [Structured Concurrency: Cancellation and Turn Isolation](0036-StructuredConcurrency.md)
 - [Arithmetic Effects](0037-ArithmeticEffects.md)
 - [Python Flavor Syntax](0041-PythonFlavorSyntax.md)
-- [Dependent Types, Proofs and the Mathlib Port](0049-DependentTypesAndProofs.md): an independent checker and libraries, developed using Lean as an oracle.
+- [Dependent Types](0049-DependentTypesAndProofs.md): what dependent types are, why they cannot live inside Hindley-Milner, and the two dependent disciplines Osprey runs today.
+- [Proof Kernel and Lean Bridge](0055-ProofKernelAndLeanBridge.md): the trusted kernel every proof-checking discipline shares, Lean certificates, the Lean-source target and the Mathlib port.
 - [Pluggable Type Disciplines](0050-TypeDisciplines.md): generic selection, theory identities and safe replacement or forking without embedding a theory in the compiler.
+- [Compile-time Metaprogramming [META]](0056-Metaprogramming.md): compile-time evaluation, typed staging, templates, syntax and declaration macros and providers above one kernel.

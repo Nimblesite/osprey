@@ -15,9 +15,10 @@ pub(crate) fn diagnostics(
     source: &str,
     program: &Program,
     flavor: Flavor,
+    path: &std::path::Path,
     encoding: PositionEncoding,
 ) -> Vec<Diagnostic> {
-    osprey_types::source_warnings(program, source, flavor)
+    osprey_types::source_warnings(program, source, flavor, path)
         .iter()
         .filter_map(|export| {
             let position = export.position?;
@@ -50,10 +51,57 @@ mod tests {
     }
 
     #[test]
-    fn a_documented_export_without_an_example_is_an_editor_warning_on_its_line() {
+    fn a_documented_export_without_an_example_is_editor_information_on_its_line() {
         let source =
             "(** Doubling. *)\nmodule Api\n    (** Twice `x`. *)\n    export double x = x * 2\n";
         assert_eq!(codes(source), [("unexampled-export".to_owned(), 3)]);
+        let undocumented = "(** Doubling. *)\nmodule Api\n    export double x = x * 2\n";
+        let severities = |text| {
+            crate::diagnostics::compute(text, "api.ospml", PositionEncoding::Utf16)
+                .into_iter()
+                .map(|d| d.severity)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(severities(source), [lspkit_server::Severity::Information]);
+        assert_eq!(severities(undocumented), [lspkit_server::Severity::Warning]);
+    }
+
+    #[test]
+    fn test_support_needs_documentation_but_no_examples() {
+        // [DOC-EXPORT-EXAMPLE-TEST-SUPPORT]: a module under a `tests` or
+        // `test` folder serves its suite, not readers of the API.
+        let documented =
+            "(** Doubling. *)\nmodule Api\n    (** Twice `x`. *)\n    export double x = x * 2\n";
+        let bare = "(** Doubling. *)\nmodule Api\n    export double x = x * 2\n";
+        let at = |text, uri| {
+            crate::diagnostics::compute(text, uri, PositionEncoding::Utf16)
+                .into_iter()
+                .map(|d| (d.code.unwrap_or_default(), d.range.0))
+                .collect::<Vec<_>>()
+        };
+        for uri in [
+            "file:///p/tests/api.ospml",
+            "file:///p/test/api.ospml",
+            "file:///p/src/tests/deep/api.ospml",
+        ] {
+            assert_eq!(at(documented, uri), [], "{uri}");
+            assert_eq!(
+                at(bare, uri),
+                [("undocumented-export".to_owned(), 2)],
+                "{uri}"
+            );
+        }
+        for uri in [
+            "file:///p/src/api.ospml",
+            "file:///p/contests/api.ospml",
+            "file:///p/tests.ospml",
+        ] {
+            assert_eq!(
+                at(documented, uri),
+                [("unexampled-export".to_owned(), 3)],
+                "{uri}"
+            );
+        }
     }
 
     #[test]

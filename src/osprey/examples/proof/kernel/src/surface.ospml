@@ -23,7 +23,7 @@ module Surface
     (** `theorem name (x : A) ... : type := term` as kernel terms. *)
     export theorem text = match tokens text
         ["theorem", name, ...rest] => declaration (name, rest)
-        other => Error(message = "expected `theorem <name>`")
+        _ => Error(message = "expected `theorem <name>`")
 
     declaration (name, rest) = match binders (rest, 0, [])
         Success opened => statement (name, rest, opened)
@@ -98,12 +98,12 @@ module Surface
         "forall" => quantified (rest, satAdd position 1, names, false)
         "fun" => quantified (rest, satAdd position 1, names, true)
         "λ" => quantified (rest, satAdd position 1, names, true)
-        other => arrow (rest, position, names)
+        _ => arrow (rest, position, names)
 
     quantified (rest, position, names, lambda) = Terms::upon (binders (rest, position, names), \opened => quantifiedBody (rest, opened, names, lambda))
 
 
-    quantifiedBody (rest, opened, names, lambda) = match at (rest, opened.next) == separator lambda
+    quantifiedBody (rest, opened, _names, lambda) = match at (rest, opened.next) == separator lambda
         false => Error(message = "expected `${separator lambda}` after the binders")
         true => quantifiedClose (rest, opened, lambda)
 
@@ -148,7 +148,7 @@ module Surface
         "=>" => false
         "→" => false
         "->" => false
-        other => true
+        _ => true
 
     atom (rest, position, names) = match at (rest, position)
         "(" => parenthesised (rest, satAdd position 1, names)

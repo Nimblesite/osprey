@@ -14,6 +14,7 @@ module ManifestJson {
 
     // `requirementJson` avoids shadowing the `requirement` field bound by the
     // edge patterns below (a bound value is not a function).
+    /// One requirement as its `{epoch, minimumOrdinal, package}` object.
     export fn requirementJson(r) = Json::obj([Json::member("epoch", Json::num(r.epoch)), Json::member("minimumOrdinal", Json::num(r.minimumOrdinal)), Json::member("package", key(r.package))])
 
     /// One Runtime/Build/Test edge as its one-member union object.

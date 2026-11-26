@@ -66,7 +66,13 @@ pub fn format_source(src: &str, flavor: Flavor) -> Result<String, Vec<String>> {
 /// Returns a single-element error list when the flavor cannot be resolved (a
 /// marker/extension conflict), otherwise the errors from [`format_source`].
 pub fn format_for_path(path: &str, src: &str) -> Result<String, Vec<String>> {
+    // A source checked by another discipline is that checker's syntax, which
+    // the ordinary parser does not read: its checker owns its layout
+    // ([TYPES-DISCIPLINE-SEAM]).
+    let disciplined = osprey_syntax::discipline_marker(src)
+        .is_some_and(|name| name != osprey_syntax::HM_DISCIPLINE);
     match osprey_syntax::resolve_flavor(None, path, src) {
+        Ok(_) if disciplined => Ok(src.to_owned()),
         Ok(flavor) => format_source(src, flavor),
         Err(message) => Err(vec![message]),
     }

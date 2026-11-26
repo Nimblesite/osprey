@@ -5,12 +5,16 @@ namespace registry;
 /// is parsed by the compiler's Rust project loader on this path.
 /// Implements [PACKAGE-MANIFEST].
 module Manifest {
+    /// One located rejection: its stable reason code and the 1-based line and
+    /// column where the problem starts.
     export type Problem = { code: string, line: int, column: int }
+    /// The outcome of parsing one manifest text: the canonical manifest, or
+    /// the first problem found.
     export type Verdict = Accepted { manifest: ManifestModel::Manifest } | Rejected { problem: Problem }
 
     let encodedSeparator = " at "
     let positionSeparator = ":"
-    let topLevelKeys = ["project", "modules", "package", "dependencies", "build-dependencies", "test-dependencies", "system", "assets"]
+    let topLevelKeys = ["project", "modules", "package", "dependencies", "build-dependencies", "test-dependencies", "system", "assets", "discipline"]
 
     fn numberAfter(text, separator, fallback) = match indexOf(text, separator) {
         Success { value } => parseInt(drop(text, value + 1)) ?: fallback
@@ -107,9 +111,12 @@ module Manifest {
 
     fn fromTable(root) = match ManifestSections::unknownKeys(ManifestSections::pairsOf(root), topLevelKeys, "manifest.unknown-table") {
         Error { message } => rejected(message)
-        Success => match ManifestSections::project(root) {
+        Success => match ManifestSections::discipline(root) {
             Error { message } => rejected(message)
-            Success { value } => withPublication(value, root)
+            Success => match ManifestSections::project(root) {
+                Error { message } => rejected(message)
+                Success { value } => withPublication(value, root)
+            }
         }
     }
 

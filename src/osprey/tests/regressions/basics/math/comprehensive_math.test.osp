@@ -77,23 +77,15 @@ let age = 25
 exactArithmetic(fn() => print("Next year: ${age + 1}"))
 exactArithmetic(fn() => print("Last year: ${age - 1}"))
 exactArithmetic(fn() => print("Double:    ${age * 2}"))
-print("Half:      ${age / 2}")
-
 // Modulo + isEven
-print("12 % 5  = ${12 % 5}\nisEven(8) = ${toString(isEven(8))}\nisEven(7) = ${toString(isEven(7))}")
-
 // Integer division: intDiv truncates toward zero (contrast Half = 12.5 above);
 // Zero division dispatches to the observation policy.
 // Truncation and zero-divisor behavior [BUILTIN-INTDIV].
-print("intDiv(25,2) = ${intDiv(25, 2)}, intDiv(100,7) = ${intDiv(100, 7)}")
+print("Half:      ${age / 2}\n12 % 5  = ${12 % 5}\nisEven(8) = ${toString(isEven(8))}\nisEven(7) = ${toString(isEven(7))}\nintDiv(25,2) = ${intDiv(25, 2)}, intDiv(100,7) = ${intDiv(100, 7)}")
 let zeroDivision = observed(fn() => intDiv(5, 0))
-print("intDiv(5,0): ${zeroDivision.fault}")
-
-print("checked add=${toString(checkedAdd(2, 3))}, sub=${toString(checkedSub(2, 3))}, mul=${toString(checkedMul(6, 7))}\nchecked overflow add=${toString(checkedAdd(9223372036854775807, 1))}\nchecked overflow sub=${toString(checkedSub((0 - 9223372036854775807) , 2))}\nchecked overflow mul=${toString(checkedMul(4294967296, 4294967296))}")
-
 // [BUILTIN-ABS] uses the language's i64 ABI, including values outside libc `int`.
 // Its only unrepresentable magnitude dispatches overflow to the observation policy.
-print("abs(-5000000000) = ${abs((0 - 5000000000) )}")
+print("intDiv(5,0): ${zeroDivision.fault}\nchecked add=${toString(checkedAdd(2, 3))}, sub=${toString(checkedSub(2, 3))}, mul=${toString(checkedMul(6, 7))}\nchecked overflow add=${toString(checkedAdd(9223372036854775807, 1))}\nchecked overflow sub=${toString(checkedSub((0 - 9223372036854775807) , 2))}\nchecked overflow mul=${toString(checkedMul(4294967296, 4294967296))}\nabs(-5000000000) = ${abs((0 - 5000000000) )}")
 let minimumAbs = observed(fn() => abs(-9223372036854775808))
 print("abs(INT64_MIN) = ${minimumAbs.fault}")
 

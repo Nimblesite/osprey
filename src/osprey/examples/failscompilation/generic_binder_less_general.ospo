@@ -1,0 +1,13 @@
+// A declared binder is rigid: the body must work for every type it names.
+// Returning the other binder, fixing a binder to `int` and merging two
+// binders are each less general than the declaration and are rejected.
+// Implements [TYPE-GENERICS-FN].
+fn pick<A, B>(a: A, b: B) -> B = a
+
+fn bump<T>(x: T) -> T = x + 1
+
+fn both<A, B>(a: A, b: B) -> List<A> = [a, b]
+
+fn keep<T>(x: T) -> T = x
+
+print("${keep("fine")}")

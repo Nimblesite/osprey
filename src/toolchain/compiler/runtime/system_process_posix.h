@@ -10,8 +10,7 @@ static bool forward_process_output(ProcessResult *proc, int fd, int64_t event) {
   if (bytes <= 0)
     return false;
   buffer[bytes] = '\0';
-  if (proc->handler)
-    proc->handler(proc->process_id, event, buffer);
+  process_event(proc, event, buffer);
   return true;
 }
 
@@ -56,11 +55,9 @@ static void complete_process(ProcessResult *proc, int64_t code) {
   proc->exit_code = code;
   pthread_mutex_unlock(&proc->mutex);
   drain_process_output(proc);
-  if (proc->handler) {
-    char text[32];
-    snprintf(text, sizeof(text), "%lld", (long long)code);
-    proc->handler(proc->process_id, PROCESS_EXIT, text);
-  }
+  char text[32];
+  snprintf(text, sizeof(text), "%lld", (long long)code);
+  process_event(proc, PROCESS_EXIT, text);
 }
 
 static int64_t process_status_code(const ProcessResult *proc, int status) {
@@ -99,18 +96,18 @@ static void close_pipe_pair(const int fds[2]) {
   close(fds[1]);
 }
 
-static ProcessResult *create_process(int64_t id, ProcessEventHandler handler) {
+static ProcessResult *create_process(int64_t id, ProcessCallback callback) {
   ProcessResult *proc = malloc(sizeof(ProcessResult));
   if (!proc)
     return NULL;
   proc->process_id = id;
   proc->exit_code = -999;
   proc->is_running = true;
-  proc->handler = handler;
   if (pthread_mutex_init(&proc->mutex, NULL) != 0) {
     free(proc);
     return NULL;
   }
+  adopt_process_callback(proc, callback);
   return proc;
 }
 
@@ -145,7 +142,7 @@ static int64_t abandon_unmonitored_process(ProcessResult *proc) {
   kill(proc->pid, SIGKILL);
   while (waitpid(proc->pid, NULL, 0) < 0 && errno == EINTR) {
   }
-  processes[proc->process_id] = NULL;
+  processes[process_slot(proc->process_id)] = NULL;
   return abandon_process(proc, -5);
 }
 
@@ -158,7 +155,7 @@ static int64_t launch_process(ProcessResult *proc) {
     close_pipe_pair(proc->stderr_pipe);
     return abandon_process(proc, -6);
   }
-  processes[proc->process_id] = proc;
+  processes[process_slot(proc->process_id)] = proc;
   // Callbacks allocate concurrently with the caller: lock the shared heap first.
   osp_mem_notify_multithreaded();
   if (osp_thread_start(&proc->monitor_thread, process_monitor_thread, proc, false) != 0)
@@ -168,8 +165,8 @@ static int64_t launch_process(ProcessResult *proc) {
 }
 
 static int64_t spawn_allocated_process(int64_t id, const char *command,
-                                      ProcessEventHandler handler) {
-  ProcessResult *proc = create_process(id, handler);
+                                      ProcessCallback callback) {
+  ProcessResult *proc = create_process(id, callback);
   if (!proc) {
     pthread_mutex_unlock(&process_mutex);
     return -3;
@@ -180,16 +177,16 @@ static int64_t spawn_allocated_process(int64_t id, const char *command,
 
 // Implements [BUILTIN-PROCESS-FAILURE]: argument checks precede capacity checks;
 // failed spawns release every resource and spend exactly one handle number.
-int64_t spawn_process_with_handler(const char *command, ProcessEventHandler handler) {
-  if (!command || !handler)
+static int64_t spawn_process(const char *command, ProcessCallback callback) {
+  if (!command || !process_callback_present(callback))
     return -1;
   pthread_mutex_lock(&process_mutex);
-  int64_t id = next_process_id++;
-  if (id >= MAX_PROCESSES) {
+  int64_t id = claim_process_id();
+  if (id < 0) {
     pthread_mutex_unlock(&process_mutex);
-    return -2;
+    return id;
   }
-  return spawn_allocated_process(id, command, handler);
+  return spawn_allocated_process(id, command, callback);
 }
 
 #endif

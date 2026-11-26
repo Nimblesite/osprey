@@ -7,6 +7,9 @@ import registry::Names
 /// Member-only, and hidden entirely when any entry's security evidence is
 /// unavailable.
 module Publications {
+    /// The publication monitor for `publications`: hidden as
+    /// `web.publications.member-only` for anonymous viewers and as
+    /// `web.evidence-unavailable` when any entry lacks verified evidence.
     export fn render(publications, access: Model::Access) = match Model::viewerOrgHandle(access.viewer) == "" {
         true => Model::hidden("web.publications.member-only")
         false => match Model::gateAll(publications, fn(p) => Names::display(p.key), fn(p) => p.evidence) {

@@ -16,10 +16,8 @@ type Container =
     value : string
     label : string
 
-print "=== HINDLEY-MILNER TEST ==="
-
 // Test 1: Function parameter and return type inference
-print "Test 1: Function type inference from usage"
+print "=== HINDLEY-MILNER TEST ===\nTest 1: Function type inference from usage"
 (** These functions have NO explicit types - all inferred! *)
 identity x = x
 add (a, b) = a + b 
@@ -39,10 +37,8 @@ addValue = exactArithmetic (\() =>
 concatResult = concat ("hello", "world")
 negateResult = negate false
 
-print "add(10, 20) = ${addValue}, concat = ${concatResult}, negate(false) = ${toString negateResult}\n"
-
 // Test 3: Function inference with generic records
-print "Test 3: Function inference with generic records"
+print "add(10, 20) = ${addValue}, concat = ${concatResult}, negate(false) = ${toString negateResult}\n\nTest 3: Function inference with generic records"
 getFirst p = p.first
 getSecond p = p.second
 getValue c = c.value
@@ -54,10 +50,8 @@ firstInt = getFirst intPair
 valueString = getValue container1
 secondInt = getSecond intPair
 
-print "getFirst(intPair) = ${firstInt}\ngetValue(container1) = ${valueString}\ngetSecond(intPair) = ${secondInt}\n"
-
 // Test 4: Polymorphic functions with HM inference
-print "Test 4: Polymorphic function inference"
+print "getFirst(intPair) = ${firstInt}\ngetValue(container1) = ${valueString}\ngetSecond(intPair) = ${secondInt}\n\nTest 4: Polymorphic function inference"
 identityP x = x
 makePoint (a, b) = Point(x = a, y = b)
 
@@ -68,10 +62,8 @@ id3 = identityP true
 
 point1 = makePoint (1, 2)
 
-print "identityP(42) = ${id1}\nidentityP(\"test\") = ${id2}\nidentityP(true) = ${toString id3}\nmakePoint(1, 2) = {${point1.x}, ${point1.y}}\n"
-
 // Test 5: Complex HM inference with field access
-print "Test 5: Complex field access inference"
+print "identityP(42) = ${id1}\nidentityP(\"test\") = ${id2}\nidentityP(true) = ${toString id3}\nmakePoint(1, 2) = {${point1.x}, ${point1.y}}\n\nTest 5: Complex field access inference"
 distance p = p.x * p.x + p.y * p.y 
 combine c = join [c.value, c.label] ""
 
@@ -82,10 +74,8 @@ dist = exactArithmetic (\() =>
     distance numPoint)
 combined = combine textContainer
 
-print "distance({3, 4}) = ${dist}\ncombine({\"hello\", \"world\"}) = ${combined}\n"
-
 // Test 6: Higher-order functions with HM inference
-print "Test 6: Higher-order HM inference"
+print "distance({3, 4}) = ${dist}\ncombine({\"hello\", \"world\"}) = ${combined}\n\nTest 6: Higher-order HM inference"
 apply (f, x) = f x
 
 intPoint = Point(x = 1, y = 2)
@@ -102,10 +92,8 @@ containerLabel = stringContainer.label
 applied1 = apply (identityP, 99)
 applied2 = apply (toString, 123)
 
-print "intPoint.x = ${pointX}\nintPoint.y = ${pointY}\nintPair.first = ${pairFirst}\nintPair.second = ${pairSecond}\nstringContainer.value = ${containerValue}\nstringContainer.label = ${containerLabel}\napply(identityP, 99) = ${applied1}\napply(toString, 123) = ${applied2}\n"
-
 // Test 7: Generic type equality testing (for GenericType.Equals coverage)
-print "Test 7: Generic type equality comparison"
+print "intPoint.x = ${pointX}\nintPoint.y = ${pointY}\nintPair.first = ${pairFirst}\nintPair.second = ${pairSecond}\nstringContainer.value = ${containerValue}\nstringContainer.label = ${containerLabel}\napply(identityP, 99) = ${applied1}\napply(toString, 123) = ${applied2}\n\nTest 7: Generic type equality comparison"
 
 (** Create generic types that will exercise the Equals method *)
 type Generic T =
@@ -132,10 +120,8 @@ val3 = gen3.data
 val4 = gen4.first
 val5 = gen5.first
 
-print "Generic type equality test - gen1.data = ${val1}\nGeneric type equality test - gen2.data = ${val2}\nGeneric type equality test - gen3.data = ${val3}\nGeneric type equality test - gen4.first = ${val4}\nGeneric type equality test - gen5.first = ${val5}"
-
 // Test method call inference
-print "\nTest 9: Method call type inference"
+print "Generic type equality test - gen1.data = ${val1}\nGeneric type equality test - gen2.data = ${val2}\nGeneric type equality test - gen3.data = ${val3}\nGeneric type equality test - gen4.first = ${val4}\nGeneric type equality test - gen5.first = ${val5}\n\nTest 9: Method call type inference"
 
 type StringWrapper =
     content : string
@@ -151,10 +137,8 @@ wrapper = StringWrapper(content = "hello")
 wrapperLen = getLength wrapper
 wrapperUpper = uppercase wrapper
 
-print "wrapper.length() equivalent = ${wrapperLen}\nwrapper.uppercase() equivalent = ${wrapperUpper}"
-
 // Test unifyGenericTypes coverage
-print "\nTest 10: Generic type unification"
+print "wrapper.length() equivalent = ${wrapperLen}\nwrapper.uppercase() equivalent = ${wrapperUpper}\n\nTest 10: Generic type unification"
 
 type Box T =
     item : T
@@ -177,10 +161,8 @@ boxVal2 = box2.item
 pairLeft = pair2_1.left
 pairRight = pair2_1.right
 
-print "Box<int>.item = ${boxVal1}\nBox<string>.item = ${boxVal2}\nPair2<int, string>.left = ${pairLeft}\nPair2<int, string>.right = ${pairRight}"
-
 // Test type equality methods coverage
-print "\nTest 11: Type equality and String methods"
+print "Box<int>.item = ${boxVal1}\nBox<string>.item = ${boxVal2}\nPair2<int, string>.left = ${pairLeft}\nPair2<int, string>.right = ${pairRight}\n\nTest 11: Type equality and String methods"
 
 (** This will exercise the String() and Equals() methods on various types *)
 typeTest1 x = x * 2 
@@ -192,11 +174,9 @@ typeResult1 = exactArithmetic (\() =>
 typeResult2 = typeTest2 "hi"
 typeResult3 = typeTest3 false
 
-print "typeTest1(21) = ${typeResult1}\ntypeTest2(\"hi\") = ${typeResult2}\ntypeTest3(false) = ${toString typeResult3}"
-
 // Test declared fn type parameters + explicit construction-site type args
 // Implements [TYPE-GENERICS-FN], [FLAVOR-ML-GENERICS]
-print "\nTest 12: Declared type parameters"
+print "typeTest1(21) = ${typeResult1}\ntypeTest2(\"hi\") = ${typeResult2}\ntypeTest3(false) = ${toString typeResult3}\n\nTest 12: Declared type parameters"
 
 // The binder is load-bearing: without <T>, the two `T` annotations would name
 // a nominal type instead of pinning both parameters to ONE inferred type.
@@ -206,9 +186,7 @@ pick (first, _second) = first
 picked = pick (10, 20)
 pickedStr = pick ("left", "right")
 pinned = Box<int>(item = 7)
-print "pick<T>(10, 20) = ${picked}, pick<T>(\"left\", \"right\") = ${pickedStr}\nBox<int> pinned explicitly: item = ${pinned.item}"
-
-print "=== PURE HINDLEY-MILNER TEST COMPLETE ===\nAll types inferred from usage context - no explicit type annotations!"
+print "pick<T>(10, 20) = ${picked}, pick<T>(\"left\", \"right\") = ${pickedStr}\nBox<int> pinned explicitly: item = ${pinned.item}\n=== PURE HINDLEY-MILNER TEST COMPLETE ===\nAll types inferred from usage context - no explicit type annotations!"
 
 (** Verify inferred helpers remain polymorphic across values, records, and HOFs. *)
 inferredBehaviorCase () =
