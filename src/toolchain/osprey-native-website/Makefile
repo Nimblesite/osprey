@@ -1,12 +1,18 @@
-.PHONY: build dev serve test clean
+PORT ?= 8081
+
+.PHONY: help build dev serve test clean
+
+## help: List available Osprey Native website targets.
+help:
+	@grep -E '^## ' $(MAKEFILE_LIST) | sed 's/^## //'
 
 ## build: Build the standalone Osprey Native Eleventy website into _site/.
 build:
 	npm run build
 
-## dev: Run Eleventy dev server with live reload.
+## dev: Run Eleventy dev server with live reload on http://localhost:$(PORT).
 dev:
-	npm run dev
+	node scripts/run-eleventy.mjs --serve --watch --port=$(PORT)
 
 ## serve: Build and serve _site/ locally on port 4173.
 serve: build

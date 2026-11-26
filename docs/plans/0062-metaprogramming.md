@@ -36,7 +36,7 @@ Each is settled by a short, measured spike before the stage that depends on it, 
 
 - [ ] Factor the process runner, deadline, protocol framing, binary cache and dependency digests out of `osprey-project`'s discipline code into one module used by disciplines and the engine ([EXPAND-SHARED](../specs/compiler/ExpansionEngine.md#shared-infrastructure-expand-shared)). Acceptance: `make _test_disciplines` unchanged and green; deslop reports no duplicate.
 - [ ] Syntax objects: scope sets and origin records on canonical AST nodes; resolution by largest subset with ambiguity an error ([META-KERNEL-HYGIENE], [META-KERNEL-ORIGIN]).
-- [ ] The evaluator chosen above, with step and memory limits and compile-time handlers for `Diagnose` and `Fresh` ([META-EFFECTS]).
+- [ ] The evaluator chosen above, with step and memory limits and compile-time handlers for `Diagnose` and `Fresh` ([META-EFFECTS-EXPANDER]).
 - [ ] `static` expressions ([META-EVAL]). Acceptance: the differential test of [META-EVAL-AGREE] over every pure corpus function callable with literals; rejected twins for a run-time effect at level 1, a value that cannot cross, a step-limit overrun and an `Error` at the boundary.
 - [ ] No-harm gate ([META-NO-HARM]): byte-identical output and diagnostics for the whole corpus with the kernel present, in CI.
 
