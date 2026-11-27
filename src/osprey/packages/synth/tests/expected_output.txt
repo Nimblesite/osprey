@@ -58,7 +58,7 @@ ok 57 - ADSR reaches its stages, releases during attack, retriggers continuously
 ok 58 - state-variable filter preserves blocks, passes DC, rejects DC high-pass and decays after excitation
 ok 59 - parameter edits publish applied Signals, reject stale revisions, and preserve independent values
 ok 60 - graph validation covers corrupt persisted metadata, missing endpoints, fan-out and explicit channel adapters
-ok 61 - extracted Prism synthesis has no UI dependency and retains pitch, wave, silence and WAV behaviour
+ok 61 - 8-bit WAV clips pad their RIFF size and an instant envelope starts silent
 ok 62 - module switches pick the waveform, bypass a module and modulate the filter cutoff
 ok 63 - a routed oscillator and gain render exact continuous PCM across unequal blocks
 ok 64 - mixing, filtering and explicit two-sample feedback execute the compiled graph

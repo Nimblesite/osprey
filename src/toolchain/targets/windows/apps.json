@@ -41,7 +41,7 @@
     "synth": {
       "source": "src/osprey/examples/daw",
       "name": "Prism Synth",
-      "description": "Play a patch from the keyboard under the signal-flow editor.",
+      "description": "Edit patches and play songs on the Prism timeline.",
       "capabilities": [],
       "files": [
         "self-test.json",

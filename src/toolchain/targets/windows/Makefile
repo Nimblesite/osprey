@@ -36,8 +36,8 @@ painting:
 signal-flow:
 	$(APP_PS1) -App signal-flow
 
-## synth: Open the Prism synth, the signal-flow editor's Prism skin over a keyboard, in its sandbox:
-##        a struck key plays its clip through play-wav.exe beside the app. [UI-MACHINE-FLOW-SYNTH]
+## synth: Open Prism, the patch editor and song timeline, in its sandbox, with play-wav.exe
+##        beside it as its audio worker.
 synth:
 	$(APP_PS1) -App synth
 

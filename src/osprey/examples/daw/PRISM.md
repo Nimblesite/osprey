@@ -45,7 +45,7 @@ make -C src/toolchain/targets/macos/tests synth-headless
 make -C src/toolchain/targets/macos/tests synth
 ```
 
-The application tests exercise both the existing fixed-patch interaction coverage and the new modular surface through real host events. The modular journey creates independent components, wires a chain, changes parameters, rejects invalid input and removes a connected node. The synth package separately checks graph replacement, DSP state continuity, sample output and float32 RIFF bytes.
+The application tests exercise the modular surface through real host events. The modular journey creates independent components, wires a chain, changes parameters, rejects invalid input and removes a connected node. The synth package separately checks graph replacement, DSP state continuity, sample output and float32 RIFF bytes.
 
 The VST target builds a separate worker against a pinned official SDK, scans actual ADelay and mda binaries, processes audio/MIDI and checks automation/state restoration. The native headless journey drives the menu and canvas through a real MIDI instrument, two real effects and LFO-controlled gain; it verifies 18 graph transactions across three retained workers, exact effect-chain PCM and sample-positioned MIDI/automation. Windowed screenshots, live graph replacement, graph persistence and plug-in latency compensation remain unfinished. See the [delivery checklist](../../../../docs/plans/synth/prism.md) and [worker scope](../../../toolchain/hosts/synth_vst/README.md) for verified capabilities and remaining work.
 

@@ -1,5 +1,4 @@
-// The Prism synth's voice checked directly, without an editor ([UI-MACHINE-FLOW-SYNTH]): each wave's
-// shape, each patch's clip and peak, descriptions that tell patches apart and the WAV header.
+// The patch editor's graph journeys: modules, sockets, cables, cutoff audio and plug-in packets.
 
 import uitest::Drive
 import uitest::Semantics
