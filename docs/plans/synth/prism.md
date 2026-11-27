@@ -6,7 +6,6 @@ Contracts: [Synthesis.md](../../specs/synth/Synth.md) ([SYNTH-GRAPH], [SYNTH-SIG
 
 ## Graph editor [PRISM-ROUTING-INTEGRATION] [PRISM-ROUTING-PRESENTATION] [PRISM-ROUTING-CABLES] [PRISM-ROUTING-LAYOUT] [PRISM-ROUTING-TIMELINE]
 
-- [ ] A struck key on the Prism skin's keyboard plays the track's real patch graph (the fixed-patch demo is deleted; no key plays yet), through Windows' `--audio-worker` as on the Mac; the picker advertises MIDI generators, modulation processors and VST nodes only once they work: `make -C src/toolchain/targets/tests synth` [PRISM-ROUTING-INTEGRATION].
 - [ ] Movable node positions with screenshot and windowed verification; node geometry, pointer interaction and accessibility bounds checked in the real window [PRISM-ROUTING-INTEGRATION] [PRISM-ROUTING-LAYOUT].
 - [ ] Adaptive canvas resizing restored in the unified editor; the native window matches the original Prism design (fixed-studio tests do not validate the graph editor) [PRISM-ROUTING-PRESENTATION].
 - [ ] Real mouse dragging and cable deletion verified in the rebuilt window; the windowed regression journey captured [PRISM-ROUTING-CABLES].

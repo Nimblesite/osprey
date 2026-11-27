@@ -179,7 +179,7 @@ The four skins, Topology, Notation, Paper and Prism, are canvases sliced from th
 
 ### Prism skin keyboard [UI-MACHINE-FLOW-SYNTH]
 
-The Prism skin carries a keyboard deck of two octaves, C3 to B4, drawn under the graph while the `keys` input is 1. A key sets `note` to its name and fires `strike`; the `keys` layer asks `synth.strike`, and Flow leaves any request outside `flow.` on the machine for the application built on it. [Prism](../../../src/osprey/examples/daw/PRISM.md) does not play a struck key yet ([plan](../../plans/synth/prism.md)): the fixed-patch voice that answered it is deleted, and a key will play the track's real patch graph.
+The Prism skin carries a keyboard deck of two octaves, C3 to B4, drawn under the graph while the `keys` input is 1. A key sets `note` to its name and fires `strike`; the `keys` layer asks `synth.strike`, and Flow leaves any request outside `flow.` on the machine for the application built on it. [Prism](../../../src/osprey/examples/daw/PRISM.md) leaves the deck undrawn and answers no strike: its fixed-patch voice is deleted, and live notes reach a track's patch from MIDI input ([DAW-MIDI]).
 
 ## Later
 
