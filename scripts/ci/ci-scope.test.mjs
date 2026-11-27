@@ -248,8 +248,7 @@ test('local CI and hosted CI run both split repositories\' canaries once with th
   const perception = hosted.indexOf('name: perception')
   const run = hosted.indexOf('run: make _canaries\n')
   assert.ok(setup >= 0 && packages > setup && perception > packages && run > perception, hosted)
-  assert.match(hosted, /ssh-key: \$\{\{ secrets\.OSPREY_PACKAGES_DEPLOY_KEY \}\}/)
-  assert.match(hosted, /ssh-key: \$\{\{ secrets\.PERCEPTION_DEPLOY_KEY \}\}/)
+  assert.doesNotMatch(hosted, /ssh-key|DEPLOY_KEY/, 'the split repositories are read keyless, as public repositories')
   assert.match(job('ci', '.github/workflows/ci.yml'), /^      - test-canary$/m)
   // Each repository's own `make canary`, never a copy of its recipe, with the prebuilt compiler.
   assert.deepEqual(makeRecipe('_canaries'), ['$(MAKE) -f scripts/make/osprey-packages.mk canary OSPREY_PREBUILT=1',

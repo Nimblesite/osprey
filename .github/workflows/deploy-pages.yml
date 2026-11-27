@@ -93,7 +93,6 @@ jobs:
         uses: ./.github/actions/downstream
         with:
           name: osprey-packages
-          ssh-key: ${{ secrets.OSPREY_PACKAGES_DEPLOY_KEY }}
 
       - name: Install website dependencies
         working-directory: ./src/toolchain/website

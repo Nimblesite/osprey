@@ -4,7 +4,7 @@
 # laid files never show as changes. The compiler-side tests, the package client every build ships and
 # each repository's `make canary` then run against the exact pinned commit.
 # Usage: scripts/ci/downstream.sh [name...]; no name lays every repository. A repository already
-# checked out under target/downstream/<name> (CI does that with its read-only deploy key) is reused;
+# checked out under target/downstream/<name> (CI does that with a plain checkout) is reused;
 # otherwise it is cloned over HTTPS with your GitHub credentials.
 set -euo pipefail
 root=$(git rev-parse --show-toplevel)

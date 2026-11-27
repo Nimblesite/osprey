@@ -1,14 +1,11 @@
 name: "Lay a split repository"
 description: >-
   Checks out a split repository (Nimblesite/osprey-packages or Nimblesite/perception) at the commit
-  scripts/ci/downstream.json pins, with its read-only deploy key, and lays its files over this
+  scripts/ci/downstream.json pins, a plain checkout of the public repository, and lays its files over this
   checkout at their original paths [REPO-SPLIT-CANARY].
 inputs:
   name:
     description: "osprey-packages or perception"
-    required: true
-  ssh-key:
-    description: "The repository's read-only deploy key (secrets.OSPREY_PACKAGES_DEPLOY_KEY or secrets.PERCEPTION_DEPLOY_KEY)"
     required: true
 runs:
   using: "composite"
@@ -22,7 +19,6 @@ runs:
         repository: Nimblesite/${{ inputs.name }}
         ref: ${{ steps.pin.outputs.commit }}
         path: target/downstream/${{ inputs.name }}
-        ssh-key: ${{ inputs.ssh-key }}
         lfs: true
     - name: Lay its files over this checkout
       shell: bash

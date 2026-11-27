@@ -136,7 +136,6 @@ jobs:
         uses: ./.github/actions/downstream
         with:
           name: osprey-packages
-          ssh-key: ${{ secrets.OSPREY_PACKAGES_DEPLOY_KEY }}
 
       # release.yml compiles the package manager client on this same runner
       # and ships it in the win32 tarball, so a Windows-only compile failure

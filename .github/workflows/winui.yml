@@ -112,12 +112,10 @@ jobs:
         uses: ./.github/actions/downstream
         with:
           name: osprey-packages
-          ssh-key: ${{ secrets.OSPREY_PACKAGES_DEPLOY_KEY }}
       - name: Lay Perception (Nimblesite/perception)
         uses: ./.github/actions/downstream
         with:
           name: perception
-          ssh-key: ${{ secrets.PERCEPTION_DEPLOY_KEY }}
 
       - name: The apps' DLLs
         shell: msys2 {0}

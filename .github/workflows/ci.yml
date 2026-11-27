@@ -167,7 +167,6 @@ jobs:
         uses: ./.github/actions/downstream
         with:
           name: osprey-packages
-          ssh-key: ${{ secrets.OSPREY_PACKAGES_DEPLOY_KEY }}
 
       - name: Build the extension bundle
         run: make _vsix_bundle
@@ -421,12 +420,10 @@ jobs:
         uses: ./.github/actions/downstream
         with:
           name: osprey-packages
-          ssh-key: ${{ secrets.OSPREY_PACKAGES_DEPLOY_KEY }}
       - name: Lay Perception (Nimblesite/perception)
         uses: ./.github/actions/downstream
         with:
           name: perception
-          ssh-key: ${{ secrets.PERCEPTION_DEPLOY_KEY }}
 
       - name: Build the wasm runtime archive
         run: make _runtime_wasm
@@ -488,12 +485,10 @@ jobs:
         uses: ./.github/actions/downstream
         with:
           name: osprey-packages
-          ssh-key: ${{ secrets.OSPREY_PACKAGES_DEPLOY_KEY }}
       - name: Lay Perception (Nimblesite/perception)
         uses: ./.github/actions/downstream
         with:
           name: perception
-          ssh-key: ${{ secrets.PERCEPTION_DEPLOY_KEY }}
       - name: Both canaries
         run: make _canaries
       # Every project built on @osprey/synth, the laid daw, its test and render projects included, so a
@@ -761,7 +756,6 @@ jobs:
         uses: ./.github/actions/downstream
         with:
           name: perception
-          ssh-key: ${{ secrets.PERCEPTION_DEPLOY_KEY }}
 
       - name: Setup Osprey toolchain (no rebuild)
         uses: ./.github/actions/setup-osprey-compiler
@@ -1186,7 +1180,6 @@ jobs:
         uses: ./.github/actions/downstream
         with:
           name: osprey-packages
-          ssh-key: ${{ secrets.OSPREY_PACKAGES_DEPLOY_KEY }}
 
       - name: Install dependencies
         run: npm ci
@@ -1592,12 +1585,10 @@ jobs:
         uses: ./.github/actions/downstream
         with:
           name: osprey-packages
-          ssh-key: ${{ secrets.OSPREY_PACKAGES_DEPLOY_KEY }}
       - if: ${{ matrix.part == 'Perception' }}
         uses: ./.github/actions/downstream
         with:
           name: perception
-          ssh-key: ${{ secrets.PERCEPTION_DEPLOY_KEY }}
 
       - name: ${{ matrix.part }} builds, ABI, goldens and app tests
         env:
