@@ -149,6 +149,23 @@ registry-hosted-api: target/osprey-registry-hosted
 target/osprey-registry-hosted: $(BIN) $(REGISTRY_CLIENT_SOURCES)
 	$(BIN) build src/osprey/packages/manager/api/hosted --quiet --no-warnings -o $@
 
+REGISTRY_HOSTED_IMAGE ?= osprey-registry-hosted:local
+REGISTRY_HOSTED_DOCKERFILE := src/osprey/packages/manager/ops/Dockerfile
+REGISTRY_HOSTED_CONTEXT := Makefile scripts src/toolchain/Cargo.toml src/toolchain/Cargo.lock src/toolchain/crates \
+	src/toolchain/compiler/runtime src/toolchain/tree-sitter-osprey src/toolchain/zed-extension \
+	src/toolchain/website/src/js/osprey-grammar.mjs src/toolchain/website/src/css/variables.css \
+	src/osprey/packages/Makefile src/osprey/packages/manager/api src/osprey/packages/manager/core \
+	src/osprey/packages/manager/host $(REGISTRY_HOSTED_DOCKERFILE)
+
+.PHONY: registry-hosted-image
+## registry-hosted-image: Build the Cloud Run linux/amd64 image from the checked-out commit.
+registry-hosted-image:
+	@set -eu; mkdir -p target; context=$$(mktemp target/registry-hosted-context.XXXXXX); \
+	  trap 'rm -f -- "$$context"' EXIT; revision=$$(git rev-parse HEAD); \
+	  git archive --format=tar --output="$$context" "$$revision" $(REGISTRY_HOSTED_CONTEXT); \
+	  docker buildx build --platform linux/amd64 --load --file $(REGISTRY_HOSTED_DOCKERFILE) \
+	    --label "org.opencontainers.image.revision=$$revision" --tag "$(REGISTRY_HOSTED_IMAGE)" - < "$$context"
+
 .PHONY: registry-website registry-website-fixture registry-website-check
 ## registry-website-check: Build an isolated Pages artifact and exercise its publisher flow in Chromium.
 registry-website-check: registry-website-fixture
