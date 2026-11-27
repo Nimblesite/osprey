@@ -39,7 +39,7 @@ async function checkPackagedAccount(browser, site, livePort) {
   page.on('requestfailed', request => failures.push(request.url()));
   await page.route(website + '/**', async route => {
     const pathname = new URL(route.request().url()).pathname;
-    const file = (pathname.startsWith('/packages/') || pathname.startsWith('/publishers/')) ? path.join(site, 'package.html') : path.join(site, pathname, pathname.endsWith('/') ? 'index.html' : '');
+    const file = (pathname.startsWith('/packages/') || pathname.startsWith('/publishers/') || pathname.startsWith('/tags/')) ? path.join(site, 'package.html') : path.join(site, pathname, pathname.endsWith('/') ? 'index.html' : '');
     const body = await fs.promises.readFile(file);
     const mime = {'.html':'text/html','.css':'text/css','.svg':'image/svg+xml','.mjs':'text/javascript','.wasm':'application/wasm'}[path.extname(file)];
     assert.ok(mime, pathname);
@@ -58,11 +58,26 @@ async function checkPackagedAccount(browser, site, livePort) {
       assert.equal(upstream.headers()['access-control-allow-origin'], website);
       await route.fulfill({response:upstream});
     });
+    await page.goto(website);
+    await page.getByRole('link', {name:'By tag'}).click();
+    await page.getByRole('heading', {name:'Tags', exact:true}).waitFor();
+    await page.getByRole('link', {name:'graphics', exact:true}).click();
+    await page.getByRole('link', {name:'@atlas/render', exact:true}).waitFor();
+    assert.equal(await page.getByRole('link', {name:'@atlas/net', exact:true}).count(), 0);
+    await page.goto(website);
+    await page.getByRole('link', {name:'By publisher'}).click();
+    await page.getByRole('heading', {name:'Publishers'}).waitFor();
+    assert.equal(await page.getByRole('link', {name:'Atlas Engineering', exact:true}).count(), 1);
     await page.goto(website + '/?q=http');
     await page.getByRole('link', {name:'@atlas/net'}).click();
     await page.getByRole('heading', {name:'e1.r1'}).waitFor();
     await page.getByText('Network access', {exact:true}).waitFor();
     await page.getByRole('link', {name:'Atlas Labs'}).waitFor();
+    await page.getByRole("link", {name:"networking", exact:true}).click();
+    await page.getByRole("heading", {name:"networking", exact:true}).waitFor();
+    await page.getByText("Network access", {exact:true}).waitFor();
+    await page.getByRole("link", {name:"@atlas/net", exact:true}).click();
+
     await page.getByRole('link', {name:'Atlas Engineering'}).click();
     await page.getByRole('heading', {name:'Atlas Engineering'}).waitFor();
     assert.equal(await page.getByRole('link', {name:'@atlas/net e1.r2'}).count(), 0);
@@ -90,7 +105,7 @@ async function checkPackagedAccount(browser, site, livePort) {
     await page.unroute(api + '/v1/auth/session');
   }
   await page.unroute(api + '/v1/packages');
-  const entry = {key:'@atlas/net',releases:[{digest:'sha256:' + 'a'.repeat(64),epoch:1,ordinal:1,publisherId:"11111111-1111-4111-8111-111111111111",publisherName:"Atlas Engineering"}],summary:'HTTP tools <img src=x>',warnings:['Network access']};
+  const entry = {key:'@atlas/net',keywords:['networking','web'],releases:[{digest:'sha256:' + 'a'.repeat(64),epoch:1,ordinal:1,publisherId:"11111111-1111-4111-8111-111111111111",publisherName:"Atlas Engineering"}],summary:'HTTP tools <img src=x>',warnings:['Network access']};
   let payload = {packages:[entry]};
   await page.route(api + '/v1/packages', route => route.fulfill({headers,json:payload}));
   await page.route(api + '/v1/packages/@atlas/net', route => route.fulfill({headers,json:entry}));
@@ -103,6 +118,12 @@ async function checkPackagedAccount(browser, site, livePort) {
   assert.equal(await page.locator('#q').inputValue(), 'http');
   await page.goto(website + '/?q=unknown');
   await page.getByText('No matching packages.').waitFor();
+  for (const keywords of [null, ['../escape'], ['web', 'networking'], ['web', 'web']]) {
+    payload = {packages:[{...entry,keywords}]};
+    await page.goto(website);
+    await page.getByText('The public catalog is unavailable.').waitFor();
+    assert.equal(await page.locator('#results article').count(), 0);
+  }
   payload = {packages:[entry, {key:'@atlas/incomplete',summary:'Missing warnings'}]};
   await page.goto(website);
   await page.getByText('The public catalog is unavailable.').waitFor();

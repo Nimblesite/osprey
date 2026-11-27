@@ -103,6 +103,7 @@ module HostedService {
     fn publisherPackage(item, id) = Json::obj([
         Json::member("key", JsonRead::field(item, "key")),
         Json::member("summary", JsonRead::field(item, "summary")),
+        Json::member("keywords", JsonRead::field(item, "keywords")),
         Json::member("warnings", JsonRead::field(item, "warnings")),
         Json::member("releases", Json::arr(credited(item, id)))
     ])

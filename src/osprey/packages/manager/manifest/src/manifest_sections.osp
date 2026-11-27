@@ -17,8 +17,6 @@ module ManifestSections {
     let disciplineKeys = ["name", "checker", "timeout_seconds"]
     let defaultRoots = ["src"]
     let summaryMax = 512
-    let keywordMax = 12
-    let keywordBytes = 32
 
     /// `code at line:column`, the one encoding `Toml` and `Manifest::problemOf` share.
     export fn fail(code, span: Toml::Span) = Error { message: "${code} at ${span.line}:${span.column}" }
@@ -216,12 +214,8 @@ module ManifestSections {
         }
     }
 
-    fn keywordByte(b) = Bytes::isLowerDigit(b) || b == 45
-    fn keywordOk(k) = byteLength(k) >= 1 && byteLength(k) <= keywordBytes && !startsWith(k, "-")
-        && Bytes::everyByte(k, keywordByte)
-
-    fn keywordsOk(keywords, span) = if length(keywords) > keywordMax { fail("manifest.keywords.count", span) }
-        else if !foldList(keywords, true, fn(ok, k) => ok && keywordOk(k)) { fail("manifest.keyword.grammar", span) }
+    fn keywordsOk(keywords, span) = if length(keywords) > Names::keywordMax { fail("manifest.keywords.count", span) }
+        else if !foldList(keywords, true, fn(ok, k) => ok && Names::keywordOk(k)) { fail("manifest.keyword.grammar", span) }
         else if !Order::strictlyAscending(keywords) { fail("manifest.keywords.order", span) }
         else { Success { value: keywords } }
 

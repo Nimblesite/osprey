@@ -11,6 +11,10 @@ module Names {
     let scopeMax = 39
     let nameMax = 63
     let hyphen = 45
+    export let keywordMax = 12
+
+    /// Canonical manifest keyword and public tag URL segment.
+    export fn keywordOk(k) = byteLength(k) >= 1 && byteLength(k) <= 32 && !startsWith(k, "-") && Bytes::everyByte(k, byteOk)
 
     fn byteOk(b) = Bytes::isLowerDigit(b) || b == hyphen
     fn bytesOk(s) = Bytes::everyByte(s, byteOk)

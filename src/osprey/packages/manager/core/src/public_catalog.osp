@@ -19,7 +19,16 @@ module PublicCatalog {
         JsonArray(items) => !isEmpty(items) && foldList(items, true, fn(ok, r) => ok && validRelease(r))
         _ => false
     }
-    export fn validEntry(item) = exact(item, 4) && validReleases(item) && match Names::parse(text(item, "key")) {
+    export fn keywords(item) = match field(item, "keywords") {
+        JsonArray(items) => mapList(items, fn(value) => jsonText(value) ?: "")
+        _ => []
+    }
+    fn validKeywords(item) = match field(item, "keywords") {
+        JsonArray(items) => length(items) <= Names::keywordMax && foldList(keywords(item), true, fn(ok, k) => ok && Names::keywordOk(k))
+            && Order::strictlyAscending(keywords(item))
+        _ => false
+    }
+    export fn validEntry(item) = exact(item, 5) && validKeywords(item) && validReleases(item) && match Names::parse(text(item, "key")) {
         Error => false
         Success => trim(text(item, "summary")) != "" && match field(item, "warnings") {
             JsonArray(values) => foldList(values, true, fn(ok, value) => ok && validWarning(value))

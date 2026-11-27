@@ -6,7 +6,7 @@ fn catalog(local, entries, origin) = {
     let notice = if local { "<p>Local folder registry · Audit unverified</p>" } else if hosted { "<p id=\"catalog-status\" role=\"status\" data-error=\"The public catalog is unavailable.\">Loading packages…</p>" } else { "<p role=\"status\">The public catalog is unavailable.</p>" }
     let disabled = if local || hosted { "" } else { " disabled" }
     let form = "<form role=\"search\" method=\"get\" action=\"/\"><label for=\"q\">Search packages</label><div class=\"prose-search\"><input id=\"q\" name=\"q\" type=\"search\" placeholder=\"Package name or description\"${disabled}><button${disabled}>Search</button></div></form>"
-    let navigation = if local { browseNav() } else { "" }
+    let navigation = if local || hosted { browseNav() } else { "" }
     let behavior = if local { localFilter() } else if hosted { catalogAdapter(origin) } else { "" }
     Shell::withEscapedTitle("Osprey Packages", "<main><header class=\"prose-intro\"><h1>Osprey Packages</h1><p>The package registry for the Osprey language. Find libraries for your next project, see who published them, and download the source for a specific release.</p></header>${form}<section><h2>Browse packages</h2>${navigation}${notice}<div id=\"results\">${entries}</div>${behavior}</section></main>")
 }
@@ -67,10 +67,6 @@ fn field(label, value) = "<div><dt>${label}</dt><dd>${value}</dd></div>"
 
 fn browseNav() = "<nav class=\"prose-browse\" aria-label=\"Browse packages\"><a href=\"/publishers/\">By publisher</a><a href=\"/tags/\">By tag</a></nav>"
 
-fn keywordChips(text) = if text == "None" { "None" } else {
-    join(mapList(split(text, ", ") ?: [text], fn(word) => "<a class=\"prose-chip\" href=\"/tags/${word}/\">${word}</a>"), "")
-}
-
 fn directory() = {
     let title = Shell::escape(trim(input()))
     let entries = trim(input())
@@ -82,7 +78,8 @@ fn localPackage() = {
     let summary = Shell::escape(trim(input()))
     let publisher = publisherLink(trim(input()))
     let license = Shell::escape(trim(input()))
-    let keywords = keywordChips(trim(input()))
+    let words = trim(input())
+    let keywords = Shell::keywordChips(if words == "None" { [] } else { split(words, ", ") ?: [] })
     let dependencies = Shell::escape(trim(input()))
     let releases = trim(input())
     let metadata = join([field("Publisher", publisher), field("License", license), field("Keywords", keywords), field("Dependencies", dependencies)], "")

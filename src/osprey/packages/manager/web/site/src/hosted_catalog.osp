@@ -1,5 +1,6 @@
 namespace registry_web;
 import registry::PublicCatalog
+import registry::Bytes
 
 /// Render only a complete public projection delivered by the hosted registry [PACKAGE-HOSTED-ROUTES-CATALOG].
 module HostedCatalog {
@@ -23,20 +24,23 @@ module HostedCatalog {
         let found = filterList(items, fn(item) => matches(item, terms))
         if isEmpty(found) { "<p>No matching packages.</p>" } else { join(mapList(found, card), "") }
     }
+    fn publisherLink(release) = {
+        let id = PublicCatalog::text(release, "publisherId")
+        let name = Shell::escape(PublicCatalog::text(release, "publisherName"))
+        "<a href=\"/publishers/${id}/\">${name}</a>"
+    }
     fn release(item) = {
         let epoch = PublicCatalog::number(item, "epoch")
         let ordinal = PublicCatalog::number(item, "ordinal")
         let digest = PublicCatalog::text(item, "digest")
-        let id = PublicCatalog::text(item, "publisherId")
-        let name = Shell::escape(PublicCatalog::text(item, "publisherName"))
-        "<article class=\"prose-release\" id=\"e${epoch}.r${ordinal}\"><h3>e${epoch}.r${ordinal}</h3><p>Published by <a href=\"/publishers/${id}/\">${name}</a></p><code>${digest}</code></article>"
+        "<article class=\"prose-release\" id=\"e${epoch}.r${ordinal}\"><h3>e${epoch}.r${ordinal}</h3><p>Published by ${publisherLink(item)}</p><code>${digest}</code></article>"
     }
     fn detail(item, path) = {
         let key = PublicCatalog::text(item, "key")
         let summary = Shell::escape(PublicCatalog::text(item, "summary"))
         let releases = join(mapList(releaseItems(item), release), "")
         if PublicCatalog::validEntry(item) && path == "/packages/" + key + "/" {
-            "<header class=\"prose-cover\"><a href=\"/\">← Packages</a><h1>${key}</h1><p>${summary}</p></header><div class=\"prose-columns\"><section class=\"prose-releases\"><h2>Releases</h2>${releases}</section><aside class=\"prose-facts\"><h2>Security warnings</h2>" + warningList(item) + "</aside></div>"
+            "<header class=\"prose-cover\"><a href=\"/\">← Packages</a><h1>${key}</h1><p>${summary}</p></header><div class=\"prose-columns\"><section class=\"prose-releases\"><h2>Releases</h2>${releases}</section><aside class=\"prose-facts\"><h2>Security warnings</h2>" + warningList(item) + "<h2>Tags</h2>" + Shell::keywordChips(PublicCatalog::keywords(item)) + "</aside></div>"
         } else { "" }
     }
     fn releaseItems(item) = match PublicCatalog::field(item, "releases") {
@@ -67,10 +71,36 @@ module HostedCatalog {
         "<header class=\"prose-publisher\"><a href=\"/\">← Packages</a><h1>${display}</h1></header><section><h2>Published releases</h2>${packages}</section>"
     }
 
+    fn directory(title, contents) = "<header class=\"prose-cover\"><a href=\"/\">← Packages</a><h1>${title}</h1></header><section>${contents}</section>"
+
+    fn tags(items) = foldList(items, [], fn(seen, item) => foldList(PublicCatalog::keywords(item), seen,
+        fn(tags, tag) => if listContains(tags, tag) { tags } else { listAppend(tags, tag) }))
+
+    fn tagBrowse(items, path) = if path == "/tags/" { directory("Tags", Shell::keywordChips(listSort(tags(items)))) }
+    else { tagPackages(items, path) }
+
+    fn tagPackages(items, path) = {
+        let key = Bytes::before(drop(path, byteLength("/tags/")), "/")
+        let found = filterList(items, fn(item) => listContains(PublicCatalog::keywords(item), key))
+        if path != "/tags/${key}/" || isEmpty(found) { directory("Tag not found", "") }
+        else { directory(key, "<div id=\"results\">" + join(mapList(found, card), "") + "</div>") }
+    }
+
+    fn publishers(items) = mapValues(foldList(items, Map(), fn(seen, item) => foldList(releaseItems(item), seen, fn(index, release) => {
+        let id = PublicCatalog::text(release, "publisherId")
+        if (mapGet(index, id) ?: "") != "" { index } else { mapSet(index, id, publisherLink(release)) }
+    })))
+
+    fn publisherDirectory(items) = directory("Publishers", "<ul class=\"prose-credits\">" +
+        join(mapList(publishers(items), fn(link) => "<li>" + link + "</li>"), "") + "</ul>")
+
+    fn browseDirectory(items, path) = if startsWith(path, "/tags/") { tagBrowse(items, path) }
+    else if path == "/publishers/" { publisherDirectory(items) } else { publisher(items, path) }
+
     export fn render(path, query, body) = if path == "/" {
         match PublicCatalog::decode(body) { Success { value } => browse(value, query) Error => "" }
-    } else if startsWith(path, "/publishers/") {
-        match PublicCatalog::decode(body) { Success { value } => publisher(value, path) Error => "" }
+    } else if startsWith(path, "/tags/") || startsWith(path, "/publishers/") {
+        match PublicCatalog::decode(body) { Success { value } => browseDirectory(value, path) Error => "" }
     } else {
         match jsonDecode(body) { Success { value } => detail(value, path) Error => "" }
     }

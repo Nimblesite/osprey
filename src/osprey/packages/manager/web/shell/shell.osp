@@ -2,6 +2,11 @@ namespace registry_web;
 
 /// Shared presentation for the static site and registry screens.
 module Shell {
+    /// Links for already validated manifest keywords.
+    export fn keywordChips(words) = if isEmpty(words) { "None" } else {
+        join(mapList(words, fn(word) => "<a class=\"prose-chip\" href=\"/tags/${word}/\">${word}</a>"), "")
+    }
+
     export fn escape(text) = replace(replace(replace(text, "&", "&amp;") ?: "", "<", "&lt;") ?: "", ">", "&gt;") ?: ""
 
     /// Shell for an already escaped title or a trusted text literal.
