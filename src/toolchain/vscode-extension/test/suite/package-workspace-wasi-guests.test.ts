@@ -81,9 +81,13 @@ suite("WASI worker failure boundary", () => {
       await assert.rejects(runtime.open(open), /unreachable/);
       // Long after the worker is gone, a call must still be answered at once.
       await new Promise((resolve) => setTimeout(resolve, 500));
-      const started = Date.now();
-      await assert.rejects(runtime.event(touch), /unreachable|exited/);
-      assert.ok(Date.now() - started < 2000, "a call after the worker died is refused at once, not after the call timeout");
+      // Refused at once means settled before the event loop turns once: no
+      // timer, the call timeout included, can have fired by then.
+      const call = runtime.event(touch);
+      const turned = new Promise((resolve) => setImmediate(() => resolve("pending")));
+      const settled = await Promise.race([call.then(() => "resolved", () => "rejected"), turned]);
+      assert.strictEqual(settled, "rejected", "a call after the worker died is refused at once, not after the call timeout");
+      await assert.rejects(call, /unreachable|exited/);
     } finally { runtime.dispose(); }
     await assert.rejects(scriptedWorker((worker) => worker.emit("error", new Error("worker startup failed"))), /worker startup failed/);
     await assert.rejects(scriptedWorker((worker) => worker.emit("exit", 2)), /exited with 2/);
