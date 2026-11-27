@@ -15,7 +15,8 @@ DOCTEST_FENCE='```(osprey|ospml|output)'
 
 run_corpus_doctests() {
   case $TARGET in native|wasm32) ;; *) return 0 ;; esac
-  local file package count=0 failed=0 index
+  local file package count=0 failed=0 index limit=${JOBS:-1}
+  (( limit >= 1 )) || limit=1
   local -a targets
   if [[ $TARGET == wasm32 ]]; then
     prepare_doctest_wasi_host || return 1
@@ -27,7 +28,7 @@ run_corpus_doctests() {
     grep -rEq "$DOCTEST_FENCE" "$package/src" 2>/dev/null && targets+=("$package")
   done
   for (( index = 1; index <= ${#targets}; index++ )); do
-    while (( ${#${(M)jobstates:#running*}} >= JOBS )); do sleep 0.05; done
+    while (( ${#${(M)jobstates:#running*}} >= limit )); do sleep 0.05; done
     run_doctest_worker "$targets[$index]" "$RESULTDIR/doctest-$index" &
   done
   wait

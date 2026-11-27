@@ -356,21 +356,29 @@ fn warnings_as_errors_fails_only_on_opt_in_and_keeps_the_diagnostics() {
         "a refused build writes nothing"
     );
 
-    // [DOC-EXPORT-EXAMPLE-REQUIRED] Check documentation coverage while it is
-    // being completed, and keep strict code generation for other warnings.
-    // A package's documentation rules apply ([LINT-LEVELS]).
+    // [DOC-EXPORT-EXAMPLE-REQUIRED] A package denies an export without an
+    // example, even without --warnings-as-errors ([LINT-LEVELS]).
     let package = temp_dir("strict_staged_package");
-    let _ = std::fs::write(
-        package.join("osprey.toml"),
-        "[package]\nname = \"@o/staged\"\n",
-    );
+    let manifest = package.join("osprey.toml");
+    let _ = std::fs::write(&manifest, "[package]\nname = \"@o/staged\"\n");
     let staged = package.join("staged.osp");
     let _ = std::fs::write(
         &staged,
         "namespace app;\n/// Public API.\nmodule Api {\n    /// Returns the answer.\n    export fn answer() = 42\n}\nprint(Api::answer())\n",
     );
     let missing_example = "exported function `Api::answer` has no example";
-    accepted(&staged, "--check", &[]).expect_stderr(0, &[missing_example], &[]);
+    let denied = format!("error: {missing_example}");
+    run_file(&staged, &["--check"])
+        .expect_rejected(&[&denied, "1 error, 0 warnings (unexampled-export)"]);
+    run_file(&staged, &["--check", "--no-warnings"]).expect_rejected(&[&denied]);
+
+    // A package completing its documentation lowers the rule explicitly, and
+    // strict code generation still holds for every other warning.
+    let _ = std::fs::write(
+        &manifest,
+        "[package]\nname = \"@o/staged\"\n\n[lints]\nunexampled-export = \"info\"\n",
+    );
+    accepted(&staged, "--check", &[]).expect_stderr(0, &[missing_example], &["error:"]);
     let info = format!("info: {missing_example}");
     accepted(&staged, "--check", &["--warnings-as-errors"]).expect_stderr(
         0,
