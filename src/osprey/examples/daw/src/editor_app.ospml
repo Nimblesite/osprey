@@ -178,8 +178,8 @@ module EditorApp
         MoveEnd bar => match down
             true => DawSession::ended (editor(armedNote = endHeld), bar)
             false => Runtime::step editor
-        MoveStart _ => match down
-            true => Runtime::step (editor(armedNote = startHeld))
+        MoveStart bar => match down
+            true => DawSession::started (editor(armedNote = startHeld), bar)
             false => Runtime::step editor
         AdjustMix index gain pan => match down
             true => Runtime::step (DawSession::slid (editor, index, gain, pan))

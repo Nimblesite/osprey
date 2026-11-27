@@ -240,7 +240,7 @@ module TimelineView
         true =>
             window = laneWindow (editor, beats editor)
             match TimelineGeometry::grabs (x, TimelineGeometry::laneX (DawSession::rangeStart editor, window.origin, window.span))
-                true => Success(value = MoveStart(bar = editor.rollBar))
+                true => Success(value = MoveStart(bar = editor.playStart))
                 false => match TimelineGeometry::grabs (x, TimelineGeometry::laneX (DawSession::rangeEnd editor, window.origin, window.span))
                     true => Success(value = MoveEnd(bar = endAt (editor, x)))
                     false => Error(message = "No marker here.")
@@ -274,7 +274,7 @@ module TimelineView
         floatToInt (TimelineGeometry::playableBar (beatAt (editor, x, duration), duration, DawSession::measure editor.song)) ?: 0
 
     (** [DAW-TRANSPORT-RANGE] The end marker's bar line under `x`: the nearest one, after the start marker. *)
-    export endAt (editor, x) = floatToInt (TimelineGeometry::endBar (beatAt (editor, x, beats editor), toFloat editor.rollBar, DawSession::measure editor.song)) ?: 0
+    export endAt (editor, x) = floatToInt (TimelineGeometry::endBar (beatAt (editor, x, beats editor), toFloat editor.playStart, DawSession::measure editor.song)) ?: 0
 
     (** [DAW-TRANSPORT-RANGE] The start marker's bar line under `x`: the nearest one, before the end marker. *)
     export startAt (editor, x) =
@@ -283,7 +283,7 @@ module TimelineView
 
     // [DAW-TRANSPORT-PLAYHEAD] A press on the ruler away from the markers moves the start marker to that bar and keeps the track.
     rulerAt (editor, x, y) = match y >= 193.0 && y < 221.0 && x >= 198.0 && x <= 1098.0
-        true => Success(value = PickTrack(index = editor.track, bar = barAt (editor, x)))
+        true => Success(value = MoveStart(bar = barAt (editor, x)))
         false => Error(message = "No lane here.")
 
     (** Accessibility regions for the arrangement track rows. *)

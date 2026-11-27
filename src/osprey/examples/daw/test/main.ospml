@@ -857,13 +857,13 @@ excerptJourney arrangement =
     trackAt (cut, 2, \voice => expect (length voice.notes, 0))
     expect (length (daw::Projects::excerpt (arrangement, 13.0, 4.0)).tracks, 3)
 
-// [DAW-TRANSPORT-PLAYHEAD] A ruler tap keeps the track and moves the playhead to the tapped bar.
+// [DAW-TRANSPORT-PLAYHEAD] A ruler tap moves Play's start marker to the tapped bar and keeps the track.
 playheadSet (editor, action, bar) = match action
-    synth::PickTrack index at =>
-        expect (index, editor.track)
+    synth::MoveStart at =>
         expect (at, bar)
-        expect ((synth::DawSession::pickedAt (editor, index, at)).rollBar, bar)
-    _ => expect ("another action", "PickTrack")
+        moved = (synth::DawSession::started (editor, at)).stepStore
+        expect ([moved.playStart, moved.track], [bar, editor.track])
+    _ => expect ("another action", "MoveStart")
 
 // A lane tap at `x`, `y` that moves the playhead to `bar`.
 laneSetsBar (editor, x, y, bar) = succeeds (synth::TimelineView::laneAt (editor, x, y), \action => playheadSet (editor, action, bar))
@@ -924,7 +924,7 @@ timingJourney () =
     stored = synth::DawSession::loaded (Drive::holding changed, path)
     expect (stored.song.tempo, 96.5)
     expect ([stored.song.meterTop, stored.song.meterBottom], [6, 8])
-    expect (synth::DawSession::rangeStart (stored(rollBar = 2)), 6.0)
+    expect (synth::DawSession::rangeStart (stored(playStart = 2)), 6.0)
     cancelled = Drive::press (Drive::choose (prismTap (changed, "Edit meter"), "Time signature", "3/4"), "Cancel")
     expect ((Drive::holding cancelled).song.meterTop, 6)
 
@@ -1042,8 +1042,8 @@ rangeJourney ready =
     streams (synth::DawSession::play shorter.stepStore, "Playing bars 2–3 of Bridge.", "4.0", "8.0", "live")
     forEachList ([1, 0, 9], \bar => expect (synth::DawSession::rangeEnd (synth::DawSession::ended (ready, bar)).stepStore, 13.0))
     short = shorter.stepStore
-    expect (synth::DawSession::rangeEnd (short(rollBar = 2)), 12.0)
-    expect (synth::DawSession::rangeEnd (short(rollBar = 3)), 13.0)
+    expect (synth::DawSession::rangeEnd (short(playStart = 2)), 12.0)
+    expect (synth::DawSession::rangeEnd (short(playStart = 3)), 13.0)
     // Either marker is taken anywhere down its line, in the ruler or the lanes, and moves alone.
     forEachList ([{ x = 1092.0, y = 212.0 }, { x = 1092.0, y = 200.0 }, { x = 1090.0, y = 400.0 }], \point =>
         succeeds (synth::TimelineView::laneAt (ready, point.x, point.y), \action => endMoved (ready, action, 3)))
@@ -1064,7 +1064,7 @@ rangeJourney ready =
     expect (synth::TimelineGeometry::endBar (10.0, 1.0, 4.0), 3.0)
     expect (synth::TimelineGeometry::grabs (100.0, 106.0), true)
     expect (synth::TimelineGeometry::grabs (100.0, 106.5), false)
-    said (synth::DawSession::play (ready(rollBar = 4)), "", "The start marker is at the song's end; move it back to play.")
+    said (synth::DawSession::play (ready(playStart = 4)), "", "The start marker is at the song's end; move it back to play.")
     playing = synth::DawSession::play ready
     said (synth::DawSession::ended (playing.stepStore, 3), "daw-song:live:${liveFolder ()}", "Stop first to move the end marker.")
     said (synth::DawSession::started (playing.stepStore, 0), "daw-song:live:${liveFolder ()}", "Stop first to move the start marker.")
@@ -1182,7 +1182,7 @@ zoomShows (editor, factor, zoom, beats, lane) =
 // and the ruler follow it; the song, the playhead, the track and the undo history stay. Moving the playhead out
 // of view brings the lanes with it.
 zoomJourney lined =
-    at = lined(rollBar = 1, laneTraces = synth::TimelineView::traces (lined.song, 1.0, 0.0, 0))
+    at = lined(rollBar = 1, playStart = 1, laneTraces = synth::TimelineView::traces (lined.song, 1.0, 0.0, 0))
     expect (synth::TimelineView::shownBeats at, 16.0)
     expect (synth::TimelineView::shownFrom at, 0.0)
     expect (firstTrace at, 4)
@@ -1207,11 +1207,11 @@ zoomJourney lined =
     expect (fitted.laneStart, 0.0)
     expect (fitted.rollBar, 1)
     // The last note starts at beat 12: once the lanes reach it, its trace is drawn, cut at the right edge.
-    withLastNote = synth::TimelineView::following (closer(rollBar = 3))
+    withLastNote = synth::TimelineView::following (closer(playStart = 3))
     expect (withLastNote.laneStart, 8.0)
     expect (firstTrace withLastNote, 2)
-    expect ((synth::TimelineView::following (closer(rollBar = 0))).laneStart, 0.0)
-    expect ((synth::TimelineView::following (closer(rollBar = 1))).laneStart, 4.0)
+    expect ((synth::TimelineView::following (closer(playStart = 0))).laneStart, 0.0)
+    expect ((synth::TimelineView::following (closer(playStart = 1))).laneStart, 4.0)
     expect ((synth::TimelineView::following at).laneStart, 0.0)
     expect (synth::TimelineGeometry::laneX (6.0, 2.0, 8.0), 645.0)
     expect (synth::TimelineGeometry::laneEdge 100.0, 198.0)
@@ -1244,16 +1244,19 @@ barLineJourney ready =
     lengths (synth::Header::overview lined.song, 4, synth::Header::overview (timeline []), 1)
     expect (synth::TimelineGeometry::playableBar (-1.0, 16.0, 4.0), 0.0)
     expect (synth::TimelineGeometry::playableBar (8.0, 0.0, 4.0), 0.0)
-    expect (synth::Header::songAction (ready(track = 0), 3), synth::PickTrack(index = 0, bar = 0))
+    // Return to start moves Play's start marker to bar 1 and pages the piano roll there; the track stays.
+    expect (synth::Header::songAction (ready(track = 0), 3), synth::MoveStart(bar = 0))
+    returned = (synth::DawSession::started (ready(track = 0, playStart = 3, rollBar = 2), 0)).stepStore
+    expect ([returned.playStart, returned.track, returned.rollBar], [0, 0, 0])
     expect (synth::Header::songAction (ready, 4), synth::PlaySong)
 
 // [DAW-TRANSPORT-STOP-IDLE]
 songStopAt editor = synth::EditorView::areaAt (synth::Header::songAreas editor, 1390.0 + synth::Header::shift editor, 100.0)
 
 stopJourney ready =
-    idle = ready(rollBar = 4, selectedNote = 1)
+    idle = ready(playStart = 4, selectedNote = 1)
     stopped = synth::DawSession::stop idle
-    expect (stopped.stepStore.rollBar, 4)
+    expect (stopped.stepStore.playStart, 4)
     expect (stopped.stepStore.selectedNote, 1)
     expect (stopped.stepStore.message, idle.message)
     expect (songStopAt idle, -1)
@@ -1278,7 +1281,7 @@ transportJourney () =
     _made = makeDir (transportRoot ())
     _bin = makeDir "${transportRoot ()}/bin"
     editor = synth::EditorState::initial ()
-    ready = editor(song = song (), songPath = "${transportRoot ()}/song.json", renderer = "${transportRoot ()}/bin/daw", workerPath = "${transportRoot ()}/bin/worker", rollBar = 1)
+    ready = editor(song = song (), songPath = "${transportRoot ()}/song.json", renderer = "${transportRoot ()}/bin/daw", workerPath = "${transportRoot ()}/bin/worker", rollBar = 1, playStart = 1)
     stopJourney ready
     expect (ready.playBeat, -1.0)
     // [DAW-TRANSPORT-REFUSAL] Each refusal names its own cause and keeps the project.
@@ -1297,8 +1300,8 @@ transportJourney () =
     followJourney first.stepStore
     // The start marker moves while the song plays; the stream launched is the one that ends.
     moved = first.stepStore
-    said (synth::DawSession::completed (moved(rollBar = 5), "daw-song:other", rendererSaid ""), "daw-song:live:${liveFolder ()}", "Playing bars 2–4 of Bridge.")
-    over = synth::DawSession::completed (moved(rollBar = 5), "daw-song:live:${liveFolder ()}", rendererSaid "")
+    said (synth::DawSession::completed (moved(playStart = 5), "daw-song:other", rendererSaid ""), "daw-song:live:${liveFolder ()}", "Playing bars 2–4 of Bridge.")
+    over = synth::DawSession::completed (moved(playStart = 5), "daw-song:live:${liveFolder ()}", rendererSaid "")
     said (over, "", "Bridge finished.")
     halted (over, [ui::Animate(animated = false)])
     succeeds (writeFile "${liveFolder ()}/fault.txt" "Track keys: unknown patch setting.\n", \_ => expect (true, true))
@@ -1308,7 +1311,7 @@ transportJourney () =
     streams (again, "Playing bars 2–4 of Bridge.", "4.0", "9.0", "live")
     expect (readFile "${liveFolder ()}/fault.txt" ?: "unread", "")
     resumed = again.stepStore
-    playing = synth::DawSession::completed (resumed(rollBar = 5), "daw-song:other", rendererSaid "")
+    playing = synth::DawSession::completed (resumed(playStart = 5), "daw-song:other", rendererSaid "")
     stopped = synth::DawSession::stop (framedAfter (playing.stepStore, deviceSaid (48000, 0, "true"), 0.25))
     said (stopped, "", "Stopped.")
     halted (stopped, [ui::Cancel(cancelled = "daw-song:live:${liveFolder ()}"), ui::Animate(animated = false)])
@@ -1318,9 +1321,14 @@ transportJourney () =
     held = stopped.stepStore
     home = synth::DawSession::stop stopped.stepStore
     said (home, "", stopped.stepStore.message)
-    expect (stopped.stepStore.rollBar, 5)
-    expect (home.stepStore.rollBar, 5)
+    expect (stopped.stepStore.playStart, 5)
+    expect (home.stepStore.playStart, 5)
     laneSetsBar (ready, 205.0, 205.0, 0)
+    // [DAW-TRANSPORT-RANGE] Selecting a track pages the piano roll to it; Play's start marker stays where it was.
+    marked = ready(playStart = 2, rollBar = 2)
+    forEachList ([synth::DawSession::picked (marked, 0), synth::DawSession::pickedAt (marked, 0, 0), synth::DawSession::focused (marked(track = -1), 0)], \chosen =>
+        expect ([chosen.playStart, chosen.track], [2, 0]))
+    expect ((synth::DawSession::pickedAt (marked, 0, 0)).rollBar, 0)
     laneSetsBar (ready, 1085.0, 200.0, synth::DawSession::bar (ready.song, daw::Arrangements::beats ready.song))
     failsWith (synth::TimelineView::laneAt (ready, 197.0, 205.0), "No lane here.")
     barLineJourney ready

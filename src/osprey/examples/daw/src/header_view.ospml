@@ -81,7 +81,7 @@ module Header
 
     // The position shown: the beat sounding while the song plays, else the start marker.
     position editor = match editor.playBeat < 0.0
-        true => "${threeDigits (satAdd editor.rollBar 1)}.01.01"
+        true => "${threeDigits (satAdd editor.playStart 1)}.01.01"
         false => "${threeDigits (satAdd (DawSession::bar (editor.song, editor.playBeat)) 1)}.0${floatToInt (TimelineGeometry::beatInBar (editor.playBeat, DawSession::measure editor.song, DawSession::unit editor.song)) ?: 1}.01"
 
     songTransport editor =
@@ -194,7 +194,7 @@ module Header
         false => match length editor.song.tracks
             0 => OpenTrack(index = -2)
             _ => match index
-                3 => PickTrack(index = editor.track, bar = 0)
+                3 => MoveStart(bar = 0)
                 4 => PlaySong
                 5 => ToggleLoop
                 8 => StopSong

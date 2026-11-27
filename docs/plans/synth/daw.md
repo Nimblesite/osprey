@@ -21,7 +21,6 @@ The [daw specification](../../specs/synth/Perception.md#perception-studio-the-da
 - [ ] Loop toggles and the end marker moves while the song plays (today both say "Stop first") [DAW-TRANSPORT-LOOP] [DAW-TRANSPORT-RANGE].
 - [ ] A play that hits a track which cannot render names the track and module in plain words [DAW-TRANSPORT-REFUSAL].
 - [ ] **Seen by the user in a window with steady audio**: Play starts at the cursor and plays to the end [DAW-TRANSPORT-RANGE]; the timeline follows the playback [DAW-TRANSPORT-FOLLOW]; Loop plays the range for ever, with L in all three keymaps [DAW-TRANSPORT-LOOP]; the start and end markers drag independently (journey test owed) [DAW-TRANSPORT-RANGE]; piano-roll keys sound through the track's patch (journey test owed) [DAW-ROLL-KEYS]; Play's refusals name the missing renderer or song while the project is kept ([issue 425](https://github.com/Nimblesite/osprey/issues/425)) [DAW-TRANSPORT-REFUSAL].
-- [ ] Play's start gets its own field: selecting a track no longer moves the start marker (`rollBar` is both the piano roll's bar and Play's start; 18 test lines read it) [DAW-TRANSPORT-RANGE].
 - [ ] Playhead in beats, saved in the project file [DAW-TRANSPORT-TIMELINE].
 - [ ] The renderer natively verified on the FerroUI host with the codex project [DAW-RENDER].
 
