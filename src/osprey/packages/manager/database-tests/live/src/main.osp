@@ -64,21 +64,21 @@ fn loginFlow() = {
     let other = "'sha256:' || repeat('c',64)"
     let save = "EXECUTE start_flow(${flowState},${browser},'fixture-envelope');"
     let claim = "EXECUTE claim_flow(${flowState},${browser});"
-    let prepare = "PREPARE start_flow(text,text,text) AS " + LoginFlow::store + "; PREPARE claim_flow(text,text) AS " + LoginFlow::claim + ";"
+    let prepare = "PREPARE start_flow(text,text,text) AS " + LoginFlow::store() + "; PREPARE claim_flow(text,text) AS " + LoginFlow::claim() + ";"
     checkAll("pending login is browser-bound, expires, and can be consumed once", [
         answer(prepare + save + "EXECUTE claim_flow(${flowState},${other}); EXECUTE claim_flow(${other},${browser}); SELECT count(*) FROM pending_logins;" + claim + claim + "SELECT count(*) FROM pending_logins", "1\nfixture-envelope\n0"),
         answer(prepare + save + "UPDATE registry.pending_logins SET created_at=statement_timestamp()-interval '10 minutes';" + claim, ""),
         refused(prepare + save + save, "23505"),
         refused(prepare + "EXECUTE start_flow('bad',${browser},'fixture-envelope');", "23514"),
-        answer(prepare + save + "CREATE ROLE login_fixture_reader NOSUPERUSER NOBYPASSRLS; GRANT USAGE ON SCHEMA registry TO login_fixture_reader; GRANT SELECT,DELETE ON pending_logins TO login_fixture_reader; SET LOCAL ROLE login_fixture_reader;" + claim + "RESET ROLE;" + claim, "fixture-envelope")
+        answer(prepare + save + "CREATE ROLE login_fixture_reader NOSUPERUSER NOBYPASSRLS; GRANT USAGE ON SCHEMA registry TO login_fixture_reader; GRANT SELECT,DELETE ON pending_logins TO login_fixture_reader; SET LOCAL registry.login_state = ''; SET LOCAL registry.login_browser = ''; SET LOCAL ROLE login_fixture_reader;" + claim + "RESET ROLE;" + claim, "fixture-envelope")
     ])
 }
 
 /// Separate connections race for one committed row. The winner keeps its row lock until commit.
 fn simultaneousCallbacks() = {
     let keys = "'sha256:' || repeat('d',64),'sha256:' || repeat('e',64)"
-    let start = "PREPARE start_flow(text,text,text) AS " + LoginFlow::store + "; EXECUTE start_flow(${keys},'fixture-envelope');"
-    let consume = "BEGIN; PREPARE claim_flow(text,text) AS " + LoginFlow::claim + "; EXECUTE claim_flow(${keys}); SELECT pg_sleep(0.2); COMMIT;"
+    let start = "PREPARE start_flow(text,text,text) AS " + LoginFlow::store() + "; EXECUTE start_flow(${keys},'fixture-envelope');"
+    let consume = "BEGIN; PREPARE claim_flow(text,text) AS " + LoginFlow::claim() + "; EXECUTE claim_flow(${keys}); SELECT pg_sleep(0.2); COMMIT;"
     let client = fixtureClient + Host::shellWord(consume)
     let result = onFixture(fixtureClient + Host::shellWord(start) + " && { " + client + " & first=$!; " + client + " & second=$!; wait \"$first\" && wait \"$second\"; }")
     checkAll("exactly one concurrent callback receives the verifier", [result.status == 0, trim(result.stdout) == "fixture-envelope"])
@@ -190,7 +190,42 @@ fn sessionLifetimeChecks() = checkAll("old, suspended, revoked and rotated sessi
     sessionDenied("CREATE ROLE session_outsider NOSUPERUSER NOBYPASSRLS; GRANT USAGE ON SCHEMA registry TO session_outsider; GRANT SELECT,UPDATE ON browser_sessions,auth_bindings,principals TO session_outsider; SET LOCAL ROLE session_outsider;")
 ])
 
+let roleSetup = "CREATE ROLE registry_login_runtime LOGIN NOSUPERUSER NOBYPASSRLS; GRANT USAGE ON SCHEMA registry TO registry_login_runtime; GRANT INSERT(state_digest,browser_digest,verifier_envelope,created_at), SELECT(state_digest,browser_digest,verifier_envelope,created_at), DELETE ON registry.pending_logins TO registry_login_runtime;"
+let loginClient = "psql -XqAt --no-password -U registry_login_runtime -v ON_ERROR_STOP=1"
+
+fn loginRun(script) = match script {
+    Success { value } => onFixture("printf '%s' " + Host::shellWord(value) + " | " + loginClient)
+    Error { message } => Host::Run { status: 1, stdout: "", stderr: message }
+}
+
+fn countWithScope(flowState, browser) = Database::loginScript(flowState, browser,
+    "SELECT count(*) FROM registry.pending_logins WHERE state_digest <> " + Database::decoded(1),
+    ["sha256:" + (repeat("0",64) ?: "")])
+
+fn restrictedLoginJourney() = {
+    let initialized = onFixture(fixtureClient + Host::shellWord(roleSetup))
+    let flowState = "sha256:" + (repeat("a",64) ?: "")
+    let opener = "sha256:" + (repeat("b",64) ?: "")
+    let stranger = "sha256:" + (repeat("c",64) ?: "")
+    let envelope = "sealed-fixture-envelope"
+    let wrote = loginRun(LoginFlow::storeScript(flowState, opener, envelope))
+    let scoped = loginRun(Success { value: countWithScope(flowState, opener) })
+    let hidden = loginRun(Success { value: countWithScope(flowState, stranger) })
+    let mismatch = loginRun(LoginFlow::claimScript(flowState, stranger))
+    let consumed = loginRun(LoginFlow::claimScript(flowState, opener))
+    let replay = loginRun(LoginFlow::claimScript(flowState, opener))
+    checkAll("actual pre-authentication connection consumes only the scoped verifier", [
+        initialized.status == 0, wrote.status == 0,
+        scoped.status == 0 && trim(scoped.stdout) == "1",
+        hidden.status == 0 && trim(hidden.stdout) == "0",
+        mismatch.status == 0 && trim(mismatch.stdout) == "",
+        consumed.status == 0 && trim(consumed.stdout) == envelope,
+        replay.status == 0 && trim(replay.stdout) == ""
+    ])
+}
+
 fn suites() = {
+    test("restricted pre-authentication connection", restrictedLoginJourney)
     test("live browser session identity and logout", stableSessionChecks)
     test("live browser session expiry and revocation", sessionLifetimeChecks)
     test("browser sessions start closed", fn() => checkAll("browser sessions use forced row security", [answer("SELECT relrowsecurity AND relforcerowsecurity FROM pg_class WHERE oid = 'registry.browser_sessions'::regclass", "t")]))

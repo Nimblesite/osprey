@@ -244,7 +244,25 @@ tables:
     primaryKey: { columns: [state_digest] }
     indexes:
       - { name: ix_pending_logins_created_at, columns: [created_at] }
-    rowLevelSecurity: { enabled: true, forced: true, policies: [] }
+    rowLevelSecurity:
+      enabled: true
+      forced: true
+      policies:
+        - name: login_select
+          permissive: true
+          operations: [Select]
+          roles: []
+          using: &login_scope "current_setting('session_authorization') = 'registry_login_runtime' AND state_digest = current_setting('registry.login_state') AND browser_digest = current_setting('registry.login_browser') AND created_at <= statement_timestamp() AND created_at > statement_timestamp() - interval '10 minutes'"
+        - name: login_claim
+          permissive: true
+          operations: [Delete]
+          roles: []
+          using: *login_scope
+        - name: login_store
+          permissive: true
+          operations: [Insert]
+          roles: []
+          withCheck: *login_scope
 
   # Materialized only by the trusted publication pipeline after evidence verification.
   - name: public_catalog

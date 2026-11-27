@@ -26,7 +26,7 @@ module Database {
     /// The binding contains only lowercase hex between constant delimiters.
     export fn binding(values) = "\\bind " + join(mapList(values, parameter), " ") + " \\g\n"
 
-    fn decoded(index) = "convert_from(decode($${index}, 'hex'), 'UTF8')"
+    export fn decoded(index) = "convert_from(decode($${index}, 'hex'), 'UTF8')"
 
     fn contextSql() = "SELECT " + join(mapList(range(0, 5) |> toList, fn(i) =>
             "set_config('registry.${listGet(["principal_id", "session_id", "organization_id", "auth_subject", "authority_epoch"], i) ?: ""}', ${decoded(i + 1)}, true)"), ", ")
@@ -74,10 +74,19 @@ module Database {
     /// The anonymous API can read only the current verified public projection.
     export let catalogSelect = "SELECT body FROM registry.public_catalog WHERE id=1 AND verified_at<=statement_timestamp() AND expires_at>statement_timestamp()"
     export fn catalogScript() = "BEGIN READ ONLY; SET LOCAL search_path=pg_catalog; SET LOCAL statement_timeout='3s';\n\\o /dev/null\n" + roleGuard + "SELECT 1/((current_user='registry_catalog_reader')::int);\n\\o\n" + catalogSelect + "; COMMIT;\n"
-    export fn publicCatalog() = {
-        let config = Connection { service: "catalog", serviceFile: "/run/catalog-service/pg_service.conf", passfile: "/dev/null", rootCertificate: "/run/catalog-ca/ca.pem" }
-        executed(config, catalogScript())
-    }
+    fn mountedConnection(service) = Connection { service: service, serviceFile: "/run/catalog-service/pg_service.conf", passfile: "/dev/null", rootCertificate: "/run/catalog-ca/ca.pem" }
+
+    export fn publicCatalog() = executed(mountedConnection("catalog"), catalogScript())
+
+    /// No registry principal exists before login. Bind this transaction to one state/browser pair.
+    export fn loginScript(flowState, browser, statement, values) =
+        "BEGIN; SET LOCAL search_path=pg_catalog; SET LOCAL statement_timeout='3s'; SET LOCAL lock_timeout='2s';\n\\o /dev/null\n"
+        + roleGuard + "SELECT 1/((current_user='registry_login_runtime')::int);\n"
+        + "SELECT set_config('registry.login_state', " + decoded(1) + ", true), set_config('registry.login_browser', " + decoded(2) + ", true) "
+        + binding([flowState, browser]) + "\\o\n" + statement + " " + binding(values) + "COMMIT;\n"
+
+    /// Login storage runs as its own non-owner principal. Raw driver errors stay private.
+    export fn login(source) = executed(mountedConnection("login"), source)
 
     fn run(config, ctx, statement, values) = match script(ctx, statement, values) {
         Error { message } => Error { message: message }
