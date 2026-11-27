@@ -91,7 +91,7 @@ def is_stop(cp):
     """Whether a code point ends the current subpattern."""
     return cp == 41 or cp == 124
 
-def parse_alt(cps, i, n, flags, gs) -> Result[Program.PRes, str]:
+def parse_alt(cps, i, n, flags, gs):
     """Parse `seq (| seq)*`."""
     return andThen(parse_seq(cps, i, n, flags, gs), lambda value: alt_after(cps, value, n, flags))
 

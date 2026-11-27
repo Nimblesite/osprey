@@ -33,13 +33,13 @@ module Use {
 
     // ---- the key of a checkout and its place in the graph ----
 
-    fn keyOfLocal(mf: ManifestModel::Manifest) = Maybe::fold(mf.publication, Error { message: noPackageCode }, fn(p: ManifestModel::Publication) => Success { value: p.package })
+    fn keyOfLocal(mf: ManifestModel::Manifest) = Maybe::fold(mf.publication, Error { message: noPackageCode }, fn(p) => Success { value: p.package })
 
     /// The package key a checkout's `[package]` declares, or `use.no-package`.
     export fn localKey(project, path) = andThen(perform Host::Files.read("${Project::localDirAt(project, path)}/osprey.toml"), fn(value) => andThen(Manifest::accepted(Manifest::parse(value)), fn(value) => keyOfLocal(value)))
 
     fn lockedKeys(project) = match Overlay::activeLockAt(project) {
-        Success { value } => mapList(mapList(Lockfile::packagesOf(value), Lockfile::releaseOf), fn(id: Identity::ReleaseId) => id.key)
+        Success { value } => mapList(mapList(Lockfile::packagesOf(value), Lockfile::releaseOf), fn(id) => id.key)
         Error => []
     }
 
@@ -68,7 +68,7 @@ module Use {
     }
 
     /// The epoch the root requires of `key`, 0 when the root has no edge to it.
-    fn requiredEpoch(manifest, key) = foldList(mapList(ManifestModel::edgesOf(manifest), ManifestModel::requirementOf), 0, fn(acc, r: ManifestModel::Requirement) => if Names::same(r.package, key) { r.epoch } else { acc })
+    fn requiredEpoch(manifest, key) = foldList(mapList(ManifestModel::edgesOf(manifest), ManifestModel::requirementOf), 0, fn(acc, r) => if Names::same(r.package, key) { r.epoch } else { acc })
 
     fn baselineFromListing(base, key, epoch) = match Listing::fetch(base) {
         Error => Maybe::none()

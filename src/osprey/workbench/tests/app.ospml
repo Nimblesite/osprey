@@ -106,6 +106,8 @@ seenIn (d, held) = d(drivenSurface = held, drivenSeen = Read::seen (Surfaces::se
 
 (** Drives the workbench through the typed host boundary, as a host does. *)
 module Drive
+    lessonsTexts = "lessons:texts"
+
     read path = FixtureFiles::read path
 
     file (path, result) = match result
@@ -119,7 +121,7 @@ module Drive
     slugs () = ["what-is-a-proof", "what-is-a-solution", "what-is-a-solver", "and-swap", "either-way", "not-and-contradiction", "navier-stokes"]
 
     (** The host's slices for a fresh session: the lesson catalogue and texts, saved progress and the workspace imports. *)
-    export held () = JsonObject [JsonMember "lessons:catalogue" (files [file ("lessons/catalogue.json", read "catalogue.json")]), JsonMember "lessons:texts" (files (mapList (slugs (), \slug => file ("lessons/" + slug + ".json", read (slug + ".json"))))), JsonMember "lessons:progress" (JsonString "{\"completed\":[\"and-swap/judge-wrong-order\"]}")]
+    export held () = JsonObject [JsonMember "lessons:catalogue" (files [file ("lessons/catalogue.json", read "catalogue.json")]), JsonMember lessonsTexts (files (mapList (slugs (), \slug => file ("lessons/" + slug + ".json", read (slug + ".json"))))), JsonMember "lessons:progress" (JsonString "{\"completed\":[\"and-swap/judge-wrong-order\"]}")]
 
     program () = App::program ()
 
@@ -249,7 +251,6 @@ module Drive
     // The first component of a shape in one region's tree, as the typed action it delivers; a missing region or tree rests on the same default.
     editorPlace (case, key) = at (case, key, \found => editorIn found.snapshotValue ?: workbench::FormulaPlace "", workbench::FormulaPlace "")
 
-    editorIn : ui::Node<workbench::Act> -> Result<workbench::Act, string>
     editorIn node = match node
         ui::Editor _ _ _ _ _ _ _ place => Success(value = place)
         _ => searchChildren (node, editorIn)
@@ -303,9 +304,9 @@ module Drive
 
     (** Two real lesson files deliberately share a challenge id; the host supplies this slice on every event. *)
     export shared case =
-        current = Doc::text (case.caseHeld, "lessons:texts")
+        current = Doc::text (case.caseHeld, lessonsTexts)
         changed = replace current "write-identity" "state-swapped-goal" ?: current
-        case(caseHeld = JsonObject [JsonMember "lessons:texts" (JsonString changed)])
+        case(caseHeld = JsonObject [JsonMember lessonsTexts (JsonString changed)])
 
     (** A press of `label` while the shared challenge slice is held. *)
     export sharedPress (case, label) = press (shared case, "", label)
@@ -325,7 +326,7 @@ module Drive
         Error _ => case
 
     (** A session with the catalogue and every lesson loaded. *)
-    export loaded () = completed (completed (started (), "lessons:catalogue", "{}"), "lessons:texts", "{}")
+    export loaded () = completed (completed (started (), "lessons:catalogue", "{}"), lessonsTexts, "{}")
 
     // ---- reading the tree the app drew ----
     (** The component kind of `node`, as the shared vocabulary names it ([UI-COMPONENTS]). *)
@@ -446,11 +447,14 @@ module Drive
         ui::Disclosure title expanded _ items => tagged ("disclosure", [text ("title", title), flag ("expanded", expanded), eventField (), childrenJson items])
         _ => JsonNull
 
+    // A picker's choices, each an option carrying its label and key.
+    optionJson choice = tagged ("option", [text ("label", choice.choiceLabel), text ("key", choice.choiceKey)])
+
     controlTree node = match node
         ui::Button label symbol role enabled _ => tagged ("button", [text ("label", label), text ("symbol", symbol), text ("role", roleName role), flag ("enabled", enabled), eventField ()])
         ui::Field label value prompt _ _ _ _ => tagged ("field", [text ("label", label), text ("value", value), text ("prompt", prompt), eventField ()])
         ui::Toggle label on _ => tagged ("toggle", [text ("label", label), flag ("on", on), eventField ()])
-        ui::Picker label choices selected _ => tagged ("picker", [text ("label", label), text ("selected", selected), eventField (), member ("children", JsonArray (mapList (choices, \choice => tagged ("option", [text ("label", choice.choiceLabel), text ("key", choice.choiceKey)]))))])
+        ui::Picker label choices selected _ => tagged ("picker", [text ("label", label), text ("selected", selected), eventField (), member ("children", JsonArray (mapList (choices, optionJson)))])
         ui::Alert title message _ _ => tagged ("alert", [text ("title", title), text ("text", message), eventField ()])
         ui::Editor label value _ cursor epoch _ _ _ => tagged ("editor", [text ("label", label), text ("value", value), whole ("caret", cursor), whole ("focusEpoch", epoch), eventField (), whole ("placeEvent", 0)])
         ui::Board _ _ _ backdrop _ _ _ _ _ => tagged ("board", [text ("backdrop", backdrop), eventField ()])

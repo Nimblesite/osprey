@@ -24,7 +24,22 @@ module Fitting
 
     invalidValues () = Error(message = InvalidConfiguration(detail = "Fitted values must match the parameters one-to-one and lie in [0, 1]."))
 
-    (** Recheck each target against the current patch before adopting its normalised value. *)
+    (** Recheck each target against the current patch before adopting its normalised value.
+    # Examples
+    ```osprey
+    gain = FitParameter(node = 1, key = "gain", minimum = 0.0, maximum = 1.0)
+    none : List<FitParameter>
+    none = []
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => Fitting::applied (Graphs::empty, none, []))} ${arithmetic (\() => Fitting::applied (Graphs::empty, [gain], [2.0]))}"
+    ```
+    ```output
+    Success({ nodes: [], cables: [] }) Error(InvalidConfiguration { detail: "Fitted values must match the parameters one-to-one and lie in [0, 1]." })
+    ```
+    *)
     export applied (graph, parameters, values) = match parameters
         [] => match values
             [] => Success(value = graph)
@@ -38,7 +53,21 @@ module Fitting
 
     windowed samples = Sequences::mapIndexed (samples, \(index, value) => value * SpectralMath::hann (toFloat index, toFloat (length samples)))
 
-    (** Hann-windowed power spectrum of a power-of-two block. *)
+    (** Hann-windowed power spectrum of a power-of-two block.
+    # Examples
+    ```osprey
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    silence : List<float>
+    silence = []
+    print "${arithmetic (\() => Fitting::spectrum silence)}"
+    ```
+    ```output
+    Error(InvalidConfiguration { detail: "FFT size must be a power of two from 64 to 4096." })
+    ```
+    *)
     export spectrum samples = match Ffts::forward (windowed samples)
         Error why => Error(message = why)
         Success bins => Success(value = mapList (bins, \b => SpectralMath::power (b.re, b.im)))
@@ -50,7 +79,20 @@ module Fitting
 
     loss (candidate, target) = foldList (Sequences::combined (candidate, target, \(c, t) => FitMath::binLoss (c, t)), 0.0, \(sum, value) => sum + value) / toFloat (length target)
 
-    (** Render normalised values and score them against target powers. *)
+    (** Render normalised values and score them against target powers.
+    # Examples
+    ```osprey
+    config = FitConfig(parameters = [], seed = 1, evaluations = 8, tolerance = 0.001)
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => Fitting::evaluate (Graphs::empty, config, [0.0], [0.5]))}"
+    ```
+    ```output
+    Error(InvalidConfiguration { detail: "Fitted values must match the parameters one-to-one and lie in [0, 1]." })
+    ```
+    *)
     export evaluate (graph, config, target, values) = match applied (graph, config.parameters, values)
         Error why => Error(message = why)
         Success candidate => match rendered (candidate, satMul (satSub (length target) 1) 2)
@@ -61,7 +103,22 @@ module Fitting
 
     valid (config, target) = length config.parameters >= 1 && length config.parameters <= 16 && config.seed >= 1 && config.seed <= 2147483646 && config.evaluations >= 1 && config.evaluations <= 10000 && config.tolerance > 0.0 && config.tolerance < 1.0 && Ffts::valid (length target)
 
-    (** Validate the job and score the graph's current values; the target is a power-of-two block at 48 kHz. *)
+    (** Validate the job and score the graph's current values; the target is a power-of-two block at 48 kHz.
+    # Examples
+    ```osprey
+    config = FitConfig(parameters = [], seed = 1, evaluations = 8, tolerance = 0.001)
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    silence : List<float>
+    silence = []
+    print "${arithmetic (\() => Fitting::start (Graphs::empty, config, silence))}"
+    ```
+    ```output
+    Error(InvalidConfiguration { detail: "A fit needs 1-16 parameters, a seed, 1-10000 evaluations, a tolerance in (0, 1) and a 64-4096 sample target." })
+    ```
+    *)
     export start (graph, config, target) = match valid (config, target)
         false => Error(message = InvalidConfiguration(detail = "A fit needs 1-16 parameters, a seed, 1-10000 evaluations, a tolerance in (0, 1) and a 64-4096 sample target."))
         true => match spectrum target
@@ -86,7 +143,17 @@ module Fitting
     // Draw one candidate: uniform while exploring, then a seeded step around the best; one seed per value.
     proposed (config, search) = foldList (search.best.values, drawn ([], search.seed), \(outcome, value) => perturbation (config, search, outcome, value))
 
-    (** Whether the search has spent its budget or its step fell below tolerance. *)
+    (** Whether the search has spent its budget or its step fell below tolerance.
+    # Examples
+    ```osprey
+    config = FitConfig(parameters = [], seed = 1, evaluations = 8, tolerance = 0.001)
+    search = FitSearch(best = FitCandidate(values = [], loss = 0.0), step = 0.25, seed = 1.0, evaluations = 1, history = [0.0])
+    print "${Fitting::finished (config, search)} ${Fitting::finished (config, search(evaluations = 8))} ${Fitting::finished (config, search(step = 0.0001))}"
+    ```
+    ```output
+    false true true
+    ```
+    *)
     export finished (config, search) = search.evaluations >= config.evaluations || search.step < config.tolerance
 
     // Exploration keeps the step; refinement adapts it by the one-fifth rule.
@@ -99,7 +166,23 @@ module Fitting
         false => FitSearch(best = search.best, step = step (config, search, 0.0), seed = draw.seed, evaluations = satAdd search.evaluations 1, history = listAppend search.history search.best.loss)
 
     (** One evaluation: uniform exploration for the first quarter of the budget, then a (1+1)-ES with the
-        one-fifth rule; history records the best loss after each. *)
+        one-fifth rule; history records the best loss after each.
+    # Examples
+    ```osprey
+    config = FitConfig(parameters = [], seed = 1, evaluations = 8, tolerance = 0.001)
+    search = FitSearch(best = FitCandidate(values = [], loss = 0.0), step = 0.25, seed = 1.0, evaluations = 1, history = [0.0])
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    silence : List<float>
+    silence = []
+    print "${arithmetic (\() => Fitting::advance (Graphs::empty, config, silence, search))}"
+    ```
+    ```output
+    Error(InvalidConfiguration { detail: "FFT size must be a power of two from 64 to 4096." })
+    ```
+    *)
     export advance (graph, config, target, search) = match spectrum target
         Error why => Error(message = why)
         Success powers =>
@@ -112,10 +195,39 @@ module Fitting
             true => Success(value = FitResult(best = search.best, evaluations = search.evaluations, history = search.history, converged = search.step < config.tolerance))
             false => running (graph, config, target, advance (graph, config, target, search))
 
-    (** Run to completion. Failure returns an error and leaves the caller's graph untouched. *)
+    (** Run to completion. Failure returns an error and leaves the caller's graph untouched.
+    # Examples
+    ```osprey
+    config = FitConfig(parameters = [], seed = 1, evaluations = 8, tolerance = 0.001)
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    silence : List<float>
+    silence = []
+    print "${arithmetic (\() => Fitting::fit (Graphs::empty, config, silence))}"
+    ```
+    ```output
+    Error(InvalidConfiguration { detail: "A fit needs 1-16 parameters, a seed, 1-10000 evaluations, a tolerance in (0, 1) and a 64-4096 sample target." })
+    ```
+    *)
     export fit (graph, config, target) = running (graph, config, target, start (graph, config, target))
 
-    (** Explicitly adopt a result: a new, revalidated graph; the original stays available for rejection. *)
+    (** Explicitly adopt a result: a new, revalidated graph; the original stays available for rejection.
+    # Examples
+    ```osprey
+    config = FitConfig(parameters = [FitParameter(node = 1, key = "gain", minimum = 0.0, maximum = 1.0)], seed = 1, evaluations = 8, tolerance = 0.001)
+    result = FitResult(best = FitCandidate(values = [2.0], loss = 0.0), evaluations = 1, history = [0.0], converged = false)
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => Fitting::apply (Graphs::empty, config, result))}"
+    ```
+    ```output
+    Error(InvalidConfiguration { detail: "Fitted values must match the parameters one-to-one and lie in [0, 1]." })
+    ```
+    *)
     export apply (graph, config, result) =
         use candidate <- Outcomes::carried (applied (graph, config.parameters, result.best.values))
         use plan <- Renderer::validated (candidate, InvalidConfiguration(detail = "The fitted graph failed validation; keep the original."))

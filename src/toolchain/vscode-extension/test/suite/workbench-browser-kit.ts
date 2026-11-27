@@ -10,7 +10,7 @@ import type { Frame } from "playwright-core";
 import { ColorThemeKind, commands, window, workspace, type WebviewPanel } from "vscode";
 import * as Runner from "../../client/src/osprey-ui/wasi-runner";
 import type { NativeTouch } from "../../client/src/osprey-ui/wasi-runner";
-import { activateWithServer, connectEditorBrowser, editorWebviewFrame, press, waitForIdleWorkbench } from "./profiler-kit";
+import { activateWithServer, connectEditorBrowser, editorWebviewFrame, press, UI_MS, waitForIdleWorkbench } from "./profiler-kit";
 
 export const COMMAND = "osprey.workbench.open";
 const FREEHAND_CONTROLS = ["Draw", "Pan", "Pan board", "Clear", "Undo", "Board", "Show working board", "Preview sample transcription"];
@@ -122,4 +122,4 @@ export async function answer(frame: Frame, formula: string, badge: string): Prom
   assert.strictEqual(await frame.locator("#osprey-diagnostics:not([hidden])").count(), 0);
 }
 
-export { press, waitForIdleWorkbench };
+export { press, UI_MS, waitForIdleWorkbench };

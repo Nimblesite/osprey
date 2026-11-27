@@ -1,5 +1,11 @@
 import uitest::Drive
 
+loadWavSample = "Load WAV sample"
+anArrangementNeedsA = "An arrangement needs a tempo of 20 to 400, a rate of 8000 to 192000 and 1 to 64 tracks."
+attackJson = "\"attack\":0.01"
+releaseJson = "\"release\":0.1"
+tempoJson = "\"tempo\":120.0"
+
 // `state` undone to a graph of `count` nodes: the journey's next state.
 undoneTo (driven, count) =
     undone = prismTap (driven, "Undo")
@@ -34,7 +40,7 @@ channelUtilitiesJourney () =
         selected = component (opened, kind)
         graph = (Drive::holding selected).graph
         valid (synth::Graphs::node (graph, 0), \n =>
-            expect (synth::EditorView::processorTitle n.processor, synth::EditorState::title kind)
+            expect (synth::Descriptors::title n.processor, synth::EditorState::title kind)
             match kind
                 "split" => expect (mapList (n.outputs, \p => p.channels), [1, 1])
                 "join" => expect (mapList (n.inputs, \p => p.channels), [1, 1])
@@ -156,9 +162,9 @@ canvasDialUndo (released, before, at, start, liftedValue) =
     idle = dialPointer (escaped, at.pointX, at.pointY - 90.0, false, false)
     expect (grainPan idle, start)
 
-// The "Load WAV sample" request opened from `driven`: its ticket is pending.
+// The loadWavSample request opened from `driven`: its ticket is pending.
 askedSample driven =
-    asked = Drive::press (driven, "Load WAV sample")
+    asked = Drive::press (driven, loadWavSample)
     expect ((Drive::holding asked).sampleTicket != "", true)
     asked
 
@@ -168,7 +174,7 @@ sampleChoiceJourney () =
     canvasInspectorJourney added
     // The chosen cloud keeps the panel docked on its own: View → Patch Controls would put it away, not open it.
     expect (sceneCount (added, synth::Controls), 1)
-    first = Drive::press (added, "Load WAV sample")
+    first = Drive::press (added, loadWavSample)
     // A high note exceeds the built-in source's 16x rate and must preserve the editable graph.
     errs (synth::EditorState::tune (Drive::holding first, 100))
     second = askedSample first
@@ -198,15 +204,22 @@ pitchRangeJourney () =
 // or a routing whose gate is zero or missing. A new, empty project still opens.
 projectRefusalJourney () = encoded ((timeline [keysTrack ()]), \text =>
     decoded (text, \song => expect (length song.tracks, 1))
-    arranged = "An arrangement needs a tempo of 20 to 400, a rate of 8000 to 192000 and 1 to 64 tracks."
+    arranged = anArrangementNeedsA
     gated = "keys: A routing's attack and release must be 0.001 to 10 s."
-    forEachList ([{ from = "\"tempo\":120.0", to = "\"tempo\":0.0", why = arranged }, { from = "\"tempo\":120.0", to = "\"tempo\":500.0", why = arranged }, { from = "\"attack\":0.01", to = "\"attack\":0.0", why = gated }, { from = "\"attack\":0.01,", to = "", why = gated }, { from = "\"release\":0.1", to = "\"release\":11.0", why = gated }], \c =>
+    forEachList ([{ from = tempoJson, to = "\"tempo\":0.0", why = arranged }, { from = tempoJson, to = "\"tempo\":500.0", why = arranged }, { from = attackJson, to = "\"attack\":0.0", why = gated }, { from = "\"attack\":0.01,", to = "", why = gated }, { from = releaseJson, to = "\"release\":11.0", why = gated }], \c =>
         expect (contains text c.from, true)
         failsWith (daw::SongFiles::decode (replace text c.from c.to ?: text), c.why))
     // Just past each edge is refused; each edge itself opens.
-    forEachList ([{ from = "\"tempo\":120.0", to = "\"tempo\":19.9", why = arranged }, { from = "\"tempo\":120.0", to = "\"tempo\":400.5", why = arranged }, { from = "\"attack\":0.01", to = "\"attack\":10.5", why = gated }, { from = "\"release\":0.1", to = "\"release\":0.0005", why = gated }, { from = "\"release\":0.1", to = "\"release\":0.0", why = gated }], \c => failsWith (daw::SongFiles::decode (replace text c.from c.to ?: text), c.why))
-    forEachList ([{ from = "\"tempo\":120.0", to = "\"tempo\":20.0" }, { from = "\"tempo\":120.0", to = "\"tempo\":400.0" }, { from = "\"attack\":0.01", to = "\"attack\":0.001" }, { from = "\"attack\":0.01", to = "\"attack\":10.0" }, { from = "\"release\":0.1", to = "\"release\":0.001" }, { from = "\"release\":0.1", to = "\"release\":10.0" }], \c => decoded ((replace text c.from c.to ?: text), \song => expect (length song.tracks, 1)))
+    forEachList ([{ from = tempoJson, to = "\"tempo\":19.9", why = arranged }, { from = tempoJson, to = "\"tempo\":400.5", why = arranged }, { from = attackJson, to = "\"attack\":10.5", why = gated }, { from = releaseJson, to = "\"release\":0.0005", why = gated }, { from = releaseJson, to = "\"release\":0.0", why = gated }], \c => failsWith (daw::SongFiles::decode (replace text c.from c.to ?: text), c.why))
+    forEachList ([{ from = tempoJson, to = "\"tempo\":20.0" }, { from = tempoJson, to = "\"tempo\":400.0" }, { from = attackJson, to = "\"attack\":0.001" }, { from = attackJson, to = "\"attack\":10.0" }, { from = releaseJson, to = "\"release\":0.001" }, { from = releaseJson, to = "\"release\":10.0" }], \c => decoded ((replace text c.from c.to ?: text), \song => expect (length song.tracks, 1)))
     namesRefusalJourney ()
+    // Fields the project type no longer declares (the old drive, space, sustains and track reverb) are refused by
+    // name, at the root or on the track that carries them.
+    unknown = \field => "The song project has no field \"${field}\"."
+    forEachList ([{ to = "\"tempo\":120.0,\"drive\":2.0", why = unknown "drive" }, { to = "\"tempo\":120.0,\"space\":{\"size\":1.4}", why = unknown "space" }, { to = "\"tempo\":120.0,\"sustains\":[]", why = unknown "sustains" }], \c =>
+        failsWith (daw::SongFiles::decode (replace text tempoJson c.to ?: text), c.why))
+    expect (contains text "\"pan\":0.0", true)
+    failsWith (daw::SongFiles::decode (replace text "\"pan\":0.0" "\"pan\":0.0,\"reverb\":0.3" ?: text), "keys: ${unknown "reverb"}")
     encoded ((timeline []), \empty => decoded (empty, \song => expect (length song.tracks, 0))))
 
 // [DAW-PROJECT] A project whose tracks share a name is refused on opening.
@@ -240,7 +253,7 @@ sampleRefusals driven =
 
 // A chooser failure is reported on the node. The built-in sample is an explicit edit.
 sampleFileJourney driven =
-    asked = Drive::press (sampleRefusals driven, "Load WAV sample")
+    asked = Drive::press (sampleRefusals driven, loadWavSample)
     failed = Drive::completed (asked, (Drive::holding asked).sampleTicket, false, "chooser unavailable")
     expect ((Drive::holding failed).message, "Grain cloud ${(Drive::holding failed).selected}: chooser unavailable")
     sameGraph (failed, driven)
@@ -253,7 +266,7 @@ sampleFileJourney driven =
 // A real WAV replaces the source and Undo and Redo restore each sample with its metadata.
 installedSampleJourney builtin =
     motif = signalflow::App::fromRepository "src/osprey/examples/daw/tracks/samples/elise-motif.wav"
-    asking = Drive::press (builtin, "Load WAV sample")
+    asking = Drive::press (builtin, loadWavSample)
     loaded = Drive::chosen (asking, (Drive::holding asking).sampleTicket, motif)
     expect ((Drive::holding loaded).message, "Loaded elise-motif.wav.")
     expect (Drive::shows (loaded, "elise-motif.wav · 48000 Hz · 1 source channels · 172800 frames · 3.6 s"), true)
@@ -267,7 +280,7 @@ installedSampleJourney builtin =
     again = prismTap (back, "Redo")
     grainSource (again, motif, 172800)
     // A choice still open when its node is removed completes into nothing: the node is not resurrected.
-    asked = Drive::press (again, "Load WAV sample")
+    asked = Drive::press (again, loadWavSample)
     pending = (Drive::holding asked).sampleTicket
     gone = deleteNode (asked, (Drive::holding asked).selected)
     nodesOf (gone, satSub (length (Drive::holding again).graph.nodes) 1)
@@ -380,7 +393,7 @@ oneBell (tempo, rate, beats) = arrangedSong (tempo, rate, [arrangedBell ("bell",
 
 lasts (tempo, rate, frames) = succeeds (daw::Arrangements::frames (oneBell (tempo, rate, 1.0)), \total => expect (total, frames))
 
-refusedBell (tempo, rate) = failsWith (daw::Arrangements::frames (oneBell (tempo, rate, 1.0)), "An arrangement needs a tempo of 20 to 400, a rate of 8000 to 192000 and 1 to 64 tracks.")
+refusedBell (tempo, rate) = failsWith (daw::Arrangements::frames (oneBell (tempo, rate, 1.0)), anArrangementNeedsA)
 
 arrangedNote (start, length) = daw::Note(pitch = 60, start = start, length = length, velocity = 0.5)
 
@@ -494,7 +507,7 @@ arrangementsJourney () =
     repeated = \count => song120(tracks = mapList (toList (range (0, count)), \_ => bell))
     succeeds (daw::Arrangements::frames (repeated 64), \total => expect (total, 120000))
     succeeds (daw::Arrangements::frames (oneBell (20.0, 48000, 198.5)), \total => expect (total, 28680000))
-    refusesSong = "An arrangement needs a tempo of 20 to 400, a rate of 8000 to 192000 and 1 to 64 tracks."
+    refusesSong = anArrangementNeedsA
     refusedBell (19.99, 48000)
     refusedBell (400.01, 48000)
     refusedBell (120.0, 7999)
@@ -626,4 +639,10 @@ familiesJourney () =
     heardFamily ("phase", chainOf [part ("operator", 0, [pitched "frequency"])], true)
     shifted (7.0, 122, 61, 140)
     shifted (12.0, 92, 46, 110)
-    failsWith (sampledNote (middleC (), chainOf [part ("noSuchModule", 0, [])]), "note: Unknown module \"noSuchModule\".")
+    // [DAW-TRANSPORT-REFUSAL] A note that cannot play names its track and the module at fault in plain words.
+    forEachList ([
+        { parts = [part ("noSuchModule", 0, [])], why = "note: noSuchModule 0: Unknown module \"noSuchModule\"." },
+        { parts = [part ("sine", 0, [fixed ("cutoff", 1.0)])], why = "note: Oscillator 0: It has no setting \"cutoff\"." },
+        { parts = [part ("wavetable", 0, [fixed ("harmonics", 2.5)])], why = "note: wavetable 0: It needs a whole constant for harmonics." },
+        { parts = [part ("wavetable", 0, [fixed ("harmonics", 8.0), fixed ("harmonics", 8.0)])], why = "note: wavetable 0: It sets harmonics twice." }], \c =>
+        failsWith (sampledNote (middleC (), chainOf c.parts), c.why))

@@ -19,7 +19,7 @@ import {
 } from "../../client/src/test-debug";
 import { refreshTestFile } from "../../client/src/test-explorer-items";
 import { leafTestId, type ExecResult } from "../../client/src/test-explorer-parse";
-import { resolveBuiltOsprey } from "./osprey-test-env";
+import { present, resolveBuiltOsprey } from "./osprey-test-env";
 import {
   assertVerdicts,
   controllerFactory,
@@ -272,7 +272,7 @@ suite("Osprey Test Explorer Debug profile ([TESTING-DEBUG-VSCODE])", () => {
         errors.map((event) => event.id),
         [file.id],
       );
-      assert.strictEqual(errors[0].message, LAUNCH_FAILED_MESSAGE);
+      assert.strictEqual(present(errors[0], "the errored event").message, LAUNCH_FAILED_MESSAGE);
       // Every case was started, so none is left spinning in the Testing view.
       assert.strictEqual(sink.ofKind("started").length, file.children.size);
     });
@@ -316,8 +316,9 @@ suite("Osprey Test Explorer Debug profile ([TESTING-DEBUG-VSCODE])", () => {
         start,
       );
       assert.strictEqual(launched.length, 1);
-      assert.deepStrictEqual(launched[0].env, { OSPREY_TEST_FILTER: "" });
-      assert.strictEqual(launched[0].program, failUri.fsPath);
+      const launch = present(launched[0], "the one launch");
+      assert.deepStrictEqual(launch.env, { OSPREY_TEST_FILTER: "" });
+      assert.strictEqual(launch.program, failUri.fsPath);
     });
 
     test("a single-case request filters the session to that case", async function () {

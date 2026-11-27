@@ -272,7 +272,7 @@
       "make -C docs/book check-examples: 18 runnable sources match exact stdout; 9 rejection fixtures match stored diagnostics",
       "All fenced manuscript blocks unchanged from the beginning of this review",
       "Repository-backed GitHub links in the manuscript resolve to existing local paths",
-      "Reviewed flavor selection and partial Python support against specifications 0023/0041; GPU correction against plan 0023, specification 0034 and device-dispatch implementation; macOS archive target against specification 0038 and CLI target tests",
+      "Reviewed flavor selection and partial Python support against specifications 0023/0041; GPU correction against plan 0055, specification 0034 and device-dispatch implementation; macOS archive target against specification 0038 and CLI target tests",
       "Reviewed collection, record, match, memory, target-checking and concurrency qualifications against their current local specifications and relevant CLI implementation"
     ],
     "corrections": [

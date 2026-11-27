@@ -33,7 +33,19 @@ def loaded(result):
 
 @static_handler(Tensor[list[float32]])
 class on_lists:
-    """Host lists, loaded straight into lists from the safetensors file."""
+    """Host lists, loaded straight into lists from the safetensors file.
+
+    # Examples
+    ```osprey
+    from gpt2 import Backends, Model
+    def identity(i):
+        return toFloat32(i * 1)
+    Backends.reported(Backends.strictly(lambda: on_lists(lambda: print(toString(Model.or_stop(perform(Tensor.build(2, identity)), Model.empty))))), "built")
+    ```
+    ```output
+    [0.0, 1.0]
+    ```
+    """
     def build(n, f):
         return Error(message="Tensor.build: a negative element count") if n < 0 else Success(value=toList(map(range(n), f)))
 

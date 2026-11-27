@@ -143,8 +143,13 @@ parameter shows that entry ([LSP-HOVER-PARAM-DOCS](../tooling/0020-LanguageServe
 
 ### Exported declarations `[DOC-EXPORT-REQUIRED]`
 
-An export is a library's public API, so it must be documented. `--check`,
-`--run` and the language server report the `undocumented-export` warning for:
+An export is a package's public API, so it must be documented. In a package
+(a project whose `osprey.toml` has a `[package]` table) `--check`, `--run`,
+every build and the language server report `undocumented-export` as an
+**error** that fails the build. An application's exports are its own, so an
+application, or a file under no manifest, gets no report at all. Both
+defaults are lint levels a project can change ([LINT-LEVELS]). The rule
+covers:
 
 - an `export`ed function, value, type, effect, extern, signature or module
   with no outer documentation comment (a module may use an inner `//!` comment
@@ -153,16 +158,16 @@ An export is a library's public API, so it must be documented. `--check`,
   comment.
 
 The warning names the declaration with its module path, for example
-`exported function `Api::double` has no documentation comment`. A documented
+`error: exported function `Api::double` has no documentation comment`. A documented
 type covers its variants and fields, which take no documentation of their
 own. Private declarations are not reported.
 
 ### Exported examples `[DOC-EXPORT-EXAMPLE-REQUIRED]`
 
-`--check` and the language server report `unexampled-export` at information
-severity: the CLI labels it `info:` and the editor shows it as information, not
-a warning. It is not counted as a warning, so `--check --warnings-as-errors`
-still passes. The rule covers:
+In a package, `--check` and the language server report `unexampled-export` as
+an error: every export of a package's API shows how to call it, and the build
+fails until it does. An application, an example app included, gets no report.
+Both are lint levels a project can change ([LINT-LEVELS]). The rule covers:
 
 - a documented exported function, value or extern whose comment has no
   `# Examples` section, or whose section holds no example fence, and
@@ -173,6 +178,48 @@ members that use it, so it is not reported. An undocumented export is reported
 once, as `undocumented-export`. The note names the declaration with its
 module path, for example `exported function `Api::triple` has no example`, and
 an operation as `Effect.operation` (`osprey-types/src/undocumented.rs`).
+
+### Lint levels `[LINT-LEVELS]`
+
+Every analyzer rule reports at a level, and a project sets the level of any
+rule, by its rule id, in the `[lints]` table of its `osprey.toml`:
+
+```toml
+[lints]
+undocumented-export = "warn"
+unexampled-export = "deny"
+closing-run = "allow"
+```
+
+| Level | CLI | Editor | Fails the build |
+|---|---|---|---|
+| `allow` | not reported | not reported | never |
+| `info` | `info:` | information | never |
+| `warn` | `warning:` | warning | only with `--warnings-as-errors` |
+| `deny` | `error:` | error | always, even with `--no-warnings` |
+
+A rule the table leaves out takes its default. `undocumented-export` is `deny`
+in a package and `allow` in an application; `unexampled-export` is `deny` in
+a package and `allow` in an application; `module-deep-hierarchy` and
+`namespace-reverse-domain` are `allow` in a package ([MODULES-STYLE]);
+`state-boundary` is an inventory, not a defect, so it is `info` everywhere;
+every other rule is `warn`. A
+project is a package when its manifest has a `[package]` table, and a file
+under no manifest is an application. A project's levels apply to all of its
+sources, including sources it borrows from a package through
+`source_roots`. The CLI and the editor read the same levels
+(`osprey-types/src/lint_level.rs`).
+
+The table names only analyzer rules, the ones `LINT_RULES` lists:
+`undocumented-export`, `unexampled-export`, `redundant-annotation`,
+`redundant-callback`, `repeated-literal`, `consecutive-print`, `closing-run`,
+`unused-private`, `unused-variable`, `unused-parameter`,
+`unused-pattern-binding`, `unused-handler-parameter`, `module-deep-hierarchy`,
+`state-boundary`, `namespace-folder-drift`, `namespace-reverse-domain` and
+`unused-import`. An unknown rule or level is a manifest error at its line, in
+the compiler and in the package manager, so a misspelt rule never silently
+keeps its default. Type errors, syntax errors and skipped tests are not lints:
+no table can lower them.
 
 ### Test support `[DOC-EXPORT-EXAMPLE-TEST-SUPPORT]`
 

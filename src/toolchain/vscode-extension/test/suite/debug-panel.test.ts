@@ -277,7 +277,13 @@ suite("makePanelMessageHandler", () => {
     });
     const handler = makePanelMessageHandler(session, provider, program);
     handler({ type: "event", event: "stopped" });
-    await new Promise((resolve) => setTimeout(resolve, 30));
+    // The refresh is async: wait for the snapshot it publishes, never a fixed delay.
+    await new Promise<void>((resolve) => {
+      const tick = (): void => {
+        if (provider.current().state === "stopped") { resolve(); } else { setImmediate(tick); }
+      };
+      tick();
+    });
     assert.strictEqual(provider.current().state, "stopped");
     assert.strictEqual(present(provider.current().frames[0], "the top frame").name, "main");
   });

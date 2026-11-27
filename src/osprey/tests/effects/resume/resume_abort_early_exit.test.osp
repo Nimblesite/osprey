@@ -14,7 +14,7 @@ effect Observation {
 fn observe(message) !Observation = perform Observation.line(message)
 
 /// This helper reaches a successful check before the zero check aborts it.
-fn guarded() -> int ![Stop, Observation] = {
+fn guarded() ![Stop, Observation] = {
     observe("before first check")
     let a = perform Stop.check(1)
     observe("after first check: " + toString(a))
@@ -32,7 +32,7 @@ effect Mixed {
 }
 
 /// This helper performs both Mixed operations so each arm's mode is observable.
-fn mixedWork() -> int ![Mixed, Observation, Arith] = {
+fn mixedWork() ![Mixed, Observation, Arith] = {
     observe("work start")
     let a = perform Mixed.tally(1)
     observe("after tally: " + toString(a))

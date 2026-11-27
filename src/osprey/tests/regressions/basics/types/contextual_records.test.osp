@@ -11,7 +11,7 @@ type Segment = { from: Point, to: Point, label: string }
 
 fn sum(p: Point) = satAdd(p.x, p.y)
 fn origin() -> Point = { x: 0, y: 0 }
-fn longest(points: List<Point>) = foldList(points, 0, fn(best, p) => match sum(p) > best {
+fn longest(points) = foldList(points, 0, fn(best, p) => match sum(p) > best {
     true => sum(p)
     false => best
 })

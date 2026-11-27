@@ -8,7 +8,7 @@ default_namespace = "rouge_score"
 name = "@osprey/rouge-score"
 license = "MIT"
 summary = "ROUGE evaluation metrics (rouge1/2/L/Lsum) with the NLTK Porter stemmer"
-keywords = ["evaluation", "metrics", "python-flavor", "rouge", "summarization"]
+keywords = ["natural-language-processing", "python-flavor", "testing-and-evaluation"]
 
 [dependencies]
 "@osprey/sacrebleu" = { epoch = 1, min_release = 1 }

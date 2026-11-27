@@ -7,7 +7,6 @@ import ui::Pick
 import ui::Ui
 import ui::Symbols
 import bank::Money
-import talon::Look
 
 (** Shared parts of the screens. *)
 module Parts

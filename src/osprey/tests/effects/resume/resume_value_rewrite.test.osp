@@ -27,7 +27,7 @@ effect Supply {
 }
 
 /// This helper sums three values supplied through explicit resume calls.
-fn total() -> int ![Supply, Arith] = {
+fn total() ![Supply, Arith] = {
     let first = perform Supply.next("first")
     let second = perform Supply.next("second")
     let third = perform Supply.next("third")
@@ -41,7 +41,7 @@ effect Relay<T> {
 }
 
 /// This helper receives a string from Relay<string>.
-fn echoWord() -> string !Relay<string> = perform Relay.ask()
+fn echoWord() !Relay<string> = perform Relay.ask()
 
 /// Checked proves resume supplies a whole Result rather than its payload.
 effect Checked {
@@ -50,10 +50,10 @@ effect Checked {
 }
 
 /// This helper defaults the Result returned by a handled operation.
-fn runChecked() -> int !Checked = perform Checked.half(10) ?: 0
+fn runChecked() !Checked = perform Checked.half(10) ?: 0
 
 /// This helper receives an integer from Relay<int>.
-fn echoNum() -> int !Relay<int> = perform Relay.ask()
+fn echoNum() !Relay<int> = perform Relay.ask()
 
 /// The nine newline-terminated lines the legacy transcript must hold.
 fn legacyLines() = ["supply first=105\n", "supply second=110\n", "supply third=115\n", "seen after third: 330\n", "seen after second: 330\n", "seen after first: 330\n", "result=330\n", "relay answered: carried\n", "word=carried\n"]

@@ -100,7 +100,7 @@ The app never opens a socket. It asks the host for an `Http` request, the host p
 ```ospml
 export call (server, ticket, method, path, body) = Requests::ask (ticket, ui::Http(method = method,
     url = server + path, headers = [jsonHeader ()], body = body, responseLimit = replyLimit (),
-    deadline = replyDeadline (), httpSlice = ticket))
+    deadline = replyDeadline (), responseSlice = ticket))
 ```
 
 The reply is decoded once, at this edge, into `Account` and `Movement` records. No JSON reaches the screens.

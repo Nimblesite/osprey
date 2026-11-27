@@ -6,6 +6,7 @@ namespace signalflowtests
 
 import uitest::Drive
 
+
 viewed (width, height) = post (\d => Drive::viewed (d, width, height))
 
 widthOf label = (element label).accessWidth
@@ -21,13 +22,13 @@ type Places =
     menu : float
     switchWidth : float
 
-places () = Places(inspector = leftOf "Inspector bypass: Bypass Filter", inspectorTop = topOf "Inspector bypass: Bypass Filter", node = leftOf "Bypass Filter", menu = leftOf "Skin: Prism", switchWidth = widthOf "Inspector bypass: Bypass Filter")
+places () = Places(inspector = leftOf inspectorBypassBypassFilter, inspectorTop = topOf inspectorBypassBypassFilter, node = leftOf "Bypass Filter", menu = leftOf "Skin: Prism", switchWidth = widthOf inspectorBypassBypassFilter)
 
 // The inspector `dx` right of the design, the node and menu where they were, nothing resized.
 placedBy (at, dx) =
-    near (leftOf "Inspector bypass: Bypass Filter" - at.inspector, dx)
-    near (topOf "Inspector bypass: Bypass Filter", at.inspectorTop)
-    near (widthOf "Inspector bypass: Bypass Filter", at.switchWidth)
+    near (leftOf inspectorBypassBypassFilter - at.inspector, dx)
+    near (topOf inspectorBypassBypassFilter, at.inspectorTop)
+    near (widthOf inspectorBypassBypassFilter, at.switchWidth)
     near (leftOf "Bypass Filter", at.node)
     near (leftOf "Skin: Prism", at.menu)
 
@@ -46,7 +47,7 @@ grown () =
 
 // The moved inspector answers where it now is, and so does the undo it reveals in the header.
 grownControls () =
-    switched ("Inspector bypass: Bypass Filter", "Inspector bypass: Enable Filter", "process")
+    switched (inspectorBypassBypassFilter, "Inspector bypass: Enable Filter", "process")
     near (leftOf "Undo", 1508.0)
     switched ("Undo", "Inspector bypass: Enable Filter", "process")
     tapAt ("Filter Cutoff", 0.25)

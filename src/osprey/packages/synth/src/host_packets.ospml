@@ -6,7 +6,15 @@ namespace synth
 module HostPackets
     finite value = value == value && abs value <= 1000000.0
 
-    (** Shared event-domain check for hosted and built-in MIDI instruments. *)
+    (** Shared event-domain check for hosted and built-in MIDI instruments.
+    # Examples
+    ```osprey
+    print "${HostPackets::validNote (64, HostNote(kind = 1, offset = 63, pitch = 60, channel = 0, identity = 1, velocity = 0.5))} ${HostPackets::validNote (64, HostNote(kind = 1, offset = 64, pitch = 60, channel = 0, identity = 1, velocity = 0.5))}"
+    ```
+    ```output
+    true false
+    ```
+    *)
     export validNote (frames, n) = (n.kind == 1 || n.kind == 2) && n.offset >= 0 && n.offset < frames && n.pitch >= 0 && n.pitch <= 127 && n.channel >= 0 && n.channel <= 15 && n.identity >= 0 && n.identity <= 2147483647 && n.velocity >= 0.0 && n.velocity <= 1.0
 
     validParameter (frames, p) = p.identity >= 0 && p.identity <= 4294967295 && p.offset >= 0 && p.offset < frames && p.value >= 0.0 && p.value <= 1.0
@@ -21,7 +29,19 @@ module HostPackets
 
     parameter p = "${PcmWords::le32 p.identity}${PcmWords::le32 p.offset}${PcmWords::float64 p.value}"
 
-    (** One packet follows the worker's exact little-endian wire layout. *)
+    (** One packet follows the worker's exact little-endian wire layout.
+    # Examples
+    ```osprey
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => HostPackets::packet (1, HostBlock(frames = 2, notes = [], parameters = [], samples = [0.0, 0.0])))} ${arithmetic (\() => HostPackets::packet (1, HostBlock(frames = 257, notes = [], parameters = [], samples = [])))}"
+    ```
+    ```output
+    Success(0200000000000000000000000000000000000000) Error(InvalidConfiguration { detail: "Invalid VST audio, event or parameter packet." })
+    ```
+    *)
     export packet (channels, block) = match block.frames <= 256 && valid (channels, block) && ordered (block.notes, 0) && ordered (block.parameters, 0)
         false => Error(message = InvalidConfiguration(detail = "Invalid VST audio, event or parameter packet."))
         true => Success(value = "${PcmWords::le32 block.frames}${PcmWords::le32 (length block.notes)}${PcmWords::le32 (length block.parameters)}${join (mapList (block.notes, note)) ""}${join (mapList (block.parameters, parameter)) ""}${join (mapList (block.samples, PcmWords::float32)) ""}")
@@ -32,18 +52,37 @@ module HostPackets
             Error _ => Error(message = Outcomes::indexOutOfBounds)
             Success value => Success(value = listAppend values value)
 
-    (** Checked interleaved sample slice used by the graph and packet encoders. *)
+    (** Checked interleaved sample slice used by the graph and packet encoders.
+    # Examples
+    ```osprey
+    print "${HostPackets::slice ([1.0, 2.0, 3.0], 1, 2)} ${HostPackets::slice ([1.0], 0, 2)}"
+    ```
+    ```output
+    Success([2.0, 3.0]) Error(InvalidConfiguration { detail: "Audio slice is outside its buffer." })
+    ```
+    *)
     export slice (samples, first, count) = match first >= 0 && count >= 0 && first <= satSub (length samples) count
         false => Error(message = InvalidConfiguration(detail = "Audio slice is outside its buffer."))
         true => foldList (toList (range (first, satAdd first count)), Success(value = []), \(outcome, index) => collectSample (samples, outcome, index))
+
+    (** The events inside the half-open window `[first, first + count)`, each re-timed to the window's first sample.
+    # Examples
+    ```osprey
+    print "${HostPackets::windowed ([HostNote(kind = 1, offset = 3, pitch = 60, channel = 0, identity = 1, velocity = 0.5), HostNote(kind = 2, offset = 9, pitch = 60, channel = 0, identity = 1, velocity = 0.0)], 2, 4)}"
+    ```
+    ```output
+    [{ kind: 1, offset: 1, pitch: 60, channel: 0, identity: 1, velocity: 0.5 }]
+    ```
+    *)
+    export windowed (events, first, count) = mapList (filterList (events, \event => event.offset >= first && event.offset < satAdd first count), \event => event(offset = satSub event.offset first))
 
     chunk (channels, block, first) =
         count = match satSub block.frames first < 256
             true => satSub block.frames first
             false => 256
         use samples <- Outcomes::carried (slice (block.samples, satMul first channels, satMul count channels))
-        notes = mapList (filterList (block.notes, \n => n.offset >= first && n.offset < satAdd first count), \n => n(offset = satSub n.offset first))
-        parameters = mapList (filterList (block.parameters, \p => p.offset >= first && p.offset < satAdd first count), \p => p(offset = satSub p.offset first))
+        notes = windowed (block.notes, first, count)
+        parameters = windowed (block.parameters, first, count)
         packet (channels, HostBlock(frames = count, notes = notes, parameters = parameters, samples = samples))
 
     next (channels, block, outcome, index) =
@@ -59,7 +98,19 @@ module HostPackets
         events = satAdd (satMul (length block.notes) 24) (satMul (length block.parameters) 16)
         satAdd (satAdd headers events) (satMul (length block.samples) 4) <= 1048576
 
-    (** A bounded clip becomes consecutive blocks while keeping event offsets sample-accurate. *)
+    (** A bounded clip becomes consecutive blocks while keeping event offsets sample-accurate.
+    # Examples
+    ```osprey
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => HostPackets::clip (HostLayout(inputChannels = 1, outputChannels = 1, acceptsNotes = false), HostBlock(frames = 1, notes = [], parameters = [], samples = [0.0])))} ${arithmetic (\() => HostPackets::clip (HostLayout(inputChannels = 1, outputChannels = 0, acceptsNotes = false), HostBlock(frames = 1, notes = [], parameters = [], samples = [0.0])))}"
+    ```
+    ```output
+    Success(01000000000000000000000000000000) Error(ExhaustedCapacity { detail: "The VST clip exceeds its layout or capacity." })
+    ```
+    *)
     export clip (layout, block) = match fitsTransport block && valid (layout.inputChannels, block) && ordered (block.notes, 0) && ordered (block.parameters, 0) && layout.outputChannels >= 1 && layout.outputChannels <= 64 && satMul block.frames layout.outputChannels <= 65536 && (layout.acceptsNotes || length block.notes == 0)
         false => Error(message = ExhaustedCapacity(detail = "The VST clip exceeds its layout or capacity."))
         true => Outcomes::carried (foldList (toList (range (0, packetCount block.frames)), Success(value = []), \(outcome, index) => next (layout.inputChannels, block, outcome, index)), \chunks => Success(value = join chunks ""))

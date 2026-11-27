@@ -14,6 +14,11 @@ import registry::Names
 /// never inferred from installed directory names. Implements the editor graph
 /// of [PACKAGE-API] over the folder lock of [PACKAGE-FOLDER-REGISTRY].
 module TreeGraphTests {
+    /// The read-only graph command, and the two packages its tree is asked about.
+    let treeGraph = ["tree", "--graph"]
+    let reportKey = "@demo/report"
+    let greetingKey = "@demo/greeting"
+
     fn manifestText() = "[project]\nname = \"app\"\nsource_roots = [\"src\"]\n\n[dependencies]\n\"@demo/report\" = { epoch = 1 }\n[build-dependencies]\n\"@demo/tool\" = { epoch = 1 }\n"
 
     fn runGraph(reads, walks, args) = RegistryFixture::runReadOnly(reads, walks, args, "graph")
@@ -77,18 +82,18 @@ module TreeGraphTests {
     }
 
     fn diamondGraph() = {
-        let a = runAll(all(), ["tree", "--graph"])
+        let a = runAll(all(), treeGraph)
         let doc = graphOf(a)
         checkAll("tree graph: project, direct keys and empty findings", [
             oneLine(a, 0),
             textField(doc, "project") == "app",
-            structuralEquals(itemsField(doc, "direct"), ["@demo/report", "@demo/tool"]),
+            structuralEquals(itemsField(doc, "direct"), [reportKey, "@demo/tool"]),
             length(JsonRead::items(JsonRead::field(doc, "packages"))) == 5,
             structuralEquals(itemsField(doc, "findings"), [])
         ])
-        checkPackage(doc, "@demo/report", true, ["@demo/greeting", "@demo/maths"], [], [], true)
-        checkPackage(doc, "@demo/maths", false, ["@demo/greeting"], ["@demo/report"], [], true)
-        checkPackage(doc, "@demo/greeting", false, [], ["@demo/maths", "@demo/report"], [], true)
+        checkPackage(doc, reportKey, true, [greetingKey, "@demo/maths"], [], [], true)
+        checkPackage(doc, "@demo/maths", false, [greetingKey], [reportKey], [], true)
+        checkPackage(doc, greetingKey, false, [], ["@demo/maths", reportKey], [], true)
         checkPackage(doc, "@demo/tool", true, ["@other/greeting"], [], [], true)
         checkPackage(doc, "@other/greeting", false, [], ["@demo/tool"], [], true)
     }
@@ -96,7 +101,7 @@ module TreeGraphTests {
     fn localLockReads(text) = listAppend(allReads(all()), Fixture::readRoute("osprey.local.lock", text))
 
     /// The graph a development lock `text` produces beside the installed trees.
-    fn graphOverLocal(text) = graphOf(runGraph(localLockReads(text), walksOfMany(all()), ["tree", "--graph"]))
+    fn graphOverLocal(text) = graphOf(runGraph(localLockReads(text), walksOfMany(all()), treeGraph))
 
     /// [PACKAGE-LOCAL-OVERRIDE]: a checkout is named on its own package only, and a
     /// development lock that cannot be read never looks like one with no overrides.
@@ -104,11 +109,11 @@ module TreeGraphTests {
         let override = Lockfile::Override { package: key("demo", "maths"), path: "../maths", epoch: 1, manifestDigest: "sha256:0000000000000000000000000000000000000000000000000000000000000000" }
         let local = RegistryFixture::devLockText(manifestText(), packages(), [override])
         let doc = graphOverLocal(local)
-        let plain = graphOf(runAll(all(), ["tree", "--graph"]))
+        let plain = graphOf(runAll(all(), treeGraph))
         let broken = graphOverLocal("not a lock")
         checkAll("tree graph: local overrides", [
             textField(nodeFor(doc, "@demo/maths"), "override") == "../maths",
-            textField(nodeFor(doc, "@demo/report"), "override") == "",
+            textField(nodeFor(doc, reportKey), "override") == "",
             textField(nodeFor(plain, "@demo/maths"), "override") == "",
             structuralEquals(itemsField(doc, "findings"), []),
             structuralEquals(itemsField(plain, "findings"), []),
@@ -131,7 +136,7 @@ module TreeGraphTests {
 
     fn missingLock() = {
         let fresh = "[project]\nname = \"fresh\"\nsource_roots = [\"src\"]\n"
-        let a = runGraph([Fixture::readRoute("osprey.toml", fresh)], [], ["tree", "--graph"])
+        let a = runGraph([Fixture::readRoute("osprey.toml", fresh)], [], treeGraph)
         let doc = graphOf(a)
         checkAll("tree graph: a new project without a lock has an explicit state", [
             oneLine(a, 0),
@@ -144,7 +149,7 @@ module TreeGraphTests {
 
     /// The graph command refuses `reads`: one line, status 1, the given code first.
     fn refusedBy(reads, label, code) = {
-        let a = runGraph(reads, [], ["tree", "--graph"])
+        let a = runGraph(reads, [], treeGraph)
         checkAll(label, [
             oneLine(a, 1),
             Fixture::line(a, 0) == code
@@ -159,12 +164,12 @@ module TreeGraphTests {
 
     fn missingPackage() = {
         let present = [maths(), report(), tool(), otherGreeting()]
-        let a = runAll(present, ["tree", "--graph"])
+        let a = runAll(present, treeGraph)
         let doc = graphOf(a)
         checkAll("tree graph: a locked package without a tree is not present", [
             structuralEquals([a.status, length(JsonRead::items(JsonRead::field(doc, "packages")))], [0, 5])
         ])
-        checkPackage(doc, "@demo/greeting", false, [], ["@demo/maths", "@demo/report"], ["verify.missing"], false)
+        checkPackage(doc, greetingKey, false, [], ["@demo/maths", reportKey], ["verify.missing"], false)
     }
 
     fn readsOfEdited(s, rel, text) = mapList(s.files, fn(f) =>
@@ -172,10 +177,10 @@ module TreeGraphTests {
 
     fn alteredPackage() = {
         let edited = listConcat(readsOfEdited(report(), "src/report.osp", "fn report() = 2\n"), readsOfMany([demoGreeting(), maths(), tool(), otherGreeting()]))
-        let a = runGraph(listConcat(baseReads(), edited), walksOfMany(all()), ["tree", "--graph"])
+        let a = runGraph(listConcat(baseReads(), edited), walksOfMany(all()), treeGraph)
         let doc = graphOf(a)
         checkAll("tree graph: altered bytes keep the package present", [a.status == 0])
-        checkPackage(doc, "@demo/report", true, ["@demo/greeting", "@demo/maths"], [], ["verify.digest"], true)
+        checkPackage(doc, reportKey, true, [greetingKey, "@demo/maths"], [], ["verify.digest"], true)
     }
 
     /// Every graph test.

@@ -20,7 +20,7 @@ import {
   onCpuPct,
   parseSummary,
 } from "../../client/src/profiler/summary";
-import { uriPath, writeStubExecutable } from "./osprey-test-env";
+import { present, uriPath, writeStubExecutable } from "./osprey-test-env";
 
 suite("profile-run pure helpers", () => {
   test("artifactPaths derives every export from the source stem", () => {
@@ -73,9 +73,9 @@ suite("profile-run summary parsing", () => {
   test("parses the spec example and formats its header", () => {
     const parsed = parseSummary(SPEC_EXAMPLE);
     assert.ok(parsed.ok);
-    assert.strictEqual(parsed.value.hotFunctions[0].name, "fib");
-    assert.strictEqual(parsed.value.hotLines[0].line, 5);
-    assert.strictEqual(onCpuPct(parsed.value.fibers[0]), 90);
+    assert.strictEqual(present(parsed.value.hotFunctions[0], "the hot function").name, "fib");
+    assert.strictEqual(present(parsed.value.hotLines[0], "the hot line").line, 5);
+    assert.strictEqual(onCpuPct(present(parsed.value.fibers[0], "the main fiber")), 90);
     assert.strictEqual(
       formatSummaryHeader(parsed.value),
       "1234 samples · 997Hz · 1.2s wall · 0.9s CPU · 1 fiber",
@@ -121,7 +121,7 @@ suite("profile-run summary parsing", () => {
       formatSummaryHeader(parsed.value),
       "10 samples · 99Hz · 120s wall · 0.5s CPU · 2 fibers · 3 dropped",
     );
-    assert.strictEqual(onCpuPct(parsed.value.fibers[1]), 0);
+    assert.strictEqual(onCpuPct(present(parsed.value.fibers[1], "the second fiber")), 0);
   });
 });
 
@@ -253,8 +253,9 @@ suite("profile-run command flow", function () {
       "ospreyProfilerTest.run",
     );
     assert.strictEqual(opened, true);
-    assert.strictEqual(okHeat.current()?.sampleCount, 1234);
-    assert.strictEqual(okHeat.current()?.hotLines[0].file, uriPath(sourcePath));
+    const summary = present(okHeat.current(), "the stored profile summary");
+    assert.strictEqual(summary.sampleCount, 1234);
+    assert.strictEqual(present(summary.hotLines[0], "the hottest line").file, uriPath(sourcePath));
     assert.strictEqual(
       await vscode.commands.executeCommand("ospreyProfilerTest.openLast"),
       true,

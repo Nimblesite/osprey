@@ -35,11 +35,11 @@ module ImportedProofs
 
     named (env, name) = match Environment::find (env, name)
         Success decl => theorem (env, decl, decl.body)
-        Error message => Error(message = "the export declares no `${name}`")
+        Error _ => Error(message = "the export declares no `${name}`")
 
     theorem (env, decl, body) = match body
         Theorem _ => described (decl, Trust::axioms (env, decl.name), ProofNotation::permitted env)
-        other => Error(message = "`${decl.name}` is not a theorem")
+        _ => Error(message = "`${decl.name}` is not a theorem")
 
     described (decl, assumptions, notation) = match assumptions
         Success names => Success(value = ImportedProof(importedName = decl.name, importedStatement = Terms::show (decl.ty, []), importedType = decl.ty, importedAxioms = names, importedNotation = notation))
@@ -51,11 +51,11 @@ module ImportedProofs
             Success decl => listedBody (env, notation, roots, values, decl, decl.body)
             Error message => Error(message = message)
 
-    listedBody (env, notation, roots, values, decl, body) = match body
+    listedBody (_env, notation, roots, values, decl, body) = match body
         Theorem _ => match described (decl, mapGet (roots, decl.name), notation)
             Success entry => Success(value = listAppend (values, entry))
             Error message => Error(message = message)
-        other => Success(value = values)
+        _ => Success(value = values)
 
     populated entries = match entries
         Error message => Error(message = message)
@@ -67,6 +67,9 @@ module ImportedProofs
     including definition bodies. Names alone do not establish semantics.
     Implements [WORKBENCH-VERDICT] [WORKBENCH-MATH]. *)
 module ProofNotation
+
+    uvwNames = ["u", "v", "w"]
+
     (** The notation heads `env` may render with: each of `Eq`, `HAdd.hAdd`, `HMul.hMul`, `OfNat.ofNat` and `Prod.snd` whose every pinned declaration `env` declares with matching parameters and types. *)
     export permitted env = listConcat (listConcat (allowed (env, "Eq", ["Eq", "Eq.refl"], equality ()), permission (env, "HAdd.hAdd", additionNames ())), listConcat (permission (env, "HMul.hMul", multiplicationNames ()), listConcat (permission (env, "OfNat.ofNat", numeralNames ()), permission (env, "Prod.snd", ["Prod", "Prod.mk", "Prod.snd"]))))
 
@@ -128,13 +131,19 @@ module ProofNotation
     mixedGroup (name, fn, mk) =
         universes = [lifted "u", lifted "v", App (Const "outParam" [Succ (Succ (Param "w"))]) (Sort (Succ (Param "w")))]
         self = \k => applied (Const name [Param "u", Param "v", Param "w"], [BVar (k + 2), BVar (k + 1), BVar k])
-        [structure (name, ["u", "v", "w"], mk, pis (universes, Sort (Max (Max (Succ (Param "u")) (Succ (Param "v"))) (Succ (Param "w"))))), Decl(name = fn, params = ["u", "v", "w"], ty = pis (listConcat (universes, [self 0, BVar 3, BVar 3]), BVar 3), body = Definition (lams (listConcat (universes, [self 0]), Proj name 0 (BVar 0)))), constructor (name, ["u", "v", "w"], mk, 1, pis (listConcat (universes, [pis ([BVar 2, BVar 2], BVar 2)]), self 1))]
+        [structure (name, uvwNames, mk, pis (universes, Sort (Max (Max (Succ (Param "u")) (Succ (Param "v"))) (Succ (Param "w"))))), Decl(name = fn, params = uvwNames, ty = pis (listConcat (universes, [self 0, BVar 3, BVar 3]), BVar 3), body = Definition (lams (listConcat (universes, [self 0]), Proj name 0 (BVar 0)))), constructor (name, uvwNames, mk, 1, pis (listConcat (universes, [pis ([BVar 2, BVar 2], BVar 2)]), self 1))]
 
     (** The `Nat` instance of an operator: `instAddNat`, `instMulNat`. *)
     natInstance (name, op, mk, natFn) = Decl(name = name, params = [], ty = App (Const op [Zero]) (Const "Nat" []), body = Definition (App (App (Const mk [Zero]) (Const "Nat" [])) (Const natFn [])))
 
     (** The plain operator's instance of a heterogeneous one: `instHAdd`, `instHMul`. *)
-    mixedInstance (name, plain, plainFn, plainMk, mixed, mixedMk) = Decl(name = name, params = ["u_1"], ty = Pi "x" (Sort (Succ (Param "u_1"))) (Pi "x" (App (Const plain [Param "u_1"]) (BVar 0)) (App (App (App (Const mixed [Param "u_1", Param "u_1", Param "u_1"]) (BVar 1)) (BVar 1)) (BVar 1))), body = Definition (Lam "x" (Sort (Succ (Param "u_1"))) (Lam "x" (App (Const plain [Param "u_1"]) (BVar 0)) (App (App (App (App (Const mixedMk [Param "u_1", Param "u_1", Param "u_1"]) (BVar 1)) (BVar 1)) (BVar 1)) (Lam "x" (BVar 1) (Lam "x" (BVar 2) (App (App (App (App (Const plainFn [Param "u_1"]) (BVar 3)) (BVar 2)) (BVar 1)) (BVar 0))))))))
+    mixedInstance (name, plain, plainFn, _plainMk, mixed, mixedMk) =
+        universe = Sort (Succ (Param "u_1"))
+        plainType = App (Const plain [Param "u_1"]) (BVar 0)
+        mixedType = App (App (App (Const mixed [Param "u_1", Param "u_1", Param "u_1"]) (BVar 1)) (BVar 1)) (BVar 1)
+        instanceHead = App (App (App (Const mixedMk [Param "u_1", Param "u_1", Param "u_1"]) (BVar 1)) (BVar 1)) (BVar 1)
+        plainApplied = App (App (App (App (Const plainFn [Param "u_1"]) (BVar 3)) (BVar 2)) (BVar 1)) (BVar 0)
+        Decl(name = name, params = ["u_1"], ty = Pi "x" universe (Pi "x" plainType mixedType), body = Definition (Lam "x" universe (Lam "x" plainType (App instanceHead (Lam "x" (BVar 1) (Lam "x" (BVar 2) plainApplied))))))
 
     // Declaration trees from pinned word-seed.ndjson, SHA-256
     // 14b3950c6e2ea1e73ed3fa529baf236346cb397da4bfa5d695c0049511b81a33.

@@ -13,7 +13,7 @@ fn choose(box, n) = match n {
     _ => Box { text: "none${toString(n)}" }
 }
 
-fn pick(inside: Box, pair: Pair, n: int) = match n {
+fn pick(inside: Box, pair: Pair, n) = match n {
     0 => pair
     _ => Pair { left: Box { text: "new${toString(n)}" }, right: Box { text: "r${inside.text}" } }
 }

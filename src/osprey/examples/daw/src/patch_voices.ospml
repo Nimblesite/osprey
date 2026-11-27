@@ -32,9 +32,9 @@ module PatchVoices
         [setting] => match floatToInt setting.value
             Success whole => match setting.follow == Constant && toFloat whole == setting.value
                 true => ok whole
-                false => Error(message = "Module ${item.identity} needs a whole constant for ${key}.")
-            Error _ => Error(message = "Module ${item.identity} needs an integer for ${key}.")
-        _ => Error(message = "Module ${item.identity} repeats ${key}.")
+                false => Error(message = "It needs a whole constant for ${key}.")
+            Error _ => Error(message = "It needs an integer for ${key}.")
+        _ => Error(message = "It sets ${key} twice.")
 
     classic (size, count) = match count > 0 && count <= 256 && count <= intDiv size 4
         true => told (synth::Wavetables::classic (size, count))
@@ -147,7 +147,14 @@ module PatchVoices
     (** The sample a grain cloud plays: the WAV at `path` (1–8 MiB, named by its path), or the built-in one for "". *)
     export sampled path = match path == ""
         true => ok (builtinSample ())
-        false => match fileSize path
+        false => fromFile (located path)
+
+    (** `path` as given when a file is there, else from the repository root: a song names its samples from the repository, wherever Prism or its suite was launched from (#370). *)
+    located path = match (kindOf path ?: "other") == "file"
+        true => path
+        false => signalflow::Repository::path path
+
+    fromFile path = match fileSize path
             Error why => Error(message = why)
             Success size => chained (Projects::limited (size, 12, 8388608, "Choose a WAV file between 12 bytes and 8 MiB."), \within =>
                 chained (readFileBytes (path, 0, satAdd within 1), \bytes => decoded (path, within, bytes)))
@@ -164,13 +171,20 @@ module PatchVoices
         "waveform" => synth::Components::withOption (n, setting.key, "Waveform", 3.0, setting.value)
         _ => n
 
-    placed (note, item, n) = tuned (note, item.component, foldList (item.settings, n, optionControl), filterList (item.settings, \s => constructorKey (item, s.key) == false))
+    placed (note, item, n) = tuned (note, foldList (item.settings, n, optionControl), filterList (item.settings, \s => constructorKey (item, s.key) == false))
 
-    tuned (note, component, n, settings) = match counted (settings, \setting => known (n, setting)) == length settings
-        false => Error(message = "Module \"${component}\" has no such setting.")
-        true => ok (synth::Patches::adjusted (n, mapList (settings, \setting => synth::ParameterValue(node = n.identity, key = setting.key, value = resolved (note, setting)))))
+    tuned (note, n, settings) = match listGet (filterList (settings, \setting => !known (n, setting))) 0
+        Success stray => Error(message = "It has no setting \"${stray.key}\".")
+        Error _ => ok (synth::Patches::adjusted (n, mapList (settings, \setting => synth::ParameterValue(node = n.identity, key = setting.key, value = resolved (note, setting)))))
 
-    nodeAdded (note, outcome, item, make) = chained (outcome, \nodes => chained (make item, \n => chained (placed (note, item, n), \tuned => ok (listAppend nodes tuned))))
+    // [DAW-TRANSPORT-REFUSAL] A module that cannot be built or tuned names itself: by its card's name once it
+    // exists, else by the component the project asks for.
+    named (label, outcome) = match outcome
+        Error why => Error(message = "${label}: ${why}")
+        Success value => Success(value = value)
+
+    nodeAdded (note, outcome, item, make) = chained (outcome, \nodes => chained (named ("${item.component} ${item.identity}", make item), \n =>
+        chained (named ("${synth::Descriptors::title n.processor} ${n.identity}", placed (note, item, n)), \tuned => ok (listAppend nodes tuned))))
 
     cabled routing = mapList (routing.cables, \cable => synth::Components::route (cable.source, cable.outlet, cable.destination, cable.inlet))
 

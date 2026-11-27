@@ -1,22 +1,15 @@
-// The synth given room ([UI-MACHINE-FLOW-SYNTH], [UI-MACHINE-CANVAS]): a larger window drops the
-// keyboard deck to its bottom and moves the inspector to its right, each key and switch its own
-// size, and a struck key still plays the patch at its pitch from where it now is.
+// The patch editor given room ([UI-MACHINE-CANVAS]): windows and panels at any size, and the
+// suite's output folders.
 
 import uitest::Drive
 
-// The window resized to `width` by `height`.
-resizedTo (d, width, height) = Drive::viewed (d, width, height)
-
-viewed (width, height) = post (\d => resizedTo (d, width, height))
-
-// The accessible `edge` of the labelled element, in canvas points.
-edgeOf (edge, label) = match edge
-    "left" => (element label).accessLeft
-    "width" => (element label).accessWidth
-    _ => (element label).accessTop
-
-// The horizontal distance between two labelled elements.
-gapBetween (left, right) = edgeOf ("left", left) - edgeOf ("left", right)
+patchControls = "Patch Controls"
+prismVstScan2 = "prism-vst:scan:2"
+stereoOutputText = "stereo-output"
+modulateDelay = "Modulate Delay"
+starterChain = ["sine", "gain", "output"]
+addComponent = "Add component"
+canvasInput10 = "Canvas input 1:0"
 
 // The folder every suite output goes under: the repository's `target/daw-tests`, whichever folder the suite runs from.
 outputFolder () = signalflow::App::fromRepository "target/daw-tests"
@@ -30,37 +23,11 @@ madeRoom name =
 // A middle C struck at beat 0 with full velocity, ringing for `beats` beats.
 beatNote beats = daw::Note(pitch = 60, start = 0.0, length = beats, velocity = 1.0)
 
-// The deck `dy` lower and the inspector `dx` further right than at the design size, `gap` being their distance there; the graph's nodes stay.
-roomFor (gap, dx, dy) =
-    forEachList (["Play C4", "Play C#4"], \key => near (edgeOf ("top", key), 866.0 + dy))
-    near (edgeOf ("left", "Play C4"), 480.0)
-    near (edgeOf ("width", "Play C4"), 60.0)
-    near (gapBetween ("Inspector bypass: Bypass Filter", "Bypass Filter"), gap + dx)
-
-roomyKeys () =
-    begun ()
-    knobNumber ("spareHeight", 0.0)
-    gap = gapBetween ("Inspector bypass: Bypass Filter", "Bypass Filter")
-    roomFor (gap, 0.0, 0.0)
-    viewed (1836.0, 1258.0)
-    knobNumber ("spareWidth", 300.0)
-    roomFor (gap, 300.0, 250.0)
-    knobNumber ("spareHeight", 250.0)
-    expect (runCount (), 0)
-    struck ("C4", 261.6256)
-    struck ("A#4", 466.1638)
-    switched ("Inspector bypass: Bypass Filter", "processOn", false)
-    expect (runCount (), 0)
-    switched ("Inspector bypass: Enable Filter", "processOn", true)
-    viewed (1536.0, 1008.0)
-    roomFor (gap, 0.0, 0.0)
-    struck ("E3", 164.8138)
-
 // [PRISM-ROUTING-EDITOR] The same real host event path used by the modular surface.
 editorUiJourney () =
     opened = openedEditor ["--empty"]
-    showsIn (opened, "Add component", true)
-    output = chained (opened, ["sine", "gain", "output"])
+    showsIn (opened, addComponent, true)
+    output = chained (opened, starterChain)
     drawn = ui::Surfaces::seen (output.drivenSurface, output.drivenProgram)
     forEachList (drawn.walkSketches, \sketch => forEachList (sketch.sketchedAs.sketchShapes, \shape =>
         match shape
@@ -68,8 +35,8 @@ editorUiJourney () =
             _ => expect (true, true)))
     offeredIn (output, "Canvas output 0:0", true)
     lettersIn (output, "Oscillator 0")
-    offeredIn (output, "Canvas input 1:0", true)
-    portAt (output, "Canvas input 1:0", 505.0, 157.5)
+    offeredIn (output, canvasInput10, true)
+    portAt (output, canvasInput10, 505.0, 157.5)
     canvasSource = grabbedAt (output, 488.5, 169.5)
     heldIs (canvasSource, \held => held.source, 0)
     canvasCable = drawnFrom (canvasSource, 488.5, 169.5, 519.0, 171.5)
@@ -81,7 +48,7 @@ editorUiJourney () =
     sameGraph (background, canvasSelected)
     // [PRISM-ROUTING-LAYOUT] Dragging moves ports and cables without changing the audio graph.
     dragged = Drive::pointer (canvasSelected, 720.0, 300.0, true)
-    movedPort = portIn (dragged, "Canvas input 1:0")
+    movedPort = portIn (dragged, canvasInput10)
     expect (structuralEquals ([movedPort.accessLeft, movedPort.accessTop], [565.0, 287.5]), true)
     sameGraph (dragged, canvasSelected)
     layout = ui::Surfaces::seen (dragged.drivenSurface, dragged.drivenProgram)
@@ -99,22 +66,22 @@ editorUiJourney () =
     sameHeld (dragged, canvasSelected, \held => held.revision)
     released = Drive::pointer (dragged, 720.0, 300.0, false)
     hovered = Drive::pointer (released, 600.0, 400.0, false)
-    still = portIn (hovered, "Canvas input 1:0")
+    still = portIn (hovered, canvasInput10)
     expect (structuralEquals ([still.accessLeft, still.accessTop], [movedPort.accessLeft, movedPort.accessTop]), true)
     disconnected = cutCable (released, "Cable 0:0 to 1:0")
     rearmed = Drive::pointer (disconnected, 488.5, 169.5, true)
     reconnected = drawnFrom (rearmed, 488.5, 169.5, 579.0, 301.5)
     cablesOf (reconnected, 1)
     erased = deleteNode (released, 0)
-    portAt (erased, "Canvas input 1:0", 565.0, 287.5)
+    portAt (erased, canvasInput10, 565.0, 287.5)
     offsetGrab = Drive::pointer (released, 730.0, 310.0, true)
     offsetMove = grabbedAt (offsetGrab, 750.0, 340.0)
-    portAt (offsetMove, "Canvas input 1:0", 585.0, 317.5)
+    portAt (offsetMove, canvasInput10, 585.0, 317.5)
     invalidPoint = synth::EditorView::pointed ((Drive::holding offsetMove), floatFromBits 9221120237041090560, 0.0, false)
     expect (invalidPoint.dragging, -1)
     expect (structuralEquals (invalidPoint.positions, (Drive::holding offsetMove).positions), true)
     bounded = Drive::pointer (offsetMove, -100.0, 1000.0, false)
-    portAt (bounded, "Canvas input 1:0", 0.0, 687.5)
+    portAt (bounded, canvasInput10, 0.0, 687.5)
     second = audioLinked (audioLinked (output, 0, 1), 1, 2)
     cablesOf (second, 2)
     feedbackSource = grabbedAt (second, 801.0, 171.5)
@@ -151,7 +118,7 @@ pluginUiJourney () =
     _prefs = makeDir "${home}/.prism"
     _initial = writeFile "${home}/.prism/vst3-folder" "/plugins"
     launch = Drive::launchedAt (Drive::idle (synth::EditorApp::program (), synth::EditorState::initial ()), "macos", ["--empty", "--vst-worker", "/worker/osprey-vst-worker"], home)
-    opened = Drive::press (launch, "Patch Controls")
+    opened = Drive::press (launch, patchControls)
     showsIn (opened, "Scan VST3", false)
     showsIn (opened, "VST3 folder", false)
     scanning = receipt (opened, "prism-vst:list:1")
@@ -162,7 +129,7 @@ pluginUiJourney () =
                 expect (structuralEquals (arguments, ["scan", "/plugins/adelay.vst3"]), true)
                 expect (structuralEquals ([timeout, limit], [10000, 1048576]), true)
             _ => expect (false, true))
-    scanned = receipt (scanning, "prism-vst:scan:2")
+    scanned = receipt (scanning, prismVstScan2)
     loading = vstAdded scanned
     countOf (loading.drivenSurface.surfaceAsked, 1)
     added = receipt (loading, "prism-vst:describe:3")
@@ -184,12 +151,12 @@ pluginUiJourney () =
     expect (structuralEquals ([length (Drive::holding twice).graph.nodes, length (Drive::holding twice).pluginBindings], [2, 2]), true)
     connected = audioLinked (twice, 0, 1)
     cablesOf (connected, 1)
-    sink = chained (connected, ["sine", "stereo", "stereo-output"])
+    sink = chained (connected, ["sine", "stereo", stereoOutputText])
     finished = audioLinked (audioLinked (audioLinked (sink, 2, 3), 3, 0), 1, 4)
     lfoPatch = component (finished, "lfo")
     armedModulator = prismTap (lfoPatch, "Canvas output 5:0")
-    inspectorShows (armedModulator, 0, "Modulate Delay")
-    controlled = inspectorAction (armedModulator, 0, "Modulate Delay")
+    inspectorShows (armedModulator, 0, modulateDelay)
+    controlled = inspectorAction (armedModulator, 0, modulateDelay)
     projectPluginJourney (Drive::holding (choseAt (controlled, 1, "Delay", "0.25")))
     hostedModulationJourney (Drive::holding controlled).graph
     cablesOf (controlled, 5)
@@ -198,16 +165,16 @@ pluginUiJourney () =
     expect (structuralEquals ((Drive::holding unbound).graph.cables, (Drive::holding finished).graph.cables), true)
     restoresParameter ((Drive::holding unbound).graph)
     wrongSource = prismTap (controlled, "Canvas output 2:0")
-    refusedModulation = inspectorAction (wrongSource, 0, "Modulate Delay")
+    refusedModulation = inspectorAction (wrongSource, 0, modulateDelay)
     sameGraph (refusedModulation, controlled)
     malformed = receipt (vstAdded twice, "prism-vst:describe:5")
     sameGraph (malformed, twice)
-    failed = failedWith (scanning, "prism-vst:scan:2", "module unavailable")
+    failed = failedWith (scanning, prismVstScan2, "module unavailable")
     mentions (failed, "module unavailable")
     preferences = Drive::press (scanning, "Settings…")
     replaced = Drive::press (Drive::choose (preferences, "VST3 folder", "/another-folder"), "Save settings")
     expect (readFile "${home}/.prism/vst3-folder" ?: "", "/another-folder")
-    ignored = receipt (replaced, "prism-vst:scan:2")
+    ignored = receipt (replaced, prismVstScan2)
     countOf ((Drive::holding ignored).catalog, 0)
     removedSecond = deleteNode (connected, 1)
     expect (structuralEquals ([length (Drive::holding removedSecond).pluginBindings, length (Drive::holding removedSecond).graph.cables], [1, 0]), true)
@@ -245,7 +212,7 @@ midiMenuJourney () =
     selected = inspectorSelected (notes, 0)
     forEachList (["Pitch", "Velocity"], \text => reads (dialOf (selected, text), \dial => expect (dial.accessMax > dial.accessMin, true)))
     offeredIn (notes, "Canvas output 0:0", true)
-    output = component (notes, "stereo-output")
+    output = component (notes, stereoOutputText)
     nodesOf (output, 2)
     incompatible = linkedCables (output, 0, 1, 0, 0)
     mentions (incompatible, "different rates")
@@ -292,7 +259,7 @@ graphClipJourney () =
 
 // The modulation patch the palette builds: five modules wired source to sink, detuned wide and swept slowly.
 modulationPatch () =
-    adds = mapList (["sine", "stereo", "lfo", "modulated-gain", "stereo-output"], \kind => synth::Add(kind = kind))
+    adds = mapList (["sine", "stereo", "lfo", "modulated-gain", stereoOutputText], \kind => synth::Add(kind = kind))
     wires = mapList ([[0, 1, 0], [1, 3, 0], [2, 3, 1], [3, 4, 0]], \route =>
         [synth::Source(identity = listGet route 0 ?: 0, outlet = 0), synth::Connect(identity = listGet route 1 ?: 0, inlet = listGet route 2 ?: 0)])
     editor = foldList (listConcat adds (ui::Lists::flatten wires), synth::EditorState::initial (), synth::EditorState::tapped)
@@ -350,10 +317,10 @@ clickAt (driven, x, y) = Drive::pointer (Drive::pointer (driven, x, y, true), x,
 editorLaunched args = Drive::launched (Drive::idle (synth::EditorApp::program (), synth::EditorState::initial ()), "macos", args)
 
 // The editor's canvas, opened by its menu button.
-openedEditor args = Drive::press (editorLaunched args, "Patch Controls")
+openedEditor args = Drive::press (editorLaunched args, patchControls)
 
 // One palette component of this `kind` added through the real menu.
-component (driven, kind) = Drive::choose (driven, "Add component", kind)
+component (driven, kind) = Drive::choose (driven, addComponent, kind)
 
 // The palette's `kinds` added in order, each to the component before it.
 chained (driven, kinds) = foldList (kinds, driven, component)
@@ -415,7 +382,7 @@ choseAt (driven, identity, label, value) =
 unchosenAt (driven, identity, label, value) = sameGraph (choseAt (driven, identity, label, value), driven)
 
 // One more scanned ADelay added through the real menu.
-vstAdded driven = Drive::choose (driven, "Add component", "vst:0CDBB66985D548A9BFD8371909D24BB3")
+vstAdded driven = Drive::choose (driven, addComponent, "vst:0CDBB66985D548A9BFD8371909D24BB3")
 
 // A parameter of the editor state edited through the typed boundary.
 edited (editor, identity, key, value) = synth::EditorState::typed (editor, synth::EditParameter(identity = identity, key = key), value)
@@ -458,11 +425,11 @@ modulatedBy (graph, key) = synth::HostModulation::connect (graph, 5, 0, 0, key)
 deadClip (identity, frames, sample) = synth::NodeClip(clipNode = identity, clipChannels = 1, clipSamples = mapList (toList (range (0, frames)), \_ => sample), clipNotes = [])
 
 // The graph advanced with `clips`, which must be refused.
-refuses (graph, clips, frames) = errs (synth::GraphClips::advance (graph, clips, frames))
+refuses (graph, clips, frames) = errs (synth::GraphClips::advance (graph, 48000.0, clips, frames))
 
 // The graph's first hosted module, or the test fails.
 waiting (graph, frames, check) =
-    outcome = synth::GraphClips::advance (graph, [], frames)
+    outcome = synth::GraphClips::advance (graph, 48000.0, [], frames)
     match outcome
         Error _ => expect (false, true)
         Success action => match action
@@ -473,7 +440,7 @@ waiting (graph, frames, check) =
 restoresParameter graph = waiting (graph, 256, \_ => \block => reads (listGet block.parameters 0, \restored => expect (restored.value, 1.0)))
 
 // A graph advanced to ready clips, or why it cannot be.
-clipReady (graph, frames, channels) = unhosted (synth::GraphClips::advance (graph, [], frames), channels)
+clipReady (graph, frames, channels) = unhosted (synth::GraphClips::advance (graph, 48000.0, [], frames), channels)
 
 // The advance outcome's ready clips, with hosted modules refused.
 unhosted (outcome, channels) = match outcome
@@ -495,11 +462,6 @@ builtinRender (graph, frames) = match synth::Graphs::prepare graph
 errs result = match result
     Error _ => expect (true, true)
     Success _ => expect (false, true)
-
-// A bypass or enable switch pressed, which must flip `name`.
-switched (label, name, expected) =
-    tap label
-    flag (name, expected)
 
 // Fails the test unless `outcome` is refused.
 refusesGraph outcome = match outcome
@@ -606,36 +568,42 @@ liveDialJourney () =
     place = madeRoom "live-dial"
     track = keysTrack ()
     score = timeline [track(notes = [beatNote 1.0])]
-    succeeds (daw::Projects::saved (score, "${place}/knobs.json"), \_ =>
-        session = editorLaunched ["--song", "${place}/knobs.json", "--renderer", "${place}/daw", "--vst-worker", "${place}/worker"]
-        started = Drive::press (session, "Play Song")
-        chosen = inspectorSelected (Drive::press (started, "Patch Controls"), 2)
-        reads (dialOf (chosen, "Gain"), \dial =>
-            at = uitest::Semantics::point (dial, 0.5)
-            down = dialPointer (chosen, at.pointX, at.pointY, true, false)
-            moving = dialPointer (down, at.pointX, at.pointY + 160.0, true, false)
-            expect ((Drive::holding moving).dial != synth::DialIdle, true)
-            expect ((Drive::holding moving).songTicket, "daw-song:live:${place}/knobs/live")
-            reads (dialOf (moving, "Gain"), \seen => expect (seen.accessValue, 0.0))
-            succeeds (daw::Playback::start score, \initial =>
-                succeeds (daw::Playback::step (score, initial, 512), \first =>
-                    stream = daw::LiveStream(playing = first.playing, controlVersion = 0, controlScore = score, noteFolders = [])
-                    liveDialBlock (place, stream, \(quiet, muted) =>
-                        bothSilent quiet
-                        louder = dialPointer (moving, at.pointX, at.pointY - 60.0, true, false)
-                        expect ((Drive::holding louder).dial != synth::DialIdle, true)
-                        reads (dialOf (louder, "Gain"), \raised =>
-                            expect (raised.accessValue > dial.accessValue, true)
-                            liveDialBlock (place, muted, \(loud, applied) =>
-                                expect (applied.controlVersion > muted.controlVersion, true)
-                                audible loud.left
-                                released = dialPointer (louder, at.pointX, at.pointY - 60.0, false, false)
-                                expect ((Drive::holding released).dial, synth::DialIdle)
-                                reads (dialOf (released, "Gain"), \kept => expect (kept.accessValue, raised.accessValue))
-                                liveDialBlock (place, applied, \(after, settled) =>
-                                    expect (settled.playing.cursor, 704)
-                                    succeeds (daw::Playback::step (applied.controlScore, applied.playing, 64), \expected =>
-                                        expect (sidesDiffer (expected.left, after.left), false))))))))))
+    use _ <- succeeds (daw::Projects::saved (score, "${place}/knobs.json"))
+    session = editorLaunched ["--song", "${place}/knobs.json", "--renderer", "${place}/daw", "--vst-worker", "${place}/worker"]
+    started = Drive::press (session, "Play Song")
+    chosen = inspectorSelected (Drive::press (started, patchControls), 2)
+    use dial <- reads (dialOf (chosen, "Gain"))
+    at = uitest::Semantics::point (dial, 0.5)
+    down = dialPointer (chosen, at.pointX, at.pointY, true, false)
+    moving = dialPointer (down, at.pointX, at.pointY + 160.0, true, false)
+    expect ((Drive::holding moving).dial != synth::DialIdle, true)
+    expect ((Drive::holding moving).songTicket, "daw-song:live:${place}/knobs/live")
+    reads (dialOf (moving, "Gain"), \seen => expect (seen.accessValue, 0.0))
+    use initial <- succeeds (daw::Playback::start score)
+    use first <- succeeds (daw::Playback::step (score, initial, 512))
+    stream = daw::LiveStream(playing = first.playing, controlVersion = 0, controlScore = score, noteFolders = [])
+    use quiet, muted <- liveDialBlock (place, stream)
+    bothSilent quiet
+    louder = dialPointer (moving, at.pointX, at.pointY - 60.0, true, false)
+    expect ((Drive::holding louder).dial != synth::DialIdle, true)
+    use raised <- reads (dialOf (louder, "Gain"))
+    expect (raised.accessValue > dial.accessValue, true)
+    use loud, applied <- liveDialBlock (place, muted)
+    expect (applied.controlVersion > muted.controlVersion, true)
+    audible loud.left
+    released = dialPointer (louder, at.pointX, at.pointY - 60.0, false, false)
+    expect ((Drive::holding released).dial, synth::DialIdle)
+    reads (dialOf (released, "Gain"), \kept => expect (kept.accessValue, raised.accessValue))
+    use after, settled <- liveDialBlock (place, applied)
+    expect (settled.playing.cursor, 704)
+    use expected <- succeeds (daw::Playback::step (applied.controlScore, applied.playing, 64))
+    expect (sidesDiffer (expected.left, after.left), false)
+
+// `routing` with every `component` node carrying only `setting`.
+retuned (routing, component, setting) = routing(nodes = mapList (routing.nodes, \n => ui::Pick::either (n.component == component, n(settings = [setting]), n)))
+
+// `score` playing its one track's `note` through `routing` instead of its instrument.
+rerouted (score, track, note, routing) = score(tracks = [track(notes = [note], instrument = daw::PatchInstrument(routing = routing))])
 
 // [DAW-TRANSPORT-LIVE-CONTROLS] A gain edit changes the sounding note on the next block.
 liveKnobJourney () =
@@ -643,13 +611,13 @@ liveKnobJourney () =
     note = beatNote 0.125
     score = timeline [track(notes = [note])]
     routing = daw::TrackPatches::routing track.instrument
-    muted = routing(nodes = mapList (routing.nodes, \n => ui::Pick::either (n.component == "gain", n(settings = [daw::Setting(key = "gain", value = 0.0, follow = daw::Constant)]), n)))
-    quiet = score(tracks = [track(notes = [note], instrument = daw::PatchInstrument(routing = muted))])
+    muted = retuned (routing, "gain", daw::Setting(key = "gain", value = 0.0, follow = daw::Constant))
+    quiet = rerouted (score, track, note, muted)
     succeeds (daw::Playback::start score, \start =>
         succeeds (daw::Playback::step (score, start, 512), \first =>
             audible first.left
-            pitched = routing(nodes = mapList (routing.nodes, \n => ui::Pick::either (n.component == "sine", n(settings = [daw::Setting(key = "frequency", value = 1.0, follow = daw::Pitched)]), n)))
-            tuned = score(tracks = [track(notes = [note], instrument = daw::PatchInstrument(routing = pitched))])
+            pitched = retuned (routing, "sine", daw::Setting(key = "frequency", value = 1.0, follow = daw::Pitched))
+            tuned = rerouted (score, track, note, pitched)
             succeeds (daw::Playback::step (score, first.playing, 128), \reference =>
                 succeeds (daw::Playback::step (tuned, first.playing, 128), \changed =>
                     expect (abs ((listGet reference.left 0 ?: 1.0) - (listGet changed.left 0 ?: -1.0)) < 0.02, true)
@@ -774,7 +742,7 @@ walkAccess (d, index) = match listGet (ui::Surfaces::seen (d.drivenSurface, d.dr
     Success drawing => drawing.sketchedAs.sketchAccess
 
 // The access tree of the scene bound to `wanted`, in that scene's units.
-sceneAccess (d, wanted) = match listGet (filterList (toList (range (0, length d.drivenSeen.renderedScenes)), \index => boundTo (d, listGet d.drivenSeen.renderedScenes index ?: -1, wanted))) 0
+sceneAccess (d, wanted) = match listGet (filterList (synth::EditorView::indices d.drivenSeen.renderedScenes, \index => boundTo (d, listGet d.drivenSeen.renderedScenes index ?: -1, wanted))) 0
     Error _ => []
     Success index => walkAccess (d, index)
 
@@ -817,7 +785,7 @@ panelShowsChosen d = chooseGain (d, synth::PatchSurface, 2, \chosen =>
 // [DAW-INSPECTOR] On the main window's Patch page a chosen module's properties are in the docked patch panel,
 // never drawn on the canvas; the panel's Close puts it away and lets go of the module.
 mainPanelJourney () =
-    built = patched ["sine", "gain", "output"]
+    built = patched starterChain
     expect ((Drive::holding built).page, synth::PatchPage)
     expect ((Drive::holding built).patchWindowSerial, 0)
     chooseGain (closedPanel built, synth::Surface, 1, \chosen =>
@@ -834,18 +802,70 @@ closedPanel d =
 // [DAW-INSPECTOR] [DAW-MENU] View → Patch Controls toggles the patch panel: with a module chosen the panel is
 // docked, so Patch Controls puts it away and lets go of the module; pressed again it shows the panel and its
 // controls back.
-// Pressing Patch Controls toggles the docked panel: `shown` is whether "Add component" is visible after.
+// Pressing Patch Controls toggles the docked panel: `shown` is whether addComponent is visible after.
 toggledPanel (driven, shown) =
-    pressed = Drive::press (driven, "Patch Controls")
-    viewShows (pressed, "Add component", shown)
+    pressed = Drive::press (driven, patchControls)
+    viewShows (pressed, addComponent, shown)
     pressed
 
 // Add component picker; the panel's Close puts it away. The self-test every host plays relies on this.
 patchControlsTogglesPanelJourney () =
-    built = patched ["sine", "gain", "output"]
+    built = patched starterChain
     expect ((Drive::holding built).selected >= 0, true)
-    viewShows (built, "Add component", true)
+    viewShows (built, addComponent, true)
     hidden = toggledPanel (built, false)
     expect ((Drive::holding hidden).selected, -1)
     shown = toggledPanel (hidden, true)
-    viewShows (closedPanel shown, "Add component", false)
+    viewShows (closedPanel shown, addComponent, false)
+
+// [PRISM-ROUTING-MIDI] [DAW-GRAPH-OUTPUT] A MIDI note source in a track patch is heard through song playback in
+// Master from its note's exact start frame: silent before it, sounding within its gate, silent once the gate and
+// release are over, at every start tried.
+midiSourceTrack () =
+    notes = piece (1, "midiNote", [fixed ("pitch", 69.0), fixed ("gateFrames", 900.0)])
+    freshTrack ("midi", daw::PatchInstrument(routing = daw::Routing(nodes = [notes, piece (2, "midiOscillator", []), piece (3, "output", [])], cables = [cabled (1, 0, 2, 0), cabled (2, 0, 3, 0)], attack = 0.01, release = 0.01)))
+
+soundFrom (side, found, i) = match found < 0 && abs (listGet side i ?: 0.0) > 0.0
+    true => i
+    false => found
+
+firstSound side = foldList (toList (range (0, length side)), -1, \(found, i) => soundFrom (side, found, i))
+
+framesOf (side, from, until) = mapList (toList (range (from, until)), \i => listGet side i ?: 0.0)
+
+midiSourceJourney () = forEachList ([1200, 2400, 3600], \frame =>
+    track = midiSourceTrack ()
+    song = timeline [track(notes = [playedNote (toFloat frame / 24000.0, 0.5)])]
+    succeeds (daw::Playback::start song, \playing =>
+        succeeds (daw::Playback::step (song, playing, 7200), \played =>
+            // The sine starts at phase zero on the note's frame, so the first nonzero sample is the next one.
+            expect (firstSound played.left, frame + 1)
+            expect (firstSound played.right, frame + 1)
+            expect (loudest (framesOf (played.left, frame, frame + 900)) > 0.5, true)
+            expect (loudest (framesOf (played.left, frame + 2400, 7200)), 0.0))))
+
+// [DAW-PATCH-HEARD] The shipped codex song's `sub` patch lost its Mixer→Gain cable: the song still plays, the
+// other tracks are heard and the sub adds nothing to Master; with the cable back the bass is heard.
+rewired t = match t.instrument
+    daw::PatchInstrument routing => t(instrument = daw::PatchInstrument(routing = routing(cables = listAppend routing.cables (cabled (2, 0, 3, 0)))))
+    _ => t
+
+subCables t = match t.instrument
+    daw::PatchInstrument routing => mapList (routing.cables, \c => [c.source, c.destination])
+    _ => []
+
+codexPlayed (song, check) = succeeds (daw::Playback::start song, \playing => succeeds (daw::Playback::step (song, playing, 4800), check))
+
+subHeard song =
+    sub = filterList (song.tracks, \t => t.name == "sub")
+    expect (mapList (sub, subCables), [[[0, 2], [0, 1], [1, 2], [3, 4]]])
+    without = song(tracks = filterList (song.tracks, \t => t.name != "sub"))
+    fixed = song(tracks = mapList (song.tracks, \t => ui::Pick::either (t.name == "sub", rewired t, t)))
+    codexPlayed (song, \edited => codexPlayed (without, \others => codexPlayed (fixed, \bass =>
+        audible edited.left
+        audible edited.right
+        expect (structuralEquals (edited.left, others.left) && structuralEquals (edited.right, others.right), true)
+        expect (structuralEquals (bass.left, others.left), false)
+        expect (structuralEquals (bass.right, others.right), false))))
+
+codexSubJourney () = succeeds (readFile (signalflow::App::fromRepository "src/osprey/examples/daw/tracks/codex-version.json"), \source => succeeds (daw::SongFiles::decode source, subHeard))

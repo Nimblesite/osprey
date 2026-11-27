@@ -8,7 +8,7 @@ default_namespace = "chromecast"
 name = "@osprey/chromecast"
 license = "MIT"
 summary = "Cast local audio to a Chromecast or Google TV over CAST v2: discovery, framing, sessions and playback"
-keywords = ["cast", "chromecast", "google-tv", "python-flavor"]
+keywords = ["python-flavor"]
 
 [test-dependencies]
 "@osprey/testing" = { epoch = 1, min_release = 1 }

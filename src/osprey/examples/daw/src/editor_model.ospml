@@ -216,6 +216,7 @@ type Editor G M =
     selectedNote : int
     rollDrag : RollDrag
     rollBar : int
+    playStart : int
     playEnd : int
     playBeat : float
     playClock : float

@@ -23,6 +23,8 @@ export interface NativeApplication {
   readonly assets?: string;
   /** The application's own stylesheet inside its asset root. */
   readonly stylesheet?: string;
+  /** The application mark inside its approved asset root. */
+  readonly icon?: string;
   /** The application's symbol registry inside its asset root. */
   readonly symbols?: string;
 }
@@ -112,11 +114,11 @@ function symbolsOf(app: NativeApplication, resolve?: (source: string) => string)
   return resolveSymbols(createAssetResolver(app.assets, file => fs.readFileSync(file, "utf8"))(app.symbols), resolve);
 }
 
-function document(context: ExtensionContext, panel: WebviewPanel, app: NativeApplication, options: NativePanelOptions): string {
+function document(context: ExtensionContext, panel: WebviewPanel, app: NativeApplication, options: NativePanelOptions, icon: string): string {
   const stylesheetUri = app.assets !== undefined && app.stylesheet !== undefined
     ? createAssetResolver(app.assets, (file) => panel.webview.asWebviewUri(Uri.file(file)).toString())(app.stylesheet) : undefined;
   return workspaceHtml({ nonce: randomBytes(18).toString("base64"),
-    assetUri: panel.webview.asWebviewUri(Uri.joinPath(context.extensionUri, "icon.png")).toString(),
+    assetUri: icon,
     scriptUri: panel.webview.asWebviewUri(Uri.joinPath(context.extensionUri, "out", "webview", "webview", "main.js")).toString(),
     cspSource: panel.webview.cspSource, loadingText: options.loading, stylesheetUri });
 }
@@ -129,7 +131,9 @@ function createPanel(context: ExtensionContext, app: NativeApplication, module: 
 }
 
 function initializePanel(context: ExtensionContext, app: NativeApplication, module: WebAssembly.Module, options: NativePanelOptions, panel: WebviewPanel): ActivePanel {
-  panel.iconPath = Uri.joinPath(context.extensionUri, "icon.png");
+  panel.iconPath = app.assets !== undefined && app.icon !== undefined
+    ? Uri.file(createAssetResolver(app.assets, file => file)(app.icon))
+    : Uri.joinPath(context.extensionUri, "icon.png");
   const icon = panel.webview.asWebviewUri(panel.iconPath).toString();
   const cancellation = new AbortController();
   const session = createWorkspaceSession(sessionDeps(panel, app, module, icon, options.loading, cancellation.signal));
@@ -145,7 +149,7 @@ function initializePanel(context: ExtensionContext, app: NativeApplication, modu
   const active = { key: app.key, panel, session, stop };
   panel.onDidDispose(stop);
   panel.webview.onDidReceiveMessage((raw) => receive(raw, active, app, options.title));
-  panel.webview.html = document(context, panel, app, options);
+  panel.webview.html = document(context, panel, app, options, icon);
   return active;
 }
 

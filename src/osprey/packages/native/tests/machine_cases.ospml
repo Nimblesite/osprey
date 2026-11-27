@@ -14,6 +14,8 @@ import ui::Tellings
 import ui::Templates
 import ui::Values
 
+menuPressLevel = "Menu|Press|Level"
+
 
 type NativePoint =
     nativeX : float
@@ -124,7 +126,7 @@ slidTo (machine, label, fraction) =
 slidThrough (machine, fractions) = foldList (fractions, machine, \(before, fraction) => slidTo (before, "Level", fraction))
 
 machineCaseCanvasUseCase () = withNativeFixture (\fresh =>
-    expect (nativeLabels fresh, "Menu|Press|Level")
+    expect (nativeLabels fresh, menuPressLevel)
     expectVia (nativeOffered, fresh, [{ name = "Menu", value = true }, { name = "Dismiss", value = false }])
     expectRead (\name => nativeRole (fresh, name), [{ name = "Menu", value = "popup" }, { name = "Press", value = "button" }, { name = "Level", value = "slider" }, { name = "Missing", value = "none" }])
     expect (nativeValue (fresh, "Level"), 0.25)
@@ -146,13 +148,13 @@ machineCaseCanvasUseCase () = withNativeFixture (\fresh =>
     expectVia (nativeLetters, opened, [{ name = "One", value = true }, { name = "Two", value = true }, { name = "Three", value = true }])
     expectVia (nativeSelected, opened, [{ name = "One", value = false }, { name = "Two", value = false }, { name = "Three", value = false }, { name = "Menu", value = false }, { name = "Press", value = false }, { name = "Level", value = false }])
     dismissed = Canvases::released (opened, 5.0, 5.0)
-    expect (nativeLabels dismissed, "Menu|Press|Level")
+    expect (nativeLabels dismissed, menuPressLevel)
     reopened = Canvases::act (dismissed, "Menu", 0.5)
     option = nativePoint (nativeElement (reopened, "Two"), 0.5)
     held = Canvases::pointer (reopened, option.nativeX, option.nativeY, true)
     forEachList ([{ name = "selected", down = false, chosen = true, x = option.nativeX, y = option.nativeY }, { name = "level", down = false, chosen = false, x = option.nativeX, y = option.nativeY }, { name = "selected", down = true, chosen = false, x = option.nativeX, y = option.nativeY }, { name = "selected", down = false, chosen = false, x = 5.0, y = 5.0 }], \probe => expect (Canvases::chooses (held, probe.name, probe.x, probe.y, probe.down), probe.chosen))
     chosen = Canvases::act (reopened, "Two", 0.5)
-    expect (nativeLabels chosen, "Menu|Press|Level")
+    expect (nativeLabels chosen, menuPressLevel)
     expect (nativeLetters (chosen, "Choice two"), true)
     againOpened = Canvases::act (chosen, "Menu", 0.5)
     expectVia (nativeSelected, againOpened, [{ name = "Two", value = true }, { name = "One", value = false }, { name = "Three", value = false }, { name = "Menu", value = false }])

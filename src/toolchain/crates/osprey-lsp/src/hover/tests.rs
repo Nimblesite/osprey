@@ -460,3 +460,19 @@ fn decl_of(src: &str, needle: &str) -> (u32, u32) {
     let line = u32::try_from(index).expect("line fits");
     (line, u32::try_from(at).expect("column fits") + 1)
 }
+
+#[test]
+fn hovering_a_namespace_or_module_name_shows_its_docs_in_both_flavors() {
+    // [LSP-HOVER] [DOC-MODEL]: the Module Explorer shows this exact hover, so a
+    // scope's `///` must reach it whichever flavor declared the scope.
+    let ml = "(** The whole app lives here. *)\nnamespace app\n\n(** Outer groups values. *)\nmodule Outer\n    export one = 1\n\nprint \"${Outer::one}\"\n";
+    let space = hover(ml, "file:///main.ospml", 1, 10, U16).expect("ML namespace hover");
+    shows(&space, &["namespace app", "The whole app lives here."]);
+    let module = hover(ml, "file:///main.ospml", 4, 7, U16).expect("ML module hover");
+    shows(&module, &["module app::Outer", "Outer groups values."]);
+    let plain = "/// The whole app lives here.\nnamespace app;\n\n/// Outer groups values.\nmodule Outer {\n    export fn one() = 1\n}\n";
+    let space = hover(plain, "file:///main.osp", 1, 10, U16).expect("namespace hover");
+    shows(&space, &["namespace app", "The whole app lives here."]);
+    let module = hover(plain, "file:///main.osp", 4, 7, U16).expect("module hover");
+    shows(&module, &["module app::Outer", "Outer groups values."]);
+}

@@ -4,9 +4,7 @@
 
 ## Aim `[META-AIM]`
 
-Osprey programs compute at compile time, generate code and extend the language's notation, with the safety of the rest of the language and without choosing one technique for every job. Compile-time evaluation, typed staging, templates, syntax macros, declaration macros and schema providers are different tools. Each is a **mechanism**: a package-level way to produce code. Beneath them is one **kernel** that every mechanism must pass through and that the compiler trusts instead of trusting any mechanism.
-
-Three consequences, matching [type disciplines](0050-TypeDisciplines.md):
+Osprey programs compute at compile time, generate code and extend the language's notation. Each way of producing code is a **mechanism**: compile-time evaluation, typed staging, templates, syntax macros, declaration macros and providers. Every mechanism passes through one **kernel**, and the compiler trusts the kernel, never a mechanism. As with [type disciplines](0050-TypeDisciplines.md):
 
 1. A mechanism is added, replaced or forked without changing the kernel. The compiler knows the shape of an expansion, not what produced it.
 2. Code produced by any mechanism is checked by the ordinary Hindley-Milner and effect pipeline of [spec 0004](0004-TypeSystem.md). No mechanism can vouch for its own output.
@@ -14,17 +12,17 @@ Three consequences, matching [type disciplines](0050-TypeDisciplines.md):
 
 ## Design principles from the literature `[META-PRINCIPLES]`
 
-These rules are normative. Each names its source and the rule that implements it.
+Each rule names its source and the rule that implements it.
 
 1. `[META-PRINCIPLES-BINDING]` **Hygiene is decided by binding structure.** Every identifier carries a set of scopes, and a reference resolves to the binding with the largest subset of them; ambiguity is an error [Flatt 2016; Adams 2015]. Osprey: [META-KERNEL-HYGIENE].
 2. `[META-PRINCIPLES-PHASE]` **Compile time and run time never share state.** Imports name their phase, and compile-time code is instantiated afresh per compilation [Flatt 2002; Xie et al. 2023]. Osprey: [META-PHASE].
 3. `[META-PRINCIPLES-TYPED]` **A typed generator cannot produce ill-typed code.** Code is a typed value and levels are checked [Taha and Sheard 2000; Davies and Pfenning 2001; Stucki et al. 2018]. Osprey: [META-STAGE]. Because typed analysis of code is still research [Jang et al. 2022], it is never the only safeguard: [META-KERNEL-RECHECK].
 4. `[META-PRINCIPLES-ONE]` **Macros and staging are one model.** A macro is a compile-time function over code [Ganz et al. 2001; Stucki et al. 2018]; the compile-time level leaves nothing behind [Kovács 2022]. Osprey: one level rule ([META-STAGE-LEVEL]) and one kernel for every mechanism.
 5. `[META-PRINCIPLES-INPUT]` **A macro validates its input and reports in the user's terms.** [Culpepper and Felleisen 2010; Pombrio and Krishnamurthi 2014]. Osprey: [META-SYNTAX-CLASS], [LSP-MACRO-DIAG](../tooling/MacroTooling.md#diagnostics-lsp-macro-diag).
-6. `[META-PRINCIPLES-PARSE]` **A source file parses without running anything.** Languages whose grammar depends on imports [Erdweg et al. 2011] cannot be read by an editor until code has run. Osprey: [META-KERNEL-PARSE].
-7. `[META-PRINCIPLES-INCREMENTAL]` **Expansion is a cached query with recorded dependencies.** [Mokhov et al. 2018]. Macros that inspect arbitrary semantics defeat it, which ended Dart's macros. Osprey: [META-ORDER], [EXPAND-CACHE](../compiler/ExpansionEngine.md#cache-expand-cache).
-8. `[META-PRINCIPLES-ADD]` **Macros add code; they do not rewrite code they were not given.** Swift macros and C# source generators both rest on this. Osprey: [META-KERNEL-ADDITIVE].
-9. `[META-PRINCIPLES-EFFECT]` **What a compile-time program may do is an effect.** Generation-time effects must not let code escape its binder [Kiselyov 2014; Kameyama et al. 2011], and compiler services are best offered as a typed effect [Christiansen and Brady 2016]. Osprey: [META-EFFECTS].
+6. `[META-PRINCIPLES-PARSE]` **A source file parses without running anything.** A grammar that depends on imports [Erdweg et al. 2011] cannot be read until code has run. Osprey: [META-KERNEL-PARSE].
+7. `[META-PRINCIPLES-INCREMENTAL]` **Expansion is a cached query with recorded dependencies.** [Mokhov et al. 2018]. A macro that inspects arbitrary semantics defeats the cache. Osprey: [META-ORDER], [EXPAND-CACHE](../compiler/ExpansionEngine.md#cache-expand-cache).
+8. `[META-PRINCIPLES-ADD]` **Macros add code; they do not rewrite code they were not given.** Osprey: [META-KERNEL-ADDITIVE].
+9. `[META-PRINCIPLES-EFFECT]` **What a compile-time program may do is an effect.** Generation-time effects must not let code escape its binder [Kiselyov 2014; Kameyama et al. 2011], and compiler services are best offered as a typed effect [Christiansen and Brady 2016]. Osprey: [META-EFFECTS-EXPANDER].
 
 ## Definitions `[META-DEF]`
 
@@ -56,6 +54,43 @@ Every expansion, from every mechanism, meets these rules. They are enforced by t
 - `[META-KERNEL-TERMINATE]` **Expansion terminates.** An expansion may contain invocations, expanded in turn to a fixed depth limit. Exceeding it is a diagnostic that prints the chain.
 
 ## Compile-time effects `[META-EFFECTS]`
+
+An effect whose interpretation is chosen at compile time obeys two rules. It costs nothing at run time ([META-EFFECTS-PERF]). And code performs it where the work happens, while the interpretation is chosen elsewhere ([META-EFFECTS-LOCAL]). Together they let a program be written directly, with no abstraction added for testing, and run against test doubles without editing the code under test.
+
+### Performance `[META-EFFECTS-PERF]`
+
+- `[META-EFFECTS-PERF-ZERO]` An interpretation selected at compile time is discharged ([STAGE-HANDLE-STATIC](0017-AlgebraicEffects.md#static-handlers--stage-handle-static)) and leaves no dispatch ([STAGE-RESIDUE](0017-AlgebraicEffects.md#zero-residue--stage-residue)). A perform under it compiles to the arm's code at the call site. Test: the emitted IR of a function that performs under a static handler equals, apart from names, the IR of the same function calling the arm's code directly.
+- `[META-EFFECTS-PERF-HOST]` A host operation (console, file, clock, network) under its default interpretation ([EFFECTS-HOST](0017-AlgebraicEffects.md#host-operations-effects-host)) compiles to the same runtime call as today. Being substitutable adds no indirection to a build that does not substitute it. Test: the corpus IR is unchanged by [META-EFFECTS-LOCAL] in builds that select no substitution.
+- `[META-EFFECTS-PERF-DYNAMIC]` A substitute that cannot be static (a control operation, or a handler chosen at run time) pays handler dispatch only in the builds that select it.
+
+### Locality `[META-EFFECTS-LOCAL]`
+
+- `[META-EFFECTS-LOCAL-PERFORM]` Code performs an operation where the work happens, in any function at any depth. Nothing is passed in, wrapped or moved to an edge to make the operation replaceable: no interface parameter, dependency container or test seam. The row is inferred ([EFFECTS-ROW-POLY](0017-AlgebraicEffects.md#effectful-function-types-effects-row-poly)) and the effect may be implicit ([EFFECTS-IMPLICIT](0017-AlgebraicEffects.md#implicit-effects-effects-implicit)).
+- `[META-EFFECTS-LOCAL-SUBSTITUTE]` Any operation, host operations included, can be given another interpretation from outside the code that performs it. The performing code's text, inferred row and diagnostics are identical with and without the substitution.
+- `[META-EFFECTS-LOCAL-TARGET]` A substitution is directed. It names the operations it replaces and where they are replaced: in a **region** (everything the region reaches, as a static handler does today), or **within a named function** (only performs reached through calls of that function inside the region). A function target behaves as the handler installed around every call of that function in the region. A target resolves like any name; an unknown or ambiguous target is an error. Overlapping substitutions are decided by the innermost-handler rule ([Scope, composition and instances](0017-AlgebraicEffects.md#scope-composition-and-instances)).
+- `[META-EFFECTS-LOCAL-SELECT]` Substitutions are selected at compile time, in source: a test or an entry point states the substitutions it runs under. A target profile in `osprey.toml` may name a module of substitutions for that target. The selection is part of every cache key and is printed by `osprey expand`.
+- `[META-EFFECTS-LOCAL-DOUBLE]` A substitute is an ordinary handler. A static substitute covers every operation it replaces ([STAGE-STATIC-TOTAL](0017-AlgebraicEffects.md#static-handlers--stage-handle-static)) and may record calls in captured cells ([EFFECTS-HANDLER-VALUE-STATE](0017-AlgebraicEffects.md#callable-handler-values-effects-handler-value)). An operation the substitute does not cover keeps its outer interpretation.
+- `[META-EFFECTS-LOCAL-KERNEL]` A substitution installs a handler and rewrites no code, so [META-KERNEL-ADDITIVE] holds.
+
+The spelling below is provisional; the [algebraic-effects plan](../../plans/0016-algebraic-effects-and-handlers.md#surface-syntax) fixes it per flavor.
+
+```osprey
+fn quote(symbol) = perform Prices.latest(symbol)
+fn report(first, second) = print("${quote(first) + quote(second)}")
+
+fn reportCase() = {
+    mut printed = ""
+    handle static Prices within quote { latest symbol => 10 }
+    handle static Stdout { write text => { printed = text } }
+    report("ACME", "INIT")
+    check("the latest prices are added", "20", printed)
+}
+test("report adds the latest prices", reportCase)
+```
+
+`quote` and `report` are written as production code, and `Prices` is implicit: it has no declaration. The test replaces `Prices.latest` within `quote` only, and `print` (the host operation `Stdout.write`) everywhere the region reaches. In the production build the same `print` is a direct runtime call.
+
+### Expander effects `[META-EFFECTS-EXPANDER]`
 
 What an expander may do is its effect row. The compiler supplies the handlers; an operation with no compile-time handler cannot be performed at level 1, and the ordinary effect checker reports it.
 
@@ -153,7 +188,7 @@ Some macros need only syntax; some need types. Both are allowed, and the cost of
 
 ## Relation to existing contracts `[META-RELATION]`
 
-These contracts already move work to compile time or generate code. This specification does not replace them and does not copy their rules.
+These contracts already move work to compile time or generate code. Each keeps its own rules; this specification cites them.
 
 | Contract | What it does | Relation |
 | --- | --- | --- |
@@ -167,7 +202,7 @@ These contracts already move work to compile time or generate code. This specifi
 
 - A package that exports expanders says so in its manifest. A project that depends on it sees this in `osprey.toml` resolution and in the lock file, and may refuse expanders from a package.
 - Package invariant 4 ([PACKAGE-THREATS](../ecosystem/0029-PackageManagement.md#threat-model-and-invariants-package-threats)) holds: nothing in a package runs during fetch, install, lock, build-plan creation or activation. An expander runs only while compiling a module that invokes it.
-- An expander runs with no ambient authority. Its whole capability is its effect row ([META-EFFECTS]) and its declared inputs, inside the sandbox of the [expansion engine](../compiler/ExpansionEngine.md#sandbox-expand-sandbox).
+- An expander runs with no ambient authority. Its whole capability is its effect row ([META-EFFECTS-EXPANDER]) and its declared inputs, inside the sandbox of the [expansion engine](../compiler/ExpansionEngine.md#sandbox-expand-sandbox).
 - The identity of an expander (package, version, content hash) is part of every cache key and of the build's evidence, so a changed macro is a changed build.
 
 ## The existing language is untouched `[META-NO-HARM]`
@@ -184,4 +219,26 @@ A program with no invocation and no level-1 import produces the same output and 
 
 ## References
 
-Full entries, files and addresses are in the [research basis](../../research/metaprogramming/README.md). Cited here: Adams 2015; Christiansen and Brady 2016; Culpepper and Felleisen 2010; Davies and Pfenning 2001; Erdweg et al. 2011; Flatt 2002; Flatt 2016; Flatt et al. 2023; Ganz, Sabry and Taha 2001; Jang et al. 2022; Kameyama, Kiselyov and Shan 2011; Kiselyov 2014; Kovács 2022; Magalhães et al. 2010; Mokhov, Mitchell and Peyton Jones 2018; Omar and Aldrich 2018; Pombrio and Krishnamurthi 2014; Stucki, Biboudis and Odersky 2018; Taha and Sheard 2000; Xie et al. 2022; Xie et al. 2023.
+Every address below was tested on 2026-11-27: a PDF address returns the same bytes as the downloaded copy, and a DOI resolves to the work's record, whose title Crossref confirms. The [research basis](../../research/metaprogramming/README.md) says what each work establishes and what Osprey takes from it.
+
+- [Adams 2015, *Towards the essence of hygiene*, POPL](https://michaeldadams.org/papers/hygiene/hygiene-2015-popl-authors-copy.pdf)
+- [Christiansen and Brady 2016, *Elaborator reflection: extending Idris in Idris*, ICFP](https://doi.org/10.1145/2951913.2951932)
+- [Culpepper and Felleisen 2010, *Fortifying macros*, ICFP](https://www2.ccs.neu.edu/racket/pubs/icfp10-cf.pdf)
+- [Davies and Pfenning 2001, *A modal analysis of staged computation*, JACM](https://www.cs.cmu.edu/~fp/papers/jacm00.pdf)
+- [Erdweg, Rendel, Kästner and Ostermann 2011, *SugarJ: library-based syntactic language extensibility*, OOPSLA](https://www.pl.informatik.uni-mainz.de/files/2019/04/sugarj.pdf)
+- [Flatt 2002, *Composable and compilable macros: you want it when?*, ICFP](https://www.cs.utah.edu/plt/publications/macromod.pdf)
+- [Flatt 2016, *Binding as sets of scopes*, POPL](https://www.cs.utah.edu/plt/publications/popl16-f.pdf)
+- [Flatt et al. 2023, *Rhombus: a new spin on macros without all the parentheses*, OOPSLA](https://kirancodes.me/pdfs/rhombus-oopsla23.pdf)
+- [Ganz, Sabry and Taha 2001, *Macros as multi-stage computations*, ICFP](https://doi.org/10.1145/507635.507646)
+- [Jang, Gélineau, Monnier and Pientka 2022, *Mœbius: metaprogramming using contextual types*, POPL](https://arxiv.org/pdf/2111.08099)
+- [Kameyama, Kiselyov and Shan 2011, *Shifting the stage*, JFP](https://doi.org/10.1017/S0956796811000256)
+- [Kiselyov 2014, *The design and implementation of BER MetaOCaml*, FLOPS](https://okmij.org/ftp/meta-programming/ber-design.pdf)
+- [Kovács 2022, *Staged compilation with two-level type theory*, ICFP](https://arxiv.org/pdf/2209.09729)
+- [Magalhães, Dijkstra, Jeuring and Löh 2010, *A generic deriving mechanism for Haskell*, Haskell Symposium](https://dreixel.net/research/pdf/gdmh.pdf)
+- [Mokhov, Mitchell and Peyton Jones 2018, *Build systems à la carte*, ICFP](https://www.microsoft.com/en-us/research/uploads/prod/2018/03/build-systems.pdf)
+- [Omar and Aldrich 2018, *Reasonably programmable literal notation*, ICFP](https://doi.org/10.1145/3236801)
+- [Pombrio and Krishnamurthi 2014, *Resugaring: lifting evaluation sequences through syntactic sugar*, PLDI](https://cs.brown.edu/~sk/Publications/Papers/Published/pk-resuarging/paper.pdf)
+- [Stucki, Biboudis and Odersky 2018, *A practical unification of multi-stage programming and macros*, GPCE](https://biboudis.github.io/papers/pcp-gpce18.pdf)
+- [Taha and Sheard 2000, *MetaML and multi-stage programming with explicit annotations*, TCS](https://doi.org/10.1016/S0304-3975(00)00053-0)
+- [Xie, Pickering, Löh, Wu, Yallop and Wang 2022, *Staging with class*, POPL](https://www.cl.cam.ac.uk/~jdy22/papers/staging-with-class.pdf)
+- [Xie, White, Nicole and Yallop 2023, *MacoCaml: staging composable and compilable macros*, ICFP](https://www.cl.cam.ac.uk/~jdy22/papers/macocaml-staging-composable-and-compilable-macros.pdf)

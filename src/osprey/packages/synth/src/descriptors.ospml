@@ -5,17 +5,47 @@ namespace synth
     module declares the remaining two contracts: how a 0–1 control maps onto it, and how a routed control
     inlet combines with it. *)
 module Descriptors
-    (** Frequencies and times with a positive lower bound are logarithmic; everything else is linear. *)
+    (** Frequencies and times with a positive lower bound are logarithmic; everything else is linear.
+    # Examples
+    ```osprey
+    pitch = Parameter(key = "frequency", label = "Frequency", unit = Hertz, minimum = 20.0, maximum = 20000.0, initial = 440.0, automatable = true)
+    pan = Parameter(key = "pan", label = "Pan", unit = Ratio, minimum = -1.0, maximum = 1.0, initial = 0.0, automatable = true)
+    print "${Descriptors::scale pitch} ${Descriptors::scale pan}"
+    ```
+    ```output
+    LogarithmicScale LinearScale
+    ```
+    *)
     export scale p = match (p.unit == Hertz || p.unit == Seconds) && p.minimum > 0.0
         true => LogarithmicScale
         false => LinearScale
 
-    (** A parameter value for a 0–1 control, following its declared scale. *)
+    (** A parameter value for a 0–1 control, following its declared scale.
+    # Examples
+    ```osprey
+    pitch = Parameter(key = "frequency", label = "Frequency", unit = Hertz, minimum = 20.0, maximum = 20000.0, initial = 440.0, automatable = true)
+    pan = Parameter(key = "pan", label = "Pan", unit = Ratio, minimum = -1.0, maximum = 1.0, initial = 0.0, automatable = true)
+    print "${Descriptors::fromControl (pitch, 0.0)} ${Descriptors::fromControl (pan, 0.0)}"
+    ```
+    ```output
+    20.0 -1.0
+    ```
+    *)
     export fromControl (p, control) = match scale p
         LogarithmicScale => FitMath::logarithmic (control, p.minimum, p.maximum)
         LinearScale => FitMath::macroValue (control, p.minimum, p.maximum, 1.0)
 
-    (** The 0–1 control that reproduces a parameter value. *)
+    (** The 0–1 control that reproduces a parameter value.
+    # Examples
+    ```osprey
+    pitch = Parameter(key = "frequency", label = "Frequency", unit = Hertz, minimum = 20.0, maximum = 20000.0, initial = 440.0, automatable = true)
+    pan = Parameter(key = "pan", label = "Pan", unit = Ratio, minimum = -1.0, maximum = 1.0, initial = 0.0, automatable = true)
+    print "${Descriptors::toControl (pitch, 20000.0)} ${Descriptors::toControl (pan, 0.25)}"
+    ```
+    ```output
+    1.0 0.625
+    ```
+    *)
     export toControl (p, value) = match scale p
         LogarithmicScale => FitMath::logarithmicControl (value, p.minimum, p.maximum)
         LinearScale => FitMath::normalised (value, p.minimum, p.maximum)
@@ -30,7 +60,16 @@ module Descriptors
         Error _ => Unmodulated
         Success inlet => rule inlet
 
-    (** How a routed control inlet combines with a parameter; unplugged inlets always leave it unchanged. *)
+    (** How a routed control inlet combines with a parameter; unplugged inlets always leave it unchanged.
+    # Examples
+    ```osprey
+    table = Wavetable(size = 2048, harmonics = 1, frames = [TableFrame(levels = [])])
+    print "${Descriptors::modulation (Components::modulatedLowpass (1, 1000.0, 0.7), "cutoff")} ${Descriptors::modulation (Components::wavetable (1, table, 220.0), "frequency")} ${Descriptors::modulation (Components::gain (1, 1.0), "gain")}"
+    ```
+    ```output
+    Multiplying { inlet: 1 } Exponential { inlet: 2, octaves: 2.0 } Unmodulated
+    ```
+    *)
     export modulation (n, key) = match n.processor
         TableOscillator _ => match key
             "position" => ruled (n, "position", \inlet => Replacing(inlet = inlet))
@@ -45,3 +84,50 @@ module Descriptors
             _ => Unmodulated
         External _ _ => ruled (n, key, \inlet => Replacing(inlet = inlet))
         _ => Unmodulated
+
+    (** The name a processor goes by on its card and in its faults.
+    # Examples
+    ```osprey
+    print "${Descriptors::title Mixer} ${Descriptors::title Reverb}"
+    ```
+    ```output
+    Mixer FDN reverb
+    ```
+    *)
+    export title processor = match processor
+        SamplePlayer _ => "Sample"
+        Granular _ _ _ => "Grain cloud"
+        Lfo => "LFO"
+        ModulatedGain => "Modulated gain"
+        MidiNotes => "MIDI notes"
+        FormulaNotes _ => "Formula melody"
+        Stereo => "Mono to stereo"
+        Panner => "Panner"
+        Split => "Channel split"
+        Join => "Channel join"
+        Route _ => "Channel route"
+        Oscillator => "Oscillator"
+        Filter => "Filter"
+        Amplifier => "Gain"
+        Mixer => "Mixer"
+        Sink => "Output"
+        Delay _ => "Delay"
+        Exciter _ => "Exciter"
+        Resonator => "Resonator"
+        Modal => "Modal bank"
+        Waveguide _ => "Waveguide string"
+        FractionalDelay _ => "Fractional delay"
+        LossFilter => "Loss filter"
+        Allpass => "Allpass dispersion"
+        TableOscillator _ => "Wavetable"
+        Additive => "Additive partials"
+        Spectral _ _ => "Spectral processor"
+        Shaper => "Waveshaper"
+        Reverb => "FDN reverb"
+        Shifter => "Frequency shifter"
+        PhaseOperator => "Phase operator"
+        Bowed _ => "Bowed string"
+        Smoother => "Smoother"
+        StrikeComb _ => "Strike comb"
+        Downmix => "Stereo to mono"
+        External identifier _ => identifier

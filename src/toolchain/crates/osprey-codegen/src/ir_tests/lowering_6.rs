@@ -277,8 +277,9 @@ fn matching_a_list_lookup_allocates_no_result() {
         let body = function_body(&ir, header);
         let bounds = body.find("@osprey_list_in_bounds").unwrap_or(usize::MAX);
         let read = body.find("@osprey_list_get").unwrap_or(0);
-        let in_bounds = &body[read.min(body.len())..];
-        let in_bounds = &in_bounds[..in_bounds.find("br label").unwrap_or(0)];
+        let in_bounds = body.get(read.min(body.len())..).expect("char boundary");
+        let branch_at = in_bounds.find("br label").unwrap_or(0);
+        let in_bounds = in_bounds.get(..branch_at).expect("char boundary");
         testkit::contents(in_bounds, &["@osprey_list_get"], &["@osp_alloc"]);
         let built = body.find("@osp_alloc").unwrap_or(usize::MAX);
         assert_eq!(
@@ -290,7 +291,9 @@ fn matching_a_list_lookup_allocates_no_result() {
             built == usize::MAX || built > bounds,
             "{header} builds the failure before the bounds check:\n{body}"
         );
-        let branch = body[bounds.min(body.len())..]
+        let branch = body
+            .get(bounds.min(body.len())..)
+            .expect("char boundary")
             .find("br i1")
             .map(|at| at + bounds);
         assert!(

@@ -69,7 +69,26 @@ class PlaceWalk:
 
 def of(data, offs, count, swapped, alignment, file_size):
     """The tensor section: every entry checked against a file of `file_size` bytes, and
-    where the tensor data starts once `offs` is rounded up to the alignment."""
+    where the tensor data starts once `offs` is rounded up to the alignment.
+
+    # Examples
+    ```osprey
+    from gguf import Tensors
+
+    def show():
+        data = [1, 0, 0, 0, 0, 0, 0, 0, 119, 1, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        match Tensors.of(data, 0, 1, False, 32, 64):
+            case Success(value=section):
+                print(section)
+            case Error(message=m):
+                print(m)
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    gguf: tensor `w` data is truncated at offset 64
+    ```
+    """
     return andThen(walk(data, offs, count, swapped), lambda walked: place_all(file_size, walked, alignment))
 
 
@@ -166,7 +185,25 @@ def with_offset(draft, offset):
 
 
 def alignment_of(fields):
-    """The alignment `general.alignment` declares, or gguf's default when absent."""
+    """The alignment `general.alignment` declares, or gguf's default when absent.
+
+    # Examples
+    ```osprey
+    from gguf import Reader, Tensors
+
+    def show():
+        match Reader.read([71, 71, 85, 70, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 103, 101, 110, 101, 114, 97, 108, 46, 110, 97, 109, 101, 8, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 116, 105, 110, 121, 0, 0, 0, 0]):
+            case Success(value=f):
+                print(Tensors.alignment_of(f.fields))
+            case Error(message=m):
+                print(m)
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    Success(32)
+    ```
+    """
     declared = filterList(fields, names_alignment)
     if len(declared) == 0:
         return Success(value=Constants.DEFAULT_ALIGNMENT)

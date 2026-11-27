@@ -28,7 +28,7 @@ module SchemaOrder {
         if code != "" { "${code} at ${pointer}" } else { walkItems(model, element, field, itemsOf(json), pointer) }
     }
 
-    fn walkTyped(model, ref, field, json, pointer) -> string = match ref {
+    fn walkTyped(model, ref, field, json, pointer) = match ref {
         TypeDiagram::ListOf { element } => walkList(model, element, field, json, pointer)
         TypeDiagram::OptionOf { element } => walkTyped(model, element, field, json, pointer)
         TypeDiagram::Named { name } => walkNamed(model, name, json, pointer)

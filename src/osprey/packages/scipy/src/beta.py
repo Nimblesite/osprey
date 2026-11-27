@@ -20,12 +20,12 @@ __all__ = ["beta", "betaln", "lbeta"]
 INT_OK_MAX = 9.223372036854775e18
 
 
-def int_ok(v: float) -> bool:
+def int_ok(v):
     """Whether v is an integer whose float form the Cephes kernels accept."""
     return v == floor(v) and abs(v) <= INT_OK_MAX
 
 
-def beta_negint(a: float, b: float) -> float:
+def beta_negint(a: float, b):
     """beta(a, b) with a a negative integer: the Cephes reflection rule."""
     if b == floor(b) and abs(b) < INT_OK_MAX and 1.0 - a - b > 0.0:
         sgn = 1.0 if even_f(b) else -1.0
@@ -34,7 +34,7 @@ def beta_negint(a: float, b: float) -> float:
         return pos_inf()
 
 
-def lbeta_negint(a: float, b: float) -> float:
+def lbeta_negint(a: float, b):
     """lbeta(a, b) with a a negative integer: the Cephes reflection rule."""
     if b == floor(b) and abs(b) < INT_OK_MAX and 1.0 - a - b > 0.0:
         return lbeta(1.0 - a - b, b)
@@ -42,7 +42,7 @@ def lbeta_negint(a: float, b: float) -> float:
         return pos_inf()
 
 
-def lbeta_asymp(a: float, b: float) -> Signed:
+def lbeta_asymp(a, b) -> Signed:
     """The Cephes asymptotic lbeta(a, b) for |a| >> |b|."""
     r = lgam_sgn(b)
     v0 = r.value - b * log_s(a)
@@ -52,7 +52,7 @@ def lbeta_asymp(a: float, b: float) -> Signed:
     return Signed(value=v, sign=r.sign)
 
 
-def lgam_sum(a: float, b: float, y: float) -> Signed:
+def lgam_sum(a, b, y) -> Signed:
     """lgam(b) - lgam(y) + lgam(a) with the Cephes sign tracking."""
     yv = lgam_sgn(y)
     y2 = lgam_sgn(b)
@@ -61,7 +61,7 @@ def lgam_sum(a: float, b: float, y: float) -> Signed:
                   sign=yv.sign * y2.sign * y3.sign)
 
 
-def beta_lgam(a: float, b: float, y: float) -> float:
+def beta_lgam(a, b, y):
     """beta's lgam path: exp(lgam(b) - lgam(y) + lgam(a)) with signs."""
     s = lgam_sum(a, b, y)
     if s.value > MAXLOG:
@@ -70,7 +70,7 @@ def beta_lgam(a: float, b: float, y: float) -> float:
         return s.sign * exp_s(s.value)
 
 
-def beta_core(a: float, b: float) -> float:
+def beta_core(a, b):
     """beta after the negative-integer pole checks."""
     if abs(a) < abs(b):
         return beta_core(b, a)
@@ -85,7 +85,7 @@ def beta_core(a: float, b: float) -> float:
             return rgamma_gamma_product(a, b, y)
 
 
-def rgamma_gamma_product(a: float, b: float, y: float) -> float:
+def rgamma_gamma_product(a, b, y):
     """rgamma(a+b) * gamma(a) * gamma(b) in the Cephes order that keeps the
     roundoff smallest, +inf once rgamma(y) has overflowed."""
     y2 = rgamma(y)
@@ -99,7 +99,7 @@ def rgamma_gamma_product(a: float, b: float, y: float) -> float:
         return (a2 * y2) * b2
 
 
-def past_poles(a: float, b: float, negint, core) -> float:
+def past_poles(a, b, negint, core):
     """The negative-integer pole checks beta and lbeta both open with: the
     reflection rule `negint` while an argument cancels it, else `core`."""
     if a <= 0.0 and a == floor(a):
@@ -110,7 +110,7 @@ def past_poles(a: float, b: float, negint, core) -> float:
         return core(a, b)
 
 
-def pole_gamma(x: float, other: float, negint) -> float:
+def pole_gamma(x, other: float, negint):
     """One argument at a negative-integer pole: the reflection `negint` when the
     pole is a true integer, else +inf."""
     return negint(x, other) if int_ok(x) else pos_inf()
@@ -121,12 +121,12 @@ def beta(a: float, b: float) -> float:
     return past_poles(a, b, beta_negint, beta_core)
 
 
-def lbeta_lgam(a: float, b: float, y: float) -> float:
+def lbeta_lgam(a, b, y):
     """lbeta's lgam path: lgam(b) - lgam(y) + lgam(a)."""
     return lgam_sum(a, b, y).value
 
 
-def lbeta_core(a: float, b: float) -> float:
+def lbeta_core(a, b):
     """lbeta after the negative-integer pole checks."""
     if abs(a) < abs(b):
         return lbeta_core(b, a)

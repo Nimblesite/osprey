@@ -367,11 +367,11 @@ def norm_shifted(text, base):
     return norm_each(n, lambda acc, i: append_norm(acc, char_at(n, i), start_at(n, i) + base, end_at(n, i) + base))
 
 
-def pieces_encoding(m, pieces, acc, byte_char, nchars) -> Encodings:
+def pieces_encoding(m, pieces, acc, byte_char, nchars):
     return fold(range(len(pieces)), acc, lambda a, i: piece_encoding(m, unwrap_or(listGet(pieces, i), empty_split()), a, byte_char, nchars))
 
 
-def piece_encoding(m, piece, acc, byte_char, nchars) -> Encodings:
+def piece_encoding(m, piece, acc, byte_char, nchars):
     if acc.bad >= 0:
         return acc
     else:
@@ -386,7 +386,7 @@ def piece_tokens(m, piece, text, acc, byte_char, nchars) -> Encodings:
             return Encodings(enc=acc.enc, bad=0)
 
 
-def append_piece_token(enc, piece, token, byte_char, nchars) -> Encoding:
+def append_piece_token(enc, piece, token, byte_char, nchars):
     """Append a model token, whose byte span inside the piece is a span of the
     original text that the byte-to-character map turns into char offsets. A token
     that stops inside a character still covers the whole of it, as the reference
@@ -413,7 +413,7 @@ class Decoded:
     bad: int
 
 
-def decode_texts(tok, ids, skip_special) -> Result[list[str], str]:
+def decode_texts(tok, ids, skip_special):
     st = fold(range(len(ids)), Decoded(texts=[], bad=-1), lambda acc, i: decode_step(tok, ids, acc, i, skip_special))
     if st.bad >= 0:
         return Error(message="no token with id " + toString(unwrap_or(listGet(ids, st.bad), -1)))

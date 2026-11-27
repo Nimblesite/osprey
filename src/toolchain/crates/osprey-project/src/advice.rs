@@ -77,7 +77,6 @@ fn namespace_warnings(
         .filter(|item| seen.insert((item.source, item.namespace.label())))
         .flat_map(|item| {
             namespace_advice(
-                config,
                 item,
                 folders.get(item.namespace.label()).map_or(0, BTreeSet::len),
                 sources,
@@ -102,16 +101,23 @@ pub(crate) fn warnings(
         referenced,
         sources,
     ));
-    if !config.published_library {
-        warnings.extend(graph.modules.iter().filter(|(key, _)| key.path.len() > 3)
+    warnings.extend(
+        graph
+            .modules
+            .iter()
+            .filter(|(key, _)| key.path.len() > 3)
             .map(|(key, module)| ProjectWarning {
-                rule: "module-deep-hierarchy",
-                message: format!("module `{}` is nested {} levels deep; prefer shallow application boundaries", key.source_name(), key.path.len()),
+                rule: osprey_types::MODULE_DEEP_HIERARCHY,
+                message: format!(
+                    "module `{}` is nested {} levels deep; prefer shallow application boundaries",
+                    key.source_name(),
+                    key.path.len()
+                ),
                 position: position(module.position, module.source, sources),
-            }));
-    }
+            }),
+    );
     warnings.extend(boundaries.iter().map(|owner| ProjectWarning {
-        rule: "state-boundary",
+        rule: osprey_types::STATE_BOUNDARY,
         message: owner.summary(),
         position: owner.position,
     }));
@@ -142,7 +148,6 @@ fn namespace_folders<'a>(
 }
 
 fn namespace_advice(
-    config: &ProjectConfig,
     item: &Contribution,
     folders: usize,
     sources: &[SourceMetadata],
@@ -151,11 +156,11 @@ fn namespace_advice(
     let at = position(item.position, item.source, sources);
     let mut warnings = Vec::new();
     if folders > 1 {
-        warnings.push(ProjectWarning { rule: "namespace-folder-drift", position: at,
+        warnings.push(ProjectWarning { rule: osprey_types::NAMESPACE_FOLDER_DRIFT, position: at,
             message: format!("namespace `{name}` spans {folders} folders; source paths do not change its identity") });
     }
-    if !config.published_library && reverse_domain(name) {
-        warnings.push(ProjectWarning { rule: "namespace-reverse-domain", position: at,
+    if reverse_domain(name) {
+        warnings.push(ProjectWarning { rule: osprey_types::NAMESPACE_REVERSE_DOMAIN, position: at,
             message: format!("namespace `{name}` uses a reverse-domain label in an application; reserve this convention for published libraries") });
     }
     warnings

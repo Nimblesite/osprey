@@ -7,22 +7,32 @@ import registry_api::Router
 /// ETags, method rejection, query-string stripping and the optional "@".
 /// Implements the endpoints of [PACKAGE-FOLDER-REGISTRY] and [PACKAGE-API].
 module RouterTests {
+    /// The content type of every JSON answer, of every problem answer, and the
+    /// header line that ends every cacheable one.
+    let jsonType = "application/json"
+    let problemType = "application/problem+json"
+    let noCache = "|Cache-Control: no-cache"
+    /// The one collection route the routing cases replay.
+    let packagesPath = "/v1/packages"
+    /// The problem body of a release the catalogue does not hold.
+    let unknownRelease = "{\"code\":\"catalog.unknown-release\",\"status\":404,\"title\":\"Unknown release\"}"
+
     fn respond(method, path) = Router::respond(CatalogTests::fixture(), method, path)
 
     fn healthRoute() = {
         let r = respond("GET", "/v1/health")
         checkAll("router: health route", [
             r.status == 200,
-            structuralEquals([r.contentType, r.etag], ["application/json", ""]),
+            structuralEquals([r.contentType, r.etag], [jsonType, ""]),
             r.body == "{\"refused\":1,\"releases\":3,\"status\":\"ok\"}"
         ])
     }
 
     fn packagesRoute() = {
-        let r = respond("GET", "/v1/packages")
+        let r = respond("GET", packagesPath)
         checkAll("router: packages route", [
             r.status == 200,
-            structuralEquals([r.contentType, r.etag], ["application/json", ""]),
+            structuralEquals([r.contentType, r.etag], [jsonType, ""]),
             r.body == (Catalog::packagesJson(CatalogTests::fixture()) ?: "?")
         ])
     }
@@ -35,7 +45,7 @@ module RouterTests {
             structuralEquals([withAt.status, missing.status], [200, 404]),
             withAt.body == bare.body,
             withAt.body == "{\"key\":\"@finch/util\",\"releases\":[{\"digest\":\"${CatalogTests::digestC()}\",\"epoch\":1,\"ordinal\":1}]}",
-            missing.contentType == "application/problem+json",
+            missing.contentType == problemType,
             missing.body == "{\"code\":\"catalog.unknown-package\",\"status\":404,\"title\":\"Unknown package\"}"
         ])
     }
@@ -48,7 +58,7 @@ module RouterTests {
             r.etag == "\"${CatalogTests::digestA()}\"",
             r.body == "{\"digest\":\"${CatalogTests::digestA()}\",\"epoch\":1,\"files\":[\"osprey.toml\",\"src/lib.osp\"],\"key\":\"@finch/ledger\",\"ordinal\":1}",
             missing.etag == "",
-            missing.body == "{\"code\":\"catalog.unknown-release\",\"status\":404,\"title\":\"Unknown release\"}"
+            missing.body == unknownRelease
         ])
     }
 
@@ -57,10 +67,10 @@ module RouterTests {
         let missing = respond("GET", "/v1/releases/sha256:zz/source")
         checkAll("router: source route", [
             structuralEquals([r.status, missing.status], [200, 404]),
-            r.contentType == "application/json",
+            r.contentType == jsonType,
             r.etag == "\"${CatalogTests::digestA()}\"",
             r.body == (Bundle::encode(CatalogTests::ledgerEarly()) ?: "?"),
-            missing.body == "{\"code\":\"catalog.unknown-release\",\"status\":404,\"title\":\"Unknown release\"}"
+            missing.body == unknownRelease
         ])
     }
 
@@ -68,14 +78,14 @@ module RouterTests {
         let r = respond("POST", "/v1/health")
         checkAll("router: non-GET rejected", [
             r.status == 405,
-            structuralEquals([r.contentType, r.etag], ["application/problem+json", ""]),
+            structuralEquals([r.contentType, r.etag], [problemType, ""]),
             r.body == "{\"code\":\"api.method-not-allowed\",\"status\":405,\"title\":\"Method not allowed\"}"
         ])
     }
 
     fn queryStrings() = checkAll("router: query strings ignored", [
         respond("GET", "/v1/packages?cursor=2").status == 200,
-        respond("GET", "/v1/packages?cursor=2").body == respond("GET", "/v1/packages").body,
+        respond("GET", "/v1/packages?cursor=2").body == respond("GET", packagesPath).body,
         respond("GET", "/v1/health?x=1").body == respond("GET", "/v1/health").body
     ])
 
@@ -83,7 +93,7 @@ module RouterTests {
         let r = respond("GET", "/v1/nope")
         checkAll("router: unknown routes 404", [
             r.status == 404,
-            r.contentType == "application/problem+json",
+            r.contentType == problemType,
             r.body == "{\"code\":\"api.not-found\",\"status\":404,\"title\":\"Not found\"}",
             structuralEquals([respond("GET", "/").status, respond("GET", "/v1/packages/a/b/c").status], [404, 404]),
             respond("GET", "/v1/releases/x/other").status == 404,
@@ -98,11 +108,11 @@ module RouterTests {
     /// [PACKAGE-HARDENING] S2 and S3: the fixed headers on every response,
     /// immutable caching only where the body is digest-addressed, `Allow` on 405.
     fn hardeningHeaders() = checkAll("router: hardening headers", [
-        headersText("GET", "/v1/packages") == fixedHeaders + "|Cache-Control: no-cache",
-        headersText("GET", "/v1/health") == fixedHeaders + "|Cache-Control: no-cache",
+        headersText("GET", packagesPath) == fixedHeaders + noCache,
+        headersText("GET", "/v1/health") == fixedHeaders + noCache,
         headersText("GET", "/v1/releases/${CatalogTests::digestA()}") == fixedHeaders + "|Cache-Control: public, max-age=31536000, immutable",
         headersText("GET", "/v1/releases/${CatalogTests::digestA()}/source") == fixedHeaders + "|Cache-Control: public, max-age=31536000, immutable",
-        headersText("GET", "/v1/releases/sha256:zz") == fixedHeaders + "|Cache-Control: no-cache",
+        headersText("GET", "/v1/releases/sha256:zz") == fixedHeaders + noCache,
         headersText("POST", "/v1/health") == fixedHeaders + "|Cache-Control: no-cache|Allow: GET"
     ])
 
@@ -110,11 +120,11 @@ module RouterTests {
     /// are answered from the catalog alone, as 404 or 405 problems.
     fn hostileProbes() = checkAll("router: hostile probes", [
         respond("GET", "/v1/releases/../../etc/passwd/source").status == 404,
-        respond("GET", "/v1/releases/%2e%2e/source").body == "{\"code\":\"catalog.unknown-release\",\"status\":404,\"title\":\"Unknown release\"}",
+        respond("GET", "/v1/releases/%2e%2e/source").body == unknownRelease,
         respond("GET", "/v1/packages/%40finch/util").status == 404,
         respond("GET", "/v1/packages/finch/util/../ledger").status == 404,
         respond("GET", "//v1/packages").status == 404,
-        structuralEquals([respond("HEAD", "/v1/health").status, respond("DELETE", "/v1/packages").status], [405, 405]),
+        structuralEquals([respond("HEAD", "/v1/health").status, respond("DELETE", packagesPath).status], [405, 405]),
         respond("PUT", "/v1/releases/${CatalogTests::digestA()}/source").status == 405
     ])
 

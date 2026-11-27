@@ -41,12 +41,25 @@ impl Out {
         self.0.push('\n');
     }
 
+    /// A documentation comment over a module member, one source line per
+    /// line; a multi-line one closes on its own line, after any fence.
+    fn doc(&mut self, doc: &str) {
+        match doc.split_once('\n') {
+            None => self.line(1, &format!("(** {doc} *)")),
+            Some((first, rest)) => {
+                self.line(1, &format!("(** {first}"));
+                rest.lines().for_each(|row| self.line(1, row));
+                self.line(1, "*)");
+            }
+        }
+    }
+
     fn definition(&mut self, file: &str, def: &Def, written: &Written) {
         let name = &def.name;
         let doc = def.doc.clone().filter(|doc| !doc.is_empty());
         let generated = format!("`{name}`, generated from {file}.");
         if let Some(doc) = doc.or_else(|| def.public.then_some(generated)) {
-            self.line(1, &format!("(** {} *)", doc.replace("*)", "* )")));
+            self.doc(&doc.replace("*)", "* )"));
         }
         let export = if def.public { "export " } else { "" };
         if written.header {

@@ -3,7 +3,15 @@ namespace synth
 
 (** RIFF/WAVE encoding for reference previews and high-resolution rendered audio. *)
 module WaveFiles
-    (** The 8-bit reference preview shares byte/header primitives with float output. *)
+    (** The 8-bit reference preview shares byte/header primitives with float output.
+    # Examples
+    ```osprey
+    print "${WaveFiles::mono8 (8000, [128, 130])}"
+    ```
+    ```output
+    524946462600000057415645666D74201000000001000100401F0000401F00000100080064617461020000008082
+    ```
+    *)
     export mono8 (rate, values) =
         count = length values
         odd = bitAnd count 1
@@ -17,12 +25,36 @@ module WaveFiles
     // IEEE float WAVEFORMATEX includes cbSize=0 and a fact chunk with sample count.
     floatHeader (rate, channels, count) = "52494646${PcmWords::le32 (satAdd 50 (satMul count 4))}57415645666D7420${PcmWords::le32 18}${PcmWords::le16 3}${PcmWords::le16 channels}${PcmWords::le32 rate}${PcmWords::le32 (satMul (satMul rate channels) 4)}${PcmWords::le16 (satMul channels 4)}${PcmWords::le16 32}${PcmWords::le16 0}66616374${PcmWords::le32 4}${PcmWords::le32 (intDiv count channels)}64617461${PcmWords::le32 (satMul count 4)}"
 
-    (** Interleaved IEEE float32 WAV; channel alignment and all sample values are checked. *)
+    (** Interleaved IEEE float32 WAV; channel alignment and all sample values are checked.
+    # Examples
+    ```osprey
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => WaveFiles::interleaved (48000, 1, [0.0]))} ${arithmetic (\() => WaveFiles::interleaved (4000, 1, [0.0]))} ${arithmetic (\() => WaveFiles::interleaved (48000, 2, [0.0]))}"
+    ```
+    ```output
+    Success(524946463600000057415645666D7420120000000300010080BB000000EE0200040020000000666163740400000001000000646174610400000000000000) Error(MissingResource { detail: "Invalid WAV rate, channel count or sample count." }) Error(MissingResource { detail: "Invalid WAV channel alignment or non-finite/excessive sample." })
+    ```
+    *)
     export interleaved (rate, channels, samples) = match rate >= 8000 && rate <= 384000 && channels >= 1 && channels <= 64 && length samples <= 1920000
         false => Error(message = MissingResource(detail = "Invalid WAV rate, channel count or sample count."))
         true => match satMul (intDiv (length samples) channels) channels == length samples && length (filterList (samples, finite)) == length samples
             false => Error(message = MissingResource(detail = "Invalid WAV channel alignment or non-finite/excessive sample."))
             true => Success(value = "${floatHeader (rate, channels, length samples)}${join (mapList (samples, PcmWords::float32)) ""}")
 
-    (** Mono IEEE float32 WAV in hex, using the same interleaved encoder. *)
+    (** Mono IEEE float32 WAV in hex, using the same interleaved encoder.
+    # Examples
+    ```osprey
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => WaveFiles::monoFloat (48000, [1.0]))}"
+    ```
+    ```output
+    Success(524946463600000057415645666D7420120000000300010080BB000000EE020004002000000066616374040000000100000064617461040000000000803F)
+    ```
+    *)
     export monoFloat (rate, samples) = interleaved (rate, 1, samples)

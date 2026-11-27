@@ -17,6 +17,12 @@ import proof
     well-formed member. A claim the kernel cannot confirm is refused
     naming the constant it is about, never rejected generically. *)
 module InductiveAdversarialTests
+    (** The two refusal fragments the agreement cases pin: what the kernel
+        re-derives is introduced by "the kernel derives", and a forged claim
+        about `Eq` is reported against "`Eq` as exported claims". *)
+    derivesFragment = "the kernel derives"
+    eqClaimsFragment = "`Eq` as exported claims"
+
     (** Runs the theory-agreement cases; the testing built-ins report the TAP lines. *)
     export run () =
         countClaims ()
@@ -74,31 +80,31 @@ module InductiveAdversarialTests
         kernel re-derives from the declarations alone. The genuine Lean
         4.25 mutual and nested fixtures supply the groups. *)
     groupClaims () =
-        test ("a recursor claiming two motives over one is refused naming both counts", \() => expect (fragments (theory (ExportInductiveTests::eqRec (), "\"numMotives\":1", "\"numMotives\":2"), ["`Eq.rec` as exported claims", "motives 2", "motives 1", "the kernel derives"]), "`Eq.rec` as exported claims | motives 2 | motives 1 | the kernel derives"))
+        test ("a recursor claiming two motives over one is refused naming both counts", \() => expect (fragments (theory (ExportInductiveTests::eqRec (), "\"numMotives\":1", "\"numMotives\":2"), ["`Eq.rec` as exported claims", "motives 2", "motives 1", derivesFragment]), "`Eq.rec` as exported claims | motives 2 | motives 1 | the kernel derives"))
 
-        test ("a type claiming another family in its group inventory is refused on the inventory", \() => expect (fragments (theory (ExportInductiveTests::eqType (), "\"all\":[1]", "\"all\":[1,9]"), ["`Eq` as exported claims", "all [Eq, Eq.refl]", "all [Eq]", "the kernel derives"]), "`Eq` as exported claims | all [Eq, Eq.refl] | all [Eq] | the kernel derives"))
+        test ("a type claiming another family in its group inventory is refused on the inventory", \() => expect (fragments (theory (ExportInductiveTests::eqType (), "\"all\":[1]", "\"all\":[1,9]"), [eqClaimsFragment, "all [Eq, Eq.refl]", "all [Eq]", derivesFragment]), "`Eq` as exported claims | all [Eq, Eq.refl] | all [Eq] | the kernel derives"))
 
-        test ("a recursor claiming another family in its group inventory is refused on the inventory", \() => expect (fragments (theory (ExportInductiveTests::eqRec (), "\"all\":[1]", "\"all\":[1,9]"), ["`Eq.rec` as exported claims", "all [Eq, Eq.refl]", "all [Eq]", "the kernel derives"]), "`Eq.rec` as exported claims | all [Eq, Eq.refl] | all [Eq] | the kernel derives"))
+        test ("a recursor claiming another family in its group inventory is refused on the inventory", \() => expect (fragments (theory (ExportInductiveTests::eqRec (), "\"all\":[1]", "\"all\":[1,9]"), ["`Eq.rec` as exported claims", "all [Eq, Eq.refl]", "all [Eq]", derivesFragment]), "`Eq.rec` as exported claims | all [Eq, Eq.refl] | all [Eq] | the kernel derives"))
 
-        test ("a type whose inventory names another family only is refused on the inventory", \() => expect (fragments (theory (ExportInductiveTests::eqType (), "\"all\":[1]", "\"all\":[9]"), ["`Eq` as exported claims", "all [Eq.refl]", "all [Eq]", "the kernel derives"]), "`Eq` as exported claims | all [Eq.refl] | all [Eq] | the kernel derives"))
+        test ("a type whose inventory names another family only is refused on the inventory", \() => expect (fragments (theory (ExportInductiveTests::eqType (), "\"all\":[1]", "\"all\":[9]"), [eqClaimsFragment, "all [Eq.refl]", "all [Eq]", derivesFragment]), "`Eq` as exported claims | all [Eq.refl] | all [Eq] | the kernel derives"))
 
-        test ("a type claiming one nested family over none is refused on the count", \() => expect (fragments (theory (ExportInductiveTests::eqType (), "\"numNested\":0", "\"numNested\":1"), ["`Eq` as exported claims", "nested 1", "nested 0", "the kernel derives"]), "`Eq` as exported claims | nested 1 | nested 0 | the kernel derives"))
+        test ("a type claiming one nested family over none is refused on the count", \() => expect (fragments (theory (ExportInductiveTests::eqType (), "\"numNested\":0", "\"numNested\":1"), [eqClaimsFragment, "nested 1", "nested 0", derivesFragment]), "`Eq` as exported claims | nested 1 | nested 0 | the kernel derives"))
 
         test ("a block naming one family twice is refused on the name", \() => expect (verdict (duplicatedType ()), "constant `Eq` is already declared"))
 
         test ("a block claiming one recursor twice is refused on the count", \() => expect (duplicatedRecursor (), "the block claims 2 recursors where the kernel derives 1"))
 
-        test ("a genuine mutual recursor claiming three motives over two is refused naming both counts", \() => expect (fragments (mutualTheory ("\"numMotives\":2", "\"numMotives\":3"), ["`Tree.rec` as exported claims", "motives 3", "motives 2", "the kernel derives"]), "`Tree.rec` as exported claims | motives 3 | motives 2 | the kernel derives"))
+        test ("a genuine mutual recursor claiming three motives over two is refused naming both counts", \() => expect (fragments (mutualTheory ("\"numMotives\":2", "\"numMotives\":3"), ["`Tree.rec` as exported claims", "motives 3", "motives 2", derivesFragment]), "`Tree.rec` as exported claims | motives 3 | motives 2 | the kernel derives"))
 
-        test ("a genuine mutual recursor claiming no indices over one is refused on the count", \() => expect (fragments (mutualTheory ("\"numIndices\":1,\"numMinors\":6", "\"numIndices\":0,\"numMinors\":6"), ["`IndexedTree.rec` as exported claims", "0 indices", "1 indices", "the kernel derives"]), "`IndexedTree.rec` as exported claims | 0 indices | 1 indices | the kernel derives"))
+        test ("a genuine mutual recursor claiming no indices over one is refused on the count", \() => expect (fragments (mutualTheory ("\"numIndices\":1,\"numMinors\":6", "\"numIndices\":0,\"numMinors\":6"), ["`IndexedTree.rec` as exported claims", "0 indices", "1 indices", derivesFragment]), "`IndexedTree.rec` as exported claims | 0 indices | 1 indices | the kernel derives"))
 
-        test ("a genuine mutual type claiming a constructor in its group inventory is refused on the inventory", \() => expect (fragments (mutualTheory ("\"all\":[23,24]", "\"all\":[23,24,25]"), ["`Tree` as exported claims", "all [Tree, Forest, Tree.leaf]", "all [Tree, Forest]", "the kernel derives"]), "`Tree` as exported claims | all [Tree, Forest, Tree.leaf] | all [Tree, Forest] | the kernel derives"))
+        test ("a genuine mutual type claiming a constructor in its group inventory is refused on the inventory", \() => expect (fragments (mutualTheory ("\"all\":[23,24]", "\"all\":[23,24,25]"), ["`Tree` as exported claims", "all [Tree, Forest, Tree.leaf]", "all [Tree, Forest]", derivesFragment]), "`Tree` as exported claims | all [Tree, Forest, Tree.leaf] | all [Tree, Forest] | the kernel derives"))
 
         test ("a genuine nested field naming another container lowers another group and is refused on its size", \() => expect (mutualTheory (arrayNest (), listNest ()), "the block claims 3 recursors where the kernel derives 2"))
 
-        test ("a genuine nested recursor's motive order is refused when swapped", \() => expect (fragments (nestedTheory ("\"body\":124,\"name\":28,\"type\":97", "\"body\":124,\"name\":28,\"type\":98"), ["`NestedTree.rec` as exported has type", "the kernel derives"]), "`NestedTree.rec` as exported has type | the kernel derives"))
+        test ("a genuine nested recursor's motive order is refused when swapped", \() => expect (fragments (nestedTheory ("\"body\":124,\"name\":28,\"type\":97", "\"body\":124,\"name\":28,\"type\":98"), ["`NestedTree.rec` as exported has type", derivesFragment]), "`NestedTree.rec` as exported has type | the kernel derives"))
 
-        test ("a forged auxiliary rule field count is refused naming both rules", \() => expect (fragments (nestedTheory ("\"ctor\":17,\"nfields\":2,\"rhs\":173", "\"ctor\":17,\"nfields\":3,\"rhs\":173"), ["`NestedTree.rec_1` as exported claims", "List.cons/3", "List.cons/2", "the kernel derives"]), "`NestedTree.rec_1` as exported claims | List.cons/3 | List.cons/2 | the kernel derives"))
+        test ("a forged auxiliary rule field count is refused naming both rules", \() => expect (fragments (nestedTheory ("\"ctor\":17,\"nfields\":2,\"rhs\":173", "\"ctor\":17,\"nfields\":3,\"rhs\":173"), ["`NestedTree.rec_1` as exported claims", "List.cons/3", "List.cons/2", derivesFragment]), "`NestedTree.rec_1` as exported claims | List.cons/3 | List.cons/2 | the kernel derives"))
 
         test ("a constructor taking the family as a function's domain is refused as non-positive", \() => expect (verdict (negative ()), "non-positive occurrence of `Bad` in constructor `Bad.mk`"))
 
@@ -193,9 +199,9 @@ module InductiveAdversarialTests
         Success _ => part
         Error _ => "no `${part}` in `${message}`"
 
-    ruleView (message) = Shapes::views [held (message, "`Eq.rec`'s rule for `Eq.refl` as exported is"), held (message, "the kernel derives")]
+    ruleView (message) = Shapes::views [held (message, "`Eq.rec`'s rule for `Eq.refl` as exported is"), held (message, derivesFragment)]
 
-    typeView (message) = Shapes::views [held (message, "`Eq.rec` as exported has type"), held (message, "the kernel derives")]
+    typeView (message) = Shapes::views [held (message, "`Eq.rec` as exported has type"), held (message, derivesFragment)]
 
     convertibleClaim () =
         test ("an untyped beta-redex cannot conceal a forged recursor statement", \() => expect (typeView (verdict (concealedType ())), "`Eq.rec` as exported has type | the kernel derives"))

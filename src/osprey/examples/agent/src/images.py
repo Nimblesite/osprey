@@ -104,10 +104,10 @@ def read_arguments(home, names):
     from agent import Images
 
     args = Images.read_arguments("/Users/ada", ["shot.png"])
-    print(f"{len(Images.read_arguments('/Users/ada', []))} {args[2]} {args[3]} {args[4]}")
+    print(f"{len(Images.read_arguments('/Users/ada', []))} {unwrap_or(args[2], '')} {unwrap_or(args[4], '')}")
     ```
     ```output
-    5 sh /Users/ada/Library/Application Support/Osprey/pasted shot.png
+    4 sh shot.png
     ```
     """
     return listConcat(["-c", READ_SCRIPT, "sh", folder_of(home)], names)
@@ -148,12 +148,18 @@ def with_images(body_text, names, output):
     ```osprey
     from agent import Images
 
-    body = '{"messages":[{"role":"user","content":"look [image: shot.png]"}]}'
-    kept = Images.with_images("not json", ["shot.png"], "QUJD")
-    print(f"{Images.with_images(body, ['shot.png'], 'QUJD')} | {kept}")
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, value):
+            return value
+
+    with wrapped:
+        body = '{"messages":[{"role":"user","content":"look [image: shot.png]"}]}'
+        kept = Images.with_images("not json", ["shot.png"], "QUJD")
+        print(f"{Images.with_images(body, ['shot.png'], 'QUJD')} | {kept}")
     ```
     ```output
-    {"messages":[{"role":"user","content":[{"type":"image_url","image_url":{"url":"data:image/png;base64,QUJD"}},{"type":"text","text":"look"}]}]} | not json
+    {"messages":[{"role":"user","content":[{"type":"text","text":"look"},{"type":"image_url","image_url":{"url":"data:image/png;base64,QUJD"}}]}]} | not json
     ```
     """
     lines = unwrap_or(split(output, "\n"), [])

@@ -7,7 +7,13 @@ const SIGNATURES: &[(&str, &[Signature])] = &[
         &[("offset", &["α", "α"], "α"), ("shifted", &["α", "α"], "α")],
     ),
     ("DialMath", &[("moved", &["α", "α"], "α")]),
-    ("FitMath", &[("clip", &["α", "α", "α"], "α")]),
+    (
+        "FitMath",
+        &[
+            ("clip", &["α", "α", "α"], "α"),
+            ("macroValue", &["α", "α", "α", "α"], "α"),
+        ],
+    ),
     (
         "TimelineGeometry",
         &[("heardSeconds", &["α", "α", "α", "α", "α"], "α")],

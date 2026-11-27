@@ -5,6 +5,8 @@ namespace registry;
 /// `[a.b]`, `[[a]]` and `a.b = 1` into nested tables. Fails are located reason
 /// codes produced through `Toml::failSpan`. Implements [PACKAGE-MANIFEST].
 module TomlTree {
+    let tomlNotATable = "toml.not-a-table"
+
     type PathStep = Key { name: string } | Item { index: int }
     type Parent = { root: Toml::Value, path: List<PathStep> }
     /// Header focus includes array indices, keeping nested tables inside their owning element.
@@ -70,7 +72,7 @@ module TomlTree {
     // -- key-path insertion -------------------------------------------------
 
     // Recursive through insertNested/insertDeep: codegen needs the return type spelled out.
-    fn insertInto(table, segs, val) -> Result<Toml::Value, string> = match length(segs) == 1 {
+    fn insertInto(table, segs, val) = match length(segs) == 1 {
         true => insertLeaf(table, listGet(segs, 0) ?: TomlValues::missingKeySeg, val)
         false => insertNested(table, segs, val)
     }
@@ -87,7 +89,7 @@ module TomlTree {
             true => Error { message: Toml::failSpan(seg.span, "toml.duplicate-key") }
             false => Success { value: Toml::Table { pairs: listAppend(pairs, Toml::Pair { key: seg.name, value: val, span: seg.span }) } }
         }
-        _ => Error { message: Toml::failSpan(seg.span, "toml.not-a-table") }
+        _ => Error { message: Toml::failSpan(seg.span, tomlNotATable) }
     }
 
     fn childOrCreate(table, seg) = match table {
@@ -95,14 +97,14 @@ module TomlTree {
             true => childOrExisting(pairs, findPair(pairs, seg.name), seg)
             false => Success { value: Toml::emptyTable }
         }
-        _ => Error { message: Toml::failSpan(seg.span, "toml.not-a-table") }
+        _ => Error { message: Toml::failSpan(seg.span, tomlNotATable) }
     }
 
     // `Table =>` cannot be written qualified outside Toml (issue: qualified
     // payload-free variant patterns), so ask Toml::isTable instead.
     fn childOrExisting(pairs, i, seg) = match Toml::isTable(pairAt(pairs, i).value) {
         true => Success { value: pairAt(pairs, i).value }
-        false => Error { message: Toml::failSpan(seg.span, "toml.not-a-table") }
+        false => Error { message: Toml::failSpan(seg.span, tomlNotATable) }
     }
 
     fn dropSeg(segs) = range(1, length(segs)) |> map(fn(i) => listGet(segs, i) ?: TomlValues::missingKeySeg) |> toList
@@ -120,14 +122,14 @@ module TomlTree {
     } else { match child {
         Toml::Arr { items } => if !isEmpty(items) && knownArray(arrays, keyPath(parent, seg)) {
             Success { value: Parent { root: parent.root, path: listAppend(keyPath(parent, seg), Item { index: length(items) - 1 }) } }
-        } else { Error { message: Toml::failSpan(seg.span, "toml.not-a-table") } }
-        _ => Error { message: Toml::failSpan(seg.span, "toml.not-a-table") }
+        } else { Error { message: Toml::failSpan(seg.span, tomlNotATable) } }
+        _ => Error { message: Toml::failSpan(seg.span, tomlNotATable) }
     } }
 
     fn descendParent(parent, arrays, seg) = match tableAt(parent.root, parent.path) {
         Toml::Table { pairs } => if findPair(pairs, seg.name) < 0 { missingParent(parent, seg, Toml::Table { pairs: pairs }) }
             else { existingParent(parent, arrays, seg, pairAt(pairs, findPair(pairs, seg.name)).value) }
-        _ => Error { message: Toml::failSpan(seg.span, "toml.not-a-table") }
+        _ => Error { message: Toml::failSpan(seg.span, tomlNotATable) }
     }
 
     // Recursive header resolution retains every array element in its typed path.
@@ -149,7 +151,7 @@ module TomlTree {
         let table = tableAt(parent.root, parent.path)
         let path = keyPath(parent, seg)
         let known = knownArray(doc.arrays, path)
-        if hasKey(table, seg.name) && !known { Error { message: Toml::failSpan(seg.span, "toml.not-a-table") } }
+        if hasKey(table, seg.name) && !known { Error { message: Toml::failSpan(seg.span, tomlNotATable) } }
         else { andThen(appendArrayLeaf(table, seg), fn(value) => Success { value: withTable(parent, value.root, listAppend(path, Item { index: value.index }), if known { doc.arrays } else { listAppend(doc.arrays, path) }) }) }
     }
 
@@ -169,14 +171,14 @@ module TomlTree {
             true => defineExisting(pairs, findPair(pairs, seg.name), seg)
             false => Success { value: Toml::Table { pairs: listAppend(pairs, Toml::Pair { key: seg.name, value: Toml::emptyTable, span: seg.span }) } }
         }
-        _ => Error { message: Toml::failSpan(seg.span, "toml.not-a-table") }
+        _ => Error { message: Toml::failSpan(seg.span, tomlNotATable) }
     }
 
     // `Table =>` cannot be written qualified outside Toml (issue: qualified
     // payload-free variant patterns), so ask Toml::isTable instead.
     fn defineExisting(pairs, i, seg) = match Toml::isTable(pairAt(pairs, i).value) {
         true => Error { message: Toml::failSpan(seg.span, "toml.duplicate-key") }
-        false => Error { message: Toml::failSpan(seg.span, "toml.not-a-table") }
+        false => Error { message: Toml::failSpan(seg.span, tomlNotATable) }
     }
 
     fn appendArrayLeaf(root, seg) = match root {
@@ -184,12 +186,12 @@ module TomlTree {
             true => appendExisting(pairs, findPair(pairs, seg.name), seg)
             false => Success { value: ArrDef { root: Toml::Table { pairs: listAppend(pairs, Toml::Pair { key: seg.name, value: Toml::Arr { items: [Toml::emptyTable] }, span: seg.span }) }, index: 0 } }
         }
-        _ => Error { message: Toml::failSpan(seg.span, "toml.not-a-table") }
+        _ => Error { message: Toml::failSpan(seg.span, tomlNotATable) }
     }
 
     fn appendExisting(pairs, i, seg) = match pairAt(pairs, i).value {
         Toml::Arr { items } => Success { value: ArrDef { root: Toml::Table { pairs: setPair(pairs, seg.name, seg.span, Toml::Arr { items: listAppend(items, Toml::emptyTable) }) }, index: length(items) } }
-        _ => Error { message: Toml::failSpan(seg.span, "toml.not-a-table") }
+        _ => Error { message: Toml::failSpan(seg.span, tomlNotATable) }
     }
 
     /// Insert a key-path value at the focus's current table, or the first

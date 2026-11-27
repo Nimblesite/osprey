@@ -14,7 +14,15 @@ open Float (cos acos)
 namespace math.Chebyshev
 
 /-- `Tₙ x` for `x` in `[-1, 1]` and a whole `n`. Mathlib `Polynomial.Chebyshev.T_real_cos`:
-`(T ℝ n).eval (cos θ) = cos (n * θ)`, read at `θ = arccos x`. -/
+`(T ℝ n).eval (cos θ) = cos (n * θ)`, read at `θ = arccos x`.
+# Examples
+```osprey
+print "${round (Chebyshev::firstKind (2.0, 0.5) * 1000.0) / 1000.0} ${Chebyshev::firstKind (3.0, 1.0)}"
+```
+```output
+-0.5 1.0
+```
+-/
 def firstKind (n x : Float) : Float := cos (n * acos x)
 
 end math.Chebyshev

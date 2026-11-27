@@ -23,29 +23,45 @@ __all__ = [
 type ModelProfile = dict[str, Json]
 """A model profile keyed as CPython's `ModelProfile` dataclass fields."""
 
+# The `ModelProfile` field names the provider tables key on, the DeepSeek
+# reasoner's model name, and the member carrying its reasoning.
+SUPPORTS_JSON_SCHEMA_OUTPUT = "supports_json_schema_output"
+SUPPORTS_JSON_OBJECT_OUTPUT = "supports_json_object_output"
+SUPPORTS_THINKING = "supports_thinking"
+THINKING_ALWAYS_ENABLED = "thinking_always_enabled"
+IGNORE_STREAMED_LEADING_WHITESPACE = "ignore_streamed_leading_whitespace"
+OPENAI_SUPPORTS_TOOL_CHOICE_REQUIRED = "openai_supports_tool_choice_required"
+JSON_SCHEMA_TRANSFORMER = "json_schema_transformer"
+OPENAI_CHAT_THINKING_FIELD = "openai_chat_thinking_field"
+OPENAI_CHAT_SEND_BACK_THINKING_PARTS = "openai_chat_send_back_thinking_parts"
+ZAI_SUPPORTS_REASONING_EFFORT = "zai_supports_reasoning_effort"
+ZAI_REASONING_EFFORT_MAPPING = "zai_reasoning_effort_mapping"
+DEEPSEEK_REASONER = "deepseek-reasoner"
+REASONING_CONTENT = "reasoning_content"
+
 
 def model_profile():
     """`ModelProfile()`: the dataclass defaults every model shares."""
     return {
         "supports_tools": JsonBool(True),
-        "supports_json_schema_output": JsonBool(False),
-        "supports_json_object_output": JsonBool(False),
+        SUPPORTS_JSON_SCHEMA_OUTPUT: JsonBool(False),
+        SUPPORTS_JSON_OBJECT_OUTPUT: JsonBool(False),
         "supports_image_output": JsonBool(False),
-        "supports_thinking": JsonBool(False),
-        "thinking_always_enabled": JsonBool(False),
-        "ignore_streamed_leading_whitespace": JsonBool(False),
+        SUPPORTS_THINKING: JsonBool(False),
+        THINKING_ALWAYS_ENABLED: JsonBool(False),
+        IGNORE_STREAMED_LEADING_WHITESPACE: JsonBool(False),
         "openai_supports_strict_tool_definition": JsonBool(True),
         "openai_supports_sampling_settings": JsonBool(True),
-        "openai_supports_tool_choice_required": JsonBool(True),
+        OPENAI_SUPPORTS_TOOL_CHOICE_REQUIRED: JsonBool(True),
         "openai_chat_supports_max_completion_tokens": JsonBool(True),
-        "json_schema_transformer": JsonString(""),
+        JSON_SCHEMA_TRANSFORMER: JsonString(""),
         "openai_system_prompt_role": JsonString(""),
-        "openai_chat_thinking_field": JsonString(""),
-        "openai_chat_send_back_thinking_parts": JsonString(""),
+        OPENAI_CHAT_THINKING_FIELD: JsonString(""),
+        OPENAI_CHAT_SEND_BACK_THINKING_PARTS: JsonString(""),
         "openai_supports_forced_tool_choice_with_thinking": JsonBool(True),
         "openai_reasoning_enabled_by_default": JsonBool(False),
-        "zai_supports_reasoning_effort": JsonBool(False),
-        "zai_reasoning_effort_mapping": JsonObject([]),
+        ZAI_SUPPORTS_REASONING_EFFORT: JsonBool(False),
+        ZAI_REASONING_EFFORT_MAPPING: JsonObject([]),
         "zai_thinking_body": JsonBool(False),
     }
 
@@ -75,10 +91,10 @@ def openai_model_profile(model_name):
     """`openai_model_profile(model_name)`: the OpenAI profile of a model name."""
     reasoning = startsWith(model_name, "o1") or startsWith(model_name, "o3") or startsWith(model_name, "o4") or startsWith(model_name, "gpt-5")
     return merge_profile(model_profile(), {
-        "json_schema_transformer": JsonString("openai"),
-        "supports_json_schema_output": JsonBool(True),
-        "supports_json_object_output": JsonBool(True),
-        "supports_thinking": JsonBool(reasoning),
+        JSON_SCHEMA_TRANSFORMER: JsonString("openai"),
+        SUPPORTS_JSON_SCHEMA_OUTPUT: JsonBool(True),
+        SUPPORTS_JSON_OBJECT_OUTPUT: JsonBool(True),
+        SUPPORTS_THINKING: JsonBool(reasoning),
         "openai_supports_sampling_settings": JsonBool(not reasoning),
         "openai_system_prompt_role": JsonString("user" if startsWith(model_name, "o1-mini") else ""),
     })
@@ -91,29 +107,29 @@ def openai_model_profile_with(overrides):
 
 def deepseek_model_profile(model_name):
     """`DeepSeekProvider.model_profile(model_name)`: DeepSeek's chat API quirks."""
-    is_r1 = model_name == "r1" or startsWith(model_name, "deepseek-r1") or model_name == "deepseek-reasoner"
+    is_r1 = model_name == "r1" or startsWith(model_name, "deepseek-r1") or model_name == DEEPSEEK_REASONER
     is_v4 = startsWith(model_name, "deepseek-v4-")
     return merge_profile(model_profile(), {
-        "json_schema_transformer": JsonString("openai"),
-        "ignore_streamed_leading_whitespace": JsonBool(is_r1),
-        "supports_thinking": JsonBool(is_r1 or is_v4),
-        "thinking_always_enabled": JsonBool(is_r1),
-        "supports_json_object_output": JsonBool(True),
-        "openai_chat_thinking_field": JsonString("reasoning_content"),
-        "openai_chat_send_back_thinking_parts": JsonString("field"),
-        "openai_supports_tool_choice_required": JsonBool(model_name != "deepseek-reasoner"),
+        JSON_SCHEMA_TRANSFORMER: JsonString("openai"),
+        IGNORE_STREAMED_LEADING_WHITESPACE: JsonBool(is_r1),
+        SUPPORTS_THINKING: JsonBool(is_r1 or is_v4),
+        THINKING_ALWAYS_ENABLED: JsonBool(is_r1),
+        SUPPORTS_JSON_OBJECT_OUTPUT: JsonBool(True),
+        OPENAI_CHAT_THINKING_FIELD: JsonString(REASONING_CONTENT),
+        OPENAI_CHAT_SEND_BACK_THINKING_PARTS: JsonString("field"),
+        OPENAI_SUPPORTS_TOOL_CHOICE_REQUIRED: JsonBool(model_name != DEEPSEEK_REASONER),
         "openai_supports_forced_tool_choice_with_thinking": JsonBool(not is_v4),
-        "openai_reasoning_enabled_by_default": JsonBool(is_v4 or model_name == "deepseek-reasoner"),
+        "openai_reasoning_enabled_by_default": JsonBool(is_v4 or model_name == DEEPSEEK_REASONER),
     })
 
 
 def ollama_model_profile(_model_name):
     """`OllamaProvider.model_profile(model_name)`: the overrides Ollama needs."""
     return merge_profile(model_profile(), {
-        "supports_json_schema_output": JsonBool(True),
-        "supports_json_object_output": JsonBool(True),
+        SUPPORTS_JSON_SCHEMA_OUTPUT: JsonBool(True),
+        SUPPORTS_JSON_OBJECT_OUTPUT: JsonBool(True),
         "openai_supports_strict_tool_definition": JsonBool(False),
-        "openai_chat_thinking_field": JsonString("reasoning"),
+        OPENAI_CHAT_THINKING_FIELD: JsonString("reasoning"),
     })
 
 
@@ -130,8 +146,8 @@ def kimi_reasoning(model_name):
 def moonshotai_model_profile(model_name):
     """`moonshotai_model_profile(model_name)`: the Kimi model-name profile, before the provider's overrides."""
     return merge_profile(model_profile(), {
-        "ignore_streamed_leading_whitespace": JsonBool(True),
-        "supports_thinking": JsonBool(kimi_reasoning(model_name)),
+        IGNORE_STREAMED_LEADING_WHITESPACE: JsonBool(True),
+        SUPPORTS_THINKING: JsonBool(kimi_reasoning(model_name)),
     })
 
 
@@ -140,12 +156,12 @@ def moonshotai_provider_profile(model_name):
     the endpoint's overrides — no `tool_choice='required'`, `reasoning_content` sent back as a field, and
     reasoning always on, so a `thinking` of `false` omits `reasoning_effort` instead of sending `'none'`."""
     return merge_profile(moonshotai_model_profile(model_name), {
-        "json_schema_transformer": JsonString("openai"),
-        "supports_json_object_output": JsonBool(True),
-        "openai_supports_tool_choice_required": JsonBool(False),
-        "openai_chat_thinking_field": JsonString("reasoning_content"),
-        "openai_chat_send_back_thinking_parts": JsonString("field"),
-        "thinking_always_enabled": JsonBool(kimi_reasoning(model_name)),
+        JSON_SCHEMA_TRANSFORMER: JsonString("openai"),
+        SUPPORTS_JSON_OBJECT_OUTPUT: JsonBool(True),
+        OPENAI_SUPPORTS_TOOL_CHOICE_REQUIRED: JsonBool(False),
+        OPENAI_CHAT_THINKING_FIELD: JsonString(REASONING_CONTENT),
+        OPENAI_CHAT_SEND_BACK_THINKING_PARTS: JsonString("field"),
+        THINKING_ALWAYS_ENABLED: JsonBool(kimi_reasoning(model_name)),
     })
 
 
@@ -185,11 +201,11 @@ def zai_model_profile(model_name):
         return model_profile()
     else:
         overrides = {
-            "supports_thinking": JsonBool(True),
-            "thinking_always_enabled": JsonBool(glm_53(model_name)),
-            "zai_supports_reasoning_effort": JsonBool(glm_effort(model_name)),
+            SUPPORTS_THINKING: JsonBool(True),
+            THINKING_ALWAYS_ENABLED: JsonBool(glm_53(model_name)),
+            ZAI_SUPPORTS_REASONING_EFFORT: JsonBool(glm_effort(model_name)),
         }
-        with_mapping = mapSet(overrides, "zai_reasoning_effort_mapping", zai_reasoning_effort_mapping()) if glm_53(model_name) else overrides
+        with_mapping = mapSet(overrides, ZAI_REASONING_EFFORT_MAPPING, zai_reasoning_effort_mapping()) if glm_53(model_name) else overrides
         return merge_profile(model_profile(), with_mapping)
 
 
@@ -199,10 +215,10 @@ def zai_provider_profile(model_name):
     has `ZaiModel`) marks Z.AI's request shape, where thinking travels as `extra_body`'s `thinking` object
     rather than the OpenAI `reasoning_effort` parameter."""
     return merge_profile(zai_model_profile(model_name), {
-        "json_schema_transformer": JsonString("openai"),
-        "supports_json_object_output": JsonBool(True),
-        "openai_chat_thinking_field": JsonString("reasoning_content"),
-        "openai_chat_send_back_thinking_parts": JsonString("field"),
+        JSON_SCHEMA_TRANSFORMER: JsonString("openai"),
+        SUPPORTS_JSON_OBJECT_OUTPUT: JsonBool(True),
+        OPENAI_CHAT_THINKING_FIELD: JsonString(REASONING_CONTENT),
+        OPENAI_CHAT_SEND_BACK_THINKING_PARTS: JsonString("field"),
         "zai_thinking_body": JsonBool(True),
     })
 
@@ -216,8 +232,8 @@ def thinking_levels(profile, provider_kind) -> list[str]:
     order — `[]` when the model does not think or always thinks with no choice of level. Kimi reasoning
     models are never off; GLM-5.3 takes its mapped `low`, `high`, `max`; GLM-5.2 every level with `off`;
     older thinking GLM only `off` and `on`; DeepSeek v4 `off`, `on` and every level upstream forwards."""
-    supports = profile_bool(profile, "supports_thinking", False)
-    always = profile_bool(profile, "thinking_always_enabled", False)
+    supports = profile_bool(profile, SUPPORTS_THINKING, False)
+    always = profile_bool(profile, THINKING_ALWAYS_ENABLED, False)
     if not supports and not always:
         return []
     elif provider_kind == "moonshotai":
@@ -237,7 +253,7 @@ def thinking_levels(profile, provider_kind) -> list[str]:
 
 
 def zai_thinking_levels(profile):
-    if not profile_bool(profile, "zai_supports_reasoning_effort", False):
+    if not profile_bool(profile, ZAI_SUPPORTS_REASONING_EFFORT, False):
         return ["off", "on"]
     else:
         mapping = effort_map(profile)
@@ -249,7 +265,7 @@ def zai_thinking_levels(profile):
 
 def effort_map(profile):
     """`zai_reasoning_effort_mapping` as a text map."""
-    raw = unwrap_or(mapGet(profile, "zai_reasoning_effort_mapping"), JsonNull())
+    raw = unwrap_or(mapGet(profile, ZAI_REASONING_EFFORT_MAPPING), JsonNull())
     table = J.to_map(raw)
     return foldList(mapKeys(table), {}, lambda acc, key: mapSet(acc, key, J.text_at(raw, key, "")))
 

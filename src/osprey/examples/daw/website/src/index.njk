@@ -1,0 +1,169 @@
+---
+layout: base.njk
+title: ""
+description: "Perception is a modular synth studio, VST3 plug-in, and hardware synth factory with unlimited routing, granular and spectral engines, and mathematically proven DSP."
+---
+
+<section class="hero grid-backdrop">
+  <div class="shell">
+    <div class="hero-header">
+      <p class="eyebrow">Modular DAW · VST3 Plug-In &amp; Host · Hardware Synth Factory</p>
+      <h1>Unlimited routing.<br>Proven DSP.</h1>
+      <p class="hero-lead">
+        <strong>Perception Studio</strong> is a modular synth DAW, <strong>VST3 plug-in &amp; host</strong>,
+        and hardware synth factory — patch third-party VST3s as modules alongside granular, spectral,
+        and mathematically proven DSP.
+      </p>
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="/learn/">Start learning</a>
+        <a class="btn btn-ghost" href="/learn/modules/">Explore modules</a>
+      </div>
+    </div>
+
+    <div class="stage-switch" role="tablist" aria-label="Studio screenshots">
+      {% for view in site.views %}
+      <button
+        type="button"
+        class="view-tab"
+        role="tab"
+        id="tab-{{ view.id }}"
+        aria-controls="panel-{{ view.id }}"
+        aria-selected="{% if loop.first %}true{% else %}false{% endif %}"
+        data-view-tab="{{ view.id }}"
+      >{{ view.label }}</button>
+      {% endfor %}
+    </div>
+
+    <div class="studio-frame">
+      {% for view in site.views %}
+      <figure
+        class="stage-panel"
+        id="panel-{{ view.id }}"
+        role="tabpanel"
+        aria-labelledby="tab-{{ view.id }}"
+        data-view-panel="{{ view.id }}"
+        {% if not loop.first %}hidden{% endif %}
+      >
+        <button
+          type="button"
+          class="stage-trigger"
+          data-lightbox-src="{{ view.image }}"
+          data-lightbox-alt="{{ view.alt }}"
+          data-lightbox-title="Perception — {{ view.label }}"
+          data-lightbox-caption="{{ view.caption }}"
+        >
+          <img
+            src="{{ view.image }}"
+            alt="{{ view.alt }}"
+            {% if loop.first %}fetchpriority="high"{% else %}fetchpriority="low" loading="lazy"{% endif %}
+            decoding="async"
+          >
+        </button>
+        <figcaption class="stage-caption">{{ view.caption }}</figcaption>
+      </figure>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="shell">
+    <div class="section-head">
+      <h2>Built for sound designers</h2>
+      <p>Zero hidden processing. Every cable, grain cloud, and proof in plain sight.</p>
+    </div>
+
+    <div class="pillar-grid">
+      <article class="card">
+        <span class="card-tag">Unlimited Routing</span>
+        <h3>Patch any outlet to any bus</h3>
+        <p>
+          Tap internal module outlets straight into sidechained stereo buses, nest groups with
+          cycle detection, modulate filters at audio rate, and drive voices with formula melodies.
+        </p>
+      </article>
+      <article class="card">
+        <span class="card-tag is-monitor">Mathematically Proven DSP</span>
+        <h3>Machine-checked synthesis math</h3>
+        <p>
+          Waveguides, weighted overlap-add, allpass magnitude, radix-2 FFT, and antiderivative
+          anti-aliasing carry Lean proofs verified in CI.
+        </p>
+      </article>
+      <article class="card">
+        <span class="card-tag is-mod">Hardware Synth Factory</span>
+        <h3>From desktop patch to hardware box</h3>
+        <p>
+          Bind macros to a typed device profile — pedal, desktop synth, or Raspberry Pi 5 + HAT —
+          and run the exact same engine on real-time Linux hardware.
+        </p>
+      </article>
+      <article class="card">
+        <span class="card-tag">DAW + VST3 · Granular &amp; Spectral</span>
+        <h3>Standalone studio or VST3 plug-in</h3>
+        <p>
+          Run standalone or load Perception as a VST3 inside Ableton, Reaper, or Bitwig — packed
+          with 16-voice WAV grain clouds, FFT pitch shifting, and isolated VST3 hosting.
+        </p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="shell">
+    <div class="section-head">
+      <h2>Engineering blog</h2>
+      <p>Deep dives on modular routing, Lean DSP proofs, and hardware profiles.</p>
+    </div>
+
+    <div class="blog-grid">
+      {% for post in site.posts %}
+      <a class="blog-card" href="{{ post.url }}">
+        <div class="blog-cover">
+          <img src="{{ post.image }}" alt="{{ post.alt }}" loading="lazy" decoding="async">
+        </div>
+        <div class="blog-body">
+          <div class="blog-meta">
+            <span class="card-tag">{{ post.tag }}</span>
+            <span>{{ post.date }}</span>
+          </div>
+          <h3>{{ post.title }}</h3>
+          <p>{{ post.summary }}</p>
+        </div>
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="shell">
+    <div class="section-head">
+      <h2>Real studio captures</h2>
+      <p>Live signal graphs from hand-composed tracks. <a href="/learn/tracks/" style="color:var(--signal); text-decoration:none;">Explore example tracks →</a></p>
+    </div>
+
+    <div class="gallery-grid">
+      {% for shot in site.gallery.slice(0, 3) %}
+      <article class="shot-card">
+        <button
+          type="button"
+          class="shot-btn"
+          data-lightbox-src="{{ shot.image }}"
+          data-lightbox-alt="{{ shot.title }}"
+          data-lightbox-title="{{ shot.title }}"
+          data-lightbox-caption="{{ shot.caption }}"
+        >
+          <img src="{{ shot.image }}" alt="{{ shot.title }}" loading="lazy" decoding="async">
+        </button>
+        <div class="shot-meta">
+          <span class="card-tag">{{ shot.tag }}</span>
+          <h3>{{ shot.title }}</h3>
+          <p>{{ shot.caption }}</p>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+  </div>
+</section>

@@ -20,6 +20,10 @@ import registry::Order
 /// `package`/`epoch`/`ordinal`/`digest` record of
 /// `src/toolchain/schemas/package-registry.td`.
 module Lockfile {
+    /// The two lock members the reader requires of every root: its dependency edges and the digest of the manifest it was computed from.
+    let dependenciesKey = "dependencies"
+    let manifestDigestKey = "manifestDigest"
+
     /// The root's manifest digest and its dependency edges.
     export type Root = { manifestDigest: string, dependencies: List<ManifestModel::Edge> }
     /// One selected release, its Runtime/Build edges and its pinned capability
@@ -99,7 +103,7 @@ module Lockfile {
     ])
 
     fn packageJson(p: Package) = Json::obj([
-        Json::member("dependencies", ManifestJson::dependenciesJson(p.dependencies)),
+        Json::member(dependenciesKey, ManifestJson::dependenciesJson(p.dependencies)),
         Json::member("release", releaseJson(p.release)),
         arrayMember("surface", p.surface, Json::str)
     ])
@@ -112,8 +116,8 @@ module Lockfile {
     fn pythonMembers(python) = Maybe::fold(python, [], fn(p) => [Json::member("python", pinsJson(p))])
 
     fn rootJson(root: Root, python) = Json::obj(listConcat([
-        Json::member("dependencies", ManifestJson::dependenciesJson(root.dependencies)),
-        Json::member("manifestDigest", Json::str(root.manifestDigest))
+        Json::member(dependenciesKey, ManifestJson::dependenciesJson(root.dependencies)),
+        Json::member(manifestDigestKey, Json::str(root.manifestDigest))
     ], pythonMembers(python)))
 
     // `Package` shares `dependencies` with `Root` and `ManifestModel::Manifest`;
@@ -136,7 +140,7 @@ module Lockfile {
 
     fn overrideJson(o: Override) = Json::obj([
         Json::member("epoch", Json::num(o.epoch)),
-        Json::member("manifestDigest", Json::str(o.manifestDigest)),
+        Json::member(manifestDigestKey, Json::str(o.manifestDigest)),
         Json::member("package", ManifestJson::key(o.package)),
         Json::member("path", Json::str(o.path))
     ])
@@ -225,9 +229,9 @@ module Lockfile {
 
     fn edgeFromRequirement(m, reqObj) = andThen(readRequirement(reqObj), fn(value) => readEdgeNamed(m.key, value))
 
-    fn edgesFrom(object) = andThen(JsonRead::requiredItems(object, "dependencies", shapeCode), fn(items) => Checked::collectAll(items, edgeOfValue))
+    fn edgesFrom(object) = andThen(JsonRead::requiredItems(object, dependenciesKey, shapeCode), fn(items) => Checked::collectAll(items, edgeOfValue))
 
-    fn readRoot(object) = andThen(digestMember(object, "manifestDigest"), fn(value) => readRootWithDeps(object, value))
+    fn readRoot(object) = andThen(digestMember(object, manifestDigestKey), fn(value) => readRootWithDeps(object, value))
 
     fn readRootWithDeps(object, digest) = andThen(edgesFrom(object), fn(value) => Success { value: Root { manifestDigest: digest, dependencies: value } })
 
@@ -267,7 +271,7 @@ module Lockfile {
 
     fn overrideEpoch(object, key, path) = intField(object, "epoch", fn(value) => if value < 1 { Error { message: shapeCode } } else { overrideDigest(object, key, path, value) })
 
-    fn overrideDigest(object, key, path, epoch) = andThen(digestMember(object, "manifestDigest"), fn(value) => Success { value: Override { package: key, path: path, epoch: epoch, manifestDigest: value } })
+    fn overrideDigest(object, key, path, epoch) = andThen(digestMember(object, manifestDigestKey), fn(value) => Success { value: Override { package: key, path: path, epoch: epoch, manifestDigest: value } })
 
     fn overrideOf(object) = readKeyed(object, fn(o, key) => overridePath(o, key))
 

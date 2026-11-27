@@ -381,7 +381,7 @@ class Spans:
     bad: int
 
 
-def tokens_by_id(m, ids) -> Result[list[Token], str]:
+def tokens_by_id(m, ids):
     """Each id as the token whose bytes it names, with its byte span in the piece."""
     st = fold(range(len(ids)), Spans(tokens=[], offset=0, bad=-1), lambda acc, i: span_step(m, ids, acc, i))
     if st.bad >= 0:

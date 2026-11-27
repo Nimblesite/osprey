@@ -19,7 +19,7 @@ fn operator() = Principal { name: "admin@example.com", roles: ["Administrator"],
 
 /// The handlers that outlive a request: the log, the clock and the store. The rest are per
 /// request, so a captured continuation never leaves the request that made it.
-fn main() -> int = {
+fn main() = {
     handle Log {
         info message => print("info: ${message}")
         warn message => print("warn: ${message}")

@@ -26,7 +26,7 @@ module Storage {
     export fn restore(model: InboxModel, source: string) -> Result<InboxModel, string> = restoreInferred(model, source)
     /// A closure over `model` that restores it from a `source` given later.
     export fn restoreCurried(model: InboxModel) -> (string) -> Result<InboxModel, string> =
-    fn(source: string) -> Result<InboxModel, string> => restore(model, source)
+    fn(source) => restore(model, source)
 }
 
 /// Readies the model, has `Storage` restore it and settles the reply either way.

@@ -19,6 +19,9 @@ import registry::Names
 /// malformed overlay is its `overlay.*` code.
 module OverlayTests {
     let project = "/abs"
+    /// The manifest's entry file, and the refusal of an overlay whose digest no longer matches.
+    let mainPath = "src/main.osp"
+    let digestFailed = "digest failed"
     let overlayPath = "/abs/osprey.local.toml"
     let localLockPath = "/abs/osprey.local.lock"
     let localPath = "../local-one"
@@ -31,15 +34,15 @@ module OverlayTests {
 
     fn localManifest() = "[project]\nname = \"one\"\nsource_roots = [\"src\"]\n\n[package]\nname = \"@demo/one\"\nlicense = \"MIT\"\nsummary = \"local one\"\nkeywords = [\"one\"]\n\n[dependencies]\n\"@demo/two\" = { epoch = 1, min_release = 1 }\n"
 
-    fn localFiles(manifest) = [Fixture::file("osprey.toml", manifest), Fixture::file("src/main.osp", "fn main() = 0\n")]
+    fn localFiles(manifest) = [Fixture::file("osprey.toml", manifest), Fixture::file(mainPath, "fn main() = 0\n")]
 
     fn localReads(manifest) = mapList(localFiles(manifest), fn(f) => Fixture::readRoute("${localDir}/${f.relPath}", f.content))
 
-    fn localWalk() = Fixture::walkRoute(localDir, ["osprey.toml", "src/main.osp"])
+    fn localWalk() = Fixture::walkRoute(localDir, ["osprey.toml", mainPath])
 
-    fn localDigest() = Install::digestOfFiles(localFiles(localManifest())) ?: "digest failed"
+    fn localDigest() = Install::digestOfFiles(localFiles(localManifest())) ?: digestFailed
 
-    fn localManifestDigest() = ManifestJson::digest(Fixture::manifestOf(localManifest())) ?: "digest failed"
+    fn localManifestDigest() = ManifestJson::digest(Fixture::manifestOf(localManifest())) ?: digestFailed
 
     fn oneKey() = Names::Key { scope: "demo", name: "one" }
 
@@ -215,11 +218,11 @@ module OverlayTests {
     /// lock, a mapping without a baseline, and a development lock with the
     /// checkout at ordinal zero.
     fn addLocalUnpublished() = {
-        let localThree = [Fixture::file("osprey.toml", threeManifest()), Fixture::file("src/main.osp", "fn main() = 0\n")]
+        let localThree = [Fixture::file("osprey.toml", threeManifest()), Fixture::file(mainPath, "fn main() = 0\n")]
         let reads = listConcat(RegistryFixture::reads(plain(), served()), localReads(threeManifest()))
         let a = RegistryFixture::runWith(reads, [localWalk()], RegistryFixture::websOf(served()), ["add", localPath, "--project", project])
         let expectedManifest = plain() + "\n[dependencies]\n\"@demo/three\" = { epoch = 1, min_release = 0 }\n"
-        let threeRelease = Identity::ReleaseId { key: threeKey(), epoch: 1, ordinal: 0, digest: Install::digestOfFiles(localThree) ?: "digest failed" }
+        let threeRelease = Identity::ReleaseId { key: threeKey(), epoch: 1, ordinal: 0, digest: Install::digestOfFiles(localThree) ?: digestFailed }
         let threeOverride = Lockfile::Override { package: threeKey(), path: localPath, epoch: 1, manifestDigest: ManifestJson::digest(Fixture::manifestOf(threeManifest())) ?: "" }
         checkAll("add <path> of an unpublished key is development-only", [
             RegistryFixture::accepted(a),

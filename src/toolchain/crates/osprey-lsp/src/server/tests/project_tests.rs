@@ -87,11 +87,15 @@ async fn library_manifest_changes_invalidate_style_advice() -> Result<(), Box<dy
     assert_at(&initial, "/diagnostics/1/code", "state-boundary");
     let manifest = fixture.root.join("osprey.toml");
     let config = std::fs::read_to_string(&manifest)?;
+    // [LINT-LEVELS]: a package allows application-only style advice.
+    let package = format!("{config}\n[package]\nname = \"@o/store\"\n");
+    std::fs::write(&manifest, &package)?;
+    assert_changed_advice(&mut h, &uri, 2, source, Some("state-boundary")).await?;
     std::fs::write(
         &manifest,
-        format!("{config}\n[modules]\npublished_library = true\n"),
+        format!("{package}[lints]\nstate-boundary = \"allow\"\n"),
     )?;
-    assert_changed_advice(&mut h, &uri, 2, source, Some("state-boundary")).await?;
+    assert_changed_advice(&mut h, &uri, 3, source, None).await?;
     h.shutdown_and_exit().await;
     Ok(())
 }
@@ -111,10 +115,11 @@ async fn state_boundaries_are_visible_in_both_flavors() -> Result<(), Box<dyn st
     ] {
         let fixture = crate::test_support::ProjectFixture::new(extension)?;
         let uri = fixture.write("main", source)?;
-        assert_opened_first_warning(
+        assert_opened_first(
             &uri,
             source,
             "state-boundary",
+            INFORMATION,
             1,
             "state boundary `vault::Store`: 0 private cells; exported effects: none",
         )
@@ -130,10 +135,11 @@ async fn project_layout_advice_is_warning_only() -> Result<(), Box<dyn std::erro
     let source = "namespace app;\nfn main() = 0\n";
     let uri = fixture.write("main", source)?;
     let _ = fixture.write("nested/helper", "namespace app;\nfn identity(x) = x\n")?;
-    assert_opened_first_warning(
+    assert_opened_first(
         &uri,
         source,
         "namespace-folder-drift",
+        WARNING,
         0,
         "namespace `app` spans 2 folders; source paths do not change its identity",
     )

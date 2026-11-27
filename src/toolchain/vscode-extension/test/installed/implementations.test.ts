@@ -229,9 +229,9 @@ const definitionCases = (): Case[] => [
     })),
   ),
   ...[
-    [GPU, "fn onGpu(work)"],
-    [CPU, "fn onLists(work)"],
-  ].map(([file, binding]) => ({
+    { file: GPU, binding: "fn onGpu(work)" },
+    { file: CPU, binding: "fn onLists(work)" },
+  ].map(({ file, binding }) => ({
     from: site(file, "\n        work()", "work"),
     expect: [site(file, binding, "work")],
   })),

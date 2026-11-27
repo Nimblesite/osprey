@@ -230,6 +230,20 @@ trap 'cleanup_results; exit 130' INT TERM
 
 source "${0:A:h}/corpus_files.sh"
 
+# OSPREY_CORPUS_PART lets CI run one corpus as two parallel jobs, each inside its
+# timeout: `programs` runs everything but the documentation examples,
+# `doctests` runs only those, and unset runs both.
+CORPUS_PART=${OSPREY_CORPUS_PART:-all}
+case $CORPUS_PART in
+  all|programs|doctests) ;;
+  *) echo "OSPREY_CORPUS_PART must be programs or doctests, not $CORPUS_PART" >&2; exit 2 ;;
+esac
+source "${0:A:h}/corpus_doctests.sh"
+if [[ $CORPUS_PART == doctests ]]; then
+  run_corpus_doctests
+  exit $?
+fi
+
 # Programs that contend for an OS resource are run one at a time. Two kinds do:
 #
 #   * Socket binders (a server created OR listened on). A Default/ML pair is ONE program written on two surfaces,
@@ -478,9 +492,8 @@ fi
 
 source "${0:A:h}/corpus_ownership.sh"
 
-source "${0:A:h}/corpus_doctests.sh"
 doctests_ok=1
-if [[ $MEMORY != ownership ]]; then
+if [[ $MEMORY != ownership && $CORPUS_PART == all ]]; then
   run_corpus_doctests || doctests_ok=0
 fi
 

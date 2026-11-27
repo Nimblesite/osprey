@@ -25,10 +25,6 @@ variable "cloudflare_zone_id" {
 
 variable "api_hostname" {
   type = string
-  validation {
-    condition     = can(regex("^[a-z0-9-]+(\\.[a-z0-9-]+)+$", var.api_hostname))
-    error_message = "Supply the approved API DNS hostname without a URL path."
-  }
 }
 
 variable "website_hostname" {
@@ -89,12 +85,52 @@ variable "github_owner_id" {
 }
 
 locals {
+  management_port  = 8081
+  public_hostnames = [var.website_hostname, var.api_hostname, var.content_hostname]
+  hostname_pattern = "^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$"
+  # Reviewed origin ranges for the IPv4 forwarding rule. Changes to the
+  # upstream list at https://www.cloudflare.com/ips-v4/ require a reviewed diff.
+  cloudflare_ipv4 = [
+    "173.245.48.0/20", "103.21.244.0/22", "103.22.200.0/22", "103.31.4.0/22",
+    "141.101.64.0/18", "108.162.192.0/18", "190.93.240.0/20", "188.114.96.0/20",
+    "197.234.240.0/22", "198.41.128.0/17", "162.158.0.0/15", "104.16.0.0/13",
+    "104.24.0.0/14", "172.64.0.0/13", "131.0.72.0/22"
+  ]
   name = "osprey-registry-${var.environment}"
   required_services = toset([
-    "artifactregistry.googleapis.com", "run.googleapis.com", "compute.googleapis.com",
+    "artifactregistry.googleapis.com", "run.googleapis.com", "compute.googleapis.com", "storage.googleapis.com", "cloudkms.googleapis.com",
     "secretmanager.googleapis.com", "iam.googleapis.com", "iamcredentials.googleapis.com",
     "sts.googleapis.com", "logging.googleapis.com", "monitoring.googleapis.com",
     "certificatemanager.googleapis.com"
   ])
   origin_hostnames = { api = var.api_hostname, content = var.content_hostname }
+}
+
+variable "catalog_secret_versions" {
+  description = "Pinned Secret Manager versions for the catalog libpq service file and PostgreSQL CA certificate."
+  type        = object({ service = string, ca = string })
+  validation {
+    condition     = alltrue([for version in var.catalog_secret_versions : can(regex("^[1-9][0-9]*$", version))])
+    error_message = "Pin each catalog credential file to a numeric secret version."
+  }
+}
+
+variable "login_kms_key" {
+  description = "Optional environment-specific Cloud KMS key resource for encrypting pending login verifiers."
+  type        = string
+  default     = null
+  validation {
+    condition     = var.login_kms_key == null || can(regex("^projects/[a-zA-Z0-9_-]+/locations/[a-zA-Z0-9_-]+/keyRings/[a-zA-Z0-9_-]+/cryptoKeys/[a-zA-Z0-9_-]+$", var.login_kms_key))
+    error_message = "Use a Cloud KMS CryptoKey resource name without a version suffix."
+  }
+}
+
+variable "session_kms_key" {
+  description = "Optional environment-specific Cloud KMS key resource for encrypting browser session credentials."
+  type        = string
+  default     = null
+  validation {
+    condition     = var.session_kms_key == null || can(regex("^projects/[a-zA-Z0-9_-]+/locations/[a-zA-Z0-9_-]+/keyRings/[a-zA-Z0-9_-]+/cryptoKeys/[a-zA-Z0-9_-]+$", var.session_kms_key))
+    error_message = "Use a Cloud KMS CryptoKey resource name without a version suffix."
+  }
 }

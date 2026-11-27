@@ -8,6 +8,7 @@ import * as path from "path";
 import * as vscode from "vscode";
 import { registerOspreyTestExplorer } from "../../client/src/test-explorer";
 import { type TestRunSink } from "../../client/src/test-explorer-report";
+import { present } from "../present";
 
 /** Two passing cases ("addition works" line 3, "zero identity" line 7). */
 export const PASS_FIXTURE = `fn add(a, b) = wrapAdd(a, b)
@@ -342,7 +343,7 @@ export function assertVerdicts(
     events.map((event) => event.id),
     ids,
   );
-  assert.match(String(events[0].message), message);
+  assert.match(String(present(events[0], "the first verdict event").message), message);
   return events;
 }
 

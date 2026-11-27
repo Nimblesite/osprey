@@ -2,6 +2,7 @@
   "spec": "[PACKAGE-TYPE-INVARIANTS]",
   "description": "JSON values that SchemaCheck must accept for the named type; digests are 64 lowercase hex, the datetime is 2024-01-02T03:04:05.006Z, and the uuid is 123e4567-e89b-12d3-a456-426614174000.",
   "cases": [
+    {"type": "EdgeSecretOverlap", "value": {"secret": "fixture-only-retiring-edge-credential", "expiresAtUnixSeconds": 1800000000}},
     {"type": "PackageKey", "value": {"scope": "finch", "name": "ledger"}},
     {"type": "SourceRef", "value": {"forge": "github", "repositoryId": "finch/ledger", "subdirectory": "src", "commit": "deadbeef"}},
     {"type": "ReleaseId", "value": {"package": {"scope": "finch", "name": "ledger"}, "epoch": 1, "ordinal": 2, "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}},
@@ -53,6 +54,6 @@
     {"type": "Organization", "value": {"id": "00000000-0000-0000-0000-00000000000b", "handle": "my-org", "displayName": "My Org", "state": {"Active": {}}, "governanceEpoch": 1, "createdAt": "2026-10-25T00:00:00.000Z"}},
     {"type": "OrganizationMembership", "value": {"id": "00000000-0000-0000-0000-000000000015", "organizationId": "00000000-0000-0000-0000-00000000000b", "principalId": "00000000-0000-0000-0000-000000000001", "role": {"Member": {}}, "state": {"Active": {}}, "authorityEpoch": 1, "acceptedAt": "2026-10-25T00:00:00.000Z", "principalKind": {"Human": {}}}},
     {"type": "RegistryPackage", "value": {"id": "00000000-0000-0000-0000-00000000001f", "organizationId": "00000000-0000-0000-0000-00000000000b", "name": "helper-functions", "adminMembershipId": "00000000-0000-0000-0000-000000000015", "adminMembershipState": {"Active": {}}, "authorityEpoch": 1, "state": {"Active": {}}, "createdAt": "2026-10-25T00:00:00.000Z", "adminPrincipalKind": {"Human": {}}}},
-    {"type": "PackagePermissionGrant", "value": {"id": "00000000-0000-0000-0000-000000000029", "organizationId": "00000000-0000-0000-0000-00000000000b", "packageId": "00000000-0000-0000-0000-00000000001f", "membershipId": "00000000-0000-0000-0000-000000000016", "permission": {"PublishRelease": {}}, "state": {"Active": {}}, "grantedByMembershipId": "00000000-0000-0000-0000-000000000015", "authorityEpoch": 1, "grantedAt": "2026-10-25T00:00:00.000Z"}}
+    {"type": "PackagePermissionGrant", "value": {"id": "00000000-0000-0000-0000-000000000029", "organizationId": "00000000-0000-0000-0000-00000000000b", "packageId": "00000000-0000-0000-0000-00000000001f", "membershipId": "00000000-0000-0000-0000-000000000016", "permission": {"PublishRelease": {}}, "state": {"Active": {}}, "grantedByMembershipId": "00000000-0000-0000-0000-000000000015", "authorityEpoch": 1, "membershipAuthorityEpoch": 1, "grantedAt": "2026-10-25T00:00:00.000Z"}}
   ]
 }

@@ -10,6 +10,8 @@ lists of floats or ints. Implements the Rust crate's rules and error text.
 
 from safetensors import Bytes, Dtype, JsonParser
 
+BAD_HEADER = "invalid JSON in header: "
+"""The prefix of every refusal the header reader answers."""
 __all__ = ["TensorInfo", "SafeFile", "DecodedTensor", "load", "keys", "offset_keys", "metadata", "get_tensor", "get_slice"]
 
 
@@ -125,7 +127,7 @@ def json_of(data, n, text):
         case Success(value=value):
             return build_file(data, n, value)
         case Error(message=message):
-            return Error(message="invalid JSON in header: " + message)
+            return Error(message=BAD_HEADER + message)
 
 
 class Collected:
@@ -164,7 +166,7 @@ def collect_members(members, i, meta, infos) -> Result[Collected, str]:
             return add_tensor(members, i, meta, infos, m)
 
 
-def add_metadata(members, i, meta, infos, m):
+def add_metadata(members, i, _meta, infos, m):
     """Parse member `m` as the `__metadata__` string map and continue."""
     return andThen(string_map(m.value), lambda value: collect_members(members, i + 1, value, infos))
 
@@ -218,7 +220,7 @@ def member_str(m, name):
     if m.value.kind == "str":
         return Success(value=m.value.s)
     else:
-        return Error(message="invalid JSON in header: " + name + " not a string")
+        return Error(message=BAD_HEADER + name + " not a string")
 
 
 def find_member(members, name):
@@ -246,12 +248,12 @@ def field_ints(v, name):
 def ints_of(value, name):
     """An array of ints as a list, or a JSON error."""
     if value.kind != "arr":
-        return Error(message="invalid JSON in header: " + name + " not an array")
+        return Error(message=BAD_HEADER + name + " not an array")
     else:
         return collect_ints(value.items, 0, [])
 
 
-def collect_ints(items, i, acc) -> Result[list[int], str]:
+def collect_ints(items, i, acc):
     """Collect array elements as ints from `i`."""
     if i >= len(items):
         return Success(value=acc)
@@ -271,7 +273,7 @@ def string_map(value):
         return collect_metadata(value.members, 0, {})
 
 
-def collect_metadata(members, i, acc) -> Result[dict[str, str], str]:
+def collect_metadata(members, i, acc):
     """Collect string members into a map from `i`."""
     if i >= len(members):
         return Success(value=acc)
@@ -313,7 +315,7 @@ def info_cmp(a, b):
         return 0
 
 
-def validate(data, infos, start) -> Result[int, str]:
+def validate(data, infos, start):
     """Validate contiguous ascending offsets and exact sizes, returning the end."""
     if len(infos) == 0:
         return Success(value=start)

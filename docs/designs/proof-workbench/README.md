@@ -14,7 +14,7 @@ Inspired by Osprey’s precision and restraint; independent colour, typography a
 
 ## Historical implementation handoff
 
-[Spec 0051, WORKBENCH-DESIGN](../../specs/applications/0051-ProofWorkbench.md#beautiful-or-not-shipped-workbench-design) defines the exact colour tokens, type scale, mathematical spacing, surfaces, feedback and motion. [Plan 0042](../../plans/0042-proof-workbench.md) defines delivery order. Implement production behaviour in the Osprey application and the existing native host framework, not by transplanting this JavaScript design study.
+[Spec 0051, WORKBENCH-DESIGN](../../specs/applications/0051-ProofWorkbench.md#beautiful-or-not-shipped-workbench-design) defines the exact colour tokens, type scale, mathematical spacing, surfaces, feedback and motion. [Plan 0041](../../plans/0041-dependent-types-and-mathlib.md#proof-workbench-and-lessons-workbench-aim) defines delivery order. Implement production behaviour in the Osprey application and the existing native host framework, not by transplanting this JavaScript design study.
 
 The approved [optional source](screens/optional-source.png), [slate board](screens/slate-board.png) and [transcription](screens/transcription.png) PNGs are the mandatory visual acceptance contract for the shared Osprey implementation. Preserve these references. Compare actual native and VSIX captures at the same client viewport, excluding operating-system chrome; extend `@osprey/native` when a host cannot express the authored geometry. Runtime verdict wording must describe the real checker rather than repeat the study’s unchecked fixture labels. Native pixel-perfect acceptance is still outstanding.
 

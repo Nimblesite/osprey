@@ -1,6 +1,6 @@
 # Graphics Backends
 
-**Status:** partially implemented. The Metal backend renders the three graphics scenes on macOS; the Direct3D 12 bridge compiles, links and draws every scene in software on Windows (2026-10-28). No hardware adapter has drawn a scene yet, no frame has been compared with the Mac's at matched uniforms, and the convergence with `gpu*` is not implemented. [Plan 0023](../../plans/0023-gpu.md) owns delivery; until then [src/osprey/examples/graphics/README.md](../../../src/osprey/examples/graphics/README.md) is the operating contract.
+**Status:** partially implemented. The Metal backend renders the three graphics scenes on macOS; the Direct3D 12 bridge compiles, links and draws every scene in software on Windows (2026-10-28). No hardware adapter has drawn a scene yet, no frame has been compared with the Mac's at matched uniforms, and the convergence with `gpu*` is not implemented. [Plan 0055](../../plans/0055-targets.md) owns delivery; until then [src/osprey/examples/graphics/README.md](../../../src/osprey/examples/graphics/README.md) is the operating contract.
 
 Graphics in Osprey is a host boundary, not the `gpu*` compute surface ([0034](0034-GPUComputation.md)): an Osprey host program drives a window through six extern C functions, and a hand-written fragment shader shades every pixel from the parameter slots Osprey pushes into it. The Osprey sources are byte-identical on every platform.
 

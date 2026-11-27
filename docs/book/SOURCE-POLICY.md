@@ -9,7 +9,7 @@ The book uses the narrowest current authority available:
 3. executable compiler, runtime, and corpus tests;
 4. implementation code when a behavior needs confirmation;
 5. maintained installation and status documentation;
-6. `../messaging.md` for product philosophy, with Default-first teaching as this edition's explicit flavor policy;
+6. `../messaging/osprey.md` for product philosophy, with Default-first teaching as this edition's explicit flavor policy;
 7. `../designs/` and live website tokens for visual decisions.
 
 The repository README is an orientation document, not the final authority when it disagrees with current specifications, tests, or edition direction.
@@ -43,9 +43,9 @@ Qualify runtime claims where they are taught:
 - Native dynamic control handlers currently provide single-shot resumption. WebAssembly and mobile C ABI targets support value handlers and static discharge, and reject unsupported dynamic control operations.
 - Native compilation defaults to `gc`; `arc` selects reference counting. Both have platform limits. WebAssembly and mobile libraries default to ARC. Ownership mode accepts programs whose transfers the compiler can prove.
 - Normal native fibers use one operating-system thread each and can co-own immutable allocations. Structured scopes, fiber cancellation, `join`, and deadlines remain design work.
-- Strict static-memory checking remains unimplemented. GPU device support is kernel- and target-dependent; consult plan 0023 and the runtime implementation rather than assuming all work runs on the host or on a device.
+- Strict static-memory checking remains unimplemented. GPU device support is kernel- and target-dependent; consult plan 0055 and the runtime implementation rather than assuming all work runs on the host or on a device.
 
-Check these boundaries against the relevant specifications, implementation tests, and delivery plans before describing a feature as available. The [messaging guide](../messaging.md) links the maintained status sources; it does not replace executable evidence.
+Check these boundaries against the relevant specifications, implementation tests, and delivery plans before describing a feature as available. The [messaging guide](../messaging/osprey.md) links the maintained status sources; it does not replace executable evidence.
 
 When source, specification, implementation, and tests disagree, the book omits the disputed behavior from learner-facing instruction and records the gap in `evidence.json`.
 

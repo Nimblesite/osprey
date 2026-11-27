@@ -12,6 +12,6 @@ type ClipKernel<K> { heldKernel: K kernelSamples: List<Float> }
 type NodeKernels<K> { kernelNode: Int kernelMemory: K }
 type ParameterStamp { stampKey: String stampValue: Float }
 type HostedStamp { stampNode: Int stampControls: List<ParameterStamp> }
-type GraphState<K> { graphPosition: Int graphHosted: List<HostedStamp> graphKernels: List<NodeKernels<K>> }
+type GraphState<K> { graphPosition: Int graphRate: Float graphHosted: List<HostedStamp> graphKernels: List<NodeKernels<K>> }
 type GraphPending<G,K> { pendingGraph: G pendingState: GraphState<K> pendingClips: List<NodeClip> pendingFrames: Int pendingNode: Int }
 union BlockAction<G,K> { BlockReady { held: GraphState<K> clips: List<NodeClip> } BlockWaiting { request: HostBlock pending: GraphPending<G,K> } }

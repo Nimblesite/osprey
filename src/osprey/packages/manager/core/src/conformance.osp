@@ -14,11 +14,13 @@ module Conformance {
     // fixture: pins, never executable source ([PACKAGE-PYTHON-UV]).
     let declarativeExtensions = [".toml", ".json", ".yaml", ".yml", ".tf", ".hcl", ".md", ".td", ".txt", ".sql", ".expectedoutput", ".lock"]
 
+    let deploymentInputs = ["src/osprey/packages/manager/web/assets/registry.css", "src/osprey/packages/manager/web/assets/registry-mark.svg", "src/osprey/packages/manager/web/assets/_headers", "src/osprey/packages/manager/ops/Dockerfile"]
+
     fn hasAny(path, extensions) = foldList(extensions, false, fn(found, ext) => found || endsWith(path, ext))
 
     /// What a path under the package system is allowed to be.
     export fn classify(path) = if hasAny(path, ospreyExtensions) { OspreySource }
-        else if hasAny(path, declarativeExtensions) { Declarative }
+        else if hasAny(path, declarativeExtensions) || listContains(deploymentInputs, path) { Declarative }
         else { Forbidden }
 
     /// The paths that violate the gate, in input order.

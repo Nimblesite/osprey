@@ -97,7 +97,7 @@ def skip_location(ts, i):
         return Success(value=i)
 
 
-def close_paren(ts, i, depth) -> Result[int, str]:
+def close_paren(ts, i, depth):
     """The index after the `)` closing `depth` open parentheses."""
     if depth == 0:
         return Success(value=i)
@@ -131,7 +131,26 @@ def typed(ts, i, op, ty, end):
 
 
 def parse_operation(ts, i):
-    """One operation in generic form, starting at token `i`."""
+    """One operation in generic form, starting at token `i`.
+
+    # Examples
+    ```osprey
+    from xdsl import Lexer, Parser
+
+    def show():
+        ts = unwrap_or(Lexer.tokens('%0 = "test.op"() : () -> i32'), [])
+        match Parser.parse_operation(ts, 0):
+            case Success(value=p):
+                print(f"{p.value.name} {p.value.results} {p.next}")
+            case Error(message=m):
+                print(m)
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    test.op ["%0"] 10
+    ```
+    """
     return andThen(result_list(ts, i), lambda results: generic_operation(ts, results.next, results.value))
 
 
@@ -211,5 +230,23 @@ def whole(ts, parsed):
 
 
 def parse_module(source) -> Result[Ir.Operation, str]:
-    """The single top-level operation of `source`, normally `builtin.module`."""
+    """The single top-level operation of `source`, normally `builtin.module`.
+
+    # Examples
+    ```osprey
+    from xdsl import Parser
+
+    def show():
+        match Parser.parse_module('"builtin.module"() ({}) : () -> ()'):
+            case Success(value=op):
+                print(f"{op.name} {len(op.regions)}")
+            case Error(message=m):
+                print(m)
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    builtin.module 1
+    ```
+    """
     return andThen(Lexer.tokens(source), lambda ts: andThen(parse_operation(ts, 0), lambda parsed: whole(ts, parsed)))

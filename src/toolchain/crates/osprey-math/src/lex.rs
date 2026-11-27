@@ -148,8 +148,7 @@ impl<'a> Lexer<'a> {
             .strip_prefix("/--")
             .and_then(|text| text.strip_suffix("-/"));
         if let Some(text) = text {
-            let words = text.split_whitespace().collect::<Vec<_>>().join(" ");
-            self.push(place, Tok::Doc(words));
+            self.push(place, Tok::Doc(lines(text)));
         }
     }
 
@@ -264,4 +263,26 @@ impl<'a> Lexer<'a> {
             }
         }
     }
+}
+
+/// A documentation comment's lines without the indentation they share, so a
+/// `# Examples` section keeps its fences and code layout.
+fn lines(text: &str) -> String {
+    let rows: Vec<&str> = text.lines().map(str::trim_end).collect();
+    let indent = rows
+        .iter()
+        .skip(1)
+        .filter(|row| !row.is_empty())
+        .map(|row| row.len() - row.trim_start().len())
+        .min()
+        .unwrap_or(0);
+    let body: Vec<&str> = rows
+        .iter()
+        .enumerate()
+        .map(|(index, row)| match index {
+            0 => row.trim_start(),
+            _ => row.get(indent..).unwrap_or_else(|| row.trim_start()),
+        })
+        .collect();
+    body.join("\n").trim().to_string()
 }

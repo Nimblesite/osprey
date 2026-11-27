@@ -40,7 +40,6 @@ module Github
 
     issue doc prefix = Json::obj (Json::members [Json::strField "id" (Json::scalar doc (prefix + ".id")), Json::numField "number" (parseInt (Json::scalar doc (prefix + ".number")) ?: 0), Json::strField "title" (Json::scalar doc (prefix + ".title")), Json::strField "author" (Json::scalar doc (prefix + ".user.login")), Json::numField "comments" (parseInt (Json::scalar doc (prefix + ".comments")) ?: 0), Json::strField "body" (Text::prefix (optional doc (prefix + ".body")) 2000), Json::strField "labels" (labels doc prefix 0 (jsonLength doc (prefix + ".labels")))])
 
-    collect : int -> int -> int -> string -> Result<string, string>
     collect doc index count output = match index >= count
         true => Success(value = Json::arr output)
         false =>

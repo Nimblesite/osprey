@@ -21,6 +21,9 @@ entryCount body =
         true => 0
         false => listLength (lines (trimEnd body))
 
+(** The two-entry notebook body every implementation leaves after both appends. *)
+twoNoteBook = "buy milk\ncall dentist\n"
+
 (** Appends one entry to `book` and answers the entry count after the write.
     This is the logic under test: it performs Storage and picks no handler. *)
 appendNote (book, line) =
@@ -136,7 +139,7 @@ diskStorageCase () =
 
     // The file system really was written: these bytes are read back directly.
     checkAll "disk implementation side effects" [
-        onDisk == "buy milk\ncall dentist\n",
+        onDisk == twoNoteBook,
         archivedOnDisk == onDisk,
         byteLength onDisk == 22,
         contains onDisk "buy milk\n",
@@ -167,7 +170,7 @@ mockStorageCase () =
         archived == 22,
         missing == 0,
         fixture == 1,
-        stored == "buy milk\ncall dentist\n",
+        stored == twoNoteBook,
         (mapGet mockFiles "archive.txt" ?: "") == stored,
         mockBooks == 3,
         mockBooks == mapLength mockFiles,
@@ -228,9 +231,9 @@ readOnlyStorageCase () =
     checkAll "policies stay isolated" [
         mockSaves == savesBefore,
         mockSaves == 3,
-        (mapGet mockFiles "notes.txt" ?: "") == "buy milk\ncall dentist\n",
+        (mapGet mockFiles "notes.txt" ?: "") == twoNoteBook,
         !(contains mockLog "locked"),
-        (readFile diskBook ?: "") == "buy milk\ncall dentist\n"
+        (readFile diskBook ?: "") == twoNoteBook
     ]
 
 test "swapping the injected handler swaps the policy, not the logic" (\() => exactArithmetic (readOnlyStorageCase))

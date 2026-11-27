@@ -118,7 +118,7 @@ The final `report` is an ordinary string. Printing it later needs no `Learner` h
 Check `examples/chapter-09/failscompilation/missing-handler.osp`. It declares `Learner` and `greeting`, then calls `print(greeting())` with no handler. The recorded diagnostic is:
 
 ```text
-examples/chapter-09/failscompilation/missing-handler.osp: unhandled effect operations at program entry: Learner.name; add a matching `handle`
+examples/chapter-09/failscompilation/missing-handler.osp:5:0: unhandled effect operations at program entry: Learner.name; add a matching `handle`
 ```
 
 The message names the missing operation. Define `mika` and call `mika(greeting)`, or put the call after a matching `handle` inside a block.

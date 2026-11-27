@@ -3,7 +3,15 @@ namespace synth
 
 (** Bounded sampled grains with explicit state, stereo placement and independent lifetime/pitch. *)
 module Grains
-    (** Refusal for an invalid prepared source or grain-pool capacity. *)
+    (** Refusal for an invalid prepared source or grain-pool capacity.
+    # Examples
+    ```osprey
+    print "${Grains::invalidSource ()}"
+    ```
+    ```output
+    Error(InvalidConfiguration { detail: "Grains require 2–1048576 finite normalised mono samples and capacity 1–256." })
+    ```
+    *)
     export invalidSource () = Error(message = InvalidConfiguration(detail = "Grains require 2–1048576 finite normalised mono samples and capacity 1–256."))
 
     sourceSample value = value >= -1.0 && value <= 1.0
@@ -20,7 +28,16 @@ module Grains
 
     layout pool = regionValid (length pool.source, pool.region) && sourceSize pool.source && ((length pool.retiredSource == 0 && pool.retiredBefore == 0) || (sourceSize pool.retiredSource && pool.retiredBefore > 0)) && pool.retiredBefore >= 0 && pool.retiredBefore <= pool.nextIdentity && pool.capacity >= 1 && pool.capacity <= 256 && length pool.voices <= pool.capacity && pool.revision >= pool.nextIdentity && pool.position >= 0 && pool.nextIdentity >= 0 && ordered pool >= -1
 
-    (** Validate playback controls against the actual source length, including finite bounds. *)
+    (** Validate playback controls against the actual source length, including finite bounds.
+    # Examples
+    ```osprey
+    valid = GrainControls(window = HannWindow, start = 0.0, rate = 1.0, duration = 3, amplitude = 1.0, pan = 0.0)
+    print "${Grains::controls (100, valid)} ${Grains::controls (100, valid(start = 100.0))} ${Grains::controls (100, valid(duration = 2))}"
+    ```
+    ```output
+    true false false
+    ```
+    *)
     export controls (size, c) = GrainWindows::valid c.window && c.start >= 0.0 && c.start < toFloat size && c.rate >= -16.0 && c.rate <= 16.0 && c.duration >= 3 && c.duration <= 65536 && c.amplitude >= 0.0 && c.amplitude <= 1.0 && c.pan >= -1.0 && c.pan <= 1.0
 
     voiceValid (size, voice) = regionValid (size, voice.region) && inside (voice.region, voice.cursor) && inside (voice.region, voice.controls.start) && controls (size, voice.controls) && voice.identity >= 0 && voice.age >= 0 && voice.age < voice.controls.duration
@@ -31,19 +48,45 @@ module Grains
             true => voice.identity
             false => -2)
 
-    (** Prepare a normalised mono source and a pool of 1–256 grains outside the audio callback. *)
+    (** Prepare a normalised mono source and a pool of 1–256 grains outside the audio callback.
+    # Examples
+    ```osprey
+    print "${Grains::prepare ([0.0, 0.5], 2)} ${Grains::prepare ([2.0, 0.5], 2)}"
+    ```
+    ```output
+    Success({ region: { first: 0, limit: 2, boundary: LoopSource }, source: [0.0, 0.5], retiredSource: [], retiredBefore: 0, capacity: 2, voices: [], revision: 0, position: 0, nextIdentity: 0 }) Error(InvalidConfiguration { detail: "Grains require 2–1048576 finite normalised mono samples and capacity 1–256." })
+    ```
+    *)
     export prepare (source, capacity) =
         pool = GrainPool(region = fullRegion (source, LoopSource), source = source, retiredSource = [], retiredBefore = 0, capacity = capacity, voices = [], revision = 0, position = 0, nextIdentity = 0)
         match layout pool && length (filterList (source, sourceSample)) == length source
             true => Success(value = pool)
             false => invalidSource ()
 
-    (** Select an absolute, half-open source region for future triggers. Existing voices retain theirs. *)
+    (** Select an absolute, half-open source region for future triggers. Existing voices retain theirs.
+    # Examples
+    ```osprey
+    pool = GrainPool(region = GrainRegion(first = 0, limit = 2, boundary = LoopSource), source = [0.0, 0.5], retiredSource = [], retiredBefore = 0, capacity = 2, voices = [], revision = 0, position = 0, nextIdentity = 0)
+    print "${Grains::withRegion (pool, GrainRegion(first = 1, limit = 1, boundary = OneShotSource))} ${Grains::withRegion (pool, GrainRegion(first = 1, limit = 5, boundary = LoopSource))}"
+    ```
+    ```output
+    Error(InvalidConfiguration { detail: "Invalid grain pool or source region." }) Error(InvalidConfiguration { detail: "Invalid grain pool or source region." })
+    ```
+    *)
     export withRegion (pool, region) = match layout pool && regionValid (length pool.source, region)
         true => Success(value = pool(region = region))
         false => Error(message = InvalidConfiguration(detail = "Invalid grain pool or source region."))
 
-    (** Prepare a new mono source off the audio thread. At most one retired buffer may drain. *)
+    (** Prepare a new mono source off the audio thread. At most one retired buffer may drain.
+    # Examples
+    ```osprey
+    pool = GrainPool(region = GrainRegion(first = 0, limit = 2, boundary = LoopSource), source = [0.0, 0.5], retiredSource = [], retiredBefore = 0, capacity = 2, voices = [], revision = 0, position = 0, nextIdentity = 0)
+    print "${Grains::replaceSource (pool, [0.1, -0.1])} ${Grains::replaceSource (pool, [0.1])}"
+    ```
+    ```output
+    Success({ region: { first: 0, limit: 2, boundary: LoopSource }, source: [0.1, -0.1], retiredSource: [], retiredBefore: 0, capacity: 2, voices: [], revision: 0, position: 0, nextIdentity: 0 }) Error(InvalidConfiguration { detail: "Grains require 2–1048576 finite normalised mono samples and capacity 1–256." })
+    ```
+    *)
     export replaceSource (pool, source) = match layout pool
         false => Error(message = InvalidConfiguration(detail = "Invalid grain pool."))
         true => match length pool.retiredSource > 0
@@ -55,7 +98,18 @@ module Grains
                     false => Success(value = pool(region = fullRegion (ready.source, pool.region.boundary), source = ready.source, retiredSource = pool.source, retiredBefore = pool.nextIdentity))
 
     (** A new grain sounds from the pool's current sample and reads the source from `settings.start`; zero rate holds it there.
-        [SYNTH-ADVANCED-GRAINS-OVERLOAD] Reject-new policy: a full pool returns accepted=false and counted state, preserving every active grain. *)
+        [SYNTH-ADVANCED-GRAINS-OVERLOAD] Reject-new policy: a full pool returns accepted=false and counted state, preserving every active grain.
+    # Examples
+    ```osprey
+    pool = GrainPool(region = GrainRegion(first = 0, limit = 2, boundary = LoopSource), source = [0.0, 0.5], retiredSource = [], retiredBefore = 0, capacity = 2, voices = [], revision = 0, position = 0, nextIdentity = 0)
+    settings = GrainControls(window = HannWindow, start = 0.5, rate = 1.0, duration = 3, amplitude = 1.0, pan = 0.0)
+    full = pool(capacity = 1, revision = 1, nextIdentity = 1, voices = [GrainVoice(region = pool.region, identity = 0, controls = settings, cursor = 0.5, age = 0)])
+    print "${Grains::trigger (full, settings)} ${Grains::trigger (pool, settings(start = 4.0))}"
+    ```
+    ```output
+    Success({ pool: { region: { first: 0, limit: 2, boundary: LoopSource }, source: [0.0, 0.5], retiredSource: [], retiredBefore: 0, capacity: 1, voices: [{ region: { first: 0, limit: 2, boundary: LoopSource }, identity: 0, controls: { window: HannWindow, start: 0.5, rate: 1.0, duration: 3, amplitude: 1.0, pan: 0.0 }, cursor: 0.5, age: 0 }], revision: 2, position: 0, nextIdentity: 1 }, accepted: false }) Error(InvalidConfiguration { detail: "Invalid grain source, controls or revision." })
+    ```
+    *)
     export trigger (pool, settings) = match layout pool && inside (pool.region, settings.start) && controls (length pool.source, settings) && pool.revision < 9223372036854775807 && pool.nextIdentity < 9223372036854775807
         false => Error(message = InvalidConfiguration(detail = "Invalid grain source, controls or revision."))
         true => match length pool.voices < pool.capacity
@@ -115,20 +169,68 @@ module Grains
                 held = rendered.next
                 Success(value = rendered(next = releaseRetired (held(voices = listReverse held.voices))))
 
-    (** Render one sample with a periodic source and its latched window. Summed peaks can exceed unity; gain staging belongs to the caller. *)
+    (** Render one sample with a periodic source and its latched window. Summed peaks can exceed unity; gain staging belongs to the caller.
+    # Examples
+    ```osprey
+    pool = GrainPool(region = GrainRegion(first = 0, limit = 2, boundary = LoopSource), source = [0.0, 0.5], retiredSource = [], retiredBefore = 0, capacity = 2, voices = [], revision = 0, position = 0, nextIdentity = 0)
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => Grains::next pool)} ${arithmetic (\() => Grains::next (pool(capacity = 0)))}"
+    ```
+    ```output
+    Success({ left: 0.0, right: 0.0, next: { region: { first: 0, limit: 2, boundary: LoopSource }, source: [0.0, 0.5], retiredSource: [], retiredBefore: 0, capacity: 2, voices: [], revision: 0, position: 1, nextIdentity: 0 } }) Error(ExhaustedCapacity { detail: "Invalid grain pool or exhausted sample clock." })
+    ```
+    *)
     export next pool = match layout pool && pool.position < 9223372036854775807
         false => Error(message = ExhaustedCapacity(detail = "Invalid grain pool or exhausted sample clock."))
         true => advanced pool
 
-    (** Render 1–2048 frames without changing grain scheduling at the block boundary. *)
+    (** Render 1–2048 frames without changing grain scheduling at the block boundary.
+    # Examples
+    ```osprey
+    pool = GrainPool(region = GrainRegion(first = 0, limit = 2, boundary = LoopSource), source = [0.0, 0.5], retiredSource = [], retiredBefore = 0, capacity = 2, voices = [], revision = 0, position = 0, nextIdentity = 0)
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => Grains::block (pool, 2))} ${arithmetic (\() => Grains::block (pool, 0))}"
+    ```
+    ```output
+    Success({ left: [0.0, 0.0], right: [0.0, 0.0], next: { region: { first: 0, limit: 2, boundary: LoopSource }, source: [0.0, 0.5], retiredSource: [], retiredBefore: 0, capacity: 2, voices: [], revision: 0, position: 2, nextIdentity: 0 } }) Error(InvalidConfiguration { detail: "Invalid grain block size, clock or event capacity." })
+    ```
+    *)
     export block (pool, frames) = scheduled (pool, frames, [])
 
     observedVoice (pool, voice) = GrainVoiceObservation(identity = voice.identity, cursor = voice.cursor, age = voice.age, duration = voice.controls.duration, sourceFrames = length (voiceSource (pool, voice)), fromPreviousSource = voice.identity < pool.retiredBefore, region = voice.region)
 
-    (** Coherent observer data from a completed render state; consumers publish it off the audio thread. *)
+    (** Coherent observer data from a completed render state; consumers publish it off the audio thread.
+    # Examples
+    ```osprey
+    pool = GrainPool(region = GrainRegion(first = 0, limit = 2, boundary = LoopSource), source = [0.0, 0.5], retiredSource = [], retiredBefore = 0, capacity = 2, voices = [], revision = 0, position = 0, nextIdentity = 0)
+    print "${Grains::observation pool}"
+    ```
+    ```output
+    { sourceFrames: 2, retiredFrames: 0, region: { first: 0, limit: 2, boundary: LoopSource }, voices: [], revision: 0, samplePosition: 0, activeGrains: 0, capacity: 2, requestedGrains: 0, acceptedGrains: 0, rejectedGrains: 0, stolenGrains: 0, requestedPerFrame: 0.0, acceptedPerFrame: 0.0 }
+    ```
+    *)
     export observation pool = GrainObservation(sourceFrames = length pool.source, retiredFrames = length pool.retiredSource, region = pool.region, voices = mapList (pool.voices, \voice => observedVoice (pool, voice)), revision = pool.revision, samplePosition = pool.position, activeGrains = length pool.voices, capacity = pool.capacity, requestedGrains = pool.revision, acceptedGrains = pool.nextIdentity, rejectedGrains = satSub pool.revision pool.nextIdentity, stolenGrains = 0, requestedPerFrame = GrainMath::density (toFloat pool.revision, toFloat pool.position), acceptedPerFrame = GrainMath::density (toFloat pool.nextIdentity, toFloat pool.position))
 
-    (** Reactive observation has no dependency on a UI framework. *)
+    (** Reactive observation has no dependency on a UI framework.
+    # Examples
+    ```osprey
+    pool = GrainPool(region = GrainRegion(first = 0, limit = 2, boundary = LoopSource), source = [0.0, 0.5], retiredSource = [], retiredBefore = 0, capacity = 2, voices = [], revision = 0, position = 0, nextIdentity = 0)
+    shown () =
+        handle static Signal<GrainObservation>
+            read => Grains::observation pool
+        Grains::observe ()
+    print "${shown ()}"
+    ```
+    ```output
+    { sourceFrames: 2, retiredFrames: 0, region: { first: 0, limit: 2, boundary: LoopSource }, voices: [], revision: 0, samplePosition: 0, activeGrains: 0, capacity: 2, requestedGrains: 0, acceptedGrains: 0, rejectedGrains: 0, stolenGrains: 0, requestedPerFrame: 0.0, acceptedPerFrame: 0.0 }
+    ```
+    *)
     export observe () = perform Signal<GrainObservation>.read ()
 
     orderedEvent (first, end, previous, event) = match previous >= 0 && event.position >= previous && event.position >= first && event.position < end
@@ -155,7 +257,21 @@ module Grains
                     audio = ready.audio
                     Success(value = ready(audio = audio(left = listPrepend audio.left rendered.left, right = listPrepend audio.right rendered.right, next = rendered.next)))
 
-    (** Events must be sorted, within [pool.position, pool.position + frames), and at most 2048. Equal positions preserve caller order. *)
+    (** Events must be sorted, within [pool.position, pool.position + frames), and at most 2048. Equal positions preserve caller order.
+    # Examples
+    ```osprey
+    pool = GrainPool(region = GrainRegion(first = 0, limit = 2, boundary = LoopSource), source = [0.0, 0.5], retiredSource = [], retiredBefore = 0, capacity = 2, voices = [], revision = 0, position = 0, nextIdentity = 0)
+    settings = GrainControls(window = HannWindow, start = 0.5, rate = 1.0, duration = 3, amplitude = 1.0, pan = 0.0)
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => Grains::scheduled (pool, 2, []))} ${arithmetic (\() => Grains::scheduled (pool, 2, [GrainEvent(position = 5, controls = settings)]))}"
+    ```
+    ```output
+    Success({ left: [0.0, 0.0], right: [0.0, 0.0], next: { region: { first: 0, limit: 2, boundary: LoopSource }, source: [0.0, 0.5], retiredSource: [], retiredBefore: 0, capacity: 2, voices: [], revision: 0, position: 2, nextIdentity: 0 } }) Error(InvalidConfiguration { detail: "Grain events must be ordered and belong to this block's half-open sample interval." })
+    ```
+    *)
     export scheduled (pool, frames, events) = match layout pool && frames >= 1 && frames <= 2048 && pool.position >= 0 && pool.position <= satSub 9223372036854775807 frames && length events <= 2048
         false => Error(message = InvalidConfiguration(detail = "Invalid grain block size, clock or event capacity."))
         true => match foldList (events, pool.position, \(previous, event) => orderedEvent (pool.position, satAdd pool.position frames, previous, event)) >= 0

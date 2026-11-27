@@ -79,7 +79,7 @@ module Json {
         Error => Error { message: rangeCode }
     }
 
-    fn foldDigits(text, from, to, neg, acc) -> Result<int, string> = match from >= to {
+    fn foldDigits(text, from, to, neg, acc) = match from >= to {
         true => Success { value: acc }
         false => match digitStep(neg, acc, (byteAt(text, from) ?: 0) - digitZero) {
             Success { value } => foldDigits(text, from + 1, to, neg, value)

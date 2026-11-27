@@ -6,7 +6,7 @@ effect LeafAudit<T> {
     observe: fn(T) -> Unit
 }
 
-fn nestedAt<T>(matrix: List<List<T>>, row: int, column: int, fallbackRow: List<T>, fallback: T) =
+fn nestedAt<T>(matrix, row, column, fallbackRow, fallback: T) =
 listGet(listGet(matrix, row) ?: fallbackRow, column) ?: fallback
 
 /// cellReader binds `fallbackRow` and `fallback` once so a case walks a matrix
@@ -16,7 +16,7 @@ fn cellReader(matrix, fallbackRow, fallback) = fn(row, column) => nestedAt(matri
 /// when the cells are `wants`, in order.
 fn rowIs(matrix, row, fallbackRow, fallback, wants) = range(0, listLength(wants)) |> fold(true, fn(ok, c) => ok && nestedAt(matrix, row, c, fallbackRow, fallback) == (listGet(wants, c) ?: fallback))
 
-fn chooseByCollection<T, U>(items: List<T>, present: U, empty: U) -> U = match isEmpty(items) {
+fn chooseByCollection<T>(items: List<T>, present, empty) = match isEmpty(items) {
     true => empty
     false => present
 }

@@ -10,6 +10,7 @@ import {
   openWarningDocuments,
   warningFixMiddleware,
 } from "../../client/src/warning-fixes";
+import { present } from "../present";
 
 /**
  * An unsaved document to hang a guarded action on: `plaintext` by default so
@@ -214,7 +215,7 @@ suite("Warning fix document-version guard", () => {
       ],
     });
     assert.strictEqual(
-      await applyWarningFix(action.command.arguments?.[0], async (params) => {
+      await applyWarningFix(present(action.command.arguments?.[0], "the wrapped fix payload"), async (params) => {
         assert.deepStrictEqual(params, {
           textDocument: { uri: document.uri.toString() },
           range: {
@@ -236,7 +237,7 @@ suite("Warning fix document-version guard", () => {
     const noDiagnostic = new vscode.CodeAction("No diagnostic");
     const unrelated = annotated(document);
     assert.ok(unrelated.diagnostics);
-    unrelated.diagnostics[0].code = "other-rule";
+    present(unrelated.diagnostics[0], "the unrelated diagnostic").code = "other-rule";
     const edit = unrelated.edit;
     assert.deepStrictEqual(
       await wrap(document, [command, noDiagnostic, unrelated]),
@@ -334,7 +335,7 @@ suite("Warning fix document-version guard", () => {
     const payload = action.command?.arguments?.[0];
     const original = freshAction(document);
     const changed = alteredProof(original);
-    Object.assign(changed.change.edits[0], { newText: "different" });
+    Object.assign(present(changed.change.edits[0], "the proof's edit"), { newText: "different" });
     const stale = alteredProof(original);
     stale.change.textDocument.version = document.version + 1;
     const foreign = alteredProof(original);

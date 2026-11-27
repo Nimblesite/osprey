@@ -5,10 +5,6 @@ namespace studio
 
 import ui::Frames
 import ui::Ui
-import studio::Blocks
-import studio::Design
-import studio::Kit
-import studio::Syntax
 
 (** The page as a reader sees it. *)
 module Preview

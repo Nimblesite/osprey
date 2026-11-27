@@ -10,6 +10,7 @@ import { EXTENSION_ID, activateWithServer, connectEditorBrowser, editorWebviewFr
 import { RealRegistry, demoFiles, tamperingHop, withRegistrySetting, type DemoPackage } from "./real-registry-kit";
 import { Ask, type Completion } from "../../client/src/osprey-ui/asks";
 import { createRequestExecutor } from "../../client/src/osprey-ui/capabilities";
+import { present } from "./osprey-test-env";
 
 function renderedHtml(messages: sinon.SinonSpy): string {
   return messages.getCalls().map((call) => call.args[0] as { type?: string; html?: string })
@@ -61,15 +62,17 @@ async function openPackagesFromSidebar(folder: { name: string; uri: Uri }, panel
 async function verifyPanelLifecycle(registry: RealRegistry, panels: sinon.SinonSpy): Promise<void> {
   const folders = workspace.workspaceFolders ?? [];
   assert.strictEqual(folders.length, 2, "runner supplies two isolated real projects");
-  const first = await openPackagesFromSidebar(folders[0], panels);
-  await commands.executeCommand("osprey.packages.add", folders[0].uri);
+  const one = present(folders[0], "the first project");
+  const two = present(folders[1], "the second project");
+  const first = await openPackagesFromSidebar(one, panels);
+  await commands.executeCommand("osprey.packages.add", one.uri);
   assert.strictEqual(panels.callCount, 1, "Add reuses the package manager opened from the sidebar");
   await waitFor(() => catalogReads(registry), (count) => count > 0, 8000, "real WASM capability fetches the real registry's catalog");
-  await commands.executeCommand("osprey.packages.remove", folders[0].uri);
+  await commands.executeCommand("osprey.packages.remove", one.uri);
   assert.strictEqual(panels.callCount, 1, "same project reuses its live panel");
   let disposed = false;
   first.onDidDispose(() => { disposed = true; });
-  const second = await observeWorkspace("osprey.packages.open", folders[1].uri, panels);
+  const second = await observeWorkspace("osprey.packages.open", two.uri, panels);
   assert.ok(disposed, "switching project disposes the old session's panel");
   assert.strictEqual(panels.callCount, 2);
   second.dispose();
@@ -163,6 +166,12 @@ suite("package workspace browser interaction", () => {
   teardown(() => sinon.restore());
   test("browse, search and cancel Add through the real Osprey webview", async () => {
     await withPackageBrowser(async (frame, folder) => {
+      const heading = frame.getByRole("heading", { name: "Osprey Packages", exact: true });
+      await heading.waitFor();
+      assert.match(await heading.evaluate(element => getComputedStyle(element).fontFamily), /Georgia/);
+      const mark = frame.locator(".osp-screen-header img.osp-brand");
+      assert.match(await mark.getAttribute("src") ?? "", /registry-mark\.svg$/);
+      await mark.evaluate((image: HTMLImageElement) => image.decode());
       await searchCatalog(frame);
       await cancelUnverifiedAdd(frame, folder);
       await frame.locator("body").screenshot({ path: path.resolve(__dirname,
@@ -421,10 +430,13 @@ async function verifySdkDocument(scenario: SdkScenario): Promise<void> {
 
 async function verifySdkConfiguration(scenario: SdkScenario): Promise<void> {
   const folders = workspace.workspaceFolders ?? [];
-  for (const [index, [ticket, registry]] of [["sdk/config-one", "https://sdk-0.example"], ["sdk/config-two", "https://sdk-1.example"]].entries()) {
-    assert.ok(folders[index]);
+  for (const [index, { ticket, registry }] of [
+    { ticket: "sdk/config-one", registry: "https://sdk-0.example" },
+    { ticket: "sdk/config-two", registry: "https://sdk-1.example" },
+  ].entries()) {
+    const folder = present(folders[index], "the project the ticket names");
     const result = answer(await scenario.execute(hostCall(ticket,
-      "configuration.read", [["section", "osprey.packages"], ["workspace", folders[index]!.uri.toString()]])));
+      "configuration.read", [["section", "osprey.packages"], ["workspace", folder.uri.toString()]])));
     assert.strictEqual(result.section, "osprey.packages");
     assert.strictEqual((result.values as Record<string, unknown>).registry, registry, "configuration resolves against the request's real resource");
   }

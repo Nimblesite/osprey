@@ -12,6 +12,9 @@ from fastapi import Params
 
 __all__ = ["application", "include_router", "with_exception_handler", "serve", "with_lifespan", "dispatch", "cors"]
 
+ALLOW_ORIGIN = "Access-Control-Allow-Origin"
+"""The CORS header every credentialed, wildcard and reflected reply sets."""
+
 
 def application(routes, middleware):
     """Create an immutable app; middleware is ordered outermost first.
@@ -273,9 +276,9 @@ def with_header(reply, name, value):
 def cors_origin(reply, origin):
     match Params.header(M.Request(method="", url="", headers=reply.headers, body="", path_params={}), "Vary"):
         case Success(value=previous):
-            return with_header(with_header(reply, "Vary", previous + ", Origin"), "Access-Control-Allow-Origin", origin)
+            return with_header(with_header(reply, "Vary", previous + ", Origin"), ALLOW_ORIGIN, origin)
         case Error():
-            return with_header(with_header(reply, "Vary", "Origin"), "Access-Control-Allow-Origin", origin)
+            return with_header(with_header(reply, "Vary", "Origin"), ALLOW_ORIGIN, origin)
 
 
 def cors_credentials(policy, reply):
@@ -285,7 +288,7 @@ def cors_credentials(policy, reply):
 def cors_simple(policy, origin, reply):
     exposed = with_header(reply, "Access-Control-Expose-Headers", join(policy.expose, ", ")) if len(policy.expose) > 0 else reply
     wildcard = listContains(policy.origins, "*")
-    base = cors_credentials(policy, with_header(exposed, "Access-Control-Allow-Origin", "*") if wildcard else exposed)
+    base = cors_credentials(policy, with_header(exposed, ALLOW_ORIGIN, "*") if wildcard else exposed)
     return cors_origin(base, origin) if (wildcard and policy.credentials) or (not wildcard and listContains(policy.origins, origin)) else base
 
 
@@ -302,9 +305,9 @@ def cors_headers(policy):
 def cors_preflight_base(policy, origin):
     explicit = not listContains(policy.origins, "*") or policy.credentials
     base = R.response(200, "OK", "text/plain; charset=utf-8", "")
-    varied = with_header(base, "Vary", "Origin") if explicit else with_header(base, "Access-Control-Allow-Origin", "*")
+    varied = with_header(base, "Vary", "Origin") if explicit else with_header(base, ALLOW_ORIGIN, "*")
     allowed = listContains(policy.origins, "*") or listContains(policy.origins, origin)
-    reflected = with_header(varied, "Access-Control-Allow-Origin", origin) if explicit and allowed else varied
+    reflected = with_header(varied, ALLOW_ORIGIN, origin) if explicit and allowed else varied
     methods = with_header(reflected, "Access-Control-Allow-Methods", join(cors_methods(policy), ", "))
     timed = with_header(methods, "Access-Control-Max-Age", toString(policy.max_age))
     named = timed if listContains(policy.headers, "*") else with_header(timed, "Access-Control-Allow-Headers", join(cors_headers(policy), ", "))

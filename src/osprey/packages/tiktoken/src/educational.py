@@ -20,9 +20,8 @@ __all__ = [
     "encode", "decode", "decode_bytes", "decode_tokens_bytes",
 ]
 
-# SimpleBytePairEncoding(pat_str=..., mergeable_ranks=...) is an Encoding
-# without special tokens.
 type SimpleBytePairEncoding = Core.Encoding
+"""`SimpleBytePairEncoding(pat_str=..., mergeable_ranks=...)`: an `Encoding` with no special tokens, built by `simple`."""
 
 
 def simple(pattern, mergeable_ranks):
@@ -78,7 +77,7 @@ def training_words(pattern, data):
     return mapList(pieces, lambda p: mapList(p, Bpe.key_char))
 
 
-def train_loop(ranks, words, vocab_size) -> Result[dict[str, int], str]:
+def train_loop(ranks, words, vocab_size):
     """One merge round, until the vocabulary is full."""
     if len(ranks) >= vocab_size:
         return Success(value=ranks)

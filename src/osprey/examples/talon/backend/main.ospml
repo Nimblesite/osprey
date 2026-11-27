@@ -12,25 +12,26 @@ fetch client path =
         Success value =>
             body = match httpResponseBody value
                 Success text => text
-                Error message => "(no body)"
-            freed = httpResponseFree value ?: 0
+                Error _ => "(no body)"
+            _freed = httpResponseFree value ?: 0
             body
-        Error message => "GET ${path} failed"
+        Error _ => "GET ${path} failed"
+
+// The two routes the tour drives most.
+accountsPath = "/api/accounts"
+depositPath = "/api/deposit"
 
 drive client =
-    amelia = httpPost client "/api/accounts" "{\"name\":\"Amelia Chen\"}" "" ?: -1
-    marcus = httpPost client "/api/accounts" "{\"name\":\"Marcus Webb\"}" "" ?: -1
-    priya = httpPost client "/api/accounts" "{\"name\":\"Priya Sharma\"}" "" ?: -1
-    salary = httpPost client "/api/deposit" "{\"account\":1,\"cents\":425000,\"note\":\"March salary — Nimble Robotics\"}" "" ?: -1
-    invoice = httpPost client "/api/deposit" "{\"account\":2,\"cents\":198025,\"note\":\"freelance invoice #4021\"}" "" ?: -1
-    grant = httpPost client "/api/deposit" "{\"account\":3,\"cents\":360000,\"note\":\"research grant Q1\"}" "" ?: -1
+    amelia = httpPost client accountsPath "{\"name\":\"Amelia Chen\"}" "" ?: -1
+    marcus = httpPost client accountsPath "{\"name\":\"Marcus Webb\"}" "" ?: -1
+    priya = httpPost client accountsPath "{\"name\":\"Priya Sharma\"}" "" ?: -1
+    salary = httpPost client depositPath "{\"account\":1,\"cents\":425000,\"note\":\"March salary — Nimble Robotics\"}" "" ?: -1
+    invoice = httpPost client depositPath "{\"account\":2,\"cents\":198025,\"note\":\"freelance invoice #4021\"}" "" ?: -1
+    grant = httpPost client depositPath "{\"account\":3,\"cents\":360000,\"note\":\"research grant Q1\"}" "" ?: -1
     rent = httpPost client "/api/withdraw" "{\"account\":1,\"cents\":185000,\"note\":\"rent — 12 Fern St\"}" "" ?: -1
     dinner = httpPost client "/api/transfer" "{\"from\":2,\"to\":1,\"cents\":6240,\"note\":\"dinner split\"}" "" ?: -1
     synth = httpPost client "/api/withdraw" "{\"account\":2,\"cents\":999900,\"note\":\"vintage synthesizer\"}" "" ?: -1
-    print "[http] open=${amelia}/${marcus}/${priya} deposit=${salary}/${invoice}/${grant} rent=${rent} transfer=${dinner} overdraft=${synth}"
-    print "--- GET /api/accounts ---\n${fetch client "/api/accounts"}"
-    print "--- GET /api/activity ---\n${fetch client "/api/activity"}"
-    print "--- GET / (API only) ---\n${fetch client "/"}"
+    print "[http] open=${amelia}/${marcus}/${priya} deposit=${salary}/${invoice}/${grant} rent=${rent} transfer=${dinner} overdraft=${synth}\n--- GET ${accountsPath} ---\n${fetch client accountsPath}\n--- GET /api/activity ---\n${fetch client "/api/activity"}\n--- GET / (API only) ---\n${fetch client "/"}"
 
 // Playwright hold: while the configured marker exists the server keeps serving.
 // The defaults preserve the standalone demo; each browser run gets isolated paths.
@@ -38,13 +39,22 @@ holdPath () = env "TALON_HOLD" ?: "/tmp/talon_bank.hold"
 apiPort () = parseInt (env "TALON_API_PORT" ?: "18790")
 databasePath () = env "TALON_DB" ?: "/tmp/talon_bank.db"
 
-hold () =
-    marker = readFile (holdPath ())
-    match marker
-        Error message => 0
-        Success value =>
-            slept = sleep 250
-            hold ()
+// Only an absent marker ends the hold [BUILTIN-FILE-ERRMSG]: any other read
+// failure is retried, at most `holdRetries` times in a row, so a transient error
+// cannot stop a journey's server early and a lasting one cannot hold it forever.
+holdRetries = 20
+
+hold () = holding 0
+
+holding failures = match readFile (holdPath ())
+    Success _ => waited 0
+    Error why => match endsWith why "No such file or directory" || failures >= holdRetries
+        true => 0
+        false => waited (satAdd failures 1)
+
+waited failures =
+    _slept = sleep 250
+    holding failures
 
 // The TUI closing shot: render every account as a table row through the same
 // pure domain renderer the API uses, stepping ids with the total `satAdd`.
@@ -66,33 +76,33 @@ serveListening db port server =
     drive client
     print "┌────┬──────────────┬───────────┐"
     table 1 (perform Ledger::Store.count ())
-    held = hold ()
-    stopped = httpStopServer server ?: -1
-    closed = Sqlite::shutdown db
+    _held = hold ()
+    _stopped = httpStopServer server ?: -1
+    _closed = Sqlite::shutdown db
     perform Metrics::MetricsFx.total ()
 
 listenFailed db server message =
-    stopped = httpStopServer server ?: -1
-    closed = Sqlite::shutdown db
-    report = print "Talon server could not listen: ${message}"
+    _stopped = httpStopServer server ?: -1
+    _closed = Sqlite::shutdown db
+    _report = print "Talon server could not listen: ${message}"
     1
 
 serve : Ptr -> int -> int ! [Ledger::Store, Metrics::MetricsFx, Api::Audit]
 serve db port = match httpCreateServer port "127.0.0.1"
     Error message =>
-        closed = Sqlite::shutdown db
-        report = print "Talon server could not bind: ${message}"
+        _closed = Sqlite::shutdown db
+        _report = print "Talon server could not bind: ${message}"
         1
     Success server => match httpListen server handleRequest
         Error message => listenFailed db server message
-        Success listening => serveListening db port server
+        Success _ => serveListening db port server
 
 // SQLite and audit handlers compose around the same serving callback.
 boot : int -> int ! Metrics::MetricsFx
 boot port =
     database = databasePath ()
     db = Sqlite::openAt database
-    made = Ledger::schema db
+    _made = Ledger::schema db
     print "[boot] fresh ledger at ${database}"
     storage = Ledger::sqlite db
     consoleAudit = handler Api::Audit
@@ -100,15 +110,15 @@ boot port =
     consoleAudit (\() => storage (\() => serve db port))
 
 // The router: every request is counted by the state module, then answered by the JSON API.
-handleRequest (method, path, headers, body) =
-    seen = perform Metrics::MetricsFx.hit path
+handleRequest (method, path, _headers, body) =
+    _seen = perform Metrics::MetricsFx.hit path
     Api::route method path body
 
 main () =
     print "=== Talon Bank — one Osprey app, every module feature ==="
     match apiPort ()
         Error message =>
-            reported = print "Invalid TALON_API_PORT: ${message}"
+            _reported = print "Invalid TALON_API_PORT: ${message}"
             1
         Success port =>
             served = Metrics::track (\() => boot port)

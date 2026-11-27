@@ -62,7 +62,25 @@ class Counts:
 
 
 def header_at(data):
-    """The magic, the version and the two counts, in the file's own byte order."""
+    """The magic, the version and the two counts, in the file's own byte order.
+
+    # Examples
+    ```osprey
+    from gguf import Values
+
+    def show():
+        match Values.header_at([71, 71, 85, 70, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 103, 101, 110, 101, 114, 97, 108, 46, 110, 97, 109, 101, 8, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 116, 105, 110, 121, 0, 0, 0, 0]):
+            case Success(value=h):
+                print(f"v{h.version} {h.tensor_count} {h.kv_count} {h.swapped}")
+            case Error(message=m):
+                print(m)
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    v3 0 1 false
+    ```
+    """
     return andThen(require_magic(data), lambda _: version_at(data))
 
 
@@ -105,7 +123,25 @@ def counts_at(data, swapped):
 
 
 def value_at(data, off, kind, swapped):
-    """The metadata value of `kind` at `off`, with the bytes it occupies."""
+    """The metadata value of `kind` at `off`, with the bytes it occupies.
+
+    # Examples
+    ```osprey
+    from gguf import Values
+
+    def show():
+        match Values.value_at([71, 71, 85, 70, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 103, 101, 110, 101, 114, 97, 108, 46, 110, 97, 109, 101, 8, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 116, 105, 110, 121, 0, 0, 0, 0], 44, "string", False):
+            case Success(value=sized):
+                print(f"{sized.value.s} {sized.size}")
+            case Error(message=m):
+                print(m)
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    gguf: unexpected end of file at offset 52
+    ```
+    """
     if kind == "string":
         return string_at(data, off, swapped)
     elif kind == "array":
@@ -115,7 +151,21 @@ def value_at(data, off, kind, swapped):
 
 
 def kind_at(data, off, swapped):
-    """The name of the metadata value type the 4-byte id at `off` names."""
+    """The name of the metadata value type the 4-byte id at `off` names.
+
+    # Examples
+    ```osprey
+    from gguf import Values
+
+    def show():
+        print(f"{Values.kind_at([71, 71, 85, 70, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 103, 101, 110, 101, 114, 97, 108, 46, 110, 97, 109, 101, 8, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 116, 105, 110, 121, 0, 0, 0, 0], 40, False)} {Values.kind_at([9, 9, 9, 9], 0, False)}")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    Error(1701667182 is not a valid GGUFValueType) Error(151587081 is not a valid GGUFValueType)
+    ```
+    """
     return andThen(unsigned_at(data, off, 4, swapped), kind_name)
 
 
@@ -222,7 +272,25 @@ def bool_value(byte):
 
 
 def string_at(data, off, swapped):
-    """A GGUF string at `off`: a uint64 byte count, then that many UTF-8 bytes."""
+    """A GGUF string at `off`: a uint64 byte count, then that many UTF-8 bytes.
+
+    # Examples
+    ```osprey
+    from gguf import Values
+
+    def show():
+        match Values.string_at([71, 71, 85, 70, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 103, 101, 110, 101, 114, 97, 108, 46, 110, 97, 109, 101, 8, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 116, 105, 110, 121, 0, 0, 0, 0], 24, False):
+            case Success(value=sized):
+                print(f"{sized.value.s} {sized.size}")
+            case Error(message=m):
+                print(m)
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    general.name 20
+    ```
+    """
     return andThen(u64_at(data, off, swapped), lambda count: string_body(data, off + 8, count))
 
 
@@ -265,7 +333,26 @@ def array_value(kind, count, items):
 
 
 def values_at(data, off, count, kind, swapped):
-    """`count` values of `kind` in sequence, with the bytes they occupy."""
+    """`count` values of `kind` in sequence, with the bytes they occupy.
+
+    # Examples
+    ```osprey
+    from gguf import Values
+
+    def show():
+        data = [1, 0, 0, 0, 2, 0, 0, 0]
+        match Values.values_at(data, 0, 2, "int32", False):
+            case Success(value=sized):
+                print(f"{len(sized.value.items)} values, {sized.size} bytes")
+            case Error(message=m):
+                print(m)
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    2 values, 8 bytes
+    ```
+    """
     if count < 0 or off < 0 or count > len(data) - off:
         return Error(message=truncated(off))
     else:
@@ -302,7 +389,21 @@ def take_value(data, acc, kind, swapped):
 
 
 def bytes_at(data, off, n):
-    """The `n` bytes at `off`, or the truncation error naming the offset."""
+    """The `n` bytes at `off`, or the truncation error naming the offset.
+
+    # Examples
+    ```osprey
+    from gguf import Values
+
+    def show():
+        print(f"{Values.bytes_at([1, 2, 3, 4], 1, 2)} {Values.bytes_at([1, 2], 1, 5)}")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    Success([2, 3]) Error(gguf: unexpected end of file at offset 1)
+    ```
+    """
     match Bytes.read_bytes(data, off, n):
         case Success(value=value):
             return Success(value=value)
@@ -311,7 +412,21 @@ def bytes_at(data, off, n):
 
 
 def truncated(off):
-    """The error text for input that ends before a field it declares."""
+    """The error text for input that ends before a field it declares.
+
+    # Examples
+    ```osprey
+    from gguf import Values
+
+    def show():
+        print(Values.truncated(12))
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    gguf: unexpected end of file at offset 12
+    ```
+    """
     return "gguf: unexpected end of file at offset " + toString(off)
 
 

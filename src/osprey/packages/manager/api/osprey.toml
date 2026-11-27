@@ -6,3 +6,7 @@ entry = "src/main.osp"
 
 [modules]
 allow_wildcard_imports = false
+
+# One namespace over the layer folders is this layout by design ([LINT-LEVELS]).
+[lints]
+namespace-folder-drift = "allow"

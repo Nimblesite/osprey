@@ -9,6 +9,15 @@ import registry::Surface
 /// name is `io/network`, a declaration counts like a call, non-source files
 /// are skipped, and `[system.*]` capabilities join the set canonically.
 module SurfaceTests {
+    /// The capability a file-reading extern declares.
+    let ioFiles = ["io/files"]
+    /// The capability a terminal extern declares.
+    let ioTerminal = ["io/terminal"]
+    /// The capability an unrecognised extern declares.
+    let ioUnknown = ["io/unknown"]
+    /// One extern declaration, as the scanner's standalone source samples spell it.
+    let externPuts = "extern fn puts(text: string) -> int"
+
     fn file(path, content) = Release::File { relPath: path, content: content }
 
     fn pair(n: Surface::Named) = "${n.builtin}=${n.capability}"
@@ -40,17 +49,17 @@ module SurfaceTests {
     ])
 
     fn scans() = checkAll("whole identifiers outside comments and strings", [
-        surfaceOf("fn main() = readFile(\"x\")", ["io/files"]),
+        surfaceOf("fn main() = readFile(\"x\")", ioFiles),
         surfaceOf("fn readFileX() = 1\nlet x = myreadFile\n", []),
         surfaceOf("// readFile in a comment\nfn f() = 1\n", []),
         surfaceOf("fn f() = \"readFile \\\" writeFile\"\n", []),
-        surfaceOf("fn f() = \"a\" + input()\n", ["io/terminal"]),
-        surfaceOf("fn readFile(p) = 1\n", ["io/files"]),
+        surfaceOf("fn f() = \"a\" + input()\n", ioTerminal),
+        surfaceOf("fn readFile(p) = 1\n", ioFiles),
         surfaceOf("httpFetchLater(1)\nwebsocketOpen(2)\n", ["io/network"]),
         surfaceOf("spawnProcess(\"ls\")\nwriteFile(\"a\", \"b\")\nreadFile(\"a\")\n", ["io/files", "io/process"]),
-        surfaceOf("let entries = listDir(\".\")\n", ["io/files"]),
-        surfaceOf("kindOf(\"a\")\n", ["io/files"]),
-        surfaceOf("makeDir(\"d\")\n", ["io/files"]),
+        surfaceOf("let entries = listDir(\".\")\n", ioFiles),
+        surfaceOf("kindOf(\"a\")\n", ioFiles),
+        surfaceOf("makeDir(\"d\")\n", ioFiles),
         surfaceOf("x / y // readFile\nz\n", []),
         surfaceOf("", [])
     ])
@@ -64,14 +73,14 @@ module SurfaceTests {
     fn interpolations() = {
         let call = "$" + "{readFile(path)}"
         checkAll("executable strings cannot hide ambient calls", [
-            surfaceOf("fn load(path) = \"" + call + "\"", ["io/files"]),
-            surfaceOf("fn load(path) = \"\\" + call + "\"", ["io/files"]),
-            surfaceOf("load path = \"" + call + "\"", ["io/files"]),
-            surfaceOf("# osprey: flavor=python\ndef load(path):\n    return f\"{readFile(path)}\"", ["io/files"]),
-            surfaceOf("# osprey: flavor=python\ndef load(path):\n    return f'{readFile(path)}'", ["io/files"]),
+            surfaceOf("fn load(path) = \"" + call + "\"", ioFiles),
+            surfaceOf("fn load(path) = \"\\" + call + "\"", ioFiles),
+            surfaceOf("load path = \"" + call + "\"", ioFiles),
+            surfaceOf("# osprey: flavor=python\ndef load(path):\n    return f\"{readFile(path)}\"", ioFiles),
+            surfaceOf("# osprey: flavor=python\ndef load(path):\n    return f'{readFile(path)}'", ioFiles),
             surfaceOf("fn load() = \"" + "$" + "{readFile(\"path\")}\" + input()", ["io/files", "io/terminal"]),
-            surfaceOf("# osprey: flavor=python\n# a comment with an unmatched \"\ntermReadKey()", ["io/terminal"]),
-            surfaceOf("termCols() + termRows() + termReadKey()", ["io/terminal"])
+            surfaceOf("# osprey: flavor=python\n# a comment with an unmatched \"\ntermReadKey()", ioTerminal),
+            surfaceOf("termCols() + termRows() + termReadKey()", ioTerminal)
         ])
     }
 
@@ -87,20 +96,20 @@ module SurfaceTests {
     ])
 
     fn pythonTokens() = checkAll("Python token separators and formatted prefixes retain capabilities", [
-        surfaceOfFiles([file("src/a.py", "def load(p):\n    return readFile" + (fromCodePoint(8203) ?: "") + "(p)")], ["io/files"]),
-        surfaceOfFiles([file("src/a.py", "def load():\n    return input" + (fromCodePoint(8288) ?: "") + "()")], ["io/terminal"]),
+        surfaceOfFiles([file("src/a.py", "def load(p):\n    return readFile" + (fromCodePoint(8203) ?: "") + "(p)")], ioFiles),
+        surfaceOfFiles([file("src/a.py", "def load():\n    return input" + (fromCodePoint(8288) ?: "") + "()")], ioTerminal),
         declaresShadow([file("src/a.py", "def" + (fromCodePoint(8288) ?: "") + "readFile(p):\n    return p")]),
-        surfaceOfFiles([file("src/a.py", "@" + (fromCodePoint(8203) ?: "") + "extern\ndef puts(text: str) -> int: ...")], ["io/unknown"]),
-        surfaceOfFiles([file("src/a.py", "def load(p):\n    return uf\"{readFile(p)}\"")], ["io/files"]),
-        surfaceOfFiles([file("src/a.py", "def load(p):\n    return fu\"{readFile(p)}\"")], ["io/files"]),
-        surfaceOfFiles([file("src/a.py", "def load(p):\n    return urf\"{readFile(p)}\"")], ["io/files"]),
+        surfaceOfFiles([file("src/a.py", "@" + (fromCodePoint(8203) ?: "") + "extern\ndef puts(text: str) -> int: ...")], ioUnknown),
+        surfaceOfFiles([file("src/a.py", "def load(p):\n    return uf\"{readFile(p)}\"")], ioFiles),
+        surfaceOfFiles([file("src/a.py", "def load(p):\n    return fu\"{readFile(p)}\"")], ioFiles),
+        surfaceOfFiles([file("src/a.py", "def load(p):\n    return urf\"{readFile(p)}\"")], ioFiles),
         surfaceOfFiles([file("src/a.py", "value = u\"readFile(p)\"")], []),
         surfaceOfFiles([file("src/a.py", "value = uf\"{{readFile(p)}}\"")], []),
         surfaceOfFiles([file("src/a.py", "value = \"readFile" + (fromCodePoint(8203) ?: "") + "(p)\"")], []),
-        surfaceOfFiles([file("src/a.py", "# readFile note\ninput()")], ["io/terminal"]),
+        surfaceOfFiles([file("src/a.py", "# readFile note\ninput()")], ioTerminal),
         surfaceOfFiles([file("src/a.py", "x = 'readFile'")], []),
-        surfaceOfFiles([file("src/a.py", "@extern\ndef puts(text: str) -> int: ...")], ["io/unknown"]),
-        surfaceOfFiles([file("src/a.py", "# osprey: flavor=python\ndef load(path):\n    return" + (fromCodePoint(65279) ?: "") + "readFile(path)")], ["io/files"])
+        surfaceOfFiles([file("src/a.py", "@extern\ndef puts(text: str) -> int: ...")], ioUnknown),
+        surfaceOfFiles([file("src/a.py", "# osprey: flavor=python\ndef load(path):\n    return" + (fromCodePoint(65279) ?: "") + "readFile(path)")], ioFiles)
     ])
 
     /// A builtin's name declared with `fn`, `let` or `mut` is a shadowing
@@ -123,17 +132,17 @@ module SurfaceTests {
     /// apostrophe, quote and backtick strings, `${}` only inside backticks,
     /// `/* */` comments, and an escaped identifier is unclassifiable.
     fn typescriptSources() = checkAll("TypeScript-flavor files are scanned as TypeScript", [
-        surfaceOfFiles(ts("export function load(p: string): string { return readFile(p) }"), ["io/files"]),
-        surfaceOfFiles(ts("const a = '\"'; input(); const b = '\"'"), ["io/terminal"]),
-        surfaceOfFiles(ts("const a = '$" + "{'; input(); const b = '}'"), ["io/terminal"]),
-        surfaceOfFiles(ts("const a = \"$" + "{\"; input(); const b = \"}\""), ["io/terminal"]),
-        surfaceOfFiles(ts("const a = `$" + "{readFile(p)}`"), ["io/files"]),
+        surfaceOfFiles(ts("export function load(p: string): string { return readFile(p) }"), ioFiles),
+        surfaceOfFiles(ts("const a = '\"'; input(); const b = '\"'"), ioTerminal),
+        surfaceOfFiles(ts("const a = '$" + "{'; input(); const b = '}'"), ioTerminal),
+        surfaceOfFiles(ts("const a = \"$" + "{\"; input(); const b = \"}\""), ioTerminal),
+        surfaceOfFiles(ts("const a = `$" + "{readFile(p)}`"), ioFiles),
         surfaceOfFiles(ts("const a = `readFile $" + "{1} input`"), []),
         surfaceOfFiles(ts("const a = 'readFile'; const b = \"input\""), []),
         surfaceOfFiles(ts("/* readFile */ const a = 1"), []),
-        surfaceOfFiles(ts("/* \" */ input() /* \" */"), ["io/terminal"]),
+        surfaceOfFiles(ts("/* \" */ input() /* \" */"), ioTerminal),
         surfaceOfFiles(ts("// readFile\nconst a = 1"), []),
-        surfaceOfFiles(ts("const a = read\\u0046ile(p)"), ["io/unknown"]),
+        surfaceOfFiles(ts("const a = read\\u0046ile(p)"), ioUnknown),
         surfaceOfFiles([file("types/a.d.ts", "declare function readFile(p: string): string")], []),
         declaresShadow(ts("function readFile(p: string): string { return p }")),
         declaresShadow(ts("const input = 1")),
@@ -147,12 +156,12 @@ module SurfaceTests {
     fn sampleFile(release, path) = file(path, readFile("src/osprey/packages/manager/sample-registry/${release}/${path}") ?: "<missing>")
 
     fn unknownBuiltin() = checkAll("unclassified terminal operations block publication", [
-        surfaceOf("termUnclassified()", ["io/unknown"]),
-        surfaceOf("extern fn puts(text: string) -> int", ["io/unknown"]),
-        surfaceOf("extern puts (text: string) -> int", ["io/unknown"]),
-        surfaceOf("extern // declaration continues\nfn puts(text: string) -> int", ["io/unknown"]),
-        surfaceOf("# osprey: flavor=python\n@extern\ndef puts(text: str) -> int: ...", ["io/unknown"]),
-        surfaceOf("# osprey: flavor=python\n@ extern\ndef puts(text: str) -> int: ...", ["io/unknown"]),
+        surfaceOf("termUnclassified()", ioUnknown),
+        surfaceOf(externPuts, ioUnknown),
+        surfaceOf("extern puts (text: string) -> int", ioUnknown),
+        surfaceOf("extern // declaration continues\nfn puts(text: string) -> int", ioUnknown),
+        surfaceOf("# osprey: flavor=python\n@extern\ndef puts(text: str) -> int: ...", ioUnknown),
+        surfaceOf("# osprey: flavor=python\n@ extern\ndef puts(text: str) -> int: ...", ioUnknown),
         surfaceOf("// extern fn puts\nfn text() = \"extern\"", []),
         surfaceOf("let external = 1", []),
         surfaceOf("# osprey: flavor=python\nextern = 1\ndef external():\n    return extern", []),
@@ -171,23 +180,23 @@ module SurfaceTests {
     ])
 
     fn nativeBoundaries() = checkAll("native declarations remain visible across statement boundaries", [
-        surfaceOf("let text = \"ok\"\nextern fn puts(text: string) -> int", ["io/unknown"]),
-        surfaceOf("let extern = 1\nextern fn puts(text: string) -> int", ["io/unknown"]),
-        surfaceOf("module Foreign {\nexport extern fn puts(text: string) -> int\n}", ["io/unknown"]),
-        surfaceOf("extern\n// declaration continues\nfn puts(text: string) -> int", ["io/unknown"]),
-        surfaceOf("namespace prefix; module Empty {} extern fn puts(text: string) -> int", ["io/unknown"]),
-        surfaceOf("namespace prefix; signature Api {} extern fn puts(text: string) -> int", ["io/unknown"]),
-        surfaceOf("type Record = { value: int } extern fn puts(text: string) -> int", ["io/unknown"])
+        surfaceOf("let text = \"ok\"\nextern fn puts(text: string) -> int", ioUnknown),
+        surfaceOf("let extern = 1\nextern fn puts(text: string) -> int", ioUnknown),
+        surfaceOf("module Foreign {\nexport extern fn puts(text: string) -> int\n}", ioUnknown),
+        surfaceOf("extern\n// declaration continues\nfn puts(text: string) -> int", ioUnknown),
+        surfaceOf("namespace prefix; module Empty {} extern fn puts(text: string) -> int", ioUnknown),
+        surfaceOf("namespace prefix; signature Api {} extern fn puts(text: string) -> int", ioUnknown),
+        surfaceOf("type Record = { value: int } extern fn puts(text: string) -> int", ioUnknown)
     ])
 
     fn nativeWhitespace() = checkAll("native declarations use the compiler's whitespace rules", [
-        surfaceOf((fromCodePoint(65279) ?: "") + "extern fn puts(text: string) -> int", ["io/unknown"]),
-        surfaceOf((fromCodePoint(12) ?: "") + "extern fn puts(text: string) -> int", ["io/unknown"]),
-        surfaceOf("extern" + (fromCodePoint(12) ?: "") + "fn puts(text: string) -> int", ["io/unknown"]),
-        surfaceOf((fromCodePoint(11) ?: "") + "extern fn puts(text: string) -> int", ["io/unknown"]),
-        surfaceOf("let number = 1\rextern fn puts(text: string) -> int", ["io/unknown"]),
-        surfaceOf("namespace prefix; extern fn puts(text: string) -> int", ["io/unknown"]),
-        surfaceOf("// comment\rextern fn puts(text: string) -> int", ["io/unknown"])
+        surfaceOf((fromCodePoint(65279) ?: "") + externPuts, ioUnknown),
+        surfaceOf((fromCodePoint(12) ?: "") + externPuts, ioUnknown),
+        surfaceOf("extern" + (fromCodePoint(12) ?: "") + "fn puts(text: string) -> int", ioUnknown),
+        surfaceOf((fromCodePoint(11) ?: "") + externPuts, ioUnknown),
+        surfaceOf("let number = 1\rextern fn puts(text: string) -> int", ioUnknown),
+        surfaceOf("namespace prefix; extern fn puts(text: string) -> int", ioUnknown),
+        surfaceOf("// comment\rextern fn puts(text: string) -> int", ioUnknown)
     ])
 
     fn sampleSurface(case) = {
@@ -200,6 +209,17 @@ module SurfaceTests {
     fn sampleSurfaces() = {
         let cases = Fixtures::loadItems("capabilities/sample-surfaces.json", "cases")
         Fixtures::report("sample-registry surfaces", cases, sampleSurface)
+    }
+
+    fn nativeSurface() = {
+        let root = "src/osprey/packages/native/src"
+        let paths = filterList(listDir(root) ?: [], fn(path) => endsWith(path, ".ospml"))
+        let files = mapList(paths, fn(path) => file(path, readFile(path) ?: ""))
+        checkAll("native package requires no ambient grants", [
+            !isEmpty(files),
+            foldList(files, true, fn(ok, source) => ok && byteLength(source.content) > 0),
+            surfaceOfFiles(files, [])
+        ])
     }
 
     /// Every surface test.
@@ -217,5 +237,6 @@ module SurfaceTests {
         test("surface: native declaration whitespace", nativeWhitespace)
         test("surface: TypeScript-flavor sources", typescriptSources)
         test("surface: sample-registry goldens", sampleSurfaces)
+        test("surface: native package requires no ambient grants", nativeSurface)
     }
 }

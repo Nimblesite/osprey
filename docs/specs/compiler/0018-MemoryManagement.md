@@ -445,7 +445,7 @@ Here step(c, a) = ∅ means the action is refused, and ⊥ ─a₁·…·aₙ→
 
 #### Proofs of compiled ownership code [MEM-OWNERSHIP-STATIC-VERIFICATION-COMPILER]
 
-The regex translators described below are being replaced by the IR to Lean framework ([IR-LEAN](../tooling/IrToLean.md)), which reads the compiler's IR through LLVM's MLIR importer and proves `run_follows_ledger` for every run. It is not in the required `CI` check yet; [its plan](../../plans/ir-to-lean.md) lists the work left before these translators can be deleted.
+The regex translators described below are being replaced by the IR to Lean framework ([IR-LEAN](../tooling/IrToLean.md)), which reads the compiler's IR through LLVM's MLIR importer and proves `run_follows_ledger` for every run. It is not in the required `CI` check yet; [its plan](../../plans/0041-dependent-types-and-mathlib.md#proofs-about-the-compilers-output-ir-lean) lists the work left before these translators can be deleted.
 
 `make _test_ownership_proof` compiles the tracked `single_owner.test.osp` regression with the Osprey compiler under test and compiles the production C helpers with Clang at `-O1 -fno-inline` and the ownership allocation shim. The following claims apply to those translations. [Proof gate](../../../scripts/proof/ownership-lowering.sh)
 

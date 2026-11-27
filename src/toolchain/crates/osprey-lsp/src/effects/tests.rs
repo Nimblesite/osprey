@@ -53,7 +53,7 @@ mod on_disk {
     fn span_in(source: &str, context: &str, word: &str) -> Span {
         let (line, column) = locate(source, context);
         let offset = context.find(word).expect("word inside its context");
-        let start = column.saturating_add(width(&context[..offset]));
+        let start = column.saturating_add(width(context.get(..offset).expect("char boundary")));
         (line, start, line, start.saturating_add(width(word)))
     }
 
@@ -149,7 +149,7 @@ mod on_disk {
             Some([drive, b':', ..]) => format!(
                 "file:///{}%3A{}",
                 char::from(drive.to_ascii_lowercase()),
-                &uri["file:///C:".len()..]
+                uri.get("file:///C:".len()..).expect("char boundary")
             ),
             _ => uri.to_owned(),
         }

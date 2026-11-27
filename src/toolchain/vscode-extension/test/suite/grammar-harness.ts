@@ -98,10 +98,10 @@ export function tokenize(grammar: vsctm.IGrammar, source: string): Token[] {
 }
 
 /** Every token whose trimmed text is exactly `text`; at least one must exist. */
-function tokensNamed(tokens: Token[], text: string): Token[] {
-  const found = tokens.filter((token) => token.text.trim() === text);
-  assert.ok(found.length > 0, `token ${JSON.stringify(text)} exists`);
-  return found;
+function tokensNamed(tokens: Token[], text: string): [Token, ...Token[]] {
+  const [first, ...rest] = tokens.filter((token) => token.text.trim() === text);
+  assert.ok(first, `token ${JSON.stringify(text)} exists`);
+  return [first, ...rest];
 }
 
 /** The scopes of the first token whose text is exactly `text`. */

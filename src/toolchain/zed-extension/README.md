@@ -67,6 +67,5 @@ Zed sends workspace settings after initialization; setting only
 Default highlighting uses the canonical Tree-sitter queries, synchronized by
 `prepare`. ML and Python-flavor buffers currently have LSP features but no
 Tree-sitter highlighting or structural indentation; the Default grammar is not
-applied to syntax it cannot parse. The
-[developer tools checklist](../../../docs/plans/0012-developer-tools.md#zed-integration-editor-zed)
-records the verified scope and limits.
+applied to syntax it cannot parse. The [Zed contract](../../../docs/specs/tooling/EditorIntegration.md#zed-editor-zed)
+states this scope and its limits.

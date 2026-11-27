@@ -135,6 +135,7 @@ pub struct ProgramTypes {
     pub(crate) declared_params: Named<HashMap<String, Type>>,
     pub(crate) call_bindings: Arc<HashMap<usize, HashMap<VarId, Type>>>,
     pub(crate) methods: Arc<crate::methods::Targets>,
+    pub(crate) resolved_deferred_methods: Arc<HashMap<usize, bool>>,
     /// Generalized source-binding constraints compared by annotation diagnostics.
     pub(crate) obligations: Arc<HashMap<String, Vec<(String, Type)>>>,
 }

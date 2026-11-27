@@ -1,0 +1,149 @@
+namespace registry_web;
+
+// Implements [PACKAGE-HOSTED-ROUTES-CATALOG]. Hosted pages require verified evidence.
+fn catalog(local, entries, origin) = {
+    let hosted = origin != ""
+    let notice = if local { "<p>Local folder registry · Audit unverified</p>" } else if hosted { "<p id=\"catalog-status\" role=\"status\" data-error=\"The public catalog is unavailable.\">Loading packages…</p>" } else { "<p role=\"status\">The public catalog is unavailable.</p>" }
+    let disabled = if local || hosted { "" } else { " disabled" }
+    let form = "<form role=\"search\" method=\"get\" action=\"/\"><label for=\"q\">Search packages</label><div class=\"prose-search\"><input id=\"q\" name=\"q\" type=\"search\" placeholder=\"Package name or description\"${disabled}><button${disabled}>Search</button></div></form>"
+    let navigation = if local || hosted { browseNav() } else { "" }
+    let behavior = if local { localFilter() } else if hosted { catalogAdapter(origin) } else { "" }
+    Shell::withEscapedTitle("Osprey Packages", "<main><header class=\"prose-intro\"><h1>Osprey Packages</h1><p>The package registry for the Osprey language. Find libraries for your next project, see who published them, and download the source for a specific release.</p></header>${form}<section><h2>Browse packages</h2>${navigation}${notice}<div id=\"results\">${entries}</div>${behavior}</section></main>")
+}
+
+fn catalogAdapter(origin) = {
+    let adapter = trim(input())
+    let host = trim(input())
+    let guest = trim(input())
+    let content = trim(input())
+    "<script type=\"module\" src=\"/${adapter}\" data-catalog=\"${origin}/v1/packages\" data-content=\"${content}\" data-host=\"/${host}\" data-guest=\"/${guest}\"></script>"
+}
+
+fn hostedPackage() = {
+    let origin = trim(input())
+    let adapter = catalogAdapter(origin)
+    Shell::withEscapedTitle("Package · Osprey Packages", "<main><p id=\"catalog-status\" class=\"prose-cover\" role=\"status\" data-missing=\"Page not found.\" data-error=\"The registry could not load this page.\">Loading packages…</p><div id=\"package-details\"></div>${adapter}</main>")
+}
+
+fn localFilter() = {
+    let adapter = trim(input())
+    let host = trim(input())
+    let guest = trim(input())
+    "<p id=\"filter-status\" role=\"status\" data-empty=\"No matching packages.\" data-error=\"Search is unavailable.\"></p><script type=\"module\" src=\"/${adapter}\" data-list-filter=\"results\" data-status=\"filter-status\" data-host=\"/${host}\" data-guest=\"/${guest}\"></script>"
+}
+
+fn visibility(terms, text) = if foldList(terms, true, fn(matches, term) => matches && contains(text, term)) { "1" } else { "0" }
+
+fn filtered() = {
+    let terms = split(toLowerCase(trim(input())), " ") ?: []
+    let count = parseInt(trim(input())) ?: 0
+    join(mapList(range(0, count) |> toList, fn(_i) => visibility(terms, toLowerCase(input()))), "")
+}
+
+fn publisherAccount(origin) = if origin == "" {
+    "<p role=\"status\">Public uploads are unavailable.</p><a href=\"/publishing/\">Publish to a folder registry</a>"
+} else { join([
+    "<div data-session-url=\"${origin}/v1/auth/session\" data-logout-url=\"${origin}/v1/auth/logout\" data-error=\"The registry could not verify your session. Reload to retry.\" data-active=\"Signed in. Publication requires a package grant and signature.\" data-logout-error=\"Could not sign out. Try again.\" data-signed-out=\"Signed out.\">",
+    "<p role=\"status\">Checking your registry session…</p><a hidden class=\"prose-download\" href=\"${origin}/v1/auth/github/start\">Sign in with GitHub</a>",
+    "<button hidden type=\"button\" class=\"prose-download\">Sign out</button></div>"
+], "") }
+
+fn upload(local) = {
+    let origin = trim(input())
+    let adapter = trim(input())
+    let form = if origin != "" || local { releaseForm(origin, adapter) } else { "" }
+    let cover = "<header class=\"prose-cover\"><a href=\"/\">Browse packages</a><h1>Upload a package</h1><p>Publish a release from a commit in your package’s linked repository.</p></header>"
+    let steps = "<section class=\"prose-releases\"><h2>Publisher account</h2><p>Use the account with publishing permission for this package.</p>${publisherAccount(origin)}</section><aside class=\"prose-facts\"><h2>What you’ll need</h2><ol><li>A package with a linked repository</li><li>The commit you want to release</li><li>Your signing credential to approve the release</li></ol></aside>"
+    Shell::withEscapedTitle("Upload a package · Osprey Packages", "<main>${cover}${form}<div class=\"prose-columns\">${steps}</div></main>")
+}
+
+fn releaseForm(origin, adapter) = join([
+    "<section><h2>Prepare a release</h2><form data-collection-form data-review=\"review\" data-collection=\"${origin}/v1/packages\" data-empty=\"The registry has no packages.\" data-error=\"Could not load packages from the registry. Reload to retry.\">",
+    "<fieldset disabled><label for=\"package\">Package</label><select id=\"package\" name=\"package\" data-collection-key=\"packages\" data-value-key=\"key\" required><option value=\"\">Choose a package</option></select>",
+    "<label for=\"commit\">Git commit</label><input id=\"commit\" name=\"commit\" required pattern=\"[a-fA-F0-9]{40}\" maxlength=\"40\" title=\"Enter the full 40-character Git commit hash\"><button class=\"prose-download\">Review release</button></fieldset><p role=\"status\">Loading packages…</p></form>",
+    "<article id=\"review\" tabindex=\"-1\" hidden><h3>Review release</h3><p>Package <strong data-field=\"package\"></strong><br>Commit <code data-field=\"commit\"></code></p><p>Publication requires an authorized account and a signature.</p></article></section><script type=\"module\" src=\"/${adapter}\"></script>"
+], "")
+
+
+let publisherName = "Osprey repository publisher"
+
+fn publisherLink(receipt) = if receipt == "recorded" {
+    "<a href=\"/publishers/osprey-repository/\">${publisherName}</a>"
+} else { "Unrecorded" }
+
+fn browseNav() = "<nav class=\"prose-browse\" aria-label=\"Browse packages\"><a href=\"/publishers/\">By publisher</a><a href=\"/tags/\">By tag</a></nav>"
+
+fn directory() = {
+    let title = Shell::escape(trim(input()))
+    let entries = trim(input())
+    Shell::withEscapedTitle("${title} · Osprey Packages", "<main><header class=\"prose-cover\"><a href=\"/\">← Packages</a><h1>${title}</h1></header><section>${browseNav()}<p>Local folder registry · Audit unverified</p><div id=\"results\">${entries}</div></section></main>")
+}
+
+fn localPackage() = {
+    let key = trim(input())
+    let summary = Shell::escape(trim(input()))
+    let publisher = publisherLink(trim(input()))
+    let license = Shell::licenseBadge(trim(input()))
+    let dependencies = Shell::escape(trim(input()))
+    let noticeVersion = trim(input())
+    let attribution = if noticeVersion == "" { "" } else { Shell::metadataField("Attribution", Shell::noticeLink(noticeVersion)) }
+    let releases = trim(input())
+    let tags = Shell::keywordChips(filterList(split(trim(input()), ", ") ?: [], fn(tag) => tag != ""))
+    let metadata = join([Shell::metadataField("Publisher", publisher), Shell::metadataField("License", license), attribution, Shell::metadataField("Tags", tags), Shell::metadataField("Dependencies", dependencies)], "")
+    let cover = "<header class=\"prose-cover\"><a href=\"/\">← Packages</a><h1>${key}</h1><p>${summary}</p></header>"
+    let versions = "<section class=\"prose-releases\"><h2>Releases</h2><p>Local folder registry · Audit unverified</p>${releases}</section>"
+    let facts = "<aside class=\"prose-facts\"><h2>Package details</h2><dl>${metadata}</dl></aside>"
+    Shell::withEscapedTitle("${key} · Osprey Packages", "<main class=\"prose-detail\">${cover}<div class=\"prose-columns\">${versions}${facts}</div></main>")
+}
+
+fn row() = {
+    let key = trim(input())
+    let summary = Shell::escape(trim(input()))
+    let license = Shell::licenseBadge(trim(input()))
+    "<article class=\"prose-package\"><h3><a href=\"/packages/${key}/\">${key}</a></h3><p>${summary}</p>${license}</article>"
+}
+
+fn publisherPage() = {
+    let releases = trim(input())
+    Shell::withEscapedTitle(publisherName, "<main><header class=\"prose-publisher\"><a href=\"/\">← Packages</a><h1>${publisherName}</h1><p>Libraries published from the Osprey repository to the local registry.</p></header><section><h2>Published releases</h2><ul class=\"prose-credits\">${releases}</ul></section></main>")
+}
+
+fn main() = print(match trim(input()) {
+    "filter" => filtered()
+    "missing" => Shell::withEscapedTitle("Page not found · Osprey Packages", "<main><h1>Page not found</h1><a href=\"/\">Browse packages</a></main>")
+    "guide" => Guides::packages()
+    "publishing" => Guides::publishers()
+    "upload" => upload(false)
+    "local-upload" => upload(true)
+    "local" => catalog(true, input(), "")
+    "directory" => directory()
+    "row" => row()
+    "package" => localPackage()
+    "minimum-tag-packages" => toString(Shell::minimumTagPackages)
+    "publisher" => publisherPage()
+    "credit" => {
+        let key = trim(input())
+        let version = trim(input())
+        let summary = Shell::escape(trim(input()))
+        "<li><a href=\"/packages/${key}/#${version}\">${key}</a><code>${version}</code><p>${summary}</p></li>"
+    }
+    "release" => {
+        let version = trim(input())
+        let digest = trim(input())
+        let publisher = publisherLink(trim(input()))
+        let docs = if trim(input()) == "generated" { "<a href=\"${version}/docs/api/index.html\">API documentation</a>" } else { "API documentation unavailable for this release" }
+        let expression = trim(input())
+        let notices = match jsonDecode(input()) { Success { value: JsonArray(items) } => Shell::notices(version, items) _ => "" }
+        let licenses = match jsonDecode(input()) { Success { value: JsonArray(items) } => items _ => [] }
+        let license = Shell::releaseLicense(expression, licenses)
+        "<article id=\"${version}\" class=\"prose-release\"><h3>${version}</h3><a class=\"prose-download\" download href=\"/sources/${digest}.json\">Download ${version}</a>${license}<p>${docs}</p><p>Published by ${publisher}</p><code>${digest}</code>${notices}</article>"
+    }
+    "hosted-package" => hostedPackage()
+    "hosted-results" => {
+        let path = input()
+        let query = input()
+        let content = input()
+        HostedCatalog::render(path, query, input(), content)
+    }
+    _ => catalog(false, "", trim(input()))
+})

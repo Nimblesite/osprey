@@ -27,7 +27,7 @@ fn is_test_support(path: &Path) -> bool {
 }
 
 /// The rule a run of closing brackets raises.
-const CLOSING_RUN: &str = "closing-run";
+pub(crate) const CLOSING_RUN: &str = "closing-run";
 
 /// Every per-file warning of `program`, parsed from `source` in `flavor` and
 /// read from `path`, documentation first.

@@ -3,21 +3,75 @@ namespace synth
 
 (** Sample metadata and root tuning shared by graph and offline consumers. *)
 module SampleResources
-    (** Metadata only; sample values are checked by preparation, not by every observer. *)
+    (** Metadata only; sample values are checked by preparation, not by every observer.
+    # Examples
+    ```osprey
+    kick = SampleResource(name = "kick", sampleRate = 48000, sourceChannels = 1, rootFrequency = 440.0, samples = [0.5, -0.5])
+    print "${SampleResources::metadata kick} ${SampleResources::metadata (kick(name = ""))}"
+    ```
+    ```output
+    true false
+    ```
+    *)
     export metadata resource = length resource.name >= 1 && length resource.name <= 256 && resource.sampleRate >= 8000 && resource.sampleRate <= 192000 && (resource.sourceChannels == 1 || resource.sourceChannels == 2) && resource.rootFrequency >= 1.0 && resource.rootFrequency <= 20000.0
 
-    (** Number of complete source frames. Invalid layouts have no playable frames. *)
+    (** Number of complete source frames. Invalid layouts have no playable frames.
+    # Examples
+    ```osprey
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+
+    example () =
+        kick = SampleResource(name = "kick", sampleRate = 48000, sourceChannels = 1, rootFrequency = 440.0, samples = [0.5, -0.5])
+        stereo = SampleResource(name = "kick", sampleRate = 48000, sourceChannels = 2, rootFrequency = 440.0, samples = [0.5, -0.5])
+        print "${SampleResources::frames kick} ${SampleResources::frames stereo}"
+
+    arithmetic example
+    ```
+    ```output
+    2 1
+    ```
+    *)
     export frames resource = match resource.sourceChannels > 0
         true => intDiv (length resource.samples) resource.sourceChannels
         false => 0
 
-    (** One frame at a mono consumer, averaging the two sides of a stereo source. *)
+    (** One frame at a mono consumer, averaging the two sides of a stereo source.
+    # Examples
+    ```osprey
+    kick = SampleResource(name = "kick", sampleRate = 48000, sourceChannels = 1, rootFrequency = 440.0, samples = [0.5, -0.5])
+    stereo = SampleResource(name = "kick", sampleRate = 48000, sourceChannels = 2, rootFrequency = 440.0, samples = [0.5, -0.5])
+    print "${SampleResources::monoAt (kick, 0)} ${SampleResources::monoAt (stereo, 0)} ${SampleResources::monoAt (kick, 2)}"
+    ```
+    ```output
+    Success(0.5) Success(0.0) Error({ index: 2, length: 2 })
+    ```
+    *)
     export monoAt (resource, frame) = match resource.sourceChannels == 2
         false => listGet resource.samples frame
         true => Outcomes::carried (listGet resource.samples (satMul frame 2), \left =>
             Outcomes::carried (listGet resource.samples (satAdd (satMul frame 2) 1), \right => Success(value = WaveMath::mono (left, right))))
 
-    (** Validate every original sample before channels can cancel in a mono consumer. *)
+    (** Validate every original sample before channels can cancel in a mono consumer.
+    # Examples
+    ```osprey
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+
+    example () =
+        kick = SampleResource(name = "kick", sampleRate = 48000, sourceChannels = 1, rootFrequency = 440.0, samples = [0.5, -0.5])
+        print "${SampleResources::prepare kick} ${SampleResources::prepare (kick(samples = [2.0, 0.0]))}"
+
+    arithmetic example
+    ```
+    ```output
+    Success({ name: "kick", sampleRate: 48000, sourceChannels: 1, rootFrequency: 440.0, samples: [0.5, -0.5] }) Error(InvalidConfiguration { detail: "Grains require 2–1048576 finite normalised mono samples and capacity 1–256." })
+    ```
+    *)
     export prepare resource = match metadata resource
         false => Error(message = InvalidConfiguration(detail = "Invalid sample resource name, sample rate, source channels or root frequency."))
         true => match frames resource >= 2 && frames resource <= 1048576 && satMul (frames resource) resource.sourceChannels == length resource.samples && foldList (resource.samples, true, \(valid, value) => valid && value >= -1.0 && value <= 1.0)
@@ -28,21 +82,73 @@ module SampleResources
         Error _ => Grains::invalidSource ()
         Success value => Success(value = listPrepend out value)
 
-    (** Prepare a checked mono view only for consumers with one audio lane. *)
+    (** Prepare a checked mono view only for consumers with one audio lane.
+    # Examples
+    ```osprey
+    kick = SampleResource(name = "kick", sampleRate = 48000, sourceChannels = 1, rootFrequency = 440.0, samples = [0.5, -0.5])
+    stereo = SampleResource(name = "kick", sampleRate = 48000, sourceChannels = 2, rootFrequency = 440.0, samples = [0.5, -0.5])
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => SampleResources::mono kick)} ${arithmetic (\() => SampleResources::mono stereo)} ${arithmetic (\() => SampleResources::mono (kick(samples = [2.0, 0.0])))}"
+    ```
+    ```output
+    Success([0.5, -0.5]) Error(InvalidConfiguration { detail: "Grains require 2–1048576 finite normalised mono samples and capacity 1–256." }) Error(InvalidConfiguration { detail: "Grains require 2–1048576 finite normalised mono samples and capacity 1–256." })
+    ```
+    *)
     export mono resource = Outcomes::carried (prepare resource, \ready =>
         match ready.sourceChannels == 1
             true => Success(value = ready.samples)
             false => Outcomes::carried (foldList (toList (range (0, frames ready)), Success(value = []), \(result, i) => Outcomes::carried (result, \out => mixed (ready, out, i))), \out => Success(value = listReverse out)))
 
-    (** Tag interleaved WAV samples with their channel layout and an explicit MIDI root pitch. *)
+    (** Tag interleaved WAV samples with their channel layout and an explicit MIDI root pitch.
+    # Examples
+    ```osprey
+    wave = WaveSamples(sampleRate = 48000, channels = 1, frames = 2, samples = [0.5, -0.5])
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => SampleResources::fromWave ("kick", 69.0, wave))} ${arithmetic (\() => SampleResources::fromWave ("kick", 200.0, wave))}"
+    ```
+    ```output
+    Success({ name: "kick", sampleRate: 48000, sourceChannels: 1, rootFrequency: 440.0, samples: [0.5, -0.5] }) Error(InvalidConfiguration { detail: "Invalid sample root pitch or decoded frame count." })
+    ```
+    *)
     export fromWave (name, rootNote, wave) = match rootNote >= 0.0 && rootNote <= 127.0 && (wave.channels < 1 || wave.channels > 2 || satMul wave.frames wave.channels == length wave.samples)
         false => Error(message = InvalidConfiguration(detail = "Invalid sample root pitch or decoded frame count."))
         true => prepare (SampleResource(name = name, sampleRate = wave.sampleRate, sourceChannels = wave.channels, rootFrequency = Waves::midiFrequency rootNote, samples = wave.samples))
 
-    (** File bytes become a prepared sample resource; callers own file selection, reading and cancellation. *)
+    (** File bytes become a prepared sample resource; callers own file selection, reading and cancellation.
+    # Examples
+    ```osprey
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => SampleResources::decodeWave ("kick", 69.0, []))}"
+    ```
+    ```output
+    Error(MissingResource { detail: "WAV file size must be between 12 bytes and 8 MiB." })
+    ```
+    *)
     export decodeWave (name, rootNote, bytes) = Outcomes::carried (WaveImport::decode bytes, \wave => fromWave (name, rootNote, wave))
 
-    (** Calculate grain playback rate from root tuning and source/output rates, never buffer duration. *)
+    (** Calculate grain playback rate from root tuning and source/output rates, never buffer duration.
+    # Examples
+    ```osprey
+    kick = SampleResource(name = "kick", sampleRate = 48000, sourceChannels = 1, rootFrequency = 440.0, samples = [0.5, -0.5])
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => SampleResources::playbackRate (kick, 69.0, 48000.0))} ${arithmetic (\() => SampleResources::playbackRate (kick, 200.0, 48000.0))} ${arithmetic (\() => SampleResources::playbackRate (kick(rootFrequency = 1.0), 69.0, 48000.0))}"
+    ```
+    ```output
+    Success(1.0) Error(InvalidConfiguration { detail: "Invalid sample pitch or output rate." }) Error(ExhaustedCapacity { detail: "The requested sample transposition exceeds the grain rate limit." })
+    ```
+    *)
     export playbackRate (resource, note, outputRate) = match metadata resource && note >= 0.0 && note <= 127.0 && outputRate >= 8000.0 && outputRate <= 384000.0
         false => Error(message = InvalidConfiguration(detail = "Invalid sample pitch or output rate."))
         true =>

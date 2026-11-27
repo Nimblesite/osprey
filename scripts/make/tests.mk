@@ -30,20 +30,47 @@ _test_rust_shard: _runtime_wasm
 	@$(MKDIR) $(COVERAGE_DIR) $(LOG_DIR)
 	set -o pipefail && RUST_TEST_THREADS=$${RUST_TEST_THREADS:-4} cargo llvm-cov --manifest-path src/toolchain/Cargo.toml --workspace --profile ci --lcov --output-path $(RUST_LCOV) $(RUST_SHARD_ARGS_$(RUST_SHARD)) 2>&1 | tee $(RUST_LOG)
 
+# [FLAVOR-PYTHON-GPU] The Python-flavor GPT-2 generator prints the Default generator's bytes on every
+# surface this host has (osprey-cli/tests/cross_flavor_equiv.rs). That test is #[ignore]d because it needs
+# the published checkpoint, so no shard above runs it: CI's test-gpt2-parity job restores the checkpoint
+# from cache and runs it here by name. `--release` makes the binary the test spawns (CARGO_BIN_EXE_osprey)
+# target/release/osprey, the one the Build job staged; scripts/ci/ci-scope.test.mjs holds the name to
+# the test, because `--exact` on a renamed test would run nothing and pass [CI-GPT2-PARITY].
+## _test_gpt2_parity: The ignored GPT-2 cross-flavor parity test by name, after _gpt2_weights downloads
+##       the checkpoint once. Expected: `test python_gpt2_generator_output_is_byte_identical_to_the_default_generator ... ok`.
+.PHONY: _test_gpt2_parity
+GPT2_PARITY_TEST := python_gpt2_generator_output_is_byte_identical_to_the_default_generator
+_test_gpt2_parity: _gpt2_weights
+	@echo "==> [gpt2] Python-flavor generator parity with the Default generator..."
+	cargo test --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli --test cross_flavor_equiv -- --ignored --exact $(GPT2_PARITY_TEST)
+
 # Every crate under src/toolchain/crates/ must have a valid threshold and measured lines.
 # Check inventory before results so an omitted crate cannot silently pass.
+# Lines AND functions are gated per crate: lines-only let a crate add an
+# uncalled function without moving the number the gate reads (#232). Function
+# floors started at the measured value less one on 2026-11-27 and only go up.
+# Every workspace member, as its path under src/toolchain: the Rust gate walks
+# these, so a crate outside crates/ (tree-sitter-osprey) is gated too (#232).
+RUST_WORKSPACE_MEMBERS = sed -n '/^members = \[/,/^\]/p' src/toolchain/Cargo.toml | grep -o '"[^"]*"' | tr -d '"'
+# zed-extension is Zed's WASM host boundary: lib.rs is calls into Zed's host
+# imports, which cannot execute outside Zed; its launch policy (command.rs) is
+# unit-tested and its real stdio coverage belongs to the osprey-lsp suite.
+RUST_COV_EXEMPT ?= zed-extension
 _coverage_check_rust:
 	@if [ ! -f "$(COVERAGE_THRESHOLDS_FILE)" ]; then echo "FAIL: $(COVERAGE_THRESHOLDS_FILE) not found"; exit 1; fi; \
 	if [ ! -f $(RUST_LCOV) ]; then echo "[rust] FAIL: $(RUST_LCOV) not produced"; exit 1; fi; \
-	fail=0; \
-	for manifest in src/toolchain/crates/*/Cargo.toml; do \
-	  crate=$${manifest%/Cargo.toml}; crate=$${crate#src/toolchain/crates/}; \
-	  jq -e --arg c "$$crate" '.projects.rust | has($$c)' "$(COVERAGE_THRESHOLDS_FILE)" >/dev/null || { \
-	    echo "[rust] $$crate FAIL: missing coverage threshold"; fail=1; }; \
-	done; \
+	fail=0; members=$$($(RUST_WORKSPACE_MEMBERS)); \
 	for crate in $$(jq -er '.projects.rust | keys[]' "$(COVERAGE_THRESHOLDS_FILE)"); do \
+	  printf '%s\n' $$members | grep -q "\(^\|/\)$$crate$$" || { \
+	    echo "[rust] $$crate FAIL: gated in $(COVERAGE_THRESHOLDS_FILE) but not a workspace member"; fail=1; }; \
+	done; \
+	for member in $$members; do \
+	  crate=$${member##*/}; \
+	  if printf '%s\n' $(RUST_COV_EXEMPT) | grep -qx "$$crate"; then echo "[rust] $$crate EXEMPT (RUST_COV_EXEMPT)"; continue; fi; \
+	  jq -e --arg c "$$crate" '.projects.rust | has($$c)' "$(COVERAGE_THRESHOLDS_FILE)" >/dev/null || { \
+	    echo "[rust] $$crate FAIL: workspace member $$member is neither gated in $(COVERAGE_THRESHOLDS_FILE) nor in RUST_COV_EXEMPT -- an ungated crate cannot regress visibly"; fail=1; continue; }; \
 	  threshold=$$(jq -er --arg c "$$crate" '.projects.rust[$$c].threshold | if type == "number" and . >= 95 and . <= 100 and floor == . then . else error("Rust coverage threshold must be an integer in 95..100") end' "$(COVERAGE_THRESHOLDS_FILE)") || exit 1; \
-	  set -- $$(awk -F: -v c="$$crate" 'index($$0,"SF:")==1{in_c=index($$2,"/crates/" c "/")>0} in_c&&/^LH:/{h+=$$2} in_c&&/^LF:/{f+=$$2} END{printf "%d %d",h+0,f+0}' $(RUST_LCOV)); \
+	  set -- $$(awk -F: -v c="/src/toolchain/$$member/" 'index($$0,"SF:")==1{in_c=index($$2,c)>0} in_c&&/^LH:/{h+=$$2} in_c&&/^LF:/{f+=$$2} END{printf "%d %d",h+0,f+0}' $(RUST_LCOV)); \
 	  lh=$$1; lf=$$2; \
 	  if [ "$$lf" -eq 0 ]; then echo "[rust] $$crate FAIL: no lines found in $(RUST_LCOV)"; fail=1; continue; fi; \
 	  pct=$$(awk "BEGIN{printf \"%.1f\", $$lh/$$lf*100}"); \
@@ -52,6 +79,17 @@ _coverage_check_rust:
 	    echo "[rust] $$crate FAIL: $${pct}% < $${threshold}% ($$lh/$$lf lines)"; fail=1; \
 	  else \
 	    echo "[rust] $$crate OK: $${pct}% >= $${threshold}% ($$lh/$$lf lines)"; \
+	  fi; \
+	  functions=$$(jq -er --arg c "$$crate" '.projects.rust[$$c].functions | if type == "number" and . >= 0 and . <= 100 and floor == . then . else error("Rust function threshold must be an integer in 0..100") end' "$(COVERAGE_THRESHOLDS_FILE)") || exit 1; \
+	  set -- $$(awk -F: -v c="/src/toolchain/$$member/" 'index($$0,"SF:")==1{in_c=index($$2,c)>0} in_c&&/^FNH:/{h+=$$2} in_c&&/^FNF:/{f+=$$2} END{printf "%d %d",h+0,f+0}' $(RUST_LCOV)); \
+	  fh=$$1; ff=$$2; \
+	  if [ "$$ff" -eq 0 ]; then echo "[rust] $$crate FAIL: no functions found in $(RUST_LCOV)"; fail=1; continue; fi; \
+	  fpct=$$(awk "BEGIN{printf \"%.1f\", $$fh/$$ff*100}"); \
+	  fpct_int=$$(awk "BEGIN{printf \"%d\", $$fh/$$ff*100}"); \
+	  if [ "$$fpct_int" -lt "$$functions" ]; then \
+	    echo "[rust] $$crate FAIL: $${fpct}% < $${functions}% ($$fh/$$ff functions)"; fail=1; \
+	  else \
+	    echo "[rust] $$crate OK: $${fpct}% >= $${functions}% ($$fh/$$ff functions)"; \
 	  fi; \
 	done; \
 	if [ "$$fail" -ne 0 ]; then echo "[rust] FAIL: one or more crates below threshold"; exit 1; fi; \
@@ -248,7 +286,7 @@ $(C_BUILD_TARGETS): _build_c_suite_%: $(GPU_DEVICE_NATIVE)
 _test_c_runtime: $(C_TEST_TARGETS) $(C_ASAN_TEST_TARGETS)
 
 # The suites that drive sockets, threads and fibers also run under
-# AddressSanitizer, beside their coverage build (plan 0048). Linux reports leaks
+# AddressSanitizer, beside their coverage build (plan 0045). Linux reports leaks
 # too; macOS has no leak detector. _FORTIFY_SOURCE is dropped because ASan
 # defines it. Its strstr interceptor is off because it rescans the whole
 # haystack per call, which makes the linear-scan tests quadratic. Its fake stack
@@ -284,8 +322,8 @@ _test_gpu_device: $(GPU_DEVICE_NATIVE)
 # KNOWN_BUGS in tests/hunt_engine.rs: programs with a known complete-exploration
 # defect, skipped by the expectation suite. clean.osp cannot finish inside the pinned
 # 64-byte/30-second settings on either backend (~49s of solver work on idle
-# Apple silicon; strictly worse under GC) — GitHub issue #306, plan 0034
-# known-bug items. Verify a fix
+# Apple silicon; strictly worse under GC) — GitHub issue #306, the symbolic
+# bug hunting items of plan 0045. Verify a fix
 # with `make _test_hunt_clean`; it stays red until the fix lands.
 # The KLEE engine gates are ignored Rust tests in osprey-cli
 # (tests/hunt_engine.rs, tests/hunt_gc_roots.rs), run here by hand only.
@@ -512,6 +550,11 @@ _test_registry:
 	./$(BIN) test src/osprey/packages/manager/tests --memory=$(REGISTRY_MEMORY)
 	@echo "==> Registry end-to-end: server, fetch and consumer build..."
 	./$(BIN) test src/osprey/packages/manager/e2e --memory=$(REGISTRY_MEMORY)
+	./$(BIN) test src/osprey/packages/manager/auth-tests --memory=$(REGISTRY_MEMORY)
+	./$(BIN) test src/osprey/packages/manager/database-tests --memory=$(REGISTRY_MEMORY)
+	./$(BIN) test src/osprey/packages/manager/governance-tests --memory=$(REGISTRY_MEMORY)
+	./$(BIN) test src/osprey/packages/manager/hosted-tests --memory=$(REGISTRY_MEMORY)
+	./$(BIN) test src/osprey/packages/manager/web --memory=$(REGISTRY_MEMORY)
 	@echo "==> Native publication and installed-source integrity regressions..."
 	@if [ "$(REGISTRY_MEMORY)" = arc ] && [ -z "$$OSPREY_PACKAGE_CLIENT" ]; then \
 	  mkdir -p "$(CURDIR)/target/registry-tests" && \

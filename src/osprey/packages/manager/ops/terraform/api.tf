@@ -17,6 +17,29 @@ resource "google_service_account" "runtime" {
   display_name = "Registry runtime; no deployment or migration authority"
 }
 
+resource "google_kms_crypto_key_iam_member" "login_verifier" {
+  count         = var.login_kms_key == null ? 0 : 1
+  crypto_key_id = var.login_kms_key
+  role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
+  member        = "serviceAccount:${google_service_account.runtime.email}"
+  depends_on    = [google_project_service.required]
+}
+
+resource "google_kms_crypto_key_iam_member" "session_tokens" {
+  count         = var.session_kms_key == null ? 0 : 1
+  crypto_key_id = var.session_kms_key
+  role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
+  member        = "serviceAccount:${google_service_account.runtime.email}"
+  depends_on    = [google_project_service.required]
+
+  lifecycle {
+    precondition {
+      condition     = var.session_kms_key != var.login_kms_key
+      error_message = "Use separate keys for pending logins and provider session tokens."
+    }
+  }
+}
+
 resource "google_service_account" "deploy" {
   account_id   = "registry-${var.environment}-deploy"
   display_name = "Registry exact-SHA deployment identity"
@@ -44,12 +67,54 @@ resource "google_secret_manager_secret_iam_member" "runtime_config" {
   member    = "serviceAccount:${google_service_account.runtime.email}"
 }
 
+locals {
+  catalog_files = { service = "pg_service.conf", ca = "ca.pem" }
+}
+
+resource "google_secret_manager_secret" "catalog" {
+  for_each  = local.catalog_files
+  secret_id = "${local.name}-catalog-${each.key}"
+  replication {
+    auto {}
+  }
+  lifecycle { prevent_destroy = true }
+  depends_on = [google_project_service.required]
+}
+
+resource "google_secret_manager_secret_iam_member" "catalog" {
+  for_each  = google_secret_manager_secret.catalog
+  secret_id = each.value.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.runtime.email}"
+}
+
+variable "published_source_bucket" {
+  description = "Private Cloud Storage bucket containing only published source bundles."
+  type        = string
+}
+
+resource "google_storage_bucket_iam_member" "published_source" {
+  bucket = var.published_source_bucket
+  role   = "roles/storage.objectViewer"
+  member = "serviceAccount:${google_service_account.runtime.email}"
+}
+
 resource "google_cloud_run_v2_service" "api" {
   name                 = local.name
   location             = var.region
   ingress              = "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER"
   default_uri_disabled = true
   deletion_protection  = true
+  lifecycle {
+    precondition {
+      condition     = length(distinct(local.public_hostnames)) == 3 && alltrue([for host in local.public_hostnames : length(host) <= 253 && can(regex(local.hostname_pattern, host))])
+      error_message = "Supply distinct valid hostnames for the API, website and cookieless content origin."
+    }
+    precondition {
+      condition     = startswith(var.image, "${var.region}-docker.pkg.dev/${var.project_id}/${local.name}/")
+      error_message = "Select an immutable image from this environment's Artifact Registry repository."
+    }
+  }
   template {
     service_account                  = google_service_account.runtime.email
     timeout                          = "30s"
@@ -70,14 +135,55 @@ resource "google_cloud_run_v2_service" "api" {
         name       = "runtime-config"
         mount_path = "/run/registry"
       }
+      dynamic "volume_mounts" {
+        for_each = local.catalog_files
+        content {
+          name       = "catalog-${volume_mounts.key}"
+          mount_path = "/run/catalog-${volume_mounts.key}"
+        }
+      }
+      volume_mounts {
+        name       = "published-source"
+        mount_path = "/run/registry-source"
+      }
       startup_probe {
         http_get {
           path = "/v1/ready"
-          port = 8080
+          port = local.management_port
         }
         period_seconds    = 5
         failure_threshold = 12
         timeout_seconds   = 2
+      }
+      liveness_probe {
+        http_get {
+          path = "/v1/ready"
+          port = local.management_port
+        }
+        period_seconds    = 30
+        failure_threshold = 3
+        timeout_seconds   = 2
+      }
+    }
+    dynamic "volumes" {
+      for_each = local.catalog_files
+      content {
+        name = "catalog-${volumes.key}"
+        secret {
+          secret = google_secret_manager_secret.catalog[volumes.key].secret_id
+          items {
+            version = var.catalog_secret_versions[volumes.key]
+            path    = volumes.value
+            mode    = 292
+          }
+        }
+      }
+    }
+    volumes {
+      name = "published-source"
+      gcs {
+        bucket    = var.published_source_bucket
+        read_only = true
       }
     }
     volumes {
@@ -92,7 +198,7 @@ resource "google_cloud_run_v2_service" "api" {
       }
     }
   }
-  depends_on = [google_project_service.required, google_secret_manager_secret_iam_member.runtime_config]
+  depends_on = [google_project_service.required, google_secret_manager_secret_iam_member.runtime_config, google_secret_manager_secret_iam_member.catalog, google_storage_bucket_iam_member.published_source]
 }
 
 # The public load balancer invokes the service. Its network ingress is restricted
@@ -114,12 +220,10 @@ resource "google_compute_region_network_endpoint_group" "api" {
   }
 }
 
-data "cloudflare_ip_ranges" "edge" {}
-
 resource "google_compute_security_policy" "edge" {
   name = local.name
   dynamic "rule" {
-    for_each = chunklist(data.cloudflare_ip_ranges.edge.ipv4_cidrs, 10)
+    for_each = chunklist(local.cloudflare_ipv4, 10)
     content {
       action   = "allow"
       priority = 1000 + rule.key

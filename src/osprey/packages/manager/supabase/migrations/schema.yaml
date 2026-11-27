@@ -1,6 +1,6 @@
 # Implements [PACKAGE-OWNERSHIP-DATABASE] and [PACKAGE-OWNERSHIP-ADMIN].
 # DataProviderMigrate owns DDL. PostgreSQL only; no hand-authored SQL overlay.
-# Bootstrap is deliberately closed: FORCE RLS, no allow policies/runtime grants.
+# Bootstrap forces RLS and grants no runtime privileges. Ownership writes stay closed.
 # Hosted write readiness must reject this state with ownership.not-ready.
 name: osprey_registry_ownership
 tables:
@@ -15,7 +15,19 @@ tables:
     primaryKey: { columns: [id] }
     uniqueConstraints:
       - { name: uq_principals_id_kind, columns: [id, kind] }
-    rowLevelSecurity: { enabled: true, forced: true, policies: [] }
+    rowLevelSecurity:
+      enabled: true
+      forced: true
+      policies:
+        - name: session_identity_principal
+          permissive: true
+          operations: [Select]
+          roles: []
+          using: >-
+            (current_setting('session_authorization') = 'registry_session_issuer'
+            OR current_setting('session_authorization') = 'registry_session_runtime')
+            AND kind = 'human' AND state = 'active'
+            AND EXISTS (SELECT 1 FROM registry.auth_bindings b WHERE b.principal_id = principals.id)
 
   - name: auth_bindings
     schema: registry
@@ -25,14 +37,31 @@ tables:
       - { name: issuer, type: Text, isNullable: false }
       - { name: provider, type: Text, isNullable: false }
       - { name: provider_subject, type: Text, isNullable: false }
+      - { name: auth_subject, type: Uuid, isNullable: false }
       - { name: state, type: Text, isNullable: false, checkConstraint: "state IN ('active', 'revoked')" }
       - { name: verified_at, type: DateTimeOffset, isNullable: false }
     primaryKey: { columns: [id] }
     uniqueConstraints:
       - { name: uq_auth_binding_identity, columns: [issuer, provider, provider_subject] }
+    indexes:
+      - { name: uq_auth_binding_active_subject, columns: [issuer, auth_subject], isUnique: true, filter: "state = 'active'" }
     foreignKeys:
       - { columns: [principal_id], referencedSchema: registry, referencedTable: principals, referencedColumns: [id], onDelete: Restrict, onUpdate: Restrict }
-    rowLevelSecurity: { enabled: true, forced: true, policies: [] }
+    rowLevelSecurity:
+      enabled: true
+      forced: true
+      policies:
+        - name: session_identity_binding
+          permissive: true
+          operations: [Select]
+          roles: []
+          using: >-
+            (current_setting('session_authorization') = 'registry_session_issuer'
+            OR current_setting('session_authorization') = 'registry_session_runtime')
+            AND provider = 'github' AND state = 'active'
+            AND issuer = current_setting('registry.session_issuer')
+            AND auth_subject::text = current_setting('registry.session_subject')
+            AND provider_subject = current_setting('registry.session_provider')
 
   - name: organizations
     schema: registry
@@ -123,6 +152,7 @@ tables:
       - { name: state, type: Text, isNullable: false, checkConstraint: "state IN ('active', 'revoked')" }
       - { name: granted_by_membership_id, type: Uuid, isNullable: false }
       - { name: authority_epoch, type: BigInt, isNullable: false, checkConstraint: "authority_epoch > 0" }
+      - { name: membership_authority_epoch, type: BigInt, isNullable: false, checkConstraint: "membership_authority_epoch > 0" }
       - { name: granted_at, type: DateTimeOffset, isNullable: false }
       - { name: expires_at, type: DateTimeOffset, isNullable: true }
     primaryKey: { columns: [id] }
@@ -229,3 +259,146 @@ tables:
       - { columns: [organization_id, package_id], referencedSchema: registry, referencedTable: packages, referencedColumns: [organization_id, id], onDelete: Restrict, onUpdate: Restrict }
       - { columns: [actor_principal_id], referencedSchema: registry, referencedTable: principals, referencedColumns: [id], onDelete: Restrict, onUpdate: Restrict }
     rowLevelSecurity: { enabled: true, forced: true, policies: [] }
+
+  - name: pending_logins
+    schema: registry
+    columns:
+      - { name: state_digest, type: Text, isNullable: false, checkConstraint: "state_digest ~ '^sha256:[0-9a-f]{64}$'" }
+      - { name: browser_digest, type: Text, isNullable: false, checkConstraint: "browser_digest ~ '^sha256:[0-9a-f]{64}$'" }
+      - { name: verifier_envelope, type: Text, isNullable: false, checkConstraint: "octet_length(verifier_envelope) BETWEEN 1 AND 4096" }
+      - { name: created_at, type: DateTimeOffset, isNullable: false }
+    primaryKey: { columns: [state_digest] }
+    indexes:
+      - { name: ix_pending_logins_created_at, columns: [created_at] }
+    rowLevelSecurity:
+      enabled: true
+      forced: true
+      policies:
+        - name: login_select
+          permissive: true
+          operations: [Select]
+          roles: []
+          using: &login_scope "current_setting('session_authorization') = 'registry_login_runtime' AND state_digest = current_setting('registry.login_state') AND browser_digest = current_setting('registry.login_browser') AND created_at <= statement_timestamp() AND created_at > statement_timestamp() - interval '10 minutes'"
+        - name: login_claim
+          permissive: true
+          operations: [Delete]
+          roles: []
+          using: *login_scope
+        - name: login_store
+          permissive: true
+          operations: [Insert]
+          roles: []
+          withCheck: *login_scope
+
+  # Materialized only by the trusted publication pipeline after evidence verification.
+  - name: public_catalog
+    schema: registry
+    columns:
+      - { name: id, type: Int, isNullable: false, checkConstraint: "id = 1" }
+      - { name: verified_at, type: DateTimeOffset, isNullable: false }
+      - { name: expires_at, type: DateTimeOffset, isNullable: false }
+      - { name: body, type: Text, isNullable: false, checkConstraint: "octet_length(body) BETWEEN 1 AND 262144" }
+    primaryKey: { columns: [id] }
+    checkConstraints:
+      - { name: ck_public_catalog_lifetime, expression: "expires_at > verified_at AND expires_at <= verified_at + interval '24 hours'" }
+    rowLevelSecurity:
+      enabled: true
+      forced: true
+      policies:
+        - name: catalog_reader
+          permissive: true
+          operations: [Select]
+          roles: []
+          using: "current_setting('session_authorization') = 'registry_catalog_reader' AND verified_at <= statement_timestamp() AND expires_at > statement_timestamp()"
+
+  - name: browser_sessions
+    schema: registry
+    columns:
+      - { name: id, type: Uuid, isNullable: false }
+      - { name: cookie_digest, type: Text, isNullable: false, checkConstraint: "cookie_digest ~ '^sha256:[0-9a-f]{64}$'" }
+      - { name: binding_id, type: Uuid, isNullable: false }
+      - { name: principal_id, type: Uuid, isNullable: false }
+      - { name: credential_epoch, type: BigInt, isNullable: false, checkConstraint: "credential_epoch > 0" }
+      - { name: token_envelope, type: Text, isNullable: true, checkConstraint: "octet_length(token_envelope) BETWEEN 1 AND 65536" }
+      - { name: started_at, type: DateTimeOffset, isNullable: false }
+      - { name: last_used_at, type: DateTimeOffset, isNullable: false }
+      - { name: revoked_at, type: DateTimeOffset, isNullable: true }
+      - { name: refresh_id, type: Uuid, isNullable: true }
+      - { name: refresh_started_at, type: DateTimeOffset, isNullable: true }
+    primaryKey: { columns: [id] }
+    uniqueConstraints:
+      - { name: uq_browser_sessions_cookie, columns: [cookie_digest] }
+    checkConstraints:
+      - { name: ck_browser_sessions_timing, expression: "last_used_at >= started_at AND (revoked_at IS NULL OR revoked_at >= last_used_at)" }
+      - { name: ck_browser_sessions_envelope, expression: "(revoked_at IS NULL AND token_envelope IS NOT NULL) OR (revoked_at IS NOT NULL AND token_envelope IS NULL)" }
+      - { name: ck_browser_sessions_refresh_pair, expression: "(refresh_id IS NULL AND refresh_started_at IS NULL) OR (refresh_id IS NOT NULL AND refresh_started_at IS NOT NULL)" }
+    indexes:
+      - { name: ix_browser_sessions_started_at, columns: [started_at] }
+    foreignKeys:
+      - { columns: [binding_id], referencedSchema: registry, referencedTable: auth_bindings, referencedColumns: [id], onDelete: Restrict, onUpdate: Restrict }
+      - { columns: [principal_id], referencedSchema: registry, referencedTable: principals, referencedColumns: [id], onDelete: Restrict, onUpdate: Restrict }
+    rowLevelSecurity:
+      enabled: true
+      forced: true
+      policies:
+        - name: session_issuer_result
+          permissive: true
+          operations: [Select]
+          roles: []
+          using: &session_issuance >-
+            current_setting('session_authorization') = 'registry_session_issuer'
+            AND cookie_digest = current_setting('registry.session_digest')
+            AND EXISTS (SELECT 1 FROM registry.auth_bindings b
+            WHERE b.id = browser_sessions.binding_id AND b.principal_id = browser_sessions.principal_id)
+            AND EXISTS (SELECT 1 FROM registry.principals p WHERE p.id = browser_sessions.principal_id
+            AND p.credential_epoch = browser_sessions.credential_epoch)
+        - name: session_issuer_insert
+          permissive: true
+          operations: [Insert]
+          roles: []
+          withCheck: *session_issuance
+        - name: session_issuer_new_session
+          permissive: false
+          operations: [Insert]
+          roles: []
+          withCheck: "started_at = statement_timestamp() AND last_used_at = started_at AND revoked_at IS NULL"
+        - name: session_runtime_read
+          permissive: true
+          operations: [Select]
+          roles: []
+          using: >-
+            current_setting('session_authorization') = 'registry_session_runtime'
+            AND cookie_digest = current_setting('registry.session_digest') AND revoked_at IS NULL
+            AND started_at <= statement_timestamp() AND started_at > statement_timestamp() - interval '12 hours'
+            AND last_used_at <= clock_timestamp() AND last_used_at > statement_timestamp() - interval '30 minutes'
+        - name: session_runtime_touch
+          permissive: true
+          operations: [Update]
+          roles: []
+          using: &session_runtime_identity >-
+            current_setting('session_authorization') = 'registry_session_runtime'
+            AND cookie_digest = current_setting('registry.session_digest') AND revoked_at IS NULL
+            AND started_at <= statement_timestamp() AND started_at > statement_timestamp() - interval '12 hours'
+            AND last_used_at <= clock_timestamp() AND last_used_at > statement_timestamp() - interval '30 minutes'
+            AND EXISTS (SELECT 1 FROM registry.auth_bindings b
+            WHERE b.id = browser_sessions.binding_id AND b.principal_id = browser_sessions.principal_id)
+            AND EXISTS (SELECT 1 FROM registry.principals p WHERE p.id = browser_sessions.principal_id
+            AND p.credential_epoch = browser_sessions.credential_epoch)
+          withCheck: *session_runtime_identity
+        - name: session_revoker_result
+          permissive: true
+          operations: [Select]
+          roles: []
+          using: >-
+            current_setting('session_authorization') = 'registry_session_revoker'
+            AND cookie_digest = current_setting('registry.session_digest')
+        - name: session_revoker_update
+          permissive: true
+          operations: [Update]
+          roles: []
+          using: >-
+            current_setting('session_authorization') = 'registry_session_revoker'
+            AND cookie_digest = current_setting('registry.session_digest') AND revoked_at IS NULL
+          withCheck: >-
+            current_setting('session_authorization') = 'registry_session_revoker'
+            AND cookie_digest = current_setting('registry.session_digest') AND revoked_at IS NOT NULL AND token_envelope IS NULL

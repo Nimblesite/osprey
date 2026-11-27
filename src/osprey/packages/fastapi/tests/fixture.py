@@ -40,6 +40,13 @@ def routes():
 
 __all__ = ["routes", "application", "cors_application", "fake_identity"]
 
+OUT_OF_BOUNDS = "index out of bounds"
+"""The refusal reason every failed fixture lookup answers."""
+PROVIDER_USER_ID = "provider_user_id"
+"""The JSON member carrying the identity provider's own user id."""
+ALLOWED_ALGS = "allowed_algs"
+"""The JSON member listing the signature algorithms the idp accepts."""
+
 def config(request):
     identity = Uuids.uuid(["path", "config_id"], P.path(request, "config_id"))
     limit = V.integer(["query", "limit"], V.defaulted(P.query(request, "limit"), "20"), 1, 100)
@@ -167,7 +174,7 @@ def identity_provider(path, request, children):
                 case _:
                     return refused(500, "Expected session dependency")
         case Error():
-            return refused(500, "index out of bounds")
+            return refused(500, OUT_OF_BOUNDS)
 
 def authenticate(path, request, identity):
     match P.header(request, "Authorization"):
@@ -193,7 +200,7 @@ def credit_provider(path, request, children):
                 case Success(value=person):
                     return authorize_credit(path, person, credit)
                 case Error():
-                    return refused(500, "index out of bounds")
+                    return refused(500, OUT_OF_BOUNDS)
 
 def authorize_credit(path, person, credit):
     match person:
@@ -276,7 +283,7 @@ def passthrough(_request, children):
         case Success(value=child):
             return M.Provided(value=child)
         case Error():
-            return refused(500, "index out of bounds")
+            return refused(500, OUT_OF_BOUNDS)
 
 def credit_single_response(_request, values):
     match values:
@@ -391,7 +398,7 @@ def decode_key(document):
     return Body.object_body(document, lambda doc: andThen(Body.optional_text(doc, "label"), lambda label: B.mapped(Body.uuid(doc, "user_id"), lambda identity: V.mapped(V.combine(label, identity), lambda pair: FixtureKey(label=pair.first, user_id=pair.second)))))
 
 def decode_context(document):
-    return Body.object_body(document, lambda doc: andThen(Body.uuid(doc, "tenant_id"), lambda tenant: andThen(Body.text(doc, "provider_user_id"), lambda user: Body.extras(doc, ["tenant_id", "provider_user_id"], V.mapped(V.combine(tenant, user), lambda pair: FixtureContext(tenant_id=pair.first, provider_user_id=pair.second))))))
+    return Body.object_body(document, lambda doc: andThen(Body.uuid(doc, "tenant_id"), lambda tenant: andThen(Body.text(doc, PROVIDER_USER_ID), lambda user: Body.extras(doc, ["tenant_id", PROVIDER_USER_ID], V.mapped(V.combine(tenant, user), lambda pair: FixtureContext(tenant_id=pair.first, provider_user_id=pair.second))))))
 
 def resource_first(doc):
     return andThen(Body.text(doc, "uri"), lambda uri: B.mapped(Body.optional_alias(doc, "mimeType", "mime_type"), lambda mime: V.combine(uri, mime)))
@@ -412,7 +419,7 @@ def key_response(value):
     return body_response([JsonMember("label", Body.optional_json(value.label)), JsonMember("user_id", JsonString(value.user_id))], ["label", "user_id"])
 
 def context_response(value):
-    return E.json_response(200, JsonObject([JsonMember("tenant_id", JsonString(value.tenant_id)), JsonMember("provider_user_id", JsonString(value.provider_user_id))]), "")
+    return E.json_response(200, JsonObject([JsonMember("tenant_id", JsonString(value.tenant_id)), JsonMember(PROVIDER_USER_ID, JsonString(value.provider_user_id))]), "")
 
 def resource_response(value):
     return body_response([JsonMember("uri", JsonString(value.uri)), JsonMember("mimeType", Body.optional_json(value.mime_type)), JsonMember("text", Body.optional_json(value.text)), JsonMember("blob", Body.optional_json(value.blob))], ["uri", "mimeType", "text", "blob"])
@@ -421,12 +428,12 @@ def decode_idp(document):
     return Body.object_body(document, idp_fields)
 
 def idp_fields(doc):
-    first = andThen(Body.array(doc, "allowed_algs", Body.string), lambda algorithms: B.mapped(Body.text(doc, "audience"), lambda audience: V.combine(algorithms, audience)))
+    first = andThen(Body.array(doc, ALLOWED_ALGS, Body.string), lambda algorithms: B.mapped(Body.text(doc, "audience"), lambda audience: V.combine(algorithms, audience)))
     second = andThen(Body.text(doc, "issuer"), lambda issuer: B.mapped(Body.text(doc, "jwks_uri"), lambda uri: V.combine(issuer, uri)))
     return andThen(first, lambda left: B.mapped(second, lambda right: V.mapped(V.combine(left, right), lambda pair: FixtureIdp(allowed_algs=pair.first.first, audience=pair.first.second, issuer=pair.second.first, jwks_uri=pair.second.second))))
 
 def idp_response(value):
-    return body_response([JsonMember("allowed_algs", JsonArray(mapList(value.allowed_algs, lambda algorithm: JsonString(algorithm)))), JsonMember("audience", JsonString(value.audience)), JsonMember("issuer", JsonString(value.issuer)), JsonMember("jwks_uri", JsonString(value.jwks_uri))], ["allowed_algs", "audience", "issuer", "jwks_uri"])
+    return body_response([JsonMember(ALLOWED_ALGS, JsonArray(mapList(value.allowed_algs, lambda algorithm: JsonString(algorithm)))), JsonMember("audience", JsonString(value.audience)), JsonMember("issuer", JsonString(value.issuer)), JsonMember("jwks_uri", JsonString(value.jwks_uri))], ["allowed_algs", "audience", "issuer", "jwks_uri"])
 
 def string_pair(document, path, left, right, make):
     return andThen(Body.text_at(document, left, path), lambda first: B.mapped(Body.text_at(document, right, path), lambda second: V.mapped(V.combine(first, second), lambda pair: make(pair.first, pair.second))))

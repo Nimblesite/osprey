@@ -16,7 +16,7 @@ module Api
     textHeader () = ui::Header(headerName = "Content-Type", headerValue = "text/plain; charset=utf-8")
 
     (** A request to `server` whose reply is held under the slice named `ticket`. *)
-    export call (server, ticket, method, path, body) = Requests::ask (ticket, ui::Http(method = method, url = server + path, headers = [textHeader ()], body = body, responseLimit = replyLimit (), deadline = replyDeadline (), httpSlice = ticket))
+    export call (server, ticket, method, path, body) = Requests::ask (ticket, ui::Http(method = method, url = server + path, headers = [textHeader ()], body = body, responseLimit = replyLimit (), deadline = replyDeadline (), responseSlice = ticket))
 
     (** The query string naming `path`; a safe path needs no escaping ([CMS-PATH-SAFE]). *)
     export at (route, path) = "${route}?path=${path}"

@@ -26,10 +26,13 @@ match readResult
 // Tests Result<string> toString
 print "-- Step 3: Testing Result<string> toString --\nWrite Result toString: ${toString writeResult}\nRead Result toString: ${toString readResult}"
 
+(** A path no file lives at: reading it must fail with a reason that names it. *)
+missingPath = "nonexistent_file_xyz123.txt"
+
 (** A failure must say WHY [BUILTIN-FILE-ERRMSG]: the operation, the path and
     the operating system's own reason, never a placeholder that reads the same
     for a missing file, a permissions denial and a full disk. *)
-errorResult = readFile "nonexistent_file_xyz123.txt"
+errorResult = readFile missingPath
 print "Error Result toString: ${toString errorResult}\n=== Test Complete ==="
 
 (** Repeat the real write/read workflow and verify both Result payloads. *)
@@ -37,7 +40,7 @@ fileWorkflowCase () =
     expected = "Hello, Osprey file I/O!"
     written = writeFile filename expected
     readBack = readFile filename
-    missing = readFile "nonexistent_file_xyz123.txt"
+    missing = readFile missingPath
     writeMatches = match written
         Success value => value == byteLength expected
         Error _message => false
@@ -49,7 +52,7 @@ fileWorkflowCase () =
         a content-free one. Name the parts instead. *)
     missingFails = match missing
         Success _value => false
-        Error message => contains message "readFile" && contains message "nonexistent_file_xyz123.txt" && contains message "No such file or directory"
+        Error message => contains message "readFile" && contains message missingPath && contains message "No such file or directory"
     unwritableFails = match writeFile "no_such_dir_xyz123/out.txt" "x"
         Success _value => false
         Error message => contains message "writeFile" && contains message "no_such_dir_xyz123/out.txt" && contains message "No such file or directory"

@@ -4,7 +4,15 @@ namespace synth
 
 (** Low, band and high outputs from one stateful filter step. *)
 module Filters
-    (** Zero initial energy. *)
+    (** Zero initial energy.
+    # Examples
+    ```osprey
+    print "${Filters::initial}"
+    ```
+    ```output
+    { integratorOne: 0.0, integratorTwo: 0.0 }
+    ```
+    *)
     export initial = FilterState(integratorOne = 0.0, integratorTwo = 0.0)
 
     coefficients config =
@@ -12,12 +20,29 @@ module Filters
         k = VoiceMath::damping config.resonance
         FilterCoefficients(a1 = VoiceMath::gainOne (g, k), a2 = VoiceMath::gainTwo (g, k), a3 = VoiceMath::gainThree (g, k), k = k)
 
-    (** Cutoff is positive and below 0.49 of sample rate; resonance is Q, not a normalised knob. *)
+    (** Cutoff is positive and below 0.49 of sample rate; resonance is Q, not a normalised knob.
+    # Examples
+    ```osprey
+    steep = FilterConfig(sampleRate = 48000.0, cutoff = 30000.0, resonance = 0.7)
+    print "${Filters::configure steep}"
+    ```
+    ```output
+    Error(InvalidConfiguration { detail: "Invalid filter rate, cutoff or Q." })
+    ```
+    *)
     export configure config = match config.sampleRate >= 8000.0 && config.sampleRate <= 384000.0 && config.cutoff > 0.0 && config.cutoff < config.sampleRate * 0.49 && config.resonance >= 0.1 && config.resonance <= 20.0
         true => Success(value = coefficients config)
         false => Error(message = InvalidConfiguration(detail = "Invalid filter rate, cutoff or Q."))
 
-    (** One reference sample with previously validated coefficients and finite input. *)
+    (** One reference sample with previously validated coefficients and finite input.
+    # Examples
+    ```osprey
+    print "${Filters::next (FilterCoefficients(a1 = 0.5, a2 = 0.25, a3 = 0.5, k = 1.0), Filters::initial, 1.0)}"
+    ```
+    ```output
+    { low: 0.5, band: 0.25, high: 0.25, next: { integratorOne: 0.5, integratorTwo: 1.0 } }
+    ```
+    *)
     export next (c, held, input) =
         band = VoiceMath::bandpass (c.a1, c.a2, held.integratorOne, held.integratorTwo, input)
         low = VoiceMath::lowpass (c.a2, c.a3, held.integratorOne, held.integratorTwo, input)

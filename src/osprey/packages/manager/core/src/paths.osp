@@ -13,7 +13,8 @@ module Paths {
     let excludedFiles = ["osprey.lock", "osprey.local.toml", "osprey.local.lock"]
     let statePrefix = ".osprey/"
     let manifestName = "osprey.toml"
-    let legalStems = ["license", "copying", "notice", "authors", "third_party_notices"]
+    let noticeStems = ["notice", "notices", "third_party_notices"]
+    let licenseStems = ["license", "licence", "copying"]
     let legalSuffixes = ["", ".txt", ".md"]
 
     fn segmentByte(b) = Bytes::isAlnumIn(b, [Bytes::dot, Bytes::underscore, Bytes::hyphen])
@@ -67,13 +68,20 @@ module Paths {
     export fn generatedCache(path) = foldList(split(path, "/") ?: [path], false, fn(found, part) =>
         found || listContains([".deslop", ".osprey", ".git", "__pycache__"], toLowerCase(part)))
 
-    fn legalDocument(path) = foldList(legalStems, false, fn(found, stem) => found
+    export fn noticeDocument(path) = legalDocument(foldCase(path), noticeStems)
+
+    export fn licenseDocument(path) = {
+        let folded = foldCase(path)
+        legalDocument(folded, licenseStems) || startsWith(folded, "licenses/")
+    }
+
+    fn legalDocument(path, stems) = foldList(stems, false, fn(found, stem) => found
         || foldList(legalSuffixes, false, fn(matched, suffix) => matched || path == "${stem}${suffix}"))
 
     /// Retain supplied documents; never infer licenses from API references.
     /// Implements [PACKAGE-LICENSE-DISTRIBUTION].
     export fn publicationMetadata(path) = {
         let folded = foldCase(path)
-        path == manifestName || legalDocument(folded) || startsWith(folded, "licenses/")
+        path == manifestName || licenseDocument(path) || legalDocument(folded, ["authors"]) || noticeDocument(path)
     }
 }

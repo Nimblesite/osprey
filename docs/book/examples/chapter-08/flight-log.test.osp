@@ -16,10 +16,12 @@ fn advance(status) = match status {
 fn summary(lesson) =
     "${lesson.title} [${statusLabel(lesson.status)}]"
 
+let outOfRange = "estimate must be 1 to 60 minutes"
+
 fn parseEstimate(text) = match parseInt(text) {
     Success { value } => match value >= 1 && value <= 60 {
         true => Success { value: value }
-        false => Error { message: "estimate must be 1 to 60 minutes" }
+        false => Error { message: outOfRange }
     }
     Error { message } => Error { message: message }
 }
@@ -68,8 +70,8 @@ test("estimates preserve the integer parser's message", fn() =>
 
 test("estimates reject values outside the session range", fn() =>
     checkAll("out of range", [
-        rejects("0", "estimate must be 1 to 60 minutes"),
-        rejects("-1", "estimate must be 1 to 60 minutes"),
-        rejects("61", "estimate must be 1 to 60 minutes")
+        rejects("0", outOfRange),
+        rejects("-1", outOfRange),
+        rejects("61", outOfRange)
     ])
 )

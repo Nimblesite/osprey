@@ -9,6 +9,9 @@ type InboxUpdate =
 
 (** The inbox's update: each host event answered with the next model and the commands to run. *)
 module Update
+    // The model field that carries the SQLite failure text.
+    storageErrorKey = "storageError"
+
     result model commands = InboxUpdate(model = model, commands = commands)
 
     unchanged model = result model "[]"
@@ -31,16 +34,16 @@ module Update
             result pending (perform Storage::Requests.http (Storage::fetch pending))
 
     persist model = match model.dbReady == "true"
-        false => unchanged (Model::set model "storageError" "SQLite is unavailable; these changes are only in memory.")
+        false => unchanged (Model::set model storageErrorKey "SQLite is unavailable; these changes are only in memory.")
         true => match checkedAdd (nextSequence model) 1
-            Error _ => unchanged (Model::set model "storageError" "Request counter exhausted; changes were not saved. Close and reopen the app.")
+            Error _ => unchanged (Model::set model storageErrorKey "Request counter exhausted; changes were not saved. Close and reopen the app.")
             Success sequence =>
                 pending = Model::set (Model::set model "seq" (toString sequence)) "write" "save:${sequence}"
                 result pending (perform Storage::Requests.sql (Storage::save pending))
 
     ready model = Model::set (Model::set model "stage" "ready") "loading" "false"
 
-    storageError model event = Model::set model "storageError" ("SQLite failed: " + Json::getOr event "error" "unknown database error")
+    storageError model event = Model::set model storageErrorKey ("SQLite failed: " + Json::getOr event "error" "unknown database error")
 
     storageFailure model event = unchanged (storageError (ready model) event)
 
@@ -67,7 +70,7 @@ module Update
 
     savedResult model event = match eventValue event "ok" == "true"
         false => unchanged (storageError (Model::set model "write" "") event)
-        true => unchanged (Model::set (Model::set model "write" "") "storageError" "")
+        true => unchanged (Model::set (Model::set model "write" "") storageErrorKey "")
 
     sql model event =
         id = eventValue event "id"

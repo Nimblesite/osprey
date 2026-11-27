@@ -19,7 +19,7 @@ module EscapeTests {
     fn identifiers() = checkAll("web: heading identifiers collapse to the name grammar", [
         structuralEquals([Html::id("@atlas/util"), Html::id("ok-name-1")], ["-atlas-util", "ok-name-1"]),
         Html::id("<img src=x>") == "-img-src-x-",
-        Html::id("\" onload=\"alert(1)") == "-onload-alert-1"
+        Html::id("\" onload=\"alert(1)") == "--onload--alert-1-"
     ])
 
     /// The search value rides in an attribute: quote injection must fail.

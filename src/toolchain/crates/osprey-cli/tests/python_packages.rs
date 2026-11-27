@@ -233,7 +233,7 @@ fn every_ported_package_matches_its_cpython_oracle_under_every_memory_backend(
     Ok(())
 }
 
-/// Plan 0048: a killed or over-cap suite logs its command, memory backend,
+/// Plan 0045: a killed or over-cap suite logs its command, memory backend,
 /// peak RSS and elapsed time, so the runner's own log diagnoses the crash.
 #[test]
 fn a_suite_killed_at_its_budget_logs_command_backend_peak_and_time() -> std::io::Result<()> {
@@ -302,14 +302,14 @@ fn exports(source: &str) -> Vec<String> {
     let Some(start) = source.find("__all__") else {
         return Vec::new();
     };
-    let rest = &source[start..];
+    let rest = source.get(start..).unwrap_or_default();
     let Some(open) = rest.find('[') else {
         return Vec::new();
     };
-    let Some(close) = rest[open..].find(']') else {
+    let Some(close) = rest.get(open..).unwrap_or_default().find(']') else {
         return Vec::new();
     };
-    quoted_items(&rest[open + 1..open + close])
+    quoted_items(rest.get(open + 1..open + close).unwrap_or_default())
 }
 
 fn is_word_char(c: char) -> bool {
@@ -318,8 +318,12 @@ fn is_word_char(c: char) -> bool {
 
 fn names_word(text: &str, name: &str) -> bool {
     text.match_indices(name).any(|(at, _)| {
-        let before = text[..at].chars().next_back();
-        let after = text[at + name.len()..].chars().next();
+        let before = text.get(..at).unwrap_or_default().chars().next_back();
+        let after = text
+            .get(at + name.len()..)
+            .unwrap_or_default()
+            .chars()
+            .next();
         !before.is_some_and(is_word_char) && !after.is_some_and(is_word_char)
     })
 }

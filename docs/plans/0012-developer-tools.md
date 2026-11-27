@@ -1,113 +1,80 @@
 # Plan 0012 - Developer Tools (Debugger, Profiler, Module Explorer)
 
-Contract: [0021 - Debugger](../specs/tooling/0021-Debugger.md) · [Compiler debug artifacts](../specs/compiler/DebugArtifacts.md) · [0028 - Profiler](../specs/tooling/0028-Profiler.md) · [0018 - Memory Management](../specs/compiler/0018-MemoryManagement.md) · [Editor Integration (module explorer)](../specs/tooling/EditorIntegration.md#module-explorer-editor-module-explorer)
+Goal: a paused Osprey program can be inspected honestly (variables, types, heap, fibers, effects), recorded and replayed, and debugged under optimization; the same delivery finishes the module explorer and the Osprey GitHub Action, and keeps `osprey lsp` memory bounded across lspkit upgrades.
 
-Depends on: lspkit shared profiler + memory contracts ([`LSP-PROFILER-SPEC.md`](https://github.com/Nimblesite/lspkit/blob/main/docs/specs/LSP-PROFILER-SPEC.md)); lspkit #27 is already merged into lspkit `main` (commit `5590a52`) and published in v0.4.0.
+Contracts: [0021 - Debugger](../specs/tooling/0021-Debugger.md) · [Compiler debug artifacts](../specs/compiler/DebugArtifacts.md) · [0028 - Profiler](../specs/tooling/0028-Profiler.md) · [0018 - Memory Management](../specs/compiler/0018-MemoryManagement.md) · [Module explorer](../specs/tooling/EditorIntegration.md#module-explorer-editor-module-explorer) · [0033 - Osprey GitHub Action](../specs/ecosystem/0033-OspreyGitHubAction.md) · lspkit's [LSP-PROFILER-SPEC](https://github.com/Nimblesite/lspkit/blob/main/docs/specs/LSP-PROFILER-SPEC.md)
 
-## Prerequisites in place
+Constraints beyond the contracts: debug mode never changes Osprey language semantics; debugger object ids, raw addresses, retain counts, root sets and retained sizes never reach Osprey source; Osprey DAP requests stay `osprey/`-prefixed, never a new DAP dialect; unavailable values are reported as unavailable, never fabricated.
 
-- Native debug line tables, `--debug*` build controls, and real LLDB-DAP F5 launch ship: `compile_program_debug` in `src/toolchain/crates/osprey-codegen/src/lower/entrypoints.rs`, record DWARF in `src/toolchain/crates/osprey-codegen/src/builder/debug_types.rs`, editor tests in `src/toolchain/vscode-extension/test/suite/debug-fixtures.ts`.
-- lspkit's shared profiler UI and its memory contracts are merged and published; Osprey pins `lspkit`/`lsp-profiler` 0.4.0 (Cargo.toml) and `@nimblesite/lsp-profiler-ui` ^0.4.0 (src/toolchain/vscode-extension/package.json).
+## Shared editor debug glue
 
-## Hard constraints
+- [ ] Upstream the VS Code DAP glue and DAP test harness into the shared lspkit TypeScript package, seeded from `src/toolchain/vscode-extension/client/src/{debug-config,debug-launch,debug-console,test-debug}.ts`: the extension imports them from the shared package and no private copy remains [DEBUGGER-REUSE].
 
-- Report optimized-away/unavailable values as unavailable; never fabricate a value.
-- Debug mode must not change Osprey language semantics.
-- Do not expose debugger object ids, raw addresses, retain counts, root sets, or retained sizes to Osprey source code.
-- Retained size is a dominator-tree result; label it approximate/unavailable when the root/edge set is incomplete.
-- Osprey-specific DAP requests are prefixed (`osprey/...`) and never a new DAP dialect.
-- Runtime inspection helpers are side-effect-free and safe while the program is paused; corrupt/null handles render invalid, never crash the adapter.
-- Object-graph/memory profiling is off in release builds and opt-in in debug builds.
+## Debug metadata
 
-## Phase 2 - Shared editor debug glue
+- [ ] Migrate `@llvm.dbg.value`/`@llvm.dbg.declare` to `#dbg_value`/`#dbg_declare` records in `src/toolchain/crates/osprey-codegen/src/builder/debug_variables.rs` once the pinned LLVM floor accepts them: emitted IR uses the `#dbg_*` form, the golden IR tests in `src/toolchain/crates/osprey-codegen/src/ir_tests/lowering_1.rs` pass and LLDB-DAP still inspects values [DEBUGGER-DBG-DECLARE].
+- [ ] Extend value-location records to the remaining capture representations in `debug_variables.rs`/`debug_scopes.rs`: each carries a `DILocalVariable` plus location and LLDB-DAP reads it.
+- [ ] Emit union, `Result` and closure type metadata in `src/toolchain/crates/osprey-codegen/src/builder/debug_types.rs` (today only `DW_TAG_structure_type`/`pointer_type`/`member`): `llvm-dwarfdump` shows the tagged-variant and closure-capture composites.
 
-- [ ] Upstream the generic VS Code DAP glue and DAP test harness into the shared LspKit TypeScript package, seeded from `src/toolchain/vscode-extension/client/src/{debug-config,debug-launch,debug-console,test-debug}.ts` [DEBUGGER-REUSE]. Check: the extension imports the glue/harness from the shared package and no private copy remains.
+## Value rendering and runtime inspection
 
-## Phase 3 - Variable metadata tails
+- [ ] Add LLDB summaries/synthetic providers or an Osprey DAP shim for value rendering: the Variables pane renders union tag+payload, `Result` success/error and closure name+captures.
+- [ ] Add side-effect-free runtime inspection helpers for list/map/string/fiber/channel/effect handles (`src/toolchain/crates/osprey-debug`, `src/toolchain/compiler/runtime`): a paused program reads handle state without touching raw C layouts.
+- [ ] Page large collections: a large list or map expands in pages, never an unbounded dump.
+- [ ] Add corruption/null safety tests for handle display: null and corrupt handles render invalid/unavailable and the session survives.
+- [ ] Parse and type-check watch expressions in Osprey syntax (`src/toolchain/crates/osprey-syntax`) and resolve names against the selected frame's scope: an expression type-checks against the frame environment and locals, params and captures resolve to frame values.
+- [ ] Evaluate pure expressions for `hover`/`watch` and gate side effects behind an explicit `call` action: arithmetic, string and field-access expressions evaluate; FFI, IO, spawning, HTTP and effects are refused by default; tests cover unavailable optimized values with a clear message.
 
-- [ ] Migrate the textual `@llvm.dbg.value`/`@llvm.dbg.declare` compatibility intrinsics to `#dbg_value`/`#dbg_declare` debug records in `src/toolchain/crates/osprey-codegen/src/builder/debug_variables.rs` once the pinned LLVM floor accepts them [DEBUGGER-DBG-DECLARE]. Check: emitted IR uses the `#dbg_*` form and the golden IR tests in `src/toolchain/crates/osprey-codegen/src/ir_tests/lowering_1.rs` plus LLDB-DAP cases still inspect values.
-- [ ] Extend value-location records to the remaining capture representations in `src/toolchain/crates/osprey-codegen/src/builder/debug_variables.rs` / `debug_scopes.rs`. Check: each remaining capture representation carries a `DILocalVariable` + location and LLDB-DAP reads it.
-- [x] The 14 lexical-scope VS Code tests inspect `observed` while it is live, then watch it again after leaving scope and require LLDB-DAP to report the unknown identifier. All 14 passed on macOS in Default and ML on 2026-11-23.
+## Object graph, memory backend and Windows profiler
 
-## Phase 4 - Type and value rendering tails
+- [ ] Define the heap/object-graph model once for `gc` and `arc` (spec 0018): `DebugObjectId`, `ObjectNode`, `ObjectEdge`, `RootNode`, `GraphSnapshot` and JSON/DOT snapshot formats, a documented serde model shared by the debugger and the profiler `MemoryBackend`.
+- [ ] Add runtime descriptors for Osprey heap object kinds and typed outgoing edges (`src/toolchain/compiler/runtime/memory_gc.c`, `memory_arc.c`): a paused program enumerates typed edges without guessing C layouts.
+- [ ] Add root enumeration for stack locals, module globals, fibers, channels, active effects, runtime tables and backend roots: roots are reported per category.
+- [ ] Implement `--debug-memory=object-graph` in `src/toolchain/crates/osprey-cli/src/debug_options.rs`, linking only the required profiler metadata in debug builds: the flag is accepted, the metadata is absent unless selected and `timeline` is still rejected [DEBUGGER-BUILD-OPTIONS].
+- [ ] Add allocation-site attribution recorded only while a memory session is open: a non-profiled run pays nothing and an open session records sites.
+- [ ] Implement `MemoryBackend` in `src/toolchain/crates/lsp-profiler-osprey/src` over the live-attach endpoint (snapshot, diff, references), with `Runtime::memory()` in `lib.rs` returning `Some`: `src/toolchain/crates/osprey-cli/tests/live_profiler*.rs` exercise snapshot, diff and references [PROF-ATTACH-PROTOCOL] [PROF-LSP-RUNTIME].
+- [ ] Add the DAP requests `osprey/objectGraph`, `osprey/objectGraph/expand`, `osprey/objectGraph/retainers`, `osprey/objectGraph/roots`, `osprey/heapSnapshot`, `osprey/heapSnapshot/diff` and `osprey/allocationSites`: each answers with paging/truncation metadata and never blocks on a huge heap.
+- [ ] Add the Watch/Variables actions that open the graph visualizer and "Inspect type retainers" for a selected heap-backed value through the `MemoryBackend` callback: offered only with a backend callback and typed as a type query; non-heap values explain that no graph root exists [PROF-UI-DEBUG-LINK].
+- [ ] Implement the local-neighborhood graph view with directional expansion, hidden-edge counts, search, filters, pinning, grouping and stable layout: it shows outgoing children, incoming retainers and direct roots.
+- [ ] Implement shortest/key retention paths, the Lengauer-Tarjan dominator tree, retained size and explicit approximate/unavailable labelling: "why is this still alive?" answers paths and incomplete graphs are labelled.
+- [ ] Add snapshot diff and replay snapshot hooks: a diff reports object count, shallow/retained bytes, allocation site, owning fiber and root-path changes.
+- [ ] Drop `memory: false` from `PROFILER_HOST` in `src/toolchain/vscode-extension/scripts/sync-profiler-contributions.mjs`, regenerate the contributions and run lspkit's memory contracts in the extension suite: the memory command, menu, setting and launch link appear and the contracts pass [PROF-LSP-RUNTIME].
+- [ ] Add the Windows sampler that suspends each registered thread, reads its context and walks its stack at the rate [PROF-COLLECT-SAMPLER] sets for Unix: samples `(t_ns, thread, stack, state)` on Windows.
+- [ ] Add the Windows endpoint, a named pipe per process speaking [PROF-ATTACH-PROTOCOL] and discoverable like the Unix socket directory [PROF-ATTACH-ENDPOINT]: `hello`/`cpu_start`/`cpu_stop` answer over the pipe.
+- [ ] Add `attach_windows.rs` beside `attach.rs` and run `src/toolchain/crates/osprey-cli/tests/live_profiler*.rs` on the Windows CI job: the live profiler e2e tests pass there.
+- [ ] Add object-graph tests for structural sharing, closure capture retention, fiber/channel/effect roots, conservative-root approximation, the custom-manager unsupported mode, large-graph paging, cancellation and deterministic JSON/DOT export after canonicalization.
 
-- [ ] Emit union, `Result` and closure type metadata in `src/toolchain/crates/osprey-codegen/src/builder/debug_types.rs` (today only `DW_TAG_structure_type`/`pointer_type`/`member`). Check: IR carries tagged-variant/closure-capture composite metadata; `llvm-dwarfdump` shows it.
-- [ ] Add LLDB summaries/synthetic providers or an Osprey DAP shim for language value rendering. Check: Variables pane renders union tag+payload, `Result` success/error, closure name+captures.
-- [ ] Add side-effect-free runtime inspection helpers for list/map/string/fiber/channel/effect handles (`src/toolchain/crates/osprey-debug` + src/toolchain/compiler/runtime). Check: a paused program reads handle state without touching raw C layouts or crashing.
-- [ ] Page large collections. Check: a large list/map expands in pages, not an unbounded dump.
-- [ ] Add corruption/null safety tests for runtime handle display. Check: null/corrupt handles render invalid/unavailable and the session survives.
+## Fibers, channels and effects
 
-## Phase 4A - Object graph, memory backend, Windows profiler
+- [ ] Add stable runtime debug ids and inspection APIs for fibers, channels and effects: ids stay stable for a paused process or replay trace and a paused runtime reports their state.
+- [ ] Add the fiber list with logical stacks and breakpoints on spawn/await/send/recv/select: the debugger lists fibers with state, suspended-fiber stacks are readable and those breakpoints fire.
+- [ ] Expose the effect handler stack and resume events: handler frames are visible and named, step into an arm and step over `resume` work, and unhandled effects or invalid resumes break; a breakpoint inside spawned work stops with a meaningful fiber id.
 
-- [ ] Define the heap/object-graph model once for both reclaiming modes `gc` and `arc` (spec 0018): `DebugObjectId`, `ObjectNode`, `ObjectEdge`, `RootNode`, `GraphSnapshot`, and JSON/DOT snapshot formats. Check: a documented serde model reusable by both the debugger and the profiler `MemoryBackend`.
-- [ ] Add runtime descriptors for Osprey heap object kinds and typed outgoing edges (`src/toolchain/compiler/runtime/memory_gc.c`, `memory_arc.c`). Check: a paused program enumerates typed outgoing edges without guessing C layouts.
-- [ ] Add root enumeration: stack locals, module globals, fibers, channels, active effects, runtime tables, backend-specific roots. Check: roots reported per category.
-- [ ] Implement `--debug-memory=object-graph` in `src/toolchain/crates/osprey-cli/src/debug_options.rs` and compile/link only the required profiler metadata in debug builds [DEBUGGER-BUILD-OPTIONS]. Check: flag accepted; metadata absent unless selected; `timeline` still rejected.
-- [ ] Add allocation-site attribution recorded only while a memory session is open. Check: a non-profiled run pays nothing; an open session records sites.
-- [ ] Implement `MemoryBackend` in `src/toolchain/crates/lsp-profiler-osprey/src` over the live-attach endpoint [PROF-ATTACH-PROTOCOL]: snapshot, diff, references; `Runtime::memory()` in `lib.rs` returns `Some(...)` [PROF-LSP-RUNTIME]. Check: `src/toolchain/crates/osprey-cli/tests/live_profiler*.rs` exercise snapshot/diff/references.
-- [ ] Add Osprey DAP custom requests `osprey/objectGraph`, `osprey/objectGraph/expand`, `osprey/objectGraph/retainers`, `osprey/objectGraph/roots`, `osprey/heapSnapshot`, `osprey/heapSnapshot/diff`, `osprey/allocationSites`. Check: each answers with paging/truncation metadata, never blocking on huge heaps.
-- [ ] Add a VS Code watch/variables action that opens the graph visualizer for a selected heap-backed value. Check: non-heap values explain that no graph root exists.
-- [ ] Implement the local-neighborhood graph view with directional expansion, hidden-edge counts, search, filters, pinning, grouping, stable layout. Check: view shows outgoing children, incoming retainers and direct roots.
-- [ ] Implement shortest/key retention paths, dominator tree (Lengauer-Tarjan), retained size, and explicit approximate/unavailable labelling. Check: "why is this still alive?" answers paths; incomplete graphs are labelled.
-- [ ] Add snapshot diff and replay snapshot hooks. Check: diff reports object count, shallow/retained bytes, allocation site, owning fiber and root-path changes.
-- [ ] Drop `memory: false` from `PROFILER_HOST` in `src/toolchain/vscode-extension/scripts/sync-profiler-contributions.mjs`, regenerate the contributions, and run lspkit's memory contracts in Osprey's extension suite [PROF-LSP-RUNTIME]. Check: memory command/menu/setting/launch link appear and the memory contracts pass.
-- [ ] Wire the Watch/Variables "Inspect type retainers" action through the `MemoryBackend` callback [PROF-UI-DEBUG-LINK]. Check: action offered only with a backend callback and typed as a type query.
-- [ ] Windows sampler: suspend each registered thread, read its context and walk the stack at the rate [PROF-COLLECT-SAMPLER] sets for Unix. Check: samples `(t_ns, thread, stack, state)` on Windows.
-- [ ] Windows endpoint: a named pipe per process speaking [PROF-ATTACH-PROTOCOL], discoverable by listing like the Unix socket directory [PROF-ATTACH-ENDPOINT]. Check: `hello`/`cpu_start`/`cpu_stop` over the named pipe.
-- [ ] Add `attach_windows.rs` beside `attach.rs` in `src/toolchain/crates/lsp-profiler-osprey/src` and run `src/toolchain/crates/osprey-cli/tests/live_profiler*.rs` on the Windows CI job. Check: Windows CI passes the live profiler e2e tests.
-- [ ] Object-graph tests: structural sharing (shared node + both owners), closure capture retention, fiber/channel/effect roots, conservative-root approximation, custom-manager unsupported mode, large-graph paging, cancellation, deterministic JSON/DOT export. Check: each test passes; exports are deterministic after canonicalization.
+## Replay
 
-## Phase 5 - Expression evaluation
+- [ ] Define the `.ospreytrace` format and record scheduler, IO, time/random, process, network and effect events: a recording emits them and the schema covers args/cwd/env/versions/inputs/scheduler/effect/FFI/allocation ids.
+- [ ] Implement `osprey debug replay <trace.ospreytrace>`: a fiber scheduling test replays exactly and incompatible binary or compiler versions are rejected.
+- [ ] Add checkpointing for reverse-continue and reverse-step, with replay tests for fibers and effects: the reverse operations work.
 
-- [ ] Parse and type-check watch expressions in Osprey syntax (`src/toolchain/crates/osprey-syntax`). Check: an expression parses and type-checks against the frame environment.
-- [ ] Resolve names against the selected frame's debug scope. Check: locals/params/captures resolve to frame values.
-- [ ] Implement pure expression evaluation for `hover`/`watch`. Check: local arithmetic/string and field-access expressions evaluate.
-- [ ] Gate side effects behind explicit user action (`call` mode). Check: side-effecting, FFI, IO, spawning, HTTP and effect operations are rejected by default.
-- [ ] Add REPL/watch/hover tests. Check: tests pass; unavailable optimized values are rejected with a clear message.
+## Optimized debugging
 
-## Phase 6 - Fibers, channels, effects
+- [ ] Implement debug-metadata coverage metrics (functions, lines, variables, scopes, value locations) that detect omissions across every executable expression form, and run unoptimized-vs-optimized stepping comparisons in the suite.
+- [ ] Add control-flow conformance validation for debug locations (Preserve/Merge/Drop; each optimized path's location set ⊆ its source path's): the validator flags any non-subset path.
+- [ ] Add source-level dynamic call-tree validation for representative programs: the optimized-vs-unoptimized call-tree diff classifies each divergence.
+- [ ] Enable `--debug-opt=limited`, then `--debug-opt=optimized`, in `src/toolchain/crates/osprey-cli/src/debug_options.rs` only once that suite is green: unavailable variables are reported honestly [DEBUGGER-BUILD-OPTIONS].
 
-- [ ] Add stable runtime debug ids for fibers and channels. Check: ids stable for a paused process/replay trace.
-- [ ] Expose runtime debug inspection APIs for fibers, channels and effects. Check: a paused runtime reports state.
-- [ ] Add fiber list and logical stack display. Check: debugger lists fibers with state; suspended-fiber stacks available.
-- [ ] Add breakpoints on spawn/await/send/recv/select. Check: breakpoints fire on those operations.
-- [ ] Expose the effect handler stack and resume events. Check: handler frames are visible and named; step into arm and step over `resume` work; unhandled effect/invalid resume break.
-- [ ] Add concurrent/effects debugger tests. Check: a breakpoint inside spawned work stops with a meaningful logical fiber id.
+## GitHub Action
 
-## Phase 7 - Replay / time travel
+- [ ] Owner decision before packaging: what the published action computes (the spec fixes only its shape) and the GHCR org plus Marketplace listing [GHA-WRAPPER].
+- [ ] Create `main.osp` at the repository root beside `action.yml`: one `input()` call, parse the JSON line with the JSON builtins, print `key=value` lines as one interpolated string and return a non-zero int on failure; `osprey main.osp --run < payload.json` reproduces the stdout and exit code of `a_json_line_on_stdin_becomes_outputs_and_an_exit_status` (`src/toolchain/crates/osprey-cli/tests/cases/program_contracts.rs`) [GHA-FERRY-STDIN] [BUILTIN-JSON] [ENTRY-EXIT-STATUS].
+- [ ] Add a root `Dockerfile` (clang, the `osprey` binary, the `libfiber_runtime*.a` archives, `main.osp` at a fixed path, optionally pre-compiled) whose entrypoint passes the stdin line through unchanged and routes stdout to `$GITHUB_OUTPUT`; root `action.yml` uses `runs.using: docker`, an image pinned by GHCR `sha256` digest and typed `inputs`/`outputs` [GHA-PACKAGING-DOCKER].
+- [ ] Add the GHCR build/publish job to `.github/workflows/release.yml`, listed in `release-complete.needs` with its credential checked in `preflight`: `node scripts/ci/verify-release-gates.mjs` passes and a consuming workflow reproduces the ferry output for the same inputs [GHA-PACKAGING-DOCKER].
+- [ ] Add the composite `action.yml` for `ubuntu`, `macos` and `windows` runners (install `osprey`, `clang` and `jq`, cache the toolchain, run the same `main.osp`): all three reproduce the Docker image's output [GHA-PACKAGING-COMPOSITE].
+- [ ] Add the root `action.yml` marketplace metadata and README usage section, version stamped from the tag, and a publication step on a `vX.Y.Z` tag in `release.yml` [GHA-MARKETPLACE] [SWR-VERSION-BUILD-STAMPING].
+- [ ] Package a precompiled `main.wasm` under wasmtime or a Node WASI host: the round trip is green with only a WASI host on the runner [GHA-WASM-DEFERRED].
 
-- [ ] Define the `.ospreytrace` format. Check: schema covers args/cwd/env/versions/inputs/scheduler/effect/FFI/allocation ids.
-- [ ] Record scheduler, IO, time/random, process, network and effect events. Check: a recording emits them.
-- [ ] Implement a deterministic replay runner (`osprey debug replay <trace.ospreytrace>`). Check: a fiber scheduling test replays exactly; incompatible binary/compiler versions are rejected.
-- [ ] Add checkpointing for reverse-continue/reverse-step. Check: reverse operations work.
-- [ ] Add replay tests for fibers/effects. Check: replay tests pass.
+## LSP memory and lspkit upgrades
 
-## Phase 8 - Optimized debugging
+Osprey pins `lspkit`, `lspkit-server` and `lsp-profiler` at 0.10.1 and `@nimblesite/lsp-profiler-ui` at ^0.10.1, on Rust 1.100.0 [TOOLCHAIN-RUST-PIN]. Keep these boundaries when upgrading: no sidecar correlator (Osprey reads with `read_message` on its own loop); no `CancellationHandle::register` without proving cancellation entries are reclaimed (`Dispatcher::dispatch` registers after finding a handler); handlers capture the engine, never the dispatcher [LSPKIT-UPGRADE-SOURCE]. `SourceCache::kept` retains each open document's project plus only the most recently loaded closed projects, and `an_open_shared_file_does_not_pin_its_dependents` and `the_sweep_releases_closed_projects_and_keeps_open_ones` in `src/toolchain/crates/osprey-lsp/src/project_cache.rs` stay the retention regressions [LSPKIT-UPGRADE-OSPREY-LEAK].
 
-- [ ] Implement debug-metadata coverage metrics (functions, lines, variables, scopes, value locations). Check: the metric detects omissions across all executable expression forms.
-- [ ] Add unoptimized-vs-optimized stepping comparisons. Check: comparisons run in the suite.
-- [ ] Add control-flow conformance validation for debug locations (Preserve/Merge/Drop; optimized path location set ⊆ source path's). Check: validator flags any non-subset path.
-- [ ] Add source-level dynamic call-tree validation for representative programs. Check: optimized-vs-unoptimized call-tree diff classifies each divergence.
-- [ ] Enable `--debug-opt=limited`, then `--debug-opt=optimized`, only after the tests define the contract [DEBUGGER-BUILD-OPTIONS]. Check: flags accepted only with the validation suite green; unavailable variables reported honestly.
-
-## Hover [LSP-HOVER]
-
-- [x] Hover match-arm pattern binders and lambda parameters with their inferred types, at the binding and at every use [LSP-HOVER-BINDERS] ([#390](https://github.com/Nimblesite/osprey/issues/390)). Check: `hover_on_pattern_binders_and_lambda_parameters_shows_their_inferred_types` in `src/toolchain/crates/osprey-lsp/src/features/tests.rs` passes for list, constructor, tuple and lambda binders in the ML and Default flavors.
-- [x] Answer hover, signature help, completion details and the outline from the assembled project, so a type fixed only by another package (`ui::CubicTo(toX = x)`) is shown and not a hole [LSP-HOVER-PROJECT] ([#391](https://github.com/Nimblesite/osprey/issues/391)). Check: `hover_infers_from_the_whole_project` in `src/toolchain/crates/osprey-lsp/src/project_cache.rs` passes; hovering `x` in `src/osprey/examples/gpui/painting/src/logo.ospml` shows `x : float` and `segment` shows `List<float> -> ui::PathStep`.
-- [x] Let `osprey.analysis.scope = "file"` turn project inference off, live, with `project` the default [LSP-ANALYSIS-SCOPE]. Check: `analysis_scope_setting_turns_project_inference_off_and_on` in `src/toolchain/crates/osprey-lsp/src/server/tests/project_features.rs` passes, and the setting appears under Osprey in VS Code's settings.
-- [x] Answer member and pattern-constructor completion from the assembled project. The transport test `a_consumer_completes_dependency_fields_and_patterns` checks the fields and types of an imported record in an unsaved buffer and both constructors of an imported union.
-
-## Module explorer
-
-- [x] The real VS Code module explorer responds to Home and the arrow keys across two project roots. The test checks focus, expansion, parent traversal and collapse in the native tree [EDITOR-MODULE-EXPLORER]. All seven module-explorer tests passed on 2026-11-23.
-
-## Zed integration [EDITOR-ZED]
-
-The Zed client uses the existing `osprey lsp` server; semantic features and project/flavor selection remain in the compiler. The earlier referenced Zed-specific plan was not present in the checkout or searched history; this checklist records the explicit plugin/testing objective against the shared editor contract, without claiming that missing plan was recovered.
-
-- [x] Implement and test configured binary, arguments and environment, PATH discovery and explicit missing-server errors [EDITOR-ZED-LAUNCH]. Check: `cargo test --manifest-path src/toolchain/Cargo.toml -p osprey-zed` passes loaded launch-policy cases; the unimplemented-policy failure was reproduced first.
-- [x] Register Osprey syntax flavors without taking over ordinary Python files; reuse canonical grammar/query assets where applicable and verify actual parsing/highlighting. Check: manifest/canonical grammar checks pass; real Zed shows Default highlighting and all three flavors' live hover. Ordinary Python remains Python; `.py` requires explicit Osprey Python selection. ML/Python have no supplied structural grammar, documented explicitly.
-- [x] Build the extension for Zed's WASM target and run strict static analysis. Check: `make -C src/toolchain/zed-extension build lint` passes (`wasm32-wasip2`, warnings denied).
-- [x] Exercise the actual stdio server with Zed language IDs: diagnostics after edits, hover, completion, navigation, formatting and UTF-16 positions. Check: five manifest/stdio acceptance tests pass against a fresh debug compiler, including references, callee signature help, versioned quick-fix application, mixed-flavor navigation and unsaved helper errors. The helper-location defect was reproduced before fixing the compiler's lost error position; all 250 LSP tests pass.
-- [x] Install the dev extension in Zed and verify real editor startup and behavior; document reproducible commands and remaining limits. Check: Zed 1.27.0 installed the component and grammar, started the configured compiler and displayed real hover for all three flavors; ordinary Python retained its integration. Limits: Zed's built-in `.py` association beats the first-line marker, so select Osprey Python or set project `file_types`; ML and Python have no structural grammar, so only Default is highlighted; Zed sends workspace settings after initialization, so diagnostic settings belong in `lsp.osprey.settings`.
-- [x] Wire build, analysis and tests into the existing three CI phases without duplicate test execution. Check: CI builds/uploads WASM in phase one; existing Rust coverage runs launch tests; the editor test job reuses the compiler for stdio acceptance. The wiring contract passes; full shared CI is separate integration evidence, not claimed here.
+- [ ] (verify) An idle `osprey lsp` stays below the 128 MB live-heap limit after a diagnostics sweep of this repository (last measured 16.5 MiB live with v0.31.1): re-measure with `heap -s` and record the run [LSPKIT-UPGRADE-OSPREY-LEAK].

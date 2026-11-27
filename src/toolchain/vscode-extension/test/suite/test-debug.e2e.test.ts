@@ -27,7 +27,9 @@ import {
   waitForDebugSessionEnd,
   waitForDebugSessionStart,
   waitForStop,
+  LAUNCH_TIMEOUT_MS,
 } from "./dap-harness";
+import { testDeadline } from "./osprey-test-env";
 import {
   pinOspreySettings,
   resolveBuiltOsprey,
@@ -62,8 +64,7 @@ const FIXTURE = [
 const BREAK_LINE = 5;
 
 const extensionId = "nimblesite.osprey";
-const LAUNCH_TIMEOUT_MS = 45_000;
-const TEST_TIMEOUT_MS = 120_000;
+const TEST_TIMEOUT_MS = testDeadline(120_000);
 
 suite("Osprey Test Explorer Debug profile E2E", function () {
   // Same infrastructure flake the debugger E2E shields: under CI load
@@ -87,7 +88,7 @@ suite("Osprey Test Explorer Debug profile E2E", function () {
     );
 
   suiteSetup(async function () {
-    this.timeout(60_000);
+    this.timeout(testDeadline(60_000));
     assert.ok(compiler, "a built osprey compiler is required for this E2E");
     fixtures = makeFixtureDir("osprey-debug-tests-");
     uri = fixtures.write("steps.test.osp", FIXTURE);

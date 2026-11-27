@@ -3,6 +3,9 @@ import registry::Policy
 import registry_host::Database
 import registry_host::Host
 
+/// The refusal of a connection string that tries to override verified TLS.
+let configurationRefused = "database.configuration"
+
 fn context() = Database::Context {
     principalId: "11111111-1111-4111-8111-111111111111",
     sessionId: "22222222-2222-4222-8222-222222222222",
@@ -55,17 +58,25 @@ fn deniedConfiguration(rootCertificate) = {
 }
 
 fn connectionInjection() = checkAll("libpq configuration cannot override verified TLS", [
-        deniedConfiguration("/run/registry/x\tsslmode=disable") == "database.configuration",
-        deniedConfiguration("/run/registry/x\rsslmode=disable") == "database.configuration",
-        deniedConfiguration("/run/registry/x' sslmode=disable") == "database.configuration"
+        deniedConfiguration("/run/registry/x\tsslmode=disable") == configurationRefused,
+        deniedConfiguration("/run/registry/x\rsslmode=disable") == configurationRefused,
+        deniedConfiguration("/run/registry/x' sslmode=disable") == configurationRefused
 ])
 
-fn configurationInjection() = check("libpq rejects whitespace overrides before handler installation", "database.configuration", Database::configurationCode(Database::Connection {
+fn configurationInjection() = check("libpq rejects whitespace overrides before handler installation", configurationRefused, Database::configurationCode(Database::Connection {
             serviceFile: "/run/registry/pg_service.conf", service: "registry",
             passfile: "/run/registry/pgpass", rootCertificate: "/run/registry/x\tsslmode=disable"
 }))
 
+fn mountedCredentials() = {
+    let cfg = Database::Connection { serviceFile: "/run/registry/config/db.conf", service: "registry", passfile: "/run/registry/secrets/.pgpass", rootCertificate: "/run/registry/ca.pem" }
+    let paths = ["/run/registry/", "/run/registry/../other/file", "/run/registry/ca/..", "/run/registry/./file", "/run/registry//file", "/run/registry/ca/"]
+    checkAll("canonical paths below the credential mount", [Database::configurationCode(cfg) == "", foldList(paths, true, fn(valid, path) => valid &&
+        Database::configurationCode(cfg { serviceFile: path }) == configurationRefused && Database::configurationCode(cfg { passfile: path }) == configurationRefused && deniedConfiguration(path) == configurationRefused)])
+}
+
 fn suite() = {
+    test("database: restrict credentials to mounted files", mountedCredentials)
     test("database: reject invalid context", rejectsContext)
     test("database: protocol binding rejects injection", binding)
     test("database: serializable transaction and context", transaction)

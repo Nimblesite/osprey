@@ -11,13 +11,12 @@ module ManifestSections {
     export type Project = { name: string, sourceRoots: List<string>, defaultNamespace: Maybe::Maybe<string>, entry: Maybe::Maybe<string>, flavor: Maybe::Maybe<ManifestModel::Flavor>, testRoots: List<string>, pythonSources: List<string>, typescriptSources: List<string> }
 
     let projectKeys = ["name", "source_roots", "default_namespace", "entry", "flavor", "test_roots", "python_sources", "typescript_sources"]
-    let modulesKeys = ["allow_wildcard_imports", "published_library"]
+    let modulesKeys = ["allow_wildcard_imports"]
+    let lintLevels = ["allow", "info", "warn", "deny"]
     let packageKeys = ["name", "license", "summary", "keywords"]
     let disciplineKeys = ["name", "checker", "timeout_seconds"]
     let defaultRoots = ["src"]
     let summaryMax = 512
-    let keywordMax = 12
-    let keywordBytes = 32
 
     /// `code at line:column`, the one encoding `Toml` and `Manifest::problemOf` share.
     export fn fail(code, span: Toml::Span) = Error { message: "${code} at ${span.line}:${span.column}" }
@@ -104,7 +103,7 @@ module ManifestSections {
         Error { message } => Error { message: message }
         // The closure's return type is written so codegen sees a concrete
         // function type (issue: a still-generic closure value is refused).
-        Success { value } => Maybe::fold(value, Success { value: Maybe::none() }, fn(text) -> Result<Maybe::Maybe<ManifestModel::Flavor>, string> => flavorNamed(text, spanOf(pairs, "flavor", rootSpan())))
+        Success { value } => Maybe::fold(value, Success { value: Maybe::none() }, fn(text) => flavorNamed(text, spanOf(pairs, "flavor", rootSpan())))
     }
 
     fn flavorNamed(text, span) = match ManifestModel::flavorOf(text) {
@@ -116,7 +115,7 @@ module ManifestSections {
         Error { message } => Error { message: message }
         // The closure's return type is written so codegen sees a concrete
         // function type (issue: a still-generic closure value is refused).
-        Success { value } => Maybe::fold(value, Success { value: Maybe::none() }, fn(text) -> Result<Maybe::Maybe<string>, string> => entryNamed(text, spanOf(pairs, "entry", rootSpan())))
+        Success { value } => Maybe::fold(value, Success { value: Maybe::none() }, fn(text) => entryNamed(text, spanOf(pairs, "entry", rootSpan())))
     }
 
     fn entryNamed(text, span) = match Paths::validate(text) {
@@ -189,7 +188,7 @@ module ManifestSections {
         }
     }
 
-    /// `[modules]`: the wildcard-import policy; `published_library` is advice only.
+    /// `[modules]`: the wildcard-import policy.
     export fn modules(root) = match find(pairsOf(root), "modules") {
         Error => Success { value: false }
         Success { value } => match unknownKeys(pairsOf(Toml::valueOf(value)), modulesKeys, "manifest.modules.unknown-key") {
@@ -198,17 +197,25 @@ module ManifestSections {
         }
     }
 
-    fn modulesBody(pairs) = match boolOf(pairs, "published_library", false, "manifest.modules.published-library") {
-        Error { message } => Error { message: message }
-        Success => boolOf(pairs, "allow_wildcard_imports", false, "manifest.modules.allow-wildcard-imports")
+    fn modulesBody(pairs) = boolOf(pairs, "allow_wildcard_imports", false, "manifest.modules.allow-wildcard-imports")
+
+    /// `[lints]`: every rule's level is one the compiler reads; the compiler
+    /// checks the rule names ([LINT-LEVELS]).
+    export fn lints(root) = match find(pairsOf(root), "lints") {
+        Error => Success { value: 0 }
+        Success { value } => foldList(pairsOf(Toml::valueOf(value)), Success { value: 0 }, lintLevel)
     }
 
-    fn keywordByte(b) = Bytes::isLowerDigit(b) || b == 45
-    fn keywordOk(k) = byteLength(k) >= 1 && byteLength(k) <= keywordBytes && !startsWith(k, "-")
-        && Bytes::everyByte(k, keywordByte)
+    fn lintLevel(acc, pair) = match acc {
+        Error { message } => Error { message: message }
+        Success => match stringOf(pair, "manifest.lints.level") {
+            Error { message } => Error { message: message }
+            Success { value } => if listContains(lintLevels, value) { Success { value: 0 } } else { fail("manifest.lints.level", pair.span) }
+        }
+    }
 
-    fn keywordsOk(keywords, span) = if length(keywords) > keywordMax { fail("manifest.keywords.count", span) }
-        else if !foldList(keywords, true, fn(ok, k) => ok && keywordOk(k)) { fail("manifest.keyword.grammar", span) }
+    fn keywordsOk(keywords, span) = if length(keywords) > Names::keywordMax { fail("manifest.keywords.count", span) }
+        else if !foldList(keywords, true, fn(ok, k) => ok && Names::keywordOk(k)) { fail("manifest.keyword.grammar", span) }
         else if !Order::strictlyAscending(keywords) { fail("manifest.keywords.order", span) }
         else { Success { value: keywords } }
 

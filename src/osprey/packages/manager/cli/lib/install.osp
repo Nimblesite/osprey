@@ -1,7 +1,6 @@
 namespace registry_cli;
 import registry::Manifest
 import registry::ManifestJson
-import registry::ManifestModel
 import registry::Maybe
 import registry::Names
 import registry::Release
@@ -40,7 +39,7 @@ module Install {
     export fn manifestDigestOf(fileList) = andThen(Manifest::accepted(Manifest::parse(manifestTextIn(fileList))), fn(value) => ManifestJson::digest(value))
 
     fn systemCapabilities(fileList) = match Manifest::accepted(Manifest::parse(manifestTextIn(fileList))) {
-        Success { value } => mapList(value.systemRequirements, fn(s: ManifestModel::SystemRequirement) => s.capability)
+        Success { value } => mapList(value.systemRequirements, fn(s) => s.capability)
         Error => []
     }
 
@@ -62,7 +61,7 @@ module Install {
 
     /// A tree with the right bytes prints `mark`; one whose surface is not the
     /// pinned one is `capability.surface` ([PACKAGE-CAPABILITY-CONFINEMENT]).
-    fn checkedSurface(tally, pkg: Lockfile::Package, fileList, mark) = if surfaceMatches(pkg, fileList) {
+    fn checkedSurface(tally, pkg, fileList, mark) = if surfaceMatches(pkg, fileList) {
         line(tally, "${mark} ${Lockfile::compact(pkg.release)}")
     } else {
         failedLine(tally, "${surfaceCode} ${Names::display(pkg.release.key)}")
@@ -70,14 +69,14 @@ module Install {
 
     fn present(base, project, tally, pkg, fileList) = if digestMatches(pkg, fileList) { checkedSurface(tally, pkg, fileList, "=") } else { fetched(base, project, tally, pkg) }
 
-    fn installOne(base, project, tally, pkg: Lockfile::Package) = match Fetch::installedFiles(Fetch::installDirAt(project, pkg.release)) {
+    fn installOne(base, project, tally, pkg) = match Fetch::installedFiles(Fetch::installDirAt(project, pkg.release)) {
         Success { value } => present(base, project, tally, pkg, value)
         Error => fetched(base, project, tally, pkg)
     }
 
     fn servedFiles(s: Release::Served) = s.files
 
-    fn fetched(base, project, tally, pkg: Lockfile::Package) = match Fetch::fetched(project, base, pkg.release.digest) {
+    fn fetched(base, project, tally, pkg) = match Fetch::fetched(project, base, pkg.release.digest) {
         Success { value } => checkedSurface(tally, pkg, servedFiles(value), "+")
         Error { message } => failedLine(tally, message)
     }
@@ -86,7 +85,7 @@ module Install {
     /// An overridden key lives in its checkout: nothing to install.
     fn localLine(tally, pkg: Lockfile::Package, o: Lockfile::Override) = line(tally, "local ${Lockfile::compact(pkg.release)} (${o.path})")
 
-    fn installPackage(base, project, lock, tally, pkg: Lockfile::Package) = match Lockfile::overrideFor(Lockfile::overridesOf(lock), pkg.release.key) {
+    fn installPackage(base, project, lock, tally, pkg) = match Lockfile::overrideFor(Lockfile::overridesOf(lock), pkg.release.key) {
         Success { value } => localLine(tally, pkg, value)
         Error => installOne(base, project, tally, pkg)
     }

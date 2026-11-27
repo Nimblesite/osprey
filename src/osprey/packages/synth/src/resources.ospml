@@ -6,7 +6,15 @@ namespace synth
     is a sample resource. The hash is 64-bit FNV-1a over whole 64-bit words, so it detects change; it is not
     a cryptographic digest. *)
 module Resources
-    (** The identity layout; raise it when the hashed words or their order change. *)
+    (** The identity layout; raise it when the hashed words or their order change.
+    # Examples
+    ```osprey
+    print "${Resources::version}"
+    ```
+    ```output
+    1
+    ```
+    *)
     export version = 1
 
     offset = -3750763034362895579
@@ -17,7 +25,20 @@ module Resources
 
     hashed (seed, values) = foldList (values, seed, \(hash, value) => mixed (hash, floatBits value))
 
-    (** A sample's identity: its name, channels, rate and root pitch hashed with every sample word. *)
+    (** A sample's identity: its name, channels, rate and root pitch hashed with every sample word.
+    # Examples
+    ```osprey
+    kick = SampleResource(name = "kick", sampleRate = 48000, sourceChannels = 1, rootFrequency = 100.0, samples = [0.5, -0.5])
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => Resources::sample kick)} ${arithmetic (\() => Resources::sample (kick(samples = [0.5, 0.5])))}"
+    ```
+    ```output
+    { name: "kick", hash: -457251675397606652, channels: 1, sampleRate: 48000, frames: 2, version: 1 } { name: "kick", hash: 8766120361457169156, channels: 1, sampleRate: 48000, frames: 2, version: 1 }
+    ```
+    *)
     export sample resource = ResourceIdentity(name = resource.name, hash = hashed (foldList ([resource.sampleRate, resource.sourceChannels, floatBits resource.rootFrequency, length resource.samples], offset, mixed), resource.samples), channels = resource.sourceChannels, sampleRate = resource.sampleRate, frames = intDiv (length resource.samples) (atLeastOne resource.sourceChannels), version = version)
 
     atLeastOne count = match count >= 1
@@ -28,10 +49,37 @@ module Resources
 
     frameHashed (hash, frame) = foldList (frame.levels, mixed (hash, length frame.levels), levelHashed)
 
-    (** A wavetable's identity under `name`: one rate-independent channel of `size`-sample frames. *)
+    (** A wavetable's identity under `name`: one rate-independent channel of `size`-sample frames.
+    # Examples
+    ```osprey
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => Resources::table ("sine", Wavetable(size = 4, harmonics = 1, frames = [TableFrame(levels = [TableLevel(harmonics = 1, samples = [0.0, 1.0, 0.0, -1.0])])])))}"
+    ```
+    ```output
+    { name: "sine", hash: -1284827455044551081, channels: 1, sampleRate: 0, frames: 4, version: 1 }
+    ```
+    *)
     export table (name, t) = ResourceIdentity(name = name, hash = foldList (t.frames, foldList ([t.size, t.harmonics, length t.frames], offset, mixed), frameHashed), channels = 1, sampleRate = 0, frames = t.size, version = version)
 
-    (** `current` still matches the identity a project saved: same version, name, hash and layout. *)
+    (** `current` still matches the identity a project saved: same version, name, hash and layout.
+    # Examples
+    ```osprey
+    kick = SampleResource(name = "kick", sampleRate = 48000, sourceChannels = 1, rootFrequency = 100.0, samples = [0.5, -0.5])
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    saved = arithmetic (\() => Resources::sample kick)
+    changed = arithmetic (\() => Resources::sample (kick(samples = [0.5, 0.5])))
+    print "${Resources::matches (saved, changed)} ${Resources::matches (saved, saved)}"
+    ```
+    ```output
+    Error(MissingResource { detail: "The resource kick changed since the project saved it." }) Success({ name: "kick", hash: -457251675397606652, channels: 1, sampleRate: 48000, frames: 2, version: 1 })
+    ```
+    *)
     export matches (saved, current) = match saved.version == current.version && saved.name == current.name
         false => Error(message = MissingResource(detail = "The saved resource ${saved.name} is missing or uses another identity version."))
         true => match saved.hash == current.hash && saved.channels == current.channels && saved.sampleRate == current.sampleRate && saved.frames == current.frames

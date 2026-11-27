@@ -38,7 +38,7 @@ def temperature_tool():
     )
 
 
-def get_temperature(city) -> Result[str, str]:
+def get_temperature(city):
     lowered = toLowerCase(city)
     if contains(lowered, "paris"):
         return Success(value="21")
@@ -57,17 +57,17 @@ def add_tool():
     )
 
 
-def number_text(x) -> str:
+def number_text(x):
     """A whole number without its `.0`."""
     text = toString(x)
     return unwrap_or(replace(text, ".0", ""), text) if endsWith(text, ".0") else text
 
 
-def tool_return_count(messages) -> int:
+def tool_return_count(messages):
     return foldList(M.requests(messages), 0, lambda n, r: n + len(filterList(r.parts, is_return)))
 
 
-def is_return(part) -> bool:
+def is_return(part):
     match part:
         case M.ToolReturnPart():
             return True

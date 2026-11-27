@@ -20,6 +20,11 @@ from pydantic_ai import Usage
 
 __all__ = ["TestModel", "test_model", "gen_tool_args", "gen_any", "Gen", "char_of"]
 
+EXCLUSIVE_MAX = "exclusiveMaximum"
+"""The schema member bounding a number from above, exclusive."""
+EXCLUSIVE_MIN = "exclusiveMinimum"
+"""The schema member bounding a number from below, exclusive."""
+
 CHARS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"
 """`string.ascii_letters + string.digits + string.punctuation`."""
 
@@ -44,7 +49,7 @@ def calls_all(call_tools):
     return len(call_tools) == 1 and unwrap_or(listGet(call_tools, 0), "") == "all"
 
 
-def tools_to_call(call_tools, parameters) -> Result[list[Json], str]:
+def tools_to_call(call_tools, parameters):
     """`_get_tool_calls`: the tool definitions to call, in `call_tools` order."""
     defs = parameters.function_tools
     if calls_all(call_tools):
@@ -289,10 +294,10 @@ def gen_int(schema, seed):
     """`_int_gen`: within the schema's bounds, offset by the seed."""
     has_max = not J.is_null(J.object_at(schema, "maximum"))
     has_min = not J.is_null(J.object_at(schema, "minimum"))
-    has_exc_max = not J.is_null(J.object_at(schema, "exclusiveMaximum"))
-    has_exc_min = not J.is_null(J.object_at(schema, "exclusiveMinimum"))
-    maximum = J.int_at(schema, "maximum", J.int_at(schema, "exclusiveMaximum", 0) - 1)
-    minimum = J.int_at(schema, "minimum", J.int_at(schema, "exclusiveMinimum", 0) + 1)
+    has_exc_max = not J.is_null(J.object_at(schema, EXCLUSIVE_MAX))
+    has_exc_min = not J.is_null(J.object_at(schema, EXCLUSIVE_MIN))
+    maximum = J.int_at(schema, "maximum", J.int_at(schema, EXCLUSIVE_MAX, 0) - 1)
+    minimum = J.int_at(schema, "minimum", J.int_at(schema, EXCLUSIVE_MIN, 0) + 1)
     max_known = has_max or has_exc_max
     min_known = has_min or has_exc_min
     if has_min and has_max and maximum == minimum:
@@ -311,16 +316,16 @@ def gen_int(schema, seed):
 
 def gen_number(schema, seed):
     """`_number_gen`: within the schema's bounds, offset by the seed."""
-    has_max = not J.is_null(J.object_at(schema, "maximum")) or not J.is_null(J.object_at(schema, "exclusiveMaximum"))
-    has_min = not J.is_null(J.object_at(schema, "minimum")) or not J.is_null(J.object_at(schema, "exclusiveMinimum"))
-    has_exc_min = not J.is_null(J.object_at(schema, "exclusiveMinimum"))
-    has_exc_max = not J.is_null(J.object_at(schema, "exclusiveMaximum"))
+    has_max = not J.is_null(J.object_at(schema, "maximum")) or not J.is_null(J.object_at(schema, EXCLUSIVE_MAX))
+    has_min = not J.is_null(J.object_at(schema, "minimum")) or not J.is_null(J.object_at(schema, EXCLUSIVE_MIN))
+    has_exc_min = not J.is_null(J.object_at(schema, EXCLUSIVE_MIN))
+    has_exc_max = not J.is_null(J.object_at(schema, EXCLUSIVE_MAX))
     minimum = bound_min(schema)
     maximum = bound_max(schema)
     if has_min and has_max:
         span = maximum - minimum
         value = minimum + toFloat(seed) % span if minimum != maximum and span > 0.0 else minimum
-        return minimum + span / 2.0 if has_exc_min and value == J.float_at(schema, "exclusiveMinimum", value - 1.0) else value
+        return minimum + span / 2.0 if has_exc_min and value == J.float_at(schema, EXCLUSIVE_MIN, value - 1.0) else value
     elif has_min:
         return minimum + toFloat(seed) + (1.0 if has_exc_min else 0.0)
     elif has_max:
@@ -343,11 +348,11 @@ def bound(schema, inclusive_key, exclusive_key, tighter):
 
 
 def bound_min(schema):
-    return bound(schema, "minimum", "exclusiveMinimum", lambda lo, hi: lo if lo > hi else hi)
+    return bound(schema, "minimum", EXCLUSIVE_MIN, lambda lo, hi: lo if lo > hi else hi)
 
 
 def bound_max(schema):
-    return bound(schema, "maximum", "exclusiveMaximum", lambda lo, hi: lo if lo < hi else hi)
+    return bound(schema, "maximum", EXCLUSIVE_MAX, lambda lo, hi: lo if lo < hi else hi)
 
 
 class ArrayFold:

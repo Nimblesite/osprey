@@ -1,6 +1,6 @@
 # Osprey package system
 
-The registry and package client are written in Osprey and built by the existing compiler. [Plan 0020](../../../../docs/plans/0020-package-manager.md) tracks delivery against [specs 0029–0032](../../../../docs/specs/ecosystem/README.md). The folder registry, source verification, deterministic resolution, locks, local overrides, folder publication and uv integration run today. Authenticated public publishing, the dedicated package website and trust services remain planned.
+The registry and package client are written in Osprey and built by the existing compiler. [Plan 0020](../../../../docs/plans/0020-package-manager.md) tracks delivery against [specs 0029–0032](../../../../docs/specs/ecosystem/README.md). The folder registry, source verification, deterministic resolution, locks, local overrides, folder publication and uv integration run today. The dedicated registry website builds locally. Authenticated public publishing and trust services remain planned.
 
 The loopback consumer uses Default-flavor source. Real compiler checks also pass for Python-flavor packages: bare `build`, `build --run`, and relative or absolute `--project` paths from another directory. Derived compiler manifests live under the selected project's `.osprey/build/`; see the [package guide](../../../toolchain/website/src/docs/package-manager.md) for usage and remaining limits.
 
@@ -110,8 +110,16 @@ The table links the implemented folder-registry checks to their tests. Runtime r
 
 Named tests above cover the folder-registry subset. Python publisher-attestation identity checks and the public trust plane remain unfinished.
 
+## Registry website
+
+The homepage is the catalog. Search by name or description, browse packages by publisher or tag, open a package and download a release. **Upload a package** opens `/upload/`. Hosted publishing requires the authenticated publication-intent API.
+
+To browse local packages, start `make -C src/osprey/packages registry-serve`, then run `make -C src/osprey/packages registry-website-preview` with Wasmtime, jq and yq installed. Run `make -C src/osprey/packages registry-website-serve` and open `http://127.0.0.1:4187/`. The upload page loads package choices from the running registry and lets you review a commit. The preview identifies its source as a local, audit-unverified folder registry.
+
+`make -C src/osprey/packages registry-website` builds the separate Cloudflare Pages directory at `target/registry-site/`. Its catalog shows an unavailable state until the verified hosted projection is connected. Set `REGISTRY_API_ORIGIN` to the deployed HTTPS API origin when building to connect release preparation and GitHub sign-in. Publication requires the hosted signature and publication-intent routes.
+
 ## Hosted ownership model
 
 [Organization governance](../../../../docs/specs/ecosystem/0045-OrganizationPackageGovernance.md) prevents package-name sitting: `@org-a/helper-functions` and `@org-b/helper-functions` are independent valid keys. Every hosted package belongs to an organization, has one package administrator and permits multiple explicit publishing/maintenance permission holders. Personal ownership and global leaf-name reservations do not exist.
 
-The [typeDiagram](../../../toolchain/schemas/package-registry.td) defines the model and [DataProvider YAML](supabase/migrations/schema.yaml) defines eleven ownership tables and their constraints. Bootstrap forces RLS with no allow policies or runtime grants; hosted flows remain unavailable until narrow policies and Osprey handlers/tests ship. The pinned DataProvider CLI currently fails private-schema integrity verification after applying tables, so deployment and convergence remain blocked; see the measured blocker in the [rollout plan](../../../../docs/plans/0020-package-manager.md).
+The [typeDiagram](../../../toolchain/schemas/package-registry.td) defines the model and [DataProvider YAML](supabase/migrations/schema.yaml) defines ownership tables, pending GitHub logins, browser sessions and the public catalog projection. Bootstrap forces RLS and grants no runtime privileges. The public catalog has a dedicated reader policy; ownership writes remain disabled. Run `make -C src/osprey/packages registry-migration-check` to build the pinned DataProvider CLI and verify the migration twice against a disposable PostgreSQL instance. The [rollout plan](../../../../docs/plans/0020-package-manager.md) tracks staging and authenticated writes.

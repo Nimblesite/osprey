@@ -4,10 +4,26 @@ namespace synth
 
 (** Each adapter unpacks its module state from kernel storage, runs one sample and packs it back. *)
 module EffectKernels
-    (** Shaper storage: up and down half-band histories (used only when oversampling). *)
+    (** Shaper storage: up and down half-band histories (used only when oversampling).
+    # Examples
+    ```osprey
+    print "${EffectKernels::shaperStorage}"
+    ```
+    ```output
+    62
+    ```
+    *)
     export shaperStorage = 62
 
-    (** Shifter storage: eight four-value Hilbert sections. *)
+    (** Shifter storage: eight four-value Hilbert sections.
+    # Examples
+    ```osprey
+    print "${EffectKernels::shifterStorage}"
+    ```
+    ```output
+    32
+    ```
+    *)
     export shifterStorage = 32
 
     curve selector = Outcomes::chosen (selector, [TanhCurve, HardCurve, CubicCurve, FoldCurve], "Curve must be 0 tanh, 1 hard, 2 cubic or 3 fold.")
@@ -31,7 +47,24 @@ module EffectKernels
 
     settings (rate, snapshot, identity) = RenderInputs::setting (snapshot, identity, "curve", \selector => RenderInputs::setting (snapshot, identity, "drive", \drive => RenderInputs::setting (snapshot, identity, "bias", \bias => RenderInputs::setting (snapshot, identity, "level", \level => RenderInputs::setting (snapshot, identity, "antialias", \antialias => RenderInputs::setting (snapshot, identity, "oversample", \oversample => shape (rate, curve selector, drive, bias, level, antialias, oversample)))))))
 
-    (** Resolve fixed drive, transfer curve and optional FIR weights once per block. *)
+    (** Resolve fixed drive, transfer curve and optional FIR weights once per block.
+    # Examples
+    ```osprey
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+
+    example () =
+        snapshot = Parameters::initial (Graph(nodes = [Components::shaper (1, 0.0, 1.0)], cables = []))
+        print "${EffectKernels::prepare (48000.0, snapshot, 1)} ${EffectKernels::prepare (48000.0, Parameters::initial Graphs::empty, 1)}"
+
+    arithmetic example
+    ```
+    ```output
+    FixedShaper { config: { sampleRate: 48000.0, curve: TanhCurve, drive: 1.0, bias: 0.0, level: 0.5, antialias: true }, weights: [] } LivePhysical
+    ```
+    *)
     export prepare (rate, snapshot, identity) = settings (rate, snapshot, identity) ?: LivePhysical
 
     played (frame, held, input, prepared) = match prepared
@@ -40,7 +73,20 @@ module EffectKernels
             false => oversampled (frame, held, config, input, weights)
         _ => Error(message = IncompatibleLayout(detail = "Waveshaper settings are missing."))
 
-    (** Render a waveshaper with fixed controls or sample-accurate automation. *)
+    (** Render a waveshaper with fixed controls or sample-accurate automation.
+    # Examples
+    ```osprey
+    held = KernelState(identity = 1, phase = 0.0, integratorOne = 0.0, integratorTwo = 0.0, delay = [], memory = KernelIdle)
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => EffectKernels::shaper (48000.0, Parameters::initial Graphs::empty, SampleFrame(states = [], values = []), held, 0.0, LivePhysical))} ${arithmetic (\() => EffectKernels::shaper (48000.0, Parameters::initial Graphs::empty, SampleFrame(states = [], values = []), held, 0.0, FixedShaper(config = ShaperConfig(sampleRate = 48000.0, curve = HardCurve, drive = 1.0, bias = 0.0, level = 0.5, antialias = false), weights = [])))}"
+    ```
+    ```output
+    Error(MissingResource { detail: "Required render parameter is missing." }) Success({ states: [], values: [{ identity: 1, value: 0.0 }] })
+    ```
+    *)
     export shaper (rate, snapshot, frame, held, input, prepared) = match prepared
         LivePhysical => Outcomes::carried (settings (rate, snapshot, held.identity), \current => played (frame, held, input, current))
         _ => played (frame, held, input, prepared)
@@ -56,7 +102,20 @@ module EffectKernels
 
     verb (rate, frame, held, input, size, decay, damping, diffusion, mix, freeze) = Outcomes::carried (Reverbs::configure (ReverbConfig(sampleRate = rate, size = size, decay = decay, damping = damping, diffusion = diffusion, mix = mix, freeze = freeze >= 0.5)), \config => reverberated (frame, held, config, input))
 
-    (** FDN reverb: size, decay (T60), damping, diffusion, mix and a lossless freeze switch. *)
+    (** FDN reverb: size, decay (T60), damping, diffusion, mix and a lossless freeze switch.
+    # Examples
+    ```osprey
+    held = KernelState(identity = 1, phase = 0.0, integratorOne = 0.0, integratorTwo = 0.0, delay = [], memory = KernelIdle)
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => EffectKernels::reverb (48000.0, Parameters::initial Graphs::empty, SampleFrame(states = [], values = []), held, 0.0))}"
+    ```
+    ```output
+    Error(MissingResource { detail: "Required render parameter is missing." })
+    ```
+    *)
     export reverb (rate, snapshot, frame, held, input) = RenderInputs::bound (snapshot, held, "size", \size => RenderInputs::bound (snapshot, held, "decay", \decay => RenderInputs::bound (snapshot, held, "damping", \damping => RenderInputs::bound (snapshot, held, "diffusion", \diffusion => RenderInputs::bound (snapshot, held, "mix", \mix => RenderInputs::bound (snapshot, held, "freeze", \freeze => verb (rate, frame, held, input, size, decay, damping, diffusion, mix, freeze)))))))
 
     shifterState memory = match memory
@@ -69,5 +128,18 @@ module EffectKernels
             Outcomes::carried (Shifters::next (config, shifter, input), \step =>
                 Success(value = RenderInputs::emitted (frame, held(memory = ShifterRunning(shifter = step.next)), step.sample)))))
 
-    (** Frequency shifter: shift in hertz, ring-modulation switch and mix. *)
+    (** Frequency shifter: shift in hertz, ring-modulation switch and mix.
+    # Examples
+    ```osprey
+    held = KernelState(identity = 1, phase = 0.0, integratorOne = 0.0, integratorTwo = 0.0, delay = [], memory = KernelIdle)
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => EffectKernels::shifter (48000.0, Parameters::initial Graphs::empty, SampleFrame(states = [], values = []), held, 0.0))}"
+    ```
+    ```output
+    Error(MissingResource { detail: "Required render parameter is missing." })
+    ```
+    *)
     export shifter (rate, snapshot, frame, held, input) = RenderInputs::bound (snapshot, held, "shift", \shift => RenderInputs::bound (snapshot, held, "ring", \ring => RenderInputs::bound (snapshot, held, "mix", \mix => shifted (frame, held, input, Shifters::configure (ShifterConfig(sampleRate = rate, shift = shift, ring = ring >= 0.5, mix = mix))))))

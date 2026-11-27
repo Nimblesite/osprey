@@ -1,5 +1,7 @@
 namespace registry_api;
 import registry::Bytes
+import registry::Maybe
+import registry_host::Host
 
 /// The hosted-request admission gate, evaluated in the order required by
 /// [PACKAGE-HOSTED-EDGE]: parse headers, check the edge secret, then the
@@ -16,14 +18,17 @@ module HostedRequest {
     let bodyStatus = 413
     let uriTooLong = 414
     let misdirected = 421
+    export let maxOverlapSeconds = 900
 
     /// The raw request as received from the ingress chain.
     export type Incoming = { method: string, uri: string, headerBlock: string, body: string }
 
+    export type EdgeSecretOverlap = { secret: string, expiresAtUnixSeconds: int }
+
     /// The environment policy every request is admitted against.
     export type Policy = {
         allowedOrigin: string, allowedHost: string, edgeSecret: string,
-        cookieName: string, csrfToken: string, maxBody: int
+        edgeSecretOverlap: Maybe::Maybe<EdgeSecretOverlap>, cookieName: string, csrfToken: string, maxBody: int
     }
 
     /// The admitted request echoed back by the gate.
@@ -38,14 +43,33 @@ module HostedRequest {
 
     fn rejected(status, code) = HostedHeaders::Reject { status: status, code: code }
     fn stop(status, code) = Stop { verdict: rejected(status, code) }
-    fn admitted(method, uri, body) = HostedHeaders::Ok { value: Admission { method: method, uri: uri, body: body } }
+    fn admitted(request: Incoming) = HostedHeaders::Ok { value: Admission { method: request.method, uri: request.uri, body: request.body } }
+
+    fn withinOverlap(expiry) = match Host::utcSeconds() {
+        Success { value } => value >= expiry - maxOverlapSeconds && value < expiry
+        Error => false
+    }
+
+    fn overlapping(expected, previous: EdgeSecretOverlap, presented) = {
+        // Evaluate both comparisons before selecting the matching credential.
+        let active = if Bytes::equalToken(expected, presented) { 1 } else { 0 }
+        let retiring = if Bytes::equalToken(previous.secret, presented) { 2 } else { 0 }
+        match active + retiring {
+            1 => true
+            2 => withinOverlap(previous.expiresAtUnixSeconds)
+            _ => false
+        }
+    }
+
+    fn matches(policy, secret) = policy.edgeSecret != "" && match policy.edgeSecretOverlap {
+        Maybe::Present { value } => overlapping(policy.edgeSecret, value, secret)
+        _ => Bytes::equalToken(policy.edgeSecret, secret)
+    }
 
     /// The edge secret first, before routing, auth parsing or body work.
-    /// Ordinary equality here; a constant-time comparison primitive belongs
-    /// to the native runtime adapter, not this pure module.
     fn edgeStage(headers, policy) = match HostedHeaders::find(headers, "x-edge-secret") {
         Success { value } => {
-            if value == policy.edgeSecret { Pass } else { stop(forbidden, "req.edge-secret") }
+            if matches(policy, value) { Pass } else { stop(forbidden, "req.edge-secret") }
         }
         Error => stop(forbidden, "req.edge-secret")
     }
@@ -57,7 +81,7 @@ module HostedRequest {
         Error => stop(misdirected, "req.host")
     }
 
-    fn methodStage(method) = if listContains(allowedMethods, toUpperCase(method)) { Pass } else { stop(methodStatus, "req.method") }
+    fn methodStage(method) = if listContains(allowedMethods, method) { Pass } else { stop(methodStatus, "req.method") }
 
     fn uriByte(b) = b >= 33 && b < 127 && b != 92
     fn uriBytesOk(uri) = Bytes::everyByte(uri, uriByte)
@@ -68,44 +92,52 @@ module HostedRequest {
 
     fn digits(s) = byteLength(s) > 0 && Bytes::everyByte(s, Bytes::isDigit)
 
-    fn lengthHeaderOk(headers, body, maxBody) = match HostedHeaders::find(headers, "content-length") {
+    fn lengthHeaderOk(headers, body) = match HostedHeaders::find(headers, "content-length") {
         Error => true
-        Success { value } => digits(value) && byteLength(body) <= maxBody
+        Success { value } => digits(value) && (parseInt(value) ?: -1) == byteLength(body)
     }
 
     fn bodyStage(headers, incoming, policy) = if byteLength(incoming.body) > policy.maxBody { stop(bodyStatus, "req.body-size") }
-        else if !lengthHeaderOk(headers, incoming.body, policy.maxBody) { stop(badRequest, "req.content-length") }
+        else if !lengthHeaderOk(headers, incoming.body) { stop(badRequest, "req.content-length") }
         else { Pass }
 
     /// Credentialed requests: a present session cookie forces the exact
     /// website origin, and mutations additionally force the CSRF token.
     /// Bearer-only requests carry no cookie and skip the browser challenge.
-    fn credentialGate(headers, policy, method) = match HostedHeaders::find(headers, "cookie") {
-        Error => admitted(method, "", "")
+    fn checkOrigin(headers, policy, request) = match HostedHeaders::find(headers, "origin") {
+        Success { value } => if toLowerCase(value) != toLowerCase(policy.allowedOrigin) {
+            rejected(forbidden, "req.origin-mismatch")
+        } else { credentialGate(headers, policy, request) }
+        Error => credentialGate(headers, policy, request)
+    }
+
+    fn credentialGate(headers, policy, request) = match HostedHeaders::find(headers, "cookie") {
+        Error => admitted(request)
         Success { value } => {
             let cookie = value
             let selection = HostedCookies::select(cookie, policy.cookieName)
             if HostedCookies::statusOf(selection) != 0 { rejected(HostedCookies::statusOf(selection), HostedCookies::codeOf(selection)) }
-            else if HostedCookies::foundValue(selection) == "" { admitted(method, "", "") }
-            else { originChain(headers, policy, method) }
+            else if HostedCookies::foundValue(selection) == "" { admitted(request) }
+            else { originChain(headers, policy, request) }
         }
     }
 
-    fn originChain(headers, policy, method) = {
-        let origin = HostedOrigin::check((HostedHeaders::find(headers, "origin") ?: ""), policy.allowedOrigin, method)
+    fn originChain(headers, policy, request) = {
+        let origin = HostedOrigin::check((HostedHeaders::find(headers, "origin") ?: ""), policy.allowedOrigin, request.method)
         if !HostedHeaders::isOk(origin) { rejected(HostedHeaders::statusOf(origin), HostedHeaders::codeOf(origin)) }
-        else { csrfChain(headers, policy, method) }
+        else { csrfChain(headers, policy, request) }
     }
 
-    fn csrfChain(headers, policy, method) = {
+    fn csrfChain(headers, policy, request) = {
         let token = HostedOrigin::csrf((HostedHeaders::find(headers, "x-csrf-token") ?: ""), policy.csrfToken)
-        if !listContains(mutationMethods, toUpperCase(method)) || HostedHeaders::isOk(token) { admitted(method, "", "") }
+        if !listContains(mutationMethods, toUpperCase(request.method)) || HostedHeaders::isOk(token) { admitted(request) }
         else { rejected(HostedHeaders::statusOf(token), HostedHeaders::codeOf(token)) }
     }
 
     /// The full admission decision for one raw request against one policy.
-    export fn admit(incoming, policy) = {
-        let parsed = HostedHeaders::parse(incoming.headerBlock)
+    export fn admit(incoming, policy) = admitParsed(HostedHeaders::parse(incoming.headerBlock), incoming, policy)
+
+    export fn admitParsed(parsed, incoming, policy) = {
         if !HostedHeaders::isOk(parsed) { rejected(HostedHeaders::statusOf(parsed), HostedHeaders::codeOf(parsed)) }
         else { stages(HostedHeaders::headers(parsed), incoming, policy) }
     }
@@ -115,7 +147,7 @@ module HostedRequest {
             Pass => match methodStage(incoming.method) {
                 Pass => match uriStage(incoming.uri) {
                     Pass => match bodyStage(headers, incoming, policy) {
-                        Pass => credentialGate(headers, policy, incoming.method)
+                        Pass => checkOrigin(headers, policy, incoming)
                         Stop { verdict } => verdict
                     }
                     Stop { verdict } => verdict

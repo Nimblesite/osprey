@@ -1,6 +1,6 @@
 # Prism device designs [DEVICE]
 
-Designs for the reference Prism device and its face in Prism. See [Prism device hardware](../../specs/synth/PrismDeviceHardware.md), the [Instrument builder](../../specs/synth/PrismInstrument.md) and the [typed device model](device.td).
+Designs for the reference Prism device and its face in Prism. See [Prism device hardware](../../specs/synth/Perception.md#perception-device-hardware-device-hw), the [Instrument builder](../../specs/synth/Perception.md#instrument-builder-prism-instrument) and the [typed device model](device.td).
 
 ## Top panel [DEVICE-HW-CONTROLS]
 

@@ -1,0 +1,212 @@
+{
+  "name": "Perception Studio",
+  "shortName": "Perception",
+  "tagline": "Modular synth DAW, VST3 plug-in & host, and hardware synth factory.",
+  "description": "Perception Studio: modular synth DAW, VST3 plug-in and host (patch third-party VST3s as modules), granular and spectral engines, mathematically proven DSP, and hardware synth factory.",
+  "sampleRate": "48 kHz",
+  "channels": "DAW + VST3",
+  "nav": [
+    { "label": "Studio", "href": "/" },
+    {
+      "label": "Learn",
+      "href": "/learn/",
+      "children": [
+        { "label": "Tutorials & Videos", "href": "/learn/", "desc": "Guides and walkthroughs" },
+        { "label": "Modules", "href": "/learn/modules/", "desc": "37 DSP modules & voices" },
+        { "label": "Proofs & Hardware", "href": "/learn/proofs/", "desc": "Lean DSP proofs & hardware factory" },
+        { "label": "Example Tracks", "href": "/learn/tracks/", "desc": "Hand-composed projects & routing" }
+      ]
+    },
+    { "label": "Blog", "href": "/blog/" }
+  ],
+  "tutorials": [
+    {
+      "tag": "Tutorial · 6 min",
+      "title": "Build your first waveguide pluck & sidechain bus",
+      "summary": "Wire an exciter, strike comb, waveguide string, and modulated lowpass, then tap an internal outlet into a kick-keyed stereo bus.",
+      "href": "/learn/modules/"
+    },
+    {
+      "tag": "Video · 8 min",
+      "title": "16-voice granular clouds & formant-preserving FFT pitch",
+      "summary": "Load a 48 kHz WAV into grainCloud, sweep reverse playback rate and jitter, and blend a fifth with the spectral pitch shifter.",
+      "href": "/learn/tracks/"
+    },
+    {
+      "tag": "Video · 5 min",
+      "title": "Drop Perception Studio into Ableton & Reaper as a VST3",
+      "summary": "Load Perception as an instrument or effect plug-in, map macro controls, and flash the exact same patch to a hardware pedal profile.",
+      "href": "/learn/proofs/"
+    }
+  ],
+  "views": [
+    {
+      "id": "patch",
+      "label": "Track patch",
+      "caption": "Unlimited modular routing — audio cables, dashed LFO modulation, live oscilloscope, and isolated VST3 nodes.",
+      "image": "/screens/track-patch.png",
+      "alt": "Perception Track Patch view showing connected DSP modules, glowing orange audio cables, and live oscilloscope"
+    },
+    {
+      "id": "timeline",
+      "label": "Timeline",
+      "caption": "Standalone DAW timeline — 17 tracks, piano roll with velocity lanes, and instant patch editing.",
+      "image": "/screens/timeline.png",
+      "alt": "Perception Timeline view showing 17-track arrangement, piano roll with note velocities, and Track Inspector"
+    },
+    {
+      "id": "mix",
+      "label": "Bus routing",
+      "caption": "Nested stereo buses, parallel outlet sends, Space returns, and sidechain compression.",
+      "image": "/screens/mix.png",
+      "alt": "Perception Bus Routing view showing track routing table, orthogonal signal flow graph, and Bus Inspector"
+    }
+  ],
+  "posts": [
+    {
+      "slug": "unlimited-routing",
+      "url": "/blog/unlimited-routing/",
+      "title": "Unlimited Signal Routing: Tapping Any Outlet Into Any Bus",
+      "date": "2026-11-24",
+      "readTime": "4 min read",
+      "tag": "Routing",
+      "image": "/assets/blog-routing.jpg",
+      "alt": "Dark indigo modular synth patch bay with glowing orange signal cables and lavender modulation arcs",
+      "summary": "Why fixed channel strips choke sound design — and how Perception lets you tap internal module outlets straight into sidechained stereo buses."
+    },
+    {
+      "slug": "proven-dsp",
+      "url": "/blog/proven-dsp/",
+      "title": "Mathematically Proven DSP: Machine-Checked Waveguides & FFTs",
+      "date": "2026-11-18",
+      "readTime": "5 min read",
+      "tag": "DSP Proofs",
+      "image": "/assets/blog-proofs.jpg",
+      "alt": "Precision dark indigo oscilloscope grid with cyan harmonic spectra and glowing orange traveling wave curves",
+      "summary": "From allpass unit magnitude to weighted overlap-add and antiderivative anti-aliasing: every core formula carries a Lean proof that fails if mutated."
+    },
+    {
+      "slug": "hardware-synth-factory",
+      "url": "/blog/hardware-synth-factory/",
+      "title": "From Patch to Pedal: Perception as a Hardware Synth Factory",
+      "date": "2026-11-11",
+      "readTime": "4 min read",
+      "tag": "Hardware",
+      "image": "/assets/blog-hardware.svg",
+      "alt": "Matte dark-indigo desktop synthesizer hardware box with glowing orange rotary encoders and cyan OLED waveform display",
+      "summary": "Bind your modular patch to a typed hardware profile and run the exact same DSP engine on a dedicated Raspberry Pi 5 pedal or desktop synth."
+    }
+  ],
+  "gallery": [
+    {
+      "title": "Silt Relay — Undertow Bus",
+      "tag": "Sidechain Bus",
+      "image": "/screens/silt-relay.png",
+      "caption": "Kick-keyed Undertow bus ducking the sub at 138 BPM."
+    },
+    {
+      "title": "Rivet Pulse — Parallel Outlet Taps",
+      "tag": "Unlimited Routing",
+      "image": "/screens/silt-rivet.png",
+      "caption": "Dry path through Objects, 6% channel-swap tap into Undertow, and 19% Space send."
+    },
+    {
+      "title": "Glass Pins — Formant-Preserved FFT",
+      "tag": "Spectral",
+      "image": "/screens/silt-pin-bed.png",
+      "caption": "FFT pitch shifter mixing a perfect fifth at 22% wet across dual buses."
+    },
+    {
+      "title": "Nested Bus Outputs",
+      "tag": "Group Graph",
+      "image": "/screens/bus-outputs.png",
+      "caption": "Route stereo groups into groups with automatic cycle detection."
+    },
+    {
+      "title": "Patch Sends Inspector",
+      "tag": "Outlet Taps",
+      "image": "/screens/patch-sends.png",
+      "caption": "Tap any module outlet mid-patch without touching the dry chain."
+    },
+    {
+      "title": "Direct Piano Roll",
+      "tag": "Timeline",
+      "image": "/screens/dragged-note.png",
+      "caption": "Drag pitch, length, and velocity with immediate numeric readouts."
+    }
+  ],
+  "instruments": [
+    {
+      "kind": "PatchInstrument",
+      "category": "modular",
+      "summary": "Per-note modular DSP graph with Constant, Pitched, and Struck followers.",
+      "controls": "Unlimited nodes & cables · attack · release · VST3 nodes",
+      "ports": "MIDI In → Arbitrary DSP Graph → Mono / Stereo Out + Parallel Bus Sends",
+      "details": "Wire any of Perception Studio's 37+ typed DSP components and isolated VST3 workers into a per-note signal graph. Parameters can hold constant values, track note frequency (Pitched), or scale with velocity (Struck)."
+    },
+    {
+      "kind": "GrainCloud",
+      "category": "spectral",
+      "summary": "16-voice stereo granular instrument with WAV import, freeze, and reverse.",
+      "controls": "position · rate (-4×..4×) · duration · pan · onset · jitter",
+      "ports": "WAV Source (8–192 kHz, ≤ 8 MiB) → Stereo Out",
+      "details": "Imports little-endian RIFF/WAVE files (8/16/24/32-bit PCM or float32), averages to mono with middle C root, and spawns up to 16 overlapping grains. Zero rate freezes position; negative rate plays in reverse."
+    },
+    {
+      "kind": "SpectralShifter",
+      "category": "spectral",
+      "summary": "Formant-preserving FFT pitch shifter and two-source spectral morphing.",
+      "controls": "semitones · wet/dry · morph · phase-locked freeze",
+      "ports": "Audio In (+ Side Source) → Spectral STFT → Audio Out",
+      "details": "Backed by Lean-verified weighted overlap-add and radix-2 FFT proofs. Shifts pitch while preserving vocal and metallic formants, or freezes the final spectrum of a phrase to sustain it at new pitches."
+    },
+    {
+      "kind": "PluckInstrument",
+      "category": "physical",
+      "summary": "Waveguide string excited by a single-period noise burst, damped on release.",
+      "controls": "brightness (0–1) · decay (s)",
+      "ports": "Exciters → Waveguides → Audio Out",
+      "details": "Models a plucked string with a fractional-delay waveguide backed by travelingWavePropagation. Released notes damp cleanly to a 0.12 s decay and ring 0.3 s past the gate."
+    },
+    {
+      "kind": "BowInstrument",
+      "category": "physical",
+      "summary": "Bowed string model with gated bow velocity and fading 5.4 Hz vibrato.",
+      "controls": "pressure · brightness · vibrato (0–0.02)",
+      "ports": "Gate → BowedStrings → Audio Out",
+      "details": "Continuous stick-slip physical string with 80 ms attack / 100 ms release bow velocity envelopes and natural 5.4 Hz vibrato fade-in."
+    },
+    {
+      "kind": "BellInstrument",
+      "category": "physical",
+      "summary": "Eight coupled modal resonators tuned to harmonic bell ratios.",
+      "controls": "decay (s) · brightness (0–1)",
+      "ports": "Impulse → ModalBanks (8 modes) → Audio Out",
+      "details": "Single-impulse excitation driving eight resonant bell modes that ring naturally for the full decay duration regardless of note gate length."
+    },
+    {
+      "kind": "MalletInstrument",
+      "category": "physical",
+      "summary": "Eight bar-mode resonators for marimba, vibraphone, and metallic percussion.",
+      "controls": "decay (s) · brightness (0–1)",
+      "ports": "Impulse → ModalBanks (bar ratios) → Audio Out",
+      "details": "Tuned to physical bar-mode overtone ratios for wooden marimba, metallic vibraphone, and percussive chimes."
+    },
+    {
+      "kind": "OperatorInstrument",
+      "category": "synth",
+      "summary": "Dual detuned phase-distortion operators with smooth sine bloom.",
+      "controls": "breakpoint · feedback · attack · release · bloom · detune",
+      "ports": "2× PhaseOperators → Stereo Out",
+      "details": "Two phase-distortion oscillators detuned symmetrically in cents whose breakpoint eases smoothly toward a pure sine over the bloom duration."
+    },
+    {
+      "kind": "DrumInstrument",
+      "category": "percussion",
+      "summary": "Pitch-swept sine body layered with a coloured noise burst.",
+      "controls": "sweep (0–8) · noise · colour · decay (≤ 1 s)",
+      "ports": "PhaseOperators + Exciters → Audio Out",
+      "details": "Combines a pitch-dropping sine sub body with a filterable noise burst (0 = white, 1 = dark) for tight kicks, snares, and percussive hits."
+    }
+  ]
+}

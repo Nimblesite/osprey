@@ -140,7 +140,8 @@ jobs:
         run: npm ci
         working-directory: ./src/toolchain/vscode-extension
 
-      - name: Install jq and the wasm toolchain
+      - &install-wasi-sdk
+        name: Install jq and the wasm toolchain
         run: |
           set -euo pipefail
           sudo apt-get install -y jq lld wabt
@@ -218,6 +219,19 @@ jobs:
           if-no-files-found: error
 
   # Every static check, beside the build: a lint never holds up a suite.
+  # Duplication is measured over website source too, so a website-only change
+  # must not skip it: Format & Analyse runs only when code changed (#232).
+  deslop:
+    name: Duplication
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' || needs.changes.outputs.website == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - name: Deslop duplication gate
+        run: make _deslop
+
   analyse:
     name: Format & Analyse
     needs: changes
@@ -273,6 +287,11 @@ jobs:
       - name: Dead-code gate intact
         run: node scripts/ci/verify-no-dead-code.mjs
 
+      - name: Coverage thresholds only go up
+        run: |
+          git fetch --no-tags --depth=1 origin main
+          node scripts/ci/verify-threshold-ratchet.mjs FETCH_HEAD
+
       - name: Package licence bundles intact
         run: node scripts/packages/verify-package-licenses.mjs
 
@@ -305,8 +324,6 @@ jobs:
         working-directory: ./src/toolchain/vscode-extension
 
       # The local and hosted gates use the same pinned scanner and threshold.
-      - name: Deslop duplication gate
-        run: make _deslop
 
       # Dead-code gate: fail if any `pub` declaration is unreachable from the
       # osprey binary (hawk::dead_public). cargo-hawk's prebuilt driver runs
@@ -339,6 +356,49 @@ jobs:
         run: chmod +x target/release/osprey
       - name: Every Osprey program compiles
         run: make _check_programs
+
+  build-registry-hosted:
+    name: Build hosted registry test artifacts
+    needs: [changes, build]
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: osprey-build
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+      - *install-wasi-sdk
+      - &install-wasmtime
+        name: Install pinned Wasmtime
+        env:
+          WASMTIME_VERSION: "27.0.0"
+          WASMTIME_SHA256: "74678f6ec49d8b858ca5181d5492b967245f6c072b5763ea14a75eee1ad3c2d7"
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 --retry-max-time 60 -o /tmp/wasmtime.tar.xz \
+            "https://github.com/bytecodealliance/wasmtime/releases/download/v${WASMTIME_VERSION}/wasmtime-v${WASMTIME_VERSION}-x86_64-linux.tar.xz"
+          echo "${WASMTIME_SHA256}  /tmp/wasmtime.tar.xz" | sha256sum --check
+          sudo mkdir -p /opt/wasmtime
+          sudo tar -xJf /tmp/wasmtime.tar.xz -C /opt/wasmtime --strip-components=1
+          echo "/opt/wasmtime" >> "$GITHUB_PATH"
+      - name: Build the packaged site and pinned migration tool
+        run: |
+          chmod +x target/release/osprey
+          make -C src/osprey/packages registry-website-fixture registry-migration-tool REGISTRY_WEBSITE_RUNTIME=
+      - uses: actions/upload-artifact@v7
+        with:
+          name: registry-hosted-fixture
+          path: |
+            target/registry-site-build/hosted-fixture/
+            target/registry-tools/*/bin/
+          retention-days: 1
+          if-no-files-found: error
 
   # ═══ STAGE 3 ════════════════════════════════════════════════════════════════
   # Every suite, in parallel, each instrumented. None of these rebuilds the
@@ -376,24 +436,8 @@ jobs:
       # runner happens to carry. fiber_lifetime runs its wasm32 cases under
       # wasmtime, measuring the host's peak [CONCURRENCY-WASM], so the pinned
       # host is installed and checksummed too.
-      - name: Install the wasm toolchain
-        env:
-          WASMTIME_VERSION: "27.0.0"
-          WASMTIME_SHA256: "74678f6ec49d8b858ca5181d5492b967245f6c072b5763ea14a75eee1ad3c2d7"
-        run: |
-          set -euo pipefail
-          sudo apt-get install -y lld wabt
-          curl -fsSL --retry 3 --retry-max-time 60 -o /tmp/wasi-sysroot.tar.gz \
-            "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${WASI_SDK_VERSION}/wasi-sysroot-${WASI_SDK_VERSION}.0.tar.gz"
-          sudo mkdir -p /opt/wasi-sdk/share/wasi-sysroot
-          sudo tar -xzf /tmp/wasi-sysroot.tar.gz -C /opt/wasi-sdk/share/wasi-sysroot --strip-components=1
-          echo "OSPREY_WASI_SYSROOT=/opt/wasi-sdk/share/wasi-sysroot" >> "$GITHUB_ENV"
-          curl -fsSL --retry 3 --retry-max-time 60 -o /tmp/wasmtime.tar.xz \
-            "https://github.com/bytecodealliance/wasmtime/releases/download/v${WASMTIME_VERSION}/wasmtime-v${WASMTIME_VERSION}-x86_64-linux.tar.xz"
-          echo "${WASMTIME_SHA256}  /tmp/wasmtime.tar.xz" | sha256sum --check
-          sudo mkdir -p /opt/wasmtime
-          sudo tar -xJf /tmp/wasmtime.tar.xz -C /opt/wasmtime --strip-components=1
-          echo "/opt/wasmtime" >> "$GITHUB_PATH"
+      - *install-wasi-sdk
+      - *install-wasmtime
 
       - uses: actions/download-artifact@v8
         with:
@@ -524,6 +568,43 @@ jobs:
       - name: Package manager security and integration suites
         run: make _test_registry REGISTRY_MEMORY=arc
 
+  test-registry-hosted:
+    name: "Tests: hosted registry (PostgreSQL and Chromium)"
+    needs: [changes, build, build-registry-hosted]
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: osprey-build
+      - uses: actions/download-artifact@v8
+        with:
+          name: registry-hosted-fixture
+          path: target
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: src/toolchain/website/package-lock.json
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+      - name: Install the locked browser harness
+        working-directory: src/toolchain/website
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Replay migrations and exercise the packaged catalog and account flows
+        run: |
+          chmod +x target/release/osprey
+          export PATH="/usr/lib/postgresql/16/bin:$PATH"
+          test -x /usr/lib/postgresql/16/bin/postgres
+          make -C src/osprey/packages registry-integration-verify
+
   test-python-app-ports:
     name: "Tests: Python application ports"
     needs: [changes, build]
@@ -544,6 +625,51 @@ jobs:
       - name: Python application ports under every memory backend
         run: make _test_python_app_ports
 
+  # [FLAVOR-PYTHON-GPU] The Python-flavor GPT-2 generator prints the Default generator's bytes on
+  # every surface the runner has (the GPU kernels on the host, host lists). The Rust test is
+  # #[ignore]d because it needs the published 124M checkpoint, so no Rust shard runs it; this job
+  # restores the checkpoint from cache, downloads it once on a miss, and runs the test by name
+  # against the release binary Build staged: `--release` makes the binary the test spawns
+  # (CARGO_BIN_EXE_osprey) target/release/osprey. Issue #366. The device legs (Metal, OpenCL) need
+  # GPU hardware this runner lacks and run on a macOS host by hand; the host legs are what CI proves.
+  test-gpt2-parity:
+    name: "Tests: GPT-2 cross-flavor parity"
+    needs: [changes, build]
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - name: Setup Osprey toolchain (no rebuild)
+        uses: ./.github/actions/setup-osprey-compiler
+        with:
+          build: "false"
+      - uses: actions/download-artifact@v8
+        with:
+          name: osprey-build
+      - name: Restore artifact permissions
+        run: chmod +x target/release/osprey
+      # About 550 MB from huggingface.co. The key is the recipe that downloads the checkpoint, so a
+      # changed source or file list is a new entry and a stale one is never restored. The entry is
+      # saved only after the download succeeded, so a partial file is never cached.
+      - name: Restore the GPT-2 checkpoint
+        id: gpt2-weights
+        uses: actions/cache/restore@v6
+        with:
+          path: src/osprey/examples/llms/gpt2/weights
+          key: gpt2-weights-${{ runner.os }}-${{ hashFiles('scripts/make/apps.mk') }}
+      - name: Download the GPT-2 checkpoint
+        if: steps.gpt2-weights.outputs.cache-hit != 'true'
+        run: make _gpt2_weights
+      - name: Save the GPT-2 checkpoint
+        if: steps.gpt2-weights.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: src/osprey/examples/llms/gpt2/weights
+          key: ${{ steps.gpt2-weights.outputs.cache-primary-key }}
+      - name: Python-flavor generator parity with the Default generator
+        run: make _test_gpt2_parity
+
   # The assertion corpus, once per memory backend. `run_test_corpus.sh` checks
   # BOTH the in-language assertions and the byte-exact stdout golden in a
   # single pass, and comparing one golden across every backend is the
@@ -560,7 +686,8 @@ jobs:
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v7
-      - name: Setup Osprey toolchain (no rebuild)
+      - &setup-osprey-no-rebuild
+        name: Setup Osprey toolchain (no rebuild)
         uses: ./.github/actions/setup-osprey-compiler
         with:
           build: "false"
@@ -963,7 +1090,8 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - name: Install the WebAssembly toolchain
+      - &install-wasm-toolchain
+        name: Install the WebAssembly toolchain
         run: |
           set -euo pipefail
           sudo apt-get update
@@ -976,13 +1104,16 @@ jobs:
           echo "OSPREY_WASI_SYSROOT=/opt/wasi-sdk/share/wasi-sysroot" >> "$GITHUB_ENV"
           wasm-ld --version
 
-      - uses: actions/download-artifact@v8
+      - &download-osprey-build
+        uses: actions/download-artifact@v8
         with:
           name: osprey-build
-      - name: Restore artifact permissions
+      - &restore-osprey-permissions
+        name: Restore artifact permissions
         run: chmod +x target/release/osprey
 
-      - name: Build the wasm runtime archive
+      - &build-wasm-runtime
+        name: Build the wasm runtime archive
         run: make _runtime_wasm
 
       - name: Compile, validate and smoke-run the examples
@@ -1010,6 +1141,47 @@ jobs:
 
       - name: WebAssembly differential — whole src/osprey/tests/ corpus vs the native goldens
         run: make _test_wasm_goldens
+
+  # Every documentation example compiled to wasm32 and held to its stated
+  # output under Node's WASI host: the doctest half of the wasm corpus, run
+  # beside test-wasm so each half fits its timeout. [DOC-DOCTEST-HARNESS]
+  test-wasm-doctests:
+    name: "Tests: WebAssembly documentation examples (wasm32-wasip1)"
+    needs: [changes, build]
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - *install-wasm-toolchain
+      - *download-osprey-build
+      - *restore-osprey-permissions
+      - *build-wasm-runtime
+      - name: WebAssembly documentation examples
+        run: make _test_wasm_doctests
+
+  # Every documentation example under each native memory backend, beside the
+  # corpus jobs so each half fits its timeout. [DOC-DOCTEST-HARNESS]
+  test-doctests:
+    name: "Tests: documentation examples (${{ matrix.memory }})"
+    strategy:
+      fail-fast: false
+      matrix:
+        memory: [gc, arc]
+    needs: [changes, build]
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v7
+      - *setup-osprey-no-rebuild
+      - *download-osprey-build
+      - *restore-osprey-permissions
+      - name: Documentation examples
+        run: make _doctests-${{ matrix.memory }}
 
   # Builds the site and runs the Playwright suite: every page template at three
   # breakpoints (no JS errors, no horizontal overflow, dark theme, chrome
@@ -1634,13 +1806,17 @@ jobs:
       - changes
       - build
       - build-macos
+      - build-registry-hosted
+      - deslop
       - analyse
       - check-programs
       - test-rust
       - test-packages
       - test-registry-gc
       - test-registry-arc
+      - test-registry-hosted
       - test-python-app-ports
+      - test-gpt2-parity
       - test-corpus-gc
       - test-instructions
       - test-corpus-arc
@@ -1650,6 +1826,8 @@ jobs:
       - test-c-runtime
       - test-extension
       - test-wasm
+      - test-wasm-doctests
+      - test-doctests
       - test-website
       - test-integration
       - test-android

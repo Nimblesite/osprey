@@ -418,6 +418,6 @@ fn normalize_type_token(token: &str, binders: &[TypeParam]) -> String {
         .position(|binder| binder.name == name)
         .map_or_else(
             || token.to_string(),
-            |index| format!("${index}{}", &token[name.len()..]),
+            |index| format!("${index}{}", token.get(name.len()..).unwrap_or_default()),
         )
 }

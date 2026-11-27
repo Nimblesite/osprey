@@ -88,7 +88,7 @@
     {
       "id": "project-messaging",
       "kind": "editorial-authority",
-      "path": "../messaging.md",
+      "path": "../messaging/osprey.md",
       "use": "practicality, safety, performance, elegance, and claim qualifications"
     },
     {
@@ -190,8 +190,8 @@
     {
       "id": "structured-concurrency-delivery",
       "kind": "repository-authority",
-      "path": "../plans/0026-structured-concurrency.md",
-      "use": "Distinguish planned scopes, cancellation, deadlines, and join from the current native fiber runtime"
+      "path": "../plans/0016-algebraic-effects-and-handlers.md",
+      "use": "Distinguish planned scopes, cancellation, deadlines, and join (the plan's structured-concurrency section) from the current native fiber runtime"
     }
   ]
 }

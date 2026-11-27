@@ -36,6 +36,9 @@ test("specification links resolve across subject folders and duplicate URLs are 
   const root = path.resolve("../../../docs/specs");
   const file = path.join(root, "platforms/0038-iOSTarget.md");
   const compiler = path.join(root, "compiler/iOSCodegen.md");
+  const registry = pagesFrom([{ file: path.join(root, "ecosystem/0031-PackageDomainModel.md"), section: {} }])[0];
+  const schema = fs.readFileSync(path.resolve("../schemas/package-registry.td"), "utf8").trimEnd();
+  expect(registry.content.split("```typediagram\n")[1].split("\n```")[0]).toBe(schema);
   const pages = new Map([[compiler, { permalink: "/spec/ioscodegen/" }]]);
   expect(resolveLink("../compiler/iOSCodegen.md#ios-host-abi", file, pages)).toBe("/spec/ioscodegen/#ios-host-abi");
   expect(resolveLink("../README.md", file, pages)).toBe("/spec/");

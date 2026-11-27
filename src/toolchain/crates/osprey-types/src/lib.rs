@@ -77,6 +77,7 @@ mod generics_variance_shape_tests;
 mod generics_variance_tests;
 mod handler_scope;
 mod info;
+mod lint_level;
 mod many;
 pub use many::captured_effects;
 mod init_order;
@@ -148,6 +149,10 @@ pub use info::{
     CtorLayout, EffectRequirements, HandlerSite, Named, OpType, PerformSite, ProgramTypes,
     SiteTable, Typed,
 };
+pub use lint_level::{
+    LintLevel, LintLevels, LINT_RULES, MODULE_DEEP_HIERARCHY, NAMESPACE_FOLDER_DRIFT,
+    NAMESPACE_REVERSE_DOMAIN, STATE_BOUNDARY, UNUSED_IMPORT,
+};
 pub use redundant::{
     redundant_annotation_sites, redundant_annotation_sites_for, redundant_annotation_sites_where,
     redundant_annotations, redundant_annotations_where, RedundantAnnotation, RedundantTarget,
@@ -157,7 +162,7 @@ pub use repeated_literal::{repeated_literals, REPEATED_LITERAL};
 pub use source_warnings::source_warnings;
 pub use staging::{lower_static_checked, signal_dependencies};
 pub use ty::{has_type_var, names, render_with_holes, with_constraints, Scheme, Type, VarId, HOLE};
-pub use undocumented::{documentation_warnings, is_info, UNDOCUMENTED_EXPORT, UNEXAMPLED_EXPORT};
+pub use undocumented::{documentation_warnings, UNDOCUMENTED_EXPORT, UNEXAMPLED_EXPORT};
 pub use unused::{checked_method_reads, unused_symbols, UnusedKind, UnusedSymbol};
 pub use unused_private::{unused_privates, UNUSED_PRIVATE};
 #[cfg(test)]

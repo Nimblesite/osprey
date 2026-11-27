@@ -26,6 +26,8 @@ APP = "CC1AD845"
 NS = "urn:x-cast:com.google.cast."
 """The prefix every CAST v2 namespace shares."""
 FINISHED = ["FINISHED", "ERROR", "CANCELLED", "INTERRUPTED"]
+REQUEST_ID = ", \"requestId\": "
+"""The JSON member every request closes with, before its integer id."""
 
 
 class Message:
@@ -210,7 +212,7 @@ def pong():
 
 def launch(request_id):
     """LAUNCH the Default Media Receiver."""
-    return "{\"type\": \"LAUNCH\", \"appId\": " + quote(APP) + ", \"requestId\": " + toString(request_id) + "}"
+    return "{\"type\": \"LAUNCH\", \"appId\": " + quote(APP) + REQUEST_ID + toString(request_id) + "}"
 
 
 def get_status(request_id):
@@ -220,7 +222,7 @@ def get_status(request_id):
 
 def stop(session_id, request_id):
     """STOP one running application session."""
-    return "{\"type\": \"STOP\", \"sessionId\": " + quote(session_id) + ", \"requestId\": " + toString(request_id) + "}"
+    return "{\"type\": \"STOP\", \"sessionId\": " + quote(session_id) + REQUEST_ID + toString(request_id) + "}"
 
 
 def load(url, content_type, title, request_id):
@@ -234,7 +236,7 @@ def media(kind, media_session, extra, request_id):
     `STOP`, `SEEK` (extra `"currentTime": s`) or `SET_PLAYBACK_RATE` (extra
     `"playbackRate": r`). `extra` is "" or one more JSON member."""
     more = "" if extra == "" else ", " + extra
-    return "{\"type\": " + quote(kind) + ", \"mediaSessionId\": " + media_session + more + ", \"requestId\": " + toString(request_id) + "}"
+    return "{\"type\": " + quote(kind) + ", \"mediaSessionId\": " + media_session + more + REQUEST_ID + toString(request_id) + "}"
 
 
 def set_volume(level, request_id):

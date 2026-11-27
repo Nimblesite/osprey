@@ -147,7 +147,7 @@ module Extras
 
     (** "run and http requests encode their bounds, headers and slices (extra: a POST carries two headers and a body)". *)
     export runHttpRows () =
-        http = Requests::ask ("post:1", ui::Http(method = "POST", url = "https://example.test/submit", headers = [ui::Header(headerName = "Content-Type", headerValue = "application/json"), ui::Header(headerName = "Accept", headerValue = "text/plain")], body = "{\"a\":1}", responseLimit = 512, deadline = 45000, httpSlice = "work/post"))
+        http = Requests::ask ("post:1", ui::Http(method = "POST", url = "https://example.test/submit", headers = [ui::Header(headerName = "Content-Type", headerValue = "application/json"), ui::Header(headerName = "Accept", headerValue = "text/plain")], body = "{\"a\":1}", responseLimit = 512, deadline = 45000, responseSlice = "work/post"))
         expect (rowsOf http, "0/10/post:1;1/0/POST;2/0/https://example.test/submit;3/0/Content-Type;3/0/application/json;3/0/Accept;3/0/text/plain;4/0/{\"a\":1};5/512/;6/45000/;7/0/work/post")
         expect (rowsOf (runRequest true), "0/1/ps;1/0//bin/ps;2/0/-axo;2/0/pid=;3/10000/;4/8000000/;5/1/;6/0/work/run")
 
@@ -208,9 +208,9 @@ module Extras
         chosen = Machines::put (levelled, "selected", Values::text "three")
         expect (Machines::text (chosen, "selected"), "three")
         expect (Machines::textual (chosen, "level"), false)
-        opened = Machines::pull (chosen, ui::Fire(fireName = "toggleMenu"), Values::none ())
+        opened = realFire (chosen, "toggleMenu")
         expect (Machines::current (opened, "menu"), "open")
-        closed = Machines::pull (opened, ui::Fire(fireName = "toggleMenu"), Values::none ())
+        closed = realFire (opened, "toggleMenu")
         expect (Machines::current (closed, "menu"), "closed"))
 
     boundHolds (machine, probe) = expect (Machines::holds (machine, ui::Compared(comparedInput = "level", comparedBy = probe.by, comparedWith = Values::number probe.with)), probe.want)
@@ -234,7 +234,7 @@ module Extras
     export realPlayback () = Runtime::guarded (\() =>
         native = realSkinned (playerMachine (), "midnight")
         ready = Machines::feed (native, [Machines::fact ("receiver", Values::text "192.168.1.20:8009"), Machines::fact ("receiverName", Values::text "Living Room TV"), Machines::fact ("file", Values::text "/music/demo.mp3"), Machines::fact ("title", Values::text "Demo track")])
-        connecting = Machines::pull (ready, ui::Fire(fireName = "play"), Values::none ())
+        connecting = realFire (ready, "play")
         expect (length (Machines::requests connecting) > 0, true)
         fed = Machines::feed (Machines::taken connecting, [Machines::fact ("player", Values::text "PLAYING"), Machines::fact ("position", Values::number 25.0), Machines::fact ("duration", Values::number 100.0), Machines::fact ("volume", Values::number 0.5), Machines::fact ("rate", Values::number 1.5)])
         expect (nativeShows (fed, "00:25"), true)

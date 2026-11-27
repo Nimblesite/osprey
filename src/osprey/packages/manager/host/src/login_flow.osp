@@ -1,0 +1,28 @@
+namespace registry_host;
+import registry::Digests
+
+/// Browser-bound, one-use PKCE verifier storage [PACKAGE-HOSTED-AUTH].
+module LoginFlow {
+    fn insert(flowState, browser, envelope) = "INSERT INTO registry.pending_logins(state_digest,browser_digest,verifier_envelope,created_at) VALUES (${flowState},${browser},${envelope},statement_timestamp())"
+
+    fn consume(flowState, browser) = "DELETE FROM registry.pending_logins WHERE state_digest=${flowState} AND browser_digest=${browser} AND created_at <= statement_timestamp() AND created_at > statement_timestamp()-interval '10 minutes' RETURNING verifier_envelope"
+
+    export fn store() = insert("$1", "$2", "$3")
+    export fn claim() = consume("$1", "$2")
+
+    fn digest(value) = match Digests::parse(value) { Success => true Error => false }
+
+    fn scoped(flowState, browser, sql, values) = if digest(flowState) && digest(browser) {
+        Success { value: Database::loginScript(flowState, browser, sql, values) }
+    } else { Error { message: "auth.login-binding" } }
+
+    /// Only encrypted envelopes may cross the database transport boundary.
+    export fn storeScript(flowState, browser, envelope) = if byteLength(envelope) < 1 || byteLength(envelope) > 4096 {
+        Error { message: "auth.login-envelope" }
+    } else { scoped(flowState, browser, insert(Database::decoded(1), Database::decoded(2), Database::decoded(3)), [flowState, browser, envelope]) }
+
+    /// The callback receives an envelope only when this transaction consumes the matching row.
+    export fn claimScript(flowState, browser) = scoped(flowState, browser, consume(Database::decoded(1), Database::decoded(2)), [flowState, browser])
+    export fn save(flowState, browser, envelope) = andThen(storeScript(flowState, browser, envelope), Database::login)
+    export fn redeem(flowState, browser) = andThen(claimScript(flowState, browser), Database::login)
+}

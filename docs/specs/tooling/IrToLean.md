@@ -2,7 +2,7 @@
 
 The IR to Lean framework turns the LLVM IR the compiler emitted into a Lean value, gives that value an executable meaning, and proves theorems about it. The first user is `--memory=ownership`: the theorems say the emitted code frees what it owns exactly once. The design is meant to grow to every kind of IR the compiler emits.
 
-Status: in progress. [The plan](../../plans/ir-to-lean.md) lists what is built, what is measured and what is open. Nothing here is wired into the required `CI` check yet.
+Status: in progress. [The plan](../../plans/0041-dependent-types-and-mathlib.md#proofs-about-the-compilers-output-ir-lean) lists what is built, what is measured and what is open. Nothing here is wired into the required `CI` check yet.
 
 ## Pipeline [IR-LEAN-PIPELINE]
 

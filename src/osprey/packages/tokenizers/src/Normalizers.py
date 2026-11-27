@@ -26,22 +26,27 @@ class Norm:
 
 
 def empty_norm():
+    """An empty Norm: no codepoints, so no ranges."""
     return Norm(chars=[], starts=[], ends=[])
 
 
 def append_norm(cur, cp, s, e):
+    """A copy of the Norm `cur` with the codepoint `cp`, covering original bytes `[s, e)`, appended."""
     return Norm(chars=listAppend(cur.chars, cp), starts=listAppend(cur.starts, s), ends=listAppend(cur.ends, e))
 
 
 def char_at(n, i):
+    """Codepoint `i` of a Norm, or 0 past the end."""
     return unwrap_or(listGet(n.chars, i), 0)
 
 
 def start_at(n, i):
+    """The original byte offset codepoint `i` of a Norm starts at, or 0 past the end."""
     return unwrap_or(listGet(n.starts, i), 0)
 
 
 def end_at(n, i):
+    """The original byte offset codepoint `i` of a Norm ends at, or 0 past the end."""
     return unwrap_or(listGet(n.ends, i), 0)
 
 
@@ -178,7 +183,7 @@ class Aligned:
     pos: int
 
 
-def align_by_decomposition(n, cps) -> Norm:
+def align_by_decomposition(n, cps):
     owners = decomposition_owners(n.chars)
     return fold(range(len(cps)), Aligned(norm=empty_norm(), pos=0), lambda acc, j: align_char(n, owners, cps, acc, j)).norm
 

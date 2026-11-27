@@ -4,6 +4,12 @@
 namespace todo;
 
 
+/// The ids of the four items `retryFourItems` seeds.
+let fourItemIds = [1, 2, 3, 4]
+
+/// The ids of the seven items `retrySevenItems` seeds.
+let sevenItemIds = [1, 2, 3, 4, 5, 6, 7]
+
 module MultishotRetryItemsCases {
     /// CreateItem: rivals only burn list ids, so the item id is the seed
     /// count plus one whatever the rival count, and a lost attempt's row is
@@ -28,14 +34,14 @@ module MultishotRetryItemsCases {
             TodoItem { id: 4, listId: 1, title: "Nails", note: "", priority: LevelNone, done: false })
         expect(TodoHarness::failures("item ids follow the seed count; lost rows are restored; refusals burn no rival", listConcat([
             structuralEquals(calm.items, landed),
-            retryTitlesAre(calm, ["Shopping", "Banking"]),
-            retryItemIdsAre(twice, [1, 2, 3, 4]),
-            retryStoredAs(twice, ["Shopping", "Banking", "X", "Y"], [1, 2, 3, 4]),
-            retryItemsKept(lost), retryIdsAre(lost, [1, 2, 3, 4, 5]),
+            retryTitlesAre(calm, seedTitles),
+            retryItemIdsAre(twice, fourItemIds),
+            retryStoredAs(twice, ["Shopping", "Banking", "X", "Y"], fourItemIds),
+            retryItemsKept(lost), retryIdsAre(lost, idsOneToFive),
             retryItemsKept(empty), retryIdsAre(empty, [1, 2]),
             structuralEquals(orphan.items, listAppend(retryItems(),
                 TodoItem { id: 4, listId: 42, title: "Nails", note: "", priority: LevelNone, done: false })),
-            retryItemIdsAre(bare, [1]), retryIdsAre(bare, [1, 2, 3, 4])
+            retryItemIdsAre(bare, [1]), retryIdsAre(bare, fourItemIds)
         ], retryCalm([calm, twice, lost, empty, orphan, bare]))), [])
     }
 
@@ -62,9 +68,9 @@ module MultishotRetryItemsCases {
         retryExpectUpdated(unknown)
         expect(TodoHarness::failures("the detail re-lands once; refusals burn no rival and keep the seeds", listConcat([
             structuralEquals(calm.items, moved), structuralEquals(twice.items, moved),
-            retryIdsAre(twice, [1, 2, 3, 4]),
+            retryIdsAre(twice, fourItemIds),
             retryTitlesAre(twice, ["Shopping", "Banking", "X", "Y"]),
-            retryItemsKept(lost), retryIdsAre(lost, [1, 2, 3, 4, 5]),
+            retryItemsKept(lost), retryIdsAre(lost, idsOneToFive),
             length(lost.lists) == 5,
             retryItemsKept(missing), retryIdsAre(missing, [1, 2]),
             structuralEquals(unknown.items, [
@@ -94,12 +100,12 @@ module MultishotRetryItemsCases {
         retryExpectMissing(missing, "TodoItem", 9)
         expect(TodoHarness::failures("each lost commit restores the row; only the committing attempt deletes", listConcat([
             retryItemIdsAre(calm, [1, 3]),
-            retryTitlesAre(calm, ["Shopping", "Banking"]), length(calm.items) == 2,
+            retryTitlesAre(calm, seedTitles), length(calm.items) == 2,
             retryItemIdsAre(one, [1, 3]),
             retryStoredAs(one, ["Shopping", "Banking", "Rival"], [1, 2, 3]),
-            retryItemIdsAre(twice, [1, 3]), retryIdsAre(twice, [1, 2, 3, 4]),
+            retryItemIdsAre(twice, [1, 3]), retryIdsAre(twice, fourItemIds),
             retryItemsKept(lost), retryItemIdsAre(lost, [1, 2, 3]),
-            retryIdsAre(lost, [1, 2, 3, 4, 5]), length(lost.lists) == 5,
+            retryIdsAre(lost, idsOneToFive), length(lost.lists) == 5,
             retryItemsKept(missing), length(missing.items) == 3,
             retryIdsAre(missing, [1, 2])
         ], retryCalm([calm, one, twice, lost, missing]))), [])
@@ -129,15 +135,15 @@ module MultishotRetryItemsCases {
         retryExpectGaveUp(lost)
         expect(TodoHarness::failures("the view nests landed rivals in title order with their queue-order ids", listConcat([
             retryTitlesAre(busy, ["Shopping", "Banking", "Zulu", "Alpha"]),
-            retryIdsAre(busy, [1, 2, 3, 4]),
+            retryIdsAre(busy, fourItemIds),
             retryColoursAre(busy, ["#78909C", "#AB47BC", "#78909C", "#78909C"]),
             length(busy.lists) == 4, length(busy.items) == 3,
             retryHasTitles(busy, "Alpha", 1), retryHasTitles(busy, "Zulu", 1),
             retryItemIdsAre(busy, [1, 2, 3]), !retryDoneOf(busy.items, 2),
-            retryTitlesAre(calm, ["Shopping", "Banking"]),
+            retryTitlesAre(calm, seedTitles),
             retryIdsAre(calm, [1, 2]), length(calm.lists) == 2, length(calm.items) == 3,
             retryTitlesAre(lost, ["Shopping", "Banking", "X", "Y", "Z"]),
-            retryIdsAre(lost, [1, 2, 3, 4, 5]),
+            retryIdsAre(lost, idsOneToFive),
             retryColoursAre(lost, ["#78909C", "#AB47BC", "#78909C", "#78909C", "#78909C"]),
             length(lost.lists) == 5, retryItemIdsAre(lost, [1, 2, 3]),
             length(lost.items) == 3, retryHasTitles(lost, "Z", 1)
@@ -171,10 +177,10 @@ module MultishotRetryItemsCases {
             retryIdsAre(bigger, [1, 2, 3, 4, 5, 6, 7, 8]), length(bigger.lists) == 8,
             retryTitlesAre(gapped, ["Echo", "Delta", "Rival", "Mine"]),
             retryIdsAre(gapped, [5, 7, 3, 4]),
-            retryItemIdsAre(items, [1, 2, 3, 4, 5]), length(items.items) == 5,
+            retryItemIdsAre(items, idsOneToFive), length(items.items) == 5,
             retryTitlesAre(items, ["L1", "L2", "L3", "L4", "L5", "Rival"]),
             retryIdsAre(items, [1, 2, 3, 4, 5, 6]),
-            retryItemIdsAre(bare, [1]), retryIdsAre(bare, [1, 2, 3, 4]),
+            retryItemIdsAre(bare, [1]), retryIdsAre(bare, fourItemIds),
             length(bare.items) == 1
         ], retryCalm([big, bigger, gapped, items, bare]))), [])
     }
@@ -229,11 +235,11 @@ module MultishotRetryItemsCases {
         retryExpectGaveUp(lost)
         expect(TodoHarness::failures("rivals add no items, so the committing attempt pages the seeds", listConcat([
             retryTitlesAre(calm, ["Shopping"]), length(calm.lists) == 1,
-            length(calm.items) == 7, retryItemIdsAre(calm, [1, 2, 3, 4, 5, 6, 7]),
+            length(calm.items) == 7, retryItemIdsAre(calm, sevenItemIds),
             !retryDoneOf(calm.items, 1),
             retryTitlesAre(twice, ["Shopping", "X", "Y"]),
             retryIdsAre(twice, [1, 2, 3]), length(twice.items) == 7,
-            retryItemIdsAre(twice, [1, 2, 3, 4, 5, 6, 7]), !retryDoneOf(twice.items, 7),
+            retryItemIdsAre(twice, sevenItemIds), !retryDoneOf(twice.items, 7),
             match twice.settled {
                 Success { value: ItemsPageView { rows, totalCount, hasPrevious, hasNext } } =>
                     length(rows) == 5 && totalCount == 7 && !hasPrevious && hasNext
@@ -244,9 +250,9 @@ module MultishotRetryItemsCases {
                 _ => false
             },
             retryTitlesAre(lost, ["Shopping", "X", "Y", "Z"]),
-            retryIdsAre(lost, [1, 2, 3, 4]), length(lost.lists) == 4,
+            retryIdsAre(lost, fourItemIds), length(lost.lists) == 4,
             length(lost.items) == 7, structuralEquals(lost.items, seven),
-            retryItemIdsAre(lost, [1, 2, 3, 4, 5, 6, 7]),
+            retryItemIdsAre(lost, sevenItemIds),
             retryHasTitles(lost, "Z", 1)
         ], retryCalm([calm, twice, lost]))), [])
     }

@@ -418,13 +418,13 @@ fn python_editor_ranges_address_original_bytes_and_utf16() {
     let ranges = osprey_syntax::binding_ranges(src, flavor);
     let names: Vec<_> = ranges
         .iter()
-        .map(|binding| &src[binding.range.clone()])
+        .map(|binding| src.get(binding.range.clone()).expect("char boundary"))
         .collect();
     assert_eq!(names, ["café", "name", "text"]);
     let annotations = osprey_syntax::annotation_edits(src, flavor);
     let highlights: Vec<_> = annotations
         .iter()
-        .map(|item| &src[item.highlight.clone()])
+        .map(|item| src.get(item.highlight.clone()).expect("char boundary"))
         .collect();
     assert_eq!(highlights, [": str", ": str", "-> str", ": str"]);
     let mut erased = src.to_owned();

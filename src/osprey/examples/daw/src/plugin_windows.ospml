@@ -63,7 +63,7 @@ module PluginWindows
     setting (n, carry, doc) = Outcomes::carried (carry, \values =>
         key = "vst:${Doc::number (doc, "id")}"
         value = Doc::decimal (doc, "value")
-        match Doc::kind (Doc::field (doc, "id")) == "number" && Doc::number (doc, "id") >= 0 && Doc::kind (Doc::field (doc, "value")) == "number" && value >= 0.0 && value <= 1.0 && ui::Lists::any (n.parameters, \p => p.key == key && p.automatable) && !ui::Lists::any (values, \change => change.key == key)
+        match PluginDocuments::isNumber (doc, "id") && Doc::number (doc, "id") >= 0 && PluginDocuments::isNumber (doc, "value") && value >= 0.0 && value <= 1.0 && ui::Lists::any (n.parameters, \p => p.key == key && p.automatable) && !ui::Lists::any (values, \change => change.key == key)
             false => Error(message = "The plug-in editor returned an invalid parameter.")
             true => Success(value = listAppend values (ParameterValue(node = n.identity, key = key, value = value))))
 
@@ -76,7 +76,7 @@ module PluginWindows
                 Error _ => false
                 Success sent => p.initial == sent
 
-    edited (editor, w, doc, n) = match Doc::kind (Doc::field (doc, "values")) == "list" && Doc::kind (Doc::field (doc, "closed")) == "bool" && length (Doc::fieldItems (doc, "values")) <= 1024
+    edited (editor, w, doc, n) = match PluginDocuments::isList (doc, "values", 1024) && PluginDocuments::isBool (doc, "closed")
         false => finish (editor, w, "The plug-in editor returned an invalid response.")
         true => match foldList (Doc::fieldItems (doc, "values"), Success(value = []), \(carry, item) => setting (n, carry, item))
             Error why => finish (editor, w, why)

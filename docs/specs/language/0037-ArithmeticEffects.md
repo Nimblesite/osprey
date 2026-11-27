@@ -80,7 +80,7 @@ effect Arith {
 An arithmetic operation that MAY perform an `Arith` operation seeds that requirement exactly as a syntactic `perform` does. Everything in [EFFECTS-STATIC-DISCHARGE](0017-AlgebraicEffects.md#effectful-function-types) then applies unchanged: requirements propagate through named calls, lambdas passed to higher-order functions, and fibers; discharge is operation-specific, so a handler covering only `overflow` leaves `remainderByZero` for an enclosing handler; the program entry MUST have no remaining requirements. A program that computes and never installs a policy is rejected at compile time with the existing diagnostic shape:
 
 ```text
-unhandled effect operations at program entry: Arith.overflow; add a matching `handle`
+main.osp:3:0: unhandled effect operations at program entry: Arith.overflow; add a matching `handle`
 ```
 
 Host GPU combinators (`gpuMap`, `gpuFilter`, `gpuFold`, `gpuScan` and `gpuZipWith`) invoke their callbacks and therefore propagate the callbacks' arithmetic requirements. This applies to inline lambdas, named helpers and builtin function values. Kernel stage-legality checks do not discharge `Arith`; an integer `abs` or `intDiv` kernel still requires a matching surrounding policy. A recovery arm's own fallible arithmetic still requires an outer handler.
@@ -210,7 +210,7 @@ Rechecked on 25 October 2026, Apple M4 Max, `--memory=arc`, with completed Metal
 | `n + 1` | `-9223372036854775808` from the policy | `SIGABRT`, integer-overflow diagnostic |
 | `wrapAdd(n, 1)` | `-9223372036854775808` | `-9223372036854775808` |
 
-Use the host backend when runtime recovery is required. Explicit total wrapping helpers express wrapping directly and remain device-admissible. Device policy preservation or rejection of unsupported recovering regions remains tracked in [plan 0023](../../plans/0023-gpu.md); the no-trap conformance requirements remain binding.
+Use the host backend when runtime recovery is required. Explicit total wrapping helpers express wrapping directly and remain device-admissible. Device policy preservation or rejection of unsupported recovering regions remains tracked in [plan 0055](../../plans/0055-targets.md); the no-trap conformance requirements remain binding.
 
 ## Implementation and verification
 
@@ -235,6 +235,6 @@ Integer arithmetic produces plain numeric values. `MathError` and arithmetic Res
 
 The policy examples above can be compiled with concrete iterator inputs and definitions for their application-specific names (`payload`, `ledger`, `postings`, `settle`, `backoff`, `capMs`). The `Arith` declaration describes the compiler builtin; redeclaring it in source is deliberately rejected.
 
-`[ARITH-EFFECT-NO-REASSOCIATION]` The compiler does not reassociate checked arithmetic. Turning `1 + count(n - 1)` into a loop would change which operands an `overflow` handler receives and when, and a handler may resume with a value, so the rewrite is observable. Such a recursion therefore stays a recursion, and costs what the [generated-code performance plan](../../plans/0033-generated-code-performance.md) measures. A program that wants the loop writes the accumulator, or uses `wrapAdd`, whose result no handler observes.
+`[ARITH-EFFECT-NO-REASSOCIATION]` The compiler does not reassociate checked arithmetic. Turning `1 + count(n - 1)` into a loop would change which operands an `overflow` handler receives and when, and a handler may resume with a value, so the rewrite is observable. Such a recursion therefore stays a recursion, and costs what the [generated-code performance plan](../../plans/0055-targets.md#generated-code-performance-mem-backends-gc-heap) measures. A program that wants the loop writes the accumulator, or uses `wrapAdd`, whose result no handler observes.
 
 Benchmark measurements and their machine/provenance limits live in [the benchmark report](../../../src/toolchain/website/src/benchmarks.md). `make -C src/toolchain/benchmarks bench-osprey` refreshes Osprey's four backend columns while preserving the other languages' recorded measurements.

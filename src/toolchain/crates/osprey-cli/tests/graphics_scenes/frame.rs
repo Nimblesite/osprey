@@ -11,16 +11,16 @@ const FUNCTIONS: [&str; 6] = [
 ];
 
 fn function<'a>(source: &'a str, name: &str) -> Result<&'a str, String> {
-    let call = source
-        .find(&format!("{name}("))
-        .ok_or_else(|| format!("missing {name}"))?;
-    let start = source[..call].rfind('\n').map_or(0, |i| i + 1);
-    let brace = source[call..]
-        .find('{')
-        .ok_or_else(|| format!("missing body {name}"))?
-        + call;
-    let end = body_end(&source[brace..], name)?;
-    Ok(&source[start..=brace + end])
+    let missing = || format!("missing {name}");
+    let missing_body = || format!("missing body {name}");
+    let call = source.find(&format!("{name}(")).ok_or_else(missing)?;
+    let head = source.get(..call).ok_or_else(missing)?;
+    let start = head.rfind('\n').map_or(0, |i| i + 1);
+    let tail = source.get(call..).ok_or_else(missing_body)?;
+    let brace = tail.find('{').ok_or_else(missing_body)? + call;
+    let body = source.get(brace..).ok_or_else(missing_body)?;
+    let end = body_end(body, name)?;
+    source.get(start..=brace + end).ok_or_else(missing_body)
 }
 
 fn body_end(source: &str, name: &str) -> Result<usize, String> {

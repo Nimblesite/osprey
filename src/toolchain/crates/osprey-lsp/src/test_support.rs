@@ -37,8 +37,11 @@ pub(crate) fn symbols(src: &str) -> String {
 pub(crate) fn mentions_inference_name(s: &str) -> bool {
     let is_ident = |c: char| c.is_alphanumeric() || c == '_';
     s.match_indices('t').any(|(at, _)| {
-        let starts_identifier = s[..at].chars().next_back().is_none_or(|c| !is_ident(c));
-        let then_digit = s[at + 1..]
+        let before = s.get(..at).expect("char boundary").chars().next_back();
+        let starts_identifier = before.is_none_or(|c| !is_ident(c));
+        let then_digit = s
+            .get(at + 1..)
+            .expect("char boundary")
             .chars()
             .next()
             .is_some_and(|c| c.is_ascii_digit());

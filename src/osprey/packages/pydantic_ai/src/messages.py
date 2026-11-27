@@ -31,6 +31,9 @@ __all__ = [
     "generate_tool_call_id", "part_text", "is_text", "is_tool_call", "collect", "map_indexed",
 ]
 
+TOOL_CALL_ID = "tool_call_id"
+"""The JSON member carrying the id of the tool call a part belongs to."""
+
 
 def map_indexed(xs, read):
     """`xs` rebuilt with its indices: element `i` of the result is `read(i)`."""
@@ -378,7 +381,7 @@ def content_part(content, kind):
 
 def tool_part(kind, tool_name, middle_name, middle, tool_call_id):
     """A part's JSON form: its `tool_name`, its `middle_name` member and its `tool_call_id`."""
-    return part_json([J.member("tool_name", JsonString(tool_name)), J.member(middle_name, JsonString(middle)), J.member("tool_call_id", JsonString(tool_call_id))], kind)
+    return part_json([J.member("tool_name", JsonString(tool_name)), J.member(middle_name, JsonString(middle)), J.member(TOOL_CALL_ID, JsonString(tool_call_id))], kind)
 
 
 def dump_request_part(part):
@@ -387,7 +390,7 @@ def dump_request_part(part):
         case SystemPromptPart(content=content): return content_part(content, "system-prompt")
         case UserPromptPart(content=content): return content_part(content, "user-prompt")
         case ToolReturnPart(tool_name=tool_name, content=content, tool_call_id=tool_call_id): return tool_part("tool-return", tool_name, "content", content, tool_call_id)
-        case RetryPromptPart(content=content, tool_name=tool_name, tool_call_id=tool_call_id): return part_json([J.member("content", JsonString(content)), J.member("tool_name", null_if_empty(tool_name)), J.member("tool_call_id", JsonString(tool_call_id))], "retry-prompt")
+        case RetryPromptPart(content=content, tool_name=tool_name, tool_call_id=tool_call_id): return part_json([J.member("content", JsonString(content)), J.member("tool_name", null_if_empty(tool_name)), J.member(TOOL_CALL_ID, JsonString(tool_call_id))], "retry-prompt")
         case InstructionPart(content=content): return content_part(content, "instruction")
 
 
@@ -441,11 +444,11 @@ def dump_messages(messages) -> Json:
     return JsonArray(mapList(messages, dump_message))
 
 
-def validate_request_part(value) -> Result[ModelRequestPart, str]:
+def validate_request_part(value):
     """A request part from its `ModelMessagesTypeAdapter` JSON form."""
     kind = field_at(value, "part_kind")
     content = field_at(value, "content")
-    tool_call_id = field_at(value, "tool_call_id")
+    tool_call_id = field_at(value, TOOL_CALL_ID)
     if kind == "system-prompt": return Success(value=SystemPromptPart(content=content))
     elif kind == "user-prompt": return Success(value=UserPromptPart(content=content))
     elif kind == "tool-return": return Success(value=ToolReturnPart(tool_name=field_at(value, "tool_name"), content=object_text(value, "content"), tool_call_id=tool_call_id))
@@ -475,13 +478,13 @@ def object_text(value, key):
     return content_text(J.object_at(value, key))
 
 
-def validate_response_part(value) -> Result[ModelResponsePart, str]:
+def validate_response_part(value):
     """A response part from its `ModelMessagesTypeAdapter` JSON form."""
     kind = field_at(value, "part_kind")
     content = field_at(value, "content")
     if kind == "text": return Success(value=TextPart(content=content))
     elif kind == "thinking": return Success(value=ThinkingPart(content=content))
-    elif kind == "tool-call": return Success(value=ToolCallPart(tool_name=field_at(value, "tool_name"), args=object_text(value, "args"), tool_call_id=field_at(value, "tool_call_id")))
+    elif kind == "tool-call": return Success(value=ToolCallPart(tool_name=field_at(value, "tool_name"), args=object_text(value, "args"), tool_call_id=field_at(value, TOOL_CALL_ID)))
     else: return Error(message=f"unknown response part_kind: {kind}")
 
 

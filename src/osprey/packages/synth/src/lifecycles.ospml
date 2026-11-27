@@ -10,7 +10,23 @@ namespace synth
 module Lifecycles
     settled (rate, block) = rate >= 8000.0 && rate <= 384000.0 && block >= 1 && block <= 8192
 
-    (** Prepare `graph` at a sample rate and largest block, Ready with silent state at position 0. *)
+    (** Prepare `graph` at a sample rate and largest block, Ready with silent state at position 0.
+    # Examples
+    ```osprey
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+
+    example () =
+        print "${Lifecycles::prepared (Graphs::empty, 4000.0, 256)}"
+
+    arithmetic example
+    ```
+    ```output
+    Error(InvalidConfiguration { detail: "A lifecycle needs a sample rate of 8,000 to 384,000 Hz and a block of 1 to 8,192 frames." })
+    ```
+    *)
     export prepared (graph, rate, block) = match settled (rate, block)
         false => Error(message = InvalidConfiguration(detail = "A lifecycle needs a sample rate of 8,000 to 384,000 Hz and a block of 1 to 8,192 frames."))
         true =>
@@ -25,7 +41,24 @@ module Lifecycles
 
     refused (run, action) = Error(message = InvalidConfiguration(detail = "Cannot ${action} a ${named run.stage} instance."))
 
-    (** Apply one transition; anything the current stage does not allow is refused. *)
+    (** Apply one transition; anything the current stage does not allow is refused.
+    # Examples
+    ```osprey
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+
+    example () =
+        run = Instance(stage = Ready, rate = 48000.0, block = 256, plan = Prepared(graph = Graphs::empty, order = [], feedback = []), audio = Rendered(states = [], samples = [], position = 0, meters = []))
+        print "${Lifecycles::next (run, ReleaseTail)} ${Lifecycles::next (run, Dispose)}"
+
+    arithmetic example
+    ```
+    ```output
+    Error(InvalidConfiguration { detail: "Cannot release a ready instance." }) Success({ stage: Disposed, rate: 48000.0, block: 256, plan: { graph: { nodes: [], cables: [] }, order: [], feedback: [] }, audio: { states: [], samples: [], position: 0, meters: [] } })
+    ```
+    *)
     export next (run, transition) = match transition
         Prepare rate block => reprepared (run, rate, block)
         Activate => activated run
@@ -55,7 +88,16 @@ module Lifecycles
 
     sounding (total, n) = Outcomes::carried (total, \sum => Outcomes::carried (Timings::tail n, \t => Outcomes::carried (Timings::latency n, \l => Success(value = sum + t + l))))
 
-    (** Frames the release renders: every node's tail and latency summed, which bounds any route through it. *)
+    (** Frames the release renders: every node's tail and latency summed, which bounds any route through it.
+    # Examples
+    ```osprey
+    run = Instance(stage = Ready, rate = 48000.0, block = 256, plan = Prepared(graph = Graphs::empty, order = [], feedback = []), audio = Rendered(states = [], samples = [], position = 0, meters = []))
+    print "${Lifecycles::tail run}"
+    ```
+    ```output
+    Success(0)
+    ```
+    *)
     export tail run = Outcomes::carried (foldList (run.plan.graph.nodes, Success(value = 0.0), sounding), \samples => Outcomes::whole (WaveMath::tailFrames (samples, run.rate), \frames => Success(value = frames)))
 
     played (run, after, snapshot, frames) = Outcomes::carried (Renderer::block (run.plan, run.rate, snapshot, run.audio, frames), \audio => Success(value = run(stage = after, audio = audio)))
@@ -70,7 +112,20 @@ module Lifecycles
         true => Ready
         false => Releasing(remaining = satSub remaining frames)
 
-    (** Render 1 to the prepared block of frames; zero-length blocks are refused. A releasing instance renders at most its remaining tail, then is Ready. *)
+    (** Render 1 to the prepared block of frames; zero-length blocks are refused. A releasing instance renders at most its remaining tail, then is Ready.
+    # Examples
+    ```osprey
+    run = Instance(stage = Ready, rate = 48000.0, block = 256, plan = Prepared(graph = Graphs::empty, order = [], feedback = []), audio = Rendered(states = [], samples = [], position = 0, meters = []))
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => Lifecycles::block (run, Parameters::initial Graphs::empty, 0))} ${arithmetic (\() => Lifecycles::block (run, Parameters::initial Graphs::empty, 16))}"
+    ```
+    ```output
+    Error(InvalidConfiguration { detail: "A block is 1 to the prepared 256 frames; a larger one needs re-preparation." }) Error(InvalidConfiguration { detail: "Cannot render a ready instance." })
+    ```
+    *)
     export block (run, snapshot, count) = match count < 1 || count > run.block
         true => Error(message = InvalidConfiguration(detail = "A block is 1 to the prepared ${run.block} frames; a larger one needs re-preparation."))
         false => match run.stage

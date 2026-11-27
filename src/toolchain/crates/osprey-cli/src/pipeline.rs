@@ -187,27 +187,28 @@ fn report_errors(errors: &[osprey_types::TypeError], input: &CompilationInput) -
     errors.len()
 }
 
-/// Print the warnings and return how many of them fail the invocation.
+/// Print the warnings and return how many of them fail the invocation: every
+/// `deny` finding, and every `warn` one under `--warnings-as-errors`.
+/// `--no-warnings` still reports the `deny` findings, which are errors
+/// ([LINT-LEVELS]).
 fn report_warnings(
     input: &CompilationInput,
     warnings: Warnings,
     check_examples: bool,
     checked: Option<&osprey_types::CheckedProgram>,
 ) -> usize {
-    if warnings == Warnings::Skip {
-        return 0;
-    }
     let mut diagnostics = warnings::collect(input, warnings.analyses(), checked);
     // [DOC-EXPORT-EXAMPLE-REQUIRED] Source checks audit examples during rollout.
     if !check_examples {
         diagnostics.retain(|warning| warning.rule != osprey_types::UNEXAMPLED_EXPORT);
     }
-    let reported = warnings::report(input, &diagnostics);
-    if warnings == Warnings::Deny {
-        reported
-    } else {
-        0
-    }
+    let reported = warnings::report(input, &diagnostics, warnings == Warnings::Skip);
+    reported.denied
+        + if warnings == Warnings::Deny {
+            reported.warned
+        } else {
+            0
+        }
 }
 
 /// Route the codegen modes after the shared gate: report type errors, then

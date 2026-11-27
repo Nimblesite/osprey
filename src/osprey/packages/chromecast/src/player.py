@@ -67,11 +67,11 @@ def number(text, otherwise):
     return otherwise if text == "" else unwrap_or(parseFloat(text), otherwise)
 
 
-def launched(session, served, path, now) -> Player:
+def launched(session, served, path, now):
     return fresh(session, served, Media.title(path), "launching", now, 3)
 
 
-def dialed(device, served, path, now) -> Result[Player, str]:
+def dialed(device, served, path, now):
     """Opens the session and asks for the receiver; stops serving on failure."""
     match Session.open(device.host, device.port):
         case Success(value=session):
@@ -150,7 +150,7 @@ def heard(player, message, now):
         return Success(value=reported(tuned, reading, now)) if reading.kind != "RECEIVER_STATUS" else Success(value=tuned)
 
 
-def folded(player, messages, i, now) -> Result[Player, str]:
+def folded(player, messages, i, now):
     match listGet(messages, i):
         case Success(value=message):
             match heard(player, message, now):
@@ -207,7 +207,7 @@ def attempt(player, written) -> Result[Player, str]:
             return Error(message=failure)
 
 
-def commanded(player, payload) -> Result[Player, str]:
+def commanded(player, payload):
     """Sends one media command for the loaded media."""
     if player.media_session == "":
         return Error(message="nothing is playing yet")
@@ -215,7 +215,7 @@ def commanded(player, payload) -> Result[Player, str]:
         return attempt(player, Session.write(player.session, player.transport, "media", payload))
 
 
-def command(player, kind, extra) -> Result[Player, str]:
+def command(player, kind, extra):
     """One media command of `kind` for the loaded media, `extra` being its body."""
     return commanded(player, Protocol.media(kind, player.media_session, extra, player.request))
 

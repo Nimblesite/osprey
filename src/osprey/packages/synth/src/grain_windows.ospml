@@ -3,7 +3,15 @@ namespace synth
 
 (** Bounded envelope shapes shared by direct grain playback and graph components. *)
 module GrainWindows
-    (** Positive attack/release fractions leave the remaining lifetime for sustain. *)
+    (** Positive attack/release fractions leave the remaining lifetime for sustain.
+    # Examples
+    ```osprey
+    print "${GrainWindows::valid HannWindow} ${GrainWindows::valid (AsrWindow(attack = 0.5, release = 0.5))} ${GrainWindows::valid (AsrWindow(attack = 0.75, release = 0.5))}"
+    ```
+    ```output
+    true true false
+    ```
+    *)
     export valid shape = match shape
         HannWindow => true
         AsrWindow attack release => attack > 0.0 && attack <= 1.0 && release > 0.0 && release <= 1.0 && GrainMath::summed (attack, release) <= 1.0
@@ -14,12 +22,36 @@ module GrainWindows
             true => 0.0
             false => 0.5 - 0.5 * cos (6.283185307179586 * age / last)
 
-    (** Evaluate only after controls validation; endpoint guards avoid division at the boundaries. *)
+    (** Evaluate only after controls validation; endpoint guards avoid division at the boundaries.
+    # Examples
+    ```osprey
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+
+    example () =
+        print "${GrainWindows::value (AsrWindow(attack = 0.5, release = 0.5), 1, 5)} ${GrainWindows::value (HannWindow, 0, 5)} ${GrainWindows::value (HannWindow, 4, 5)}"
+
+    arithmetic example
+    ```
+    ```output
+    0.5 0.0 0.0
+    ```
+    *)
     export value (shape, age, duration) = match shape
         HannWindow => hann (toFloat age, toFloat duration)
         AsrWindow attack release => GrainMath::asr (toFloat age, toFloat duration, attack, release)
 
-    (** Decode the graph's discrete shape selector without rounding unsupported values. *)
+    (** Decode the graph's discrete shape selector without rounding unsupported values.
+    # Examples
+    ```osprey
+    print "${GrainWindows::decode (0.0, 0.0, 0.0)} ${GrainWindows::decode (1.0, 0.25, 0.25)} ${GrainWindows::decode (1.0, 0.75, 0.75)} ${GrainWindows::decode (0.5, 0.0, 0.0)}"
+    ```
+    ```output
+    Success(HannWindow) Success(AsrWindow { attack: 0.25, release: 0.25 }) Error(InvalidConfiguration { detail: "Grain attack and release must be positive fractions whose sum is at most one." }) Error(InvalidConfiguration { detail: "Grain window must be 0 (Hann) or 1 (ASR)." })
+    ```
+    *)
     export decode (mode, attack, release) = match mode
         0.0 => Success(value = HannWindow)
         1.0 =>

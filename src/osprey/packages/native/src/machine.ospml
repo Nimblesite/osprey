@@ -179,7 +179,7 @@ module Machines
         Negated inner => holds (machine, inner) == false
         Fired name => flag (machine, name)
         InState layer names => Lists::any (names, \name => name == current (machine, layer))
-        Compared input by literal => compared (value (machine, input), by, literal)
+        Compared inputName by literal => compared (value (machine, inputName), by, literal)
 
     // ---- layers and settling [UI-MACHINE-LAYERS] ----
 

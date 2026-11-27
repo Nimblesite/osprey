@@ -67,6 +67,13 @@ module Host {
         run: fn(string) -> Run
     }
 
+    export fn utcSeconds() = {
+        let result = perform Process.run("date -u +%s")
+        let seconds = parseInt(trim(result.stdout)) ?: 0
+        if result.status == 0 && seconds > 0 { Success { value: seconds } }
+        else { Error { message: "host.clock-unavailable" } }
+    }
+
     /// Terminal output, one line at a time.
     export effect Console {
         line: fn(string) -> Unit

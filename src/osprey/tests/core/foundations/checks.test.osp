@@ -1,11 +1,14 @@
 /// Subtracts integers through curried application.
-fn sub(a: int) -> (int) -> int = fn(b) => a - b 
+fn sub(a) = fn(b) => a - b 
 /// Classifies exact integer cases and a wildcard branch.
 fn classify(n) = match n {
     0 => "zero"
     1 => "one"
     _ => "many"
 }
+
+/// tens is the three-element int list the length, index and readAt cases share.
+let tens = [10, 20, 30]
 
 /// Verifies arithmetic values and relational properties in one documented batch.
 fn arithmeticCase() = {
@@ -43,7 +46,7 @@ fn stringsAndListsCase() = {
             toUpperCase("Osprey") == "OSPREY",
             startsWith("osprey language", "osprey"),
             !endsWith("osprey language", "compiler"),
-            listLength([10, 20, 30]) == 3
+            listLength(tens) == 3
     ])
 }
 
@@ -187,8 +190,8 @@ fn typedErrorCase() = {
     expect("${code(-7)} ${flag(10)} ${frac(10)} ${toString(nested(12))} ${code(3)}", "Error(-7) Error(true) Error(2.5) Error(Error(-3)) Success(3)")
     forEachList([-1, -2, -3], |n| => expectError(code(n), n))
     expect(range(-2, 3) |> fold(0, |sum, n| => satAdd(sum, code(n) ?: 100)), 203)
-    expectError(listGet([10, 20, 30], 7), IndexOutOfBounds { index: 7, length: 3 })
-    expectError(listAppend([10, 20, 30], 40)[-2], IndexOutOfBounds { index: -2, length: 4 })
+    expectError(listGet(tens, 7), IndexOutOfBounds { index: 7, length: 3 })
+    expectError(listAppend(tens, 40)[-2], IndexOutOfBounds { index: -2, length: 4 })
     expect("${parseLen("")} ${ratio(500)} ${ratio(0)} ${toString(ParseError { code: 2, why: "odd" })}", "Error({ code: 1, why: \"empty\" }) Error(Overflow { by: 500 }) Error(DivZero) { code: 2, why: \"odd\" }")
     expect("${[Overflow { by: 1 }, DivZero]} ${[["a"], []]} ${[parseLen(""), parseLen("ab")]}", "[Overflow { by: 1 }, DivZero] [[\"a\"], []] [Error({ code: 1, why: \"empty\" }), Success(2)]")
     let inline = match listLength([1]) > 0 {
@@ -199,7 +202,7 @@ fn typedErrorCase() = {
     expect(ParseError { code: 1, why: "x" }, ParseError { code: 1, why: "x" })
     check("lists and unions compare by rendering", [Overflow { by: 2 }, DivZero], [Overflow { by: 2 }, DivZero])
     check("a record payload compares whole", parseLen(""), parseLen(""))
-    expect("${readAt([10, 20, 30], 1)} ${readAt([10, 20, 30], 3)} ${readAt(listAppend(List(), 5), 9)} ${[1, 2][4] ?: -1}", "got 20 3 of 3 9 of 1 -1")
+    expect("${readAt(tens, 1)} ${readAt(tens, 3)} ${readAt(listAppend(List(), 5), 9)} ${[1, 2][4] ?: -1}", "got 20 3 of 3 9 of 1 -1")
     // A nested string reads as its literal: quoted, escapes spelled out. [BUILTIN-PRINT-FORM]
     expect("${["a\"b", "c\\d", "e\nf\tg"]} ${ParseError { code: 3, why: "say \"hi\"" }} ${[["\\"]]} ${toString("a\"b")}", "[\"a\\\"b\", \"c\\\\d\", \"e\\nf\\tg\"] { code: 3, why: \"say \\\"hi\\\"\" } [[\"\\\\\"]] a\"b")
 }

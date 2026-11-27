@@ -11,6 +11,8 @@ import registry::Names
 /// lock of [PACKAGE-FOLDER-REGISTRY].
 module TransactionTests {
     let project = "/abs"
+    /// The one transaction every add case runs.
+    let addOne = ["add", "@demo/one"]
     let manifestPath = "/abs/osprey.toml"
     let lockPath = "/abs/osprey.lock"
 
@@ -29,7 +31,7 @@ module TransactionTests {
     fn said(a, i, code) = RegistryFixture::lineOf(a, i) == code
     fn wroteNothing(a) = RegistryFixture::writesTo(a, manifestPath) == 0
 
-    fn addPlain(served) = runOver(RegistryFixture::reads(plain(), served), served, ["add", "@demo/one"])
+    fn addPlain(served) = runOver(RegistryFixture::reads(plain(), served), served, addOne)
 
     fn lockedReads(served) = RegistryFixture::readsWithLock(RegistryFixture::rootManifest(1), RegistryFixture::previousLock(RegistryFixture::one(), RegistryFixture::two()), served)
 
@@ -96,7 +98,7 @@ module TransactionTests {
     /// The refusals: already declared, unknown key, unknown epoch, bad word.
     fn addRefusals() = {
         let served = pair()
-        let exists = runOver(RegistryFixture::reads(RegistryFixture::rootManifest(1), served), served, ["add", "@demo/one"])
+        let exists = runOver(RegistryFixture::reads(RegistryFixture::rootManifest(1), served), served, addOne)
         let unknown = runOver(RegistryFixture::reads(plain(), served), served, ["add", "@demo/none"])
         let epoch = runOver(RegistryFixture::reads(plain(), served), served, ["add", "@demo/one", "--epoch", "7"])
         let word = RegistryFixture::run([], [], ["add", "@nonsense"])
@@ -120,7 +122,7 @@ module TransactionTests {
         ])
     }
 
-    fn runDamaged(reads, served, path) = RegistryFixture::runPartial(reads, RegistryFixture::websOf(served), args(["add", "@demo/one"]), path)
+    fn runDamaged(reads, served, path) = RegistryFixture::runPartial(reads, RegistryFixture::websOf(served), args(addOne), path)
 
     fn partialManifestWrite() = {
         let served = pair()

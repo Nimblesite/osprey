@@ -39,7 +39,7 @@ module Tree {
     fn seen(w: Walk, key) = Names::includes(w.visited, key)
 
     /// One edge: the pinned package's line and, the first time, its subtree.
-    fn edgeLines(lock, depth, w, edge) -> Walk = match Lockfile::packageFor(Lockfile::packagesOf(lock), ManifestModel::requirementKey(edge)) {
+    fn edgeLines(lock, depth, w, edge) = match Lockfile::packageFor(Lockfile::packagesOf(lock), ManifestModel::requirementKey(edge)) {
         Error => withLine(w, unlockedLine(depth, edge))
         Success { value } => packageLines(lock, depth, w, edge, value)
     }

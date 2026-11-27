@@ -1,0 +1,74 @@
+namespace registry_api;
+import registry::Bundle
+import registry::Bytes
+import registry::Digests
+import registry::Json
+import registry::JsonRead
+import registry::Names
+import registry::Release
+
+/// Only the fresh public projection can authorize a CAS read [PACKAGE-HOSTED-ROUTES-CATALOG].
+module HostedSource {
+    let unavailableCode = "source.unavailable"
+    export let unknownRelease = "catalog.unknown-release"
+    export let prefix = "/v1/releases/"
+    export let attachmentSuffix = "/source"
+    export let licenseSuffix = "/license"
+
+    export type Verified = { release: Release::Served, download: bool }
+    type Listed = { key: string, entry: Json::Value }
+
+    fn field(value, label) = JsonRead::field(value, label)
+    fn text(value, label) = JsonRead::text(field(value, label))
+    fn items(value, label) = JsonRead::items(field(value, label))
+
+    fn declared(doc, digest) = foldList(items(doc, "packages"), [], fn(matches, pkg) =>
+        listConcat(matches, mapList(filterList(items(pkg, "releases"), fn(release) => text(release, "digest") == digest),
+            fn(release) => Listed { key: text(pkg, "key"), entry: release })))
+
+    fn matches(value: Release::Served, key, entry) = Names::display(value.id.key) == key
+        && value.id.epoch == JsonRead::number(field(entry, "epoch"))
+        && value.id.ordinal == JsonRead::number(field(entry, "ordinal"))
+
+    fn verified(bytes, digest, key, entry, download) = match Bundle::verify(bytes, digest) {
+        Success { value } => if matches(value, key, entry) { Success { value: Verified { release: value, download: download } } } else { Error { message: unavailableCode } }
+        Error => Error { message: unavailableCode }
+    }
+
+    fn fetch(matches, digest, download, read) = match listGet(matches, 0) {
+        Error => Error { message: unknownRelease }
+        Success { value } => readListed(value, digest, download, read)
+    }
+
+    fn readListed(listed: Listed, digest, download, read) = match read(digest) {
+        Success { value } => verified(value, digest, listed.key, listed.entry, download)
+        Error => Error { message: unavailableCode }
+    }
+
+    fn resolve(doc, digest, download, read) = {
+        let matches = declared(doc, digest)
+        if length(matches) > 1 { Error { message: unavailableCode } }
+        else { fetch(matches, digest, download, read) }
+    }
+
+    export fn request(doc, path, read) = {
+        let suffix = drop(path, byteLength(prefix))
+        let digest = Bytes::before(suffix, "/")
+        let download = suffix == digest + attachmentSuffix
+        match Digests::parse(digest) {
+            Error => Error { message: unknownRelease }
+            Success => if suffix == digest || download || suffix == digest + licenseSuffix { resolve(doc, digest, download, read) } else { Error { message: unknownRelease } }
+        }
+    }
+
+    /// Cloud Run mounts the published-only bucket read-only. Object names are digest-derived.
+    export fn mounted(digest) = andThen(Digests::parse(digest), readMounted)
+
+    fn readMounted(digest) = {
+        let path = "/run/registry-source/" + Digests::hexOf(digest) + ".json"
+        match fileSize(path) {
+            Success { value } => if Bundle::sizeCode(value) == "" { readFile(path) } else { Error { message: "source.too-large" } }
+            Error => Error { message: unavailableCode }
+        }
+    }
+}

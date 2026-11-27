@@ -1,0 +1,22 @@
+// Repository paths for programs launched from anywhere inside the checkout:
+// the renderer, Prism and their suites name assets from the repository root.
+namespace signalflow
+
+(** Paths from the repository root, reachable from the current directory. *)
+module Repository
+
+    (** This file, relative to the repository root: the marker the nearest repository ancestor holds. *)
+    marker = "src/osprey/packages/signal_flow/src/repository.ospml"
+
+    (** The ancestors of the current directory searched for the repository: more than the repository is deep. *)
+    searched = 16
+
+    (** `relative`, a path from the repository root, made reachable from the current directory: the nearest ancestor holding `marker` is climbed to; when none within `searched` levels holds it, the path is left as it is. *)
+    export path relative = "${climbed (marker, "", searched)}${relative}"
+
+    (** The `../` prefix, at most `left` levels above `prefix`, under which the file `marker` exists: "" when it is here or nowhere within reach. *)
+    export climbed (marker, prefix, left) = match (kindOf "${prefix}${marker}" ?: "other") == "file"
+        true => prefix
+        false => match left > 0
+            true => climbed (marker, "${prefix}../", satSub left 1)
+            false => ""

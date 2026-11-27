@@ -3,20 +3,60 @@ namespace synth
 
 (** Explicit envelope state; a note-off never waits for attack or decay to finish. *)
 module Envelopes
-    (** No active note. *)
+    (** No active note.
+    # Examples
+    ```osprey
+    print "${Envelopes::initial ()}"
+    ```
+    ```output
+    { stage: Idle, level: 0.0, releaseStep: 0.0 }
+    ```
+    *)
     export initial () = EnvelopeState(stage = Idle, level = 0.0, releaseStep = 0.0)
 
     duration seconds = seconds >= 0.0 && seconds <= 3600.0
 
-    (** Validate seconds, normalised sustain and the rendering rate before activation. *)
+    (** Validate seconds, normalised sustain and the rendering rate before activation.
+    # Examples
+    ```osprey
+    config = EnvelopeConfig(sampleRate = 48000.0, attack = 0.01, decay = 0.2, sustain = 0.5, release = 0.5)
+    wide = EnvelopeConfig(sampleRate = 48000.0, attack = 0.01, decay = 0.2, sustain = 1.5, release = 0.5)
+    print "${Envelopes::configure config} ${Envelopes::configure wide}"
+    ```
+    ```output
+    Success({ sampleRate: 48000.0, attack: 0.01, decay: 0.2, sustain: 0.5, release: 0.5 }) Error(InvalidConfiguration { detail: "Invalid envelope rate, duration or sustain." })
+    ```
+    *)
     export configure config = match config.sampleRate >= 8000.0 && config.sampleRate <= 384000.0 && duration config.attack && duration config.decay && duration config.release && config.sustain >= 0.0 && config.sustain <= 1.0
         true => Success(value = config)
         false => Error(message = InvalidConfiguration(detail = "Invalid envelope rate, duration or sustain."))
 
-    (** Legato retrigger preserves the current level. *)
+    (** Legato retrigger preserves the current level.
+    # Examples
+    ```osprey
+    print "${Envelopes::noteOn (Envelopes::initial ())}"
+    ```
+    ```output
+    { stage: Attack, level: 0.0, releaseStep: 0.0 }
+    ```
+    *)
     export noteOn held = held(stage = Attack)
 
-    (** Release slope is captured once, so repeated note-off does not extend the tail. *)
+    (** Release slope is captured once, so repeated note-off does not extend the tail.
+    # Examples
+    ```osprey
+    config = EnvelopeConfig(sampleRate = 48000.0, attack = 0.0, decay = 0.0, sustain = 0.5, release = 1.0)
+    held = EnvelopeState(stage = Sustain, level = 0.5, releaseStep = 0.0)
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => Envelopes::noteOff (config, held))} ${arithmetic (\() => Envelopes::noteOff (config, Envelopes::initial ()))}"
+    ```
+    ```output
+    { stage: Release, level: 0.5, releaseStep: 1.0416666666666666e-05 } { stage: Idle, level: 0.0, releaseStep: 0.0 }
+    ```
+    *)
     export noteOff (config, held) = match (held.stage == Release || held.stage == Idle)
         true => held
         false => match config.release == 0.0
@@ -43,7 +83,21 @@ module Envelopes
         true => initial ()
         false => held(level = held.level - held.releaseStep)
 
-    (** Advance exactly one sample with the same result regardless of the host's block partition. *)
+    (** Advance exactly one sample with the same result regardless of the host's block partition.
+    # Examples
+    ```osprey
+    config = EnvelopeConfig(sampleRate = 48000.0, attack = 0.01, decay = 0.2, sustain = 0.5, release = 0.5)
+    sustain = EnvelopeState(stage = Sustain, level = 1.0, releaseStep = 0.0)
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => Envelopes::next (config, Envelopes::initial ()))} ${arithmetic (\() => Envelopes::next (config, sustain))}"
+    ```
+    ```output
+    { stage: Idle, level: 0.0, releaseStep: 0.0 } { stage: Sustain, level: 0.5, releaseStep: 0.0 }
+    ```
+    *)
     export next (config, held) = match held.stage
         Idle => initial ()
         Attack => attack (config, held)

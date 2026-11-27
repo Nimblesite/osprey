@@ -71,46 +71,150 @@ type McpState =
 
 (** The MCP state held by the store: its two configuration documents, the merged server list, the remembered switches and the Add server draft, with its session encoding. *)
 module McpModel
-    (** The JSON array of `items`, each written by `of`. *)
+    (** The JSON array of `items`, each written by `of`.
+    # Examples
+    ```osprey
+    print (Doc::write (McpModel::arrayOf ([1, 2], \n => JsonString "n${n}")))
+    ```
+    ```output
+    ["n1","n2"]
+    ```
+    *)
     export arrayOf (items, of) = JsonArray (mapList (items, of))
 
-    (** The entries of the list under `key` in `doc`, each read by `of`. *)
+    (** The entries of the list under `key` in `doc`, each read by `of`.
+    # Examples
+    ```osprey
+    doc = Doc::parse "{\"ids\":[{\"id\":\"a\"},{\"id\":\"b\"}]}"
+    print "${McpModel::listField (doc, "ids", \item => Doc::text (item, "id"))}"
+    ```
+    ```output
+    ["a", "b"]
+    ```
+    *)
     export listField (doc, key, of) = mapList (Doc::items (Doc::field (doc, key)), of)
 
-    (** An empty Add server form, on the command kind. *)
+    (** An empty Add server form, on the command kind.
+    # Examples
+    ```osprey
+    form = McpModel::blankForm ()
+    print "${form.formType} [${form.formName}] [${form.formProblem}]"
+    ```
+    ```output
+    command [] []
+    ```
+    *)
     export blankForm () = McpForm(formName = "", formType = "command", formCommand = "", formArguments = "", formUrl = "", formEnvironment = "", formHeaders = "", formPaste = "", formProblem = "")
 
     // A document that does not exist configures no servers, and is no problem.
     noDocument = "{\"mcpServers\":{}}"
 
-    (** Empty state for the project folder `folder`: no servers, switches or problems, nothing loaded, and a blank form. *)
+    (** Empty state for the project folder `folder`: no servers, switches or problems, nothing loaded, and a blank form.
+    # Examples
+    ```osprey
+    mcp = McpModel::fresh "/p"
+    print "${mcp.stateFolder} ${length mcp.stateServers} ${mcp.stateGlobalLoaded} ${mcp.stateProjectLoaded} ${mcp.stateStateLoaded}"
+    ```
+    ```output
+    /p 0 false false false
+    ```
+    *)
     export fresh folder = McpState(stateGlobal = noDocument, stateProject = noDocument, stateServers = [], stateMemories = [], stateForm = blankForm (), stateExpanded = [], stateProblems = [], stateFolder = folder, stateGlobalLoaded = false, stateProjectLoaded = false, stateStateLoaded = false)
 
-    (** The memory of server `name` for `folder`, switched off; `enabled` is not read. *)
-    export memory (name, folder, enabled) = McpMemory(memoryName = name, memoryFolder = folder, memoryEnabled = false)
+    (** The memory of server `name` for `folder`, switched off; `_enabled` is not read.
+    # Examples
+    ```osprey
+    kept = McpModel::memory ("fs", "/p", true)
+    print "${kept.memoryEnabled} ${kept.memoryFolder} ${kept.memoryName}"
+    ```
+    ```output
+    false /p fs
+    ```
+    *)
+    export memory (name, folder, _enabled) = McpMemory(memoryName = name, memoryFolder = folder, memoryEnabled = false)
 
-    (** `of` applied to the first item `matches`, or `absent` when none does. *)
+    (** `of` applied to the first item `matches`, or `absent` when none does.
+    # Examples
+    ```osprey
+    print "${McpModel::firstWhere ([3, 4, 5], \n => n > 3, \n => "found ${n}", "none")} ${McpModel::firstWhere ([3], \n => n > 3, \n => "found ${n}", "none")}"
+    ```
+    ```output
+    found 4 none
+    ```
+    *)
     export firstWhere (items, matches, of, absent) = match Lists::find (items, matches)
         Success found => of found
         Error _ => absent
 
-    (** Global servers default on; cloned project commands default off until opted in for this folder. *)
+    (** Global servers default on; cloned project commands default off until opted in for this folder.
+    # Examples
+    ```osprey
+    mcp = McpModel::fresh "/p"
+    plain = McpModel::memory ("fs", "", true)
+    on = plain(memoryEnabled = true)
+    web = plain(memoryName = "web", memoryFolder = "/p", memoryEnabled = true)
+    remembered = mcp(stateMemories = [on, web])
+    print "${McpModel::enabledFor (mcp, "fs", "global")} ${McpModel::enabledFor (remembered, "fs", "global")} ${McpModel::enabledFor (remembered, "fs", "project")} ${McpModel::enabledFor (remembered, "web", "project")}"
+    ```
+    ```output
+    true true false true
+    ```
+    *)
     export enabledFor (mcp, name, origin) =
         folder = Pick::either (origin == "project", mcp.stateFolder, "")
         firstWhere (mcp.stateMemories, \item => item.memoryName == name && item.memoryFolder == folder, \item => item.memoryEnabled, origin != "project")
 
-    (** A server with nothing configured and nothing owed. *)
+    (** A server with nothing configured and nothing owed.
+    # Examples
+    ```osprey
+    server = McpModel::blankServer "fs"
+    print "${server.serverName} [${server.serverPhase}] ${server.serverTools} ${server.serverNextId} ${server.serverEnabled}"
+    ```
+    ```output
+    fs [] [] 1 false
+    ```
+    *)
     export blankServer (name) = McpServer(serverName = name, serverOrigin = "", serverKind = "", serverEndpoint = "", serverConfig = "", serverEnabled = false, serverPhase = "", serverTools = "[]", serverProblem = "", serverBuffer = "", serverSession = "", serverRpc = "", serverAwait = "", serverNextId = 1, serverReadTicket = "", serverCallChat = "", serverCallId = "", serverCallUntil = 0, serverCallText = "", serverCallDone = false)
 
-    (** The view of no server: a name no server has. *)
+    (** The view of no server: a name no server has.
+    # Examples
+    ```osprey
+    print "[${McpModel::noView.viewName}] [${McpModel::noView.viewOrigin}] ${McpModel::noView.viewEnabled}"
+    ```
+    ```output
+    [] [] false
+    ```
+    *)
     export noView = McpClient::ServerView(viewName = "", viewOrigin = "", viewKind = "", viewEndpoint = "", viewConfig = "", viewEnabled = false)
 
-    (** A server for the configured `view`, off and never connected, switched to `enabled`. *)
+    (** A server for the configured `view`, off and never connected, switched to `enabled`.
+    # Examples
+    ```osprey
+    view = McpClient::ServerView(viewName = "fs", viewOrigin = "global", viewKind = "command", viewEndpoint = "npx fs", viewConfig = "{\"command\":\"npx\"}", viewEnabled = true)
+    server = McpModel::offline (view, true)
+    print "${server.serverName} ${server.serverPhase} ${server.serverEnabled} ${server.serverEndpoint} ${server.serverNextId}"
+    ```
+    ```output
+    fs off true npx fs 1
+    ```
+    *)
     export offline (view, enabled) =
         base = blankServer view.viewName
         base(serverOrigin = view.viewOrigin, serverKind = view.viewKind, serverEndpoint = view.viewEndpoint, serverConfig = view.viewConfig, serverEnabled = enabled, serverPhase = "off")
 
-    (** `server` with nothing owed and nothing listed: its entry, and any finished call's text, unchanged. *)
+    (** `server` with nothing owed and nothing listed: its entry, and any finished call's text, unchanged.
+    # Examples
+    ```osprey
+    view = McpClient::ServerView(viewName = "fs", viewOrigin = "global", viewKind = "command", viewEndpoint = "npx fs", viewConfig = "{}", viewEnabled = true)
+    off = McpModel::offline (view, true)
+    busy = off(serverPhase = "connected", serverTools = "[{}]", serverNextId = 9, serverCallText = "done", serverCallDone = true)
+    rested = McpModel::cleared busy
+    print "${rested.serverPhase} [${rested.serverTools}] ${rested.serverNextId} ${rested.serverCallText} ${rested.serverCallDone}"
+    ```
+    ```output
+     [[]] 1 done true
+    ```
+    *)
     export cleared server =
         base = blankServer server.serverName
         base(serverOrigin = server.serverOrigin, serverKind = server.serverKind, serverEndpoint = server.serverEndpoint, serverConfig = server.serverConfig, serverEnabled = server.serverEnabled, serverCallText = server.serverCallText, serverCallDone = server.serverCallDone)
@@ -135,44 +239,153 @@ module McpModel
 
     globalsKept (projects, globals) = filterList (globals, \item => notShadowed (projects, item))
 
-    (** `mcp` with its servers rebuilt from `mcp.json` and `.mcp.json` merged: a project entry wins a name clash, a server whose entry did not change keeps its connection, every server follows its remembered switch, and the merge's problems are kept. *)
+    (** `mcp` with its servers rebuilt from `mcp.json` and `.mcp.json` merged: a project entry wins a name clash, a server whose entry did not change keeps its connection, every server follows its remembered switch, and the merge's problems are kept.
+    # Examples
+    ```osprey
+    handle Arith
+            overflow _ _ _ wrapped => wrapped
+    fresh = McpModel::fresh "/p"
+    mcp = fresh(stateGlobal = "{\"mcpServers\":{\"fs\":{\"command\":\"npx\"},\"web\":{\"url\":\"http://evil.example\"}}}", stateProject = "{\"mcpServers\":{\"fs\":{\"command\":\"other\"}}}")
+    merged = McpModel::reconcile mcp
+    print "${mapList (merged.stateServers, \server => "${server.serverName}:${server.serverOrigin}:${server.serverEndpoint}")} ${merged.stateProblems}"
+    ```
+    ```output
+    ["fs:project:other"] ["mcp.json: MCP server config 'web' needs an HTTPS URL, or an HTTP URL on this machine"]
+    ```
+    *)
     export reconcile mcp =
         merged = McpClient::merge_view (mcp.stateGlobal, mcp.stateProject)
         projects = projectViews (merged.mergedServers)
         mcp(stateServers = listConcat (globalsKept (projects, carriedAll (mcp, merged.mergedServers))) (carriedAll (mcp, projects)), stateProblems = merged.mergedProblems)
 
-    (** `mcp` reconciled once the global `mcp.json` read as `text`. *)
+    (** `mcp` reconciled once the global `mcp.json` read as `text`.
+    # Examples
+    ```osprey
+    handle Arith
+            overflow _ _ _ wrapped => wrapped
+    mcp = McpModel::globalLoaded (McpModel::fresh "/p", "{\"mcpServers\":{\"fs\":{\"command\":\"npx\"}}}")
+    print "${mcp.stateGlobalLoaded} ${mapList (mcp.stateServers, \server => server.serverName)}"
+    ```
+    ```output
+    true ["fs"]
+    ```
+    *)
     export globalLoaded (mcp, text) = reconcile (mcp(stateGlobal = text, stateGlobalLoaded = true))
 
-    (** `mcp` reconciled with no global document, which configures no servers and is no problem. *)
+    (** `mcp` reconciled with no global document, which configures no servers and is no problem.
+    # Examples
+    ```osprey
+    handle Arith
+            overflow _ _ _ wrapped => wrapped
+    mcp = McpModel::globalMissing (McpModel::fresh "/p")
+    print "${mcp.stateGlobalLoaded} ${mcp.stateServers} ${mcp.stateProblems}"
+    ```
+    ```output
+    true [] []
+    ```
+    *)
     export globalMissing mcp = reconcile (mcp(stateGlobal = noDocument, stateGlobalLoaded = true))
 
-    (** `mcp` reconciled once the project's `.mcp.json` read as `text`. *)
+    (** `mcp` reconciled once the project's `.mcp.json` read as `text`.
+    # Examples
+    ```osprey
+    handle Arith
+            overflow _ _ _ wrapped => wrapped
+    mcp = McpModel::projectLoaded (McpModel::fresh "/p", "{\"mcpServers\":{\"fs\":{\"command\":\"other\"}}}")
+    print "${mcp.stateProjectLoaded} ${mapList (mcp.stateServers, \server => "${server.serverName}:${server.serverOrigin}")}"
+    ```
+    ```output
+    true ["fs:project"]
+    ```
+    *)
     export projectLoaded (mcp, text) = reconcile (mcp(stateProject = text, stateProjectLoaded = true))
 
-    (** `mcp` reconciled with no project document, which configures no project servers. *)
+    (** `mcp` reconciled with no project document, which configures no project servers.
+    # Examples
+    ```osprey
+    handle Arith
+            overflow _ _ _ wrapped => wrapped
+    mcp = McpModel::projectMissing (McpModel::fresh "/p")
+    print "${mcp.stateProjectLoaded} ${mcp.stateServers}"
+    ```
+    ```output
+    true []
+    ```
+    *)
     export projectMissing mcp = reconcile (mcp(stateProject = noDocument, stateProjectLoaded = true))
 
-    (** Whether every MCP document has answered, so the servers may be connected. *)
+    (** Whether every MCP document has answered, so the servers may be connected.
+    # Examples
+    ```osprey
+    fresh = McpModel::fresh "/p"
+    partial = fresh(stateGlobalLoaded = true)
+    answered = fresh(stateGlobalLoaded = true, stateProjectLoaded = true, stateStateLoaded = true)
+    print "${McpModel::ready fresh} ${McpModel::ready partial} ${McpModel::ready answered}"
+    ```
+    ```output
+    false false true
+    ```
+    *)
     export ready mcp = mcp.stateGlobalLoaded && mcp.stateProjectLoaded && mcp.stateStateLoaded
 
     byName : (List<McpServer>, string) -> List<McpServer>
     byName (servers, name) = filterList (servers, \server => server.serverName == name)
 
-    (** `name`'s server, or an error when the state holds none. *)
+    (** `name`'s server, or an error when the state holds none.
+    # Examples
+    ```osprey
+    view = McpClient::ServerView(viewName = "fs", viewOrigin = "global", viewKind = "command", viewEndpoint = "npx fs", viewConfig = "{}", viewEnabled = true)
+    fresh = McpModel::fresh "/p"
+    mcp = fresh(stateServers = [McpModel::offline (view, true)])
+    found = McpModel::named (mcp, "fs") ?: McpModel::blankServer "none"
+    missing = McpModel::named (mcp, "nope") ?: McpModel::blankServer "none"
+    print "${found.serverName} ${missing.serverName}"
+    ```
+    ```output
+    fs none
+    ```
+    *)
     export named (mcp, name) = listGet (byName (mcp.stateServers, name)) 0
 
     placeOf : (List<McpServer>, string) -> int
     placeOf (servers, name) = Lists::position (servers, \server => server.serverName == name)
 
-    (** `mcp` with `changed` in place of the server of its name, or unchanged when it holds no such server. *)
+    (** `mcp` with `changed` in place of the server of its name, or unchanged when it holds no such server.
+    # Examples
+    ```osprey
+    view = McpClient::ServerView(viewName = "fs", viewOrigin = "global", viewKind = "command", viewEndpoint = "npx fs", viewConfig = "{}", viewEnabled = true)
+    fresh = McpModel::fresh "/p"
+    mcp = fresh(stateServers = [McpModel::offline (view, true)])
+    found = McpModel::named (mcp, "fs") ?: McpModel::blankServer ""
+    moved = McpModel::putServer (mcp, found(serverNextId = 5))
+    same = McpModel::putServer (mcp, McpModel::blankServer "nope")
+    bumped = McpModel::named (moved, "fs") ?: McpModel::blankServer ""
+    print "${bumped.serverNextId} ${length same.stateServers}"
+    ```
+    ```output
+    5 1
+    ```
+    *)
     export putServer (mcp, changed) =
         at = placeOf (mcp.stateServers, changed.serverName)
         match at < 0
             true => mcp
             false => mcp(stateServers = listConcat (listAppend (Lists::slice (mcp.stateServers, 0, at)) changed) (Lists::slice (mcp.stateServers, satAdd at 1, length mcp.stateServers)))
 
-    (** The tools document the engine reads: every enabled, connected server's tools under its name. *)
+    (** The tools document the engine reads: every enabled, connected server's tools under its name.
+    # Examples
+    ```osprey
+    view = McpClient::ServerView(viewName = "fs", viewOrigin = "global", viewKind = "command", viewEndpoint = "npx fs", viewConfig = "{}", viewEnabled = true)
+    fresh = McpModel::offline (view, true)
+    linked = fresh(serverPhase = "connected", serverTools = "[{\"name\":\"read\"}]")
+    fresh2 = McpModel::fresh "/p"
+    mcp = fresh2(stateServers = [linked, fresh])
+    print (Doc::write (McpModel::toolsDocument mcp))
+    ```
+    ```output
+    {"servers":[{"name":"fs","tools":[{"name":"read"}]}]}
+    ```
+    *)
     export toolsDocument mcp = JsonObject [
         JsonMember "servers" (JsonArray (foldList (mcp.stateServers, [], \(acc, server) =>
             match server.serverEnabled && server.serverPhase == "connected"
@@ -185,13 +398,41 @@ module McpModel
     connectedWith : (List<McpServer>, string) -> List<McpServer>
     connectedWith (servers, name) = filterList (servers, \server => server.serverEnabled && server.serverPhase == "connected" && hasTool (server, name))
 
-    (** The first enabled, connected server listing the prefixed tool `name`, or an error when none does. *)
+    (** The first enabled, connected server listing the prefixed tool `name`, or an error when none does.
+    # Examples
+    ```osprey
+    view = McpClient::ServerView(viewName = "fs", viewOrigin = "global", viewKind = "command", viewEndpoint = "npx fs", viewConfig = "{}", viewEnabled = true)
+    off = McpModel::offline (view, true)
+    linked = off(serverPhase = "connected", serverTools = "[{\"name\":\"read\"}]")
+    fresh = McpModel::fresh "/p"
+    mcp = fresh(stateServers = [off, linked])
+    reader = McpModel::forTool (mcp, "fs_read") ?: McpModel::blankServer "none"
+    writer = McpModel::forTool (mcp, "fs_write") ?: McpModel::blankServer "none"
+    print "${reader.serverName} ${writer.serverName}"
+    ```
+    ```output
+    fs none
+    ```
+    *)
     export forTool (mcp, name) = listGet (connectedWith (mcp.stateServers, name)) 0
 
     labelled : (List<McpServer>, string) -> List<McpServer>
     labelled (servers, name) = filterList (servers, \server => server.serverEnabled && hasTool (server, name))
 
-    (** The name of the enabled server the prefixed tool `name` belongs to, for labelling a tool step; the empty name when none lists it. *)
+    (** The name of the enabled server the prefixed tool `name` belongs to, for labelling a tool step; the empty name when none lists it.
+    # Examples
+    ```osprey
+    view = McpClient::ServerView(viewName = "fs", viewOrigin = "global", viewKind = "command", viewEndpoint = "npx fs", viewConfig = "{}", viewEnabled = true)
+    off = McpModel::offline (view, true)
+    linking = off(serverPhase = "connecting", serverTools = "[{\"name\":\"read\"}]")
+    fresh = McpModel::fresh "/p"
+    mcp = fresh(stateServers = [linking])
+    print "[${McpModel::serverLabel (mcp, "fs_read")}] [${McpModel::serverLabel (mcp, "nope_read")}]"
+    ```
+    ```output
+    [fs] []
+    ```
+    *)
     export serverLabel (mcp, name) = (listGet (labelled (mcp.stateServers, name)) 0 ?: offline (noView, false)).serverName
 
     remember : (List<McpMemory>, string, string, bool) -> List<McpMemory>
@@ -200,7 +441,24 @@ module McpModel
     switched : (McpServer, bool) -> McpServer
     switched (found, enabled) = found(serverEnabled = enabled, serverProblem = "", serverPhase = Pick::either (enabled, found.serverPhase, "off"), serverTools = Pick::either (enabled, found.serverTools, "[]"))
 
-    (** `mcp` with `name` remembered as `enabled` for its folder and its server switched to match: switched off it loses its phase and tools, switched on they return and its problem clears. *)
+    (** `mcp` with `name` remembered as `enabled` for its folder and its server switched to match: switched off it loses its phase and tools, switched on they return and its problem clears.
+    # Examples
+    ```osprey
+    view = McpClient::ServerView(viewName = "fs", viewOrigin = "global", viewKind = "command", viewEndpoint = "npx fs", viewConfig = "{}", viewEnabled = true)
+    fresh = McpModel::fresh "/p"
+    base = McpModel::offline (view, true)
+    linked = base(serverPhase = "connected", serverTools = "[{\"name\":\"read\"}]")
+    mcp = fresh(stateServers = [linked])
+    off = McpModel::withMemory (mcp, "fs", false)
+    back = McpModel::withMemory (off, "fs", true)
+    stopped = McpModel::named (off, "fs") ?: McpModel::blankServer ""
+    resumed = McpModel::named (back, "fs") ?: McpModel::blankServer ""
+    print "${stopped.serverPhase} ${mapList (off.stateMemories, \item => "${item.memoryName}=${item.memoryEnabled}")} ${resumed.serverPhase}"
+    ```
+    ```output
+    off ["fs=false"] off
+    ```
+    *)
     export withMemory (mcp, name, enabled) =
         found = named (mcp, name) ?: offline (noView, false)
         folder = Pick::either (found.serverOrigin == "project", mcp.stateFolder, "")
@@ -210,10 +468,32 @@ module McpModel
 
     memoryOfJson doc = McpMemory(memoryName = Doc::text (doc, "name"), memoryFolder = Doc::text (doc, "folder"), memoryEnabled = Doc::flag (doc, "enabled"))
 
-    (** The non-secret switch document beside providers.json. *)
+    (** The non-secret switch document beside providers.json.
+    # Examples
+    ```osprey
+    plain = McpModel::memory ("fs", "", true)
+    fresh = McpModel::fresh "/p"
+    mcp = fresh(stateMemories = [plain(memoryEnabled = true)])
+    print (Doc::write (McpModel::switchesJson mcp))
+    ```
+    ```output
+    {"servers":[{"name":"fs","folder":"","enabled":true}]}
+    ```
+    *)
     export switchesJson mcp = JsonObject [JsonMember "servers" (arrayOf (mcp.stateMemories, memoryJson))]
 
-    (** `mcp` with the remembered switches read from the `servers` of `doc`, marked loaded and reconciled. *)
+    (** `mcp` with the remembered switches read from the `servers` of `doc`, marked loaded and reconciled.
+    # Examples
+    ```osprey
+    handle Arith
+            overflow _ _ _ wrapped => wrapped
+    mcp = McpModel::memoriesOf (McpModel::fresh "/p", Doc::parse "{\"servers\":[{\"name\":\"fs\",\"folder\":\"\",\"enabled\":true}]}")
+    print "${mcp.stateStateLoaded} ${mapList (mcp.stateMemories, \item => "${item.memoryName}:${item.memoryEnabled}")}"
+    ```
+    ```output
+    true ["fs:true"]
+    ```
+    *)
     export memoriesOf (mcp, doc) = reconcile (mcp(stateMemories = listField (doc, "servers", memoryOfJson), stateStateLoaded = true))
 
     serverJson server = JsonObject [Doc::str ("name", server.serverName), Doc::str ("origin", server.serverOrigin), Doc::str ("kind", server.serverKind), Doc::str ("endpoint", server.serverEndpoint), Doc::str ("config", server.serverConfig), Doc::bit ("enabled", server.serverEnabled), Doc::str ("phase", server.serverPhase), Doc::str ("tools", server.serverTools), Doc::str ("problem", server.serverProblem), Doc::str ("buffer", server.serverBuffer), Doc::str ("session", server.serverSession), Doc::str ("rpc", server.serverRpc), Doc::str ("await", server.serverAwait), Doc::num ("nextId", server.serverNextId), Doc::str ("readTicket", server.serverReadTicket), Doc::str ("callChat", server.serverCallChat), Doc::str ("callId", server.serverCallId), Doc::num ("callUntil", server.serverCallUntil), Doc::str ("callText", server.serverCallText), Doc::bit ("callDone", server.serverCallDone)]
@@ -224,14 +504,35 @@ module McpModel
 
     formOf doc = McpForm(formName = Doc::text (doc, "name"), formType = Doc::text (doc, "type"), formCommand = Doc::text (doc, "command"), formArguments = Doc::text (doc, "arguments"), formUrl = Doc::text (doc, "url"), formEnvironment = Doc::text (doc, "environment"), formHeaders = Doc::text (doc, "headers"), formPaste = Doc::text (doc, "paste"), formProblem = Doc::text (doc, "problem"))
 
-    (** The opaque session encoding; the runtime needs these values across dispatches. *)
+    (** The opaque session encoding; the runtime needs these values across dispatches.
+    # Examples
+    ```osprey
+    plain = McpModel::memory ("fs", "", true)
+    fresh = McpModel::fresh "/p"
+    mcp = fresh(stateFolder = "/work", stateMemories = [plain(memoryEnabled = true)])
+    print (Doc::write (McpModel::storeJson mcp))
+    ```
+    ```output
+    {"global":"{\"mcpServers\":{}}","project":"{\"mcpServers\":{}}","servers":[],"memories":[{"name":"fs","folder":"","enabled":true}],"form":{"name":"","type":"command","command":"","arguments":"","url":"","environment":"","headers":"","paste":"","problem":""},"expanded":[],"problems":[],"folder":"/work","globalLoaded":false,"projectLoaded":false,"stateLoaded":false}
+    ```
+    *)
     export storeJson mcp = JsonObject [
         Doc::str ("global", mcp.stateGlobal), Doc::str ("project", mcp.stateProject), JsonMember "servers" (arrayOf (mcp.stateServers, serverJson)),
         JsonMember "memories" (arrayOf (mcp.stateMemories, memoryJson)), JsonMember "form" (formJson mcp.stateForm), JsonMember "expanded" (Doc::strings mcp.stateExpanded), JsonMember "problems" (Doc::strings mcp.stateProblems), Doc::str ("folder", mcp.stateFolder),
         Doc::bit ("globalLoaded", mcp.stateGlobalLoaded), Doc::bit ("projectLoaded", mcp.stateProjectLoaded), Doc::bit ("stateLoaded", mcp.stateStateLoaded),
     ]
 
-    (** The state from a saved session document; one without `servers` is fresh state for no folder. *)
+    (** The state from a saved session document; one without `servers` is fresh state for no folder.
+    # Examples
+    ```osprey
+    fresh = McpModel::fresh "/p"
+    mcp = McpModel::storeOf (McpModel::storeJson (fresh(stateFolder = "/work")))
+    print "[${mcp.stateFolder}] ${mcp.stateForm.formType} ${McpModel::ready mcp} [${(McpModel::storeOf (Doc::parse "{}")).stateFolder}]"
+    ```
+    ```output
+    [/work] command false []
+    ```
+    *)
     export storeOf doc = match Doc::has (doc, "servers")
         false => fresh ""
         true => McpState(stateGlobal = Doc::text (doc, "global"), stateProject = Doc::text (doc, "project"), stateServers = listField (doc, "servers", serverOf), stateMemories = listField (doc, "memories", memoryOfJson), stateForm = formOf (Doc::field (doc, "form")), stateExpanded = Doc::texts (doc, "expanded"), stateProblems = Doc::texts (doc, "problems"), stateFolder = Doc::text (doc, "folder"), stateGlobalLoaded = Doc::flag (doc, "globalLoaded"), stateProjectLoaded = Doc::flag (doc, "projectLoaded"), stateStateLoaded = Doc::flag (doc, "stateLoaded"))

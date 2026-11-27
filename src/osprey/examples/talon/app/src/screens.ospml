@@ -6,8 +6,6 @@ namespace talon
 import ui::Lists
 import ui::Ui
 import ui::Symbols
-import talon::Look
-import talon::Parts
 
 (** Overview, Accounts and Security. *)
 module Screens

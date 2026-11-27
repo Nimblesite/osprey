@@ -1,1 +1,1 @@
-program entry invokes a dynamic callable whose effect provenance cannot be proven; preserve the callable through a statically tracked value path
+37:0: program entry invokes a dynamic callable whose effect provenance cannot be proven; preserve the callable through a statically tracked value path

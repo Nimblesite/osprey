@@ -16,41 +16,48 @@ module Permissions {
     /// verified evidence.
     export fn render(l, access: Model::Access, ledger, now) = match Model::gate(l.evidence, Names::display(l.pkg.key)) {
         Error { message } => Model::hidden("web.evidence-unavailable: ${message}")
-        Success => match Model::isAdministeredBy(access) && Model::viewerOrgHandle(access.viewer) == l.orgHandle {
+        Success => match Model::isAdministeredBy(access, l.pkg) && Model::viewerOrgHandle(access.viewer) == l.pkg.key.scope {
             false => Model::hidden("web.permissions.admin-only")
             true => Model::shown(Html::document("Permissions for ${Names::display(l.pkg.key)} - Osprey Package Registry", body(l, access, ledger, now)))
         }
     }
 
-    fn body(l, access: Model::Access, ledger, now) = join([
+    fn body(l, access, ledger, now) = join([
         "<main id=\"permissions\"><h1>Permissions for ${Html::escape(Names::display(l.pkg.key))}</h1>",
         Html::field("Organization", "@${l.orgHandle}"),
-        Html::field("Package administrator", access.admin),
-        grantTable(ledger),
-        notices(access, now),
+        Html::field("Package administrator", l.pkg.admin),
+        publisherSection(filterList(ledger, fn(g) => g.package == l.pkg.id && Governance::samePermission(g.permission, Governance::PublishRelease)), now),
+        grantTable(filterList(ledger, fn(g) => g.package == l.pkg.id), now),
+        notices(access, l.pkg, now),
         "</main>"], "")
 
-    fn grantRow(grant: Governance::Grant) = join([
+    fn publisherSection(rows, now) = Html::section("publishers", "Publishers", Html::paragraph("The package administrator delegates publishing to individual organization members. Each grant applies to this package.") +
+        (if isEmpty(rows) { Html::paragraph("No publishing grants recorded.") } else {
+            Html::el("ul", join(mapList(rows, fn(g) => Html::el("li", Html::escape(g.membership) + " · " + rowState(g, now) + " · " + expiry(g))), ""))
+        }))
+
+    fn grantRow(grant, now) = join([
         "<tr><td>${Html::escape(grant.membership)}</td>",
         "<td>${Html::escape(Governance::permissionName(grant.permission))}</td>",
-        "<td>${expiry(grant)}</td><td>${rowState(grant)}</td></tr>"], "")
+        "<td>${expiry(grant)}</td><td>${rowState(grant, now)}</td></tr>"], "")
 
     fn expiry(grant: Governance::Grant) = if Maybe::isPresent(grant.expiresAt) { "until ${Maybe::orElse(grant.expiresAt, 0)}" } else { "no expiry" }
 
-    fn rowState(grant: Governance::Grant) = if Governance::isActiveGrant(grant) { "active" } else { "revoked" }
+    fn rowState(grant, now) = if !Governance::isActiveGrant(grant) { "revoked" }
+        else if Maybe::fold(grant.expiresAt, false, fn(at) => at <= now) { "expired" } else { "active" }
 
-    fn grantTable(ledger) = if isEmpty(ledger) {
+    fn grantTable(ledger, now) = if isEmpty(ledger) {
         "<p class=\"grants none\">No explicit grants: every operation, including publication, is currently denied for everyone.</p>"
     } else {
         join([
             "<table><caption>Explicit package permissions</caption>",
             "<thead><tr><th scope=\"col\">Member</th><th scope=\"col\">Permission</th><th scope=\"col\">Expiry</th><th scope=\"col\">State</th></tr></thead>",
-            "<tbody>${join(mapList(ledger, grantRow), "")}</tbody></table>"], "")
+            "<tbody>${join(mapList(ledger, fn(g) => grantRow(g, now)), "")}</tbody></table>"], "")
     }
 
-    fn notices(access: Model::Access, now) = {
+    fn notices(access, pkg, now) = {
         let seat = Html::note("Only the current administrator changes grants; permission holders cannot delegate, renew or widen them.")
-        let publishing = if !Model::holdsNow(access, Governance::PublishRelease, now) { Html::note(Model::publishGrantNotice()) } else { "" }
+        let publishing = if !Model::holdsNow(access, pkg, Governance::PublishRelease, now) { Html::note(Model::publishGrantNotice()) } else { "" }
         seat + publishing
     }
 }

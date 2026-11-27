@@ -178,8 +178,8 @@ module EditorApp
         MoveEnd bar => match down
             true => DawSession::ended (editor(armedNote = endHeld), bar)
             false => Runtime::step editor
-        MoveStart _ => match down
-            true => Runtime::step (editor(armedNote = startHeld))
+        MoveStart bar => match down
+            true => DawSession::started (editor(armedNote = startHeld), bar)
             false => Runtime::step editor
         AdjustMix index gain pan => match down
             true => Runtime::step (DawSession::slid (editor, index, gain, pan))
@@ -293,7 +293,7 @@ module SamplePicker
     ticket (editor, serial) = "prism-sample:${serial}:${editor.selected}:${editor.revision}"
     problem (editor, text) =
         title = match Graphs::node (editor.graph, editor.selected)
-            Valid n => EditorView::processorTitle n.processor
+            Valid n => Descriptors::title n.processor
             Invalid _ => "Module"
         Runtime::step (editor(sampleTicket = "", message = "${title} ${editor.selected}: ${text}"))
 

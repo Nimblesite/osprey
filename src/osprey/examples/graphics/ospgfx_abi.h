@@ -19,7 +19,7 @@
 // the Linux-hosted frame-path test that compiles the D3D12 frame functions
 // against stubbed SDK calls.
 //
-// This slot protocol is also the seam where plan 0023's extracted kernels
+// This slot protocol is also the seam where plan 0055's extracted kernels
 // meet the graphics bridge: a kernel's leading uniform parameters are exactly
 // a slot vector, so an emitter that targets this ABI needs no second one.
 

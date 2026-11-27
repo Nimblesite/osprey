@@ -39,7 +39,7 @@ function saved(sha) {
 }
 
 /** Commit what is staged for `path` under `subject`; an unchanged path keeps the current HEAD. */
-function committed(config: Config, path, subject) {
+function committed(config, path, subject) {
   if (succeeds(config.repo, `git diff --cached --quiet -- '${path}'`)) {
     return andThen(head(config), (sha) => Success(saved(sha)));
   }
@@ -47,7 +47,7 @@ function committed(config: Config, path, subject) {
   return andThen(run(config.repo, `git ${identity} commit -q -m '${subject}' -- '${path}'`), (_) => andThen(head(config), (sha) => Success(saved(sha))));
 }
 
-function staged(config: Config, path, subject) {
+function staged(config, path, subject) {
   return andThen(run(config.repo, `git add -- '${path}'`), (_) => committed(config, path, subject));
 }
 

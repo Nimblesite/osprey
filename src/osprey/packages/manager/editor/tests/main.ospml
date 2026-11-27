@@ -14,11 +14,20 @@ import ui::Runtime
 import uitest::Drive
 import uitest::Views
 
+ospreyPackages = "Osprey Packages"
+
 workspace = "file:///work/app"
 loopback = "http://127.0.0.1:8787"
 hosted = "https://registry.example.test"
 unverified = "No findings recorded; audit status unverified"
 cve = "CVE-2026-0002: unsafe native call"
+
+// The package the journeys add and remove, the detail buttons they press, and the alert a refused add shows.
+reportKey = "@demo/report"
+addLabel = "Add to project"
+removeLabel = "Remove dependency"
+confirmAddLabel = "Confirm add @demo/new"
+unavailableTitle = "Package data unavailable"
 
 // ---- the host fixtures: the CLI and registry output as completion text ----
 
@@ -29,7 +38,7 @@ catalogItem (key, epoch, ordinal, findings) = JsonObject [
 ]
 
 catalogDoc () = JsonObject [JsonMember "packages" (JsonArray ([
-    catalogItem ("@demo/report", 1, 1, []),
+    catalogItem (reportKey, 1, 1, []),
     catalogItem ("@demo/new", 2, 0, []),
     catalogItem ("@demo/risky", 2, 3, [cve]),
 ]))]
@@ -47,10 +56,10 @@ packageJson (key, version, direct, present, dependencies, dependents, findings) 
 
 graphDoc findings = JsonObject [
     Doc::str ("project", workspace),
-    JsonMember "direct" (Doc::strings (["@demo/report"])),
+    JsonMember "direct" (Doc::strings ([reportKey])),
     JsonMember "packages" (JsonArray ([
-        packageJson ("@demo/report", "e1.r1", true, true, ["@demo/base"], [], []),
-        packageJson ("@demo/base", "e1.r0", false, true, [], ["@demo/report"], [cve]),
+        packageJson (reportKey, "e1.r1", true, true, ["@demo/base"], [], []),
+        packageJson ("@demo/base", "e1.r0", false, true, [], [reportKey], [cve]),
         packageJson ("@demo/ghost", "e1.r2", false, false, [], [], []),
     ])),
     JsonMember "findings" (Doc::strings findings),
@@ -78,21 +87,24 @@ regionNode (d, key) = match Lists::find (regionsOf d, \region => region.snapshot
     Success region => region.snapshotValue
 
 // `node` with every `slot` replaced by the region it names, the way the host that rebuilds the frame draws it ([NATIVE-SHM-NODES]).
+// Every child list is rebuilt through `below`.
+below (d, children) = mapList (children, \child => resolvedNode (d, child))
+
 resolvedNode (d, node) = match node
     ui::Slot key => regionNode (d, key)
-    ui::Stack axis children => ui::Stack(axis = axis, children = mapList (children, \child => resolvedNode (d, child)))
-    ui::Section title footer children => ui::Section(title = title, footer = footer, children = mapList (children, \child => resolvedNode (d, child)))
-    ui::Screen title subtitle toolbar children => ui::Screen(title = title, subtitle = subtitle, toolbar = mapList (toolbar, \child => resolvedNode (d, child)), children = mapList (children, \child => resolvedNode (d, child)))
-    ui::Split panes => ui::Split(panes = mapList (panes, \child => resolvedNode (d, child)))
-    ui::Layer children => ui::Layer(children = mapList (children, \child => resolvedNode (d, child)))
+    ui::Stack axis children => ui::Stack(axis = axis, children = below (d, children))
+    ui::Section title footer children => ui::Section(title = title, footer = footer, children = below (d, children))
+    ui::Screen title subtitle toolbar children => ui::Screen(title = title, subtitle = subtitle, toolbar = below (d, toolbar), children = below (d, children))
+    ui::Split panes => ui::Split(panes = below (d, panes))
+    ui::Layer children => ui::Layer(children = below (d, children))
     ui::Framed style content => ui::Framed(frameStyle = style, frameContent = resolvedNode (d, content))
     ui::Themed theme content => ui::Themed(localTheme = theme, themedContent = resolvedNode (d, content))
     ui::Dialog title body dismiss => ui::Dialog(dialogTitle = title, dialogBody = resolvedNode (d, body), dialogDismiss = dismiss)
-    ui::ContextMenu body actions => ui::ContextMenu(menuBody = resolvedNode (d, body), menuActions = mapList (actions, \child => resolvedNode (d, child)))
+    ui::ContextMenu body actions => ui::ContextMenu(menuBody = resolvedNode (d, body), menuActions = below (d, actions))
     ui::Aside place aside pane extent least most keep resize => ui::Aside(side = place, aside = resolvedNode (d, aside), pane = resolvedNode (d, pane), extent = extent, asideLeast = least, asideMost = most, paneKeep = keep, resize = resize)
     ui::Tabs tabs selected bind => ui::Tabs(tabs = mapList (tabs, \tab => tab(page = resolvedNode (d, tab.page))), selected = selected, bind = bind)
     ui::Rows rows selected bind => ui::Rows(rows = mapList (rows, \row => row(cell = resolvedNode (d, row.cell))), selected = selected, bind = bind)
-    ui::Disclosure title expanded bind children => ui::Disclosure(title = title, expanded = expanded, bind = bind, children = mapList (children, \child => resolvedNode (d, child)))
+    ui::Disclosure title expanded bind children => ui::Disclosure(title = title, expanded = expanded, bind = bind, children = below (d, children))
     _ => node
 
 // The region `key`'s tree, with its slots naming the frame's other regions, told as the rows a host reads ([NATIVE-SHM-NODES]).
@@ -196,7 +208,7 @@ expectNoRequest d = expect (requestCount d, 0)
 
 expectNotice (d, part) = expect (contains (storeOf d).packageNotice part, true)
 
-askAdd d = press (d, "Add to project")
+askAdd d = press (d, addLabel)
 
 awaitingConfirmation (d, ask, mode) =
     asked = press (d, ask)
@@ -227,7 +239,7 @@ installedCounts () =
     ])
     hidesIn (after, "packages", "@demo/ghost")
     showsIn (after, "root", "@demo/ghost · missing from disk")
-    expect (titledText (after, "root", "screen", "Packages", "subtitle"), workspace)
+    expect (titledText (after, "root", "screen", ospreyPackages, "subtitle"), workspace)
     expect (toneOf (after, "root", "Audit unverified"), "caution")
 
 emptyFindings () =
@@ -237,7 +249,7 @@ emptyFindings () =
     showsIn (chosen, "details", "requires explicit confirmation")
     hidesIn (chosen, "details", "Audited")
     expect (hasTone (chosen, "details", "good"), false)
-    expectDetailButton (chosen, "Add to project", true)
+    expectDetailButton (chosen, addLabel, true)
 
 missingDirect () =
     first = started loopback
@@ -247,34 +259,34 @@ missingDirect () =
     chosen = pick (ready, "@demo/ghost")
     showsIn (chosen, "details", "verify.missing")
     expect (toneOf (chosen, "details", "Missing from disk"), "caution")
-    expectDetailButton (chosen, "Remove dependency", true)
-    confirmRemove (press (chosen, "Remove dependency"), "@demo/ghost")
+    expectDetailButton (chosen, removeLabel, true)
+    confirmRemove (press (chosen, removeLabel), "@demo/ghost")
 
 recordedFindings () =
     chosen = catalogDetail (loopback, "@demo/risky")
     showsIn (chosen, "details", cve)
     expect (toneOf (chosen, "details", "1 findings"), "danger")
-    expectDetailButton (chosen, "Add to project", false)
+    expectDetailButton (chosen, addLabel, false)
 
 unverifiedAdd () =
     first = started loopback
     catalogued = cataloguedIn (first)
     // While the graph is still outstanding the frame offers no add control at all, so pending work blocks the add.
-    expect (Views::shows (catalogued.drivenSeen, "Add to project"), false)
+    expect (Views::shows (catalogued.drivenSeen, addLabel), false)
     expect ((storeOf catalogued).packagePending, true)
     expect ((storeOf catalogued).packageConfirming, "")
     expectNoRequest catalogued
     expect (problemsOf catalogued, "")
     resolved = completedWith (catalogued, ticketAt (first, 1), true, graphResult [])
     chosen = chosenIn (resolved, "@demo/new")
-    asked = awaitingConfirmation (chosen, "Add to project", "add")
-    showsIn (asked, "details", "Confirm add @demo/new")
-    expectDetailButton (asked, "Confirm add @demo/new", true)
+    asked = awaitingConfirmation (chosen, addLabel, "add")
+    showsIn (asked, "details", confirmAddLabel)
+    expectDetailButton (asked, confirmAddLabel, true)
 
 confirmedAdd () =
     first = started loopback
     chosen = chosenIn (completeBoth (first, []), "@demo/new")
-    confirmed = press (askAdd chosen, "Confirm add @demo/new")
+    confirmed = press (askAdd chosen, confirmAddLabel)
     oneRequest (confirmed, "add @demo/new")
     expect (contains (ticketAt (confirmed, 0)) "package/add:2", true)
     before = storeOf confirmed
@@ -285,21 +297,21 @@ confirmedAdd () =
 
 hostedAdd () =
     chosen = catalogDetail (hosted, "@demo/new")
-    expectDetailButton (chosen, "Add to project", false)
+    expectDetailButton (chosen, addLabel, false)
     refused = askAdd chosen
     expectNoRequest refused
     expect ((storeOf refused).packageFault, true)
     expectNotice (refused, "installation is disabled")
-    expect (contains (titledText (refused, "root", "empty", "Package data unavailable", "detail")) "installation is disabled", true)
+    expect (contains (titledText (refused, "root", "empty", unavailableTitle, "detail")) "installation is disabled", true)
     expect ((storeOf refused).packageConfirming, "")
 
 removeDirect () =
-    chosen = pick (completeBoth (started loopback, []), "@demo/report")
-    asked = awaitingConfirmation (chosen, "Remove dependency", "remove")
+    chosen = pick (completeBoth (started loopback, []), reportKey)
+    asked = awaitingConfirmation (chosen, removeLabel, "remove")
     message = titledText (asked, "details", "alert", "Confirm remove @demo/report", "message")
     expect (contains message "Removing @demo/report", true)
     expect (contains message workspace, true)
-    confirmRemove (asked, "@demo/report")
+    confirmRemove (asked, reportKey)
 
 securityFindings () =
     after = completeBoth (started loopback, [cve])
@@ -312,16 +324,16 @@ securityFindings () =
 unavailableData () =
     first = started loopback
     expectEvidence (first, "root", [{ label = "Installed", want = "" }])
-    expect (titledText (first, "root", "screen", "Packages", "subtitle"), workspace)
+    expect (titledText (first, "root", "screen", ospreyPackages, "subtitle"), workspace)
     failed = completedWith (first, ticketAt (first, 1), false, "Package executable is missing")
     expectEvidence (failed, "root", [{ label = "Installed", want = "" }, { label = "Catalog", want = "" }])
-    showsIn (failed, "root", "Package data unavailable")
-    expect (titledText (failed, "root", "screen", "Packages", "subtitle"), workspace)
+    showsIn (failed, "root", unavailableTitle)
+    expect (titledText (failed, "root", "screen", ospreyPackages, "subtitle"), workspace)
 
 verifiedFetch () =
     selected = catalogDetail (loopback, "@demo/new")
     asked = askAdd selected
-    confirmed = press (asked, "Confirm add @demo/new")
+    confirmed = press (asked, confirmAddLabel)
     report = "{\"lines\":[],\"status\":0}"
     added = completedWith (confirmed, ticketAt (confirmed, 0), true, report)
     oneRequest (added, "--json fetch --registry")
@@ -332,7 +344,7 @@ verifiedFetch () =
     expectNoRequest failed
     expect ((storeOf failed).packagePending, false)
     expect ((storeOf failed).packageFault, true)
-    expect (contains (titledText (failed, "root", "empty", "Package data unavailable", "detail")) "Digest mismatch", true)
+    expect (contains (titledText (failed, "root", "empty", unavailableTitle, "detail")) "Digest mismatch", true)
     expect (pairValue (regionWalk (failed, "root"), "Installed"), "")
 
 exactTests [

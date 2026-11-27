@@ -2,7 +2,6 @@
 //! higher-order arguments and handler results without capturing authority.
 
 use crate::effect_rows_tests::{assert_accepted, diagnostics};
-use crate::TypeError;
 
 const PROBE: &str = "effect Probe { value: fn() -> int }\n\
     fn fetch() -> int !Probe = perform Probe.value()\n\
@@ -14,14 +13,25 @@ const UNHANDLED: &str =
 const GENERIC_UNHANDLED: &str =
     "unhandled effect operations at program entry: Probe<int>.value; add a matching `handle`";
 
+/// The exact messages, and every program-entry diagnostic at a source
+/// position: it names the statement its fault enters through (#402).
 fn assert_errors(source: &str, expected: &[&str]) {
+    let actual = diagnostics(source);
     assert_eq!(
-        diagnostics(source),
-        expected
+        actual
             .iter()
-            .map(|message| TypeError::new(*message))
+            .map(|error| error.message.as_str())
             .collect::<Vec<_>>(),
+        expected,
         "{source}"
+    );
+    let entry = |error: &&crate::TypeError| error.message.contains("program entry");
+    assert!(
+        actual
+            .iter()
+            .filter(entry)
+            .all(|error| error.position.is_some()),
+        "{source}\n{actual:?}"
     );
 }
 
@@ -249,7 +259,9 @@ fn generic_handler_results_cannot_be_rebound_to_an_unrelated_caller_argument() {
                 "{declarations}let answer= {{\n    handle Probe {{\n        value=>33\n    }}\n    f()\n}}\n"
             ));
             assert_errors(
-                &format!("{declarations}let answer= {{\n    handle Probe {{\n        value=>\"wrong\"\n    }}\n    f()\n}}\n"),
+                &format!(
+                    "{declarations}let answer= {{\n    handle Probe {{\n        value=>\"wrong\"\n    }}\n    f()\n}}\n"
+                ),
                 &[GENERIC_UNHANDLED],
             );
         }
@@ -276,7 +288,8 @@ fn handler_result_provenance_respects_local_shadowing_and_pure_results() {
 #[test]
 fn escaped_closures_capture_values_but_never_active_handler_bindings() {
     assert_errors(
-        &format!("{ACTION}{PROBE}effect Factory {{make: fn() -> Action}}\n\
+        &format!(
+            "{ACTION}{PROBE}effect Factory {{make: fn() -> Action}}\n\
             fn extract<T>(x:T) = x.m\n\
             let f= {{\n\
                 handle Factory {{\n\
@@ -284,7 +297,8 @@ fn escaped_closures_capture_values_but_never_active_handler_bindings() {
                 }}\n\
                 fn()=>extract(perform Factory.make())()\n\
             }}\n\
-            let answer=f()\n"),
+            let answer=f()\n"
+        ),
         &[
             "unhandled effect operations at program entry: Factory.make; add a matching `handle`",
             "program entry invokes a dynamic callable whose effect provenance cannot be proven; preserve the callable through a statically tracked value path",

@@ -1,0 +1,66 @@
+body:not(.vscode-high-contrast, .vscode-high-contrast-light) {
+  --osp-canvas: var(--paper);
+  --osp-surface: var(--package-card);
+  --osp-raised: var(--package-card);
+  --osp-text: var(--ink);
+  --osp-muted: var(--muted);
+  --osp-border: var(--line);
+  --osp-accent: var(--pine);
+  --osp-accent-strong: var(--pine);
+  --osp-brand-accent: var(--mint);
+  --osp-brand-surface: var(--package-card);
+  --osp-caution: var(--warn);
+  --osp-danger: var(--danger);
+  --osp-good: var(--pine);
+  background: var(--osp-canvas);
+  color: var(--osp-text);
+}
+body.vscode-dark {
+  --osp-canvas: #172921;
+  --osp-surface: #203930;
+  --osp-raised: #294239;
+  --osp-text: var(--paper);
+  --osp-muted: #bed0c3;
+  --osp-border: #526b5d;
+  --osp-accent: var(--mint);
+  --osp-accent-strong: var(--mint);
+  --osp-brand-surface: var(--osp-raised);
+  --osp-caution: #ffbd92;
+  --osp-danger: #ffb5bd;
+  --osp-good: var(--mint);
+}
+.osp-screen-titles h1 {
+  font: 500 clamp(1.6rem, 4vw, 2.75rem)/1.08 var(--display);
+  letter-spacing: -.035em;
+  overflow-wrap: anywhere;
+}
+.osp-screen-header { flex-wrap: wrap; }
+.osp-brand-name { display: none; }
+.osp-brand-lockup { min-width: auto; }
+.osp-section-title { font: 500 1.3rem/1.15 var(--display); }
+.osp-role-large, .osp-role-headline, .osp-role-mono { font-family: var(--mono); overflow-wrap: anywhere; }
+body:not(.vscode-high-contrast, .vscode-high-contrast-light) .osp-screen-header {
+  isolation: isolate;
+  position: relative;
+  overflow: hidden;
+  background: var(--package-banner);
+  color: var(--paper);
+}
+body:not(.vscode-high-contrast, .vscode-high-contrast-light) .osp-screen-header::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0 0 0 82%;
+  opacity: .35;
+  background: var(--package-pattern);
+  background-size: 5.3rem 7.9rem;
+  clip-path: polygon(48% 0, 100% 0, 100% 100%, 0 100%);
+}
+body:not(.vscode-high-contrast, .vscode-high-contrast-light) .osp-screen-titles p { color: #deebdc; }
+body:not(.vscode-high-contrast, .vscode-high-contrast-light) .osp-button-prominent {
+  background: var(--mint);
+  color: var(--ink);
+}
+body:not(.vscode-high-contrast, .vscode-high-contrast-light) .osp-button-prominent:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--mint) 85%, var(--ink));
+}

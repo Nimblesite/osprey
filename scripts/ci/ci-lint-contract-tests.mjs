@@ -34,14 +34,13 @@ test('Zed builds in phase one and tests the cached compiler once in phase two', 
 test('WASM tests use only their toolchain and retain every acceptance step', () => {
   const wasm = job('test-wasm', ciFile)
   assert.doesNotMatch(wasm, /setup-osprey-compiler|libc6-dbg|lldb/)
-  assert.match(wasm, /apt-get install -y clang llvm lld wabt zsh/)
-  assert.match(wasm, /timeout-minutes: 6/)
-  assert.match(wasm, /name: osprey-build/)
-  assert.match(wasm, /make _runtime_wasm/)
-  assert.match(wasm, /wasm-validate .*hello\.wasm/)
-  assert.match(wasm, /for flavor in osp ospml/)
-  assert.match(wasm, /wasm-browser-smoke\.mjs/)
-  assert.match(wasm, /make _test_wasm_goldens/)
+  for (const step of [/apt-get install -y clang llvm lld wabt zsh/, /timeout-minutes: 6/, /name: osprey-build/,
+    /make _runtime_wasm/, /wasm-validate .*hello\.wasm/, /for flavor in osp ospml/, /wasm-browser-smoke\.mjs/,
+    /make _test_wasm_goldens/]) assert.match(wasm, step)
+  const doctests = job('test-wasm-doctests', ciFile)
+  for (const step of [/timeout-minutes: 6/, /\*install-wasm-toolchain/, /\*download-osprey-build/,
+    /\*build-wasm-runtime/, /make _test_wasm_doctests/]) assert.match(doctests, step)
+  assert.match(workflow, /- test-wasm-doctests\n/)
 })
 
 test('Only the Linux profiler suite installs glibc debug symbols', () => {

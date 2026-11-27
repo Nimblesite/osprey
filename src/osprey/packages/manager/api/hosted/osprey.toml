@@ -1,0 +1,8 @@
+[project]
+name = "hosted-registry-api"
+source_roots = ["src", "../lib", "../../core/src", "../../host/src"]
+default_namespace = "registry_api"
+entry = "src/main.osp"
+
+[modules]
+allow_wildcard_imports = false

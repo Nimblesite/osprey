@@ -121,7 +121,7 @@ def mapped_row(path, start, row_bytes, type, basis, hidden):
             return perform(Fault.halt(toString(message)))
 
 
-def mixed(model, x, mixer, slot, index, count) -> Result[Step, str]:
+def mixed(model, x, mixer, slot, index, count):
     """The mixer's output for the `count` normed rows `x`, given the slot of its own kind."""
     match mixer:
         case Linear(layer=layer):
@@ -325,7 +325,7 @@ def span(tokens, first, chunk):
     return chunk if first + chunk <= len(tokens) else len(tokens) - first
 
 
-def embedded(model, tokens, first, count) -> Result[GpuBuffer[float32], str]:
+def embedded(model, tokens, first, count):
     """The `[count, hidden]` embeddings of the tokens from `first`."""
     rows = fold(range(0, count), Success(value=[]), lambda acc, t: embedded_row(model, tokens, first + t, acc))
     match rows:

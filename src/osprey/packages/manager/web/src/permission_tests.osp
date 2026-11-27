@@ -5,31 +5,37 @@ namespace registry_web;
 /// must show before every mutation surface
 /// ([PACKAGE-OWNERSHIP-ADMIN], [PACKAGE-OWNERSHIP-PERMISSIONS]).
 module PermissionTests {
+    let packageAdministratorMemAdmin = "Package administrator: mem-admin-atlas"
+    let administrationAloneDoesNot = "administration alone does not authorize publication"
+
     let adminOnlyCode = "web.permissions.admin-only"
+
+    /// The control screen for `member` over `ledger`, at the fixture clock.
+    fn controlScreen(member, ledger) = Permissions::render(WebFixtures::warnedAtlasUtil(), member, ledger, WebFixtures::now())
 
     /// The administrator holds only edit-metadata: the control screen
     /// shows the ledger and explicitly denies implied publication.
     fn adminWithoutPublish() = WebFixtures::showsTexts("web: admin without publish warned",
-        Permissions::render(WebFixtures::warnedAtlasUtil(), WebFixtures::adminWithoutPublish(), WebFixtures::atlasGrantLedger(), WebFixtures::now()),
-        ["Package administrator: mem-admin-atlas", "edit-metadata", "publish-release",
-            "administration alone does not authorize publication"], [])
+        controlScreen(WebFixtures::adminWithoutPublish(), WebFixtures::atlasGrantLedger()),
+        [packageAdministratorMemAdmin, "edit-metadata", "publish-release",
+            administrationAloneDoesNot], [])
 
     /// With the explicit grant, the warning is gone.
-    fn adminWithPublish() = WebFixtures::showsExpecting("web: admin with publish not warned",
-        Permissions::render(WebFixtures::warnedAtlasUtil(), WebFixtures::adminWithPublish(), WebFixtures::atlasGrantLedger(), WebFixtures::now()),
-        "no admin-publish warning")
+    fn adminWithPublish() = WebFixtures::showsTexts("web: admin with publish not warned",
+        controlScreen(WebFixtures::adminWithPublish(), WebFixtures::atlasGrantLedger()),
+        [packageAdministratorMemAdmin, "publish-release"], [administrationAloneDoesNot])
 
     /// The package page carries the same context and warning for members.
     fn packageViewShowsAccess() = WebFixtures::showsTexts("web: package page shows access context",
         PackageView::render(WebFixtures::warnedAtlasUtil(), WebFixtures::adminWithoutPublish(), WebFixtures::now()),
-        ["Package administrator: mem-admin-atlas", "Your effective permissions: edit-metadata",
-            "administration alone does not authorize publication"], [])
+        [packageAdministratorMemAdmin, "Your effective permissions: edit-metadata",
+            administrationAloneDoesNot], [])
 
     /// A publisher sees their own effective permission, and no implied
     /// admin powers.
     fn publisherSeesOwnGrant() = WebFixtures::showsTexts("web: publisher sees own grant",
         PackageView::render(WebFixtures::warnedAtlasUtil(), WebFixtures::publisher(), WebFixtures::now()),
-        ["Your effective permissions: publish-release"], ["administration alone does not authorize publication"])
+        ["Your effective permissions: publish-release"], [administrationAloneDoesNot])
 
     /// Anonymous visitors get the public projection only: no seat, no
     /// grants, no permission panel at all.
@@ -40,23 +46,35 @@ module PermissionTests {
     /// The control screen is admin-only: a publisher, an outsider and an
     /// anonymous visitor all get the hidden screen.
     fn controlScreenAdminOnly() = checkAll("web: control screen admin only", [
-        WebFixtures::hiddenFor(Permissions::render(WebFixtures::warnedAtlasUtil(), WebFixtures::publisher(), WebFixtures::atlasGrantLedger(), WebFixtures::now()), adminOnlyCode),
-        WebFixtures::hiddenFor(Permissions::render(WebFixtures::warnedAtlasUtil(), WebFixtures::outsider(), WebFixtures::atlasGrantLedger(), WebFixtures::now()), adminOnlyCode),
-        WebFixtures::hiddenFor(Permissions::render(WebFixtures::warnedAtlasUtil(), WebFixtures::anonymous(), WebFixtures::atlasGrantLedger(), WebFixtures::now()), adminOnlyCode)
+        WebFixtures::hiddenFor(controlScreen(WebFixtures::publisher(), WebFixtures::atlasGrantLedger()), adminOnlyCode),
+        WebFixtures::hiddenFor(controlScreen(WebFixtures::outsider(), WebFixtures::atlasGrantLedger()), adminOnlyCode),
+        WebFixtures::hiddenFor(controlScreen(WebFixtures::anonymous(), WebFixtures::atlasGrantLedger()), adminOnlyCode)
     ])
 
     /// A member of another organization never sees this package's access
     /// context on the package page.
-    fn outsiderSeesNoAccess() = WebFixtures::showsExpecting("web: outsider sees no access context",
-        PackageView::render(WebFixtures::warnedAtlasUtil(), WebFixtures::outsider(), WebFixtures::now()), "no access context")
+    fn outsiderSeesNoAccess() = WebFixtures::showsTexts("web: outsider sees no access context",
+        PackageView::render(WebFixtures::warnedAtlasUtil(), WebFixtures::outsider(), WebFixtures::now()), ["@atlas/util", "OSA-2026-0001"], ["Organization and permissions", "Package administrator", "Your effective permissions"])
 
     /// The grant table escapes hostile membership ids.
     fn hostileLedger() = WebFixtures::showsTexts("web: hostile ledger escaped",
-        Permissions::render(WebFixtures::warnedAtlasUtil(), WebFixtures::adminWithoutPublish(), WebFixtures::hostileGrantLedger(), WebFixtures::now()),
+        controlScreen(WebFixtures::adminWithoutPublish(), WebFixtures::hostileGrantLedger()),
         ["&lt;td&gt;injected&lt;/td&gt;"], ["<td>injected</td>"])
+
+    /// A grant to a different user or package must never appear as the viewer's publishing authority.
+    fn scopedPublisher() = {
+        let base = WebFixtures::adminWithoutPublish()
+        let ledger = WebFixtures::atlasGrantLedger()
+        let pub = WebFixtures::publisherGrant()
+        let admin = pub { membership: "mem-admin-atlas" }
+        let mixed = base { grants: [pub, admin { package: "other-package" }, admin { packageEpoch: 2 }, admin { memberEpoch: 2 }] }
+        WebFixtures::showsTexts("web: publisher delegation is scoped", controlScreen(mixed, ledger),
+            ["Publishers", "mem-pub-1", administrationAloneDoesNot], [])
+    }
 
     /// The suite.
     export fn run() = {
+        test("web: delegated publisher scope", scopedPublisher)
         test("web: admin without publish warned", adminWithoutPublish)
         test("web: admin with publish not warned", adminWithPublish)
         test("web: package page shows access context", packageViewShowsAccess)

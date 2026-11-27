@@ -7,6 +7,8 @@ import registry::Bytes
 /// Implements [PACKAGE-HOSTED-AUTH].
 module HostedCookies {
     let rejectStatus = 400
+    /// The rejection code of every malformed Cookie header value.
+    let malformed = "req.cookie-malformed"
 
     /// One strict cookie pair.
     type Pair = { name: string, value: string }
@@ -23,13 +25,13 @@ module HostedCookies {
     /// One segment after the separator: exactly one optional leading space,
     /// then `name=value`; the value may itself contain `=` (base64).
     fn parsePair(segment) = match indexOf(segment, "=") {
-        Error => PairsBad { status: rejectStatus, code: "req.cookie-malformed" }
+        Error => PairsBad { status: rejectStatus, code: malformed }
         Success { value } => {
             let colon = value
             let name = take(segment, colon)
             let text = drop(segment, colon + 1)
-            if byteLength(name) == 0 || byteLength(text) == 0 { PairsBad { status: rejectStatus, code: "req.cookie-malformed" } }
-            else if !Bytes::everyByte(name, nameByte) || !Bytes::everyByte(text, visible) { PairsBad { status: rejectStatus, code: "req.cookie-malformed" } }
+            if byteLength(name) == 0 || byteLength(text) == 0 { PairsBad { status: rejectStatus, code: malformed } }
+            else if !Bytes::everyByte(name, nameByte) || !Bytes::everyByte(text, visible) { PairsBad { status: rejectStatus, code: malformed } }
             else { PairsOk { pairs: [Pair { name: name, value: text }] } }
         }
     }
@@ -52,7 +54,7 @@ module HostedCookies {
     export fn pairs(cookie) = {
         let segments = mapList(split(cookie, ";") ?: [], segmentBody)
         if length(segments) == 0 || foldList(segments, false, fn(bad, segment) => bad || !segmentOk(segment)) {
-            PairsBad { status: rejectStatus, code: "req.cookie-malformed" }
+            PairsBad { status: rejectStatus, code: malformed }
         } else {
             PairsOk { pairs: foldList(mapList(segments, segmentPairs), [], fn(acc, one) => listConcat(acc, one)) }
         }

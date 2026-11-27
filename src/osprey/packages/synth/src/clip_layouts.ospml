@@ -58,7 +58,15 @@ module ClipLayouts
                 [first, ..._rest] => audioCount == 0 || first.rate == Audio
             audioCount <= 1 && noteCount <= 1 && audioCount + noteCount + controlCount == length n.inputs && length n.outputs == 1 && audio n.outputs && layout.outputChannels >= 1 && audioFirst
 
-    (** A single-channel normalised control-rate port. *)
+    (** A single-channel normalised control-rate port.
+    # Examples
+    ```osprey
+    print "${ClipLayouts::control (Port(name = "cutoff", rate = Control, channels = 1, unit = Normalised))} ${ClipLayouts::control (Port(name = "audio", rate = Audio, channels = 1, unit = Amplitude))}"
+    ```
+    ```output
+    true false
+    ```
+    *)
     export control port = port.rate == Control && port.unit == Normalised && port.channels == 1
 
     modulated n = match n.inputs
@@ -75,7 +83,15 @@ module ClipLayouts
         Error _ => false
         Success port => port.name == "cutoff"
 
-    (** A block with events, control generators or multiple audio channels uses the clip scheduler. *)
+    (** A block with events, control generators or multiple audio channels uses the clip scheduler.
+    # Examples
+    ```osprey
+    print "${ClipLayouts::requiresClips (Components::stereo 1)} ${ClipLayouts::requiresClips (Components::gain (1, 1.0))}"
+    ```
+    ```output
+    true false
+    ```
+    *)
     export requiresClips n = match n.processor
         Lfo => true
         ModulatedGain => true
@@ -85,7 +101,20 @@ module ClipLayouts
         Panner => true
         _ => length (filterList (listConcat n.inputs n.outputs, \p => p.channels != 1)) > 0
 
-    (** Processor layouts are exact: no ignored extra ports or implicit channel conversion. *)
+    (** Processor layouts are exact: no ignored extra ports or implicit channel conversion.
+    # Examples
+    ```osprey
+    two = Node(identity = 1, processor = Mixer, inputs = [Port(name = "first", rate = Audio, channels = 1, unit = Amplitude)], outputs = [], parameters = [])
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => ClipLayouts::supported (Components::mixer 1))} ${arithmetic (\() => ClipLayouts::supported (Components::output 1))} ${arithmetic (\() => ClipLayouts::supported (Components::downmix 1))} ${arithmetic (\() => ClipLayouts::supported two)}"
+    ```
+    ```output
+    true true true false
+    ```
+    *)
     export supported n = match n.processor
         Granular _ _ _ => uniform (n, 0, 1) && length (filterList (n.outputs, \port => port.channels == 2)) == 1
         Lfo => lfo n
@@ -113,7 +142,16 @@ module ClipLayouts
 
     oscillator n = length n.inputs <= 1 && notes n.inputs && length n.outputs == 1 && audio n.outputs && length (filterList (n.outputs, \p => p.channels == 1)) == 1
 
-    (** Inputs that may stay unplugged: their parameters then apply unchanged. *)
+    (** Inputs that may stay unplugged: their parameters then apply unchanged.
+    # Examples
+    ```osprey
+    cutoff = Port(name = "cutoff", rate = Control, channels = 1, unit = Normalised)
+    print "${ClipLayouts::optional (Components::modulatedLowpass (1, 1000.0, 0.7), cutoff)} ${ClipLayouts::optional (Components::gain (1, 1.0), cutoff)}"
+    ```
+    ```output
+    true false
+    ```
+    *)
     export optional (n, port) = match n.processor
         Oscillator => port.rate == Events
         External _ _ => port.rate == Control
@@ -123,7 +161,17 @@ module ClipLayouts
         PhaseOperator => true
         _ => false
 
-    (** Required inputs must be wired; unplugged optional controls retain their parameter. *)
+    (** Required inputs must be wired; unplugged optional controls retain their parameter.
+    # Examples
+    ```osprey
+    n = Components::gain (1, 1.0)
+    wired = Graph(nodes = [n], cables = [Cable(source = 2, outlet = 0, destination = 1, inlet = 0)])
+    print "${ClipLayouts::connected (wired, n)} ${ClipLayouts::connected (Graphs::empty, n)}"
+    ```
+    ```output
+    true false
+    ```
+    *)
     export connected (graph, n) = all (toList (range (0, length n.inputs)), \index =>
         match listGet n.inputs index
             Error _ => false
@@ -131,7 +179,15 @@ module ClipLayouts
 
     all (items, predicate) = foldList (items, true, \(ok, item) => ok && predicate item)
 
-    (** Sinks retain their input channel count in the completed output clip. *)
+    (** Sinks retain their input channel count in the completed output clip.
+    # Examples
+    ```osprey
+    print "${ClipLayouts::channels (Components::output 1)} ${ClipLayouts::channels (Components::stereoOutput 1)} ${ClipLayouts::channels (Components::midiNote (1, 60.0, 0.8, 4800.0))} ${ClipLayouts::channels (Components::split (1, 3))}"
+    ```
+    ```output
+    Success(1) Success(2) Success(0) Success(3)
+    ```
+    *)
     export channels n = match n.processor
         MidiNotes | FormulaNotes _ => Success(value = 0)
         Sink => match listGet n.inputs 0
@@ -155,7 +211,20 @@ module ClipLayouts
         Error _ => 16777217
         Success width => satAdd total width
 
-    (** Bound all per-channel delay state before any buffer is allocated. *)
+    (** Bound all per-channel delay state before any buffer is allocated.
+    # Examples
+    ```osprey
+    graph = Graph(nodes = [Components::output 1], cables = [])
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => ClipLayouts::bounded (graph, 64))} ${arithmetic (\() => ClipLayouts::bounded (Graphs::empty, 32769))} ${arithmetic (\() => ClipLayouts::bounded (Graphs::empty, 0))}"
+    ```
+    ```output
+    true false false
+    ```
+    *)
     export bounded (graph, frames) = frames > 0 && frames <= 32768 && satMul frames (foldList (graph.nodes, 0, cacheWidth)) <= 16777216 && SpectralKernels::affordable graph && foldList (graph.nodes, 0, \(total, n) => satAdd total (delay n)) <= 1920000 && length (filterList (graph.nodes, \n => supported n)) == length graph.nodes
 
     noteClip (n, first, frames, clip) = match Kinds::noteSource n.processor
@@ -164,12 +233,32 @@ module ClipLayouts
             Success notes => structuralEquals (notes, clip.clipNotes)
         false => length clip.clipNotes == 0
 
-    (** Revalidate public cached buffers before allowing them to feed another node. *)
+    (** Revalidate public cached buffers before allowing them to feed another node.
+    # Examples
+    ```osprey
+    graph = Graph(nodes = [Components::output 1], cables = [])
+    clip = NodeClip(clipNode = 1, clipChannels = 1, clipSamples = [0.5, -0.5], clipNotes = [])
+    print "${ClipLayouts::validClipAt (graph, 0, 2, clip)} ${ClipLayouts::validClipAt (graph, 0, 3, clip)}"
+    ```
+    ```output
+    true false
+    ```
+    *)
     export validClipAt (graph, first, frames, clip) = match Graphs::node (graph, clip.clipNode)
         Invalid _ => false
         Valid n => match channels n
             Error _ => false
             Success count => clip.clipChannels == count && length clip.clipSamples == satMul frames count && length clip.clipSamples <= 65536 && length (filterList (clip.clipSamples, \sample => sample == sample && abs sample <= 1000000.0)) == length clip.clipSamples && noteClip (n, first, frames, clip)
 
-    (** Whole-clip caches use the zero-origin event clock. *)
+    (** Whole-clip caches use the zero-origin event clock.
+    # Examples
+    ```osprey
+    graph = Graph(nodes = [Components::output 1], cables = [])
+    clip = NodeClip(clipNode = 1, clipChannels = 1, clipSamples = [0.5, -0.5], clipNotes = [])
+    print "${ClipLayouts::validClip (graph, 2, clip)} ${ClipLayouts::validClip (Graphs::empty, 2, clip)}"
+    ```
+    ```output
+    true false
+    ```
+    *)
     export validClip (graph, frames, clip) = validClipAt (graph, 0, frames, clip)

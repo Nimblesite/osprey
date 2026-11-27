@@ -5,10 +5,26 @@ namespace synth
 module Ffts
     sizes = [64, 128, 256, 512, 1024, 2048, 4096]
 
-    (** Whether a transform of this size is supported. *)
+    (** Whether a transform of this size is supported.
+    # Examples
+    ```osprey
+    print "${Ffts::valid 64} ${Ffts::valid 100}"
+    ```
+    ```output
+    true false
+    ```
+    *)
     export valid size = listContains sizes size
 
-    (** Multiply by the unit phasor at `angle`. *)
+    (** Multiply by the unit phasor at `angle`.
+    # Examples
+    ```osprey
+    print "${Ffts::rotated (Complex(re = 0.5, im = -0.5), 0.0)}"
+    ```
+    ```output
+    { re: 0.5, im: -0.5 }
+    ```
+    *)
     export rotated (value, angle) = Complex(re = SpectralMath::productRe (value.re, value.im, cos angle, sin angle), im = SpectralMath::productIm (value.re, value.im, cos angle, sin angle))
 
     added (e, t) = Complex(re = e.re + t.re, im = e.im + t.im)
@@ -63,14 +79,38 @@ module Ffts
                         halves = combined (evens, odds, 0, size, sign)
                         Success(value = listConcat halves.lower halves.upper)
 
-    (** Real frame to bins 0..size/2. *)
+    (** Real frame to bins 0..size/2.
+    # Examples
+    ```osprey
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => Ffts::forward []}"
+    ```
+    ```output
+    Error(InvalidConfiguration { detail: "FFT size must be a power of two from 64 to 4096." })
+    ```
+    *)
     export forward samples = match valid (length samples)
         false => Error(message = InvalidConfiguration(detail = "FFT size must be a power of two from 64 to 4096."))
         true => Outcomes::carried (transform (mapList (samples, \x => Complex(re = x, im = 0.0)), 0, 1, length samples, -1.0), \bins => Success(value = Sequences::take (bins, satAdd (intDiv (length samples) 2) 1)))
 
     conjugate value = Complex(re = value.re, im = 0.0 - value.im)
 
-    (** Bins 0..size/2 back to a real frame, rebuilding the conjugate-symmetric upper half. *)
+    (** Bins 0..size/2 back to a real frame, rebuilding the conjugate-symmetric upper half.
+    # Examples
+    ```osprey
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => Ffts::inverse ([], 64)}"
+    ```
+    ```output
+    Error(InvalidConfiguration { detail: "Inverse FFT needs size/2 + 1 bins of a supported size." })
+    ```
+    *)
     export inverse (bins, size) = match valid size && length bins == satAdd (intDiv size 2) 1
         false => Error(message = InvalidConfiguration(detail = "Inverse FFT needs size/2 + 1 bins of a supported size."))
         true =>

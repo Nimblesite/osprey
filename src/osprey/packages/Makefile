@@ -30,10 +30,7 @@ package-coverage: build
 ##   src/osprey/packages/license-audit.json, every selected test to pass, and
 ##   `Package workspace WASM startup: PASS`. Governance: spec 0045; canonical schema
 ##   src/osprey/packages/manager/supabase/migrations/schema.yaml. Its Postgres migration is
-##   BLOCKED (DataProvider 0.9.11-beta inspects only `public`); keep that failure:
-##     dotnet tool restore && dotnet tool run DataProviderMigrate migrate --schema \
-##       src/osprey/packages/manager/supabase/migrations/schema.yaml --provider postgres \
-##       --output "$$REGISTRY_MIGRATION_CONNECTION"   # passfile, never a password
+##   verified with the pinned registry-migration-tool against a private registry schema.
 ##   Final manifest/lock writes are separate: never report crash-safe transactions.
 package-checks: build
 	node scripts/packages/verify-package-licenses.mjs
@@ -41,7 +38,7 @@ package-checks: build
 	python3 scripts/packages/test-package-sha256.py
 	$(BIN) src/osprey/packages/manager/fixture-check --run
 	for filter in "schema-check: model declarations" "schema-check: accepted values" "schema-check: rejected values" \
-	  "schema: spec block equals canonical file" "fixtures: names"; do \
+	  "schema: spec references canonical model" "fixtures: names"; do \
 	  $(BIN) test src/osprey/packages/manager/tests --filter "$$filter" || exit 1; \
 	done
 	for filter in "publish: licenses survive publication" "fetch: licenses and attribution are preserved"; do \
@@ -94,6 +91,150 @@ express-oracle:
 	cd $(ROOT)/src/osprey/packages/express/oracle && npm ci --no-audit --no-fund && node record.mjs
 
 .PHONY: registry-test registry-serve registry-serve-sample registry-blockers
+
+REGISTRY_WEB = src/osprey/packages/manager/web
+REGISTRY_TERRAFORM = src/osprey/packages/manager/ops/terraform
+REGISTRY_MIGRATOR_REV = 3b4e356522affc61b466d8e87ef5232319c9d7a0
+REGISTRY_MIGRATOR_SHA256 = 87192312ca3a313fa0c786705c2fa2cbafebe76a0afb522b39df82f08aaa740a
+REGISTRY_MIGRATOR_DIR = target/registry-tools/$(REGISTRY_MIGRATOR_REV)
+REGISTRY_MIGRATOR = $(REGISTRY_MIGRATOR_DIR)/bin/DataProviderMigrate.dll
+
+.PHONY: registry-migration-tool registry-migration-check
+## registry-migration-tool: Build the pinned private-schema DataProvider CLI under target/registry-tools.
+registry-migration-tool: $(REGISTRY_MIGRATOR)
+	@echo "$(abspath $(REGISTRY_MIGRATOR))"
+
+$(REGISTRY_MIGRATOR):
+	@mkdir -p $(REGISTRY_MIGRATOR_DIR)
+	@set -eu; scratch=$$(mktemp -d "$(REGISTRY_MIGRATOR_DIR)/build.XXXXXX"); \
+	  trap 'rm -rf "$$scratch"' EXIT; \
+	  curl -fsSL --retry 2 --max-time 120 "https://codeload.github.com/Nimblesite/DataProvider/tar.gz/$(REGISTRY_MIGRATOR_REV)" -o "$$scratch/source.tgz"; \
+	  echo "$(REGISTRY_MIGRATOR_SHA256)  $$scratch/source.tgz" | shasum -a 256 -c -; \
+	  tar -xzf "$$scratch/source.tgz" --strip-components=1 -C "$$scratch"; \
+	  dotnet publish "$$scratch/Migration/DataProviderMigrate" -c Release -f net10.0 -o "$(abspath $(REGISTRY_MIGRATOR_DIR))/bin"
+
+## registry-migration-check: Apply the registry schema twice on disposable socket-only PostgreSQL.
+registry-migration-check: $(REGISTRY_MIGRATOR) $(BIN)
+	$(MAKE) -C src/osprey/packages _registry-migration-verify
+
+.PHONY: _registry-migration-verify
+_registry-migration-verify:
+	@test -x "$(BIN)" && test -s "$(REGISTRY_MIGRATOR)"
+	@set -eu; pg=$$(pg_config --bindir); \
+	  if [ ! -x "$$pg/postgres" ]; then pg=$$(dirname "$$(realpath "$$(command -v postgres)")"); fi; \
+	  db=$$(mktemp -d /tmp/osprey-registry.XXXXXX); \
+	  cleanup() { if [ -f "$$db/data/postmaster.pid" ]; then "$$pg/pg_ctl" -D "$$db/data" -m fast -w stop; fi; rm -rf "$$db"; }; \
+	  trap cleanup EXIT; export PGHOST="$$db" PGPORT=18873 PGUSER=registry_check PGDATABASE=postgres; \
+	  "$$pg/initdb" -D "$$db/data" -U "$$PGUSER" --auth-local=trust --auth-host=reject --no-locale >/dev/null; \
+	  "$$pg/pg_ctl" -D "$$db/data" -l "$$db/server.log" -o "-k $$db -p $$PGPORT -c listen_addresses=''" -w start; \
+	  "$$pg/psql" -X -v ON_ERROR_STOP=1 -c 'CREATE SCHEMA registry'; \
+	  migrate() { dotnet "$(REGISTRY_MIGRATOR)" migrate --provider postgres --schema src/osprey/packages/manager/supabase/migrations/schema.yaml --output "Host=$$PGHOST;Port=$$PGPORT;Username=$$PGUSER;Database=$$PGDATABASE"; }; \
+	  migrate; migrate >"$$db/replay.log" || { cat "$$db/replay.log"; exit 1; }; cat "$$db/replay.log"; \
+	  grep -Fq 'No operations to apply' "$$db/replay.log"; \
+	  test "$$("$$pg/psql" -XAtc "SELECT count(*) = 14 AND bool_and(relrowsecurity AND relforcerowsecurity) FROM pg_class WHERE relnamespace = 'registry'::regnamespace AND relkind = 'r'")" = t; \
+	  $(BIN) test src/osprey/packages/manager/database-tests/live
+
+.PHONY: registry-integration-check registry-integration-verify
+## registry-integration-check: Browse a real PostgreSQL-backed hosted API with the packaged website in Chromium.
+registry-integration-check: registry-website-fixture $(REGISTRY_MIGRATOR)
+	$(MAKE) -C src/osprey/packages registry-integration-verify
+
+## registry-integration-verify: Exercise prebuilt Pages and migration artifacts without rebuilding them.
+registry-integration-verify:
+	node scripts/packages/test-registry-preview.cjs --built-hosted-account
+	REGISTRY_BROWSER_CHECK=1 $(MAKE) -C src/osprey/packages _registry-migration-verify
+
+.PHONY: registry-infra-check
+## registry-infra-check: Validate pinned registry infrastructure without contacting a state backend.
+registry-infra-check: export TF_DATA_DIR = $(CURDIR)/target/registry-infra/data
+registry-infra-check:
+	terraform -chdir=$(REGISTRY_TERRAFORM) fmt -check
+	terraform -chdir=$(REGISTRY_TERRAFORM) init -backend=false -lockfile=readonly -input=false
+	terraform -chdir=$(REGISTRY_TERRAFORM) validate
+
+.PHONY: registry-hosted-api
+REGISTRY_HOSTED_BINARY ?= target/osprey-registry-hosted
+## registry-hosted-api: Compile the native Cloud Run API listener for the current platform.
+registry-hosted-api: $(REGISTRY_HOSTED_BINARY)
+
+$(REGISTRY_HOSTED_BINARY): $(BIN) $(REGISTRY_CLIENT_SOURCES)
+	$(BIN) build src/osprey/packages/manager/api/hosted --quiet --no-warnings -o $@
+
+REGISTRY_HOSTED_IMAGE ?= osprey-registry-hosted:local
+REGISTRY_HOSTED_DOCKERFILE := src/osprey/packages/manager/ops/Dockerfile
+REGISTRY_HOSTED_CONTEXT := Makefile scripts src/toolchain/Cargo.toml src/toolchain/Cargo.lock src/toolchain/crates \
+	src/toolchain/compiler/runtime src/toolchain/tree-sitter-osprey src/toolchain/zed-extension \
+	src/toolchain/website/src/js/osprey-grammar.mjs src/toolchain/website/src/css/variables.css \
+	src/osprey/packages/Makefile src/osprey/packages/manager/api src/osprey/packages/manager/core \
+	src/osprey/packages/manager/host $(REGISTRY_HOSTED_DOCKERFILE)
+
+.PHONY: registry-hosted-image registry-hosted-image-check
+## registry-hosted-image: Build the Cloud Run linux/amd64 image from the checked-out commit.
+registry-hosted-image:
+	@set -eu; mkdir -p target; context=$$(mktemp target/registry-hosted-context.XXXXXX); \
+	  trap 'rm -f -- "$$context"' EXIT; revision=$$(git rev-parse HEAD); \
+	  compiler_inputs=$$(git rev-parse "$$revision:src/toolchain" "$$revision:Makefile" "$$revision:scripts" "$$revision:$(REGISTRY_HOSTED_DOCKERFILE)"); \
+	  compiler_key=$$(printf '%s\n' "$$compiler_inputs" | git hash-object --stdin); \
+	  git archive --format=tar --output="$$context" "$$revision" $(REGISTRY_HOSTED_CONTEXT); \
+	  docker buildx build --platform linux/amd64 --load --file $(REGISTRY_HOSTED_DOCKERFILE) --build-arg "COMPILER_INPUTS=$$compiler_key" \
+	    --label "org.opencontainers.image.revision=$$revision" --tag "$(REGISTRY_HOSTED_IMAGE)" - < "$$context"
+
+## registry-hosted-image-check: Smoke-test the Linux image with mounted config and both listener ports.
+registry-hosted-image-check: registry-hosted-image
+	node scripts/packages/check-registry-hosted-image.mjs "$(REGISTRY_HOSTED_IMAGE)"
+
+.PHONY: registry-website registry-website-fixture registry-website-check
+## registry-website-check: Build an isolated Pages artifact and exercise its publisher flow in Chromium.
+registry-website-check: registry-website-fixture
+	node scripts/packages/test-registry-preview.cjs --built-hosted-account
+
+registry-website-fixture: export REGISTRY_API_ORIGIN := https://api.example.test
+registry-website-fixture: export REGISTRY_CONTENT_ORIGIN := https://content.example.test
+
+## registry-website: Compile the registry website to WASM and render its Cloudflare Pages directory.
+REGISTRY_WEBSITE_RUNTIME ?= _runtime_wasm
+registry-website registry-website-fixture registry-website-archive: $(BIN) | $(REGISTRY_WEBSITE_RUNTIME)
+	@mkdir -p target/registry-site-build
+	$(BIN) build $(REGISTRY_WEB)/site --target=wasm32 --quiet --no-warnings -o target/registry-site-build/site.wasm
+	@set -eu; out=$$(mktemp -d target/registry-site-build/pages.XXXXXX); \
+	  trap 'rm -rf "$$out"' EXIT; \
+	  render() { printf '%s\n' "$$1" | wasmtime target/registry-site-build/site.wasm; }; \
+	  render missing > "$$out/404.html"; \
+	  for page in guide publishing; do \
+	    mkdir "$$out/$$page"; render "$$page" > "$$out/$$page/index.html"; \
+	  done; \
+	  mkdir "$$out/upload"; origin="$${REGISTRY_API_ORIGIN:-}"; content="$${REGISTRY_CONTENT_ORIGIN:-}"; \
+	  if [ "$@" = registry-website-archive ] && { [ -z "$$origin" ] || [ -z "$$content" ]; }; then echo "Set REGISTRY_API_ORIGIN and REGISTRY_CONTENT_ORIGIN." >&2; exit 1; fi; \
+	  node -e 'const [api, content] = process.argv.slice(1); if (content && (!api || api === content)) process.exit(1); for (const origin of [api, content].filter(Boolean)) { const u = new URL(origin); if (u.protocol !== "https:" || u.origin !== origin || !/^[a-z0-9.-]+$$/.test(u.hostname)) process.exit(1); }' "$$origin" "$$content"; \
+	  script=src/toolchain/hosts/web/src/registry-form.mjs; adapter="form.$$(shasum -a 256 "$$script" | cut -c1-12).mjs"; \
+	  cp "$$script" "$$out/$$adapter"; \
+	  asset() { file="$$1"; name="$$2.$$(shasum -a 256 "$$file" | cut -c1-12).$$3"; cp "$$file" "$$out/$$name"; echo "$$name"; }; \
+	  catalog=$$(asset src/toolchain/hosts/web/src/registry-catalog.mjs catalog mjs); host=$$(asset src/osprey/examples/wasm/wasi-shim.mjs wasi mjs); guest=$$(asset target/registry-site-build/site.wasm site wasm); \
+	  printf "%s\n" home "$$origin" "$$catalog" "$$host" "$$guest" "$$content" | wasmtime target/registry-site-build/site.wasm > "$$out/index.html"; \
+	  printf "%s\n" hosted-package "$$origin" "$$catalog" "$$host" "$$guest" "$$content" | wasmtime target/registry-site-build/site.wasm > "$$out/package.html"; \
+	  printf '/packages/* /package.html 200\n/publishers/* /package.html 200\n/tags/* /package.html 200\n' > "$$out/_redirects"; \
+	  printf "%s\n" upload "$$origin" "$$adapter" | wasmtime target/registry-site-build/site.wasm > "$$out/upload/index.html"; \
+	  digest=$$(shasum -a 256 $(REGISTRY_WEB)/assets/registry.css | cut -c1-12); \
+	  asset="registry.$$digest.css"; grep -Fq "href=\"/$$asset\"" "$$out/index.html"; \
+	  cp $(REGISTRY_WEB)/assets/registry.css "$$out/$$asset"; \
+	  cp $(REGISTRY_WEB)/assets/registry-mark.svg "$$out/"; \
+	  sed "s@form-action@script-src 'self' 'wasm-unsafe-eval'; connect-src 'self' $$origin; form-action@;s@form-action 'none'@form-action 'self'@" $(REGISTRY_WEB)/assets/_headers > "$$out/_headers"; \
+	  if [ "$@" = registry-website-archive ]; then python3 scripts/packages/archive-registry-site.py "$$out" target/registry-artifacts; \
+	  else rsync -a --delete "$$out/" $(if $(filter registry-website-fixture,$@),target/registry-site-build/hosted-fixture,target/registry-site)/; fi
+
+.PHONY: registry-website-archive
+## registry-website-archive: Build and archive the configured Pages site by SHA-256 for deployment.
+registry-website-archive:
+
+.PHONY: registry-website-serve
+## registry-website-serve: Serve the built preview and live folder catalog together on localhost:4187.
+registry-website-serve:
+	python3 scripts/packages/serve-registry-preview.py
+
+.PHONY: registry-website-preview
+## registry-website-preview: Render searchable local packages from registry-serve into target/registry-site-preview.
+registry-website-preview: registry-website target/osprey-pkg
+	bash scripts/packages/registry-preview.sh
 
 ## registry-test: Run the Osprey package-system suites.
 registry-test: build

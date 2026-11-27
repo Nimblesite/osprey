@@ -134,6 +134,11 @@ pub(super) fn publish_program(
     ProgramTypes {
         obligations: Arc::new(publish_obligations(&mut checker)),
         methods: crate::methods::collect(program, &checker.methods).into(),
+        resolved_deferred_methods: crate::methods::collect_resolved(
+            program,
+            &checker.resolved_deferred_methods,
+        )
+        .into(),
         functions: functions.into(),
         signal_queries: checker.signal_queries.clone().into(),
         function_effects: checker.function_effects.clone().into(),

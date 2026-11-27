@@ -7,6 +7,13 @@ namespace todo;
 /// The purge-rule ladder of branch answers for a purge of `count` lists.
 fn guardPurgeLadder(count) = [authzUnauthorized(), authzDenied("not in role"), purgedCount(count)]
 
+/// The anonymous branch's answer text: it never signs in.
+let unauthorized = "unauthorized"
+
+/// The branch texts of the purge ladder for a purge of two lists: Unauthorized,
+/// "not in role", then "purged 2".
+let purgedTwoLadder = [unauthorized, "forbidden not in role", "purged 2"]
+
 /// One pagination what-if per row — who asks, against which list, page and
 /// size — over the seven A-G items: every branch answers the page that list,
 /// page and size imply ([MULTI-HANDLE-MANY]), and no probe keeps a row or an
@@ -115,8 +122,8 @@ module MultishotAuthzGuardCases {
             structuralEquals(five.items, []),
             structuralEquals(authzTitlesOf(five.lists), ["City1", "City2", "City3", "City4", "City5"]),
             noEvents(probe), noEvents(again), noEvents(five),
-            structuralEquals(authzBranchTexts(probe), ["unauthorized", "forbidden not in role", "purged 2"]),
-            structuralEquals(authzBranchTexts(five), ["unauthorized", "forbidden not in role", "purged 5"])
+            structuralEquals(authzBranchTexts(probe), purgedTwoLadder),
+            structuralEquals(authzBranchTexts(five), [unauthorized, "forbidden not in role", "purged 5"])
         ])
         authzStartInert(authzTwoLists(), authzThreeItems(), PurgeTodoLists, "every start principal reports the same refusal-and-purge triple",
             fn(report) => noEvents(report) && authzListsKept(report))
@@ -162,8 +169,8 @@ module MultishotAuthzGuardCases {
             authzListsKept(reads), authzListsKept(purge),
             authzItemsKept(reads), authzItemsKept(purge),
             noEvents(reads), noEvents(purge),
-            structuralEquals(authzBranchTexts(reads), ["unauthorized", "todos view", "todos view"]),
-            structuralEquals(authzBranchTexts(purge), ["unauthorized", "forbidden not in role", "purged 2"]),
+            structuralEquals(authzBranchTexts(reads), [unauthorized, "todos view", "todos view"]),
+            structuralEquals(authzBranchTexts(purge), purgedTwoLadder),
             match reads.answers { [_, Success { value: mine }, Success { value: root }] => structuralEquals(mine, root) _ => false }
         ])
         let readStarts = authzFromEachStart(authzTwoLists(), authzThreeItems(), GetTodos)
@@ -190,7 +197,7 @@ module MultishotAuthzGuardCases {
         authzStartInert(authzTwoLists(), authzThreeItems(), newList("Travel", "#AB47BC"), "CreateList: the same new id 3 from every start",
             fn(report) => structuralEquals(authzBranchTexts(report), ["created 3", "created 3", "created 3"]) && noEvents(report) && authzItemsKept(report))
         authzStartInert(authzTwoLists(), authzThreeItems(), PurgeTodoLists, "PurgeTodoLists: the same unauthorized, forbidden, purge-2 triple from every start",
-            fn(report) => structuralEquals(authzBranchTexts(report), ["unauthorized", "forbidden not in role", "purged 2"]) && noEvents(report) && authzListsKept(report))
+            fn(report) => structuralEquals(authzBranchTexts(report), purgedTwoLadder) && noEvents(report) && authzListsKept(report))
         let first = authzAsAnonymous(authzTwoLists(), authzThreeItems(), newItem(1, "Dentist"))
         let second = authzAsUser(authzTwoLists(), authzThreeItems(), newItem(1, "Dentist"))
         let third = authzAsAdmin(authzTwoLists(), authzThreeItems(), newItem(1, "Dentist"))

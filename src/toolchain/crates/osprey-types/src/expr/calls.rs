@@ -334,9 +334,10 @@ impl Checker {
         );
         let line = position.map_or(0, |position| position.line);
         let column = position.map_or(0, |position| position.column);
+        let site_addr = std::ptr::from_ref(site).addr();
         self.builtin_uses.push((
             format!(
-                "{}{count}:{line}:{column}:{}:{field}:{}",
+                "{}{count}:{line}:{column}:{site_addr}:{}:{field}:{}",
                 crate::methods::OBLIGATION,
                 self.site,
                 parts.method

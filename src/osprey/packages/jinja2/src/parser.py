@@ -110,7 +110,7 @@ def leaf_kind(kind):
     return "text" if kind == "data" else "output"
 
 
-def parse_nodes(chunks, i, n, stops, acc) -> Result[Step, str]:
+def parse_nodes(chunks, i, n, stops, acc):
     """Parse nodes until a block keyword in `stops` (which is left unconsumed)."""
     if i >= n:
         return Success(value=Step(nodes=acc, next=i)) if len(stops) == 0 else Error(message="unexpected end of template, expected 'end of statement block'")
@@ -143,7 +143,7 @@ def parse_block_then(chunks, n, stops, acc, parsed) -> Result[Step, str]:
             return Error(message=message)
 
 
-def parse_if(chunks, i, n, cond) -> Result[Step, str]:
+def parse_if(chunks, i, n, cond):
     """Parse an `if` block from its opening tag at `i`."""
     match parse_nodes(chunks, i + 1, n, ["elif", "else", "endif"], []):
         case Success(value=value):
@@ -152,7 +152,7 @@ def parse_if(chunks, i, n, cond) -> Result[Step, str]:
             return Error(message=message)
 
 
-def parse_if_tail(chunks, j, n, branches) -> Result[Step, str]:
+def parse_if_tail(chunks, j, n, branches):
     """Collect `elif`/`else` arms until `endif`."""
     k = split_kw(unwrap_or(listGet(chunks, j), Chunk(kind="block", text="")).text)
     if k.word == "elif":
@@ -176,7 +176,7 @@ def if_node(branches):
     return Node(kind="if", text="", name="", attr="", var="", var2="", cond="", iterable="", branches=branches, body=[], else_body=[], params=[], defaults=[])
 
 
-def parse_for(chunks, i, n, rest) -> Result[Step, str]:
+def parse_for(chunks, i, n, rest):
     """Parse a `for` block from its opening tag at `i`."""
     head = for_header(rest)
     match parse_nodes(chunks, i + 1, n, ["else", "endfor"], []):

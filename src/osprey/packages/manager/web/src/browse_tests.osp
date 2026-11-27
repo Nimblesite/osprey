@@ -6,10 +6,13 @@ namespace registry_web;
 /// unavailable. Implements [PACKAGE-NAMES-NO-SITTING] and
 /// [PACKAGE-OWNERSHIP-MAINTENANCE] for the listing surface.
 module BrowseTests {
+    /// The warned `@border` package the browse screen must still list beside its organization.
+    let borderUtil = "@border/util"
+
     fn catalog() = [WebFixtures::warnedAtlasUtil(), WebFixtures::warnedBorderUtil(), WebFixtures::cleanAtlasUtil()]
 
     fn orgBesideEveryResult() = WebFixtures::showsTexts("web: browse shows org identity", Browse::render(catalog(), ""),
-        ["@atlas/util", "Organization: @atlas", "@border/util", "Organization: @border"], [])
+        ["@atlas/util", "Organization: @atlas", borderUtil, "Organization: @border"], [])
 
     /// No false negatives: each warning, and each explicit no-warnings
     /// statement, is present in the rendered listing.
@@ -19,7 +22,7 @@ module BrowseTests {
     /// Two organizations may share one leaf name; each result keeps its own
     /// identity and its own warnings.
     fn sameLeafAcrossOrgs() = WebFixtures::showsTexts("web: browse keeps same leaf names distinct", Browse::render(catalog(), ""),
-        ["id=\"-atlas-util-h\"", "id=\"-border-util-h\"", "@atlas/util", "@border/util"], [])
+        ["id=\"-atlas-util-h\"", "id=\"-border-util-h\"", "@atlas/util", borderUtil], [])
 
     /// One package without evidence hides the entire screen, naming the
     /// package and the reason — never a partial listing.
@@ -30,11 +33,11 @@ module BrowseTests {
             contains(reason, "registry.status-service-unreachable"))
 
     fn queryFilters() = WebFixtures::shows("web: browse query filters", Browse::render(catalog(), "border"),
-        fn(html) => contains(html, "@border/util") && !contains(html, "@atlas/util"))
+        fn(html) => contains(html, borderUtil) && !contains(html, "@atlas/util"))
 
     /// The package page hides for the same reason, per package.
     fn packagePageHidesWithoutEvidence() = WebFixtures::hidesExpecting("web: package page hides when evidence unavailable",
-        PackageView::render(WebFixtures::orphanWithoutEvidence(), WebFixtures::anonymous(), WebFixtures::now()), "web.evidence-unavailable...")
+        PackageView::render(WebFixtures::orphanWithoutEvidence(), WebFixtures::anonymous(), WebFixtures::now()), "web.evidence-unavailable: @atlas/orphan: registry.status-service-unreachable")
 
     /// The suite.
     export fn run() = {

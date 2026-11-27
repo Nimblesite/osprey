@@ -1,14 +1,15 @@
 namespace hosted_tests;
 import registry::Policy
+import registry_host::Native
 
-/// The hosted-request security gate suites. Server wiring lives in the root
-/// package and is out of scope here.
+/// Request admission and native listener isolation [PACKAGE-HOSTED-EDGE].
 fn suites() = {
     HeaderTests::run()
     CookieTests::run()
     OriginTests::run()
     RequestTests::run()
+    ListenerTests::run()
     0
 }
 
-fn main() = Policy::guarded(suites)
+fn main() = Policy::guarded(fn() => Native::process()(suites))

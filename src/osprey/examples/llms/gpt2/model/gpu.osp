@@ -22,6 +22,15 @@ module Gpu {
     /// # Parameters
     /// - work: the computation to run, whose every `Tensor` operation this
     ///   handler answers on the GPU.
+    /// # Examples
+    /// ```osprey
+    /// fn lifted() = Model::orStop(perform Tensor.fromList([toFloat32(1.0), toFloat32(2.0)]), Model::empty)
+    /// let shown = Backends::strictly(fn() => onGpu(fn() => Model::total(Model::gelus(lifted()))))
+    /// print("${shown}")
+    /// ```
+    /// ```output
+    /// Success(2.7957897)
+    /// ```
     export fn onGpu(work) = {
         handle static Tensor<GpuBuffer<float32>> {
             build n f => match gpuIota(n) {

@@ -13,7 +13,7 @@
 - ❌ subagents, linked worktrees, git hooks (delete them). Primary checkout only; git = commit/push
 - 🐍 **Prefer Python flavor Osprey over CPython.** Write scripts (generators, analysis, one-liners) as a `.py` file starting with `# osprey: flavor=python` and run it with **`osprey`**; its math goes in Lean ([MATH-CODE]). CPython (`python3`) is allowed where Osprey cannot do the job, such as a package oracle that runs the original library in a throwaway virtualenv
 - 🎼🚫 **Music is hand-written.** Never generate notes, patterns, arrangements or project files with a script, loop or generator; every note of a song in `src/osprey/examples/daw/tracks/` is composed and written by hand
-- **Coordinated pushes ([CI-PUSH-LOCK], [docs/plans/coordinated-push.md](docs/plans/coordinated-push.md)).** The agent holding the TMC lock `PUSH-<branch>` runs `make ci`, verifies the stamp matches the exact commit and checks GitHub for queued or running CI before using `git push`. Other agents commit and message the lock holder, who owns the run to green
+- **Coordinated pushes ([CI-PUSH-LOCK], [docs/plans/ci-reliability.md](docs/plans/ci-reliability.md)).** The agent holding the TMC lock `PUSH-<branch>` runs `make ci`, verifies the stamp matches the exact commit and checks GitHub for queued or running CI before using `git push`. Other agents commit and message the lock holder, who owns the run to green
 - **Offload legwork (repetitive, simple work) to pi agents**, 🚫 ONLY legal models: `zai/glm-5.4` and `kimi-coding/k3.1-pro`; ❌ every other model or family; out of credit → tell user, take the other; register each pi on TMC, delete its identity when it exits; you own their output: review and fix it
 - **Tokens:** check file size before reading, grep first, smallest diff
 - **Put strict timeouts on heavy CPU runs like KLEE or LLMs** run with lower CPU priority if possible
@@ -77,7 +77,7 @@ Three phases, each once — ❌ mixing them:
 ## Documentation
 - **Spec IDs:** hierarchical slugs (`[GROUP-TOPIC-DETAIL]`), ❌ numbers; cite in code (`// Implements [PARSER-EFFECTS-HANDLE]`) and tests. On disagreement, fix the stale source
 - Prose wraps naturally. ❌ ASCII art: [typeDiagram](https://typediagram.dev/docs/language-reference.html) for data types, mermaid otherwise
-- Read [`docs/messaging.md`](docs/messaging.md) before touching user-facing text
+- Read [`docs/messaging/osprey.md`](docs/messaging/osprey.md) (and [`docs/messaging/osprey-native.md`](docs/messaging/osprey-native.md) for Osprey Native) before touching user-facing text
 - Given any page, ask the question "what concept am I explaining to the user?". Then ask, "does this clearly introduce the concept and then give examples, videos and screenshots of how to implement the concept?". If not correct it.
 
 ## Commands

@@ -167,14 +167,14 @@ module Governance {
     export fn livePrincipal(principal: Principal) = required(isLive(principal), principal, "governance.principal.suspended")
 
     /// The principal when it is both active and a person; the suspension refusal is reported first.
-    export fn liveHuman(principal: Principal) = andThen(livePrincipal(principal), fn(p: Principal) => humanPrincipal(p))
+    export fn liveHuman(principal: Principal) = andThen(livePrincipal(principal), fn(p) => humanPrincipal(p))
 
     /// The active membership with id `id`, or its missing or inactive refusal.
-    export fn activeMembershipOf(registry, id) = andThen(membershipOf(registry, id), fn(m: Membership) => activeMemberOf(m))
+    export fn activeMembershipOf(registry, id) = andThen(membershipOf(registry, id), fn(m) => activeMemberOf(m))
 
     /// The live human principal behind a membership: the actor every
     /// organizational decision is signed by.
-    export fn humanMemberOf(registry, m: Membership) = andThen(principalOf(registry, m.principal), fn(p: Principal) => humanPrincipal(p))
+    export fn humanMemberOf(registry, m: Membership) = andThen(principalOf(registry, m.principal), fn(p) => humanPrincipal(p))
 
     /// Package writes need a writable lifecycle status
     /// [PACKAGE-OWNERSHIP-MAINTENANCE]; each refusal names its status.
@@ -184,7 +184,7 @@ module Governance {
     }
 
     /// The package with id `id` when its status allows writes, or its missing or status refusal.
-    export fn writablePackage(registry, id) = andThen(packageOf(registry, id), fn(pkg: Package) => writable(pkg))
+    export fn writablePackage(registry, id) = andThen(packageOf(registry, id), fn(pkg) => writable(pkg))
 
     /// Operational authorization needs an active package: a draft has no
     /// releases, and frozen, deprecated and tombstoned packages refuse
@@ -280,19 +280,22 @@ module Governance {
     /// The statement declining handover proposal `id` signs.
     export fn declineStatement(id) = "handover-decline|${id}"
 
+    /// `rows` with `updated` in place of the row of the same id; a missing id changes nothing.
+    fn swapped(rows, updated) = mapList(rows, fn(row) => if row.id == updated.id { updated } else { row })
+
     /// Replace one row in place; historical evidence rows are never deleted.
-    export fn replaceMembership(registry, updated: Membership) = registry { memberships: mapList(registry.memberships, fn(m: Membership) => if m.id == updated.id { updated } else { m }) }
+    export fn replaceMembership(registry, updated: Membership) = registry { memberships: swapped(registry.memberships, updated) }
     /// The registry with `updated` in place of the package of the same id; a missing id changes nothing.
-    export fn replacePackage(registry, updated: Package) = registry { packages: mapList(registry.packages, fn(p: Package) => if p.id == updated.id { updated } else { p }) }
+    export fn replacePackage(registry, updated: Package) = registry { packages: swapped(registry.packages, updated) }
     /// The registry with `updated` in place of the grant of the same id; a missing id changes nothing.
-    export fn replaceGrant(registry, updated: Grant) = registry { grants: mapList(registry.grants, fn(g: Grant) => if g.id == updated.id { updated } else { g }) }
+    export fn replaceGrant(registry, updated: Grant) = registry { grants: swapped(registry.grants, updated) }
     /// The registry with `updated` in place of the handover proposal of the same id; a missing id changes nothing.
-    export fn replaceTransfer(registry, updated: Transfer) = registry { transfers: mapList(registry.transfers, fn(t: Transfer) => if t.id == updated.id { updated } else { t }) }
+    export fn replaceTransfer(registry, updated: Transfer) = registry { transfers: swapped(registry.transfers, updated) }
 
     /// Revoke every grant row of one package, the outgoing administrator's
     /// included [PACKAGE-OWNERSHIP-ADMIN]; the rows stay as audit evidence.
     export fn revokeGrantsOf(registry, id) = registry { grants: mapList(registry.grants, fn(g: Grant) => if g.package == id { g { status: GrantRevoked } } else { g }) }
 
     /// The live (pending or accepted) handover proposal of one package, if any.
-    export fn liveTransferFor(registry, id) = firstWhere(registry.transfers, fn(t: Transfer) => t.package == id && isLiveTransfer(t))
+    export fn liveTransferFor(registry, id) = firstWhere(registry.transfers, fn(t) => t.package == id && isLiveTransfer(t))
 }

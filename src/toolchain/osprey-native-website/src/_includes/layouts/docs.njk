@@ -1,0 +1,59 @@
+---
+layout: layouts/base.njk
+---
+<div class="docs-page">
+  <div class="site-container docs-shell">
+    <aside class="docs-sidebar" aria-label="Documentation">
+      <p class="docs-sidebar-heading">Getting Started</p>
+      <nav aria-label="Docs navigation">
+        <ul class="docs-nav-list">
+          <li><a href="/docs/"{% if page.url == '/docs/' %} aria-current="page"{% endif %}>Overview &amp; Get Started</a></li>
+          <li><a href="/docs/first-app/"{% if page.url == '/docs/first-app/' %} aria-current="page"{% endif %}>Build Your First App</a></li>
+        </ul>
+        <p class="docs-sidebar-heading" style="margin-block-start: 1.5rem;">Architecture &amp; Quality</p>
+        <ul class="docs-nav-list">
+          <li><a href="/docs/bridge/"{% if page.url == '/docs/bridge/' %} aria-current="page"{% endif %}>Shared-Memory Bridge</a></li>
+          <li><a href="/docs/testing-and-accessibility/"{% if page.url == '/docs/testing-and-accessibility/' %} aria-current="page"{% endif %}>Accessibility &amp; Testing</a></li>
+        </ul>
+      </nav>
+    </aside>
+
+    <article class="docs-content">
+      <header class="docs-header">
+        <p class="docs-breadcrumb"><a href="/docs/">Docs</a> <span aria-hidden="true">/</span> <span>{{ section or "Documentation" }}</span></p>
+        <h1 id="main-content" tabindex="-1" class="prose-h1 docs-h1">{{ title }}</h1>
+        {% if lead %}<p class="prose-lead" style="margin-block-end: 0;">{{ lead }}</p>{% endif %}
+      </header>
+
+      <div class="docs-body">
+        {{ content | safe }}
+      </div>
+
+      {% if prevUrl or nextUrl %}
+      <nav class="docs-pager" aria-label="Pagination">
+        {% if prevUrl %}
+        <a href="{{ prevUrl }}" class="docs-pager-card">
+          <span class="docs-pager-label">&larr; Previous</span>
+          <strong>{{ prevTitle }}</strong>
+        </a>
+        {% else %}
+        <div></div>
+        {% endif %}
+        {% if nextUrl %}
+        <a href="{{ nextUrl }}" class="docs-pager-card docs-pager-next">
+          <span class="docs-pager-label">Next &rarr;</span>
+          <strong>{{ nextTitle }}</strong>
+        </a>
+        {% endif %}
+      </nav>
+      {% endif %}
+
+      <div class="prose-callout">
+        <p>
+          <strong>Osprey Native is actively evolving.</strong> Try it on your projects, validate it against your workload,
+          and assess the risks before relying on it in production.
+        </p>
+      </div>
+    </article>
+  </div>
+</div>

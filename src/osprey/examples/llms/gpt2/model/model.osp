@@ -6,7 +6,7 @@
 // block's activations, so src/osprey/examples/llms/gpt2/generate reads the final state and
 // src/osprey/examples/llms/gpt2/train runs the backward pass over the same trace.
 //
-// This is plan 0023's reference application (docs/plans/0023-gpu.md)
+// This is plan 0055's reference application (docs/plans/0055-targets.md)
 // and its stage 5, effect-selected execution: one model, two interpretations,
 // chosen per lexical region ([STAGE-BACKEND], [GPU-DEVICE]). Under `onGpu`,
 // kernels and matrix products run on Metal or OpenCL when a device is selected,
@@ -20,36 +20,141 @@ namespace gpt2;
 module Model {
     /// The directory holding the checkpoint: `model.safetensors` for the
     /// weights and `merges.txt` for the tokenizer.
+    /// # Examples
+    /// ```osprey
+    /// print(weightsDir)
+    /// ```
+    /// ```output
+    /// src/osprey/examples/llms/gpt2/weights
+    /// ```
     export let weightsDir = "src/osprey/examples/llms/gpt2/weights"
 
     // The GPT-2 small configuration (config.json in the same repository).
     /// The size of the vocabulary: token ids run from 0 to 50256.
+    /// # Examples
+    /// ```osprey
+    /// print("ids run from 0 to ${vocabSize}, so ${vocabSize} tokens")
+    /// ```
+    /// ```output
+    /// ids run from 0 to 50257, so 50257 tokens
+    /// ```
     export let vocabSize = 50257
     /// The residual width: every block's input and output row has 768 elements.
+    /// # Examples
+    /// ```osprey
+    /// print("every block's rows hold ${width} elements")
+    /// ```
+    /// ```output
+    /// every block's rows hold 768 elements
+    /// ```
     export let width = 768
     /// The attention heads each block splits its width into.
+    /// # Examples
+    /// ```osprey
+    /// print("${heads} heads of ${headWidth} elements")
+    /// ```
+    /// ```output
+    /// 12 heads of 64 elements
+    /// ```
     export let heads = 12
     /// One head's width, `width / heads`.
+    /// # Examples
+    /// ```osprey
+    /// print("headWidth ${headWidth}, width ${width}, heads ${heads}")
+    /// ```
+    /// ```output
+    /// headWidth 64, width 768, heads 12
+    /// ```
     export let headWidth = 64
     /// The width of a block's fused query-key-value projection, `3 * width`.
+    /// # Examples
+    /// ```osprey
+    /// print("${qkvWidth} = 3 * ${width}")
+    /// ```
+    /// ```output
+    /// 2304 = 3 * 768
+    /// ```
     export let qkvWidth = 2304
     /// The hidden width of a block's MLP, `4 * width`.
+    /// # Examples
+    /// ```osprey
+    /// print("${mlpWidth} = 4 * ${width}")
+    /// ```
+    /// ```output
+    /// 3072 = 4 * 768
+    /// ```
     export let mlpWidth = 3072
     /// How many transformer blocks the model stacks.
+    /// # Examples
+    /// ```osprey
+    /// print("${layerCount} blocks")
+    /// ```
+    /// ```output
+    /// 12 blocks
+    /// ```
     export let layerCount = 12
     /// The longest sequence the position embeddings cover.
+    /// # Examples
+    /// ```osprey
+    /// print("positions 0 to ${positions}")
+    /// ```
+    /// ```output
+    /// positions 0 to 1024
+    /// ```
     export let positions = 1024
     /// The token id that ends generated text.
+    /// # Examples
+    /// ```osprey
+    /// print("${endOfText} ends generation")
+    /// ```
+    /// ```output
+    /// 50256 ends generation
+    /// ```
     export let endOfText = 50256
     /// The constant added to a LayerNorm row's variance before its square root.
+    /// # Examples
+    /// ```osprey
+    /// print(epsilon)
+    /// ```
+    /// ```output
+    /// 1e-05
+    /// ```
     export let epsilon: float32 = 0.00001
     /// `width` as a float32, so row sums divide into means.
+    /// # Examples
+    /// ```osprey
+    /// print(widthF)
+    /// ```
+    /// ```output
+    /// 768.0
+    /// ```
     export let widthF: float32 = 768.0
     /// 1 / sqrt(headWidth)
+    /// # Examples
+    /// ```osprey
+    /// print("${scoreScale} = 1 / sqrt(${headWidth})")
+    /// ```
+    /// ```output
+    /// 0.125 = 1 / sqrt(64)
+    /// ```
     export let scoreScale: float32 = 0.125
     /// sqrt(2 / pi) and the cubic coefficient of the tanh GELU approximation.
+    /// # Examples
+    /// ```osprey
+    /// print("${geluScale} tanh GELU scale, ${geluCubic} cubic")
+    /// ```
+    /// ```output
+    /// 0.7978845608028654 tanh GELU scale, 0.044715 cubic
+    /// ```
     export let geluScale: float32 = 0.7978845608028654
     /// The cubic coefficient inside the tanh GELU approximation.
+    /// # Examples
+    /// ```osprey
+    /// print("${geluCubic} x^3 inside the tanh")
+    /// ```
+    /// ```output
+    /// 0.044715 x^3 inside the tanh
+    /// ```
     export let geluCubic: float32 = 0.044715
 
     /// One block's parameters. `B` is whatever the installed `Tensor` handler
@@ -82,33 +187,134 @@ module Model {
     export type Stepped<B> = { x: B, caches: List<B> }
 
     /// Element `i` of tensor `m`, read through the installed handler.
+    /// # Examples
+    /// ```osprey
+    /// let first = Backends::strictly(fn() => Cpu::onLists(fn() => at([toFloat32(5.0), toFloat32(6.0)], 0)))
+    /// let past = Backends::strictly(fn() => Cpu::onLists(fn() => at([toFloat32(5.0)], 7)))
+    /// print("${first} ${past}")
+    /// ```
+    /// ```output
+    /// Success(5.0) Success(0.0)
+    /// ```
     export fn at(m, i) = perform Backends::Tensor.get(m, i)
     /// The element count of tensor `m`.
+    /// # Examples
+    /// ```osprey
+    /// let n = Backends::strictly(fn() => Cpu::onLists(fn() => size(empty())))
+    /// print("${n}")
+    /// ```
+    /// ```output
+    /// Success(0)
+    /// ```
     export fn size(m) = perform Backends::Tensor.length(m)
     /// The empty tensor: where a fold over rows starts, and what the unused
     /// arm of a stopped operation answers.
+    /// # Examples
+    /// ```osprey
+    /// let none = Backends::strictly(fn() => Cpu::onLists(fn() => toString(empty())))
+    /// print("${none}")
+    /// ```
+    /// ```output
+    /// Success([])
+    /// ```
     export fn empty() = orStop(perform Backends::Tensor.fromList([]), empty)
     /// The installed handler's own name for where the arithmetic runs.
+    /// # Examples
+    /// ```osprey
+    /// let where = Backends::strictly(fn() => Cpu::onLists(fn() => device()))
+    /// print("${where}")
+    /// ```
+    /// ```output
+    /// Success(lists)
+    /// ```
     export fn device() = perform Backends::Tensor.device()
     /// The sum of every element of `b`, or a fault from the backend.
+    /// # Examples
+    /// ```osprey
+    /// let sum = Backends::strictly(fn() => Cpu::onLists(fn() => total([toFloat32(1.0), toFloat32(2.0), toFloat32(3.0)])))
+    /// let none = Backends::strictly(fn() => Cpu::onLists(fn() => total(empty())))
+    /// print("${sum} ${none}")
+    /// ```
+    /// ```output
+    /// Success(6.0) Success(0.0)
+    /// ```
     export fn total(b) = orStop(perform Backends::Tensor.reduce(b, 0.0, addF), fn() => at(b, 0))
     /// `a` and `b` added element by element, or a fault from the backend.
+    /// # Examples
+    /// ```osprey
+    /// let sum = Backends::strictly(fn() => Cpu::onLists(fn() => toString(plus([toFloat32(1.0), toFloat32(2.0)], [toFloat32(10.0), toFloat32(20.0)]))))
+    /// print("${sum}")
+    /// ```
+    /// ```output
+    /// Success([11.0, 22.0])
+    /// ```
     export fn plus(a, b) = orStop(perform Backends::Tensor.zipWith(a, b, addF), fn() => a)
     /// Two elements to one by addition: the `Combine` of `total` and `plus`.
+    /// # Examples
+    /// ```osprey
+    /// let sum = Backends::strictly(fn() => addF(toFloat32(1.0), toFloat32(2.0)))
+    /// print("${sum}")
+    /// ```
+    /// ```output
+    /// Success(3.0)
+    /// ```
     export fn addF(a, x) = a + x
     /// The larger of two elements: the `Combine` of `peak` and of every
     /// softmax's row peak.
+    /// # Examples
+    /// ```osprey
+    /// let larger = Backends::strictly(fn() => maxF(toFloat32(1.0), toFloat32(2.0)))
+    /// let kept = Backends::strictly(fn() => maxF(toFloat32(3.0), toFloat32(2.0)))
+    /// print("${larger} ${kept}")
+    /// ```
+    /// ```output
+    /// Success(2.0) Success(3.0)
+    /// ```
     export fn maxF(a, x) = match x > a { true => x  false => a }
     /// The largest element of a nonempty tensor, or a fault from the backend.
+    /// # Examples
+    /// ```osprey
+    /// let top = Backends::strictly(fn() => Cpu::onLists(fn() => peak([toFloat32(1.0), toFloat32(3.0), toFloat32(2.0)])))
+    /// print("${top}")
+    /// ```
+    /// ```output
+    /// Success(3.0)
+    /// ```
     export fn peak(b) = orStop(perform Backends::Tensor.reduce(b, at(b, 0), maxF), fn() => at(b, 0))
     /// The GELU of one element by the tanh approximation.
+    /// # Examples
+    /// ```osprey
+    /// let one = Backends::strictly(fn() => gelu(toFloat32(1.0)))
+    /// let zero = Backends::strictly(fn() => gelu(toFloat32(0.0)))
+    /// print("${one} ${zero}")
+    /// ```
+    /// ```output
+    /// Success(0.841192) Success(0.0)
+    /// ```
     export fn gelu(x) = toFloat32(0.5) * x * (toFloat32(1.0) + tanh(geluScale * (x + geluCubic * x * x * x)))
     /// The GELU of every element of `f`, or a fault from the backend.
+    /// # Examples
+    /// ```osprey
+    /// let shown = Backends::strictly(fn() => Cpu::onLists(fn() => toString(gelus([toFloat32(0.0), toFloat32(1.0)]))))
+    /// print("${shown}")
+    /// ```
+    /// ```output
+    /// Success([0.0, 0.841192])
+    /// ```
     export fn gelus(f) = orStop(perform Backends::Tensor.build(size(f), fn(i) => gelu(at(f, i))), empty)
 
     /// A tensor operation's value, or a fault that stops the run with the
     /// reason ([FAILURE-EXPLICIT]). The fault never resumes, so `abandoned` is
     /// never called; it only gives the stopped arm the result type.
+    /// # Examples
+    /// ```osprey
+    /// let kept = Backends::strictly(fn() => orStop(Success { value: toFloat32(1.0) }, fn() => toFloat32(0.0)))
+    /// let stopped = Backends::strictly(fn() => orStop(Error { message: "no such tensor" }, fn() => toFloat32(0.0)))
+    /// print("${kept} ${stopped}")
+    /// ```
+    /// ```output
+    /// Success(1.0) Error(no such tensor)
+    /// ```
     export fn orStop(result, abandoned) = match result {
         Success { value } => value
         Error { message } => {
@@ -118,10 +324,27 @@ module Model {
     }
 
     /// Build failures leave the surrounding strictly region before any model work.
+    /// # Examples
+    /// ```osprey
+    /// let found = Backends::strictly(fn() => Cpu::onLists(fn() => indexOf([toFloat32(3.0), toFloat32(1.0), toFloat32(4.0)], toFloat32(4.0))))
+    /// let absent = Backends::strictly(fn() => Cpu::onLists(fn() => indexOf([toFloat32(3.0), toFloat32(1.0), toFloat32(4.0)], toFloat32(7.0))))
+    /// print("${found} ${absent}")
+    /// ```
+    /// ```output
+    /// Success(2) Success(3)
+    /// ```
     export fn indexOf(buffer, value) = orStop(perform Backends::Tensor.indexOf(buffer, value), fn() => size(buffer))
 
     /// The tensor `name` of the safetensors file at `path`; a missing or
     /// mis-typed tensor stops the run rather than fabricate a runnable model.
+    /// # Examples
+    /// ```osprey
+    /// let missing = Backends::strictly(fn() => Cpu::onLists(fn() => toString(loaded("no-such-weights.safetensors", "wte.weight"))))
+    /// print("${missing}")
+    /// ```
+    /// ```output
+    /// Error(loadTensor: no-such-weights.safetensors: No such file or directory)
+    /// ```
     export fn loaded(path, name) = orStop(perform Backends::Tensor.load(path, name), empty)
 
     /// One tensor of the checkpoint.
@@ -153,33 +376,101 @@ module Model {
 
     /// A block whose twelve parameters are all the empty tensor: what a
     /// missing block or gradient stands in as.
+    /// # Examples
+    /// ```osprey
+    /// let none = Backends::strictly(fn() => Cpu::onLists(fn() => size(emptyLayer().fcW)))
+    /// print("${none}")
+    /// ```
+    /// ```output
+    /// Success(0)
+    /// ```
     export fn emptyLayer() = {
         let e = empty()
         Layer { ln1g: e, ln1b: e, qkvW: e, qkvB: e, projW: e, projB: e, ln2g: e, ln2b: e, fcW: e, fcB: e, outW: e, outB: e }
     }
 
     /// Block `i` of `w`, or an empty block when `w` has none there.
+    /// # Examples
+    /// ```osprey
+    /// fn noWeights() = Weights { wte: empty(), wteT: empty(), wpe: empty(), lnfG: empty(), lnfB: empty(), blocks: [] }
+    /// let none = Backends::strictly(fn() => Cpu::onLists(fn() => size(layer(noWeights(), 0).qkvW)))
+    /// print("${none}")
+    /// ```
+    /// ```output
+    /// Success(0)
+    /// ```
     export fn layer(w, i) = listGet(w.blocks, i) ?: emptyLayer()
 
     /// m [rows, cols] as [cols, rows]: tensors are rank-1, so a product against a
     /// transposed operand is a gather followed by `matMul`.
+    /// # Examples
+    /// ```osprey
+    /// let shown = Backends::strictly(fn() => Cpu::onLists(fn() => toString(transpose([toFloat32(1.0), toFloat32(2.0), toFloat32(3.0), toFloat32(4.0)], 2, 2))))
+    /// print("${shown}")
+    /// ```
+    /// ```output
+    /// Success([1.0, 3.0, 2.0, 4.0])
+    /// ```
     export fn transpose(m, rows, cols) = orStop(perform Backends::Tensor.build(rows * cols, fn(i) => at(m, (i % rows) * cols + intDiv(i, rows))), empty)
 
     /// a [rows, inner] times b [inner, cols]; operands that disagree with the
     /// stated shape stop the run.
+    /// # Examples
+    /// ```osprey
+    /// let prod = Backends::strictly(fn() => Cpu::onLists(fn() => toString(product([toFloat32(1.0), toFloat32(2.0), toFloat32(3.0), toFloat32(4.0)], [toFloat32(5.0), toFloat32(6.0), toFloat32(7.0), toFloat32(8.0)], 2, 2, 2))))
+    /// let misfit = Backends::strictly(fn() => Cpu::onLists(fn() => toString(product([toFloat32(1.0), toFloat32(2.0)], [toFloat32(1.0)], 1, 1, 1))))
+    /// print("${prod} ${misfit}")
+    /// ```
+    /// ```output
+    /// Success([19.0, 22.0, 43.0, 50.0]) Error(gpuMatMul: left operand: has 2 elements, the stated shape needs 1)
+    /// ```
     export fn product(a, b, rows, inner, cols) = orStop(perform Backends::Tensor.matMul(a, b, rows, inner, cols), fn() => a)
 
     /// `step` folded over elements i of x in start..start+n, from `init`.
     fn foldRun(x, start, n, init, step) = range(start, start + n) |> fold(init, fn(a, i) => step(a, at(x, i)))
     /// Sum of a contiguous run of a flat tensor.
+    /// # Examples
+    /// ```osprey
+    /// let run = Backends::strictly(fn() => Cpu::onLists(fn() => sumRange([toFloat32(1.0), toFloat32(2.0), toFloat32(3.0), toFloat32(4.0)], 1, 2)))
+    /// print("${run}")
+    /// ```
+    /// ```output
+    /// Success(5.0)
+    /// ```
     export fn sumRange(x, start, n) = foldRun(x, start, n, 0.0, addF)
     /// The sum of the squared distances from `mean` of the `n` elements of
     /// `x` from `start`: a row's variance before it is divided by the width.
+    /// # Examples
+    /// ```osprey
+    /// let spread = Backends::strictly(fn() => Cpu::onLists(fn() => squaredDeviation([toFloat32(1.0), toFloat32(3.0)], 0, 2, toFloat32(2.0))))
+    /// print("${spread}")
+    /// ```
+    /// ```output
+    /// Success(2.0)
+    /// ```
     export fn squaredDeviation(x, start, n, mean) = foldRun(x, start, n, 0.0, fn(a, v) => a + (v - mean) * (v - mean))
     /// Per-row mean and variance of x [t, width], the LayerNorm statistics.
+    /// # Examples
+    /// ```osprey
+    /// fn ones() = orStop(perform Backends::Tensor.build(width, fn(i) => toFloat32(i * 0 + 1)), empty)
+    /// let means = Backends::strictly(fn() => Cpu::onLists(fn() => toString(rowMeans(ones(), 1))))
+    /// print("${means}")
+    /// ```
+    /// ```output
+    /// Success([1.0])
+    /// ```
     export fn rowMeans(x, t) = orStop(perform Backends::Tensor.build(t, fn(r) => sumRange(x, r * width, width) / widthF), empty)
     /// The variance of each of the t rows of x [t, width] about its mean in
     /// `means`, or a fault from the backend.
+    /// # Examples
+    /// ```osprey
+    /// fn ones() = orStop(perform Backends::Tensor.build(width, fn(i) => toFloat32(i * 0 + 1)), empty)
+    /// let variances = Backends::strictly(fn() => Cpu::onLists(fn() => toString(rowVariances(ones(), 1, ones()))))
+    /// print("${variances}")
+    /// ```
+    /// ```output
+    /// Success([0.0])
+    /// ```
     export fn rowVariances(x, t, means) = orStop(perform Backends::Tensor.build(t, fn(r) => squaredDeviation(x, r * width, width, at(means, r)) / widthF), empty)
 
     fn normalised(x, means, variances, g, b, i) = {
@@ -189,6 +480,16 @@ module Model {
     }
 
     /// LayerNorm over each of the t rows of x [t, width].
+    /// # Examples
+    /// ```osprey
+    /// fn ones() = orStop(perform Backends::Tensor.build(width, fn(i) => toFloat32(i * 0 + 1)), empty)
+    /// fn zeros() = orStop(perform Backends::Tensor.build(width, fn(i) => toFloat32(i * 0)), empty)
+    /// let normed = Backends::strictly(fn() => Cpu::onLists(fn() => total(layerNorm(ones(), 1, ones(), zeros()))))
+    /// print("${normed}")
+    /// ```
+    /// ```output
+    /// Success(0.0)
+    /// ```
     export fn layerNorm(x, t, g, b) = {
         let means = rowMeans(x, t)
         let variances = rowVariances(x, t, means)
@@ -196,6 +497,14 @@ module Model {
     }
 
     /// x [rows, inner] times w [inner, cols], plus the bias on every row.
+    /// # Examples
+    /// ```osprey
+    /// let shown = Backends::strictly(fn() => Cpu::onLists(fn() => toString(linear([toFloat32(1.0), toFloat32(2.0)], 1, 2, 1, [toFloat32(1.0), toFloat32(3.0)], [toFloat32(10.0)]))))
+    /// print("${shown}")
+    /// ```
+    /// ```output
+    /// Success([17.0])
+    /// ```
     export fn linear(x, rows, inner, cols, w, bias) = {
         let value = product(x, w, rows, inner, cols)
         orStop(perform Backends::Tensor.build(rows * cols, fn(i) => at(value, i) + at(bias, i % cols)), empty)
@@ -204,10 +513,40 @@ module Model {
     /// qkv is [t, 2304]: query, key and value start at columns 0, `width` and 2 * `width`.
     fn qkvPart(qkv, column, r, h, d) = at(qkv, r * qkvWidth + column + h * headWidth + d)
     /// Element `d` of head `h`'s query for row `r` of qkv [t, 2304].
+    /// # Examples
+    /// ```osprey
+    /// fn ramp() = orStop(perform Backends::Tensor.build(qkvWidth, fn(i) => toFloat32(i * 1)), empty)
+    /// let first = Backends::strictly(fn() => Cpu::onLists(fn() => qAt(ramp(), 0, 0, 0)))
+    /// let third = Backends::strictly(fn() => Cpu::onLists(fn() => qAt(ramp(), 0, 1, 2)))
+    /// print("${first} ${third}")
+    /// ```
+    /// ```output
+    /// Success(0.0) Success(66.0)
+    /// ```
     export fn qAt(qkv, r, h, d) = qkvPart(qkv, 0, r, h, d)
     /// Element `d` of head `h`'s key for row `r` of qkv [t, 2304].
+    /// # Examples
+    /// ```osprey
+    /// fn ramp() = orStop(perform Backends::Tensor.build(qkvWidth, fn(i) => toFloat32(i * 1)), empty)
+    /// let first = Backends::strictly(fn() => Cpu::onLists(fn() => kAt(ramp(), 0, 0, 0)))
+    /// let third = Backends::strictly(fn() => Cpu::onLists(fn() => kAt(ramp(), 0, 1, 2)))
+    /// print("${first} ${third}")
+    /// ```
+    /// ```output
+    /// Success(768.0) Success(834.0)
+    /// ```
     export fn kAt(qkv, r, h, d) = qkvPart(qkv, width, r, h, d)
     /// Element `d` of head `h`'s value for row `r` of qkv [t, 2304].
+    /// # Examples
+    /// ```osprey
+    /// fn ramp() = orStop(perform Backends::Tensor.build(qkvWidth, fn(i) => toFloat32(i * 1)), empty)
+    /// let first = Backends::strictly(fn() => Cpu::onLists(fn() => vAt(ramp(), 0, 0, 0)))
+    /// let third = Backends::strictly(fn() => Cpu::onLists(fn() => vAt(ramp(), 0, 1, 2)))
+    /// print("${first} ${third}")
+    /// ```
+    /// ```output
+    /// Success(1536.0) Success(1602.0)
+    /// ```
     export fn vAt(qkv, r, h, d) = qkvPart(qkv, 2 * width, r, h, d)
     fn score(qkv, h, r, c) = (range(0, headWidth) |> fold(0.0, fn(a, d) => a + qkvPart(qkv, 0, r, h, d) * qkvPart(qkv, width, c, h, d))) * scoreScale
     /// Row r of n attended rows is position first + r; probs are [heads, n, t].
@@ -244,6 +583,16 @@ module Model {
     /// position alone when first is t - 1 — the KV-cached step, which reads the
     /// earlier positions' keys and values from qkv instead of recomputing them.
     /// Scores and probabilities are [heads, t - first, t].
+    /// # Examples
+    /// ```osprey
+    /// fn onesQkv() = orStop(perform Backends::Tensor.build(qkvWidth, fn(i) => toFloat32(i * 0 + 1)), empty)
+    /// let weight = Backends::strictly(fn() => Cpu::onLists(fn() => at(attentionFrom(onesQkv(), 1, 0).probs, 0)))
+    /// let out = Backends::strictly(fn() => Cpu::onLists(fn() => total(attentionFrom(onesQkv(), 1, 0).out)))
+    /// print("${weight} ${out}")
+    /// ```
+    /// ```output
+    /// Success(1.0) Success(768.0)
+    /// ```
     export fn attentionFrom(qkv, t, first) = {
         let n = t - first
         let probs = probsOf(orStop(perform Backends::Tensor.build(heads * n * t, fn(i) => causalScore(qkv, t, n, first, i)), empty), t, n, first)
@@ -251,6 +600,16 @@ module Model {
     }
 
     /// Every position of qkv [t, 2304] at once, as [t, width].
+    /// # Examples
+    /// ```osprey
+    /// fn onesQkv() = orStop(perform Backends::Tensor.build(qkvWidth, fn(i) => toFloat32(i * 0 + 1)), empty)
+    /// let weight = Backends::strictly(fn() => Cpu::onLists(fn() => at(attention(onesQkv(), 1).probs, 0)))
+    /// let n = Backends::strictly(fn() => Cpu::onLists(fn() => size(attention(onesQkv(), 1).out)))
+    /// print("${weight} ${n}")
+    /// ```
+    /// ```output
+    /// Success(1.0) Success(768)
+    /// ```
     export fn attention(qkv, t) = attentionFrom(qkv, t, 0)
 
     /// `x` plus a linear map of `u`: one branch of a residual pair.
@@ -272,6 +631,14 @@ module Model {
     }
 
     /// One transformer block: pre-norm attention and MLP, each with a residual.
+    /// # Examples
+    /// ```osprey
+    /// let acts = Backends::strictly(fn() => Cpu::onLists(fn() => toString(size(block(empty(), 1, emptyLayer()).y))))
+    /// print("${acts}")
+    /// ```
+    /// ```output
+    /// Error(gpuMatMul: right operand: has 0 elements, the stated shape needs 1769472)
+    /// ```
     export fn block(x, t, l) = blockRows(x, t, t, l, empty(), 0)
 
     /// Every block over `rows` rows of x from position `first` on, each step's KV
@@ -286,9 +653,29 @@ module Model {
 
     /// Token plus position embeddings of the host-side ids, [t, width]: one
     /// row per position, so every kernel sees buffers and scalars only.
+    /// # Examples
+    /// ```osprey
+    /// fn ones() = orStop(perform Backends::Tensor.build(width, fn(i) => toFloat32(i * 0 + 1)), empty)
+    /// fn twos() = orStop(perform Backends::Tensor.build(2 * width, fn(i) => toFloat32(i * 0 + 2)), empty)
+    /// fn toy() = Weights { wte: ones(), wteT: empty(), wpe: twos(), lnfG: empty(), lnfB: empty(), blocks: [] }
+    /// let second = Backends::strictly(fn() => Cpu::onLists(fn() => at(embed(toy(), [0, 0], 2), width)))
+    /// print("${second}")
+    /// ```
+    /// ```output
+    /// Success(3.0)
+    /// ```
     export fn embed(w, ids, t) = range(0, t) |> fold(empty(), fn(rows, p) => appended(rows, embedOne(w, listGet(ids, p) ?: 0, p)))
 
     /// The twelve blocks over the embedded tokens [t, width].
+    /// # Examples
+    /// ```osprey
+    /// fn noWeights() = Weights { wte: empty(), wteT: empty(), wpe: empty(), lnfG: empty(), lnfB: empty(), blocks: [] }
+    /// let trace = Backends::strictly(fn() => Cpu::onLists(fn() => forward(noWeights(), [0], 1)))
+    /// print("${trace}")
+    /// ```
+    /// ```output
+    /// Error(gpuMatMul: right operand: has 0 elements, the stated shape needs 1769472)
+    /// ```
     export fn forward(w, ids, t) = blockPass(w, embed(w, ids, t), t, t, 0, [], 0, [])
 
     /// `rows` followed by `more`: a cache growing by one position.
@@ -298,16 +685,45 @@ module Model {
     }
 
     /// The embedding of one token at position p, [1, width].
+    /// # Examples
+    /// ```osprey
+    /// fn ones() = orStop(perform Backends::Tensor.build(width, fn(i) => toFloat32(i * 0 + 1)), empty)
+    /// fn twos() = orStop(perform Backends::Tensor.build(2 * width, fn(i) => toFloat32(i * 0 + 2)), empty)
+    /// fn toy() = Weights { wte: ones(), wteT: empty(), wpe: twos(), lnfG: empty(), lnfB: empty(), blocks: [] }
+    /// let first = Backends::strictly(fn() => Cpu::onLists(fn() => at(embedOne(toy(), 0, 1), 0)))
+    /// let n = Backends::strictly(fn() => Cpu::onLists(fn() => size(embedOne(toy(), 0, 1))))
+    /// print("${first} ${n}")
+    /// ```
+    /// ```output
+    /// Success(3.0) Success(768)
+    /// ```
     export fn embedOne(w, token, p) = embedRow(w.wte, w.wpe, token, p)
     fn embedRow(wte, wpe, token, p) = orStop(perform Backends::Tensor.build(width, fn(c) => at(wte, token * width + c) + at(wpe, p * width + c)), empty)
 
     /// The newest position, token at index t - 1, through the twelve blocks over
     /// their caches of the t - 1 earlier positions.
+    /// # Examples
+    /// ```osprey
+    /// fn noWeights() = Weights { wte: empty(), wteT: empty(), wpe: empty(), lnfG: empty(), lnfB: empty(), blocks: [] }
+    /// let stepped = Backends::strictly(fn() => Cpu::onLists(fn() => forwardStep(noWeights(), 0, 2, [])))
+    /// print("${stepped}")
+    /// ```
+    /// ```output
+    /// Error(gpuMatMul: right operand: has 0 elements, the stated shape needs 1769472)
+    /// ```
     export fn forwardStep(w, token, t, caches) = {
         let trace = blockPass(w, embedOne(w, token, t - 1), 1, t, 0, caches, t - 1, [])
         Stepped { x: trace.x, caches: qkvCaches(trace) }
     }
 
     /// Each block's qkv rows from a full pass: the caches a first forwardStep grows.
+    /// # Examples
+    /// ```osprey
+    /// let caches = Backends::strictly(fn() => Cpu::onLists(fn() => toString(qkvCaches(Trace { acts: [], x: empty() }))))
+    /// print("${caches}")
+    /// ```
+    /// ```output
+    /// Success([[], [], [], [], [], [], [], [], [], [], [], []])
+    /// ```
     export fn qkvCaches(trace) = range(0, layerCount) |> fold([], fn(acc, i) => listAppend(acc, match listGet(trace.acts, i) { Success { value } => value.qkv  Error _ => empty() }))
 }

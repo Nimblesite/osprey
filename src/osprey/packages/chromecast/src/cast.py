@@ -16,7 +16,7 @@ from chromecast import Player, Protocol, Session
 __all__ = ["cast", "status", "stop_all"]
 
 
-def played(player, now, report) -> Result[str, str]:
+def played(player, now, report):
     """Polls until playback ends, reporting each STATE line. A quiet second
     counts as a second on the heartbeat clock."""
     match Player.poll(player, now, 1000):
@@ -44,7 +44,7 @@ def cast(device, path, report: Callable[[str], None]) -> Result[str, str]:
             return outcome
 
 
-def replied(session, request) -> Result[Protocol.Reading, str]:
+def replied(session, request):
     """Sends one receiver request on an open session and reads the reply."""
     match Session.write(session, "receiver-0", "receiver", request):
         case Error(message=failure):
@@ -86,7 +86,7 @@ def stopped_one(session, id):
             return False
 
 
-def stopped_sessions(device, sessions) -> Result[list[str], str]:
+def stopped_sessions(device, sessions):
     """STOPs each listed application session over one connection and returns
     the ids whose STOP was written."""
     match Session.open(device.host, device.port):

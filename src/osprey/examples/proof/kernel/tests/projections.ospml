@@ -38,12 +38,15 @@ module ProjectionTests
         test ("a dependent field type substitutes the previous projection", \() =>
             expect (Support::inferred (packedEnv (), [Binder(name = "h", ty = Const "Packed" [])], Proj "Packed" 1 (BVar 0)), "(Packed.0 #0)"))
 
-    andEnv () = Support::fixture ("projection fixture declarations check", Checked::exported (Environment::empty (), Fixtures::andSwap ()))
+    (** The label every fixture environment's declaration check carries. *)
+    fixtureChecked () = "projection fixture declarations check"
+
+    andEnv () = Support::fixture (fixtureChecked (), Checked::exported (Environment::empty (), Fixtures::andSwap ()))
 
     context () = [Binder(name = "h", ty = Terms::apps (Const "And" [], [BVar 1, BVar 0])), Binder(name = "q", ty = Sort Zero), Binder(name = "p", ty = Sort Zero)]
 
     pair () = Terms::apps (Const "And.intro" [], [BVar 3, BVar 2, BVar 1, BVar 0])
 
-    hiddenEnv () = Support::fixture ("projection fixture declarations check", Support::hiddenIn (Environment::empty (), 1))
+    hiddenEnv () = Support::fixture (fixtureChecked (), Support::hiddenIn (Environment::empty (), 1))
 
-    packedEnv () = Support::fixture ("projection fixture declarations check", Support::packedIn (Environment::empty ()))
+    packedEnv () = Support::fixture (fixtureChecked (), Support::packedIn (Environment::empty ()))

@@ -1,15 +1,20 @@
 namespace hosted_tests;
 import registry_api::HostedRequest
 import registry_api::HostedHeaders
+import registry::Maybe
 
 /// The request gate in order: edge secret, host, method, URI and body
 /// bounds, then the credentialed origin/CSRF chain. Implements
 /// [PACKAGE-HOSTED-EDGE] and [PACKAGE-HOSTED-AUTH] request admission.
 module RequestTests {
-    let policy = HostedRequest::Policy {
+    let v1Packages = "/v1/packages"
+    let contentLengthRefusal = "400:req.content-length"
+
+    fn policy() = HostedRequest::Policy {
         allowedOrigin: "https://packages.example.test",
         allowedHost: "api.example.test",
         edgeSecret: "s3cr3t-edge",
+        edgeSecretOverlap: Maybe::none(),
         cookieName: "session",
         csrfToken: "csrf-tok",
         maxBody: 1024
@@ -22,31 +27,39 @@ module RequestTests {
     fn verdictOf(v) = if HostedHeaders::isOk(v) { "admitted" }
         else { "${HostedHeaders::statusOf(v)}:${HostedHeaders::codeOf(v)}" }
 
-    fn headers(method, extra) = "X-Edge-Secret: s3cr3t-edge\r\nHost: api.example.test\r\n" + extra
-        + (if method == "GET" { "" } else { "\r\nX-Csrf-Token: csrf-tok" })
+    fn raw(method, uri, headers, body) = verdictOf(HostedRequest::admit(incoming(method, uri, headers, body), policy()))
 
-    fn verdict(method, uri, extra, body) = verdictOf(HostedRequest::admit(incoming(method, uri, headers(method, extra), body), policy))
+    fn verdict(method, uri, extra, body) = raw(method, uri, "X-Edge-Secret: s3cr3t-edge\r\nHost: api.example.test" + (if extra == "" { "" } else { "\r\n" + extra }), body)
 
     fn admitted() = checkAll("request: clean requests admitted", [
-        verdict("GET", "/v1/packages", "", "") == "admitted",
-        verdict("GET", "/v1/packages", "Cookie: theme=1", "") == "admitted",
-        verdict("POST", "/v1/auth/logout", "Origin: https://packages.example.test\r\nCookie: session=abc", "") == "admitted"
+        match HostedRequest::admit(incoming("POST", "/v1/publish", "Host: api.example.test\r\nX-Edge-Secret: s3cr3t-edge", "release"), policy()) {
+            HostedHeaders::Ok { value } => value.method == "POST" && value.uri == "/v1/publish" && value.body == "release"
+            _ => false
+        },
+        verdict("GET", v1Packages, "", "") == "admitted",
+        verdict("GET", v1Packages, "Cookie: theme=1", "") == "admitted",
+        verdict("POST", "/v1/auth/logout", "Origin: https://packages.example.test\r\nCookie: session=abc\r\nX-Csrf-Token: csrf-tok", "") == "admitted"
     ])
 
     fn edgeAndHost() = checkAll("request: edge secret and host gates", [
-        verdict("GET", "/v1/health", "Host: api.example.test", "") == "403:req.edge-secret",
-        verdict("GET", "/v1/health", "X-Edge-Secret: wrong\r\nHost: api.example.test", "") == "403:req.edge-secret",
-        verdict("GET", "/v1/health", "X-Edge-Secret: s3cr3t-edge\r\nHost: run.app", "") == "421:req.host",
-        verdict("GET", "/v1/health", "X-Edge-Secret: s3cr3t-edge", "") == "421:req.host"
+        raw("GET", "/v1/health", "Host: api.example.test", "") == "403:req.edge-secret",
+        raw("GET", "/v1/health", "X-Edge-Secret: wrong\r\nHost: api.example.test", "") == "403:req.edge-secret",
+        raw("GET", "/v1/health", "X-Edge-Secret: s3cr3t-edge\r\nHost: run.app", "") == "421:req.host",
+        raw("GET", "/v1/health", "X-Edge-Secret: s3cr3t-edge", "") == "421:req.host"
     ])
 
     fn shape() = checkAll("request: method, URI and body bounds", [
         verdict("TRACE", "/v1/health", "", "") == "405:req.method",
+        verdict("post", v1Packages, "", "") == "405:req.method",
         verdict("GET", "v1/health", "", "") == "400:req.uri",
         verdict("GET", "/v1/a b", "", "") == "400:req.uri",
         verdict("GET", "/${repeat("a", 2100) ?: ""}", "", "") == "414:req.uri",
         verdict("POST", "/v1/publish", "Origin: https://packages.example.test\r\nContent-Length: 12", repeat("a", 2000) ?: "") == "413:req.body-size",
-        verdict("POST", "/v1/publish", "Origin: https://packages.example.test\r\nContent-Length: 1a", "") == "400:req.content-length"
+        verdict("POST", "/v1/publish", "Origin: https://packages.example.test\r\nContent-Length: 1a", "") == contentLengthRefusal,
+        verdict("POST", v1Packages, "Content-Length: 003", "猫") == "admitted",
+        verdict("POST", v1Packages, "Content-Length: 1", "猫") == contentLengthRefusal,
+        verdict("POST", v1Packages, "Content-Length: 4", "abc") == contentLengthRefusal,
+        verdict("POST", v1Packages, "Content-Length: 999999999999999999999999", "") == contentLengthRefusal
     ])
 
     fn credentialed() = checkAll("request: credentialed origin and CSRF chain", [

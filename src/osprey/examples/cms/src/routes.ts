@@ -27,7 +27,7 @@ function exists(config: Config, path) {
   return unwrapOr(kindOf(`${config.repo}/${path}`), "") === "file";
 }
 
-function checked(config: Config, res: Response, path, work: (path: string) => Response) {
+function checked(config: Config, res, path, work) {
   const safe = safePath(config.roots, path);
   switch (safe.kind) {
     case "success":
@@ -48,7 +48,7 @@ export function withPath(config: Config, req: Request, res: Response, work: (pat
   }
 }
 
-function saving(res: Response, path, outcome) {
+function saving(res, path, outcome) {
   switch (outcome.kind) {
     case "success":
       return res.json(savedJson(path, outcome.value));

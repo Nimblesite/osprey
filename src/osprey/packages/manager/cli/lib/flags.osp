@@ -18,13 +18,13 @@ module Flags {
     fn withPair(parsed, word, given) = Parsed { pairs: listAppend(parsed.pairs, Given { word: word, given: given }), switches: parsed.switches }
     fn withSwitch(parsed, word) = Parsed { pairs: parsed.pairs, switches: listAppend(parsed.switches, word) }
 
-    fn valuedAt(args, i, valued, switches, parsed, word) -> Result<Parsed, string> = if i + 1 >= length(args) {
+    fn valuedAt(args, i, valued, switches, parsed, word) = if i + 1 >= length(args) {
         Error { message: word }
     } else {
         parseAt(args, i + 2, valued, switches, withPair(parsed, word, listGet(args, i + 1) ?: ""))
     }
 
-    fn step(args, i, valued, switches, parsed, word) -> Result<Parsed, string> = if listContains(valued, word) {
+    fn step(args, i, valued, switches, parsed, word) = if listContains(valued, word) {
         valuedAt(args, i, valued, switches, parsed, word)
     } else if listContains(switches, word) {
         parseAt(args, i + 1, valued, switches, withSwitch(parsed, word))

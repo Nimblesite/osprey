@@ -106,13 +106,13 @@ module DawSession
                     Success _ => true
 
     (** [DAW-TRANSPORT-RANGE] The beat Play starts on: the start marker's bar line. *)
-    export rangeStart editor = TimelineGeometry::barStart (toFloat editor.rollBar, measure editor.song)
+    export rangeStart editor = TimelineGeometry::barStart (toFloat editor.playStart, measure editor.song)
 
     (** The beat Play ends on: the end marker's bar line when it is after the start marker, else the song's end. *)
-    export rangeEnd editor = TimelineGeometry::rangeEnd (toFloat editor.rollBar, toFloat editor.playEnd, TimelineView::beats editor, measure editor.song)
+    export rangeEnd editor = TimelineGeometry::rangeEnd (toFloat editor.playStart, toFloat editor.playEnd, TimelineView::beats editor, measure editor.song)
 
     // The bars Play covers, named from 1.
-    span editor = "bars ${satAdd editor.rollBar 1}–${satAdd (floatToInt (TimelineGeometry::playableBar (rangeEnd editor, rangeEnd editor, measure editor.song)) ?: editor.rollBar) 1}"
+    span editor = "bars ${satAdd editor.playStart 1}–${satAdd (floatToInt (TimelineGeometry::playableBar (rangeEnd editor, rangeEnd editor, measure editor.song)) ?: editor.playStart) 1}"
 
     busy editor = editor.songTicket != "" || editor.songPath == "" || editor.renderer == ""
 
@@ -244,7 +244,7 @@ module DawSession
             Runtime::step (editor(message = "Stop first to move the ${boundary} marker."))
         true =>
             next = match start
-                true => editor(rollBar = bar)
+                true => editor(playStart = bar, rollBar = bar)
                 false => editor(playEnd = bar)
             Runtime::step (next(message = "Play runs ${span next}."))
 

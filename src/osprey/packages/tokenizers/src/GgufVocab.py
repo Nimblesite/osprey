@@ -28,8 +28,11 @@ from tokenizers.Tokenizer import AddedToken, QwenTokenizer
 __all__ = ["qwen_from_vocabulary", "CONTROL", "USER_DEFINED", "UNUSED"]
 
 CONTROL = 3
+"""llama.cpp's token type for control tokens such as `<|fim_prefix|>`: added as special, so a `skip_special` decode drops them."""
 USER_DEFINED = 4
+"""llama.cpp's token type for user-defined added tokens such as `<tool_call>`: matched whole but added as not special, so every decode keeps them."""
 UNUSED = 5
+"""llama.cpp's token type for unused `[PAD…]` placeholders: added as special tokens."""
 
 
 class Merges:
@@ -50,7 +53,7 @@ def qwen_from_vocabulary(tokens, types, merges) -> Result[QwenTokenizer, str]:
             return Error(message=message)
 
 
-def with_merges(tokens, types, ids, bytes_ids, merges) -> Result[QwenTokenizer, str]:
+def with_merges(tokens, types, _ids, bytes_ids, merges) -> Result[QwenTokenizer, str]:
     if merges.bad >= 0:
         return Error(message="merge " + toString(merges.bad) + " names a spelling the vocabulary lacks")
     else:
@@ -66,7 +69,7 @@ def id_of(ids, text):
     return unwrap_or(mapGet(ids, text), -1)
 
 
-def byte_ids(ids) -> Result[list[int], str]:
+def byte_ids(ids):
     """The id of each single byte's spelling, in byte order."""
     found = toList(map(range(256), lambda b: id_of(ids, bytelevel_text([b]))))
     missing = fold(range(256), -1, lambda hit, b: b if hit < 0 and unwrap_or(listGet(found, b), -1) < 0 else hit)
@@ -81,7 +84,7 @@ def split_merges(ids, merges) -> Merges:
     return fold(range(len(merges)), Merges(left=[], right=[], ids=[], bad=-1), lambda acc, i: merge_step(ids, merges, acc, i))
 
 
-def merge_step(ids, merges, acc, i) -> Merges:
+def merge_step(ids, merges, acc, i):
     if acc.bad >= 0:
         return acc
     else:

@@ -37,6 +37,15 @@ module Cpu {
     /// # Parameters
     /// - work: the computation to run, whose every `Tensor` operation this
     ///   handler answers on host lists without touching the GPU.
+    /// # Examples
+    /// ```osprey
+    /// fn identity(i) = toFloat32(i * 1)
+    /// let shown = Backends::strictly(fn() => onLists(fn() => toString(Model::orStop(perform Tensor.build(2, identity), Model::empty))))
+    /// print("${shown}")
+    /// ```
+    /// ```output
+    /// Success([0.0, 1.0])
+    /// ```
     export fn onLists(work) = {
         handle static Tensor<List<float32>> {
             build n f => match n < 0 {

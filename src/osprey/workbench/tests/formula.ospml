@@ -7,6 +7,8 @@ import ui::Doc
 
 (** The formula cases of [WORKBENCH-VERIFICATION]. *)
 module FormulaCases
+    pPQ = "(∀ p, p) ∧ q"
+
     shown text = match Formulas::read text
         workbench::Read formula => Formulas::show formula
         workbench::Faulted fault => "fault ${fault.column}: ${fault.expected}"
@@ -53,7 +55,7 @@ module FormulaCases
         use negated <- FixtureFiles::bind (formula "¬(p ∧ q)")
         use loosest <- FixtureFiles::bind (formula "p ↔ q → r")
         use redundant <- FixtureFiles::bind (formula "((p))")
-        use scoped <- FixtureFiles::bind (formula "(∀ p, p) ∧ q")
+        use scoped <- FixtureFiles::bind (formula pPQ)
         expect (Formulas::show associative, "p → q → r")
         expect (Formulas::show grouped, "(p → q) → r")
         expect (Formulas::show tightest, "p ∧ q ∨ r")
@@ -61,7 +63,7 @@ module FormulaCases
         expect (Formulas::show negated, "¬(p ∧ q)")
         expect (Formulas::show loosest, "p ↔ q → r")
         expect (Formulas::show redundant, "p")
-        FixtureFiles::ok (expect (Formulas::show scoped, "(∀ p, p) ∧ q"))
+        FixtureFiles::ok (expect (Formulas::show scoped, pPQ))
 
     (** [WORKBENCH-FORMULA]: a fault names the column and the shortest fix. *)
     export faults () =
@@ -97,7 +99,7 @@ module FormulaCases
     (** [WORKBENCH-MATH]: connective trees preserve grouping and binder scope. *)
     export typesetting () =
         use tree <- FixtureFiles::bind (layout "(p → q) ∧ (q ∨ p)")
-        use forall <- FixtureFiles::bind (layout "(∀ p, p) ∧ q")
+        use forall <- FixtureFiles::bind (layout pPQ)
         use withBinder <- FixtureFiles::bind (layout "p → ∀ q, q")
         use arrow <- FixtureFiles::bind (layout "p → q → p")
         use top <- FixtureFiles::bind (layout "⊤")

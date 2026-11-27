@@ -13,6 +13,16 @@ import synth::GrainClouds
 import synth::GrainGraph
 import synth::SampleResources
 
+invalidCaptureStateBlock = "Invalid capture state, block size or sample clock."
+invalidGrainVariationCenter = "Invalid grain variation center or spread."
+durationSpreadKey = "durationSpread"
+positionSpreadKey = "positionSpread"
+variationSeedKey = "variationSeed"
+unitFour = [1.0, 1.0, 1.0, 1.0]
+invalidGrainVariationSeed = "Invalid grain variation seed."
+swingFour = [0.5, -0.5, 0.25, -0.25]
+invalidGrainSchedulerState = "Invalid grain scheduler state or block size."
+
 // [SYNTH-ADVANCED-GRAINS-WINDOWS] [SYNTH-ADVANCED-GRAINS-TIMING] [SYNTH-ADVANCED-GRAINS-SCHEDULING]
 // [SYNTH-ADVANCED-GRAINS-DISTRIBUTIONS] [SYNTH-ADVANCED-GRAINS-INTEGRATION] Grain shapes, onset clocks,
 // variation streams and the graph module refuse every invalid control with its own message.
@@ -46,7 +56,7 @@ grainParameterOf (n, key) = match synth::Graphs::parameterNamed (n, key)
 
 grainResource (rate, root, samples) = synth::SampleResource(name = "grain source", sampleRate = rate, sourceChannels = 1, rootFrequency = root, samples = samples)
 
-grainFlatSource () = grainResource (48000, 440.0, [1.0, 1.0, 1.0, 1.0])
+grainFlatSource () = grainResource (48000, 440.0, unitFour)
 
 grainTestNode (resource, capacity, seed) = Components::granular (1, resource, capacity, seed)
 
@@ -55,7 +65,7 @@ grainDescriptorWants (node, pick, rows) = forEachList (rows, \row => expect (pic
 
 // The "rate" descriptor initial for a source at the given rate, i.e. the default read increment.
 grainRateDefault rate =
-    node = grainTestNode (grainResource (rate, 440.0, [0.5, -0.5, 0.25, -0.25]), 4, 7)
+    node = grainTestNode (grainResource (rate, 440.0, swingFour), 4, 7)
     descriptor = grainParameterOf (node, "rate")
     descriptor.initial
 
@@ -164,7 +174,7 @@ regionJourney (pool, boundary, rate, start, expected, remaining) =
 // [SYNTH-ADVANCED-GRAINS-SCHEDULING] Freeze and thaw share a bounded mono source with the normal player.
 captureJourney writer =
     refusedWith (GrainCapture::write (writer, [0.0, floatFromBits 9218868437227405312]), "Capture samples must be finite and within [-1, 1].")
-    refusedWith (GrainCapture::write (writer, []), "Invalid capture state, block size or sample clock.")
+    refusedWith (GrainCapture::write (writer, []), invalidCaptureStateBlock)
     refusedWith (GrainCapture::resource (writer, "capture", 60.0), "Freeze a valid capture before preparing a sample resource.")
     refusedWith (GrainCapture::freeze writer, "Freeze requires at least two captured frames.")
     use first <- succeeds (GrainCapture::write (writer, [0.0, 0.25]))
@@ -194,7 +204,7 @@ pitchMarkJourney () =
 
 sourceJourneys () =
     succeeds (GrainCapture::prepare (4, 24000), captureJourney)
-    succeeds (Grains::prepare ([1.0, 1.0, 1.0, 1.0], 2), overlapSources)
+    succeeds (Grains::prepare (unitFour, 2), overlapSources)
     succeeds (Grains::prepare ([0.75, -1.0, 1.0, -0.5], 1), \pool =>
         regionJourney (pool, synth::LoopSource, 1.0, 1.5, 0.0, 1)
         regionJourney (pool, synth::OneShotSource, 1.0, 1.5, 1.0, 0)
@@ -239,7 +249,7 @@ grainBoundaryJourney () =
 grainPlacementJourney () =
     window = synth::AsrWindow(attack = 0.25, release = 0.25)
     sustained = grainShaped (window, 0.0, 0.0, 11, 1.0, 0.0)
-    succeeds (Grains::prepare ([1.0, 1.0, 1.0, 1.0], 2), \pool =>
+    succeeds (Grains::prepare (unitFour, 2), \pool =>
         // A centred grain reaches both channels at cos(pi/4) = sin(pi/4) with unity sum of squared gains.
         grainBlockAfterTrigger (pool, sustained, 6, \middle =>
             tightRows ([{ got = listGet middle.left 5 ?: 9.0, want = 0.7071067811865476 }, { got = listGet middle.right 5 ?: 9.0, want = 0.7071067811865476 }]))
@@ -260,7 +270,7 @@ grainPlacementJourney () =
 grainLifetimeJourney () =
     short = grainAsr (0.0, 0.0, 5, 1.0, -1.0)
     long = grainAsr (2.0, 1.0, 11, 1.0, 1.0)
-    use pool <- succeeds (Grains::prepare ([1.0, 1.0, 1.0, 1.0], 2))
+    use pool <- succeeds (Grains::prepare (unitFour, 2))
     use first <- succeeds (Grains::trigger (pool, short))
     use rendered <- grainBlockAfterTrigger (first.pool, long, 5)
     watched = Grains::observation rendered.next
@@ -272,7 +282,7 @@ grainLifetimeJourney () =
 // [SYNTH-ADVANCED-GRAINS-OVERLOAD] Reject-new admission: counted, never stolen, audio untouched.
 grainOverloadJourney () =
     controls = grainAsr (0.0, 0.0, 11, 1.0, -1.0)
-    succeeds (Grains::prepare ([1.0, 1.0, 1.0, 1.0], 1), \pool =>
+    succeeds (Grains::prepare (unitFour, 1), \pool =>
         // Before the first rendered frame density is zero while the counts are already available.
         succeeds (Grains::trigger (pool, controls), \born =>
             fresh = Grains::observation born.pool
@@ -311,7 +321,7 @@ grainValidationJourney () =
     forEachList ([[], [0.5], [0.5, 1.5], [0.5, floatFromBits 9218868437227405312]], \bad => refusedWith (Grains::prepare (bad, 1), grainBadSource ()))
     forEachList ([0, -1, 257], \capacity => refusedWith (Grains::prepare ([0.5, -0.5], capacity), grainBadSource ()))
     succeeds (Grains::prepare ([0.5, -0.5], 256), \full => expect ((Grains::observation full).capacity, 256))
-    succeeds (Grains::prepare ([0.5, -0.5, 0.25, -0.25], 1), \pool =>
+    succeeds (Grains::prepare (swingFour, 1), \pool =>
         expect (pool.region.first == 0 && pool.region.limit == 4 && pool.region.boundary == synth::LoopSource, true)
         forEachList ([controls(start = -0.5), controls(start = 4.0), controls(rate = 16.5), controls(rate = -16.5), controls(duration = 2), controls(duration = 65537), controls(amplitude = -0.1), controls(amplitude = 1.1), controls(pan = -1.5), controls(pan = 1.5), controls(window = synth::AsrWindow(attack = 1.0, release = 1.0)), controls(rate = floatFromBits 9218868437227405312)], \bad =>
             refusedWith (Grains::trigger (pool, bad), grainBadControls ()))
@@ -397,10 +407,10 @@ grainSpreadJourney () =
         sameStructure (held.minimum, held.maximum)
         sameStructure (held.minimum, controls))
     forEachList ([still(position = 4.0), still(rate = 33.0), still(duration = 65534), still(amplitude = 1.5), still(pan = 2.5)], \bad =>
-        refusedWith (GrainSpreads::around (controls, 4, bad), "Invalid grain variation center or spread."))
+        refusedWith (GrainSpreads::around (controls, 4, bad), invalidGrainVariationCenter))
     forEachList ([controls(start = 4.0), controls(rate = 17.0), controls(rate = -17.0), controls(duration = 2), controls(duration = 65537), controls(amplitude = 1.5), controls(pan = 1.5), controls(window = synth::AsrWindow(attack = 0.8, release = 0.8))], \bad =>
-        refusedWith (GrainSpreads::around (bad, 4, still), "Invalid grain variation center or spread."))
-    refusedWith (GrainSpreads::around (controls, 1, still), "Invalid grain variation center or spread.")
+        refusedWith (GrainSpreads::around (bad, 4, still), invalidGrainVariationCenter))
+    refusedWith (GrainSpreads::around (controls, 1, still), invalidGrainVariationCenter)
 
 wideGrainDistribution () =
     low = grainShaped (synth::HannWindow, 0.0, 0.0, 12, 0.0, -1.0)
@@ -412,7 +422,7 @@ variedCloud seed = GrainClouds::prepare ((grainFlatSource ()).samples, 4, synth:
 // [SYNTH-ADVANCED-GRAINS-DISTRIBUTIONS] [SYNTH-ADVANCED-GRAINS-OVERLOAD] One immutable varied-block operation owns pool,
 // clock and seeds; rejected onsets are consumed, counted and never stolen.
 grainCloudCommitJourney () =
-    source = [1.0, 1.0, 1.0, 1.0]
+    source = unitFour
     controls = grainAsr (0.0, 0.0, 5, 1.0, -1.0)
     succeeds (GrainClouds::prepare (source, 1, synth::PeriodicTiming(period = 1, jitter = 0), 11, 7), \cloud =>
         expect (cloud.pool.position == 0 && cloud.clock.position == 0, true)
@@ -471,9 +481,9 @@ grainWindowLatchingJourney () =
 // [SYNTH-ADVANCED-GRAINS-DISTRIBUTIONS-GRAPH] Widths default to zero, never reseed and never touch active grains.
 grainGraphVariationJourney () =
     node = granularNode ()
-    grainDescriptorWants (node, \p => p.initial, [{ key = "positionSpread", want = 0.0 }, { key = "rateSpread", want = 0.0 }, { key = "durationSpread", want = 0.0 }, { key = "gainSpread", want = 0.0 }, { key = "panSpread", want = 0.0 }])
+    grainDescriptorWants (node, \p => p.initial, [{ key = positionSpreadKey, want = 0.0 }, { key = "rateSpread", want = 0.0 }, { key = durationSpreadKey, want = 0.0 }, { key = "gainSpread", want = 0.0 }, { key = "panSpread", want = 0.0 }])
     // Source-position spread is limited to [0, sourceSize - 1], matching the graph center control.
-    grainDescriptorWants (node, \p => p.maximum, [{ key = "positionSpread", want = 3.0 }, { key = "start", want = 3.0 }, { key = "rateSpread", want = 32.0 }, { key = "durationSpread", want = 65533.0 }, { key = "gainSpread", want = 1.0 }, { key = "panSpread", want = 2.0 }])
+    grainDescriptorWants (node, \p => p.maximum, [{ key = positionSpreadKey, want = 3.0 }, { key = "start", want = 3.0 }, { key = "rateSpread", want = 32.0 }, { key = durationSpreadKey, want = 65533.0 }, { key = "gainSpread", want = 1.0 }, { key = "panSpread", want = 2.0 }])
     succeeds (GrainDistributions::seeded 7, \base =>
         succeeds (GrainGraph::prepare node, \cloud =>
             // variationSeed initialises the five offset seed states exactly once, when preparing a new cloud.
@@ -481,7 +491,7 @@ grainGraphVariationJourney () =
             succeeds (GrainGraph::block (node, cloud, 16), \first =>
                 // Default period 2400 frames: one onset at sample zero advances each stream exactly once.
                 sameStructure (first.next.seeds, grainAdvancedOnce base)
-                succeeds (GrainGraph::block (grainSet (node, "variationSeed", 999.0), first.next, 16), \second =>
+                succeeds (GrainGraph::block (grainSet (node, variationSeedKey, 999.0), first.next, 16), \second =>
                     sameStructure (second.next.seeds, first.next.seeds)
                     // Changing widths neither reseeds nor disturbs the active grain: no new onsets, identical state.
                     widened = grainTuned (node, [{ key = "gainSpread", value = 1.0 }, { key = "panSpread", value = 2.0 }, { key = "rateSpread", value = 0.5 }])
@@ -497,10 +507,10 @@ grainGraphVariationJourney () =
 // [SYNTH-ADVANCED-GRAINS-DISTRIBUTIONS-GRAPH] Invalid widths, seeds and region starts fail before rendering.
 grainGraphVariationRefusalJourney () =
     node = granularNode ()
-    forEachList ([0.0, 2147483647.0], \seed => refusedWith (GrainGraph::prepare (grainSet (node, "variationSeed", seed)), "Invalid grain variation seed."))
-    succeeds (GrainClouds::prepare ([0.5, -0.5, 0.25, -0.25], 4, synth::PeriodicTiming(period = 4, jitter = 0), 1, 7), \cloud =>
-        forEachList ([{ key = "rateSpread", value = 33.0 }, { key = "gainSpread", value = 1.5 }, { key = "panSpread", value = 2.5 }, { key = "positionSpread", value = 4.0 }, { key = "durationSpread", value = 65534.0 }], \c =>
-            refusedWith (GrainGraph::block (grainSet (node, c.key, c.value), cloud, 8), "Invalid grain variation center or spread.")))
+    forEachList ([0.0, 2147483647.0], \seed => refusedWith (GrainGraph::prepare (grainSet (node, variationSeedKey, seed)), invalidGrainVariationSeed))
+    succeeds (GrainClouds::prepare (swingFour, 4, synth::PeriodicTiming(period = 4, jitter = 0), 1, 7), \cloud =>
+        forEachList ([{ key = "rateSpread", value = 33.0 }, { key = "gainSpread", value = 1.5 }, { key = "panSpread", value = 2.5 }, { key = positionSpreadKey, value = 4.0 }, { key = durationSpreadKey, value = 65534.0 }], \c =>
+            refusedWith (GrainGraph::block (grainSet (node, c.key, c.value), cloud, 8), invalidGrainVariationCenter)))
     // Start positions and their spread must stay inside the selected region.
     regionNode = grainTuned (node, [{ key = "regionStart", value = 1.0 }, { key = "regionEnd", value = 3.0 }])
     succeeds (GrainGraph::prepare (grainSet (regionNode, "start", 1.0)), \cloud =>
@@ -535,7 +545,7 @@ grainImportJourney () =
     refusedWith (SampleResources::decodeWave ("cut", 69.0, wavPack [wavMonoFmt (), wavJoin [wavText "data", wavWord32 100]]), "Truncated WAV chunk body or padding.")
     refusedWith (SampleResources::decodeWave ("one", 69.0, wavFile (1, 1, 48000, 16, [0, 64])), "WAV requires 2–1048576 complete sample frames.")
     // Transposition uses the rate ratio times the pitch ratio, never the file length.
-    shortWave = synth::WaveSamples(sampleRate = 48000, channels = 1, frames = 4, samples = [0.5, -0.5, 0.25, -0.25])
+    shortWave = synth::WaveSamples(sampleRate = 48000, channels = 1, frames = 4, samples = swingFour)
     longWave = synth::WaveSamples(sampleRate = 48000, channels = 1, frames = 64, samples = grainQuiet 64)
     succeeds (SampleResources::fromWave ("short", 60.0, shortWave), \short =>
         succeeds (SampleResources::fromWave ("long", 60.0, longWave), \long =>
@@ -553,12 +563,12 @@ grainDescriptorJourney () =
     expect ((grainParameterOf (node, "period")).initial, 2400.0)
     near (48000.0 / (grainParameterOf (node, "period")).initial, 20.0, 0.0)
     // [SYNTH-ADVANCED-GRANULAR] Window defaults to Hann and the wrap boundary policy is the default.
-    grainDescriptorWants (node, \p => p.initial, [{ key = "window", want = 0.0 }, { key = "boundary", want = 0.0 }, { key = "attack", want = 0.25 }, { key = "release", want = 0.25 }, { key = "variationSeed", want = 7.0 }, { key = "regionStart", want = 0.0 }, { key = "regionEnd", want = 4.0 }])
+    grainDescriptorWants (node, \p => p.initial, [{ key = "window", want = 0.0 }, { key = "boundary", want = 0.0 }, { key = "attack", want = 0.25 }, { key = "release", want = 0.25 }, { key = variationSeedKey, want = 7.0 }, { key = "regionStart", want = 0.0 }, { key = "regionEnd", want = 4.0 }])
     // [SYNTH-ADVANCED-GRANULAR] Size keeps at least two output frames; output gain and pan keep their declared domains.
     expect ((grainParameterOf (node, "duration")).minimum, 3.0)
     expect ((grainParameterOf (node, "duration")).minimum >= 2.0, true)
-    grainDescriptorWants (node, \p => p.minimum, [{ key = "gain", want = 0.0 }, { key = "pan", want = -1.0 }, { key = "rate", want = -16.0 }, { key = "maximumGap", want = 1.0 }, { key = "variationSeed", want = 1.0 }, { key = "start", want = 0.0 }])
-    grainDescriptorWants (node, \p => p.maximum, [{ key = "gain", want = 1.0 }, { key = "pan", want = 1.0 }, { key = "rate", want = 16.0 }, { key = "jitter", want = 1048575.0 }, { key = "variationSeed", want = 2147483646.0 }])
+    grainDescriptorWants (node, \p => p.minimum, [{ key = "gain", want = 0.0 }, { key = "pan", want = -1.0 }, { key = "rate", want = -16.0 }, { key = "maximumGap", want = 1.0 }, { key = variationSeedKey, want = 1.0 }, { key = "start", want = 0.0 }])
+    grainDescriptorWants (node, \p => p.maximum, [{ key = "gain", want = 1.0 }, { key = "pan", want = 1.0 }, { key = "rate", want = 16.0 }, { key = "jitter", want = 1048575.0 }, { key = variationSeedKey, want = 2147483646.0 }])
     // [SYNTH-ADVANCED-GRANULAR] Capacity is prepared explicitly and reported by the pool, never silently substituted.
     succeeds (Grains::prepare ([0.5, -0.5], 128), \pooled => expect ((Grains::observation pooled).capacity, 128))
     succeeds (GrainGraph::prepare node, \cloud =>
@@ -572,9 +582,9 @@ grainCaptureBoundsJourney () =
     succeeds (GrainCapture::prepare (2, 8000), \smallest => expect (smallest.capacity, 2))
     succeeds (GrainCapture::prepare (1048576, 192000), \largest => expect (largest.sampleRate, 192000))
     succeeds (GrainCapture::prepare (3, 48000), \writer =>
-        refusedWith (GrainCapture::write (writer, grainQuiet 2049), "Invalid capture state, block size or sample clock.")
+        refusedWith (GrainCapture::write (writer, grainQuiet 2049), invalidCaptureStateBlock)
         // Forged capture state is refused rather than silently repaired.
-        refusedWith (GrainCapture::write (writer(written = 5), [0.0]), "Invalid capture state, block size or sample clock.")
+        refusedWith (GrainCapture::write (writer(written = 5), [0.0]), invalidCaptureStateBlock)
         refusedWith (GrainCapture::thaw (writer(written = 5)), "Invalid capture state.")
         succeeds (GrainCapture::write (writer, grainQuiet 2048), \big =>
             exactRows ([{ got = big.written, want = 2048 }, { got = length big.samples, want = 3 }])
@@ -681,12 +691,12 @@ registerGrainJourneys () =
                     sameStructure (switched.positions, [23, 26, 27, 30, 31, 36, 37])
                     expect (switched.next.nextOnset == 43 && switched.next.seed == 2115326081, true)))
         succeeds (GrainScheduler::prepare (9223372036854775743, synth::PeriodicTiming(period = 1048576, jitter = 0), 1), \late => refusedWith (GrainScheduler::block (late, 64), "The grain scheduler exhausted its onset clock."))
-        refusedWith (GrainScheduler::block (synth::GrainClock(position = 0, nextOnset = 0, timing = synth::PeriodicTiming(period = 4, jitter = 0), seed = 1), 2049), "Invalid grain scheduler state or block size.")
+        refusedWith (GrainScheduler::block (synth::GrainClock(position = 0, nextOnset = 0, timing = synth::PeriodicTiming(period = 4, jitter = 0), seed = 1), 2049), invalidGrainSchedulerState)
         // Forged clocks, invalid policies and zero-length blocks are refused without partial state.
         forEachList ([synth::GrainClock(position = 4, nextOnset = 3, timing = synth::PeriodicTiming(period = 4, jitter = 0), seed = 1), synth::GrainClock(position = 0, nextOnset = 0, timing = synth::ExponentialTiming(mean = 0.5, maximum = 9), seed = 1), synth::GrainClock(position = 0, nextOnset = 0, timing = synth::PeriodicTiming(period = 4, jitter = 4), seed = 1)], \bad =>
-            refusedWith (GrainScheduler::block (bad, 8), "Invalid grain scheduler state or block size."))
+            refusedWith (GrainScheduler::block (bad, 8), invalidGrainSchedulerState))
         // The refused zero-length block left the fresh clock untouched.
-        refusedWith (schedulerRan (synth::PeriodicTiming(period = 4, jitter = 0), 1, 0), "Invalid grain scheduler state or block size.")
+        refusedWith (schedulerRan (synth::PeriodicTiming(period = 4, jitter = 0), 1, 0), invalidGrainSchedulerState)
         succeeds (schedulerRan (synth::PeriodicTiming(period = 4, jitter = 0), 1, 8), \after => sameStructure (after.positions, [0, 4]))
         controls = grainControls synth::HannWindow
         forEachList (GrainScheduler::events ([3, 9], controls), \event => expect (structuralEquals (event.controls, controls) && (event.position == 3 || event.position == 9), true))
@@ -696,7 +706,7 @@ registerGrainJourneys () =
         grainSpreadJourney ()
         grainCloudCommitJourney ()
         grainCloudReplayJourney ()
-        forEachList ([0, 2147483647, -5], \seed => refusedWith (GrainDistributions::seeded seed, "Invalid grain variation seed."))
+        forEachList ([0, 2147483647, -5], \seed => refusedWith (GrainDistributions::seeded seed, invalidGrainVariationSeed))
         controls = grainControls synth::HannWindow
         ranges = synth::GrainDistribution(minimum = controls, maximum = controls)
         succeeds (GrainDistributions::seeded 7, \seeds =>
@@ -704,12 +714,12 @@ registerGrainJourneys () =
             grainEventsRefused ([{ at = [5, 3], within = ranges, size = 16 }, { at = [1], within = ranges, size = 1 }, { at = [1], within = synth::GrainDistribution(minimum = controls(start = 2.0), maximum = controls), size = 16 }], \c => GrainDistributions::events (c.at, c.within, c.size, seeds))
             succeeds (GrainDistributions::events ([], ranges, 16, seeds), \none => expect (length none.events == 0 && structuralEquals (none.next, seeds), true)))
         still = synth::GrainSpread(position = 0.0, rate = 0.0, duration = 0, amplitude = 0.0, pan = 0.0)
-        forEachList ([{ size = 16, spread = still(position = -1.0) }, { size = 1, spread = still }], \c => refusedWith (GrainSpreads::around (controls, c.size, c.spread), "Invalid grain variation center or spread."))
-        source = [0.5, -0.5, 0.25, -0.25]
+        forEachList ([{ size = 16, spread = still(position = -1.0) }, { size = 1, spread = still }], \c => refusedWith (GrainSpreads::around (controls, c.size, c.spread), invalidGrainVariationCenter))
+        source = swingFour
         periodic = synth::PeriodicTiming(period = 4, jitter = 0)
         refusedWith (GrainClouds::prepare ([0.5], 4, periodic, 1, 7), grainBadSource ())
         refusedWith (GrainClouds::prepare (source, 4, periodic, 0, 7), "Invalid grain clock, interval, jitter or seed.")
-        refusedWith (GrainClouds::prepare (source, 4, periodic, 1, 0), "Invalid grain variation seed.")
+        refusedWith (GrainClouds::prepare (source, 4, periodic, 1, 0), invalidGrainVariationSeed)
         succeeds (GrainClouds::prepare (source, 4, periodic, 1, 7), \cloud =>
             succeeds (GrainClouds::block (cloud, controls(start = 0.0, duration = 3), 8), \played =>
                 expect (length played.left == 8 && length played.right == 8, true)
@@ -725,7 +735,7 @@ registerGrainJourneys () =
         grainWindowLatchingJourney ()
         grainGraphVariationJourney ()
         grainGraphVariationRefusalJourney ()
-        forEachList ([{ key = "period", value = 2.5, why = wholeCounts () }, { key = "duration", value = 7.5, why = wholeCounts () }, { key = "variationSeed", value = 1.5, why = wholeCounts () }, { key = "timing", value = 2.0, why = timingModes () }, { key = "window", value = 2.0, why = "Grain window must be 0 (Hann) or 1 (ASR)." }], \c => refusedWith (GrainGraph::prepare (retuned (c.key, c.value)), c.why))
+        forEachList ([{ key = "period", value = 2.5, why = wholeCounts () }, { key = "duration", value = 7.5, why = wholeCounts () }, { key = variationSeedKey, value = 1.5, why = wholeCounts () }, { key = "timing", value = 2.0, why = timingModes () }, { key = "window", value = 2.0, why = "Grain window must be 0 (Hann) or 1 (ASR)." }], \c => refusedWith (GrainGraph::prepare (retuned (c.key, c.value)), c.why))
         refusedWith (GrainGraph::prepare (Components::gain (1, 1.0)), "The component is not a grain cloud.")
         refusedWith (GrainGraph::prepare (retuned ("boundary", 0.5)), "Grain boundary must be 0 (loop) or 1 (one-shot).")
         refusedWith (GrainGraph::prepare (retuned ("regionEnd", 0.0)), "Invalid grain pool or source region.")
@@ -738,7 +748,7 @@ registerGrainJourneys () =
         succeeds (GrainGraph::prepare (granularNode ()), \cloud =>
             grainFaultJourney (granularNode (), cloud)
             forEachList ([{ n = Components::gain (1, 1.0), at = 0, ok = false }, { n = granularNode (), at = 0, ok = true }, { n = granularNode (), at = 1, ok = false }], \c => expect (GrainGraph::compatible (c.n, cloud, c.at), c.ok))
-            forEachList ([{ key = "durationSpread", value = 0.5, why = wholeCounts () }, { key = "timing", value = 3.0, why = timingModes () }], \c => refusedWith (GrainGraph::block (retuned (c.key, c.value), cloud, 8), c.why))
+            forEachList ([{ key = durationSpreadKey, value = 0.5, why = wholeCounts () }, { key = "timing", value = 3.0, why = timingModes () }], \c => refusedWith (GrainGraph::block (retuned (c.key, c.value), cloud, 8), c.why))
             // Interleaved output carries exact left/right pairs for the device transport.
             succeeds (GrainGraph::block (granularNode (), cloud, 4), \played =>
                 succeeds (GrainGraph::interleaved (synth::GrainBlock(left = played.left, right = played.right, next = played.next.pool)), \samples =>
@@ -756,7 +766,7 @@ registerGrainJourneys () =
         grainValidationJourney ()
         grainEventOrderJourney ()
         controls = grainControls synth::HannWindow
-        succeeds (Grains::prepare ([0.5, -0.5, 0.25, -0.25], 1), \pool =>
+        succeeds (Grains::prepare (swingFour, 1), \pool =>
             refusedWith (Grains::trigger (pool, controls(duration = 2)), grainBadControls ())
             succeeds (Grains::trigger (pool, controls), \first =>
                 expect (first.accepted && length first.pool.voices == 1 && first.pool.revision == 1 && first.pool.nextIdentity == 1, true)
@@ -784,12 +794,12 @@ registerGrainJourneys () =
         refusedWith (SampleResources::prepare (kit(samples = [0.5, 1.5])), grainBadSource ())
         refusedWith (SampleResources::prepare (kit(sampleRate = 192001)), "Invalid sample resource name, sample rate, source channels or root frequency.")
         // A frozen capture becomes the same tuned mono resource the graph consumes.
-        succeeds (GrainCapture::prepare (2, 48000), \writer =>
-            succeeds (GrainCapture::write (writer, [0.25, -0.25]), \held =>
-                succeeds (GrainCapture::freeze held, \frozen =>
-                    succeeds (GrainCapture::resource (frozen, "capture", 69.0), \resource =>
-                        expect (SampleResources::metadata resource, true)
-                        expect (resource.rootFrequency, 440.0)
-                        expect (length resource.samples, 2)
-                        succeeds (GrainGraph::prepare (grainTestNode (resource, 4, 7)), \cloud =>
-                            exactRows ([{ got = cloud.pool.capacity, want = 4 }, { got = cloud.pool.region.limit, want = 2 }]))))))))
+        use writer <- succeeds (GrainCapture::prepare (2, 48000))
+        use held <- succeeds (GrainCapture::write (writer, [0.25, -0.25]))
+        use frozen <- succeeds (GrainCapture::freeze held)
+        use resource <- succeeds (GrainCapture::resource (frozen, "capture", 69.0))
+        expect (SampleResources::metadata resource, true)
+        expect (resource.rootFrequency, 440.0)
+        expect (length resource.samples, 2)
+        use cloud <- succeeds (GrainGraph::prepare (grainTestNode (resource, 4, 7)))
+        exactRows ([{ got = cloud.pool.capacity, want = 4 }, { got = cloud.pool.region.limit, want = 2 }])))

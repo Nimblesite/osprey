@@ -154,7 +154,7 @@ ratio (a, b) = intDiv (a, b)
 
 ### `min(a: T, b: T) -> T` / `max(a: T, b: T) -> T`, where `T` is any numeric type — [BUILTIN-MIN-MAX]
 
-**Status: not implemented.** [The or-patterns and min/max plan](../../plans/or-patterns-and-min-max.md) owns delivery. Until it lands, write `if a < b { a } else { b }`.
+**Status: implemented** in the checker and on every host backend (`float16` through binary32), with the numeric corpus in both flavors as its regression. The GPU form, constant folding, the `float32`/`float16`, shadowing and rejection coverage and the source sweep remain in [the or-patterns and min/max plan](../../plans/or-patterns-and-min-max.md).
 
 `min` returns the smaller of two values of one numeric type and `max` the larger. Both are total: no input traps, wraps or performs an `Arith` operation, so neither needs a handler ([ARITH-TOTAL](../language/0037-ArithmeticEffects.md#the-guarantee--arith-total)).
 

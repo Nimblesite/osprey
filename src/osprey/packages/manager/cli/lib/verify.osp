@@ -49,7 +49,7 @@ module Verify {
         Success { value } => oneLine(value == pinnedManifest(o), "${localManifestCode} ${name}")
     }
 
-    fn treeFindings(lock, pkg: Lockfile::Package, fileList, name) = match Lockfile::overrideFor(Lockfile::overridesOf(lock), pkg.release.key) {
+    fn treeFindings(lock, pkg, fileList, name) = match Lockfile::overrideFor(Lockfile::overridesOf(lock), pkg.release.key) {
         Success { value } => localFindings(value, fileList, name)
         Error => publishedFindings(pkg, fileList, name)
     }
@@ -59,7 +59,7 @@ module Verify {
         Success { value } => treeFindings(lock, pkg, value, name)
     }
 
-    fn packageFindings(project, lock, pkg: Lockfile::Package) = {
+    fn packageFindings(project, lock, pkg) = {
         let dir = Project::treeDirAt(project, lock, pkg)
         let name = Names::display(pkg.release.key)
         match perform Host::Tree.walk(dir) {
@@ -75,7 +75,7 @@ module Verify {
     fn hexOf(pkg: Lockfile::Package) = Digests::hexOf(pkg.release.digest)
     fn keyTextOf(pkg: Lockfile::Package) = Names::display(pkg.release.key)
 
-    fn pythonPathFor(lock, pkg: Lockfile::Package) = match Lockfile::overrideFor(Lockfile::overridesOf(lock), pkg.release.key) {
+    fn pythonPathFor(lock, pkg) = match Lockfile::overrideFor(Lockfile::overridesOf(lock), pkg.release.key) {
         Success { value } => "../../${Lockfile::overridePathOf(value)}"
         Error => "../packages/${keyTextOf(pkg)}/${hexOf(pkg)}"
     }

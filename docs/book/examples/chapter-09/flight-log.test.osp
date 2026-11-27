@@ -16,15 +16,17 @@ let terminal = handler Progress { report message => print(message) }
 
 let live = mika(|| => terminal(|| => finishLesson("Effects and handlers")))
 
+let mikaCompleted = "Mika completed: Effects and handlers"
+
 test("completion returns the expected message", || => {
-    expect(live, "Mika completed: Effects and handlers")
+    expect(live, mikaCompleted)
     let checking = handler Progress {
         report message =>
-            expect(message, "Mika completed: Effects and handlers")
+            expect(message, mikaCompleted)
     }
     let answer = mika(|| =>
         checking(|| => finishLesson("Effects and handlers")))
-    expect(answer, "Mika completed: Effects and handlers")
+    expect(answer, mikaCompleted)
 })
 
 test("another learner uses the same application functions", || => {

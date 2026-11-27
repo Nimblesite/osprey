@@ -11,7 +11,7 @@ import { asset, opened, previewed, removed, withPath, written } from "./routes.t
 import { tree } from "./tree.ts";
 import { partsOf, progressJson, progressStatus, receive } from "./upload.ts";
 
-function progressed(res: Response, path, outcome) {
+function progressed(res, path, outcome) {
   switch (outcome.kind) {
     case "error":
       return failed(res, outcome.message);
@@ -20,7 +20,7 @@ function progressed(res: Response, path, outcome) {
   }
 }
 
-function numbered(config: Config, req: Request, res: Response, path, numbers) {
+function numbered(config, req, res, path, numbers) {
   switch (numbers.kind) {
     case "error":
       return problem(res, 400, numbers.message);
@@ -31,7 +31,7 @@ function numbered(config: Config, req: Request, res: Response, path, numbers) {
   }
 }
 
-function uploaded(config: Config, req: Request, res: Response, path) {
+function uploaded(config, req, res, path) {
   if (!isMedia(path)) {
     return problem(res, 400, `${path} is not an image, video or audio file`);
   }
@@ -39,7 +39,7 @@ function uploaded(config: Config, req: Request, res: Response, path) {
   return numbered(config, req, res, path, numbers);
 }
 
-function listed(res: Response, commits) {
+function listed(res, commits) {
   switch (commits.kind) {
     case "success":
       return res.json(historyJson(commits.value));
@@ -57,7 +57,7 @@ function status(res: Response, count) {
   }
 }
 
-function published(res: Response, outcome) {
+function published(res, outcome) {
   switch (outcome.kind) {
     case "success":
       return res.json(publishedJson(outcome.value));

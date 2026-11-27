@@ -9,49 +9,10 @@ import ui::Scenes
 module EditorView
     editorSlice () = perform Signal<Editor<Graph, ui::Machine>>.read ()
 
-    (** The name Prism shows for a processor. *)
-    export processorTitle processor = match processor
-        SamplePlayer _ => "Sample"
-        Granular _ _ _ => "Grain cloud"
-        Lfo => "LFO"
-        ModulatedGain => "Modulated gain"
-        MidiNotes => "MIDI notes"
-        FormulaNotes _ => "Formula melody"
-        Stereo => "Mono to stereo"
-        Panner => "Panner"
-        Split => "Channel split"
-        Join => "Channel join"
-        Route _ => "Channel route"
-        Oscillator => "Oscillator"
-        Filter => "Filter"
-        Amplifier => "Gain"
-        Mixer => "Mixer"
-        Sink => "Output"
-        Delay _ => "Delay"
-        Exciter _ => "Exciter"
-        Resonator => "Resonator"
-        Modal => "Modal bank"
-        Waveguide _ => "Waveguide string"
-        FractionalDelay _ => "Fractional delay"
-        LossFilter => "Loss filter"
-        Allpass => "Allpass dispersion"
-        TableOscillator _ => "Wavetable"
-        Additive => "Additive partials"
-        Spectral _ _ => "Spectral processor"
-        Shaper => "Waveshaper"
-        Reverb => "FDN reverb"
-        Shifter => "Frequency shifter"
-        PhaseOperator => "Phase operator"
-        Bowed _ => "Bowed string"
-        Smoother => "Smoother"
-        StrikeComb _ => "Strike comb"
-        Downmix => "Stereo to mono"
-        External identifier _ => identifier
-
     (** A module's name on the canvas: its plugin's, or its processor's, with its identity. *)
     export componentName (editor, n) = match listGet (filterList (editor.pluginBindings, \binding => binding.pluginNode == n.identity)) 0
         Success binding => "${binding.pluginName} ${n.identity}"
-        Error _ => "${processorTitle n.processor} ${n.identity}"
+        Error _ => "${Descriptors::title n.processor} ${n.identity}"
 
     menu editor =
         builtins = mapList (EditorState::pickerKinds (), \kind => Ui::choice (kind, EditorState::title kind))
@@ -189,7 +150,14 @@ module EditorView
             Oscillator => -0.5
             _ => 1.5
 
-    indices ports = toList (range (0, length ports))
+    (** The index of every item of `items`, in order. *)
+    export indices items = toList (range (0, length items))
+
+    (** `first`, then every item of `items` with its index, each followed by the list `each` gives it. *)
+    export indexed (items, first, each) = foldList (indices items, first, \(all, index) =>
+        match listGet items index
+            Error _ => all
+            Success item => listConcat all (each (item, index)))
 
     (** Consistent audio, modulation and event cable colours. *)
     export ink rate = match rate
@@ -220,6 +188,9 @@ module EditorView
 
     (** Inclusive bounds for canvas hit testing. *)
     export inside (px, py, cx, cy, halfWidth, halfHeight) = px >= cx - halfWidth && px <= cx + halfWidth && py >= cy - halfHeight && py <= cy + halfHeight
+
+    (** Whether the point `px`, `py` lies within the inclusive bounds of the accessible `area`. *)
+    export covers (area, px, py) = px >= area.accessLeft && px <= area.accessLeft + area.accessWidth && py >= area.accessTop && py <= area.accessTop + area.accessHeight
 
     (** Resolve a pointer to a declared socket, never decorative artwork. *)
     export hitPort (editor, index, ports, output, px, py) = listGet (filterList (indices ports, \port => inside (px, py, portX (editor, index, output, port), portY (editor, index, output, port), 14.0, 14.0))) 0
@@ -412,7 +383,7 @@ module EditorView
     export toolbarAt (editor, x, y) = listGet (filterList (toList (range (0, length (toolbarItems editor))), \i =>
         match listGet (toolbarItems editor) i
             Error _ => false
-            Success a => x >= a.accessLeft && x <= a.accessLeft + a.accessWidth && y >= a.accessTop && y <= a.accessTop + a.accessHeight)) 0
+            Success a => covers (a, x, y))) 0
 
     // [DAW-LAYOUT-FIXED-SCALE] One scene unit is one point at every window size (a negative zoom is that scale
     // exactly): resizing the window shows more or less of the page and never resizes a control.
@@ -474,7 +445,7 @@ module EditorView
             Ui::section ("File", "", [command (editor, "Settings…", "settings", true, ShowSettings), command (editor, "Open Song…", "open", true, OpenTrack(index = -2)), command (editor, "Save", "save", true, SaveProject), command (editor, "Render Song", "render", song, RenderSong)]),
             Ui::section ("Edit", "", [command (editor, "Undo", "undo", length editor.past > 0, Undo), command (editor, "Redo", "redo", length editor.future > 0, Redo)]),
             Ui::section ("View", "", [command (editor, "Timeline", "timeline", true, ShowPage(page = TimelinePage)), command (editor, "Track Patch", "patch", true, ShowPage(page = PatchPage)), command (editor, "Bus Routing", "routing", true, ShowPage(page = MixPage)), command (editor, "Modules", "modules", true, ShowModules), command (editor, "Patch Controls", "controls", true, ShowDetails), command (editor, "Zoom In", "zoomIn", song && editor.page == TimelinePage, ZoomLanes(factor = 1.25)), command (editor, "Zoom Out", "zoomOut", song && editor.page == TimelinePage, ZoomLanes(factor = 0.8)), command (editor, "Zoom to Fit", "zoomFit", song && editor.page == TimelinePage, ZoomLanes(factor = 0.0))]),
-            Ui::section ("Transport", "", [command (editor, "Return to Start", "start", song, PickTrack(index = editor.track, bar = 0)), command (editor, "Play Song", "playSong", song && !playing, PlaySong), command (editor, "Stop Song", "stopSong", playing, StopSong), command (editor, "Loop", "loop", song && !playing, ToggleLoop), command (editor, "Previous Track", "previousTrack", song && editor.track > 0, PickTrack(index = satSub editor.track 1, bar = editor.rollBar)), command (editor, "Next Track", "nextTrack", song && editor.track < last, PickTrack(index = satAdd editor.track 1, bar = editor.rollBar)), command (editor, "Previous Bar", "previousBar", song && editor.rollBar > 0, PickTrack(index = editor.track, bar = satSub editor.rollBar 1)), command (editor, "Next Bar", "nextBar", song, PickTrack(index = editor.track, bar = satAdd editor.rollBar 1))]),
+            Ui::section ("Transport", "", [command (editor, "Return to Start", "start", song, MoveStart(bar = 0)), command (editor, "Play Song", "playSong", song && !playing, PlaySong), command (editor, "Stop Song", "stopSong", playing, StopSong), command (editor, "Loop", "loop", song && !playing, ToggleLoop), command (editor, "Previous Track", "previousTrack", song && editor.track > 0, PickTrack(index = satSub editor.track 1, bar = editor.rollBar)), command (editor, "Next Track", "nextTrack", song && editor.track < last, PickTrack(index = satAdd editor.track 1, bar = editor.rollBar)), command (editor, "Previous Bar", "previousBar", song && editor.rollBar > 0, PickTrack(index = editor.track, bar = satSub editor.rollBar 1)), command (editor, "Next Bar", "nextBar", song, PickTrack(index = editor.track, bar = satAdd editor.rollBar 1))]),
             Ui::section ("Shortcuts", "", listAppend (mapList (Keymaps::names, \name => keymapChoice (editor, name))) (Ui::button ("Load From File…", "", LoadKeymap)))]
 
     routeInspector (editor, content) =
@@ -514,7 +485,7 @@ module EditorView
 
     readyWindows editor = length (filterList (editor.editorWindows, \w => w.windowCycle > 1))
 
-    stamp editor = JsonString "${readyWindows editor}:${length editor.editorWindows}:${editor.patchWindowSerial}:${editor.revision}:${editor.layoutRevision}:${editor.panX}:${editor.panY}:${editor.selected}:${editor.source}:${editor.outlet}:${editor.wireDragging}:${editor.wireMonitor}:${editor.wireX}:${editor.wireY}:${editor.selectedCable}:${editor.message}:${editor.pluginPath}:${editor.pluginSerial}:${length editor.catalog}:${editor.note}:${editor.armedNote}:${editor.paletteDrag}:${editor.paletteShown}:${editor.detailsShown}:${TimelineView::pageIndex editor.page}:${editor.track}:${editor.patchTrack}:${editor.selectedNote}:${RollEdits::stamp editor.rollDrag}:${editor.rollBar}:${editor.laneTop}:${editor.laneZoom}:${editor.laneStart}:${RoutingPicker::stamp editor}:${editor.songTicket}:${editor.keymap.name}:${editor.dial != DialIdle}:${editor.dialEntry}:${editor.dialOffset}:${editor.fineHeld}:${editor.songPath}:${length editor.song.tracks}"
+    stamp editor = JsonString "${readyWindows editor}:${length editor.editorWindows}:${editor.patchWindowSerial}:${editor.revision}:${editor.layoutRevision}:${editor.panX}:${editor.panY}:${editor.selected}:${editor.source}:${editor.outlet}:${editor.wireDragging}:${editor.wireMonitor}:${editor.wireX}:${editor.wireY}:${editor.selectedCable}:${editor.message}:${editor.pluginPath}:${editor.pluginSerial}:${length editor.catalog}:${editor.note}:${editor.armedNote}:${editor.paletteDrag}:${editor.paletteShown}:${editor.detailsShown}:${TimelineView::pageIndex editor.page}:${editor.track}:${editor.patchTrack}:${editor.selectedNote}:${RollEdits::stamp editor.rollDrag}:${editor.rollBar}:${editor.playStart}:${editor.laneTop}:${editor.laneZoom}:${editor.laneStart}:${RoutingPicker::stamp editor}:${editor.songTicket}:${editor.keymap.name}:${editor.dial != DialIdle}:${editor.dialEntry}:${editor.dialOffset}:${editor.fineHeld}:${editor.songPath}:${length editor.song.tracks}"
 
     (** One coherent Signal rebuilds native and canvas controls after an accepted command. *)
     export regions (before, editor, frames, _) =

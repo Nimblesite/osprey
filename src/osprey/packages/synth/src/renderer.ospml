@@ -35,12 +35,37 @@ module Renderer
 
     supported plan = SpectralKernels::affordable plan.graph && length (filterList (plan.graph.cables, \c => midiCable (plan.graph, c))) == 0 && length (filterList (plan.graph.nodes, validNode)) == length plan.graph.nodes && length (outputs plan.graph) == 1 && length (filterList (plan.graph.nodes, \n => ClipLayouts::connected (plan.graph, n))) == length plan.graph.nodes && foldList (plan.graph.nodes, 0, \(total, n) => satAdd total (delaySize n)) <= 1920000
 
-    (** Validate a graph for the renderer, reporting `failure` when `Graphs.prepare` rejects it. *)
+    (** Validate a graph for the renderer, reporting `failure` when `Graphs.prepare` rejects it.
+    # Examples
+    ```osprey
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => Renderer::validated (Graphs::empty, InvalidConfiguration(detail = "bad"), \p => Success(value = p.order)))} ${arithmetic (\() => Renderer::validated (Graph(nodes = [Components::gain (-1, 1.0)], cables = []), InvalidConfiguration(detail = "bad"), \p => Success(value = p.order)))}"
+    ```
+    ```output
+    Success([]) Error(InvalidConfiguration { detail: "bad" })
+    ```
+    *)
     export validated (graph, failure, continue) = match Graphs::prepare graph
         Invalid _ => Error(message = failure)
         Valid plan => continue plan
 
-    (** Prepare and allocate reference state. Unknown layouts and external plug-ins are explicit errors. *)
+    (** Prepare and allocate reference state. Unknown layouts and external plug-ins are explicit errors.
+    # Examples
+    ```osprey
+    graph = Graph(nodes = [Components::sine (1, 440.0), Components::output 2], cables = [Cable(source = 1, outlet = 0, destination = 2, inlet = 0)])
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => Renderer::start graph)} ${arithmetic (\() => Renderer::start (Graph(nodes = [Components::gain (1, 1.0)], cables = [])))}"
+    ```
+    ```output
+    Success({ states: [{ identity: 1, phase: 0.0, integratorOne: 0.0, integratorTwo: 0.0, delay: [], memory: KernelIdle }, { identity: 2, phase: 0.0, integratorOne: 0.0, integratorTwo: 0.0, delay: [], memory: KernelIdle }], samples: [], position: 0, meters: [] }) Error(IncompatibleLayout { detail: "Reference rendering requires mono audio, one output and supported bounded processors." })
+    ```
+    *)
     export start graph =
         use plan <- validated (graph, InvalidConfiguration(detail = "The graph is invalid; inspect Graphs.prepare for the typed fault."))
         match supported plan
@@ -62,7 +87,20 @@ module Renderer
         true => next
         false => current
 
-    (** Commit one routed delay input after the corresponding output sample. *)
+    (** Commit one routed delay input after the corresponding output sample.
+    # Examples
+    ```osprey
+    plan = Prepared(graph = Graph(nodes = [Components::gain (1, 1.0)], cables = []), order = [1], feedback = [])
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => Renderer::writeDelay (plan, SampleFrame(states = [KernelState(identity = 1, phase = 0.0, integratorOne = 0.0, integratorTwo = 0.0, delay = [], memory = KernelIdle)], values = []), 2, 0))} ${arithmetic (\() => Renderer::writeDelay (plan, SampleFrame(states = [KernelState(identity = 1, phase = 0.0, integratorOne = 0.0, integratorTwo = 0.0, delay = [], memory = KernelIdle)], values = []), 1, 0))}"
+    ```
+    ```output
+    Error(MissingResource { detail: "An audio input is not connected." }) Error(MissingResource { detail: "An audio input is not connected." })
+    ```
+    *)
     export writeDelay (plan, frame, identity, inlet) = match RenderInputs::input (plan, frame, identity, inlet)
         Error why => Error(message = why)
         Success input => Outcomes::carried (RenderInputs::held (frame, identity), \held => delayed (frame, held, input))
@@ -81,7 +119,21 @@ module Renderer
 
     metered (meters, values) = foldList (values, meters, measured)
 
-    (** Publish reference-rendered meters and position through the consumer's next Signal snapshot. *)
+    (** Publish reference-rendered meters and position through the consumer's next Signal snapshot.
+    # Examples
+    ```osprey
+    snapshot = Observation(revision = 0, samplePosition = 0, parameters = [], components = [])
+    rendered = Rendered(states = [], samples = [], position = 480, meters = [Meter(identity = 1, peak = 0.5, energy = 0.5, count = 2)])
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => Renderer::observed (snapshot, rendered))}"
+    ```
+    ```output
+    { revision: 0, samplePosition: 480, parameters: [], components: [{ node: 1, activeVoices: 0, peak: 0.5, rms: 0.5 }] }
+    ```
+    *)
     export observed (snapshot, rendered) = snapshot(samplePosition = rendered.position, components = mapList (rendered.meters, \m => ComponentState(node = m.identity, activeVoices = 0, peak = m.peak, rms = sqrt (m.energy / toFloat m.count))))
 
     finished (plan, rendered, frame) = match listGet (outputs plan.graph) 0
@@ -99,7 +151,21 @@ module Renderer
         audio = progress.audio
         Outcomes::carried (accept (progress.observation, frame), \seen => Success(value = progress(audio = audio(states = frame.states, position = satAdd progress.audio.position 1), observation = seen))))
 
-    (** Fold selected node outputs from the same reference-rendered frames, including delayed feedback. *)
+    (** Fold selected node outputs from the same reference-rendered frames, including delayed feedback.
+    # Examples
+    ```osprey
+    plan = Prepared(graph = Graph(nodes = [Components::gain (1, 1.0)], cables = []), order = [1], feedback = [])
+    progress = Timeline(audio = Rendered(states = [], samples = [], position = 0, meters = []), observation = Observation(revision = 0, samplePosition = 0, parameters = [], components = []))
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => Renderer::capture (plan, 48000.0, Observation(revision = 0, samplePosition = 0, parameters = [], components = []), progress, 1, \(seen, _) => Success(value = seen)))}"
+    ```
+    ```output
+    Error(InvalidConfiguration { detail: "Invalid render rate, block size, position or layout." })
+    ```
+    *)
     export capture (plan, rate, snapshot, progress, count, accept) = match validBlock (rate, progress.audio, count) && supported plan
         false => Error(message = InvalidConfiguration(detail = "Invalid render rate, block size, position or layout."))
         true =>
@@ -110,7 +176,20 @@ module Renderer
 
     validBlock (rate, rendered, count) = rate >= 8000.0 && rate <= 384000.0 && count >= 0 && count <= 8192 && rendered.position >= 0 && rendered.position <= satSub 9223372036854775807 count
 
-    (** Render a bounded block; returns only this block's samples and the next persistent state. *)
+    (** Render a bounded block; returns only this block's samples and the next persistent state.
+    # Examples
+    ```osprey
+    plan = Prepared(graph = Graph(nodes = [Components::gain (1, 1.0)], cables = []), order = [1], feedback = [])
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => Renderer::block (plan, 4000.0, Observation(revision = 0, samplePosition = 0, parameters = [], components = []), Rendered(states = [], samples = [], position = 0, meters = []), 1))}"
+    ```
+    ```output
+    Error(InvalidConfiguration { detail: "Invalid render rate, block size, position or layout." })
+    ```
+    *)
     export block (plan, rate, snapshot, rendered, count) = match validBlock (rate, rendered, count) && supported plan
         false => Error(message = InvalidConfiguration(detail = "Invalid render rate, block size, position or layout."))
         true =>
@@ -139,7 +218,22 @@ module Renderer
 
     publish outcome = Outcomes::carried (outcome, \timeline => Success(value = timeline(observation = observed (timeline.observation, timeline.audio))))
 
-    (** Apply ordered absolute-frame parameter events before their exact sample, preserving same-frame order. *)
+    (** Apply ordered absolute-frame parameter events before their exact sample, preserving same-frame order.
+    # Examples
+    ```osprey
+    plan = Prepared(graph = Graph(nodes = [Components::gain (1, 1.0)], cables = []), order = [1], feedback = [])
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    unscheduled : List<ParameterChange>
+    unscheduled = []
+    print "${arithmetic (\() => Renderer::automated (plan, 48000.0, Observation(revision = 0, samplePosition = 0, parameters = [], components = []), Rendered(states = [], samples = [], position = 0, meters = []), 1, unscheduled))}"
+    ```
+    ```output
+    Error(InvalidConfiguration { detail: "Invalid automation block, ordering or event capacity." })
+    ```
+    *)
     export automated (plan, rate, snapshot, rendered, count, events) = match validBlock (rate, rendered, count) && supported plan && length events <= 1024 && ordered (events, rendered.position, satAdd rendered.position count)
         false => Error(message = InvalidConfiguration(detail = "Invalid automation block, ordering or event capacity."))
         true =>

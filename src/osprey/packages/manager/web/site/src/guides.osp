@@ -1,0 +1,19 @@
+namespace registry_web;
+
+/// The registry's own help pages, generated with the catalog's navigation.
+module Guides {
+    export fn packages() = Shell::withEscapedTitle("Package guide · Osprey Packages", join([
+        "<main><header class=\"prose-cover\"><h1>Package guide</h1></header><section id=\"editor\"><h2>Add a package in VS Code</h2>",
+        "<p>Open the command palette and run <strong>Osprey: Manage Packages</strong>. Select the local registry, find a package by its scoped name and inspect its release before adding it to your project. The local registry shows <em>audit unverified</em>.</p></section>",
+        "<section id=\"commands\"><h2>Use the command line</h2><p>From the Osprey checkout, start the local registry with <code>make -C src/osprey/packages registry-serve</code>. In another terminal, set the project path and send each command to the package client.</p>",
+        "<pre><code>project=\"$PWD/my-app\"\necho \"add @osprey/re --registry http://127.0.0.1:8787 --project $project\" | ./target/osprey-pkg\necho \"fetch --project $project --registry http://127.0.0.1:8787\" | ./target/osprey-pkg\necho \"verify --offline --project $project\" | ./target/osprey-pkg</code></pre>",
+        "<p><code>add</code> records the dependency and locks its release. <code>fetch</code> installs the locked source. <code>verify --offline</code> checks the installed bytes against the lock.</p></section></main>"
+    ], ""))
+
+    export fn publishers() = Shell::withEscapedTitle("Publishing guide · Osprey Packages", join([
+        "<main><header class=\"prose-cover\"><h1>Publishing guide</h1></header><section><h2>Publish to a folder registry</h2><p>From the Osprey checkout, set the absolute paths to your package project and your registry folder. With publication metadata in the project manifest, run the package client:</p>",
+        "<pre><code>echo \"publish --folder $registry --project $project\" | ./target/osprey-pkg</code></pre><p>Restart the folder registry server to load the new release.</p></section>",
+        "<section><h2>Hosted publishing</h2><p>Hosted publishing is in development. An organization owns each scoped package, such as <code>@atlas/audio</code>. Its administrator can grant publishing to individual members, set an expiry and revoke each grant separately.</p>",
+        "<p>A publisher signs releases with their own credential. Each release keeps its publisher attribution after a grant expires or is revoked.</p></section></main>"
+    ], ""))
+}

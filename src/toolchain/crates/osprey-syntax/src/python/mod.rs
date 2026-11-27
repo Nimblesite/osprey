@@ -141,7 +141,9 @@ fn aligned_with_siblings(parent: &str, child: &Node<'_>) -> bool {
 }
 
 fn starts_line(source: &str, node: &Node<'_>) -> bool {
-    source[..node.start_byte()]
+    source
+        .get(..node.start_byte())
+        .unwrap_or_default()
         .rsplit('\n')
         .next()
         .is_some_and(|before| before.trim().is_empty())

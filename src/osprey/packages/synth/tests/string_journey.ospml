@@ -1,6 +1,7 @@
 import synth::StringVoices
 import synth::Activities
 
+
 // [SYNTH-ADVANCED-PHYSICAL-INSTRUMENTS] The string pool's public journey: preparation, plucking,
 // release tails, explicit stealing, typed refusals and preservation of untouched voices.
 
@@ -32,13 +33,13 @@ poolRejections () =
     template = poolTemplate ()
     pluck = poolPluck ()
     forEachList ([1, 16], \count => succeeds (StringVoices::prepare ((poolTemplate ()), (poolPluck ()), count, 0.01), \pool => expect (length pool.voices, count)))
-    forEachList ([0, 17], \count => refusedAs (StringVoices::prepare ((poolTemplate ()), (poolPluck ()), count, 0.05), "configuration", "A string pool needs 1-16 voices and a release of 0.01-10 s."))
-    forEachList ([0.005, 10.5], \release => refusedAs (StringVoices::prepare ((poolTemplate ()), (poolPluck ()), 2, release), "configuration", "A string pool needs 1-16 voices and a release of 0.01-10 s."))
+    forEachList ([0, 17], \count => refusedAs (StringVoices::prepare ((poolTemplate ()), (poolPluck ()), count, 0.05), configurationText, "A string pool needs 1-16 voices and a release of 0.01-10 s."))
+    forEachList ([0.005, 10.5], \release => refusedAs (StringVoices::prepare ((poolTemplate ()), (poolPluck ()), 2, release), configurationText, "A string pool needs 1-16 voices and a release of 0.01-10 s."))
     forEachList ([template(sampleRate = 4000.0), template(capacity = 4)], \bad => refusedAs (StringVoices::prepare (bad, (poolPluck ()), 2, 0.05), "capacity", "Invalid waveguide controls, or the tuned loop does not fit its capacity."))
-    refusedAs (StringVoices::prepare ((poolTemplate ()), pluck(strength = 1.5), 2, 0.05), "configuration", "Invalid exciter strength, duration, interval or colour.")
+    refusedAs (StringVoices::prepare ((poolTemplate ()), pluck(strength = 1.5), 2, 0.05), configurationText, "Invalid exciter strength, duration, interval or colour.")
     succeeds (StringVoices::prepare ((poolTemplate ()), (poolPluck ()), 3, 0.05), \pool =>
         forEachList ([{ note = -1, velocity = 0.5, seed = 7 }, { note = 128, velocity = 0.5, seed = 7 }, { note = 60, velocity = -0.1, seed = 7 }, { note = 60, velocity = 1.1, seed = 7 }, { note = 60, velocity = 0.5, seed = 0 }, { note = 60, velocity = 0.5, seed = 2147483647 }], \bad =>
-            refusedAs (StringVoices::noteOn (pool, bad.note, bad.velocity, 220.0, bad.seed), "configuration", "Note, velocity (0-1) or seed is out of range."))
+            refusedAs (StringVoices::noteOn (pool, bad.note, bad.velocity, 220.0, bad.seed), configurationText, "Note, velocity (0-1) or seed is out of range."))
         // A pitch the prepared loop cannot hold is refused, never truncated.
         refusedAs (StringVoices::noteOn (pool, 60, 0.5, 10.0, 7), "capacity", "Invalid waveguide controls, or the tuned loop does not fit its capacity."))
 

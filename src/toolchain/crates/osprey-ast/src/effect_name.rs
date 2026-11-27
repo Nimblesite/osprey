@@ -65,12 +65,13 @@ pub fn split_arguments(list: &str) -> Vec<&str> {
     let mut start = 0_usize;
     let mut items = Vec::new();
     for (index, c) in list.char_indices() {
-        if separates(c, list[..index].ends_with('-'), &mut depth) {
-            items.push(list[start..index].trim());
+        let follows_dash = list.get(..index).unwrap_or_default().ends_with('-');
+        if separates(c, follows_dash, &mut depth) {
+            items.push(list.get(start..index).unwrap_or_default().trim());
             start = index + 1;
         }
     }
-    items.push(list[start..].trim());
+    items.push(list.get(start..).unwrap_or_default().trim());
     items
 }
 
@@ -86,11 +87,14 @@ pub fn signature_parameters(signature: &str) -> Vec<&str> {
     let close = rest
         .char_indices()
         .find(|(index, c)| {
-            let _ = separates(*c, rest[..*index].ends_with('-'), &mut depth);
+            let follows_dash = rest.get(..*index).unwrap_or_default().ends_with('-');
+            let _ = separates(*c, follows_dash, &mut depth);
             depth == 0
         })
         .map(|(index, _)| index);
-    close.map_or_else(Vec::new, |close| split_arguments(&rest[..close]))
+    close.map_or_else(Vec::new, |close| {
+        split_arguments(rest.get(..close).unwrap_or_default())
+    })
 }
 
 /// Whether `c` separates two top-level arguments, advancing `depth` past any

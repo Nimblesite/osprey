@@ -58,7 +58,7 @@ class TransformRecipe:
     output_composite_axes: list[list[int]]
 
 
-def is_reduction(operation) -> bool:
+def is_reduction(operation):
     """Whether `operation` names one of the built-in reductions."""
     return listContains(REDUCTION_NAMES, operation)
 
@@ -67,7 +67,7 @@ def flatten(xss):
     return foldList(xss, [], lambda acc, xs: listConcat(acc, xs))
 
 
-def list_index_go(xs, v, i, found) -> int:
+def list_index_go(xs, v, i, found):
     if i >= len(xs):
         return found
     elif found == -1 and unwrap_or(listGet(xs, i), 0) == v:
@@ -76,7 +76,7 @@ def list_index_go(xs, v, i, found) -> int:
         return list_index_go(xs, v, i + 1, found)
 
 
-def list_index(xs, v) -> int:
+def list_index(xs, v):
     """The first index of `v` in `xs`, or -1 when absent."""
     return list_index_go(xs, v, 0, -1)
 
@@ -96,7 +96,7 @@ def set_at(xs, i, v) -> list[int]:
     return map_indexed(xs, lambda j: v if j == i else unwrap_or(listGet(xs, j), v))
 
 
-def find_named(axes, name) -> int:
+def find_named(axes, name):
     """The elementary position of a named axis, or -1."""
     return fold(range(len(axes)), -1, lambda found, j: j if found == -1 and (lambda a: a.kind == "named" and a.name == name)(unwrap_or(listGet(axes, j), named(""))) else found)
 
@@ -106,12 +106,12 @@ def set_difference(a, b) -> list[Axis]:
     return filterList(a, lambda ax: not axis_in_idents(b, ax))
 
 
-def symmetric_difference(a, b) -> list[Axis]:
+def symmetric_difference(a, b):
     """Elements of `a` or `b` but not both."""
     return listConcat(set_difference(a, b), set_difference(b, a))
 
 
-def unpack_error(n) -> str:
+def unpack_error(n):
     """Python's unpacking message for a pattern without exactly one `->`."""
     if n < 2:
         return f"not enough values to unpack (expected 2, got {n})"
@@ -119,7 +119,7 @@ def unpack_error(n) -> str:
         return f"too many values to unpack (expected 2, got {n})"
 
 
-def composition_axes(expr) -> list[list[Axis]]:
+def composition_axes(expr):
     """A parsed composition as plain groups of axes."""
     return map_indexed(expr.composition, lambda i: unwrap_or(listGet(expr.composition, i), Composite(kind="group", axes=[])).axes)
 
@@ -129,12 +129,12 @@ def ell_groups(ell_axes) -> list[list[Axis]]:
     return map_indexed(ell_axes, lambda i: [unwrap_or(listGet(ell_axes, i), named(""))])
 
 
-def expand_left_comp(comp, ell_axes) -> list[list[Axis]]:
+def expand_left_comp(comp, ell_axes):
     """The left composition with the ellipsis slot expanded to one group per axis."""
     return foldList(comp, [], lambda acc, c: listConcat(acc, ell_groups(ell_axes)) if c.kind == "ellipsis" else listAppend(acc, c.axes))
 
 
-def expand_right_one(c, ell_axes) -> list[list[Axis]]:
+def expand_right_one(c, ell_axes):
     if c.kind == "ellipsis":
         return ell_groups(ell_axes)
     else:
@@ -142,7 +142,7 @@ def expand_right_one(c, ell_axes) -> list[list[Axis]]:
         return [group]
 
 
-def expand_right_comp(comp, ell_axes) -> list[list[Axis]]:
+def expand_right_comp(comp, ell_axes):
     """The right composition with every ellipsis marker expanded to the ellipsis axes."""
     return flatten(map_indexed(comp, lambda i: expand_right_one(unwrap_or(listGet(comp, i), Composite(kind="group", axes=[])), ell_axes)))
 
@@ -161,7 +161,7 @@ def assign_group_axis(group, axes, lengths, j, positions, axis) -> GroupAssigned
         return assign_group_go(group, listAppend(axes, axis), listAppend(lengths, axis.value), j + 1, listAppend(positions, len(axes)))
 
 
-def assign_named_axis(group, axes, lengths, j, positions, axis) -> GroupAssigned:
+def assign_named_axis(group, axes, lengths, j, positions, axis):
     pos = find_named(axes, axis.name)
     if pos < 0:
         return assign_group_go(group, listAppend(axes, axis), listAppend(lengths, UNKNOWN_AXIS_LENGTH), j + 1, listAppend(positions, len(axes)))
@@ -191,7 +191,7 @@ def assign_side(comp, axes, lengths):
     return assign_side_go(comp, axes, lengths, 0, [])
 
 
-def validate_axes_go(axes_names, axes, i) -> Result[str, str]:
+def validate_axes_go(axes_names, axes, i):
     if i >= len(axes_names):
         return Success(value="")
     else:
@@ -204,7 +204,7 @@ def validate_axes_go(axes_names, axes, i) -> Result[str, str]:
             return validate_axes_go(axes_names, axes, i + 1)
 
 
-def mark_axes_go(axes_names, axes, lengths, i) -> list[int]:
+def mark_axes_go(axes_names, axes, lengths, i):
     if i >= len(axes_names):
         return lengths
     else:
@@ -212,7 +212,7 @@ def mark_axes_go(axes_names, axes, lengths, i) -> list[int]:
         return mark_axes_go(axes_names, axes, set_at(lengths, pos, EXPECTED_AXIS_LENGTH), i + 1)
 
 
-def apply_axes_lengths(axes_names, axes, _lengths) -> Result[str, str]:
+def apply_axes_lengths(axes_names, axes, _lengths):
     """Validate caller-supplied axis lengths."""
     return validate_axes_go(axes_names, axes, 0)
 
@@ -222,14 +222,14 @@ def name2pos_of(axes_names, axes) -> list[NamePos]:
     return map_indexed(axes_names, lambda i: NamePos(name=unwrap_or(listGet(axes_names, i), ""), pos=find_named(axes, unwrap_or(listGet(axes_names, i), ""))))
 
 
-def known_unknown_go(left_positions, axes, lengths, g, acc) -> Result[list[list[list[int]]], str]:
+def known_unknown_go(left_positions, axes, lengths, g, acc):
     if g >= len(left_positions):
         return Success(value=acc)
     else:
         return known_unknown_group(left_positions, axes, lengths, g, acc, unwrap_or(listGet(left_positions, g), []))
 
 
-def known_unknown_group(left_positions, axes, lengths, g, acc, group) -> Result[list[list[list[int]]], str]:
+def known_unknown_group(left_positions, axes, lengths, g, acc, group):
     unknown = filterList(group, lambda p: unwrap_or(listGet(lengths, p), 0) == UNKNOWN_AXIS_LENGTH)
     if len(unknown) > 1:
         unknown_axes = map_indexed(unknown, lambda i: unwrap_or(listGet(axes, unwrap_or(listGet(unknown, i), 0)), named("")))
@@ -239,26 +239,26 @@ def known_unknown_group(left_positions, axes, lengths, g, acc, group) -> Result[
         return known_unknown_go(left_positions, axes, lengths, g + 1, listAppend(acc, [known, unknown]))
 
 
-def known_unknown_checked(left_positions, axes, lengths) -> Result[list[list[list[int]]], str]:
+def known_unknown_checked(left_positions, axes, lengths):
     """Each input group's known/unknown positions, rejecting >1 unknown per group."""
     return known_unknown_go(left_positions, axes, lengths, 0, [])
 
 
-def added_axis_go(right_flat, left_idents, axes, i, acc) -> list[PosElem]:
+def added_axis_go(right_flat, left_idents, axes, i, acc):
     if i >= len(right_flat):
         return acc
     else:
         return added_axis_step(right_flat, left_idents, axes, i, acc, unwrap_or(listGet(right_flat, i), 0))
 
 
-def added_axis_step(right_flat, left_idents, axes, i, acc, p) -> list[PosElem]:
+def added_axis_step(right_flat, left_idents, axes, i, acc, p):
     if axis_in_idents(left_idents, unwrap_or(listGet(axes, p), named(""))):
         return added_axis_go(right_flat, left_idents, axes, i + 1, acc)
     else:
         return added_axis_go(right_flat, left_idents, axes, i + 1, listAppend(acc, PosElem(pos=i, elementary=p)))
 
 
-def added_axis_entries(right_flat, left_idents, axes) -> list[PosElem]:
+def added_axis_entries(right_flat, left_idents, axes):
     """The added axes: output position to elementary position, in output order."""
     return added_axis_go(right_flat, left_idents, axes, 0, [])
 

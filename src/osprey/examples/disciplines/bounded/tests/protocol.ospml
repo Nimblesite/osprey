@@ -170,10 +170,14 @@ module Protocol
 
     ignoreEvent (_pid, _kind, _data) = cleanupProcess 0
 
-    // The marker and module shell every source in these cases starts with.
-    boundedHeader = ["// osprey: types=bounded", "namespace demo", "", "module Rate"]
+    // The namespace line and the `ok` export line the generated sources repeat.
+    demoNamespace = "namespace demo"
+    okExport = "    export ok () ="
 
-    erasedHeader = ["// osprey: types=hm", "namespace demo", "", "module Rate"]
+    // The marker and module shell every source in these cases starts with.
+    boundedHeader = ["// osprey: types=bounded", demoNamespace, "", "module Rate"]
+
+    erasedHeader = ["// osprey: types=hm", demoNamespace, "", "module Rate"]
 
     // The bounded parameter and export every `scale` case shares.
     rateBounds = [
@@ -218,7 +222,7 @@ module Protocol
     ]
 
     severalSource () = source (boundsHeader () + [
-        "    export ok () =",
+        okExport,
         "        add (10, 20)",
         "        inc 10"
     ])
@@ -228,7 +232,7 @@ module Protocol
         "",
         "    export inc n = n + 1",
         "",
-        "    export ok () =",
+        okExport,
         "        add (10, 20)",
         "        inc 10"
     ]
@@ -251,7 +255,7 @@ module Protocol
     ]
 
     secondBoundSource () = source (boundsHeader () + [
-        "    export ok () =",
+        okExport,
         "        add (5, 31)"
     ])
 
@@ -261,7 +265,7 @@ module Protocol
 
     silentSource () = source [
         "// osprey: types=bounded",
-        "namespace demo",
+        demoNamespace,
         "",
         "// @bound p in 0..100",
         "export scale (p, total) = intDiv (total * p, 100)"
@@ -269,7 +273,7 @@ module Protocol
 
     silentErased () = source [
         "// osprey: types=hm",
-        "namespace demo",
+        demoNamespace,
         "",
         "export scale (p, total) = intDiv (total * p, 100)"
     ]

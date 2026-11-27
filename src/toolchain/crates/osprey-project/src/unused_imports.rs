@@ -4,7 +4,8 @@
 //! is a dependency that is not there. Resolution records each import binding
 //! a name resolved through (a qualified path, a bare member, a type, a
 //! method-style call), so an import none of whose bindings was used is
-//! reported, spelled as written. A module of the importing namespace resolves
+//! reported once, spelled as written; a file-level import is used when a
+//! name of any namespace block of its file resolves through it. A module of the importing namespace resolves
 //! before any import, so importing it is also reported, except from a
 //! Python-flavor file, which names a sibling module only through an import.
 //! A project with a discipline is not reported at all: the discipline's
@@ -19,8 +20,7 @@ use crate::contribution::Contribution;
 use crate::model::SymbolKey;
 use crate::{ProjectWarning, SourceMetadata};
 
-/// The shared rule identifier.
-const UNUSED_IMPORT: &str = "unused-import";
+use osprey_types::UNUSED_IMPORT;
 
 /// One warning per import of `contributions` whose bindings `used` never names.
 pub(crate) fn warnings(
@@ -43,11 +43,18 @@ pub(crate) fn warnings(
             contribution
                 .imports
                 .iter()
-                .filter(move |import| unused(index, import, used))
+                .filter(move |import| copies(contributions, index, import).next() == Some(index))
+                .filter(move |import| {
+                    copies(contributions, index, import).all(|copy| unused(copy, import, used))
+                })
                 .filter(move |import| !python_sibling(contribution, import, sources))
                 .map(move |import| ProjectWarning {
                     rule: UNUSED_IMPORT,
-                    message: message(index, import, referenced),
+                    message: message(
+                        &copies(contributions, index, import).collect::<Vec<_>>(),
+                        import,
+                        referenced,
+                    ),
                     position: crate::advice::position(
                         import.position,
                         contribution.source,
@@ -56,6 +63,29 @@ pub(crate) fn warnings(
                 })
         })
         .collect()
+}
+
+/// The contributions holding `import`: a file-level import is copied into
+/// every namespace block of its file, and a use in any of them counts.
+fn copies<'a>(
+    contributions: &'a [Contribution],
+    index: usize,
+    import: &'a ImportDecl,
+) -> impl Iterator<Item = usize> + 'a {
+    let source = contributions.get(index).map(|owner| owner.source);
+    contributions
+        .iter()
+        .enumerate()
+        .filter(move |(other, contribution)| {
+            *other == index
+                || (import.position.is_some()
+                    && Some(contribution.source) == source
+                    && contribution
+                        .imports
+                        .iter()
+                        .any(|held| held.position == import.position))
+        })
+        .map(|(other, _)| other)
 }
 
 /// A Python-flavor file names its sibling modules only through an import, as
@@ -82,10 +112,16 @@ fn unused(index: usize, import: &ImportDecl, used: &BTreeSet<(usize, String)>) -
 
 /// "never used" when no name of the file refers to the imported target at
 /// all; "redundant" when names do, through the file's own namespace.
-fn message(index: usize, import: &ImportDecl, referenced: &BTreeSet<(usize, SymbolKey)>) -> String {
+fn message(
+    owners: &[usize],
+    import: &ImportDecl,
+    referenced: &BTreeSet<(usize, SymbolKey)>,
+) -> String {
     let target = target(import);
     let named = referenced.iter().any(|(owner, key)| {
-        *owner == index && key.namespace == target.namespace && key.path.starts_with(&target.path)
+        owners.contains(owner)
+            && key.namespace == target.namespace
+            && key.path.starts_with(&target.path)
     });
     if named {
         let module = target.source_name();

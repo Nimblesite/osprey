@@ -272,4 +272,4 @@ and the new cryptographically-secure `random`/`randomBelow` builtins
 
 ## Symbolic-execution comparison (planned)
 
-`benchmarks/symex/` will hold the planted-bug suite that measures `osprey hunt` against stock KLEE, Kani and QuickCheck: eight cases in four languages, `run.sh`, `report.py` and tracked `results/`. It does not exist yet; the contract is `[SYMEX-PROOF]` in [the symbolic execution spec](../../../docs/specs/tooling/SymbolicExecution.md) and delivery is [plan 0034](../../../docs/plans/0034-symbolic-execution.md).
+`benchmarks/symex/` will hold the planted-bug suite that measures `osprey hunt` against stock KLEE, Kani and QuickCheck: eight cases in four languages, `run.sh`, `report.py` and tracked `results/`. It does not exist yet; the contract is `[SYMEX-PROOF]` in [the symbolic execution spec](../../../docs/specs/tooling/SymbolicExecution.md) and delivery is the symbolic bug hunting section of [plan 0045](../../../docs/plans/0045-compile-time-ownership.md#symbolic-bug-hunting).

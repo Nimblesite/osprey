@@ -285,15 +285,15 @@ test ("words and units follow the platform", \() => bench (\() =>
     wordsIn "Show in File Explorer"
     wordsIn "27.9 GB"))
 test ("Windows paths climb to the top of their drive or share", \() =>
-    expect (Disk::parent ("windows", "C:\\Users\\ada"), "C:\\Users")
+    expect (Disk::parent ("windows", home), "C:\\Users")
     expect (Disk::parent ("windows", "C:\\Users"), "C:\\")
     expect (Disk::parent ("windows", "C:\\"), "C:\\")
     expect (Disk::isRoot ("windows", "C:\\"), true)
     expect (Disk::isRoot ("windows", "C:\\Users"), false)
     expect (Disk::parent ("windows", "\\\\server\\share\\photos"), "\\\\server\\share\\")
     expect (Disk::isRoot ("windows", "\\\\server\\share"), true)
-    expect (join (Disk::trail ("windows", "C:\\Users\\ada")) "|", "C:\\|C:\\Users|C:\\Users\\ada")
-    expect (Disk::name ("windows", "C:\\Users\\ada"), "ada")
+    expect (join (Disk::trail ("windows", home)) "|", "C:\\|C:\\Users|C:\\Users\\ada")
+    expect (Disk::name ("windows", home), "ada")
     expect (Disk::name ("windows", "C:\\"), "C:\\"))
 test ("other systems' paths climb to /", \() =>
     expect (Disk::parent ("linux", "/home/ada"), "/home")

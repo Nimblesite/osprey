@@ -14,7 +14,7 @@ The **language** and **compiler** contracts are separate from runtime libraries,
 - [Developer tooling](tooling/README.md): Language server, editor, documentation and test tools.
 - [Packages and automation](ecosystem/README.md): Package registry, evidence and GitHub automation.
 - [Application frameworks](applications/README.md): Reactive mobile applications, the proof workbench and its lessons, the Osprey Agent, host protocols, and the local coding model.
-- [Synthesis, Prism and devices](synth/README.md): The synthesis toolkit, the Prism daw, Pocket Orchestra, instruments and macros, and the hardware Prism device.
+- [Synthesis and Perception](synth/README.md): The `@osprey/synth` package, and Perception: the daw, the VST3 plug-in, the instrument builder, the hardware device and Pocket Orchestra.
 
 ## Contract and delivery
 

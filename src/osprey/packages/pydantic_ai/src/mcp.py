@@ -271,7 +271,7 @@ def error_response(id, error):
             return Malformed(reason="an error response needs an integer code")
 
 
-def id_of(value) -> Result[Json, str]:
+def id_of(value):
     """A JSON-RPC id: a string or a number, as JSON-RPC 2.0 allows."""
     id = J.object_at(value, "id")
     match id:
@@ -303,7 +303,7 @@ def lines_of(buffer, chunk) -> Lines:
             return Lines(lines=[], buffer=LineBuffer(pending=buffer.pending + chunk))
 
 
-def first_items(items, n) -> list:
+def first_items(items, n):
     """The first `n` items of a list."""
     return foldList(items, [], lambda acc, item: acc if len(acc) >= n else listAppend(acc, item))
 
@@ -644,6 +644,7 @@ def merge_configs(global_servers, project_servers) -> list[MCPServerConfig]:
 
 
 def name_of(config) -> str:
+    """The `name` of an MCP server config, whether stdio or HTTP."""
     match config:
         case StdioServer(name=name):
             return name
@@ -680,7 +681,7 @@ def expand_value(value, environment):
             return Success(value=value)
 
 
-def expand_string(text, environment) -> Result[Json, str]:
+def expand_string(text, environment):
     return J.rewrap(expand_text(text, environment), lambda expanded: JsonString(expanded))
 
 
@@ -688,7 +689,7 @@ def expand_members(members, environment):
     return J.rewrap(M.collect(members, lambda member: expand_member(member, environment)), lambda expanded: JsonObject(expanded))
 
 
-def expand_member(member, environment) -> Result[JsonMember, str]:
+def expand_member(member, environment):
     match expand_value(J.member_value(member), environment):
         case Success(value=value):
             return Success(value=JsonMember(J.member_name(member), value))
@@ -717,7 +718,7 @@ def expand_at(text, start, environment):
             return expand_rest(text, start, take(rest, end), drop(rest, end + 1), environment)
 
 
-def expand_rest(text, start, inner, tail, environment) -> Result[str, str]:
+def expand_rest(text, start, inner, tail, environment):
     match expand_reference(inner, environment):
         case Success(value=replacement):
             match expand_text(tail, environment):

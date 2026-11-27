@@ -1,10 +1,14 @@
 
 /// Faults are recorded at a numeric API boundary; recovery values remain integers.
 type Measurement = { value: int, fault: string }
+
+/// The fault an overflow records.
+let overflowFault = "integer overflow"
+
 fn observed(work) = {
     mut fault = ""
     handle Arith {
-        overflow _ _ _ wrapped => { fault = "integer overflow"
+        overflow _ _ _ wrapped => { fault = overflowFault
             wrapped }
         remainderByZero _ => { fault = "division by zero"
             0 }
@@ -165,8 +169,8 @@ fn comprehensiveMathCase() = {
         (abs((0 - 5000000000) ) ) == 5000000000,
         overflowRejected,
         zeroDivisionRejected,
-        minimumAbs.fault == "integer overflow", minimumAbs.value == -9223372036854775808,
-        minimumDivision.fault == "integer overflow", minimumDivision.value == -9223372036854775808,
+        minimumAbs.fault == overflowFault, minimumAbs.value == -9223372036854775808,
+        minimumDivision.fault == overflowFault, minimumDivision.value == -9223372036854775808,
         boundedRandom,
         invalidRandomBound,
         random() >= 0,

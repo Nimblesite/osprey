@@ -215,6 +215,7 @@ def storage_cases():
 
 def array_cases():
     a = Array.array2([[1.0, 2.0], [3.0, 4.0]])
+    flat = [1.0, 2.0, 3.0, 4.0]
     return [
         Check.close_all("array.array1", Array.tolist(Array.array1([1.0, 2.0])), [1.0, 2.0], S.TIGHT, S.ATOL),
         Check.close_all("array.array3", Array.tolist(Array.array3([[[1.0, 2.0]]])), [1.0, 2.0], S.TIGHT, S.ATOL),
@@ -223,9 +224,9 @@ def array_cases():
         Check.equal("array.ndim", Array.ndim(a), 2),
         Check.equal("array.empty", Array.size(Array.empty()), 0),
         Check.close_all("array.scalar", Array.tolist(Array.scalar(3.0)), [3.0], S.TIGHT, S.ATOL),
-        Check.close_all("array.ravel", Array.tolist(Array.ravel(a)), [1.0, 2.0, 3.0, 4.0], S.TIGHT, S.ATOL),
-        Check.close_all("array.flatten", Array.flatten(a), [1.0, 2.0, 3.0, 4.0], S.TIGHT, S.ATOL),
-        Check.close_all("array.squeeze_axis", Array.tolist(Array.squeeze_axis(Array.expand_dims(a, 0), 0)), [1.0, 2.0, 3.0, 4.0], S.TIGHT, S.ATOL),
+        Check.close_all("array.ravel", Array.tolist(Array.ravel(a)), flat, S.TIGHT, S.ATOL),
+        Check.close_all("array.flatten", Array.flatten(a), flat, S.TIGHT, S.ATOL),
+        Check.close_all("array.squeeze_axis", Array.tolist(Array.squeeze_axis(Array.expand_dims(a, 0), 0)), flat, S.TIGHT, S.ATOL),
     ]
 
 

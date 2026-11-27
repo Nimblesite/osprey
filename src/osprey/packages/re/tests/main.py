@@ -13,7 +13,8 @@ from testing import Check
 
 SEP = "\x1f"
 SEP2 = "\x1e"
-
+COMPILE_ERROR = "compile error"
+"""What a pattern the engine refuses compiles to."""
 
 def f(xs, i):
     """Element `i` of a string list, or "" past the end."""
@@ -68,7 +69,7 @@ def match_case(case):
     """One match/search/fullmatch case: a list of assertions."""
     op = f(case, 0)
     c = call_of(case, 1, 4)
-    return ran(op + " " + c.pattern, "compile error", run_op(op, c.pattern, c.text, c.flags),
+    return ran(op + " " + c.pattern, COMPILE_ERROR, run_op(op, c.pattern, c.text, c.flags),
                lambda value: match_verdict(op, c.pattern, c.text, value, c.enc))
 
 
@@ -119,7 +120,7 @@ def named_check(name, m, enc, ng, j):
 def findall_case(case):
     """One findall case: a list of assertions."""
     c = call_of(case, 0, 3)
-    return ran("findall " + c.pattern, "compile error", Api.findall(c.pattern, c.text, c.flags),
+    return ran("findall " + c.pattern, COMPILE_ERROR, Api.findall(c.pattern, c.text, c.flags),
                lambda value: findall_verdict(c.pattern, c.text, value, c.enc))
 
 
@@ -156,7 +157,7 @@ def row_ok(fr, enc, start, i):
 def finditer_case(case):
     """One finditer case: a list of assertions."""
     c = call_of(case, 0, 3)
-    return ran("finditer " + c.pattern, "compile error", Api.finditer(c.pattern, c.text, c.flags),
+    return ran("finditer " + c.pattern, COMPILE_ERROR, Api.finditer(c.pattern, c.text, c.flags),
                lambda value: finditer_verdict(c.pattern, c.text, value, c.enc))
 
 
@@ -194,7 +195,7 @@ def split_case(case):
     """One split case: a list of assertions."""
     c = call_of(case, 0, 4)
     maxsplit = int_of(f(case, 3))
-    return ran("split " + c.pattern, "compile error", Api.split(c.pattern, c.text, maxsplit, c.flags),
+    return ran("split " + c.pattern, COMPILE_ERROR, Api.split(c.pattern, c.text, maxsplit, c.flags),
                lambda value: split_verdict(c.pattern, c.text, value, c.enc))
 
 

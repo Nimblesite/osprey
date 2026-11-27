@@ -6,6 +6,8 @@ namespace registry;
 /// and optional dependencies each fail with their own reason code.
 /// Implements the dependency, system and asset rules of [PACKAGE-MANIFEST].
 module ManifestDeps {
+    let dependenciesText = "dependencies"
+
     let requirementKeys = ["epoch", "min_release", "capabilities"]
     let grantCode = "manifest.dependency.capability"
     let versionKeys = ["version", "versions", "range", "max_release", "req"]
@@ -38,7 +40,7 @@ module ManifestDeps {
     })
 
     /// An integer pair at or above `floor`, else `code` at `span`.
-    fn boundedInt(pair: Toml::Pair, floor, code, span) = andThen(ManifestSections::intOf(pair, code), fn(value) => if value >= floor { Success { value: value } } else { fail(code, span) })
+    fn boundedInt(pair, floor, code, span) = andThen(ManifestSections::intOf(pair, code), fn(value) => if value >= floor { Success { value: value } } else { fail(code, span) })
 
     fn epochOf(pairs, span) = match ManifestSections::find(pairs, "epoch") {
         Error => fail("manifest.dependency.epoch", span)
@@ -123,7 +125,7 @@ module ManifestDeps {
     fn sortedEdges(edges) = sortedBy(edges, compareEdges, missingEdge())
 
     fn checkedEdges(edges, root) = if epochsAgree(edges) { Success { value: sortedEdges(edges) } }
-        else { fail("manifest.dependency.epoch-conflict", ManifestSections::spanOf(ManifestSections::pairsOf(root), "dependencies", ManifestSections::rootSpan())) }
+        else { fail("manifest.dependency.epoch-conflict", ManifestSections::spanOf(ManifestSections::pairsOf(root), dependenciesText, ManifestSections::rootSpan())) }
 
     // ---- grants: `capabilities = [...]` on a dependency entry ([PACKAGE-CAPABILITY-CONFINEMENT]) ----
 
@@ -178,14 +180,14 @@ module ManifestDeps {
     /// sorted by key with canonical capability sets; a bad capability is
     /// `manifest.dependency.capability`.
     export fn grants(root) = {
-        use runtime <- andThen(tableGrants(root, "dependencies", []))
+        use runtime <- andThen(tableGrants(root, dependenciesText, []))
         use build <- andThen(tableGrants(root, "build-dependencies", runtime))
         use all <- andThen(tableGrants(root, "test-dependencies", build))
         Success { value: nonEmpty(mergedGrants(all)) }
     }
 
     /// All three dependency tables as canonical, sorted edges.
-    export fn dependencies(root) = andThen(tableEdges(root, "dependencies", []), fn(value) => withBuild(root, value))
+    export fn dependencies(root) = andThen(tableEdges(root, dependenciesText, []), fn(value) => withBuild(root, value))
 
     fn withBuild(root, sofar) = andThen(tableEdges(root, "build-dependencies", sofar), fn(value) => withTest(root, value))
 
@@ -198,7 +200,7 @@ module ManifestDeps {
     /// `[a-z0-9][a-z0-9.-]{0,63}` segments joined by `/`, at most 128 bytes ([PACKAGE-MANIFEST]).
     export fn capabilityOk(name) = byteLength(name) <= capabilityMax && foldList(split(name, "/") ?: [""], true, fn(ok, s) => ok && segmentOk(s))
 
-    fn systemOf(pair: Toml::Pair) = match ManifestSections::unknownKeys(ManifestSections::pairsOf(pair.value), systemKeys, "manifest.system.unknown-key") {
+    fn systemOf(pair) = match ManifestSections::unknownKeys(ManifestSections::pairsOf(pair.value), systemKeys, "manifest.system.unknown-key") {
         Error { message } => Error { message: message }
         Success => andThen(ManifestSections::requiredString(ManifestSections::pairsOf(pair.value), "capability", "manifest.system.capability", pair.span), fn(value) => systemWith(pair, value))
     }
@@ -299,7 +301,7 @@ module ManifestDeps {
 
     fn sortedAssets(assets) = sortedBy(assets, compareAssets, missingAsset())
 
-    fn uniqueAssets(assets, span) = match Paths::canonicalSet(mapList(assets, fn(a: ManifestModel::Asset) => a.path)) {
+    fn uniqueAssets(assets, span) = match Paths::canonicalSet(mapList(assets, fn(a) => a.path)) {
         Success => Success { value: sortedAssets(assets) }
         Error { message } => fail(message, span)
     }

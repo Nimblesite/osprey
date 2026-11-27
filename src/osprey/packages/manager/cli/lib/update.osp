@@ -36,14 +36,14 @@ module Update {
 
     // ---- the release update ----
 
-    fn moved(d: Draft, req: ManifestModel::Requirement, epoch) = Draft {
+    fn moved(d: Draft, req, epoch) = Draft {
         draft: ManifestEdit::retargeted(d.draft, req.package, epoch, firstOrdinal),
         notes: listAppend(d.notes, note(req, epoch))
     }
 
     /// One root requirement: retargeted when the listing has a newer epoch,
     /// untouched otherwise (a key the listing lacks is left for `lock` to report).
-    fn retarget(listing, d, req: ManifestModel::Requirement) = match Listing::newestEpoch(listing, req.package) {
+    fn retarget(listing, d, req) = match Listing::newestEpoch(listing, req.package) {
         Error => d
         Success { value } => if value > req.epoch { moved(d, req, value) } else { d }
     }

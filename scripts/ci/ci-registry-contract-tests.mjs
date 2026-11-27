@@ -22,7 +22,7 @@ function assertRealUv(registry, memory) {
   assert.ok(local.indexOf('$(MAKE) target/osprey-pkg') >= 0 && local.indexOf('$(MAKE) target/osprey-pkg') < local.indexOf(suite))
 }
 
-const registrySuites = ['fixture-check', 'manifest/tests', 'cli/tests', 'tests', 'e2e']
+const registrySuites = ['fixture-check', 'manifest/tests', 'cli/tests', 'tests', 'e2e', 'auth-tests', 'database-tests', 'governance-tests', 'hosted-tests', 'web']
 
 // A fake compiler records, for every process the Make target starts, its argv plus
 // the two E2E selection variables. Only those three fields are stored — no secret
@@ -92,6 +92,20 @@ function withRegistryFixture(body) {
 }
 
 export function registerRegistryContracts() {
+  test('hosted registry browser and database tests gate CI on prebuilt inputs', () => {
+    const workflow = '.github/workflows/ci.yml'
+    const build = job('build-registry-hosted', workflow)
+    const hosted = job('test-registry-hosted', workflow)
+    assert.match(build, /needs: \[changes, build\]/)
+    assert.match(build, /registry-website-fixture registry-migration-tool/)
+    assert.match(build, /name: registry-hosted-fixture/)
+    assert.match(hosted, /needs: \[changes, build, build-registry-hosted\]/)
+    assert.match(hosted, /name: registry-hosted-fixture/)
+    assert.match(hosted, /registry-integration-verify/)
+    assert.doesNotMatch(hosted, /registry-website-fixture|registry-migration-tool/)
+    assert.match(job('ci', workflow), /^      - test-registry-hosted$/m)
+  })
+
   test('package manager security suites gate CI and local tests under GC and ARC', () => {
     const coverage = job('coverage', '.github/workflows/ci.yml')
     assert.match(coverage, /if:.*always\(\)/)
@@ -105,7 +119,7 @@ export function registerRegistryContracts() {
     }
     const commands = makeRecipe('_test_registry', 'scripts/make/tests.mk')
     for (const script of ['publication', 'interruption']) assert.match(commands.join('\n'), new RegExp(`OSPREY_PACKAGE_CLIENT=.*REGISTRY_NATIVE_CLIENT.*python3 scripts/packages/test-package-${script}\\.py`))
-    for (const suite of ['fixture-check', 'manifest/tests', 'cli/tests', 'tests', 'e2e']) {
+    for (const suite of registrySuites) {
       assert.ok(commands.includes(`./$(BIN) test src/osprey/packages/manager/${suite} --memory=$(REGISTRY_MEMORY)`), suite)
     }
   })

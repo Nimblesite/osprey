@@ -75,7 +75,7 @@ def jobj(members):
     return JsonValue(kind="obj", b=False, i=0, f=0.0, s="", items=[], members=members)
 
 
-def skip_ws(text, pos) -> int:
+def skip_ws(text, pos):
     """The first index >= pos that is not a JSON whitespace byte."""
     if pos >= len(text):
         return pos
@@ -129,7 +129,7 @@ def is_float_token(token):
     return fold(range(len(token)), False, lambda found, i: found or is_float_mark(unwrap_or(byteAt(token, i), 0)))
 
 
-def number_end(text, pos) -> int:
+def number_end(text, pos):
     """The index just past the number token starting at `pos`."""
     if pos >= len(text):
         return pos
@@ -187,7 +187,7 @@ def string_body(text, pos, pieces) -> Result[Parsed, str]:
     match codePointAt(text, pos):
         case Success(value=value):
             return string_char(text, pos, value, pieces)
-        case Error(message=message):
+        case Error(message=_):
             return Error(message="invalid JSON: unterminated string")
 
 
@@ -208,7 +208,7 @@ def string_escape(text, pos, pieces):
     match codePointAt(text, pos + 1):
         case Success(value=value):
             return escape_char(text, pos, value, pieces)
-        case Error(message=message):
+        case Error(message=_):
             return Error(message="invalid JSON: unterminated escape")
 
 
@@ -325,7 +325,7 @@ def number_from(parsed, end, wrap):
     match parsed:
         case Success(value=value):
             return Success(value=Parsed(value=wrap(value), next=end))
-        case Error(message=message):
+        case Error(message=_):
             return Error(message="invalid JSON: bad number")
 
 

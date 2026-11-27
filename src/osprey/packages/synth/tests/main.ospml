@@ -8,7 +8,8 @@ import synth::Parameters
 import synth::Performance
 import synth::Renderer
 import synth::SpectralMath
-import synth::Voice
+
+sampleRates = [44100.0, 48000.0, 96000.0]
 
 audio = monoPort ("audio", synth::Audio, synth::Amplitude)
 
@@ -61,7 +62,7 @@ test ("Signals expose separate same-kind component instances without a UI framew
     observed snapshot))
 
 test ("oscillator state survives arbitrary block partitions at three rates and four waveforms", \() => arithmetic (\() =>
-    forEachList ([44100.0, 48000.0, 96000.0], oscFrequencies)
+    forEachList (sampleRates, oscFrequencies)
     triangle = oscillator (48000.0, 440.0, synth::Triangle)
     sine = oscillator (48000.0, 440.0, synth::Sine)
     near (sampleAt (triangle, 0.25), 0.0, 0.000000001)
@@ -70,7 +71,7 @@ test ("oscillator state survives arbitrary block partitions at three rates and f
     forEachList ([sine(sampleRate = 0.0), sine(frequency = -1.0), sine(frequency = 24000.0), sine(pulseWidth = 0.0), sine(pulseWidth = 1.0)], invalidOscillator)))
 
 test ("ADSR reaches its stages, releases during attack, retriggers continuously and handles zero times", \() => arithmetic (\() =>
-    forEachList ([44100.0, 48000.0, 96000.0], envelopeCase)
+    forEachList (sampleRates, envelopeCase)
     instant = synth::EnvelopeConfig(sampleRate = 48000.0, attack = 0.0, decay = 0.0, sustain = 0.7, release = 0.0)
     attack = Envelopes::next (instant, Envelopes::noteOn (Envelopes::initial ()))
     near (attack.level, 1.0, 0.0)
@@ -79,7 +80,7 @@ test ("ADSR reaches its stages, releases during attack, retriggers continuously 
     forEachList ([instant(sustain = -0.1), instant(sustain = 1.1), instant(attack = -1.0), instant(release = 4000.0), instant(sampleRate = 0.0)], invalidEnvelope)))
 
 test ("state-variable filter preserves blocks, passes DC, rejects DC high-pass and decays after excitation", \() => arithmetic (\() =>
-    forEachList ([44100.0, 48000.0, 96000.0], \rate => forEachList ([1000.0, 5000.0, 18000.0], \cutoff => filterCase (rate, cutoff, 0.7071067811865476)))
+    forEachList (sampleRates, \rate => forEachList ([1000.0, 5000.0, 18000.0], \cutoff => filterCase (rate, cutoff, 0.7071067811865476)))
     base = synth::FilterConfig(sampleRate = 48000.0, cutoff = 1000.0, resonance = 0.7)
     forEachList ([base(cutoff = 0.0), base(cutoff = 24000.0), base(resonance = 0.0), base(resonance = 21.0), base(sampleRate = 0.0)], invalidFilter)))
 
@@ -133,16 +134,12 @@ test ("graph validation covers corrupt persisted metadata, missing endpoints, fa
         expect (listGet plan.order 2051 ?: -1, 2052))
     refused (Graphs::prepare (crowded(cables = listAppend routes (cable (1, 3)))), synth::OccupiedInput)))
 
-test ("extracted Prism synthesis has no UI dependency and retains pitch, wave, silence and WAV behaviour", \() => arithmetic (\() =>
+test ("8-bit WAV clips pad their RIFF size and an instant envelope starts silent", \() => arithmetic (\() =>
     // [SYNTH-PCM-FLOAT] The RIFF size includes word padding; the data size counts only actual samples.
     forEachList ([{ values = [0, 128, 255], riff = "28000000", data = "030000000080FF00" }, { values = [0, 128], riff = "26000000", data = "020000000080" }, { values = [255], riff = "26000000", data = "01000000FF00" }, { values = [], riff = "24000000", data = "00000000" }], \c =>
         encoded = synth::WaveFiles::mono8 (8000, c.values)
         expect (take (drop encoded 8) 8, c.riff)
         expect (drop encoded 80, c.data))
-    forEachList (["Sine", "Saw", "Square", "Triangle"], referenceCase)
-    forEachList (["C3", "D3", "E3", "F3", "G3", "A3", "B3", "C#4"], \note => expect (Voice::frequency note > 100.0, true))
-    near (Voice::frequency "A4", 440.0, 0.00000001)
-    forEachList (["1/1", "1/2", "1/4", "1/8", "1/16"], \rate => expect (Voice::hertz rate > 0.0, true))
     near ((Envelopes::next (synth::EnvelopeConfig(sampleRate = 48000.0, attack = 0.0, decay = 0.0, sustain = 0.5, release = 0.0), Envelopes::initial ())).level, 0.0, 0.0)))
 
 test ("module switches pick the waveform, bypass a module and modulate the filter cutoff", \() => arithmetic (\() =>
@@ -232,6 +229,9 @@ routedCarries (route, join, f, out, source) = match source < 0
     true => near (channelOf (route, f, out), 0.0, 0.0)
     false => near (channelOf (route, f, out), channelOf (join, f, source), 0.0)
 
+// The five-channel chain ends in route map `routeMap` on 9 and a sink of `width` channels on 10.
+routedChain (routeMap, width) = built (listConcat (channelChain (1, 2, 3, 8, 5)) [Components::routeChannels (9, 5, routeMap), sinkOf (10, width)], listConcat (channelCables (1, 2, 3, 8, 5)) [cable (8, 9), cable (9, 10)])
+
 test ("an 8-channel graph splits, joins and route-reorders every 7.1 channel sample-for-sample", \() => arithmetic (\() =>
     forEachList ([1, 2, 6, 8, 12], \width => forEachList ([-1.0, -0.4, 0.0, 0.7, 1.0], \pan => pannerJourney (width, pan)))
     frames = toList (range (0, 64))
@@ -265,9 +265,7 @@ test ("an 8-channel graph splits, joins and route-reorders every 7.1 channel sam
 
 test ("a five-channel graph duplicates, silences and resizes channels through explicit route maps", \() => arithmetic (\() =>
     frames = toList (range (0, 64))
-    nodes = listConcat (channelChain (1, 2, 3, 8, 5)) [Components::routeChannels (9, 5, [1, 1, -1, 4, 0, 0]), sinkOf (10, 6)]
-    cables = listConcat (channelCables (1, 2, 3, 8, 5)) [cable (8, 9), cable (9, 10)]
-    succeeds (clipsOf (built (nodes, cables), 64), \clips =>
+    succeeds (clipsOf (routedChain ([1, 1, -1, 4, 0, 0], 6), 64), \clips =>
         join = clipFrom (clips, 8)
         route = clipFrom (clips, 9)
         clipIs (join, 5, 320)
@@ -275,7 +273,7 @@ test ("a five-channel graph duplicates, silences and resizes channels through ex
         forEachList (frames, \f => forEachList ([{ out = 0, src = 1 }, { out = 1, src = 1 }, { out = 2, src = -1 }, { out = 3, src = 4 }, { out = 4, src = 0 }, { out = 5, src = 0 }], \m => routedCarries (route, join, f, m.out, m.src)))
         forEachList (toList (range (0, 5)), \c => forEachList (frames, \f => near (channelOf (join, f, c), channelOf (clipFrom (clips, satAdd 3 c), f, 0), 0.0))))
     // The same five-channel join shrinks to three: duplicated, duplicated, silenced.
-    succeeds (clipsOf (built (listConcat (channelChain (1, 2, 3, 8, 5)) [Components::routeChannels (9, 5, [4, 4, -1]), sinkOf (10, 3)], listConcat (channelCables (1, 2, 3, 8, 5)) [cable (8, 9), cable (9, 10)]), 64), \clips =>
+    succeeds (clipsOf (routedChain ([4, 4, -1], 3), 64), \clips =>
         join = clipFrom (clips, 8)
         route = clipFrom (clips, 9)
         clipIs (route, 3, 192)
@@ -415,6 +413,8 @@ test ("quarter-cycle partials retain phase on retrigger and agree with prepared 
 
 test ("changing a playing sample's gain and speed affects the exact addressed audio frame", \() => arithmetic sampleControlJourney)
 
+test ("unequal and one-sample partitions at 44.1, 48, 96 and 192 kHz play one continuous block, each edit owned by the block holding its frame", \() => arithmetic partitionJourney)
+
 test ("spectral controls select all morph modes, shift an octave with independent formants, and refuse fractional selectors", \() => arithmetic spectralControlJourney)
 
 test ("a sampled strike subtracts its integer or fractional echo and mono routes preserve or mute the impulse", \() => arithmetic strikeRouteJourney)
@@ -422,6 +422,8 @@ test ("a sampled strike subtracts its integer or fractional echo and mono routes
 test ("physical instruments reject fractional burst lengths, repeat intervals and mode counts", \() => arithmetic physicalCountJourney)
 
 test ("replacing a live delay resets its storage, retains oscillator state and refuses a fresh grain clock", \() => arithmetic rebaseJourney)
+
+test ("a cutoff edit keeps oscillator and filter state and changes the sound; a routing change sounds different", \() => arithmetic editAudioJourney)
 
 test ("send taps retain frame position across blocks and report missing sources", \() => arithmetic sendCaptureJourney)
 

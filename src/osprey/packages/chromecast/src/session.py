@@ -138,7 +138,7 @@ def receive(session, quiet_ms) -> Result[Protocol.Message, str]:
             return Error(message=failure)
 
 
-def polled(session, wait_ms, got) -> Result[list[Protocol.Message], str]:
+def polled(session, wait_ms, got):
     match hear(session, wait_ms):
         case Success(value=heard):
             if heard.kind == "quiet":

@@ -21,6 +21,8 @@
 // [BUILTIN-STRING-CONCAT], and [BUILTIN-COLLECTION-LENGTH] to count the
 // resulting List<string>.
 
+notFoundRoute () = "404 not-found"
+
 handleGet path =
     match path
         "/health" => "200 ok"
@@ -28,11 +30,11 @@ handleGet path =
             true  => "200 user-detail " + drop path 11
             false => match startsWith path "/api/"
                 true  => "200 api-fallback"
-                false => "404 not-found"
+                false => notFoundRoute ()
 handlePost path =
     match path
         "/api/users" => "201 created"
-        _            => "404 not-found"
+        _            => notFoundRoute ()
 route (method, path) =
     match method
         "GET"  => handleGet path
@@ -156,8 +158,8 @@ stringPipelineCase () =
         route ("GET", "/api/users/42") == "200 user-detail 42",
         route ("GET", "/api/orders") == "200 api-fallback",
         route ("POST", "/api/users") == "201 created",
-        route ("POST", "/other") == "404 not-found",
-        route ("GET", "/random") == "404 not-found",
+        route ("POST", "/other") == notFoundRoute (),
+        route ("GET", "/random") == notFoundRoute (),
         route ("DELETE", "/anything") == "405 method-not-allowed"
     ]
 test "string pipeline preserves transformations and routing" stringPipelineCase

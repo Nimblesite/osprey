@@ -10,6 +10,10 @@ from qwen_tests.ModelCases import SINGLE, fixture_params, input_tokens, model_co
 
 __all__ = ["model_fault_cases", "refusal_cases", "tiled_cases"]
 
+WRONG_SLOTS = "model_wrong_slots"
+"""The case name every wrong-slot check and refusal carries."""
+NAN_LOGITS = "model_decode_nan_logits"
+"""The case name every NaN-logit refusal carries."""
 
 def tiled_cases(model, parameters):
     """The GGUF value-head order: the same checkpoint with every per-value-head
@@ -99,7 +103,7 @@ def model_fault_cases(model):
         refusal("model_fault_negative_grid", negative_grid(), "gpu: buffer allocation: a negative element count"),
         refusal("model_fault_missing_values", missing_values(), "index out of bounds"),
         refusal("model.Fault.halt_ints", explicit_device_fault(), "test device fault"),
-    ], started(model, "model_wrong_slots", lambda cache: wrong_slot_cases(model, cache)))
+    ], started(model, WRONG_SLOTS, lambda cache: wrong_slot_cases(model, cache)))
 
 
 def nan_logits(model):
@@ -108,7 +112,7 @@ def nan_logits(model):
     width = model.config.hidden_size * model.config.vocab_size
     match toGpu(toList(map(range(width), lambda i: toFloat32(sqrt(-1.0)) if i == 7 else toFloat32(0.5)))):
         case Error(message=message):
-            return Check.failed("model_decode_nan_logits", toString(message))
+            return Check.failed(NAN_LOGITS, toString(message))
         case Success(value=values):
             return nan_decode(model_with(model, model.layers, model.embedding, Qwen3_5Device.Dense(values=values)))
 
@@ -116,9 +120,9 @@ def nan_logits(model):
 def nan_decode(model):
     match Qwen3_5Cache.empty(model.config, model.shapes):
         case Error(message=message):
-            return Check.failed("model_decode_nan_logits", message)
+            return Check.failed(NAN_LOGITS, message)
         case Success(value=cache):
-            return refusal("model_decode_nan_logits", Qwen3_5Model.decode(model, cache, 0), "decode: step logits are not finite")
+            return refusal(NAN_LOGITS, Qwen3_5Model.decode(model, cache, 0), "decode: step logits are not finite")
 
 
 def step_missing_slot(model):
@@ -129,11 +133,11 @@ def step_missing_slot(model):
 def wrong_slot_cases(model, cache):
     match Qwen3_5Cache.slot_at(cache, 0):
         case Error(message=message):
-            return [Check.failed("model_wrong_slots", toString(message))]
+            return [Check.failed(WRONG_SLOTS, toString(message))]
         case Success(value=delta):
             match Qwen3_5Cache.slot_at(cache, 3):
                 case Error(message=message):
-                    return [Check.failed("model_wrong_slots", toString(message))]
+                    return [Check.failed(WRONG_SLOTS, toString(message))]
                 case Success(value=attention):
                     return mismatch_cases(model, cache, delta, attention)
 

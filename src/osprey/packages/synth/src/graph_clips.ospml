@@ -7,7 +7,15 @@ module GraphClips
         Delay _ => n(processor = Amplifier)
         _ => n
 
-    (** Whether a component keeps DSP memory between blocks. *)
+    (** Whether a component keeps DSP memory between blocks.
+    # Examples
+    ```osprey
+    print "${GraphClips::stateful (Components::gain (1, 1.0))} ${GraphClips::stateful (Components::stereo 1)} ${GraphClips::stateful (Components::output 1)}"
+    ```
+    ```output
+    true false false
+    ```
+    *)
     export stateful n = match n.processor
         Stereo => false
         Panner => false
@@ -20,7 +28,20 @@ module GraphClips
         External _ _ => false
         _ => true
 
-    (** Whether stored memory still fits its node in this graph at this clock position. *)
+    (** Whether stored memory still fits its node in this graph at this clock position.
+    # Examples
+    ```osprey
+    bank = NodeKernels(kernelNode = 1, kernelMemory = ChannelMemory(channels = [RenderInputs::initialState (Components::gain (1, 1.0))]))
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => GraphClips::validBank (Graph(nodes = [Components::gain (1, 1.0)], cables = []), bank, 0))} ${arithmetic (\() => GraphClips::validBank (Graphs::empty, bank, 0))} ${arithmetic (\() => GraphClips::validBank (Graph(nodes = [Components::gain (1, 1.0)], cables = []), bank(kernelMemory = ChannelMemory(channels = [])), 0))}"
+    ```
+    ```output
+    true false false
+    ```
+    *)
     export validBank (graph, bank, position) = match Graphs::node (graph, bank.kernelNode)
         Invalid _ => false
         Valid n => match bank.kernelMemory
@@ -44,7 +65,7 @@ module GraphClips
 
     stored (held, n, memory) = held(graphKernels = listAppend (filterList (held.graphKernels, \old => old.kernelNode != n.identity)) (NodeKernels(kernelNode = n.identity, kernelMemory = memory)))
 
-    validState (graph, held, frames, clips) = held.graphPosition >= 0 && held.graphPosition <= satSub 9223372036854775807 frames && length (filterList (held.graphKernels, \bank => validBank (graph, bank, bankPosition (held, frames, clips, bank.kernelNode)) && length (banksAt (held, bank.kernelNode)) == 1)) == length held.graphKernels && (held.graphPosition == 0 || length held.graphKernels == length (filterList (graph.nodes, stateful)))
+    validState (graph, held, frames, clips) = held.graphRate >= 8000.0 && held.graphRate <= 384000.0 && held.graphPosition >= 0 && held.graphPosition <= satSub 9223372036854775807 frames && length (filterList (held.graphKernels, \bank => validBank (graph, bank, bankPosition (held, frames, clips, bank.kernelNode)) && length (banksAt (held, bank.kernelNode)) == 1)) == length held.graphKernels && (held.graphPosition == 0 || length held.graphKernels == length (filterList (graph.nodes, stateful)))
 
     emitted (plan, clips, held, frames, n, channels, samples, notes, remaining) =
         clip = NodeClip(clipNode = n.identity, clipChannels = channels, clipSamples = samples, clipNotes = notes)
@@ -67,7 +88,7 @@ module GraphClips
 
     processed (plan, clips, held, frames, n, channels, remaining) = match kernels (held, n, channels)
         Error why => Error(message = why)
-        Success saved => match ClipKernels::block (plan, clips, n, frames, saved)
+        Success saved => match ClipKernels::block (plan, held.graphRate, clips, n, frames, saved)
             Error why => Error(message = why)
             Success rendered =>
                 nextHeld = stored (held, n, ChannelMemory(channels = rendered.heldKernel))
@@ -99,7 +120,7 @@ module GraphClips
 
     midi (plan, clips, held, frames, n, remaining) = match midiState (held, n)
         Error why => Error(message = why)
-        Success voice => match MidiOscillators::block (plan, clips, n, voice, frames)
+        Success voice => match MidiOscillators::block (plan, held.graphRate, clips, n, voice, frames)
             Error why => Error(message = why)
             Success rendered =>
                 next = stored (held, n, MidiMemory(voice = rendered.heldKernel))
@@ -194,7 +215,20 @@ module GraphClips
             true => scheduled (plan, clips, held, frames, remaining)
             false => Outcomes::carried (RenderInputs::component (plan, identity), \n => node (plan, clips, held, frames, n, remaining))
 
-    (** Prepare a render order that rejects cycles even through delay components. *)
+    (** Prepare a render order that rejects cycles even through delay components.
+    # Examples
+    ```osprey
+    cycle = Graph(nodes = [Components::gain (1, 1.0), Components::gain (3, 1.0)], cables = [Cable(source = 1, outlet = 0, destination = 3, inlet = 0), Cable(source = 3, outlet = 0, destination = 1, inlet = 0)])
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => GraphClips::ordered (Graph(nodes = [Components::gain (1, 1.0)], cables = [])))} ${arithmetic (\() => GraphClips::ordered cycle)}"
+    ```
+    ```output
+    Valid { value: { graph: { nodes: [{ identity: 1, processor: Amplifier, inputs: [{ name: "audio", rate: Audio, channels: 1, unit: Amplitude }], outputs: [{ name: "audio", rate: Audio, channels: 1, unit: Amplitude }], parameters: [{ key: "gain", label: "Gain", unit: Amplitude, minimum: 0.0, maximum: 8.0, initial: 1.0, automatable: true }] }], cables: [] }, order: [1], feedback: [] } } Invalid { fault: Cycle }
+    ```
+    *)
     export ordered graph = Graphs::prepare (graph(nodes = mapList (graph.nodes, acyclic)))
 
     prepared (graph, clips, held, frames) =
@@ -207,15 +241,62 @@ module GraphClips
         false => Error(message = IncompatibleLayout(detail = "The block needs one output, connected inputs and valid bounded buffers and state."))
         true => prepared (graph, clips, held, frames)
 
-    (** Continue a graph clock and its independent channel states into a fresh block. *)
+    (** Continue a graph clock and its independent channel states into a fresh block.
+    # Examples
+    ```osprey
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => GraphClips::next (Graph(nodes = [Components::gain (1, 1.0)], cables = []), GraphState(graphPosition = 0, graphRate = 48000.0, graphHosted = [], graphKernels = []), 16))}"
+    ```
+    ```output
+    Error(IncompatibleLayout { detail: "The block needs one output, connected inputs and valid bounded buffers and state." })
+    ```
+    *)
     export next (graph, held, frames) = checked (graph, [], held, frames)
 
-    origin () = GraphState(graphHosted = [], graphPosition = 0, graphKernels = [])
+    (** A graph clock at sample zero rendering at `rate`; `next` refuses a rate outside 8–384 kHz.
+    # Examples
+    ```osprey
+    print "${GraphClips::origin 44100.0}"
+    ```
+    ```output
+    { graphPosition: 0, graphRate: 44100.0, graphHosted: [], graphKernels: [] }
+    ```
+    *)
+    export origin rate = GraphState(graphHosted = [], graphPosition = 0, graphRate = rate, graphKernels = [])
 
-    (** Start an acyclic graph at sample zero; hosted instances belong to the caller. *)
-    export start (graph, frames) = next (graph, origin (), frames)
+    (** Start an acyclic graph at sample zero at `rate`; hosted instances belong to the caller.
+    # Examples
+    ```osprey
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => GraphClips::start (Graph(nodes = [Components::gain (1, 1.0)], cables = []), 48000.0, 16))}"
+    ```
+    ```output
+    Error(IncompatibleLayout { detail: "The block needs one output, connected inputs and valid bounded buffers and state." })
+    ```
+    *)
+    export start (graph, rate, frames) = next (graph, origin rate, frames)
 
-    (** Resume only the pending external node, using its frozen graph and exact response shape. *)
+    (** Resume only the pending external node, using its frozen graph and exact response shape.
+    # Examples
+    ```osprey
+    pending = GraphPending(pendingGraph = Graphs::empty, pendingState = GraphState(graphPosition = 0, graphRate = 48000.0, graphHosted = [], graphKernels = []), pendingClips = [], pendingFrames = 16, pendingNode = 1)
+    clip = NodeClip(clipNode = 1, clipChannels = 1, clipSamples = [0.0], clipNotes = [])
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => GraphClips::replied (pending, clip))} ${arithmetic (\() => GraphClips::replied (pending, clip(clipNode = 2)))}"
+    ```
+    ```output
+    Error(MissingResource { detail: "The pending component is absent." }) Error(InvalidConfiguration { detail: "The worker response does not belong to the pending node." })
+    ```
+    *)
     export replied (pending, clip) = match clip.clipNode == pending.pendingNode && clipsAt (pending.pendingClips, clip.clipNode) == 0
         false => Error(message = InvalidConfiguration(detail = "The worker response does not belong to the pending node."))
         true => match Graphs::node (pending.pendingGraph, pending.pendingNode)
@@ -224,8 +305,20 @@ module GraphClips
                 External _ _ => checked (pending.pendingGraph, listAppend pending.pendingClips clip, pending.pendingState, pending.pendingFrames)
                 _ => Error(message = InvalidConfiguration(detail = "Only an external component can resume a worker response."))
 
-    (** Whole-clip execution uses the same scheduler, with a zero-origin clock. *)
-    export advance (graph, clips, frames) = match checked (graph, clips, origin (), frames)
+    (** Whole-clip execution at `rate` uses the same scheduler, with a zero-origin clock.
+    # Examples
+    ```osprey
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => GraphClips::advance (Graph(nodes = [Components::gain (1, 1.0)], cables = []), 48000.0, [], 16))}"
+    ```
+    ```output
+    Error(IncompatibleLayout { detail: "The block needs one output, connected inputs and valid bounded buffers and state." })
+    ```
+    *)
+    export advance (graph, rate, clips, frames) = match checked (graph, clips, origin rate, frames)
         Error why => Error(message = why)
         Success action => match action
             BlockReady _ rendered => Success(value = ClipReady(clips = rendered))

@@ -84,7 +84,7 @@ fn is_ml_only(path: &Path) -> bool {
 /// formatter corpus test only *parses*, and `src/toolchain/benchmarks/run.sh` compiles the
 /// `.osp` side alone. `binarytrees.ospml` sat with four
 /// `cannot unify int with Result<int, MathError>` errors under the old
-/// [plan 0019](../../../docs/plans/0019-ml-elegance.md) advertised it as the
+/// ML elegance plan advertised it as the
 /// proof that ML reaches 6 lines at IR parity with its Default twin.
 fn flavor_roots() -> Vec<PathBuf> {
     // canonicalize() resolves the `../../../../`; fall back to the joined path when it

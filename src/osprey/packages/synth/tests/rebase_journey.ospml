@@ -31,8 +31,49 @@ rebaseRunning held =
 
 rebaseJourney () =
     graph = serial ([Components::sine (1, 440.0), Components::delay (2, 8), Components::output 3])
-    succeeds (GraphClips::start (graph, 64), \step => checkRebaseBlock step)
+    succeeds (GraphClips::start (graph, 48000.0, 64), \step => checkRebaseBlock step)
 
 checkRebaseBlock step = match step
     synth::BlockReady held _ => rebaseRunning held
     synth::BlockWaiting _ _ => unexpected ()
+
+// [PRISM-ROUTING-VERIFY] [SYNTH-RENDER-BLOCKS] A parameter-only edit keeps the oscillator and filter banks and
+// changes the sound; an unchanged rebase continues sample for sample; a routing change sounds different.
+filtered cutoff = serial ([Components::sine (1, 440.0), Components::lowpass (2, cutoff, 0.7), Components::output 3])
+
+readySamples step = match step
+    synth::BlockReady _ clips => completedOr (clips, 3, [], \clip => clip.clipSamples)
+    synth::BlockWaiting _ _ =>
+        unexpected ()
+        []
+
+blockAudio (graph, held) = renderedOr (GraphClips::next (graph, held, 64), [], readySamples)
+
+rebasedAudio (graph, held) = renderedOr (GraphRebase::rebased (graph, held), [], \next => blockAudio (graph, next))
+
+startedAudio graph = renderedOr (GraphClips::start (graph, 48000.0, 64), [], readySamples)
+
+editedFrom (held, first) =
+    base = blockAudio (filtered 800.0, held)
+    expect (length base, 64)
+    expect (structuralEquals (base, first), false)
+    sameSamples (rebasedAudio (filtered 800.0, held), base)
+    forEachList ([200.0, 4000.0], \cutoff => succeeds (GraphRebase::rebased (filtered cutoff, held), \next =>
+        forEachList ([1, 2], \identity => sameStructure (banksAt (next, identity), banksAt (held, identity)))
+        edited = blockAudio (filtered cutoff, next)
+        expect (length edited, 64)
+        expect (structuralEquals (edited, base), false)
+        expect (structuralEquals (edited, startedAudio (filtered cutoff)), false)))
+    direct = built ([Components::sine (1, 440.0), Components::output 3], [cable (1, 3)])
+    succeeds (GraphRebase::rebased (direct, held), \next =>
+        expect (length (banksAt (next, 2)), 0)
+        sameStructure (banksAt (next, 1), banksAt (held, 1))
+        routed = blockAudio (direct, next)
+        expect (length routed, 64)
+        expect (structuralEquals (routed, base), false))
+
+editAudio step = match step
+    synth::BlockReady held clips => succeeds (synth::ClipInputs::completed (clips, 3), \first => editedFrom (held, first.clipSamples))
+    synth::BlockWaiting _ _ => unexpected ()
+
+editAudioJourney () = succeeds (GraphClips::start (filtered 800.0, 48000.0, 64), editAudio)

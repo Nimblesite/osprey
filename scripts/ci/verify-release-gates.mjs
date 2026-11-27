@@ -131,6 +131,25 @@ const mingwClangUnpinned = releaseLines.some((line) => line.includes('OSPREY_CC=
   ? []
   : [`${RELEASE_WORKFLOW}: the Windows build must pin OSPREY_CC to the MinGW clang or osprey links with MSVC`]
 
+// ---- wasm32 releases must carry the runtimes the compiler links -------------
+// The wasm applications happen to build these archives through order-only Make
+// prerequisites, but a release contract cannot depend on that incidental build
+// graph. Build them explicitly and make Package reject either omission (#420).
+const readStep = (job, name) => {
+  const block = readJob(job)
+  const start = block.findIndex((line) => line === `      - name: ${name}`)
+  return start === -1 ? [] : takeWhile(block.slice(start + 1), (line) => !/^ {6}- /.test(line))
+}
+const WASM_RUNTIME_ARCHIVES = ['libosprey_runtime_wasm_arc.a', 'libosprey_runtime_wasm_ownership.a']
+const portableWasmStep = readStep('build', 'Build portable package workspace')
+const packageStep = readStep('build', 'Package')
+const wasmRuntimeBuildMissing = portableWasmStep.some((line) => line.trim() === 'make _runtime_wasm')
+  ? []
+  : [`${RELEASE_WORKFLOW}: the WASI-enabled Linux build must explicitly run make _runtime_wasm`]
+const wasmRuntimePackageGaps = WASM_RUNTIME_ARCHIVES
+  .filter((archive) => !packageStep.some((line) => line.includes(archive)))
+  .map((archive) => `${RELEASE_WORKFLOW}: Package must require ${archive} in the Linux tarball`)
+
 // ---- A gate that cannot run must not report success -------------------------
 
 const brokenParser = []
@@ -150,6 +169,8 @@ const failures = [
   ...credentialEnvironmentMissing,
   ...windowsToolchainDrift,
   ...mingwClangUnpinned,
+  ...wasmRuntimeBuildMissing,
+  ...wasmRuntimePackageGaps,
 ]
 
 if (failures.length > 0) {

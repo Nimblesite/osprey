@@ -9,6 +9,14 @@ import registry::Names
 /// recipient's acceptance, the 24-hour hold, guarded atomic completion that
 /// revokes every grant, and evidence retained for every other outcome.
 module HandoverTests {
+    let governanceTransferAcceptanceMissing = "governance.transfer.acceptance-missing"
+    let governanceProofWrongMembership = "governance.proof.wrong-membership"
+
+    /// The refusal of a member who lacks the permission.
+    let permissionMissing = "governance.permission.missing"
+    /// The refusal of an administrator whose seat is stale.
+    let adminNotCurrent = "governance.admin.not-current"
+
     let now = 100
     let ledger = Names::Key { scope: "finch", name: "ledger" }
 
@@ -74,7 +82,7 @@ module HandoverTests {
             proposeCode(world, "t-2", "m-bot") == "governance.principal.workflow",
             proposeCode(world, "t-3", "m-dave") == "governance.membership.other-org",
             proposeCode(world, "t-4", "m-nobody") == "governance.membership.missing",
-            proposeWithProof(world, "t-5", Fixture::verified("p-erin", "m-erin", bobProposalStatement())) == "governance.admin.not-current",
+            proposeWithProof(world, "t-5", Fixture::verified("p-erin", "m-erin", bobProposalStatement())) == adminNotCurrent,
             proposeWithProof(world, "t-6", Fixture::verified("p-alice", "m-alice", "wrong-statement")) == "governance.proof.statement-mismatch",
             proposeWithProof(world, "t-7", Fixture::workflow("p-alice", "m-alice", bobProposalStatement())) == "governance.proof.ceremony"
         ])
@@ -91,10 +99,10 @@ module HandoverTests {
             Fixture::verified("p-bob", "m-bob", Governance::declineStatement("t-2"))))
         checkAll("one live proposal per package, evidence for every outcome", [
             proposeCode(pending, "t-9", "m-carol") == "governance.transfer.pending-exists",
-            cancelCode(pending, Fixture::verified("p-erin", "m-erin", Governance::cancelStatement("t-1"))) == "governance.admin.not-current",
+            cancelCode(pending, Fixture::verified("p-erin", "m-erin", Governance::cancelStatement("t-1"))) == adminNotCurrent,
             cancelCode(pending, Fixture::adminProof(pending, "pkg-f1", Governance::cancelStatement("t-1"))) == "",
             proposeCode(cancelled, "t-2", "m-bob") == "",
-            declineCode(proposedAgain, "p-carol", "m-carol") == "governance.proof.wrong-membership",
+            declineCode(proposedAgain, "p-carol", "m-carol") == governanceProofWrongMembership,
             declineCode(proposedAgain, "p-bob", "m-bob") == "",
             // [PACKAGE-OWNERSHIP-ADMIN] "a 24-hour pending hold" and "Cancelled,
             // declined, expired and completed proposals remain evidence": only a
@@ -115,8 +123,8 @@ module HandoverTests {
     fn acceptanceGuards() = {
         let pending = proposed(Fixture::world(), "t-1", "m-bob")
         checkAll("acceptance belongs to the intended recipient alone", [
-            acceptCode(pending, "p-carol", "m-carol") == "governance.proof.wrong-membership",
-            acceptCode(pending, "p-bob", "m-erin") == "governance.proof.wrong-membership",
+            acceptCode(pending, "p-carol", "m-carol") == governanceProofWrongMembership,
+            acceptCode(pending, "p-bob", "m-erin") == governanceProofWrongMembership,
             acceptCode(pending, "p-erin", "m-bob") == "governance.proof.wrong-actor",
             // [PACKAGE-OWNERSHIP-ADMIN] "the proposed active human org member's
             // fresh acceptance": the acceptance is bound to the recipient's own
@@ -124,11 +132,11 @@ module HandoverTests {
             // a workflow principal's proof carries its own membership and is
             // refused as the wrong membership below.
             acceptCode(pending, "p-bot", "m-bob") == "governance.proof.wrong-actor",
-            acceptCode(pending, "p-bot", "m-bot") == "governance.proof.wrong-membership",
+            acceptCode(pending, "p-bot", "m-bot") == governanceProofWrongMembership,
             Fixture::code(GovernanceHandover::acceptHandover(pending, "t-1",
                 Fixture::workflow("p-bob", "m-bob", acceptanceStatement()))) == "governance.proof.ceremony",
             acceptCode(pending, "p-bob", "m-bob") == "",
-            finalizeCode(pending, 124) == "governance.transfer.acceptance-missing",
+            finalizeCode(pending, 124) == governanceTransferAcceptanceMissing,
             match accept(pending, "p-bob", "m-bob") {
                 Success { value } => packageIs(value, "m-alice", 1)
                 Error => false
@@ -144,15 +152,15 @@ module HandoverTests {
         let done = finalized(accepted)
         checkAll("completion is one guarded atomic update", [
             GovernanceHandover::hold() == 24,
-            finalizeCode(pending, 100) == "governance.transfer.acceptance-missing",
+            finalizeCode(pending, 100) == governanceTransferAcceptanceMissing,
             finalizeCode(accepted, 123) == "governance.transfer.hold",
             finalizeCode(accepted, 292) == "",
             finalizeCode(accepted, 293) == "governance.transfer.expired",
             packageIs(done, "m-bob", 2),
             length(filterList(done.grants, fn(g) => Governance::isActiveGrant(g))) == 0,
-            authorizeCode(done, "m-bob", Governance::PublishRelease, 200) == "governance.permission.missing",
-            authorizeCode(done, "m-carol", Governance::EditMetadata, 200) == "governance.permission.missing",
-            finalizeCode(done, 200) == "governance.transfer.acceptance-missing",
+            authorizeCode(done, "m-bob", Governance::PublishRelease, 200) == permissionMissing,
+            authorizeCode(done, "m-carol", Governance::EditMetadata, 200) == permissionMissing,
+            finalizeCode(done, 200) == governanceTransferAcceptanceMissing,
             length(filterList(done.packages, fn(p) => p.admin == "m-alice")) == 0
         ])
     }
@@ -175,7 +183,7 @@ module HandoverTests {
         let done = finalized(accepted(proposed(Fixture::world(), "t-1", "m-bob")))
         checkAll("only the new admin's fresh decisions count", [
             grantCode(done, "g-2", Fixture::verified("p-bob", "m-bob", carolGrantStatement(2))) == "",
-            grantCode(done, "g-3", Fixture::verified("p-alice", "m-alice", carolGrantStatement(1))) == "governance.admin.not-current",
+            grantCode(done, "g-3", Fixture::verified("p-alice", "m-alice", carolGrantStatement(1))) == adminNotCurrent,
             grantCode(done, "g-4", Fixture::verified("p-bob", "m-bob", carolGrantStatement(1))) == "governance.proof.statement-mismatch",
             authorizeCode(grantedOn(done, "g-2", 2), "m-carol", Governance::PublishRelease, 150) == ""
         ])

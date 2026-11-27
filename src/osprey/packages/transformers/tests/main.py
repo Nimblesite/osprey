@@ -245,13 +245,14 @@ def generation_boundaries():
     stops = [StoppingCriteria.MaxLengthCriteria(2)]
     row = lambda _tokens: [toFloat32(1.0), toFloat32(2.0)]
     masked = [LogitsProcess.SuppressTokensLogitsProcessor([0, 1])]
+    bad_token = "generate: step 1: invalid sampled token"
     return [
         generation_error("negative budget", Generation.generate(row, [7], [], stops, argmax, -1), "generate: negative token budget"),
         generation_error("empty logits", Generation.generate(lambda _tokens: [], [7], [], stops, argmax, 1), "generate: step 1: empty logits"),
         generation_error("all masked", Generation.generate(row, [7], masked, stops, argmax, 1), "generate: step 1: no selectable logits"),
-        generation_error("negative sampled id", Generation.generate(row, [7], [], stops, lambda _scores: -1, 1), "generate: step 1: invalid sampled token"),
-        generation_error("oversize sampled id", Generation.generate(row, [7], [], stops, lambda _scores: 2, 1), "generate: step 1: invalid sampled token"),
-        generation_error("masked sampled id", Generation.generate(row, [7], [LogitsProcess.SuppressTokensLogitsProcessor([0])], stops, lambda _scores: 0, 1), "generate: step 1: invalid sampled token"),
+        generation_error("negative sampled id", Generation.generate(row, [7], [], stops, lambda _scores: -1, 1), bad_token),
+        generation_error("oversize sampled id", Generation.generate(row, [7], [], stops, lambda _scores: 2, 1), bad_token),
+        generation_error("masked sampled id", Generation.generate(row, [7], [LogitsProcess.SuppressTokensLogitsProcessor([0])], stops, lambda _scores: 0, 1), bad_token),
         generation_success("zero budget", Generation.generate(lambda _tokens: [], [7], [], stops, argmax, 0), [7]),
         generation_success("partial mask", Generation.generate(row, [7], [LogitsProcess.SuppressTokensLogitsProcessor([0])], stops, argmax, 1), [7, 1]),
     ]

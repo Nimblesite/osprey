@@ -102,6 +102,60 @@ theorem canvasGrabOffset (ops : Ops α) (pointer centre : α)
     CanvasGeometry.shifted ops centre (CanvasGeometry.offset ops pointer centre) = pointer :=
   cancel pointer centre
 
+/-- [PRISM-INSTRUMENT-PROOF] A macro at amount zero gives the low end of its range. -/
+theorem macroLow (ops : Ops α) (zero low high exponent : α)
+    (powZero : ops.pow zero exponent = zero)
+    (timesZero : ∀ x, ops.times x zero = zero)
+    (plusZero : ∀ x, ops.plus x zero = x) :
+    FitMath.macroValue ops zero low high exponent = low := by
+  unfold FitMath.macroValue
+  rw [powZero, timesZero, plusZero]
+
+/-- [PRISM-INSTRUMENT-PROOF] A macro at amount one gives the high end of its range. -/
+theorem macroHigh (ops : Ops α) (one low high exponent : α)
+    (powOne : ∀ e, ops.pow one e = one)
+    (timesOne : ∀ x, ops.times x one = x)
+    (cancel : ∀ x y, ops.plus y (ops.minus x y) = x) :
+    FitMath.macroValue ops one low high exponent = high := by
+  unfold FitMath.macroValue
+  rw [powOne, timesOne, cancel]
+
+/-- [PRISM-INSTRUMENT-PROOF] A larger amount never gives a smaller value when the
+    shaping power is monotone and the range runs upward. -/
+theorem macroMonotone (ops : Ops α) (zero a b low high exponent : α)
+    (span : ops.atMost zero (ops.minus high low) = true)
+    (powMono : ops.atMost a b = true → ops.atMost (ops.pow a exponent) (ops.pow b exponent) = true)
+    (timesMono : ∀ k x y, ops.atMost zero k = true → ops.atMost x y = true → ops.atMost (ops.times k x) (ops.times k y) = true)
+    (plusMono : ∀ c x y, ops.atMost x y = true → ops.atMost (ops.plus c x) (ops.plus c y) = true)
+    (ordered : ops.atMost a b = true) :
+    ops.atMost (FitMath.macroValue ops a low high exponent) (FitMath.macroValue ops b low high exponent) = true := by
+  unfold FitMath.macroValue
+  exact plusMono _ _ _ (timesMono _ _ _ span (powMono ordered))
+
+/-- [PRISM-INSTRUMENT-PROOF] Every amount from zero to one gives a value inside the
+    macro's range: the ends are exact and the path between them is monotone. -/
+theorem macroInRange (ops : Ops α) (zero one amount low high exponent : α)
+    (span : ops.atMost zero (ops.minus high low) = true)
+    (powZero : ops.pow zero exponent = zero)
+    (powOne : ∀ e, ops.pow one e = one)
+    (timesZero : ∀ x, ops.times x zero = zero)
+    (timesOne : ∀ x, ops.times x one = x)
+    (plusZero : ∀ x, ops.plus x zero = x)
+    (cancel : ∀ x y, ops.plus y (ops.minus x y) = x)
+    (powMono : ∀ a b, ops.atMost a b = true → ops.atMost (ops.pow a exponent) (ops.pow b exponent) = true)
+    (timesMono : ∀ k x y, ops.atMost zero k = true → ops.atMost x y = true → ops.atMost (ops.times k x) (ops.times k y) = true)
+    (plusMono : ∀ c x y, ops.atMost x y = true → ops.atMost (ops.plus c x) (ops.plus c y) = true)
+    (above : ops.atMost zero amount = true) (below : ops.atMost amount one = true) :
+    ops.atMost low (FitMath.macroValue ops amount low high exponent) = true ∧
+      ops.atMost (FitMath.macroValue ops amount low high exponent) high = true := by
+  constructor
+  · have rising := macroMonotone ops zero zero amount low high exponent span (powMono zero amount) timesMono plusMono above
+    rw [macroLow ops zero low high exponent powZero timesZero plusZero] at rising
+    exact rising
+  · have rising := macroMonotone ops zero amount one low high exponent span (powMono amount one) timesMono plusMono below
+    rw [macroHigh ops one low high exponent powOne timesOne cancel] at rising
+    exact rising
+
 /-- Once the sample-rate-scaled attack completes, a held note passes the input sample. -/
 theorem envelopeSustain (ops : Ops α) (sample frame gate attack release rate : α)
     (risen : ops.atLeast frame (ops.times attack rate) = true)

@@ -66,6 +66,8 @@ test: build _build_c_runtime_tests
 # test` subcommand itself stays covered by `make -C src/toolchain/targets/tests bank` and the CLI e2e suite.
 	$(MAKE) _conformance-gc
 	$(MAKE) _conformance-arc
+	$(MAKE) _doctests-gc
+	$(MAKE) _doctests-arc
 	$(MAKE) _conformance-ownership
 	$(MAKE) _test_proof_kernel
 	$(MAKE) _test_ownership_proof
@@ -159,9 +161,9 @@ _invalidate_ci_stamp:
 
 .PHONY: _ci-contracts
 _ci-contracts:
-	node --test scripts/ci/ci-scope.test.mjs scripts/ci/preflight.test.mjs
+	node --test scripts/ci/ci-scope.test.mjs scripts/ci/preflight.test.mjs scripts/ci/verify-threshold-ratchet.test.mjs
 
-_runtime_wasm _test_wasm_goldens: export PATH := $(WASM_PATH_PREFIX)$(PATH)
+_runtime_wasm _test_wasm_goldens _test_wasm_doctests: export PATH := $(WASM_PATH_PREFIX)$(PATH)
 
 ## preflight: Every check the PR workflows run (each run: step and the emulator script, read from ci.yml and the workflows it calls), each run even after one fails, coverage gates last; prints a PASS/FAIL/SKIP table (also target/preflight/summary.md) and fails if any check failed. ONLY=<regex> runs a subset.
 .PHONY: preflight

@@ -8,6 +8,9 @@ import ui::Ui
 import vscode::Editor
 import ui::Requests
 
+fileWork = "file:///work"
+ospreyPackages = "osprey.packages"
+
 // Every request the Editor builds, read as the typed `HostCall` it carries:
 // no envelope is written or parsed anywhere.
 
@@ -58,7 +61,7 @@ snapshot ticket =
     result
 
 test ("editor workspace requests use the shared framework envelope", \() =>
-    result = snapshot "workspace:1")
+    _result = snapshot "workspace:1")
 
 test ("opening a document preserves its URI and source location", \() =>
     result = Editor::openDocument ("open:1", "file:///work/my%20app/main.osp", 12, 4)
@@ -76,18 +79,18 @@ test ("process input is data with explicit workspace, timeout and output bounds"
     expect (argumentText (result, "argv"), "tree,--direct")
     expect (bound (result, false), 1048576)
     expect (bound (result, true), 30000)
-    allRefused [Editor::processInput ("bad", "tool", [], "", "file:///work", 0, 10, "out"), Editor::processInput ("bad", "tool", [], "", "file:///work", 1, 0, "out")])
+    allRefused [Editor::processInput ("bad", "tool", [], "", fileWork, 0, 10, "out"), Editor::processInput ("bad", "tool", [], "", fileWork, 1, 0, "out")])
 
 test ("configuration and view requests preserve resource scope", \() =>
-    result = Editor::configuration ("config:1", "osprey.packages", "vscode-remote://ssh-remote+dev/work/app")
+    result = Editor::configuration ("config:1", ospreyPackages, "vscode-remote://ssh-remote+dev/work/app")
     expect (field result, "vscode|configuration.read")
-    expect (argumentText (result, "section"), "osprey.packages")
+    expect (argumentText (result, "section"), ospreyPackages)
     expect (argumentText (result, "workspace"), "vscode-remote://ssh-remote+dev/work/app")
-    expect (field (Editor::revealView ("view:1", "osprey.packages")), "vscode|webview.reveal")
-    allRefused [Editor::configuration ("bad", "", "file:///work"), Editor::configuration ("bad", "section", "https://example.test"), Editor::revealView ("bad", "")])
+    expect (field (Editor::revealView ("view:1", ospreyPackages)), "vscode|webview.reveal")
+    allRefused [Editor::configuration ("bad", "", fileWork), Editor::configuration ("bad", "section", "https://example.test"), Editor::revealView ("bad", "")])
 
 test ("invalid tickets process scope and excessive limits fail explicitly", \() =>
-    allRefused [Editor::workspaces "", Editor::processInput ("bad", "", [], "", "file:///work", 1, 10, "out"), Editor::processInput ("bad", "tool", [], "", "https://example.test", 1, 10, "out"), Editor::processInput ("bad", "tool", [], "", "file:///work", 1, 10, ""), Editor::processInput ("bad", "tool", [], "", "file:///work", 120001, 10, "out"), Editor::processInput ("bad", "tool", [], "", "file:///work", 1, 16777217, "out")])
+    allRefused [Editor::workspaces "", Editor::processInput ("bad", "", [], "", fileWork, 1, 10, "out"), Editor::processInput ("bad", "tool", [], "", "https://example.test", 1, 10, "out"), Editor::processInput ("bad", "tool", [], "", fileWork, 1, 10, ""), Editor::processInput ("bad", "tool", [], "", fileWork, 120001, 10, "out"), Editor::processInput ("bad", "tool", [], "", fileWork, 1, 16777217, "out")])
 
 test ("editor workspace requests use the shared framework envelope (extra: a second workspace reads its own ticket and field)", \() =>
     second = snapshot "workspace:2"
@@ -162,7 +165,7 @@ test ("WASM frames route opaque state through real application entry points", \(
     expect (refused.surfaceSession.sessionStore.count, 1)
     expect (contains webRows "Count 1", true)
     // An event kind the boundary does not know refuses the same way, and a lifecycle phase delivers.
-    odd = delivered (edited, webTouch (42, 0, ""), 1)
+    _odd = delivered (edited, webTouch (42, 0, ""), 1)
     expect (webAsks, "0/101/Unknown control 9;0/101/Unknown event kind 42;")
     phased = delivered (edited, webTouch (Hosting::phase, 0, "active"), 0)
     expect (phased.surfaceSession.sessionStore.count, 1)))

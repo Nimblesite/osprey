@@ -119,14 +119,16 @@ fn lower_file_namespace(mut items: Vec<MlItem>, index: usize) -> Vec<Stmt> {
     let Some(MlItem::Namespace { name, pos, .. }) = items.pop() else {
         return lower_items(items);
     };
-    let (owned, rest) = split_at_next_file_namespace(tail);
+    let doc = take_outer_doc(&mut items);
+    let (mut owned, rest) = split_at_next_file_namespace(tail);
+    let inner_doc = take_inner_doc(&mut owned);
     let mut out = lower_items(items);
     out.push(Stmt::Namespace {
         name: lower_namespace_name(name),
         body: lower_items(owned),
         file_scoped: true,
-        doc: None,
-        inner_doc: None,
+        doc,
+        inner_doc,
         position: Some(pos),
     });
     out.extend(lower_items(rest));
@@ -142,8 +144,24 @@ fn split_at_next_file_namespace(mut items: Vec<MlItem>) -> (Vec<MlItem>, Vec<MlI
     else {
         return (items, Vec::new());
     };
-    let rest = items.split_off(at);
+    // The `///` above the next header documents that header, so it opens `rest`.
+    let header = match items.get(at.wrapping_sub(1)) {
+        Some(MlItem::Doc(_)) => at - 1,
+        _ => at,
+    };
+    let rest = items.split_off(header);
     (items, rest)
+}
+
+/// The `///` that ends `items`, documenting the file-scoped header that follows them ([DOC-MODEL]).
+fn take_outer_doc(items: &mut Vec<MlItem>) -> Option<DocComment> {
+    match items.pop() {
+        Some(MlItem::Doc(text)) => Some(crate::docparse::parse_doc(&text, DocScope::Outer)),
+        other => {
+            items.extend(other);
+            None
+        }
+    }
 }
 
 /// Stateful pairing of docs/signatures with the declaration they annotate.

@@ -16,35 +16,24 @@ fn module_files_use_the_assembled_project_graph() {
     let (path, source) = repo_file("src/osprey/examples/talon/backend/main.ospml");
     let uri = format!("file://{}", path.display());
     let diagnostics = compute(&source, &uri, U16);
-    assert_warnings(&diagnostics, &bank_warnings());
-}
-
-fn bank_warnings() -> Vec<(&'static str, &'static str, crate::model::Span)> {
-    vec![
-        ("namespace-folder-drift", "namespace `bank` spans 5 folders; source paths do not change its identity", (3, 0, 3, 14)),
-        ("unused-pattern-binding", "unused pattern binding `message`", (14, 22, 14, 29)),
-        ("unused-variable", "unused variable `freed`", (15, 12, 15, 17)),
-        ("unused-pattern-binding", "unused pattern binding `message`", (17, 14, 17, 21)),
-        ("unused-pattern-binding", "unused pattern binding `message`", (43, 14, 43, 21)),
-        ("unused-pattern-binding", "unused pattern binding `value`", (44, 16, 44, 21)),
-        ("unused-variable", "unused variable `slept`", (45, 12, 45, 17)),
-        ("unused-variable", "unused variable `held`", (68, 4, 68, 8)),
-        ("unused-variable", "unused variable `stopped`", (69, 4, 69, 11)),
-        ("unused-variable", "unused variable `closed`", (70, 4, 70, 10)),
-        ("unused-variable", "unused variable `stopped`", (74, 4, 74, 11)),
-        ("unused-variable", "unused variable `closed`", (75, 4, 75, 10)),
-        ("unused-variable", "unused variable `report`", (76, 4, 76, 10)),
-        ("unused-variable", "unused variable `closed`", (82, 8, 82, 14)),
-        ("unused-variable", "unused variable `report`", (83, 8, 83, 14)),
-        ("unused-pattern-binding", "unused pattern binding `listening`", (87, 16, 87, 25)),
-        ("unused-variable", "unused variable `made`", (94, 4, 94, 8)),
-        ("unused-parameter", "unused parameter `headers`", (102, 29, 102, 36)),
-        ("unused-variable", "unused variable `seen`", (103, 4, 103, 8)),
-        ("unused-variable", "unused variable `reported`", (110, 12, 110, 20)),
-        ("repeated-literal", "the literal `\"/api/accounts\"` is written 4 times in this file; name it once as a constant", (20, 4, 20, 82)),
-        ("repeated-literal", "the literal `\"/api/deposit\"` is written 3 times in this file; name it once as a constant", (23, 4, 23, 131)),
-        ("consecutive-print", "4 `print` calls in a row: join them into one interpolated `print`", (29, 4, 29, 141)),
-    ]
+    // The backend is lint-clean, and its `Ledger::`, `Api::` and `Metrics::`
+    // references resolve only through talon's project graph.
+    assert_warnings(&diagnostics, &[]);
+    let standalone = compute(&source, "file:///no/project/main.ospml", U16);
+    assert!(
+        standalone
+            .iter()
+            .any(|d| d.severity == Severity::Error && d.message.contains("Ledger::")),
+        "outside its project the backend's modules are unresolved: {standalone:?}"
+    );
+    // `bank` spans five folders by design, and talon's `osprey.toml` sets
+    // `namespace-folder-drift = "allow"` ([LINT-LEVELS]).
+    assert!(
+        !diagnostics
+            .iter()
+            .any(|d| d.code.as_deref() == Some("namespace-folder-drift")),
+        "talon's lint levels allow namespace-folder-drift: {diagnostics:?}"
+    );
 }
 
 #[cfg(unix)]

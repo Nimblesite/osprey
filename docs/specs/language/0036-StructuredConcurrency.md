@@ -1,8 +1,8 @@
 # Structured Concurrency: Cancellation and Turn Isolation
 
-**Status:** normative target; implementation has not started. [Plan 0026](../../plans/0026-structured-concurrency.md) owns delivery. Existing fibers and handler serialization do not establish support for `scope`, cancellation, finalizers, or transactions.
+**Status:** normative target; implementation has not started. The structured-concurrency section of [plan 0016](../../plans/0016-algebraic-effects-and-handlers.md#structured-concurrency) owns delivery. Existing fibers and handler serialization do not establish support for `scope`, cancellation, finalizers, or transactions.
 
-This specification defines scheduling, scopes and cancellation. [Algebraic Effects](0017-AlgebraicEffects.md) defines operation modes, continuation ownership, replay and finalization. Implementation status belongs in [plan 0026](../../plans/0026-structured-concurrency.md); basic fiber operations are defined in [Fibers and Concurrency](0011-LightweightFibersAndConcurrency.md).
+This specification defines scheduling, scopes and cancellation. [Algebraic Effects](0017-AlgebraicEffects.md) defines operation modes, continuation ownership, replay and finalization. Implementation status belongs in [plan 0016](../../plans/0016-algebraic-effects-and-handlers.md#structured-concurrency); basic fiber operations are defined in [Fibers and Concurrency](0011-LightweightFibersAndConcurrency.md).
 
 The key words `MUST`, `MUST NOT`, `SHOULD`, and `MAY` are to be interpreted as
 described by BCP 14 (RFC 2119 and RFC 8174) when they appear in capitals. A

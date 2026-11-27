@@ -26,24 +26,146 @@ module Backends {
     /// is the representation the handler picks. Fallible operations answer
     /// `Error` with the reason ([FAILURE-EXPLICIT]).
     export static effect Tensor<B> {
+        /// Builds a buffer of `size` elements, element `i` from `kernel(i)`; a negative size answers `Error`.
+        ///
+        /// # Examples
+        /// ```osprey
+        /// fn stepped(i) = toFloat32(i * 2)
+        /// let built = strictly(fn() => Cpu::onLists(fn() => toString(Model::orStop(perform Tensor.build(2, stepped), Model::empty))))
+        /// let refused = strictly(fn() => Cpu::onLists(fn() => toString(Model::orStop(perform Tensor.build(0 - 1, stepped), Model::empty))))
+        /// print("${built} ${refused}")
+        /// ```
+        /// ```output
+        /// Success([0.0, 2.0]) Error(Tensor.build: a negative element count)
+        /// ```
         build: fn(int, Kernel) -> Result<B, string>
+        /// Reads element `index` of `buffer`; an index past the end reads the zero under `onLists`.
+        ///
+        /// # Examples
+        /// ```osprey
+        /// let second = strictly(fn() => Cpu::onLists(fn() => perform Tensor.get([toFloat32(1.0), toFloat32(4.0)], 1)))
+        /// let past = strictly(fn() => Cpu::onLists(fn() => perform Tensor.get([toFloat32(1.0)], 3)))
+        /// print("second ${second}, past the end ${past}")
+        /// ```
+        /// ```output
+        /// second Success(4.0), past the end Success(0.0)
+        /// ```
         get: fn(B, int) -> float32
+        /// The element count of `buffer`.
+        ///
+        /// # Examples
+        /// ```osprey
+        /// let n = strictly(fn() => Cpu::onLists(fn() => perform Tensor.length([toFloat32(1.0), toFloat32(4.0)])))
+        /// print("${n}")
+        /// ```
+        /// ```output
+        /// Success(2)
+        /// ```
         length: fn(B) -> int
+        /// Combines `a` and `b` element by element through `combine`, or answers `Error` with the reason.
+        ///
+        /// # Examples
+        /// ```osprey
+        /// fn times(a, x) = a * x
+        /// let zipped = strictly(fn() => Cpu::onLists(fn() => toString(Model::orStop(perform Tensor.zipWith([toFloat32(1.0), toFloat32(2.0)], [toFloat32(10.0), toFloat32(20.0)], times), Model::empty))))
+        /// print("${zipped}")
+        /// ```
+        /// ```output
+        /// Success([10.0, 40.0])
+        /// ```
         zipWith: fn(B, B, Combine) -> Result<B, string>
+        /// Folds `combine` over the elements of `buffer` from `seed`, or answers `Error` with the reason.
+        ///
+        /// # Examples
+        /// ```osprey
+        /// fn added(a, x) = a + x
+        /// let summed = strictly(fn() => Cpu::onLists(fn() => toString(Model::orStop(perform Tensor.reduce([toFloat32(1.0), toFloat32(2.0), toFloat32(3.0)], toFloat32(0.0), added), fn() => toFloat32(0.0)))))
+        /// print("${summed}")
+        /// ```
+        /// ```output
+        /// Success(6.0)
+        /// ```
         reduce: fn(B, float32, Combine) -> Result<float32, string>
+        /// The first index holding `value`, or `Error` with the reason.
+        ///
+        /// # Examples
+        /// ```osprey
+        /// let found = strictly(fn() => Cpu::onLists(fn() => toString(Model::orStop(perform Tensor.indexOf([toFloat32(3.0), toFloat32(1.0), toFloat32(4.0)], toFloat32(4.0)), fn() => 0 - 1))))
+        /// let absent = strictly(fn() => Cpu::onLists(fn() => toString(Model::orStop(perform Tensor.indexOf([toFloat32(3.0)], toFloat32(4.0)), fn() => 0 - 1))))
+        /// print("${found} ${absent}")
+        /// ```
+        /// ```output
+        /// Success(2) Success(1)
+        /// ```
         indexOf: fn(B, float32) -> Result<int, string>
+        /// a [rows, inner] times b [inner, cols]; operands that disagree with the stated shape answer `Error`.
+        ///
+        /// # Examples
+        /// ```osprey
+        /// let prod = strictly(fn() => Cpu::onLists(fn() => toString(Model::orStop(perform Tensor.matMul([toFloat32(1.0), toFloat32(2.0), toFloat32(3.0), toFloat32(4.0)], [toFloat32(5.0), toFloat32(6.0), toFloat32(7.0), toFloat32(8.0)], 2, 2, 2), Model::empty))))
+        /// let misfit = strictly(fn() => Cpu::onLists(fn() => toString(Model::orStop(perform Tensor.matMul([toFloat32(1.0), toFloat32(2.0)], [toFloat32(1.0)], 1, 1, 1), Model::empty))))
+        /// print("${prod} ${misfit}")
+        /// ```
+        /// ```output
+        /// Success([19.0, 22.0, 43.0, 50.0]) Error(gpuMatMul: left operand: has 2 elements, the stated shape needs 1)
+        /// ```
         matMul: fn(B, B, int, int, int) -> Result<B, string>
+        /// Lifts host values into a buffer, or answers `Error` with the reason.
+        ///
+        /// # Examples
+        /// ```osprey
+        /// let lifted = strictly(fn() => Cpu::onLists(fn() => toString(Model::orStop(perform Tensor.fromList([toFloat32(1.0), toFloat32(2.0)]), Model::empty))))
+        /// print("${lifted}")
+        /// ```
+        /// ```output
+        /// Success([1.0, 2.0])
+        /// ```
         fromList: fn(List<float32>) -> Result<B, string>
+        /// The tensor `name` of the safetensors file at `path`, or `Error` with the loader's reason.
+        ///
+        /// # Examples
+        /// ```osprey
+        /// let missing = strictly(fn() => Cpu::onLists(fn() => toString(Model::orStop(perform Tensor.load("no-such-weights.safetensors", "wte.weight"), Model::empty))))
+        /// print("${missing}")
+        /// ```
+        /// ```output
+        /// Error(loadTensor: no-such-weights.safetensors: No such file or directory)
+        /// ```
         load: fn(string, string) -> Result<B, string>
+        /// The handler's own name for where the arithmetic runs.
+        ///
+        /// # Examples
+        /// ```osprey
+        /// let lists = strictly(fn() => Cpu::onLists(fn() => perform Tensor.device()))
+        /// let host = strictly(fn() => Gpu::onGpu(fn() => perform Tensor.device()))
+        /// print("${lists} ${host}")
+        /// ```
+        /// ```output
+        /// Success(lists) Success(host)
+        /// ```
         device: fn() -> string
     }
 
     /// `indexOf`'s two steps under both handlers: element i names itself when
     /// it holds x and the length n otherwise, and the smallest name wins, so
     /// the answer is the first index holding x or n when none does.
+    /// # Examples
+    /// ```osprey
+    /// print("${hit(toFloat32(2.0), toFloat32(2.0), 1, 3)} ${hit(toFloat32(1.0), toFloat32(2.0), 1, 3)}")
+    /// ```
+    /// ```output
+    /// 1 3
+    /// ```
     export fn hit(v, x, i, n) = match v == x { true => i  false => n }
     /// `indexOf`'s second step: the smaller of the least name so far and the
     /// next, so folding `hit`'s names ends at the first index holding x.
+    /// # Examples
+    /// ```osprey
+    /// print("${minI(2, 1)} ${minI(1, 2)}")
+    /// ```
+    /// ```output
+    /// 1 1
+    /// ```
     export fn minI(a, i) = match i < a { true => i  false => a }
 
     /// A fault ends the run: its arm answers the whole region. Arithmetic
@@ -54,17 +176,41 @@ module Backends {
 
     /// Stops the run with `reason`: the surrounding `strictly` answers Error
     /// naming it. The operation never resumes.
+    /// # Examples
+    /// ```osprey
+    /// let stopped = strictly(fn() => stop("stopped on purpose"))
+    /// print("${stopped}")
+    /// ```
+    /// ```output
+    /// Error(stopped on purpose)
+    /// ```
     export fn stop(reason) = perform Fault.halt(reason)
 
     /// The reason a product refuses operands whose element count disagrees
     /// with the stated shape: the GPU runtime's own `gpuMatMul` text, so both
     /// interpretations stop alike.
+    /// # Examples
+    /// ```osprey
+    /// print(productLengths("left", 3, 4))
+    /// ```
+    /// ```output
+    /// gpuMatMul: left operand: has 3 elements, the stated shape needs 4
+    /// ```
     export fn productLengths(side, has, needs) = "gpuMatMul: ${side} operand: has ${has} elements, the stated shape needs ${needs}"
 
     /// Runs `work` under GPT-2's arithmetic policy: Success with its value, or
     /// Error naming the first fault. A fault is a bug in the model, never a value
     /// to substitute — a fabricated 0.0 is indistinguishable from a real logit —
     /// so it stops the run, as a device kernel's fault does [GPU-DEVICE-FAULT].
+    /// # Examples
+    /// ```osprey
+    /// let sum = strictly(fn() => 2 + 2)
+    /// let fault = strictly(fn() => toFloat32(1.0) / toFloat32(0.0))
+    /// print("${sum} ${fault}")
+    /// ```
+    /// ```output
+    /// Success(4) Error(division by zero: 1.0 / 0)
+    /// ```
     export fn strictly(work) = {
         handle Fault { halt fault => Error { message: fault } }
         handle Arith {
@@ -77,6 +223,17 @@ module Backends {
 
     /// Runs `work` under the handler `name` selects. An unknown name runs
     /// nothing, so a mistyped backend never silently lands on the GPU surface.
+    /// # Examples
+    /// ```osprey
+    /// match strictly(fn() => under("cpu", fn() => print("ran"))) {
+    ///     Success { _ } => print("nothing ran")
+    ///     Error { message } => print(message)
+    /// }
+    /// ```
+    /// ```output
+    /// unknown backend `cpu`: choose gpu or lists
+    /// nothing ran
+    /// ```
     export fn under(name, work) = match name {
         "gpu" => Gpu::onGpu(work)
         "lists" => Cpu::onLists(work)

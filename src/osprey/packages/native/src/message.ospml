@@ -47,7 +47,7 @@ type Message A =
         elapsed : float
     Controlled
         control : A
-        input : Input
+        sceneEvent : Input
 
 (** What a scene's input binding delivers: a key going down or up, the pointer moving or pressing in scene units with Shift held or not, or the scene's region measured in scene units when it first shows and whenever it changes size ([UI-SCENE]). *)
 type Input =
@@ -82,13 +82,13 @@ module Messages
         Completed ticket outcome => completed (ticket, outcome)
         Phase phase => phased phase
         Frame elapsed => framed elapsed
-        Controlled action input => controlled (action, input)
+        Controlled action sceneEvent => controlled (action, sceneEvent)
 
 (** Takes a scene's input apart for the application's `update` ([UI-SCENE]). *)
 module Inputs
     (** Calls `keyed` with a key's name and whether it went down, `pointed` with the pointer's scene position, whether it is pressed and whether Shift is held, or `viewed` with the region's width and height in scene units. *)
     export route<R> : (Input, (string, bool) -> R, (float, float, bool, bool) -> R, (float, float) -> R, (float, float) -> R) -> R !e
-    route (input, keyed, pointed, viewed, secondary) = match input
+    route (sceneEvent, keyed, pointed, viewed, secondary) = match sceneEvent
         Key name down => keyed (name, down)
         Pointer x y down shift => pointed (x, y, down, shift)
         Viewed width height => viewed (width, height)

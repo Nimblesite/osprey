@@ -55,6 +55,9 @@ framedHi () = "2\r\nhi\r\n0\r\n\r\n"
 oversizeLie () = "7FFFFFFF\r\nhi\r\n"
 oversizeChunk () = "7FFFFFFF\r\nhi\r\n0\r\n\r\n"
 
+(** The outcome of decoding `framedHi`: status 200 and the body "hi". *)
+hiOutcome = "status=200 body=hi"
+
 framingFor (path, requested) = match path
     "/get-oversized" => oversizeChunk ()
     "/get-valid" => "5\r\nhello\r\n6\r\n world\r\n0\r\n\r\n"
@@ -173,7 +176,7 @@ wellFormedBodies client =
     ] (\c => accepts (client, c.framing, c.body))
 
 whichResponsesAreChunked client =
-    _hi = postsEach (client, framedHi (), "status=200 body=hi", [
+    _hi = postsEach (client, framedHi (), hiOutcome, [
         { name = "lower-case header", path = "/lower" }, { name = "upper-case header", path = "/upper" }, { name = "padded value", path = "/padded" },
         { name = "chunked last", path = "/gzip-chunked" }, { name = "trailing comma", path = "/trailing-comma" }, { name = "empty line after", path = "/empty-line-after" }
     ])
@@ -212,7 +215,7 @@ statusesWithoutABody client =
 
 repeatedHeaderLines client =
     hostile = oversizeLie ()
-    _decoded = postsEach (client, framedHi (), "status=200 body=hi", [{ name = "two lines decode", path = "/two-lines" }, { name = "two lines apart decode", path = "/two-apart" }])
+    _decoded = postsEach (client, framedHi (), hiOutcome, [{ name = "two lines decode", path = "/two-lines" }, { name = "two lines apart decode", path = "/two-apart" }])
     checkEach [
         { name = "two lines still refuse", expected = chunkTooBig (), actual = posted (client, "/two-lines", hostile) }, { name = "gzip last means raw", expected = "status=200 body=${hostile}", actual = posted (client, "/chunked-then-gzip", hostile) }
     ]
@@ -247,7 +250,7 @@ lengthsThatLie client =
     _replaced = postsEach (client, "hello", "status=200 body=hello", [
         { name = "a second, different length", path = "/length-lie" }, { name = "a length that isn't one", path = "/length-junk" }, { name = "a negative length", path = "/length-negative" }
     ])
-    check "chunked ignores a lie" "status=200 body=hi" (posted (client, "/two-lines", framedHi ()))
+    check "chunked ignores a lie" hiOutcome (posted (client, "/two-lines", framedHi ()))
 
 originCase (port, work) = \() => withHostileOrigin (port, work)
 

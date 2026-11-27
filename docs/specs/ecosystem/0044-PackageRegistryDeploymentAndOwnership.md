@@ -1,6 +1,6 @@
 # Package Registry Deployment and Ownership
 
-**Status:** normative delivery target; hosted authentication, ownership enforcement and deployment are not implemented. This completes the operational and tenancy requirements of [plan 0020](../../plans/0020-package-manager.md). The [rollout plan](../../plans/0020-package-manager.md) defines sequencing and required evidence. Existing [publication and trust requirements](0030-PackageRegistryTrustAndDiscovery.md) remain mandatory.
+**Status.** The hosted API implements public catalog reads and browser sign-in, session verification, refresh and logout. [Plan 0020](../../plans/0020-package-manager.md) tracks ownership enforcement, publication and production rollout evidence. The [publication and trust requirements](0030-PackageRegistryTrustAndDiscovery.md) apply to every accepted release.
 
 ## Security boundary `[PACKAGE-HOSTED-BOUNDARY]`
 
@@ -14,16 +14,19 @@ The implementation language contract `[PACKAGE-IMPLEMENTATION-LANGUAGE]` applies
 
 ```mermaid
 flowchart LR
-    U[Browser or CLI] --> CF[Cloudflare DNS, TLS, WAF and rate limits]
-    CF --> LB[GCP HTTPS load balancer and Cloud Armor]
-    LB --> API[Osprey API and browser session endpoints on Cloud Run]
-    CF --> WEB[Versioned static Osprey WebAssembly website]
-    API --> AUTH[Supabase Auth and GitHub OAuth]
-    API --> DB[Supabase PostgreSQL with restricted roles and RLS]
-    API --> JOB[Isolated publication workers]
-    JOB --> GH[GitHub App source collection]
-    JOB --> CAS[Private immutable CAS replicas]
-    JOB --> TRUST[Independent builders, signers, log and witnesses]
+    Pages["Cloudflare Pages"] -->|Serves the website| Web["Osprey Packages in the browser"]
+    Web -->|Search, package details, publisher profiles, downloads, publication intents| Edge["Cloudflare API edge"]
+    CLI["Package client"] --> Edge
+    Edge --> LB["GCP HTTPS load balancer and Cloud Armor"]
+    LB --> API["Osprey Package Manager API on Cloud Run"]
+    API -->|Sessions and GitHub OAuth| Auth["Supabase Auth"]
+    API -->|Catalog, releases, publisher attribution and grants| DB["Supabase PostgreSQL with RLS"]
+    API -->|Seal OAuth verifiers and provider credentials| KMS["Google Cloud KMS"]
+    API -->|Queue authorized publication| Worker["Isolated publication workers"]
+    Worker -->|Fetch bound commit| GitHub["GitHub App"]
+    Worker --> Verify["Independent builders, signers and witnesses"]
+    Worker -->|Store release source| CAS["Private digest-addressed storage"]
+    API -->|Read eligible release by digest| CAS
 ```
 
 Use distinct local, staging and production Supabase projects, GCP resources, storage, GitHub OAuth applications, GitHub Apps, signing identities and secrets. Default runtime region is `australia-southeast1`; select a compatible Supabase region and record the actual choice and latency. Account IDs, domains and capacity limits MUST be inventoried before provisioning; reference projects' IDs and secrets MUST NOT be reused.
@@ -69,11 +72,31 @@ The canonical typeDiagram and DataProvider migration define organization/members
 
 ## Website and API surface `[PACKAGE-HOSTED-ROUTES]`
 
+### Public package catalog `[PACKAGE-HOSTED-ROUTES-CATALOG]`
+
+Osprey Packages is the public website for finding, evaluating and downloading Osprey packages. A visitor can complete this journey without an account, editor or CLI.
+
+The registry owns its navigation, search results, package descriptions, release pages, publisher profiles and package-management help on its own website. The download button may deliver bytes from the dedicated content origin. A link to the Osprey Language website is appropriate for optional language reference material; every registry journey must work when that website is unavailable.
+
+| Page or action | Required visitor experience |
+| --- | --- |
+| Browse at `/` | Open directly on a browsable catalog of published packages with a prominent search field. Each result links to the package and shows its scoped name, short description, latest release’s SPDX license badge and known security warnings. Visitors can browse further results without entering a query. Documentation is secondary navigation. |
+| Upload at `/upload/` | Expose **Upload a package** in the catalog header. Start the authenticated publication flow here, preserve the destination through sign-in, show the selected package and bound commit, and return the status of the signed publication intent. |
+| Search | Search by package name, organization or descriptive terms under the discovery rules. Give results a shareable URL, retain the query when returning from a package, and distinguish no matches from an unavailable catalog. |
+| Read a package | Give every package a permanent page with its description, owning organization, available releases, dependencies, warnings and a link to the public profile of the publisher credited on each release. Show the latest release’s license and link directly to its notice documents when present. Make each release’s supplied license text readable from its badge. Serve hosted license text as plain text from the verified release bundle on the content origin. Each release retains its own license and attribution metadata under [PACKAGE-LICENSE-DISTRIBUTION]. Render notice text as plain text. |
+| Read API documentation | Link each release to its own compiler-generated API reference beside its download action. Generate from that release’s source with its verified dependencies. Serve production documentation on the isolated documentation origin. |
+| Download | Provide a browser download action on the package page for the selected eligible release. Show the release identifier and digest, and serve the matching source as an attachment through the existing digest-addressed source route. Enforce the release status and evidence rules on direct download requests too. |
+| View a publisher | Give each publisher with public releases a permanent, shareable profile keyed by stable public identity. Show the publisher's public display name and link back to the packages and releases they published. Derive attribution from verified release records, so removing a publishing grant preserves historical credit. Exclude private memberships, grants, contact details and unpublished work. |
+
 These are planned route contracts, not implemented endpoints. Preserve the existing folder-registry GET routes and their canonical `@organization/package` semantics. Control routes use immutable organization/package IDs; the API resolves and checks every ID relationship itself. In this table, `P` means `/v1/organizations/{organizationId}/packages/{packageId}`. It is notation for that exact scoped prefix, not an alternative unscoped route.
+
+The catalog, publisher profiles and generated release documentation share the Osprey Packages header, typography, stylesheet and approved tabbed-drawer icon. Fix the header at the top of the viewport and reserve its height in the page layout. On narrow screens its menu links to packages, publishers, tags and upload. Use shared width, height and offset constants for the catalog banner across routes. The width fits the viewport and the height and top offset stay fixed. Use the same SVG for the header and favicon. Every reference page identifies its package and release and links directly back to the package.
 
 | Website/CLI flow | API surface to implement | Required actor and boundary |
 | --- | --- | --- |
+| Browse by publisher or tag | The catalog links to publisher and tag directories. Publisher profiles link to their attributed releases. A tag gets a public browse page and package-page links when at least five distinct visible packages use it. | Use public release attribution and validated manifest keywords. Apply the same visibility and warning rules as catalog search. |
 | Browse/search, package page, verified download | Existing `GET /v1/packages`, `GET /v1/packages/{scope}/{name}`, `GET /v1/releases/{digest}` and `/source`; search extends the catalog surface | Anonymous public projection only; every result displays its organization and known security warnings; no quarantined/private source |
+| Publisher profile and published releases | `GET /v1/publishers/{publisherId}` and paginated `GET /v1/publishers/{publisherId}/releases` | Anonymous public attribution from verified releases. Package ownership and permission to publish remain governed by spec 0045. |
 | Check a package name | `GET /v1/organizations/{organizationId}/package-name-availability?name=...` | Active member; resolve only this org/name pair, including its tombstones; never report global leaf-name availability |
 | GitHub login and browser session | `GET /v1/auth/github/start`, `GET /v1/auth/github/callback`, `GET /v1/auth/session`, `POST /v1/auth/logout` | One-use PKCE/state for login; live identity for session reads; logout invalidates the registry session; API callback and return website are configuration-pinned |
 | Enroll/use publication or governance credentials | `POST /v1/auth/webauthn/enrollment-challenges`, `/enrollments`, `/assertion-challenges` and `/assertions` | Verified principal, exact action/payload/origin, single-use challenge and existing credential/recovery proof where required; generic step-up never substitutes for a signed release payload |

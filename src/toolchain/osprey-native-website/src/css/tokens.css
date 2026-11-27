@@ -1,0 +1,166 @@
+/* Osprey Native — "Luminous Flight" Design Tokens
+ * Light-first Flutter.dev / ReactNative.dev-inspired palette with automatic Dark Mode
+ * via color-scheme + light-dark(), prefers-color-scheme fallback, and Forced Colors support.
+ */
+
+:root {
+  color-scheme: light dark;
+
+  /* Light mode (airy, luminous daylight canvas) */
+  --surface-light: #ffffff;
+  --surface-alt-light: #f4f7fb;
+  --surface-raised-light: #ffffff;
+  --surface-subtle-light: #eef2f8;
+  --ink-light: #0f172a;
+  --ink-muted-light: #475569;
+  --border-light: #e2e8f0;
+  --border-strong-light: #cbd5e1;
+  --brand-native-light: #0265dc;
+  --brand-native-hover-light: #0051b5;
+  --brand-canvas-light: #6d28d9;
+  --brand-signal-light: #057a55;
+  --on-brand-light: #ffffff;
+  --tint-native-light: #e8f2ff;
+  --tint-canvas-light: #f1ebff;
+  --tint-signal-light: #e6f7f0;
+  --shadow-card-light: 0 12px 32px rgb(15 23 42 / 0.06), 0 2px 6px rgb(15 23 42 / 0.04);
+  --shadow-device-light: 0 30px 70px rgb(15 23 42 / 0.16), 0 8px 20px rgb(15 23 42 / 0.08);
+  --header-bg-light: rgb(255 255 255 / 0.86);
+
+  /* Dark mode (crisp carbon-slate — distinct from Osprey's #0c1325 navy) */
+  --surface-dark: #0d1117;
+  --surface-alt-dark: #121821;
+  --surface-raised-dark: #161d27;
+  --surface-subtle-dark: #1c2432;
+  --ink-dark: #f0f6fc;
+  --ink-muted-dark: #9fb0c7;
+  --border-dark: #253041;
+  --border-strong-dark: #38475d;
+  --brand-native-dark: #4da3ff;
+  --brand-native-hover-dark: #74b9ff;
+  --brand-canvas-dark: #a78bfa;
+  --brand-signal-dark: #34d399;
+  --on-brand-dark: #0b1220;
+  --tint-native-dark: #12263f;
+  --tint-canvas-dark: #22193d;
+  --tint-signal-dark: #0f2d24;
+  --shadow-card-dark: 0 14px 36px rgb(0 0 0 / 0.35);
+  --shadow-device-dark: 0 32px 80px rgb(0 0 0 / 0.55);
+  --header-bg-dark: rgb(13 17 23 / 0.86);
+
+  /* Always-dark crisp code window */
+  --code-surface: #0f172a;
+  --code-chrome: #162033;
+  --code-ink: #e2e8f0;
+  --code-muted: #94a3b8;
+
+  /* Default (light) semantic tokens — fallback for browsers without light-dark() */
+  --surface: var(--surface-light);
+  --surface-alt: var(--surface-alt-light);
+  --surface-raised: var(--surface-raised-light);
+  --surface-subtle: var(--surface-subtle-light);
+  --ink: var(--ink-light);
+  --ink-muted: var(--ink-muted-light);
+  --border: var(--border-light);
+  --border-strong: var(--border-strong-light);
+  --brand-native: var(--brand-native-light);
+  --brand-native-hover: var(--brand-native-hover-light);
+  --brand-canvas: var(--brand-canvas-light);
+  --brand-signal: var(--brand-signal-light);
+  --on-brand: var(--on-brand-light);
+  --tint-native: var(--tint-native-light);
+  --tint-canvas: var(--tint-canvas-light);
+  --tint-signal: var(--tint-signal-light);
+  --shadow-card: var(--shadow-card-light);
+  --shadow-device: var(--shadow-device-light);
+  --header-bg: var(--header-bg-light);
+
+  @media (prefers-color-scheme: dark) {
+    --surface: var(--surface-dark);
+    --surface-alt: var(--surface-alt-dark);
+    --surface-raised: var(--surface-raised-dark);
+    --surface-subtle: var(--surface-subtle-dark);
+    --ink: var(--ink-dark);
+    --ink-muted: var(--ink-muted-dark);
+    --border: var(--border-dark);
+    --border-strong: var(--border-strong-dark);
+    --brand-native: var(--brand-native-dark);
+    --brand-native-hover: var(--brand-native-hover-dark);
+    --brand-canvas: var(--brand-canvas-dark);
+    --brand-signal: var(--brand-signal-dark);
+    --on-brand: var(--on-brand-dark);
+    --tint-native: var(--tint-native-dark);
+    --tint-canvas: var(--tint-canvas-dark);
+    --tint-signal: var(--tint-signal-dark);
+    --shadow-card: var(--shadow-card-dark);
+    --shadow-device: var(--shadow-device-dark);
+    --header-bg: var(--header-bg-dark);
+  }
+
+  @supports (color: light-dark(white, black)) {
+    --surface: light-dark(var(--surface-light), var(--surface-dark));
+    --surface-alt: light-dark(var(--surface-alt-light), var(--surface-alt-dark));
+    --surface-raised: light-dark(var(--surface-raised-light), var(--surface-raised-dark));
+    --surface-subtle: light-dark(var(--surface-subtle-light), var(--surface-subtle-dark));
+    --ink: light-dark(var(--ink-light), var(--ink-dark));
+    --ink-muted: light-dark(var(--ink-muted-light), var(--ink-muted-dark));
+    --border: light-dark(var(--border-light), var(--border-dark));
+    --border-strong: light-dark(var(--border-strong-light), var(--border-strong-dark));
+    --brand-native: light-dark(var(--brand-native-light), var(--brand-native-dark));
+    --brand-native-hover: light-dark(var(--brand-native-hover-light), var(--brand-native-hover-dark));
+    --brand-canvas: light-dark(var(--brand-canvas-light), var(--brand-canvas-dark));
+    --brand-signal: light-dark(var(--brand-signal-light), var(--brand-signal-dark));
+    --on-brand: light-dark(var(--on-brand-light), var(--on-brand-dark));
+    --tint-native: light-dark(var(--tint-native-light), var(--tint-native-dark));
+    --tint-canvas: light-dark(var(--tint-canvas-light), var(--tint-canvas-dark));
+    --tint-signal: light-dark(var(--tint-signal-light), var(--tint-signal-dark));
+    --header-bg: light-dark(var(--header-bg-light), var(--header-bg-dark));
+  }
+
+  --font-sans: "Plus Jakarta Sans", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --space-1: 0.5rem;
+  --space-2: 1rem;
+  --space-3: 1.5rem;
+  --space-4: 2rem;
+  --space-5: 3rem;
+  --space-6: 4rem;
+  --space-8: 5.5rem;
+  --container-max: 75rem;
+  --radius-sm: 10px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --radius-pill: 999px;
+
+  accent-color: var(--brand-native);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --shadow-card: var(--shadow-card-light);
+  --shadow-device: var(--shadow-device-light);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --shadow-card: var(--shadow-card-dark);
+  --shadow-device: var(--shadow-device-dark);
+}
+
+@media (forced-colors: active) {
+  :root {
+    --surface: Canvas;
+    --surface-alt: Canvas;
+    --surface-raised: Canvas;
+    --surface-subtle: Canvas;
+    --ink: CanvasText;
+    --ink-muted: CanvasText;
+    --border: ButtonBorder;
+    --border-strong: ButtonBorder;
+    --brand-native: LinkText;
+    --brand-canvas: Highlight;
+    --brand-signal: Highlight;
+    --on-brand: HighlightText;
+  }
+}

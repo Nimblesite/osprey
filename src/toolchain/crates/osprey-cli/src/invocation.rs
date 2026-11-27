@@ -18,7 +18,7 @@ pub(crate) const USAGE: &str =
        osprey --hover <name>\n\
        osprey --docs [<file-or-project> | --source <file-or-project>] --docs-dir <dir> \
 [--docs-format markdown|html] [--docs-theme osprey|midnight|paper] \
-[--docs-page <markdown-file-or-directory>]... [--docs-css <stylesheet>]...\n\
+[--docs-page <markdown-file-or-directory>]... [--docs-css <stylesheet>]... [--docs-no-builtins]\n\
        osprey lsp\n\
 Debug options: [--debug-info=dwarf|none] [--debug-opt=none] [--debug-memory=off] \
 [--debug-out <path>] [--debug-preserve-ir] [--debug-preserve-symbols]";

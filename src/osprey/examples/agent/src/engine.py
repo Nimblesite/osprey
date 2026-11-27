@@ -32,7 +32,18 @@ __all__ = [
 ]
 
 OUTPUT_LIMIT = 40000
-"""The most tool output, in bytes, a model is shown; the rest is cut with a note."""
+"""The most tool output, in bytes, a model is shown; the rest is cut with a note.
+
+# Examples
+```osprey
+from agent import Engine
+
+print(f"a tool's answer past {Engine.OUTPUT_LIMIT} bytes is cut")
+```
+```output
+a tool's answer past 40000 bytes is cut
+```
+"""
 
 
 class Wire:
@@ -112,7 +123,18 @@ PROVIDERS = [
     Provider(id="zai", label="GLM (Z.ai API)", keyNames=["ZAI_API_KEY", "GLM_API_KEY"], base="https://api.z.ai/api/paas/v4", models=GLM_MODELS),
     Provider(id="zai-coding", label="GLM Coding Plan", keyNames=["ZAI_CODING_API_KEY"], base="https://api.z.ai/api/coding/paas/v4", models=GLM_MODELS),
 ]
-"""The catalogue: every provider with its models, newest first."""
+"""The catalogue: every provider with its models, newest first.
+
+# Examples
+```osprey
+from agent import Engine
+
+print(f"{len(Engine.PROVIDERS)} providers, newest first: {mapList(Engine.PROVIDERS, lambda p: p.label)}")
+```
+```output
+6 providers, newest first: ["Osprey Qwen", "DeepSeek", "Kimi (Moonshot API)", "Kimi Code plan", "GLM (Z.ai API)", "GLM Coding Plan"]
+```
+"""
 
 
 def find_provider(provider_id):
@@ -131,13 +153,35 @@ def provider_by_id(provider_id):
 
 
 def provider_id_of(model):
-    """The provider of `provider/model`; a value with no `/` is DeepSeek's, as saved conversations hold."""
+    """The provider of `provider/model`; a value with no `/` is DeepSeek's, as saved conversations hold.
+
+    # Examples
+    ```osprey
+    from agent import Engine
+
+    print(f"{Engine.provider_id_of('zai/glm-5.3')} {Engine.provider_id_of('deepseek-chat')} {Engine.provider_id_of('a/b/c')}")
+    ```
+    ```output
+    zai deepseek a
+    ```
+    """
     parts = unwrap_or(split(model, "/"), [model])
     return "deepseek" if len(parts) < 2 else unwrap_or(listGet(parts, 0), "deepseek")
 
 
 def model_id_of(model):
-    """The bare model name of `provider/model`; a value with no `/` is its own name."""
+    """The bare model name of `provider/model`; a value with no `/` is its own name.
+
+    # Examples
+    ```osprey
+    from agent import Engine
+
+    print(f"{Engine.model_id_of('zai/glm-5.3')} {Engine.model_id_of('deepseek-chat')}")
+    ```
+    ```output
+    glm-5.3 deepseek-chat
+    ```
+    """
     parts = unwrap_or(split(model, "/"), [model])
     return model if len(parts) < 2 else unwrap_or(listGet(parts, 1), model)
 
@@ -155,7 +199,18 @@ def entry_of(model):
 
 
 def provider_problem(model):
-    """Why `model` cannot be used, in words; empty when it can."""
+    """Why `model` cannot be used, in words; empty when it can.
+
+    # Examples
+    ```osprey
+    from agent import Engine
+
+    print(f"[{Engine.provider_problem('zai/glm-5.3')}] [{Engine.provider_problem('zai/glm-9')}] [{Engine.provider_problem('acme/x')}]")
+    ```
+    ```output
+    [] [GLM (Z.ai API) has no model named 'glm-9'.] [Unknown provider 'acme'.]
+    ```
+    """
     pid = provider_id_of(model)
     match find_provider(pid):
         case Error(message=_m):
@@ -170,47 +225,146 @@ def provider_problem(model):
 
 
 def provider_ids():
-    """Every provider id, in catalogue order."""
+    """Every provider id, in catalogue order.
+
+    # Examples
+    ```osprey
+    from agent import Engine
+
+    print(Engine.provider_ids())
+    ```
+    ```output
+    ["osprey", "deepseek", "moonshotai", "kimi-coding", "zai", "zai-coding"]
+    ```
+    """
     return mapList(PROVIDERS, lambda p: p.id)
 
 
 def provider_label(provider_id):
-    """A provider's label."""
+    """A provider's label.
+
+    # Examples
+    ```osprey
+    from agent import Engine
+
+    print(f"{Engine.provider_label('kimi-coding')} | {Engine.provider_label('acme')}")
+    ```
+    ```output
+    Kimi Code plan | acme
+    ```
+    """
     return provider_by_id(provider_id).label
 
 
 def provider_base(provider_id):
-    """A provider's base URL."""
+    """A provider's base URL.
+
+    # Examples
+    ```osprey
+    from agent import Engine
+
+    print(f"[{Engine.provider_base('zai')}] [{Engine.provider_base('acme')}]")
+    ```
+    ```output
+    [https://api.z.ai/api/paas/v4] []
+    ```
+    """
     return provider_by_id(provider_id).base
 
 
 def provider_key_names(provider_id):
-    """A provider's dotenv key names."""
+    """A provider's dotenv key names.
+
+    # Examples
+    ```osprey
+    from agent import Engine
+
+    print(f"{Engine.provider_key_names('deepseek')} {Engine.provider_key_names('osprey')}")
+    ```
+    ```output
+    ["DEEPSEEKKEY", "DEEPSEEK_API_KEY"] []
+    ```
+    """
     return provider_by_id(provider_id).keyNames
 
 
 def model_ids(provider_id):
-    """The models of `provider_id`, in catalogue order."""
+    """The models of `provider_id`, in catalogue order.
+
+    # Examples
+    ```osprey
+    from agent import Engine
+
+    print(f"{Engine.model_ids('kimi-coding')} {Engine.model_ids('acme')}")
+    ```
+    ```output
+    ["k3", "k3-256k", "kimi-for-coding", "kimi-for-coding-highspeed"] []
+    ```
+    """
     return mapList(provider_by_id(provider_id).models, lambda m: m.id)
 
 
 def model_label(model):
-    """The catalogue label of `provider/model` or a bare name."""
+    """The catalogue label of `provider/model` or a bare name.
+
+    # Examples
+    ```osprey
+    from agent import Engine
+
+    print(f"{Engine.model_label('zai/glm-5-turbo')} | {Engine.model_label('acme/whiz')}")
+    ```
+    ```output
+    GLM-5-Turbo | whiz
+    ```
+    """
     return entry_of(model).label
 
 
 def model_levels(model):
-    """The effort levels of `model`, in order; empty when it has none."""
+    """The effort levels of `model`, in order; empty when it has none.
+
+    # Examples
+    ```osprey
+    from agent import Engine
+
+    print(f"{Engine.model_levels('deepseek/deepseek-chat')} {Engine.model_levels('zai/glm-5.2')}")
+    ```
+    ```output
+    [] ["off", "high", "max"]
+    ```
+    """
     return entry_of(model).levels
 
 
 def models_url(provider_id):
-    """Where `provider_id`'s API lists its models."""
+    """Where `provider_id`'s API lists its models.
+
+    # Examples
+    ```osprey
+    from agent import Engine
+
+    print(f"{Engine.models_url('deepseek')} |{Engine.models_url('acme')}|")
+    ```
+    ```output
+    https://api.deepseek.com/models |/models|
+    ```
+    """
     return f"{provider_base(provider_id)}/models"
 
 
 def full_model(provider_id, model_id):
-    """`provider/model`."""
+    """`provider/model`.
+
+    # Examples
+    ```osprey
+    from agent import Engine
+
+    print(Engine.full_model("zai", "glm-5.3"))
+    ```
+    ```output
+    zai/glm-5.3
+    ```
+    """
     return f"{provider_id}/{model_id}"
 
 
@@ -252,12 +406,40 @@ class Totals:
 
 
 def new_history():
-    """No messages yet."""
+    """No messages yet.
+
+    # Examples
+    ```osprey
+    from agent import Engine
+    from pydantic_ai import JsonUtil as J
+
+    print(f"{len(J.items_of(Engine.new_history()))} {Engine.has_turns(Engine.new_history())}")
+    ```
+    ```output
+    0 false
+    ```
+    """
     return JsonArray([])
 
 
 def has_turns(history):
-    """Whether anything has been said in the conversation."""
+    """Whether anything has been said in the conversation.
+
+    # Examples
+    ```osprey
+    from agent import Engine
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, value):
+            return value
+
+    wrapped(lambda: print(f"{Engine.has_turns(Engine.new_history())} {Engine.has_turns(Engine.add_user(Engine.new_history(), '/p', 'hello'))}"))
+    ```
+    ```output
+    false true
+    ```
+    """
     return len(messages_of(history)) > 0
 
 
@@ -287,7 +469,29 @@ def newest_system_prompt(messages):
 
 
 def add_user(history, workspace, text):
-    """Opens a turn: the person's words, with the system prompt whenever the newest one in the history does not name this folder, so a conversation moved to another project hears the move."""
+    """Opens a turn: the person's words, with the system prompt whenever the newest one in the history does not name this folder, so a conversation moved to another project hears the move.
+
+    # Examples
+    ```osprey
+    from agent import Engine
+    from pydantic_ai import JsonUtil as J
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, value):
+            return value
+
+    with wrapped:
+        first = unwrap_or(listGet(J.items_of(Engine.add_user(Engine.new_history(), "/p", "hello")), 0), JsonNull())
+        again = Engine.add_user(Engine.add_user(Engine.new_history(), "/p", "hello"), "/p", "more")
+        second = unwrap_or(listGet(J.items_of(again), 1), JsonNull())
+        said = unwrap_or(listGet(J.list_at(first, "parts"), 1), JsonNull())
+        print(f"{len(J.list_at(first, 'parts'))} parts, then {len(J.list_at(second, 'parts'))}: {J.text_at(said, 'content', '')}")
+    ```
+    ```output
+    2 parts, then 1: hello
+    ```
+    """
     prior = messages_of(history)
     system = [] if newest_system_prompt(prior) == system_prompt(workspace) else [M.SystemPromptPart(content=system_prompt(workspace))]
     request = M.ModelRequest(parts=listAppend(system, M.UserPromptPart(content=text)), instructions="")
@@ -299,7 +503,21 @@ def return_part(result):
 
 
 def add_returns(history, results):
-    """Feeds every tool's answer back as one request, as the agent graph does."""
+    """Feeds every tool's answer back as one request, as the agent graph does.
+
+    # Examples
+    ```osprey
+    from agent import Engine
+    from pydantic_ai import JsonUtil as J
+
+    answer = Engine.ToolResult(resultId="c1", resultName="read_file", resultContent="exit 0")
+    fed = Engine.add_returns(Engine.new_history(), [answer])
+    print(J.encode(unwrap_or(listGet(J.items_of(fed), 0), JsonNull())))
+    ```
+    ```output
+    {"parts":[{"tool_name":"read_file","content":"exit 0","tool_call_id":"c1","part_kind":"tool-return"}],"instructions":null,"kind":"request"}
+    ```
+    """
     request = M.ModelRequest(parts=mapList(results, return_part), instructions="")
     return M.dump_messages(listAppend(messages_of(history), M.of_request(request)))
 
@@ -333,7 +551,21 @@ def base_profile(kind, model_id):
 
 
 def profile_of(model):
-    """The profile for `model`: the package's provider profile, overridden per entry where the data says so."""
+    """The profile for `model`: the package's provider profile, overridden per entry where the data says so.
+
+    # Examples
+    ```osprey
+    from agent import Engine
+
+    glm = Engine.profile_of("zai/glm-5.3")
+    plain = Engine.profile_of("deepseek/deepseek-chat")
+    other = Engine.profile_of("acme/whiz")
+    print(f"{mapContains(glm, 'supports_thinking')} {unwrap_or(jsonText(unwrap_or(plain['openai_chat_thinking_field'], JsonNull())), '-')} {unwrap_or(jsonBool(unwrap_or(other['supports_thinking'], JsonNull())), False)}")
+    ```
+    ```output
+    true reasoning_content false
+    ```
+    """
     entry = entry_of(model)
     base = base_profile(entry.wire.kind, entry.id)
     strict = base if entry.wire.strict else mapSet(base, "openai_supports_strict_tool_definition", JsonBool(False))
@@ -343,7 +575,18 @@ def profile_of(model):
 
 
 def url(model):
-    """Where `model`'s requests go: its provider's Chat Completions endpoint, empty for an unknown provider."""
+    """Where `model`'s requests go: its provider's Chat Completions endpoint, empty for an unknown provider.
+
+    # Examples
+    ```osprey
+    from agent import Engine
+
+    print(f"[{Engine.url('moonshotai/kimi-k2.6')}] [{Engine.url('acme/x')}]")
+    ```
+    ```output
+    [https://api.moonshot.ai/v1/chat/completions] []
+    ```
+    """
     match find_provider(provider_id_of(model)):
         case Success(value=provider):
             return provider.base + "/chat/completions"
@@ -371,7 +614,21 @@ def tool_step(acc, name, tool_json):
 
 
 def definitions_of(servers_json):
-    """Every connected server's tools as model definitions, named `<server>_<tool>`."""
+    """Every connected server's tools as model definitions, named `<server>_<tool>`.
+
+    # Examples
+    ```osprey
+    from agent import Engine
+    from pydantic_ai import JsonUtil as J
+
+    servers = unwrap_or(J.decode('{"servers":[{"name":"fs","tools":[{"name":"read","description":"Reads a file","inputSchema":{"type":"object"}}]}]}'), JsonNull())
+    named = mapList(Engine.definitions_of(servers), lambda d: d.name)
+    print(f"{named} {Engine.definitions_of(JsonObject([]))}")
+    ```
+    ```output
+    ["fs_read"] []
+    ```
+    """
     return foldList(J.list_at(servers_json, "servers"), [], entry_tools)
 
 
@@ -380,19 +637,80 @@ def completions(entry, profile, history, settings, tools):
 
 
 def request_body_with_tools(history, model, effort, extra_tools):
-    """The Chat Completions request with the built-in and given tools."""
+    """The Chat Completions request with the built-in and given tools.
+
+    # Examples
+    ```osprey
+    from agent import Engine
+    from pydantic_ai import JsonUtil as J
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, value):
+            return value
+
+    with wrapped:
+        body = unwrap_or(J.decode(Engine.request_body_with_tools(Engine.new_history(), "deepseek/deepseek-chat", "", [])), JsonNull())
+        named = mapList(J.list_at(body, "tools"), lambda t: J.text_at(J.object_at(t, "function"), "name", ""))
+        print(f"{J.text_at(body, 'model', '')} {named}")
+    ```
+    ```output
+    deepseek-chat ["list_files", "read_file", "write_file", "run_command"]
+    ```
+    """
     settings = Settings.model_settings() if effort == "" else mapSet(Settings.model_settings(), "thinking", effort_setting(effort))
     bounded = mapSet(settings, "max_tokens", JsonInt(2048)) if provider_id_of(model) == "osprey" else settings
     return completions(entry_of(model), profile_of(model), history, bounded, definitions(extra_tools))
 
 
 def request_body_with_mcp(history, model, effort, servers_json):
-    """The Chat Completions request with the built-in tools and every connected MCP server's."""
+    """The Chat Completions request with the built-in tools and every connected MCP server's.
+
+    # Examples
+    ```osprey
+    from agent import Engine
+    from pydantic_ai import JsonUtil as J
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, value):
+            return value
+
+    with wrapped:
+        servers = unwrap_or(J.decode('{"servers":[{"name":"fs","tools":[{"name":"read","description":"Reads a file","inputSchema":{"type":"object"}}]}]}'), JsonNull())
+        body = unwrap_or(J.decode(Engine.request_body_with_mcp(Engine.new_history(), "zai/glm-5.3", "high", servers)), JsonNull())
+        last = unwrap_or(listGet(J.list_at(body, "tools"), 4), JsonNull())
+        print(f"{J.text_at(body, 'reasoning_effort', '')} {J.text_at(J.object_at(last, 'function'), 'name', '')}")
+    ```
+    ```output
+    high fs_read
+    ```
+    """
     return request_body_with_tools(history, model, effort, definitions_of(servers_json))
 
 
 def request_body(history, model, effort):
-    """A request with no MCP servers, kept as the engine's small pure surface."""
+    """A request with no MCP servers, kept as the engine's small pure surface.
+
+    # Examples
+    ```osprey
+    from agent import Engine
+    from pydantic_ai import JsonUtil as J
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, value):
+            return value
+
+    with wrapped:
+        known = unwrap_or(J.decode(Engine.request_body(Engine.new_history(), "deepseek/deepseek-reasoner", "high")), JsonNull())
+        unknown = unwrap_or(J.decode(Engine.request_body(Engine.new_history(), "acme/whiz", "high")), JsonNull())
+        print(f"{J.text_at(known, 'model', '')} [{J.text_at(known, 'reasoning_effort', '')}] {J.text_at(unknown, 'model', '')} [{J.text_at(unknown, 'reasoning_effort', '')}] {len(J.list_at(unknown, 'tools'))}")
+    ```
+    ```output
+    deepseek-reasoner [high] whiz [] 4
+    ```
+    """
     return request_body_with_tools(history, model, effort, [])
 
 
@@ -401,7 +719,28 @@ def call_of(part):
 
 
 def accept(history, model, status, body):
-    """Takes one HTTP answer: the failure as words, or the response added and the calls it asks for."""
+    """Takes one HTTP answer: the failure as words, or the response added and the calls it asks for.
+
+    # Examples
+    ```osprey
+    from agent import Engine
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, value):
+            return value
+
+    with wrapped:
+        call = '{"choices":[{"message":{"role":"assistant","content":"","tool_calls":[{"id":"c1","type":"function","function":{"name":"read_file","arguments":"{}"}}]}}]}'
+        reply = Engine.accept(Engine.new_history(), "deepseek/deepseek-chat", 200, call)
+        refused = Engine.accept(Engine.new_history(), "deepseek/deepseek-chat", 401, '{"error":{"message":"Invalid API key"}}')
+        silent = Engine.accept(Engine.new_history(), "deepseek/deepseek-chat", 200, '{"choices":[{"message":{"content":" "}}]}')
+        print(f"{reply.replyOk} {mapList(reply.replyCalls, lambda c: c.callName)} | {refused.replyOk} {refused.replyProblem} | {silent.replyProblem}")
+    ```
+    ```output
+    true ["read_file"] | false status_code: 401, model_name: deepseek-chat, body: {"error":{"message":"Invalid API key"}} | The model returned no answer.
+    ```
+    """
     entry = entry_of(model)
     provider = provider_by_id(provider_id_of(model))
     profile = profile_of(model)
@@ -476,12 +815,35 @@ def windows_tool(workspace, name, args_text):
 
 
 def tool_command(platform, workspace, name, args_text):
-    """The process a tool call becomes on `platform`."""
+    """The process a tool call becomes on `platform`.
+
+    # Examples
+    ```osprey
+    from agent import Engine
+
+    read = Engine.tool_command("macos", "/p", "read_file", '{"path":"notes.md"}')
+    print(f"{read.executable} {read.arguments}")
+    ```
+    ```output
+    /bin/sh ["-c", "cd \\"$0\\" && cat -- \\"$1\\" 2>&1", "/p", "notes.md"]
+    ```
+    """
     return windows_tool(workspace, name, args_text) if platform == "windows" else posix_tool(workspace, name, args_text)
 
 
 def tool_summary(name, args_text):
-    """What a call does, in a line: the file or the command."""
+    """What a call does, in a line: the file or the command.
+
+    # Examples
+    ```osprey
+    from agent import Engine
+
+    print(f"{Engine.tool_summary('read_file', '{"path":"src/a.ts"}')} {Engine.tool_summary('run_command', '{"command":"make test"}')} {Engine.tool_summary('list_files', '{}')} {Engine.tool_summary('mcp_tool', '{}')}")
+    ```
+    ```output
+    src/a.ts make test project files {}
+    ```
+    """
     if name == "run_command":
         return arg(args_text, "command")
     elif name == "list_files":
@@ -499,12 +861,45 @@ def whole_characters(text, at):
 
 
 def cut_text(text, limit):
-    """At most `limit` bytes of `text`, in whole characters."""
+    """At most `limit` bytes of `text`, in whole characters.
+
+    # Examples
+    ```osprey
+    from agent import Engine
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, value):
+            return value
+
+    wrapped(lambda: print(f"[{Engine.cut_text('café au lait', 4)}] [{Engine.cut_text('café au lait', 5)}]"))
+    ```
+    ```output
+    [caf] [café]
+    ```
+    """
     return take(text, whole_characters(text, limit))
 
 
 def tool_result_text(name, status, output, problem):
-    """What the model sees: the output, cut to size, with the exit status for a command."""
+    """What the model sees: the output, cut to size, with the exit status for a command.
+
+    # Examples
+    ```osprey
+    from agent import Engine
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, value):
+            return value
+
+    wrapped(lambda: print(f"[{Engine.tool_result_text('run_command', 1, 'boom', '')}] [{Engine.tool_result_text('read_file', 0, '', 'no such tool')}] [{Engine.tool_result_text('read_file', 0, 'fine', '')}]"))
+    ```
+    ```output
+    [exit 1
+    boom] [The tool could not run: no such tool] [fine]
+    ```
+    """
     cut = cut_text(output, OUTPUT_LIMIT) + "\n[output cut at " + toString(OUTPUT_LIMIT) + " bytes]" if length(output) > OUTPUT_LIMIT else output
     if problem != "":
         return "The tool could not run: " + problem
@@ -521,7 +916,27 @@ def totals_step(acc, response):
 
 
 def usage_of(history):
-    """Requests, tool calls and tokens across a conversation."""
+    """Requests, tool calls and tokens across a conversation.
+
+    # Examples
+    ```osprey
+    from agent import Engine
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, value):
+            return value
+
+    with wrapped:
+        call = '{"choices":[{"message":{"role":"assistant","content":"","tool_calls":[{"id":"w1","type":"function","function":{"name":"write_file","arguments":"{}"}}]}}],"usage":{"prompt_tokens":12,"completion_tokens":5}}'
+        asked = Engine.accept(Engine.new_history(), "deepseek/deepseek-chat", 200, call).replyHistory
+        totals = Engine.usage_of(asked)
+        print(f"{totals.totalRequests} {totals.totalTools} {totals.totalInput} {totals.totalOutput} {totals.lastInput}")
+    ```
+    ```output
+    1 1 12 5 12
+    ```
+    """
     return foldList(M.responses(messages_of(history)), Totals(totalRequests=0, totalTools=0, totalInput=0, totalOutput=0, lastInput=0), totals_step)
 
 
@@ -544,14 +959,53 @@ def distinct_step(acc, item):
 
 
 def files_changed(history):
-    """Every file the agent wrote in this conversation, once, in the order first written. A write that failed or never ran changed nothing."""
+    """Every file the agent wrote in this conversation, once, in the order first written. A write that failed or never ran changed nothing.
+
+    # Examples
+    ```osprey
+    from agent import Engine
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, value):
+            return value
+
+    with wrapped:
+        call = '{"choices":[{"message":{"role":"assistant","content":"","tool_calls":[{"id":"w1","type":"function","function":{"name":"write_file","arguments":"{\\\\\\"path\\\\\\":\\\\\\"src/a.ts\\\\\\"}"}}]}}]}'
+        asked = Engine.accept(Engine.new_history(), "deepseek/deepseek-chat", 200, call).replyHistory
+        done = Engine.add_returns(asked, [Engine.ToolResult(resultId="w1", resultName="write_file", resultContent="wrote src/a.ts (3 bytes)")])
+        print(f"{Engine.files_changed(asked)} {Engine.files_changed(done)}")
+    ```
+    ```output
+    [] ["src/a.ts"]
+    ```
+    """
     messages = messages_of(history)
     written = foldList(M.requests(messages), [], lambda acc, request: listConcat(acc, mapList(request.parts, written_id)))
     return foldList(foldList(M.responses(messages), [], lambda acc, response: listConcat(acc, write_paths(written, response))), [], distinct_step)
 
 
 def last_calls(history):
-    """The tool calls of the last response."""
+    """The tool calls of the last response.
+
+    # Examples
+    ```osprey
+    from agent import Engine
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, value):
+            return value
+
+    with wrapped:
+        call = '{"choices":[{"message":{"role":"assistant","content":"","tool_calls":[{"id":"w1","type":"function","function":{"name":"write_file","arguments":"{}"}}]}}]}'
+        asked = Engine.accept(Engine.new_history(), "deepseek/deepseek-chat", 200, call).replyHistory
+        print(f"{mapList(Engine.last_calls(asked), lambda c: c.callId)} {Engine.last_calls(Engine.new_history())}")
+    ```
+    ```output
+    ["w1"] []
+    ```
+    """
     responses = M.responses(messages_of(history))
     match listGet(responses, len(responses) - 1):
         case Success(value=response):
@@ -577,5 +1031,26 @@ def return_id(part):
 
 
 def pending(history, results):
-    """The calls of the last response with no answer yet, neither in the history nor among `results`."""
+    """The calls of the last response with no answer yet, neither in the history nor among `results`.
+
+    # Examples
+    ```osprey
+    from agent import Engine
+
+    @handler(Arith)
+    class wrapped:
+        def overflow(_op, _l, _r, value):
+            return value
+
+    with wrapped:
+        call = '{"choices":[{"message":{"role":"assistant","content":"","tool_calls":[{"id":"w1","type":"function","function":{"name":"write_file","arguments":"{}"}}]}}]}'
+        asked = Engine.accept(Engine.new_history(), "deepseek/deepseek-chat", 200, call).replyHistory
+        done = Engine.add_returns(asked, [Engine.ToolResult(resultId="w1", resultName="write_file", resultContent="wrote")])
+        given = [Engine.ToolResult(resultId="w1", resultName="write_file", resultContent="wrote")]
+        print(f"{len(Engine.pending(asked, []))} {len(Engine.pending(done, []))} {len(Engine.pending(asked, given))}")
+    ```
+    ```output
+    1 0 0
+    ```
+    """
     return filterList(last_calls(history), lambda call: not answered(history, call.callId) and len(filterList(results, lambda r: r.resultId == call.callId)) == 0)

@@ -10,6 +10,12 @@ tags: [packages, registry, resolution]
 
 An Osprey package is source code, published as a folder and pinned by the digest of its bytes. You add one, Osprey locks the exact release, checks every byte and builds it with no network. The client runs on macOS and Linux; Windows is not supported yet. The specs cover [manifests and commands](/spec/0029-packagemanagement/), [trust services](/spec/0030-packageregistrytrustanddiscovery/), the [domain model](/spec/0031-packagedomainmodel/) and [verification evidence](/spec/0032-packageevidenceanddiscovery/).
 
+## Publishers and package ownership
+
+In the planned hosted registry, an organization owns each package. A **publisher** is a user with an explicit `publish-release` grant for that package. Its administrator can grant publishing to several accepted organization members, set an expiry, and revoke one user's grant while the others keep publishing.
+
+For example, the administrator of `@atlas/audio` can grant Alice and Robin publishing access. Either can authorize a release of `@atlas/audio` with their own credential. Publishing `@atlas/mixer` requires a separate grant. Only the package administrator can delegate publishing, including granting it to themselves. Today, the local folder registry supports `publish --folder`; hosted account and grant management are under development.
+
 ## Add and remove packages in VS Code
 
 {% videoCard "package-manager", "/docs/packages-in-vscode/" %}
@@ -229,6 +235,7 @@ Packages have no install hooks or build scripts. A failed relock restores the ma
 | `remove @scope/name` | drop the dependency line and relock, printing the `-` lines |
 | `use <path> [--epoch N]`, `use @scope/name --published`, `use --list`, `use --clear` | develop against a local checkout: the mapping goes into `osprey.local.toml`, `osprey.local.lock` is relocked with the checkout in place of every published candidate of that key, and `[dependencies]` is never rewritten |
 | `lock --local` | relock the development lock after a local manifest change; plain `lock` never sees the overlay |
+| `docs --docs-dir <directory>` | generate a searchable HTML API reference for the project using its selected lock and verified installed dependencies |
 | `build --release` | refuse while any override is active, then build from `osprey.lock` |
 | `update [--breaking]` | relock without the current choices being sticky, so every key moves to its epoch's newest release; `--breaking` first moves each dependency with a newer epoch to it and prints one `epoch @scope/name eN -> eM` line per change |
 | `fetch @scope/name[@e<epoch>]`, `fetch <digest>` | download, verify and install one release |

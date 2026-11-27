@@ -19,6 +19,8 @@ from port_common import Checkpoint, Policy
 
 DIM = 8
 CORPUS = 24
+# The suite every check group, test and policy runs under.
+SUITE = "vector-search"
 QUERY_COUNT = 4
 K = 3
 FREQ = 0.37
@@ -215,7 +217,7 @@ def report_text(report):
 
 
 def report_checks(report):
-    return checkAll("vector-search", [
+    return checkAll(SUITE, [
         len(report.corpus) == CORPUS,
         len(report.queries) == QUERY_COUNT,
         len(report.l2_labels) == QUERY_COUNT,
@@ -234,12 +236,12 @@ def application():
     match Host.on_host(lambda: guarded(run)):
         case Success(value=report):
             print(report_text(report))
-            test("vector-search", lambda: report_checks(report))
+            test(SUITE, lambda: report_checks(report))
         case Error(message=message):
             print("vector-search failed: " + message)
-            test("vector-search", lambda: checkAll("computation error", [False]))
+            test(SUITE, lambda: checkAll("computation error", [False]))
 
 
 
 def main():
-    return Policy.execute("vector-search", application)
+    return Policy.execute(SUITE, application)

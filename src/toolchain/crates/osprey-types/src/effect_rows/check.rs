@@ -217,22 +217,45 @@ fn check_resolved(program: &Program, instances: &Instances) -> CheckedEffects {
     // top-level let/assignment/expression sequence. Either way the file-scope
     // initializers run before it and are part of it: a `perform` in a top-level
     // `let` needs a handler exactly as one written inside `main` does.
-    let mut entry = {
+    // Analysed one statement at a time over one threaded environment, which is
+    // exactly what analysing them together does, so each statement's own
+    // summary is kept: an entry diagnostic then names the first statement its
+    // fault enters through instead of only the file (#402).
+    let statement_rows: Vec<_> = {
         let mut env = CallableEnv::default();
-        analyzer.statements(&program.statements, &[], &mut env)
+        program
+            .statements
+            .iter()
+            .map(|statement| {
+                let row = analyzer.statements(std::slice::from_ref(statement), &[], &mut env);
+                (osprey_ast::stmt_meta::statement_position(statement), row)
+            })
+            .collect()
     };
-    if let Some(main) = index
+    let mut entry = Summary::default();
+    for (_, row) in &statement_rows {
+        entry.union(row.clone());
+    }
+    let main = index
         .functions
         .iter()
-        .position(|function| function.scope.is_empty() && function.name == "main")
-    {
+        .position(|function| function.scope.is_empty() && function.name == "main");
+    if let Some(main) = main {
         entry.union(rows.get(main).cloned().unwrap_or_default());
     }
+    let main = main.and_then(|main| index.functions.get(main));
     errors.extend(entry_errors(
         &entry,
         "program entry",
         !instances.non_callable_call_error,
         instances,
+        &|fault| {
+            statement_rows
+                .iter()
+                .find(|(_, row)| fault(row))
+                .and_then(|(position, _)| *position)
+                .or_else(|| main.and_then(|main| main.position))
+        },
     ));
     errors.extend(index.deferred_errors.borrow().values().cloned());
     errors.extend(index.field_row_errors());
@@ -247,9 +270,10 @@ fn check_resolved(program: &Program, instances: &Instances) -> CheckedEffects {
                 let name = &function.qualified;
                 let context = format!("library export `{name}`");
                 let dynamic = !instances.non_callable_call_error;
+                let locate = |_| function.position;
                 (
                     name.clone(),
-                    entry_errors(row, &context, dynamic, instances),
+                    entry_errors(row, &context, dynamic, instances, &locate),
                 )
             },
         )),

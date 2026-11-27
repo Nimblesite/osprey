@@ -29,23 +29,28 @@ fn separators(text: &str, separator: char) -> (Vec<usize>, bool) {
 /// `raw` up to the first `#` outside a basic string.
 pub(super) fn strip_comment(raw: &str) -> &str {
     let (comments, _) = separators(raw, '#');
-    comments.first().map_or(raw, |start| &raw[..*start])
+    comments
+        .first()
+        .map_or(raw, |start| raw.get(..*start).unwrap_or_default())
 }
+
+/// The failure a value scan reports: it ended inside a basic string.
+const UNTERMINATED: &str = "a string in the value is unterminated";
 
 /// The comma-separated items of a list or inline table, ignoring separators
 /// inside strings.
 pub(super) fn split_items(inner: &str) -> Result<Vec<&str>, String> {
     let (commas, open) = separators(inner, ',');
     if open {
-        return Err("a string in the value is unterminated".to_string());
+        return Err(UNTERMINATED.to_string());
     }
     let mut items = Vec::with_capacity(commas.len() + 1);
     let mut start = 0;
     for comma in commas {
-        items.push(inner[start..comma].trim());
+        items.push(inner.get(start..comma).ok_or(UNTERMINATED)?.trim());
         start = comma + 1;
     }
-    let last = inner[start..].trim();
+    let last = inner.get(start..).ok_or(UNTERMINATED)?.trim();
     if !last.is_empty() {
         items.push(last);
     }
@@ -57,7 +62,7 @@ pub(super) fn split_items(inner: &str) -> Result<Vec<&str>, String> {
 pub(super) fn split_assignment(field: &str) -> Option<(&str, &str)> {
     let (equals, _) = separators(field, '=');
     let index = *equals.first()?;
-    Some((&field[..index], &field[index + 1..]))
+    Some((field.get(..index)?, field.get(index + 1..)?))
 }
 
 /// A table key as written: bare, or a quoted basic string with its escapes

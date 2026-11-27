@@ -1,0 +1,272 @@
+/* Base typography, landmarks, floating navbar, focus rings, and footer */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  background-color: var(--surface);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-block-size: 100dvh;
+  background-color: var(--surface);
+  color: var(--ink);
+  font-size: 1.0625rem;
+  overflow-x: clip;
+}
+
+img,
+video {
+  display: block;
+  max-inline-size: 100%;
+  block-size: auto;
+}
+
+a {
+  color: var(--brand-native);
+  text-underline-offset: 0.22em;
+}
+
+code,
+pre {
+  font-family: var(--font-mono);
+}
+
+code {
+  font-size: 0.88em;
+  background-color: var(--surface-subtle);
+  padding: 0.12em 0.4em;
+  border-radius: 6px;
+}
+
+pre {
+  margin: 0;
+  padding: 1.35rem 1.5rem;
+  background-color: var(--code-surface);
+  color: var(--code-ink);
+  overflow-x: auto;
+  font-size: 0.86rem;
+  line-height: 1.6;
+}
+
+pre code {
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  font-size: inherit;
+}
+
+:where(a:any-link, button, [tabindex="0"], summary):focus-visible {
+  outline: 3px solid var(--brand-native);
+  outline-offset: 3px;
+}
+
+.visually-hidden:where(:not(:focus-within, :active)) {
+  position: absolute !important;
+  clip-path: inset(50%) !important;
+  overflow: hidden !important;
+  width: 1px !important;
+  height: 1px !important;
+  margin: -1px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  white-space: nowrap !important;
+}
+
+.skip-link {
+  position: fixed;
+  inset-block-start: var(--space-2);
+  inset-inline-start: var(--space-2);
+  z-index: 100;
+  padding: 0.55rem 1rem;
+  background-color: var(--brand-native);
+  color: var(--on-brand);
+  font-weight: 700;
+  border-radius: var(--radius-pill);
+  text-decoration: none;
+}
+
+.site-container {
+  inline-size: min(100% - 2.5rem, var(--container-max));
+  margin-inline: auto;
+}
+
+/* Floating translucent navbar (Flutter.dev / ReactNative.dev style) */
+.site-header {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 50;
+  background-color: var(--header-bg);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-block-end: 1px solid var(--border);
+}
+
+.site-header-inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding-block: 0.8rem;
+}
+
+.site-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  color: var(--ink);
+  text-decoration: none;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  font-size: 1.1rem;
+}
+
+.brand-logo {
+  inline-size: 2rem;
+  block-size: 2rem;
+  border-radius: 8px;
+}
+
+.site-nav ul {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 1.25rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.site-nav a {
+  display: inline-flex;
+  align-items: center;
+  min-block-size: 2.5rem;
+  color: var(--ink-muted);
+  text-decoration: none;
+  font-size: 0.94rem;
+  font-weight: 600;
+  transition: color 150ms ease;
+}
+
+.site-nav a:hover,
+.site-nav a[aria-current="page"] {
+  color: var(--brand-native);
+}
+
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-block-size: 2.4rem;
+  padding: 0.3rem 0.85rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  background-color: var(--surface-raised);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.84rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.theme-toggle:hover {
+  border-color: var(--brand-native);
+}
+
+/* Footer */
+.site-footer {
+  border-block-start: 1px solid var(--border);
+  padding-block: var(--space-6);
+  background-color: var(--surface-alt);
+  color: var(--ink-muted);
+  font-size: 0.93rem;
+}
+
+.footer-grid {
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: minmax(0, 1.4fr) repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 48rem) {
+  .footer-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.footer-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-weight: 800;
+  color: var(--ink);
+  margin-block-end: 0.6rem;
+}
+
+.footer-heading {
+  margin: 0 0 0.75rem;
+  color: var(--ink);
+  font-size: 0.84rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.footer-links {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.footer-links a {
+  color: var(--ink-muted);
+  text-decoration: none;
+}
+
+.footer-links a:hover {
+  color: var(--brand-native);
+  text-decoration: underline;
+}
+
+.footer-note {
+  margin-block-start: var(--space-4);
+  padding-block-start: var(--space-3);
+  border-block-start: 1px solid var(--border);
+  font-size: 0.86rem;
+}
+
+@media (pointer: coarse) {
+  .site-nav a,
+  .theme-toggle,
+  .btn,
+  .tab-btn,
+  .mode-btn,
+  .a11y-node-btn {
+    min-block-size: 2.75rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}

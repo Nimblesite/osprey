@@ -6,10 +6,27 @@ namespace synth
     stored energy but can never add to it. `PeakScale` gives about `gain` at the resonant peak for
     sustained input (a band-pass); `ImpulseScale` makes a struck ring whose envelope starts at `gain`. *)
 module Resonators
-    (** Zero stored energy. *)
+    (** Zero stored energy.
+    # Examples
+    ```osprey
+    print "${Resonators::initial}"
+    ```
+    ```output
+    { real: 0.0, imag: 0.0 }
+    ```
+    *)
     export initial = ResonatorState(real = 0.0, imag = 0.0)
 
-    (** Prepared coefficients; the state is kept across changes. *)
+    (** Prepared coefficients; the state is kept across changes.
+    # Examples
+    ```osprey
+    config = ResonatorConfig(sampleRate = 48000.0, frequency = 0.0, decay = 1.0, gain = 0.5, scale = ImpulseScale)
+    print "${(Resonators::coefficients config).input} ${(Resonators::coefficients config).sine}"
+    ```
+    ```output
+    0.5 0.0
+    ```
+    *)
     export coefficients config =
         radius = PhysicalMath::decayGain (config.decay, 1.0, config.sampleRate)
         angle = PhysicalMath::omega (config.frequency, config.sampleRate)
@@ -18,12 +35,28 @@ module Resonators
             ImpulseScale => config.gain
         ResonatorCoefficients(input = input, cosine = PhysicalMath::coupledCosine (radius, angle), sine = PhysicalMath::coupledSine (radius, angle))
 
-    (** Frequency is below 0.45 of the rate; decay is 1 ms–60 s, so the pole radius stays below one. *)
+    (** Frequency is below 0.45 of the rate; decay is 1 ms–60 s, so the pole radius stays below one.
+    # Examples
+    ```osprey
+    print "${Resonators::configure (ResonatorConfig(sampleRate = 48000.0, frequency = 30000.0, decay = 1.0, gain = 0.5, scale = ImpulseScale))}"
+    ```
+    ```output
+    Error(InvalidConfiguration { detail: "Invalid resonator rate, frequency, decay or gain (|gain| <= 8)." })
+    ```
+    *)
     export configure config = match config.sampleRate >= 8000.0 && config.sampleRate <= 384000.0 && config.frequency > 0.0 && config.frequency < config.sampleRate * 0.45 && config.decay >= 0.001 && config.decay <= 60.0 && config.gain >= -8.0 && config.gain <= 8.0
         true => Success(value = coefficients config)
         false => Error(message = InvalidConfiguration(detail = "Invalid resonator rate, frequency, decay or gain (|gain| <= 8)."))
 
-    (** One step with accepted coefficients. *)
+    (** One step with accepted coefficients.
+    # Examples
+    ```osprey
+    print "${Resonators::next (ResonatorCoefficients(input = 0.5, cosine = 0.5, sine = 0.25), ResonatorState(real = 1.0, imag = 0.0), 1.0)}"
+    ```
+    ```output
+    { sample: 0.25, next: { real: 1.0, imag: 0.25 } }
+    ```
+    *)
     export next (c, held, input) =
         imag = PhysicalMath::flushed (PhysicalMath::coupledImag (held.real, held.imag, c.cosine, c.sine))
         ResonatorSample(sample = imag, next = ResonatorState(real = PhysicalMath::flushed (PhysicalMath::coupledReal (held.real, held.imag, c.cosine, c.sine, c.input * input)), imag = imag))

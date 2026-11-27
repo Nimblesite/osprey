@@ -6,3 +6,7 @@ entry = "main.ospml"
 
 [modules]
 allow_wildcard_imports = false
+
+# The layer folders share one namespace by design ([LINT-LEVELS]).
+[lints]
+namespace-folder-drift = "allow"

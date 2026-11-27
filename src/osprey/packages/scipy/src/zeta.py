@@ -64,12 +64,12 @@ zetac_TAYLOR0 = [-1.0000000009110164892, -1.0000000057646759799,
 ZETAC_MAXL2 = 127.0
 
 
-def azetac_at(x: float) -> float:
+def azetac_at(x):
     """azetac[int(x)] for an integer-valued x in [0, 30]."""
     return unwrap_or(listGet(azetac, float_to_int(x)), 0.0)
 
 
-def zeta_em_step(x: float, s: float, a: float, bb: float, w: float, i: int) -> float:
+def zeta_em_step(x: float, s, a, bb, w: float, i):
     """One Euler-Maclaurin tail step (two half-steps), Cephes order; bounded
     to the 12-term table."""
     if i >= 12:
@@ -88,7 +88,7 @@ def zeta_em_step(x: float, s: float, a: float, bb: float, w: float, i: int) -> f
             return zeta_em_step(x, s2, a3, b3, w, i + 1)
 
 
-def zeta_em_tail(x: float, s: float, b: float, w: float) -> float:
+def zeta_em_tail(x, s, b, w):
     """The Cephes Euler-Maclaurin correction for the Hurwitz zeta."""
     return zeta_em_step(x, s, 1.0, b, w, 0)
 
@@ -112,7 +112,7 @@ def zeta_q(x: float, q: float) -> float:
         return zeta_q_loop(x, q, pow_int_signed(q, 0.0 - x), q, 0, 0.0)
 
 
-def zeta_q_loop(x: float, q: float, s: float, a: float, i: int, b: float) -> float:
+def zeta_q_loop(x, q: float, s, a, i, b):
     if (i < 9) or (a <= 9.0):
         a2 = a + 1.0
         b2 = pow_int_signed(a2, 0.0 - x)
@@ -128,7 +128,7 @@ def zeta_q_loop(x: float, q: float, s: float, a: float, i: int, b: float) -> flo
         return zeta_em_tail(x, s3, b, w)
 
 
-def zetac_tail(x: float, a: float, s: float) -> float:
+def zetac_tail(x: float, a, s):
     """The x > 50 direct inverse-power sum for zetac."""
     a2 = a + 2.0
     b = pow_pos(a2, 0.0 - x)
@@ -140,7 +140,7 @@ def zetac_tail(x: float, a: float, s: float) -> float:
         return zetac_tail(x, a2, s2)
 
 
-def zetac_positive(x: float) -> float:
+def zetac_positive(x):
     """Cephes zetac (zeta(x)-1) for x > 0."""
     if x == 1.0:
         return pos_inf()
@@ -152,7 +152,7 @@ def zetac_positive(x: float) -> float:
         return zetac_rational(x)
 
 
-def zetac_rational(x: float) -> float:
+def zetac_rational(x):
     """zetac's rational/exp/sum branches for non-integer x below 127."""
     if x < 1.0:
         w = 1.0 - x

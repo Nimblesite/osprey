@@ -200,6 +200,11 @@ mod tests {
             .collect()
     }
 
+    /// The source text a found range selects.
+    fn text<'a>(source: &'a str, found: &BindingRange) -> &'a str {
+        source.get(found.range.clone()).expect("char boundary")
+    }
+
     /// Assert the ranges start at the first and the last `needle` in `source`,
     /// so each is that exact occurrence's declaration token.
     fn assert_start_at_first_and_last(found: &[BindingRange], source: &str, needle: &str) {
@@ -219,7 +224,7 @@ mod tests {
         assert_eq!(
             found
                 .iter()
-                .map(|b| (b.kind, b.name.as_str(), &source[b.range.clone()]))
+                .map(|b| (b.kind, b.name.as_str(), text(source, b)))
                 .collect::<Vec<_>>(),
             [
                 (BindingKind::Parameter, "value", "value"),
@@ -245,7 +250,7 @@ mod tests {
         assert_eq!(
             found
                 .iter()
-                .map(|b| (&source[b.range.clone()], b.occurrence))
+                .map(|b| (text(source, b), b.occurrence))
                 .collect::<Vec<_>>(),
             [("item", 0), ("item", 1)]
         );
@@ -261,7 +266,7 @@ mod tests {
         assert_eq!(
             found
                 .iter()
-                .map(|b| (b.name.as_str(), &source[b.range.clone()]))
+                .map(|b| (b.name.as_str(), text(source, b)))
                 .collect::<Vec<_>>(),
             [("s", "s"), ("s", "s")]
         );
@@ -301,7 +306,7 @@ mod tests {
                 found.iter().any(|b| b.name == name
                     && b.kind == kind
                     && b.owner_position == Some(owner)
-                    && &source[b.range.clone()] == name),
+                    && text(source, b) == name),
                 "{name}: {found:?}"
             );
         }

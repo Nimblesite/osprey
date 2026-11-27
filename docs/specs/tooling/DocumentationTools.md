@@ -123,6 +123,10 @@ framework, build step, CDN, or network connection. Navigation and search work
 when opened directly from the filesystem or served from a static server, including
 under a URL prefix: every generated reference is relative.
 
+For package references, pass `--docs-no-builtins` with `--docs-format html`.
+The export includes package declarations and guides. The native language
+reference keeps its built-in pages.
+
 A declaration page opens with its signature in a labelled disclosure rather than
 a bare block of code, expanded so the reference answers on arrival and
 collapsible once it has been read. Its breadcrumb names every enclosing scope
@@ -219,7 +223,7 @@ values fail with a usage error instead of silently generating a different result
 
 ## Tutorial videos
 
-The videos in the [tutorials section](../../../src/toolchain/website/src/docs/tutorials/index.md) teach Osprey. The website enforces these rules in [`lib/videos.mjs`](../../../src/toolchain/website/lib/videos.mjs) and [`tests/videos.spec.js`](../../../src/toolchain/website/tests/videos.spec.js); [plan 0059](../../plans/0059-video-tutorials.md) tracks the work left.
+The videos in the [tutorials section](../../../src/toolchain/website/src/docs/tutorials/index.md) teach Osprey. The website enforces these rules in [`lib/videos.mjs`](../../../src/toolchain/website/lib/videos.mjs) and [`tests/videos.spec.js`](../../../src/toolchain/website/tests/videos.spec.js); [plan 0058](../../plans/0058-documentation-examples.md) tracks the work left.
 
 ### `[DOC-TUTORIAL-VIDEO-KIND]` Tutorials and introductions are different kinds
 

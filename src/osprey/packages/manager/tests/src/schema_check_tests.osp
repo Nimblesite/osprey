@@ -9,6 +9,11 @@ import registry::SchemaCheck
 /// pins the JSON encoding rules of [PACKAGE-TYPE-INVARIANTS] against the
 /// canonical src/toolchain/schemas/package-registry.td, which is parsed once per test.
 module SchemaCheckTests {
+    /// The label of the parse checks the validator cases share.
+    let diagramParses = "typeDiagram parses"
+    /// The located refusal of a schema document that is no JSON.
+    let nonIntegerAt = "json.non-integer@0"
+
     let schemaPath = "src/toolchain/schemas/package-registry.td"
 
     fn isAlias(decl) = match decl {
@@ -57,11 +62,11 @@ module SchemaCheckTests {
         "ReleaseLockfile", "DevelopmentLockfile", "DevelopmentStateGeneration",
         "WorkspaceTransaction", "ScanVerdict", "Evidence", "MaintenanceAssessment",
         "DiscoveryAssessment", "ReleaseAssessment",
-        "OrganizationId", "MembershipId", "PackageId", "GovernanceId", "AuthorityEpoch",
+        "AuthorityEpoch",
         "PrincipalKind", "HumanPrincipalKind", "PrincipalState", "OrganizationState", "OrganizationRole",
-        "MembershipState", "ActiveMembershipState", "OrganizationRecoveryAuthority", "RegistryPackageState", "PackagePermission", "PermissionState",
+        "AccessState", "ActiveMembershipState", "OrganizationRecoveryAuthority", "RegistryPackageState", "PackagePermission",
         "AdminTransferState", "InvitationState", "MaintenanceReportState", "RegistryPrincipal",
-        "RegistryAuthBinding", "Organization", "OrganizationMembership", "RegistryPackage",
+        "PublicCatalogNotice", "PublicCatalogRelease", "PublicCatalogEntry", "PublicCatalogPage", "PendingLogin", "BrowserSession", "HostedOAuthConfig", "HostedLoginSettings", "HostedLoginRedirect", "EdgeSecretOverlap", "RegistryAuthBinding", "Organization", "OrganizationMembership", "RegistryPackage",
         "PackagePermissionGrant", "PackageAdminTransfer", "OrganizationInvitation",
         "PackageMaintenanceReport", "GovernanceEventKind", "GovernanceEvent"
     ]
@@ -70,12 +75,12 @@ module SchemaCheckTests {
         let result = TypeDiagram::parse(readFile(schemaPath) ?: "")
         match result {
             Success { value } => checkAll("schema model declares every type exactly once", [
-                    structuralEquals([length(value.decls), length(filterList(value.decls, isAlias))], [113, 14]),
-                    length(filterList(value.decls, isStruct)) == 71,
-                    length(filterList(value.decls, isUnion)) == 28,
+                    structuralEquals([length(value.decls), length(filterList(value.decls, isAlias))], [118, 10]),
+                    length(filterList(value.decls, isStruct)) == 81,
+                    length(filterList(value.decls, isUnion)) == 27,
                     everyNameResolves(value)
             ])
-            Error { message } => check("typeDiagram parses", "ok", message)
+            Error { message } => check(diagramParses, "ok", message)
         }
     }
 
@@ -96,7 +101,7 @@ module SchemaCheckTests {
                 let fx = Fixtures::load("schema/accepts.json")
                 Fixtures::report("schema accepts", Fixtures::itemsOf(fx, "cases"), fn(c) => validated(value, Fixtures::textOf(c, "type"), JsonRead::field(c, "value")))
             }
-            Error { message } => check("typeDiagram parses", "ok", message)
+            Error { message } => check(diagramParses, "ok", message)
         }
     }
 
@@ -107,7 +112,7 @@ module SchemaCheckTests {
                 let fx = Fixtures::load("schema/rejections.json")
                 Fixtures::report("schema rejections", Fixtures::itemsOf(fx, "cases"), fn(c) => rejectionOk(value, c))
             }
-            Error { message } => check("typeDiagram parses", "ok", message)
+            Error { message } => check(diagramParses, "ok", message)
         }
     }
 
@@ -123,8 +128,8 @@ module SchemaCheckTests {
     }
 
     fn floats() = checkAll("non-integer numbers are parse-level rejections", [
-            structuralEquals([floatProblem("1.5"), floatProblem("1e3")], ["json.non-integer@0", "json.non-integer@0"]),
-            floatProblem("0.0") == "json.non-integer@0"
+            structuralEquals([floatProblem("1.5"), floatProblem("1e3")], [nonIntegerAt, nonIntegerAt]),
+            floatProblem("0.0") == nonIntegerAt
     ])
 
     fn declarationCount(text) = match TypeDiagram::parse(text) {
@@ -135,7 +140,8 @@ module SchemaCheckTests {
     fn tokenizerBounds() = checkAll("tokenization has bounded stack depth", [
             declarationCount((repeat(" ", 100000) ?: "") + "typeDiagram alias A = String") == 1,
             declarationCount("typeDiagram alias " + (repeat("a", 100000) ?: "") + " = String") == 1,
-            declarationCount("typeDiagram type Box{items:List<Option<String>>}") == 1
+            declarationCount("typeDiagram type Box{items:List<Option<String>>}") == 1,
+            declarationCount("typeDiagram\n# type Pretend { }\nalias A = String # hidden\ntype B { value: A }") == 2
     ])
 
     /// Every schema-check case, run from the shared registry test entry.

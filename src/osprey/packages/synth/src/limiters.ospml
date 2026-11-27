@@ -72,10 +72,30 @@ module Limiters
     valid (left, right, rate, ceiling, milliseconds, release) = length left == length right && rate >= 8000.0 && rate <= 384000.0 && ceiling > 0.0 && ceiling <= 1.0 && milliseconds >= 0.1 && milliseconds <= 20.0 && release >= 0.001 && release <= 2.0
 
     (** One linked gain per frame for `left` and `right` at `rate`: `ceiling` 0–1 linear, lookahead 0.1–20 ms,
-        release 1 ms–2 s. *)
+        release 1 ms–2 s.
+    # Examples
+    ```osprey
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => Limiters::gains ([1.0], [2.0], 48000.0, 1.0, 5.0, 0.1))} ${arithmetic (\() => Limiters::gains ([1.0], [], 48000.0, 1.0, 5.0, 0.1))}"
+    ```
+    ```output
+    Success([0.5]) Error(InvalidConfiguration { detail: "A limiter needs equal sides, a rate of 8 to 384 kHz, a ceiling above 0 up to 1, a lookahead of 0.1 to 20 ms and a release of 1 ms to 2 s." })
+    ```
+    *)
     export gains (left, right, rate, ceiling, milliseconds, release) = match valid (left, right, rate, ceiling, milliseconds, release)
         false => Error(message = InvalidConfiguration(detail = "A limiter needs equal sides, a rate of 8 to 384 kHz, a ceiling above 0 up to 1, a lookahead of 0.1 to 20 ms and a release of 1 ms to 2 s."))
         true => Outcomes::whole ((DynamicsMath::lookahead (milliseconds, rate)), \block => Success(value = shaped (left, right, ceiling, block, DynamicsMath::coefficient (release, rate))))
 
-    (** One side through the gains, clamped to `ceiling`. *)
+    (** One side through the gains, clamped to `ceiling`.
+    # Examples
+    ```osprey
+    print "${Limiters::applied ([2.0, -2.0], [0.5, 1.0], 0.95)}"
+    ```
+    ```output
+    [0.95, -0.95]
+    ```
+    *)
     export applied (side, gains, ceiling) = mapList (toList (range (0, length side)), \index => DynamicsMath::limitedSample (listGet side index ?: 0.0, listGet gains index ?: 1.0, ceiling))

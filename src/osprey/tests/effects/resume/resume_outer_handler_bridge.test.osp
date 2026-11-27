@@ -11,7 +11,7 @@ effect Log {
 }
 
 /// This helper logs on both sides of the prompt operation.
-fn form() -> string ![Prompt, Log] = {
+fn form() ![Prompt, Log] = {
     perform Log.line("form start")
     let name = perform Prompt.ask("name")
     perform Log.line("got " + name)
@@ -80,7 +80,7 @@ effect Ledger {
 }
 
 /// Two records, so the delegation happens more than once.
-fn ledgerWork() -> int ![Ledger, Arith] = {
+fn ledgerWork() ![Ledger, Arith] = {
     let a = perform Ledger.record(5)
     let b = perform Ledger.record(7)
     (a + b) 

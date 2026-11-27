@@ -50,10 +50,8 @@ module Html {
     /// package key, an organization handle or a query.
     export fn id(text) = fold(range(0, byteLength(text)), "", fn(out, i) => out + idByte(byteAt(text, i) ?: hyphen))
 
-    /// A whole document. The shell (navigation, styles, transport wiring)
-    /// belongs to the deployment host; this is the complete, accessible
-    /// page a screen test can assert against.
-    export fn document(title, body) = "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>${escape(title)}</title></head><body>${body}</body></html>"
+    /// Render the shared site shell with an escaped package or page title.
+    export fn document(title, body) = Shell::withEscapedTitle(escape(title), body)
 
     /// One element pair around already-built markup.
     export fn el(tag, body) = "<${tag}>${body}</${tag}>"
@@ -65,7 +63,7 @@ module Html {
     export fn paragraph(text) = el("p", escape(text))
 
     /// One escaped `term: value` field.
-    export fn field(term, value) = el("p", "<strong>${escape(term)}:</strong> ${escape(value)}")
+    export fn field(term, value) = el("p", "${escape(term)}: ${escape(value)}")
 
     /// One escaped advisory note.
     export fn note(text) = "<p class=\"notice\" role=\"note\">${escape(text)}</p>"

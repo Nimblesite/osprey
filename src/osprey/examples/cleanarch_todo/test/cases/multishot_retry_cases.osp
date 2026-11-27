@@ -27,6 +27,9 @@ let twoRivals = ["X", "Y"]
 /// Three generic rivals queued to steal three commits.
 let threeRivals = ["X", "Y", "Z"]
 
+/// The first two of the named rivals, in queue order.
+let twoNamedRivals = ["Rival", "Other"]
+
 /// Three distinct named rivals, in queue order.
 let namedRivals = ["Rival", "Other", "Third"]
 
@@ -170,7 +173,7 @@ module MultishotRetryCases {
         let ask = mineListAsk()
         let none = retryBareAsked([], ask)
         let one = retryBareAsked(loneRival, ask)
-        let two = retryBareAsked(["Rival", "Other"], ask)
+        let two = retryBareAsked(twoNamedRivals, ask)
         let three = retryBareAsked(namedRivals, ask)
         let four = retryBareAsked(["Rival", "Other", "Third", "Fourth"], ask)
         let five = retryBareAsked(["Rival", "Other", "Third", "Fourth", "Fifth"], ask)
@@ -235,7 +238,7 @@ module MultishotRetryCases {
         let twinRivals = retryAsked(["Mine", "Mine"], [], ask)
         let badColour = retryAsked(loneRival, [], newList("Fresh", "#HotPink"))
         let spaces = retryAsked(loneRival, [], newList("   ", ""))
-        let tooLong = retryAsked(["Rival", "Other"], [], newList(retryWide(201), ""))
+        let tooLong = retryAsked(twoNamedRivals, [], newList(retryWide(201), ""))
         let empty = retryAsked(loneRival, [], newList("", ""))
         expect(rival.settled, faults(uniqueTitleFault))
         expect(twinRivals.settled, faults(uniqueTitleFault))
@@ -351,7 +354,7 @@ module MultishotRetryCases {
         let seeds = retryItems()
         let none = retryAsked([], seeds, ask)
         let one = retryAsked(loneRival, seeds, ask)
-        let two = retryAsked(["Rival", "Other"], seeds, ask)
+        let two = retryAsked(twoNamedRivals, seeds, ask)
         let bread = retryAsked(loneRival, seeds, editItem(2, "Bread", true))
         retryExpectUpdated(none)
         retryExpectUpdated(one)

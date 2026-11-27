@@ -7,7 +7,7 @@ default_namespace = "vscode"
 name = "@osprey/vscode"
 license = "MIT"
 summary = "Typed VS Code host capabilities for Osprey Native applications"
-keywords = ["editor", "ui", "vscode", "wasm"]
+keywords = ["developer-tools", "ui"]
 
 [dependencies]
 "@osprey/graphics" = { epoch = 1, min_release = 1 }

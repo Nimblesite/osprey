@@ -22,6 +22,8 @@ module Workspaces
 
 (** [WORKBENCH-VERDICT] Shared file import and current-source checking for every host. *)
 module ProofLibraries
+    proofOpened = "proof:opened"
+
     (** The host slice key a too-large imported proof export is written under and read back from. *)
     export fileKey = "proof:import"
     inlineLimit = 1048576
@@ -42,8 +44,8 @@ module ProofLibraries
     (** A step that marks the bench as awaiting a chosen export and asks the host for a proof export file of up to 8 MiB. *)
     export open bench =
         current = bench.imports
-        ready = bench(imports = current(libraryPending = fileKey, libraryTicket = "proof:opened"))
-        Runtime::asking (ready, [Requests::ask ("proof:opened", ui::ChooseFile(types = ["json", "ndjson", "jsonl"], chosenLimit = 8388608, chosenSlice = fileKey))])
+        ready = bench(imports = current(libraryPending = fileKey, libraryTicket = proofOpened))
+        Runtime::asking (ready, [Requests::ask (proofOpened, ui::ChooseFile(types = ["json", "ndjson", "jsonl"], chosenLimit = 8388608, chosenSlice = fileKey))])
 
     (** A step that makes `content` the current export, re-checks it, and asks the host to keep its bytes under the import slice. *)
     export imported (bench, content) = ui::Step(stepStore = bench(imports = replaced (bench.imports, content)), requests = [], writes = [ui::SliceWrite(sliceKey = fileKey, sliceText = content)])
@@ -68,7 +70,7 @@ module ProofLibraries
             Error _ => current(exportProblem = "The export contains no theorem entries.")
 
     (** The chooser's `result` as a path: empty clears the pending request, a path has the host fetch that file; a bench awaiting nothing takes a plain step. *)
-    export completed (bench, result) = match bench.imports.libraryTicket == "proof:opened"
+    export completed (bench, result) = match bench.imports.libraryTicket == proofOpened
         false => Runtime::step bench
         true => receivedFile (bench, result)
 
@@ -163,13 +165,15 @@ module ProofLibraries
 
 (** Bundled exports are discovered here; only ImportedProofs can award a verdict. *)
 module BundledLibraries
+    proofCatalogue = "proof:catalogue"
+
     cataloguePath = "proof-libraries.json"
 
     (** Whether `ticket` is the bundled catalogue's own read or one bundled library's. *)
-    export handles ticket = ticket == "proof:catalogue" || startsWith ticket "proof:bundled:"
+    export handles ticket = ticket == proofCatalogue || startsWith ticket "proof:bundled:"
 
     (** The request for the bundled catalogue, made when the application starts. *)
-    export request () = read ("proof:catalogue", cataloguePath, 65536)
+    export request () = read (proofCatalogue, cataloguePath, 65536)
 
     read (ticket, path, limit) = Requests::ask (ticket, ui::ReadTexts(texts = [path], textLimit = limit, textSlice = ticket))
 
@@ -210,11 +214,11 @@ module BundledLibraries
         false => Runtime::step bench
         true => received (bench, ticket)
 
-    currentTicket (current, ticket) = ticket == "proof:catalogue" || (!isEmpty current.libraryTicket && ticket == current.libraryTicket)
+    currentTicket (current, ticket) = ticket == proofCatalogue || (!isEmpty current.libraryTicket && ticket == current.libraryTicket)
 
     received (bench, ticket) = match readText ticket
         Error problem => failed (bench, ticket, problem)
-        Success file => match ticket == "proof:catalogue"
+        Success file => match ticket == proofCatalogue
             true => catalogued (bench, file)
             false => imported (bench, file)
 
@@ -239,9 +243,9 @@ module BundledLibraries
                 _ => Error(message = "The library catalogue is missing its libraries.")
 
     catalogued (bench, file) = match Doc::text (file, "path") == cataloguePath
-        false => failed (bench, "proof:catalogue", "The host returned a different library catalogue.")
+        false => failed (bench, proofCatalogue, "The host returned a different library catalogue.")
         true => match catalogue (Doc::text (file, "text"))
-            Error problem => failed (bench, "proof:catalogue", problem)
+            Error problem => failed (bench, proofCatalogue, problem)
             Success source =>
                 current = bench.imports
                 Runtime::step (bench(imports = current(libraryCatalogue = source, libraryProblem = "", exportRevision = satAdd current.exportRevision 1)))
@@ -259,7 +263,7 @@ module BundledLibraries
 
     failure (bench, ticket, problem) =
         current = bench.imports
-        next = match ticket == "proof:catalogue"
+        next = match ticket == proofCatalogue
             true => current(libraryProblem = "Bundled libraries could not be loaded: " + problem)
             false => current(libraryPending = "", libraryTicket = "", exportProblem = problem)
         Runtime::step (bench(imports = next(exportRevision = satAdd current.exportRevision 1)))

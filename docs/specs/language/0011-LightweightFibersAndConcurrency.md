@@ -294,7 +294,7 @@ The normative target that changes this — lexical scopes that own their fibers,
 `cancel` delivered only at suspension points, `finally` finalizers, `join`
 returning an `Outcome<T>`, and deadline/racing forms — is specified in
 [Structured Concurrency](0036-StructuredConcurrency.md) and delivered by
-[plan 0026](../../plans/0026-structured-concurrency.md). Until that plan lands,
+the structured-concurrency section of [plan 0016](../../plans/0016-algebraic-effects-and-handlers.md#structured-concurrency). Until it lands,
 nothing in this section's target exists in the compiler.
 
 ## Choosing among channel operations [CONCURRENCY-SELECT]

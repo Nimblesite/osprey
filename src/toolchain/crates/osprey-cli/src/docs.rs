@@ -53,7 +53,9 @@ fn export(options: &Options) -> std::io::Result<usize> {
     pages.extend(assets::pages(&options.pages)?);
     let styles = assets::stylesheets(&options.css)?;
     pages.extend(members::index(&pages));
-    pages.extend(builtin_pages());
+    if !options.no_builtins {
+        pages.extend(builtin_pages());
+    }
     match options.format {
         Format::Markdown => {
             let _ = generate(&options.directory, &pages)?;

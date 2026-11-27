@@ -12,11 +12,11 @@ fn kernel_source(ir: &str) -> String {
     let Some(start) = ir.find("@osprey.gpu.kernels = private unnamed_addr constant") else {
         return String::new();
     };
-    let body = &ir[start..];
+    let body = ir.get(start..).unwrap_or_default();
     let Some(open) = body.find("c\"") else {
         return String::new();
     };
-    let escaped = &body[open + 2..];
+    let escaped = body.get(open + 2..).unwrap_or_default();
     let mut text = String::new();
     let mut chars = escaped.chars();
     while let Some(c) = chars.next() {
@@ -51,7 +51,7 @@ fn declined_reasons(ir: &str) -> Vec<String> {
         let Some(open) = rest.find("c\"") else {
             continue;
         };
-        let text = &rest[open + 2..];
+        let text = rest.get(open + 2..).unwrap_or_default();
         if text.contains("has no device form")
             || text.contains("no device representation")
             || text.contains("device cannot")

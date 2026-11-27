@@ -11,6 +11,7 @@
 
 import * as assert from "assert";
 import * as vscode from "vscode";
+import { testDeadline } from "./osprey-test-env";
 
 /** A source breakpoint: a bare 1-based line, or a line with a hit condition. */
 export type BreakpointSpec = number | { line: number; condition?: string };
@@ -47,6 +48,10 @@ export interface DapStop {
 
 const DEFAULT_STACK_LEVELS = 20;
 const POLL_INTERVAL_MS = 100;
+
+/** Long enough for compile + lldb-dap launch + the stepping each test drives. */
+export const LAUNCH_TIMEOUT_MS = testDeadline(45_000);
+const STEP_TIMEOUT_MS = testDeadline(30_000);
 
 /** Remove every breakpoint VS Code currently holds. */
 export function clearDebugBreakpoints(): void {
@@ -88,7 +93,7 @@ export function setSourceBreakpoints(
 
 /** Resolve with the next started debug session, or reject on timeout. */
 export async function waitForDebugSessionStart(
-  timeoutMs = 30_000,
+  timeoutMs = STEP_TIMEOUT_MS,
 ): Promise<vscode.DebugSession> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -105,7 +110,7 @@ export async function waitForDebugSessionStart(
 
 /** Resolve once no (matching) session is active, or reject on timeout. */
 export async function waitForDebugSessionEnd(
-  timeoutMs = 30_000,
+  timeoutMs = STEP_TIMEOUT_MS,
   sessionId?: string,
 ): Promise<void> {
   const started = Date.now();
@@ -288,7 +293,7 @@ const SOURCE_RESOLVE_GRACE_MS = 2_000;
 function topFrameResolved(stop: DapStop): boolean {
   const top = stop.stack.stackFrames[0];
   const path = top?.source?.path;
-  return path !== undefined && path !== "" && path !== "." && top.line >= 1;
+  return path !== undefined && path !== "" && path !== "." && top !== undefined && top.line >= 1;
 }
 
 async function stoppedThreadIds(
@@ -331,7 +336,7 @@ async function readStop(
  * not race callers that assert on the frame's source path or line. */
 export async function waitForStop(
   session: vscode.DebugSession,
-  timeoutMs = 30_000,
+  timeoutMs = STEP_TIMEOUT_MS,
 ): Promise<DapStop> {
   const started = Date.now();
   let lastError = "";

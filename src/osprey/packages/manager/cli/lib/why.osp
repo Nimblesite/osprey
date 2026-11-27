@@ -25,14 +25,14 @@ module Why {
     fn lineOf(chain: Chain) = join(chain.labels, arrow)
 
     /// Every chain through `edges` that ends at `target`.
-    fn pathsFrom(lock, target, chain, edges) -> List<string> = foldList(edges, [], fn(acc, edge) => listConcat(acc, pathsVia(lock, target, chain, edge)))
+    fn pathsFrom(lock, target, chain, edges) = foldList(edges, [], fn(acc, edge) => listConcat(acc, pathsVia(lock, target, chain, edge)))
 
-    fn pathsVia(lock, target, chain, edge) -> List<string> = match Lockfile::packageFor(Lockfile::packagesOf(lock), ManifestModel::requirementKey(edge)) {
+    fn pathsVia(lock, target, chain, edge) = match Lockfile::packageFor(Lockfile::packagesOf(lock), ManifestModel::requirementKey(edge)) {
         Error => []
         Success { value } => pathsThrough(lock, target, chain, value)
     }
 
-    fn pathsThrough(lock, target, chain, pkg) -> List<string> = {
+    fn pathsThrough(lock, target, chain, pkg) = {
         let key = Identity::keyOf(Lockfile::releaseOf(pkg))
         let next = extended(chain, pkg)
         if Names::same(key, target) { [lineOf(next)] }

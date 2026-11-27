@@ -24,7 +24,21 @@ module TableKernels
 
     (** A wavetable source: phase is the cycle position. Optional inlets: `position` replaces the position,
         `amplitude` multiplies the level, `pitch` scales frequency by ±2 octaves (0.5 unchanged) and
-        `phase` offsets the read point by 0–1 cycles. *)
+        `phase` offsets the read point by 0–1 cycles.
+    # Examples
+    ```osprey
+    held = KernelState(identity = 1, phase = 0.0, integratorOne = 0.0, integratorTwo = 0.0, delay = [], memory = KernelIdle)
+    table = Wavetable(size = 4, harmonics = 1, frames = [TableFrame(levels = [TableLevel(harmonics = 1, samples = [0.0, 1.0, 0.0, -1.0])])])
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => TableKernels::wavetable (48000.0, Prepared(graph = Graphs::empty, order = [], feedback = []), Parameters::initial Graphs::empty, SampleFrame(states = [], values = []), held, table))}"
+    ```
+    ```output
+    Error(MissingResource { detail: "Required render parameter is missing." })
+    ```
+    *)
     export wavetable (rate, plan, snapshot, frame, held, table) =
         use frequency <- RenderInputs::bound (snapshot, held, "frequency")
         use position <- RenderInputs::bound (snapshot, held, "position")
@@ -64,17 +78,59 @@ module TableKernels
         use interval <- RenderInputs::setting (snapshot, identity, "interval")
         bank (interval, shaped (rate, frequency, count, tilt, parity, decay, damping, amplitude, inharmonicity, stretch))
 
-    (** Prepare the additive bank when the block uses a fixed control snapshot. *)
+    (** Prepare the additive bank when the block uses a fixed control snapshot.
+    # Examples
+    ```osprey
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+
+    example () =
+        print "${TableKernels::prepare (48000.0, Parameters::initial Graphs::empty, 1)}"
+
+    arithmetic example
+    ```
+    ```output
+    DynamicPartials
+    ```
+    *)
     export prepare (rate, snapshot, identity) = match settings (rate, snapshot, identity)
         Error _ => DynamicPartials
         Success bank => match bank.config.layout
             StiffLayout stiffness stretch => FixedPartials(settings = bank, coefficients = PartialBanks::stiffCoefficients (bank.config, stiffness, stretch))
             _ => DynamicPartials
 
-    (** An additive source: storage holds partial phases, phase the envelope age, integratorOne the retrigger clock. *)
+    (** An additive source: storage holds partial phases, phase the envelope age, integratorOne the retrigger clock.
+    # Examples
+    ```osprey
+    held = KernelState(identity = 1, phase = 0.0, integratorOne = 0.0, integratorTwo = 0.0, delay = [], memory = KernelIdle)
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => TableKernels::additive (48000.0, Parameters::initial Graphs::empty, SampleFrame(states = [], values = []), held))}"
+    ```
+    ```output
+    Error(MissingResource { detail: "Required render parameter is missing." })
+    ```
+    *)
     export additive (rate, snapshot, frame, held) = Outcomes::carried (settings (rate, snapshot, held.identity), \bank => played (frame, held, bank, []))
 
-    (** Fixed snapshots reuse the prepared bank; automation resolves settings at its exact sample. *)
+    (** Fixed snapshots reuse the prepared bank; automation resolves settings at its exact sample.
+    # Examples
+    ```osprey
+    held = KernelState(identity = 1, phase = 0.0, integratorOne = 0.0, integratorTwo = 0.0, delay = [], memory = KernelIdle)
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => TableKernels::scheduled (48000.0, Parameters::initial Graphs::empty, SampleFrame(states = [], values = []), held, FixedPartials(settings = PartialSettings(interval = 0.0, config = PartialConfig(sampleRate = 48000.0, frequency = 220.0, count = 4.0, tilt = 1.0, parity = 0.0, decay = 1.0, damping = 0.0, amplitude = 0.5, layout = StiffLayout(inharmonicity = 0.0, stretch = 1.0))), coefficients = [])))}"
+    ```
+    ```output
+    Error(IncompatibleLayout { detail: "Partial state does not have one phase per partial." })
+    ```
+    *)
     export scheduled (rate, snapshot, frame, held, prepared) = match prepared
         DynamicPartials => additive (rate, snapshot, frame, held)
         FixedPartials settings coefficients => played (frame, held, settings, coefficients)

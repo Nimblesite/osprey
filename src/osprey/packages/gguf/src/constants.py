@@ -27,13 +27,69 @@ class QuantType:
 
 
 MAGIC = 1179993927
-"""The four bytes `GGUF` read as a little-endian uint32."""
+"""The four bytes `GGUF` read as a little-endian uint32.
+
+# Examples
+```osprey
+from gguf import Constants
+
+def show():
+    print(Constants.MAGIC)
+
+wrappingArithmetic(show)
+```
+```output
+1179993927
+```
+"""
 VERSION = 3
-"""The GGUF version this port writes nothing for and reads the third of."""
+"""The GGUF version this port writes nothing for and reads the third of.
+
+# Examples
+```osprey
+from gguf import Constants
+
+def show():
+    print(Constants.VERSION)
+
+wrappingArithmetic(show)
+```
+```output
+3
+```
+"""
 SUPPORTED_VERSIONS = [2, 3]
-"""The versions the reference reader accepts, and so the ones this port accepts."""
+"""The versions the reference reader accepts, and so the ones this port accepts.
+
+# Examples
+```osprey
+from gguf import Constants
+
+def show():
+    print(Constants.SUPPORTED_VERSIONS)
+
+wrappingArithmetic(show)
+```
+```output
+[2, 3]
+```
+"""
 DEFAULT_ALIGNMENT = 32
-"""Where the tensor data starts when the file declares no `general.alignment`."""
+"""Where the tensor data starts when the file declares no `general.alignment`.
+
+# Examples
+```osprey
+from gguf import Constants
+
+def show():
+    print(Constants.DEFAULT_ALIGNMENT)
+
+wrappingArithmetic(show)
+```
+```output
+32
+```
+"""
 VALUE_TYPES = [
     ValueType(id=0, name="uint8"),
     ValueType(id=1, name="int8"),
@@ -49,7 +105,21 @@ VALUE_TYPES = [
     ValueType(id=11, name="int64"),
     ValueType(id=12, name="float64"),
 ]
-"""The thirteen metadata value types, with the names `Field.value.kind` spells."""
+"""The thirteen metadata value types, with the names `Field.value.kind` spells.
+
+# Examples
+```osprey
+from gguf import Constants
+
+def show():
+    print(f"{len(Constants.VALUE_TYPES)} types, the first {unwrap_or(listGet(Constants.VALUE_TYPES, 0), Constants.ValueType(id=-1, name='')).name}")
+
+wrappingArithmetic(show)
+```
+```output
+13 types, the first uint8
+```
+"""
 
 QUANT_TYPES = [
     QuantType(id=0, name="F32", block=1, size=4),
@@ -87,7 +157,21 @@ QUANT_TYPES = [
     QuantType(id=40, name="NVFP4", block=64, size=36),
     QuantType(id=41, name="Q1_0", block=128, size=18),
 ]
-"""Every ggml tensor type with the elements one block holds and the bytes it takes."""
+"""Every ggml tensor type with the elements one block holds and the bytes it takes.
+
+# Examples
+```osprey
+from gguf import Constants
+
+def show():
+    print(f"{len(Constants.QUANT_TYPES)} types, the first {unwrap_or(listGet(Constants.QUANT_TYPES, 0), Constants.QuantType(id=-1, name='', block=1, size=1)).name}")
+
+wrappingArithmetic(show)
+```
+```output
+34 types, the first F32
+```
+"""
 
 TOKENIZER_KEYS = [
     "tokenizer.ggml.model",
@@ -126,11 +210,39 @@ TOKENIZER_KEYS = [
     "tokenizer.ggml.suffix_token_id",
     "tokenizer.ggml.middle_token_id",
 ]
-"""Every tokenizer metadata key the reference package declares, in its own order."""
+"""Every tokenizer metadata key the reference package declares, in its own order.
+
+# Examples
+```osprey
+from gguf import Constants
+
+def show():
+    print(f"{len(Constants.TOKENIZER_KEYS)} keys, the first {unwrap_or(listGet(Constants.TOKENIZER_KEYS, 0), '')}")
+
+wrappingArithmetic(show)
+```
+```output
+35 keys, the first tokenizer.ggml.model
+```
+"""
 
 
 def value_type(id):
-    """The metadata value type with wire id `id`, or gguf's enum error."""
+    """The metadata value type with wire id `id`, or gguf's enum error.
+
+    # Examples
+    ```osprey
+    from gguf import Constants
+
+    def show():
+        print(f"{Constants.value_type(8)} {Constants.value_type(99)}")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    Success({ id: 8, name: "string" }) Error(99 is not a valid GGUFValueType)
+    ```
+    """
     return find_type(VALUE_TYPES, 0, id)
 
 
@@ -147,7 +259,21 @@ def find_type(types, i, id) -> Result[ValueType, str]:
 
 
 def quant_type(id):
-    """The tensor type with wire id `id`, or gguf's enum error."""
+    """The tensor type with wire id `id`, or gguf's enum error.
+
+    # Examples
+    ```osprey
+    from gguf import Constants
+
+    def show():
+        print(f"{Constants.quant_type(8)} {Constants.quant_type(99)}")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    Success({ id: 8, name: "Q8_0", block: 32, size: 34 }) Error(99 is not a valid GGMLQuantizationType)
+    ```
+    """
     return find_quant(QUANT_TYPES, 0, id)
 
 

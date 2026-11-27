@@ -14,6 +14,9 @@ import registry::Json
 /// read from src/osprey/packages/manager/tests/fixtures/vectors and asserted against the core
 /// helpers. Every golden was computed independently of the code under test.
 module VectorTests {
+    /// The Merkle inclusion vector file the tree cases load.
+    let merkleVectors = "vectors/merkle.json"
+
 
     fn shaCases() = {
         let fx = Fixtures::load("vectors/sha256.json")
@@ -74,9 +77,9 @@ module VectorTests {
         ])
     }
 
-    fn merkleLeaves() = mapList(Fixtures::loadTexts("vectors/merkle.json", "leaves"), Bytes::fromHex)
+    fn merkleLeaves() = mapList(Fixtures::loadTexts(merkleVectors, "leaves"), Bytes::fromHex)
 
-    fn merkleRoots() = Fixtures::loadTexts("vectors/merkle.json", "roots")
+    fn merkleRoots() = Fixtures::loadTexts(merkleVectors, "roots")
 
     fn rootAt(size) = listGet(merkleRoots(), size) ?: ""
 
@@ -123,12 +126,12 @@ module VectorTests {
     /// The proof's roots, swapped when a rejection case says so.
     fn consistencyRoot(c, root, other, swapped) = Bytes::fromHex(rootAt(if swapped && Fixtures::textOf(c, "label") == "swapped roots" { other } else { root }))
 
-    fn merkleCases(kind) = Fixtures::report("merkle ${kind}", foldList(Fixtures::loadItems("vectors/merkle.json", "negative"), [],
+    fn merkleCases(kind) = Fixtures::report("merkle ${kind}", foldList(Fixtures::loadItems(merkleVectors, "negative"), [],
         fn(acc, c) => if Fixtures::textOf(c, "kind") == kind { listAppend(acc, c) } else { acc }), fn(c) => merkleCase(c, kind, true))
 
     /// Every primary-specification vector group, in one run.
     export fn run() = {
-        let fx = Fixtures::load("vectors/merkle.json")
+        let fx = Fixtures::load(merkleVectors)
         test("vector: sha256", shaCases)
         test("vector: digest agility", agilityCases)
         test("vector: rfc8785", canonCases)

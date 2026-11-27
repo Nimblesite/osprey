@@ -103,7 +103,7 @@ To run real CPython code, or call Osprey from a Python application, see [Python 
 
 ## Converting between flavors (coming)
 
-A flavor converter is planned ([plan 0057](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0057-flavor-conversion.md)). It will turn a file or a whole package from Python flavor into Default or ML, or the other way, from VS Code or the command line. Every flavor parses to the same AST, so the converter prints that AST in the target flavor and writes nothing unless the result parses back to the same program. Until it ships, moving a file between flavors is a manual rewrite.
+A flavor converter is planned ([plan 0031](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0031-python.md)). It will turn a file or a whole package from Python flavor into Default or ML, or the other way, from VS Code or the command line. Every flavor parses to the same AST, so the converter prints that AST in the target flavor and writes nothing unless the result parses back to the same program. Until it ships, moving a file between flavors is a manual rewrite.
 
 ## Select the flavor
 

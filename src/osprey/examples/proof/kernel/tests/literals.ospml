@@ -14,6 +14,9 @@ import proof
 (** Literal inference is tied to the checked Nat family, not its spelling.
     Implements [PROOF-KERNEL-THEORY] [PROOF-RUNNABLE-LIBRARY]. *)
 module NaturalLiteralTests
+    (** The inference refusal for a literal spelled over no checked Nat family. *)
+    noNatDeclaration = "invalid natural literal or Nat declaration"
+
     (** Runs the literal cases: typing, reduction and reading; the testing built-ins report the TAP lines. *)
     export run () =
         typing ()
@@ -21,9 +24,9 @@ module NaturalLiteralTests
         reading ()
 
     typing () =
-        test ("natural literals require the canonical checked Nat declaration", \() => expectAll [Support::inferred (natEnv (), [], literal "18446744073709551616") == "Nat", Support::messageOf (Infer::infer (Environment::empty (), [], literal "0")) == "invalid natural literal or Nat declaration", Support::messageOf (Infer::infer (shadowNat (), [], literal "1")) == "invalid natural literal or Nat declaration"])
+        test ("natural literals require the canonical checked Nat declaration", \() => expectAll [Support::inferred (natEnv (), [], literal "18446744073709551616") == "Nat", Support::messageOf (Infer::infer (Environment::empty (), [], literal "0")) == noNatDeclaration, Support::messageOf (Infer::infer (shadowNat (), [], literal "1")) == noNatDeclaration])
 
-        test ("malformed internal natural representations cannot acquire a type", \() => expectAll [Support::messageOf (Infer::infer (natEnv (), [], NatLit (Natural(naturalLimbs = [-1])))) == "invalid natural literal or Nat declaration", Support::messageOf (Infer::infer (natEnv (), [], NatLit (Natural(naturalLimbs = [0])))) == "invalid natural literal or Nat declaration", Support::messageOf (Infer::infer (natEnv (), [], NatLit (Natural(naturalLimbs = [1000000000])))) == "invalid natural literal or Nat declaration"])
+        test ("malformed internal natural representations cannot acquire a type", \() => expectAll [Support::messageOf (Infer::infer (natEnv (), [], NatLit (Natural(naturalLimbs = [-1])))) == noNatDeclaration, Support::messageOf (Infer::infer (natEnv (), [], NatLit (Natural(naturalLimbs = [0])))) == noNatDeclaration, Support::messageOf (Infer::infer (natEnv (), [], NatLit (Natural(naturalLimbs = [1000000000])))) == noNatDeclaration])
 
     reduction () =
         test ("natural literals compare exactly with zero and successor constructors", \() => expectAll [Reduce::defeq (natEnv (), literal "0", Const "Nat.zero" []) == true, Reduce::defeq (natEnv (), literal "2", App (Const "Nat.succ" []) (literal "1")) == true, Reduce::defeq (natEnv (), literal "18446744073709551616", literal "18446744073709551617") == false])

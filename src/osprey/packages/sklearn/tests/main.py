@@ -8,6 +8,9 @@ from sklearn import Preprocessing
 from sklearn import ModelSelection
 from sklearn import Stats
 
+FIRST_FOUR = [0, 1, 2, 3]
+ONE_TWO_THREE = [1.0, 2.0, 3.0]
+
 RT = 0.000000001
 AT = 0.000000001
 TIGHT = 0.000000000001
@@ -17,8 +20,8 @@ YT_A = [0, 1, 2, 0, 1, 2]
 YP_A = [0, 2, 1, 0, 0, 1]
 YT_B = [1, 1, 1, 0, 0]
 YP_B = [1, 0, 1, 0, 1]
-YT_PERF = [0, 1, 2, 3]
-YP_PERF = [0, 1, 2, 3]
+YT_PERF = FIRST_FOUR
+YP_PERF = FIRST_FOUR
 YT_CONST = [1, 1, 1]
 YP_CONST = [1, 1, 1]
 YT_ZERO = [0, 0, 0, 0]
@@ -55,7 +58,7 @@ YT_RARE = [0, 0, 0, 0, 0, 1, 2]
 YP_RARE = [0, 0, 1, 1, 2, 2, 2]
 YT_SWAP3 = [2, 2, 0, 0, 1, 1]
 YP_SWAP3 = [2, 0, 0, 2, 1, 0]
-YT_WRONG4 = [0, 1, 2, 3]
+YT_WRONG4 = FIRST_FOUR
 YP_WRONG4 = [3, 2, 1, 0]
 YT_ABSENT = [0, 0, 1, 1, 1]
 YP_ABSENT = [0, 0, 0, 1, 1]
@@ -63,7 +66,7 @@ YT_SINGLE = [1, 1, 1, 1]
 YP_SINGLE = [1, 1, 2, 2]
 
 # Preprocessing inputs.
-X_SCALE = [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]]
+X_SCALE = [ONE_TWO_THREE, [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]]
 X_SCALE_ZV = [[1.0, 5.0], [2.0, 5.0], [3.0, 5.0], [4.0, 5.0]]
 X_MM = [[0.0, 2.0], [1.0, 4.0], [2.0, 6.0], [3.0, 8.0]]
 X_ROB_EVEN = [[1.0], [2.0], [3.0], [100.0]]
@@ -236,9 +239,9 @@ def mse_cases():
     """Regression scores over a grid of target/prediction pairs."""
     return flatten([
         reg_pair("a", [3.0, -0.5, 2.0, 7.0], [2.5, 0.0, 2.0, 8.0], Expected.MSE_a, Expected.MAE_a, Expected.R2_a, Expected.EVS_a),
-        reg_pair("perf", [1.0, 2.0, 3.0], [1.0, 2.0, 3.0], Expected.MSE_perf, Expected.MAE_perf, Expected.R2_perf, Expected.EVS_perf),
+        reg_pair("perf", ONE_TWO_THREE, ONE_TWO_THREE, Expected.MSE_perf, Expected.MAE_perf, Expected.R2_perf, Expected.EVS_perf),
         reg_pair("neg", [-1.0, -2.0, -3.0], [-1.1, -2.2, -3.3], Expected.MSE_neg, Expected.MAE_neg, Expected.R2_neg, Expected.EVS_neg),
-        reg_pair("const", [5.0, 5.0, 5.0], [1.0, 2.0, 3.0], Expected.MSE_const, Expected.MAE_const, Expected.R2_const, Expected.EVS_const),
+        reg_pair("const", [5.0, 5.0, 5.0], ONE_TWO_THREE, Expected.MSE_const, Expected.MAE_const, Expected.R2_const, Expected.EVS_const),
         reg_pair("one", [4.0], [5.0], Expected.MSE_one, Expected.MAE_one, Check.float_of(Expected.R2_one), Expected.EVS_one),
     ])
 
@@ -408,7 +411,7 @@ def stats_cases():
         close_f("stats.sum", Stats.sum_float([1.0, 2.5, 3.0]), 6.5, TIGHT, TIGHT),
         Check.ints_equal("stats.encode_labels", Stats.encode_labels([3, 7, 9], [9, 3, 7, 9]), [2, 0, 1, 2]),
         Check.ints_equal("stats.map_indexed", Stats.map_indexed([1.5, 2.5], lambda i: i * 4), [0, 4]),
-        close_f("stats.mean", Stats.mean_float([1.0, 2.0, 3.0]), 2.0, TIGHT, TIGHT),
+        close_f("stats.mean", Stats.mean_float(ONE_TWO_THREE), 2.0, TIGHT, TIGHT),
         close_f("stats.min", Stats.min_float([3.0, 1.0, 2.0]), 1.0, TIGHT, TIGHT),
         close_f("stats.max", Stats.max_float([3.0, 1.0, 2.0]), 3.0, TIGHT, TIGHT),
         equal_ints("stats.argsort", Stats.argsort_float([3.0, 1.0, 3.0, 0.5]), [3, 1, 0, 2]),
@@ -465,7 +468,7 @@ def ext_reg_cases():
         reg_pair("scale", [10.0, -5.0, 20.0], [11.0, -4.5, 19.0], Expected.XREG_MSE_scale, Expected.XREG_MAE_scale, Expected.XREG_R2_scale, Expected.XREG_EVS_scale),
         reg_pair("cross0", [-2.0, -1.0, 1.0, 2.0], [-1.5, -1.5, 1.5, 1.5], Expected.XREG_MSE_cross0, Expected.XREG_MAE_cross0, Expected.XREG_R2_cross0, Expected.XREG_EVS_cross0),
         reg_pair("negsmall", [-3.0, -2.0, -1.0], [-3.0, -2.0, -2.0], Expected.XREG_MSE_negsmall, Expected.XREG_MAE_negsmall, Expected.XREG_R2_negsmall, Expected.XREG_EVS_negsmall),
-        reg_pair("zeropred", [1.0, 2.0, 3.0], [0.0, 0.0, 0.0], Expected.XREG_MSE_zeropred, Expected.XREG_MAE_zeropred, Expected.XREG_R2_zeropred, Expected.XREG_EVS_zeropred),
+        reg_pair("zeropred", ONE_TWO_THREE, [0.0, 0.0, 0.0], Expected.XREG_MSE_zeropred, Expected.XREG_MAE_zeropred, Expected.XREG_R2_zeropred, Expected.XREG_EVS_zeropred),
         reg_pair("constpred", [5.0, 7.0, 9.0], [7.0, 7.0, 7.0], Expected.XREG_MSE_constpred, Expected.XREG_MAE_constpred, Expected.XREG_R2_constpred, Expected.XREG_EVS_constpred),
         reg_pair("flat", [4.0, 4.0, 4.0], [4.0, 4.0, 4.0], Expected.XREG_MSE_flat, Expected.XREG_MAE_flat, Expected.XREG_R2_flat, Expected.XREG_EVS_flat),
         reg_pair("imbal", [0.0, 0.0, 0.0, 0.0, 100.0], [1.0, 0.0, 0.0, 0.0, 99.0], Expected.XREG_MSE_imbal, Expected.XREG_MAE_imbal, Expected.XREG_R2_imbal, Expected.XREG_EVS_imbal),

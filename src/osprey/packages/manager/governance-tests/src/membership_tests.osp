@@ -8,6 +8,10 @@ import registry::Maybe
 /// package authority, an organization never loses its last custodian, and a
 /// departed member's identity never returns with their old grants.
 module MembershipTests {
+    /// The refusal of a member who lacks the permission.
+    let permissionMissing = "governance.permission.missing"
+    /// The refusal of a step only a custodian may take.
+    let custodianRequired = "governance.custodian.required"
     fn enroll(world, id, orgHandle, founder, founderMembership, proof) =
         GovernanceTransitions::enrollOrganization(world, id, orgHandle, founder, founderMembership, proof)
 
@@ -72,8 +76,8 @@ module MembershipTests {
         checkAll("custodianship needs two distinct existing custodians' fresh proofs", [
             elevateCode(world, "o-finch", "m-bob", aliceProof, erinProof) == "",
             elevateCode(world, "o-finch", "m-bob", aliceProof, aliceProof) == "governance.custodian.quorum",
-            elevateCode(world, "o-finch", "m-bob", bobProof, erinProof) == "governance.custodian.required",
-            elevateCode(world, "o-finch", "m-bob", daveProof, erinProof) == "governance.custodian.required",
+            elevateCode(world, "o-finch", "m-bob", bobProof, erinProof) == custodianRequired,
+            elevateCode(world, "o-finch", "m-bob", daveProof, erinProof) == custodianRequired,
             elevateCode(world, "o-finch", "m-bot", aliceProof, erinProof) == "governance.principal.workflow",
             elevateCode(world, "o-wren", "m-bob", aliceProof, erinProof) == "governance.membership.other-org",
             authorityEpochOf(elevated, "m-bob") == 2
@@ -100,15 +104,15 @@ module MembershipTests {
         let erinGone = erinRevoked(world)
         checkAll("revocation is a custodian's signed decision with structural guards", [
             revokeCode(world, "alice", "o-finch", "m-erin") == "",
-            revokeCode(world, "bob", "o-finch", "m-carol") == "governance.custodian.required",
-            revokeCode(world, "dave", "o-finch", "m-carol") == "governance.custodian.required",
+            revokeCode(world, "bob", "o-finch", "m-carol") == custodianRequired,
+            revokeCode(world, "dave", "o-finch", "m-carol") == custodianRequired,
             Fixture::code(revoke(world, "m-carol", Fixture::verified("p-alice", "m-alice", "other-statement"))) == "governance.proof.statement-mismatch",
-            revokeCode(erinGone, "erin", "o-finch", "m-alice") == "governance.custodian.required",
+            revokeCode(erinGone, "erin", "o-finch", "m-alice") == custodianRequired,
             // [PACKAGE-OWNERSHIP-MODEL] "Organization governance belongs to accepted
             // members marked `custodian`": a custodian of another organization
             // holds no signing authority here, so the refusal is the custodian
             // guard's, never a target-org report.
-            revokeCode(erinGone, "dave", "o-wren", "m-alice") == "governance.custodian.required",
+            revokeCode(erinGone, "dave", "o-wren", "m-alice") == custodianRequired,
             revokeCode(world, "alice", "o-finch", "m-nobody") == "governance.membership.missing"
         ])
     }
@@ -120,15 +124,15 @@ module MembershipTests {
         let world = Fixture::world()
         let erinGone = erinRevoked(world)
         checkAll("the last custodian and administering members are protected", [
-            revokeCode(erinGone, "erin", "o-finch", "m-alice") == "governance.custodian.required",
-            Fixture::code(revoke(erinGone, "m-alice", Fixture::refused("p-erin", "m-erin", revocationStatement("o-finch", "m-alice")))) == "governance.custodian.required",
+            revokeCode(erinGone, "erin", "o-finch", "m-alice") == custodianRequired,
+            Fixture::code(revoke(erinGone, "m-alice", Fixture::refused("p-erin", "m-erin", revocationStatement("o-finch", "m-alice")))) == custodianRequired,
             // [PACKAGE-OWNERSHIP-MODEL] "No organization can lose its last
             // accepted custodian": the only remaining custodian signing her own
             // revocation still hits that guard, after her proof is accepted.
             revokeCode(erinGone, "alice", "o-finch", "m-alice") == "governance.org.last-custodian",
             revokeCode(world, "erin", "o-finch", "m-alice") == "governance.membership.administers-package",
             revokeCode(world, "dave", "o-wren", "m-dave") == "governance.org.last-custodian",
-            revokeCode(world, "carol", "o-finch", "m-carol") == "governance.custodian.required"
+            revokeCode(world, "carol", "o-finch", "m-carol") == custodianRequired
         ])
     }
 
@@ -167,7 +171,7 @@ module MembershipTests {
             authorizeCode(granted, "m-carol", Governance::ManageSecurity) == "",
             authorizeCode(departed, "m-carol", Governance::ManageSecurity) == "governance.membership.inactive",
             authorizeCode(rejoined, "m-carol", Governance::ManageSecurity) == "governance.membership.inactive",
-            authorizeCode(rejoined, "m-carol2", Governance::ManageSecurity) == "governance.permission.missing",
+            authorizeCode(rejoined, "m-carol2", Governance::ManageSecurity) == permissionMissing,
             authorityEpochOf(rejoined, "m-carol") == 2
         ])
     }
@@ -186,7 +190,7 @@ module MembershipTests {
         checkAll("principal suspension denies immediately and freezes administered packages", [
             Fixture::code(GovernanceTransitions::suspendPrincipal(world, "p-nobody")) == "governance.principal.missing",
             authorizeCode(bobSuspended, "m-bob", Governance::YankRelease) == "governance.principal.suspended",
-            authorizeCode(bobSuspended, "m-carol", Governance::YankRelease) == "governance.permission.missing",
+            authorizeCode(bobSuspended, "m-carol", Governance::YankRelease) == permissionMissing,
             authorizeCode(aliceSuspended, "m-carol", Governance::YankRelease) == "governance.package.frozen",
             match Governance::packageOf(aliceSuspended, "pkg-f1") {
                 Success { value } => value.admin == "m-alice"

@@ -8,7 +8,7 @@ default_namespace = "flash_attn"
 name = "@osprey/flash-attn"
 license = "MIT"
 summary = "FlashAttention's online-softmax tiled attention, flash_attn_func and varlen, as pure Osprey over flat float lists"
-keywords = ["attention", "flash-attn", "python-flavor", "transformer"]
+keywords = ["language-models", "machine-learning", "python-flavor"]
 
 [test-dependencies]
 "@osprey/testing" = { epoch = 1, min_release = 1 }

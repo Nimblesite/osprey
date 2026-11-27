@@ -18,7 +18,7 @@ module PackageView {
         Success => Model::shown(Html::document("${Names::display(l.pkg.key)} - Osprey Package Registry", body(l, access, now)))
     }
 
-    fn body(l, access: Model::Access, now) = join([
+    fn body(l, access, now) = join([
         "<main id=\"package\"><h1>${Html::escape(Names::display(l.pkg.key))}</h1>",
         Html::field("Organization", "@${l.orgHandle}"),
         Html::field("Status", "${Model::stateName(l.pkg)}, ${Model::careName(l.care)}"),
@@ -31,18 +31,18 @@ module PackageView {
 
     /// The organization context appears only for members of this package's
     /// organization; it is never public ([PACKAGE-OWNERSHIP-PERMISSIONS]).
-    fn accessSection(l, access: Model::Access, now) = if Model::viewerOrgHandle(access.viewer) == l.orgHandle {
-        Html::section("access", "Organization and permissions", context(access, now))
+    fn accessSection(l, access, now) = if Model::viewerOrgHandle(access.viewer) == l.pkg.key.scope {
+        Html::section("access", "Organization and permissions", context(access, l.pkg, now))
     } else { "" }
 
-    fn context(access: Model::Access, now) = join([
-        Html::field("Package administrator", access.admin),
-        Html::field("Your effective permissions", Model::permissionsOf(access, now)),
-        publishNotice(access, now)], "")
+    fn context(access, pkg, now) = join([
+        Html::field("Package administrator", pkg.admin),
+        Html::field("Your effective permissions", Model::permissionsOf(access, pkg, now)),
+        publishNotice(access, pkg, now)], "")
 
     /// The admin-without-grant warning: an administrator seat alone never
     /// implies a publishing capability [PACKAGE-OWNERSHIP-ADMIN].
-    fn publishNotice(access: Model::Access, now) = if Model::isAdministeredBy(access) && !Model::holdsNow(access, Governance::PublishRelease, now) {
+    fn publishNotice(access, pkg, now) = if Model::isAdministeredBy(access, pkg) && !Model::holdsNow(access, pkg, Governance::PublishRelease, now) {
         Html::note(Model::publishGrantNotice())
     } else { "" }
 }

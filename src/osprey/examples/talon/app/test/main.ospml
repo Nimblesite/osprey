@@ -13,6 +13,15 @@ import talon::Update
 import uitest::Drive
 import uitest::Views
 
+confirmTransfer = "Confirm transfer"
+operationRefused = "Operation refused"
+vintageSynthesizer = "vintage synthesizer"
+noMatchingActivity = "No matching activity"
+openAccount = "Open account"
+accountOwner = "Account owner"
+createAccount = "Create account"
+confirmDeposit = "Confirm deposit"
+
 accountsReply () = "[{\"id\":1,\"owner\":\"Amelia Chen\",\"cents\":246240,\"balance\":\"$2,462.40\"},{\"id\":2,\"owner\":\"Marcus Webb\",\"cents\":191785,\"balance\":\"$1,917.85\"},{\"id\":3,\"owner\":\"Priya Sharma\",\"cents\":360000,\"balance\":\"$3,600.00\"}]"
 
 activityReply () = "[{\"id\":3,\"account\":2,\"kind\":\"refused\",\"cents\":999900,\"note\":\"vintage synthesizer\",\"owner\":\"Marcus Webb\"},{\"id\":2,\"account\":1,\"kind\":\"debit\",\"cents\":185000,\"note\":\"rent — 12 Fern St\",\"owner\":\"Amelia Chen\"},{\"id\":1,\"account\":1,\"kind\":\"credit\",\"cents\":425000,\"note\":\"March salary\",\"owner\":\"Amelia Chen\"}]"
@@ -96,12 +105,12 @@ showsNotes (expected) = expect (join (mapList (talon::Forms::shown (store ()), \
 depositSent (amount, note, expectedAsk) =
     typed ("Amount", amount)
     typed ("Description", note)
-    press "Confirm deposit"
+    press confirmDeposit
     expect (asked (), expectedAsk)
 
 // A tap on the deposit confirm button that must ask for nothing.
 depositAskedNothing () =
-    press "Confirm deposit"
+    press confirmDeposit
     askedNothing ()
 
 // The transfer form from `from` to `to` for `amount`, confirmed before anything may be asked.
@@ -109,7 +118,7 @@ transferAskedNothing (from, to, amount) =
     typed ("From account", from)
     typed ("To account", to)
     typed ("Amount", amount)
-    press "Confirm transfer"
+    press confirmTransfer
     askedNothing ()
 
 // The withdrawal form taken from `from` for `amount`, confirmed.
@@ -150,7 +159,7 @@ reloaded () =
 refusedWith (code, body, detail) =
     press "Withdraw"
     withdrawalForm ("1", "1")
-    answeredNotice ("withdraw", code, body, "Operation refused")
+    answeredNotice ("withdraw", code, body, operationRefused)
     expect ((store ()).bankNotice.noticeTone, "danger")
     expect ((store ()).bankNotice.noticeDetail, detail)
     expect ((store ()).bankBusy, false)
@@ -184,7 +193,7 @@ test ("both listings fill the overview with the total, the accounts and the jour
     expect ((store ()).bankLoads, 0)
     expect (length (store ()).bankAccounts, 3)
     expect (length (store ()).bankJournal, 3)
-    showsAll (["$7,980.25", "Across 3 protected client accounts", "vintage synthesizer", "−$1,850.00", "+$4,250.00", "$9,999.00"])
+    showsAll (["$7,980.25", "Across 3 protected client accounts", vintageSynthesizer, "−$1,850.00", "+$4,250.00", "$9,999.00"])
     wordsIn "Marcus Webb · Account #2"
     expect (Drive::shows (driven, "Contacting the ledger"), false)))
 test ("a failed listing says the bank data is unavailable", \() => bench (\() =>
@@ -218,7 +227,7 @@ test ("activity filters by kind and searches notes and owners", \() => bench (\(
     expect (talon::Parts::counted ((store ()).bankJournal, "refused"), 1)
     press "Declined 1"
     expect ((store ()).bankFilter, "refused")
-    showsNotes "vintage synthesizer"
+    showsNotes vintageSynthesizer
     press "Out 1"
     showsNotes "rent — 12 Fern St"
     press "All 3"
@@ -226,7 +235,7 @@ test ("activity filters by kind and searches notes and owners", \() => bench (\(
     typed ("Search", "  AMELIA ")
     expect (length (talon::Forms::shown (store ())), 2)
     typed ("Search", "nobody")
-    shows "No matching activity"))
+    shows noMatchingActivity))
 test ("a deposit is validated before anything is sent, then sent once", \() => bench (\() =>
     openPage ("Deposit")
     expect ((store ()).bankMode, "deposit")
@@ -250,7 +259,7 @@ test ("a refused withdrawal reports the ledger's reason and reloads the journal"
     expect ((store ()).bankMode, "withdraw")
     withdrawalForm ("2", "99999")
     expect (asked (), "POST http://127.0.0.1:18790/api/withdraw {\"account\":2,\"cents\":9999900,\"note\":\"\"} withdraw")
-    answeredNotice ("withdraw", 422, "{\"error\":\"insufficient funds\"}", "Operation refused")
+    answeredNotice ("withdraw", 422, "{\"error\":\"insufficient funds\"}", operationRefused)
     expect ((store ()).bankNotice.noticeDetail, "insufficient funds")
     expect ((store ()).bankLoads, 2)))
 test ("a transfer needs two different accounts and a positive amount", \() => bench (\() =>
@@ -261,28 +270,28 @@ test ("a transfer needs two different accounts and a positive amount", \() => be
     shows "Choose two accounts"
     typed ("To account", "3")
     typed ("Amount", "0")
-    press "Confirm transfer"
+    press confirmTransfer
     shows "Check the transfer"
     typed ("Amount", "62.4")
-    press "Confirm transfer"
+    press confirmTransfer
     expect (asked (), "POST http://127.0.0.1:18790/api/transfer {\"from\":2,\"to\":3,\"cents\":6240,\"note\":\"\"} transfer")
-    answeredNotice ("transfer", 0, "", "Operation refused")
+    answeredNotice ("transfer", 0, "", operationRefused)
     expect ((store ()).bankNotice.noticeDetail, "The app could not reach the ledger. Check your connection and try again.")))
 test ("the new-account dialog needs an owner, then opens the account and closes", \() => bench (\() =>
     loaded ()
-    press "Open account"
+    press openAccount
     expect ((store ()).bankOpening, true)
-    shows "Account owner"
-    press "Create account"
+    shows accountOwner
+    press createAccount
     shows "Owner name required"
     askedNothing ()
-    typed ("Account owner", "Ada Lovelace")
-    press "Create account"
+    typed (accountOwner, "Ada Lovelace")
+    press createAccount
     expect (asked (), "POST http://127.0.0.1:18790/api/accounts {\"name\":\"Ada Lovelace\"} open")
     reply ("open", 201, "{}")
     expect ((store ()).bankOpening, false)
     shows "Account opened"
-    press "Open account"
+    press openAccount
     press "Cancel"
     expect ((store ()).bankOpening, false)))
 test ("a pending movement is sent once, and another movement waits for its reply", \() => bench (\() =>
@@ -294,7 +303,7 @@ test ("a pending movement is sent once, and another movement waits for its reply
     expect ((store ()).bankBusy, true)
     reply ("deposit", 200, "{}")
     expect ((store ()).bankBusy, false)
-    press "Confirm transfer"
+    press confirmTransfer
     expect (asked (), "POST http://127.0.0.1:18790/api/transfer {\"from\":1,\"to\":2,\"cents\":500,\"note\":\"One tap\"} transfer")))
 test ("every refused or unreachable reply becomes a notice that names its cause", \() => bench (\() =>
     loaded ()
@@ -306,31 +315,31 @@ test ("every refused or unreachable reply becomes a notice that names its cause"
 test ("every successful movement shows its own notice and reloads both listings", \() => bench (\() =>
     loaded ()
     movedWith ("Withdraw", "Confirm withdrawal", "withdraw", "Withdrawal complete")
-    movedWith ("Deposit", "Confirm deposit", "deposit", "Deposit complete")
-    movedWith ("Transfer", "Confirm transfer", "transfer", "Transfer complete")))
+    movedWith ("Deposit", confirmDeposit, "deposit", "Deposit complete")
+    movedWith ("Transfer", confirmTransfer, "transfer", "Transfer complete")))
 test ("notes and owners keep quotes, newlines and Unicode, trimmed and escaped", \() => bench (\() =>
     openPage ("Deposit")
     typed ("Deposit to", "2")
     depositSent (" $1,234.56 ", "  Deposit \"日本語\"\nready  ", "POST http://127.0.0.1:18790/api/deposit {\"account\":2,\"cents\":123456,\"note\":\"Deposit \\\"日本語\\\"\\nready\"} deposit")
     reply ("deposit", 200, "{}")
-    press "Open account"
-    typed ("Account owner", "  Nora \"N\" Okafor 日本語  ")
-    press "Create account"
+    press openAccount
+    typed (accountOwner, "  Nora \"N\" Okafor 日本語  ")
+    press createAccount
     expect (asked (), "POST http://127.0.0.1:18790/api/accounts {\"name\":\"Nora \\\"N\\\" Okafor 日本語\"} open")))
 test ("filter and search intersect while the journal's totals stay complete", \() => bench (\() =>
     loaded ()
     press "Activity"
     press "In 1"
     typed ("Search", "Marcus")
-    shows "No matching activity"
+    shows noMatchingActivity
     shows "All 3"
     shows "Declined 1"
     typed ("Search", "salary")
     expect (join (mapList (talon::Forms::shown (store ()), \line => line.movementNote)) ",", "March salary")
     press "Declined 1"
-    shows "No matching activity"
+    shows noMatchingActivity
     typed ("Search", "")
-    expect (join (mapList (talon::Forms::shown (store ()), \line => line.movementNote)) ",", "vintage synthesizer")))
+    expect (join (mapList (talon::Forms::shown (store ()), \line => line.movementNote)) ",", vintageSynthesizer)))
 test ("an empty ledger draws usable empty states", \() => bench (\() =>
     launchWith []
     reply ("accounts", 200, "[]")
@@ -341,4 +350,4 @@ test ("an empty ledger draws usable empty states", \() => bench (\() =>
     shows "No accounts yet"
     press "Activity"
     shows "All 0"
-    shows "No matching activity"))
+    shows noMatchingActivity))

@@ -1,4 +1,6 @@
 typeDiagram
+
+# Package names and source identity
 alias ScopeName = String
 alias PackageName = String
 alias CommitId = String
@@ -9,43 +11,50 @@ alias CompatibilityEpoch = Int
 alias ReleaseOrdinal = Int
 alias PrincipalId = String
 type PackageKey { scope: ScopeName name: PackageName }
-alias OrganizationId = String
-alias MembershipId = String
-alias PackageId = String
-alias GovernanceId = String
+
+# Ownership: an organization owns each package; its administrator grants users permission to publish.
 alias AuthorityEpoch = Int
 union PrincipalKind { Human {} Workflow {} }
 union HumanPrincipalKind { Human {} }
 union PrincipalState { Active {} Suspended {} }
 union OrganizationState { Active {} Frozen {} Tombstoned {} }
 union OrganizationRole { Custodian {} Member {} }
-union MembershipState { Active {} Revoked {} }
+union AccessState { Active {} Revoked {} }
 union ActiveMembershipState { Active {} }
 union RegistryPackageState { Draft {} Active {} WriteFrozen {} Deprecated {} Tombstoned {} }
 union PackagePermission { PublishRelease {} YankRelease {} EditMetadata {} ManageMaintenance {} ManageSecurity {} }
-union PermissionState { Active {} Revoked {} }
 union AdminTransferState { Pending {} Completed {} Cancelled {} Declined {} Expired {} }
 union InvitationState { Pending {} Accepted {} Revoked {} Expired {} }
 union MaintenanceReportState { Open {} Acknowledged {} Resolved {} Withdrawn {} }
 type RegistryPrincipal { id: PrincipalId kind: PrincipalKind state: PrincipalState credentialEpoch: AuthorityEpoch createdAt: DateTime }
-type RegistryAuthBinding { id: GovernanceId principalId: PrincipalId issuer: String provider: String providerSubject: String state: PermissionState verifiedAt: DateTime }
-type Organization { id: OrganizationId handle: ScopeName displayName: String state: OrganizationState governanceEpoch: AuthorityEpoch createdAt: DateTime }
+type PendingLogin { stateDigest: Digest browserDigest: Digest verifierEnvelope: String createdAt: DateTime }
+type BrowserSession { id: Uuid cookieDigest: Digest bindingId: Uuid principalId: PrincipalId credentialEpoch: AuthorityEpoch tokenEnvelope: Option<String> startedAt: DateTime lastUsedAt: DateTime revokedAt: Option<DateTime> refreshId: Option<Uuid> refreshStartedAt: Option<DateTime> }
+type HostedOAuthConfig { supabaseOrigin: String callback: String websiteOrigin: String publishableKey: String }
+type HostedLoginSettings { oauth: HostedOAuthConfig key: String sessionKey: String }
+type HostedLoginRedirect { location: String cookie: String }
+type EdgeSecretOverlap { secret: String expiresAtUnixSeconds: Int }
+type PublicCatalogNotice { path: RelativePath text: String }
+type PublicCatalogRelease { epoch: CompatibilityEpoch ordinal: ReleaseOrdinal digest: Digest publisherId: String publisherName: String licenseExpression: String notices: List<PublicCatalogNotice> }
+type PublicCatalogEntry { key: String keywords: List<String> releases: List<PublicCatalogRelease> summary: String warnings: List<String> }
+type PublicCatalogPage { packages: List<PublicCatalogEntry> }
+type RegistryAuthBinding { id: Uuid principalId: PrincipalId issuer: String provider: String providerSubject: String authSubject: Uuid state: AccessState verifiedAt: DateTime }
+type Organization { id: Uuid handle: ScopeName displayName: String state: OrganizationState governanceEpoch: AuthorityEpoch createdAt: DateTime }
 type OrganizationMembership {
-  id: MembershipId
-  organizationId: OrganizationId
+  id: Uuid
+  organizationId: Uuid
   principalId: PrincipalId
   role: OrganizationRole
   principalKind: PrincipalKind
-  state: MembershipState
+  state: AccessState
   authorityEpoch: AuthorityEpoch
   acceptedAt: DateTime
 }
-type OrganizationRecoveryAuthority { id: GovernanceId organizationId: OrganizationId principalId: PrincipalId principalKind: HumanPrincipalKind state: PermissionState governanceEpoch: AuthorityEpoch enrollmentDigest: Digest enrolledAt: DateTime }
+type OrganizationRecoveryAuthority { id: Uuid organizationId: Uuid principalId: PrincipalId principalKind: HumanPrincipalKind state: AccessState governanceEpoch: AuthorityEpoch enrollmentDigest: Digest enrolledAt: DateTime }
 type RegistryPackage {
-  id: PackageId
-  organizationId: OrganizationId
+  id: Uuid
+  organizationId: Uuid
   name: PackageName
-  adminMembershipId: MembershipId
+  adminMembershipId: Uuid
   adminMembershipState: ActiveMembershipState
   adminPrincipalKind: HumanPrincipalKind
   authorityEpoch: AuthorityEpoch
@@ -53,23 +62,24 @@ type RegistryPackage {
   createdAt: DateTime
 }
 type PackagePermissionGrant {
-  id: GovernanceId
-  organizationId: OrganizationId
-  packageId: PackageId
-  membershipId: MembershipId
+  id: Uuid
+  organizationId: Uuid
+  packageId: Uuid
+  membershipId: Uuid
   permission: PackagePermission
-  state: PermissionState
-  grantedByMembershipId: MembershipId
+  state: AccessState
+  grantedByMembershipId: Uuid
   authorityEpoch: AuthorityEpoch
+  membershipAuthorityEpoch: AuthorityEpoch
   grantedAt: DateTime
   expiresAt: Option<DateTime>
 }
 type PackageAdminTransfer {
-  id: GovernanceId
-  organizationId: OrganizationId
-  packageId: PackageId
-  fromMembershipId: MembershipId
-  toMembershipId: MembershipId
+  id: Uuid
+  organizationId: Uuid
+  packageId: Uuid
+  fromMembershipId: Uuid
+  toMembershipId: Uuid
   toMembershipState: ActiveMembershipState
   toPrincipalKind: HumanPrincipalKind
   expectedAuthorityEpoch: AuthorityEpoch
@@ -81,10 +91,12 @@ type PackageAdminTransfer {
   expiresAt: DateTime
   decidedAt: Option<DateTime>
 }
-type OrganizationInvitation { id: GovernanceId organizationId: OrganizationId targetPrincipalId: PrincipalId issuerMembershipId: MembershipId role: OrganizationRole tokenDigest: Digest state: InvitationState expectedGovernanceEpoch: AuthorityEpoch createdAt: DateTime expiresAt: DateTime }
-type PackageMaintenanceReport { id: GovernanceId organizationId: OrganizationId packageId: PackageId reporterMembershipId: MembershipId summary: String evidenceDigest: Digest state: MaintenanceReportState createdAt: DateTime }
+type OrganizationInvitation { id: Uuid organizationId: Uuid targetPrincipalId: PrincipalId issuerMembershipId: Uuid role: OrganizationRole tokenDigest: Digest state: InvitationState expectedGovernanceEpoch: AuthorityEpoch createdAt: DateTime expiresAt: DateTime }
+type PackageMaintenanceReport { id: Uuid organizationId: Uuid packageId: Uuid reporterMembershipId: Uuid summary: String evidenceDigest: Digest state: MaintenanceReportState createdAt: DateTime }
 union GovernanceEventKind { OrganizationCreated {} MembershipChanged {} PackageCreated {} PermissionChanged {} AdminProposed {} AdminReplaced {} MaintenanceChanged {} Recovery {} OrganizationTransfer {} }
-type GovernanceEvent { id: GovernanceId organizationId: OrganizationId packageId: Option<PackageId> actorPrincipalId: PrincipalId kind: GovernanceEventKind authorityEpoch: AuthorityEpoch proofDigest: Digest previousEventDigest: Option<Digest> createdAt: DateTime }
+type GovernanceEvent { id: Uuid organizationId: Uuid packageId: Option<Uuid> actorPrincipalId: PrincipalId kind: GovernanceEventKind authorityEpoch: AuthorityEpoch proofDigest: Digest previousEventDigest: Option<Digest> createdAt: DateTime }
+
+# Publication: bind the repository, verify the publisher and authorize one exact release.
 type SourceRef { forge: String repositoryId: String subdirectory: RelativePath commit: CommitId }
 type RepositoryBinding {
   package: PackageKey
@@ -160,6 +172,8 @@ type SignedPublicationAuthorization { payload: PublicationAuthorization proofs: 
 union ReleaseState { Submitted { submittedAt: DateTime } Quarantined { reason: String } Published { publishedAt: DateTime } }
 union ActivationState { Eligible {} Yanked {} Revoked {} }
 type ReleaseStatus { release: ReleaseId sequence: Int state: ActivationState effectiveAt: DateTime reasonDigest: Option<Digest> previousStatus: Option<Digest> roleMetadataVersion: Int }
+
+# Package manifests and declared dependencies
 type DependencyRequirement { package: PackageKey epoch: CompatibilityEpoch minimumOrdinal: ReleaseOrdinal }
 type DependencyGrant { package: PackageKey capabilities: List<String> }
 type SystemRequirement { capability: String minimumRevision: Int }
@@ -186,6 +200,8 @@ type PackageManifest {
   systemRequirements: List<SystemRequirement>
   assets: List<PackageAsset>
 }
+
+# Build plans and immutable release identity
 union DependencySelectionRef { Release { selectionDigest: Digest } Development { developmentLockDigest: Digest } }
 type ModulePlanEntry { path: RelativePath flavor: SourceFlavor sourceBytesDigest: Digest imports: List<String> publicInterfaceDigest: Digest }
 type ModuleGraphProjection { modules: List<ModulePlanEntry> }
@@ -221,6 +237,8 @@ type Release {
   state: ReleaseState
   inferredCapabilities: List<String>
 }
+
+# Resolution inputs and local development
 type LocalOverride { package: PackageKey path: LocalPath epoch: CompatibilityEpoch baseline: Option<ReleaseId> }
 type DevelopmentOverlay { overrides: List<LocalOverride> }
 type ProviderCatalogEntry { capability: String targetSpecDigest: Digest provider: String revision: Int artifactDigest: Digest closureDigests: List<Digest> provenanceDigest: Digest }
@@ -267,6 +285,8 @@ type ResolutionContext {
   providerEntries: List<ProviderCatalogEntry>
   systemInputs: List<LockedSystemInput>
 }
+
+# Trust: signed status, consistent checkpoints and independent witnesses
 type TufRoleState { role: String version: Int expiresAt: DateTime metadataDigest: Digest }
 type LogCheckpoint { logId: String treeSize: Int rootHash: Digest issuedAt: DateTime operatorSignatureDigest: Digest }
 type MerkleInclusionProof { logId: String leafDigest: Digest leafIndex: Int treeSize: Int hashes: List<Digest> }
@@ -293,6 +313,8 @@ union VerificationStatus {
   Incomplete { reason: String }
   Invalid { reason: String }
 }
+
+# Locks, reproducible builds and atomic workspace changes
 type LockedRoot {
   package: Option<PackageKey>
   relativePath: RelativePath
@@ -378,6 +400,8 @@ type WorkspaceTransaction {
   nextGeneration: Digest
   journalDigest: Digest
 }
+
+# Security evidence, maintenance and discovery
 union ScanVerdict {
   NoBlockingFinding { observedAt: DateTime }
   NeedsReview { findingIds: List<Uuid> }

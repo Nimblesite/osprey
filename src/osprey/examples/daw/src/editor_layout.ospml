@@ -3,25 +3,42 @@ namespace synth
 
 (** Stable component positions and pointer capture for the modular canvas. *)
 module EditorLayout
-    availableRow (saved, x, row) = match ui::Lists::any (saved, \p => CanvasGeometry::collides (x, CanvasGeometry::gridY (toFloat row), p.layoutX, p.layoutY))
-        true => availableRow (saved, x, satAdd row 1)
+    // A row is crossed at `depth` when a card already placed in it feeds a card beyond `depth`: that cable runs through.
+    crossed (plan, depths, held, depth, row) = ui::Lists::any (plan.graph.cables, \c =>
+        (mapGet held.rowOf (toString c.source) ?: -1) == row && (mapGet depths (toString c.source) ?: depth) < depth && (mapGet depths (toString c.destination) ?: depth) > depth)
+
+    taken (plan, depths, held, saved, x, depth, row) = crossed (plan, depths, held, depth, row) || mapContains held.used "${depth}:${row}" || ui::Lists::any (saved, \p => CanvasGeometry::collides (x, CanvasGeometry::gridY (toFloat row), p.layoutX, p.layoutY))
+
+    availableRow (plan, depths, held, saved, x, depth, row) = match taken (plan, depths, held, saved, x, depth, row)
+        true => availableRow (plan, depths, held, saved, x, depth, satAdd row 1)
         false => row
 
-    place (inputs, saved, held, id) =
-        parents = mapGet inputs (toString id) ?: []
-        depth = foldList (parents, 0, \(largest, parent) =>
-            next = satAdd (mapGet held.depths (toString parent) ?: -1) 1
-            ui::Pick::either (next > largest, next, largest))
-        key = toString depth
-        x = CanvasGeometry::signalX (toFloat depth)
-        row = availableRow (saved, x, mapGet held.rows key ?: 0)
-        at = daw::NodePosition(layoutNode = id, layoutX = x, layoutY = CanvasGeometry::gridY (toFloat row))
-        { depths = mapSet held.depths (toString id) depth, rows = mapSet held.rows key (satAdd row 1), placed = listPrepend held.placed at }
+    // A card fed over more than one column starts in its source's row, kept clear, so that cable runs straight.
+    sourceRow (depths, held, depth, id, row, c) = match c.destination == id && (mapGet depths (toString c.source) ?: depth) < depth - 1
+        true => mapGet held.rowOf (toString c.source) ?: row
+        false => row
 
-    (** Compute default positions once on open, in the graph scheduler's dependency order. *)
+    preferred (plan, depths, held, depth, id) = foldList (plan.graph.cables, 0, \(row, c) => sourceRow (depths, held, depth, id, row, c))
+
+    // One column past the deepest input.
+    deeper (depths, largest, parent) =
+        next = satAdd (mapGet depths (toString parent) ?: -1) 1
+        ui::Pick::either (next > largest, next, largest)
+
+    columns (plan, inputs) = foldList (plan.order, Map(), \(depths, id) => mapSet depths (toString id) (foldList (mapGet inputs (toString id) ?: [], 0, \(largest, parent) => deeper (depths, largest, parent))))
+
+    place (plan, depths, saved, held, id) =
+        depth = mapGet depths (toString id) ?: 0
+        x = CanvasGeometry::signalX (toFloat depth)
+        row = availableRow (plan, depths, held, saved, x, depth, preferred (plan, depths, held, depth, id))
+        at = daw::NodePosition(layoutNode = id, layoutX = x, layoutY = CanvasGeometry::gridY (toFloat row))
+        { rowOf = mapSet held.rowOf (toString id) row, used = mapSet held.used "${depth}:${row}" true, placed = listPrepend held.placed at }
+
+    (** Compute default positions once on open, in the graph scheduler's dependency order: one column per step,
+        branches stacked, clear of saved cards, and no card in the row of a cable that passes over its column. *)
     export flow (plan, saved) =
-        inputs = Graphs::inputSources plan.graph.cables
-        (foldList (plan.order, { depths = Map(), rows = Map(), placed = [] }, \(held, id) => place (inputs, saved, held, id))).placed
+        depths = columns (plan, Graphs::inputSources plan.graph.cables)
+        (foldList (plan.order, { rowOf = Map(), used = Map(), placed = [] }, \(held, id) => place (plan, depths, saved, held, id))).placed
 
     stored (editor, identity) = match ui::Lists::find (editor.positions, \p => p.layoutNode == identity)
         Success at => at
@@ -179,8 +196,8 @@ module PrismArt
     export card (editor, n) =
         drawn (prepared (editor, n), filterList (roleMarks (editor, role n.processor), \mark => !(n.processor == Sink && mark.markFigure == ui::PolylineFigure)))
 
-    (** Original header, inspector, legend and keyboard, driven by the current selection. *)
-    export background editor = mapList (backgroundPart (editor, false), \part => fixedPart (editor, part))
+    (** Original header, inspector and legend, driven by the current selection. *)
+    export background editor = mapList (backgroundPart editor, \part => fixedPart (editor, part))
 
     fixedPart (editor, part) = match grid part
         true => part
@@ -193,10 +210,7 @@ module PrismArt
     (** Keep fixed panels above every card when the graph pans beneath them. *)
     export chromeLayer editor = satMul (satAdd (length editor.graph.nodes) 1) 100
 
-    (** Keyboard artwork in local dock coordinates. *)
-    export deck editor = backgroundPart (editor, true)
-
-    backgroundPart (editor, keyboard) =
+    backgroundPart editor =
         selected = match Graphs::node (editor.graph, editor.selected)
             Invalid _ => editor.skin
             Valid n => prepared (editor, n)
@@ -204,15 +218,14 @@ module PrismArt
             Invalid _ => true
             Valid _ => false
         machine = ui::Machines::feed (selected, [fact ("keys", 1.0), fact ("hertz", CanvasGeometry::frequency (toFloat editor.note)), ui::Machines::fact ("note", ui::Values::text (noteName editor.note))])
-        dy = ui::Pick::either (keyboard, -828.0, 0.0)
-        drawn (machine, mapList (filterList (roleMarks (editor, "scenery"), \mark => backgroundMark (editor, machine, mark, keyboard, bare)), \mark => shiftedMark (machine, mark, dy)))
+        drawn (machine, mapList (filterList (roleMarks (editor, "scenery"), \mark => backgroundMark (editor, machine, mark, bare)), \mark => shiftedMark (machine, mark, 0.0)))
 
     // `bare`: no module is selected, so the skin's own inspector (its sample Filter) is left out.
-    backgroundMark (editor, machine, mark, keyboard, bare) =
+    backgroundMark (editor, machine, mark, bare) =
         grid = mark.markFigure == ui::SpriteFigure && ui::Templates::measure (machine, mark.markIndex) == 0.0
-        match grid
-            true => !keyboard
-            false => (ui::Templates::measure (machine, mark.markY) >= 828.0 + ui::Machines::number (machine, "spareHeight")) == keyboard && !(editor.detailsShown && !keyboard && ui::Templates::measure (machine, mark.markX) >= 1210.0) && !(bare && !keyboard && ui::Templates::measure (machine, mark.markX) >= 1210.0 && ui::Templates::measure (machine, mark.markY) >= 70.0) && !connectionMark (machine, mark)
+        x = ui::Templates::measure (machine, mark.markX)
+        y = ui::Templates::measure (machine, mark.markY)
+        grid || (y < 828.0 + ui::Machines::number (machine, "spareHeight") && !(editor.detailsShown && x >= 1210.0) && !(bare && x >= 1210.0 && y >= 70.0) && !connectionMark (machine, mark))
 
     connectionMark (machine, mark) =
         y = ui::Templates::measure (machine, mark.markY)
@@ -220,20 +233,9 @@ module PrismArt
 
     noteNames = ["C3", "C#3", "D3", "D#3", "E3", "F3", "F#3", "G3", "G#3", "A3", "A#3", "B3", "C4", "C#4", "D4", "D#4", "E4", "F4", "F#4", "G4", "G#4", "A4", "A#4", "B4"]
 
-    (** Musical names match the original key labels, including accidentals. *)
-    export noteName note = listGet noteNames (satSub note 48) ?: "—"
+    // Musical names match the skin's key labels, including accidentals.
+    noteName note = listGet noteNames (satSub note 48) ?: "—"
 
-    (** Original keyboard hit boxes, rather than approximated white and black key geometry. *)
-    export keyboardAccess editor = filterList (ui::Canvases::semantics (ui::Machines::feed (editor.skin, [fact ("keys", 1.0)])), \area => startsWith area.accessLabel "Play ")
-
-    (** Decode only a key the original keyboard actually exposes. *)
-    export keyAt (editor, x, y) = match listGet (filterList (keyboardAccess editor, \a => x >= a.accessLeft && x <= a.accessLeft + a.accessWidth && y >= a.accessTop && y <= a.accessTop + a.accessHeight)) 0
-        Error _ => Error(message = "index out of bounds")
-        Success area =>
-            index = ui::Lists::position (noteNames, \name => "Play ${name}" == area.accessLabel)
-            match index >= 0
-                true => Success(value = satAdd index 48)
-                false => Error(message = "Unknown keyboard note.")
 
 
     waveName value = match value
@@ -266,7 +268,7 @@ module PrismArt
         "custom" => []
         _ => filterList (ui::Canvases::semantics (prepared (editor, n)), \a => !inspectorArea a && supports (n, a))
 
-    sliderAt (editor, n, px, py) = length (filterList (CardArts::controls (editor, n), \a => px >= a.accessLeft && px <= a.accessLeft + a.accessWidth && py >= a.accessTop && py <= a.accessTop + a.accessHeight)) > 0
+    sliderAt (editor, n, px, py) = length (filterList (CardArts::controls (editor, n), \a => EditorView::covers (a, px, py))) > 0
 
     numberChange (editor, n, before, after, input, key, convert) = match ui::Machines::number (before, input) == ui::Machines::number (after, input)
         true => editor
@@ -380,13 +382,10 @@ module CableCanvas
             [EditorView::panel (at.x - 67.0, at.y + 18.0, 134.0, 32.0, 2563389, 30001), EditorView::text ("Delete cable ×", at.x - 53.0, at.y + 26.0, 14.0, 240, 30002)]
 
     (** The close button and drag preview remain above the node layers. *)
-    export shapes editor = listConcat (indexed (editor, [], wire)) (listConcat (preview editor) (deletion editor))
+    export shapes editor = listConcat (cables (editor, [], wire)) (listConcat (preview editor) (deletion editor))
 
     (** Each cable with its index, appended after `first`. *)
-    indexed (editor, first, each) = foldList (toList (range (0, length editor.graph.cables)), first, \(all, index) =>
-        match listGet editor.graph.cables index
-            Error _ => all
-            Success cable => listAppend all (each (editor, cable, index)))
+    cables (editor, first, each) = EditorView::indexed (editor.graph.cables, first, \(cable, index) => [each (editor, cable, index)])
 
     cableAccess (editor, cable, index) =
         at = midpoint (editor, cable)
@@ -394,7 +393,7 @@ module CableCanvas
 
     (** Screen readers and host tests invoke the same physical canvas hit areas. *)
     export access editor =
-        wires = indexed (editor, mapList (filterList (editor.graph.nodes, \n => n.processor == Filter), \n => monitorAccess (editor, n)), cableAccess)
+        wires = cables (editor, mapList (filterList (editor.graph.nodes, \n => n.processor == Filter), \n => monitorAccess (editor, n)), cableAccess)
         match listGet editor.graph.cables editor.selectedCable
             Error _ => wires
             Success cable =>

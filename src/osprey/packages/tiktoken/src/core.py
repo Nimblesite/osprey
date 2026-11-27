@@ -82,7 +82,7 @@ def each_item(items, step, i, acc, combine) -> Result[list, str]:
                 return Error(message=message)
 
 
-def encode_pieces(ranks, pieces, i, acc) -> Result[list[int], str]:
+def encode_pieces(ranks, pieces, i, acc):
     """Byte-pair encode each piece and concatenate the token id lists."""
     return each_item(pieces, lambda j: Bpe.bpe_encode(ranks, Unicode.at_list(pieces, j)), i, acc, lambda a, v: listConcat(a, v))
 
@@ -100,7 +100,7 @@ def encode(enc, text, allowed_special):
         return encode_specials(enc, cps, allowed_special, 0, [])
 
 
-def encode_specials(enc, cps, allowed_special, i, acc) -> Result[list[int], str]:
+def encode_specials(enc, cps, allowed_special, i, acc):
     """The Rust core's loop: scan for the earliest allowed special, encode the
     text before it ordinarily, emit its id, continue after it."""
     allowed = specials_within(enc.special_tokens, allowed_special)
@@ -171,7 +171,7 @@ def decode_bytes(enc, tokens):
     return bytes_of_tokens(enc, tokens, 0, [])
 
 
-def bytes_of_tokens(enc, tokens, i, acc) -> Result[list[int], str]:
+def bytes_of_tokens(enc, tokens, i, acc):
     return each_item(tokens, lambda j: token_bytes(enc, Unicode.at(tokens, j)), i, acc, lambda a, v: listConcat(a, v))
 
 
@@ -208,7 +208,7 @@ def decode_tokens_bytes(enc, tokens):
     return tokens_bytes_of(enc, tokens, 0, [])
 
 
-def tokens_bytes_of(enc, tokens, i, acc) -> Result[list[list[int]], str]:
+def tokens_bytes_of(enc, tokens, i, acc):
     return each_item(tokens, lambda j: token_bytes(enc, Unicode.at(tokens, j)), i, acc, lambda a, v: listAppend(a, v))
 
 

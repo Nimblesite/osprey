@@ -17,7 +17,7 @@ module Ledger
     jsonHeader () = ui::Header(headerName = "Content-Type", headerValue = "application/json")
 
     (** A request to the API at `server` whose reply is held under the slice named `ticket`. *)
-    export call (server, ticket, method, path, body) = Requests::ask (ticket, ui::Http(method = method, url = server + path, headers = [jsonHeader ()], body = body, responseLimit = replyLimit (), deadline = replyDeadline (), httpSlice = ticket))
+    export call (server, ticket, method, path, body) = Requests::ask (ticket, ui::Http(method = method, url = server + path, headers = [jsonHeader ()], body = body, responseLimit = replyLimit (), deadline = replyDeadline (), responseSlice = ticket))
 
     (** Both listings, fetched together. *)
     export hydrate server = [call (server, "accounts", "GET", "/api/accounts", ""), call (server, "activity", "GET", "/api/activity", "")]

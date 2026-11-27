@@ -5,6 +5,11 @@ namespace registry;
 /// assembles arrays and inline tables, reporting located reason codes through
 /// `Toml::fail`. Implements [PACKAGE-MANIFEST].
 module TomlValues {
+    let tomlUnexpectedToken = "toml.unexpected-token"
+    let tomlBadInteger = "toml.bad-integer"
+    let tomlEmptyKey = "toml.empty-key"
+    let tomlNonAscii = "toml.non-ascii"
+
     /// One dotted-key segment with the span its text occupied.
     export type KeySeg = { name: string, span: Toml::Span }
     /// A parsed key path and the cursor after its last segment.
@@ -58,11 +63,11 @@ module TomlValues {
     fn parseKeySeg(c) = match TomlLexer::cur(c) == byteQuote {
         true => parseQuotedKey(c)
         false => match TomlLexer::cur(c) >= 128 {
-            true => Error { message: Toml::fail(c, "toml.non-ascii") }
+            true => Error { message: Toml::fail(c, tomlNonAscii) }
             false => match isBareKeyByte(TomlLexer::cur(c)) {
                 true => parseBareKey(c)
                 false => match keyEndByte(TomlLexer::cur(c)) {
-                    true => Error { message: Toml::fail(c, "toml.empty-key") }
+                    true => Error { message: Toml::fail(c, tomlEmptyKey) }
                     false => Error { message: Toml::fail(c, "toml.bad-key") }
                 }
             }
@@ -72,7 +77,7 @@ module TomlValues {
     fn parseQuotedKey(c) = match TomlLexer::basicString(c) {
         Error { message } => Error { message: message }
         Success { value } => match byteLength(value.text) == 0 {
-            true => Error { message: Toml::fail(c, "toml.empty-key") }
+            true => Error { message: Toml::fail(c, tomlEmptyKey) }
             false => Success { value: KS { seg: KeySeg { name: value.text, span: Toml::spanOf(c) }, at: value.at } }
         }
     }
@@ -80,9 +85,9 @@ module TomlValues {
     fn parseBareKey(c) = {
         let s = scanBareKey(c)
         match byteLength(s.name) == 0 {
-            true => Error { message: Toml::fail(c, "toml.empty-key") }
+            true => Error { message: Toml::fail(c, tomlEmptyKey) }
             false => match TomlLexer::cur(s.at) >= 128 {
-                true => Error { message: Toml::fail(s.at, "toml.non-ascii") }
+                true => Error { message: Toml::fail(s.at, tomlNonAscii) }
                 false => match keyEndByte(TomlLexer::cur(s.at)) {
                     true => Success { value: KS { seg: KeySeg { name: s.name, span: Toml::spanOf(c) }, at: s.at } }
                     false => Error { message: Toml::fail(s.at, "toml.bad-key") }
@@ -123,7 +128,7 @@ module TomlValues {
         Error { message } => Error { message: message }
         Success { value } => match value.token == word {
             true => Success { value: Val { value: Toml::Bool { flag: flag }, at: value.at } }
-            false => Error { message: Toml::fail(c, "toml.unexpected-token") }
+            false => Error { message: Toml::fail(c, tomlUnexpectedToken) }
         }
     }
 
@@ -132,10 +137,10 @@ module TomlValues {
         if Bytes::isDigit(b) { parseNumber(c) }
         else if b == bytePlus || b == byteMinus { match Bytes::isDigit(TomlLexer::peek(c, 1)) {
             true => parseNumber(c)
-            false => Error { message: Toml::fail(c, "toml.unexpected-token") }
+            false => Error { message: Toml::fail(c, tomlUnexpectedToken) }
         } }
-        else if b >= 128 { Error { message: Toml::fail(c, "toml.non-ascii") } }
-        else { Error { message: Toml::fail(c, "toml.unexpected-token") } }
+        else if b >= 128 { Error { message: Toml::fail(c, tomlNonAscii) } }
+        else { Error { message: Toml::fail(c, tomlUnexpectedToken) } }
     }
 
     fn parseBasicValue(c) = quotedValue(c, byteQuote, fn(at) => TomlLexer::basicString(at))
@@ -166,7 +171,7 @@ module TomlValues {
     } else if hasByte(token, 58) || hasByte(token, 84) || hasByte(token, 90) || hasMinusAfterStart(token) {
         Error { message: Toml::fail(start, "toml.unsupported-datetime") }
     } else {
-        Error { message: Toml::fail(start, "toml.bad-integer") }
+        Error { message: Toml::fail(start, tomlBadInteger) }
     }
 
     fn intShape(token) = {
@@ -175,7 +180,7 @@ module TomlValues {
             false => token
         }
         match byteLength(body) == 0 {
-            true => "toml.bad-integer"
+            true => tomlBadInteger
             false => digitsShape(body)
         }
     }
@@ -184,7 +189,7 @@ module TomlValues {
         true => ""
         false => match isDigit1to9(byteAt(d, 0) ?: 0) {
             true => restDigits(d, 1)
-            false => "toml.bad-integer"
+            false => tomlBadInteger
         }
     }
 
@@ -195,9 +200,9 @@ module TomlValues {
             false => match (byteAt(d, i) ?: 0) == byteUnderscore {
                 true => match Bytes::isDigit(byteAt(d, i + 1) ?: -1) {
                     true => restDigits(d, i + 2)
-                    false => "toml.bad-integer"
+                    false => tomlBadInteger
                 }
-                false => "toml.bad-integer"
+                false => tomlBadInteger
             }
         }
     }
@@ -226,7 +231,7 @@ module TomlValues {
             true => parseArrayItems(TomlLexer::advance(c), items, start)
             false => match TomlLexer::cur(c) == byteRBracket {
                 true => closedArr(c, items)
-                false => Error { message: Toml::fail(c, "toml.unexpected-token") }
+                false => Error { message: Toml::fail(c, tomlUnexpectedToken) }
             }
         }
     }
@@ -252,7 +257,7 @@ module TomlValues {
         true => Error { message: Toml::fail(c, "toml.inline-table-newline") }
         false => match TomlLexer::eof(c) {
             true => Error { message: Toml::fail(start, "toml.unterminated-inline-table") }
-            false => Error { message: Toml::fail(c, "toml.unexpected-token") }
+            false => Error { message: Toml::fail(c, tomlUnexpectedToken) }
         }
     }
 

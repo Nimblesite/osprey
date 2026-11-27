@@ -27,7 +27,19 @@ def answered(result):
 @static_handler(Tensor[GpuBuffer[float32]])
 class on_gpu:
     """GPU buffers, and `device` reports which backend executes them. Kernels and
-    products run on Metal or OpenCL when `OSPREY_GPU` selects a device."""
+    products run on Metal or OpenCL when `OSPREY_GPU` selects a device.
+
+    # Examples
+    ```osprey
+    from gpt2 import Backends, Model
+    def lifted():
+        return Model.or_stop(perform(Tensor.from_list([toFloat32(1.0), toFloat32(2.0)])), Model.empty)
+    Backends.reported(Backends.strictly(lambda: on_gpu(lambda: print(Model.total(Model.gelus(lifted()))))), "gelus")
+    ```
+    ```output
+    2.7957897
+    ```
+    """
     def build(n, f):
         return then(gpuIota(n), lambda value: answered(gpuMap(value, f)))
 

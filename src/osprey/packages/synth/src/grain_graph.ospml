@@ -62,7 +62,19 @@ module GrainGraph
             true => Success(value = cloud)
             false => Outcomes::carried (Grains::withRegion (cloud.pool, selected), \pool => Success(value = cloud(pool = pool)))
 
-    (** Prepare an instance only at the graph origin; later blocks must supply its retained memory. *)
+    (** Prepare an instance only at the graph origin; later blocks must supply its retained memory.
+    # Examples
+    ```osprey
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => GrainGraph::prepare (Components::sine (1, 440.0)))}"
+    ```
+    ```output
+    Error(MissingResource { detail: "The component is not a grain cloud." })
+    ```
+    *)
     export prepare n = match n.processor
         Granular resource capacity seed =>
             use controls <- Outcomes::carried (configuration n)
@@ -75,12 +87,38 @@ module GrainGraph
                     withRegion (n, cloud(sourceSamples = resource.samples))
         _ => Error(message = MissingResource(detail = "The component is not a grain cloud."))
 
-    (** Reject memory from a different resource, pool capacity or graph sample position. *)
+    (** Reject memory from a different resource, pool capacity or graph sample position.
+    # Examples
+    ```osprey
+    cloud = GrainCloudState(sourceSamples = [0.0, 0.5], pool = GrainPool(region = GrainRegion(first = 0, limit = 2, boundary = LoopSource), source = [0.0, 0.5], retiredSource = [], retiredBefore = 0, capacity = 8, voices = [], revision = 0, position = 0, nextIdentity = 0), clock = GrainClock(position = 0, nextOnset = 0, timing = PeriodicTiming(period = 2400, jitter = 0), seed = 1), seeds = GrainSeeds(position = 1, rate = 1, duration = 1, amplitude = 1, pan = 1))
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => GrainGraph::compatible (Components::sine (1, 440.0), cloud, 0))} ${arithmetic (\() => GrainGraph::compatible (Components::granular (1, SampleResource(name = "voice", sampleRate = 48000, sourceChannels = 1, rootFrequency = 220.0, samples = [0.0, 0.5]), 8, 7), cloud, 1))}"
+    ```
+    ```output
+    false false
+    ```
+    *)
     export compatible (n, cloud, position) = match n.processor
         Granular resource capacity _ => SampleResources::metadata resource && structuralEquals (resource.samples, cloud.sourceSamples) && SampleResources::frames resource == length cloud.pool.source && capacity == cloud.pool.capacity && cloud.pool.position == position && cloud.clock.position == position
         _ => false
 
-    (** Apply graph controls to newly emitted grains; surviving grains retain their own envelopes and cursors. *)
+    (** Apply graph controls to newly emitted grains; surviving grains retain their own envelopes and cursors.
+    # Examples
+    ```osprey
+    cloud = GrainCloudState(sourceSamples = [0.0, 0.5], pool = GrainPool(region = GrainRegion(first = 0, limit = 2, boundary = LoopSource), source = [0.0, 0.5], retiredSource = [], retiredBefore = 0, capacity = 8, voices = [], revision = 0, position = 0, nextIdentity = 0), clock = GrainClock(position = 0, nextOnset = 0, timing = PeriodicTiming(period = 2400, jitter = 0), seed = 1), seeds = GrainSeeds(position = 1, rate = 1, duration = 1, amplitude = 1, pan = 1))
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => GrainGraph::block (Components::sine (1, 440.0), cloud, 16))}"
+    ```
+    ```output
+    Error(MissingResource { detail: "index out of bounds" })
+    ```
+    *)
     export block (n, cloud, frames) = Outcomes::carried (withRegion (n, cloud), \selected => audio (n, selected, frames))
 
     audio (n, cloud, frames) =
@@ -100,7 +138,16 @@ module GrainGraph
                 Error _ => Error(message = Outcomes::indexOutOfBounds)
                 Success right => Success(value = listPrepend (listPrepend samples left) right)
 
-    (** Interleave actual left/right output for the common graph/device transport. *)
+    (** Interleave actual left/right output for the common graph/device transport.
+    # Examples
+    ```osprey
+    cloud = GrainCloudState(sourceSamples = [0.0, 0.5], pool = GrainPool(region = GrainRegion(first = 0, limit = 2, boundary = LoopSource), source = [0.0, 0.5], retiredSource = [], retiredBefore = 0, capacity = 8, voices = [], revision = 0, position = 0, nextIdentity = 0), clock = GrainClock(position = 0, nextOnset = 0, timing = PeriodicTiming(period = 2400, jitter = 0), seed = 1), seeds = GrainSeeds(position = 1, rate = 1, duration = 1, amplitude = 1, pan = 1))
+    print "${GrainGraph::interleaved (GrainCloudBlock(left = [0.5, -0.5], right = [0.25, -0.25], next = cloud))} ${GrainGraph::interleaved (GrainCloudBlock(left = [], right = [], next = cloud))}"
+    ```
+    ```output
+    Success([0.5, 0.25, -0.5, -0.25]) Error(IncompatibleLayout { detail: "Grain output channels have invalid lengths." })
+    ```
+    *)
     export interleaved block = match length block.left == length block.right && length block.left >= 1 && length block.left <= 2048
         false => Error(message = IncompatibleLayout(detail = "Grain output channels have invalid lengths."))
         true => Outcomes::carried (foldList (toList (range (0, length block.left)), Success(value = []), \(outcome, index) => interleave (block, outcome, index)), \samples => Success(value = listReverse samples))

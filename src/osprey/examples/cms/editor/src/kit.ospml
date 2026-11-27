@@ -6,7 +6,6 @@ namespace studio
 import ui::Frames
 import ui::Pick
 import ui::Ui
-import studio::Design
 
 (** The studio's components: type, layout, buttons, the ribbon, fields, status and overlays. *)
 module Kit

@@ -47,7 +47,23 @@ module Wavetables
 
     validSize (size, count) = Ffts::valid size && count >= 1 && count <= intDiv size 4 && count <= 256
 
-    (** Size is a power of two 64–4,096; 1–64 frames share 1 to size/4 (at most 256) harmonics, amplitudes within ±4. *)
+    (** Size is a power of two 64–4,096; 1–64 frames share 1 to size/4 (at most 256) harmonics, amplitudes within ±4.
+    # Examples
+    ```osprey
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+
+    example () =
+        print "${Wavetables::prepare (64, [])} ${Wavetables::prepare (100, [TableSpectrum(amplitudes = [1.0], phases = [0.0])])}"
+
+    arithmetic example
+    ```
+    ```output
+    Error(InvalidConfiguration { detail: "A wavetable needs at least one spectrum." }) Error(InvalidConfiguration { detail: "Invalid wavetable size, frame count or spectrum." })
+    ```
+    *)
     export prepare (size, spectra) = match spectra
         [] => Error(message = InvalidConfiguration(detail = "A wavetable needs at least one spectrum."))
         [first, ..._rest] =>
@@ -58,7 +74,23 @@ module Wavetables
 
     shaped (size, count, numbers, amplitude) = frame (size, count, mapList (numbers, \n => TableHarmonic(number = n, amplitude = amplitude (toFloat n), phase = 0.0)))
 
-    (** Four frames morphing sine → triangle → square → saw, each bandlimited to `count` harmonics. *)
+    (** Four frames morphing sine → triangle → square → saw, each bandlimited to `count` harmonics.
+    # Examples
+    ```osprey
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+
+    example () =
+        print "${Wavetables::classic (64, 0)} ${listLength ((Wavetables::classic (64, 1) ?: Wavetable(size = 0, harmonics = 0, frames = [])).frames)}"
+
+    arithmetic example
+    ```
+    ```output
+    Error(InvalidConfiguration { detail: "Invalid wavetable size, frame count or spectrum." }) 4
+    ```
+    *)
     export classic (size, count) = match validSize (size, count)
         false => Error(message = InvalidConfiguration(detail = "Invalid wavetable size, frame count or spectrum."))
         true =>
@@ -66,15 +98,40 @@ module Wavetables
             Success(value = Wavetable(size = size, harmonics = count, frames = [shaped (size, count, numbers, TableMath::sineAmplitude), shaped (size, count, numbers, TableMath::triangleAmplitude), shaped (size, count, numbers, TableMath::squareAmplitude), shaped (size, count, numbers, TableMath::sawAmplitude)]))
 
     (** Rate 8–384 kHz; negative frequency plays backwards and zero holds; position 0–1 morphs frames;
-        phase 0–1 offsets the read point (phase modulation) without changing the running phase. *)
+        phase 0–1 offsets the read point (phase modulation) without changing the running phase.
+    # Examples
+    ```osprey
+    config = WavetableConfig(sampleRate = 48000.0, frequency = 12000.0, position = 0.0, amplitude = 0.5, phase = 0.0)
+    print "${Wavetables::configure config} ${Wavetables::configure (config(position = 2.0))}"
+    ```
+    ```output
+    Success({ sampleRate: 48000.0, frequency: 12000.0, position: 0.0, amplitude: 0.5, phase: 0.0 }) Error(InvalidConfiguration { detail: "Invalid wavetable rate, frequency, position or amplitude." })
+    ```
+    *)
     export configure config = match config.sampleRate >= 8000.0 && config.sampleRate <= 384000.0 && TableMath::magnitude config.frequency < config.sampleRate * 0.45 && config.position >= 0.0 && config.position <= 1.0 && config.amplitude >= 0.0 && config.amplitude <= 1.0 && config.phase >= 0.0 && config.phase <= 1.0
         true => Success(value = config)
         false => Error(message = InvalidConfiguration(detail = "Invalid wavetable rate, frequency, position or amplitude."))
 
-    (** Zero phase. Hard sync is `reset`, which returns this state. *)
+    (** Zero phase. Hard sync is `reset`, which returns this state.
+    # Examples
+    ```osprey
+    print "${Wavetables::initial}"
+    ```
+    ```output
+    { phase: 0.0 }
+    ```
+    *)
     export initial = WavetableState(phase = 0.0)
 
-    (** Hard sync: restart the cycle at the exact sample the caller applies it. *)
+    (** Hard sync: restart the cycle at the exact sample the caller applies it.
+    # Examples
+    ```osprey
+    print "${Wavetables::reset (WavetableState(phase = 0.75))}"
+    ```
+    ```output
+    { phase: 0.0 }
+    ```
+    *)
     export reset _ = initial
 
     selected (levels, limit) = listGet (filterList (levels, \l => toFloat l.harmonics <= limit)) 0
@@ -113,7 +170,21 @@ module Wavetables
                         Error why => Error(message = why)
                         Success b => Success(value = WavetableSample(sample = config.amplitude * Interpolation::linear (a, b, fraction), next = WavetableState(phase = Waves::wrap (held.phase + config.frequency / config.sampleRate))))
 
-    (** One sample: linear interpolation within the table, linear crossfade between adjacent frames. *)
+    (** One sample: linear interpolation within the table, linear crossfade between adjacent frames.
+    # Examples
+    ```osprey
+    table = Wavetable(size = 4, harmonics = 1, frames = [TableFrame(levels = [TableLevel(harmonics = 1, samples = [0.0, 1.0, 0.0, -1.0])])])
+    config = WavetableConfig(sampleRate = 48000.0, frequency = 12000.0, position = 0.0, amplitude = 0.5, phase = 0.0)
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => Wavetables::next (table, config, Wavetables::initial))}"
+    ```
+    ```output
+    Success({ sample: 0.0, next: { phase: 0.25 } })
+    ```
+    *)
     export next (table, config, held) =
         place = config.position * toFloat (satSub (length table.frames) 1)
         match floatToInt (floor place)

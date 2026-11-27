@@ -3,11 +3,7 @@
 // tree and history; an upload sends its next part until the last one commits ([CMS-API-UPLOAD]).
 namespace studio
 
-import ui::Doc
 import ui::Runtime
-import studio::Api
-import studio::Names
-import studio::Update
 
 (** How the editor answers each completed request. *)
 module Replies

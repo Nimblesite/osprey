@@ -89,7 +89,20 @@ def merge_row(rows, acc, i):
 
 def load_bpe(path):
     """The merge table from merges.txt: line i (after the version line) is the pair
-    "a b" with rank i - 1, producing token "ab" with id 255 + i."""
+    "a b" with rank i - 1, producing token "ab" with id 255 + i.
+
+    # Examples
+    ```osprey
+    from gpt2 import Backends
+    def shown():
+        bpe = load_bpe("no-such-merges.txt")
+        print(f"{len(bpe.merges)} merges")
+    Backends.reported(Backends.strictly(lambda: shown()), "load_bpe")
+    ```
+    ```output
+    0 merges
+    ```
+    """
     rows = lines(unwrap_or(readFile(path), ""))
     return fold(range(1, len(rows)), Bpe(merges=[], ranks={}, ids={}), lambda acc, i: merge_row(rows, acc, i))
 
@@ -246,7 +259,19 @@ def encode_piece(bpe, piece):
 
 
 def encode(bpe, text):
-    """The token ids of a prompt."""
+    """The token ids of a prompt.
+
+    # Examples
+    ```osprey
+    from gpt2 import Backends
+    def shown():
+        print(toString(encode(load_bpe("no-such-merges.txt"), "hi")))
+    Backends.reported(Backends.strictly(lambda: shown()), "encode")
+    ```
+    ```output
+    [71, 72]
+    ```
+    """
     pieces = scan_pieces(text, 0, Scan(pieces=[], current="", kind=0, spaces=""))
     return fold(range(len(pieces)), [], lambda acc, i: listConcat(acc, encode_piece(bpe, unwrap_or(listGet(pieces, i), ""))))
 
@@ -280,12 +305,33 @@ def text_of(octets, i, acc):
 
 
 def ids_text(ids):
-    """The ids as the space-led list both programs print after `tokens:`."""
+    """The ids as the space-led list both programs print after `tokens:`.
+
+    # Examples
+    ```osprey
+    print(f"[{ids_text([])}][{ids_text([71, 72])}]")
+    ```
+    ```output
+    [][ 71 72]
+    ```
+    """
     return fold(range(len(ids)), "", lambda acc, i: acc + " " + toString(unwrap_or(listGet(ids, i), 0)))
 
 
 def decode(bpe, ids):
     """The text `ids` stand for: each token's bytes, read as UTF-8, with a
-    malformed sequence as '?'."""
+    malformed sequence as '?'.
+
+    # Examples
+    ```osprey
+    from gpt2 import Backends
+    def shown():
+        print(f"[{decode(load_bpe('no-such-merges.txt'), [71, 72, 256])}]")
+    Backends.reported(Backends.strictly(lambda: shown()), "decode")
+    ```
+    ```output
+    [hi]
+    ```
+    """
     octets = fold(range(len(ids)), [], lambda acc, i: bytes_of_token(bpe, unwrap_or(listGet(ids, i), 0), acc))
     return text_of(octets, 0, "")

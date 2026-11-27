@@ -1,0 +1,308 @@
+namespace registry_api;
+import registry_host::Database
+import registry::Bytes
+import registry::Bundle
+import registry::Catalog
+import registry::Json
+import registry::Canonical
+import registry::PublicCatalog
+import registry::JsonRead
+import registry::Maybe
+import registry::Paths
+import registry::Release
+
+/// Process liveness and public ingress use separate listeners [PACKAGE-HOSTED-TOPOLOGY].
+module HostedService {
+    let problemType = "application/problem+json"
+    let jsonType = "application/json"
+    let authorizationHeader = "authorization"
+    let publisherPrefix = "/v1/publishers/"
+    let logoutPath = "/v1/auth/logout"
+
+    export fn config(source) = match Json::parse(source) {
+        Error => Error { message: "hosted.config-invalid" }
+        Success { value } => policyOf(value)
+    }
+
+    export fn contentHost(source, policy: HostedRequest::Policy) = {
+        let doc = Json::parse(source) ?: Json::Null
+        let host = field(doc, "contentHost")
+        if host == "" { Success { value: "" } }
+        else if host != policy.allowedHost && "https://" + host != policy.allowedOrigin && OAuth::validOrigin("https://" + host) {
+            Success { value: host }
+        } else { Error { message: "hosted.content-host-invalid" } }
+    }
+
+    fn field(document, key) = JsonRead::text(JsonRead::field(document, key))
+
+    fn validSecret(value) = byteLength(value) >= 32 && byteLength(value) <= 256
+        && Bytes::everyByte(value, fn(b) => b > 32 && b < 127)
+
+    fn invalidConfig() = Error { message: "hosted.config-invalid" }
+
+    fn parseOverlap(value, active) = match value {
+        Json::Obj { members } => {
+            let secret = field(value, "secret")
+            let expiry = JsonRead::number(JsonRead::field(value, "expiresAtUnixSeconds"))
+            if length(members) != 2 || !validSecret(secret) || secret == active || expiry <= HostedRequest::maxOverlapSeconds {
+                invalidConfig()
+            } else {
+                Success { value: Maybe::some(HostedRequest::EdgeSecretOverlap { secret: secret, expiresAtUnixSeconds: expiry }) }
+            }
+        }
+        _ => invalidConfig()
+    }
+
+    fn edgeOverlap(document, active) = match Json::get(document, "edgeSecretOverlap") {
+        Success { value } => parseOverlap(value, active)
+        Error => Success { value: Maybe::none() }
+    }
+
+    fn policyOf(document) = {
+        let api = field(document, "apiHost")
+        let origin = field(document, "websiteOrigin")
+        let secret = field(document, "edgeSecret")
+        if !OAuth::validOrigin("https://${api}") || !OAuth::validOrigin(origin) || origin == "https://${api}"
+            || !validSecret(secret) {
+            invalidConfig()
+        } else {
+            andThen(edgeOverlap(document, secret), fn(overlap) => Success { value: HostedRequest::Policy {
+                allowedHost: api, allowedOrigin: origin, edgeSecret: secret, edgeSecretOverlap: overlap,
+                cookieName: HostedLogin::sessionCookieName, csrfToken: "", maxBody: 1048576 } })
+        }
+    }
+
+    fn replyWith(status, mime, body, extra) = HttpResponse { status: status, contentType: mime,
+        headers: "Content-Type: ${mime}\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\n" + extra,
+        streamFd: -1, isComplete: true, partialBody: body }
+
+    fn reply(status, mime, body) = replyWith(status, mime, body, "")
+
+    fn problem(status, code) = reply(status, problemType, "{\"code\":\"${code}\",\"status\":${status}}")
+
+    fn probe(method, path, _headers, _body) = if method == "GET" && path == "/v1/ready" {
+        reply(200, "text/plain", "")
+    } else { reply(404, "text/plain", "") }
+
+    fn browserHeaders(origin) = "Access-Control-Allow-Origin: ${origin}\r\nAccess-Control-Allow-Credentials: true\r\nVary: Origin\r\n"
+
+    fn requestedHeaders(headers) = match HostedHeaders::find(headers, "access-control-request-headers") {
+        Error => true
+        Success { value } => foldList(split(value, ",") ?: [], true, fn(ok, part) => ok && listContains(
+            [authorizationHeader, "content-type", "x-csrf-token", "idempotency-key"], toLowerCase(trim(part))))
+    }
+
+    fn preflight(headers, origin) = {
+        let method = HostedHeaders::find(headers, "access-control-request-method") ?: ""
+        if origin == "" || !listContains(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"], method) || !requestedHeaders(headers) {
+            problem(403, "req.preflight")
+        } else {
+            replyWith(204, "text/plain", "", browserHeaders(origin) + "Access-Control-Allow-Methods: ${method}\r\nAccess-Control-Allow-Headers: Authorization, Content-Type, X-CSRF-Token, Idempotency-Key\r\nVary: Access-Control-Request-Method, Access-Control-Request-Headers\r\n")
+        }
+    }
+
+    fn dispatch(headers, policy, method, path, catalog, source, login, callback, session) = {
+        let origin = if HostedHeaders::has(headers, "origin") { policy.allowedOrigin } else { "" }
+        let cors = if origin == "" { "" } else { browserHeaders(origin) }
+        if path == "/v1/ready" { problem(404, "api.not-found") }
+        else if method == "OPTIONS" { preflight(headers, origin) }
+        else if method == "GET" && (path == "/v1/packages" || startsWith(path, "/v1/packages/") || startsWith(path, publisherPrefix) || startsWith(path, HostedSource::prefix)) { catalogResponse(catalog(), path, cors, source) }
+        else if method == "GET" && path == HostedLogin::startPath { loginResponse(login(), cors) }
+        else if method == "GET" && Bytes::before(path, "?") == OAuth::callbackPath {
+            callbackResponse(callback(path, headers), cors)
+        }
+        else if method == "GET" && path == "/v1/auth/session" { sessionRequest(headers, session, cors) }
+        else if method == "POST" && path == logoutPath { logoutRequest(headers, session, cors) }
+        else { unavailable(cors) }
+    }
+
+    fn sessionRequest(headers, session, cors) = {
+        let token = HostedLogin::browserToken(headers)
+        if token == "" && HostedHeaders::has(headers, authorizationHeader) { unavailable(cors) }
+        else if token != "" && cors == "" { problem(403, "req.origin-required") }
+        else { sessionReply(token, session, cors) }
+    }
+
+    fn signedOut(cors) = replyWith(401, problemType, "{\"code\":\"auth.session-required\",\"status\":401}", cors)
+
+    fn sessionReply(token, session, cors) = if token == "" { signedOut(cors) } else { match session("GET", token) {
+        Success { value } => jsonReply(Json::obj([
+            Json::member("authenticated", Json::Bool { flag: true }), Json::member("csrfToken", Json::str(value))
+        ]), cors)
+        Error { message } => if message == HostedLogin::sessionRequired { signedOut(cors) } else { unavailable(cors) }
+    } }
+
+    fn loggedOut(cors) = replyWith(204, "text/plain", "", cors + "Set-Cookie: ${HostedLogin::expiredSessionCookie}\r\n")
+
+    fn logoutRequest(headers, session, cors) = {
+        let token = HostedLogin::browserToken(headers)
+        if cors == "" { problem(403, "req.origin-required") }
+        else if token == "" { loggedOut(cors) }
+        else { match session("POST", token) {
+            Success => loggedOut(cors)
+            Error => unavailable(cors)
+        } }
+    }
+
+    let noReferrer = "Referrer-Policy: no-referrer\r\n"
+    let expiredFlow = "Set-Cookie: ${HostedLogin::expiredCookie}\r\n"
+
+    fn redirect(value: HostedLogin::Redirect, extra) = replyWith(303, "text/plain", "",
+        "Location: ${value.location}\r\nSet-Cookie: ${value.cookie}\r\n" + noReferrer + extra)
+
+    fn loginResponse(result: Result<HostedLogin::Redirect, string>, cors) = match result {
+        Success { value } => redirect(value, "")
+        Error => unavailable(cors)
+    }
+
+    fn callbackResponse(result, cors) = match result {
+        Success { value } => redirect(value, expiredFlow)
+        Error { message } => callbackDenied(message, cors + noReferrer)
+    }
+
+    fn callbackDenied(message, headers) = if message == HostedLogin::refused {
+        replyWith(401, problemType, "{\"code\":\"auth.callback-invalid\",\"status\":401}", headers)
+    } else if message == HostedLogin::unapproved {
+        replyWith(403, problemType, "{\"code\":\"auth.session-unapproved\",\"status\":403}", headers + expiredFlow)
+    } else if message == HostedLogin::sessionUnavailable {
+        replyWith(503, problemType, "{\"code\":\"auth.session-unavailable\",\"status\":503}", headers + expiredFlow)
+    } else { unavailable(headers) }
+
+    fn catalogResponse(result: Result<string, string>, path, cors, source) = match result {
+        Success { value } => match PublicCatalog::decode(value) {
+            Success => match Json::parse(value) {
+                Success { value } => catalogDocument(value, path, cors, source)
+                Error => unavailable(cors)
+            }
+            Error => unavailable(cors)
+        }
+        Error => unavailable(cors)
+    }
+
+    fn jsonReply(doc, cors) = match Canonical::serialize(doc) {
+        Success { value } => replyWith(200, jsonType, value, cors)
+        Error => unavailable(cors)
+    }
+
+    fn catalogDocument(doc, path, cors, source) = if path == "/v1/packages" { jsonReply(doc, cors) } else if startsWith(path, HostedSource::prefix) {
+        releaseResponse(HostedSource::request(doc, path, source), endsWith(path, HostedSource::licenseSuffix), cors)
+    } else if startsWith(path, publisherPrefix) {
+        publisherDocument(JsonRead::items(JsonRead::field(doc, "packages")), path, cors)
+    } else {
+        match listGet(filterList(JsonRead::items(JsonRead::field(doc, "packages")), fn(item) => "/v1/packages/" + field(item, "key") == path), 0) {
+            Success { value } => jsonReply(value, cors)
+            Error => replyWith(404, problemType, "{\"code\":\"catalog.unknown-package\",\"status\":404}", cors)
+        }
+    }
+
+    fn releaseLicense(release: Release::Served, cors) = {
+        let files = filterList(release.files, fn(file) => Paths::licenseDocument(file.relPath))
+        if isEmpty(files) { problem(404, "release.license-unavailable") }
+        else { replyWith(200, "text/plain; charset=utf-8", join(mapList(files, fn(file) => "${file.relPath}\n\n${file.content}"), "\n\n"), cors) }
+    }
+
+    fn releaseResponse(resolution, license, cors) = match resolution {
+        Error { message } => if message == HostedSource::unknownRelease { replyWith(404, problemType, "{\"code\":\"catalog.unknown-release\",\"status\":404}", cors)
+        } else { unavailable(cors) }
+        Success { value } => if license { releaseLicense(value.release, cors) } else if value.download {
+            match Bundle::encode(value.release) {
+                Success { value } => replyWith(200, jsonType, value, cors + "Content-Disposition: attachment; filename=\"osprey-source.json\"\r\n")
+                Error => unavailable(cors)
+            }
+        } else { match Catalog::releaseJson(value.release) {
+            Success { value } => replyWith(200, jsonType, value, cors)
+            Error => unavailable(cors)
+        } }
+    }
+
+    fn credited(item, id) = filterList(JsonRead::items(JsonRead::field(item, "releases")), fn(release) => field(release, "publisherId") == id)
+
+    fn publisherPackage(item, id) = Json::obj([
+        Json::member("key", JsonRead::field(item, "key")),
+        Json::member("summary", JsonRead::field(item, "summary")),
+        Json::member("keywords", JsonRead::field(item, "keywords")),
+        Json::member("warnings", JsonRead::field(item, "warnings")),
+        Json::member("releases", Json::arr(credited(item, id)))
+    ])
+
+    fn publisherDocument(packages, path, cors) = {
+        let parts = split(drop(path, byteLength(publisherPrefix)), "/") ?: []
+        let id = listGet(parts, 0) ?: ""
+        let detail = length(parts) == 1
+        let releases = length(parts) == 2 && (listGet(parts, 1) ?: "") == "releases"
+        if Bytes::canonicalUuid(id) && (detail || releases) { publisherReply(packages, id, detail, cors) }
+        else { unknownPublisher(cors) }
+    }
+
+    fn publisherReply(packages, id, detail, cors) = {
+        let publicPackages = filterList(packages, fn(item) => !isEmpty(credited(item, id)))
+        let first = listGet(publicPackages, 0) ?: Json::Null
+        match listGet(credited(first, id), 0) {
+            Error => unknownPublisher(cors)
+            Success { value } => if detail {
+                jsonReply(Json::obj([Json::member("id", Json::str(id)), Json::member("name", JsonRead::field(value, "publisherName"))]), cors)
+            } else { jsonReply(Json::obj([Json::member("packages", Json::arr(mapList(publicPackages, fn(item) => publisherPackage(item, id))))]), cors) }
+        }
+    }
+
+    fn unknownPublisher(cors) = replyWith(404, problemType, "{\"code\":\"catalog.unknown-publisher\",\"status\":404}", cors)
+
+    fn unavailable(cors) = replyWith(503, problemType, "{\"code\":\"registry.not-ready\",\"status\":503}", cors)
+
+    fn contentRequest(headers, host, method, path) = host != "" && (HostedHeaders::find(headers, "host") ?: "") == host
+        && method == "GET" && startsWith(path, HostedSource::prefix) && (endsWith(path, HostedSource::attachmentSuffix) || endsWith(path, HostedSource::licenseSuffix))
+        && !HostedHeaders::has(headers, "cookie") && !HostedHeaders::has(headers, authorizationHeader)
+
+    fn requestPolicy(policy, contentHost, method, path, fields) =
+        if contentRequest(fields, contentHost, method, path) { policy { allowedHost: contentHost } }
+        else if method == "POST" && path == logoutPath {
+            policy { csrfToken: HostedLogin::csrfToken(HostedLogin::browserToken(fields)) }
+        } else { policy }
+
+    fn publicRequest(policy, contentHost, method, path, headers, body, catalog, source, login, callback, session) = {
+        let request = HostedRequest::Incoming { method: method, uri: path, headerBlock: headers, body: body }
+        let parsed = HostedHeaders::parse(headers)
+        let fields = HostedHeaders::headers(parsed)
+        let effective = requestPolicy(policy, contentHost, method, path, fields)
+        match HostedRequest::admitParsed(parsed, request, effective) {
+            HostedHeaders::Reject { status, code } => problem(status, code)
+            _ => if method == "POST" && path == logoutPath && body != "" { problem(400, "req.logout-body") }
+                else { dispatch(fields, policy, method, path, catalog, source, login, callback, session) }
+        }
+    }
+
+    fn waitForRequests() -> Result<int, string> = {
+        sleep(3600000)
+        waitForRequests()
+    }
+
+    fn listen(address, port, callback) = andThen(httpCreateServer(port, address), fn(server) => match httpListen(server, callback) {
+        Success => Success { value: server }
+        Error { message } => {
+            let _closed = httpStopServer(server)
+            Error { message: message }
+        }
+    })
+
+    /// Start the public listener before reporting process liveness on the management port.
+    export fn withListeners(policy, contentHost, address, publicPort, probePort, catalog, source, login, callback, session, active) = match listen(address, publicPort,
+        fn(method, path, headers, body) => publicRequest(policy, contentHost, method, path, headers, body, catalog, source, login, callback, session)) {
+        Error => Error { message: "hosted.public-listener" }
+        Success { value } => {
+            let publicServer = value
+            match listen(address, probePort, probe) {
+                Success { value } => {
+                    let result = active()
+                    let _managementClosed = httpStopServer(value)
+                    let _publicClosed = httpStopServer(publicServer)
+                    result
+                }
+                Error => {
+                    let _closed = httpStopServer(publicServer)
+                    Error { message: "hosted.management-listener" }
+                }
+            }
+        }
+    }
+    export fn serve(policy, contentHost, login, callback, session) = withListeners(policy, contentHost, "0.0.0.0", 8080, 8081, Database::publicCatalog, HostedSource::mounted, login, callback, session, waitForRequests)
+}

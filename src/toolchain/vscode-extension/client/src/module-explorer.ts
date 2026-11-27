@@ -249,6 +249,8 @@ export interface ModuleExplorerDeps {
 
 const HOVER_SEPARATOR = "\n\n---\n\n";
 const SYMBOL_ICON = "symbol-";
+/** A code element (namespace, module or member) leaves its tooltip undefined, as VS Code resolves only that, for the editor's hover. */
+const hoversInEditor = (node: ModuleNode) => node.icon?.startsWith(SYMBOL_ICON) === true && node.location !== undefined;
 
 /** Every hover's text: a string part as itself, a Markdown part by its value, separated by rules. */
 function hoverText(hovers: readonly Hover[]): string {
@@ -314,7 +316,7 @@ export class ModuleExplorerProvider implements TreeDataProvider<ModuleNode> {
     const item = new TreeItem(node.label, expandable ? TreeItemCollapsibleState.Collapsed : TreeItemCollapsibleState.None);
     item.id = node.id;
     item.description = node.description;
-    item.tooltip = node.tooltip;
+    item.tooltip = hoversInEditor(node) ? undefined : node.tooltip;
     item.iconPath = node.icon ? new ThemeIcon(node.icon, node.color ? new ThemeColor(node.color) : undefined) : undefined;
     item.contextValue = node.projectRoot ? "ospreyProject" : undefined;
     item.command = node.location
@@ -323,12 +325,9 @@ export class ModuleExplorerProvider implements TreeDataProvider<ModuleNode> {
     return item;
   }
 
-  /** A symbol's hover is the editor's hover at its name; anything else keeps the tooltip it was given. */
+  /** A code element's hover is the editor's hover at its name, or its kind and name when the editor has none. */
   async resolveTreeItem(item: TreeItem, node: ModuleNode): Promise<TreeItem> {
-    if (node.icon?.startsWith(SYMBOL_ICON) && node.location) {
-      const hover = await editorHover(node);
-      if (hover !== undefined) item.tooltip = new MarkdownString(hover);
-    }
+    if (hoversInEditor(node)) item.tooltip = await editorHover(node).then((hover) => (hover ? new MarkdownString(hover) : node.tooltip));
     return item;
   }
 

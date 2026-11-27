@@ -41,7 +41,7 @@ module McpRun
         ui::Header(headerName = "Content-Type", headerValue = "application/json"),
     ] (listConcat (Pick::either (session == "", [], [ui::Header(headerName = "Mcp-Session-Id", headerValue = session)])) (mapList (Doc::items (Doc::field (brief, "headers")), \item => ui::Header(headerName = Doc::text (item, "name"), headerValue = Doc::text (item, "value")))))
 
-    httpPost (server, brief, body, deadline) = Requests::ask (ticket "http" server.serverName, ui::Http(method = "POST", url = Doc::text (brief, "url"), headers = httpHeaders (brief, server.serverSession), body = body, responseLimit = httpLimit (), deadline = deadline, httpSlice = ticket "http" server.serverName))
+    httpPost (server, brief, body, deadline) = Requests::ask (ticket "http" server.serverName, ui::Http(method = "POST", url = Doc::text (brief, "url"), headers = httpHeaders (brief, server.serverSession), body = body, responseLimit = httpLimit (), deadline = deadline, responseSlice = ticket "http" server.serverName))
 
     startRequest (server, brief) = Requests::ask (ticket "start" server.serverName, ui::ProcessStart(processCommand = Doc::text (brief, "command"), processArguments = Doc::texts (brief, "args"), processEnv = envVars brief, processHandle = processHandle server.serverName))
 

@@ -1,0 +1,25 @@
+{
+  "name": "perception-daw-website",
+  "version": "0.1.0",
+  "description": "Official website for Perception — the transparent modular digital audio workstation",
+  "type": "module",
+  "scripts": {
+    "clean": "rm -rf _site",
+    "build": "npm run clean && eleventy",
+    "dev": "eleventy --serve --watch",
+    "start": "eleventy --serve"
+  },
+  "keywords": [
+    "perception",
+    "daw",
+    "modular-synth",
+    "audio",
+    "eleventy"
+  ],
+  "author": "Christian Findlay",
+  "license": "MIT",
+  "devDependencies": {
+    "@11ty/eleventy": "^3.1.7",
+    "@playwright/test": "^1.65.1"
+  }
+}

@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>{{ title }}{% if title != "Osprey Native" %} | Osprey Native{% endif %}</title>
+  <meta name="description" content="{{ description or 'Build real native apps for macOS, Windows, iOS, Android, and Web. Render genuine SwiftUI, WinUI, and Android controls or a Custom Canvas from one AOT codebase.' }}">
+  <link rel="icon" type="image/svg+xml" href="{{ 'assets/brand/favicon.svg' | assetUrl }}">
+  <link rel="stylesheet" href="{{ 'css/tokens.css' | assetUrl }}">
+  <link rel="stylesheet" href="{{ 'css/base.css' | assetUrl }}">
+  <link rel="stylesheet" href="{{ 'css/prose.css' | assetUrl }}">
+  <link rel="stylesheet" href="{{ 'css/components.css' | assetUrl }}">
+  <link rel="stylesheet" href="{{ 'css/compare.css' | assetUrl }}">
+  <link rel="stylesheet" href="{{ 'css/blog.css' | assetUrl }}">
+  <link rel="stylesheet" href="{{ 'css/motion.css' | assetUrl }}">
+</head>
+<body>
+  <a href="#main-content" class="skip-link visually-hidden">Skip to main content</a>
+
+  <header class="site-header">
+    <div class="site-container site-header-inner">
+      <a href="/" class="site-brand">
+        <img src="{{ 'assets/brand/logo.svg' | assetUrl }}" alt="" class="brand-logo" width="32" height="32">
+        <span>Osprey Native</span>
+      </a>
+
+      <nav class="site-nav" aria-label="Primary">
+        <ul>
+          <li><a href="/#features">Features</a></li>
+          <li><a href="/#videos">Showcase</a></li>
+          <li><a href="/#compare">Compare</a></li>
+          <li><a href="/blog/"{% if page.url and page.url.startsWith('/blog/') %} aria-current="page"{% endif %}>Blog</a></li>
+          <li><a href="/docs/"{% if page.url and page.url.startsWith('/docs/') %} aria-current="page"{% endif %}>Docs</a></li>
+          <li><a href="https://github.com/Nimblesite/osprey">GitHub</a></li>
+        </ul>
+      </nav>
+
+      <div class="header-controls">
+        <button type="button" class="theme-toggle" id="theme-toggle" aria-pressed="false" aria-label="Switch color theme">
+          <span aria-hidden="true" id="theme-icon">&#9680;</span>
+          <span id="theme-label">Theme: Auto</span>
+        </button>
+      </div>
+    </div>
+    <div class="scroll-progress" aria-hidden="true"></div>
+  </header>
+
+  <main id="top">
+    {{ content | safe }}
+  </main>
+
+  <footer class="site-footer">
+    <div class="site-container">
+      <div class="footer-grid">
+        <div>
+          <div class="footer-brand">
+            <img src="{{ 'assets/brand/logo.svg' | assetUrl }}" alt="" class="brand-logo" width="28" height="28">
+            <span>Osprey Native</span>
+          </div>
+          <p>Ahead-of-time cross-platform UI: real native controls or Custom Canvas, compiler-derived signals, and enforced accessibility.</p>
+        </div>
+        <div>
+          <h2 class="footer-heading">Learn &amp; Build</h2>
+          <ul class="footer-links">
+            <li><a href="/docs/">Documentation</a></li>
+            <li><a href="/docs/first-app/">Build Your First App</a></li>
+            <li><a href="/docs/bridge/">Shared-Memory Bridge</a></li>
+            <li><a href="/docs/testing-and-accessibility/">Accessibility &amp; Testing</a></li>
+            <li><a href="/blog/">Osprey Native Blog</a></li>
+          </ul>
+        </div>
+        <div>
+          <h2 class="footer-heading">Source &amp; Specs</h2>
+          <ul class="footer-links">
+            <li><a href="https://github.com/Nimblesite/osprey/tree/main/src/osprey/packages/native">@osprey/native Package</a></li>
+            <li><a href="https://github.com/Nimblesite/osprey/tree/main/src/osprey/packages/uitest">@osprey/uitest Package</a></li>
+            <li><a href="https://github.com/Nimblesite/osprey/blob/main/docs/specs/applications/0047-OspreyNativeHosts.md">Host Contract (Spec 0047)</a></li>
+            <li><a href="https://github.com/Nimblesite/osprey/blob/main/docs/messaging/osprey-native.md">Messaging Brief</a></li>
+          </ul>
+        </div>
+      </div>
+      <p class="footer-note">
+        MIT Licensed &middot; Part of the <a href="https://www.ospreylang.dev/">Osprey</a> ecosystem.
+      </p>
+    </div>
+  </footer>
+
+  <script src="{{ 'js/site.js' | assetUrl }}" defer></script>
+</body>
+</html>

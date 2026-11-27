@@ -15,12 +15,15 @@ import { profilerStatusText, type ProcessesProvider, type ProfilerStore } from "
 import type { ProcessList, ProfileReport, StartProfileResult } from "@nimblesite/lsp-profiler-ui/out/src/wire-generated";
 import { closeAllEditors, pollUntilResult, removeTestDir } from "@nimblesite/lsp-profiler-ui/out/src/testing/webview-contract-helpers";
 import type { OspreyExtensionApi } from "../../client/src/extension";
-import { extensionRoot, resolveBuiltOsprey } from "./osprey-test-env";
+import { extensionRoot, resolveBuiltOsprey, testDeadline } from "./osprey-test-env";
+
+/** One workbench UI change (a locator, an idle root, a webview frame) on a loaded runner. */
+export const UI_MS = testDeadline(15_000);
 
 /** The workbench is idle once its root has left the `aria-busy` state. */
 export async function waitForIdleWorkbench(
   frame: Frame,
-  timeoutMs = 1000,
+  timeoutMs = UI_MS,
 ): Promise<void> {
   await frame.waitForFunction(
     () =>
@@ -51,7 +54,7 @@ export async function connectEditorBrowser(): Promise<Browser> {
   const port = Number(fs.readFileSync(portFile, "utf8").split("\n")[0]);
   assert.ok(Number.isInteger(port) && port > 0);
   const browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
-  for (const context of browser.contexts()) context.setDefaultTimeout(3000);
+  for (const context of browser.contexts()) context.setDefaultTimeout(UI_MS);
   return browser;
 }
 
@@ -92,7 +95,7 @@ export async function editorWebviewFrame(browser: Browser, selector: string): Pr
       return undefined;
     },
     until: (candidate) => candidate !== undefined,
-    timeoutMs: 5000,
+    timeoutMs: UI_MS,
     description: `actual editor webview matching ${selector}`,
   });
   assert.ok(frame);

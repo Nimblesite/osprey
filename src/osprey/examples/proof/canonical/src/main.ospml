@@ -1,10 +1,5 @@
 namespace proof
 
-import proof::Export
-import proof
-    Single Group Decl Sort BVar Const App Lam Pi Let Proj NatLit Zero Succ Max IMax Param
-    Axiom Definition Theorem Opaque
-
 // The exact Lean declaration trees `NumericCanonical` pins ([PROOF-KERNEL], plan 0041).
 // `args` are an export file and the names to print; each named single declaration of the
 // export is printed as the `Decl(...)` source the guard compares against. Binders print as

@@ -12,6 +12,8 @@ from qwen_tests.ToolSupport import call_fingerprint_of, decoded, encoded, error_
 
 __all__ = ["chunked_cases", "coercion_cases", "corner_cases", "parse_cases", "repair_cases", "validation_cases"]
 
+UNKNOWN_FUNCTION = "unknown_function"
+"""The error kind a tool call naming no schema function carries."""
 
 # Schema validation against jsonschema's own verdicts.
 def validation_cases():
@@ -134,11 +136,11 @@ def repair_case(tools, record, i):
     step = parsed_turn(tools, text_of(record, "wire"))
     call = first_call(step)
     want_keyword = text_of(record, "keyword")
-    kind = "unknown_function" if want_keyword == "unknown_function" else "schema"
+    kind = UNKNOWN_FUNCTION if want_keyword == UNKNOWN_FUNCTION else "schema"
     return [
         Check.equal(f"repair_calls[{i}]", toString(len(step.calls)), "1"),
         Check.equal(f"repair_kind[{i}]", error_field(call, "kind"), kind),
-        Check.equal(f"repair_keyword[{i}]", error_field(call, "keyword"), "" if kind == "unknown_function" else want_keyword),
+        Check.equal(f"repair_keyword[{i}]", error_field(call, "keyword"), "" if kind == UNKNOWN_FUNCTION else want_keyword),
         Check.equal(f"repair_arguments[{i}]", encoded(call.arguments), "null"),
         Check.equal(f"repair_recoverable[{i}]", error_field(call, "recoverable"), "true"),
     ]

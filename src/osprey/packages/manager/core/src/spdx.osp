@@ -23,8 +23,8 @@ module Spdx {
         let depth = listGet(walk, 0) ?: -1
         let expectOperand = (listGet(walk, 1) ?: 0) == 1
         if depth < 0 { walk }
-        else if token == "(" { if expectOperand { [depth + 1, 1] } else { [-1, 0] } }
-        else if token == ")" { if !expectOperand && depth > 0 { [depth - 1, 0] } else { [-1, 0] } }
+        else if token == "(" { if expectOperand { [wrapAdd(depth, 1), 1] } else { [-1, 0] } }
+        else if token == ")" { if !expectOperand && depth > 0 { [wrapSub(depth, 1), 0] } else { [-1, 0] } }
         else if listContains(operators, token) { if !expectOperand { [depth, 1] } else { [-1, 0] } }
         else if identifier(token) { if expectOperand { [depth, 0] } else { [-1, 0] } }
         else { [-1, 0] }

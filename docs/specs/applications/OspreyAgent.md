@@ -1,6 +1,6 @@
 # Osprey Agent
 
-**Status:** most of this application contract is not implemented yet. [`src/osprey/examples/agent/src/engine.py`](../../../src/osprey/examples/agent/src/engine.py) answers every model with DeepSeek's endpoint and profile, `model.ospml` holds no effort and seeds one key from two `.env` names alone, `view.ospml` has no Settings pane, and the SwiftUI host selects one `Text` at a time. [Plan 0052](../../plans/0052-agent.md) delivers it over contract that already exists: the process capabilities [UI-EFFECTS-PROCESS] of [`@osprey/native`](../../../src/osprey/packages/native/README.md) and the thinking levels of [`@osprey/pydantic-ai`](../../../src/osprey/packages/pydantic_ai/README.md).
+**Status:** every request in the table below is delivered and proven with doubled requests and goldens except [AGENT-PROOF]'s live run, which [Plan 0049](../../plans/0049-local-coding-model.md) carries over contract that already exists: the process capabilities [UI-EFFECTS-PROCESS] of [`@osprey/native`](../../../src/osprey/packages/native/README.md) and the thinking levels of [`@osprey/pydantic-ai`](../../../src/osprey/packages/pydantic_ai/README.md).
 
 The Osprey Agent is the coding agent application at [`src/osprey/examples/agent/`](../../../src/osprey/examples/agent/README.md): one store, one `update` and one set of regions over `@osprey/native`, with model requests and tools driven through capabilities.
 

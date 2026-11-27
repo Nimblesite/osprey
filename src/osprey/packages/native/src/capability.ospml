@@ -57,7 +57,7 @@ type Capability =
         body : string
         responseLimit : int
         deadline : int
-        httpSlice : string
+        responseSlice : string
     HostCall
         hostNamespace : string
         hostOperation : string
@@ -165,7 +165,7 @@ module Requests
         Recognise slices limit => asks (20, ticket, listConcat (texts (1, slices)) [whole (2, limit)])
         Animate on => asks (21, ticket, [flag (1, on)])
         ProcessStart command arguments env name => asks (22, ticket, listConcat [text (1, command)] (listConcat (texts (2, arguments)) (listConcat (envs (3, env)) [text (4, name)])))
-        ProcessWrite name input => asks (23, ticket, [text (1, name), text (2, input)])
+        ProcessWrite name payload => asks (23, ticket, [text (1, name), text (2, payload)])
         ProcessRead name limit deadline => asks (24, ticket, [text (1, name), whole (2, limit), whole (3, deadline)])
         ProcessStop name => asks (25, ticket, [text (1, name)])
 

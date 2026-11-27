@@ -17,7 +17,23 @@ __all__ = ["parse_type", "parse_attr", "parse_dictionary", "parse_function_type"
 
 
 def items(ts, i, close, item, acc):
-    """`item (, item)*` up to the punctuation `close`, which is consumed. `i` is just past the opener."""
+    """`item (, item)*` up to the punctuation `close`, which is consumed. `i` is just past the opener.
+
+    # Examples
+    ```osprey
+    from xdsl import AttrParser, Ir, Lexer
+
+    def show():
+        ts = unwrap_or(Lexer.tokens("i32, i64)"), [])
+        parsed = unwrap_or(AttrParser.items(ts, 0, ")", AttrParser.parse_type, []), Ir.Parsed(value=[], next=0))
+        print(f"{len(parsed.value)} {parsed.next}")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    2 4
+    ```
+    """
     if Ir.is_punct(ts, i, close):
         return Ir.done(acc, wrapAdd(i, 1))
     else:
@@ -72,11 +88,25 @@ def decode(text, i, end, acc):
 
 
 def string_contents(literal):
-    """A string literal's value: quotes removed, `\\n`, `\\t`, `\\\\`, `\\"` and `\\HH` decoded."""
+    """A string literal's value: quotes removed, `\\n`, `\\t`, `\\\\`, `\\"` and `\\HH` decoded.
+
+    # Examples
+    ```osprey
+    from xdsl import AttrParser
+
+    def show():
+        print(AttrParser.string_contents('"hello"'))
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    hello
+    ```
+    """
     return decode(literal, 1, wrapSub(len(literal), 1), "")
 
 
-def balanced_end(ts, i, depth) -> Result[int, str]:
+def balanced_end(ts, i, depth):
     """The index after the `>` closing `depth` open `<` before `i`."""
     if depth == 0:
         return Success(value=i)
@@ -210,7 +240,26 @@ def type_list(ts, i):
 
 
 def parse_function_type(ts, i):
-    """`(inputs) -> output` or `(inputs) -> (outputs)`."""
+    """`(inputs) -> output` or `(inputs) -> (outputs)`.
+
+    # Examples
+    ```osprey
+    from xdsl import AttrParser, Ir, Lexer
+
+    def show():
+        ts = unwrap_or(Lexer.tokens("(i32, i64) -> i1"), [])
+        match AttrParser.parse_function_type(ts, 0):
+            case Success(value=p):
+                print(f"{p.value} {p.next}")
+            case Error(message=m):
+                print(m)
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    FunctionType { inputs: [IntegerType { width: 32 }, IntegerType { width: 64 }], outputs: [IntegerType { width: 1 }] } 7
+    ```
+    """
     return andThen(type_list(ts, i), lambda inputs: andThen(Ir.expect(ts, inputs.next, "->"), lambda j: function_outputs(ts, j, inputs.value)))
 
 
@@ -223,7 +272,26 @@ def function_outputs(ts, i, inputs):
 
 
 def parse_type(ts, i):
-    """One type: a builtin integer, an LLVM dialect type, a function type, or text for any other."""
+    """One type: a builtin integer, an LLVM dialect type, a function type, or text for any other.
+
+    # Examples
+    ```osprey
+    from xdsl import AttrParser, Ir, Lexer
+
+    def show():
+        ts = unwrap_or(Lexer.tokens("i32"), [])
+        match AttrParser.parse_type(ts, 0):
+            case Success(value=p):
+                print(f"{p.value} {p.next}")
+            case Error(message=m):
+                print(m)
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    IntegerType { width: 32 } 1
+    ```
+    """
     token = Ir.peek(ts, i)
     width = int_width(token.text)
     if token.kind == Lexer.BARE and width >= 0:
@@ -242,7 +310,7 @@ HEX_DIGITS_MAX = 15
 """The most hexadecimal digits a literal may have and still fit a signed 64-bit value without wrapping."""
 
 
-def hex_int(text, i, acc) -> Result[int, str]:
+def hex_int(text, i, acc):
     """The value of the hexadecimal digits of `text` from `i` on, added to `acc`."""
     digit = hex_value(Lexer.at(text, i))
     if i >= len(text):
@@ -253,7 +321,7 @@ def hex_int(text, i, acc) -> Result[int, str]:
         return hex_int(text, wrapAdd(i, 1), wrapAdd(wrapMul(acc, 16), digit))
 
 
-def int_literal(text) -> Result[int, str]:
+def int_literal(text):
     """A decimal literal, or a `0x` literal of at most `HEX_DIGITS_MAX` digits."""
     if startsWith(text, "0x") and len(text) > 2 and len(text) <= wrapAdd(HEX_DIGITS_MAX, 2):
         return hex_int(text, 2, 0)
@@ -326,7 +394,23 @@ def entry(ts, i):
 
 
 def parse_dictionary(ts, i):
-    """`{ entry, ... }` starting at its `{`, as the list of its entries."""
+    """`{ entry, ... }` starting at its `{`, as the list of its entries.
+
+    # Examples
+    ```osprey
+    from xdsl import AttrParser, Ir, Lexer
+
+    def show():
+        ts = unwrap_or(Lexer.tokens('{width = 32 : i64, name = "x", sym = @main, dims = array<i64: 1, 2>}'), [])
+        parsed = unwrap_or(AttrParser.parse_dictionary(ts, 0), Ir.Parsed(value=[], next=0))
+        print(f"{len(parsed.value)} entries, next token {parsed.next}")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    4 entries, next token 26
+    ```
+    """
     return andThen(Ir.expect(ts, i, "{"), lambda j: items(ts, j, "}", entry, []))
 
 
@@ -341,7 +425,26 @@ def symbol_name(text):
 
 
 def parse_attr(ts, i):
-    """One attribute value."""
+    """One attribute value.
+
+    # Examples
+    ```osprey
+    from xdsl import AttrParser, Ir, Lexer
+
+    def show():
+        ts = unwrap_or(Lexer.tokens("42 : i64"), [])
+        match AttrParser.parse_attr(ts, 0):
+            case Success(value=p):
+                print(f"{p.value} {p.next}")
+            case Error(message=m):
+                print(m)
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    IntegerAttr { value: 42, type: IntegerType { width: 64 } } 3
+    ```
+    """
     token = Ir.peek(ts, i)
     after = wrapAdd(i, 1)
     if token.kind == Lexer.STRING:

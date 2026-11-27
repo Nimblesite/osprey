@@ -11,6 +11,8 @@ module Identity {
 
     let firstEpoch = 1
     let firstOrdinal = 1
+    /// The refusal code of a release version that is not `e<epoch>.r<ordinal>`.
+    let badVersion = "release.version"
 
     // `ReleaseId` and `Source::Entry` both declare `digest`; until issue #273
     // lands, codegen needs the receiver's record spelled out.
@@ -41,14 +43,14 @@ module Identity {
     }
 
     fn version(text) = match startsWith(text, "e") {
-        false => Error { message: "release.version" }
+        false => Error { message: badVersion }
         true => match split(drop(text, 1), ".r") {
             Success { value } => versionParts(value)
-            Error => Error { message: "release.version" }
+            Error => Error { message: badVersion }
         }
     }
 
-    fn versionParts(parts) = pairParts(parts, "release.version", numbers)
+    fn versionParts(parts) = pairParts(parts, badVersion, numbers)
 
     /// `[epoch, ordinal]` from their decimal spellings: positive, no sign, no
     /// leading zero; otherwise `release.epoch` or `release.ordinal`. Shared by

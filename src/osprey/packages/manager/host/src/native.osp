@@ -25,7 +25,11 @@ module Native {
     }
 
     fn status(spawned) = match spawned {
-        Success { value } => awaitProcess(value)
+        Success { value } => {
+            let code = awaitProcess(value)
+            let _released = cleanupProcess(value)
+            code
+        }
         Error => -1
     }
 
@@ -33,8 +37,11 @@ module Native {
         let tag = "${random()}"
         let out = "${scratch}/${tag}.out"
         let err = "${scratch}/${tag}.err"
-        let code = status(spawnProcess("mkdir -p ${scratch} && ( ${command} ) >${out} 2>${err}", quiet))
-        Host::Run { status: code, stdout: readFile(out) ?: "", stderr: readFile(err) ?: "" }
+        let code = status(spawnProcess("umask 077; mkdir -p ${scratch} && ( ${command} ) >${out} 2>${err}", quiet))
+        let result = Host::Run { status: code, stdout: readFile(out) ?: "", stderr: readFile(err) ?: "" }
+        let removed = status(spawnProcess("rm -f -- ${out} ${err}", quiet))
+        if removed == 0 { result }
+        else { Host::Run { status: -1, stdout: "", stderr: "host.capture-cleanup" } }
     }
 
     /// Process answered by the system shell.

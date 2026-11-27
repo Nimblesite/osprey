@@ -8,7 +8,7 @@ default_namespace = "transformers"
 name = "@osprey/transformers"
 license = "MIT"
 summary = "Hugging Face generation utilities: logits processors, warpers, sampling and stopping criteria"
-keywords = ["generation", "logits", "python-flavor", "sampling", "transformers"]
+keywords = ["language-models", "machine-learning", "natural-language-processing", "python-flavor"]
 
 [test-dependencies]
 "@osprey/testing" = { epoch = 1, min_release = 1 }

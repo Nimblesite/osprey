@@ -30,7 +30,7 @@ module Clauses {
     fn keyAt(xs, i) -> Names::Key = listGet(xs, i) ?: Names::blank()
     fn keyOf(e: Resolution::Entry) = e.release.key
     fn activeOf(e: Resolution::Entry) = ManifestModel::activeEdges(e.dependencies)
-    fn mentionsAt(problem: Problem, i) -> List<Names::Key> = listGet(problem.mentions, i) ?: []
+    fn mentionsAt(problem: Problem, i) = listGet(problem.mentions, i) ?: []
 
 
     fn indexes(xs) = range(0, length(xs)) |> toList

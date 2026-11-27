@@ -47,12 +47,12 @@ module TreeGraph {
     fn presentOf(lines, keyText) = !foldList(lines, false, fn(found, line) =>
         found || (codeIn(line) == missingCode && detailIn(line) == keyText))
 
-    fn isPackageKey(packages, text) = foldList(packages, false, fn(found, p: Lockfile::Package) =>
+    fn isPackageKey(packages, text) = foldList(packages, false, fn(found, p) =>
         found || Names::display(Identity::keyOf(Lockfile::releaseOf(p))) == text)
 
     fn globalLines(lines, packages) = filterList(lines, fn(line) => !isPackageKey(packages, detailIn(line)))
 
-    fn dependentsOf(packages, key) = Names::distinct(foldList(packages, [], fn(acc, p: Lockfile::Package) =>
+    fn dependentsOf(packages, key) = Names::distinct(foldList(packages, [], fn(acc, p) =>
         if !Names::same(Identity::keyOf(Lockfile::releaseOf(p)), key) && Names::includes(edgeKeys(Lockfile::edgesOf(p)), key) {
             listAppend(acc, Identity::keyOf(Lockfile::releaseOf(p)))
         } else { acc }))
@@ -73,7 +73,7 @@ module TreeGraph {
     /// one is a finding rather than a graph that looks free of overrides.
     fn localOverrides(project) = andThen(perform Host::Files.exists(Project::localLockPathAt(project)), fn(value) => if value { localLock(project) } else { Success { value: [] } })
 
-    fn packageValue(lines, direct, packages, overrides, pkg: Lockfile::Package) = {
+    fn packageValue(lines, direct, packages, overrides, pkg) = {
         let id = Lockfile::releaseOf(pkg)
         let keyText = Names::display(Identity::keyOf(id))
         Json::obj(listConcat(overrideMembers(overrides, Identity::keyOf(id)), [
@@ -88,7 +88,7 @@ module TreeGraph {
         ]))
     }
 
-    fn packagesValue(lines, direct, packages, overrides) = Json::arr(mapList(packages, fn(p: Lockfile::Package) => packageValue(lines, direct, packages, overrides, p)))
+    fn packagesValue(lines, direct, packages, overrides) = Json::arr(mapList(packages, fn(p) => packageValue(lines, direct, packages, overrides, p)))
 
     fn graphValue(manifest, lock, lines, overrides, localFindings) = {
         let direct = directKeys(manifest)

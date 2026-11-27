@@ -1,0 +1,18 @@
+---
+layout: layouts/base.njk
+title: Blog
+description: "Engineering articles on Osprey Native: dual native/canvas rendering, compiler-derived signals, framework-enforced accessibility, and automated UI testing."
+permalink: /blog/
+---
+{% from "blog-grid.njk" import blogGrid %}
+
+<section class="prose-section">
+  <div class="site-container">
+    <p class="prose-eyebrow">Osprey Native Blog</p>
+    <h1 id="main-content" tabindex="-1" class="prose-h1">Notes on native controls, GPU canvases, and verified UI</h1>
+    <p class="prose-lead">
+      Architecture deep-dives, host engineering, accessibilitymaxxing for AI agents, and how Osprey Native compares with Compose Multiplatform, Flutter, and React Native.
+    </p>
+    {{ blogGrid(collections.blog) }}
+  </div>
+</section>

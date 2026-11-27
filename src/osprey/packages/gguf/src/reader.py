@@ -65,7 +65,31 @@ class FieldWalk:
 
 
 def read(data):
-    """Parse a GGUF file from `data`, or Error naming the first thing wrong with it."""
+    """Parse a GGUF file from `data`, or Error naming the first thing wrong with it.
+
+    # Examples
+    ```osprey
+    from gguf import Reader
+
+    def show():
+        match Reader.read([71, 71, 85, 70, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 103, 101, 110, 101, 114, 97, 108, 46, 110, 97, 109, 101, 8, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 116, 105, 110, 121, 0, 0, 0, 0]):
+            case Success(value=f):
+                print(f"v{f.version} {f.kv_count} field, {f.tensor_count} tensors, align {f.alignment}")
+            case Error(message=m):
+                print(m)
+        match Reader.read([71, 71, 85, 70]):
+            case Success():
+                print("read")
+            case Error(message=m):
+                print(m)
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    v3 1 field, 0 tensors, align 32
+    gguf: unexpected end of file at offset 4
+    ```
+    """
     return read_header(data, len(data))
 
 
@@ -73,13 +97,50 @@ def read_header(prefix, file_size):
     """Parse the metadata and tensor infos from the first bytes of a `file_size`-byte file.
 
     Every tensor's range is checked against `file_size`, so weights too large to hold
-    in a list stay on disk; `tensor_bytes` refuses a tensor past the prefix."""
+    in a list stay on disk; `tensor_bytes` refuses a tensor past the prefix.
+
+    # Examples
+    ```osprey
+    from gguf import Reader
+
+    def show():
+        data = [71, 71, 85, 70, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 103, 101, 110, 101, 114, 97, 108, 46, 110, 97, 109, 101, 8, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 116, 105, 110, 121, 0, 0, 0, 0]
+        match Reader.read_header(data, len(data)):
+            case Success(value=f):
+                print(f"{f.kv_count} field, data at {f.data_offset}")
+            case Error(message=m):
+                print(m)
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    1 field, data at 64
+    ```
+    """
     return andThen(Values.header_at(prefix), lambda head: andThen(fields_of(prefix, head), lambda section: assemble(prefix, head, section, file_size)))
 
 
 def read_path(path, file_size, count):
     """Parse the header of the file at `path`, reading `count` bytes and doubling that
-    until the metadata and tensor infos all fit, or until the whole file has been read."""
+    until the metadata and tensor infos all fit, or until the whole file has been read.
+
+    # Examples
+    ```osprey
+    from gguf import Reader
+
+    def show():
+        match Reader.read_path("/nonexistent/model.gguf", 64, 64):
+            case Success():
+                print("read")
+            case Error(message=m):
+                print(m)
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    readFileBytes: /nonexistent/model.gguf: No such file or directory
+    ```
+    """
     return andThen(readFileBytes(path, 0, count), lambda prefix: read_prefix(path, file_size, count, prefix))
 
 
@@ -208,12 +269,48 @@ def first_named(items, name, missing):
 
 
 def field(file, key):
-    """The metadata entry named `key`, or Error when the file has none."""
+    """The metadata entry named `key`, or Error when the file has none.
+
+    # Examples
+    ```osprey
+    from gguf import Reader
+
+    def show():
+        match Reader.read([71, 71, 85, 70, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 103, 101, 110, 101, 114, 97, 108, 46, 110, 97, 109, 101, 8, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 116, 105, 110, 121, 0, 0, 0, 0]):
+            case Success(value=f):
+                print(f"{andThen(Reader.field(f, 'general.name'), Reader.field_string)}")
+            case Error(message=m):
+                print(m)
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    Success(tiny)
+    ```
+    """
     return first_named(file.fields, key, "gguf: the file has no metadata key `" + key + "`")
 
 
 def field_names(file):
-    """Every metadata key in file order."""
+    """Every metadata key in file order.
+
+    # Examples
+    ```osprey
+    from gguf import Reader
+
+    def show():
+        match Reader.read([71, 71, 85, 70, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 103, 101, 110, 101, 114, 97, 108, 46, 110, 97, 109, 101, 8, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 116, 105, 110, 121, 20, 0, 0, 0, 0, 0, 0, 0, 116, 111, 107, 101, 110, 105, 122, 101, 114, 46, 103, 103, 109, 108, 46, 109, 111, 100, 101, 108, 8, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 103, 112, 116, 50, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]):
+            case Success(value=f):
+                print(Reader.field_names(f))
+            case Error(message=m):
+                print(m)
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    ["GGUF.version", "GGUF.tensor_count", "GGUF.kv_count", "general.name", "tokenizer.ggml.model"]
+    ```
+    """
     return mapList(file.fields, field_name)
 
 
@@ -223,7 +320,29 @@ def field_name(field):
 
 
 def tensor(file, index):
-    """The tensor at `index`, or Error when the file has fewer tensors."""
+    """The tensor at `index`, or Error when the file has fewer tensors.
+
+    # Examples
+    ```osprey
+    from gguf import Reader
+
+    def show():
+        match Reader.read([71, 71, 85, 70, 3, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 103, 101, 110, 101, 114, 97, 108, 46, 110, 97, 109, 101, 8, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 116, 105, 110, 121, 1, 0, 0, 0, 0, 0, 0, 0, 119, 1, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 128, 63, 0, 0, 0, 64]):
+            case Success(value=f):
+                match Reader.tensor(f, 0):
+                    case Success(value=t):
+                        print(f"{t.name} {t.type} {t.dims} {t.n_bytes} bytes")
+                    case Error(message=m):
+                        print(m)
+            case Error(message=m):
+                print(m)
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    w F32 [2] 8 bytes
+    ```
+    """
     if index < 0:
         return Error(message=no_tensor(index))
     else:
@@ -245,18 +364,72 @@ def no_tensor(index):
 
 
 def tensor_names(file):
-    """Every tensor name, in file order."""
+    """Every tensor name, in file order.
+
+    # Examples
+    ```osprey
+    from gguf import Reader
+
+    def show():
+        match Reader.read([71, 71, 85, 70, 3, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 103, 101, 110, 101, 114, 97, 108, 46, 110, 97, 109, 101, 8, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 116, 105, 110, 121, 1, 0, 0, 0, 0, 0, 0, 0, 119, 1, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 128, 63, 0, 0, 0, 64]):
+            case Success(value=f):
+                print(Reader.tensor_names(f))
+            case Error(message=m):
+                print(m)
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    ["w"]
+    ```
+    """
     return mapList(file.tensors, lambda info: info.name)
 
 
 def tensor_types(file):
-    """Every tensor's ggml type name, in file order."""
+    """Every tensor's ggml type name, in file order.
+
+    # Examples
+    ```osprey
+    from gguf import Reader
+
+    def show():
+        match Reader.read([71, 71, 85, 70, 3, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 103, 101, 110, 101, 114, 97, 108, 46, 110, 97, 109, 101, 8, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 116, 105, 110, 121, 1, 0, 0, 0, 0, 0, 0, 0, 119, 1, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 128, 63, 0, 0, 0, 64]):
+            case Success(value=f):
+                print(Reader.tensor_types(f))
+            case Error(message=m):
+                print(m)
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    ["F32"]
+    ```
+    """
     return mapList(file.tensors, lambda info: info.type)
 
 
 def distinct_tensor_types(file):
     """Each ggml type the file uses once, sorted by name: what a phase reads to know
-    which block decoders a file needs."""
+    which block decoders a file needs.
+
+    # Examples
+    ```osprey
+    from gguf import Reader
+
+    def show():
+        match Reader.read([71, 71, 85, 70, 3, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 103, 101, 110, 101, 114, 97, 108, 46, 110, 97, 109, 101, 8, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 116, 105, 110, 121, 1, 0, 0, 0, 0, 0, 0, 0, 119, 1, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 128, 63, 0, 0, 0, 64]):
+            case Success(value=f):
+                print(Reader.distinct_tensor_types(f))
+            case Error(message=m):
+                print(m)
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    ["F32"]
+    ```
+    """
     return listSort(distinct(tensor_types(file)))
 
 
@@ -274,7 +447,25 @@ def keep_new(acc, item):
 
 
 def tensor_bytes(file, name):
-    """The tensor's stored bytes, before any block decoding."""
+    """The tensor's stored bytes, before any block decoding.
+
+    # Examples
+    ```osprey
+    from gguf import Reader
+
+    def show():
+        match Reader.read([71, 71, 85, 70, 3, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 103, 101, 110, 101, 114, 97, 108, 46, 110, 97, 109, 101, 8, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 116, 105, 110, 121, 1, 0, 0, 0, 0, 0, 0, 0, 119, 1, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 128, 63, 0, 0, 0, 64]):
+            case Success(value=f):
+                print(Reader.tensor_bytes(f, "w"))
+            case Error(message=m):
+                print(m)
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    Success([0, 0, 128, 63, 0, 0, 0, 64])
+    ```
+    """
     return andThen(named_tensor(file.tensors, name), lambda value: Values.bytes_at(file.data, value.data_offset, value.n_bytes))
 
 
@@ -290,7 +481,25 @@ def no_tensor_named(name):
 
 def tokenizer_keys(file):
     """The metadata keys the file sets under `tokenizer.`, in file order: what tells a
-    phase which vocabulary, merges and chat template the file already carries."""
+    phase which vocabulary, merges and chat template the file already carries.
+
+    # Examples
+    ```osprey
+    from gguf import Reader
+
+    def show():
+        match Reader.read([71, 71, 85, 70, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 103, 101, 110, 101, 114, 97, 108, 46, 110, 97, 109, 101, 8, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 116, 105, 110, 121, 20, 0, 0, 0, 0, 0, 0, 0, 116, 111, 107, 101, 110, 105, 122, 101, 114, 46, 103, 103, 109, 108, 46, 109, 111, 100, 101, 108, 8, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 103, 112, 116, 50, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]):
+            case Success(value=f):
+                print(Reader.tokenizer_keys(f))
+            case Error(message=m):
+                print(m)
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    ["tokenizer.ggml.model"]
+    ```
+    """
     return mapList(filterList(file.fields, is_tokenizer_field), field_name)
 
 
@@ -310,22 +519,94 @@ def holds(field, ok, label, value):
 
 
 def field_int(field):
-    """The integer a metadata entry holds, or Error for another kind."""
+    """The integer a metadata entry holds, or Error for another kind.
+
+    # Examples
+    ```osprey
+    from gguf import Reader
+
+    def show():
+        match Reader.read([71, 71, 85, 70, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0, 99, 111, 117, 110, 116, 4, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]):
+            case Success(value=f):
+                print(andThen(Reader.field(f, "count"), Reader.field_int))
+            case Error(message=m):
+                print(m)
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    Success(7)
+    ```
+    """
     return holds(field, listContains(INT_KINDS, field.value.kind), "an int", field.value.i)
 
 
 def field_bool(field):
-    """The boolean a metadata entry holds, or Error for another kind."""
+    """The boolean a metadata entry holds, or Error for another kind.
+
+    # Examples
+    ```osprey
+    from gguf import Reader
+
+    def show():
+        match Reader.read([71, 71, 85, 70, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 102, 108, 97, 103, 7, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]):
+            case Success(value=f):
+                print(andThen(Reader.field(f, "flag"), Reader.field_bool))
+            case Error(message=m):
+                print(m)
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    Success(true)
+    ```
+    """
     return holds(field, field.value.kind == "bool", "a bool", field.value.i != 0)
 
 
 def field_float(field):
-    """The number a floating-point metadata entry holds, or Error for another kind."""
+    """The number a floating-point metadata entry holds, or Error for another kind.
+
+    # Examples
+    ```osprey
+    from gguf import Reader
+
+    def show():
+        match Reader.read([71, 71, 85, 70, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0, 114, 97, 116, 105, 111, 6, 0, 0, 0, 0, 0, 0, 63, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]):
+            case Success(value=f):
+                print(andThen(Reader.field(f, "ratio"), Reader.field_float))
+            case Error(message=m):
+                print(m)
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    Success(0.5)
+    ```
+    """
     return holds(field, listContains(FLOAT_KINDS, field.value.kind), "a float", field.value.f)
 
 
 def field_string(field):
-    """The text a string metadata entry holds, or Error for another kind."""
+    """The text a string metadata entry holds, or Error for another kind.
+
+    # Examples
+    ```osprey
+    from gguf import Reader
+
+    def show():
+        match Reader.read([71, 71, 85, 70, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 103, 101, 110, 101, 114, 97, 108, 46, 110, 97, 109, 101, 8, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 116, 105, 110, 121, 0, 0, 0, 0]):
+            case Success(value=f):
+                print(andThen(Reader.field(f, "general.name"), Reader.field_string))
+            case Error(message=m):
+                print(m)
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    Success(tiny)
+    ```
+    """
     return holds(field, field.value.kind == "string", "a string", field.value.s)
 
 
@@ -335,22 +616,94 @@ def array_field(field, kinds, label, element):
 
 
 def field_ints(field):
-    """The integers an array entry holds, or Error for another kind."""
+    """The integers an array entry holds, or Error for another kind.
+
+    # Examples
+    ```osprey
+    from gguf import Reader
+
+    def show():
+        match Reader.read([71, 71, 85, 70, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 105, 100, 115, 9, 0, 0, 0, 5, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 3, 0, 0, 0, 0]):
+            case Success(value=f):
+                print(andThen(Reader.field(f, "ids"), Reader.field_ints))
+            case Error(message=m):
+                print(m)
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    Success([1, 2, 3])
+    ```
+    """
     return array_field(field, INT_KINDS, "an int array", element_int)
 
 
 def field_bools(field):
-    """The booleans an array entry holds, or Error for another kind."""
+    """The booleans an array entry holds, or Error for another kind.
+
+    # Examples
+    ```osprey
+    from gguf import Reader
+
+    def show():
+        match Reader.read([71, 71, 85, 70, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0, 109, 97, 114, 107, 115, 9, 0, 0, 0, 7, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]):
+            case Success(value=f):
+                print(andThen(Reader.field(f, "marks"), Reader.field_bools))
+            case Error(message=m):
+                print(m)
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    Success([true, false])
+    ```
+    """
     return array_field(field, ["bool"], "a bool array", element_bool)
 
 
 def field_floats(field):
-    """The numbers a floating-point array entry holds, or Error for another kind."""
+    """The numbers a floating-point array entry holds, or Error for another kind.
+
+    # Examples
+    ```osprey
+    from gguf import Reader
+
+    def show():
+        match Reader.read([71, 71, 85, 70, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 0, 0, 0, 0, 115, 99, 97, 108, 101, 115, 9, 0, 0, 0, 6, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 63, 0, 0, 0, 64, 0, 0]):
+            case Success(value=f):
+                print(andThen(Reader.field(f, "scales"), Reader.field_floats))
+            case Error(message=m):
+                print(m)
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    Success([0.5, 2.0])
+    ```
+    """
     return array_field(field, FLOAT_KINDS, "a float array", element_float)
 
 
 def field_strings(field):
-    """The texts a string array entry holds, or Error for another kind."""
+    """The texts a string array entry holds, or Error for another kind.
+
+    # Examples
+    ```osprey
+    from gguf import Reader
+
+    def show():
+        match Reader.read([71, 71, 85, 70, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 116, 97, 103, 115, 9, 0, 0, 0, 8, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 97, 1, 0, 0, 0, 0, 0, 0, 0, 98, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]):
+            case Success(value=f):
+                print(andThen(Reader.field(f, "tags"), Reader.field_strings))
+            case Error(message=m):
+                print(m)
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    Success(["a", "b"])
+    ```
+    """
     return array_field(field, ["string"], "a string array", element_string)
 
 

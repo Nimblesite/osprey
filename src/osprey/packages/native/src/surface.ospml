@@ -123,19 +123,19 @@ module Surfaces
     usable values = Lists::any (values, \value => finite value == false) == false
 
     sceneMessage<A> : (Binding<A>, Input) -> Result<Message<A>, string>
-    sceneMessage (binding, input) = match binding
-        SceneInput action => Success(value = Controlled(control = action, input = input))
+    sceneMessage (binding, sceneEvent) = match binding
+        SceneInput action => Success(value = Controlled(control = action, sceneEvent = sceneEvent))
         _ => mismatch "non-scene"
 
-    (** The message the scene numbered `ordinal` delivers for `input`, its numbers in scene units; refused when that control is not a scene or a number is not finite. *)
+    (** The message the scene numbered `ordinal` delivers for `sceneEvent`, its numbers in scene units; refused when that control is not a scene or a number is not finite. *)
     export scene<S, A> : (Surface<S, A>, int, Input) -> Result<Message<A>, string>
-    scene (held, ordinal, input) = match usable (inputNumbers input)
+    scene (held, ordinal, sceneEvent) = match usable (inputNumbers sceneEvent)
         false => Error(message = "A scene was sent a number that is not finite")
         true => match bound (held, ordinal)
             Error problem => Error(message = problem)
-            Success binding => sceneMessage (binding, input)
+            Success binding => sceneMessage (binding, sceneEvent)
 
-    inputNumbers input = match input
+    inputNumbers sceneEvent = match sceneEvent
         Key _ _ => []
         Pointer x y _ _ => [x, y]
         Viewed width height => [width, height]

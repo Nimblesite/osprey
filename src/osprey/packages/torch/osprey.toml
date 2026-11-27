@@ -8,7 +8,7 @@ default_namespace = "torch"
 name = "@osprey/torch"
 license = "MIT"
 summary = "PyTorch's autograd tape, optimizers and learning-rate schedulers over numpy float64 tensors"
-keywords = ["autograd", "optim", "python-flavor", "pytorch", "torch"]
+keywords = ["machine-learning", "python-flavor", "scientific-computing"]
 
 [dependencies]
 "@osprey/numpy" = { epoch = 1, min_release = 1 }

@@ -1,0 +1,24 @@
+---
+layout: base.njk
+---
+
+<article class="section grid-backdrop" style="border-top:0">
+  <div class="shell">
+    <div class="prose">
+      <p class="prose-eyebrow"><span class="dot dot-signal" aria-hidden="true"></span>{{ tag }} · {{ date }} · {{ readTime }}</p>
+      <h1>{{ title }}</h1>
+      <p class="prose-lead">{{ description }}</p>
+    </div>
+
+    {% if image %}
+    <figure class="prose-hero">
+      <img src="{{ image }}" alt="{{ alt or title }}" fetchpriority="high" decoding="async">
+    </figure>
+    {% endif %}
+
+    <div class="prose">
+      {{ content | safe }}
+      <p class="prose-actions"><a class="btn btn-ghost" href="/blog/">← All posts</a></p>
+    </div>
+  </div>
+</article>

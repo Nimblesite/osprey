@@ -1,2 +1,2 @@
 13:4: `Log2` is not a capability: its type is `int`; an effect form names an effect or a value created by `instance`
-unhandled effect operations at program entry: Log2.write; add a matching `handle`
+8:3: unhandled effect operations at program entry: Log2.write; add a matching `handle`

@@ -6,14 +6,12 @@ import ui::Editors
 import ui::Frames
 import ui::Media
 import ui::Ui
-import studio::Blocks
-import studio::Design
-import studio::Kit
-import studio::Names
-import studio::Preview
 
 (** The studio's screens. *)
 module Screens
+    // The sidebar's muted tone: its caption, the uploader's label and its note.
+    sidebarMutedTone = "sidebarMuted"
+
     symbolOf kind = match kind
         "markdown" => "document"
         "image" => "sparkle"
@@ -36,13 +34,13 @@ module Screens
     brand () =
         mark = Kit::surface ("accent", "", Design::radius "sm", 0)
         logo = Ui::framed (mark(frameWidth = 34, frameHeight = 34, frameInk = "accentInk", frameAlign = "center", frameCross = "center", frameSymbolSize = 18), Ui::icon "sparkle")
-        Ui::spacedRow (10, [logo, Ui::spaced (0, [Kit::strong ("Osprey Studio", "body", "sidebarInk"), Kit::say ("Content, versioned in git", "micro", "sidebarMuted")])])
+        Ui::spacedRow (10, [logo, Ui::spaced (0, [Kit::strong ("Osprey Studio", "body", "sidebarInk"), Kit::say ("Content, versioned in git", "micro", sidebarMutedTone)])])
 
     folders store = Kit::segmented (mapList (store.roots, \root => Kit::choice (root, root == store.folder, PickFolder)))
 
     uploader store =
         style = Kit::surface ("sidebarRaised", "", Design::radius "md", 14)
-        Ui::framed (style(frameGap = 10), Ui::column [Kit::eyebrow ("Add media", "sidebarMuted"), Kit::button ("primary", "Upload media", "add", store.busy == false, ChooseMedia), Kit::say ("Saved into ${store.folder}/ and committed.", "micro", "sidebarMuted")])
+        Ui::framed (style(frameGap = 10), Ui::column [Kit::eyebrow ("Add media", sidebarMutedTone), Kit::button ("primary", "Upload media", "add", store.busy == false, ChooseMedia), Kit::say ("Saved into ${store.folder}/ and committed.", "micro", sidebarMutedTone)])
 
     (** The dark sidebar: brand, search, the tree and the uploader. *)
     export sidebar store =

@@ -352,7 +352,7 @@ async fn watched_changes_recheck_only_the_projects_they_affect(
     Ok(())
 }
 
-fn sweep_uri(path: &std::path::Path) -> Result<String, Box<dyn std::error::Error>> {
+pub(super) fn sweep_uri(path: &std::path::Path) -> Result<String, Box<dyn std::error::Error>> {
     Ok(crate::workspace::uri_of(path).ok_or("a file URI")?)
 }
 

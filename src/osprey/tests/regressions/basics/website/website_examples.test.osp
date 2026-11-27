@@ -1,7 +1,7 @@
 
 // The six tiny code blocks that appear on the website, run as one file
 // to keep them honest. If a copy/paste snippet stops compiling, this
-// breaks. Sections preserved verbatim (apart from being concatenated).
+// breaks.
 
 /// --- Hero ---
 fn double(n) = n * 2 
@@ -10,10 +10,12 @@ let x = 42
 let name = "Alice"
 print("x = ${x}\nname = ${name}")
 
+fn somethingElse() = "Something else"
+
 let result = match x {
     42 => "The answer!"
     0 => "Zero"
-    _ => "Something else"
+    _ => somethingElse()
 }
 print("Result: ${result}")
 
@@ -29,7 +31,7 @@ print("${name} (${age}) scored ${score}/100")
 fn analyzeNumber(n) = match n {
     0 => "Zero"
     42 => "The answer!"
-    _ => "Something else"
+    _ => somethingElse()
 }
 fn square(v) = v * v 
 print("Testing functions:\n${analyzeNumber(0)}\n${analyzeNumber(42)}\n${analyzeNumber(5)}")
@@ -73,7 +75,7 @@ fn websiteExamplesCase() = {
         pipedValue == 100,
         analyzeNumber(0) == "Zero",
         analyzeNumber(42) == "The answer!",
-        analyzeNumber(5) == "Something else",
+        analyzeNumber(5) == somethingElse(),
         answersHold(getGrade, [100, 95, 85, 75, 50], ["Perfect!", "Excellent", "Very Good", "Good", "Needs Improvement"]),
         compute(11) == 22,
         fiberValue == 14

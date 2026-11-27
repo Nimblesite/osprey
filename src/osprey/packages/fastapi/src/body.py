@@ -12,6 +12,9 @@ from fastapi import Uuids
 
 __all__ = ["bind", "bind_binary", "object_body", "object_at", "nested", "text", "text_at", "optional_text", "optional_alias", "uuid", "extras", "filtered_response", "optional_json", "array", "array_at", "string"]
 
+REQUIRED = "Field required"
+"""The message of every `missing` validation error, as pydantic words it."""
+
 
 def invalid(location, kind, message, input):
     return invalid_at(mapList(location, lambda name: M.Field(name=name)), kind, message, input)
@@ -63,6 +66,31 @@ def object_at(document, path, decoder):
 
 
 def object_body(document, decoder):
+    """Check an object at the body's location `["body"]`, handing the decoder the value alone.
+
+    # Examples
+    ```osprey
+    from fastapi import Body
+    from fastapi import Models as M
+
+    def verdict(document):
+        outcome = Body.object_body(document, lambda value: Body.text(value, "name"))
+        match outcome:
+            case Success(value=result):
+                match result:
+                    case M.Valid(value=name):
+                        return f"valid: {name}"
+                    case M.Invalid(issues=issues):
+                        return f"invalid({len(issues)})"
+            case Error():
+                return "error"
+
+    print(f"[{verdict(JsonObject([JsonMember('name', JsonString('ada'))]))}] [{verdict(JsonString('nope'))}]")
+    ```
+    ```output
+    [valid: ada] [invalid(1)]
+    ```
+    """
     return object_at(document, body_path(), lambda value, _path: decoder(value))
 
 
@@ -70,7 +98,7 @@ def required_member(document, name, parent, decoder):
     path = listConcat(parent, [M.Field(name=name)])
     match jsonField(document, name):
         case Error():
-            return invalid_at(path, "missing", "Field required", document)
+            return invalid_at(path, "missing", REQUIRED, document)
         case Success(value=field):
             return decoder(field, path)
 
@@ -141,10 +169,73 @@ def text_at(document, name, parent):
 
 
 def text(document, name):
+    """Validate a required string member of the body, located at `["body", name]`.
+
+    # Examples
+    ```osprey
+    from fastapi import Body
+    from fastapi import Models as M
+
+    def verdict(document):
+        outcome = Body.text(document, "name")
+        match outcome:
+            case Success(value=result):
+                match result:
+                    case M.Valid(value=name):
+                        return f"valid: {name}"
+                    case M.Invalid(issues=issues):
+                        match listGet(issues, 0):
+                            case Success(value=issue):
+                                return f"invalid: {issue.kind}"
+                            case Error():
+                                return "none"
+            case Error():
+                return "error"
+
+    given = JsonObject([JsonMember("name", JsonString("ada"))])
+    wrong = JsonObject([JsonMember("name", JsonInt(7))])
+    print(f"[{verdict(given)}] [{verdict(wrong)}] [{verdict(JsonObject([]))}]")
+    ```
+    ```output
+    [valid: ada] [invalid: string_type] [invalid: missing]
+    ```
+    """
     return text_at(document, name, body_path())
 
 
 def optional_text(document, name):
+    """Validate an optional string member: an absent or null member is `Valid(Absent())`, a present one is `Valid(Present(text))` or its issues.
+
+    # Examples
+    ```osprey
+    from fastapi import Body
+    from fastapi import Models as M
+
+    def verdict(document):
+        outcome = Body.optional_text(document, "label")
+        match outcome:
+            case Success(value=result):
+                match result:
+                    case M.Valid(value=optional):
+                        match optional:
+                            case M.Present(value=label):
+                                return f"present: {label}"
+                            case M.Absent():
+                                return "absent"
+                    case M.Invalid(issues=issues):
+                        return f"invalid: {toString(mapList(issues, lambda issue: issue.kind))}"
+            case Error():
+                return "error"
+
+    given = JsonObject([JsonMember("label", JsonString("beta"))])
+    explicit_null = JsonObject([JsonMember("label", JsonNull())])
+    wrong = JsonObject([JsonMember("label", JsonInt(7))])
+    print(f"[{verdict(given)}] [{verdict(explicit_null)}] [{verdict(JsonObject([]))}] [{verdict(wrong)}]")
+    ```
+    ```output
+    [present: beta] [absent] [absent] [invalid: ["string_type"]]
+    ```
+    """
     match jsonField(document, name):
         case Error():
             return Success(value=M.Valid(value=M.Absent()))
@@ -157,6 +248,37 @@ def optional_text(document, name):
 
 
 def optional_alias(document, alias, name):
+    """Validate an optional string member under `alias` when the document has that member, else under `name`.
+
+    # Examples
+    ```osprey
+    from fastapi import Body
+    from fastapi import Models as M
+
+    def verdict(document):
+        outcome = Body.optional_alias(document, "mimeType", "mime_type")
+        match outcome:
+            case Success(value=result):
+                match result:
+                    case M.Valid(value=optional):
+                        match optional:
+                            case M.Present(value=mime):
+                                return f"present: {mime}"
+                            case M.Absent():
+                                return "absent"
+                    case M.Invalid(issues=issues):
+                        return f"invalid({len(issues)})"
+            case Error():
+                return "error"
+
+    both = JsonObject([JsonMember("mimeType", JsonString("image/png")), JsonMember("mime_type", JsonString("text/plain"))])
+    plain = JsonObject([JsonMember("mime_type", JsonString("text/plain"))])
+    print(f"[{verdict(both)}] [{verdict(plain)}] [{verdict(JsonObject([]))}]")
+    ```
+    ```output
+    [present: image/png] [present: text/plain] [absent]
+    ```
+    """
     match jsonField(document, alias):
         case Success():
             return optional_text(document, alias)
@@ -165,9 +287,41 @@ def optional_alias(document, alias, name):
 
 
 def uuid(document, name):
+    """Validate a required body member as a UUID, located at `["body", name]`: a string is normalized, anything else is a `uuid_type` issue.
+
+    # Examples
+    ```osprey
+    from fastapi import Body
+    from fastapi import Models as M
+
+    def verdict(document):
+        outcome = Body.uuid(document, "user_id")
+        match outcome:
+            case Success(value=result):
+                match result:
+                    case M.Valid(value=identity):
+                        return f"valid: {identity}"
+                    case M.Invalid(issues=issues):
+                        match listGet(issues, 0):
+                            case Success(value=issue):
+                                return f"invalid: {issue.kind}"
+                            case Error():
+                                return "none"
+            case Error():
+                return "error"
+
+    upper = JsonObject([JsonMember("user_id", JsonString("123E4567-E89B-12D3-A456-426614174000"))])
+    bad = JsonObject([JsonMember("user_id", JsonString("zzz"))])
+    wrong = JsonObject([JsonMember("user_id", JsonInt(7))])
+    print(f"[{verdict(upper)}] [{verdict(bad)}] [{verdict(wrong)}] [{verdict(JsonObject([]))}]")
+    ```
+    ```output
+    [valid: 123e4567-e89b-12d3-a456-426614174000] [invalid: uuid_parsing] [invalid: uuid_type] [invalid: missing]
+    ```
+    """
     match jsonField(document, name):
         case Error():
-            return invalid(["body", name], "missing", "Field required", document)
+            return invalid(["body", name], "missing", REQUIRED, document)
         case Success(value=field):
             match field:
                 case JsonString(value):
@@ -177,6 +331,34 @@ def uuid(document, name):
 
 
 def extras(document, allowed, validation):
+    """Add an `extra_forbidden` issue to `validation` for every member of the object `allowed` does not name; a non-object is an `Error`.
+
+    # Examples
+    ```osprey
+    from fastapi import Body
+    from fastapi import Models as M
+
+    def verdict(document, allowed):
+        outcome = Body.extras(document, allowed, M.Valid(value=None))
+        match outcome:
+            case Success(value=result):
+                match result:
+                    case M.Valid():
+                        return "valid"
+                    case M.Invalid(issues=issues):
+                        return f"invalid: {toString(mapList(issues, lambda issue: issue.kind))}"
+            case Error(message=message):
+                return f"error: {message}"
+
+    body = JsonObject([JsonMember("tenant_id", JsonString("acme")), JsonMember("_secret", JsonString("x"))])
+    narrow = ["tenant_id"]
+    full = ["tenant_id", "_secret"]
+    print(f"[{verdict(body, narrow)}] [{verdict(body, full)}] [{verdict(JsonString('nope'), narrow)}]")
+    ```
+    ```output
+    [invalid: ["extra_forbidden"]] [valid] [error: Body extras require a validated object]
+    ```
+    """
     match document:
         case JsonObject(members):
             unknown = filterList(members, lambda member: not listContains(allowed, member_name(member)))
@@ -210,6 +392,21 @@ def extra_issue(member):
 
 
 def filtered_response(status, document, allowed):
+    """Respond with `status` and a JSON body holding only the members of the object `allowed` names; a non-object is a 500.
+
+    # Examples
+    ```osprey
+    from fastapi import Body
+
+    document = JsonObject([JsonMember("name", JsonString("ada")), JsonMember("_secret", JsonString("never expose"))])
+    kept = Body.filtered_response(201, document, ["name"])
+    failed = Body.filtered_response(201, JsonString("nope"), ["name"])
+    print(f"[{kept.status_code}] [{kept.content}] [{failed.status_code}] [{failed.content}]")
+    ```
+    ```output
+    [201] [{"name":"ada"}] [500] [Internal Server Error]
+    ```
+    """
     match document:
         case JsonObject(members):
             return E.json_response(status, JsonObject(filterList(members, lambda member: listContains(allowed, member_name(member)))), "")
@@ -218,6 +415,23 @@ def filtered_response(status, document, allowed):
 
 
 def optional_json(value):
+    """An optional body value as JSON: `Present(text)` is a JSON string and `Absent` a JSON null.
+
+    # Examples
+    ```osprey
+    from fastapi import Body
+    from fastapi import Models as M
+
+    def shown(value):
+        reply = Body.filtered_response(200, JsonObject([JsonMember("label", Body.optional_json(value))]), ["label"])
+        return f"[{reply.status_code}] [{reply.content}]"
+
+    print(f"{shown(M.Present(value='beta'))} {shown(M.Absent())}")
+    ```
+    ```output
+    [200] [{"label":"beta"}] [200] [{"label":null}]
+    ```
+    """
     match value:
         case M.Present(value=text):
             return JsonString(text)
@@ -275,8 +489,34 @@ def json_media(media):
 
 
 def bind(request, decoder, endpoint):
+    """Decode the request body, validate it with `decoder` and pass the value to `endpoint`, or render the failure.
+
+    An empty body is a `missing` issue at `["body"]`. A JSON media type is parsed first (a leading UTF-8 BOM is dropped, JSON null is the missing issue and a parse error becomes a 400 or a 422 `json_invalid` issue); any other media type hands the raw body to the decoder as a JSON string. A decoder `Error` is a 500.
+
+    # Examples
+    ```osprey
+    from fastapi import Body
+    from fastapi import Models as M
+    from fastapi import Responses
+
+    def post(content_type, body):
+        request = M.Request(method="POST", url="/greet", headers="Content-Type: " + content_type, body=body, path_params={})
+        reply = Body.bind(request, lambda doc: Body.object_body(doc, lambda value: Body.text(value, "name")), lambda name: Responses.response(200, "hello " + name, "text/plain", ""))
+        return f"[{reply.status_code}] [{reply.content}]"
+
+    json_type = "application/json"
+    as_json = post(json_type, "{\\"name\\":\\"ada\\"}")
+    empty = post(json_type, "")
+    broken = post(json_type, "{\\"name\\":")
+    as_text = post("text/plain", "ada")
+    print(f"{as_json} {empty} {broken} {as_text}")
+    ```
+    ```output
+    [200] [hello ada] [422] [{"detail":[{"type":"missing","loc":["body"],"msg":"Field required","input":null}]}] [422] [{"detail":[{"type":"json_invalid","loc":["body",8],"msg":"JSON decode error","input":{},"ctx":{"error":"Expecting value"}}]}] [422] [{"detail":[{"type":"model_attributes_type","loc":["body"],"msg":"Input should be a valid dictionary or object to extract fields from","input":"ada"}]}]
+    ```
+    """
     if request.body == "":
-        return rendered(invalid(["body"], "missing", "Field required", JsonNull()), endpoint)
+        return rendered(invalid(["body"], "missing", REQUIRED, JsonNull()), endpoint)
     elif json_media(trim(toLowerCase(media_type(request)))):
         source = drop(request.body, len("\ufeff")) if startsWith(request.body, "\ufeff") else request.body
         match jsonDecodePython(source):
@@ -304,7 +544,7 @@ def rendered(result, endpoint):
 def bound_document(document, decoder, endpoint):
     match document:
         case JsonNull():
-            return rendered(invalid(["body"], "missing", "Field required", document), endpoint)
+            return rendered(invalid(["body"], "missing", REQUIRED, document), endpoint)
         case _:
             return rendered(decoder(document), endpoint)
 

@@ -17,6 +17,7 @@ import { frame } from "./native-rows-kit";
 import {
   ERRNO, I32, expect, forever, guestModule, integer, iovec, load32, load8, ok, probe, runProbe, spin, store32, store8, stubApplication, wasi, wide, type StubBodies,
 } from "./wasm-guest-kit";
+import { present } from "../present";
 
 const open = { now: 1, offset: 0, platform: "vscode", home: "/home", dark: false, arguments: [] };
 const touch = { kind: 0, ordinal: 0, words: "", detail: "", x: 0, y: 0, down: false, shift: false };
@@ -80,9 +81,13 @@ suite("WASI worker failure boundary", () => {
       await assert.rejects(runtime.open(open), /unreachable/);
       // Long after the worker is gone, a call must still be answered at once.
       await new Promise((resolve) => setTimeout(resolve, 500));
-      const started = Date.now();
-      await assert.rejects(runtime.event(touch), /unreachable|exited/);
-      assert.ok(Date.now() - started < 2000, "a call after the worker died is refused at once, not after the call timeout");
+      // Refused at once means settled before the event loop turns once: no
+      // timer, the call timeout included, can have fired by then.
+      const call = runtime.event(touch);
+      const turned = new Promise((resolve) => setImmediate(() => resolve("pending")));
+      const settled = await Promise.race([call.then(() => "resolved", () => "rejected"), turned]);
+      assert.strictEqual(settled, "rejected", "a call after the worker died is refused at once, not after the call timeout");
+      await assert.rejects(call, /unreachable|exited/);
     } finally { runtime.dispose(); }
     await assert.rejects(scriptedWorker((worker) => worker.emit("error", new Error("worker startup failed"))), /worker startup failed/);
     await assert.rejects(scriptedWorker((worker) => worker.emit("exit", 2)), /exited with 2/);
@@ -389,8 +394,9 @@ suite("package workspace in-memory WASI", () => {
     assert.strictEqual(await runProbe(probe([...refused, ...clock, ...outside])), 0);
     // Before the instance's memory exists, or with arguments it cannot read, nothing is polled.
     const early = wasiImports(createWasi(), () => undefined).wasi_snapshot_preview1 as Record<string, (...args: unknown[]) => unknown>;
+    const pollOneoff = present(early.poll_oneoff, "the guest imports expose poll_oneoff");
     for (const args of [[1024, 2048, 1, 16], ["1024", 2048, 1, 16], [1024, 2048, undefined, 16]]) {
-      assert.strictEqual(early.poll_oneoff(...args), ERRNO.badf, `poll_oneoff(${String(args)})`);
+      assert.strictEqual(pollOneoff(...args), ERRNO.badf, `poll_oneoff(${String(args)})`);
     }
   });
 

@@ -10,6 +10,7 @@ import { commands, ExtensionContext, Uri, WebviewPanel, window, workspace } from
 import { folderFor, hostBridge } from "../../client/src/package-workspace";
 import { activateWithServer } from "./profiler-kit";
 import { withRegistrySetting } from "./real-registry-kit";
+import { present } from "./osprey-test-env";
 
 const roots = ["one", "two"].map((name, index) => ({ name, index, uri: Uri.file(`/work/${name}`) }));
 
@@ -27,11 +28,12 @@ suite("package workspace project safety", () => {
 
   test("multi-root command palette selection requires an explicit project", async () => {
     sinon.stub(workspace, "workspaceFolders").get(() => roots);
-    const item = { label: "two", uri: roots[1].uri };
+    const second = present(roots[1], "the second project");
+    const item = { label: "two", uri: second.uri };
     const picker = sinon.stub(window, "showQuickPick").resolves(item);
     const selected = await folderFor();
     assert.strictEqual(picker.callCount, 1);
-    assert.strictEqual(selected?.toString(), roots[1].uri.toString());
+    assert.strictEqual(selected?.toString(), second.uri.toString());
   });
 
   test("cancelling multi-root selection never falls back to the first project", async () => {
@@ -42,9 +44,10 @@ suite("package workspace project safety", () => {
 
   test("an Explorer resource selects its own project without a picker", async () => {
     sinon.stub(workspace, "workspaceFolders").get(() => roots);
-    sinon.stub(workspace, "getWorkspaceFolder").returns(roots[1]);
+    const second = present(roots[1], "the second project");
+    sinon.stub(workspace, "getWorkspaceFolder").returns(second);
     const picker = sinon.stub(window, "showQuickPick");
-    assert.strictEqual((await folderFor(Uri.file("/work/two/osprey.toml")))?.toString(), roots[1].uri.toString());
+    assert.strictEqual((await folderFor(Uri.file("/work/two/osprey.toml")))?.toString(), second.uri.toString());
     assert.strictEqual(picker.callCount, 0);
   });
 

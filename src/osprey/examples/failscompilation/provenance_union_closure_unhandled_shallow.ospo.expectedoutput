@@ -1,1 +1,1 @@
-unhandled effect operations at program entry: Log.write; add a matching `handle`
+26:3: unhandled effect operations at program entry: Log.write; add a matching `handle`

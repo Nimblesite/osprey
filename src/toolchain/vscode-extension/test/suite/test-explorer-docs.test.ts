@@ -22,6 +22,7 @@ import {
   runArgsFor,
   type RunMode,
 } from "../../client/src/test-explorer-runs";
+import { present } from "../present";
 
 const PROFILE_RUN: RunMode = { kind: "profile", dir: "/tmp/profile-root" };
 
@@ -59,11 +60,13 @@ suite("Test documentation (pure)", () => {
         return;
       }
       assert.strictEqual(parsed.tests.length, 2);
-      assert.strictEqual(parsed.tests[0].summary, "Addition is commutative.");
-      assert.strictEqual(parsed.tests[0].doc, RICH_DOC);
-      assert.strictEqual(parsed.tests[0].line, 22);
-      assert.strictEqual(parsed.tests[1].summary, undefined);
-      assert.strictEqual(parsed.tests[1].doc, undefined);
+      const rich = present(parsed.tests[0], "the documented case");
+      const bare = present(parsed.tests[1], "the bare case");
+      assert.strictEqual(rich.summary, "Addition is commutative.");
+      assert.strictEqual(rich.doc, RICH_DOC);
+      assert.strictEqual(rich.line, 22);
+      assert.strictEqual(bare.summary, undefined);
+      assert.strictEqual(bare.doc, undefined);
     });
 
     test("the exact JSON the compiler emits parses", () => {
@@ -76,8 +79,8 @@ suite("Test documentation (pure)", () => {
       if (!parsed.ok) {
         return;
       }
-      assert.strictEqual(parsed.tests[0].doc, "Adds.\n\n**Since**\n\n0.3");
-      assert.strictEqual(parsed.tests[1].doc, undefined);
+      assert.strictEqual(present(parsed.tests[0], "the documented case").doc, "Adds.\n\n**Since**\n\n0.3");
+      assert.strictEqual(present(parsed.tests[1], "the bare case").doc, undefined);
     });
 
     test("a non-string summary or doc is rejected as malformed", () => {
@@ -102,7 +105,7 @@ suite("Test documentation (pure)", () => {
       });
       assert.strictEqual(outcome.ok, true);
       if (outcome.ok) {
-        assert.strictEqual(outcome.tests[0].doc, RICH_DOC);
+        assert.strictEqual(present(outcome.tests[0], "the documented case").doc, RICH_DOC);
       }
     });
   });

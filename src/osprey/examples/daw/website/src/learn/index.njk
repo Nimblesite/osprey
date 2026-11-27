@@ -1,0 +1,59 @@
+---
+layout: base.njk
+title: "Learn"
+description: "Tutorials, video walkthroughs, interactive DSP module reference, Lean proofs & hardware profiles, and example tracks for Perception Studio."
+---
+
+<section class="section grid-backdrop" style="border-top:0">
+  <div class="shell">
+    <div class="section-head">
+      <p class="eyebrow">Learn Perception Studio</p>
+      <h1>Tutorials, videos &amp; reference</h1>
+      <p>
+        Master modular patching, granular and spectral engines, VST3 workflows, DSP proofs, and
+        hardware profiles.
+      </p>
+    </div>
+
+    <div class="gallery-grid" style="margin-bottom:56px">
+      <a class="blog-card" href="/learn/modules/">
+        <div class="blog-body">
+          <span class="card-tag">Reference</span>
+          <h3>Modules &amp; Instruments</h3>
+          <p>Interactive directory of all 37 DSP modules, physical models, 16-voice grain clouds, and VST3 hosting.</p>
+        </div>
+      </a>
+      <a class="blog-card" href="/learn/proofs/">
+        <div class="blog-body">
+          <span class="card-tag is-monitor">DSP &amp; Hardware</span>
+          <h3>Proofs &amp; Hardware Factory</h3>
+          <p>Machine-checked Lean synthesis theorems, real-time Raspberry Pi 5 + HAT profiles, and JSON schema.</p>
+        </div>
+      </a>
+      <a class="blog-card" href="/learn/tracks/">
+        <div class="blog-body">
+          <span class="card-tag is-mod">Compositions</span>
+          <h3>Example Tracks</h3>
+          <p>Hand-composed studio projects with real signal-flow routing breakdowns and studio captures.</p>
+        </div>
+      </a>
+    </div>
+
+    <div class="section-head">
+      <h2>Tutorials &amp; video walkthroughs</h2>
+      <p>Hands-on guides from first patch to hardware deployment.</p>
+    </div>
+
+    <div class="gallery-grid">
+      {% for item in site.tutorials %}
+      <a class="blog-card" href="{{ item.href }}">
+        <div class="blog-body">
+          <span class="card-tag">{{ item.tag }}</span>
+          <h3>{{ item.title }}</h3>
+          <p>{{ item.summary }}</p>
+        </div>
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+</section>

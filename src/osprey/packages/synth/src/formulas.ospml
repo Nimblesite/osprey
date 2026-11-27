@@ -153,7 +153,15 @@ module Formulas
         [] => Success(value = parsed.term)
         [lexeme, ..._] => unexpected lexeme
 
-    (** The formula's term, or a fault naming the first column it cannot read. *)
+    (** The formula's term, or a fault naming the first column it cannot read.
+    # Examples
+    ```osprey
+    print "${Formulas::parse "t + 1"} ${Formulas::parse "60 +"} ${Formulas::parse ""}"
+    ```
+    ```output
+    Success(Binary { operation: Plus, left: StepIndex, right: Literal { value: 1.0 } }) Error(InvalidConfiguration { detail: "Formula: the formula ends where a number, t, a function or '(' belongs." }) Error(InvalidConfiguration { detail: "Formula: write 1 to 256 characters." })
+    ```
+    *)
     export parse text = match length text > 0 && length text <= limit
         false => fault "write 1 to ${limit} characters."
         true => Outcomes::carried (lexemes (text, 0, []), \found => Outcomes::carried (sum found, complete))
@@ -179,7 +187,15 @@ module Formulas
         RoundOf => round x
         RootOf => sqrt x
 
-    (** The term's value at step `step`; IEEE throughout, so a step with no value is NaN or infinite. *)
+    (** The term's value at step `step`; IEEE throughout, so a step with no value is NaN or infinite.
+    # Examples
+    ```osprey
+    print "${Formulas::evaluate (StepIndex, 3)} ${Formulas::evaluate (Binary(operation = Over, left = Literal(value = 1.0), right = Literal(value = 0.0)), 0)} ${Formulas::evaluate (Call(applied = RootOf, argument = Literal(value = -1.0)), 0)}"
+    ```
+    ```output
+    3.0 inf nan
+    ```
+    *)
     export evaluate (term, step) = match term
         Literal value => value
         StepIndex => toFloat step
@@ -194,12 +210,28 @@ module Formulas
             true => pitch + 12.0 * ceil (floatDiv (0.0 - pitch, 12.0))
             false => pitch
 
-    (** The note a value names: the nearest whole pitch folded into 0–127, or a rest without a finite value. *)
+    (** The note a value names: the nearest whole pitch folded into 0–127, or a rest without a finite value.
+    # Examples
+    ```osprey
+    print "${Formulas::note 60.4} ${Formulas::note (-5.0)} ${Formulas::note (Formulas::evaluate (Binary(operation = Over, left = Literal(value = 0.0), right = Literal(value = 0.0)), 0))}"
+    ```
+    ```output
+    Sounded { pitch: 60 } Sounded { pitch: 7 } Rest
+    ```
+    *)
     export note value = match value - value == 0.0 && abs value <= ceiling
         false => Rest
         true => match floatToInt (folded (round value))
             Error _ => Rest
             Success pitch => Sounded(pitch = pitch)
 
-    (** The first `steps` notes of a parsed formula, for `t` from 0. *)
+    (** The first `steps` notes of a parsed formula, for `t` from 0.
+    # Examples
+    ```osprey
+    print "${Formulas::notes (StepIndex, 3)} ${Formulas::notes (Literal(value = 60.0), 0)}"
+    ```
+    ```output
+    [Sounded { pitch: 0 }, Sounded { pitch: 1 }, Sounded { pitch: 2 }] []
+    ```
+    *)
     export notes (term, steps) = mapList (toList (range (0, steps)), \step => note (evaluate (term, step)))

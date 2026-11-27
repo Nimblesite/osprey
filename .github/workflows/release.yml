@@ -190,6 +190,18 @@ jobs:
         shell: msys2 {0}
         run: target/release/osprey.exe build src/osprey/packages/manager/cli --quiet --no-warnings -o target/osprey-pkg.exe
 
+      - name: Build wasm runtime archives (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/wasi-sysroot.tar.gz \
+            "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${WASI_SDK_VERSION}/wasi-sysroot-${WASI_SDK_VERSION}.0.tar.gz"
+          mkdir -p /tmp/wasi-sysroot
+          tar -xzf /tmp/wasi-sysroot.tar.gz -C /tmp/wasi-sysroot --strip-components=1
+          export OSPREY_WASI_SYSROOT=/tmp/wasi-sysroot
+          make _runtime_wasm
+
       - name: Build portable package workspace
         if: runner.os == 'Linux'
         shell: bash
@@ -201,6 +213,7 @@ jobs:
           sudo mkdir -p /opt/wasi-sdk/share/wasi-sysroot
           sudo tar -xzf /tmp/wasi-sysroot.tar.gz -C /opt/wasi-sdk/share/wasi-sysroot --strip-components=1
           export OSPREY_WASI_SYSROOT=/opt/wasi-sdk/share/wasi-sysroot
+          make _runtime_wasm
           make target/package-workspace.wasm
           wasm-validate target/package-workspace.wasm
           make target/workbench.wasm
@@ -264,6 +277,14 @@ jobs:
               exit 1
             }
           done
+          if [[ "$plat" == linux-* || "$plat" == darwin-* ]]; then
+            for archive in libosprey_runtime_wasm_arc.a libosprey_runtime_wasm_ownership.a; do
+              [ -s "dist/$staging/$archive" ] || {
+                echo "::error::$archive missing from $staging"
+                exit 1
+              }
+            done
+          fi
           if [[ "$plat" == darwin-* ]]; then
             for target in ios ios_sim macos; do
               for mode in _ownership _arc; do

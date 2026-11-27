@@ -27,7 +27,7 @@ module Optimize {
     /// True only for a completed satisfiable search; an unknown result is not a proof.
     fn satisfied(result) = match result {
         Success { value } => match value {
-            Sat::Satisfiable { model } => true
+            Sat::Satisfiable { _ } => true
             _ => false
         }
         Error => false

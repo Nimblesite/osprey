@@ -81,11 +81,28 @@ type Declaration = Declared string | Undeclared string
 (** Rewriting the discipline marker on the way into the compiler. *)
 module Marker
     (** `source` with every marker line rewritten to `hm`; the marker is a
-        comment, so this changes no layout and no code. *)
+        comment, so this changes no layout and no code.
+    # Examples
+    ```osprey
+    print (Marker::rewrite "// osprey: types=passthrough\nf x = x")
+    ```
+    ```output
+    // osprey: types=hm
+    f x = x
+    ```
+    *)
     export rewrite source = join (mapList (split (source, "\n") ?: [source], rewritten), "\n")
 
     (** The file name after the last `/`, kept with its extension so the
-        compiler resolves the same flavor for the scratch copy. *)
+        compiler resolves the same flavor for the scratch copy.
+    # Examples
+    ```osprey
+    print "${Marker::basename "src/deep/checker.ospml"} ${Marker::basename "plain.osp"}"
+    ```
+    ```output
+    checker.ospml plain.osp
+    ```
+    *)
     export basename path = lastPart (split (path, "/") ?: [path])
 
     rewritten text = match marked (trim text)
@@ -100,14 +117,47 @@ module Marker
 
 (** Answering with one JSON line ([TYPES-DISCIPLINE-PROTOCOL]). *)
 module Replies
-    (** `accepted` with the inferred signature and the erased module. *)
+    (** `accepted` with the inferred signature and the erased module.
+    # Examples
+    ```osprey
+    print (Replies::accepted ("f : int -> int", Erased(flavor = "ml", source = "f x = x")))
+    ```
+    ```output
+    {"version":2,"result":"accepted","signature":"f : int -> int","erased":{"flavor":"ml","source":"f x = x"},"diagnostics":[]}
+    ```
+    *)
     export accepted (text, erased) = encoded (acceptedJson (text, erased))
 
+    (** `rejected` carrying every positioned diagnostic the check found.
+    # Examples
+    ```osprey
+    print (Replies::rejected [Diagnostic(code = "check", line = 2, column = 4, message = "unknown y")])
+    ```
+    ```output
+    {"version":2,"result":"rejected","signature":"","erased":null,"diagnostics":[{"code":"check","severity":"error","line":2,"column":4,"message":"unknown y"}]}
+    ```
+    *)
     export rejected diagnostics = encoded (rejectedJson diagnostics)
-    (** A rejection of the checker's own doing. *)
+    (** A rejection of the checker's own doing.
+    # Examples
+    ```osprey
+    print (Replies::internal "no request")
+    ```
+    ```output
+    {"version":2,"result":"rejected","signature":"","erased":null,"diagnostics":[{"code":"internal","severity":"error","line":null,"column":null,"message":"no request"}]}
+    ```
+    *)
     export internal message = refusing (codeInternal, message)
 
-    (** A `rejected` reply carrying the one unpositioned diagnostic `code`/`message`. *)
+    (** A `rejected` reply carrying the one unpositioned diagnostic `code`/`message`.
+    # Examples
+    ```osprey
+    print (Replies::refusing ("imports", "no stub"))
+    ```
+    ```output
+    {"version":2,"result":"rejected","signature":"","erased":null,"diagnostics":[{"code":"imports","severity":"error","line":null,"column":null,"message":"no stub"}]}
+    ```
+    *)
     export refusing (code, message) = rejected ([Diagnostic(code = code, line = -1, column = -1, message = message)])
 
     encoded json = jsonEncode json ?: fallback ()
@@ -143,7 +193,18 @@ module Replies
 
 (** Turning the compiler's stderr into diagnostics, with the positions it wrote. *)
 module Checks
-    (** One diagnostic per non-blank stderr line, `path:line:col:` parsed. *)
+    (** One diagnostic per non-blank stderr line, `path:line:col:` parsed.
+    # Examples
+    ```osprey
+    shown () = join (mapList (Checks::diagnostics ("m.ospml", "m.ospml:3:5: unknown y\n\nlinker failed"), \d => "${d.line}:${d.column} ${d.message}"), " | ")
+    print (exactArithmetic shown)
+    ```
+    ```output
+    3:5 unknown y | -1:-1 linker failed
+    1..0
+    # tests=0 passed=0 failed=0 skipped=0
+    ```
+    *)
     export diagnostics (path, stderr) =
         filterList (mapList (split (stderr, "\n") ?: [], read (path)), \one => !isEmpty one.message)
 
@@ -173,11 +234,32 @@ module Checks
 
 (** The `extern` declarations that stand in for the signatures a module imports. *)
 module Signatures
-    (** The stub source to append to the scratch copy of the module. *)
+    (** The stub source to append to the scratch copy of the module.
+    # Examples
+    ```osprey
+    shown () = match Signatures::stubs []
+        Ready text => "ready [${text}]"
+        Unstubbable why => "refused ${why}"
+    print (exactArithmetic shown)
+    ```
+    ```output
+    ready []
+    1..0
+    # tests=0 passed=0 failed=0 skipped=0
+    ```
+    *)
     export stubs imports = gathered (imports, [])
 
     (** The module names the stubs stand in for, so their signature blocks are
-        not returned as part of the checked module's own signature. *)
+        not returned as part of the checked module's own signature.
+    # Examples
+    ```osprey
+    print (join (Signatures::titles [Imported(name = "tools::Text", text = "", omitted = []), Imported(name = "Plain", text = "", omitted = [])], ","))
+    ```
+    ```output
+    Text,Plain
+    ```
+    *)
     export titles imports = mapList (imports, \imported => lastPart (split (imported.name, "::") ?: [imported.name]))
 
     gathered (imports, stubs) = match imports
@@ -308,7 +390,16 @@ module Signatures
 module Tool
     (** Run `command` through the shell, capturing stdout and stderr. The
         runner creates the result cache before it spawns a checker, so the
-        directory the capture files land in already exists. *)
+        directory the capture files land in already exists.
+    # Examples
+    ```osprey
+    ran = Tool::capture ("/tmp", "passthrough-doc", "echo hi; echo oops >&2")
+    print "${ran.code} ${trim ran.out} ${trim ran.err}"
+    ```
+    ```output
+    0 hi oops
+    ```
+    *)
     export capture (directory, name, command) =
         out = directory + "/" + name + ".out"
         err = directory + "/" + name + ".err"
@@ -322,13 +413,32 @@ module Tool
         Success text => text
         Error _ => ""
 
+    (** `text` quoted for a POSIX shell, with each embedded `'` escaped.
+    # Examples
+    ```osprey
+    print (Tool::quoted "it's here")
+    ```
+    ```output
+    'it'\''s here'
+    ```
+    *)
     export quoted text = "'" + (replace (text, "'", "'\\''") ?: text) + "'"
 
     quiet (_id, _kind, _data) = cleanupProcess 0
 
 (** The checker program of [TYPES-DISCIPLINE-PROTOCOL]. *)
 module Checker
-    (** The one response line for the request line `line`. *)
+    (** The one response line for the request line `line`.
+    # Examples
+    ```osprey
+    print (exactArithmetic (\() => Checker::answer "not json"))
+    ```
+    ```output
+    {"version":2,"result":"rejected","signature":"","erased":null,"diagnostics":[{"code":"internal","severity":"error","line":null,"column":null,"message":"the request line is not one JSON object of the checker protocol"}]}
+    1..0
+    # tests=0 passed=0 failed=0 skipped=0
+    ```
+    *)
     export answer line = match decoded line
         IsRequest request => inspect request
         NotRequest why => Replies::internal why
@@ -437,6 +547,22 @@ module Checker
 (** Every case this package asserts about itself: the marker rewrite, the
     stderr parser and the exact response encoding the seam parses. *)
 module Tests
+    (** Run every self-test of the checker.
+    # Examples
+    ```osprey
+    exactArithmetic Tests::run
+    ```
+    ```output
+    ok 1 - every marker spelling is rewritten and nothing else is touched
+    ok 2 - stderr becomes positioned diagnostics and nothing else
+    ok 3 - an accepted answer is the exact protocol JSON
+    ok 4 - a rejected answer is the exact protocol JSON, and no position is null
+    ok 5 - a stubbable import becomes an extern; an empty one stays resolvable
+    ok 6 - an import an extern cannot express is refused with the reason
+    1..6
+    # tests=6 passed=6 failed=0 skipped=0
+    ```
+    *)
     export run () =
         test ("every marker spelling is rewritten and nothing else is touched", \() => markers ())
         test ("stderr becomes positioned diagnostics and nothing else", \() => diagnostics ())

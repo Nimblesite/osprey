@@ -52,14 +52,30 @@ module MidiClips
         FormulaNotes formula => Outcomes::carried (Formulas::parse formula, \term => formulaEvents (n, term))
         _ => invalidWindow
 
-    (** Render a half-open sample window; partitioning cannot duplicate or drop a note-off. *)
+    (** Render a half-open sample window; partitioning cannot duplicate or drop a note-off.
+    # Examples
+    ```osprey
+    print "${MidiClips::timeline (Components::midiNote (1, 60.0, 0.8, 4800.0), 0, 4)} ${MidiClips::timeline (Components::midiNote (1, 60.0, 0.8, 4800.0), 0, 0)}"
+    ```
+    ```output
+    Success([{ kind: 1, offset: 0, pitch: 60, channel: 0, identity: 1, velocity: 0.8 }]) Error(InvalidConfiguration { detail: "Invalid MIDI generator or sample window." })
+    ```
+    *)
     export timeline (n, first, count) = match n.identity >= 0 && n.identity <= 2147483647 && first >= 0 && count > 0 && count <= 65536 && first <= satSub 9223372036854775807 count
         false => invalidWindow
         true => match notesOf n
             Error why => Error(message = why)
-            Success notes => Success(value = mapList (filterList (notes, \note => note.offset >= first && note.offset < satAdd first count), \note => note(offset = satSub note.offset first)))
+            Success notes => Success(value = HostPackets::windowed (notes, first, count))
 
-    (** A bounded whole-clip window retains the clip transport's original size contract. *)
+    (** A bounded whole-clip window retains the clip transport's original size contract.
+    # Examples
+    ```osprey
+    print "${MidiClips::window (Components::midiNote (1, 60.0, 0.8, 4800.0), 65536, 1)} ${MidiClips::window (Components::midiNote (1, 60.0, 0.8, 4800.0), 0, 2)}"
+    ```
+    ```output
+    Error(InvalidConfiguration { detail: "Invalid MIDI generator or sample window." }) Success([{ kind: 1, offset: 0, pitch: 60, channel: 0, identity: 1, velocity: 0.8 }])
+    ```
+    *)
     export window (n, first, count) = match first <= satSub 65536 count
         false => invalidWindow
         true => timeline (n, first, count)

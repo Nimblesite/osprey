@@ -41,7 +41,19 @@ module Repatch
             false => Error(message = IncompatibleLayout(detail = "A retained parameter is incompatible with its replacement descriptor."))
             true => Outcomes::carried (foldList (initial.states, Success(value = []), \(result, held) => appendState (previous, next, audio.states, result, held)), \states => Success(value = Timeline(audio = initial(states = states, position = audio.position), observation = observation)))
 
-    (** Keep compatible components' phase/filter/delay state and parameter values; reset changed processors. No partial result escapes on rejection. *)
+    (** Keep compatible components' phase/filter/delay state and parameter values; reset changed processors. No partial result escapes on rejection.
+    # Examples
+    ```osprey
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "${arithmetic (\() => Repatch::apply (Graphs::empty, Graphs::empty, Observation(revision = 0, samplePosition = 0, parameters = [], components = []), Rendered(states = [], samples = [], position = 0, meters = [])))} ${arithmetic (\() => Repatch::apply (Graphs::empty, Graphs::empty, Observation(revision = 0, samplePosition = 1, parameters = [], components = []), Rendered(states = [], samples = [], position = 0, meters = [])))}"
+    ```
+    ```output
+    Error(IncompatibleLayout { detail: "Reference rendering requires mono audio, one output and supported bounded processors." }) Error(InvalidConfiguration { detail: "Graph replacement requires a current block-boundary snapshot and an available revision." })
+    ```
+    *)
     export apply (previous, next, snapshot, audio) = match snapshot.samplePosition == audio.position && audio.position >= 0 && snapshot.revision >= 0 && snapshot.revision < 9223372036854775806
         false => Error(message = InvalidConfiguration(detail = "Graph replacement requires a current block-boundary snapshot and an available revision."))
         true =>

@@ -14,11 +14,12 @@ fn minimumIntCase() = {
 fn negativeIotaCase() = {
     let direct = gpuIota(-3)
     let piped = -7 |> gpuIota()
+    let negativeCount = "gpu: buffer allocation: a negative element count"
     checkAll("negative gpuIota arguments report allocation errors", [
-            iotaOutcome(direct) == "gpu: buffer allocation: a negative element count",
-            iotaOutcome(piped) == "gpu: buffer allocation: a negative element count",
+            iotaOutcome(direct) == negativeCount,
+            iotaOutcome(piped) == negativeCount,
             iotaOutcome(direct) == iotaOutcome(piped),
-            iotaOutcome(gpuIota(-9223372036854775808)) == "gpu: buffer allocation: a negative element count"
+            iotaOutcome(gpuIota(-9223372036854775808)) == negativeCount
     ])
 }
 testCases([

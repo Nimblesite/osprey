@@ -15,7 +15,7 @@ module Candidates {
     // `Resolution::Entry` shares `release` and `dependencies` with the lock
     // records; issue #273 needs every entry receiver typed.
     /// True when the release appears in `current` with the same identity.
-    export fn inCurrent(graph, r) = foldList(graph.current, false, fn(found, c: Identity::ReleaseId) => found || Identity::same(c, r))
+    export fn inCurrent(graph, r) = foldList(graph.current, false, fn(found, c) => found || Identity::same(c, r))
 
     /// The activation gate: Eligible, or Yanked and captured in `current`.
     export fn stateOk(graph, e: Resolution::Entry) = e.activation != "Revoked" && (e.activation != "Yanked" || inCurrent(graph, e.release))
@@ -36,7 +36,7 @@ module Candidates {
         foldList(e.capabilities, true, fn(ok, c) => ok && (!ambient(c) || listContains(graph.granted, c) || listContains(own, c)))
     }
 
-    fn stateReason(graph, e: Resolution::Entry) = if e.activation == "Revoked" { revoked } else if stateOk(graph, e) { "" } else { yanked }
+    fn stateReason(graph, e) = if e.activation == "Revoked" { revoked } else if stateOk(graph, e) { "" } else { yanked }
 
     fn gateReason(graph, e) = if !targetOk(graph, e) { noTarget } else if capsOk(graph, e) { "" } else { capability }
 

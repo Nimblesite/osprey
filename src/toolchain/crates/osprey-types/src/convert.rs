@@ -91,8 +91,8 @@ pub(crate) fn type_name_to_type(s: &str, params: &HashMap<String, Type>) -> Type
     }
     if let Some(open) = s.find('<') {
         if s.ends_with('>') {
-            let head = s[..open].trim();
-            let inner = &s[open + 1..s.len() - 1];
+            let head = s.get(..open).unwrap_or_default().trim();
+            let inner = s.get(open + 1..s.len() - 1).unwrap_or_default();
             let args = split_generic_args(inner)
                 .iter()
                 .map(|a| type_name_to_type(a, params))
@@ -134,7 +134,7 @@ pub(crate) fn parse_fn_sig(s: &str, params: &HashMap<String, Type>) -> (Vec<Type
     let Some(close) = matching_paren(s, open) else {
         return (Vec::new(), Type::unit());
     };
-    let inner = s[open + 1..close].trim();
+    let inner = s.get(open + 1..close).unwrap_or_default().trim();
     let ps = if inner.is_empty() {
         Vec::new()
     } else {
@@ -143,8 +143,8 @@ pub(crate) fn parse_fn_sig(s: &str, params: &HashMap<String, Type>) -> (Vec<Type
             .map(|a| type_name_to_type(a, params))
             .collect()
     };
-    let ret = s[close + 1..]
-        .trim()
+    let after = s.get(close + 1..).unwrap_or_default().trim();
+    let ret = after
         .strip_prefix("->")
         .map_or_else(Type::unit, |r| type_name_to_type(r.trim(), params));
     (ps, ret)
@@ -177,16 +177,16 @@ fn split_generic_args(s: &str) -> Vec<String> {
         match ch {
             '<' | '(' | '[' | '{' => depth += 1,
             // The `>` in a function arrow does not close a generic argument.
-            '>' if s[..i].ends_with('-') => {}
+            '>' if s.get(..i).unwrap_or_default().ends_with('-') => {}
             '>' | ')' | ']' | '}' => depth -= 1,
             ',' if depth == 0 => {
-                out.push(s[start..i].trim().to_string());
+                out.push(s.get(start..i).unwrap_or_default().trim().to_string());
                 start = i + 1;
             }
             _ => {}
         }
     }
-    let last = s[start..].trim();
+    let last = s.get(start..).unwrap_or_default().trim();
     if !last.is_empty() {
         out.push(last.to_string());
     }

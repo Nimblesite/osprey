@@ -25,6 +25,11 @@ import uitest::Read
 import uitest::Semantics
 import uitest::Views as Seen
 
+menuPressLevel = "Menu|Press|Level"
+oneTwoThreeNames = ["One", "Two", "Three"]
+switchedFalse = "switched:false"
+nativeAction = "Native action"
+
 // The fixture document, handed to `work`, or `refused` when it will not load.
 loaded (work, refused) = match MachineDocs::load (readFile "src/osprey/packages/uitest/tests/fixture.machine.json" ?: "")
     Success machine => work machine
@@ -121,7 +126,7 @@ carriedIn key items = ui::Lists::flatten (mapList (items, \one => carried key on
 
 test ("the canvas use case: accessible controls, geometry, sliders, repeated menus, dismissal and live lettering", \() => withFixture (\fresh =>
     expect (Semantics::offered (canvas fresh, "Menu"), true)
-    shut (fresh, "Menu|Press|Level")
+    shut (fresh, menuPressLevel)
     forEachList ([{ named = "Menu", played = "popup" }, { named = "Press", played = "button" }, { named = "Level", played = "slider" }, { named = "Missing", played = "none" }], \spot => expect (Semantics::role (canvas fresh, spot.named), spot.played))
     expect (levelOf (canvas fresh), 0.25)
     expect (letters (fresh, "Hello"), true)
@@ -136,12 +141,12 @@ test ("the canvas use case: accessible controls, geometry, sliders, repeated men
     opened = pressedOn (released, "Menu")
     shut (opened, "One|Two|Three|Menu|Press|Level")
     expect (Semantics::role (canvas opened, "One"), "menuitem")
-    lettering (opened, ["One", "Two", "Three"], [])
+    lettering (opened, oneTwoThreeNames, [])
     dismissed = Canvases::released (opened, 5.0, 5.0)
-    shut (dismissed, "Menu|Press|Level")
+    shut (dismissed, menuPressLevel)
     reopened = pressedOn (dismissed, "Menu")
     chosen = pressedOn (reopened, "Two")
-    shut (chosen, "Menu|Press|Level")
+    shut (chosen, menuPressLevel)
     expect (letters (chosen, "Choice two"), true)
     updated = captioned (chosen, "Updated", "Pressed")
     again = captioned (updated, "Second input", "Updated")
@@ -160,7 +165,7 @@ lassoAct = ui::LassoInput(action = 1)
 sceneAct = ui::SceneInput(action = 1)
 
 meaningCases () = [
-{ binding = tapAct, words = "ignored", want = "act" }, { binding = flagAct, words = "true", want = "switched:true" }, { binding = flagAct, words = "yes", want = "switched:false" },
+{ binding = tapAct, words = "ignored", want = "act" }, { binding = flagAct, words = "true", want = "switched:true" }, { binding = flagAct, words = "yes", want = switchedFalse },
 { binding = choiceAct, words = "two \"quoted\"", want = "entered:two \"quoted\"" }, { binding = textAct, words = "Zoë", want = "entered:Zoë" }, { binding = sizeAct, words = "junk", want = "sized:260" },
 { binding = sizeAct, words = "99999", want = "sized:640" }, { binding = placeAct, words = "-4", want = "sized:0" }, { binding = placeAct, words = "12", want = "sized:12" },
 { binding = strokeAct, words = "1,2", want = "A board control was sent a value of the wrong kind" }, { binding = lassoAct, words = "0,2", want = "A lasso control was sent a value of the wrong kind" }, { binding = sceneAct, words = "", want = "A scene control was sent a value of the wrong kind" },
@@ -184,8 +189,8 @@ test ("native views are found by what they say, and every host event keeps its w
     shown = seen native
     expect (length shown.renderedControls > 1, true)
     expect (length (Seen::labelled (shown, "Native")), 1)
-    forEachList ([{ named = "Native action", shown = true }, { named = "Missing", shown = false }], \row => expect (Seen::shows (shown, row.named), row.shown))
-    forEachList ([{ named = "Native action", kind = "button" }, { named = "Missing", kind = "" }], \row => expect ((Seen::control (shown, row.named)).controlKind, row.kind))
+    forEachList ([{ named = nativeAction, shown = true }, { named = "Missing", shown = false }], \row => expect (Seen::shows (shown, row.named), row.shown))
+    forEachList ([{ named = nativeAction, kind = "button" }, { named = "Missing", kind = "" }], \row => expect ((Seen::control (shown, row.named)).controlKind, row.kind))
     expect (Seen::texts shown, "Native|Native action|two|Pick")
     // The picker's options cross on the component as their keys, the chosen key its selection.
     expect ((Seen::control (shown, "Pick")).controlSelected, "two")
@@ -378,8 +383,8 @@ test ("a resident fixture is driven by labels, pointers, completions, lifecycle 
     letteredOver (lettersIn, ["Pressed"], ["Hello"])
     forEachList ([{ fraction = 0.0, want = 0.0 }, { fraction = 0.5, want = 0.5 }, { fraction = 1.0, want = 1.0 }, { fraction = 0.75, want = 0.75 }], levelAt)
     tap "Menu"
-    offering (["One", "Two", "Three"], true)
-    reading (["One", "Two", "Three"], lettersIn, true)
+    offering (oneTwoThreeNames, true)
+    reading (oneTwoThreeNames, lettersIn, true)
     tap "Two"
     retiredItem "One"
     levelled 0.75
@@ -406,9 +411,9 @@ test ("a resident fixture is driven by labels, pointers, completions, lifecycle 
 
 test ("native controls are pressed and repeatedly chosen through Drive, including successful and explained failed lookups", \() => bench (\() =>
     restarted "plain"
-    forEachList ([{ names = ["Native", "Native action", "Pick"], want = true }, { names = ["Missing control"], want = false }], \row => reading (row.names, showsIn, row.want))
+    forEachList ([{ names = ["Native", nativeAction, "Pick"], want = true }, { names = ["Missing control"], want = false }], \row => reading (row.names, showsIn, row.want))
     expect (selected (), "")
-    post (\d => Drive::press (d, "Native action"))
+    post (\d => Drive::press (d, nativeAction))
     letteredOver (showsIn, ["Pressed"], ["Native"])
     forEachList (["one", "three"], pickedKey)
     // An option's key is the picker's selection while the options are drawn, so a choice is read off the picker component.
@@ -421,7 +426,7 @@ test ("native controls are pressed and repeatedly chosen through Drive, includin
     post (\d => Drive::ran (d, "run", 1, "failed"))
     expect (selected (), "two")
     // Words chosen on a control that takes no value press it, as a person's tap would.
-    choose ("Native action", "ignored")
+    choose (nativeAction, "ignored")
     reading (["Pressed"], showsIn, true)
     expect (selected (), "two")
     reading (["Pressed"], showsIn, true)
@@ -501,8 +506,8 @@ test ("a scene's glyphs, lettering and paths read back typed, and keys and asks 
 // [UI-MACHINE-TEST] [NATIVE-SHM-EVENT]: the wire contract's edges — a switch reads its words exactly,
 // a choice may choose the empty key, and a text keeps its line break.
 test ("native views are found by what they say, and every host event keeps its wire contract (extra: flag words read exactly true, empty choices choose, text keeps line breaks)", \() => withFixture (\_ =>
-    expect (meant (flagAct, "TRUE"), "switched:false")
-    expect (meant (flagAct, "true "), "switched:false")
+    expect (meant (flagAct, "TRUE"), switchedFalse)
+    expect (meant (flagAct, "true "), switchedFalse)
     expect (meant (choiceAct, ""), "entered:")
     expect (meant (textAct, "line\nbreak"), "entered:line\nbreak")))
 

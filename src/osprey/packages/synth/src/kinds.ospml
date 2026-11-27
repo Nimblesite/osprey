@@ -5,7 +5,15 @@ namespace synth
     share DSP state. A version increases whenever a kind's rendered output for the same parameters changes,
     so stored patches can detect and reject (or migrate) an incompatible module. *)
 module Kinds
-    (** Whether the module's frequency control tunes a pitched voice from the keyboard. *)
+    (** Whether the module's frequency control tunes a pitched voice from the keyboard.
+    # Examples
+    ```osprey
+    print "${Kinds::keyFrequency Oscillator} ${Kinds::keyFrequency Sink}"
+    ```
+    ```output
+    true false
+    ```
+    *)
     export keyFrequency processor = match processor
         Oscillator => true
         TableOscillator _ => true
@@ -18,12 +26,28 @@ module Kinds
         Modal => true
         _ => false
 
-    (** Whether the module is a MIDI note source: no inputs, one note outlet, no audio. *)
+    (** Whether the module is a MIDI note source: no inputs, one note outlet, no audio.
+    # Examples
+    ```osprey
+    print "${Kinds::noteSource MidiNotes} ${Kinds::noteSource Oscillator}"
+    ```
+    ```output
+    true false
+    ```
+    *)
     export noteSource processor = match processor
         MidiNotes | FormulaNotes _ => true
         _ => false
 
-    (** The stable kind identifier of a processor. *)
+    (** The stable kind identifier of a processor.
+    # Examples
+    ```osprey
+    print "${Kinds::kind (Waveguide(capacity = 480))} ${Kinds::kind (External(identifier = "com.acme.reverb", latency = 0))} ${Kinds::kind Sink}"
+    ```
+    ```output
+    synth.waveguide external:com.acme.reverb synth.output
+    ```
+    *)
     export kind processor = match processor
         SamplePlayer _ => "synth.sample"
         Granular _ _ _ => "synth.grain-cloud"
@@ -63,11 +87,27 @@ module Kinds
         External identifier _ => "external:${identifier}"
 
     (** The algorithm version: 2 where output changed since the kind was introduced (coupled resonators
-        and modal banks; spectral transforms returning typed results did not change output). *)
+        and modal banks; spectral transforms returning typed results did not change output).
+    # Examples
+    ```osprey
+    print "${Kinds::version Resonator} ${Kinds::version Oscillator}"
+    ```
+    ```output
+    2 1
+    ```
+    *)
     export version processor = match processor
         Resonator => 2
         Modal => 2
         _ => 1
 
-    (** Whether a stored kind/version pair can be loaded into this processor without changing its sound. *)
+    (** Whether a stored kind/version pair can be loaded into this processor without changing its sound.
+    # Examples
+    ```osprey
+    print "${Kinds::compatible (Resonator, "synth.resonator", 2)} ${Kinds::compatible (Resonator, "synth.resonator", 1)}"
+    ```
+    ```output
+    true false
+    ```
+    *)
     export compatible (processor, storedKind, storedVersion) = kind processor == storedKind && version processor == storedVersion
