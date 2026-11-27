@@ -37,8 +37,8 @@ Until then, ospreylang CI covers Native. Native's rule that it must pass the Per
 - **No path changes.** Each split repo keeps every file at the path it had here. `make downstream` (`scripts/ci/downstream.sh`) lays those files over this checkout at the pinned commits. The paths are gitignored, so `daw/osprey.toml`'s `../../packages/native/host` source roots, the package client build and the compiler-side tests resolve as before.
 - **The pin is atomic.** `scripts/ci/downstream.json` records exactly which commit ospreylang tests against. A compiler PR that breaks a canary fixes the split repo and bumps the pin in the same PR.
 - **A public repo cannot carry a private submodule.** Every clone and fork would fail on it. A pin file costs nothing to anyone who never runs `make downstream`.
-- **No dependency cycle.** Each split repo pins ospreylang by **release tag** in `osprey-version`. Its `scripts/workspace.sh` checks that tag out and lays the repo over it, the reverse of `make downstream`, so its recipes run unchanged. Perception also pins the osprey-packages commit it hashes with, in `requires`.
-- **Private access.** CI reads each split repo with a read-only deploy key, held as the `OSPREY_PACKAGES_DEPLOY_KEY` and `PERCEPTION_DEPLOY_KEY` secrets (Actions and Dependabot). A fork's pull request has no secrets, so its laid jobs fail.
+- **No dependency cycle.** Each split repo pins ospreylang by **release tag** in `osprey-version`. Its `scripts/workspace.sh` checks that tag out and lays the repo over it, the reverse of `make downstream`, so its recipes run unchanged. Perception hashes with the package manager's `bytes.osp` and `sha256.osp`, which its `osprey-version` tag (v0.33.0) still carries, so neither split repo reads the other.
+- **No keys, so the cutover waits for public repos.** No deploy key, token or secret reads a split repo. The split repos only read public ospreylang, so their CI runs keyless now. ospreylang's CI cannot read a private repo without one, so the `repo-split` branch (the deletions and `make downstream`) merges when both repos go public.
 
 ## Repos [REPO-SPLIT-REPOS]
 
@@ -87,8 +87,9 @@ These were **removed from ospreylang CI** and run only in their own repo: `build
 - [x] Add a `make canary` target to perception
 - [x] In ospreylang, delete the moved files, pin both repos in `scripts/ci/downstream.json`, add `make downstream` and `make canary`, delete the registry jobs, and run the canaries on Linux, macOS and Windows
 - [x] Point the docs here at the product websites; the specs and designs stay here
-- [ ] Add the read-only deploy keys and their `OSPREY_PACKAGES_DEPLOY_KEY` and `PERCEPTION_DEPLOY_KEY` secrets (Actions and Dependabot): every laid CI job fails until they exist
-- [ ] Bump each split repo's `osprey-version` to the first release without the moved files, so its workspace stops carrying ospreylang's old copies
+- [x] Both split repos build, test and gate coverage keyless: Perception reads no private repository
+- [ ] Make both repos public, then merge `repo-split` so ospreylang's CI lays them and runs their canaries
+- [ ] Bump each split repo's `osprey-version` to the first release without the moved files, so its workspace stops carrying ospreylang's old copies; Perception then lays the public osprey-packages for `bytes.osp` and `sha256.osp`
 - [x] Give each split repo the three CI phases, with its own `coverage-thresholds.json` and coverage gate (osprey-packages 91.1%, Perception 85.4%, merged by `scripts/coverage.mjs` over the repo's own files)
 - [x] Run `_check_programs` over each split repo's programs in its own CI (the Build job narrows the index to the repo's `paths`)
 - [ ] Check each Native gate condition ([REPO-SPLIT-NATIVE-GATE]), then repeat these steps for `Nimblesite/osprey-native`, whose canary also runs `perception`'s `make canary`
