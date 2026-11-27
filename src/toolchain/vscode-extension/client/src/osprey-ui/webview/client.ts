@@ -51,7 +51,7 @@ export interface ClientState {
   pendingLoss: string | undefined;
   runtimeBusy: boolean;
   runtimeTracked: boolean;
-  /** Events posted, and frames applied: the runtime answers each event with one frame, in order. */
+  /** Events posted, each stamped with its count as `seq`, and the last one the host says a frame reflects. */
   posted: number;
   answered: number;
 }
@@ -327,10 +327,12 @@ function rebaseEdits(client: Client): void {
 }
 
 /** Apply one told frame's markup, preserving focus, drafts and scroll exactly as the JSON-era
- * client did; the pressed control keeps its own node when it can. */
-export function applyRender(client: Client, html: string): void {
-  // A frame no event asked for (a completed request) never counts beyond what was posted.
-  client.answered = Math.min(client.answered + 1, client.posted);
+ * client did; the pressed control keeps its own node when it can. `answers` is the host's count of
+ * this webview's events the frame reflects. Counting frames instead let a completion's frame,
+ * which answers no event, settle a draft early: the held reply then wiped the focused formula
+ * (PR #437 workbench "pending runtime update"). A reloaded webview restarts its count. */
+export function applyRender(client: Client, answers: number, html: string): void {
+  client.answered = Math.min(answers, client.posted);
   // The frame is the truth for every control's state; a morph keeps the nodes, so forget their pauses.
   pausedControls.clear();
   flushFields(client);
