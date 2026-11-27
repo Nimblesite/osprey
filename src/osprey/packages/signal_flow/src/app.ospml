@@ -18,8 +18,8 @@ module App
     (** The document the interface is read from: `--machine <path>` among the launch arguments, else the repository copy, wherever the program was launched from. *)
     export documentPath arguments = ui::Lists::after (arguments, "--machine", fromRepository document)
 
-    (** `relative`, a path from the repository root, made reachable from the current directory ([ui::Repository]). *)
-    export fromRepository relative = ui::Repository::path relative
+    (** `relative`, a path from the repository root, made reachable from the current directory ([signalflow::Repository]). *)
+    export fromRepository relative = Repository::path relative
 
     (** The store from a machine document's text: a refused document shows its problems in place of the editor. *)
     export loaded source = match MachineDocs::load source

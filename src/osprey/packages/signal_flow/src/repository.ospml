@@ -1,12 +1,12 @@
 // Repository paths for programs launched from anywhere inside the checkout:
 // the renderer, Prism and their suites name assets from the repository root.
-namespace ui
+namespace signalflow
 
 (** Paths from the repository root, reachable from the current directory. *)
 module Repository
 
     (** This file, relative to the repository root: the marker the nearest repository ancestor holds. *)
-    marker = "src/osprey/packages/native/src/repository.ospml"
+    marker = "src/osprey/packages/signal_flow/src/repository.ospml"
 
     (** The ancestors of the current directory searched for the repository: more than the repository is deep. *)
     searched = 16

@@ -152,7 +152,7 @@ module PatchVoices
     (** `path` as given when a file is there, else from the repository root: a song names its samples from the repository, wherever Prism or its suite was launched from (#370). *)
     located path = match (kindOf path ?: "other") == "file"
         true => path
-        false => ui::Repository::path path
+        false => signalflow::Repository::path path
 
     fromFile path = match fileSize path
             Error why => Error(message = why)
