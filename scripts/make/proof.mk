@@ -100,7 +100,7 @@ _test_wasm_doctests:
 # _conformance-gc: run every assertion suite under the tracing GC backend.
 _conformance-gc:
 	@echo "==> [conformance] assertion corpus under --memory=gc..."
-	@OSPREY_TEST_JOBS=1 zsh src/toolchain/crates/run_test_corpus.sh gc
+	@OSPREY_CORPUS_PART=programs OSPREY_TEST_JOBS=1 zsh src/toolchain/crates/run_test_corpus.sh gc
 
 # _conformance-arc: run every assertion suite under the Perceus ARC backend;
 # every suite must pass and end with zero live ARC objects. OSPREY_ARC_DEBUG=1 makes
@@ -108,7 +108,14 @@ _conformance-gc:
 # for the [GC-ARC-PERCEUS] zero-leak bar.
 _conformance-arc:
 	@echo "==> [conformance] assertion corpus under --memory=arc..."
-	@OSPREY_ARC_DEBUG=1 OSPREY_TEST_JOBS=1 zsh src/toolchain/crates/run_test_corpus.sh arc
+	@OSPREY_ARC_DEBUG=1 OSPREY_CORPUS_PART=programs OSPREY_TEST_JOBS=1 zsh src/toolchain/crates/run_test_corpus.sh arc
+
+# _doctests-gc, _doctests-arc: every package and corpus documentation example
+# under that native memory backend, held to its stated output. CI runs them as
+# their own jobs beside the corpus, each inside its timeout. [DOC-DOCTEST-HARNESS]
+_doctests-%:
+	@echo "==> [doctests] documentation examples under --memory=$*..."
+	@OSPREY_CORPUS_PART=doctests zsh src/toolchain/crates/run_test_corpus.sh $*
 
 # _conformance-ownership: run every assertion suite under compile-time
 # ownership. A program listed in OWNERSHIP_ACCEPTED.txt must match the shared

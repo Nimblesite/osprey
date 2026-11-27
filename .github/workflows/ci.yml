@@ -686,7 +686,8 @@ jobs:
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v7
-      - name: Setup Osprey toolchain (no rebuild)
+      - &setup-osprey-no-rebuild
+        name: Setup Osprey toolchain (no rebuild)
         uses: ./.github/actions/setup-osprey-compiler
         with:
           build: "false"
@@ -1161,6 +1162,26 @@ jobs:
       - *build-wasm-runtime
       - name: WebAssembly documentation examples
         run: make _test_wasm_doctests
+
+  # Every documentation example under each native memory backend, beside the
+  # corpus jobs so each half fits its timeout. [DOC-DOCTEST-HARNESS]
+  test-doctests:
+    name: "Tests: documentation examples (${{ matrix.memory }})"
+    strategy:
+      fail-fast: false
+      matrix:
+        memory: [gc, arc]
+    needs: [changes, build]
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v7
+      - *setup-osprey-no-rebuild
+      - *download-osprey-build
+      - *restore-osprey-permissions
+      - name: Documentation examples
+        run: make _doctests-${{ matrix.memory }}
 
   # Builds the site and runs the Playwright suite: every page template at three
   # breakpoints (no JS errors, no horizontal overflow, dark theme, chrome
@@ -1806,6 +1827,7 @@ jobs:
       - test-extension
       - test-wasm
       - test-wasm-doctests
+      - test-doctests
       - test-website
       - test-integration
       - test-android
