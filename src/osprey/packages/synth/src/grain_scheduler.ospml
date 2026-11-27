@@ -47,11 +47,11 @@ module GrainScheduler
     (** Map onsets to playback controls, or construct GrainEvents individually for independent distributions.
     # Examples
     ```osprey
-    controls = GrainControls(window = HannWindow, start = 0.0, rate = 1.0, duration = 4800, amplitude = 0.5, pan = 0.0, duration = 3)
-    print "${GrainScheduler::events ([3], controls)"
+    controls = GrainControls(window = HannWindow, start = 0.0, rate = 1.0, duration = 4800, amplitude = 0.5, pan = 0.0)
+    print "${GrainScheduler::events ([3, 9], controls)}"
     ```
     ```output
-    @@TODO@@
+    [{ position: 3, controls: { window: HannWindow, start: 0.0, rate: 1.0, duration: 4800, amplitude: 0.5, pan: 0.0 } }, { position: 9, controls: { window: HannWindow, start: 0.0, rate: 1.0, duration: 4800, amplitude: 0.5, pan: 0.0 } }]
     ```
     *)
     export events (positions, controls) = mapList (positions, \position => GrainEvent(position = position, controls = controls))

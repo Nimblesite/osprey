@@ -230,10 +230,10 @@ module RenderInputs
     (** Persistent per-channel sample storage, counted against the graph's bounded delay budget.
     # Examples
     ```osprey
-    print "${RenderInputs::storage (Delay 64)} ${RenderInputs::storage (Waveguide(capacity = 480))} ${RenderInputs::storage (Spectral(size = 256, hop = 64))} ${RenderInputs::storage Reverb} ${RenderInputs::storage Oscillator}"
+    print "${RenderInputs::storage (Delay(samples = 64))} ${RenderInputs::storage (Waveguide(capacity = 480))} ${RenderInputs::storage (Spectral(size = 256, hop = 64))} ${RenderInputs::storage Reverb} ${RenderInputs::storage Oscillator}"
     ```
     ```output
-    @@TODO@@
+    64 480 1284 14626 0
     ```
     *)
     export storage processor = match processor

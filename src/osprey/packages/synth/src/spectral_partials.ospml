@@ -51,7 +51,9 @@ module SpectralPartials
         overflow _ _ _ wrapped => wrapped
         divideByZero _ _ => 0.0
         remainderByZero _ => 0
-    print "${arithmetic (\() => SpectralPartials::morphed (config, [], [], SpectralFrame(bins = [], memory = [], motion = [], captured = false), 0.5))}"
+    none : List<Complex>
+    none = []
+    print "${arithmetic (\() => SpectralPartials::morphed (config, none, none, SpectralFrame(bins = [], memory = [], motion = [], captured = false), 0.5))}"
     ```
     ```output
     @@TODO@@

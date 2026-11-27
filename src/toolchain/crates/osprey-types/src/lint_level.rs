@@ -6,7 +6,9 @@
 //! table of its `osprey.toml`; a rule it leaves out takes its default, which
 //! depends on whether the project is a package (its manifest has `[package]`).
 //! An application's exports are its own, so documentation rules are
-//! `allow` there and `deny` (`info` for examples) in a package.
+//! `allow` there; a package's are its API, so every export must be
+//! documented and carry an example (`deny`). A state
+//! boundary is an inventory, not a defect, so it is `info` everywhere.
 
 use crate::{
     UnusedKind, CONSECUTIVE_PRINT, REDUNDANT_ANNOTATION, REDUNDANT_CALLBACK, REPEATED_LITERAL,
@@ -115,8 +117,8 @@ impl LintLevels {
     /// library does; an application keeps its exports to itself.
     fn default_level(&self, rule: &str) -> LintLevel {
         match (rule, self.package) {
-            (UNDOCUMENTED_EXPORT, true) => LintLevel::Deny,
-            (UNEXAMPLED_EXPORT, true) => LintLevel::Info,
+            (UNDOCUMENTED_EXPORT | UNEXAMPLED_EXPORT, true) => LintLevel::Deny,
+            (STATE_BOUNDARY, _) => LintLevel::Info,
             (UNDOCUMENTED_EXPORT | UNEXAMPLED_EXPORT, false)
             | (MODULE_DEEP_HIERARCHY | NAMESPACE_REVERSE_DOMAIN, true) => LintLevel::Allow,
             _ => LintLevel::Warn,

@@ -58,10 +58,10 @@ module Shifters
         overflow _ _ _ wrapped => wrapped
         divideByZero _ _ => 0.0
         remainderByZero _ => 0
-    print "${arithmetic (\() => Shifters::next (config, Shifters::initial(first = []), 0.0))}"
+    print "${arithmetic (\() => Shifters::next (config, Shifters::initial, 0.0))}"
     ```
     ```output
-    @@TODO@@
+    Success({ sample: 0.0, next: { first: [{ input: 0.0, older: 0.0, output: 0.0, oldest: 0.0 }, { input: 0.0, older: 0.0, output: 0.0, oldest: 0.0 }, { input: 0.0, older: 0.0, output: 0.0, oldest: 0.0 }, { input: 0.0, older: 0.0, output: 0.0, oldest: 0.0 }], second: [{ input: 0.0, older: 0.0, output: 0.0, oldest: 0.0 }, { input: 0.0, older: 0.0, output: 0.0, oldest: 0.0 }, { input: 0.0, older: 0.0, output: 0.0, oldest: 0.0 }, { input: 0.0, older: 0.0, output: 0.0, oldest: 0.0 }], delayed: 0.0, phase: 0.009166666666666667 } })
     ```
     *)
     export next (config, held, input) = match length held.first == 4 && length held.second == 4

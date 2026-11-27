@@ -28,11 +28,13 @@ module Fitting
     # Examples
     ```osprey
     gain = FitParameter(node = 1, key = "gain", minimum = 0.0, maximum = 1.0)
+    none : List<FitParameter>
+    none = []
     arithmetic = handler Arith
         overflow _ _ _ wrapped => wrapped
         divideByZero _ _ => 0.0
         remainderByZero _ => 0
-    print "${arithmetic (\() => Fitting::applied (Graphs::empty, [], []))} ${arithmetic (\() => Fitting::applied (Graphs::empty, [gain], [2.0]))}"
+    print "${arithmetic (\() => Fitting::applied (Graphs::empty, none, []))} ${arithmetic (\() => Fitting::applied (Graphs::empty, [gain], [2.0]))}"
     ```
     ```output
     @@TODO@@
@@ -58,7 +60,9 @@ module Fitting
         overflow _ _ _ wrapped => wrapped
         divideByZero _ _ => 0.0
         remainderByZero _ => 0
-    print "${arithmetic (\() => Fitting::spectrum [])}"
+    silence : List<float>
+    silence = []
+    print "${arithmetic (\() => Fitting::spectrum silence)}"
     ```
     ```output
     @@TODO@@
@@ -107,7 +111,9 @@ module Fitting
         overflow _ _ _ wrapped => wrapped
         divideByZero _ _ => 0.0
         remainderByZero _ => 0
-    print "${arithmetic (\() => Fitting::start (Graphs::empty, config, []))}"
+    silence : List<float>
+    silence = []
+    print "${arithmetic (\() => Fitting::start (Graphs::empty, config, silence))}"
     ```
     ```output
     @@TODO@@
@@ -169,7 +175,9 @@ module Fitting
         overflow _ _ _ wrapped => wrapped
         divideByZero _ _ => 0.0
         remainderByZero _ => 0
-    print "${arithmetic (\() => Fitting::advance (Graphs::empty, config, [], search))}"
+    silence : List<float>
+    silence = []
+    print "${arithmetic (\() => Fitting::advance (Graphs::empty, config, silence, search))}"
     ```
     ```output
     @@TODO@@
@@ -195,7 +203,9 @@ module Fitting
         overflow _ _ _ wrapped => wrapped
         divideByZero _ _ => 0.0
         remainderByZero _ => 0
-    print "${arithmetic (\() => Fitting::fit (Graphs::empty, config, []))}"
+    silence : List<float>
+    silence = []
+    print "${arithmetic (\() => Fitting::fit (Graphs::empty, config, silence))}"
     ```
     ```output
     @@TODO@@

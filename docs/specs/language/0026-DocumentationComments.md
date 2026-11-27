@@ -164,11 +164,10 @@ own. Private declarations are not reported.
 
 ### Exported examples `[DOC-EXPORT-EXAMPLE-REQUIRED]`
 
-In a package, `--check` and the language server report `unexampled-export` at
-information severity: the CLI labels it `info:` and the editor shows it as
-information, not a warning. It is not counted as a warning, so `--check
---warnings-as-errors` still passes. An application gets no report. Both are
-lint levels a project can change ([LINT-LEVELS]). The rule covers:
+In a package, `--check` and the language server report `unexampled-export` as
+an error: every export of a package's API shows how to call it, and the build
+fails until it does. An application, an example app included, gets no report.
+Both are lint levels a project can change ([LINT-LEVELS]). The rule covers:
 
 - a documented exported function, value or extern whose comment has no
   `# Examples` section, or whose section holds no example fence, and
@@ -200,10 +199,11 @@ closing-run = "allow"
 | `deny` | `error:` | error | always, even with `--no-warnings` |
 
 A rule the table leaves out takes its default. `undocumented-export` is `deny`
-in a package and `allow` in an application; `unexampled-export` is `info` in
+in a package and `allow` in an application; `unexampled-export` is `deny` in
 a package and `allow` in an application; `module-deep-hierarchy` and
-`namespace-reverse-domain` are `allow` in a package ([MODULES-STYLE]); every
-other rule is `warn`. A
+`namespace-reverse-domain` are `allow` in a package ([MODULES-STYLE]);
+`state-boundary` is an inventory, not a defect, so it is `info` everywhere;
+every other rule is `warn`. A
 project is a package when its manifest has a `[package]` table, and a file
 under no manifest is an application. A project's levels apply to all of its
 sources, including sources it borrows from a package through

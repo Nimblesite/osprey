@@ -32,10 +32,10 @@ module GrainTimings
     (** Discrete graph timing selectors are exact; inactive settings do not alter the selected distribution.
     # Examples
     ```osprey
-    print "${GrainTimings::decode (0.0, 2400.0, 0.0, 9600.0)} ${GrainTimings::decode (1.0, 100.0, 0.0, 400.0)} ${GrainTimings::decode (2.0, 2400.0, 0.0, 9600.0)}"
+    print "${GrainTimings::decode (0.0, 2400, 0, 9600)} ${GrainTimings::decode (1.0, 100, 0, 400)} ${GrainTimings::decode (2.0, 2400, 0, 9600)}"
     ```
     ```output
-    @@TODO@@
+    Success(PeriodicTiming { period: 2400, jitter: 0 }) Success(ExponentialTiming { mean: 100.0, maximum: 400 }) Error(InvalidConfiguration { detail: "Grain timing must be 0 (periodic jitter) or 1 (bounded exponential)." })
     ```
     *)
     export decode (mode, period, jitter, maximum) = match mode

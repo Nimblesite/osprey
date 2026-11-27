@@ -137,7 +137,9 @@ module RenderKernels
         overflow _ _ _ wrapped => wrapped
         divideByZero _ _ => 0.0
         remainderByZero _ => 0
-    print "${arithmetic (\() => RenderKernels::schedule (Prepared(graph = Graph(nodes = [Components::gain (1, 1.0)], cables = []), order = [1], feedback = []), 2, 48000.0, snapshot, true, []))} ${arithmetic (\() => RenderKernels::schedule (Prepared(graph = Graph(nodes = [Components::gain (1, 1.0)], cables = []), order = [1], feedback = []), 1, 48000.0, snapshot, true, []))}"
+    states : List<KernelState>
+    states = []
+    print "${arithmetic (\() => RenderKernels::schedule (Prepared(graph = Graph(nodes = [Components::gain (1, 1.0)], cables = []), order = [1], feedback = []), 2, 48000.0, snapshot, true, states))} ${arithmetic (\() => RenderKernels::schedule (Prepared(graph = Graph(nodes = [Components::gain (1, 1.0)], cables = []), order = [1], feedback = []), 1, 48000.0, snapshot, true, states))}"
     ```
     ```output
     @@TODO@@
@@ -181,7 +183,9 @@ module RenderKernels
         overflow _ _ _ wrapped => wrapped
         divideByZero _ _ => 0.0
         remainderByZero _ => 0
-    print "${arithmetic (\() => RenderKernels::resolved (Prepared(graph = Graph(nodes = [Components::gain (1, 1.0)], cables = []), order = [1], feedback = []), 48000.0, snapshot, SampleFrame(states = [KernelState(identity = 1, phase = 0.0, integratorOne = 0.0, integratorTwo = 0.0, delay = [], memory = KernelIdle)], values = []), Invalid(fault = MissingNode)))}"
+    plan = Prepared(graph = Graph(nodes = [Components::gain (1, 1.0)], cables = []), order = [1], feedback = [])
+    frame = SampleFrame(states = [KernelState(identity = 1, phase = 0.0, integratorOne = 0.0, integratorTwo = 0.0, delay = [], memory = KernelIdle)], values = [])
+    print "${arithmetic (\() => RenderKernels::resolved (plan, 48000.0, snapshot, frame, Invalid(fault = MissingNode)))} ${arithmetic (\() => RenderKernels::resolved (plan, 48000.0, snapshot, frame, RenderKernels::schedule (plan, 1, 48000.0, snapshot, true, frame.states)))}"
     ```
     ```output
     @@TODO@@

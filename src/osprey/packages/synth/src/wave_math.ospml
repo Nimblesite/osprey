@@ -71,10 +71,10 @@ module WaveMath
     (** Duration of a complete decoded sample at its original sample rate.
     # Examples
     ```osprey
-    print "${WaveMath::seconds (48000, 48000.0)} ${WaveMath::seconds (44100, 48000.0)}"
+    print "${WaveMath::seconds (48000.0, 48000.0)} ${WaveMath::seconds (44100.0, 48000.0)}"
     ```
     ```output
-    @@TODO@@
+    1.0 0.91875
     ```
     *)
     export seconds (frames, rate) = floatDiv (frames, rate)

@@ -120,7 +120,6 @@ module WaveImport
     (** Decode at most 8 MiB; preserve every source channel and the frame count. No resampling.
     # Examples
     ```osprey
-    riff = [82, 73, 70, 70, 36, 0, 0, 0, 87, 65, 86, 69]
     arithmetic = handler Arith
         overflow _ _ _ wrapped => wrapped
         divideByZero _ _ => 0.0

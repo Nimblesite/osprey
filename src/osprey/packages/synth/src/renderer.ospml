@@ -160,10 +160,10 @@ module Renderer
         overflow _ _ _ wrapped => wrapped
         divideByZero _ _ => 0.0
         remainderByZero _ => 0
-    print "${arithmetic (\() => Renderer::capture (plan, 48000.0, Observation(revision = 0, samplePosition = 0, parameters = [], components = []), progress, 1, \(seen, f) => seen))}"
+    print "${arithmetic (\() => Renderer::capture (plan, 48000.0, Observation(revision = 0, samplePosition = 0, parameters = [], components = []), progress, 1, \(seen, _) => Success(value = seen)))}"
     ```
     ```output
-    @@TODO@@
+    Error(InvalidConfiguration { detail: "Invalid render rate, block size, position or layout." })
     ```
     *)
     export capture (plan, rate, snapshot, progress, count, accept) = match validBlock (rate, progress.audio, count) && supported plan
@@ -226,7 +226,9 @@ module Renderer
         overflow _ _ _ wrapped => wrapped
         divideByZero _ _ => 0.0
         remainderByZero _ => 0
-    print "${arithmetic (\() => Renderer::automated (plan, 48000.0, Observation(revision = 0, samplePosition = 0, parameters = [], components = []), Rendered(states = [], samples = [], position = 0, meters = []), 1, []))}"
+    unscheduled : List<ParameterChange>
+    unscheduled = []
+    print "${arithmetic (\() => Renderer::automated (plan, 48000.0, Observation(revision = 0, samplePosition = 0, parameters = [], components = []), Rendered(states = [], samples = [], position = 0, meters = []), 1, unscheduled))}"
     ```
     ```output
     @@TODO@@

@@ -68,15 +68,16 @@ module Resources
     # Examples
     ```osprey
     kick = SampleResource(name = "kick", sampleRate = 48000, sourceChannels = 1, rootFrequency = 100.0, samples = [0.5, -0.5])
-    saved = arithmetic (\() => Resources::sample kick)
     arithmetic = handler Arith
         overflow _ _ _ wrapped => wrapped
         divideByZero _ _ => 0.0
         remainderByZero _ => 0
-    print "${arithmetic (\() => Resources::matches (saved, kick(samples = [0.5, 0.5])))} ${arithmetic (\() => Resources::matches (saved, kick))}"
+    saved = arithmetic (\() => Resources::sample kick)
+    changed = arithmetic (\() => Resources::sample (kick(samples = [0.5, 0.5])))
+    print "${Resources::matches (saved, changed)} ${Resources::matches (saved, saved)}"
     ```
     ```output
-    @@TODO@@
+    Error(MissingResource { detail: "The resource kick changed since the project saved it." }) Success({ name: "kick", hash: -457251675397606652, channels: 1, sampleRate: 48000, frames: 2, version: 1 })
     ```
     *)
     export matches (saved, current) = match saved.version == current.version && saved.name == current.name

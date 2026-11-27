@@ -305,14 +305,15 @@ mod tests {
         assert_eq!(app.level("closing-run"), L::Warn);
         let package = levels("[project]\nname = \"p\"\n[package]\nname = \"@o/p\"\n");
         assert!(package.package);
-        assert_eq!((package.level(DOC), package.level(EX)), (L::Deny, L::Info));
+        assert_eq!((package.level(DOC), package.level(EX)), (L::Deny, L::Deny));
         assert_eq!(package.level("closing-run"), L::Warn);
+        assert_eq!((app.level("state-boundary"), package.level("state-boundary")), (L::Info, L::Info));
         let tuned = levels(
             "[package]\nname = \"@o/p\"\n[lints]\nundocumented-export = \"warn\"\n\
-             unexampled-export = \"deny\"\nclosing-run = \"allow\"\nclosing-run = \"info\"\n",
+             unexampled-export = \"info\"\nclosing-run = \"allow\"\nclosing-run = \"info\"\n",
         );
         assert_eq!(tuned.level(DOC), L::Warn);
-        assert_eq!(tuned.level(EX), L::Deny);
+        assert_eq!(tuned.level(EX), L::Info);
         assert_eq!(tuned.level("closing-run"), L::Info, "a later entry wins");
         let strict_app = levels("[lints]\nundocumented-export = \"deny\"\n");
         assert_eq!(

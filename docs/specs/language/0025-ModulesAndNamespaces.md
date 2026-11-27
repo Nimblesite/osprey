@@ -79,7 +79,7 @@ identity written in that source.
 
 Style findings are warnings, never rejection criteria. `namespace-folder-drift` reports each contributing source when one namespace spans more than one physical parent folder inside the project's own directory, so a namespace shared with a dependency beside it is not drift; no folder-to-namespace naming convention is imposed. `module-deep-hierarchy` reports module declarations nested more than three levels. `namespace-reverse-domain` reports application namespace labels starting with `com.`, `org.`, `net.`, `io.`, `dev.` or `edu.` and containing at least three nonempty dot-separated components. Dots and slashes remain ordinary label characters, never namespace ancestry.
 
-Each finding is a lint whose level the project sets in `[lints]` ([LINT-LEVELS](0026-DocumentationComments.md)). The hierarchy and reverse-domain advice is for applications, so a package (its manifest has `[package]`) defaults both to `allow`; folder drift and state ownership stay `warn` everywhere unless `[lints]` says otherwise. CLI and LSP consume the same sorted, source-located findings from project assembly and report them at the same levels.
+Each finding is a lint whose level the project sets in `[lints]` ([LINT-LEVELS](0026-DocumentationComments.md)). The hierarchy and reverse-domain advice is for applications, so a package (its manifest has `[package]`) defaults both to `allow`; folder drift stays `warn` and the state inventory `info` everywhere unless `[lints]` says otherwise. CLI and LSP consume the same sorted, source-located findings from project assembly and report them at the same levels.
 
 ## Modules `[MODULES-MODULE]`
 

@@ -127,10 +127,10 @@ module SampleResources
         overflow _ _ _ wrapped => wrapped
         divideByZero _ _ => 0.0
         remainderByZero _ => 0
-    print "${arithmetic (\() => SampleResources::decodeWave ("kick", 69.0, ""))}"
+    print "${arithmetic (\() => SampleResources::decodeWave ("kick", 69.0, []))}"
     ```
     ```output
-    @@TODO@@
+    Error(MissingResource { detail: "WAV file size must be between 12 bytes and 8 MiB." })
     ```
     *)
     export decodeWave (name, rootNote, bytes) = Outcomes::carried (WaveImport::decode bytes, \wave => fromWave (name, rootNote, wave))

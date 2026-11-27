@@ -163,7 +163,9 @@ module SpectralFrames
         overflow _ _ _ wrapped => wrapped
         divideByZero _ _ => 0.0
         remainderByZero _ => 0
-    print "${arithmetic (\() => SpectralFrames::apply (config, [], [], SpectralFrame(bins = [], memory = [], motion = [], captured = false)))} ${arithmetic (\() => SpectralFrames::apply (SpectralConfig(sampleRate = 48000.0, size = 64, hop = 16, transform = SpectralPass, mix = 1.0), [], [], SpectralFrame(bins = [], memory = [], motion = [], captured = false)))}"
+    none : List<Complex>
+    none = []
+    print "${arithmetic (\() => SpectralFrames::apply (config, none, none, SpectralStreams::initial config))} ${arithmetic (\() => SpectralFrames::apply (SpectralConfig(sampleRate = 48000.0, size = 64, hop = 16, transform = SpectralPass, mix = 1.0), none, none, SpectralStreams::initial config))}"
     ```
     ```output
     @@TODO@@

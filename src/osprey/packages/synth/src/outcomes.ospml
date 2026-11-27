@@ -19,7 +19,9 @@ module Outcomes
     (** An Error passes through; a Success payload continues into `step`.
     # Examples
     ```osprey
-    print "${Outcomes::carried (Error(message = MissingResource(detail = "x")), \v => Success(value = v + 1.0))} ${Outcomes::carried (Success(value = 1.0), \v => Success(value = v + 1.0))}"
+    raised : float -> Result<float, Fault>
+    raised v = Success(value = v + 1.0)
+    print "${Outcomes::carried (Error(message = MissingResource(detail = "x")), raised)} ${Outcomes::carried (Success(value = 1.0), raised)}"
     ```
     ```output
     @@TODO@@

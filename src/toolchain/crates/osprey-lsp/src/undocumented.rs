@@ -87,11 +87,11 @@ mod tests {
     use lspkit_server::Severity;
 
     #[test]
-    fn a_package_export_without_docs_is_an_editor_error_and_without_an_example_is_information() {
+    fn a_package_export_without_docs_or_without_an_example_is_an_editor_error() {
         // Implements [LINT-LEVELS], [DOC-EXPORT-REQUIRED], [DOC-EXPORT-EXAMPLE-REQUIRED].
         let package = project(true, "");
         let bare = [at("undocumented-export", 2, Severity::Error)];
-        let unexampled = [at("unexampled-export", 3, Severity::Information)];
+        let unexampled = [at("unexampled-export", 3, Severity::Error)];
         assert_eq!(findings(&package, "src/api.ospml", BARE), bare);
         assert_eq!(findings(&package, "src/api.ospml", DOCUMENTED), unexampled);
         assert_eq!(
@@ -165,7 +165,7 @@ mod tests {
         for relative in ["src/api.ospml", "contests/api.ospml", "tests.ospml"] {
             assert_eq!(
                 findings(&package, relative, DOCUMENTED),
-                [at("unexampled-export", 3, Severity::Information)],
+                [at("unexampled-export", 3, Severity::Error)],
                 "{relative}"
             );
         }
