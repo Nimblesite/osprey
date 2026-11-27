@@ -3,6 +3,25 @@ const form = document.querySelector('[data-collection-form]');
 const select = form.querySelector('select');
 const review = document.getElementById(form.dataset.review);
 const message = form.querySelector('[role=status]');
+async function showSession(panel) {
+  const status = panel.querySelector('[role=status]');
+  const login = panel.querySelector('a');
+  try {
+    const response = await fetch(panel.dataset.sessionUrl, {
+      credentials: 'include', cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(10000),
+    });
+    if (response.status === 401) {
+      status.textContent = '';
+      login.hidden = false;
+    } else {
+      status.textContent = response.status === 200 ? panel.dataset.active : panel.dataset.error;
+    }
+  } catch {
+    status.textContent = panel.dataset.error;
+  }
+}
+const account = document.querySelector('[data-session-url]');
+if (account) void showSession(account);
 try {
   const response = await fetch(form.dataset.collection, {credentials: 'omit', signal: AbortSignal.timeout(10000)});
   if (!response.ok) throw Error('Collection unavailable');

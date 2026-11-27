@@ -29,9 +29,9 @@ fn upload(local) = {
     let origin = trim(input())
     let adapter = trim(input())
     let form = if origin != "" || local { releaseForm(origin, adapter) } else { "" }
-    let signIn = if origin == "" { "<p role=\"status\">Public uploads are unavailable.</p><a href=\"/publishing/\">Publish to a folder registry</a>" } else { "<a class=\"prose-download\" href=\"${origin}/v1/auth/github/start\">Sign in with GitHub</a>" }
+    let signIn = if origin == "" { "<p role=\"status\">Public uploads are unavailable.</p><a href=\"/publishing/\">Publish to a folder registry</a>" } else { "<div data-session-url=\"${origin}/v1/auth/session\" data-error=\"The registry could not verify your session. Reload to retry.\" data-active=\"Signed in. Publication requires a package grant and signature.\"><p role=\"status\">Checking your registry session…</p><a hidden class=\"prose-download\" href=\"${origin}/v1/auth/github/start\">Sign in with GitHub</a></div>" }
     let cover = "<header class=\"prose-cover\"><a href=\"/\">Browse packages</a><h1>Upload a package</h1><p>Publish a release from a commit in your package’s linked repository.</p></header>"
-    let steps = "<section class=\"prose-releases\"><h2>Sign in to publish</h2><p>Use the account with publishing permission for this package.</p>${signIn}</section><aside class=\"prose-facts\"><h2>What you’ll need</h2><ol><li>A package with a linked repository</li><li>The commit you want to release</li><li>Your signing credential to approve the release</li></ol></aside>"
+    let steps = "<section class=\"prose-releases\"><h2>Publisher account</h2><p>Use the account with publishing permission for this package.</p>${signIn}</section><aside class=\"prose-facts\"><h2>What you’ll need</h2><ol><li>A package with a linked repository</li><li>The commit you want to release</li><li>Your signing credential to approve the release</li></ol></aside>"
     Shell::withEscapedTitle("Upload a package · Osprey Packages", "<main>${cover}${form}<div class=\"prose-columns\">${steps}</div></main>")
 }
 

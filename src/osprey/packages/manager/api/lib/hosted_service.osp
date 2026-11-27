@@ -54,12 +54,20 @@ module HostedService {
         }
     }
 
+    fn hasCredential(headers, policy) = HostedHeaders::has(headers, "authorization") || match HostedHeaders::find(headers, "cookie") {
+        Error => false
+        Success { value } => HostedCookies::foundValue(HostedCookies::select(value, policy.cookieName)) != ""
+    }
+
     fn dispatch(headers, policy, method, path) = {
         let origin = if HostedHeaders::has(headers, "origin") { policy.allowedOrigin } else { "" }
+        let cors = if origin == "" { "" } else { browserHeaders(origin) }
         if path == "/v1/ready" { problem(404, "api.not-found") }
         else if method == "OPTIONS" { preflight(headers, origin) }
-        else {
-            replyWith(503, "application/problem+json", "{\"code\":\"registry.not-ready\",\"status\":503}", if origin == "" { "" } else { browserHeaders(origin) })
+        else if method == "GET" && path == "/v1/auth/session" && !hasCredential(headers, policy) {
+            replyWith(401, "application/problem+json", "{\"code\":\"auth.session-required\",\"status\":401}", cors)
+        } else {
+            replyWith(503, "application/problem+json", "{\"code\":\"registry.not-ready\",\"status\":503}", cors)
         }
     }
 

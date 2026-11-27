@@ -2,6 +2,37 @@
 const assert = require('node:assert/strict');
 const { chromium } = require('../../src/toolchain/website/node_modules/playwright');
 
+async function checkHostedAccount(browser) {
+  const website = 'https://packages.example.test';
+  const api = 'https://api.example.test';
+  const page = await browser.newPage();
+  const html = require('node:child_process').execFileSync('wasmtime', ['target/registry-site-build/site.wasm'], {
+    input: ['upload', api, 'form.mjs', ''].join('\n'), encoding: 'utf8',
+  });
+  await page.route(website + '/**', route => {
+    if (route.request().url().endsWith('/form.mjs')) return route.fulfill({path:'src/toolchain/hosts/web/src/registry-form.mjs',contentType:'text/javascript'});
+    if (route.request().resourceType() === 'document') return route.fulfill({body:html,contentType:'text/html'});
+    return route.fulfill({status:404});
+  });
+  const headers = {'access-control-allow-origin':website,'access-control-allow-credentials':'true'};
+  await page.route(api + '/v1/packages', route => route.fulfill({headers,json:{packages:[]}}));
+  for (const code of [401, 503, 200]) {
+    await page.route(api + '/v1/auth/session', route => route.fulfill({status:code,headers,json:{}}));
+    await page.goto(website + '/upload/');
+    const panel = page.locator('[data-session-url]');
+    const login = panel.getByRole('link', {includeHidden:true});
+    if (code === 401) {
+      await login.waitFor();
+      assert.equal(await login.getAttribute('href'), api + '/v1/auth/github/start');
+    } else {
+      await panel.getByText(code === 503 ? /could not verify/ : /Signed in/).waitFor();
+      assert.equal(await login.isVisible(), false);
+    }
+    await page.unroute(api + '/v1/auth/session');
+  }
+  await page.close();
+}
+
 async function checkReferenceTable(browser) {
   for (const width of [390, 1024, 1440]) {
     const page = await browser.newPage({viewport:{width, height:900}});
@@ -21,8 +52,10 @@ async function checkReferenceTable(browser) {
 (async () => {
   const browser = await chromium.launch();
   try {
+    if (process.argv.includes('--hosted-account-only')) return await checkHostedAccount(browser);
     await checkReferenceTable(browser);
     if (process.argv.includes('--tables-only')) return;
+    await checkHostedAccount(browser);
     const catalog = await browser.newPage();
     await catalog.goto('http://127.0.0.1:4187/');
     const packages = await catalog.locator('.prose-package h3 a').evaluateAll(links => links.map(link => link.href));
