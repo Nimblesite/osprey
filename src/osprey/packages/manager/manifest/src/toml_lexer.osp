@@ -160,7 +160,7 @@ module TomlLexer {
         else if b >= 65 && b <= 70 { b - 55 }
         else { -1 }
 
-    fn readHex(c, n, acc) -> Result<int, string> = match n == 0 {
+    fn readHex(c, n, acc) = match n == 0 {
         true => Success { value: acc }
         false => match eof(c) {
             true => Error { message: failStr("toml.bad-escape", c) }

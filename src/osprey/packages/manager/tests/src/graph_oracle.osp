@@ -42,7 +42,7 @@ module GraphOracle {
     fn keySelected(selected, key) = foldList(selected, false, fn(found, e) => found || Names::same(rKey(eRelease(e)), key))
 
     /// Exhaustive search: one release per reached key, then leaf validation.
-    fn search(graph, selected, pending, i, acc) -> List<List<Resolution::Entry>> = match i >= length(pending) {
+    fn search(graph, selected, pending, i, acc) = match i >= length(pending) {
         true => if valid(graph, selected) { listAppend(acc, selected) } else { acc }
         false => {
             let key = listGet(pending, i) ?: Names::blank()
@@ -65,7 +65,7 @@ module GraphOracle {
         foldList(selected, [], fn(acc, e) => listConcat(acc, mapList(ManifestModel::activeEdges(eDeps(e)), ManifestModel::requirementOf)))
     )
 
-    fn reaches(selected, from, to, visited) -> bool = {
+    fn reaches(selected, from, to, visited) = {
         let targets = ManifestModel::activeTargets(eDeps(entryFor(selected, from) ?: Resolution::blankEntry()))
         foldList(targets, false, fn(found, t) => found || if Names::same(t, to) {
             true
@@ -145,7 +145,7 @@ module GraphOracle {
 
     fn tailReleases(xs) = range(1, length(xs)) |> map(fn(i) => listGet(xs, i) ?: Identity::blank()) |> toList
 
-    fn compareReleaseLists(a, b) -> int = match isEmpty(a) || isEmpty(b) {
+    fn compareReleaseLists(a, b) = match isEmpty(a) || isEmpty(b) {
         true => Order::compareInts(length(a), length(b))
         false => {
             let head = Objective::comparePackageTie(listGet(a, 0) ?: Identity::blank(), listGet(b, 0) ?: Identity::blank())

@@ -1,7 +1,6 @@
 // Typed JSON encoder cases, run against the real `bank::Json` module (src/domain/json.ospml). The escaping combinators are the whole point of the module, so they get the heaviest coverage: a value with quotes and backslashes must round-trip into VALID JSON, not a broken document. [TESTING-BUILTINS]
 namespace bank
 
-import bank::Json
 
 (** The JSON documents every API path renders. *)
 module JsonCases

@@ -34,7 +34,7 @@ module Dispatch {
     }
 
     /// The same report as one canonical JSON line (`--json <command> …`).
-    fn jsonOf(report: Reports::Report) = Reports::Report { status: report.status, lines: [Reports::json(report)] }
+    fn jsonOf(report) = Reports::Report { status: report.status, lines: [Reports::json(report)] }
 
     /// Route one argument vector to its command.
     export fn run(args) -> Reports::Report = match listGet(args, 0) ?: "help" {

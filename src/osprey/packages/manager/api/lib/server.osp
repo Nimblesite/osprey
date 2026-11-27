@@ -19,9 +19,9 @@ module Server {
 
     /// `Content-Type`, the `ETag` when there is one, then the hardening
     /// headers of [PACKAGE-HARDENING] S3.
-    fn headersOf(response: Router::Response) = "Content-Type: ${response.contentType}\r\n" + (if response.etag == "" { "" } else { "ETag: ${response.etag}\r\n" }) + crlfLines(Router::hardeningHeaders(response))
+    fn headersOf(response) = "Content-Type: ${response.contentType}\r\n" + (if response.etag == "" { "" } else { "ETag: ${response.etag}\r\n" }) + crlfLines(Router::hardeningHeaders(response))
 
-    fn toHttp(response: Router::Response) = HttpResponse {
+    fn toHttp(response) = HttpResponse {
         status: response.status,
         headers: headersOf(response),
         contentType: response.contentType,
@@ -41,8 +41,8 @@ module Server {
     fn line(text) = perform Host::Console.line(text)
 
     fn announce(catalog: Release::Catalog) = {
-        forEachList(catalog.served, fn(s: Release::Served) => line("serving ${Identity::display(s.id)}"))
-        forEachList(catalog.refused, fn(r: Release::Refused) => line("refused ${r.dir}: ${r.code}"))
+        forEachList(catalog.served, fn(s) => line("serving ${Identity::display(s.id)}"))
+        forEachList(catalog.refused, fn(r) => line("refused ${r.dir}: ${r.code}"))
     }
 
     fn started(settings: Config::Settings, listening) = match listening {
@@ -56,7 +56,7 @@ module Server {
         }
     }
 
-    fn listen(settings: Config::Settings, loaded) = {
+    fn listen(settings, loaded) = {
         announce(loaded)
         handle Registry { catalog => loaded }
         let listening = match httpCreateServer(settings.port, settings.address) {

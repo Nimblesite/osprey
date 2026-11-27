@@ -35,7 +35,7 @@ module Publications {
         statusLine(p.status),
         "</article>"], "")
 
-    fn statusLine(status: Model::PublicationStatus) = match status {
+    fn statusLine(status) = match status {
         Model::Pending { reason } => Html::field("Pending", reason)
         Model::Rejected { reasons } => Html::field("Rejected", join(reasons, "; "))
         Model::Quarantined { reason } => Html::field("Quarantined", reason)

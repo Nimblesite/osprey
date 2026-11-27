@@ -109,17 +109,17 @@ module GovernanceHandover {
         }
     }
 
-    fn liveAcceptingHuman(p: Governance::Principal, proof) = {
+    fn liveAcceptingHuman(p, proof) = {
         use _ <- andThen(Governance::liveHuman(p))
         Governance::requireHumanCeremony(proof)
     }
 
-    fn liveTransfer(t: Governance::Transfer) = Governance::required(Governance::isLiveTransfer(t), t, "governance.transfer.not-pending")
+    fn liveTransfer(t) = Governance::required(Governance::isLiveTransfer(t), t, "governance.transfer.not-pending")
 
     /// The transfer `transferId` names, once it is still live.
     fn liveTransferOf(registry, transferId) = andThen(Governance::transferOf(registry, transferId), liveTransfer)
 
-    fn acceptedTransfer(t: Governance::Transfer) = Governance::required(Governance::isAcceptedTransfer(t), t, "governance.transfer.acceptance-missing")
+    fn acceptedTransfer(t) = Governance::required(Governance::isAcceptedTransfer(t), t, "governance.transfer.acceptance-missing")
 
     /// `t` once `decidedAt` is inside the hold window: not before it opens,
     /// not after the proposal expires.
@@ -134,7 +134,7 @@ module GovernanceHandover {
         Governance::required(pkg.authorityEpoch == t.expectedEpoch, t, "governance.transfer.stale-epoch")
     }
 
-    fn completed(registry, pkg: Governance::Package, t: Governance::Transfer) = {
+    fn completed(registry, pkg, t) = {
         let handedOver = Governance::replacePackage(registry,
             pkg { admin: t.proposed, authorityEpoch: pkg.authorityEpoch + 1 })
         let revoked = Governance::revokeGrantsOf(handedOver, t.package)

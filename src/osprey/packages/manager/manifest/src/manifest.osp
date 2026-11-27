@@ -75,7 +75,7 @@ module Manifest {
 
     fn projectLine(root) = ManifestSections::spanOf(ManifestSections::pairsOf(root), "project", ManifestSections::rootSpan()).line
 
-    fn publishable(project: ManifestSections::Project, publication, root) = if Maybe::isPresent(publication) && unrootedCode(project) != "" {
+    fn publishable(project, publication, root) = if Maybe::isPresent(publication) && unrootedCode(project) != "" {
         rejected("${unrootedCode(project)} at ${projectLine(root)}:1")
     } else { withDependencies(project, publication, root) }
 

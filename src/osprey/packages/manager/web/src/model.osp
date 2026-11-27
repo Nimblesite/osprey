@@ -109,7 +109,7 @@ module Model {
         Member { membership } => membership == pkg.admin
     }
 
-    fn liveGrant(grant: Governance::Grant, now) = Governance::isActiveGrant(grant)
+    fn liveGrant(grant, now) = Governance::isActiveGrant(grant)
         && Maybe::fold(grant.expiresAt, true, fn(expires) => expires > now)
 
     /// Whether the viewer holds an active, unexpired grant for exactly this
@@ -117,7 +117,7 @@ module Model {
     export fn holdsNow(access: Access, pkg: Governance::Package, permission: Governance::Permission, now) = match access.viewer {
         Anonymous => false
         Member { membership, orgHandle, memberEpoch } => orgHandle == pkg.key.scope && foldList(access.grants, false,
-            fn(held, g: Governance::Grant) => held || (g.membership == membership && g.package == pkg.id && g.packageEpoch == pkg.authorityEpoch && g.memberEpoch == memberEpoch &&
+            fn(held, g) => held || (g.membership == membership && g.package == pkg.id && g.packageEpoch == pkg.authorityEpoch && g.memberEpoch == memberEpoch &&
                 Governance::samePermission(g.permission, permission) && liveGrant(g, now)))
     }
 

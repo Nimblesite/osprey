@@ -139,32 +139,32 @@ module Build {
 
     fn compileWithPackages(cmd, manifest, pms) = Reports::checked(writeDerived(cmd, manifest, pms), fn(_finished) => runCompiler(cmd, manifest))
 
-    fn compileWithManifest(cmd: CommandLine, lock, manifest) = Reports::checked(packageManifests(cmd.project, lock), fn(value) => compileWithPackages(cmd, manifest, value))
+    fn compileWithManifest(cmd, lock, manifest) = Reports::checked(packageManifests(cmd.project, lock), fn(value) => compileWithPackages(cmd, manifest, value))
 
     /// Compile against `lock`, every package's tree where the lock says it is.
-    fn compile(cmd: CommandLine, lock) = Reports::checked(Project::readAt(cmd.project), fn(value) => compileWithManifest(cmd, lock, value))
+    fn compile(cmd, lock) = Reports::checked(Project::readAt(cmd.project), fn(value) => compileWithManifest(cmd, lock, value))
 
     fn afterVerify(verified: Reports::Report, cmd, read) = if verified.status != 0 { verified } else { Reports::checked(read, fn(value) => compile(cmd, value)) }
 
     /// The release lock, verified, then compiled.
-    fn releaseVerified(cmd: CommandLine) = afterVerify(Verify::verifyReleaseAt(cmd.project), cmd, Project::readLockAt(cmd.project))
+    fn releaseVerified(cmd) = afterVerify(Verify::verifyReleaseAt(cmd.project), cmd, Project::readLockAt(cmd.project))
 
     /// The release build: `osprey.lock`, verified, after the empty-overlay preflight.
-    fn releaseBuild(cmd: CommandLine, mappings) = if Overlay::active(mappings) {
+    fn releaseBuild(cmd, mappings) = if Overlay::active(mappings) {
         Reports::failure(["${overridesCode} ${join(mapList(mappings, fn(m) => Names::display(Overlay::keyOf(m))), " ")}", "run `use --clear` or build without --release"])
     } else { releaseVerified(cmd) }
 
     /// The development build: `osprey.local.lock`, verified, locals from their checkouts.
-    fn localBuild(cmd: CommandLine) = match Project::readLocalLockAt(cmd.project) {
+    fn localBuild(cmd) = match Project::readLocalLockAt(cmd.project) {
         Error { message } => Reports::failure(["${noLocalLockCode} ${message}", remediation])
         Success { value } => afterVerify(Verify::verifyLocalAt(cmd.project), cmd, Success { value: value })
     }
 
-    fn withOverlay(cmd: CommandLine, mappings) = if cmd.release { releaseBuild(cmd, mappings) }
+    fn withOverlay(cmd, mappings) = if cmd.release { releaseBuild(cmd, mappings) }
         else if Overlay::active(mappings) { localBuild(cmd) }
         else { releaseVerified(cmd) }
 
-    fn build(cmd: CommandLine) = Reports::checked(Overlay::readAt(cmd.project), fn(value) => withOverlay(cmd, value))
+    fn build(cmd) = Reports::checked(Overlay::readAt(cmd.project), fn(value) => withOverlay(cmd, value))
 
     export fn docs(args) = Flags::dispatch(args, [compilerFlag, Flags::projectFlag, "--docs-dir"], [], "docs.usage", ["usage: osprey-pkg docs --docs-dir <directory> [--compiler <path>] [--project <dir>]"],
         fn(parsed) => if Flags::given(parsed, "--docs-dir", "") == "" { Reports::usage(["missing --docs-dir"]) } else { build(commandLine(parsed)) })

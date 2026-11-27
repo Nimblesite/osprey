@@ -3,8 +3,6 @@
 
 namespace bank
 
-import bank::Sqlite
-import bank::Json
 
 module Ledger
     // The capability surface. `debit` is fallible — overdrafts are refused —

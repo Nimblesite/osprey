@@ -62,7 +62,7 @@ module PythonPlane {
 
     fn declaring(s: ManifestModel::SystemRequirement) = s.capability == capability
 
-    fn declaredFloor(m: ManifestModel::Manifest) = foldList(m.systemRequirements, -1, fn(best, s: ManifestModel::SystemRequirement) => if declaring(s) && s.minimumRevision > best { s.minimumRevision } else { best })
+    fn declaredFloor(m: ManifestModel::Manifest) = foldList(m.systemRequirements, -1, fn(best, s) => if declaring(s) && s.minimumRevision > best { s.minimumRevision } else { best })
 
     /// Whether a manifest declares the plane.
     export fn declares(m) = declaredFloor(m) >= 0
@@ -86,9 +86,9 @@ module PythonPlane {
 
     fn has(table, key) = Checked::succeeded(Toml::get(table, key))
 
-    fn valueAt(table, key) -> Toml::Value = Toml::get(table, key) ?: Toml::emptyTable
+    fn valueAt(table, key) = Toml::get(table, key) ?: Toml::emptyTable
 
-    fn uvTable(root) -> Toml::Value = match Toml::get(root, "tool") {
+    fn uvTable(root) = match Toml::get(root, "tool") {
         Error => Toml::emptyTable
         Success { value } => valueAt(value, "uv")
     }

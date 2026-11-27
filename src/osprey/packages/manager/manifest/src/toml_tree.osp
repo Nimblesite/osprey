@@ -70,7 +70,7 @@ module TomlTree {
     // -- key-path insertion -------------------------------------------------
 
     // Recursive through insertNested/insertDeep: codegen needs the return type spelled out.
-    fn insertInto(table, segs, val) -> Result<Toml::Value, string> = match length(segs) == 1 {
+    fn insertInto(table, segs, val) = match length(segs) == 1 {
         true => insertLeaf(table, listGet(segs, 0) ?: TomlValues::missingKeySeg, val)
         false => insertNested(table, segs, val)
     }

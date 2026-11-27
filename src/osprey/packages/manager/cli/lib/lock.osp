@@ -65,7 +65,7 @@ module Lock {
     // `path`, `epoch`) need typed receivers (issue #273).
     fn freshOf(cmd: CommandLine) = cmd.fresh
     fn spot(id: Identity::ReleaseId) = "${Names::display(id.key)} e${id.epoch}.r${id.ordinal}"
-    fn systemCapabilities(m: ManifestModel::Manifest) = mapList(m.systemRequirements, fn(s: ManifestModel::SystemRequirement) => s.capability)
+    fn systemCapabilities(m: ManifestModel::Manifest) = mapList(m.systemRequirements, fn(s) => s.capability)
     fn candidateOf(t: LocalTree) = t.candidate
     fn overrideOf(t: LocalTree) = t.override
     fn treeFiles(t: LocalTree) = t.tree
@@ -176,7 +176,7 @@ module Lock {
         Success { value } => Install::filesOfWalked(value, localDir(project, m))
     }
 
-    fn publishedKey(mf: ManifestModel::Manifest) = Maybe::fold(mf.publication, Names::blank(), fn(p: ManifestModel::Publication) => p.package)
+    fn publishedKey(mf: ManifestModel::Manifest) = Maybe::fold(mf.publication, Names::blank(), fn(p) => p.package)
 
     /// The local manifest must be accepted and name the overridden key as its package.
     fn localManifest(m, fileList) = match Manifest::accepted(Manifest::parse(Install::manifestTextIn(fileList))) {
@@ -185,7 +185,7 @@ module Lock {
     }
 
     /// A local has its baseline's ordinal, or zero when nothing is published.
-    fn baselineOrdinal(m) = Maybe::fold(Overlay::baselineOf(m), 0, fn(id: Identity::ReleaseId) => id.ordinal)
+    fn baselineOrdinal(m) = Maybe::fold(Overlay::baselineOf(m), 0, fn(id) => id.ordinal)
 
     fn localRelease(m, digest) = Identity::ReleaseId { key: Overlay::keyOf(m), epoch: Overlay::epochOf(m), ordinal: baselineOrdinal(m), digest: digest }
 
@@ -292,7 +292,7 @@ module Lock {
 
     fn withMembers(cmd, manifest, digest, prev, catalog, locals, packages, memberList) = Reports::checked(pythonPins(cmd, memberList), fn(value) => writtenWith(cmd, manifest, digest, prev, catalog, locals, packages, value))
 
-    fn written(cmd, manifest, digest, prev: Previous, catalog: Catalog, locals, releases, fetched) = {
+    fn written(cmd, manifest, digest, prev, catalog, locals, releases, fetched) = {
         let packages = mapList(releases, fn(r) => packageOf(catalog.candidates, r))
         Reports::checked(members(cmd, manifest, releases, locals, fetched), fn(value) => withMembers(cmd, manifest, digest, prev, catalog, locals, packages, value))
     }
@@ -308,27 +308,27 @@ module Lock {
         Resolution::Explain { code, packages } => explained(catalog, code, packages)
     }
 
-    fn resolved(cmd: CommandLine, manifest, prev, locals, listing, warnings) = Reports::checked(fetchAll(cmd.base, cmd.project, listing), fn(value) => solved(cmd, manifest, prev, withLocals(catalogOf(value, warnings), locals), locals, value))
+    fn resolved(cmd, manifest, prev, locals, listing, warnings) = Reports::checked(fetchAll(cmd.base, cmd.project, listing), fn(value) => solved(cmd, manifest, prev, withLocals(catalogOf(value, warnings), locals), locals, value))
 
-    fn withRemovals(cmd: CommandLine, manifest, prev: Previous, locals, listing) = {
+    fn withRemovals(cmd, manifest, prev, locals, listing) = {
         let gone = vanished(published(prev.current, locals), listing)
         if isEmpty(gone) { resolved(cmd, manifest, prev, locals, listing, []) }
         else if cmd.acceptRemovals { resolved(cmd, manifest, prev, locals, listing, mapList(gone, vanishedLine)) }
         else { Reports::failure(mapList(gone, vanishedRefusal)) }
     }
 
-    fn checked(cmd, manifest, prev: Previous, locals, listing) = {
+    fn checked(cmd, manifest, prev, locals, listing) = {
         let replaced = replacedLine(published(prev.current, locals), listing)
         if replaced == "" { withRemovals(cmd, manifest, prev, locals, listing) } else { Reports::failure([replaced]) }
     }
 
-    fn withLocalsOf(cmd: CommandLine, manifest, prev, locals) = Reports::checked(Listing::fetch(cmd.base), fn(value) => checked(cmd, manifest, prev, locals, value))
+    fn withLocalsOf(cmd, manifest, prev, locals) = Reports::checked(Listing::fetch(cmd.base), fn(value) => checked(cmd, manifest, prev, locals, value))
 
     fn withPrevious(cmd, manifest, prev) = Reports::checked(localsAt(cmd), fn(value) => withLocalsOf(cmd, manifest, prev, value))
 
     fn withManifest(cmd, manifest) = Reports::checked(previousAt(cmd), fn(value) => withPrevious(cmd, manifest, value))
 
-    fn withCommand(cmd: CommandLine) = Reports::checked(Project::readAt(cmd.project), fn(value) => withManifest(cmd, value))
+    fn withCommand(cmd) = Reports::checked(Project::readAt(cmd.project), fn(value) => withManifest(cmd, value))
 
     /// The whole command. Implements [PACKAGE-FOLDER-REGISTRY], [PACKAGE-HARDENING] C5 and [PACKAGE-LOCAL-OVERRIDE].
     export fn run(args) = Flags::dispatch(args, [Fetch::registryFlag, Flags::projectFlag], [removalsFlag, localFlag], usageCode, usageText,

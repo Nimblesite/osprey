@@ -3,9 +3,6 @@
 // a test statement is only legal in the entry source.
 namespace bank
 
-import bank::MoneyCases
-import bank::JsonCases
-import bank::AccountCases
 
 test "cents format to two padded places" MoneyCases::centsCase
 test "dollars group in thousands at every boundary" MoneyCases::groupingCase

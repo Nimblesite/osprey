@@ -57,9 +57,9 @@ module LoaderTests {
 
     fn loaded() = fixtureFiles()(fn() => fixtureTree()(fn() => catalogOf(Loader::load(root))))
 
-    fn servedDirs(catalog: Release::Catalog) = join(listSort(mapList(catalog.served, fn(s: Release::Served) => ReleasePath::format(s.id))), ",")
+    fn servedDirs(catalog: Release::Catalog) = join(listSort(mapList(catalog.served, fn(s) => ReleasePath::format(s.id))), ",")
 
-    fn refusedRows(catalog: Release::Catalog) = join(listSort(mapList(catalog.refused, fn(r: Release::Refused) => "${r.dir} ${r.code}")), ",")
+    fn refusedRows(catalog: Release::Catalog) = join(listSort(mapList(catalog.refused, fn(r) => "${r.dir} ${r.code}")), ",")
 
     fn expectedRows(fx) = join(listSort(mapList(Fixtures::itemsOf(fx, "refused"), fn(r) =>
         "${Fixtures::textOf(r, "dir")} ${Fixtures::textOf(r, "code")}")), ",")

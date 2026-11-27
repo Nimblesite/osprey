@@ -99,7 +99,7 @@ module ManifestTests {
 
     fn edges(text) = projected(text, fn(m) => join(mapList(m.dependencies, edgeText), " "))
 
-    fn publicationKey(m: ManifestModel::Manifest) = Maybe::fold(m.publication, "none", fn(p: ManifestModel::Publication) => Names::display(p.package))
+    fn publicationKey(m: ManifestModel::Manifest) = Maybe::fold(m.publication, "none", fn(p) => Names::display(p.package))
 
     fn grantText(g: ManifestModel::Grant) = "${Names::display(g.package)}:${join(g.capabilities, ",")}"
 
@@ -150,7 +150,7 @@ module ManifestTests {
             rejected("source_roots = [\"src\", \"lib\"]\nentry = \"src/main.osp\"\nflavor = \"ml\"\ndefault_namespace = \"app\"\ntest_roots = [\"test\"]\npython_sources = [\"src/model.py\"]\n[modules]\nallow_wildcard_imports = true\n[lints]\nundocumented-export = \"warn\"\nclosing-run = \"allow\"\nunexampled-export = \"deny\"\nrepeated-literal = \"info\"\n", "accepted"),
             edges(project("[dependencies]\n\"@b/b\" = { epoch = 1 }\n\"@a/a\" = { epoch = 2, min_release = 3 }\n[test-dependencies]\n\"@a/a\" = { epoch = 2, min_release = 9 }\n[build-dependencies]\n\"@c/c\" = { epoch = 1, min_release = 0 }\n")) == "0:@a/a@e2.r3 0:@b/b@e1.r0 1:@c/c@e1.r0 2:@a/a@e2.r9",
             holdsText(project("[system.sqlite]\ncapability = \"sqlite/c-api\"\nmin_revision = 3045000\n[system.zlib]\ncapability = \"zlib\"\nmin_revision = 0\n"), fn(m) => join(mapList(m.systemRequirements, fn(r) => "${r.capability}:${r.minimumRevision}"), " ") == "sqlite/c-api:3045000 zlib:0"),
-            holdsText(project("[[assets]]\npath = \"docs/intro.md\"\nrole = \"documentation\"\nkind = \"text\"\nbyte_length = 12\ndigest = \"sha256:7c4a8d09ca3762af61e59520943dc26494f8941b7c4a8d09ca3762af61e59520\"\n[[assets]]\npath = \"data/seed.json\"\nrole = \"runtime-data\"\nkind = \"json\"\nbyte_length = 0\ndigest = \"sha256:7c4a8d09ca3762af61e59520943dc26494f8941b7c4a8d09ca3762af61e59520\"\nrequired_capability = \"asset.read\"\n"), fn(m) => join(mapList(m.assets, fn(a: ManifestModel::Asset) => a.path), " ") == "data/seed.json docs/intro.md"),
+            holdsText(project("[[assets]]\npath = \"docs/intro.md\"\nrole = \"documentation\"\nkind = \"text\"\nbyte_length = 12\ndigest = \"sha256:7c4a8d09ca3762af61e59520943dc26494f8941b7c4a8d09ca3762af61e59520\"\n[[assets]]\npath = \"data/seed.json\"\nrole = \"runtime-data\"\nkind = \"json\"\nbyte_length = 0\ndigest = \"sha256:7c4a8d09ca3762af61e59520943dc26494f8941b7c4a8d09ca3762af61e59520\"\nrequired_capability = \"asset.read\"\n"), fn(m) => join(mapList(m.assets, fn(a) => a.path), " ") == "data/seed.json docs/intro.md"),
             pythonProjectRefused("src/model.py", "accepted"),
             jsonHas(project("python_sources = [\"src/model.py\"]\n"), "\"pythonSources\":[\"src/model.py\"]"),
             typescriptProjectRefused("src/express.ts", "accepted"),

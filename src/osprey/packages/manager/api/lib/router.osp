@@ -50,7 +50,7 @@ module Router {
 
     fn cacheHeader(response: Response) = if response.etag == "" { noCache } else { immutableCache }
 
-    fn allowHeaders(response: Response) -> List<string> = if response.status == methodStatus { [allowGet] } else { [] }
+    fn allowHeaders(response: Response) = if response.status == methodStatus { [allowGet] } else { [] }
 
     /// The hardening headers beyond `Content-Type` and `ETag`, in a fixed
     /// order: a digest-addressed response is immutable, every other response

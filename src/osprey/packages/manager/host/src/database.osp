@@ -15,15 +15,9 @@ module Database {
         query: fn(Context, string, List<string>) -> Result<string, string>
     }
 
-    fn uuid(text) = byteLength(text) == 36 && (substring(text, 8, 9) ?: "") == "-"
-    && (substring(text, 13, 14) ?: "") == "-" && (substring(text, 18, 19) ?: "") == "-"
-    && (substring(text, 23, 24) ?: "") == "-" && Bytes::lowerHexBetween(text, 0, 8)
-    && Bytes::lowerHexBetween(text, 9, 13) && Bytes::lowerHexBetween(text, 14, 18)
-    && Bytes::lowerHexBetween(text, 19, 23) && Bytes::lowerHexBetween(text, 24, 36)
-
     /// Refuse missing, noncanonical or nonpositive transaction identity fields.
     export fn contextCode(ctx: Context) =
-    if !uuid(ctx.principalId) || !uuid(ctx.sessionId) || !uuid(ctx.organizationId) || !uuid(ctx.authSubject) { "database.identity" }
+    if !Bytes::canonicalUuid(ctx.principalId) || !Bytes::canonicalUuid(ctx.sessionId) || !Bytes::canonicalUuid(ctx.organizationId) || !Bytes::canonicalUuid(ctx.authSubject) { "database.identity" }
     else if ctx.authorityEpoch < 1 { "database.epoch" } else { "" }
 
     fn parameter(value) = "'${Bytes::hex(Bytes::ofString(value))}'"

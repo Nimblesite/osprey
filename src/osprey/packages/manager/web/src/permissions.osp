@@ -22,28 +22,28 @@ module Permissions {
         }
     }
 
-    fn body(l, access: Model::Access, ledger, now) = join([
+    fn body(l, access, ledger, now) = join([
         "<main id=\"permissions\"><h1>Permissions for ${Html::escape(Names::display(l.pkg.key))}</h1>",
         Html::field("Organization", "@${l.orgHandle}"),
         Html::field("Package administrator", l.pkg.admin),
-        publisherSection(filterList(ledger, fn(g: Governance::Grant) => g.package == l.pkg.id && Governance::samePermission(g.permission, Governance::PublishRelease)), now),
-        grantTable(filterList(ledger, fn(g: Governance::Grant) => g.package == l.pkg.id), now),
+        publisherSection(filterList(ledger, fn(g) => g.package == l.pkg.id && Governance::samePermission(g.permission, Governance::PublishRelease)), now),
+        grantTable(filterList(ledger, fn(g) => g.package == l.pkg.id), now),
         notices(access, l.pkg, now),
         "</main>"], "")
 
     fn publisherSection(rows, now) = Html::section("publishers", "Publishers", Html::paragraph("The package administrator delegates publishing to individual organization members. Each grant applies to this package.") +
         (if isEmpty(rows) { Html::paragraph("No publishing grants recorded.") } else {
-            Html::el("ul", join(mapList(rows, fn(g: Governance::Grant) => Html::el("li", Html::escape(g.membership) + " · " + rowState(g, now) + " · " + expiry(g))), ""))
+            Html::el("ul", join(mapList(rows, fn(g) => Html::el("li", Html::escape(g.membership) + " · " + rowState(g, now) + " · " + expiry(g))), ""))
         }))
 
-    fn grantRow(grant: Governance::Grant, now) = join([
+    fn grantRow(grant, now) = join([
         "<tr><td>${Html::escape(grant.membership)}</td>",
         "<td>${Html::escape(Governance::permissionName(grant.permission))}</td>",
         "<td>${expiry(grant)}</td><td>${rowState(grant, now)}</td></tr>"], "")
 
     fn expiry(grant: Governance::Grant) = if Maybe::isPresent(grant.expiresAt) { "until ${Maybe::orElse(grant.expiresAt, 0)}" } else { "no expiry" }
 
-    fn rowState(grant: Governance::Grant, now) = if !Governance::isActiveGrant(grant) { "revoked" }
+    fn rowState(grant, now) = if !Governance::isActiveGrant(grant) { "revoked" }
         else if Maybe::fold(grant.expiresAt, false, fn(at) => at <= now) { "expired" } else { "active" }
 
     fn grantTable(ledger, now) = if isEmpty(ledger) {
@@ -55,7 +55,7 @@ module Permissions {
             "<tbody>${join(mapList(ledger, fn(g) => grantRow(g, now)), "")}</tbody></table>"], "")
     }
 
-    fn notices(access: Model::Access, pkg, now) = {
+    fn notices(access, pkg, now) = {
         let seat = Html::note("Only the current administrator changes grants; permission holders cannot delegate, renew or widen them.")
         let publishing = if !Model::holdsNow(access, pkg, Governance::PublishRelease, now) { Html::note(Model::publishGrantNotice()) } else { "" }
         seat + publishing

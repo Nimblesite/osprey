@@ -1,7 +1,6 @@
 // Money formatting cases, run against the real `bank::Money` module (src/domain/money.ospml) and its sealed signature. [TESTING-BUILTINS]
 namespace bank
 
-import bank::Money
 
 (** The exact money strings the API and UI ship. *)
 module MoneyCases

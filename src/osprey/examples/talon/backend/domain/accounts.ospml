@@ -7,8 +7,6 @@
 
 namespace bank
 
-import bank::Money
-import bank::Json
 
 type Account =
     id : int

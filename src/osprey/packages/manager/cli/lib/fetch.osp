@@ -141,7 +141,7 @@ module Fetch {
 
     fn releaseOf(key, row: Row) = Identity::ReleaseId { key: key, epoch: row.epoch, ordinal: row.ordinal, digest: row.digest }
 
-    fn keyedRows(key, rows) = andThen(rows, fn(value) => Success { value: mapList(value, fn(row: Row) => releaseOf(key, row)) })
+    fn keyedRows(key, rows) = andThen(rows, fn(value) => Success { value: mapList(value, fn(row) => releaseOf(key, row)) })
 
     fn keyOfItem(item) = match JsonRead::requiredText(item, "key", shapeCode) {
         Error { message } => Error { message: message }
@@ -203,7 +203,7 @@ module Fetch {
     // the issue-#273 codegen quarantine.
     fn readNext(dir, relPaths, i, files, rel) = andThen(perform Host::Files.read("${dir}/${rel}"), fn(value) => readFiles(dir, relPaths, i + 1, listAppend(files, Release::File { relPath: rel, content: value })))
 
-    fn readFiles(dir, relPaths, i, files) -> Result<List<Release::File>, string> = if i >= length(relPaths) {
+    fn readFiles(dir, relPaths, i, files) = if i >= length(relPaths) {
         Success { value: files }
     } else {
         readNext(dir, relPaths, i, files, listGet(relPaths, i) ?: "")
@@ -272,7 +272,7 @@ module Fetch {
     fn checkedDigest(served: Release::Served, digest) = if digest == served.id.digest { Success { value: served } }
         else { Error { message: "fetch.install-integrity" } }
 
-    fn checkedTree(dir, served: Release::Served) = match installedFiles(dir) {
+    fn checkedTree(dir, served) = match installedFiles(dir) {
         Error { message } => Error { message: "fetch.install-integrity ${message}" }
         Success { value } => match digestOfFiles(value) {
             Success { value } => checkedDigest(served, value)
@@ -280,20 +280,20 @@ module Fetch {
         }
     }
 
-    fn writtenTree(dir, served: Release::Served) = match writeFileList(dir, served.files) {
+    fn writtenTree(dir, served) = match writeFileList(dir, served.files) {
         Error { message } => Error { message: "${writePrefix}: ${message}" }
         Success => checkedTree(dir, served)
     }
 
     // A refetch must never claim success from the served bytes alone. Reject
     // conflicting entries before writes, then verify the actual installed tree.
-    fn installInto(dir, served: Release::Served) = match perform Host::Tree.walk(dir) {
+    fn installInto(dir, served) = match perform Host::Tree.walk(dir) {
         Error { message } => Error { message: "fetch.install-integrity ${message}" }
         Success { value } => if unexpected(value, served.files) { Error { message: "fetch.install-integrity" } }
             else { writtenTree(dir, served) }
     }
 
-    fn written(project, served: Release::Served) = {
+    fn written(project, served) = {
         let dir = installDirAt(project, served.id)
         match perform Host::Tree.ensure(dir) {
             Error { message } => Error { message: "${writePrefix}: ${message}" }

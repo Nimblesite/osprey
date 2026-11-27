@@ -30,7 +30,7 @@ module Explain {
 
     fn tailKeys(xs) = range(1, length(xs)) |> map(fn(i) => listGet(xs, i) ?: Names::blank()) |> toList
 
-    fn bfs(graph, frontier, seen) -> List<Names::Key> = match isEmpty(frontier) {
+    fn bfs(graph, frontier, seen) = match isEmpty(frontier) {
         true => seen
         false => {
             let key = listGet(frontier, 0) ?: Names::blank()
@@ -42,12 +42,12 @@ module Explain {
     /// The keys reachable from the root's edges, in canonical order.
     fn reachableKeys(graph) = Names::sorted(bfs(graph, ManifestModel::targets(graph.rootDeps), []))
 
-    fn reachesVia(graph, next, to, visited) -> bool = if Names::same(next, to) { true }
+    fn reachesVia(graph, next, to, visited) = if Names::same(next, to) { true }
         else if listContains(visited, Names::display(next)) { false }
         else { unionReaches(graph, next, to, listAppend(visited, Names::display(next))) }
 
     /// Whether `to` is reachable from `from` through viable candidates' edges.
-    fn unionReaches(graph, from, to, visited) -> bool = foldList(unionTargets(graph, from), false, fn(found, t) => found || reachesVia(graph, t, to, visited))
+    fn unionReaches(graph, from, to, visited) = foldList(unionTargets(graph, from), false, fn(found, t) => found || reachesVia(graph, t, to, visited))
 
     // ---- requirements on one key ----
 

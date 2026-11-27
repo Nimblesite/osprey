@@ -38,7 +38,7 @@ module ManifestDeps {
     })
 
     /// An integer pair at or above `floor`, else `code` at `span`.
-    fn boundedInt(pair: Toml::Pair, floor, code, span) = andThen(ManifestSections::intOf(pair, code), fn(value) => if value >= floor { Success { value: value } } else { fail(code, span) })
+    fn boundedInt(pair, floor, code, span) = andThen(ManifestSections::intOf(pair, code), fn(value) => if value >= floor { Success { value: value } } else { fail(code, span) })
 
     fn epochOf(pairs, span) = match ManifestSections::find(pairs, "epoch") {
         Error => fail("manifest.dependency.epoch", span)
@@ -198,7 +198,7 @@ module ManifestDeps {
     /// `[a-z0-9][a-z0-9.-]{0,63}` segments joined by `/`, at most 128 bytes ([PACKAGE-MANIFEST]).
     export fn capabilityOk(name) = byteLength(name) <= capabilityMax && foldList(split(name, "/") ?: [""], true, fn(ok, s) => ok && segmentOk(s))
 
-    fn systemOf(pair: Toml::Pair) = match ManifestSections::unknownKeys(ManifestSections::pairsOf(pair.value), systemKeys, "manifest.system.unknown-key") {
+    fn systemOf(pair) = match ManifestSections::unknownKeys(ManifestSections::pairsOf(pair.value), systemKeys, "manifest.system.unknown-key") {
         Error { message } => Error { message: message }
         Success => andThen(ManifestSections::requiredString(ManifestSections::pairsOf(pair.value), "capability", "manifest.system.capability", pair.span), fn(value) => systemWith(pair, value))
     }
@@ -299,7 +299,7 @@ module ManifestDeps {
 
     fn sortedAssets(assets) = sortedBy(assets, compareAssets, missingAsset())
 
-    fn uniqueAssets(assets, span) = match Paths::canonicalSet(mapList(assets, fn(a: ManifestModel::Asset) => a.path)) {
+    fn uniqueAssets(assets, span) = match Paths::canonicalSet(mapList(assets, fn(a) => a.path)) {
         Success => Success { value: sortedAssets(assets) }
         Error { message } => fail(message, span)
     }

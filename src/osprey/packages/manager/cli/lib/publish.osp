@@ -37,7 +37,7 @@ module Publish {
     fn breakingOf(cmd: CommandLine) = cmd.breaking
     fn assetPath(a: ManifestModel::Asset) = a.path
 
-    fn packageKey(mf: ManifestModel::Manifest) = Maybe::fold(mf.publication, Error { message: noPackageCode }, fn(p: ManifestModel::Publication) => Success { value: p.package })
+    fn packageKey(mf: ManifestModel::Manifest) = Maybe::fold(mf.publication, Error { message: noPackageCode }, fn(p) => Success { value: p.package })
 
     // Implements [PACKAGE-LICENSE-DISTRIBUTION] alongside source and asset selection.
 

@@ -14,16 +14,16 @@ module Loader {
 
     fn fileAt(root, dir, rel) = "${root}/${dir}/${rel}"
 
-    fn readNext(root, pending: Folder::Pending, i, files, rel) = match perform Host::Files.read(fileAt(root, pending.releaseDir, rel)) {
+    fn readNext(root, pending, i, files, rel) = match perform Host::Files.read(fileAt(root, pending.releaseDir, rel)) {
         Success { value } => readFiles(root, pending, i + 1, listAppend(files, Release::File { relPath: rel, content: value }))
         Error { message } => Error { message: "host.read: ${rel}: ${message}" }
     }
 
-    fn readFiles(root, pending: Folder::Pending, i, files) -> Result<List<Release::File>, string> =
+    fn readFiles(root, pending, i, files) -> Result<List<Release::File>, string> =
         if i >= length(pending.relPaths) { Success { value: files } }
         else { readNext(root, pending, i, files, listGet(pending.relPaths, i) ?: "") }
 
-    fn outcome(root, pending: Folder::Pending) = match readFiles(root, pending, 0, []) {
+    fn outcome(root, pending) = match readFiles(root, pending, 0, []) {
         Success { value } => ReleaseFiles::assemble(pending.releaseDir, value)
         Error { message } => Error { message: message }
     }

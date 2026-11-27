@@ -105,7 +105,7 @@ module ManifestSections {
         Error { message } => Error { message: message }
         // The closure's return type is written so codegen sees a concrete
         // function type (issue: a still-generic closure value is refused).
-        Success { value } => Maybe::fold(value, Success { value: Maybe::none() }, fn(text) -> Result<Maybe::Maybe<ManifestModel::Flavor>, string> => flavorNamed(text, spanOf(pairs, "flavor", rootSpan())))
+        Success { value } => Maybe::fold(value, Success { value: Maybe::none() }, fn(text) => flavorNamed(text, spanOf(pairs, "flavor", rootSpan())))
     }
 
     fn flavorNamed(text, span) = match ManifestModel::flavorOf(text) {
@@ -117,7 +117,7 @@ module ManifestSections {
         Error { message } => Error { message: message }
         // The closure's return type is written so codegen sees a concrete
         // function type (issue: a still-generic closure value is refused).
-        Success { value } => Maybe::fold(value, Success { value: Maybe::none() }, fn(text) -> Result<Maybe::Maybe<string>, string> => entryNamed(text, spanOf(pairs, "entry", rootSpan())))
+        Success { value } => Maybe::fold(value, Success { value: Maybe::none() }, fn(text) => entryNamed(text, spanOf(pairs, "entry", rootSpan())))
     }
 
     fn entryNamed(text, span) = match Paths::validate(text) {
@@ -208,7 +208,7 @@ module ManifestSections {
         Success { value } => foldList(pairsOf(Toml::valueOf(value)), Success { value: 0 }, lintLevel)
     }
 
-    fn lintLevel(acc, pair: Toml::Pair) = match acc {
+    fn lintLevel(acc, pair) = match acc {
         Error { message } => Error { message: message }
         Success => match stringOf(pair, "manifest.lints.level") {
             Error { message } => Error { message: message }

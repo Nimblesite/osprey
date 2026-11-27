@@ -3,10 +3,6 @@
 
 namespace bank
 
-import bank::Accounts
-import bank::Ledger
-import bank::Money
-import bank::Json
 
 // `Account` itself needs no import: this file shares `namespace bank` with
 // domain/accounts.ospml, and one namespace is one logical declaration space

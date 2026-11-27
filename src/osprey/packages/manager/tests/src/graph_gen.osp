@@ -23,9 +23,9 @@ module GraphGen {
     fn draw(r: Rng, bound) = r.seed % bound
 
     /// `count` draws below `bound`, with the state after them.
-    fn draws(r, count, bound) -> List<int> = if count <= 0 { [] } else { listPrepend(draws(next(r), count - 1, bound), draw(next(r), bound)) }
+    fn draws(r, count, bound) = if count <= 0 { [] } else { listPrepend(draws(next(r), count - 1, bound), draw(next(r), bound)) }
 
-    fn stateAfter(r, count) -> Rng = if count <= 0 { r } else { stateAfter(next(r), count - 1) }
+    fn stateAfter(r, count) = if count <= 0 { r } else { stateAfter(next(r), count - 1) }
 
     fn keyAt(i) = Names::Key { scope: "g", name: listGet(keyNames, i) ?: "app" }
 
