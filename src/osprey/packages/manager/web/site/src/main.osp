@@ -5,8 +5,9 @@ fn catalog(local, entries) = {
     let notice = if local { "<p>Local folder registry · Audit unverified</p>" } else { "<p role=\"status\">The public catalog is unavailable.</p>" }
     let disabled = if local { "" } else { " disabled" }
     let form = "<form role=\"search\" method=\"get\" action=\"/\"><label for=\"q\">Search packages</label><div class=\"prose-search\"><input id=\"q\" name=\"q\" type=\"search\" placeholder=\"Package name or description\"${disabled}><button${disabled}>Search</button></div></form>"
+    let navigation = if local { browseNav() } else { "" }
     let behavior = if local { localFilter() } else { "" }
-    Shell::withEscapedTitle("Osprey Packages", "<main><header class=\"prose-intro\"><h1>Osprey Packages</h1><p>The package registry for the Osprey language. Find libraries for your next project, see who published them, and download the source for a specific release.</p></header>${form}<section><h2>Browse packages</h2>${notice}<div id=\"results\">${entries}</div>${behavior}</section></main>")
+    Shell::withEscapedTitle("Osprey Packages", "<main><header class=\"prose-intro\"><h1>Osprey Packages</h1><p>The package registry for the Osprey language. Find libraries for your next project, see who published them, and download the source for a specific release.</p></header>${form}<section><h2>Browse packages</h2>${navigation}${notice}<div id=\"results\">${entries}</div>${behavior}</section></main>")
 }
 
 fn localFilter() = {
@@ -24,7 +25,22 @@ fn filtered() = {
     join(mapList(range(0, count) |> toList, fn(_i) => visibility(terms, toLowerCase(input()))), "")
 }
 
-fn upload() = Shell::withEscapedTitle("Upload a package · Osprey Packages", "<main><h1>Upload a package</h1><p role=\"status\">Public uploads are unavailable.</p><a href=\"/\">Browse packages</a></main>")
+fn upload(local) = {
+    let origin = trim(input())
+    let adapter = trim(input())
+    let form = if origin != "" || local { releaseForm(origin, adapter) } else { "" }
+    let signIn = if origin == "" { "<p role=\"status\">Public uploads are unavailable.</p><a href=\"/publishing/\">Publish to a folder registry</a>" } else { "<a class=\"prose-download\" href=\"${origin}/v1/auth/github/start\">Sign in with GitHub</a>" }
+    let cover = "<header class=\"prose-cover\"><a href=\"/\">Browse packages</a><h1>Upload a package</h1><p>Publish a release from a commit in your package’s linked repository.</p></header>"
+    let steps = "<section class=\"prose-releases\"><h2>Sign in to publish</h2><p>Use the account with publishing permission for this package.</p>${signIn}</section><aside class=\"prose-facts\"><h2>What you’ll need</h2><ol><li>A package with a linked repository</li><li>The commit you want to release</li><li>Your signing credential to approve the release</li></ol></aside>"
+    Shell::withEscapedTitle("Upload a package · Osprey Packages", "<main>${cover}${form}<div class=\"prose-columns\">${steps}</div></main>")
+}
+
+fn releaseForm(origin, adapter) = join([
+    "<section><h2>Prepare a release</h2><form data-collection-form data-review=\"review\" data-collection=\"${origin}/v1/packages\" data-empty=\"The registry has no packages.\" data-error=\"Could not load packages from the registry. Reload to retry.\">",
+    "<fieldset disabled><label for=\"package\">Package</label><select id=\"package\" name=\"package\" data-collection-key=\"packages\" data-value-key=\"key\" required><option value=\"\">Choose a package</option></select>",
+    "<label for=\"commit\">Git commit</label><input id=\"commit\" name=\"commit\" required pattern=\"[a-fA-F0-9]{40}\" maxlength=\"40\" title=\"Enter the full 40-character Git commit hash\"><button class=\"prose-download\">Review release</button></fieldset><p role=\"status\">Loading packages…</p></form>",
+    "<article id=\"review\" tabindex=\"-1\" hidden><h3>Review release</h3><p>Package <strong data-field=\"package\"></strong><br>Commit <code data-field=\"commit\"></code></p><p>Publication requires an authorized account and a signature.</p></article></section><script type=\"module\" src=\"/${adapter}\"></script>"
+], "")
 
 fn escaped(s) = {
     let amp = replace(s, "&", "&amp;") ?: s
@@ -40,7 +56,17 @@ fn publisherLink(receipt) = if receipt == "recorded" {
 
 fn field(label, value) = "<div><dt>${label}</dt><dd>${value}</dd></div>"
 
-fn keywordChips(text) = join(mapList(split(text, ", ") ?: [text], fn(word) => "<span class=\"prose-chip\">${escaped(word)}</span>"), "")
+fn browseNav() = "<nav class=\"prose-browse\" aria-label=\"Browse packages\"><a href=\"/publishers/\">By publisher</a><a href=\"/tags/\">By tag</a></nav>"
+
+fn keywordChips(text) = if text == "None" { "None" } else {
+    join(mapList(split(text, ", ") ?: [text], fn(word) => "<a class=\"prose-chip\" href=\"/tags/${word}/\">${word}</a>"), "")
+}
+
+fn directory() = {
+    let title = escaped(trim(input()))
+    let entries = trim(input())
+    Shell::withEscapedTitle("${title} · Osprey Packages", "<main><header class=\"prose-cover\"><a href=\"/\">← Packages</a><h1>${title}</h1></header><section>${browseNav()}<p>Local folder registry · Audit unverified</p><div id=\"results\">${entries}</div></section></main>")
+}
 
 fn localPackage() = {
     let key = trim(input())
@@ -73,8 +99,10 @@ fn main() = print(match trim(input()) {
     "missing" => Shell::withEscapedTitle("Page not found · Osprey Packages", "<main><h1>Page not found</h1><a href=\"/\">Browse packages</a></main>")
     "guide" => Guides::packages()
     "publishing" => Guides::publishers()
-    "upload" => upload()
+    "upload" => upload(false)
+    "local-upload" => upload(true)
     "local" => catalog(true, input())
+    "directory" => directory()
     "row" => row()
     "package" => localPackage()
     "publisher" => publisherPage()

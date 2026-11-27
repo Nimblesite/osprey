@@ -112,11 +112,11 @@ Named tests above cover the folder-registry subset. Python publisher-attestation
 
 ## Registry website
 
-The homepage is the catalog. Search by name or description, open a package and download a release. **Upload a package** opens `/upload/`. Hosted publishing requires the authenticated publication-intent API.
+The homepage is the catalog. Search by name or description, browse packages by publisher or tag, open a package and download a release. **Upload a package** opens `/upload/`. Hosted publishing requires the authenticated publication-intent API.
 
-To browse local packages, start `make -C src/osprey/packages registry-serve`, then run `make -C src/osprey/packages registry-website-preview` with Wasmtime, jq and yq installed. Serve `target/registry-site-preview/` on loopback. The preview identifies its source as a local, audit-unverified folder registry.
+To browse local packages, start `make -C src/osprey/packages registry-serve`, then run `make -C src/osprey/packages registry-website-preview` with Wasmtime, jq and yq installed. Run `make -C src/osprey/packages registry-website-serve` and open `http://127.0.0.1:4187/`. The upload page loads package choices from the running registry and lets you review a commit. The preview identifies its source as a local, audit-unverified folder registry.
 
-`make -C src/osprey/packages registry-website` builds the separate Cloudflare Pages directory at `target/registry-site/`. Its catalog shows an unavailable state until the verified hosted projection is connected. Public publisher profiles and uploads require hosted API routes.
+`make -C src/osprey/packages registry-website` builds the separate Cloudflare Pages directory at `target/registry-site/`. Its catalog shows an unavailable state until the verified hosted projection is connected. Set `REGISTRY_API_ORIGIN` to the deployed HTTPS API origin when building to connect release preparation and GitHub sign-in. Publication requires the hosted signature and publication-intent routes.
 
 ## Hosted ownership model
 

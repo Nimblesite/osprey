@@ -1,5 +1,7 @@
 :root {
   color-scheme: light;
+  scrollbar-gutter: stable;
+  scroll-padding-top: 6rem;
   --paper: #f6f5ed;
   --ink: #172921;
   --pine: #163f35;
@@ -19,10 +21,10 @@ body { margin: 0 }
 a { color: inherit; text-underline-offset: .2em }
 :focus-visible { outline: 3px solid #bd4302; outline-offset: 4px }
 .prose-bar, main { width: min(76rem, calc(100% - 3rem)); margin-inline: auto }
-.prose-bar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding-block: 1.4rem; border-bottom: 1px solid var(--line) }
+.prose-bar { position: sticky; top: 0; z-index: 5; background: var(--paper); display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding-block: 1.4rem; border-bottom: 1px solid var(--line) }
 .prose-brand { display: inline-flex; align-items: center; gap: .65rem; font-weight: 750; text-decoration: none }
 .prose-bar nav { font-size: .875rem }
-main { padding-block: clamp(2rem, 5vw, 5rem) }
+main { padding-block: 2rem clamp(2rem, 5vw, 5rem) }
 h1,h2,h3,p { margin-block-start: 0 }
 h1,h2,h3 { line-height: 1.08; overflow-wrap: anywhere }
 h1 { font: 500 clamp(3rem, 7.6vw, 7.2rem)/.96 var(--display); letter-spacing: -.065em; margin-bottom: 2rem }
@@ -47,7 +49,6 @@ pre { overflow-x: auto; padding: 1rem; background: #e6eae1; border-radius: .35re
 .prose-package h3, .prose-package p { margin: .2rem 0 }
 .prose-intro h1 { margin-bottom: .7rem; font-size: clamp(2.8rem, 6.2vw, 5rem) }
 .prose-intro p { max-width: 60ch; margin-bottom: 1.7rem; color: var(--muted); font-size: 1.12rem }
-.prose-detail { padding-top: 2rem }
 .prose-cover, .prose-intro { position: relative; isolation: isolate; overflow: hidden; padding: clamp(1.5rem, 4vw, 3.8rem); border-radius: 1rem; background: #153d39; color: #fcf8ef }
 .prose-cover::after, .prose-intro::after { content: ''; position: absolute; z-index: -1; inset: 0 0 0 60%; background: conic-gradient(from 30deg at 50% 67%, #dfacff 0 60deg, #9560cd 60deg 120deg, #624b86 120deg 180deg, #f1c770 180deg 240deg, #ff967d 240deg 300deg, #bde982 300deg); background-size: 5.3rem 7.9rem; clip-path: polygon(48% 0,100% 0,100% 100%,0 100%); }
 .prose-cover h1, .prose-intro h1 { max-width: 70%; margin: 1.5rem 0 .6rem; font-size: clamp(2.7rem, 5.6vw, 5.5rem) }
@@ -89,3 +90,38 @@ pre { overflow-x: auto; padding: 1rem; background: #e6eae1; border-radius: .35re
 .prose-credits a { font: 700 1.1rem var(--mono); overflow-wrap: anywhere }
 .prose-credits code { display: inline-block; margin-left: .5rem; padding: .1rem .45rem; background: #e9def2; border-radius: .4rem }
 .prose-credits p { margin: .65rem 0 0; color: var(--muted) }
+.prose-doc-trail { display: flex; gap: .7rem; align-items: center; flex-wrap: wrap; margin-bottom: 1rem; color: var(--pine) }
+.prose-doc-trail code { padding: .18rem .65rem; background: #e9def2; border-radius: 1rem }
+.prose-doc-grid { display: grid; grid-template-columns: minmax(12rem,17rem) minmax(0,1fr); align-items: start; gap: 1.25rem }
+.prose-doc-menu { padding: 1.15rem; background: #e9def2; border-radius: .9rem; position: sticky; top: 6rem; max-height: calc(100vh - 7rem); overflow: auto }
+.prose-doc-menu .search-wrap { position: relative }
+.prose-doc-menu kbd, .prose-docs .crumb { display: none }
+.prose-doc-menu input[type=search] { margin-bottom: .8rem }
+.prose-doc-menu summary { cursor: pointer; padding: .35rem 0; font-weight: 650 }
+.prose-doc-menu .nav-count { margin-left: .5rem; font: .8rem var(--mono) }
+.prose-doc-menu ul { list-style: none; padding-left: .7rem }
+.prose-doc-menu li { margin: .35rem 0; overflow-wrap: anywhere }
+.prose-doc-menu [aria-current=page] { font-weight: 750; color: var(--pine) }
+.prose-doc-menu #results { display: block }
+.prose-doc-article { min-width: 0; overflow-wrap: anywhere; background: #fffdf7; border: 1px solid var(--line); border-top: .5rem solid var(--pine); border-radius: .9rem; padding: clamp(1rem,3vw,2.5rem) }
+.prose-doc-article h1 { font-size: clamp(2.6rem,5vw,4.7rem); margin-bottom: 1rem }
+.prose-doc-article h2 { margin: 2rem 0 .7rem }
+.prose-doc-article table { width: 100%; border-collapse: collapse; margin-bottom: 1rem }
+.prose-doc-article th, .prose-doc-article td { padding: .65rem; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line) }
+.prose-doc-article th { background: #e5efd8 }
+.prose-doc-article a { color: var(--pine) }
+.prose-doc-article .page-card { display: block; padding: .7rem; border-bottom: 1px solid var(--line) }
+.prose-doc-article .page-card span { margin-right: .5rem }
+@media (max-width: 48rem) {
+  .prose-doc-grid { grid-template-columns: minmax(0,1fr) }
+  .prose-doc-menu { position: static; max-height: 50vh }
+  .prose-doc-article table { display: block; overflow-x: auto }
+}
+
+.prose-browse { display: flex; flex-wrap: wrap; gap: .65rem; margin-bottom: 1rem }
+.prose-browse a { background: #e9def2; border-radius: .45rem; padding: .45rem .85rem; font-weight: 650 }
+[data-collection-form] fieldset { display: grid; gap: .5rem; max-width: 42rem; margin: 0; padding: 0; border: 0 }
+[data-collection-form] input, [data-collection-form] select { width: 100%; padding: .65rem; font: inherit; border: 1px solid var(--muted); border-radius: .35rem }
+[data-collection-form] button { justify-self: start; margin-top: .6rem; border: 0 }
+
+.prose-doc-menu .toc a { display: block; margin-block: .35rem; overflow-wrap: anywhere }

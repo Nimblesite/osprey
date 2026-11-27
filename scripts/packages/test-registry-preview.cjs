@@ -31,12 +31,39 @@ const { chromium } = require('../../src/toolchain/website/node_modules/playwrigh
     await catalog.close();
     for (const width of [390, 1440]) {
       const page = await browser.newPage({ viewport: { width, height: 900 } });
-      await page.goto('http://127.0.0.1:4187/packages/@osprey/fastapi/');
+      await page.goto('http://127.0.0.1:4187/');
+      const box = selector => page.locator(selector).boundingBox();
+      const header = await box('.prose-bar');
+      const cover = await box('.prose-intro');
+      await page.evaluate(() => scrollTo(0, 600));
+      assert.deepEqual(await box('.prose-bar'), header, 'Header stays anchored while scrolling');
+      for (const path of ['/upload/', '/guide/', '/publishing/', '/tags/', '/publishers/', '/packages/@osprey/express/e1.r1/docs/api/index.html']) {
+        await page.goto(new URL(path, page.url()).href);
+        assert.deepEqual(await box('.prose-bar'), header, path);
+        assert.equal((await box('main')).x, cover.x, path);
+      }
+      await page.goto('http://127.0.0.1:4187/');
+      await page.getByRole('link', { name: 'By publisher' }).click();
+      await page.getByRole('link', { name: 'Osprey repository publisher' }).click();
+      await page.getByRole('link', { name: '@osprey/fastapi', exact: true }).click();
+      await page.getByRole('link', { name: 'python-flavor', exact: true }).click();
+      await page.getByRole('heading', { name: 'python-flavor', exact: true }).waitFor();
+      assert.ok(await page.getByRole('link', { name: '@osprey/fastapi', exact: true }).count());
+      assert.equal(await page.getByRole('link', { name: '@osprey/express', exact: true }).count(), 0);
+      await page.goto('http://127.0.0.1:4187/');
+      await page.getByRole('link', { name: 'By tag' }).click();
+      await page.getByRole('link', { name: 'fastapi', exact: true }).click();
+      await page.getByRole('link', { name: '@osprey/fastapi', exact: true }).click();
+      assert.deepEqual(await box('.prose-bar'), header);
+      const detail = await box('.prose-cover');
+      for (const axis of ['x', 'y', 'width']) assert.equal(detail[axis], cover[axis]);
+
       const icon = await page.locator('link[rel="icon"]').getAttribute('href');
       assert.equal(await page.locator('.prose-brand img').getAttribute('src'), icon);
       const asset = await page.request.get(icon.startsWith('/') ? new URL(icon, page.url()).href : icon);
       assert.equal(asset.status(), 200);
       const hash = require('node:crypto').createHash('sha256').update(await asset.body()).digest('hex');
+      assert.equal(hash, 'b3839fb6decc4df859ec12db9c62e530dc24b91349e90cf11be1038271a94a0b', 'approved catalog drawer icon');
       assert.equal(new URL(icon, page.url()).searchParams.get('v'), hash.slice(0, 12));
       assert.match(await page.locator('main').innerText(), /MIT AND BSD-3-Clause/);
       assert.match(await page.locator('main').innerText(), /python-flavor/);
@@ -55,12 +82,22 @@ const { chromium } = require('../../src/toolchain/website/node_modules/playwrigh
       assert.ok(bundle.files.some(file => file.path === 'osprey.toml'));
       await page.getByRole('link', { name: 'Upload a package' }).click();
       await page.getByRole('heading', { name: 'Upload a package' }).waitFor();
-      assert.equal(await page.getByRole('status').innerText(), 'Public uploads are unavailable.');
+      await page.getByLabel('Package', {exact:true}).selectOption('@osprey/fastapi');
+      const commit = 'a'.repeat(40);
+      await page.getByLabel('Git commit').fill(commit);
+      await page.getByRole('button', {name:'Review release'}).click();
+      assert.equal(await page.locator('#review code').innerText(), commit);
+      assert.equal(await page.locator('#review strong').innerText(), '@osprey/fastapi');
+      assert.equal(await page.getByText('Public uploads are unavailable.').count(), 1);
       await page.getByRole('link', { name: 'Browse packages' }).click();
       await page.getByRole('heading', { name: 'Browse packages' }).waitFor();
       assert.equal(await page.evaluate(() => document.body.scrollWidth <= innerWidth), true);
       await page.goto('http://127.0.0.1:4187/packages/@osprey/flash-attn/');
+      const catalogStyles = await page.locator('link[rel=stylesheet]').getAttribute('href');
       await page.getByRole('link', { name: 'API documentation' }).click();
+      assert.equal(await page.locator('link[rel=stylesheet]').first().getAttribute('href'), catalogStyles);
+      assert.equal(await page.locator('.prose-brand img').getAttribute('src'), icon);
+      assert.equal(await page.getByRole('link', { name: '@osprey/flash-attn', exact: true }).first().getAttribute('href'), '/packages/@osprey/flash-attn/');
       await page.getByRole('link', { name: 'flash_attn_func', exact: true }).first().click();
       await page.getByRole('heading', { name: /flash_attn_func/ }).first().waitFor();
       await page.goto('http://127.0.0.1:4187/?q=regular-expression');

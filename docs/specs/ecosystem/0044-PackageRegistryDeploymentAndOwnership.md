@@ -89,8 +89,11 @@ The registry owns its navigation, search results, package descriptions, release 
 
 These are planned route contracts, not implemented endpoints. Preserve the existing folder-registry GET routes and their canonical `@organization/package` semantics. Control routes use immutable organization/package IDs; the API resolves and checks every ID relationship itself. In this table, `P` means `/v1/organizations/{organizationId}/packages/{packageId}`. It is notation for that exact scoped prefix, not an alternative unscoped route.
 
+The catalog, publisher profiles and generated release documentation share the Osprey Packages header, typography, stylesheet and approved tabbed-drawer icon. Keep the header anchored while scrolling and align the first content panel to the same top and side margins across routes at each viewport size. Use the same SVG for the header and favicon. Every reference page identifies its package and release and links directly back to the package.
+
 | Website/CLI flow | API surface to implement | Required actor and boundary |
 | --- | --- | --- |
+| Browse by publisher or tag | The catalog links to publisher and tag directories. Each publisher links to attributed releases and each manifest keyword links to a stable tag page listing matching packages. | Use public release attribution and validated manifest keywords. Apply the same visibility and warning rules as catalog search. |
 | Browse/search, package page, verified download | Existing `GET /v1/packages`, `GET /v1/packages/{scope}/{name}`, `GET /v1/releases/{digest}` and `/source`; search extends the catalog surface | Anonymous public projection only; every result displays its organization and known security warnings; no quarantined/private source |
 | Publisher profile and published releases | `GET /v1/publishers/{publisherId}` and paginated `GET /v1/publishers/{publisherId}/releases` | Anonymous public attribution from verified releases. Package ownership and permission to publish remain governed by spec 0045. |
 | Check a package name | `GET /v1/organizations/{organizationId}/package-name-availability?name=...` | Active member; resolve only this org/name pair, including its tombstones; never report global leaf-name availability |

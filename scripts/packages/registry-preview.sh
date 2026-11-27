@@ -23,11 +23,13 @@ release_docs() {
     target/release/osprey --docs "$release_source" --docs-dir "$docs" --docs-format html
   fi
 }
-mkdir -p "$out/sources"
-cp "$site/registry-mark.svg" "$out/"
+mkdir -p "$out/sources" "$out/tags" "$out/publishers" "$work/tags"
+cp "$site/registry-mark.svg" "$site"/form.*.mjs "$out/"
 cp -R "$site/guide" "$site/publishing" "$site/upload" "$out/"
+form_asset=("$out"/form.*.mjs)
+render local-upload "" "$(basename "${form_asset[0]}")" > "$out/upload/index.html"
 cp "$site/registry.$(shasum -a 256 src/osprey/packages/manager/web/assets/registry.css | cut -c1-12).css" "$out/"
-sed "s/form-action 'none'/connect-src 'self'; script-src 'self' 'wasm-unsafe-eval'; form-action 'self'/" "$site/_headers" > "$out/_headers"
+sed "s/script-src 'self'/script-src 'self' 'wasm-unsafe-eval'/;s/form-action 'none'/form-action 'self'/" "$site/_headers" > "$out/_headers"
 fetch packages > "$work/catalog"
 jq -er '.packages | type == "array"' "$work/catalog" >/dev/null
 jq -r '.packages[].key' "$work/catalog" > "$work/keys"
@@ -36,7 +38,7 @@ jq -r '.packages[].key' "$work/catalog" > "$work/keys"
 while IFS= read -r key; do
   [[ "$key" =~ ^@[a-z0-9][a-z0-9-]*/[a-z0-9][a-z0-9-]*$ ]]
   mkdir -p "$out/packages/$key"
-  jq -er --arg key "$key" '.packages[] | select(.key == $key) | .releases[] | [.epoch,.ordinal,.digest] | @tsv' "$work/catalog" > "$work/versions"
+  jq -er --arg key "$key" '.packages[] | select(.key == $key) | .releases | sort_by(.epoch,.ordinal)[] | [.epoch,.ordinal,.digest] | @tsv' "$work/catalog" > "$work/versions"
   : > "$work/links"
   while IFS=$'\t' read -r epoch ordinal digest; do
     [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ && "$epoch.$ordinal" =~ ^[0-9]+\.[0-9]+$ ]]
@@ -55,6 +57,7 @@ while IFS= read -r key; do
     docs="$out/packages/$key/$version/docs"
     docs_status=unavailable
     if release_docs && [[ -s "$docs/api/index.html" ]]; then
+      node scripts/packages/registry-docs.mjs "$site" "$docs" "$key" "$version"
       docs_status=generated
     else
       printf 'Documentation unavailable for %s %s\n' "$key" "$version" >&2
@@ -66,10 +69,15 @@ while IFS= read -r key; do
     fi
     render release "$version" "$digest" "$receipt" "$docs_status" >> "$work/links"
   done < "$work/versions"
-  render row "$key" "$summary" >> "$work/rows"
+  row=$(render row "$key" "$summary")
+  echo "$row" >> "$work/rows"
   metadata=$(yq -p toml -o json '.' "$work/manifest.toml")
   license=$(jq -r '.package.license // "Unspecified"' <<< "$metadata")
   keywords=$(jq -r '.package.keywords // [] | join(", ")' <<< "$metadata")
+  while IFS= read -r tag; do
+    [[ "$tag" =~ ^[a-z0-9][a-z0-9-]{0,31}$ ]]
+    echo "$row" >> "$work/tags/$tag"
+  done < <(jq -r '.package.keywords[]?' <<< "$metadata")
   deps=$(jq -r '.dependencies // {} | keys | join(", ")' <<< "$metadata")
   for field in "$license" "$keywords" "$deps"; do [[ "$field" != *$'\n'* && "$field" != *$'\r'* ]]; done
   render package "$key" "$summary" "$receipt" "$license" "${keywords:-None}" "${deps:-None}" "$(tr -d '\n' < "$work/links")" > "$out/packages/$key/index.html"
@@ -78,7 +86,22 @@ if [[ -s "$work/credits" ]]; then
   mkdir -p "$out/publishers/osprey-repository"
   render publisher "$(tr -d '\n' < "$work/credits")" > "$out/publishers/osprey-repository/index.html"
 fi
+publisher_list="No recorded publishers."
+if [[ -s "$work/credits" ]]; then
+  publisher_list='<a href="/publishers/osprey-repository/">Osprey repository publisher</a>'
+fi
+render directory Publishers "$publisher_list" > "$out/publishers/index.html"
+: > "$work/tag-links"
+for group in "$work/tags/"*; do
+  [[ -f "$group" ]] || continue
+  tag=${group##*/}
+  mkdir -p "$out/tags/$tag"
+  render directory "$tag" "$(tr -d '\n' < "$group")" > "$out/tags/$tag/index.html"
+  printf '<a class="prose-chip" href="/tags/%s/">%s</a>' "$tag" "$tag" >> "$work/tag-links"
+done
+render directory Tags "$(cat "$work/tag-links")" > "$out/tags/index.html"
 asset() {
+
   local source="$1" name="$2" ext="$3" digest
   digest=$(shasum -a 256 "$source" | cut -c1-12)
   cp "$source" "$out/$name.$digest.$ext"
