@@ -310,8 +310,8 @@ mod tests {
             render(&unit(), &raised, &package),
             Some(
                 "\nmain.osp\n  1:0  error: undocumented-export\n  2:0  error: undocumented-export\n  \
-                 3:0  info: unexampled-export\n  4:0  warning: redundant-annotation\n\n\
-                 2 errors, 1 warning, 1 info (redundant-annotation, undocumented-export, unexampled-export)"
+                 3:0  error: unexampled-export\n  4:0  warning: redundant-annotation\n\n\
+                 3 errors, 1 warning (redundant-annotation, undocumented-export, unexampled-export)"
                     .to_string()
             )
         );
@@ -325,6 +325,11 @@ mod tests {
                 (
                     osprey_types::UNDOCUMENTED_EXPORT.to_owned(),
                     osprey_types::LintLevel::Warn,
+                ),
+                // Packages deny unexampled exports; an override still lowers one to info.
+                (
+                    osprey_types::UNEXAMPLED_EXPORT.to_owned(),
+                    osprey_types::LintLevel::Info,
                 ),
             ],
         };
