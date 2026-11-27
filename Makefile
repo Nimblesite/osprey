@@ -28,6 +28,22 @@ build: _runtime _runtime_klee $(EXT_NODE_DEPS)
 	$(MAKE) _zed_build
 	cd $(EXT_DIR) && npm run compile
 
+## downstream: Lay the split repositories, Nimblesite/osprey-packages and Nimblesite/perception, over this
+##             checkout at the commits scripts/ci/downstream.json pins (gitignored paths). Needs read
+##             access to both. Expect "downstream: <name> at <commit>" for each. [REPO-SPLIT-CANARY]
+.PHONY: downstream canaries
+downstream:
+	bash scripts/ci/downstream.sh
+
+## canaries: Each split repository's `make canary` against this compiler: the package manager's
+##         fixtures, client and consumer flow; Perception's synth journeys and song renderer.
+canaries: build downstream
+	$(MAKE) _canaries
+
+_canaries:
+	$(MAKE) -f scripts/make/osprey-packages.mk canary OSPREY_PREBUILT=1
+	$(MAKE) -f scripts/make/perception.mk canary OSPREY_PREBUILT=1
+
 ## audit: Full dependency vulnerability scan; scanner errors and advisories fail.
 .PHONY: audit
 audit:
@@ -39,16 +55,14 @@ audit:
 ##       Projects listed in coverage-thresholds.json are each tested + checked.
 test: build _build_c_runtime_tests
 	@echo "==> Testing (fail-fast + coverage + per-project thresholds)..."
-	$(MAKE) -C src/toolchain/targets/tests synth APP_SUITE_PREBUILT=1
 	$(MAKE) _test_runtime_incremental
 	$(MAKE) _test_rust
 	$(MAKE) _coverage_check_rust
 	$(MAKE) _check_programs
 	$(MAKE) _test_packages
 	$(MAKE) _coverage_check_packages
-	$(MAKE) target/osprey-pkg
-	$(MAKE) _test_registry REGISTRY_MEMORY=gc
-	$(MAKE) _test_registry REGISTRY_MEMORY=arc
+	$(MAKE) downstream
+	$(MAKE) _canaries
 	$(MAKE) _test_python_app_ports
 	$(MAKE) _test_agent
 	$(MAKE) _test_c_runtime

@@ -9,14 +9,32 @@
 .deslop
 .mcp.json
 
-# Terraform state and inputs hold secrets
-src/osprey/packages/manager/ops/terraform/.terraform/
-src/osprey/packages/manager/ops/terraform/*.tfstate
-src/osprey/packages/manager/ops/terraform/*.tfstate.*
-src/osprey/packages/manager/ops/terraform/*.tfplan
-src/osprey/packages/manager/ops/terraform/*.tfvars
-src/osprey/packages/manager/ops/terraform/*.tfvars.json
-src/osprey/packages/manager/ops/terraform/crash.log
+# The split repositories' files, laid over this checkout by scripts/ci/downstream.sh at the
+# commits scripts/ci/downstream.json pins [REPO-SPLIT-CANARY]. They are never tracked here.
+/target/downstream/
+/src/osprey/packages/manager/
+/src/toolchain/schemas/package-registry.td
+/scripts/ci/ci-registry-contract-tests.mjs
+/src/toolchain/hosts/web/src/registry-form.mjs
+/src/toolchain/hosts/web/src/registry-catalog.mjs
+/scripts/packages/archive-registry-site.py
+/scripts/packages/check-registry-hosted-image.mjs
+/scripts/packages/registry-browser-fixture.cjs
+/scripts/packages/registry-docs.mjs
+/scripts/packages/registry-preview.sh
+/scripts/packages/serve-registry-preview.py
+/scripts/packages/test-registry-preview.cjs
+/scripts/packages/test-package-publication.py
+/scripts/packages/test-package-interruption.py
+/src/osprey/examples/daw/
+/src/toolchain/hosts/synth_vst/
+/src/toolchain/hosts/ferroui/
+/scripts/make/daw-profile.sh
+/scripts/make/daw-video.sh
+/scripts/make/daw-playback-rate.mjs
+/src/toolchain/targets/macos/tests/prism-icon.sh
+/scripts/make/osprey-packages.mk
+/scripts/make/perception.mk
 
 # Coverage and test reports
 coverage/
@@ -77,7 +95,6 @@ src/osprey/examples/llms/gpt2/weights/
 /core
 /core.*
 
-/src/toolchain/hosts/ferroui/docs
 
 # Playwright MCP page snapshots (tool output, never source)
 .playwright-mcp/

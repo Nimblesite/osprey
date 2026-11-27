@@ -8,7 +8,6 @@ import { runStagedBundleFixture, nativeArchives, proofAssets, withTempDir } from
 import { targetsMainPullRequests } from './workflow-pr-target.mjs'
 import { registerLintContracts } from './ci-lint-contract-tests.mjs'
 import { registerProofContracts } from './ci-proof-contract-tests.mjs'
-import { registerRegistryContracts } from './ci-registry-contract-tests.mjs'
 import { job, makeRecipe } from './ci-workflow-text.mjs'
 
 // The workflow nearly every contract here is written against: its text, and
@@ -235,21 +234,28 @@ test('GPUI smoke and self-tests reuse the app libraries already compiled by the 
   assert.doesNotMatch(planned.stdout, /--compile/)
 })
 
-test('local CI and hosted GPUI run the same DAW suite once with their built compiler', () => {
-  const command = 'make -C src/toolchain/targets/tests synth APP_SUITE_PREBUILT=1'
+test('local CI and hosted CI run both split repositories\' canaries once with their built compiler', () => {
+  // [REPO-SPLIT-CANARY] Nimblesite/osprey-packages and Nimblesite/perception at their pinned commits.
   assert.equal(makeRecipe('ci').filter((line) => line === '$(MAKE) test').length, 1)
-  assert.equal(testRecipe.filter((line) => line === command.replace(/^make/, '$(MAKE)')).length, 1)
-  const hosted = job('ubuntu-suites', '.github/workflows/gpui.yml')
+  const laid = testRecipe.indexOf('$(MAKE) downstream')
+  assert.ok(laid >= 0, 'make test lays the split repositories')
+  assert.equal(testRecipe.filter((line) => line === '$(MAKE) _canaries').length, 1)
+  assert.ok(testRecipe.indexOf('$(MAKE) _canaries') > laid, 'the canaries run on the laid repositories')
+  assert.ok(!testRecipe.some((line) => /_test_registry|targets\/tests synth/.test(line)), 'their full suites run in their own repositories')
+  const hosted = job('test-canary', '.github/workflows/ci.yml')
   const setup = hosted.indexOf('uses: ./.github/actions/setup-osprey-compiler')
-  // The DAW part of the matrix runs its command in the step after the compiler is set up.
-  assert.equal(hosted.split(`run: ${command}\n`).length - 1, 1)
-  assert.ok(setup >= 0 && hosted.indexOf('run: ${{ matrix.run }}') > setup)
-  assert.doesNotMatch(hosted, /osprey test src\/osprey\/examples\/daw\/test/)
-  const planned = spawnSync('make', ['-n', ...command.split(' ').slice(1)], { encoding: 'utf8' })
-  assert.equal(planned.status, 0, planned.stderr)
-  assert.match(planned.stdout, /SUITES=src\/osprey\/examples\/daw\/test/)
-  assert.match(planned.stdout, /target\/release\/osprey test \$suite \|\| exit 1/)
-  assert.doesNotMatch(planned.stdout, /cargo build|clang |gcc /)
+  const packages = hosted.indexOf('name: osprey-packages')
+  const perception = hosted.indexOf('name: perception')
+  const run = hosted.indexOf('run: make _canaries\n')
+  assert.ok(setup >= 0 && packages > setup && perception > packages && run > perception, hosted)
+  assert.match(hosted, /ssh-key: \$\{\{ secrets\.OSPREY_PACKAGES_DEPLOY_KEY \}\}/)
+  assert.match(hosted, /ssh-key: \$\{\{ secrets\.PERCEPTION_DEPLOY_KEY \}\}/)
+  assert.match(job('ci', '.github/workflows/ci.yml'), /^      - test-canary$/m)
+  // Each repository's own `make canary`, never a copy of its recipe, with the prebuilt compiler.
+  assert.deepEqual(makeRecipe('_canaries'), ['$(MAKE) -f scripts/make/osprey-packages.mk canary OSPREY_PREBUILT=1',
+    '$(MAKE) -f scripts/make/perception.mk canary OSPREY_PREBUILT=1'])
+  assert.ok(makeRecipe('canaries').includes('$(MAKE) _canaries'))
+  assert.deepEqual(makeRecipe('downstream'), ['bash scripts/ci/downstream.sh'])
 })
 
 test('coverage identifies failed or skipped report producers before downloading artifacts', () => {
@@ -262,11 +268,11 @@ test('coverage identifies failed or skipped report producers before downloading 
   })
   assert.equal(run({}).status, 0)
   const failed = run({ 'test-c-runtime': { result: 'skipped' }, 'test-rust': { result: 'failure' },
-    'test-registry-arc': { result: 'cancelled' } })
+    'test-packages': { result: 'cancelled' } })
   assert.equal(failed.status, 1)
   assert.match(failed.stdout, /test-c-runtime: skipped/)
   assert.match(failed.stdout, /test-rust: failure/)
-  assert.match(failed.stdout, /test-registry-arc: cancelled/)
+  assert.match(failed.stdout, /test-packages: cancelled/)
 })
 
 const stagedBundleFixture = (change) => runStagedBundleFixture(extensionJob, change)
@@ -481,7 +487,6 @@ test('the ignored GPT-2 parity test runs in CI from a cached checkpoint, by name
 
 registerProofContracts(ciJob('test-proof'))
 
-registerRegistryContracts()
 
 test('every release publishes only after an unconditional dependency audit', () => {
   assert.match(job('audit'), /uses: \.\/\.github\/workflows\/ci-audit\.yml/)

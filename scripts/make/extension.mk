@@ -58,20 +58,25 @@ _vsix_clean:
 # root manifest is the truthful local copy. [EDITOR-VERSIONING]
 # The editor ships a compiled Osprey package client; installations never compile
 # package-manager application sources on the user's machine. [PACKAGE-API]
-REGISTRY_CLIENT_SOURCES := $(shell find src/osprey/packages/manager -type f \( -name '*.osp' -o -name 'osprey.toml' \))
+# The package manager lives in Nimblesite/osprey-packages; `make downstream` lays it at
+# src/osprey/packages/manager at the commit scripts/ci/downstream.json pins. [REPO-SPLIT]
+REGISTRY_CLIENT_SOURCES := $(shell find src/osprey/packages/manager -type f \( -name '*.osp' -o -name 'osprey.toml' \) 2>/dev/null)
+.PHONY: _downstream_packages
+_downstream_packages:
+	@test -f src/osprey/packages/manager/cli/osprey.toml || { echo "The package manager is not laid down: run make downstream" >&2; exit 1; }
 # `--no-warnings` skips the warning pass: the redundant-annotation oracle
 # re-infers the whole program once per proof, which on the client is the
 # difference between 40 s and 31 min (one 7 s solve per annotation site).
 # `--quiet` alone silences progress only; warnings are diagnostics and would
 # still be computed. Package warnings are `osprey --check`'s and the editor's
 # to show; a packaging build only ships.
-target/osprey-pkg: $(BIN) $(REGISTRY_CLIENT_SOURCES)
+target/osprey-pkg: $(BIN) $(REGISTRY_CLIENT_SOURCES) | _downstream_packages
 	$(BIN) build src/osprey/packages/manager/cli --quiet --no-warnings -o $@
 
 NATIVE_HOST_ENTRY := src/osprey/packages/native/host/entry.ospml
 
-PACKAGE_WORKSPACE_SOURCES := $(NATIVE_HOST_ENTRY) $(shell find src/osprey/packages/manager/editor src/osprey/packages/native/src src/osprey/packages/graphics/src src/osprey/packages/json/src src/osprey/packages/vscode/src -type f \( -name '*.osp' -o -name '*.ospml' -o -name 'osprey.toml' \))
-target/package-workspace.wasm: $(BIN) $(PACKAGE_WORKSPACE_SOURCES) | _runtime_wasm
+PACKAGE_WORKSPACE_SOURCES := $(NATIVE_HOST_ENTRY) $(shell find src/osprey/packages/manager/editor src/osprey/packages/native/src src/osprey/packages/graphics/src src/osprey/packages/json/src src/osprey/packages/vscode/src -type f \( -name '*.osp' -o -name '*.ospml' -o -name 'osprey.toml' \) 2>/dev/null)
+target/package-workspace.wasm: $(BIN) $(PACKAGE_WORKSPACE_SOURCES) | _runtime_wasm _downstream_packages
 	$(BIN) build src/osprey/packages/manager/editor --target=wasm32 --quiet --no-warnings -o $@
 
 WORKBENCH_SOURCES := $(NATIVE_HOST_ENTRY) src/osprey/workbench/osprey.toml $(shell find src/osprey/workbench/src src/osprey/examples/proof/kernel/src src/osprey/packages/native/src src/osprey/packages/graphics/src src/osprey/packages/json/src src/osprey/packages/vscode/src -type f -name '*.ospml')
@@ -84,7 +89,7 @@ target/workbench.wasm: $(BIN) $(WORKBENCH_SOURCES) | _runtime_wasm
 # `make -C src/osprey/packages registry-serve` serves. The VSIX carries no
 # packages: building it never publishes them. The stamp sits outside the tree,
 # where a stray file would be refused by the catalog walk.
-target/osprey-registry: $(BIN) $(REGISTRY_CLIENT_SOURCES)
+target/osprey-registry: $(BIN) $(REGISTRY_CLIENT_SOURCES) | _downstream_packages
 	$(BIN) build src/osprey/packages/manager/api --quiet --no-warnings -o $@
 
 #

@@ -22,7 +22,16 @@ fn registry_classifies_the_compilers_ambient_builtin_inventory() {
     ] {
         declare(&mut ambient);
     }
-    let surface = include_str!("../../../../../osprey/packages/manager/core/src/surface.osp");
+    // The registry lives in Nimblesite/osprey-packages, laid at its pinned commit by `make
+    // downstream`; read at run time so the crate builds without it. [REPO-SPLIT-CANARY]
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../osprey/packages/manager/core/src/surface.osp"
+    );
+    let surface = match std::fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(error) => panic!("{path}: {error}; lay the package manager with `make downstream`"),
+    };
     for name in ambient.bound_names() {
         assert!(
             name.starts_with("http")

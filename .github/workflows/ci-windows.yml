@@ -34,6 +34,7 @@ jobs:
   winui:
     if: ${{ github.event_name == 'workflow_dispatch' }}
     uses: ./.github/workflows/winui.yml
+    secrets: inherit
 
   gpui:
     if: ${{ github.event_name == 'workflow_dispatch' }}
@@ -128,6 +129,14 @@ jobs:
           CC_PATH="$(cygpath -m /ucrt64/bin/clang.exe)"
           "$CC_PATH" --version | head -1
           echo "OSPREY_CC=$CC_PATH" >> "$GITHUB_ENV"
+
+      # The package client and local registry ship in every release; this job checks the Windows client, built from the package
+      # manager at the commit scripts/ci/downstream.json pins. [REPO-SPLIT]
+      - name: Lay the package manager (Nimblesite/osprey-packages)
+        uses: ./.github/actions/downstream
+        with:
+          name: osprey-packages
+          ssh-key: ${{ secrets.OSPREY_PACKAGES_DEPLOY_KEY }}
 
       # release.yml compiles the package manager client on this same runner
       # and ships it in the win32 tarball, so a Windows-only compile failure

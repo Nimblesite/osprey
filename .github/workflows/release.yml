@@ -159,6 +159,14 @@ jobs:
           make _runtime CC=gcc AR=ar SHELL=/usr/bin/bash MKDIR='mkdir -p'
           cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 
+      # The package client and local registry ship in every release, built from the package
+      # manager at the commit scripts/ci/downstream.json pins. [REPO-SPLIT]
+      - name: Lay the package manager (Nimblesite/osprey-packages)
+        uses: ./.github/actions/downstream
+        with:
+          name: osprey-packages
+          ssh-key: ${{ secrets.OSPREY_PACKAGES_DEPLOY_KEY }}
+
       - name: Compile package manager client (Linux/macOS)
         if: runner.os != 'Windows'
         shell: bash
@@ -734,6 +742,7 @@ jobs:
     needs: [scope, audit]
     if: ${{ needs.scope.outputs.website == 'true' && !contains(github.ref_name, '-') }}
     uses: ./.github/workflows/deploy-pages.yml
+    secrets: inherit
     permissions:
       contents: read
       pages: write

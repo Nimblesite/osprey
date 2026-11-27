@@ -10,7 +10,7 @@
 .PHONY: build test lint fmt clean ci setup run install \
 	\
 	_language-test _deslop _gpu-demo _graphics-shader \
-	_test_gc_stack_root _test_c_runtime _test_gpu_device _coverage_check_c_runtime _bank_test _test_bench_tools _test_registry _test_registry_blockers \
+	_test_gc_stack_root _test_c_runtime _test_gpu_device _coverage_check_c_runtime _bank_test _test_bench_tools _canaries \
 	_runtime_klee _test_hunt_mock \
 	_vsix_rebuild_reinstall _vsix_windows_tools _vsix_clean _vsix_bundle _vsix_package _vsix_install _graphics _graphics-smoke
 

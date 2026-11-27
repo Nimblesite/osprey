@@ -12,12 +12,12 @@ package, not a program: a type discipline's manifest names its checker, which is
 a program: it serves only the optional tsc lint ([FLAVOR-TS-SELECT]). Files under a project that fails are covered by its FAIL line.
 Left out, each checked elsewhere: failscompilation/ (must be rejected: the
 book's .expectederror goldens and osprey-cli's examples_compile), and the
-registry data (sample-registry/, e2e/consumer/, fixtures/manifests/), which
-resolves only through a registry and is built by make _test_registry, and the
 errors prelude unit, which declares the built-in IndexOutOfBounds no program may
 redeclare and is checked attached to every program that reads a list
-([BUILTIN-LIST-GET]). The editor hides the same set: keep `osprey.diagnostics.exclude`
-in .vscode/settings.json in step with EXCLUDED.
+([BUILTIN-LIST-GET]). Only tracked files are programs here: the split repositories `make downstream`
+lays are checked in their own CI. The editor hides the same set, plus the registry data a laid
+osprey-packages carries (sample-registry/, e2e/consumer/, fixtures/manifests/), which resolves only
+through a registry: keep `osprey.diagnostics.exclude` in .vscode/settings.json in step with EXCLUDED.
 Run: OSPREY_BIN=<compiler> osprey scripts/ci/check-programs.py --run
 """
 
@@ -25,7 +25,7 @@ WORK = "target/check-programs"
 COMPILER = "\"${OSPREY_BIN:-target/release/osprey}\""
 POOL = 16
 NEWLINE = "\n"
-EXCLUDED = ["/failscompilation/", "/sample-registry/", "/e2e/consumer/", "/fixtures/manifests/", "/osprey-types/src/prelude/errors.osp"]
+EXCLUDED = ["/failscompilation/", "/osprey-types/src/prelude/errors.osp"]
 MARKERS = ["# osprey: flavor=", "#osprey: flavor=", "// osprey: flavor=", "//osprey: flavor="]
 SOURCE_KEY = "\"source\":\""
 SOURCES_KEY = "\"sources\":["

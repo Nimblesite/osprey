@@ -175,7 +175,6 @@ _gpui-self-test: _gpui-apps
 		app=$${pair%%:*}; script=$${pair##*:}; \
 		OSPREY_BIN="$(CURDIR)/$(BIN)" OSPREY_GPUI_PREBUILT=1 bash $$app/run.sh --self-test "$(CURDIR)/$$script/self-test.json" "$(CURDIR)/target/gpui-self-test/$$(basename $$script)" $(GPUI_WINDOW) || exit 1; \
 	done
-	$(if $(filter Darwin,$(UNAME_S)),$(MAKE) _prism_ui_test OSPREY_GPUI_PREBUILT=1)
 
 ## _gpui-app-self-test: One app's self-test.json on the GPUI host. [UI-MACHINE-SELF-TEST]
 .PHONY: _gpui-app-self-test
@@ -243,9 +242,9 @@ _qwen-lanes:
 	$(if $(filter real pydantic ui,$(LANES)),GGUF=$$(sh $(QWEN_DIR)/pull.sh) &&) OSPREY_QWEN_GGUF="$$GGUF" OSPREY_COMPILER="$(CURDIR)/$(BIN)" $(QWEN_PYTHON) -I $(QWEN_DIR)/server/tests/clients.cpython $(LANES)
 
 ## _ui-test: The UI test framework's own suite and the apps it drives by accessible
-##           label alone, casting, signal flow and the synth, with no host or window. [UI-MACHINE-TEST]
+##           label alone, casting and signal flow, with no host or window. [UI-MACHINE-TEST]
 .PHONY: _ui-test
-UI_SUITES := src/osprey/packages/uitest/tests src/osprey/examples/casting/test src/osprey/packages/signal_flow/tests src/osprey/examples/daw/test
+UI_SUITES := src/osprey/packages/uitest/tests src/osprey/examples/casting/test src/osprey/packages/signal_flow/tests
 _ui-test: _runtime
 	$(COMPILER_BUILD)
 	for suite in $(UI_SUITES); do $(BIN) test $$suite || exit 1; done
@@ -256,14 +255,13 @@ _gpui-test: _runtime_macos _runtime
 	python3 src/toolchain/hosts/gpui/dependencies.py
 	python3 src/toolchain/hosts/gpui/dependencies_test.py
 	$(COMPILER_BUILD)
-	for suite in src/osprey/packages/native/tests src/osprey/packages/signal_flow/tests src/osprey/examples/daw/test src/osprey/examples/gpui/flock/test src/osprey/examples/gpui/painting/test; do \
+	for suite in src/osprey/packages/native/tests src/osprey/packages/signal_flow/tests src/osprey/examples/gpui/flock/test src/osprey/examples/gpui/painting/test; do \
 		$(BIN) test $$suite || exit 1; \
 	done
 	$(MAKE) _gpui-smoke _gpui-self-test
 	cd src/toolchain/hosts/gpui && cargo test --release && cargo clippy --release -- -D warnings
 
-# Compile every app's archive once for the smoke and self-test targets. The synth wrapper bundles
-# and opens the app after its inner run.sh returns, so compile its archive directly instead.
+# Compile every app's archive once for the smoke and self-test targets.
 .PHONY: _gpui-apps
 _gpui-apps:
 	pids=; \
@@ -271,8 +269,6 @@ _gpui-apps:
 		OSPREY_BIN="$(CURDIR)/$(BIN)" bash $$app/run.sh --compile & \
 		pids="$$pids $$!"; \
 	done; \
-	OSPREY_GPUI_APP="$(CURDIR)/src/osprey/examples/daw" OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/toolchain/hosts/gpui/run.sh --compile & \
-	pids="$$pids $$!"; \
 	status=0; \
 	for pid in $$pids; do wait $$pid || status=1; done; \
 	exit $$status
@@ -281,30 +277,5 @@ _gpui-apps:
 # Every desktop app started in the GPUI host without a window, its smoke.jsonl replayed through the
 # real C boundary; the probe's has no script and taps its Add button. [GPUI-HOST-VERIFICATION]
 _gpui-smoke: _gpui-apps
-	for app in src/toolchain/hosts/gpui src/osprey/examples/gpui/flock src/osprey/examples/gpui/painting src/osprey/packages/signal_flow/app src/osprey/examples/daw src/osprey/examples/casting; do OSPREY_BIN="$(CURDIR)/$(BIN)" OSPREY_GPUI_PREBUILT=1 bash $$app/run.sh --smoke || exit 1; done
+	for app in src/toolchain/hosts/gpui src/osprey/examples/gpui/flock src/osprey/examples/gpui/painting src/osprey/packages/signal_flow/app src/osprey/examples/casting; do OSPREY_BIN="$(CURDIR)/$(BIN)" OSPREY_GPUI_PREBUILT=1 bash $$app/run.sh --smoke || exit 1; done
 
-## _synth_vst_build: Build Prism's isolated VST3 worker from the pinned official SDK.
-.PHONY: _synth_vst_build _synth_vst_test
-_synth_vst_build:
-	python3 src/toolchain/hosts/synth_vst/build.py
-
-## _synth_vst_test: Scan and process real SDK instruments/effects without a window or audio device.
-_synth_vst_test:
-	python3 src/toolchain/hosts/synth_vst/build.py --test
-
-# The host every app links into, built in the host's own target directory, which CI caches.
-GPUI_HOST_BIN := src/toolchain/hosts/gpui/target/release/osprey-gpui
-
-# Prism's editable graph, module insertion and bottom dock in the real native host.
-.PHONY: _prism_ui_test
-_prism_ui_test: _runtime_macos_arc
-	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/daw/run.sh --bundle
-	OSPREY_GPUI_APP_NAME=synth OSPREY_GPUI_TITLE="Prism Synth" OSPREY_GPUI_WINDOW=1152x756 OSPREY_GPUI_CHROME=bare python3 src/toolchain/hosts/synth_vst/build.py --design-test "$(CURDIR)/$(GPUI_HOST_BIN)" $(GPUI_WINDOW)
-
-## _prism_vst_ui_test: Drive Prism's native VST menu against real SDK modules and worker processes.
-.PHONY: _prism_vst_ui_test
-_prism_vst_ui_test: _runtime_macos_arc
-	$(COMPILER_BUILD)
-	python3 src/toolchain/hosts/synth_vst/build.py --test
-	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/daw/run.sh --bundle
-	python3 src/toolchain/hosts/synth_vst/build.py --prism-test "$(CURDIR)/$(GPUI_HOST_BIN)" $(PRISM_TEST_MODE)
