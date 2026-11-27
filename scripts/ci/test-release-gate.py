@@ -95,6 +95,8 @@ def gate_script(text):
 
 NATIVE_ARCHIVES = tuple(f"lib{name}{mode}.a" for name in ("fiber_runtime", "http_runtime")
                         for mode in ("_ownership", "_gc", "_arc"))
+# Linux and macOS tarballs carry the wasm32 runtimes too (#420).
+WASM_ARCHIVES = ("libosprey_runtime_wasm_arc.a", "libosprey_runtime_wasm_ownership.a")
 APPLE_ARCHIVES = tuple(f"libosprey_runtime_{target}{mode}.a" for target in ("ios", "ios_sim", "macos")
                        for mode in ("_ownership", "_arc"))
 
@@ -111,7 +113,7 @@ def package_result(text, platform, archives, empty_archive=""):
         for name in ("target/release/osprey", "target/osprey-pkg", "target/osprey-registry"):
             (root/name).write_text("binary")
         (root/"target/local-registry").mkdir()
-        for name in (*NATIVE_ARCHIVES, *archives):
+        for name in (*NATIVE_ARCHIVES, *WASM_ARCHIVES, *archives):
             (root/"src/toolchain/compiler/lib"/name).write_text("" if name == empty_archive else "archive")
         return subprocess.run(["bash", "-euo", "pipefail", "-c", script], cwd=root,
                               capture_output=True, text=True)
