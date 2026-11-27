@@ -147,7 +147,7 @@ module Extras
 
     (** "run and http requests encode their bounds, headers and slices (extra: a POST carries two headers and a body)". *)
     export runHttpRows () =
-        http = Requests::ask ("post:1", ui::Http(method = "POST", url = "https://example.test/submit", headers = [ui::Header(headerName = "Content-Type", headerValue = "application/json"), ui::Header(headerName = "Accept", headerValue = "text/plain")], body = "{\"a\":1}", responseLimit = 512, deadline = 45000, httpSlice = "work/post"))
+        http = Requests::ask ("post:1", ui::Http(method = "POST", url = "https://example.test/submit", headers = [ui::Header(headerName = "Content-Type", headerValue = "application/json"), ui::Header(headerName = "Accept", headerValue = "text/plain")], body = "{\"a\":1}", responseLimit = 512, deadline = 45000, responseSlice = "work/post"))
         expect (rowsOf http, "0/10/post:1;1/0/POST;2/0/https://example.test/submit;3/0/Content-Type;3/0/application/json;3/0/Accept;3/0/text/plain;4/0/{\"a\":1};5/512/;6/45000/;7/0/work/post")
         expect (rowsOf (runRequest true), "0/1/ps;1/0//bin/ps;2/0/-axo;2/0/pid=;3/10000/;4/8000000/;5/1/;6/0/work/run")
 

@@ -211,6 +211,17 @@ module SurfaceTests {
         Fixtures::report("sample-registry surfaces", cases, sampleSurface)
     }
 
+    fn nativeSurface() = {
+        let root = "src/osprey/packages/native/src"
+        let paths = filterList(listDir(root) ?: [], fn(path) => endsWith(path, ".ospml"))
+        let files = mapList(paths, fn(path) => file(path, readFile(path) ?: ""))
+        checkAll("native package requires no ambient grants", [
+            !isEmpty(files),
+            foldList(files, true, fn(ok, source) => ok && byteLength(source.content) > 0),
+            surfaceOfFiles(files, [])
+        ])
+    }
+
     /// Every surface test.
     export fn run() = {
         test("surface: table equals the fixture", tableMatchesFixture)
@@ -226,5 +237,6 @@ module SurfaceTests {
         test("surface: native declaration whitespace", nativeWhitespace)
         test("surface: TypeScript-flavor sources", typescriptSources)
         test("surface: sample-registry goldens", sampleSurfaces)
+        test("surface: native package requires no ambient grants", nativeSurface)
     }
 }

@@ -393,7 +393,7 @@ runPlistCases () = [
 ]
 test ("run and http requests encode their bounds, headers and slices", \() => ui::Runtime::guarded (\() =>
     forEachList (runPlistCases (), \probe => expect (rowsOf (runRequest probe.plist), probe.encoded))
-    expect (rowsOf (Requests::ask ("kev", ui::Http(method = "GET", url = "https://example.test/feed", headers = [ui::Header(headerName = "Accept", headerValue = "application/json")], body = "", responseLimit = 1000, deadline = 30000, httpSlice = "work/http"))), "0/10/kev;1/0/GET;2/0/https://example.test/feed;3/0/Accept;3/0/application/json;4/0/;5/1000/;6/30000/;7/0/work/http")
+    expect (rowsOf (Requests::ask ("kev", ui::Http(method = "GET", url = "https://example.test/feed", headers = [ui::Header(headerName = "Accept", headerValue = "application/json")], body = "", responseLimit = 1000, deadline = 30000, responseSlice = "work/http"))), "0/10/kev;1/0/GET;2/0/https://example.test/feed;3/0/Accept;3/0/application/json;4/0/;5/1000/;6/30000/;7/0/work/http")
     write = Requests::write ("echo", "text")
     expect ("${write.sliceKey}=${write.sliceText}", "echo=text")))
 

@@ -192,7 +192,7 @@ module Model
     (** Asks `provider`'s API which models it offers, with its key. *)
     export listingOf (settings, provider) =
         ticket = "models:${provider}"
-        Requests::ask (ticket, ui::Http(method = "GET", url = Engine::models_url provider, headers = [ui::Header(headerName = "Authorization", headerValue = "Bearer ${keyOf (settings, provider)}")], body = "", responseLimit = 4000000, deadline = 30000, httpSlice = ticket))
+        Requests::ask (ticket, ui::Http(method = "GET", url = Engine::models_url provider, headers = [ui::Header(headerName = "Authorization", headerValue = "Bearer ${keyOf (settings, provider)}")], body = "", responseLimit = 4000000, deadline = 30000, responseSlice = ticket))
 
     (** The listing requests for every provider whose key arrived between `before` and `after`. *)
     export newlyKeyed (before, after) = mapList (filterList (Engine::provider_ids (), \provider => keyOf (before, provider) == "" && keyOf (after, provider) != ""), \provider => listingOf (after, provider))

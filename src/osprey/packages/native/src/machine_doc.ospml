@@ -85,7 +85,7 @@ module MachineDocs
     // ---- values and conditions ----
 
     (** A declared input type by name; an unknown name reads as text. *)
-    export kindOf name = match name
+    export inputKind name = match name
         "bool" => IsBool
         "number" => IsNumber
         "trigger" => IsTrigger
@@ -271,7 +271,7 @@ module MachineDocs
 
     knob (inputs, name) =
         spec = Doc::field (inputs, name)
-        kind = kindOf (Doc::text (spec, "type"))
+        kind = inputKind (Doc::text (spec, "type"))
         Knob(knobName = name, knobType = kind, knobValue = Pick::either (Doc::has (spec, "value"), literal (Doc::field (spec, "value")), Machines::blank kind))
 
     decoded doc =

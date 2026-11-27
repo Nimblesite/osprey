@@ -26,7 +26,7 @@ module Canvases
         Negated inner => Negated(negated = stampedWhen (inner, choice, i))
         Fired name => Fired(firedName = stamped (name, choice, i))
         InState layer names => InState(inLayer = stamped (layer, choice, i), inStates = mapList (names, \n => stamped (n, choice, i)))
-        Compared input by literal => Compared(comparedInput = stamped (input, choice, i), comparedBy = by, comparedWith = stampedValue (literal, choice, i))
+        Compared inputName by literal => Compared(comparedInput = stamped (inputName, choice, i), comparedBy = by, comparedWith = stampedValue (literal, choice, i))
         Always => Always
 
     stampedLever (lever, choice, i) = match lever

@@ -59,7 +59,7 @@ module Turn
         ticket = "model:${chat.chatId}:${store.ticketCount}"
         key = Model::keyOf (store.settings, Engine::provider_id_of chat.chatModel)
         auth = Pick::either (key == "", [], [ui::Header(headerName = "Authorization", headerValue = "Bearer ${key}")])
-        request = Requests::ask (ticket, ui::Http(method = "POST", url = Engine::url chat.chatModel, headers = listPrepend auth (ui::Header(headerName = "Content-Type", headerValue = "application/json")), body = body, responseLimit = responseLimit (), deadline = deadline (), httpSlice = ticket))
+        request = Requests::ask (ticket, ui::Http(method = "POST", url = Engine::url chat.chatModel, headers = listPrepend auth (ui::Header(headerName = "Content-Type", headerValue = "application/json")), body = body, responseLimit = responseLimit (), deadline = deadline (), responseSlice = ticket))
         moved = thinking (store, chat, ticket)
         Runtime::asking (moved, [request])
 
@@ -130,7 +130,7 @@ module Turn
                         "url" =>
                             brief = Doc::parse (McpClient::start_brief server.serverConfig)
                             headers = McpRun::httpHeaders (brief, waiting.serverSession)
-                            Requests::ask ("mcphttp:${server.serverName}", ui::Http(method = "POST", url = Doc::text (brief, "url"), headers = headers, body = wire.text, responseLimit = McpRun::httpLimit (), deadline = McpRun::callMs (), httpSlice = "mcphttp:${server.serverName}"))
+                            Requests::ask ("mcphttp:${server.serverName}", ui::Http(method = "POST", url = Doc::text (brief, "url"), headers = headers, body = wire.text, responseLimit = McpRun::httpLimit (), deadline = McpRun::callMs (), responseSlice = "mcphttp:${server.serverName}"))
                         _ => Requests::ask ("mcpwrite:${server.serverName}", ui::ProcessWrite(writeHandle = "mcp:${server.serverName}", writeBytes = wire.text))
                     Runtime::asking (moved, [request])
 

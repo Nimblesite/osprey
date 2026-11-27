@@ -64,7 +64,7 @@ module Hosting
     whole value = floatToInt value ?: (0 - 1)
 
     scene<S, A> : (Surface<S, A>, Touch, Input) -> Result<Message<A>, string>
-    scene (held, touch, input) = Surfaces::scene (held, touch.touchOrdinal, input)
+    scene (held, touch, sceneEvent) = Surfaces::scene (held, touch.touchOrdinal, sceneEvent)
 
     // The message a delivering kind means; an accumulating or unknown kind is refused here.
     message<S, A> : (Surface<S, A>, Touch) -> Result<Message<A>, string>
