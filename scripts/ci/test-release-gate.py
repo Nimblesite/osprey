@@ -225,18 +225,39 @@ def decision_failures(script, summary):
     return failures
 
 
+WINDOWS_TOOLCHAIN = pathlib.Path(".github/actions/setup-windows-msys2/action.yml")
+WINDOWS_TOOLCHAIN_STEP = "      - uses: ./.github/actions/setup-windows-msys2"
+
+
+def pin_failures(where, text, indent):
+    """The MinGW clang pin step in `text`, and that it exports OSPREY_CC."""
+    pin = re.search(rf"^{indent}- name: Pin the MinGW clang[^\n]*", text, re.MULTILINE)
+    if pin is None:
+        return None, [f"{where}: pin MinGW clang before compiling the Windows package client"]
+    block = text[pin.end():].split(f"{indent}- name:", 1)[0]
+    if 'echo "OSPREY_CC=$CC_PATH" >> "$GITHUB_ENV"' not in block:
+        return pin, [f"{where}: export the pinned compiler as OSPREY_CC"]
+    return pin, []
+
+
 def windows_compiler_failures():
+    """release.yml pins the MinGW clang itself; Windows CI pins it in the shared
+    toolchain action, which the package client's job sets up before compiling."""
     failures = []
-    for workflow in (WORKFLOW, pathlib.Path(".github/workflows/ci-windows.yml")):
-        text = workflow.read_text()
-        pin = re.search(r"^      - name: Pin the MinGW clang[^\n]*", text, re.MULTILINE)
-        build = re.search(r"^      - name: Compile package manager client(?: \(Windows\))?$", text, re.MULTILINE)
-        if pin is None or build is None or pin.start() >= build.start():
-            failures.append(f"{workflow}: pin MinGW clang before compiling the Windows package client")
-            continue
-        block = text[pin.end():].split("      - name:", 1)[0]
-        if 'echo "OSPREY_CC=$CC_PATH" >> "$GITHUB_ENV"' not in block:
-            failures.append(f"{workflow}: export the pinned compiler as OSPREY_CC")
+    build_step = re.compile(r"^      - name: Compile package manager client(?: \(Windows\))?$", re.MULTILINE)
+    text = WORKFLOW.read_text()
+    pin, found = pin_failures(WORKFLOW, text, "      ")
+    build = build_step.search(text)
+    if pin is not None and (build is None or pin.start() >= build.start()):
+        found.append(f"{WORKFLOW}: pin MinGW clang before compiling the Windows package client")
+    failures += found
+    ci = pathlib.Path(".github/workflows/ci-windows.yml")
+    text = ci.read_text()
+    setup = text.find(WINDOWS_TOOLCHAIN_STEP)
+    build = build_step.search(text)
+    if setup == -1 or build is None or setup >= build.start():
+        failures.append(f"{ci}: pin MinGW clang before compiling the Windows package client")
+    failures += pin_failures(WINDOWS_TOOLCHAIN, WINDOWS_TOOLCHAIN.read_text(), "    ")[1]
     return failures
 
 
