@@ -1,8 +1,8 @@
 name: "Lay a split repository"
 description: >-
-  Checks out a split repository (Nimblesite/osprey-packages or Nimblesite/perception) at the commit
-  scripts/ci/downstream.json pins, a plain checkout of the public repository, and lays its files over this
-  checkout at their original paths [REPO-SPLIT-CANARY].
+  Checks out the main branch of a split repository (Nimblesite/osprey-packages or
+  Nimblesite/perception) and lays its files over this checkout at their original paths, for CI
+  tests only [REPO-SPLIT-CANARY].
 inputs:
   name:
     description: "osprey-packages or perception"
@@ -10,14 +10,10 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - name: Read the pinned commit
-      id: pin
-      shell: bash
-      run: echo "commit=$(node -p "require('./scripts/ci/downstream.json')['${{ inputs.name }}']")" >> "$GITHUB_OUTPUT"
     - uses: actions/checkout@v7
       with:
         repository: Nimblesite/${{ inputs.name }}
-        ref: ${{ steps.pin.outputs.commit }}
+        ref: main
         path: target/downstream/${{ inputs.name }}
         lfs: true
     - name: Lay its files over this checkout

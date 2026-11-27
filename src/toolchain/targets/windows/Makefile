@@ -5,7 +5,7 @@
 ROOT ?= ../../../..
 APP_PS1 ?= pwsh -NoProfile -File $(ROOT)/src/toolchain/hosts/winui/app.ps1
 
-.PHONY: agent bank storage flock graphics painting signal-flow synth probe casting tally
+.PHONY: agent bank storage flock graphics painting signal-flow probe casting tally
 
 ## graphics: Build the Direct3D 12 graphics host and run the animated GPU demo from the MSYS2 UCRT64
 ##           shell. The Osprey sources are the same files macOS draws through Metal; SCENE=kali|opal|character
@@ -35,11 +35,6 @@ painting:
 ## signal-flow: Open the signal-flow editor, a UI machine with four canvas skins, in its sandbox.
 signal-flow:
 	$(APP_PS1) -App signal-flow
-
-## synth: Open Prism, the patch editor and song timeline, in its sandbox, with play-wav.exe
-##        beside it as its audio worker.
-synth:
-	$(APP_PS1) -App synth
 
 ## probe: Open the hosts' probe application (counter, note, load) in its sandbox.
 probe:

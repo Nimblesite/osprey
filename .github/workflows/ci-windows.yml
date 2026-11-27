@@ -145,23 +145,21 @@ jobs:
           "$CC_PATH" --version | head -1
           echo "OSPREY_CC=$CC_PATH" >> "$GITHUB_ENV"
 
-      # The package client and local registry ship in every release; this job checks the Windows client, built from the package
-      # manager at the commit scripts/ci/downstream.json pins. [REPO-SPLIT]
+      # The split repositories' canaries on Windows [REPO-SPLIT-CANARY]: the main branches of
+      # Nimblesite/osprey-packages (fixtures, the package frontend, the consumer flow against
+      # sample-registry) and Nimblesite/perception (the synth journeys and the song renderer), each
+      # running its own `make canary` with this build's compiler, as Linux and macOS do.
       - name: Lay the package manager (Nimblesite/osprey-packages)
         uses: ./.github/actions/downstream
         with:
           name: osprey-packages
-
-      # release.yml compiles the package manager client on this same runner
-      # and ships it in the win32 tarball, so a Windows-only compile failure
-      # of src/osprey/packages/manager/cli must be caught here, not at tag time.
-      # --no-warnings skips the warning pass (see scripts/make/extension.mk).
-      - name: Compile package manager client
+      - name: Lay Perception (Nimblesite/perception)
+        uses: ./.github/actions/downstream
+        with:
+          name: perception
+      - name: Both canaries
         shell: msys2 {0}
-        run: |
-          set -euo pipefail
-          ./target/release/osprey.exe build src/osprey/packages/manager/cli --quiet --no-warnings -o target/osprey-pkg.exe
-          test -s target/osprey-pkg.exe
+        run: make _canaries OSPREY_PREBUILT=1 CC=gcc AR=ar
 
       # fiber_showcase exercises spawn/await/yield/channels/select — i.e. the
       # winpthreads-backed fiber runtime. The feature omnibus covers lists/maps/

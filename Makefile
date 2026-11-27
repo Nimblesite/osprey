@@ -28,9 +28,9 @@ build: _runtime _runtime_klee $(EXT_NODE_DEPS)
 	$(MAKE) _zed_build
 	cd $(EXT_DIR) && npm run compile
 
-## downstream: Lay the split repositories, Nimblesite/osprey-packages and Nimblesite/perception, over this
-##             checkout at the commits scripts/ci/downstream.json pins (gitignored paths). Needs read
-##             access to both. Expect "downstream: <name> at <commit>" for each. [REPO-SPLIT-CANARY]
+## downstream: Lay the main branches of the split repositories, Nimblesite/osprey-packages and
+##             Nimblesite/perception, over this checkout (gitignored paths), for the tests that read
+##             them. Expect "downstream: <name> at main <commit>" for each. [REPO-SPLIT-CANARY]
 .PHONY: downstream canaries
 downstream:
 	bash scripts/ci/downstream.sh
@@ -55,13 +55,13 @@ audit:
 ##       Projects listed in coverage-thresholds.json are each tested + checked.
 test: build _build_c_runtime_tests
 	@echo "==> Testing (fail-fast + coverage + per-project thresholds)..."
+	$(MAKE) downstream
 	$(MAKE) _test_runtime_incremental
 	$(MAKE) _test_rust
 	$(MAKE) _coverage_check_rust
 	$(MAKE) _check_programs
 	$(MAKE) _test_packages
 	$(MAKE) _coverage_check_packages
-	$(MAKE) downstream
 	$(MAKE) _canaries
 	$(MAKE) _test_python_app_ports
 	$(MAKE) _test_agent

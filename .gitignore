@@ -9,8 +9,8 @@
 .deslop
 .mcp.json
 
-# The split repositories' files, laid over this checkout by scripts/ci/downstream.sh at the
-# commits scripts/ci/downstream.json pins [REPO-SPLIT-CANARY]. They are never tracked here.
+# The split repositories' files, laid over this checkout from their main branches by
+# scripts/ci/downstream.sh for CI tests only [REPO-SPLIT-CANARY]. They are never tracked here.
 /target/downstream/
 /src/osprey/packages/manager/
 /src/toolchain/schemas/package-registry.td
@@ -35,6 +35,8 @@
 /src/toolchain/targets/macos/tests/prism-icon.sh
 /scripts/make/osprey-packages.mk
 /scripts/make/perception.mk
+/scripts/make/daw-clicks.swift
+/scripts/make/sample-attribution.py
 
 # Coverage and test reports
 coverage/
