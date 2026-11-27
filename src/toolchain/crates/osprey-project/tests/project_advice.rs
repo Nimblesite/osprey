@@ -323,6 +323,25 @@ fn an_import_nothing_resolves_through_is_reported_and_a_used_one_is_not() -> Res
         unused_imports(&[library.clone(), sibling])?,
         ["import `billing::Tax` is redundant: `billing::Tax` is in this file's namespace and resolves without it"]
     );
+    // A file-level import belongs to the file, not to each namespace block:
+    // one use anywhere in it counts, and an idle one is reported once.
+    let blocks =
+        "namespace geo {\n    fn area(w) = w * w\n}\nnamespace label {\n    fn shout(s) = s\n}\n";
+    for (imports, expected) in [
+        ("import billing::Tax\n", vec![]),
+        (
+            "import billing::Tax\nimport billing::Idle\n",
+            vec!["import `billing::Idle` is never used"],
+        ),
+    ] {
+        let source = format!("{blocks}{imports}fn main() = Tax::zero()\n");
+        let file = parsed("main.osp", Flavor::Default, &source);
+        assert_eq!(
+            unused_imports(&[library.clone(), file])?,
+            expected,
+            "{source}"
+        );
+    }
     let ml = parsed(
         "main.ospml",
         Flavor::Ml,
