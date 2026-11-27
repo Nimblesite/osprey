@@ -1,6 +1,7 @@
 namespace registry_tests;
 import registry::Conformance
 import registry::Capabilities
+import registry::Paths
 import registry_host::Host
 import registry_host::Native
 
@@ -29,7 +30,7 @@ module ConformanceTests {
 
     fn listed() = {
         let run = perform Host::Process.run("find ${roots} -type f -not -path '*/.osprey/*'")
-        if run.status == 0 { filterList(lines(run.stdout), fn(line) => line != "") } else { [] }
+        if run.status == 0 { filterList(lines(run.stdout), fn(line) => line != "" && !Paths::generatedCache(line)) } else { [] }
     }
 
     fn checkedInTree() = {
