@@ -88,14 +88,15 @@ module SendRenders
     (** Validate the project boundaries that join track graphs to their destination buses. *)
     export project song = Outcomes::carried (collect (song.tracks, \voice => checked (song, voice)), \_ => ok song)
 
-    // [DAW-TRANSPORT-LIVE-CONTROLS] Edited notes retain oscillator phase, filter memory and their original gate.
-    memory graph = match ui::Lists::any (graph.nodes, synth::ClipLayouts::requiresClips)
-        true => ok (MultichannelNote(clock = synth::GraphState(graphHosted = [], graphPosition = 0, graphKernels = [])))
+    // [DAW-TRANSPORT-LIVE-CONTROLS] Edited notes retain oscillator phase, filter memory and their original gate;
+    // a multichannel patch keeps a graph clock at the song's rate.
+    memory (graph, rate) = match ui::Lists::any (graph.nodes, synth::ClipLayouts::requiresClips)
+        true => ok (MultichannelNote(clock = synth::GraphClips::origin rate))
         false => Outcomes::carried (PatchVoices::told (synth::Renderer::start graph), \audio => ok (ScalarNote(audio = audio)))
 
-    preparedNote (graph, ports, span, routing, cue) = match synth::Graphs::prepare graph
+    preparedNote (graph, rate, ports, span, routing, cue) = match synth::Graphs::prepare graph
         synth::Invalid why => Error(message = "The live patch cannot be scheduled: ${why}.")
-        synth::Valid plan => Outcomes::carried (memory graph, \held =>
+        synth::Valid plan => Outcomes::carried (memory (graph, rate), \held =>
             ok (Sounding(cue = cue, at = cue.due, lanes = [], driver = PerformingNote(patch = ActivePatch(plan = plan, ports = ports, span = span, attack = routing.attack, release = routing.release, memory = held)))))
 
     (** Prepare a routed note for the blocks the playhead actually reaches. *)
@@ -110,7 +111,7 @@ module SendRenders
     starting (song, voice, sends, routing, cue, built) = Outcomes::carried (NoteRenders::checkedSpan (cue.note, song.tempo, toFloat song.sampleRate, voice.instrument), \span =>
         Outcomes::carried (built, \graph => Outcomes::carried (outputs (graph, sends), \ports =>
             Outcomes::carried (PatchVoices::grounded graph, \whole => Outcomes::carried (PatchVoices::audible (whole, mapList (sends, \s => s.source)), \heard =>
-                preparedNote (heard, ports, span, routing, cue))))))
+                preparedNote (heard, toFloat song.sampleRate, ports, span, routing, cue))))))
 
     scalarBlock (patch, audio, size, rate, empty) =
         controls = synth::Parameters::initial patch.plan.graph

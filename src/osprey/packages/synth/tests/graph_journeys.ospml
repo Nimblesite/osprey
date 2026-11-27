@@ -202,7 +202,7 @@ switched (n, key, high, value) = n(parameters = listAppend n.parameters (synth::
 disabled (n) = switched (n, "enabled", 1.0, 0.0)
 
 // One 64-frame offline clip of `graph`'s output node 3.
-clipOf graph = match synth::GraphClips::advance (graph, [], 64)
+clipOf graph = match synth::GraphClips::advance (graph, 48000.0, [], 64)
     Success action => clipReady3 action
     Error why => Error(message = why)
 
@@ -337,7 +337,7 @@ channelCables (source, split, firstGain, join, count) =
     fanIn = mapList (toList (range (0, count)), \index => Components::route (satAdd firstGain index, 0, join, index))
     listConcat (listConcat [cable (source, split)] fanOut) fanIn
 
-clipsOf (graph, frames) = match synth::GraphClips::advance (graph, [], frames)
+clipsOf (graph, frames) = match synth::GraphClips::advance (graph, 48000.0, [], frames)
     Success action => match action
         synth::ClipReady clips => Success(value = clips)
         synth::ClipWaiting _ _ => Error(message = synth::InvalidConfiguration(detail = "A built-in graph asked for a plug-in."))

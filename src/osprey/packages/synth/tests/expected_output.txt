@@ -22,7 +22,7 @@ ok 21 - every processor goes by the one name its card and its faults show [SYNTH
 ok 22 - sample, impulse and table resources carry a content identity: name, 64-bit hash, channels, rate, frames and version, and a changed or renamed resource is refused [SYNTH-ADVANCED-CORE-RESOURCES]
 ok 23 - a wavetable clip carries oscillator phase across offline render blocks
 ok 24 - MIDI oscillator state validation rejects forged voices, capacity and malformed events
-ok 25 - connected MIDI oscillators track pitch, velocity and the exact 240-frame release tail
+ok 25 - connected MIDI oscillators track pitch, velocity and the exact 5 ms release tail at 44.1, 48 and 96 kHz
 ok 26 - last-note priority ignores foreign note-offs, zero-velocity note-ons and re-attacks mid-release
 ok 27 - granular clouds retain deterministic stereo state across partitions and refuse forged memory
 ok 28 - granular preset patches [SYNTH-ADVANCED-GRAINS-INTEGRATION] render finite, bounded, nonzero, deterministic and distinct audio

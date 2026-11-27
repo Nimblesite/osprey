@@ -31,7 +31,7 @@ rebaseRunning held =
 
 rebaseJourney () =
     graph = serial ([Components::sine (1, 440.0), Components::delay (2, 8), Components::output 3])
-    succeeds (GraphClips::start (graph, 64), \step => checkRebaseBlock step)
+    succeeds (GraphClips::start (graph, 48000.0, 64), \step => checkRebaseBlock step)
 
 checkRebaseBlock step = match step
     synth::BlockReady held _ => rebaseRunning held

@@ -37,7 +37,7 @@ module GraphRebase
         overflow _ _ _ wrapped => wrapped
         divideByZero _ _ => 0.0
         remainderByZero _ => 0
-    print "${arithmetic (\() => GraphRebase::rebased (Graphs::empty, GraphState(graphPosition = 0, graphHosted = [], graphKernels = [])))} ${arithmetic (\() => GraphRebase::rebased (Graph(nodes = [Components::gain (-1, 1.0)], cables = []), GraphState(graphPosition = 0, graphHosted = [], graphKernels = [])))} ${arithmetic (\() => GraphRebase::rebased (Graph(nodes = [Components::granular (1, SampleResource(name = "voice", sampleRate = 48000, sourceChannels = 1, rootFrequency = 220.0, samples = [0.0, 0.5]), 8, 7)], cables = []), GraphState(graphPosition = 0, graphHosted = [], graphKernels = [])))}"
+    print "${arithmetic (\() => GraphRebase::rebased (Graphs::empty, GraphState(graphPosition = 0, graphRate = 48000.0, graphHosted = [], graphKernels = [])))} ${arithmetic (\() => GraphRebase::rebased (Graph(nodes = [Components::gain (-1, 1.0)], cables = []), GraphState(graphPosition = 0, graphRate = 48000.0, graphHosted = [], graphKernels = [])))} ${arithmetic (\() => GraphRebase::rebased (Graph(nodes = [Components::granular (1, SampleResource(name = "voice", sampleRate = 48000, sourceChannels = 1, rootFrequency = 220.0, samples = [0.0, 0.5]), 8, 7)], cables = []), GraphState(graphPosition = 0, graphRate = 48000.0, graphHosted = [], graphKernels = [])))}"
     ```
     ```output
     @@TODO@@

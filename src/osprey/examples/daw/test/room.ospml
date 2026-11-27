@@ -467,11 +467,11 @@ modulatedBy (graph, key) = synth::HostModulation::connect (graph, 5, 0, 0, key)
 deadClip (identity, frames, sample) = synth::NodeClip(clipNode = identity, clipChannels = 1, clipSamples = mapList (toList (range (0, frames)), \_ => sample), clipNotes = [])
 
 // The graph advanced with `clips`, which must be refused.
-refuses (graph, clips, frames) = errs (synth::GraphClips::advance (graph, 48000.0, clips, frames))
+refuses (graph, clips, frames) = errs (synth::GraphClips::advance (graph, 48000.0, 48000.0, clips, frames))
 
 // The graph's first hosted module, or the test fails.
 waiting (graph, frames, check) =
-    outcome = synth::GraphClips::advance (graph, 48000.0, [], frames)
+    outcome = synth::GraphClips::advance (graph, 48000.0, 48000.0, [], frames)
     match outcome
         Error _ => expect (false, true)
         Success action => match action
@@ -482,7 +482,7 @@ waiting (graph, frames, check) =
 restoresParameter graph = waiting (graph, 256, \_ => \block => reads (listGet block.parameters 0, \restored => expect (restored.value, 1.0)))
 
 // A graph advanced to ready clips, or why it cannot be.
-clipReady (graph, frames, channels) = unhosted (synth::GraphClips::advance (graph, 48000.0, [], frames), channels)
+clipReady (graph, frames, channels) = unhosted (synth::GraphClips::advance (graph, 48000.0, 48000.0, [], frames), channels)
 
 // The advance outcome's ready clips, with hosted modules refused.
 unhosted (outcome, channels) = match outcome

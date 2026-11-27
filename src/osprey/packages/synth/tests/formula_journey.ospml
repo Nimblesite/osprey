@@ -90,11 +90,11 @@ registerFormulaJourney () =
         refusedAs (synth::MidiClips::timeline (Components::sine (1, 440.0), 0, 64), configurationText, "Invalid MIDI generator or sample window.")))
     test ("a formula melody plays a connected oscillator like a MIDI note and re-attacks on every step", \() => arithmetic (\() =>
         tune = serial ([Components::formulaNotes (1, "69", 0.5, 128.0, 8.0, 2.0), midiOscillator (), Components::output 3])
-        single = outputClip (3, synth::GraphClips::advance (midiInstrument (69.0, 0.5, 8.0), [], 128))
-        first = outputClip (3, synth::GraphClips::advance (tune, [], 128))
+        single = outputClip (3, synth::GraphClips::advance (midiInstrument (69.0, 0.5, 8.0), 48000.0, [], 128))
+        first = outputClip (3, synth::GraphClips::advance (tune, 48000.0, [], 128))
         clipIs (first, 1, 128)
         sameSamples (first.clipSamples, single.clipSamples)
-        whole = outputClip (3, synth::GraphClips::advance (tune, [], 256))
+        whole = outputClip (3, synth::GraphClips::advance (tune, 48000.0, [], 256))
         clipIs (whole, 1, 256)
         forEachList ([[64, 64, 128], [128, 128], [1, 255], [200, 56]], \sizes => graphRun (tune, 3, sizes, \_clock audio => sameSamples (audio, whole.clipSamples)))
         graphRun (tune, 3, [256], \clock _audio =>

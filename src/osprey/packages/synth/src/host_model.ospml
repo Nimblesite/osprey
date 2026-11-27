@@ -78,6 +78,7 @@ type HostedStamp =
 
 type GraphState K =
     graphPosition : int
+    graphRate : float
     graphHosted : List<HostedStamp>
     graphKernels : List<NodeKernels<K>>
 
