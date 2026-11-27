@@ -19,7 +19,7 @@ tags: [algebraic-effects, handlers, applications, testing]
 
 ## A real example: the package manager's file system
 
-The Osprey package manager does all its file work through the `Files` effect in [`packages/manager/host/src/host.osp`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/packages/manager/host/src/host.osp). The program below trims that effect to two operations and uses it for one job from the manager's install transaction: update the manifest, write the lock file, and put the old manifest back if the lock write fails.
+The Osprey package manager does all its file work through the `Files` effect in [`packages/manager/host/src/host.osp`](https://nimblesite.github.io/osprey-packages/). The program below trims that effect to two operations and uses it for one job from the manager's install transaction: update the manifest, write the lock file, and put the old manifest back if the lock write fails.
 
 ```osprey
 // The file-system effect from the package manager's host boundary
@@ -108,7 +108,7 @@ not ok 1 - a full disk rolls the manifest back
 
 ## A real test from the package manager
 
-The package manager's CLI tests never touch a real disk, process or terminal. This excerpt is copied verbatim, at build time, from [`dispatch_tests.osp`](https://github.com/Nimblesite/osprey/blob/main/{{ effectsTestExample.file }}). `healthyFiles` and `brokenFiles` are two stubs for the same `Host::Files` effect shown above. `doctorBroken` runs the real `osprey-pkg doctor` command against a host where every file write and process fails, then checks that the report names each failure:
+The package manager's CLI tests never touch a real disk, process or terminal. This excerpt is copied verbatim, at build time, from the [package manager](https://nimblesite.github.io/osprey-packages/)'s `dispatch_tests.osp`. `healthyFiles` and `brokenFiles` are two stubs for the same `Host::Files` effect shown above. `doctorBroken` runs the real `osprey-pkg doctor` command against a host where every file write and process fails, then checks that the report names each failure:
 
 ```osprey
 {{ effectsTestExample.excerpt | safe }}

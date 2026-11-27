@@ -36,7 +36,7 @@ What Perception is, who it is for and how it is described come from the [Percept
 
 Status: in progress. The daw runs on the FerroUI host. It opens a project, shows the Timeline, Mix and patch pages, saves edits into the project file, and plays bars through the engine. The [delivery plan](../../plans/synth/daw.md) records what is verified.
 
-The daw is the [Perception](../../../src/osprey/examples/daw/PRISM.md) patch studio with a song around it. It opens a project, lets you edit each track's notes, mix and patch, plays it and saves it back to the same file.
+The daw is the [Perception](https://nimblesite.github.io/perception/) patch studio with a song around it. It opens a project, lets you edit each track's notes, mix and patch, plays it and saves it back to the same file.
 
 ### Install on macOS [DAW-MACOS-INSTALL]
 
@@ -147,7 +147,7 @@ A **keymap** assigns the shortcuts. The daw ships three: **Perception**, **Ablet
 
 A song is one JSON file, and nothing about a song lives anywhere else. Its root holds exactly five things ([DAW-PROJECT-ROOT]): `title`, `tempo`, `sampleRate`, `buses` and `tracks`. Nothing else belongs at the root: there is no master drive, no shared reverb, no intro recording and no sustains. Drive and reverb are modules a user puts in a patch or on a bus. Each track stores its notes, gain, pan, destination bus, sends and the complete patch it plays. The JSON file is today's store only; the project reaches it through the persistence abstraction ([DAW-STORE-ABSTRACT]).
 
-- **One model ([DAW-PROJECT-MODEL]).** [daw.td](../../../src/osprey/examples/daw/daw.td) declares the project. The Osprey types are generated from it. The JSON keys are the typeDiagram field names. The editor and the file both follow this model; neither keeps a parallel format.
+- **One model ([DAW-PROJECT-MODEL]).** [daw.td](https://nimblesite.github.io/perception/) declares the project. The Osprey types are generated from it. The JSON keys are the typeDiagram field names. The editor and the file both follow this model; neither keeps a parallel format.
 - **Patches in the project ([DAW-PROJECT-PATCH]).** A built-in instrument opens in Perception as one voice node wired to the output. A routed patch opens as its own graph. A patch edited in Perception is written back into its track in the project file. Opening the file again restores the same graph, its pitch and velocity bindings, and its cables.
 - **Lossless round trip ([DAW-PROJECT-ROUNDTRIP]).** `SongFiles::encode` writes every key that `SongFiles::decode` reads. A decoded project re-encodes to identical text. A JSON encoding failure is an error, never a `"null"` file.
 - **Checked edits ([DAW-PROJECT-EDIT]).** Gain must be 0–4 and pan −1 (left) to 1 (right). A refused edit, or an edit to a track that does not exist, leaves the project unchanged and says why.
@@ -160,7 +160,7 @@ A song is one JSON file, and nothing about a song lives anywhere else. Its root 
 1. **Range ([DAW-TRANSPORT-RANGE]).** Play runs from the start marker to the end marker. The start marker is the playhead's bar. The end marker is the song's end until the user moves it. Both markers are lines down the lanes with handles on the ruler, and the user drags either one left or right. The end marker is always after the start marker: an end at or before the start counts as the song's end.
 2. **Loop ([DAW-TRANSPORT-LOOP]).** A Loop toggle in the transport. With Loop on, Play repeats the range from the start marker to the end marker until Stop. With Loop off, Play runs once and rings out.
 3. **Live stream.** The app encodes the current project, unsaved edits included, to `<song>/live/project.json` beside the engine and runs `daw <project.json> <folder> <from-beat> <beats> live|loop`. The engine runs the graph forward block by block ([DAW-RENDER-PLAY]) and prints each block of Master as soon as it is made; the blocks go straight into the audio device adapter (`osprey-vst-worker audio-device`). Nothing is written to a WAV and nothing waits for the range to finish.
-4. **Following ([DAW-TRANSPORT-FOLLOW]).** The device answers every block with the frames it has accepted and the frames it has finished playing. While the song plays, every display frame moves the playhead to the beat being heard: the frame clock, held between those two counts ([timeline_geometry.ospml](../../../src/osprey/examples/daw/src/timeline_geometry.ospml), `heardSeconds`). The lanes scroll to keep the playhead in view, the piano roll turns its page every two bars, and the position readout shows `bar.beat`. When sound waits, the playhead waits.
+4. **Following ([DAW-TRANSPORT-FOLLOW]).** The device answers every block with the frames it has accepted and the frames it has finished playing. While the song plays, every display frame moves the playhead to the beat being heard: the frame clock, held between those two counts ([timeline_geometry.ospml](https://nimblesite.github.io/perception/), `heardSeconds`). The lanes scroll to keep the playhead in view, the piano roll turns its page every two bars, and the position readout shows `bar.beat`. When sound waits, the playhead waits.
 5. **Stop** cancels the stream's whole process group at once and puts the playhead back on the start marker. While anything is in flight, Play refuses with "The song is already playing; Stop first."
 6. A refused project never reaches the device: the engine writes its reason to `<folder>/fault.txt` and the app shows it as "Playback failed: …".
 7. **Live controls ([DAW-TRANSPORT-LIVE-CONTROLS]).** Each accepted dial or fader movement updates its displayed value and publishes the same value to the playing song. The producer reads the latest complete revision between device blocks. A held note keeps its clock, envelope and compatible processor state through a parameter change.
@@ -177,7 +177,7 @@ A song is one JSON file, and nothing about a song lives anywhere else. Its root 
 1. **Sending.** While the song plays, the daw sends MIDI timing clock (0xF8, 24 per quarter note) from the same sample clock that drives the audio, so an external sequencer, drum machine or arpeggiator stays in time with what is heard. Play from the song's first beat sends Start (0xFA); Play from any other start marker sends Song Position Pointer (0xF2, in sixteenth notes) and then Continue (0xFB); Stop sends Stop (0xFC). A loop sends Song Position Pointer at each return to the start marker.
 2. **Following.** With external sync on, the daw follows an incoming MIDI clock: Start, Continue, Stop and Song Position Pointer move the transport, and the tempo follows the incoming clock's rate. The tempo shown is the tempo heard.
 3. Clock messages are scheduled against the audio device's played-frame count, not against the display or a wall-clock timer, so they do not drift from the audio.
-4. The clock source (internal or external) and the MIDI ports are project settings in [daw.td](../../../src/osprey/examples/daw/daw.td).
+4. The clock source (internal or external) and the MIDI ports are project settings in [daw.td](https://nimblesite.github.io/perception/).
 
 Not built: the daw has no MIDI port access yet.
 
@@ -198,7 +198,7 @@ Outside the app, `make -C src/toolchain/targets/macos daw-render SONG=<project.j
 
 ### Timeline transport [DAW-TRANSPORT-TIMELINE]
 
-The Timeline carries the transport, and its state is in the project model ([daw.td](../../../src/osprey/examples/daw/daw.td)), not in the view.
+The Timeline carries the transport, and its state is in the project model ([daw.td](https://nimblesite.github.io/perception/)), not in the view.
 
 - **Playhead ([DAW-TRANSPORT-PLAYHEAD]).** A position in beats, shown as `bar.beat` and as a line across the lanes and the piano roll. Tapping the ruler sets it. It is saved with the project. Built so far: whole bars, a line down the lanes, and not yet saved.
 - **Start and Stop ([DAW-TRANSPORT-START]).** Start plays in real time from the start marker to the end marker ([DAW-TRANSPORT-LIVE]). Stop halts and leaves the playhead where playback began. While idle, Stop is disabled and leaves the playhead and selection in place ([DAW-TRANSPORT-STOP-IDLE]). Use Return to Start to move to the start of the song.
@@ -229,7 +229,7 @@ The compressor and the limiter are modules the user adds to a track's patch, a b
 
 ### Buses and sidechain [DAW-MIX-BUS]
 
-A project declares buses next to its tracks ([daw.td](../../../src/osprey/examples/daw/daw.td): `Bus`, `Equaliser`, `Compressor`). A track with `bus` set sums into that bus instead of Master; an empty `bus` goes straight to Master. A track may only name a bus the song declares. The Output chooser in Timeline and Mix lists Master and every declared group. Creating a stereo group and assigning the track writes a single project edit. Empty names, Master and case-insensitive duplicates are refused.
+A project declares buses next to its tracks ([daw.td](https://nimblesite.github.io/perception/): `Bus`, `Equaliser`, `Compressor`). A track with `bus` set sums into that bus instead of Master; an empty `bus` goes straight to Master. A track may only name a bus the song declares. The Output chooser in Timeline and Mix lists Master and every declared group. Creating a stereo group and assigning the track writes a single project edit. Empty names, Master and case-insensitive duplicates are refused.
 
 **Every path ends in Master ([DAW-MIX-MASTER]).** A track reaches Master directly, through any chain of groups ([DAW-MIX-BUS-OUTPUT]), through its Space send or through its patch's outlet sends ([DAW-MIX-BUS-TAP]). Master sums them all. No route ends anywhere else.
 
@@ -304,7 +304,7 @@ One window shows three views of one session. **Timeline** shows the tracks, the 
 **Dragging notes and velocity ([DAW-PIANO-DRAG]).** Press a note and drag horizontally to move its start in sixteenth-note steps relative to its original timing, or vertically to change pitch by semitones. Drag its velocity stem vertically to set the level from 0 to 1. The roll and inspector preview the edit while the pointer is held. Release saves that one note to the project. Escape discards the preview.
 
 
-| [Timeline](../../../src/osprey/examples/daw/screens/timeline.png) | [Track patch](../../../src/osprey/examples/daw/screens/track-patch.png) | [Mix](../../../src/osprey/examples/daw/screens/mix.png) |
+| [Timeline](https://nimblesite.github.io/perception/screens/timeline.png) | [Track patch](https://nimblesite.github.io/perception/screens/track-patch.png) | [Mix](https://nimblesite.github.io/perception/screens/mix.png) |
 | --- | --- | --- |
 | Tracks, song overview, piano roll and track inspector | The selected track's patch in Perception | Gain, pan and Space send per track, saved on release |
 
@@ -316,7 +316,7 @@ One window shows three views of one session. **Timeline** shows the tracks, the 
 
 ### Math [DAW-MATH]
 
-[arrange_math.ospml](../../../src/osprey/examples/daw/src/arrange_math.ospml) holds timing, envelopes, pan, mix ranges and the excerpt window. [timeline_geometry.ospml](../../../src/osprey/examples/daw/src/timeline_geometry.ospml) holds bars and page geometry. The engine calls the native arrangement functions. The synthesis proof suite checks sustain and release against `ArrangeMath.enveloped`, the device-clock bounds against `TimelineGeometry.heardSeconds`, the drag threshold against `DialMath.moved`, and the pointer offset against the canvas geometry.
+[arrange_math.ospml](https://nimblesite.github.io/perception/) holds timing, envelopes, pan, mix ranges and the excerpt window. [timeline_geometry.ospml](https://nimblesite.github.io/perception/) holds bars and page geometry. The engine calls the native arrangement functions. The synthesis proof suite checks sustain and release against `ArrangeMath.enveloped`, the device-clock bounds against `TimelineGeometry.heardSeconds`, the drag threshold against `DialMath.moved`, and the pointer offset against the canvas geometry.
 
 ### Scope [DAW-SCOPE]
 
@@ -325,7 +325,7 @@ The [Timeline designs](../../designs/prism-timeline/README.md) propose more than
 - The current app includes the timeline and piano roll, one patch per track, main outputs, stereo groups, group sidechains and the independent Space send. Transport and project commands are available from the menu bar.
 - Nested racks still require engine and editor support. A detached Timeline requires a second FerroUI window sharing the project session.
 - **Channels ([SYNTH-GRAPH-CHANNELS], [DAW-MODULAR-LAYOUT]):** every track, bus, Space and Master carries as many channels as the project's layout sets, stereo by default. Playing and rendering carry every channel from source to Master. Nothing folds a track to mono.
-- **Engine limits:** at most 64 tracks. Its limits are documented in the [daw README](../../../src/osprey/examples/daw/README.md).
+- **Engine limits:** at most 64 tracks. Its limits are documented in the [daw README](https://nimblesite.github.io/perception/).
 
 ## Instrument builder [PRISM-INSTRUMENT]
 
@@ -885,7 +885,7 @@ The following thresholds are proposed release targets, to be confirmed against n
 
 The [runtime WebSocket contract](../runtime/0015-WebSockets.md) currently describes a send-only native client surface, an echo/broadcast server without an application receive interface, rejected `wss://`, rejected binary messages, ignored server paths and unchecked UTF-8. Pocket Orchestra requires a bidirectional, per-peer adapter with validated routing, authentication and lifecycle. Select and test the host capability implementation before relying on this runtime surface.
 
-The [Perception synth](../../../src/osprey/examples/daw/PRISM.md) provides reusable musical and canvas examples, while continuous real-time output remains a delivery gap. The [Osprey Native plan](../../plans/0037-osprey-native.md#9-casting-on-phones-cast-mobile-gpui) records incomplete mobile host verification. Every required native/canvas combination must be proved for this application, including multitouch and accessible controls.
+The [Perception synth](https://nimblesite.github.io/perception/) provides reusable musical and canvas examples, while continuous real-time output remains a delivery gap. The [Osprey Native plan](../../plans/0037-osprey-native.md#9-casting-on-phones-cast-mobile-gpui) records incomplete mobile host verification. Every required native/canvas combination must be proved for this application, including multitouch and accessible controls.
 
 ### Current playable delivery [ORCHESTRA-DELIVERY-PLAYABLE]
 

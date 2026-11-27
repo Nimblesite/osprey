@@ -16,7 +16,7 @@
 > data plane. It is not needed to build, run, or use a registry, and it never
 > replaces the folder registry.
 
-**Status:** normative target; implementation is in progress under [`src/osprey/packages/manager/`](../../../src/osprey/packages/manager/README.md), whose README states what runs. Delivery is fixed by [plan 0020](../../plans/0020-package-manager.md); evidence is in [Package-manager research](PackageResearchBasis.md).
+**Status:** normative target; implementation is in progress under [`src/osprey/packages/manager/`](https://nimblesite.github.io/osprey-packages/), whose README states what runs. Delivery is fixed by [plan 0020](../../plans/0020-package-manager.md); evidence is in [Package-manager research](PackageResearchBasis.md).
 
 This specification defines a source-derived, content-addressed package system.
 It deliberately rejects uploaded archives, publisher binaries, lifecycle hooks,
