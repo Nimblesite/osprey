@@ -14,7 +14,7 @@ Contracts: [Synthesis.md](../../specs/synth/Synth.md) ([SYNTH-GRAPH], [SYNTH-SIG
 
 ## Graph and hosted-playback acceptance [PRISM-ROUTING-VERIFY] [SYNTH-RENDER-BLOCKS]
 
-- [ ] Graph-edit journey through visible controls: many instances, chains and fan-out, incompatible ports and cycles refused, routes removed and reconnected, a connected node deleted, the snapshot unchanged on rejection [PRISM-ROUTING-VERIFY].
+- [ ] The graph-edit journey driven by pointer events on the canvas sockets and native menus (`graphEditJourney` in the daw suite passes it through the actions those controls send: many instances, fan-out and merge, event-into-audio, cycle and missing-port refusals with the snapshot unchanged, a route removed and reconnected, a connected node deleted) [PRISM-ROUTING-VERIFY].
 - [ ] Audio journey: sounds differ before and after a routing change; oscillator and filter state kept under parameter-only edits; block partitions and note-off ownership exercised [PRISM-ROUTING-VERIFY] [SYNTH-RENDER-BLOCKS].
 - [ ] Hosting loads an existing VST3 binary; discovery and loading never run on the audio callback; scan failures, unsupported buses and absent binaries are typed errors; the selected SDK revision and loaded-binary evidence recorded; exact per-sample automation response and separate controller-state persistence in the worker: `make -C src/toolchain/targets/tests synth-vst` [SYNTH-HOST-VST] [PRISM-ROUTING-VST-WORKER].
 - [ ] The sample-positioned MIDI source and stereo components run through the audition adapter; a mono adapter that ignores them fails [PRISM-ROUTING-MIDI].

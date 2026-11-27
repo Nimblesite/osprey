@@ -32,6 +32,42 @@ test ("a module chosen on the main window's Patch page shows its properties in t
 test ("View → Patch Controls toggles the patch panel: it puts away a docked panel and shows a hidden one", \() => Runtime::guarded (\() => hosted patchControlsTogglesPanelJourney))
 
 // [PRISM-ROUTING-EDITOR] The editor's actual actions create independent routable instances.
+// The editor after wiring `source`'s outlet `outlet` into `destination`'s inlet `inlet`, as the socket controls do.
+wired (editor, source, outlet, destination, inlet) = synth::EditorState::tapped (synth::EditorState::tapped (editor, synth::Source(identity = source, outlet = outlet)), synth::Connect(identity = destination, inlet = inlet))
+
+// A refused edit leaves the graph exactly as it was and says why.
+refusedEdit (before, after) =
+    expect (structuralEquals (after.graph, before.graph), true)
+    expect (after.message != "", true)
+
+hasCable (editor, c) = expect (length (filterList (editor.graph.cables, \k => k.source == c.s && k.destination == c.d && k.inlet == c.i)), 1)
+
+// [PRISM-ROUTING-VERIFY] Two sines, two gains, a mixer, an output and a MIDI generator: one sine fans out to both
+// gains, the gains merge in the mixer, and every refused edit (an event outlet into audio, a cycle, a missing
+// inlet) leaves the snapshot unchanged; a route comes out and goes back, and a connected node takes its cables.
+graphEditJourney () =
+    added = foldList (["sine", "sine", "gain", "gain", "mixer", "output", "midi-note"], synth::EditorState::initial (), \(editor, kind) => synth::EditorState::tapped (editor, synth::Add(kind = kind)))
+    expect (mapList (added.graph.nodes, \n => n.identity), [0, 1, 2, 3, 4, 5, 6])
+    routes = [{ s = 0, d = 2, i = 0 }, { s = 0, d = 3, i = 0 }, { s = 2, d = 4, i = 0 }, { s = 3, d = 4, i = 1 }, { s = 4, d = 5, i = 0 }]
+    patched = foldList (routes, added, \(editor, c) => wired (editor, c.s, 0, c.d, c.i))
+    expect (length patched.graph.cables, 5)
+    forEachList (routes, \c => hasCable (patched, c))
+    forEachList ([{ s = 6, d = 2, i = 0 }, { s = 4, d = 2, i = 0 }, { s = 1, d = 5, i = 3 }, { s = 1, d = 9, i = 0 }], \bad =>
+        refusedEdit (patched, wired (patched, bad.s, 0, bad.d, bad.i)))
+    refusedEdit (patched, synth::EditorState::tapped (patched, synth::Source(identity = 1, outlet = 4)))
+    unplugged = synth::EditorState::tapped (patched, synth::Disconnect(identity = 3, inlet = 0))
+    expect (length unplugged.graph.cables, 4)
+    refusedEdit (unplugged, synth::EditorState::tapped (unplugged, synth::Disconnect(identity = 3, inlet = 0)))
+    rerouted = wired (unplugged, 1, 0, 3, 0)
+    expect (length rerouted.graph.cables, 5)
+    hasCable (rerouted, { s = 1, d = 3, i = 0 })
+    expect (length (filterList (rerouted.graph.cables, \k => k.source == 0)), 1)
+    gone = synth::EditorState::tapped (synth::EditorState::tapped (rerouted, synth::Select(identity = 4)), synth::Remove)
+    expect (mapList (gone.graph.nodes, \n => n.identity), [0, 1, 2, 3, 5, 6])
+    expect (length gone.graph.cables, 2)
+    forEachList ([{ s = 0, d = 2, i = 0 }, { s = 1, d = 3, i = 0 }], \c => hasCable (gone, c))
+    expect (gone.selected, -1)
+
 test ("the modular editor adds, connects and removes independent synth components", \() => Runtime::guarded (\() =>
     first = synth::EditorState::initial ()
     source = synth::EditorState::tapped (first, synth::Add(kind = "sine"))
@@ -48,7 +84,8 @@ test ("the modular editor adds, connects and removes independent synth component
     expect (refused.message != "", true)
     removed = synth::EditorState::tapped (synth::EditorState::tapped (second, synth::Select(identity = 1)), synth::Remove)
     lengths (removed.graph.nodes, 2, removed.graph.cables, 0)
-    expect (removed.nextIdentity, 3)))
+    expect (removed.nextIdentity, 3)
+    graphEditJourney ()))
 
 test ("native component menus and cable controls edit the same graph drawn on the canvas", \() => Runtime::guarded (\() => hosted editorUiJourney))
 
