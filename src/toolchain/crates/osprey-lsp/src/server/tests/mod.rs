@@ -236,6 +236,7 @@ mod features;
 mod profiler;
 mod sync;
 mod transport;
+mod watched;
 
 #[tokio::test]
 async fn signature_quick_fix_is_versioned_and_removes_only_the_header() {
