@@ -92,7 +92,7 @@ module TableKernels
     arithmetic example
     ```
     ```output
-    @@TODO@@
+    DynamicPartials
     ```
     *)
     export prepare (rate, snapshot, identity) = match settings (rate, snapshot, identity)

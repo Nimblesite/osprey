@@ -67,7 +67,7 @@ module OperatorKernels
     arithmetic example
     ```
     ```output
-    @@TODO@@
+    LiveOperator
     ```
     *)
     export prepare (rate, snapshot, identity) = match settings (snapshot, identity)

@@ -62,7 +62,7 @@ module EffectKernels
     arithmetic example
     ```
     ```output
-    @@TODO@@
+    FixedShaper { config: { sampleRate: 48000.0, curve: TanhCurve, drive: 1.0, bias: 0.0, level: 0.5, antialias: true }, weights: [] } LivePhysical
     ```
     *)
     export prepare (rate, snapshot, identity) = settings (rate, snapshot, identity) ?: LivePhysical

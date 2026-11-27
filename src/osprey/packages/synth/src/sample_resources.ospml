@@ -31,7 +31,7 @@ module SampleResources
     arithmetic example
     ```
     ```output
-    @@TODO@@
+    2 1
     ```
     *)
     export frames resource = match resource.sourceChannels > 0
@@ -69,7 +69,7 @@ module SampleResources
     arithmetic example
     ```
     ```output
-    @@TODO@@
+    Success({ name: "kick", sampleRate: 48000, sourceChannels: 1, rootFrequency: 440.0, samples: [0.5, -0.5] }) Error(InvalidConfiguration { detail: "Grains require 2–1048576 finite normalised mono samples and capacity 1–256." })
     ```
     *)
     export prepare resource = match metadata resource

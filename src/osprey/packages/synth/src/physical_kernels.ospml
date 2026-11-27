@@ -40,7 +40,7 @@ module PhysicalKernels
     arithmetic example
     ```
     ```output
-    @@TODO@@
+    FixedExciter { config: { strength: 0.8, duration: 96, interval: 24000, excitation: NoiseExcitation { colour: 0.3 } } } LivePhysical
     ```
     *)
     export prepareExciter (snapshot, identity) = match excitationSettings (snapshot, identity)
@@ -127,7 +127,7 @@ module PhysicalKernels
     arithmetic example
     ```
     ```output
-    @@TODO@@
+    FixedModal { config: { sampleRate: 48000.0, frequency: 220.0, decay: 2.5, brightness: 0.5, strike: 0.13, count: 8, modes: BellModes } } LivePhysical
     ```
     *)
     export prepareModal (rate, snapshot, identity) = match modalSettings (rate, snapshot, identity)
@@ -161,7 +161,7 @@ module PhysicalKernels
     arithmetic example
     ```
     ```output
-    @@TODO@@
+    FixedGuide { coefficients: { tuning: 435.1636363636364, pickup: 0.0, attenuation: { gain: 0.9792849742266027, brightness: 0.6 }, dispersion: 0.0 } } LivePhysical
     ```
     *)
     export prepare (rate, snapshot, identity, capacity) = match guideSettings (rate, snapshot, identity, capacity)

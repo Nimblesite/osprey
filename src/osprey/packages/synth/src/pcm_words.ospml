@@ -126,7 +126,7 @@ module PcmWords
     arithmetic example
     ```
     ```output
-    @@TODO@@
+    Success(1.0) Success(-0.5)
     ```
     *)
     export sample (text, at) = match read32 (text, at)

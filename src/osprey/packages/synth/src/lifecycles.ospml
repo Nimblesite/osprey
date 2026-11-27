@@ -24,7 +24,7 @@ module Lifecycles
     arithmetic example
     ```
     ```output
-    @@TODO@@
+    Error(InvalidConfiguration { detail: "A lifecycle needs a sample rate of 8,000 to 384,000 Hz and a block of 1 to 8,192 frames." })
     ```
     *)
     export prepared (graph, rate, block) = match settled (rate, block)
@@ -56,7 +56,7 @@ module Lifecycles
     arithmetic example
     ```
     ```output
-    @@TODO@@
+    Error(InvalidConfiguration { detail: "Cannot release a ready instance." }) Success({ stage: Disposed, rate: 48000.0, block: 256, plan: { graph: { nodes: [], cables: [] }, order: [], feedback: [] }, audio: { states: [], samples: [], position: 0, meters: [] } })
     ```
     *)
     export next (run, transition) = match transition

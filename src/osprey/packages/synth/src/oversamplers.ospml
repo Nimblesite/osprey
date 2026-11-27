@@ -104,7 +104,7 @@ module Oversamplers
     arithmetic example
     ```
     ```output
-    @@TODO@@
+    Error(IncompatibleLayout { detail: "Oversampler history does not match its filter." })
     ```
     *)
     export prepared (config, held, input, weights) = match length weights == taps && length held.up == taps && length held.down == taps

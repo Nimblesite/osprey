@@ -74,7 +74,7 @@ module SpectralKernels
     arithmetic example
     ```
     ```output
-    @@TODO@@
+    FixedSpectrum { config: { sampleRate: 48000.0, size: 256, hop: 64, transform: SpectralPass, mix: 1.0 } } LiveSpectrum
     ```
     *)
     export prepare (rate, snapshot, identity, processor, fixed) = match processor
@@ -125,7 +125,7 @@ module SpectralKernels
     arithmetic example
     ```
     ```output
-    @@TODO@@
+    96 144 2147483647
     ```
     *)
     export cost (size, hop) = match hop >= 1
@@ -163,7 +163,7 @@ module SpectralKernels
     arithmetic example
     ```
     ```output
-    @@TODO@@
+    true false
     ```
     *)
     export affordable graph = foldList (graph.nodes, 0, \(total, n) => satAdd total (nodeCost n)) <= budget

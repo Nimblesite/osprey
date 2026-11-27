@@ -36,7 +36,7 @@ module ModalBanks
     arithmetic example
     ```
     ```output
-    @@TODO@@
+    Error(InvalidConfiguration { detail: "Invalid modal rate, frequency, decay, brightness, strike or mode count." })
     ```
     *)
     export configure config = match config.sampleRate >= 8000.0 && config.sampleRate <= 384000.0 && config.frequency > 0.0 && config.frequency < config.sampleRate * 0.45 && config.decay >= 0.001 && config.decay <= 60.0 && config.brightness >= 0.0 && config.brightness <= 1.0 && config.strike >= 0.01 && config.strike <= 0.99 && config.count >= 1 && config.count <= 8

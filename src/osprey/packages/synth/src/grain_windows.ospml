@@ -36,7 +36,7 @@ module GrainWindows
     arithmetic example
     ```
     ```output
-    @@TODO@@
+    0.5 0.0 0.0
     ```
     *)
     export value (shape, age, duration) = match shape

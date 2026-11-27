@@ -1,7 +1,7 @@
 // Filter reference: Zavalishin, "The Art of VA Filter Design", trapezoidal SVF.
 namespace synth
 
-(** Reference voice and state-variable filter mathematics [SYNTH-VOICE] [SYNTH-DSP]. *)
+(** State-variable filter mathematics [SYNTH-DSP]. *)
 module VoiceMath
     (** Half a turn in radians.
     # Examples

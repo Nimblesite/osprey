@@ -22,7 +22,7 @@ module StrikeCombs
     arithmetic example
     ```
     ```output
-    @@TODO@@
+    Success({ sampleRate: 48000.0, frequency: 12000.0, position: 0.5, capacity: 3 }) Error(ExhaustedCapacity { detail: "Invalid strike rate, pitch or position, or the comb does not fit its capacity." })
     ```
     *)
     export configure config = match config.sampleRate >= 8000.0 && config.sampleRate <= 384000.0 && config.frequency >= 20.0 && config.frequency < config.sampleRate * 0.45 && config.position >= 0.01 && config.position <= 0.5 && config.capacity >= 2 && config.capacity <= 96000 && delay config >= 1.0 && delay config + 1.0 <= toFloat config.capacity

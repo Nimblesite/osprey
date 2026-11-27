@@ -61,7 +61,7 @@ module Wavetables
     arithmetic example
     ```
     ```output
-    @@TODO@@
+    Error(InvalidConfiguration { detail: "A wavetable needs at least one spectrum." }) Error(InvalidConfiguration { detail: "Invalid wavetable size, frame count or spectrum." })
     ```
     *)
     export prepare (size, spectra) = match spectra
@@ -88,7 +88,7 @@ module Wavetables
     arithmetic example
     ```
     ```output
-    @@TODO@@
+    Error(InvalidConfiguration { detail: "Invalid wavetable size, frame count or spectrum." }) 4
     ```
     *)
     export classic (size, count) = match validSize (size, count)

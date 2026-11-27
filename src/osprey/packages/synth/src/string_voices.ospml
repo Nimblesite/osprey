@@ -23,7 +23,7 @@ module StringVoices
     arithmetic example
     ```
     ```output
-    @@TODO@@
+    Error(InvalidConfiguration { detail: "A string pool needs 1-16 voices and a release of 0.01-10 s." }) Error(ExhaustedCapacity { detail: "Invalid waveguide controls, or the tuned loop does not fit its capacity." })
     ```
     *)
     export prepare (template, excitation, count, release) = match count >= 1 && count <= 16 && release >= 0.01 && release <= 10.0

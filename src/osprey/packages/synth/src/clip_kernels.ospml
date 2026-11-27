@@ -75,7 +75,7 @@ module ClipKernels
     arithmetic example
     ```
     ```output
-    @@TODO@@
+    Error(InvalidConfiguration { detail: "The kernel block has invalid capacity, component or state identities." }) Error(InvalidConfiguration { detail: "The kernel block has invalid capacity, component or state identities." })
     ```
     *)
     export block (plan, rate, clips, n, frames, states) = match capacity (frames, length states) && rate >= 8000.0 && rate <= 384000.0 && length (filterList (plan.graph.nodes, \component => structuralEquals (component, n))) == 1 && length (filterList (states, \held => held.identity == n.identity)) == length states
@@ -102,7 +102,7 @@ module ClipKernels
     arithmetic example
     ```
     ```output
-    @@TODO@@
+    Error(ExhaustedCapacity { detail: "The graph clip exceeds its channel or frame capacity." }) Error(ExhaustedCapacity { detail: "The graph clip exceeds its channel or frame capacity." })
     ```
     *)
     export render (plan, rate, clips, n, frames, channels) = match capacity (frames, channels)

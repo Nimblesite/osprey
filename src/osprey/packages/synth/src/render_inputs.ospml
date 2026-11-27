@@ -50,7 +50,7 @@ module RenderInputs
     arithmetic example
     ```
     ```output
-    @@TODO@@
+    Success(1.0) Error(MissingResource { detail: "Required render parameter is missing." })
     ```
     *)
     export parameter (snapshot, identity, key) = match Seek::first (snapshot.parameters, \p => p.node == identity && p.key == key)

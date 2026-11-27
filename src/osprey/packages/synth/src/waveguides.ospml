@@ -34,7 +34,7 @@ module Waveguides
     arithmetic example
     ```
     ```output
-    @@TODO@@
+    Error(ExhaustedCapacity { detail: "Invalid waveguide controls, or the tuned loop does not fit its capacity." }) Error(ExhaustedCapacity { detail: "Invalid waveguide controls, or the tuned loop does not fit its capacity." })
     ```
     *)
     export configure config = match valid config && delay config >= 2.0 && delay config <= toFloat (config.capacity - 1)
@@ -97,7 +97,7 @@ module Waveguides
     arithmetic example
     ```
     ```output
-    @@TODO@@
+    3.4166666666666665 0.5
     ```
     *)
     export coefficients config = GuideCoefficients(tuning = delay config, pickup = config.pickup, attenuation = loss config, dispersion = config.dispersion)
