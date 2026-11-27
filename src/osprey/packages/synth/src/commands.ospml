@@ -13,7 +13,7 @@ module Commands
     print "${Commands::pending (snapshot, edit)}"
     ```
     ```output
-    @@TODO@@
+    { status: Pending { edit: { node: 1, key: "gain", value: 0.5, revision: 2, samplePosition: 0 } }, snapshot: { revision: 1, samplePosition: 0, parameters: [], components: [] } }
     ```
     *)
     export pending (snapshot, edit) = CommandReceipt(status = Pending(edit = edit), snapshot = snapshot)
@@ -27,7 +27,7 @@ module Commands
     print "${Commands::resolve (Graphs::empty, Commands::pending (snapshot, edit))} ${Commands::resolve (Graphs::empty, applied)}"
     ```
     ```output
-    @@TODO@@
+    { status: Rejected { fault: StaleRevision }, snapshot: { revision: 1, samplePosition: 0, parameters: [], components: [] } } { status: Applied { revision: 3 }, snapshot: { revision: 1, samplePosition: 0, parameters: [], components: [] } }
     ```
     *)
     export resolve (graph, receipt) = match receipt.status

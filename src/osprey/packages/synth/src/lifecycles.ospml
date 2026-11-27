@@ -13,7 +13,15 @@ module Lifecycles
     (** Prepare `graph` at a sample rate and largest block, Ready with silent state at position 0.
     # Examples
     ```osprey
-    print "${Lifecycles::prepared (Graphs::empty, 4000.0, 256)}"
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+
+    example () =
+        print "${Lifecycles::prepared (Graphs::empty, 4000.0, 256)}"
+
+    arithmetic example
     ```
     ```output
     @@TODO@@
@@ -36,8 +44,16 @@ module Lifecycles
     (** Apply one transition; anything the current stage does not allow is refused.
     # Examples
     ```osprey
-    run = Instance(stage = Ready, rate = 48000.0, block = 256, plan = Prepared(graph = Graphs::empty, order = [], feedback = []), audio = Rendered(states = [], samples = [], position = 0, meters = []))
-    print "${Lifecycles::next (run, ReleaseTail)} ${Lifecycles::next (run, Dispose)}"
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+
+    example () =
+        run = Instance(stage = Ready, rate = 48000.0, block = 256, plan = Prepared(graph = Graphs::empty, order = [], feedback = []), audio = Rendered(states = [], samples = [], position = 0, meters = []))
+        print "${Lifecycles::next (run, ReleaseTail)} ${Lifecycles::next (run, Dispose)}"
+
+    arithmetic example
     ```
     ```output
     @@TODO@@
@@ -79,7 +95,7 @@ module Lifecycles
     print "${Lifecycles::tail run}"
     ```
     ```output
-    @@TODO@@
+    Success(0)
     ```
     *)
     export tail run = Outcomes::carried (foldList (run.plan.graph.nodes, Success(value = 0.0), sounding), \samples => Outcomes::whole (WaveMath::tailFrames (samples, run.rate), \frames => Success(value = frames)))
@@ -107,7 +123,7 @@ module Lifecycles
     print "${arithmetic (\() => Lifecycles::block (run, Parameters::initial Graphs::empty, 0))} ${arithmetic (\() => Lifecycles::block (run, Parameters::initial Graphs::empty, 16))}"
     ```
     ```output
-    @@TODO@@
+    Error(InvalidConfiguration { detail: "A block is 1 to the prepared 256 frames; a larger one needs re-preparation." }) Error(InvalidConfiguration { detail: "Cannot render a ready instance." })
     ```
     *)
     export block (run, snapshot, count) = match count < 1 || count > run.block

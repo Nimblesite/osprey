@@ -15,7 +15,7 @@ module Observations
     print "${read ()}"
     ```
     ```output
-    @@TODO@@
+    { revision: 3, samplePosition: 480, parameters: [{ node: 1, key: "gain", value: 0.5 }], components: [{ node: 1, activeVoices: 2, peak: 0.25, rms: 0.1 }] }
     ```
     *)
     export snapshot () = perform Signal<Observation>.read ()
@@ -65,7 +65,7 @@ module Observations
     print "${Observations::selected (snapshot, [1], ["gain"])} ${Observations::selected (snapshot, [2], ["gain"])}"
     ```
     ```output
-    @@TODO@@
+    { revision: 3, samplePosition: 480, parameters: [{ node: 1, key: "gain", value: 0.5 }], components: [{ node: 1, activeVoices: 2, peak: 0.25, rms: 0.1 }] } { revision: 3, samplePosition: 480, parameters: [], components: [] }
     ```
     *)
     export selected (observation, nodes, keys) = observation(parameters = filterList (observation.parameters, \p => listContains nodes p.node && listContains keys p.key), components = filterList (observation.components, \c => listContains nodes c.node))
@@ -81,7 +81,7 @@ module Observations
     print "${read ()}"
     ```
     ```output
-    @@TODO@@
+    { revision: 3, samplePosition: 480, parameters: [{ node: 1, key: "gain", value: 0.5 }], components: [{ node: 1, activeVoices: 2, peak: 0.25, rms: 0.1 }] }
     ```
     *)
     export subscribed (nodes, keys) = selected (snapshot (), nodes, keys)

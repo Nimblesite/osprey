@@ -40,7 +40,7 @@ module GraphRebase
     print "${arithmetic (\() => GraphRebase::rebased (Graphs::empty, GraphState(graphPosition = 0, graphRate = 48000.0, graphHosted = [], graphKernels = [])))} ${arithmetic (\() => GraphRebase::rebased (Graph(nodes = [Components::gain (-1, 1.0)], cables = []), GraphState(graphPosition = 0, graphRate = 48000.0, graphHosted = [], graphKernels = [])))} ${arithmetic (\() => GraphRebase::rebased (Graph(nodes = [Components::granular (1, SampleResource(name = "voice", sampleRate = 48000, sourceChannels = 1, rootFrequency = 220.0, samples = [0.0, 0.5]), 8, 7)], cables = []), GraphState(graphPosition = 0, graphRate = 48000.0, graphHosted = [], graphKernels = [])))}"
     ```
     ```output
-    @@TODO@@
+    Success({ graphPosition: 0, graphRate: 48000.0, graphHosted: [], graphKernels: [] }) Error(InvalidConfiguration { detail: "The edited graph is invalid; keep the previous graph and state." }) Error(InvalidConfiguration { detail: "A grain cloud added to a running graph needs a restart (its clock starts at zero)." })
     ```
     *)
     export rebased (graph, held) =

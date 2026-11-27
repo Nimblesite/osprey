@@ -9,7 +9,7 @@ module Smoothers
     print "${Smoothers::initial 0.25}"
     ```
     ```output
-    @@TODO@@
+    { value: 0.25 }
     ```
     *)
     export initial value = SmootherState(value = value)
@@ -21,7 +21,7 @@ module Smoothers
     print "${Smoothers::configure config} ${Smoothers::configure (config(time = 0.0))}"
     ```
     ```output
-    @@TODO@@
+    Error(InvalidConfiguration { detail: "Smoothing time must be 0.1 ms to 10 s at a valid rate." }) Error(InvalidConfiguration { detail: "Smoothing time must be 0.1 ms to 10 s at a valid rate." })
     ```
     *)
     export configure config = match config.sampleRate >= 8000.0 && config.sampleRate <= 384000.0 && config.time >= 0.0001 && config.time <= 10.0
@@ -43,7 +43,7 @@ module Smoothers
     print "${arithmetic (\() => Smoothers::next (config, Smoothers::initial 0.0, 1.0))} ${arithmetic (\() => Smoothers::next (config, Smoothers::initial 0.95, 1.0))}"
     ```
     ```output
-    @@TODO@@
+    { sample: 0.1, next: { value: 0.1 } } { sample: 1.0, next: { value: 1.0 } }
     ```
     *)
     export next (config, held, target) =

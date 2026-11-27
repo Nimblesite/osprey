@@ -9,7 +9,7 @@ module Oversamplers
     print "${Oversamplers::taps}"
     ```
     ```output
-    @@TODO@@
+    31
     ```
     *)
     export taps = 31
@@ -20,7 +20,7 @@ module Oversamplers
     print "${Oversamplers::latency}"
     ```
     ```output
-    @@TODO@@
+    15
     ```
     *)
     export latency = 15
@@ -31,7 +31,7 @@ module Oversamplers
     print "${listLength (Oversamplers::coefficients ())} ${listGet (Oversamplers::coefficients ()) 15}"
     ```
     ```output
-    @@TODO@@
+    31 Success(0.49999999999999994)
     ```
     *)
     export coefficients () = mapList (toList (range (0, taps)), \index => NonlinearMath::halfband (toFloat index, toFloat taps))
@@ -42,7 +42,7 @@ module Oversamplers
     print "${Oversamplers::initial ()}"
     ```
     ```output
-    @@TODO@@
+    { shaper: { previous: 0.0, blockerInput: 0.0, blockerOutput: 0.0 }, up: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], down: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0] }
     ```
     *)
     export initial () = OversampledState(shaper = Waveshapers::initial, up = Sequences::zeros taps, down = Sequences::zeros taps)
@@ -59,7 +59,7 @@ module Oversamplers
     print "${Oversamplers::filtered (Sequences::zeros 31)}"
     ```
     ```output
-    @@TODO@@
+    0.0
     ```
     *)
     export filtered history = accumulated (history, coefficients (), 0, 0.0)
@@ -85,7 +85,7 @@ module Oversamplers
     print "${arithmetic (\() => Oversamplers::next (config, Oversamplers::initial (), 0.0))}"
     ```
     ```output
-    @@TODO@@
+    Success({ sample: 0.0, next: { shaper: { previous: 0.0, blockerInput: 0.0, blockerOutput: 0.0 }, up: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], down: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0] } })
     ```
     *)
     export next (config, held, input) = prepared (config, held, input, coefficients ())
@@ -93,7 +93,15 @@ module Oversamplers
     (** Apply a prepared half-band filter to one base-rate sample.
     # Examples
     ```osprey
-    print "${Oversamplers::prepared (ShaperConfig(sampleRate = 48000.0, curve = TanhCurve, drive = 1.0, bias = 0.0, level = 1.0, antialias = false), Oversamplers::initial (), 0.0, [])}"
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+
+    example () =
+        print "${Oversamplers::prepared (ShaperConfig(sampleRate = 48000.0, curve = TanhCurve, drive = 1.0, bias = 0.0, level = 1.0, antialias = false), Oversamplers::initial (), 0.0, [])}"
+
+    arithmetic example
     ```
     ```output
     @@TODO@@

@@ -11,7 +11,7 @@ module GrainScheduler
     print "${GrainScheduler::prepare (0, PeriodicTiming(period = 2400, jitter = 0), 1)} ${GrainScheduler::prepare (0, PeriodicTiming(period = 10, jitter = 10), 1)}"
     ```
     ```output
-    @@TODO@@
+    Success({ position: 0, nextOnset: 0, timing: PeriodicTiming { period: 2400, jitter: 0 }, seed: 1 }) Error(InvalidConfiguration { detail: "Invalid grain clock, interval, jitter or seed." })
     ```
     *)
     export prepare (position, timing, seed) =
@@ -37,7 +37,7 @@ module GrainScheduler
     print "${GrainScheduler::block (clock, 5)} ${GrainScheduler::block (clock, 0)}"
     ```
     ```output
-    @@TODO@@
+    Success({ positions: [0, 2, 4], next: { position: 5, nextOnset: 6, timing: PeriodicTiming { period: 2, jitter: 0 }, seed: 1291394886 } }) Error(InvalidConfiguration { detail: "Invalid grain scheduler state or block size." })
     ```
     *)
     export block (clock, frames) = match valid clock && frames >= 1 && frames <= 2048 && clock.position <= satSub 9223372036854775807 frames
@@ -64,7 +64,7 @@ module PitchMarks
     print "${PitchMarks::prepare 0} ${PitchMarks::prepare (-1)}"
     ```
     ```output
-    @@TODO@@
+    Success({ position: 0, belowZero: false }) Error(InvalidConfiguration { detail: "Invalid pitch reference sample position." })
     ```
     *)
     export prepare position = match position >= 0
@@ -89,7 +89,7 @@ module PitchMarks
     print "${PitchMarks::block (clock, [-0.5, 0.5, -0.5, 0.5])} ${PitchMarks::block (clock, [])}"
     ```
     ```output
-    @@TODO@@
+    Success({ positions: [1, 3], next: { position: 4, belowZero: false } }) Error(ExhaustedCapacity { detail: "Invalid pitch reference block or exhausted sample clock." })
     ```
     *)
     export block (clock, samples) = match length samples >= 1 && length samples <= 2048 && clock.position >= 0 && clock.position <= satSub 9223372036854775807 (length samples)

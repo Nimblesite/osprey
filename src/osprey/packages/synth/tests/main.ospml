@@ -8,7 +8,6 @@ import synth::Parameters
 import synth::Performance
 import synth::Renderer
 import synth::SpectralMath
-import synth::Voice
 
 sampleRates = [44100.0, 48000.0, 96000.0]
 
@@ -135,16 +134,12 @@ test ("graph validation covers corrupt persisted metadata, missing endpoints, fa
         expect (listGet plan.order 2051 ?: -1, 2052))
     refused (Graphs::prepare (crowded(cables = listAppend routes (cable (1, 3)))), synth::OccupiedInput)))
 
-test ("extracted Prism synthesis has no UI dependency and retains pitch, wave, silence and WAV behaviour", \() => arithmetic (\() =>
+test ("8-bit WAV clips pad their RIFF size and an instant envelope starts silent", \() => arithmetic (\() =>
     // [SYNTH-PCM-FLOAT] The RIFF size includes word padding; the data size counts only actual samples.
     forEachList ([{ values = [0, 128, 255], riff = "28000000", data = "030000000080FF00" }, { values = [0, 128], riff = "26000000", data = "020000000080" }, { values = [255], riff = "26000000", data = "01000000FF00" }, { values = [], riff = "24000000", data = "00000000" }], \c =>
         encoded = synth::WaveFiles::mono8 (8000, c.values)
         expect (take (drop encoded 8) 8, c.riff)
         expect (drop encoded 80, c.data))
-    forEachList (["Sine", "Saw", "Square", "Triangle"], referenceCase)
-    forEachList (["C3", "D3", "E3", "F3", "G3", "A3", "B3", "C#4"], \note => expect (Voice::frequency note > 100.0, true))
-    near (Voice::frequency "A4", 440.0, 0.00000001)
-    forEachList (["1/1", "1/2", "1/4", "1/8", "1/16"], \rate => expect (Voice::hertz rate > 0.0, true))
     near ((Envelopes::next (synth::EnvelopeConfig(sampleRate = 48000.0, attack = 0.0, decay = 0.0, sustain = 0.5, release = 0.0), Envelopes::initial ())).level, 0.0, 0.0)))
 
 test ("module switches pick the waveform, bypass a module and modulate the filter cutoff", \() => arithmetic (\() =>

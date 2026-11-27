@@ -8,9 +8,8 @@ if (field) field.value = new URLSearchParams(location.search).get('q') ?? '';
 try {
   const options = {credentials: 'omit', redirect: 'error', cache: 'no-store', signal: AbortSignal.timeout(10000)};
   const endpoint = new URL(binding.dataset.catalog);
-  if (detail && (location.pathname.startsWith('/packages/') || /^\/publishers\/[^/]+/u.test(location.pathname))) {
-    endpoint.pathname = '/v1' + location.pathname.replace(/\/$/u, '');
-    if (location.pathname.startsWith('/publishers/')) endpoint.pathname += '/releases';
+  if (detail && /^\/publishers\/[^/]+/u.test(location.pathname)) {
+    endpoint.pathname = '/v1' + location.pathname.replace(/\/$/u, '') + '/releases';
   }
   const [api, guest, {runModule}] = await Promise.all([
     fetch(endpoint, options), fetch(binding.dataset.guest), import(binding.dataset.host),

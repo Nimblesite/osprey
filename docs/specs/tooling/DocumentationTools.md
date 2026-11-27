@@ -123,6 +123,10 @@ framework, build step, CDN, or network connection. Navigation and search work
 when opened directly from the filesystem or served from a static server, including
 under a URL prefix: every generated reference is relative.
 
+For package references, pass `--docs-no-builtins` with `--docs-format html`.
+The export includes package declarations and guides. The native language
+reference keeps its built-in pages.
+
 A declaration page opens with its signature in a labelled disclosure rather than
 a bare block of code, expanded so the reference answers on arrival and
 collapsible once it has been read. Its breadcrumb names every enclosing scope

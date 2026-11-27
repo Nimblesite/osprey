@@ -10,7 +10,7 @@ module RenderInputs
     print "${RenderInputs::component (plan, 2)} ${RenderInputs::component (plan, 1)}"
     ```
     ```output
-    @@TODO@@
+    Error(MissingResource { detail: "Render schedule names an absent component." }) Success({ identity: 1, processor: Amplifier, inputs: [{ name: "audio", rate: Audio, channels: 1, unit: Amplitude }], outputs: [{ name: "audio", rate: Audio, channels: 1, unit: Amplitude }], parameters: [{ key: "gain", label: "Gain", unit: Amplitude, minimum: 0.0, maximum: 8.0, initial: 1.0, automatable: true }] })
     ```
     *)
     export component (plan, identity) = match Graphs::node (plan.graph, identity)
@@ -28,7 +28,7 @@ module RenderInputs
     print "${arithmetic (\() => RenderInputs::held (frame, 1))} ${arithmetic (\() => RenderInputs::held (frame, 2))}"
     ```
     ```output
-    @@TODO@@
+    Success({ identity: 1, phase: 0.0, integratorOne: 0.0, integratorTwo: 0.0, delay: [], memory: KernelIdle }) Error(MissingResource { detail: "index out of bounds" })
     ```
     *)
     export held (frame, identity) = match Seek::first (frame.states, \s => s.identity == identity)
@@ -38,8 +38,16 @@ module RenderInputs
     (** Read a required parameter without substituting a fake value.
     # Examples
     ```osprey
-    snapshot = Parameters::initial (Graph(nodes = [Components::gain (1, 1.0)], cables = []))
-    print "${RenderInputs::parameter (snapshot, 1, "gain")} ${RenderInputs::parameter (snapshot, 1, "cutoff")}"
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+
+    example () =
+        snapshot = Parameters::initial (Graph(nodes = [Components::gain (1, 1.0)], cables = []))
+        print "${RenderInputs::parameter (snapshot, 1, "gain")} ${RenderInputs::parameter (snapshot, 1, "cutoff")}"
+
+    arithmetic example
     ```
     ```output
     @@TODO@@
@@ -61,7 +69,7 @@ module RenderInputs
     print "${arithmetic (\() => RenderInputs::bound (snapshot, held, "gain", \value => Success(value = value * 2.0)))} ${arithmetic (\() => RenderInputs::bound (snapshot, held, "cutoff", \value => Success(value = value * 2.0)))}"
     ```
     ```output
-    @@TODO@@
+    Success(2.0) Error(MissingResource { detail: "Required render parameter is missing." })
     ```
     *)
     export bound (snapshot, held, key, continue) = setting (snapshot, held.identity, key, continue)
@@ -77,7 +85,7 @@ module RenderInputs
     print "${arithmetic (\() => RenderInputs::setting (snapshot, 1, "gain", \value => Success(value = value + 1.0)))} ${arithmetic (\() => RenderInputs::setting (snapshot, 1, "cutoff", \value => Success(value = value + 1.0)))}"
     ```
     ```output
-    @@TODO@@
+    Success(2.0) Error(MissingResource { detail: "Required render parameter is missing." })
     ```
     *)
     export setting<T> : (Observation, int, string, (float) -> Result<T, Fault>) -> Result<T, Fault>
@@ -102,7 +110,7 @@ module RenderInputs
     print "${arithmetic (\() => RenderInputs::controlled (plan, SampleFrame(states = [KernelState(identity = 1, phase = 0.0, integratorOne = 0.0, integratorTwo = 0.0, delay = [], memory = KernelIdle)], values = []), 2, 1, 0.5, \(base, control) => base * control))} ${arithmetic (\() => RenderInputs::controlled (plan, rendered, 2, 0, 0.5, \(base, control) => base * control))} ${arithmetic (\() => RenderInputs::controlled (plan, SampleFrame(states = [], values = [NodeSample(identity = 1, value = 0.25)]), 2, 0, 0.5, \(base, control) => base * control))}"
     ```
     ```output
-    @@TODO@@
+    Success(0.5) Error(InvalidConfiguration { detail: "Control inputs must stay between zero and one." }) Success(0.125)
     ```
     *)
     export controlled (plan, frame, identity, inlet, base, combine) = controlledWith (plan, frame, identity, inlet, base, combine, "Control inputs must stay between zero and one.")
@@ -119,7 +127,7 @@ module RenderInputs
     print "${arithmetic (\() => RenderInputs::controlledWith (plan, rendered, 2, 0, 0.5, \(base, control) => base * control, "My detail."))}"
     ```
     ```output
-    @@TODO@@
+    Error(InvalidConfiguration { detail: "My detail." })
     ```
     *)
     export controlledWith (plan, frame, identity, inlet, base, combine, detail) = match connection (plan, identity, inlet)
@@ -142,7 +150,7 @@ module RenderInputs
     print "${arithmetic (\() => RenderInputs::optional (plan, SampleFrame(states = [KernelState(identity = 1, phase = 0.0, integratorOne = 0.0, integratorTwo = 0.0, delay = [], memory = KernelIdle)], values = []), 2, 1))} ${arithmetic (\() => RenderInputs::optional (plan, SampleFrame(states = [KernelState(identity = 1, phase = 0.0, integratorOne = 0.0, integratorTwo = 0.0, delay = [], memory = KernelIdle)], values = []), 2, 0))} ${arithmetic (\() => RenderInputs::optional (plan, rendered, 2, 0))}"
     ```
     ```output
-    @@TODO@@
+    Success(0.0) Error(MissingResource { detail: "An input was read before its source was rendered." }) Success(2.0)
     ```
     *)
     export optional (plan, frame, identity, inlet) = match connection (plan, identity, inlet)
@@ -161,7 +169,7 @@ module RenderInputs
     print "${arithmetic (\() => RenderInputs::input (plan, SampleFrame(states = [KernelState(identity = 1, phase = 0.0, integratorOne = 0.0, integratorTwo = 0.0, delay = [], memory = KernelIdle)], values = []), 2, 1))} ${arithmetic (\() => RenderInputs::input (plan, rendered, 2, 0))}"
     ```
     ```output
-    @@TODO@@
+    Error(MissingResource { detail: "An audio input is not connected." }) Success(2.0)
     ```
     *)
     export input (plan, frame, identity, inlet) = match connection (plan, identity, inlet)
@@ -179,7 +187,7 @@ module RenderInputs
     print "${arithmetic (\() => RenderInputs::sample (frame, 1))} ${arithmetic (\() => RenderInputs::sample (frame, 2))} ${arithmetic (\() => RenderInputs::sample (frame, 3))}"
     ```
     ```output
-    @@TODO@@
+    Success(0.5) Error(NumericalFailure { detail: "Non-finite or excessive graph output." }) Error(MissingResource { detail: "index out of bounds" })
     ```
     *)
     export sample (frame, identity) = match Seek::first (frame.values, \v => v.identity == identity)
@@ -200,7 +208,7 @@ module RenderInputs
     print "${RenderInputs::output (SampleFrame(states = [KernelState(identity = 1, phase = 0.0, integratorOne = 0.0, integratorTwo = 0.0, delay = [], memory = KernelIdle)], values = []), 1, 0.5)}"
     ```
     ```output
-    @@TODO@@
+    { states: [{ identity: 1, phase: 0.0, integratorOne: 0.0, integratorTwo: 0.0, delay: [], memory: KernelIdle }], values: [{ identity: 1, value: 0.5 }] }
     ```
     *)
     export output (frame, identity, sample) = frame(values = sampled (frame, identity, sample))
@@ -212,7 +220,7 @@ module RenderInputs
     print "${RenderInputs::emitted (frame, KernelState(identity = 1, phase = 1.0, integratorOne = 0.0, integratorTwo = 0.0, delay = [], memory = KernelIdle), 0.5)}"
     ```
     ```output
-    @@TODO@@
+    { states: [{ identity: 1, phase: 1.0, integratorOne: 0.0, integratorTwo: 0.0, delay: [], memory: KernelIdle }], values: [{ identity: 1, value: 0.5 }] }
     ```
     *)
     export emitted (frame, next, sample) = frame(states = mapList (frame.states, \s => replaced (next, s)), values = sampled (frame, next.identity, sample))
@@ -249,7 +257,7 @@ module RenderInputs
     print "${RenderInputs::initialState (Components::delay (1, 4))} ${RenderInputs::initialState (Components::exciter (1, 7))}"
     ```
     ```output
-    @@TODO@@
+    { identity: 1, phase: 0.0, integratorOne: 0.0, integratorTwo: 0.0, delay: [0.0, 0.0, 0.0, 0.0], memory: KernelIdle } { identity: 1, phase: 0.0, integratorOne: 7.0, integratorTwo: 0.0, delay: [], memory: KernelIdle }
     ```
     *)
     export initialState n =
@@ -274,7 +282,7 @@ module RenderInputs
     print "${arithmetic (\() => RenderInputs::initial plan)}"
     ```
     ```output
-    @@TODO@@
+    { states: [{ identity: 1, phase: 0.0, integratorOne: 0.0, integratorTwo: 0.0, delay: [], memory: KernelIdle }], samples: [], position: 0, meters: [] }
     ```
     *)
     export initial plan = Rendered(states = mapList (plan.graph.nodes, initialState), samples = [], position = 0, meters = [])

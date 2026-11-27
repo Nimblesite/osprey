@@ -28,8 +28,16 @@ module PhysicalKernels
     (** Resolve the burst controls once when there are no automation events in this block.
     # Examples
     ```osprey
-    snapshot = Parameters::initial (Graph(nodes = [Components::exciter (1, 7)], cables = []))
-    print "${PhysicalKernels::prepareExciter (snapshot, 1)} ${PhysicalKernels::prepareExciter (Parameters::initial Graphs::empty, 1)}"
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+
+    example () =
+        snapshot = Parameters::initial (Graph(nodes = [Components::exciter (1, 7)], cables = []))
+        print "${PhysicalKernels::prepareExciter (snapshot, 1)} ${PhysicalKernels::prepareExciter (Parameters::initial Graphs::empty, 1)}"
+
+    arithmetic example
     ```
     ```output
     @@TODO@@
@@ -54,7 +62,7 @@ module PhysicalKernels
     print "${arithmetic (\() => PhysicalKernels::excite (Parameters::initial Graphs::empty, SampleFrame(states = [KernelState(identity = 1, phase = 0.0, integratorOne = 0.0, integratorTwo = 0.0, delay = [], memory = KernelIdle)], values = []), held, LivePhysical))} ${arithmetic (\() => PhysicalKernels::excite (Parameters::initial Graphs::empty, SampleFrame(states = [KernelState(identity = 1, phase = 0.0, integratorOne = 0.0, integratorTwo = 0.0, delay = [], memory = KernelIdle)], values = []), held, FixedExciter(config = ExciterConfig(strength = 0.8, duration = 96, interval = 0, excitation = ImpulseExcitation))))}"
     ```
     ```output
-    @@TODO@@
+    Error(MissingResource { detail: "Required render parameter is missing." }) Success({ states: [{ identity: 1, phase: 1.0, integratorOne: 0.0, integratorTwo: 0.0, delay: [], memory: KernelIdle }], values: [{ identity: 1, value: 0.8 }] })
     ```
     *)
     export excite (snapshot, frame, held, prepared) = match prepared
@@ -107,8 +115,16 @@ module PhysicalKernels
     (** Resolve constant modal controls once per block, retaining the running resonator state.
     # Examples
     ```osprey
-    snapshot = Parameters::initial (Graph(nodes = [Components::modalBank (1, 220.0, 3.0)], cables = []))
-    print "${PhysicalKernels::prepareModal (48000.0, snapshot, 1)} ${PhysicalKernels::prepareModal (48000.0, Parameters::initial Graphs::empty, 1)}"
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+
+    example () =
+        snapshot = Parameters::initial (Graph(nodes = [Components::modalBank (1, 220.0, 3.0)], cables = []))
+        print "${PhysicalKernels::prepareModal (48000.0, snapshot, 1)} ${PhysicalKernels::prepareModal (48000.0, Parameters::initial Graphs::empty, 1)}"
+
+    arithmetic example
     ```
     ```output
     @@TODO@@
@@ -133,8 +149,16 @@ module PhysicalKernels
     (** Prepare physical string tuning for a fixed snapshot.
     # Examples
     ```osprey
-    snapshot = Parameters::initial (Graph(nodes = [Components::waveguide (1, 110.0, 480)], cables = []))
-    print "${PhysicalKernels::prepare (48000.0, snapshot, 1, 480)} ${PhysicalKernels::prepare (48000.0, Parameters::initial Graphs::empty, 1, 480)}"
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+
+    example () =
+        snapshot = Parameters::initial (Graph(nodes = [Components::waveguide (1, 110.0, 480)], cables = []))
+        print "${PhysicalKernels::prepare (48000.0, snapshot, 1, 480)} ${PhysicalKernels::prepare (48000.0, Parameters::initial Graphs::empty, 1, 480)}"
+
+    arithmetic example
     ```
     ```output
     @@TODO@@
@@ -178,7 +202,7 @@ module PhysicalKernels
     print "${arithmetic (\() => PhysicalKernels::process (48000.0, Parameters::initial Graphs::empty, SampleFrame(states = [KernelState(identity = 1, phase = 0.0, integratorOne = 0.0, integratorTwo = 0.0, delay = [], memory = KernelIdle)], values = []), held, Components::gain (1, 1.0), 0.0, LivePhysical))} ${arithmetic (\() => PhysicalKernels::process (48000.0, Parameters::initial Graphs::empty, SampleFrame(states = [KernelState(identity = 1, phase = 0.0, integratorOne = 0.0, integratorTwo = 0.0, delay = [], memory = KernelIdle)], values = []), held, Components::lossFilter (1, 0.9, 0.5), 0.0, LivePhysical))}"
     ```
     ```output
-    @@TODO@@
+    Error(InvalidConfiguration { detail: "Unsupported processor in the reference audio renderer." }) Error(MissingResource { detail: "Required render parameter is missing." })
     ```
     *)
     export process (rate, snapshot, frame, held, n, input, guide) = match n.processor
@@ -218,7 +242,7 @@ module PhysicalKernels
     print "${arithmetic (\() => PhysicalKernels::bowed (48000.0, Parameters::initial Graphs::empty, SampleFrame(states = [KernelState(identity = 1, phase = 0.0, integratorOne = 0.0, integratorTwo = 0.0, delay = [], memory = KernelIdle)], values = []), held, 480))}"
     ```
     ```output
-    @@TODO@@
+    Error(MissingResource { detail: "Required render parameter is missing." })
     ```
     *)
     export bowed (rate, snapshot, frame, held, capacity) =

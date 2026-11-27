@@ -9,7 +9,7 @@ module Waveshapers
     print "${Waveshapers::initial}"
     ```
     ```output
-    @@TODO@@
+    { previous: 0.0, blockerInput: 0.0, blockerOutput: 0.0 }
     ```
     *)
     export initial = ShaperState(previous = 0.0, blockerInput = 0.0, blockerOutput = 0.0)
@@ -21,7 +21,7 @@ module Waveshapers
     print "${Waveshapers::configure config} ${Waveshapers::configure (config(drive = 0.0))}"
     ```
     ```output
-    @@TODO@@
+    Success({ sampleRate: 48000.0, curve: TanhCurve, drive: 4.0, bias: 0.0, level: 0.5, antialias: false }) Error(InvalidConfiguration { detail: "Invalid shaper rate, drive, bias or level." })
     ```
     *)
     export configure config = match config.sampleRate >= 8000.0 && config.sampleRate <= 384000.0 && config.drive >= 0.1 && config.drive <= 50.0 && config.bias >= -1.0 && config.bias <= 1.0 && config.level >= 0.0 && config.level <= 1.0
@@ -34,7 +34,7 @@ module Waveshapers
     print "${Waveshapers::curve (TanhCurve, 0.0)} ${Waveshapers::curve (HardCurve, 2.0)} ${Waveshapers::curve (CubicCurve, 2.0)} ${Waveshapers::curve (FoldCurve, 1.0)}"
     ```
     ```output
-    @@TODO@@
+    0.0 1.0 1.0 1.0
     ```
     *)
     export curve (shape, x) = match shape
@@ -68,7 +68,7 @@ module Waveshapers
     print "${arithmetic (\() => Waveshapers::next (config, Waveshapers::initial, 0.0))}"
     ```
     ```output
-    @@TODO@@
+    { sample: 0.0, next: { previous: 0.0, blockerInput: 0.0, blockerOutput: 0.0 } }
     ```
     *)
     export next (config, held, input) =

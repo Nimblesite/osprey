@@ -11,7 +11,7 @@ module Timings
     print "${Timings::rate}"
     ```
     ```output
-    @@TODO@@
+    48000.0
     ```
     *)
     export rate = 48000.0
@@ -40,7 +40,7 @@ module Timings
     print "${Timings::latency (Components::delay (1, 64))} ${Timings::latency (Components::shaper (1, 0.0, 1.0))} ${Timings::latency (Components::gain (1, 1.0))}"
     ```
     ```output
-    @@TODO@@
+    Success(64.0) Success(0.5) Success(0.0)
     ```
     *)
     export latency n = match n.processor
@@ -57,7 +57,7 @@ module Timings
     print "${Timings::tail (Components::reverb (1, 2.5))} ${Timings::tail (Components::smoother (1, 0.01))} ${Timings::tail (Components::gain (1, 1.0))}"
     ```
     ```output
-    @@TODO@@
+    Success(240000.0) Success(3360.0) Success(0.0)
     ```
     *)
     export tail n = match n.processor

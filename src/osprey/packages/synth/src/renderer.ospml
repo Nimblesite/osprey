@@ -45,7 +45,7 @@ module Renderer
     print "${arithmetic (\() => Renderer::validated (Graphs::empty, InvalidConfiguration(detail = "bad"), \p => Success(value = p.order)))} ${arithmetic (\() => Renderer::validated (Graph(nodes = [Components::gain (-1, 1.0)], cables = []), InvalidConfiguration(detail = "bad"), \p => Success(value = p.order)))}"
     ```
     ```output
-    @@TODO@@
+    Success([]) Error(InvalidConfiguration { detail: "bad" })
     ```
     *)
     export validated (graph, failure, continue) = match Graphs::prepare graph
@@ -63,7 +63,7 @@ module Renderer
     print "${arithmetic (\() => Renderer::start graph)} ${arithmetic (\() => Renderer::start (Graph(nodes = [Components::gain (1, 1.0)], cables = [])))}"
     ```
     ```output
-    @@TODO@@
+    Success({ states: [{ identity: 1, phase: 0.0, integratorOne: 0.0, integratorTwo: 0.0, delay: [], memory: KernelIdle }, { identity: 2, phase: 0.0, integratorOne: 0.0, integratorTwo: 0.0, delay: [], memory: KernelIdle }], samples: [], position: 0, meters: [] }) Error(IncompatibleLayout { detail: "Reference rendering requires mono audio, one output and supported bounded processors." })
     ```
     *)
     export start graph =
@@ -98,7 +98,7 @@ module Renderer
     print "${arithmetic (\() => Renderer::writeDelay (plan, SampleFrame(states = [KernelState(identity = 1, phase = 0.0, integratorOne = 0.0, integratorTwo = 0.0, delay = [], memory = KernelIdle)], values = []), 2, 0))} ${arithmetic (\() => Renderer::writeDelay (plan, SampleFrame(states = [KernelState(identity = 1, phase = 0.0, integratorOne = 0.0, integratorTwo = 0.0, delay = [], memory = KernelIdle)], values = []), 1, 0))}"
     ```
     ```output
-    @@TODO@@
+    Error(MissingResource { detail: "An audio input is not connected." }) Error(MissingResource { detail: "An audio input is not connected." })
     ```
     *)
     export writeDelay (plan, frame, identity, inlet) = match RenderInputs::input (plan, frame, identity, inlet)
@@ -131,7 +131,7 @@ module Renderer
     print "${arithmetic (\() => Renderer::observed (snapshot, rendered))}"
     ```
     ```output
-    @@TODO@@
+    { revision: 0, samplePosition: 480, parameters: [], components: [{ node: 1, activeVoices: 0, peak: 0.5, rms: 0.5 }] }
     ```
     *)
     export observed (snapshot, rendered) = snapshot(samplePosition = rendered.position, components = mapList (rendered.meters, \m => ComponentState(node = m.identity, activeVoices = 0, peak = m.peak, rms = sqrt (m.energy / toFloat m.count))))
@@ -187,7 +187,7 @@ module Renderer
     print "${arithmetic (\() => Renderer::block (plan, 4000.0, Observation(revision = 0, samplePosition = 0, parameters = [], components = []), Rendered(states = [], samples = [], position = 0, meters = []), 1))}"
     ```
     ```output
-    @@TODO@@
+    Error(InvalidConfiguration { detail: "Invalid render rate, block size, position or layout." })
     ```
     *)
     export block (plan, rate, snapshot, rendered, count) = match validBlock (rate, rendered, count) && supported plan

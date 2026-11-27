@@ -10,8 +10,16 @@ module StrikeCombs
     (** Position 0.01–0.5 of the string; the delayed tap must fit the capacity.
     # Examples
     ```osprey
-    config = StrikeConfig(sampleRate = 48000.0, frequency = 12000.0, position = 0.5, capacity = 3)
-    print "${StrikeCombs::configure config} ${StrikeCombs::configure (config(capacity = 2))}"
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+
+    example () =
+        config = StrikeConfig(sampleRate = 48000.0, frequency = 12000.0, position = 0.5, capacity = 3)
+        print "${StrikeCombs::configure config} ${StrikeCombs::configure (config(capacity = 2))}"
+
+    arithmetic example
     ```
     ```output
     @@TODO@@
@@ -27,7 +35,7 @@ module StrikeCombs
     print "${StrikeCombs::initial (StrikeConfig(sampleRate = 48000.0, frequency = 12000.0, position = 0.5, capacity = 3))} ${StrikeCombs::initial (StrikeConfig(sampleRate = 48000.0, frequency = 12000.0, position = 0.5, capacity = 1))}"
     ```
     ```output
-    @@TODO@@
+    Success({ samples: [0.0, 0.0, 0.0] }) Error(InvalidConfiguration { detail: "Delay capacity must be 2 to 1920000 samples." })
     ```
     *)
     export initial config = DelayLines::prepare config.capacity
@@ -43,7 +51,7 @@ module StrikeCombs
     print "${arithmetic (\() => StrikeCombs::next (config, DelayLine(samples = [0.0, 0.0, 0.0]), 1.0))} ${arithmetic (\() => StrikeCombs::next (config, DelayLine(samples = [1.0, 0.0, 0.0]), 0.0))}"
     ```
     ```output
-    @@TODO@@
+    Success({ sample: 1.0, next: { samples: [0.0, 0.0, 1.0] } }) Success({ sample: 0.0, next: { samples: [0.0, 0.0, 0.0] } })
     ```
     *)
     export next (config, held, input) =

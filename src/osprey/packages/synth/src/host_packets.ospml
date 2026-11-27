@@ -12,7 +12,7 @@ module HostPackets
     print "${HostPackets::validNote (64, HostNote(kind = 1, offset = 63, pitch = 60, channel = 0, identity = 1, velocity = 0.5))} ${HostPackets::validNote (64, HostNote(kind = 1, offset = 64, pitch = 60, channel = 0, identity = 1, velocity = 0.5))}"
     ```
     ```output
-    @@TODO@@
+    true false
     ```
     *)
     export validNote (frames, n) = (n.kind == 1 || n.kind == 2) && n.offset >= 0 && n.offset < frames && n.pitch >= 0 && n.pitch <= 127 && n.channel >= 0 && n.channel <= 15 && n.identity >= 0 && n.identity <= 2147483647 && n.velocity >= 0.0 && n.velocity <= 1.0
@@ -39,7 +39,7 @@ module HostPackets
     print "${arithmetic (\() => HostPackets::packet (1, HostBlock(frames = 2, notes = [], parameters = [], samples = [0.0, 0.0])))} ${arithmetic (\() => HostPackets::packet (1, HostBlock(frames = 257, notes = [], parameters = [], samples = [])))}"
     ```
     ```output
-    @@TODO@@
+    Success(0200000000000000000000000000000000000000) Error(InvalidConfiguration { detail: "Invalid VST audio, event or parameter packet." })
     ```
     *)
     export packet (channels, block) = match block.frames <= 256 && valid (channels, block) && ordered (block.notes, 0) && ordered (block.parameters, 0)
@@ -58,7 +58,7 @@ module HostPackets
     print "${HostPackets::slice ([1.0, 2.0, 3.0], 1, 2)} ${HostPackets::slice ([1.0], 0, 2)}"
     ```
     ```output
-    @@TODO@@
+    Success([2.0, 3.0]) Error(InvalidConfiguration { detail: "Audio slice is outside its buffer." })
     ```
     *)
     export slice (samples, first, count) = match first >= 0 && count >= 0 && first <= satSub (length samples) count
@@ -108,7 +108,7 @@ module HostPackets
     print "${arithmetic (\() => HostPackets::clip (HostLayout(inputChannels = 1, outputChannels = 1, acceptsNotes = false), HostBlock(frames = 1, notes = [], parameters = [], samples = [0.0])))} ${arithmetic (\() => HostPackets::clip (HostLayout(inputChannels = 1, outputChannels = 0, acceptsNotes = false), HostBlock(frames = 1, notes = [], parameters = [], samples = [0.0])))}"
     ```
     ```output
-    @@TODO@@
+    Success(01000000000000000000000000000000) Error(ExhaustedCapacity { detail: "The VST clip exceeds its layout or capacity." })
     ```
     *)
     export clip (layout, block) = match fitsTransport block && valid (layout.inputChannels, block) && ordered (block.notes, 0) && ordered (block.parameters, 0) && layout.outputChannels >= 1 && layout.outputChannels <= 64 && satMul block.frames layout.outputChannels <= 65536 && (layout.acceptsNotes || length block.notes == 0)

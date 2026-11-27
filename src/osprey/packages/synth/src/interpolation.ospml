@@ -9,7 +9,7 @@ module Interpolation
     print "${Interpolation::linear (0.25, 0.75, 0.0)} ${Interpolation::linear (0.25, 0.75, 1.0)} ${Interpolation::linear (0.25, 0.75, 0.5)}"
     ```
     ```output
-    @@TODO@@
+    0.25 0.75 0.5
     ```
     *)
     export linear (a, b, fraction) = match fraction == 0.0

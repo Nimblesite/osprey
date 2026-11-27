@@ -82,7 +82,7 @@ module Limiters
     print "${arithmetic (\() => Limiters::gains ([1.0], [2.0], 48000.0, 1.0, 5.0, 0.1))} ${arithmetic (\() => Limiters::gains ([1.0], [], 48000.0, 1.0, 5.0, 0.1))}"
     ```
     ```output
-    @@TODO@@
+    Success([0.5]) Error(InvalidConfiguration { detail: "A limiter needs equal sides, a rate of 8 to 384 kHz, a ceiling above 0 up to 1, a lookahead of 0.1 to 20 ms and a release of 1 ms to 2 s." })
     ```
     *)
     export gains (left, right, rate, ceiling, milliseconds, release) = match valid (left, right, rate, ceiling, milliseconds, release)
@@ -95,7 +95,7 @@ module Limiters
     print "${Limiters::applied ([2.0, -2.0], [0.5, 1.0], 0.95)}"
     ```
     ```output
-    @@TODO@@
+    [0.95, -0.95]
     ```
     *)
     export applied (side, gains, ceiling) = mapList (toList (range (0, length side)), \index => DynamicsMath::limitedSample (listGet side index ?: 0.0, listGet gains index ?: 1.0, ceiling))

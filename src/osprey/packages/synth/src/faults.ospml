@@ -10,7 +10,7 @@ module Faults
     print "${Faults::detail (InvalidConfiguration(detail = "bad"))} ${Faults::detail (NumericalFailure(detail = "nan"))}"
     ```
     ```output
-    @@TODO@@
+    bad nan
     ```
     *)
     export detail fault = match fault

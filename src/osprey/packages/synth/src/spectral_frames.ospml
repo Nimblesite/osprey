@@ -146,7 +146,7 @@ module SpectralFrames
     print "${SpectralFrames::compatible []} ${SpectralFrames::compatible [SpectralBand(low = 100.0, high = 2000.0), SpectralShift(bins = 2)]} ${SpectralFrames::compatible [SpectralPitch(ratio = 1.0, formant = 1.0)]}"
     ```
     ```output
-    @@TODO@@
+    false true false
     ```
     *)
     export compatible steps = length steps >= 1 && length steps <= 8 && length (filterList (steps, stateless)) == length steps

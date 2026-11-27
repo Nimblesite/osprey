@@ -9,7 +9,7 @@ module Oscillators
     print "${Oscillators::initial}"
     ```
     ```output
-    @@TODO@@
+    { phase: 0.0 }
     ```
     *)
     export initial = OscillatorState(phase = 0.0)
@@ -21,7 +21,7 @@ module Oscillators
     print "${Oscillators::configure config} ${Oscillators::configure (config(pulseWidth = 0.0))}"
     ```
     ```output
-    @@TODO@@
+    Success({ sampleRate: 48000.0, frequency: 12000.0, pulseWidth: 0.5, waveform: Sine }) Error(InvalidConfiguration { detail: "Invalid oscillator sample rate, frequency or pulse width." })
     ```
     *)
     export configure config = match config.sampleRate >= 8000.0 && config.sampleRate <= 384000.0 && config.frequency >= 0.0 && config.frequency < config.sampleRate * 0.5 && config.pulseWidth >= 0.01 && config.pulseWidth <= 0.99
@@ -45,7 +45,7 @@ module Oscillators
     print "${arithmetic (\() => Oscillators::next (config, Oscillators::initial))} ${arithmetic (\() => Oscillators::next (config, OscillatorState(phase = 0.25)))}"
     ```
     ```output
-    @@TODO@@
+    { sample: 0.0, next: { phase: 0.25 } } { sample: 1.0, next: { phase: 0.5 } }
     ```
     *)
     export next (config, held) =

@@ -20,7 +20,7 @@ release_docs() {
       pkg fetch --registry "${api%/v1}" --project "$release_source" &&
       pkg docs --project "$release_source" --compiler target/release/osprey --docs-dir "$docs"
   else
-    target/release/osprey --docs "$release_source" --docs-dir "$docs" --docs-format html
+    target/release/osprey --docs "$release_source" --docs-dir "$docs" --docs-format html --docs-no-builtins
   fi
 }
 mkdir -p "$out/sources" "$out/tags" "$out/publishers" "$work/tags"
@@ -35,9 +35,10 @@ jq -er '.packages | type == "array"' "$work/catalog" >/dev/null
 jq -r '.packages[].key' "$work/catalog" > "$work/keys"
 : > "$work/rows"
 : > "$work/credits"
+minimum_tag_packages=$(render minimum-tag-packages)
 while IFS= read -r key; do
   [[ "$key" =~ ^@[a-z0-9][a-z0-9-]*/[a-z0-9][a-z0-9-]*$ ]]
-  mkdir -p "$out/packages/$key"
+  mkdir -p "$out/packages/$key" "$work/packages/$key"
   jq -er --arg key "$key" '.packages[] | select(.key == $key) | .releases | sort_by(.epoch,.ordinal)[] | [.epoch,.ordinal,.digest] | @tsv' "$work/catalog" > "$work/versions"
   : > "$work/links"
   while IFS=$'\t' read -r epoch ordinal digest; do
@@ -77,14 +78,14 @@ while IFS= read -r key; do
   row=$(render row "$key" "$summary" "$license")
   echo "$row" >> "$work/rows"
   metadata=$(yq -p toml -o json '.' "$work/manifest.toml")
-  keywords=$(jq -r '.package.keywords // [] | join(", ")' <<< "$metadata")
+  jq -r '.package.keywords // [] | unique[]' <<< "$metadata" > "$work/packages/$key/tags"
   while IFS= read -r tag; do
     [[ "$tag" =~ ^[a-z0-9][a-z0-9-]{0,31}$ ]]
     echo "$row" >> "$work/tags/$tag"
-  done < <(jq -r '.package.keywords[]?' <<< "$metadata")
+  done < "$work/packages/$key/tags"
   deps=$(jq -r '.dependencies // {} | keys | join(", ")' <<< "$metadata")
-  for field in "$license" "$keywords" "$deps"; do [[ "$field" != *$'\n'* && "$field" != *$'\r'* ]]; done
-  render package "$key" "$summary" "$receipt" "$license" "${keywords:-None}" "${deps:-None}" "$notice_version" "$(tr -d '\n' < "$work/links")" > "$out/packages/$key/index.html"
+  [[ "$deps" != *$'\n'* && "$deps" != *$'\r'* ]]
+  printf '%s\n' package "$key" "$summary" "$receipt" "$license" "${deps:-None}" "$notice_version" "$(tr -d '\n' < "$work/links")" > "$work/packages/$key/page-input"
 done < "$work/keys"
 if [[ -s "$work/credits" ]]; then
   mkdir -p "$out/publishers/osprey-repository"
@@ -98,11 +99,19 @@ render directory Publishers "$publisher_list" > "$out/publishers/index.html"
 : > "$work/tag-links"
 for group in "$work/tags/"*; do
   [[ -f "$group" ]] || continue
+  [[ $(wc -l < "$group") -ge "$minimum_tag_packages" ]] || continue
   tag=${group##*/}
   mkdir -p "$out/tags/$tag"
   render directory "$tag" "$(tr -d '\n' < "$group")" > "$out/tags/$tag/index.html"
   printf '<a class="prose-chip" href="/tags/%s/">%s</a>' "$tag" "$tag" >> "$work/tag-links"
 done
+while IFS= read -r key; do
+  tags=$(while IFS= read -r tag; do
+    if [[ -d "$out/tags/$tag" ]]; then printf '%s\n' "$tag"; fi
+  done < "$work/packages/$key/tags" | jq -Rsr 'split("\n") | map(select(length > 0)) | join(", ")')
+  { cat "$work/packages/$key/page-input"; printf '%s\n' "$tags"; } | wasmtime target/registry-site-build/site.wasm > "$out/packages/$key/index.html"
+done < "$work/keys"
+if [[ ! -s "$work/tag-links" ]]; then echo '<p>No tags have five packages yet.</p>' > "$work/tag-links"; fi
 render directory Tags "$(cat "$work/tag-links")" > "$out/tags/index.html"
 asset() {
 

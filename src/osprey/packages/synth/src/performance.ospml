@@ -17,7 +17,7 @@ module Performance
     print "${Performance::wave (1, 0.0, 0.01, 0.5, 0.0)} ${Performance::wave (99, 0.0, 0.01, 0.5, 0.0)}"
     ```
     ```output
-    @@TODO@@
+    0.0 0.0
     ```
     *)
     export wave (instrument, phase, step, tone, warp) = Waves::ring (timbre (instrument, phase, step, tone), phase, warp)

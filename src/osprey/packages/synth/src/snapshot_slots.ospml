@@ -11,7 +11,7 @@ module SnapshotSlots
     print "${SnapshotSlots::initial observation}"
     ```
     ```output
-    @@TODO@@
+    { latest: { revision: 0, samplePosition: 0, parameters: [], components: [] }, published: 0, delivered: 0 }
     ```
     *)
     export initial observation = SnapshotSlot(latest = observation, published = 0, delivered = 0)
@@ -23,7 +23,7 @@ module SnapshotSlots
     print "${SnapshotSlots::publish (SnapshotSlots::initial observation, observation(revision = 1))}"
     ```
     ```output
-    @@TODO@@
+    { latest: { revision: 1, samplePosition: 0, parameters: [], components: [] }, published: 1, delivered: 0 }
     ```
     *)
     export publish (slot, observation) = slot(latest = observation, published = satAdd slot.published 1)
@@ -40,7 +40,7 @@ module SnapshotSlots
     print "${SnapshotSlots::read slot}"
     ```
     ```output
-    @@TODO@@
+    { observation: { revision: 2, samplePosition: 0, parameters: [], components: [] }, coalesced: 1, next: { latest: { revision: 2, samplePosition: 0, parameters: [], components: [] }, published: 2, delivered: 2 } }
     ```
     *)
     export read slot = SlotRead(observation = slot.latest, coalesced = skipped slot, next = slot(delivered = slot.published))

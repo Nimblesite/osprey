@@ -12,7 +12,7 @@ module Resources
     print "${Resources::version}"
     ```
     ```output
-    @@TODO@@
+    1
     ```
     *)
     export version = 1
@@ -36,7 +36,7 @@ module Resources
     print "${arithmetic (\() => Resources::sample kick)} ${arithmetic (\() => Resources::sample (kick(samples = [0.5, 0.5])))}"
     ```
     ```output
-    @@TODO@@
+    { name: "kick", hash: -457251675397606652, channels: 1, sampleRate: 48000, frames: 2, version: 1 } { name: "kick", hash: 8766120361457169156, channels: 1, sampleRate: 48000, frames: 2, version: 1 }
     ```
     *)
     export sample resource = ResourceIdentity(name = resource.name, hash = hashed (foldList ([resource.sampleRate, resource.sourceChannels, floatBits resource.rootFrequency, length resource.samples], offset, mixed), resource.samples), channels = resource.sourceChannels, sampleRate = resource.sampleRate, frames = intDiv (length resource.samples) (atLeastOne resource.sourceChannels), version = version)
@@ -59,7 +59,7 @@ module Resources
     print "${arithmetic (\() => Resources::table ("sine", Wavetable(size = 4, harmonics = 1, frames = [TableFrame(levels = [TableLevel(harmonics = 1, samples = [0.0, 1.0, 0.0, -1.0])])])))}"
     ```
     ```output
-    @@TODO@@
+    { name: "sine", hash: -1284827455044551081, channels: 1, sampleRate: 0, frames: 4, version: 1 }
     ```
     *)
     export table (name, t) = ResourceIdentity(name = name, hash = foldList (t.frames, foldList ([t.size, t.harmonics, length t.frames], offset, mixed), frameHashed), channels = 1, sampleRate = 0, frames = t.size, version = version)

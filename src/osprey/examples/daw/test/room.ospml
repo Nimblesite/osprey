@@ -1,6 +1,5 @@
-// The synth given room ([UI-MACHINE-FLOW-SYNTH], [UI-MACHINE-CANVAS]): a larger window drops the
-// keyboard deck to its bottom and moves the inspector to its right, each key and switch its own
-// size, and a struck key still plays the patch at its pitch from where it now is.
+// The patch editor given room ([UI-MACHINE-CANVAS]): windows and panels at any size, and the
+// suite's output folders.
 
 import uitest::Drive
 
@@ -8,24 +7,9 @@ patchControls = "Patch Controls"
 prismVstScan2 = "prism-vst:scan:2"
 stereoOutputText = "stereo-output"
 modulateDelay = "Modulate Delay"
-inspectorBypassBypassFilter = "Inspector bypass: Bypass Filter"
 starterChain = ["sine", "gain", "output"]
 addComponent = "Add component"
 canvasInput10 = "Canvas input 1:0"
-
-// The window resized to `width` by `height`.
-resizedTo (d, width, height) = Drive::viewed (d, width, height)
-
-viewed (width, height) = post (\d => resizedTo (d, width, height))
-
-// The accessible `edge` of the labelled element, in canvas points.
-edgeOf (edge, label) = match edge
-    "left" => (element label).accessLeft
-    "width" => (element label).accessWidth
-    _ => (element label).accessTop
-
-// The horizontal distance between two labelled elements.
-gapBetween (left, right) = edgeOf ("left", left) - edgeOf ("left", right)
 
 // The folder every suite output goes under: the repository's `target/daw-tests`, whichever folder the suite runs from.
 outputFolder () = signalflow::App::fromRepository "target/daw-tests"
@@ -38,32 +22,6 @@ madeRoom name =
 
 // A middle C struck at beat 0 with full velocity, ringing for `beats` beats.
 beatNote beats = daw::Note(pitch = 60, start = 0.0, length = beats, velocity = 1.0)
-
-// The deck `dy` lower and the inspector `dx` further right than at the design size, `gap` being their distance there; the graph's nodes stay.
-roomFor (gap, dx, dy) =
-    forEachList (["Play C4", "Play C#4"], \key => near (edgeOf ("top", key), 866.0 + dy))
-    near (edgeOf ("left", "Play C4"), 480.0)
-    near (edgeOf ("width", "Play C4"), 60.0)
-    near (gapBetween (inspectorBypassBypassFilter, "Bypass Filter"), gap + dx)
-
-roomyKeys () =
-    begun ()
-    knobNumber ("spareHeight", 0.0)
-    gap = gapBetween (inspectorBypassBypassFilter, "Bypass Filter")
-    roomFor (gap, 0.0, 0.0)
-    viewed (1836.0, 1258.0)
-    knobNumber ("spareWidth", 300.0)
-    roomFor (gap, 300.0, 250.0)
-    knobNumber ("spareHeight", 250.0)
-    expect (runCount (), 0)
-    struck ("C4", 261.6256)
-    struck ("A#4", 466.1638)
-    switched (inspectorBypassBypassFilter, "processOn", false)
-    expect (runCount (), 0)
-    switched ("Inspector bypass: Enable Filter", "processOn", true)
-    viewed (1536.0, 1008.0)
-    roomFor (gap, 0.0, 0.0)
-    struck ("E3", 164.8138)
 
 // [PRISM-ROUTING-EDITOR] The same real host event path used by the modular surface.
 editorUiJourney () =
@@ -504,11 +462,6 @@ builtinRender (graph, frames) = match synth::Graphs::prepare graph
 errs result = match result
     Error _ => expect (true, true)
     Success _ => expect (false, true)
-
-// A bypass or enable switch pressed, which must flip `name`.
-switched (label, name, expected) =
-    tap label
-    flag (name, expected)
 
 // Fails the test unless `outcome` is refused.
 refusesGraph outcome = match outcome

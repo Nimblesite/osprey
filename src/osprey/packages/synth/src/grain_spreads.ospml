@@ -19,7 +19,7 @@ module GrainSpreads
     print "${GrainSpreads::around (controls, 100, spread)} ${GrainSpreads::around (controls, 100, spread(position = 100.0))}"
     ```
     ```output
-    @@TODO@@
+    Success({ minimum: { window: HannWindow, start: 0.0, rate: 1.0, duration: 4800, amplitude: 0.0, pan: -1.0 }, maximum: { window: HannWindow, start: 5.0, rate: 1.0, duration: 4800, amplitude: 1.0, pan: 1.0 } }) Error(InvalidConfiguration { detail: "Invalid grain variation center or spread." })
     ```
     *)
     export around (controls, size, spread) = match size >= 2 && size <= 1048576 && Grains::controls (size, controls) && controls.start <= toFloat (satSub size 1) && valid (size, spread)

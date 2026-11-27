@@ -10,7 +10,7 @@ module EffectKernels
     print "${EffectKernels::shaperStorage}"
     ```
     ```output
-    @@TODO@@
+    62
     ```
     *)
     export shaperStorage = 62
@@ -21,7 +21,7 @@ module EffectKernels
     print "${EffectKernels::shifterStorage}"
     ```
     ```output
-    @@TODO@@
+    32
     ```
     *)
     export shifterStorage = 32
@@ -50,8 +50,16 @@ module EffectKernels
     (** Resolve fixed drive, transfer curve and optional FIR weights once per block.
     # Examples
     ```osprey
-    snapshot = Parameters::initial (Graph(nodes = [Components::shaper (1, 0.0, 1.0)], cables = []))
-    print "${EffectKernels::prepare (48000.0, snapshot, 1)} ${EffectKernels::prepare (48000.0, Parameters::initial Graphs::empty, 1)}"
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+
+    example () =
+        snapshot = Parameters::initial (Graph(nodes = [Components::shaper (1, 0.0, 1.0)], cables = []))
+        print "${EffectKernels::prepare (48000.0, snapshot, 1)} ${EffectKernels::prepare (48000.0, Parameters::initial Graphs::empty, 1)}"
+
+    arithmetic example
     ```
     ```output
     @@TODO@@
@@ -76,7 +84,7 @@ module EffectKernels
     print "${arithmetic (\() => EffectKernels::shaper (48000.0, Parameters::initial Graphs::empty, SampleFrame(states = [], values = []), held, 0.0, LivePhysical))} ${arithmetic (\() => EffectKernels::shaper (48000.0, Parameters::initial Graphs::empty, SampleFrame(states = [], values = []), held, 0.0, FixedShaper(config = ShaperConfig(sampleRate = 48000.0, curve = HardCurve, drive = 1.0, bias = 0.0, level = 0.5, antialias = false), weights = [])))}"
     ```
     ```output
-    @@TODO@@
+    Error(MissingResource { detail: "Required render parameter is missing." }) Success({ states: [], values: [{ identity: 1, value: 0.0 }] })
     ```
     *)
     export shaper (rate, snapshot, frame, held, input, prepared) = match prepared
@@ -105,7 +113,7 @@ module EffectKernels
     print "${arithmetic (\() => EffectKernels::reverb (48000.0, Parameters::initial Graphs::empty, SampleFrame(states = [], values = []), held, 0.0))}"
     ```
     ```output
-    @@TODO@@
+    Error(MissingResource { detail: "Required render parameter is missing." })
     ```
     *)
     export reverb (rate, snapshot, frame, held, input) = RenderInputs::bound (snapshot, held, "size", \size => RenderInputs::bound (snapshot, held, "decay", \decay => RenderInputs::bound (snapshot, held, "damping", \damping => RenderInputs::bound (snapshot, held, "diffusion", \diffusion => RenderInputs::bound (snapshot, held, "mix", \mix => RenderInputs::bound (snapshot, held, "freeze", \freeze => verb (rate, frame, held, input, size, decay, damping, diffusion, mix, freeze)))))))
@@ -131,7 +139,7 @@ module EffectKernels
     print "${arithmetic (\() => EffectKernels::shifter (48000.0, Parameters::initial Graphs::empty, SampleFrame(states = [], values = []), held, 0.0))}"
     ```
     ```output
-    @@TODO@@
+    Error(MissingResource { detail: "Required render parameter is missing." })
     ```
     *)
     export shifter (rate, snapshot, frame, held, input) = RenderInputs::bound (snapshot, held, "shift", \shift => RenderInputs::bound (snapshot, held, "ring", \ring => RenderInputs::bound (snapshot, held, "mix", \mix => shifted (frame, held, input, Shifters::configure (ShifterConfig(sampleRate = rate, shift = shift, ring = ring >= 0.5, mix = mix))))))

@@ -11,7 +11,7 @@ module Spectra
     print "${Spectra::centres}"
     ```
     ```output
-    @@TODO@@
+    [31.25, 62.5, 125.0, 250.0, 500.0, 1000.0, 2000.0, 4000.0, 8000.0, 16000.0]
     ```
     *)
     export centres = [31.25, 62.5, 125.0, 250.0, 500.0, 1000.0, 2000.0, 4000.0, 8000.0, 16000.0]
@@ -55,7 +55,7 @@ module Spectra
     print "${arithmetic (\() => Spectra::bands ([], 48000.0, 100, 16))}"
     ```
     ```output
-    @@TODO@@
+    Error(InvalidConfiguration { detail: "A spectrum needs a power-of-two frame of 64 to 4096, a hop of at least 1 and a rate of 8 to 384 kHz." })
     ```
     *)
     export bands (samples, rate, size, hop) = match valid (rate, size, hop)

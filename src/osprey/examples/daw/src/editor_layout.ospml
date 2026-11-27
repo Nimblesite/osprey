@@ -179,8 +179,8 @@ module PrismArt
     export card (editor, n) =
         drawn (prepared (editor, n), filterList (roleMarks (editor, role n.processor), \mark => !(n.processor == Sink && mark.markFigure == ui::PolylineFigure)))
 
-    (** Original header, inspector, legend and keyboard, driven by the current selection. *)
-    export background editor = mapList (backgroundPart (editor, false), \part => fixedPart (editor, part))
+    (** Original header, inspector and legend, driven by the current selection. *)
+    export background editor = mapList (backgroundPart editor, \part => fixedPart (editor, part))
 
     fixedPart (editor, part) = match grid part
         true => part
@@ -193,10 +193,7 @@ module PrismArt
     (** Keep fixed panels above every card when the graph pans beneath them. *)
     export chromeLayer editor = satMul (satAdd (length editor.graph.nodes) 1) 100
 
-    (** Keyboard artwork in local dock coordinates. *)
-    export deck editor = backgroundPart (editor, true)
-
-    backgroundPart (editor, keyboard) =
+    backgroundPart editor =
         selected = match Graphs::node (editor.graph, editor.selected)
             Invalid _ => editor.skin
             Valid n => prepared (editor, n)
@@ -204,15 +201,14 @@ module PrismArt
             Invalid _ => true
             Valid _ => false
         machine = ui::Machines::feed (selected, [fact ("keys", 1.0), fact ("hertz", CanvasGeometry::frequency (toFloat editor.note)), ui::Machines::fact ("note", ui::Values::text (noteName editor.note))])
-        dy = ui::Pick::either (keyboard, -828.0, 0.0)
-        drawn (machine, mapList (filterList (roleMarks (editor, "scenery"), \mark => backgroundMark (editor, machine, mark, keyboard, bare)), \mark => shiftedMark (machine, mark, dy)))
+        drawn (machine, mapList (filterList (roleMarks (editor, "scenery"), \mark => backgroundMark (editor, machine, mark, bare)), \mark => shiftedMark (machine, mark, 0.0)))
 
     // `bare`: no module is selected, so the skin's own inspector (its sample Filter) is left out.
-    backgroundMark (editor, machine, mark, keyboard, bare) =
+    backgroundMark (editor, machine, mark, bare) =
         grid = mark.markFigure == ui::SpriteFigure && ui::Templates::measure (machine, mark.markIndex) == 0.0
-        match grid
-            true => !keyboard
-            false => (ui::Templates::measure (machine, mark.markY) >= 828.0 + ui::Machines::number (machine, "spareHeight")) == keyboard && !(editor.detailsShown && !keyboard && ui::Templates::measure (machine, mark.markX) >= 1210.0) && !(bare && !keyboard && ui::Templates::measure (machine, mark.markX) >= 1210.0 && ui::Templates::measure (machine, mark.markY) >= 70.0) && !connectionMark (machine, mark)
+        x = ui::Templates::measure (machine, mark.markX)
+        y = ui::Templates::measure (machine, mark.markY)
+        grid || (y < 828.0 + ui::Machines::number (machine, "spareHeight") && !(editor.detailsShown && x >= 1210.0) && !(bare && x >= 1210.0 && y >= 70.0) && !connectionMark (machine, mark))
 
     connectionMark (machine, mark) =
         y = ui::Templates::measure (machine, mark.markY)
@@ -220,20 +216,9 @@ module PrismArt
 
     noteNames = ["C3", "C#3", "D3", "D#3", "E3", "F3", "F#3", "G3", "G#3", "A3", "A#3", "B3", "C4", "C#4", "D4", "D#4", "E4", "F4", "F#4", "G4", "G#4", "A4", "A#4", "B4"]
 
-    (** Musical names match the original key labels, including accidentals. *)
-    export noteName note = listGet noteNames (satSub note 48) ?: "—"
+    // Musical names match the skin's key labels, including accidentals.
+    noteName note = listGet noteNames (satSub note 48) ?: "—"
 
-    (** Original keyboard hit boxes, rather than approximated white and black key geometry. *)
-    export keyboardAccess editor = filterList (ui::Canvases::semantics (ui::Machines::feed (editor.skin, [fact ("keys", 1.0)])), \area => startsWith area.accessLabel "Play ")
-
-    (** Decode only a key the original keyboard actually exposes. *)
-    export keyAt (editor, x, y) = match listGet (filterList (keyboardAccess editor, \a => EditorView::covers (a, x, y))) 0
-        Error _ => Error(message = "index out of bounds")
-        Success area =>
-            index = ui::Lists::position (noteNames, \name => "Play ${name}" == area.accessLabel)
-            match index >= 0
-                true => Success(value = satAdd index 48)
-                false => Error(message = "Unknown keyboard note.")
 
 
     waveName value = match value

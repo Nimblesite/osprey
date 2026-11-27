@@ -18,6 +18,7 @@ pub(super) struct Options {
     pub(super) theme: String,
     pub(super) pages: Vec<PathBuf>,
     pub(super) css: Vec<PathBuf>,
+    pub(super) no_builtins: bool,
 }
 
 impl Options {
@@ -30,6 +31,7 @@ impl Options {
             theme: "osprey".into(),
             pages: Vec::new(),
             css: Vec::new(),
+            no_builtins: false,
         };
         let mut arguments = args.iter();
         while let Some(argument) = arguments.next() {
@@ -45,6 +47,9 @@ impl Options {
             && (!options.css.is_empty() || options.theme != "osprey")
         {
             return Err("custom CSS and themes require --docs-format html".into());
+        }
+        if options.format == Format::Markdown && options.no_builtins {
+            return Err("--docs-no-builtins requires --docs-format html".into());
         }
         Ok(options)
     }
@@ -62,6 +67,7 @@ impl Options {
             "--docs-theme" => self.theme = parse_theme(value(args, argument)?)?,
             "--docs-page" => self.pages.push(value(args, argument)?.into()),
             "--docs-css" => self.css.push(value(args, argument)?.into()),
+            "--docs-no-builtins" => self.no_builtins = true,
             flag if flag.starts_with('-') => {
                 return Err(format!("unknown documentation option {flag}"))
             }

@@ -20,7 +20,7 @@ module NonlinearMath
     print "${NonlinearMath::tanh 0.0} ${NonlinearMath::tanh 20.0} ${NonlinearMath::tanh (-20.0)}"
     ```
     ```output
-    @@TODO@@
+    0.0 1.0 -1.0
     ```
     *)
     export tanh x =
@@ -34,7 +34,7 @@ module NonlinearMath
     print "${NonlinearMath::tanhIntegral 0.0}"
     ```
     ```output
-    @@TODO@@
+    0.0
     ```
     *)
     export tanhIntegral x =
@@ -47,7 +47,7 @@ module NonlinearMath
     print "${NonlinearMath::hard 2.0} ${NonlinearMath::hard (-2.0)} ${NonlinearMath::hard 0.5}"
     ```
     ```output
-    @@TODO@@
+    1.0 -1.0 0.5
     ```
     *)
     export hard x = clamped (x, (-1.0), 1.0)
@@ -58,7 +58,7 @@ module NonlinearMath
     print "${NonlinearMath::hardIntegral 0.5} ${NonlinearMath::hardIntegral 2.0}"
     ```
     ```output
-    @@TODO@@
+    0.125 1.5
     ```
     *)
     export hardIntegral x =
@@ -73,7 +73,7 @@ module NonlinearMath
     print "${NonlinearMath::cubic 0.5} ${NonlinearMath::cubic 2.0} ${NonlinearMath::cubic (-2.0)}"
     ```
     ```output
-    @@TODO@@
+    0.6875 1.0 -1.0
     ```
     *)
     export cubic x = match x >= 1.0
@@ -88,7 +88,7 @@ module NonlinearMath
     print "${NonlinearMath::cubicIntegral 0.5} ${NonlinearMath::cubicIntegral 2.0}"
     ```
     ```output
-    @@TODO@@
+    0.1796875 1.625
     ```
     *)
     export cubicIntegral x =
@@ -103,7 +103,7 @@ module NonlinearMath
     print "${NonlinearMath::fold 0.0} ${NonlinearMath::fold 1.0} ${NonlinearMath::fold (-1.0)}"
     ```
     ```output
-    @@TODO@@
+    0.0 1.0 -1.0
     ```
     *)
     export fold x = sin (1.5707963267948966 * x)
@@ -114,7 +114,7 @@ module NonlinearMath
     print "${NonlinearMath::foldIntegral 0.0}"
     ```
     ```output
-    @@TODO@@
+    -0.6366197723675814
     ```
     *)
     export foldIntegral x = (-0.6366197723675814) * cos (1.5707963267948966 * x)
@@ -125,7 +125,7 @@ module NonlinearMath
     print "${NonlinearMath::dcBlock (0.5, 0.25, 0.1, 0.995)}"
     ```
     ```output
-    @@TODO@@
+    0.34950000000000003
     ```
     *)
     export dcBlock (input: float, previousInput, previousOutput, coefficient) = input - previousInput + coefficient * previousOutput
@@ -136,7 +136,7 @@ module NonlinearMath
     print "${NonlinearMath::dcCoefficient (0.0, 48000.0)}"
     ```
     ```output
-    @@TODO@@
+    1.0
     ```
     *)
     export dcCoefficient (cutoff, sampleRate) = exp (floatDiv ((-6.283185307179586) * cutoff, sampleRate))
@@ -147,7 +147,7 @@ module NonlinearMath
     print "${NonlinearMath::halfband (2, 5)}"
     ```
     ```output
-    @@TODO@@
+    0.49999999999999994
     ```
     *)
     export halfband (index, taps) =
@@ -164,7 +164,7 @@ module NonlinearMath
     print "${NonlinearMath::schroederIn (1.0, 0.5, 0.5)}"
     ```
     ```output
-    @@TODO@@
+    1.25
     ```
     *)
     export schroederIn (input: float, delayed, gain) = input + gain * delayed
@@ -175,7 +175,7 @@ module NonlinearMath
     print "${NonlinearMath::schroederOut (1.25, 0.5, 0.5)}"
     ```
     ```output
-    @@TODO@@
+    -0.125
     ```
     *)
     export schroederOut (internal: float, delayed, gain) = delayed - gain * internal
@@ -186,7 +186,7 @@ module NonlinearMath
     print "${NonlinearMath::damp (0.5, 0.25, 0.5)}"
     ```
     ```output
-    @@TODO@@
+    0.375
     ```
     *)
     export damp (input, previous, damping) = (1.0 - damping) * input + damping * previous
@@ -197,7 +197,7 @@ module NonlinearMath
     print "${NonlinearMath::householder (1.0, 6.0, 3.0)}"
     ```
     ```output
-    @@TODO@@
+    -3.0
     ```
     *)
     export householder (value, sum, count) = value - floatDiv (2.0 * sum, count)
@@ -208,7 +208,7 @@ module NonlinearMath
     print "${NonlinearMath::hilbert (0.5, 1.0, 0.25, 0.5)}"
     ```
     ```output
-    @@TODO@@
+    0.125
     ```
     *)
     export hilbert (coefficient: float, input, olderInput, olderOutput) = coefficient * coefficient * (input + olderOutput) - olderInput
@@ -219,7 +219,7 @@ module NonlinearMath
     print "${NonlinearMath::shifted (0.5, 0.25, 0.0)}"
     ```
     ```output
-    @@TODO@@
+    0.5
     ```
     *)
     export shifted (inPhase, quadrature, phase) = inPhase * cos (6.283185307179586 * phase) + quadrature * sin (6.283185307179586 * phase)

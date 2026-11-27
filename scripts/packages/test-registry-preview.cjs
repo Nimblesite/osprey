@@ -61,9 +61,10 @@ async function checkPackagedAccount(browser, site, livePort) {
     await page.goto(website);
     await page.getByRole('link', {name:'By tag'}).click();
     await page.getByRole('heading', {name:'Tags', exact:true}).waitFor();
-    await page.getByRole('link', {name:'graphics', exact:true}).click();
-    await page.getByRole('link', {name:'@atlas/render', exact:true}).waitFor();
-    assert.equal(await page.getByRole('link', {name:'@atlas/net', exact:true}).count(), 0);
+    await page.getByText('No tags have five packages yet.').waitFor();
+    assert.equal(await page.getByRole('link', {name:'graphics', exact:true}).count(), 0);
+    await page.goto(website + '/tags/graphics/');
+    await page.getByRole('heading', {name:'Tag not found'}).waitFor();
     await page.goto(website);
     await page.getByRole('link', {name:'By publisher'}).click();
     await page.getByRole('heading', {name:'Publishers'}).waitFor();
@@ -102,10 +103,7 @@ async function checkPackagedAccount(browser, site, livePort) {
     assert.equal((await atContent(corrupted.pathname)).status(), 503);
     await page.getByText('Network access', {exact:true}).waitFor();
     await page.getByRole('link', {name:'Atlas Labs'}).waitFor();
-    await page.getByRole("link", {name:"networking", exact:true}).click();
-    await page.getByRole("heading", {name:"networking", exact:true}).waitFor();
-    await page.getByText("Network access", {exact:true}).waitFor();
-    await page.getByRole("link", {name:"@atlas/net", exact:true}).click();
+    assert.equal(await page.getByRole('link', {name:'networking', exact:true}).count(), 0);
 
     await page.getByRole('link', {name:'Atlas Engineering'}).click();
     await page.getByRole('heading', {name:'Atlas Engineering'}).waitFor();
@@ -166,7 +164,6 @@ async function checkPackagedAccount(browser, site, livePort) {
   entry.releases[1].notices[0].path = 'NOTICES.md';
   let payload = {packages:[entry]};
   await page.route(api + '/v1/packages', route => route.fulfill({headers,json:payload}));
-  await page.route(api + '/v1/packages/@atlas/net', route => route.fulfill({headers,json:entry}));
   await page.goto(website + '/?q=http');
   assert.equal(await page.locator('#results .prose-license').textContent(), 'MIT');
   await page.getByRole('link', {name:entry.key}).click();
@@ -185,6 +182,19 @@ async function checkPackagedAccount(browser, site, livePort) {
   assert.equal(await page.locator('#q').inputValue(), 'http');
   await page.goto(website + '/?q=unknown');
   await page.getByText('No matching packages.').waitFor();
+  const tagged = Array.from({length:4}, (_, i) => ({
+    ...entry, key: '@atlas/fixture-' + i, keywords: i === 3 ? ['networking'] : entry.keywords,
+  }));
+  payload = {packages:[entry, ...tagged, tagged[0]]};
+  await page.goto(website + '/tags/');
+  await page.getByRole('link', {name:'networking', exact:true}).click();
+  await page.getByRole('heading', {name:'networking', exact:true}).waitFor();
+  assert.equal(await page.locator('.prose-package').count(), 5);
+  await page.getByRole('link', {name:entry.key, exact:true}).click();
+  await page.getByRole('link', {name:'networking', exact:true}).waitFor();
+  assert.equal(await page.getByRole('link', {name:'web', exact:true}).count(), 0);
+  await page.goto(website + '/tags/web/');
+  await page.getByRole('heading', {name:'Tag not found'}).waitFor();
   for (const keywords of [null, ['../escape'], ['web', 'networking'], ['web', 'web']]) {
     payload = {packages:[{...entry,keywords}]};
     await page.goto(website);
@@ -215,15 +225,100 @@ async function checkReferenceTable(browser) {
   }
 }
 
+async function checkReferenceHighlighting(browser) {
+  const page = await browser.newPage();
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  for (const [path, language, signature, example] of [
+    ['express/e1.r1/docs/api/express-encode-encodeurl.html', 'typescript', 'fn', 'encodeUrl'],
+    ['einops/e1.r1/docs/api/einops-parsing-format_axes.html', 'python', 'def', 'from'],
+  ]) {
+    await page.goto('http://127.0.0.1:4187/packages/@osprey/' + path);
+    const observed = await page.locator('.prose-doc-article pre code').evaluateAll(blocks => blocks.map(code => ({
+      language: code.className,
+      text: code.textContent,
+      tokens: [...code.querySelectorAll('.token')].map(span => ({
+        kind: span.classList[1], text: span.textContent, color: getComputedStyle(span).color,
+      })),
+      color: getComputedStyle(code).color,
+    })));
+    const [declaration, source, output] = observed;
+    assert.equal(declaration.language, 'language-' + language);
+    assert.ok(declaration.tokens.some(token => token.kind === 'keyword' && token.text === signature && token.color !== declaration.color), path);
+    assert.ok(source.tokens.some(token => token.text === example && token.color !== source.color), path);
+    assert.ok(source.tokens.some(token => token.kind === 'string' && token.color !== source.color), path);
+    assert.deepEqual(output.tokens, [], path);
+    if (language === 'typescript') assert.match(source.text, /encodeUrl\("\/find\/a b\?x=1&y=2"\)/);
+  }
+  assert.deepEqual(errors, []);
+  await page.close();
+}
+
+async function checkPackageReferenceScope(browser) {
+  const page = await browser.newPage();
+  const base = 'http://127.0.0.1:4187/packages/@osprey/express/e1.r1/docs/';
+  await page.goto(base + 'api/index.html');
+  assert.equal(await page.getByText('Built-in functions', {exact: false}).count(), 0);
+  await page.getByRole('searchbox').fill('encodeUrl');
+  await page.locator('#results').getByRole('link', {name: 'express::Encode::encodeUrl'}).waitFor();
+  await page.getByRole('searchbox').fill('byteAt');
+  assert.equal(await page.locator('#results').getByRole('link', {name: 'byteAt'}).count(), 0);
+  assert.equal((await page.request.get(base + 'functions/byteat.html')).status(), 404);
+  await page.close();
+}
+
+async function checkLocalTagThreshold(browser) {
+  const page = await browser.newPage();
+  const base = 'http://127.0.0.1:4187';
+  await page.goto(base + '/tags/');
+  assert.equal(await page.getByRole('link', {name: 'fastapi', exact: true}).count(), 0);
+  await page.getByRole('link', {name: 'python-flavor', exact: true}).click();
+  assert.ok(await page.locator('.prose-package').count() >= 5);
+  await page.getByRole('link', {name: '@osprey/fastapi', exact: true}).click();
+  assert.equal(await page.getByRole('link', {name: 'fastapi', exact: true}).count(), 0);
+  assert.equal((await page.request.get(base + '/tags/fastapi/')).status(), 404);
+  await page.close();
+}
+
+async function checkCoverGeometry(browser) {
+  const base = 'http://127.0.0.1:4187';
+  const paths = ['/', '/publishers/', '/publishers/osprey-repository/', '/tags/',
+    '/tags/python-flavor/', '/packages/@osprey/flash-attn/', '/upload/', '/guide/', '/publishing/'];
+  for (const width of [320, 390, 768, 1440]) {
+    const page = await browser.newPage({viewport:{width, height:900}});
+    let origin;
+    for (const path of paths) {
+      await page.goto(base + path);
+      const panel = page.locator('main :is(.prose-intro, .prose-cover, .prose-publisher)').first();
+      const bounds = await panel.boundingBox();
+      assert.ok(bounds, path);
+      origin ??= bounds;
+      assert.deepEqual(bounds, origin, path + ' at ' + width);
+      assert.equal(bounds.height, 296, path);
+      assert.equal(bounds.y, 108, path);
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), path);
+    }
+    await page.close();
+  }
+}
+
 (async () => {
   const browser = await chromium.launch();
   try {
     if (process.argv[2] === '--database-catalog') return await checkHostedAccount(browser, process.argv[3]);
     if (process.argv.includes('--built-hosted-account')) return await checkHostedAccount(browser);
+    if (process.argv.includes('--highlighting-only')) return await checkReferenceHighlighting(browser);
+    if (process.argv.includes('--reference-scope-only')) return await checkPackageReferenceScope(browser);
+    if (process.argv.includes('--tag-threshold-only')) return await checkLocalTagThreshold(browser);
+    if (process.argv.includes('--covers-only')) return await checkCoverGeometry(browser);
     if (!process.argv.includes('--tables-only')) require('node:child_process').execFileSync('make', ['-C','src/osprey/packages','registry-website-fixture']);
     if (process.argv.includes('--hosted-account-only')) return await checkHostedAccount(browser);
     await checkReferenceTable(browser);
     if (process.argv.includes('--tables-only')) return;
+    await checkReferenceHighlighting(browser);
+    await checkPackageReferenceScope(browser);
+    await checkLocalTagThreshold(browser);
+    await checkCoverGeometry(browser);
     await checkHostedAccount(browser);
     const catalog = await browser.newPage();
     await catalog.goto('http://127.0.0.1:4187/');
@@ -272,7 +367,7 @@ async function checkReferenceTable(browser) {
       assert.equal(await page.getByRole('link', { name: '@osprey/express', exact: true }).count(), 0);
       await page.goto('http://127.0.0.1:4187/');
       await page.getByRole('link', { name: 'By tag' }).click();
-      await page.getByRole('link', { name: 'fastapi', exact: true }).click();
+      await page.getByRole('link', { name: 'python-flavor', exact: true }).click();
       await page.getByRole('link', { name: '@osprey/fastapi', exact: true }).click();
       assert.deepEqual(await box('.prose-bar'), header);
       const detail = await box('.prose-cover');

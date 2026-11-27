@@ -22,7 +22,7 @@ fn catalogAdapter(origin) = {
 fn hostedPackage() = {
     let origin = trim(input())
     let adapter = catalogAdapter(origin)
-    Shell::withEscapedTitle("Package · Osprey Packages", "<main><p id=\"catalog-status\" role=\"status\" data-missing=\"Page not found.\" data-error=\"The registry could not load this page.\">Loading package…</p><div id=\"package-details\"></div>${adapter}</main>")
+    Shell::withEscapedTitle("Package · Osprey Packages", "<main><p id=\"catalog-status\" class=\"prose-cover\" role=\"status\" data-missing=\"Page not found.\" data-error=\"The registry could not load this page.\">Loading packages…</p><div id=\"package-details\"></div>${adapter}</main>")
 }
 
 fn localFilter() = {
@@ -84,13 +84,12 @@ fn localPackage() = {
     let summary = Shell::escape(trim(input()))
     let publisher = publisherLink(trim(input()))
     let license = Shell::licenseBadge(trim(input()))
-    let words = trim(input())
-    let keywords = Shell::keywordChips(if words == "None" { [] } else { split(words, ", ") ?: [] })
     let dependencies = Shell::escape(trim(input()))
     let noticeVersion = trim(input())
     let attribution = if noticeVersion == "" { "" } else { Shell::metadataField("Attribution", Shell::noticeLink(noticeVersion)) }
     let releases = trim(input())
-    let metadata = join([Shell::metadataField("Publisher", publisher), Shell::metadataField("License", license), attribution, Shell::metadataField("Keywords", keywords), Shell::metadataField("Dependencies", dependencies)], "")
+    let tags = Shell::keywordChips(filterList(split(trim(input()), ", ") ?: [], fn(tag) => tag != ""))
+    let metadata = join([Shell::metadataField("Publisher", publisher), Shell::metadataField("License", license), attribution, Shell::metadataField("Tags", tags), Shell::metadataField("Dependencies", dependencies)], "")
     let cover = "<header class=\"prose-cover\"><a href=\"/\">← Packages</a><h1>${key}</h1><p>${summary}</p></header>"
     let versions = "<section class=\"prose-releases\"><h2>Releases</h2><p>Local folder registry · Audit unverified</p>${releases}</section>"
     let facts = "<aside class=\"prose-facts\"><h2>Package details</h2><dl>${metadata}</dl></aside>"
@@ -120,6 +119,7 @@ fn main() = print(match trim(input()) {
     "directory" => directory()
     "row" => row()
     "package" => localPackage()
+    "minimum-tag-packages" => toString(Shell::minimumTagPackages)
     "publisher" => publisherPage()
     "credit" => {
         let key = trim(input())

@@ -11,7 +11,7 @@ module PhaseMath
     print "${PhaseMath::carrier 0.0} ${PhaseMath::carrier 0.5}"
     ```
     ```output
-    @@TODO@@
+    -1.0 1.0
     ```
     *)
     export carrier shaped = (-1.0) * cos (6.283185307179586 * shaped)
@@ -22,7 +22,7 @@ module PhaseMath
     print "${PhaseMath::window 0.0} ${PhaseMath::window 0.5}"
     ```
     ```output
-    @@TODO@@
+    0.0 1.0
     ```
     *)
     export window t = sin (3.141592653589793 * t)
@@ -33,7 +33,7 @@ module PhaseMath
     print "${PhaseMath::windowedPhase (0.25, 0.5, 0.0)} ${PhaseMath::windowedPhase (0.0, 0.5, 2.0)}"
     ```
     ```output
-    @@TODO@@
+    0.25 0.0
     ```
     *)
     export windowedPhase (phase, index, ratio) = phase + window phase * index * sin (6.283185307179586 * ratio * phase)
@@ -44,7 +44,7 @@ module PhaseMath
     print "${PhaseMath::modulated (0.5, 0.25, 0.5, 0.2, 0.4, 0.5)}"
     ```
     ```output
-    @@TODO@@
+    0.775
     ```
     *)
     export modulated (shaped, modulation, depth, previous, older, feedback) = shaped + depth * modulation + feedback * (previous + older) / 2.0
@@ -55,7 +55,7 @@ module PhaseMath
     print "${PhaseMath::instantaneous (440.0, -1.0, 220.0)} ${PhaseMath::instantaneous (440.0, -2.0, 220.0)}"
     ```
     ```output
-    @@TODO@@
+    220.0 0.0
     ```
     *)
     export instantaneous (frequency: float, modulation, spread) = frequency + spread * modulation

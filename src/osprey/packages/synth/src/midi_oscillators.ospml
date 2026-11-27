@@ -9,7 +9,7 @@ module MidiOscillators
     print "${MidiOscillators::connected (Graphs::empty, Components::sine (1, 440.0))} ${MidiOscillators::connected (Graph(nodes = [Components::sine (1, 440.0)], cables = [Cable(source = 2, outlet = 0, destination = 1, inlet = 0)]), Components::sine (1, 440.0))}"
     ```
     ```output
-    @@TODO@@
+    false true
     ```
     *)
     export connected (graph, n) = n.processor == Oscillator && length (filterList (graph.cables, \c => c.destination == n.identity && c.inlet == 0)) == 1
@@ -20,7 +20,7 @@ module MidiOscillators
     print "${MidiOscillators::initial (Components::sine (1, 440.0))}"
     ```
     ```output
-    @@TODO@@
+    { kernel: { identity: 1, phase: 0.0, integratorOne: 0.0, integratorTwo: 0.0, delay: [], memory: KernelIdle }, pitch: 0, channel: 0, noteIdentity: 0, velocity: 0.0, active: false, releaseRemaining: 0, releaseLength: 0 }
     ```
     *)
     export initial n = MidiVoice(kernel = RenderInputs::initialState n, pitch = 0, channel = 0, noteIdentity = 0, velocity = 0.0, active = false, releaseRemaining = 0, releaseLength = 0)
@@ -39,7 +39,7 @@ module MidiOscillators
     print "${arithmetic (\() => MidiOscillators::valid (Components::sine (1, 440.0), MidiOscillators::initial (Components::sine (1, 440.0))))} ${arithmetic (\() => MidiOscillators::valid (Components::gain (1, 1.0), MidiOscillators::initial (Components::sine (1, 440.0))))} ${arithmetic (\() => MidiOscillators::valid (Components::sine (1, 440.0), loud(velocity = 2.0)))}"
     ```
     ```output
-    @@TODO@@
+    true false false
     ```
     *)
     export valid (n, voice) = n.processor == Oscillator && voice.kernel.identity == n.identity && voice.kernel.phase >= 0.0 && voice.kernel.phase < 1.0 && voice.pitch >= 0 && voice.pitch <= 127 && voice.channel >= 0 && voice.channel <= 15 && voice.noteIdentity >= 0 && voice.noteIdentity <= 2147483647 && voice.velocity >= 0.0 && voice.velocity <= 1.0 && releaseValid voice
@@ -99,7 +99,7 @@ module MidiOscillators
     print "${arithmetic (\() => MidiOscillators::block (Prepared(graph = Graph(nodes = [Components::gain (1, 1.0)], cables = []), order = [1], feedback = []), 48000.0, [], Components::sine (1, 440.0), MidiOscillators::initial (Components::sine (1, 440.0)), 0))} ${arithmetic (\() => MidiOscillators::block (Prepared(graph = Graph(nodes = [Components::gain (1, 1.0)], cables = []), order = [1], feedback = []), 48000.0, [], Components::sine (1, 440.0), MidiOscillators::initial (Components::sine (1, 440.0)), 16))}"
     ```
     ```output
-    @@TODO@@
+    Error(InvalidConfiguration { detail: "Invalid MIDI oscillator state or frame capacity." }) Error(InvalidConfiguration { detail: "Every graph input needs exactly one connected source." })
     ```
     *)
     export block (plan, rate, clips, n, voice, frames) = match valid (n, voice) && frames >= 1 && frames <= 32768 && rate >= 8000.0 && rate <= 384000.0

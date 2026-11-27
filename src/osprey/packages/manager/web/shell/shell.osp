@@ -2,6 +2,7 @@ namespace registry_web;
 
 /// Shared presentation for the static site and registry screens.
 module Shell {
+    export let minimumTagPackages = 5
     /// Links for already validated manifest keywords.
     export fn keywordChips(words) = if isEmpty(words) { "None" } else {
         join(mapList(words, fn(word) => "<a class=\"prose-chip\" href=\"/tags/${word}/\">${word}</a>"), "")
@@ -29,6 +30,6 @@ module Shell {
     /// Shell for an already escaped title or a trusted text literal.
     export fn withEscapedTitle(title, body) = join([
         "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>",
-        title, "</title><link rel=\"icon\" type=\"image/svg+xml\" href=\"/registry-mark.svg?v=b3839fb6decc\"><link rel=\"stylesheet\" href=\"/registry.8e2e1b0a5edb.css\"></head><body>",
+        title, "</title><link rel=\"icon\" type=\"image/svg+xml\" href=\"/registry-mark.svg?v=b3839fb6decc\"><link rel=\"stylesheet\" href=\"/registry.cb7b81f81a45.css\"></head><body>",
         "<header class=\"prose-bar\"><a class=\"prose-brand\" href=\"/\"><img src=\"/registry-mark.svg?v=b3839fb6decc\" width=\"36\" height=\"36\" alt=\"\">Osprey Packages</a><nav aria-label=\"Primary\"><a href=\"/upload/\">Upload a package</a></nav></header>", body, "</body></html>"], "")
 }

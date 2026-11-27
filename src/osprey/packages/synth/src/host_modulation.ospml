@@ -37,7 +37,7 @@ module HostModulation
     print "${arithmetic (\() => HostModulation::connect (Graphs::empty, 1, 0, 2, "mix"))} ${arithmetic (\() => HostModulation::connect (Graph(nodes = [Components::gain (2, 1.0)], cables = []), 1, 0, 2, "mix"))} ${arithmetic (\() => HostModulation::connect (graph, 1, 0, 2, "level"))}"
     ```
     ```output
-    @@TODO@@
+    Invalid { fault: MissingNode } Invalid { fault: InvalidNode } Invalid { fault: InvalidParameter }
     ```
     *)
     export connect (graph, source, outlet, destination, key) = match Graphs::node (graph, destination)
@@ -95,7 +95,7 @@ module HostModulation
     print "${arithmetic (\() => HostModulation::window (Graphs::empty, [], automated, 0, 256))} ${arithmetic (\() => HostModulation::window (Graphs::empty, [], silent, 0, 256))} ${arithmetic (\() => HostModulation::window (Graphs::empty, [], silent, -1, 256))}"
     ```
     ```output
-    @@TODO@@
+    Success([{ identity: 7, offset: 0, value: 0.25 }]) Success([]) Error(InvalidConfiguration { detail: "Invalid automation clip length or timeline." })
     ```
     *)
     export window (graph, clips, n, first, frames) = match first >= 0 && frames > 0 && frames <= 32768 && first <= satSub 9223372036854775807 frames
@@ -115,7 +115,7 @@ module HostModulation
     print "${arithmetic (\() => HostModulation::points (Graphs::empty, [], automated, 1))}"
     ```
     ```output
-    @@TODO@@
+    Success([{ identity: 7, offset: 0, value: 0.25 }])
     ```
     *)
     export points (graph, clips, n, frames) = window (graph, clips, n, 0, frames)
@@ -146,7 +146,7 @@ module HostModulation
     print "${HostModulation::stamps (Graph(nodes = [external, Components::gain (1, 1.0)], cables = []))}"
     ```
     ```output
-    @@TODO@@
+    [{ stampNode: 2, stampControls: [{ stampKey: "vst:7", stampValue: 0.5 }] }]
     ```
     *)
     export stamps graph = mapList (filterList (graph.nodes, external), \n => HostedStamp(stampNode = n.identity, stampControls = controls (manual (graph, n))))
@@ -168,7 +168,7 @@ module HostModulation
     print "${arithmetic (\() => HostModulation::edits (Graphs::empty, [prior], external, []))} ${arithmetic (\() => HostModulation::edits (Graphs::empty, [], external, []))}"
     ```
     ```output
-    @@TODO@@
+    Success([{ identity: 7, offset: 0, value: 0.5 }]) Success([])
     ```
     *)
     export edits (graph, previous, n, automation) = match filterList (previous, \old => old.stampNode == n.identity)

@@ -44,9 +44,36 @@ function checkCssBudget() {
   }
 }
 
+const KW_RE = /\b(type|fn|let|match|perform|export|def|case|return|function|const|if|else|true|false|tap|tapAt|expect|picked|letters|valueOf|labels)\b/g;
+const TY_RE = /\b([A-Z][A-Za-z0-9_]*|int|string|bool)\b/g;
+
+function highlightCodeHtml(raw) {
+  const tokens = [];
+  const stash = (cls, text) => {
+    const idx = tokens.length;
+    tokens.push(`<span class="${cls}">${text}</span>`);
+    return `\x00T${idx}\x00`;
+  };
+  let s = raw
+    .replace(/((?:#|\/\/)[^\n]*)/g, (m) => stash("tok-cm", m))
+    .replace(/(&quot;[^&\n]*?&quot;|"[^"\n]*?")/g, (m) => stash("tok-str", m))
+    .replace(KW_RE, (m) => stash("tok-kw", m))
+    .replace(TY_RE, (m) => stash("tok-ty", m))
+    .replace(/\b(\d+(?:\.\d+)?)\b/g, (m) => stash("tok-num", m));
+  return s.replace(/\x00T(\d+)\x00/g, (_, i) => tokens[Number(i)]);
+}
+
 export default function (eleventyConfig) {
   eleventyConfig.on("eleventy.before", () => {
     checkCssBudget();
+  });
+
+  eleventyConfig.addTransform("highlightCode", function (content, outputPath) {
+    const out = this.page?.outputPath || outputPath || "";
+    if (!out.endsWith(".html")) return content;
+    return content.replace(/<pre><code([^>]*)>([\s\S]*?)<\/code><\/pre>/g, (_, attrs, inner) =>
+      `<pre><code${attrs}>${highlightCodeHtml(inner)}</code></pre>`
+    );
   });
 
   eleventyConfig.addPassthroughCopy({ "src/css": "css" });

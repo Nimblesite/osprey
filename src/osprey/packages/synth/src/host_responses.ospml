@@ -54,7 +54,7 @@ module HostResponses
     print "${arithmetic (\() => HostResponses::clip ("", HostLayout(inputChannels = 1, outputChannels = 1, acceptsNotes = false), 4))} ${arithmetic (\() => HostResponses::clip ("4F535631", HostLayout(inputChannels = 1, outputChannels = 1, acceptsNotes = false), 4))}"
     ```
     ```output
-    @@TODO@@
+    Error(InvalidConfiguration { detail: "Invalid worker audio header or clip size." }) Error(MissingResource { detail: "Truncated PCM word." })
     ```
     *)
     export clip (text, layout, frames) = match startsWith text "4F535631" && length text <= 4194304 && frames > 0 && layout.inputChannels >= 0 && layout.inputChannels <= 64 && layout.outputChannels >= 1 && layout.outputChannels <= 64 && satMul frames layout.outputChannels <= 65536

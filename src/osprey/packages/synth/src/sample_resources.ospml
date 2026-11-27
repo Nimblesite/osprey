@@ -10,7 +10,7 @@ module SampleResources
     print "${SampleResources::metadata kick} ${SampleResources::metadata (kick(name = ""))}"
     ```
     ```output
-    @@TODO@@
+    true false
     ```
     *)
     export metadata resource = length resource.name >= 1 && length resource.name <= 256 && resource.sampleRate >= 8000 && resource.sampleRate <= 192000 && (resource.sourceChannels == 1 || resource.sourceChannels == 2) && resource.rootFrequency >= 1.0 && resource.rootFrequency <= 20000.0
@@ -18,9 +18,17 @@ module SampleResources
     (** Number of complete source frames. Invalid layouts have no playable frames.
     # Examples
     ```osprey
-    kick = SampleResource(name = "kick", sampleRate = 48000, sourceChannels = 1, rootFrequency = 440.0, samples = [0.5, -0.5])
-    stereo = SampleResource(name = "kick", sampleRate = 48000, sourceChannels = 2, rootFrequency = 440.0, samples = [0.5, -0.5])
-    print "${SampleResources::frames kick} ${SampleResources::frames stereo}"
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+
+    example () =
+        kick = SampleResource(name = "kick", sampleRate = 48000, sourceChannels = 1, rootFrequency = 440.0, samples = [0.5, -0.5])
+        stereo = SampleResource(name = "kick", sampleRate = 48000, sourceChannels = 2, rootFrequency = 440.0, samples = [0.5, -0.5])
+        print "${SampleResources::frames kick} ${SampleResources::frames stereo}"
+
+    arithmetic example
     ```
     ```output
     @@TODO@@
@@ -38,7 +46,7 @@ module SampleResources
     print "${SampleResources::monoAt (kick, 0)} ${SampleResources::monoAt (stereo, 0)} ${SampleResources::monoAt (kick, 2)}"
     ```
     ```output
-    @@TODO@@
+    Success(0.5) Success(0.0) Error({ index: 2, length: 2 })
     ```
     *)
     export monoAt (resource, frame) = match resource.sourceChannels == 2
@@ -49,8 +57,16 @@ module SampleResources
     (** Validate every original sample before channels can cancel in a mono consumer.
     # Examples
     ```osprey
-    kick = SampleResource(name = "kick", sampleRate = 48000, sourceChannels = 1, rootFrequency = 440.0, samples = [0.5, -0.5])
-    print "${SampleResources::prepare kick} ${SampleResources::prepare (kick(samples = [2.0, 0.0]))}"
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+
+    example () =
+        kick = SampleResource(name = "kick", sampleRate = 48000, sourceChannels = 1, rootFrequency = 440.0, samples = [0.5, -0.5])
+        print "${SampleResources::prepare kick} ${SampleResources::prepare (kick(samples = [2.0, 0.0]))}"
+
+    arithmetic example
     ```
     ```output
     @@TODO@@
@@ -78,7 +94,7 @@ module SampleResources
     print "${arithmetic (\() => SampleResources::mono kick)} ${arithmetic (\() => SampleResources::mono stereo)} ${arithmetic (\() => SampleResources::mono (kick(samples = [2.0, 0.0])))}"
     ```
     ```output
-    @@TODO@@
+    Success([0.5, -0.5]) Error(InvalidConfiguration { detail: "Grains require 2–1048576 finite normalised mono samples and capacity 1–256." }) Error(InvalidConfiguration { detail: "Grains require 2–1048576 finite normalised mono samples and capacity 1–256." })
     ```
     *)
     export mono resource = Outcomes::carried (prepare resource, \ready =>
@@ -97,7 +113,7 @@ module SampleResources
     print "${arithmetic (\() => SampleResources::fromWave ("kick", 69.0, wave))} ${arithmetic (\() => SampleResources::fromWave ("kick", 200.0, wave))}"
     ```
     ```output
-    @@TODO@@
+    Success({ name: "kick", sampleRate: 48000, sourceChannels: 1, rootFrequency: 440.0, samples: [0.5, -0.5] }) Error(InvalidConfiguration { detail: "Invalid sample root pitch or decoded frame count." })
     ```
     *)
     export fromWave (name, rootNote, wave) = match rootNote >= 0.0 && rootNote <= 127.0 && (wave.channels < 1 || wave.channels > 2 || satMul wave.frames wave.channels == length wave.samples)
@@ -130,7 +146,7 @@ module SampleResources
     print "${arithmetic (\() => SampleResources::playbackRate (kick, 69.0, 48000.0))} ${arithmetic (\() => SampleResources::playbackRate (kick, 200.0, 48000.0))} ${arithmetic (\() => SampleResources::playbackRate (kick(rootFrequency = 1.0), 69.0, 48000.0))}"
     ```
     ```output
-    @@TODO@@
+    Success(1.0) Error(InvalidConfiguration { detail: "Invalid sample pitch or output rate." }) Error(ExhaustedCapacity { detail: "The requested sample transposition exceeds the grain rate limit." })
     ```
     *)
     export playbackRate (resource, note, outputRate) = match metadata resource && note >= 0.0 && note <= 127.0 && outputRate >= 8000.0 && outputRate <= 384000.0

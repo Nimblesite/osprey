@@ -94,7 +94,7 @@ The catalog, publisher profiles and generated release documentation share the Os
 
 | Website/CLI flow | API surface to implement | Required actor and boundary |
 | --- | --- | --- |
-| Browse by publisher or tag | The catalog links to publisher and tag directories. Each publisher links to attributed releases and each manifest keyword links to a stable tag page listing matching packages. | Use public release attribution and validated manifest keywords. Apply the same visibility and warning rules as catalog search. |
+| Browse by publisher or tag | The catalog links to publisher and tag directories. Publisher profiles link to their attributed releases. A tag gets a public browse page and package-page links when at least five distinct visible packages use it. | Use public release attribution and validated manifest keywords. Apply the same visibility and warning rules as catalog search. |
 | Browse/search, package page, verified download | Existing `GET /v1/packages`, `GET /v1/packages/{scope}/{name}`, `GET /v1/releases/{digest}` and `/source`; search extends the catalog surface | Anonymous public projection only; every result displays its organization and known security warnings; no quarantined/private source |
 | Publisher profile and published releases | `GET /v1/publishers/{publisherId}` and paginated `GET /v1/publishers/{publisherId}/releases` | Anonymous public attribution from verified releases. Package ownership and permission to publish remain governed by spec 0045. |
 | Check a package name | `GET /v1/organizations/{organizationId}/package-name-availability?name=...` | Active member; resolve only this org/name pair, including its tombstones; never report global leaf-name availability |

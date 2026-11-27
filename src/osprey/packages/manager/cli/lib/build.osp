@@ -123,7 +123,7 @@ module Build {
 
     /// The compiler invocation, every variable word shell-quoted ([PACKAGE-HARDENING] C6).
     fn command(cmd: CommandLine, manifest) = if cmd.docsDir != "" {
-        "${Host::shellWord(cmd.compiler)} --docs ${Host::shellWord(Project::pathAt(cmd.project, buildDir))} --docs-format html --docs-dir ${Host::shellWord(cmd.docsDir)}"
+        "${Host::shellWord(cmd.compiler)} --docs ${Host::shellWord(Project::pathAt(cmd.project, buildDir))} --docs-format html --docs-no-builtins --docs-dir ${Host::shellWord(cmd.docsDir)}"
     } else if cmd.run {
         "${Host::shellWord(cmd.compiler)} ${Host::shellWord(Project::pathAt(cmd.project, buildDir))} --run"
     } else {

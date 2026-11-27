@@ -9,7 +9,7 @@ module WaveFiles
     print "${WaveFiles::mono8 (8000, [128, 130])}"
     ```
     ```output
-    @@TODO@@
+    524946462600000057415645666D74201000000001000100401F0000401F00000100080064617461020000008082
     ```
     *)
     export mono8 (rate, values) =
@@ -35,7 +35,7 @@ module WaveFiles
     print "${arithmetic (\() => WaveFiles::interleaved (48000, 1, [0.0]))} ${arithmetic (\() => WaveFiles::interleaved (4000, 1, [0.0]))} ${arithmetic (\() => WaveFiles::interleaved (48000, 2, [0.0]))}"
     ```
     ```output
-    @@TODO@@
+    Success(524946463600000057415645666D7420120000000300010080BB000000EE0200040020000000666163740400000001000000646174610400000000000000) Error(MissingResource { detail: "Invalid WAV rate, channel count or sample count." }) Error(MissingResource { detail: "Invalid WAV channel alignment or non-finite/excessive sample." })
     ```
     *)
     export interleaved (rate, channels, samples) = match rate >= 8000 && rate <= 384000 && channels >= 1 && channels <= 64 && length samples <= 1920000
@@ -54,7 +54,7 @@ module WaveFiles
     print "${arithmetic (\() => WaveFiles::monoFloat (48000, [1.0]))}"
     ```
     ```output
-    @@TODO@@
+    Success(524946463600000057415645666D7420120000000300010080BB000000EE020004002000000066616374040000000100000064617461040000000000803F)
     ```
     *)
     export monoFloat (rate, samples) = interleaved (rate, 1, samples)

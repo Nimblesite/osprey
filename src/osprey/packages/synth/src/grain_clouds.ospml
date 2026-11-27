@@ -9,7 +9,7 @@ module GrainClouds
     print "${GrainClouds::prepare ([], 8, PeriodicTiming(period = 2400, jitter = 0), 1, 1)} ${GrainClouds::prepare ([0.0, 0.5], 8, PeriodicTiming(period = 2400, jitter = 0), 1, 0)}"
     ```
     ```output
-    @@TODO@@
+    Error(InvalidConfiguration { detail: "Grains require 2–1048576 finite normalised mono samples and capacity 1–256." }) Error(InvalidConfiguration { detail: "Invalid grain variation seed." })
     ```
     *)
     export prepare (source, capacity, timing, seed, variationSeed) = match Grains::prepare (source, capacity)
@@ -36,7 +36,7 @@ module GrainClouds
     print "${arithmetic (\() => GrainClouds::block (held, controls, 16))}"
     ```
     ```output
-    @@TODO@@
+    Error(InvalidConfiguration { detail: "The grain player and scheduler clocks have diverged." })
     ```
     *)
     export block (held, controls, frames) = Outcomes::carried (schedule (held, frames), \scheduled => rendered (held, scheduled.next, GrainScheduler::events (scheduled.positions, controls), frames))
@@ -53,7 +53,7 @@ module GrainClouds
     print "${arithmetic (\() => GrainClouds::variedBlock (held, ranges, 16))}"
     ```
     ```output
-    @@TODO@@
+    Error(InvalidConfiguration { detail: "The grain player and scheduler clocks have diverged." })
     ```
     *)
     export variedBlock (held, ranges, frames) = match schedule (held, frames)
@@ -73,7 +73,7 @@ module GrainClouds
     print "${GrainClouds::observation held}"
     ```
     ```output
-    @@TODO@@
+    { playback: { sourceFrames: 2, retiredFrames: 0, region: { first: 0, limit: 2, boundary: LoopSource }, voices: [], revision: 0, samplePosition: 0, activeGrains: 0, capacity: 8, requestedGrains: 0, acceptedGrains: 0, rejectedGrains: 0, stolenGrains: 0, requestedPerFrame: 0.0, acceptedPerFrame: 0.0 }, timing: PeriodicTiming { period: 2400, jitter: 0 }, nextOnset: 0 }
     ```
     *)
     export observation held = GrainCloudObservation(playback = Grains::observation held.pool, timing = held.clock.timing, nextOnset = held.clock.nextOnset)
@@ -89,7 +89,7 @@ module GrainClouds
     print "${shown ()}"
     ```
     ```output
-    @@TODO@@
+    { playback: { sourceFrames: 2, retiredFrames: 0, region: { first: 0, limit: 2, boundary: LoopSource }, voices: [], revision: 0, samplePosition: 0, activeGrains: 0, capacity: 8, requestedGrains: 0, acceptedGrains: 0, rejectedGrains: 0, stolenGrains: 0, requestedPerFrame: 0.0, acceptedPerFrame: 0.0 }, timing: PeriodicTiming { period: 2400, jitter: 0 }, nextOnset: 0 }
     ```
     *)
     export observe () = perform Signal<GrainCloudObservation>.read ()
@@ -110,7 +110,7 @@ module GrainCapture
     print "${GrainCapture::prepare (4, 48000)} ${GrainCapture::prepare (1, 48000)}"
     ```
     ```output
-    @@TODO@@
+    Success({ capacity: 4, sampleRate: 48000, written: 0, samples: [], frozen: false }) Error(InvalidConfiguration { detail: "Capture requires 2–1048576 mono frames at 8–192 kHz." })
     ```
     *)
     export prepare (capacity, sampleRate) = match config (capacity, sampleRate)
@@ -130,7 +130,7 @@ module GrainCapture
     print "${GrainCapture::write (held, [0.5, -0.5, 0.25, 0.1, 1.0])} ${GrainCapture::write (held, [2.0])}"
     ```
     ```output
-    @@TODO@@
+    Success({ capacity: 4, sampleRate: 48000, written: 5, samples: [-0.5, 0.25, 0.1, 1.0], frozen: false }) Error(NumericalFailure { detail: "Capture samples must be finite and within [-1, 1]." })
     ```
     *)
     export write (held, block) = match valid held && length block >= 1 && length block <= 2048 && held.written <= satSub 9223372036854775807 (length block)
@@ -147,7 +147,7 @@ module GrainCapture
     print "${GrainCapture::freeze (GrainCaptureState(capacity = 4, sampleRate = 48000, written = 2, samples = [0.5, 0.25], frozen = false))} ${GrainCapture::freeze (GrainCaptureState(capacity = 4, sampleRate = 48000, written = 1, samples = [0.5], frozen = false))}"
     ```
     ```output
-    @@TODO@@
+    Success({ capacity: 4, sampleRate: 48000, written: 2, samples: [0.5, 0.25], frozen: true }) Error(InvalidConfiguration { detail: "Freeze requires at least two captured frames." })
     ```
     *)
     export freeze held = match valid held && length held.samples >= 2
@@ -160,7 +160,7 @@ module GrainCapture
     print "${GrainCapture::thaw (GrainCaptureState(capacity = 4, sampleRate = 48000, written = 2, samples = [0.5, 0.25], frozen = true))} ${GrainCapture::thaw (GrainCaptureState(capacity = 4, sampleRate = 48000, written = 5, samples = [0.5], frozen = true))}"
     ```
     ```output
-    @@TODO@@
+    Success({ capacity: 4, sampleRate: 48000, written: 2, samples: [0.5, 0.25], frozen: false }) Error(InvalidConfiguration { detail: "Invalid capture state." })
     ```
     *)
     export thaw held = match valid held
@@ -177,7 +177,7 @@ module GrainCapture
     print "${arithmetic (\() => GrainCapture::resource (GrainCaptureState(capacity = 4, sampleRate = 48000, written = 2, samples = [0.5, 0.25], frozen = true), "captured", 60.0))} ${arithmetic (\() => GrainCapture::resource (GrainCaptureState(capacity = 4, sampleRate = 48000, written = 2, samples = [0.5, 0.25], frozen = false), "captured", 60.0))}"
     ```
     ```output
-    @@TODO@@
+    Success({ name: "captured", sampleRate: 48000, sourceChannels: 1, rootFrequency: 261.6255653005986, samples: [0.5, 0.25] }) Error(MissingResource { detail: "Freeze a valid capture before preparing a sample resource." })
     ```
     *)
     export resource (held, name, rootNote) = match valid held && held.frozen

@@ -20,11 +20,12 @@ module HostedCatalog {
     }
 
     fn version(item) = "e${PublicCatalog::number(item, "epoch")}.r${PublicCatalog::number(item, "ordinal")}"
+    fn licenseBadge(item) = Shell::licenseBadge(PublicCatalog::text(item, "licenseExpression"))
 
     fn card(item) = {
         let key = PublicCatalog::text(item, "key")
         let summary = Shell::escape(PublicCatalog::text(item, "summary"))
-        "<article class=\"prose-package\"><h3><a href=\"/packages/${key}/\">${key}</a></h3><p>${summary}</p>" + Shell::licenseBadge(PublicCatalog::text(latestRelease(item), "licenseExpression")) + warningList(item) + "</article>"
+        "<article class=\"prose-package\"><h3><a href=\"/packages/${key}/\">${key}</a></h3><p>${summary}</p>" + licenseBadge(latestRelease(item)) + warningList(item) + "</article>"
     }
     fn matches(item, terms) = {
         let text = toLowerCase(PublicCatalog::text(item, "key") + " " + PublicCatalog::text(item, "summary"))
@@ -48,18 +49,17 @@ module HostedCatalog {
         let digest = PublicCatalog::text(item, "digest")
         let label = version(item)
         let action = download(content, digest, label)
-        "<article class=\"prose-release\" id=\"${label}\"><h3>${label}</h3>${action}<p>${Shell::licenseBadge(PublicCatalog::text(item, "licenseExpression"))}</p><p>Published by ${publisherLink(item)}</p><code>${digest}</code>${Shell::notices(label, PublicCatalog::notices(item))}</article>"
+        "<article class=\"prose-release\" id=\"${label}\"><h3>${label}</h3>${action}<p>${licenseBadge(item)}</p><p>Published by ${publisherLink(item)}</p><code>${digest}</code>${Shell::notices(label, PublicCatalog::notices(item))}</article>"
     }
-    fn detail(item, path, content) = {
+    fn detail(item, content, popularTags) = {
         let key = PublicCatalog::text(item, "key")
         let summary = Shell::escape(PublicCatalog::text(item, "summary"))
         let releases = join(mapList(releaseItems(item), fn(item) => release(item, content)), "")
-        if PublicCatalog::validEntry(item) && path == "/packages/" + key + "/" {
-            "<header class=\"prose-cover\"><a href=\"/\">← Packages</a><h1>${key}</h1><p>${summary}</p></header><div class=\"prose-columns\"><section class=\"prose-releases\"><h2>Releases</h2>${releases}</section><aside class=\"prose-facts\"><h2>Package details</h2>" + metadata(latestRelease(item)) + "<h2>Security warnings</h2>" + warningList(item) + "<h2>Tags</h2>" + Shell::keywordChips(PublicCatalog::keywords(item)) + "</aside></div>"
-        } else { "" }
+        let tags = filterList(PublicCatalog::keywords(item), fn(tag) => listContains(popularTags, tag))
+        "<header class=\"prose-cover\"><a href=\"/\">← Packages</a><h1>${key}</h1><p>${summary}</p></header><div class=\"prose-columns\"><section class=\"prose-releases\"><h2>Releases</h2>${releases}</section><aside class=\"prose-facts\"><h2>Package details</h2>" + metadata(latestRelease(item)) + "<h2>Security warnings</h2>" + warningList(item) + "<h2>Tags</h2>" + Shell::keywordChips(tags) + "</aside></div>"
     }
     fn metadata(latest) = {
-        let license = Shell::licenseBadge(PublicCatalog::text(latest, "licenseExpression"))
+        let license = licenseBadge(latest)
         let notices = if isEmpty(PublicCatalog::notices(latest)) { "" } else {
             Shell::metadataField("Attribution", Shell::noticeLink(version(latest)))
         }
@@ -96,16 +96,25 @@ module HostedCatalog {
 
     fn directory(title, contents) = "<header class=\"prose-cover\"><a href=\"/\">← Packages</a><h1>${title}</h1></header><section>${contents}</section>"
 
-    fn tags(items) = foldList(items, [], fn(seen, item) => foldList(PublicCatalog::keywords(item), seen,
-        fn(tags, tag) => if listContains(tags, tag) { tags } else { listAppend(tags, tag) }))
+    fn distinctPackages(items) = mapValues(foldList(items, Map(),
+        fn(seen, item) => mapSet(seen, PublicCatalog::text(item, "key"), item)))
 
-    fn tagBrowse(items, path) = if path == "/tags/" { directory("Tags", Shell::keywordChips(listSort(tags(items)))) }
-    else { tagPackages(items, path) }
+    fn popularTags(items) = {
+        let counts = foldList(distinctPackages(items), Map(), fn(seen, item) => foldList(PublicCatalog::keywords(item), seen,
+            fn(tags, tag) => mapSet(tags, tag, checkedAdd(mapGet(tags, tag) ?: 0, 1) ?: Shell::minimumTagPackages)))
+        listSort(filterList(mapKeys(counts), fn(tag) => (mapGet(counts, tag) ?: 0) >= Shell::minimumTagPackages))
+    }
+
+    fn tagDirectory(tags) = directory("Tags",
+        if isEmpty(tags) { "<p>No tags have five packages yet.</p>" } else { Shell::keywordChips(tags) })
+
+    fn tagBrowse(items, path) = if path == "/tags/" { tagDirectory(popularTags(items)) }
+        else { tagPackages(distinctPackages(items), path) }
 
     fn tagPackages(items, path) = {
         let key = Bytes::before(drop(path, byteLength("/tags/")), "/")
         let found = filterList(items, fn(item) => listContains(PublicCatalog::keywords(item), key))
-        if path != "/tags/${key}/" || isEmpty(found) { directory("Tag not found", "") }
+        if path != "/tags/${key}/" || length(found) < Shell::minimumTagPackages { directory("Tag not found", "") }
         else { directory(key, "<div id=\"results\">" + join(mapList(found, card), "") + "</div>") }
     }
 
@@ -120,11 +129,16 @@ module HostedCatalog {
     fn browseDirectory(items, path) = if startsWith(path, "/tags/") { tagBrowse(items, path) }
     else if path == "/publishers/" { publisherDirectory(items) } else { publisher(items, path) }
 
-    export fn render(path, query, body, content) = if path == "/" {
-        match PublicCatalog::decode(body) { Success { value } => browse(value, query) Error => "" }
-    } else if startsWith(path, "/tags/") || startsWith(path, "/publishers/") {
-        match PublicCatalog::decode(body) { Success { value } => browseDirectory(value, path) Error => "" }
-    } else {
-        match jsonDecode(body) { Success { value } => detail(value, path, content) Error => "" }
+    fn packagePage(items, path, content) = match listGet(filterList(items,
+        fn(item) => path == "/packages/" + PublicCatalog::text(item, "key") + "/"), 0) {
+        Success { value } => detail(value, content, popularTags(items))
+        Error => directory("Package not found", "")
+    }
+
+    export fn render(path, query, body, content) = match PublicCatalog::decode(body) {
+        Success { value } => if path == "/" { browse(value, query) }
+            else if startsWith(path, "/packages/") { packagePage(value, path, content) }
+            else { browseDirectory(value, path) }
+        Error => ""
     }
 }

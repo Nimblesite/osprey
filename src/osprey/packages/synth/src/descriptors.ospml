@@ -91,7 +91,7 @@ module Descriptors
     print "${Descriptors::title Mixer} ${Descriptors::title Reverb}"
     ```
     ```output
-    @@TODO@@
+    Mixer FDN reverb
     ```
     *)
     export title processor = match processor

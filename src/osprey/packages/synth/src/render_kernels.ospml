@@ -168,7 +168,7 @@ module RenderKernels
     print "${arithmetic (\() => RenderKernels::step (Prepared(graph = Graph(nodes = [Components::gain (1, 1.0)], cables = []), order = [1], feedback = []), 48000.0, snapshot, SampleFrame(states = [KernelState(identity = 1, phase = 0.0, integratorOne = 0.0, integratorTwo = 0.0, delay = [], memory = KernelIdle)], values = []), 1))} ${arithmetic (\() => RenderKernels::step (Prepared(graph = Graph(nodes = [Components::gain (1, 1.0)], cables = []), order = [1], feedback = []), 48000.0, snapshot, SampleFrame(states = [KernelState(identity = 1, phase = 0.0, integratorOne = 0.0, integratorTwo = 0.0, delay = [], memory = KernelIdle)], values = []), 2))}"
     ```
     ```output
-    @@TODO@@
+    Error(MissingResource { detail: "An audio input is not connected." }) Error(MissingResource { detail: "Render schedule names an absent component." })
     ```
     *)
     export step (plan, rate, snapshot, frame, identity) = resolved (plan, rate, snapshot, frame, schedule (plan, identity, rate, snapshot, false, frame.states))

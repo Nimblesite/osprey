@@ -86,7 +86,7 @@ module Fitting
     print "${arithmetic (\() => Fitting::evaluate (Graphs::empty, config, [0.0], [0.5]))}"
     ```
     ```output
-    @@TODO@@
+    Error(InvalidConfiguration { detail: "Fitted values must match the parameters one-to-one and lie in [0, 1]." })
     ```
     *)
     export evaluate (graph, config, target, values) = match applied (graph, config.parameters, values)
@@ -145,7 +145,7 @@ module Fitting
     print "${Fitting::finished (config, search)} ${Fitting::finished (config, search(evaluations = 8))} ${Fitting::finished (config, search(step = 0.0001))}"
     ```
     ```output
-    @@TODO@@
+    false true true
     ```
     *)
     export finished (config, search) = search.evaluations >= config.evaluations || search.step < config.tolerance
@@ -215,7 +215,7 @@ module Fitting
     print "${arithmetic (\() => Fitting::apply (Graphs::empty, config, result))}"
     ```
     ```output
-    @@TODO@@
+    Error(InvalidConfiguration { detail: "Fitted values must match the parameters one-to-one and lie in [0, 1]." })
     ```
     *)
     export apply (graph, config, result) =

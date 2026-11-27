@@ -8,7 +8,7 @@ module WaveMath
     print "${WaveMath::pcm (128.0, 8.0)} ${WaveMath::pcm (255.0, 8.0)} ${WaveMath::pcm (32768.0, 16.0)} ${WaveMath::pcm (1.0, 16.0)}"
     ```
     ```output
-    @@TODO@@
+    0.0 0.9921875 -1.0 3.0517578125e-05
     ```
     *)
     export pcm (word, bits) = match bits == 8.0
@@ -26,7 +26,7 @@ module WaveMath
     print "${WaveMath::mono (0.5, -0.5)} ${WaveMath::mono (0.25, 0.5)}"
     ```
     ```output
-    @@TODO@@
+    0.0 0.375
     ```
     *)
     export mono (left, right) = (left + right) * 0.5
@@ -37,7 +37,7 @@ module WaveMath
     print "${WaveMath::mixed (0.5, 0.5, 1.0, 0.25)}"
     ```
     ```output
-    @@TODO@@
+    0.5
     ```
     *)
     export mixed (first: float, firstGain, second, secondGain) = first * firstGain + second * secondGain
@@ -48,7 +48,7 @@ module WaveMath
     print "${WaveMath::panGain (2.0, 0.0, -1.0)} ${WaveMath::panGain (2.0, 1.0, -1.0)}"
     ```
     ```output
-    @@TODO@@
+    1.0 0.0
     ```
     *)
     export panGain (width, lane, pan) =
@@ -63,7 +63,7 @@ module WaveMath
     print "${WaveMath::playbackRate (48000.0, 48000.0, 440.0, 440.0)} ${WaveMath::playbackRate (48000.0, 24000.0, 880.0, 440.0)}"
     ```
     ```output
-    @@TODO@@
+    1.0 4.0
     ```
     *)
     export playbackRate (sourceRate, outputRate, targetFrequency, rootFrequency) = floatDiv (sourceRate, outputRate) * floatDiv (targetFrequency, rootFrequency)
@@ -85,7 +85,7 @@ module WaveMath
     print "${WaveMath::tailFrames (48000.0, 48000.0)} ${WaveMath::tailFrames (24000.0, 44100.0)}"
     ```
     ```output
-    @@TODO@@
+    48000.0 22050.0
     ```
     *)
     export tailFrames (samples, rate) = ceil (samples * rate / 48000.0)

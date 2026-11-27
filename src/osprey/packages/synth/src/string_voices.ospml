@@ -10,9 +10,17 @@ module StringVoices
     (** Allocate every voice's line outside rendering, using one template for capacity and timbre.
     # Examples
     ```osprey
-    template = WaveguideConfig(sampleRate = 48000.0, frequency = 12000.0, decay = 1.0, brightness = 0.5, dispersion = 0.5, pickup = 0.0, capacity = 4)
-    excitation = ExciterConfig(strength = 0.8, duration = 96, interval = 0, excitation = ImpulseExcitation)
-    print "${StringVoices::prepare (template, excitation, 0, 0.1)} ${StringVoices::prepare (template, excitation(strength = 2.0), 1, 0.1)}"
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+
+    example () =
+        template = WaveguideConfig(sampleRate = 48000.0, frequency = 12000.0, decay = 1.0, brightness = 0.5, dispersion = 0.5, pickup = 0.0, capacity = 4)
+        excitation = ExciterConfig(strength = 0.8, duration = 96, interval = 0, excitation = ImpulseExcitation)
+        print "${StringVoices::prepare (template, excitation, 0, 0.1)} ${StringVoices::prepare (template, excitation(strength = 2.0), 1, 0.1)}"
+
+    arithmetic example
     ```
     ```output
     @@TODO@@
@@ -61,7 +69,7 @@ module StringVoices
     print "${arithmetic (\() => StringVoices::noteOn (pool, 60, 0.8, 440.0, 1))} ${arithmetic (\() => StringVoices::noteOn (pool, 200, 0.8, 440.0, 1))}"
     ```
     ```output
-    @@TODO@@
+    Error(MissingResource { detail: "The string pool is empty." }) Error(InvalidConfiguration { detail: "Note, velocity (0-1) or seed is out of range." })
     ```
     *)
     export noteOn (pool, note, velocity, frequency, seed) = match velocity >= 0.0 && velocity <= 1.0 && seed >= 1 && seed <= 2147483646 && note >= 0 && note <= 127
@@ -97,7 +105,7 @@ module StringVoices
     print "${arithmetic (\() => StringVoices::noteOff (pool, 60))}"
     ```
     ```output
-    @@TODO@@
+    { voices: [{ note: 60, velocity: 0.8, config: { sampleRate: 48000.0, frequency: 12000.0, decay: 1.0, brightness: 0.5, dispersion: 0.5, pickup: 0.0, capacity: 4 }, guide: { line: { samples: [0.0, 0.0, 0.0, 0.0] }, loss: { previous: 0.0 }, dispersion: { input: 0.0, output: 0.0 } }, exciter: { age: 0.0, seed: 1.0, smoothed: 0.0 }, active: true, releasing: true, age: 0, released: 0 }], excitation: { strength: 0.8, duration: 96, interval: 0, excitation: ImpulseExcitation }, release: 0.1, stolen: 0 }
     ```
     *)
     export noteOff (pool, note) = pool(voices = mapList (pool.voices, \voice => released (voice, note)))
@@ -149,7 +157,7 @@ module StringVoices
     print "${arithmetic (\() => StringVoices::next pool)}"
     ```
     ```output
-    @@TODO@@
+    Success({ sample: 0.0, next: { voices: [], excitation: { strength: 0.8, duration: 96, interval: 0, excitation: ImpulseExcitation }, release: 0.1, stolen: 0 } })
     ```
     *)
     export next pool = foldList (pool.voices, Success(value = StringPoolSample(sample = 0.0, next = pool(voices = []))), \(outcome, voice) => voiced (pool, outcome, voice))

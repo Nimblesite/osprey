@@ -84,7 +84,7 @@ module SpectralPeaks
     print "${arithmetic (\() => SpectralPeaks::envelope (config, []))} ${arithmetic (\() => SpectralPeaks::envelope (config, [Complex(re = 1.0, im = 0.0), Complex(re = 0.5, im = 0.0), Complex(re = 0.25, im = 0.0)]))}"
     ```
     ```output
-    @@TODO@@
+    [] [1.0, 1.0, 0.5]
     ```
     *)
     export envelope (config, sources) =
@@ -128,7 +128,7 @@ module SpectralPeaks
     print "${arithmetic (\() => SpectralPeaks::shifted (config, [], [], [], 1.0, 1.0))}"
     ```
     ```output
-    @@TODO@@
+    { at: 0, bins: [], motion: [] }
     ```
     *)
     export shifted (config, sources, phases, motion, ratio, formant) =

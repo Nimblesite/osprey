@@ -11,7 +11,7 @@ module SpectralMath
     print "${SpectralMath::hann (0.0, 8.0)} ${SpectralMath::hann (4.0, 8.0)}"
     ```
     ```output
-    @@TODO@@
+    0.0 1.0
     ```
     *)
     export hann (index, size) = 0.5 - 0.5 * cos (floatDiv (6.283185307179586 * index, size))
@@ -22,7 +22,7 @@ module SpectralMath
     print "${SpectralMath::twiddle (-1.0, 2.0, 8.0)}"
     ```
     ```output
-    @@TODO@@
+    -1.5707963267948966
     ```
     *)
     export twiddle (sign, index, size) = floatDiv (sign * 6.283185307179586 * index, size)
@@ -33,7 +33,7 @@ module SpectralMath
     print "${SpectralMath::productRe (1.0, 2.0, 3.0, 4.0)}"
     ```
     ```output
-    @@TODO@@
+    -5.0
     ```
     *)
     export productRe (ar: float, ai, br, bi) = ar * br - ai * bi
@@ -44,7 +44,7 @@ module SpectralMath
     print "${SpectralMath::productIm (1.0, 2.0, 3.0, 4.0)}"
     ```
     ```output
-    @@TODO@@
+    10.0
     ```
     *)
     export productIm (ar: float, ai, br, bi) = ar * bi + ai * br
@@ -55,7 +55,7 @@ module SpectralMath
     print "${SpectralMath::power (3.0, 4.0)}"
     ```
     ```output
-    @@TODO@@
+    25.0
     ```
     *)
     export power (re: float, im) = re * re + im * im
@@ -66,7 +66,7 @@ module SpectralMath
     print "${SpectralMath::magnitude (0.0, 0.0)} ${SpectralMath::magnitude (-0.0, 0.0)}"
     ```
     ```output
-    @@TODO@@
+    0.0 0.0
     ```
     *)
     export magnitude (re, im: float) = pow (power (re, im), 0.5)
@@ -82,7 +82,7 @@ module SpectralMath
     print "${SpectralMath::unitRe (0.0, 0.0)} ${SpectralMath::unitRe (0.0, 2.0)}"
     ```
     ```output
-    @@TODO@@
+    1.0 0.0
     ```
     *)
     export unitRe (re, im) = unitised (re, magnitude (re, im), 1.0)
@@ -93,7 +93,7 @@ module SpectralMath
     print "${SpectralMath::unitIm (0.0, 0.0)} ${SpectralMath::unitIm (2.0, 0.0)}"
     ```
     ```output
-    @@TODO@@
+    0.0 0.0
     ```
     *)
     export unitIm (re, im) = unitised (im, magnitude (re, im), 0.0)
@@ -104,7 +104,7 @@ module SpectralMath
     print "${SpectralMath::binFrequency (1.0, 8.0, 48000.0)}"
     ```
     ```output
-    @@TODO@@
+    6000.0
     ```
     *)
     export binFrequency (index, size, sampleRate) = floatDiv (index * sampleRate, size)
@@ -115,7 +115,7 @@ module SpectralMath
     print "${SpectralMath::hopAdvance (1.0, 2, 8.0)}"
     ```
     ```output
-    @@TODO@@
+    1.5707963267948966
     ```
     *)
     export hopAdvance (index, hop, size) = floatDiv (6.283185307179586 * index * hop, size)
@@ -126,7 +126,7 @@ module SpectralMath
     print "${SpectralMath::bandGain (100.0, 1000.0, 2000.0, 100.0)} ${SpectralMath::bandGain (950.0, 1000.0, 2000.0, 100.0)} ${SpectralMath::bandGain (1000.0, 1000.0, 2000.0, 100.0)} ${SpectralMath::bandGain (2050.0, 1000.0, 2000.0, 100.0)}"
     ```
     ```output
-    @@TODO@@
+    0.0 0.5 1.0 0.5
     ```
     *)
     export bandGain (frequency, low, high, width) = match frequency < low - width || frequency > high + width
@@ -143,7 +143,7 @@ module SpectralMath
     print "${SpectralMath::angle (1.0, 0.0)} ${SpectralMath::angle (-1.0, 0.0)}"
     ```
     ```output
-    @@TODO@@
+    0.0 3.141592653589793
     ```
     *)
     export angle (re, im) = atan2 (im, re)
@@ -154,7 +154,7 @@ module SpectralMath
     print "${SpectralMath::principal 0.0} ${SpectralMath::principal 4.0}"
     ```
     ```output
-    @@TODO@@
+    0.0 -2.2831853071795862
     ```
     *)
     export principal value = value - 6.283185307179586 * floor ((value + 3.141592653589793) / 6.283185307179586)
@@ -165,7 +165,7 @@ module SpectralMath
     print "${SpectralMath::trueBin (2.0, 1.0, 1.0, 2, 8.0)}"
     ```
     ```output
-    @@TODO@@
+    0.0
     ```
     *)
     export trueBin (index, phase, previous, hop, size) = index + floatDiv (principal (phase - previous - floatDiv (6.283185307179586 * index * hop, size)) * size, 6.283185307179586 * hop)
@@ -176,7 +176,7 @@ module SpectralMath
     print "${SpectralMath::binAdvance (1.5, 2, 8.0)}"
     ```
     ```output
-    @@TODO@@
+    2.356194490192345
     ```
     *)
     export binAdvance (bin, hop, size) = floatDiv (6.283185307179586 * bin * hop, size)
@@ -187,7 +187,7 @@ module SpectralMath
     print "${SpectralMath::polarRe (0.5, 0.0)} ${SpectralMath::polarRe (0.5, 3.141592653589793)}"
     ```
     ```output
-    @@TODO@@
+    0.5 -0.5
     ```
     *)
     export polarRe (level, phase) = level * cos phase
@@ -198,7 +198,7 @@ module SpectralMath
     print "${SpectralMath::polarIm (0.5, 0.0)} ${SpectralMath::polarIm (0.5, 1.5707963267948966)}"
     ```
     ```output
-    @@TODO@@
+    0.0 0.5
     ```
     *)
     export polarIm (level, phase) = level * sin phase
@@ -209,7 +209,7 @@ module SpectralMath
     print "${SpectralMath::nearest 2.4} ${SpectralMath::nearest 2.5} ${SpectralMath::nearest (-2.5)}"
     ```
     ```output
-    @@TODO@@
+    2.0 3.0 -2.0
     ```
     *)
     export nearest value = floor (value + 0.5)
@@ -220,7 +220,7 @@ module SpectralMath
     print "${SpectralMath::envelopeRadius (1024.0, 48000.0)}"
     ```
     ```output
-    @@TODO@@
+    4.0
     ```
     *)
     export envelopeRadius (size, sampleRate) = ceil (floatDiv (150.0 * size, sampleRate))
@@ -231,7 +231,7 @@ module SpectralMath
     print "${SpectralMath::formantGain (1.0, 0.0)} ${SpectralMath::formantGain (1.0, 4.0)} ${SpectralMath::formantGain (100.0, 4.0)}"
     ```
     ```output
-    @@TODO@@
+    1.0 0.25 16.0
     ```
     *)
     export formantGain (wanted, current) = match current <= 0.000000001
@@ -246,7 +246,7 @@ module SpectralMath
     print "${SpectralMath::logBlend (-0.000000001, 1.0, 0.0)}"
     ```
     ```output
-    @@TODO@@
+    -1e-09
     ```
     *)
     export logBlend (a, b, amount) = exp ((1.0 - amount) * ln (a + 0.000000001) + amount * ln (b + 0.000000001)) - 0.000000001
@@ -258,7 +258,7 @@ module SpectralMath
     print "${SpectralMath::donorWeight (1.0, 1.0, 0.3)} ${SpectralMath::donorWeight (1.0, 1.0, 0.5)} ${SpectralMath::donorWeight (1.0, 0.0, 0.7)}"
     ```
     ```output
-    @@TODO@@
+    0.0 0.4999999999999999 1.0
     ```
     *)
     export donorWeight (main, side, amount) =
@@ -278,7 +278,7 @@ module SpectralMath
     print "${SpectralMath::arcPhase (0.0, 3.0, 0.5)} ${SpectralMath::arcPhase (3.0, -3.0, 0.5)}"
     ```
     ```output
-    @@TODO@@
+    1.5 3.141592653589793
     ```
     *)
     export arcPhase (from, to, weight) = from + weight * principal (to - from)
@@ -289,7 +289,7 @@ module SpectralMath
     print "${SpectralMath::envelopeMorph (1.0, 0.0, 0.5)} ${SpectralMath::envelopeMorph (100.0, 4.0, 0.0)}"
     ```
     ```output
-    @@TODO@@
+    1.0 1.0
     ```
     *)
     export envelopeMorph (wanted, own, amount) = pow (formantGain (wanted, own), amount)
@@ -300,7 +300,7 @@ module SpectralMath
     print "${SpectralMath::logLevel (-0.000000001)}"
     ```
     ```output
-    @@TODO@@
+    -inf
     ```
     *)
     export logLevel m = ln (m + 0.000000001)
@@ -311,7 +311,7 @@ module SpectralMath
     print "${SpectralMath::peakOffset (0.0, 1.0, 0.0)} ${SpectralMath::peakOffset (0.5, 1.0, 0.0)}"
     ```
     ```output
-    @@TODO@@
+    -0.0 -0.16666666666666666
     ```
     *)
     export peakOffset (a, b, c) = match a - 2.0 * b + c == 0.0
@@ -324,7 +324,7 @@ module SpectralMath
     print "${SpectralMath::lobePhase (0.0, 0.0)} ${SpectralMath::lobePhase (0.0, 1.0)}"
     ```
     ```output
-    @@TODO@@
+    0.0 -3.141592653589793
     ```
     *)
     export lobePhase (centre, offset) = principal (centre + 3.141592653589793 * offset)
@@ -335,7 +335,7 @@ module SpectralMath
     print "${SpectralMath::peakShift (10.0, 1.5)} ${SpectralMath::peakShift (10.0, 1.0)}"
     ```
     ```output
-    @@TODO@@
+    5.0 0.0
     ```
     *)
     export peakShift (frequency, ratio) = nearest (frequency * ratio - frequency)
@@ -346,7 +346,7 @@ module SpectralMath
     print "${SpectralMath::semitoneRatio (0.0, 0.0)}"
     ```
     ```output
-    @@TODO@@
+    1.0
     ```
     *)
     export semitoneRatio (semitones, cents) = pow (2.0, (semitones + cents / 100.0) / 12.0)
@@ -357,7 +357,7 @@ module SpectralMath
     print "${SpectralMath::formantRatio (1.0, 1.5)} ${SpectralMath::formantRatio (0.0, 1.5)}"
     ```
     ```output
-    @@TODO@@
+    1.0 1.5
     ```
     *)
     export formantRatio (keep, ratio) = match keep >= 0.5
@@ -370,7 +370,7 @@ module SpectralMath
     print "${SpectralMath::lockedPhase (1.0, 1.0, 1.0)} ${SpectralMath::lockedPhase (3.0, 3.0, 0.0)}"
     ```
     ```output
-    @@TODO@@
+    1.0 -0.28318530717958623
     ```
     *)
     export lockedPhase (peakPhase, phase, peakAnalysis) = principal (peakPhase + phase - peakAnalysis)
@@ -381,7 +381,7 @@ module SpectralMath
     print "${SpectralMath::windowedSample (1.0, 0.0, 8.0)} ${SpectralMath::windowedSample (1.0, 4.0, 8.0)}"
     ```
     ```output
-    @@TODO@@
+    0.0 1.0
     ```
     *)
     export windowedSample (sample, index, size) = sample * hann (index, size)
@@ -392,7 +392,7 @@ module SpectralMath
     print "${SpectralMath::inOctave (1000.0, 1000.0)} ${SpectralMath::inOctave (1500.0, 1000.0)} ${SpectralMath::inOctave (700.0, 1000.0)}"
     ```
     ```output
-    @@TODO@@
+    true false false
     ```
     *)
     export inOctave (frequency, centre) = frequency >= centre * 0.7071067811865476 && frequency < centre * 1.4142135623730951
@@ -403,7 +403,7 @@ module SpectralMath
     print "${SpectralMath::bandLevel (0.0, 1, 64)} ${SpectralMath::bandLevel (384.0, 1, 64)}"
     ```
     ```output
-    @@TODO@@
+    -120.0 0.0
     ```
     *)
     export bandLevel (energy, frames, size) =

@@ -31,6 +31,8 @@ test("Osprey Native website renders cleanly with flagship media, logo/favicon, a
 
   await page.goto(serverHandle.url, { waitUntil: "networkidle" });
   expect(await page.evaluate(() => window.scrollY), "page opens at top of hero").toBe(0);
+  const stageBox = await page.locator(".device-stage").boundingBox();
+  expect(stageBox.y + stageBox.height, "entire hero device stage fits above the 900px fold").toBeLessThanOrEqual(900);
 
   // 1. Metadata, landmarks, headings, logo, favicon, and content-hashed assets
   await expect(page.locator('meta[name="color-scheme"]')).toHaveAttribute("content", "light dark");
@@ -95,7 +97,11 @@ test("Osprey Native website renders cleanly with flagship media, logo/favicon, a
   await expect(page.getByRole("tabpanel", { name: "Custom Canvas" })).toContainText("Sherbet Signal");
   await modeNative.click();
 
-  // 5. Syntax flavor tabs: click + keyboard arrow navigation + hidden="until-found"
+  // 5. Syntax flavor tabs: fixed box height across all tabs + syntax highlighting + keyboard arrows
+  const codeWin = page.locator("#flavors .code-window");
+  const initialBox = await codeWin.boundingBox();
+  await expect(codeWin.locator(".tok-kw").first()).toBeVisible();
+
   const tabDefault = page.getByRole("tab", { name: "Default (.osp)" });
   const tabMl = page.getByRole("tab", { name: "ML (.ospml)" });
   const tabPython = page.getByRole("tab", { name: "Python" });
@@ -109,19 +115,23 @@ test("Osprey Native website renders cleanly with flagship media, logo/favicon, a
   await page.keyboard.press("ArrowRight");
   await expect(tabMl).toHaveAttribute("aria-selected", "true");
   await expect(page.getByRole("tabpanel", { name: "ML (.ospml)" })).toContainText("Keyed::region");
+  expect((await codeWin.boundingBox()).height).toBeCloseTo(initialBox.height, 0);
 
   await tabPython.click();
   await expect(tabPython).toHaveAttribute("aria-selected", "true");
   await expect(page.getByRole("tabpanel", { name: "Python" })).toContainText("# osprey: flavor=python");
+  expect((await codeWin.boundingBox()).height).toBeCloseTo(initialBox.height, 0);
 
   await tabTs.click();
   await expect(tabTs).toHaveAttribute("aria-selected", "true");
   await expect(page.getByRole("tabpanel", { name: "TypeScript" })).toContainText("// osprey: flavor=typescript");
+  expect((await codeWin.boundingBox()).height).toBeCloseTo(initialBox.height, 0);
 
   await page.keyboard.press("End");
   await expect(tabRoadmap).toHaveAttribute("aria-selected", "true");
   await expect(page.getByRole("tabpanel", { name: "Dart & Kotlin" })).toContainText("Dart Flavor");
   await expect(page.getByRole("tabpanel", { name: "Dart & Kotlin" })).toContainText("Kotlin Flavor");
+  expect((await codeWin.boundingBox()).height).toBeCloseTo(initialBox.height, 0);
 
   // 6. Features nav link points to real #features section & Accessibility band renders @osprey/uitest snippet
   await expect(page.locator('nav[aria-label="Primary"] a', { hasText: "Features" })).toHaveAttribute("href", "/#features");

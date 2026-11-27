@@ -58,7 +58,7 @@ module MidiClips
     print "${MidiClips::timeline (Components::midiNote (1, 60.0, 0.8, 4800.0), 0, 4)} ${MidiClips::timeline (Components::midiNote (1, 60.0, 0.8, 4800.0), 0, 0)}"
     ```
     ```output
-    @@TODO@@
+    Success([{ kind: 1, offset: 0, pitch: 60, channel: 0, identity: 1, velocity: 0.8 }]) Error(InvalidConfiguration { detail: "Invalid MIDI generator or sample window." })
     ```
     *)
     export timeline (n, first, count) = match n.identity >= 0 && n.identity <= 2147483647 && first >= 0 && count > 0 && count <= 65536 && first <= satSub 9223372036854775807 count
@@ -73,7 +73,7 @@ module MidiClips
     print "${MidiClips::window (Components::midiNote (1, 60.0, 0.8, 4800.0), 65536, 1)} ${MidiClips::window (Components::midiNote (1, 60.0, 0.8, 4800.0), 0, 2)}"
     ```
     ```output
-    @@TODO@@
+    Error(InvalidConfiguration { detail: "Invalid MIDI generator or sample window." }) Success([{ kind: 1, offset: 0, pitch: 60, channel: 0, identity: 1, velocity: 0.8 }])
     ```
     *)
     export window (n, first, count) = match first <= satSub 65536 count

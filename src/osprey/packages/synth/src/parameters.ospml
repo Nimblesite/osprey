@@ -12,7 +12,7 @@ module Parameters
     print "${Parameters::initial graph}"
     ```
     ```output
-    @@TODO@@
+    { revision: 0, samplePosition: 0, parameters: [{ node: 1, key: "gain", value: 1.0 }], components: [] }
     ```
     *)
     export initial graph = Observation(revision = 0, samplePosition = 0, parameters = foldList (graph.nodes, [], \(all, n) => listConcat all (values n)), components = [])
@@ -30,7 +30,7 @@ module Parameters
     print "${Parameters::validValue (gain, 8.0)} ${Parameters::validValue (gain, 8.5)}"
     ```
     ```output
-    @@TODO@@
+    true false
     ```
     *)
     export validValue (p, value) = value >= p.minimum && value <= p.maximum
@@ -62,7 +62,7 @@ module Parameters
     print "${arithmetic (\() => Parameters::apply (graph, snapshot, edit))} ${arithmetic (\() => Parameters::apply (graph, snapshot, edit(revision = 1)))} ${arithmetic (\() => Parameters::apply (graph, snapshot, edit(value = 9.0)))} ${arithmetic (\() => Parameters::apply (graph, snapshot, edit(key = "cutoff")))} ${arithmetic (\() => Parameters::apply (graph, snapshot, edit(samplePosition = 1)))}"
     ```
     ```output
-    @@TODO@@
+    Valid { value: { revision: 1, samplePosition: 0, parameters: [{ node: 1, key: "gain", value: 2.0 }], components: [] } } Invalid { fault: StaleRevision } Invalid { fault: InvalidParameter } Invalid { fault: MissingParameter } Invalid { fault: InvalidFrame }
     ```
     *)
     export apply (graph, snapshot, edit) = match snapshot.revision != edit.revision || snapshot.revision == 9223372036854775807
@@ -91,7 +91,7 @@ module FitReports
     print "${arithmetic (\() => FitReports::fit (Graphs::empty, config, reference, reference))}"
     ```
     ```output
-    @@TODO@@
+    Error(InvalidConfiguration { detail: "Fit references need labelled, licensed, finite mono clips at 48 kHz and a supported FFT length." })
     ```
     *)
     export fit (graph, config, training, evaluation) = match valid training && valid evaluation

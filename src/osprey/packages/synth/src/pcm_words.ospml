@@ -28,7 +28,7 @@ module PcmWords
     print "${PcmWords::byte 255} ${PcmWords::byte 10}"
     ```
     ```output
-    @@TODO@@
+    FF 0A
     ```
     *)
     export byte value = "${digit (bitAnd (shiftRight value 4) 15)}${digit (bitAnd value 15)}"
@@ -39,7 +39,7 @@ module PcmWords
     print "${PcmWords::le16 4660} ${PcmWords::le16 65535}"
     ```
     ```output
-    @@TODO@@
+    3412 FFFF
     ```
     *)
     export le16 value = "${byte (bitAnd value 255)}${byte (bitAnd (shiftRight value 8) 255)}"
@@ -50,7 +50,7 @@ module PcmWords
     print "${PcmWords::le32 305419896} ${PcmWords::le32 1}"
     ```
     ```output
-    @@TODO@@
+    78563412 01000000
     ```
     *)
     // Encode a whole word in one allocation; nested byte/halfword strings amplify audio traffic.
@@ -62,7 +62,7 @@ module PcmWords
     print "${PcmWords::float32 1.0} ${PcmWords::float32 (-0.5)} ${PcmWords::float32 0.0}"
     ```
     ```output
-    @@TODO@@
+    0000803F 000000BF 00000000
     ```
     *)
     export float32 value = le32 (toInt (float32Bits (toFloat32 value)))
@@ -73,7 +73,7 @@ module PcmWords
     print "${PcmWords::float64 1.0}"
     ```
     ```output
-    @@TODO@@
+    000000000000F03F
     ```
     *)
     export float64 value =
@@ -104,7 +104,7 @@ module PcmWords
     print "${PcmWords::read32 ("78563412", 0)} ${PcmWords::read32 ("7856341", 0)}"
     ```
     ```output
-    @@TODO@@
+    Success(305419896) Error(MissingResource { detail: "Truncated PCM word." })
     ```
     *)
     export read32 (text, at) = match at >= 0 && at <= satSub (length text) 8
@@ -115,7 +115,15 @@ module PcmWords
     (** Decode one finite, bounded sample from its exact IEEE float32 bits.
     # Examples
     ```osprey
-    print "${PcmWords::sample ("0000803F", 0)} ${PcmWords::sample ("000000BF", 0)}"
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+
+    example () =
+        print "${PcmWords::sample ("0000803F", 0)} ${PcmWords::sample ("000000BF", 0)}"
+
+    arithmetic example
     ```
     ```output
     @@TODO@@
@@ -135,7 +143,7 @@ module PcmWords
     print "${PcmWords::signed 4294967295} ${PcmWords::signed 2147483648} ${PcmWords::signed 5}"
     ```
     ```output
-    @@TODO@@
+    -1 -2147483648 5
     ```
     *)
     export signed bits = match bits >= 2147483648

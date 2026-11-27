@@ -12,7 +12,7 @@ module Resonators
     print "${Resonators::initial}"
     ```
     ```output
-    @@TODO@@
+    { real: 0.0, imag: 0.0 }
     ```
     *)
     export initial = ResonatorState(real = 0.0, imag = 0.0)
@@ -24,7 +24,7 @@ module Resonators
     print "${(Resonators::coefficients config).input} ${(Resonators::coefficients config).sine}"
     ```
     ```output
-    @@TODO@@
+    0.5 0.0
     ```
     *)
     export coefficients config =
@@ -41,7 +41,7 @@ module Resonators
     print "${Resonators::configure (ResonatorConfig(sampleRate = 48000.0, frequency = 30000.0, decay = 1.0, gain = 0.5, scale = ImpulseScale))}"
     ```
     ```output
-    @@TODO@@
+    Error(InvalidConfiguration { detail: "Invalid resonator rate, frequency, decay or gain (|gain| <= 8)." })
     ```
     *)
     export configure config = match config.sampleRate >= 8000.0 && config.sampleRate <= 384000.0 && config.frequency > 0.0 && config.frequency < config.sampleRate * 0.45 && config.decay >= 0.001 && config.decay <= 60.0 && config.gain >= -8.0 && config.gain <= 8.0
@@ -54,7 +54,7 @@ module Resonators
     print "${Resonators::next (ResonatorCoefficients(input = 0.5, cosine = 0.5, sine = 0.25), ResonatorState(real = 1.0, imag = 0.0), 1.0)}"
     ```
     ```output
-    @@TODO@@
+    { sample: 0.25, next: { real: 1.0, imag: 0.25 } }
     ```
     *)
     export next (c, held, input) =

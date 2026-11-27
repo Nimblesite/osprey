@@ -12,7 +12,7 @@ module Waveguides
     print "${Waveguides::delay config} ${Waveguides::delay (config(frequency = 100.0))}"
     ```
     ```output
-    @@TODO@@
+    3.4166666666666665 479.4166666666667
     ```
     *)
     export delay config = PhysicalMath::loopDelay (config.frequency, config.sampleRate, PhysicalMath::smoothing config.brightness, config.dispersion)
@@ -22,8 +22,16 @@ module Waveguides
     (** The tuned loop must fit the prepared line; re-prepare after a sample-rate change.
     # Examples
     ```osprey
-    config = WaveguideConfig(sampleRate = 48000.0, frequency = 12000.0, decay = 1.0, brightness = 0.5, dispersion = 0.5, pickup = 0.0, capacity = 4)
-    print "${Waveguides::configure config} ${Waveguides::configure (config(capacity = 3))}"
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+
+    example () =
+        config = WaveguideConfig(sampleRate = 48000.0, frequency = 12000.0, decay = 1.0, brightness = 0.5, dispersion = 0.5, pickup = 0.0, capacity = 4)
+        print "${Waveguides::configure config} ${Waveguides::configure (config(capacity = 3))}"
+
+    arithmetic example
     ```
     ```output
     @@TODO@@
@@ -40,7 +48,7 @@ module Waveguides
     print "${Waveguides::initial config}"
     ```
     ```output
-    @@TODO@@
+    Success({ line: { samples: [0.0, 0.0, 0.0, 0.0] }, loss: { previous: 0.0 }, dispersion: { input: 0.0, output: 0.0 } })
     ```
     *)
     export initial config = Outcomes::carried (DelayLines::prepare config.capacity, \line => Success(value = WaveguideState(line = line, loss = LossFilters::initial, dispersion = Allpasses::initial)))
@@ -69,7 +77,7 @@ module Waveguides
     print "${arithmetic (\() => Waveguides::next (config, held, 1.0))}"
     ```
     ```output
-    @@TODO@@
+    Success({ sample: 0.0, next: { line: { samples: [0.0, 0.0, 0.0, 1.0] }, loss: { previous: 0.0 }, dispersion: { input: 0.0, output: 0.0 } } })
     ```
     *)
     export next (config, held, input) = advance (delay config, config.pickup, loss config, config.dispersion, held, input)
@@ -77,8 +85,16 @@ module Waveguides
     (** Derive fixed tuning and attenuation from a validated configuration.
     # Examples
     ```osprey
-    config = WaveguideConfig(sampleRate = 48000.0, frequency = 12000.0, decay = 1.0, brightness = 0.5, dispersion = 0.5, pickup = 0.0, capacity = 4)
-    print "${(Waveguides::coefficients config).tuning} ${(Waveguides::coefficients config).dispersion}"
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+
+    example () =
+        config = WaveguideConfig(sampleRate = 48000.0, frequency = 12000.0, decay = 1.0, brightness = 0.5, dispersion = 0.5, pickup = 0.0, capacity = 4)
+        print "${(Waveguides::coefficients config).tuning} ${(Waveguides::coefficients config).dispersion}"
+
+    arithmetic example
     ```
     ```output
     @@TODO@@
@@ -97,7 +113,7 @@ module Waveguides
     print "${arithmetic (\() => Waveguides::advance (3.416666666666667, 0.0, LossConfig(gain = 0.999, brightness = 0.5), 0.5, held, 1.0))}"
     ```
     ```output
-    @@TODO@@
+    Success({ sample: 0.0, next: { line: { samples: [0.0, 0.0, 0.0, 1.0] }, loss: { previous: 0.0 }, dispersion: { input: 0.0, output: 0.0 } } })
     ```
     *)
     export advance (tuning, pickup, attenuation, dispersion, held, input) = match DelayLines::tap (held.line, tuning)
@@ -117,7 +133,7 @@ module Waveguides
     print "${arithmetic (\() => Waveguides::transferred (config, held, config(sampleRate = 96000.0)))}"
     ```
     ```output
-    @@TODO@@
+    Error(ExhaustedCapacity { detail: "Invalid waveguide controls, or the tuned loop does not fit its capacity." })
     ```
     *)
     export transferred (from, held, to) = match configure to

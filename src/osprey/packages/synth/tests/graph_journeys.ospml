@@ -12,7 +12,6 @@ import synth::Renderer
 import synth::Sequences
 import synth::SpectralStreams
 import synth::Timings
-import synth::Voice
 
 validArithmetic = "valid arithmetic"
 
@@ -165,19 +164,6 @@ readValue snapshot =
     handle static Signal<synth::Observation>
         read => snapshot
     Observations::parameter (1, "cutoff") ?: -1.0
-
-// The extracted reference voice is also exercised independently of Prism's UI dependencies.
-referencePatch wave = synth::Patch(pitch = 220.0, sounding = true, filtered = true, wave = wave, cutoff = 1000.0, depth = 0.5, lfo = 2.0, audible = true, volume = 0.75)
-
-referenceCase wave =
-    p = referencePatch wave
-    samples = Voice::samples p
-    expect (length samples, Voice::rate)
-    expect (Voice::peak samples > 0, true)
-    expect (startsWith (Voice::wav samples) "52494646", true)
-    forEachList ([p(sounding = false), p(audible = false), p(volume = 0.0)], \silent => near (Voice::sample (silent, 5), 0.0, 0.0))
-    expect (Voice::describe p != Voice::describe (p(filtered = false)), true)
-    expect (Voice::sample (p(filtered = false), 5) != Voice::sample (p, 5), true)
 
 planFor graph = match Graphs::prepare graph
     synth::Valid plan => plan

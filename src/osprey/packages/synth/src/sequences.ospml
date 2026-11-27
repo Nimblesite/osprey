@@ -9,7 +9,7 @@ module Sequences
     print "${Sequences::take ([1, 2, 3], 2)} ${Sequences::take ([1], 3)}"
     ```
     ```output
-    @@TODO@@
+    [1, 2] [1]
     ```
     *)
     // Generic recursion: codegen needs these signatures to emit real functions.
@@ -26,7 +26,7 @@ module Sequences
     print "${Sequences::drop ([1, 2, 3], 1)} ${Sequences::drop ([1, 2, 3], 5)}"
     ```
     ```output
-    @@TODO@@
+    [2, 3] []
     ```
     *)
     export drop<T> : (List<T>, int) -> List<T>
@@ -47,7 +47,7 @@ module Sequences
     print "${Sequences::mapIndexed ([10.0, 20.0], \(index, value) => value + toFloat index)}"
     ```
     ```output
-    @@TODO@@
+    [10.0, 21.0]
     ```
     *)
     export mapIndexed (items, apply) = indexedFrom (items, 0, apply)
@@ -55,7 +55,15 @@ module Sequences
     (** Pairwise combination; the result has the shorter length, which callers check.
     # Examples
     ```osprey
-    print "${Sequences::combined ([1, 2, 3], [10, 20], \(a, b) => a * b)}"
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+
+    example () =
+        print "${Sequences::combined ([1, 2, 3], [10, 20], \(a, b) => a * b)}"
+
+    arithmetic example
     ```
     ```output
     @@TODO@@
@@ -74,7 +82,7 @@ module Sequences
     print "${Sequences::shifted ([1, 2, 3], 4)} ${Sequences::shifted ([], 4)}"
     ```
     ```output
-    @@TODO@@
+    [2, 3, 4] [4]
     ```
     *)
     export shifted (items, value) = listAppend (drop (items, 1)) value
@@ -85,7 +93,7 @@ module Sequences
     print "${Sequences::zeros 3} ${Sequences::zeros 0}"
     ```
     ```output
-    @@TODO@@
+    [0.0, 0.0, 0.0] []
     ```
     *)
     export zeros count = mapList (toList (range (0, count)), \_ => 0.0)
@@ -96,7 +104,7 @@ module Sequences
     print "${Sequences::chunks ([1, 2, 3, 4, 5], [2, 1, 2])} ${Sequences::chunks ([1, 2, 3], [2, 2])}"
     ```
     ```output
-    @@TODO@@
+    [[1, 2], [3], [4, 5]] [[1, 2], [3]]
     ```
     *)
     export chunks<T> : (List<T>, List<int>) -> List<List<T>>
@@ -111,7 +119,7 @@ module Sequences
     print "${Sequences::joined ([1, 2], [3])}"
     ```
     ```output
-    @@TODO@@
+    [1, 2, 3]
     ```
     *)
     export joined (left, right) = foldList (right, left, \(all, value) => listAppend all value)
@@ -123,7 +131,7 @@ module Sequences
     print "${Sequences::flattened [[1, 2], [], [3]]}"
     ```
     ```output
-    @@TODO@@
+    [1, 2, 3]
     ```
     *)
     export flattened<T> : List<List<T>> -> List<T>

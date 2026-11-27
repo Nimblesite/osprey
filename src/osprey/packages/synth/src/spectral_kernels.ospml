@@ -10,7 +10,7 @@ module SpectralKernels
     print "${SpectralKernels::storage 256} ${SpectralKernels::storage 1024}"
     ```
     ```output
-    @@TODO@@
+    1284 5124
     ```
     *)
     export storage size = satAdd (satMul size 5) 4
@@ -62,8 +62,16 @@ module SpectralKernels
     (** Resolve fixed FFT parameters once; automated blocks resolve them at each sample.
     # Examples
     ```osprey
-    snapshot = Parameters::initial (Graph(nodes = [Components::spectral (1, 256, 64, 0.0)], cables = []))
-    print "${SpectralKernels::prepare (48000.0, snapshot, 1, Spectral(size = 256, hop = 64), true)} ${SpectralKernels::prepare (48000.0, snapshot, 1, Spectral(size = 256, hop = 64), false)}"
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+
+    example () =
+        snapshot = Parameters::initial (Graph(nodes = [Components::spectral (1, 256, 64, 0.0)], cables = []))
+        print "${SpectralKernels::prepare (48000.0, snapshot, 1, Spectral(size = 256, hop = 64), true)} ${SpectralKernels::prepare (48000.0, snapshot, 1, Spectral(size = 256, hop = 64), false)}"
+
+    arithmetic example
     ```
     ```output
     @@TODO@@
@@ -88,7 +96,7 @@ module SpectralKernels
     print "${arithmetic (\() => SpectralKernels::process (Prepared(graph = Graphs::empty, order = [], feedback = []), 48000.0, Parameters::initial Graphs::empty, SampleFrame(states = [], values = []), held, 256, 64, 0.0, LiveSpectrum))}"
     ```
     ```output
-    @@TODO@@
+    Error(MissingResource { detail: "Required render parameter is missing." })
     ```
     *)
     export process (plan, rate, snapshot, frame, held, size, hop, input, prepared) = Outcomes::carried (RenderInputs::optional (plan, frame, held.identity, 1), \other =>
@@ -106,7 +114,15 @@ module SpectralKernels
         count of `size / 2 · log2 size`), every `hop` samples. The side transform is billed even when no morph reads it.
     # Examples
     ```osprey
-    print "${SpectralKernels::cost (256, 64)} ${SpectralKernels::cost (4096, 1024)} ${SpectralKernels::cost (512, 0)}"
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+
+    example () =
+        print "${SpectralKernels::cost (256, 64)} ${SpectralKernels::cost (4096, 1024)} ${SpectralKernels::cost (512, 0)}"
+
+    arithmetic example
     ```
     ```output
     @@TODO@@
@@ -123,7 +139,7 @@ module SpectralKernels
     print "${SpectralKernels::budget}"
     ```
     ```output
-    @@TODO@@
+    1024
     ```
     *)
     export budget = 1024
@@ -135,8 +151,16 @@ module SpectralKernels
     (** Whether a graph's spectral nodes fit the budget; checked before any buffer is allocated.
     # Examples
     ```osprey
-    one = Components::spectral (1, 4096, 1024, 0.0)
-    print "${SpectralKernels::affordable (Graph(nodes = [one], cables = []))} ${SpectralKernels::affordable (Graph(nodes = mapList (toList (range (0, 8)), \i => Components::spectral (i, 4096, 1024, 0.0)), cables = []))}"
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+
+    example () =
+        one = Components::spectral (1, 4096, 1024, 0.0)
+        print "${SpectralKernels::affordable (Graph(nodes = [one], cables = []))} ${SpectralKernels::affordable (Graph(nodes = mapList (toList (range (0, 8)), \i => Components::spectral (i, 4096, 1024, 0.0)), cables = []))}"
+
+    arithmetic example
     ```
     ```output
     @@TODO@@

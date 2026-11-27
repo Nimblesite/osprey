@@ -4,8 +4,6 @@
 import uitest::Drive
 import uitest::Semantics
 import uitest::Views
-import synth::Synth
-import synth::Voice
 
 canvasOutput00 = "Canvas output 0:0"
 firstCable = "Cable 0:0 to 1:0"
@@ -45,94 +43,7 @@ inspectorJourney () =
     nodesOf (disconnected, 2)
     cableGestureJourney ()
 
-patch (wave, process, depth, lfo, volume) = synth::Patch(pitch = 220.0, sounding = true, filtered = true, wave = wave, cutoff = 20.0 * pow (1000.0, process), depth = depth, lfo = lfo, audible = true, volume = volume)
-
-defaultPatch () = patch ("Sine", 0.7, 0.7, 2.0, 0.75)
-
-// One second of `p` per case: every voice case renders the whole second.
-sized p = expect (length (Voice::samples p), Voice::rate)
-
-// Where a Windows package keeps the player it launches the synth with.
-helper = "C:\\Program Files\\WindowsApps\\Osprey.synth\\app\\play-wav.exe"
-
-windowsLaunch = ["--machine", "C:\\app\\signal_flow.machine.json", "--play", helper]
-
-// `--play` hands `p`'s whole clip to its helper as the one argument, in place of perl and afplay.
-playedBy p = match listGet (Synth::played (windowsLaunch, p)) 0
-    Success ask => match ask.capability
-        ui::Run executable arguments timeout _ _ slice =>
-            expect (ask.ticket, "play")
-            expect (executable, helper)
-            expect (length arguments, 1)
-            expect (listGet arguments 0 ?: "", Voice::wav (Voice::samples p))
-            expect (timeout, 5000)
-            expect (slice, "synth-play")
-        _ => expect ("not a run", "run")
-    Error _ => expect ("nothing played", "played")
-
-// A `--play` with no path after it is no player: the Mac's perl plays the clip.
-macPlayer p = match listGet (Synth::played (["--play"], p)) 0
-    Success ask => match ask.capability
-        ui::Run executable _ _ _ _ _ => expect (executable, "/usr/bin/perl")
-        _ => expect ("not a run", "run")
-    Error _ => expect ("nothing played", "played")
-
-voiceCase (p, expectedPeak) =
-    sized p
-    nearPeak (p, expectedPeak)
-    expect (length (Synth::played ([], p)), 1)
-    playedBy p
-    macPlayer p
-
-silentCase p =
-    sized p
-    samples = Voice::samples p
-    expect (Voice::peak samples, 0)
-    expect (ui::Lists::all (samples, \sample => sample == 128), true)
-    expect (length (Synth::played ([], p)), 0)
-    expect (length (Synth::played (windowsLaunch, p)), 0)
-
 near (actual, expected) = expect (actual - expected < 0.0001 && expected - actual < 0.0001, true)
-
-shapes () =
-    forEachList ([{ wave = "Sine", at = 0.25, want = 1.0 }, { wave = "Sine", at = 0.75, want = -1.0 }, { wave = "Triangle", at = 0.0, want = -1.0 }, { wave = "Triangle", at = 0.5, want = 1.0 }, { wave = "Triangle", at = 0.25, want = 0.0 }, { wave = "Saw", at = 0.0, want = -1.0 }, { wave = "Saw", at = 0.75, want = 0.5 }, { wave = "Square", at = 0.2, want = 1.0 }, { wave = "Square", at = 0.7, want = -1.0 }, { wave = "Sine", at = 1.25, want = 1.0 }], \row => near (Voice::shaped (row.wave, row.at), row.want))
-    forEachList ([{ rate = "1/1", want = 0.5 }, { rate = "1/2", want = 1.0 }, { rate = "1/4", want = 2.0 }, { rate = "1/8", want = 4.0 }, { rate = "1/16", want = 8.0 }], \row => near (Voice::hertz row.rate, row.want))
-    forEachList ([{ note = "A3", want = 220.0 }, { note = "A4", want = 440.0 }, { note = "C3", want = 130.8128 }, { note = "C4", want = 261.6256 }, { note = "C#4", want = 277.1826 }, { note = "F#3", want = 184.9972 }, { note = "B4", want = 493.8833 }], \row => near (Voice::frequency row.note, row.want))
-
-voiceCases () =
-    voiceCase (defaultPatch (), 75)
-    voiceCase (patch ("Sine", 0.1, 0.7, 2.0, 0.75), 17)
-    voiceCase (patch ("Sine", 0.1, 0.0, 2.0, 0.75), 2)
-    voiceCase (patch ("Sine", 0.7, 0.7, 2.0, 1.0), 100)
-    voiceCase (patch ("Sine", 0.7, 0.7, 2.0, 0.5), 50)
-    voiceCase (patch ("Square", 0.7, 0.7, 2.0, 0.75), 75)
-    voiceCase (patch ("Saw", 0.1, 0.7, 8.0, 0.75), 17)
-    d = defaultPatch ()
-    silentCase (d(sounding = false))
-    silentCase (d(audible = false))
-    silentCase (patch ("Sine", 0.7, 0.7, 2.0, 0.0))
-
-// Two patches whose clips must not match.
-differ (one, other) = expect (Voice::wav (Voice::samples one) == Voice::wav (Voice::samples other), false)
-
-// Table rows: each patch must describe itself differently from `base`.
-renamed (base, others) = forEachList (others, \other => expect (Voice::describe other == base, false))
-
-// Every field of a patch changes what it sounds like.
-descriptionsDiffer () =
-    d = defaultPatch ()
-    base = Voice::describe d
-    renamed (base, [patch ("Saw", 0.7, 0.7, 2.0, 0.75), patch ("Sine", 0.1, 0.7, 2.0, 0.75), patch ("Sine", 0.7, 0.3, 2.0, 0.75), patch ("Sine", 0.7, 0.7, 8.0, 0.75), patch ("Sine", 0.7, 0.7, 2.0, 0.5), d(filtered = false), d(pitch = 440.0)])
-    differ (d(pitch = 440.0), d)
-    differ (patch ("Square", 0.1, 0.7, 2.0, 0.75), patch ("Saw", 0.1, 0.7, 2.0, 0.75))
-    differ (patch ("Sine", 0.1, 0.7, 0.5, 0.75), patch ("Sine", 0.1, 0.7, 8.0, 0.75))
-
-wavCase () =
-    clip = Voice::wav (Voice::samples (defaultPatch ()))
-    expect (length clip, (44 + Voice::rate + bitAnd Voice::rate 1) * 2)
-    expect (startsWith clip "52494646362B000057415645666D7420", true)
-    expect (contains clip "112B0000112B0000", true)
-    expect (take (drop clip 72) 16, "64617461112B0000")
 
 zeroStereoResponse () = "4F535631020000000200000000000000" + join (mapList (toList (range (0, 8)), \_ => "0001000000000000" + join (mapList (toList (range (0, 512)), \_ => "00000000")) "")) ""
 

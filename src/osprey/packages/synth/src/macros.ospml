@@ -16,7 +16,7 @@ module Macros
     print "${Macros::valid (graph, macro)} ${Macros::valid (graph, macro(targets = [MacroTarget(node = 1, key = "gain", minimum = 0.0, maximum = 16.0, exponent = 2.0)]))} ${Macros::valid (graph, Macro(name = "", targets = []))}"
     ```
     ```output
-    @@TODO@@
+    true false false
     ```
     *)
     export valid (graph, macro) = macro.name != "" && length macro.targets >= 1 && length macro.targets <= 32 && length (filterList (macro.targets, \t => target (graph, t))) == length macro.targets
@@ -28,7 +28,7 @@ module Macros
     print "${mapList ((Macros::retargeted (node, 1, \p => p(initial = 2.0))).parameters, \p => p.initial)} ${mapList ((Macros::retargeted (node, 2, \p => p(initial = 2.0))).parameters, \p => p.initial)}"
     ```
     ```output
-    @@TODO@@
+    [2.0] [1.0]
     ```
     *)
     export retargeted (n, identity, edit) = match n.identity == identity
@@ -47,7 +47,7 @@ module Macros
     print "${Macros::apply (graph, macro, 1.0)} ${Macros::apply (graph, macro, 2.0)}"
     ```
     ```output
-    @@TODO@@
+    Success({ nodes: [{ identity: 1, processor: Amplifier, inputs: [{ name: "audio", rate: Audio, channels: 1, unit: Amplitude }], outputs: [{ name: "audio", rate: Audio, channels: 1, unit: Amplitude }], parameters: [{ key: "gain", label: "Gain", unit: Amplitude, minimum: 0.0, maximum: 8.0, initial: 4.0, automatable: true }] }], cables: [] }) Error(InvalidConfiguration { detail: "The macro has an invalid target or amount; the patch is unchanged." })
     ```
     *)
     export apply (graph, macro, amount) = match valid (graph, macro) && amount >= 0.0 && amount <= 1.0

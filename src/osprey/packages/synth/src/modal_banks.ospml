@@ -25,7 +25,15 @@ module ModalBanks
     (** Fundamental below 0.45 of the rate, decay 1 ms–60 s, brightness 0–1, strike 0.01–0.99 and 1–8 modes.
     # Examples
     ```osprey
-    print "${ModalBanks::configure (ModalConfig(sampleRate = 48000.0, frequency = 220.0, decay = 1.0, brightness = 0.5, strike = 0.13, count = 0, modes = BellModes))}"
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+
+    example () =
+        print "${ModalBanks::configure (ModalConfig(sampleRate = 48000.0, frequency = 220.0, decay = 1.0, brightness = 0.5, strike = 0.13, count = 0, modes = BellModes))}"
+
+    arithmetic example
     ```
     ```output
     @@TODO@@
@@ -42,7 +50,7 @@ module ModalBanks
     print "${ModalBanks::initial bank}"
     ```
     ```output
-    @@TODO@@
+    { modes: [{ real: 0.0, imag: 0.0 }] }
     ```
     *)
     export initial bank = ModalState(modes = mapList (bank.modes, \_ => Resonators::initial))
@@ -70,7 +78,7 @@ module ModalBanks
     print "${arithmetic (\() => ModalBanks::next (bank, ModalBanks::initial bank, 1.0))} ${arithmetic (\() => ModalBanks::next (bank, ModalState(modes = []), 1.0))}"
     ```
     ```output
-    @@TODO@@
+    Success({ sample: 0.0, next: { modes: [{ real: 0.5, imag: 0.0 }] } }) Error(IncompatibleLayout { detail: "Modal state does not match its bank." })
     ```
     *)
     export next (bank, held, input) = match length bank.modes == length held.modes

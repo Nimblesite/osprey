@@ -56,7 +56,15 @@ module OperatorKernels
     (** Prepare a phase operator for a block with constant controls. Modulation and sync remain audio-rate.
     # Examples
     ```osprey
-    print "${OperatorKernels::prepare (48000.0, Parameters::initial Graphs::empty, 1)}"
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+
+    example () =
+        print "${OperatorKernels::prepare (48000.0, Parameters::initial Graphs::empty, 1)}"
+
+    arithmetic example
     ```
     ```output
     @@TODO@@
@@ -79,7 +87,7 @@ module OperatorKernels
     print "${arithmetic (\() => OperatorKernels::process (Prepared(graph = Graphs::empty, order = [], feedback = []), 48000.0, Parameters::initial Graphs::empty, SampleFrame(states = [], values = []), held, LiveOperator))}"
     ```
     ```output
-    @@TODO@@
+    Error(MissingResource { detail: "Required render parameter is missing." })
     ```
     *)
     export process (plan, rate, snapshot, frame, held, prepared) = match prepared

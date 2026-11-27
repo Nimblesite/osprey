@@ -106,7 +106,7 @@ module WaveImport
     print "${arithmetic (\() => WaveImport::header (riff, 44))} ${arithmetic (\() => WaveImport::header (riff, 45))} ${arithmetic (\() => WaveImport::header ([82, 73, 70, 70], 4))}"
     ```
     ```output
-    @@TODO@@
+    Success(36) Error(MissingResource { detail: "Expected a complete little-endian RIFF/WAVE file." }) Error(MissingResource { detail: "Truncated WAV word." })
     ```
     *)
     export header (bytes, total) =
@@ -128,7 +128,7 @@ module WaveImport
     print "${arithmetic (\() => WaveImport::decode [])} ${arithmetic (\() => WaveImport::decode [82, 73, 70, 70, 4, 0, 0, 0, 87, 65, 86, 69])}"
     ```
     ```output
-    @@TODO@@
+    Error(MissingResource { detail: "WAV file size must be between 12 bytes and 8 MiB." }) Error(MissingResource { detail: "WAV requires one format chunk and one data chunk." })
     ```
     *)
     export decode bytes = match length bytes >= 12 && length bytes <= 8388608

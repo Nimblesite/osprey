@@ -36,7 +36,7 @@ module TableKernels
     print "${arithmetic (\() => TableKernels::wavetable (48000.0, Prepared(graph = Graphs::empty, order = [], feedback = []), Parameters::initial Graphs::empty, SampleFrame(states = [], values = []), held, table))}"
     ```
     ```output
-    @@TODO@@
+    Error(MissingResource { detail: "Required render parameter is missing." })
     ```
     *)
     export wavetable (rate, plan, snapshot, frame, held, table) =
@@ -81,7 +81,15 @@ module TableKernels
     (** Prepare the additive bank when the block uses a fixed control snapshot.
     # Examples
     ```osprey
-    print "${TableKernels::prepare (48000.0, Parameters::initial Graphs::empty, 1)}"
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+
+    example () =
+        print "${TableKernels::prepare (48000.0, Parameters::initial Graphs::empty, 1)}"
+
+    arithmetic example
     ```
     ```output
     @@TODO@@
@@ -104,7 +112,7 @@ module TableKernels
     print "${arithmetic (\() => TableKernels::additive (48000.0, Parameters::initial Graphs::empty, SampleFrame(states = [], values = []), held))}"
     ```
     ```output
-    @@TODO@@
+    Error(MissingResource { detail: "Required render parameter is missing." })
     ```
     *)
     export additive (rate, snapshot, frame, held) = Outcomes::carried (settings (rate, snapshot, held.identity), \bank => played (frame, held, bank, []))
@@ -120,7 +128,7 @@ module TableKernels
     print "${arithmetic (\() => TableKernels::scheduled (48000.0, Parameters::initial Graphs::empty, SampleFrame(states = [], values = []), held, FixedPartials(settings = PartialSettings(interval = 0.0, config = PartialConfig(sampleRate = 48000.0, frequency = 220.0, count = 4.0, tilt = 1.0, parity = 0.0, decay = 1.0, damping = 0.0, amplitude = 0.5, layout = StiffLayout(inharmonicity = 0.0, stretch = 1.0))), coefficients = [])))}"
     ```
     ```output
-    @@TODO@@
+    Error(IncompatibleLayout { detail: "Partial state does not have one phase per partial." })
     ```
     *)
     export scheduled (rate, snapshot, frame, held, prepared) = match prepared

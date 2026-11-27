@@ -9,7 +9,7 @@ module GrainTimings
     print "${GrainTimings::valid (PeriodicTiming(period = 2400, jitter = 0))} ${GrainTimings::valid (PeriodicTiming(period = 10, jitter = 10))} ${GrainTimings::valid (ExponentialTiming(mean = 0.5, maximum = 100))}"
     ```
     ```output
-    @@TODO@@
+    true false false
     ```
     *)
     export valid timing = match timing
@@ -22,7 +22,7 @@ module GrainTimings
     print "${GrainTimings::interval (PeriodicTiming(period = 2400, jitter = 100), 1.0)} ${GrainTimings::interval (ExponentialTiming(mean = 100.0, maximum = 400), 2147483646.0)}"
     ```
     ```output
-    @@TODO@@
+    2300.0 400.0
     ```
     *)
     export interval (timing, seed) = match timing
@@ -49,7 +49,7 @@ module GrainTimings
     print "${GrainTimings::accepted (true, 1.0, MissingResource(detail = "none"))} ${GrainTimings::accepted (false, 1.0, MissingResource(detail = "none"))}"
     ```
     ```output
-    @@TODO@@
+    Success(1.0) Error(MissingResource { detail: "none" })
     ```
     *)
     export accepted (test, value, failure) = match test

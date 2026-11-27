@@ -62,9 +62,17 @@ module ClipKernels
     (** Continue each channel's DSP state across blocks at `rate` (8–384 kHz). Allocation remains outside a device callback.
     # Examples
     ```osprey
-    plan = Prepared(graph = Graphs::empty, order = [], feedback = [])
-    sink = Components::output 1
-    print "${ClipKernels::block (plan, 48000.0, [], sink, 16, [])} ${ClipKernels::block (plan, 48000.0, [], sink, 0, [])}"
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+
+    example () =
+        plan = Prepared(graph = Graphs::empty, order = [], feedback = [])
+        sink = Components::output 1
+        print "${ClipKernels::block (plan, 48000.0, [], sink, 16, [])} ${ClipKernels::block (plan, 48000.0, [], sink, 0, [])}"
+
+    arithmetic example
     ```
     ```output
     @@TODO@@
@@ -81,9 +89,17 @@ module ClipKernels
     (** Independent per-channel state preserves oscillator, filter and delay behavior.
     # Examples
     ```osprey
-    plan = Prepared(graph = Graphs::empty, order = [], feedback = [])
-    sink = Components::output 1
-    print "${ClipKernels::render (plan, 48000.0, [], sink, 16, 0)} ${ClipKernels::render (plan, 48000.0, [], sink, 0, 1)}"
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+
+    example () =
+        plan = Prepared(graph = Graphs::empty, order = [], feedback = [])
+        sink = Components::output 1
+        print "${ClipKernels::render (plan, 48000.0, [], sink, 16, 0)} ${ClipKernels::render (plan, 48000.0, [], sink, 0, 1)}"
+
+    arithmetic example
     ```
     ```output
     @@TODO@@

@@ -11,7 +11,7 @@ module Kinds
     print "${Kinds::keyFrequency Oscillator} ${Kinds::keyFrequency Sink}"
     ```
     ```output
-    @@TODO@@
+    true false
     ```
     *)
     export keyFrequency processor = match processor
@@ -32,7 +32,7 @@ module Kinds
     print "${Kinds::noteSource MidiNotes} ${Kinds::noteSource Oscillator}"
     ```
     ```output
-    @@TODO@@
+    true false
     ```
     *)
     export noteSource processor = match processor
@@ -45,7 +45,7 @@ module Kinds
     print "${Kinds::kind (Waveguide(capacity = 480))} ${Kinds::kind (External(identifier = "com.acme.reverb", latency = 0))} ${Kinds::kind Sink}"
     ```
     ```output
-    @@TODO@@
+    synth.waveguide external:com.acme.reverb synth.output
     ```
     *)
     export kind processor = match processor
@@ -93,7 +93,7 @@ module Kinds
     print "${Kinds::version Resonator} ${Kinds::version Oscillator}"
     ```
     ```output
-    @@TODO@@
+    2 1
     ```
     *)
     export version processor = match processor
@@ -107,7 +107,7 @@ module Kinds
     print "${Kinds::compatible (Resonator, "synth.resonator", 2)} ${Kinds::compatible (Resonator, "synth.resonator", 1)}"
     ```
     ```output
-    @@TODO@@
+    true false
     ```
     *)
     export compatible (processor, storedKind, storedVersion) = kind processor == storedKind && version processor == storedVersion

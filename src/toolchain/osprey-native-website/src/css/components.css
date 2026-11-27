@@ -48,30 +48,40 @@
   border-color: var(--brand-native);
 }
 
-/* Hero Section + Luminous Multi-Device Stage */
+/* Hero Section + Luminous Multi-Device Stage (fits 100% within initial viewport) */
 .hero-section {
   position: relative;
-  padding-block: var(--space-6) var(--space-8);
+  min-block-size: calc(100dvh - 4.25rem);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding-block: clamp(1.5rem, 3.2vh, 2.75rem);
   background:
     radial-gradient(60% 48% at 50% 42%, color-mix(in oklab, var(--brand-native) 14%, transparent), transparent 72%),
     radial-gradient(45% 40% at 74% 38%, color-mix(in oklab, var(--brand-canvas) 12%, transparent), transparent 70%);
 }
 
-.hero-platforms {
-  margin: var(--space-2) 0 0;
-  font-size: 0.92rem;
-  font-weight: 600;
-  color: var(--ink-muted);
-  letter-spacing: 0.01em;
+.hero-section .prose-h1 {
+  font-size: clamp(2.25rem, 4.6vw, 3.75rem);
+  margin-block-end: 0.75rem;
+}
+
+.hero-section .prose-lead {
+  margin-block-end: 1.25rem;
+}
+
+.hero-section .btn-row {
+  margin-block: 0;
 }
 
 .device-stage {
-  margin-block-start: var(--space-5);
+  margin-block-start: clamp(1.5rem, 3.2vh, 2.5rem);
   display: grid;
-  grid-template-columns: minmax(0, 0.24fr) minmax(0, 1fr) minmax(0, 0.24fr);
+  grid-template-columns: minmax(0, 0.22fr) minmax(0, 1fr) minmax(0, 0.22fr);
   align-items: end;
+  justify-items: center;
   gap: 1.25rem;
-  max-inline-size: 72rem;
+  max-inline-size: min(62rem, 100%);
   margin-inline: auto;
 }
 
@@ -86,13 +96,21 @@
 }
 
 .device-phone {
-  border-radius: 26px;
+  border-radius: 24px;
   border: 4px solid #1e293b;
 }
 
-.device-desktop img,
+.device-desktop img {
+  inline-size: auto;
+  max-inline-size: 100%;
+  max-block-size: clamp(14rem, 44dvh, 26rem);
+  block-size: auto;
+}
+
 .device-phone img {
-  inline-size: 100%;
+  inline-size: auto;
+  max-inline-size: 100%;
+  max-block-size: clamp(11rem, 36dvh, 21.5rem);
   block-size: auto;
 }
 
@@ -256,13 +274,13 @@
   position: relative;
   flex: none;
   scroll-snap-align: start;
-  min-block-size: 2.85rem;
-  padding: 0.65rem 1rem;
+  min-block-size: 2.75rem;
+  padding: 0.6rem 0.72rem;
   border: 0;
   background: transparent;
   color: var(--code-muted);
   font-family: var(--font-mono);
-  font-size: 0.84rem;
+  font-size: 0.8rem;
   font-weight: 600;
   cursor: pointer;
 }
@@ -295,6 +313,17 @@
 .tabpanel-inner {
   min-inline-size: 0;
 }
+
+.code-window .tabpanels-stack {
+  block-size: 21.5rem;
+  overflow-y: auto;
+}
+
+.tok-kw { color: #c084fc; font-weight: 600; }
+.tok-ty { color: #38bdf8; }
+.tok-str { color: #4ade80; }
+.tok-num { color: #fbbf24; }
+.tok-cm { color: #64748b; font-style: italic; }
 
 .code-meta-bar {
   margin: 0;

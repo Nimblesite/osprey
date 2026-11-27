@@ -9,7 +9,7 @@ module PartialBanks
     print "${PartialBanks::capacity}"
     ```
     ```output
-    @@TODO@@
+    64
     ```
     *)
     export capacity = 64
@@ -21,7 +21,7 @@ module PartialBanks
     print "${held.age} ${listLength held.phases}"
     ```
     ```output
-    @@TODO@@
+    0.0 64
     ```
     *)
     export initial () = PartialState(phases = Sequences::zeros capacity, age = 0.0)
@@ -32,7 +32,7 @@ module PartialBanks
     print "${PartialBanks::retrigger (PartialState(phases = [0.5], age = 10.0))}"
     ```
     ```output
-    @@TODO@@
+    { phases: [0.5], age: 0.0 }
     ```
     *)
     export retrigger held = held(age = 0.0)
@@ -51,7 +51,7 @@ module PartialBanks
     print "${PartialBanks::configure config} ${PartialBanks::configure (config(count = 100.0))}"
     ```
     ```output
-    @@TODO@@
+    Success({ sampleRate: 48000.0, frequency: 220.0, count: 4.0, tilt: 1.0, parity: 0.0, decay: 1.0, damping: 0.0, amplitude: 0.5, layout: HarmonicLayout }) Error(InvalidConfiguration { detail: "Invalid partial-bank rate, frequency, count, shaping, decay, amplitude or layout." })
     ```
     *)
     export configure config = match config.sampleRate >= 8000.0 && config.sampleRate <= 384000.0 && config.frequency >= 0.0 && config.frequency < config.sampleRate * 0.45 && config.count >= 0.0 && config.count <= toFloat capacity && config.tilt >= 0.0 && config.tilt <= 4.0 && config.parity >= -1.0 && config.parity <= 1.0 && config.decay >= 0.01 && config.decay <= 600.0 && config.damping >= 0.0 && config.damping <= 10.0 && config.amplitude >= 0.0 && config.amplitude <= 1.0 && layout config
@@ -87,7 +87,7 @@ module PartialBanks
     print "${arithmetic (\() => listLength (PartialBanks::stiffCoefficients (config, 0.0, 1.0)))}"
     ```
     ```output
-    @@TODO@@
+    64
     ```
     *)
     export stiffCoefficients (config, stiffness, stretch) = mapList (toList (range (0, capacity)), \index => coefficient (config, index, stiffness, stretch))
@@ -121,7 +121,7 @@ module PartialBanks
     print "${arithmetic (\() => PartialBanks::next (config, PartialState(phases = [], age = 0.0)))}"
     ```
     ```output
-    @@TODO@@
+    Error(IncompatibleLayout { detail: "Partial state does not have one phase per partial." })
     ```
     *)
     export next (config, held) = match length held.phases == capacity
@@ -152,7 +152,7 @@ module PartialBanks
     print "${arithmetic (\() => PartialBanks::withCoefficients (config, [PartialCoefficient(increment = 0.1, weight = 0.5)], PartialBanks::initial ()))}"
     ```
     ```output
-    @@TODO@@
+    Error(IncompatibleLayout { detail: "Partial phases and prepared coefficients must cover the bank." })
     ```
     *)
     export withCoefficients (config, prepared, held) = match length prepared
