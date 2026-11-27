@@ -126,8 +126,13 @@ registry-migration-check: $(REGISTRY_MIGRATOR) $(BIN)
 	  migrate() { dotnet "$(REGISTRY_MIGRATOR)" migrate --provider postgres --schema src/osprey/packages/manager/supabase/migrations/schema.yaml --output "Host=$$PGHOST;Port=$$PGPORT;Username=$$PGUSER;Database=$$PGDATABASE"; }; \
 	  migrate; migrate >"$$db/replay.log" || { cat "$$db/replay.log"; exit 1; }; cat "$$db/replay.log"; \
 	  grep -Fq 'No operations to apply' "$$db/replay.log"; \
-	  test "$$("$$pg/psql" -XAtc "SELECT count(*) = 12 AND bool_and(relrowsecurity AND relforcerowsecurity) FROM pg_class WHERE relnamespace = 'registry'::regnamespace AND relkind = 'r'")" = t; \
+	  test "$$("$$pg/psql" -XAtc "SELECT count(*) = 13 AND bool_and(relrowsecurity AND relforcerowsecurity) FROM pg_class WHERE relnamespace = 'registry'::regnamespace AND relkind = 'r'")" = t; \
 	  $(BIN) test src/osprey/packages/manager/database-tests/live
+
+.PHONY: registry-integration-check
+## registry-integration-check: Browse a real PostgreSQL-backed hosted API with the packaged website in Chromium.
+registry-integration-check: registry-website-fixture
+	REGISTRY_BROWSER_CHECK=1 $(MAKE) -C src/osprey/packages registry-migration-check
 
 .PHONY: registry-infra-check
 ## registry-infra-check: Validate pinned registry infrastructure without contacting a state backend.
@@ -158,7 +163,7 @@ registry-website registry-website-fixture registry-website-archive: $(BIN) | _ru
 	@set -eu; out=$$(mktemp -d target/registry-site-build/pages.XXXXXX); \
 	  trap 'rm -rf "$$out"' EXIT; \
 	  render() { printf '%s\n' "$$1" | wasmtime target/registry-site-build/site.wasm; }; \
-	  render home > "$$out/index.html"; render missing > "$$out/404.html"; \
+	  render missing > "$$out/404.html"; \
 	  for page in guide publishing; do \
 	    mkdir "$$out/$$page"; render "$$page" > "$$out/$$page/index.html"; \
 	  done; \
@@ -167,12 +172,16 @@ registry-website registry-website-fixture registry-website-archive: $(BIN) | _ru
 	  if [ -n "$$origin" ]; then node -e 'const u = new URL(process.argv[1]); if (u.protocol !== "https:" || u.origin !== process.argv[1] || !/^[a-z0-9.-]+$$/.test(u.hostname)) process.exit(1)' "$$origin"; fi; \
 	  script=src/toolchain/hosts/web/src/registry-form.mjs; adapter="form.$$(shasum -a 256 "$$script" | cut -c1-12).mjs"; \
 	  cp "$$script" "$$out/$$adapter"; \
+	  asset() { file="$$1"; name="$$2.$$(shasum -a 256 "$$file" | cut -c1-12).$$3"; cp "$$file" "$$out/$$name"; echo "$$name"; }; \
+	  catalog=$$(asset src/toolchain/hosts/web/src/registry-catalog.mjs catalog mjs); host=$$(asset src/osprey/examples/wasm/wasi-shim.mjs wasi mjs); guest=$$(asset target/registry-site-build/site.wasm site wasm); \
+	  printf "%s\n" home "$$origin" "$$catalog" "$$host" "$$guest" | wasmtime target/registry-site-build/site.wasm > "$$out/index.html"; \
+	  printf '/packages/* /index.html 200\n' > "$$out/_redirects"; \
 	  printf "%s\n" upload "$$origin" "$$adapter" | wasmtime target/registry-site-build/site.wasm > "$$out/upload/index.html"; \
 	  digest=$$(shasum -a 256 $(REGISTRY_WEB)/assets/registry.css | cut -c1-12); \
 	  asset="registry.$$digest.css"; grep -Fq "href=\"/$$asset\"" "$$out/index.html"; \
 	  cp $(REGISTRY_WEB)/assets/registry.css "$$out/$$asset"; \
 	  cp $(REGISTRY_WEB)/assets/registry-mark.svg "$$out/"; \
-	  sed "s@form-action@script-src 'self'; connect-src 'self' $$origin; form-action@" $(REGISTRY_WEB)/assets/_headers > "$$out/_headers"; \
+	  sed "s@form-action@script-src 'self' 'wasm-unsafe-eval'; connect-src 'self' $$origin; form-action@;s@form-action 'none'@form-action 'self'@" $(REGISTRY_WEB)/assets/_headers > "$$out/_headers"; \
 	  if [ "$@" = registry-website-archive ]; then python3 scripts/packages/archive-registry-site.py "$$out" target/registry-artifacts; \
 	  else rsync -a --delete "$$out/" $(if $(filter registry-website-fixture,$@),target/registry-site-build/hosted-fixture,target/registry-site)/; fi
 

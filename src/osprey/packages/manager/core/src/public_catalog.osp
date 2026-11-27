@@ -1,0 +1,27 @@
+namespace registry;
+
+/// Decode the entire anonymous projection before returning a single entry [PACKAGE-HOSTED-ROUTES-CATALOG].
+module PublicCatalog {
+    fn exact(doc, count) = match doc {
+        JsonObject(members) => length(members) == count
+        _ => false
+    }
+    export fn field(doc, key) = jsonField(doc, key) ?: JsonNull
+    export fn text(doc, key) = jsonText(field(doc, key)) ?: ""
+    fn validWarning(item) = trim(jsonText(item) ?: "") != ""
+    fn validEntry(item) = exact(item, 3) && match Names::parse(text(item, "key")) {
+        Error => false
+        Success => trim(text(item, "summary")) != "" && match field(item, "warnings") {
+            JsonArray(values) => foldList(values, true, fn(ok, value) => ok && validWarning(value))
+            _ => false
+        }
+    }
+    fn entries(doc) = match field(doc, "packages") {
+        JsonArray(items) => if exact(doc, 1) && foldList(items, true, fn(ok, item) => ok && validEntry(item)) {
+            Success { value: items }
+        } else { Error { message: "catalog.invalid-projection" } }
+        _ => Error { message: "catalog.invalid-projection" }
+    }
+    export fn decode(body) = if byteLength(body) > 262144 { Error { message: "catalog.size" } }
+    else { andThen(jsonDecode(body), entries) }
+}

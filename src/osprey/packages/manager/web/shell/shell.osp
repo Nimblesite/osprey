@@ -2,6 +2,8 @@ namespace registry_web;
 
 /// Shared presentation for the static site and registry screens.
 module Shell {
+    export fn escape(text) = replace(replace(replace(text, "&", "&amp;") ?: "", "<", "&lt;") ?: "", ">", "&gt;") ?: ""
+
     /// Shell for an already escaped title or a trusted text literal.
     export fn withEscapedTitle(title, body) = join([
         "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>",

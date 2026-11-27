@@ -35,6 +35,8 @@ module ListenerTests {
         ])
     }
 
+    let projection = "{\"packages\":[{\"key\":\"@atlas/net\",\"summary\":\"HTTP tools\",\"warnings\":[\"Network access\"]}]}"
+
     fn requests(port) = {
         let public = fetch(port, "/v1/packages", "")
         let probe = fetch(port + 1, "/v1/ready", "")
@@ -47,8 +49,8 @@ module ListenerTests {
         checkAll("live registry probe and ingress isolation", [
             probe == "200|no-store|text/plain||", private == "404|no-store|text/plain||",
             startsWith(public, "403|no-store|application/problem+json||") && contains(public, "req.edge-secret"),
-            startsWith(admitted, "503|no-store|") && contains(admitted, "registry.not-ready"),
-            startsWith(crossOrigin, "503|no-store|application/problem+json|https://packages.example.test|"),
+            admitted == "200|no-store|application/json||" + projection,
+            crossOrigin == "200|no-store|application/json|https://packages.example.test|" + projection,
             startsWith(separate, "404|no-store|application/problem+json||") && contains(separate, "api.not-found")
         ])
         Success { value: 0 }
@@ -57,7 +59,7 @@ module ListenerTests {
     fn live() = {
         let port = 20000 + random() % 15000
         let outcome = andThen(HostedService::config(valid), fn(policy) => HostedService::withListeners(
-            policy { allowedHost: "127.0.0.1" }, "127.0.0.1", port, port + 1, fn() => requests(port)))
+            policy { allowedHost: "127.0.0.1" }, "127.0.0.1", port, port + 1, fn() => Success { value: projection }, fn() => requests(port)))
         match outcome {
             Error { message } => check("two listeners start", "ready", message)
             Success { value } => check("listeners finish the request sequence", 0, value)

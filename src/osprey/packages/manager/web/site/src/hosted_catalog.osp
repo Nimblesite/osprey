@@ -1,0 +1,36 @@
+namespace registry_web;
+import registry::PublicCatalog
+
+/// Render only a complete public projection delivered by the hosted registry [PACKAGE-HOSTED-ROUTES-CATALOG].
+module HostedCatalog {
+    fn warningList(item) = {
+        let warnings = match PublicCatalog::field(item, "warnings") { JsonArray(values) => mapList(values, fn(v) => jsonText(v) ?: "") _ => [] }
+        if isEmpty(warnings) { "<p>No known security warnings.</p>" } else {
+            "<ul aria-label=\"Security warnings\">" + join(mapList(warnings, fn(w) => "<li>" + Shell::escape(w) + "</li>"), "") + "</ul>"
+        }
+    }
+    fn card(item) = {
+        let key = PublicCatalog::text(item, "key")
+        let summary = Shell::escape(PublicCatalog::text(item, "summary"))
+        "<article class=\"prose-package\"><h3><a href=\"/packages/${key}/\">${key}</a></h3><p>${summary}</p>" + warningList(item) + "</article>"
+    }
+    fn matches(item, terms) = {
+        let text = toLowerCase(PublicCatalog::text(item, "key") + " " + PublicCatalog::text(item, "summary"))
+        foldList(terms, true, fn(ok, term) => ok && contains(text, term))
+    }
+    fn browse(items, query) = {
+        let terms = split(toLowerCase(query), " ") ?: []
+        let found = filterList(items, fn(item) => matches(item, terms))
+        if isEmpty(found) { "<p>No matching packages.</p>" } else { join(mapList(found, card), "") }
+    }
+    fn results(items, path, query) = if path == "/" { browse(items, query) } else {
+        match listGet(filterList(items, fn(item) => path == "/packages/" + PublicCatalog::text(item, "key") + "/"), 0) {
+            Error => "<p>Package not found.</p>"
+            Success { value } => card(value)
+        }
+    }
+    export fn render(path, query, body) = match PublicCatalog::decode(body) {
+        Success { value } => results(value, path, query)
+        Error => ""
+    }
+}

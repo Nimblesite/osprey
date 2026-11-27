@@ -105,3 +105,12 @@ locals {
   ])
   origin_hostnames = { api = var.api_hostname, content = var.content_hostname }
 }
+
+variable "catalog_secret_versions" {
+  description = "Pinned Secret Manager versions for the catalog libpq service file and PostgreSQL CA certificate."
+  type        = object({ service = string, ca = string })
+  validation {
+    condition     = alltrue([for version in var.catalog_secret_versions : can(regex("^[1-9][0-9]*$", version))])
+    error_message = "Pin each catalog credential file to a numeric secret version."
+  }
+}

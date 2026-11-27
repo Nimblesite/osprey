@@ -2,7 +2,7 @@
 const assert = require('node:assert/strict');
 const { chromium } = require('../../src/toolchain/website/node_modules/playwright');
 
-async function checkHostedAccount(browser) {
+async function checkHostedAccount(browser, livePort) {
   const fs = require('node:fs');
   const path = require('node:path');
   const exec = require('node:child_process').execFileSync;
@@ -15,13 +15,13 @@ async function checkHostedAccount(browser) {
     const extracted = path.join(work, 'site');
     exec('unzip', ['-q', archive, '-d', extracted]);
     assert.equal(pack(extracted), archive, 'Repacking yields the same bytes');
-    await checkPackagedAccount(browser, extracted);
+    await checkPackagedAccount(browser, extracted, livePort);
   } finally {
     fs.rmSync(work, {recursive:true, force:true});
   }
 }
 
-async function checkPackagedAccount(browser, site) {
+async function checkPackagedAccount(browser, site, livePort) {
   const website = 'https://packages.example.test';
   const api = 'https://api.example.test';
   const page = await browser.newPage();
@@ -33,20 +33,38 @@ async function checkPackagedAccount(browser, site) {
     const delimiter = line.indexOf(':');
     return [line.slice(0, delimiter).trim().toLowerCase(), line.slice(delimiter + 1).trim()];
   }));
+  page.setDefaultTimeout(10000);
   const failures = [];
   page.on('pageerror', error => failures.push(error.message));
   page.on('requestfailed', request => failures.push(request.url()));
   await page.route(website + '/**', async route => {
     const pathname = new URL(route.request().url()).pathname;
-    const file = path.join(site, pathname, pathname.endsWith('/') ? 'index.html' : '');
+    const file = pathname.startsWith('/packages/') ? path.join(site, 'index.html') : path.join(site, pathname, pathname.endsWith('/') ? 'index.html' : '');
     const body = await fs.promises.readFile(file);
-    const mime = {'.html':'text/html','.css':'text/css','.svg':'image/svg+xml','.mjs':'text/javascript'}[path.extname(file)];
+    const mime = {'.html':'text/html','.css':'text/css','.svg':'image/svg+xml','.mjs':'text/javascript','.wasm':'application/wasm'}[path.extname(file)];
     assert.ok(mime, pathname);
-    const hash = /\.([0-9a-f]{12})\.(?:css|mjs)$/.exec(pathname);
+    const hash = /\.([0-9a-f]{12})\.(?:css|mjs|wasm)$/.exec(pathname);
     if (hash) assert.equal(require('node:crypto').createHash('sha256').update(body).digest('hex').slice(0,12), hash[1]);
     await route.fulfill({body, headers:siteHeaders, contentType:mime});
   });
   const headers = {'access-control-allow-origin':website,'access-control-allow-credentials':'true'};
+  if (livePort) {
+    assert.match(livePort, /^[0-9]{4,5}$/);
+    await page.route(api + '/v1/packages', async route => {
+      const upstream = await page.request.get('http://127.0.0.1:' + livePort + '/v1/packages', {
+        headers:{Host:'127.0.0.1','X-Edge-Secret':'fixture-edge-secret-at-least-32-bytes',Origin:website}, timeout:5000,
+      });
+      assert.equal(upstream.status(), 200);
+      assert.equal(upstream.headers()['access-control-allow-origin'], website);
+      await route.fulfill({response:upstream});
+    });
+    await page.goto(website + '/?q=http');
+    await page.getByRole('link', {name:'@atlas/net'}).click();
+    await page.getByText('Network access', {exact:true}).waitFor();
+    assert.deepEqual(failures, []);
+    await page.close();
+    return;
+  }
   await page.route(api + '/v1/packages', route => route.fulfill({headers,json:{packages:[]}}));
   for (const code of [401, 503, 200]) {
     await page.route(api + '/v1/auth/session', route => route.fulfill({status:code,headers,json:{}}));
@@ -62,6 +80,23 @@ async function checkPackagedAccount(browser, site) {
     }
     await page.unroute(api + '/v1/auth/session');
   }
+  await page.unroute(api + '/v1/packages');
+  const entry = {key:'@atlas/net',summary:'HTTP tools <img src=x>',warnings:['Network access']};
+  let payload = {packages:[entry]};
+  await page.route(api + '/v1/packages', route => route.fulfill({headers,json:payload}));
+  await page.goto(website + '/?q=http');
+  await page.getByRole('link', {name:entry.key}).click();
+  assert.equal(new URL(page.url()).pathname, '/packages/@atlas/net/');
+  await page.getByText('Network access', {exact:true}).waitFor();
+  assert.equal(await page.locator('#results img').count(), 0);
+  await page.goBack();
+  assert.equal(await page.locator('#q').inputValue(), 'http');
+  await page.goto(website + '/?q=unknown');
+  await page.getByText('No matching packages.').waitFor();
+  payload = {packages:[entry, {key:'@atlas/incomplete',summary:'Missing warnings'}]};
+  await page.goto(website);
+  await page.getByText('The public catalog is unavailable.').waitFor();
+  assert.equal(await page.locator('#results article').count(), 0);
   assert.deepEqual(failures, []);
   await page.close();
 }
@@ -85,6 +120,7 @@ async function checkReferenceTable(browser) {
 (async () => {
   const browser = await chromium.launch();
   try {
+    if (process.argv[2] === '--database-catalog') return await checkHostedAccount(browser, process.argv[3]);
     if (process.argv.includes('--built-hosted-account')) return await checkHostedAccount(browser);
     if (!process.argv.includes('--tables-only')) require('node:child_process').execFileSync('make', ['-C','src/osprey/packages','registry-website-fixture']);
     if (process.argv.includes('--hosted-account-only')) return await checkHostedAccount(browser);

@@ -71,6 +71,14 @@ module Database {
         else { Error { message: "database.transaction-failed" } }
     }
 
+    /// The anonymous API can read only the current verified public projection.
+    export let catalogSelect = "SELECT body FROM registry.public_catalog WHERE id=1 AND verified_at<=statement_timestamp() AND expires_at>statement_timestamp()"
+    export fn catalogScript() = "BEGIN READ ONLY; SET LOCAL search_path=pg_catalog; SET LOCAL statement_timeout='3s';\n\\o /dev/null\n" + roleGuard + "SELECT 1/((current_user='registry_catalog_reader')::int);\n\\o\n" + catalogSelect + "; COMMIT;\n"
+    export fn publicCatalog() = {
+        let config = Connection { service: "catalog", serviceFile: "/run/catalog-service/pg_service.conf", passfile: "/dev/null", rootCertificate: "/run/catalog-ca/ca.pem" }
+        executed(config, catalogScript())
+    }
+
     fn run(config, ctx, statement, values) = match script(ctx, statement, values) {
         Error { message } => Error { message: message }
         Success { value } => executed(config, value)

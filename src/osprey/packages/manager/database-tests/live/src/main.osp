@@ -1,5 +1,7 @@
 namespace registry_live_tests;
+import registry_api::HostedService
 import registry::Policy
+import registry_host::Database
 import registry_host::LoginFlow
 import registry_host::Host
 import registry_host::Native
@@ -78,7 +80,50 @@ fn simultaneousCallbacks() = {
     checkAll("exactly one concurrent callback receives the verifier", [result.status == 0, trim(result.stdout) == "fixture-envelope"])
 }
 
+/// The hosted reader distinguishes an attested empty catalog from missing or expired evidence.
+fn publicCatalog() = {
+    let read = Database::catalogSelect
+    let insert = "INSERT INTO registry.public_catalog VALUES (1,statement_timestamp(),statement_timestamp()+interval '5 minutes','{\"packages\":[]}');"
+    checkAll("public catalog signed evidence lifetime", [
+        answer(read, ""), answer(insert + read, "{\"packages\":[]}"),
+        answer(insert + "UPDATE public_catalog SET verified_at=now()-interval '2 hours',expires_at=now()-interval '1 hour';" + read, ""),
+        refused("INSERT INTO registry.public_catalog VALUES (1,now(),now()+interval '25 hours','{}')", "23514")
+    ])
+}
+
+let catalogRow = "{\"packages\":[{\"key\":\"@atlas/net\",\"summary\":\"HTTP tools\",\"warnings\":[\"Network access\"]}]}"
+
+fn fixtureCatalog() = {
+    let result = onFixture("printf '%s' " + Host::shellWord(Database::catalogScript()) + " | psql -XqAt -v ON_ERROR_STOP=1 -U registry_catalog_reader")
+    if result.status == 0 { Success { value: trim(result.stdout) } } else { Error { message: "database.transaction-failed" } }
+}
+
+fn catalogRequest(port) = andThen(httpCreateClient("http://127.0.0.1:${port}", 5000), fn(client) => {
+    let observed = match httpGetResponse(client, "/v1/packages", "X-Edge-Secret: fixture-edge-secret-at-least-32-bytes") {
+        Success { value } => {
+            let valid = httpResponseStatus(value) == 200 && (httpResponseBody(value) ?: "") == catalogRow
+            let released = httpResponseFree(value)
+            valid
+        }
+        Error => false
+    }
+    let closed = httpCloseClient(client)
+    let browser = onFixture("if [ \"$REGISTRY_BROWSER_CHECK\" = 1 ]; then node scripts/packages/test-registry-preview.cjs --database-catalog ${port}; fi")
+    if observed && browser.status == 0 { Success { value: 0 } } else { Error { message: "unexpected catalog response" } }
+})
+
+fn catalogListener() = {
+    let setup = "CREATE ROLE registry_catalog_reader LOGIN; GRANT USAGE ON SCHEMA registry TO registry_catalog_reader; GRANT SELECT ON registry.public_catalog TO registry_catalog_reader; INSERT INTO registry.public_catalog VALUES(1,now(),now()+interval '10 minutes','${catalogRow}')"
+    let created = onFixture(fixtureClient + Host::shellWord(setup))
+    let config = "{\"apiHost\":\"api.example.test\",\"websiteOrigin\":\"https://packages.example.test\",\"edgeSecret\":\"fixture-edge-secret-at-least-32-bytes\"}"
+    let port = 20000 + random() % 15000
+    let served = andThen(HostedService::config(config), fn(policy) => HostedService::withListeners(policy { allowedHost: "127.0.0.1" }, "127.0.0.1", port, port + 1, fixtureCatalog, fn() => catalogRequest(port)))
+    checkAll("restricted PostgreSQL login behind public HTTP ingress", [created.status == 0, (served ?: -1) == 0])
+}
+
 fn suites() = {
+    test("verified public catalog", publicCatalog)
+    test("PostgreSQL-backed hosted API", catalogListener)
     test("publisher delegation storage", constraints)
     test("private schema bootstrap", bootstrap)
     test("pending GitHub login", loginFlow)

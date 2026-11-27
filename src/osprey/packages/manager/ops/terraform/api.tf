@@ -44,6 +44,27 @@ resource "google_secret_manager_secret_iam_member" "runtime_config" {
   member    = "serviceAccount:${google_service_account.runtime.email}"
 }
 
+locals {
+  catalog_files = { service = "pg_service.conf", ca = "ca.pem" }
+}
+
+resource "google_secret_manager_secret" "catalog" {
+  for_each  = local.catalog_files
+  secret_id = "${local.name}-catalog-${each.key}"
+  replication {
+    auto {}
+  }
+  lifecycle { prevent_destroy = true }
+  depends_on = [google_project_service.required]
+}
+
+resource "google_secret_manager_secret_iam_member" "catalog" {
+  for_each  = google_secret_manager_secret.catalog
+  secret_id = each.value.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.runtime.email}"
+}
+
 resource "google_cloud_run_v2_service" "api" {
   name                 = local.name
   location             = var.region
@@ -80,6 +101,13 @@ resource "google_cloud_run_v2_service" "api" {
         name       = "runtime-config"
         mount_path = "/run/registry"
       }
+      dynamic "volume_mounts" {
+        for_each = local.catalog_files
+        content {
+          name       = "catalog-${volume_mounts.key}"
+          mount_path = "/run/catalog-${volume_mounts.key}"
+        }
+      }
       startup_probe {
         http_get {
           path = "/v1/ready"
@@ -99,6 +127,20 @@ resource "google_cloud_run_v2_service" "api" {
         timeout_seconds   = 2
       }
     }
+    dynamic "volumes" {
+      for_each = local.catalog_files
+      content {
+        name = "catalog-${volumes.key}"
+        secret {
+          secret = google_secret_manager_secret.catalog[volumes.key].secret_id
+          items {
+            version = var.catalog_secret_versions[volumes.key]
+            path    = volumes.value
+            mode    = 292
+          }
+        }
+      }
+    }
     volumes {
       name = "runtime-config"
       secret {
@@ -111,7 +153,7 @@ resource "google_cloud_run_v2_service" "api" {
       }
     }
   }
-  depends_on = [google_project_service.required, google_secret_manager_secret_iam_member.runtime_config]
+  depends_on = [google_project_service.required, google_secret_manager_secret_iam_member.runtime_config, google_secret_manager_secret_iam_member.catalog]
 }
 
 # The public load balancer invokes the service. Its network ingress is restricted

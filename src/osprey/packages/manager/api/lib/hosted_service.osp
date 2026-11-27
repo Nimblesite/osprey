@@ -1,6 +1,9 @@
 namespace registry_api;
+import registry_host::Database
 import registry::Bytes
 import registry::Json
+import registry::Canonical
+import registry::PublicCatalog
 import registry::JsonRead
 
 /// Process liveness and public ingress use separate listeners [PACKAGE-HOSTED-TOPOLOGY].
@@ -59,24 +62,36 @@ module HostedService {
         Success { value } => HostedCookies::foundValue(HostedCookies::select(value, policy.cookieName)) != ""
     }
 
-    fn dispatch(headers, policy, method, path) = {
+    fn dispatch(headers, policy, method, path, catalog) = {
         let origin = if HostedHeaders::has(headers, "origin") { policy.allowedOrigin } else { "" }
         let cors = if origin == "" { "" } else { browserHeaders(origin) }
         if path == "/v1/ready" { problem(404, "api.not-found") }
         else if method == "OPTIONS" { preflight(headers, origin) }
+        else if method == "GET" && path == "/v1/packages" { catalogResponse(catalog(), cors) }
         else if method == "GET" && path == "/v1/auth/session" && !hasCredential(headers, policy) {
             replyWith(401, "application/problem+json", "{\"code\":\"auth.session-required\",\"status\":401}", cors)
-        } else {
-            replyWith(503, "application/problem+json", "{\"code\":\"registry.not-ready\",\"status\":503}", cors)
-        }
+        } else { unavailable(cors) }
     }
 
-    export fn publicRequest(policy, method, path, headers, body) = {
+    fn catalogResponse(result: Result<string, string>, cors) = match result {
+        Success { value } => match PublicCatalog::decode(value) {
+            Success => match andThen(Json::parse(value), Canonical::serialize) {
+                Success { value } => replyWith(200, "application/json", value, cors)
+                Error => unavailable(cors)
+            }
+            Error => unavailable(cors)
+        }
+        Error => unavailable(cors)
+    }
+
+    fn unavailable(cors) = replyWith(503, "application/problem+json", "{\"code\":\"registry.not-ready\",\"status\":503}", cors)
+
+    fn publicRequest(policy, method, path, headers, body, catalog) = {
         let request = HostedRequest::Incoming { method: method, uri: path, headerBlock: headers, body: body }
         let parsed = HostedHeaders::parse(headers)
         match HostedRequest::admitParsed(parsed, request, policy) {
             HostedHeaders::Reject { status, code } => problem(status, code)
-            _ => dispatch(HostedHeaders::headers(parsed), policy, method, path)
+            _ => dispatch(HostedHeaders::headers(parsed), policy, method, path, catalog)
         }
     }
 
@@ -94,8 +109,8 @@ module HostedService {
     })
 
     /// Start the public listener before reporting process liveness on the management port.
-    export fn withListeners(policy, address, publicPort, probePort, active) = match listen(address, publicPort,
-        fn(method, path, headers, body) => publicRequest(policy, method, path, headers, body)) {
+    export fn withListeners(policy, address, publicPort, probePort, catalog, active) = match listen(address, publicPort,
+        fn(method, path, headers, body) => publicRequest(policy, method, path, headers, body, catalog)) {
         Error => Error { message: "hosted.public-listener" }
         Success { value } => {
             let publicServer = value
@@ -113,5 +128,5 @@ module HostedService {
             }
         }
     }
-    export fn serve(policy) = withListeners(policy, "0.0.0.0", 8080, 8081, waitForRequests)
+    export fn serve(policy) = withListeners(policy, "0.0.0.0", 8080, 8081, Database::publicCatalog, waitForRequests)
 }

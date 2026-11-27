@@ -1,6 +1,6 @@
 # Implements [PACKAGE-OWNERSHIP-DATABASE] and [PACKAGE-OWNERSHIP-ADMIN].
 # DataProviderMigrate owns DDL. PostgreSQL only; no hand-authored SQL overlay.
-# Bootstrap is deliberately closed: FORCE RLS, no allow policies/runtime grants.
+# Bootstrap is deliberately closed: FORCE RLS, no ownership policies or runtime grants.
 # Hosted write readiness must reject this state with ownership.not-ready.
 name: osprey_registry_ownership
 tables:
@@ -242,3 +242,24 @@ tables:
     indexes:
       - { name: ix_pending_logins_created_at, columns: [created_at] }
     rowLevelSecurity: { enabled: true, forced: true, policies: [] }
+
+  # Materialized only by the trusted publication pipeline after evidence verification.
+  - name: public_catalog
+    schema: registry
+    columns:
+      - { name: id, type: Int, isNullable: false, checkConstraint: "id = 1" }
+      - { name: verified_at, type: DateTimeOffset, isNullable: false }
+      - { name: expires_at, type: DateTimeOffset, isNullable: false }
+      - { name: body, type: Text, isNullable: false, checkConstraint: "octet_length(body) BETWEEN 1 AND 262144" }
+    primaryKey: { columns: [id] }
+    checkConstraints:
+      - { name: ck_public_catalog_lifetime, expression: "expires_at > verified_at AND expires_at <= verified_at + interval '24 hours'" }
+    rowLevelSecurity:
+      enabled: true
+      forced: true
+      policies:
+        - name: catalog_reader
+          permissive: true
+          operations: [Select]
+          roles: []
+          using: "current_setting('session_authorization') = 'registry_catalog_reader' AND verified_at <= statement_timestamp() AND expires_at > statement_timestamp()"
