@@ -35,7 +35,7 @@ module ListenerTests {
         ])
     }
 
-    let projection = "{\"packages\":[{\"key\":\"@atlas/net\",\"keywords\":[\"networking\",\"web\"],\"releases\":[{\"digest\":\"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"epoch\":1,\"ordinal\":1,\"publisherId\":\"11111111-1111-4111-8111-111111111111\",\"publisherName\":\"Atlas Engineering\"}],\"summary\":\"HTTP tools\",\"warnings\":[\"Network access\"]}]}"
+    let projection = "{\"packages\":[{\"key\":\"@atlas/net\",\"keywords\":[\"networking\",\"web\"],\"releases\":[{\"digest\":\"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"epoch\":1,\"licenseExpression\":\"MIT\",\"notices\":[{\"path\":\"NOTICE.md\",\"text\":\"Adapted from Atlas upstream.\\nCopyright Atlas.\"}],\"ordinal\":1,\"publisherId\":\"11111111-1111-4111-8111-111111111111\",\"publisherName\":\"Atlas Engineering\"}],\"summary\":\"HTTP tools\",\"warnings\":[\"Network access\"]}]}"
 
     fn requests(port) = {
         let public = fetch(port, "/v1/packages", "")
@@ -52,6 +52,7 @@ module ListenerTests {
             startsWith(fetch(port, "/v1/publishers/11111111-1111-4111-8111-111111111111", edge), "200|no-store|application/json|"),
             startsWith(fetch(port, "/v1/publishers/11111111-1111-4111-8111-111111111111/releases", edge), "200|no-store|application/json|"),
             startsWith(fetch(port, "/v1/publishers/99999999-9999-4999-8999-999999999999", edge), "404|no-store|application/problem+json|"),
+            startsWith(fetch(port, "/v1/releases/sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/source", edge), "404|no-store|application/problem+json|"),
             probe == "200|no-store|text/plain||", private == "404|no-store|text/plain||",
             startsWith(public, "403|no-store|application/problem+json||") && contains(public, "req.edge-secret"),
             admitted == "200|no-store|application/json||" + projection,
@@ -64,7 +65,7 @@ module ListenerTests {
     fn live() = {
         let port = 20000 + random() % 15000
         let outcome = andThen(HostedService::config(valid), fn(policy) => HostedService::withListeners(
-            policy { allowedHost: "127.0.0.1" }, "127.0.0.1", port, port + 1, fn() => Success { value: projection }, fn() => requests(port)))
+            policy { allowedHost: "127.0.0.1" }, "content.example.test", "127.0.0.1", port, port + 1, fn() => Success { value: projection }, fn(_digest) => Error { message: "missing" }, fn() => requests(port)))
         match outcome {
             Error { message } => check("two listeners start", "ready", message)
             Success { value } => check("listeners finish the request sequence", 0, value)

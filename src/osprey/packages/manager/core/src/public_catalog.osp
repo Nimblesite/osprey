@@ -10,7 +10,27 @@ module PublicCatalog {
     export fn text(doc, key) = jsonText(field(doc, key)) ?: ""
     fn validWarning(item) = trim(jsonText(item) ?: "") != ""
     export fn number(doc, key) = jsonInt(field(doc, key)) ?: 0
-    fn validRelease(item) = exact(item, 5) && Bytes::canonicalUuid(text(item, "publisherId"))
+    export fn notices(release) = match field(release, "notices") {
+        JsonArray(items) => items
+        _ => []
+    }
+
+    fn noticeOk(notice) = exact(notice, 2) && Paths::noticeDocument(text(notice, "path")) && match field(notice, "text") {
+        JsonString(body) => byteLength(body) <= 32768
+        _ => false
+    }
+
+    fn noticesOk(release) = match field(release, "notices") {
+        JsonArray(items) => length(items) <= 6 && foldList(items, true, fn(ok, item) => ok && noticeOk(item))
+        _ => false
+    }
+
+    fn licenseOk(item) = match Spdx::validate(text(item, "licenseExpression")) {
+        Success => true
+        Error => false
+    }
+
+    fn validRelease(item) = exact(item, 7) && licenseOk(item) && noticesOk(item) && Bytes::canonicalUuid(text(item, "publisherId"))
         && trim(text(item, "publisherName")) != "" && byteLength(text(item, "publisherName")) <= 128 && number(item, "epoch") > 0 && number(item, "ordinal") > 0 && match Digests::parse(text(item, "digest")) {
         Success => true
         Error => false

@@ -67,6 +67,11 @@ module Paths {
     export fn generatedCache(path) = foldList(split(path, "/") ?: [path], false, fn(found, part) =>
         found || listContains([".deslop", ".osprey", ".git", "__pycache__"], toLowerCase(part)))
 
+    export fn noticeDocument(path) = {
+        let folded = foldCase(path)
+        foldList(legalSuffixes, false, fn(found, suffix) => found || folded == "notice" + suffix || folded == "third_party_notices" + suffix)
+    }
+
     fn legalDocument(path) = foldList(legalStems, false, fn(found, stem) => found
         || foldList(legalSuffixes, false, fn(matched, suffix) => matched || path == "${stem}${suffix}"))
 

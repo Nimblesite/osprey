@@ -65,6 +65,17 @@ resource "google_secret_manager_secret_iam_member" "catalog" {
   member    = "serviceAccount:${google_service_account.runtime.email}"
 }
 
+variable "published_source_bucket" {
+  description = "Private Cloud Storage bucket containing only published source bundles."
+  type        = string
+}
+
+resource "google_storage_bucket_iam_member" "published_source" {
+  bucket = var.published_source_bucket
+  role   = "roles/storage.objectViewer"
+  member = "serviceAccount:${google_service_account.runtime.email}"
+}
+
 resource "google_cloud_run_v2_service" "api" {
   name                 = local.name
   location             = var.region
@@ -108,6 +119,10 @@ resource "google_cloud_run_v2_service" "api" {
           mount_path = "/run/catalog-${volume_mounts.key}"
         }
       }
+      volume_mounts {
+        name       = "published-source"
+        mount_path = "/run/registry-source"
+      }
       startup_probe {
         http_get {
           path = "/v1/ready"
@@ -142,6 +157,13 @@ resource "google_cloud_run_v2_service" "api" {
       }
     }
     volumes {
+      name = "published-source"
+      gcs {
+        bucket    = var.published_source_bucket
+        read_only = true
+      }
+    }
+    volumes {
       name = "runtime-config"
       secret {
         secret = google_secret_manager_secret.runtime_config.secret_id
@@ -153,7 +175,7 @@ resource "google_cloud_run_v2_service" "api" {
       }
     }
   }
-  depends_on = [google_project_service.required, google_secret_manager_secret_iam_member.runtime_config, google_secret_manager_secret_iam_member.catalog]
+  depends_on = [google_project_service.required, google_secret_manager_secret_iam_member.runtime_config, google_secret_manager_secret_iam_member.catalog, google_storage_bucket_iam_member.published_source]
 }
 
 # The public load balancer invokes the service. Its network ingress is restricted

@@ -36,7 +36,7 @@ async function checkPackagedAccount(browser, site, livePort) {
   page.setDefaultTimeout(10000);
   const failures = [];
   page.on('pageerror', error => failures.push(error.message));
-  page.on('requestfailed', request => failures.push(request.url()));
+  page.on('requestfailed', request => failures.push({url:request.url(), error:request.failure()?.errorText}));
   await page.route(website + '/**', async route => {
     const pathname = new URL(route.request().url()).pathname;
     const file = (pathname.startsWith('/packages/') || pathname.startsWith('/publishers/') || pathname.startsWith('/tags/')) ? path.join(site, 'package.html') : path.join(site, pathname, pathname.endsWith('/') ? 'index.html' : '');
@@ -71,6 +71,35 @@ async function checkPackagedAccount(browser, site, livePort) {
     await page.goto(website + '/?q=http');
     await page.getByRole('link', {name:'@atlas/net'}).click();
     await page.getByRole('heading', {name:'e1.r1'}).waitFor();
+    await page.locator('[id="e1.r1"] .prose-license').first().waitFor();
+    await page.getByText("NOTICE.md", {exact:true}).first().click();
+    await page.getByText("Adapted from Atlas upstream.", {exact:false}).waitFor();
+    assert.equal(await page.locator('[id="e1.r2"] .prose-license').textContent(), "Apache-2.0");
+    const content = 'https://content.example.test';
+    async function atContent(path, credential) {
+      return page.request.get('http://127.0.0.1:' + livePort + path, {
+        headers:{Host:'content.example.test','X-Edge-Secret':'fixture-edge-secret-at-least-32-bytes',...credential},
+        timeout:5000,
+      });
+    }
+    await page.route(content + '/**', async route => {
+      await route.fulfill({response:await atContent(new URL(route.request().url()).pathname)});
+    });
+    const downloadLink = page.getByRole('link', {name:'Download e1.r1', exact:true});
+    const href = new URL(await downloadLink.getAttribute('href'));
+    assert.equal(href.origin, content);
+    const downloaded = page.waitForEvent('download');
+    await downloadLink.click();
+    const file = await downloaded;
+    assert.equal(file.suggestedFilename(), 'osprey-source.json');
+    const source = JSON.parse(await fs.promises.readFile(await file.path(), 'utf8'));
+    assert.equal(source.key, '@atlas/net');
+    assert.equal(source.digest, href.pathname.split('/')[3]);
+    assert.equal(source.files.find(item => item.path === 'src/main.osp').text, 'fn main() = 0\n');
+    assert.equal((await atContent(href.pathname, {Cookie:'__Host-registry=opaque'})).status(), 421);
+    assert.equal((await atContent('/v1/packages')).status(), 421);
+    const corrupted = new URL(await page.getByRole('link', {name:'Download e1.r2', exact:true}).getAttribute('href'));
+    assert.equal((await atContent(corrupted.pathname)).status(), 503);
     await page.getByText('Network access', {exact:true}).waitFor();
     await page.getByRole('link', {name:'Atlas Labs'}).waitFor();
     await page.getByRole("link", {name:"networking", exact:true}).click();
@@ -85,7 +114,9 @@ async function checkPackagedAccount(browser, site, livePort) {
     await page.getByRole('link', {name:'@atlas/net e1.r1'}).click();
     assert.equal(new URL(page.url()).hash, '#e1.r1');
     await page.getByRole('heading', {name:'e1.r1'}).waitFor();
-    assert.deepEqual(failures, []);
+    await page.locator('[id="e1.r1"] .prose-license').first().waitFor();
+    await page.getByText("NOTICE.md", {exact:true}).first().waitFor();
+    assert.deepEqual(failures.filter(failure => !(failure.url === href.href && failure.error === "net::ERR_ABORTED")), []);
     await page.close();
     return;
   }
@@ -105,7 +136,7 @@ async function checkPackagedAccount(browser, site, livePort) {
     await page.unroute(api + '/v1/auth/session');
   }
   await page.unroute(api + '/v1/packages');
-  const entry = {key:'@atlas/net',keywords:['networking','web'],releases:[{digest:'sha256:' + 'a'.repeat(64),epoch:1,ordinal:1,publisherId:"11111111-1111-4111-8111-111111111111",publisherName:"Atlas Engineering"}],summary:'HTTP tools <img src=x>',warnings:['Network access']};
+  const entry = {key:'@atlas/net',keywords:['networking','web'],releases:[{digest:'sha256:' + 'a'.repeat(64),epoch:1,ordinal:1,publisherId:"11111111-1111-4111-8111-111111111111",publisherName:"Atlas Engineering",licenseExpression:"MIT",notices:[{path:"NOTICE.md",text:"Upstream <img src=x>"}]}],summary:'HTTP tools <img src=x>',warnings:['Network access']};
   let payload = {packages:[entry]};
   await page.route(api + '/v1/packages', route => route.fulfill({headers,json:payload}));
   await page.route(api + '/v1/packages/@atlas/net', route => route.fulfill({headers,json:entry}));
@@ -113,7 +144,9 @@ async function checkPackagedAccount(browser, site, livePort) {
   await page.getByRole('link', {name:entry.key}).click();
   assert.equal(new URL(page.url()).pathname, '/packages/@atlas/net/');
   await page.getByText('Network access', {exact:true}).waitFor();
-  assert.equal(await page.locator('#results img').count(), 0);
+  await page.getByText('NOTICE.md', {exact:true}).click();
+  await page.getByText('Upstream <img src=x>', {exact:true}).waitFor();
+  assert.equal(await page.locator('.prose-notice img').count(), 0);
   await page.goBack();
   assert.equal(await page.locator('#q').inputValue(), 'http');
   await page.goto(website + '/?q=unknown');

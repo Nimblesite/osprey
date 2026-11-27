@@ -1,6 +1,6 @@
 [project]
 name = "registry-site"
-source_roots = ["src", "../shell", "../../core/src/bytes.osp", "../../core/src/checked.osp", "../../core/src/names.osp", "../../core/src/order.osp", "../../core/src/digests.osp", "../../core/src/sha256.osp", "../../core/src/public_catalog.osp"]
+source_roots = ["src", "../shell", "../../core/src/bytes.osp", "../../core/src/checked.osp", "../../core/src/names.osp", "../../core/src/order.osp", "../../core/src/digests.osp", "../../core/src/sha256.osp", "../../core/src/paths.osp", "../../core/src/spdx.osp", "../../core/src/public_catalog.osp"]
 default_namespace = "registry_web"
 entry = "src/main.osp"
 

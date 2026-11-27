@@ -155,6 +155,7 @@ registry-website-check: registry-website-fixture
 	node scripts/packages/test-registry-preview.cjs --built-hosted-account
 
 registry-website-fixture: export REGISTRY_API_ORIGIN := https://api.example.test
+registry-website-fixture: export REGISTRY_CONTENT_ORIGIN := https://content.example.test
 
 ## registry-website: Compile the registry website to WASM and render its Cloudflare Pages directory.
 registry-website registry-website-fixture registry-website-archive: $(BIN) | _runtime_wasm
@@ -167,15 +168,15 @@ registry-website registry-website-fixture registry-website-archive: $(BIN) | _ru
 	  for page in guide publishing; do \
 	    mkdir "$$out/$$page"; render "$$page" > "$$out/$$page/index.html"; \
 	  done; \
-	  mkdir "$$out/upload"; origin="$${REGISTRY_API_ORIGIN:-}"; \
-	  if [ "$@" = registry-website-archive ] && [ -z "$$origin" ]; then echo "Set REGISTRY_API_ORIGIN to the hosted API origin." >&2; exit 1; fi; \
-	  if [ -n "$$origin" ]; then node -e 'const u = new URL(process.argv[1]); if (u.protocol !== "https:" || u.origin !== process.argv[1] || !/^[a-z0-9.-]+$$/.test(u.hostname)) process.exit(1)' "$$origin"; fi; \
+	  mkdir "$$out/upload"; origin="$${REGISTRY_API_ORIGIN:-}"; content="$${REGISTRY_CONTENT_ORIGIN:-}"; \
+	  if [ "$@" = registry-website-archive ] && { [ -z "$$origin" ] || [ -z "$$content" ]; }; then echo "Set REGISTRY_API_ORIGIN and REGISTRY_CONTENT_ORIGIN." >&2; exit 1; fi; \
+	  node -e 'const [api, content] = process.argv.slice(1); if (content && (!api || api === content)) process.exit(1); for (const origin of [api, content].filter(Boolean)) { const u = new URL(origin); if (u.protocol !== "https:" || u.origin !== origin || !/^[a-z0-9.-]+$$/.test(u.hostname)) process.exit(1); }' "$$origin" "$$content"; \
 	  script=src/toolchain/hosts/web/src/registry-form.mjs; adapter="form.$$(shasum -a 256 "$$script" | cut -c1-12).mjs"; \
 	  cp "$$script" "$$out/$$adapter"; \
 	  asset() { file="$$1"; name="$$2.$$(shasum -a 256 "$$file" | cut -c1-12).$$3"; cp "$$file" "$$out/$$name"; echo "$$name"; }; \
 	  catalog=$$(asset src/toolchain/hosts/web/src/registry-catalog.mjs catalog mjs); host=$$(asset src/osprey/examples/wasm/wasi-shim.mjs wasi mjs); guest=$$(asset target/registry-site-build/site.wasm site wasm); \
-	  printf "%s\n" home "$$origin" "$$catalog" "$$host" "$$guest" | wasmtime target/registry-site-build/site.wasm > "$$out/index.html"; \
-	  printf "%s\n" hosted-package "$$origin" "$$catalog" "$$host" "$$guest" | wasmtime target/registry-site-build/site.wasm > "$$out/package.html"; \
+	  printf "%s\n" home "$$origin" "$$catalog" "$$host" "$$guest" "$$content" | wasmtime target/registry-site-build/site.wasm > "$$out/index.html"; \
+	  printf "%s\n" hosted-package "$$origin" "$$catalog" "$$host" "$$guest" "$$content" | wasmtime target/registry-site-build/site.wasm > "$$out/package.html"; \
 	  printf '/packages/* /package.html 200\n/publishers/* /package.html 200\n/tags/* /package.html 200\n' > "$$out/_redirects"; \
 	  printf "%s\n" upload "$$origin" "$$adapter" | wasmtime target/registry-site-build/site.wasm > "$$out/upload/index.html"; \
 	  digest=$$(shasum -a 256 $(REGISTRY_WEB)/assets/registry.css | cut -c1-12); \

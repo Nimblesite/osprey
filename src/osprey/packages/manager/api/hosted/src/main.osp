@@ -6,7 +6,7 @@ import registry_host::Native
 /// No folder-registry data is loaded into the hosted process [PACKAGE-HOSTED-TOPOLOGY].
 fn run() = match readFile("/run/registry/runtime.json") {
     Error => Error { message: "hosted.config-unavailable" }
-    Success { value } => andThen(HostedService::config(value), fn(policy) => HostedService::serve(policy))
+    Success { value } => andThen(HostedService::config(value), fn(policy) => andThen(HostedService::contentHost(value, policy), fn(host) => HostedService::serve(policy, host)))
 }
 
 fn report() = match run() {

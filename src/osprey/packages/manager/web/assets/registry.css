@@ -131,3 +131,10 @@ pre { overflow-x: auto; padding: 1rem; background: #e6eae1; border-radius: .35re
 [data-collection-form] button { justify-self: start; margin-top: .6rem; border: 0 }
 
 .prose-docs .toc a { display: block; margin-block: .35rem; overflow-wrap: anywhere }
+
+.prose-license { display: inline-block; justify-self: start; align-self: center; padding: .15rem .6rem; border-radius: 1rem; border: 1px solid var(--line); background: #e3eed9; color: var(--pine); font: 650 .83rem/1.5 var(--mono); overflow-wrap: anywhere }
+.prose-notices { grid-column: 1 / -1; min-width: 0 }
+.prose-notices h4 { margin: .3rem 0; font-size: .95rem }
+.prose-notice { margin-block: .35rem }
+.prose-notice summary { cursor: pointer; font-family: var(--mono); font-size: .83rem }
+.prose-notice pre { white-space: pre-wrap; overflow-wrap: anywhere }

@@ -98,7 +98,7 @@ locals {
   ]
   name = "osprey-registry-${var.environment}"
   required_services = toset([
-    "artifactregistry.googleapis.com", "run.googleapis.com", "compute.googleapis.com",
+    "artifactregistry.googleapis.com", "run.googleapis.com", "compute.googleapis.com", "storage.googleapis.com",
     "secretmanager.googleapis.com", "iam.googleapis.com", "iamcredentials.googleapis.com",
     "sts.googleapis.com", "logging.googleapis.com", "monitoring.googleapis.com",
     "certificatemanager.googleapis.com"

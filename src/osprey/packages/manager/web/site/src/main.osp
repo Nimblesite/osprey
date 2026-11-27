@@ -15,7 +15,8 @@ fn catalogAdapter(origin) = {
     let adapter = trim(input())
     let host = trim(input())
     let guest = trim(input())
-    "<script type=\"module\" src=\"/${adapter}\" data-catalog=\"${origin}/v1/packages\" data-host=\"/${host}\" data-guest=\"/${guest}\"></script>"
+    let content = trim(input())
+    "<script type=\"module\" src=\"/${adapter}\" data-catalog=\"${origin}/v1/packages\" data-content=\"${content}\" data-host=\"/${host}\" data-guest=\"/${guest}\"></script>"
 }
 
 fn hostedPackage() = {
@@ -77,7 +78,7 @@ fn localPackage() = {
     let key = trim(input())
     let summary = Shell::escape(trim(input()))
     let publisher = publisherLink(trim(input()))
-    let license = Shell::escape(trim(input()))
+    let license = Shell::licenseBadge(trim(input()))
     let words = trim(input())
     let keywords = Shell::keywordChips(if words == "None" { [] } else { split(words, ", ") ?: [] })
     let dependencies = Shell::escape(trim(input()))
@@ -92,7 +93,8 @@ fn localPackage() = {
 fn row() = {
     let key = trim(input())
     let summary = Shell::escape(trim(input()))
-    "<article class=\"prose-package\"><h3><a href=\"/packages/${key}/\">${key}</a></h3><p>${summary}</p></article>"
+    let license = Shell::licenseBadge(trim(input()))
+    "<article class=\"prose-package\"><h3><a href=\"/packages/${key}/\">${key}</a></h3><p>${summary}</p>${license}</article>"
 }
 
 fn publisherPage() = {
@@ -123,13 +125,16 @@ fn main() = print(match trim(input()) {
         let digest = trim(input())
         let publisher = publisherLink(trim(input()))
         let docs = if trim(input()) == "generated" { "<a href=\"${version}/docs/api/index.html\">API documentation</a>" } else { "API documentation unavailable for this release" }
-        "<article id=\"${version}\" class=\"prose-release\"><h3>${version}</h3><a class=\"prose-download\" download href=\"/sources/${digest}.json\">Download ${version}</a><p>${docs}</p><p>Published by ${publisher}</p><code>${digest}</code></article>"
+        let license = Shell::licenseBadge(trim(input()))
+        let notices = match jsonDecode(input()) { Success { value: JsonArray(items) } => Shell::notices(items) _ => "" }
+        "<article id=\"${version}\" class=\"prose-release\"><h3>${version}</h3><a class=\"prose-download\" download href=\"/sources/${digest}.json\">Download ${version}</a><div>${license}</div><p>${docs}</p><p>Published by ${publisher}</p><code>${digest}</code>${notices}</article>"
     }
     "hosted-package" => hostedPackage()
     "hosted-results" => {
         let path = input()
         let query = input()
-        HostedCatalog::render(path, query, input())
+        let content = input()
+        HostedCatalog::render(path, query, input(), content)
     }
     _ => catalog(false, "", trim(input()))
 })

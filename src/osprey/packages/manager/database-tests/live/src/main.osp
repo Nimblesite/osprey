@@ -1,6 +1,9 @@
 namespace registry_live_tests;
 import registry_api::HostedService
 import registry::Policy
+import registry::Bundle
+import registry::Release
+import registry::ReleaseFiles
 import registry_host::Database
 import registry_host::LoginFlow
 import registry_host::Host
@@ -91,11 +94,25 @@ fn publicCatalog() = {
     ])
 }
 
-let catalogRow = "{\"packages\":[{\"key\":\"@atlas/net\",\"keywords\":[\"networking\",\"web\"],\"releases\":[{\"digest\":\"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"epoch\":1,\"ordinal\":1,\"publisherId\":\"11111111-1111-4111-8111-111111111111\",\"publisherName\":\"Atlas Engineering\"},{\"digest\":\"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"epoch\":1,\"ordinal\":2,\"publisherId\":\"22222222-2222-4222-8222-222222222222\",\"publisherName\":\"Atlas Labs\"}],\"summary\":\"HTTP tools\",\"warnings\":[\"Network access\"]},{\"key\":\"@atlas/render\",\"keywords\":[\"graphics\"],\"releases\":[{\"digest\":\"sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"epoch\":1,\"ordinal\":1,\"publisherId\":\"11111111-1111-4111-8111-111111111111\",\"publisherName\":\"Atlas Engineering\"}],\"summary\":\"Image tools\",\"warnings\":[]}]}"
+let catalogRow = "{\"packages\":[{\"key\":\"@atlas/net\",\"keywords\":[\"networking\",\"web\"],\"releases\":[{\"digest\":\"sha256:6f1de2d789fe080c782b2f56bd289fde94a4fb05201b137f4267784ac16c4975\",\"epoch\":1,\"licenseExpression\":\"MIT\",\"notices\":[{\"path\":\"NOTICE.md\",\"text\":\"Adapted from Atlas upstream.\\nCopyright Atlas.\"}],\"ordinal\":1,\"publisherId\":\"11111111-1111-4111-8111-111111111111\",\"publisherName\":\"Atlas Engineering\"},{\"digest\":\"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"epoch\":1,\"licenseExpression\":\"Apache-2.0\",\"notices\":[],\"ordinal\":2,\"publisherId\":\"22222222-2222-4222-8222-222222222222\",\"publisherName\":\"Atlas Labs\"}],\"summary\":\"HTTP tools\",\"warnings\":[\"Network access\"]},{\"key\":\"@atlas/render\",\"keywords\":[\"graphics\"],\"releases\":[{\"digest\":\"sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"epoch\":1,\"licenseExpression\":\"MIT\",\"notices\":[{\"path\":\"NOTICE.md\",\"text\":\"Adapted from Atlas upstream.\\nCopyright Atlas.\"}],\"ordinal\":1,\"publisherId\":\"11111111-1111-4111-8111-111111111111\",\"publisherName\":\"Atlas Engineering\"}],\"summary\":\"Image tools\",\"warnings\":[]}]}"
+
+let fixtureDigest = "sha256:6f1de2d789fe080c782b2f56bd289fde94a4fb05201b137f4267784ac16c4975"
+
+fn fixtureSource(digest) = if digest == fixtureDigest {
+    andThen(ReleaseFiles::assemble("@atlas/net/1.1", [
+        Release::File { relPath: "src/main.osp", content: "fn main() = 0\n" },
+        Release::File { relPath: "osprey.toml", content: "key = ledger\n" }
+    ]), Bundle::encode)
+} else { Success { value: "{}" } }
 
 fn fixtureCatalog() = {
     let result = onFixture("printf '%s' " + Host::shellWord(Database::catalogScript()) + " | psql -XqAt -v ON_ERROR_STOP=1 -U registry_catalog_reader")
     if result.status == 0 { Success { value: trim(result.stdout) } } else { Error { message: "database.transaction-failed" } }
+}
+
+fn catalogFailure(detail) = {
+    print(detail)
+    Error { message: "unexpected catalog response" }
 }
 
 fn catalogRequest(port) = andThen(httpCreateClient("http://127.0.0.1:${port}", 5000), fn(client) => {
@@ -109,7 +126,7 @@ fn catalogRequest(port) = andThen(httpCreateClient("http://127.0.0.1:${port}", 5
     }
     let closed = httpCloseClient(client)
     let browser = onFixture("if [ \"$REGISTRY_BROWSER_CHECK\" = 1 ]; then node scripts/packages/test-registry-preview.cjs --database-catalog ${port}; fi")
-    if observed && browser.status == 0 { Success { value: 0 } } else { Error { message: "unexpected catalog response" } }
+    if observed && browser.status == 0 { Success { value: 0 } } else { catalogFailure(browser.stderr) }
 })
 
 fn catalogListener() = {
@@ -117,7 +134,7 @@ fn catalogListener() = {
     let created = onFixture(fixtureClient + Host::shellWord(setup))
     let config = "{\"apiHost\":\"api.example.test\",\"websiteOrigin\":\"https://packages.example.test\",\"edgeSecret\":\"fixture-edge-secret-at-least-32-bytes\"}"
     let port = 20000 + random() % 15000
-    let served = andThen(HostedService::config(config), fn(policy) => HostedService::withListeners(policy { allowedHost: "127.0.0.1" }, "127.0.0.1", port, port + 1, fixtureCatalog, fn() => catalogRequest(port)))
+    let served = andThen(HostedService::config(config), fn(policy) => HostedService::withListeners(policy { allowedHost: "127.0.0.1" }, "content.example.test", "127.0.0.1", port, port + 1, fixtureCatalog, fixtureSource, fn() => catalogRequest(port)))
     checkAll("restricted PostgreSQL login behind public HTTP ingress", [created.status == 0, (served ?: -1) == 0])
 }
 

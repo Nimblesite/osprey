@@ -67,12 +67,14 @@ while IFS= read -r key; do
       receipt=recorded
       render credit "$key" "$version" "$summary" >> "$work/credits"
     fi
-    render release "$version" "$digest" "$receipt" "$docs_status" >> "$work/links"
+    license=$(yq -p toml -o yaml -r '.package.license // "Unspecified"' "$work/manifest.toml")
+    [[ "$license" != *$'\n'* && "$license" != *$'\r'* ]]
+    notices=$(jq -c '[.files[] | select(.path | test("^(notice|third_party_notices)([.](txt|md))?$"; "i"))]' "$source_file")
+    render release "$version" "$digest" "$receipt" "$docs_status" "$license" "$notices" >> "$work/links"
   done < "$work/versions"
-  row=$(render row "$key" "$summary")
+  row=$(render row "$key" "$summary" "$license")
   echo "$row" >> "$work/rows"
   metadata=$(yq -p toml -o json '.' "$work/manifest.toml")
-  license=$(jq -r '.package.license // "Unspecified"' <<< "$metadata")
   keywords=$(jq -r '.package.keywords // [] | join(", ")' <<< "$metadata")
   while IFS= read -r tag; do
     [[ "$tag" =~ ^[a-z0-9][a-z0-9-]{0,31}$ ]]

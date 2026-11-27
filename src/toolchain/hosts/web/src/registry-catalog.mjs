@@ -18,7 +18,7 @@ try {
   if (detail && api.status === 404) throw new Error(status.dataset.missing);
   if (!api.ok || !guest.ok) throw Error('Catalog unavailable');
   const source = JSON.stringify(await api.json());
-  const lines = ['hosted-results', location.pathname, (field?.value ?? '').replace(/[\r\n]/gu, ' '), source, ''];
+  const lines = ['hosted-results', location.pathname, (field?.value ?? '').replace(/[\r\n]/gu, ' '), binding.dataset.content, source, ''];
   let html = '';
   await runModule(await guest.arrayBuffer(), part => { html += part; }, lines.join('\n'));
   if (!html.trim()) throw Error('Invalid projection');
