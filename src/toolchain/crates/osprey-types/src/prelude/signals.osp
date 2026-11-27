@@ -37,6 +37,9 @@ fn signalFrameRevision(frame) = match frame {
     SignalFrame(_, _, revision) => revision
 }
 
+/// The dependency set of a key with no frame: its next refresh rebuilds.
+fn __signalUnknown() = ["<unknown>"]
+
 /// What to keep of a keyed snapshot until the next render.
 fn signalFrame(keyed) = SignalFrame(keyed.snapshotKey, keyed.snapshotDependencies, keyed.snapshotRevision)
 
@@ -46,7 +49,7 @@ fn signalFrame(keyed) = SignalFrame(keyed.snapshotKey, keyed.snapshotDependencie
 /// only frames supplies `placeholder` for it.
 fn signalRetained<T>(frames, key, placeholder) -> SignalSnapshot<T> = match __signalFrameAt(frames, key) {
     Success { value } => { dependencies: signalFrameDependencies(value), revision: signalFrameRevision(value), value: placeholder }
-    _ => { dependencies: ["<unknown>"], revision: 0, value: placeholder }
+    _ => { dependencies: __signalUnknown(), revision: 0, value: placeholder }
 }
 
 /// Refresh the snapshot kept under `key`: rebuilt by `view` when a signal it
@@ -103,10 +106,10 @@ fn __signalKeyed(found, frame, key) = match frame {
 
 fn __signalForcedAt(frames, key, index) = match listGet(frames, index) {
     Success { value } => match signalFrameKey(value) == key {
-        true => SignalFrame(key, ["<unknown>"], signalFrameRevision(value))
+        true => SignalFrame(key, __signalUnknown(), signalFrameRevision(value))
         false => value
     }
-    _ => SignalFrame(key, ["<unknown>"], 0)
+    _ => SignalFrame(key, __signalUnknown(), 0)
 }
 
 fn __signalFrameJson(frame) = match frame {

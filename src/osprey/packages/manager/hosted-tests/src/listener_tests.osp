@@ -6,6 +6,7 @@ import registry_host::Host
 /// Drive both real listeners and check their distinct public contracts [PACKAGE-HOSTED-TOPOLOGY].
 module ListenerTests {
     let unavailableReply = "503|no-store|"
+    let forbidden = "403|no-store|"
     let v1Packages = "/v1/packages"
     let jsonReply = "200|no-store|application/json|"
     let problemReply = "404|no-store|application/problem+json|"
@@ -38,7 +39,6 @@ module ListenerTests {
         let path = "/v1/auth/session"
         let browser = edge + "\r\nOrigin: https://packages.example.test"
         let cookie = "\r\nCookie: __Host-registry=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-        let forbidden = "403|no-store|"
         let signedOut = "401|no-store|application/problem+json|https://packages.example.test|{\"code\":\"auth.session-required\",\"status\":401}"
         checkAll("browser session absence versus unavailable verification", [
             fetch(port, path, browser) == signedOut,
@@ -70,7 +70,7 @@ module ListenerTests {
             startsWith(fetch(port, "/v1/publishers/99999999-9999-4999-8999-999999999999", edge), problemReply),
             startsWith(fetch(port, "/v1/releases/sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/source", edge), problemReply),
             startsWith(fetch(port, HostedLogin::startPath, edge), unavailableReply),
-            startsWith(fetch(port, HostedLogin::startPath, ""), "403|no-store|"),
+            startsWith(fetch(port, HostedLogin::startPath, ""), forbidden),
             probe == "200|no-store|text/plain||", private == "404|no-store|text/plain||",
             startsWith(public, "403|no-store|application/problem+json||") && contains(public, "req.edge-secret"),
             admitted == "200|no-store|application/json||" + projection,
@@ -108,9 +108,9 @@ module ListenerTests {
         let edge = "X-Edge-Secret: ${oldSecret}"
         let current = "X-Edge-Secret: test-only-secret-with-at-least-32-bytes"
         checkAll("retiring edge secret uses the live bounded clock", [
-            startsWith(fetch(port, v1Packages, edge), if accepted { jsonReply } else { "403|no-store|" }),
+            startsWith(fetch(port, v1Packages, edge), if accepted { jsonReply } else { forbidden }),
             startsWith(fetch(port, v1Packages, current), jsonReply),
-            startsWith(fetch(port, v1Packages, "X-Edge-Secret: missing"), "403|no-store|"),
+            startsWith(fetch(port, v1Packages, "X-Edge-Secret: missing"), forbidden),
             startsWith(fetch(port, v1Packages, current + "\r\n" + edge), "400|no-store|")
         ])
         Success { value: 0 }
