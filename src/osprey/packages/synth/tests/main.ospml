@@ -418,6 +418,8 @@ test ("quarter-cycle partials retain phase on retrigger and agree with prepared 
 
 test ("changing a playing sample's gain and speed affects the exact addressed audio frame", \() => arithmetic sampleControlJourney)
 
+test ("unequal and one-sample partitions at 44.1, 48, 96 and 192 kHz play one continuous block, each edit owned by the block holding its frame", \() => arithmetic partitionJourney)
+
 test ("spectral controls select all morph modes, shift an octave with independent formants, and refuse fractional selectors", \() => arithmetic spectralControlJourney)
 
 test ("a sampled strike subtracts its integer or fractional echo and mono routes preserve or mute the impulse", \() => arithmetic strikeRouteJourney)

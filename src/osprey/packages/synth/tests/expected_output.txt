@@ -87,14 +87,15 @@ ok 86 - compressor reduction crosses the soft knee continuously and recovers on 
 ok 87 - one macro moves two knobs on opposite curves and refuses either endpoint outside the declared range
 ok 88 - quarter-cycle partials retain phase on retrigger and agree with prepared coefficients
 ok 89 - changing a playing sample's gain and speed affects the exact addressed audio frame
-ok 90 - spectral controls select all morph modes, shift an octave with independent formants, and refuse fractional selectors
-ok 91 - a sampled strike subtracts its integer or fractional echo and mono routes preserve or mute the impulse
-ok 92 - physical instruments reject fractional burst lengths, repeat intervals and mode counts
-ok 93 - replacing a live delay resets its storage, retains oscillator state and refuses a fresh grain clock
-ok 94 - send taps retain frame position across blocks and report missing sources
-ok 95 - spectral inspection reports the channel, clock and complex phase of a centered impulse
-ok 96 - a slow knob subscriber sees the latest edit and missed count while linear slew follows reversals
-ok 97 - the activity panel sees struck modes and silent frozen reverb feedback
-ok 98 - overdriven nonlinear processors saturate in either direction and cubic antialiasing integrates the first transition
-1..98
-# tests=98 passed=98 failed=0 skipped=0
+ok 90 - unequal and one-sample partitions at 44.1, 48, 96 and 192 kHz play one continuous block, each edit owned by the block holding its frame
+ok 91 - spectral controls select all morph modes, shift an octave with independent formants, and refuse fractional selectors
+ok 92 - a sampled strike subtracts its integer or fractional echo and mono routes preserve or mute the impulse
+ok 93 - physical instruments reject fractional burst lengths, repeat intervals and mode counts
+ok 94 - replacing a live delay resets its storage, retains oscillator state and refuses a fresh grain clock
+ok 95 - send taps retain frame position across blocks and report missing sources
+ok 96 - spectral inspection reports the channel, clock and complex phase of a centered impulse
+ok 97 - a slow knob subscriber sees the latest edit and missed count while linear slew follows reversals
+ok 98 - the activity panel sees struck modes and silent frozen reverb feedback
+ok 99 - overdriven nonlinear processors saturate in either direction and cubic antialiasing integrates the first transition
+1..99
+# tests=99 passed=99 failed=0 skipped=0
