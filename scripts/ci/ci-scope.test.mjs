@@ -125,7 +125,7 @@ test('LFS fetches cover every workbench source asset the bundle stages', () => {
 
 test('the required macOS gate runs every Apple part, the native Workbench host among them', () => {
   const apple = ciJob('test-apple')
-  for (const command of ['make -C src/toolchain/targets/ios/tests examples\n', 'make -C src/toolchain/targets/ios/tests inbox\n', 'make -C src/toolchain/targets/ios/tests tally-headless\n', 'make -C src/toolchain/targets/macos/tests examples tally-headless tally', 'make -C src/toolchain/targets/ios/tests bank',
+  for (const command of ['make -C src/toolchain/targets/ios/tests corpus\n', 'make -C src/toolchain/targets/ios/tests apps\n', 'make -C src/toolchain/targets/ios/tests inbox\n', 'make -C src/toolchain/targets/ios/tests tally-headless\n', 'make -C src/toolchain/targets/macos/tests examples tally-headless tally', 'make -C src/toolchain/targets/ios/tests bank',
     'make -C src/toolchain/targets/macos/tests _workbench_interactions', 'make -C src/toolchain/targets/macos/tests _workbench_memory']) {
     assert.ok(apple.includes(command), command)
   }
@@ -141,14 +141,15 @@ test('the required macOS gate runs every Apple part, the native Workbench host a
   assert.match(apple, /^ {8}run: \$\{\{ matrix\.run \}\}$/m)
   assert.match(apple, /^ {10}OSPREY_BIN: \$\{\{ github\.workspace \}\}\/target\/release\/osprey$/m)
   assert.doesNotMatch(apple, /continue-on-error/)
-  // The three iOS parts and the Talon Bank journey use macos-26: its iOS SDK, and the Swift the shared host's
+  // The four iOS parts and the Talon Bank journey use macos-26: its iOS SDK, and the Swift the shared host's
   // isolated conformances need. Inbox and Tally each build their own host.
   assert.match(apple, /^    runs-on: \$\{\{ matrix\.runner \|\| 'macos-15' \}\}$/m)
-  assert.match(apple, /^ {10}- part: iOS\n {12}runner: macos-26$/m)
   assert.match(apple, /^ {10}- part: iOS Inbox\n {12}runner: macos-26\n {12}minutes: 22\n {12}run: make -C src\/toolchain\/targets\/ios\/tests inbox$/m)
   assert.match(apple, /^ {10}- part: iOS Tally\n {12}runner: macos-26\n {12}minutes: 22\n {12}run: make -C src\/toolchain\/targets\/ios\/tests tally-headless$/m)
   assert.match(apple, /^ {10}- part: Talon Bank\n {12}runner: macos-26\n {12}minutes: 22\n {12}run: make -C src\/toolchain\/targets\/ios\/tests bank$/m)
-  assert.equal(apple.match(/^ {12}runner: /gm).length, 4, 'only the iOS parts and Talon Bank leave macos-15')
+  assert.match(apple, /^ {10}- part: iOS\n {12}runner: macos-26\n {12}minutes: 22\n {12}run: make -C src\/toolchain\/targets\/ios\/tests corpus$/m)
+  assert.match(apple, /^ {10}- part: iOS apps\n {12}runner: macos-26\n {12}minutes: 22\n {12}run: make -C src\/toolchain\/targets\/ios\/tests apps$/m)
+  assert.equal(apple.match(/^ {12}runner: /gm).length, 5, 'only the iOS parts and Talon Bank leave macos-15')
   assert.match(apple, /^ {10}lfs: true$/m)
   assert.match(ciJob('ci'), /^ {6}- test-apple$/m)
 })

@@ -1503,11 +1503,16 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # The simulator corpus alone takes most of a part, so the apps run beside it, not after it.
+          # The simulator corpus alone takes most of a part, so the apps run beside it, not after it: on a
+          # slow runner (a 5-7 minute simulator boot) corpus and apps together outran 22 minutes (PR #437).
           - part: iOS
             runner: macos-26
             minutes: 22
-            run: make -C src/toolchain/targets/ios/tests examples
+            run: make -C src/toolchain/targets/ios/tests corpus
+          - part: iOS apps
+            runner: macos-26
+            minutes: 22
+            run: make -C src/toolchain/targets/ios/tests apps
           # Inbox and Tally each build their own iOS host; on a slow runner the two do not fit one part.
           - part: iOS Inbox
             runner: macos-26

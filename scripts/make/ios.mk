@@ -38,7 +38,10 @@ _test_macos:
 	$(BIN) src/osprey/examples/macos/storage/test --run
 	OSPREY_MACOS_SKIP_BUILD=1 bash src/osprey/examples/macos/run.sh --smoke
 
-_test_ios: _test_ios_goldens
+_test_ios: _test_ios_goldens _test_ios_apps
+
+## _test_ios_apps: the runtime memory checks, the C ABI fixture and the SwiftUI example app's smoke.
+_test_ios_apps:
 	/bin/bash scripts/mobile/test-runtime-memory.sh
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash scripts/mobile/test-ios.sh
 	OSPREY_BIN="$(CURDIR)/$(BIN)" OSPREY_IOS_SKIP_BUILD=1 bash src/osprey/examples/ios/run.sh --smoke

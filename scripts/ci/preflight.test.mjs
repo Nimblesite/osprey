@@ -142,7 +142,8 @@ test('the coverage gates run last, after every test that feeds them', () => {
 })
 
 test('each check keeps the host CI gives it', () => {
-  assert.equal(find(/^make -C src\/toolchain\/targets\/ios\/tests examples$/)?.host, 'macos')
+  assert.equal(find(/^make -C src\/toolchain\/targets\/ios\/tests corpus$/)?.host, 'macos')
+  assert.equal(find(/^make -C src\/toolchain\/targets\/ios\/tests apps$/)?.host, 'macos')
   assert.equal(find(/^make _canaries$/)?.host, 'linux')
   assert.equal(skipReason(find(/^make _canaries$/), 'macos'), undefined, 'a Mac runs the Linux checks')
   const windows = checks.filter((check) => /^(ci-windows|winui)\.yml/.test(check.job))
