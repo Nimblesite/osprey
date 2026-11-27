@@ -327,7 +327,7 @@ filterSocketJourney () =
 // [PRISM-ROUTING-CABLES] Normalized cutoff endpoints and invalid samples exercise real DSP.
 cutoffOutput (graph, value) =
     control = synth::NodeClip(clipNode = 4, clipChannels = 1, clipSamples = mapList (toList (range (0, 128)), \_ => value), clipNotes = [])
-    unhosted (synth::GraphClips::advance (graph, 48000.0, 48000.0, [control], 128), 3)
+    unhosted (synth::GraphClips::advance (graph, 48000.0, [control], 128), 3)
 
 cutoffAudioJourney () =
     base = synth::EditorState::preset ()
