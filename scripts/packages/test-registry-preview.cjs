@@ -2,9 +2,27 @@
 const assert = require('node:assert/strict');
 const { chromium } = require('../../src/toolchain/website/node_modules/playwright');
 
+async function checkReferenceTable(browser) {
+  for (const width of [390, 1024, 1440]) {
+    const page = await browser.newPage({viewport:{width, height:900}});
+    await page.goto('http://127.0.0.1:4187/packages/@osprey/einops/e1.r1/docs/api/index.html');
+    const table = page.locator('.article table').first();
+    const lines = await table.locator('thead th, tbody tr:first-child td:nth-child(-n+2)').evaluateAll(cells => cells.map(cell => {
+      const range = document.createRange();
+      range.selectNodeContents(cell.querySelector('a') ?? cell);
+      return [cell.textContent, new Set([...range.getClientRects()].map(rect => rect.top)).size];
+    }));
+    assert.deepEqual(lines, [['Name',1], ['Kind',1], ['Description',1], ['Parsing',1], ['Module',1]], 'Reference headings, short names and kinds must each fit on one line at ' + width);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    await page.close();
+  }
+}
+
 (async () => {
   const browser = await chromium.launch();
   try {
+    await checkReferenceTable(browser);
+    if (process.argv.includes('--tables-only')) return;
     const catalog = await browser.newPage();
     await catalog.goto('http://127.0.0.1:4187/');
     const packages = await catalog.locator('.prose-package h3 a').evaluateAll(links => links.map(link => link.href));

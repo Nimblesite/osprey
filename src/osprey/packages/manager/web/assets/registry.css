@@ -106,7 +106,11 @@ pre { overflow-x: auto; padding: 1rem; background: #e6eae1; border-radius: .35re
 .prose-doc-article { min-width: 0; overflow-wrap: anywhere; background: #fffdf7; border: 1px solid var(--line); border-top: .5rem solid var(--pine); border-radius: .9rem; padding: clamp(1rem,3vw,2.5rem) }
 .prose-doc-article h1 { font-size: clamp(2.6rem,5vw,4.7rem); margin-bottom: 1rem }
 .prose-doc-article h2 { margin: 2rem 0 .7rem }
-.prose-doc-article table { width: 100%; border-collapse: collapse; margin-bottom: 1rem }
+.prose-doc-article table { display: block; overflow-x: auto; width: 100%; border-collapse: collapse; margin-bottom: 1rem; overflow-wrap: normal }
+.prose-doc-article th { white-space: nowrap }
+.prose-doc-article td:first-child { min-width: 9rem; overflow-wrap: anywhere }
+.prose-doc-article td:nth-child(2) { min-width: 6.5rem }
+.prose-doc-article td:nth-child(3) { min-width: 17rem; width: 100%; overflow-wrap: anywhere }
 .prose-doc-article th, .prose-doc-article td { padding: .65rem; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line) }
 .prose-doc-article th { background: #e5efd8 }
 .prose-doc-article a { color: var(--pine) }
@@ -115,7 +119,6 @@ pre { overflow-x: auto; padding: 1rem; background: #e6eae1; border-radius: .35re
 @media (max-width: 48rem) {
   .prose-doc-grid { grid-template-columns: minmax(0,1fr) }
   .prose-doc-menu { position: static; max-height: 50vh }
-  .prose-doc-article table { display: block; overflow-x: auto }
 }
 
 .prose-browse { display: flex; flex-wrap: wrap; gap: .65rem; margin-bottom: 1rem }
@@ -124,4 +127,4 @@ pre { overflow-x: auto; padding: 1rem; background: #e6eae1; border-radius: .35re
 [data-collection-form] input, [data-collection-form] select { width: 100%; padding: .65rem; font: inherit; border: 1px solid var(--muted); border-radius: .35rem }
 [data-collection-form] button { justify-self: start; margin-top: .6rem; border: 0 }
 
-.prose-doc-menu .toc a { display: block; margin-block: .35rem; overflow-wrap: anywhere }
+.prose-docs .toc a { display: block; margin-block: .35rem; overflow-wrap: anywhere }
