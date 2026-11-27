@@ -24,7 +24,7 @@ Each projected release requires its public `publisherId` (a canonical UUID) and 
 
 Include the validated manifest `keywords` array on each package in the public projection. The Pages website uses these keywords for its tag directory and package links. Use an empty array for a package without tags.
 
-For each public release, project `licenseExpression` from its manifest and `notices` from the verified source bundle. Each notice includes its root filename and complete text. Use an empty array when the release has no notices. The projection can hold up to six notices per release, each up to 32 KiB. The source bundle retains all applicable license documents.
+For each public release, project `licenseExpression` from its manifest and `notices` from the verified source bundle. Each notice includes its root filename and complete text. Use an empty array when the release has no notices. The projection can hold up to nine notices per release, each up to 32 KiB. The source bundle retains all applicable license documents.
 
 Source downloads require `published_source_bucket`, a private Cloud Storage bucket for published bundles with create-only writes. Store the canonical source bundle as `<digest-hex>.json`. The API mounts that bucket read-only and verifies the source digest and release identity against the current public projection before responding. Configure `contentHost` in the API runtime secret and set `REGISTRY_CONTENT_ORIGIN` when building Pages. Route that hostname through the protected ingress. It serves anonymous source requests without cookies or authorization headers.
 

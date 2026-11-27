@@ -91,6 +91,7 @@ module PublishTests {
     fn legalFiles() = [
         Fixture::file("LICENSE", "MIT: NIMBLESITE PTY LTD, Australia\n"),
         Fixture::file("NOTICE.md", "Osprey port; upstream copyrights retained.\n"),
+        Fixture::file("NOTICES", "Originally published by the upstream authors.\n"),
         Fixture::file("LICENSES/upstream.txt", "Upstream BSD conditions and disclaimer.\n")
     ]
 

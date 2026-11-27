@@ -9,6 +9,8 @@ module Shell {
 
     export fn escape(text) = replace(replace(replace(text, "&", "&amp;") ?: "", "<", "&lt;") ?: "", ">", "&gt;") ?: ""
 
+    export fn metadataField(label, value) = "<div><dt>${label}</dt><dd>${value}</dd></div>"
+
     export fn licenseBadge(expression) = "<span class=\"prose-license\" aria-label=\"License\">${escape(expression)}</span>"
 
     fn notice(item) = {
@@ -18,8 +20,10 @@ module Shell {
         "<details class=\"prose-notice\"><summary>${name}</summary><pre>${lines}</pre></details>"
     }
 
-    export fn notices(items) = if isEmpty(items) { "" } else {
-        "<section class=\"prose-notices\"><h4>Notices and attribution</h4>${join(mapList(items, notice), "")}</section>"
+    export fn noticeLink(version) = "<a href=\"#${version}-notices\">Notices and attribution</a>"
+
+    export fn notices(version, items) = if isEmpty(items) { "" } else {
+        "<section class=\"prose-notices\" id=\"${version}-notices\"><h4>Notices and attribution</h4>${join(mapList(items, notice), "")}</section>"
     }
 
     /// Shell for an already escaped title or a trusted text literal.

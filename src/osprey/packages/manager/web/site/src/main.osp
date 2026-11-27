@@ -71,8 +71,6 @@ fn publisherLink(receipt) = if receipt == "recorded" {
     "<a href=\"/publishers/osprey-repository/\">${publisherName}</a>"
 } else { "Unrecorded" }
 
-fn field(label, value) = "<div><dt>${label}</dt><dd>${value}</dd></div>"
-
 fn browseNav() = "<nav class=\"prose-browse\" aria-label=\"Browse packages\"><a href=\"/publishers/\">By publisher</a><a href=\"/tags/\">By tag</a></nav>"
 
 fn directory() = {
@@ -89,8 +87,10 @@ fn localPackage() = {
     let words = trim(input())
     let keywords = Shell::keywordChips(if words == "None" { [] } else { split(words, ", ") ?: [] })
     let dependencies = Shell::escape(trim(input()))
+    let noticeVersion = trim(input())
+    let attribution = if noticeVersion == "" { "" } else { Shell::metadataField("Attribution", Shell::noticeLink(noticeVersion)) }
     let releases = trim(input())
-    let metadata = join([field("Publisher", publisher), field("License", license), field("Keywords", keywords), field("Dependencies", dependencies)], "")
+    let metadata = join([Shell::metadataField("Publisher", publisher), Shell::metadataField("License", license), attribution, Shell::metadataField("Keywords", keywords), Shell::metadataField("Dependencies", dependencies)], "")
     let cover = "<header class=\"prose-cover\"><a href=\"/\">← Packages</a><h1>${key}</h1><p>${summary}</p></header>"
     let versions = "<section class=\"prose-releases\"><h2>Releases</h2><p>Local folder registry · Audit unverified</p>${releases}</section>"
     let facts = "<aside class=\"prose-facts\"><h2>Package details</h2><dl>${metadata}</dl></aside>"
@@ -133,7 +133,7 @@ fn main() = print(match trim(input()) {
         let publisher = publisherLink(trim(input()))
         let docs = if trim(input()) == "generated" { "<a href=\"${version}/docs/api/index.html\">API documentation</a>" } else { "API documentation unavailable for this release" }
         let license = Shell::licenseBadge(trim(input()))
-        let notices = match jsonDecode(input()) { Success { value: JsonArray(items) } => Shell::notices(items) _ => "" }
+        let notices = match jsonDecode(input()) { Success { value: JsonArray(items) } => Shell::notices(version, items) _ => "" }
         "<article id=\"${version}\" class=\"prose-release\"><h3>${version}</h3><a class=\"prose-download\" download href=\"/sources/${digest}.json\">Download ${version}</a><div>${license}</div><p>${docs}</p><p>Published by ${publisher}</p><code>${digest}</code>${notices}</article>"
     }
     "hosted-package" => hostedPackage()

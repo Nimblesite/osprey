@@ -69,7 +69,9 @@ while IFS= read -r key; do
     fi
     license=$(yq -p toml -o yaml -r '.package.license // "Unspecified"' "$work/manifest.toml")
     [[ "$license" != *$'\n'* && "$license" != *$'\r'* ]]
-    notices=$(jq -c '[.files[] | select(.path | test("^(notice|third_party_notices)([.](txt|md))?$"; "i"))]' "$source_file")
+    notice_version=
+    notices=$(jq -c '[.files[] | select(.path | test("^(notices?|third_party_notices)([.](txt|md))?$"; "i"))]' "$source_file")
+    if [[ "$notices" != "[]" ]]; then notice_version="$version"; fi
     render release "$version" "$digest" "$receipt" "$docs_status" "$license" "$notices" >> "$work/links"
   done < "$work/versions"
   row=$(render row "$key" "$summary" "$license")
@@ -82,7 +84,7 @@ while IFS= read -r key; do
   done < <(jq -r '.package.keywords[]?' <<< "$metadata")
   deps=$(jq -r '.dependencies // {} | keys | join(", ")' <<< "$metadata")
   for field in "$license" "$keywords" "$deps"; do [[ "$field" != *$'\n'* && "$field" != *$'\r'* ]]; done
-  render package "$key" "$summary" "$receipt" "$license" "${keywords:-None}" "${deps:-None}" "$(tr -d '\n' < "$work/links")" > "$out/packages/$key/index.html"
+  render package "$key" "$summary" "$receipt" "$license" "${keywords:-None}" "${deps:-None}" "$notice_version" "$(tr -d '\n' < "$work/links")" > "$out/packages/$key/index.html"
 done < "$work/keys"
 if [[ -s "$work/credits" ]]; then
   mkdir -p "$out/publishers/osprey-repository"

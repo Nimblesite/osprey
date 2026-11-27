@@ -11,7 +11,15 @@ module HostedCatalog {
         }
     }
     fn latestRelease(item) = foldList(releaseItems(item), JsonNull, fn(latest, value) =>
-        if PublicCatalog::number(value, "ordinal") > PublicCatalog::number(latest, "ordinal") { value } else { latest })
+        if newer(value, latest) { value } else { latest })
+
+    fn newer(value, latest) = {
+        let epoch = PublicCatalog::number(value, "epoch")
+        let previous = PublicCatalog::number(latest, "epoch")
+        epoch > previous || (epoch == previous && PublicCatalog::number(value, "ordinal") > PublicCatalog::number(latest, "ordinal"))
+    }
+
+    fn version(item) = "e${PublicCatalog::number(item, "epoch")}.r${PublicCatalog::number(item, "ordinal")}"
 
     fn card(item) = {
         let key = PublicCatalog::text(item, "key")
@@ -32,25 +40,32 @@ module HostedCatalog {
         let name = Shell::escape(PublicCatalog::text(release, "publisherName"))
         "<a href=\"/publishers/${id}/\">${name}</a>"
     }
-    fn download(content, digest, epoch, ordinal) = if content == "" { "" } else {
-        "<a class=\"prose-download\" href=\"${content}/v1/releases/${digest}/source\">Download e${epoch}.r${ordinal}</a>"
+    fn download(content, digest, label) = if content == "" { "" } else {
+        "<a class=\"prose-download\" href=\"${content}/v1/releases/${digest}/source\">Download ${label}</a>"
     }
 
     fn release(item, content) = {
-        let epoch = PublicCatalog::number(item, "epoch")
-        let ordinal = PublicCatalog::number(item, "ordinal")
         let digest = PublicCatalog::text(item, "digest")
-        let action = download(content, digest, epoch, ordinal)
-        "<article class=\"prose-release\" id=\"e${epoch}.r${ordinal}\"><h3>e${epoch}.r${ordinal}</h3>${action}<p>${Shell::licenseBadge(PublicCatalog::text(item, "licenseExpression"))}</p><p>Published by ${publisherLink(item)}</p><code>${digest}</code>${Shell::notices(PublicCatalog::notices(item))}</article>"
+        let label = version(item)
+        let action = download(content, digest, label)
+        "<article class=\"prose-release\" id=\"${label}\"><h3>${label}</h3>${action}<p>${Shell::licenseBadge(PublicCatalog::text(item, "licenseExpression"))}</p><p>Published by ${publisherLink(item)}</p><code>${digest}</code>${Shell::notices(label, PublicCatalog::notices(item))}</article>"
     }
     fn detail(item, path, content) = {
         let key = PublicCatalog::text(item, "key")
         let summary = Shell::escape(PublicCatalog::text(item, "summary"))
         let releases = join(mapList(releaseItems(item), fn(item) => release(item, content)), "")
         if PublicCatalog::validEntry(item) && path == "/packages/" + key + "/" {
-            "<header class=\"prose-cover\"><a href=\"/\">← Packages</a><h1>${key}</h1><p>${summary}</p></header><div class=\"prose-columns\"><section class=\"prose-releases\"><h2>Releases</h2>${releases}</section><aside class=\"prose-facts\"><h2>Security warnings</h2>" + warningList(item) + "<h2>Tags</h2>" + Shell::keywordChips(PublicCatalog::keywords(item)) + "</aside></div>"
+            "<header class=\"prose-cover\"><a href=\"/\">← Packages</a><h1>${key}</h1><p>${summary}</p></header><div class=\"prose-columns\"><section class=\"prose-releases\"><h2>Releases</h2>${releases}</section><aside class=\"prose-facts\"><h2>Package details</h2>" + metadata(latestRelease(item)) + "<h2>Security warnings</h2>" + warningList(item) + "<h2>Tags</h2>" + Shell::keywordChips(PublicCatalog::keywords(item)) + "</aside></div>"
         } else { "" }
     }
+    fn metadata(latest) = {
+        let license = Shell::licenseBadge(PublicCatalog::text(latest, "licenseExpression"))
+        let notices = if isEmpty(PublicCatalog::notices(latest)) { "" } else {
+            Shell::metadataField("Attribution", Shell::noticeLink(version(latest)))
+        }
+        "<dl>" + Shell::metadataField("License", license) + notices + "</dl>"
+    }
+
     fn releaseItems(item) = match PublicCatalog::field(item, "releases") {
         JsonArray(items) => items
         _ => []

@@ -21,7 +21,7 @@ module PublicCatalog {
     }
 
     fn noticesOk(release) = match field(release, "notices") {
-        JsonArray(items) => length(items) <= 6 && foldList(items, true, fn(ok, item) => ok && noticeOk(item))
+        JsonArray(items) => length(items) <= 9 && foldList(items, true, fn(ok, item) => ok && noticeOk(item))
         _ => false
     }
 
