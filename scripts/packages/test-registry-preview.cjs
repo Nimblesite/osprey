@@ -376,7 +376,9 @@ async function checkCoverGeometry(browser) {
       await page.evaluate(() => scrollTo(0, document.body.scrollHeight));
       assert.deepEqual(await header.boundingBox(), headerOrigin, path + ' after scrolling');
     }
-    await page.goto(base + '/packages/@osprey/einops/e1.r1/docs/api/index.html');
+    await page.goto(base + '/packages/@osprey/einops/e1.r1/docs/api/index.html#einops-recipe');
+    const heading = await page.locator('#einops-recipe').boundingBox();
+    assert.ok(heading && heading.y >= headerOrigin.y + headerOrigin.height, 'Reference anchor clears the fixed header');
     await page.evaluate(() => scrollTo(0, document.body.scrollHeight));
     assert.deepEqual(await header.boundingBox(), headerOrigin, 'Documentation header');
     await page.close();
