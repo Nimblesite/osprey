@@ -112,12 +112,12 @@ module Probes {
 
     fn installedDir(s: Release::Served) = ".osprey/packages/${Names::display(s.id.key)}/${Digests::hexOf(s.id.digest)}"
 
-    fn fileTexts(s: Release::Served, read) = join(mapList(s.files, fn(f: Release::File) => read(f)), "\n--\n")
+    fn fileTexts(s: Release::Served, read) = join(mapList(s.files, fn(f) => read(f)), "\n--\n")
 
-    fn installed(s: Release::Served) = Probe {
+    fn installed(s) = Probe {
         label: "installed ${installedDir(s)} is byte-identical to the served release",
-        expected: fileTexts(s, fn(f: Release::File) => f.content),
-        actual: fileTexts(s, fn(f: Release::File) => readFile("${installedDir(s)}/${f.relPath}") ?: "<missing ${f.relPath}>")
+        expected: fileTexts(s, fn(f) => f.content),
+        actual: fileTexts(s, fn(f) => readFile("${installedDir(s)}/${f.relPath}") ?: "<missing ${f.relPath}>")
     }
 
     fn consumerDir(cwd) = "${cwd}/${work}/consumer"
@@ -257,11 +257,11 @@ module Probes {
     /// The closure of `@demo/report`: what the consumer's lock selects.
     let consumerClosure = ["@demo/greeting", "@demo/maths", "@demo/report"]
 
-    fn expectedPlus(catalog) = join(mapList(filterList(Release::servedOf(newest(catalog)), fn(s) => listContains(consumerClosure, keyOf(s))), fn(s: Release::Served) => "+ ${Names::display(s.id.key)} e${s.id.epoch}.r${s.id.ordinal} ${s.id.digest}"), "\n")
+    fn expectedPlus(catalog) = join(mapList(filterList(Release::servedOf(newest(catalog)), fn(s) => listContains(consumerClosure, keyOf(s))), fn(s) => "+ ${Names::display(s.id.key)} e${s.id.epoch}.r${s.id.ordinal} ${s.id.digest}"), "\n")
 
     fn keyOf(s: Release::Served) = Names::display(s.id.key)
 
-    fn ordinalOf(s: Release::Served) = Identity::ordinalOf(Release::idOf(s))
+    fn ordinalOf(s) = Identity::ordinalOf(Release::idOf(s))
 
     // ---- the Python plane at the real boundary ([PACKAGE-PYTHON-UV]) ----
 
