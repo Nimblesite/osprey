@@ -90,7 +90,7 @@ The registry owns its navigation, search results, package descriptions, release 
 
 These are planned route contracts, not implemented endpoints. Preserve the existing folder-registry GET routes and their canonical `@organization/package` semantics. Control routes use immutable organization/package IDs; the API resolves and checks every ID relationship itself. In this table, `P` means `/v1/organizations/{organizationId}/packages/{packageId}`. It is notation for that exact scoped prefix, not an alternative unscoped route.
 
-The catalog, publisher profiles and generated release documentation share the Osprey Packages header, typography, stylesheet and approved tabbed-drawer icon. Keep the header anchored while scrolling and align the first content panel to the same top and side margins across routes at each viewport size. Use the same SVG for the header and favicon. Every reference page identifies its package and release and links directly back to the package.
+The catalog, publisher profiles and generated release documentation share the Osprey Packages header, typography, stylesheet and approved tabbed-drawer icon. Keep the header anchored while scrolling. Use shared width, height and offset constants for the catalog banner across routes. The width fits the viewport and the height and top offset stay fixed. Use the same SVG for the header and favicon. Every reference page identifies its package and release and links directly back to the package.
 
 | Website/CLI flow | API surface to implement | Required actor and boundary |
 | --- | --- | --- |

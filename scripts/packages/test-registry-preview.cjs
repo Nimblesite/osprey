@@ -165,10 +165,12 @@ async function checkPackagedAccount(browser, site, livePort) {
   let payload = {packages:[entry]};
   await page.route(api + '/v1/packages', route => route.fulfill({headers,json:payload}));
   await page.goto(website + '/?q=http');
+  const homePanel = await page.locator('.prose-intro').boundingBox();
   assert.equal(await page.locator('#results .prose-license').textContent(), 'MIT');
   await page.getByRole('link', {name:entry.key}).click();
   assert.equal(new URL(page.url()).pathname, '/packages/@atlas/net/');
   await page.getByText('Network access', {exact:true}).waitFor();
+  assert.deepEqual(await page.locator('#package-details .prose-cover').boundingBox(), homePanel);
   const metadata = page.locator('.prose-facts');
   assert.equal(await metadata.locator('.prose-license').textContent({timeout:2000}), 'MIT');
   const notices = metadata.getByRole('link', {name:'Notices and attribution'});
@@ -187,6 +189,8 @@ async function checkPackagedAccount(browser, site, livePort) {
   }));
   payload = {packages:[entry, ...tagged, tagged[0]]};
   await page.goto(website + '/tags/');
+  await page.getByRole('heading', {name:'Tags', exact:true}).waitFor();
+  assert.deepEqual(await page.locator('#package-details .prose-cover').boundingBox(), homePanel);
   await page.getByRole('link', {name:'networking', exact:true}).click();
   await page.getByRole('heading', {name:'networking', exact:true}).waitFor();
   assert.equal(await page.locator('.prose-package').count(), 5);
@@ -272,6 +276,14 @@ async function checkLocalTagThreshold(browser) {
   const base = 'http://127.0.0.1:4187';
   await page.goto(base + '/tags/');
   assert.equal(await page.getByRole('link', {name: 'fastapi', exact: true}).count(), 0);
+  const tagPages = await page.locator('#results .prose-chip').evaluateAll(links => links.map(link => link.href));
+  assert.ok(tagPages.length > 0);
+  for (const url of tagPages) {
+    await page.goto(url);
+    const packages = await page.locator('.prose-package h3 a').allTextContents();
+    assert.ok(new Set(packages).size >= 5, url);
+  }
+  await page.goto(base + '/tags/');
   await page.getByRole('link', {name: 'python-flavor', exact: true}).click();
   assert.ok(await page.locator('.prose-package').count() >= 5);
   await page.getByRole('link', {name: '@osprey/fastapi', exact: true}).click();
@@ -284,7 +296,7 @@ async function checkCoverGeometry(browser) {
   const base = 'http://127.0.0.1:4187';
   const paths = ['/', '/publishers/', '/publishers/osprey-repository/', '/tags/',
     '/tags/python-flavor/', '/packages/@osprey/flash-attn/', '/upload/', '/guide/', '/publishing/'];
-  for (const width of [320, 390, 768, 1440]) {
+  for (const width of [320, 390, 768, 1440, 1600]) {
     const page = await browser.newPage({viewport:{width, height:900}});
     let origin;
     for (const path of paths) {
@@ -296,6 +308,8 @@ async function checkCoverGeometry(browser) {
       assert.deepEqual(bounds, origin, path + ' at ' + width);
       assert.equal(bounds.height, 296, path);
       assert.equal(bounds.y, 108, path);
+      const expectedWidth = Math.min(1216, width - (width <= 720 ? 27.2 : 48));
+      assert.ok(Math.abs(bounds.width - expectedWidth) < .02, path);
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), path);
     }
     await page.close();

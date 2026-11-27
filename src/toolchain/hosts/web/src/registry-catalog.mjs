@@ -22,8 +22,8 @@ try {
   await runModule(await guest.arrayBuffer(), part => { html += part; }, lines.join('\n'));
   if (!html.trim()) throw Error('Invalid projection');
   results.innerHTML = html;
-  if (location.hash) document.getElementById(location.hash.slice(1))?.scrollIntoView();
   status.textContent = '';
+  if (location.hash) document.getElementById(location.hash.slice(1))?.scrollIntoView();
 } catch (error) {
   results.replaceChildren();
   status.textContent = detail && error.message === status.dataset.missing ? status.dataset.missing : status.dataset.error;
