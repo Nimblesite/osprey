@@ -70,6 +70,9 @@ module LoginKms {
 
     fn tokens(session: Supabase::Session) = Canonical::serialize(Json::obj([
         Json::member("accessToken", Json::str(session.accessToken)),
+        Json::member("authSubject", Json::str(session.identity.authSubject)),
+        Json::member("expiresIn", Json::num(session.expiresIn)),
+        Json::member("githubId", Json::str(session.identity.githubId)),
         Json::member("refreshToken", Json::str(session.refreshToken))
     ]))
 
@@ -109,16 +112,23 @@ module LoginKms {
         andThen(decryptPayload(aad, envelope), fn(body) => submit(key, "decrypt", body, 8192, plaintext))
     } else { Error { message: unavailable } }
 
-    fn accessToken(doc) = {
-        let token = field(doc, "accessToken")
-        if token == "" || byteLength(token) > 16384 || !Bytes::everyByte(token, fn(b) => b > 32 && b < 127) {
-            Error { message: unavailable }
-        } else { Success { value: token } }
+    fn tokenText(token) = token != "" && byteLength(token) <= 16384 && Bytes::everyByte(token, fn(b) => b > 32 && b < 127)
+
+    fn storedTokens(doc) = {
+        let access = field(doc, "accessToken")
+        let refresh = field(doc, "refreshToken")
+        let subject = field(doc, "authSubject")
+        let provider = field(doc, "githubId")
+        let expires = JsonRead::number(JsonRead::field(doc, "expiresIn"))
+        if tokenText(access) && tokenText(refresh) && Bytes::canonicalUuid(subject) && provider != "" && expires > 0 {
+            Success { value: Supabase::Session { accessToken: access, refreshToken: refresh, expiresIn: expires,
+                identity: Supabase::Identity { authSubject: subject, githubId: provider } } }
+        } else { Error { message: "auth.session-required" } }
     }
 
     fn openedSession(doc) = andThen(decodedText(field(doc, "plaintext")), fn(clear) =>
         if byteLength(clear) > 32768 { Error { message: unavailable } }
-        else { andThen(Json::parse(clear), accessToken) })
+        else { andThen(Json::parse(clear), storedTokens) })
 
     /// Open a cookie-bound envelope for access-token revalidation on the API host.
     export fn openSession(key, aad, envelope) = if validKey(key) && envelopeOk(49152, envelope) && byteLength(aad) <= 1024 {

@@ -3,6 +3,7 @@ import registry::Digests
 import registry::Bytes
 import registry::Json
 import registry::JsonRead
+import registry::Sha256
 import registry_host::BrowserSessions
 import registry_host::Host
 import registry_host::LoginFlow
@@ -106,7 +107,9 @@ module HostedLogin {
 
     fn verifiedNative(config, path, headers) = andThen(callback(config.oauth, path, headers, LoginFlow::redeem,
         fn(context, envelope) => LoginKms::unseal(config.key, context, envelope)), fn(session) =>
-            andThen(now(), fn(seconds) => Jwt::verifySession(config.oauth, seconds, session)))
+            verifyCurrent(config.oauth, session))
+
+    fn verifyCurrent(oauth, session) = andThen(now(), fn(seconds) => Jwt::verifySession(oauth, seconds, session))
 
     export let sessionUnavailable = "auth.session-unavailable"
     export let unapproved = "auth.session-unapproved"
@@ -161,8 +164,8 @@ module HostedLogin {
     export fn readSession(oauth, token, load, open, verify, revalidate) = {
         let digest = sessionDigest(token)
         andThen(load(digest), fn(envelope) => if envelope == "" { Error { message: sessionRequired } }
-            else { andThen(open(sessionContext(oauth, digest), envelope), fn(access) =>
-                andThen(verify(access), fn(identity) => confirmed(oauth, token, digest, identity, revalidate))) })
+            else { andThen(open(sessionContext(oauth, digest), envelope), fn(credentials) =>
+                andThen(verify(digest, envelope, credentials), fn(identity) => confirmed(oauth, token, digest, identity, revalidate))) })
     }
 
     fn matchedSubject(oauth, access, subject) = andThen(Supabase::verify(oauth, access), fn(identity) =>
@@ -170,14 +173,48 @@ module HostedLogin {
 
     fn recheckAccess(oauth, access) = andThen(now(), fn(seconds) => match Jwt::verify(oauth, seconds, access) {
         Success { value } => matchedSubject(oauth, access, value)
-        Error { message } => if message == "auth.jwt-invalid" || message == "auth.jwt-signature" { Error { message: sessionRequired } }
+        Error { message } => if message == Jwt::expired { Error { message: message } }
+            else if message == "auth.jwt-invalid" || message == "auth.jwt-signature" { Error { message: sessionRequired } }
             else { Error { message: sessionUnavailable } }
     })
+
+    fn sameIdentity(left: Supabase::Identity, right: Supabase::Identity) = left.authSubject == right.authSubject && left.githubId == right.githubId
+
+    fn refreshed(oauth, token) = match Supabase::refresh(oauth, token) {
+        Error { message } => if message == "auth.refresh-rejected" { Error { message: sessionRequired } } else { Error { message: message } }
+        Success { value } => Success { value: value }
+    }
+
+    fn persistRotation(oauth, digest, previous, claim, fresh: Supabase::Session, finish, seal) =
+        andThen(seal(sessionContext(oauth, digest), fresh), fn(secured) =>
+            andThen(finish(digest, issuerOf(oauth), fresh.identity.authSubject, fresh.identity.githubId, previous, claim, secured), fn(row) =>
+                if Bytes::canonicalUuid(row) { Success { value: fresh.identity } } else { Error { message: sessionRequired } }))
+
+    fn rotate(oauth, digest, previous, claim, stored: Supabase::Session, finish, seal, verify) =
+        andThen(refreshed(oauth, stored.refreshToken), fn(fresh) =>
+            if !sameIdentity(stored.identity, fresh.identity) { Error { message: sessionRequired } }
+            else { andThen(verify(fresh), fn(verified) => persistRotation(oauth, digest, previous, claim, verified, finish, seal)) })
+
+    /// Only a signed, expired access token may enter this path. Claim the sealed generation before contacting Supabase.
+    export fn refreshSession(oauth, digest, envelope, stored: Supabase::Session, reserve, finish, seal, verify) = {
+        let previous = Digests::format(Sha256::digest(Bytes::ofString(envelope)))
+        andThen(reserve(digest, issuerOf(oauth), stored.identity.authSubject, stored.identity.githubId, previous), fn(claim) =>
+            if Bytes::canonicalUuid(claim) { rotate(oauth, digest, previous, claim, stored, finish, seal, verify) }
+            else { Error { message: sessionUnavailable } })
+    }
+
+    fn validCredentials(config, digest, envelope, stored) = match recheckAccess(config.oauth, stored.accessToken) {
+        Success { value } => if sameIdentity(stored.identity, value) { Success { value: value } } else { Error { message: sessionRequired } }
+        Error { message } => if message == Jwt::expired {
+            refreshSession(config.oauth, digest, envelope, stored, BrowserSessions::claimRefresh, BrowserSessions::finishRefresh,
+                fn(context, fresh) => LoginKms::sealSession(config.sessionKey, context, fresh), fn(fresh) => verifyCurrent(config.oauth, fresh))
+        } else { Error { message: message } }
+    }
 
     fn nativeRead(config: Settings, token) = if config.sessionKey == "" { unavailable() }
         else { ProviderNative::transport()(fn() => readSession(config.oauth, token, BrowserSessions::read,
             fn(context, envelope) => LoginKms::openSession(config.sessionKey, context, envelope),
-            fn(access) => recheckAccess(config.oauth, access), BrowserSessions::revalidate)) }
+            fn(digest, envelope, credentials) => validCredentials(config, digest, envelope, credentials), BrowserSessions::revalidate)) }
 
     export fn nativeSession(config, method, token) = if method == "POST" { BrowserSessions::logout(sessionDigest(token)) }
         else { nativeRead(config, token) }

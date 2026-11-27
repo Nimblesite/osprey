@@ -10,6 +10,7 @@ module ProviderTests {
     let fixtureToken = "fixture-token"
     let githubIdentity = "auth.github-identity"
     let unexpected = "unexpected-provider-request"
+    let userPath = "/auth/v1/user"
 
     fn code(result) = match result {
         Error { message } => message
@@ -19,7 +20,7 @@ module ProviderTests {
     fn fixture(config, token, status, body) = {
         handle Supabase::Provider {
             request method base path headers payload => if method == "GET" && base == config.supabaseOrigin
-            && path == "/auth/v1/user" && contains(headers, "Authorization: Bearer ${token}") && payload == "" {
+            && path == userPath && contains(headers, "Authorization: Bearer ${token}") && payload == "" {
                 Success { value: Supabase::Reply { status: status, body: body } }
             } else { Error { message: unexpected } }
         }
@@ -57,7 +58,7 @@ module ProviderTests {
                 && payload == "{\"auth_code\":\"fixture-code\",\"code_verifier\":\"${verifier}\"}"
                 && contains(headers, "apikey: ${config.publishableKey}") {
                 Success { value: Supabase::Reply { status: 200, body: "{\"access_token\":\"fixture-token\",\"refresh_token\":\"fixture-refresh\",\"expires_in\":600}" } }
-            } else if method == "GET" && path == "/auth/v1/user" && contains(headers, "Authorization: Bearer ${fixtureToken}") {
+            } else if method == "GET" && path == userPath && contains(headers, "Authorization: Bearer ${fixtureToken}") {
                 Success { value: Supabase::Reply { status: 200, body: account(subject, identities) } }
             } else { Error { message: unexpected } }
         }
@@ -119,7 +120,8 @@ module ProviderTests {
         let oldAlgorithm = "{\"alg\":\"HS256\",\"kid\":\"es256-fixture\"}"
         checkAll("access token failures never return a subject", [
             code(jwtFixture(config, keys, fixtureTime, tampered)) != "",
-            code(jwtFixture(config, keys, fixtureTime + 551, es256Token)) != "",
+            code(jwtFixture(config, keys, fixtureTime + 551, es256Token)) == "auth.jwt-expired",
+            code(jwtFixture(config, keys, fixtureTime + 551, tampered)) == "auth.jwt-signature",
             code(jwtFixture(config, keys, fixtureTime - 111, es256Token)) != "",
             code(jwtFixture(config, keys, fixtureTime, wrongAudience)) != "",
             code(jwtFixture(config, keys, fixtureTime, rs256Token)) != "",
@@ -130,6 +132,28 @@ module ProviderTests {
             code(jwtFixture(config, "{\"keys\":[${es256Key},${es256Key}]}", fixtureTime, es256Token)) != ""
         ])
     }
+
+    fn refreshFixture(config, status) = {
+        handle Supabase::Provider {
+            request method base path headers body => if base != config.supabaseOrigin { Error { message: unexpected } }
+            else if method == "POST" && path == "/auth/v1/token?grant_type=refresh_token" && body == "{\"refresh_token\":\"fixture-old-refresh\"}"
+                && contains(headers, "apikey: sb_publishable_fixture") {
+                Success { value: Supabase::Reply { status: status, body: "{\"access_token\":\"fixture-token\",\"refresh_token\":\"fixture-next-refresh\",\"expires_in\":600}" } }
+            } else if method == "GET" && path == userPath && contains(headers, "Authorization: Bearer ${fixtureToken}") {
+                Success { value: Supabase::Reply { status: 200, body: account(subject, link(subject, "github")) } }
+            } else { Error { message: unexpected } }
+        }
+        Supabase::refresh(config, "fixture-old-refresh")
+    }
+
+    fn refreshed(config) = checkAll("refresh exchanges only the old provider token and checks the returned immutable identity", [
+        match refreshFixture(config, 200) {
+            Success { value } => value.refreshToken == "fixture-next-refresh" && value.identity.authSubject == subject
+            Error => false
+        },
+        code(refreshFixture(config, 400)) == "auth.refresh-rejected",
+        code(refreshFixture(config, 503)) == "auth.provider-rejected"
+    ])
 
     fn matchesSessionSubject(config) = jwksFixture(config, "{\"keys\":[${es256Key}]}")(fn() => {
         let owner = Supabase::Identity { authSubject: subject, githubId: "123456" }
@@ -145,6 +169,7 @@ module ProviderTests {
     /// the immutable identity a success yields, every rejection code, and
     /// outages and header injection that never authenticate.
     export fn run(config) = {
+        test("auth: provider refresh rotation", fn() => refreshed(config))
         test("auth: verify both Supabase signing algorithms", fn() => validJwt(config))
         test("auth: JWT signature, audience, issuer and timing failures", fn() => deniedJwt(config))
         test("auth: match signed subject to Supabase account", fn() => matchesSessionSubject(config))

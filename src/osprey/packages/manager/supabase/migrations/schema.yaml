@@ -323,12 +323,15 @@ tables:
       - { name: started_at, type: DateTimeOffset, isNullable: false }
       - { name: last_used_at, type: DateTimeOffset, isNullable: false }
       - { name: revoked_at, type: DateTimeOffset, isNullable: true }
+      - { name: refresh_id, type: Uuid, isNullable: true }
+      - { name: refresh_started_at, type: DateTimeOffset, isNullable: true }
     primaryKey: { columns: [id] }
     uniqueConstraints:
       - { name: uq_browser_sessions_cookie, columns: [cookie_digest] }
     checkConstraints:
       - { name: ck_browser_sessions_timing, expression: "last_used_at >= started_at AND (revoked_at IS NULL OR revoked_at >= last_used_at)" }
       - { name: ck_browser_sessions_envelope, expression: "(revoked_at IS NULL AND token_envelope IS NOT NULL) OR (revoked_at IS NOT NULL AND token_envelope IS NULL)" }
+      - { name: ck_browser_sessions_refresh_pair, expression: "(refresh_id IS NULL AND refresh_started_at IS NULL) OR (refresh_id IS NOT NULL AND refresh_started_at IS NOT NULL)" }
     indexes:
       - { name: ix_browser_sessions_started_at, columns: [started_at] }
     foreignKeys:

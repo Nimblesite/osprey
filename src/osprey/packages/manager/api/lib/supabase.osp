@@ -8,6 +8,7 @@ import registry::JsonRead
 /// a pinned origin. Application metadata, email and decoded JWT claims never
 /// establish registry authority. Implements [PACKAGE-HOSTED-AUTH].
 module Supabase {
+    let refreshGrant = "refresh_token"
     /// A bounded provider response; raw errors and tokens never enter logs.
     export type Reply = { status: int, body: string }
     /// Stable identity returned by the authenticated /user endpoint.
@@ -63,7 +64,7 @@ module Supabase {
 
     fn sessionOf(config, document) = {
         let access = field(document, "access_token")
-        let refresh = field(document, "refresh_token")
+        let refresh = field(document, refreshGrant)
         let expires = JsonRead::number(JsonRead::field(document, "expires_in"))
         if bearerCode(access) != "" || bearerCode(refresh) != "" || expires < 1 || expires > 86400 { Error { message: "auth.provider-session" } }
         else { match verify(config, access) {
@@ -82,10 +83,12 @@ module Supabase {
                 Json::Member { key: "code_verifier", value: Json::Str { text: verifier } }
             ] })
 
-    fn exchangeBody(config, body) = match perform Provider.request("POST", config.supabaseOrigin,
-        "/auth/v1/token?grant_type=pkce", "apikey: ${config.publishableKey}\r\nContent-Type: application/json", body) {
+    fn exchangeBody(config, grant, body) = match perform Provider.request("POST", config.supabaseOrigin,
+        "/auth/v1/token?grant_type=${grant}", "apikey: ${config.publishableKey}\r\nContent-Type: application/json", body) {
         Error => Error { message: "auth.provider-unavailable" }
-        Success { value } => exchangeReply(config, value)
+        Success { value } => if grant == refreshGrant && listContains([400, 401, 403], value.status) {
+            Error { message: "auth.refresh-rejected" }
+        } else { exchangeReply(config, value) }
     }
 
     /// Call only after atomically claiming the matching unexpired, one-use
@@ -94,8 +97,14 @@ module Supabase {
         "" => if code == "" || byteLength(code) > 1024 || OAuth::challengeCode(verifier) != "" { Error { message: "auth.callback" } }
         else { match payload(code, verifier) {
                 Error => Error { message: "auth.callback" }
-                Success { value } => exchangeBody(config, value)
+                Success { value } => exchangeBody(config, "pkce", value)
             } }
         problem => Error { message: problem }
     }
+
+    /// The caller must hold the database refresh claim for the stored credential pair.
+    export fn refresh(config, token) = if OAuth::configCode(config) != "" || bearerCode(token) != "" {
+        Error { message: "auth.refresh-rejected" }
+    } else { andThen(Canonical::serialize(Json::obj([Json::member(refreshGrant, Json::str(token))])), fn(body) =>
+        exchangeBody(config, refreshGrant, body)) }
 }

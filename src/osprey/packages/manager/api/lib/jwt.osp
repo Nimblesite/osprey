@@ -13,6 +13,8 @@ module Jwt {
     let audience = "authenticated"
     let clockSkew = 30
     let tokenLife = 600
+    let refreshWindow = 1800
+    export let expired = "auth.jwt-expired"
 
     fn field(doc, name) = JsonRead::text(JsonRead::field(doc, name))
 
@@ -82,7 +84,7 @@ module Jwt {
         let expires = JsonRead::number(JsonRead::field(doc, "exp"))
         if !Bytes::canonicalUuid(subject) || field(doc, "iss") != config.supabaseOrigin + "/auth/v1"
             || (JsonRead::text(aud) != audience && !structuralEquals(JsonRead::texts(aud), [audience]))
-            || starts < 1 || starts > now + clockSkew || expires <= now - clockSkew || expires <= starts
+            || starts < 1 || starts > now + clockSkew || expires <= now - clockSkew - refreshWindow || expires <= starts
             || expires - starts > tokenLife || !beforeWindow(doc, now) { Error { message: invalid } }
         else { Success { value: subject } }
     }
@@ -94,7 +96,8 @@ module Jwt {
     fn checked(config, now, header, doc, signingInput, encodedSignature) = andThen(claims(config, now, doc), fn(subject) =>
         andThen(Dsse::decodeBase64Url(encodedSignature), fn(signed) => andThen(fetchKey(config, header), fn(key) =>
             andThen(JwtKeys::verify(field(header, "alg"), key, signed, Sha256::digest(Bytes::ofString(signingInput))),
-                fn(_) => Success { value: subject }))))
+                fn(_) => if JsonRead::number(JsonRead::field(doc, "exp")) <= now - clockSkew { Error { message: expired } }
+                    else { Success { value: subject } }))))
 
     /// Each verification obtains one fresh key set, so a rotated key needs no stale local cache.
     export fn verify(config, now, token) = if OAuth::configCode(config) != "" || now <= 0 || now > 253402300799 || byteLength(token) > 16384 {

@@ -28,9 +28,9 @@ union InvitationState { Pending {} Accepted {} Revoked {} Expired {} }
 union MaintenanceReportState { Open {} Acknowledged {} Resolved {} Withdrawn {} }
 type RegistryPrincipal { id: PrincipalId kind: PrincipalKind state: PrincipalState credentialEpoch: AuthorityEpoch createdAt: DateTime }
 type PendingLogin { stateDigest: Digest browserDigest: Digest verifierEnvelope: String createdAt: DateTime }
-type BrowserSession { id: Uuid cookieDigest: Digest bindingId: Uuid principalId: PrincipalId credentialEpoch: AuthorityEpoch tokenEnvelope: Option<String> startedAt: DateTime lastUsedAt: DateTime revokedAt: Option<DateTime> }
+type BrowserSession { id: Uuid cookieDigest: Digest bindingId: Uuid principalId: PrincipalId credentialEpoch: AuthorityEpoch tokenEnvelope: Option<String> startedAt: DateTime lastUsedAt: DateTime revokedAt: Option<DateTime> refreshId: Option<Uuid> refreshStartedAt: Option<DateTime> }
 type HostedOAuthConfig { supabaseOrigin: String callback: String websiteOrigin: String publishableKey: String }
-type HostedLoginSettings { oauth: HostedOAuthConfig key: String }
+type HostedLoginSettings { oauth: HostedOAuthConfig key: String sessionKey: String }
 type HostedLoginRedirect { location: String cookie: String }
 type PublicCatalogNotice { path: RelativePath text: String }
 type PublicCatalogRelease { epoch: CompatibilityEpoch ordinal: ReleaseOrdinal digest: Digest publisherId: String publisherName: String licenseExpression: String notices: List<PublicCatalogNotice> }

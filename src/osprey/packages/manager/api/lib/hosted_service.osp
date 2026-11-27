@@ -92,6 +92,7 @@ module HostedService {
     fn sessionRequest(headers, session, cors) = {
         let token = HostedLogin::browserToken(headers)
         if token == "" && HostedHeaders::has(headers, authorizationHeader) { unavailable(cors) }
+        else if token != "" && cors == "" { problem(403, "req.origin-required") }
         else { sessionReply(token, session, cors) }
     }
 
