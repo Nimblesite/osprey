@@ -314,7 +314,7 @@ test('malformed detection input fails the gate instead of skipping required jobs
 // crates/ like tree-sitter-osprey: the gate walks the manifest's members (#232).
 const RUST_MEMBERS = ['crates/one', 'crates/two', 'outside']
 
-function rustCoverageFixture(entries, covered = 100, extra = []) {
+function rustCoverageFixture(entries, covered = 100, extra = [], called = 80) {
   return withTempDir('rust-coverage', (root) => {
     const toolchain = join(root, 'src', 'toolchain')
     mkdirSync(toolchain, { recursive: true })
@@ -322,7 +322,7 @@ function rustCoverageFixture(entries, covered = 100, extra = []) {
       `[workspace]\nmembers = [\n${RUST_MEMBERS.map(member => `    "${member}",`).join('\n')}\n]\n`)
     writeFileSync(join(root, 'thresholds.json'), JSON.stringify({ projects: { rust: entries } }))
     writeFileSync(join(root, 'lcov.info'), RUST_MEMBERS.map(member =>
-      `SF:${toolchain}/${member}/src/lib.rs\nLF:100\nLH:${covered}\nend_of_record\n`).join(''))
+      `SF:${toolchain}/${member}/src/lib.rs\nFNF:100\nFNH:${called}\nLF:100\nLH:${covered}\nend_of_record\n`).join(''))
     return spawnSync('make', ['-f', resolve('scripts/make/tests.mk'), '_coverage_check_rust',
       'COVERAGE_THRESHOLDS_FILE=thresholds.json', 'RUST_LCOV=lcov.info', 'RUST_COV_EXEMPT=', ...extra],
       { cwd: root, encoding: 'utf8' })
@@ -330,7 +330,7 @@ function rustCoverageFixture(entries, covered = 100, extra = []) {
 }
 
 test('Rust coverage gate rejects unlisted crates and invalid thresholds', () => {
-  const gate = { threshold: 95, language: 'rust' }
+  const gate = { threshold: 95, functions: 80, language: 'rust' }
   const all = { one: gate, two: gate, outside: gate }
   const missing = rustCoverageFixture({ one: gate, outside: gate })
   assert.notEqual(missing.status, 0, missing.stdout)
@@ -355,6 +355,12 @@ test('Rust coverage gate rejects unlisted crates and invalid thresholds', () => 
   assert.notEqual(failing.status, 0, failing.stdout)
   assert.match(failing.stdout, /two FAIL: 94.0% < 95%/)
   assert.match(failing.stdout, /outside FAIL: 94.0% < 95%/)
+  const uncalled = rustCoverageFixture(all, 100, [], 79)
+  assert.notEqual(uncalled.status, 0, uncalled.stdout)
+  assert.match(uncalled.stdout, /two FAIL: 79.0% < 80% \(79\/100 functions\)/,
+    'lines alone cannot hide an uncalled function (#232)')
+  const unstated = rustCoverageFixture({ ...all, two: { threshold: 95, language: 'rust' } })
+  assert.notEqual(unstated.status, 0, 'every gated crate states its function floor')
 })
 
 test('package coverage preserves the complete test recipe and checks without rerunning suites', () => {
@@ -613,3 +619,13 @@ test('the detect-ci-scope action exposes every scope key classify returns', () =
     assert.match(action, new RegExp(`^  ${key}:\\n[^\\n]*\\n    value: \\$\\{\\{ steps\\.scope\\.outputs\\.${key} \\}\\}$`, 'm'))
   }
 })
+
+test('merged Rust shards keep function records, hit when any shard called them', () => withTempDir('merge-lcov', (root) => {
+  const shard = (name, body) => { writeFileSync(join(root, name), body); return join(root, name) }
+  const first = shard('a.info', 'SF:/x/lib.rs\nFN:3,alpha\nFN:9,beta\nFNDA:2,alpha\nFNDA:0,beta\nDA:3,2\nDA:9,0\nend_of_record\n')
+  const second = shard('b.info', 'SF:/x/lib.rs\nFN:3,alpha\nFN:9,beta\nFN:14,gamma\nFNDA:0,alpha\nFNDA:1,beta\nFNDA:0,gamma\nDA:3,0\nDA:9,1\nend_of_record\n')
+  const merged = spawnSync('python3', ['scripts/ci/merge_lcov.py', first, second], { encoding: 'utf8' })
+  assert.equal(merged.status, 0, merged.stderr)
+  assert.match(merged.stdout, /FNDA:2,alpha\nFNDA:1,beta\nFNDA:0,gamma\nFNF:3\nFNH:2\n/)
+  assert.match(merged.stdout, /DA:3,2\nDA:9,1\nLH:2\nLF:2\n/)
+}))

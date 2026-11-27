@@ -46,6 +46,9 @@ _test_gpt2_parity: _gpt2_weights
 
 # Every crate under src/toolchain/crates/ must have a valid threshold and measured lines.
 # Check inventory before results so an omitted crate cannot silently pass.
+# Lines AND functions are gated per crate: lines-only let a crate add an
+# uncalled function without moving the number the gate reads (#232). Function
+# floors started at the measured value less one on 2026-11-27 and only go up.
 # Every workspace member, as its path under src/toolchain: the Rust gate walks
 # these, so a crate outside crates/ (tree-sitter-osprey) is gated too (#232).
 RUST_WORKSPACE_MEMBERS = sed -n '/^members = \[/,/^\]/p' src/toolchain/Cargo.toml | grep -o '"[^"]*"' | tr -d '"'
@@ -76,6 +79,17 @@ _coverage_check_rust:
 	    echo "[rust] $$crate FAIL: $${pct}% < $${threshold}% ($$lh/$$lf lines)"; fail=1; \
 	  else \
 	    echo "[rust] $$crate OK: $${pct}% >= $${threshold}% ($$lh/$$lf lines)"; \
+	  fi; \
+	  functions=$$(jq -er --arg c "$$crate" '.projects.rust[$$c].functions | if type == "number" and . >= 0 and . <= 100 and floor == . then . else error("Rust function threshold must be an integer in 0..100") end' "$(COVERAGE_THRESHOLDS_FILE)") || exit 1; \
+	  set -- $$(awk -F: -v c="/src/toolchain/$$member/" 'index($$0,"SF:")==1{in_c=index($$2,c)>0} in_c&&/^FNH:/{h+=$$2} in_c&&/^FNF:/{f+=$$2} END{printf "%d %d",h+0,f+0}' $(RUST_LCOV)); \
+	  fh=$$1; ff=$$2; \
+	  if [ "$$ff" -eq 0 ]; then echo "[rust] $$crate FAIL: no functions found in $(RUST_LCOV)"; fail=1; continue; fi; \
+	  fpct=$$(awk "BEGIN{printf \"%.1f\", $$fh/$$ff*100}"); \
+	  fpct_int=$$(awk "BEGIN{printf \"%d\", $$fh/$$ff*100}"); \
+	  if [ "$$fpct_int" -lt "$$functions" ]; then \
+	    echo "[rust] $$crate FAIL: $${fpct}% < $${functions}% ($$fh/$$ff functions)"; fail=1; \
+	  else \
+	    echo "[rust] $$crate OK: $${fpct}% >= $${functions}% ($$fh/$$ff functions)"; \
 	  fi; \
 	done; \
 	if [ "$$fail" -ne 0 ]; then echo "[rust] FAIL: one or more crates below threshold"; exit 1; fi; \

@@ -30,59 +30,73 @@
     "rust": {
       "osprey-ast": {
         "threshold": 97,
-        "language": "rust"
+        "language": "rust",
+        "functions": 65
       },
       "osprey-cli": {
         "threshold": 95,
-        "language": "rust"
+        "language": "rust",
+        "functions": 69
       },
       "osprey-codegen": {
         "threshold": 95,
-        "language": "rust"
+        "language": "rust",
+        "functions": 86
       },
       "osprey-debug": {
         "threshold": 95,
-        "language": "rust"
+        "language": "rust",
+        "functions": 81
       },
       "osprey-fmt": {
         "threshold": 95,
-        "language": "rust"
+        "language": "rust",
+        "functions": 86
       },
       "osprey-math": {
         "threshold": 99,
-        "language": "rust"
+        "language": "rust",
+        "functions": 52
       },
       "osprey-lsp": {
         "threshold": 98,
-        "language": "rust"
+        "language": "rust",
+        "functions": 71
       },
       "osprey-profiler": {
         "threshold": 95,
-        "language": "rust"
+        "language": "rust",
+        "functions": 78
       },
       "osprey-project": {
         "threshold": 95,
-        "language": "rust"
+        "language": "rust",
+        "functions": 68
       },
       "lsp-profiler-osprey": {
         "threshold": 95,
-        "language": "rust"
+        "language": "rust",
+        "functions": 89
       },
       "osprey-runtime-sys": {
         "threshold": 99,
-        "language": "rust"
+        "language": "rust",
+        "functions": 100
       },
       "osprey-syntax": {
         "threshold": 95,
-        "language": "rust"
+        "language": "rust",
+        "functions": 71
       },
       "osprey-types": {
         "threshold": 98,
-        "language": "rust"
+        "language": "rust",
+        "functions": 88
       },
       "tree-sitter-osprey": {
         "threshold": 100,
-        "language": "rust"
+        "language": "rust",
+        "functions": 100
       }
     },
     "c_runtime": {
