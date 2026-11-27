@@ -491,9 +491,20 @@ fn editor_erases_disciplined_modules_like_the_cli() {
     let good = std::fs::read_to_string(&access).expect("read access");
     let uri = format!("file://{}", access.display());
     let opened = published_diagnostics(&mut server, &uri, &good);
+    assert_eq!(errors_of(&opened), Vec::<String>::new(), "{opened:?}");
+    let (line, row) = good
+        .lines()
+        .enumerate()
+        .find(|(_, row)| row.contains("export canRead"))
+        .expect("canRead is declared");
+    let column = row.find("canRead").expect("canRead column");
+    let position =
+        json!({"textDocument": {"uri": uri}, "position": {"line": line, "character": column}});
+    let hover = server.request(5, "textDocument/hover", &position);
+    let shown = hover.to_string();
     assert!(
-        has_code(&opened, "unexampled-export"),
-        "analysis completed: {opened:?}"
+        shown.contains("roundtrip::Access::canRead") && shown.contains("Whether `role` may read"),
+        "analysis completed and resolved canRead: {hover}"
     );
     let unproved = good.replace(": Reader := read e", ": Reader := e");
     assert_ne!(unproved, good, "the mutation applies");
