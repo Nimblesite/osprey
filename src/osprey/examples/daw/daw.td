@@ -1,6 +1,6 @@
 typeDiagram
 # osprey namespace daw
-# osprey import synth::Prepared synth::Rendered synth::OperatorState synth::GraphState synth::ProcessorMemory synth::KernelState
+# osprey import synth::Prepared synth::Rendered synth::OperatorState synth::GraphState synth::ProcessorMemory synth::KernelState synth::WaveguideState synth::ExciterState synth::BowState synth::ModalBank synth::ModalState synth::ExciterConfig
 type Request { project: String folder: String from: Float beats: Float }
 type Written { parts: List<String> fault: String }
 type Tone { breakpoint: Float feedback: Float attack: Float release: Float bloom: Float detune: Float }
