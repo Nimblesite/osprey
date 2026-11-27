@@ -23,11 +23,11 @@ let area = exactArithmetic(fn() => rect.width * rect.height)
 
 // Test 4 - Field access in conditionals
 print("Area: ${area}\n\nTest 4 - Field access in conditionals:")
-let inactiveUser = "Inactive User"
+fn inactiveUser() = "Inactive User"
 
 let status = match user.active {
     true => "Active User"
-    false => inactiveUser
+    false => inactiveUser()
 }
 
 // Test 5 - Non-destructive updates
@@ -50,7 +50,7 @@ print("Rectangle perimeter: ${perimeter}\nManhattan distance from origin: ${manh
 /// Derives the same conditional label from a record field.
 fn userStatus(value: User) = match value.active {
     true => "Active User"
-    false => inactiveUser
+    false => inactiveUser()
 }
 
 /// Verifies reads, arithmetic consumers, branching, and persistent updates.
@@ -67,7 +67,7 @@ fn fieldAccessCase() = {
         structuralEquals([(rect.width + rect.height ), (point.x + point.y ), counter.count], [15, 40, 0]),
         structuralEquals([incremented.count, moved.x, moved.y, point.x, point.y], [0, 100, 200, 15, 25]),
         user.active, !inactive.active,
-        structuralEquals([userStatus(user), userStatus(inactive)], ["Active User", inactiveUser])
+        structuralEquals([userStatus(user), userStatus(inactive)], ["Active User", inactiveUser()])
     ])
 }
 
