@@ -10,6 +10,11 @@ import registry::JsonRead
 
 /// Process liveness and public ingress use separate listeners [PACKAGE-HOSTED-TOPOLOGY].
 module HostedService {
+    let problemType = "application/problem+json"
+    let jsonType = "application/json"
+    let authorizationHeader = "authorization"
+    let publisherPrefix = "/v1/publishers/"
+
     export fn config(source) = match Json::parse(source) {
         Error => Error { message: "hosted.config-invalid" }
         Success { value } => policyOf(value)
@@ -45,7 +50,7 @@ module HostedService {
 
     fn reply(status, mime, body) = replyWith(status, mime, body, "")
 
-    fn problem(status, code) = reply(status, "application/problem+json", "{\"code\":\"${code}\",\"status\":${status}}")
+    fn problem(status, code) = reply(status, problemType, "{\"code\":\"${code}\",\"status\":${status}}")
 
     fn probe(method, path, _headers, _body) = if method == "GET" && path == "/v1/ready" {
         reply(200, "text/plain", "")
@@ -56,7 +61,7 @@ module HostedService {
     fn requestedHeaders(headers) = match HostedHeaders::find(headers, "access-control-request-headers") {
         Error => true
         Success { value } => foldList(split(value, ",") ?: [], true, fn(ok, part) => ok && listContains(
-            ["authorization", "content-type", "x-csrf-token", "idempotency-key"], toLowerCase(trim(part))))
+            [authorizationHeader, "content-type", "x-csrf-token", "idempotency-key"], toLowerCase(trim(part))))
     }
 
     fn preflight(headers, origin) = {
@@ -68,7 +73,7 @@ module HostedService {
         }
     }
 
-    fn hasCredential(headers, policy) = HostedHeaders::has(headers, "authorization") || match HostedHeaders::find(headers, "cookie") {
+    fn hasCredential(headers, policy) = HostedHeaders::has(headers, authorizationHeader) || match HostedHeaders::find(headers, "cookie") {
         Error => false
         Success { value } => HostedCookies::foundValue(HostedCookies::select(value, policy.cookieName)) != ""
     }
@@ -78,9 +83,9 @@ module HostedService {
         let cors = if origin == "" { "" } else { browserHeaders(origin) }
         if path == "/v1/ready" { problem(404, "api.not-found") }
         else if method == "OPTIONS" { preflight(headers, origin) }
-        else if method == "GET" && (path == "/v1/packages" || startsWith(path, "/v1/packages/") || startsWith(path, "/v1/publishers/") || startsWith(path, "/v1/releases/")) { catalogResponse(catalog(), path, cors, source) }
+        else if method == "GET" && (path == "/v1/packages" || startsWith(path, "/v1/packages/") || startsWith(path, publisherPrefix) || startsWith(path, HostedSource::prefix)) { catalogResponse(catalog(), path, cors, source) }
         else if method == "GET" && path == "/v1/auth/session" && !hasCredential(headers, policy) {
-            replyWith(401, "application/problem+json", "{\"code\":\"auth.session-required\",\"status\":401}", cors)
+            replyWith(401, problemType, "{\"code\":\"auth.session-required\",\"status\":401}", cors)
         } else { unavailable(cors) }
     }
 
@@ -96,31 +101,31 @@ module HostedService {
     }
 
     fn jsonReply(doc, cors) = match Canonical::serialize(doc) {
-        Success { value } => replyWith(200, "application/json", value, cors)
+        Success { value } => replyWith(200, jsonType, value, cors)
         Error => unavailable(cors)
     }
 
-    fn catalogDocument(doc, path, cors, source) = if path == "/v1/packages" { jsonReply(doc, cors) } else if startsWith(path, "/v1/releases/") {
+    fn catalogDocument(doc, path, cors, source) = if path == "/v1/packages" { jsonReply(doc, cors) } else if startsWith(path, HostedSource::prefix) {
         releaseResponse(HostedSource::request(doc, path, source), cors)
-    } else if startsWith(path, "/v1/publishers/") {
+    } else if startsWith(path, publisherPrefix) {
         publisherDocument(JsonRead::items(JsonRead::field(doc, "packages")), path, cors)
     } else {
         match listGet(filterList(JsonRead::items(JsonRead::field(doc, "packages")), fn(item) => "/v1/packages/" + field(item, "key") == path), 0) {
             Success { value } => jsonReply(value, cors)
-            Error => replyWith(404, "application/problem+json", "{\"code\":\"catalog.unknown-package\",\"status\":404}", cors)
+            Error => replyWith(404, problemType, "{\"code\":\"catalog.unknown-package\",\"status\":404}", cors)
         }
     }
 
     fn releaseResponse(resolution, cors) = match resolution {
-        Error { message } => if message == "catalog.unknown-release" { replyWith(404, "application/problem+json", "{\"code\":\"catalog.unknown-release\",\"status\":404}", cors)
+        Error { message } => if message == HostedSource::unknownRelease { replyWith(404, problemType, "{\"code\":\"catalog.unknown-release\",\"status\":404}", cors)
         } else { unavailable(cors) }
         Success { value } => if value.download {
             match Bundle::encode(value.release) {
-                Success { value } => replyWith(200, "application/json", value, cors + "Content-Disposition: attachment; filename=\"osprey-source.json\"\r\n")
+                Success { value } => replyWith(200, jsonType, value, cors + "Content-Disposition: attachment; filename=\"osprey-source.json\"\r\n")
                 Error => unavailable(cors)
             }
         } else { match Catalog::releaseJson(value.release) {
-            Success { value } => replyWith(200, "application/json", value, cors)
+            Success { value } => replyWith(200, jsonType, value, cors)
             Error => unavailable(cors)
         } }
     }
@@ -136,7 +141,7 @@ module HostedService {
     ])
 
     fn publisherDocument(packages, path, cors) = {
-        let parts = split(drop(path, byteLength("/v1/publishers/")), "/") ?: []
+        let parts = split(drop(path, byteLength(publisherPrefix)), "/") ?: []
         let id = listGet(parts, 0) ?: ""
         let detail = length(parts) == 1
         let releases = length(parts) == 2 && (listGet(parts, 1) ?: "") == "releases"
@@ -155,13 +160,13 @@ module HostedService {
         }
     }
 
-    fn unknownPublisher(cors) = replyWith(404, "application/problem+json", "{\"code\":\"catalog.unknown-publisher\",\"status\":404}", cors)
+    fn unknownPublisher(cors) = replyWith(404, problemType, "{\"code\":\"catalog.unknown-publisher\",\"status\":404}", cors)
 
-    fn unavailable(cors) = replyWith(503, "application/problem+json", "{\"code\":\"registry.not-ready\",\"status\":503}", cors)
+    fn unavailable(cors) = replyWith(503, problemType, "{\"code\":\"registry.not-ready\",\"status\":503}", cors)
 
     fn contentRequest(headers, host, method, path) = host != "" && (HostedHeaders::find(headers, "host") ?: "") == host
-        && method == "GET" && startsWith(path, "/v1/releases/") && endsWith(path, "/source")
-        && !HostedHeaders::has(headers, "cookie") && !HostedHeaders::has(headers, "authorization")
+        && method == "GET" && startsWith(path, HostedSource::prefix) && endsWith(path, HostedSource::attachmentSuffix)
+        && !HostedHeaders::has(headers, "cookie") && !HostedHeaders::has(headers, authorizationHeader)
 
     fn publicRequest(policy, contentHost, method, path, headers, body, catalog, source) = {
         let request = HostedRequest::Incoming { method: method, uri: path, headerBlock: headers, body: body }

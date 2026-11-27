@@ -120,12 +120,12 @@ fn catalogRequest(port) = andThen(httpCreateClient("http://127.0.0.1:${port}", 5
     let observed = match httpGetResponse(client, "/v1/packages", "X-Edge-Secret: fixture-edge-secret-at-least-32-bytes") {
         Success { value } => {
             let valid = httpResponseStatus(value) == 200 && (httpResponseBody(value) ?: "") == catalogRow
-            let released = httpResponseFree(value)
+            let _released = httpResponseFree(value)
             valid
         }
         Error => false
     }
-    let closed = httpCloseClient(client)
+    let _closed = httpCloseClient(client)
     let browser = onFixture("if [ \"$REGISTRY_BROWSER_CHECK\" = 1 ]; then node scripts/packages/test-registry-preview.cjs --database-catalog ${port}; fi")
     if observed && browser.status == 0 { Success { value: 0 } } else { catalogFailure(browser.stderr) }
 })
