@@ -56,8 +56,12 @@ jobs:
         id: rust
         uses: dtolnay/rust-toolchain@1.100.0
 
-      - name: Cache cargo registry + target
-        uses: actions/cache@v6
+      # Restored here and saved straight after the build, as winui.yml does: the combined
+      # actions/cache saves only when the whole job succeeds, so a job cancelled in the corpora
+      # threw its cold build away and the next run started just as cold.
+      - name: Restore cargo registry + target
+        id: cargo-cache
+        uses: actions/cache/restore@v6
         with:
           path: |
             ~/.cargo/registry/index/
@@ -109,6 +113,17 @@ jobs:
 
       - name: Build osprey (release)
         run: cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+
+      - name: Save cargo registry + target
+        if: steps.cargo-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ steps.cargo-cache.outputs.cache-primary-key }}
 
       - name: Verify version contract
         shell: msys2 {0}
