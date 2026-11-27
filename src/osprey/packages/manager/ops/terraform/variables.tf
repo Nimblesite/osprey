@@ -98,7 +98,7 @@ locals {
   ]
   name = "osprey-registry-${var.environment}"
   required_services = toset([
-    "artifactregistry.googleapis.com", "run.googleapis.com", "compute.googleapis.com", "storage.googleapis.com",
+    "artifactregistry.googleapis.com", "run.googleapis.com", "compute.googleapis.com", "storage.googleapis.com", "cloudkms.googleapis.com",
     "secretmanager.googleapis.com", "iam.googleapis.com", "iamcredentials.googleapis.com",
     "sts.googleapis.com", "logging.googleapis.com", "monitoring.googleapis.com",
     "certificatemanager.googleapis.com"
@@ -112,5 +112,15 @@ variable "catalog_secret_versions" {
   validation {
     condition     = alltrue([for version in var.catalog_secret_versions : can(regex("^[1-9][0-9]*$", version))])
     error_message = "Pin each catalog credential file to a numeric secret version."
+  }
+}
+
+variable "login_kms_key" {
+  description = "Optional environment-specific Cloud KMS key resource for encrypting pending login verifiers."
+  type        = string
+  default     = null
+  validation {
+    condition     = var.login_kms_key == null || can(regex("^projects/[a-zA-Z0-9_-]+/locations/[a-zA-Z0-9_-]+/keyRings/[a-zA-Z0-9_-]+/cryptoKeys/[a-zA-Z0-9_-]+$", var.login_kms_key))
+    error_message = "Use a Cloud KMS CryptoKey resource name without a version suffix."
   }
 }

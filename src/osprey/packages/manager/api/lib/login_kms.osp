@@ -1,0 +1,68 @@
+namespace registry_api;
+import registry::Bytes
+import registry::Canonical
+import registry::Dsse
+import registry::Json
+import registry::JsonRead
+
+/// Encryption for the server-held OAuth verifier using a deployment-owned Cloud KMS key.
+module LoginKms {
+    let unavailable = "auth.encryption-unavailable"
+
+    fn component(s) = byteLength(s) > 0 && byteLength(s) <= 63 && Bytes::everyByte(s, fn(b) =>
+        Bytes::isAlnumIn(b, [Bytes::hyphen, Bytes::underscore]))
+
+    export fn validKey(key) = match split(key, "/") {
+        Success { value } => length(value) == 8
+            && (listGet(value, 0) ?: "") == "projects" && (listGet(value, 2) ?: "") == "locations"
+            && (listGet(value, 4) ?: "") == "keyRings" && (listGet(value, 6) ?: "") == "cryptoKeys"
+            && foldList([1, 3, 5, 7], true, fn(ok, index) => ok && component(listGet(value, index) ?: ""))
+        Error => false
+    }
+
+    fn b64(text) = {
+        let url = Dsse::base64Url(Bytes::ofString(text))
+        let standard = replace(replace(url, "-", "+") ?: url, "_", "/") ?: url
+        let leftover = byteLength(text) % 3
+        standard + (if leftover == 1 { "==" } else if leftover == 2 { "=" } else { "" })
+    }
+
+    fn json(reply: Supabase::Reply) = if reply.status == 200 && byteLength(reply.body) <= 8192 {
+        match Json::parse(reply.body) {
+            Success { value } => Success { value: value }
+            Error => Error { message: unavailable }
+        }
+    } else { Error { message: unavailable } }
+
+    fn field(doc, key) = JsonRead::text(JsonRead::field(doc, key))
+
+    fn token(doc) = {
+        let value = field(doc, "access_token")
+        if field(doc, "token_type") == "Bearer" && byteLength(value) > 0 && byteLength(value) <= 4096
+            && Bytes::everyByte(value, fn(b) => Bytes::isAlnumIn(b, [Bytes::dot, Bytes::hyphen, Bytes::underscore])) {
+            Success { value: value }
+        } else { Error { message: unavailable } }
+    }
+
+    fn ciphertext(doc) = {
+        let value = field(doc, "ciphertext")
+        if byteLength(value) > 0 && byteLength(value) <= 4096 && Bytes::everyByte(value, fn(b) => Bytes::isAlnumIn(b, [43, 47, 61])) {
+            Success { value: value }
+        } else { Error { message: unavailable } }
+    }
+
+    fn credentials() = andThen(perform Supabase::Provider.request("GET", "http://metadata.google.internal",
+        "/computeMetadata/v1/instance/service-accounts/default/token", "Metadata-Flavor: Google", ""), fn(reply) => andThen(json(reply), token))
+
+    fn encrypt(key, token, body) = andThen(perform Supabase::Provider.request("POST", "https://cloudkms.googleapis.com",
+        "/v1/${key}:encrypt", "Authorization: Bearer ${token}\r\nContent-Type: application/json", body), fn(reply) => andThen(json(reply), ciphertext))
+
+    fn payload(aad, verifier) = Canonical::serialize(Json::obj([
+        Json::member("additionalAuthenticatedData", Json::str(b64(aad))),
+        Json::member("plaintext", Json::str(b64(verifier)))
+    ]))
+
+    export fn seal(key, aad, verifier) = if validKey(key) && OAuth::challengeCode(verifier) == "" && byteLength(aad) <= 1024 {
+        andThen(payload(aad, verifier), fn(body) => andThen(credentials(), fn(token) => encrypt(key, token, body)))
+    } else { Error { message: unavailable } }
+}

@@ -17,6 +17,14 @@ resource "google_service_account" "runtime" {
   display_name = "Registry runtime; no deployment or migration authority"
 }
 
+resource "google_kms_crypto_key_iam_member" "login_verifier" {
+  count         = var.login_kms_key == null ? 0 : 1
+  crypto_key_id = var.login_kms_key
+  role          = "roles/cloudkms.cryptoKeyEncrypter"
+  member        = "serviceAccount:${google_service_account.runtime.email}"
+  depends_on    = [google_project_service.required]
+}
+
 resource "google_service_account" "deploy" {
   account_id   = "registry-${var.environment}-deploy"
   display_name = "Registry exact-SHA deployment identity"

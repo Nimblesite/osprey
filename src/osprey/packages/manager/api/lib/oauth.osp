@@ -10,7 +10,7 @@ module OAuth {
     /// Deployment-owned origins and a Supabase publishable key, never a service key.
     export type Config = { supabaseOrigin: string, callback: string, websiteOrigin: string, publishableKey: string }
 
-    let callbackPath = "/v1/auth/github/callback"
+    export let callbackPath = "/v1/auth/github/callback"
 
     fn unreserved(b) = Bytes::isAlnumIn(b, [Bytes::hyphen, Bytes::dot, Bytes::underscore, Bytes::tilde])
 

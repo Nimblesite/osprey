@@ -1,5 +1,11 @@
 namespace registry_live_tests;
 import registry_api::HostedService
+import registry_api::HostedLogin
+import registry_api::LoginKms
+import registry_api::OAuth
+import registry_api::Supabase
+import registry::Bytes
+import registry::Digests
 import registry::Policy
 import registry::Bundle
 import registry::Release
@@ -125,9 +131,10 @@ fn catalogRequest(port) = andThen(httpCreateClient("http://127.0.0.1:${port}", 5
         }
         Error => false
     }
+    let login = expectLogin(client, "X-Edge-Secret: fixture-edge-secret-at-least-32-bytes")
     let _closed = httpCloseClient(client)
     let browser = onFixture("if [ \"$REGISTRY_BROWSER_CHECK\" = 1 ]; then node scripts/packages/test-registry-preview.cjs --database-catalog ${port}; fi")
-    if observed && browser.status == 0 { Success { value: 0 } } else { catalogFailure(browser.stderr) }
+    if observed && login && browser.status == 0 { Success { value: 0 } } else { catalogFailure(browser.stderr) }
 })
 
 fn catalogListener() = {
@@ -135,7 +142,7 @@ fn catalogListener() = {
     let created = onFixture(fixtureClient + Host::shellWord(setup))
     let config = "{\"apiHost\":\"api.example.test\",\"websiteOrigin\":\"https://packages.example.test\",\"edgeSecret\":\"fixture-edge-secret-at-least-32-bytes\"}"
     let port = 20000 + random() % 15000
-    let served = andThen(HostedService::config(config), fn(policy) => HostedService::withListeners(policy { allowedHost: "127.0.0.1" }, "content.example.test", "127.0.0.1", port, port + 1, fixtureCatalog, fixtureSource, fn() => catalogRequest(port)))
+    let served = andThen(HostedService::config(config), fn(policy) => HostedService::withListeners(policy { allowedHost: "127.0.0.1" }, "content.example.test", "127.0.0.1", port, port + 1, fixtureCatalog, fixtureSource, openLogin, fn() => catalogRequest(port)))
     checkAll("restricted PostgreSQL login behind public HTTP ingress", [created.status == 0, (served ?: -1) == 0])
 }
 
@@ -222,6 +229,54 @@ fn restrictedLoginJourney() = {
         consumed.status == 0 && trim(consumed.stdout) == envelope,
         replay.status == 0 && trim(replay.stdout) == ""
     ])
+}
+
+let kmsKey = "projects/fixture/locations/global/keyRings/registry/cryptoKeys/browser"
+let fixtureCiphertext = "c2VhbGVkLWZpeHR1cmU="
+let fixtureOAuth = OAuth::Config { supabaseOrigin: "https://project.supabase.co",
+    callback: "https://api.example.test/v1/auth/github/callback", websiteOrigin: "https://packages.example.test", publishableKey: "sb_publishable_fixture" }
+
+fn kmsFixture() = handler Supabase::Provider {
+    request method base path headers body =>
+        if method == "GET" && base == "http://metadata.google.internal"
+            && path == "/computeMetadata/v1/instance/service-accounts/default/token" && headers == "Metadata-Flavor: Google" && body == "" {
+            Success { value: Supabase::Reply { status: 200, body: "{\"access_token\":\"fixture-access\",\"token_type\":\"Bearer\"}" } }
+        } else if method == "POST" && base == "https://cloudkms.googleapis.com" && path == "/v1/${kmsKey}:encrypt"
+            && headers == "Authorization: Bearer fixture-access\r\nContent-Type: application/json"
+            && startsWith(body, "{\"additionalAuthenticatedData\":\"") && contains(body, ",\"plaintext\":\"") {
+            Success { value: Supabase::Reply { status: 200, body: "{\"ciphertext\":\"${fixtureCiphertext}\"}" } }
+        } else { Error { message: "fixture.unexpected-encryption-request" } }
+}
+
+fn storedLogin(flowState, browser, envelope) = {
+    let result = loginRun(LoginFlow::storeScript(flowState, browser, envelope))
+    if result.status == 0 { Success { value: "" } } else { Error { message: "fixture.login-store-failed" } }
+}
+
+fn openLogin() = kmsFixture()(fn() => HostedLogin::start(fixtureOAuth, fn(aad, verifier) => LoginKms::seal(kmsKey, aad, verifier), storedLogin))
+
+fn flowSaved(cookie) = {
+    let joined = Bytes::before(drop(cookie, byteLength(HostedLogin::cookieName) + 1), ";")
+    let parts = split(joined, ".") ?: []
+    let flowState = listGet(parts, 0) ?: ""
+    let browser = listGet(parts, 1) ?: ""
+    let claim = LoginFlow::claimScript(Digests::hashText("registry.oauth.state.v1", flowState), Digests::hashText("registry.oauth.browser.v1", browser))
+    let result = loginRun(claim)
+    result.status == 0 && trim(result.stdout) == fixtureCiphertext
+}
+
+fn expectLogin(client, edge) = match httpGetResponse(client, HostedLogin::startPath, edge) {
+    Error => false
+    Success { value } => {
+        let location = httpResponseHeader(value, "location") ?: ""
+        let cookie = httpResponseHeader(value, "set-cookie") ?: ""
+        let valid = httpResponseStatus(value) == 303 && startsWith(location, fixtureOAuth.supabaseOrigin + "/auth/v1/authorize?")
+            && endsWith(cookie, "; Path=/; Max-Age=600; Secure; HttpOnly; SameSite=Lax")
+            && contains(location, "redirect_to=" + OAuth::component(fixtureOAuth.callback) + "&")
+            && !contains(location, fixtureCiphertext) && (httpResponseHeader(value, "cache-control") ?: "") == "no-store"
+        let _released = httpResponseFree(value)
+        valid && flowSaved(cookie)
+    }
 }
 
 fn suites() = {

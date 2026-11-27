@@ -39,6 +39,7 @@ fn suite() = {
     test("auth: reject insecure configuration", badConfiguration)
     ProviderTests::run(config())
     WebhookTests::run()
+    KmsTests::run()
     0
 }
 

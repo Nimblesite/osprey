@@ -1,0 +1,57 @@
+namespace registry_auth_tests;
+import registry_api::LoginKms
+import registry_api::OAuth
+import registry_api::HostedLogin
+import registry_api::Supabase
+
+/// The Cloud KMS wire contract fails before exposing a verifier on transport or identity errors.
+module KmsTests {
+    let key = "projects/fixture/locations/global/keyRings/registry/cryptoKeys/login"
+    let verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+    let aad = "test"
+    let token = "{\"access_token\":\"fixture-token\",\"token_type\":\"Bearer\"}"
+    let tokenHeader = "Authorization: Bearer fixture-token\r\nContent-Type: application/json"
+    let payload = "{\"additionalAuthenticatedData\":\"dGVzdA==\",\"plaintext\":\"ZEJqZnRKZVo0Q1ZQLW1COTJLMjd1aGJVSlUxcDFyX3dXMWdGV0ZPRWpYaw==\"}"
+
+    fn seal(metadata, code, ciphertext, resource) = {
+        let mock = handler Supabase::Provider {
+            request method base path headers body =>
+                if method == "GET" && base == "http://metadata.google.internal"
+                    && path == "/computeMetadata/v1/instance/service-accounts/default/token" && headers == "Metadata-Flavor: Google" {
+                    Success { value: Supabase::Reply { status: 200, body: metadata } }
+                } else if method == "POST" && base == "https://cloudkms.googleapis.com" && path == "/v1/${key}:encrypt"
+                    && headers == tokenHeader && body == payload {
+                    Success { value: Supabase::Reply { status: code, body: ciphertext } }
+                } else { Error { message: "fixture.unexpected-kms-request" } }
+        }
+        mock(fn() => LoginKms::seal(resource, aad, verifier))
+    }
+
+    let sealedReply = "{\"ciphertext\":\"YQ==\"}"
+
+    fn expectedResponses() = checkAll("KMS sends padded base64 and accepts only ciphertext from a successful response", [
+        (seal(token, 200, sealedReply, key) ?: "") == "YQ==",
+        (seal(token, 302, sealedReply, key) ?: "denied") == "denied",
+        (seal(token, 200, "{\"ciphertext\":\"<bad>\"}", key) ?: "denied") == "denied",
+        (seal("{\"access_token\":\"fixture-token\"}", 200, sealedReply, key) ?: "denied") == "denied",
+        !LoginKms::validKey(key + "/cryptoKeyVersions/1"),
+        !LoginKms::validKey("projects/fixture/locations/global/keyRings/registry/cryptoKeys/../key")
+    ])
+
+    fn failStore(_flow: string, _browser: string, _sealed: string) -> Result<string, string> = Error { message: "fixture.storage-failed" }
+
+    fn failedStart() = {
+        let config = OAuth::Config { supabaseOrigin: "https://project.supabase.co",
+            callback: "https://api.example.test/v1/auth/github/callback", websiteOrigin: "https://packages.example.test", publishableKey: "sb_publishable_fixture" }
+        let failure = "fixture.storage-failed"
+        match HostedLogin::start(config, fn(_aad, _verifier) => Success { value: "sealed" }, failStore) {
+            Error { message } => check("login refuses the redirect when storage fails", failure, message)
+            Success => check("login refuses the redirect when storage fails", true, false)
+        }
+    }
+
+    export fn run() = {
+        test("auth: Cloud KMS verifier encryption", expectedResponses)
+        test("auth: login redirect depends on durable storage", failedStart)
+    }
+}

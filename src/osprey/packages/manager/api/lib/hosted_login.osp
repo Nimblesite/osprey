@@ -1,0 +1,53 @@
+namespace registry_api;
+import registry::Digests
+import registry::Json
+import registry::JsonRead
+import registry_host::LoginFlow
+
+/// Initiate a GitHub sign-in only after its encrypted verifier is durably stored.
+module HostedLogin {
+    export let startPath = "/v1/auth/github/start"
+    export let cookieName = "__Host-registry-flow"
+    let configError = "auth.configuration"
+
+    export type Redirect = { location: string, cookie: string }
+    export type Settings = { oauth: OAuth::Config, key: string }
+
+    fn field(doc, key) = JsonRead::text(JsonRead::field(doc, key))
+
+    export fn configure(source, policy: HostedRequest::Policy) = {
+        let doc = Json::parse(source) ?: Json::Null
+        let oauth = OAuth::Config { supabaseOrigin: field(doc, "supabaseOrigin"), callback: "https://${policy.allowedHost}" + OAuth::callbackPath,
+            websiteOrigin: policy.allowedOrigin, publishableKey: field(doc, "supabasePublishableKey") }
+        let key = field(doc, "loginKmsKey")
+        let disabled = key == "" && oauth.supabaseOrigin == "" && oauth.publishableKey == ""
+        if disabled || (LoginKms::validKey(key) && OAuth::configCode(oauth) == "") { Success { value: Settings { oauth: oauth, key: key } } }
+        else { Error { message: configError } }
+    }
+
+    fn cookie(flowState, browser) = "${cookieName}=${flowState}.${browser}; Path=/; Max-Age=600; Secure; HttpOnly; SameSite=Lax"
+
+    /// The flow, browser binding and PKCE verifier are independently random.
+    export fn start(oauth: OAuth::Config, seal, store) = {
+        let flowState = OAuth::nonce()
+        let browser = OAuth::nonce()
+        let verifier = OAuth::nonce()
+        let stateDigest = Digests::hashText("registry.oauth.state.v1", flowState)
+        let browserDigest = Digests::hashText("registry.oauth.browser.v1", browser)
+        andThen(OAuth::authorizeUrl(oauth, OAuth::challenge(verifier)), fn(url) =>
+            saved(oauth.callback, stateDigest, browserDigest, verifier, url, cookie(flowState, browser), seal, store))
+    }
+
+    fn saved(callback, stateDigest, browserDigest, verifier, url, flowCookie, seal, store) =
+        andThen(seal("registry.oauth.verifier.v1\n${callback}\n${stateDigest}\n${browserDigest}", verifier), fn(envelope) =>
+            andThen(store(stateDigest, browserDigest, envelope), fn(_receipt) =>
+                Success { value: Redirect { location: url, cookie: flowCookie } }))
+
+    export fn unavailable() = Error { message: "auth.unavailable" }
+
+    export fn native(config: Settings) = {
+        fn() => if config.key == "" { unavailable() } else {
+            ProviderNative::transport()(fn() => start(config.oauth, fn(aad, verifier) => LoginKms::seal(config.key, aad, verifier), LoginFlow::save))
+        }
+    }
+}

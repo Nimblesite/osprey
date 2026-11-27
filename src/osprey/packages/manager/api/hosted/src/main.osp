@@ -2,11 +2,14 @@ namespace registry_api;
 import registry::Policy
 import registry_host::Native
 
+fn serve(source, policy) = andThen(HostedService::contentHost(source, policy), fn(host) =>
+    andThen(HostedLogin::configure(source, policy), fn(login) => HostedService::serve(policy, host, HostedLogin::native(login))))
+
 /// Secret Manager mounts runtime.json under /run/registry.
 /// No folder-registry data is loaded into the hosted process [PACKAGE-HOSTED-TOPOLOGY].
 fn run() = match readFile("/run/registry/runtime.json") {
     Error => Error { message: "hosted.config-unavailable" }
-    Success { value } => andThen(HostedService::config(value), fn(policy) => andThen(HostedService::contentHost(value, policy), fn(host) => HostedService::serve(policy, host)))
+    Success { value } => andThen(HostedService::config(value), fn(policy) => serve(value, policy))
 }
 
 fn report() = match run() {
