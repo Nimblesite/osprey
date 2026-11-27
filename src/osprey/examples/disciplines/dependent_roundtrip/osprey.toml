@@ -9,3 +9,7 @@ entry = "main.ospml"
 
 [modules]
 allow_wildcard_imports = false
+
+# The editor parity test reads this warning as proof that analysis ran to completion.
+[lints]
+unexampled-export = "warn"
