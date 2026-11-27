@@ -159,7 +159,7 @@ _invalidate_ci_stamp:
 
 .PHONY: _ci-contracts
 _ci-contracts:
-	node --test scripts/ci/ci-scope.test.mjs scripts/ci/preflight.test.mjs
+	node --test scripts/ci/ci-scope.test.mjs scripts/ci/preflight.test.mjs scripts/ci/verify-threshold-ratchet.test.mjs
 
 _runtime_wasm _test_wasm_goldens: export PATH := $(WASM_PATH_PREFIX)$(PATH)
 

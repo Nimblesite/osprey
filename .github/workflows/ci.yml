@@ -286,6 +286,11 @@ jobs:
       - name: Dead-code gate intact
         run: node scripts/ci/verify-no-dead-code.mjs
 
+      - name: Coverage thresholds only go up
+        run: |
+          git fetch --no-tags --depth=1 origin main
+          node scripts/ci/verify-threshold-ratchet.mjs FETCH_HEAD
+
       - name: Package licence bundles intact
         run: node scripts/packages/verify-package-licenses.mjs
 
