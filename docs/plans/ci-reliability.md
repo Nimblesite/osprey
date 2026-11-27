@@ -22,7 +22,7 @@ Root-cause fixes only: no retries, no wider timeouts hiding a race, no skipped t
 - [ ] `package_matrix.rs` (`src/toolchain/crates/osprey-cli/tests/common/`) still requires genuine worker overlap within 2 s: keep the ordering assertions deterministic and make the overlap observation robust to an oversubscribed runner without silently weakening the scheduler contract.
 - [ ] `bounded.rs` in the same folder polls process-group RSS by spawning `ps` every 50 ms: reduce watcher overhead and keep every caller's deadline configurable for cold or loaded CI runners.
 - [ ] `agent_check_budget.rs` gates lowering growth on a wall-clock ratio: count IR growth instead.
-- [ ] VS Code `profiler-cpu-sessions.test.ts` and `profiler-cpu-e2e.test.ts` sleep before asserting samples arrived and `debug-panel.test.ts` sleeps 30 ms before asserting an async update: wait for the samples and UI state.
+- [x] VS Code `profiler-cpu-sessions.test.ts` and `profiler-cpu-e2e.test.ts` sleep before asserting samples arrived and `debug-panel.test.ts` sleeps 30 ms before asserting an async update: wait for the samples and UI state. (done: each sleep polls the listed session or the panel state it asserts)
 - [ ] Multi-shot review leftovers [MULTI-HANDLE-MANY]: compile time grows about cubically with many resumes in one arm and overflows the Rust stack near 10,000; resume is capped near 512 by the syntax nesting limit; the native stack overflows at a depth of 8,000; the false rejections of a closure built from resume results and of a handler value passed as a parameter returned when `113404804` was reverted (`7a4d8b04e`). Check: a named regression in `src/osprey/tests/regressions/effects/` for each.
 
 ## Job deadlines and capacity

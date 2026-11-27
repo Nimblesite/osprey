@@ -9,6 +9,7 @@
 import * as assert from "node:assert/strict";
 import * as vscode from "vscode";
 import { flamegraphPanelState, lastProfileResult, profilerStatusText, processesViewState } from "@nimblesite/lsp-profiler-ui";
+import { pollUntilResult } from "@nimblesite/lsp-profiler-ui/out/src/testing/webview-contract-helpers";
 import type { ProfileReport, ProfileSessionList, StartProfileResult } from "@nimblesite/lsp-profiler-ui/out/src/wire-generated";
 import {
   activateWithServer,
@@ -29,7 +30,6 @@ import {
   waitFor,
 } from "./profiler-kit";
 
-const SAMPLE_WINDOW_MS = 2_000;
 const STOP_MS = 60_000;
 
 async function start(pid: number, extra: Record<string, unknown> = {}): Promise<StartProfileResult> {
@@ -49,9 +49,15 @@ function ospreyCpu(): { live_progress: boolean } | undefined {
   return profilerStore().capabilities.value?.runtimes.find((r) => r.id === "osprey")?.cpu;
 }
 
-async function sleep(ms: number): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, ms));
+type Listed = ProfileSessionList["sessions"][number] | undefined;
+
+/** Wait on real state, never the clock: poll the listing until `until` accepts the session. */
+async function listedWhen(sessionId: string, until: (session: Listed) => boolean, what: string): Promise<Listed> {
+  return pollUntilResult({ fn: async () => (await sessions()).find((s) => s.session_id === sessionId), until,
+    timeoutMs: STOP_MS / 2, description: what });
 }
+
+const sampling = (session: Listed): boolean => (session?.sample_count ?? 0) > 0;
 
 const hot = (report: ProfileReport): boolean => report.hot_functions.some((fn) => fn.name === HOT_FUNCTION);
 
@@ -78,8 +84,8 @@ suite("CPU sessions — list, snapshot and presets over the wire", () => {
     assert.equal(listed.runtime, "osprey");
     assert.equal(listed.runtime_version, started.runtime_version);
     assert.ok(!Number.isNaN(Date.parse(listed.started_at)), `RFC 3339 start: ${listed.started_at}`);
-    await sleep(SAMPLE_WINDOW_MS);
-    const later = (await sessions()).find((s) => s.session_id === started.session_id);
+    const later = await listedWhen(started.session_id, (s) => sampling(s) && (s?.duration_secs ?? 0) >= 1,
+      "a second of live samples");
     assert.ok(later, "still listed");
     assert.ok(later.duration_secs >= 1, `duration advances: ${later.duration_secs}`);
     // The endpoint streams a batch every 100 ms, so the live count is real.
@@ -95,13 +101,13 @@ suite("CPU sessions — list, snapshot and presets over the wire", () => {
     this.timeout(STOP_MS);
     const { target } = live;
     const started = await start(target.pid);
-    await sleep(SAMPLE_WINDOW_MS);
+    await listedWhen(started.session_id, sampling, "the first live samples");
     const snap = await execute<ProfileReport>("cpu.snapshot", { session_id: started.session_id });
     assert.equal(snap.session_id, started.session_id);
     assert.ok(snap.total_samples > 0, `snapshot has samples: ${snap.total_samples}`);
     assert.ok(hot(snap), "the snapshot already names the hot function");
     assert.ok((await sessions()).some((s) => s.session_id === started.session_id), "the session is still listed after a snapshot");
-    await sleep(SAMPLE_WINDOW_MS);
+    await listedWhen(started.session_id, (s) => (s?.sample_count ?? 0) > snap.total_samples, "samples past the snapshot");
     const report = await stop(started.session_id);
     assert.ok(report.total_samples > snap.total_samples, `the final report keeps sampling past the snapshot: ${report.total_samples} > ${snap.total_samples}`);
   });
@@ -120,7 +126,7 @@ suite("CPU sessions — list, snapshot and presets over the wire", () => {
     test(`preset ${preset} samples at ${rate} Hz`, async function () {
       this.timeout(STOP_MS);
       const started = await start(live.target.pid, { preset });
-      await sleep(SAMPLE_WINDOW_MS / 2);
+      await listedWhen(started.session_id, sampling, `${preset} samples`);
       assert.equal((await stop(started.session_id)).sample_rate, rate);
     });
   }
@@ -128,7 +134,7 @@ suite("CPU sessions — list, snapshot and presets over the wire", () => {
   test("an explicit sample rate overrides the preset", async function () {
     this.timeout(STOP_MS);
     const started = await start(live.target.pid, { preset: "detailed", sample_rate: 77 });
-    await sleep(SAMPLE_WINDOW_MS / 2);
+    await listedWhen(started.session_id, sampling, "77 Hz samples");
     assert.equal((await stop(started.session_id)).sample_rate, 77);
   });
 
@@ -153,8 +159,7 @@ suite("CPU sessions — list, snapshot and presets over the wire", () => {
   test("a duration ends the session by itself and its report is kept for stop", async function () {
     this.timeout(STOP_MS);
     const started = await start(live.target.pid, { duration_secs: 1 });
-    await sleep(SAMPLE_WINDOW_MS * 2);
-    assert.deepEqual((await sessions()).filter((s) => s.session_id === started.session_id), [], "the timed session ended by itself");
+    assert.equal(await listedWhen(started.session_id, (s) => s === undefined, "the timed session ending by itself"), undefined);
     const report = await stop(started.session_id);
     assert.equal(report.session_id, started.session_id);
     assert.ok(report.total_samples > 0, "the kept report has the samples it took");
@@ -183,7 +188,8 @@ suite("CPU sessions — concurrency and a program that dies", () => {
     const b = await start(second.pid);
     assert.notEqual(a.session_id, b.session_id);
     assert.deepEqual((await sessions()).map((s) => s.pid).sort((x, y) => x - y), [first.pid, second.pid].sort((x, y) => x - y));
-    await sleep(SAMPLE_WINDOW_MS);
+    await listedWhen(a.session_id, sampling, "the first program's samples");
+    await listedWhen(b.session_id, sampling, "the second program's samples");
     const reportA = await stop(a.session_id);
     assert.equal(reportA.pid, first.pid);
     assert.deepEqual((await sessions()).map((s) => s.session_id), [b.session_id]);
@@ -196,7 +202,7 @@ suite("CPU sessions — concurrency and a program that dies", () => {
     this.timeout(STOP_MS + BUILD_MS + PROCESS_START_MS);
     const victim = await Target.start("conc_victim");
     const started = await start(victim.pid);
-    await sleep(SAMPLE_WINDOW_MS);
+    await listedWhen(started.session_id, sampling, "samples before the kill");
     victim.stop();
     await waitFor(() => victim.alive(), (alive) => !alive, LSP_RESPONSE_MS, "the victim exits");
     const report = await stop(started.session_id);

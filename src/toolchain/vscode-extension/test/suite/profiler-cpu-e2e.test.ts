@@ -75,8 +75,9 @@ suite("CPU profiling — live end-to-end", () => {
     assert.equal(started.pid, live.target.pid, "the session names its PID");
     assert.ok(started.runtime_version.length > 0, "a runtime version from the endpoint");
     assert.match(started.started_at, /^\d{4}-\d{2}-\d{2}T/, "an RFC 3339 start time");
-    await new Promise((resolve) => setTimeout(resolve, 2_500));
-    const now = await listed(started.session_id);
+    const now = await pollUntilResult({ fn: async () => listed(started.session_id),
+      until: (entry) => (entry?.sample_count ?? 0) > 0 && (entry?.duration_secs ?? 0) > 0,
+      timeoutMs: STOP_MS, description: "the live session counting samples" });
     assert.ok(now && now.sample_count > 0 && now.duration_secs > 0, `the live session counts: ${JSON.stringify(now)}`);
     const snapshot = await execute<ProfileReport>("cpu.snapshot", { session_id: started.session_id });
     assert.equal(snapshot.session_id, started.session_id, "the report names its session");
