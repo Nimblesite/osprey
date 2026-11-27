@@ -82,14 +82,22 @@ module LoginKms {
         else { verifierOf(encoded) }
     }
 
-    fn verifierOf(encoded) = match Dsse::decodeBase64Url(take(encoded, 58) |> fn(text) => replace(replace(text, "+", "-") ?: text, "/", "_") ?: text) {
-        Error => Error { message: unavailable }
-        Success { value } => {
-            let clear = join(mapList(value, fn(b) => fromCodePoint(b) ?: ""), "")
-            if OAuth::challengeCode(clear) == "" && b64(clear) == encoded { Success { value: clear } }
-            else { Error { message: unavailable } }
-        }
+    fn ascii(bytes, encoded) = if Dsse::base64(bytes) == encoded && foldList(bytes, true, fn(ok, b) => ok && b > 0 && b < 128) {
+        Success { value: join(mapList(bytes, fn(b) => fromCodePoint(b) ?: ""), "") }
+    } else { Error { message: unavailable } }
+
+    fn unpadded(encoded) = {
+        let text = Bytes::before(encoded, "=")
+        replace(replace(text, "+", "-") ?: text, "/", "_") ?: text
     }
+
+    fn decodedText(encoded) = match Dsse::decodeBase64Url(unpadded(encoded)) {
+        Error => Error { message: unavailable }
+        Success { value } => ascii(value, encoded)
+    }
+
+    fn verifierOf(encoded) = andThen(decodedText(encoded), fn(clear) =>
+        if OAuth::challengeCode(clear) == "" { Success { value: clear } } else { Error { message: unavailable } })
 
     fn decryptPayload(aad, envelope) = Canonical::serialize(Json::obj([
         Json::member("additionalAuthenticatedData", Json::str(b64(aad))),
@@ -99,5 +107,21 @@ module LoginKms {
     /// KMS authenticates the callback and both browser-bound digests before disclosing the verifier.
     export fn unseal(key, aad, envelope) = if validKey(key) && envelopeOk(4096, envelope) && byteLength(aad) <= 1024 {
         andThen(decryptPayload(aad, envelope), fn(body) => submit(key, "decrypt", body, 8192, plaintext))
+    } else { Error { message: unavailable } }
+
+    fn accessToken(doc) = {
+        let token = field(doc, "accessToken")
+        if token == "" || byteLength(token) > 16384 || !Bytes::everyByte(token, fn(b) => b > 32 && b < 127) {
+            Error { message: unavailable }
+        } else { Success { value: token } }
+    }
+
+    fn openedSession(doc) = andThen(decodedText(field(doc, "plaintext")), fn(clear) =>
+        if byteLength(clear) > 32768 { Error { message: unavailable } }
+        else { andThen(Json::parse(clear), accessToken) })
+
+    /// Open a cookie-bound envelope for access-token revalidation on the API host.
+    export fn openSession(key, aad, envelope) = if validKey(key) && envelopeOk(49152, envelope) && byteLength(aad) <= 1024 {
+        andThen(decryptPayload(aad, envelope), fn(body) => submit(key, "decrypt", body, 50176, openedSession))
     } else { Error { message: unavailable } }
 }

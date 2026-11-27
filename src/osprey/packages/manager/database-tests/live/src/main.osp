@@ -143,10 +143,10 @@ fn catalogRequest(port) = andThen(httpCreateClient("http://127.0.0.1:${port}", 5
 
 fn catalogListener() = {
     let setup = "CREATE ROLE registry_catalog_reader LOGIN; GRANT USAGE ON SCHEMA registry TO registry_catalog_reader; GRANT SELECT ON registry.public_catalog TO registry_catalog_reader; INSERT INTO registry.public_catalog VALUES(1,now(),now()+interval '10 minutes','${catalogRow}')"
-    let created = onFixture(fixtureClient + Host::shellWord(setup + ";" + issuerGrants + fixtureBrowserBinding()))
+    let created = onFixture(fixtureClient + Host::shellWord(setup + ";" + issuerGrants() + runtimeGrants() + fixtureBrowserBinding()))
     let config = "{\"apiHost\":\"api.example.test\",\"websiteOrigin\":\"https://packages.example.test\",\"edgeSecret\":\"fixture-edge-secret-at-least-32-bytes\"}"
     let port = 20000 + random() % 15000
-    let served = andThen(HostedService::config(config), fn(policy) => HostedService::withListeners(policy { allowedHost: "127.0.0.1" }, "content.example.test", "127.0.0.1", port, port + 1, fixtureCatalog, fixtureSource, openLogin, loginCallback, fn() => catalogRequest(port)))
+    let served = andThen(HostedService::config(config), fn(policy) => HostedService::withListeners(policy { allowedHost: "127.0.0.1" }, "content.example.test", "127.0.0.1", port, port + 1, fixtureCatalog, fixtureSource, openLogin, loginCallback, readBrowser, fn() => catalogRequest(port)))
     checkAll("restricted PostgreSQL login behind public HTTP ingress", [created.status == 0, (served ?: -1) == 0])
 }
 
@@ -161,7 +161,7 @@ fn sessionStatement(name, types, sql) = "PREPARE ${name}(${types}) AS ${sql};"
 fn sessionSql() = join([
     sessionSetup,
     sessionStatement("issue", "text,text,uuid,text,text", BrowserSessions::issue()),
-    sessionStatement("lookup", "text", BrowserSessions::lookup),
+    sessionStatement("lookup", "text", BrowserSessions::lookup()),
     sessionStatement("touch", "text,text,uuid,text", BrowserSessions::touch()),
     sessionStatement("revoke", "text", BrowserSessions::revoke)
 ], "")
@@ -188,9 +188,15 @@ fn sessionRun(suffix, expectedLines, expected) = {
 }
 
 let issuerRole = "registry_session_issuer"
-let issuerGrants = "CREATE ROLE ${issuerRole} LOGIN NOSUPERUSER NOBYPASSRLS; GRANT USAGE ON SCHEMA registry TO ${issuerRole}; GRANT SELECT(id,principal_id,issuer,provider,provider_subject,auth_subject,state) ON registry.auth_bindings TO ${issuerRole}; GRANT SELECT(id,kind,state,credential_epoch) ON registry.principals TO ${issuerRole}; GRANT INSERT(id,cookie_digest,binding_id,principal_id,credential_epoch,token_envelope,started_at,last_used_at), SELECT(id) ON registry.browser_sessions TO ${issuerRole};"
+let runtimeRole = "registry_session_runtime"
 
-fn issuerScope(issuer, cookie) = sessionSql() + issuerGrants + "SET LOCAL SESSION AUTHORIZATION ${issuerRole}; SET LOCAL registry.session_issuer = '${issuer}'; SET LOCAL registry.session_subject = '${sessionSubject}'; SET LOCAL registry.session_provider = '421'; SET LOCAL registry.session_digest = '${cookie}';"
+fn fixtureIdentityGrants(role) = "CREATE ROLE ${role} LOGIN NOSUPERUSER NOBYPASSRLS; GRANT USAGE ON SCHEMA registry TO ${role}; GRANT SELECT(id,principal_id,issuer,provider,provider_subject,auth_subject,state) ON registry.auth_bindings TO ${role}; GRANT SELECT(id,kind,state,credential_epoch) ON registry.principals TO ${role};"
+
+fn issuerGrants() = fixtureIdentityGrants(issuerRole) + "GRANT INSERT(id,cookie_digest,binding_id,principal_id,credential_epoch,token_envelope,started_at,last_used_at), SELECT(id) ON registry.browser_sessions TO ${issuerRole};"
+
+fn runtimeGrants() = fixtureIdentityGrants(runtimeRole) + "GRANT SELECT(id,cookie_digest,binding_id,principal_id,credential_epoch,token_envelope,started_at,last_used_at,revoked_at), UPDATE(last_used_at) ON registry.browser_sessions TO ${runtimeRole};"
+
+fn issuerScope(issuer, cookie) = sessionSql() + issuerGrants() + "SET LOCAL SESSION AUTHORIZATION ${issuerRole}; SET LOCAL registry.session_issuer = '${issuer}'; SET LOCAL registry.session_subject = '${sessionSubject}'; SET LOCAL registry.session_provider = '421'; SET LOCAL registry.session_digest = '${cookie}';"
 
 let issuerOrigin = "https://supabase.example.test/auth/v1"
 fn issuerDigest() = "sha256:" + (repeat("1", 64) ?: "")
@@ -217,7 +223,7 @@ fn issueWithRole(client, subject, digest, envelope) = match BrowserSessions::iss
 }
 
 fn sessionIssuerConnection() = {
-    let setup = issuerGrants + " SET search_path=registry,pg_catalog; INSERT INTO principals(id,kind,state,credential_epoch,created_at) VALUES (md5('person1')::uuid,'human','active',1,now()); " + sessionSetup
+    let setup = issuerGrants() + " SET search_path=registry,pg_catalog; INSERT INTO principals(id,kind,state,credential_epoch,created_at) VALUES (md5('person1')::uuid,'human','active',1,now()); " + sessionSetup
     let created = onFixture(fixtureClient + Host::shellWord(setup))
     let envelope = "fixture-sealed-opaque-envelope"
     let wrong = issueWithRole(issuerClient, "11111111-1111-4111-8111-111111111111", issuerDigest(), envelope)
@@ -314,6 +320,9 @@ fn kmsFixture() = handler Supabase::Provider {
             && headers == fixtureKmsHeaders && startsWith(body, aadField)
             && endsWith(body, ",\"plaintext\":\"${sessionPlaintext}\"}") {
             Success { value: Supabase::Reply { status: 200, body: "{\"ciphertext\":\"${sessionCiphertext}\"}" } }
+        } else if method == "POST" && base == fixtureKmsOrigin && path == "/v1/${sessionKmsKey}:decrypt"
+            && headers == fixtureKmsHeaders && startsWith(body, aadField) && endsWith(body, ",\"ciphertext\":\"${sessionCiphertext}\"}") {
+            Success { value: Supabase::Reply { status: 200, body: "{\"plaintext\":\"${sessionPlaintext}\"}" } }
         } else if method == "POST" && base == fixtureOAuth.supabaseOrigin && path == "/auth/v1/token?grant_type=pkce"
             && body == "{\"auth_code\":\"fixture-callback-code\",\"code_verifier\":\"dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk\"}" {
             Success { value: Supabase::Reply { status: 200, body: "{\"access_token\":\"fixture-provider-access\",\"refresh_token\":\"fixture-provider-refresh\",\"expires_in\":600}" } }
@@ -345,6 +354,16 @@ fn loginCallback(path, headers) = kmsFixture()(fn() => andThen(HostedLogin::call
     claimLogin, fn(aad, envelope) => LoginKms::unseal(kmsKey, aad, envelope)), fn(identity) =>
         HostedLogin::issue(fixtureOAuth, identity, fn(aad, session) => LoginKms::sealSession(sessionKmsKey, aad, session), storeBrowser)))
 
+fn browserRuntime(script) = andThen(script, fn(value) => {
+    let result = fixtureScript("psql -XqAt --no-password -U ${runtimeRole} -v ON_ERROR_STOP=1", value)
+    if result.status == 0 { Success { value: trim(result.stdout) } } else { Error { message: "fixture.session-runtime" } }
+})
+
+fn readBrowser(token) = kmsFixture()(fn() => HostedLogin::readSession(fixtureOAuth, token,
+    fn(digest) => browserRuntime(BrowserSessions::readScript(digest)), fn(aad, envelope) => LoginKms::openSession(sessionKmsKey, aad, envelope),
+    fn(access) => Supabase::verify(fixtureOAuth, access), fn(digest, issuer, subject, github) =>
+        browserRuntime(BrowserSessions::touchScript(digest, issuer, subject, github))))
+
 fn callbackBody(client, path, headers, status) = match httpGetResponse(client, path, headers) {
     Error => ""
     Success { value } => {
@@ -366,6 +385,35 @@ fn sessionExists(cookie) = {
         && endsWith(cookie, "; Path=/; Max-Age=43200; Secure; HttpOnly; SameSite=Lax") && found.status == 0 && trim(found.stdout) == sessionCiphertext
 }
 
+fn sessionReply(client, headers, status, marker) = match httpGetResponse(client, "/v1/auth/session", headers) {
+    Error => false
+    Success { value } => {
+        let body = httpResponseBody(value) ?: ""
+        let ok = httpResponseStatus(value) == status && contains(body, marker) && !contains(body, "fixture-provider-")
+            && (httpResponseHeader(value, cacheControl) ?: "") == "no-store"
+        let _released = httpResponseFree(value)
+        ok
+    }
+}
+
+fn sessionJourney(client, browser, cookie) = {
+    let edge = Bytes::before(browser, "\r\nCookie:")
+    let origin = "\r\nOrigin: " + fixtureOAuth.websiteOrigin
+    let request = edge + origin + "\r\nCookie: "
+    let signed = request + Bytes::before(cookie, ";")
+    let active = sessionReply(client, signed, 200, "\"authenticated\":true")
+    let unknown = sessionReply(client, request + "${HostedLogin::sessionCookieName}=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", 401, HostedLogin::sessionRequired)
+    let suspended = setFixturePrincipal("suspended")
+    let denied = sessionReply(client, signed, 401, HostedLogin::sessionRequired)
+    let restored = setFixturePrincipal("active")
+    active && unknown && suspended && denied && restored
+}
+
+fn setFixturePrincipal(status) = {
+    let changed = onFixture(fixtureClient + Host::shellWord("UPDATE registry.principals SET state='${status}' WHERE id=md5('hosted-browser')::uuid"))
+    changed.status == 0
+}
+
 fn successfulCallback(client, path, browser) = match httpGetResponse(client, path, browser) {
     Error => false
     Success { value } => {
@@ -374,7 +422,7 @@ fn successfulCallback(client, path, browser) = match httpGetResponse(client, pat
             && (httpResponseHeader(value, "location") ?: "") == fixtureOAuth.websiteOrigin + "/upload/"
             && (httpResponseHeader(value, "referrer-policy") ?: "") == "no-referrer" && (httpResponseHeader(value, cacheControl) ?: "") == "no-store"
         let _released = httpResponseFree(value)
-        safe && sessionExists(cookie)
+        safe && sessionExists(cookie) && sessionJourney(client, browser, cookie)
     }
 }
 

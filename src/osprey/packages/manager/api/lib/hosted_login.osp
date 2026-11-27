@@ -109,8 +109,19 @@ module HostedLogin {
 
     export let sessionUnavailable = "auth.session-unavailable"
     export let unapproved = "auth.session-unapproved"
+    export let sessionRequired = "auth.session-required"
 
     export fn sessionDigest(token) = Digests::hashText("registry.browser.session.cookie.v1", token)
+
+    fn issuerOf(oauth) = oauth.supabaseOrigin + "/auth/v1"
+
+    fn sessionContext(oauth, digest) = "registry.browser.session.tokens.v1\n${issuerOf(oauth)}\n${digest}"
+
+    export fn browserToken(headers) = {
+        let cookies = HostedHeaders::find(headers, "cookie") ?: ""
+        let token = HostedCookies::foundValue(HostedCookies::select(cookies, sessionCookieName))
+        if OAuth::challengeCode(token) == "" { token } else { "" }
+    }
 
     fn sessionCookie(token) = "${sessionCookieName}=${token}; Path=/; Max-Age=43200; Secure; HttpOnly; SameSite=Lax"
 
@@ -123,11 +134,9 @@ module HostedLogin {
     export fn issue(oauth, session: Supabase::Session, seal, save) = {
         let token = OAuth::nonce()
         let digest = sessionDigest(token)
-        let issuer = oauth.supabaseOrigin + "/auth/v1"
-        let context = "registry.browser.session.tokens.v1\n${issuer}\n${digest}"
         if OAuth::configCode(oauth) != "" { Error { message: configError } }
-        else { andThen(seal(context, session), fn(envelope) => andThen(
-            save(digest, issuer, session.identity.authSubject, session.identity.githubId, envelope), fn(id) => stored(oauth, token, id))) }
+        else { andThen(seal(sessionContext(oauth, digest), session), fn(envelope) => andThen(
+            save(digest, issuerOf(oauth), session.identity.authSubject, session.identity.githubId, envelope), fn(id) => stored(oauth, token, id))) }
     }
 
     fn issueNative(config, session) = if config.sessionKey == "" { Error { message: sessionUnavailable } }
@@ -137,4 +146,31 @@ module HostedLogin {
     export fn nativeCallback(config: Settings, path, headers) =
         if config.key == "" { unavailable() }
         else { ProviderNative::transport()(fn() => andThen(verifiedNative(config, path, headers), fn(session) => issueNative(config, session))) }
+
+    fn confirmed(oauth, token, digest, identity: Supabase::Identity, revalidate) =
+        andThen(revalidate(digest, issuerOf(oauth), identity.authSubject, identity.githubId), fn(row) =>
+            if Bytes::canonicalUuid(Bytes::before(row, "|")) { Success { value: Digests::hashText("registry.browser.session.csrf.v1", token) } }
+            else { Error { message: sessionRequired } })
+
+    /// A cookie proves no authority until the sealed access token and active database binding both pass.
+    export fn readSession(oauth, token, load, open, verify, revalidate) = {
+        let digest = sessionDigest(token)
+        andThen(load(digest), fn(envelope) => if envelope == "" { Error { message: sessionRequired } }
+            else { andThen(open(sessionContext(oauth, digest), envelope), fn(access) =>
+                andThen(verify(access), fn(identity) => confirmed(oauth, token, digest, identity, revalidate))) })
+    }
+
+    fn matchedSubject(oauth, access, subject) = andThen(Supabase::verify(oauth, access), fn(identity) =>
+        if subject == identity.authSubject { Success { value: identity } } else { Error { message: sessionRequired } })
+
+    fn recheckAccess(oauth, access) = andThen(now(), fn(seconds) => match Jwt::verify(oauth, seconds, access) {
+        Success { value } => matchedSubject(oauth, access, value)
+        Error { message } => if message == "auth.jwt-invalid" || message == "auth.jwt-signature" { Error { message: sessionRequired } }
+            else { Error { message: sessionUnavailable } }
+    })
+
+    export fn nativeRead(config: Settings, token) = if config.sessionKey == "" { unavailable() }
+        else { ProviderNative::transport()(fn() => readSession(config.oauth, token, BrowserSessions::read,
+            fn(context, envelope) => LoginKms::openSession(config.sessionKey, context, envelope),
+            fn(access) => recheckAccess(config.oauth, access), BrowserSessions::revalidate)) }
 }

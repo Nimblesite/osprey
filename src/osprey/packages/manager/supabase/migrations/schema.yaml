@@ -19,12 +19,13 @@ tables:
       enabled: true
       forced: true
       policies:
-        - name: session_issuer_principal
+        - name: session_identity_principal
           permissive: true
           operations: [Select]
           roles: []
           using: >-
-            current_setting('session_authorization') = 'registry_session_issuer'
+            (current_setting('session_authorization') = 'registry_session_issuer'
+            OR current_setting('session_authorization') = 'registry_session_runtime')
             AND kind = 'human' AND state = 'active'
             AND EXISTS (SELECT 1 FROM registry.auth_bindings b WHERE b.principal_id = principals.id)
 
@@ -50,12 +51,13 @@ tables:
       enabled: true
       forced: true
       policies:
-        - name: session_issuer_binding
+        - name: session_identity_binding
           permissive: true
           operations: [Select]
           roles: []
           using: >-
-            current_setting('session_authorization') = 'registry_session_issuer'
+            (current_setting('session_authorization') = 'registry_session_issuer'
+            OR current_setting('session_authorization') = 'registry_session_runtime')
             AND provider = 'github' AND state = 'active'
             AND issuer = current_setting('registry.session_issuer')
             AND auth_subject::text = current_setting('registry.session_subject')
@@ -357,3 +359,26 @@ tables:
           operations: [Insert]
           roles: []
           withCheck: "started_at = statement_timestamp() AND last_used_at = started_at AND revoked_at IS NULL"
+        - name: session_runtime_read
+          permissive: true
+          operations: [Select]
+          roles: []
+          using: >-
+            current_setting('session_authorization') = 'registry_session_runtime'
+            AND cookie_digest = current_setting('registry.session_digest') AND revoked_at IS NULL
+            AND started_at <= statement_timestamp() AND started_at > statement_timestamp() - interval '12 hours'
+            AND last_used_at <= clock_timestamp() AND last_used_at > statement_timestamp() - interval '30 minutes'
+        - name: session_runtime_touch
+          permissive: true
+          operations: [Update]
+          roles: []
+          using: &session_runtime_identity >-
+            current_setting('session_authorization') = 'registry_session_runtime'
+            AND cookie_digest = current_setting('registry.session_digest') AND revoked_at IS NULL
+            AND started_at <= statement_timestamp() AND started_at > statement_timestamp() - interval '12 hours'
+            AND last_used_at <= clock_timestamp() AND last_used_at > statement_timestamp() - interval '30 minutes'
+            AND EXISTS (SELECT 1 FROM registry.auth_bindings b
+            WHERE b.id = browser_sessions.binding_id AND b.principal_id = browser_sessions.principal_id)
+            AND EXISTS (SELECT 1 FROM registry.principals p WHERE p.id = browser_sessions.principal_id
+            AND p.credential_epoch = browser_sessions.credential_epoch)
+          withCheck: *session_runtime_identity

@@ -10,7 +10,7 @@ module BrowserSessions {
     let live = "s.revoked_at IS NULL AND s.started_at<=statement_timestamp() AND s.started_at>statement_timestamp()-interval '12 hours' AND s.last_used_at<=clock_timestamp() AND s.last_used_at>statement_timestamp()-interval '30 minutes'"
     let samePrincipal = "p.id=s.principal_id AND p.credential_epoch=s.credential_epoch AND b.principal_id=s.principal_id"
     let principal = "registry.auth_bindings b JOIN registry.principals p ON p.id=b.principal_id"
-    let claims = "s.cookie_digest=$1 AND b.id=s.binding_id AND " + samePrincipal + " AND " + eligibility + " AND " + live
+    fn claims(cookie) = "s.cookie_digest=${cookie} AND b.id=s.binding_id AND " + samePrincipal + " AND " + eligibility + " AND " + live
 
     fn insert(cookie, issuer, subject, github, envelope) = "INSERT INTO registry.browser_sessions(id,cookie_digest,binding_id,principal_id,credential_epoch,token_envelope,started_at,last_used_at) SELECT gen_random_uuid(),${cookie},b.id,p.id,p.credential_epoch,${envelope},statement_timestamp(),statement_timestamp() FROM " + principal + " WHERE " + eligibility + " AND " + binding(issuer, subject, github) + " RETURNING id"
 
@@ -38,10 +38,29 @@ module BrowserSessions {
         andThen(issueScript(cookie, issuer, subject, github, envelope), Database::issueSession)
 
     /// Get the envelope for provider verification. A lookup never extends inactivity.
-    export let lookup = "SELECT s.token_envelope FROM registry.browser_sessions s," + principal + " WHERE " + claims
+    export fn lookup() = "SELECT s.token_envelope FROM registry.browser_sessions s," + principal + " WHERE " + claims("$1")
+
+    fn revalidated(cookie, issuer, subject, provider) = "UPDATE registry.browser_sessions s SET last_used_at=GREATEST(s.last_used_at,statement_timestamp()) FROM " + principal
+        + " WHERE " + claims(cookie)
+        + " AND " + binding(issuer, subject, provider) + " RETURNING s.id,s.principal_id,s.credential_epoch"
 
     /// Recheck the verified provider identity and revocation in the update that accepts the session.
-    export fn touch() = "UPDATE registry.browser_sessions s SET last_used_at=GREATEST(s.last_used_at,statement_timestamp()) FROM " + principal + " WHERE " + claims + " AND " + binding("$2", "$3", "$4") + " RETURNING s.id,s.principal_id,s.credential_epoch"
+    export fn touch() = revalidated("$1", "$2", "$3", "$4")
+
+    /// Reading a cookie-scoped encrypted envelope does not authenticate the browser or extend inactivity.
+    export fn readScript(cookie) = andThen(Digests::parse(cookie), fn(_) => Success { value: Database::sessionRuntimeScript(
+        [cookie, "", "", ""], "SELECT token_envelope FROM registry.browser_sessions WHERE cookie_digest=" + Database::decoded(1), [cookie]) })
+
+    export fn touchScript(cookie, issuer, subject, github) = andThen(Digests::parse(cookie), fn(_) =>
+        if validIdentity(issuer, subject, github) { verifiedScript([cookie, issuer, subject, github]) }
+        else { Error { message: "auth.session-identity" } })
+
+    fn verifiedScript(scope) = Success { value: Database::sessionRuntimeScript(scope,
+        revalidated(Database::decoded(1), Database::decoded(2), Database::decoded(3) + "::uuid", Database::decoded(4)), scope) }
+
+    export fn read(cookie) = andThen(readScript(cookie), Database::sessionRuntime)
+
+    export fn revalidate(cookie, issuer, subject, github) = andThen(touchScript(cookie, issuer, subject, github), Database::sessionRuntime)
 
     /// Logout remains possible if the binding or provider is unavailable.
     export let revoke = "UPDATE registry.browser_sessions SET revoked_at=GREATEST(last_used_at,statement_timestamp()),token_envelope=NULL WHERE cookie_digest=$1 AND revoked_at IS NULL RETURNING id"
