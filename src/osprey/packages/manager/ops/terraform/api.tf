@@ -25,6 +25,21 @@ resource "google_kms_crypto_key_iam_member" "login_verifier" {
   depends_on    = [google_project_service.required]
 }
 
+resource "google_kms_crypto_key_iam_member" "session_tokens" {
+  count         = var.session_kms_key == null ? 0 : 1
+  crypto_key_id = var.session_kms_key
+  role          = "roles/cloudkms.cryptoKeyEncrypter"
+  member        = "serviceAccount:${google_service_account.runtime.email}"
+  depends_on    = [google_project_service.required]
+
+  lifecycle {
+    precondition {
+      condition     = var.session_kms_key != var.login_kms_key
+      error_message = "Use separate keys for pending logins and provider session tokens."
+    }
+  }
+}
+
 resource "google_service_account" "deploy" {
   account_id   = "registry-${var.environment}-deploy"
   display_name = "Registry exact-SHA deployment identity"

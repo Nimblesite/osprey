@@ -5,7 +5,7 @@ import registry::Dsse
 import registry::Json
 import registry::JsonRead
 
-/// Encryption for the server-held OAuth verifier using a deployment-owned Cloud KMS key.
+/// Cloud KMS protection for the server-held OAuth verifier and session tokens.
 module LoginKms {
     let unavailable = "auth.encryption-unavailable"
 
@@ -22,7 +22,7 @@ module LoginKms {
 
     fn b64(text) = Dsse::base64(Bytes::ofString(text))
 
-    fn json(reply: Supabase::Reply) = if reply.status == 200 && byteLength(reply.body) <= 8192 {
+    fn json(limit, reply: Supabase::Reply) = if reply.status == 200 && byteLength(reply.body) <= limit {
         match Json::parse(reply.body) {
             Success { value } => Success { value: value }
             Error => Error { message: unavailable }
@@ -39,31 +39,43 @@ module LoginKms {
         } else { Error { message: unavailable } }
     }
 
-    fn envelopeOk(value) = byteLength(value) > 0 && byteLength(value) <= 4096 && Bytes::everyByte(value, fn(b) => Bytes::isAlnumIn(b, [43, 47, 61]))
+    fn envelopeOk(limit, value) = byteLength(value) > 0 && byteLength(value) <= limit && Bytes::everyByte(value, fn(b) => Bytes::isAlnumIn(b, [43, 47, 61]))
 
-    fn ciphertext(doc) = {
+    fn ciphertext(limit, doc) = {
         let value = field(doc, "ciphertext")
-        if envelopeOk(value) {
+        if envelopeOk(limit, value) {
             Success { value: value }
         } else { Error { message: unavailable } }
     }
 
     fn credentials() = andThen(perform Supabase::Provider.request("GET", "http://metadata.google.internal",
-        "/computeMetadata/v1/instance/service-accounts/default/token", "Metadata-Flavor: Google", ""), fn(reply) => andThen(json(reply), token))
+        "/computeMetadata/v1/instance/service-accounts/default/token", "Metadata-Flavor: Google", ""), fn(reply) => andThen(json(8192, reply), token))
 
-    fn request(key, operation, token, body, read) = andThen(perform Supabase::Provider.request("POST", "https://cloudkms.googleapis.com",
-        "/v1/${key}:${operation}", "Authorization: Bearer ${token}\r\nContent-Type: application/json", body), fn(reply) => andThen(json(reply), read))
+    fn request(key, operation, token, body, limit, read) = andThen(perform Supabase::Provider.request("POST", "https://cloudkms.googleapis.com",
+        "/v1/${key}:${operation}", "Authorization: Bearer ${token}\r\nContent-Type: application/json", body), fn(reply) => andThen(json(limit, reply), read))
 
-    fn submit(key, operation, body, read) = andThen(credentials(), fn(token) => request(key, operation, token, body, read))
+    fn submit(key, operation, body, limit, read) = andThen(credentials(), fn(token) => request(key, operation, token, body, limit, read))
 
     fn payload(aad, verifier) = Canonical::serialize(Json::obj([
         Json::member("additionalAuthenticatedData", Json::str(b64(aad))),
         Json::member("plaintext", Json::str(b64(verifier)))
     ]))
 
-    export fn seal(key, aad, verifier) = if validKey(key) && OAuth::challengeCode(verifier) == "" && byteLength(aad) <= 1024 {
-        andThen(payload(aad, verifier), fn(body) => submit(key, "encrypt", body, ciphertext))
+    fn encrypt(key, aad, text, limit) = if validKey(key) && byteLength(aad) <= 1024 {
+        andThen(payload(aad, text), fn(body) => submit(key, "encrypt", body, limit + 1024, fn(doc) => ciphertext(limit, doc)))
     } else { Error { message: unavailable } }
+
+    export fn seal(key, aad, verifier) = if OAuth::challengeCode(verifier) == "" { encrypt(key, aad, verifier, 4096) }
+    else { Error { message: unavailable } }
+
+    fn tokens(session: Supabase::Session) = Canonical::serialize(Json::obj([
+        Json::member("accessToken", Json::str(session.accessToken)),
+        Json::member("refreshToken", Json::str(session.refreshToken))
+    ]))
+
+    /// Persist only a bounded KMS envelope. The database never receives these tokens.
+    export fn sealSession(key, aad, session) = andThen(tokens(session), fn(text) =>
+        if byteLength(text) > 32768 { Error { message: unavailable } } else { encrypt(key, aad, text, 49152) })
     fn plaintext(doc) = {
         let encoded = field(doc, "plaintext")
         if byteLength(encoded) != 60 || !endsWith(encoded, "==") { Error { message: unavailable } }
@@ -85,7 +97,7 @@ module LoginKms {
     ]))
 
     /// KMS authenticates the callback and both browser-bound digests before disclosing the verifier.
-    export fn unseal(key, aad, envelope) = if validKey(key) && envelopeOk(envelope) && byteLength(aad) <= 1024 {
-        andThen(decryptPayload(aad, envelope), fn(body) => submit(key, "decrypt", body, plaintext))
+    export fn unseal(key, aad, envelope) = if validKey(key) && envelopeOk(4096, envelope) && byteLength(aad) <= 1024 {
+        andThen(decryptPayload(aad, envelope), fn(body) => submit(key, "decrypt", body, 8192, plaintext))
     } else { Error { message: unavailable } }
 }

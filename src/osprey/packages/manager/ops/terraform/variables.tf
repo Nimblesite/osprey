@@ -124,3 +124,13 @@ variable "login_kms_key" {
     error_message = "Use a Cloud KMS CryptoKey resource name without a version suffix."
   }
 }
+
+variable "session_kms_key" {
+  description = "Optional environment-specific Cloud KMS key resource for encrypting browser session credentials."
+  type        = string
+  default     = null
+  validation {
+    condition     = var.session_kms_key == null || can(regex("^projects/[a-zA-Z0-9_-]+/locations/[a-zA-Z0-9_-]+/keyRings/[a-zA-Z0-9_-]+/cryptoKeys/[a-zA-Z0-9_-]+$", var.session_kms_key))
+    error_message = "Use a Cloud KMS CryptoKey resource name without a version suffix."
+  }
+}

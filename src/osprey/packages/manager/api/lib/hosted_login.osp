@@ -3,6 +3,7 @@ import registry::Digests
 import registry::Bytes
 import registry::Json
 import registry::JsonRead
+import registry_host::BrowserSessions
 import registry_host::Host
 import registry_host::LoginFlow
 
@@ -10,10 +11,11 @@ import registry_host::LoginFlow
 module HostedLogin {
     export let startPath = "/v1/auth/github/start"
     export let cookieName = "__Host-registry-flow"
+    export let sessionCookieName = "__Host-registry"
     let configError = "auth.configuration"
 
     export type Redirect = { location: string, cookie: string }
-    export type Settings = { oauth: OAuth::Config, key: string }
+    export type Settings = { oauth: OAuth::Config, key: string, sessionKey: string }
 
     fn field(doc, key) = JsonRead::text(JsonRead::field(doc, key))
 
@@ -22,8 +24,12 @@ module HostedLogin {
         let oauth = OAuth::Config { supabaseOrigin: field(doc, "supabaseOrigin"), callback: "https://${policy.allowedHost}" + OAuth::callbackPath,
             websiteOrigin: policy.allowedOrigin, publishableKey: field(doc, "supabasePublishableKey") }
         let key = field(doc, "loginKmsKey")
-        let disabled = key == "" && oauth.supabaseOrigin == "" && oauth.publishableKey == ""
-        if disabled || (LoginKms::validKey(key) && OAuth::configCode(oauth) == "") { Success { value: Settings { oauth: oauth, key: key } } }
+        let sessionKey = field(doc, "sessionKmsKey")
+        let disabled = key == "" && sessionKey == "" && oauth.supabaseOrigin == "" && oauth.publishableKey == ""
+        let sessionReady = sessionKey == "" || (sessionKey != key && LoginKms::validKey(sessionKey))
+        if disabled || (sessionReady && LoginKms::validKey(key) && OAuth::configCode(oauth) == "") {
+            Success { value: Settings { oauth: oauth, key: key, sessionKey: sessionKey } }
+        }
         else { Error { message: configError } }
     }
 
@@ -101,8 +107,34 @@ module HostedLogin {
         fn(context, envelope) => LoginKms::unseal(config.key, context, envelope)), fn(session) =>
             andThen(now(), fn(seconds) => Jwt::verifySession(config.oauth, seconds, session)))
 
-    /// The native callback exchange is separate from session issuance, which requires a live approved binding.
+    export let sessionUnavailable = "auth.session-unavailable"
+    export let unapproved = "auth.session-unapproved"
+
+    export fn sessionDigest(token) = Digests::hashText("registry.browser.session.cookie.v1", token)
+
+    fn sessionCookie(token) = "${sessionCookieName}=${token}; Path=/; Max-Age=43200; Secure; HttpOnly; SameSite=Lax"
+
+    fn stored(oauth, token, id) = if Bytes::canonicalUuid(id) {
+        Success { value: Redirect { location: oauth.websiteOrigin + "/upload/", cookie: sessionCookie(token) } }
+    } else if id == "" { Error { message: unapproved } }
+    else { Error { message: sessionUnavailable } }
+
+    /// The browser receives a cookie only after the restricted issuer commits the sealed session.
+    export fn issue(oauth, session: Supabase::Session, seal, save) = {
+        let token = OAuth::nonce()
+        let digest = sessionDigest(token)
+        let issuer = oauth.supabaseOrigin + "/auth/v1"
+        let context = "registry.browser.session.tokens.v1\n${issuer}\n${digest}"
+        if OAuth::configCode(oauth) != "" { Error { message: configError } }
+        else { andThen(seal(context, session), fn(envelope) => andThen(
+            save(digest, issuer, session.identity.authSubject, session.identity.githubId, envelope), fn(id) => stored(oauth, token, id))) }
+    }
+
+    fn issueNative(config, session) = if config.sessionKey == "" { Error { message: sessionUnavailable } }
+        else { issue(config.oauth, session, fn(context, tokens) => LoginKms::sealSession(config.sessionKey, context, tokens), BrowserSessions::save) }
+
+    /// Bind the exchanged, signed identity to a durable registry browser session.
     export fn nativeCallback(config: Settings, path, headers) =
         if config.key == "" { unavailable() }
-        else { ProviderNative::transport()(fn() => verifiedNative(config, path, headers)) }
+        else { ProviderNative::transport()(fn() => andThen(verifiedNative(config, path, headers), fn(session) => issueNative(config, session))) }
 }

@@ -34,6 +34,9 @@ module BrowserSessions {
         } else { boundInsert([cookie, issuer, subject, github], envelope) }
     }
 
+    export fn save(cookie, issuer, subject, github, envelope) =
+        andThen(issueScript(cookie, issuer, subject, github, envelope), Database::issueSession)
+
     /// Get the envelope for provider verification. A lookup never extends inactivity.
     export let lookup = "SELECT s.token_envelope FROM registry.browser_sessions s," + principal + " WHERE " + claims
 

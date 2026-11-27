@@ -96,6 +96,8 @@ module Database {
     /// Login storage runs as its own non-owner principal. Raw driver errors stay private.
     export fn login(source) = executed(mountedConnection("login"), source)
 
+    export fn issueSession(source) = executed(mountedConnection("session-issuer"), source)
+
     fn run(config, ctx, statement, values) = match script(ctx, statement, values) {
         Error { message } => Error { message: message }
         Success { value } => executed(config, value)

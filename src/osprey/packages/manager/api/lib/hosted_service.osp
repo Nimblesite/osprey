@@ -40,7 +40,7 @@ module HostedService {
             Error { message: "hosted.config-invalid" }
         } else {
             Success { value: HostedRequest::Policy { allowedHost: api, allowedOrigin: origin, edgeSecret: secret,
-                cookieName: "__Host-registry", csrfToken: "", maxBody: 1048576 } }
+                cookieName: HostedLogin::sessionCookieName, csrfToken: "", maxBody: 1048576 } }
         }
     }
 
@@ -86,25 +86,36 @@ module HostedService {
         else if method == "GET" && (path == "/v1/packages" || startsWith(path, "/v1/packages/") || startsWith(path, publisherPrefix) || startsWith(path, HostedSource::prefix)) { catalogResponse(catalog(), path, cors, source) }
         else if method == "GET" && path == HostedLogin::startPath { loginResponse(login(), cors) }
         else if method == "GET" && Bytes::before(path, "?") == OAuth::callbackPath {
-            callbackResponse(callback(path, headers), cors + "Referrer-Policy: no-referrer\r\n")
+            callbackResponse(callback(path, headers), cors)
         }
         else if method == "GET" && path == "/v1/auth/session" && !hasCredential(headers, policy) {
             replyWith(401, problemType, "{\"code\":\"auth.session-required\",\"status\":401}", cors)
         } else { unavailable(cors) }
     }
 
+    let noReferrer = "Referrer-Policy: no-referrer\r\n"
+    let expiredFlow = "Set-Cookie: ${HostedLogin::expiredCookie}\r\n"
+
+    fn redirect(value: HostedLogin::Redirect, extra) = replyWith(303, "text/plain", "",
+        "Location: ${value.location}\r\nSet-Cookie: ${value.cookie}\r\n" + noReferrer + extra)
+
     fn loginResponse(result: Result<HostedLogin::Redirect, string>, cors) = match result {
-        Success { value } => replyWith(303, "text/plain", "", "Location: ${value.location}\r\nSet-Cookie: ${value.cookie}\r\nReferrer-Policy: no-referrer\r\n")
+        Success { value } => redirect(value, "")
         Error => unavailable(cors)
     }
 
-    fn callbackResponse(result: Result<Supabase::Session, string>, cors) = match result {
-        Error { message } => if message == HostedLogin::refused {
-            replyWith(401, problemType, "{\"code\":\"auth.callback-invalid\",\"status\":401}", cors)
-        } else { unavailable(cors) }
-        Success => replyWith(503, problemType, "{\"code\":\"auth.session-unavailable\",\"status\":503}",
-            cors + "Set-Cookie: ${HostedLogin::expiredCookie}\r\n")
+    fn callbackResponse(result, cors) = match result {
+        Success { value } => redirect(value, expiredFlow)
+        Error { message } => callbackDenied(message, cors + noReferrer)
     }
+
+    fn callbackDenied(message, headers) = if message == HostedLogin::refused {
+        replyWith(401, problemType, "{\"code\":\"auth.callback-invalid\",\"status\":401}", headers)
+    } else if message == HostedLogin::unapproved {
+        replyWith(403, problemType, "{\"code\":\"auth.session-unapproved\",\"status\":403}", headers + expiredFlow)
+    } else if message == HostedLogin::sessionUnavailable {
+        replyWith(503, problemType, "{\"code\":\"auth.session-unavailable\",\"status\":503}", headers + expiredFlow)
+    } else { unavailable(headers) }
 
     fn catalogResponse(result: Result<string, string>, path, cors, source) = match result {
         Success { value } => match PublicCatalog::decode(value) {

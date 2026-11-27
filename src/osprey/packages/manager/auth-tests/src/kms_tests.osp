@@ -3,6 +3,7 @@ import registry_api::LoginKms
 import registry_api::OAuth
 import registry_api::HostedLogin
 import registry_api::Supabase
+import registry::Bytes
 
 /// The Cloud KMS wire contract fails before exposing a verifier on transport or identity errors.
 module KmsTests {
@@ -62,9 +63,56 @@ module KmsTests {
         }
     }
 
+    let oauth = OAuth::Config { supabaseOrigin: "https://project.supabase.co", callback: "https://api.example.test/v1/auth/github/callback",
+        websiteOrigin: "https://packages.example.test", publishableKey: "sb_publishable_fixture" }
+    let verified = Supabase::Session { accessToken: "access-fixture", refreshToken: "refresh-fixture", expiresIn: 600,
+        identity: Supabase::Identity { authSubject: "11111111-1111-4111-8111-111111111111", githubId: "421" } }
+    let receipt = "22222222-2222-4222-8222-222222222222"
+
+    fn sessionSeal(aad, session) = if startsWith(aad, "registry.browser.session.tokens.v1\nhttps://project.supabase.co/auth/v1\nsha256:")
+        && session.accessToken == verified.accessToken && session.refreshToken == verified.refreshToken {
+        Success { value: "YQ==" }
+    } else { Error { message: "fixture.invalid-context" } }
+
+    fn sessionStore(digest, issuer, subject, github, envelope) =
+        if startsWith(digest, "sha256:") && issuer == "https://project.supabase.co/auth/v1" && subject == verified.identity.authSubject
+            && github == "421" && envelope == "YQ==" { Success { value: receipt } }
+        else { Error { message: "fixture.invalid-storage" } }
+
+    fn sessionResponse() = match HostedLogin::issue(oauth, verified, sessionSeal, sessionStore) {
+        Error { message } => check("approved sign-in creates an opaque browser session", "issued", message)
+        Success { value } => {
+            let cookie = Bytes::before(value.cookie, ";")
+            let raw = drop(cookie, byteLength("__Host-registry="))
+            checkAll("only a durable issuance can return a fixed redirect and an opaque cookie", [
+                value.location == "https://packages.example.test/upload/",
+                startsWith(cookie, "__Host-registry=") && OAuth::challengeCode(raw) == "",
+                endsWith(value.cookie, "; Path=/; Max-Age=43200; Secure; HttpOnly; SameSite=Lax"),
+                !contains(value.cookie, "fixture") && !contains(value.cookie, receipt)
+            ])
+        }
+    }
+
+    fn issuanceFailures() = checkAll("token sealing and a committed approved session are required before setting a cookie", [
+        match HostedLogin::issue(oauth, verified, sessionSeal, fn(_digest, _issuer, _subject, _github, _envelope) => Success { value: "" }) {
+            Error { message } => message == HostedLogin::unapproved
+            Success => false
+        },
+        match HostedLogin::issue(oauth, verified, sessionSeal, fn(_digest, _issuer, _subject, _github, _envelope) => Success { value: "invalid-receipt" }) {
+            Error { message } => message == HostedLogin::sessionUnavailable
+            Success => false
+        },
+        match HostedLogin::issue(oauth, verified, fn(_context, _session) => Error { message: "fixture.kms-offline" }, sessionStore) {
+            Error { message } => message == "fixture.kms-offline"
+            Success => false
+        }
+    ])
+
     export fn run() = {
         test("auth: Cloud KMS verifier encryption", expectedResponses)
         test("auth: Cloud KMS verifier decryption", expectedPlaintext)
         test("auth: login redirect depends on durable storage", failedStart)
+        test("auth: callback issues an opaque browser cookie", sessionResponse)
+        test("auth: session issuance fails closed", issuanceFailures)
     }
 }
