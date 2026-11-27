@@ -1128,6 +1128,8 @@ test ("a track carries the project's stereo channels to Master: a left-only patc
 
 test ("a MIDI note source in a track patch is heard in Master from its note's exact start frame and stops after its gate", \() => ui::Runtime::guarded midiSourceJourney)
 
+test ("the codex sub patch without its Mixer→Gain cable plays silent among audible tracks, and reconnected it is heard", \() => ui::Runtime::guarded codexSubJourney)
+
 // [DAW-PROJECT-MODEL] Every shipped score must open through the production project reader.
 test ("every example song opens with playable tracks", \() => Runtime::guarded (\() =>
     succeeds (listDir (signalflow::App::fromRepository "src/osprey/examples/daw/tracks"), \entries =>

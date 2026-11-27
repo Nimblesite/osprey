@@ -843,3 +843,29 @@ midiSourceJourney () = forEachList ([1200, 2400, 3600], \frame =>
             expect (firstSound played.right, frame + 1)
             expect (loudest (framesOf (played.left, frame, frame + 900)) > 0.5, true)
             expect (loudest (framesOf (played.left, frame + 2400, 7200)), 0.0))))
+
+// [DAW-PATCH-HEARD] The shipped codex song's `sub` patch lost its Mixer→Gain cable: the song still plays, the
+// other tracks are heard and the sub adds nothing to Master; with the cable back the bass is heard.
+rewired t = match t.instrument
+    daw::PatchInstrument routing => t(instrument = daw::PatchInstrument(routing = routing(cables = listAppend routing.cables (cabled (2, 0, 3, 0)))))
+    _ => t
+
+subCables t = match t.instrument
+    daw::PatchInstrument routing => mapList (routing.cables, \c => [c.source, c.destination])
+    _ => []
+
+codexPlayed (song, check) = succeeds (daw::Playback::start song, \playing => succeeds (daw::Playback::step (song, playing, 4800), check))
+
+subHeard song =
+    sub = filterList (song.tracks, \t => t.name == "sub")
+    expect (mapList (sub, subCables), [[[0, 2], [0, 1], [1, 2], [3, 4]]])
+    without = song(tracks = filterList (song.tracks, \t => t.name != "sub"))
+    fixed = song(tracks = mapList (song.tracks, \t => ui::Pick::either (t.name == "sub", rewired t, t)))
+    codexPlayed (song, \edited => codexPlayed (without, \others => codexPlayed (fixed, \bass =>
+        audible edited.left
+        audible edited.right
+        expect (structuralEquals (edited.left, others.left) && structuralEquals (edited.right, others.right), true)
+        expect (structuralEquals (bass.left, others.left), false)
+        expect (structuralEquals (bass.right, others.right), false))))
+
+codexSubJourney () = succeeds (readFile (signalflow::App::fromRepository "src/osprey/examples/daw/tracks/codex-version.json"), \source => succeeds (daw::SongFiles::decode source, subHeard))
