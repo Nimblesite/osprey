@@ -38,6 +38,8 @@ test("Osprey Native website renders cleanly with flagship media, logo/favicon, a
   await expect(page.locator('meta[name="color-scheme"]')).toHaveAttribute("content", "light dark");
   await expect(page.locator("h1")).toHaveCount(1);
   await expect(page.locator("header, nav[aria-label='Primary'], main, footer")).toHaveCount(4);
+  await expect(page.locator(".footer-note")).toContainText("NIMBLESITE PTY LTD");
+  await expect(page.locator('.footer-note a[href="https://nimblesite.co"]')).toHaveText("NIMBLESITE PTY LTD");
 
   const faviconHref = await page.locator('link[rel="icon"]').getAttribute("href");
   expect(faviconHref).toMatch(/^\/assets\/brand\/favicon\.svg\?v=[0-9a-f]{12}$/);
@@ -138,18 +140,35 @@ test("Osprey Native website renders cleanly with flagship media, logo/favicon, a
   await expect(page.locator("#features h2")).toContainText("Everything you need");
   await expect(page.locator("#accessibility")).toContainText('tapAt ("Volume", 0.5)');
 
-  // 7. Theme Toggle switches cleanly between Light and Dark surfaces
+  // 7. Theme Toggle switches cleanly between Light and Dark surfaces and persists across navigation
   const themeBtn = page.locator("#theme-toggle");
+  const themeLabel = page.locator("#theme-label");
   await themeBtn.click(); // Light
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  await expect(themeLabel).toHaveText("Theme: Light");
   const lightBg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+
+  // Navigate to /docs/ and verify Light theme + button label persist
+  await page.locator('nav[aria-label="Primary"] a[href="/docs/"]').click();
+  await expect(page).toHaveURL(/\/docs\/$/);
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  await expect(themeLabel).toHaveText("Theme: Light");
+  await expect(themeBtn).toHaveAttribute("aria-pressed", "true");
 
   await themeBtn.click(); // Dark
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await expect(themeLabel).toHaveText("Theme: Dark");
   await expect(page.locator("body")).not.toHaveCSS("background-color", lightBg);
+
+  // Navigate back home and verify Dark theme + button label persist
+  await page.locator(".site-brand").click();
+  await expect(page).toHaveURL(`${serverHandle.url}/`);
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await expect(themeLabel).toHaveText("Theme: Dark");
 
   await themeBtn.click(); // Auto
   await expect(page.locator("html")).not.toHaveAttribute("data-theme");
+  await expect(themeLabel).toHaveText("Theme: Auto");
 
   // 8. Comparison table column order (Osprey Native, Flutter, React Native, CMP) & zero overflow
   const colHeaders = await page.locator(".compare-table thead th").allTextContents();
@@ -164,16 +183,35 @@ test("Osprey Native website renders cleanly with flagship media, logo/favicon, a
   const theadDisplay = await page.locator(".compare-table thead").evaluate((el) => getComputedStyle(el).display);
   expect(theadDisplay).toBe("none");
 
-  // 9. Internal /docs/ section (Get Started + Docs nav link stay on-site)
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await expect(page.getByRole("link", { name: "Get Started" })).toHaveAttribute("href", "/docs/");
-  await page.locator('nav[aria-label="Primary"] a[href="/docs/"]').click();
+  // 9. Internal /docs/ section (desktop sidebar + mobile hamburger & docs submenu)
+  await page.setViewportSize({ width: 375, height: 812 });
+  const navToggle = page.locator("#nav-toggle");
+  await expect(navToggle).toBeVisible();
+  await expect(page.locator("#primary-nav")).toBeHidden();
+  await navToggle.click();
+  await expect(navToggle).toHaveAttribute("aria-expanded", "true");
+  await expect(page.locator("#primary-nav")).toBeVisible();
+  await page.locator('#primary-nav a[href="/docs/"]').click();
   await expect(page).toHaveURL(/\/docs\/$/);
-  await expect(page.locator('nav[aria-label="Primary"] a[aria-current="page"]')).toHaveText("Docs");
   await expect(page.locator("article h1")).toHaveText("Osprey Native Documentation");
+
+  // Mobile docs submenu starts collapsed and opens on click
+  const docsMenuToggle = page.locator("#docs-menu-toggle");
+  await expect(docsMenuToggle).toBeVisible();
+  await expect(page.locator("#docs-nav-panel")).toBeHidden();
+  await docsMenuToggle.click();
+  await expect(docsMenuToggle).toHaveAttribute("aria-expanded", "true");
+  await expect(page.locator("#docs-nav-panel")).toBeVisible();
   await page.locator('.docs-nav-list a[href="/docs/bridge/"]').click();
   await expect(page).toHaveURL(/\/docs\/bridge\/$/);
   await expect(page.locator("article h1")).toHaveText("The Shared-Memory Bridge");
+  const docsMobileFits = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+  expect(docsMobileFits, "no horizontal overflow on mobile /docs/bridge/").toBe(true);
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await expect(docsMenuToggle).toBeHidden();
+  await expect(page.locator("#docs-nav-panel")).toBeVisible();
+  await expect(page.locator('nav[aria-label="Primary"] a[aria-current="page"]')).toHaveText("Docs");
 
   // 10. Blog grid on homepage, dedicated /blog/ index, and blog article page
   await page.goto(serverHandle.url, { waitUntil: "networkidle" });

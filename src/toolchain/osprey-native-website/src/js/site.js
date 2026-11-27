@@ -68,12 +68,32 @@
   }
 
   // --- 2. Light / Dark / Auto Theme Toggle ---
+  const THEME_STORAGE_KEY = "osprey-native-theme";
   const toggleBtn = document.getElementById("theme-toggle");
   const themeLabel = document.getElementById("theme-label");
   const modes = ["auto", "light", "dark"];
-  let modeIndex = 0;
 
-  function applyTheme(mode) {
+  function readStoredTheme() {
+    try {
+      const saved = localStorage.getItem(THEME_STORAGE_KEY);
+      return saved === "light" || saved === "dark" ? saved : "auto";
+    } catch {
+      return "auto";
+    }
+  }
+
+  function writeStoredTheme(mode) {
+    try {
+      if (mode === "auto") localStorage.removeItem(THEME_STORAGE_KEY);
+      else localStorage.setItem(THEME_STORAGE_KEY, mode);
+    } catch {
+      // Ignore storage errors in restricted browsing contexts.
+    }
+  }
+
+  let modeIndex = modes.indexOf(readStoredTheme());
+
+  function applyTheme(mode, { persist = true } = {}) {
     if (mode === "auto") {
       document.documentElement.removeAttribute("data-theme");
       toggleBtn?.setAttribute("aria-pressed", "false");
@@ -83,10 +103,43 @@
       toggleBtn?.setAttribute("aria-pressed", "true");
       if (themeLabel) themeLabel.textContent = mode === "dark" ? "Theme: Dark" : "Theme: Light";
     }
+    if (persist) writeStoredTheme(mode);
   }
+
+  applyTheme(modes[modeIndex], { persist: false });
 
   toggleBtn?.addEventListener("click", () => {
     modeIndex = (modeIndex + 1) % modes.length;
     applyTheme(modes[modeIndex]);
   });
+
+  window.addEventListener("storage", (event) => {
+    if (event.key !== THEME_STORAGE_KEY) return;
+    const next = event.newValue === "light" || event.newValue === "dark" ? event.newValue : "auto";
+    modeIndex = modes.indexOf(next);
+    applyTheme(next, { persist: false });
+  });
+
+  // --- 3. Responsive Mobile Menus (Primary Nav & Docs Submenu) ---
+  for (const btn of document.querySelectorAll("[data-menu-toggle]")) {
+    const target = document.getElementById(btn.getAttribute("data-menu-toggle"));
+    if (!target) continue;
+
+    function setOpen(open) {
+      btn.setAttribute("aria-expanded", String(open));
+      if (open) target.setAttribute("data-open", "true");
+      else target.removeAttribute("data-open");
+    }
+
+    btn.addEventListener("click", () => setOpen(btn.getAttribute("aria-expanded") !== "true"));
+    target.addEventListener("click", (event) => {
+      if (event.target.closest("a")) setOpen(false);
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && btn.getAttribute("aria-expanded") === "true") {
+        setOpen(false);
+        btn.focus();
+      }
+    });
+  }
 })();
