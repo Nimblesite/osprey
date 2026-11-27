@@ -53,7 +53,6 @@ The project is one graph of cables and a patch is a subgraph of it: tracks, buse
 - [ ] A journey test at three window shapes (wide, square, tall) asserts each page's body reaches the bottom of its region and a module dragged to the bottom edge lands there.
 - [ ] **Windows docked patch panel**: the toolbar band spans the pane the panel leaves and a docked panel narrows or overlays the canvas instead of hiding its right side in a window narrower than 1536 points; the panel stops following the runner's light theme beside the dark canvas (the Windows goldens of 2026-11-23 record both defects) [DAW-INSPECTOR].
 - [ ] Separate Timeline and Mix windows where the host supports them [DAW-MENU] [DAW-HEADER].
-- [ ] A render cancelled mid-way leaves no 0-byte `piece.wav` for the next Play to replay [DAW-PAGES] [DAW-VIDEO].
 - [ ] Screenshot goldens compared automatically in the daw's app test targets on macOS; the Windows goldens under `examples/daw/goldens/windows` rewritten for the new header and inspector with `make -C src/toolchain/targets/windows/tests synth-update` (`routed-delay.png` is the one reported) [DAW-PAGES].
 - [ ] Real mouse drag on sockets and the menu bar rechecked in the live app [DAW-PAGES].
 

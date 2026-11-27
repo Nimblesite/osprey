@@ -1151,6 +1151,10 @@ renderSongJourney ready =
     said (done, "", "Rendered ${songFolder ()}/song.wav.")
     expect (length done.requests, 0)
     said (synth::DawSession::renderSong ready, "", "${songFolder ()}/song.wav is already this project.")
+    // [DAW-PAGES] A render cancelled mid-way leaves an empty, header-only or truncated WAV beside the same project:
+    // the next render makes it again rather than keeping it.
+    forEachList (["", "RIFF", join (mapList (toList (range (0, 11)), \_ => "RIFF")) ""], \stub =>
+        succeeds (writeFile "${songFolder ()}/song.wav" stub, \_ => said (synth::DawSession::renderSong ready, "daw-song:render:${songFolder ()}", "Rendering all of Bridge.")))
     said (synth::DawSession::stop first.stepStore, "", "Stopped.")
 
 // A song whose last note ends on a bar line: the end of the ruler is that last bar, never the empty one after it,
