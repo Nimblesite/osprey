@@ -1239,9 +1239,47 @@ zoomJourney lined =
     forEachList (synth::Keymaps::names, \name => forEachList (["zoomIn", "zoomOut", "zoomFit"], \command => expect (synth::Keymaps::keys (synth::Keymaps::preset name, command) != "", true)))
     forEachList ([{ style = "Prism", command = "zoomIn", want = "Cmd+OemPlus" }, { style = "Ableton Style", command = "zoomFit", want = "Cmd+D0" }, { style = "Logic Style", command = "zoomOut", want = "Cmd+Left" }], \row => expect (synth::Keymaps::keys (synth::Keymaps::preset row.style, row.command), row.want))
 
+// True when a lane press grabs the scrollbar.
+scrollPress outcome = match outcome
+    Success action => match action
+        synth::ScrollLanes _ => true
+        _ => false
+    Error _ => false
+
+// A press at (`x`, `y`) on the scrollbar puts track `top` first.
+scrollsTo (editor, x, y, top) = succeeds (synth::TimelineView::laneAt (editor, x, y), \action => expect (action, synth::ScrollLanes(top = top)))
+
+// [DAW-LAYOUT-FILL] [DAW-TESTS] Ten tracks scroll in seven lanes: a press anywhere on the 217-point bar puts the
+// thumb's middle under it, clamped to the first and last page; outside the bar, or with seven tracks or fewer,
+// nothing scrolls. The scrolled lanes draw, name and pick the tracks now in view, and a track kept in view moves
+// the lanes no further than it must.
+scrollJourney lined =
+    ten = lined(song = timeline (mapList (toList (range (0, 10)), \i => barLined (freshTrack ("lane ${i}", daw::PluckInstrument(brightness = 0.7, decay = 0.9))))), track = 0, laneTop = 0)
+    forEachList ([{ y = 221.0, top = 0 }, { y = 250.0, top = 0 }, { y = 300.0, top = 0 }, { y = 320.0, top = 1 }, { y = 329.5, top = 2 }, { y = 380.0, top = 3 }, { y = 437.9, top = 3 }], \row =>
+        forEachList ([1113.0, 1121.0, 1131.9], \x => scrollsTo (ten, x, row.y, row.top)))
+    forEachList ([{ x = 1112.9, y = 300.0 }, { x = 1132.0, y = 300.0 }, { x = 1121.0, y = 220.9 }, { x = 1121.0, y = 438.0 }], \point =>
+        expect (scrollPress (synth::TimelineView::laneAt (ten, point.x, point.y)), false))
+    forEachList ([lined, ten(song = timeline (mapList (toList (range (0, 7)), \_ => pluckTrack ())))], \few =>
+        expect (scrollPress (synth::TimelineView::laneAt (few, 1121.0, 300.0)), false))
+    expect (mapList (synth::TimelineView::laneAccess ten, \a => a.accessLabel), ["Track 1", "Track 2", "Track 3", "Track 4", "Track 5", "Track 6", "Track 7"])
+    down = synth::TimelineView::scrolled (ten, 2)
+    expect ([down.laneTop, down.revision], [2, satAdd ten.revision 1])
+    expect (length down.laneTraces, 10)
+    expect (mapList (synth::TimelineView::laneAccess down, \a => a.accessLabel), ["Track 3", "Track 4", "Track 5", "Track 6", "Track 7", "Track 8", "Track 9"])
+    expect ((synth::TimelineView::scrolled (down, 2)).revision, down.revision)
+    // The first lane now holds track 3, the last track 9.
+    succeeds (synth::TimelineView::laneAt (down, 1085.0, 235.0), \action => expect (action, synth::PickTrack(index = 2, bar = 3)))
+    succeeds (synth::TimelineView::laneAt (down, 1085.0, 421.0), \action => expect (action, synth::PickTrack(index = 8, bar = 3)))
+    expect ((synth::TimelineView::scrolled (down, 3)).laneTop, 3)
+    near (synth::TimelineGeometry::thumbTop (2.0, 10.0), 264.4)
+    near (synth::TimelineGeometry::thumbHeight (7.0, 10.0), 151.9)
+    forEachList ([{ index = 0, top = 0 }, { index = 1, top = 1 }, { index = 2, top = 2 }, { index = 8, top = 2 }, { index = 9, top = 3 }], \row =>
+        expect (synth::TimelineView::keeping (down, row.index), row.top))
+
 barLineJourney ready =
     lined = ready(song = timeline [barLined (pluckTrack ())], track = 0)
     zoomJourney lined
+    scrollJourney lined
     expect (daw::Arrangements::beats lined.song, 16.0)
     forEachList ([{ x = 1085.0, bar = 3 }, { x = 1084.0, bar = 3 }, { x = 205.0, bar = 0 }, { x = 428.0, bar = 1 }, { x = 868.5, bar = 3 }], \point => laneSetsBar (lined, point.x, 200.0, point.bar))
     succeeds (synth::TimelineView::laneAt (lined, 1085.0, 235.0), \action => expect (action, synth::PickTrack(index = 0, bar = 3)))
