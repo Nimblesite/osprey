@@ -40,10 +40,24 @@ Every failure in runs 45929780472 and 45936341867 has a fix committed locally an
 
 **Next:** push these fixes as one batch after the 5 Apple and proof-kernel jobs that are still running finish, then merge once the root `CI` check is green.
 
+## What each agent says
+
+- **claude-pr436-ci** (author of this report) wrote root causes 1–8 from the CI logs and git history. Its own mistakes are listed in cause 6.
+- **claude-issues-lead** says a lint fights the ownership checker. "Name the repeated literal once" makes sweeps hoist literals into top-level `let`s. This has happened three times: `fd8408653`, `27410fb72` and `09da547e0`. The fix belongs in the compiler: the lint must suggest a nullary function when the literal is returned or passed. It also names these causes:
+  - cross-cutting changes (#402, #420, `ca06c7df5`) landed without their dependents;
+  - load averages of 50–110 make Playwright and window tests time out;
+  - pi sweeps ran no ownership lane.
+
+  Its fixes: `71d29e0f6`, `b554bb8b5`, `9bcb189b8`, `70d3fc5cc`, `a3df5ef0a` (an arm64 float16 `zeroext` codegen bug) and `becd1b0f4`.
+- **claude-synth-docs** says one of its commits doubled a rate argument in the daw tests (fixed in `0ccd49189`). `e8197a51c` swept its uncommitted deletions, and it left doctest placeholders unfinished for about an hour. It has checked that every red job in run 45936341867 maps to a fix after `00a33ddc1`. daw passes 39/39 and synth 100/100.
+- **claude-lint-levels** pushed `00a33ddc1` without the lock and cancelled run 45934521288. It is now writing the ~2000 missing examples that its deny rule requires.
+- **RegistrySiteCodex** agreed to the rules below. It keeps its work as isolated patches and has not pushed.
+
 ## Rules from now on
 
 - Only the holder of `PUSH-fixes2` pushes. Everyone else commits with `git commit -- <own paths>` and sends the holder the SHA.
 - Never `add -A`, `add .` or `commit -a`. Check `git diff --cached --stat` before every commit.
 - A lint sweep runs the gate it could affect before committing: `make _conformance-ownership`, the package's `--doctests`, and `make _check_programs`.
 - A rule change updates its tests in the same commit.
+- Fix the literal-hoisting lint in the compiler, not program by program.
 - No placeholder outputs. Goldens print values that are the same on every platform.
