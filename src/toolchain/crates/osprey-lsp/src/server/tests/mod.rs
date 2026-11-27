@@ -361,25 +361,30 @@ async fn started_open(
     Ok((h, report))
 }
 
-/// Open `source` at `uri`; its first diagnostic must be `code`'s warning on
+/// LSP `DiagnosticSeverity` numbers the opened-file assertions compare.
+const WARNING: u8 = 2;
+const INFORMATION: u8 = 3;
+
+/// Open `source` at `uri`; its first diagnostic must be `code` at `severity` on
 /// `line` carrying `message`.
-async fn assert_opened_first_warning(
+async fn assert_opened_first(
     uri: &str,
     source: &str,
     code: &str,
+    severity: u8,
     line: u32,
     message: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let (h, report) = started_open(uri, source, "missing diagnostics").await?;
-    assert_first_warning(&report, code, line, message);
+    assert_first(&report, code, severity, line, message);
     h.shutdown_and_exit().await;
     Ok(())
 }
 
-/// The report's first diagnostic is a `code` warning on `line` saying `message`.
-fn assert_first_warning(report: &Value, code: &str, line: u32, message: &str) {
+/// The report's first diagnostic is `code` at `severity` on `line` saying `message`.
+fn assert_first(report: &Value, code: &str, severity: u8, line: u32, message: &str) {
     assert_at(report, "/diagnostics/0/code", code);
-    assert_at(report, "/diagnostics/0/severity", 2);
+    assert_at(report, "/diagnostics/0/severity", severity);
     assert_at(report, "/diagnostics/0/range/start/line", line);
     assert_at(report, "/diagnostics/0/message", message);
 }
