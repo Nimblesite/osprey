@@ -58,7 +58,7 @@ wasm: build _runtime_wasm
 	node scripts/wasm/wasm-browser-smoke.mjs src/osprey/examples/wasm/build/hello.wasm src/osprey/examples/wasm/hello.expectedoutput
 	@echo "==> compiling Osprey Data Studio (BOTH flavors) -> src/osprey/examples/wasm/build/"
 	$(wasm_studio)
-	$(MAKE) _test_wasm_goldens
+	$(MAKE) _test_wasm_goldens _test_wasm_doctests
 	@echo "==> wasm ready: built + validated + WASI/browser smoke green"
 
 ## wasm-site: Build only the WebAssembly artifacts published by the website.

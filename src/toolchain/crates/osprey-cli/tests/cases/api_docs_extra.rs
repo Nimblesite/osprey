@@ -120,8 +120,8 @@ fn extra_docs_state_inventory_survives_both_flavors_and_regeneration(
 ) -> Result<(), Box<dyn std::error::Error>> {
     // The private members are unread on purpose, so [TYPE-WARNINGS-UNUSED-PRIVATE] names each.
     for (extension, source, warned) in [
-        ("osp", "namespace z;\nmodule Outer { state module Hidden { fn secret() = 0 } }\nnamespace a;\nstate module Empty {}\n", "3 warnings (state-boundary, unused-private)"),
-        ("ospml", "namespace z\nmodule Outer\n    state Hidden\n        secret () = 0\nnamespace a\nstate Empty\n    privateSeed = 0\n", "4 warnings (state-boundary, unused-private)"),
+        ("osp", "namespace z;\nmodule Outer { state module Hidden { fn secret() = 0 } }\nnamespace a;\nstate module Empty {}\n", "1 warning, 2 info (state-boundary, unused-private)"),
+        ("ospml", "namespace z\nmodule Outer\n    state Hidden\n        secret () = 0\nnamespace a\nstate Empty\n    privateSeed = 0\n", "2 warnings, 2 info (state-boundary, unused-private)"),
     ] {
         for format in ["html", "markdown"] { assert_state_inventory(extension, source, format, warned)?; }
     }

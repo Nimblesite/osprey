@@ -88,12 +88,19 @@ _test_goldens: _conformance-gc
 _test_wasm_goldens:
 	@echo "==> [wasm32] golden stdout comparison under WASI..."
 	@WASM_CC="$(WASM_CC)" WASI_SYSROOT="$(WASI_SYSROOT)" bash scripts/wasm/test-wasm-arc-ownership.sh
-	@OSPREY_TARGET=wasm32 zsh src/toolchain/crates/run_test_corpus.sh
+	@OSPREY_CORPUS_PART=programs OSPREY_TARGET=wasm32 zsh src/toolchain/crates/run_test_corpus.sh
+
+# _test_wasm_doctests: every package and corpus documentation example compiled
+# to wasm32 and held to its stated output under Node's WASI host. It is its own
+# CI job so the two halves of the wasm corpus run side by side. [DOC-DOCTEST-HARNESS]
+_test_wasm_doctests:
+	@echo "==> [wasm32] documentation examples under WASI..."
+	@OSPREY_CORPUS_PART=doctests OSPREY_TARGET=wasm32 zsh src/toolchain/crates/run_test_corpus.sh
 
 # _conformance-gc: run every assertion suite under the tracing GC backend.
 _conformance-gc:
 	@echo "==> [conformance] assertion corpus under --memory=gc..."
-	@OSPREY_TEST_JOBS=1 zsh src/toolchain/crates/run_test_corpus.sh gc
+	@OSPREY_CORPUS_PART=programs OSPREY_TEST_JOBS=1 zsh src/toolchain/crates/run_test_corpus.sh gc
 
 # _conformance-arc: run every assertion suite under the Perceus ARC backend;
 # every suite must pass and end with zero live ARC objects. OSPREY_ARC_DEBUG=1 makes
@@ -101,7 +108,14 @@ _conformance-gc:
 # for the [GC-ARC-PERCEUS] zero-leak bar.
 _conformance-arc:
 	@echo "==> [conformance] assertion corpus under --memory=arc..."
-	@OSPREY_ARC_DEBUG=1 OSPREY_TEST_JOBS=1 zsh src/toolchain/crates/run_test_corpus.sh arc
+	@OSPREY_ARC_DEBUG=1 OSPREY_CORPUS_PART=programs OSPREY_TEST_JOBS=1 zsh src/toolchain/crates/run_test_corpus.sh arc
+
+# _doctests-gc, _doctests-arc: every package and corpus documentation example
+# under that native memory backend, held to its stated output. CI runs them as
+# their own jobs beside the corpus, each inside its timeout. [DOC-DOCTEST-HARNESS]
+_doctests-%:
+	@echo "==> [doctests] documentation examples under --memory=$*..."
+	@OSPREY_CORPUS_PART=doctests zsh src/toolchain/crates/run_test_corpus.sh $*
 
 # _conformance-ownership: run every assertion suite under compile-time
 # ownership. A program listed in OWNERSHIP_ACCEPTED.txt must match the shared

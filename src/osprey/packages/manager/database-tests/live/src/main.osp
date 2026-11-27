@@ -190,7 +190,9 @@ fn runtimeGrants() = fixtureIdentityGrants(runtimeRole) + "GRANT SELECT(id,cooki
 fn issuerScope(issuer, cookie) = sessionSql() + issuerGrants() + "SET LOCAL SESSION AUTHORIZATION ${issuerRole}; SET LOCAL registry.session_issuer = '${issuer}'; SET LOCAL registry.session_subject = '${sessionSubject}'; SET LOCAL registry.session_provider = '421'; SET LOCAL registry.session_digest = '${cookie}';"
 
 let issuerOrigin = "https://supabase.example.test/auth/v1"
-fn issuerDigest() = "sha256:" + (repeat("1", 64) ?: "")
+/// A `sha256:` digest of 64 copies of `fill`, the shape every fixture cookie and state digest takes.
+fn digest(fill) = "sha256:" + (repeat(fill, 64) ?: "")
+fn issuerDigest() = digest("1")
 fn issuerCreated() = {
     let result = execute(issuerScope(issuerOrigin, issuerDigest()) + issued() + "SELECT count(id) FROM browser_sessions;")
     let lines = split(trim(result.stdout), "\n") ?: []
@@ -200,7 +202,7 @@ fn issuerCreated() = {
 fn restrictedSessionIssue() = checkAll("only a scoped issuer can create a correctly bound session", [
     issuerCreated(),
     answer(issuerScope("https://wrong.example.test/auth/v1", issuerDigest()) + issued(), ""),
-    refused(issuerScope(issuerOrigin, "sha256:" + (repeat("2", 64) ?: "")) + issued(), "42501"),
+    refused(issuerScope(issuerOrigin, digest("2")) + issued(), "42501"),
     refused(issuerScope(issuerOrigin, issuerDigest()) + "INSERT INTO browser_sessions(id,cookie_digest,binding_id,principal_id,credential_epoch,token_envelope,started_at,last_used_at) VALUES (gen_random_uuid(),${sessionCookie},md5('binding')::uuid,md5('person1')::uuid,1,'sealed',now()-interval '1 hour',now()-interval '1 hour');", "42501"),
     refused(issuerScope(issuerOrigin, issuerDigest()) + lookup, "42501")
 ])
@@ -252,13 +254,13 @@ fn loginRun(script) = match script {
 }
 fn countWithScope(flowState, browser) = Database::loginScript(flowState, browser,
     "SELECT count(*) FROM registry.pending_logins WHERE state_digest <> " + Database::decoded(1),
-    ["sha256:" + (repeat("0",64) ?: "")])
+    [digest("0")])
 
 fn restrictedLoginJourney() = {
     let initialized = onFixture(fixtureClient + Host::shellWord(roleSetup))
-    let flowState = "sha256:" + (repeat("a",64) ?: "")
-    let opener = "sha256:" + (repeat("b",64) ?: "")
-    let stranger = "sha256:" + (repeat("c",64) ?: "")
+    let flowState = digest("a")
+    let opener = digest("b")
+    let stranger = digest("c")
     let envelope = "sealed-fixture-envelope"
     let wrote = loginRun(LoginFlow::storeScript(flowState, opener, envelope))
     let scoped = loginRun(Success { value: countWithScope(flowState, opener) })
@@ -292,24 +294,22 @@ let fixtureOAuth = OAuth::Config { supabaseOrigin: "https://project.supabase.co"
     callback: "https://api.example.test/v1/auth/github/callback", websiteOrigin: "https://packages.example.test", publishableKey: "sb_publishable_fixture" }
 fn fixtureBrowserBinding() = "INSERT INTO registry.principals(id,kind,state,credential_epoch,created_at) VALUES (md5('hosted-browser')::uuid,'human','active',1,now()); INSERT INTO registry.auth_bindings(id,principal_id,issuer,provider,provider_subject,auth_subject,state,verified_at) VALUES (md5('hosted-binding')::uuid,md5('hosted-browser')::uuid,'${fixtureOAuth.supabaseOrigin}/auth/v1','github','421','${fixtureBrowserSubject}','active',now());"
 
+/// A Cloud KMS `operation` (encrypt or decrypt) on `key` from the fixture service account, carrying the bound AAD.
+fn kmsCall(method, base, path, headers, body, key, operation) = method == "POST" && base == fixtureKmsOrigin
+    && path == "/v1/${key}:${operation}" && headers == fixtureKmsHeaders && startsWith(body, aadField)
+
 fn kmsFixture() = handler Supabase::Provider {
     request method base path headers body =>
         if method == "GET" && base == "http://metadata.google.internal"
             && path == "/computeMetadata/v1/instance/service-accounts/default/token" && headers == "Metadata-Flavor: Google" && body == "" {
             Success { value: Supabase::Reply { status: 200, body: "{\"access_token\":\"fixture-access\",\"token_type\":\"Bearer\"}" } }
-        } else if method == "POST" && base == fixtureKmsOrigin && path == "/v1/${kmsKey}:encrypt"
-            && headers == fixtureKmsHeaders
-            && startsWith(body, aadField) && contains(body, ",\"plaintext\":\"") {
+        } else if kmsCall(method, base, path, headers, body, kmsKey, "encrypt") && contains(body, ",\"plaintext\":\"") {
             Success { value: Supabase::Reply { status: 200, body: "{\"ciphertext\":\"${fixtureCiphertext}\"}" } }
-        } else if method == "POST" && base == fixtureKmsOrigin && path == "/v1/${kmsKey}:decrypt"
-            && headers == fixtureKmsHeaders && startsWith(body, aadField)
-            && contains(body, ",\"ciphertext\":\"${fixtureCiphertext}\"") {
+        } else if kmsCall(method, base, path, headers, body, kmsKey, "decrypt") && contains(body, ",\"ciphertext\":\"${fixtureCiphertext}\"") {
             Success { value: Supabase::Reply { status: 200, body: "{\"plaintext\":\"ZEJqZnRKZVo0Q1ZQLW1COTJLMjd1aGJVSlUxcDFyX3dXMWdGV0ZPRWpYaw==\"}" } }
-        } else if method == "POST" && base == fixtureKmsOrigin && path == "/v1/${sessionKmsKey}:encrypt"
-            && headers == fixtureKmsHeaders && startsWith(body, aadField) {
+        } else if kmsCall(method, base, path, headers, body, sessionKmsKey, "encrypt") {
             sessionKmsReply(body, "plaintext", "ciphertext", sessionPlaintext, rotatedPlaintext, sessionCiphertext, rotatedCiphertext)
-        } else if method == "POST" && base == fixtureKmsOrigin && path == "/v1/${sessionKmsKey}:decrypt"
-            && headers == fixtureKmsHeaders && startsWith(body, aadField) {
+        } else if kmsCall(method, base, path, headers, body, sessionKmsKey, "decrypt") {
             sessionKmsReply(body, "ciphertext", "plaintext", sessionCiphertext, rotatedCiphertext, sessionPlaintext, rotatedPlaintext)
         } else if method == "POST" && base == fixtureOAuth.supabaseOrigin && path == "/auth/v1/token?grant_type=pkce"
             && body == "{\"auth_code\":\"fixture-callback-code\",\"code_verifier\":\"dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk\"}" {

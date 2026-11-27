@@ -2,8 +2,10 @@
 # `deslop .`; it exits 3 above this ceiling, which only goes down.
 # 2026-11-25: Deslop 0.41.0 measured 22,876 duplicate lines across 581,117 lines.
 # 2026-11-25: Deslop 0.41.0 measured 22,831 duplicate lines across 581,255 lines at 08a58599f.
+# 2026-11-27: Deslop 0.41.0 measured 23,847 duplicate lines across 608,016 lines at bfc5d0277.
+# 2026-11-27: Deslop 0.41.0 measured 23,838 duplicate lines across 608,023 lines after the wasm contract assertions became loops.
 [threshold]
-max_duplication_percent = 3.927881
+max_duplication_percent = 3.920578
 
 # Generated files carry no banner Deslop recognises, so they are named here and
 # never analysed: tree-sitter's parser, grammar JSON, node types and the runtime

@@ -301,17 +301,13 @@ def int_attr(entries, name) -> Result[int, str]:
 
     # Examples
     ```osprey
-    from xdsl import AttrParser, Ir, Lexer
+    from xdsl import Ir
 
-    def show():
-        ts = unwrap_or(Lexer.tokens('{width = 32 : i64, name = "x", sym = @main, dims = array<i64: 1, 2>}'), [])
-        entries = unwrap_or(AttrParser.parse_dictionary(ts, 0), Ir.Parsed(value=[], next=0)).value
-        print(f"{Ir.int_attr(entries, "width")} {Ir.int_attr(entries, \"missing\")}")
-
-    wrappingArithmetic(show)
+    width = [Ir.NamedAttr(name='w', value=Ir.IntegerAttr(value=32, type=Ir.UnitAttr()))]
+    print(f"{Ir.int_attr(width, 'w')} {Ir.int_attr(width, 'h')}")
     ```
     ```output
-    Success(32) Error(no attribute 'missing')
+    Success(32) Error(no attribute 'h')
     ```
     """
     return andThen(get_attr(entries, name), as_int)
@@ -322,17 +318,12 @@ def string_attr(entries, name) -> Result[str, str]:
 
     # Examples
     ```osprey
-    from xdsl import AttrParser, Ir, Lexer
+    from xdsl import Ir
 
-    def show():
-        ts = unwrap_or(Lexer.tokens('{width = 32 : i64, name = "x", sym = @main, dims = array<i64: 1, 2>}'), [])
-        entries = unwrap_or(AttrParser.parse_dictionary(ts, 0), Ir.Parsed(value=[], next=0)).value
-        print(f"{Ir.string_attr(entries, "name")} {Ir.string_attr(entries, \"missing\")}")
-
-    wrappingArithmetic(show)
+    print(f"{Ir.string_attr([Ir.NamedAttr(name='n', value=Ir.StringAttr(data='x'))], 'n')} {Ir.string_attr([Ir.NamedAttr(name='n', value=Ir.UnitAttr())], 'n')}")
     ```
     ```output
-    Success(x) Error(no attribute 'missing')
+    Success(x) Error(not a string attribute)
     ```
     """
     return andThen(get_attr(entries, name), as_string)
@@ -343,17 +334,13 @@ def symbol_attr(entries, name) -> Result[str, str]:
 
     # Examples
     ```osprey
-    from xdsl import AttrParser, Ir, Lexer
+    from xdsl import Ir
 
-    def show():
-        ts = unwrap_or(Lexer.tokens('{width = 32 : i64, name = "x", sym = @main, dims = array<i64: 1, 2>}'), [])
-        entries = unwrap_or(AttrParser.parse_dictionary(ts, 0), Ir.Parsed(value=[], next=0)).value
-        print(f"{Ir.symbol_attr(entries, "sym")} {Ir.symbol_attr(entries, \"missing\")}")
-
-    wrappingArithmetic(show)
+    entries = [Ir.NamedAttr(name='sym', value=Ir.SymbolRefAttr(name='main'))]
+    print(f"{Ir.symbol_attr(entries, 'sym')} {Ir.symbol_attr(entries, 'other')}")
     ```
     ```output
-    Success(main) Error(no attribute 'missing')
+    Success(main) Error(no attribute 'other')
     ```
     """
     return andThen(get_attr(entries, name), as_symbol)
@@ -364,17 +351,13 @@ def dense_attr(entries, name) -> Result[list[int], str]:
 
     # Examples
     ```osprey
-    from xdsl import AttrParser, Ir, Lexer
+    from xdsl import Ir
 
-    def show():
-        ts = unwrap_or(Lexer.tokens('{width = 32 : i64, name = "x", sym = @main, dims = array<i64: 1, 2>}'), [])
-        entries = unwrap_or(AttrParser.parse_dictionary(ts, 0), Ir.Parsed(value=[], next=0)).value
-        print(f"{Ir.dense_attr(entries, "dims")} {Ir.dense_attr(entries, \"missing\")}")
-
-    wrappingArithmetic(show)
+    dims = Ir.DenseArrayBase(elt_type=Ir.IntegerType(width=64), data=[1, 2])
+    print(Ir.dense_attr([Ir.NamedAttr(name='dims', value=dims)], 'dims'))
     ```
     ```output
-    Success([1, 2]) Error(no attribute 'missing')
+    Success([1, 2])
     ```
     """
     return andThen(get_attr(entries, name), as_dense)

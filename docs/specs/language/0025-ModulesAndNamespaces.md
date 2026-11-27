@@ -256,7 +256,7 @@ handler arms.
 
 ### State Boundary Inventory `[MODULES-STATE-INVENTORY]`
 
-Every resolved state module, including an empty or private owner, contributes one inventory entry: its qualified source name, declaration location, private cell count and sorted exported owned effect names. Cell names, initializers and private helper declarations are excluded. Every declaration receives a `state-boundary` warning describing that entry. This makes state ownership visible without changing acceptance or implying that importing a module installs a handler. Each installer still creates fresh cells.
+Every resolved state module, including an empty or private owner, contributes one inventory entry: its qualified source name, declaration location, private cell count and sorted exported owned effect names. Cell names, initializers and private helper declarations are excluded. Every declaration receives a `state-boundary` diagnostic describing that entry, at `info` level ([LINT-LEVELS]). This makes state ownership visible without changing acceptance or implying that importing a module installs a handler. Each installer still creates fresh cells.
 
 The CLI, LSP and generated project documentation consume this same inventory. Live editor changes replace it together with the checked project. Invalid syntax, assembly or types cannot justify a stale ownership report.
 
