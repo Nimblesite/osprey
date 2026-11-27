@@ -56,9 +56,11 @@ pub(crate) fn cast_num(cg: &mut Codegen, operand: &str, from: Numeric, to: Numer
     }
     if to == Numeric::FLOAT16 {
         let wide = cast_num(cg, operand, from, Numeric::FLOAT);
-        cg.add_extern("declare zeroext i16 @osp_float_to_f16(double)");
+        // No `zeroext` on the return: AAPCS64 outside Darwin (Android, Linux)
+        // leaves a narrow return's upper bits unspecified, so LLVM must mask it.
+        cg.add_extern("declare i16 @osp_float_to_f16(double)");
         let reg = cg.emit_reg(format!(
-            "call zeroext i16 @osp_float_to_f16(double {})",
+            "call i16 @osp_float_to_f16(double {})",
             wide.operand
         ));
         return Value::new(reg, LType::Num(to));
