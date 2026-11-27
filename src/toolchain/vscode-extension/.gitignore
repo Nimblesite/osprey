@@ -17,3 +17,6 @@ icon.png
 
 # Generated at build time from compiler/runtime/native_abi.h by scripts/generate-native-abi.mjs.
 client/src/osprey-ui/generated/
+
+# Generated from the Osprey Packages design system during precompile.
+media/registry/

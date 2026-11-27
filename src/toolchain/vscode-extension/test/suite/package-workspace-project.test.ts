@@ -166,6 +166,12 @@ suite("package workspace browser interaction", () => {
   teardown(() => sinon.restore());
   test("browse, search and cancel Add through the real Osprey webview", async () => {
     await withPackageBrowser(async (frame, folder) => {
+      const heading = frame.getByRole("heading", { name: "Osprey Packages", exact: true });
+      await heading.waitFor();
+      assert.match(await heading.evaluate(element => getComputedStyle(element).fontFamily), /Georgia/);
+      const mark = frame.locator(".osp-screen-header img.osp-brand");
+      assert.match(await mark.getAttribute("src") ?? "", /registry-mark\.svg$/);
+      await mark.evaluate((image: HTMLImageElement) => image.decode());
       await searchCatalog(frame);
       await cancelUnverifiedAdd(frame, folder);
       await frame.locator("body").screenshot({ path: path.resolve(__dirname,

@@ -2,6 +2,9 @@
   color-scheme: light;
   scrollbar-gutter: stable;
   scroll-padding-top: 6rem;
+  --package-card: #fffdf7;
+  --package-banner: #153d39;
+  --package-pattern: conic-gradient(from 30deg at 50% 67%, #dfacff 0 60deg, #9560cd 60deg 120deg, #624b86 120deg 180deg, #f1c770 180deg 240deg, #ff967d 240deg 300deg, #bde982 300deg);
   --paper: #f6f5ed;
   --ink: #172921;
   --pine: #163f35;
@@ -49,8 +52,8 @@ pre { overflow-x: auto; padding: 1rem; background: #e6eae1; border-radius: .35re
 .prose-package h3, .prose-package p { margin: .2rem 0 }
 .prose-intro h1 { margin-bottom: .7rem; font-size: clamp(2.8rem, 6.2vw, 5rem) }
 .prose-intro p { max-width: 60ch; margin-bottom: 1.7rem; color: var(--muted); font-size: 1.12rem }
-.prose-cover, .prose-intro { position: relative; isolation: isolate; overflow: hidden; padding: clamp(1.5rem, 4vw, 3.8rem); border-radius: 1rem; background: #153d39; color: #fcf8ef }
-.prose-cover::after, .prose-intro::after { content: ''; position: absolute; z-index: -1; inset: 0 0 0 60%; background: conic-gradient(from 30deg at 50% 67%, #dfacff 0 60deg, #9560cd 60deg 120deg, #624b86 120deg 180deg, #f1c770 180deg 240deg, #ff967d 240deg 300deg, #bde982 300deg); background-size: 5.3rem 7.9rem; clip-path: polygon(48% 0,100% 0,100% 100%,0 100%); }
+.prose-cover, .prose-intro { position: relative; isolation: isolate; overflow: hidden; padding: clamp(1.5rem, 4vw, 3.8rem); border-radius: 1rem; background: var(--package-banner); color: #fcf8ef }
+.prose-cover::after, .prose-intro::after { content: ''; position: absolute; z-index: -1; inset: 0 0 0 60%; background: var(--package-pattern); background-size: 5.3rem 7.9rem; clip-path: polygon(48% 0,100% 0,100% 100%,0 100%); }
 .prose-cover h1, .prose-intro h1 { max-width: 70%; margin: 1.5rem 0 .6rem; font-size: clamp(2.7rem, 5.6vw, 5.5rem) }
 .prose-cover > p, .prose-intro > p { max-width: min(65%, 54ch); margin: 0; color: #deebdc; font-size: 1.1rem }
 .prose-cover > a { color: var(--mint); font-weight: 650 }
@@ -58,7 +61,7 @@ pre { overflow-x: auto; padding: 1rem; background: #e6eae1; border-radius: .35re
 .prose-intro h1 { margin-top: 0 }
 .prose-columns { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 1.3rem; margin-top: 1.3rem; align-items: start }
 .prose-releases, .prose-facts { border-radius: 1rem; padding: clamp(1.25rem, 2.5vw, 2rem) }
-.prose-releases { border: 1px solid var(--line); background: #fffdf7 }
+.prose-releases { border: 1px solid var(--line); background: var(--package-card) }
 .prose-facts { background: #e9def2; color: #34243d }
 .prose-columns h2 { margin-bottom: .75rem }
 .prose-facts dl { margin: 0 }

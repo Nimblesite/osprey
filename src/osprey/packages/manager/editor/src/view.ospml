@@ -254,4 +254,4 @@ module View
     (** The root Packages screen for the current state: the fault screen, the pending notice, or the audit banner, counts, notices, missing and workspace findings and the list and detail slots. *)
     export rootView () =
         snapshot = current ()
-        Ui::screen ("Packages", projectOf snapshot, [Ui::button ("Refresh", "arrow.clockwise", Refresh)], screenBody snapshot)
+        Ui::screen ("Osprey Packages", projectOf snapshot, [Ui::button ("Refresh", "arrow.clockwise", Refresh)], screenBody snapshot)
