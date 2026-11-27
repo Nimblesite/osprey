@@ -22,7 +22,7 @@ fn registry_classifies_the_compilers_ambient_builtin_inventory() {
     ] {
         declare(&mut ambient);
     }
-    // The registry lives in Nimblesite/osprey-packages, laid at its pinned commit by `make
+    // The registry lives in Nimblesite/osprey-packages, laid from its main by `make
     // downstream`; read at run time so the crate builds without it. [REPO-SPLIT-CANARY]
     let path = concat!(
         env!("CARGO_MANIFEST_DIR"),

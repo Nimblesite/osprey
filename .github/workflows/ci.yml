@@ -417,7 +417,7 @@ jobs:
         run: chmod +x target/release/osprey
 
       # The compiler-side tests that build the package manager's client and editor and render
-      # Perception's songs run against the pinned commits. [REPO-SPLIT-CANARY]
+      # Perception's songs run against the split repositories' main branches. [REPO-SPLIT-CANARY]
       - name: Lay the package manager (Nimblesite/osprey-packages)
         uses: ./.github/actions/downstream
         with:
