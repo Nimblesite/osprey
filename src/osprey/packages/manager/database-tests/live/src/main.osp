@@ -5,6 +5,7 @@ import registry::Bundle
 import registry::Release
 import registry::ReleaseFiles
 import registry_host::Database
+import registry_host::BrowserSessions
 import registry_host::LoginFlow
 import registry_host::Host
 import registry_host::Native
@@ -138,7 +139,61 @@ fn catalogListener() = {
     checkAll("restricted PostgreSQL login behind public HTTP ingress", [created.status == 0, (served ?: -1) == 0])
 }
 
+let sessionSetup = "INSERT INTO auth_bindings(id,principal_id,issuer,provider,provider_subject,auth_subject,state,verified_at) VALUES (md5('binding')::uuid,md5('person1')::uuid,'https://supabase.example.test/auth/v1','github','421',md5('subject')::uuid,'active',now());"
+let sessionCookie = "'sha256:' || repeat('1',64)"
+let sessionIssuer = "'https://supabase.example.test/auth/v1'"
+let sessionIdentity = "md5('subject')::uuid,'421'"
+
+fn sessionStatement(name, types, sql) = "PREPARE ${name}(${types}) AS ${sql};"
+
+fn sessionSql() = join([
+    sessionSetup,
+    sessionStatement("issue", "text,text,uuid,text,text", BrowserSessions::issue),
+    sessionStatement("lookup", "text", BrowserSessions::lookup),
+    sessionStatement("touch", "text,text,uuid,text", BrowserSessions::touch),
+    sessionStatement("revoke", "text", BrowserSessions::revoke)
+], "")
+
+fn sessionIssue(issuer, identity) = "EXECUTE issue(${sessionCookie},${issuer},${identity},'encrypted-provider-token');"
+let lookup = "EXECUTE lookup(${sessionCookie});"
+fn issued() = sessionIssue(sessionIssuer, sessionIdentity)
+
+fn competingBinding() = "INSERT INTO auth_bindings(id,principal_id,issuer,provider,provider_subject,auth_subject,state,verified_at) SELECT md5('other-binding')::uuid,md5('person2')::uuid,issuer,provider,'999',auth_subject,'active',now() FROM auth_bindings;"
+
+fn stableSessionChecks() = checkAll("live session checks exact provider binding and erases tokens on logout", [
+    refused(sessionSetup + competingBinding(), "23505"),
+    answer(sessionSql() + sessionIssue("'https://foreign.example.test/auth/v1'", sessionIdentity) + lookup, ""),
+    answer(sessionSql() + sessionIssue(sessionIssuer, "md5('other')::uuid,'421'") + sessionIssue(sessionIssuer, "md5('subject')::uuid,'422'") + lookup, ""),
+    sessionRun("EXECUTE touch(${sessionCookie},${sessionIssuer},md5('other')::uuid,'421');" + lookup, 2, "encrypted-provider-token"),
+    sessionRun("EXECUTE touch(${sessionCookie},${sessionIssuer},${sessionIdentity});" + lookup, 3, "encrypted-provider-token"),
+    sessionRun("EXECUTE revoke(${sessionCookie}); EXECUTE revoke(${sessionCookie}); " + lookup + "SELECT token_envelope IS NULL FROM browser_sessions;", 3, "t")
+])
+
+fn sessionRun(suffix, expectedLines, expected) = {
+    let result = execute(sessionSql() + issued() + suffix)
+    let output = trim(result.stdout)
+    result.status == 0 && length(split(output, "\n") ?: []) == expectedLines && endsWith(output, expected)
+}
+
+fn sessionDenied(mutation) = {
+    let result = execute(sessionSql() + issued() + mutation + lookup + "EXECUTE touch(${sessionCookie},${sessionIssuer},${sessionIdentity}); SELECT 'checked';")
+    result.status == 0 && length(split(trim(result.stdout), "\n") ?: []) == 2 && endsWith(trim(result.stdout), "checked")
+}
+
+fn sessionLifetimeChecks() = checkAll("old, suspended, revoked and rotated sessions fail closed", [
+    sessionDenied("UPDATE browser_sessions SET started_at=now()-interval '60 minutes',last_used_at=now()-interval '30 minutes';"),
+    sessionDenied("UPDATE browser_sessions SET started_at=now()-interval '12 hours';"),
+    sessionDenied("UPDATE auth_bindings SET state='revoked';"),
+    sessionDenied("UPDATE principals SET credential_epoch=2;"),
+    sessionDenied("UPDATE principals SET state='suspended';"),
+    sessionDenied("UPDATE auth_bindings SET principal_id=md5('person2')::uuid;"),
+    sessionDenied("CREATE ROLE session_outsider NOSUPERUSER NOBYPASSRLS; GRANT USAGE ON SCHEMA registry TO session_outsider; GRANT SELECT,UPDATE ON browser_sessions,auth_bindings,principals TO session_outsider; SET LOCAL ROLE session_outsider;")
+])
+
 fn suites() = {
+    test("live browser session identity and logout", stableSessionChecks)
+    test("live browser session expiry and revocation", sessionLifetimeChecks)
+    test("browser sessions start closed", fn() => checkAll("browser sessions use forced row security", [answer("SELECT relrowsecurity AND relforcerowsecurity FROM pg_class WHERE oid = 'registry.browser_sessions'::regclass", "t")]))
     test("verified public catalog", publicCatalog)
     test("PostgreSQL-backed hosted API", catalogListener)
     test("publisher delegation storage", constraints)

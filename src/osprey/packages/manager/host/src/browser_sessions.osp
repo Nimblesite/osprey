@@ -1,0 +1,24 @@
+namespace registry_host;
+
+/// Database half of [PACKAGE-HOSTED-AUTH]. The API sends only hashed browser cookies
+/// and encrypted provider tokens. The identity parameters come from provider verification.
+module BrowserSessions {
+    let binding = "b.issuer=$2 AND b.auth_subject=$3 AND b.provider_subject=$4"
+    let eligibility = "b.provider='github' AND b.state='active' AND p.kind='human' AND p.state='active'"
+    let live = "s.revoked_at IS NULL AND s.started_at<=statement_timestamp() AND s.started_at>statement_timestamp()-interval '12 hours' AND s.last_used_at<=clock_timestamp() AND s.last_used_at>statement_timestamp()-interval '30 minutes'"
+    let samePrincipal = "p.id=s.principal_id AND p.credential_epoch=s.credential_epoch AND b.principal_id=s.principal_id"
+    let principal = "registry.auth_bindings b JOIN registry.principals p ON p.id=b.principal_id"
+    let claims = "s.cookie_digest=$1 AND b.id=s.binding_id AND " + samePrincipal + " AND " + eligibility + " AND " + live
+
+    /// Issue only for an approved and active binding, never by email or provider username.
+    export let issue = "INSERT INTO registry.browser_sessions(id,cookie_digest,binding_id,principal_id,credential_epoch,token_envelope,started_at,last_used_at) SELECT gen_random_uuid(),$1,b.id,p.id,p.credential_epoch,$5,statement_timestamp(),statement_timestamp() FROM " + principal + " WHERE " + eligibility + " AND " + binding + " RETURNING id"
+
+    /// Get the envelope for provider verification. A lookup never extends inactivity.
+    export let lookup = "SELECT s.token_envelope FROM registry.browser_sessions s," + principal + " WHERE " + claims
+
+    /// Recheck the verified provider identity and revocation in the update that accepts the session.
+    export let touch = "UPDATE registry.browser_sessions s SET last_used_at=GREATEST(s.last_used_at,statement_timestamp()) FROM " + principal + " WHERE " + claims + " AND " + binding + " RETURNING s.id,s.principal_id,s.credential_epoch"
+
+    /// Logout remains possible if the binding or provider is unavailable.
+    export let revoke = "UPDATE registry.browser_sessions SET revoked_at=GREATEST(last_used_at,statement_timestamp()),token_envelope=NULL WHERE cookie_digest=$1 AND revoked_at IS NULL RETURNING id"
+}

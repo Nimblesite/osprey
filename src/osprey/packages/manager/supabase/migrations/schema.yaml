@@ -25,11 +25,14 @@ tables:
       - { name: issuer, type: Text, isNullable: false }
       - { name: provider, type: Text, isNullable: false }
       - { name: provider_subject, type: Text, isNullable: false }
+      - { name: auth_subject, type: Uuid, isNullable: false }
       - { name: state, type: Text, isNullable: false, checkConstraint: "state IN ('active', 'revoked')" }
       - { name: verified_at, type: DateTimeOffset, isNullable: false }
     primaryKey: { columns: [id] }
     uniqueConstraints:
       - { name: uq_auth_binding_identity, columns: [issuer, provider, provider_subject] }
+    indexes:
+      - { name: uq_auth_binding_active_subject, columns: [issuer, auth_subject], isUnique: true, filter: "state = 'active'" }
     foreignKeys:
       - { columns: [principal_id], referencedSchema: registry, referencedTable: principals, referencedColumns: [id], onDelete: Restrict, onUpdate: Restrict }
     rowLevelSecurity: { enabled: true, forced: true, policies: [] }
@@ -263,3 +266,28 @@ tables:
           operations: [Select]
           roles: []
           using: "current_setting('session_authorization') = 'registry_catalog_reader' AND verified_at <= statement_timestamp() AND expires_at > statement_timestamp()"
+
+  - name: browser_sessions
+    schema: registry
+    columns:
+      - { name: id, type: Uuid, isNullable: false }
+      - { name: cookie_digest, type: Text, isNullable: false, checkConstraint: "cookie_digest ~ '^sha256:[0-9a-f]{64}$'" }
+      - { name: binding_id, type: Uuid, isNullable: false }
+      - { name: principal_id, type: Uuid, isNullable: false }
+      - { name: credential_epoch, type: BigInt, isNullable: false, checkConstraint: "credential_epoch > 0" }
+      - { name: token_envelope, type: Text, isNullable: true, checkConstraint: "octet_length(token_envelope) BETWEEN 1 AND 65536" }
+      - { name: started_at, type: DateTimeOffset, isNullable: false }
+      - { name: last_used_at, type: DateTimeOffset, isNullable: false }
+      - { name: revoked_at, type: DateTimeOffset, isNullable: true }
+    primaryKey: { columns: [id] }
+    uniqueConstraints:
+      - { name: uq_browser_sessions_cookie, columns: [cookie_digest] }
+    checkConstraints:
+      - { name: ck_browser_sessions_timing, expression: "last_used_at >= started_at AND (revoked_at IS NULL OR revoked_at >= last_used_at)" }
+      - { name: ck_browser_sessions_envelope, expression: "(revoked_at IS NULL AND token_envelope IS NOT NULL) OR (revoked_at IS NOT NULL AND token_envelope IS NULL)" }
+    indexes:
+      - { name: ix_browser_sessions_started_at, columns: [started_at] }
+    foreignKeys:
+      - { columns: [binding_id], referencedSchema: registry, referencedTable: auth_bindings, referencedColumns: [id], onDelete: Restrict, onUpdate: Restrict }
+      - { columns: [principal_id], referencedSchema: registry, referencedTable: principals, referencedColumns: [id], onDelete: Restrict, onUpdate: Restrict }
+    rowLevelSecurity: { enabled: true, forced: true, policies: [] }

@@ -113,7 +113,7 @@ $(REGISTRY_MIGRATOR):
 	  tar -xzf "$$scratch/source.tgz" --strip-components=1 -C "$$scratch"; \
 	  dotnet publish "$$scratch/Migration/DataProviderMigrate" -c Release -f net10.0 -o "$(abspath $(REGISTRY_MIGRATOR_DIR))/bin"
 
-## registry-migration-check: Apply the ownership schema twice on disposable socket-only PostgreSQL.
+## registry-migration-check: Apply the registry schema twice on disposable socket-only PostgreSQL.
 registry-migration-check: $(REGISTRY_MIGRATOR) $(BIN)
 	@set -eu; pg=$$(pg_config --bindir); \
 	  if [ ! -x "$$pg/postgres" ]; then pg=$$(dirname "$$(realpath "$$(command -v postgres)")"); fi; \
@@ -126,7 +126,7 @@ registry-migration-check: $(REGISTRY_MIGRATOR) $(BIN)
 	  migrate() { dotnet "$(REGISTRY_MIGRATOR)" migrate --provider postgres --schema src/osprey/packages/manager/supabase/migrations/schema.yaml --output "Host=$$PGHOST;Port=$$PGPORT;Username=$$PGUSER;Database=$$PGDATABASE"; }; \
 	  migrate; migrate >"$$db/replay.log" || { cat "$$db/replay.log"; exit 1; }; cat "$$db/replay.log"; \
 	  grep -Fq 'No operations to apply' "$$db/replay.log"; \
-	  test "$$("$$pg/psql" -XAtc "SELECT count(*) = 13 AND bool_and(relrowsecurity AND relforcerowsecurity) FROM pg_class WHERE relnamespace = 'registry'::regnamespace AND relkind = 'r'")" = t; \
+	  test "$$("$$pg/psql" -XAtc "SELECT count(*) = 14 AND bool_and(relrowsecurity AND relforcerowsecurity) FROM pg_class WHERE relnamespace = 'registry'::regnamespace AND relkind = 'r'")" = t; \
 	  $(BIN) test src/osprey/packages/manager/database-tests/live
 
 .PHONY: registry-integration-check

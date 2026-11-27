@@ -28,11 +28,12 @@ union InvitationState { Pending {} Accepted {} Revoked {} Expired {} }
 union MaintenanceReportState { Open {} Acknowledged {} Resolved {} Withdrawn {} }
 type RegistryPrincipal { id: PrincipalId kind: PrincipalKind state: PrincipalState credentialEpoch: AuthorityEpoch createdAt: DateTime }
 type PendingLogin { stateDigest: Digest browserDigest: Digest verifierEnvelope: String createdAt: DateTime }
+type BrowserSession { id: Uuid cookieDigest: Digest bindingId: Uuid principalId: PrincipalId credentialEpoch: AuthorityEpoch tokenEnvelope: Option<String> startedAt: DateTime lastUsedAt: DateTime revokedAt: Option<DateTime> }
 type PublicCatalogNotice { path: RelativePath text: String }
 type PublicCatalogRelease { epoch: CompatibilityEpoch ordinal: ReleaseOrdinal digest: Digest publisherId: String publisherName: String licenseExpression: String notices: List<PublicCatalogNotice> }
 type PublicCatalogEntry { key: String keywords: List<String> releases: List<PublicCatalogRelease> summary: String warnings: List<String> }
 type PublicCatalogPage { packages: List<PublicCatalogEntry> }
-type RegistryAuthBinding { id: Uuid principalId: PrincipalId issuer: String provider: String providerSubject: String state: AccessState verifiedAt: DateTime }
+type RegistryAuthBinding { id: Uuid principalId: PrincipalId issuer: String provider: String providerSubject: String authSubject: Uuid state: AccessState verifiedAt: DateTime }
 type Organization { id: Uuid handle: ScopeName displayName: String state: OrganizationState governanceEpoch: AuthorityEpoch createdAt: DateTime }
 type OrganizationMembership {
   id: Uuid
