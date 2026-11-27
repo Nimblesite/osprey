@@ -1,11 +1,15 @@
 namespace registry_auth_tests;
 import registry_api::Supabase
+import registry_api::Jwt
+import registry::Bytes
+import registry::Dsse
 
 /// Provider fixtures are test handlers, never a production verifier fallback.
 module ProviderTests {
     /// The bearer token every fixture exchange presents, and the refusal of a provider identity without one GitHub id.
     let fixtureToken = "fixture-token"
     let githubIdentity = "auth.github-identity"
+    let unexpected = "unexpected-provider-request"
 
     fn code(result) = match result {
         Error { message } => message
@@ -17,7 +21,7 @@ module ProviderTests {
             request method base path headers payload => if method == "GET" && base == config.supabaseOrigin
             && path == "/auth/v1/user" && contains(headers, "Authorization: Bearer ${token}") && payload == "" {
                 Success { value: Supabase::Reply { status: status, body: body } }
-            } else { Error { message: "unexpected-provider-request" } }
+            } else { Error { message: unexpected } }
         }
         Supabase::verify(config, token)
     }
@@ -55,7 +59,7 @@ module ProviderTests {
                 Success { value: Supabase::Reply { status: 200, body: "{\"access_token\":\"fixture-token\",\"refresh_token\":\"fixture-refresh\",\"expires_in\":600}" } }
             } else if method == "GET" && path == "/auth/v1/user" && contains(headers, "Authorization: Bearer ${fixtureToken}") {
                 Success { value: Supabase::Reply { status: 200, body: account(subject, identities) } }
-            } else { Error { message: "unexpected-provider-request" } }
+            } else { Error { message: unexpected } }
         }
         Supabase::exchange(config, "fixture-code", verifier)
     }
@@ -81,10 +85,69 @@ module ProviderTests {
         ])
     }
 
+    let es256Key = "{\"kty\":\"EC\",\"x\":\"mbmVW9PU5w4PlHGhi8Ckd7Fe9ri8ZZBRSBwP8Au8I4c\",\"y\":\"HIcjlyqQ1euLs-9ombN4tHn5iki_sWehGRAR1oVJCak\",\"crv\":\"P-256\",\"kid\":\"es256-fixture\",\"alg\":\"ES256\",\"use\":\"sig\"}"
+    let es256Token = "eyJhbGciOiJFUzI1NiIsImtpZCI6ImVzMjU2LWZpeHR1cmUiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJodHRwczovL3Byb2plY3Quc3VwYWJhc2UuY28vYXV0aC92MSIsImF1ZCI6ImF1dGhlbnRpY2F0ZWQiLCJzdWIiOiJhODBiY2ZmZC1lNTFiLTQ0Y2MtOWZhOC1hZjJhNDlmYWU0NTciLCJpYXQiOjE3OTU3Mzk5MjAsImV4cCI6MTc5NTc0MDUyMCwidXNlcl9tZXRhZGF0YSI6eyJuYW1lIjoiQ2hsb8OpIOadsSJ9fQ.3ontYR8Hz2udQ89py4bx7Y9_tDsRDdZrzXHxqErPFrmflitspzd9YJpewpAw4lFBkpRyz72qYJ55CxApmw1W3w"
+
+    let rs256Key = "{\"kty\":\"RSA\",\"n\":\"1CaDsy2QaXD4gs32hwQbCVB7XXJmFN_jFk6vve5mQ4ImTOIZLou81e76tS-Szl-PJYCaybGhfWqyglQJfAb32vDY7TgRAP0LLWoL5alwKoVRlDfY8XCIRfmnUv7wc2TJP5AqM3j0ooxt6NEQNXxRPAHaM3aDVtEM8Pu9NhxW_NN_5IOPafNstSrSqEmFiMK7Hxhnk9Gpn0AWdEK6Egh_Om0HF50X8YJEcv2__rZZN3JGrcucftJV11vE3K_teCJRhmpU12z9V3lzAacK-k1o9lCZEl5H7uL_np9bKAuEa2zGXr29Cl6Z5hl5aCs7n3VdHPjSSoT0H3rdsTvhiUF5VQ\",\"e\":\"AQAB\",\"kid\":\"rs256-fixture\",\"alg\":\"RS256\",\"use\":\"sig\"}"
+    let rs256Token = "eyJhbGciOiJSUzI1NiIsImtpZCI6InJzMjU2LWZpeHR1cmUiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJodHRwczovL3Byb2plY3Quc3VwYWJhc2UuY28vYXV0aC92MSIsImF1ZCI6ImF1dGhlbnRpY2F0ZWQiLCJzdWIiOiJhODBiY2ZmZC1lNTFiLTQ0Y2MtOWZhOC1hZjJhNDlmYWU0NTciLCJpYXQiOjE3OTU3Mzk5MjAsImV4cCI6MTc5NTc0MDUyMCwidXNlcl9tZXRhZGF0YSI6eyJuYW1lIjoiQ2hsb8OpIOadsSJ9fQ.JOSB0Ks1bkaZhgQOAaFoGBuYYcrnRh3pze2aUe-1PEn8E3NNkn5psaWyD16PowUk81UGKZg9WtQ8ZJ7PiObPYsnv7UhY9QwukWtlZmeqq4gOIO5bISjzT2XQ6GnmlzVRC8f9QWRSzOu5atb6ZBmkBPlpiNbVqo5I_taCPJgBZgfwC-SfR1D7rWqGbPxKcQqTtxolhqhl6Izkmjzwas3mqFK5grGK1ZxM26EQ1mIIzAg-1jt7MR2ywkaNJatN3URJmzk4qtjOih9a1-CjLRh3-bYyVd9XUwrONTAUVx6qqJKjf_lXxpWtmsFEJsVrDOi0rzzaHSZfBRvg0-L1NFY3mw"
+    let wrongAudience = "eyJhbGciOiJFUzI1NiIsImtpZCI6ImVzMjU2LWZpeHR1cmUiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJodHRwczovL3Byb2plY3Quc3VwYWJhc2UuY28vYXV0aC92MSIsImF1ZCI6Im90aGVyIiwic3ViIjoiYTgwYmNmZmQtZTUxYi00NGNjLTlmYTgtYWYyYTQ5ZmFlNDU3IiwiaWF0IjoxNzk1NzM5OTIwLCJleHAiOjE3OTU3NDA1MjAsInVzZXJfbWV0YWRhdGEiOnsibmFtZSI6IkNobG_DqSDmnbEifX0.Vj4XL4-ZJ2xcTzUBDi-ZHoPrlzHNJdAycHp-kav-4VlMCKCrm6UNyRywSMlgLm_8O4KRpVeEDvllvDvtl9ty9A"
+    let fixtureTime = 1795740000
+
+    fn jwksFixture(config, keySet) = handler Supabase::Provider {
+        request method base path headers payload => if method == "GET" && base == config.supabaseOrigin
+            && path == "/auth/v1/.well-known/jwks.json" && headers == "" && payload == "" {
+            Success { value: Supabase::Reply { status: 200, body: keySet } }
+        } else { Error { message: unexpected } }
+    }
+
+    fn jwtFixture(config, keySet, now, token) = jwksFixture(config, keySet)(fn() => Jwt::verify(config, now, token))
+
+    fn validJwt(config) = {
+        let keys = "{\"keys\":[${es256Key},${rs256Key}]}"
+        checkAll("pinned Supabase keys verify signed RS256 and ES256 access tokens", [
+            (jwtFixture(config, keys, fixtureTime, es256Token) ?: "denied") == subject,
+            (jwtFixture(config, keys, fixtureTime, rs256Token) ?: "denied") == subject
+        ])
+    }
+
+    fn unsignedHeader(token, header) = Dsse::base64Url(Bytes::ofString(header)) + drop(token, byteLength(Bytes::before(token, ".")))
+
+    fn deniedJwt(config) = {
+        let keys = "{\"keys\":[${es256Key}]}"
+        let tampered = take(es256Token, byteLength(es256Token) - 5) + "AAAAA"
+        let outsideKey = "{\"alg\":\"ES256\",\"kid\":\"es256-fixture\",\"jku\":\"https://example.test/keys\"}"
+        let oldAlgorithm = "{\"alg\":\"HS256\",\"kid\":\"es256-fixture\"}"
+        checkAll("access token failures never return a subject", [
+            code(jwtFixture(config, keys, fixtureTime, tampered)) != "",
+            code(jwtFixture(config, keys, fixtureTime + 551, es256Token)) != "",
+            code(jwtFixture(config, keys, fixtureTime - 111, es256Token)) != "",
+            code(jwtFixture(config, keys, fixtureTime, wrongAudience)) != "",
+            code(jwtFixture(config, keys, fixtureTime, rs256Token)) != "",
+            code(jwtFixture(config, keys, fixtureTime, unsignedHeader(es256Token, oldAlgorithm))) == "auth.jwt-invalid",
+            code(jwtFixture(config, keys, fixtureTime, unsignedHeader(es256Token, outsideKey))) == "auth.jwt-invalid",
+            code(jwtFixture(config, keys, fixtureTime, es256Token + "=")) == "base64url.invalid",
+            code(jwtFixture(config { supabaseOrigin: "https://wrong.supabase.co" }, keys, fixtureTime, es256Token)) != "",
+            code(jwtFixture(config, "{\"keys\":[${es256Key},${es256Key}]}", fixtureTime, es256Token)) != ""
+        ])
+    }
+
+    fn matchesSessionSubject(config) = jwksFixture(config, "{\"keys\":[${es256Key}]}")(fn() => {
+        let owner = Supabase::Identity { authSubject: subject, githubId: "123456" }
+        let session = Supabase::Session { accessToken: es256Token, refreshToken: "fixture-refresh", expiresIn: 600, identity: owner }
+        let other = owner { authSubject: "11111111-1111-4111-8111-111111111111" }
+        checkAll("the JWT subject and Supabase account must identify the same person", [
+            code(Jwt::verifySession(config, fixtureTime, session)) == "",
+            code(Jwt::verifySession(config, fixtureTime, session { identity: other })) == "auth.jwt-subject"
+        ])
+    })
+
     /// The provider identity checks over fixture `Supabase::Provider` handlers:
     /// the immutable identity a success yields, every rejection code, and
     /// outages and header injection that never authenticate.
     export fn run(config) = {
+        test("auth: verify both Supabase signing algorithms", fn() => validJwt(config))
+        test("auth: JWT signature, audience, issuer and timing failures", fn() => deniedJwt(config))
+        test("auth: match signed subject to Supabase account", fn() => matchesSessionSubject(config))
         test("auth: provider immutable identity", fn() => stableIdentity(config))
         test("auth: provider denial cases", fn() => rejectedIdentity(config))
         test("auth: PKCE exchange identity", fn() => callback(config))

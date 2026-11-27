@@ -43,6 +43,41 @@ module Dsse {
     export fn base64Url(bytes) = join(range(0, intDiv(wrapAdd(length(bytes), 2), 3))
         |> map(fn(i) => b64Chunk(bytes, wrapMul(i, 3))) |> toList, "")
 
+    fn sextet(b) = if b >= 65 && b <= 90 { b - 65 }
+        else if b >= 97 && b <= 122 { b - 71 }
+        else if b >= 48 && b <= 57 { b + 4 }
+        else if b == 45 { 62 } else if b == 95 { 63 } else { -1 }
+
+    fn encodedAt(text, index) = sextet(byteAt(text, index) ?: 0)
+
+    fn decodedByte(text, index) = {
+        let offset = index % 3
+        let start = intDiv(index, 3) * 4 + offset
+        let a = encodedAt(text, start)
+        let b = encodedAt(text, start + 1)
+        if offset == 0 { a * 4 + intDiv(b, 16) }
+        else if offset == 1 { (a % 16) * 16 + intDiv(b, 4) }
+        else { (a % 4) * 64 + b }
+    }
+
+    /// Decode only canonical unpadded base64url, including zero tail bits.
+    export fn decodeBase64Url(text) = {
+        let count = byteLength(text)
+        let tail = count % 4
+        let last = if tail == 0 { 0 } else { encodedAt(text, count - 1) }
+        if tail == 1 || (tail == 2 && last % 16 != 0) || (tail == 3 && last % 4 != 0)
+            || !Bytes::everyByte(text, fn(b) => sextet(b) >= 0) { Error { message: "base64url.invalid" } }
+        else { Success { value: range(0, intDiv(count * 3, 4)) |> map(fn(i) => decodedByte(text, i)) |> toList } }
+    }
+
+    /// RFC 4648 standard alphabet with padding, for binary process and KMS boundaries.
+    export fn base64(bytes) = {
+        let url = base64Url(bytes)
+        let standard = replace(replace(url, "-", "+") ?: url, "_", "/") ?: url
+        let leftover = length(bytes) % 3
+        standard + (if leftover == 1 { "==" } else if leftover == 2 { "=" } else { "" })
+    }
+
     /// The PAE bytes `"DSSEv1" SP len(type) SP type SP len(payload) SP
     /// payload`, both lengths counting bytes — the exact bytes a detached
     /// envelope signs. Implements [PACKAGE-PUBLISH].

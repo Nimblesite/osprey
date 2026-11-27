@@ -20,12 +20,7 @@ module LoginKms {
         Error => false
     }
 
-    fn b64(text) = {
-        let url = Dsse::base64Url(Bytes::ofString(text))
-        let standard = replace(replace(url, "-", "+") ?: url, "_", "/") ?: url
-        let leftover = byteLength(text) % 3
-        standard + (if leftover == 1 { "==" } else if leftover == 2 { "=" } else { "" })
-    }
+    fn b64(text) = Dsse::base64(Bytes::ofString(text))
 
     fn json(reply: Supabase::Reply) = if reply.status == 200 && byteLength(reply.body) <= 8192 {
         match Json::parse(reply.body) {
@@ -69,30 +64,19 @@ module LoginKms {
     export fn seal(key, aad, verifier) = if validKey(key) && OAuth::challengeCode(verifier) == "" && byteLength(aad) <= 1024 {
         andThen(payload(aad, verifier), fn(body) => submit(key, "encrypt", body, ciphertext))
     } else { Error { message: unavailable } }
-    let alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-
-    fn sextet(text, index) = indexOf(alphabet, (substring(text, index, index + 1) ?: "")) ?: 0
-
-    fn clearByte(encoded, index) = {
-        let start = intDiv(index, 3) * 4
-        let offset = index % 3
-        let first = sextet(encoded, start + offset)
-        let next = sextet(encoded, start + offset + 1)
-        if offset == 0 { first * 4 + intDiv(next, 16) }
-        else if offset == 1 { (first % 16) * 16 + intDiv(next, 4) }
-        else { (first % 4) * 64 + next }
-    }
-
     fn plaintext(doc) = {
         let encoded = field(doc, "plaintext")
         if byteLength(encoded) != 60 || !endsWith(encoded, "==") { Error { message: unavailable } }
         else { verifierOf(encoded) }
     }
 
-    fn verifierOf(encoded) = {
-        let clear = join(mapList(range(0, 43) |> toList, fn(i) => fromCodePoint(clearByte(encoded, i)) ?: ""), "")
-        if OAuth::challengeCode(clear) == "" && b64(clear) == encoded { Success { value: clear } }
-        else { Error { message: unavailable } }
+    fn verifierOf(encoded) = match Dsse::decodeBase64Url(take(encoded, 58) |> fn(text) => replace(replace(text, "+", "-") ?: text, "/", "_") ?: text) {
+        Error => Error { message: unavailable }
+        Success { value } => {
+            let clear = join(mapList(value, fn(b) => fromCodePoint(b) ?: ""), "")
+            if OAuth::challengeCode(clear) == "" && b64(clear) == encoded { Success { value: clear } }
+            else { Error { message: unavailable } }
+        }
     }
 
     fn decryptPayload(aad, envelope) = Canonical::serialize(Json::obj([
