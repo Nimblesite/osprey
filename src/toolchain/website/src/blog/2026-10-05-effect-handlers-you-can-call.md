@@ -46,7 +46,7 @@ print(saveDraft())
 ```
 
 ```text
-unhandled effect operations at program entry: Drafts.save; add a matching `handle`
+3:0: unhandled effect operations at program entry: Drafts.save; add a matching `handle`
 ```
 
 The checker follows requests through helpers, lambdas passed to higher-order functions and fibers. Editor hover, signature help and generated API docs list the operations a function's callers must provide, including ones requested deep inside its helpers.
@@ -156,7 +156,7 @@ print(area(big, 4))
 ```
 
 ```text
-unhandled effect operations at program entry: Arith.overflow; add a matching `handle`
+3:0: unhandled effect operations at program entry: Arith.overflow; add a matching `handle`
 ```
 
 The handler chooses the policy for its region, including calls into helpers:

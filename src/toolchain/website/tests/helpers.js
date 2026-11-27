@@ -133,7 +133,7 @@ async function exampleResult(source, file) {
   try {
     return await executeExample(source, file);
   } catch (error) {
-    return error.stderr.replace(`${file}: `, "");
+    return error.stderr.replace(`${file}:`, "");
   }
 }
 
