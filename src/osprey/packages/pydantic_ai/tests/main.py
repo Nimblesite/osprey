@@ -1159,7 +1159,7 @@ def server_names(load: Mcp.ConfigLoad):
 
 
 def server_name(server):
-    return Mcp.name_of(server)
+    return Mcp.name_of(typed_server(server))
 
 
 def capability_flags(found: Mcp.ServerCapabilities):
@@ -1187,7 +1187,7 @@ def mcp_surface_cases():
         same("mcp.capabilities_of_experimental", found.experimental, ["a", "b"]),
         same("mcp.capabilities_of_empty", capability_flags(empty), [False, False, False, False, False, False, False, False]),
         Check.equal("mcp.capabilities_of_empty_experimental", len(empty.experimental), 0),
-        Check.equal("mcp.initialize_version", initialized_version(Mcp.initialize_result(decode('{"protocolVersion":"2025-06-18","serverInfo":{"name":"s","version":"1"},"capabilities":{}}'))), Mcp.PROTOCOL_VERSION),
+        Check.equal("mcp.initialize_version", initialized_version(typed_initialized(Mcp.initialize_result(decode('{"protocolVersion":"2025-06-18","serverInfo":{"name":"s","version":"1"},"capabilities":{}}')))), Mcp.PROTOCOL_VERSION),
         Check.equal("mcp.initialize_version_refused", initialized_version(Mcp.initialize_result(decode('{"protocolVersion":"1999-01-01"}'))), ""),
         Check.equal("mcp.lines_named", completed_lines(Mcp.lines_of(Mcp.LineBuffer(pending="a"), "b\r\nc\nd")), "ab|c/d"),
         Check.equal("mcp.tool_list_named", listed_names(Mcp.list_tools_result(decode('{"tools":[{"name":"add","inputSchema":{"type":"object"}}],"nextCursor":"n"}'))), "add/n"),
@@ -1416,6 +1416,40 @@ def typed_gen(generated: ModelsTest.Gen):
     return J.encode(generated.value)
 
 
+# Each return annotation narrows a pass-through, so the suite names every exported type the
+# redundant-annotation lint would otherwise strip from a helper's signature [PORT-SUITE].
+def typed_model_error(error) -> E.ModelError:
+    return error
+
+
+def typed_initialized(result) -> Mcp.InitializeResult:
+    return result
+
+
+def typed_server(server) -> Mcp.MCPServerConfig:
+    return server
+
+
+def typed_request(part) -> M.ModelRequestPart:
+    return part
+
+
+def typed_response(part) -> M.ModelResponsePart:
+    return part
+
+
+def typed_part_delta(delta) -> M.ModelResponsePartDelta:
+    return delta
+
+
+def typed_stream_events(events) -> list[M.ModelResponseStreamEvent]:
+    return events
+
+
+def typed_model_settings(settings) -> Settings.ModelSettings:
+    return settings
+
+
 def typed_profile(profile) -> Profiles.ModelProfile:
     return profile
 
@@ -1447,17 +1481,17 @@ def typed_export_cases():
     generated = ModelsTest.gen_any(decode("{}"), decode("{\"enum\":[\"only\"]}"), 0)
     return [
         Check.equal("typed.agent_run_result", typed_output(run), "hi:2"),
-        Check.truth("typed.model_error", contains(typed_error(E.ModelHTTPError(status_code=500, model_name="m", body="b")), "500"), "the status is missing"),
-        Check.truth("typed.request_part", structuralEquals(typed_first_request_part([]), M.UserPromptPart(content="none")), "the fallback part changed"),
-        Check.equal("typed.response_part", M.part_text(typed_first_response_part([])), "none"),
-        Check.equal("typed.delta", typed_delta(M.TextPartDelta(content_delta="more")), "more"),
-        Check.equal("typed.stream_events", len(typed_events(stream)), 2),
+        Check.truth("typed.model_error", contains(typed_error(typed_model_error(E.ModelHTTPError(status_code=500, model_name="m", body="b"))), "500"), "the status is missing"),
+        Check.truth("typed.request_part", structuralEquals(typed_request(typed_first_request_part([])), M.UserPromptPart(content="none")), "the fallback part changed"),
+        Check.equal("typed.response_part", M.part_text(typed_response(typed_first_response_part([]))), "none"),
+        Check.equal("typed.delta", typed_delta(typed_part_delta(M.TextPartDelta(content_delta="more"))), "more"),
+        Check.equal("typed.stream_events", len(typed_stream_events(typed_events(stream))), 2),
         Check.equal("typed.transformed", transformed.is_strict_compatible, True),
         Check.equal("typed.gen", typed_gen(generated), "\"only\""),
         Check.equal("typed.gen_seed", generated.seed, 0),
         Check.truth("typed.profile", structuralEquals(typed_profile(Profiles.model_profile()), Profiles.model_profile()), "profiles differ"),
         Check.equal("typed.http_reply", typed_reply(Providers.reply(201, "x")), 201),
-        Check.equal("typed.settings", Settings.setting_int(typed_settings(), "seed", 0), 1),
+        Check.equal("typed.settings", Settings.setting_int(typed_model_settings(typed_settings()), "seed", 0), 1),
         Check.equal("typed.tool_definition", typed_definition(Tools.tool_definition_of(typed_tool())), "f"),
         Check.equal("typed.run_usage", typed_run_usage(Usage.run_usage()), 0),
     ]
