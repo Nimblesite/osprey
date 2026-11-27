@@ -42,6 +42,13 @@ test('WASM tests use only their toolchain and retain every acceptance step', () 
   assert.match(wasm, /for flavor in osp ospml/)
   assert.match(wasm, /wasm-browser-smoke\.mjs/)
   assert.match(wasm, /make _test_wasm_goldens/)
+  const doctests = job('test-wasm-doctests', ciFile)
+  assert.match(doctests, /timeout-minutes: 6/)
+  assert.match(doctests, /\*install-wasm-toolchain/)
+  assert.match(doctests, /\*download-osprey-build/)
+  assert.match(doctests, /\*build-wasm-runtime/)
+  assert.match(doctests, /make _test_wasm_doctests/)
+  assert.match(workflow, /- test-wasm-doctests\n/)
 })
 
 test('Only the Linux profiler suite installs glibc debug symbols', () => {

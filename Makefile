@@ -161,7 +161,7 @@ _invalidate_ci_stamp:
 _ci-contracts:
 	node --test scripts/ci/ci-scope.test.mjs scripts/ci/preflight.test.mjs scripts/ci/verify-threshold-ratchet.test.mjs
 
-_runtime_wasm _test_wasm_goldens: export PATH := $(WASM_PATH_PREFIX)$(PATH)
+_runtime_wasm _test_wasm_goldens _test_wasm_doctests: export PATH := $(WASM_PATH_PREFIX)$(PATH)
 
 ## preflight: Every check the PR workflows run (each run: step and the emulator script, read from ci.yml and the workflows it calls), each run even after one fails, coverage gates last; prints a PASS/FAIL/SKIP table (also target/preflight/summary.md) and fails if any check failed. ONLY=<regex> runs a subset.
 .PHONY: preflight

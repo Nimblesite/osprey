@@ -1089,7 +1089,8 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - name: Install the WebAssembly toolchain
+      - &install-wasm-toolchain
+        name: Install the WebAssembly toolchain
         run: |
           set -euo pipefail
           sudo apt-get update
@@ -1102,13 +1103,16 @@ jobs:
           echo "OSPREY_WASI_SYSROOT=/opt/wasi-sdk/share/wasi-sysroot" >> "$GITHUB_ENV"
           wasm-ld --version
 
-      - uses: actions/download-artifact@v8
+      - &download-osprey-build
+        uses: actions/download-artifact@v8
         with:
           name: osprey-build
-      - name: Restore artifact permissions
+      - &restore-osprey-permissions
+        name: Restore artifact permissions
         run: chmod +x target/release/osprey
 
-      - name: Build the wasm runtime archive
+      - &build-wasm-runtime
+        name: Build the wasm runtime archive
         run: make _runtime_wasm
 
       - name: Compile, validate and smoke-run the examples
@@ -1136,6 +1140,27 @@ jobs:
 
       - name: WebAssembly differential — whole src/osprey/tests/ corpus vs the native goldens
         run: make _test_wasm_goldens
+
+  # Every documentation example compiled to wasm32 and held to its stated
+  # output under Node's WASI host: the doctest half of the wasm corpus, run
+  # beside test-wasm so each half fits its timeout. [DOC-DOCTEST-HARNESS]
+  test-wasm-doctests:
+    name: "Tests: WebAssembly documentation examples (wasm32-wasip1)"
+    needs: [changes, build]
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - *install-wasm-toolchain
+      - *download-osprey-build
+      - *restore-osprey-permissions
+      - *build-wasm-runtime
+      - name: WebAssembly documentation examples
+        run: make _test_wasm_doctests
 
   # Builds the site and runs the Playwright suite: every page template at three
   # breakpoints (no JS errors, no horizontal overflow, dark theme, chrome
@@ -1780,6 +1805,7 @@ jobs:
       - test-c-runtime
       - test-extension
       - test-wasm
+      - test-wasm-doctests
       - test-website
       - test-integration
       - test-android
