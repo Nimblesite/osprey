@@ -228,5 +228,5 @@ Phones as instruments around one desktop session host: LAN WebSockets, host-gene
 
 - [ ] Every journey gets more input permutations and more assertions per interaction, across the daw and `@osprey/synth` [DAW-TESTS].
 - [ ] Scripts and tooling written in Python-flavour Osprey, not Python [DAW-TESTS].
-- [ ] One spec, one plan and one test home per feature: overlapping sections and duplicate helpers merged and the deslop gate green (4.1% against the 4.00% ceiling; `timeline_view.ospml` is the largest offender) [DAW-TESTS].
+- [ ] One spec, one plan and one test home per feature: overlapping sections and duplicate helpers merged (the deslop gate is green: 3.9% against the 3.93% ceiling; the largest synth cluster is the per-key `RenderInputs::setting` ladder in the operator, physical, spectral and table kernels, kept while it is on the per-sample automated path) [DAW-TESTS].
 - [ ] `make ci` passes and a coordinated push is made under the TMC lock [DAW-TESTS].
