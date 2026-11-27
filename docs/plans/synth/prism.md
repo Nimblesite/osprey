@@ -28,7 +28,7 @@ Contracts: [Synthesis.md](../../specs/synth/Synth.md) ([SYNTH-GRAPH], [SYNTH-SIG
 - [ ] Sustained zero-starvation playback (granular included) with speaker output quality and comparative runtime evidence; low-latency scheduling, zero-allocation production, state persistence and latency compensation; a ten-minute maximum-workload run with zero starvation [PRISM-ROUTING-GRAINS] [PRISM-ROUTING-THROUGHPUT].
 - [ ] Reproduced playback failures resolved before smooth sustained playback is claimed; the real device adapter and explicit playback-failure handling pass the windowed and sustained-audio gates [PRISM-ROUTING-AUDIO].
 - [ ] The Undo/Redo journey that removes and reapplies Delay and Mixer nodes: native execution and screenshot evidence [PRISM-ROUTING-GRAINS].
-- [ ] Applied graph and parameter revisions and component activity published through Signals with no UI dependency in the package [PRISM-ROUTING-DELIVERY] [PRISM-ROUTING-DIAGNOSTICS].
+- [x] Applied graph and parameter revisions and component activity published through Signals with no UI dependency in the package (`@osprey/synth` declares no dependencies): `repatchObserved` in the synth suite reads a replaced graph and a tuned replacement back through a `Signal<Observation>` handler, with revision, block position, applied frequency, an absent parameter refused and the output's meters [PRISM-ROUTING-DELIVERY] [PRISM-ROUTING-DIAGNOSTICS].
 
 ## Macros in the patch [PRISM-INSTRUMENT-PATCH]
 
