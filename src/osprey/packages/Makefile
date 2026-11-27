@@ -126,7 +126,7 @@ registry-migration-check: $(REGISTRY_MIGRATOR) $(BIN)
 	  migrate() { dotnet "$(REGISTRY_MIGRATOR)" migrate --provider postgres --schema src/osprey/packages/manager/supabase/migrations/schema.yaml --output "Host=$$PGHOST;Port=$$PGPORT;Username=$$PGUSER;Database=$$PGDATABASE"; }; \
 	  migrate; migrate >"$$db/replay.log" || { cat "$$db/replay.log"; exit 1; }; cat "$$db/replay.log"; \
 	  grep -Fq 'No operations to apply' "$$db/replay.log"; \
-	  test "$$("$$pg/psql" -XAtc "SELECT count(*) = 11 AND bool_and(relrowsecurity AND relforcerowsecurity) FROM pg_class WHERE relnamespace = 'registry'::regnamespace AND relkind = 'r'")" = t; \
+	  test "$$("$$pg/psql" -XAtc "SELECT count(*) = 12 AND bool_and(relrowsecurity AND relforcerowsecurity) FROM pg_class WHERE relnamespace = 'registry'::regnamespace AND relkind = 'r'")" = t; \
 	  $(BIN) test src/osprey/packages/manager/database-tests/live
 
 .PHONY: registry-infra-check

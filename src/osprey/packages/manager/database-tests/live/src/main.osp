@@ -1,5 +1,6 @@
 namespace registry_live_tests;
 import registry::Policy
+import registry_host::LoginFlow
 import registry_host::Host
 import registry_host::Native
 
@@ -13,9 +14,13 @@ fn seed() = join([
     "INSERT INTO package_permissions (id,organization_id,package_id,membership_id,permission,state,granted_by_membership_id,authority_epoch,membership_authority_epoch,granted_at) SELECT md5('grant'||i)::uuid,md5('org1')::uuid,md5('package1')::uuid,md5('member'||i)::uuid,'publish-release','active',md5('member1')::uuid,1,1,now() FROM generate_series(1,2) i;"
 ], "\n")
 
+let fixtureClient = "psql -XqAt --no-password -p 18873 -U registry_check -d postgres -v ON_ERROR_STOP=1 -v VERBOSITY=verbose -c "
+
+fn onFixture(command) = perform Host::Process.run("case \"$PGHOST\" in /tmp/osprey-registry.*) " + command + ";; *) exit 1;; esac")
+
 fn execute(sql) = {
     let tx = "BEGIN; SET LOCAL search_path TO registry, pg_catalog; " + seed() + sql + "; ROLLBACK;"
-    perform Host::Process.run("case \"$PGHOST\" in /tmp/osprey-registry.*) psql -XqAt --no-password -p 18873 -U registry_check -d postgres -v ON_ERROR_STOP=1 -v VERBOSITY=verbose -c " + Host::shellWord(tx) + ";; *) exit 1;; esac")
+    onFixture(fixtureClient + Host::shellWord(tx))
 }
 
 fn answer(sql, expected) = {
@@ -46,9 +51,38 @@ fn bootstrap() = checkAll("bootstrap RLS hides rows and rejects writes", [
     refused(restricted("INSERT INTO organizations(id,handle,display_name,state,governance_epoch,created_at) VALUES(gen_random_uuid(),'third-org','Third','active',1,now())"), "42501")
 ])
 
+/// Login starts and claims use database time and a single destructive read [PACKAGE-HOSTED-AUTH].
+fn loginFlow() = {
+    let flowState = "'sha256:' || repeat('a',64)"
+    let browser = "'sha256:' || repeat('b',64)"
+    let other = "'sha256:' || repeat('c',64)"
+    let save = "EXECUTE start_flow(${flowState},${browser},'fixture-envelope');"
+    let claim = "EXECUTE claim_flow(${flowState},${browser});"
+    let prepare = "PREPARE start_flow(text,text,text) AS " + LoginFlow::store + "; PREPARE claim_flow(text,text) AS " + LoginFlow::claim + ";"
+    checkAll("pending login is browser-bound, expires, and can be consumed once", [
+        answer(prepare + save + "EXECUTE claim_flow(${flowState},${other}); EXECUTE claim_flow(${other},${browser}); SELECT count(*) FROM pending_logins;" + claim + claim + "SELECT count(*) FROM pending_logins", "1\nfixture-envelope\n0"),
+        answer(prepare + save + "UPDATE registry.pending_logins SET created_at=statement_timestamp()-interval '10 minutes';" + claim, ""),
+        refused(prepare + save + save, "23505"),
+        refused(prepare + "EXECUTE start_flow('bad',${browser},'fixture-envelope');", "23514"),
+        answer(prepare + save + "CREATE ROLE login_fixture_reader NOSUPERUSER NOBYPASSRLS; GRANT USAGE ON SCHEMA registry TO login_fixture_reader; GRANT SELECT,DELETE ON pending_logins TO login_fixture_reader; SET LOCAL ROLE login_fixture_reader;" + claim + "RESET ROLE;" + claim, "fixture-envelope")
+    ])
+}
+
+/// Separate connections race for one committed row. The winner keeps its row lock until commit.
+fn simultaneousCallbacks() = {
+    let keys = "'sha256:' || repeat('d',64),'sha256:' || repeat('e',64)"
+    let start = "PREPARE start_flow(text,text,text) AS " + LoginFlow::store + "; EXECUTE start_flow(${keys},'fixture-envelope');"
+    let consume = "BEGIN; PREPARE claim_flow(text,text) AS " + LoginFlow::claim + "; EXECUTE claim_flow(${keys}); SELECT pg_sleep(0.2); COMMIT;"
+    let client = fixtureClient + Host::shellWord(consume)
+    let result = onFixture(fixtureClient + Host::shellWord(start) + " && { " + client + " & first=$!; " + client + " & second=$!; wait \"$first\" && wait \"$second\"; }")
+    checkAll("exactly one concurrent callback receives the verifier", [result.status == 0, trim(result.stdout) == "fixture-envelope"])
+}
+
 fn suites() = {
     test("publisher delegation storage", constraints)
     test("private schema bootstrap", bootstrap)
+    test("pending GitHub login", loginFlow)
+    test("concurrent GitHub callbacks", simultaneousCallbacks)
     0
 }
 

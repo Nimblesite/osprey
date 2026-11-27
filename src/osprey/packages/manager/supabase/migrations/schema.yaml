@@ -230,3 +230,15 @@ tables:
       - { columns: [organization_id, package_id], referencedSchema: registry, referencedTable: packages, referencedColumns: [organization_id, id], onDelete: Restrict, onUpdate: Restrict }
       - { columns: [actor_principal_id], referencedSchema: registry, referencedTable: principals, referencedColumns: [id], onDelete: Restrict, onUpdate: Restrict }
     rowLevelSecurity: { enabled: true, forced: true, policies: [] }
+
+  - name: pending_logins
+    schema: registry
+    columns:
+      - { name: state_digest, type: Text, isNullable: false, checkConstraint: "state_digest ~ '^sha256:[0-9a-f]{64}$'" }
+      - { name: browser_digest, type: Text, isNullable: false, checkConstraint: "browser_digest ~ '^sha256:[0-9a-f]{64}$'" }
+      - { name: verifier_envelope, type: Text, isNullable: false, checkConstraint: "octet_length(verifier_envelope) BETWEEN 1 AND 4096" }
+      - { name: created_at, type: DateTimeOffset, isNullable: false }
+    primaryKey: { columns: [state_digest] }
+    indexes:
+      - { name: ix_pending_logins_created_at, columns: [created_at] }
+    rowLevelSecurity: { enabled: true, forced: true, policies: [] }

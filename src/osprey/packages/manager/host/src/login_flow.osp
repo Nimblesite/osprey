@@ -1,0 +1,9 @@
+namespace registry_host;
+
+/// Parameterized statements for the hosted pre-authentication storage role [PACKAGE-HOSTED-AUTH].
+/// Callers pass digests of independent state and browser secrets, and an encrypted PKCE verifier.
+module LoginFlow {
+    export let store = "INSERT INTO registry.pending_logins(state_digest,browser_digest,verifier_envelope,created_at) VALUES ($1,$2,$3,statement_timestamp())"
+    /// Only the transaction that consumes the unexpired row receives its verifier envelope.
+    export let claim = "DELETE FROM registry.pending_logins WHERE state_digest=$1 AND browser_digest=$2 AND created_at <= statement_timestamp() AND created_at > statement_timestamp()-interval '10 minutes' RETURNING verifier_envelope"
+}
