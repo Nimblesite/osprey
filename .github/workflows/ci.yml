@@ -218,6 +218,19 @@ jobs:
           if-no-files-found: error
 
   # Every static check, beside the build: a lint never holds up a suite.
+  # Duplication is measured over website source too, so a website-only change
+  # must not skip it: Format & Analyse runs only when code changed (#232).
+  deslop:
+    name: Duplication
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' || needs.changes.outputs.website == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - name: Deslop duplication gate
+        run: make _deslop
+
   analyse:
     name: Format & Analyse
     needs: changes
@@ -305,8 +318,6 @@ jobs:
         working-directory: ./src/toolchain/vscode-extension
 
       # The local and hosted gates use the same pinned scanner and threshold.
-      - name: Deslop duplication gate
-        run: make _deslop
 
       # Dead-code gate: fail if any `pub` declaration is unreachable from the
       # osprey binary (hawk::dead_public). cargo-hawk's prebuilt driver runs
@@ -1679,6 +1690,7 @@ jobs:
       - changes
       - build
       - build-macos
+      - deslop
       - analyse
       - check-programs
       - test-rust
