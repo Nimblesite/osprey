@@ -159,44 +159,6 @@ jobs:
           make _runtime CC=gcc AR=ar SHELL=/usr/bin/bash MKDIR='mkdir -p'
           cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 
-      # The package client and local registry ship in every release, built from the package
-      # manager at the commit scripts/ci/downstream.json pins. [REPO-SPLIT]
-      - name: Lay the package manager (Nimblesite/osprey-packages)
-        uses: ./.github/actions/downstream
-        with:
-          name: osprey-packages
-
-      - name: Compile package manager client (Linux/macOS)
-        if: runner.os != 'Windows'
-        shell: bash
-        # --no-warnings skips the warning pass (see scripts/make/extension.mk).
-        run: target/release/osprey build src/osprey/packages/manager/cli --quiet --no-warnings -o target/osprey-pkg
-      # The local package registry [PACKAGE-LOCAL-REGISTRY]: the folder-registry
-      # server and this repository's packages published into a folder registry.
-      # Not on Windows yet: the server's tree walk shells out to POSIX `find`.
-      - name: Build local package registry (Linux/macOS)
-        if: runner.os != 'Windows'
-        shell: bash
-        run: |
-          set -euo pipefail
-          target/release/osprey build src/osprey/packages/manager/api --quiet --no-warnings -o target/osprey-registry
-          scripts/packages/stage-local-registry.sh target/osprey-pkg target/local-registry
-      # osprey.exe is a native Windows process, so it resolves clang on the
-      # Windows PATH, where the runner's MSVC-target clang shadows the MSYS2 one
-      # and `link.exe` cannot find ssl.lib. Pin the UCRT64 clang, as ci-windows.yml does.
-      - name: Pin the MinGW clang (Windows)
-        if: runner.os == 'Windows'
-        shell: msys2 {0}
-        run: |
-          set -euo pipefail
-          CC_PATH="$(cygpath -m /ucrt64/bin/clang.exe)"
-          "$CC_PATH" --version | head -1
-          echo "OSPREY_CC=$CC_PATH" >> "$GITHUB_ENV"
-      - name: Compile package manager client (Windows)
-        if: runner.os == 'Windows'
-        shell: msys2 {0}
-        run: target/release/osprey.exe build src/osprey/packages/manager/cli --quiet --no-warnings -o target/osprey-pkg.exe
-
       - name: Build wasm runtime archives (macOS)
         if: runner.os == 'macOS'
         shell: bash
@@ -209,7 +171,7 @@ jobs:
           export OSPREY_WASI_SYSROOT=/tmp/wasi-sysroot
           make _runtime_wasm
 
-      - name: Build portable package workspace
+      - name: Build portable workbench
         if: runner.os == 'Linux'
         shell: bash
         run: |
@@ -221,18 +183,8 @@ jobs:
           sudo tar -xzf /tmp/wasi-sysroot.tar.gz -C /opt/wasi-sdk/share/wasi-sysroot --strip-components=1
           export OSPREY_WASI_SYSROOT=/opt/wasi-sdk/share/wasi-sysroot
           make _runtime_wasm
-          make target/package-workspace.wasm
-          wasm-validate target/package-workspace.wasm
           make target/workbench.wasm
           wasm-validate target/workbench.wasm
-      - name: Upload portable package workspace
-        if: runner.os == 'Linux'
-        uses: actions/upload-artifact@v7
-        with:
-          name: package-workspace-wasm
-          path: target/package-workspace.wasm
-          if-no-files-found: error
-
       - name: Upload portable workbench
         if: runner.os == 'Linux'
         uses: actions/upload-artifact@v4
@@ -260,11 +212,6 @@ jobs:
           staging="osprey-$v-$plat"
           mkdir -p "dist/$staging"
           cp "target/release/osprey${exe}" "dist/$staging/"
-          cp "target/osprey-pkg${exe}" "dist/$staging/"
-          if [ -z "$exe" ]; then
-            cp target/osprey-registry "dist/$staging/"
-            cp -R target/local-registry "dist/$staging/registry"
-          fi
           # The runtime archives used to be copied with `|| true`, so a build
           # that produced none still packaged, published and reached Homebrew —
           # a compiler that can link nothing, shipped green. Find the directory
@@ -545,10 +492,6 @@ jobs:
         with:
           name: osprey-${{ matrix.artifact }}
           path: dist
-      - uses: actions/download-artifact@v8
-        with:
-          name: package-workspace-wasm
-          path: dist/package-workspace
       - uses: actions/download-artifact@v4
         with:
           name: workbench-wasm
@@ -563,9 +506,6 @@ jobs:
           dest="src/toolchain/vscode-extension/bin/${{ matrix.target }}"
           mkdir -p "$dest"
           cp -r "dist/osprey-${VERSION}-${{ matrix.target }}/." "$dest/"
-          # The VSIX bundles the registry server, never packages [PACKAGE-LOCAL-REGISTRY].
-          rm -rf "$dest/registry"
-          cp dist/package-workspace/package-workspace.wasm "$dest/"
           cp dist/workbench/workbench.wasm "$dest/"
           mkdir -p "$dest/workbench"
           cp -R src/osprey/workbench/lessons "$dest/workbench/"
@@ -602,13 +542,12 @@ jobs:
           set -euo pipefail
           exe=""; [ "${{ runner.os }}" = "Windows" ] && exe=".exe"
           unzip -l ./*.vsix | grep -F "extension/bin/${{ matrix.target }}/osprey${exe}"
-          unzip -l ./*.vsix | grep -F "extension/bin/${{ matrix.target }}/osprey-pkg${exe}"
-          unzip -l ./*.vsix | grep -F "extension/bin/${{ matrix.target }}/package-workspace.wasm"
           unzip -l ./*.vsix | grep -F "extension/bin/${{ matrix.target }}/workbench.wasm"
           unzip -l ./*.vsix | grep -F "extension/bin/${{ matrix.target }}/workbench/lessons/catalogue.json"
-          if [ -z "$exe" ]; then
-            unzip -l ./*.vsix | grep -F "extension/bin/${{ matrix.target }}/osprey-registry"
-            if unzip -l ./*.vsix | grep -F "extension/bin/${{ matrix.target }}/registry/"; then echo "::error::the VSIX bundles packages"; exit 1; fi
+          # The package manager is Nimblesite/osprey-packages' to ship [REPO-SPLIT]: no client,
+          # registry server or package workspace rides in the VSIX.
+          if unzip -l ./*.vsix | grep -E "extension/bin/${{ matrix.target }}/(osprey-pkg|osprey-registry|package-workspace\.wasm|registry/)"; then
+            echo "::error::the VSIX bundles the package manager"; exit 1
           fi
       # Packaging is per-platform (each VSIX bundles the matching native binary);
       # publishing is centralised in the publish-marketplace / publish-openvsx

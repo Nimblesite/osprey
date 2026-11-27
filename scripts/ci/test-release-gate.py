@@ -110,9 +110,7 @@ def package_result(text, platform, archives, empty_archive=""):
         root = pathlib.Path(directory)
         for folder in ("target/release", "src/toolchain/compiler/lib"):
             (root/folder).mkdir(parents=True)
-        for name in ("target/release/osprey", "target/osprey-pkg", "target/osprey-registry"):
-            (root/name).write_text("binary")
-        (root/"target/local-registry").mkdir()
+        (root/"target/release/osprey").write_text("binary")
         for name in (*NATIVE_ARCHIVES, *WASM_ARCHIVES, *archives):
             (root/"src/toolchain/compiler/lib"/name).write_text("" if name == empty_archive else "archive")
         return subprocess.run(["bash", "-euo", "pipefail", "-c", script], cwd=root,
@@ -136,6 +134,9 @@ def package_failures(text):
             print(f"  ok   {label}")
     if "run: make _runtime_ios _runtime_ios_sim _runtime_macos" not in text:
         failures.append("Darwin build must compile all supported Apple runtime archives")
+    # The package manager is Nimblesite/osprey-packages' to ship [REPO-SPLIT].
+    if re.search(r"cp [^\n]*(osprey-pkg|osprey-registry|package-workspace)|packages/manager|actions/downstream|package-workspace-wasm", text):
+        failures.append("the release builds or ships the package manager, which osprey-packages ships")
     return failures
 
 
@@ -152,9 +153,8 @@ def stage_fixture(root, target, version):
     (payload/"osprey").write_text("binary")
     with tarfile.open(root/"dist"/f"osprey-{version}-{target}.tar.gz", "w:gz") as archive:
         archive.add(payload, arcname=payload.name)
-    for name in ("package-workspace", "workbench"):
-        (root/"dist"/name).mkdir(parents=True)
-        (root/"dist"/name/f"{name}.wasm").write_text("wasm")
+    (root/"dist"/"workbench").mkdir(parents=True)
+    (root/"dist"/"workbench"/"workbench.wasm").write_text("wasm")
     for name in ("src/osprey/workbench/lessons/catalogue.json", "src/osprey/workbench/assets/workbench.css",
                  "src/toolchain/website/src/assets/images/logo.png", "scripts/proof/workbench-proof-assets.py"):
         file = root/name
@@ -227,12 +227,12 @@ def decision_failures(script, summary):
 
 def windows_compiler_failures():
     failures = []
-    for workflow in (WORKFLOW, pathlib.Path(".github/workflows/ci-windows.yml")):
+    for workflow in (pathlib.Path(".github/workflows/ci-windows.yml"),):
         text = workflow.read_text()
         pin = re.search(r"^      - name: Pin the MinGW clang[^\n]*", text, re.MULTILINE)
-        build = re.search(r"^      - name: Compile package manager client(?: \(Windows\))?$", text, re.MULTILINE)
+        build = re.search(r"^      - name: Both canaries$", text, re.MULTILINE)
         if pin is None or build is None or pin.start() >= build.start():
-            failures.append(f"{workflow}: pin MinGW clang before compiling the Windows package client")
+            failures.append(f"{workflow}: pin MinGW clang before the Windows canaries compile")
             continue
         block = text[pin.end():].split("      - name:", 1)[0]
         if 'echo "OSPREY_CC=$CC_PATH" >> "$GITHUB_ENV"' not in block:
@@ -251,7 +251,7 @@ def main():
         for failure in failures:
             print(f"  - {failure}")
         return 1
-    print("Windows compiler selection: OK (CI and release)")
+    print("Windows compiler selection: OK (CI)")
     print(f"release gate decision table: OK ({len(TABLE)} cases)")
     print(f"release packaging: OK ({2 * len(APPLE_ARCHIVES) + 2} cases)")
     print("release workbench proof staging: OK")
