@@ -293,7 +293,20 @@ registerClipJourneys () =
             expect (held.heldKernel.active == true && held.heldKernel.pitch == 69 && held.heldKernel.noteIdentity == 1 && held.heldKernel.velocity == 0.5, true))
         played (plan, fresh, [keyed (1, 0, 69, 1, 0.5), keyed (1, 2, 69, 1, 0.0)], 6, \released =>
             decayedSine (released.kernelSamples, 2, 6, 241.0)
-            expect (released.heldKernel.active == false && released.heldKernel.releaseRemaining == 236 && released.heldKernel.releaseLength == 240, true))))
+            expect (released.heldKernel.active == false && released.heldKernel.releaseRemaining == 236 && released.heldKernel.releaseLength == 240, true))
+        // A repeated note-off neither restarts nor shortens the release that is already running.
+        played (plan, fresh, [keyed (1, 0, 69, 1, 0.5), keyed (1, 2, 69, 1, 0.0), keyed (2, 4, 69, 1, 0.0), keyed (2, 5, 60, 2, 0.0)], 6, \twice =>
+            decayedSine (twice.kernelSamples, 2, 6, 241.0)
+            expect (twice.heldKernel.active == false && twice.heldKernel.releaseRemaining == 236 && twice.heldKernel.releaseLength == 240, true))
+        // Long playback: a held half-second note in 60 blocks matches one block and goes silent after its gate and tail.
+        held = midiInstrument (69.0, 0.5, 24000.0)
+        long = outputClip (3, synth::GraphClips::advance (held, 48000.0, [], 30000))
+        clipIs (long, 1, 30000)
+        expect (absSum (synth::Sequences::drop (synth::Sequences::take (long.clipSamples, 24000), 23000)) > 0.0, true)
+        expect (absSum (synth::Sequences::drop (long.clipSamples, 24241)), 0.0)
+        graphRun (held, 3, mapList (toList (range (0, 60)), \_ => 500), \clock audio =>
+            expect (clock.graphPosition, 30000)
+            sameSamples (audio, long.clipSamples))))
     test ("granular clouds retain deterministic stereo state across partitions and refuse forged memory", \() => arithmetic (\() =>
         expect (synth::ClipLayouts::supported (granularNode ()), true)
         whole = outputClip (2, synth::GraphClips::advance (granularGraph (), 48000.0, [], 512))
