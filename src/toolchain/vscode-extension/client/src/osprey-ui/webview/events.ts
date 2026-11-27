@@ -128,6 +128,8 @@ export interface FrameMessage {
   readonly text: ArrayBuffer;
   readonly assets: Readonly<Record<string, string>>;
   readonly diagnostics: readonly string[];
+  /** The `seq` of the last webview event the frame reflects: a completion's frame answers none. */
+  readonly answers: number;
 }
 
 /** A frame the Node renderer told as component markup; the runs ride along for its scenes. */

@@ -68,6 +68,8 @@ export function createWorkspaceSession(deps: SessionDeps): WorkspaceSession {
   let disposed = false;
   let started = false;
   let generation = 0;
+  // The `seq` of the last webview event whose call has returned: what every later frame reflects.
+  let answered = 0;
 
   const current = (expected: number): boolean => !disposed && expected === generation;
 
@@ -130,11 +132,11 @@ export function createWorkspaceSession(deps: SessionDeps): WorkspaceSession {
     try {
       if (told === undefined) {
         deps.send({ type: "frame", shapes: result.runs.shapes, views: result.runs.views,
-          text: result.runs.text, assets, diagnostics: notice });
+          text: result.runs.text, assets, diagnostics: notice, answers: answered });
       } else {
         const html = deps.draw(told, regions.adopt(told), slices);
         deps.send({ type: "render", html, shapes: result.runs.shapes, views: result.runs.views,
-          text: result.runs.text, assets, diagnostics: notice });
+          text: result.runs.text, assets, diagnostics: notice, answers: answered });
       }
     } catch (error) {
       fail(error);
@@ -182,7 +184,12 @@ export function createWorkspaceSession(deps: SessionDeps): WorkspaceSession {
       deps.send({ type: "busy", active: queued > 0 });
       return;
     }
-    void enqueue(() => deps.runtime.event(parsed), generation);
+    const seq = record(raw) && integer(raw.seq) ? raw.seq : answered;
+    void enqueue(async () => {
+      const result = await deps.runtime.event(parsed);
+      answered = seq;
+      return result;
+    }, generation);
   };
 
   const appearance = (dark: boolean): void => {
