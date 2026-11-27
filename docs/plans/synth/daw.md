@@ -226,7 +226,6 @@ Phones as instruments around one desktop session host: LAN WebSockets, host-gene
 
 ## Tests and verification [DAW-TESTS]
 
-- [ ] The daw test suite type-checked in one piece and the full suite run within its timeout (it exceeded five minutes); journey tests owed for the lane scrollbar and the note makers [DAW-TESTS].
 - [ ] Every journey gets more input permutations and more assertions per interaction, across the daw and `@osprey/synth` [DAW-TESTS].
 - [ ] Scripts and tooling written in Python-flavour Osprey, not Python [DAW-TESTS].
 - [ ] One spec, one plan and one test home per feature: overlapping sections and duplicate helpers merged and the deslop gate green (4.1% against the 4.00% ceiling; `timeline_view.ospml` is the largest offender) [DAW-TESTS].

@@ -1239,6 +1239,47 @@ zoomJourney lined =
     forEachList (synth::Keymaps::names, \name => forEachList (["zoomIn", "zoomOut", "zoomFit"], \command => expect (synth::Keymaps::keys (synth::Keymaps::preset name, command) != "", true)))
     forEachList ([{ style = "Prism", command = "zoomIn", want = "Cmd+OemPlus" }, { style = "Ableton Style", command = "zoomFit", want = "Cmd+D0" }, { style = "Logic Style", command = "zoomOut", want = "Cmd+Left" }], \row => expect (synth::Keymaps::keys (synth::Keymaps::preset row.style, row.command), row.want))
 
+// Maker `worker` of `workers` run on the host's shell.
+maker (song, folder, worker, workers) = daw::Shell::posix (\() => daw::NoteCache::warmed (song, folder, worker, workers, ""))
+
+// How many notes makers `order` of `workers` made in turn; a refused maker counts -1000.
+madeBy (song, folder, order, workers) = foldList (order, 0, \(sum, worker) => satAdd sum (maker (song, folder, worker, workers) ?: -1000))
+
+keptNotes dir = length (filterList (listDir dir ?: [], \entry => endsWith entry ".st"))
+
+// [DAW-TRANSPORT-LIVE-SPEED] [DAW-TESTS] Two makers share a song's distinct notes: tracks that sound alike share one
+// folder, a repeated note is made once, a second pass makes nothing, a silent track has no folder, a kept note
+// reads back as its stereo lanes, and an edited instrument's old folder is swept by maker 0.
+makerJourney () =
+    folder = "${transportRoot ()}/bin/song/makers"
+    _cleared = daw::Shell::posix (\() => daw::Shell::ran (20, "rm -rf ${daw::Shell::quoted folder}"))
+    plucked = barLined (pluckTrack ())
+    echoed = plucked(name = "echoed", notes = listAppend plucked.notes (beamed (60, 4.0, 1.0, 0.5)))
+    darker = plucked(name = "darker", instrument = daw::PluckInstrument(brightness = 0.3, decay = 0.9))
+    song = timeline [plucked, echoed, darker, freshTrack ("rest", daw::PluckInstrument(brightness = 0.7, decay = 0.9))]
+    expect (madeBy (song, folder, [0, 1], 2), 4)
+    expect (madeBy (song, folder, [1, 0], 2), 0)
+    succeeds (daw::NoteCache::found (song, folder), \dirs =>
+        expect (length dirs, 4)
+        expect ([(listGet dirs 0 ?: "a") == (listGet dirs 1 ?: "b"), (listGet dirs 0 ?: "a") == (listGet dirs 2 ?: "a"), (listGet dirs 3 ?: "x") == ""], [true, false, true])
+        forEachList ([0, 2], \index => expect (keptNotes (listGet dirs index ?: ""), 2))
+        succeeds (daw::Arrangements::opened (song, echoed), \play =>
+            kept = daw::NoteCache::seeded (listGet dirs 1 ?: "", play, 9223372036854775807)
+            expect (length kept.made, 2)
+            forEachList (kept.made, \m =>
+                expect (length m.chord, 2)
+                expect (length (listGet m.chord 0 ?: []) > 0 && length (listGet m.chord 0 ?: []) == length (listGet m.chord 1 ?: []), true))
+            expect (structuralEquals (daw::NoteCache::seeded ("", play, 9223372036854775807), play), true))
+        brighter = song(tracks = listConcat (synth::Sequences::take (song.tracks, 2)) [darker(instrument = daw::PluckInstrument(brightness = 0.9, decay = 0.9)), freshTrack ("rest", daw::PluckInstrument(brightness = 0.7, decay = 0.9))])
+        expect (madeBy (brighter, folder, [0], 1), 2)
+        succeeds (daw::NoteCache::found (brighter, folder), \moved =>
+            expect ((listGet moved 2 ?: "") == (listGet dirs 2 ?: ""), false)
+            expect (listGet moved 0 ?: "", listGet dirs 0 ?: "a"))
+        expect (keptNotes (listGet dirs 2 ?: ""), 0)
+        expect (length (filterList (listDir "${folder}/notes" ?: [], \entry => endsWith entry "/")), 2))
+    forEachList ([{ worker = 2, workers = 2 }, { worker = -1, workers = 2 }, { worker = 0, workers = 65 }], \bad =>
+        failsWith (maker (song, folder, bad.worker, bad.workers), "A maker needs its number, from 0, and the count of makers, at most 64."))
+
 // True when a lane press grabs the scrollbar.
 scrollPress outcome = match outcome
     Success action => match action
@@ -1548,3 +1589,5 @@ test ("A page name appears once and empty inspectors omit the parameter heading"
 test ("A held mix fader, the following note, Undo and Redo affect the playing song", \() => Runtime::guarded (\() => hosted (\() => forEachList ([false, true], liveMixJourney))))
 
 test ("Send level edits and cancellation reach a held note while the project stays saved", \() => Runtime::guarded (\() => hosted liveSendJourney))
+
+test ("two note makers share a song's distinct notes once, keep them for the next pass and sweep an edited instrument's folder", \() => Runtime::guarded makerJourney)
