@@ -147,7 +147,14 @@ module PatchVoices
     (** The sample a grain cloud plays: the WAV at `path` (1–8 MiB, named by its path), or the built-in one for "". *)
     export sampled path = match path == ""
         true => ok (builtinSample ())
-        false => match fileSize path
+        false => fromFile (located path)
+
+    (** `path` as given when a file is there, else from the repository root: a song names its samples from the repository, wherever Prism or its suite was launched from (#370). *)
+    located path = match (kindOf path ?: "other") == "file"
+        true => path
+        false => signalflow::App::fromRepository path
+
+    fromFile path = match fileSize path
             Error why => Error(message = why)
             Success size => chained (Projects::limited (size, 12, 8388608, "Choose a WAV file between 12 bytes and 8 MiB."), \within =>
                 chained (readFileBytes (path, 0, satAdd within 1), \bytes => decoded (path, within, bytes)))
