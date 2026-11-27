@@ -18,12 +18,9 @@ fn calculatePlayerLevel(defeats) = match defeats {
     _ => 5
 }
 
-/// The title a level-2 player holds.
-let braveExplorer = "Brave Explorer"
-
 fn getPlayerTitle(level) = match level {
     1 => "Novice Adventurer"
-    2 => braveExplorer
+    2 => "Brave Explorer"
     3 => "Seasoned Warrior"
     4 => "Legendary Hero"
     _ => "Master of the Realm"
@@ -152,7 +149,7 @@ fn adventureGameCase() = {
 
     checkAll("adventure branch tables", [
         answersHold(calculatePlayerLevel, [0, 1, 2, 3, 9], [1, 2, 3, 4, 5]),
-        answersHold(getPlayerTitle, [1, 2, 3, 4, 5], ["Novice Adventurer", braveExplorer, "Seasoned Warrior", "Legendary Hero", "Master of the Realm"]),
+        answersHold(getPlayerTitle, [1, 2, 3, 4, 5], ["Novice Adventurer", "Brave Explorer", "Seasoned Warrior", "Legendary Hero", "Master of the Realm"]),
         answersHold(calculateWeaponDamage, enemyIds, [25, 40, 60, 15]),
         answersHold(calculateBarehandDamage, enemyIds, [10, 15, 20, 5]),
         answersHold(getEnemyName, enemyIds, ["Sneaky Goblin", "Fierce Orc", "Ancient Dragon", "Mysterious Shadow"]),
@@ -173,7 +170,7 @@ fn adventureGameCase() = {
         remainingHealth2 == 0,
         newMonstersDefeated == 1,
         calculatePlayerLevel(newMonstersDefeated) == 2,
-        getPlayerTitle(calculatePlayerLevel(newMonstersDefeated)) == braveExplorer,
+        getPlayerTitle(calculatePlayerLevel(newMonstersDefeated)) == "Brave Explorer",
         finalGold == 285,
         treasure.total == 385
     ])

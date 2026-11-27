@@ -14,9 +14,6 @@ type Rectangle =
 type Counter =
     count : int
 
-(** The label an inactive user reads as. *)
-inactiveLabel = "Inactive User"
-
 // Test 1 - Basic integer fields
 print "=== COMPREHENSIVE FIELD ACCESS TEST ===\nTest 1 - Basic integer fields:"
 point = Point(x = 15, y = 25)
@@ -38,7 +35,7 @@ area = exactArithmetic (\() =>
 print "Area: ${area}\n\nTest 4 - Field access in conditionals:"
 status = match user.active
     true => "Active User"
-    false => inactiveLabel
+    false => "Inactive User"
 
 // Test 5 - Non-destructive updates
 print "User status: ${status}\n\nTest 5 - Non-destructive updates:"
@@ -65,7 +62,7 @@ userStatus : User -> string
 userStatus value =
     match value.active
         true => "Active User"
-        false => inactiveLabel
+        false => "Inactive User"
 
 (** Verify reads, arithmetic consumers, branching, and persistent updates. *)
 fieldAccessCase () =
@@ -81,7 +78,7 @@ fieldAccessCase () =
         structuralEquals [(rect.width + rect.height ), (point.x + point.y ), counter.count] [15, 40, 0],
         structuralEquals [incremented.count, moved.x, moved.y, point.x, point.y] [0, 100, 200, 15, 25],
         user.active, !inactive.active,
-        structuralEquals [userStatus user, userStatus inactive] ["Active User", inactiveLabel]
+        structuralEquals [userStatus user, userStatus inactive] ["Active User", "Inactive User"]
     ]
 
 test "field access feeds expressions without mutating records" (exactly fieldAccessCase)

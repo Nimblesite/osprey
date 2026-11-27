@@ -7,9 +7,6 @@ type User = { id: int, active: bool }
 type Rectangle = { width: int, height: int }
 type Counter = { count: int }
 
-/// The label an inactive user reads as.
-let inactiveLabel = "Inactive User"
-
 // Test 1 - Basic integer fields
 print("=== COMPREHENSIVE FIELD ACCESS TEST ===\nTest 1 - Basic integer fields:")
 let point = Point { x: 15, y: 25 }
@@ -28,7 +25,7 @@ let area = exactArithmetic(fn() => rect.width * rect.height)
 print("Area: ${area}\n\nTest 4 - Field access in conditionals:")
 let status = match user.active {
     true => "Active User"
-    false => inactiveLabel
+    false => "Inactive User"
 }
 
 // Test 5 - Non-destructive updates
@@ -51,7 +48,7 @@ print("Rectangle perimeter: ${perimeter}\nManhattan distance from origin: ${manh
 /// Derives the same conditional label from a record field.
 fn userStatus(value: User) = match value.active {
     true => "Active User"
-    false => inactiveLabel
+    false => "Inactive User"
 }
 
 /// Verifies reads, arithmetic consumers, branching, and persistent updates.
@@ -68,7 +65,7 @@ fn fieldAccessCase() = {
         structuralEquals([(rect.width + rect.height ), (point.x + point.y ), counter.count], [15, 40, 0]),
         structuralEquals([incremented.count, moved.x, moved.y, point.x, point.y], [0, 100, 200, 15, 25]),
         user.active, !inactive.active,
-        structuralEquals([userStatus(user), userStatus(inactive)], ["Active User", inactiveLabel])
+        structuralEquals([userStatus(user), userStatus(inactive)], ["Active User", "Inactive User"])
     ])
 }
 
