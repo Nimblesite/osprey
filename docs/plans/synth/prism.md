@@ -37,7 +37,7 @@ Macro controls build on the synth package's `Macros`, [DAW-CONTROLS-DIAL], [DAW-
 
 - [ ] **Amount ([PRISM-INSTRUMENT-AMOUNT]).** `amount` on `Macro` in `graph.td`, regenerated, saved and loaded with `PatchDocument`; journey: many macros, many amounts, save and reload, `Macros.apply` gives the same graph.
 - [ ] **Smoothing ([PRISM-INSTRUMENT-SMOOTH]).** Macro moves reach the audio through `Smoothers` at 20 ms; a step in the amount gives no sample step above the smoothed bound.
-- [ ] **Proofs ([PRISM-INSTRUMENT-PROOF]).** Lean proofs for `FitMath.macroValue` (monotone, in range, exact ends) and switch positions, derived from the shipped source, each failing on a source mutation, in CI.
+- [ ] **Proofs ([PRISM-INSTRUMENT-PROOF]).** Lean proofs for switch positions, derived from the shipped source, each failing on a source mutation, in CI (`FitMath.macroValue`'s exact ends, monotonicity and range are proved in `ProductionSpectral.lean.in`).
 - [ ] **Detach on direct edit ([PRISM-INSTRUMENT-AMOUNT]).** Turning a module dial a macro drives detaches that target with a notice; journey: detach, undo, re-attach.
 
 ## Instrument face [PRISM-INSTRUMENT-FACE]
