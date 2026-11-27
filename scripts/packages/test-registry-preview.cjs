@@ -1,52 +1,9 @@
 // Browser acceptance for the served folder registry [PACKAGE-HOSTED-ROUTES-CATALOG].
 const assert = require('node:assert/strict');
 const { chromium } = require('../../src/toolchain/website/node_modules/playwright');
-
-async function checkHostedAccount(browser, livePort) {
-  const fs = require('node:fs');
-  const path = require('node:path');
-  const exec = require('node:child_process').execFileSync;
-  const work = fs.mkdtempSync('target/registry-site-build/archive-check.');
-  try {
-    const pack = directory => exec('python3', ['scripts/packages/archive-registry-site.py', directory, work], {encoding:'utf8'}).trim();
-    const archive = pack('target/registry-site-build/hosted-fixture');
-    const digest = require('node:crypto').createHash('sha256').update(fs.readFileSync(archive)).digest('hex');
-    assert.equal(path.basename(archive), 'registry-site-' + digest + '.zip');
-    const extracted = path.join(work, 'site');
-    exec('unzip', ['-q', archive, '-d', extracted]);
-    assert.equal(pack(extracted), archive, 'Repacking yields the same bytes');
-    await checkPackagedAccount(browser, extracted, livePort);
-  } finally {
-    fs.rmSync(work, {recursive:true, force:true});
-  }
-}
-
-async function checkPackagedAccount(browser, site, livePort) {
-  const website = 'https://packages.example.test';
-  const api = 'https://api.example.test';
-  const page = await browser.newPage();
-  const fs = require('node:fs');
-  const path = require('node:path');
-  const policy = fs.readFileSync(path.join(site, '_headers'), 'utf8').trim().split('\n');
-  assert.equal(policy.shift(), '/*');
-  const siteHeaders = Object.fromEntries(policy.map(line => {
-    const delimiter = line.indexOf(':');
-    return [line.slice(0, delimiter).trim().toLowerCase(), line.slice(delimiter + 1).trim()];
-  }));
-  page.setDefaultTimeout(10000);
-  const failures = [];
-  page.on('pageerror', error => failures.push(error.message));
-  page.on('requestfailed', request => failures.push({url:request.url(), error:request.failure()?.errorText}));
-  await page.route(website + '/**', async route => {
-    const pathname = new URL(route.request().url()).pathname;
-    const file = (pathname.startsWith('/packages/') || pathname.startsWith('/publishers/') || pathname.startsWith('/tags/')) ? path.join(site, 'package.html') : path.join(site, pathname, pathname.endsWith('/') ? 'index.html' : '');
-    const body = await fs.promises.readFile(file);
-    const mime = {'.html':'text/html','.css':'text/css','.svg':'image/svg+xml','.mjs':'text/javascript','.wasm':'application/wasm'}[path.extname(file)];
-    assert.ok(mime, pathname);
-    const hash = /\.([0-9a-f]{12})\.(?:css|mjs|wasm)$/.exec(pathname);
-    if (hash) assert.equal(require('node:crypto').createHash('sha256').update(body).digest('hex').slice(0,12), hash[1]);
-    await route.fulfill({body, headers:siteHeaders, contentType:mime});
-  });
+const { withHostedPage } = require('./registry-browser-fixture.cjs');
+const checkHostedAccount = (browser, livePort) => withHostedPage(browser, fixture => checkPackagedAccount(fixture, livePort));
+async function checkPackagedAccount({page, website, api, failures}, livePort) {
   const headers = {'access-control-allow-origin':website,'access-control-allow-credentials':'true'};
   if (livePort) {
     assert.match(livePort, /^[0-9]{4,5}$/);
@@ -105,7 +62,7 @@ async function checkPackagedAccount(browser, site, livePort) {
     await downloadLink.click();
     const file = await downloaded;
     assert.equal(file.suggestedFilename(), 'osprey-source.json');
-    const source = JSON.parse(await fs.promises.readFile(await file.path(), 'utf8'));
+    const source = JSON.parse(await require('node:fs/promises').readFile(await file.path(), 'utf8'));
     assert.equal(source.key, '@atlas/net');
     assert.equal(source.digest, href.pathname.split('/')[3]);
     assert.equal(source.files.find(item => item.path === 'src/main.osp').text, 'fn main() = 0\n');
@@ -481,7 +438,6 @@ async function checkMobileMenu(browser) {
       assert.deepEqual(await box('.prose-bar'), header);
       const detail = await box('.prose-cover');
       for (const axis of ['x', 'y', 'width']) assert.equal(detail[axis], cover[axis]);
-
       const icon = await page.locator('link[rel="icon"]').getAttribute('href');
       assert.equal(await page.locator('.prose-brand img').getAttribute('src'), icon);
       const asset = await page.request.get(icon.startsWith('/') ? new URL(icon, page.url()).href : icon);
