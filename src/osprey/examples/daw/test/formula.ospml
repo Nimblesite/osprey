@@ -63,3 +63,32 @@ projectFormulaJourney () =
     broken = daw::PatchNode(identity = 1, component = "formulaNotes", size = 0, seed = 0, asset = "60 +", settings = [])
     brokenTrack = freshTrack ("broken", daw::PatchInstrument(routing = daw::Routing(nodes = [broken], cables = [], attack = 0.01, release = 0.1)))
     failsWith (daw::TrackPatches::patch brokenTrack, "formulaNotes 1: Formula: the formula ends where a number, t, a function or '(' belongs.")
+
+// [PRISM-ROUTING-VERIFY] The graph-edit journey through the hosted canvas: seven modules from the Add component
+// menu, cables drawn by tapping an output socket then an input socket, a cycle and an event-into-audio route
+// refused with the snapshot unchanged, a cable cut and redrawn, and a connected node deleted from its menu.
+socketRoutes = [{ s = 0, d = 2, i = 0 }, { s = 0, d = 3, i = 0 }, { s = 2, d = 4, i = 0 }, { s = 3, d = 4, i = 1 }, { s = 4, d = 5, i = 0 }]
+
+socketRefused (patched, bad) =
+    refused = linked (patched, bad.s, bad.d, bad.i)
+    sameGraph (refused, patched)
+    expect ((Drive::holding refused).message != "", true)
+
+socketGraphJourney () =
+    added = chained (openedEditor ["--empty"], ["sine", "sine", "gain", "gain", "mixer", "output", "midi-note"])
+    nodesOf (added, 7)
+    patched = foldList (socketRoutes, added, \(d, c) => linked (d, c.s, c.d, c.i))
+    cablesOf (patched, 5)
+    forEachList (socketRoutes, \c => offeredIn (patched, "Cable ${c.s}:0 to ${c.d}:${c.i}", true))
+    forEachList ([{ s = 6, d = 2, i = 0 }, { s = 4, d = 2, i = 0 }], \bad => socketRefused (patched, bad))
+    offeredIn (patched, "Canvas input 5:3", false)
+    unplugged = cutCable (patched, "Cable 0:0 to 3:0")
+    cablesOf (unplugged, 4)
+    offeredIn (unplugged, "Cable 0:0 to 3:0", false)
+    rerouted = linked (unplugged, 1, 3, 0)
+    cablesOf (rerouted, 5)
+    offeredIn (rerouted, "Cable 1:0 to 3:0", true)
+    gone = deleteNode (rerouted, 4)
+    expect (mapList ((Drive::holding gone).graph.nodes, \n => n.identity), [0, 1, 2, 3, 5, 6])
+    cablesOf (gone, 2)
+    forEachList (["Cable 0:0 to 2:0", "Cable 1:0 to 3:0"], \label => offeredIn (gone, label, true))
