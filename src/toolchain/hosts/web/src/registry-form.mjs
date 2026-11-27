@@ -3,19 +3,53 @@ const form = document.querySelector('[data-collection-form]');
 const select = form.querySelector('select');
 const review = document.getElementById(form.dataset.review);
 const message = form.querySelector('[role=status]');
+
+function accountRequest(url, options) {
+  return fetch(url, {
+    ...options, credentials: 'include', cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(10000),
+  });
+}
+
+function bindLogout(panel, status, login, csrfToken) {
+  const logout = panel.querySelector('button');
+  logout.hidden = false;
+  logout.addEventListener('click', async () => {
+    logout.disabled = true;
+    try {
+      const response = await accountRequest(panel.dataset.logoutUrl, {
+        method: 'POST', headers: {'X-CSRF-Token': csrfToken},
+      });
+      if (response.status !== 204) {
+        await response.text();
+        throw Error('Logout unavailable');
+      }
+      logout.hidden = true;
+      status.textContent = panel.dataset.signedOut;
+      login.hidden = false;
+      login.focus();
+    } catch {
+      status.textContent = panel.dataset.logoutError;
+    } finally {
+      logout.disabled = false;
+    }
+  });
+}
+
 async function showSession(panel) {
   const status = panel.querySelector('[role=status]');
   const login = panel.querySelector('a');
   try {
-    const response = await fetch(panel.dataset.sessionUrl, {
-      credentials: 'include', cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(10000),
-    });
+    const response = await accountRequest(panel.dataset.sessionUrl);
     if (response.status === 401) {
       status.textContent = '';
       login.hidden = false;
-    } else {
-      status.textContent = response.status === 200 ? panel.dataset.active : panel.dataset.error;
+      return;
     }
+    if (response.status !== 200) throw Error('Session unavailable');
+    const session = await response.json();
+    if (session.authenticated !== true || !/^sha256:[0-9a-f]{64}$/.test(session.csrfToken)) throw Error('Invalid session');
+    status.textContent = panel.dataset.active;
+    bindLogout(panel, status, login, session.csrfToken);
   } catch {
     status.textContent = panel.dataset.error;
   }

@@ -12,6 +12,7 @@ module HostedLogin {
     export let startPath = "/v1/auth/github/start"
     export let cookieName = "__Host-registry-flow"
     export let sessionCookieName = "__Host-registry"
+    export let expiredSessionCookie = "${sessionCookieName}=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Lax"
     let configError = "auth.configuration"
 
     export type Redirect = { location: string, cookie: string }
@@ -113,6 +114,10 @@ module HostedLogin {
 
     export fn sessionDigest(token) = Digests::hashText("registry.browser.session.cookie.v1", token)
 
+    export fn csrfToken(token) = if OAuth::challengeCode(token) == "" {
+        Digests::hashText("registry.browser.session.csrf.v1", token)
+    } else { "" }
+
     fn issuerOf(oauth) = oauth.supabaseOrigin + "/auth/v1"
 
     fn sessionContext(oauth, digest) = "registry.browser.session.tokens.v1\n${issuerOf(oauth)}\n${digest}"
@@ -149,7 +154,7 @@ module HostedLogin {
 
     fn confirmed(oauth, token, digest, identity: Supabase::Identity, revalidate) =
         andThen(revalidate(digest, issuerOf(oauth), identity.authSubject, identity.githubId), fn(row) =>
-            if Bytes::canonicalUuid(Bytes::before(row, "|")) { Success { value: Digests::hashText("registry.browser.session.csrf.v1", token) } }
+            if Bytes::canonicalUuid(Bytes::before(row, "|")) { Success { value: csrfToken(token) } }
             else { Error { message: sessionRequired } })
 
     /// A cookie proves no authority until the sealed access token and active database binding both pass.
@@ -169,8 +174,11 @@ module HostedLogin {
             else { Error { message: sessionUnavailable } }
     })
 
-    export fn nativeRead(config: Settings, token) = if config.sessionKey == "" { unavailable() }
+    fn nativeRead(config: Settings, token) = if config.sessionKey == "" { unavailable() }
         else { ProviderNative::transport()(fn() => readSession(config.oauth, token, BrowserSessions::read,
             fn(context, envelope) => LoginKms::openSession(config.sessionKey, context, envelope),
             fn(access) => recheckAccess(config.oauth, access), BrowserSessions::revalidate)) }
+
+    export fn nativeSession(config, method, token) = if method == "POST" { BrowserSessions::logout(sessionDigest(token)) }
+        else { nativeRead(config, token) }
 }

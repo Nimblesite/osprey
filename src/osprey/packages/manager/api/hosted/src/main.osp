@@ -4,7 +4,7 @@ import registry_host::Native
 
 fn serve(source, policy) = andThen(HostedService::contentHost(source, policy), fn(host) =>
     andThen(HostedLogin::configure(source, policy), fn(login) => HostedService::serve(policy, host, HostedLogin::native(login),
-        fn(path, headers) => HostedLogin::nativeCallback(login, path, headers), fn(token) => HostedLogin::nativeRead(login, token))))
+        fn(path, headers) => HostedLogin::nativeCallback(login, path, headers), fn(method, token) => HostedLogin::nativeSession(login, method, token))))
 
 /// Secret Manager mounts runtime.json under /run/registry.
 /// No folder-registry data is loaded into the hosted process [PACKAGE-HOSTED-TOPOLOGY].

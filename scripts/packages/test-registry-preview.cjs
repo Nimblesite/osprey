@@ -121,8 +121,20 @@ async function checkPackagedAccount(browser, site, livePort) {
     return;
   }
   await page.route(api + '/v1/packages', route => route.fulfill({headers,json:{packages:[]}}));
+  const csrfToken = 'sha256:' + 'a'.repeat(64);
+  let signOutRequests = 0;
+  await page.route(api + '/v1/auth/logout', route => {
+    if (route.request().method() === 'OPTIONS') return route.fulfill({status:204,headers:{...headers,
+      'access-control-allow-methods':'POST','access-control-allow-headers':'X-CSRF-Token'}});
+    assert.equal(route.request().method(), 'POST');
+    assert.equal(route.request().headers()['x-csrf-token'], csrfToken);
+    assert.equal(route.request().postData(), null);
+    signOutRequests++;
+    if (signOutRequests === 1) return route.fulfill({status:503,headers,json:{code:'registry.not-ready',status:503}});
+    return route.fulfill({status:204,headers});
+  });
   for (const code of [401, 503, 200]) {
-    await page.route(api + '/v1/auth/session', route => route.fulfill({status:code,headers,json:{}}));
+    await page.route(api + '/v1/auth/session', route => route.fulfill({status:code,headers,json:{authenticated:code === 200,csrfToken}}));
     await page.goto(website + '/upload/');
     const panel = page.locator('[data-session-url]');
     const login = panel.getByRole('link', {includeHidden:true});
@@ -133,8 +145,20 @@ async function checkPackagedAccount(browser, site, livePort) {
       await panel.getByText(code === 503 ? /could not verify/ : /Signed in/).waitFor();
       assert.equal(await login.isVisible(), false);
     }
+    if (code === 200) {
+      const logout = panel.getByRole('button', {name:'Sign out'});
+      await logout.click();
+      await panel.getByText('Could not sign out. Try again.').waitFor();
+      assert.equal(await login.isVisible(), false);
+      await logout.click();
+      await panel.getByText('Signed out.', {exact:true}).waitFor();
+      await login.waitFor();
+      assert.equal(await logout.count(), 0);
+      assert.equal(signOutRequests, 2);
+    }
     await page.unroute(api + '/v1/auth/session');
   }
+  await page.unroute(api + '/v1/auth/logout');
   await page.unroute(api + '/v1/packages');
   const entry = {key:'@atlas/net',keywords:['networking','web'],releases:[{digest:'sha256:' + 'a'.repeat(64),epoch:1,ordinal:1,publisherId:"11111111-1111-4111-8111-111111111111",publisherName:"Atlas Engineering",licenseExpression:"MIT",notices:[{path:"NOTICE.md",text:"Upstream <img src=x>"}]}],summary:'HTTP tools <img src=x>',warnings:['Network access']};
   let payload = {packages:[entry]};

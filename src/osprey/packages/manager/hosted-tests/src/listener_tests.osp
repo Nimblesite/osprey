@@ -4,6 +4,11 @@ import registry_api::HostedLogin
 
 /// Drive both real listeners and check their distinct public contracts [PACKAGE-HOSTED-TOPOLOGY].
 module ListenerTests {
+    let unavailableReply = "503|no-store|"
+    let v1Packages = "/v1/packages"
+    let jsonReply = "200|no-store|application/json|"
+    let problemReply = "404|no-store|application/problem+json|"
+
     let valid = "{\"apiHost\":\"api.example.test\",\"websiteOrigin\":\"https://packages.example.test\",\"edgeSecret\":\"test-only-secret-with-at-least-32-bytes\"}"
 
     fn fetch(port, path, extra) = match httpCreateClient("http://127.0.0.1:${port}", 2000) {
@@ -31,8 +36,8 @@ module ListenerTests {
             fetch(port, path, browser) == signedOut,
             fetch(port, path, browser + "\r\nCookie: theme=light") == signedOut,
             fetch(port, path, browser + "\r\nCookie: __Host-registry=opaque") == signedOut,
-            startsWith(fetch(port, path, browser + "\r\nCookie: __Host-registry=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"), "503|no-store|"),
-            startsWith(fetch(port, path, browser + "\r\nAuthorization: Bearer opaque"), "503|no-store|"),
+            startsWith(fetch(port, path, browser + "\r\nCookie: __Host-registry=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"), unavailableReply),
+            startsWith(fetch(port, path, browser + "\r\nAuthorization: Bearer opaque"), unavailableReply),
             startsWith(fetch(port, path, ""), "403|no-store|")
         ])
     }
@@ -40,22 +45,22 @@ module ListenerTests {
     let projection = "{\"packages\":[{\"key\":\"@atlas/net\",\"keywords\":[\"networking\",\"web\"],\"releases\":[{\"digest\":\"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"epoch\":1,\"licenseExpression\":\"MIT\",\"notices\":[{\"path\":\"NOTICE.md\",\"text\":\"Adapted from Atlas upstream.\\nCopyright Atlas.\"}],\"ordinal\":1,\"publisherId\":\"11111111-1111-4111-8111-111111111111\",\"publisherName\":\"Atlas Engineering\"}],\"summary\":\"HTTP tools\",\"warnings\":[\"Network access\"]}]}"
 
     fn requests(port) = {
-        let public = fetch(port, "/v1/packages", "")
+        let public = fetch(port, v1Packages, "")
         let probe = fetch(port + 1, "/v1/ready", "")
-        let private = fetch(port + 1, "/v1/packages", "")
+        let private = fetch(port + 1, v1Packages, "")
         let edge = "X-Edge-Secret: test-only-secret-with-at-least-32-bytes"
         sessions(port, edge)
-        let admitted = fetch(port, "/v1/packages", edge)
-        let crossOrigin = fetch(port, "/v1/packages", edge + "\r\nOrigin: https://packages.example.test")
+        let admitted = fetch(port, v1Packages, edge)
+        let crossOrigin = fetch(port, v1Packages, edge + "\r\nOrigin: https://packages.example.test")
         let separate = fetch(port, "/v1/ready", edge)
         checkAll("live registry probe and ingress isolation", [
-            startsWith(fetch(port, "/v1/packages/@atlas/net", edge), "200|no-store|application/json|") && contains(fetch(port, "/v1/packages/@atlas/net", edge), "Network access"),
-            startsWith(fetch(port, "/v1/packages/@atlas/missing", edge), "404|no-store|application/problem+json|"),
-            startsWith(fetch(port, "/v1/publishers/11111111-1111-4111-8111-111111111111", edge), "200|no-store|application/json|"),
-            startsWith(fetch(port, "/v1/publishers/11111111-1111-4111-8111-111111111111/releases", edge), "200|no-store|application/json|"),
-            startsWith(fetch(port, "/v1/publishers/99999999-9999-4999-8999-999999999999", edge), "404|no-store|application/problem+json|"),
-            startsWith(fetch(port, "/v1/releases/sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/source", edge), "404|no-store|application/problem+json|"),
-            startsWith(fetch(port, HostedLogin::startPath, edge), "503|no-store|"),
+            startsWith(fetch(port, "/v1/packages/@atlas/net", edge), jsonReply) && contains(fetch(port, "/v1/packages/@atlas/net", edge), "Network access"),
+            startsWith(fetch(port, "/v1/packages/@atlas/missing", edge), problemReply),
+            startsWith(fetch(port, "/v1/publishers/11111111-1111-4111-8111-111111111111", edge), jsonReply),
+            startsWith(fetch(port, "/v1/publishers/11111111-1111-4111-8111-111111111111/releases", edge), jsonReply),
+            startsWith(fetch(port, "/v1/publishers/99999999-9999-4999-8999-999999999999", edge), problemReply),
+            startsWith(fetch(port, "/v1/releases/sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/source", edge), problemReply),
+            startsWith(fetch(port, HostedLogin::startPath, edge), unavailableReply),
             startsWith(fetch(port, HostedLogin::startPath, ""), "403|no-store|"),
             probe == "200|no-store|text/plain||", private == "404|no-store|text/plain||",
             startsWith(public, "403|no-store|application/problem+json||") && contains(public, "req.edge-secret"),
@@ -69,7 +74,7 @@ module ListenerTests {
     fn live() = {
         let port = 20000 + random() % 15000
         let outcome = andThen(HostedService::config(valid), fn(policy) => HostedService::withListeners(
-            policy { allowedHost: "127.0.0.1" }, "content.example.test", "127.0.0.1", port, port + 1, fn() => Success { value: projection }, fn(_digest) => Error { message: "missing" }, HostedLogin::unavailable, fn(_path, _headers) => HostedLogin::unavailable(), fn(_token) => HostedLogin::unavailable(), fn() => requests(port)))
+            policy { allowedHost: "127.0.0.1" }, "content.example.test", "127.0.0.1", port, port + 1, fn() => Success { value: projection }, fn(_digest) => Error { message: "missing" }, HostedLogin::unavailable, fn(_path, _headers) => HostedLogin::unavailable(), fn(_method, _token) => HostedLogin::unavailable(), fn() => requests(port)))
         match outcome {
             Error { message } => check("two listeners start", "ready", message)
             Success { value } => check("listeners finish the request sequence", 0, value)

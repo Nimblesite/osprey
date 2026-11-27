@@ -5,6 +5,8 @@ import registry::Bytes
 /// SQL comes only from reviewed application code; request values are hex-bound
 /// parameters, never SQL/psql syntax. Implements [PACKAGE-OWNERSHIP-RLS].
 module Database {
+    let sessionDigest = "session_digest"
+
     /// Identity selected from a verified live registry session, never request JSON.
     export type Context = { principalId: string, sessionId: string, organizationId: string, authSubject: string, authorityEpoch: int }
     /// Mounted libpq service, password and CA files; no connection passwords in argv.
@@ -91,10 +93,13 @@ module Database {
 
     /// The issuer role can mint one cookie for exactly the verified provider identity.
     export fn sessionIssueScript(scope, statement, values) = preAuthScript("registry_session_issuer",
-        ["session_digest", "session_issuer", "session_subject", "session_provider"], scope, statement, values)
+        [sessionDigest, "session_issuer", "session_subject", "session_provider"], scope, statement, values)
 
     export fn sessionRuntimeScript(scope, statement, values) = preAuthScript("registry_session_runtime",
-        ["session_digest", "session_issuer", "session_subject", "session_provider"], scope, statement, values)
+        [sessionDigest, "session_issuer", "session_subject", "session_provider"], scope, statement, values)
+
+    export fn sessionRevokeScript(cookie, statement) = preAuthScript("registry_session_revoker",
+        [sessionDigest], [cookie], statement, [cookie])
 
     /// Login storage runs as its own non-owner principal. Raw driver errors stay private.
     export fn login(source) = executed(mountedConnection("login"), source)
@@ -102,6 +107,8 @@ module Database {
     export fn issueSession(source) = executed(mountedConnection("session-issuer"), source)
 
     export fn sessionRuntime(source) = executed(mountedConnection("session-runtime"), source)
+
+    export fn sessionRevoker(source) = executed(mountedConnection("session-revoker"), source)
 
     fn run(config, ctx, statement, values) = match script(ctx, statement, values) {
         Error { message } => Error { message: message }

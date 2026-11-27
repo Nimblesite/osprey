@@ -14,6 +14,7 @@ module HostedService {
     let jsonType = "application/json"
     let authorizationHeader = "authorization"
     let publisherPrefix = "/v1/publishers/"
+    let logoutPath = "/v1/auth/logout"
 
     export fn config(source) = match Json::parse(source) {
         Error => Error { message: "hosted.config-invalid" }
@@ -73,7 +74,7 @@ module HostedService {
         }
     }
 
-    fn dispatch(headers, policy, method, path, catalog, source, login, callback, readSession) = {
+    fn dispatch(headers, policy, method, path, catalog, source, login, callback, session) = {
         let origin = if HostedHeaders::has(headers, "origin") { policy.allowedOrigin } else { "" }
         let cors = if origin == "" { "" } else { browserHeaders(origin) }
         if path == "/v1/ready" { problem(404, "api.not-found") }
@@ -83,24 +84,37 @@ module HostedService {
         else if method == "GET" && Bytes::before(path, "?") == OAuth::callbackPath {
             callbackResponse(callback(path, headers), cors)
         }
-        else if method == "GET" && path == "/v1/auth/session" { sessionRequest(headers, readSession, cors) }
+        else if method == "GET" && path == "/v1/auth/session" { sessionRequest(headers, session, cors) }
+        else if method == "POST" && path == logoutPath { logoutRequest(headers, session, cors) }
         else { unavailable(cors) }
     }
 
-    fn sessionRequest(headers, readSession, cors) = {
+    fn sessionRequest(headers, session, cors) = {
         let token = HostedLogin::browserToken(headers)
         if token == "" && HostedHeaders::has(headers, authorizationHeader) { unavailable(cors) }
-        else { sessionReply(token, readSession, cors) }
+        else { sessionReply(token, session, cors) }
     }
 
     fn signedOut(cors) = replyWith(401, problemType, "{\"code\":\"auth.session-required\",\"status\":401}", cors)
 
-    fn sessionReply(token, readSession, cors) = if token == "" { signedOut(cors) } else { match readSession(token) {
+    fn sessionReply(token, session, cors) = if token == "" { signedOut(cors) } else { match session("GET", token) {
         Success { value } => jsonReply(Json::obj([
             Json::member("authenticated", Json::Bool { flag: true }), Json::member("csrfToken", Json::str(value))
         ]), cors)
         Error { message } => if message == HostedLogin::sessionRequired { signedOut(cors) } else { unavailable(cors) }
     } }
+
+    fn loggedOut(cors) = replyWith(204, "text/plain", "", cors + "Set-Cookie: ${HostedLogin::expiredSessionCookie}\r\n")
+
+    fn logoutRequest(headers, session, cors) = {
+        let token = HostedLogin::browserToken(headers)
+        if cors == "" { problem(403, "req.origin-required") }
+        else if token == "" { loggedOut(cors) }
+        else { match session("POST", token) {
+            Success => loggedOut(cors)
+            Error => unavailable(cors)
+        } }
+    }
 
     let noReferrer = "Referrer-Policy: no-referrer\r\n"
     let expiredFlow = "Set-Cookie: ${HostedLogin::expiredCookie}\r\n"
@@ -205,14 +219,21 @@ module HostedService {
         && method == "GET" && startsWith(path, HostedSource::prefix) && endsWith(path, HostedSource::attachmentSuffix)
         && !HostedHeaders::has(headers, "cookie") && !HostedHeaders::has(headers, authorizationHeader)
 
-    fn publicRequest(policy, contentHost, method, path, headers, body, catalog, source, login, callback, readSession) = {
+    fn requestPolicy(policy, contentHost, method, path, fields) =
+        if contentRequest(fields, contentHost, method, path) { policy { allowedHost: contentHost } }
+        else if method == "POST" && path == logoutPath {
+            policy { csrfToken: HostedLogin::csrfToken(HostedLogin::browserToken(fields)) }
+        } else { policy }
+
+    fn publicRequest(policy, contentHost, method, path, headers, body, catalog, source, login, callback, session) = {
         let request = HostedRequest::Incoming { method: method, uri: path, headerBlock: headers, body: body }
         let parsed = HostedHeaders::parse(headers)
         let fields = HostedHeaders::headers(parsed)
-        let effective = if contentRequest(fields, contentHost, method, path) { policy { allowedHost: contentHost } } else { policy }
+        let effective = requestPolicy(policy, contentHost, method, path, fields)
         match HostedRequest::admitParsed(parsed, request, effective) {
             HostedHeaders::Reject { status, code } => problem(status, code)
-            _ => dispatch(HostedHeaders::headers(parsed), policy, method, path, catalog, source, login, callback, readSession)
+            _ => if method == "POST" && path == logoutPath && body != "" { problem(400, "req.logout-body") }
+                else { dispatch(fields, policy, method, path, catalog, source, login, callback, session) }
         }
     }
 
@@ -230,8 +251,8 @@ module HostedService {
     })
 
     /// Start the public listener before reporting process liveness on the management port.
-    export fn withListeners(policy, contentHost, address, publicPort, probePort, catalog, source, login, callback, readSession, active) = match listen(address, publicPort,
-        fn(method, path, headers, body) => publicRequest(policy, contentHost, method, path, headers, body, catalog, source, login, callback, readSession)) {
+    export fn withListeners(policy, contentHost, address, publicPort, probePort, catalog, source, login, callback, session, active) = match listen(address, publicPort,
+        fn(method, path, headers, body) => publicRequest(policy, contentHost, method, path, headers, body, catalog, source, login, callback, session)) {
         Error => Error { message: "hosted.public-listener" }
         Success { value } => {
             let publicServer = value
@@ -249,5 +270,5 @@ module HostedService {
             }
         }
     }
-    export fn serve(policy, contentHost, login, callback, readSession) = withListeners(policy, contentHost, "0.0.0.0", 8080, 8081, Database::publicCatalog, HostedSource::mounted, login, callback, readSession, waitForRequests)
+    export fn serve(policy, contentHost, login, callback, session) = withListeners(policy, contentHost, "0.0.0.0", 8080, 8081, Database::publicCatalog, HostedSource::mounted, login, callback, session, waitForRequests)
 }
