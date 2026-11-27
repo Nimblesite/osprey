@@ -46,8 +46,8 @@ _test_disciplines_passthrough:
 	set -o pipefail && ./$(BIN) src/osprey/examples/disciplines/roundtrip --run --memory=gc 2>/dev/null | diff - src/osprey/examples/disciplines/roundtrip/expectedoutput
 	set -o pipefail && ./$(BIN) src/osprey/examples/disciplines/roundtrip --run --memory=arc 2>/dev/null | diff - src/osprey/examples/disciplines/roundtrip/expectedoutput
 	@$(MKDIR) target/disciplines
-	./$(BIN) src/osprey/examples/disciplines/roundtrip --target=wasm32 --compile -o target/disciplines/roundtrip.wasm >/dev/null 2>&1
-	node scripts/wasm/wasm-smoke.mjs target/disciplines/roundtrip.wasm src/osprey/examples/disciplines/roundtrip/expectedoutput
+	$(if $(filter 1,$(DISCIPLINE_WASM)),./$(BIN) src/osprey/examples/disciplines/roundtrip --target=wasm32 --compile -o target/disciplines/roundtrip.wasm >/dev/null 2>&1)
+	$(if $(filter 1,$(DISCIPLINE_WASM)),node scripts/wasm/wasm-smoke.mjs target/disciplines/roundtrip.wasm src/osprey/examples/disciplines/roundtrip/expectedoutput)
 	@echo "==> [disciplines] the same program under hm alone (marker removed)..."
 	@rm -rf target/disciplines/roundtrip-hm && $(MKDIR) target/disciplines/roundtrip-hm/src
 	@cp src/osprey/examples/disciplines/roundtrip/src/main.ospml src/osprey/examples/disciplines/roundtrip/src/numbers.ospml target/disciplines/roundtrip-hm/src/
@@ -134,6 +134,13 @@ LEAN_TAMPER = sed 's/"name":235,"type":730,"value":817/"name":235,"type":730,"va
 # carry no WASI sysroot; Linux CI runs every leg ([TYPES-DISCIPLINE-REFERENCE]).
 DISCIPLINE_WASM ?= 1
 
+# The compiler names a file by its native path: C:\...\x.ospml on Windows. The
+# goldens hold it relative and with `/`, so the checkout root goes in either form
+# and the separators before the line's first `:` become `/`. A Windows checkout
+# may give the golden CRLF ends where the compiler's stderr has LF.
+CHECKOUT_NATIVE := $(subst \,\\,$(shell cygpath -w "$(CURDIR)" 2>/dev/null))
+CHECKOUT_RELATIVE = sed -e "s|$(CURDIR)/||g" $(if $(CHECKOUT_NATIVE),-e 's|$(CHECKOUT_NATIVE)\\||g' -e ':a' -e 's|^\([^:]*\)\\|\1/|' -e 'ta')
+
 # discipline_roundtrip: one reference discipline proved through the whole seam
 # (checker build, protocol, erasure, signature ascription), not just its
 # checker. $(1) is the package, $(2) its round-trip program, $(3) the module the
@@ -159,7 +166,7 @@ define discipline_roundtrip
 	sed 's|"../$(1)"|"../../../src/osprey/examples/disciplines/$(1)"|' src/osprey/examples/disciplines/$(2)/osprey.toml > target/disciplines/$(2)/osprey.toml
 	$(if $(4),$(4),@true)
 	@./$(BIN) target/disciplines/$(2) --check > target/disciplines/$(1)-rejected.txt 2>&1; test $$? -ne 0
-	sed -e "s|$(CURDIR)/||g" target/disciplines/$(1)-rejected.txt | diff - src/osprey/examples/disciplines/$(2)/rejected.expectedoutput
+	$(CHECKOUT_RELATIVE) target/disciplines/$(1)-rejected.txt | diff --strip-trailing-cr - src/osprey/examples/disciplines/$(2)/rejected.expectedoutput
 	@$(RM) src/osprey/examples/disciplines/$(1)/.osprey src/osprey/examples/disciplines/$(2)/.osprey
 endef
 

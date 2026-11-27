@@ -32,7 +32,8 @@ const FIRST_CONSUMER: &str = "lean4";
 const SOURCE_EXTENSIONS: [&str; 3] = ["rs", "c", "h"];
 
 fn repo_root() -> PathBuf {
-    osprey_project::paths::canonical(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../..")).expect("repository root")
+    osprey_project::paths::canonical(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../.."))
+        .expect("repository root")
 }
 
 /// `name = "<word>"` of every `[discipline]` table under `src/osprey/examples/disciplines`.
@@ -440,11 +441,14 @@ fn no_code_under_crates_names_a_discipline_or_its_theory() {
 fn the_scan_sees_a_literal_and_ignores_comments_and_english() {
     assert_eq!(findings("let x = select(\"bounded\");", "bounded"), vec![1]);
     let english = "let bounded = workers.len();";
-    assert_eq!(findings(english, "bounded"), Vec::new());
-    assert_eq!(findings("prove(theorem_count)", "bounded"), Vec::new());
+    assert_eq!(findings(english, "bounded"), Vec::<usize>::new());
+    assert_eq!(
+        findings("prove(theorem_count)", "bounded"),
+        Vec::<usize>::new()
+    );
     assert_eq!(findings("let theorem = 1;", "bounded"), vec![1]);
     let text = "fn a() {} // a theorem here\n#[cfg(test)]\nmod t { const N: &str = \"bounded\"; }";
-    assert_eq!(findings(text, "bounded"), Vec::new());
+    assert_eq!(findings(text, "bounded"), Vec::<usize>::new());
 }
 
 #[test]
@@ -482,7 +486,7 @@ fn the_scan_sees_a_name_in_a_raw_string_holding_a_slash_slash() {
 #[test]
 fn the_scan_ignores_a_block_comment_holding_a_name() {
     let text = "/* \"bounded\" */\nlet x = 1;\n/* outer /* \"bounded\" */ tactic */";
-    assert_eq!(findings(text, "bounded"), Vec::new());
+    assert_eq!(findings(text, "bounded"), Vec::<usize>::new());
 }
 
 #[test]
@@ -494,6 +498,6 @@ fn the_scan_sees_a_name_after_a_lifetime() {
 #[test]
 fn the_scan_ignores_a_theory_word_in_a_comment() {
     let text = "// tactic\nlet x = 1; /* theorem */\n/* refinement */ // lean4";
-    assert_eq!(findings(text, "bounded"), Vec::new());
+    assert_eq!(findings(text, "bounded"), Vec::<usize>::new());
     assert_eq!(findings("let tactic = 1;", "bounded"), vec![1]);
 }

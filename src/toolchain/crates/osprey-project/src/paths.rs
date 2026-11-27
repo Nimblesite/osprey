@@ -56,7 +56,9 @@ fn is_drive(rest: &str) -> bool {
     let bytes = rest.as_bytes();
     bytes.first().is_some_and(u8::is_ascii_alphabetic)
         && bytes.get(1) == Some(&b':')
-        && bytes.get(2).is_none_or(|next| *next == b'\\' || *next == b'/')
+        && bytes
+            .get(2)
+            .is_none_or(|next| *next == b'\\' || *next == b'/')
 }
 
 #[cfg(test)]
@@ -87,8 +89,12 @@ mod tests {
     fn a_canonical_path_is_plain_resolved_and_existing() -> std::io::Result<()> {
         let here = canonical(Path::new("."))?;
         assert!(here.is_absolute(), "{}", here.display());
-        assert!(!here.to_string_lossy().starts_with(VERBATIM), "{}", here.display());
-        assert_eq!(canonical(&here.join("src").join(".."))?, here);
+        assert!(
+            !here.to_string_lossy().starts_with(VERBATIM),
+            "{}",
+            here.display()
+        );
+        assert_eq!(canonical(here.join("src").join(".."))?, here);
         assert!(canonical(Path::new("no/such/folder/anywhere")).is_err());
         let missing = Path::new("no/such/folder/anywhere");
         assert_eq!(canonical_or_given(missing), missing.to_path_buf());

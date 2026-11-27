@@ -156,7 +156,9 @@ fn choose_entry(
         let candidates = metadata
             .iter()
             .filter(|source| match &resolved {
-                Some(entry) => crate::paths::canonical(&source.path).is_ok_and(|path| path == *entry),
+                Some(entry) => {
+                    crate::paths::canonical(&source.path).is_ok_and(|path| path == *entry)
+                }
                 None => source.path == *configured || source.path.ends_with(configured),
             })
             .map(|source| source.index)

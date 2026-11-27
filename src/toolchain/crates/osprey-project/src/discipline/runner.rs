@@ -75,13 +75,15 @@ impl ProcessRunner {
     }
 
     /// The cache path of `discipline`'s checker: its name under the digests of
-    /// every build input and of the compiler itself.
+    /// every build input and of the compiler itself, with the host's executable
+    /// suffix: Windows' `cmd.exe` runs no program without `.exe`.
     fn artifact(&self, discipline: &Discipline) -> Result<PathBuf, String> {
         Ok(self.build_dir.join(format!(
-            "{}-{:016x}-{:016x}",
+            "{}-{:016x}-{:016x}{}",
             discipline.name,
             super::inputs::build_digest(discipline)?,
-            super::inputs::compiler_digest(&self.compiler)?
+            super::inputs::compiler_digest(&self.compiler)?,
+            std::env::consts::EXE_SUFFIX
         )))
     }
 }

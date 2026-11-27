@@ -128,7 +128,9 @@ impl Request {
             imports,
             options: Options {
                 project_root: crate::paths::plain_text(&config.directory),
-                cache_dir: crate::paths::plain_text(&crate::paths::discipline_cache(&config.directory)),
+                cache_dir: crate::paths::plain_text(&crate::paths::discipline_cache(
+                    &config.directory,
+                )),
                 compiler: crate::paths::plain_text(&crate::compiler_binary()),
             },
         }

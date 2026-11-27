@@ -1,0 +1,8 @@
+[project]
+name = "passthrough-checker"
+source_roots = ["."]
+default_namespace = "passthrough"
+entry = "main.ospml"
+
+[modules]
+allow_wildcard_imports = false

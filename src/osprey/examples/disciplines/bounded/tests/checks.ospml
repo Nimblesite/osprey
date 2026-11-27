@@ -1,6 +1,8 @@
 namespace bounded
 
 import bounded::Rate
+import bounded::Signature
+import bounded::Words
 
 (** What the erased `Rate` does once the discipline has accepted it. The
     module reaches this suite as plain `int` code, so these assertions also
@@ -19,3 +21,10 @@ module Checks
             expect (toString (Rate::half 200), "100"))
         test ("the boundary values of the bound are accepted", \() =>
             expect (toString (Rate::scale (0, 200)) + "/" + toString (Rate::scale (100, 200)), "0/200"))
+        test ("a POSIX host's compiler line single-quotes every path for /bin/sh", \() =>
+            expect (Signature::commandFor (false, at ("/repo/osprey", "/repo/.osprey/cache", "/repo/src/rate.ospml")), "'/repo/osprey' '/repo/.osprey/cache/erased-rate.ospml' --signature > '/repo/.osprey/cache/erased-rate.ospml.signature' 2> '/repo/.osprey/cache/erased-rate.ospml.stderr'"))
+        // cmd.exe, which Windows spawns through, knows no single quotes.
+        test ("a Windows host's compiler line double-quotes every path and the whole line for cmd.exe", \() =>
+            expect (Signature::commandFor (true, at ("C:\\o\\osprey.exe", "C:\\r\\cache", "C:\\r\\src\\rate.ospml")), "\"\"C:\\o\\osprey.exe\" \"C:\\r\\cache/erased-rate.ospml\" --signature > \"C:\\r\\cache/erased-rate.ospml.signature\" 2> \"C:\\r\\cache/erased-rate.ospml.stderr\"\""))
+
+    at (compiler, cache, path) = Words::Request(version = 2, root = "", path = path, source = "", cache = cache, compiler = compiler)

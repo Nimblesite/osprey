@@ -128,7 +128,8 @@ fn assert_generators_agree(stdin: &str, device: &str) -> std::io::Result<String>
 #[test]
 fn python_gpt2_project_contains_no_osprey_flavor_source() -> std::io::Result<()> {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../..");
-    let python = osprey_project::paths::canonical(root.join("src/osprey/examples/llms/gpt2/python"))?;
+    let python =
+        osprey_project::paths::canonical(root.join("src/osprey/examples/llms/gpt2/python"))?;
     let project = python.join("generate");
     let manifest = std::fs::read_to_string(project.join("osprey.toml"))?;
     let roots = manifest

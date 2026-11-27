@@ -53,7 +53,10 @@ fn changing_an_imported_checker_module_changes_the_build_digest_and_binary_name(
     std::fs::write(&compiler, b"compiler one").expect("compiler");
     let build_dir = root.join("build");
     let compiler_digest = inputs::compiler_digest(&compiler).expect("compiler digest");
-    let built = build_dir.join(format!("bounded-{digest:016x}-{compiler_digest:016x}"));
+    let built = build_dir.join(format!(
+        "bounded-{digest:016x}-{compiler_digest:016x}{}",
+        std::env::consts::EXE_SUFFIX
+    ));
     std::fs::create_dir_all(&build_dir).expect("build dir");
     std::fs::write(&built, b"built").expect("prebuilt binary");
     let deadline = std::time::Instant::now() + Duration::from_secs(5);

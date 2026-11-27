@@ -122,7 +122,9 @@ fn local_symbols(symbols: &[Value], source: &Path) -> io::Result<Vec<Value>> {
             symbol
                 .get("path")
                 .and_then(Value::as_str)
-                .is_none_or(|path| osprey_project::paths::canonical(path).is_ok_and(|path| path == canonical))
+                .is_none_or(|path| {
+                    osprey_project::paths::canonical(path).is_ok_and(|path| path == canonical)
+                })
         })
         .cloned()
         .collect())

@@ -119,7 +119,8 @@ const conditionMissing = gateBlock.some((line) => line.trim() === GATE_CONDITION
 // v0.23.0 shipped nothing: release.yml lacked the MinGW clang driver, so osprey
 // fell back to the runner's MSVC clang and `link.exe` could not find ssl.lib.
 
-const WINDOWS_CI_WORKFLOW = 'ci-windows.yml'
+// Every Windows CI job installs MSYS2 through this one action.
+const WINDOWS_CI_WORKFLOW = '../actions/setup-windows-msys2/action.yml'
 const MSYS2_PACKAGE = /^\s+(mingw-w64-[A-Za-z0-9_.+-]+)\s*$/
 const msys2Packages = (file) =>
   readWorkflow(file).map((line) => line.match(MSYS2_PACKAGE)).filter(Boolean).map((match) => match[1])

@@ -94,7 +94,8 @@ fn manifests_under(directory: &Path) -> Vec<PathBuf> {
 /// compares literally rather than erroring.
 #[must_use]
 pub(crate) fn same_path(left: &Path, right: &Path) -> bool {
-    osprey_project::paths::canonical_or_given(left) == osprey_project::paths::canonical_or_given(right)
+    osprey_project::paths::canonical_or_given(left)
+        == osprey_project::paths::canonical_or_given(right)
 }
 
 /// The filesystem path a `file://` URI names, percent-decoded.

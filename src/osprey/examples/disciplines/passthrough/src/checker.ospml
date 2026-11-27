@@ -5,11 +5,11 @@
 //! module importing a `passthrough` one and the reverse, with output identical
 //! to the same program under `hm` alone.
 //!
-//! The compiler builds one file per checker (`<compiler> <checker>
-//! --compile`), so the protocol, the rewrite, the diagnostic parser, the import
-//! stubs and this package's assertion suite share this file. `main` answers the
-//! one request line the seam writes to standard input, and with no request line
-//! (how `osprey test` runs it) it runs the cases.
+//! This directory is the checker project: the compiler builds it as one program
+//! whose entry, `main.ospml`, answers the one request line the seam writes to
+//! standard input. The protocol, the rewrite, the diagnostic parser and the
+//! import stubs live here; `tests/suite.ospml` asserts on them, and
+//! `osprey test` on the package runs that suite.
 //!
 //! A single-file `--check` cannot resolve imports, so the checker appends what
 //! it can of them to the scratch copy as ML `extern` declarations built from
@@ -93,17 +93,17 @@ module Marker
     *)
     export rewrite source = join (mapList (split (source, "\n") ?: [source], rewritten), "\n")
 
-    (** The file name after the last `/`, kept with its extension so the
-        compiler resolves the same flavor for the scratch copy.
+    (** The file name after the last `/`, or `\` on Windows, kept with its
+        extension so the compiler resolves the same flavor for the scratch copy.
     # Examples
     ```osprey
-    print "${Marker::basename "src/deep/checker.ospml"} ${Marker::basename "plain.osp"}"
+    print "${Marker::basename "src/deep/checker.ospml"} ${Marker::basename "plain.osp"} ${Marker::basename "C:\\r\\src\\count.ospml"}"
     ```
     ```output
-    checker.ospml plain.osp
+    checker.ospml plain.osp count.ospml
     ```
     *)
-    export basename path = lastPart (split (path, "/") ?: [path])
+    export basename path = lastPart (split (replace (path, "\\", "/") ?: path, "/") ?: [path])
 
     rewritten text = match marked (trim text)
         true => replacement text
@@ -193,10 +193,12 @@ module Replies
 
 (** Turning the compiler's stderr into diagnostics, with the positions it wrote. *)
 module Checks
-    (** One diagnostic per non-blank stderr line, `path:line:col:` parsed.
+    (** One diagnostic per non-blank stderr line, `path:line:col:` parsed. The
+        compiler names a Windows file with `\`, where the checker joined its
+        scratch path with `/`, so both read as `/` when the line is matched.
     # Examples
     ```osprey
-    shown () = join (mapList (Checks::diagnostics ("m.ospml", "m.ospml:3:5: unknown y\n\nlinker failed"), \d => "${d.line}:${d.column} ${d.message}"), " | ")
+    shown () = join (mapList (Checks::diagnostics ("C:\\c/m.ospml", "C:\\c\\m.ospml:3:5: unknown y\n\nlinker failed"), \d => "${d.line}:${d.column} ${d.message}"), " | ")
     print (exactArithmetic shown)
     ```
     ```output
@@ -208,9 +210,11 @@ module Checks
     export diagnostics (path, stderr) =
         filterList (mapList (split (stderr, "\n") ?: [], read (path)), \one => !isEmpty one.message)
 
-    read (path) line = match startsWith (line, path + ":")
+    read (path) line = match startsWith (slashed line, slashed path + ":")
         true => positioned (drop (line, length path + 1))
         false => whole line
+
+    slashed text = replace (text, "\\", "/") ?: text
 
     (** `next` with the integer or offset `found` carries, or the whole `rest` as one unpositioned diagnostic when it holds none. *)
     counted (rest, found, next) = match found
@@ -403,8 +407,26 @@ module Tool
     export capture (directory, name, command) =
         out = directory + "/" + name + ".out"
         err = directory + "/" + name + ".err"
-        status = exited (spawnProcess ("( " + command + " ) >" + quoted out + " 2>" + quoted err, quiet))
+        status = exited (spawnProcess (lineFor (onWindows (), "( " + command + " ) >" + quoted out + " 2>" + quoted err), quiet))
         Ran(code = status, out = content (readFile out), err = content (readFile err))
+
+    // Windows always sets SystemRoot, and MSYS2's shell keeps it where it drops OS.
+    onWindows () = !isEmpty (env "SystemRoot" ?: "")
+
+    (** The line the host's spawner runs: `/bin/sh` takes it as written, while
+        `cmd.exe` strips the outer pair of quotes from a line that starts with
+        one, so on Windows the line goes in one more pair.
+    # Examples
+    ```osprey
+    print "${Tool::lineFor (false, "'a' >'b'")} ${Tool::lineFor (true, "\"a\" >\"b\"")}"
+    ```
+    ```output
+    'a' >'b' ""a" >"b""
+    ```
+    *)
+    export lineFor (windows, line) = match windows
+        true => "\"" + line + "\""
+        false => line
 
     exited result = match result
         Success id => awaitProcess id
@@ -413,16 +435,23 @@ module Tool
         Success text => text
         Error _ => ""
 
-    (** `text` quoted for a POSIX shell, with each embedded `'` escaped.
+    (** `text` as one word for this host's spawner. *)
+    export quoted text = quotedFor (onWindows (), text)
+
+    (** `text` as one word: single-quoted for a POSIX shell, each embedded `'`
+        escaped; double-quoted for `cmd.exe`, which knows no single quotes (no
+        Windows path holds a `"`).
     # Examples
     ```osprey
-    print (Tool::quoted "it's here")
+    print "${Tool::quotedFor (false, "it's here")} ${Tool::quotedFor (true, "C:\\it's here")}"
     ```
     ```output
-    'it'\''s here'
+    'it'\''s here' "C:\it's here"
     ```
     *)
-    export quoted text = "'" + (replace (text, "'", "'\\''") ?: text) + "'"
+    export quotedFor (windows, text) = match windows
+        true => "\"" + text + "\""
+        false => "'" + (replace (text, "'", "'\\''") ?: text) + "'"
 
     quiet (_id, _kind, _data) = cleanupProcess 0
 
@@ -543,114 +572,3 @@ module Checker
     stubBlock (line, titles) = match startsWith line signaturePrefix
         true => listContains (titles, trim (drop (line, length signaturePrefix)))
         false => false
-
-(** Every case this package asserts about itself: the marker rewrite, the
-    stderr parser and the exact response encoding the seam parses. *)
-module Tests
-    (** Run every self-test of the checker.
-    # Examples
-    ```osprey
-    exactArithmetic Tests::run
-    ```
-    ```output
-    ok 1 - every marker spelling is rewritten and nothing else is touched
-    ok 2 - stderr becomes positioned diagnostics and nothing else
-    ok 3 - an accepted answer is the exact protocol JSON
-    ok 4 - a rejected answer is the exact protocol JSON, and no position is null
-    ok 5 - a stubbable import becomes an extern; an empty one stays resolvable
-    ok 6 - an import an extern cannot express is refused with the reason
-    1..6
-    # tests=6 passed=6 failed=0 skipped=0
-    ```
-    *)
-    export run () =
-        test ("every marker spelling is rewritten and nothing else is touched", \() => markers ())
-        test ("stderr becomes positioned diagnostics and nothing else", \() => diagnostics ())
-        test ("an accepted answer is the exact protocol JSON", \() => acceptedReply ())
-        test ("a rejected answer is the exact protocol JSON, and no position is null", \() => rejectedReplies ())
-        test ("a stubbable import becomes an extern; an empty one stays resolvable", \() => stubs ())
-        test ("an import an extern cannot express is refused with the reason", \() => refusals ())
-
-    (** Asserts the marker line `from` is rewritten to `to` with the module text after it untouched. *)
-    rewrittenMarker (from, to, rest) = expect (Marker::rewrite (from + rest), to + "\n" + rest)
-
-    markers () =
-        rewrittenMarker ("// osprey: types=passthrough\n", hmMarker, "namespace Count\n")
-        rewrittenMarker ("# osprey: types=passthrough\n", hmMarkerPython, "x = 1\n")
-        rewrittenMarker ("//osprey: types=passthrough\n", hmMarker, "")
-        expect (Marker::rewrite unmarked, unmarked)
-
-    (** Asserts `stderr`'s first diagnostic against the scratch path reads as `expected`. *)
-    firstDiagnostic (stderr, expected) = expect (described (first (Checks::diagnostics (scratch, stderr))), expected)
-
-    diagnostics () =
-        firstDiagnostic (scratchLine, "check 5 25 type mismatch: cannot unify string with int")
-        firstDiagnostic ("error: the module is ill-formed\n", "check -1 -1 error: the module is ill-formed")
-        expect (listLength (Checks::diagnostics (scratch, "\n  \n")), 0)
-    acceptedReply () = expect (Replies::accepted (sampleSignature, Erased(flavor = "ml", source = "namespace a\n")), acceptedExpected)
-
-    rejectedReplies () =
-        expect (Replies::rejected ([Diagnostic(code = codeCheck, line = 5, column = 25, message = "bad")]), rejectedExpected ())
-        expect (Replies::internal "boom", internalExpected ())
-
-    stubs () =
-        expect (describedStubs ([Imported(name = "a::Numbers", text = numbersSignature "twice : (int) -> int", omitted = [])]), "namespace a\nmodule Numbers\n    export extern twice (p0 : int) -> int\n")
-        expect (describedStubs ([Imported(name = "a::Empty", text = "signature Empty\n", omitted = [])]), "namespace a\nmodule Empty\n" + emptyStub)
-
-    refusals () =
-        refusedItem ("same<t0> : (t0) -> t0", "is polymorphic, which an `extern` declaration cannot spell")
-        refusedItem ("make : (string) -> { age: int }", "uses a record type, which an `extern` declaration cannot express")
-        expect (refusal ("make : (string) -> int", ["type Person"]), "import `a::Numbers` exports type Person, which an inferred signature names but does not describe, so the module cannot be checked on its own")
-
-    (** Asserts the one-item `Numbers` signature `item` is refused with `why`. *)
-    refusedItem (item, why) = expect (refusal (item, []), "import `Numbers` item `" + item + "` " + why)
-
-    (** The stub answer for an import of `a::Numbers` whose signature holds `items` and omits `omitted`. *)
-    refusal (items, omitted) = describedStubs ([Imported(name = "a::Numbers", text = numbersSignature items, omitted = omitted)])
-
-    (** The signature text of an imported `Numbers` module holding `items`. *)
-    numbersSignature items = "signature Numbers\n    " + items + "\n"
-
-    describedStubs imports = match Signatures::stubs imports
-        Unstubbable why => why
-        Ready text => text
-
-    described diagnostic = diagnostic.code + " " + toString diagnostic.line + " " + toString diagnostic.column + " " + diagnostic.message
-
-    first diagnostics = match diagnostics
-        [only, ..._rest] => only
-        [] => Diagnostic(code = "", line = 0, column = 0, message = "no diagnostic")
-
-    unmarked = "namespace Count\n\nmodule Ops\n    export twice x = x\n"
-    scratch = "/tmp/x.ospml"
-    scratchLine = "/tmp/x.ospml:5:25: type mismatch: cannot unify string with int\n"
-    sampleSignature = "signature M\n    twice : (int) -> int\n"
-    acceptedExpected = "{\"version\":2,\"result\":\"accepted\",\"signature\":\"signature M\\n    twice : (int) -> int\\n\",\"erased\":{\"flavor\":\"ml\",\"source\":\"namespace a\\n\"},\"diagnostics\":[]}"
-    (** The exact protocol JSON lines the replies under test must spell, built by the same `rejectedLine` the checker answers with. *)
-    rejectedExpected () = rejectedLine ("check", "5", "25", "bad")
-    internalExpected () = internalLine "boom"
-
-(** The one thing this program needs from libc, and the reason: the testing
-    builtins named by the suite attach a TAP plan and summary to the end of
-    `main` in *every* build of this file, and the seam parses exactly one
-    response line. An answered request is therefore written straight to the
-    process's standard output and leaves through `_Exit`, which skips the
-    epilogue; the suite, run with no request line, returns from `main` so the
-    plan and summary print and the status is theirs. *)
-extern _Exit (code : int) -> Unit
-
-(** The entry point: answer the request line, or run the cases when the seam is
-    not the caller. *)
-main () =
-    handle Arith
-        overflow _op _lhs _rhs wrapped => wrapped
-        divideByZero _op _lhs => 0.0
-        remainderByZero _lhs => 0
-    line = input ()
-    match isEmpty line
-        true => Tests::run ()
-        false => answered line
-
-answered line = match writeFile ("/dev/stdout", Checker::answer line + "\n")
-    Success _ => _Exit 0
-    Error why => print ("the checker could not write its response: " + why)

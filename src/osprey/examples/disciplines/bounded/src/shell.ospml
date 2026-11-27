@@ -1,0 +1,25 @@
+namespace bounded
+
+
+(** Lines for the host's process spawner: POSIX hosts spawn through `/bin/sh`,
+    which takes single quotes. Windows spawns through `cmd.exe`, which knows no
+    single quotes and strips the outer pair from a line that starts with one, so
+    each word goes in double quotes (no Windows path holds one) and the whole
+    line in one more pair. *)
+module Shell
+    // Windows always sets SystemRoot, and MSYS2's shell keeps it where it drops OS.
+    (** Whether this process runs on Windows. *)
+    export windows () = !isEmpty (env "SystemRoot" ?: "")
+
+    (** `text` as one word of a line for the spawner. *)
+    export word (windows, text) = match windows
+        true => "\"" + text + "\""
+        false => "'" + (replace (text, "'", "'\\''") ?: text) + "'"
+
+    (** `line` as the spawner runs it. *)
+    export line (windows, line) = match windows
+        true => "\"" + line + "\""
+        false => line
+
+    (** `text` with the CRLF line ends a Windows tool may write read as LF. *)
+    export lf (text) = replace (text, "\r\n", "\n") ?: text

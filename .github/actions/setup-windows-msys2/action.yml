@@ -1,0 +1,36 @@
+name: "Set up the Windows MinGW toolchain"
+description: "MSYS2 UCRT64 with the C toolchain osprey.exe builds and links Windows programs with, and OSPREY_CC pinned to its clang"
+runs:
+  using: "composite"
+  steps:
+    # gcc + winpthreads back the fiber/effects C runtime; the `clang` package
+    # provides the MinGW clang driver (`/ucrt64/bin/clang.exe`) osprey shells
+    # out to when linking — the `llvm` package ships only the LLVM tools
+    # (llc/opt), not the driver, so without `clang` osprey would fall back to
+    # the runner's system MSVC clang and fail to link the MinGW runtime.
+    - uses: msys2/setup-msys2@v2
+      with:
+        msystem: UCRT64
+        path-type: inherit
+        update: true
+        install: >-
+          make
+          mingw-w64-ucrt-x86_64-gcc
+          mingw-w64-ucrt-x86_64-clang
+          mingw-w64-ucrt-x86_64-llvm
+          mingw-w64-ucrt-x86_64-pkgconf
+          mingw-w64-ucrt-x86_64-openssl
+          mingw-w64-ucrt-x86_64-sqlite3
+
+    # osprey.exe is a NATIVE Windows process: when it shells out to link the
+    # emitted IR it searches the Windows PATH, where the runner's system
+    # (MSVC-target) clang shadows the MSYS2 one — that clang can't link the
+    # MinGW-built runtime archive. Pin OSPREY_CC to the UCRT64 clang via a
+    # Windows-style path (cygpath -m) so native CreateProcess can find it.
+    - name: Pin the MinGW clang for osprey --run
+      shell: msys2 {0}
+      run: |
+        set -euo pipefail
+        CC_PATH="$(cygpath -m /ucrt64/bin/clang.exe)"
+        "$CC_PATH" --version | head -1
+        echo "OSPREY_CC=$CC_PATH" >> "$GITHUB_ENV"

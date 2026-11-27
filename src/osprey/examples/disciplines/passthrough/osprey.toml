@@ -4,22 +4,23 @@ license = "MIT"
 summary = "Reference type discipline that checks a module with the HM rules and returns it unchanged"
 keywords = ["discipline", "reference"]
 
-# The package is also its own assertion suite ([TYPES-DISCIPLINE-VERIFICATION]):
-# `osprey test src/osprey/examples/disciplines/passthrough` compiles `src/checker.ospml`
-# as the entry, and its `main` runs the cases when standard input carries no
-# request line. The compiler builds one file for a checker, so every module of
-# the discipline lives in that file.
+# The package is also the home of its own suite ([TYPES-DISCIPLINE-VERIFICATION]):
+# `osprey test src/osprey/examples/disciplines/passthrough` runs `tests/suite.ospml`
+# against the checker's own modules, with no second copy of that logic to drift
+# from it. The checker's entry, `src/main.ospml`, is left out: it is built as a
+# separate program and names no `test`, so no TAP plan follows its response line.
 [project]
 name = "passthrough"
-source_roots = ["src"]
+source_roots = ["src/checker.ospml", "tests/suite.ospml"]
 default_namespace = "passthrough"
-entry = "src/checker.ospml"
+entry = "tests/suite.ospml"
 
 # What the compiler reads when a project marks a source
-# `// osprey: types=passthrough` ([TYPES-DISCIPLINE-REGISTRY]).
+# `// osprey: types=passthrough` ([TYPES-DISCIPLINE-REGISTRY]): the checker is
+# the project under `src/`, built as one program whose entry is `src/main.ospml`.
 [discipline]
 name = "passthrough"
-checker = "src/checker.ospml"
+checker = "src"
 
 [modules]
 allow_wildcard_imports = false

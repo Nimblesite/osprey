@@ -13,8 +13,9 @@ keywords = ["discipline", "intervals", "reference"]
 name = "bounded"
 # Listed file by file: the project is the package, and the checker project
 # under `src/` is built as a separate program rather than compiled as one of
-# the suite's sources (a checker has its own entry point).
-source_roots = ["tests/main.ospml", "tests/checks.ospml", "tests/protocol.ospml", "tests/rate.ospml"]
+# the suite's sources (a checker has its own entry point). Its modules with no
+# entry of their own are listed, so the suite asserts on their pure parts directly.
+source_roots = ["tests/main.ospml", "tests/checks.ospml", "tests/protocol.ospml", "tests/rate.ospml", "src/signature.ospml", "src/shell.ospml", "src/words.ospml", "src/chars.ospml"]
 default_namespace = "bounded"
 entry = "tests/main.ospml"
 

@@ -471,7 +471,8 @@ fn editor_erases_disciplined_modules_like_the_cli() {
         "lean_roundtrip/src/main.ospml",
     ];
     for file in files {
-        let path = osprey_project::paths::canonical(disciplines.join(file)).expect("example exists");
+        let path =
+            osprey_project::paths::canonical(disciplines.join(file)).expect("example exists");
         let text = std::fs::read_to_string(&path).expect("read example");
         let uri = format!("file://{}", path.display());
         let diagnostics = published_diagnostics(&mut server, &uri, &text);
@@ -481,7 +482,9 @@ fn editor_erases_disciplined_modules_like_the_cli() {
             "{file}: {diagnostics:?}"
         );
     }
-    let access = osprey_project::paths::canonical(disciplines.join("dependent_roundtrip/src/access.ospml")).expect("access");
+    let access =
+        osprey_project::paths::canonical(disciplines.join("dependent_roundtrip/src/access.ospml"))
+            .expect("access");
     let good = std::fs::read_to_string(&access).expect("read access");
     let uri = format!("file://{}", access.display());
     let opened = published_diagnostics(&mut server, &uri, &good);

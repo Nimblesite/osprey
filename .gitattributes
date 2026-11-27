@@ -12,6 +12,8 @@
 src/toolchain/crates/osprey-math/tests/fixtures/*.ospml text eol=lf
 # Proof certificates are hashed as bytes; checkout must preserve their pins.
 *.ndjson -text
+# Windows batch files run only with CRLF line ends.
+*.cmd text eol=crlf
 # Byte-pinned upstream license text retains its original line endings.
 src/osprey/packages/*/LICENSE -text
 src/osprey/packages/*/LICENSES/* -text

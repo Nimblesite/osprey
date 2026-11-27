@@ -200,8 +200,8 @@ impl OptIn {
         source: &Path,
     ) -> Result<PathBuf, ProjectError> {
         let path = self.selected_path(root, config, source)?;
-        let canonical = crate::paths::canonical(&path)
-            .map_err(|error| ProjectError::io(&path, &error))?;
+        let canonical =
+            crate::paths::canonical(&path).map_err(|error| ProjectError::io(&path, &error))?;
         if !path.is_file() || !canonical_in_roots(root, config, &canonical) {
             let message = format!(
                 "{} source resolves outside its source root or is not a file",

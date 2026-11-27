@@ -302,7 +302,10 @@ fn a_request_hands_the_checker_plain_drive_paths_not_verbatim_ones() {
     assert_eq!(parsed["module"]["path"], r"C:\proj\src\access.ospml");
     assert_eq!(parsed["options"]["project_root"], r"C:\proj");
     let cache = parsed["options"]["cache_dir"].as_str().unwrap_or_default();
-    assert!(cache.starts_with(r"C:\proj") && cache.ends_with("disciplines"), "{cache}");
+    assert!(
+        cache.starts_with(r"C:\proj") && cache.ends_with("disciplines"),
+        "{cache}"
+    );
     assert!(!line.contains(r"\\\\?\\"), "{line}");
 }
 
