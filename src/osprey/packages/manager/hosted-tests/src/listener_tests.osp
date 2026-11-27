@@ -35,7 +35,7 @@ module ListenerTests {
         ])
     }
 
-    let projection = "{\"packages\":[{\"key\":\"@atlas/net\",\"releases\":[{\"digest\":\"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"epoch\":1,\"ordinal\":1}],\"summary\":\"HTTP tools\",\"warnings\":[\"Network access\"]}]}"
+    let projection = "{\"packages\":[{\"key\":\"@atlas/net\",\"releases\":[{\"digest\":\"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"epoch\":1,\"ordinal\":1,\"publisherId\":\"11111111-1111-4111-8111-111111111111\",\"publisherName\":\"Atlas Engineering\"}],\"summary\":\"HTTP tools\",\"warnings\":[\"Network access\"]}]}"
 
     fn requests(port) = {
         let public = fetch(port, "/v1/packages", "")
@@ -49,6 +49,9 @@ module ListenerTests {
         checkAll("live registry probe and ingress isolation", [
             startsWith(fetch(port, "/v1/packages/@atlas/net", edge), "200|no-store|application/json|") && contains(fetch(port, "/v1/packages/@atlas/net", edge), "Network access"),
             startsWith(fetch(port, "/v1/packages/@atlas/missing", edge), "404|no-store|application/problem+json|"),
+            startsWith(fetch(port, "/v1/publishers/11111111-1111-4111-8111-111111111111", edge), "200|no-store|application/json|"),
+            startsWith(fetch(port, "/v1/publishers/11111111-1111-4111-8111-111111111111/releases", edge), "200|no-store|application/json|"),
+            startsWith(fetch(port, "/v1/publishers/99999999-9999-4999-8999-999999999999", edge), "404|no-store|application/problem+json|"),
             probe == "200|no-store|text/plain||", private == "404|no-store|text/plain||",
             startsWith(public, "403|no-store|application/problem+json||") && contains(public, "req.edge-secret"),
             admitted == "200|no-store|application/json||" + projection,

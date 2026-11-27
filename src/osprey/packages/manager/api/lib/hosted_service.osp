@@ -67,7 +67,7 @@ module HostedService {
         let cors = if origin == "" { "" } else { browserHeaders(origin) }
         if path == "/v1/ready" { problem(404, "api.not-found") }
         else if method == "OPTIONS" { preflight(headers, origin) }
-        else if method == "GET" && (path == "/v1/packages" || startsWith(path, "/v1/packages/")) { catalogResponse(catalog(), path, cors) }
+        else if method == "GET" && (path == "/v1/packages" || startsWith(path, "/v1/packages/") || startsWith(path, "/v1/publishers/")) { catalogResponse(catalog(), path, cors) }
         else if method == "GET" && path == "/v1/auth/session" && !hasCredential(headers, policy) {
             replyWith(401, "application/problem+json", "{\"code\":\"auth.session-required\",\"status\":401}", cors)
         } else { unavailable(cors) }
@@ -89,12 +89,45 @@ module HostedService {
         Error => unavailable(cors)
     }
 
-    fn catalogDocument(doc, path, cors) = if path == "/v1/packages" { jsonReply(doc, cors) } else {
+    fn catalogDocument(doc, path, cors) = if path == "/v1/packages" { jsonReply(doc, cors) } else if startsWith(path, "/v1/publishers/") {
+        publisherDocument(JsonRead::items(JsonRead::field(doc, "packages")), path, cors)
+    } else {
         match listGet(filterList(JsonRead::items(JsonRead::field(doc, "packages")), fn(item) => "/v1/packages/" + field(item, "key") == path), 0) {
             Success { value } => jsonReply(value, cors)
             Error => replyWith(404, "application/problem+json", "{\"code\":\"catalog.unknown-package\",\"status\":404}", cors)
         }
     }
+
+    fn credited(item, id) = filterList(JsonRead::items(JsonRead::field(item, "releases")), fn(release) => field(release, "publisherId") == id)
+
+    fn publisherPackage(item, id) = Json::obj([
+        Json::member("key", JsonRead::field(item, "key")),
+        Json::member("summary", JsonRead::field(item, "summary")),
+        Json::member("warnings", JsonRead::field(item, "warnings")),
+        Json::member("releases", Json::arr(credited(item, id)))
+    ])
+
+    fn publisherDocument(packages, path, cors) = {
+        let parts = split(drop(path, byteLength("/v1/publishers/")), "/") ?: []
+        let id = listGet(parts, 0) ?: ""
+        let detail = length(parts) == 1
+        let releases = length(parts) == 2 && (listGet(parts, 1) ?: "") == "releases"
+        if Bytes::canonicalUuid(id) && (detail || releases) { publisherReply(packages, id, detail, cors) }
+        else { unknownPublisher(cors) }
+    }
+
+    fn publisherReply(packages, id, detail, cors) = {
+        let publicPackages = filterList(packages, fn(item) => !isEmpty(credited(item, id)))
+        let first = listGet(publicPackages, 0) ?: Json::Null
+        match listGet(credited(first, id), 0) {
+            Error => unknownPublisher(cors)
+            Success { value } => if detail {
+                jsonReply(Json::obj([Json::member("id", Json::str(id)), Json::member("name", JsonRead::field(value, "publisherName"))]), cors)
+            } else { jsonReply(Json::obj([Json::member("packages", Json::arr(mapList(publicPackages, fn(item) => publisherPackage(item, id))))]), cors) }
+        }
+    }
+
+    fn unknownPublisher(cors) = replyWith(404, "application/problem+json", "{\"code\":\"catalog.unknown-publisher\",\"status\":404}", cors)
 
     fn unavailable(cors) = replyWith(503, "application/problem+json", "{\"code\":\"registry.not-ready\",\"status\":503}", cors)
 

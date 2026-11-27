@@ -176,7 +176,7 @@ registry-website registry-website-fixture registry-website-archive: $(BIN) | _ru
 	  catalog=$$(asset src/toolchain/hosts/web/src/registry-catalog.mjs catalog mjs); host=$$(asset src/osprey/examples/wasm/wasi-shim.mjs wasi mjs); guest=$$(asset target/registry-site-build/site.wasm site wasm); \
 	  printf "%s\n" home "$$origin" "$$catalog" "$$host" "$$guest" | wasmtime target/registry-site-build/site.wasm > "$$out/index.html"; \
 	  printf "%s\n" hosted-package "$$origin" "$$catalog" "$$host" "$$guest" | wasmtime target/registry-site-build/site.wasm > "$$out/package.html"; \
-	  printf '/packages/* /package.html 200\n' > "$$out/_redirects"; \
+	  printf '/packages/* /package.html 200\n/publishers/* /package.html 200\n' > "$$out/_redirects"; \
 	  printf "%s\n" upload "$$origin" "$$adapter" | wasmtime target/registry-site-build/site.wasm > "$$out/upload/index.html"; \
 	  digest=$$(shasum -a 256 $(REGISTRY_WEB)/assets/registry.css | cut -c1-12); \
 	  asset="registry.$$digest.css"; grep -Fq "href=\"/$$asset\"" "$$out/index.html"; \

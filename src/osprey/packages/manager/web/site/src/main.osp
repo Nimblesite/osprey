@@ -21,7 +21,7 @@ fn catalogAdapter(origin) = {
 fn hostedPackage() = {
     let origin = trim(input())
     let adapter = catalogAdapter(origin)
-    Shell::withEscapedTitle("Package · Osprey Packages", "<main><p id=\"catalog-status\" role=\"status\" data-missing=\"Package not found.\" data-error=\"Package details are unavailable.\">Loading package…</p><div id=\"package-details\"></div>${adapter}</main>")
+    Shell::withEscapedTitle("Package · Osprey Packages", "<main><p id=\"catalog-status\" role=\"status\" data-missing=\"Page not found.\" data-error=\"The registry could not load this page.\">Loading package…</p><div id=\"package-details\"></div>${adapter}</main>")
 }
 
 fn localFilter() = {

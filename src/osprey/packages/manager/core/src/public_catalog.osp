@@ -10,7 +10,8 @@ module PublicCatalog {
     export fn text(doc, key) = jsonText(field(doc, key)) ?: ""
     fn validWarning(item) = trim(jsonText(item) ?: "") != ""
     export fn number(doc, key) = jsonInt(field(doc, key)) ?: 0
-    fn validRelease(item) = exact(item, 3) && number(item, "epoch") > 0 && number(item, "ordinal") > 0 && match Digests::parse(text(item, "digest")) {
+    fn validRelease(item) = exact(item, 5) && Bytes::canonicalUuid(text(item, "publisherId"))
+        && trim(text(item, "publisherName")) != "" && byteLength(text(item, "publisherName")) <= 128 && number(item, "epoch") > 0 && number(item, "ordinal") > 0 && match Digests::parse(text(item, "digest")) {
         Success => true
         Error => false
     }

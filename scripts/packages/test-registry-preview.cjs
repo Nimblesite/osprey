@@ -39,7 +39,7 @@ async function checkPackagedAccount(browser, site, livePort) {
   page.on('requestfailed', request => failures.push(request.url()));
   await page.route(website + '/**', async route => {
     const pathname = new URL(route.request().url()).pathname;
-    const file = pathname.startsWith('/packages/') ? path.join(site, 'package.html') : path.join(site, pathname, pathname.endsWith('/') ? 'index.html' : '');
+    const file = (pathname.startsWith('/packages/') || pathname.startsWith('/publishers/')) ? path.join(site, 'package.html') : path.join(site, pathname, pathname.endsWith('/') ? 'index.html' : '');
     const body = await fs.promises.readFile(file);
     const mime = {'.html':'text/html','.css':'text/css','.svg':'image/svg+xml','.mjs':'text/javascript','.wasm':'application/wasm'}[path.extname(file)];
     assert.ok(mime, pathname);
@@ -50,7 +50,7 @@ async function checkPackagedAccount(browser, site, livePort) {
   const headers = {'access-control-allow-origin':website,'access-control-allow-credentials':'true'};
   if (livePort) {
     assert.match(livePort, /^[0-9]{4,5}$/);
-    await page.route(url => url.origin === api && url.pathname.startsWith('/v1/packages'), async route => {
+    await page.route(url => url.origin === api && (url.pathname.startsWith('/v1/packages') || url.pathname.startsWith('/v1/publishers/')), async route => {
       const upstream = await page.request.get('http://127.0.0.1:' + livePort + new URL(route.request().url()).pathname, {
         headers:{Host:'127.0.0.1','X-Edge-Secret':'fixture-edge-secret-at-least-32-bytes',Origin:website}, timeout:5000,
       });
@@ -62,6 +62,14 @@ async function checkPackagedAccount(browser, site, livePort) {
     await page.getByRole('link', {name:'@atlas/net'}).click();
     await page.getByRole('heading', {name:'e1.r1'}).waitFor();
     await page.getByText('Network access', {exact:true}).waitFor();
+    await page.getByRole('link', {name:'Atlas Labs'}).waitFor();
+    await page.getByRole('link', {name:'Atlas Engineering'}).click();
+    await page.getByRole('heading', {name:'Atlas Engineering'}).waitFor();
+    assert.equal(await page.getByRole('link', {name:'@atlas/net e1.r2'}).count(), 0);
+    await page.getByText('Network access', {exact:true}).waitFor();
+    await page.getByRole('link', {name:'@atlas/net e1.r1'}).click();
+    assert.equal(new URL(page.url()).hash, '#e1.r1');
+    await page.getByRole('heading', {name:'e1.r1'}).waitFor();
     assert.deepEqual(failures, []);
     await page.close();
     return;
@@ -82,7 +90,7 @@ async function checkPackagedAccount(browser, site, livePort) {
     await page.unroute(api + '/v1/auth/session');
   }
   await page.unroute(api + '/v1/packages');
-  const entry = {key:'@atlas/net',releases:[{digest:'sha256:' + 'a'.repeat(64),epoch:1,ordinal:1}],summary:'HTTP tools <img src=x>',warnings:['Network access']};
+  const entry = {key:'@atlas/net',releases:[{digest:'sha256:' + 'a'.repeat(64),epoch:1,ordinal:1,publisherId:"11111111-1111-4111-8111-111111111111",publisherName:"Atlas Engineering"}],summary:'HTTP tools <img src=x>',warnings:['Network access']};
   let payload = {packages:[entry]};
   await page.route(api + '/v1/packages', route => route.fulfill({headers,json:payload}));
   await page.route(api + '/v1/packages/@atlas/net', route => route.fulfill({headers,json:entry}));

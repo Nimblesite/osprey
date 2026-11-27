@@ -28,7 +28,7 @@ union InvitationState { Pending {} Accepted {} Revoked {} Expired {} }
 union MaintenanceReportState { Open {} Acknowledged {} Resolved {} Withdrawn {} }
 type RegistryPrincipal { id: PrincipalId kind: PrincipalKind state: PrincipalState credentialEpoch: AuthorityEpoch createdAt: DateTime }
 type PendingLogin { stateDigest: Digest browserDigest: Digest verifierEnvelope: String createdAt: DateTime }
-type PublicCatalogRelease { epoch: CompatibilityEpoch ordinal: ReleaseOrdinal digest: Digest }
+type PublicCatalogRelease { epoch: CompatibilityEpoch ordinal: ReleaseOrdinal digest: Digest publisherId: String publisherName: String }
 type PublicCatalogEntry { key: String releases: List<PublicCatalogRelease> summary: String warnings: List<String> }
 type PublicCatalogPage { packages: List<PublicCatalogEntry> }
 type RegistryAuthBinding { id: Uuid principalId: PrincipalId issuer: String provider: String providerSubject: String state: AccessState verifiedAt: DateTime }

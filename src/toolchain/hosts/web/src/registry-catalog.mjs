@@ -8,7 +8,10 @@ if (field) field.value = new URLSearchParams(location.search).get('q') ?? '';
 try {
   const options = {credentials: 'omit', redirect: 'error', cache: 'no-store', signal: AbortSignal.timeout(10000)};
   const endpoint = new URL(binding.dataset.catalog);
-  if (detail) endpoint.pathname = '/v1' + location.pathname.replace(/\/$/u, '');
+  if (detail) {
+    endpoint.pathname = '/v1' + location.pathname.replace(/\/$/u, '');
+    if (location.pathname.startsWith('/publishers/')) endpoint.pathname += '/releases';
+  }
   const [api, guest, {runModule}] = await Promise.all([
     fetch(endpoint, options), fetch(binding.dataset.guest), import(binding.dataset.host),
   ]);
@@ -20,6 +23,7 @@ try {
   await runModule(await guest.arrayBuffer(), part => { html += part; }, lines.join('\n'));
   if (!html.trim()) throw Error('Invalid projection');
   results.innerHTML = html;
+  if (location.hash) document.getElementById(location.hash.slice(1))?.scrollIntoView();
   status.textContent = '';
 } catch (error) {
   results.replaceChildren();

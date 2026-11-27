@@ -27,18 +27,50 @@ module HostedCatalog {
         let epoch = PublicCatalog::number(item, "epoch")
         let ordinal = PublicCatalog::number(item, "ordinal")
         let digest = PublicCatalog::text(item, "digest")
-        "<article class=\"prose-release\"><h3>e${epoch}.r${ordinal}</h3><code>${digest}</code></article>"
+        let id = PublicCatalog::text(item, "publisherId")
+        let name = Shell::escape(PublicCatalog::text(item, "publisherName"))
+        "<article class=\"prose-release\" id=\"e${epoch}.r${ordinal}\"><h3>e${epoch}.r${ordinal}</h3><p>Published by <a href=\"/publishers/${id}/\">${name}</a></p><code>${digest}</code></article>"
     }
     fn detail(item, path) = {
         let key = PublicCatalog::text(item, "key")
         let summary = Shell::escape(PublicCatalog::text(item, "summary"))
-        let releases = match PublicCatalog::field(item, "releases") { JsonArray(items) => join(mapList(items, release), "") _ => "" }
+        let releases = join(mapList(releaseItems(item), release), "")
         if PublicCatalog::validEntry(item) && path == "/packages/" + key + "/" {
             "<header class=\"prose-cover\"><a href=\"/\">← Packages</a><h1>${key}</h1><p>${summary}</p></header><div class=\"prose-columns\"><section class=\"prose-releases\"><h2>Releases</h2>${releases}</section><aside class=\"prose-facts\"><h2>Security warnings</h2>" + warningList(item) + "</aside></div>"
         } else { "" }
     }
+    fn releaseItems(item) = match PublicCatalog::field(item, "releases") {
+        JsonArray(items) => items
+        _ => []
+    }
+
+    fn credit(key, release) = {
+        let epoch = PublicCatalog::number(release, "epoch")
+        let ordinal = PublicCatalog::number(release, "ordinal")
+        "<li><a href=\"/packages/${key}/#e${epoch}.r${ordinal}\">${key} e${epoch}.r${ordinal}</a></li>"
+    }
+
+    fn publisher(items, path) = {
+        let first = listGet(items, 0) ?: JsonNull
+        let release = listGet(releaseItems(first), 0) ?: JsonNull
+        let id = PublicCatalog::text(release, "publisherId")
+        if id == "" || path != "/publishers/${id}/" { "" }
+        else { publisherProfile(items, PublicCatalog::text(release, "publisherName")) }
+    }
+
+    fn publisherProfile(items, name) = {
+        let display = Shell::escape(name)
+        let packages = join(mapList(items, fn(item) => {
+            let key = PublicCatalog::text(item, "key")
+            card(item) + "<ul class=\"prose-credits\">" + join(mapList(releaseItems(item), fn(release) => credit(key, release)), "") + "</ul>"
+        }), "")
+        "<header class=\"prose-publisher\"><a href=\"/\">← Packages</a><h1>${display}</h1></header><section><h2>Published releases</h2>${packages}</section>"
+    }
+
     export fn render(path, query, body) = if path == "/" {
         match PublicCatalog::decode(body) { Success { value } => browse(value, query) Error => "" }
+    } else if startsWith(path, "/publishers/") {
+        match PublicCatalog::decode(body) { Success { value } => publisher(value, path) Error => "" }
     } else {
         match jsonDecode(body) { Success { value } => detail(value, path) Error => "" }
     }
