@@ -6,7 +6,7 @@ Spec homes: [Block Expressions](../specs/language/0008-BlockExpressions.md), [Er
 
 ## Rewrite the remaining pyramids
 
-- [ ] Rewrite every remaining callback pyramid with `use`, deepest first, naming inner values where the nesting is data rather than callbacks; remove the lambda type annotations the rewrite makes unnecessary, compare emitted IR before and after each project rewrite, and review each mechanical rewrite by hand. Check: the `closing-run` lint reports nothing under `src/osprey` (candidate sites remain in `src/osprey/examples/daw/test/{main,room,voice}.ospml` and `src/osprey/packages/synth/src/resources.ospml`).
+- [ ] Rewrite every remaining callback pyramid with `use`, deepest first, naming inner values where the nesting is data rather than callbacks; remove the lambda type annotations the rewrite makes unnecessary, compare emitted IR before and after each project rewrite, and review each mechanical rewrite by hand. Check: the `closing-run` lint reports nothing under `src/osprey` (candidate sites remain at `src/osprey/examples/daw/test/main.ospml` lines 808 and 1482 and `src/osprey/examples/daw/test/voice.ospml` line 608; `room.ospml` is rewritten, and the `resources.ospml` run is inside a doc comment, which the lint skips).
 
 ## Nesting lint [LINT-NESTING-LAMBDA]
 
