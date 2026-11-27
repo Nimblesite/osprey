@@ -1124,6 +1124,8 @@ test ("the project plays as one loop over time: every track, bus and send advanc
 test ("rendering runs the graph into Master and renders nothing else: no note is made whole or kept", \() => ui::Runtime::guarded onlyMasterJourney)
 test ("a track carries the project's stereo channels to Master: a left-only patch is heard only on the left", \() => ui::Runtime::guarded stereoTrackJourney)
 
+test ("a MIDI note source in a track patch is heard in Master from its note's exact start frame and stops after its gate", \() => ui::Runtime::guarded midiSourceJourney)
+
 // [DAW-PROJECT-MODEL] Every shipped score must open through the production project reader.
 test ("every example song opens with playable tracks", \() => Runtime::guarded (\() =>
     succeeds (listDir (signalflow::App::fromRepository "src/osprey/examples/daw/tracks"), \entries =>

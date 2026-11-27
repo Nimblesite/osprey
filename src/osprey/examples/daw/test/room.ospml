@@ -817,3 +817,29 @@ patchControlsTogglesPanelJourney () =
     expect ((Drive::holding hidden).selected, -1)
     shown = toggledPanel (hidden, true)
     viewShows (closedPanel shown, addComponent, false)
+
+// [PRISM-ROUTING-MIDI] [DAW-GRAPH-OUTPUT] A MIDI note source in a track patch is heard through song playback in
+// Master from its note's exact start frame: silent before it, sounding within its gate, silent once the gate and
+// release are over, at every start tried.
+midiSourceTrack () =
+    notes = piece (1, "midiNote", [fixed ("pitch", 69.0), fixed ("gateFrames", 900.0)])
+    freshTrack ("midi", daw::PatchInstrument(routing = daw::Routing(nodes = [notes, piece (2, "midiOscillator", []), piece (3, "output", [])], cables = [cabled (1, 0, 2, 0), cabled (2, 0, 3, 0)], attack = 0.01, release = 0.01)))
+
+soundFrom (side, found, i) = match found < 0 && abs (listGet side i ?: 0.0) > 0.0
+    true => i
+    false => found
+
+firstSound side = foldList (toList (range (0, length side)), -1, \(found, i) => soundFrom (side, found, i))
+
+framesOf (side, from, until) = mapList (toList (range (from, until)), \i => listGet side i ?: 0.0)
+
+midiSourceJourney () = forEachList ([1200, 2400, 3600], \frame =>
+    track = midiSourceTrack ()
+    song = timeline [track(notes = [playedNote (toFloat frame / 24000.0, 0.5)])]
+    succeeds (daw::Playback::start song, \playing =>
+        succeeds (daw::Playback::step (song, playing, 7200), \played =>
+            // The sine starts at phase zero on the note's frame, so the first nonzero sample is the next one.
+            expect (firstSound played.left, frame + 1)
+            expect (firstSound played.right, frame + 1)
+            expect (loudest (framesOf (played.left, frame, frame + 900)) > 0.5, true)
+            expect (loudest (framesOf (played.left, frame + 2400, 7200)), 0.0))))
