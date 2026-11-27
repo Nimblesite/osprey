@@ -1,5 +1,12 @@
 # Why PR #436 keeps failing CI
 
+## Do this before restarting the agents
+
+- **Freeze the tree, then gate it.** With every agent stopped, get `git status` clean (each owner commits their files or they are reverted). Then run `make ci` once on that exact SHA and push only that SHA. Nobody commits until the run finishes.
+- **Run the Linux-only gates locally, in Linux.** The repeat reds are the ownership corpus, package `--doctests` goldens and `osprey-cli` Rust tests, and macOS hides some of them (libm output differs). Before the push, run `make _conformance-ownership`, `make _conformance-gc` and `cargo test --manifest-path src/toolchain/Cargo.toml -p osprey-cli` in a Linux container.
+- **One agent owns `fixes2`.** Restart the others on their own branches. Merge each branch into `fixes2` only after its own `make ci` passes, so a run never tests a tree that is still moving.
+- **Pre-commit gate per area.** Tell the agents that a commit touching `src/osprey/tests/`, a package's doc examples or a lint/warning rule must first pass that area's gate (ownership corpus, `--doctests`, the rule's Rust tests) and name the passing command in its message.
+
 PR #436 merges `fixes2` into `main`. Five CI runs have gone red or been cancelled since 01:43 UTC on 27 Nov 2026. Each red run had a different set of failures, because commits kept landing on the branch faster than CI could check them.
 
 ## Root causes
