@@ -108,13 +108,9 @@ not ok 1 - a full disk rolls the manifest back
 
 ## A real test from the package manager
 
-The package manager's CLI tests never touch a real disk, process or terminal. This excerpt is copied verbatim, at build time, from the [package manager](https://nimblesite.github.io/osprey-packages/)'s `dispatch_tests.osp`. `healthyFiles` and `brokenFiles` are two stubs for the same `Host::Files` effect shown above. `doctorBroken` runs the real `osprey-pkg doctor` command against a host where every file write and process fails, then checks that the report names each failure:
+The package manager's CLI tests never touch a real disk, process or terminal. Read [`dispatch_tests.osp`](https://github.com/Nimblesite/osprey-packages/blob/main/src/osprey/packages/manager/cli/tests/src/dispatch_tests.osp) in the [package manager](https://nimblesite.github.io/osprey-packages/)'s repository. Its `healthyFiles` and `brokenFiles` are two stubs for the same `Host::Files` effect shown above. Its `doctorBroken` runs the real `osprey-pkg doctor` command against a host where every file write and process fails, then checks that the report names each failure.
 
-```osprey
-{{ effectsTestExample.excerpt | safe }}
-```
-
-`osprey-pkg doctor` performs `Host::Files.write` and `Host::Process.run` just as it does in production. The nested calls install one test handler per effect (`Files`, `Process`, `Tree`, `Web`) around it. Run the suite with:
+`osprey-pkg doctor` performs `Host::Files.write` and `Host::Process.run` just as it does in production. The nested calls install one test handler per effect (`Files`, `Process`, `Tree`, `Web`) around it. In an osprey-packages workspace (its `make workspace`), run the suite with:
 
 ```sh
 osprey test src/osprey/packages/manager/cli/tests --memory=gc

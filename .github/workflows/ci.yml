@@ -1181,13 +1181,6 @@ jobs:
           test -d /opt/wasi-sdk/share/wasi-sysroot/lib/wasm32-wasip1
           echo "OSPREY_WASI_SYSROOT=/opt/wasi-sdk/share/wasi-sysroot" >> "$GITHUB_ENV"
 
-      # The docs quote the package manager's registry model and its effect tests verbatim, from
-      # Nimblesite/osprey-packages at the commit scripts/ci/downstream.json pins. [REPO-SPLIT]
-      - name: Lay the package manager (Nimblesite/osprey-packages)
-        uses: ./.github/actions/downstream
-        with:
-          name: osprey-packages
-
       - name: Install dependencies
         run: npm ci
         working-directory: ./src/toolchain/website
