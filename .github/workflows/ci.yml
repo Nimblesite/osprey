@@ -1595,6 +1595,16 @@ jobs:
           ln -sf "$(command -v gtimeout)" "$RUNNER_TEMP/bin/timeout"
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
 
+      # The canary's GPUI smoke links the GPUI host, which gpui.yml builds and caches; built cold it
+      # outran the part (PR #439), so it restores that cache read-only.
+      - name: Restore GPUI host
+        if: ${{ matrix.part == 'Perception' }}
+        uses: actions/cache/restore@v6
+        with:
+          path: src/toolchain/hosts/gpui/target
+          key: ${{ runner.os }}-gpui-host-${{ hashFiles('src/toolchain/hosts/gpui/Cargo.lock', 'src/toolchain/hosts/gpui/rust-toolchain*') }}
+          restore-keys: ${{ runner.os }}-gpui-host-
+
       - name: Lay the package manager and Perception for their canary
         if: ${{ matrix.part == 'Perception' }}
         uses: ./.github/actions/downstream
