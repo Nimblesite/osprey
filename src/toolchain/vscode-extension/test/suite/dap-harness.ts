@@ -48,6 +48,27 @@ export interface DapStop {
 const DEFAULT_STACK_LEVELS = 20;
 const POLL_INTERVAL_MS = 100;
 
+/**
+ * Every DAP deadline is multiplied by `OSPREY_DAP_DEADLINE_SCALE` (default 1)
+ * so a cold or loaded runner can be given more time. The deadlines stay finite,
+ * so a hang still fails. A scale below 1 or one that isn't a number is refused
+ * when the suite loads, never silently ignored.
+ */
+const DEADLINE_SCALE = ((raw: string | undefined): number => {
+  const scale = raw === undefined || raw === "" ? 1 : Number(raw);
+  if (!Number.isFinite(scale) || scale < 1) {
+    throw new Error(`OSPREY_DAP_DEADLINE_SCALE must be a number >= 1, got ${JSON.stringify(raw)}`);
+  }
+  return scale;
+})(process.env.OSPREY_DAP_DEADLINE_SCALE);
+
+/** `ms` scaled for this runner. */
+export const dapDeadline = (ms: number): number => ms * DEADLINE_SCALE;
+
+/** Long enough for compile + lldb-dap launch + the stepping each test drives. */
+export const LAUNCH_TIMEOUT_MS = dapDeadline(45_000);
+const STEP_TIMEOUT_MS = dapDeadline(30_000);
+
 /** Remove every breakpoint VS Code currently holds. */
 export function clearDebugBreakpoints(): void {
   vscode.debug.removeBreakpoints(vscode.debug.breakpoints);
@@ -88,7 +109,7 @@ export function setSourceBreakpoints(
 
 /** Resolve with the next started debug session, or reject on timeout. */
 export async function waitForDebugSessionStart(
-  timeoutMs = 30_000,
+  timeoutMs = STEP_TIMEOUT_MS,
 ): Promise<vscode.DebugSession> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -105,7 +126,7 @@ export async function waitForDebugSessionStart(
 
 /** Resolve once no (matching) session is active, or reject on timeout. */
 export async function waitForDebugSessionEnd(
-  timeoutMs = 30_000,
+  timeoutMs = STEP_TIMEOUT_MS,
   sessionId?: string,
 ): Promise<void> {
   const started = Date.now();
@@ -331,7 +352,7 @@ async function readStop(
  * not race callers that assert on the frame's source path or line. */
 export async function waitForStop(
   session: vscode.DebugSession,
-  timeoutMs = 30_000,
+  timeoutMs = STEP_TIMEOUT_MS,
 ): Promise<DapStop> {
   const started = Date.now();
   let lastError = "";

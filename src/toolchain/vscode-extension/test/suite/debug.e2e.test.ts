@@ -37,6 +37,8 @@ import {
   waitForDebugSessionEnd,
   waitForDebugSessionStart,
   waitForStop,
+  dapDeadline,
+  LAUNCH_TIMEOUT_MS,
 } from "./dap-harness";
 
 const extensionId = "nimblesite.osprey";
@@ -57,9 +59,7 @@ const FIXTURE = [
   "", // 7
 ].join("\n");
 
-// Long enough for compile + lldb-dap launch + the stepping each test drives.
-const LAUNCH_TIMEOUT_MS = 45_000;
-const TEST_TIMEOUT_MS = 90_000;
+const TEST_TIMEOUT_MS = dapDeadline(90_000);
 
 suite("Osprey Debugger E2E Workflows", function () {
   // lldb-dap under CI load can hit a breakpoint before its expression
@@ -75,7 +75,7 @@ suite("Osprey Debugger E2E Workflows", function () {
   let pinned: PinnedOspreySettings;
 
   suiteSetup(async function () {
-    this.timeout(60_000);
+    this.timeout(dapDeadline(60_000));
     tempDir = fs.mkdtempSync(
       path.join(require("os").tmpdir(), "osprey-debug-e2e-"),
     );
