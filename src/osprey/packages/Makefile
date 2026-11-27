@@ -144,10 +144,16 @@ registry-hosted-api: target/osprey-registry-hosted
 target/osprey-registry-hosted: $(BIN) $(REGISTRY_CLIENT_SOURCES)
 	$(BIN) build src/osprey/packages/manager/api/hosted --quiet --no-warnings -o $@
 
-.PHONY: registry-website
+.PHONY: registry-website registry-website-fixture registry-website-check
+## registry-website-check: Build an isolated Pages artifact and exercise its publisher flow in Chromium.
+registry-website-check: registry-website-fixture
+	node scripts/packages/test-registry-preview.cjs --built-hosted-account
+
+registry-website-fixture: export REGISTRY_API_ORIGIN := https://api.example.test
+
 ## registry-website: Compile the registry website to WASM and render its Cloudflare Pages directory.
-registry-website: $(BIN) | _runtime_wasm
-	@mkdir -p target/registry-site-build target/registry-site
+registry-website registry-website-fixture registry-website-archive: $(BIN) | _runtime_wasm
+	@mkdir -p target/registry-site-build
 	$(BIN) build $(REGISTRY_WEB)/site --target=wasm32 --quiet --no-warnings -o target/registry-site-build/site.wasm
 	@set -eu; out=$$(mktemp -d target/registry-site-build/pages.XXXXXX); \
 	  trap 'rm -rf "$$out"' EXIT; \
@@ -157,6 +163,7 @@ registry-website: $(BIN) | _runtime_wasm
 	    mkdir "$$out/$$page"; render "$$page" > "$$out/$$page/index.html"; \
 	  done; \
 	  mkdir "$$out/upload"; origin="$${REGISTRY_API_ORIGIN:-}"; \
+	  if [ "$@" = registry-website-archive ] && [ -z "$$origin" ]; then echo "Set REGISTRY_API_ORIGIN to the hosted API origin." >&2; exit 1; fi; \
 	  if [ -n "$$origin" ]; then node -e 'const u = new URL(process.argv[1]); if (u.protocol !== "https:" || u.origin !== process.argv[1] || !/^[a-z0-9.-]+$$/.test(u.hostname)) process.exit(1)' "$$origin"; fi; \
 	  script=src/toolchain/hosts/web/src/registry-form.mjs; adapter="form.$$(shasum -a 256 "$$script" | cut -c1-12).mjs"; \
 	  cp "$$script" "$$out/$$adapter"; \
@@ -166,7 +173,12 @@ registry-website: $(BIN) | _runtime_wasm
 	  cp $(REGISTRY_WEB)/assets/registry.css "$$out/$$asset"; \
 	  cp $(REGISTRY_WEB)/assets/registry-mark.svg "$$out/"; \
 	  sed "s@form-action@script-src 'self'; connect-src 'self' $$origin; form-action@" $(REGISTRY_WEB)/assets/_headers > "$$out/_headers"; \
-	  rsync -a --delete "$$out/" target/registry-site/
+	  if [ "$@" = registry-website-archive ]; then python3 scripts/packages/archive-registry-site.py "$$out" target/registry-artifacts; \
+	  else rsync -a --delete "$$out/" $(if $(filter registry-website-fixture,$@),target/registry-site-build/hosted-fixture,target/registry-site)/; fi
+
+.PHONY: registry-website-archive
+## registry-website-archive: Build and archive the configured Pages site by SHA-256 for deployment.
+registry-website-archive:
 
 .PHONY: registry-website-serve
 ## registry-website-serve: Serve the built preview and live folder catalog together on localhost:4187.

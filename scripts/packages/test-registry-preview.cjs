@@ -3,16 +3,48 @@ const assert = require('node:assert/strict');
 const { chromium } = require('../../src/toolchain/website/node_modules/playwright');
 
 async function checkHostedAccount(browser) {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const exec = require('node:child_process').execFileSync;
+  const work = fs.mkdtempSync('target/registry-site-build/archive-check.');
+  try {
+    const pack = directory => exec('python3', ['scripts/packages/archive-registry-site.py', directory, work], {encoding:'utf8'}).trim();
+    const archive = pack('target/registry-site-build/hosted-fixture');
+    const digest = require('node:crypto').createHash('sha256').update(fs.readFileSync(archive)).digest('hex');
+    assert.equal(path.basename(archive), 'registry-site-' + digest + '.zip');
+    const extracted = path.join(work, 'site');
+    exec('unzip', ['-q', archive, '-d', extracted]);
+    assert.equal(pack(extracted), archive, 'Repacking yields the same bytes');
+    await checkPackagedAccount(browser, extracted);
+  } finally {
+    fs.rmSync(work, {recursive:true, force:true});
+  }
+}
+
+async function checkPackagedAccount(browser, site) {
   const website = 'https://packages.example.test';
   const api = 'https://api.example.test';
   const page = await browser.newPage();
-  const html = require('node:child_process').execFileSync('wasmtime', ['target/registry-site-build/site.wasm'], {
-    input: ['upload', api, 'form.mjs', ''].join('\n'), encoding: 'utf8',
-  });
-  await page.route(website + '/**', route => {
-    if (route.request().url().endsWith('/form.mjs')) return route.fulfill({path:'src/toolchain/hosts/web/src/registry-form.mjs',contentType:'text/javascript'});
-    if (route.request().resourceType() === 'document') return route.fulfill({body:html,contentType:'text/html'});
-    return route.fulfill({status:404});
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const policy = fs.readFileSync(path.join(site, '_headers'), 'utf8').trim().split('\n');
+  assert.equal(policy.shift(), '/*');
+  const siteHeaders = Object.fromEntries(policy.map(line => {
+    const delimiter = line.indexOf(':');
+    return [line.slice(0, delimiter).trim().toLowerCase(), line.slice(delimiter + 1).trim()];
+  }));
+  const failures = [];
+  page.on('pageerror', error => failures.push(error.message));
+  page.on('requestfailed', request => failures.push(request.url()));
+  await page.route(website + '/**', async route => {
+    const pathname = new URL(route.request().url()).pathname;
+    const file = path.join(site, pathname, pathname.endsWith('/') ? 'index.html' : '');
+    const body = await fs.promises.readFile(file);
+    const mime = {'.html':'text/html','.css':'text/css','.svg':'image/svg+xml','.mjs':'text/javascript'}[path.extname(file)];
+    assert.ok(mime, pathname);
+    const hash = /\.([0-9a-f]{12})\.(?:css|mjs)$/.exec(pathname);
+    if (hash) assert.equal(require('node:crypto').createHash('sha256').update(body).digest('hex').slice(0,12), hash[1]);
+    await route.fulfill({body, headers:siteHeaders, contentType:mime});
   });
   const headers = {'access-control-allow-origin':website,'access-control-allow-credentials':'true'};
   await page.route(api + '/v1/packages', route => route.fulfill({headers,json:{packages:[]}}));
@@ -30,6 +62,7 @@ async function checkHostedAccount(browser) {
     }
     await page.unroute(api + '/v1/auth/session');
   }
+  assert.deepEqual(failures, []);
   await page.close();
 }
 
@@ -52,6 +85,8 @@ async function checkReferenceTable(browser) {
 (async () => {
   const browser = await chromium.launch();
   try {
+    if (process.argv.includes('--built-hosted-account')) return await checkHostedAccount(browser);
+    if (!process.argv.includes('--tables-only')) require('node:child_process').execFileSync('make', ['-C','src/osprey/packages','registry-website-fixture']);
     if (process.argv.includes('--hosted-account-only')) return await checkHostedAccount(browser);
     await checkReferenceTable(browser);
     if (process.argv.includes('--tables-only')) return;
