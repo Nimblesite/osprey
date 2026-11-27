@@ -489,4 +489,25 @@ registerWaveJourneys () =
         forEachList ([90.0, 160.0], \degrees => rampSmooth (synth::Blend, { main = \n => wideTone (500.0, 0.5, n), side = \n => 0.5 * sin (tau * 500.0 * toFloat n / morphRate + degrees * tau / 360.0) }, 0.0))
         orphansHeld (6, 3, 0.75, 220.0)
         orphansHeld (3, 6, 0.25, 277.0)))
+    test ("every processor goes by the one name its card and its faults show [SYNTH-ADVANCED-CORE-PORTS]", \() => arithmetic (\() =>
+        grains = grainResource (48000, 440.0, [1.0, 0.5, -1.0, -0.5])
+        table = synth::Wavetable(size = 2048, harmonics = 1, frames = [synth::TableFrame(levels = [])])
+        named = [
+            { n = Components::samplePlayer (1, grains), title = "Sample" }, { n = Components::granular (1, grains, 4, 1), title = "Grain cloud" },
+            { n = Components::lfo (1, 1.0), title = "LFO" }, { n = Components::modulatedGain (1, 2, 1.0), title = "Modulated gain" },
+            { n = Components::midiNote (1, 60.0, 1.0, 240.0), title = "MIDI notes" }, { n = Components::stereo 1, title = "Mono to stereo" },
+            { n = Components::panner (1, 2, 0.0), title = "Panner" }, { n = Components::split (1, 2), title = "Channel split" },
+            { n = Components::join (1, 2), title = "Channel join" }, { n = Components::sine (1, 440.0), title = "Oscillator" },
+            { n = Components::lowpass (1, 1000.0, 0.7), title = "Filter" }, { n = Components::gain (1, 1.0), title = "Gain" },
+            { n = Components::mixer 1, title = "Mixer" }, { n = Components::output 1, title = "Output" },
+            { n = Components::delay (1, 64), title = "Delay" }, { n = Components::exciter (1, 1), title = "Exciter" },
+            { n = Components::resonator (1, 440.0), title = "Resonator" }, { n = Components::waveguide (1, 220.0, 512), title = "Waveguide string" },
+            { n = Components::fractionalDelay (1, 2.5, 16), title = "Fractional delay" }, { n = Components::lossFilter (1, 0.9, 0.5), title = "Loss filter" },
+            { n = Components::allpass (1, 0.5), title = "Allpass dispersion" }, { n = Components::wavetable (1, table, 220.0), title = "Wavetable" },
+            { n = Components::additive (1, 220.0), title = "Additive partials" }, { n = Components::spectral (1, 1024, 256, 6.0), title = "Spectral processor" },
+            { n = Components::shaper (1, 0.0, 1.0), title = "Waveshaper" }, { n = Components::reverb (1, 2.0), title = "FDN reverb" },
+            { n = Components::shifter (1, 10.0), title = "Frequency shifter" }, { n = Components::phaseOperator (1, 220.0, 0.0), title = "Phase operator" },
+            { n = Components::bowed (1, 220.0, 512), title = "Bowed string" }, { n = Components::smoother (1, 0.01), title = "Smoother" },
+            { n = Components::strikeComb (1, 220.0, 512), title = "Strike comb" }, { n = Components::downmix 1, title = "Stereo to mono" }]
+        forEachList (named, \c => expect (synth::Descriptors::title c.n.processor, c.title))))
     test ("sample, impulse and table resources carry a content identity: name, 64-bit hash, channels, rate, frames and version, and a changed or renamed resource is refused [SYNTH-ADVANCED-CORE-RESOURCES]", \() => arithmetic identityJourney)

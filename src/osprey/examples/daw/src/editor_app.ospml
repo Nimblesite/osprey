@@ -293,7 +293,7 @@ module SamplePicker
     ticket (editor, serial) = "prism-sample:${serial}:${editor.selected}:${editor.revision}"
     problem (editor, text) =
         title = match Graphs::node (editor.graph, editor.selected)
-            Valid n => EditorView::processorTitle n.processor
+            Valid n => Descriptors::title n.processor
             Invalid _ => "Module"
         Runtime::step (editor(sampleTicket = "", message = "${title} ${editor.selected}: ${text}"))
 

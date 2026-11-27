@@ -84,3 +84,50 @@ module Descriptors
             _ => Unmodulated
         External _ _ => ruled (n, key, \inlet => Replacing(inlet = inlet))
         _ => Unmodulated
+
+    (** The name a processor goes by on its card and in its faults.
+    # Examples
+    ```osprey
+    print "${Descriptors::title Mixer} ${Descriptors::title Reverb}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
+    export title processor = match processor
+        SamplePlayer _ => "Sample"
+        Granular _ _ _ => "Grain cloud"
+        Lfo => "LFO"
+        ModulatedGain => "Modulated gain"
+        MidiNotes => "MIDI notes"
+        FormulaNotes _ => "Formula melody"
+        Stereo => "Mono to stereo"
+        Panner => "Panner"
+        Split => "Channel split"
+        Join => "Channel join"
+        Route _ => "Channel route"
+        Oscillator => "Oscillator"
+        Filter => "Filter"
+        Amplifier => "Gain"
+        Mixer => "Mixer"
+        Sink => "Output"
+        Delay _ => "Delay"
+        Exciter _ => "Exciter"
+        Resonator => "Resonator"
+        Modal => "Modal bank"
+        Waveguide _ => "Waveguide string"
+        FractionalDelay _ => "Fractional delay"
+        LossFilter => "Loss filter"
+        Allpass => "Allpass dispersion"
+        TableOscillator _ => "Wavetable"
+        Additive => "Additive partials"
+        Spectral _ _ => "Spectral processor"
+        Shaper => "Waveshaper"
+        Reverb => "FDN reverb"
+        Shifter => "Frequency shifter"
+        PhaseOperator => "Phase operator"
+        Bowed _ => "Bowed string"
+        Smoother => "Smoother"
+        StrikeComb _ => "Strike comb"
+        Downmix => "Stereo to mono"
+        External identifier _ => identifier

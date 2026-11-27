@@ -19,7 +19,6 @@ The [daw specification](../../specs/synth/Perception.md#perception-studio-the-da
 - [ ] **A disconnected patch branch stays playable**: reproduce the edited codex `sub` track with its mixer-to-gain cable removed, verify silence on that path and audio from the other tracks, reconnect and hear the bass [DAW-PATCH-HEARD].
 - [ ] Find how the sub patch lost its Mixer→Gain cable during the user's drag, and add the regression [DAW-PATCH-HEARD].
 - [ ] Loop toggles and the end marker moves while the song plays (today both say "Stop first") [DAW-TRANSPORT-LOOP] [DAW-TRANSPORT-RANGE].
-- [ ] A play that hits a track which cannot render names the track and module in plain words [DAW-TRANSPORT-REFUSAL].
 - [ ] **Seen by the user in a window with steady audio**: Play starts at the cursor and plays to the end [DAW-TRANSPORT-RANGE]; the timeline follows the playback [DAW-TRANSPORT-FOLLOW]; Loop plays the range for ever, with L in all three keymaps [DAW-TRANSPORT-LOOP]; the start and end markers drag independently (journey test owed) [DAW-TRANSPORT-RANGE]; piano-roll keys sound through the track's patch (journey test owed) [DAW-ROLL-KEYS]; Play's refusals name the missing renderer or song while the project is kept ([issue 425](https://github.com/Nimblesite/osprey/issues/425)) [DAW-TRANSPORT-REFUSAL].
 - [ ] Playhead in beats, saved in the project file [DAW-TRANSPORT-TIMELINE].
 - [ ] The renderer natively verified on the FerroUI host with the codex project [DAW-RENDER].

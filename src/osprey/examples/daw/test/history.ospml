@@ -34,7 +34,7 @@ channelUtilitiesJourney () =
         selected = component (opened, kind)
         graph = (Drive::holding selected).graph
         valid (synth::Graphs::node (graph, 0), \n =>
-            expect (synth::EditorView::processorTitle n.processor, synth::EditorState::title kind)
+            expect (synth::Descriptors::title n.processor, synth::EditorState::title kind)
             match kind
                 "split" => expect (mapList (n.outputs, \p => p.channels), [1, 1])
                 "join" => expect (mapList (n.inputs, \p => p.channels), [1, 1])
@@ -633,4 +633,10 @@ familiesJourney () =
     heardFamily ("phase", chainOf [part ("operator", 0, [pitched "frequency"])], true)
     shifted (7.0, 122, 61, 140)
     shifted (12.0, 92, 46, 110)
-    failsWith (sampledNote (middleC (), chainOf [part ("noSuchModule", 0, [])]), "note: Unknown module \"noSuchModule\".")
+    // [DAW-TRANSPORT-REFUSAL] A note that cannot play names its track and the module at fault in plain words.
+    forEachList ([
+        { parts = [part ("noSuchModule", 0, [])], why = "note: noSuchModule 0: Unknown module \"noSuchModule\"." },
+        { parts = [part ("sine", 0, [fixed ("cutoff", 1.0)])], why = "note: Oscillator 0: It has no setting \"cutoff\"." },
+        { parts = [part ("wavetable", 0, [fixed ("harmonics", 2.5)])], why = "note: wavetable 0: It needs a whole constant for harmonics." },
+        { parts = [part ("wavetable", 0, [fixed ("harmonics", 8.0), fixed ("harmonics", 8.0)])], why = "note: wavetable 0: It sets harmonics twice." }], \c =>
+        failsWith (sampledNote (middleC (), chainOf c.parts), c.why))

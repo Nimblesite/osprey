@@ -9,49 +9,10 @@ import ui::Scenes
 module EditorView
     editorSlice () = perform Signal<Editor<Graph, ui::Machine>>.read ()
 
-    (** The name Prism shows for a processor. *)
-    export processorTitle processor = match processor
-        SamplePlayer _ => "Sample"
-        Granular _ _ _ => "Grain cloud"
-        Lfo => "LFO"
-        ModulatedGain => "Modulated gain"
-        MidiNotes => "MIDI notes"
-        FormulaNotes _ => "Formula melody"
-        Stereo => "Mono to stereo"
-        Panner => "Panner"
-        Split => "Channel split"
-        Join => "Channel join"
-        Route _ => "Channel route"
-        Oscillator => "Oscillator"
-        Filter => "Filter"
-        Amplifier => "Gain"
-        Mixer => "Mixer"
-        Sink => "Output"
-        Delay _ => "Delay"
-        Exciter _ => "Exciter"
-        Resonator => "Resonator"
-        Modal => "Modal bank"
-        Waveguide _ => "Waveguide string"
-        FractionalDelay _ => "Fractional delay"
-        LossFilter => "Loss filter"
-        Allpass => "Allpass dispersion"
-        TableOscillator _ => "Wavetable"
-        Additive => "Additive partials"
-        Spectral _ _ => "Spectral processor"
-        Shaper => "Waveshaper"
-        Reverb => "FDN reverb"
-        Shifter => "Frequency shifter"
-        PhaseOperator => "Phase operator"
-        Bowed _ => "Bowed string"
-        Smoother => "Smoother"
-        StrikeComb _ => "Strike comb"
-        Downmix => "Stereo to mono"
-        External identifier _ => identifier
-
     (** A module's name on the canvas: its plugin's, or its processor's, with its identity. *)
     export componentName (editor, n) = match listGet (filterList (editor.pluginBindings, \binding => binding.pluginNode == n.identity)) 0
         Success binding => "${binding.pluginName} ${n.identity}"
-        Error _ => "${processorTitle n.processor} ${n.identity}"
+        Error _ => "${Descriptors::title n.processor} ${n.identity}"
 
     menu editor =
         builtins = mapList (EditorState::pickerKinds (), \kind => Ui::choice (kind, EditorState::title kind))

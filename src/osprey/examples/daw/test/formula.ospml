@@ -60,4 +60,4 @@ projectFormulaJourney () =
                 succeeds (daw::TrackPatches::picked (opened, 0), \again => expect (structuralEquals (again, graph), true))))))
     broken = daw::PatchNode(identity = 1, component = "formulaNotes", size = 0, seed = 0, asset = "60 +", settings = [])
     brokenTrack = freshTrack ("broken", daw::PatchInstrument(routing = daw::Routing(nodes = [broken], cables = [], attack = 0.01, release = 0.1)))
-    failsWith (daw::TrackPatches::patch brokenTrack, "Formula: the formula ends where a number, t, a function or '(' belongs.")
+    failsWith (daw::TrackPatches::patch brokenTrack, "formulaNotes 1: Formula: the formula ends where a number, t, a function or '(' belongs.")
