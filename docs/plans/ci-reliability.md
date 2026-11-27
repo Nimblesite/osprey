@@ -2,6 +2,14 @@
 
 Goal: one exact, fully verified commit reaches each branch push, no parallel agent cancels an in-flight run, and the platform test suites give deterministic results without retries, wider timeouts or timing races.
 
+## 🛑 Zero warnings: CI fails on ANY warning [CI-ZERO-WARNINGS]
+
+- [ ] **CI MUST fail if the repository has even one warning.** Every lint the CLI or the language server reports at `warn` or above fails the required `CI` check. That covers `redundant-annotation`, `repeated-literal`, `unused-*`, `unused-import`, `closing-run` and the rest, plus compiler warnings. It applies to every tracked program: `src/osprey/tests/`, `src/osprey/examples/`, `src/osprey/packages/`, benchmarks and website snippets. The only exceptions are `failscompilation/` and the deliberate `test-skipped` cases. Today `scripts/ci/check-programs.py` only appends warnings to its log, so this one, shown in the editor, stays green in CI: `src/osprey/tests/core/collections/nested_generic_collections.test.osp:19:52 redundant-annotation: redundant type annotation on parameter `present` of `chooseByCollection`: inference derives `U` without it`. Done means:
+  - `make _check_programs` passes `--warnings-as-errors`, or fails on any `warning:` line;
+  - its test (`scripts/ci/test-check-programs.mjs`) proves that a planted warning turns the job red;
+  - the CLI and the editor report the same warnings, so an editor-only warning is a bug;
+  - every existing warning is fixed in the same change, never suppressed by `[lints]` or `allow`.
+
 ## Push protocol
 
 - **[CI-PUSH-LOCK]** Only the agent holding the TMC lock `PUSH-<branch>` pushes; every other agent commits locally and messages the holder which commits to include.
