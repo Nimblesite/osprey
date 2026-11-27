@@ -462,10 +462,10 @@ jobs:
 
   # [PKG-COVERAGE-GATE] Each package has its own source threshold. Keep this
   # collection independent of the Rust workspace's existing time budget.
-  # The split repositories' canaries [REPO-SPLIT-CANARY]: Nimblesite/osprey-packages and
-  # Nimblesite/perception at the commits scripts/ci/downstream.json pins, laid over this checkout,
-  # each running its own `make canary` with this build's compiler. A change here that turns one red
-  # is fixed in that repository first, then the pin is bumped in this PR.
+  # The split repositories' canaries [REPO-SPLIT-CANARY]: the main branches of
+  # Nimblesite/osprey-packages and Nimblesite/perception, laid over this checkout, each running its
+  # own `make canary` with this build's compiler. A change here that turns one red is fixed on that
+  # repository's main first.
   test-canary:
     name: "Tests: package manager and Perception canaries"
     needs: [changes, build]

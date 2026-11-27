@@ -242,7 +242,7 @@ test('GPUI smoke and self-tests reuse the app libraries already compiled by the 
 })
 
 test('local CI and hosted CI run both split repositories\' canaries once with their built compiler', () => {
-  // [REPO-SPLIT-CANARY] Nimblesite/osprey-packages and Nimblesite/perception at their pinned commits.
+  // [REPO-SPLIT-CANARY] The main branches of Nimblesite/osprey-packages and Nimblesite/perception.
   assert.equal(makeRecipe('ci').filter((line) => line === '$(MAKE) test').length, 1)
   const laid = testRecipe.indexOf('$(MAKE) downstream')
   assert.ok(laid >= 0, 'make test lays the split repositories')
@@ -262,6 +262,15 @@ test('local CI and hosted CI run both split repositories\' canaries once with th
     '$(MAKE) -f scripts/make/perception.mk canary OSPREY_PREBUILT=1'])
   assert.ok(makeRecipe('canaries').includes('$(MAKE) _canaries'))
   assert.deepEqual(makeRecipe('downstream'), ['bash scripts/ci/downstream.sh'])
+  // Every platform runs them: Linux here, macOS in the Apple gate, Windows in ci-windows.
+  assert.match(ciText, /- part: Perception\n +minutes: \d+\n +run: \|\n(?: +.*\n)*? +make _canaries OSPREY_PREBUILT=1\n/)
+  const windows = readFileSync('.github/workflows/ci-windows.yml', 'utf8')
+  assert.match(windows, /name: osprey-packages\n[\s\S]*name: perception\n[\s\S]*- name: Both canaries\n +shell: msys2 \{0\}\n +run: make _canaries /)
+  // They read each repository's main, never a pinned commit.
+  const action = readFileSync('.github/actions/downstream/action.yml', 'utf8')
+  assert.match(action, /repository: Nimblesite\/\$\{\{ inputs\.name \}\}\n +ref: main\n/)
+  assert.ok(!existsSync('scripts/ci/downstream.json'), 'no pins file')
+  assert.match(readFileSync('scripts/ci/downstream.sh', 'utf8'), /--branch main/)
 })
 
 test('coverage identifies failed or skipped report producers before downloading artifacts', () => {
