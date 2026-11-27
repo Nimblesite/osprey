@@ -7,7 +7,7 @@ default_namespace = "fs"
 name = "@osprey/fs"
 license = "MIT"
 summary = "Directory walking and path handling over the listDir runtime builtin"
-keywords = ["directory", "fs", "path", "walk"]
+keywords = ["data-processing", "developer-tools"]
 
 [modules]
 allow_wildcard_imports = false

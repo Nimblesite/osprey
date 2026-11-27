@@ -7,7 +7,7 @@ default_namespace = "math"
 name = "@osprey/math"
 license = "MIT AND Apache-2.0"
 summary = "Well-known formulas as functions, written in Lean after Mathlib's own definitions"
-keywords = ["formulas", "lean", "mathematics", "mathlib"]
+keywords = ["scientific-computing"]
 
 [modules]
 allow_wildcard_imports = false

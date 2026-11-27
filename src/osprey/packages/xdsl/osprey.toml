@@ -8,7 +8,7 @@ default_namespace = "xdsl"
 name = "@osprey/xdsl"
 license = "MIT AND Apache-2.0 WITH LLVM-exception"
 summary = "xDSL's MLIR reader: the generic-syntax lexer and parser, and the LLVM dialect's types"
-keywords = ["llvm", "mlir", "python-flavor", "xdsl"]
+keywords = ["developer-tools", "python-flavor"]
 
 [test-dependencies]
 "@osprey/testing" = { epoch = 1, min_release = 1 }

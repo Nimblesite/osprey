@@ -8,4 +8,4 @@ default_namespace = "fastapi"
 name = "@osprey/fastapi"
 license = "MIT AND BSD-3-Clause"
 summary = "FastAPI behavior port in Python flavor Osprey"
-keywords = ["api", "fastapi", "http", "python-flavor"]
+keywords = ["python-flavor"]

@@ -8,4 +8,4 @@ default_namespace = "express"
 name = "@osprey/express"
 license = "MIT"
 summary = "Express behavior port in TypeScript flavor Osprey"
-keywords = ["api", "express", "http", "typescript-flavor"]
+keywords = []

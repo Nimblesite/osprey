@@ -276,12 +276,36 @@ async function checkLocalTagThreshold(browser) {
   const base = 'http://127.0.0.1:4187';
   await page.goto(base + '/tags/');
   assert.equal(await page.getByRole('link', {name: 'fastapi', exact: true}).count(), 0);
+  const examples = new Map([
+    ['data-processing', '@osprey/json'],
+    ['developer-tools', '@osprey/xdsl'],
+    ['language-models', '@osprey/transformers'],
+    ['machine-learning', '@osprey/micrograd'],
+    ['natural-language-processing', '@osprey/sacrebleu'],
+    ['scientific-computing', '@osprey/scipy'],
+    ['testing-and-evaluation', '@osprey/uitest'],
+    ['ui', '@osprey/graphics'],
+  ]);
   const tagPages = await page.locator('#results .prose-chip').evaluateAll(links => links.map(link => link.href));
-  assert.ok(tagPages.length > 0);
+  const tags = new Set(tagPages.map(url => new URL(url).pathname.split('/')[2]));
+  for (const tag of examples.keys()) assert.ok(tags.has(tag), `Missing ${tag} from the tag directory`);
   for (const url of tagPages) {
     await page.goto(url);
     const packages = await page.locator('.prose-package h3 a').allTextContents();
     assert.ok(new Set(packages).size >= 5, url);
+    const example = examples.get(new URL(url).pathname.split('/')[2]);
+    if (example) assert.ok(packages.includes(example), `${url} must include ${example}`);
+    if (url.endsWith('/tags/ui/')) assert.ok(!packages.includes('@osprey/json'), url);
+  }
+  for (const [tag, key] of examples) {
+    await page.goto(base + '/packages/' + key + '/');
+    const latest = page.locator('.prose-release .prose-download').last();
+    const response = await page.request.get(new URL(await latest.getAttribute('href'), base).href);
+    assert.equal(response.status(), 200);
+    const bundle = await response.json();
+    const manifest = bundle.files.find(file => file.path === 'osprey.toml')?.text;
+    const keywords = /^keywords = (.+)$/m.exec(manifest)?.[1];
+    assert.ok(keywords && JSON.parse(keywords).includes(tag), `${key} manifest must declare ${tag}`);
   }
   await page.goto(base + '/tags/');
   await page.getByRole('link', {name: 'python-flavor', exact: true}).click();
@@ -374,7 +398,7 @@ async function checkCoverGeometry(browser) {
       await page.goto('http://127.0.0.1:4187/');
       await page.getByRole('link', { name: 'By publisher' }).click();
       await page.getByRole('link', { name: 'Osprey repository publisher' }).click();
-      await page.getByRole('link', { name: '@osprey/fastapi', exact: true }).click();
+      await page.locator('.prose-credits').getByRole('link', { name: '@osprey/fastapi', exact: true }).first().click();
       await page.getByRole('link', { name: 'python-flavor', exact: true }).click();
       await page.getByRole('heading', { name: 'python-flavor', exact: true }).waitFor();
       assert.ok(await page.getByRole('link', { name: '@osprey/fastapi', exact: true }).count());
@@ -398,7 +422,7 @@ async function checkCoverGeometry(browser) {
       assert.match(await page.locator('main').innerText(), /python-flavor/);
       await page.getByRole('link', { name: 'Osprey repository publisher', exact: true }).first().click();
       await page.getByRole('heading', { name: 'Osprey repository publisher' }).waitFor();
-      await page.getByRole('link', { name: '@osprey/re', exact: true }).click();
+      await page.locator('.prose-credits').getByRole('link', { name: '@osprey/re', exact: true }).first().click();
       await page.getByRole('heading', { name: '@osprey/re' }).waitFor();
       assert.equal(await page.evaluate(() => document.body.scrollWidth <= innerWidth), true);
       const downloadAction = page.getByRole('link', { name: 'Download e1.r1' });
@@ -407,7 +431,7 @@ async function checkCoverGeometry(browser) {
       assert.equal(bundle.key, '@osprey/re');
       assert.equal(bundle.epoch, 1);
       assert.equal(bundle.ordinal, 1);
-      assert.equal(bundle.digest, await page.locator('.prose-release code').first().textContent());
+      assert.equal(bundle.digest, await page.locator('[id="e1.r1"] code').textContent());
       assert.ok(bundle.files.some(file => file.path === 'osprey.toml'));
       await page.getByRole('link', { name: 'Upload a package' }).click();
       await page.getByRole('heading', { name: 'Upload a package' }).waitFor();
@@ -423,7 +447,7 @@ async function checkCoverGeometry(browser) {
       assert.equal(await page.evaluate(() => document.body.scrollWidth <= innerWidth), true);
       await page.goto('http://127.0.0.1:4187/packages/@osprey/flash-attn/');
       const catalogStyles = await page.locator('link[rel=stylesheet]').getAttribute('href');
-      await page.getByRole('link', { name: 'API documentation' }).click();
+      await page.locator('[id="e1.r1"]').getByRole('link', { name: 'API documentation' }).click();
       assert.equal(await page.locator('link[rel=stylesheet]').first().getAttribute('href'), catalogStyles);
       assert.equal(await page.locator('.prose-brand img').getAttribute('src'), icon);
       assert.equal(await page.getByRole('link', { name: '@osprey/flash-attn', exact: true }).first().getAttribute('href'), '/packages/@osprey/flash-attn/');

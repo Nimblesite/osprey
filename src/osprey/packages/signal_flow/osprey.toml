@@ -7,7 +7,7 @@ default_namespace = "signalflow"
 name = "@osprey/signal-flow"
 license = "MIT"
 summary = "A signal-flow graph editor as a UI machine: four canvas skins drawn from the designs, an evaluating adapter and undo"
-keywords = ["desktop", "native", "reactive", "signals", "ui"]
+keywords = ["ui"]
 
 [dependencies]
 "@osprey/native" = { epoch = 1, min_release = 1 }

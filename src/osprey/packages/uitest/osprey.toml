@@ -7,7 +7,7 @@ default_namespace = "uitest"
 name = "@osprey/uitest"
 license = "MIT"
 summary = "Label-driven UI testing for Osprey Native apps without a host or window"
-keywords = ["accessibility", "native", "testing", "ui"]
+keywords = ["developer-tools", "testing-and-evaluation", "ui"]
 
 [dependencies]
 "@osprey/graphics" = { epoch = 1, min_release = 1 }

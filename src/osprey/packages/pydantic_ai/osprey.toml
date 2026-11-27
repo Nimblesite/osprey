@@ -8,4 +8,4 @@ default_namespace = "pydantic_ai"
 name = "@osprey/pydantic-ai"
 license = "MIT"
 summary = "The pydantic-ai agent engine: messages, models, the OpenAI chat API, TestModel, direct requests and the tool-calling agent loop"
-keywords = ["agents", "llm", "openai", "pydantic-ai", "python-flavor"]
+keywords = ["language-models", "python-flavor"]
