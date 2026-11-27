@@ -22,6 +22,10 @@ import ui::Keyed
 
 (** Cases for the mathematics, editor, board, recognition, theme and telling additions, each driven as one registered case. *)
 module AdditionCases
+    lassoLoad02 = "lasso load:0,2"
+    aMathNodeIs = "a math node is missing its kind"
+    integerTyped0 = "integer typed:0"
+
     samplePoints () = [ui::Point(pointX = 1, pointY = 2), ui::Point(pointX = 3, pointY = 4)]
 
     sampleStroke () = ui::Stroke(strokePoints = samplePoints (), strokeWidth = 2, strokeAt = 9)
@@ -86,9 +90,9 @@ module AdditionCases
     (** [UI-COMPONENTS-EDITOR]: cursor offsets arrive as placed integers, clamp at zero and read non-numbers as zero. *)
     export cursorValues () =
         expect (placed "7", "integer typed:7")
-        expect (placed "${0 - 3}", "integer typed:0")
-        expect (placed "junk", "integer typed:0")
-        expect (placed "", "integer typed:0")
+        expect (placed "${0 - 3}", integerTyped0)
+        expect (placed "junk", integerTyped0)
+        expect (placed "", integerTyped0)
         expect (placed "3 9", "integer typed:3")
         expect (reached "7", "7..7")
         expect (reached "3 9", "3..9")
@@ -141,7 +145,7 @@ module AdditionCases
 
     (** [UI-COMPONENTS-BOARD]: a lasso delivers non-negative stroke indices and refuses negative indices. *)
     export lassoValues () =
-        expect (delivered (Strokes::lasso (Load, [0, 2])), "lasso load:0,2")
+        expect (delivered (Strokes::lasso (Load, [0, 2])), lassoLoad02)
         expect (refusal (Strokes::lasso (Load, [])), "accepted")
         expect (refusal (Strokes::lasso (Load, [0, 0 - 1])), "A board control sent a lasso that is not a list of strokes")
 
@@ -153,10 +157,10 @@ module AdditionCases
     export messageRouting () =
         expect (delivered (Strokes::bind (Typed, samplePoints (), 2, 9)), "stroke typed:2/2/9")
         expect (refusal (Strokes::bind (Typed, [], 2, 9)), "A board control sent a malformed stroke")
-        expect (delivered (Strokes::lasso (Load, [0, 2])), "lasso load:0,2")
+        expect (delivered (Strokes::lasso (Load, [0, 2])), lassoLoad02)
         expect (routed (ui::Placed(placer = Typed, placed = 7, reach = 7)), "integer typed:7")
         expect (routed (ui::Stroked(stroker = Typed, stroked = sampleStroke ())), "stroke typed:2/2/9")
-        expect (routed (ui::Lassoed(lassoer = Load, lassoed = [0, 2])), "lasso load:0,2")
+        expect (routed (ui::Lassoed(lassoer = Load, lassoed = [0, 2])), lassoLoad02)
         expect (routed (ui::Entered(entry = Typed, entered = "Zoë")), "text typed:Zoë")
 
     (** [UI-THEME-BOARD]: the board's surface and stroke token names stay stable. *)
@@ -194,9 +198,9 @@ module AdditionCases
         { source = "{\"kind\":\"seq\",\"items\":7}", expected = "a math node of kind `seq` has a non-array `items`" }, { source = "7", expected = "a math node must be an object" },
         { source = "{\"kind\":\"sym\",\"text\":7}", expected = "a math node of kind `sym` has a non-string `text`" }, { source = "{\"kind\":\"op\",\"symbol\":7,\"left\":{\"kind\":\"sym\",\"text\":\"x\"},\"right\":{\"kind\":\"num\",\"text\":\"2\"}}", expected = "a math node of kind `op` has a non-string `symbol`" },
     ] (listConcat [
-        { source = "{}", expected = "a math node is missing its kind" }, { source = "{\"kind\":7}", expected = "a math node is missing its kind" },
+        { source = "{}", expected = aMathNodeIs }, { source = "{\"kind\":7}", expected = aMathNodeIs },
         { source = "{\"kind\":\"sym\"}", expected = "a math node of kind `sym` is missing its `text`" }, { source = "{\"kind\":\"seq\"}", expected = "a math node of kind `seq` is missing its `items`" },
-        { source = "{\"kind\":\"seq\",\"items\":[{},{}]}", expected = "a math node is missing its kind" }, { source = "{\"kind\":\"binder\"}", expected = "a math node of kind `binder` is missing its `symbol`" },
+        { source = "{\"kind\":\"seq\",\"items\":[{},{}]}", expected = aMathNodeIs }, { source = "{\"kind\":\"binder\"}", expected = "a math node of kind `binder` is missing its `symbol`" },
         { source = "{\"kind\":\"binder\",\"symbol\":\"∀\"}", expected = "a math node of kind `binder` is missing its `names`" }, { source = "{\"kind\":\"binder\",\"symbol\":\"∀\",\"names\":[]}", expected = "a math node of kind `binder` is missing its child `body`" },
     ] [
         { source = "{\"kind\":\"sup\"}", expected = "a math node of kind `sup` is missing its child `base`" }, { source = "{\"kind\":\"sup\",\"base\":{\"kind\":\"num\",\"text\":\"1\"}}", expected = "a math node of kind `sup` is missing its child `script`" },

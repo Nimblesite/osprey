@@ -147,7 +147,7 @@ def get_attr(entries, name) -> Result[Attribute, str]:
     return attr_at(entries, name, 0)
 
 
-def as_int(attr) -> Result[int, str]:
+def as_int(attr):
     """The value of an `IntegerAttr`."""
     match attr:
         case IntegerAttr(value=value):
@@ -156,7 +156,7 @@ def as_int(attr) -> Result[int, str]:
             return Error(message="not an integer attribute")
 
 
-def as_string(attr) -> Result[str, str]:
+def as_string(attr):
     """The text of a `StringAttr`."""
     match attr:
         case StringAttr(data=data):
@@ -165,7 +165,7 @@ def as_string(attr) -> Result[str, str]:
             return Error(message="not a string attribute")
 
 
-def as_symbol(attr) -> Result[str, str]:
+def as_symbol(attr):
     """The name a `SymbolRefAttr` refers to."""
     match attr:
         case SymbolRefAttr(name=name):
@@ -174,7 +174,7 @@ def as_symbol(attr) -> Result[str, str]:
             return Error(message="not a symbol reference")
 
 
-def as_dense(attr) -> Result[list[int], str]:
+def as_dense(attr):
     """The integers of a `DenseArrayBase`."""
     match attr:
         case DenseArrayBase(data=data):

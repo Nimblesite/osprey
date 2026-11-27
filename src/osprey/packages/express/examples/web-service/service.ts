@@ -55,7 +55,7 @@ function errorJson(message) {
 
 // here we validate the API key, by mounting this middleware to /api, meaning
 // only paths prefixed with "/api" will cause this middleware to be invoked
-function checked(req: Request, res: Response) {
+function checked(req: Request, _res: Response) {
   const key = mapGet(req.query, "api-key");
   switch (key.kind) {
     // key isn't present
@@ -91,20 +91,20 @@ export function service() {
   // we now can assume the api key is valid, and simply expose the data
 
   // example: http://localhost:3000/api/users/?api-key=foo
-  app.get("/api/users", (req, res) => res.json(JsonArray(mapList(users, userJson))));
+  app.get("/api/users", (_req, res) => res.json(JsonArray(mapList(users, userJson))));
 
   // example: http://localhost:3000/api/repos/?api-key=foo
-  app.get("/api/repos", (req, res) => res.json(JsonArray(mapList(repos, repoJson))));
+  app.get("/api/repos", (_req, res) => res.json(JsonArray(mapList(repos, repoJson))));
 
   app.get("/api/user/:name/repos", reposOf);
 
   return (
     app
       // error handlers receive what a handler passed to `req.fail`.
-      .onError((failure, req, res) => res.status(failure.status).json(errorJson(failure.message)))
+      .onError((failure, _req, res) => res.status(failure.status).json(errorJson(failure.message)))
       // our custom JSON 404 middleware. Since it's placed last it will be the last
       // middleware called, if all others pass the request on and do not respond.
-      .use("/", (req, res) => res.status(404).json(errorJson("Sorry, can't find that")))
+      .use("/", (_req, res) => res.status(404).json(errorJson("Sorry, can't find that")))
   );
 }
 

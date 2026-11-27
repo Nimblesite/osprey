@@ -174,7 +174,7 @@ def polevl(x: float, coef) -> float:
     return polevl_from(x, coef, 1, unwrap_or(listGet(coef, 0), 0.0))
 
 
-def polevl_from(x: float, coef, i: int, ans: float) -> float:
+def polevl_from(x, coef, i, ans):
     if i >= len(coef):
         return ans
     else:
@@ -200,7 +200,7 @@ def chbevl(x: float, coef, n: int) -> float:
     return 0.5 * (s.b0 - s.b2)
 
 
-def chbevl_step(x: float, coef, i: int, s: ChState, n: int) -> ChState:
+def chbevl_step(x: float, coef, i, s: ChState, n):
     if i >= n:
         return s
     else:
@@ -209,7 +209,7 @@ def chbevl_step(x: float, coef, i: int, s: ChState, n: int) -> ChState:
                                    b1=s.b0, b2=s.b1), n)
 
 
-def taylor_horner(u: float, coef, i: int, p: float) -> float:
+def taylor_horner(u: float, coef, i, p):
     """The shared Horner loop of the sin and cos Taylor series."""
     if i >= len(coef):
         return p
@@ -217,12 +217,12 @@ def taylor_horner(u: float, coef, i: int, p: float) -> float:
         return taylor_horner(u, coef, i + 1, 1.0 - u * unwrap_or(listGet(coef, i), 0.0) * p)
 
 
-def sin_quad(t: float) -> float:
+def sin_quad(t):
     """sin(t) for `t >= 0` and `|t| <= pi/2`, Taylor/Horner."""
     return t * taylor_horner(t * t, SIN_CO, 0, 1.0)
 
 
-def sin_half(t: float) -> float:
+def sin_half(t):
     """sin(t) for `-pi/2 <= t <= pi/2`."""
     if t >= 0.0:
         return sin_quad(t)
@@ -230,12 +230,12 @@ def sin_half(t: float) -> float:
         return 0.0 - sin_quad(0.0 - t)
 
 
-def cos_quarter(t: float) -> float:
+def cos_quarter(t):
     """cos(t) for `0 <= t <= pi/4`, Taylor/Horner."""
     return taylor_horner(t * t, COS_CO, 0, 1.0)
 
 
-def cos_half(t: float) -> float:
+def cos_half(t):
     """cos(t) for `0 <= t <= pi/2`, with a double-double pi/2 so tiny results
     keep their relative accuracy above pi/4."""
     if t > 0.5 * HALF_PI:
@@ -286,7 +286,7 @@ def log1p(x: float) -> float:
         return 2.0 * u * atanh_series(u2, 15, 1.0 / 31.0)
 
 
-def atanh_series(u2: float, k: int, p: float) -> float:
+def atanh_series(u2, k, p):
     """The atanh Horner tail: p = 1/(2k-1) + u2*p for k down to 1."""
     if k < 1:
         return p
@@ -302,7 +302,7 @@ def expm1(x: float) -> float:
         return x * expm1_p(x, 19, 1.0 / 20.0)
 
 
-def expm1_p(x: float, k: int, p: float) -> float:
+def expm1_p(x, k, p):
     """The expm1 Horner tail: p = 1 + x*p/k for k down to 2."""
     if k < 2:
         return p

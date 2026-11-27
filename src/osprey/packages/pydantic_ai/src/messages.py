@@ -444,7 +444,7 @@ def dump_messages(messages) -> Json:
     return JsonArray(mapList(messages, dump_message))
 
 
-def validate_request_part(value) -> Result[ModelRequestPart, str]:
+def validate_request_part(value):
     """A request part from its `ModelMessagesTypeAdapter` JSON form."""
     kind = field_at(value, "part_kind")
     content = field_at(value, "content")
@@ -478,7 +478,7 @@ def object_text(value, key):
     return content_text(J.object_at(value, key))
 
 
-def validate_response_part(value) -> Result[ModelResponsePart, str]:
+def validate_response_part(value):
     """A response part from its `ModelMessagesTypeAdapter` JSON form."""
     kind = field_at(value, "part_kind")
     content = field_at(value, "content")

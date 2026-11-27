@@ -97,7 +97,7 @@ def skip_location(ts, i):
         return Success(value=i)
 
 
-def close_paren(ts, i, depth) -> Result[int, str]:
+def close_paren(ts, i, depth):
     """The index after the `)` closing `depth` open parentheses."""
     if depth == 0:
         return Success(value=i)

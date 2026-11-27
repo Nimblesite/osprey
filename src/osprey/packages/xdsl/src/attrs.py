@@ -76,7 +76,7 @@ def string_contents(literal):
     return decode(literal, 1, wrapSub(len(literal), 1), "")
 
 
-def balanced_end(ts, i, depth) -> Result[int, str]:
+def balanced_end(ts, i, depth):
     """The index after the `>` closing `depth` open `<` before `i`."""
     if depth == 0:
         return Success(value=i)
@@ -242,7 +242,7 @@ HEX_DIGITS_MAX = 15
 """The most hexadecimal digits a literal may have and still fit a signed 64-bit value without wrapping."""
 
 
-def hex_int(text, i, acc) -> Result[int, str]:
+def hex_int(text, i, acc):
     """The value of the hexadecimal digits of `text` from `i` on, added to `acc`."""
     digit = hex_value(Lexer.at(text, i))
     if i >= len(text):
@@ -253,7 +253,7 @@ def hex_int(text, i, acc) -> Result[int, str]:
         return hex_int(text, wrapAdd(i, 1), wrapAdd(wrapMul(acc, 16), digit))
 
 
-def int_literal(text) -> Result[int, str]:
+def int_literal(text):
     """A decimal literal, or a `0x` literal of at most `HEX_DIGITS_MAX` digits."""
     if startsWith(text, "0x") and len(text) > 2 and len(text) <= wrapAdd(HEX_DIGITS_MAX, 2):
         return hex_int(text, 2, 0)

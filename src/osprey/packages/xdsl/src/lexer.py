@@ -100,7 +100,7 @@ def suffix_end(text, i):
         return i
 
 
-def escape_end(text, i) -> Result[int, str]:
+def escape_end(text, i):
     """The index after the escape whose backslash is at `i`: `\\n`, `\\t`, `\\\\`, `\\"` or two
     hexadecimal digits. xDSL's string pattern stops matching at any other escape, so the
     literal never closes."""
@@ -113,7 +113,7 @@ def escape_end(text, i) -> Result[int, str]:
         return Error(message=UNCLOSED)
 
 
-def string_end(text, i) -> Result[int, str]:
+def string_end(text, i):
     """The index after the quote closing the string whose body starts at `i`."""
     if i >= len(text):
         return Error(message=UNCLOSED)
@@ -167,12 +167,12 @@ def prefixed_kind(b):
         return PERCENT
 
 
-def emit(text, line, start, end, kind, done) -> Result[list[Token], str]:
+def emit(text, line, start, end, kind, done):
     """Record the token `[start, end)` and lex what follows it."""
     return lex(text, line, end, listAppend(done, Token(kind=kind, text=cut(text, start, end), line=line)))
 
 
-def lex(text, line, i, done) -> Result[list[Token], str]:
+def lex(text, line, i, done):
     """The tokens of `text` from byte `i`, after those already `done`."""
     b = at(text, i)
     if i >= len(text) or (b == 47 and at(text, wrapAdd(i, 1)) == 47):
@@ -201,7 +201,7 @@ def lex_symbol(text, line, i, b, done) -> Result[list[Token], str]:
         return lex_literal(text, line, i, b, done)
 
 
-def lex_at(text, line, i, done) -> Result[list[Token], str]:
+def lex_at(text, line, i, done):
     """``at-ident ::= `@` (bare-id | string-literal)``."""
     b = at(text, wrapAdd(i, 1))
     if is_alpha(b) or b == 95:
@@ -212,7 +212,7 @@ def lex_at(text, line, i, done) -> Result[list[Token], str]:
         return Error(message=f"line {line}: @ identifier expected to start with letter, '_', or '\"'.")
 
 
-def lex_prefixed(text, line, i, b, done) -> Result[list[Token], str]:
+def lex_prefixed(text, line, i, b, done):
     """A `#`, `!`, `^` or `%` identifier."""
     end = suffix_end(text, wrapAdd(i, 1))
     if end == wrapAdd(i, 1):
@@ -221,7 +221,7 @@ def lex_prefixed(text, line, i, b, done) -> Result[list[Token], str]:
         return emit(text, line, i, end, prefixed_kind(b), done)
 
 
-def lex_literal(text, line, i, b, done) -> Result[list[Token], str]:
+def lex_literal(text, line, i, b, done):
     """A string or a number, or the character no token starts with."""
     if b == 34:
         return andThen(string_end(text, wrapAdd(i, 1)), lambda end: emit(text, line, i, end, STRING, done))

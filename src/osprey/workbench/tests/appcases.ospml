@@ -6,6 +6,8 @@ import ui::Doc
 
 (** The application cases of [WORKBENCH-VERIFICATION] and [LESSONS-VERIFICATION]. *)
 module AppCases
+    stateSwappedGoal = "state-swapped-goal"
+
     (** [WORKBENCH-STORE] [WORKBENCH-NO-ENGLISH] Start draws the checked library and requests lessons, progress and the bundled libraries; no control accepts an English proof or retains drawing state. *)
     export start () =
         first = Drive::started ()
@@ -88,8 +90,8 @@ module AppCases
         lesson = opened ()
         expect (Doc::text (Drive::stored lesson, "lesson"), "and-swap")
         expect (regionKind (lesson, "challenge:and-swap/state-swapped-goal"), "section")
-        expect (listContains (Drive::dependencies (lesson, stage "state-swapped-goal"), "<unknown>"), false)
-        expect (Drive::keys (answered (lesson, "state-swapped-goal", "q ∧ p")), stage "state-swapped-goal")
+        expect (listContains (Drive::dependencies (lesson, stage stateSwappedGoal), "<unknown>"), false)
+        expect (Drive::keys (answered (lesson, stateSwappedGoal, "q ∧ p")), stage stateSwappedGoal)
         closed = Drive::press (lesson, "lesson", "All lessons")
         expect (Doc::text (Drive::stored closed, "lesson"), "")
         expect (length (itemsOf (closed, "entries")), 7)
@@ -101,7 +103,7 @@ module AppCases
 
     (** [LESSONS-STATE] [LESSONS-PROGRESS] A right answer is marked by the kernel and saved as progress; a wrong one is marked wrong and saves nothing. *)
     marked (text, mark) =
-        answer = Drive::press (answered (opened (), "state-swapped-goal", text), stage "state-swapped-goal", "Submit")
+        answer = Drive::press (answered (opened (), stateSwappedGoal, text), stage stateSwappedGoal, "Submit")
         expect (marking answer, mark)
         answer
 
@@ -112,24 +114,24 @@ module AppCases
         expect (Drive::written right, "lessons:progress")
         wrong = marked ("p ∧ q", "incorrect")
         unasked wrong
-        expect (marking (answered (wrong, "state-swapped-goal", "p ∧ q ∧ r")), "")
+        expect (marking (answered (wrong, stateSwappedGoal, "p ∧ q ∧ r")), "")
         lost = Drive::failed (right, "lessons:saved", "disk full")
         expect (has (regionJson (lost, "catalogue"), "Your progress was not saved: disk full"), true)
         expect (listContains (completedOf lost, "and-swap/state-swapped-goal"), true)
 
     (** [WORKBENCH-BOARD] A stray legacy ink answer cannot overwrite the focused lesson answer, mark it or save it. *)
     export inked () =
-        focused = answered (opened (), "state-swapped-goal", "q")
+        focused = answered (opened (), stateSwappedGoal, "q")
         after = Drive::completed (focused, "ink:1", "{\"text\":\"∧ p\"}")
         identical (after, focused)
         undrawn after
         unasked after
         expect (marking after, "")
-        expect (has (regionJson (focused, stage "state-swapped-goal"), "\"value\":\"q\""), true)
+        expect (has (regionJson (focused, stage stateSwappedGoal), "\"value\":\"q\""), true)
         // Typing into the focused answer still redraws only that challenge after a stray legacy ink answer was dropped.
-        answeredLesson = answered (opened (), "state-swapped-goal", "q ∧ p")
-        expect (Drive::keys answeredLesson, stage "state-swapped-goal")
-        expect (has (regionJson (answeredLesson, stage "state-swapped-goal"), "\"value\":\"q ∧ p\""), true)
+        answeredLesson = answered (opened (), stateSwappedGoal, "q ∧ p")
+        expect (Drive::keys answeredLesson, stage stateSwappedGoal)
+        expect (has (regionJson (answeredLesson, stage stateSwappedGoal), "\"value\":\"q ∧ p\""), true)
 
     (** Region `key`'s tree as JSON text, or `{}` when the app did not draw it. *)
     export regionJson (envelope, key) = Doc::write (Drive::node (envelope, key))

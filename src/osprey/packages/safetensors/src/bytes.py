@@ -689,7 +689,7 @@ class Utf8Walk:
     bad: int
 
 
-def utf8_decode(data) -> Result[list[str], str]:
+def utf8_decode(data):
     """The codepoints of `data` as strings. A fold, so long text can't exhaust the stack."""
     walk = fold(range(len(data)), Utf8Walk(next=0, pieces=[], bad=-1), lambda acc, i: utf8_step(data, acc, i))
     if walk.bad >= 0:

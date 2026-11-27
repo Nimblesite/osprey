@@ -89,6 +89,8 @@ module TypesetCases
 (** Imported terms keep their binding, grouping and exact overloaded
     arguments. These are presentation tests, not certificate acceptance. *)
 module ProofTermCases
+    instOfNatNatName = "instOfNatNat"
+
     check (term, expected) = expect (structuralEquals (ProofTerms::typeset (term, ["Eq", "HAdd.hAdd"]), expected), true)
 
     nat () = proof::Const "Nat" []
@@ -105,7 +107,7 @@ module ProofTermCases
 
     numeral value =
         literal = proof::NatLit (proof::Natural(naturalLimbs = [value]))
-        Terms::apps (proof::Const "OfNat.ofNat" [proof::Zero], [nat (), literal, proof::App (proof::Const "instOfNatNat" []) literal])
+        Terms::apps (proof::Const "OfNat.ofNat" [proof::Zero], [nat (), literal, proof::App (proof::Const instOfNatNatName []) literal])
 
     multiply (left, right) =
         multiplicationDictionary = Terms::apps (proof::Const "instHMul" [proof::Zero], [nat (), proof::Const "instMulNat" []])
@@ -141,7 +143,7 @@ module ProofTermCases
         literal = Terms::spine (numeral 3)
         wrong = proof::Const "different" []
         badProduct = Terms::apps (product.spineHead, [nat (), nat (), nat (), dictionary (), a, b])
-        badNumeral = Terms::apps (literal.spineHead, [nat (), proof::NatLit (proof::Natural(naturalLimbs = [3])), proof::App (proof::Const "instOfNatNat" []) (proof::NatLit (proof::Natural(naturalLimbs = [4])))])
+        badNumeral = Terms::apps (literal.spineHead, [nat (), proof::NatLit (proof::Natural(naturalLimbs = [3])), proof::App (proof::Const instOfNatNatName []) (proof::NatLit (proof::Natural(naturalLimbs = [4])))])
         terms = [badProduct, badNumeral, Terms::apps (product.spineHead, Terms::prefix (product.spineArgs, 5)), Terms::apps (product.spineHead, listAppend product.spineArgs a), Terms::apps (proof::Const "HMul.hMul" [proof::Zero, proof::Zero, proof::Succ proof::Zero], product.spineArgs), Terms::apps (proof::Const "OfNat.ofNat" [proof::Succ proof::Zero], literal.spineArgs), Terms::apps (literal.spineHead, Terms::prefix (literal.spineArgs, 2)), Terms::apps (literal.spineHead, listAppend literal.spineArgs a), Terms::apps (proof::Const "Prod.snd" [proof::Zero, proof::Zero], [wrong, nat (), a]), Terms::apps (proof::Const "Prod.snd" [proof::Zero, proof::Succ proof::Zero], [nat (), nat (), a])]
         forEachList (terms, \term => extendedRefused term)
         forEachList ([multiply (a, b), numeral 3, Terms::apps (proof::Const "Prod.snd" [proof::Zero, proof::Zero], [nat (), nat (), a])], \term => expect (structuralEquals (ProofTerms::typeset (term, []), ui::Sym (Terms::show (term, []))), true))
@@ -231,8 +233,8 @@ module ProofTermCases
         Error message => expect (message, "checked pinned word-seed notation declarations")
         Success env =>
             expect (join (ProofNotation::permitted env, ","), "Eq,HAdd.hAdd,HMul.hMul,OfNat.ofNat,Prod.snd")
-            guardedNames (env, ["HMul", "HMul.hMul", "HMul.mk", "Mul", "Mul.mk", "Mul.mul", "Nat", "Nat.add", "Nat.add.match_1", "Nat.below", "Nat.brecOn", "Nat.brecOn.go", "Nat.casesOn", "Nat.mul", "Nat.mul.match_1", "Nat.rec", "Nat.succ", "Nat.zero", "OfNat", "OfNat.mk", "OfNat.ofNat", "PProd", "PProd.mk", "PUnit", "PUnit.unit", "instHMul", "instMulNat", "instOfNatNat", "outParam"], "HMul.hMul")
-            guardedNames (env, ["Nat", "Nat.succ", "Nat.zero", "OfNat", "OfNat.mk", "OfNat.ofNat", "instOfNatNat"], "OfNat.ofNat")
+            guardedNames (env, ["HMul", "HMul.hMul", "HMul.mk", "Mul", "Mul.mk", "Mul.mul", "Nat", "Nat.add", "Nat.add.match_1", "Nat.below", "Nat.brecOn", "Nat.brecOn.go", "Nat.casesOn", "Nat.mul", "Nat.mul.match_1", "Nat.rec", "Nat.succ", "Nat.zero", "OfNat", "OfNat.mk", "OfNat.ofNat", "PProd", "PProd.mk", "PUnit", "PUnit.unit", "instHMul", "instMulNat", instOfNatNatName, "outParam"], "HMul.hMul")
+            guardedNames (env, ["Nat", "Nat.succ", "Nat.zero", "OfNat", "OfNat.mk", "OfNat.ofNat", instOfNatNatName], "OfNat.ofNat")
             guardedNames (env, ["Prod", "Prod.mk", "Prod.snd"], "Prod.snd")
             expect (join (ProofNotation::permitted (env(decls = mapRemove (env.decls, "instMulNat"))), ","), "Eq,HAdd.hAdd,OfNat.ofNat,Prod.snd")
             changedProjection env

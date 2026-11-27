@@ -4,9 +4,6 @@ namespace studio
 
 import ui::Requests
 import ui::Runtime
-import studio::Api
-import studio::Blocks
-import studio::Names
 
 (** How the editor answers each tap, edit and choice. *)
 module Update

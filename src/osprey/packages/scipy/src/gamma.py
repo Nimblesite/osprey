@@ -64,7 +64,7 @@ rgamma_R = [3.13173458231230000000e-17, -6.70718606477908000000e-16,
             -4.98558728684003594785e-3, 1.27546015610523951063e-1]
 
 
-def stirf_pow(x: float, y0: float) -> float:
+def stirf_pow(x, y0: float):
     """Stirling's power term, the overflow-safe split above MAXSTIR."""
     if x > MAXSTIR:
         v = pow_pos(x, 0.5 * x - 0.25)
@@ -73,7 +73,7 @@ def stirf_pow(x: float, y0: float) -> float:
         return pow_pos(x, x - 0.5) / y0
 
 
-def stirf(x: float) -> float:
+def stirf(x):
     """Cephes Stirling series for gamma(x), x > 33."""
     if x >= MAXGAM:
         return pos_inf()
@@ -84,7 +84,7 @@ def stirf(x: float) -> float:
         return SQRT2PI * stirf_pow(x, y0) * w
 
 
-def gamma_small(x: float, z: float) -> float:
+def gamma_small(x, z: float):
     """gamma near zero, the Cephes small-argument term."""
     if x == 0.0:
         return nan()
@@ -92,7 +92,7 @@ def gamma_small(x: float, z: float) -> float:
         return z / ((1.0 + EULER16 * x) * x)
 
 
-def gamma_c3(x: float, z: float) -> float:
+def gamma_c3(x, z):
     if x < 2.0:
         if x < 1.0e-9:
             return gamma_small(x, z)
@@ -105,7 +105,7 @@ def gamma_c3(x: float, z: float) -> float:
         return z * polevl(t, gamma_P) / polevl(t, gamma_Q)
 
 
-def gamma_c2(x: float, z: float) -> float:
+def gamma_c2(x, z):
     if x < 0.0:
         if x > -1.0e-9:
             return gamma_small(x, z)
@@ -115,14 +115,14 @@ def gamma_c2(x: float, z: float) -> float:
         return gamma_c3(x, z)
 
 
-def gamma_c1(x: float, z: float) -> float:
+def gamma_c1(x, z):
     if x >= 3.0:
         return gamma_c1(x - 1.0, z * (x - 1.0))
     else:
         return gamma_c2(x, z)
 
 
-def gamma_neg(x: float) -> float:
+def gamma_neg(x):
     """gamma(x) for x < -33, the Cephes reflection off Stirling."""
     q = abs(x)
     p = floor(q)
@@ -154,7 +154,7 @@ def gamma(x: float) -> float:
         return gamma_c1(x, 1.0)
 
 
-def lgam_large_x(x: float) -> float:
+def lgam_large_x(x):
     """gammaln for x >= 1e8: Stirling with the first two corrections."""
     q = (x - 0.5) * log_s(x) - x + LS2PI
     if x > 1.0e8:
@@ -166,7 +166,7 @@ def lgam_large_x(x: float) -> float:
         return q + p1
 
 
-def lgam_b(x: float, z: float, p: float) -> Signed:
+def lgam_b(x, z, p) -> Signed:
     u = x + p
     if u < 2.0:
         if u == 0.0:
@@ -185,7 +185,7 @@ def lgam_b(x: float, z: float, p: float) -> Signed:
             return Signed(value=log_s(zz) + r, sign=sign)
 
 
-def lgam_a(x: float, z: float, p: float) -> Signed:
+def lgam_a(x, z, p):
     u = x + p
     if u >= 3.0:
         return lgam_a(x, z * (x + p - 1.0), p - 1.0)
@@ -193,7 +193,7 @@ def lgam_a(x: float, z: float, p: float) -> Signed:
         return lgam_b(x, z, p)
 
 
-def lgam_neg(x: float) -> Signed:
+def lgam_neg(x):
     """lgam for x < -34, the Cephes reflection."""
     q = 0.0 - x
     w = lgam_sgn(q)
@@ -250,33 +250,33 @@ class Xy:
     y: float
 
 
-def psi_asy(x: float) -> float:
+def psi_asy(x):
     """The psi asymptotic series log(x) - 1/(2x) - sum, for x >= 10."""
     z = 1.0 / (x * x)
     y = z * polevl(z, psi_A) if x < 1.0e17 else 0.0
     return log_s(x) - (0.5 / x) - y
 
 
-def psi_int_sum(y: float, n: int) -> float:
+def psi_int_sum(y, n):
     """psi at a positive integer: y + sum_{i=1}^{n-1} 1/i - Euler."""
     return psi_int_sum_from(y, n, 1)
 
 
-def psi_int_sum_from(y: float, n: int, i: int) -> float:
+def psi_int_sum_from(y, n, i):
     if i >= n:
         return y - SCIPY_EULER
     else:
         return psi_int_sum_from(y + 1.0 / toFloat(i), n, i + 1)
 
 
-def psi_reduce(x: float, y: float) -> Xy:
+def psi_reduce(x, y) -> Xy:
     if x > 2.0:
         return psi_reduce(x - 1.0, y + 1.0 / (x - 1.0))
     else:
         return Xy(x=x, y=y)
 
 
-def psi_imp_1_2(x: float) -> float:
+def psi_imp_1_2(x: float):
     """psi on [1, 2]: the Boost root-shifted rational."""
     g0 = x - psi_root1
     g1 = g0 - psi_root2
@@ -285,7 +285,7 @@ def psi_imp_1_2(x: float) -> float:
     return g * PSI_Y + g * r
 
 
-def psi_tail(x: float, y: float) -> float:
+def psi_tail(x, y: float):
     """psi's final step: the [1,2] rational or the asymptotic series."""
     if 1.0 <= x and x <= 2.0:
         return y + psi_imp_1_2(x)
@@ -293,7 +293,7 @@ def psi_tail(x: float, y: float) -> float:
         return y + psi_asy(x)
 
 
-def psi_pos(x: float, y: float) -> float:
+def psi_pos(x, y):
     """psi for x > 0: integer, upward, or downward reduction to [1, 2]."""
     if x <= 10.0 and x == floor(x):
         return psi_int_sum(y, float_to_int(x))
@@ -327,13 +327,13 @@ def psi(x: float) -> float:
         return psi_pos(x, 0.0)
 
 
-def digamma_zeta_series(z: float, root: float, rootval: float) -> float:
+def digamma_zeta_series(z, root, rootval):
     """digamma around a root via its zeta series, Cephes order."""
     coeff = -1.0
     return digamma_series(z - root, root, coeff, rootval, 1)
 
 
-def digamma_series(zz: float, root: float, coeff: float, res: float, n: int) -> float:
+def digamma_series(zz: float, root, coeff, res, n):
     coeff2 = coeff * (0.0 - zz)
     term = coeff2 * zeta_q(toFloat(n) + 1.0, root)
     res2 = res + term
@@ -361,14 +361,14 @@ def polygamma(n: int, x: float) -> float:
         return sgn * gamma(toFloat(n) + 1.0) * zeta_q(toFloat(n) + 1.0, x)
 
 
-def rgamma_down(w: float, z: float) -> float:
+def rgamma_down(w, z):
     if w > 1.0:
         return rgamma_down(w - 1.0, z * (w - 1.0))
     else:
         return rgamma_up(w, z)
 
 
-def rgamma_up(w: float, z: float) -> float:
+def rgamma_up(w, z):
     if w < 0.0:
         return rgamma_up(w + 1.0, z / w)
     elif w == 0.0:

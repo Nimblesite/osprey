@@ -10,11 +10,6 @@ import ui::Runtime
 import ui::Surfaces
 import ui::Symbols
 import ui::Ui
-import talon::Forms
-import talon::Look
-import talon::Replies
-import talon::Screens
-import talon::Update
 
 (** Talon Bank as the framework runs it. *)
 module App

@@ -14,6 +14,8 @@ import synth::SpectralStreams
 import synth::Timings
 import synth::Voice
 
+validArithmetic = "valid arithmetic"
+
 // [SYNTH-PCM-FLOAT] Independent character search checks every ASCII decoder boundary.
 hexDigitCase code =
     character = fromCodePoint code ?: "invalid"
@@ -26,13 +28,13 @@ hexDigitCase code =
 arithmetic work =
     handle Arith
         overflow _ _ _ wrapped =>
-            expect ("overflow", "valid arithmetic")
+            expect ("overflow", validArithmetic)
             wrapped
         divideByZero _ _ =>
-            expect ("division by zero", "valid arithmetic")
+            expect ("division by zero", validArithmetic)
             0.0
         remainderByZero _ =>
-            expect ("remainder by zero", "valid arithmetic")
+            expect ("remainder by zero", validArithmetic)
             0
     work ()
 

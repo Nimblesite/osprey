@@ -89,7 +89,7 @@ def located(op, translated) -> Result[str, str]:
             return Error(message=f"line {op.line}: {message}")
 
 
-def instr_text(scope, op) -> Result[str, str]:
+def instr_text(scope, op):
     """One operation of a block's body; a terminator there is a failure."""
     if Ops.is_term(op):
         return Error(message=f"line {op.line}: terminator {op.name} is not the last operation of its block")
@@ -97,7 +97,7 @@ def instr_text(scope, op) -> Result[str, str]:
         return located(op, Ops.instr(scope, op))
 
 
-def end_text(scope, op) -> Result[str, str]:
+def end_text(scope, op):
     """A block's last operation, which must be a terminator."""
     if Ops.is_term(op):
         return located(op, Ops.term(scope, op))
@@ -105,7 +105,7 @@ def end_text(scope, op) -> Result[str, str]:
         return Error(message=f"line {op.line}: a block ends in {op.name}, which is not a terminator")
 
 
-def body_text(scope, ops, i, last, acc) -> Result[str, str]:
+def body_text(scope, ops, i, last, acc):
     """The operations `[i, last)` as a Lean list of `Instr`."""
     match listGet(ops, i):
         case Success(value=op):
@@ -117,7 +117,7 @@ def body_text(scope, ops, i, last, acc) -> Result[str, str]:
             return Success(value="[" + join(acc, ",\n    ") + "]")
 
 
-def block_text(scope, blk) -> Result[str, str]:
+def block_text(scope, blk):
     """One block as a Lean `Block`: parameters, body, terminator."""
     last = wrapSub(len(blk.ops), 1)
     match listGet(blk.ops, last):
@@ -127,7 +127,7 @@ def block_text(scope, blk) -> Result[str, str]:
             return Error(message=f"block {blk.name} is empty")
 
 
-def function_text(fn, funcs) -> Result[str, str]:
+def function_text(fn, funcs):
     """One function as a Lean `Func`."""
     scope = scope_of(fn.op, funcs)
     return andThen(Types.collect(body_blocks(fn.op), lambda blk: block_text(scope, blk), 0, []), lambda blocks: Success(value="⟨[\n  " + join(blocks, ",\n  ") + "]⟩"))

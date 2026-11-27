@@ -183,7 +183,7 @@ class Aligned:
     pos: int
 
 
-def align_by_decomposition(n, cps) -> Norm:
+def align_by_decomposition(n, cps):
     owners = decomposition_owners(n.chars)
     return fold(range(len(cps)), Aligned(norm=empty_norm(), pos=0), lambda acc, j: align_char(n, owners, cps, acc, j)).norm
 

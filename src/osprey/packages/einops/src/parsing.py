@@ -172,7 +172,7 @@ def is_identifier(name):
             return False
 
 
-def all_chars_go(s, pred, i) -> bool:
+def all_chars_go(s, pred, i):
     if i >= length(s):
         return True
     else:
@@ -397,7 +397,7 @@ def step_char(state, c, allow_underscore, allow_duplicates):
         return Error(message=f"Unknown character '{c}'")
 
 
-def scan_width(s, i, cp, state, allow_underscore, allow_duplicates) -> Result[Scan, str]:
+def scan_width(s, i, cp, state, allow_underscore, allow_duplicates):
     match codePointWidth(cp):
         case Success(value=value):
             return scan_step(s, i + value, cp, state, allow_underscore, allow_duplicates)
@@ -405,7 +405,7 @@ def scan_width(s, i, cp, state, allow_underscore, allow_duplicates) -> Result[Sc
             return Error(message=message)
 
 
-def scan_step(s, next_i, cp, state, allow_underscore, allow_duplicates) -> Result[Scan, str]:
+def scan_step(s, next_i, cp, state, allow_underscore, allow_duplicates):
     c = unwrap_or(fromCodePoint(cp), "?")
     match step_char(state, c, allow_underscore, allow_duplicates):
         case Success(value=value):
@@ -414,7 +414,7 @@ def scan_step(s, next_i, cp, state, allow_underscore, allow_duplicates) -> Resul
             return Error(message=message)
 
 
-def scan_char_at(s, i, state, allow_underscore, allow_duplicates) -> Result[Scan, str]:
+def scan_char_at(s, i, state, allow_underscore, allow_duplicates):
     match codePointAt(s, i):
         case Success(value=value):
             return scan_width(s, i, value, state, allow_underscore, allow_duplicates)
@@ -430,7 +430,7 @@ def scan_chars(s, i, state, allow_underscore, allow_duplicates) -> Result[Scan, 
         return scan_char_at(s, i, state, allow_underscore, allow_duplicates)
 
 
-def count_substring_go(sub, rest, n) -> int:
+def count_substring_go(sub, rest, n):
     if isEmpty(rest):
         return n
     elif startsWith(rest, sub):
@@ -444,7 +444,7 @@ def count_substring(s, sub):
     return count_substring_go(sub, s, 0)
 
 
-def count_char_go(c, rest, n) -> int:
+def count_char_go(c, rest, n):
     if isEmpty(rest):
         return n
     elif startsWith(rest, c):

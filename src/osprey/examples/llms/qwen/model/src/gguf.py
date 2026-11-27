@@ -98,7 +98,7 @@ def parsed(path, read) -> Result[Source, str]:
             return andThen(architecture(file), lambda _name: Success(value=Source(path=path, file=file)))
 
 
-def architecture(file) -> Result[str, str]:
+def architecture(file):
     """The file's architecture when it is `qwen35`."""
     match andThen(Reader.field(file, "general.architecture"), Reader.field_string):
         case Error(message=message):

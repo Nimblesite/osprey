@@ -19,6 +19,11 @@ import ui::Boards
 import ui::Scenes
 import ui::Symbols
 
+integerTyped260 = "integer typed:260"
+quotedMath = "α < 2 \"quoted\"\n"
+invalidFrameElapsedTime = "Invalid frame elapsed time"
+unknownControl9 = "Unknown control 9"
+
 type Ranked =
     name : string
     rank : int
@@ -34,12 +39,12 @@ mathSamples () = [
 test ("mathematics encodes every layout variant without flattening", \() => ui::Runtime::guarded (\() =>
     forEachList (mathSamples (), \sample => expect (Doc::write (Maths::encode sample.layout), sample.encoded))))
 test ("mathematics keeps accessibility text and consumes no control ordinal", \() => ui::Runtime::guarded (\() =>
-    binds (drawnOf (Ui::column [Ui::button ("Before", "", Increment), Maths::typeset (ui::Seq [ui::Sym "α", ui::Sym "<", ui::Num "2"], "α < 2 \"quoted\"\n"), Ui::button ("After", "", Load)]), 2)
+    binds (drawnOf (Ui::column [Ui::button ("Before", "", Increment), Maths::typeset (ui::Seq [ui::Sym "α", ui::Sym "<", ui::Num "2"], quotedMath), Ui::button ("After", "", Load)]), 2)
     // The typeset node is told as one leaf carrying the whole tree and its spoken text, and takes no ordinal.
-    expectTold ((Maths::typeset (ui::Seq [ui::Sym "α", ui::Sym "<", ui::Num "2"], "α < 2 \"quoted\"\n")), "{kind=\"math\",math={kind=\"seq\",items=[{kind=\"sym\",text=\"α\"},{kind=\"sym\",text=\"<\"},{kind=\"num\",text=\"2\"}]},spoken=\"α < 2 \"quoted\"\n\"}")
+    expectTold ((Maths::typeset (ui::Seq [ui::Sym "α", ui::Sym "<", ui::Num "2"], quotedMath)), "{kind=\"math\",math={kind=\"seq\",items=[{kind=\"sym\",text=\"α\"},{kind=\"sym\",text=\"<\"},{kind=\"num\",text=\"2\"}]},spoken=\"α < 2 \"quoted\"\n\"}")
     // Every layout variant is told as its own record, its children named and nested in order.
     expectTold ((Maths::typeset (ui::Seq [ui::Sup (ui::Sym "x") (ui::Num "2"), ui::Sub (ui::Sym "a") (ui::Num "1"), ui::Frac (ui::Num "1") (ui::Sym "n"), ui::Root (ui::Sym "y"), ui::Binder "λ" [ui::Sym "x"] (ui::Sym "x"), ui::Op "+" (ui::Num "1") (ui::Num "2"), ui::Paren (ui::Sym "z"), ui::Big "∑" (ui::Num "0") (ui::Sym "n") (ui::Sym "k")], "every layout")), "{kind=\"math\",math={kind=\"seq\",items=[{kind=\"sup\",base={kind=\"sym\",text=\"x\"},script={kind=\"num\",text=\"2\"}},{kind=\"sub\",base={kind=\"sym\",text=\"a\"},script={kind=\"num\",text=\"1\"}},{kind=\"frac\",top={kind=\"num\",text=\"1\"},bottom={kind=\"sym\",text=\"n\"}},{kind=\"root\",body={kind=\"sym\",text=\"y\"}},{kind=\"binder\",symbol=\"λ\",names=[{kind=\"sym\",text=\"x\"}],body={kind=\"sym\",text=\"x\"}},{kind=\"op\",symbol=\"+\",left={kind=\"num\",text=\"1\"},right={kind=\"num\",text=\"2\"}},{kind=\"paren\",body={kind=\"sym\",text=\"z\"}},{kind=\"big\",symbol=\"∑\",lower={kind=\"num\",text=\"0\"},upper={kind=\"sym\",text=\"n\"},body={kind=\"sym\",text=\"k\"}}]},spoken=\"every layout\"}")
-    expect (eventsOf (Ui::column [Ui::button ("Before", "", Increment), Maths::typeset (ui::Seq [ui::Sym "α", ui::Sym "<", ui::Num "2"], "α < 2 \"quoted\"\n"), Ui::button ("After", "", Load)], "button"), "Before@0,After@1")))
+    expect (eventsOf (Ui::column [Ui::button ("Before", "", Increment), Maths::typeset (ui::Seq [ui::Sym "α", ui::Sym "<", ui::Num "2"], quotedMath), Ui::button ("After", "", Load)], "button"), "Before@0,After@1")))
 
 tree () = Ui::column [
     Ui::text "Title \"quoted\"\n",
@@ -181,8 +186,8 @@ resized value =
 // A dragged width, beside the clamped width the splitter delivers for it.
 resizeCases () = [
     { dragged = "420", delivered = "integer typed:420" }, { dragged = "9000", delivered = "integer typed:640" },
-    { dragged = "10", delivered = "integer typed:260" }, { dragged = "-50", delivered = "integer typed:260" },
-    { dragged = "wide", delivered = "integer typed:260" }, { dragged = "", delivered = "integer typed:260" },
+    { dragged = "10", delivered = integerTyped260 }, { dragged = "-50", delivered = integerTyped260 },
+    { dragged = "wide", delivered = integerTyped260 }, { dragged = "", delivered = integerTyped260 },
 ]
 // [UI-COMPONENTS-SPLITTER]: a dragged width reaches the application only within the splitter's limits, and only as a whole number of points.
 test ("a splitter delivers its dragged width clamped to its limits", \() => ui::Runtime::guarded (\() =>
@@ -251,12 +256,12 @@ test ("text input reaches update through its binding and patches its own region"
 // The typed host events a host sends that must all be refused, with the reason each is given.
 refusalHeld () = Probes::tapped (Probes::started (), 0)
 refusalCases () = [
-    { touch = touchOf (Hosting::control, 9, "", false), reason = "Unknown control 9" },
+    { touch = touchOf (Hosting::control, 9, "", false), reason = unknownControl9 },
     { touch = touchOf (Hosting::control, 0 - 1, "", false), reason = "Unknown control -1" },
     // Control 4 was drawn by the open frame's five bindings; after the tap the frame draws four, so its number is stale.
     { touch = touchOf (Hosting::control, 4, "", false), reason = "Unknown control 4" },
     { touch = touchOf (99, 0, "", false), reason = "Unknown event kind 99" },
-    { touch = framedAfter (0.0 - 0.5), reason = "Invalid frame elapsed time" },
+    { touch = framedAfter (0.0 - 0.5), reason = invalidFrameElapsedTime },
 ]
 // A display frame `elapsed` seconds after the last, at clock 5.
 framedAfter elapsed = Probes::touchAt (5, Hosting::frame, 0, "", "", elapsed, 0.0, false)
@@ -297,7 +302,7 @@ test ("an edit whose typed action is gone or ambiguous refuses without change", 
     gone = tappedClean first
     refusedJust (Probes::posted (gone, 4, ""), "Unknown control 4")
     refused = Probes::posted (gone, 9, "")
-    refusedJust (refused, "Unknown control 9")
+    refusedJust (refused, unknownControl9)
     // The refusal changed nothing: the current session still answers its own controls.
     intact = tappedAsked (refused, 0)
     expect ((Probes::stored intact).counter.tally, 1)))
@@ -309,7 +314,7 @@ test ("an edit with an impossible original refuses without change", \() => ui::R
     first = Probes::started ()
     // A number no frame drew, a negative number and an unknown kind: each names itself, asks nothing and writes no slice.
     forEachList ([9, 0 - 1, 9], \ordinal => expect (refusedBare (Probes::posted (first, ordinal, "")), "Unknown control ${ordinal}||"))
-    expect (Probes::problem (Probes::framed (first, 0.0 - 1.0)), "Invalid frame elapsed time")
+    expect (Probes::problem (Probes::framed (first, 0.0 - 1.0)), invalidFrameElapsedTime)
     tappedClean first))
 // [UI-EVENTS]: a delivered edit runs update on the current session, never on an earlier frame's.
 test ("a resolved edit updates the current state", \() => ui::Runtime::guarded (\() =>
@@ -333,7 +338,7 @@ test ("malformed events are diagnosed, never guessed", \() => ui::Runtime::guard
     odd = Probes::sent (Probes::started (), touchOf (99, 0, "", false))
     expect (Probes::problem odd, "Unknown event kind 99")
     bad = Probes::framed (Probes::started (), 0.0 - 1.0)
-    expect (Probes::problem bad, "Invalid frame elapsed time")
+    expect (Probes::problem bad, invalidFrameElapsedTime)
     // An appearance change redraws the same store in the other appearance.
     night = Probes::sent (Probes::started (), touchOf (Hosting::appearance, 0, "", true))
     expect (Probes::problem night, "")
@@ -653,7 +658,7 @@ surfaceCase () =
     surfaceTally (third, 1)
     refused = surfaceAfter (third, 9, "")
     surfaceTally (refused, 1)
-    expect (problemOf (Surfaces::meant (third, 9, "")), "Unknown control 9")
+    expect (problemOf (Surfaces::meant (third, 9, "")), unknownControl9)
     expect (problemOf (Surfaces::meant (third, 0 - 1, "")), "Unknown control -1")
     expectSaid (wrongKindCases "")
     expectSaid (saidValueCases ())
@@ -751,7 +756,7 @@ journeyCase () =
     framed = journeyStep (phased, journeyTouch (Hosting::frame, 0, "", "", 0.016, 0.0, false))
     expect (heardAll framed, "stroke increment:2/3/77|lasso typed:0,2|controlled|controlled|controlled|completed job:1|phase active|frame")
     expect (refusedBy (framed, journeyAt (42, 0, "", false)), "Unknown event kind 42")
-    expect (refusedBy (framed, journeyTouch (Hosting::frame, 0, "", "", 0.0 - 1.0, 0.0, false)), "Invalid frame elapsed time")
+    expect (refusedBy (framed, journeyTouch (Hosting::frame, 0, "", "", 0.0 - 1.0, 0.0, false)), invalidFrameElapsedTime)
     // A change of appearance redraws dark and delivers nothing; the button still taps.
     dark = journeyStep (framed, journeyAt (Hosting::appearance, 0, "", true))
     expect (dark.surfaceDark, true)

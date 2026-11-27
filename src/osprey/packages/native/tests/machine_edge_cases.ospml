@@ -16,6 +16,8 @@ import ui::Templates
 import ui::Values
 import ui::Ui
 
+wrongMessage = "wrong message"
+
 completeMachine () = realMachine "src/osprey/packages/native/tests/complete.machine.json"
 
 // The sort of a node, as the machine document names it.
@@ -212,7 +214,7 @@ completeRequestPayloads () =
     expectAskedNumbers (asked (seeking, "cast.seek"), [{ name = "position", value = 50.0 }, { name = "skip", value = 0.0 }])
 
 deniedOf : ui::Message<Act> -> string
-deniedOf message = Messages::route (message, \_ => "wrong message", \(_, _) => "wrong message", \(_, _) => "wrong message", \(_, _) => "wrong message", \(_, outcome) => loaded outcome, \_ => "wrong message", \(_, _) => "wrong message", \(_, _) => "wrong message", \_ => "wrong message", \(_, _) => "wrong message")
+deniedOf message = Messages::route (message, \_ => wrongMessage, \(_, _) => wrongMessage, \(_, _) => wrongMessage, \(_, _) => wrongMessage, \(_, outcome) => loaded outcome, \_ => wrongMessage, \(_, _) => wrongMessage, \(_, _) => wrongMessage, \_ => wrongMessage, \(_, _) => wrongMessage)
 
 completeEventAndConvenienceCases () =
     expect (deniedOf (Surfaces::completed ("job", false, "denied")), "denied")

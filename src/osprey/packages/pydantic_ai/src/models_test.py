@@ -49,7 +49,7 @@ def calls_all(call_tools):
     return len(call_tools) == 1 and unwrap_or(listGet(call_tools, 0), "") == "all"
 
 
-def tools_to_call(call_tools, parameters) -> Result[list[Json], str]:
+def tools_to_call(call_tools, parameters):
     """`_get_tool_calls`: the tool definitions to call, in `call_tools` order."""
     defs = parameters.function_tools
     if calls_all(call_tools):

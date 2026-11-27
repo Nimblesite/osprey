@@ -12,6 +12,14 @@ import uitest::Drive
 import uitest::Semantics
 import signalflow::App
 
+noParameters = "No parameters"
+gatewayRateLimit = "Gateway Rate limit"
+connections1 = "Connections (1)"
+processHealthKey = "processHealth"
+inspectorBypassBypassFilter = "Inspector bypass: Bypass Filter"
+lfoRate18 = "LFO Rate: 1/8"
+inspectorLevel = "Inspector: Level"
+
 (** The bench's only write: the driven surface. *)
 effect Bench
     drive : uitest::Driven<signalflow::Store, ui::Lever> => Unit
@@ -166,7 +174,7 @@ reverted (button, reader, knob, want) = tapped (reader, button, knob, want)
 // A node selected by label, whose inspector shows no parameters.
 bare name =
     tap "Select ${name}"
-    expect (letters "No parameters", true)
+    expect (letters noParameters, true)
 
 // A node's switch after the pointer pressed it, with the health it reports: off is bypassed, on healthy.
 health (on, report, role) =
@@ -200,11 +208,11 @@ topologyBypass () =
     bypassing ("Bypass Gateway", "process")
     knobsShow (duo ("process", 0.7, "level", 1.0), "1000 r/s")
     offered "Undo"
-    tapAt ("Gateway Rate limit", 0.25)
+    tapAt (gatewayRateLimit, 0.25)
     knobNumber ("process", 0.25)
     bypassed "process"
     knobsShow ([{ at = "level", want = 1.0 }], "25%")
-    expect (Semantics::value (elements (), "Gateway Rate limit"), 0.25)
+    expect (Semantics::value (elements (), gatewayRateLimit), 0.25)
 
 topologyHistory () =
     reverted ("Undo", knobNumber, "process", 0.7)
@@ -221,20 +229,20 @@ topologyHistory () =
     knobNumber ("level", 0.49)
 
 topologySelection () =
-    inspected ("Select Client", "source", ["Client", "Connections (1)", "No parameters"], ["Inspector: Bypass Client"])
+    inspected ("Select Client", "source", ["Client", connections1, noParameters], ["Inspector: Bypass Client"])
     missing "Inspector: Rate limit"
-    inspected ("Select Telemetry", "monitor", ["Telemetry", "Connections (1)", "No parameters"], ["Inspector: Bypass Telemetry"])
-    inspected ("Select Policy", "control", ["Policy", "Connections (1)"], ["Inspector: Threshold", "Inspector: Bypass Policy"])
+    inspected ("Select Telemetry", "monitor", ["Telemetry", connections1, noParameters], ["Inspector: Bypass Telemetry"])
+    inspected ("Select Policy", "control", ["Policy", connections1], ["Inspector: Threshold", "Inspector: Bypass Policy"])
 
 topologySignal () =
     slid ("Inspector: Threshold", 0.5, duo ("control", 0.5, "level", 0.35), ["350 r/s"])
     bypassing ("Bypass Client", "source")
-    reads (knobText, [{ at = "processHealth", want = "Offline" }, { at = "outputHealth", want = "Offline" }, { at = "monitorHealth", want = "Offline" }])
+    reads (knobText, [{ at = processHealthKey, want = "Offline" }, { at = "outputHealth", want = "Offline" }, { at = "monitorHealth", want = "Offline" }])
     knobsShow ([{ at = "level", want = 0.0 }], "0 r/s")
     enabled ("Enable Client", "source", "process")
-    tapAt ("Gateway Rate limit", 0.2)
+    tapAt (gatewayRateLimit, 0.2)
     reads (knobNumber, duo ("process", 0.2, "level", 0.1))
-    knobText ("processHealth", "Degraded")
+    knobText (processHealthKey, "Degraded")
     expect (letters "100 r/s", true)
 
 menuOpened () =
@@ -315,10 +323,10 @@ notationInspector () =
     knobsShow (duo ("process", 0.5, "level", 0.35), "0.50")
 
 prismInspector () =
-    inspectorSkin ("prism", "Inspector bypass: Bypass Filter")
-    bypassing ("Inspector bypass: Bypass Filter", "process")
+    inspectorSkin ("prism", inspectorBypassBypassFilter)
+    bypassing (inspectorBypassBypassFilter, "process")
     offered "Inspector bypass: Enable Filter"
-    missing "Inspector bypass: Bypass Filter"
+    missing inspectorBypassBypassFilter
     offered "Inspector: Enable Filter"
     restored ("Inspector bypass: Enable Filter", "Filter Cutoff")
     reads (knobNumber, [{ at = "process", want = 0.5 }, { at = "level", want = 0.35 }, { at = "delivered", want = 0.2625 }])
@@ -359,7 +367,7 @@ prismRates () =
     reverted ("Undo", knobText, "rate", "1/1")
     offered "LFO Rate: 1/1"
     reverted ("Redo", knobText, "rate", "1/8")
-    opened ("LFO Rate: 1/8", "rates")
+    opened (lfoRate18, "rates")
     pressed (900.0, 700.0)
     knobText ("rate", "1/8")
     missing "1/16"
@@ -367,10 +375,10 @@ prismRates () =
 prismWaves () =
     picks ("Oscillator Wave: ", "waves", "wave", "Sine|Triangle|Saw|Square", movesAlong ["Sine", "Triangle", "Saw", "Square"])
     opened ("Oscillator Wave: Square", "waves")
-    opened ("LFO Rate: 1/8", "rates")
+    opened (lfoRate18, "rates")
     offered "1/2"
     missing "Triangle"
-    opened ("LFO Rate: 1/8", "closed")
+    opened (lfoRate18, "closed")
     knobText ("wave", "Square")
     reverted ("Undo", knobText, "wave", "Saw")
     expect (letters "Saw", true)
@@ -379,10 +387,10 @@ prismLevels () =
     slid ("Master Level", 1.0, duo ("volume", 1.0, "delivered", 0.49), ["0.0 dB", "-12.2"])
     slid ("Master Level", 0.0, duo ("volume", 0.0, "delivered", 0.0), ["-24.0 dB"])
     selected ("Select Master", "output")
-    offered "Inspector: Level"
+    offered inspectorLevel
     missing "Inspector: Cutoff"
     expect (letters "Level", true)
-    slid ("Inspector: Level", 0.5, duo ("volume", 0.5, "delivered", 0.245), ["-12.0 dB"])
+    slid (inspectorLevel, 0.5, duo ("volume", 0.5, "delivered", 0.245), ["-12.0 dB"])
     reverted ("Undo", knobNumber, "volume", 0.0)
     reverted ("Redo", knobNumber, "volume", 0.5)
 
@@ -395,9 +403,9 @@ prismParameters () =
     knobsShow ([{ at = "process", want = 1.0 }], "20.0 kHz")
     tapAt ("Filter Cutoff", 0.0)
     reads (knobNumber, [{ at = "process", want = 0.0 }])
-    knobText ("processHealth", "Degraded")
+    knobText (processHealthKey, "Degraded")
     forEachList (["Oscillator", "Scope"], bare)
-    missing "Inspector: Level"
+    missing inspectorLevel
 
 // The suite: each case names itself and, in order, the checks it drives.
 suites () = [

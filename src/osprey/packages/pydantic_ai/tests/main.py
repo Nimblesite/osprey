@@ -27,6 +27,11 @@ from pydantic_ai import Usage
 from pydantic_ai_expected import Expected
 from testing import Check
 
+BOTH_FLAGS = [True, False]
+MINIMAL_LOW_MEDIUM_HIGH = "minimal,low,medium,high"
+AUTO_MEDIUM_AUTO_AUTO = "||auto;medium||auto;||auto;minimal||auto;low||auto;medium||auto;high||auto;xhigh||auto"
+REQUIRED_REQUIRED_REQUIRED_REQUIRED = "||required;||required;||required;||required;||required;||required;||required;||required"
+
 GET_TEMPERATURE = "get_temperature"
 """The one tool definition every tool-calling scenario declares."""
 MAX_COMPLETION_TOKENS = "openai_chat_supports_max_completion_tokens"
@@ -568,7 +573,7 @@ def settings_cases():
         Check.ints_equal("settings.merge", [Settings.setting_int(merged, "max_tokens", 0), Settings.setting_int(merged, "seed", 9)], [2, 9]),
         Check.close("settings.float", Settings.setting_float(merged, "temperature", 0.0), 0.5, 0.0, 0.0),
         Check.close("settings.int_as_float", Settings.setting_float(merged, "max_tokens", 0.0), 2.0, 0.0, 0.0),
-        same("settings.has", [Settings.has_setting(merged, "temperature"), Settings.has_setting(Settings.model_settings(), "temperature")], [True, False]),
+        same("settings.has", [Settings.has_setting(merged, "temperature"), Settings.has_setting(Settings.model_settings(), "temperature")], BOTH_FLAGS),
         Check.equal("settings.text", Settings.setting_text({REASONING_EFFORT: JsonString("low")}, REASONING_EFFORT, ""), "low"),
     ]
 
@@ -582,20 +587,20 @@ THINKING_VALUES = ["absent", "true", "false", "minimal", "low", "medium", "high"
 """The unified `thinking` permutations, in THINKING_TABLE column order."""
 
 THINKING_TABLE = [
-    ["deepseek", DEEPSEEK_CHAT, "||required;||required;||required;||required;||required;||required;||required;||required", ""],
-    ["deepseek", DEEPSEEK_REASONER, "||auto;medium||auto;||auto;minimal||auto;low||auto;medium||auto;high||auto;xhigh||auto", ""],
+    ["deepseek", DEEPSEEK_CHAT, REQUIRED_REQUIRED_REQUIRED_REQUIRED, ""],
+    ["deepseek", DEEPSEEK_REASONER, AUTO_MEDIUM_AUTO_AUTO, ""],
     ["deepseek", DEEPSEEK_V4_FLASH, "||auto;medium||auto;none||required;minimal||auto;low||auto;medium||auto;high||auto;xhigh||auto", "off,on,minimal,low,medium,high,xhigh"],
-    ["openai", "gpt-4o", "||required;||required;||required;||required;||required;||required;||required;||required", ""],
+    ["openai", "gpt-4o", REQUIRED_REQUIRED_REQUIRED_REQUIRED, ""],
     ["openai", "o1-mini", "||required;medium||required;none||required;minimal||required;low||required;medium||required;high||required;xhigh||required", "off,minimal,low,medium,high,xhigh"],
-    ["moonshotai", "kimi-k3", "||auto;medium||auto;||auto;minimal||auto;low||auto;medium||auto;high||auto;xhigh||auto", "minimal,low,medium,high"],
-    ["moonshotai", "kimi-k2.6", "||auto;medium||auto;||auto;minimal||auto;low||auto;medium||auto;high||auto;xhigh||auto", "minimal,low,medium,high"],
-    ["moonshotai", "kimi-thinking-preview", "||auto;medium||auto;||auto;minimal||auto;low||auto;medium||auto;high||auto;xhigh||auto", "minimal,low,medium,high"],
+    ["moonshotai", "kimi-k3", AUTO_MEDIUM_AUTO_AUTO, MINIMAL_LOW_MEDIUM_HIGH],
+    ["moonshotai", "kimi-k2.6", AUTO_MEDIUM_AUTO_AUTO, MINIMAL_LOW_MEDIUM_HIGH],
+    ["moonshotai", "kimi-thinking-preview", AUTO_MEDIUM_AUTO_AUTO, MINIMAL_LOW_MEDIUM_HIGH],
     ["moonshotai", MOONSHOT_V1_8K, "||auto;||auto;||auto;||auto;||auto;||auto;||auto;||auto", ""],
     ["zai", "glm-5.3", '|{"clear_thinking":false}|required;|{"clear_thinking":false,"type":"enabled"}|required;|{"clear_thinking":false}|required;low|{"clear_thinking":false,"type":"enabled"}|required;low|{"clear_thinking":false,"type":"enabled"}|required;high|{"clear_thinking":false,"type":"enabled"}|required;high|{"clear_thinking":false,"type":"enabled"}|required;max|{"clear_thinking":false,"type":"enabled"}|required', "low,high,max"],
     ["zai", "glm-5.2", '|{"clear_thinking":false}|required;|{"clear_thinking":false,"type":"enabled"}|required;|{"clear_thinking":false,"type":"disabled"}|required;minimal|{"clear_thinking":false,"type":"enabled"}|required;low|{"clear_thinking":false,"type":"enabled"}|required;medium|{"clear_thinking":false,"type":"enabled"}|required;high|{"clear_thinking":false,"type":"enabled"}|required;xhigh|{"clear_thinking":false,"type":"enabled"}|required', "off,minimal,low,medium,high,xhigh"],
     ["zai", "glm-4.7", '|{"clear_thinking":false}|required;|{"clear_thinking":false,"type":"enabled"}|required;|{"clear_thinking":false,"type":"disabled"}|required;|{"clear_thinking":false,"type":"enabled"}|required;|{"clear_thinking":false,"type":"enabled"}|required;|{"clear_thinking":false,"type":"enabled"}|required;|{"clear_thinking":false,"type":"enabled"}|required;|{"clear_thinking":false,"type":"enabled"}|required', "off,on"],
     ["zai", "glm-5", '|{"clear_thinking":false}|required;|{"clear_thinking":false,"type":"enabled"}|required;|{"clear_thinking":false,"type":"disabled"}|required;|{"clear_thinking":false,"type":"enabled"}|required;|{"clear_thinking":false,"type":"enabled"}|required;|{"clear_thinking":false,"type":"enabled"}|required;|{"clear_thinking":false,"type":"enabled"}|required;|{"clear_thinking":false,"type":"enabled"}|required', "off,on"],
-    ["zai", "glm-3-turbo", "||required;||required;||required;||required;||required;||required;||required;||required", ""],
+    ["zai", "glm-3-turbo", REQUIRED_REQUIRED_REQUIRED_REQUIRED, ""],
 ]
 """Per model: the provider kind, the name, the eight `reasoning_effort|thinking|tool_choice` projections, and `thinking_levels`."""
 
@@ -708,7 +713,7 @@ def provider_flag_cases():
         same("providers.zai_glm-4.7_flags", listConcat(flags(glm47, [SUPPORTS_THINKING, THINKING_ALWAYS_ENABLED, "zai_supports_reasoning_effort"], [False, True, True]), [
             len(J.members_of(unwrap_or(mapGet(glm47, "zai_reasoning_effort_mapping"), JsonNull()))) == 0,
         ]), [True, False, False, True]),
-        same("providers.zai_glm-3-turbo", listConcat(flags(glm3, [SUPPORTS_THINKING, ZAI_THINKING_BODY], [True, False]), [Profiles.profile_bool(Profiles.zai_model_profile("glm-3-turbo"), SUPPORTS_THINKING, True)]), [False, True, False]),
+        same("providers.zai_glm-3-turbo", listConcat(flags(glm3, [SUPPORTS_THINKING, ZAI_THINKING_BODY], BOTH_FLAGS), [Profiles.profile_bool(Profiles.zai_model_profile("glm-3-turbo"), SUPPORTS_THINKING, True)]), [False, True, False]),
         same("providers.deepseek_defaults", listConcat(flags(v4, ["openai_reasoning_enabled_by_default", "openai_supports_forced_tool_choice_with_thinking"], [True, True]), flags(reasoner, ["openai_reasoning_enabled_by_default", "openai_supports_forced_tool_choice_with_thinking", TOOL_CHOICE_REQUIRED], [True, True, True])), [True, False, True, True, False]),
         Check.equal("providers.dispatch", Profiles.profile_text(ModelsOpenai.OpenAIChatModel("glm-5.3", ProvidersHttp.ZaiProvider("k"), {}).profile, "json_schema_transformer", ""), "openai"),
         Check.equal("providers.moonshotai_url", ProvidersHttp.MoonshotAIProvider("k").base_url, "https://api.moonshot.ai/v1"),
@@ -1136,32 +1141,32 @@ def mcp_merge_cases():
     ]
 
 
-def initialized_version(result: Mcp.InitializeResult) -> str:
+def initialized_version(result):
     """The protocol version of a successful `initialize_result`, empty on failure."""
     return session_of(result, lambda session: session.protocol_version, lambda _message: "")
 
 
-def completed_lines(chunk: Mcp.Lines) -> str:
+def completed_lines(chunk: Mcp.Lines):
     return join(chunk.lines, "|") + "/" + chunk.buffer.pending
 
 
-def listed_names(listing: Mcp.ToolList) -> str:
+def listed_names(listing: Mcp.ToolList):
     return join(mapList(listing.tools, lambda tool: tool.name), ",") + "/" + listing.next_cursor
 
 
-def server_names(load: Mcp.ConfigLoad) -> str:
+def server_names(load: Mcp.ConfigLoad):
     return join(mapList(load.servers, server_name), ",")
 
 
-def server_name(server: Mcp.MCPServerConfig) -> str:
+def server_name(server):
     return Mcp.name_of(server)
 
 
-def capability_flags(found: Mcp.ServerCapabilities) -> list[bool]:
+def capability_flags(found: Mcp.ServerCapabilities):
     return [found.logging, found.prompts, found.prompts_list_changed, found.resources, found.resources_list_changed, found.tools, found.tools_list_changed, found.completions]
 
 
-def collected_text(result) -> str:
+def collected_text(result):
     return result_of(result, lambda items: join(mapList(items, toString), ","), lambda message: f"error:{message}")
 
 
@@ -1244,7 +1249,7 @@ def exception_cases():
         same("exceptions.messages", mapList([
             E.ModelAPIError(model_name="m", message="boom"), E.UserError(message="misuse"), E.UnexpectedModelBehavior(message="odd", body=""), E.UnexpectedModelBehavior(message="odd", body="raw"), E.UsageLimitExceeded(message="limit"),
         ], E.message_of), ["boom", "misuse", "odd", "odd, body:\nraw", "limit"]),
-        same("exceptions.outcome_ok", [E.is_ok(E.Ok(value=1)), E.is_ok(E.Failed(error=E.UserError(message="x")))], [True, False]),
+        same("exceptions.outcome_ok", [E.is_ok(E.Ok(value=1)), E.is_ok(E.Failed(error=E.UserError(message="x")))], BOTH_FLAGS),
         Check.equal("exceptions.outcome_message", E.error_message(E.Failed(error=E.UserError(message="x"))) + "|" + E.error_message(E.Ok(value=1)), "x|"),
         Check.equal("exceptions.error_of", E.message_of(E.error_of(E.Ok(value=1))), "ok"),
     ]
@@ -1292,11 +1297,11 @@ def accessor_cases():
     dumped = canon(M.dump_messages(unwrap_or(numeric, [])))
     return [
         Check.equal("access.call_id", M.generate_tool_call_id(7), "pyd_ai_7"),
-        same("access.is_response", [M.is_response(response), M.is_response(request)], [True, False]),
-        same("access.is_request", [M.is_request(request), M.is_request(response)], [True, False]),
+        same("access.is_response", [M.is_response(response), M.is_response(request)], BOTH_FLAGS),
+        same("access.is_request", [M.is_request(request), M.is_request(response)], BOTH_FLAGS),
         same("access.request_parts", [len(M.request_parts(request)), len(M.request_parts(response))], [1, 0]),
         same("access.response_parts", [len(M.response_parts(response)), len(M.response_parts(request))], [1, 0]),
-        same("access.has_calls", [M.has_tool_calls(M.model_response([call], "m")), M.has_tool_calls(M.model_response([thinking], "m"))], [True, False]),
+        same("access.has_calls", [M.has_tool_calls(M.model_response([call], "m")), M.has_tool_calls(M.model_response([thinking], "m"))], BOTH_FLAGS),
         Check.equal("access.non_call_fields", M.tool_name_of(thinking) + M.tool_call_id_of(thinking) + M.part_text(call), ""),
         Check.equal("access.instruction_round_trip", error_text(round_trip), ""),
         Check.truth("access.scalar_contents", contains(dumped, "\"content\":\"3\"") and contains(dumped, "\"content\":\"\""), "contents must read as text"),
@@ -1342,7 +1347,7 @@ def export_cases():
         Check.equal("export.request_limit", Agent.REQUEST_LIMIT, 50),
         Check.truth("export.strict_keys", listContains(JsonSchema.STRICT_INCOMPATIBLE_KEYS, "minLength") and listContains(JsonSchema.STRICT_COMPATIBLE_STRING_FORMATS, "date-time"), "the strict tables lost their entries"),
         Check.equal("export.text_at", J.text_at(value, "t", "") + J.text_at(value, "gone", "fallback"), "xfallback"),
-        same("export.bool_at", [J.bool_at(value, "b", False), J.bool_at(value, "gone", False)], [True, False]),
+        same("export.bool_at", [J.bool_at(value, "b", False), J.bool_at(value, "gone", False)], BOTH_FLAGS),
         Check.equal("export.list_at", len(J.list_at(value, "l")) + len(J.list_at(value, "gone")), 1),
         same("export.is_null", [J.is_null(J.object_at(value, "n")), J.is_null(J.object_at(value, "gone")), J.is_null(J.object_at(value, "t"))], [True, True, False]),
         Check.equal("export.member_built", J.encode(built), "{\"k\":1}"),
@@ -1352,7 +1357,7 @@ def export_cases():
         Check.equal("export.dump_response", canon(M.dump_message(answer)), canon(M.dump_response(response))),
         Check.equal("export.validate_message", error_text(M.validate_message(M.dump_message(answer))), ""),
         Check.equal("export.validate_message_bad", error_text(M.validate_message(decode("{\"kind\":\"other\"}"))), UNKNOWN_KIND),
-        same("export.is_text", mapList(response.parts, M.is_text), [True, False]),
+        same("export.is_text", mapList(response.parts, M.is_text), BOTH_FLAGS),
         same("export.is_tool_call", mapList(response.parts, M.is_tool_call), [False, True]),
         Check.equal("export.responses", len(M.responses([message, answer, message])), 1),
         Check.equal("export.map_request", canon_at(ModelsOpenai.map_request(profile, request), 0), "{\"content\":\"hello\",\"role\":\"user\"}"),
@@ -1379,23 +1384,23 @@ def post_json_case():
     return result_of(ProvidersHttp.post_json("http://127.0.0.1:1", "/", "{}", ""), lambda reply: Check.failed("export.post_json_refused", f"got status {reply.status}"), lambda message: Check.truth("export.post_json_refused", message != "", "no reason given"))
 
 
-def typed_output(outcome: E.Outcome[Agent.AgentRunResult]) -> str:
+def typed_output(outcome: E.Outcome[Agent.AgentRunResult]):
     return outcome_of(outcome, lambda result: f"{result.output}:{len(Agent.all_messages(result))}", lambda error: E.message_of(error))
 
 
-def typed_error(error: E.ModelError) -> str:
+def typed_error(error):
     return E.message_of(error)
 
 
-def typed_first_request_part(parts: list[M.ModelRequestPart]) -> M.ModelRequestPart:
+def typed_first_request_part(parts):
     return unwrap_or(listGet(parts, 0), M.UserPromptPart(content="none"))
 
 
-def typed_first_response_part(parts: list[M.ModelResponsePart]) -> M.ModelResponsePart:
+def typed_first_response_part(parts):
     return unwrap_or(listGet(parts, 0), M.TextPart(content="none"))
 
 
-def typed_delta(delta: M.ModelResponsePartDelta) -> str:
+def typed_delta(delta):
     match delta:
         case M.TextPartDelta(content_delta=content_delta):
             return content_delta
@@ -1403,27 +1408,27 @@ def typed_delta(delta: M.ModelResponsePartDelta) -> str:
             return ""
 
 
-def typed_events(stream: Direct.StreamedResponse) -> list[M.ModelResponseStreamEvent]:
+def typed_events(stream: Direct.StreamedResponse):
     return Direct.events_of(stream.response)
 
 
-def typed_gen(generated: ModelsTest.Gen) -> str:
+def typed_gen(generated: ModelsTest.Gen):
     return J.encode(generated.value)
 
 
-def typed_profile(profile: Profiles.ModelProfile) -> Profiles.ModelProfile:
+def typed_profile(profile) -> Profiles.ModelProfile:
     return profile
 
 
-def typed_reply(reply: Providers.HttpReply) -> int:
+def typed_reply(reply: Providers.HttpReply):
     return reply.status
 
 
-def typed_settings() -> Settings.ModelSettings:
+def typed_settings():
     return {"seed": JsonInt(1)}
 
 
-def typed_definition(definition: Tools.ToolDefinition) -> str:
+def typed_definition(definition: Tools.ToolDefinition):
     return definition.name
 
 
@@ -1431,7 +1436,7 @@ def typed_tool() -> Tools.Tool:
     return Tools.tool("f", "does f", schema(ADD_SCHEMA), lambda _args: Success(value="ok"))
 
 
-def typed_run_usage(usage: Usage.RunUsage) -> int:
+def typed_run_usage(usage: Usage.RunUsage):
     return usage.requests
 
 

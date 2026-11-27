@@ -4,8 +4,6 @@
 namespace talon
 
 import ui::Runtime
-import talon::Ledger
-import talon::Update
 
 (** How Talon Bank answers each completed request. *)
 module Replies

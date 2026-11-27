@@ -7,6 +7,9 @@ import synth::SpectralMath
 import synth::Components
 import synth::Timings
 
+invalidSamplePitchOr = "Invalid sample pitch or output rate."
+byteSteps = [0, 64, 0, 128]
+
 // [SYNTH-ADVANCED-GRAINS-IMPORT] Decoding and downmixing real WAV bytes into grain resources.
 // [SYNTH-ADVANCED-GRAINS-IMPORT] Every refusal carries its own message; nothing fails silently.
 // [MATH-CODE] The generated WaveMath/Waves oracles are checked against hand-computed IEEE754 results.
@@ -70,7 +73,7 @@ wavStdBody () = wavFormatBody (1, 1, 48000, 2, 96000, 16)
 
 wavMonoFmt () = wavChunk ("fmt ", wavStdBody ())
 
-wavMonoData () = wavChunk ("data", [0, 64, 0, 128])
+wavMonoData () = wavChunk ("data", byteSteps)
 
 // [SYNTH-ADVANCED-SPECTRAL-FORMANT] A vowel-like voice: harmonics of 156.25 Hz under one resonance at 1 kHz.
 formantRate = 16000.0
@@ -331,7 +334,7 @@ identityJourney () =
 
 registerWaveJourneys () =
     test ("decoded WAV keeps every PCM width, channel layout and stereo downmix exact", \() => arithmetic (\() =>
-        succeeds (WaveImport::decode (wavFile (1, 1, 48000, 16, [0, 64, 0, 128])), \wave =>
+        succeeds (WaveImport::decode (wavFile (1, 1, 48000, 16, byteSteps)), \wave =>
             sameSamples (wave.samples, [0.5, -1.0])
             expect (wave.sampleRate, 48000)
             expect (wave.channels, 1)
@@ -384,15 +387,15 @@ registerWaveJourneys () =
             sameSamples (resource.samples, [0.25, -0.25, 0.75, -0.75]))
         forEachList ([-0.5, 127.5], \root => refusedWith (SampleResources::fromWave ("loop", root, wave), "Invalid sample root pitch or decoded frame count."))
         forEachList ([{ bad = wave(frames = 3), why = "Invalid sample root pitch or decoded frame count." }, { bad = wave(samples = [2.0, -2.0, 0.25, -0.25]), why = "Grains require 2–1048576 finite normalised mono samples and capacity 1–256." }, { bad = wave(channels = 3), why = "Invalid sample resource name, sample rate, source channels or root frequency." }], \c => refusedWith (SampleResources::fromWave ("loop", 60.0, c.bad), c.why))
-        succeeds (SampleResources::decodeWave ("loop", 60.0, wavFile (1, 1, 48000, 16, [0, 64, 0, 128])), \resource => sameSamples (resource.samples, [0.5, -1.0]))
+        succeeds (SampleResources::decodeWave ("loop", 60.0, wavFile (1, 1, 48000, 16, byteSteps)), \resource => sameSamples (resource.samples, [0.5, -1.0]))
         refusedAs (SampleResources::decodeWave ("loop", 60.0, wavText "RIFF"), "resource", "WAV file size must be between 12 bytes and 8 MiB.")
         succeeds (SampleResources::fromWave ("loop", 60.0, wave), \tuned =>
             forEachList ([{ note = 60.0, rate = 48000.0, want = 1.0 }, { note = 72.0, rate = 48000.0, want = 2.0 }, { note = 48.0, rate = 96000.0, want = 0.25 }, { note = 60.0, rate = 44100.0, want = 1.08843537414966 }],
                 \held => succeeds (SampleResources::playbackRate (tuned, held.note, held.rate), \speed => near (speed, held.want, 0.000000001)))
-            forEachList ([-1.0, 128.0], \note => refusedWith (SampleResources::playbackRate (tuned, note, 48000.0), "Invalid sample pitch or output rate."))
-            forEachList ([7999.0, 384001.0], \rate => refusedWith (SampleResources::playbackRate (tuned, 60.0, rate), "Invalid sample pitch or output rate."))
+            forEachList ([-1.0, 128.0], \note => refusedWith (SampleResources::playbackRate (tuned, note, 48000.0), invalidSamplePitchOr))
+            forEachList ([7999.0, 384001.0], \rate => refusedWith (SampleResources::playbackRate (tuned, 60.0, rate), invalidSamplePitchOr))
             expect (SampleResources::metadata kit, true))
-        refusedWith (SampleResources::playbackRate (kit(sampleRate = 192001), 60.0, 48000.0), "Invalid sample pitch or output rate.")
+        refusedWith (SampleResources::playbackRate (kit(sampleRate = 192001), 60.0, 48000.0), invalidSamplePitchOr)
         succeeds (SampleResources::fromWave ("sub", 0.0, wave), \low => refusedAs (SampleResources::playbackRate (low, 127.0, 48000.0), "capacity", "The requested sample transposition exceeds the grain rate limit."))))
     test ("generated wave math: PCM words, downmix, tuning and polyBLEP shapes hit exact IEEE754 values", \() => arithmetic (\() =>
         exactRows ([{ got = WaveMath::pcm (0.0, 8.0), want = -1.0 }, { got = WaveMath::pcm (128.0, 8.0), want = 0.0 }, { got = WaveMath::pcm (255.0, 8.0), want = 0.9921875 }, { got = WaveMath::pcm (0.0, 16.0), want = 0.0 }, { got = WaveMath::pcm (16384.0, 16.0), want = 0.5 }, { got = WaveMath::pcm (32767.0, 16.0), want = 0.999969482421875 }, { got = WaveMath::pcm (32768.0, 16.0), want = -1.0 }, { got = WaveMath::pcm (65535.0, 16.0), want = -0.000030517578125 }, { got = WaveMath::pcm (4194304.0, 24.0), want = 0.5 }, { got = WaveMath::pcm (8388608.0, 24.0), want = -1.0 }, { got = WaveMath::pcm (16777215.0, 24.0), want = -0.00000011920928955078125 }, { got = WaveMath::pcm (0.0, 32.0), want = 0.0 }, { got = WaveMath::pcm (2147483648.0, 32.0), want = -1.0 }, { got = WaveMath::pcm (4294967295.0, 32.0), want = -0.00000000046566128730773926 }])

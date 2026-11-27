@@ -8,12 +8,6 @@ import ui::Messages
 import ui::Runtime
 import ui::Surfaces
 import ui::Ui
-import studio::Design
-import studio::Kit
-import studio::Names
-import studio::Replies
-import studio::Screens
-import studio::Update
 
 (** The CMS editor as the framework runs it. *)
 module App

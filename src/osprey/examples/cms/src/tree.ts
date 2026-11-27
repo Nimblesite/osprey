@@ -27,7 +27,7 @@ function lastName(path) {
 }
 
 /** The files at and below one listed entry. */
-function expand(config: Config, entry) {
+function expand(config, entry) {
   const path = relative(config, entry);
   if (startsWith(lastName(path), ".")) {
     return [];
@@ -36,7 +36,7 @@ function expand(config: Config, entry) {
 }
 
 /** Every file below `folder`; a folder that cannot be listed has none to offer. */
-function walk(config: Config, folder): List<string> {
+function walk(config, folder) {
   const entries = unwrapOr(listDir(`${config.repo}/${folder}`), []);
   return foldList(entries, [], (found, entry) => listConcat(found, expand(config, entry)));
 }

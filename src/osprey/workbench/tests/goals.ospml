@@ -8,6 +8,10 @@ import workbench::Lists
 
 (** The goal-engine cases of [WORKBENCH-VERIFICATION]. *)
 module GoalCases
+
+    pQQP = "p ∧ q → q ∧ p"
+    hypothesisNames = ["hp", "hq"]
+
     (** A goal formula that does not read is a broken fixture, never `⊥`; the
         shared fixture helper returns a typed failure to the case boundary. *)
     formula text = FixtureFiles::formula ("goal", text)
@@ -73,18 +77,18 @@ module GoalCases
 
     (** [WORKBENCH-GOALS] A refused step neither closes a goal nor advances the visible step count. *)
     export retainedGoal () =
-        FixtureFiles::bind (claim "p ∧ q → q ∧ p", \theorem =>
+        FixtureFiles::bind (claim pQQP, \theorem =>
         FixtureFiles::bind (formula "p ∧ q", \premise =>
-            walk = Goals::trace (theorem, [workbench::Assume "h" premise, workbench::Cases "h" ["hp", "hq"], workbench::Split, workbench::Exact "hp", workbench::Exact "hq"])
+            walk = Goals::trace (theorem, [workbench::Assume "h" premise, workbench::Cases "h" hypothesisNames, workbench::Split, workbench::Exact "hp", workbench::Exact "hq"])
             expect (walk.traceAccepted, 3)
             expect (join (mapList (walk.traceProgress.open, goal), " | "), "hp : p, hq : q ⊢ q | hp : p, hq : q ⊢ p")
             FixtureFiles::ok (expect (length walk.traceProgress.done, 0))))
 
     (** [WORKBENCH-GOALS]: and_swap closes both goals, one step at a time. *)
     export andSwap () =
-        FixtureFiles::bind (claim "p ∧ q → q ∧ p", \theorem =>
+        FixtureFiles::bind (claim pQQP, \theorem =>
         FixtureFiles::bind (formula "p ∧ q", \premise =>
-            steps = [workbench::Assume "h" premise, workbench::Cases "h" ["hp", "hq"], workbench::Split, workbench::Exact "hq", workbench::Exact "hp"]
+            steps = [workbench::Assume "h" premise, workbench::Cases "h" hypothesisNames, workbench::Split, workbench::Exact "hq", workbench::Exact "hp"]
             expect (after (theorem, Lists::first (steps, 1)), "h : p ∧ q ⊢ q ∧ p")
             expect (after (theorem, Lists::first (steps, 2)), "hp : p, hq : q ⊢ q ∧ p")
             expect (after (theorem, Lists::first (steps, 3)), "hp : p, hq : q ⊢ q | hp : p, hq : q ⊢ p")
@@ -189,12 +193,12 @@ module GoalCases
         use plain <- FixtureFiles::bind (claim "p")
         use implication <- FixtureFiles::bind (claim "p → q")
         use reflexive <- FixtureFiles::bind (claim "p → p")
-        use conjunction <- FixtureFiles::bind (claim "p ∧ q → q ∧ p")
+        use conjunction <- FixtureFiles::bind (claim pQQP)
         use nested <- FixtureFiles::bind (claim "p → q → p")
         use universal <- FixtureFiles::bind (claim "∀ x, x → x")
         use consequent <- FixtureFiles::bind (formula "q")
         use conjunctive <- FixtureFiles::bind (formula "p ∧ q")
-        expect (after (conjunction, [workbench::Assume "h" conjunctive, workbench::Cases "h" ["hp", "hq"], workbench::Split, workbench::Exact "hp"]), "stuck: the goal is `q`, but `hp` proves `p`")
+        expect (after (conjunction, [workbench::Assume "h" conjunctive, workbench::Cases "h" hypothesisNames, workbench::Split, workbench::Exact "hp"]), "stuck: the goal is `q`, but `hp` proves `p`")
         expect (after (implication, [workbench::Assume "h" consequent]), "stuck: the goal assumes `p`, not `q`")
         expect (after (plain, [workbench::Assume "h" plain.claim]), "stuck: the goal `p` is not an implication to assume")
         expect (after (plain, [workbench::Exact "h"]), "stuck: there is no hypothesis `h`")

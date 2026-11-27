@@ -41,7 +41,7 @@ def render(env, template, context) -> Result[str, str]:
     return render_internal(env, template, context)
 
 
-def render_internal(env, template, context) -> Result[str, str]:
+def render_internal(env, template, context):
     """Lex, parse and render in one pass."""
     match L.scan(template, env.trim_blocks, env.lstrip_blocks):
         case Success(value=value):
@@ -50,7 +50,7 @@ def render_internal(env, template, context) -> Result[str, str]:
             return Error(message=message)
 
 
-def parse_and_render(chunks, _env, context) -> Result[str, str]:
+def parse_and_render(chunks, _env, context):
     """Parse chunks and render the resulting tree."""
     match P.parse(chunks):
         case Success(value=value):
@@ -59,7 +59,7 @@ def parse_and_render(chunks, _env, context) -> Result[str, str]:
             return Error(message=message)
 
 
-def render_result(nodes, env) -> Result[str, str]:
+def render_result(nodes, env):
     """Render a node tree, converting the first fault into `Error`."""
     match render_nodes(nodes, env):
         case Success(value=value):
@@ -68,7 +68,7 @@ def render_result(nodes, env) -> Result[str, str]:
             return Error(message=message)
 
 
-def render_nodes(nodes, env) -> Result[Out, str]:
+def render_nodes(nodes, env):
     """Render every node, threading the environment."""
     return render_nodes_from(nodes, 0, env, "")
 
@@ -155,7 +155,7 @@ def render_branches(branches, i, env) -> Result[Out, str]:
             return render_branch_cond(b, branches, i, env)
 
 
-def render_branch_cond(b, branches, i, env) -> Result[Out, str]:
+def render_branch_cond(b, branches, i, env):
     """Evaluate a branch condition and render its body when true."""
     match eval_ok(b.cond, env):
         case Success(value=value):
@@ -202,7 +202,7 @@ def for_elements(v):
             return Error(message="'" + E.type_name(v) + "' object is not iterable")
 
 
-def for_loop(node, elems, i, env, acc) -> Result[Out, str]:
+def for_loop(node, elems, i, env, acc):
     """Iterate the body, threading the outer environment across iterations."""
     if i >= len(elems):
         return Success(value=Out(text=acc, env=env))
@@ -214,7 +214,7 @@ def for_loop(node, elems, i, env, acc) -> Result[Out, str]:
             return for_loop_body(node, elems, i, env, acc, loop_env)
 
 
-def for_loop_cond(node, elems, i, env, acc, loop_env) -> Result[Out, str]:
+def for_loop_cond(node, elems, i, env, acc, loop_env):
     """The `{% for x in xs if cond %}` filter: skip the body when false."""
     match eval_ok(node.cond, loop_env):
         case Success(value=value):

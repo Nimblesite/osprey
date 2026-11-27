@@ -19,6 +19,8 @@ type ChallengeState = MissingChallenge string | ReadyChallenge Challenge Attempt
 
 (** The Learn regions: the catalogue, the open lesson and each challenge ([LESSONS-MODE]). *)
 module LearnViews
+    exclamationmarkTriangle = "exclamationmark.triangle"
+
     shelf () = perform Signal<Shelf>.read ()
 
     (** Challenge identifiers are scoped to their lesson, including their host region identity. *)
@@ -32,7 +34,7 @@ module LearnViews
     catalogueEntries current = mapList (current.entries, \entry => listed (entry, (perform Signal<Achieved>.read ()).doneKeys))
 
     status current = match isEmpty current.shelfProblem
-        false => Ui::badge (current.shelfProblem, "exclamationmark.triangle", ui::Caution)
+        false => Ui::badge (current.shelfProblem, exclamationmarkTriangle, ui::Caution)
         true => Ui::caption (loading current)
 
     loading current = match isEmpty current.entries
@@ -42,7 +44,7 @@ module LearnViews
     finished (entry, done) = !isEmpty entry.entryChallenges && Lists::all (entry.entryChallenges, \key => listContains (done, key))
 
     listed (entry, done) = match isEmpty entry.entryFault
-        false => Ui::section (entry.entryTitle, "", [Ui::badge ("This lesson does not load: " + entry.entryFault, "exclamationmark.triangle", ui::Danger)])
+        false => Ui::section (entry.entryTitle, "", [Ui::badge ("This lesson does not load: " + entry.entryFault, exclamationmarkTriangle, ui::Danger)])
         true => Ui::section (entry.entryTitle, "Stage ${entry.entryStage} · ${entry.entryMinutes} minutes", [Ui::text entry.entrySummary, Ui::row (listAppend (ticked (entry, done), Ui::button ("Open", "book", Open entry.entrySlug)))])
 
     ticked (entry, done) = match finished (entry, done)
@@ -51,7 +53,7 @@ module LearnViews
 
     (** [LESSONS-FORMAT] The open lesson as one page: its blocks in order, each challenge a slot of its own. *)
     export lesson () = match Lessons::read (shelf ()).openSource
-        Error said => Ui::column [Ui::button ("All lessons", "chevron.left", Close), Ui::badge (said, "exclamationmark.triangle", ui::Danger)]
+        Error said => Ui::column [Ui::button ("All lessons", "chevron.left", Close), Ui::badge (said, exclamationmarkTriangle, ui::Danger)]
         Success found => Ui::column (listConcat ([Ui::button ("All lessons", "chevron.left", Close), Ui::styled (found.lessonTitle, ui::Title, ui::Primary), Ui::styled (found.lessonSummary, ui::Lead, ui::Secondary)], mapList (found.lessonBlocks, \block => shown block)))
 
     // Media paths are relative to the lessons folder; the hosts resolve them from the application's folder.

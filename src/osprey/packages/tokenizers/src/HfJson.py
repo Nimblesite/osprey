@@ -35,7 +35,7 @@ def load_document(doc) -> Result[QwenTokenizer, str]:
         case Error(message=message):
             return Error(message=message)
 
-def check_pipeline(doc) -> Result[bool, str]:
+def check_pipeline(doc):
     """Refuse a document whose pipeline differs from the one this port implements."""
     wrong = filterList(pipeline_facts(doc), lambda row: at_str(row, 2) != at_str(row, 1))
     if len(wrong) == 0:
@@ -43,7 +43,7 @@ def check_pipeline(doc) -> Result[bool, str]:
     else:
         return Error(message="tokenizer.json declares a pipeline this port does not implement: " + describe(wrong))
 
-def pipeline_facts(doc) -> list[list[str]]:
+def pipeline_facts(doc):
     """Each declared pipeline fact as [what, required, declared], as JSON text."""
     pre = field(doc, "pre_tokenizer")
     split_pt = pt_at(pre, 0)
@@ -110,7 +110,7 @@ def describe(rows):
 def at_str(row, i):
     return unwrap_or(listGet(row, i), "")
 
-def flatten(value) -> string:
+def flatten(value):
     """A JSON value as its canonical text, so a declared shape compares as a string."""
     return unwrap_or(jsonEncode(value), "")
 

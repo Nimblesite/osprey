@@ -253,7 +253,7 @@ def ints_of(value, name):
         return collect_ints(value.items, 0, [])
 
 
-def collect_ints(items, i, acc) -> Result[list[int], str]:
+def collect_ints(items, i, acc):
     """Collect array elements as ints from `i`."""
     if i >= len(items):
         return Success(value=acc)
@@ -273,7 +273,7 @@ def string_map(value):
         return collect_metadata(value.members, 0, {})
 
 
-def collect_metadata(members, i, acc) -> Result[dict[str, str], str]:
+def collect_metadata(members, i, acc):
     """Collect string members into a map from `i`."""
     if i >= len(members):
         return Success(value=acc)
@@ -315,7 +315,7 @@ def info_cmp(a, b):
         return 0
 
 
-def validate(data, infos, start) -> Result[int, str]:
+def validate(data, infos, start):
     """Validate contiguous ascending offsets and exact sizes, returning the end."""
     if len(infos) == 0:
         return Success(value=start)

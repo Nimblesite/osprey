@@ -52,7 +52,7 @@ function refused(reason) {
 }
 
 /** Join parts 0..parts-1, decode them into `path`, and remove them. */
-function joined(config: Config, path, parts) {
+function joined(config, path, parts) {
   const base = stem(path);
   const gather = `i=0; while [ $i -lt ${parts} ]; do cat ${base}.$i || exit 1; i=$((i+1)); done > ${base}.all`;
   const decode = `base64 -d < ${base}.all > ${base}.bin && mkdir -p '${folderOf(path)}' && mv ${base}.bin '${path}'`;
@@ -65,7 +65,7 @@ function joined(config: Config, path, parts) {
   }
 }
 
-function stored(config: Config, path, part, parts, body) {
+function stored(config, path, part, parts, body) {
   const written = writeFile(`${config.repo}/${stem(path)}.${part}`, body);
   if (satAdd(part, 1) < parts) {
     return andThen(written, (_) => Success({ kind: "received", part: part } satisfies Progress));

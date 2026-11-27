@@ -3,27 +3,29 @@
 /** The routes example's application, shared by the example and the package suite. */
 import express from "express";
 
+const tasksCurrent = "/tasks/current";
+
 /** The routes example's application: four methods, headers and statuses. */
 export function tasks() {
   const app = express();
 
-  app.get("/", (req, res) => {
+  app.get("/", (_req, res) => {
     res.send("Osprey serves these routes natively.");
   });
 
-  app.get("/health", (req, res) => res.set("Cache-Control", "no-store").send("ok"));
+  app.get("/health", (_req, res) => res.set("Cache-Control", "no-store").send("ok"));
 
-  app.post("/tasks", (req, res) => {
+  app.post("/tasks", (_req, res) => {
     res.status(201);
-    res.set("Location", "/tasks/current");
+    res.set("Location", tasksCurrent);
     res.send("Task created");
   });
 
-  app.get("/tasks/:id", (req, res) => res.send("Task found"));
+  app.get("/tasks/:id", (_req, res) => res.send("Task found"));
 
   return app
-    .put("/tasks/current", (req, res) => res.send("Task replaced"))
-    .delete("/tasks/current", (req, res) => res.status(410).send("Task removed"));
+    .put(tasksCurrent, (_req, res) => res.send("Task replaced"))
+    .delete(tasksCurrent, (_req, res) => res.status(410).send("Task removed"));
 }
 
 /** Serve the application on `port`. */

@@ -63,7 +63,7 @@ function taskOf(req, res) {
 
 function taskRoutes() {
   const tasks = express.Router();
-  tasks.get("/", (req, res) => res.json(JsonObject([JsonMember("tasks", JsonArray([JsonString("write"), JsonString("test")]))])));
+  tasks.get("/", (_req, res) => res.json(JsonObject([JsonMember("tasks", JsonArray([JsonString("write"), JsonString("test")]))])));
   tasks.get("/:id", taskOf);
   return tasks;
 }
@@ -71,12 +71,12 @@ function taskRoutes() {
 /** The application. */
 export function api() {
   const app = express();
-  app.get("/notes", (req, res) => res.json(JsonArray(mapList(notes, noteJson))));
+  app.get("/notes", (_req, res) => res.json(JsonArray(mapList(notes, noteJson))));
   app.post("/notes", created);
   app.mount("/tasks", taskRoutes());
   return app
-    .onError((failure, req, res) => res.status(failure.status).json(errorJson(failure.message)))
-    .use("/", (req, res) => res.status(404).json(errorJson("not found")));
+    .onError((failure, _req, res) => res.status(failure.status).json(errorJson(failure.message)))
+    .use("/", (_req, res) => res.status(404).json(errorJson("not found")));
 }
 
 /** Serve the application on `port`. */

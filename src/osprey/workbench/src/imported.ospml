@@ -67,6 +67,9 @@ module ImportedProofs
     including definition bodies. Names alone do not establish semantics.
     Implements [WORKBENCH-VERDICT] [WORKBENCH-MATH]. *)
 module ProofNotation
+
+    uvwNames = ["u", "v", "w"]
+
     (** The notation heads `env` may render with: each of `Eq`, `HAdd.hAdd`, `HMul.hMul`, `OfNat.ofNat` and `Prod.snd` whose every pinned declaration `env` declares with matching parameters and types. *)
     export permitted env = listConcat (listConcat (allowed (env, "Eq", ["Eq", "Eq.refl"], equality ()), permission (env, "HAdd.hAdd", additionNames ())), listConcat (permission (env, "HMul.hMul", multiplicationNames ()), listConcat (permission (env, "OfNat.ofNat", numeralNames ()), permission (env, "Prod.snd", ["Prod", "Prod.mk", "Prod.snd"]))))
 
@@ -128,7 +131,7 @@ module ProofNotation
     mixedGroup (name, fn, mk) =
         universes = [lifted "u", lifted "v", App (Const "outParam" [Succ (Succ (Param "w"))]) (Sort (Succ (Param "w")))]
         self = \k => applied (Const name [Param "u", Param "v", Param "w"], [BVar (k + 2), BVar (k + 1), BVar k])
-        [structure (name, ["u", "v", "w"], mk, pis (universes, Sort (Max (Max (Succ (Param "u")) (Succ (Param "v"))) (Succ (Param "w"))))), Decl(name = fn, params = ["u", "v", "w"], ty = pis (listConcat (universes, [self 0, BVar 3, BVar 3]), BVar 3), body = Definition (lams (listConcat (universes, [self 0]), Proj name 0 (BVar 0)))), constructor (name, ["u", "v", "w"], mk, 1, pis (listConcat (universes, [pis ([BVar 2, BVar 2], BVar 2)]), self 1))]
+        [structure (name, uvwNames, mk, pis (universes, Sort (Max (Max (Succ (Param "u")) (Succ (Param "v"))) (Succ (Param "w"))))), Decl(name = fn, params = uvwNames, ty = pis (listConcat (universes, [self 0, BVar 3, BVar 3]), BVar 3), body = Definition (lams (listConcat (universes, [self 0]), Proj name 0 (BVar 0)))), constructor (name, uvwNames, mk, 1, pis (listConcat (universes, [pis ([BVar 2, BVar 2], BVar 2)]), self 1))]
 
     (** The `Nat` instance of an operator: `instAddNat`, `instMulNat`. *)
     natInstance (name, op, mk, natFn) = Decl(name = name, params = [], ty = App (Const op [Zero]) (Const "Nat" []), body = Definition (App (App (Const mk [Zero]) (Const "Nat" [])) (Const natFn [])))

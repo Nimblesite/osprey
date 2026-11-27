@@ -69,7 +69,7 @@ def id_of(ids, text):
     return unwrap_or(mapGet(ids, text), -1)
 
 
-def byte_ids(ids) -> Result[list[int], str]:
+def byte_ids(ids):
     """The id of each single byte's spelling, in byte order."""
     found = toList(map(range(256), lambda b: id_of(ids, bytelevel_text([b]))))
     missing = fold(range(256), -1, lambda hit, b: b if hit < 0 and unwrap_or(listGet(found, b), -1) < 0 else hit)
@@ -84,7 +84,7 @@ def split_merges(ids, merges) -> Merges:
     return fold(range(len(merges)), Merges(left=[], right=[], ids=[], bad=-1), lambda acc, i: merge_step(ids, merges, acc, i))
 
 
-def merge_step(ids, merges, acc, i) -> Merges:
+def merge_step(ids, merges, acc, i):
     if acc.bad >= 0:
         return acc
     else:

@@ -75,7 +75,7 @@ def jobj(members):
     return JsonValue(kind="obj", b=False, i=0, f=0.0, s="", items=[], members=members)
 
 
-def skip_ws(text, pos) -> int:
+def skip_ws(text, pos):
     """The first index >= pos that is not a JSON whitespace byte."""
     if pos >= len(text):
         return pos
@@ -129,7 +129,7 @@ def is_float_token(token):
     return fold(range(len(token)), False, lambda found, i: found or is_float_mark(unwrap_or(byteAt(token, i), 0)))
 
 
-def number_end(text, pos) -> int:
+def number_end(text, pos):
     """The index just past the number token starting at `pos`."""
     if pos >= len(text):
         return pos

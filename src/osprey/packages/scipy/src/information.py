@@ -19,7 +19,7 @@ __all__ = ["xlogy", "xlog1py", "entr", "rel_entr", "kl_div", "huber",
            "pseudo_huber", "logsumexp", "logsumexp_b", "softmax", "log_softmax"]
 
 
-def guarded(x: float, y: float, log_of) -> float:
+def guarded(x, y, log_of):
     """x * log_of(y), and 0 at x = 0 unless y is NaN: the rule `xlogy` and
     `xlog1py` share."""
     if x == 0.0 and (not is_nan(y)):
@@ -102,12 +102,12 @@ def pseudo_huber(delta: float, r: float) -> float:
         return delta * delta * expm1(0.5 * log1p(v * v))
 
 
-def ones_like(a) -> list[float]:
+def ones_like(a):
     """A list of 1.0 the length of `a`, the unweighted logsumexp weights."""
     return mapList(a, lambda _v: 1.0)
 
 
-def out_inf_from(s: float) -> float:
+def out_inf_from(s):
     """scipy logsumexp's out_inf fallback from the plain sum of exponentials."""
     if is_nan(s):
         return nan()
@@ -119,7 +119,7 @@ def out_inf_from(s: float) -> float:
         return neg_inf()
 
 
-def lse_main(a2, weights, a_max: float) -> float:
+def lse_main(a2, weights, a_max):
     """logsumexp's max-separated core over the pre-filtered row."""
     n = len(a2)
     mask = mapList(a2, lambda v: v == a_max)

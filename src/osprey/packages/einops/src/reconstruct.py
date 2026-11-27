@@ -39,18 +39,18 @@ class CookedRecipe:
 
 
 
-def take_list(xs, n) -> list[int]:
+def take_list(xs, n):
     """The first `n` elements of `xs`."""
     return toList(map(range(n), lambda i: unwrap_or(listGet(xs, i), 0)))
 
 
 
-def lookup_name(name2pos, name) -> int:
+def lookup_name(name2pos, name):
     """The elementary position a supplied axis name maps to, or -1."""
     return fold(range(len(name2pos)), -1, lambda found, j: unwrap_or(listGet(name2pos, j), NamePos(name="", pos=0)).pos if found == -1 and unwrap_or(listGet(name2pos, j), NamePos(name="", pos=0)).name == name else found)
 
 
-def bind_axes_go(axes_lengths, name2pos, lengths, i) -> list[int]:
+def bind_axes_go(axes_lengths, name2pos, lengths, i):
     if i >= len(axes_lengths):
         return lengths
     else:
@@ -95,7 +95,7 @@ def reconstruct(recipe, shape, axes_lengths) -> Result[CookedRecipe, str]:
     return reconstruct_body(recipe, shape, lengths, 0, False)
 
 
-def reconstruct_body(recipe, shape, lengths, input_axis, need_init_reshape) -> Result[CookedRecipe, str]:
+def reconstruct_body(recipe, shape, lengths, input_axis, need_init_reshape):
     """Infer each input group's unknown axis, checking the shape as it goes."""
     if input_axis >= len(recipe.input_composition_known_unknown):
         return Success(value=cook(recipe, lengths, need_init_reshape))
@@ -103,7 +103,7 @@ def reconstruct_body(recipe, shape, lengths, input_axis, need_init_reshape) -> R
         return reconstruct_entry(recipe, shape, lengths, input_axis, need_init_reshape)
 
 
-def reconstruct_entry(recipe, shape, lengths, input_axis, need_init_reshape) -> Result[CookedRecipe, str]:
+def reconstruct_entry(recipe, shape, lengths, input_axis, need_init_reshape):
     entry = unwrap_or(listGet(recipe.input_composition_known_unknown, input_axis), [[], []])
     known_axes = unwrap_or(listGet(entry, 0), [])
     unknown_axes = unwrap_or(listGet(entry, 1), [])
@@ -115,12 +115,12 @@ def reconstruct_entry(recipe, shape, lengths, input_axis, need_init_reshape) -> 
         return reconstruct_product(recipe, shape, lengths, input_axis, need_after, known_axes, unknown_axes, dim)
 
 
-def reconstruct_product(recipe, shape, lengths, input_axis, need_after, known_axes, unknown_axes, dim) -> Result[CookedRecipe, str]:
+def reconstruct_product(recipe, shape, lengths, input_axis, need_after, known_axes, unknown_axes, dim):
     known_product = foldList(map_indexed(known_axes, lambda i: unwrap_or(listGet(lengths, unwrap_or(listGet(known_axes, i), 0)), 0)), 1, lambda a, x: a * x)
     return reconstruct_check(recipe, shape, lengths, input_axis, need_after, unknown_axes, dim, known_product)
 
 
-def reconstruct_check(recipe, shape, lengths, input_axis, need_after, unknown_axes, dim, known_product) -> Result[CookedRecipe, str]:
+def reconstruct_check(recipe, shape, lengths, input_axis, need_after, unknown_axes, dim, known_product):
     if len(unknown_axes) == 0:
         return reconstruct_all_known(recipe, shape, lengths, input_axis, need_after, dim, known_product)
     elif dim % known_product != 0:
@@ -129,21 +129,21 @@ def reconstruct_check(recipe, shape, lengths, input_axis, need_after, unknown_ax
         return reconstruct_body(recipe, shape, set_at(lengths, unwrap_or(listGet(unknown_axes, 0), 0), dim // known_product), input_axis + 1, need_after)
 
 
-def reconstruct_all_known(recipe, shape, lengths, input_axis, need_after, dim, known_product) -> Result[CookedRecipe, str]:
+def reconstruct_all_known(recipe, shape, lengths, input_axis, need_after, dim, known_product):
     if dim != known_product:
         return Error(message=f"Shape mismatch, {dim} != {known_product}")
     else:
         return reconstruct_body(recipe, shape, lengths, input_axis + 1, need_after)
 
 
-def identity_perm_go(perm, i) -> bool:
+def identity_perm_go(perm, i):
     if i >= len(perm):
         return True
     else:
         return unwrap_or(listGet(perm, i), 0) == i and identity_perm_go(perm, i + 1)
 
 
-def identity_perm(perm) -> bool:
+def identity_perm(perm):
     return identity_perm_go(perm, 0)
 
 

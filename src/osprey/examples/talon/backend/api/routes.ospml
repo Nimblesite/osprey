@@ -3,7 +3,6 @@
 
 namespace bank
 
-
 // `Account` itself needs no import: this file shares `namespace bank` with
 // domain/accounts.ospml, and one namespace is one logical declaration space
 // no matter how many physical files contribute to it. [MODULES-NAMESPACE]
@@ -23,6 +22,11 @@ module Api
 
     refuse why = json 422 (Json::error why)
 
+    // The refusals every money route shares, and the reply to any other path.
+    nonPositive = "amount must be positive"
+    missingAccount = "account not found"
+    noEndpoint = "{\"error\":\"no such endpoint\"}"
+
     reject operation why =
         perform Audit.log "${operation} REFUSED (${why})"
         refuse why
@@ -31,7 +35,7 @@ module Api
     field body path =
         doc = jsonParse body ?: 0
         v = jsonGet doc path ?: ""
-        freed = jsonFree doc ?: 0
+        _freed = jsonFree doc ?: 0
         v
 
     num body path = parseInt (field body path) ?: 0
@@ -71,11 +75,11 @@ module Api
         cents = num body "cents"
         note = field body "note"
         match Accounts::movable cents
-            false => reject "deposit to account #${id}" "amount must be positive"
+            false => reject "deposit to account #${id}" nonPositive
             true => match validAccount id
-                false => reject "deposit to account #${id}" "account not found"
+                false => reject "deposit to account #${id}" missingAccount
                 true =>
-                    balance = perform Ledger::Store.credit id cents note
+                    _balance = perform Ledger::Store.credit id cents note
                     perform Audit.log "deposit ${Money::show (Money::fromCents cents)} -> account #${id} (${note})"
                     json 200 (Accounts::json (load id))
 
@@ -85,13 +89,13 @@ module Api
         cents = num body "cents"
         note = field body "note"
         match Accounts::movable cents
-            false => reject "withdraw from account #${id}" "amount must be positive"
+            false => reject "withdraw from account #${id}" nonPositive
             true => match validAccount id
-                false => reject "withdraw from account #${id}" "account not found"
+                false => reject "withdraw from account #${id}" missingAccount
                 true =>
                     attempt = perform Ledger::Store.debit id cents note
                     match attempt
-                        Landed balance =>
+                        Landed _ =>
                             perform Audit.log "withdraw ${Money::show (Money::fromCents cents)} from account #${id} (${note})"
                             json 200 (Accounts::json (load id))
                         Refused why =>
@@ -105,7 +109,7 @@ module Api
         Refused why =>
             perform Audit.log "transfer ${Money::show (Money::fromCents cents)} account #${from} -> account #${to} REFUSED (${why})"
             refuse why
-        Landed balance =>
+        Landed _ =>
             perform Audit.log "transfer ${Money::show (Money::fromCents cents)} account #${from} -> account #${to} (${note})"
             json 200 (Json::arr (Accounts::json (load from) + "," + Accounts::json (load to)))
 
@@ -116,9 +120,9 @@ module Api
         cents = num body "cents"
         note = field body "note"
         match Accounts::movable cents
-            false => reject "transfer account #${from} -> account #${to}" "amount must be positive"
+            false => reject "transfer account #${from} -> account #${to}" nonPositive
             true => match validAccount from && validAccount to
-                false => reject "transfer account #${from} -> account #${to}" "account not found"
+                false => reject "transfer account #${from} -> account #${to}" missingAccount
                 true => match from == to
                     true => reject "transfer account #${from} -> account #${to}" "accounts must be different"
                     false =>
@@ -138,12 +142,12 @@ module Api
         "GET" => match path
             "/api/accounts" => json 200 (accountsJson ())
             "/api/activity" => json 200 (activityJson ())
-            _ => json 404 "{\"error\":\"no such endpoint\"}"
+            _ => json 404 noEndpoint
         "POST" => match path
             "/api/accounts" => onOpen body
             "/api/deposit" => onDeposit body
             "/api/withdraw" => onWithdraw body
             "/api/transfer" => onTransfer body
-            _ => json 404 "{\"error\":\"no such endpoint\"}"
+            _ => json 404 noEndpoint
         "OPTIONS" => preflight ()
-        _ => json 404 "{\"error\":\"no such endpoint\"}"
+        _ => json 404 noEndpoint

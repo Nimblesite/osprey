@@ -2,6 +2,9 @@ import synth::Components
 import synth::Formulas
 import synth::Kinds
 
+configurationText = "configuration"
+middleCFive = [60, 60, 60, 60, 60]
+
 // [SYNTH-FORMULA-NOTES] A typed formula over the step number t becomes one MIDI note per step.
 pitchOf note = match note
     synth::Rest => -1
@@ -10,7 +13,7 @@ pitchOf note = match note
 // The first five pitches a formula names, -1 for each rest.
 formulaPitches (formula, expected) = succeeds (Formulas::parse formula, \term => expect (mapList (Formulas::notes (term, 5), pitchOf), expected))
 
-formulaFault (formula, why) = refusedAs (Formulas::parse formula, "configuration", "Formula: ${why}")
+formulaFault (formula, why) = refusedAs (Formulas::parse formula, configurationText, "Formula: ${why}")
 
 melody (formula, stepFrames, gateFrames, steps) = Components::formulaNotes (1, formula, 0.5, stepFrames, gateFrames, steps)
 
@@ -25,17 +28,17 @@ tooLong () = foldList (toList (range (0, 257)), "", \(text, _) => text + "1")
 
 registerFormulaJourney () =
     test ("note formulas parse with precedence, evaluate totally and fold every pitch into MIDI range [SYNTH-FORMULA-NOTES]", \() => arithmetic (\() =>
-        formulaPitches ("60", [60, 60, 60, 60, 60])
+        formulaPitches ("60", middleCFive)
         formulaPitches ("  60\t+ t ", [60, 61, 62, 63, 64])
         formulaPitches ("60 + t * 2", [60, 62, 64, 66, 68])
         formulaPitches ("(60 + t) * 2", [120, 122, 124, 126, 116])
         formulaPitches ("60 + t % 3 * 4", [60, 64, 68, 60, 64])
         formulaPitches ("(t - 5) % 12 + 60", [67, 68, 69, 70, 71])
         formulaPitches ("2 ^ 3 ^ 2", [116, 116, 116, 116, 116])
-        formulaPitches ("-2 ^ 2 + 64", [60, 60, 60, 60, 60])
+        formulaPitches ("-2 ^ 2 + 64", middleCFive)
         formulaPitches ("--60 + t", [60, 61, 62, 63, 64])
         formulaPitches ("60 + 12 * sin(t * 3.14159265358979 / 2)", [60, 72, 60, 48, 60])
-        formulaPitches ("cos(t * 0) * 60", [60, 60, 60, 60, 60])
+        formulaPitches ("cos(t * 0) * 60", middleCFive)
         formulaPitches ("48 + floor(t / 2) * 7", [48, 48, 55, 55, 62])
         formulaPitches ("abs(t - 2) * 12 + round(2.4) + 46", [72, 60, 48, 60, 72])
         formulaPitches ("60 / (t - 2)", [6, 0, -1, 60, 30])
@@ -77,14 +80,14 @@ registerFormulaJourney () =
         timelineIs (rising, 300, 100, [])
         timelineIs (melody ("60", 100.0, 500.0, 2.0), 0, 300, allSounded [sounded (60, 0, 100), sounded (60, 100, 200)])
         timelineIs (melody ("60 / (t - 1)", 100.0, 50.0, 3.0), 0, 300, allSounded [sounded (0, 0, 50), sounded (60, 200, 250)])
-        refusedAs (synth::MidiClips::timeline (melody ("60 +", 100.0, 50.0, 3.0), 0, 64), "configuration", "Formula: the formula ends where a number, t, a function or '(' belongs.")
+        refusedAs (synth::MidiClips::timeline (melody ("60 +", 100.0, 50.0, 3.0), 0, 64), configurationText, "Formula: the formula ends where a number, t, a function or '(' belongs.")
         forEachList ([melody ("t", 100.0, 50.0, 300.0), melody ("t", 8.0, 50.0, 3.0), melody ("t", 100.0, 0.0, 3.0)], \n =>
-            refusedAs (synth::MidiClips::timeline (n, 0, 64), "configuration", "The MIDI generator parameter is outside its range."))
-        refusedAs (synth::MidiClips::timeline (melody ("t", 100.0, 50.0, 2.5), 0, 64), "configuration", "MIDI pitch and gate frames must be whole numbers.")
-        refusedAs (synth::MidiClips::timeline (Components::formulaNotes (1, "t", 1.5, 100.0, 50.0, 3.0), 0, 64), "configuration", "MIDI velocity must be between zero and one.")
+            refusedAs (synth::MidiClips::timeline (n, 0, 64), configurationText, "The MIDI generator parameter is outside its range."))
+        refusedAs (synth::MidiClips::timeline (melody ("t", 100.0, 50.0, 2.5), 0, 64), configurationText, "MIDI pitch and gate frames must be whole numbers.")
+        refusedAs (synth::MidiClips::timeline (Components::formulaNotes (1, "t", 1.5, 100.0, 50.0, 3.0), 0, 64), configurationText, "MIDI velocity must be between zero and one.")
         refusedAs (synth::MidiClips::timeline (rising(parameters = []), 0, 64), "resource", "The MIDI generator is missing a required parameter.")
-        refusedAs (synth::MidiClips::timeline (rising, -1, 64), "configuration", "Invalid MIDI generator or sample window.")
-        refusedAs (synth::MidiClips::timeline (Components::sine (1, 440.0), 0, 64), "configuration", "Invalid MIDI generator or sample window.")))
+        refusedAs (synth::MidiClips::timeline (rising, -1, 64), configurationText, "Invalid MIDI generator or sample window.")
+        refusedAs (synth::MidiClips::timeline (Components::sine (1, 440.0), 0, 64), configurationText, "Invalid MIDI generator or sample window.")))
     test ("a formula melody plays a connected oscillator like a MIDI note and re-attacks on every step", \() => arithmetic (\() =>
         tune = serial ([Components::formulaNotes (1, "69", 0.5, 128.0, 8.0, 2.0), midiOscillator (), Components::output 3])
         single = outputClip (3, synth::GraphClips::advance (midiInstrument (69.0, 0.5, 8.0), [], 128))

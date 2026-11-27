@@ -1,12 +1,5 @@
 namespace proof
 
-import proof::Environment
-import proof::Checked
-import proof::Export
-import proof::Inductive
-import proof
-    Single Group Env
-
 // The dependency-order ledger of plan 0041 milestone 5 ([PROOF-COMPLETION-MATHLIB]).
 // `args` are the incremental export directory, the number of module files to check
 // and the fixed denominator. File `<i>.ndjson` holds only what files 0..i-1 did not

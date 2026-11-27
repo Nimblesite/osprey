@@ -4,7 +4,6 @@ namespace mobile
 
 (** Text limits counted in Unicode scalars, so what the UI shows and what is saved stay valid UTF-8. *)
 module Text
-    boundary : string -> int -> int -> int
     boundary source remaining offset = match remaining <= 0 || offset >= byteLength source
         true => offset
         false => match codePointAt source offset

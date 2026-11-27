@@ -7,6 +7,8 @@ namespace signalflowtests
 import ui::Canvases
 import uitest::Semantics
 
+bypassFilter = "Bypass Filter"
+
 near (actual, expected) = expect (actual - expected < 0.01 && expected - actual < 0.01, true)
 
 // The four cables as rendered, each x1, y1, x2, y2: oscillator→filter, filter→master, LFO→filter, filter→scope.
@@ -69,20 +71,20 @@ hovering () =
 filterDrag () =
     cables ([{ index = 0, points = [314.0, 438.0, 461.0, 438.0] }, { index = 1, points = [753.0, 438.0, 894.0, 438.0] }, { index = 2, points = [606.0, 239.0, 606.0, 345.0] }, { index = 3, points = [607.0, 521.0, 607.0, 614.0] }])
     sprite = nodeSprite "process"
-    bypass = leftOf "Bypass Filter"
+    bypass = leftOf bypassFilter
     body = Semantics::point (element "Select Filter", 0.5)
     step (body, 0.0, 0.0, true, [\() => holding true])
     step (body, 2.0, 1.0, true, [\() => knobs ([{ name = "processX", value = 0.0 }])])
     step (body, 100.0, 50.0, true, [\() => knobs ([{ name = "processX", value = 100.0 }, { name = "processY", value = 50.0 }]), \() => cables ([{ index = 0, points = [314.0, 438.0, 561.0, 488.0] }])])
     step (body, 100.0, 50.0, false, [\() => holding false, \() => knobText ("selected", "process"), \() => cables ([{ index = 1, points = [853.0, 488.0, 894.0, 438.0] }, { index = 2, points = [606.0, 239.0, 706.0, 395.0] }, { index = 3, points = [707.0, 571.0, 607.0, 614.0] }])])
     spriteMoved (sprite, nodeSprite "process", 100.0, 50.0)
-    near (leftOf "Bypass Filter" - bypass, 100.0)
+    near (leftOf bypassFilter - bypass, 100.0)
     expect (letters "+70%", true)
     flag ("canUndo", false)
 
 // The moved Filter's switch, slider and body answer where they now are; a press that stays put still selects.
 movedControls () =
-    switched ("Bypass Filter", "Enable Filter", "process")
+    switched (bypassFilter, "Enable Filter", "process")
     tapAt ("Filter Cutoff", 0.25)
     knobNumber ("process", 0.25)
     selects ([{ label = "Select Master", role = "output" }, { label = "Select Filter", role = "process" }, { label = "Select Oscillator", role = "source" }])

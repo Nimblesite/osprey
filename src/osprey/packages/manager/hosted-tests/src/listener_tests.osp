@@ -47,6 +47,8 @@ module ListenerTests {
         let crossOrigin = fetch(port, "/v1/packages", edge + "\r\nOrigin: https://packages.example.test")
         let separate = fetch(port, "/v1/ready", edge)
         checkAll("live registry probe and ingress isolation", [
+            startsWith(fetch(port, "/v1/packages/@atlas/net", edge), "200|no-store|application/json|") && contains(fetch(port, "/v1/packages/@atlas/net", edge), "Network access"),
+            startsWith(fetch(port, "/v1/packages/@atlas/missing", edge), "404|no-store|application/problem+json|"),
             probe == "200|no-store|text/plain||", private == "404|no-store|text/plain||",
             startsWith(public, "403|no-store|application/problem+json||") && contains(public, "req.edge-secret"),
             admitted == "200|no-store|application/json||" + projection,

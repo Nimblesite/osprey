@@ -53,7 +53,7 @@ def ty(attr) -> Result[str, str]:
             return Error(message="an attribute that is not a first-class type")
 
 
-def numbered(table, name, kind) -> Result[str, str]:
+def numbered(table, name, kind):
     """The number `table` gives `name`, or why it does not."""
     match mapGet(table, name):
         case Success(value=number):

@@ -1,9 +1,5 @@
 namespace proof
 
-import proof
-    Decl Definition TypeFormer Family Constructor Ctor Recursor Eliminator Rule
-    Sort Zero Succ Max Param BVar Const App Lam Pi Proj NatLit Natural
-
 (** Exact Lean 4.25.0 declaration trees, not hashes or printed terms. *)
 module NumericCanonical
     // The names of the two declarations the table refers to again and again.

@@ -12,6 +12,10 @@ import { tasks } from "../examples/routes/tasks.ts";
 import { service } from "../examples/web-service/service.ts";
 import { api } from "../examples/json-api/api.ts";
 
+const httpTransport = "HTTP transport";
+const tasksCurrent = "/tasks/current";
+const shortAndStout = "short and stout";
+
 /** The GC and ARC runs of this suite may overlap, so each takes the first free port. */
 const PORTS = [18921, 18923, 18925, 18927, 18929];
 const HTML = "text/html; charset=utf-8";
@@ -135,7 +139,7 @@ function checked(outcome, status, body) {
 function typed(outcome, status, body, contentType) {
   switch (outcome.kind) {
     case "error":
-      return check("HTTP transport", "success", outcome.message);
+      return check(httpTransport, "success", outcome.message);
     case "success": {
       expect(httpResponseStatus(outcome.value), status);
       expect(httpResponseBody(outcome.value), Success(body));
@@ -151,7 +155,7 @@ function typed(outcome, status, body, contentType) {
 function headed(outcome, name, value, status, body) {
   switch (outcome.kind) {
     case "error":
-      return check("HTTP transport", "success", outcome.message);
+      return check(httpTransport, "success", outcome.message);
     case "success": {
       expect(httpResponseHeader(outcome.value, name), Success(value));
       return checked(outcome, status, body);
@@ -163,7 +167,7 @@ function headed(outcome, name, value, status, body) {
 function missing(outcome, shown) {
   switch (outcome.kind) {
     case "error":
-      return check("HTTP transport", "success", outcome.message);
+      return check(httpTransport, "success", outcome.message);
     case "success": {
       expect(httpResponseHeader(outcome.value, "Content-Security-Policy"), Success("default-src 'none'"));
       expect(httpResponseHeader(outcome.value, "X-Content-Type-Options"), Success("nosniff"));
@@ -176,13 +180,13 @@ function routed(client) {
   checked(httpGetResponse(client, "/", ""), 200, "Osprey serves these routes natively.");
   headed(httpGetResponse(client, "/health", ""), "Cache-Control", "no-store", 200, "ok");
   headed(httpGetResponse(client, "/HEALTH/", ""), "Cache-Control", "no-store", 200, "ok");
-  headed(httpPostResponse(client, "/tasks", "", ""), "Location", "/tasks/current", 201, "Task created");
-  headed(httpPostResponse(client, "/tasks/", "", ""), "Location", "/tasks/current", 201, "Task created");
+  headed(httpPostResponse(client, "/tasks", "", ""), "Location", tasksCurrent, 201, "Task created");
+  headed(httpPostResponse(client, "/tasks/", "", ""), "Location", tasksCurrent, 201, "Task created");
   checked(httpGetResponse(client, "/tasks/7", ""), 200, "Task found");
   checked(httpGetResponse(client, "/TASKS/7/", ""), 200, "Task found");
-  checked(httpGetResponse(client, "/tasks/current", ""), 200, "Task found");
-  expect(httpPut(client, "/tasks/current", "", ""), Success(200));
-  expect(httpDelete(client, "/tasks/current", ""), Success(410));
+  checked(httpGetResponse(client, tasksCurrent, ""), 200, "Task found");
+  expect(httpPut(client, tasksCurrent, "", ""), Success(200));
+  expect(httpDelete(client, tasksCurrent, ""), Success(410));
   return expect(httpDelete(client, "/tasks/current?force=true", ""), Success(410));
 }
 
@@ -267,14 +271,14 @@ function named(req: Request, res: Response) {
  */
 function faulty() {
   return express()
-    .use("/down", (req, res) => req.fail(problem(503, "down")))
-    .use("/teapot", (req, res) => req.fail(problem(418, "short and stout")))
-    .get("/fine", (req, res) => res.send("fine"))
-    .get("/typed", (req, res) => res.type("text/markdown; charset=utf-8").status(201).send("# plain"))
-    .get("/retyped", (req, res) => res.type("text/plain").type("image/svg+xml").send("<svg/>"))
+    .use("/down", (req, _res) => req.fail(problem(503, "down")))
+    .use("/teapot", (req, _res) => req.fail(problem(418, shortAndStout)))
+    .get("/fine", (_req, res) => res.send("fine"))
+    .get("/typed", (_req, res) => res.type("text/markdown; charset=utf-8").status(201).send("# plain"))
+    .get("/retyped", (_req, res) => res.type("text/plain").type("image/svg+xml").send("<svg/>"))
     .get("/query/:name", named)
     .onError((failure, req, res) => (failure.status === 503 ? req.next() : res.status(failure.status).send(failure.message)))
-    .onError((failure, req, res) => req.fail(problem(502, `${failure.message} again`)));
+    .onError((failure, req, _res) => req.fail(problem(502, `${failure.message} again`)));
 }
 
 function rescued(client) {
@@ -282,8 +286,8 @@ function rescued(client) {
   typed(httpGetResponse(client, "/fine", ""), 200, "fine", HTML);
   typed(httpGetResponse(client, "/typed", ""), 201, "# plain", "text/markdown; charset=utf-8");
   typed(httpGetResponse(client, "/retyped", ""), 200, "<svg/>", "image/svg+xml");
-  checked(httpGetResponse(client, "/teapot", ""), 418, "short and stout");
-  checked(httpGetResponse(client, "/teapot/and/more", ""), 418, "short and stout");
+  checked(httpGetResponse(client, "/teapot", ""), 418, shortAndStout);
+  checked(httpGetResponse(client, "/teapot/and/more", ""), 418, shortAndStout);
   missing(httpGetResponse(client, "/other", ""), "Cannot GET /other");
   return expect(httpGet(client, "/down", ""), Success(502));
 }

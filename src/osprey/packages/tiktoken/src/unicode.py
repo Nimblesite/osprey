@@ -173,7 +173,7 @@ def decode_utf8(octets, errors):
         return decode_chunks(octets, 0, "", errors)
 
 
-def decode_chunks(octets, i, acc, errors) -> Result[str, str]:
+def decode_chunks(octets, i, acc, errors):
     if i >= len(octets):
         return Success(value=acc)
     else:

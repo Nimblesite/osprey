@@ -34,7 +34,7 @@ def factorial_exact(n):
     return 0 if n < 0 else fold(range(n), 1, lambda acc, i: acc * (i + 1))
 
 
-def comb_exact_step(n: int, k: int, i: int, acc: int) -> int:
+def comb_exact_step(n, k, i, acc):
     if i > k:
         return acc
     else:
@@ -51,7 +51,7 @@ def perm_exact(n, k):
     return 0 if n < 0 or k < 0 or k > n else fold(range(k), 1, lambda acc, i: acc * (n - i))
 
 
-def binom_prod(n: float, kx: float, i: float, num: float, den: float) -> float:
+def binom_prod(n, kx, i, num, den) -> float:
     """binom's integer-k product loop, with the Cephes rescaling guard."""
     if i > kx:
         return num / den
@@ -64,7 +64,7 @@ def binom_prod(n: float, kx: float, i: float, num: float, den: float) -> float:
             return binom_prod(n, kx, i + 1.0, num2, den2)
 
 
-def binom_intk(n: float, k: float, kx: float) -> float:
+def binom_intk(n, k, kx):
     """binom's integer-k branch: the product, or fall through."""
     nx = floor(n)
     kxx = nx - kx if (nx == n and kx > nx / 2.0 and nx > 0.0) else kx
@@ -74,12 +74,12 @@ def binom_intk(n: float, k: float, kx: float) -> float:
         return binom_large(n, k)
 
 
-def sign_inf(v: float) -> float:
+def sign_inf(v):
     """The sign of a huge-k binom numerator as an infinity or NaN."""
     return pos_inf() if v > 0.0 else (neg_inf() if v < 0.0 else nan())
 
 
-def binom_hugek(n: float, k: float) -> float:
+def binom_hugek(n, k):
     """binom's huge-k asymptotic path."""
     num = gamma(1.0 + n) / abs(k) + gamma(1.0 + n) * n / (2.0 * k * k)
     d = PI * pow_pos(abs(k), n)
@@ -89,7 +89,7 @@ def binom_hugek(n: float, k: float) -> float:
         return binom_hugek_neg(n, k, num, d)
 
 
-def binom_hugek_pos(n: float, k: float, num: float, d: float) -> float:
+def binom_hugek_pos(n: float, k, num: float, d):
     """binom's huge-k path for k > 0."""
     kx = floor(k)
     intk = kx == k
@@ -101,7 +101,7 @@ def binom_hugek_pos(n: float, k: float, num: float, d: float) -> float:
         return (num / d) * sinpi(dk - n) * sgn
 
 
-def binom_hugek_neg(_n: float, k: float, num: float, d: float) -> float:
+def binom_hugek_neg(_n: float, k, num: float, d):
     """binom's huge-k path for k < 0."""
     kx = floor(k)
     if kx == k:
@@ -112,7 +112,7 @@ def binom_hugek_neg(_n: float, k: float, num: float, d: float) -> float:
         return (num / d) * sinpi(k)
 
 
-def binom_large(n: float, k: float) -> float:
+def binom_large(n, k):
     """binom's non-integer-k paths: lbeta, huge-k, or 1/((n+1) beta)."""
     if n >= 1.0e10 * k and k > 0.0:
         return exp_s(0.0 - lbeta(1.0 + n - k, 1.0 + k) - log_s(n + 1.0))
@@ -146,7 +146,7 @@ class PochState:
     r: float
 
 
-def poch_down(a: float, m: float, r: float) -> PochState:
+def poch_down(a, m, r) -> PochState:
     """poch's m >= 1 recurrence: r *= (a + m - 1) while m descends."""
     if m < 1.0:
         return PochState(a=a, m=m, r=r)
@@ -161,7 +161,7 @@ def poch_down(a: float, m: float, r: float) -> PochState:
             return poch_down(a, m2, r2)
 
 
-def poch_up(a: float, m: float, r: float) -> PochState:
+def poch_up(a, m, r) -> PochState:
     """poch's m <= -1 recurrence: r /= (a + m) while m ascends."""
     if m > -1.0:
         return PochState(a=a, m=m, r=r)
@@ -176,12 +176,12 @@ def poch_up(a: float, m: float, r: float) -> PochState:
             return poch_up(a, m2, r2)
 
 
-def is_nonpos_int(x: float) -> bool:
+def is_nonpos_int(x):
     """Whether x is a non-positive integer of magnitude below 1e13."""
     return x <= 0.0 and x == floor(x) and abs(x) < 1.0e13
 
 
-def gammasgn(x: float) -> float:
+def gammasgn(x):
     """Cephes gammasgn: the sign of gamma(x), NaN at poles."""
     if is_nan(x):
         return x
@@ -201,7 +201,7 @@ def gammasgn(x: float) -> float:
             return 1.0
 
 
-def poch_asymp(a: float, m: float, r: float) -> float:
+def poch_asymp(a, m, r: float):
     """poch's asymptotic form for a > 1e4 and |m| <= 1."""
     t0 = 1.0 + m * (m - 1.0) / (2.0 * a)
     t1 = t0 + m * (m - 1.0) * (m - 2.0) * (3.0 * m - 1.0) / (24.0 * a * a)
@@ -209,7 +209,7 @@ def poch_asymp(a: float, m: float, r: float) -> float:
     return r * pow_pos(a, m) * t
 
 
-def poch_finish(a: float, s: PochState) -> float:
+def poch_finish(a, s: PochState):
     """poch after its two recurrences: the Cephes terminal cases."""
     if s.m == 0.0:
         return s.r

@@ -12,6 +12,8 @@ import ui::Doc
 
 (** The lesson reader, judge and tutor cases of [LESSONS-VERIFICATION]. *)
 module LessonCases
+    challengeAndSwapState = "challenge:and-swap/state-swapped-goal"
+
     marked mark = match mark
         workbench::Correct said => "right: " + said
         workbench::Incorrect said => "wrong: " + said
@@ -115,8 +117,8 @@ module LessonCases
 
     keypadInsert () =
         lesson = AppCases::opened ()
-        region = "challenge:and-swap/state-swapped-goal"
-        editor = Drive::findNode ("editor", Drive::node (lesson, region))
+        region = challengeAndSwapState
+        _editor = Drive::findNode ("editor", Drive::node (lesson, region))
         typed = Drive::choose (lesson, region, "Your formula", Drive::quoted "pq")
         moved = Drive::placed (typed, region, 1)
         Drive::press (moved, region, "→ implies")
@@ -133,19 +135,19 @@ module LessonCases
         expect (Doc::number (work, "count"), 0)
         expect (isEmpty (Doc::texts (tutor, "completed")), true)
         expect (Doc::text (saved, "focused"), "state-swapped-goal")
-        expect (Drive::keys next, "challenge:and-swap/state-swapped-goal")
-        epochIs (next, "challenge:and-swap/state-swapped-goal", 1)
+        expect (Drive::keys next, challengeAndSwapState)
+        epochIs (next, challengeAndSwapState, 1)
         repeatedFocus next
 
     repeatedFocus previous =
-        region = "challenge:and-swap/state-swapped-goal"
+        region = challengeAndSwapState
         next = Drive::press (previous, region, "q")
         epochIs (next, region, 2)
         expect (Doc::text (editorOf (next, region), "value"), "p→qq")
 
     (** Actual App regions separate equal challenge ids across lessons, including their focus epochs. *)
     crossLessonFocus () =
-        region = "challenge:and-swap/state-swapped-goal"
+        region = challengeAndSwapState
         lesson = AppCases::opened ()
         first = foldList (toList (range (0, 8)), lesson, \(current, _) => Drive::press (current, region, "p"))
         epochIs (first, region, 8)

@@ -94,7 +94,6 @@ module Terms
 
     // [PROOF-KERNEL-THEORY] Only open subterms can change in a shift or
     // substitution. Reuse closed siblings verbatim, including their binders.
-    underBinders : (Term, int, (int, int) -> Term) -> Term
     underBinders (term, depth, leaf) = match term
         BVar index => leaf (index, depth)
         App head arg => App (openChild (head, depth, leaf)) (openChild (arg, depth, leaf))

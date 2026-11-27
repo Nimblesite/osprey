@@ -32,20 +32,20 @@ module Ledger
     // Idempotent reset-and-create: the demo starts from a known-empty ledger
     // no matter what a previous run left in the database file.
     export schema db =
-        droppedEntries = Sqlite::run db "DROP TABLE IF EXISTS entries"
-        droppedAccounts = Sqlite::run db "DROP TABLE IF EXISTS accounts"
-        accounts = Sqlite::run db "CREATE TABLE accounts (id INTEGER PRIMARY KEY, owner TEXT NOT NULL, balance INTEGER NOT NULL DEFAULT 0)"
+        _droppedEntries = Sqlite::run db "DROP TABLE IF EXISTS entries"
+        _droppedAccounts = Sqlite::run db "DROP TABLE IF EXISTS accounts"
+        _accounts = Sqlite::run db "CREATE TABLE accounts (id INTEGER PRIMARY KEY, owner TEXT NOT NULL, balance INTEGER NOT NULL DEFAULT 0)"
         Sqlite::run db "CREATE TABLE entries (id INTEGER PRIMARY KEY, account INTEGER NOT NULL, kind TEXT NOT NULL, cents INTEGER NOT NULL, note TEXT NOT NULL)"
 
     // Every movement is journalled, refusals included — all four values
     // BOUND through the library's prepared-statement cursor, never spliced.
     journal db account kind cents note =
         cursor = Sqlite::query db "INSERT INTO entries (account, kind, cents, note) VALUES (?, ?, ?, ?)"
-        b1 = Sqlite::bindIntAt cursor 1 account
-        b2 = Sqlite::bindTextAt cursor 2 kind
-        b3 = Sqlite::bindIntAt cursor 3 cents
-        b4 = Sqlite::bindTextAt cursor 4 note
-        stepped = Sqlite::step cursor
+        _b1 = Sqlite::bindIntAt cursor 1 account
+        _b2 = Sqlite::bindTextAt cursor 2 kind
+        _b3 = Sqlite::bindIntAt cursor 3 cents
+        _b4 = Sqlite::bindTextAt cursor 4 note
+        _stepped = Sqlite::step cursor
         Sqlite::closeQuery cursor
 
     export openSql db name = Sqlite::insertIntText db "INSERT INTO accounts (balance, owner) VALUES (?, ?)" 0 name
@@ -55,8 +55,8 @@ module Ledger
     withdraw = "UPDATE accounts SET balance = balance - ? WHERE id = ?"
 
     export creditSql db id cents note =
-        rc = Sqlite::updateIntInt db deposit cents id
-        entry = journal db id "credit" cents note
+        _rc = Sqlite::updateIntInt db deposit cents id
+        _entry = journal db id "credit" cents note
         balanceSql db id
 
     // A debit is transactional and guarded: the UPDATE only fires when the
@@ -70,15 +70,15 @@ module Ledger
 
     // The refusal a guarded debit and a transfer share: the attempt is journalled as refused.
     shortfall db id cents note =
-        entry = journal db id "refused" cents note
+        _entry = journal db id "refused" cents note
         Refused(why = "insufficient funds")
 
     // The debit inside its own transaction, committed once its journal row exists.
     debited db id cents note =
-        begun = Sqlite::run db "BEGIN IMMEDIATE"
-        rc = Sqlite::updateIntInt db withdraw cents id
-        entry = journal db id "debit" cents note
-        done = Sqlite::run db "COMMIT"
+        _begun = Sqlite::run db "BEGIN IMMEDIATE"
+        _rc = Sqlite::updateIntInt db withdraw cents id
+        _entry = journal db id "debit" cents note
+        _done = Sqlite::run db "COMMIT"
         Landed(balance = balanceSql db id)
 
     // Both sides of a transfer and their journal rows commit as one SQLite
@@ -92,12 +92,12 @@ module Ledger
             false => transferred db fromId toId cents note
 
     transferred db fromId toId cents note =
-        begun = Sqlite::run db "BEGIN IMMEDIATE"
-        taken = Sqlite::updateIntInt db withdraw cents fromId
-        given = Sqlite::updateIntInt db deposit cents toId
-        sent = journal db fromId "debit" cents note
-        received = journal db toId "credit" cents note
-        done = Sqlite::run db "COMMIT"
+        _begun = Sqlite::run db "BEGIN IMMEDIATE"
+        _taken = Sqlite::updateIntInt db withdraw cents fromId
+        _given = Sqlite::updateIntInt db deposit cents toId
+        _sent = journal db fromId "debit" cents note
+        _received = journal db toId "credit" cents note
+        _done = Sqlite::run db "COMMIT"
         Landed(balance = balanceSql db fromId)
 
     export balanceSql db id = Sqlite::queryInt db "SELECT balance FROM accounts WHERE id = ?" id
@@ -125,5 +125,5 @@ module Ledger
     export activitySql db =
         cursor = Sqlite::query db "SELECT e.id, e.account, e.kind, e.cents, e.note, a.owner FROM entries e JOIN accounts a ON a.id = e.account ORDER BY e.id DESC LIMIT 50"
         listing = feedRows cursor ""
-        closed = Sqlite::closeQuery cursor
+        _closed = Sqlite::closeQuery cursor
         "[${listing}]"
